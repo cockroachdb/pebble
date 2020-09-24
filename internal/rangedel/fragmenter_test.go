@@ -32,7 +32,9 @@ func parseTombstone(t *testing.T, s string) Tombstone {
 	}
 }
 
-func buildTombstones(t *testing.T, cmp base.Compare, formatKey base.FormatKey, s string) []Tombstone {
+func buildTombstones(
+	t *testing.T, cmp base.Compare, formatKey base.FormatKey, s string,
+) []Tombstone {
 	var tombstones []Tombstone
 	f := &Fragmenter{
 		Cmp:    cmp,

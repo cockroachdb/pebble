@@ -81,7 +81,9 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedComp
 	return pickAutoHelper(env, p.opts, p.vers, cInfo, p.baseLevel)
 }
 
-func (p *compactionPickerForTesting) pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction) {
+func (p *compactionPickerForTesting) pickElisionOnlyCompaction(
+	env compactionEnv,
+) (pc *pickedCompaction) {
 	return nil
 }
 
@@ -2039,7 +2041,9 @@ type mockSplitter struct {
 	shouldSplitVal compactionSplitSuggestion
 }
 
-func (m *mockSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) compactionSplitSuggestion {
+func (m *mockSplitter) shouldSplitBefore(
+	key *InternalKey, tw *sstable.Writer,
+) compactionSplitSuggestion {
 	return m.shouldSplitVal
 }
 

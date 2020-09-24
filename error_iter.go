@@ -4,9 +4,7 @@
 
 package pebble
 
-import (
-	"github.com/cockroachdb/pebble/internal/base"
-)
+import "github.com/cockroachdb/pebble/internal/base"
 
 type errorIter struct {
 	err error

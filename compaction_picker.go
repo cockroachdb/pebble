@@ -125,9 +125,7 @@ type pickedCompaction struct {
 	version *version
 }
 
-func newPickedCompaction(
-	opts *Options, cur *version, startLevel, baseLevel int,
-) *pickedCompaction {
+func newPickedCompaction(opts *Options, cur *version, startLevel, baseLevel int) *pickedCompaction {
 	if startLevel > 0 && startLevel < baseLevel {
 		panic(fmt.Sprintf("invalid compaction: start level %d should not be empty (base level %d)",
 			startLevel, baseLevel))
@@ -158,7 +156,9 @@ func newPickedCompaction(
 	return pc
 }
 
-func newPickedCompactionFromL0(lcf *manifest.L0CompactionFiles, opts *Options, vers *version, baseLevel int, isBase bool) *pickedCompaction {
+func newPickedCompactionFromL0(
+	lcf *manifest.L0CompactionFiles, opts *Options, vers *version, baseLevel int, isBase bool,
+) *pickedCompaction {
 	pc := newPickedCompaction(opts, vers, 0, baseLevel)
 	pc.lcf = lcf
 	if !isBase {
@@ -345,7 +345,9 @@ func (pc *pickedCompaction) grow(sm, la InternalKey) bool {
 //
 // isCompacting is returned true for any atomic units that contain files that
 // have in-progress compactions, i.e. FileMetadata.Compacting == true.
-func expandToAtomicUnit(cmp Compare, inputs manifest.LevelSlice) (slice manifest.LevelSlice, isCompacting bool) {
+func expandToAtomicUnit(
+	cmp Compare, inputs manifest.LevelSlice,
+) (slice manifest.LevelSlice, isCompacting bool) {
 	// NB: Inputs for L0 can't be expanded and *version.Overlaps guarantees
 	// that we get a 'clean cut.' For L0, Overlaps will return a slice without
 	// access to the rest of the L0 files, so it's OK to try to reslice.
@@ -402,7 +404,10 @@ func expandToAtomicUnit(cmp Compare, inputs manifest.LevelSlice) (slice manifest
 }
 
 func newCompactionPicker(
-	v *version, opts *Options, inProgressCompactions []compactionInfo, levelSizes [numLevels]int64,
+	v *version,
+	opts *Options,
+	inProgressCompactions []compactionInfo,
+	levelSizes [numLevels]int64,
 ) compactionPicker {
 	p := &compactionPickerByScore{
 		opts: opts,
@@ -533,7 +538,9 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 	return compactionDebt
 }
 
-func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []compactionInfo, levelSizes [numLevels]int64) {
+func (p *compactionPickerByScore) initLevelMaxBytes(
+	inProgressCompactions []compactionInfo, levelSizes [numLevels]int64,
+) {
 	// The levelMaxBytes calculations here differ from RocksDB in two ways:
 	//
 	// 1. The use of dbSize vs maxLevelSize. RocksDB uses the size of the maximum
@@ -1035,7 +1042,9 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 
 // pickElisionOnlyCompaction looks for compactions of sstables in the
 // bottommost level containing obsolete records that may now be dropped.
-func (p *compactionPickerByScore) pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction) {
+func (p *compactionPickerByScore) pickElisionOnlyCompaction(
+	env compactionEnv,
+) (pc *pickedCompaction) {
 	if p.elisionThreshold == nil || (p.elisionCandidate != nil && p.elisionCandidate.Compacting) {
 		var lowestCandidateSeqNum uint64 = math.MaxUint64
 		var lowestCandidate manifest.LevelFile

@@ -17,9 +17,7 @@
 
 package batchskl
 
-import (
-	"github.com/cockroachdb/pebble/internal/base"
-)
+import "github.com/cockroachdb/pebble/internal/base"
 
 type splice struct {
 	prev uint32
@@ -188,9 +186,7 @@ func (it *Iterator) SetBounds(lower, upper []byte) {
 	it.upper = upper
 }
 
-func (it *Iterator) seekForBaseSplice(
-	key []byte, abbreviatedKey uint64,
-) (prev, next uint32) {
+func (it *Iterator) seekForBaseSplice(key []byte, abbreviatedKey uint64) (prev, next uint32) {
 	prev = it.list.head
 	for level := it.list.height - 1; ; level-- {
 		prev, next = it.list.findSpliceForLevel(key, abbreviatedKey, level, prev)

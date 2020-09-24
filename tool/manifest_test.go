@@ -4,9 +4,7 @@
 
 package tool
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestManifest(t *testing.T) {
 	runTests(t, "testdata/manifest_*")

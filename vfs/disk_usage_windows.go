@@ -6,9 +6,7 @@
 
 package vfs
 
-import (
-	"golang.org/x/sys/windows"
-)
+import "golang.org/x/sys/windows"
 
 func (defaultFS) GetFreeSpace(path string) (uint64, error) {
 	var freeSpace uint64

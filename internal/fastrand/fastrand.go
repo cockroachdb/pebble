@@ -4,9 +4,7 @@
 
 package fastrand
 
-import (
-	_ "unsafe" // required by go:linkname
-)
+import _ "unsafe" // required by go:linkname
 
 // Uint32 returns a lock free uint32 value.
 //go:linkname Uint32 runtime.fastrand

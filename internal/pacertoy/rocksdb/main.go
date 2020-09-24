@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/rate"
-
 	"golang.org/x/exp/rand"
 )
 

@@ -223,7 +223,10 @@ func insertIntoSubLevel(files []*FileMetadata, f *FileMetadata) []*FileMetadata 
 // IsIntraL0Compacting. Those fields are accessed in InitCompactingFileInfo
 // instead.
 func NewL0Sublevels(
-	levelMetadata *LevelMetadata, cmp Compare, formatKey base.FormatKey, flushSplitMaxBytes int64,
+	levelMetadata *LevelMetadata,
+	cmp Compare,
+	formatKey base.FormatKey,
+	flushSplitMaxBytes int64,
 ) (*L0Sublevels, error) {
 	s := &L0Sublevels{cmp: cmp, formatKey: formatKey}
 	s.levelMetadata = levelMetadata

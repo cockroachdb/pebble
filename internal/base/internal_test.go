@@ -4,9 +4,7 @@
 
 package base
 
-import (
-	"testing"
-)
+import "testing"
 
 func (k InternalKey) encodedString() string {
 	buf := make([]byte, k.Size())
