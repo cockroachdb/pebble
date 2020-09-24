@@ -231,10 +231,11 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 // apply to the DB at large; per-query options are defined by the IterOptions
 // and WriteOptions types.
 type Options struct {
-	// Sync sstables and the WAL periodically in order to smooth out writes to
-	// disk. This option does not provide any persistency guarantee, but is used
-	// to avoid latency spikes if the OS automatically decides to write out a
-	// large chunk of dirty filesystem buffers.
+	// Sync sstables periodically in order to smooth out writes to disk. This
+	// option does not provide any persistency guarantee, but is used to avoid
+	// latency spikes if the OS automatically decides to write out a large chunk
+	// of dirty filesystem buffers. This option only controls SSTable syncs; WAL
+	// syncs are controlled by WALBytesPerSync.
 	//
 	// The default value is 512KB.
 	BytesPerSync int
@@ -422,6 +423,17 @@ type Options struct {
 	// functions. A new TablePropertyCollector is created for each sstable built
 	// and lives for the lifetime of the table.
 	TablePropertyCollectors []func() TablePropertyCollector
+
+	// WALBytesPerSync sets the number of bytes to write to a WAL before calling
+	// Sync on it in the background. Just like with BytesPerSync above, this
+	// helps smooth out disk write latencies, and avoids cases where the OS
+	// writes a lot of buffered data to disk at once. However, this is less
+	// necessary with WALs, as many write operations already pass in
+	// Sync = true.
+	//
+	// The default value is 0, i.e. no background syncing. This matches the
+	// default behaviour in RocksDB.
+	WALBytesPerSync int
 
 	// WALDir specifies the directory to store write-ahead logs (WALs) in. If
 	// empty (the default), WALs will be stored in the same directory as sstables
@@ -635,6 +647,7 @@ func (o *Options) String() string {
 	}
 	fmt.Fprintf(&buf, "]\n")
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
+	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
 
 	for i := range o.Levels {
 		l := &o.Levels[i]
@@ -819,6 +832,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				// TODO(peter): set o.TablePropertyCollectors
 			case "wal_dir":
 				o.WALDir = value
+			case "wal_bytes_per_sync":
+				o.WALBytesPerSync, err = strconv.Atoi(value)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key) {
 					return nil

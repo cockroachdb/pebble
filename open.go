@@ -299,7 +299,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum = newLogNum
 
 		logFile = vfs.NewSyncingFile(logFile, vfs.SyncingFileOptions{
-			BytesPerSync:    d.opts.BytesPerSync,
+			BytesPerSync:    d.opts.WALBytesPerSync,
 			PreallocateSize: d.walPreallocateSize(),
 		})
 		d.mu.log.LogWriter = record.NewLogWriter(logFile, newLogNum)
