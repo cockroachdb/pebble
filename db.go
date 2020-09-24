@@ -1360,7 +1360,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				newLogFile.Close()
 			} else if err == nil {
 				newLogFile = vfs.NewSyncingFile(newLogFile, vfs.SyncingFileOptions{
-					BytesPerSync:    d.opts.BytesPerSync,
+					BytesPerSync:    d.opts.WALBytesPerSync,
 					PreallocateSize: d.walPreallocateSize(),
 				})
 			}
