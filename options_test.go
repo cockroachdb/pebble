@@ -66,6 +66,7 @@ func TestOptionsString(t *testing.T) {
   merger=pebble.concatenate
   table_property_collectors=[]
   wal_dir=
+  wal_bytes_per_sync=0
 
 [Level "0"]
   block_restart_interval=16
