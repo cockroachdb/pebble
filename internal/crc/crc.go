@@ -14,9 +14,7 @@
 // In pebble, the uint32 value is then stored in little-endian format.
 package crc // import "github.com/cockroachdb/pebble/internal/crc"
 
-import (
-	"hash/crc32"
-)
+import "hash/crc32"
 
 var table = crc32.MakeTable(crc32.Castagnoli)
 

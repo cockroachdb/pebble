@@ -40,7 +40,10 @@ type recordWriter interface {
 }
 
 func testGeneratorWriter(
-	t *testing.T, reset func(), gen func() (string, bool), newWriter func(io.Writer) recordWriter,
+	t *testing.T,
+	reset func(),
+	gen func() (string, bool),
+	newWriter func(io.Writer) recordWriter,
 ) {
 	buf := new(bytes.Buffer)
 

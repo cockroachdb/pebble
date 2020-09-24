@@ -855,8 +855,8 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			t.Fatalf("malformed table spec: %s", s)
 		}
 		m := &fileMetadata{
-			Smallest: base.ParseInternalKey(strings.TrimSpace(tableParts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(tableParts[1])),
+			Smallest:   base.ParseInternalKey(strings.TrimSpace(tableParts[0])),
+			Largest:    base.ParseInternalKey(strings.TrimSpace(tableParts[1])),
 			Compacting: compacting,
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()

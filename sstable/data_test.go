@@ -17,7 +17,9 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-func runBuildCmd(td *datadriven.TestData, writerOpts WriterOptions) (*WriterMetadata, *Reader, error) {
+func runBuildCmd(
+	td *datadriven.TestData, writerOpts WriterOptions,
+) (*WriterMetadata, *Reader, error) {
 	mem := vfs.NewMem()
 	f0, err := mem.Create("test")
 	if err != nil {

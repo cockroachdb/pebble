@@ -43,7 +43,7 @@ func (m mockFile) Sync() error {
 
 var _ File = &mockFile{}
 
-type mockFS struct{
+type mockFS struct {
 	syncDuration time.Duration
 }
 

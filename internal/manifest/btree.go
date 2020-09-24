@@ -221,7 +221,9 @@ func (n *node) popFront() (*FileMetadata, *node) {
 // find returns the index where the given item should be inserted into this
 // list. 'found' is true if the item already exists in the list at the given
 // index.
-func (n *node) find(cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata) (index int, found bool) {
+func (n *node) find(
+	cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata,
+) (index int, found bool) {
 	// Logic copied from sort.Search. Inlining this gave
 	// an 11% speedup on BenchmarkBTreeDeleteInsert.
 	i, j := 0, int(n.count)
@@ -338,7 +340,9 @@ func (n *node) removeMax() *FileMetadata {
 
 // remove removes a item from the subtree rooted at this node. Returns
 // the item that was removed or nil if no matching item was found.
-func (n *node) remove(cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata) (out *FileMetadata) {
+func (n *node) remove(
+	cmp func(*FileMetadata, *FileMetadata) int, item *FileMetadata,
+) (out *FileMetadata) {
 	i, found := n.find(cmp, item)
 	if n.leaf {
 		if found {

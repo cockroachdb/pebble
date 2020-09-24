@@ -119,7 +119,9 @@ type fileSizeSplitter struct {
 	maxFileSize uint64
 }
 
-func (f *fileSizeSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) compactionSplitSuggestion {
+func (f *fileSizeSplitter) shouldSplitBefore(
+	key *InternalKey, tw *sstable.Writer,
+) compactionSplitSuggestion {
 	// The Kind != RangeDelete part exists because EstimatedSize doesn't grow
 	// rightaway when a range tombstone is added to the fragmenter. It's always
 	// better to make a sequence of range tombstones visible to the fragmenter.
@@ -140,7 +142,9 @@ type grandparentLimitSplitter struct {
 	limit []byte
 }
 
-func (g *grandparentLimitSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) compactionSplitSuggestion {
+func (g *grandparentLimitSplitter) shouldSplitBefore(
+	key *InternalKey, tw *sstable.Writer,
+) compactionSplitSuggestion {
 	if g.limit != nil && g.c.cmp(key.UserKey, g.limit) > 0 {
 		return splitNow
 	}
@@ -235,7 +239,9 @@ type l0LimitSplitter struct {
 	limit []byte
 }
 
-func (l *l0LimitSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) compactionSplitSuggestion {
+func (l *l0LimitSplitter) shouldSplitBefore(
+	key *InternalKey, tw *sstable.Writer,
+) compactionSplitSuggestion {
 	if l.limit != nil && l.c.cmp(key.UserKey, l.limit) > 0 {
 		return splitNow
 	}
@@ -279,7 +285,9 @@ type splitterGroup struct {
 	splitters []compactionOutputSplitter
 }
 
-func (a *splitterGroup) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) (suggestion compactionSplitSuggestion) {
+func (a *splitterGroup) shouldSplitBefore(
+	key *InternalKey, tw *sstable.Writer,
+) (suggestion compactionSplitSuggestion) {
 	suggestion = noSplit
 	for _, splitter := range a.splitters {
 		switch splitter.shouldSplitBefore(key, tw) {
@@ -320,7 +328,9 @@ type userKeyChangeSplitter struct {
 	splitter           compactionOutputSplitter
 }
 
-func (u *userKeyChangeSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) compactionSplitSuggestion {
+func (u *userKeyChangeSplitter) shouldSplitBefore(
+	key *InternalKey, tw *sstable.Writer,
+) compactionSplitSuggestion {
 	if u.splitOnNextUserKey && u.cmp(u.savedKey, key.UserKey) != 0 {
 		u.splitOnNextUserKey = false
 		u.savedKey = u.savedKey[:0]
@@ -349,7 +359,9 @@ type nonZeroSeqNumSplitter struct {
 	splitOnNonZeroSeqNum bool
 }
 
-func (n *nonZeroSeqNumSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) compactionSplitSuggestion {
+func (n *nonZeroSeqNumSplitter) shouldSplitBefore(
+	key *InternalKey, tw *sstable.Writer,
+) compactionSplitSuggestion {
 	curSeqNum := key.SeqNum()
 	keyKind := key.Kind()
 	prevPointSeqNum := n.prevPointSeqNum
