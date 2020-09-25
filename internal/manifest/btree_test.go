@@ -515,6 +515,43 @@ func TestIterEndSentinel(t *testing.T) {
 	require.True(t, iter.valid())
 }
 
+type orderStatistic struct{}
+
+func (o orderStatistic) Zero() interface{} {
+	return 0
+}
+
+func (o orderStatistic) Value(meta *FileMetadata) (interface{}, bool) {
+	return 1, true
+}
+
+func (o orderStatistic) Merge(values []interface{}) interface{} {
+	sum := 0
+	for _, v := range values {
+		sum += v.(int)
+	}
+	return sum
+}
+
+func TestAnnotationOrderStatistic(t *testing.T) {
+	const count = 1000
+	ann := orderStatistic{}
+
+	var tr btree
+	tr.cmp = cmp
+	for i := 1; i <= count; i++ {
+		require.NoError(t, tr.insert(newItem(key(i))))
+	}
+
+	v, ok := tr.root.annotation(ann)
+	require.True(t, ok)
+	require.Equal(t, count, v)
+
+	v, ok = tr.root.annotation(ann)
+	require.True(t, ok)
+	require.Equal(t, count, v)
+}
+
 //////////////////////////////////////////
 //              Benchmarks              //
 //////////////////////////////////////////

@@ -68,6 +68,31 @@ func (lm *LevelMetadata) Slice() LevelSlice {
 	return LevelSlice{iter: lm.tree.iter()}
 }
 
+// Find finds the provided file in the level if it exists.
+func (lm *LevelMetadata) Find(cmp base.Compare, m *FileMetadata) *LevelFile {
+	o := overlaps(lm.Iter(), cmp, m.Smallest.UserKey, m.Largest.UserKey)
+	iter := o.Iter()
+	for f := iter.First(); f != nil; f = iter.Next() {
+		if f == m {
+			lf := iter.Take()
+			return &lf
+		}
+	}
+	return nil
+}
+
+// Annotation lazily calculates and returns the annotation defined by
+// Annotator. The Annotator is used as the key for pre-calculated
+// values, so equal Annotators must be used to avoid duplicate computations
+// and cached annotations.
+func (lm *LevelMetadata) Annotation(annotator Annotator) interface{} {
+	if lm.Empty() {
+		return annotator.Zero()
+	}
+	v, _ := lm.tree.root.annotation(annotator)
+	return v
+}
+
 // LevelFile holds a file's metadata along with its position
 // within a level of the LSM.
 type LevelFile struct {
