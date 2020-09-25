@@ -68,6 +68,34 @@ func (lm *LevelMetadata) Slice() LevelSlice {
 	return LevelSlice{iter: lm.tree.iter(), length: lm.tree.length}
 }
 
+// Find finds the provided file in the level if it exists. The level must be
+// key-sorted (eg, non-L0).
+func (lm *LevelMetadata) Find(cmp base.Compare, m *FileMetadata) *LevelFile {
+	// TODO(jackson): Add an assertion that lm is key-sorted.
+	o := overlaps(lm.Iter(), cmp, m.Smallest.UserKey, m.Largest.UserKey)
+	iter := o.Iter()
+	for f := iter.First(); f != nil; f = iter.Next() {
+		if f == m {
+			lf := iter.Take()
+			return &lf
+		}
+	}
+	return nil
+}
+
+// Annotation lazily calculates and returns the annotation defined by
+// Annotator. The Annotator is used as the key for pre-calculated
+// values, so equal Annotators must be used to avoid duplicate computations
+// and cached annotations. Annotation must not be called concurrently, and in
+// practice this is achieved by requiring callers to hold DB.mu.
+func (lm *LevelMetadata) Annotation(annotator Annotator) interface{} {
+	if lm.Empty() {
+		return annotator.Zero()
+	}
+	v, _ := lm.tree.root.annotation(annotator)
+	return v
+}
+
 // LevelFile holds a file's metadata along with its position
 // within a level of the LSM.
 type LevelFile struct {
@@ -161,12 +189,13 @@ func (ls LevelSlice) Iter() LevelIterator {
 	}
 }
 
-// Len returns the number of files in the slice.
+// Len returns the number of files in the slice. Its runtime is constant.
 func (ls LevelSlice) Len() int {
 	return ls.length
 }
 
-// SizeSum sums the size of all files in the slice.
+// SizeSum sums the size of all files in the slice. Its runtime is linear in
+// the length of the slice.
 func (ls LevelSlice) SizeSum() uint64 {
 	var sum uint64
 	iter := ls.Iter()
