@@ -16,6 +16,26 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
+// An Annotator defines a computation over a level's FileMetadata. If the
+// computation is stable and uses inputs that are fixed for the lifetime of
+// a FileMetadata, the LevelMetadata's internal data structures are annotated
+// with the intermediary computations. This allows the computation to be
+// computed incrementally as edits are applied to a level.
+type Annotator interface {
+	// Zero returns the zero value of an annotation. This value is returned
+	// when a LevelMetadata is empty.
+	Zero() (v interface{})
+	// Value computes the annotation for a single file in a level's metadata.
+	// It returns the value, alonside a bool flag indicating whether or not
+	// the value is stable and okay to cache as an annotation. If the file's
+	// value may change over the life of the file, the annotator should return
+	// false.
+	Value(*FileMetadata) (v interface{}, cacheOK bool)
+	// Merge combines values in-order, producing an annotation over the entire
+	// slice of values.
+	Merge([]interface{}) (v interface{})
+}
+
 type btreeCmp func(*FileMetadata, *FileMetadata) int
 
 func btreeCmpSeqNum(a, b *FileMetadata) int {
@@ -59,11 +79,17 @@ const (
 	minItems = degree - 1
 )
 
+type annotation struct {
+	annotator Annotator
+	v         interface{}
+}
+
 type leafNode struct {
 	ref   int32
 	count int16
 	leaf  bool
 	items [maxItems]*FileMetadata
+	annot []annotation
 }
 
 type node struct {
@@ -193,6 +219,7 @@ func (n *node) insertAt(index int, item *FileMetadata, nd *node) {
 		n.children[index+1] = nd
 	}
 	n.count++
+	n.annot = n.annot[:0]
 }
 
 func (n *node) pushBack(item *FileMetadata, nd *node) {
@@ -201,6 +228,7 @@ func (n *node) pushBack(item *FileMetadata, nd *node) {
 		n.children[n.count+1] = nd
 	}
 	n.count++
+	n.annot = n.annot[:0]
 }
 
 func (n *node) pushFront(item *FileMetadata, nd *node) {
@@ -211,6 +239,7 @@ func (n *node) pushFront(item *FileMetadata, nd *node) {
 	copy(n.items[1:n.count+1], n.items[:n.count])
 	n.items[0] = item
 	n.count++
+	n.annot = n.annot[:0]
 }
 
 // removeAt removes a value at a given index, pulling all subsequent values
@@ -223,6 +252,7 @@ func (n *node) removeAt(index int) (*FileMetadata, *node) {
 		n.children[n.count] = nil
 	}
 	n.count--
+	n.annot = n.annot[:0]
 	out := n.items[index]
 	copy(n.items[index:n.count], n.items[index+1:n.count+1])
 	n.items[n.count] = nil
@@ -232,6 +262,7 @@ func (n *node) removeAt(index int) (*FileMetadata, *node) {
 // popBack removes and returns the last element in the list.
 func (n *node) popBack() (*FileMetadata, *node) {
 	n.count--
+	n.annot = n.annot[:0]
 	out := n.items[n.count]
 	n.items[n.count] = nil
 	if n.leaf {
@@ -245,6 +276,7 @@ func (n *node) popBack() (*FileMetadata, *node) {
 // popFront removes and returns the first element in the list.
 func (n *node) popFront() (*FileMetadata, *node) {
 	n.count--
+	n.annot = n.annot[:0]
 	var child *node
 	if !n.leaf {
 		child = n.children[0]
@@ -320,6 +352,7 @@ func (n *node) split(i int) (*FileMetadata, *node) {
 		}
 	}
 	n.count = int16(i)
+	n.annot = n.annot[:0]
 	return out, next
 }
 
@@ -361,6 +394,7 @@ func (n *node) insert(cmp btreeCmp, item *FileMetadata) error {
 // removeMax removes and returns the maximum item from the subtree rooted
 // at this node.
 func (n *node) removeMax() *FileMetadata {
+	n.annot = n.annot[:0]
 	if n.leaf {
 		n.count--
 		out := n.items[n.count]
@@ -442,6 +476,7 @@ func (n *node) rebalanceOrMerge(i int) {
 		yLa := n.items[i-1]
 		child.pushFront(yLa, grandChild)
 		n.items[i-1] = xLa
+		n.annot = n.annot[:0]
 
 	case i < int(n.count) && n.children[i+1].count > minItems:
 		// Rebalance from right sibling.
@@ -478,6 +513,7 @@ func (n *node) rebalanceOrMerge(i int) {
 		yLa := n.items[i]
 		child.pushBack(yLa, grandChild)
 		n.items[i] = xLa
+		n.annot = n.annot[:0]
 
 	default:
 		// Merge with either the left or right sibling.
@@ -515,9 +551,38 @@ func (n *node) rebalanceOrMerge(i int) {
 			copy(child.children[child.count+1:], mergeChild.children[:mergeChild.count+1])
 		}
 		child.count += mergeChild.count + 1
+		child.annot = child.annot[:0]
 
 		mergeChild.decRef(false /* recursive */, nil)
 	}
+}
+
+func (n *node) annotation(a Annotator) (interface{}, bool) {
+	for _, an := range n.annot {
+		if an.annotator == a {
+			return an.v, true
+		}
+	}
+
+	var values []interface{}
+	okCache := true
+	for i := int16(0); i <= n.count; i++ {
+		if !n.leaf {
+			v, ok := n.children[i].annotation(a)
+			values = append(values, v)
+			okCache = okCache && ok
+		}
+		if i < n.count {
+			v, ok := a.Value(n.items[i])
+			values = append(values, v)
+			okCache = okCache && ok
+		}
+	}
+	v := a.Merge(values)
+	if okCache {
+		n.annot = append(n.annot, annotation{annotator: a, v: v})
+	}
+	return v, okCache
 }
 
 // btree is an implementation of a B-Tree.
