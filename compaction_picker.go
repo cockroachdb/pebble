@@ -442,6 +442,43 @@ func compensatedSize(f *fileMetadata) uint64 {
 	return sz
 }
 
+// compensatedSizeAnnotator implements manifest.Annotator, annotating B-Tree
+// nodes with the sum of the files' compensated sizes. Its annotation type is
+// a *uint64. Compensated sizes may change once a table's stats are loaded
+// asynchronously, so its values are marked as cacheable only if a file's
+// stats have been loaded.
+type compensatedSizeAnnotator struct{}
+
+var _ manifest.Annotator = compensatedSizeAnnotator{}
+
+func (a compensatedSizeAnnotator) Zero(dst interface{}) interface{} {
+	if dst == nil {
+		return new(uint64)
+	}
+	v := dst.(*uint64)
+	*v = 0
+	return v
+}
+
+func (a compensatedSizeAnnotator) Accumulate(
+	f *fileMetadata, dst interface{},
+) (v interface{}, cacheOK bool) {
+	vptr := dst.(*uint64)
+	*vptr = *vptr + compensatedSize(f)
+	return vptr, f.Stats.Valid
+}
+
+func (a compensatedSizeAnnotator) Merge(src interface{}, dst interface{}) interface{} {
+	srcV := src.(*uint64)
+	dstV := dst.(*uint64)
+	*dstV = *dstV + *srcV
+	return dstV
+}
+
+// totalCompensatedSize computes the compensated size over a file metadata
+// iterator. Note that this function is linear in the files available to the
+// iterator. Use the compensatedSizeAnnotator if querying the total
+// compensated size of a level.
 func totalCompensatedSize(iter manifest.LevelIterator) uint64 {
 	var sz uint64
 	for f := iter.First(); f != nil; f = iter.Next() {
@@ -468,14 +505,6 @@ type compactionPickerByScore struct {
 	// levelMaxBytes holds the dynamically adjusted max bytes setting for each
 	// level.
 	levelMaxBytes [numLevels]int64
-
-	// Information for facilitating L6->L6 elision-only compactions. If
-	// elisionThreshold is non-nil, it's the lowest LargestSeqNum of a file
-	// that meets the conditions for an elision-only compaction. It may be
-	// math.MaxUint64 if it's known that no file within L6 meets the
-	// conditions for an elision-only compaction.
-	elisionThreshold *uint64
-	elisionCandidate *manifest.LevelFile
 }
 
 var _ compactionPicker = &compactionPickerByScore{}
@@ -664,6 +693,10 @@ func calculateSizeAdjust(inProgressCompactions []compactionInfo) [numLevels]int6
 	return sizeAdjust
 }
 
+func levelCompensatedSize(lm manifest.LevelMetadata) uint64 {
+	return *lm.Annotation(compensatedSizeAnnotator{}).(*uint64)
+}
+
 func (p *compactionPickerByScore) calculateScores(
 	inProgressCompactions []compactionInfo,
 ) [numLevels]candidateLevelInfo {
@@ -676,7 +709,7 @@ func (p *compactionPickerByScore) calculateScores(
 
 	sizeAdjust := calculateSizeAdjust(inProgressCompactions)
 	for level := 1; level < numLevels; level++ {
-		levelSize := int64(totalCompensatedSize(p.vers.Levels[level].Iter())) + sizeAdjust[level]
+		levelSize := int64(levelCompensatedSize(p.vers.Levels[level])) + sizeAdjust[level]
 		scores[level].score = float64(levelSize) / float64(p.levelMaxBytes[level])
 		scores[level].origScore = scores[level].score
 	}
@@ -1047,68 +1080,92 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 	return nil
 }
 
+// elisionOnlyAnnotator implements the manifest.Annotator interface,
+// annotating B-Tree nodes with the *fileMetadata of a file meeting the
+// obsolete keys criteria for an elision-only compaction within the subtree.
+// If multiple files meet the criteria, it chooses whichever file has the
+// lowest LargestSeqNum. The lowest LargestSeqNum file will be the first
+// eligible for an elision-only compaction once snapshots less than or equal
+// to its LargestSeqNum are closed.
+type elisionOnlyAnnotator struct{}
+
+var _ manifest.Annotator = elisionOnlyAnnotator{}
+
+func (a elisionOnlyAnnotator) Zero(interface{}) interface{} {
+	return nil
+}
+
+func (a elisionOnlyAnnotator) Accumulate(f *fileMetadata, dst interface{}) (interface{}, bool) {
+	if f.Compacting {
+		return dst, true
+	}
+	if !f.Stats.Valid {
+		return dst, false
+	}
+	// Bottommost files are large and not worthwhile to compact just
+	// to remove a few tombstones. Consider a file ineligible if its
+	// own range deletions delete less than 10% of its data and its
+	// deletion tombstones make up less than 10% of its entries.
+	//
+	// TODO(jackson): This does not account for duplicate user keys
+	// which may be collapsed. Ideally, we would have 'obsolete keys'
+	// statistics that would include tombstones, the keys that are
+	// dropped by tombstones and duplicated user keys. See #847.
+	if f.Stats.RangeDeletionsBytesEstimate*10 < f.Size &&
+		f.Stats.NumDeletions*10 < f.Stats.NumEntries {
+		return dst, true
+	}
+	if dst == nil {
+		return f, true
+	} else if dstV := dst.(*fileMetadata); dstV.LargestSeqNum > f.LargestSeqNum {
+		return f, true
+	}
+	return dst, true
+}
+
+func (a elisionOnlyAnnotator) Merge(v interface{}, accum interface{}) interface{} {
+	if v == nil {
+		return accum
+	}
+	// If we haven't accumulated an eligible file yet, or f's LargestSeqNum is
+	// less than the accumulated file's, use f.
+	if accum == nil {
+		return v
+	}
+	f := v.(*fileMetadata)
+	accumV := accum.(*fileMetadata)
+	if accumV == nil || accumV.LargestSeqNum > f.LargestSeqNum {
+		return f
+	}
+	return accumV
+}
+
 // pickElisionOnlyCompaction looks for compactions of sstables in the
 // bottommost level containing obsolete records that may now be dropped.
 func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 	env compactionEnv,
 ) (pc *pickedCompaction) {
-	if p.elisionThreshold == nil || (p.elisionCandidate != nil && p.elisionCandidate.Compacting) {
-		var lowestCandidateSeqNum uint64 = math.MaxUint64
-		var lowestCandidate manifest.LevelFile
-		iter := p.vers.Levels[numLevels-1].Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
-			if f.Compacting {
-				continue
-			}
-			if f.LargestSeqNum >= lowestCandidateSeqNum {
-				continue
-			}
-			if !f.Stats.Valid {
-				continue
-			}
-			// Bottommost files are large and not worthwhile to compact just
-			// to remove a few tombstones. Consider a file ineligible if its
-			// own range deletions delete less than 10% of its data and its
-			// deletion tombstones make up less than 10% of its entries.
-			//
-			// TODO(jackson): This does not account for duplicate user keys
-			// which may be collapsed. Ideally, we would have 'obsolete keys'
-			// statistics that would include tombstones, the keys that are
-			// dropped by tombstones and duplicated user keys. See #847.
-			if f.Stats.RangeDeletionsBytesEstimate*10 < f.Size &&
-				f.Stats.NumDeletions*10 < f.Stats.NumEntries {
-				continue
-			}
-			lowestCandidate = iter.Take()
-			lowestCandidateSeqNum = f.LargestSeqNum
-		}
-		p.elisionThreshold = &lowestCandidateSeqNum
-		if lowestCandidate.FileMetadata == nil {
-			p.elisionCandidate = nil
-		} else {
-			p.elisionCandidate = &lowestCandidate
-		}
-	}
-
-	// We've already scanned L6 and know that we can perform an L6
-	// elision-only compaction only if the sequence number
-	// `elisionThreshold` is in the last snapshot stripe.
-	if *p.elisionThreshold >= env.earliestSnapshotSeqNum {
+	v := p.vers.Levels[numLevels-1].Annotation(elisionOnlyAnnotator{})
+	if v == nil {
 		return nil
+	}
+	candidate := v.(*fileMetadata)
+	if candidate.Compacting || candidate.LargestSeqNum >= env.earliestSnapshotSeqNum {
+		return nil
+	}
+	lf := p.vers.Levels[numLevels-1].Find(p.opts.Comparer.Compare, candidate)
+	if lf == nil {
+		panic(fmt.Sprintf("file %s not found in level %d as expected", candidate.FileNum, numLevels-1))
 	}
 
 	// Construct a picked compaction of the elision candidate's atomic
 	// compaction unit.
 	pc = newPickedCompaction(p.opts, p.vers, numLevels-1, numLevels-1)
 	var isCompacting bool
-	pc.startLevel.files, isCompacting = expandToAtomicUnit(p.opts.Comparer.Compare, p.elisionCandidate.Slice())
+	pc.startLevel.files, isCompacting = expandToAtomicUnit(p.opts.Comparer.Compare, lf.Slice())
 	if isCompacting {
 		return nil
 	}
-
-	p.elisionThreshold = nil
-	p.elisionCandidate = nil
-
 	// Fail-safe to protect against compacting the same sstable concurrently.
 	if !inputRangeAlreadyCompacting(env, pc) {
 		return pc

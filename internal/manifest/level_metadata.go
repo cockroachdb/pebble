@@ -68,6 +68,34 @@ func (lm *LevelMetadata) Slice() LevelSlice {
 	return LevelSlice{iter: lm.tree.iter(), length: lm.tree.length}
 }
 
+// Find finds the provided file in the level if it exists. The level must be
+// key-sorted (eg, non-L0).
+func (lm *LevelMetadata) Find(cmp base.Compare, m *FileMetadata) *LevelFile {
+	// TODO(jackson): Add an assertion that lm is key-sorted.
+	o := overlaps(lm.Iter(), cmp, m.Smallest.UserKey, m.Largest.UserKey)
+	iter := o.Iter()
+	for f := iter.First(); f != nil; f = iter.Next() {
+		if f == m {
+			lf := iter.Take()
+			return &lf
+		}
+	}
+	return nil
+}
+
+// Annotation lazily calculates and returns the annotation defined by
+// Annotator. The Annotator is used as the key for pre-calculated
+// values, so equal Annotators must be used to avoid duplicate computations
+// and cached annotations. Annotation must not be called concurrently, and in
+// practice this is achieved by requiring callers to hold DB.mu.
+func (lm *LevelMetadata) Annotation(annotator Annotator) interface{} {
+	if lm.Empty() {
+		return annotator.Zero(nil)
+	}
+	v, _ := lm.tree.root.annotation(annotator)
+	return v
+}
+
 // LevelFile holds a file's metadata along with its position
 // within a level of the LSM.
 type LevelFile struct {
@@ -157,12 +185,13 @@ func (ls LevelSlice) Iter() LevelIterator {
 	}
 }
 
-// Len returns the number of files in the slice.
+// Len returns the number of files in the slice. Its runtime is constant.
 func (ls LevelSlice) Len() int {
 	return ls.length
 }
 
-// SizeSum sums the size of all files in the slice.
+// SizeSum sums the size of all files in the slice. Its runtime is linear in
+// the length of the slice.
 func (ls LevelSlice) SizeSum() uint64 {
 	var sum uint64
 	iter := ls.Iter()
@@ -383,17 +412,25 @@ func (i *LevelIterator) seek(fn func(*FileMetadata) bool) *FileMetadata {
 	// i.iter.seek seeked in the unbounded underyling B-Tree. If the iterator
 	// has start or end bounds, we may have exceeded them. Reset to the bounds
 	// if necessary.
+	//
+	// NB: The LevelIterator and LevelSlice semantics require that a bounded
+	// LevelIterator/LevelSlice containing files x0, x1, ..., xn behave
+	// identically to an unbounded LevelIterator/LevelSlice of a B-Tree
+	// contianing x0, x1, ..., xn. In other words, any files outside the
+	// LevelIterator's bounds should not influence the iterator's behavior.
+	// When seeking, this means a SeekGE that seeks beyond the end bound,
+	// followed by a Prev should return the last element within bounds.
 	if i.end != nil && cmpIter(i.iter, *i.end) > 0 {
 		i.iter = i.end.clone()
-		if !fn(i.iter.cur()) {
-			i.iter.next()
-		}
+		// Since seek(fn) positioned beyond i.end, we know there is nothing to
+		// return within bounds.
+		i.iter.next()
+		return nil
 	} else if i.start != nil && cmpIter(i.iter, *i.start) < 0 {
 		i.iter = i.start.clone()
+		return i.iter.cur()
 	}
-	if !i.iter.valid() ||
-		(i.end != nil && cmpIter(i.iter, *i.end) > 0) ||
-		(i.start != nil && cmpIter(i.iter, *i.start) < 0) {
+	if !i.iter.valid() {
 		return nil
 	}
 	return i.iter.cur()

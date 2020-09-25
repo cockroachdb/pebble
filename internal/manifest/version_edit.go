@@ -445,20 +445,6 @@ type BulkVersionEdit struct {
 // Accumulate adds the file addition and deletions in the specified version
 // edit to the bulk edit's internal state.
 func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
-	for _, nf := range ve.NewFiles {
-		// A new file should not have been deleted in this or a preceding
-		// VersionEdit at the same level (though files can move across levels).
-		if dmap := b.Deleted[nf.Level]; dmap != nil {
-			if _, ok := dmap[nf.Meta.FileNum]; ok {
-				return base.CorruptionErrorf("file deleted %d before it was inserted\n", nf.Meta.FileNum)
-			}
-		}
-		b.Added[nf.Level] = append(b.Added[nf.Level], nf.Meta)
-		if b.AddedByFileNum != nil {
-			b.AddedByFileNum[nf.Meta.FileNum] = nf.Meta
-		}
-	}
-
 	for df, m := range ve.DeletedFiles {
 		dmap := b.Deleted[df.Level]
 		if dmap == nil {
@@ -473,10 +459,24 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			}
 			m = b.AddedByFileNum[df.FileNum]
 			if m == nil {
-				return errors.Errorf("pebble: internal error: unknown deleted file L%d.%s", df.Level, df.FileNum)
+				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", df.Level, df.FileNum)
 			}
 		}
 		dmap[df.FileNum] = m
+	}
+
+	for _, nf := range ve.NewFiles {
+		// A new file should not have been deleted in this or a preceding
+		// VersionEdit at the same level (though files can move across levels).
+		if dmap := b.Deleted[nf.Level]; dmap != nil {
+			if _, ok := dmap[nf.Meta.FileNum]; ok {
+				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", nf.Level, nf.Meta.FileNum)
+			}
+		}
+		b.Added[nf.Level] = append(b.Added[nf.Level], nf.Meta)
+		if b.AddedByFileNum != nil {
+			b.AddedByFileNum[nf.Meta.FileNum] = nf.Meta
+		}
 	}
 	return nil
 }
@@ -558,7 +558,8 @@ func (b *BulkVersionEdit) Apply(
 		var sm, la *FileMetadata
 		for _, f := range addedFiles {
 			if _, ok := deletedMap[f.FileNum]; ok {
-				addZombie(f.FileNum, f.Size)
+				// Already called addZombie on this file in the preceding
+				// loop, so we don't need to do it here.
 				continue
 			}
 			err := lm.tree.insert(f)
@@ -567,7 +568,7 @@ func (b *BulkVersionEdit) Apply(
 			}
 			removeZombie(f.FileNum)
 			// Track the keys with the smallest and largest keys, so that we can
-			// check checking consistency of the modified span.
+			// check consistency of the modified span.
 			if sm == nil || base.InternalCompare(cmp, sm.Smallest, f.Smallest) > 0 {
 				sm = f
 			}
