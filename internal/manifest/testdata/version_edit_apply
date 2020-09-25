@@ -165,5 +165,5 @@ edit
   L0
    2
 ----
-pebble: internal error: unknown deleted file L0.000002
+pebble: file deleted L0.000002 before it was inserted
 

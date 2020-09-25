@@ -181,7 +181,8 @@ func (b *bitSet) clearAllBits() {
 type L0Sublevels struct {
 	// Levels are ordered from oldest sublevel to youngest sublevel in the
 	// outer slice, and the inner slice contains non-overlapping files for
-	// that sublevel in increasing key order.
+	// that sublevel in increasing key order. Levels is constructed from
+	// levelFiles and is used by callers that require a LevelSlice.
 	Levels     []LevelSlice
 	levelFiles [][]*FileMetadata
 

@@ -16,6 +16,45 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
+// The Annotator type defined below is used by other packages to lazily
+// compute a value over a B-Tree. Each node of the B-Tree stores one
+// `annotation` per annotator, containing the result of the computation over
+// the node's subtree.
+//
+// An annotation is marked as valid if it's current with the current subtree
+// state. Annotations are marked as invalid whenever a node will be mutated
+// (in mut).  Annotators may also return `false` from `Accumulate` to signal
+// that a computation for a file is not stable and may change in the future.
+// Annotations that include these unstable values are also marked as invalid
+// on the node, ensuring that future queries for the annotation will recompute
+// the value.
+
+// An Annotator defines a computation over a level's FileMetadata. If the
+// computation is stable and uses inputs that are fixed for the lifetime of
+// a FileMetadata, the LevelMetadata's internal data structures are annotated
+// with the intermediary computations. This allows the computation to be
+// computed incrementally as edits are applied to a level.
+type Annotator interface {
+	// Zero returns the zero value of an annotation. This value is returned
+	// when a LevelMetadata is empty. The dst argument, if non-nil, is an
+	// obsolete value previously returned by this Annotator and may be
+	// overwritten and reused to avoid a memory allocation.
+	Zero(dst interface{}) (v interface{})
+
+	// Accumulate computes the annotation for a single file in a level's
+	// metadata. It merges the file's value into dst and returns a bool flag
+	// indicating whether or not the value is stable and okay to cache as an
+	// annotation. If the file's value may change over the life of the file,
+	// the annotator must return false.
+	//
+	// Implementations may modify dst and return it to avoid an allocation.
+	Accumulate(m *FileMetadata, dst interface{}) (v interface{}, cacheOK bool)
+
+	// Merge combines two values src and dst, returning the result.
+	// Implementations may modify dst and return it to avoid an allocation.
+	Merge(src interface{}, dst interface{}) interface{}
+}
+
 type btreeCmp func(*FileMetadata, *FileMetadata) int
 
 func btreeCmpSeqNum(a, b *FileMetadata) int {
@@ -59,11 +98,24 @@ const (
 	minItems = degree - 1
 )
 
+type annotation struct {
+	annotator Annotator
+	// v is an annotation value, the output of either
+	// annotator.Value or annotator.Merge.
+	v interface{}
+	// valid indicates whether future reads of the annotation may use v as-is.
+	// If false, v will be zeroed and recalculated.
+	valid bool
+}
+
 type leafNode struct {
 	ref   int32
 	count int16
 	leaf  bool
 	items [maxItems]*FileMetadata
+	// annot contains one annotation per annotator, merged over the entire
+	// node's files (and all descendants for non-leaf nodes).
+	annot []annotation
 }
 
 type node struct {
@@ -105,6 +157,13 @@ func newNode() *node {
 func mut(n **node) *node {
 	if atomic.LoadInt32(&(*n).ref) == 1 {
 		// Exclusive ownership. Can mutate in place.
+
+		// Whenever a node will be mutated, reset its annotations to be marked
+		// as uncached. This ensures any future calls to (*node).annotation
+		// will recompute annotations on the modified subtree.
+		for i := range (*n).annot {
+			(*n).annot[i].valid = false
+		}
 		return *n
 	}
 	// If we do not have unique ownership over the node then we
@@ -116,6 +175,8 @@ func mut(n **node) *node {
 	c := (*n).clone()
 	(*n).decRef(true /* recursive */, nil)
 	*n = c
+	// NB: We don't need to clear annotations, because (*node).clone does not
+	// copy them.
 	return *n
 }
 
@@ -520,6 +581,51 @@ func (n *node) rebalanceOrMerge(i int) {
 	}
 }
 
+func (n *node) annotation(a Annotator) (interface{}, bool) {
+	// Find this annotator's annotation on this node.
+	var annot *annotation
+	for i := range n.annot {
+		if n.annot[i].annotator == a {
+			annot = &n.annot[i]
+		}
+	}
+
+	// If it exists and is marked as valid, we can return it without
+	// recomputing anything.
+	if annot != nil && annot.valid {
+		return annot.v, true
+	}
+
+	if annot == nil {
+		// This is n's first time being annotated by a.
+		// Create a new zeroed annotation.
+		n.annot = append(n.annot, annotation{
+			annotator: a,
+			v:         a.Zero(nil),
+		})
+		annot = &n.annot[len(n.annot)-1]
+	} else {
+		// There's an existing annotation that must be recomputed.
+		// Zero its value.
+		annot.v = a.Zero(annot.v)
+	}
+
+	annot.valid = true
+	for i := int16(0); i <= n.count; i++ {
+		if !n.leaf {
+			v, ok := n.children[i].annotation(a)
+			annot.v = a.Merge(v, annot.v)
+			annot.valid = annot.valid && ok
+		}
+		if i < n.count {
+			v, ok := a.Accumulate(n.items[i], annot.v)
+			annot.v = v
+			annot.valid = annot.valid && ok
+		}
+	}
+	return annot.v, annot.valid
+}
+
 // btree is an implementation of a B-Tree.
 //
 // btree stores FileMetadata in an ordered structure, allowing easy insertion,
@@ -908,10 +1014,10 @@ func (i *iterator) ascend() {
 }
 
 // seek repositions the iterator over the first file for which fn returns
-// true, mirroring the semantics of the standard library's sort.Search method.
-// Like sort.Search, seek requires the iterator's B-Tree to be ordered such
-// that fn returns false for some (possibly empty) prefix of the tree's files,
-// and then true for the (possibly empty) remainder.
+// true, mirroring the semantics of the standard library's sort.Search
+// function.  Like sort.Search, seek requires the iterator's B-Tree to be
+// ordered such that fn returns false for some (possibly empty) prefix of the
+// tree's files, and then true for the (possibly empty) remainder.
 func (i *iterator) seek(fn func(*FileMetadata) bool) {
 	i.reset()
 	if i.n == nil {
