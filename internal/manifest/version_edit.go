@@ -567,7 +567,7 @@ func (b *BulkVersionEdit) Apply(
 			}
 			removeZombie(f.FileNum)
 			// Track the keys with the smallest and largest keys, so that we can
-			// check checking consistency of the modified span.
+			// check consistency of the modified span.
 			if sm == nil || base.InternalCompare(cmp, sm.Smallest, f.Smallest) > 0 {
 				sm = f
 			}
