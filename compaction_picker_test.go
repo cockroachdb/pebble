@@ -37,8 +37,9 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, [numLevels]int64, 
 	var files [numLevels][]*fileMetadata
 	if len(d.Input) > 0 {
 		for _, data := range strings.Split(d.Input, "\n") {
-			parts := strings.Split(data, ":")
-			if len(parts) != 2 {
+			parts := strings.Split(data, " ")
+			parts[0] = strings.TrimSuffix(strings.TrimSpace(parts[0]), ":")
+			if len(parts) < 2 {
 				return nil, nil, sizes, fmt.Sprintf("malformed test:\n%s", d.Input)
 			}
 			level, err := strconv.Atoi(parts[0])
@@ -49,17 +50,27 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, [numLevels]int64, 
 				return nil, nil, sizes, fmt.Sprintf("level %d already filled", level)
 			}
 			size, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
+			markedForCompaction := false
+			if len(parts) > 2 {
+				for _, field := range parts[2:] {
+					switch field {
+					case "marked_for_compaction":
+						markedForCompaction = true
+					}
+				}
+			}
 			if err != nil {
 				return nil, nil, sizes, err.Error()
 			}
 			for i := uint64(1); sizes[level] < int64(size); i++ {
 				key := base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), i, InternalKeyKindSet)
 				m := &fileMetadata{
-					Smallest:       key,
-					Largest:        key,
-					SmallestSeqNum: key.SeqNum(),
-					LargestSeqNum:  key.SeqNum(),
-					Size:           1,
+					Smallest:            key,
+					Largest:             key,
+					SmallestSeqNum:      key.SeqNum(),
+					LargestSeqNum:       key.SeqNum(),
+					Size:                1,
+					MarkedForCompaction: markedForCompaction,
 				}
 				if size >= 100 {
 					// If the requested size of the level is very large only add a single
