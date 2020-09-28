@@ -12,6 +12,11 @@ import (
 	"golang.org/x/exp/rand"
 )
 
+type iterBounds struct {
+	lower []byte
+	upper []byte
+}
+
 type generator struct {
 	rng *rand.Rand
 
@@ -29,7 +34,8 @@ type generator struct {
 	// liveBatches contains the live indexed and write-only batches.
 	liveBatches objIDSlice
 	// liveIters contains the live iterators.
-	liveIters objIDSlice
+	liveIters       objIDSlice
+	itersLastBounds map[objID]iterBounds
 	// liveReaders contains the DB, and any live indexed batches and snapshots. The DB is always
 	// at index 0.
 	liveReaders objIDSlice
@@ -345,24 +351,122 @@ func (g *generator) iterSetBounds() {
 		return
 	}
 
-	// Generate lower/upper bounds with a 50% probability.
+	iterID := g.liveIters.rand(g.rng)
+	if g.itersLastBounds == nil {
+		g.itersLastBounds = make(map[objID]iterBounds)
+	}
+	iterLastBounds := g.itersLastBounds[iterID]
 	var lower, upper []byte
-	if g.rng.Float64() <= 0.5 {
-		// Generate a new key with a .1% probability.
-		lower = g.randKey(0.001)
+	genLower := g.rng.Float64() <= 0.9
+	genUpper := g.rng.Float64() <= 0.9
+	// When one of ensureLowerGE, ensureUpperLE is true, the new bounds
+	// don't overlap with the previous bounds.
+	var ensureLowerGE, ensureUpperLE bool
+	if genLower && iterLastBounds.upper != nil && g.rng.Float64() <= 0.9 {
+		ensureLowerGE = true
 	}
-	if g.rng.Float64() <= 0.5 {
-		// Generate a new key with a .1% probability.
-		upper = g.randKey(0.001)
+	if (!ensureLowerGE || g.rng.Float64() < 0.5) && genUpper && iterLastBounds.lower != nil {
+		ensureUpperLE = true
+		ensureLowerGE = false
 	}
-	if bytes.Compare(lower, upper) > 0 {
-		lower, upper = upper, lower
+	attempts := 0
+	for {
+		attempts++
+		if genLower {
+			// Generate a new key with a .1% probability.
+			lower = g.randKey(0.001)
+		}
+		if genUpper {
+			// Generate a new key with a .1% probability.
+			upper = g.randKey(0.001)
+		}
+		if bytes.Compare(lower, upper) > 0 {
+			lower, upper = upper, lower
+		}
+		if ensureLowerGE && bytes.Compare(iterLastBounds.upper, lower) > 0 {
+			if attempts < 25 {
+				continue
+			}
+			lower = iterLastBounds.upper
+			upper = lower
+			break
+		}
+		if ensureUpperLE && bytes.Compare(upper, iterLastBounds.lower) > 0 {
+			if attempts < 25 {
+				continue
+			}
+			upper = iterLastBounds.lower
+			lower = upper
+			break
+		}
+		break
+	}
+	g.itersLastBounds[iterID] = iterBounds{
+		lower: lower,
+		upper: upper,
 	}
 	g.add(&iterSetBoundsOp{
-		iterID: g.liveIters.rand(g.rng),
+		iterID: iterID,
 		lower:  lower,
 		upper:  upper,
 	})
+	// Additionally seek the iterator in a manner consistent with the bounds,
+	// and do some steps (Next/Prev). The seeking exercises typical
+	// CockroachDB behavior when using iterators and the steps are trying to
+	// stress the region near the bounds. Ideally, we should not do this as
+	// part of generating a single op, but this is easier than trying to
+	// control future op generation via generator state.
+	doSeekLT := upper != nil && g.rng.Float64() < 0.5
+	doSeekGE := lower != nil && g.rng.Float64() < 0.5
+	if doSeekLT && doSeekGE {
+		// Pick the seek.
+		if g.rng.Float64() < 0.5 {
+			doSeekGE = false
+		} else {
+			doSeekLT = false
+		}
+	}
+	if doSeekLT {
+		g.add(&iterSeekLTOp{
+			iterID: iterID,
+			key:    upper,
+		})
+		if g.rng.Float64() < 0.5 {
+			g.add(&iterNextOp{
+				iterID: iterID,
+			})
+		}
+		if g.rng.Float64() < 0.5 {
+			g.add(&iterNextOp{
+				iterID: iterID,
+			})
+		}
+		if g.rng.Float64() < 0.5 {
+			g.add(&iterPrevOp{
+				iterID: iterID,
+			})
+		}
+	} else if doSeekGE {
+		g.add(&iterSeekGEOp{
+			iterID: iterID,
+			key:    lower,
+		})
+		if g.rng.Float64() < 0.5 {
+			g.add(&iterPrevOp{
+				iterID: iterID,
+			})
+		}
+		if g.rng.Float64() < 0.5 {
+			g.add(&iterPrevOp{
+				iterID: iterID,
+			})
+		}
+		if g.rng.Float64() < 0.5 {
+			g.add(&iterNextOp{
+				iterID: iterID,
+			})
+		}
+	}
 }
 
 func (g *generator) iterSeekGE() {
