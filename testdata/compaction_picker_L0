@@ -304,3 +304,26 @@ compactions
 pick-auto l0_compaction_threshold=2
 ----
 nil
+
+define
+L0
+  001621:voooyd.MERGE.1261-voooyd.MERGE.1261
+  001603:ywgbvh.DEL.1248-ywgbvh.DEL.1248
+  001609:yxmkeodguz.DEL.1253-yxmkeodguz.DEL.1253
+L6
+  001615:tesvagnzva.RANGEDEL.1254-yopclcg.RANGEDEL.72057594037927935
+  001619:yopclcg.SET.0-yopclcg.SET.0
+----
+0.0:
+  001621:[voooyd#1261,MERGE-voooyd#1261,MERGE]
+  001603:[ywgbvh#1248,DEL-ywgbvh#1248,DEL]
+  001609:[yxmkeodguz#1253,DEL-yxmkeodguz#1253,DEL]
+6:
+  001615:[tesvagnzva#1254,RANGEDEL-yopclcg#72057594037927935,RANGEDEL]
+  001619:[yopclcg#0,SET-yopclcg#0,SET]
+
+pick-auto
+----
+L0 -> L6
+L0: 001621
+L6: 001615
