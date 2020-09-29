@@ -438,8 +438,19 @@ type Options struct {
 	// changing options dynamically?
 	WALMinSyncInterval func() time.Duration
 
-	// private options are only used by internal tests.
+	// private options are only used by internal tests or are used internally
+	// for facilitating upgrade paths of unconfigurable functionality.
 	private struct {
+		// strictWALTail configures whether or not a database's WALs created
+		// prior to the most recent one should be interpreted strictly,
+		// requiring a clean EOF. RocksDB 6.2.1 and the version of Pebble
+		// included in CockroachDB 20.1 do not guarantee that closed WALs end
+		// cleanly. If this option is set within an OPTIONS file, Pebble
+		// interprets previous WALs strictly, requiring a clean EOF.
+		// Otherwise, it interprets them permissively in the same manner as
+		// RocksDB 6.2.1.
+		strictWALTail bool
+
 		// TODO(peter): A private option to enable flush/compaction pacing. Only used
 		// by tests. Compaction/flush pacing is disabled until we fix the impact on
 		// throughput.
@@ -535,6 +546,7 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Merger == nil {
 		o.Merger = DefaultMerger
 	}
+	o.private.strictWALTail = true
 	if o.private.minCompactionRate == 0 {
 		o.private.minCompactionRate = 4 << 20 // 4 MB/s
 	}
@@ -635,6 +647,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  min_compaction_rate=%d\n", o.private.minCompactionRate)
 	fmt.Fprintf(&buf, "  min_flush_rate=%d\n", o.private.minFlushRate)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
+	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", o.private.strictWALTail)
 	fmt.Fprintf(&buf, "  table_property_collectors=[")
 	for i := range o.TablePropertyCollectors {
 		if i > 0 {
@@ -807,6 +820,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.private.minCompactionRate, err = strconv.Atoi(value)
 			case "min_flush_rate":
 				o.private.minFlushRate, err = strconv.Atoi(value)
+			case "strict_wal_tail":
+				o.private.strictWALTail, err = strconv.ParseBool(value)
 			case "merger":
 				switch value {
 				case "nullptr":
@@ -905,11 +920,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 	})
 }
 
-// Check verifies the options are compatible with the previous options
-// serialized by Options.String(). For example, the Comparer and Merger must be
-// the same, or data will not be able to be properly read from the DB.
-func (o *Options) Check(s string) error {
-	return parseOptions(s, func(section, key, value string) error {
+func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
+	// TODO(jackson): Refactor to avoid awkwardness of the strictWALTail return value.
+	return strictWALTail, parseOptions(s, func(section, key, value string) error {
 		switch section + "." + key {
 		case "Options.comparer":
 			if value != o.Comparer.Name {
@@ -923,9 +936,22 @@ func (o *Options) Check(s string) error {
 				return errors.Errorf("pebble: merger name from file %q != merger name from options %q",
 					errors.Safe(value), errors.Safe(o.Merger.Name))
 			}
+		case "Options.strict_wal_tail":
+			strictWALTail, err = strconv.ParseBool(value)
+			if err != nil {
+				return errors.Errorf("pebble: error parsing strict_wal_tail value %q: %w", value, err)
+			}
 		}
 		return nil
 	})
+}
+
+// Check verifies the options are compatible with the previous options
+// serialized by Options.String(). For example, the Comparer and Merger must be
+// the same, or data will not be able to be properly read from the DB.
+func (o *Options) Check(s string) error {
+	_, err := o.checkOptions(s)
+	return err
 }
 
 // Validate verifies that the options are mutually consistent. For example,

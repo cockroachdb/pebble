@@ -229,6 +229,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		name string
 	}
 	var logFiles []fileNumAndName
+	var strictWALTail bool
 	for _, filename := range ls {
 		ft, fn, ok := base.ParseFilename(opts.FS, filename)
 		if !ok {
@@ -250,7 +251,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 				d.logRecycler.minRecycleLogNum = fn + 1
 			}
 		case fileTypeOptions:
-			if err := checkOptions(opts, opts.FS.PathJoin(dirname, filename)); err != nil {
+			strictWALTail, err = checkOptions(opts, opts.FS.PathJoin(dirname, filename))
+			if err != nil {
 				return nil, err
 			}
 		case fileTypeTemp:
@@ -271,7 +273,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	var ve versionEdit
 	for i, lf := range logFiles {
 		lastWAL := i == len(logFiles)-1
-		maxSeqNum, err := d.replayWAL(jobID, &ve, opts.FS, opts.FS.PathJoin(d.walDirname, lf.name), lf.num, lastWAL)
+		maxSeqNum, err := d.replayWAL(jobID, &ve, opts.FS,
+			opts.FS.PathJoin(d.walDirname, lf.name), lf.num, strictWALTail && !lastWAL)
 		if err != nil {
 			return nil, err
 		}
@@ -433,7 +436,7 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) replayWAL(
-	jobID int, ve *versionEdit, fs vfs.FS, filename string, logNum FileNum, lastWAL bool,
+	jobID int, ve *versionEdit, fs vfs.FS, filename string, logNum FileNum, strictWALTail bool,
 ) (maxSeqNum uint64, err error) {
 	file, err := fs.Open(filename)
 	if err != nil {
@@ -504,7 +507,7 @@ func (d *DB) replayWAL(
 			// to otherwise treat them like EOF.
 			if err == io.EOF {
 				break
-			} else if record.IsInvalidRecord(err) && lastWAL {
+			} else if record.IsInvalidRecord(err) && !strictWALTail {
 				break
 			}
 			return 0, errors.Wrap(err, "pebble: error when replaying WAL")
@@ -577,16 +580,16 @@ func (d *DB) replayWAL(
 	return maxSeqNum, err
 }
 
-func checkOptions(opts *Options, path string) error {
+func checkOptions(opts *Options, path string) (strictWALTail bool, err error) {
 	f, err := opts.FS.Open(path)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer f.Close()
 
 	data, err := ioutil.ReadAll(f)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return opts.Check(string(data))
+	return opts.checkOptions(string(data))
 }
