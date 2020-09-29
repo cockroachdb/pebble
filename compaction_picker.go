@@ -239,8 +239,35 @@ func (pc *pickedCompaction) setupInputs() bool {
 				smallestBaseKey = sm.Largest
 			}
 			la := baseIter.SeekGE(pc.cmp, pc.largest.UserKey)
-			for la != nil && pc.cmp(la.Largest.UserKey, pc.largest.UserKey) == 0 {
+			// Searching for the picked compaction's largest user key will
+			// not necessarily find the last base file included, since
+			// multiple base files may have the same largest user key. We need
+			// to iterate past any files with exactly the same largest user key.
+			//
+			// However, if the picked compaction's largest user key is a range deletion
+			// sentinel, then any subsequent files with the same largest user
+			// key are excluded from the picked compaction and we must not
+			// advance past them. Reusing the example from above, if
+			// pc.largest.UserKey is b#RANGEDELSENTINEL, then `b` keys are not
+			// included within the compaction and we should set largestBaseKey
+			// to `b#4,SET`.
+			//
+			// L6:
+			// 000005: [a#5,SET-b#RANGEDELSENTINEL]
+			// 000006: [b#4,SET-c#5,SET]
+			//
+			// TODO(jackson): We could make this logic less subtle by providing a way to
+			// obtain an unbounded LevelIterator at pc.outputLevel.files's end
+			// bound. The file to use to set the largest base key would always
+			// be the next one on that unbounded iterator.
+			if pc.largest.Trailer == base.InternalKeyRangeDeleteSentinel {
+				// Advance exactly once to get to the first file after the
+				// included base file.
 				la = baseIter.Next()
+			} else {
+				for la != nil && pc.cmp(la.Largest.UserKey, pc.largest.UserKey) == 0 {
+					la = baseIter.Next()
+				}
 			}
 			if la != nil {
 				largestBaseKey = la.Smallest
@@ -900,8 +927,8 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			l0ReadAmp = p.vers.Levels[0].Slice().Len()
 		}
 		compactionDebt := int(p.estimatedCompactionDebt(0))
-		ccSignal1 := n *p.opts.Experimental.L0CompactionConcurrency
-		ccSignal2 := n *p.opts.Experimental.CompactionDebtConcurrency
+		ccSignal1 := n * p.opts.Experimental.L0CompactionConcurrency
+		ccSignal2 := n * p.opts.Experimental.CompactionDebtConcurrency
 		if l0ReadAmp < ccSignal1 && compactionDebt < ccSignal2 {
 			return nil
 		}
