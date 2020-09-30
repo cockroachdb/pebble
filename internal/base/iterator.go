@@ -53,11 +53,15 @@ import "fmt"
 // Last if there is an upper bound). This imposition is done in order to
 // elevate that enforcement to the caller (generally pebble.Iterator or
 // pebble.mergingIter) rather than having it duplicated in every
-// InternalIterator implementation. InternalIterator implementations are
-// required to respect the iterator bounds, never returning records outside of
-// the bounds with one exception: an iterator may generate synthetic RANGEDEL
-// marker records. See levelIter.syntheticBoundary for the sole existing
-// example of this behavior. [TODO(peter): can we eliminate this exception?]
+// InternalIterator implementation. Additionally, the caller needs to ensure
+// that SeekGE/SeekPrefixGE are not called with a key > the upper bound, and
+// SeekLT is not called with a key < the lower bound.
+// InternalIterator implementations are required to respect the iterator
+// bounds, never returning records outside of the bounds with one exception:
+// an iterator may generate synthetic RANGEDEL marker records. See
+// levelIter.syntheticBoundary for the sole existing example of this behavior.
+// Specifically, levelIter can return synthetic keys whose user key is equal
+// to the lower/upper bound.
 //
 // An iterator must be closed after use, but it is not necessary to read an
 // iterator until exhaustion.

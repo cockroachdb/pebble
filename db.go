@@ -771,6 +771,7 @@ func (d *DB) newIterInternal(
 		li.initRangeDel(&mlevels[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevels[0].smallestUserKey, &mlevels[0].largestUserKey,
 			&mlevels[0].isLargestUserKeyRangeDelSentinel)
+		li.initIsSyntheticIterBoundsKey(&mlevels[0].isSyntheticIterBoundsKey)
 		mlevels[0].iter = li
 		mlevels = mlevels[1:]
 	}

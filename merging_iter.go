@@ -31,6 +31,7 @@ type mergingIterLevel struct {
 	// below.
 	smallestUserKey, largestUserKey  []byte
 	isLargestUserKeyRangeDelSentinel bool
+	isSyntheticIterBoundsKey         bool
 
 	// tombstone caches the tombstone rangeDelIter is currently pointed at. If
 	// tombstone.Empty() is true, there are no further tombstones within the
@@ -390,8 +391,9 @@ func (m *mergingIter) switchToMinHeap() {
 		// Next on the L2 iterator, it would return e, violating its lower
 		// bound.  Instead, we seek it to >= f and Next from there.
 
-		if l.iterKey == nil || (l.iterKey.Kind() == base.InternalKeyKindRangeDelete &&
-			m.heap.cmp(l.iterKey.UserKey, m.lower) < 0) {
+		if l.iterKey == nil || (m.lower != nil && l.isSyntheticIterBoundsKey &&
+			l.iterKey.Trailer == InternalKeyRangeDeleteSentinel &&
+			m.heap.cmp(l.iterKey.UserKey, m.lower) <= 0) {
 			if m.lower != nil {
 				l.iterKey, l.iterValue = l.iter.SeekGE(m.lower)
 			} else {
@@ -464,7 +466,8 @@ func (m *mergingIter) switchToMaxHeap() {
 		// Prev on the L2 iterator, it would return h, violating its upper
 		// bound.  Instead, we seek it to < g, and Prev from there.
 
-		if l.iterKey == nil || (l.iterKey.Kind() == base.InternalKeyKindRangeDelete &&
+		if l.iterKey == nil || (m.upper != nil && l.isSyntheticIterBoundsKey &&
+			l.iterKey.Trailer == InternalKeyRangeDeleteSentinel &&
 			m.heap.cmp(l.iterKey.UserKey, m.upper) >= 0) {
 			if m.upper != nil {
 				l.iterKey, l.iterValue = l.iter.SeekLT(m.upper)
@@ -610,6 +613,9 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 func (m *mergingIter) findNextEntry() (*InternalKey, []byte) {
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
+		if m.levels[item.index].isSyntheticIterBoundsKey {
+			break
+		}
 		if m.isNextEntryDeleted(item) {
 			continue
 		}
@@ -752,6 +758,9 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 func (m *mergingIter) findPrevEntry() (*InternalKey, []byte) {
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
+		if m.levels[item.index].isSyntheticIterBoundsKey {
+			break
+		}
 		if m.isPrevEntryDeleted(item) {
 			continue
 		}
