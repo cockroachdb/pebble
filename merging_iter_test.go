@@ -248,6 +248,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				li.initRangeDel(&levelIters[i].rangeDelIter)
 				li.initSmallestLargestUserKey(
 					&levelIters[i].smallestUserKey, &levelIters[i].largestUserKey, &levelIters[i].isLargestUserKeyRangeDelSentinel)
+				li.initIsSyntheticIterBoundsKey(&levelIters[i].isSyntheticIterBoundsKey)
 			}
 			miter := &mergingIter{}
 			miter.init(nil /* opts */, cmp, levelIters...)
@@ -561,6 +562,7 @@ func BenchmarkMergingIterSeqSeekGEWithBounds(b *testing.B) {
 					l.initSmallestLargestUserKey(
 						&mils[level].smallestUserKey, &mils[level].largestUserKey,
 						&mils[level].isLargestUserKeyRangeDelSentinel)
+					l.initIsSyntheticIterBoundsKey(&mils[level].isSyntheticIterBoundsKey)
 					mils[level].iter = l
 				}
 				m := &mergingIter{}

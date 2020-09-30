@@ -72,8 +72,8 @@ type levelIter struct {
 	iter     internalIterator
 	iterFile *fileMetadata
 	newIters tableNewIters
-	// When rangeDelIterPtr != nil, the caller requires that a range del iterator
-	// corresponding to the current file be placed in *rangeDelIterPtr. When this
+	// When rangeDelIterPtr != nil, the caller requires that *rangeDelIterPtr must
+	// point to a range del iterator corresponding to the current file. When this
 	// iterator returns nil, *rangeDelIterPtr should also be set to nil. Whenever
 	// a non-nil internalIterator is placed in rangeDelIterPtr, a copy is placed
 	// in rangeDelIterCopy. This is done for the following special case:
@@ -135,6 +135,12 @@ type levelIter struct {
 	smallestUserKey, largestUserKey  *[]byte
 	isLargestUserKeyRangeDelSentinel *bool
 
+	// Set to true iff the key returned by this iterator is a synthetic key
+	// derived from the iterator bounds. This is used to prevent the
+	// mergingIter from being stuck at such a synthetic key if it becomes the
+	// top element of the heap.
+	isSyntheticIterBoundsKey *bool
+
 	// bytesIterated keeps track of the number of bytes iterated during compaction.
 	bytesIterated *uint64
 
@@ -191,6 +197,10 @@ func (l *levelIter) initSmallestLargestUserKey(
 	l.smallestUserKey = smallestUserKey
 	l.largestUserKey = largestUserKey
 	l.isLargestUserKeyRangeDelSentinel = isLargestUserKeyRangeDelSentinel
+}
+
+func (l *levelIter) initIsSyntheticIterBoundsKey(isSyntheticIterBoundsKey *bool) {
+	l.isSyntheticIterBoundsKey = isSyntheticIterBoundsKey
 }
 
 func (l *levelIter) findFileGE(key []byte) *fileMetadata {
@@ -257,6 +267,9 @@ func (l *levelIter) initTableBounds(f *fileMetadata) int {
 func (l *levelIter) loadFile(file *fileMetadata, dir int) bool {
 	l.smallestBoundary = nil
 	l.largestBoundary = nil
+	if l.isSyntheticIterBoundsKey != nil {
+		*l.isSyntheticIterBoundsKey = false
+	}
 	if l.iterFile == file {
 		if l.err != nil {
 			return false
@@ -353,6 +366,9 @@ func (l *levelIter) verify(key *InternalKey, val []byte) (*InternalKey, []byte) 
 
 func (l *levelIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
+	if l.isSyntheticIterBoundsKey != nil {
+		*l.isSyntheticIterBoundsKey = false
+	}
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
@@ -367,6 +383,9 @@ func (l *levelIter) SeekGE(key []byte) (*InternalKey, []byte) {
 
 func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
+	if l.isSyntheticIterBoundsKey != nil {
+		*l.isSyntheticIterBoundsKey = false
+	}
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
@@ -383,9 +402,21 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 	// this case the same as SeekGE where an upper-bound resides within the
 	// sstable and generate a synthetic boundary key.
 	if l.rangeDelIterPtr != nil && *l.rangeDelIterPtr != nil {
+		if l.tableOpts.UpperBound != nil {
+			l.syntheticBoundary.UserKey = l.tableOpts.UpperBound
+			l.syntheticBoundary.Trailer = InternalKeyRangeDeleteSentinel
+			l.largestBoundary = &l.syntheticBoundary
+			if l.isSyntheticIterBoundsKey != nil {
+				*l.isSyntheticIterBoundsKey = true
+			}
+			return l.verify(l.largestBoundary, nil)
+		}
 		l.syntheticBoundary = l.iterFile.Largest
 		l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
 		l.largestBoundary = &l.syntheticBoundary
+		if l.isSyntheticIterBoundsKey != nil {
+			*l.isSyntheticIterBoundsKey = false
+		}
 		return l.verify(l.largestBoundary, nil)
 	}
 	return l.verify(l.skipEmptyFileForward())
@@ -393,6 +424,9 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 
 func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
+	if l.isSyntheticIterBoundsKey != nil {
+		*l.isSyntheticIterBoundsKey = false
+	}
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
@@ -407,6 +441,9 @@ func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
 
 func (l *levelIter) First() (*InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
+	if l.isSyntheticIterBoundsKey != nil {
+		*l.isSyntheticIterBoundsKey = false
+	}
 
 	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
 	// set.
@@ -421,6 +458,9 @@ func (l *levelIter) First() (*InternalKey, []byte) {
 
 func (l *levelIter) Last() (*InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
+	if l.isSyntheticIterBoundsKey != nil {
+		*l.isSyntheticIterBoundsKey = false
+	}
 
 	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
 	// set.
@@ -436,6 +476,9 @@ func (l *levelIter) Last() (*InternalKey, []byte) {
 func (l *levelIter) Next() (*InternalKey, []byte) {
 	if l.err != nil || l.iter == nil {
 		return nil, nil
+	}
+	if l.isSyntheticIterBoundsKey != nil {
+		*l.isSyntheticIterBoundsKey = false
 	}
 
 	switch {
@@ -473,6 +516,9 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 func (l *levelIter) Prev() (*InternalKey, []byte) {
 	if l.err != nil || l.iter == nil {
 		return nil, nil
+	}
+	if l.isSyntheticIterBoundsKey != nil {
+		*l.isSyntheticIterBoundsKey = false
 	}
 
 	switch {
@@ -534,20 +580,18 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 			// boundary key so that mergingIter can use the range tombstone iterator
 			// until the other levels have reached this boundary.
 			//
-			// It is safe to set the boundary key kind to RANGEDEL because we're
-			// never going to look at subsequent sstables (we've reached the upper
-			// bound).
+			// It is safe to set the boundary key to the UpperBound user key
+			// with the RANGEDEL sentinel since it is the smallest InternalKey
+			// that matches the exclusive upper bound, and does not represent
+			// a real key.
 			if l.tableOpts.UpperBound != nil {
 				if *l.rangeDelIterPtr != nil {
-					// TODO(peter): Rather than using f.Largest, can we use
-					// l.tableOpts.UpperBound and set the seqnum to 0? We know the upper
-					// bound resides within the table boundaries. Not clear if this is
-					// kosher with respect to the invariant that only one record for a
-					// given user key will have seqnum 0. See Iterator.nextUserKey for an
-					// optimization that requires this.
-					l.syntheticBoundary = l.iterFile.Largest
-					l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
+					l.syntheticBoundary.UserKey = l.tableOpts.UpperBound
+					l.syntheticBoundary.Trailer = InternalKeyRangeDeleteSentinel
 					l.largestBoundary = &l.syntheticBoundary
+					if l.isSyntheticIterBoundsKey != nil {
+						*l.isSyntheticIterBoundsKey = true
+					}
 					return l.largestBoundary, nil
 				}
 				// Else there are no range deletions in this sstable. This
@@ -597,17 +641,18 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 			// synthetic boundary key so that mergingIter can use the range tombstone
 			// iterator until the other levels have reached this boundary.
 			//
-			// It is safe to set the boundary key kind to RANGEDEL because we're
-			// never going to look at earlier sstables (we've reached the lower
-			// bound).
+			// It is safe to set the boundary key to the LowerBound user key
+			// with the RANGEDEL sentinel since it is the smallest InternalKey
+			// that is within the inclusive lower bound, and does not
+			// represent a real key.
 			if l.tableOpts.LowerBound != nil {
 				if *l.rangeDelIterPtr != nil {
-					// TODO(peter): Rather than using f.Smallest, can we use
-					// l.tableOpts.LowerBound and set the seqnum to InternalKeySeqNumMax?
-					// We know the lower bound resides within the table boundaries.
-					l.syntheticBoundary = l.iterFile.Smallest
-					l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
+					l.syntheticBoundary.UserKey = l.tableOpts.LowerBound
+					l.syntheticBoundary.Trailer = InternalKeyRangeDeleteSentinel
 					l.smallestBoundary = &l.syntheticBoundary
+					if l.isSyntheticIterBoundsKey != nil {
+						*l.isSyntheticIterBoundsKey = true
+					}
 					return l.smallestBoundary, nil
 				}
 				// Else there are no range deletions in this sstable. This

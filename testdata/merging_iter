@@ -471,7 +471,7 @@ set-bounds upper=n
 seek-ge krgywquurww
 prev
 ----
-p#72057594037927935,15:
+.
 kq#100,15:
 
 # Verify the lower bound is respected when switching directions at a RANGEDEL
@@ -501,4 +501,4 @@ seek-lt jd
 next
 ----
 iwoeionch#792,1:792
-jyk#72057594037927935,15:
+.

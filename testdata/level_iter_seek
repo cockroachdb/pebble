@@ -40,7 +40,7 @@ iter
 set-bounds upper=d
 seek-ge d
 ----
-f/d-e#6#5,15:
+d/d-e#6#72057594037927935,15:
 
 iter
 set-bounds upper=d
@@ -51,9 +51,9 @@ next
 next
 ----
 c/d-e#6#7,1:c
-f#5,15:
+d#72057594037927935,15:
 c#7,1:c
-f#5,15:
+d#72057594037927935,15:
 .
 
 iter
@@ -65,7 +65,7 @@ iter
 set-bounds lower=d
 seek-lt d
 ----
-c/d-e#6#7,15:
+d/d-e#6#72057594037927935,15:
 
 iter
 set-bounds lower=d
@@ -76,9 +76,9 @@ prev
 prev
 ----
 f/d-e#6#5,1:f
-c#7,15:
+d#72057594037927935,15:
 f#5,1:f
-c#7,15:
+d#72057594037927935,15:
 .
 
 # Verify that First() in the presence of an upper-bound pauses at the
@@ -97,7 +97,7 @@ iter
 set-bounds upper=f
 first
 ----
-f#5,15:
+f#72057594037927935,15:
 
 # Verify that Last() in the presence of a lower-bound pauses at the
 # table containing the lower-bound.
