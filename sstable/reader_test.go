@@ -455,6 +455,30 @@ func TestBytesIteratedUncompressed(t *testing.T) {
 	}
 }
 
+func TestCompactionIteratorSetupForCompaction(t *testing.T) {
+	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
+	for _, blockSize := range blockSizes {
+		for _, indexBlockSize := range blockSizes {
+			for _, numEntries := range []uint64{0, 1, 1e5} {
+				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, DefaultCompression)
+				var bytesIterated uint64
+				citer, err := r.NewCompactionIter(&bytesIterated)
+				require.NoError(t, err)
+				switch i := citer.(type) {
+				case *compactionIterator:
+					require.NotNil(t, i.dataRS.sequentialFile)
+				case *twoLevelCompactionIterator:
+					require.NotNil(t, i.dataRS.sequentialFile)
+				default:
+					require.Failf(t, fmt.Sprintf("unknown compaction iterator type: %T", citer), "")
+				}
+				require.NoError(t, citer.Close())
+				require.NoError(t, r.Close())
+			}
+		}
+	}
+}
+
 func TestMaybeReadahead(t *testing.T) {
 	var rs readaheadState
 	datadriven.RunTest(t, "testdata/readahead", func(d *datadriven.TestData) string {
@@ -618,6 +642,9 @@ func buildTestTable(
 	defer c.Unref()
 	r, err := NewReader(f1, ReaderOptions{
 		Cache: c,
+	}, FileReopenOpt{
+		FS: mem,
+		Filename: "test",
 	})
 	require.NoError(t, err)
 	return r

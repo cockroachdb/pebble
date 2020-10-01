@@ -162,6 +162,19 @@ func (i *singleLevelIterator) init(r *Reader, lower, upper []byte) error {
 	return nil
 }
 
+// setupForCompaction sets up the singleLevelIterator for use with compactionIter.
+// Currently, it skips readahead ramp-up. It should be called after init is called.
+func (i *singleLevelIterator) setupForCompaction() {
+	if i.reader.fs != nil {
+		f, err := i.reader.fs.Open(i.reader.filename, vfs.SequentialReadsOption)
+		if err == nil {
+			// Given that this iterator is for a compaction, we can assume that it
+			// will be read sequentially and we can skip the readahead ramp-up.
+			i.dataRS.sequentialFile = f
+		}
+	}
+}
+
 func (i *singleLevelIterator) resetForReuse() singleLevelIterator {
 	return singleLevelIterator{
 		index: i.index.resetForReuse(),
@@ -1368,6 +1381,7 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 		if err != nil {
 			return nil, err
 		}
+		i.setupForCompaction()
 		return &twoLevelCompactionIterator{
 			twoLevelIterator: i,
 			bytesIterated:    bytesIterated,
@@ -1378,6 +1392,7 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 	if err != nil {
 		return nil, err
 	}
+	i.setupForCompaction()
 	return &compactionIterator{
 		singleLevelIterator: i,
 		bytesIterated:       bytesIterated,
