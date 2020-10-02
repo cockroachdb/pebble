@@ -299,8 +299,8 @@ func (c *shard) metaAdd(key key, e *entry) bool {
 		c.handHot.link(e)
 	}
 
-	if c.handCold == c.handHot {
-		c.handCold = c.handCold.prev()
+	if c.sizeCold == 0 {
+		c.handCold = e
 	}
 
 	fkey := key.file()
@@ -329,13 +329,13 @@ func (c *shard) metaDel(e *entry) {
 	}
 
 	if e == c.handHot {
-		c.handHot = c.handHot.prev()
+		c.handHot = c.handHot.next()
 	}
 	if e == c.handCold {
-		c.handCold = c.handCold.prev()
+		c.handCold = c.handCold.next()
 	}
 	if e == c.handTest {
-		c.handTest = c.handTest.prev()
+		c.handTest = c.handTest.next()
 	}
 
 	if e.unlink() == e {
@@ -398,13 +398,41 @@ func (c *shard) metaEvict(e *entry) {
 }
 
 func (c *shard) evict() {
-	for c.targetSize() <= c.sizeHot+c.sizeCold && c.handCold != nil {
-		c.runHandCold()
+	c.reclaim()
+	c.balance()
+}
+
+// Reclaim cache space by evicting cold entries. If the size of cold entries is
+// insufficient, then it continues with pushing handHot to demote hot entries
+// to cold entries.
+func (c *shard) reclaim() {
+	for c.targetSize() <= c.sizeHot+c.sizeCold {
+		if c.sizeCold > 0 {
+			c.runHandCold()
+		} else {
+			c.runHandHot()
+		}
+	}
+}
+
+// Balance hot/cold ratio according to the parameter c.coldTarget.
+func (c *shard) balance() {
+	// c.sizeHot > 0 is necessary because c.targetSize()-c.coldTarget can
+	// have negative values when cache memory is reserved. It prevents nil
+	// pointer exception when the list is empty but evict is called, and stops
+	// balancing when there are no hot entries in the cache list.
+	for c.targetSize()-c.coldTarget < c.sizeHot && c.sizeHot > 0 {
+		if c.handHot == c.handCold && c.sizeCold > 0 {
+			c.runHandCold()
+		} else {
+			c.runHandHot()
+		}
 	}
 }
 
 func (c *shard) runHandCold() {
 	e := c.handCold
+	c.handCold = c.handCold.next()
 	if e.ptype == etCold {
 		if atomic.LoadInt32(&e.referenced) == 1 {
 			atomic.StoreInt32(&e.referenced, 0)
@@ -416,28 +444,16 @@ func (c *shard) runHandCold() {
 			e.ptype = etTest
 			c.sizeCold -= e.size
 			c.sizeTest += e.size
-			for c.targetSize() < c.sizeTest && c.handTest != nil {
+			for c.targetSize() < c.sizeTest {
 				c.runHandTest()
 			}
 		}
 	}
-
-	c.handCold = c.handCold.next()
-
-	for c.targetSize()-c.coldTarget <= c.sizeHot && c.handHot != nil {
-		c.runHandHot()
-	}
 }
 
 func (c *shard) runHandHot() {
-	if c.handHot == c.handTest && c.handTest != nil {
-		c.runHandTest()
-		if c.handHot == nil {
-			return
-		}
-	}
-
 	e := c.handHot
+	c.handHot = c.handHot.next()
 	if e.ptype == etHot {
 		if atomic.LoadInt32(&e.referenced) == 1 {
 			atomic.StoreInt32(&e.referenced, 0)
@@ -447,19 +463,15 @@ func (c *shard) runHandHot() {
 			c.sizeCold += e.size
 		}
 	}
-
-	c.handHot = c.handHot.next()
+	// Drag handTest if handHot has passed handTest.
+	if c.handHot.prev() == c.handTest {
+		c.runHandTest()
+	}
 }
 
 func (c *shard) runHandTest() {
-	if c.sizeCold > 0 && c.handTest == c.handCold && c.handCold != nil {
-		c.runHandCold()
-		if c.handTest == nil {
-			return
-		}
-	}
-
 	e := c.handTest
+	c.handTest = c.handTest.next()
 	if e.ptype == etTest {
 		c.sizeTest -= e.size
 		c.coldTarget -= e.size
@@ -470,8 +482,6 @@ func (c *shard) runHandTest() {
 		c.metaCheck(e)
 		e.free()
 	}
-
-	c.handTest = c.handTest.next()
 }
 
 // Metrics holds metrics for the cache.
