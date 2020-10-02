@@ -225,53 +225,26 @@ func (pc *pickedCompaction) setupInputs() bool {
 		// to include files that "touch" it.
 		smallestBaseKey := base.InvalidInternalKey
 		largestBaseKey := base.InvalidInternalKey
-		{
+		if pc.outputLevel.files.Empty() {
 			baseIter := pc.version.Levels[pc.outputLevel.level].Iter()
-			sm := baseIter.SeekLT(pc.cmp, pc.smallest.UserKey)
-			if sm != nil {
-				// NB: In a case like the following example, SeekLT(b) would
-				// return 000005 which is okay as it does not actually contain the
-				// user key `b`.
-				//
-				// L6:
-				// 000005: [a#5,SET-b#RANGEDELSENTINEL]
-				// 000006: [b#4,SET-c#5,SET]
+			if sm := baseIter.SeekLT(pc.cmp, pc.smallest.UserKey); sm != nil {
 				smallestBaseKey = sm.Largest
 			}
-			la := baseIter.SeekGE(pc.cmp, pc.largest.UserKey)
-			// Searching for the picked compaction's largest user key will
-			// not necessarily find the last base file included, since
-			// multiple base files may have the same largest user key. We need
-			// to iterate past any files with exactly the same largest user key.
-			//
-			// However, if the picked compaction's largest user key is a range deletion
-			// sentinel, then any subsequent files with the same largest user
-			// key are excluded from the picked compaction and we must not
-			// advance past them. Reusing the example from above, if
-			// pc.largest.UserKey is b#RANGEDELSENTINEL, then `b` keys are not
-			// included within the compaction and we should set largestBaseKey
-			// to `b#4,SET`.
-			//
-			// L6:
-			// 000005: [a#5,SET-b#RANGEDELSENTINEL]
-			// 000006: [b#4,SET-c#5,SET]
-			//
-			// TODO(jackson): We could make this logic less subtle by providing a way to
-			// obtain an unbounded LevelIterator at pc.outputLevel.files's end
-			// bound. The file to use to set the largest base key would always
-			// be the next one on that unbounded iterator.
-			if pc.largest.Trailer == base.InternalKeyRangeDeleteSentinel {
-				// Advance exactly once to get to the first file after the
-				// included base file.
-				la = baseIter.Next()
-			} else {
-				for la != nil && pc.cmp(la.Largest.UserKey, pc.largest.UserKey) == 0 {
-					la = baseIter.Next()
-				}
-			}
-			if la != nil {
+			if la := baseIter.SeekGE(pc.cmp, pc.largest.UserKey); la != nil {
 				largestBaseKey = la.Smallest
 			}
+		} else {
+			// NB: We use Reslice to access the underlying level's files, but
+			// we discard the returned slice. The pc.outputLevel.files slice
+			// is not modified.
+			_ = pc.outputLevel.files.Reslice(func(start, end *manifest.LevelIterator) {
+				if sm := start.Prev(); sm != nil {
+					smallestBaseKey = sm.Largest
+				}
+				if la := end.Next(); la != nil {
+					largestBaseKey = la.Smallest
+				}
+			})
 		}
 
 		oldLcf := *pc.lcf
