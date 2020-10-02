@@ -104,24 +104,33 @@ func (ls LevelSlice) SizeSum() uint64 {
 // returns a new LevelSlice with the final bounds of the iterators after
 // calling resliceFunc.
 func (ls LevelSlice) Reslice(resliceFunc func(start, end *LevelIterator)) LevelSlice {
-	start := LevelIterator{
-		files: ls.files,
-		cur:   ls.start,
-		start: 0,
-		end:   len(ls.files),
-	}
-	end := LevelIterator{
-		files: ls.files,
-		cur:   ls.end - 1,
-		start: 0,
-		end:   len(ls.files),
-	}
+	start, end := ls.Bounds()
 	resliceFunc(&start, &end)
 	return LevelSlice{
 		files: ls.files,
 		start: start.cur,
 		end:   end.cur + 1,
 	}
+}
+
+// Bounds returns two iterators, positioned at the inclusive start and
+// inclusive end of the slice. The returned iterators are unbounded in the
+// underlying iterator and may be used to iterate over file metadatas excluded
+// from the LevelSlice.
+func (ls LevelSlice) Bounds() (start, end LevelIterator) {
+	start = LevelIterator{
+		files: ls.files,
+		cur:   ls.start,
+		start: 0,
+		end:   len(ls.files),
+	}
+	end = LevelIterator{
+		files: ls.files,
+		cur:   ls.end - 1,
+		start: 0,
+		end:   len(ls.files),
+	}
+	return start, end
 }
 
 // LevelIterator iterates over a set of files' metadata. Its zero value is an
