@@ -52,7 +52,10 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 	memQueue := d.mu.mem.queue
 	current := d.mu.versions.currentVersion()
 	manifestFileNum := d.mu.versions.manifestFileNum
-	manifestSize := d.mu.versions.manifest.Size()
+	manifestSize := int64(0)
+	if d.mu.versions.manifest != nil {
+		manifestSize = d.mu.versions.manifest.Size()
+	}
 	optionsFileNum := d.optionsFileNum
 
 	// Release the manifest and DB.mu so we don't block other operations on

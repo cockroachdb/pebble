@@ -27,6 +27,7 @@ import (
 type dbT struct {
 	Root       *cobra.Command
 	Check      *cobra.Command
+	Checkpoint *cobra.Command
 	LSM        *cobra.Command
 	Properties *cobra.Command
 	Scan       *cobra.Command
@@ -71,6 +72,17 @@ database not be in use by another process.
 		Args: cobra.ExactArgs(1),
 		Run:  d.runCheck,
 	}
+	d.Checkpoint = &cobra.Command{
+		Use:   "checkpoint <src-dir> <dest-dir>",
+		Short: "create a checkpoint",
+		Long: `
+Creates a Pebble checkpoint in the specified destination directory. A checkpoint
+is a point-in-time snapshot of DB state. Requires that the specified
+database not be in use by another process.
+`,
+		Args:  cobra.ExactArgs(2),
+		Run:   d.runCheckpoint,
+	}
 	d.LSM = &cobra.Command{
 		Use:   "lsm <dir>",
 		Short: "print LSM structure",
@@ -112,7 +124,7 @@ use by another process.
 		Run:  d.runSpace,
 	}
 
-	d.Root.AddCommand(d.Check, d.LSM, d.Properties, d.Scan, d.Space)
+	d.Root.AddCommand(d.Check, d.Checkpoint, d.LSM, d.Properties, d.Scan, d.Space)
 	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
 	for _, cmd := range []*cobra.Command{d.Check, d.LSM, d.Properties, d.Scan, d.Space} {
@@ -209,7 +221,11 @@ func (d *dbT) loadOptions(dir string) error {
 	return nil
 }
 
-func (d *dbT) openDB(dir string) (*pebble.DB, error) {
+type openOption interface {
+	apply(opts *pebble.Options)
+}
+
+func (d *dbT) openDB(dir string, openOptions ...openOption) (*pebble.DB, error) {
 	if err := d.loadOptions(dir); err != nil {
 		return nil, err
 	}
@@ -226,6 +242,9 @@ func (d *dbT) openDB(dir string) (*pebble.DB, error) {
 		}
 	}
 	opts := *d.opts
+	for _, opt := range openOptions {
+		opt.apply(&opts)
+	}
 	opts.Cache = pebble.NewCache(128 << 20 /* 128 MB */)
 	defer opts.Cache.Unref()
 	return pebble.Open(dir, &opts)
@@ -251,6 +270,26 @@ func (d *dbT) runCheck(cmd *cobra.Command, args []string) {
 	}
 	fmt.Fprintf(stdout, "checked %d %s and %d %s\n",
 		stats.NumPoints, makePlural("point", stats.NumPoints), stats.NumTombstones, makePlural("tombstone", int64(stats.NumTombstones)))
+}
+
+type nonReadOnly struct{}
+
+func (n nonReadOnly) apply (opts *pebble.Options) {
+	opts.ReadOnly = false
+}
+
+func (d *dbT) runCheckpoint(cmd *cobra.Command, args []string) {
+	db, err := d.openDB(args[0], nonReadOnly{})
+	if err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+		return
+	}
+	defer d.closeDB(db)
+	destDir := args[1]
+
+	if err := db.Checkpoint(destDir); err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+	}
 }
 
 func (d *dbT) runLSM(cmd *cobra.Command, args []string) {
