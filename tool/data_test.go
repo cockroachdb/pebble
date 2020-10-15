@@ -44,6 +44,7 @@ func runTests(t *testing.T, path string) {
 		name, err := filepath.Rel(root, path)
 		require.NoError(t, err)
 
+		fs := vfs.NewMem()
 		t.Run(name, func(t *testing.T) {
 			datadriven.RunTest(t, path, func(d *datadriven.TestData) string {
 				args := []string{d.Cmd}
@@ -56,7 +57,6 @@ func runTests(t *testing.T, path string) {
 				// might be running on a sytem with a different path separator
 				// (e.g. Windows). Copy the input data into a mem filesystem which
 				// always uses "/" for the path separator.
-				fs := vfs.NewMem()
 				for i := range args {
 					src := normalize(args[i])
 					dest := vfs.Default.PathBase(src)

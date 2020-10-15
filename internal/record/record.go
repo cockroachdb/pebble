@@ -581,6 +581,9 @@ func (w *Writer) WriteRecord(p []byte) (int64, error) {
 
 // Size returns the current size of the file.
 func (w *Writer) Size() int64 {
+	if w == nil {
+		return 0
+	}
 	return w.blockNumber*blockSize + int64(w.j)
 }
 
