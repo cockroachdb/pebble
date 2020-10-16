@@ -1187,6 +1187,34 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	return totalSize, nil
 }
 
+// GetPropertiesOfAllTables return the properties of all tables. The keys in the returned
+// may are the sst file number, the values are the tables' properties.
+func (d *DB) GetPropertiesOfAllTables() (map[FileNum]*sstable.Properties, error) {
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+
+	// Grab and reference the current readState. This prevents the underlying
+	// files in the associated version from being deleted if there is a current
+	// compaction.
+	readState := d.loadReadState()
+	defer readState.unref()
+
+	result := make(map[FileNum]*sstable.Properties)
+	current := readState.current
+	for _, lv := range current.Levels {
+		iter := lv.Iter()
+		for file := iter.First(); file != nil; file = iter.Next() {
+			p, err := d.tableCache.getTableProperties(file)
+			if err != nil {
+				return map[FileNum]*sstable.Properties{}, err
+			}
+			result[file.FileNum] = p
+		}
+	}
+	return result, nil
+}
+
 func (d *DB) walPreallocateSize() int {
 	// Set the WAL preallocate size to 110% of the memtable size. Note that there
 	// is a bit of apples and oranges in units here as the memtabls size
