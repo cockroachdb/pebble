@@ -6,7 +6,6 @@
 package pebble // import "github.com/cockroachdb/pebble"
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"runtime"
@@ -1095,11 +1094,43 @@ func (d *DB) Metrics() *Metrics {
 	return metrics
 }
 
+// sstablesOptions hold the optional parameters to retrieve TableInfo for all sstables.
+type sstablesOptions struct {
+	// set to true will return the sstable properties in TableInfo
+	withProperties bool
+}
+
+// SSTablesOption set optional parameter used by `DB.SSTables`.
+type SSTablesOption func (*sstablesOptions)
+
+// WithProperties enable return sstable properties in each TableInfo.
+//
+// NOTE: if most of the sstable properties need to be read from disk,
+// this options may make method `SSTables` quite slow.
+func WithProperties() SSTablesOption {
+	return func (opt *sstablesOptions) {
+		opt.withProperties = true
+	}
+}
+
+// SSTableInfo export manifest.TableInfo with sstable.Properties
+type SSTableInfo struct {
+	manifest.TableInfo
+
+	// Properties is the sstable properties of this table.
+	Properties *sstable.Properties
+}
+
 // SSTables retrieves the current sstables. The returned slice is indexed by
 // level and each level is indexed by the position of the sstable within the
 // level. Note that this information may be out of date due to concurrent
 // flushes and compactions.
-func (d *DB) SSTables() [][]TableInfo {
+func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
+	opt := &sstablesOptions{}
+	for _, fn := range opts {
+		fn(opt)
+	}
+
 	// Grab and reference the current readState.
 	readState := d.loadReadState()
 	defer readState.unref()
@@ -1111,24 +1142,29 @@ func (d *DB) SSTables() [][]TableInfo {
 	srcLevels := readState.current.Levels
 	var totalTables int
 	for i := range srcLevels {
-		// TODO(jackson): Use metrics on the LevelMetadata once available
-		// rather than Slice().Len().
-		totalTables += srcLevels[i].Slice().Len()
+		totalTables += srcLevels[i].Len()
 	}
 
-	destTables := make([]TableInfo, totalTables)
-	destLevels := make([][]TableInfo, len(srcLevels))
+	destTables := make([]SSTableInfo, totalTables)
+	destLevels := make([][]SSTableInfo, len(srcLevels))
 	for i := range destLevels {
 		iter := srcLevels[i].Iter()
 		j := 0
 		for m := iter.First(); m != nil; m = iter.Next() {
-			destTables[j] = m.TableInfo()
+			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
+			if opt.withProperties {
+				p, err := d.tableCache.getTableProperties(m)
+				if err != nil {
+					return nil, err
+				}
+				destTables[j].Properties = p
+			}
 			j++
 		}
 		destLevels[i] = destTables[:j]
 		destTables = destTables[j:]
 	}
-	return destLevels
+	return destLevels, nil
 }
 
 // EstimateDiskUsage returns the estimated filesystem space used in bytes for
@@ -1186,43 +1222,6 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		}
 	}
 	return totalSize, nil
-}
-
-// GetTablePropertiesInRange return all the sst tables' property that intersect with range [lowerBound, upperBound).
-// The keys in the returned are the sst file number, the values are the tables' properties.
-//
-// NOTE: if the range contains a lot of sst tables and most of properties need to be read from disk this method
-// maybe quite slow. This will likely happens when there haven't been much read from this range.
-func (d *DB) GetTablePropertiesInRange(lowerBound []byte, upperBound []byte) (map[FileNum]*sstable.Properties, error) {
-	if err := d.closed.Load(); err != nil {
-		panic(err)
-	}
-
-	// Grab and reference the current readState. This prevents the underlying
-	// files in the associated version from being deleted if there is a current
-	// compaction.
-	readState := d.loadReadState()
-	defer readState.unref()
-
-	result := make(map[FileNum]*sstable.Properties)
-	current := readState.current
-	for _, lv := range current.Levels {
-		iter := lv.Iter()
-		for file := iter.First(); file != nil; file = iter.Next() {
-			// skip files that doesn't in this range
-			if (len(lowerBound) > 0 && bytes.Compare(lowerBound, file.Largest.UserKey) > 0) ||
-				(len(upperBound) > 0 && bytes.Compare(upperBound, file.Smallest.UserKey) <= 0) {
-				continue
-			}
-
-			p, err := d.tableCache.getTableProperties(file)
-			if err != nil {
-				return map[FileNum]*sstable.Properties{}, err
-			}
-			result[file.FileNum] = p
-		}
-	}
-	return result, nil
 }
 
 func (d *DB) walPreallocateSize() int {

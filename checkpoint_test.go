@@ -197,7 +197,8 @@ func TestCheckpointCompaction(t *testing.T) {
 			}
 			// Check the checkpoint has all the sstables that the manifest
 			// claims it has.
-			for _, tables := range d2.SSTables() {
+			tableInfos, _ := d2.SSTables()
+			for _, tables := range tableInfos {
 				for _, tbl := range tables {
 					if _, err := fs.Stat(base.MakeFilename(fs, dir, base.FileTypeTable, tbl.FileNum)); err != nil {
 						t.Error(err)

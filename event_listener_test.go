@@ -248,7 +248,8 @@ func TestEventListener(t *testing.T) {
 
 		case "sstables":
 			var buf bytes.Buffer
-			for i, level := range d.SSTables() {
+			tableInfos, _ := d.SSTables()
+			for i, level := range tableInfos {
 				if len(level) == 0 {
 					continue
 				}
