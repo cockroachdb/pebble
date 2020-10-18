@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -1075,6 +1076,57 @@ func TestCloseCleanerRace(t *testing.T) {
 			if strings.HasSuffix(f, ".sst") {
 				t.Fatalf("found sst: %s", f)
 			}
+		}
+	}
+}
+
+func TestSSTables(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+
+	kvs := map[string]string{
+		"aaa":  "",
+		"bar":  "",
+		"baz":  "three",
+		"foo":  "four",
+		"quux": "",
+		"zzz":  "",
+	}
+	for k, v := range kvs {
+		err := d.Set([]byte(k), []byte(v), nil)
+		require.NoError(t, err)
+	}
+	require.NoError(t, d.Flush())
+
+	wb := d.NewBatch()
+	for i := 0; i < 10; i++ {
+		keyBuf := make([]byte, 4)
+		valueBuf := make([]byte, 8)
+		binary.BigEndian.PutUint32(keyBuf[:], uint32(i))
+		binary.BigEndian.PutUint64(valueBuf[:], uint64(i * 100 + i))
+		err = wb.Set(keyBuf, valueBuf, nil)
+		require.NoError(t, err)
+	}
+	err = wb.Commit(nil)
+	require.NoError(t, err)
+
+	require.NoError(t, d.Flush())
+
+	tableInfos, err := d.SSTables()
+	require.NoError(t, err)
+	for _, levelTables := range tableInfos {
+		for _, info := range levelTables {
+			require.Nil(t, info.Properties)
+		}
+	}
+
+	tableInfos, err = d.SSTables(WithProperties())
+	require.NoError(t, err)
+	for _, levelTables := range tableInfos {
+		for _, info := range levelTables {
+			require.NotNil(t, info.Properties)
 		}
 	}
 }

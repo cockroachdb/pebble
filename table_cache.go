@@ -237,16 +237,13 @@ func (c *tableCacheShard) newIters(
 
 // getTableProperties return sst table properties for target file
 func (c *tableCacheShard) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
-	// Calling findNode gives us the responsibility of decrementing v's
-	// refCount. If opening the underlying table resulted in error, then we
-	// decrement this straight away. Otherwise, we pass that responsibility to
-	// the sstable iterator, which decrements when it is closed.
+	// Calling findNode gives us the responsibility of decrementing v's refCount here
 	v := c.findNode(file)
 	defer c.unrefValue(v)
+
 	if v.err != nil {
 		return nil, v.err
 	}
-
 	return &v.reader.Properties, nil
 }
 
