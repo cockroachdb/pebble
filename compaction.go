@@ -1060,6 +1060,13 @@ type manualCompaction struct {
 	end         InternalKey
 }
 
+type readCompaction struct {
+	level       int
+	outputLevel int
+	start       InternalKey
+	end         InternalKey
+}
+
 func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	var isBase, isIntraL0 bool
@@ -1403,6 +1410,30 @@ func (d *DB) maybeScheduleCompaction() {
 	d.maybeScheduleCompactionPicker(pickAuto)
 }
 
+func (d *DB) newItersWithReadCompactionTrigger(
+	newIters func(file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64) (sstable.Iterator, internalIterator, error),
+) tableNewIters {
+	return func(file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
+		iter, rangeDelIter, err := newIters(file, opts, bytesIterated)
+		iter.SetReadCompactionTrigger(d.maybeScheduleReadCompaction)
+		return iter, rangeDelIter, err
+	}
+}
+
+func (d *DB) maybeScheduleReadCompaction(i sstable.Iterator, numReads uint64, filesize uint64) {
+	// Using 16KB read threshold (same as LevelDB)
+	const readCompactionThreshold uint64 = 16384
+	if numReads*readCompactionThreshold > filesize {
+		start, _ := i.First()
+		end, _ := i.Last()
+		read := &readCompaction{
+			start: *start,
+			end:   *end,
+		}
+		d.mu.compact.readCompactions = append(d.mu.compact.readCompactions, read)
+	}
+}
+
 func pickAuto(picker compactionPicker, env compactionEnv) *pickedCompaction {
 	return picker.pickAuto(env)
 }
@@ -1460,6 +1491,19 @@ func (d *DB) maybeScheduleCompactionPicker(
 
 		if len(inputs) > 0 {
 			c := newDeleteOnlyCompaction(d.opts, v, inputs)
+			d.mu.compact.compactingCount++
+			d.addInProgressCompaction(c)
+			go d.compact(c, nil)
+		}
+	}
+
+	for len(d.mu.compact.readCompactions) > 0 && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
+		readCompaction := d.mu.compact.readCompactions[0]
+		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
+		pc := d.mu.versions.picker.pickReadOnlyCompaction(env, readCompaction)
+		if pc != nil {
+			c := newCompaction(pc, d.opts, env.bytesCompacted)
+			d.mu.compact.readCompactions = d.mu.compact.readCompactions[1:]
 			d.mu.compact.compactingCount++
 			d.addInProgressCompaction(c)
 			go d.compact(c, nil)

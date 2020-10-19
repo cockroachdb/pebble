@@ -99,7 +99,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		tableCacheSize = minTableCacheSize
 	}
 	d.tableCache.init(d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
-	d.newIters = d.tableCache.newIters
+	d.newIters = d.newItersWithReadCompactionTrigger(d.tableCache.newIters)
 	d.commit = newCommitPipeline(commitEnv{
 		logSeqNum:     &d.mu.versions.atomic.logSeqNum,
 		visibleSeqNum: &d.mu.versions.atomic.visibleSeqNum,

@@ -33,7 +33,7 @@ compact         0     0 B             0 B  (size == estimated-debt, in = in-prog
 zmemtbl         1   256 K
    ztbl         0     0 B
  bcache         4   698 B    0.0%  (score == hit-rate)
- tcache         1   616 B    0.0%  (score == hit-rate)
+ tcache         1   624 B    0.0%  (score == hit-rate)
  titers         1
  filter         -       -    0.0%  (score == utility)
 
@@ -130,7 +130,7 @@ compact         1     0 B             0 B  (size == estimated-debt, in = in-prog
 zmemtbl         1   256 K
    ztbl         1   771 B
  bcache         4   698 B   33.3%  (score == hit-rate)
- tcache         1   616 B   50.0%  (score == hit-rate)
+ tcache         1   624 B   50.0%  (score == hit-rate)
  titers         1
  filter         -       -    0.0%  (score == utility)
 

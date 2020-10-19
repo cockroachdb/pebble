@@ -34,6 +34,7 @@ type compactionPicker interface {
 	pickAuto(env compactionEnv) (pc *pickedCompaction)
 	pickManual(env compactionEnv, manual *manualCompaction) (c *pickedCompaction, retryLater bool)
 	pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction)
+	pickReadOnlyCompaction(env compactionEnv, readCompaction *readCompaction) (pc *pickedCompaction)
 
 	forceBaseLevel1()
 }
@@ -360,6 +361,7 @@ func expandToAtomicUnit(
 		iter := start.Clone()
 		iter.Prev()
 		for cur, prev := start.Current(), iter.Current(); prev != nil; cur, prev = start.Prev(), iter.Prev() {
+			fmt.Printf("expandToAtomicUnit ----- numReads: %d  ------ file: %s \n", cur.NumReads, cur.FileNum)
 			if cur.Compacting {
 				isCompacting = true
 			}
@@ -404,10 +406,7 @@ func expandToAtomicUnit(
 }
 
 func newCompactionPicker(
-	v *version,
-	opts *Options,
-	inProgressCompactions []compactionInfo,
-	levelSizes [numLevels]int64,
+	v *version, opts *Options, inProgressCompactions []compactionInfo, levelSizes [numLevels]int64,
 ) compactionPicker {
 	p := &compactionPickerByScore{
 		opts: opts,
@@ -1354,6 +1353,22 @@ func pickManualHelper(
 
 func (p *compactionPickerByScore) forceBaseLevel1() {
 	p.baseLevel = 1
+}
+
+func (p *compactionPickerByScore) pickReadOnlyCompaction(
+	env compactionEnv, readCompaction *readCompaction,
+) (pc *pickedCompaction) {
+	level := 0 // TODO(aaditya): find a way to surface the level of the file
+	pc = newPickedCompaction(p.opts, p.vers, level, p.baseLevel)
+	cmp := p.opts.Comparer.Compare
+	pc.startLevel.files = p.vers.Overlaps(readCompaction.level, cmp, readCompaction.start.UserKey, readCompaction.end.UserKey)
+	if !pc.setupInputs() {
+		return nil
+	}
+	if inputRangeAlreadyCompacting(env, pc) {
+		return nil
+	}
+	return pc
 }
 
 func inputRangeAlreadyCompacting(env compactionEnv, pc *pickedCompaction) bool {

@@ -52,7 +52,7 @@ func (c *tableCache) getShard(fileNum FileNum) *tableCacheShard {
 
 func (c *tableCache) newIters(
 	file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64,
-) (internalIterator, internalIterator, error) {
+) (sstable.Iterator, internalIterator, error) {
 	return c.getShard(file.FileNum).newIters(file, opts, bytesIterated)
 }
 
@@ -176,7 +176,7 @@ func (c *tableCacheShard) releaseLoop() {
 
 func (c *tableCacheShard) newIters(
 	file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64,
-) (internalIterator, internalIterator, error) {
+) (sstable.Iterator, internalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
@@ -193,7 +193,7 @@ func (c *tableCacheShard) newIters(
 		// Return the empty iterator. This iterator has no mutable state, so
 		// using a singleton is fine.
 		c.unrefValue(v)
-		return emptyIter, nil, nil
+		return nil, nil, nil
 	}
 
 	var iter sstable.Iterator
@@ -573,8 +573,9 @@ func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard) {
 	f, v.err = c.fs.Open(filename, vfs.RandomReadsOption)
 	if v.err == nil {
 		cacheOpts := private.SSTableCacheOpts(c.cacheID, meta.FileNum).(sstable.ReaderOption)
-		reopenOpt := sstable.FileReopenOpt{FS: c.fs, Filename: filename}
-		v.reader, v.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics, reopenOpt)
+		reopenOpt := sstable.FileReopenOpt{FS: c.fs, Filename: filename, Filesize: meta.Size}
+		numReadsCounter := sstable.NumReadsCounter{NumReads: &meta.NumReads}
+		v.reader, v.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics, reopenOpt, numReadsCounter)
 	}
 	if v.err == nil {
 		if meta.SmallestSeqNum == meta.LargestSeqNum {
