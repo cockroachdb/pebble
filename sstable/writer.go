@@ -582,14 +582,6 @@ func (w *Writer) Close() (err error) {
 	}
 
 	{
-		for i := range w.propCollectors {
-			if nc, ok := w.propCollectors[i].(NeedCompacter); ok {
-				w.meta.MarkedForCompaction = w.meta.MarkedForCompaction || nc.NeedCompact()
-			}
-		}
-	}
-
-	{
 		userProps := make(map[string]string)
 		for i := range w.propCollectors {
 			if err := w.propCollectors[i].Finish(userProps); err != nil {
