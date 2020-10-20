@@ -50,9 +50,6 @@ type FilterPolicy = base.FilterPolicy
 // TablePropertyCollector exports the sstable.TablePropertyCollector type.
 type TablePropertyCollector = sstable.TablePropertyCollector
 
-// NeedCompacter exports the sstable.NeedCompacter type.
-type NeedCompacter = sstable.NeedCompacter
-
 // IterOptions hold the optional per-query parameters for NewIter.
 //
 // Like Options, a nil *IterOptions is valid and means to use the default
