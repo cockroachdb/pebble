@@ -157,7 +157,7 @@ func (o *flushOp) run(t *test, h *history) {
 }
 
 func (o *flushOp) String() string {
-	return fmt.Sprintf("db.Flush()")
+	return "db.Flush()"
 }
 
 // mergeOp models a Write.Merge operation.
@@ -689,7 +689,7 @@ func (o *dbRestartOp) run(t *test, h *history) {
 }
 
 func (o *dbRestartOp) String() string {
-	return fmt.Sprintf("db.Restart()")
+	return "db.Restart()"
 }
 
 func formatOps(ops []op) string {

@@ -50,7 +50,7 @@ func TestRobinHoodMap(t *testing.T) {
 			e := &entry{}
 			goMap[k] = e
 			rhMap.Put(k, e)
-			if len(goMap) != int(rhMap.Count()) {
+			if len(goMap) != rhMap.Count() {
 				t.Fatalf("map sizes differ: %d != %d", len(goMap), rhMap.Count())
 			}
 
@@ -60,7 +60,7 @@ func TestRobinHoodMap(t *testing.T) {
 			e := &entry{}
 			goMap[k] = e
 			rhMap.Put(k, e)
-			if len(goMap) != int(rhMap.Count()) {
+			if len(goMap) != rhMap.Count() {
 				t.Fatalf("map sizes differ: %d != %d", len(goMap), rhMap.Count())
 			}
 
@@ -69,7 +69,7 @@ func TestRobinHoodMap(t *testing.T) {
 			k := randomKey()
 			delete(goMap, k)
 			rhMap.Delete(k)
-			if len(goMap) != int(rhMap.Count()) {
+			if len(goMap) != rhMap.Count() {
 				t.Fatalf("map sizes differ: %d != %d", len(goMap), rhMap.Count())
 			}
 

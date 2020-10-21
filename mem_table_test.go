@@ -6,19 +6,21 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
+	"golang.org/x/sync/errgroup"
 )
 
 // Set sets the value for the given key. It overwrites any previous value for
@@ -337,12 +339,11 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 	m := newMemTable(memTableOptions{Options: &Options{MemTableSize: 64 << 20}})
 
 	const workers = 10
-	var wg sync.WaitGroup
-	wg.Add(workers)
+	eg, _ := errgroup.WithContext(context.Background())
 	seqNum := uint64(1)
 	for i := 0; i < workers; i++ {
-		go func(i int) {
-			defer wg.Done()
+		i := i
+		eg.Go(func() error {
 			start := ([]byte)(fmt.Sprintf("%03d", i))
 			end := ([]byte)(fmt.Sprintf("%03d", i+1))
 			for j := 0; j < 100; j++ {
@@ -361,12 +362,16 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 					count++
 				}
 				if j+1 != count {
-					t.Fatalf("%d: expected %d tombstones, but found %d", i, j+1, count)
+					return errors.Errorf("%d: expected %d tombstones, but found %d", i, j+1, count)
 				}
 			}
-		}(i)
+			return nil
+		})
 	}
-	wg.Wait()
+	err := eg.Wait()
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 func buildMemTable(b *testing.B) (*memTable, [][]byte) {

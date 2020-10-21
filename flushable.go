@@ -68,7 +68,7 @@ func (e *flushableEntry) readerUnref() {
 		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
 	case v == 0:
 		if e.releaseMemAccounting == nil {
-			panic(fmt.Sprintf("pebble: memtable reservation already released"))
+			panic("pebble: memtable reservation already released")
 		}
 		e.releaseMemAccounting()
 		e.releaseMemAccounting = nil

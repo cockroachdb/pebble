@@ -2002,7 +2002,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 							c.outputLevel.level = level
 							files = &outputFiles
 						} else {
-							return fmt.Sprintf("outputLevel already set\n")
+							return "outputLevel already set\n"
 						}
 
 					default:
@@ -2139,7 +2139,7 @@ func TestCompactionOutputSplitters(t *testing.T) {
 				if shouldSplit == splitNow {
 					main.onNewOutput(&key)
 				}
-				return fmt.Sprintf("%s", shouldSplit)
+				return shouldSplit.String()
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}

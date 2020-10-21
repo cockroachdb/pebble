@@ -423,8 +423,7 @@ func checkRangeTombstones(c *checkConfig) error {
 	}
 	// We now have truncated tombstones.
 	// Fragment them all.
-	var userKeys [][]byte
-	userKeys = collectAllUserKeys(c.cmp, tombstones)
+	userKeys := collectAllUserKeys(c.cmp, tombstones)
 	tombstones = fragmentUsingUserKeys(c.cmp, tombstones, userKeys)
 	return iterateAndCheckTombstones(c.cmp, c.formatKey, tombstones)
 }
@@ -502,10 +501,10 @@ func (v *userKeysSort) Swap(i, j int) {
 	v.buf[i], v.buf[j] = v.buf[j], v.buf[i]
 }
 func collectAllUserKeys(cmp Compare, tombstones []tombstoneWithLevel) [][]byte {
-	var keys [][]byte
-	for _, t := range tombstones {
-		keys = append(keys, t.Start.UserKey)
-		keys = append(keys, t.End)
+	keys := make([][]byte, len(tombstones)*2)
+	for i, t := range tombstones {
+		keys[i*2] = t.Start.UserKey
+		keys[i*2+1] = t.End
 	}
 	sorter := userKeysSort{
 		cmp: cmp,
@@ -526,8 +525,8 @@ func collectAllUserKeys(cmp Compare, tombstones []tombstoneWithLevel) [][]byte {
 func fragmentUsingUserKeys(
 	cmp Compare, tombstones []tombstoneWithLevel, userKeys [][]byte,
 ) []tombstoneWithLevel {
-	var buf []tombstoneWithLevel
-	for _, t := range tombstones {
+	buf := make([]tombstoneWithLevel, len(tombstones))
+	for idx, t := range tombstones {
 		// Find the first position with tombstone start < user key
 		i := sort.Search(len(userKeys), func(i int) bool {
 			return cmp(t.Start.UserKey, userKeys[i]) < 0
@@ -541,7 +540,7 @@ func fragmentUsingUserKeys(
 			buf = append(buf, tPartial)
 			t.Start.UserKey = userKeys[i]
 		}
-		buf = append(buf, t)
+		buf[idx] = t
 	}
 	return buf
 }

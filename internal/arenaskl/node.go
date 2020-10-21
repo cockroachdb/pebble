@@ -98,7 +98,7 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 
 	nd = (*node)(arena.getPointer(nodeOffset))
 	nd.keyOffset = nodeOffset + nodeSize
-	nd.keySize = uint32(keySize)
+	nd.keySize = keySize
 	nd.valueSize = valueIndex
 	nd.allocSize = allocSize
 	return

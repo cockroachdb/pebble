@@ -246,7 +246,7 @@ func (m *Metrics) formatWAL(buf *bytes.Buffer) {
 		writeAmp)
 }
 
-// Pretty-print the metrics, showing a line for the WAL, a line per-level, and
+// String pretty-prints the metrics, showing a line for the WAL, a line per-level, and
 // a total:
 //
 //   __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
