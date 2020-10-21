@@ -1097,14 +1097,14 @@ func (s *L0Sublevels) extendFiles(
 func (s *L0Sublevels) PickIntraL0Compaction(
 	earliestUnflushedSeqNum uint64, minCompactionDepth int,
 ) (*L0CompactionFiles, error) {
-	var scoredIntervals []intervalAndScore
+	scoredIntervals := make([]intervalAndScore, len(s.orderedIntervals))
 	for i := range s.orderedIntervals {
 		interval := &s.orderedIntervals[i]
 		depth := interval.fileCount - interval.compactingFileCount
 		if minCompactionDepth > depth {
 			continue
 		}
-		scoredIntervals = append(scoredIntervals, intervalAndScore{interval: i, score: depth})
+		scoredIntervals[i] = intervalAndScore{interval: i, score: depth}
 	}
 	sort.Sort(intervalSorterByDecreasingScore(scoredIntervals))
 

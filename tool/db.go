@@ -456,7 +456,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 }
 
 func propArgs(props []props, getProp func(*props) interface{}) []interface{} {
-	var args []interface{}
+	args := make([]interface{}, 0, len(props))
 	for _, p := range props {
 		args = append(args, getProp(&p))
 	}

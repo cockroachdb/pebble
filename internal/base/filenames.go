@@ -6,10 +6,10 @@ package base
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 )
@@ -119,7 +119,7 @@ type Fataler interface {
 // with counts of the various types of files and invokes the provided fataler.
 // See cockroachdb/cockroach#56490.
 func MustExist(fs vfs.FS, filename string, fataler Fataler, err error) {
-	if err == nil || !os.IsNotExist(err) {
+	if err == nil || !oserror.IsNotExist(err) {
 		return
 	}
 

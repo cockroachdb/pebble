@@ -344,7 +344,6 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		select {
 		case <-time.After(time.Second):
 			quiesced = true
-			break
 		case <-waiterCh:
 			continue
 		}
@@ -377,7 +376,7 @@ func runReplay(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Printf("__elapsed__compacts__w-amp__r-amp(_p50__p95__p99__max_)__space(_____amp__stable___final__average__)\n")
 	fmt.Printf("  %6.2fm  %8d  %5.2f         %3d  %3d  %3d  %3d         %9.2f  %6s  %6s  %7s\n",
-		time.Now().Sub(start).Minutes(),
+		time.Since(start).Minutes(),
 		m.Compact.Count,
 		totalWriteAmp(m),
 		rampHist.ValueAtQuantile(50),

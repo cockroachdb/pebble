@@ -423,8 +423,7 @@ func checkRangeTombstones(c *checkConfig) error {
 	}
 	// We now have truncated tombstones.
 	// Fragment them all.
-	var userKeys [][]byte
-	userKeys = collectAllUserKeys(c.cmp, tombstones)
+	userKeys := collectAllUserKeys(c.cmp, tombstones)
 	tombstones = fragmentUsingUserKeys(c.cmp, tombstones, userKeys)
 	return iterateAndCheckTombstones(c.cmp, c.formatKey, tombstones)
 }
@@ -502,7 +501,7 @@ func (v *userKeysSort) Swap(i, j int) {
 	v.buf[i], v.buf[j] = v.buf[j], v.buf[i]
 }
 func collectAllUserKeys(cmp Compare, tombstones []tombstoneWithLevel) [][]byte {
-	var keys [][]byte
+	keys := make([][]byte, 0, len(tombstones)*2)
 	for _, t := range tombstones {
 		keys = append(keys, t.Start.UserKey)
 		keys = append(keys, t.End)

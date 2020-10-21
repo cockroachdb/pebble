@@ -670,7 +670,7 @@ func TestFlushableBatch(t *testing.T) {
 
 		case "dump":
 			if len(d.CmdArgs) != 1 || len(d.CmdArgs[0].Vals) != 1 || d.CmdArgs[0].Key != "seq" {
-				return fmt.Sprintf("dump seq=<value>\n")
+				return "dump seq=<value>\n"
 			}
 			seqNum, err := strconv.Atoi(d.CmdArgs[0].Vals[0])
 			if err != nil {

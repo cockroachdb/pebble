@@ -212,8 +212,8 @@ func (p FormatBytes) Format(s fmt.State, c rune) {
 			continue
 		}
 		buf = append(buf, `\x`...)
-		buf = append(buf, lowerhex[byte(b)>>4])
-		buf = append(buf, lowerhex[byte(b)&0xF])
+		buf = append(buf, lowerhex[b>>4])
+		buf = append(buf, lowerhex[b&0xF])
 	}
 	s.Write(buf)
 }
