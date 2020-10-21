@@ -906,7 +906,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			switch d.Cmd {
 			case "setup-inputs":
 				if len(d.CmdArgs) != 2 {
-					return fmt.Sprintf("setup-inputs <start> <end>")
+					return "setup-inputs <start> <end>"
 				}
 
 				pc := &pickedCompaction{
@@ -936,7 +936,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 							pc.outputLevel.level = level
 							currentLevel = level
 						} else {
-							return fmt.Sprintf("outputLevel already set\n")
+							return "outputLevel already set\n"
 						}
 
 					default:

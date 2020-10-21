@@ -643,7 +643,7 @@ func buildTestTable(
 	r, err := NewReader(f1, ReaderOptions{
 		Cache: c,
 	}, FileReopenOpt{
-		FS: mem,
+		FS:       mem,
 		Filename: "test",
 	})
 	require.NoError(t, err)

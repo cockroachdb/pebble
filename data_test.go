@@ -69,17 +69,17 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator) string {
 		switch parts[0] {
 		case "seek-ge":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-ge <key>\n")
+				return "seek-ge <key>\n"
 			}
 			valid = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
 		case "seek-prefix-ge":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-prefix-ge <key>\n")
+				return "seek-prefix-ge <key>\n"
 			}
 			valid = iter.SeekPrefixGE([]byte(strings.TrimSpace(parts[1])))
 		case "seek-lt":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-lt <key>\n")
+				return "seek-lt <key>\n"
 			}
 			valid = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
 		case "first":
@@ -92,7 +92,7 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator) string {
 			valid = iter.Prev()
 		case "set-bounds":
 			if len(parts) <= 1 || len(parts) > 3 {
-				return fmt.Sprintf("set-bounds lower=<lower> upper=<upper>\n")
+				return "set-bounds lower=<lower> upper=<upper>\n"
 			}
 			var lower []byte
 			var upper []byte
@@ -145,19 +145,19 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 		switch parts[0] {
 		case "seek-ge":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-ge <key>\n")
+				return "seek-ge <key>\n"
 			}
 			prefix = nil
 			key, value = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
 		case "seek-prefix-ge":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-prefix-ge <key>\n")
+				return "seek-prefix-ge <key>\n"
 			}
 			prefix = []byte(strings.TrimSpace(parts[1]))
 			key, value = iter.SeekPrefixGE(prefix, prefix /* key */)
 		case "seek-lt":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-lt <key>\n")
+				return "seek-lt <key>\n"
 			}
 			prefix = nil
 			key, value = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
@@ -173,7 +173,7 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 			key, value = iter.Prev()
 		case "set-bounds":
 			if len(parts) <= 1 || len(parts) > 3 {
-				return fmt.Sprintf("set-bounds lower=<lower> upper=<upper>\n")
+				return "set-bounds lower=<lower> upper=<upper>\n"
 			}
 			var lower []byte
 			var upper []byte
@@ -537,7 +537,7 @@ func (d *DB) waitTableStats() {
 }
 
 func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
-	var paths []string
+	paths := make([]string, 0, len(td.CmdArgs))
 	for _, arg := range td.CmdArgs {
 		paths = append(paths, arg.String())
 	}
