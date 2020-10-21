@@ -1968,7 +1968,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 							c.outputLevel.level = level
 							files = &outputFiles
 						} else {
-							return fmt.Sprintf("outputLevel already set\n")
+							return "outputLevel already set\n"
 						}
 
 					default:

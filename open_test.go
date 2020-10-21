@@ -562,7 +562,7 @@ func TestTwoWALReplayCorrupt(t *testing.T) {
 	t.Logf("zeored four bytes in %s at offset %d\n", logs[len(logs)-2], off)
 
 	// Re-opening the database should detect and report the corruption.
-	d, err = Open(dir, nil)
+	_, err = Open(dir, nil)
 	require.Error(t, err, "pebble: corruption")
 }
 
