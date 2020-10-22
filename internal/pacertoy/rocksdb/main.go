@@ -354,45 +354,43 @@ func main() {
 	var lastFill, lastDrain int64
 
 	for i := 0; ; i++ {
-		select {
-		case <-tick.C:
-			if (i % 20) == 0 {
-				fmt.Printf("_elapsed___memtbs____dirty_____fill____drain____cdebt__l0count___max-w-rate\n")
-			}
-
-			if (i % 7) == 0 {
-				//db.printLevels()
-			}
-
-			db.mu.Lock()
-			memtableCount := len(db.memtables)
-			db.mu.Unlock()
-			dirty := atomic.LoadInt64(&db.flushPacer.level)
-			fill := atomic.LoadInt64(&db.fill)
-			drain := atomic.LoadInt64(&db.drain)
-
-			db.compactionMu.Lock()
-			compactionL0 := len(db.L0)
-			db.compactionMu.Unlock()
-			totalCompactionBytes := atomic.LoadInt64(&db.compactionPacer.level)
-			compactionDebt := math.Max(float64(totalCompactionBytes)-l0CompactionThreshold*memtableSize, 0.0)
-			maxWriteRate := db.writeLimiter.Limit()
-
-			now := time.Now()
-			elapsed := now.Sub(lastNow).Seconds()
-			fmt.Printf("%8s %8d %8.1f %8.1f %8.1f %8.1f %8d %12.1f\n",
-				time.Duration(now.Sub(start).Seconds()+0.5)*time.Second,
-				memtableCount,
-				float64(dirty)/(1024.0*1024.0),
-				float64(fill-lastFill)/(1024.0*1024.0*elapsed),
-				float64(drain-lastDrain)/(1024.0*1024.0*elapsed),
-				compactionDebt/(1024.0*1024.0),
-				compactionL0,
-				maxWriteRate/(1024.0*1024.0))
-
-			lastNow = now
-			lastFill = fill
-			lastDrain = drain
+		<-tick.C
+		if (i % 20) == 0 {
+			fmt.Printf("_elapsed___memtbs____dirty_____fill____drain____cdebt__l0count___max-w-rate\n")
 		}
+
+		if (i % 7) == 0 {
+			//db.printLevels()
+		}
+
+		db.mu.Lock()
+		memtableCount := len(db.memtables)
+		db.mu.Unlock()
+		dirty := atomic.LoadInt64(&db.flushPacer.level)
+		fill := atomic.LoadInt64(&db.fill)
+		drain := atomic.LoadInt64(&db.drain)
+
+		db.compactionMu.Lock()
+		compactionL0 := len(db.L0)
+		db.compactionMu.Unlock()
+		totalCompactionBytes := atomic.LoadInt64(&db.compactionPacer.level)
+		compactionDebt := math.Max(float64(totalCompactionBytes)-l0CompactionThreshold*memtableSize, 0.0)
+		maxWriteRate := db.writeLimiter.Limit()
+
+		now := time.Now()
+		elapsed := now.Sub(lastNow).Seconds()
+		fmt.Printf("%8s %8d %8.1f %8.1f %8.1f %8.1f %8d %12.1f\n",
+			time.Duration(now.Sub(start).Seconds()+0.5)*time.Second,
+			memtableCount,
+			float64(dirty)/(1024.0*1024.0),
+			float64(fill-lastFill)/(1024.0*1024.0*elapsed),
+			float64(drain-lastDrain)/(1024.0*1024.0*elapsed),
+			compactionDebt/(1024.0*1024.0),
+			compactionL0,
+			maxWriteRate/(1024.0*1024.0))
+
+		lastNow = now
+		lastFill = fill
+		lastDrain = drain
 	}
 }

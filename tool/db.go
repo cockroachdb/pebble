@@ -80,8 +80,8 @@ Creates a Pebble checkpoint in the specified destination directory. A checkpoint
 is a point-in-time snapshot of DB state. Requires that the specified
 database not be in use by another process.
 `,
-		Args:  cobra.ExactArgs(2),
-		Run:   d.runCheckpoint,
+		Args: cobra.ExactArgs(2),
+		Run:  d.runCheckpoint,
 	}
 	d.LSM = &cobra.Command{
 		Use:   "lsm <dir>",
@@ -274,7 +274,7 @@ func (d *dbT) runCheck(cmd *cobra.Command, args []string) {
 
 type nonReadOnly struct{}
 
-func (n nonReadOnly) apply (opts *pebble.Options) {
+func (n nonReadOnly) apply(opts *pebble.Options) {
 	opts.ReadOnly = false
 }
 
@@ -495,7 +495,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 }
 
 func propArgs(props []props, getProp func(*props) interface{}) []interface{} {
-	var args []interface{}
+	args := make([]interface{}, 0, len(props))
 	for _, p := range props {
 		args = append(args, getProp(&p))
 	}

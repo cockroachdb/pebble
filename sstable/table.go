@@ -275,7 +275,7 @@ func (f footer) encode(buf []byte) []byte {
 			buf[i] = 0
 		}
 		n := encodeBlockHandle(buf[0:], f.metaindexBH)
-		n += encodeBlockHandle(buf[n:], f.indexBH)
+		encodeBlockHandle(buf[n:], f.indexBH)
 		copy(buf[len(buf)-len(levelDBMagic):], levelDBMagic)
 
 	case TableFormatRocksDBv2:
@@ -286,7 +286,7 @@ func (f footer) encode(buf []byte) []byte {
 		buf[0] = f.checksum
 		n := 1
 		n += encodeBlockHandle(buf[n:], f.metaindexBH)
-		n += encodeBlockHandle(buf[n:], f.indexBH)
+		encodeBlockHandle(buf[n:], f.indexBH)
 		binary.LittleEndian.PutUint32(buf[rocksDBVersionOffset:], rocksDBFormatVersion2)
 		copy(buf[len(buf)-len(rocksDBMagic):], rocksDBMagic)
 	}
