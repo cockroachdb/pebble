@@ -6,9 +6,11 @@ package tool
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -28,9 +30,11 @@ type dbT struct {
 	Root       *cobra.Command
 	Check      *cobra.Command
 	Checkpoint *cobra.Command
+	Get        *cobra.Command
 	LSM        *cobra.Command
 	Properties *cobra.Command
 	Scan       *cobra.Command
+	Set        *cobra.Command
 	Space      *cobra.Command
 
 	// Configuration.
@@ -47,6 +51,13 @@ type dbT struct {
 	end          key
 	count        int64
 	verbose      bool
+}
+
+func parseArgAsBytes(arg string) ([]byte, error) {
+	if strings.HasPrefix(arg, "0x") {
+		return hex.DecodeString(strings.TrimPrefix(arg, "0x"))
+	}
+	return []byte(arg), nil
 }
 
 func newDB(opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers) *dbT {
@@ -83,6 +94,18 @@ database not be in use by another process.
 		Args:  cobra.ExactArgs(2),
 		Run:   d.runCheckpoint,
 	}
+	d.Get = &cobra.Command{
+		Use:   "get <dir> <key>",
+		Short: "get value for a key",
+		Long: `
+Gets a value for a key, if it exists in DB. Prints a "not found" error if key
+does not exist.
+
+Key could either be in string form, or hex (prefixed with 0x).
+`,
+		Args: cobra.ExactArgs(2),
+		Run:  d.runGet,
+	}
 	d.LSM = &cobra.Command{
 		Use:   "lsm <dir>",
 		Short: "print LSM structure",
@@ -112,6 +135,18 @@ by another process.
 		Args: cobra.ExactArgs(1),
 		Run:  d.runScan,
 	}
+	d.Set = &cobra.Command{
+		Use:   "set <dir> <key> <value>",
+		Short: "set a value for a key",
+		Long: `
+Adds a new key/value to the DB. Requires that the specified database
+not be in use by another process.
+
+Key and value could either be in string form, or hex (prefixed with 0x).
+`,
+		Args: cobra.ExactArgs(3),
+		Run:  d.runSet,
+	}
 	d.Space = &cobra.Command{
 		Use:   "space <dir>",
 		Short: "print filesystem space used",
@@ -124,10 +159,10 @@ use by another process.
 		Run:  d.runSpace,
 	}
 
-	d.Root.AddCommand(d.Check, d.Checkpoint, d.LSM, d.Properties, d.Scan, d.Space)
+	d.Root.AddCommand(d.Check, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space)
 	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
-	for _, cmd := range []*cobra.Command{d.Check, d.LSM, d.Properties, d.Scan, d.Space} {
+	for _, cmd := range []*cobra.Command{d.Check, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space} {
 		cmd.Flags().StringVar(
 			&d.comparerName, "comparer", "", "comparer name (use default if empty)")
 		cmd.Flags().StringVar(
@@ -289,6 +324,34 @@ func (d *dbT) runCheckpoint(cmd *cobra.Command, args []string) {
 
 	if err := db.Checkpoint(destDir); err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
+	}
+}
+
+func (d *dbT) runGet(cmd *cobra.Command, args []string) {
+	db, err := d.openDB(args[0])
+	if err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+		return
+	}
+	defer d.closeDB(db)
+	key, err := parseArgAsBytes(args[1])
+	if err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+		return
+	}
+
+	val, closer, err := db.Get(key)
+	if err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+		return
+	}
+	defer func() {
+		if closer != nil {
+			closer.Close()
+		}
+	}()
+	if val != nil {
+		fmt.Fprintf(stdout, "%s: %s\n", d.fmtKey.fn(key), d.fmtValue.fn(key, val))
 	}
 }
 
@@ -491,6 +554,29 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 	}()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
+	}
+}
+
+func (d *dbT) runSet(cmd *cobra.Command, args []string) {
+	db, err := d.openDB(args[0], nonReadOnly{})
+	if err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+		return
+	}
+	defer d.closeDB(db)
+	key, err := parseArgAsBytes(args[1])
+	if err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+		return
+	}
+	val, err := parseArgAsBytes(args[2])
+	if err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+		return
+	}
+
+	if err := db.Set(key, val, nil); err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
 	}
 }
 
