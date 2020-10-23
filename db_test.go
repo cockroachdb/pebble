@@ -1079,6 +1079,38 @@ func TestCloseCleanerRace(t *testing.T) {
 	}
 }
 
+func TestSSTables(t *testing.T) {
+	d, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+
+	// Create two sstables.
+	require.NoError(t, d.Set([]byte("hello"), nil, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("world"), nil, nil))
+	require.NoError(t, d.Flush())
+
+
+	// by default returned table infos should not contain Properties
+	tableInfos, err := d.SSTables()
+	require.NoError(t, err)
+	for _, levelTables := range tableInfos {
+		for _, info := range levelTables {
+			require.Nil(t, info.Properties)
+		}
+	}
+
+	// with opt `WithProperties()` the `Properties` in table info should not be nil
+	tableInfos, err = d.SSTables(WithProperties())
+	require.NoError(t, err)
+	for _, levelTables := range tableInfos {
+		for _, info := range levelTables {
+			require.NotNil(t, info.Properties)
+		}
+	}
+}
+
 func BenchmarkDelete(b *testing.B) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	const keyCount = 10000

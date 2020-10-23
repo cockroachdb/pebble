@@ -1093,11 +1093,43 @@ func (d *DB) Metrics() *Metrics {
 	return metrics
 }
 
+// sstablesOptions hold the optional parameters to retrieve TableInfo for all sstables.
+type sstablesOptions struct {
+	// set to true will return the sstable properties in TableInfo
+	withProperties bool
+}
+
+// SSTablesOption set optional parameter used by `DB.SSTables`.
+type SSTablesOption func (*sstablesOptions)
+
+// WithProperties enable return sstable properties in each TableInfo.
+//
+// NOTE: if most of the sstable properties need to be read from disk,
+// this options may make method `SSTables` quite slow.
+func WithProperties() SSTablesOption {
+	return func (opt *sstablesOptions) {
+		opt.withProperties = true
+	}
+}
+
+// SSTableInfo export manifest.TableInfo with sstable.Properties
+type SSTableInfo struct {
+	manifest.TableInfo
+
+	// Properties is the sstable properties of this table.
+	Properties *sstable.Properties
+}
+
 // SSTables retrieves the current sstables. The returned slice is indexed by
 // level and each level is indexed by the position of the sstable within the
 // level. Note that this information may be out of date due to concurrent
 // flushes and compactions.
-func (d *DB) SSTables() [][]TableInfo {
+func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
+	opt := &sstablesOptions{}
+	for _, fn := range opts {
+		fn(opt)
+	}
+
 	// Grab and reference the current readState.
 	readState := d.loadReadState()
 	defer readState.unref()
@@ -1112,19 +1144,26 @@ func (d *DB) SSTables() [][]TableInfo {
 		totalTables += srcLevels[i].Len()
 	}
 
-	destTables := make([]TableInfo, totalTables)
-	destLevels := make([][]TableInfo, len(srcLevels))
+	destTables := make([]SSTableInfo, totalTables)
+	destLevels := make([][]SSTableInfo, len(srcLevels))
 	for i := range destLevels {
 		iter := srcLevels[i].Iter()
 		j := 0
 		for m := iter.First(); m != nil; m = iter.Next() {
-			destTables[j] = m.TableInfo()
+			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
+			if opt.withProperties {
+				p, err := d.tableCache.getTableProperties(m)
+				if err != nil {
+					return nil, err
+				}
+				destTables[j].Properties = p
+			}
 			j++
 		}
 		destLevels[i] = destTables[:j]
 		destTables = destTables[j:]
 	}
-	return destLevels
+	return destLevels, nil
 }
 
 // EstimateDiskUsage returns the estimated filesystem space used in bytes for

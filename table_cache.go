@@ -56,6 +56,10 @@ func (c *tableCache) newIters(
 	return c.getShard(file.FileNum).newIters(file, opts, bytesIterated)
 }
 
+func (c *tableCache) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
+	return c.getShard(file.FileNum).getTableProperties(file)
+}
+
 func (c *tableCache) evict(fileNum FileNum) {
 	c.getShard(fileNum).evict(fileNum)
 }
@@ -229,6 +233,18 @@ func (c *tableCacheShard) newIters(
 	}
 	// NB: Translate a nil range-del iterator into a nil interface.
 	return iter, nil, nil
+}
+
+// getTableProperties return sst table properties for target file
+func (c *tableCacheShard) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
+	// Calling findNode gives us the responsibility of decrementing v's refCount here
+	v := c.findNode(file)
+	defer c.unrefValue(v)
+
+	if v.err != nil {
+		return nil, v.err
+	}
+	return &v.reader.Properties, nil
 }
 
 // releaseNode releases a node from the tableCacheShard.
