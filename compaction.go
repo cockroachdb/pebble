@@ -1061,6 +1061,12 @@ type manualCompaction struct {
 	end         InternalKey
 }
 
+type readCompaction struct {
+	level int
+	start []byte
+	end   []byte
+}
+
 func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	var isBase, isIntraL0 bool
@@ -1492,12 +1498,29 @@ func (d *DB) maybeScheduleCompactionPicker(
 		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
 		pc := pickFunc(d.mu.versions.picker, env)
 		if pc == nil {
+			d.tryReadTriggeredCompaction(env)
 			break
 		}
 		c := newCompaction(pc, d.opts, env.bytesCompacted)
 		d.mu.compact.compactingCount++
 		d.addInProgressCompaction(c)
 		go d.compact(c, nil)
+	}
+}
+
+func (d *DB) tryReadTriggeredCompaction(env compactionEnv) {
+	for len(d.mu.compact.readCompactions) > 0 && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
+		readCompaction := d.mu.compact.readCompactions[0]
+		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
+		pc := d.mu.versions.picker.pickReadTriggeredCompaction(env, &readCompaction)
+		d.mu.compact.readCompactions = d.mu.compact.readCompactions[1:]
+		if pc != nil {
+			c := newCompaction(pc, d.opts, env.bytesCompacted)
+			d.mu.compact.compactingCount++
+			d.addInProgressCompaction(c)
+			go d.compact(c, nil)
+			break
+		}
 	}
 }
 

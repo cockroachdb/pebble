@@ -34,7 +34,7 @@ type compactionPicker interface {
 	pickAuto(env compactionEnv) (pc *pickedCompaction)
 	pickManual(env compactionEnv, manual *manualCompaction) (c *pickedCompaction, retryLater bool)
 	pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction)
-
+	pickReadTriggeredCompaction(env compactionEnv, readCompaction *readCompaction) (pc *pickedCompaction)
 	forceBaseLevel1()
 }
 
@@ -404,10 +404,7 @@ func expandToAtomicUnit(
 }
 
 func newCompactionPicker(
-	v *version,
-	opts *Options,
-	inProgressCompactions []compactionInfo,
-	levelSizes [numLevels]int64,
+	v *version, opts *Options, inProgressCompactions []compactionInfo, levelSizes [numLevels]int64,
 ) compactionPicker {
 	p := &compactionPickerByScore{
 		opts:       opts,
@@ -1376,6 +1373,54 @@ func pickManualHelper(
 		return nil
 	}
 	return pc
+}
+
+func (p *compactionPickerByScore) pickReadTriggeredCompaction(
+	env compactionEnv, rc *readCompaction,
+) (pc *pickedCompaction) {
+	cmp := p.opts.Comparer.Compare
+	overlapSlice := p.vers.Overlaps(rc.level, cmp, rc.start, rc.end)
+	if overlapSlice.Empty() {
+		var shouldCompact bool
+		overlapSlice, shouldCompact = updateReadCompaction(p.vers, cmp, rc)
+		if !shouldCompact {
+			return nil
+		}
+	}
+	pc = newPickedCompaction(p.opts, p.vers, rc.level, p.baseLevel)
+	pc.startLevel.files = overlapSlice
+	if !pc.setupInputs() {
+		return nil
+	}
+	if inputRangeAlreadyCompacting(env, pc) {
+		return nil
+	}
+	return pc
+}
+
+func updateReadCompaction(
+	vers *version, cmp Compare, rc *readCompaction,
+) (slice manifest.LevelSlice, shouldCompact bool) {
+	numOverlap, topLevel := 0, 0
+	var topOverlapping manifest.LevelSlice
+	for l := 0; l < numLevels; l++ {
+		overlaps := vers.Overlaps(l, cmp, rc.start, rc.end)
+		if !overlaps.Empty() {
+			numOverlap++
+			if numOverlap >= 2 {
+				break
+			}
+			topOverlapping = overlaps
+			topLevel = l
+		}
+	}
+	if numOverlap >= 2 {
+		shouldCompact = true
+		rc.level = topLevel
+		return topOverlapping, true
+	}
+	return manifest.LevelSlice{}, false
+
 }
 
 func (p *compactionPickerByScore) forceBaseLevel1() {
