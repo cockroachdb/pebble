@@ -6,10 +6,16 @@ package pebble
 
 import (
 	"bytes"
+	"fmt"
 	"io"
+	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/randvar"
+	"golang.org/x/exp/rand"
 )
 
 type iterPos int8
@@ -51,25 +57,33 @@ type IteratorMetrics struct {
 // Next, Prev) return without advancing if the iterator has an accumulated
 // error.
 type Iterator struct {
-	opts        IterOptions
-	cmp         Compare
-	equal       Equal
-	merge       Merge
-	split       Split
-	iter        internalIterator
-	readState   *readState
-	err         error
-	key         []byte
-	keyBuf      []byte
-	value       []byte
-	valueBuf    []byte
-	valueCloser io.Closer
-	valid       bool
-	iterKey     *InternalKey
-	iterValue   []byte
-	pos         iterPos
-	alloc       *iterAlloc
-	prefix      []byte
+	opts         IterOptions
+	cmp          Compare
+	equal        Equal
+	merge        Merge
+	split        Split
+	iter         internalIterator
+	readState    *readState
+	err          error
+	key          []byte
+	keyBuf       []byte
+	value        []byte
+	valueBuf     []byte
+	valueCloser  io.Closer
+	valid        bool
+	iterKey      *InternalKey
+	iterValue    []byte
+	pos          iterPos
+	alloc        *iterAlloc
+	prefix       []byte
+	readSampling readSampling
+}
+
+// readSampling stores variables used to randomly select a read
+// sample to trigger a read compaction
+type readSampling struct {
+	bytesUntilReadSampling uint64
+	rand                   *rand.Rand
 }
 
 func (i *Iterator) findNextEntry() bool {
@@ -131,6 +145,7 @@ func (i *Iterator) nextUserKey() {
 		return
 	}
 	done := i.iterKey.SeqNum() == 0
+	i.maybeSampleRead()
 	if !i.valid {
 		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
 		i.key = i.keyBuf
@@ -144,6 +159,51 @@ func (i *Iterator) nextUserKey() {
 			break
 		}
 		done = i.iterKey.SeqNum() == 0
+	}
+}
+
+func (i *Iterator) maybeSampleRead() {
+	// Approximate gap in bytes between samples of data read during iteration.
+	const readBytesPeriod uint64 = 1048576
+	if i.readSampling.rand == nil {
+		i.readSampling.rand = rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	}
+	bytesRead := uint64(len(i.key) + len(i.value))
+	for i.readSampling.bytesUntilReadSampling < bytesRead {
+		i.readSampling.bytesUntilReadSampling += randvar.NewUniform(0, 2*readBytesPeriod).Uint64(i.readSampling.rand)
+		i.sampleRead()
+	}
+}
+
+func (i *Iterator) sampleRead() {
+	if i.readState == nil {
+		return
+	}
+	lastOverlapping := manifest.LevelSlice{}
+	topLevel, numOverlap := 0, 0
+	for l := numLevels - 1; l >= 0; l-- {
+		overlaps := i.readState.current.Overlaps(l, i.cmp, i.key, i.key)
+		if overlaps.Len() > 0 {
+			lastOverlapping = overlaps
+			numOverlap += lastOverlapping.Len()
+			topLevel = l
+		}
+	}
+	if numOverlap >= 2 {
+		fmt.Printf("num overlap %d", numOverlap)
+		// Using 16KB read threshold (same as LevelDB)
+		const readCompactionThreshold uint64 = 16384
+		lastOverlapping.Each(func(file *manifest.FileMetadata) {
+			numReads := atomic.AddUint64(&file.AtomicNumReads, 1)
+			if numReads*readCompactionThreshold > file.Size {
+				read := &readCompaction{
+					start: *i.iterKey,
+					end:   *i.iterKey,
+					level: topLevel,
+				}
+				i.readState.db.mu.compact.readCompactions = append(i.readState.db.mu.compact.readCompactions, read)
+			}
+		})
 	}
 }
 
@@ -244,6 +304,7 @@ func (i *Iterator) prevUserKey() {
 	if i.iterKey == nil {
 		return
 	}
+	i.maybeSampleRead()
 	if !i.valid {
 		// If we're going to compare against the prev key, we need to save the
 		// current key.

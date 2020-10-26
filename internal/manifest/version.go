@@ -95,6 +95,7 @@ type FileMetadata struct {
 	// is true and IsIntraL0Compacting is false for an L0 file, the file must
 	// be part of a compaction to Lbase.
 	IsIntraL0Compacting bool
+	AtomicNumReads      uint64
 	subLevel            int
 	l0Index             int
 	minIntervalIndex    int
@@ -252,10 +253,7 @@ const NumLevels = 7
 // NewVersion constructs a new Version with the provided files. It requires
 // the provided files are already well-ordered. It's intended for testing.
 func NewVersion(
-	cmp Compare,
-	formatKey base.FormatKey,
-	flushSplitBytes int64,
-	files [NumLevels][]*FileMetadata,
+	cmp Compare, formatKey base.FormatKey, flushSplitBytes int64, files [NumLevels][]*FileMetadata,
 ) *Version {
 	var v Version
 	for l := range files {
