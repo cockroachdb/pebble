@@ -23,15 +23,14 @@ import (
 
 // WriterMetadata holds info about a finished sstable.
 type WriterMetadata struct {
-	Size                uint64
-	SmallestPoint       InternalKey
-	SmallestRange       InternalKey
-	LargestPoint        InternalKey
-	LargestRange        InternalKey
-	SmallestSeqNum      uint64
-	LargestSeqNum       uint64
-	Properties          Properties
-	MarkedForCompaction bool
+	Size           uint64
+	SmallestPoint  InternalKey
+	SmallestRange  InternalKey
+	LargestPoint   InternalKey
+	LargestRange   InternalKey
+	SmallestSeqNum uint64
+	LargestSeqNum  uint64
+	Properties     Properties
 }
 
 func (m *WriterMetadata) updateSeqNum(seqNum uint64) {

@@ -81,8 +81,6 @@ type FileMetadata struct {
 	// Smallest and largest sequence numbers in the table.
 	SmallestSeqNum uint64
 	LargestSeqNum  uint64
-	// True if user asked us to compact this file.
-	MarkedForCompaction bool
 	// True if the file is actively being compacted. Protected by DB.mu.
 	Compacting bool
 	// Stats describe table statistics. Protected by DB.mu.
@@ -99,6 +97,11 @@ type FileMetadata struct {
 	l0Index             int
 	minIntervalIndex    int
 	maxIntervalIndex    int
+
+	// True if user asked us to compact this file. This flag is only set and
+	// respected by RocksDB but exists here to preserve its value in the
+	// MANIFEST.
+	markedForCompaction bool
 }
 
 func (m *FileMetadata) String() string {

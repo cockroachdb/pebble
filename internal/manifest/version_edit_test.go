@@ -81,7 +81,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 						Largest:             base.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
 						SmallestSeqNum:      3,
 						LargestSeqNum:       5,
-						MarkedForCompaction: true,
+						markedForCompaction: true,
 					},
 				},
 			},

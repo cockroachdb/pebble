@@ -261,7 +261,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					Largest:             base.DecodeInternalKey(largest),
 					SmallestSeqNum:      smallestSeqNum,
 					LargestSeqNum:       largestSeqNum,
-					MarkedForCompaction: markedForCompaction,
+					markedForCompaction: markedForCompaction,
 				},
 			})
 
@@ -316,7 +316,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	}
 	for _, x := range v.NewFiles {
 		var customFields bool
-		if x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 {
+		if x.Meta.markedForCompaction || x.Meta.CreationTime != 0 {
 			customFields = true
 			e.writeUvarint(tagNewFile4)
 		} else {
@@ -336,7 +336,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				n := binary.PutUvarint(buf[:], uint64(x.Meta.CreationTime))
 				e.writeBytes(buf[:n])
 			}
-			if x.Meta.MarkedForCompaction {
+			if x.Meta.markedForCompaction {
 				e.writeUvarint(customTagNeedsCompaction)
 				e.writeBytes([]byte{1})
 			}

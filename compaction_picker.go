@@ -915,7 +915,7 @@ func (p *compactionPickerByScore) pickFile(level, outputLevel int) (manifest.Lev
 // anchored at that level.
 //
 // If a score-based compaction cannot be found, pickAuto falls back to looking
-// for a forced compaction (identified by FileMetadata.MarkedForCompaction).
+// for an elision-only compaction to remove obsolete keys.
 func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompaction) {
 	// Compaction concurrency is controlled by L0 read-amp. We allow one
 	// additional compaction per L0CompactionConcurrency sublevels, as well as
@@ -1043,39 +1043,6 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 	// don't help us keep up with writes, just reclaim disk space.
 	if pc := p.pickElisionOnlyCompaction(env); pc != nil {
 		return pc
-	}
-
-	// Check for forced compactions. These are lower priority than score-based
-	// compactions. Note that this loop only runs if we haven't already found a
-	// score-based compaction.
-	//
-	// TODO(peter): MarkedForCompaction is almost never set, making this
-	// extremely wasteful in the common case. Could we maintain a
-	// MarkedForCompaction map from fileNum to level?
-	for level := 0; level < numLevels-1; level++ {
-		iter := p.vers.Levels[level].Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
-			if !f.MarkedForCompaction {
-				continue
-			}
-			var info *candidateLevelInfo
-			for i := range scores {
-				if scores[i].level == level {
-					info = &scores[i]
-					break
-				}
-			}
-			if info == nil {
-				panic(fmt.Sprintf("could not find candidate level info for level %d", level))
-			}
-			info.file = iter.Take()
-			pc := pickAutoHelper(env, p.opts, p.vers, *info, p.baseLevel)
-			// Fail-safe to protect against compacting the same sstable concurrently.
-			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
-				pc.score = info.score
-				return pc
-			}
-		}
 	}
 	return nil
 }
