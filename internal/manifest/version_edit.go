@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -562,6 +563,28 @@ func (b *BulkVersionEdit) Apply(
 				// loop, so we don't need to do it here.
 				continue
 			}
+
+			// NB: allowedSeeks is used for read triggered compactions. The 16KB value
+			// for readCompactionThreshold comes from the LevelDB implementation.
+			//
+			// From LevelDB:
+			// We arrange to automatically compact this file after
+			// a certain number of seeks.  Let's assume:
+			//   (1) One seek costs 10ms
+			//   (2) Writing or reading 1MB costs 10ms (100MB/s)
+			//   (3) A compaction of 1MB does 25MB of IO:
+			//         1MB read from this level
+			//         10-12MB read from next level (boundaries may be misaligned)
+			//         10-12MB written to next level
+			// This implies that 25 seeks cost the same as the compaction
+			// of 1MB of data.  I.e., one seek costs approximately the
+			// same as the compaction of 40KB of data.  We are a little
+			// conservative and allow approximately one seek for every 16KB
+			// of data before triggering a compaction.
+			const readCompactionThreshold uint64 = 16384
+			allowedSeeks := int64(f.Size / readCompactionThreshold)
+			atomic.StoreInt64(&f.Atomic.AllowedSeeks, allowedSeeks)
+
 			err := lm.tree.insert(f)
 			if err != nil {
 				return nil, nil, errors.Wrap(err, "pebble")
