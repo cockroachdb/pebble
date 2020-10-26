@@ -309,6 +309,9 @@ type DB struct {
 			manual []*manualCompaction
 			// inProgress is the set of in-progress flushes and compactions.
 			inProgress map[*compaction]struct{}
+			// readCompactions is a list read triggered compactions. The next compaction
+			// is as the start. New entries are added to the end.
+			readCompactions []*readCompaction
 		}
 
 		cleaner struct {
@@ -1100,14 +1103,14 @@ type sstablesOptions struct {
 }
 
 // SSTablesOption set optional parameter used by `DB.SSTables`.
-type SSTablesOption func (*sstablesOptions)
+type SSTablesOption func(*sstablesOptions)
 
 // WithProperties enable return sstable properties in each TableInfo.
 //
 // NOTE: if most of the sstable properties need to be read from disk,
 // this options may make method `SSTables` quite slow.
 func WithProperties() SSTablesOption {
-	return func (opt *sstablesOptions) {
+	return func(opt *sstablesOptions) {
 		opt.withProperties = true
 	}
 }

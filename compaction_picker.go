@@ -34,7 +34,7 @@ type compactionPicker interface {
 	pickAuto(env compactionEnv) (pc *pickedCompaction)
 	pickManual(env compactionEnv, manual *manualCompaction) (c *pickedCompaction, retryLater bool)
 	pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction)
-
+	pickReadOnlyCompaction(env compactionEnv, readCompaction *readCompaction) (pc *pickedCompaction)
 	forceBaseLevel1()
 }
 
@@ -404,10 +404,7 @@ func expandToAtomicUnit(
 }
 
 func newCompactionPicker(
-	v *version,
-	opts *Options,
-	inProgressCompactions []compactionInfo,
-	levelSizes [numLevels]int64,
+	v *version, opts *Options, inProgressCompactions []compactionInfo, levelSizes [numLevels]int64,
 ) compactionPicker {
 	p := &compactionPickerByScore{
 		opts: opts,
@@ -1404,6 +1401,21 @@ func pickManualHelper(
 		return nil
 	}
 	if !pc.setupInputs() {
+		return nil
+	}
+	return pc
+}
+
+func (p *compactionPickerByScore) pickReadOnlyCompaction(
+	env compactionEnv, readCompaction *readCompaction,
+) (pc *pickedCompaction) {
+	pc = newPickedCompaction(p.opts, p.vers, readCompaction.level, p.baseLevel)
+	cmp := p.opts.Comparer.Compare
+	pc.startLevel.files = p.vers.Overlaps(readCompaction.level, cmp, readCompaction.start.UserKey, readCompaction.end.UserKey)
+	if !pc.setupInputs() {
+		return nil
+	}
+	if inputRangeAlreadyCompacting(env, pc) {
 		return nil
 	}
 	return pc
