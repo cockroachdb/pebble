@@ -98,6 +98,12 @@ func (p *compactionPickerForTesting) pickManual(
 	return pickManualHelper(p.opts, manual, p.vers, p.baseLevel), false
 }
 
+func (p *compactionPickerForTesting) pickReadTriggeredCompaction(
+	env compactionEnv, readCompaction *readCompaction,
+) (pc *pickedCompaction) {
+	return nil
+}
+
 func TestPickCompaction(t *testing.T) {
 	fileNums := func(files manifest.LevelSlice) string {
 		var ss []string
