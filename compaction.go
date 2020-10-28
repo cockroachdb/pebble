@@ -911,7 +911,7 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 	newRangeDelIter := func(
 		f manifest.LevelFile, _ *IterOptions, bytesIterated *uint64,
 	) (internalIterator, internalIterator, error) {
-		iter, rangeDelIter, err := newIters(f, nil /* iter options */, &c.bytesIterated)
+		iter, rangeDelIter, err := newIters(f.FileMetadata, nil /* iter options */, &c.bytesIterated)
 		if err == nil {
 			// TODO(peter): It is mildly wasteful to open the point iterator only to
 			// immediately close it. One way to solve this would be to add new
@@ -1010,7 +1010,7 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 	} else {
 		iter := c.startLevel.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			iter, rangeDelIter, err := newIters(iter.Take(), nil /* iter options */, &c.bytesIterated)
+			iter, rangeDelIter, err := newIters(iter.Current(), nil /* iter options */, &c.bytesIterated)
 			if err != nil {
 				return nil, errors.Wrapf(err, "pebble: could not open table %s", errors.Safe(f.FileNum))
 			}

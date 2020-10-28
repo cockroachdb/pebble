@@ -31,7 +31,7 @@ func TestLevelIter(t *testing.T) {
 	var files manifest.LevelSlice
 
 	newIters := func(
-		file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64,
+		file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
 	) (internalIterator, internalIterator, error) {
 		f := *iters[file.FileNum]
 		f.lower = opts.GetLowerBound()
@@ -115,7 +115,7 @@ func TestLevelIter(t *testing.T) {
 
 			var tableOpts *IterOptions
 			newIters2 := func(
-				file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64,
+				file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
 			) (internalIterator, internalIterator, error) {
 				tableOpts = opts
 				return newIters(file, opts, nil)
@@ -150,7 +150,7 @@ func newLevelIterTest() *levelIterTest {
 }
 
 func (lt *levelIterTest) newIters(
-	file manifest.LevelFile, opts *IterOptions, _ *uint64,
+	file *manifest.FileMetadata, opts *IterOptions, _ *uint64,
 ) (internalIterator, internalIterator, error) {
 	iter, err := lt.readers[file.FileNum].NewIter(opts.LowerBound, opts.UpperBound)
 	if err != nil {
@@ -471,7 +471,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							readers, metas, keys, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
 							defer cleanup()
 							newIters := func(
-								file manifest.LevelFile, _ *IterOptions, _ *uint64,
+								file *manifest.FileMetadata, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
@@ -513,7 +513,7 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 							// This newIters is cheaper than in practice since it does not do
 							// tableCacheShard.findNode.
 							newIters := func(
-								file manifest.LevelFile, opts *IterOptions, _ *uint64,
+								file *manifest.FileMetadata, opts *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(
 									opts.LowerBound, opts.UpperBound)
@@ -555,7 +555,7 @@ func BenchmarkLevelIterNext(b *testing.B) {
 							readers, metas, _, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
 							defer cleanup()
 							newIters := func(
-								file manifest.LevelFile, _ *IterOptions, _ *uint64,
+								file *manifest.FileMetadata, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
@@ -590,7 +590,7 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 							readers, metas, _, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
 							defer cleanup()
 							newIters := func(
-								file manifest.LevelFile, _ *IterOptions, _ *uint64,
+								file *manifest.FileMetadata, _ *IterOptions, _ *uint64,
 							) (internalIterator, internalIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err

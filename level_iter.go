@@ -17,7 +17,7 @@ import (
 // number. If bytesIterated is specified, it is incremented as the given file is
 // iterated through.
 type tableNewIters func(
-	file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64,
+	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, internalIterator, error)
 
 // levelIter provides a merged view of the sstables in a level.
@@ -321,7 +321,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) bool {
 		}
 
 		var rangeDelIter internalIterator
-		l.iter, rangeDelIter, l.err = l.newIters(l.files.Take(), &l.tableOpts, l.bytesIterated)
+		l.iter, rangeDelIter, l.err = l.newIters(l.files.Current(), &l.tableOpts, l.bytesIterated)
 		if l.err != nil {
 			return false
 		}
