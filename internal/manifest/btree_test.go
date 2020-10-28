@@ -622,7 +622,9 @@ func BenchmarkBTreeInsert(b *testing.B) {
 			var tr btree
 			tr.cmp = cmp
 			for _, item := range insertP {
-				require.NoError(b, tr.insert(item))
+				if err := tr.insert(item); err != nil {
+					b.Fatal(err)
+				}
 				i++
 				if i >= b.N {
 					return
@@ -642,7 +644,9 @@ func BenchmarkBTreeDelete(b *testing.B) {
 			var tr btree
 			tr.cmp = cmp
 			for _, item := range insertP {
-				require.NoError(b, tr.insert(item))
+				if err := tr.insert(item); err != nil {
+					b.Fatal(err)
+				}
 			}
 			b.StartTimer()
 			for _, item := range removeP {
@@ -666,13 +670,17 @@ func BenchmarkBTreeDeleteInsert(b *testing.B) {
 		var tr btree
 		tr.cmp = cmp
 		for _, item := range insertP {
-			require.NoError(b, tr.insert(item))
+			if err := tr.insert(item); err != nil {
+				b.Fatal(err)
+			}
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			item := insertP[i%count]
 			tr.delete(item)
-			require.NoError(b, tr.insert(item))
+			if err := tr.insert(item); err != nil {
+				b.Fatal(err)
+			}
 		}
 	})
 }
@@ -685,14 +693,18 @@ func BenchmarkBTreeDeleteInsertCloneOnce(b *testing.B) {
 		var tr btree
 		tr.cmp = cmp
 		for _, item := range insertP {
-			require.NoError(b, tr.insert(item))
+			if err := tr.insert(item); err != nil {
+				b.Fatal(err)
+			}
 		}
 		tr = tr.clone()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			item := insertP[i%count]
 			tr.delete(item)
-			require.NoError(b, tr.insert(item))
+			if err := tr.insert(item); err != nil {
+				b.Fatal(err)
+			}
 		}
 	})
 }
@@ -708,7 +720,9 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 				tr.cmp = cmp
 				trRelease.cmp = cmp
 				for _, item := range insertP {
-					require.NoError(b, tr.insert(item))
+					if err := tr.insert(item); err != nil {
+						b.Fatal(err)
+					}
 				}
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
@@ -719,7 +733,9 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 					}
 					tr = tr.clone()
 					tr.delete(item)
-					require.NoError(b, tr.insert(item))
+					if err := tr.insert(item); err != nil {
+						b.Fatal(err)
+					}
 				}
 			})
 		})
@@ -748,7 +764,9 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 		for i := 0; i < count; i++ {
 			s := key(i)
 			keys = append(keys, s)
-			require.NoError(b, tr.insert(newItem(s)))
+			if err := tr.insert(newItem(s)); err != nil {
+				b.Fatal(err)
+			}
 		}
 
 		b.ResetTimer()
@@ -780,7 +798,9 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 		for i := 0; i < count; i++ {
 			k := key(i)
 			keys = append(keys, k)
-			require.NoError(b, tr.insert(newItem(k)))
+			if err := tr.insert(newItem(k)); err != nil {
+				b.Fatal(err)
+			}
 		}
 
 		b.ResetTimer()
@@ -818,7 +838,9 @@ func BenchmarkBTreeIterNext(b *testing.B) {
 	const size = 2 * maxItems
 	for i := 0; i < count; i++ {
 		item := newItem(key(i))
-		require.NoError(b, tr.insert(item))
+		if err := tr.insert(item); err != nil {
+			b.Fatal(err)
+		}
 	}
 
 	it := tr.iter()
@@ -841,7 +863,9 @@ func BenchmarkBTreeIterPrev(b *testing.B) {
 	const size = 2 * maxItems
 	for i := 0; i < count; i++ {
 		item := newItem(key(i))
-		require.NoError(b, tr.insert(item))
+		if err := tr.insert(item); err != nil {
+			b.Fatal(err)
+		}
 	}
 
 	it := tr.iter()

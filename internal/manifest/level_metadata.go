@@ -303,7 +303,7 @@ func (i *LevelIterator) Clone() LevelIterator {
 }
 
 // Current returns the item at the current iterator position.
-func (i LevelIterator) Current() *FileMetadata {
+func (i *LevelIterator) Current() *FileMetadata {
 	if !i.iter.valid() {
 		return nil
 	}
