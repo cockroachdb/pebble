@@ -2026,7 +2026,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				}
 
 				newIters := func(
-					_ manifest.LevelFile, _ *IterOptions, _ *uint64,
+					_ *manifest.FileMetadata, _ *IterOptions, _ *uint64,
 				) (internalIterator, internalIterator, error) {
 					return &errorIter{}, nil, nil
 				}

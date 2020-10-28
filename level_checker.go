@@ -373,7 +373,7 @@ func checkRangeTombstones(c *checkConfig) error {
 			lf := files.Take()
 			atomicUnit, _ := expandToAtomicUnit(c.cmp, lf.Slice())
 			lower, upper := manifest.KeyRange(c.cmp, atomicUnit.Iter())
-			iterToClose, iter, err := c.newIters(lf, nil, nil)
+			iterToClose, iter, err := c.newIters(lf.FileMetadata, nil, nil)
 			if err != nil {
 				return err
 			}

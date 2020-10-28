@@ -143,7 +143,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 
 	var fileNum base.FileNum
 	newIters :=
-		func(file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
+		func(file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, internalIterator, error) {
 			r := readers[file.FileNum]
 			rangeDelIter, err := r.NewRawRangeDelIter()
 			if err != nil {
@@ -550,7 +550,7 @@ func BenchmarkMergingIterSeqSeekGEWithBounds(b *testing.B) {
 					levelIndex := i
 					level := len(readers) - 1 - i
 					newIters := func(
-						file manifest.LevelFile, opts *IterOptions, _ *uint64,
+						file *manifest.FileMetadata, opts *IterOptions, _ *uint64,
 					) (internalIterator, internalIterator, error) {
 						iter, err := readers[levelIndex][file.FileNum].NewIter(
 							opts.LowerBound, opts.UpperBound)

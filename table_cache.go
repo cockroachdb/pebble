@@ -51,7 +51,7 @@ func (c *tableCache) getShard(fileNum FileNum) *tableCacheShard {
 }
 
 func (c *tableCache) newIters(
-	file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64,
+	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, internalIterator, error) {
 	return c.getShard(file.FileNum).newIters(file, opts, bytesIterated)
 }
@@ -179,13 +179,13 @@ func (c *tableCacheShard) releaseLoop() {
 }
 
 func (c *tableCacheShard) newIters(
-	file manifest.LevelFile, opts *IterOptions, bytesIterated *uint64,
+	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, internalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
 	// the sstable iterator, which decrements when it is closed.
-	v := c.findNode(file.FileMetadata)
+	v := c.findNode(file)
 	if v.err != nil {
 		c.unrefValue(v)
 		return nil, nil, v.err
