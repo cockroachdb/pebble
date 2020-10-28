@@ -303,7 +303,7 @@ func (i *LevelIterator) Clone() LevelIterator {
 }
 
 // Current returns the item at the current iterator position.
-func (i LevelIterator) Current() *FileMetadata {
+func (i *LevelIterator) Current() *FileMetadata {
 	if !i.iter.valid() {
 		return nil
 	}
@@ -439,7 +439,7 @@ func (i *LevelIterator) seek(fn func(*FileMetadata) bool) *FileMetadata {
 // Take constructs a LevelFile containing the file at the iterator's current
 // position. Take panics if the iterator is not currently positioned over a
 // file.
-func (i LevelIterator) Take() LevelFile {
+func (i *LevelIterator) Take() LevelFile {
 	m := i.Current()
 	if m == nil {
 		panic("Take called on invalid LevelIterator")

@@ -7,7 +7,6 @@ package manifest
 import (
 	"bytes"
 	"fmt"
-	"sort"
 	"strings"
 	"sync/atomic"
 	"unsafe"
@@ -1023,11 +1022,22 @@ func (i *iterator) seek(fn func(*FileMetadata) bool) {
 	if i.n == nil {
 		return
 	}
+
 	for {
-		pos := sort.Search(int(i.n.count), func(j int) bool {
-			return fn(i.n.items[j])
-		})
-		i.pos = int16(pos)
+		// Logic copied from sort.Search.
+		j, k := 0, int(i.n.count)
+		for j < k {
+			h := int(uint(j+k) >> 1) // avoid overflow when computing h
+
+			// j ≤ h < k
+			if !fn(i.n.items[h]) {
+				j = h + 1 // preserves f(j-1) == false
+			} else {
+				k = h // preserves f(k) == true
+			}
+		}
+
+		i.pos = int16(j)
 		if i.n.leaf {
 			if i.pos == i.n.count {
 				i.next()
