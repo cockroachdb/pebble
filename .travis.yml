@@ -7,6 +7,11 @@ branches:
 install:
   - go get -v golang.org/x/lint/golint
 
+cache:
+  directories:
+    - $(go env GOCACHE)
+    - $(go env GOPATH)/pkg/mod
+
 matrix:
   include:
     - name: "go1.13.x-linux"
