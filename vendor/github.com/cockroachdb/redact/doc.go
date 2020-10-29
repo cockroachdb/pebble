@@ -20,4 +20,32 @@
 // the boundaries of the current system, for example via telemetry
 // or crash reporting. Conversely, data is considered “unsafe”
 // until/unless it is known to be “safe”.
+//
+// Example use:
+//
+//     redactable := redact.Sprintf("hello %s", "universe")
+//
+//     // At this point, 'redactable' contains "hello ‹universe›".
+//
+//     // This prints "hello universe":
+//     fmt.Println(redactable.StripMarkers())
+//
+//     // This reports "hello ‹×›":
+//     fmt.Println(redactable.Redact())
+//
+//
+// When defining your own custom types, you can define
+// a SafeFormat method, implementing the redact.SafeFormatter
+// interface in a way you'd otherwise implement fmt.Formatter.
+// This is then recognized by this package's API automatically.
+//
+// Alternatively:
+//
+// - you can implement the SafeValue interface, which tells the
+// redact package to always the default formatting of a type
+// as safe and thus not included inside redaction markers.
+//
+// - you can include a value within redact.Safe() and redact.Unsafe()
+// in redact.Sprintf / redact.Fprintf calls, to force
+// the omission or inclusion of redaction markers.
 package redact

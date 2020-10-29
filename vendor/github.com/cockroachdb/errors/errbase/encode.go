@@ -211,6 +211,9 @@ func getTypeDetails(
 
 // TypeKeyMarker can be implemented by errors that wish to extend
 // their type name as seen by GetTypeKey().
+//
+// Note: the key marker is considered safe for reporting and
+// is included in sentry reports.
 type TypeKeyMarker interface {
 	ErrorKeyMarker() string
 }

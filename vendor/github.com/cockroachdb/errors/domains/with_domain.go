@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors/errbase"
+	"github.com/cockroachdb/redact"
 	"github.com/gogo/protobuf/proto"
 )
 
@@ -36,7 +37,7 @@ var _ error = (*withDomain)(nil)
 var _ errbase.SafeDetailer = (*withDomain)(nil)
 var _ errbase.TypeKeyMarker = (*withDomain)(nil)
 var _ fmt.Formatter = (*withDomain)(nil)
-var _ errbase.Formatter = (*withDomain)(nil)
+var _ errbase.SafeFormatter = (*withDomain)(nil)
 
 // withDomain is an error. The original error message is preserved.
 func (e *withDomain) Error() string { return e.cause.Error() }
@@ -58,9 +59,9 @@ func (e *withDomain) SafeDetails() []string {
 
 func (e *withDomain) Format(s fmt.State, verb rune) { errbase.FormatError(e, s, verb) }
 
-func (e *withDomain) FormatError(p errbase.Printer) error {
+func (e *withDomain) SafeFormatError(p errbase.Printer) error {
 	if p.Detail() {
-		p.Print(e.domain)
+		p.Print(redact.Safe(e.domain))
 	}
 	return e.cause
 }

@@ -15,21 +15,24 @@
 package errutil
 
 import (
-	goErr "errors"
-	"fmt"
-
-	"github.com/cockroachdb/errors/safedetails"
+	"github.com/cockroachdb/errors/secondary"
 	"github.com/cockroachdb/errors/withstack"
+	"github.com/cockroachdb/redact"
 )
 
 // New creates an error with a simple error message.
 // A stack trace is retained.
 //
+// Note: the message string is assumed to not contain
+// PII and is included in Sentry reports.
+// Use errors.Newf("%s", <unsafestring>) for errors
+// strings that may contain PII information.
+//
 // Detail output:
 // - message via `Error()` and formatting using `%v`/`%s`/`%q`.
 // - everything when formatting with `%+v`.
-// - stack trace (not message) via `errors.GetSafeDetails()`.
-// - stack trace (not message) in Sentry reports.
+// - stack trace and message via `errors.GetSafeDetails()`.
+// - stack trace and message in Sentry reports.
 func New(msg string) error {
 	return NewWithDepth(1, msg)
 }
@@ -38,13 +41,19 @@ func New(msg string) error {
 // trace is configurable.
 // See the doc of `New()` for more details.
 func NewWithDepth(depth int, msg string) error {
-	err := goErr.New(msg)
+	err := error(&leafError{redact.Sprint(redact.Safe(msg))})
 	err = withstack.WithStackDepth(err, 1+depth)
 	return err
 }
 
 // Newf creates an error with a formatted error message.
 // A stack trace is retained.
+//
+// Note: the format string is assumed to not contain
+// PII and is included in Sentry reports.
+// Use errors.Newf("%s", <unsafestring>) for errors
+// strings that may contain PII information.
+//
 // See the doc of `New()` for more details.
 func Newf(format string, args ...interface{}) error {
 	return NewWithDepthf(1, format, args...)
@@ -54,9 +63,25 @@ func Newf(format string, args ...interface{}) error {
 // trace is configurable.
 // See the doc of `New()` for more details.
 func NewWithDepthf(depth int, format string, args ...interface{}) error {
-	err := fmt.Errorf(format, args...)
-	if format != "" || len(args) > 0 {
-		err = safedetails.WithSafeDetails(err, format, args...)
+	// If there's the verb %w in here, shortcut to fmt.Errorf()
+	// and store the safe details as extra payload. That's
+	// because we don't want to re-implement the error wrapping
+	// logic from 'fmt' in there.
+	var err error
+	var errRefs []error
+	for _, a := range args {
+		if e, ok := a.(error); ok {
+			errRefs = append(errRefs, e)
+		}
+	}
+	redactable, wrappedErr := redact.HelperForErrorf(format, args...)
+	if wrappedErr != nil {
+		err = &withNewMessage{cause: wrappedErr, message: redactable}
+	} else {
+		err = &leafError{redactable}
+	}
+	for _, e := range errRefs {
+		err = secondary.WithSecondaryError(err, e)
 	}
 	err = withstack.WithStackDepth(err, 1+depth)
 	return err
@@ -65,11 +90,16 @@ func NewWithDepthf(depth int, format string, args ...interface{}) error {
 // Wrap wraps an error with a message prefix.
 // A stack trace is retained.
 //
+// Note: the prefix string is assumed to not contain
+// PII and is included in Sentry reports.
+// Use errors.Wrapf(err, "%s", <unsafestring>) for errors
+// strings that may contain PII information.
+//
 // Detail output:
 // - original error message + prefix via `Error()` and formatting using `%v`/`%s`/`%q`.
 // - everything when formatting with `%+v`.
-// - stack trace (not message) via `errors.GetSafeDetails()`.
-// - stack trace (not message) in Sentry reports.
+// - stack trace and message via `errors.GetSafeDetails()`.
+// - stack trace and message in Sentry reports.
 func Wrap(err error, msg string) error {
 	return WrapWithDepth(1, err, msg)
 }
@@ -78,6 +108,9 @@ func Wrap(err error, msg string) error {
 // trace is configurable.
 // The the doc of `Wrap()` for more details.
 func WrapWithDepth(depth int, err error, msg string) error {
+	if err == nil {
+		return nil
+	}
 	if msg != "" {
 		err = WithMessage(err, msg)
 	}
@@ -89,11 +122,16 @@ func WrapWithDepth(depth int, err error, msg string) error {
 // trace is also retained. If the format is empty, no prefix is added,
 // but the extra arguments are still processed for reportable strings.
 //
+// Note: the format string is assumed to not contain
+// PII and is included in Sentry reports.
+// Use errors.Wrapf(err, "%s", <unsafestring>) for errors
+// strings that may contain PII information.
+//
 // Detail output:
 // - original error message + prefix via `Error()` and formatting using `%v`/`%s`/`%q`.
 // - everything when formatting with `%+v`.
-// - stack trace (not message) and redacted details via `errors.GetSafeDetails()`.
-// - stack trace (not message) and redacted details in Sentry reports.
+// - stack trace, format, and redacted details via `errors.GetSafeDetails()`.
+// - stack trace, format, and redacted details in Sentry reports.
 func Wrapf(err error, format string, args ...interface{}) error {
 	return WrapWithDepthf(1, err, format, args...)
 }
@@ -102,9 +140,20 @@ func Wrapf(err error, format string, args ...interface{}) error {
 // trace is configurable.
 // The the doc of `Wrapf()` for more details.
 func WrapWithDepthf(depth int, err error, format string, args ...interface{}) error {
+	if err == nil {
+		return nil
+	}
+	var errRefs []error
+	for _, a := range args {
+		if e, ok := a.(error); ok {
+			errRefs = append(errRefs, e)
+		}
+	}
 	if format != "" || len(args) > 0 {
 		err = WithMessagef(err, format, args...)
-		err = safedetails.WithSafeDetails(err, format, args...)
+	}
+	for _, e := range errRefs {
+		err = secondary.WithSecondaryError(err, e)
 	}
 	err = withstack.WithStackDepth(err, depth+1)
 	return err

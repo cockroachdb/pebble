@@ -20,17 +20,19 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors/errbase"
+	"github.com/cockroachdb/redact"
 	"github.com/gogo/protobuf/proto"
 )
 
 type unimplementedError struct {
+	// For now, msg is non-reportable.
 	msg string
 	IssueLink
 }
 
 var _ error = (*unimplementedError)(nil)
 var _ fmt.Formatter = (*unimplementedError)(nil)
-var _ errbase.Formatter = (*unimplementedError)(nil)
+var _ errbase.SafeFormatter = (*unimplementedError)(nil)
 var _ errbase.SafeDetailer = (*unimplementedError)(nil)
 
 func (w *unimplementedError) Error() string { return w.msg }
@@ -51,15 +53,17 @@ const UnimplementedErrorHint = `You have attempted to use a feature that is not 
 
 func (w *unimplementedError) Format(s fmt.State, verb rune) { errbase.FormatError(w, s, verb) }
 
-func (w *unimplementedError) FormatError(p errbase.Printer) error {
+func (w *unimplementedError) SafeFormatError(p errbase.Printer) error {
+	// For now, msg is non-reportable.
 	p.Print(w.msg)
 	if p.Detail() {
-		p.Print("\n(unimplemented error)")
+		// But the details are.
+		p.Printf("unimplemented")
 		if w.IssueURL != "" {
-			p.Printf("\nissue: %s", w.IssueURL)
+			p.Printf("\nissue: %s", redact.Safe(w.IssueURL))
 		}
 		if w.Detail != "" {
-			p.Printf("\ndetail: %s", w.Detail)
+			p.Printf("\ndetail: %s", redact.Safe(w.Detail))
 		}
 	}
 	return nil
