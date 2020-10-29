@@ -81,8 +81,13 @@ type SafeDetailPayload struct {
 
 // Fill can be used to concatenate multiple SafeDetailPayloads.
 func (s *SafeDetailPayload) Fill(slice []string) []string {
-	slice = append(slice, fmt.Sprintf("-- details for %s::%s:",
+	if len(s.SafeDetails) == 0 {
+		return slice
+	}
+	slice = append(slice, fmt.Sprintf("details for %s::%s:",
 		s.ErrorTypeMark.FamilyName, s.ErrorTypeMark.Extension))
-	slice = append(slice, s.SafeDetails...)
+	for _, sd := range s.SafeDetails {
+		slice = append(slice, "  "+sd)
+	}
 	return slice
 }

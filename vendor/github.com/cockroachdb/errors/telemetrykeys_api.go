@@ -16,8 +16,17 @@ package errors
 
 import "github.com/cockroachdb/errors/telemetrykeys"
 
-// WithTelemetry forwards a definition.
+// WithTelemetry annotates err with the given telemetry key(s).
+// The telemetry keys must be PII-free.
+//
+// Detail is shown:
+// - via `errors.GetSafeDetails()`.
+// - via `GetTelemetryKeys()` below.
+// - when formatting with `%+v`.
+// - in Sentry reports.
 func WithTelemetry(err error, keys ...string) error { return telemetrykeys.WithTelemetry(err, keys...) }
 
-// GetTelemetryKeys forwards a definition.
+// GetTelemetryKeys retrieves the (de-duplicated) set of
+// all telemetry keys present in the direct causal chain
+// of the error. The keys may not be sorted.
 func GetTelemetryKeys(err error) []string { return telemetrykeys.GetTelemetryKeys(err) }

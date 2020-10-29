@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors/errbase"
-	pkgErr "github.com/pkg/errors"
 )
 
 // GetOneLineSource extracts the file/line/function information
@@ -40,7 +39,7 @@ func GetOneLineSource(err error) (file string, line int, fn string, ok bool) {
 
 	// If we have a stack trace in the style of github.com/pkg/errors
 	// (either from there or our own withStack), use it.
-	if st, ok := err.(interface{ StackTrace() pkgErr.StackTrace }); ok {
+	if st, ok := err.(errbase.StackTraceProvider); ok {
 		return getOneLineSourceFromPkgStack(st.StackTrace())
 	}
 
@@ -62,7 +61,7 @@ func GetOneLineSource(err error) (file string, line int, fn string, ok bool) {
 }
 
 func getOneLineSourceFromPkgStack(
-	st pkgErr.StackTrace,
+	st errbase.StackTrace,
 ) (file string, line int, fn string, ok bool) {
 	if len(st) > 0 {
 		st = st[:1]

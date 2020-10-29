@@ -17,7 +17,8 @@ package redact
 import "fmt"
 
 // SafeFormatter is implemented by object types that want to separate
-// safe and non-safe information.
+// safe and non-safe information when printed out by a Printf-like
+// formatter.
 type SafeFormatter interface {
 	// SafeFormat is like the Format method of fmt.Formatter, except
 	// that it operates using a SafePrinter instead of a fmt.State for

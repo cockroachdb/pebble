@@ -18,8 +18,8 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors/errbase"
-	"github.com/cockroachdb/errors/safedetails"
 	"github.com/cockroachdb/logtags"
+	"github.com/cockroachdb/redact"
 )
 
 // WithContextTags captures the k/v pairs stored in the context via the
@@ -88,15 +88,26 @@ func convertToStringsOnly(b *logtags.Buffer) (res *logtags.Buffer) {
 
 func redactTags(b *logtags.Buffer) []string {
 	res := make([]string, len(b.Get()))
-	for i, t := range b.Get() {
-		res[i] = t.Key()
-		v := t.Value()
-		if v != nil {
-			if len(res[i]) > 1 {
-				res[i] += "="
-			}
-			res[i] += safedetails.Redact(v)
-		}
-	}
+	redactableTagsIterate(b, func(i int, r redact.RedactableString) {
+		res[i] = r.Redact().StripMarkers()
+	})
 	return res
+}
+
+func redactableTagsIterate(b *logtags.Buffer, fn func(i int, s redact.RedactableString)) {
+	var empty redact.SafeString
+	for i, t := range b.Get() {
+		k := t.Key()
+		v := t.Value()
+		eq := empty
+		var val interface{} = empty
+		if v != nil {
+			if len(k) > 1 {
+				eq = "="
+			}
+			val = v
+		}
+		res := redact.Sprintf("%s%s%v", redact.Safe(k), eq, val)
+		fn(i, res)
+	}
 }

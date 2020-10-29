@@ -16,11 +16,20 @@ package errors
 
 import "github.com/cockroachdb/errors/assert"
 
-// WithAssertionFailure forwards a definition.
+// WithAssertionFailure decorates the error with an assertion failure marker.
+// This is not intended to be used directly (see AssertionFailed() for
+// further decoration).
+//
+// Detail is shown:
+// - when formatting with `%+v`.
+// - in Sentry reports.
 func WithAssertionFailure(err error) error { return assert.WithAssertionFailure(err) }
 
-// HasAssertionFailure forwards a definition.
+// HasAssertionFailure returns true if the error or any of its causes
+// is an assertion failure annotation.
 func HasAssertionFailure(err error) bool { return assert.HasAssertionFailure(err) }
 
-// IsAssertionFailure forwards a definition.
+// IsAssertionFailure returns true if the error (not its causes) is an
+// assertion failure annotation. Consider using markers.If or
+// HasAssertionFailure to test both the error and its causes.
 func IsAssertionFailure(err error) bool { return assert.IsAssertionFailure(err) }

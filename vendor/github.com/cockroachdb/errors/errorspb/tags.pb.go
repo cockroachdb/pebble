@@ -3,14 +3,11 @@
 
 package errorspb
 
-import (
-	fmt "fmt"
-	_ "github.com/gogo/protobuf/gogoproto"
-	proto "github.com/gogo/protobuf/proto"
-	io "io"
-	math "math"
-	math_bits "math/bits"
-)
+import proto "github.com/gogo/protobuf/proto"
+import fmt "fmt"
+import math "math"
+
+import io "io"
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
@@ -28,16 +25,14 @@ const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 // See errors/contexttags/withcontext.go and the RFC on
 // error handling for details.
 type TagsPayload struct {
-	Tags                 []TagPayload `protobuf:"bytes,1,rep,name=tags,proto3" json:"tags"`
-	XXX_NoUnkeyedLiteral struct{}     `json:"-"`
-	XXX_sizecache        int32        `json:"-"`
+	Tags []TagPayload `protobuf:"bytes,1,rep,name=tags,proto3" json:"tags"`
 }
 
 func (m *TagsPayload) Reset()         { *m = TagsPayload{} }
 func (m *TagsPayload) String() string { return proto.CompactTextString(m) }
 func (*TagsPayload) ProtoMessage()    {}
 func (*TagsPayload) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5d76365188c23fe2, []int{0}
+	return fileDescriptor_tags_c75c5e322ef6b31c, []int{0}
 }
 func (m *TagsPayload) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -50,8 +45,8 @@ func (m *TagsPayload) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) 
 	}
 	return b[:n], nil
 }
-func (m *TagsPayload) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_TagsPayload.Merge(m, src)
+func (dst *TagsPayload) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_TagsPayload.Merge(dst, src)
 }
 func (m *TagsPayload) XXX_Size() int {
 	return m.Size()
@@ -63,17 +58,15 @@ func (m *TagsPayload) XXX_DiscardUnknown() {
 var xxx_messageInfo_TagsPayload proto.InternalMessageInfo
 
 type TagPayload struct {
-	Tag                  string   `protobuf:"bytes,1,opt,name=tag,proto3" json:"tag,omitempty"`
-	Value                string   `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	Tag   string `protobuf:"bytes,1,opt,name=tag,proto3" json:"tag,omitempty"`
+	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
 }
 
 func (m *TagPayload) Reset()         { *m = TagPayload{} }
 func (m *TagPayload) String() string { return proto.CompactTextString(m) }
 func (*TagPayload) ProtoMessage()    {}
 func (*TagPayload) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5d76365188c23fe2, []int{1}
+	return fileDescriptor_tags_c75c5e322ef6b31c, []int{1}
 }
 func (m *TagPayload) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -86,8 +79,8 @@ func (m *TagPayload) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	}
 	return b[:n], nil
 }
-func (m *TagPayload) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_TagPayload.Merge(m, src)
+func (dst *TagPayload) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_TagPayload.Merge(dst, src)
 }
 func (m *TagPayload) XXX_Size() int {
 	return m.Size()
@@ -102,29 +95,6 @@ func init() {
 	proto.RegisterType((*TagsPayload)(nil), "cockroach.errorspb.TagsPayload")
 	proto.RegisterType((*TagPayload)(nil), "cockroach.errorspb.TagPayload")
 }
-
-func init() {
-	proto.RegisterFile("github.com/cockroachdb/errors/errorspb/tags.proto", fileDescriptor_5d76365188c23fe2)
-}
-
-var fileDescriptor_5d76365188c23fe2 = []byte{
-	// 210 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x32, 0x4c, 0xcf, 0x2c, 0xc9,
-	0x28, 0x4d, 0xd2, 0x4b, 0xce, 0xcf, 0xd5, 0x4f, 0xce, 0x4f, 0xce, 0x2e, 0xca, 0x4f, 0x4c, 0xce,
-	0x48, 0x49, 0xd2, 0x4f, 0x2d, 0x2a, 0xca, 0x2f, 0x2a, 0x86, 0x52, 0x05, 0x49, 0xfa, 0x25, 0x89,
-	0xe9, 0xc5, 0x7a, 0x05, 0x45, 0xf9, 0x25, 0xf9, 0x42, 0x42, 0x70, 0x75, 0x7a, 0x30, 0x69, 0x29,
-	0x91, 0xf4, 0xfc, 0xf4, 0x7c, 0xb0, 0xb4, 0x3e, 0x88, 0x05, 0x51, 0xa9, 0xe4, 0xce, 0xc5, 0x1d,
-	0x92, 0x98, 0x5e, 0x1c, 0x90, 0x58, 0x99, 0x93, 0x9f, 0x98, 0x22, 0x64, 0xc1, 0xc5, 0x02, 0x32,
-	0x46, 0x82, 0x51, 0x81, 0x59, 0x83, 0xdb, 0x48, 0x4e, 0x0f, 0xd3, 0x1c, 0xbd, 0x90, 0xc4, 0x74,
-	0xa8, 0x6a, 0x27, 0x96, 0x13, 0xf7, 0xe4, 0x19, 0x82, 0xc0, 0x3a, 0x94, 0x4c, 0xb8, 0xb8, 0x10,
-	0x32, 0x42, 0x02, 0x5c, 0xcc, 0x25, 0x89, 0xe9, 0x12, 0x8c, 0x0a, 0x8c, 0x1a, 0x9c, 0x41, 0x20,
-	0xa6, 0x90, 0x08, 0x17, 0x6b, 0x59, 0x62, 0x4e, 0x69, 0xaa, 0x04, 0x13, 0x58, 0x0c, 0xc2, 0x71,
-	0x52, 0x3a, 0xf1, 0x50, 0x8e, 0xe1, 0xc4, 0x23, 0x39, 0xc6, 0x0b, 0x8f, 0xe4, 0x18, 0x6f, 0x3c,
-	0x92, 0x63, 0x7c, 0xf0, 0x48, 0x8e, 0x71, 0xc2, 0x63, 0x39, 0x86, 0x28, 0x0e, 0x98, 0x85, 0x49,
-	0x6c, 0x60, 0x97, 0x1a, 0x03, 0x02, 0x00, 0x00, 0xff, 0xff, 0x82, 0x3f, 0x04, 0x8e, 0x08, 0x01,
-	0x00, 0x00,
-}
-
 func (m *TagsPayload) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -227,7 +197,14 @@ func (m *TagPayload) Size() (n int) {
 }
 
 func sovTags(x uint64) (n int) {
-	return (math_bits.Len64(x|1) + 6) / 7
+	for {
+		n++
+		x >>= 7
+		if x == 0 {
+			break
+		}
+	}
+	return n
 }
 func sozTags(x uint64) (n int) {
 	return sovTags(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -247,7 +224,7 @@ func (m *TagsPayload) Unmarshal(dAtA []byte) error {
 			}
 			b := dAtA[iNdEx]
 			iNdEx++
-			wire |= uint64(b&0x7F) << shift
+			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
 				break
 			}
@@ -275,7 +252,7 @@ func (m *TagsPayload) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= int(b&0x7F) << shift
+				msglen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -284,9 +261,6 @@ func (m *TagsPayload) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthTags
 			}
 			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthTags
-			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -302,9 +276,6 @@ func (m *TagsPayload) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			if skippy < 0 {
-				return ErrInvalidLengthTags
-			}
-			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthTags
 			}
 			if (iNdEx + skippy) > l {
@@ -334,7 +305,7 @@ func (m *TagPayload) Unmarshal(dAtA []byte) error {
 			}
 			b := dAtA[iNdEx]
 			iNdEx++
-			wire |= uint64(b&0x7F) << shift
+			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
 				break
 			}
@@ -362,7 +333,7 @@ func (m *TagPayload) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
+				stringLen |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -372,9 +343,6 @@ func (m *TagPayload) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthTags
 			}
 			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthTags
-			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -394,7 +362,7 @@ func (m *TagPayload) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
+				stringLen |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -404,9 +372,6 @@ func (m *TagPayload) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthTags
 			}
 			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthTags
-			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -419,9 +384,6 @@ func (m *TagPayload) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			if skippy < 0 {
-				return ErrInvalidLengthTags
-			}
-			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthTags
 			}
 			if (iNdEx + skippy) > l {
@@ -490,11 +452,8 @@ func skipTags(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
-			if length < 0 {
-				return 0, ErrInvalidLengthTags
-			}
 			iNdEx += length
-			if iNdEx < 0 {
+			if length < 0 {
 				return 0, ErrInvalidLengthTags
 			}
 			return iNdEx, nil
@@ -525,9 +484,6 @@ func skipTags(dAtA []byte) (n int, err error) {
 					return 0, err
 				}
 				iNdEx = start + next
-				if iNdEx < 0 {
-					return 0, ErrInvalidLengthTags
-				}
 			}
 			return iNdEx, nil
 		case 4:
@@ -546,3 +502,25 @@ var (
 	ErrInvalidLengthTags = fmt.Errorf("proto: negative length found during unmarshaling")
 	ErrIntOverflowTags   = fmt.Errorf("proto: integer overflow")
 )
+
+func init() {
+	proto.RegisterFile("github.com/cockroachdb/errors/errorspb/tags.proto", fileDescriptor_tags_c75c5e322ef6b31c)
+}
+
+var fileDescriptor_tags_c75c5e322ef6b31c = []byte{
+	// 218 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x32, 0x4c, 0xcf, 0x2c, 0xc9,
+	0x28, 0x4d, 0xd2, 0x4b, 0xce, 0xcf, 0xd5, 0x4f, 0xce, 0x4f, 0xce, 0x2e, 0xca, 0x4f, 0x4c, 0xce,
+	0x48, 0x49, 0xd2, 0x4f, 0x2d, 0x2a, 0xca, 0x2f, 0x2a, 0x86, 0x52, 0x05, 0x49, 0xfa, 0x25, 0x89,
+	0xe9, 0xc5, 0x7a, 0x05, 0x45, 0xf9, 0x25, 0xf9, 0x42, 0x42, 0x70, 0x75, 0x7a, 0x30, 0x69, 0x29,
+	0x91, 0xf4, 0xfc, 0xf4, 0x7c, 0xb0, 0xb4, 0x3e, 0x88, 0x05, 0x51, 0xa9, 0xe4, 0xce, 0xc5, 0x1d,
+	0x92, 0x98, 0x5e, 0x1c, 0x90, 0x58, 0x99, 0x93, 0x9f, 0x98, 0x22, 0x64, 0xc1, 0xc5, 0x02, 0x32,
+	0x46, 0x82, 0x51, 0x81, 0x59, 0x83, 0xdb, 0x48, 0x4e, 0x0f, 0xd3, 0x1c, 0xbd, 0x90, 0xc4, 0x74,
+	0xa8, 0x6a, 0x27, 0x96, 0x13, 0xf7, 0xe4, 0x19, 0x82, 0xc0, 0x3a, 0x94, 0x4c, 0xb8, 0xb8, 0x10,
+	0x32, 0x42, 0x02, 0x5c, 0xcc, 0x25, 0x89, 0xe9, 0x12, 0x8c, 0x0a, 0x8c, 0x1a, 0x9c, 0x41, 0x20,
+	0xa6, 0x90, 0x08, 0x17, 0x6b, 0x59, 0x62, 0x4e, 0x69, 0xaa, 0x04, 0x13, 0x58, 0x0c, 0xc2, 0x71,
+	0xd2, 0x3a, 0xf1, 0x50, 0x8e, 0xe1, 0xc4, 0x23, 0x39, 0xc6, 0x0b, 0x8f, 0xe4, 0x18, 0x6f, 0x3c,
+	0x92, 0x63, 0x7c, 0xf0, 0x48, 0x8e, 0x71, 0xc2, 0x63, 0x39, 0x86, 0x0b, 0x8f, 0xe5, 0x18, 0x6e,
+	0x3c, 0x96, 0x63, 0x88, 0xe2, 0x80, 0x59, 0x9c, 0xc4, 0x06, 0x76, 0xb1, 0x31, 0x20, 0x00, 0x00,
+	0xff, 0xff, 0xa6, 0x1b, 0x01, 0x30, 0x10, 0x01, 0x00, 0x00,
+}

@@ -21,6 +21,7 @@ import (
 
 	"github.com/cockroachdb/errors/errbase"
 	"github.com/cockroachdb/errors/stdstrings"
+	"github.com/cockroachdb/redact"
 	"github.com/gogo/protobuf/proto"
 )
 
@@ -32,7 +33,7 @@ type withIssueLink struct {
 var _ error = (*withIssueLink)(nil)
 var _ errbase.SafeDetailer = (*withIssueLink)(nil)
 var _ fmt.Formatter = (*withIssueLink)(nil)
-var _ errbase.Formatter = (*withIssueLink)(nil)
+var _ errbase.SafeFormatter = (*withIssueLink)(nil)
 
 func (w *withIssueLink) Error() string { return w.cause.Error() }
 func (w *withIssueLink) Cause() error  { return w.cause }
@@ -64,14 +65,15 @@ func maybeAppendReferral(buf *bytes.Buffer, link IssueLink) {
 
 func (w *withIssueLink) Format(s fmt.State, verb rune) { errbase.FormatError(w, s, verb) }
 
-func (w *withIssueLink) FormatError(p errbase.Printer) error {
+func (w *withIssueLink) SafeFormatError(p errbase.Printer) error {
 	if p.Detail() {
-		p.Print("error with linked issue")
+		sep := redact.SafeString("")
 		if w.IssueURL != "" {
-			p.Printf("\nissue: %s", w.IssueURL)
+			p.Printf("issue: %s", redact.Safe(w.IssueURL))
+			sep = "\n"
 		}
 		if w.Detail != "" {
-			p.Printf("\ndetail: %s", w.Detail)
+			p.Printf("%sdetail: %s", sep, redact.Safe(w.Detail))
 		}
 	}
 	return w.cause

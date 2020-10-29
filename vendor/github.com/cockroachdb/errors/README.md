@@ -45,7 +45,9 @@ Table of contents:
 | wrappers for user-facing hints and details                                                            |                     |                         |                            | ✔                    |
 | wrappers to attach secondary causes                                                                   |                     |                         |                            | ✔                    |
 | wrappers to attach [`logtags`](https://github.com/cockroachdb/logtags) details from `context.Context` |                     |                         |                            | ✔                    |
-| `errors.FormatError()`, `Formatter`, `Printer`                                                        |                     |                         | (under construction)       | (under construction) |
+| `errors.FormatError()`, `Formatter`, `Printer`                                                        |                     |                         | (under construction)       | ✔                    |
+| `errors.SafeFormatError()`, `SafeFormatter`                                                           |                     |                         |                            | ✔                    |
+| wrapper-aware `IsPermission()`, `IsTimeout()`, `IsExist()`, `IsNotExist()`                            |                     |                         |                            | ✔                    |
 
 "Forward compatibility" above refers to the ability of this library to
 recognize and properly handle network communication of error types it
@@ -60,6 +62,8 @@ older version of the package.
 - test error identity with `errors.Is()` as usual.
   **Unique in this library**: this works even if the error has traversed the network!
   Also, `errors.IsAny()` to recognize two or more reference errors.
+- replace uses of `os.IsPermission()`, `os.IsTimeout()`, `os.IsExist()` and `os.IsNotExist()` by their analog in sub-package `oserror` so
+  that they can peek through layers of wrapping.
 - access error causes with `errors.UnwrapOnce()` / `errors.UnwrapAll()` (note: `errors.Cause()` and `errors.Unwrap()` also provided for compatibility with other error packages).
 - encode/decode errors to protobuf with `errors.EncodeError()` / `errors.DecodeError()`.
 - extract **PII-free safe details** with `errors.GetSafeDetails()`.
@@ -75,14 +79,14 @@ older version of the package.
 
 | Error detail                                                    | `Error()` and format `%s`/`%q`/`%v` | format `%+v` | `GetSafeDetails()`            | Sentry report via `ReportError()` |
 |-----------------------------------------------------------------|-------------------------------------|--------------|-------------------------------|-----------------------------------|
-| main message, eg `New()`                                        | visible                             | visible      | redacted                      | redacted                          |
-| wrap prefix, eg `WithMessage()`                                 | visible (as prefix)                 | visible      | redacted                      | redacted                          |
-| stack trace, eg `WithStack()`                                   | not visible                         | visible      | yes                           | full                              |
+| main message, eg `New()`                                        | visible                             | visible      | yes (CHANGED IN v1.6)         | full (CHANGED IN v1.6)            |
+| wrap prefix, eg `WithMessage()`                                 | visible (as prefix)                 | visible      | yes (CHANGED IN v1.6)         | full (CHANGED IN v1.6)            |
+| stack trace, eg `WithStack()`                                   | not visible                         | simplified   | yes                           | full                              |
 | hint , eg `WithHint()`                                          | not visible                         | visible      | no                            | type only                         |
 | detail, eg `WithDetail()`                                       | not visible                         | visible      | no                            | type only                         |
 | assertion failure annotation, eg `WithAssertionFailure()`       | not visible                         | visible      | no                            | type only                         |
 | issue links, eg `WithIssueLink()`, `UnimplementedError()`       | not visible                         | visible      | yes                           | full                              |
-| safe details, eg `WithSafeDetails()`                            | not visible                         | visible      | yes                           | full                              |
+| safe details, eg `WithSafeDetails()`                            | not visible                         | not visible  | yes                           | full                              |
 | telemetry keys, eg. `WithTelemetryKey()`                        | not visible                         | visible      | yes                           | full                              |
 | secondary errors, eg. `WithSecondaryError()`, `CombineErrors()` | not visible                         | visible      | redacted, recursively         | redacted, recursively             |
 | barrier origins, eg. `Handled()`                                | not visible                         | visible      | redacted, recursively         | redacted, recursively             |
@@ -98,7 +102,7 @@ method.
 - `New(string) error`, `Newf(string, ...interface{}) error`, `Errorf(string, ...interface{}) error`: leaf errors with message
   - **when to use: common error cases.**
   - what it does: also captures the stack trace at point of call and redacts the provided message for safe reporting.
-  - how to access the detail: `Error()`, regular Go formatting. Details redacted in Sentry report.
+  - how to access the detail: `Error()`, regular Go formatting. **Details in Sentry report.**
   - see also: Section [Error composition](#Error-composition-summary) below. `errors.NewWithDepth()` variants to customize at which call depth the stack trace is captured.
 
 - `AssertionFailedf(string, ...interface{}) error`, `NewAssertionFailureWithWrappedErrf(error, string, ...interface{}) error`: signals an assertion failure / programming error.
@@ -141,7 +145,7 @@ return errors.Wrap(foo(), "foo")
 - `Wrap(error, string) error`, `Wrapf(error, string, ...interface{}) error`:
   - **when to use: on error return paths.**
   - what it does: combines `WithMessage()`, `WithStack()`, `WithSafeDetails()`.
-  - how to access the details: `Error()`, regular Go formatting. Details redacted in Sentry report.
+  - how to access the details: `Error()`, regular Go formatting. **Details in Sentry report.**
   - see also: Section [Error composition](#Error-composition-summary) below. `WrapWithDepth()` variants to customize at which depth the stack trace is captured.
 
 - `WithSecondaryError(error, error) error`: annotate an error with a secondary error.
@@ -201,17 +205,17 @@ return errors.Wrap(foo(), "foo")
 - `WithMessage(error, string) error`, `WithMessagef(error, string, ...interface{}) error`: message prefix.
   - when to use: probably never. Use `errors.Wrap()`/`errors.Wrapf()` instead.
   - what it does: adds a message prefix.
-  - how to access the detail: `Error()`, regular Go formatting. Not included in Sentry reports.
+  - how to access the detail: `Error()`, regular Go formatting, Sentry Report.
 
 - `WithDetail(error, string) error`, `WithDetailf(error, string, ...interface{}) error`, user-facing detail with contextual information.
   - **when to use: need to embark a message string to output when the error is presented to a human.**
   - what it does: captures detail strings.
-  - how to access the detail: `errors.GetAllDetails()`, `errors.FlattenDetails()` (all details are preserved), format with `%+v`.
+  - how to access the detail: `errors.GetAllDetails()`, `errors.FlattenDetails()` (all details are preserved), format with `%+v`. Not included in Sentry reports.
 
 - `WithHint(error, string) error`, `WithHintf(error, string, ...interface{}) error`: user-facing detail with suggestion for action to take.
   - **when to use: need to embark a message string to output when the error is presented to a human.**
   - what it does: captures hint strings.
-  - how to access the detail: `errors.GetAllHints()`, `errors.FlattenHints()` (hints are de-duplicated), format with `%+v`.
+  - how to access the detail: `errors.GetAllHints()`, `errors.FlattenHints()` (hints are de-duplicated), format with `%+v`. Not included in Sentry reports.
 
 - `WithIssueLink(error, IssueLink) error`: annotate an error with an URL and arbitrary string.
   - **when to use: to refer (human) users to some external resources.**
@@ -243,13 +247,14 @@ return errors.Wrap(foo(), "foo")
 
 The library support PII-free strings essentially as follows:
 
-- by default, strings included in an error object are considered to be
-  PII-unsafe, and are stripped out when building a Sentry report.
-- some fields in the library are whitelisted by default.
+- by default, many strings included in an error object are considered
+  to be PII-unsafe, and are stripped out when building a Sentry
+  report.
+- some fields in the library are assumed to be PII-safe by default.
 - you can opt additional strings in to Sentry reports.
 
-The following strings from this library are "whitelisted" upfront,
-considered to be PII-free, and thus included in Sentry reports automatically:
+The following strings from this library are considered to be PII-free,
+and thus included in Sentry reports automatically:
 
 - the *type* of error objects,
 - stack traces (containing only file paths, line numbers, function names - arguments are not included),
@@ -260,7 +265,7 @@ considered to be PII-free, and thus included in Sentry reports automatically:
 - the `format string` argument of `Newf`, `AssertionFailedf`, etc (the constructors ending with `...f()`),
 - the *type* of the additional arguments passed to the `...f()` constructors,
 - the *value of specific argument types* passed to the `...f()` constructors, when known to be PII-safe.
-  For details of which arguments are considered PII-free, see the [`Redact()` function](safedetails/redact.go).
+  For details of which arguments are considered PII-free, see the [`redact` package](https://github.com/cockroachdb/redact).
 
 It is possible to opt additional in to Sentry reporting, using either of the following methods:
 
@@ -293,7 +298,7 @@ If your error type is a wrapper, you should implement a `Format()`
 method that redirects to `errors.FormatError()`, otherwise `%+v` will
 not work. Additionally, if your type has a payload not otherwise
 visible via `Error()`, you may want to implement
-`errors.Formatter`. See [making `%+v` work with your
+`errors.SafeFormatter`. See [making `%+v` work with your
 type](#Making-v-work-with-your-type) below for details.
 
 Finally, you may want your new error type to be portable across
@@ -445,8 +450,8 @@ In short:
   type, this will disable the recursive application of the `%+v` flag
   to the causes chained from your wrapper.)
 
-- You may optionally implement the `errors.Formatter` interface:
-  `FormatError(p errors.Printer) (next error)`.  This is optional, but
+- You may optionally implement the `errors.SafeFormatter` interface:
+  `SafeFormatError(p errors.Printer) (next error)`.  This is optional, but
   should be done when some details are not included by `Error()` and
   should be emitted upon `%+v`.
 
@@ -458,11 +463,11 @@ achieves this as follows:
 func (w *withHTTPCode) Format(s fmt.State, verb rune) { errors.FormatError(w, s, verb) }
 
 // FormatError() formats the error.
-func (w *withHTTPCode) FormatError(p errors.Printer) (next error) {
+func (w *withHTTPCode) SafeFormatError(p errors.Printer) (next error) {
 	// Note: no need to print out the cause here!
 	// FormatError() knows how to do this automatically.
 	if p.Detail() {
-		p.Printf("http code: %d", w.code)
+		p.Printf("http code: %d", errors.Safe(w.code))
 	}
 	return w.cause
 }
@@ -490,24 +495,46 @@ proposal](https://go.googlesource.com/proposal/+/master/design/29934-error-value
   printing out error details, and knows how to present a chain of
   causes in a semi-structured format upon formatting with `%+v`.
 
+### Ensuring `errors.Is` works when errors/packages are renamed
+
+If a Go package containing a custom error type is renamed, or the
+error type itself is renamed, and errors of this type are transported
+over the network, then another system with a different code layout
+(e.g. running a different version of the software) may not be able to
+recognize the error any more via `errors.Is`.
+
+To ensure that network portability continues to work across multiple
+software versions, in the case error types get renamed or Go packages
+get moved / renamed / etc, the server code must call
+`errors.RegisterTypeMigration()` from e.g. an `init()` function.
+
+Example use:
+
+```go
+ previousPath := "github.com/old/path/to/error/package"
+ previousTypeName := "oldpackage.oldErrorName"
+ newErrorInstance := &newTypeName{...}
+ errors.RegisterTypeMigration(previousPath, previousTypeName, newErrorInstance)
+```
+
 ## Error composition (summary)
 
-| Constructor                        | Composes                                                                                         |
-|------------------------------------|--------------------------------------------------------------------------------------------------|
-| `New`                              | `NewWithDepth` (see below)                                                                       |
-| `Errorf`                           | = `Newf`                                                                                         |
-| `Newf`                             | `NewWithDepthf` (see below)                                                                      |
-| `WithMessage`                      | = `pkgErr.WithMessage`                                                                           |
-| `Wrap`                             | `WrapWithDepth` (see below)                                                                      |
-| `Wrapf`                            | `WrapWithDepthf` (see below)                                                                     |
-| `AssertionFailed`                  | `AssertionFailedWithDepthf` (see below)                                                          |
-| `NewWithDepth`                     | `goErr.New` + `WithStackDepth` (see below)                                                       |
-| `NewWithDepthf`                    | `fmt.Errorf` + `WithSafeDetails` + `WithStackDepth`                                              |
-| `WithMessagef`                     | `pkgErr.WithMessagef` + `WithSafeDetails`                                                        |
-| `WrapWithDepth`                    | `WithMessage` + `WithStackDepth`                                                                 |
-| `WrapWithDepthf`                   | `WithMessage` + `WithStackDepth` + `WithSafeDetails`                                             |
-| `AssertionFailedWithDepthf`        | `fmt.Errorf` + `WithStackDepth` + `WithSafeDetails` + `WithAssertionFailure`                     |
-| `NewAssertionErrorWithWrappedErrf` | `HandledWithMessagef` (barrier) + `WithStackDepth` + `WithSafeDetails` +  `WithAssertionFailure` |
+| Constructor                        | Composes                                                                          |
+|------------------------------------|-----------------------------------------------------------------------------------|
+| `New`                              | `NewWithDepth` (see below)                                                        |
+| `Errorf`                           | = `Newf`                                                                          |
+| `Newf`                             | `NewWithDepthf` (see below)                                                       |
+| `WithMessage`                      | custom wrapper with message prefix and knowledge of safe strings                  |
+| `Wrap`                             | `WrapWithDepth` (see below)                                                       |
+| `Wrapf`                            | `WrapWithDepthf` (see below)                                                      |
+| `AssertionFailed`                  | `AssertionFailedWithDepthf` (see below)                                           |
+| `NewWithDepth`                     | custom leaf with knowledge of safe strings + `WithStackDepth` (see below)         |
+| `NewWithDepthf`                    | custom leaf with knowledge of safe strings + `WithSafeDetails` + `WithStackDepth` |
+| `WithMessagef`                     | custom wrapper with message prefix and knowledge of safe strings                  |
+| `WrapWithDepth`                    | `WithMessage` + `WithStackDepth`                                                  |
+| `WrapWithDepthf`                   | `WithMessagef` + `WithStackDepth`                                                 |
+| `AssertionFailedWithDepthf`        | `NewWithDepthf` + `WithAssertionFailure`                                          |
+| `NewAssertionErrorWithWrappedErrf` | `HandledWithMessagef` (barrier) + `WrapWithDepthf` +  `WithAssertionFailure`      |
 
 ## API (not constructing error objects)
 
@@ -518,6 +545,13 @@ func UnwrapOnce(err error) error
 func Cause(err error) error // compatibility
 func Unwrap(err error) error // compatibility
 type Wrapper interface { ... } // compatibility
+
+// Error formatting.
+type Formatter interface { ... } // compatibility, not recommended
+type SafeFormatter interface { ... }
+type Printer interface { ... }
+func FormatError(err error, s fmt.State, verb rune)
+func Formattable(err error) fmt.Formatter
 
 // Identify errors.
 func Is(err, reference error) bool
@@ -540,22 +574,29 @@ type LeafDecoder = func(ctx context.Context, msg string, safeDetails []string, p
 type WrapperEncoder = func(ctx context.Context, err error) (msgPrefix string, safeDetails []string, payload proto.Message)
 type WrapperDecoder = func(ctx context.Context, cause error, msgPrefix string, safeDetails []string, payload proto.Message) error
 
+// Registering package renames for custom error types.
+func RegisterTypeMigration(previousPkgPath, previousTypeName string, newType error)
+
 // Sentry reports.
-func BuildSentryReport(err error) (string, []raven.Interface, map[string]interface{})
-func ReportError(err error) (string, error)
+func BuildSentryReport(err error) (*sentry.Event, map[string]interface{})
+func ReportError(err error) (string)
 
 // Stack trace captures.
 func GetOneLineSource(err error) (file string, line int, fn string, ok bool)
-type ReportableStackTrace = raven.StackTrace
+type ReportableStackTrace = sentry.StackTrace
 func GetReportableStackTrace(err error) *ReportableStackTrace
 
 // Safe (PII-free) details.
 type SafeDetailPayload struct { ... }
 func GetAllSafeDetails(err error) []SafeDetailPayload
 func GetSafeDetails(err error) (payload SafeDetailPayload)
+
+// Obsolete APIs.
 type SafeMessager interface { ... }
-func Safe(v interface{}) SafeMessager
 func Redact(r interface{}) string
+
+// Aliases redact.Safe.
+func Safe(v interface{}) SafeMessager
 
 // Assertion failures.
 func HasAssertionFailure(err error) bool
