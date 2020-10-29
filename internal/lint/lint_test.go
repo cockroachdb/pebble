@@ -101,6 +101,20 @@ func TestLint(t *testing.T) {
 		}
 	})
 
+	t.Run("TestOSIsErr", func(t *testing.T) {
+		t.Parallel()
+
+		if err := stream.ForEach(
+			stream.Sequence(
+				dirCmd(t, pkg.Dir, "git", "grep", "os\\.Is"),
+				stream.GrepNot(`^vendor/`), // ignore vendor
+			), func(s string) {
+				t.Errorf("\n%s <- please use the \"oserror\" equivalent instead", s)
+			}); err != nil {
+			t.Error(err)
+		}
+	})
+
 	t.Run("TestForbiddenImports", func(t *testing.T) {
 		t.Parallel()
 

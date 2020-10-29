@@ -18,16 +18,8 @@ import (
 	"fmt"
 	"runtime"
 
-	pkgErr "github.com/pkg/errors"
+	"github.com/cockroachdb/errors/errbase"
 )
-
-// StackTrace is the type of the data for a call stack.
-// This mirrors the type of the same name in github.com/pkg/errors.
-type StackTrace = pkgErr.StackTrace
-
-// Frame is the type of a single call frame entry.
-// This mirrors the type of the same name in github.com/pkg/errors.
-type Frame = pkgErr.Frame
 
 // stack represents a stack of program counters.
 // This mirrors the (non-exported) type of the same name in github.com/pkg/errors.
@@ -40,7 +32,7 @@ func (s *stack) Format(st fmt.State, verb rune) {
 		switch {
 		case st.Flag('+'):
 			for _, pc := range *s {
-				f := Frame(pc)
+				f := errbase.StackFrame(pc)
 				fmt.Fprintf(st, "\n%+v", f)
 			}
 		}
@@ -48,10 +40,10 @@ func (s *stack) Format(st fmt.State, verb rune) {
 }
 
 // StackTrace mirrors the code in github.com/pkg/errors.
-func (s *stack) StackTrace() StackTrace {
-	f := make([]Frame, len(*s))
+func (s *stack) StackTrace() errbase.StackTrace {
+	f := make([]errbase.StackFrame, len(*s))
 	for i := 0; i < len(f); i++ {
-		f[i] = Frame((*s)[i])
+		f[i] = errbase.StackFrame((*s)[i])
 	}
 	return f
 }

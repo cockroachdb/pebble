@@ -21,10 +21,27 @@ import (
 	"github.com/cockroachdb/logtags"
 )
 
-// WithContextTags forwards a definition.
+// WithContextTags captures the k/v pairs stored in the context via the
+// `logtags` package and annotates them on the error.
+//
+// Only the stromg representation of values remains available. This is
+// because the library cannot guarantee that the underlying value is
+// preserved across the network. To avoid creating a stateful interface
+// (where the user code needs to know whether an error has traveled
+// through the network or not), the library restricts access to the
+// value part as strings. See GetContextTags() below.
+//
+// Detail is shown:
+// - via `errors.GetSafeDetails()`.
+// - via `GetContextTags()` below.
+// - when formatting with `%+v`.
+// - in Sentry reports.
 func WithContextTags(err error, ctx context.Context) error {
 	return contexttags.WithContextTags(err, ctx)
 }
 
-// GetContextTags forwards a definition.
+// GetContextTags retrieves the k/v pairs stored in the error.
+// The sets are returned from outermost to innermost level of cause.
+// The returned logtags.Buffer only know about the string
+// representation of the values originally captured by the error.
 func GetContextTags(err error) []*logtags.Buffer { return contexttags.GetContextTags(err) }

@@ -16,36 +16,64 @@ package errors
 
 import "github.com/cockroachdb/errors/hintdetail"
 
-// ErrorHinter forwards a definition.
+// ErrorHinter is implemented by types that can provide
+// user-informing detail strings. This is implemented by withHint
+// here, withIssueLink, assertionFailure and pgerror.Error.
 type ErrorHinter = hintdetail.ErrorHinter
 
-// ErrorDetailer forwards a definition.
+// ErrorDetailer is implemented by types that can provide
+// user-informing detail strings.
 type ErrorDetailer = hintdetail.ErrorDetailer
 
-// WithHint forwards a definition.
+// WithHint decorates an error with a textual hint.
+// The hint may contain PII and thus will not reportable.
+//
+// Hint is shown:
+// - when formatting with `%+v`.
+// - with `GetAllHints()` / `FlattenHints()` below.
+//
+// Note: the hint does not appear in the main error message returned
+// with Error(). Use GetAllHints() or FlattenHints() to retrieve it.
 func WithHint(err error, msg string) error { return hintdetail.WithHint(err, msg) }
 
-// WithHintf forwards a definition.
+// WithHintf is a helper that formats the hint.
+// See the documentation of WithHint() for details.
 func WithHintf(err error, format string, args ...interface{}) error {
 	return hintdetail.WithHintf(err, format, args...)
 }
 
-// WithDetail forwards a definition.
+// WithDetail decorates an error with a textual detail.
+// The detail may contain PII and thus will not reportable.
+//
+// Detail is shown:
+// - when formatting with `%+v`.
+// - with `GetAllHints()` / `FlattenHints()` below.
+//
+// Note: the detail does not appear in the main error message returned
+// with Error(). Use GetAllDetails() or FlattenDetails() to retrieve
+// it.
 func WithDetail(err error, msg string) error { return hintdetail.WithDetail(err, msg) }
 
-// WithDetailf forwards a definition.
+// WithDetailf is a helper that formats the detail string.
+// See the documentation of WithDetail() for details.
 func WithDetailf(err error, format string, args ...interface{}) error {
 	return hintdetail.WithDetailf(err, format, args...)
 }
 
-// GetAllHints forwards a definition.
+// GetAllHints retrieves the hints from the error using in post-order
+// traversal. The hints are de-duplicated. Assertion failures, issue
+// links and unimplemented errors are detected and receive standard
+// hints.
 func GetAllHints(err error) []string { return hintdetail.GetAllHints(err) }
 
-// FlattenHints forwards a definition.
+// FlattenHints retrieves the hints as per GetAllHints() and
+// concatenates them into a single string.
 func FlattenHints(err error) string { return hintdetail.FlattenHints(err) }
 
-// GetAllDetails forwards a definition.
+// GetAllDetails retrieves the details from the error using in post-order
+// traversal.
 func GetAllDetails(err error) []string { return hintdetail.GetAllDetails(err) }
 
-// FlattenDetails forwards a definition.
+// FlattenDetails retrieves the details as per GetAllDetails() and
+// concatenates them into a single string.
 func FlattenDetails(err error) string { return hintdetail.FlattenDetails(err) }

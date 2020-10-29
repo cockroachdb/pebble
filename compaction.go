@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"runtime/pprof"
 	"sort"
 	"strings"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -2579,7 +2579,7 @@ func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileN
 	// TODO(peter): need to handle this error, probably by re-adding the
 	// file that couldn't be deleted to one of the obsolete slices map.
 	err := d.opts.Cleaner.Clean(d.opts.FS, fileType, path)
-	if err == os.ErrNotExist {
+	if oserror.IsNotExist(err) {
 		return
 	}
 

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -190,7 +191,7 @@ func (fs *FS) PathJoin(elem ...string) string {
 
 // Remove implements FS.Remove.
 func (fs *FS) Remove(name string) error {
-	if _, err := fs.fs.Stat(name); os.IsNotExist(err) {
+	if _, err := fs.fs.Stat(name); oserror.IsNotExist(err) {
 		return nil
 	}
 

@@ -7,6 +7,7 @@ package pebble
 import (
 	"os"
 
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -18,12 +19,12 @@ import (
 // even if hard links are used, the space overhead for the checkpoint will
 // increase over time as the DB performs compactions.
 func (d *DB) Checkpoint(destDir string) (err error) {
-	if _, err := d.opts.FS.Stat(destDir); !os.IsNotExist(err) {
+	if _, err := d.opts.FS.Stat(destDir); !oserror.IsNotExist(err) {
 		if err == nil {
 			return &os.PathError{
 				Op:   "checkpoint",
 				Path: destDir,
-				Err:  os.ErrExist,
+				Err:  oserror.ErrExist,
 			}
 		}
 		return err

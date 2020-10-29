@@ -18,7 +18,9 @@ import (
 	"context"
 	goErr "errors"
 	"fmt"
+	"os"
 
+	"github.com/cockroachdb/errors/errorspb"
 	"github.com/gogo/protobuf/proto"
 	pkgErr "github.com/pkg/errors"
 )
@@ -75,6 +77,108 @@ func encodePkgWithStack(
 	return "" /* withStack does not have a message prefix */, safeDetails, nil
 }
 
+func encodePathError(
+	_ context.Context, err error,
+) (msgPrefix string, safe []string, details proto.Message) {
+	p := err.(*os.PathError)
+	msg := p.Op + " " + p.Path
+	details = &errorspb.StringsPayload{
+		Details: []string{p.Op, p.Path},
+	}
+	return msg, []string{p.Op}, details
+}
+
+func decodePathError(
+	_ context.Context, cause error, _ string, _ []string, payload proto.Message,
+) (result error) {
+	m, ok := payload.(*errorspb.StringsPayload)
+	if !ok || len(m.Details) < 2 {
+		// If this ever happens, this means some version of the library
+		// (presumably future) changed the payload type, and we're
+		// receiving this here. In this case, give up and let
+		// DecodeError use the opaque type.
+		return nil
+	}
+	return &os.PathError{
+		Op:   m.Details[0],
+		Path: m.Details[1],
+		Err:  cause,
+	}
+}
+
+func encodeLinkError(
+	_ context.Context, err error,
+) (msgPrefix string, safe []string, details proto.Message) {
+	p := err.(*os.LinkError)
+	msg := p.Op + " " + p.Old + " " + p.New
+	details = &errorspb.StringsPayload{
+		Details: []string{p.Op, p.Old, p.New},
+	}
+	return msg, []string{p.Op}, details
+}
+
+func decodeLinkError(
+	_ context.Context, cause error, _ string, _ []string, payload proto.Message,
+) (result error) {
+	m, ok := payload.(*errorspb.StringsPayload)
+	if !ok || len(m.Details) < 3 {
+		// If this ever happens, this means some version of the library
+		// (presumably future) changed the payload type, and we're
+		// receiving this here. In this case, give up and let
+		// DecodeError use the opaque type.
+		return nil
+	}
+	return &os.LinkError{
+		Op:  m.Details[0],
+		Old: m.Details[1],
+		New: m.Details[2],
+		Err: cause,
+	}
+}
+
+func encodeSyscallError(
+	_ context.Context, err error,
+) (msgPrefix string, safe []string, details proto.Message) {
+	p := err.(*os.SyscallError)
+	return p.Syscall, nil, nil
+}
+
+func decodeSyscallError(
+	_ context.Context, cause error, msg string, _ []string, _ proto.Message,
+) (result error) {
+	return os.NewSyscallError(msg, cause)
+}
+
+// OpaqueErrno represents a syscall.Errno error object that
+// was constructed on a different OS/platform combination.
+type OpaqueErrno struct {
+	msg     string
+	details *errorspb.ErrnoPayload
+}
+
+// Error implements the error interface.
+func (o *OpaqueErrno) Error() string { return o.msg }
+
+// Is tests whether this opaque errno object represents a special os error type.
+func (o *OpaqueErrno) Is(target error) bool {
+	return (target == os.ErrPermission && o.details.IsPermission) ||
+		(target == os.ErrExist && o.details.IsExist) ||
+		(target == os.ErrNotExist && o.details.IsNotExist)
+}
+
+// Temporary tests whether this opaque errno object encodes a temporary error.
+func (o *OpaqueErrno) Temporary() bool { return o.details.IsTemporary }
+
+// Timeout tests whether this opaque errno object encodes a timeout error.
+func (o *OpaqueErrno) Timeout() bool { return o.details.IsTimeout }
+
+func encodeOpaqueErrno(
+	_ context.Context, err error,
+) (msg string, safe []string, payload proto.Message) {
+	e := err.(*OpaqueErrno)
+	return e.Error(), []string{e.Error()}, e.details
+}
+
 func init() {
 	baseErr := goErr.New("")
 	RegisterLeafDecoder(GetTypeKey(baseErr), decodeErrorString)
@@ -86,4 +190,16 @@ func init() {
 
 	ws := pkgErr.WithStack(baseErr)
 	RegisterWrapperEncoder(GetTypeKey(ws), encodePkgWithStack)
+
+	pKey := GetTypeKey(&os.PathError{})
+	RegisterWrapperEncoder(pKey, encodePathError)
+	RegisterWrapperDecoder(pKey, decodePathError)
+	pKey = GetTypeKey(&os.LinkError{})
+	RegisterWrapperEncoder(pKey, encodeLinkError)
+	RegisterWrapperDecoder(pKey, decodeLinkError)
+	pKey = GetTypeKey(&os.SyscallError{})
+	RegisterWrapperEncoder(pKey, encodeSyscallError)
+	RegisterWrapperDecoder(pKey, decodeSyscallError)
+
+	RegisterLeafEncoder(GetTypeKey(&OpaqueErrno{}), encodeOpaqueErrno)
 }

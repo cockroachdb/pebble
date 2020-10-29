@@ -42,7 +42,7 @@ func (w *withHint) Format(s fmt.State, verb rune) { errbase.FormatError(w, s, ve
 
 func (w *withHint) FormatError(p errbase.Printer) error {
 	if p.Detail() {
-		p.Printf("error with user hint: %s", w.hint)
+		p.Print(w.hint)
 	}
 	return w.cause
 }
@@ -57,7 +57,7 @@ func decodeWithHint(
 ) error {
 	m, ok := payload.(*errorspb.StringPayload)
 	if !ok {
-		//aa If this ever happens, this means some version of the library
+		// If this ever happens, this means some version of the library
 		// (presumably future) changed the payload type, and we're
 		// receiving this here. In this case, give up and let
 		// DecodeError use the opaque type.

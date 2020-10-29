@@ -74,10 +74,11 @@ func (p *escapeWriter) Write(b []byte) (int, error) {
 	// entirely if there was nothing but empty space:
 	// if len(b) == 0 { return 0, nil }
 
-	start := startRedactableBytes
-	ls := len(startRedactableS)
-	end := endRedactableBytes
-	le := len(endRedactableS)
+	// Note: we use len(...RedactableS) and not len(...RedactableBytes)
+	// because the ...S variant is a compile-time constant so this
+	// accelerates the loops below.
+	start, ls := startRedactableBytes, len(startRedactableS)
+	end, le := endRedactableBytes, len(endRedactableS)
 	escape := escapeBytes
 
 	if p.enclose {
@@ -85,22 +86,50 @@ func (p *escapeWriter) Write(b []byte) (int, error) {
 	}
 
 	// Now write the string.
+
+	// k is the index in b up to (and excluding) the byte which we've
+	// already copied into the output.
 	k := 0
+
 	for i := 0; i < len(b); i++ {
-		// Ensure that occurrences of the delimiter inside the string get
-		// escaped.
-		if i+ls <= len(b) && bytes.Equal(b[i:i+ls], start) {
+		if b[i] == '\n' && p.enclose {
+			// Avoid enclosing newline characters inside redaction markers.
+			// This is important when redact is used to render errors, where
+			// sub-strings split at newline characters are rendered
+			// separately.
 			st = p.doWrite(b[k:i], st, true)
-			st = p.doWrite(escape, st, false)
-			st.l += ls
-			k = i + ls
-			i += ls - 1
-		} else if i+le <= len(b) && bytes.Equal(b[i:i+le], end) {
-			st = p.doWrite(b[k:i], st, true)
-			st = p.doWrite(escape, st, false)
-			st.l += le
-			k = i + le
-			i += le - 1
+			st = p.doWrite(end, st, false)
+			// Advance to the last newline character. We want to forward
+			// them all in a single call to doWrite, for performance.
+			lastNewLine := i
+			for b[lastNewLine] == '\n' && lastNewLine < len(b) {
+				lastNewLine++
+			}
+			st = p.doWrite(b[i:lastNewLine], st, true)
+			st = p.doWrite(start, st, false)
+			// Advance the counters by the number of newline characters.
+			k = lastNewLine
+			i = lastNewLine - 1 /* -1 because we have i++ at the end of every iteration */
+		} else {
+			// Ensure that occurrences of the delimiter inside the string get
+			// escaped.
+			// Reminder: ls and le are likely greater than 1, as we are scanning
+			// utf-8 encoded delimiters (the utf-8 encoding is multibyte).
+			if i+ls <= len(b) && bytes.Equal(b[i:i+ls], start) {
+				st = p.doWrite(b[k:i], st, true)
+				st = p.doWrite(escape, st, false)
+				// Advance the counters by the length (in bytes) of the delimiter.
+				st.l += ls
+				k = i + ls
+				i += ls - 1 /* -1 because we have i++ at the end of every iteration */
+			} else if i+le <= len(b) && bytes.Equal(b[i:i+le], end) {
+				st = p.doWrite(b[k:i], st, true)
+				st = p.doWrite(escape, st, false)
+				// Advance the counters by the length (in bytes) of the delimiter.
+				st.l += le
+				k = i + le
+				i += le - 1 /* -1 because we have i++ at the end of every iteration */
+			}
 		}
 	}
 	st = p.doWrite(b[k:], st, true)
@@ -127,4 +156,62 @@ func (p *escapeWriter) doWrite(b []byte, st escapeResult, count bool) escapeResu
 	}
 	st.err = err
 	return st
+}
+
+// internalEscapeBytes escapes redaction markers in the provided buf
+// starting at the location startLoc.
+// The bytes before startLoc are considered safe (already escaped).
+func internalEscapeBytes(b []byte, startLoc int) (res []byte) {
+	// Note: we use len(...RedactableS) and not len(...RedactableBytes)
+	// because the ...S variant is a compile-time constant so this
+	// accelerates the loops below.
+	start, ls := startRedactableBytes, len(startRedactableS)
+	end, le := endRedactableBytes, len(endRedactableS)
+	escape := escapeBytes
+
+	// res is the output slice. In the common case where there is
+	// nothing to escape, the input slice is returned directly
+	// and no allocation takes place.
+	res = b
+	// copied is true if and only if `res` is a copy of `b`.  It only
+	// turns to true if the loop below finds something to escape.
+	copied := false
+	// k is the index in b up to (and excluding) the byte which we've
+	// already copied into res (if copied=true).
+	k := 0
+
+	for i := startLoc; i < len(b); i++ {
+		// Ensure that occurrences of the delimiter inside the string get
+		// escaped.
+		// Reminder: ls and le are likely greater than 1, as we are scanning
+		// utf-8 encoded delimiters (the utf-8 encoding is multibyte).
+		if i+ls <= len(b) && bytes.Equal(b[i:i+ls], start) {
+			if !copied {
+				// We only allocate an output slice when we know we definitely
+				// need it.
+				res = make([]byte, 0, len(b)+len(escape))
+				copied = true
+			}
+			res = append(res, b[k:i]...)
+			res = append(res, escape...)
+			// Advance the counters by the length (in bytes) of the delimiter.
+			k = i + ls
+			i += ls - 1 /* -1 because we have i++ at the end of every iteration */
+		} else if i+le <= len(b) && bytes.Equal(b[i:i+le], end) {
+			if !copied {
+				// See the comment above about res allocation.
+				res = make([]byte, 0, len(b)+len(escape))
+				copied = true
+			}
+			res = append(res, b[k:i]...)
+			res = append(res, escape...)
+			// Advance the counters by the length (in bytes) of the delimiter.
+			k = i + le
+			i += le - 1 /* -1 because we have i++ at the end of every iteration */
+		}
+	}
+	if copied {
+		res = append(res, b[k:]...)
+	}
+	return
 }

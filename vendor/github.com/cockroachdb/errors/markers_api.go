@@ -16,16 +16,47 @@ package errors
 
 import "github.com/cockroachdb/errors/markers"
 
-// Is forwards a definition.
+// Is determines whether one of the causes of the given error or any
+// of its causes is equivalent to some reference error.
+//
+// Note: if any of the error types has been migrated from a previous
+// package location or a different type, ensure that
+// RegisterTypeMigration() was called prior to Is().
 func Is(err, reference error) bool { return markers.Is(err, reference) }
 
-// If forwards a definition.
+// HasType returns true iff err contains an error whose concrete type
+// matches that of referenceType.
+func HasType(err, referenceType error) bool { return markers.HasType(err, referenceType) }
+
+// HasInterface returns true if err contains an error which implements the
+// interface pointed to by referenceInterface. The type of referenceInterface
+// must be a pointer to an interface type. If referenceInterface is not a
+// pointer to an interface, this function will panic.
+func HasInterface(err error, referenceInterface interface{}) bool {
+	return markers.HasInterface(err, referenceInterface)
+}
+
+// If iterates on the error's causal chain and returns a predicate's
+// return value the first time the predicate returns true.
+//
+// Note: if any of the error types has been migrated from a previous
+// package location or a different type, ensure that
+// RegisterTypeMigration() was called prior to If().
 func If(err error, pred func(err error) (interface{}, bool)) (interface{}, bool) {
 	return markers.If(err, pred)
 }
 
-// IsAny forwards a definition.
+// IsAny is like Is except that multiple references are compared.
+//
+// Note: if any of the error types has been migrated from a previous
+// package location or a different type, ensure that
+// RegisterTypeMigration() was called prior to IsAny().
 func IsAny(err error, references ...error) bool { return markers.IsAny(err, references...) }
 
-// Mark forwards a definition.
+// Mark creates an explicit mark for the given error, using
+// the same mark as some reference error.
+//
+// Note: if any of the error types has been migrated from a previous
+// package location or a different type, ensure that
+// RegisterTypeMigration() was called prior to Mark().
 func Mark(err error, reference error) error { return markers.Mark(err, reference) }

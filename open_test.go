@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -59,7 +60,7 @@ func TestErrorIfNotExists(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatalf("expected error, but found success")
-	} else if !strings.HasSuffix(err.Error(), os.ErrNotExist.Error()) {
+	} else if !strings.HasSuffix(err.Error(), oserror.ErrNotExist.Error()) {
 		t.Fatalf("expected not exists, but found %q", err)
 	}
 

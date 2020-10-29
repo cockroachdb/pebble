@@ -93,7 +93,7 @@ func HandledInDomainWithMessage(err error, domain Domain, msg string) error {
 // Handled creates a handled error in the implicit domain (see
 // PackageDomain() below) of its caller.
 //
-// See the documentation of `errors.Handled()` for details.
+// See the documentation of `barriers.Handled()` for details.
 func Handled(err error) error {
 	return HandledInDomain(err, PackageDomainAtDepth(1))
 }
@@ -144,7 +144,7 @@ func PackageDomain() Domain {
 }
 
 // PackageDomainAtDepth returns an error domain that describes the
-// package at the given depth.
+// package at the given call depth.
 func PackageDomainAtDepth(depth int) Domain {
 	_, f, _, _ := runtime.Caller(1 + depth)
 	return Domain("error domain: pkg " + filepath.Dir(f))

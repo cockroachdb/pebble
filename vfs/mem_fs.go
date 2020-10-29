@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/errors/oserror"
 )
 
 const sep = "/"
@@ -169,7 +170,7 @@ func (y *MemFS) walk(fullname string, f func(dir *memNode, frag string, final bo
 			return &os.PathError{
 				Op:   "open",
 				Path: fullname,
-				Err:  os.ErrNotExist,
+				Err:  oserror.ErrNotExist,
 			}
 		}
 		if !child.isDir {
@@ -229,7 +230,7 @@ func (y *MemFS) Link(oldname, newname string) error {
 			Op:  "link",
 			Old: oldname,
 			New: newname,
-			Err: os.ErrNotExist,
+			Err: oserror.ErrNotExist,
 		}
 	}
 	return y.walk(newname, func(dir *memNode, frag string, final bool) error {
@@ -242,7 +243,7 @@ func (y *MemFS) Link(oldname, newname string) error {
 					Op:  "link",
 					Old: oldname,
 					New: newname,
-					Err: os.ErrExist,
+					Err: oserror.ErrExist,
 				}
 			}
 			dir.children[frag] = n
@@ -282,7 +283,7 @@ func (y *MemFS) open(fullname string, allowEmptyName bool) (File, error) {
 		return nil, &os.PathError{
 			Op:   "open",
 			Path: fullname,
-			Err:  os.ErrNotExist,
+			Err:  oserror.ErrNotExist,
 		}
 	}
 	atomic.AddInt32(&ret.n.refs, 1)
@@ -308,16 +309,16 @@ func (y *MemFS) Remove(fullname string) error {
 			}
 			child, ok := dir.children[frag]
 			if !ok {
-				return os.ErrNotExist
+				return oserror.ErrNotExist
 			}
 			// Disallow removal of open files/directories which implements Windows
 			// semantics. This ensures that we don't regress in the ordering of
 			// operations and try to remove a file while it is still open.
 			if n := atomic.LoadInt32(&child.refs); n > 0 {
-				return os.ErrInvalid
+				return oserror.ErrInvalid
 			}
 			if len(child.children) > 0 {
-				return os.ErrExist
+				return oserror.ErrExist
 			}
 			delete(dir.children, frag)
 		}
@@ -342,7 +343,7 @@ func (y *MemFS) RemoveAll(fullname string) error {
 	})
 	// Match os.RemoveAll which returns a nil error even if the parent
 	// directories don't exist.
-	if os.IsNotExist(err) {
+	if oserror.IsNotExist(err) {
 		err = nil
 	}
 	return err
@@ -368,7 +369,7 @@ func (y *MemFS) Rename(oldname, newname string) error {
 		return &os.PathError{
 			Op:   "open",
 			Path: oldname,
-			Err:  os.ErrNotExist,
+			Err:  oserror.ErrNotExist,
 		}
 	}
 	return y.walk(newname, func(dir *memNode, frag string, final bool) error {

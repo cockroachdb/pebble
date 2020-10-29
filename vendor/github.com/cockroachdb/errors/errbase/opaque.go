@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors/errorspb"
+	"github.com/cockroachdb/redact"
 )
 
 // opaqueLeaf is used when receiving an unknown leaf type.
@@ -32,7 +33,7 @@ type opaqueLeaf struct {
 var _ error = (*opaqueLeaf)(nil)
 var _ SafeDetailer = (*opaqueLeaf)(nil)
 var _ fmt.Formatter = (*opaqueLeaf)(nil)
-var _ Formatter = (*opaqueLeaf)(nil)
+var _ SafeFormatter = (*opaqueLeaf)(nil)
 
 // opaqueWrapper is used when receiving an unknown wrapper type.
 // Its important property is that if it is communicated
@@ -47,7 +48,7 @@ type opaqueWrapper struct {
 var _ error = (*opaqueWrapper)(nil)
 var _ SafeDetailer = (*opaqueWrapper)(nil)
 var _ fmt.Formatter = (*opaqueWrapper)(nil)
-var _ Formatter = (*opaqueWrapper)(nil)
+var _ SafeFormatter = (*opaqueWrapper)(nil)
 
 func (e *opaqueLeaf) Error() string { return e.msg }
 
@@ -68,31 +69,38 @@ func (e *opaqueWrapper) SafeDetails() []string { return e.details.ReportablePayl
 func (e *opaqueLeaf) Format(s fmt.State, verb rune)    { FormatError(e, s, verb) }
 func (e *opaqueWrapper) Format(s fmt.State, verb rune) { FormatError(e, s, verb) }
 
-func (e *opaqueLeaf) FormatError(p Printer) (next error) {
+func (e *opaqueLeaf) SafeFormatError(p Printer) (next error) {
 	p.Print(e.msg)
 	if p.Detail() {
-		p.Print("\n(opaque error leaf)")
-		p.Printf("\ntype name: %s", e.details.OriginalTypeName)
+		p.Printf("\n(opaque error leaf)")
+		p.Printf("\ntype name: %s", redact.Safe(e.details.OriginalTypeName))
 		for i, d := range e.details.ReportablePayload {
-			p.Printf("\nreportable %d:\n%s", i, d)
+			p.Printf("\nreportable %d:\n%s", redact.Safe(i), redact.Safe(d))
 		}
 		if e.details.FullDetails != nil {
-			p.Printf("\npayload type: %s", e.details.FullDetails.TypeUrl)
+			p.Printf("\npayload type: %s", redact.Safe(e.details.FullDetails.TypeUrl))
 		}
 	}
 	return nil
 }
 
-func (e *opaqueWrapper) FormatError(p Printer) (next error) {
-	p.Print(e.prefix)
+func (e *opaqueWrapper) SafeFormatError(p Printer) (next error) {
+	if len(e.prefix) > 0 {
+		// We use the condition if len(msg) > 0 because
+		// otherwise an empty string would cause a "redactable
+		// empty string" to be emitted (something that looks like "<>")
+		// and the error formatting code only cleanly elides
+		// the prefix properly if the output string is completely empty.
+		p.Print(e.prefix)
+	}
 	if p.Detail() {
-		p.Print("\n(opaque error wrapper)")
-		p.Printf("\ntype name: %s", e.details.OriginalTypeName)
+		p.Printf("\n(opaque error wrapper)")
+		p.Printf("\ntype name: %s", redact.Safe(e.details.OriginalTypeName))
 		for i, d := range e.details.ReportablePayload {
-			p.Printf("\nreportable %d:\n%s", i, d)
+			p.Printf("\nreportable %d:\n%s", redact.Safe(i), redact.Safe(d))
 		}
 		if e.details.FullDetails != nil {
-			p.Printf("\npayload type: %s", e.details.FullDetails.TypeUrl)
+			p.Printf("\npayload type: %s", redact.Safe(e.details.FullDetails.TypeUrl))
 		}
 	}
 	return e.cause
