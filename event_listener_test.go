@@ -372,5 +372,5 @@ func TestEventListenerRedact(t *testing.T) {
 		FileNum: FileNum(20),
 		Err:     errors.Errorf("unredacted error: %s", "unredacted string"),
 	})
-	require.Equal(t, "[JOB 5] WAL delete error: ‹×›\n", log.String())
+	require.Equal(t, "[JOB 5] WAL delete error: unredacted error: ‹×›\n", log.String())
 }

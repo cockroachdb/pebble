@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/record"
@@ -63,7 +64,7 @@ func runCompactNew(cmd *cobra.Command, args []string) error {
 			srcPath := base.MakeFilename(vfs.Default, archiveDir, base.FileTypeTable, f.Meta.FileNum)
 			dstPath := base.MakeFilename(vfs.Default, workloadDst, base.FileTypeTable, f.Meta.FileNum)
 			err := vfs.LinkOrCopy(vfs.Default, srcPath, dstPath)
-			if os.IsNotExist(err) {
+			if oserror.IsNotExist(err) {
 				// Maybe it's still in the data directory.
 				srcPath = base.MakeFilename(vfs.Default, src, base.FileTypeTable, f.Meta.FileNum)
 				err = vfs.LinkOrCopy(vfs.Default, srcPath, dstPath)
@@ -106,7 +107,7 @@ func replayManifests(srcPath string) ([]string, []logItem, error) {
 	// deleted manifests.
 	archivePath := filepath.Join(srcPath, "archive")
 	infos, err := ioutil.ReadDir(archivePath)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil && !oserror.IsNotExist(err) {
 		return nil, nil, err
 	}
 	for _, info := range infos {

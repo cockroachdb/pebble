@@ -62,7 +62,7 @@ type withAssertionFailure struct {
 
 var _ error = (*withAssertionFailure)(nil)
 var _ fmt.Formatter = (*withAssertionFailure)(nil)
-var _ errbase.Formatter = (*withAssertionFailure)(nil)
+var _ errbase.SafeFormatter = (*withAssertionFailure)(nil)
 
 // ErrorHint implements the hintdetail.ErrorHinter interface.
 func (w *withAssertionFailure) ErrorHint() string {
@@ -77,9 +77,9 @@ func (w *withAssertionFailure) Cause() error  { return w.cause }
 func (w *withAssertionFailure) Unwrap() error { return w.cause }
 
 func (w *withAssertionFailure) Format(s fmt.State, verb rune) { errbase.FormatError(w, s, verb) }
-func (w *withAssertionFailure) FormatError(p errbase.Printer) error {
+func (w *withAssertionFailure) SafeFormatError(p errbase.Printer) error {
 	if p.Detail() {
-		p.Print("assertion failure")
+		p.Printf("assertion failure")
 	}
 	return w.cause
 }

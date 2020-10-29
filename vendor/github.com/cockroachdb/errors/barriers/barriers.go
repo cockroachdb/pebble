@@ -75,7 +75,7 @@ type barrierError struct {
 
 var _ error = (*barrierError)(nil)
 var _ errbase.SafeDetailer = (*barrierError)(nil)
-var _ errbase.Formatter = (*barrierError)(nil)
+var _ errbase.SafeFormatter = (*barrierError)(nil)
 var _ fmt.Formatter = (*barrierError)(nil)
 
 // barrierError is an error.
@@ -94,10 +94,10 @@ func (e *barrierError) SafeDetails() []string {
 // Printing a barrier reveals the details.
 func (e *barrierError) Format(s fmt.State, verb rune) { errbase.FormatError(e, s, verb) }
 
-func (e *barrierError) FormatError(p errbase.Printer) (next error) {
+func (e *barrierError) SafeFormatError(p errbase.Printer) (next error) {
 	p.Print(e.msg)
 	if p.Detail() {
-		p.Printf("\noriginal cause behind barrier: %+v", e.maskedErr)
+		p.Printf("-- cause hidden behind barrier\n%+v", e.maskedErr)
 	}
 	return nil
 }
