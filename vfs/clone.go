@@ -6,8 +6,9 @@ package vfs
 
 import (
 	"io/ioutil"
-	"os"
 	"sort"
+
+	"github.com/cockroachdb/errors/oserror"
 )
 
 // Clone recursively copies a directory structure from srcFS to dstFS. srcPath
@@ -19,7 +20,7 @@ import (
 func Clone(srcFS, dstFS FS, srcPath, dstPath string) (bool, error) {
 	srcFile, err := srcFS.Open(srcPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if oserror.IsNotExist(err) {
 			// Ignore non-existent errors. Those will translate into non-existent
 			// files in the destination filesystem.
 			return false, nil

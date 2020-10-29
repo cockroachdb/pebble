@@ -17,9 +17,11 @@ package markers
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"github.com/cockroachdb/errors/errbase"
 	"github.com/cockroachdb/errors/errorspb"
+	"github.com/cockroachdb/redact"
 	"github.com/gogo/protobuf/proto"
 )
 
@@ -30,7 +32,7 @@ import (
 // package location or a different type, ensure that
 // RegisterTypeMigration() was called prior to Is().
 func Is(err, reference error) bool {
-	if err == nil {
+	if reference == nil {
 		return err == reference
 	}
 
@@ -40,6 +42,13 @@ func Is(err, reference error) bool {
 		if c == reference {
 			return true
 		}
+	}
+
+	if err == nil {
+		// Err is nil and reference is non-nil, so it cannot match. We
+		// want to short-circuit the loop below in this case, otherwise
+		// we're paying the expense of getMark() without need.
+		return false
 	}
 
 	// Not directly equal. Try harder, using error marks. We don't this
@@ -58,7 +67,39 @@ func Is(err, reference error) bool {
 	return false
 }
 
-// If returns a predicate's return value the first time the predicate returns true.
+// HasType returns true iff err contains an error whose concrete type
+// matches that of referenceType.
+func HasType(err error, referenceType error) bool {
+	typ := reflect.TypeOf(referenceType)
+	_, isType := If(err, func(err error) (interface{}, bool) {
+		return nil, reflect.TypeOf(err) == typ
+	})
+	return isType
+}
+
+// HasInterface returns true if err contains an error which implements the
+// interface pointed to by referenceInterface. The type of referenceInterface
+// must be a pointer to an interface type. If referenceInterface is not a
+// pointer to an interface, this function will panic.
+func HasInterface(err error, referenceInterface interface{}) bool {
+	iface := getInterfaceType("HasInterface", referenceInterface)
+	_, isType := If(err, func(err error) (interface{}, bool) {
+		return nil, reflect.TypeOf(err).Implements(iface)
+	})
+	return isType
+}
+
+func getInterfaceType(context string, referenceInterface interface{}) reflect.Type {
+	typ := reflect.TypeOf(referenceInterface)
+	if typ == nil || typ.Kind() != reflect.Ptr || typ.Elem().Kind() != reflect.Interface {
+		panic(fmt.Errorf("errors.%s: referenceInterface must be a pointer to an interface, "+
+			"found %T", context, referenceInterface))
+	}
+	return typ.Elem()
+}
+
+// If iterates on the error's causal chain and returns a predicate's
+// return value the first time the predicate returns true.
 //
 // Note: if any of the error types has been migrated from a previous
 // package location or a different type, ensure that
@@ -79,12 +120,25 @@ func If(err error, pred func(err error) (interface{}, bool)) (interface{}, bool)
 // RegisterTypeMigration() was called prior to IsAny().
 func IsAny(err error, references ...error) bool {
 	// First try using direct reference comparison.
-	for c := err; c != nil; c = errbase.UnwrapOnce(c) {
+	for c := err; ; c = errbase.UnwrapOnce(c) {
 		for _, refErr := range references {
-			if err == refErr {
+			if c == refErr {
 				return true
 			}
 		}
+		if c == nil {
+			// This special case is to support a comparison to a nil
+			// reference.
+			break
+		}
+	}
+
+	if err == nil {
+		// The mark-based comparison below will never match anything if
+		// the error is nil, so don't bother with computing the marks in
+		// that case. This avoids the computational expense of computing
+		// the reference marks upfront.
+		return false
 	}
 
 	// Try harder with marks.
@@ -92,12 +146,15 @@ func IsAny(err error, references ...error) bool {
 	// that any pair of string only gets compared once. Should this
 	// become a performance bottleneck, that algorithm can be considered
 	// instead.
-	refMarks := make([]errorMark, len(references))
-	for i, refErr := range references {
-		refMarks[i] = getMark(refErr)
+	refMarks := make([]errorMark, 0, len(references))
+	for _, refErr := range references {
+		if refErr == nil {
+			continue
+		}
+		refMarks = append(refMarks, getMark(refErr))
 	}
 	for c := err; c != nil; c = errbase.UnwrapOnce(c) {
-		errMark := getMark(err)
+		errMark := getMark(c)
 		for _, refMark := range refMarks {
 			if equalMarks(errMark, refMark) {
 				return true
@@ -130,11 +187,22 @@ func getMark(err error) errorMark {
 	if m, ok := err.(*withMark); ok {
 		return m.mark
 	}
-	m := errorMark{msg: err.Error(), types: []errorspb.ErrorTypeMark{errbase.GetTypeMark(err)}}
+	m := errorMark{msg: safeGetErrMsg(err), types: []errorspb.ErrorTypeMark{errbase.GetTypeMark(err)}}
 	for c := errbase.UnwrapOnce(err); c != nil; c = errbase.UnwrapOnce(c) {
 		m.types = append(m.types, errbase.GetTypeMark(c))
 	}
 	return m
+}
+
+// safeGetErrMsg extracts an error's Error() but tolerates panics.
+func safeGetErrMsg(err error) (result string) {
+	defer func() {
+		if r := recover(); r != nil {
+			result = fmt.Sprintf("(%p).Error() panic: %v", err, r)
+		}
+	}()
+	result = err.Error()
+	return
 }
 
 // Mark creates an explicit mark for the given error, using
@@ -159,7 +227,7 @@ type withMark struct {
 
 var _ error = (*withMark)(nil)
 var _ fmt.Formatter = (*withMark)(nil)
-var _ errbase.Formatter = (*withMark)(nil)
+var _ errbase.SafeFormatter = (*withMark)(nil)
 
 func (m *withMark) Error() string { return m.cause.Error() }
 func (m *withMark) Cause() error  { return m.cause }
@@ -167,12 +235,13 @@ func (m *withMark) Unwrap() error { return m.cause }
 
 func (m *withMark) Format(s fmt.State, verb rune) { errbase.FormatError(m, s, verb) }
 
-func (m *withMark) FormatError(p errbase.Printer) error {
+func (m *withMark) SafeFormatError(p errbase.Printer) error {
 	if p.Detail() {
-		p.Printf("error with mark override:\n%q\n%s::%s",
+		p.Printf("forced error mark\n")
+		p.Printf("%q\n%s::%s",
 			m.mark.msg,
-			m.mark.types[0].FamilyName,
-			m.mark.types[0].Extension,
+			redact.Safe(m.mark.types[0].FamilyName),
+			redact.Safe(m.mark.types[0].Extension),
 		)
 	}
 	return m.cause

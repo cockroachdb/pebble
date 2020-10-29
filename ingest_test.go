@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
@@ -743,7 +744,7 @@ func TestConcurrentIngest(t *testing.T) {
 		go func(i int) {
 			err := d.Ingest([]string{src(i)})
 			if err == nil {
-				if _, err = d.opts.FS.Stat(src(i)); os.IsNotExist(err) {
+				if _, err = d.opts.FS.Stat(src(i)); oserror.IsNotExist(err) {
 					err = nil
 				}
 			}

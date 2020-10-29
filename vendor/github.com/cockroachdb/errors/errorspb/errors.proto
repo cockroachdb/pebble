@@ -98,3 +98,28 @@ message ErrorTypeMark {
   // RFC on error handling for details.
   string extension = 2;
 }
+
+// StringsPayload is used to encode the payload of certain error
+// types.
+message StringsPayload {
+  repeated string details = 1;
+}
+
+// ErrnoPayload is used to encode the payload of syscall.Errno
+// errors.
+message ErrnoPayload {
+  // The original errno numeric code.
+  int64 orig_errno = 1;
+  // The platform where the syscall.Errno was encoded. This
+  // is needed because the numeric values of syscall.Errno
+  // have different meanings depending on the platform.
+  // When decoding, if the arch field does not match we
+  // use a substitute data type instead.
+  string arch = 2;
+
+  bool is_permission = 3;
+  bool is_exist = 4;
+  bool is_not_exist = 5;
+  bool is_timeout = 6;
+  bool is_temporary = 7;
+}

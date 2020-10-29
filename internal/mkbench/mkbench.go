@@ -42,6 +42,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/cockroachdb/errors/oserror"
 )
 
 type run struct {
@@ -84,7 +86,7 @@ func (l *loader) addRun(name, day string, r run) {
 
 func (l *loader) loadCooked(path string) {
 	data, err := ioutil.ReadFile(path)
-	if os.IsNotExist(err) {
+	if oserror.IsNotExist(err) {
 		return
 	}
 	if err != nil {

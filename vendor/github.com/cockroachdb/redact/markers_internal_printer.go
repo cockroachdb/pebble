@@ -17,6 +17,7 @@ package redact
 import (
 	"bytes"
 	"fmt"
+	"unicode/utf8"
 )
 
 // printer implements SafePrinter.
@@ -70,7 +71,13 @@ func (b *printer) UnsafeRune(s rune) {
 // UnsafeByte is part of the SafeWriter interface.
 func (b *printer) UnsafeByte(s byte) {
 	_, _ = b.buf.WriteRune(startRedactable)
-	_ = b.buf.WriteByte(s)
+	if s >= utf8.RuneSelf ||
+		s == startRedactableBytes[0] || s == endRedactableBytes[0] {
+		// Unsafe byte. Escape it.
+		_, _ = b.buf.Write(escapeBytes)
+	} else {
+		_ = b.buf.WriteByte(s)
+	}
 	_, _ = b.buf.WriteRune(endRedactable)
 }
 

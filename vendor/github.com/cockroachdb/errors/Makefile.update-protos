@@ -5,6 +5,23 @@
 #   go get github.com/cockroachdb/protoc-gen-gogoroach
 #   go get github.com/gogo/protobuf/types
 #   go get github.com/gogo/protobuf/protoc-gen-gogo
+#
+# Note: as of 2020-11-01, it is not (yet) possible to use gogoproto
+# v1.3.x to generate .pb.go files so that they are compatible with
+# CockroachDB. This is because CockroachDB hardcodes gogoproto at
+# version v1.2, and thus does not provide v1.3's
+# proto.GoGoProtoPackageIsVersion3.
+#
+# For details, see https://github.com/cockroachdb/cockroach/issues/56378
+#
+# Until this is resolved, the "go get" commands above are not
+# adequate; instead:
+#
+# 1. set the PATH env var to point to CockroachDB's `bin`
+#    sub-directory (after a successful CockroachDB build), where a
+#    suitable version of protoc-gen-gogoroach is provided.
+#
+# 2. run `make -f Makefile.update-protos` with this PATH active.
 
 PROTOS := $(wildcard errorspb/*.proto)
 GO_SOURCES = $(PROTOS:.proto=.pb.go)

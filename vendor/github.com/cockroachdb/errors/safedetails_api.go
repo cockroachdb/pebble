@@ -14,19 +14,43 @@
 
 package errors
 
-import "github.com/cockroachdb/errors/safedetails"
+import (
+	"github.com/cockroachdb/errors/safedetails"
+	"github.com/cockroachdb/redact"
+)
 
-// WithSafeDetails forwards a definition.
+// WithSafeDetails annotates an error with the given reportable details.
+// The format is made available as a PII-free string, alongside
+// with a PII-free representation of every additional argument.
+// Arguments can be reported as-is (without redaction) by wrapping
+// them using the Safe() function.
+//
+// If the format is empty and there are no arguments, the
+// error argument is returned unchanged.
+//
+// Detail is shown:
+// - via `errors.GetSafeDetails()`
+// - when formatting with `%+v`.
+// - in Sentry reports.
 func WithSafeDetails(err error, format string, args ...interface{}) error {
 	return safedetails.WithSafeDetails(err, format, args...)
 }
 
-// SafeMessager forwards a definition.
-type SafeMessager = safedetails.SafeMessager
+// SafeMessager aliases redact.SafeMessager.
+//
+// NB: this is obsolete. Use redact.SafeFormatter or
+// errors.SafeFormatter instead.
+type SafeMessager = redact.SafeMessager
 
-// Safe forwards a definition.
-func Safe(v interface{}) SafeMessager { return safedetails.Safe(v) }
+// Safe wraps the given object into an opaque struct that implements
+// SafeMessager: its contents can be included as-is in PII-free
+// strings in error objects and reports.
+//
+// NB: this is obsolete. Use redact.Safe instead.
+func Safe(v interface{}) redact.SafeValue { return safedetails.Safe(v) }
 
-// Redact returns a redacted version of the supplied item that is safe
-// to use in anonymized reporting.
+// Redact returns a redacted version of the supplied item that is safe to use in
+// anonymized reporting.
+//
+// NB: this interface is obsolete. Use redact.Sprint() directly.
 func Redact(r interface{}) string { return safedetails.Redact(r) }

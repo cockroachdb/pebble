@@ -14,6 +14,8 @@
 
 package redact
 
+import "bytes"
+
 // RedactableString is a string that contains a mix of safe and unsafe
 // bits of data, but where it is known that unsafe bits are enclosed
 // by redaction markers ‹ and ›, and occurrences of the markers
@@ -42,6 +44,13 @@ func (s RedactableString) ToBytes() RedactableBytes {
 	return RedactableBytes([]byte(string(s)))
 }
 
+// SafeFormat formats the redactable safely.
+func (s RedactableString) SafeFormat(sp SafePrinter, _ rune) {
+	// As per annotateArgs() in markers_internal_print.go,
+	// we consider the redactable string not further formattable.
+	sp.Print(s)
+}
+
 // RedactableBytes is like RedactableString but is a byte slice.
 //
 // Instances of RedactableBytes should not be constructed directly;
@@ -67,15 +76,21 @@ func (s RedactableBytes) ToString() RedactableString {
 	return RedactableString(string([]byte(s)))
 }
 
+// SafeFormat formats the redactable safely.
+func (s RedactableBytes) SafeFormat(sp SafePrinter, _ rune) {
+	// As per annotateArgs() in markers_internal_print.go,
+	// we consider the redactable bytes not further formattable.
+	sp.Print(s)
+}
+
 // EscapeBytes escapes markers inside the given byte slice and encloses
 // the entire byte slice between redaction markers.
 func EscapeBytes(s []byte) RedactableBytes {
-	s = reStripMarkers.ReplaceAll(s, escapeBytes)
-	enclosed := make([]byte, 0, len(s)+len(startRedactableBytes)+len(endRedactableBytes))
-	enclosed = append(enclosed, startRedactableBytes...)
-	enclosed = append(enclosed, s...)
-	enclosed = append(enclosed, endRedactableBytes...)
-	return RedactableBytes(enclosed)
+	var buf bytes.Buffer
+	buf.Grow(len(s) + len(startRedactableS) + len(endRedactableS))
+	e := escapeWriter{w: &buf, enclose: true, strip: false}
+	_, _ = e.Write(s)
+	return RedactableBytes(buf.Bytes())
 }
 
 // StartMarker returns the start delimiter for an unsafe string.

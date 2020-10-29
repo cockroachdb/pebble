@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors/errbase"
 	"github.com/cockroachdb/errors/errorspb"
 	"github.com/cockroachdb/logtags"
+	"github.com/cockroachdb/redact"
 	"github.com/gogo/protobuf/proto"
 )
 
@@ -39,8 +40,8 @@ type withContext struct {
 
 var _ error = (*withContext)(nil)
 var _ errbase.SafeDetailer = (*withContext)(nil)
+var _ errbase.SafeFormatter = (*withContext)(nil)
 var _ fmt.Formatter = (*withContext)(nil)
-var _ errbase.Formatter = (*withContext)(nil)
 
 // withContext is an error. The original error message is preserved.
 func (w *withContext) Error() string { return w.cause.Error() }
@@ -52,9 +53,16 @@ func (w *withContext) Unwrap() error { return w.cause }
 // Printing a withContext reveals the tags.
 func (w *withContext) Format(s fmt.State, verb rune) { errbase.FormatError(w, s, verb) }
 
-func (w *withContext) FormatError(p errbase.Printer) error {
+func (w *withContext) SafeFormatError(p errbase.Printer) error {
 	if p.Detail() && w.tags != nil {
-		p.Printf("error with context tags: %s", w.tags.String())
+		p.Printf("tags: [")
+		redactableTagsIterate(w.tags, func(i int, r redact.RedactableString) {
+			if i > 0 {
+				p.Printf(",")
+			}
+			p.Print(r)
+		})
+		p.Printf("]")
 	}
 	return w.cause
 }

@@ -31,14 +31,7 @@ check-consistency redact
 L0
   000001:11
 ----
-<*errors.errorString>
-wrapper: <*safedetails.withSafeDetails>
-(more details:)
-L%d: %s: %v
--- arg 1: 0
--- arg 2: 000001
--- arg 3: *errors.errorString: file does not exist
-wrapper: *os.PathError: stat
+L0: 000001: stat ‹×›: file does not exist
 
 check-consistency
 L0
@@ -72,21 +65,6 @@ L1
 L2
   000004:30
 ----
-<*errors.errorString>
-wrapper: <*safedetails.withSafeDetails>
-(more details:)
-L%d: %s: %v
-L%d: %s: %v
-L%d: %s: %v
--- arg 1: 0
--- arg 2: 000001
--- arg 3: *errors.errorString: file does not exist
-wrapper: *os.PathError: stat
--- arg 4: 1
--- arg 5: 000002
--- arg 6: *errors.errorString: file does not exist
-wrapper: *os.PathError: stat
--- arg 7: 2
--- arg 8: 000004
--- arg 9: *errors.errorString: file does not exist
-wrapper: *os.PathError: stat
+L0: 000001: stat ‹×›: file does not exist
+L1: 000002: stat ‹×›: file does not exist
+L2: 000004: stat ‹×›: file does not exist

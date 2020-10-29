@@ -31,9 +31,10 @@ func reproducePrintf(w io.Writer, s fmt.State, verb rune, arg interface{}) {
 	}
 }
 
-// MakeFormat reproduces the format currently active in fmt.State and
-// verb. This is provided because Go's standard fmt.State does not
-// make the original format string available to us.
+// MakeFormat is a helper for use by implementations of the
+// SafeFormatter interface. It reproduces the format currently active
+// in fmt.State and verb. This is provided because Go's standard
+// fmt.State does not make the original format string available to us.
 //
 // If the return value justV is true, then the current state
 // was found to be %v exactly; in that case the caller

@@ -1,6 +1,4 @@
-# github.com/certifi/gocertifi v0.0.0-20200211180108-c7c1fbc02894
-github.com/certifi/gocertifi
-# github.com/cockroachdb/errors v1.2.4
+# github.com/cockroachdb/errors v1.8.1
 github.com/cockroachdb/errors
 github.com/cockroachdb/errors/assert
 github.com/cockroachdb/errors/barriers
@@ -12,6 +10,7 @@ github.com/cockroachdb/errors/errutil
 github.com/cockroachdb/errors/hintdetail
 github.com/cockroachdb/errors/issuelink
 github.com/cockroachdb/errors/markers
+github.com/cockroachdb/errors/oserror
 github.com/cockroachdb/errors/report
 github.com/cockroachdb/errors/safedetails
 github.com/cockroachdb/errors/secondary
@@ -20,20 +19,20 @@ github.com/cockroachdb/errors/telemetrykeys
 github.com/cockroachdb/errors/withstack
 # github.com/cockroachdb/logtags v0.0.0-20190617123548-eb05cc24525f
 github.com/cockroachdb/logtags
-# github.com/cockroachdb/redact v0.0.0-20200622112456-cd282804bbd3
+# github.com/cockroachdb/redact v1.0.8
 github.com/cockroachdb/redact
+github.com/cockroachdb/redact/internal
+github.com/cockroachdb/redact/internal/fmtsort
+# github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2
+github.com/cockroachdb/sentry-go
 # github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd
 github.com/codahale/hdrhistogram
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
-# github.com/getsentry/raven-go v0.2.0
-github.com/getsentry/raven-go
 # github.com/ghemawat/stream v0.0.0-20171120220530-696b145b53b9
 github.com/ghemawat/stream
 # github.com/gogo/protobuf v1.3.1
-github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/proto
-github.com/gogo/protobuf/protoc-gen-gogo/descriptor
 github.com/gogo/protobuf/sortkeys
 github.com/gogo/protobuf/types
 # github.com/golang/snappy v0.0.2-0.20190904063534-ff6b7dc882cf
@@ -48,7 +47,7 @@ github.com/kr/text
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/spf13/cobra v0.0.3
+# github.com/spf13/cobra v0.0.5
 github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.3
 github.com/spf13/pflag
@@ -57,6 +56,8 @@ github.com/stretchr/testify/assert
 github.com/stretchr/testify/require
 # golang.org/x/exp v0.0.0-20200513190911-00229845015e
 golang.org/x/exp/rand
+# golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
+golang.org/x/sync/errgroup
 # golang.org/x/sys v0.0.0-20200519105757-fe76b779f299
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix

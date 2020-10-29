@@ -22,12 +22,60 @@
 package errbase
 
 // A Formatter formats error messages.
+//
+// NB: Consider implementing SafeFormatter instead. This will ensure
+// that error displays can distinguish bits that are PII-safe.
 type Formatter interface {
 	error
 
-	// FormatError prints the receiver's first error and returns the next error in
-	// the error chain, if any.
+	// FormatError prints the receiver's first error.
+	// The return value decides what happens in the case
+	// FormatError() is used to produce a "short" message,
+	// eg. when it is used to implement Error():
+	//
+	// - if it returns nil, then the short message
+	//   contains no more than that produced for this error,
+	//   even if the error has a further causal chain.
+	//
+	// - if it returns non-nil, then the short message
+	//   contains the value printed by this error,
+	//   followed by that of its causal chain.
+	//   (e.g. thiserror: itscause: furthercause)
+	//
+	// Note that all the causal chain is reported in verbose reports in
+	// any case.
 	FormatError(p Printer) (next error)
+}
+
+// SafeFormatter is implemented by error leaf or wrapper types that want
+// to separate safe and non-safe information when printed out.
+//
+// When multiple errors are chained (e.g. via errors.Wrap), intermediate
+// layers in the error that do not implement SafeError are considered
+// “unsafe”
+type SafeFormatter interface {
+	// SafeFormatError prints the receiver's first error.
+	//
+	// The provided Printer behaves like a redact.SafePrinter its
+	// Print() and Printf() methods conditionally add redaction markers
+	// around unsafe bits.
+	//
+	// The return value of SafeFormatError() decides what happens in the
+	// case the method is used to produce a "short" message, eg. when it
+	// is used to implement Error():
+	//
+	// - if it returns nil, then the short message
+	//   contains no more than that produced for this error,
+	//   even if the error has a further causal chain.
+	//
+	// - if it returns non-nil, then the short message
+	//   contains the value printed by this error,
+	//   followed by that of its causal chain.
+	//   (e.g. thiserror: itscause: furthercause)
+	//
+	// Note that all the causal chain is reported in verbose reports in
+	// any case.
+	SafeFormatError(p Printer) (next error)
 }
 
 // A Printer formats error messages.

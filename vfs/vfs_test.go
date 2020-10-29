@@ -16,21 +16,23 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/stretchr/testify/require"
 )
 
 func normalizeError(err error) error {
 	// It is OS-specific which errors match IsExist, IsNotExist, and
-	// IsPermission, with OS-specific error messages. We normalize to the os.Err*
-	// errors which have standard error messages across platforms.
+	// IsPermission, with OS-specific error messages. We normalize to the
+	// oserror.Err* errors which have standard error messages across
+	// platforms.
 	switch {
-	case os.IsExist(err):
-		return os.ErrExist
-	case os.IsNotExist(err):
-		return os.ErrNotExist
-	case os.IsPermission(err):
-		return os.ErrPermission
+	case oserror.IsExist(err):
+		return oserror.ErrExist
+	case oserror.IsNotExist(err):
+		return oserror.ErrNotExist
+	case oserror.IsPermission(err):
+		return oserror.ErrPermission
 	}
 	return err
 }
@@ -134,11 +136,11 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 					}
 					switch arg.Vals[0] {
 					case "ErrExist":
-						fs.linkErr = os.ErrExist
+						fs.linkErr = oserror.ErrExist
 					case "ErrNotExist":
-						fs.linkErr = os.ErrNotExist
+						fs.linkErr = oserror.ErrNotExist
 					case "ErrPermission":
-						fs.linkErr = os.ErrPermission
+						fs.linkErr = oserror.ErrPermission
 					default:
 						fs.linkErr = errors.New(arg.Vals[0])
 					}

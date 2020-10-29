@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/redact"
 )
 
 func levelMetadata(level int, files ...*FileMetadata) LevelMetadata {
@@ -529,11 +530,11 @@ func TestCheckConsistency(t *testing.T) {
 					}
 				}
 
-				redact := false
+				redactErr := false
 				for _, arg := range d.CmdArgs {
 					switch v := arg.String(); v {
 					case "redact":
-						redact = true
+						redactErr = true
 					default:
 						return fmt.Sprintf("unknown argument: %q", v)
 					}
@@ -542,12 +543,9 @@ func TestCheckConsistency(t *testing.T) {
 				v := NewVersion(cmp, fmtKey, 0, filesByLevel)
 				err := v.CheckConsistency(dir, mem)
 				if err != nil {
-					if redact {
-						redacted := errors.Redact(err)
-						// Strip out the stack which has paths and lines that differ from
-						// machine to machine and Go version to Go version.
-						i := strings.Index(redacted, "wrapper: <*withstack.withStack>")
-						return redacted[:i]
+					if redactErr {
+						redacted := redact.Sprint(err).Redact()
+						return string(redacted)
 					}
 					return err.Error()
 				}

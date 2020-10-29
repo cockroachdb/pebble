@@ -33,7 +33,7 @@ type withSecondaryError struct {
 var _ error = (*withSecondaryError)(nil)
 var _ errbase.SafeDetailer = (*withSecondaryError)(nil)
 var _ fmt.Formatter = (*withSecondaryError)(nil)
-var _ errbase.Formatter = (*withSecondaryError)(nil)
+var _ errbase.SafeFormatter = (*withSecondaryError)(nil)
 
 // SafeDetails reports the PII-free details from the secondary error.
 func (e *withSecondaryError) SafeDetails() []string {
@@ -48,10 +48,9 @@ func (e *withSecondaryError) SafeDetails() []string {
 // Printing a withSecondary reveals the details.
 func (e *withSecondaryError) Format(s fmt.State, verb rune) { errbase.FormatError(e, s, verb) }
 
-func (e *withSecondaryError) FormatError(p errbase.Printer) (next error) {
+func (e *withSecondaryError) SafeFormatError(p errbase.Printer) (next error) {
 	if p.Detail() {
-		p.Printf("combined error\nancillary error: %+v", e.secondaryError)
-		p.Print("\n(main error follows)")
+		p.Printf("secondary error attachment\n%+v", e.secondaryError)
 	}
 	return e.cause
 }

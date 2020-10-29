@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/cockroachdb/errors/oserror"
 )
 
 // File is a readable, writable sequence of bytes.
@@ -282,7 +284,7 @@ func LinkOrCopy(fs FS, oldname, newname string) error {
 	// ERROR_NOT_SAME_DEVICE, ERROR_INVALID_FUNCTION, and
 	// ERROR_INVALID_PARAMETER. Rather that such OS specific checks, we fall back
 	// to always trying to copy if hard-linking failed.
-	if os.IsExist(err) || os.IsNotExist(err) || os.IsPermission(err) {
+	if oserror.IsExist(err) || oserror.IsNotExist(err) || oserror.IsPermission(err) {
 		return err
 	}
 	return Copy(fs, oldname, newname)

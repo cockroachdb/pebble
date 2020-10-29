@@ -14,61 +14,32 @@
 
 package errutil
 
-import (
-	"context"
-	"fmt"
-
-	"github.com/cockroachdb/errors/errbase"
-	"github.com/gogo/protobuf/proto"
-)
+import "github.com/cockroachdb/redact"
 
 // WithMessage annotates err with a new message.
 // If err is nil, WithMessage returns nil.
+// The message is considered safe for reporting
+// and is included in Sentry reports.
 func WithMessage(err error, message string) error {
 	if err == nil {
 		return nil
 	}
-	return &withMessage{
-		cause: err,
-		msg:   message,
+	return &withPrefix{
+		cause:  err,
+		prefix: redact.Sprint(redact.Safe(message)),
 	}
 }
 
 // WithMessagef annotates err with the format specifier.
 // If err is nil, WithMessagef returns nil.
+// The message is formatted as per redact.Sprintf,
+// to separate safe and unsafe strings for Sentry reporting.
 func WithMessagef(err error, format string, args ...interface{}) error {
 	if err == nil {
 		return nil
 	}
-	return &withMessage{
-		cause: err,
-		msg:   fmt.Sprintf(format, args...),
+	return &withPrefix{
+		cause:  err,
+		prefix: redact.Sprintf(format, args...),
 	}
-}
-
-type withMessage struct {
-	cause error
-	msg   string
-}
-
-func (w *withMessage) Error() string { return fmt.Sprintf("%s: %v", w.msg, w.cause) }
-func (w *withMessage) Cause() error  { return w.cause }
-func (w *withMessage) Unwrap() error { return w.cause }
-
-func (w *withMessage) Format(s fmt.State, verb rune) { errbase.FormatError(w, s, verb) }
-func (w *withMessage) FormatError(p errbase.Printer) (next error) {
-	p.Print(w.msg)
-	return w.cause
-}
-
-// A message wrapper is decoded exactly.
-func decodeMessage(
-	ctx context.Context, cause error, msg string, _ []string, _ proto.Message,
-) error {
-	return &withMessage{cause: cause, msg: msg}
-}
-
-func init() {
-	tn := errbase.GetTypeKey((*withMessage)(nil))
-	errbase.RegisterWrapperDecoder(tn, decodeMessage)
 }

@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"math"
-	"os"
 	"regexp"
 	"runtime"
 	"sort"
@@ -19,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
@@ -1956,7 +1956,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 	require.NoError(t, d.Close())
 	for _, fileNum := range tablesCreated {
 		filename := fmt.Sprintf("%s.sst", fileNum)
-		if _, err = mem.Stat(filename); err == nil || !os.IsNotExist(err) {
+		if _, err = mem.Stat(filename); err == nil || !oserror.IsNotExist(err) {
 			t.Errorf("expected %q to not exist: %s", filename, err)
 		}
 	}

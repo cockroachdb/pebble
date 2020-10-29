@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors/errbase"
+	"github.com/cockroachdb/redact"
 	"github.com/gogo/protobuf/proto"
 )
 
@@ -33,23 +34,28 @@ func (e *withSafeDetails) SafeDetails() []string {
 }
 
 var _ fmt.Formatter = (*withSafeDetails)(nil)
-var _ errbase.Formatter = (*withSafeDetails)(nil)
+var _ errbase.SafeFormatter = (*withSafeDetails)(nil)
 
 // Printing a withSecondary reveals the details.
 func (e *withSafeDetails) Format(s fmt.State, verb rune) { errbase.FormatError(e, s, verb) }
 
-func (e *withSafeDetails) FormatError(p errbase.Printer) error {
+// SafeFormatError implements errbase.SafeFormatter.
+func (e *withSafeDetails) SafeFormatError(p errbase.Printer) error {
 	if p.Detail() {
-		if len(e.safeDetails) == 0 || (len(e.safeDetails) == 1 && e.safeDetails[0] == "") {
-			p.Print("safe detail wrapper with no details")
-		} else {
-			p.Print("error with embedded safe details:")
-			if e.safeDetails[0] != "" {
-				p.Printf(" %s", e.safeDetails[0])
+		comma := redact.SafeString("")
+		if len(e.safeDetails) != 1 {
+			plural := redact.SafeString("s")
+			if len(e.safeDetails) == 1 {
+				plural = ""
 			}
-			for _, d := range e.safeDetails[1:] {
-				p.Printf("\n%s", d)
-			}
+			p.Printf("%d safe detail%s enclosed", redact.Safe(len(e.safeDetails)), plural)
+			comma = "\n"
+		}
+		// We hide the details from %+v; they are included
+		// during Sentry reporting.
+		for _, s := range e.safeDetails {
+			p.Printf("%s%s", comma, redact.Safe(s))
+			comma = "\n"
 		}
 	}
 	return e.cause
