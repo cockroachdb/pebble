@@ -410,10 +410,11 @@ func newCompactionPicker(
 	levelSizes [numLevels]int64,
 ) compactionPicker {
 	p := &compactionPickerByScore{
-		opts: opts,
-		vers: v,
+		opts:       opts,
+		vers:       v,
+		levelSizes: levelSizes,
 	}
-	p.initLevelMaxBytes(inProgressCompactions, levelSizes)
+	p.initLevelMaxBytes(inProgressCompactions)
 	return p
 }
 
@@ -505,6 +506,9 @@ type compactionPickerByScore struct {
 	// levelMaxBytes holds the dynamically adjusted max bytes setting for each
 	// level.
 	levelMaxBytes [numLevels]int64
+
+	// levelSizes holds the current size of each level.
+	levelSizes [numLevels]int64
 }
 
 var _ compactionPicker = &compactionPickerByScore{}
@@ -537,8 +541,8 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 
 	// We assume that all the bytes in L0 need to be compacted to Lbase. This is
 	// unlike the RocksDB logic that figures out whether L0 needs compaction.
-	bytesAddedToNextLevel := l0ExtraSize + p.vers.Levels[0].Slice().SizeSum()
-	nextLevelSize := p.vers.Levels[p.baseLevel].Slice().SizeSum()
+	bytesAddedToNextLevel := l0ExtraSize + uint64(p.levelSizes[0])
+	nextLevelSize := uint64(p.levelSizes[p.baseLevel])
 
 	var compactionDebt uint64
 	if bytesAddedToNextLevel > 0 && nextLevelSize > 0 {
@@ -550,7 +554,7 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 
 	for level := p.baseLevel; level < numLevels-1; level++ {
 		levelSize := nextLevelSize + bytesAddedToNextLevel
-		nextLevelSize = p.vers.Levels[level+1].Slice().SizeSum()
+		nextLevelSize = uint64(p.levelSizes[level+1])
 		if levelSize > uint64(p.levelMaxBytes[level]) {
 			bytesAddedToNextLevel = levelSize - uint64(p.levelMaxBytes[level])
 			if nextLevelSize > 0 {
@@ -567,9 +571,7 @@ func (p *compactionPickerByScore) estimatedCompactionDebt(l0ExtraSize uint64) ui
 	return compactionDebt
 }
 
-func (p *compactionPickerByScore) initLevelMaxBytes(
-	inProgressCompactions []compactionInfo, levelSizes [numLevels]int64,
-) {
+func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []compactionInfo) {
 	// The levelMaxBytes calculations here differ from RocksDB in two ways:
 	//
 	// 1. The use of dbSize vs maxLevelSize. RocksDB uses the size of the maximum
@@ -592,11 +594,11 @@ func (p *compactionPickerByScore) initLevelMaxBytes(
 	firstNonEmptyLevel := -1
 	var dbSize int64
 	for level := 1; level < numLevels; level++ {
-		if levelSizes[level] > 0 {
+		if p.levelSizes[level] > 0 {
 			if firstNonEmptyLevel == -1 {
 				firstNonEmptyLevel = level
 			}
-			dbSize += levelSizes[level]
+			dbSize += p.levelSizes[level]
 		}
 	}
 	for _, c := range inProgressCompactions {
@@ -626,7 +628,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(
 	}
 
 	const levelMultiplier = 10
-	dbSize += levelSizes[0]
+	dbSize += p.levelSizes[0]
 	bottomLevelSize := dbSize - dbSize/levelMultiplier
 
 	curLevelSize := bottomLevelSize

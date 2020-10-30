@@ -282,9 +282,9 @@ func TestLevelIterBoundaries(t *testing.T) {
 				return fmt.Sprintf("no existing iter")
 			}
 			if iter == nil {
+				slice := manifest.NewLevelSliceKeySorted(lt.cmp.Compare, lt.metas)
 				iter = newLevelIter(IterOptions{}, DefaultComparer.Compare, lt.newIters,
-					manifest.NewLevelSliceKeySorted(lt.cmp.Compare, lt.metas).Iter(),
-					manifest.Level(level), nil)
+					slice.Iter(), manifest.Level(level), nil)
 				// Fake up the range deletion initialization.
 				iter.initRangeDel(new(internalIterator))
 			}
@@ -373,9 +373,10 @@ func TestLevelIterSeek(t *testing.T) {
 			return lt.runBuild(d)
 
 		case "iter":
+			slice := manifest.NewLevelSliceKeySorted(lt.cmp.Compare, lt.metas)
 			iter := &levelIterTestIter{
 				levelIter: newLevelIter(IterOptions{}, DefaultComparer.Compare, lt.newIters,
-					manifest.NewLevelSliceKeySorted(lt.cmp.Compare, lt.metas).Iter(), manifest.Level(level), nil),
+					slice.Iter(), manifest.Level(level), nil),
 			}
 			defer iter.Close()
 			iter.initRangeDel(&iter.rangeDelIter)

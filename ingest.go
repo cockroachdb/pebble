@@ -428,7 +428,8 @@ func ingestTargetLevel(
 		}
 
 		// Check boundary overlap.
-		if !v.Overlaps(level, cmp, meta.Smallest.UserKey, meta.Largest.UserKey).Empty() {
+		boundaryOverlaps := v.Overlaps(level, cmp, meta.Smallest.UserKey, meta.Largest.UserKey)
+		if !boundaryOverlaps.Empty() {
 			continue
 		}
 

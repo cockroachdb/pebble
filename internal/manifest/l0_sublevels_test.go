@@ -444,8 +444,9 @@ func TestL0Sublevels(t *testing.T) {
 			return strconv.Itoa(sublevels.MaxDepthAfterOngoingCompactions())
 		case "l0-check-ordering":
 			for sublevel, files := range sublevels.levelFiles {
+				slice := NewLevelSliceSpecificOrder(files)
 				err := CheckOrdering(base.DefaultComparer.Compare, base.DefaultFormatter,
-					L0Sublevel(sublevel), NewLevelSliceSpecificOrder(files).Iter())
+					L0Sublevel(sublevel), slice.Iter())
 				if err != nil {
 					return err.Error()
 				}
