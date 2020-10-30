@@ -172,12 +172,12 @@ func (ls LevelSlice) String() string {
 }
 
 // Empty indicates whether the slice contains any files.
-func (ls LevelSlice) Empty() bool {
+func (ls *LevelSlice) Empty() bool {
 	return emptyWithBounds(ls.iter, ls.start, ls.end)
 }
 
 // Iter constructs a LevelIterator that iterates over the slice.
-func (ls LevelSlice) Iter() LevelIterator {
+func (ls *LevelSlice) Iter() LevelIterator {
 	return LevelIterator{
 		start: ls.start,
 		end:   ls.end,
@@ -186,13 +186,13 @@ func (ls LevelSlice) Iter() LevelIterator {
 }
 
 // Len returns the number of files in the slice. Its runtime is constant.
-func (ls LevelSlice) Len() int {
+func (ls *LevelSlice) Len() int {
 	return ls.length
 }
 
 // SizeSum sums the size of all files in the slice. Its runtime is linear in
 // the length of the slice.
-func (ls LevelSlice) SizeSum() uint64 {
+func (ls *LevelSlice) SizeSum() uint64 {
 	var sum uint64
 	iter := ls.Iter()
 	for f := iter.First(); f != nil; f = iter.Next() {

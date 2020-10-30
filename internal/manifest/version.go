@@ -455,7 +455,8 @@ func (v *Version) InitL0Sublevels(
 func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
 	iter := v.Levels[level].Iter()
 	if level > 0 {
-		iter = v.Overlaps(level, cmp, m.Smallest.UserKey, m.Largest.UserKey).Iter()
+		overlaps := v.Overlaps(level, cmp, m.Smallest.UserKey, m.Largest.UserKey)
+		iter = overlaps.Iter()
 	}
 	for f := iter.First(); f != nil; f = iter.Next() {
 		if f == m {

@@ -688,7 +688,8 @@ func (c *compaction) setupInuseKeyRanges() {
 	// levels.
 	var input []userKeyRange
 	for ; level < numLevels; level++ {
-		iter := c.version.Overlaps(level, c.cmp, c.smallest.UserKey, c.largest.UserKey).Iter()
+		overlaps := c.version.Overlaps(level, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+		iter := overlaps.Iter()
 		for m := iter.First(); m != nil; m = iter.Next() {
 			input = append(input, userKeyRange{m.Smallest.UserKey, m.Largest.UserKey})
 		}
@@ -1667,8 +1668,9 @@ func checkDeleteCompactionHints(
 		// The hint h will be resolved and dropped, regardless of whether
 		// there are any tables that can be deleted.
 		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
-			overlaps := v.Overlaps(l, cmp, h.start, h.end).Iter()
-			for m := overlaps.First(); m != nil; m = overlaps.Next() {
+			overlaps := v.Overlaps(l, cmp, h.start, h.end)
+			iter := overlaps.Iter()
+			for m := iter.First(); m != nil; m = iter.Next() {
 				if m.Compacting || !h.canDelete(cmp, m, snapshots) || files[m] {
 					continue
 				}

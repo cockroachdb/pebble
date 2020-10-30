@@ -580,13 +580,12 @@ func TestCompactionPickerL0(t *testing.T) {
 				baseLevel: baseLevel,
 			}
 			vs.picker = picker
-			var sizes [numLevels]int64
-			for l := 0; l < len(sizes); l++ {
+			for l := 0; l < len(picker.levelSizes); l++ {
 				version.Levels[l].Slice().Each(func(m *fileMetadata) {
-					sizes[l] += int64(m.Size)
+					picker.levelSizes[l] += int64(m.Size)
 				})
 			}
-			picker.initLevelMaxBytes(inProgressCompactions, sizes)
+			picker.initLevelMaxBytes(inProgressCompactions)
 
 			var buf bytes.Buffer
 			fmt.Fprint(&buf, version.DebugString(base.DefaultFormatter))
