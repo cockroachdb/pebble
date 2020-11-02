@@ -656,6 +656,17 @@ func (vs *versionSet) addObsoleteLocked(obsolete []FileNum) {
 		}
 	}
 	vs.obsoleteTables = append(vs.obsoleteTables, obsolete...)
+	vs.incrementObsoleteTables(obsolete)
+}
+
+func (vs *versionSet) incrementObsoleteTables(obsolete []FileNum) {
+	for _, fileNum := range obsolete {
+		path := base.MakeFilename(vs.opts.FS, vs.dirname, fileTypeTable, fileNum)
+		if stat, err := vs.opts.FS.Stat(path); err == nil {
+			vs.metrics.Table.ObsoleteCount++
+			vs.metrics.Table.ObsoleteSize += uint64(stat.Size())
+		}
+	}
 }
 
 func newFileMetrics(newFiles []manifest.NewFileEntry) map[int]*LevelMetrics {
