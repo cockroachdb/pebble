@@ -323,7 +323,7 @@ type Version struct {
 
 	// The callback to invoke when the last reference to a version is
 	// removed. Will be called with list.mu held.
-	Deleted func(obsolete []base.FileNum)
+	Deleted func(obsolete []*FileMetadata)
 
 	// The list the version is linked into.
 	list *VersionList
@@ -426,8 +426,8 @@ func (v *Version) UnrefLocked() {
 	}
 }
 
-func (v *Version) unrefFiles() []base.FileNum {
-	var obsolete []base.FileNum
+func (v *Version) unrefFiles() []*FileMetadata {
+	var obsolete []*FileMetadata
 	for _, lm := range v.Levels {
 		obsolete = append(obsolete, lm.release()...)
 	}

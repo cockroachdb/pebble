@@ -26,9 +26,9 @@ type pacer interface {
 	maybeThrottle(bytesIterated uint64) error
 }
 
-// internalPacer contains fields and methods common to both compactionPacer and
-// flushPacer.
-type internalPacer struct {
+// compactionInternalPacer contains fields and methods common to compactionPacer
+// and flushPacer.
+type compactionInternalPacer struct {
 	limiter limiter
 
 	iterCount             uint64
@@ -39,7 +39,7 @@ type internalPacer struct {
 
 // limit applies rate limiting if the current byte level is below the configured
 // threshold.
-func (p *internalPacer) limit(amount, currentLevel uint64) error {
+func (p *compactionInternalPacer) limit(amount, currentLevel uint64) error {
 	if currentLevel <= p.slowdownThreshold {
 		burst := p.limiter.Burst()
 		for amount > uint64(burst) {
@@ -96,7 +96,7 @@ type compactionPacerEnv struct {
 // compaction debt increases at a rate that is faster than the system can handle,
 // no rate limit is applied.
 type compactionPacer struct {
-	internalPacer
+	compactionInternalPacer
 	env                 compactionPacerEnv
 	totalCompactionDebt uint64
 	totalDirtyBytes     uint64
@@ -105,7 +105,7 @@ type compactionPacer struct {
 func newCompactionPacer(env compactionPacerEnv) *compactionPacer {
 	return &compactionPacer{
 		env: env,
-		internalPacer: internalPacer{
+		compactionInternalPacer: compactionInternalPacer{
 			limiter: env.limiter,
 		},
 	}
@@ -178,7 +178,7 @@ type flushPacerEnv struct {
 // writes. If user writes come in faster than the memtable can be flushed, no
 // rate limit is applied.
 type flushPacer struct {
-	internalPacer
+	compactionInternalPacer
 	env                flushPacerEnv
 	inuseBytes         uint64
 	adjustedInuseBytes uint64
@@ -187,7 +187,7 @@ type flushPacer struct {
 func newFlushPacer(env flushPacerEnv) *flushPacer {
 	return &flushPacer{
 		env: env,
-		internalPacer: internalPacer{
+		compactionInternalPacer: compactionInternalPacer{
 			limiter:           env.limiter,
 			slowdownThreshold: env.memTableSize * 105 / 100,
 		},
@@ -239,6 +239,91 @@ func (p *flushPacer) maybeThrottle(bytesIterated uint64) error {
 	// writes. If writes come in faster than how fast the memtable can flush,
 	// flushing proceeds at maximum (unthrottled) speed.
 	return p.limit(flushAmount, dirtyBytes)
+}
+
+// deletionPacerInfo contains any info from the db necessary to make deletion
+// pacing decisions.
+type deletionPacerInfo struct {
+	freeBytes     uint64
+	obsoleteBytes uint64
+	liveBytes     uint64
+}
+
+// deletionPacer rate limits deletions of obsolete files. This is necessary to
+// prevent overloading the disk with too many deletions too quickly after a
+// large compaction, or an iterator close. On some SSDs, disk performance can be
+// negatively impacted if too many blocks are deleted very quickly, so this
+// mechanism helps mitigate that.
+type deletionPacer struct {
+	limiter               limiter
+	freeSpaceThreshold    uint64
+	obsoleteBytesMaxRatio float64
+
+	getInfo func() deletionPacerInfo
+}
+
+// newDeletionPacer instantiates a new deletionPacer for use when deleting
+// obsolete files. The limiter passed in must be a singleton shared across this
+// pebble instance.
+func newDeletionPacer(limiter limiter, getInfo func() deletionPacerInfo) *deletionPacer {
+	return &deletionPacer{
+		limiter: limiter,
+		// If there are less than freeSpaceThreshold bytes of free space on
+		// disk, do not pace deletions at all.
+		freeSpaceThreshold: 16 << 30, // 16 GB
+		// If the ratio of obsolete bytes to live bytes is greater than
+		// obsoleteBytesMaxRatio, do not pace deletions at all.
+		obsoleteBytesMaxRatio: 0.20,
+
+		getInfo: getInfo,
+	}
+}
+
+// limit applies rate limiting if the current free disk space is more than
+// freeSpaceThreshold, and the ratio of obsolete to live bytes is less than
+// obsoleteBytesMaxRatio.
+func (p *deletionPacer) limit(amount uint64, info deletionPacerInfo) error {
+	obsoleteBytesRatio := float64(1.0)
+	if info.liveBytes > 0 {
+		obsoleteBytesRatio = float64(info.obsoleteBytes) / float64(info.liveBytes)
+	}
+	paceDeletions := info.freeBytes > p.freeSpaceThreshold &&
+		obsoleteBytesRatio < p.obsoleteBytesMaxRatio
+	if paceDeletions {
+		burst := p.limiter.Burst()
+		for amount > uint64(burst) {
+			d := p.limiter.DelayN(time.Now(), burst)
+			if d == rate.InfDuration {
+				return errors.Errorf("pacing failed")
+			}
+			time.Sleep(d)
+			amount -= uint64(burst)
+		}
+		d := p.limiter.DelayN(time.Now(), int(amount))
+		if d == rate.InfDuration {
+			return errors.Errorf("pacing failed")
+		}
+		time.Sleep(d)
+	} else {
+		burst := p.limiter.Burst()
+		for amount > uint64(burst) {
+			// AllowN will subtract burst if there are enough tokens available,
+			// else leave the tokens untouched. That is, we are making a
+			// best-effort to account for this activity in the limiter, but by
+			// ignoring the return value, we do the activity instantaneously
+			// anyway.
+			p.limiter.AllowN(time.Now(), burst)
+			amount -= uint64(burst)
+		}
+		p.limiter.AllowN(time.Now(), int(amount))
+	}
+	return nil
+}
+
+// maybeThrottle slows down a deletion of this file if it's faster than
+// opts.Experimental.MinDeletionRate.
+func (p *deletionPacer) maybeThrottle(bytesToDelete uint64) error {
+	return p.limit(bytesToDelete, p.getInfo())
 }
 
 type noopPacer struct{}

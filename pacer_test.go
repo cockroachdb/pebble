@@ -68,6 +68,7 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 				var bytesIterated uint64
 				var currentTotal uint64
 				var slowdownThreshold uint64
+				var freeBytes, liveBytes, obsoleteBytes uint64
 				if len(d.Input) > 0 {
 					for _, data := range strings.Split(d.Input, "\n") {
 						parts := strings.Split(data, ":")
@@ -91,6 +92,12 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 							dirtyBytes = varValue
 						case "slowdownThreshold":
 							slowdownThreshold = varValue
+						case "freeBytes":
+							freeBytes = varValue
+						case "liveBytes":
+							liveBytes = varValue
+						case "obsoleteBytes":
+							obsoleteBytes = varValue
 						default:
 							return fmt.Sprintf("unknown command: %s", varKey)
 						}
@@ -133,6 +140,22 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 					flushPacer.slowdownThreshold = slowdownThreshold
 
 					err := flushPacer.maybeThrottle(bytesIterated)
+					if err != nil {
+						return err.Error()
+					}
+
+					return mockLimiter.buf.String()
+				case "deletion":
+					getInfo := func() deletionPacerInfo {
+						return deletionPacerInfo{
+							freeBytes: freeBytes,
+							liveBytes: liveBytes,
+							obsoleteBytes: obsoleteBytes,
+						}
+					}
+					deletionPacer := newDeletionPacer(&mockLimiter, getInfo)
+					deletionPacer.freeSpaceThreshold = slowdownThreshold
+					err := deletionPacer.maybeThrottle(bytesIterated)
 					if err != nil {
 						return err.Error()
 					}

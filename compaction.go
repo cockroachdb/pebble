@@ -1166,6 +1166,22 @@ func (d *DB) getFlushPacerInfo() flushPacerInfo {
 	return pacerInfo
 }
 
+func (d *DB) getDeletionPacerInfo() deletionPacerInfo {
+	var pacerInfo deletionPacerInfo
+	// Call GetFreeSpace after every file deletion. This may seem inefficient,
+	// but in practice this was observed to take constant time, regardless of
+	// volume size used, at least on linux with ext4 and zfs. All invocations
+	// take 10 microseconds or less.
+	if space, err := d.opts.FS.GetFreeSpace(d.dirname); err == nil {
+		pacerInfo.freeBytes = space
+	}
+	d.mu.Lock()
+	pacerInfo.obsoleteBytes = d.mu.versions.metrics.Table.ObsoleteSize
+	pacerInfo.liveBytes = uint64(d.mu.versions.metrics.Total().Size)
+	d.mu.Unlock()
+	return pacerInfo
+}
+
 // maybeScheduleFlush schedules a flush if necessary.
 //
 // d.mu must be held when calling this.
@@ -1359,6 +1375,7 @@ func (d *DB) flush1() error {
 		if err != nil {
 			// TODO(peter): untested.
 			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
+			d.mu.versions.incrementObsoleteTablesLocked(pendingOutputs)
 		}
 	}
 
@@ -1754,6 +1771,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		if err != nil {
 			// TODO(peter): untested.
 			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
+			d.mu.versions.incrementObsoleteTablesLocked(pendingOutputs)
 		}
 	}
 
@@ -1792,7 +1810,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
 	jobID int, c *compaction, pacer pacer,
-) (ve *versionEdit, pendingOutputs []FileNum, retErr error) {
+) (ve *versionEdit, pendingOutputs []*fileMetadata, retErr error) {
 	// Check for a delete-only compaction. This can occur when wide range
 	// tombstones completely contain sstables.
 	if c.kind == compactionKindDeleteOnly {
@@ -1907,9 +1925,11 @@ func (d *DB) runCompaction(
 	writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level)
 
 	newOutput := func() error {
+		fileMeta := &fileMetadata{}
 		d.mu.Lock()
 		fileNum := d.mu.versions.getNextFileNum()
-		pendingOutputs = append(pendingOutputs, fileNum)
+		fileMeta.FileNum = fileNum
+		pendingOutputs = append(pendingOutputs, fileMeta)
 		d.mu.Unlock()
 
 		filename := base.MakeFilename(d.opts.FS, d.dirname, fileTypeTable, fileNum)
@@ -1940,12 +1960,10 @@ func (d *DB) runCompaction(
 		internalTableOpt := private.SSTableInternalTableOpt.(sstable.WriterOption)
 		tw = sstable.NewWriter(file, writerOpts, cacheOpts, internalTableOpt)
 
+		fileMeta.CreationTime = time.Now().Unix()
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
 			Level: c.outputLevel.level,
-			Meta: &fileMetadata{
-				FileNum:      fileNum,
-				CreationTime: time.Now().Unix(),
-			},
+			Meta:  fileMeta,
 		})
 		return nil
 	}
@@ -2352,7 +2370,9 @@ func (d *DB) runCompaction(
 // and adds those to the internal lists of obsolete files. Note that the files
 // are not actually deleted by this method. A subsequent call to
 // deleteObsoleteFiles must be performed. Must be not be called concurrently
-// with compactions and flushes.
+// with compactions and flushes. db.mu must be held when calling this function,
+// however as this function is expected to only be called during Open(), no
+// other operations should be contending on it just yet.
 func (d *DB) scanObsoleteFiles(list []string) {
 	if d.mu.compact.compactingCount > 0 || d.mu.compact.flushing {
 		panic("pebble: cannot scan obsolete files concurrently with compaction/flushing")
@@ -2364,7 +2384,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	manifestFileNum := d.mu.versions.manifestFileNum
 
 	var obsoleteLogs []FileNum
-	var obsoleteTables []FileNum
+	var obsoleteTables []*fileMetadata
 	var obsoleteManifests []FileNum
 	var obsoleteOptions []FileNum
 
@@ -2393,7 +2413,13 @@ func (d *DB) scanObsoleteFiles(list []string) {
 			if _, ok := liveFileNums[fileNum]; ok {
 				continue
 			}
-			obsoleteTables = append(obsoleteTables, fileNum)
+			fileMeta := &fileMetadata{
+				FileNum: fileNum,
+			}
+			if stat, err := d.opts.FS.Stat(filename); err == nil {
+				fileMeta.Size = uint64(stat.Size())
+			}
+			obsoleteTables = append(obsoleteTables, fileMeta)
 		default:
 			// Don't delete files we don't know about.
 			continue
@@ -2402,7 +2428,8 @@ func (d *DB) scanObsoleteFiles(list []string) {
 
 	d.mu.log.queue = merge(d.mu.log.queue, obsoleteLogs)
 	d.mu.versions.metrics.WAL.Files += int64(len(obsoleteLogs))
-	d.mu.versions.obsoleteTables = merge(d.mu.versions.obsoleteTables, obsoleteTables)
+	d.mu.versions.obsoleteTables = mergeFileMetas(d.mu.versions.obsoleteTables, obsoleteTables)
+	d.mu.versions.incrementObsoleteTablesLocked(obsoleteTables)
 	d.mu.versions.obsoleteManifests = merge(d.mu.versions.obsoleteManifests, obsoleteManifests)
 	d.mu.versions.obsoleteOptions = merge(d.mu.versions.obsoleteOptions, obsoleteOptions)
 }
@@ -2477,6 +2504,14 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	d.releaseCleaningTurn()
 }
 
+// obsoleteFile holds information about a file that needs to be deleted soon.
+type obsoleteFile struct {
+	dir      string
+	fileNum  base.FileNum
+	fileType fileType
+	fileSize uint64
+}
+
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) doDeleteObsoleteFiles(jobID int) {
@@ -2502,7 +2537,11 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		}
 	}
 
-	obsoleteTables = d.mu.versions.obsoleteTables
+	tableSizeMap := make(map[FileNum]uint64, len(d.mu.versions.obsoleteTables))
+	for _, table := range d.mu.versions.obsoleteTables {
+		tableSizeMap[table.FileNum] = table.Size
+		obsoleteTables = append(obsoleteTables, table.FileNum)
+	}
 	d.mu.versions.obsoleteTables = nil
 
 	obsoleteManifests := d.mu.versions.obsoleteManifests
@@ -2526,6 +2565,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		{fileTypeOptions, obsoleteOptions},
 	}
 	_, noRecycle := d.opts.Cleaner.(base.NeedsFileContents)
+	filesToDelete := make([]obsoleteFile, 0, len(files))
 	for _, f := range files {
 		// We sort to make the order of deletions deterministic, which is nice for
 		// tests.
@@ -2534,6 +2574,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		})
 		for _, fileNum := range f.obsolete {
 			dir := d.dirname
+			var fileSize uint64
 			switch f.fileType {
 			case fileTypeLog:
 				if !noRecycle && d.logRecycler.add(fileNum) {
@@ -2542,11 +2583,45 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 				dir = d.walDirname
 			case fileTypeTable:
 				d.tableCache.evict(fileNum)
+				fileSize = tableSizeMap[fileNum]
 			}
 
-			path := base.MakeFilename(d.opts.FS, dir, f.fileType, fileNum)
-			d.deleteObsoleteFile(f.fileType, jobID, path, fileNum)
+			filesToDelete = append(filesToDelete, obsoleteFile{
+				dir:      dir,
+				fileNum:  fileNum,
+				fileType: f.fileType,
+				fileSize: fileSize,
+			})
 		}
+	}
+	if len(filesToDelete) > 0 {
+		// Delete asynchronously if that could get held up in the pacer.
+		if d.opts.Experimental.MinDeletionRate > 0 {
+			go d.paceAndDeleteObsoleteFiles(jobID, filesToDelete)
+		} else {
+			d.paceAndDeleteObsoleteFiles(jobID, filesToDelete)
+		}
+	}
+}
+
+// Paces and eventually deletes the list of obsolete files passed in. db.mu
+// must NOT be held when calling this method.
+func (d *DB) paceAndDeleteObsoleteFiles(jobID int, files []obsoleteFile) {
+	pacer := (pacer)(nilPacer)
+	if d.opts.Experimental.MinDeletionRate > 0 {
+		pacer = newDeletionPacer(d.deletionLimiter, d.getDeletionPacerInfo)
+	}
+
+	for _, of := range files {
+		path := base.MakeFilename(d.opts.FS, of.dir, of.fileType, of.fileNum)
+		if of.fileType == fileTypeTable {
+			_ = pacer.maybeThrottle(of.fileSize)
+			d.mu.Lock()
+			d.mu.versions.metrics.Table.ObsoleteCount--
+			d.mu.versions.metrics.Table.ObsoleteSize -= of.fileSize
+			d.mu.Unlock()
+		}
+		d.deleteObsoleteFile(of.fileType, jobID, path, of.fileNum)
 	}
 }
 
@@ -2621,6 +2696,26 @@ func merge(a, b []FileNum) []FileNum {
 	n := 0
 	for i := 0; i < len(a); i++ {
 		if n == 0 || a[i] != a[n-1] {
+			a[n] = a[i]
+			n++
+		}
+	}
+	return a[:n]
+}
+
+func mergeFileMetas(a, b []*fileMetadata) []*fileMetadata {
+	if len(b) == 0 {
+		return a
+	}
+
+	a = append(a, b...)
+	sort.Slice(a, func(i, j int) bool {
+		return a[i].FileNum < a[j].FileNum
+	})
+
+	n := 0
+	for i := 0; i < len(a); i++ {
+		if n == 0 || a[i].FileNum != a[n-1].FileNum {
 			a[n] = a[i]
 			n++
 		}

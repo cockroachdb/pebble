@@ -25,7 +25,7 @@ func (lm *LevelMetadata) clone() LevelMetadata {
 	}
 }
 
-func (lm *LevelMetadata) release() (obsolete []base.FileNum) {
+func (lm *LevelMetadata) release() (obsolete []*FileMetadata) {
 	return lm.tree.release()
 }
 
