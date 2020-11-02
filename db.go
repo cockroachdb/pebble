@@ -228,6 +228,7 @@ type DB struct {
 
 	compactionLimiter limiter
 	flushLimiter      limiter
+	deletionLimiter   limiter
 
 	// The main mutex protecting internal DB state. This mutex encompasses many
 	// fields because those fields need to be accessed and updated atomically. In
