@@ -160,6 +160,11 @@ type Metrics struct {
 	}
 
 	Table struct {
+		// The number of bytes present in obsolete tables which are no longer
+		// referenced by the current DB state or any open iterators.
+		ObsoleteSize uint64
+		// The count of obsolete tables.
+		ObsoleteCount int64
 		// The number of bytes present in zombie tables which are no longer
 		// referenced by the current DB state but are still in use by an iterator.
 		ZombieSize uint64

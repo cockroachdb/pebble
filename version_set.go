@@ -77,8 +77,8 @@ type versionSet struct {
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
-	obsoleteFn        func(obsolete []FileNum)
-	obsoleteTables    []FileNum
+	obsoleteFn        func(obsolete []*manifest.FileMetadata)
+	obsoleteTables    []*manifest.FileMetadata
 	obsoleteManifests []FileNum
 	obsoleteOptions   []FileNum
 
@@ -646,16 +646,24 @@ func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 	}
 }
 
-func (vs *versionSet) addObsoleteLocked(obsolete []FileNum) {
-	for _, fileNum := range obsolete {
+func (vs *versionSet) addObsoleteLocked(obsolete []*manifest.FileMetadata) {
+	for _, fileMeta := range obsolete {
 		// Note that the obsolete tables are no longer zombie by the definition of
 		// zombie, but we leave them in the zombie tables map until they are
 		// deleted from disk.
-		if _, ok := vs.zombieTables[fileNum]; !ok {
-			vs.opts.Logger.Fatalf("MANIFEST obsolete table %s not marked as zombie", fileNum)
+		if _, ok := vs.zombieTables[fileMeta.FileNum]; !ok {
+			vs.opts.Logger.Fatalf("MANIFEST obsolete table %s not marked as zombie", fileMeta.FileNum)
 		}
 	}
 	vs.obsoleteTables = append(vs.obsoleteTables, obsolete...)
+	vs.incrementObsoleteTablesLocked(obsolete)
+}
+
+func (vs *versionSet) incrementObsoleteTablesLocked(obsolete []*manifest.FileMetadata) {
+	for _, fileMeta := range obsolete {
+		vs.metrics.Table.ObsoleteCount++
+		vs.metrics.Table.ObsoleteSize += fileMeta.Size
+	}
 }
 
 func newFileMetrics(newFiles []manifest.NewFileEntry) map[int]*LevelMetrics {
