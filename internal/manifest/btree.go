@@ -12,7 +12,6 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
 )
 
 // The Annotator type defined below is used by other packages to lazily
@@ -187,7 +186,7 @@ func (n *node) incRef() {
 // decRef releases a reference to the node. If requested, the method
 // will recurse into child nodes and decrease their refcounts as well.
 // When a node is released, its contained files are dereferenced.
-func (n *node) decRef(recursive bool, obsolete *[]base.FileNum) {
+func (n *node) decRef(recursive bool, obsolete *[]*FileMetadata) {
 	if atomic.AddInt32(&n.ref, -1) > 0 {
 		// Other references remain. Can't free.
 		return
@@ -204,7 +203,7 @@ func (n *node) decRef(recursive bool, obsolete *[]base.FileNum) {
 				if obsolete == nil {
 					panic(fmt.Sprintf("file metadata %s dereferenced to zero during tree mutation", f.FileNum))
 				}
-				*obsolete = append(*obsolete, f.FileNum)
+				*obsolete = append(*obsolete, f)
 			}
 		}
 		if !n.leaf {
@@ -642,8 +641,8 @@ type btree struct {
 
 // release dereferences and clears the root node of the btree, removing all
 // items from the btree. In doing so, it decrements contained file counts.
-// It returns a slice of file numbers of newly obsolete files, if any.
-func (t *btree) release() (obsolete []base.FileNum) {
+// It returns a slice of newly obsolete files, if any.
+func (t *btree) release() (obsolete []*FileMetadata) {
 	if t.root != nil {
 		t.root.decRef(true /* recursive */, &obsolete)
 		t.root = nil

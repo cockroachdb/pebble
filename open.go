@@ -113,6 +113,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.flushLimiter = rate.NewLimiter(
 		rate.Limit(d.opts.private.minFlushRate),
 		d.opts.private.minFlushRate)
+	d.deletionLimiter = rate.NewLimiter(
+		rate.Limit(d.opts.Experimental.MinDeletionRate),
+		d.opts.Experimental.MinDeletionRate)
 	d.mu.nextJobID = 1
 	d.mu.mem.nextSize = opts.MemTableSize
 	if d.mu.mem.nextSize > initialMemTableSize {
