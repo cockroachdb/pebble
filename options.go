@@ -320,6 +320,13 @@ type Options struct {
 		// deletion. Disk space cannot be reclaimed until the range deletion
 		// is flushed. No automatic flush occurs if zero.
 		DeleteRangeFlushDelay time.Duration
+
+		// MaxDeletionRate is the maximum number of bytes per second that would
+		// be deleted. This is used to slow down deletions when compactions
+		// finish up and clean up their obsolete files. Deleting lots of files
+		// at once can cause disk latency to go up on some SSDs, so this feature
+		// guards against that.
+		MaxDeletionRate int
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for

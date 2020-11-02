@@ -1166,6 +1166,14 @@ func (d *DB) getFlushPacerInfo() flushPacerInfo {
 	return pacerInfo
 }
 
+func (d *DB) getDeletionPacerInfo() deletionPacerInfo {
+	var pacerInfo deletionPacerInfo
+	if space, err := d.opts.FS.GetFreeSpace(d.dirname); err == nil {
+		pacerInfo.freeBytes = space
+	}
+	return pacerInfo
+}
+
 // maybeScheduleFlush schedules a flush if necessary.
 //
 // d.mu must be held when calling this.
@@ -2477,6 +2485,13 @@ func (d *DB) deleteObsoleteFiles(jobID int) {
 	d.releaseCleaningTurn()
 }
 
+// obsoleteFile holds information about a file that needs to be deleted soon.
+type obsoleteFile struct {
+	dir      string
+	fileNum  base.FileNum
+	fileType fileType
+}
+
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) doDeleteObsoleteFiles(jobID int) {
@@ -2526,6 +2541,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		{fileTypeOptions, obsoleteOptions},
 	}
 	_, noRecycle := d.opts.Cleaner.(base.NeedsFileContents)
+	filesToDelete := make([]obsoleteFile, 0, len(files))
 	for _, f := range files {
 		// We sort to make the order of deletions deterministic, which is nice for
 		// tests.
@@ -2544,9 +2560,37 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 				d.tableCache.evict(fileNum)
 			}
 
-			path := base.MakeFilename(d.opts.FS, dir, f.fileType, fileNum)
-			d.deleteObsoleteFile(f.fileType, jobID, path, fileNum)
+			filesToDelete = append(filesToDelete, obsoleteFile{
+				dir:      dir,
+				fileNum:  fileNum,
+				fileType: f.fileType,
+			})
 		}
+	}
+	if len(filesToDelete) > 0 {
+		// Delete asynchronously if that could get held up in the pacer.
+		if d.opts.Experimental.MaxDeletionRate > 0 {
+			go d.paceAndDeleteObsoleteFiles(jobID, filesToDelete)
+		} else {
+			d.paceAndDeleteObsoleteFiles(jobID, filesToDelete)
+		}
+	}
+}
+
+// Paces and eventually deletes the list of obsolete files passed in. db.mu
+// does not need to be held when calling this method.
+func (d *DB) paceAndDeleteObsoleteFiles(jobID int, files []obsoleteFile) {
+	pacer := (pacer)(nilPacer)
+	if d.opts.Experimental.MaxDeletionRate > 0 {
+		pacer = newDeletionPacer(d.deletionLimiter, d.getDeletionPacerInfo)
+	}
+
+	for _, of := range files {
+		path := base.MakeFilename(d.opts.FS, of.dir, of.fileType, of.fileNum)
+		if stat, err := d.opts.FS.Stat(path); err == nil {
+			_ = pacer.maybeThrottle(uint64(stat.Size()))
+		}
+		d.deleteObsoleteFile(of.fileType, jobID, path, of.fileNum)
 	}
 }
 

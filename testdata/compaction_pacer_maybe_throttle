@@ -244,3 +244,39 @@ currentTotal: 14
 slowdownThreshold: 10
 ----
 allow: 3
+
+init deletion
+burst: 10
+bytesIterated: 5
+slowdownThreshold: 10
+freeBytes: 100
+----
+wait: 5
+
+# As freeBytes > slowdownThreshold, all 50 bytes should be asked to wait.
+
+init deletion
+burst: 10
+bytesIterated: 50
+slowdownThreshold: 10
+freeBytes: 100
+----
+wait: 10
+wait: 10
+wait: 10
+wait: 10
+wait: 10
+
+# As freeBytes < slowdownThreshold, all 50 bytes should be allowed through.
+
+init deletion
+burst: 10
+bytesIterated: 50
+slowdownThreshold: 10
+freeBytes: 5
+----
+allow: 10
+allow: 10
+allow: 10
+allow: 10
+allow: 10

@@ -26,8 +26,8 @@ type pacer interface {
 	maybeThrottle(bytesIterated uint64) error
 }
 
-// internalPacer contains fields and methods common to both compactionPacer and
-// flushPacer.
+// internalPacer contains fields and methods common to compactionPacer,
+// deletionPacer and flushPacer.
 type internalPacer struct {
 	limiter limiter
 
@@ -35,12 +35,17 @@ type internalPacer struct {
 	prevBytesIterated     uint64
 	refreshBytesThreshold uint64
 	slowdownThreshold     uint64
+	thresholdIsMin        bool
 }
 
 // limit applies rate limiting if the current byte level is below the configured
 // threshold.
 func (p *internalPacer) limit(amount, currentLevel uint64) error {
-	if currentLevel <= p.slowdownThreshold {
+	thresholdCrossed := currentLevel <= p.slowdownThreshold
+	if p.thresholdIsMin {
+		thresholdCrossed = currentLevel >= p.slowdownThreshold
+	}
+	if thresholdCrossed {
 		burst := p.limiter.Burst()
 		for amount > uint64(burst) {
 			d := p.limiter.DelayN(time.Now(), burst)
@@ -239,6 +244,44 @@ func (p *flushPacer) maybeThrottle(bytesIterated uint64) error {
 	// writes. If writes come in faster than how fast the memtable can flush,
 	// flushing proceeds at maximum (unthrottled) speed.
 	return p.limit(flushAmount, dirtyBytes)
+}
+
+// deletionPacerInfo contains any info from the db necessary to make deletion
+// pacing decisions.
+type deletionPacerInfo struct {
+	freeBytes uint64
+}
+
+// deletionPacer rate limits deletions after a compaction finishes up. This
+// is necessary to prevent overloading the disk with too many deletions too
+// quickly after a large compaction. On some SSDs, disk performance can be
+// negatively impacted if too many blocks are deleted very quickly, so this
+// mechanism helps mitigate that.
+type deletionPacer struct {
+	internalPacer
+
+	getInfo func() deletionPacerInfo
+}
+
+// maybeThrottle slows down a deletion of this file if it's faster than
+// opts.Experimental.MaxDeletionRate.
+func (d *deletionPacer) maybeThrottle(bytesToDelete uint64) error {
+	return d.limit(bytesToDelete, d.getInfo().freeBytes)
+}
+
+// newDeletionPacer instantiates a new deletionPacer for use after a compaction.
+// The limiter passed in must be a singleton shared across this pebble instance.
+func newDeletionPacer(limiter limiter, getInfo func() deletionPacerInfo) *deletionPacer {
+	return &deletionPacer{
+		internalPacer: internalPacer{
+			limiter: limiter,
+			// If there are less than slowdownThreshold bytes of free space on
+			// disk, do not pace deletions at all.
+			slowdownThreshold: 16 << 30, // 16 GB
+			thresholdIsMin:    true,
+		},
+		getInfo: getInfo,
+	}
 }
 
 type noopPacer struct{}
