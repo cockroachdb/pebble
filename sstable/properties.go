@@ -142,6 +142,11 @@ type Properties struct {
 	Loaded map[uintptr]struct{}
 }
 
+// NumPointDeletions returns the number of point deletions in this table.
+func (p *Properties) NumPointDeletions() uint64 {
+	return p.NumDeletions - p.NumRangeDeletions
+}
+
 func (p *Properties) String() string {
 	var buf bytes.Buffer
 	v := reflect.ValueOf(*p)
