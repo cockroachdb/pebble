@@ -48,6 +48,9 @@ type TableStats struct {
 	// The number of point and range deletion entries in the table.
 	NumDeletions uint64
 	// Estimate of the total disk space that may be dropped by this table's
+	// point deletions by compacting them.
+	PointDeletionsBytesEstimate uint64
+	// Estimate of the total disk space that may be dropped by this table's
 	// range deletions by compacting them. This estimate is at data-block
 	// granularity and is not updated if compactions beneath the table reduce
 	// the amount of reclaimable disk space. It also does not account for

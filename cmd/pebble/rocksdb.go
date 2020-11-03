@@ -404,7 +404,7 @@ func (b crdbPebbleDBBatch) Set(key, value []byte, _ *pebble.WriteOptions) error 
 	return b.batch.Put(storage.MVCCKey{Key: userKey, Timestamp: ts}, value)
 }
 
-func (b crdbPebbleDBBatch) Delete(data []byte, _ *pebble.WriteOptions) error {
+func (b crdbPebbleDBBatch) Delete(key []byte, _ *pebble.WriteOptions) error {
 	userKey, _, ok := mvccSplitKey(key)
 	if !ok {
 		panic("mvccSplitKey failed")
