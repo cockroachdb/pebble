@@ -1389,6 +1389,7 @@ wait-pending-table-stats
 ----
 num-entries: 1
 num-deletions: 1
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
 wait-pending-table-stats
@@ -1396,6 +1397,7 @@ wait-pending-table-stats
 ----
 num-entries: 1
 num-deletions: 1
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 836
 
 wait-pending-table-stats
@@ -1403,6 +1405,7 @@ wait-pending-table-stats
 ----
 num-entries: 1
 num-deletions: 1
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 1672
 
 wait-pending-table-stats
@@ -1410,6 +1413,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 2
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 1672
 
 
@@ -1448,6 +1452,7 @@ wait-pending-table-stats
 ----
 num-entries: 4
 num-deletions: 0
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
 wait-pending-table-stats
@@ -1455,6 +1460,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 1
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 787
 
 wait-pending-table-stats
@@ -1462,6 +1468,7 @@ wait-pending-table-stats
 ----
 num-entries: 3
 num-deletions: 1
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 68
 
 wait-pending-table-stats
@@ -1469,6 +1476,7 @@ wait-pending-table-stats
 ----
 num-entries: 4
 num-deletions: 1
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 100
 
 # Multiple Range deletions in a table.
@@ -1503,6 +1511,7 @@ wait-pending-table-stats
 ----
 num-entries: 1
 num-deletions: 1
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 782
 
 wait-pending-table-stats
@@ -1510,6 +1519,7 @@ wait-pending-table-stats
 ----
 num-entries: 1
 num-deletions: 1
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 771
 
 wait-pending-table-stats
@@ -1517,4 +1527,5 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 2
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 1553

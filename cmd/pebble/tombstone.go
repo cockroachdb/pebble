@@ -5,12 +5,13 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/spf13/cobra"
 )
@@ -29,6 +30,22 @@ var tombstoneCmd = &cobra.Command{
 Run a customizable YCSB workload, alongside a single-writer, fixed-sized queue
 workload. This command is intended for evaluating compaction heuristics
 surrounding point tombstones.
+
+The queue workload writes a point tombstone with every operation. A compaction
+strategy that does not account for point tombstones may accumulate many
+uncompacted tombstones, causing steady growth of the disk space consumed by
+the queue keyspace.
+
+The --queue-values flag controls the distribution of the queue value sizes.
+Larger values are more likely to exhibit problematic point tombstone behavior
+on a database using a min-overlapping ratio heuristic because the compact
+point tombstones may overlap many tables in the next level.
+
+The --queue-size flag controls the fixed number of live keys in the queue. Low
+queue sizes may not exercise problematic tombstone behavior if queue sets and
+deletes get written to the same sstable. The large-valued sets can serve as a
+counterweight to the point tombstones, narrowing the keyrange of the sstable
+inflating its size relative to its overlap with the next level.
 	`,
 	Args: cobra.ExactArgs(1),
 	RunE: runTombstoneCmd,
@@ -57,10 +74,13 @@ func runTombstoneCmd(cmd *cobra.Command, args []string) error {
 
 	valueDist := ycsbConfig.values
 	y := newYcsb(weights, keyDist, batchDist, scanDist, valueDist)
-	q := queueTest()
+	q, queueOps := queueTest()
 
 	queueStart := []byte("queue-")
 	queueEnd := append(append([]byte{}, queueStart...), 0xFF)
+
+	var lastElapsed time.Duration
+	var lastQueueOps int64
 
 	var pdb pebbleDB
 	runTest(args[0], test{
@@ -71,13 +91,36 @@ func runTombstoneCmd(cmd *cobra.Command, args []string) error {
 		},
 		tick: func(elapsed time.Duration, i int) {
 			if i%20 == 0 {
-				fmt.Println("________elapsed______queue_size")
+				fmt.Println("                                             queue                         ycsb")
+				fmt.Println("________elapsed______queue_size__ops/sec(inst)___ops/sec(cum)__ops/sec(inst)___ops/sec(cum)")
 			}
+
+			curQueueOps := atomic.LoadInt64(queueOps)
+			dur := elapsed - lastElapsed
+			queueOpsPerSec := float64(curQueueOps-lastQueueOps) / dur.Seconds()
+			queueCumOpsPerSec := float64(curQueueOps) / elapsed.Seconds()
+
+			lastQueueOps = curQueueOps
+			lastElapsed = elapsed
+
+			var ycsbOpsPerSec, ycsbCumOpsPerSec float64
+			y.reg.Tick(func(tick histogramTick) {
+				h := tick.Hist
+				ycsbOpsPerSec = float64(h.TotalCount()) / tick.Elapsed.Seconds()
+				ycsbCumOpsPerSec = float64(tick.Cumulative.TotalCount()) / elapsed.Seconds()
+			})
+
 			queueSize, err := pdb.d.EstimateDiskUsage(queueStart, queueEnd)
 			if err != nil {
 				log.Fatal(err)
 			}
-			fmt.Printf("%15s %15s\n", time.Duration(elapsed.Seconds()+0.5)*time.Second, humanize.Uint64(queueSize))
+			fmt.Printf("%15s %15s %14.1f %14.1f %14.1f %14.1f\n",
+				time.Duration(elapsed.Seconds()+0.5)*time.Second,
+				humanize.Uint64(queueSize),
+				queueOpsPerSec,
+				queueCumOpsPerSec,
+				ycsbOpsPerSec,
+				ycsbCumOpsPerSec)
 		},
 		done: func(elapsed time.Duration) {
 			fmt.Println("________elapsed______queue_size")

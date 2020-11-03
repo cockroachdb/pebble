@@ -72,6 +72,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 0
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
 build ext1
@@ -341,6 +342,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 2
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 1666
 
 # A set operation takes precedence over a range deletion at the same

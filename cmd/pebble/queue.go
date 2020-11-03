@@ -32,9 +32,9 @@ func initQueue(cmd *cobra.Command) {
 		"queue value size distribution [{zipf,uniform}:]min[-max][/<target-compression>]")
 }
 
-func queueTest() test {
+func queueTest() (test, *int64) {
+	ops := new(int64) // atomic
 	var (
-		ops         int64 // atomic
 		lastOps     int64
 		lastElapsed time.Duration
 	)
@@ -66,7 +66,7 @@ func queueTest() test {
 				for i := queueConfig.size; ; i++ {
 					idx := i % queueConfig.size
 
-					// Delete the tail.
+					// Delete the head.
 					b := d.NewBatch()
 					if err := b.Delete(queue[idx], pebble.Sync); err != nil {
 						log.Fatal(err)
@@ -77,7 +77,7 @@ func queueTest() test {
 					_ = b.Close()
 					wait(limiter)
 
-					// Write a new head.
+					// Append to the tail.
 					b = d.NewBatch()
 					queue[idx] = mvccEncode(queue[idx][:0], encodeUint32Ascending([]byte("queue-"), uint32(i)), uint64(i+1), 0)
 					value = queueConfig.values.Bytes(rng, value)
@@ -87,7 +87,7 @@ func queueTest() test {
 					}
 					_ = b.Close()
 					wait(limiter)
-					atomic.AddInt64(&ops, 1)
+					atomic.AddInt64(ops, 1)
 				}
 			}()
 		},
@@ -96,7 +96,7 @@ func queueTest() test {
 				fmt.Println("Queue___elapsed_______ops/sec")
 			}
 
-			curOps := atomic.LoadInt64(&ops)
+			curOps := atomic.LoadInt64(ops)
 			dur := elapsed - lastElapsed
 			fmt.Printf("%15s %13.1f\n",
 				time.Duration(elapsed.Seconds()+0.5)*time.Second,
@@ -106,11 +106,11 @@ func queueTest() test {
 			lastElapsed = elapsed
 		},
 		done: func(elapsed time.Duration) {
-			curOps := atomic.LoadInt64(&ops)
+			curOps := atomic.LoadInt64(ops)
 			fmt.Println("\nQueue___elapsed___ops/sec(cum)")
 			fmt.Printf("%13.1fs %14.1f\n\n",
 				elapsed.Seconds(),
 				float64(curOps)/elapsed.Seconds())
 		},
-	}
+	}, ops
 }

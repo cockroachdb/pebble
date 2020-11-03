@@ -311,7 +311,7 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(tw, "records\t%d\n", r.Properties.NumEntries)
 		fmt.Fprintf(tw, "  set\t%d\n", r.Properties.NumEntries-
 			(r.Properties.NumDeletions+r.Properties.NumMergeOperands))
-		fmt.Fprintf(tw, "  delete\t%d\n", r.Properties.NumDeletions-r.Properties.NumRangeDeletions)
+		fmt.Fprintf(tw, "  delete\t%d\n", r.Properties.NumPointDeletions())
 		fmt.Fprintf(tw, "  range-delete\t%d\n", r.Properties.NumRangeDeletions)
 		fmt.Fprintf(tw, "  merge\t%d\n", r.Properties.NumMergeOperands)
 		fmt.Fprintf(tw, "  global-seq-num\t%d\n", r.Properties.GlobalSeqNum)

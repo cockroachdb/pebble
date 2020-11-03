@@ -1531,7 +1531,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 		})
 }
 
-func TestCompactionTombstoneElisionOnly(t *testing.T) {
+func TestCompactionTombstones(t *testing.T) {
 	var d *DB
 	var compactInfo *CompactionInfo // protected by d.mu
 
@@ -1551,7 +1551,7 @@ func TestCompactionTombstoneElisionOnly(t *testing.T) {
 		return s
 	}
 
-	datadriven.RunTest(t, "testdata/compaction_tombstone_elision_only",
+	datadriven.RunTest(t, "testdata/compaction_tombstones",
 		func(td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "define":
