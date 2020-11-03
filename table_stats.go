@@ -253,10 +253,27 @@ func (d *DB) loadTableStats(
 	err := d.tableCache.withReader(meta, func(r *sstable.Reader) (err error) {
 		stats.NumEntries = r.Properties.NumEntries
 		stats.NumDeletions = r.Properties.NumDeletions
+		numPointDels := r.Properties.NumDeletions - r.Properties.NumRangeDeletions
+		if numPointDels > 0 {
+			// TODO(jackson): If the file has a wide keyspace, the average
+			// value size beneath the entire file might not be representative
+			// of the size of the keys beneath the point tombstones.
+			// We could write the ranges of 'clusters' of point tombstones to
+			// a sstable property and call averageValueSizeBeneath for each of
+			// these narrower ranges to improve the estimate.
+
+			avgKeySize := r.Properties.RawKeySize / r.Properties.NumEntries
+			avgValSize, err := d.averageValueSizeBeneath(v, level, meta)
+			if err != nil {
+				return err
+			}
+			stats.PointDeletionsBytesEstimate = numPointDels*avgKeySize +
+				numPointDels*(avgKeySize+avgValSize)/2
+		}
+
 		if r.Properties.NumRangeDeletions == 0 {
 			return nil
 		}
-
 		// We iterate over the defragmented range tombstones, which ensures
 		// we don't double count ranges deleted at different sequence numbers.
 		// Also, merging abutting tombstones reduces the number of calls to
@@ -320,6 +337,32 @@ func (d *DB) loadTableStats(
 	}
 	stats.Valid = true
 	return stats, compactionHints, nil
+}
+
+func (d *DB) averageValueSizeBeneath(
+	v *version, level int, meta *fileMetadata,
+) (avgValueSize uint64, err error) {
+	// Find all files in lower levels that overlap with meta,
+	// summing their value sizes and entry counts.
+	var valSum, entryCount uint64
+	for l := level + 1; l < numLevels; l++ {
+		overlaps := v.Overlaps(l, d.cmp, meta.Smallest.UserKey, meta.Largest.UserKey)
+		iter := overlaps.Iter()
+		for file := iter.First(); file != nil; file = iter.Next() {
+			err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
+				entryCount += r.Properties.NumEntries
+				valSum += r.Properties.RawValueSize
+				return nil
+			})
+			if err != nil {
+				return 0, err
+			}
+		}
+	}
+	if entryCount == 0 {
+		return 0, nil
+	}
+	return valSum / entryCount, nil
 }
 
 func (d *DB) estimateSizeBeneath(
@@ -437,10 +480,38 @@ func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) 
 	if props.NumRangeDeletions != 0 {
 		return false
 	}
+
+	// If a table is more than 25% point deletions, don't calculate the
+	// PointDeletionsBytesEstimate statistic using our limited knowledge. The
+	// table stats collector can populate the stats and calculate an average
+	// of value size of all the tables beneath the table in the LSM, which
+	// will be more accurate.
+	if props.NumDeletions*4 > props.NumEntries {
+		return false
+	}
+
+	// Estimate the potential space to reclaim using the table's own
+	// properties. There may or may not be keys covered by any individual
+	// point tombstone. If not, compacting the point tombstone into L6 will at
+	// least allow us to drop the point deletion key and will reclaim the key
+	// bytes. If there are covered key(s), we also get to drop key and value
+	// bytes for each covered key. Estimate assuming that each point tombstone
+	// on average covers 0.5 keys.
+	var pointEstimate uint64
+	if props.NumEntries > 0 {
+		// NB: props.NumRangeDeletions == 0 (checked above), so all of
+		// NumDeletions are point deletions.
+		avgKeySize := props.RawKeySize / props.NumEntries
+		avgValSize := props.RawValueSize / props.NumEntries
+		pointEstimate = props.NumDeletions*avgKeySize +
+			props.NumDeletions*(avgKeySize+avgValSize)/2
+	}
+
 	meta.Stats = manifest.TableStats{
 		Valid:                       true,
 		NumEntries:                  props.NumEntries,
 		NumDeletions:                props.NumDeletions,
+		PointDeletionsBytesEstimate: pointEstimate,
 		RangeDeletionsBytesEstimate: 0,
 	}
 	return true
