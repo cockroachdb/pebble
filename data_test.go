@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 
@@ -69,17 +70,17 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator) string {
 		switch parts[0] {
 		case "seek-ge":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-ge <key>\n")
+				return "seek-ge <key>\n"
 			}
 			valid = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
 		case "seek-prefix-ge":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-prefix-ge <key>\n")
+				return "seek-prefix-ge <key>\n"
 			}
 			valid = iter.SeekPrefixGE([]byte(strings.TrimSpace(parts[1])))
 		case "seek-lt":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-lt <key>\n")
+				return "seek-lt <key>\n"
 			}
 			valid = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
 		case "first":
@@ -92,7 +93,7 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator) string {
 			valid = iter.Prev()
 		case "set-bounds":
 			if len(parts) <= 1 || len(parts) > 3 {
-				return fmt.Sprintf("set-bounds lower=<lower> upper=<upper>\n")
+				return "set-bounds lower=<lower> upper=<upper>\n"
 			}
 			var lower []byte
 			var upper []byte
@@ -145,19 +146,19 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 		switch parts[0] {
 		case "seek-ge":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-ge <key>\n")
+				return "seek-ge <key>\n"
 			}
 			prefix = nil
 			key, value = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
 		case "seek-prefix-ge":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-prefix-ge <key>\n")
+				return "seek-prefix-ge <key>\n"
 			}
 			prefix = []byte(strings.TrimSpace(parts[1]))
 			key, value = iter.SeekPrefixGE(prefix, prefix /* key */)
 		case "seek-lt":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-lt <key>\n")
+				return "seek-lt <key>\n"
 			}
 			prefix = nil
 			key, value = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
@@ -173,7 +174,7 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 			key, value = iter.Prev()
 		case "set-bounds":
 			if len(parts) <= 1 || len(parts) > 3 {
-				return fmt.Sprintf("set-bounds lower=<lower> upper=<upper>\n")
+				return "set-bounds lower=<lower> upper=<upper>\n"
 			}
 			var lower []byte
 			var upper []byte
@@ -330,6 +331,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	}
 
 	var snapshots []uint64
+	var levelMaxBytes map[int]int64
 	for _, arg := range td.CmdArgs {
 		switch arg.Key {
 		case "target-file-sizes":
@@ -352,6 +354,30 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				if i > 0 && snapshots[i] < snapshots[i-1] {
 					return nil, errors.New("Snapshots must be in ascending order")
 				}
+			}
+		case "level-max-bytes":
+			levelMaxBytes = map[int]int64{}
+			for i := range arg.Vals {
+				j := strings.Index(arg.Vals[i], ":")
+				levelStr := strings.TrimSpace(arg.Vals[i][:j])
+				level, err := strconv.Atoi(levelStr[1:])
+				if err != nil {
+					return nil, err
+				}
+				size, err := strconv.ParseInt(strings.TrimSpace(arg.Vals[i][j+1:]), 10, 64)
+				if err != nil {
+					return nil, err
+				}
+				levelMaxBytes[level] = size
+			}
+		case "auto-compactions":
+			switch arg.Vals[0] {
+			case "off":
+				opts.private.disableAutomaticCompactions = true
+			case "on":
+				opts.private.disableAutomaticCompactions = false
+			default:
+				return nil, errors.Errorf("Unrecognized %q %q arg value: %q", td.Cmd, arg.Key, arg.Vals[0])
 			}
 		default:
 			return nil, errors.Errorf("%s: unknown arg: %s", td.Cmd, arg.Key)
@@ -470,7 +496,15 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				continue
 			}
 			key := base.ParseInternalKey(data[:i])
-			value := []byte(data[i+1:])
+			valueStr := data[i+1:]
+			value := []byte(valueStr)
+			if valueStr == "<largeval>" {
+				value = make([]byte, 4096)
+				rnd := rand.New(rand.NewSource(int64(key.SeqNum())))
+				if _, err := rnd.Read(value[:]); err != nil {
+					return nil, err
+				}
+			}
 			if err := mem.set(key, value); err != nil {
 				return nil, err
 			}
@@ -492,6 +526,12 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		}
 		d.updateReadStateLocked(nil)
 		d.updateTableStatsLocked(ve.NewFiles)
+	}
+
+	if levelMaxBytes != nil {
+		for l, maxBytes := range levelMaxBytes {
+			d.mu.versions.picker.(*compactionPickerByScore).levelMaxBytes[l] = maxBytes
+		}
 	}
 
 	return d, nil
@@ -521,6 +561,7 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 			var b bytes.Buffer
 			fmt.Fprintf(&b, "num-entries: %d\n", f.Stats.NumEntries)
 			fmt.Fprintf(&b, "num-deletions: %d\n", f.Stats.NumDeletions)
+			fmt.Fprintf(&b, "point-deletions-bytes-estimate: %d\n", f.Stats.PointDeletionsBytesEstimate)
 			fmt.Fprintf(&b, "range-deletions-bytes-estimate: %d\n", f.Stats.RangeDeletionsBytesEstimate)
 			return b.String()
 		}
@@ -537,7 +578,7 @@ func (d *DB) waitTableStats() {
 }
 
 func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
-	var paths []string
+	paths := make([]string, 0, len(td.CmdArgs))
 	for _, arg := range td.CmdArgs {
 		paths = append(paths, arg.String())
 	}
