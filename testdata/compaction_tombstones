@@ -13,6 +13,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 2
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
 maybe-compact
@@ -33,6 +34,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 2
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
 maybe-compact
@@ -52,6 +54,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 1
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 26
 
 maybe-compact
@@ -73,6 +76,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 1
+point-deletions-bytes-estimate: 18
 range-deletions-bytes-estimate: 0
 
 maybe-compact
@@ -110,6 +114,7 @@ wait-pending-table-stats
 ----
 num-entries: 6
 num-deletions: 2
+point-deletions-bytes-estimate: 18
 range-deletions-bytes-estimate: 76
 
 maybe-compact
@@ -141,9 +146,35 @@ wait-pending-table-stats
 ----
 num-entries: 11
 num-deletions: 1
+point-deletions-bytes-estimate: 18
 range-deletions-bytes-estimate: 0
 
 close-snapshot
 15
 ----
 (none)
+
+define level-max-bytes=(L5 : 1000) auto-compactions=off
+L5
+a.DEL.101: b.DEL.102: c.DEL.103:
+L5
+m.SET.107:<largeval>
+L6
+a.SET.001:<largeval> b.SET.002:<largeval> c.SET.003:<largeval>
+L6
+f.SET.007:<largeval> x.SET.008:<largeval> z.SET.009:<largeval>
+----
+5:
+  000004:[a#101,DEL-c#103,DEL]
+  000005:[m#107,SET-m#107,SET]
+6:
+  000006:[a#1,SET-c#3,SET]
+  000007:[f#7,SET-z#9,SET]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 3
+num-deletions: 3
+point-deletions-bytes-estimate: 12342
+range-deletions-bytes-estimate: 0

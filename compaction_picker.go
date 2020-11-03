@@ -407,7 +407,8 @@ type candidateLevelInfo struct {
 func compensatedSize(f *fileMetadata) uint64 {
 	sz := f.Size
 	// Add in the estimate of disk space that may be reclaimed by compacting
-	// the file's range tombstones.
+	// the file's tombstones.
+	sz += f.Stats.PointDeletionsBytesEstimate
 	sz += f.Stats.RangeDeletionsBytesEstimate
 	return sz
 }

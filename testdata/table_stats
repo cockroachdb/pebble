@@ -1,24 +1,26 @@
 batch
 set a 1
 set b 2
+del c
 ----
 
 flush
 ----
 0.0:
-  000005:[a#1,SET-b#2,SET]
+  000005:[a#1,SET-c#3,DEL]
 
 wait-pending-table-stats
 000005
 ----
-num-entries: 2
-num-deletions: 0
+num-entries: 3
+num-deletions: 1
+point-deletions-bytes-estimate: 18
 range-deletions-bytes-estimate: 0
 
 compact a-c
 ----
 6:
-  000005:[a-b]
+  000005:[a-c]
 
 batch
 del-range a c
@@ -27,16 +29,17 @@ del-range a c
 flush
 ----
 0.0:
-  000007:[a#3,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000007:[a#4,RANGEDEL-c#72057594037927935,RANGEDEL]
 6:
-  000005:[a#1,SET-b#2,SET]
+  000005:[a#1,SET-c#3,DEL]
 
 wait-pending-table-stats
 000007
 ----
 num-entries: 1
 num-deletions: 1
-range-deletions-bytes-estimate: 784
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 796
 
 reopen
 ----
@@ -53,7 +56,8 @@ wait-pending-table-stats
 ----
 num-entries: 1
 num-deletions: 1
-range-deletions-bytes-estimate: 784
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 796
 
 compact a-c
 ----
@@ -74,7 +78,7 @@ set b 2
 flush
 ----
 0.0:
-  000012:[a#4,SET-b#5,SET]
+  000012:[a#5,SET-b#6,SET]
 
 compact a-c
 ----
@@ -89,6 +93,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 0
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
 # Test a file that is deleted by a compaction before its table stats are
@@ -104,9 +109,9 @@ del-range a c
 flush
 ----
 0.0:
-  000014:[a#6,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000014:[a#7,RANGEDEL-c#72057594037927935,RANGEDEL]
 6:
-  000012:[a#4,SET-b#5,SET]
+  000012:[a#5,SET-b#6,SET]
 
 compact a-c
 ----
@@ -170,6 +175,7 @@ wait-pending-table-stats
 ----
 num-entries: 1
 num-deletions: 1
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 1542
 
 wait-pending-table-stats
@@ -177,6 +183,7 @@ wait-pending-table-stats
 ----
 num-entries: 1
 num-deletions: 1
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 1542
 
 define snapshots=(10)
@@ -191,4 +198,5 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 1
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 26
