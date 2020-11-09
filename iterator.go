@@ -70,7 +70,15 @@ type Iterator struct {
 	pos         iterPos
 	alloc       *iterAlloc
 	prefix      []byte
+	dir         iterDirection
 }
+
+type iterDirection int
+
+const (
+	forwardDirection iterDirection = 0
+	reverseDirection iterDirection = 1
+)
 
 func (i *Iterator) findNextEntry() bool {
 	i.valid = false
@@ -229,6 +237,7 @@ func (i *Iterator) findPrevEntry() bool {
 		}
 	}
 
+	// i.iterKey == nil, so broke out of the preceding loop.
 	if i.valid {
 		i.pos = iterPosPrev
 		if valueMerger != nil {
@@ -313,6 +322,7 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 func (i *Iterator) SeekGE(key []byte) bool {
 	i.err = nil // clear cached iteration error
 	i.prefix = nil
+	i.dir = forwardDirection
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
 		key = lowerBound
 	} else if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
@@ -368,6 +378,7 @@ func (i *Iterator) SeekGE(key []byte) bool {
 // See Example_prefixiteration for a working example.
 func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	i.err = nil // clear cached iteration error
+	i.dir = forwardDirection
 
 	if i.split == nil {
 		panic("pebble: split must be provided for SeekPrefixGE")
@@ -403,6 +414,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 func (i *Iterator) SeekLT(key []byte) bool {
 	i.err = nil // clear cached iteration error
 	i.prefix = nil
+	i.dir = reverseDirection
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
 		key = upperBound
 	} else if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
@@ -418,6 +430,7 @@ func (i *Iterator) SeekLT(key []byte) bool {
 func (i *Iterator) First() bool {
 	i.err = nil // clear cached iteration error
 	i.prefix = nil
+	i.dir = forwardDirection
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound)
 	} else {
@@ -431,6 +444,7 @@ func (i *Iterator) First() bool {
 func (i *Iterator) Last() bool {
 	i.err = nil // clear cached iteration error
 	i.prefix = nil
+	i.dir = reverseDirection
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekLT(upperBound)
 	} else {
@@ -447,12 +461,35 @@ func (i *Iterator) Next() bool {
 	}
 	switch i.pos {
 	case iterPosCur:
-		i.nextUserKey()
+		if i.dir == forwardDirection {
+			i.nextUserKey()
+		} else {
+			// Switching directions.
+			// Unless the iterator was exhausted, reverse iteration needs to
+			// position the iterator at iterPosPrev.
+			if i.iterKey != nil {
+				i.err = errors.New("switching from reverse to forward but iter is not at prev")
+				i.valid = false
+				return false
+			}
+			// We're positioned before the first key. Need to reposition to point to
+			// the first key.
+			if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
+				i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound)
+			} else {
+				i.iterKey, i.iterValue = i.iter.First()
+			}
+		}
 	case iterPosPrev:
 		// The underlying iterator is pointed to the previous key (this can only
 		// happen when switching iteration directions). We set i.valid to false
 		// here to force the calls to nextUserKey to save the current key i.iter is
 		// pointing at in order to determine when the next user-key is reached.
+		if i.dir == forwardDirection {
+			i.err = errors.New("iterating forward but iter is at prev")
+			i.valid = false
+			return false
+		}
 		i.valid = false
 		if i.iterKey == nil {
 			// We're positioned before the first key. Need to reposition to point to
@@ -467,7 +504,13 @@ func (i *Iterator) Next() bool {
 		}
 		i.nextUserKey()
 	case iterPosNext:
+		if i.dir == reverseDirection {
+			i.err = errors.New("iterating in reverse but iter is at next")
+			i.valid = false
+			return false
+		}
 	}
+	i.dir = forwardDirection
 	return i.findNextEntry()
 }
 
@@ -483,12 +526,32 @@ func (i *Iterator) Prev() bool {
 	}
 	switch i.pos {
 	case iterPosCur:
-		i.prevUserKey()
+		if i.dir == reverseDirection {
+			i.prevUserKey()
+		}
+		// Else switching directions, and will handle this below.
 	case iterPosNext:
 		// The underlying iterator is pointed to the next key (this can only happen
-		// when switching iteration directions). We set i.valid to false here to
-		// force the calls to prevUserKey to save the current key i.iter is
-		// pointing at in order to determine when the prev user-key is reached.
+		// when switching iteration directions).
+		if i.dir == reverseDirection {
+			i.err = errors.New("iterating in reverse but iter is at next")
+			i.valid = false
+			return false
+		}
+		// Switching directions, and will handle this below.
+	case iterPosPrev:
+		if i.dir == forwardDirection {
+			i.err = errors.New("iterating forward but iter is at prev")
+			i.valid = false
+			return false
+		}
+	}
+	if i.dir == forwardDirection {
+		stepAgain := i.pos == iterPosNext
+		// Switching direction.
+		// We set i.valid to false here to force the calls to prevUserKey to
+		// save the current key i.iter is pointing at in order to determine
+		// when the prev user-key is reached.
 		i.valid = false
 		if i.iterKey == nil {
 			// We're positioned after the last key. Need to reposition to point to
@@ -501,9 +564,11 @@ func (i *Iterator) Prev() bool {
 		} else {
 			i.prevUserKey()
 		}
-		i.prevUserKey()
-	case iterPosPrev:
+		if stepAgain {
+			i.prevUserKey()
+		}
 	}
+	i.dir = reverseDirection
 	return i.findPrevEntry()
 }
 

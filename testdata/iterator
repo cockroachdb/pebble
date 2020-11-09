@@ -9,7 +9,7 @@ prev
 ----
 a:b
 .
-.
+a:b
 
 iter seq=2
 seek-ge b
@@ -34,7 +34,7 @@ prev
 ----
 a:b
 .
-.
+a:b
 
 iter seq=3
 seek-ge a
@@ -43,7 +43,7 @@ prev
 ----
 a:c
 .
-.
+a:c
 
 iter seq=2
 seek-prefix-ge a
@@ -93,7 +93,7 @@ next
 ----
 a:b
 .
-.
+a:b
 
 iter seq=3
 seek-prefix-ge a
@@ -185,7 +185,7 @@ next
 ----
 a:a
 .
-.
+a:a
 
 iter seq=4
 seek-lt c
@@ -196,7 +196,7 @@ next
 b:b
 a:a
 .
-.
+a:a
 
 
 iter seq=4
@@ -210,7 +210,7 @@ c:c
 b:b
 a:a
 .
-.
+a:a
 
 iter seq=4
 seek-prefix-ge a
@@ -253,7 +253,7 @@ prev
 ----
 a:b
 .
-.
+a:b
 
 iter seq=2
 seek-ge b
@@ -272,7 +272,7 @@ next
 ----
 a:b
 .
-.
+a:b
 
 iter seq=2
 seek-lt c
@@ -281,7 +281,7 @@ next
 ----
 a:b
 .
-.
+a:b
 
 iter seq=2
 seek-prefix-ge a
@@ -472,7 +472,7 @@ prev
 a:bcd
 b:ab
 .
-.
+b:ab
 
 iter seq=3
 seek-ge a
@@ -497,7 +497,7 @@ next
 b:ab
 a:bcd
 .
-.
+a:bcd
 
 iter seq=3
 seek-lt c
@@ -951,6 +951,9 @@ last
 .
 a:a
 
+# The prev call after "set-bounds upper=c" will assume that the iterator
+# is exhausted due to having stepped up to c. Which means prev should step
+# back to below c, hence returning b.
 iter seq=2
 last
 next
@@ -960,8 +963,11 @@ prev
 d:d
 .
 .
-.
+b:b
 
+# The next call after "set-bounds lower=b" will assume that the iterator
+# is exhausted due to having stepped below b. Which means next should step
+# up to b (or higher), hence returning b.
 iter seq=2
 first
 prev
@@ -971,7 +977,7 @@ next
 a:a
 .
 .
-.
+b:b
 
 iter seq=2
 set-bounds lower=b
