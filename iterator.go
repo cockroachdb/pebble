@@ -12,12 +12,18 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
+// iterPos describes the state of the internal iterator, in terms of whether it is
+// at the position returned to the user (cur), one ahead of the position returned
+// (next for forward iteration and prev for reverse iteration). The cur position
+// is split into two states, for forward and reverse iteration, since we need to
+// differentiate for switching directions.
 type iterPos int8
 
 const (
-	iterPosCur  iterPos = 0
-	iterPosNext iterPos = 1
-	iterPosPrev iterPos = -1
+	iterPosCurForward iterPos = 0
+	iterPosNext       iterPos = 1
+	iterPosPrev       iterPos = -1
+	iterPosCurReverse iterPos = -2
 )
 
 var errReversePrefixIteration = errors.New("pebble: unsupported reverse prefix iteration")
@@ -74,7 +80,7 @@ type Iterator struct {
 
 func (i *Iterator) findNextEntry() bool {
 	i.valid = false
-	i.pos = iterPosCur
+	i.pos = iterPosCurForward
 
 	// Close the closer for the current value if one was open.
 	if i.valueCloser != nil {
@@ -149,7 +155,7 @@ func (i *Iterator) nextUserKey() {
 
 func (i *Iterator) findPrevEntry() bool {
 	i.valid = false
-	i.pos = iterPosCur
+	i.pos = iterPosCurReverse
 
 	// Close the closer for the current value if one was open.
 	if i.valueCloser != nil {
@@ -229,6 +235,7 @@ func (i *Iterator) findPrevEntry() bool {
 		}
 	}
 
+	// i.iterKey == nil, so broke out of the preceding loop.
 	if i.valid {
 		i.pos = iterPosPrev
 		if valueMerger != nil {
@@ -446,8 +453,24 @@ func (i *Iterator) Next() bool {
 		return false
 	}
 	switch i.pos {
-	case iterPosCur:
+	case iterPosCurForward:
 		i.nextUserKey()
+	case iterPosCurReverse:
+		// Switching directions.
+		// Unless the iterator was exhausted, reverse iteration needs to
+		// position the iterator at iterPosPrev.
+		if i.iterKey != nil {
+			i.err = errors.New("switching from reverse to forward but iter is not at prev")
+			i.valid = false
+			return false
+		}
+		// We're positioned before the first key. Need to reposition to point to
+		// the first key.
+		if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
+			i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound)
+		} else {
+			i.iterKey, i.iterValue = i.iter.First()
+		}
 	case iterPosPrev:
 		// The underlying iterator is pointed to the previous key (this can only
 		// happen when switching iteration directions). We set i.valid to false
@@ -482,13 +505,21 @@ func (i *Iterator) Prev() bool {
 		return false
 	}
 	switch i.pos {
-	case iterPosCur:
+	case iterPosCurForward:
+		// Switching directions, and will handle this below.
+	case iterPosCurReverse:
 		i.prevUserKey()
 	case iterPosNext:
 		// The underlying iterator is pointed to the next key (this can only happen
-		// when switching iteration directions). We set i.valid to false here to
-		// force the calls to prevUserKey to save the current key i.iter is
-		// pointing at in order to determine when the prev user-key is reached.
+		// when switching iteration directions). We will handle this below.
+	case iterPosPrev:
+	}
+	if i.pos == iterPosCurForward || i.pos == iterPosNext {
+		stepAgain := i.pos == iterPosNext
+		// Switching direction.
+		// We set i.valid to false here to force the calls to prevUserKey to
+		// save the current key i.iter is pointing at in order to determine
+		// when the prev user-key is reached.
 		i.valid = false
 		if i.iterKey == nil {
 			// We're positioned after the last key. Need to reposition to point to
@@ -501,8 +532,9 @@ func (i *Iterator) Prev() bool {
 		} else {
 			i.prevUserKey()
 		}
-		i.prevUserKey()
-	case iterPosPrev:
+		if stepAgain {
+			i.prevUserKey()
+		}
 	}
 	return i.findPrevEntry()
 }
@@ -583,7 +615,16 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 	i.prefix = nil
 	i.iterKey = nil
 	i.iterValue = nil
-	i.pos = iterPosCur
+	// This switch statement isn't necessary for correctness since callers
+	// should call a repositioning method. We could have arbitrarily set i.pos
+	// to one of the values. But it results in more intuitive behavior in
+	// tests, which do not always reposition.
+	switch i.pos {
+	case iterPosCurForward, iterPosNext:
+		i.pos = iterPosCurForward
+	case iterPosCurReverse, iterPosPrev:
+		i.pos = iterPosCurReverse
+	}
 	i.valid = false
 
 	i.opts.LowerBound = lower
