@@ -639,6 +639,34 @@ func TestIngestError(t *testing.T) {
 	}
 }
 
+func TestIngestIdempotence(t *testing.T) {
+	// Use an on-disk filesystem, because Ingest with a MemFS will copy, not
+	// link the ingested file.
+	dir, err := ioutil.TempDir("", "ingest-idempotence")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+	fs := vfs.Default
+
+	path := fs.PathJoin(dir, "ext")
+	f, err := fs.Create(fs.PathJoin(dir, "ext"))
+	require.NoError(t, err)
+	w := sstable.NewWriter(f, sstable.WriterOptions{})
+	require.NoError(t, w.Set([]byte("d"), nil))
+	require.NoError(t, w.Close())
+
+	d, err := Open(dir, &Options{
+		FS: fs,
+	})
+	require.NoError(t, err)
+	const count = 4
+	for i := 0; i < count; i++ {
+		ingestPath := fs.PathJoin(dir, fmt.Sprintf("ext%d", i))
+		require.NoError(t, fs.Link(path, ingestPath))
+		require.NoError(t, d.Ingest([]string{ingestPath}))
+	}
+	require.NoError(t, d.Close())
+}
+
 func TestIngestCompact(t *testing.T) {
 	var buf syncedBuffer
 	mem := vfs.NewMem()
