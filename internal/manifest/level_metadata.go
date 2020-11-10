@@ -378,7 +378,7 @@ func (i *LevelIterator) Prev() *FileMetadata {
 }
 
 // SeekGE seeks to the first file in the iterator's file set with a largest
-// user key less than or equal to the provided user key. The iterator must
+// user key greater than or equal to the provided user key. The iterator must
 // have been constructed from L1+, because it requires the underlying files to
 // be sorted by user keys and non-overlapping.
 func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
@@ -387,7 +387,7 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 		return nil
 	}
 	return i.seek(func(m *FileMetadata) bool {
-		return cmp(userKey, m.Largest.UserKey) <= 0
+		return cmp(m.Largest.UserKey, userKey) >= 0
 	})
 }
 
