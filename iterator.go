@@ -91,6 +91,7 @@ type readSampling struct {
 	rand                   *rand.Rand
 	randvar                *randvar.Uniform
 	pendingCompactions     []readCompaction
+	topFile                *manifest.FileMetadata
 }
 
 func (i *Iterator) findNextEntry() bool {
@@ -189,31 +190,30 @@ func (i *Iterator) sampleRead() {
 	if i.readState == nil {
 		return
 	}
-	topOverlapping := manifest.LevelSlice{}
-	topLevel, numOverlap := 0, 0
+	topFile := i.readSampling.topFile
+	topLevel, numOverlappingLevels := 0, 0
 	for l := 0; l < numLevels; l++ {
-		overlaps := i.readState.current.Overlaps(l, i.cmp, i.key, i.key)
-		if !overlaps.Empty() {
-			numOverlap++
-			if numOverlap >= 2 {
+		file := i.readState.current.FileInLevel(l, i.cmp, i.key, i.key)
+		if file != nil {
+			numOverlappingLevels++
+			if numOverlappingLevels >= 2 {
 				break
 			}
-			topOverlapping = overlaps
+			topFile = file
 			topLevel = l
 		}
 	}
-	if numOverlap >= 2 {
-		topOverlapping.Each(func(file *manifest.FileMetadata) {
-			allowedSeeks := atomic.AddInt64(&file.Atomic.AllowedSeeks, -1)
-			if allowedSeeks == 0 {
-				read := readCompaction{
-					start: file.Smallest.UserKey,
-					end:   file.Largest.UserKey,
-					level: topLevel,
-				}
-				i.readSampling.pendingCompactions = append(i.readSampling.pendingCompactions, read)
+	if numOverlappingLevels >= 2 {
+		allowedSeeks := atomic.AddInt64(&topFile.Atomic.AllowedSeeks, -1)
+		if allowedSeeks == 0 {
+			read := readCompaction{
+				start: topFile.Smallest.UserKey,
+				end:   topFile.Largest.UserKey,
+				level: topLevel,
 			}
-		})
+			//fmt.Printf("schedule read compacting: %s \n", topFile.String())
+			i.readSampling.pendingCompactions = append(i.readSampling.pendingCompactions, read)
+		}
 	}
 }
 
