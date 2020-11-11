@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -105,4 +106,42 @@ func parseFileNum(s string) (fileNum FileNum, ok bool) {
 		return fileNum, false
 	}
 	return FileNum(u), true
+}
+
+// A Fataler fatals a process with a message when called.
+type Fataler interface {
+	Fatalf(format string, args ...interface{})
+}
+
+// MustExist checks if err is an error indicating a file does not exist.
+// If it is, it lists the containing directory's files to annotate the error
+// with counts of the various types of files and invokes the provided fataler.
+// See cockroachdb/cockroach#56490.
+func MustExist(fs vfs.FS, filename string, fataler Fataler, err error) {
+	if err == nil || !oserror.IsNotExist(err) {
+		return
+	}
+
+	ls, lsErr := fs.List(fs.PathDir(filename))
+	if lsErr != nil {
+		fataler.Fatalf("%s:\n%s\n%s", fs.PathBase(filename), err, lsErr)
+	}
+	var total, unknown, tables, logs int
+	total = len(ls)
+	for _, f := range ls {
+		typ, _, ok := ParseFilename(fs, f)
+		if !ok {
+			unknown++
+			continue
+		}
+		switch typ {
+		case FileTypeTable:
+			tables++
+		case FileTypeLog:
+			logs++
+		}
+	}
+
+	fataler.Fatalf("%s:\n%s\ndirectory contains %d files, %d unknown, %d tables, %d logs",
+		fs.PathBase(filename), err, total, unknown, tables, logs)
 }
