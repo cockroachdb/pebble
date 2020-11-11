@@ -1818,6 +1818,12 @@ func (r *Reader) readBlock(
 						raState.sequentialFile = f
 						file = f
 					}
+
+					// If we tried to load a table that doesn't exist, panic
+					// immediately.  Something is seriously wrong if a table
+					// doesn't exist.
+					// See cockroachdb/cockroach#56490.
+					base.MustExist(r.fs, r.filename, panicFataler{}, err)
 				}
 			}
 			if raState.sequentialFile != nil {
@@ -2443,4 +2449,10 @@ func (l *Layout) Describe(
 
 		h.Release()
 	}
+}
+
+type panicFataler struct{}
+
+func (panicFataler) Fatalf(format string, args ...interface{}) {
+	panic(errors.Errorf(format, args...))
 }
