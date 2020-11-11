@@ -82,6 +82,7 @@ func (c *tableCache) withReader(meta *fileMetadata, fn func(*sstable.Reader) err
 	v := s.findNode(meta)
 	defer s.unrefValue(v)
 	if v.err != nil {
+		base.MustExist(s.fs, v.filename, s.logger, v.err)
 		return v.err
 	}
 	return fn(v.reader)
@@ -171,7 +172,8 @@ func (c *tableCacheShard) newIters(
 	// the sstable iterator, which decrements when it is closed.
 	v := c.findNode(file.FileMetadata)
 	if v.err != nil {
-		c.unrefValue(v)
+		defer c.unrefValue(v)
+		base.MustExist(c.fs, v.filename, c.logger, v.err)
 		return nil, nil, v.err
 	}
 
@@ -547,6 +549,7 @@ func (c *tableCacheShard) Close() error {
 type tableCacheValue struct {
 	closeHook func(i sstable.Iterator) error
 	reader    *sstable.Reader
+	filename  string
 	err       error
 	loaded    chan struct{}
 	// Reference count for the value. The reader is closed when the reference
@@ -557,11 +560,11 @@ type tableCacheValue struct {
 func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard) {
 	// Try opening the fileTypeTable first.
 	var f vfs.File
-	filename := base.MakeFilename(c.fs, c.dirname, fileTypeTable, meta.FileNum)
-	f, v.err = c.fs.Open(filename, vfs.RandomReadsOption)
+	v.filename = base.MakeFilename(c.fs, c.dirname, fileTypeTable, meta.FileNum)
+	f, v.err = c.fs.Open(v.filename, vfs.RandomReadsOption)
 	if v.err == nil {
 		cacheOpts := private.SSTableCacheOpts(c.cacheID, meta.FileNum).(sstable.ReaderOption)
-		reopenOpt := sstable.FileReopenOpt{FS: c.fs, Filename: filename}
+		reopenOpt := sstable.FileReopenOpt{FS: c.fs, Filename: v.filename}
 		v.reader, v.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics, reopenOpt)
 	}
 	if v.err == nil {

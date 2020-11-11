@@ -5,9 +5,13 @@
 package base
 
 import (
+	"bytes"
+	"fmt"
+	"os"
 	"testing"
 
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseFilename(t *testing.T) {
@@ -78,4 +82,24 @@ func TestFilenameRoundTrip(t *testing.T) {
 			}
 		}
 	}
+}
+
+type bufferFataler struct {
+	buf bytes.Buffer
+}
+
+func (b *bufferFataler) Fatalf(msg string, args ...interface{}) {
+	fmt.Fprintf(&b.buf, msg, args...)
+}
+
+func TestMustExist(t *testing.T) {
+	err := os.ErrNotExist
+	fs := vfs.Default
+	var buf bufferFataler
+	filename := fs.PathJoin("..", "..", "testdata", "db-stage-4", "000000.sst")
+
+	MustExist(vfs.Default, filename, &buf, err)
+	require.Equal(t, `000000.sst:
+file does not exist
+directory contains 10 files, 3 unknown, 1 tables, 1 logs`, buf.buf.String())
 }
