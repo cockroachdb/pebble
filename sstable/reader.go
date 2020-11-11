@@ -1444,6 +1444,22 @@ func (r *Reader) readBlock(
 						raState.sequentialFile = f
 						file = f
 					}
+
+					// If we tried to load a table that doesn't exist, panic
+					// immediately.  Something is seriously wrong if a table
+					// doesn't exist.  A panic here ensures we get an accurate
+					// stack trace.
+					// See cockroachdb/cockroach#56490.
+					if err != nil && os.IsNotExist(err) {
+						summ, ok := base.CountFiles(r.fs, r.fs.PathDir(r.filename))
+						if ok {
+							err = errors.Wrapf(err, "data directory contains %d files, %d unknown, %d tables",
+								summ.Total, summ.Unknown, summ.Tables)
+						} else {
+							err = errors.Wrap(err, "unable to list data directory contents")
+						}
+						panic(err)
+					}
 				}
 			}
 			if raState.sequentialFile != nil {

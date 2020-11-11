@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseFilename(t *testing.T) {
@@ -78,4 +79,11 @@ func TestFilenameRoundTrip(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestCountFiles(t *testing.T) {
+	summ, ok := CountFiles(vfs.Default,
+		vfs.Default.PathJoin("..", "..", "testdata", "db-stage-4"))
+	require.True(t, ok)
+	require.Equal(t, FileSummary{Total: 10, Unknown: 3, Tables: 1}, summ)
 }

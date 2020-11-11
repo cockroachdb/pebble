@@ -106,3 +106,35 @@ func parseFileNum(s string) (fileNum FileNum, ok bool) {
 	}
 	return FileNum(u), true
 }
+
+// FileCounts describes the number of files of various types on the
+// filesystem.
+type FileSummary struct {
+	Total   int
+	Unknown int
+	Tables  int
+}
+
+// CountFiles lists the directory's files and tallys a count of files by
+// various types. It returns false for the second return value if it was
+// unable to list the directory's files.
+func CountFiles(fs vfs.FS, dirname string) (FileSummary, bool) {
+	ls, err := fs.List(dirname)
+	if err != nil {
+		return FileSummary{}, false
+	}
+	var summary FileSummary
+	summary.Total = len(ls)
+	for _, f := range ls {
+		typ, _, ok := ParseFilename(fs, f)
+		if !ok {
+			summary.Unknown++
+			continue
+		}
+		switch typ {
+		case FileTypeTable:
+			summary.Tables++
+		}
+	}
+	return summary, true
+}

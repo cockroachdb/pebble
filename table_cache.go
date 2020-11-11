@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
@@ -580,6 +581,22 @@ func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard) {
 		}
 	}
 	close(v.loaded)
+
+	// If we tried to load a table that doesn't exist, panic immediately.
+	// Something is seriously wrong if a table doesn't exist. A panic
+	// here ensures we get an accurate stack trace.
+	// See cockroachdb/cockroach#56490.
+	if v.err != nil && os.IsNotExist(v.err) {
+		err := v.err
+		summ, ok := base.CountFiles(c.fs, c.dirname)
+		if ok {
+			err = errors.Wrapf(err, "data directory contains %d files, %d unknown, %d tables",
+				summ.Total, summ.Unknown, summ.Tables)
+		} else {
+			err = errors.Wrap(err, "unable to list data directory contents")
+		}
+		panic(err)
+	}
 }
 
 func (v *tableCacheValue) release(c *tableCacheShard) {
