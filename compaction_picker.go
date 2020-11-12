@@ -839,7 +839,9 @@ func (p *compactionPickerByScore) calculateL0Score(
 	return info
 }
 
-func (p *compactionPickerByScore) pickFile(level, outputLevel int) (manifest.LevelFile, bool) {
+func (p *compactionPickerByScore) pickFile(
+	level, outputLevel int, earliestSnapshotSeqNum uint64,
+) (manifest.LevelFile, bool) {
 	// Select the file within the level to compact. We want to minimize write
 	// amplification, but also ensure that deletes are propagated to the
 	// bottom level in a timely fashion so as to reclaim disk space. A table's
@@ -883,6 +885,18 @@ func (p *compactionPickerByScore) pickFile(level, outputLevel int) (manifest.Lev
 		for outputFile != nil && base.InternalCompare(cmp, outputFile.Smallest, f.Largest) < 0 {
 			overlappingBytes += outputFile.Size
 			compacting = compacting || outputFile.Compacting
+
+			// For files in the bottommost level of the LSM, the
+			// Stats.RangeDeletionsBytesEstimate field is set to the estimate
+			// of bytes /within/ the file itself that may be dropped by
+			// recompacting the file. These bytes from obsolete keys would not
+			// need to be rewritten if we compacted `f` into `outputFile`, so
+			// they don't contribute to write amplification. Subtracting them
+			// out of the overlapping bytes helps prioritize these compactions
+			// that are cheaper than their file sizes suggest.
+			if outputLevel == numLevels-1 && outputFile.LargestSeqNum < earliestSnapshotSeqNum {
+				overlappingBytes -= outputFile.Stats.RangeDeletionsBytesEstimate
+			}
 
 			// If the file in the next level extends beyond f's largest key,
 			// break out and don't advance outputIter because f's successor
@@ -1022,7 +1036,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		}
 
 		var ok bool
-		info.file, ok = p.pickFile(info.level, info.outputLevel)
+		info.file, ok = p.pickFile(info.level, info.outputLevel, env.earliestSnapshotSeqNum)
 		if !ok {
 			continue
 		}

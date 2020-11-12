@@ -147,3 +147,49 @@ close-snapshot
 15
 ----
 (none)
+
+# Test a table that contains both deletions and non-deletions, but whose
+# deletions remove the non-deletions. Set L5's max bytes low so that an
+# automatic compaction will be pursued when we call maybe-compact.
+define snapshots=(103) level-max-bytes=(L5 : 1000)
+L5
+b.SET.200:<largeval> bb.SET.203:<largeval> cc.SET.204:<largeval>
+L5
+d.SET.302:<largeval> dd.SET.303:<largeval> de.SET.303:<largeval>
+L5
+m.SET.320:<largeval> n.SET.330:<largeval> o.SET.340:<largeval>
+L6
+a.SET.55:<largeval> b.SET.100:<largeval> c.SET.101:<largeval> d.SET.102:<largeval> a.RANGEDEL.103:e
+L6
+f.SET.30:<largeval> z.SET.31:<largeval>
+----
+5:
+  000004:[b#200,SET-cc#204,SET]
+  000005:[d#302,SET-de#303,SET]
+  000006:[m#320,SET-o#340,SET]
+6:
+  000007:[a#103,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000008:[f#30,SET-z#31,SET]
+
+close-snapshot
+103
+----
+(none)
+
+wait-pending-table-stats
+000007
+----
+num-entries: 5
+num-deletions: 1
+range-deletions-bytes-estimate: 16488
+
+# Because we set max bytes low, maybe-compact will trigger an automatic
+# compaction in preference over an elision-only compaction.
+# By plain file size, 000006 should be picked because it overlaps
+# significantly less data in L6. However, 000007 has significant obsolete
+# data. The compaction picker should recognize that it's more efficient to
+# compact (000004 + 000005) into 000007.
+
+maybe-compact
+----
+[JOB 100] compacted L5 [000004 000005] (26 K) + L6 [000007] (17 K) -> L6 [000009] (25 K), in 1.0s, output rate 25 K/s
