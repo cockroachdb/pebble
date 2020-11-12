@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 
@@ -330,6 +331,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	}
 
 	var snapshots []uint64
+	var levelMaxBytes map[int]int64
 	for _, arg := range td.CmdArgs {
 		switch arg.Key {
 		case "target-file-sizes":
@@ -352,6 +354,21 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				if i > 0 && snapshots[i] < snapshots[i-1] {
 					return nil, errors.New("Snapshots must be in ascending order")
 				}
+			}
+		case "level-max-bytes":
+			levelMaxBytes = map[int]int64{}
+			for i := range arg.Vals {
+				j := strings.Index(arg.Vals[i], ":")
+				levelStr := strings.TrimSpace(arg.Vals[i][:j])
+				level, err := strconv.Atoi(levelStr[1:])
+				if err != nil {
+					return nil, err
+				}
+				size, err := strconv.ParseInt(strings.TrimSpace(arg.Vals[i][j+1:]), 10, 64)
+				if err != nil {
+					return nil, err
+				}
+				levelMaxBytes[level] = size
 			}
 		default:
 			return nil, errors.Errorf("%s: unknown arg: %s", td.Cmd, arg.Key)
@@ -470,7 +487,15 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				continue
 			}
 			key := base.ParseInternalKey(data[:i])
-			value := []byte(data[i+1:])
+			valueStr := data[i+1:]
+			value := []byte(valueStr)
+			if valueStr == "<largeval>" {
+				value = make([]byte, 4096)
+				rnd := rand.New(rand.NewSource(int64(key.SeqNum())))
+				if _, err := rnd.Read(value[:]); err != nil {
+					return nil, err
+				}
+			}
 			if err := mem.set(key, value); err != nil {
 				return nil, err
 			}
@@ -492,6 +517,12 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		}
 		d.updateReadStateLocked(nil)
 		d.updateTableStatsLocked(ve.NewFiles)
+	}
+
+	if levelMaxBytes != nil {
+		for l, maxBytes := range levelMaxBytes {
+			d.mu.versions.picker.(*compactionPickerByScore).levelMaxBytes[l] = maxBytes
+		}
 	}
 
 	return d, nil
