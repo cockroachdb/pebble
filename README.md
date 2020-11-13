@@ -12,6 +12,8 @@ Pebble intentionally does not aspire to include every feature in
 RocksDB and is specifically targetting the use case and feature set
 needed by CockroachDB:
 
+Foo
+
 * Block-based tables
 * Checkpoints
 * Indexed batches
