@@ -571,8 +571,13 @@ func (w *Writer) Close() (err error) {
 			// added range tombstone will be the largest range tombstone key. Note
 			// that we need to make this into a range deletion sentinel because
 			// sstable boundaries are inclusive while the end key of a range deletion
-			// tombstone is exclusive.
-			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue)
+			// tombstone is exclusive. A Clone() is necessary as
+			// rangeDelBlock.curValue is the same slice that will get passed
+			// into w.writer, and some implementations of vfs.File mutate the
+			// slice passed into Write(). Also, w.meta will often outlive the
+			// blockWriter, and so cloning curValue allows the rangeDelBlock's
+			// internal buffer to get gc'd.
+			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue).Clone()
 		}
 		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.finish(), NoCompression)
 		if err != nil {
