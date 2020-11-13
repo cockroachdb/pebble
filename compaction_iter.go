@@ -390,6 +390,10 @@ func (i *compactionIter) skipInStripe() {
 
 func (i *compactionIter) iterNext() bool {
 	i.iterKey, i.iterValue = i.iter.Next()
+	// We should never see a range delete sentinel in the compaction input.
+	if i.iterKey != nil && i.iterKey.Trailer == InternalKeyRangeDeleteSentinel {
+		panic("pebble: unexpected range delete sentinel in compaction input")
+	}
 	return i.iterKey != nil
 }
 

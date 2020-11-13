@@ -296,6 +296,11 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		}
 	}
 
+	if key.Trailer == InternalKeyRangeDeleteSentinel {
+		w.err = errors.Errorf("pebble: cannot add range delete sentinel: %s", key.Pretty(w.formatKey))
+		return w.err
+	}
+
 	for i := range w.propCollectors {
 		if err := w.propCollectors[i].Add(key, value); err != nil {
 			return err
@@ -304,18 +309,36 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 
 	w.meta.updateSeqNum(key.SeqNum())
 
-	if w.props.NumRangeDeletions == 0 {
-		w.meta.SmallestRange = key.Clone()
-		w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(value).Clone()
-	} else if w.rangeDelV1Format {
-		if base.InternalCompare(w.compare, w.meta.SmallestRange, key) > 0 {
+	switch {
+	case w.rangeDelV1Format:
+		// Range tombstones are not fragmented in the v1 (i.e. RocksDB) range
+		// deletion block format, so we need to track the largest range tombstone
+		// end key as every range tombstone is added.
+		//
+		// Note that writing the v1 format is only supported for tests.
+		if w.props.NumRangeDeletions == 0 {
+			w.meta.SmallestRange = key.Clone()
+			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(value).Clone()
+		} else {
+			if base.InternalCompare(w.compare, w.meta.SmallestRange, key) > 0 {
+				w.meta.SmallestRange = key.Clone()
+			}
+			end := base.MakeRangeDeleteSentinelKey(value)
+			if base.InternalCompare(w.compare, w.meta.LargestRange, end) < 0 {
+				w.meta.LargestRange = end.Clone()
+			}
+		}
+
+	default:
+		// Range tombstones are fragmented in the v2 range deletion block format,
+		// so the start key of the first range tombstone added will be the smallest
+		// range tombstone key. The largest range tombstone key will be determined
+		// in Writer.Close() as the end key of the last range tombstone added.
+		if w.props.NumRangeDeletions == 0 {
 			w.meta.SmallestRange = key.Clone()
 		}
-		end := base.MakeRangeDeleteSentinelKey(value)
-		if base.InternalCompare(w.compare, w.meta.LargestRange, end) < 0 {
-			w.meta.LargestRange = end.Clone()
-		}
 	}
+
 	w.props.NumEntries++
 	w.props.NumDeletions++
 	w.props.NumRangeDeletions++
@@ -566,12 +589,12 @@ func (w *Writer) Close() (err error) {
 	var rangeDelBH BlockHandle
 	if w.props.NumRangeDeletions > 0 {
 		if !w.rangeDelV1Format {
-			// Because the range tombstones are fragmented, the end key of the last
-			// added range tombstone will be the largest range tombstone key. Note
-			// that we need to make this into a range deletion sentinel because
-			// sstable boundaries are inclusive while the end key of a range deletion
-			// tombstone is exclusive.
-			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue)
+			// Because the range tombstones are fragmented in the v2 format, the end
+			// key of the last added range tombstone will be the largest range
+			// tombstone key. Note that we need to make this into a range deletion
+			// sentinel because sstable boundaries are inclusive while the end key of
+			// a range deletion tombstone is exclusive.
+			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue).Clone()
 		}
 		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.finish(), NoCompression)
 		if err != nil {
