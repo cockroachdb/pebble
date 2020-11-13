@@ -6,7 +6,10 @@
 
 package cache
 
-import "sync/atomic"
+import (
+	"fmt"
+	"sync/atomic"
+)
 
 // refcnt provides an atomic reference count. This version is used when the
 // "tracing" build tag is not enabled. See refcnt_tracing.go for the "tracing"
@@ -23,11 +26,21 @@ func (v *refcnt) refs() int32 {
 }
 
 func (v *refcnt) acquire() {
-	atomic.AddInt32((*int32)(v), 1)
+	switch v := atomic.AddInt32((*int32)(v), 1); {
+	case v <= 1:
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+	}
 }
 
 func (v *refcnt) release() bool {
-	return atomic.AddInt32((*int32)(v), -1) == 0
+	switch v := atomic.AddInt32((*int32)(v), -1); {
+	case v < 0:
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+	case v == 0:
+		return true
+	default:
+		return false
+	}
 }
 
 func (v *refcnt) trace(msg string) {
