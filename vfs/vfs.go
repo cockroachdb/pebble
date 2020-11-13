@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 )
 
@@ -127,17 +128,18 @@ var Default FS = defaultFS{}
 type defaultFS struct{}
 
 func (defaultFS) Create(name string) (File, error) {
-	return os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC|syscall.O_CLOEXEC, 0666)
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC|syscall.O_CLOEXEC, 0666)
+	return f, errors.WithStack(err)
 }
 
 func (defaultFS) Link(oldname, newname string) error {
-	return os.Link(oldname, newname)
+	return errors.WithStack(os.Link(oldname, newname))
 }
 
 func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
 	file, err := os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	for _, opt := range opts {
 		opt.Apply(file)
@@ -146,26 +148,27 @@ func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
 }
 
 func (defaultFS) Remove(name string) error {
-	return os.Remove(name)
+	return errors.WithStack(os.Remove(name))
 }
 
 func (defaultFS) RemoveAll(name string) error {
-	return os.RemoveAll(name)
+	return errors.WithStack(os.RemoveAll(name))
 }
 
 func (defaultFS) Rename(oldname, newname string) error {
-	return os.Rename(oldname, newname)
+	return errors.WithStack(os.Rename(oldname, newname))
 }
 
 func (fs defaultFS) ReuseForWrite(oldname, newname string) (File, error) {
 	if err := fs.Rename(oldname, newname); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
-	return os.OpenFile(newname, os.O_RDWR|os.O_CREATE|syscall.O_CLOEXEC, 0666)
+	f, err := os.OpenFile(newname, os.O_RDWR|os.O_CREATE|syscall.O_CLOEXEC, 0666)
+	return f, errors.WithStack(err)
 }
 
 func (defaultFS) MkdirAll(dir string, perm os.FileMode) error {
-	return os.MkdirAll(dir, perm)
+	return errors.WithStack(os.MkdirAll(dir, perm))
 }
 
 func (defaultFS) List(dir string) ([]string, error) {
@@ -174,11 +177,13 @@ func (defaultFS) List(dir string) ([]string, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return f.Readdirnames(-1)
+	dirnames, err := f.Readdirnames(-1)
+	return dirnames, errors.WithStack(err)
 }
 
 func (defaultFS) Stat(name string) (os.FileInfo, error) {
-	return os.Stat(name)
+	finfo, err := os.Stat(name)
+	return finfo, errors.WithStack(err)
 }
 
 func (defaultFS) PathBase(path string) string {

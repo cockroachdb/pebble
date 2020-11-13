@@ -4,7 +4,11 @@
 
 package vfs
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"github.com/cockroachdb/errors"
+)
 
 // SyncingFileOptions holds the options for a syncingFile.
 type SyncingFileOptions struct {
@@ -80,7 +84,7 @@ func (f *syncingFile) Write(p []byte) (n int, err error) {
 
 	n, err = f.File.Write(p)
 	if err != nil {
-		return n, err
+		return n, errors.WithStack(err)
 	}
 	// The offset is updated atomically so that it can be accessed safely from
 	// Sync.
@@ -156,7 +160,7 @@ func (f *syncingFile) maybeSync() error {
 	}
 
 	if f.fd == 0 {
-		return f.Sync()
+		return errors.WithStack(f.Sync())
 	}
 
 	// Note that syncTo will always be called with an offset < atomic.offset. The
@@ -164,7 +168,7 @@ func (f *syncingFile) maybeSync() error {
 	// which do not support syncing a portion of the file). The syncTo
 	// implementation must call ratchetSyncOffset with as much of the file as it
 	// has synced.
-	return f.syncTo(syncToOffset)
+	return errors.WithStack(f.syncTo(syncToOffset))
 }
 
 func (f *syncingFile) Close() error {
@@ -173,8 +177,8 @@ func (f *syncingFile) Close() error {
 	// atomic.offset. See syncingFile.syncToRange.
 	if atomic.LoadInt64(&f.atomic.offset) > atomic.LoadInt64(&f.atomic.syncOffset) {
 		if err := f.Sync(); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 	}
-	return f.File.Close()
+	return errors.WithStack(f.File.Close())
 }
