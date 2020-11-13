@@ -572,7 +572,7 @@ func (w *Writer) Close() (err error) {
 			// that we need to make this into a range deletion sentinel because
 			// sstable boundaries are inclusive while the end key of a range deletion
 			// tombstone is exclusive.
-			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue)
+			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue).Clone()
 		}
 		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.finish(), NoCompression)
 		if err != nil {

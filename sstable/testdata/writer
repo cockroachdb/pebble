@@ -26,6 +26,20 @@ point:   [a#1,1,h#7,2]
 range:   [d#4,15,j#72057594037927935,15]
 seqnums: [1,8]
 
+build modifier-file
+a.SET.1:a
+b.DEL.2:b
+c.MERGE.3:c
+d.RANGEDEL.4:e
+f.SET.5:f
+g.DEL.6:g
+h.MERGE.7:h
+i.RANGEDEL.8:j
+----
+point:   [a#1,1,h#7,2]
+range:   [d#4,15,j#72057594037927935,15]
+seqnums: [1,8]
+
 scan
 ----
 a#1,1:a
