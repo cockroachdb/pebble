@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
@@ -390,6 +391,11 @@ func (i *compactionIter) skipInStripe() {
 
 func (i *compactionIter) iterNext() bool {
 	i.iterKey, i.iterValue = i.iter.Next()
+	if invariants.Enabled &&
+		i.iterKey != nil &&
+		i.iterKey.Trailer == InternalKeyRangeDeleteSentinel {
+		panic("unexpected range delete sentinel")
+	}
 	return i.iterKey != nil
 }
 
