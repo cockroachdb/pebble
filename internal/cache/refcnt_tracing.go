@@ -33,12 +33,19 @@ func (v *refcnt) refs() int32 {
 }
 
 func (v *refcnt) acquire() {
-	atomic.AddInt32(&v.val, 1)
+	switch n := atomic.AddInt32(&v.val, 1); {
+	case n <= 1:
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", n))
+	}
 	v.trace("acquire")
 }
 
 func (v *refcnt) release() bool {
 	n := atomic.AddInt32(&v.val, -1)
+	switch {
+	case n < 0:
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", n))
+	}
 	v.trace("release")
 	return n == 0
 }
