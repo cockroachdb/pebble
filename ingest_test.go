@@ -244,7 +244,9 @@ func TestIngestLink(t *testing.T) {
 				require.NoError(t, err)
 
 				contents[j] = []byte(fmt.Sprintf("data%d", j))
-				_, err = f.Write(contents[j])
+				// memFile.Write will modify the supplied buffer when invariants are
+				// enabled, so provide a throw-away copy.
+				_, err = f.Write(append([]byte(nil), contents[j]...))
 				require.NoError(t, err)
 				require.NoError(t, f.Close())
 			}
