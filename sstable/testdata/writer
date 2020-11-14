@@ -26,7 +26,7 @@ point:   [a#1,1,h#7,2]
 range:   [d#4,15,j#72057594037927935,15]
 seqnums: [1,8]
 
-build modifier-file
+build
 a.SET.1:a
 b.DEL.2:b
 c.MERGE.3:c

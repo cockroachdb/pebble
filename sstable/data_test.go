@@ -17,28 +17,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// modifierFile modifies the slice passed into Write() in place. This is useful
-// to uncover any bugs that would otherwise occur in practice when using a
-// vfs.File wrapper that, for instance, encrypts in-place.
-type modifierFile struct {
-	vfs.File
-}
-
-func (m modifierFile) Write(p []byte) (n int, err error) {
-	n, err = m.File.Write(p)
-	for i := range p {
-		// Toggle all bits.
-		p[i] ^= 0xFF
-	}
-	return n, err
-}
-
-// Flush is a no-op. This is necessary to prevent sstable.Writer from doings its
-// own buffering.
-func (m modifierFile) Flush() error {
-	return nil
-}
-
 func runBuildCmd(
 	td *datadriven.TestData, writerOpts WriterOptions,
 ) (*WriterMetadata, *Reader, error) {
@@ -73,8 +51,6 @@ func runBuildCmd(
 			if err != nil {
 				return nil, nil, err
 			}
-		case "modifier-file":
-			f0 = modifierFile{File: f0}
 		default:
 			return nil, nil, errors.Errorf("%s: unknown arg %s", td.Cmd, arg.Key)
 		}
