@@ -581,7 +581,7 @@ func (b *BulkVersionEdit) Apply(
 			// same as the compaction of 40KB of data.  We are a little
 			// conservative and allow approximately one seek for every 16KB
 			// of data before triggering a compaction.
-			const readCompactionThreshold uint64 = 16384
+			const readCompactionThreshold uint64 = 8192
 			allowedSeeks := int64(f.Size / readCompactionThreshold)
 			atomic.StoreInt64(&f.Atomic.AllowedSeeks, allowedSeeks)
 
