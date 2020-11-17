@@ -18,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 const sep = "/"
@@ -70,10 +71,10 @@ func NewMemFile(data []byte) File {
 	n := &memNode{refs: 1}
 	n.mu.data = data
 	n.mu.modTime = time.Now()
-	return &memFile{
+	return maybeFlushable(&memFile{
 		n:    n,
 		read: true,
-	}
+	})
 }
 
 // MemFS implements FS.
@@ -207,7 +208,7 @@ func (y *MemFS) Create(fullname string) (File, error) {
 		return nil, err
 	}
 	atomic.AddInt32(&ret.n.refs, 1)
-	return ret, nil
+	return maybeFlushable(ret), nil
 }
 
 // Link implements FS.Link.
@@ -287,7 +288,7 @@ func (y *MemFS) open(fullname string, allowEmptyName bool) (File, error) {
 		}
 	}
 	atomic.AddInt32(&ret.n.refs, 1)
-	return ret, nil
+	return maybeFlushable(ret), nil
 }
 
 // Open implements FS.Open.
@@ -395,7 +396,13 @@ func (y *MemFS) ReuseForWrite(oldname, newname string) (File, error) {
 	}
 	y.mu.Lock()
 	defer y.mu.Unlock()
-	mf := f.(*memFile)
+
+	// The file may be either a *memFile or a *flushFile. The asMemFile() method
+	// allows us to handle both cases.
+	type memFiler interface {
+		asMemFile() *memFile
+	}
+	mf := f.(memFiler).asMemFile()
 	mf.read = false
 	mf.write = true
 	return f, nil
@@ -664,6 +671,14 @@ func (f *memFile) Write(p []byte) (int, error) {
 		f.n.mu.data = append(f.n.mu.data[:f.wpos], p...)
 	}
 	f.wpos += len(p)
+
+	if invariants.Enabled {
+		// Mutate the input buffer to flush out bugs in Pebble which expect the
+		// input buffer to be unmodified.
+		for i := range p {
+			p[i] ^= 0xff
+		}
+	}
 	return len(p), nil
 }
 
@@ -689,5 +704,26 @@ func (f *memFile) Sync() error {
 			f.n.mu.Unlock()
 		}
 	}
+	return nil
+}
+
+func (f *memFile) asMemFile() *memFile {
+	return f
+}
+
+type flushFile struct {
+	*memFile
+}
+
+func maybeFlushable(f *memFile) File {
+	if !invariants.Enabled {
+		return f
+	}
+	return flushFile{f}
+}
+
+// Flush is a no-op and present only to prevent buffering at higher levels
+// (e.g. it prevents sstable.Writer from using a bufio.Writer).
+func (f flushFile) Flush() error {
 	return nil
 }
