@@ -226,6 +226,10 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 			var v *manifest.Version
 			var cmp *base.Comparer
 			rr := record.NewReader(f, 0 /* logNum */)
+			// Contains the FileMetadata needed by BulkVersionEdit.Apply.
+			// It accumulates the additions since later edits contain
+			// deletions of earlier added files.
+			addedByFileNum := make(map[base.FileNum]*manifest.FileMetadata)
 			for {
 				offset := rr.Offset()
 				r, err := rr.Next()
@@ -246,7 +250,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					break
 				}
 				var bve manifest.BulkVersionEdit
-				bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+				bve.AddedByFileNum = addedByFileNum
 				if err := bve.Accumulate(&ve); err != nil {
 					fmt.Fprintf(stderr, "%s\n", err)
 					ok = false
