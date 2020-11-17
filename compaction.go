@@ -1183,6 +1183,15 @@ func (d *DB) maybeScheduleFlush() {
 		return
 	}
 
+	if !d.checkFlushThreshold() {
+		return
+	}
+
+	d.mu.compact.flushing = true
+	go d.flush()
+}
+
+func (d *DB) checkFlushThreshold() bool {
 	var n int
 	var size uint64
 	for ; n < len(d.mu.mem.queue)-1; n++ {
@@ -1199,7 +1208,7 @@ func (d *DB) maybeScheduleFlush() {
 	}
 	if n == 0 {
 		// None of the immutable memtables are ready for flushing.
-		return
+		return false
 	}
 
 	// Only flush once the sum of the queued memtable sizes exceeds half the
@@ -1208,11 +1217,10 @@ func (d *DB) maybeScheduleFlush() {
 	// DB.newMemTable().
 	minFlushSize := uint64(d.opts.MemTableSize) / 2
 	if size < minFlushSize {
-		return
+		return false
 	}
 
-	d.mu.compact.flushing = true
-	go d.flush()
+	return true
 }
 
 func (d *DB) maybeScheduleDelayedFlush(tbl *memTable) {
@@ -1509,7 +1517,10 @@ func (d *DB) maybeScheduleCompactionPicker(
 }
 
 func (d *DB) tryReadTriggeredCompaction(env compactionEnv) {
-	for len(d.mu.compact.readCompactions) > 0 && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
+	if d.checkFlushThreshold() {
+		return
+	}
+	for len(d.mu.compact.readCompactions) > 0 && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions && !d.mu.compact.flushing {
 		readCompaction := d.mu.compact.readCompactions[0]
 		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
 		pc := d.mu.versions.picker.pickReadTriggeredCompaction(env, &readCompaction)

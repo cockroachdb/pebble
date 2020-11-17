@@ -1434,7 +1434,6 @@ func updateReadCompaction(
 		return topOverlapping, true
 	}
 	return manifest.LevelSlice{}, false
-
 }
 
 func (p *compactionPickerByScore) forceBaseLevel1() {
