@@ -71,10 +71,10 @@ func NewMemFile(data []byte) File {
 	n := &memNode{refs: 1}
 	n.mu.data = data
 	n.mu.modTime = time.Now()
-	return maybeFlushable(&memFile{
+	return &memFile{
 		n:    n,
 		read: true,
-	})
+	}
 }
 
 // MemFS implements FS.
@@ -208,7 +208,7 @@ func (y *MemFS) Create(fullname string) (File, error) {
 		return nil, err
 	}
 	atomic.AddInt32(&ret.n.refs, 1)
-	return maybeFlushable(ret), nil
+	return ret, nil
 }
 
 // Link implements FS.Link.
@@ -288,7 +288,7 @@ func (y *MemFS) open(fullname string, allowEmptyName bool) (File, error) {
 		}
 	}
 	atomic.AddInt32(&ret.n.refs, 1)
-	return maybeFlushable(ret), nil
+	return ret, nil
 }
 
 // Open implements FS.Open.
@@ -397,12 +397,7 @@ func (y *MemFS) ReuseForWrite(oldname, newname string) (File, error) {
 	y.mu.Lock()
 	defer y.mu.Unlock()
 
-	// The file may be either a *memFile or a *flushFile. The asMemFile() method
-	// allows us to handle both cases.
-	type memFiler interface {
-		asMemFile() *memFile
-	}
-	mf := f.(memFiler).asMemFile()
+	mf := f.(*memFile)
 	mf.read = false
 	mf.write = true
 	return f, nil
@@ -707,23 +702,8 @@ func (f *memFile) Sync() error {
 	return nil
 }
 
-func (f *memFile) asMemFile() *memFile {
-	return f
-}
-
-type flushFile struct {
-	*memFile
-}
-
-func maybeFlushable(f *memFile) File {
-	if !invariants.Enabled {
-		return f
-	}
-	return flushFile{f}
-}
-
 // Flush is a no-op and present only to prevent buffering at higher levels
 // (e.g. it prevents sstable.Writer from using a bufio.Writer).
-func (f flushFile) Flush() error {
+func (f *memFile) Flush() error {
 	return nil
 }
