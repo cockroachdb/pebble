@@ -21,13 +21,14 @@ import (
 )
 
 func readManifest(filename string) (*Version, error) {
-	f, err := os.Open("testdata/MANIFEST_import")
+	f, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 	rr := record.NewReader(f, 0 /* logNum */)
 	var v *Version
+	addedByFileNum := make(map[base.FileNum]*FileMetadata)
 	for {
 		r, err := rr.Next()
 		if err == io.EOF {
@@ -41,7 +42,7 @@ func readManifest(filename string) (*Version, error) {
 			return nil, err
 		}
 		var bve BulkVersionEdit
-		bve.AddedByFileNum = make(map[base.FileNum]*FileMetadata)
+		bve.AddedByFileNum = addedByFileNum
 		if err := bve.Accumulate(&ve); err != nil {
 			return nil, err
 		}
@@ -49,7 +50,6 @@ func readManifest(filename string) (*Version, error) {
 			return nil, err
 		}
 	}
-	fmt.Printf("L0 filecount: %d\n", v.Levels[0].Len())
 	return v, nil
 }
 

@@ -200,18 +200,21 @@ type L0Sublevels struct {
 	flushSplitUserKeys [][]byte
 }
 
-func insertIntoSubLevel(files []*FileMetadata, f *FileMetadata) []*FileMetadata {
-	index := sort.Search(len(files), func(i int) bool {
-		return f.minIntervalIndex < files[i].minIntervalIndex
-	})
-	if index == len(files) {
-		files = append(files, f)
-		return files
-	}
-	files = append(files, nil)
-	copy(files[index+1:], files[index:])
-	files[index] = f
-	return files
+type sublevelSorter []*FileMetadata
+
+// Len implements sort.Interface.
+func (sl sublevelSorter) Len() int {
+	return len(sl)
+}
+
+// Less implements sort.Interface.
+func (sl sublevelSorter) Less(i, j int) bool {
+	return sl[i].minIntervalIndex < sl[j].minIntervalIndex
+}
+
+// Swap implements sort.Interface.
+func (sl sublevelSorter) Swap(i, j int) {
+	sl[i], sl[j] = sl[j], sl[i]
 }
 
 // NewL0Sublevels creates an L0Sublevels instance for a given set of L0 files.
@@ -225,10 +228,7 @@ func insertIntoSubLevel(files []*FileMetadata, f *FileMetadata) []*FileMetadata 
 // IsIntraL0Compacting. Those fields are accessed in InitCompactingFileInfo
 // instead.
 func NewL0Sublevels(
-	levelMetadata *LevelMetadata,
-	cmp Compare,
-	formatKey base.FormatKey,
-	flushSplitMaxBytes int64,
+	levelMetadata *LevelMetadata, cmp Compare, formatKey base.FormatKey, flushSplitMaxBytes int64,
 ) (*L0Sublevels, error) {
 	s := &L0Sublevels{cmp: cmp, formatKey: formatKey}
 	s.levelMetadata = levelMetadata
@@ -263,10 +263,16 @@ func NewL0Sublevels(
 		if f.minIntervalIndex == len(keys) {
 			return nil, errors.Errorf("expected sstable bound to be in interval keys: %s", f.Smallest.UserKey)
 		}
-		f.maxIntervalIndex = sort.Search(len(keys), func(index int) bool {
-			return intervalKeyCompare(
-				cmp, intervalKey{key: f.Largest.UserKey, isLargest: f.Largest.Trailer != base.InternalKeyRangeDeleteSentinel}, keys[index]) <= 0
-		})
+		// Search starting from f.minIntervalIndex to prune the search.
+		f.maxIntervalIndex = f.minIntervalIndex +
+			sort.Search(len(keys)-f.minIntervalIndex, func(index int) bool {
+				return intervalKeyCompare(
+					cmp,
+					intervalKey{
+						key:       f.Largest.UserKey,
+						isLargest: f.Largest.Trailer != base.InternalKeyRangeDeleteSentinel},
+					keys[f.minIntervalIndex+index]) <= 0
+			})
 		if f.maxIntervalIndex == len(keys) {
 			return nil, errors.Errorf("expected sstable bound to be in interval keys: %s", f.Largest.UserKey)
 		}
@@ -306,8 +312,12 @@ func NewL0Sublevels(
 		if subLevel == len(s.levelFiles) {
 			s.levelFiles = append(s.levelFiles, []*FileMetadata{f})
 		} else {
-			s.levelFiles[subLevel] = insertIntoSubLevel(s.levelFiles[subLevel], f)
+			s.levelFiles[subLevel] = append(s.levelFiles[subLevel], f)
 		}
+	}
+	// Sort each sublevel in increasing key order.
+	for i := range s.levelFiles {
+		sort.Sort(sublevelSorter(s.levelFiles[i]))
 	}
 
 	// Construct a parallel slice of sublevel B-Trees.
