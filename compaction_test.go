@@ -2072,3 +2072,40 @@ func TestCleanerCond(t *testing.T) {
 
 	require.NoError(t, d.Close())
 }
+
+func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
+	// 500MB in Lbase
+	var lbaseFiles []*manifest.FileMetadata
+	const lbaseSize = 5 << 20
+	for i := 0; i < 100; i++ {
+		lbaseFiles =
+			append(lbaseFiles, &manifest.FileMetadata{Size: lbaseSize, FileNum: FileNum(i)})
+	}
+	const maxOutputFileSize = 2 << 20
+	// 20MB max overlap, so flush split into 25 files.
+	const maxOverlapBytes = 20 << 20
+	ls := manifest.NewLevelSlice(lbaseFiles)
+	testCases := []struct {
+		flushingBytes        uint64
+		adjustedOverlapBytes uint64
+	}{
+		// Flushes large enough that 25 files is acceptable.
+		{flushingBytes: 128 << 20, adjustedOverlapBytes: 20971520},
+		{flushingBytes: 64 << 20, adjustedOverlapBytes: 20971520},
+		// Small increase in adjustedOverlapBytes.
+		{flushingBytes: 32 << 20, adjustedOverlapBytes: 32768000},
+		// Large increase in adjusterOverlapBytes, to limit to 4 files.
+		{flushingBytes: 1 << 20, adjustedOverlapBytes: 131072000},
+	}
+	for _, tc := range testCases {
+		t.Run("", func(t *testing.T) {
+			c := compaction{
+				grandparents:      ls,
+				maxOverlapBytes:   maxOverlapBytes,
+				maxOutputFileSize: maxOutputFileSize,
+			}
+			adjustGrandparentOverlapBytesForFlush(&c, tc.flushingBytes)
+			require.Equal(t, tc.adjustedOverlapBytes, c.maxOverlapBytes)
+		})
+	}
+}
