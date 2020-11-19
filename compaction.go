@@ -253,6 +253,73 @@ func newDeleteOnlyCompaction(opts *Options, cur *version, inputs []compactionLev
 	return c
 }
 
+func adjustGrandparentOverlapBytesForFlush(c *compaction, flushingBytes uint64) {
+	// Heuristic to place a lower bound on compaction output file size
+	// caused by Lbase. Prior to this heuristic we have observed an L0 in
+	// production with 310K files of which 290K files were < 10KB in size.
+	// Our hypothesis is that it was caused by L1 having 2600 files and
+	// ~10GB, such that each flush got split into many tiny files due to
+	// overlapping with most of the files in Lbase.
+	//
+	// The computation below is general in that it accounts
+	// for flushing different volumes of data (e.g. we may be flushing
+	// many memtables). For illustration, we consider the typical
+	// example of flushing a 64MB memtable. So 12.8MB output,
+	// based on the compression guess below. If the compressed bytes
+	// guess is an over-estimate we will end up with smaller files,
+	// and if an under-estimate we will end up with larger files.
+	// With a 2MB target file size, 7 files. We are willing to accept
+	// 4x the number of files, if it results in better write amplification
+	// when later compacting to Lbase, i.e., ~450KB files (target file
+	// size / 4).
+	//
+	// Note that this is a pessimistic heuristic in that
+	// fileCountUpperBoundDueToGrandparents could be far from the actual
+	// number of files produced due to the grandparent limits. For
+	// example, in the extreme, consider a flush that overlaps with 1000
+	// files in Lbase f0...f999, and the initially calculated value of
+	// maxOverlapBytes will cause splits at f10, f20,..., f990, which
+	// means an upper bound file count of 100 files. Say the input bytes
+	// in the flush are such that acceptableFileCount=10. We will fatten
+	// up maxOverlapBytes by 10x to ensure that the upper bound file count
+	// drops to 10. However, it is possible that in practice, even without
+	// this change, we would have produced no more than 10 files, and that
+	// this change makes the files unnecessarily wide. Say the input bytes
+	// are distributed such that 10% are in f0...f9, 10% in f10...f19, ...
+	// 10% in f80...f89 and 10% in f990...f999. The original value of
+	// maxOverlapBytes would have actually produced only 10 sstables. But
+	// by increasing maxOverlapBytes by 10x, we may produce 1 sstable that
+	// spans f0...f89, i.e., a much wider sstable than necessary.
+	//
+	// We could produce a tighter estimate of
+	// fileCountUpperBoundDueToGrandparents if we had knowledge of the key
+	// distribution of the flush. The 4x multiplier mentioned earlier is
+	// a way to try to compensate for this pessimism.
+	//
+	// TODO(sumeer): we don't have compression info for the data being
+	// flushed, but it is likely that existing files that overlap with
+	// this flush in Lbase are representative wrt compression ratio. We
+	// could store the uncompressed size in FileMetadata and estimate
+	// the compression ratio.
+	const approxCompressionRatio = 0.2
+	approxOutputBytes := approxCompressionRatio * float64(flushingBytes)
+	approxNumFilesBasedOnTargetSize :=
+		int(math.Ceil(approxOutputBytes / float64(c.maxOutputFileSize)))
+	acceptableFileCount := float64(4 * approxNumFilesBasedOnTargetSize)
+	// The byte calculation is linear in numGrandparentFiles, but we will
+	// incur this linear cost in findGrandparentLimit too, so we are also
+	// willing to pay it now. We could approximate this cheaply by using
+	// the mean file size of Lbase.
+	grandparentFileBytes := c.grandparents.SizeSum()
+	fileCountUpperBoundDueToGrandparents :=
+		float64(grandparentFileBytes) / float64(c.maxOverlapBytes)
+	if fileCountUpperBoundDueToGrandparents > acceptableFileCount {
+		c.maxOverlapBytes = uint64(
+			float64(c.maxOverlapBytes) *
+				(fileCountUpperBoundDueToGrandparents / acceptableFileCount))
+	}
+}
+
 func newFlush(
 	opts *Options, cur *version, baseLevel int, flushing flushableList, bytesFlushed *uint64,
 ) *compaction {
@@ -314,12 +381,14 @@ func newFlush(
 		}
 	}
 
+	var flushingBytes uint64
 	for i := range flushing {
 		f := flushing[i]
 		updatePointBounds(f.newIter(nil))
 		if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
 			updateRangeBounds(rangeDelIter)
 		}
+		flushingBytes += f.inuseBytes()
 	}
 
 	if opts.Experimental.FlushSplitBytes > 0 {
@@ -328,6 +397,7 @@ func newFlush(
 		c.maxExpandedBytes = expandedCompactionByteSizeLimit(opts, 0)
 		c.grandparents = c.version.Overlaps(baseLevel, c.cmp,
 			c.smallest.UserKey, c.largest.UserKey)
+		adjustGrandparentOverlapBytesForFlush(c, flushingBytes)
 	}
 
 	c.setupInuseKeyRanges()
