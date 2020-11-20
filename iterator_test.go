@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -491,6 +492,131 @@ func (c *minSeqNumPropertyCollector) Finish(userProps map[string]string) error {
 
 func (c *minSeqNumPropertyCollector) Name() string {
 	return "minSeqNumPropertyCollector"
+}
+
+func TestReadSampling(t *testing.T) {
+	var d *DB
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	var iter *Iterator
+	defer func() {
+		if iter != nil {
+			require.NoError(t, iter.Close())
+		}
+	}()
+
+	datadriven.RunTest(t, "testdata/iterator_read_sampling", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			if iter != nil {
+				if err := iter.Close(); err != nil {
+					return err.Error()
+				}
+			}
+			if d != nil {
+				if err := d.Close(); err != nil {
+					return err.Error()
+				}
+			}
+
+			opts := &Options{}
+			opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
+				func() TablePropertyCollector {
+					return &minSeqNumPropertyCollector{}
+				})
+
+			var err error
+			if d, err = runDBDefineCmd(td, opts); err != nil {
+				return err.Error()
+			}
+			d.opts.private.forceReadSampling = true
+
+			d.mu.Lock()
+			// Disable the "dynamic base level" code for this test.
+			//d.mu.versions.picker.forceBaseLevel1()
+			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			d.mu.Unlock()
+			return s
+
+		case "set":
+			if d == nil {
+				return fmt.Sprintf("%s: db is not defined", td.Cmd)
+			}
+
+			var allowedSeeks int64
+
+			for _, arg := range td.CmdArgs {
+				if len(arg.Vals) != 1 {
+					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
+				}
+				switch arg.Key {
+				case "allowed-seeks":
+					var err error
+					allowedSeeks, err = strconv.ParseInt(arg.Vals[0], 10, 64)
+					if err != nil {
+						return err.Error()
+					}
+
+				}
+			}
+
+			d.mu.Lock()
+			for _, l := range d.mu.versions.currentVersion().Levels {
+				l.Slice().Each(func(f *fileMetadata) {
+					atomic.StoreInt64(&f.Atomic.AllowedSeeks, allowedSeeks)
+				})
+			}
+			d.mu.Unlock()
+			return ""
+
+		case "iter":
+			if iter == nil || iter.iter == nil {
+				// TODO(peter): runDBDefineCmd doesn't properly update the visible
+				// sequence number. So we have to use a snapshot with a very large
+				// sequence number, otherwise the DB appears empty.
+				snap := Snapshot{
+					db:     d,
+					seqNum: InternalKeySeqNumMax,
+				}
+				iter = snap.NewIter(nil)
+			}
+			return runIterCmd(td, iter)
+
+		case "read-compaction":
+			if d == nil {
+				return fmt.Sprintf("%s: db is not defined", td.Cmd)
+			}
+
+			d.mu.Lock()
+			s := fmt.Sprintf("%+v", d.mu.compact.readCompactions)
+			d.mu.Unlock()
+			return s
+
+		case "pending-read-compaction":
+			if iter == nil {
+				return fmt.Sprintf("%s: iter is not defined", td.Cmd)
+			}
+
+			s := fmt.Sprintf("%+v", iter.readSampling.pendingCompactions)
+			return s
+
+		case "close-iter":
+			if iter != nil {
+				if err := iter.Close(); err != nil {
+					return err.Error()
+				}
+			}
+			return ""
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+
 }
 
 func TestIteratorTableFilter(t *testing.T) {
