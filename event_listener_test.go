@@ -142,10 +142,11 @@ func TestEventListener(t *testing.T) {
 		case "open":
 			buf.Reset()
 			opts := &Options{
-				FS:                  loggingFS{mem, &buf},
-				EventListener:       MakeLoggingEventListener(&buf),
-				MaxManifestFileSize: 1,
-				WALDir:              "wal",
+				FS:                    loggingFS{mem, &buf},
+				EventListener:         MakeLoggingEventListener(&buf),
+				MaxManifestFileSize:   1,
+				L0CompactionThreshold: 10,
+				WALDir:                "wal",
 			}
 			// The table stats collector runs asynchronously and its
 			// timing is less predictable. It increments nextJobID, which

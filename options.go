@@ -278,20 +278,6 @@ type Options struct {
 	// out of the experimental group, or made the non-adjustable default. These
 	// options may change at any time, so do not rely on them.
 	Experimental struct {
-		// FlushSplitBytes denotes the target number of bytes per sublevel in
-		// each flush split interval (i.e. range between two flush split keys)
-		// in L0 sstables. When set to zero, only a single sstable is generated
-		// by each flush. When set to a non-zero value, flushes are split at
-		// points to meet L0's TargetFileSize, any grandparent-related overlap
-		// options, and at boundary keys of L0 flush split intervals (which are
-		// targeted to contain around FlushSplitBytes bytes in each sublevel
-		// between pairs of boundary keys). Splitting sstables during flush
-		// allows increased compaction flexibility and concurrency when those
-		// tables are compacted to lower levels.
-		//
-		// TODO(bilal): Experiment with this option to pick a good value.
-		FlushSplitBytes int64
-
 		// The threshold of L0 read-amplification at which compaction concurrency
 		// is enabled (if CompactionDebtConcurrency was not already exceeded).
 		// Every multiple of this value enables another concurrent
@@ -305,15 +291,6 @@ type Options struct {
 		// L0CompactionConcurrency, so the higher of the count of compaction
 		// concurrency slots as determined by the two options is chosen.
 		CompactionDebtConcurrency int
-
-		// L0SublevelCompactions enables the use of L0 sublevel-based compaction
-		// picking logic. Defaults to false for now. This logic will become
-		// a non-configurable default once it's better tuned.
-		//
-		// When true, this option also changes the interpretation of
-		// L0CompactionThreshold and L0StopWritesThreshold to refer to L0
-		// read amplification as opposed to the count of L0 files.
-		L0SublevelCompactions bool
 
 		// DeleteRangeFlushDelay configures how long the database should wait
 		// before forcing a flush of a memtable that contains a range
@@ -338,6 +315,18 @@ type Options struct {
 	// different filter policies. It is not necessary to populate this filters
 	// map during normal usage of a DB.
 	Filters map[string]FilterPolicy
+
+	// FlushSplitBytes denotes the target number of bytes per sublevel in
+	// each flush split interval (i.e. range between two flush split keys)
+	// in L0 sstables. When set to zero, only a single sstable is generated
+	// by each flush. When set to a non-zero value, flushes are split at
+	// points to meet L0's TargetFileSize, any grandparent-related overlap
+	// options, and at boundary keys of L0 flush split intervals (which are
+	// targeted to contain around FlushSplitBytes bytes in each sublevel
+	// between pairs of boundary keys). Splitting sstables during flush
+	// allows increased compaction flexibility and concurrency when those
+	// tables are compacted to lower levels.
+	FlushSplitBytes int64
 
 	// FS provides the interface for persistent file storage.
 	//
@@ -573,6 +562,9 @@ func (o *Options) EnsureDefaults() *Options {
 				})
 			})
 	}
+	if o.FlushSplitBytes <= 0 {
+		o.FlushSplitBytes = 2 * o.Levels[0].TargetFileSize
+	}
 
 	o.initMaps()
 	return o
@@ -641,11 +633,10 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  delete_range_flush_delay=%s\n", o.Experimental.DeleteRangeFlushDelay)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
-	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.Experimental.FlushSplitBytes)
+	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.FlushSplitBytes)
 	fmt.Fprintf(&buf, "  l0_compaction_concurrency=%d\n", o.Experimental.L0CompactionConcurrency)
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
-	fmt.Fprintf(&buf, "  l0_sublevel_compactions=%t\n", o.Experimental.L0SublevelCompactions)
 	fmt.Fprintf(&buf, "  lbase_max_bytes=%d\n", o.LBaseMaxBytes)
 	fmt.Fprintf(&buf, "  max_concurrent_compactions=%d\n", o.MaxConcurrentCompactions)
 	fmt.Fprintf(&buf, "  max_manifest_file_size=%d\n", o.MaxManifestFileSize)
@@ -803,7 +794,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "disable_wal":
 				o.DisableWAL, err = strconv.ParseBool(value)
 			case "flush_split_bytes":
-				o.Experimental.FlushSplitBytes, err = strconv.ParseInt(value, 10, 64)
+				o.FlushSplitBytes, err = strconv.ParseInt(value, 10, 64)
 			case "l0_compaction_concurrency":
 				o.Experimental.L0CompactionConcurrency, err = strconv.Atoi(value)
 			case "l0_compaction_threshold":
@@ -811,7 +802,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "l0_stop_writes_threshold":
 				o.L0StopWritesThreshold, err = strconv.Atoi(value)
 			case "l0_sublevel_compactions":
-				o.Experimental.L0SublevelCompactions, err = strconv.ParseBool(value)
+				// Do nothing; option existed in older versions of pebble.
 			case "lbase_max_bytes":
 				o.LBaseMaxBytes, err = strconv.ParseInt(value, 10, 64)
 			case "max_concurrent_compactions":

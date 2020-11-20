@@ -90,7 +90,8 @@ zmemtbl        14    13 B
 
 func TestMetrics(t *testing.T) {
 	d, err := Open("", &Options{
-		FS: vfs.NewMem(),
+		FS:                    vfs.NewMem(),
+		L0CompactionThreshold: 8,
 	})
 	require.NoError(t, err)
 	defer func() {
