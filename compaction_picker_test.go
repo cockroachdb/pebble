@@ -54,7 +54,13 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, [numLevels]int64, 
 				return nil, nil, sizes, err.Error()
 			}
 			for i := uint64(1); sizes[level] < int64(size); i++ {
-				key := base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), i, InternalKeyKindSet)
+				var key InternalKey
+				if level == 0 {
+					// For L0, make `size` overlapping files.
+					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", 1)), i, InternalKeyKindSet)
+				} else {
+					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), i, InternalKeyKindSet)
+				}
 				m := &fileMetadata{
 					Smallest:       key,
 					Largest:        key,
@@ -458,7 +464,6 @@ func TestCompactionPickerL0(t *testing.T) {
 	}
 
 	opts := (*Options)(nil).EnsureDefaults()
-	opts.Experimental.L0SublevelCompactions = true
 	opts.Experimental.L0CompactionConcurrency = 1
 	var picker *compactionPickerByScore
 	var inProgressCompactions []compactionInfo
@@ -690,7 +695,6 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 	}
 
 	opts := (*Options)(nil).EnsureDefaults()
-	opts.Experimental.L0SublevelCompactions = true
 	opts.Experimental.L0CompactionConcurrency = 1
 	var picker *compactionPickerByScore
 	var inProgressCompactions []compactionInfo

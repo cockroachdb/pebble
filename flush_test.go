@@ -17,9 +17,15 @@ import (
 )
 
 func TestManualFlush(t *testing.T) {
-	d, err := Open("", &Options{
-		FS: vfs.NewMem(),
-	})
+	getOptions := func() *Options {
+		opts := &Options{
+			FS:                    vfs.NewMem(),
+			L0CompactionThreshold: 10,
+		}
+		opts.private.disableAutomaticCompactions = true
+		return opts
+	}
+	d, err := Open("", getOptions())
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, d.Close())
@@ -75,9 +81,7 @@ func TestManualFlush(t *testing.T) {
 			if err := d.Close(); err != nil {
 				return err.Error()
 			}
-			d, err = Open("", &Options{
-				FS: vfs.NewMem(),
-			})
+			d, err = Open("", getOptions())
 			if err != nil {
 				return err.Error()
 			}

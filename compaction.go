@@ -665,7 +665,7 @@ func newFlush(
 		}
 	}
 
-	if opts.Experimental.FlushSplitBytes > 0 {
+	if opts.FlushSplitBytes > 0 {
 		c.maxOutputFileSize = uint64(opts.Level(0).TargetFileSize)
 		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
 		c.grandparents = c.version.Overlaps(baseLevel, c.cmp,
@@ -1968,7 +1968,7 @@ func (d *DB) runCompaction(
 		return nil
 	}
 
-	splitL0Outputs := c.outputLevel.level == 0 && d.opts.Experimental.FlushSplitBytes > 0
+	splitL0Outputs := c.outputLevel.level == 0 && d.opts.FlushSplitBytes > 0
 
 	// finishOutput is called for an sstable with the first key of the next sstable, and for the
 	// last sstable with an empty key.

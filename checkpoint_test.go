@@ -29,7 +29,8 @@ func TestCheckpoint(t *testing.T) {
 	var buf syncedBuffer
 	mem := vfs.NewMem()
 	opts := &Options{
-		FS: loggingFS{mem, &buf},
+		FS:                    loggingFS{mem, &buf},
+		L0CompactionThreshold: 10,
 	}
 
 	datadriven.RunTest(t, "testdata/checkpoint", func(td *datadriven.TestData) string {

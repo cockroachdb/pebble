@@ -302,6 +302,9 @@ type nonReadOnly struct{}
 
 func (n nonReadOnly) apply(opts *pebble.Options) {
 	opts.ReadOnly = false
+	// Increase the L0 compaction threshold to reduce the likelihood of an
+	// unintended compaction changing test output.
+	opts.L0CompactionThreshold = 10
 }
 
 func (d *dbT) runCheckpoint(cmd *cobra.Command, args []string) {
@@ -475,7 +478,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 				d.fmtValue.setForComparer(ve.ComparerName, d.comparers)
 			}
 		}
-		v, _, err := bve.Apply(nil /* version */, cmp.Compare, d.fmtKey.fn, d.opts.Experimental.FlushSplitBytes)
+		v, _, err := bve.Apply(nil /* version */, cmp.Compare, d.fmtKey.fn, d.opts.FlushSplitBytes)
 		if err != nil {
 			return err
 		}
