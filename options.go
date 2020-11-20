@@ -331,6 +331,36 @@ type Options struct {
 		// there isn't enough disk space available. Setting this to 0 disables
 		// deletion pacing, which is also the default.
 		MinDeletionRate int
+
+		// ReadCompactionThreshold controls the frequency of read triggered
+		// compactions by adjusting FileMetadata.AllowedSeeks.
+		//
+		// From LevelDB:
+		// ```
+		// We arrange to automatically compact this file after
+		// a certain number of seeks.  Let's assume:
+		//   (1) One seek costs 10ms
+		//   (2) Writing or reading 1MB costs 10ms (100MB/s)
+		//   (3) A compaction of 1MB does 25MB of IO:
+		//         1MB read from this level
+		//         10-12MB read from next level (boundaries may be misaligned)
+		//         10-12MB written to next level
+		// This implies that 25 seeks cost the same as the compaction
+		// of 1MB of data.  I.e., one seek costs approximately the
+		// same as the compaction of 40KB of data.  We are a little
+		// conservative and allow approximately one seek for every 16KB
+		// of data before triggering a compaction.
+		// ```
+		// TODO(aadityasondhi): Experiment with this to find a good value
+		ReadCompactionThreshold int64
+
+		// ReadSamplingRate is a multiplier for the readSamplingPeriod in
+		// iterator.maybeSampleRead() to control the frequency of read sampling
+		// to trigger a read triggered compaction. A value of 0 prevents sampling
+		// and disables read triggered compactions.
+		//
+		// TODO(aadityasondhi): Experiment with this to find a good value
+		ReadSamplingRate uint64
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -572,6 +602,12 @@ func (o *Options) EnsureDefaults() *Options {
 					Duration: duration,
 				})
 			})
+	}
+	if o.Experimental.ReadCompactionThreshold == 0 {
+		o.Experimental.ReadCompactionThreshold = 32000
+	}
+	if o.Experimental.ReadSamplingRate != 0 {
+		o.Experimental.ReadSamplingRate = 0
 	}
 
 	o.initMaps()
