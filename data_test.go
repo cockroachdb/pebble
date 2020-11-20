@@ -332,6 +332,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 
 	var snapshots []uint64
 	var levelMaxBytes map[int]int64
+	baseLevel := -1
 	for _, arg := range td.CmdArgs {
 		switch arg.Key {
 		case "target-file-sizes":
@@ -379,6 +380,12 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			default:
 				return nil, errors.Errorf("Unrecognized %q %q arg value: %q", td.Cmd, arg.Key, arg.Vals[0])
 			}
+		case "base-level":
+			var err error
+			baseLevel, err = strconv.Atoi(arg.Vals[0])
+			if err != nil {
+				return nil, err
+			}
 		default:
 			return nil, errors.Errorf("%s: unknown arg: %s", td.Cmd, arg.Key)
 		}
@@ -388,7 +395,12 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		return nil, err
 	}
 	d.mu.Lock()
-	d.mu.versions.dynamicBaseLevel = false
+	if baseLevel < 0 {
+		d.mu.versions.dynamicBaseLevel = false
+	} else {
+		d.mu.versions.dynamicBaseLevel = true
+		d.mu.versions.picker.(*compactionPickerByScore).baseLevel = baseLevel
+	}
 	for i := range snapshots {
 		s := &Snapshot{db: d}
 		s.seqNum = snapshots[i]

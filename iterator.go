@@ -7,9 +7,14 @@ package pebble
 import (
 	"bytes"
 	"io"
+	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/randvar"
+	"golang.org/x/exp/rand"
 )
 
 // iterPos describes the state of the internal iterator, in terms of whether it is
@@ -25,6 +30,9 @@ const (
 	iterPosPrev       iterPos = -1
 	iterPosCurReverse iterPos = -2
 )
+
+// Approximate gap in bytes between samples of data read during iteration.
+const readBytesPeriod uint64 = 1048576
 
 var errReversePrefixIteration = errors.New("pebble: unsupported reverse prefix iteration")
 
@@ -57,25 +65,39 @@ type IteratorMetrics struct {
 // Next, Prev) return without advancing if the iterator has an accumulated
 // error.
 type Iterator struct {
-	opts        IterOptions
-	cmp         Compare
-	equal       Equal
-	merge       Merge
-	split       Split
-	iter        internalIterator
-	readState   *readState
-	err         error
-	key         []byte
-	keyBuf      []byte
-	value       []byte
-	valueBuf    []byte
-	valueCloser io.Closer
-	valid       bool
-	iterKey     *InternalKey
-	iterValue   []byte
-	pos         iterPos
-	alloc       *iterAlloc
-	prefix      []byte
+	opts         IterOptions
+	cmp          Compare
+	equal        Equal
+	merge        Merge
+	split        Split
+	iter         internalIterator
+	readState    *readState
+	err          error
+	key          []byte
+	keyBuf       []byte
+	value        []byte
+	valueBuf     []byte
+	valueCloser  io.Closer
+	valid        bool
+	iterKey      *InternalKey
+	iterValue    []byte
+	pos          iterPos
+	alloc        *iterAlloc
+	prefix       []byte
+	readSampling readSampling
+}
+
+// readSampling stores variables used to sample a read to trigger a read
+// compaction
+type readSampling struct {
+	bytesUntilReadSampling uint64
+	rand                   *rand.Rand
+	randvar                *randvar.Uniform
+	pendingCompactions     []readCompaction
+	topFile                *manifest.FileMetadata
+	// forceReadSampling is used for testing purposes to force a read sample on every
+	// call to Iterator.maybeSampleRead()
+	forceReadSampling bool
 }
 
 func (i *Iterator) findNextEntry() bool {
@@ -150,6 +172,79 @@ func (i *Iterator) nextUserKey() {
 			break
 		}
 		done = i.iterKey.SeqNum() == 0
+	}
+}
+
+func (i *Iterator) maybeSampleRead() {
+	if i.readState == nil {
+		return
+	}
+	if i.readSampling.forceReadSampling {
+		i.sampleRead()
+		return
+	}
+	samplingPeriod := readBytesPeriod * i.readState.db.opts.Experimental.ReadSamplingMultiplier
+	if samplingPeriod == 0 {
+		return
+	}
+	if i.readSampling.rand == nil || i.readSampling.randvar == nil {
+		i.readSampling.rand = rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+		i.readSampling.randvar = randvar.NewUniform(0, 2*samplingPeriod)
+	}
+	bytesRead := uint64(len(i.key) + len(i.value))
+	for i.readSampling.bytesUntilReadSampling < bytesRead {
+		i.readSampling.bytesUntilReadSampling += i.readSampling.randvar.Uint64(i.readSampling.rand)
+		i.sampleRead()
+	}
+	i.readSampling.bytesUntilReadSampling -= bytesRead
+}
+
+func (i *Iterator) sampleRead() {
+	topFile := i.readSampling.topFile
+	topLevel, numOverlappingLevels := numLevels, 0
+	if mi, ok := i.iter.(*mergingIter); ok {
+		if len(mi.levels) > 1 {
+			mi.ForEachLevelIter(func(li *levelIter) bool {
+				l := manifest.LevelToInt(li.level)
+				// TODO(aaditya): Fix edge case: For Iterator.Last(), Iterator.SeekLT() and Iterator.Prev(),
+				// if the key is the first key of the file or the only key, sampling skips it because
+				// the iterator has already moved past it. The solution would be to check for this, and then
+				// seek to the correct file to sample it. This could have a performance impact which needs to
+				// be tested in benchmarks.
+				if file := li.files.Current(); file != nil {
+					var containsKey bool
+					if mi.dir == int(iterPosNext) || mi.dir == int(iterPosCurForward) {
+						containsKey = i.cmp(file.Smallest.UserKey, i.key) <= 0
+					} else if mi.dir == int(iterPosPrev) || mi.dir == int(iterPosCurReverse) {
+						containsKey = i.cmp(file.Largest.UserKey, i.key) >= 0
+					}
+					if containsKey {
+						numOverlappingLevels++
+						if numOverlappingLevels >= 2 {
+							// Terminate the loop early if at least 2 overlapping levels are found.
+							return true
+						}
+						topLevel = l
+						topFile = file
+					}
+				}
+				return false
+			})
+		}
+	}
+	if topFile == nil || topLevel >= numLevels {
+		return
+	}
+	if numOverlappingLevels >= 2 {
+		allowedSeeks := atomic.AddInt64(&topFile.Atomic.AllowedSeeks, -1)
+		if allowedSeeks == 0 {
+			read := readCompaction{
+				start: topFile.Smallest.UserKey,
+				end:   topFile.Largest.UserKey,
+				level: topLevel,
+			}
+			i.readSampling.pendingCompactions = append(i.readSampling.pendingCompactions, read)
+		}
 	}
 }
 
@@ -327,7 +422,9 @@ func (i *Iterator) SeekGE(key []byte) bool {
 	}
 
 	i.iterKey, i.iterValue = i.iter.SeekGE(key)
-	return i.findNextEntry()
+	valid := i.findNextEntry()
+	i.maybeSampleRead()
+	return valid
 }
 
 // SeekPrefixGE moves the iterator to the first key/value pair whose key is
@@ -401,7 +498,9 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	}
 
 	i.iterKey, i.iterValue = i.iter.SeekPrefixGE(i.prefix, key)
-	return i.findNextEntry()
+	valid := i.findNextEntry()
+	i.maybeSampleRead()
+	return valid
 }
 
 // SeekLT moves the iterator to the last key/value pair whose key is less than
@@ -417,7 +516,9 @@ func (i *Iterator) SeekLT(key []byte) bool {
 	}
 
 	i.iterKey, i.iterValue = i.iter.SeekLT(key)
-	return i.findPrevEntry()
+	valid := i.findPrevEntry()
+	i.maybeSampleRead()
+	return valid
 }
 
 // First moves the iterator the the first key/value pair. Returns true if the
@@ -430,7 +531,9 @@ func (i *Iterator) First() bool {
 	} else {
 		i.iterKey, i.iterValue = i.iter.First()
 	}
-	return i.findNextEntry()
+	valid := i.findNextEntry()
+	i.maybeSampleRead()
+	return valid
 }
 
 // Last moves the iterator the the last key/value pair. Returns true if the
@@ -443,7 +546,9 @@ func (i *Iterator) Last() bool {
 	} else {
 		i.iterKey, i.iterValue = i.iter.Last()
 	}
-	return i.findPrevEntry()
+	valid := i.findPrevEntry()
+	i.maybeSampleRead()
+	return valid
 }
 
 // Next moves the iterator to the next key/value pair. Returns true if the
@@ -491,7 +596,9 @@ func (i *Iterator) Next() bool {
 		i.nextUserKey()
 	case iterPosNext:
 	}
-	return i.findNextEntry()
+	valid := i.findNextEntry()
+	i.maybeSampleRead()
+	return valid
 }
 
 // Prev moves the iterator to the previous key/value pair. Returns true if the
@@ -536,7 +643,9 @@ func (i *Iterator) Prev() bool {
 			i.prevUserKey()
 		}
 	}
-	return i.findPrevEntry()
+	valid := i.findPrevEntry()
+	i.maybeSampleRead()
+	return valid
 }
 
 // Key returns the key of the current key/value pair, or nil if done. The
@@ -583,6 +692,13 @@ func (i *Iterator) Close() error {
 	err := i.err
 
 	if i.readState != nil {
+		if len(i.readSampling.pendingCompactions) > 0 {
+			// Copy pending read compactions using db.mu.Lock()
+			i.readState.db.mu.Lock()
+			i.readState.db.mu.compact.readCompactions = append(i.readState.db.mu.compact.readCompactions, i.readSampling.pendingCompactions...)
+			i.readState.db.mu.Unlock()
+		}
+
 		i.readState.unref()
 		i.readState = nil
 	}

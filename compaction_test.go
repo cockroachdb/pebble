@@ -98,6 +98,12 @@ func (p *compactionPickerForTesting) pickManual(
 	return pickManualHelper(p.opts, manual, p.vers, p.baseLevel), false
 }
 
+func (p *compactionPickerForTesting) pickReadTriggeredCompaction(
+	env compactionEnv,
+) (pc *pickedCompaction) {
+	return nil
+}
+
 func TestPickCompaction(t *testing.T) {
 	fileNums := func(files manifest.LevelSlice) string {
 		var ss []string
@@ -1621,6 +1627,129 @@ func TestCompactionTombstones(t *testing.T) {
 				str := compactionString()
 				d.mu.Unlock()
 				return str
+
+			case "version":
+				d.mu.Lock()
+				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				d.mu.Unlock()
+				return s
+
+			default:
+				return fmt.Sprintf("unknown command: %s", td.Cmd)
+			}
+		})
+}
+
+func TestCompactionReadTriggered(t *testing.T) {
+	var d *DB
+	var compactInfo *CompactionInfo // protected by d.mu
+
+	compactionString := func() string {
+		for d.mu.compact.compactingCount > 0 {
+			d.mu.compact.cond.Wait()
+		}
+
+		s := "(none)"
+		if compactInfo != nil {
+			// JobID's aren't deterministic, especially w/ table stats
+			// enabled. Use a fixed job ID for data-driven test output.
+			compactInfo.JobID = 100
+			s = compactInfo.String()
+			compactInfo = nil
+		}
+		return s
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_read_triggered",
+		func(td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "define":
+				if d != nil {
+					compactInfo = nil
+					if err := d.Close(); err != nil {
+						return err.Error()
+					}
+				}
+				opts := &Options{
+					FS:         vfs.NewMem(),
+					DebugCheck: DebugCheckLevels,
+					EventListener: EventListener{
+						CompactionEnd: func(info CompactionInfo) {
+							compactInfo = &info
+						},
+					},
+				}
+				var err error
+				d, err = runDBDefineCmd(td, opts)
+				if err != nil {
+					return err.Error()
+				}
+				d.mu.Lock()
+				t := time.Now()
+				d.timeNow = func() time.Time {
+					t = t.Add(time.Second)
+					return t
+				}
+				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				d.mu.Unlock()
+				return s
+
+			case "add-read-compaction":
+				d.mu.Lock()
+				for _, arg := range td.CmdArgs {
+					switch arg.Key {
+					case "flushing":
+						switch arg.Vals[0] {
+						case "true":
+							d.mu.compact.flushing = true
+						default:
+							d.mu.compact.flushing = false
+						}
+					}
+				}
+				for _, line := range strings.Split(td.Input, "\n") {
+					if line == "" {
+						continue
+					}
+					parts := strings.Split(line, " ")
+					if len(parts) != 2 {
+						return "error: malformed data for add-read-compaction. usage: <level>: <start>-<end>"
+					}
+					if l, err := strconv.Atoi(parts[0][:1]); err == nil {
+						keys := strings.Split(parts[1], "-")
+
+						rc := readCompaction{
+							level: l,
+							start: []byte(keys[0]),
+							end:   []byte(keys[1]),
+						}
+						d.mu.compact.readCompactions = append(d.mu.compact.readCompactions, rc)
+					} else {
+						return err.Error()
+					}
+				}
+				d.mu.Unlock()
+				return ""
+
+			case "show-read-compactions":
+				d.mu.Lock()
+				var sb strings.Builder
+				if len(d.mu.compact.readCompactions) == 0 {
+					sb.WriteString("(none)")
+				}
+				for _, rc := range d.mu.compact.readCompactions {
+					sb.WriteString(fmt.Sprintf("(level: %d, start: %s, end: %s)\n", rc.level, string(rc.start), string(rc.end)))
+				}
+				d.mu.Unlock()
+				return sb.String()
+
+			case "maybe-compact":
+				d.mu.Lock()
+				d.opts.private.disableAutomaticCompactions = false
+				d.maybeScheduleCompaction()
+				s := compactionString()
+				d.mu.Unlock()
+				return s
 
 			case "version":
 				d.mu.Lock()
