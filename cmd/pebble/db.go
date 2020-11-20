@@ -68,7 +68,6 @@ func newPebbleDB(dir string) DB {
 			Name: "cockroach_merge_operator",
 		},
 	}
-	opts.Experimental.L0SublevelCompactions = true
 
 	for i := 0; i < len(opts.Levels); i++ {
 		l := &opts.Levels[i]
@@ -82,7 +81,7 @@ func newPebbleDB(dir string) DB {
 		l.EnsureDefaults()
 	}
 	opts.Levels[6].FilterPolicy = nil
-	opts.Experimental.FlushSplitBytes = opts.Levels[0].TargetFileSize
+	opts.FlushSplitBytes = opts.Levels[0].TargetFileSize
 
 	opts.EnsureDefaults()
 

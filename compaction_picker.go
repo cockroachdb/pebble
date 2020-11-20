@@ -762,80 +762,11 @@ func (p *compactionPickerByScore) calculateL0Score(
 	var info candidateLevelInfo
 	info.outputLevel = p.baseLevel
 
-	if p.opts.Experimental.L0SublevelCompactions {
-		// If L0Sublevels are present, we use the sublevel count as opposed to
-		// the L0 file count to score this level. The base vs intra-L0
-		// compaction determination happens in pickAuto, not here.
-		info.score = float64(2*p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()) /
-			float64(p.opts.L0CompactionThreshold)
-		return info
-	}
-
-	// TODO(peter): The current scoring logic precludes concurrent L0->Lbase
-	// compactions in most cases because if there is an in-progress L0->Lbase
-	// compaction we'll instead preferentially score an intra-L0 compaction. One
-	// possible way out is to score both by increasing the size of the "scores"
-	// array by one and adding entries for both L0->Lbase and intra-L0
-	// compactions.
-
-	// We treat level-0 specially by bounding the number of files instead of
-	// number of bytes for two reasons:
-	//
-	// (1) With larger write-buffer sizes, it is nice not to do too many
-	// level-0 compactions.
-	//
-	// (2) The files in level-0 are merged on every read and therefore we
-	// wish to avoid too many files when the individual file size is small
-	// (perhaps because of a small write-buffer setting, or very high
-	// compression ratios, or lots of overwrites/deletions).
-
-	// Score an L0->Lbase compaction by counting the number of idle
-	// (non-compacting) files in L0.
-	var idleL0Count, totalL0Count, intraL0Count int
-	iter := p.vers.Levels[0].Iter()
-	for f := iter.First(); f != nil; f = iter.Next() {
-		if f.Compacting {
-			intraL0Count = 0
-		} else {
-			idleL0Count++
-			intraL0Count++
-		}
-		totalL0Count++
-	}
-	info.score = float64(idleL0Count) / float64(p.opts.L0CompactionThreshold)
-
-	// Only start an intra-L0 compaction if there is an existing L0->Lbase
-	// compaction.
-	var l0Compaction bool
-	for i := range inProgressCompactions {
-		if inProgressCompactions[i].inputs[0].level == 0 &&
-			inProgressCompactions[i].outputLevel != 0 {
-			l0Compaction = true
-			break
-		}
-	}
-	if !l0Compaction {
-		return info
-	}
-
-	if totalL0Count < p.opts.L0CompactionThreshold+2 {
-		// If L0 isn't accumulating many files beyond the regular L0 trigger,
-		// don't resort to an intra-L0 compaction yet. This matches the RocksDB
-		// heuristic.
-		return info
-	}
-	if intraL0Count < minIntraL0Count {
-		// Not enough idle L0 files to perform an intra-L0 compaction. This
-		// matches the RocksDB heuristic. Note that if another file is flushed
-		// or ingested to L0, a new compaction picker will be created and we'll
-		// reexamine the intra-L0 score.
-		return info
-	}
-
-	// Score the intra-L0 compaction using the number of files that are
-	// possibly in the compaction.
-	info.score = float64(intraL0Count) / float64(p.opts.L0CompactionThreshold)
-	info.outputLevel = 0
+	// If L0Sublevels are present, we use the sublevel count as opposed to
+	// the L0 file count to score this level. The base vs intra-L0
+	// compaction determination happens in pickAuto, not here.
+	info.score = float64(2*p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()) /
+		float64(p.opts.L0CompactionThreshold)
 	return info
 }
 
@@ -942,12 +873,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 	// significantly right after a base compaction finishes, and before those
 	// bytes have been compacted further down the LSM.
 	if n := len(env.inProgressCompactions); n > 0 {
-		var l0ReadAmp int
-		if p.opts.Experimental.L0SublevelCompactions {
-			l0ReadAmp = p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()
-		} else {
-			l0ReadAmp = p.vers.Levels[0].Len()
-		}
+		l0ReadAmp := p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()
 		compactionDebt := int(p.estimatedCompactionDebt(0))
 		ccSignal1 := n * p.opts.Experimental.L0CompactionConcurrency
 		ccSignal2 := n * p.opts.Experimental.CompactionDebtConcurrency
@@ -1020,7 +946,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			continue
 		}
 
-		if info.level == 0 && p.opts.Experimental.L0SublevelCompactions {
+		if info.level == 0 {
 			pc = pickL0(env, p.opts, p.vers, p.baseLevel)
 			// Fail-safe to protect against compacting the same sstable
 			// concurrently.

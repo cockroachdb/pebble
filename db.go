@@ -1331,12 +1331,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				continue
 			}
 		}
-		var l0ReadAmp int
-		if d.opts.Experimental.L0SublevelCompactions {
-			l0ReadAmp = d.mu.versions.currentVersion().L0Sublevels.ReadAmplification()
-		} else {
-			l0ReadAmp = d.mu.versions.currentVersion().Levels[0].Len()
-		}
+		l0ReadAmp := d.mu.versions.currentVersion().L0Sublevels.ReadAmplification()
 		if l0ReadAmp >= d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.
 			if !stalled {

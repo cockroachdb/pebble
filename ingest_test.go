@@ -596,8 +596,9 @@ func TestIngestError(t *testing.T) {
 
 		inj := errorfs.OnIndex(-1)
 		d, err := Open("", &Options{
-			FS:     errorfs.Wrap(mem, inj),
-			Logger: panicLogger{},
+			FS:                    errorfs.Wrap(mem, inj),
+			Logger:                panicLogger{},
+			L0CompactionThreshold: 8,
 		})
 		require.NoError(t, err)
 		// Force the creation of an L0 sstable that overlaps with the tables

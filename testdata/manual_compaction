@@ -592,7 +592,7 @@ a:3
 # sstable after the next point key is added, rather than continuing to
 # add keys indefinitely (or till the size limit is reached).
 
-define target-file-sizes=(1, 1, 52) snapshots=(2)
+define target-file-sizes=(100, 1, 52) snapshots=(2)
 L1
   a.SET.3:3
   b.RANGEDEL.3:e
