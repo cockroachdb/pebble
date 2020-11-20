@@ -96,10 +96,18 @@ type FileMetadata struct {
 	// is true and IsIntraL0Compacting is false for an L0 file, the file must
 	// be part of a compaction to Lbase.
 	IsIntraL0Compacting bool
-	subLevel            int
-	l0Index             int
-	minIntervalIndex    int
-	maxIntervalIndex    int
+	// Fields inside the Atomic struct should be accessed atomically.
+	Atomic struct {
+		// AllowedSeeks is used to determine if a file should be picked for
+		// a read triggered compaction. It is decremented when read sampling
+		// in pebble.Iterator after every after every positioning operation
+		// that returns a user key (eg. Next, Prev, SeekGE, SeekLT, etc).
+		AllowedSeeks int64
+	}
+	subLevel         int
+	l0Index          int
+	minIntervalIndex int
+	maxIntervalIndex int
 
 	// True if user asked us to compact this file. This flag is only set and
 	// respected by RocksDB but exists here to preserve its value in the
@@ -258,10 +266,7 @@ const NumLevels = 7
 // NewVersion constructs a new Version with the provided files. It requires
 // the provided files are already well-ordered. It's intended for testing.
 func NewVersion(
-	cmp Compare,
-	formatKey base.FormatKey,
-	flushSplitBytes int64,
-	files [NumLevels][]*FileMetadata,
+	cmp Compare, formatKey base.FormatKey, flushSplitBytes int64, files [NumLevels][]*FileMetadata,
 ) *Version {
 	var v Version
 	for l := range files {
