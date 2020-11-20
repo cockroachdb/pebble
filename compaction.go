@@ -1131,6 +1131,14 @@ type manualCompaction struct {
 	end         InternalKey
 }
 
+type readCompaction struct {
+	level int
+	// Key ranges are used instead of file handles as versions could change
+	// between the read sampling and scheduling a compaction.
+	start []byte
+	end   []byte
+}
+
 func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	var isBase, isIntraL0 bool
@@ -1263,6 +1271,15 @@ func (d *DB) maybeScheduleFlush() {
 		return
 	}
 
+	if !d.passedFlushThreshold() {
+		return
+	}
+
+	d.mu.compact.flushing = true
+	go d.flush()
+}
+
+func (d *DB) passedFlushThreshold() bool {
 	var n int
 	var size uint64
 	for ; n < len(d.mu.mem.queue)-1; n++ {
@@ -1279,7 +1296,7 @@ func (d *DB) maybeScheduleFlush() {
 	}
 	if n == 0 {
 		// None of the immutable memtables are ready for flushing.
-		return
+		return false
 	}
 
 	// Only flush once the sum of the queued memtable sizes exceeds half the
@@ -1288,11 +1305,10 @@ func (d *DB) maybeScheduleFlush() {
 	// DB.newMemTable().
 	minFlushSize := uint64(d.opts.MemTableSize) / 2
 	if size < minFlushSize {
-		return
+		return false
 	}
 
-	d.mu.compact.flushing = true
-	go d.flush()
+	return true
 }
 
 func (d *DB) maybeScheduleDelayedFlush(tbl *memTable) {
@@ -1577,6 +1593,10 @@ func (d *DB) maybeScheduleCompactionPicker(
 
 	for !d.opts.private.disableAutomaticCompactions && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
 		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
+		env.readCompactionEnv = readCompactionEnv{
+			readCompactions: &d.mu.compact.readCompactions,
+			flushing:        d.mu.compact.flushing || d.passedFlushThreshold(),
+		}
 		pc := pickFunc(d.mu.versions.picker, env)
 		if pc == nil {
 			break

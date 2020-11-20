@@ -352,7 +352,7 @@ func TestVersionEditApply(t *testing.T) {
 				if err := bve.Accumulate(ve); err != nil {
 					return err.Error()
 				}
-				newv, zombies, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20)
+				newv, zombies, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000)
 				if err != nil {
 					return err.Error()
 				}

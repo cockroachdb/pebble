@@ -1,0 +1,108 @@
+# Verify that pickAuto picks read triggered compactions that are scheduled and LSM is in good shape. This ensures
+# that read triggered compactions are lower priority than score based ones. This also verifies that only the files
+# within the range set in a readCompaction are chosen for compaction.
+define
+L5
+  000101:a.SET.11-f.SET.12 size=10
+  000102:g.SET.11-l.SET.12 size=10
+L6
+  000010:a.SET.1-f.SET.2 size=100
+  000011:g.SET.1-l.SET.2 size=100
+----
+5:
+  000101:[a#11,SET-f#12,SET]
+  000102:[g#11,SET-l#12,SET]
+6:
+  000010:[a#1,SET-f#2,SET]
+  000011:[g#1,SET-l#2,SET]
+
+pick-auto
+----
+nil
+
+add-read-compaction
+5: a-f
+----
+
+show-read-compactions
+----
+(level: 5, start: a, end: f)
+
+pick-auto
+----
+L5 -> L6
+L5: 000101
+L6: 000010
+
+show-read-compactions
+----
+(none)
+
+
+# Verify that pickAuto does not pick read triggered compactions when the LSM is in bad shape and instead schedules a
+# score-based one.
+define
+L5
+  000101:a.SET.11-f.SET.12 size=1000000000
+L6
+  000010:a.SET.1-f.SET.2 size=1000000000
+----
+5:
+  000101:[a#11,SET-f#12,SET]
+6:
+  000010:[a#1,SET-f#2,SET]
+
+add-read-compaction
+5: a-f
+----
+
+show-read-compactions
+----
+(level: 5, start: a, end: f)
+
+pick-auto
+----
+L5 -> L6
+L5: 000101
+L6: 000010
+
+show-read-compactions
+----
+(level: 5, start: a, end: f)
+
+
+# Test case where there is mismatch in the level of chosen read compaction and current version, but the correct target
+# file is in L0. PickReadTriggeredCompaction should be able to handle this and the L0 file that overlaps in the same
+# key range to compact.
+define
+L0
+  010001:a.SET.11-b.SET.12 size=10
+L5
+  000101:a.SET.11-d.SET.12 size=100
+L6
+  000010:a.SET.1-e.SET.2 size=1000
+----
+0.0:
+  010001:[a#11,SET-b#12,SET]
+5:
+  000101:[a#11,SET-d#12,SET]
+6:
+  000010:[a#1,SET-e#2,SET]
+
+add-read-compaction
+4: a-b
+----
+
+show-read-compactions
+----
+(level: 4, start: a, end: b)
+
+pick-auto
+----
+L0 -> L5
+L0: 010001
+L5: 000101
+
+show-read-compactions
+----
+(none)
