@@ -20,10 +20,11 @@ import (
 const minIntraL0Count = 4
 
 type compactionEnv struct {
-	bytesCompacted          *uint64
-	earliestUnflushedSeqNum uint64
-	earliestSnapshotSeqNum  uint64
-	inProgressCompactions   []compactionInfo
+	bytesCompacted             *uint64
+	earliestUnflushedSeqNum    uint64
+	earliestSnapshotSeqNum     uint64
+	inProgressCompactions      []compactionInfo
+	readTriggeredCompactionEnv readTriggeredCompactionEnv
 }
 
 type compactionPicker interface {
@@ -34,8 +35,14 @@ type compactionPicker interface {
 	pickAuto(env compactionEnv) (pc *pickedCompaction)
 	pickManual(env compactionEnv, manual *manualCompaction) (c *pickedCompaction, retryLater bool)
 	pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction)
-
+	pickReadTriggeredCompaction(env compactionEnv) (pc *pickedCompaction)
 	forceBaseLevel1()
+}
+
+// readTriggeredCompactionEnv is used to hold data required to perform read compactions
+type readTriggeredCompactionEnv struct {
+	readCompactions *[]readCompaction
+	flushing        bool
 }
 
 // Information about in-progress compactions provided to the compaction picker. These are used to
@@ -408,10 +415,7 @@ func expandToAtomicUnit(
 }
 
 func newCompactionPicker(
-	v *version,
-	opts *Options,
-	inProgressCompactions []compactionInfo,
-	levelSizes [numLevels]int64,
+	v *version, opts *Options, inProgressCompactions []compactionInfo, levelSizes [numLevels]int64,
 ) compactionPicker {
 	p := &compactionPickerByScore{
 		opts:       opts,
@@ -990,6 +994,11 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 	if pc := p.pickElisionOnlyCompaction(env); pc != nil {
 		return pc
 	}
+
+	if pc := p.pickReadTriggeredCompaction(env); pc != nil {
+		return pc
+	}
+
 	return nil
 }
 
@@ -1320,6 +1329,75 @@ func pickManualHelper(
 		return nil
 	}
 	return pc
+}
+
+func (p *compactionPickerByScore) pickReadTriggeredCompaction(
+	env compactionEnv,
+) (pc *pickedCompaction) {
+	if env.readTriggeredCompactionEnv.flushing || env.readTriggeredCompactionEnv.readCompactions == nil {
+		return nil
+	}
+	for len(*env.readTriggeredCompactionEnv.readCompactions) > 0 {
+		rc := (*env.readTriggeredCompactionEnv.readCompactions)[0]
+		*env.readTriggeredCompactionEnv.readCompactions = (*env.readTriggeredCompactionEnv.readCompactions)[1:]
+		if pc = pickReadTriggeredCompactionHelper(p, &rc, env); pc != nil {
+			break
+		}
+	}
+	if pc != nil {
+		if pc.startLevel.level == 0 && pc.outputLevel.level == 0 {
+			panic("intra L0 = BAD!")
+		}
+	}
+	return pc
+}
+
+func pickReadTriggeredCompactionHelper(
+	p *compactionPickerByScore, rc *readCompaction, env compactionEnv,
+) (pc *pickedCompaction) {
+	cmp := p.opts.Comparer.Compare
+	overlapSlice := p.vers.Overlaps(rc.level, cmp, rc.start, rc.end)
+	if overlapSlice.Empty() {
+		var shouldCompact bool
+		// If the file for the given key range has moved levels since the compaction
+		// was scheduled, check to see if the range still has overlapping files
+		overlapSlice, shouldCompact = updateReadCompaction(p.vers, cmp, rc)
+		if !shouldCompact {
+			return nil
+		}
+	}
+	pc = newPickedCompaction(p.opts, p.vers, rc.level, p.baseLevel)
+	pc.startLevel.files = overlapSlice
+	if !pc.setupInputs() {
+		return nil
+	}
+	if inputRangeAlreadyCompacting(env, pc) {
+		return nil
+	}
+	return pc
+}
+
+func updateReadCompaction(
+	vers *version, cmp Compare, rc *readCompaction,
+) (slice manifest.LevelSlice, shouldCompact bool) {
+	numOverlap, topLevel := 0, 0
+	var topOverlaps manifest.LevelSlice
+	for l := 0; l < numLevels; l++ {
+		overlaps := vers.Overlaps(l, cmp, rc.start, rc.end)
+		if !overlaps.Empty() {
+			numOverlap++
+			if numOverlap >= 2 {
+				break
+			}
+			topOverlaps = overlaps
+			topLevel = l
+		}
+	}
+	if numOverlap >= 2 {
+		rc.level = topLevel
+		return topOverlaps, true
+	}
+	return manifest.LevelSlice{}, false
 }
 
 func (p *compactionPickerByScore) forceBaseLevel1() {
