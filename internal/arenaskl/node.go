@@ -44,9 +44,7 @@ type node struct {
 	// Immutable fields, so no need to lock to access key.
 	keyOffset uint32
 	keySize   uint32
-	// If valueSize is negative, the value is stored separately from the node in
-	// arena.extValues.
-	valueSize int32
+	valueSize uint32
 	allocSize uint32
 
 	// Most nodes do not need to use the full height of the tower, since the
@@ -89,7 +87,6 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 	// is less than maxHeight.
 	unusedSize := uint32((maxHeight - int(height)) * linksSize)
 	nodeSize := uint32(maxNodeSize) - unusedSize
-	valueIndex := int32(valueSize)
 
 	nodeOffset, allocSize, err := arena.alloc(nodeSize+keySize+valueSize, align4, unusedSize)
 	if err != nil {
@@ -99,7 +96,7 @@ func newRawNode(arena *Arena, height uint32, keySize, valueSize uint32) (nd *nod
 	nd = (*node)(arena.getPointer(nodeOffset))
 	nd.keyOffset = nodeOffset + nodeSize
 	nd.keySize = keySize
-	nd.valueSize = valueIndex
+	nd.valueSize = valueSize
 	nd.allocSize = allocSize
 	return
 }
