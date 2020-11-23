@@ -1037,7 +1037,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 					_ = iter.Next()
 				}
 
-				inputs, _ := expandToAtomicUnit(cmp, iter.Take().Slice())
+				inputs, _ := expandToAtomicUnit(cmp, iter.Take().Slice(), true /* disableIsCompacting */)
 
 				var buf bytes.Buffer
 				inputs.Each(func(f *fileMetadata) {

@@ -184,7 +184,7 @@ func newPickedCompactionFromL0(
 func (pc *pickedCompaction) setupInputs() bool {
 	// Expand the initial inputs to a clean cut.
 	var isCompacting bool
-	pc.startLevel.files, isCompacting = expandToAtomicUnit(pc.cmp, pc.startLevel.files)
+	pc.startLevel.files, isCompacting = expandToAtomicUnit(pc.cmp, pc.startLevel.files, false /* disableIsCompacting */)
 	if isCompacting {
 		return false
 	}
@@ -195,7 +195,7 @@ func (pc *pickedCompaction) setupInputs() bool {
 	// this for intra-L0 compactions; outputLevel.files is left empty for those.
 	if pc.startLevel.level != pc.outputLevel.level {
 		pc.outputLevel.files = pc.version.Overlaps(pc.outputLevel.level, pc.cmp, pc.smallest.UserKey, pc.largest.UserKey)
-		pc.outputLevel.files, isCompacting = expandToAtomicUnit(pc.cmp, pc.outputLevel.files)
+		pc.outputLevel.files, isCompacting = expandToAtomicUnit(pc.cmp, pc.outputLevel.files, false /* disableIsCompacting */)
 		if isCompacting {
 			return false
 		}
@@ -281,7 +281,7 @@ func (pc *pickedCompaction) grow(sm, la InternalKey) bool {
 		return false
 	}
 	grow0 := pc.version.Overlaps(pc.startLevel.level, pc.cmp, sm.UserKey, la.UserKey)
-	grow0, isCompacting := expandToAtomicUnit(pc.cmp, grow0)
+	grow0, isCompacting := expandToAtomicUnit(pc.cmp, grow0, false /* disableIsCompacting */)
 	if isCompacting {
 		return false
 	}
@@ -293,7 +293,7 @@ func (pc *pickedCompaction) grow(sm, la InternalKey) bool {
 	}
 	sm1, la1 := manifest.KeyRange(pc.cmp, grow0.Iter())
 	grow1 := pc.version.Overlaps(pc.outputLevel.level, pc.cmp, sm1.UserKey, la1.UserKey)
-	grow1, isCompacting = expandToAtomicUnit(pc.cmp, grow1)
+	grow1, isCompacting = expandToAtomicUnit(pc.cmp, grow1, false /* disableIsCompacting */)
 	if isCompacting {
 		return false
 	}
@@ -344,9 +344,12 @@ func (pc *pickedCompaction) grow(sm, la InternalKey) bool {
 // visible when it should be deleted.
 //
 // isCompacting is returned true for any atomic units that contain files that
-// have in-progress compactions, i.e. FileMetadata.Compacting == true.
+// have in-progress compactions, i.e. FileMetadata.Compacting == true. If
+// disableIsCompacting is true, isCompacting always returns false. This helps
+// avoid spurious races from being detected when this method is used outside
+// of compaction picking code.
 func expandToAtomicUnit(
-	cmp Compare, inputs manifest.LevelSlice,
+	cmp Compare, inputs manifest.LevelSlice, disableIsCompacting bool,
 ) (slice manifest.LevelSlice, isCompacting bool) {
 	// NB: Inputs for L0 can't be expanded and *version.Overlaps guarantees
 	// that we get a 'clean cut.' For L0, Overlaps will return a slice without
@@ -400,7 +403,8 @@ func expandToAtomicUnit(
 		}
 	})
 	inputIter := inputs.Iter()
-	return inputs, isCompacting || inputIter.First().Compacting || inputIter.Last().Compacting
+	isCompacting = !disableIsCompacting && (isCompacting || inputIter.First().Compacting || inputIter.Last().Compacting)
+	return inputs, isCompacting
 }
 
 func newCompactionPicker(
@@ -1071,7 +1075,7 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 	// compaction unit.
 	pc = newPickedCompaction(p.opts, p.vers, numLevels-1, numLevels-1)
 	var isCompacting bool
-	pc.startLevel.files, isCompacting = expandToAtomicUnit(p.opts.Comparer.Compare, lf.Slice())
+	pc.startLevel.files, isCompacting = expandToAtomicUnit(p.opts.Comparer.Compare, lf.Slice(), false /* disableIsCompacting */)
 	if isCompacting {
 		return nil
 	}

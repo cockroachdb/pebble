@@ -1398,7 +1398,7 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 				for i := int64(0); i < index; i++ {
 					_ = iter.Next()
 				}
-				atomicUnit, _ := expandToAtomicUnit(c.cmp, iter.Take().Slice())
+				atomicUnit, _ := expandToAtomicUnit(c.cmp, iter.Take().Slice(), true /* disableIsCompacting */)
 				lower, upper := manifest.KeyRange(c.cmp, atomicUnit.Iter())
 				return fmt.Sprintf("%s-%s\n", lower.UserKey, upper.UserKey)
 
