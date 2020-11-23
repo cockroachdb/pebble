@@ -29,12 +29,19 @@
 //
 // 	r := table.NewReader(file, options)
 // 	defer r.Close()
-// 	return r.Get(key)
+// 	i := r.NewIter(nil, nil)
+// 	defer i.Close()
+// 	ikey, value := r.SeekGE(key)
+// 	if options.Comparer.Compare(ikey.UserKey, key) != 0 {
+// 	  // not found
+// 	} else {
+// 	  // value is the first record containing key
+// 	}
 //
 // To count the number of entries in a table:
 //
-// 	i, n := r.NewIter(ropts), 0
-// 	for valid := i.First(); valid; valid = i.Next() {
+// 	i, n := r.NewIter(nil, nil), 0
+// 	for key, value := i.First(); key != nil; key, value = i.Next() {
 // 		n++
 // 	}
 // 	if err := i.Close(); err != nil {
@@ -45,15 +52,15 @@
 // To write a table with three entries:
 //
 // 	w := table.NewWriter(file, options)
-// 	if err := w.Set([]byte("apple"), []byte("red"), wopts); err != nil {
+// 	if err := w.Set([]byte("apple"), []byte("red")); err != nil {
 // 		w.Close()
 // 		return err
 // 	}
-// 	if err := w.Set([]byte("banana"), []byte("yellow"), wopts); err != nil {
+// 	if err := w.Set([]byte("banana"), []byte("yellow")); err != nil {
 // 		w.Close()
 // 		return err
 // 	}
-// 	if err := w.Set([]byte("cherry"), []byte("red"), wopts); err != nil {
+// 	if err := w.Set([]byte("cherry"), []byte("red")); err != nil {
 // 		w.Close()
 // 		return err
 // 	}
