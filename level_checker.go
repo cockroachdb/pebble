@@ -371,7 +371,7 @@ func checkRangeTombstones(c *checkConfig) error {
 	addTombstonesFromLevel := func(files manifest.LevelIterator, lsmLevel int) error {
 		for f := files.First(); f != nil; f = files.Next() {
 			lf := files.Take()
-			atomicUnit, _ := expandToAtomicUnit(c.cmp, lf.Slice())
+			atomicUnit, _ := expandToAtomicUnit(c.cmp, lf.Slice(), true /* disableIsCompacting */)
 			lower, upper := manifest.KeyRange(c.cmp, atomicUnit.Iter())
 			iterToClose, iter, err := c.newIters(lf.FileMetadata, nil, nil)
 			if err != nil {
