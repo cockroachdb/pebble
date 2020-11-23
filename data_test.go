@@ -370,6 +370,15 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				}
 				levelMaxBytes[level] = size
 			}
+		case "auto-compactions":
+			switch arg.Vals[0] {
+			case "off":
+				opts.private.disableAutomaticCompactions = true
+			case "on":
+				opts.private.disableAutomaticCompactions = false
+			default:
+				return nil, errors.Errorf("Unrecognized %q %q arg value: %q", td.Cmd, arg.Key, arg.Vals[0])
+			}
 		default:
 			return nil, errors.Errorf("%s: unknown arg: %s", td.Cmd, arg.Key)
 		}
