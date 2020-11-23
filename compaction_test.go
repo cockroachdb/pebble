@@ -1585,6 +1585,7 @@ func TestCompactionTombstoneElisionOnly(t *testing.T) {
 
 			case "maybe-compact":
 				d.mu.Lock()
+				d.opts.private.disableAutomaticCompactions = false
 				d.maybeScheduleCompaction()
 				s := compactionString()
 				d.mu.Unlock()

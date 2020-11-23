@@ -151,7 +151,9 @@ close-snapshot
 # Test a table that contains both deletions and non-deletions, but whose
 # deletions remove the non-deletions. Set L5's max bytes low so that an
 # automatic compaction will be pursued when we call maybe-compact.
-define snapshots=(103) level-max-bytes=(L5 : 1000)
+# Automatic compactions need to be disabled to prevent a race where an
+# automatic compaction compacts before we've closen the snapshot.
+define snapshots=(103) level-max-bytes=(L5 : 1000) auto-compactions=off
 L5
 b.SET.200:<largeval> bb.SET.203:<largeval> cc.SET.204:<largeval>
 L5
