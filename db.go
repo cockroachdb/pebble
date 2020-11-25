@@ -1337,8 +1337,10 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				if recycleLogNum > 0 {
 					recycleLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, recycleLogNum)
 					newLogFile, err = d.opts.FS.ReuseForWrite(recycleLogName, newLogName)
+					base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
 				} else {
 					newLogFile, err = d.opts.FS.Create(newLogName)
+					base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
 				}
 			}
 
