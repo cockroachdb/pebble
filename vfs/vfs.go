@@ -90,7 +90,7 @@ type FS interface {
 	// file will release the lock prematurely.
 	//
 	// Attempting to lock a file that is already locked by the current process
-	// has undefined behavior.
+	// returns an error and leaves the existing lock untouched.
 	//
 	// Lock is not yet implemented on other operating systems, and calling it
 	// will return an error.
