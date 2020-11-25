@@ -21,7 +21,11 @@ const (
 	// Avoid using runtime.SetFinalizer in race builds as finalizers tickle a bug
 	// in the Go race detector in go1.15 and earlier versions. This requires that
 	// entries are Go allocated rather than manually allocated.
-	entriesGoAllocated = invariants.RaceEnabled
+	//
+	// If cgo is disabled we need to allocate the entries using the Go allocator
+	// and is violates the Go GC rules to put Go pointers (such as the entry
+	// pointer fields) into untyped memory (i.e. a []byte).
+	entriesGoAllocated = invariants.RaceEnabled || !cgoEnabled
 )
 
 var entryAllocPool = sync.Pool{
