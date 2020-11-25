@@ -81,3 +81,27 @@ func TestLock(t *testing.T) {
 		t.Logf("Child grabbed lock.")
 	}
 }
+
+func TestLockSameProcess(t *testing.T) {
+	f, err := ioutil.TempFile("", "pebble-testlocksameprocess-")
+	require.NoError(t, err)
+	filename := f.Name()
+
+	// NB: On Windows, locking will fail if the file is already open by the
+	// current process, so we close the lockfile here.
+	require.NoError(t, f.Close())
+	defer os.Remove(filename)
+
+	lock1, err := vfs.Default.Lock(filename)
+	require.NoError(t, err)
+
+	// Locking the file again from within the same process should fail.
+	// On Unix, Lock should detect the file in the global map of
+	// process-locked files.
+	// On Windows, locking will fail since the file is already open by the
+	// current process.
+	_, err = vfs.Default.Lock(filename)
+	require.Error(t, err)
+
+	require.NoError(t, lock1.Close())
+}
