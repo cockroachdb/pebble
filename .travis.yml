@@ -30,6 +30,10 @@ matrix:
       go: 1.15.x
       os: linux
       script: make test TAGS=
+    - name: "go1.15.x-linux-no-cgo"
+      go: 1.15.x
+      os: linux
+      script: CGO_ENABLED=0 make test TAGS=
     - name: "go1.15.x-darwin"
       go: 1.15.x
       os: osx
