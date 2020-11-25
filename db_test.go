@@ -835,11 +835,13 @@ func TestFlushEmpty(t *testing.T) {
 }
 
 func TestRollManifest(t *testing.T) {
-	d, err := Open("", &Options{
+	opts := &Options{
 		MaxManifestFileSize:   1,
 		L0CompactionThreshold: 10,
 		FS:                    vfs.NewMem(),
-	})
+	}
+	opts.private.disableAutomaticCompactions = true
+	d, err := Open("", opts)
 	require.NoError(t, err)
 
 	manifestFileNumber := func() FileNum {
@@ -1091,7 +1093,6 @@ func TestSSTables(t *testing.T) {
 	require.NoError(t, d.Flush())
 	require.NoError(t, d.Set([]byte("world"), nil, nil))
 	require.NoError(t, d.Flush())
-
 
 	// by default returned table infos should not contain Properties
 	tableInfos, err := d.SSTables()
