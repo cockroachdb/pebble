@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/redact"
 )
 
 // FileNum is an internal DB indentifier for a file.
@@ -124,9 +125,13 @@ func MustExist(fs vfs.FS, filename string, fataler Fataler, err error) {
 
 	ls, lsErr := fs.List(fs.PathDir(filename))
 	if lsErr != nil {
-		fataler.Fatalf("%s:\n%s\n%s", fs.PathBase(filename), err, lsErr)
+		// TODO(jackson): if oserror.IsNotExist(lsErr), the the data directory
+		// doesn't exist anymore. Another process likely deleted it before
+		// killing the process. We want to fatal the process, but without
+		// triggering error reporting like Sentry.
+		fataler.Fatalf("%s:\norig err: %s\nlist err: %s", redact.Safe(fs.PathBase(filename)), err, lsErr)
 	}
-	var total, unknown, tables, logs int
+	var total, unknown, tables, logs, manifests int
 	total = len(ls)
 	for _, f := range ls {
 		typ, _, ok := ParseFilename(fs, f)
@@ -139,9 +144,11 @@ func MustExist(fs vfs.FS, filename string, fataler Fataler, err error) {
 			tables++
 		case FileTypeLog:
 			logs++
+		case FileTypeManifest:
+			manifests++
 		}
 	}
 
-	fataler.Fatalf("%s:\n%s\ndirectory contains %d files, %d unknown, %d tables, %d logs",
-		fs.PathBase(filename), err, total, unknown, tables, logs)
+	fataler.Fatalf("%s:\n%s\ndirectory contains %d files, %d unknown, %d tables, %d logs, %d manifests",
+		fs.PathBase(filename), err, total, unknown, tables, logs, manifests)
 }
