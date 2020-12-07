@@ -161,6 +161,10 @@ func (b boltDBBatch) Set(key, value []byte, _ *pebble.WriteOptions) error {
 	return b.bucket.Put(key, value)
 }
 
+func (b boltDBBatch) Delete(key []byte, _ *pebble.WriteOptions) error {
+	return b.bucket.Delete(key)
+}
+
 func (b boltDBBatch) LogData(data []byte, _ *pebble.WriteOptions) error {
 	panic("boltDBBatch.logData: unimplemented")
 }

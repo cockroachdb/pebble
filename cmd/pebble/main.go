@@ -39,10 +39,11 @@ func main() {
 		compactRunCmd,
 	)
 	benchCmd.AddCommand(
+		compactCmd,
 		scanCmd,
 		syncCmd,
+		tombstoneCmd,
 		ycsbCmd,
-		compactCmd,
 	)
 
 	rootCmd := &cobra.Command{
@@ -54,15 +55,15 @@ func main() {
 	t := tool.New(tool.Comparers(mvccComparer), tool.Mergers(fauxMVCCMerger))
 	rootCmd.AddCommand(t.Commands...)
 
-	for _, cmd := range []*cobra.Command{compactNewCmd, compactRunCmd, scanCmd, syncCmd, ycsbCmd} {
+	for _, cmd := range []*cobra.Command{compactNewCmd, compactRunCmd, scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
 		cmd.Flags().BoolVarP(
 			&verbose, "verbose", "v", false, "enable verbose event logging")
 	}
-	for _, cmd := range []*cobra.Command{compactRunCmd, scanCmd, syncCmd, ycsbCmd} {
+	for _, cmd := range []*cobra.Command{compactRunCmd, scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
 		cmd.Flags().Int64Var(
 			&cacheSize, "cache", 1<<30, "cache size")
 	}
-	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, ycsbCmd} {
+	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
 		cmd.Flags().IntVarP(
 			&concurrency, "concurrency", "c", 1, "number of concurrent workers")
 		cmd.Flags().BoolVar(

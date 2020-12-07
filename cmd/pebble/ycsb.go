@@ -83,30 +83,34 @@ Standard workloads:
 }
 
 func init() {
+	initYCSB(ycsbCmd)
+}
+
+func initYCSB(cmd *cobra.Command) {
 	ycsbConfig.batch = randvar.NewFlag("1")
-	ycsbCmd.Flags().Var(
+	cmd.Flags().Var(
 		ycsbConfig.batch, "batch",
 		"batch size distribution [{zipf,uniform}:]min[-max]")
-	ycsbCmd.Flags().StringVar(
+	cmd.Flags().StringVar(
 		&ycsbConfig.keys, "keys", "zipf", "latest, uniform, or zipf")
-	ycsbCmd.Flags().IntVar(
+	cmd.Flags().IntVar(
 		&ycsbConfig.initialKeys, "initial-keys", 10000,
 		"initial number of keys to insert before beginning workload")
-	ycsbCmd.Flags().IntVar(
+	cmd.Flags().IntVar(
 		&ycsbConfig.prepopulatedKeys, "prepopulated-keys", 0,
 		"number of keys that were previously inserted into the database")
-	ycsbCmd.Flags().Uint64VarP(
+	cmd.Flags().Uint64VarP(
 		&ycsbConfig.numOps, "num-ops", "n", 0,
 		"maximum number of operations (0 means unlimited)")
 	ycsbConfig.scans = randvar.NewFlag("zipf:1-1000")
-	ycsbCmd.Flags().Var(
+	cmd.Flags().Var(
 		ycsbConfig.scans, "scans",
 		"scan length distribution [{zipf,uniform}:]min[-max]")
-	ycsbCmd.Flags().StringVar(
+	cmd.Flags().StringVar(
 		&ycsbConfig.workload, "workload", "B",
 		"workload type (A-F) or spec (read=X,update=Y,...)")
 	ycsbConfig.values = randvar.NewBytesFlag("1000")
-	ycsbCmd.Flags().Var(
+	cmd.Flags().Var(
 		ycsbConfig.values, "values",
 		"value size distribution [{zipf,uniform}:]min[-max][/<target-compression>]")
 }
