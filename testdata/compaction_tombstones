@@ -76,7 +76,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 1
-point-deletions-bytes-estimate: 18
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
 maybe-compact
@@ -114,7 +114,7 @@ wait-pending-table-stats
 ----
 num-entries: 6
 num-deletions: 2
-point-deletions-bytes-estimate: 18
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 76
 
 maybe-compact
@@ -146,7 +146,7 @@ wait-pending-table-stats
 ----
 num-entries: 11
 num-deletions: 1
-point-deletions-bytes-estimate: 18
+point-deletions-bytes-estimate: 149
 range-deletions-bytes-estimate: 0
 
 close-snapshot
@@ -176,5 +176,14 @@ wait-pending-table-stats
 ----
 num-entries: 3
 num-deletions: 3
-point-deletions-bytes-estimate: 12342
+point-deletions-bytes-estimate: 13167
 range-deletions-bytes-estimate: 0
+
+# By plain file size, 000005 should be picked because it is larger and
+# overlaps the same amount of data in L6. However, 000004 has a high
+# point-deletions-bytes-estimate, and the compaction picker should pick 000004
+# instead.
+
+maybe-compact
+----
+[JOB 100] compacted L5 [000004] (794 B) + L6 [000006] (13 K) -> L6 [] (0 B), in 1.0s, output rate 0 B/s

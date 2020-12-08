@@ -1055,7 +1055,9 @@ func pickElisionOnly(picker compactionPicker, env compactionEnv) *pickedCompacti
 // calling `pickFunc` to pick automatic compactions.
 //
 // d.mu must be held when calling this.
-func (d *DB) maybeScheduleCompactionPicker(pickFunc func(compactionPicker, compactionEnv) *pickedCompaction) {
+func (d *DB) maybeScheduleCompactionPicker(
+	pickFunc func(compactionPicker, compactionEnv) *pickedCompaction,
+) {
 	if d.closed.Load() != nil || d.opts.ReadOnly {
 		return
 	}
