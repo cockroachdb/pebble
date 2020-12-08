@@ -76,7 +76,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 1
-point-deletions-bytes-estimate: 13
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
 maybe-compact
@@ -114,7 +114,7 @@ wait-pending-table-stats
 ----
 num-entries: 6
 num-deletions: 2
-point-deletions-bytes-estimate: 13
+point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 76
 
 maybe-compact
@@ -146,7 +146,7 @@ wait-pending-table-stats
 ----
 num-entries: 11
 num-deletions: 1
-point-deletions-bytes-estimate: 13
+point-deletions-bytes-estimate: 149
 range-deletions-bytes-estimate: 0
 
 close-snapshot
@@ -225,7 +225,7 @@ wait-pending-table-stats
 ----
 num-entries: 3
 num-deletions: 3
-point-deletions-bytes-estimate: 6184
+point-deletions-bytes-estimate: 13167
 range-deletions-bytes-estimate: 0
 
 # By plain file size, 000005 should be picked because it is larger and

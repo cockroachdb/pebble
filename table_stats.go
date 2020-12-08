@@ -260,11 +260,11 @@ func (d *DB) loadTableStats(
 			// We could write the ranges of 'clusters' of point tombstones to
 			// a sstable property and call averageValueSizeBeneath for each of
 			// these narrower ranges to improve the estimate.
-			avgValSize, err := d.averageValueSizeBeneath(v, level, meta)
+			avgKeySize, avgValSize, err := d.averageEntrySizeBeneath(v, level, meta)
 			if err != nil {
 				return err
 			}
-			stats.PointDeletionsBytesEstimate = pointDeletionsBytesEstimate(&r.Properties, avgValSize)
+			stats.PointDeletionsBytesEstimate = pointDeletionsBytesEstimate(&r.Properties, avgKeySize, avgValSize)
 		}
 
 		if r.Properties.NumRangeDeletions == 0 {
@@ -335,30 +335,49 @@ func (d *DB) loadTableStats(
 	return stats, compactionHints, nil
 }
 
-func (d *DB) averageValueSizeBeneath(
+func (d *DB) averageEntrySizeBeneath(
 	v *version, level int, meta *fileMetadata,
-) (avgValueSize uint64, err error) {
+) (avgKeySize, avgValueSize uint64, err error) {
 	// Find all files in lower levels that overlap with meta,
 	// summing their value sizes and entry counts.
-	var valSum, entryCount uint64
+	var fileSum, keySum, valSum, entryCount uint64
 	for l := level + 1; l < numLevels; l++ {
 		overlaps := v.Overlaps(l, d.cmp, meta.Smallest.UserKey, meta.Largest.UserKey)
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
 			err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
+				fileSum += file.Size
 				entryCount += r.Properties.NumEntries
+				keySum += r.Properties.RawKeySize
 				valSum += r.Properties.RawValueSize
 				return nil
 			})
 			if err != nil {
-				return 0, err
+				return 0, 0, err
 			}
 		}
 	}
 	if entryCount == 0 {
-		return 0, nil
+		return 0, 0, nil
 	}
-	return valSum / entryCount, nil
+	// RawKeySize and RawValueSize are uncompressed totals. Scale them
+	// according to the data size to account for compression, index blocks and
+	// metadata overhead. Eg:
+	//
+	//    Compression rate        ×  Average uncompressed key size
+	//
+	//                            ↓
+	//
+	//         FileSize              RawKeySize
+	//   -----------------------  ×  ----------
+	//   RawKeySize+RawValueSize     NumEntries
+	//
+	// We refactor the calculation to avoid error from rounding/truncation.
+	totalSizePerEntry := fileSum / entryCount
+	uncompressedSum := keySum + valSum
+	avgKeySize = keySum * totalSizePerEntry / uncompressedSum
+	avgValueSize = valSum * totalSizePerEntry / uncompressedSum
+	return avgKeySize, avgValueSize, err
 }
 
 func (d *DB) estimateSizeBeneath(
@@ -488,12 +507,12 @@ func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) 
 
 	var pointEstimate uint64
 	if props.NumEntries > 0 {
-		// Use the file's own average value size as an estimate. This doesn't
-		// require any additional IO and since the number of point deletions
-		// in the file is low, the error introduced by this crude estimate is
-		// expected to be small.
-		avgValSize := props.RawValueSize / props.NumEntries
-		pointEstimate = pointDeletionsBytesEstimate(props, avgValSize)
+		// Use the file's own average key and value sizes as an estimate. This
+		// doesn't require any additional IO and since the number of point
+		// deletions in the file is low, the error introduced by this crude
+		// estimate is expected to be small.
+		avgKeySize, avgValSize := estimateEntrySizes(meta.Size, props)
+		pointEstimate = pointDeletionsBytesEstimate(props, avgKeySize, avgValSize)
 	}
 
 	meta.Stats = manifest.TableStats{
@@ -506,7 +525,7 @@ func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) 
 	return true
 }
 
-func pointDeletionsBytesEstimate(props *sstable.Properties, avgValSize uint64) uint64 {
+func pointDeletionsBytesEstimate(props *sstable.Properties, avgKeySize, avgValSize uint64) uint64 {
 	if props.NumEntries == 0 {
 		return 0
 	}
@@ -522,7 +541,29 @@ func pointDeletionsBytesEstimate(props *sstable.Properties, avgValSize uint64) u
 	// because point tombstones can slow range iterations even when they don't
 	// cover a key. It may be beneficial in the future to more accurately
 	// estimate which tombstones cover keys and which do not.
-	avgKeySize := props.RawKeySize / props.NumEntries
 	numPointDels := props.NumPointDeletions()
 	return numPointDels*avgKeySize + numPointDels*(avgKeySize+avgValSize)
+}
+
+func estimateEntrySizes(
+	fileSize uint64, props *sstable.Properties,
+) (avgKeySize, avgValSize uint64) {
+	// RawKeySize and RawValueSize are uncompressed totals. Scale them
+	// according to the data size to account for compression, index blocks and
+	// metadata overhead. Eg:
+	//
+	//    Compression rate        ×  Average uncompressed key size
+	//
+	//                            ↓
+	//
+	//         FileSize              RawKeySize
+	//   -----------------------  ×  ----------
+	//   RawKeySize+RawValueSize     NumEntries
+	//
+	// We refactor the calculation to avoid error from rounding/truncation.
+	fileSizePerEntry := fileSize / props.NumEntries
+	uncompressedSum := props.RawKeySize + props.RawValueSize
+	avgKeySize = props.RawKeySize * fileSizePerEntry / uncompressedSum
+	avgValSize = props.RawValueSize * fileSizePerEntry / uncompressedSum
+	return avgKeySize, avgValSize
 }
