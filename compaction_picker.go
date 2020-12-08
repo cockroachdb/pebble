@@ -125,9 +125,7 @@ type pickedCompaction struct {
 	version *version
 }
 
-func newPickedCompaction(
-	opts *Options, cur *version, startLevel, baseLevel int,
-) *pickedCompaction {
+func newPickedCompaction(opts *Options, cur *version, startLevel, baseLevel int) *pickedCompaction {
 	if startLevel > 0 && startLevel < baseLevel {
 		panic(fmt.Sprintf("invalid compaction: start level %d should not be empty (base level %d)",
 			startLevel, baseLevel))
@@ -158,7 +156,9 @@ func newPickedCompaction(
 	return pc
 }
 
-func newPickedCompactionFromL0(lcf *manifest.L0CompactionFiles, opts *Options, vers *version, baseLevel int, isBase bool) *pickedCompaction {
+func newPickedCompactionFromL0(
+	lcf *manifest.L0CompactionFiles, opts *Options, vers *version, baseLevel int, isBase bool,
+) *pickedCompaction {
 	pc := newPickedCompaction(opts, vers, 0, baseLevel)
 	pc.lcf = lcf
 	if !isBase {
@@ -1019,7 +1019,9 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 
 // pickElisionOnlyCompaction looks for compactions of sstables in the
 // bottommost level containing obsolete records that may now be dropped.
-func (p *compactionPickerByScore) pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction) {
+func (p *compactionPickerByScore) pickElisionOnlyCompaction(
+	env compactionEnv,
+) (pc *pickedCompaction) {
 	if p.elisionThreshold == nil || (p.elisionCandidate != nil && p.elisionCandidate.Compacting) {
 		var lowestCandidateSeqNum uint64 = math.MaxUint64
 		var lowestCandidate manifest.LevelFile
