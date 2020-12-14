@@ -2047,9 +2047,11 @@ func (d *DB) runCompaction(
 		// then the sstable will only contain range tombstones. The smallest
 		// key in the sstable will be the start key of the first range
 		// tombstone added. We need to ensure that this start key is distinct
-		// from the limit (key) passed to finishOutput, otherwise we would
-		// generate an sstable where the largest key is smaller than the
+		// from the limit (key) passed to finishOutput (if set), otherwise we
+		// would generate an sstable where the largest key is smaller than the
 		// smallest key due to how the largest key boundary is set below.
+		// NB: It is permissible for the range tombstone start key to be the
+		// empty string.
 		// TODO: It is unfortunate that we have to do this check here rather
 		// than when we decide to finish the sstable in the runCompaction
 		// loop. A better structure currently eludes us.
@@ -2058,7 +2060,7 @@ func (d *DB) runCompaction(
 			if len(iter.tombstones) > 0 {
 				startKey = iter.tombstones[0].Start.UserKey
 			}
-			if d.cmp(startKey, key) == 0 {
+			if key != nil && d.cmp(startKey, key) == 0 {
 				return nil
 			}
 		}
