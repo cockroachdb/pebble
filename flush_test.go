@@ -92,3 +92,13 @@ func TestManualFlush(t *testing.T) {
 		}
 	})
 }
+
+// TestFlushDelRangeEmptyKey tests flushing a range tombstone that begins with
+// an empty key. The empty key is a valid key but can be confused with nil.
+func TestFlushDelRangeEmptyKey(t *testing.T) {
+	d, err := Open("", &Options{FS: vfs.NewMem()})
+	require.NoError(t, err)
+	require.NoError(t, d.DeleteRange([]byte{}, []byte("z"), nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Close())
+}
