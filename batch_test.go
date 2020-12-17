@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -220,7 +221,7 @@ func TestBatchReset(t *testing.T) {
 	require.Equal(t, uint64(0), b.countRangeDels)
 	require.Equal(t, batchHeaderLen, len(b.data))
 	require.Equal(t, uint64(0), b.SeqNum())
-	require.Equal(t, uint32(0), b.memTableSize)
+	require.Equal(t, uint64(0), b.memTableSize)
 	require.Equal(t, b.deferredOp, DeferredBatchOp{})
 
 	var expected Batch
@@ -931,4 +932,32 @@ func BenchmarkIndexedBatchSetDeferred(b *testing.B) {
 	}
 
 	b.StopTimer()
+}
+
+// TestBatchNearMaxSize tests a batch that approaches but does not exceed the
+// maxBatchSize.
+func TestBatchNearMaxSize(t *testing.T) {
+	if _, ok := os.LookupEnv("PEBBLE_SLOW_TESTS"); !ok {
+		t.Skip("slow and requires >4GiB mem: set PEBBLE_SLOW_TESTS to run")
+	}
+
+	opts := &Options{
+		FS: vfs.NewMem(),
+	}
+	opts.EnsureDefaults()
+	d, err := Open("", opts)
+	require.NoError(t, err)
+
+	bigValue := make([]byte, 1000)
+	b := d.NewBatch()
+	// The max batch size is 4 GiB. Build a batch just short of that.
+	i := 0
+	for ; len(b.data) < (4<<30)-1000*2; i++ {
+		k := fmt.Sprintf("key-%05d", i)
+		require.NoError(t, b.Set([]byte(k), bigValue, nil))
+		require.Greater(t, b.memTableSize, uint64(1000*i))
+	}
+	require.NoError(t, b.Commit(nil))
+	require.NoError(t, b.Close())
+	require.NoError(t, d.Close())
 }

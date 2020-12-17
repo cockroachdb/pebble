@@ -18,8 +18,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
-func memTableEntrySize(keyBytes, valueBytes int) uint32 {
-	return arenaskl.MaxNodeSize(uint32(keyBytes)+8, uint32(valueBytes))
+func memTableEntrySize(keyBytes, valueBytes int) uint64 {
+	return uint64(arenaskl.MaxNodeSize(uint32(keyBytes)+8, uint32(valueBytes)))
 }
 
 // memTableEmptySize is the amount of allocated space in the arena when the
@@ -174,10 +174,10 @@ func (m *memTable) get(key []byte) (value []byte, err error) {
 // writerUnref() after the batch has been applied.
 func (m *memTable) prepare(batch *Batch) error {
 	avail := m.availBytes()
-	if batch.memTableSize > avail {
+	if batch.memTableSize > uint64(avail) {
 		return arenaskl.ErrArenaFull
 	}
-	m.reserved += batch.memTableSize
+	m.reserved += uint32(batch.memTableSize)
 
 	m.writerRef()
 	return nil
