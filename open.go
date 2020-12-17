@@ -529,7 +529,7 @@ func (d *DB) replayWAL(
 		seqNum := b.SeqNum()
 		maxSeqNum = seqNum + uint64(b.Count())
 
-		if b.memTableSize >= uint32(d.largeBatchThreshold) {
+		if b.memTableSize >= uint64(d.largeBatchThreshold) {
 			flushMem()
 			// Make a copy of the data slice since it is currently owned by buf and will
 			// be reused in the next iteration.
