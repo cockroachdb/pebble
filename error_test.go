@@ -121,7 +121,7 @@ func TestErrors(t *testing.T) {
 		if err := d.Flush(); err != nil {
 			return err
 		}
-		if err := d.Compact(nil, nil); err != nil {
+		if err := d.Compact(nil, []byte("\xff")); err != nil {
 			return err
 		}
 
