@@ -2369,7 +2369,10 @@ func TestCompactFlushQueuedMemTable(t *testing.T) {
 		}
 	}
 
-	require.NoError(t, d.Compact([]byte("a"), []byte("a")))
+	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00")))
+	d.mu.Lock()
+	require.Equal(t, 1, len(d.mu.mem.queue))
+	d.mu.Unlock()
 	require.NoError(t, d.Close())
 }
 
@@ -2389,13 +2392,21 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 	// queued but not automatically flushed.
 	d.mu.Lock()
 	d.largeBatchThreshold = d.opts.MemTableSize / 8
+	require.Equal(t, 1, len(d.mu.mem.queue))
 	d.mu.Unlock()
 
 	// Set a record with a large value. This will be transformed into a large
 	// batch and placed in the flushable queue.
 	require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("v"), d.largeBatchThreshold), nil))
+	d.mu.Lock()
+	require.Greater(t, len(d.mu.mem.queue), 1)
+	d.mu.Unlock()
 
-	require.NoError(t, d.Compact([]byte("a"), []byte("a")))
+	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00")))
+	d.mu.Lock()
+	require.Equal(t, 1, len(d.mu.mem.queue))
+	d.mu.Unlock()
+
 	require.NoError(t, d.Close())
 }
 
@@ -2482,4 +2493,15 @@ func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
 			require.Equal(t, tc.adjustedOverlapBytes, c.maxOverlapBytes)
 		})
 	}
+}
+
+func TestCompactionInvalidBounds(t *testing.T) {
+	db, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+	defer db.Close()
+	require.NoError(t, db.Compact([]byte("a"), []byte("b")))
+	require.Error(t, db.Compact([]byte("a"), []byte("a")))
+	require.Error(t, db.Compact([]byte("b"), []byte("a")))
 }

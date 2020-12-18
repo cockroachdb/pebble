@@ -313,7 +313,7 @@ func TestOpenReadOnly(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify various write operations fail in read-only mode.
-		require.EqualValues(t, ErrReadOnly, d.Compact(nil, nil))
+		require.EqualValues(t, ErrReadOnly, d.Compact(nil, []byte("\xff")))
 		require.EqualValues(t, ErrReadOnly, d.Flush())
 		require.EqualValues(t, ErrReadOnly, func() error { _, err := d.AsyncFlush(); return err }())
 
@@ -672,7 +672,7 @@ func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
 	// written to the MANIFEST. This produces a MANIFEST where the `logSeqNum`
 	// is greater than the sequence numbers contained in the
 	// `minUnflushedLogNum` log file
-	require.NoError(t, d.Compact([]byte("a"), []byte("a")))
+	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00")))
 
 	// While the MANIFEST is still in this state, copy all the files in the
 	// database to a new directory.

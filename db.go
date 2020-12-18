@@ -938,7 +938,10 @@ func (d *DB) Compact(
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
-
+	if d.cmp(start, end) >= 0 {
+		return errors.Errorf("Compact start %s is not less than end %s",
+			d.opts.Comparer.FormatKey(start), d.opts.Comparer.FormatKey(end))
+	}
 	iStart := base.MakeInternalKey(start, InternalKeySeqNumMax, InternalKeyKindMax)
 	iEnd := base.MakeInternalKey(end, 0, 0)
 	meta := []*fileMetadata{{Smallest: iStart, Largest: iEnd}}
