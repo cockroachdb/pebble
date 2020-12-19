@@ -27,6 +27,7 @@ import (
 )
 
 var errCorruptIndexEntry = base.CorruptionErrorf("pebble/table: corrupt index entry")
+var errReaderClosed = errors.New("pebble/table: reader is closed")
 
 const (
 	// Constants for dynamic readahead of data blocks. Note that the size values
@@ -1654,7 +1655,7 @@ func (r *Reader) Close() error {
 		}
 	}
 	// Make any future calls to Get, NewIter or Close return an error.
-	r.err = errors.New("pebble/table: reader is closed")
+	r.err = errReaderClosed
 	return nil
 }
 
