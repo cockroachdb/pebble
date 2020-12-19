@@ -1635,6 +1635,8 @@ type Reader struct {
 	Properties        Properties
 }
 
+var errReaderClosed = errors.New("pebble/table: reader is closed")
+
 // Close implements DB.Close, as documented in the pebble package.
 func (r *Reader) Close() error {
 	r.opts.Cache.Unref()
@@ -1654,7 +1656,7 @@ func (r *Reader) Close() error {
 		}
 	}
 	// Make any future calls to Get, NewIter or Close return an error.
-	r.err = errors.New("pebble/table: reader is closed")
+	r.err = errReaderClosed
 	return nil
 }
 
