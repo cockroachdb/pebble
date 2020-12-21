@@ -310,6 +310,9 @@ type DB struct {
 			manual []*manualCompaction
 			// inProgress is the set of in-progress flushes and compactions.
 			inProgress map[*compaction]struct{}
+			// readCompactions is a list of read triggered compactions. The next
+			// compaction to perform is as the start. New entries are added to the end.
+			readCompactions []readCompaction
 		}
 
 		cleaner struct {

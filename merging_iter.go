@@ -1062,3 +1062,13 @@ func (m *mergingIter) DebugString() string {
 	}
 	return buf.String()
 }
+
+func (m *mergingIter) ForEachLevelIter(fn func(li *levelIter) bool) {
+	for _, iter := range m.levels {
+		if li, ok := iter.iter.(*levelIter); ok {
+			if done := fn(li); done {
+				break
+			}
+		}
+	}
+}

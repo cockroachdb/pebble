@@ -875,6 +875,160 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 	})
 }
 
+func TestCompactionPickerPickReadTriggered(t *testing.T) {
+	opts := (*Options)(nil).EnsureDefaults()
+	var picker *compactionPickerByScore
+	var rcList []readCompaction
+	var vers *version
+
+	fileNums := func(files manifest.LevelSlice) string {
+		var ss []string
+		files.Each(func(f *fileMetadata) {
+			ss = append(ss, f.FileNum.String())
+		})
+		sort.Strings(ss)
+		return strings.Join(ss, ",")
+	}
+
+	parseMeta := func(s string) (*fileMetadata, error) {
+		parts := strings.Split(s, ":")
+		fileNum, err := strconv.Atoi(parts[0])
+		if err != nil {
+			return nil, err
+		}
+		fields := strings.Fields(parts[1])
+		parts = strings.Split(fields[0], "-")
+		if len(parts) != 2 {
+			return nil, errors.Errorf("malformed table spec: %s. usage: <file-num>:start.SET.1-end.SET.2", s)
+		}
+		m := &fileMetadata{
+			FileNum:  base.FileNum(fileNum),
+			Size:     1028,
+			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		}
+		for _, p := range fields[1:] {
+			if strings.HasPrefix(p, "size=") {
+				v, err := strconv.Atoi(strings.TrimPrefix(p, "size="))
+				if err != nil {
+					return nil, err
+				}
+				m.Size = uint64(v)
+			}
+		}
+		m.SmallestSeqNum = m.Smallest.SeqNum()
+		m.LargestSeqNum = m.Largest.SeqNum()
+		return m, nil
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_picker_read_triggered", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			rcList = []readCompaction{}
+			fileMetas := [manifest.NumLevels][]*fileMetadata{}
+			level := 0
+			var err error
+			lines := strings.Split(td.Input, "\n")
+
+			for len(lines) > 0 {
+				data := strings.TrimSpace(lines[0])
+				lines = lines[1:]
+				switch data {
+				case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+					level, err = strconv.Atoi(data[1:])
+					if err != nil {
+						return err.Error()
+					}
+				default:
+					meta, err := parseMeta(data)
+					if err != nil {
+						return err.Error()
+					}
+					fileMetas[level] = append(fileMetas[level], meta)
+				}
+			}
+
+			vers = newVersion(opts, fileMetas)
+			vs := &versionSet{
+				opts:    opts,
+				cmp:     DefaultComparer.Compare,
+				cmpName: DefaultComparer.Name,
+			}
+			vs.versions.Init(nil)
+			vs.append(vers)
+			var sizes [numLevels]int64
+			for l := 0; l < len(sizes); l++ {
+				vers.Levels[l].Slice().Each(func(m *fileMetadata) {
+					sizes[l] += int64(m.Size)
+				})
+			}
+			var inProgressCompactions []compactionInfo
+			picker = newCompactionPicker(vers, opts, inProgressCompactions, sizes).(*compactionPickerByScore)
+			vs.picker = picker
+
+			var buf bytes.Buffer
+			fmt.Fprint(&buf, vers.DebugString(base.DefaultFormatter))
+			return buf.String()
+
+		case "add-read-compaction":
+			for _, line := range strings.Split(td.Input, "\n") {
+				if line == "" {
+					continue
+				}
+				parts := strings.Split(line, " ")
+				if len(parts) != 2 {
+					return "error: malformed data for add-read-compaction. usage: <level>: <start>-<end>"
+				}
+				if l, err := strconv.Atoi(parts[0][:1]); err == nil {
+					keys := strings.Split(parts[1], "-")
+
+					rc := readCompaction{
+						level: l,
+						start: []byte(keys[0]),
+						end:   []byte(keys[1]),
+					}
+					rcList = append(rcList, rc)
+				} else {
+					return err.Error()
+				}
+			}
+			return ""
+
+		case "show-read-compactions":
+			var sb strings.Builder
+			if len(rcList) == 0 {
+				sb.WriteString("(none)")
+			}
+			for _, rc := range rcList {
+				sb.WriteString(fmt.Sprintf("(level: %d, start: %s, end: %s)\n", rc.level, string(rc.start), string(rc.end)))
+			}
+			return sb.String()
+
+		case "pick-auto":
+			pc := picker.pickAuto(compactionEnv{
+				bytesCompacted:          new(uint64),
+				earliestUnflushedSeqNum: math.MaxUint64,
+				readCompactionEnv: readCompactionEnv{
+					readCompactions: &rcList,
+					flushing:        false,
+				},
+			})
+			var result strings.Builder
+			if pc != nil {
+				fmt.Fprintf(&result, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
+				fmt.Fprintf(&result, "L%d: %s\n", pc.startLevel.level, fileNums(pc.startLevel.files))
+				if !pc.outputLevel.files.Empty() {
+					fmt.Fprintf(&result, "L%d: %s\n", pc.outputLevel.level, fileNums(pc.outputLevel.files))
+				}
+			} else {
+				return "nil"
+			}
+			return result.String()
+		}
+		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
+	})
+}
+
 func TestPickedCompactionSetupInputs(t *testing.T) {
 	opts := &Options{}
 	opts.EnsureDefaults()

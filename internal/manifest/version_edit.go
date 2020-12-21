@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -491,7 +492,11 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 // are no longer referenced by the returned Version, but cannot be deleted from
 // disk as they are still in use by the incoming Version.
 func (b *BulkVersionEdit) Apply(
-	curr *Version, cmp Compare, formatKey base.FormatKey, flushSplitBytes int64,
+	curr *Version,
+	cmp Compare,
+	formatKey base.FormatKey,
+	flushSplitBytes int64,
+	readCompactionRate int64,
 ) (_ *Version, zombies map[base.FileNum]uint64, _ error) {
 	addZombie := func(fileNum base.FileNum, size uint64) {
 		if zombies == nil {
@@ -562,6 +567,18 @@ func (b *BulkVersionEdit) Apply(
 				// loop, so we don't need to do it here.
 				continue
 			}
+
+			// NB: allowedSeeks is used for read triggered compactions. It is set using
+			// Options.Experimental.ReadCompactionRate which defaults to 32KB.
+			var allowedSeeks int64
+			if readCompactionRate != 0 {
+				allowedSeeks = int64(f.Size) / readCompactionRate
+			}
+			if allowedSeeks < 100 {
+				allowedSeeks = 100
+			}
+			atomic.StoreInt64(&f.Atomic.AllowedSeeks, allowedSeeks)
+
 			err := lm.tree.insert(f)
 			if err != nil {
 				return nil, nil, errors.Wrap(err, "pebble")
