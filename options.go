@@ -600,8 +600,8 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.ReadCompactionRate == 0 {
 		o.Experimental.ReadCompactionRate = 16000
 	}
-	if o.Experimental.ReadSamplingMultiplier != 0 {
-		o.Experimental.ReadSamplingMultiplier = 0
+	if o.Experimental.ReadSamplingMultiplier == 0 {
+		o.Experimental.ReadSamplingMultiplier = 1
 	}
 
 	o.initMaps()
