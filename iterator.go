@@ -184,7 +184,7 @@ func (i *Iterator) maybeSampleRead() {
 		return
 	}
 	samplingPeriod := readBytesPeriod * i.readState.db.opts.Experimental.ReadSamplingMultiplier
-	if samplingPeriod == 0 {
+	if samplingPeriod <= 0 {
 		return
 	}
 	if i.readSampling.rand == nil || i.readSampling.randvar == nil {
