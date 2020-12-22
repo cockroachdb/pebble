@@ -45,7 +45,7 @@ func (s *Snapshot) NewIter(o *IterOptions) *Iterator {
 	if s.db == nil {
 		panic(ErrClosed)
 	}
-	return s.db.newIterInternal(nil /* batchIter */, nil /* batchRangeDelIter */, s, o)
+	return s.db.newIterInternal(nil /* batch */, s, o)
 }
 
 // Close closes the snapshot, releasing its resources. Close must be called.

@@ -675,11 +675,9 @@ var iterAllocPool = sync.Pool{
 	},
 }
 
-// newIterInternal constructs a new iterator, merging in batchIter as an extra
+// newIterInternal constructs a new iterator, merging in batch iterators as an extra
 // level.
-func (d *DB) newIterInternal(
-	batchIter internalIterator, batchRangeDelIter internalIterator, s *Snapshot, o *IterOptions,
-) *Iterator {
+func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterator {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -711,20 +709,38 @@ func (d *DB) newIterInternal(
 		split:     d.split,
 		readState: readState,
 		keyBuf:    buf.keyBuf,
+		batch:     batch,
+		newIters:  d.newIters,
+		seqNum:    seqNum,
 	}
 	if o != nil {
 		dbi.opts = *o
 	}
 	dbi.opts.logger = d.opts.Logger
+	return finishInitializingIter(buf)
+}
 
+// finishInitializingIter is a helper for doing the non-trivial initialization
+// of an Iterator.
+func finishInitializingIter(buf *iterAlloc) *Iterator {
+	// Short-hand.
+	dbi := &buf.dbi
+	readState := dbi.readState
+	batch := dbi.batch
+	seqNum := dbi.seqNum
+
+	// Merging levels.
 	mlevels := buf.mlevels[:0]
-	if batchIter != nil {
+
+	// Top-level is the batch, if any.
+	if batch != nil {
 		mlevels = append(mlevels, mergingIterLevel{
-			iter:         batchIter,
-			rangeDelIter: batchRangeDelIter,
+			iter:         batch.newInternalIter(&dbi.opts),
+			rangeDelIter: batch.newRangeDelIter(&dbi.opts),
 		})
 	}
 
+	// Next are the memtables.
 	memtables := readState.memtables
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
@@ -738,6 +754,8 @@ func (d *DB) newIterInternal(
 			rangeDelIter: mem.newRangeDelIter(&dbi.opts),
 		})
 	}
+
+	// Next are the file levels: L0 sub-levels followed by lower levels.
 
 	// Determine the final size for mlevels so that we can avoid any more
 	// reallocations. This is important because each levelIter will hold a
@@ -766,7 +784,7 @@ func (d *DB) newIterInternal(
 			li = &levelIter{}
 		}
 
-		li.init(dbi.opts, d.cmp, d.newIters, files, level, nil)
+		li.init(dbi.opts, dbi.cmp, dbi.newIters, files, level, nil)
 		li.initRangeDel(&mlevels[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevels[0].smallestUserKey, &mlevels[0].largestUserKey,
 			&mlevels[0].isLargestUserKeyRangeDelSentinel)
@@ -789,7 +807,7 @@ func (d *DB) newIterInternal(
 		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
 	}
 
-	buf.merging.init(&dbi.opts, d.cmp, finalMLevels...)
+	buf.merging.init(&dbi.opts, dbi.cmp, finalMLevels...)
 	buf.merging.snapshot = seqNum
 	buf.merging.elideRangeTombstones = true
 	return dbi
@@ -819,8 +837,7 @@ func (d *DB) NewIndexedBatch() *Batch {
 // apparent memory and disk usage leak. Use snapshots (see NewSnapshot) for
 // point-in-time snapshots which avoids these problems.
 func (d *DB) NewIter(o *IterOptions) *Iterator {
-	return d.newIterInternal(nil, /* batchIter */
-		nil /* batchRangeDelIter */, nil /* snapshot */, o)
+	return d.newIterInternal(nil /* batch */, nil /* snapshot */, o)
 }
 
 // NewSnapshot returns a point-in-time view of the current DB state. Iterators

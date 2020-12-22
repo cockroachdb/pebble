@@ -67,7 +67,8 @@ type IterOptions struct {
 	UpperBound []byte
 	// TableFilter can be used to filter the tables that are scanned during
 	// iteration based on the user properties. Return true to scan the table and
-	// false to skip scanning.
+	// false to skip scanning. This function must be thread-safe since the same
+	// function can be used by multiple iterators, if the iterator is cloned.
 	TableFilter func(userProps map[string]string) bool
 
 	// Internal options.

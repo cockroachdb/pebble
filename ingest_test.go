@@ -555,8 +555,7 @@ func TestIngest(t *testing.T) {
 
 		case "iter":
 			iter := d.NewIter(nil)
-			defer iter.Close()
-			return runIterCmd(td, iter)
+			return runIterCmd(td, iter, true)
 
 		case "lsm":
 			return runLSMCmd(td, d)
