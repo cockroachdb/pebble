@@ -1025,8 +1025,7 @@ func TestManualCompaction(t *testing.T) {
 				seqNum: InternalKeySeqNumMax,
 			}
 			iter := snap.NewIter(nil)
-			defer iter.Close()
-			return runIterCmd(td, iter)
+			return runIterCmd(td, iter, true)
 
 		case "async-compact":
 			var s string

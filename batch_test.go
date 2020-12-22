@@ -183,7 +183,13 @@ func TestBatchEmpty(t *testing.T) {
 	ib := newIndexedBatch(d, DefaultComparer)
 	iter := ib.NewIter(nil)
 	require.False(t, iter.First())
+	iter2, err := iter.Clone()
+	require.NoError(t, err)
 	require.NoError(t, iter.Close())
+	_, err = iter.Clone()
+	require.True(t, err != nil)
+	require.False(t, iter2.First())
+	require.NoError(t, iter2.Close())
 }
 
 func TestBatchReset(t *testing.T) {
@@ -271,25 +277,37 @@ func TestIndexedBatchReset(t *testing.T) {
 	require.Nil(t, b.rangeDelIndex)
 
 	count := func(ib *Batch) int {
-		count := 0
 		iter := ib.NewIter(nil)
 		defer iter.Close()
-		for iter.First(); iter.Valid(); iter.Next() {
-			count++
-		}
-		return count
-	}
-	contains := func(ib *Batch, key, value string) bool {
-		found := false
-		iter := ib.NewIter(nil)
-		defer iter.Close()
-		for iter.First(); iter.Valid(); iter.Next() {
-			if string(iter.Key()) == key &&
-				string(iter.Value()) == value {
-				found = true
+		iter2, err := iter.Clone()
+		require.NoError(t, err)
+		defer iter2.Close()
+		var count [2]int
+		for i, it := range []*Iterator{iter, iter2} {
+			for it.First(); it.Valid(); it.Next() {
+				count[i]++
 			}
 		}
-		return found
+		require.Equal(t, count[0], count[1])
+		return count[0]
+	}
+	contains := func(ib *Batch, key, value string) bool {
+		iter := ib.NewIter(nil)
+		defer iter.Close()
+		iter2, err := iter.Clone()
+		require.NoError(t, err)
+		defer iter2.Close()
+		var found [2]bool
+		for i, it := range []*Iterator{iter, iter2} {
+			for it.First(); it.Valid(); it.Next() {
+				if string(it.Key()) == key &&
+					string(it.Value()) == value {
+					found[i] = true
+				}
+			}
+		}
+		require.Equal(t, found[0], found[1])
+		return found[0]
 	}
 	// Set a key and check whether the key-value pair is visible.
 	b.Set([]byte(key), []byte(value), nil)

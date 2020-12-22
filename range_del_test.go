@@ -90,8 +90,7 @@ func TestRangeDel(t *testing.T) {
 			}
 
 			iter := snap.NewIter(nil)
-			defer iter.Close()
-			return runIterCmd(td, iter)
+			return runIterCmd(td, iter, true)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
