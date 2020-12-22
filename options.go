@@ -330,15 +330,12 @@ type Options struct {
 		// conservative and allow approximately one seek for every 16KB
 		// of data before triggering a compaction.
 		// ```
-		// TODO(aadityasondhi): Experiment with this to find a good value
 		ReadCompactionRate int64
 
 		// ReadSamplingMultiplier is a multiplier for the readSamplingPeriod in
 		// iterator.maybeSampleRead() to control the frequency of read sampling
-		// to trigger a read triggered compaction. A value of 0 prevents sampling
+		// to trigger a read triggered compaction. A value of -1 prevents sampling
 		// and disables read triggered compactions.
-		//
-		// TODO(aadityasondhi): Experiment with this to find a good value
 		ReadSamplingMultiplier uint64
 	}
 
@@ -600,8 +597,8 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.ReadCompactionRate == 0 {
 		o.Experimental.ReadCompactionRate = 16000
 	}
-	if o.Experimental.ReadSamplingMultiplier != 0 {
-		o.Experimental.ReadSamplingMultiplier = 0
+	if o.Experimental.ReadSamplingMultiplier == 0 {
+		o.Experimental.ReadSamplingMultiplier = 1
 	}
 
 	o.initMaps()
