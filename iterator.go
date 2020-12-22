@@ -206,27 +206,30 @@ func (i *Iterator) sampleRead() {
 		if len(mi.levels) > 1 {
 			mi.ForEachLevelIter(func(li *levelIter) bool {
 				l := manifest.LevelToInt(li.level)
-				// TODO(aaditya): Fix edge case: For Iterator.Last(), Iterator.SeekLT() and Iterator.Prev(),
-				// if the key is the first key of the file or the only key, sampling skips it because
-				// the iterator has already moved past it. The solution would be to check for this, and then
-				// seek to the correct file to sample it. This could have a performance impact which needs to
-				// be tested in benchmarks.
-				if file := li.files.Current(); file != nil {
-					var containsKey bool
+				file := li.files.Current()
+				var containsKey bool
+				if file != nil {
 					if i.pos == iterPosNext || i.pos == iterPosCurForward {
 						containsKey = i.cmp(file.Smallest.UserKey, i.key) <= 0
 					} else if i.pos == iterPosPrev || i.pos == iterPosCurReverse {
 						containsKey = i.cmp(file.Largest.UserKey, i.key) >= 0
 					}
-					if containsKey {
-						numOverlappingLevels++
-						if numOverlappingLevels >= 2 {
-							// Terminate the loop early if at least 2 overlapping levels are found.
-							return true
-						}
-						topLevel = l
-						topFile = file
+				}
+				if !containsKey && (i.pos == iterPosNext || i.pos == iterPosPrev) {
+					if f := i.readState.current.FileInLevel(l, i.cmp, i.key, i.key); f != nil {
+						file = f
+						containsKey = true
 					}
+				}
+
+				if containsKey {
+					numOverlappingLevels++
+					if numOverlappingLevels >= 2 {
+						// Terminate the loop early if at least 2 overlapping levels are found.
+						return true
+					}
+					topLevel = l
+					topFile = file
 				}
 				return false
 			})

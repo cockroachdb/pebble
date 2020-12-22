@@ -166,8 +166,9 @@ read-compactions
 (level: 0, start: a, end: c)
 
 
-# For Iterator.Last(), Iterator.SeekLT() and Iterator.Prev(), if the key is the first key of the file or
-# the only key, sampling skips it because the iterator has already moved past it.
+# Edge case: For Iterator.Last(), Iterator.SeekLT() and Iterator.Prev(), if the key is the first key of the file or
+# the only key, the iterator moves past the file. Sampling should be able to handle this and seek to the correct file.
+# This test checks for both cases of iterator position: invalid iterator (key=a) and prev file (key=d)
 define auto-compactions=off
 L0
   a.SET.4:4
@@ -175,6 +176,8 @@ L1
   a.SET.3:3
 L2
   d.SET.2:2
+L2
+  c.SET.1:1
 L3
   d.SET.1:1
 ----
@@ -183,9 +186,10 @@ L3
 1:
   000005:[a#3,SET-a#3,SET]
 2:
+  000007:[c#1,SET-c#1,SET]
   000006:[d#2,SET-d#2,SET]
 3:
-  000007:[d#1,SET-d#1,SET]
+  000008:[d#1,SET-d#1,SET]
 
 set allowed-seeks=2
 ----
@@ -207,7 +211,7 @@ d:2
 
 iter-read-compactions
 ----
-(none)
+(level: 2, start: d, end: d)
 
 read-compactions
 ----
@@ -218,17 +222,17 @@ close-iter
 
 read-compactions
 ----
-(none)
+(level: 2, start: d, end: d)
 
 iter
-seek-lt d
+seek-lt c
 ----
 a:4
 
 iter
 next
 ----
-d:2
+c:1
 
 iter
 prev
@@ -237,6 +241,67 @@ a:4
 
 iter-read-compactions
 ----
+(level: 0, start: a, end: a)
+
+close-iter
+----
+
+read-compactions
+----
+(level: 2, start: d, end: d)
+(level: 0, start: a, end: a)
+
+
+# Edge case (for `MERGE` keys): For Iterator.First(), Iterator.SeekGE() and Iterator.Next(), if the key is the last key
+# of the file or the only key, the iterator moves past the file. Sampling should be able to handle this and seek to the
+# correct file.
+define auto-compactions=off
+L0
+  a.MERGE.4:4
+L1
+  a.MERGE.3:3
+  b.MERGE.6:6
+L2
+  d.MERGE.2:2
+L2
+  c.MERGE.1:1
+L3
+  c.MERGE.1:1
+----
+0.0:
+  000004:[a#4,MERGE-a#4,MERGE]
+1:
+  000005:[a#3,MERGE-b#6,MERGE]
+2:
+  000007:[c#1,MERGE-c#1,MERGE]
+  000006:[d#2,MERGE-d#2,MERGE]
+3:
+  000008:[c#1,MERGE-c#1,MERGE]
+
+set allowed-seeks=2
+----
+
+
+iter
+first
+----
+a:34
+
+iter-read-compactions
+----
+(none)
+
+iter
+first
+----
+a:34
+
+iter-read-compactions
+----
+(level: 0, start: a, end: a)
+
+read-compactions
+----
 (none)
 
 close-iter
@@ -244,9 +309,34 @@ close-iter
 
 read-compactions
 ----
-(none)
+(level: 0, start: a, end: a)
 
+iter
+seek-ge c
+----
+c:11
 
+iter
+prev
+----
+b:6
+
+iter
+next
+----
+c:11
+
+iter-read-compactions
+----
+(level: 2, start: c, end: c)
+
+close-iter
+----
+
+read-compactions
+----
+(level: 0, start: a, end: a)
+(level: 2, start: c, end: c)
 
 
 # Test with no overlapping keys across levels, should not pick any compaction
