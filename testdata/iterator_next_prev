@@ -139,6 +139,58 @@ next
 e:e
 .
 
+# Test that the cloned iterator sees all the keys.
+iter
+set-bounds lower=a upper=f
+first
+next
+next
+clone
+seek-ge a
+next
+next
+----
+.
+b:b
+e:e
+.
+.
+b:b
+e:e
+.
+
+# Test that the cloned iterator respects the original bounds.
+iter
+set-bounds lower=a upper=d
+first
+next
+clone
+seek-ge a
+next
+----
+.
+b:b
+.
+.
+b:b
+.
+
+# Test that the cloned iterator respects the seq num.
+iter seq=2
+set-bounds lower=a upper=f
+first
+next
+clone
+last
+prev
+----
+.
+e:e
+.
+.
+e:e
+.
+
 # Verify that switching from forward iteration to reverse iteration
 # properly skips over range tombstones at the end of reverse
 # iteration.

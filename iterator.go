@@ -85,6 +85,12 @@ type Iterator struct {
 	alloc        *iterAlloc
 	prefix       []byte
 	readSampling readSampling
+
+	// Following fields are only used in Clone.
+	// Non-nil if this Iterator includes a Batch.
+	batch    *Batch
+	newIters tableNewIters
+	seqNum   uint64
 }
 
 // readSampling stores variables used to sample a read to trigger a read
@@ -757,4 +763,50 @@ func (i *Iterator) Metrics() IteratorMetrics {
 		m.ReadAmp = len(mi.levels)
 	}
 	return m
+}
+
+// Clone creates a new Iterator over the same underlying data, i.e., over the
+// same {batch, memtables, sstables}). It starts with the same IterOptions but
+// is not positioned. Note that IterOptions is not deep-copied, so the
+// LowerBound and UpperBound slices will share memory with the original
+// Iterator. Iterators assume that these bound slices are not mutated by the
+// callers, for the lifetime of use by an Iterator. The lifetime of use spans
+// from the Iterator creation/SetBounds call to the next SetBounds call. If
+// the caller is tracking this lifetime in order to reuse memory of these
+// slices, it must remember that now the lifetime of use is due to multiple
+// Iterators. The simplest behavior the caller can adopt to decouple lifetimes
+// is to call SetBounds on the new Iterator, immediately after Clone returns,
+// with different bounds slices.
+//
+// Callers can use Clone if they need multiple iterators that need to see
+// exactly the same underlying state of the DB. This should not be used to
+// extend the lifetime of the data backing the original Iterator since that
+// will cause an increase in memory and disk usage (use NewSnapshot for that
+// purpose).
+func (i *Iterator) Clone() (*Iterator, error) {
+	readState := i.readState
+	if readState == nil {
+		return nil, errors.Errorf("cannot Clone a closed Iterator")
+	}
+	// i is already holding a ref, so there is no race with unref here.
+	readState.ref()
+	// Bundle various structures under a single umbrella in order to allocate
+	// them together.
+	buf := iterAllocPool.Get().(*iterAlloc)
+	dbi := &buf.dbi
+	*dbi = Iterator{
+		opts:      i.opts,
+		alloc:     buf,
+		cmp:       i.cmp,
+		equal:     i.equal,
+		iter:      &buf.merging,
+		merge:     i.merge,
+		split:     i.split,
+		readState: readState,
+		keyBuf:    buf.keyBuf,
+		batch:     i.batch,
+		newIters:  i.newIters,
+		seqNum:    i.seqNum,
+	}
+	return finishInitializingIter(buf), nil
 }

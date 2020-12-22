@@ -418,6 +418,8 @@ func TestIterator(t *testing.T) {
 		})
 		iter.snapshot = seqNum
 		iter.elideRangeTombstones = true
+		// NB: This Iterator cannot be cloned since it is not constructed
+		// with a readState. It suffices for this test.
 		return &Iterator{
 			opts:  opts,
 			cmp:   cmp,
@@ -465,8 +467,7 @@ func TestIterator(t *testing.T) {
 			}
 
 			iter := newIter(uint64(seqNum), opts)
-			defer iter.Close()
-			return runIterCmd(d, iter)
+			return runIterCmd(d, iter, true)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -584,7 +585,7 @@ func TestReadSampling(t *testing.T) {
 				iter = snap.NewIter(nil)
 				iter.readSampling.forceReadSampling = true
 			}
-			return runIterCmd(td, iter)
+			return runIterCmd(td, iter, false)
 
 		case "read-compactions":
 			if d == nil {
@@ -700,8 +701,7 @@ func TestIteratorTableFilter(t *testing.T) {
 				seqNum: InternalKeySeqNumMax,
 			}
 			iter := snap.NewIter(iterOpts)
-			defer iter.Close()
-			return runIterCmd(td, iter)
+			return runIterCmd(td, iter, true)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
@@ -774,8 +774,7 @@ func TestIteratorNextPrev(t *testing.T) {
 				seqNum: seqNum,
 			}
 			iter := snap.NewIter(nil)
-			defer iter.Close()
-			return runIterCmd(td, iter)
+			return runIterCmd(td, iter, true)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

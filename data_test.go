@@ -59,7 +59,14 @@ func runGetCmd(td *datadriven.TestData, d *DB) string {
 	return buf.String()
 }
 
-func runIterCmd(d *datadriven.TestData, iter *Iterator) string {
+func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
+	if closeIter {
+		defer func() {
+			if iter != nil {
+				iter.Close()
+			}
+		}()
+	}
 	var b bytes.Buffer
 	for _, line := range strings.Split(d.Input, "\n") {
 		parts := strings.Fields(line)
@@ -110,6 +117,16 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator) string {
 			}
 			iter.SetBounds(lower, upper)
 			valid = iter.Valid()
+		case "clone":
+			clonedIter, err := iter.Clone()
+			if err != nil {
+				fmt.Fprintf(&b, "error in clone, skipping rest of input: err=%v\n", err)
+				return b.String()
+			}
+			if err = iter.Close(); err != nil {
+				fmt.Fprintf(&b, "err=%v\n", err)
+			}
+			iter = clonedIter
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}
