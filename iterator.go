@@ -213,9 +213,9 @@ func (i *Iterator) sampleRead() {
 				// be tested in benchmarks.
 				if file := li.files.Current(); file != nil {
 					var containsKey bool
-					if mi.dir == int(iterPosNext) || mi.dir == int(iterPosCurForward) {
+					if i.pos == iterPosNext || i.pos == iterPosCurForward {
 						containsKey = i.cmp(file.Smallest.UserKey, i.key) <= 0
-					} else if mi.dir == int(iterPosPrev) || mi.dir == int(iterPosCurReverse) {
+					} else if i.pos == iterPosPrev || i.pos == iterPosCurReverse {
 						containsKey = i.cmp(file.Largest.UserKey, i.key) >= 0
 					}
 					if containsKey {
