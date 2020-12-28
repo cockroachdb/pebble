@@ -103,6 +103,7 @@ type Writer struct {
 	separator               Separator
 	successor               Successor
 	tableFormat             TableFormat
+	checksumType            ChecksumType
 	cache                   *cache.Cache
 	// disableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
@@ -481,7 +482,13 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 	w.tmp[0] = blockType
 
 	// Calculate the checksum.
-	checksum := crc.New(b).Update(w.tmp[:1]).Value()
+	var checksum uint32
+	switch w.checksumType {
+	case ChecksumTypeCRC32c:
+		checksum = crc.New(b).Update(w.tmp[:1]).Value()
+	default:
+		return BlockHandle{}, errors.Newf("unsupported checksum type: %d", w.checksumType)
+	}
 	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
 	bh := BlockHandle{w.meta.Size, uint64(len(b))}
 
@@ -663,7 +670,7 @@ func (w *Writer) Close() (err error) {
 	// Write the table footer.
 	footer := footer{
 		format:      w.tableFormat,
-		checksum:    checksumCRC32c,
+		checksum:    w.checksumType,
 		metaindexBH: metaindexBH,
 		indexBH:     indexBH,
 	}
@@ -747,6 +754,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		separator:               o.Comparer.Separator,
 		successor:               o.Comparer.Successor,
 		tableFormat:             o.TableFormat,
+		checksumType:            o.Checksum,
 		cache:                   o.Cache,
 		block: blockWriter{
 			restartInterval: o.BlockRestartInterval,
