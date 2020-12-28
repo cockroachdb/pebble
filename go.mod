@@ -1,6 +1,7 @@
 module github.com/cockroachdb/pebble
 
 require (
+	github.com/cespare/xxhash/v2 v2.1.1
 	github.com/cockroachdb/errors v1.8.1
 	github.com/cockroachdb/redact v1.0.8
 	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd

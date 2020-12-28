@@ -68,6 +68,7 @@ const (
 	ChecksumTypeCRC32c ChecksumType = iota
 	ChecksumTypeNone
 	ChecksumTypeXXHash
+	ChecksumTypeXXHash64
 )
 
 // TablePropertyCollector provides a hook for collecting user-defined

@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -145,6 +146,8 @@ type Writer struct {
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, or (5 * binary.MaxVarintLen64) bytes.
 	tmp [rocksDBFooterLen]byte
+
+	xxHasher *xxhash.Digest
 
 	topLevelIndexBlock blockWriter
 	indexPartitions    []blockWriter
@@ -486,6 +489,15 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 	switch w.checksumType {
 	case ChecksumTypeCRC32c:
 		checksum = crc.New(b).Update(w.tmp[:1]).Value()
+	case ChecksumTypeXXHash64:
+		if w.xxHasher == nil {
+			w.xxHasher = xxhash.New()
+		} else {
+			w.xxHasher.Reset()
+		}
+		w.xxHasher.Write(b)
+		w.xxHasher.Write(w.tmp[:1])
+		checksum = uint32(w.xxHasher.Sum64())
 	default:
 		return BlockHandle{}, errors.Newf("unsupported checksum type: %d", w.checksumType)
 	}

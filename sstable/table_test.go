@@ -718,7 +718,11 @@ func TestFooterRoundTrip(t *testing.T) {
 		TableFormatLevelDB,
 	} {
 		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
-			for _, checksum := range []ChecksumType{ChecksumTypeCRC32c} {
+			checksums := []ChecksumType{ChecksumTypeCRC32c}
+			if format != TableFormatLevelDB {
+				checksums = []ChecksumType{ChecksumTypeCRC32c, ChecksumTypeXXHash64}
+			}
+			for _, checksum := range checksums {
 				t.Run(fmt.Sprintf("checksum=%d", checksum), func(t *testing.T) {
 					footer := footer{
 						format:      format,
