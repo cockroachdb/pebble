@@ -1632,6 +1632,7 @@ type Reader struct {
 	FormatKey         base.FormatKey
 	Split             Split
 	mergerOK          bool
+	checksumType      ChecksumType
 	tableFilter       *tableFilterReader
 	Properties        Properties
 }
@@ -1840,9 +1841,16 @@ func (r *Reader) readBlock(
 		return cache.Handle{}, err
 	}
 
-	checksum0 := binary.LittleEndian.Uint32(b[bh.Length+1:])
-	checksum1 := crc.New(b[:bh.Length+1]).Value()
-	if checksum0 != checksum1 {
+	expectedChecksum := binary.LittleEndian.Uint32(b[bh.Length+1:])
+	var computedChecksum uint32
+	switch r.checksumType {
+	case ChecksumTypeCRC32c:
+		computedChecksum = crc.New(b[:bh.Length+1]).Value()
+	default:
+		return cache.Handle{}, errors.Errorf("unsupported checksum type: %d", r.checksumType)
+	}
+
+	if expectedChecksum != computedChecksum {
 		r.opts.Cache.Free(v)
 		return cache.Handle{}, base.CorruptionErrorf(
 			"pebble/table: invalid table %s (checksum mismatch at %d/%d)",
@@ -2241,6 +2249,7 @@ func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader,
 	r.indexBH = footer.indexBH
 	r.metaIndexBH = footer.metaindexBH
 	r.footerBH = footer.footerBH
+	r.checksumType = footer.checksum
 
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
 		r.Compare = o.Comparer.Compare

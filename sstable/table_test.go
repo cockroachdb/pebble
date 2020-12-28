@@ -718,7 +718,7 @@ func TestFooterRoundTrip(t *testing.T) {
 		TableFormatLevelDB,
 	} {
 		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
-			for _, checksum := range []uint8{checksumCRC32c} {
+			for _, checksum := range []ChecksumType{ChecksumTypeCRC32c} {
 				t.Run(fmt.Sprintf("checksum=%d", checksum), func(t *testing.T) {
 					footer := footer{
 						format:      format,
@@ -763,7 +763,7 @@ func TestFooterRoundTrip(t *testing.T) {
 }
 
 func TestReadFooter(t *testing.T) {
-	encode := func(format TableFormat, checksum uint8) string {
+	encode := func(format TableFormat, checksum ChecksumType) string {
 		f := footer{
 			format:   format,
 			checksum: checksum,
@@ -780,8 +780,8 @@ func TestReadFooter(t *testing.T) {
 		{strings.Repeat("a", rocksDBFooterLen), "bad magic number"},
 		{encode(TableFormatLevelDB, 0)[1:], "file size is too small"},
 		{encode(TableFormatRocksDBv2, 0)[1:], "footer too short"},
-		{encode(TableFormatRocksDBv2, noChecksum), "unsupported checksum type"},
-		{encode(TableFormatRocksDBv2, checksumXXHash), "unsupported checksum type"},
+		{encode(TableFormatRocksDBv2, ChecksumTypeNone), "unsupported checksum type"},
+		{encode(TableFormatRocksDBv2, ChecksumTypeXXHash), "unsupported checksum type"},
 	}
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {
