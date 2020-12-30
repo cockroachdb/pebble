@@ -150,9 +150,10 @@ const (
 	levelDBFormatVersion  = 0
 	rocksDBFormatVersion2 = 2
 
-	noChecksum     = 0
-	checksumCRC32c = 1
-	checksumXXHash = 2
+	noChecksum       = 0
+	checksumCRC32c   = 1
+	checksumXXHash   = 2
+	checksumXXHash64 = 3
 
 	// The block type gives the per-block compression format.
 	// These constants are part of the file format and should not be changed.
@@ -250,6 +251,8 @@ func readFooter(f vfs.File) (footer, error) {
 		switch uint8(buf[0]) {
 		case checksumCRC32c:
 			footer.checksum = ChecksumTypeCRC32c
+		case checksumXXHash64:
+			footer.checksum = ChecksumTypeXXHash64
 		default:
 			return footer, base.CorruptionErrorf("pebble/table: unsupported checksum type %d", errors.Safe(footer.checksum))
 		}
@@ -299,6 +302,8 @@ func (f footer) encode(buf []byte) []byte {
 			buf[0] = checksumCRC32c
 		case ChecksumTypeXXHash:
 			buf[0] = checksumXXHash
+		case ChecksumTypeXXHash64:
+			buf[0] = checksumXXHash64
 		default:
 			panic("unknown checksum type")
 		}

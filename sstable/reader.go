@@ -15,6 +15,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -1846,6 +1847,8 @@ func (r *Reader) readBlock(
 	switch r.checksumType {
 	case ChecksumTypeCRC32c:
 		computedChecksum = crc.New(b[:bh.Length+1]).Value()
+	case ChecksumTypeXXHash64:
+		computedChecksum = uint32(xxhash.Sum64(b[:bh.Length+1]))
 	default:
 		return cache.Handle{}, errors.Errorf("unsupported checksum type: %d", r.checksumType)
 	}
@@ -2241,6 +2244,7 @@ func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader,
 		r.err = err
 		return nil, r.Close()
 	}
+	r.checksumType = footer.checksum
 	// Read the metaindex.
 	if err := r.readMetaindex(footer.metaindexBH); err != nil {
 		r.err = err
@@ -2249,7 +2253,6 @@ func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader,
 	r.indexBH = footer.indexBH
 	r.metaIndexBH = footer.metaindexBH
 	r.footerBH = footer.footerBH
-	r.checksumType = footer.checksum
 
 	if r.Properties.ComparerName == "" || o.Comparer.Name == r.Properties.ComparerName {
 		r.Compare = o.Comparer.Compare
