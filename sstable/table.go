@@ -73,7 +73,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/vfs"
 )
 
 /*
@@ -203,7 +202,7 @@ type footer struct {
 	footerBH    BlockHandle
 }
 
-func readFooter(f vfs.File) (footer, error) {
+func readFooter(f ReadableFile) (footer, error) {
 	var footer footer
 	stat, err := f.Stat()
 	if err != nil {
