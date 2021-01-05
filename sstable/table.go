@@ -203,7 +203,7 @@ type footer struct {
 	footerBH    BlockHandle
 }
 
-func readFooter(f vfs.File) (footer, error) {
+func readFooter(f vfs.ReadableFile) (footer, error) {
 	var footer footer
 	stat, err := f.Stat()
 	if err != nil {

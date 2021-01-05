@@ -9,7 +9,7 @@ package vfs
 // Prefetch signals the OS (on supported platforms) to fetch the next size
 // bytes in file after offset into cache. Any subsequent reads in that range
 // will not issue disk IO.
-func Prefetch(file File, offset uint64, size uint64) error {
+func Prefetch(file ReadableFile, offset uint64, size uint64) error {
 	// No-op.
 	return nil
 }

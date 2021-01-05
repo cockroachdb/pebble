@@ -1614,7 +1614,7 @@ func init() {
 
 // Reader is a table reader.
 type Reader struct {
-	file              vfs.File
+	file              vfs.ReadableFile
 	fs                vfs.FS
 	filename          string
 	cacheID           uint64
@@ -2209,7 +2209,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
+func NewReader(f vfs.ReadableFile, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
 	o = o.ensureDefaults()
 	r := &Reader{
 		file: f,

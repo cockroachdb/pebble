@@ -19,12 +19,17 @@ import (
 // Typically, it will be an *os.File, but test code may choose to substitute
 // memory-backed implementations.
 type File interface {
-	io.Closer
+	ReadableFile
 	io.Reader
-	io.ReaderAt
 	io.Writer
-	Stat() (os.FileInfo, error)
 	Sync() error
+}
+
+// ReadableFile describes the subset of File that is required for reading SSTs.
+type ReadableFile interface {
+	io.ReaderAt
+	io.Closer
+	Stat() (os.FileInfo, error)
 }
 
 // OpenOption provide an interface to do work on file handles in the Open()
