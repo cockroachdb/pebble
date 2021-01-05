@@ -262,15 +262,16 @@ func readFooter(f ReadableFile) (footer, error) {
 	}
 
 	{
+		end := uint64(stat.Size())
 		var n int
 		footer.metaindexBH, n = decodeBlockHandle(buf)
-		if n == 0 {
+		if n == 0 || footer.metaindexBH.Offset+footer.metaindexBH.Length > end {
 			return footer, base.CorruptionErrorf("pebble/table: invalid table (bad metaindex block handle)")
 		}
 		buf = buf[n:]
 
 		footer.indexBH, n = decodeBlockHandle(buf)
-		if n == 0 {
+		if n == 0 || footer.indexBH.Offset+footer.indexBH.Length > end {
 			return footer, base.CorruptionErrorf("pebble/table: invalid table (bad index block handle)")
 		}
 	}
