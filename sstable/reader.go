@@ -1614,7 +1614,7 @@ func init() {
 
 // Reader is a table reader.
 type Reader struct {
-	file              vfs.File
+	file              ReadableFile
 	fs                vfs.FS
 	filename          string
 	cacheID           uint64
@@ -1830,7 +1830,12 @@ func (r *Reader) readBlock(
 				}
 			}
 			if raState.sequentialFile != nil {
-				_ = vfs.Prefetch(r.file, bh.Offset, uint64(readaheadSize))
+				type fd interface {
+					Fd() uintptr
+				}
+				if f, ok := r.file.(fd); ok {
+					_ = vfs.Prefetch(f.Fd(), bh.Offset, uint64(readaheadSize))
+				}
 			}
 		}
 	}
@@ -2207,9 +2212,16 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	return endBH.Offset + endBH.Length + blockTrailerLen - startBH.Offset, nil
 }
 
+// ReadableFile describes subset of vfs.File required for reading SSTs.
+type ReadableFile interface {
+	io.ReaderAt
+	io.Closer
+	Stat() (os.FileInfo, error)
+}
+
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f vfs.File, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
+func NewReader(f ReadableFile, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
 	o = o.ensureDefaults()
 	r := &Reader{
 		file: f,
