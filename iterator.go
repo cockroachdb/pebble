@@ -98,9 +98,8 @@ type Iterator struct {
 type readSampling struct {
 	bytesUntilReadSampling uint64
 	rand                   *rand.Rand
-	randvar                *randvar.Uniform
+	randVar                *randvar.Uniform
 	pendingCompactions     []readCompaction
-	topFile                *manifest.FileMetadata
 	// forceReadSampling is used for testing purposes to force a read sample on every
 	// call to Iterator.maybeSampleRead()
 	forceReadSampling bool
@@ -193,25 +192,25 @@ func (i *Iterator) maybeSampleRead() {
 	if samplingPeriod <= 0 {
 		return
 	}
-	if i.readSampling.rand == nil || i.readSampling.randvar == nil {
+	if i.readSampling.rand == nil || i.readSampling.randVar == nil {
 		i.readSampling.rand = rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
-		i.readSampling.randvar = randvar.NewUniform(0, 2*samplingPeriod)
+		i.readSampling.randVar = randvar.NewUniform(0, 2*samplingPeriod)
 	}
 	bytesRead := uint64(len(i.key) + len(i.value))
 	for i.readSampling.bytesUntilReadSampling < bytesRead {
-		i.readSampling.bytesUntilReadSampling += i.readSampling.randvar.Uint64(i.readSampling.rand)
+		i.readSampling.bytesUntilReadSampling += i.readSampling.randVar.Uint64(i.readSampling.rand)
 		i.sampleRead()
 	}
 	i.readSampling.bytesUntilReadSampling -= bytesRead
 }
 
 func (i *Iterator) sampleRead() {
-	topFile := i.readSampling.topFile
+	var topFile *manifest.FileMetadata
 	topLevel, numOverlappingLevels := numLevels, 0
 	if mi, ok := i.iter.(*mergingIter); ok {
 		if len(mi.levels) > 1 {
 			mi.ForEachLevelIter(func(li *levelIter) bool {
-				l := manifest.LevelToInt(li.level)
+				l, _ := manifest.LevelToInt(li.level)
 				file := li.files.Current()
 				var containsKey bool
 				if file != nil {
@@ -222,9 +221,15 @@ func (i *Iterator) sampleRead() {
 					}
 				}
 				if !containsKey && (i.pos == iterPosNext || i.pos == iterPosPrev) {
-					if f := i.readState.current.FileInLevel(l, i.cmp, i.key, i.key); f != nil {
-						file = f
-						containsKey = true
+					iter := li.files.Clone()
+					if i.pos == iterPosNext {
+						file = iter.Prev()
+					} else {
+						file = iter.Next()
+					}
+					if file != nil {
+						containsKey = i.cmp(file.Smallest.UserKey, i.key) <= 0 &&
+							i.cmp(file.Largest.UserKey, i.key) >= 0
 					}
 				}
 
@@ -240,9 +245,6 @@ func (i *Iterator) sampleRead() {
 				return false
 			})
 		}
-	}
-	if topFile == nil || topLevel >= numLevels {
-		return
 	}
 	if numOverlappingLevels >= 2 {
 		allowedSeeks := atomic.AddInt64(&topFile.Atomic.AllowedSeeks, -1)

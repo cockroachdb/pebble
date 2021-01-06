@@ -24,8 +24,10 @@ func makeLevel(level, sublevel int) Level {
 }
 
 // LevelToInt returns the int representation of a Level
-func LevelToInt(l Level) int {
-	return int(l) & levelMask
+func LevelToInt(l Level) (level, sublevel int) {
+	level = int(l) & levelMask
+	sublevel = (int(l) >> levelBits) - 1
+	return level, sublevel
 }
 
 // L0Sublevel returns a Level representing the specified L0 sublevel.
