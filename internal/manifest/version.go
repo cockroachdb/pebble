@@ -553,15 +553,25 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelSlice
 	return overlaps(v.Levels[level].Iter(), cmp, start, end)
 }
 
-// FileInLevel takes a level with a start and end key range to return the first file
-// that contains the range in that level.
-func (v *Version) FileInLevel(l int, cmp Compare, start, end []byte) (file *FileMetadata) {
-	iter := v.Levels[l].Iter()
-	file = iter.SeekGE(cmp, start)
+// FileInLevel takes a level (or sublevel) and returns the first file that
+// overlaps with the provided user key, if one exists. Returns nil if no
+// file exists that could contain key within its bounds.
+func (v *Version) FileInLevel(l Level, cmp Compare, key []byte) (file *FileMetadata) {
+	level, sublevel := LevelToInt(l)
+	if level == 0 && sublevel != invalidSublevel {
+		if sublevel >= len(v.L0Sublevels.Levels) {
+			return nil
+		}
+		iter := v.L0Sublevels.Levels[sublevel].Iter()
+		file = iter.SeekGE(cmp, key)
+	} else {
+		iter := v.Levels[l].Iter()
+		file = iter.SeekGE(cmp, key)
+	}
 	if file == nil {
 		return nil
 	}
-	if cmp(file.Smallest.UserKey, end) > 0 {
+	if cmp(file.Smallest.UserKey, key) > 0 {
 		return nil
 	}
 	return file

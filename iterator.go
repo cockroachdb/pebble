@@ -205,7 +205,7 @@ func (i *Iterator) sampleRead() {
 	if mi, ok := i.iter.(*mergingIter); ok {
 		if len(mi.levels) > 1 {
 			mi.ForEachLevelIter(func(li *levelIter) bool {
-				l := manifest.LevelToInt(li.level)
+				l, _ := manifest.LevelToInt(li.level)
 				file := li.files.Current()
 				var containsKey bool
 				if file != nil {
@@ -216,7 +216,7 @@ func (i *Iterator) sampleRead() {
 					}
 				}
 				if !containsKey && (i.pos == iterPosNext || i.pos == iterPosPrev) {
-					if f := i.readState.current.FileInLevel(l, i.cmp, i.key, i.key); f != nil {
+					if f := i.readState.current.FileInLevel(li.level, i.cmp, i.key); f != nil {
 						file = f
 						containsKey = true
 					}

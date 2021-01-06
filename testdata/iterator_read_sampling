@@ -251,6 +251,102 @@ read-compactions
 (level: 2, start: d, end: d)
 (level: 0, start: a, end: a)
 
+# Same edge case as above, except for the sampled key coming from L0 sublevels.
+define auto-compactions=off
+L0
+  e.SET.4:4
+L0
+  e.SET.5:5
+L0
+  e.SET.6:6
+L0
+  e.SET.7:7
+  f.DEL.7:
+L1
+  e.SET.3:3
+L2
+  d.SET.2:2
+L2
+  c.SET.1:1
+L3
+  d.SET.1:1
+----
+0.3:
+  000007:[e#7,SET-f#7,DEL]
+0.2:
+  000006:[e#6,SET-e#6,SET]
+0.1:
+  000005:[e#5,SET-e#5,SET]
+0.0:
+  000004:[e#4,SET-e#4,SET]
+1:
+  000008:[e#3,SET-e#3,SET]
+2:
+  000010:[c#1,SET-c#1,SET]
+  000009:[d#2,SET-d#2,SET]
+3:
+  000011:[d#1,SET-d#1,SET]
+
+set allowed-seeks=2
+----
+
+
+iter
+last
+----
+e:7
+
+iter-read-compactions
+----
+(none)
+
+iter
+last
+----
+e:7
+
+iter-read-compactions
+----
+(level: 0, start: e, end: f)
+
+read-compactions
+----
+(none)
+
+close-iter
+----
+
+read-compactions
+----
+(level: 0, start: e, end: f)
+
+iter
+seek-lt e
+----
+d:2
+
+iter
+next
+----
+e:7
+
+iter
+prev
+----
+d:2
+
+iter-read-compactions
+----
+(level: 2, start: d, end: d)
+
+close-iter
+----
+
+read-compactions
+----
+(level: 0, start: e, end: f)
+(level: 2, start: d, end: d)
+
 
 # Edge case (for `MERGE` keys): For Iterator.First(), Iterator.SeekGE() and Iterator.Next(), if the key is the last key
 # of the file or the only key, the iterator moves past the file. Sampling should be able to handle this and seek to the
