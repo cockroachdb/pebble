@@ -620,10 +620,12 @@ func (g *generator) writerDelete() {
 		return
 	}
 
+	writerID := g.liveWriters.rand(g.rng)
 	g.add(&deleteOp{
-		writerID: g.liveWriters.rand(g.rng),
+		writerID: writerID,
 		key:      g.randKey(0.001), // 0.1% new keys
 	})
+	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerDeleteRange() {
@@ -637,11 +639,13 @@ func (g *generator) writerDeleteRange() {
 		start, end = end, start
 	}
 
+	writerID := g.liveWriters.rand(g.rng)
 	g.add(&deleteRangeOp{
-		writerID: g.liveWriters.rand(g.rng),
+		writerID: writerID,
 		start:    start,
 		end:      end,
 	})
+	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerIngest() {
@@ -670,11 +674,13 @@ func (g *generator) writerMerge() {
 		return
 	}
 
+	writerID := g.liveWriters.rand(g.rng)
 	g.add(&mergeOp{
-		writerID: g.liveWriters.rand(g.rng),
+		writerID: writerID,
 		key:      g.randKey(0.2), // 20% new keys
 		value:    g.randValue(0, 20),
 	})
+	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerSet() {
@@ -682,11 +688,28 @@ func (g *generator) writerSet() {
 		return
 	}
 
+	writerID := g.liveWriters.rand(g.rng)
 	g.add(&setOp{
-		writerID: g.liveWriters.rand(g.rng),
+		writerID: writerID,
 		key:      g.randKey(0.5), // 50% new keys
 		value:    g.randValue(0, 20),
 	})
+	g.tryRepositionBatchIters(writerID)
+}
+
+func (g *generator) tryRepositionBatchIters(writerID objID) {
+	if writerID.tag() != batchTag {
+		return
+	}
+	// Reposition all batch iterators to avoid https://github.com/cockroachdb/pebble/issues/943
+	iters, ok := g.batches[writerID]
+	if !ok {
+		// Not an indexed batch.
+		return
+	}
+	for _, id := range iters.sorted() {
+		g.add(&iterFirstOp{iterID: id})
+	}
 }
 
 func (g *generator) String() string {
