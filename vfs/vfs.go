@@ -22,6 +22,9 @@ type File interface {
 	io.Closer
 	io.Reader
 	io.ReaderAt
+	// Unlike the specification for io.Writer.Write(), the vfs.File.Write()
+	// method *is* allowed to modify the slice passed in, whether temporarily
+	// or permanently. Callers of Write() need to take this into account.
 	io.Writer
 	Stat() (os.FileInfo, error)
 	Sync() error
