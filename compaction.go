@@ -2687,6 +2687,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		}
 	}
 	if len(filesToDelete) > 0 {
+		d.deleters.Add(1)
 		// Delete asynchronously if that could get held up in the pacer.
 		if d.opts.Experimental.MinDeletionRate > 0 {
 			go d.paceAndDeleteObsoleteFiles(jobID, filesToDelete)
@@ -2699,6 +2700,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 // Paces and eventually deletes the list of obsolete files passed in. db.mu
 // must NOT be held when calling this method.
 func (d *DB) paceAndDeleteObsoleteFiles(jobID int, files []obsoleteFile) {
+	defer d.deleters.Done()
 	pacer := (pacer)(nilPacer)
 	if d.opts.Experimental.MinDeletionRate > 0 {
 		pacer = newDeletionPacer(d.deletionLimiter, d.getDeletionPacerInfo)

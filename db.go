@@ -230,6 +230,12 @@ type DB struct {
 	flushLimiter      limiter
 	deletionLimiter   limiter
 
+	// Async deletion jobs spawned by cleaners increment this WaitGroup, and
+	// call Done when completed. Once `d.mu.cleaning` is false, the db.Close()
+	// goroutine needs to call Wait on this WaitGroup to ensure all cleaning
+	// and deleting goroutines have finished running.
+	deleters sync.WaitGroup
+
 	// The main mutex protecting internal DB state. This mutex encompasses many
 	// fields because those fields need to be accessed and updated atomically. In
 	// particular, the current version, log.*, mem.*, and snapshot list need to
@@ -321,7 +327,8 @@ type DB struct {
 			// serialized, and a caller trying to do a file cleaning operation may wait
 			// until the ongoing one is complete.
 			cond sync.Cond
-			// True when a file cleaning operation is in progress.
+			// True when a file cleaning operation is in progress. False does not necessarily
+			// mean all cleaning jobs have completed; see the comment on d.deleters.
 			cleaning bool
 			// Non-zero when file cleaning is disabled. The disabled count acts as a
 			// reference count to prohibit file cleaning. See
@@ -942,6 +949,8 @@ func (d *DB) Close() error {
 	if len(d.mu.versions.obsoleteTables) > 0 {
 		d.deleteObsoleteFiles(d.mu.nextJobID)
 	}
+	// Wait for all the deletion goroutines spawned by cleaning jobs to finish.
+	d.deleters.Wait()
 	return err
 }
 
