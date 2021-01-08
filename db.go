@@ -233,7 +233,8 @@ type DB struct {
 	// Async deletion jobs spawned by cleaners increment this WaitGroup, and
 	// call Done when completed. Once `d.mu.cleaning` is false, the db.Close()
 	// goroutine needs to call Wait on this WaitGroup to ensure all cleaning
-	// and deleting goroutines have finished running.
+	// and deleting goroutines have finished running. As deletion goroutines
+	// could grab db.mu, it must *not* be held while deleters.Wait() is called.
 	deleters sync.WaitGroup
 
 	// The main mutex protecting internal DB state. This mutex encompasses many
@@ -950,7 +951,9 @@ func (d *DB) Close() error {
 		d.deleteObsoleteFiles(d.mu.nextJobID)
 	}
 	// Wait for all the deletion goroutines spawned by cleaning jobs to finish.
+	d.mu.Unlock()
 	d.deleters.Wait()
+	d.mu.Lock()
 	return err
 }
 
