@@ -94,6 +94,14 @@ func (d *diskHealthCheckingFile) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
+// WriteV implements the vfs.VectorWriter interface.
+func (d *diskHealthCheckingFile) WriteV(bufs [][]byte) (n int, err error) {
+	d.timeDiskOp(func() {
+		n, err = WriteV(d.File, bufs)
+	})
+	return n, err
+}
+
 // Close implements the io.Closer interface.
 func (d *diskHealthCheckingFile) Close() error {
 	d.stopTicker()

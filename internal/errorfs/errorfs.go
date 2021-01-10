@@ -291,6 +291,13 @@ func (f *errorFile) Write(p []byte) (int, error) {
 	return f.file.Write(p)
 }
 
+func (f *errorFile) WriteV(bufs [][]byte) (n int, err error) {
+	if err := f.inj.MaybeError(OpWrite); err != nil {
+		return 0, err
+	}
+	return vfs.WriteV(f.file, bufs)
+}
+
 func (f *errorFile) Stat() (os.FileInfo, error) {
 	if err := f.inj.MaybeError(OpRead); err != nil {
 		return nil, err

@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 var walSyncLabels = pprof.Labels("pebble", "wal-sync")
@@ -277,6 +278,7 @@ type LogWriter struct {
 		// minSyncInterval is the minimum duration between syncs.
 		minSyncInterval durationFunc
 		pending         []*block
+		bufs            [][]byte
 		syncQ           syncQueue
 	}
 
@@ -310,6 +312,8 @@ func NewLogWriter(w io.Writer, logNum base.FileNum) *LogWriter {
 	r.flusher.ready.init(&r.flusher.Mutex, &r.flusher.syncQ)
 	r.flusher.closed = make(chan struct{})
 	r.flusher.pending = make([]*block, 0, cap(r.free.blocks))
+	// NB: +1 to account for block already in LogWriter.block.
+	r.flusher.bufs = make([][]byte, 0, cap(r.free.blocks)+1)
 	go func() {
 		pprof.Do(context.Background(), walSyncLabels, r.flushLoop)
 	}()
@@ -462,14 +466,30 @@ func (w *LogWriter) flushPending(
 		}
 	}()
 
+	// Write any completed blocks along with the current block.
+	bufs := w.flusher.bufs[:0]
 	for _, b := range pending {
-		if err = w.flushBlock(b); err != nil {
-			break
-		}
+		bufs = append(bufs, b.buf[b.flushed:])
 	}
-	if err == nil && len(data) > 0 {
-		_, err = w.w.Write(data)
+	if len(data) > 0 {
+		bufs = append(bufs, data)
 	}
+	switch len(bufs) {
+	case 0:
+		// Nothing to write.
+	case 1:
+		// Issue a single write.
+		_, err = w.w.Write(bufs[0])
+	default:
+		// Issue a vectorized write.
+		_, err = vfs.WriteV(w.w, bufs)
+	}
+
+	// Clean up.
+	for i := range bufs {
+		bufs[i] = nil
+	}
+	w.freeBlocks(pending)
 
 	synced = head != tail
 	if synced {
@@ -485,17 +505,18 @@ func (w *LogWriter) flushPending(
 	return synced, err
 }
 
-func (w *LogWriter) flushBlock(b *block) error {
-	if _, err := w.w.Write(b.buf[b.flushed:]); err != nil {
-		return err
+func (w *LogWriter) freeBlocks(blocks []*block) {
+	if len(blocks) == 0 {
+		return
 	}
-	b.written = 0
-	b.flushed = 0
 	w.free.Lock()
-	w.free.blocks = append(w.free.blocks, b)
-	w.free.cond.Signal()
+	for _, b := range blocks {
+		b.written = 0
+		b.flushed = 0
+		w.free.blocks = append(w.free.blocks, b)
+		w.free.cond.Signal()
+	}
 	w.free.Unlock()
-	return nil
 }
 
 // queueBlock queues the current block for writing to the underlying writer,

@@ -80,9 +80,27 @@ func NewSyncingFile(f File, opts SyncingFileOptions) File {
 
 // NB: syncingFile.Write is unsafe for concurrent use!
 func (f *syncingFile) Write(p []byte) (n int, err error) {
-	_ = f.preallocate(atomic.LoadInt64(&f.atomic.offset) + int64(n))
+	_ = f.preallocate(atomic.LoadInt64(&f.atomic.offset))
 
 	n, err = f.File.Write(p)
+	if err != nil {
+		return n, errors.WithStack(err)
+	}
+	// The offset is updated atomically so that it can be accessed safely from
+	// Sync.
+	atomic.AddInt64(&f.atomic.offset, int64(n))
+	if err := f.maybeSync(); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// WriteV implements the VectorWriter interface.
+// NB: syncingFile.WriteV is unsafe for concurrent use!
+func (f *syncingFile) WriteV(bufs [][]byte) (n int, err error) {
+	_ = f.preallocate(atomic.LoadInt64(&f.atomic.offset))
+
+	n, err = WriteV(f.File, bufs)
 	if err != nil {
 		return n, errors.WithStack(err)
 	}
