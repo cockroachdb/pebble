@@ -413,6 +413,11 @@ func (c *compactionFile) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
+// WriteV implements the vfs.VectorWriter interface.
+func (c *compactionFile) WriteV(bufs [][]byte) (n int, err error) {
+	return vfs.WriteV(c.File, bufs)
+}
+
 type compactionKind string
 
 const (

@@ -94,6 +94,14 @@ func (d *diskHealthCheckingFile) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
+// WriteV implements the vfs.VectorWriter interface.
+func (d *diskHealthCheckingFile) WriteV(bufs [][]byte) (n int, err error) {
+	d.timeDiskOp(func() {
+		n, err = WriteV(d.File, bufs)
+	})
+	return n, err
+}
+
 // Close implements the io.Closer interface.
 func (d *diskHealthCheckingFile) Close() error {
 	d.stopTicker()
@@ -106,6 +114,17 @@ func (d *diskHealthCheckingFile) Sync() (err error) {
 		err = d.File.Sync()
 	})
 	return err
+}
+
+// FD implements the fd interface.
+func (d *diskHealthCheckingFile) Fd() uintptr {
+	type fd interface {
+		Fd() uintptr
+	}
+	if d, ok := d.File.(fd); ok {
+		return d.Fd()
+	}
+	return 0
 }
 
 // timeDiskOp runs the specified closure and makes its timing visible to the
