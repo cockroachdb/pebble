@@ -75,12 +75,12 @@ func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	if s.syncData == nil {
 		s.syncData = s.File.Sync
 	}
-	return s
+	return WithFd(f, s)
 }
 
 // NB: syncingFile.Write is unsafe for concurrent use!
 func (f *syncingFile) Write(p []byte) (n int, err error) {
-	_ = f.preallocate(atomic.LoadInt64(&f.atomic.offset) + int64(n))
+	_ = f.preallocate(atomic.LoadInt64(&f.atomic.offset))
 
 	n, err = f.File.Write(p)
 	if err != nil {
