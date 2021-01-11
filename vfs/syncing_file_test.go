@@ -32,6 +32,7 @@ func TestSyncingFile(t *testing.T) {
 		t.Fatalf("failed to wrap: %p != %p", f, s)
 	}
 	s = NewSyncingFile(f, SyncingFileOptions{BytesPerSync: 8 << 10 /* 8 KB */})
+	s = s.(*fdFileWrapper).File
 	s.(*syncingFile).fd = 1
 	s.(*syncingFile).syncTo = func(offset int64) error {
 		s.(*syncingFile).ratchetSyncOffset(offset)
