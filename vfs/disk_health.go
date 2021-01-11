@@ -157,7 +157,7 @@ func (d diskHealthCheckingFS) Create(name string) (File, error) {
 		d.onSlowDisk(name, duration)
 	})
 	checkingFile.startTicker()
-	return checkingFile, nil
+	return WithFd(f, checkingFile), nil
 }
 
 // ReuseForWrite implements the vfs.FS interface.
@@ -173,5 +173,5 @@ func (d diskHealthCheckingFS) ReuseForWrite(oldname, newname string) (File, erro
 		d.onSlowDisk(newname, duration)
 	})
 	checkingFile.startTicker()
-	return checkingFile, nil
+	return WithFd(f, checkingFile), nil
 }

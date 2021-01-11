@@ -75,7 +75,7 @@ func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	if s.syncData == nil {
 		s.syncData = s.File.Sync
 	}
-	return s
+	return WithFd(f, s)
 }
 
 // NB: syncingFile.Write is unsafe for concurrent use!
