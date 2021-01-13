@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -319,7 +320,7 @@ func (y *MemFS) Remove(fullname string) error {
 				return oserror.ErrInvalid
 			}
 			if len(child.children) > 0 {
-				return oserror.ErrExist
+				return syscall.ENOTEMPTY
 			}
 			delete(dir.children, frag)
 		}
