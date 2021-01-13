@@ -319,7 +319,7 @@ func (y *MemFS) Remove(fullname string) error {
 				return oserror.ErrInvalid
 			}
 			if len(child.children) > 0 {
-				return oserror.ErrExist
+				return errNotEmpty
 			}
 			delete(dir.children, frag)
 		}

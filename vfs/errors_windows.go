@@ -11,6 +11,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+var errNotEmpty = windows.ERROR_DIR_NOT_EMPTY
+
 // IsNoSpaceError returns true if the given error indicates that the disk is
 // out of space.
 func IsNoSpaceError(err error) bool {
