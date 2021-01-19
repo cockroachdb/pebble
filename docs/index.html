@@ -35,6 +35,8 @@
         switched to use a B-Tree</div>
         <div class="annotation" data-date="20201222">Enabled
         read-triggered compactions</div>
+        <div class="annotation" data-date="20210113">Readahead
+        and preallocation bug fixed</div>
       </div>
       <div class="section rows">
         <div class="columns">
@@ -93,6 +95,16 @@
         <div class="columns">
           <svg class="chart left" data-key="ycsb/E/values=64"></svg>
           <svg class="chart right" data-key="ycsb/E/values=1024"></svg>
+        </div>
+      </div>
+      <div class="section rows">
+        <div>
+          <span class="subtitle">Insert-only</span>
+          <span>(100% inserts, zipf key distribution)</span>
+        </div>
+        <div class="columns">
+          <svg class="chart left" data-key="ycsb/F/values=64"></svg>
+          <svg class="chart right" data-key="ycsb/F/values=1024"></svg>
         </div>
       </div>
     </div>
