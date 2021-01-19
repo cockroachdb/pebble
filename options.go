@@ -104,16 +104,15 @@ func (o *IterOptions) getLogger() Logger {
 // Like Options, a nil *WriteOptions is valid and means to use the default
 // values.
 type WriteOptions struct {
-	// Sync is whether to sync underlying writes from the OS buffer cache
-	// through to actual disk, if applicable. Setting Sync can result in
-	// slower writes.
+	// Sync is whether to sync writes through the OS buffer cache and down onto
+	// the actual disk, if applicable. Setting Sync is required for durability of
+	// individual write operations but can result in slower writes.
 	//
-	// If false, and the machine crashes, then some recent writes may be lost.
-	// Note that if it is just the process that crashes (and the machine does
-	// not) then no writes will be lost.
-	//
-	// In other words, Sync being false has the same semantics as a write
-	// system call. Sync being true means write followed by fsync.
+	// If false, and the process or machine crashes, then a recent write may be
+	// lost. This is due to the recently written data being buffered inside the
+	// process running Pebble. This differs from the semantics of a write system
+	// call in which the data is buffered in the OS buffer cache and would thus
+	// survive a process crash.
 	//
 	// The default value is true.
 	Sync bool
