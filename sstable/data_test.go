@@ -202,11 +202,19 @@ func runIterCmd(td *datadriven.TestData, r *Reader) string {
 			prefix = nil
 			iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
 		case "seek-prefix-ge":
-			if len(parts) != 2 {
-				return fmt.Sprintf("seek-prefix-ge <key>\n")
+			if len(parts) != 2 && len(parts) != 3 {
+				return fmt.Sprintf("seek-prefix-ge <key> [<try-seek-using-next>]\n")
 			}
 			prefix = []byte(strings.TrimSpace(parts[1]))
-			iter.SeekPrefixGE(prefix, prefix /* key */)
+			trySeekUsingNext := false
+			if len(parts) == 3 {
+				var err error
+				trySeekUsingNext, err = strconv.ParseBool(parts[2])
+				if err != nil {
+					return err.Error()
+				}
+			}
+			iter.SeekPrefixGE(prefix, prefix /* key */, trySeekUsingNext)
 		case "seek-lt":
 			if len(parts) != 2 {
 				return fmt.Sprintf("seek-lt <key>\n")

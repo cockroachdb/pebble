@@ -597,7 +597,10 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 				if l.largestUserKey != nil && m.heap.cmp(l.largestUserKey, seekKey) < 0 {
 					seekKey = l.largestUserKey
 				}
-				m.seekGE(seekKey, item.index)
+				// This seek is not directly due to a SeekGE call, so we don't
+				// know enough about the underlying iterator positions, and so
+				// we set trySeekUsingNext=false.
+				m.seekGE(seekKey, item.index, false /* trySeekUsingNext */)
 				return true
 			}
 			if l.tombstone.Deletes(item.key.SeqNum()) {
@@ -774,7 +777,7 @@ func (m *mergingIter) findPrevEntry() (*InternalKey, []byte) {
 }
 
 // Seeks levels >= level to >= key. Additionally uses range tombstones to extend the seeks.
-func (m *mergingIter) seekGE(key []byte, level int) {
+func (m *mergingIter) seekGE(key []byte, level int, trySeekUsingNext bool) {
 	// When seeking, we can use tombstones to adjust the key we seek to on each
 	// level. Consider the series of range tombstones:
 	//
@@ -803,7 +806,7 @@ func (m *mergingIter) seekGE(key []byte, level int) {
 
 		l := &m.levels[level]
 		if m.prefix != nil {
-			l.iterKey, l.iterValue = l.iter.SeekPrefixGE(m.prefix, key)
+			l.iterKey, l.iterValue = l.iter.SeekPrefixGE(m.prefix, key, trySeekUsingNext)
 		} else {
 			l.iterKey, l.iterValue = l.iter.SeekGE(key)
 		}
@@ -860,17 +863,19 @@ func (m *mergingIter) String() string {
 func (m *mergingIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	m.err = nil // clear cached iteration error
 	m.prefix = nil
-	m.seekGE(key, 0 /* start level */)
+	m.seekGE(key, 0 /* start level */, false /* trySeekUsingNext */)
 	return m.findNextEntry()
 }
 
 // SeekPrefixGE implements base.InternalIterator.SeekPrefixGE. Note that
 // SeekPrefixGE only checks the upper bound. It is up to the caller to ensure
 // that key is greater than or equal to the lower bound.
-func (m *mergingIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+func (m *mergingIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
 	m.err = nil // clear cached iteration error
 	m.prefix = prefix
-	m.seekGE(key, 0 /* start level */)
+	m.seekGE(key, 0 /* start level */, trySeekUsingNext)
 	return m.findNextEntry()
 }
 

@@ -168,11 +168,19 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 			prefix = nil
 			key, value = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
 		case "seek-prefix-ge":
-			if len(parts) != 2 {
-				return "seek-prefix-ge <key>\n"
+			if len(parts) != 2 && len(parts) != 3 {
+				return "seek-prefix-ge <key> [<try-seek-using-next>]\n"
 			}
 			prefix = []byte(strings.TrimSpace(parts[1]))
-			key, value = iter.SeekPrefixGE(prefix, prefix /* key */)
+			trySeekUsingNext := false
+			if len(parts) == 3 {
+				var err error
+				trySeekUsingNext, err = strconv.ParseBool(parts[2])
+				if err != nil {
+					return err.Error()
+				}
+			}
+			key, value = iter.SeekPrefixGE(prefix, prefix /* key */, trySeekUsingNext)
 		case "seek-lt":
 			if len(parts) != 2 {
 				return "seek-lt <key>\n"

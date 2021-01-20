@@ -350,8 +350,10 @@ func (i *levelIterTestIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	return i.rangeDelSeek(key, ikey, val, 1)
 }
 
-func (i *levelIterTestIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
-	ikey, val := i.levelIter.SeekPrefixGE(prefix, key)
+func (i *levelIterTestIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
+	ikey, val := i.levelIter.SeekPrefixGE(prefix, key, trySeekUsingNext)
 	return i.rangeDelSeek(key, ikey, val, 1)
 }
 
@@ -541,6 +543,56 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 						})
 				}
 			})
+	}
+}
+
+// BenchmarkLevelIterSeqSeekPrefixGE simulates the behavior of a levelIter
+// being used as part of a mergingIter where SeekPrefixGE is used to seek in a
+// monotonically increasing manner. This resembles key-value lookups done by
+// CockroachDB when evaluating Put operations.
+func BenchmarkLevelIterSeqSeekPrefixGE(b *testing.B) {
+	const blockSize = 32 << 10
+	const restartInterval = 16
+	readers, metas, keys, cleanup :=
+		buildLevelIterTables(b, blockSize, restartInterval, 5)
+	defer cleanup()
+	// This newIters is cheaper than in practice since it does not do
+	// tableCacheShard.findNode.
+	newIters := func(
+		file *manifest.FileMetadata, opts *IterOptions, _ *uint64,
+	) (internalIterator, internalIterator, error) {
+		iter, err := readers[file.FileNum].NewIter(
+			opts.LowerBound, opts.UpperBound)
+		return iter, nil, err
+	}
+
+	for _, skip := range []int{1, 2, 4, 8, 16} {
+		for _, useNext := range []bool{false, true} {
+			b.Run(fmt.Sprintf("skip=%d/use-next=%t", skip, useNext),
+				func(b *testing.B) {
+					l := newLevelIter(IterOptions{}, DefaultComparer.Compare,
+						newIters, metas.Iter(), manifest.Level(level), nil)
+					// Fake up the range deletion initialization, to resemble the usage
+					// in a mergingIter.
+					l.initRangeDel(new(internalIterator))
+					keyCount := len(keys)
+					pos := 0
+					l.SeekPrefixGE(keys[pos], keys[pos], false)
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						pos += skip
+						trySeekUsingNext := useNext
+						if pos >= keyCount {
+							pos = 0
+							trySeekUsingNext = false
+						}
+						// SeekPrefixGE will return keys[pos].
+						l.SeekPrefixGE(keys[pos], keys[pos], trySeekUsingNext)
+					}
+					b.StopTimer()
+					l.Close()
+				})
+		}
 	}
 }
 

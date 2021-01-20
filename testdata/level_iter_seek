@@ -202,3 +202,78 @@ next
 d/<empty>#2,1:d
 a/a-b#1#1,15:
 d#2,1:d
+
+# Verify SeekPrefixGE correctness with trySeekUsingNext=true
+clear
+----
+
+build
+a.SET.1:a
+b.SET.2:b
+c.RANGEDEL.4:e
+----
+0: a#1,1-e#72057594037927935,15
+
+build
+e.SET.4:e
+f.SINGLEDEL.5:
+f.SET.4:f
+g.SET.6:g
+h.SINGLEDEL.7:
+----
+0: a#1,1-e#72057594037927935,15
+1: e#4,1-h#7,7
+
+build
+h.SET.6:h
+i.SET.6:i
+----
+0: a#1,1-e#72057594037927935,15
+1: e#4,1-h#7,7
+2: h#6,1-i#6,1
+
+build
+j.SET.7:j
+----
+0: a#1,1-e#72057594037927935,15
+1: e#4,1-h#7,7
+2: h#6,1-i#6,1
+3: j#7,1-j#7,1
+
+# Seeks to immediately following keys.
+iter
+seek-prefix-ge a true
+seek-prefix-ge a true
+seek-prefix-ge b true
+next
+seek-prefix-ge c true
+seek-prefix-ge d true
+seek-prefix-ge f true
+seek-prefix-ge g true
+seek-prefix-ge h true
+seek-prefix-ge i true
+seek-prefix-ge j true
+----
+a/c-e#4#1,1:a
+a/c-e#4#1,1:a
+b/c-e#4#2,1:b
+e#72057594037927935,15:
+e/c-e#4#72057594037927935,15:
+e/c-e#4#72057594037927935,15:
+f/<empty>#5,7:
+g/<empty>#6,1:g
+h/<empty>#7,7:
+i/<empty>#6,1:i
+j/<empty>#7,1:j
+
+# Seeks to keys that are in the next file, so cannot use Next.
+iter
+seek-prefix-ge a true
+seek-prefix-ge e true
+seek-prefix-ge i true
+seek-prefix-ge j true
+----
+a/c-e#4#1,1:a
+e/<empty>#4,1:e
+i/<empty>#6,1:i
+j/<empty>#7,1:j

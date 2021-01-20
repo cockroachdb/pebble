@@ -605,7 +605,9 @@ func (i *blockIter) SeekGE(key []byte) (*InternalKey, []byte) {
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
 // pebble package.
-func (i *blockIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+func (i *blockIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
 	// This should never be called as prefix iteration is handled by sstable.Iterator.
 	panic("pebble: SeekPrefixGE unimplemented")
 }

@@ -240,6 +240,23 @@ next
 .
 <a:1>
 
+# Verify the optimization to use next when doing SeekPrefixGE.
+
+iter
+seek-prefix-ge a false
+seek-prefix-ge a true
+seek-prefix-ge b true
+seek-prefix-ge c true
+seek-prefix-ge d true
+seek-prefix-ge e true
+----
+<a:1>
+<a:1>
+<b:2>
+<c:3>
+<d:4>
+.
+
 # Verify that iteration from before the beginning or after the end of
 # the sstable does not "wrap around". A bug previously allowed this to
 # happen by letting the data block iterator and index iterator get out

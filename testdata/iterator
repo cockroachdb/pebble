@@ -143,6 +143,38 @@ seek-prefix-ge a
 ----
 a:b
 
+iter seq=2
+seek-prefix-ge a
+seek-prefix-ge b
+----
+a:b
+.
+
+define
+a.DEL.3:
+a.SET.1:b
+b.DEL.3:
+b.SET.2:c
+c.SET.3:d
+----
+
+iter seq=4
+seek-prefix-ge a
+seek-prefix-ge b
+seek-prefix-ge c
+----
+.
+.
+c:d
+
+iter seq=3
+seek-prefix-ge a
+seek-prefix-ge b
+seek-prefix-ge c
+----
+a:b
+b:c
+.
 
 define
 a.SET.1:a
@@ -240,6 +272,14 @@ seek-prefix-ge d
 ----
 .
 
+iter seq=4
+seek-prefix-ge a
+seek-prefix-ge c
+seek-prefix-ge b
+----
+a:a
+c:c
+b:b
 
 define
 a.SET.b2:b
@@ -436,6 +476,29 @@ aaa:aaa
 b:b
 .
 
+iter seq=4
+seek-prefix-ge a
+seek-prefix-ge aa
+seek-prefix-ge aaa
+seek-prefix-ge b
+----
+a:a
+aa:aa
+aaa:aaa
+.
+
+iter seq=3
+seek-prefix-ge aaa
+seek-prefix-ge b
+seek-prefix-ge a
+seek-prefix-ge aa
+seek-prefix-ge aaa
+----
+.
+.
+a:a
+aa:aa
+.
 
 define
 bb.DEL.2:
@@ -898,6 +961,7 @@ next
 b:b
 .
 
+# The second set-bounds is a noop.
 iter seq=2
 set-bounds lower=b
 seek-ge a
@@ -905,7 +969,7 @@ set-bounds lower=b
 ----
 .
 b:b
-.
+b:b
 
 iter seq=2
 seek-ge a
