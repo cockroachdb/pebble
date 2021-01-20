@@ -8,13 +8,11 @@ import (
 	"bytes"
 	"io"
 	"sync/atomic"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/fastrand"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/randvar"
-	"golang.org/x/exp/rand"
 )
 
 // iterPos describes the state of the internal iterator, in terms of whether it is
@@ -97,8 +95,6 @@ type Iterator struct {
 // compaction
 type readSampling struct {
 	bytesUntilReadSampling uint64
-	rand                   *rand.Rand
-	randvar                *randvar.Uniform
 	pendingCompactions     []readCompaction
 	topFile                *manifest.FileMetadata
 	// forceReadSampling is used for testing purposes to force a read sample on every
@@ -182,6 +178,9 @@ func (i *Iterator) nextUserKey() {
 }
 
 func (i *Iterator) maybeSampleRead() {
+	if !i.valid {
+		return
+	}
 	if i.readState == nil {
 		return
 	}
@@ -189,17 +188,13 @@ func (i *Iterator) maybeSampleRead() {
 		i.sampleRead()
 		return
 	}
-	samplingPeriod := readBytesPeriod * i.readState.db.opts.Experimental.ReadSamplingMultiplier
+	samplingPeriod := uint32(readBytesPeriod * i.readState.db.opts.Experimental.ReadSamplingMultiplier)
 	if samplingPeriod <= 0 {
 		return
 	}
-	if i.readSampling.rand == nil || i.readSampling.randvar == nil {
-		i.readSampling.rand = rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
-		i.readSampling.randvar = randvar.NewUniform(0, 2*samplingPeriod)
-	}
 	bytesRead := uint64(len(i.key) + len(i.value))
 	for i.readSampling.bytesUntilReadSampling < bytesRead {
-		i.readSampling.bytesUntilReadSampling += i.readSampling.randvar.Uint64(i.readSampling.rand)
+		i.readSampling.bytesUntilReadSampling += uint64(fastrand.Uint32n(2 * samplingPeriod))
 		i.sampleRead()
 	}
 	i.readSampling.bytesUntilReadSampling -= bytesRead
