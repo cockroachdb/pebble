@@ -48,7 +48,9 @@ func (g *getIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
 }
 
-func (g *getIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+func (g *getIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 

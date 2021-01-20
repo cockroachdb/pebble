@@ -38,7 +38,9 @@ func (it *flushIterator) SeekGE(key []byte) (*base.InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
 }
 
-func (it *flushIterator) SeekPrefixGE(prefix, key []byte) (*base.InternalKey, []byte) {
+func (it *flushIterator) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 

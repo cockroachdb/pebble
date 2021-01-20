@@ -63,8 +63,8 @@ func (i *iterAdapter) SeekGE(key []byte) bool {
 	return i.update(i.Iterator.SeekGE(key))
 }
 
-func (i *iterAdapter) SeekPrefixGE(prefix, key []byte) bool {
-	return i.update(i.Iterator.SeekPrefixGE(prefix, key))
+func (i *iterAdapter) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) bool {
+	return i.update(i.Iterator.SeekPrefixGE(prefix, key, trySeekUsingNext))
 }
 
 func (i *iterAdapter) SeekLT(key []byte) bool {
@@ -528,7 +528,7 @@ func TestIteratorPrev(t *testing.T) {
 	require.False(t, it.Valid())
 }
 
-func TestIteratorSeekGE(t *testing.T) {
+func TestIteratorSeekGEAndSeekPrefixGE(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(newArena(arenaSize), bytes.Compare)
 	it := newIterAdapter(l.NewIter(nil, nil))
@@ -566,6 +566,44 @@ func TestIteratorSeekGE(t *testing.T) {
 
 	require.False(t, it.SeekGE(makeKey("99999")))
 	require.False(t, it.Valid())
+
+	// Test SeekPrefixGE with trySeekUsingNext optimization.
+	{
+		require.True(t, it.SeekPrefixGE(makeKey("01000"), makeKey("01000"), false))
+		require.True(t, it.Valid())
+		require.EqualValues(t, "01000", it.Key().UserKey)
+		require.EqualValues(t, "v01000", it.Value())
+
+		// Seeking to the same key.
+		require.True(t, it.SeekPrefixGE(makeKey("01000"), makeKey("01000"), true))
+		require.True(t, it.Valid())
+		require.EqualValues(t, "01000", it.Key().UserKey)
+		require.EqualValues(t, "v01000", it.Value())
+
+		// Seeking to a nearby key that can be reached using Next.
+		require.True(t, it.SeekPrefixGE(makeKey("01020"), makeKey("01020"), true))
+		require.True(t, it.Valid())
+		require.EqualValues(t, "01020", it.Key().UserKey)
+		require.EqualValues(t, "v01020", it.Value())
+
+		// Seeking to a key that cannot be reached using Next.
+		require.True(t, it.SeekPrefixGE(makeKey("01200"), makeKey("01200"), true))
+		require.True(t, it.Valid())
+		require.EqualValues(t, "01200", it.Key().UserKey)
+		require.EqualValues(t, "v01200", it.Value())
+
+		// Seeking to an earlier key, but the caller lies. Incorrect result.
+		require.True(t, it.SeekPrefixGE(makeKey("01100"), makeKey("01100"), true))
+		require.True(t, it.Valid())
+		require.EqualValues(t, "01200", it.Key().UserKey)
+		require.EqualValues(t, "v01200", it.Value())
+
+		// Telling the truth works.
+		require.True(t, it.SeekPrefixGE(makeKey("01100"), makeKey("01100"), false))
+		require.True(t, it.Valid())
+		require.EqualValues(t, "01100", it.Key().UserKey)
+		require.EqualValues(t, "v01100", it.Value())
+	}
 
 	// Test seek for empty key.
 	ins.Add(l, base.InternalKey{}, nil)
@@ -819,6 +857,45 @@ func BenchmarkIterPrev(b *testing.B) {
 			key, _ = it.Last()
 		}
 		_ = key
+	}
+}
+
+// BenchmarkSeekPrefixGE looks at the performance of repeated calls to
+// SeekPrefixGE, with different skip distances and different settings of
+// trySeekUsingNext.
+func BenchmarkSeekPrefixGE(b *testing.B) {
+	l := NewSkiplist(newArena(64<<10), bytes.Compare)
+	var count int
+	// count was measured to be 1279.
+	for count = 0; ; count++ {
+		if err := l.Add(makeIntKey(count), makeValue(count)); err == ErrArenaFull {
+			break
+		}
+	}
+	for _, skip := range []int{1, 2, 4, 8, 16} {
+		for _, useNext := range []bool{false, true} {
+			b.Run(fmt.Sprintf("skip=%d/use-next=%t", skip, useNext), func(b *testing.B) {
+				it := l.NewIter(nil, nil)
+				j := 0
+				var k []byte
+				makeKey := func() {
+					k = []byte(fmt.Sprintf("%05d", j))
+				}
+				makeKey()
+				it.SeekPrefixGE(k, k, false)
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					j += skip
+					trySeekUsingNext := useNext
+					if j >= count {
+						j = 0
+						trySeekUsingNext = false
+					}
+					makeKey()
+					it.SeekPrefixGE(k, k, trySeekUsingNext)
+				}
+			})
+		}
 	}
 }
 

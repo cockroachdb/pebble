@@ -255,3 +255,16 @@ AA
 <err: pebble: not found>
 D
 C
+
+iter
+seek-prefix-ge a false
+seek-prefix-ge a true
+seek-prefix-ge aa true
+seek-prefix-ge d true
+seek-prefix-ge c false
+----
+<a:1>
+<a:1>
+<aa:2>
+<d:4>
+<c:3>

@@ -87,7 +87,9 @@ func (f *fakeIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	return nil, nil
 }
 
-func (f *fakeIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+func (f *fakeIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
 	return f.SeekGE(key)
 }
 
@@ -248,8 +250,10 @@ func (i *invalidatingIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	return i.update(i.iter.SeekGE(key))
 }
 
-func (i *invalidatingIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
-	return i.update(i.iter.SeekPrefixGE(prefix, key))
+func (i *invalidatingIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
+	return i.update(i.iter.SeekPrefixGE(prefix, key, trySeekUsingNext))
 }
 
 func (i *invalidatingIter) SeekLT(key []byte) (*InternalKey, []byte) {
