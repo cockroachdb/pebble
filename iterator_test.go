@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -780,6 +781,67 @@ func TestIteratorNextPrev(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+// concatMerger concat key and each value together as a new value
+type concatMerger struct {
+	value []byte
+}
+
+func (merger *concatMerger) MergeNewer(value []byte) error {
+	merger.value = append(merger.value, value...)
+	return nil
+}
+
+func (merger *concatMerger) MergeOlder(value []byte) error {
+	merger.value = append(merger.value, value...)
+	return nil
+}
+
+func (merger *concatMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
+	return merger.value, nil, nil
+}
+
+func TestMerger(t *testing.T) {
+	db, err := Open("", &Options{
+		FS: vfs.NewMem(),
+		Merger: &Merger{
+			Merge: func(key, value []byte) (ValueMerger, error) {
+				// clear the value if equals to key.
+				if bytes.Compare(key, value) == 0 {
+					value = []byte{}
+				}
+				return &concatMerger{value: value}, nil
+			},
+			Name: "TestMerge",
+		},
+	})
+	require.NoError(t, err)
+	defer db.Close()
+
+	merge := func(k, v []byte) {
+		err = db.Merge(k, v, NoSync)
+		require.NoError(t, err)
+		err = db.Flush()
+		require.NoError(t, err)
+	}
+
+	merge([]byte{1}, []byte{0})
+	merge([]byte{2}, []byte{1})
+	merge([]byte{1}, []byte{1})
+	merge([]byte{2}, []byte{2})
+
+	iter := db.NewIter(nil)
+	defer iter.Clone()
+	require.True(t, iter.First())
+	require.EqualValues(t, iter.Key(), []byte{1})
+	require.EqualValues(t, iter.Value(), []byte{0})
+
+	require.True(t, iter.Next())
+	require.EqualValues(t, iter.Key(), []byte{2})
+	require.EqualValues(t, iter.Value(), []byte{1})
+
+	require.False(t, iter.Next())
 }
 
 func BenchmarkIteratorSeekGE(b *testing.B) {
