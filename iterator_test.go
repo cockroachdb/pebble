@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -780,6 +781,79 @@ func TestIteratorNextPrev(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+// merge base on the cmp func
+type cmpMerger struct {
+	cmp func(old, new []byte) int
+	value []byte
+}
+
+func (merger *cmpMerger) MergeNewer(value []byte) error {
+	if merger.cmp(merger.value, value) < 0 {
+		merger.value = value
+	}
+	return nil
+}
+
+func (merger *cmpMerger) MergeOlder(value []byte) error {
+	if merger.cmp(merger.value, value) < 0 {
+		merger.value = value
+	}
+	return nil
+}
+
+func (merger *cmpMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
+	return merger.value, nil, nil
+}
+
+func TestMerger(t *testing.T) {
+	db, err := Open("", &Options{
+		FS: vfs.NewMem(),
+		Merger: &Merger{
+			Merge: func(key, value []byte) (ValueMerger, error) {
+				if len(key) == 0 || key[0] % 2 == 0 {
+					return &cmpMerger{
+						cmp: bytes.Compare,
+						value: value,
+					}, nil
+				}
+				return &cmpMerger{
+					cmp: func(old, new []byte) int {
+						return bytes.Compare(new, old)
+					},
+					value: value,
+				}, nil
+			},
+			Name: "TestMerge",
+		},
+	})
+	require.NoError(t, err)
+	defer db.Close()
+
+	merge := func(k, v []byte) {
+		err = db.Merge(k, v, NoSync)
+		require.NoError(t, err)
+		err = db.Flush()
+		require.NoError(t, err)
+	}
+
+	merge([]byte{1}, []byte{1})
+	merge([]byte{1}, []byte{2})
+	merge([]byte{2}, []byte{1})
+	merge([]byte{2}, []byte{2})
+
+	iter := db.NewIter(nil)
+	defer iter.Clone()
+	require.True(t, iter.First())
+	require.EqualValues(t, iter.Key(), []byte{1})
+	require.EqualValues(t, iter.Value(), []byte{1})
+
+	require.True(t, iter.Next())
+	require.EqualValues(t, iter.Key(), []byte{2})
+	require.EqualValues(t, iter.Value(), []byte{2})
+
+	require.False(t, iter.Next())
 }
 
 func BenchmarkIteratorSeekGE(b *testing.B) {
