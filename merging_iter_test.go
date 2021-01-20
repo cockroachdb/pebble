@@ -474,13 +474,14 @@ func buildLevelsForMergingIterSeqSeek(
 	}
 	for j := 1; j < len(files); j++ {
 		for _, k := range []int{0, len(keys) - 1} {
-			ikey := base.MakeInternalKey(keys[k], 0, InternalKeyKindSet)
+			ikey := base.MakeInternalKey(keys[k], uint64(j), InternalKeyKindSet)
 			writers[j][0].Add(ikey, nil)
 		}
 	}
-	lastIKey := base.MakeInternalKey(
-		[]byte(fmt.Sprintf("%08d", i)), 0, InternalKeyKindSet)
+	lastKey := []byte(fmt.Sprintf("%08d", i))
+	keys = append(keys, lastKey)
 	for j := 0; j < len(files); j++ {
+		lastIKey := base.MakeInternalKey(lastKey, uint64(j), InternalKeyKindSet)
 		writers[j][1].Add(lastIKey, nil)
 	}
 	for _, levelWriters := range writers {
@@ -529,6 +530,32 @@ func buildLevelsForMergingIterSeqSeek(
 	return readers, levelSlices, keys
 }
 
+func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelSlice) *mergingIter {
+	mils := make([]mergingIterLevel, len(levelSlices))
+	for i := len(readers) - 1; i >= 0; i-- {
+		levelIndex := i
+		level := len(readers) - 1 - i
+		newIters := func(
+			file *manifest.FileMetadata, opts *IterOptions, _ *uint64,
+		) (internalIterator, internalIterator, error) {
+			iter, err := readers[levelIndex][file.FileNum].NewIter(
+				opts.LowerBound, opts.UpperBound)
+			return iter, nil, err
+		}
+		l := newLevelIter(IterOptions{}, DefaultComparer.Compare,
+			newIters, levelSlices[i].Iter(), manifest.Level(level), nil)
+		l.initRangeDel(&mils[level].rangeDelIter)
+		l.initSmallestLargestUserKey(
+			&mils[level].smallestUserKey, &mils[level].largestUserKey,
+			&mils[level].isLargestUserKeyRangeDelSentinel)
+		l.initIsSyntheticIterBoundsKey(&mils[level].isSyntheticIterBoundsKey)
+		mils[level].iter = l
+	}
+	m := &mergingIter{}
+	m.init(nil /* logger */, DefaultComparer.Compare, mils...)
+	return m
+}
+
 // A benchmark that simulates the behavior of a mergingIter where
 // monotonically increasing narrow bounds are repeatedly set and used to Seek
 // and then iterate over the keys within the bounds. This resembles MVCC
@@ -545,28 +572,7 @@ func BenchmarkMergingIterSeqSeekGEWithBounds(b *testing.B) {
 			func(b *testing.B) {
 				readers, levelSlices, keys :=
 					buildLevelsForMergingIterSeqSeek(b, blockSize, restartInterval, levelCount)
-				mils := make([]mergingIterLevel, levelCount)
-				for i := len(readers) - 1; i >= 0; i-- {
-					levelIndex := i
-					level := len(readers) - 1 - i
-					newIters := func(
-						file *manifest.FileMetadata, opts *IterOptions, _ *uint64,
-					) (internalIterator, internalIterator, error) {
-						iter, err := readers[levelIndex][file.FileNum].NewIter(
-							opts.LowerBound, opts.UpperBound)
-						return iter, nil, err
-					}
-					l := newLevelIter(IterOptions{}, DefaultComparer.Compare,
-						newIters, levelSlices[i].Iter(), manifest.Level(level), nil)
-					l.initRangeDel(&mils[level].rangeDelIter)
-					l.initSmallestLargestUserKey(
-						&mils[level].smallestUserKey, &mils[level].largestUserKey,
-						&mils[level].isLargestUserKeyRangeDelSentinel)
-					l.initIsSyntheticIterBoundsKey(&mils[level].isSyntheticIterBoundsKey)
-					mils[level].iter = l
-				}
-				m := &mergingIter{}
-				m.init(nil /* logger */, DefaultComparer.Compare, mils...)
+				m := buildMergingIter(readers, levelSlices)
 				keyCount := len(keys)
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
@@ -585,5 +591,44 @@ func BenchmarkMergingIterSeqSeekGEWithBounds(b *testing.B) {
 					}
 				}
 			})
+	}
+}
+
+func BenchmarkMergingIterSeqSeekPrefixGE(b *testing.B) {
+	const blockSize = 32 << 10
+	const restartInterval = 16
+	const levelCount = 5
+	readers, levelSlices, keys :=
+		buildLevelsForMergingIterSeqSeek(b, blockSize, restartInterval, levelCount)
+
+	for _, skip := range []int{1, 2, 4, 8, 16} {
+		for _, useNext := range []bool{false, true} {
+			b.Run(fmt.Sprintf("skip=%d/use-next=%t", skip, useNext),
+				func(b *testing.B) {
+					m := buildMergingIter(readers, levelSlices)
+					keyCount := len(keys)
+					pos := 0
+
+					m.SeekPrefixGE(keys[pos], keys[pos], false)
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						pos += skip
+						trySeekUsingNext := useNext
+						if pos >= keyCount {
+							pos = 0
+							trySeekUsingNext = false
+						}
+						// SeekPrefixGE will return keys[pos].
+						m.SeekPrefixGE(keys[pos], keys[pos], trySeekUsingNext)
+					}
+					b.StopTimer()
+					m.Close()
+				})
+		}
+	}
+	for i := range readers {
+		for j := range readers[i] {
+			readers[i][j].Close()
+		}
 	}
 }

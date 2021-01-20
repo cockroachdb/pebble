@@ -203,7 +203,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 			if prefixIter != nil {
 				n := r.Split(key.UserKey)
 				prefix := key.UserKey[:n]
-				key2, _ := prefixIter.SeekPrefixGE(prefix, key.UserKey)
+				key2, _ := prefixIter.SeekPrefixGE(prefix, key.UserKey, false)
 				if key2 == nil {
 					fmt.Fprintf(stdout, "WARNING: PREFIX ITERATION FAILURE!\n")
 					if s.fmtKey.spec != "null" {

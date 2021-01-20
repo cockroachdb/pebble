@@ -944,7 +944,11 @@ func (i *batchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	return ikey, i.Value()
 }
 
-func (i *batchIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+func (i *batchIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
+	// Ignore trySeekUsingNext since the batch may have changed, so using Next
+	// would be incorrect.
 	i.err = nil // clear cached iteration error
 	return i.SeekGE(key)
 }
@@ -1282,7 +1286,11 @@ func (i *flushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
 // pebble package.
-func (i *flushableBatchIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+func (i *flushableBatchIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
+	// Ignore trySeekUsingNext since flushable batches are not user-facing, so
+	// optimizing prefix seeks is not important.
 	return i.SeekGE(key)
 }
 
@@ -1443,7 +1451,9 @@ func (i *flushFlushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
 }
 
-func (i *flushFlushableBatchIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+func (i *flushFlushableBatchIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 

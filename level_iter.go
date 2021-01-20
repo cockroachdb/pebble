@@ -264,7 +264,15 @@ func (l *levelIter) initTableBounds(f *fileMetadata) int {
 	return 0
 }
 
-func (l *levelIter) loadFile(file *fileMetadata, dir int) bool {
+type loadFileReturnIndicator int8
+
+const (
+	noFileLoaded loadFileReturnIndicator = iota
+	fileAlreadyLoaded
+	newFileLoaded
+)
+
+func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicator {
 	l.smallestBoundary = nil
 	l.largestBoundary = nil
 	if l.isSyntheticIterBoundsKey != nil {
@@ -272,7 +280,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) bool {
 	}
 	if l.iterFile == file {
 		if l.err != nil {
-			return false
+			return noFileLoaded
 		}
 		if l.iter != nil {
 			// We don't bother comparing the file bounds with the iteration bounds when we have
@@ -281,7 +289,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) bool {
 			if l.rangeDelIterPtr != nil {
 				*l.rangeDelIterPtr = l.rangeDelIterCopy
 			}
-			return true
+			return fileAlreadyLoaded
 		}
 		// We were already at file, but don't have an iterator, probably because the file was
 		// beyond the iteration bounds. It may still be, but it is also possible that the bounds
@@ -293,20 +301,20 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) bool {
 	// when the levelIter will switch it. Note that levelIter.Close() can be
 	// called multiple times.
 	if err := l.Close(); err != nil {
-		return false
+		return noFileLoaded
 	}
 
 	for {
 		l.iterFile = file
 		if file == nil {
-			return false
+			return noFileLoaded
 		}
 
 		switch l.initTableBounds(file) {
 		case -1:
 			// The largest key in the sstable is smaller than the lower bound.
 			if dir < 0 {
-				return false
+				return noFileLoaded
 			}
 			file = l.files.Next()
 			continue
@@ -314,7 +322,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) bool {
 			// The smallest key in the sstable is greater than or equal to the upper
 			// bound.
 			if dir > 0 {
-				return false
+				return noFileLoaded
 			}
 			file = l.files.Prev()
 			continue
@@ -323,7 +331,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) bool {
 		var rangeDelIter internalIterator
 		l.iter, rangeDelIter, l.err = l.newIters(l.files.Current(), &l.tableOpts, l.bytesIterated)
 		if l.err != nil {
-			return false
+			return noFileLoaded
 		}
 		if l.rangeDelIterPtr != nil {
 			*l.rangeDelIterPtr = rangeDelIter
@@ -340,7 +348,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) bool {
 		if l.isLargestUserKeyRangeDelSentinel != nil {
 			*l.isLargestUserKeyRangeDelSentinel = file.Largest.Trailer == InternalKeyRangeDeleteSentinel
 		}
-		return true
+		return newFileLoaded
 	}
 }
 
@@ -372,7 +380,7 @@ func (l *levelIter) SeekGE(key []byte) (*InternalKey, []byte) {
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
-	if !l.loadFile(l.findFileGE(key), +1) {
+	if l.loadFile(l.findFileGE(key), +1) == noFileLoaded {
 		return nil, nil
 	}
 	if ikey, val := l.iter.SeekGE(key); ikey != nil {
@@ -381,7 +389,9 @@ func (l *levelIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	return l.verify(l.skipEmptyFileForward())
 }
 
-func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+func (l *levelIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
 	if l.isSyntheticIterBoundsKey != nil {
 		*l.isSyntheticIterBoundsKey = false
@@ -389,10 +399,16 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
-	if !l.loadFile(l.findFileGE(key), +1) {
+	loadFileIndicator := l.loadFile(l.findFileGE(key), +1)
+	if loadFileIndicator == noFileLoaded {
 		return nil, nil
 	}
-	if key, val := l.iter.SeekPrefixGE(prefix, key); key != nil {
+	if loadFileIndicator == newFileLoaded {
+		// File changed, so l.iter has changed, and that iterator is not
+		// positioned appropriately.
+		trySeekUsingNext = false
+	}
+	if key, val := l.iter.SeekPrefixGE(prefix, key, trySeekUsingNext); key != nil {
 		return l.verify(key, val)
 	}
 	// When SeekPrefixGE returns nil, we have not necessarily reached the end of
@@ -430,7 +446,7 @@ func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
-	if !l.loadFile(l.findFileLT(key), -1) {
+	if l.loadFile(l.findFileLT(key), -1) == noFileLoaded {
 		return nil, nil
 	}
 	if key, val := l.iter.SeekLT(key); key != nil {
@@ -447,7 +463,7 @@ func (l *levelIter) First() (*InternalKey, []byte) {
 
 	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
 	// set.
-	if !l.loadFile(l.files.First(), +1) {
+	if l.loadFile(l.files.First(), +1) == noFileLoaded {
 		return nil, nil
 	}
 	if key, val := l.iter.First(); key != nil {
@@ -464,7 +480,7 @@ func (l *levelIter) Last() (*InternalKey, []byte) {
 
 	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
 	// set.
-	if !l.loadFile(l.files.Last(), -1) {
+	if l.loadFile(l.files.Last(), -1) == noFileLoaded {
 		return nil, nil
 	}
 	if key, val := l.iter.Last(); key != nil {
@@ -495,7 +511,7 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 			return nil, nil
 		}
 		// We're stepping past the boundary key, so now we can load the next file.
-		if l.loadFile(l.files.Next(), +1) {
+		if l.loadFile(l.files.Next(), +1) != noFileLoaded {
 			if key, val := l.iter.First(); key != nil {
 				return l.verify(key, val)
 			}
@@ -535,7 +551,7 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 			return nil, nil
 		}
 		// We're stepping past the boundary key, so now we can load the prev file.
-		if l.loadFile(l.files.Prev(), -1) {
+		if l.loadFile(l.files.Prev(), -1) != noFileLoaded {
 			if key, val := l.iter.Last(); key != nil {
 				return l.verify(key, val)
 			}
@@ -608,7 +624,7 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 		}
 
 		// Current file was exhausted. Move to the next file.
-		if !l.loadFile(l.files.Next(), +1) {
+		if l.loadFile(l.files.Next(), +1) == noFileLoaded {
 			return nil, nil
 		}
 	}
@@ -669,7 +685,7 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 		}
 
 		// Current file was exhausted. Move to the previous file.
-		if !l.loadFile(l.files.Prev(), -1) {
+		if l.loadFile(l.files.Prev(), -1) == noFileLoaded {
 			return nil, nil
 		}
 	}

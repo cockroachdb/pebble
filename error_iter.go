@@ -21,7 +21,9 @@ func (c *errorIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	return nil, nil
 }
 
-func (c *errorIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
+func (c *errorIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
 	return nil, nil
 }
 
