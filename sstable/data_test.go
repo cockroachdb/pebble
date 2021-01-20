@@ -206,7 +206,7 @@ func runIterCmd(td *datadriven.TestData, r *Reader) string {
 				return fmt.Sprintf("seek-prefix-ge <key>\n")
 			}
 			prefix = []byte(strings.TrimSpace(parts[1]))
-			iter.SeekPrefixGE(prefix, prefix /* key */)
+			iter.SeekPrefixGE(prefix, prefix /* key */, false /* trySeekUsingNext */)
 		case "seek-lt":
 			if len(parts) != 2 {
 				return fmt.Sprintf("seek-lt <key>\n")

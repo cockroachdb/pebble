@@ -55,7 +55,7 @@ func (i *Iter) SeekGE(key []byte) (*base.InternalKey, []byte) {
 
 // SeekPrefixGE implements InternalIterator.SeekPrefixGE, as documented in the
 // internal/base package.
-func (i *Iter) SeekPrefixGE(prefix, key []byte) (*base.InternalKey, []byte) {
+func (i *Iter) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
 	// This should never be called as prefix iteration is only done for point records.
 	panic("pebble: SeekPrefixGE unimplemented")
 }

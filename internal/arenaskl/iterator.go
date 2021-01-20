@@ -95,7 +95,29 @@ func (it *Iterator) SeekGE(key []byte) (*base.InternalKey, []byte) {
 // or equal to the given key. This method is equivalent to SeekGE and is
 // provided so that an arenaskl.Iterator implements the
 // internal/base.InternalIterator interface.
-func (it *Iterator) SeekPrefixGE(prefix, key []byte) (*base.InternalKey, []byte) {
+func (it *Iterator) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
+	if trySeekUsingNext {
+		if it.nd == it.list.tail {
+			// Iterator is done.
+			return nil, nil
+		}
+		less := it.list.cmp(it.key.UserKey, key) < 0
+		// Arbitrary constant.
+		const numNexts = 5
+		for i := 0; less && i < numNexts; i++ {
+			k, _ := it.Next()
+			if k == nil {
+				// Iterator is done.
+				return nil, nil
+			}
+			less = it.list.cmp(it.key.UserKey, key) < 0
+		}
+		if !less {
+			return &it.key, it.value()
+		}
+	}
 	return it.SeekGE(key)
 }
 

@@ -350,8 +350,10 @@ func (i *levelIterTestIter) SeekGE(key []byte) (*InternalKey, []byte) {
 	return i.rangeDelSeek(key, ikey, val, 1)
 }
 
-func (i *levelIterTestIter) SeekPrefixGE(prefix, key []byte) (*InternalKey, []byte) {
-	ikey, val := i.levelIter.SeekPrefixGE(prefix, key)
+func (i *levelIterTestIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
+	ikey, val := i.levelIter.SeekPrefixGE(prefix, key, trySeekUsingNext)
 	return i.rangeDelSeek(key, ikey, val, 1)
 }
 

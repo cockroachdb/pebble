@@ -63,8 +63,9 @@ func (i *iterAdapter) SeekGE(key []byte) bool {
 	return i.update(i.Iterator.SeekGE(key))
 }
 
-func (i *iterAdapter) SeekPrefixGE(prefix, key []byte) bool {
-	return i.update(i.Iterator.SeekPrefixGE(prefix, key))
+// TODO: add test for SeekPrefixGE.
+func (i *iterAdapter) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) bool {
+	return i.update(i.Iterator.SeekPrefixGE(prefix, key, trySeekUsingNext))
 }
 
 func (i *iterAdapter) SeekLT(key []byte) bool {
