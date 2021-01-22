@@ -161,6 +161,12 @@ const (
 	// use the default compression (which is snappy).
 	noCompressionBlockType     byte = 0
 	snappyCompressionBlockType byte = 1
+	zlibCompressionBlockType   byte = 2
+	bzip2CompressionBlockType  byte = 3
+	lz4CompressionBlockType    byte = 4
+	lz4hcCompressionBlockType  byte = 5
+	xpressCompressionBlockType byte = 6
+	zstdCompressionBlockType   byte = 7
 
 	metaPropertiesName = "rocksdb.properties"
 	metaRangeDelName   = "rocksdb.range_del"
