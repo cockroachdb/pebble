@@ -31,6 +31,7 @@ const (
 	DefaultCompression = sstable.DefaultCompression
 	NoCompression      = sstable.NoCompression
 	SnappyCompression  = sstable.SnappyCompression
+	ZstdCompression    = sstable.ZstdCompression
 )
 
 // FilterType exports the base.FilterType type.
@@ -921,6 +922,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					l.Compression = NoCompression
 				case "Snappy":
 					l.Compression = SnappyCompression
+				case "ZSTD":
+					l.Compression = ZstdCompression
 				default:
 					return errors.Errorf("pebble: unknown compression: %q", errors.Safe(value))
 				}
