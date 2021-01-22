@@ -81,7 +81,7 @@ class KeyCountPropertyCollectorFactory : public rocksdb::TablePropertiesCollecto
 };
 
 int write() {
-  for (int i = 0; i < 11; ++i) {
+  for (int i = 0; i < 12; ++i) {
     rocksdb::Options options;
     rocksdb::BlockBasedTableOptions table_options;
     const char* outfile;
@@ -180,6 +180,14 @@ int write() {
         table_options.index_type = rocksdb::BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch;
         // Use small metadata_block_size to stress two_level_index.
         table_options.metadata_block_size = 128;
+        table_options.whole_key_filtering = false;
+        break;
+
+      case 11:
+        outfile = "h.zstd-compression.sst";
+        options.table_properties_collector_factories.emplace_back(
+            new KeyCountPropertyCollectorFactory);
+        options.compression = rocksdb::kZSTD;
         table_options.whole_key_filtering = false;
         break;
 

@@ -400,12 +400,17 @@ func checkValidPrefix(prefix, key []byte) bool {
 	return prefix == nil || bytes.HasPrefix(key, prefix)
 }
 
-func TestBytesIteratedCompressed(t *testing.T) {
+func testBytesIteratedWithCompression(
+	t *testing.T,
+	compression Compression,
+	allowedSizeDeviationPercent uint64,
+	maxNumEntries []uint64,
+) {
 	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
-	for _, blockSize := range blockSizes {
+	for i, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
-			for _, numEntries := range []uint64{0, 1, 1e5} {
-				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, SnappyCompression)
+			for _, numEntries := range []uint64{0, 1, maxNumEntries[i]} {
+				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, compression)
 				var bytesIterated, prevIterated uint64
 				citer, err := r.NewCompactionIter(&bytesIterated)
 				require.NoError(t, err)
@@ -418,8 +423,9 @@ func TestBytesIteratedCompressed(t *testing.T) {
 				}
 
 				expected := r.Properties.DataSize
+				allowedSizeDeviation := expected * allowedSizeDeviationPercent / 100
 				// There is some inaccuracy due to compression estimation.
-				if bytesIterated < expected*99/100 || bytesIterated > expected*101/100 {
+				if bytesIterated < expected-allowedSizeDeviation || bytesIterated > expected+allowedSizeDeviation {
 					t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
 				}
 
@@ -430,34 +436,22 @@ func TestBytesIteratedCompressed(t *testing.T) {
 	}
 }
 
-func TestBytesIteratedUncompressed(t *testing.T) {
-	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
-	for _, blockSize := range blockSizes {
-		for _, indexBlockSize := range blockSizes {
-			for _, numEntries := range []uint64{0, 1, 1e5} {
-				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, NoCompression)
-				var bytesIterated, prevIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated)
-				require.NoError(t, err)
-
-				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
-					if bytesIterated < prevIterated {
-						t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
-					}
-					prevIterated = bytesIterated
-				}
-
-				expected := r.Properties.DataSize
-				if bytesIterated != expected {
-					t.Fatalf("bytesIterated: got %d, want %d (blockSize=%d indexBlockSize=%d numEntries=%d)",
-						bytesIterated, expected, blockSize, indexBlockSize, numEntries)
-				}
-
-				require.NoError(t, citer.Close())
-				require.NoError(t, r.Close())
-			}
+func TestBytesIterated(t *testing.T) {
+	t.Run("Compressed", func(t *testing.T) {
+		testBytesIteratedWithCompression(t, SnappyCompression, 1, []uint64{1e5, 1e5, 1e5, 1e5, 1e5})
+	})
+	t.Run("Uncompressed", func(t *testing.T) {
+		testBytesIteratedWithCompression(t, NoCompression, 0, []uint64{1e5, 1e5, 1e5, 1e5, 1e5})
+	})
+	t.Run("Zstd", func(t *testing.T) {
+		// compression with zstd is extremely slow with small block size (esp the nocgo version).
+		// use less numEntries to make the test run at reasonable speed (under 10 seconds).
+		maxNumEntries := []uint64{1e2, 1e2, 1e3, 4e3, 1e5}
+		if useStandardZstdLib {
+			maxNumEntries = []uint64{1e3, 1e3, 1e4, 4e4, 1e5}
 		}
-	}
+		testBytesIteratedWithCompression(t, ZstdCompression, 1, maxNumEntries)
+	})
 }
 
 func TestCompactionIteratorSetupForCompaction(t *testing.T) {
