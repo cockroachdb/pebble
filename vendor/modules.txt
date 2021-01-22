@@ -1,3 +1,5 @@
+# github.com/DataDog/zstd v1.4.5
+github.com/DataDog/zstd
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
 # github.com/cockroachdb/errors v1.8.1
@@ -41,6 +43,12 @@ github.com/gogo/protobuf/types
 github.com/golang/snappy
 # github.com/inconshreveable/mousetrap v1.0.0
 github.com/inconshreveable/mousetrap
+# github.com/klauspost/compress v1.11.7
+github.com/klauspost/compress/fse
+github.com/klauspost/compress/huff0
+github.com/klauspost/compress/snappy
+github.com/klauspost/compress/zstd
+github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/kr/pretty v0.1.0
 github.com/kr/pretty
 # github.com/kr/text v0.1.0
