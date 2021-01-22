@@ -8,17 +8,23 @@ const dateBisector = d3.bisector(d => d.date).left;
 let minDate;
 let max = {
     date: new Date(),
+    perChart: {},
     opsSec: 0,
     readBytes: 0,
     writeBytes: 0,
     readAmp: 0,
     writeAmp: 0
 };
+let usePerChartMax = false;
 let detail;
 let detailName;
 let detailFormat;
 
 let annotations = [];
+
+function getMaxes(chartKey) {
+    return usePerChartMax ? max.perChart[chartKey] : max;
+}
 
 function styleWidth(e) {
     const width = +e.style("width").slice(0, -2);
@@ -168,7 +174,8 @@ function renderChart(chart) {
 
     x.domain([minDate, max.date]);
     x2.domain([minDate, max.date]);
-    y1.domain([0, max.opsSec]);
+
+    y1.domain([0, getMaxes(chartKey).opsSec]);
 
     const xAxis = d3.axisBottom(x).ticks(5);
 
@@ -266,7 +273,7 @@ function renderChart(chart) {
     let path2;
     if (detail) {
         y2 = d3.scaleLinear().range([height, 0]);
-        y2.domain([0, detail(max)]);
+        y2.domain([0, detail(getMaxes(chartKey))]);
         g
             .append("g")
             .attr("class", "axis axis--y")
@@ -521,14 +528,21 @@ function initData() {
         });
 
         const vals = data[key];
-        max.opsSec = Math.max(max.opsSec, d3.max(vals, d => d.opsSec));
-        max.readBytes = Math.max(max.readBytes, d3.max(vals, d => d.readBytes));
+        max.perChart[key] = {
+            opsSec: d3.max(vals, d => d.opsSec),
+            readBytes: d3.max(vals, d => d.readBytes),
+            writeBytes: d3.max(vals, d => d.writeBytes),
+            readAmp: d3.max(vals, d => d.readAmp),
+            writeAmp: d3.max(vals, d => d.writeAmp),
+        }
+        max.opsSec = Math.max(max.opsSec, max.perChart[key].opsSec);
+        max.readBytes = Math.max(max.readBytes, max.perChart[key].readBytes);
         max.writeBytes = Math.max(
             max.writeBytes,
-            d3.max(vals, d => d.writeBytes)
+            max.perChart[key].writeBytes,
         );
-        max.readAmp = Math.max(max.readAmp, d3.max(vals, d => d.readAmp));
-        max.writeAmp = Math.max(max.writeAmp, d3.max(vals, d => d.writeAmp));
+        max.readAmp = Math.max(max.readAmp, max.perChart[key].readAmp);
+        max.writeAmp = Math.max(max.writeAmp, max.perChart[key].writeAmp);
     }
 }
 
@@ -549,6 +563,9 @@ function setQueryParams() {
     var params = new URLSearchParams();
     if (detailName) {
         params.set("detail", detailName);
+    }
+    if (usePerChartMax) {
+        params.set("max", "local");
     }
     var search = "?" + params;
     if (window.location.search != search) {
@@ -587,6 +604,8 @@ function setDetail(name) {
 function initQueryParams() {
     var params = new URLSearchParams(window.location.search.substring(1));
     setDetail(params.get("detail"));
+    usePerChartMax = params.get("max") == "local";
+    d3.select("#localMax").classed("selected", usePerChartMax);
 }
 
 function toggleDetail(name) {
@@ -602,10 +621,23 @@ function toggleDetail(name) {
     render();
 }
 
+function toggleLocalMax() {
+    const link = d3.select("#localMax");
+    const selected = !link.classed("selected");
+    link.classed("selected", selected);
+    usePerChartMax = selected;
+    setQueryParams();
+    render();
+}
+
 window.onload = function init() {
     d3.selectAll(".toggle").each(function() {
         const link = d3.select(this);
         link.attr("href", 'javascript:toggleDetail("' + link.attr("id") + '")');
+    });
+    d3.selectAll("#localMax").each(function() {
+        const link = d3.select(this);
+        link.attr("href", 'javascript:toggleLocalMax()');
     });
 
     initData();

@@ -61,6 +61,10 @@ div.annotation {
     max-width: 800px;
 }
 
+.controls {
+    margin: 5px;
+}
+
 a {
     text-decoration: none;
 }
