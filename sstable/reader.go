@@ -24,7 +24,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/golang/snappy"
 )
 
 var errCorruptIndexEntry = base.CorruptionErrorf("pebble/table: corrupt index entry")
@@ -1869,33 +1868,14 @@ func (r *Reader) readBlock(
 	b = b[:bh.Length]
 	v.Truncate(len(b))
 
-	switch typ {
-	case noCompressionBlockType:
-		break
-	case snappyCompressionBlockType:
-		decodedLen, err := snappy.DecodedLen(b)
-		if err != nil {
-			r.opts.Cache.Free(v)
-			return cache.Handle{}, base.MarkCorruptionError(err)
-		}
-		decoded := r.opts.Cache.Alloc(decodedLen)
-		decodedBuf := decoded.Buf()
-		result, err := snappy.Decode(decodedBuf, b)
+	decoded, err := decompressBlock(r.opts.Cache, typ, b)
+	if decoded != nil {
 		r.opts.Cache.Free(v)
-		if err != nil {
-			r.opts.Cache.Free(decoded)
-			return cache.Handle{}, base.MarkCorruptionError(err)
-		}
-		if len(result) != 0 &&
-			(len(result) != len(decodedBuf) || &result[0] != &decodedBuf[0]) {
-			r.opts.Cache.Free(decoded)
-			return cache.Handle{}, base.CorruptionErrorf("pebble/table: snappy decoded into unexpected buffer: %p != %p",
-				errors.Safe(result), errors.Safe(decodedBuf))
-		}
-		v, b = decoded, decodedBuf
-	default:
+		v = decoded
+		b = v.Buf()
+	} else if err != nil {
 		r.opts.Cache.Free(v)
-		return cache.Handle{}, base.CorruptionErrorf("pebble/table: unknown block compression: %d", errors.Safe(typ))
+		return cache.Handle{}, err
 	}
 
 	if transform != nil {

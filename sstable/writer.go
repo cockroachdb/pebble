@@ -19,7 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
-	"github.com/golang/snappy"
 )
 
 // WriterMetadata holds info about a finished sstable.
@@ -135,7 +134,7 @@ type Writer struct {
 	rangeDelBlock    blockWriter
 	props            Properties
 	propCollectors   []TablePropertyCollector
-	// compressedBuf is the destination buffer for snappy compression. It is
+	// compressedBuf is the destination buffer for compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
 	compressedBuf []byte
@@ -471,17 +470,18 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 }
 
 func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
-	blockType := noCompressionBlockType
-	if compression == SnappyCompression {
-		// Compress the buffer, discarding the result if the improvement isn't at
-		// least 12.5%.
-		compressed := snappy.Encode(w.compressedBuf, b)
-		w.compressedBuf = compressed[:cap(compressed)]
-		if len(compressed) < len(b)-len(b)/8 {
-			blockType = snappyCompressionBlockType
-			b = compressed
-		}
+	// Compress the buffer, discarding the result if the improvement isn't at
+	// least 12.5%.
+	blockType, compressed := compressBlock(compression, b, w.compressedBuf)
+	if blockType != noCompressionBlockType && cap(compressed) > cap(w.compressedBuf) {
+		w.compressedBuf = compressed
 	}
+	if len(compressed) < len(b)-len(b)/8 {
+		b = compressed
+	} else {
+		blockType = noCompressionBlockType
+	}
+
 	w.tmp[0] = blockType
 
 	// Calculate the checksum.
