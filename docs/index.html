@@ -14,15 +14,30 @@
           <div class="updated">Last updated</div>
         </div>
         <br/>
-        <div class="overview">
-          Benchmarks are run nightly using <a class="code"
-          href="https://github.com/cockroachdb/pebble/blob/master/cmd/pebble/ycsb.go">pebble
-          bench ycsb</a> on AWS c5d.4xlarge machines equipped with
-          local SSD storage. The AWS instances show remarkably high
-          instance to instance performance variability. In order to
-          smooth out that variability the benchmarks are run multiple
-          times each (using difference instances) and outliers are
-          excluded.
+        <div class="columns">
+          <div class="overview">
+            Benchmarks are run nightly using <a class="code"
+            href="https://github.com/cockroachdb/pebble/blob/master/cmd/pebble/ycsb.go">pebble
+            bench ycsb</a> on AWS c5d.4xlarge machines equipped with
+            local SSD storage. The AWS instances show remarkably high
+            instance to instance performance variability. In order to
+            smooth out that variability the benchmarks are run multiple
+            times each (using difference instances) and outliers are
+            excluded.
+          </div>
+          <div>
+            <div class="controls">
+              <b>Detail:</b>
+              <a id="readBytes" class="toggle">Bytes Read</a> |
+              <a id="writeBytes" class="toggle">Bytes Written</a> |
+              <a id="readAmp" class="toggle">Read Amp</a> |
+              <a id="writeAmp" class="toggle">Write Amp</a>
+            </div>
+            <div class="controls">
+              <b>Options:</b>
+              <a id="localMax">Local scale</a>
+            </div>
+          </div>
         </div>
         <hr class="divider"/>
         <div class="annotation" data-date="20200614">L0-sublevels and
@@ -39,18 +54,9 @@
         and preallocation bug fixed</div>
       </div>
       <div class="section rows">
-        <div class="columns">
-          <div>
-            <span class="subtitle">YCSB A</span>
-            <span>(50% reads, 50% updates, zipf key distribution)</span>
-          </div>
-          <div>
-            <b>Detail:</b>
-            <a id="readBytes" class="toggle">Bytes Read</a> |
-            <a id="writeBytes" class="toggle">Bytes Written</a> |
-            <a id="readAmp" class="toggle">Read Amp</a> |
-            <a id="writeAmp" class="toggle">Write Amp</a>
-          </div>
+        <div>
+          <span class="subtitle">YCSB A</span>
+          <span>(50% reads, 50% updates, zipf key distribution)</span>
         </div>
         <div class="columns">
           <svg class="chart" data-key="ycsb/A/values=64"></svg>
