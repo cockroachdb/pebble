@@ -29,9 +29,6 @@ import (
 )
 
 const (
-	uncompressed = false
-	compressed   = true
-
 	noPrefixFilter = false
 	prefixFilter   = true
 
@@ -76,7 +73,7 @@ var fixtureComparer = func() *Comparer {
 }()
 
 type fixtureOpts struct {
-	compression    bool
+	compression    Compression
 	fullKeyFilter  bool
 	prefixFilter   bool
 	indexBlockSize int
@@ -84,7 +81,7 @@ type fixtureOpts struct {
 
 func (o fixtureOpts) String() string {
 	return fmt.Sprintf(
-		"compressed=%t,fullKeyFilter=%t,prefixFilter=%t",
+		"compression=%s,fullKeyFilter=%t,prefixFilter=%t",
 		o.compression, o.fullKeyFilter, o.prefixFilter,
 	)
 }
@@ -94,30 +91,36 @@ var fixtures = map[fixtureOpts]struct {
 	comparer      *Comparer
 	propCollector func() TablePropertyCollector
 }{
-	{compressed, noFullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
+	{SnappyCompression, noFullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
 		"testdata/h.sst", nil,
 		func() TablePropertyCollector {
 			return &keyCountPropertyCollector{}
 		},
 	},
-	{compressed, fullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
+	{SnappyCompression, fullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
 		"testdata/h.table-bloom.sst", nil, nil,
 	},
-	{uncompressed, noFullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
+	{NoCompression, noFullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
 		"testdata/h.no-compression.sst", nil,
 		func() TablePropertyCollector {
 			return &keyCountPropertyCollector{}
 		},
 	},
-	{uncompressed, fullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
+	{NoCompression, fullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
 		"testdata/h.table-bloom.no-compression.sst", nil, nil,
 	},
-	{uncompressed, noFullKeyBloom, prefixFilter, defaultIndexBlockSize}: {
+	{NoCompression, noFullKeyBloom, prefixFilter, defaultIndexBlockSize}: {
 		"testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
 		fixtureComparer, nil,
 	},
-	{uncompressed, noFullKeyBloom, noPrefixFilter, smallIndexBlockSize}: {
+	{NoCompression, noFullKeyBloom, noPrefixFilter, smallIndexBlockSize}: {
 		"testdata/h.no-compression.two_level_index.sst", nil,
+		func() TablePropertyCollector {
+			return &keyCountPropertyCollector{}
+		},
+	},
+	{ZstdCompression, noFullKeyBloom, noPrefixFilter, defaultIndexBlockSize}: {
+		"testdata/h.zstd-compression.sst", nil,
 		func() TablePropertyCollector {
 			return &keyCountPropertyCollector{}
 		},
@@ -130,10 +133,7 @@ func runTestFixtureOutput(opts fixtureOpts) error {
 		return errors.Errorf("fixture missing: %+v", opts)
 	}
 
-	compression := NoCompression
-	if opts.compression {
-		compression = SnappyCompression
-	}
+	compression := opts.compression
 
 	var fp base.FilterPolicy
 	if opts.fullKeyFilter || opts.prefixFilter {
@@ -175,6 +175,15 @@ func runTestFixtureOutput(opts fixtureOpts) error {
 
 func TestFixtureOutput(t *testing.T) {
 	for opt := range fixtures {
+		// Note: we disabled the zstd fixture test when CGO_ENABLED=0, because the
+		// implementation between DataDog/zstd and klauspost/compress are
+		// different, which leads to different compression output
+		// <https://github.com/klauspost/compress/issues/109#issuecomment-498763233>.
+		// Since the fixture test requires bit-to-bit reproducibility, we cannot
+		// run the zstd test when the implementation is not based on facebook/zstd.
+		if !useStandardZstdLib && opt.compression == ZstdCompression {
+			continue
+		}
 		t.Run(opt.String(), func(t *testing.T) {
 			require.NoError(t, runTestFixtureOutput(opt))
 		})
