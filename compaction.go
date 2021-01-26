@@ -2371,8 +2371,10 @@ func (d *DB) runCompaction(
 			}
 
 			atomic.StoreUint64(c.atomicBytesIterated, c.bytesIterated)
-			if err := pacer.maybeThrottle(c.bytesIterated); err != nil {
-				return nil, pendingOutputs, err
+			if pacer != nilPacer {
+				if err := pacer.maybeThrottle(c.bytesIterated); err != nil {
+					return nil, pendingOutputs, err
+				}
 			}
 			if key.Kind() == InternalKeyKindRangeDelete {
 				// Range tombstones are handled specially. They are fragmented and
