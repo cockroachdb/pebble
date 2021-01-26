@@ -2329,6 +2329,12 @@ func (d *DB) runCompaction(
 		}
 	}
 
+	// Disable pacing if the pacer is a nil pacer.
+	disablePacing := false
+	if pacer == nilPacer {
+		disablePacing = true
+	}
+
 	// Each outer loop iteration produces one output file. An iteration that
 	// produces a file containing point keys (and optionally range tombstones)
 	// guarantees that the input iterator advanced. An iteration that produces
@@ -2371,8 +2377,10 @@ func (d *DB) runCompaction(
 			}
 
 			atomic.StoreUint64(c.atomicBytesIterated, c.bytesIterated)
-			if err := pacer.maybeThrottle(c.bytesIterated); err != nil {
-				return nil, pendingOutputs, err
+			if !disablePacing {
+				if err := pacer.maybeThrottle(c.bytesIterated); err != nil {
+					return nil, pendingOutputs, err
+				}
 			}
 			if key.Kind() == InternalKeyKindRangeDelete {
 				// Range tombstones are handled specially. They are fragmented and
