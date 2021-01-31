@@ -474,7 +474,7 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 	// least 12.5%.
 	blockType, compressed := compressBlock(compression, b, w.compressedBuf)
 	if blockType != noCompressionBlockType && cap(compressed) > cap(w.compressedBuf) {
-		w.compressedBuf = compressed
+		w.compressedBuf = compressed[:cap(compressed)]
 	}
 	if len(compressed) < len(b)-len(b)/8 {
 		b = compressed
