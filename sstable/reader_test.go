@@ -654,18 +654,14 @@ func buildTestTable(
 	return r
 }
 
-func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader, [][]byte) {
+func buildBenchmarkTable(b *testing.B, options WriterOptions) (*Reader, [][]byte) {
 	mem := vfs.NewMem()
 	f0, err := mem.Create("bench")
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	w := NewWriter(f0, WriterOptions{
-		BlockRestartInterval: restartInterval,
-		BlockSize:            blockSize,
-		FilterPolicy:         nil,
-	})
+	w := NewWriter(f0, options)
 
 	var keys [][]byte
 	var ikey InternalKey
@@ -697,13 +693,35 @@ func buildBenchmarkTable(b *testing.B, blockSize, restartInterval int) (*Reader,
 	return r, keys
 }
 
-func BenchmarkTableIterSeekGE(b *testing.B) {
-	const blockSize = 32 << 10
+var basicBenchmarks = []struct {
+	name    string
+	options WriterOptions
+}{
+	{
+		name: "restart=16,compression=Snappy",
+		options: WriterOptions{
+			BlockSize:            32 << 10,
+			BlockRestartInterval: 16,
+			FilterPolicy:         nil,
+			Compression:          SnappyCompression,
+		},
+	},
+	{
+		name: "restart=16,compression=ZSTD",
+		options: WriterOptions{
+			BlockSize:            32 << 10,
+			BlockRestartInterval: 16,
+			FilterPolicy:         nil,
+			Compression:          ZstdCompression,
+		},
+	},
+}
 
-	for _, restartInterval := range []int{16} {
-		b.Run(fmt.Sprintf("restart=%d", restartInterval),
+func BenchmarkTableIterSeekGE(b *testing.B) {
+	for _, bm := range basicBenchmarks {
+		b.Run(bm.name,
 			func(b *testing.B) {
-				r, keys := buildBenchmarkTable(b, blockSize, restartInterval)
+				r, keys := buildBenchmarkTable(b, bm.options)
 				it, err := r.NewIter(nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
@@ -721,12 +739,10 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 }
 
 func BenchmarkTableIterSeekLT(b *testing.B) {
-	const blockSize = 32 << 10
-
-	for _, restartInterval := range []int{16} {
-		b.Run(fmt.Sprintf("restart=%d", restartInterval),
+	for _, bm := range basicBenchmarks {
+		b.Run(bm.name,
 			func(b *testing.B) {
-				r, keys := buildBenchmarkTable(b, blockSize, restartInterval)
+				r, keys := buildBenchmarkTable(b, bm.options)
 				it, err := r.NewIter(nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
@@ -744,12 +760,10 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 }
 
 func BenchmarkTableIterNext(b *testing.B) {
-	const blockSize = 32 << 10
-
-	for _, restartInterval := range []int{16} {
-		b.Run(fmt.Sprintf("restart=%d", restartInterval),
+	for _, bm := range basicBenchmarks {
+		b.Run(bm.name,
 			func(b *testing.B) {
-				r, _ := buildBenchmarkTable(b, blockSize, restartInterval)
+				r, _ := buildBenchmarkTable(b, bm.options)
 				it, err := r.NewIter(nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 
@@ -775,12 +789,10 @@ func BenchmarkTableIterNext(b *testing.B) {
 }
 
 func BenchmarkTableIterPrev(b *testing.B) {
-	const blockSize = 32 << 10
-
-	for _, restartInterval := range []int{16} {
-		b.Run(fmt.Sprintf("restart=%d", restartInterval),
+	for _, bm := range basicBenchmarks {
+		b.Run(bm.name,
 			func(b *testing.B) {
-				r, _ := buildBenchmarkTable(b, blockSize, restartInterval)
+				r, _ := buildBenchmarkTable(b, bm.options)
 				it, err := r.NewIter(nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 
