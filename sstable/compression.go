@@ -26,7 +26,8 @@ func decompressBlock(cache *cache.Cache, blockType byte, b []byte) (*cache.Value
 	case snappyCompressionBlockType:
 		decodedLen, err = snappy.DecodedLen(b)
 	case zstdCompressionBlockType:
-		// this is also used by zlib, bzip2 and lz4
+		// This will also be used by zlib, bzip2 and lz4 to retrieve the decodedLen
+		// if we implement these algorithms in the future.
 		decodedLenU64, varIntLen := binary.Uvarint(b)
 		if varIntLen <= 0 {
 			return nil, base.CorruptionErrorf("pebble/table: compression block has invalid length")
@@ -37,7 +38,7 @@ func decompressBlock(cache *cache.Cache, blockType byte, b []byte) (*cache.Value
 		return nil, base.CorruptionErrorf("pebble/table: unknown block compression: %d", errors.Safe(blockType))
 	}
 
-	// allocate sufficient space from the cache.
+	// Allocate sufficient space from the cache.
 	decoded := cache.Alloc(decodedLen)
 	decodedBuf := decoded.Buf()
 	defer func() {
@@ -46,7 +47,10 @@ func decompressBlock(cache *cache.Cache, blockType byte, b []byte) (*cache.Value
 		}
 	}()
 
-	// perform decompression.
+	// Perform decompression.
+	// NB: the value of `b` for snappy is different than the other cases since it includes the
+	// length varint at the front, while for the others it has already been stripped off.
+	// The implementation of snappy.Decode handles this correctly.
 	var result []byte
 	switch blockType {
 	case snappyCompressionBlockType:
