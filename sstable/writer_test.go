@@ -199,19 +199,41 @@ func BenchmarkWriter(b *testing.B) {
 		keys[i] = key
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		w := NewWriter(discardFile{}, WriterOptions{
-			BlockRestartInterval: 16,
-			BlockSize:            32 << 10,
-			Compression:          SnappyCompression,
-			FilterPolicy:         bloom.FilterPolicy(10),
-		})
+	benchmarks := []struct {
+		name    string
+		options WriterOptions
+	}{
+		{
+			name: "Default",
+			options: WriterOptions{
+				BlockRestartInterval: 16,
+				BlockSize:            32 << 10,
+				Compression:          SnappyCompression,
+				FilterPolicy:         bloom.FilterPolicy(10),
+			},
+		},
+		{
+			name: "Zstd",
+			options: WriterOptions{
+				BlockRestartInterval: 16,
+				BlockSize:            32 << 10,
+				Compression:          ZstdCompression,
+				FilterPolicy:         bloom.FilterPolicy(10),
+			},
+		},
+	}
 
-		for i := range keys {
-			if err := w.Set(keys[i], keys[i]); err != nil {
-				b.Fatal(err)
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				w := NewWriter(discardFile{}, bm.options)
+
+				for j := range keys {
+					if err := w.Set(keys[j], keys[j]); err != nil {
+						b.Fatal(err)
+					}
+				}
 			}
-		}
+		})
 	}
 }
