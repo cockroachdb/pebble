@@ -404,9 +404,9 @@ func testBytesIteratedWithCompression(
 	t *testing.T,
 	compression Compression,
 	allowedSizeDeviationPercent uint64,
+	blockSizes []int,
 	maxNumEntries []uint64,
 ) {
-	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
 	for i, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
 			for _, numEntries := range []uint64{0, 1, maxNumEntries[i]} {
@@ -437,11 +437,12 @@ func testBytesIteratedWithCompression(
 }
 
 func TestBytesIterated(t *testing.T) {
+	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
 	t.Run("Compressed", func(t *testing.T) {
-		testBytesIteratedWithCompression(t, SnappyCompression, 1, []uint64{1e5, 1e5, 1e5, 1e5, 1e5})
+		testBytesIteratedWithCompression(t, SnappyCompression, 1, blockSizes, []uint64{1e5, 1e5, 1e5, 1e5, 1e5})
 	})
 	t.Run("Uncompressed", func(t *testing.T) {
-		testBytesIteratedWithCompression(t, NoCompression, 0, []uint64{1e5, 1e5, 1e5, 1e5, 1e5})
+		testBytesIteratedWithCompression(t, NoCompression, 0, blockSizes, []uint64{1e5, 1e5, 1e5, 1e5, 1e5})
 	})
 	t.Run("Zstd", func(t *testing.T) {
 		// compression with zstd is extremely slow with small block size (esp the nocgo version).
@@ -450,7 +451,7 @@ func TestBytesIterated(t *testing.T) {
 		if useStandardZstdLib {
 			maxNumEntries = []uint64{1e3, 1e3, 1e4, 4e4, 1e5}
 		}
-		testBytesIteratedWithCompression(t, ZstdCompression, 1, maxNumEntries)
+		testBytesIteratedWithCompression(t, ZstdCompression, 1, blockSizes, maxNumEntries)
 	})
 }
 
