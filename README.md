@@ -50,6 +50,15 @@ Pebble:
 used with a RocksDB database that uses a feature Pebble doesn't
 support. Caveat emptor!
 
+## Production Ready
+
+Pebble was introduced as an alternative storage engine to RocksDB in
+CockroachDB v20.1 (released May 2020) and was used in production
+successfully at that time. Pebble was made the default storage engine
+in CockroachDB v20.2 (released Nov 2020). Pebble is being used in
+production by users of CockroachDB at scale and is considered stable
+and production ready.
+
 ## Advantages
 
 Pebble offers several improvements over RocksDB:
