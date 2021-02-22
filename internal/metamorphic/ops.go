@@ -508,6 +508,26 @@ func (o *newIterOp) String() string {
 		o.iterID, o.readerID, o.lower, o.upper)
 }
 
+// newIterUsingCloneOp models a Iterator.Clone operation.
+type newIterUsingCloneOp struct {
+	existingIterID objID
+	iterID         objID
+}
+
+func (o *newIterUsingCloneOp) run(t *test, h *history) {
+	iter := t.getIter(o.existingIterID)
+	i, err := iter.iter.Clone()
+	if err != nil {
+		panic(err)
+	}
+	t.setIter(o.iterID, i)
+	h.Recordf("%s // %v", o, i.Error())
+}
+
+func (o *newIterUsingCloneOp) String() string {
+	return fmt.Sprintf("%s = %s.Clone()", o.iterID, o.existingIterID)
+}
+
 // iterSetBoundsOp models an Iterator.SetBounds operation.
 type iterSetBoundsOp struct {
 	iterID objID

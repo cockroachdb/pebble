@@ -786,6 +786,159 @@ func TestIteratorNextPrev(t *testing.T) {
 	})
 }
 
+type errorSeekIter struct {
+	internalIterator
+	// Fields controlling error injection for seeks.
+	injectSeekErrorCounts []int
+	seekCount             int
+	err                   error
+}
+
+func (i *errorSeekIter) SeekGE(key []byte) (*InternalKey, []byte) {
+	if i.tryInjectError() {
+		return nil, nil
+	}
+	i.err = nil
+	i.seekCount++
+	return i.internalIterator.SeekGE(key)
+}
+
+func (i *errorSeekIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*InternalKey, []byte) {
+	if i.tryInjectError() {
+		return nil, nil
+	}
+	i.err = nil
+	i.seekCount++
+	return i.internalIterator.SeekPrefixGE(prefix, key, trySeekUsingNext)
+}
+
+func (i *errorSeekIter) SeekLT(key []byte) (*InternalKey, []byte) {
+	if i.tryInjectError() {
+		return nil, nil
+	}
+	i.err = nil
+	i.seekCount++
+	return i.internalIterator.SeekLT(key)
+}
+
+func (i *errorSeekIter) tryInjectError() bool {
+	if len(i.injectSeekErrorCounts) > 0 && i.injectSeekErrorCounts[0] == i.seekCount {
+		i.seekCount++
+		i.err = errors.Errorf("injecting error")
+		i.injectSeekErrorCounts = i.injectSeekErrorCounts[1:]
+		return true
+	}
+	return false
+}
+
+func (i *errorSeekIter) First() (*InternalKey, []byte) {
+	i.err = nil
+	return i.internalIterator.First()
+}
+
+func (i *errorSeekIter) Last() (*InternalKey, []byte) {
+	i.err = nil
+	return i.internalIterator.Last()
+}
+
+func (i *errorSeekIter) Next() (*InternalKey, []byte) {
+	if i.err != nil {
+		return nil, nil
+	}
+	return i.internalIterator.Next()
+}
+
+func (i *errorSeekIter) Prev() (*InternalKey, []byte) {
+	if i.err != nil {
+		return nil, nil
+	}
+	return i.internalIterator.Prev()
+}
+
+func (i *errorSeekIter) Error() error {
+	if i.err != nil {
+		return i.err
+	}
+	return i.internalIterator.Error()
+}
+
+func TestIteratorSeekOptErrors(t *testing.T) {
+	var keys []InternalKey
+	var vals [][]byte
+
+	var errorIter errorSeekIter
+	newIter := func(opts IterOptions) *Iterator {
+		cmp := DefaultComparer.Compare
+		equal := DefaultComparer.Equal
+		split := func(a []byte) int { return len(a) }
+		iter := &fakeIter{
+			lower: opts.GetLowerBound(),
+			upper: opts.GetUpperBound(),
+			keys:  keys,
+			vals:  vals,
+		}
+		errorIter = errorSeekIter{internalIterator: newInvalidatingIter(iter)}
+		// NB: This Iterator cannot be cloned since it is not constructed
+		// with a readState. It suffices for this test.
+		return &Iterator{
+			opts:  opts,
+			cmp:   cmp,
+			equal: equal,
+			split: split,
+			merge: DefaultMerger.Merge,
+			iter:  &errorIter,
+		}
+	}
+
+	datadriven.RunTest(t, "testdata/iterator_seek_opt_errors", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "define":
+			keys = keys[:0]
+			vals = vals[:0]
+			for _, key := range strings.Split(d.Input, "\n") {
+				j := strings.Index(key, ":")
+				keys = append(keys, base.ParseInternalKey(key[:j]))
+				vals = append(vals, []byte(key[j+1:]))
+			}
+			return ""
+
+		case "iter":
+			var opts IterOptions
+			var injectSeekGEErrorCounts []int
+			for _, arg := range d.CmdArgs {
+				if len(arg.Vals) < 1 {
+					return fmt.Sprintf("%s: %s=<value>", d.Cmd, arg.Key)
+				}
+				switch arg.Key {
+				case "lower":
+					opts.LowerBound = []byte(arg.Vals[0])
+				case "upper":
+					opts.UpperBound = []byte(arg.Vals[0])
+				case "seek-error":
+					for i := 0; i < len(arg.Vals); i++ {
+						n, err := strconv.Atoi(arg.Vals[i])
+						if err != nil {
+							return err.Error()
+						}
+						injectSeekGEErrorCounts = append(injectSeekGEErrorCounts, n)
+					}
+				default:
+					return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
+				}
+			}
+
+			iter := newIter(opts)
+			errorIter.injectSeekErrorCounts = injectSeekGEErrorCounts
+			return runIterCmd(d, iter, true)
+
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
+}
+
 func BenchmarkIteratorSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &Iterator{
