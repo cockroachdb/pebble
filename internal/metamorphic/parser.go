@@ -78,6 +78,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return nil, &t.batchID, nil
 	case *newIterOp:
 		return &t.readerID, &t.iterID, []interface{}{&t.lower, &t.upper}
+	case *newIterUsingCloneOp:
+		return &t.existingIterID, &t.iterID, nil
 	case *newSnapshotOp:
 		return nil, &t.snapID, nil
 	case *iterNextOp:
@@ -101,6 +103,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 var methods = map[string]*methodInfo{
 	"Apply":           makeMethod(applyOp{}, dbTag, batchTag),
 	"Checkpoint":      makeMethod(checkpointOp{}, dbTag),
+	"Clone":           makeMethod(newIterUsingCloneOp{}, iterTag),
 	"Close":           makeMethod(closeOp{}, dbTag, batchTag, iterTag, snapTag),
 	"Commit":          makeMethod(batchCommitOp{}, batchTag),
 	"Compact":         makeMethod(compactOp{}, dbTag),

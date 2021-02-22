@@ -26,6 +26,7 @@ const (
 	newBatch
 	newIndexedBatch
 	newIter
+	newIterUsingClone
 	newSnapshot
 	readerGet
 	snapshotClose
@@ -72,6 +73,7 @@ var defaultConfig = config{
 		newBatch:          5,
 		newIndexedBatch:   5,
 		newIter:           10,
+		newIterUsingClone: 5,
 		newSnapshot:       10,
 		readerGet:         100,
 		snapshotClose:     10,

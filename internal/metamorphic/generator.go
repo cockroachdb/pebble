@@ -101,6 +101,7 @@ func generate(rng *rand.Rand, count uint64, cfg config) []op {
 		newBatch:          g.newBatch,
 		newIndexedBatch:   g.newIndexedBatch,
 		newIter:           g.newIter,
+		newIterUsingClone: g.newIterUsingClone,
 		newSnapshot:       g.newSnapshot,
 		readerGet:         g.readerGet,
 		snapshotClose:     g.snapshotClose,
@@ -325,6 +326,28 @@ func (g *generator) newIter() {
 		iterID:   iterID,
 		lower:    lower,
 		upper:    upper,
+	})
+}
+
+func (g *generator) newIterUsingClone() {
+	if len(g.liveIters) == 0 {
+		return
+	}
+	existingIterID := g.liveIters.rand(g.rng)
+	iterID := makeObjID(iterTag, g.init.iterSlots)
+	g.init.iterSlots++
+	g.liveIters = append(g.liveIters, iterID)
+	if iters := g.iters[existingIterID]; iters != nil {
+		iters[iterID] = struct{}{}
+		g.iters[iterID] = iters
+	} else {
+		// NB: the DB object does not track its open iterators because it never
+		// closes.
+	}
+
+	g.add(&newIterUsingCloneOp{
+		existingIterID: existingIterID,
+		iterID:         iterID,
 	})
 }
 

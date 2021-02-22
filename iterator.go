@@ -447,6 +447,9 @@ func (i *Iterator) SeekGE(key []byte) bool {
 	} else if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
 		key = upperBound
 	}
+	// The following noop optimization only applies when i.batch == nil, since
+	// an iterator over a batch is iterating over mutable data, that may have
+	// changed since the last seek.
 	if lastPositioningOp == seekGELastPositioningOp && i.batch == nil {
 		cmp := i.cmp(i.prefixOrFullSeekKey, key)
 		// If this seek is to the same or later key, and the iterator is
@@ -454,14 +457,17 @@ func (i *Iterator) SeekGE(key []byte) bool {
 		// sparse key spaces that have many deleted keys, where one can avoid
 		// the overhead of iterating past them again and again.
 		if cmp <= 0 && (!i.valid || i.cmp(key, i.key) <= 0) {
-			i.lastPositioningOp = seekGELastPositioningOp
-			return i.valid
+			if !invariants.Enabled || !disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
+				i.lastPositioningOp = seekGELastPositioningOp
+				return i.valid
+			}
 		}
 	}
 	i.iterKey, i.iterValue = i.iter.SeekGE(key)
 	valid := i.findNextEntry()
 	i.maybeSampleRead()
-	if i.Error() == nil {
+	if i.Error() == nil && i.batch == nil {
+		// Prepare state for a future noop optimization.
 		i.prefixOrFullSeekKey = append(i.prefixOrFullSeekKey[:0], key...)
 		i.lastPositioningOp = seekGELastPositioningOp
 	}
@@ -612,21 +618,27 @@ func (i *Iterator) SeekLT(key []byte) bool {
 	} else if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
 		key = lowerBound
 	}
+	// The following noop optimization only applies when i.batch == nil, since
+	// an iterator over a batch is iterating over mutable data, that may have
+	// changed since the last seek.
 	if lastPositioningOp == seekLTLastPositioningOp && i.batch == nil {
 		cmp := i.cmp(key, i.prefixOrFullSeekKey)
 		// If this seek is to the same or earlier key, and the iterator is
 		// already positioned there, this is a noop. This can be helpful for
 		// sparse key spaces that have many deleted keys, where one can avoid
 		// the overhead of iterating past them again and again.
-		if cmp <= 0 && (!i.valid || i.cmp(i.key, key) <= 0) {
-			i.lastPositioningOp = seekLTLastPositioningOp
-			return i.valid
+		if cmp <= 0 && (!i.valid || i.cmp(i.key, key) < 0) {
+			if !invariants.Enabled || !disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
+				i.lastPositioningOp = seekLTLastPositioningOp
+				return i.valid
+			}
 		}
 	}
 	i.iterKey, i.iterValue = i.iter.SeekLT(key)
 	valid := i.findPrevEntry()
 	i.maybeSampleRead()
-	if i.Error() == nil {
+	if i.Error() == nil && i.batch == nil {
+		// Prepare state for a future noop optimization.
 		i.prefixOrFullSeekKey = append(i.prefixOrFullSeekKey[:0], key...)
 		i.lastPositioningOp = seekLTLastPositioningOp
 	}
