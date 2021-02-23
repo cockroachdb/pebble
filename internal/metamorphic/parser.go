@@ -96,6 +96,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.writerID, nil, []interface{}{&t.key, &t.value}
 	case *iterSetBoundsOp:
 		return &t.iterID, nil, []interface{}{&t.lower, &t.upper}
+	case *singleDeleteOp:
+		return &t.writerID, nil, []interface{}{&t.key}
 	}
 	panic(fmt.Sprintf("unsupported op type: %T", op))
 }
@@ -128,6 +130,7 @@ var methods = map[string]*methodInfo{
 	"SeekPrefixGE":    makeMethod(iterSeekPrefixGEOp{}, iterTag),
 	"Set":             makeMethod(setOp{}, dbTag, batchTag),
 	"SetBounds":       makeMethod(iterSetBoundsOp{}, iterTag),
+	"SingleDelete":    makeMethod(singleDeleteOp{}, dbTag, batchTag),
 }
 
 type parser struct {

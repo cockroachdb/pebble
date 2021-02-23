@@ -130,6 +130,22 @@ func (o *deleteOp) String() string {
 	return fmt.Sprintf("%s.Delete(%q)", o.writerID, o.key)
 }
 
+// singleDeleteOp models a Write.SingleDelete operation.
+type singleDeleteOp struct {
+	writerID objID
+	key      []byte
+}
+
+func (o *singleDeleteOp) run(t *test, h *history) {
+	w := t.getWriter(o.writerID)
+	err := w.SingleDelete(o.key, t.writeOpts)
+	h.Recordf("%s // %v", o, err)
+}
+
+func (o *singleDeleteOp) String() string {
+	return fmt.Sprintf("%s.SingleDelete(%q)", o.writerID, o.key)
+}
+
 // deleteRangeOp models a Write.DeleteRange operation.
 type deleteRangeOp struct {
 	writerID objID

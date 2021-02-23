@@ -26,6 +26,12 @@ type generator struct {
 	// keys that have been set in the DB. Used to reuse already generated keys
 	// during random key selection.
 	keys [][]byte
+	// singleSetKeysInDB is also in the writerToSingleSetKeys map. This tracks
+	// keys that are eligible to be single deleted.
+	singleSetKeysInDB     singleSetKeysForBatch
+	writerToSingleSetKeys map[objID]singleSetKeysForBatch
+	// Ensures no duplication of single set keys for the duration of the test.
+	generatedWriteKeys map[string]struct{}
 
 	// Unordered sets of object IDs for live objects. Used to randomly select on
 	// object when generating an operation. There are 4 concrete objects: the DB
@@ -65,15 +71,19 @@ type generator struct {
 
 func newGenerator(rng *rand.Rand) *generator {
 	g := &generator{
-		rng:         rng,
-		init:        &initOp{},
-		liveReaders: objIDSlice{makeObjID(dbTag, 0)},
-		liveWriters: objIDSlice{makeObjID(dbTag, 0)},
-		batches:     make(map[objID]objIDSet),
-		iters:       make(map[objID]objIDSet),
-		readers:     make(map[objID]objIDSet),
-		snapshots:   make(map[objID]objIDSet),
+		rng:                   rng,
+		init:                  &initOp{},
+		singleSetKeysInDB:     makeSingleSetKeysForBatch(),
+		writerToSingleSetKeys: make(map[objID]singleSetKeysForBatch),
+		generatedWriteKeys:    make(map[string]struct{}),
+		liveReaders:           objIDSlice{makeObjID(dbTag, 0)},
+		liveWriters:           objIDSlice{makeObjID(dbTag, 0)},
+		batches:               make(map[objID]objIDSet),
+		iters:                 make(map[objID]objIDSet),
+		readers:               make(map[objID]objIDSet),
+		snapshots:             make(map[objID]objIDSet),
 	}
+	g.writerToSingleSetKeys[makeObjID(dbTag, 0)] = g.singleSetKeysInDB
 	// Note that the initOp fields are populated during generation.
 	g.ops = append(g.ops, g.init)
 	return g
@@ -83,34 +93,35 @@ func generate(rng *rand.Rand, count uint64, cfg config) []op {
 	g := newGenerator(rng)
 
 	generators := []func(){
-		batchAbort:        g.batchAbort,
-		batchCommit:       g.batchCommit,
-		dbCheckpoint:      g.dbCheckpoint,
-		dbCompact:         g.dbCompact,
-		dbFlush:           g.dbFlush,
-		dbRestart:         g.dbRestart,
-		iterClose:         g.iterClose,
-		iterFirst:         g.iterFirst,
-		iterLast:          g.iterLast,
-		iterNext:          g.iterNext,
-		iterPrev:          g.iterPrev,
-		iterSeekGE:        g.iterSeekGE,
-		iterSeekLT:        g.iterSeekLT,
-		iterSeekPrefixGE:  g.iterSeekPrefixGE,
-		iterSetBounds:     g.iterSetBounds,
-		newBatch:          g.newBatch,
-		newIndexedBatch:   g.newIndexedBatch,
-		newIter:           g.newIter,
-		newIterUsingClone: g.newIterUsingClone,
-		newSnapshot:       g.newSnapshot,
-		readerGet:         g.readerGet,
-		snapshotClose:     g.snapshotClose,
-		writerApply:       g.writerApply,
-		writerDelete:      g.writerDelete,
-		writerDeleteRange: g.writerDeleteRange,
-		writerIngest:      g.writerIngest,
-		writerMerge:       g.writerMerge,
-		writerSet:         g.writerSet,
+		batchAbort:         g.batchAbort,
+		batchCommit:        g.batchCommit,
+		dbCheckpoint:       g.dbCheckpoint,
+		dbCompact:          g.dbCompact,
+		dbFlush:            g.dbFlush,
+		dbRestart:          g.dbRestart,
+		iterClose:          g.iterClose,
+		iterFirst:          g.iterFirst,
+		iterLast:           g.iterLast,
+		iterNext:           g.iterNext,
+		iterPrev:           g.iterPrev,
+		iterSeekGE:         g.iterSeekGE,
+		iterSeekLT:         g.iterSeekLT,
+		iterSeekPrefixGE:   g.iterSeekPrefixGE,
+		iterSetBounds:      g.iterSetBounds,
+		newBatch:           g.newBatch,
+		newIndexedBatch:    g.newIndexedBatch,
+		newIter:            g.newIter,
+		newIterUsingClone:  g.newIterUsingClone,
+		newSnapshot:        g.newSnapshot,
+		readerGet:          g.readerGet,
+		snapshotClose:      g.snapshotClose,
+		writerApply:        g.writerApply,
+		writerDelete:       g.writerDelete,
+		writerDeleteRange:  g.writerDeleteRange,
+		writerIngest:       g.writerIngest,
+		writerMerge:        g.writerMerge,
+		writerSet:          g.writerSet,
+		writerSingleDelete: g.writerSingleDelete,
 	}
 
 	// TPCC-style deck of cards randomization. Every time the end of the deck is
@@ -137,6 +148,36 @@ func (g *generator) randKey(newKey float64) []byte {
 	key := g.randValue(4, 12)
 	g.keys = append(g.keys, key)
 	return key
+}
+
+func (g *generator) randKeyForWrite(newKey float64, singleSetKey float64, writerID objID) []byte {
+	if n := len(g.keys); n > 0 && g.rng.Float64() > newKey {
+		return g.keys[g.rng.Intn(n)]
+	}
+	key := g.randValue(4, 12)
+	if g.rng.Float64() < singleSetKey {
+		for {
+			if _, ok := g.generatedWriteKeys[string(key)]; ok {
+				key = g.randValue(4, 12)
+				continue
+			}
+			g.generatedWriteKeys[string(key)] = struct{}{}
+			g.writerToSingleSetKeys[writerID].addKey(key)
+			break
+		}
+	} else {
+		g.generatedWriteKeys[string(key)] = struct{}{}
+		g.keys = append(g.keys, key)
+	}
+	return key
+}
+
+func (g *generator) randKeyToSingleDelete() []byte {
+	length := len(*g.singleSetKeysInDB.keys)
+	if length == 0 {
+		return nil
+	}
+	return g.singleSetKeysInDB.removeKey(g.rng.Intn(length))
 }
 
 // TODO(peter): make the value size configurable. See valueSizeDist in
@@ -177,6 +218,7 @@ func (g *generator) newBatch() {
 	g.init.batchSlots++
 	g.liveBatches = append(g.liveBatches, batchID)
 	g.liveWriters = append(g.liveWriters, batchID)
+	g.writerToSingleSetKeys[batchID] = makeSingleSetKeysForBatch()
 
 	g.add(&newBatchOp{
 		batchID: batchID,
@@ -193,6 +235,7 @@ func (g *generator) newIndexedBatch() {
 	iters := make(objIDSet)
 	g.batches[batchID] = iters
 	g.readers[batchID] = iters
+	g.writerToSingleSetKeys[batchID] = makeSingleSetKeysForBatch()
 
 	g.add(&newIndexedBatchOp{
 		batchID: batchID,
@@ -214,6 +257,7 @@ func (g *generator) batchClose(batchID objID) {
 		delete(g.iters, id)
 		g.add(&closeOp{objID: id})
 	}
+	delete(g.writerToSingleSetKeys, batchID)
 }
 
 func (g *generator) batchAbort() {
@@ -233,6 +277,7 @@ func (g *generator) batchCommit() {
 	}
 
 	batchID := g.liveBatches.rand(g.rng)
+	g.writerToSingleSetKeys[batchID].transferTo(g.singleSetKeysInDB)
 	g.batchClose(batchID)
 
 	g.add(&batchCommitOp{
@@ -630,6 +675,7 @@ func (g *generator) writerApply() {
 		}
 	}
 
+	g.writerToSingleSetKeys[batchID].transferTo(g.writerToSingleSetKeys[writerID])
 	g.batchClose(batchID)
 
 	g.add(&applyOp{
@@ -680,6 +726,9 @@ func (g *generator) writerIngest() {
 	batchIDs := make([]objID, 0, 1+g.rng.Intn(3))
 	for i := 0; i < cap(batchIDs); i++ {
 		batchID := g.liveBatches.rand(g.rng)
+		// After the ingest runs, it either succeeds and the keys are in the
+		// DB, or it fails and these keys never make it to the DB.
+		g.writerToSingleSetKeys[batchID].transferTo(g.singleSetKeysInDB)
 		g.batchClose(batchID)
 		batchIDs = append(batchIDs, batchID)
 		if len(g.liveBatches) == 0 {
@@ -700,8 +749,9 @@ func (g *generator) writerMerge() {
 	writerID := g.liveWriters.rand(g.rng)
 	g.add(&mergeOp{
 		writerID: writerID,
-		key:      g.randKey(0.2), // 20% new keys
-		value:    g.randValue(0, 20),
+		// 20% new keys, and none are set once.
+		key:   g.randKeyForWrite(0.2, 0, writerID),
+		value: g.randValue(0, 20),
 	})
 	g.tryRepositionBatchIters(writerID)
 }
@@ -714,8 +764,27 @@ func (g *generator) writerSet() {
 	writerID := g.liveWriters.rand(g.rng)
 	g.add(&setOp{
 		writerID: writerID,
-		key:      g.randKey(0.5), // 50% new keys
-		value:    g.randValue(0, 20),
+		// 50% new keys, and of those 50%, half are keys that will be set
+		// once.
+		key:   g.randKeyForWrite(0.5, 0.5, writerID),
+		value: g.randValue(0, 20),
+	})
+	g.tryRepositionBatchIters(writerID)
+}
+
+func (g *generator) writerSingleDelete() {
+	if len(g.liveWriters) == 0 {
+		return
+	}
+
+	writerID := g.liveWriters.rand(g.rng)
+	key := g.randKeyToSingleDelete()
+	if key == nil {
+		return
+	}
+	g.add(&singleDeleteOp{
+		writerID: writerID,
+		key:      key,
 	})
 	g.tryRepositionBatchIters(writerID)
 }
