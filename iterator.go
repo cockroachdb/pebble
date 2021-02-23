@@ -156,6 +156,12 @@ func (i *Iterator) findNextEntry() bool {
 			return true
 
 		case InternalKeyKindMerge:
+			// Set iter key to new key before building the merge function to ensure the merge key
+			// is stable during the merge.
+			// Don't set i.valid here because i.merge may return error.
+			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
+			i.key = i.keyBuf
+
 			var valueMerger ValueMerger
 			valueMerger, i.err = i.merge(i.key, i.iterValue)
 			if i.err == nil {
@@ -386,9 +392,6 @@ func (i *Iterator) prevUserKey() {
 }
 
 func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
-	// Save the current key.
-	i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
-	i.key = i.keyBuf
 	i.valid = true
 
 	// Loop looking for older values for this key and merging them.
