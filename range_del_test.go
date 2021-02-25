@@ -452,70 +452,90 @@ func BenchmarkRangeDelIterate(b *testing.B) {
 		b.Run(fmt.Sprintf("entries=%d", entries), func(b *testing.B) {
 			for _, deleted := range []int{entries, entries - 1} {
 				b.Run(fmt.Sprintf("deleted=%d", deleted), func(b *testing.B) {
-					mem := vfs.NewMem()
-					cache := NewCache(128 << 20) // 128 MB
-					defer cache.Unref()
-
-					d, err := Open("", &Options{
-						Cache:      cache,
-						FS:         mem,
-						DebugCheck: DebugCheckLevels,
-					})
-					if err != nil {
-						b.Fatal(err)
-					}
-					defer d.Close()
-
-					makeKey := func(i int) []byte {
-						return []byte(fmt.Sprintf("%09d", i))
-					}
-
-					// Create an sstable with N entries and ingest it. This is a fast way
-					// to get a lot of entries into pebble.
-					f, err := mem.Create("ext")
-					if err != nil {
-						b.Fatal(err)
-					}
-					w := sstable.NewWriter(f, sstable.WriterOptions{
-						BlockSize: 32 << 10, // 32 KB
-					})
-					for i := 0; i < entries; i++ {
-						key := base.MakeInternalKey(makeKey(i), 0, InternalKeyKindSet)
-						if err := w.Add(key, nil); err != nil {
-							b.Fatal(err)
-						}
-					}
-					if err := w.Close(); err != nil {
-						b.Fatal(err)
-					}
-					if err := d.Ingest([]string{"ext"}); err != nil {
-						b.Fatal(err)
-					}
-
-					// Create a range tombstone that deletes most (or all) of those entries.
-					from := makeKey(0)
-					to := makeKey(deleted)
-					if err := d.DeleteRange(from, to, nil); err != nil {
-						b.Fatal(err)
-					}
-
-					b.ResetTimer()
-					for i := 0; i < b.N; i++ {
-						iter := d.NewIter(nil)
-						iter.SeekGE(from)
-						if deleted < entries {
-							if !iter.Valid() {
-								b.Fatal("key not found")
-							}
-						} else if iter.Valid() {
-							b.Fatal("unexpected key found")
-						}
-						if err := iter.Close(); err != nil {
-							b.Fatal(err)
-						}
+					for _, snapshotCompact := range []bool{false, true} {
+						b.Run(fmt.Sprintf("snapshotAndCompact=%t", snapshotCompact), func(b *testing.B) {
+							benchmarkRangeDelIterate(b, entries, deleted, snapshotCompact)
+						})
 					}
 				})
 			}
 		})
+	}
+}
+
+func benchmarkRangeDelIterate(b *testing.B, entries, deleted int, snapshotCompact bool) {
+	mem := vfs.NewMem()
+	cache := NewCache(128 << 20) // 128 MB
+	defer cache.Unref()
+
+	d, err := Open("", &Options{
+		Cache:      cache,
+		FS:         mem,
+		DebugCheck: DebugCheckLevels,
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer d.Close()
+
+	makeKey := func(i int) []byte {
+		return []byte(fmt.Sprintf("%09d", i))
+	}
+
+	// Create an sstable with N entries and ingest it. This is a fast way
+	// to get a lot of entries into pebble.
+	f, err := mem.Create("ext")
+	if err != nil {
+		b.Fatal(err)
+	}
+	w := sstable.NewWriter(f, sstable.WriterOptions{
+		BlockSize: 32 << 10, // 32 KB
+	})
+	for i := 0; i < entries; i++ {
+		key := base.MakeInternalKey(makeKey(i), 0, InternalKeyKindSet)
+		if err := w.Add(key, nil); err != nil {
+			b.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		b.Fatal(err)
+	}
+	if err := d.Ingest([]string{"ext"}); err != nil {
+		b.Fatal(err)
+	}
+
+	// Some benchmarks test snapshots that force the range tombstone into the
+	// same level as the covered data.
+	// See https://github.com/cockroachdb/pebble/issues/1070.
+	if snapshotCompact {
+		s := d.NewSnapshot()
+		defer func() { require.NoError(b, s.Close()) }()
+	}
+
+	// Create a range tombstone that deletes most (or all) of those entries.
+	from := makeKey(0)
+	to := makeKey(deleted)
+	if err := d.DeleteRange(from, to, nil); err != nil {
+		b.Fatal(err)
+	}
+
+	if snapshotCompact {
+		require.NoError(b, d.Compact(makeKey(0), makeKey(entries)))
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		iter := d.NewIter(nil)
+		iter.SeekGE(from)
+		if deleted < entries {
+			if !iter.Valid() {
+				b.Fatal("key not found")
+			}
+		} else if iter.Valid() {
+			b.Fatal("unexpected key found")
+		}
+		if err := iter.Close(); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
