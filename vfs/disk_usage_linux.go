@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-// +build darwin openbsd dragonfly freebsd
+// +build linux
 
 package vfs
 
@@ -13,5 +13,5 @@ func (defaultFS) GetFreeSpace(path string) (uint64, error) {
 	if err := unix.Statfs(path, &stat); err != nil {
 		return 0, err
 	}
-	return uint64(stat.Bsize) * stat.Bfree, nil
+	return uint64(stat.Frsize) * stat.Bfree, nil
 }
