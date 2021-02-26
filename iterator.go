@@ -852,19 +852,24 @@ func (i *Iterator) Close() error {
 	return err
 }
 
-// SetBounds sets the lower and upper bounds for the iterator. Note that the
-// iterator will always be invalidated and must be repositioned with a call to
-// SeekGE, SeekPrefixGE, SeekLT, First, or Last.
+// SetBounds sets the lower and upper bounds for the iterator. Note that:
+// - The slices provided in this SetBounds must not be changed by the caller
+//   until the iterator is closed, or a subsequent SetBounds has returned.
+//   This is because comparisons between the existing and new bounds are
+//   sometimes used to optimize seeking.
+// - If the bounds are not changing from the existing ones, it would be
+//   worthwhile for the caller to avoid calling SetBounds, since that allows
+//   for more seek optimizations. Note that the callee cannot itself look to
+//   see if the bounds are not changing and ignore the call, since the caller
+//   may then start mutating the underlying slices. Specifically, consider
+//   SetBounds(l1, u1), SetBounds(l2, u2) where l1=l2 and u1=u2. The callee
+//   cannot ignore the second call and keep using l1, u1, since the contract
+//   with the caller allows the caller to mutate l1, u1 after the second call
+//   returns, as mentioned in the previous bullet (ignoring in the callee
+//   resulted in a hard to find bug).
+// - The iterator will always be invalidated and must be repositioned with a
+//   call to SeekGE, SeekPrefixGE, SeekLT, First, or Last.
 func (i *Iterator) SetBounds(lower, upper []byte) {
-	lowerOrUpperDifferentNils := ((lower != nil) != (i.opts.LowerBound != nil)) ||
-		((upper != nil) != (i.opts.UpperBound != nil))
-	if !lowerOrUpperDifferentNils && bytes.Equal(lower, i.opts.LowerBound) &&
-		bytes.Equal(upper, i.opts.UpperBound) {
-		// Common noop that preserves seek optimizations. Note that nil is
-		// semantically different from an empty byte slice, but bytes.Equal
-		// does not distinguish between them.
-		return
-	}
 	// Even though this is not a positioning operation, the alteration of the
 	// bounds means we cannot optimize Seeks by using Next.
 	i.lastPositioningOp = unknownLastPositionOp

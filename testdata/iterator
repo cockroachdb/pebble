@@ -961,14 +961,15 @@ next
 b:b
 .
 
-# The second set-bounds is a noop.
 iter seq=2
 set-bounds lower=b
 seek-ge a
 set-bounds lower=b
+seek-ge a
 ----
 .
 b:b
+.
 b:b
 
 iter seq=2
