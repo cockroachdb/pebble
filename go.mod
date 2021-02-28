@@ -7,7 +7,7 @@ require (
 	github.com/cockroachdb/redact v1.0.8
 	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd
 	github.com/ghemawat/stream v0.0.0-20171120220530-696b145b53b9
-	github.com/golang/snappy v0.0.2-0.20190904063534-ff6b7dc882cf
+	github.com/golang/snappy v0.0.3
 	github.com/klauspost/compress v1.11.7
 	github.com/kr/pretty v0.1.0
 	github.com/pmezard/go-difflib v1.0.0
