@@ -65,19 +65,23 @@ type IteratorMetrics struct {
 // Next, Prev) return without advancing if the iterator has an accumulated
 // error.
 type Iterator struct {
-	opts                IterOptions
-	cmp                 Compare
-	equal               Equal
-	merge               Merge
-	split               Split
-	iter                internalIterator
-	readState           *readState
-	err                 error
-	key                 []byte
-	keyBuf              []byte
-	value               []byte
-	valueBuf            []byte
-	valueCloser         io.Closer
+	opts      IterOptions
+	cmp       Compare
+	equal     Equal
+	merge     Merge
+	split     Split
+	iter      internalIterator
+	readState *readState
+	err       error
+	// When valid=true, key represents the current key, which is backed by
+	// keyBuf.
+	key         []byte
+	keyBuf      []byte
+	value       []byte
+	valueBuf    []byte
+	valueCloser io.Closer
+	// iterKey, iterValue reflect the latest position of iter, except when
+	// SetBounds is called. In that case, these are explicitly set to nil.
 	iterKey             *InternalKey
 	iterValue           []byte
 	alloc               *iterAlloc
@@ -94,7 +98,11 @@ type Iterator struct {
 	// sizeof this struct by 24 bytes.
 
 	valid bool
-	pos   iterPos
+	// The position of iter. When this is iterPos{Prev,Next} the iter has been
+	// moved past the current key-value, which can only happen if valid=true,
+	// i.e., there is something to return to the client for the current
+	// position.
+	pos iterPos
 	// Relates to the prefixOrFullSeekKey field above.
 	hasPrefix bool
 	// Used for deriving the value of SeekPrefixGE(..., trySeekUsingNext),
@@ -121,7 +129,7 @@ type readSampling struct {
 	forceReadSampling bool
 }
 
-func (i *Iterator) findNextEntry() bool {
+func (i *Iterator) findNextEntry() {
 	i.valid = false
 	i.pos = iterPosCurForward
 
@@ -130,7 +138,7 @@ func (i *Iterator) findNextEntry() bool {
 		i.err = i.valueCloser.Close()
 		i.valueCloser = nil
 		if i.err != nil {
-			return false
+			return
 		}
 	}
 
@@ -139,7 +147,7 @@ func (i *Iterator) findNextEntry() bool {
 
 		if i.hasPrefix {
 			if n := i.split(key.UserKey); !bytes.Equal(i.prefixOrFullSeekKey, key.UserKey[:n]) {
-				return false
+				return
 			}
 		}
 
@@ -153,7 +161,7 @@ func (i *Iterator) findNextEntry() bool {
 			i.key = i.keyBuf
 			i.value = i.iterValue
 			i.valid = true
-			return true
+			return
 
 		case InternalKeyKindMerge:
 			var valueMerger ValueMerger
@@ -163,16 +171,18 @@ func (i *Iterator) findNextEntry() bool {
 			}
 			if i.err == nil {
 				i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
+			} else {
+				// mergeNext may have been called, which can set i.valid=true.
+				i.valid = false
 			}
-			return i.err == nil
+			return
 
 		default:
 			i.err = base.CorruptionErrorf("pebble: invalid internal key kind: %d", errors.Safe(key.Kind()))
-			return false
+			i.valid = false
+			return
 		}
 	}
-
-	return false
 }
 
 func (i *Iterator) nextUserKey() {
@@ -270,7 +280,7 @@ func (i *Iterator) sampleRead() {
 	}
 }
 
-func (i *Iterator) findPrevEntry() bool {
+func (i *Iterator) findPrevEntry() {
 	i.valid = false
 	i.pos = iterPosCurReverse
 
@@ -279,7 +289,8 @@ func (i *Iterator) findPrevEntry() bool {
 		i.err = i.valueCloser.Close()
 		i.valueCloser = nil
 		if i.err != nil {
-			return false
+			i.valid = false
+			return
 		}
 	}
 
@@ -294,7 +305,10 @@ func (i *Iterator) findPrevEntry() bool {
 				if valueMerger != nil {
 					i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
 				}
-				return i.err == nil
+				if i.err != nil {
+					i.valid = false
+				}
+				return
 			}
 		}
 
@@ -326,7 +340,7 @@ func (i *Iterator) findPrevEntry() bool {
 				i.key = i.keyBuf
 				valueMerger, i.err = i.merge(i.key, i.iterValue)
 				if i.err != nil {
-					return false
+					return
 				}
 				i.valid = true
 			} else if valueMerger == nil {
@@ -335,12 +349,14 @@ func (i *Iterator) findPrevEntry() bool {
 					i.err = valueMerger.MergeNewer(i.iterValue)
 				}
 				if i.err != nil {
-					return false
+					i.valid = false
+					return
 				}
 			} else {
 				i.err = valueMerger.MergeNewer(i.iterValue)
 				if i.err != nil {
-					return false
+					i.valid = false
+					return
 				}
 			}
 			i.iterKey, i.iterValue = i.iter.Prev()
@@ -348,7 +364,8 @@ func (i *Iterator) findPrevEntry() bool {
 
 		default:
 			i.err = base.CorruptionErrorf("pebble: invalid internal key kind: %d", errors.Safe(key.Kind()))
-			return false
+			i.valid = false
+			return
 		}
 	}
 
@@ -358,10 +375,10 @@ func (i *Iterator) findPrevEntry() bool {
 		if valueMerger != nil {
 			i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
 		}
-		return i.err == nil
+		if i.err != nil {
+			i.valid = false
+		}
 	}
-
-	return false
 }
 
 func (i *Iterator) prevUserKey() {
@@ -464,14 +481,14 @@ func (i *Iterator) SeekGE(key []byte) bool {
 		}
 	}
 	i.iterKey, i.iterValue = i.iter.SeekGE(key)
-	valid := i.findNextEntry()
+	i.findNextEntry()
 	i.maybeSampleRead()
 	if i.Error() == nil && i.batch == nil {
 		// Prepare state for a future noop optimization.
 		i.prefixOrFullSeekKey = append(i.prefixOrFullSeekKey[:0], key...)
 		i.lastPositioningOp = seekGELastPositioningOp
 	}
-	return valid
+	return i.valid
 }
 
 // SeekPrefixGE moves the iterator to the first key/value pair whose key is
@@ -585,12 +602,12 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	}
 
 	i.iterKey, i.iterValue = i.iter.SeekPrefixGE(i.prefixOrFullSeekKey, key, trySeekUsingNext)
-	valid := i.findNextEntry()
+	i.findNextEntry()
 	i.maybeSampleRead()
 	if i.Error() == nil {
 		i.lastPositioningOp = seekPrefixGELastPositioningOp
 	}
-	return valid
+	return i.valid
 }
 
 // Deterministic disabling of the seek optimization. It uses the iterator
@@ -635,14 +652,14 @@ func (i *Iterator) SeekLT(key []byte) bool {
 		}
 	}
 	i.iterKey, i.iterValue = i.iter.SeekLT(key)
-	valid := i.findPrevEntry()
+	i.findPrevEntry()
 	i.maybeSampleRead()
 	if i.Error() == nil && i.batch == nil {
 		// Prepare state for a future noop optimization.
 		i.prefixOrFullSeekKey = append(i.prefixOrFullSeekKey[:0], key...)
 		i.lastPositioningOp = seekLTLastPositioningOp
 	}
-	return valid
+	return i.valid
 }
 
 // First moves the iterator the the first key/value pair. Returns true if the
@@ -656,9 +673,9 @@ func (i *Iterator) First() bool {
 	} else {
 		i.iterKey, i.iterValue = i.iter.First()
 	}
-	valid := i.findNextEntry()
+	i.findNextEntry()
 	i.maybeSampleRead()
-	return valid
+	return i.valid
 }
 
 // Last moves the iterator the the last key/value pair. Returns true if the
@@ -672,9 +689,9 @@ func (i *Iterator) Last() bool {
 	} else {
 		i.iterKey, i.iterValue = i.iter.Last()
 	}
-	valid := i.findPrevEntry()
+	i.findPrevEntry()
 	i.maybeSampleRead()
-	return valid
+	return i.valid
 }
 
 // Next moves the iterator to the next key/value pair. Returns true if the
@@ -723,9 +740,9 @@ func (i *Iterator) Next() bool {
 		i.nextUserKey()
 	case iterPosNext:
 	}
-	valid := i.findNextEntry()
+	i.findNextEntry()
 	i.maybeSampleRead()
-	return valid
+	return i.valid
 }
 
 // Prev moves the iterator to the previous key/value pair. Returns true if the
@@ -771,9 +788,9 @@ func (i *Iterator) Prev() bool {
 			i.prevUserKey()
 		}
 	}
-	valid := i.findPrevEntry()
+	i.findPrevEntry()
 	i.maybeSampleRead()
-	return valid
+	return i.valid
 }
 
 // Key returns the key of the current key/value pair, or nil if done. The
