@@ -29,6 +29,16 @@ const (
 	iterPosNext       iterPos = 1
 	iterPosPrev       iterPos = -1
 	iterPosCurReverse iterPos = -2
+
+	// For limited iteration. When the iterator is at iterPosCurForwardPaused
+	// - Next*() call should behave as if the internal iterator is already
+	//   at next (akin to iterPosNext).
+	// - Prev*() call should behave as if the internal iterator is at the
+	//   current key (akin to iterPosCurForward).
+	//
+	// Similar semantics apply to CurReversePaused.
+	iterPosCurForwardPaused iterPos = 2
+	iterPosCurReversePaused iterPos = -3
 )
 
 // Approximate gap in bytes between samples of data read during iteration.
@@ -73,8 +83,8 @@ type Iterator struct {
 	iter      internalIterator
 	readState *readState
 	err       error
-	// When valid=true, key represents the current key, which is backed by
-	// keyBuf.
+	// When iterValidityState=IterValid, key represents the current key, which
+	// is backed by keyBuf.
 	key         []byte
 	keyBuf      []byte
 	value       []byte
@@ -97,11 +107,14 @@ type Iterator struct {
 	// Keeping the bools here after all the 8 byte aligned fields shrinks the
 	// sizeof this struct by 24 bytes.
 
-	valid bool
+	// INVARIANT:
+	// iterValidityState==IterAtLimit <=>
+	//  pos==iterPosCurForwardPaused || pos==iterPosCurReversePaused
+	iterValidityState IterValidityState
 	// The position of iter. When this is iterPos{Prev,Next} the iter has been
-	// moved past the current key-value, which can only happen if valid=true,
-	// i.e., there is something to return to the client for the current
-	// position.
+	// moved past the current key-value, which can only happen if
+	// iterValidityState=IterValid, i.e., there is something to return to the
+	// client for the current position.
 	pos iterPos
 	// Relates to the prefixOrFullSeekKey field above.
 	hasPrefix bool
@@ -119,6 +132,36 @@ const (
 	seekLTLastPositioningOp
 )
 
+// Limited iteration mode. Not for use with prefix iteration.
+//
+// SeekGE, SeekLT, Prev, Next have WithLimit variants, that pause the iterator
+// at the limit in a best-effort manner. The client should behave correctly
+// even if the limits are ignored. These limits are not "deep", in that they
+// are not passed down to the underlying collection of internalIterators. This
+// is because the limits are transient, and apply only until the next
+// iteration call. They serve mainly as a way to bound the amount of work when
+// two (or more) Iterators are being coordinated at a higher level.
+//
+// In limited iteration mode:
+// - Avoid using Iterator.Valid if the last call was to a *WithLimit() method.
+//   The return value from the *WithLimit() method provides a more precise
+//   disposition.
+// - The limit is exclusive for forward and inclusive for reverse.
+
+// IterValidityState captures the state of the Iterator.
+type IterValidityState int8
+
+const (
+	// IterExhausted represents an Iterator that is exhausted.
+	IterExhausted IterValidityState = iota
+	// IterValid represents an Iterator that is valid.
+	IterValid
+	// IterAtLimit represents an Iterator that has a non-exhausted
+	// internalIterator, but has reached a limit without any key for the
+	// caller.
+	IterAtLimit
+)
+
 // readSampling stores variables used to sample a read to trigger a read
 // compaction
 type readSampling struct {
@@ -129,8 +172,8 @@ type readSampling struct {
 	forceReadSampling bool
 }
 
-func (i *Iterator) findNextEntry() {
-	i.valid = false
+func (i *Iterator) findNextEntry(limit []byte) {
+	i.iterValidityState = IterExhausted
 	i.pos = iterPosCurForward
 
 	// Close the closer for the current value if one was open.
@@ -150,6 +193,18 @@ func (i *Iterator) findNextEntry() {
 				return
 			}
 		}
+		// Compare with limit every time we start at a different user key.
+		// Note that given the best-effort contract of limit, we could avoid a
+		// comparison in the common case by doing this only after
+		// i.nextUserKey is called for the deletes below. However that makes
+		// the behavior non-deterministic (since the behavior will vary based
+		// on what has been compacted), which makes it hard to test with the
+		// metamorphic test. So we forego that performance optimization.
+		if limit != nil && i.cmp(limit, i.iterKey.UserKey) <= 0 {
+			i.iterValidityState = IterAtLimit
+			i.pos = iterPosCurForwardPaused
+			return
+		}
 
 		switch key.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
@@ -160,7 +215,7 @@ func (i *Iterator) findNextEntry() {
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
 			i.value = i.iterValue
-			i.valid = true
+			i.iterValidityState = IterValid
 			return
 
 		case InternalKeyKindMerge:
@@ -172,14 +227,15 @@ func (i *Iterator) findNextEntry() {
 			if i.err == nil {
 				i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
 			} else {
-				// mergeNext may have been called, which can set i.valid=true.
-				i.valid = false
+				// mergeNext may have been called, which can set
+				// i.iterValidityState=IterValid.
+				i.iterValidityState = IterExhausted
 			}
 			return
 
 		default:
 			i.err = base.CorruptionErrorf("pebble: invalid internal key kind: %d", errors.Safe(key.Kind()))
-			i.valid = false
+			i.iterValidityState = IterExhausted
 			return
 		}
 	}
@@ -190,7 +246,7 @@ func (i *Iterator) nextUserKey() {
 		return
 	}
 	done := i.iterKey.SeqNum() == 0
-	if !i.valid {
+	if i.iterValidityState != IterValid {
 		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
 		i.key = i.keyBuf
 	}
@@ -207,7 +263,16 @@ func (i *Iterator) nextUserKey() {
 }
 
 func (i *Iterator) maybeSampleRead() {
-	if !i.valid {
+	// This method is only called when a public method of Iterator is
+	// returning, and below we exclude the case were the iterator is paused at
+	// a limit. The effect of these choices is that keys that are deleted, but
+	// are encountered during iteration, are not accounted for in the read
+	// sampling and will not cause read driven compactions, even though we are
+	// incurring cost in iterating over them. And this issue is not limited to
+	// Iterator, which does not see the effect of range deletes, which may be
+	// causing iteration work in mergingIter. It is not clear at this time
+	// whether this is a deficiency worth addressing.
+	if i.iterValidityState != IterValid {
 		return
 	}
 	if i.readState == nil {
@@ -238,9 +303,11 @@ func (i *Iterator) sampleRead() {
 				l := manifest.LevelToInt(li.level)
 				if file := li.files.Current(); file != nil {
 					var containsKey bool
-					if i.pos == iterPosNext || i.pos == iterPosCurForward {
+					if i.pos == iterPosNext || i.pos == iterPosCurForward ||
+						i.pos == iterPosCurForwardPaused {
 						containsKey = i.cmp(file.Smallest.UserKey, i.key) <= 0
-					} else if i.pos == iterPosPrev || i.pos == iterPosCurReverse {
+					} else if i.pos == iterPosPrev || i.pos == iterPosCurReverse ||
+						i.pos == iterPosCurReversePaused {
 						containsKey = i.cmp(file.Largest.UserKey, i.key) >= 0
 					}
 					// Do nothing if the current key is not contained in file's
@@ -280,8 +347,8 @@ func (i *Iterator) sampleRead() {
 	}
 }
 
-func (i *Iterator) findPrevEntry() {
-	i.valid = false
+func (i *Iterator) findPrevEntry(limit []byte) {
+	i.iterValidityState = IterExhausted
 	i.pos = iterPosCurReverse
 
 	// Close the closer for the current value if one was open.
@@ -289,16 +356,28 @@ func (i *Iterator) findPrevEntry() {
 		i.err = i.valueCloser.Close()
 		i.valueCloser = nil
 		if i.err != nil {
-			i.valid = false
+			i.iterValidityState = IterExhausted
 			return
 		}
 	}
 
 	var valueMerger ValueMerger
+	firstLoopIter := true
+	// The code below compares with limit in multiple places. As documented in
+	// findNextEntry, this is being done to make the behavior of limit
+	// deterministic to allow for metamorphic testing. It is not required by
+	// the best-effort contract of limit.
 	for i.iterKey != nil {
 		key := *i.iterKey
 
-		if i.valid {
+		if firstLoopIter && limit != nil && i.cmp(limit, i.iterKey.UserKey) > 0 {
+			i.iterValidityState = IterAtLimit
+			i.pos = iterPosCurReversePaused
+			return
+		}
+		firstLoopIter = false
+
+		if i.iterValidityState == IterValid {
 			if !i.equal(key.UserKey, i.key) {
 				// We've iterated to the previous user key.
 				i.pos = iterPosPrev
@@ -306,7 +385,7 @@ func (i *Iterator) findPrevEntry() {
 					i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
 				}
 				if i.err != nil {
-					i.valid = false
+					i.iterValidityState = IterExhausted
 				}
 				return
 			}
@@ -315,9 +394,23 @@ func (i *Iterator) findPrevEntry() {
 		switch key.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			i.value = nil
-			i.valid = false
+			i.iterValidityState = IterExhausted
 			valueMerger = nil
 			i.iterKey, i.iterValue = i.iter.Prev()
+			// Compare with the limit. We could optimize by only checking when
+			// we step to the previous user key, but detecting that requires a
+			// comparison too. Note that this position may already passed a
+			// number of versions of this user key, but they are all deleted,
+			// so the fact that a subsequent Prev*() call will not see them is
+			// harmless. Also note that this is the only place in the loop,
+			// other than the firstLoopIter case above, where we could step
+			// to a different user key and start processing it for returning
+			// to the caller.
+			if limit != nil && i.iterKey != nil && i.cmp(limit, i.iterKey.UserKey) > 0 {
+				i.iterValidityState = IterAtLimit
+				i.pos = iterPosCurReversePaused
+				return
+			}
 			continue
 
 		case InternalKeyKindSet:
@@ -329,33 +422,33 @@ func (i *Iterator) findPrevEntry() {
 			// we just point i.value to the unsafe i.iter-owned value buffer.
 			i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
 			i.value = i.valueBuf
-			i.valid = true
+			i.iterValidityState = IterValid
 			i.iterKey, i.iterValue = i.iter.Prev()
 			valueMerger = nil
 			continue
 
 		case InternalKeyKindMerge:
-			if !i.valid {
+			if i.iterValidityState == IterExhausted {
 				i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 				i.key = i.keyBuf
 				valueMerger, i.err = i.merge(i.key, i.iterValue)
 				if i.err != nil {
 					return
 				}
-				i.valid = true
+				i.iterValidityState = IterValid
 			} else if valueMerger == nil {
 				valueMerger, i.err = i.merge(i.key, i.value)
 				if i.err == nil {
 					i.err = valueMerger.MergeNewer(i.iterValue)
 				}
 				if i.err != nil {
-					i.valid = false
+					i.iterValidityState = IterExhausted
 					return
 				}
 			} else {
 				i.err = valueMerger.MergeNewer(i.iterValue)
 				if i.err != nil {
-					i.valid = false
+					i.iterValidityState = IterExhausted
 					return
 				}
 			}
@@ -364,19 +457,19 @@ func (i *Iterator) findPrevEntry() {
 
 		default:
 			i.err = base.CorruptionErrorf("pebble: invalid internal key kind: %d", errors.Safe(key.Kind()))
-			i.valid = false
+			i.iterValidityState = IterExhausted
 			return
 		}
 	}
 
 	// i.iterKey == nil, so broke out of the preceding loop.
-	if i.valid {
+	if i.iterValidityState == IterValid {
 		i.pos = iterPosPrev
 		if valueMerger != nil {
 			i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
 		}
 		if i.err != nil {
-			i.valid = false
+			i.iterValidityState = IterExhausted
 		}
 	}
 }
@@ -385,7 +478,7 @@ func (i *Iterator) prevUserKey() {
 	if i.iterKey == nil {
 		return
 	}
-	if !i.valid {
+	if i.iterValidityState != IterValid {
 		// If we're going to compare against the prev key, we need to save the
 		// current key.
 		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
@@ -406,7 +499,7 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 	// Save the current key.
 	i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 	i.key = i.keyBuf
-	i.valid = true
+	i.iterValidityState = IterValid
 
 	// Loop looking for older values for this key and merging them.
 	for {
@@ -452,6 +545,11 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 // than or equal to the given key. Returns true if the iterator is pointing at
 // a valid entry and false otherwise.
 func (i *Iterator) SeekGE(key []byte) bool {
+	return i.SeekGEWithLimit(key, nil) == IterValid
+}
+
+// SeekGEWithLimit ...
+func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 	lastPositioningOp := i.lastPositioningOp
 	// Set it to unknown, since this operation may not succeed, in which case
 	// the SeekGE following this should not make any assumption about iterator
@@ -464,6 +562,7 @@ func (i *Iterator) SeekGE(key []byte) bool {
 	} else if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
 		key = upperBound
 	}
+	seekInternalIter := true
 	// The following noop optimization only applies when i.batch == nil, since
 	// an iterator over a batch is iterating over mutable data, that may have
 	// changed since the last seek.
@@ -473,22 +572,34 @@ func (i *Iterator) SeekGE(key []byte) bool {
 		// already positioned there, this is a noop. This can be helpful for
 		// sparse key spaces that have many deleted keys, where one can avoid
 		// the overhead of iterating past them again and again.
-		if cmp <= 0 && (!i.valid || i.cmp(key, i.key) <= 0) {
-			if !invariants.Enabled || !disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
-				i.lastPositioningOp = seekGELastPositioningOp
-				return i.valid
+		if cmp <= 0 {
+			if i.iterValidityState == IterExhausted ||
+				(i.iterValidityState == IterValid && i.cmp(key, i.key) <= 0 &&
+					(limit == nil || i.cmp(i.key, limit) < 0)) {
+				// Noop
+				if !invariants.Enabled || !disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
+					i.lastPositioningOp = seekGELastPositioningOp
+					return i.iterValidityState
+				}
+			}
+			if i.pos == iterPosCurForwardPaused && i.cmp(key, i.iterKey.UserKey) <= 0 {
+				// Have some work to do, but don't need to seek, and we can
+				// start doing findNextEntry from i.iterKey.
+				seekInternalIter = false
 			}
 		}
 	}
-	i.iterKey, i.iterValue = i.iter.SeekGE(key)
-	i.findNextEntry()
+	if seekInternalIter {
+		i.iterKey, i.iterValue = i.iter.SeekGE(key)
+	}
+	i.findNextEntry(limit)
 	i.maybeSampleRead()
 	if i.Error() == nil && i.batch == nil {
 		// Prepare state for a future noop optimization.
 		i.prefixOrFullSeekKey = append(i.prefixOrFullSeekKey[:0], key...)
 		i.lastPositioningOp = seekGELastPositioningOp
 	}
-	return i.valid
+	return i.iterValidityState
 }
 
 // SeekPrefixGE moves the iterator to the first key/value pair whose key is
@@ -602,12 +713,12 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	}
 
 	i.iterKey, i.iterValue = i.iter.SeekPrefixGE(i.prefixOrFullSeekKey, key, trySeekUsingNext)
-	i.findNextEntry()
+	i.findNextEntry(nil)
 	i.maybeSampleRead()
 	if i.Error() == nil {
 		i.lastPositioningOp = seekPrefixGELastPositioningOp
 	}
-	return i.valid
+	return i.iterValidityState == IterValid
 }
 
 // Deterministic disabling of the seek optimization. It uses the iterator
@@ -623,6 +734,11 @@ func disableSeekOpt(key []byte, ptr uintptr) bool {
 // the given key. Returns true if the iterator is pointing at a valid entry and
 // false otherwise.
 func (i *Iterator) SeekLT(key []byte) bool {
+	return i.SeekLTWithLimit(key, nil) == IterValid
+}
+
+// SeekLTWithLimit ...
+func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 	lastPositioningOp := i.lastPositioningOp
 	// Set it to unknown, since this operation may not succeed, in which case
 	// the SeekLT following this should not make any assumption about iterator
@@ -635,6 +751,7 @@ func (i *Iterator) SeekLT(key []byte) bool {
 	} else if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
 		key = lowerBound
 	}
+	seekInternalIter := true
 	// The following noop optimization only applies when i.batch == nil, since
 	// an iterator over a batch is iterating over mutable data, that may have
 	// changed since the last seek.
@@ -644,22 +761,36 @@ func (i *Iterator) SeekLT(key []byte) bool {
 		// already positioned there, this is a noop. This can be helpful for
 		// sparse key spaces that have many deleted keys, where one can avoid
 		// the overhead of iterating past them again and again.
-		if cmp <= 0 && (!i.valid || i.cmp(i.key, key) < 0) {
-			if !invariants.Enabled || !disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
-				i.lastPositioningOp = seekLTLastPositioningOp
-				return i.valid
+		if cmp <= 0 {
+			// NB: when pos != iterPosCurReversePaused, the invariant
+			// documented earlier implies that iterValidityState !=
+			// IterAtLimit.
+			if i.iterValidityState == IterExhausted ||
+				(i.iterValidityState == IterValid && i.cmp(i.key, key) < 0 &&
+					(limit == nil || i.cmp(limit, i.key) <= 0)) {
+				if !invariants.Enabled || !disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
+					i.lastPositioningOp = seekLTLastPositioningOp
+					return i.iterValidityState
+				}
+			}
+			if i.pos == iterPosCurReversePaused && i.cmp(i.iterKey.UserKey, key) < 0 {
+				// Have some work to do, but don't need to seek, and we can
+				// start doing findPrevEntry from i.iterKey.
+				seekInternalIter = false
 			}
 		}
 	}
-	i.iterKey, i.iterValue = i.iter.SeekLT(key)
-	i.findPrevEntry()
+	if seekInternalIter {
+		i.iterKey, i.iterValue = i.iter.SeekLT(key)
+	}
+	i.findPrevEntry(limit)
 	i.maybeSampleRead()
 	if i.Error() == nil && i.batch == nil {
 		// Prepare state for a future noop optimization.
 		i.prefixOrFullSeekKey = append(i.prefixOrFullSeekKey[:0], key...)
 		i.lastPositioningOp = seekLTLastPositioningOp
 	}
-	return i.valid
+	return i.iterValidityState
 }
 
 // First moves the iterator the the first key/value pair. Returns true if the
@@ -673,9 +804,9 @@ func (i *Iterator) First() bool {
 	} else {
 		i.iterKey, i.iterValue = i.iter.First()
 	}
-	i.findNextEntry()
+	i.findNextEntry(nil)
 	i.maybeSampleRead()
-	return i.valid
+	return i.iterValidityState == IterValid
 }
 
 // Last moves the iterator the the last key/value pair. Returns true if the
@@ -689,29 +820,41 @@ func (i *Iterator) Last() bool {
 	} else {
 		i.iterKey, i.iterValue = i.iter.Last()
 	}
-	i.findPrevEntry()
+	i.findPrevEntry(nil)
 	i.maybeSampleRead()
-	return i.valid
+	return i.iterValidityState == IterValid
 }
 
 // Next moves the iterator to the next key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) Next() bool {
+	return i.NextWithLimit(nil) == IterValid
+}
+
+// NextWithLimit ...
+func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
+	if limit != nil && i.hasPrefix {
+		i.err = errors.New("cannot use limit with prefix iteration")
+		i.iterValidityState = IterExhausted
+		return i.iterValidityState
+	}
 	if i.err != nil {
-		return false
+		return i.iterValidityState
 	}
 	i.lastPositioningOp = unknownLastPositionOp
 	switch i.pos {
 	case iterPosCurForward:
 		i.nextUserKey()
+	case iterPosCurForwardPaused:
+		// Already at the right place.
 	case iterPosCurReverse:
 		// Switching directions.
 		// Unless the iterator was exhausted, reverse iteration needs to
 		// position the iterator at iterPosPrev.
 		if i.iterKey != nil {
 			i.err = errors.New("switching from reverse to forward but iter is not at prev")
-			i.valid = false
-			return false
+			i.iterValidityState = IterExhausted
+			return i.iterValidityState
 		}
 		// We're positioned before the first key. Need to reposition to point to
 		// the first key.
@@ -720,12 +863,22 @@ func (i *Iterator) Next() bool {
 		} else {
 			i.iterKey, i.iterValue = i.iter.First()
 		}
+	case iterPosCurReversePaused:
+		// Switching directions.
+		// The iterator must not be exhausted since it paused.
+		if i.iterKey == nil {
+			i.err = errors.New("switching paused from reverse to forward but iter is exhausted")
+			i.iterValidityState = IterExhausted
+			return i.iterValidityState
+		}
+		i.nextUserKey()
 	case iterPosPrev:
-		// The underlying iterator is pointed to the previous key (this can only
-		// happen when switching iteration directions). We set i.valid to false
-		// here to force the calls to nextUserKey to save the current key i.iter is
-		// pointing at in order to determine when the next user-key is reached.
-		i.valid = false
+		// The underlying iterator is pointed to the previous key (this can
+		// only happen when switching iteration directions). We set
+		// i.iterValidityState to IterExhausted here to force the calls to
+		// nextUserKey to save the current key i.iter is pointing at in order
+		// to determine when the next user-key is reached.
+		i.iterValidityState = IterExhausted
 		if i.iterKey == nil {
 			// We're positioned before the first key. Need to reposition to point to
 			// the first key.
@@ -739,40 +892,52 @@ func (i *Iterator) Next() bool {
 		}
 		i.nextUserKey()
 	case iterPosNext:
+		// Already at the right place.
 	}
-	i.findNextEntry()
+	i.findNextEntry(limit)
 	i.maybeSampleRead()
-	return i.valid
+	return i.iterValidityState
 }
 
 // Prev moves the iterator to the previous key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) Prev() bool {
+	return i.PrevWithLimit(nil) == IterValid
+}
+
+// PrevWithLimit ...
+func (i *Iterator) PrevWithLimit(limit []byte) IterValidityState {
 	if i.err != nil {
-		return false
+		return i.iterValidityState
 	}
 	i.lastPositioningOp = unknownLastPositionOp
 	if i.hasPrefix {
 		i.err = errReversePrefixIteration
-		return false
+		i.iterValidityState = IterExhausted
+		return i.iterValidityState
 	}
 	switch i.pos {
 	case iterPosCurForward:
 		// Switching directions, and will handle this below.
+	case iterPosCurForwardPaused:
+		// Switching directions, and will handle this below.
 	case iterPosCurReverse:
 		i.prevUserKey()
+	case iterPosCurReversePaused:
+		// Already at the right place.
 	case iterPosNext:
 		// The underlying iterator is pointed to the next key (this can only happen
 		// when switching iteration directions). We will handle this below.
 	case iterPosPrev:
+		// Already at the right place.
 	}
-	if i.pos == iterPosCurForward || i.pos == iterPosNext {
+	if i.pos == iterPosCurForward || i.pos == iterPosNext || i.pos == iterPosCurForwardPaused {
 		stepAgain := i.pos == iterPosNext
 		// Switching direction.
-		// We set i.valid to false here to force the calls to prevUserKey to
-		// save the current key i.iter is pointing at in order to determine
-		// when the prev user-key is reached.
-		i.valid = false
+		// We set i.iterValidityState to IterExhausted here to force the calls
+		// to prevUserKey to save the current key i.iter is pointing at in
+		// order to determine when the prev user-key is reached.
+		i.iterValidityState = IterExhausted
 		if i.iterKey == nil {
 			// We're positioned after the last key. Need to reposition to point to
 			// the last key.
@@ -788,9 +953,9 @@ func (i *Iterator) Prev() bool {
 			i.prevUserKey()
 		}
 	}
-	i.findPrevEntry()
+	i.findPrevEntry(limit)
 	i.maybeSampleRead()
-	return i.valid
+	return i.iterValidityState
 }
 
 // Key returns the key of the current key/value pair, or nil if done. The
@@ -810,7 +975,7 @@ func (i *Iterator) Value() []byte {
 // Valid returns true if the iterator is positioned at a valid key/value pair
 // and false otherwise.
 func (i *Iterator) Valid() bool {
-	return i.valid
+	return i.iterValidityState == IterValid
 }
 
 // Error returns any accumulated error.
@@ -903,12 +1068,12 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 	// to one of the values. But it results in more intuitive behavior in
 	// tests, which do not always reposition.
 	switch i.pos {
-	case iterPosCurForward, iterPosNext:
+	case iterPosCurForward, iterPosNext, iterPosCurForwardPaused:
 		i.pos = iterPosCurForward
-	case iterPosCurReverse, iterPosPrev:
+	case iterPosCurReverse, iterPosPrev, iterPosCurReversePaused:
 		i.pos = iterPosCurReverse
 	}
-	i.valid = false
+	i.iterValidityState = IterExhausted
 
 	i.opts.LowerBound = lower
 	i.opts.UpperBound = upper

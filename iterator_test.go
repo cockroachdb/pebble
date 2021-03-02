@@ -1072,3 +1072,86 @@ func BenchmarkIteratorSeqSeekPrefixGENotFound(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkIteratorSeqSeekGEWithBounds is analogous to
+// BenchmarkMergingIterSeqSeekGEWithBounds, except for using an Iterator,
+// which causes it to exercise the end-to-end code path.
+func BenchmarkIteratorSeqSeekGEWithBounds(b *testing.B) {
+	const blockSize = 32 << 10
+	const restartInterval = 16
+	const levelCount = 5
+	readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
+		b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false)
+	m := buildMergingIter(readers, levelSlices)
+	iter := Iterator{
+		cmp:   DefaultComparer.Compare,
+		equal: DefaultComparer.Equal,
+		split: DefaultComparer.Split,
+		merge: DefaultMerger.Merge,
+		iter:  m,
+	}
+	keyCount := len(keys)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		pos := i % (keyCount - 1)
+		iter.SetBounds(keys[pos], keys[pos+1])
+		// SeekGE will return keys[pos].
+		valid := iter.SeekGE(keys[pos])
+		for valid {
+			valid = iter.Next()
+		}
+		if iter.Error() != nil {
+			b.Fatalf(iter.Error().Error())
+		}
+	}
+	iter.Close()
+	for i := range readers {
+		for j := range readers[i] {
+			readers[i][j].Close()
+		}
+	}
+}
+
+func BenchmarkIteratorSeekGENoop(b *testing.B) {
+	const blockSize = 32 << 10
+	const restartInterval = 16
+	const levelCount = 5
+	const keyOffset = 10000
+	readers, levelSlices, _ := buildLevelsForMergingIterSeqSeek(
+		b, blockSize, restartInterval, levelCount, keyOffset, false)
+	var keys [][]byte
+	for i := 0; i < keyOffset; i++ {
+		keys = append(keys, []byte(fmt.Sprintf("%08d", i)))
+	}
+	for _, withLimit := range []bool{false, true} {
+		b.Run(fmt.Sprintf("withLimit=%t", withLimit), func(b *testing.B) {
+			m := buildMergingIter(readers, levelSlices)
+			iter := Iterator{
+				cmp:   DefaultComparer.Compare,
+				equal: DefaultComparer.Equal,
+				split: DefaultComparer.Split,
+				merge: DefaultMerger.Merge,
+				iter:  m,
+			}
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				pos := i % (len(keys) - 1)
+				if withLimit {
+					if iter.SeekGEWithLimit(keys[pos], keys[pos+1]) != IterAtLimit {
+						b.Fatal("should be at limit")
+					}
+				} else {
+					if !iter.SeekGE(keys[pos]) {
+						b.Fatal("should be valid")
+					}
+				}
+			}
+			iter.Close()
+		})
+	}
+	for i := range readers {
+		for j := range readers[i] {
+			readers[i][j].Close()
+		}
+	}
+}
