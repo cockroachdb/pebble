@@ -83,13 +83,13 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *newSnapshotOp:
 		return nil, &t.snapID, nil
 	case *iterNextOp:
-		return &t.iterID, nil, nil
+		return &t.iterID, nil, []interface{}{&t.limit}
 	case *iterPrevOp:
-		return &t.iterID, nil, nil
+		return &t.iterID, nil, []interface{}{&t.limit}
 	case *iterSeekLTOp:
-		return &t.iterID, nil, []interface{}{&t.key}
+		return &t.iterID, nil, []interface{}{&t.key, &t.limit}
 	case *iterSeekGEOp:
-		return &t.iterID, nil, []interface{}{&t.key}
+		return &t.iterID, nil, []interface{}{&t.key, &t.limit}
 	case *iterSeekPrefixGEOp:
 		return &t.iterID, nil, []interface{}{&t.key}
 	case *setOp:

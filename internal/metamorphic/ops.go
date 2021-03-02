@@ -561,24 +561,49 @@ func (o *iterSetBoundsOp) String() string {
 	return fmt.Sprintf("%s.SetBounds(%q, %q)", o.iterID, o.lower, o.upper)
 }
 
-// iterSeekGEOp models an Iterator.SeekGE operation.
+// iterSeekGEOp models an Iterator.SeekGE[WithLimit] operation.
 type iterSeekGEOp struct {
 	iterID objID
 	key    []byte
+	limit  []byte
+}
+
+func validBoolToStr(valid bool) string {
+	return fmt.Sprintf("%t", valid)
+}
+
+func validityStateToStr(validity pebble.IterValidityState) (bool, string) {
+	// We can't distinguish between IterExhausted and IterAtLimit in a
+	// deterministic manner.
+	switch validity {
+	case pebble.IterExhausted, pebble.IterAtLimit:
+		return false, "invalid"
+	case pebble.IterValid:
+		return true, "valid"
+	default:
+		panic("unknown validity")
+	}
 }
 
 func (o *iterSeekGEOp) run(t *test, h *history) {
 	i := t.getIter(o.iterID)
-	valid := i.SeekGE(o.key)
-	if valid {
-		h.Recordf("%s // [%t,%q,%q] %v", o, valid, i.Key(), i.Value(), i.Error())
+	var valid bool
+	var validStr string
+	if o.limit == nil {
+		valid = i.SeekGE(o.key)
+		validStr = validBoolToStr(valid)
 	} else {
-		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		valid, validStr = validityStateToStr(i.SeekGEWithLimit(o.key, o.limit))
+	}
+	if valid {
+		h.Recordf("%s // [%s,%q,%q] %v", o, validStr, i.Key(), i.Value(), i.Error())
+	} else {
+		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
 	}
 }
 
 func (o *iterSeekGEOp) String() string {
-	return fmt.Sprintf("%s.SeekGE(%q)", o.iterID, o.key)
+	return fmt.Sprintf("%s.SeekGE(%q, %q)", o.iterID, o.key, o.limit)
 }
 
 // iterSeekPrefixGEOp models an Iterator.SeekPrefixGE operation.
@@ -601,24 +626,32 @@ func (o *iterSeekPrefixGEOp) String() string {
 	return fmt.Sprintf("%s.SeekPrefixGE(%q)", o.iterID, o.key)
 }
 
-// iterSeekLTOp models an Iterator.SeekLT operation.
+// iterSeekLTOp models an Iterator.SeekLT[WithLimit] operation.
 type iterSeekLTOp struct {
 	iterID objID
 	key    []byte
+	limit  []byte
 }
 
 func (o *iterSeekLTOp) run(t *test, h *history) {
 	i := t.getIter(o.iterID)
-	valid := i.SeekLT(o.key)
-	if valid {
-		h.Recordf("%s // [%t,%q,%q] %v", o, valid, i.Key(), i.Value(), i.Error())
+	var valid bool
+	var validStr string
+	if o.limit == nil {
+		valid = i.SeekLT(o.key)
+		validStr = validBoolToStr(valid)
 	} else {
-		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		valid, validStr = validityStateToStr(i.SeekLTWithLimit(o.key, o.limit))
+	}
+	if valid {
+		h.Recordf("%s // [%s,%q,%q] %v", o, validStr, i.Key(), i.Value(), i.Error())
+	} else {
+		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
 	}
 }
 
 func (o *iterSeekLTOp) String() string {
-	return fmt.Sprintf("%s.SeekLT(%q)", o.iterID, o.key)
+	return fmt.Sprintf("%s.SeekLT(%q, %q)", o.iterID, o.key, o.limit)
 }
 
 // iterFirstOp models an Iterator.First operation.
@@ -659,42 +692,58 @@ func (o *iterLastOp) String() string {
 	return fmt.Sprintf("%s.Last()", o.iterID)
 }
 
-// iterNextOp models an Iterator.Next operation.
+// iterNextOp models an Iterator.Next[WithLimit] operation.
 type iterNextOp struct {
 	iterID objID
+	limit  []byte
 }
 
 func (o *iterNextOp) run(t *test, h *history) {
 	i := t.getIter(o.iterID)
-	valid := i.Next()
-	if valid {
-		h.Recordf("%s // [%t,%q,%q] %v", o, valid, i.Key(), i.Value(), i.Error())
+	var valid bool
+	var validStr string
+	if o.limit == nil {
+		valid = i.Next()
+		validStr = validBoolToStr(valid)
 	} else {
-		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		valid, validStr = validityStateToStr(i.NextWithLimit(o.limit))
+	}
+	if valid {
+		h.Recordf("%s // [%s,%q,%q] %v", o, validStr, i.Key(), i.Value(), i.Error())
+	} else {
+		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
 	}
 }
 
 func (o *iterNextOp) String() string {
-	return fmt.Sprintf("%s.Next()", o.iterID)
+	return fmt.Sprintf("%s.Next(%q)", o.iterID, o.limit)
 }
 
-// iterPrevOp models an Iterator.Prev operation.
+// iterPrevOp models an Iterator.Prev[WithLimit] operation.
 type iterPrevOp struct {
 	iterID objID
+	limit  []byte
 }
 
 func (o *iterPrevOp) run(t *test, h *history) {
 	i := t.getIter(o.iterID)
-	valid := i.Prev()
-	if valid {
-		h.Recordf("%s // [%t,%q,%q] %v", o, valid, i.Key(), i.Value(), i.Error())
+	var valid bool
+	var validStr string
+	if o.limit == nil {
+		valid = i.Prev()
+		validStr = validBoolToStr(valid)
 	} else {
-		h.Recordf("%s // [%t] %v", o, valid, i.Error())
+		valid, validStr = validityStateToStr(i.PrevWithLimit(o.limit))
+	}
+	if valid {
+		h.Recordf("%s // [%s,%q,%q] %v", o, validStr, i.Key(), i.Value(), i.Error())
+	} else {
+		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
 	}
 }
 
 func (o *iterPrevOp) String() string {
-	return fmt.Sprintf("%s.Prev()", o.iterID)
+	return fmt.Sprintf("%s.Prev(%q)", o.iterID, o.limit)
 }
 
 // newSnapshotOp models a DB.NewSnapshot operation.
