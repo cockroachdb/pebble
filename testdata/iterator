@@ -1284,3 +1284,116 @@ iter seq=4
 first
 ----
 .
+
+# Exercise iteration with limits, when there are no deletes.
+define
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+d.SET.1:d
+----
+
+iter seq=2
+seek-ge-limit a b
+next-limit b
+prev-limit a
+next-limit b
+next-limit b
+seek-lt-limit d d
+prev-limit d
+next-limit e
+prev-limit d
+prev-limit c
+prev-limit b
+prev-limit a
+prev-limit a
+next-limit a
+next-limit b
+----
+a:a valid
+. at-limit
+a:a valid
+. at-limit
+. at-limit
+. at-limit
+. at-limit
+d:d valid
+. at-limit
+c:c valid
+b:b valid
+a:a valid
+. exhausted
+. at-limit
+a:a valid
+
+# Exercise iteration with limits when we have deletes.
+
+define
+a.SET.1:a
+b.DEL.3:
+b.SET.2:b
+c.DEL.3:
+c.SET.2:c
+d.SET.1:d
+----
+
+iter seq=4
+seek-ge-limit a b
+next-limit b
+prev-limit a
+prev-limit a
+next-limit b
+next-limit b
+next-limit b
+prev-limit a
+next-limit c
+prev-limit b
+next-limit c
+next-limit d
+next-limit e
+next-limit e
+prev-limit d
+next-limit e
+----
+a:a valid
+. at-limit
+a:a valid
+. exhausted
+a:a valid
+. at-limit
+. at-limit
+a:a valid
+. at-limit
+. at-limit
+. at-limit
+. at-limit
+d:d valid
+. exhausted
+d:d valid
+. exhausted
+
+iter seq=4
+seek-ge-limit b d
+next-limit d
+prev-limit b
+next-limit e
+----
+. at-limit
+. at-limit
+. at-limit
+d:d valid
+
+iter seq=4
+seek-lt-limit d c
+prev-limit c
+prev-limit b
+prev-limit a
+prev-limit a
+next-limit b
+----
+. at-limit
+. at-limit
+. at-limit
+a:a valid
+. exhausted
+a:a valid

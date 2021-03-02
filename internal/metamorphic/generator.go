@@ -93,35 +93,39 @@ func generate(rng *rand.Rand, count uint64, cfg config) []op {
 	g := newGenerator(rng)
 
 	generators := []func(){
-		batchAbort:         g.batchAbort,
-		batchCommit:        g.batchCommit,
-		dbCheckpoint:       g.dbCheckpoint,
-		dbCompact:          g.dbCompact,
-		dbFlush:            g.dbFlush,
-		dbRestart:          g.dbRestart,
-		iterClose:          g.iterClose,
-		iterFirst:          g.iterFirst,
-		iterLast:           g.iterLast,
-		iterNext:           g.iterNext,
-		iterPrev:           g.iterPrev,
-		iterSeekGE:         g.iterSeekGE,
-		iterSeekLT:         g.iterSeekLT,
-		iterSeekPrefixGE:   g.iterSeekPrefixGE,
-		iterSetBounds:      g.iterSetBounds,
-		newBatch:           g.newBatch,
-		newIndexedBatch:    g.newIndexedBatch,
-		newIter:            g.newIter,
-		newIterUsingClone:  g.newIterUsingClone,
-		newSnapshot:        g.newSnapshot,
-		readerGet:          g.readerGet,
-		snapshotClose:      g.snapshotClose,
-		writerApply:        g.writerApply,
-		writerDelete:       g.writerDelete,
-		writerDeleteRange:  g.writerDeleteRange,
-		writerIngest:       g.writerIngest,
-		writerMerge:        g.writerMerge,
-		writerSet:          g.writerSet,
-		writerSingleDelete: g.writerSingleDelete,
+		batchAbort:          g.batchAbort,
+		batchCommit:         g.batchCommit,
+		dbCheckpoint:        g.dbCheckpoint,
+		dbCompact:           g.dbCompact,
+		dbFlush:             g.dbFlush,
+		dbRestart:           g.dbRestart,
+		iterClose:           g.iterClose,
+		iterFirst:           g.iterFirst,
+		iterLast:            g.iterLast,
+		iterNext:            g.iterNext,
+		iterNextWithLimit:   g.iterNextWithLimit,
+		iterPrev:            g.iterPrev,
+		iterPrevWithLimit:   g.iterPrevWithLimit,
+		iterSeekGE:          g.iterSeekGE,
+		iterSeekGEWithLimit: g.iterSeekGEWithLimit,
+		iterSeekLT:          g.iterSeekLT,
+		iterSeekLTWithLimit: g.iterSeekLTWithLimit,
+		iterSeekPrefixGE:    g.iterSeekPrefixGE,
+		iterSetBounds:       g.iterSetBounds,
+		newBatch:            g.newBatch,
+		newIndexedBatch:     g.newIndexedBatch,
+		newIter:             g.newIter,
+		newIterUsingClone:   g.newIterUsingClone,
+		newSnapshot:         g.newSnapshot,
+		readerGet:           g.readerGet,
+		snapshotClose:       g.snapshotClose,
+		writerApply:         g.writerApply,
+		writerDelete:        g.writerDelete,
+		writerDeleteRange:   g.writerDeleteRange,
+		writerIngest:        g.writerIngest,
+		writerMerge:         g.writerMerge,
+		writerSet:           g.writerSet,
+		writerSingleDelete:  g.writerSingleDelete,
 	}
 
 	// TPCC-style deck of cards randomization. Every time the end of the deck is
@@ -548,6 +552,22 @@ func (g *generator) iterSeekGE() {
 	})
 }
 
+func (g *generator) iterSeekGEWithLimit() {
+	if len(g.liveIters) == 0 {
+		return
+	}
+	// 0.1% new keys
+	key, limit := g.randKey(0.001), g.randKey(0.001)
+	if bytes.Compare(key, limit) > 0 {
+		key, limit = limit, key
+	}
+	g.add(&iterSeekGEOp{
+		iterID: g.liveIters.rand(g.rng),
+		key:    key,
+		limit:  limit,
+	})
+}
+
 func (g *generator) iterSeekPrefixGE() {
 	if len(g.liveIters) == 0 {
 		return
@@ -567,6 +587,22 @@ func (g *generator) iterSeekLT() {
 	g.add(&iterSeekLTOp{
 		iterID: g.liveIters.rand(g.rng),
 		key:    g.randKey(0.001), // 0.1% new keys
+	})
+}
+
+func (g *generator) iterSeekLTWithLimit() {
+	if len(g.liveIters) == 0 {
+		return
+	}
+	// 0.1% new keys
+	key, limit := g.randKey(0.001), g.randKey(0.001)
+	if bytes.Compare(limit, key) > 0 {
+		key, limit = limit, key
+	}
+	g.add(&iterSeekLTOp{
+		iterID: g.liveIters.rand(g.rng),
+		key:    key,
+		limit:  limit,
 	})
 }
 
@@ -600,6 +636,17 @@ func (g *generator) iterNext() {
 	})
 }
 
+func (g *generator) iterNextWithLimit() {
+	if len(g.liveIters) == 0 {
+		return
+	}
+
+	g.add(&iterNextOp{
+		iterID: g.liveIters.rand(g.rng),
+		limit:  g.randKey(0.001), // 0.1% new keys
+	})
+}
+
 func (g *generator) iterPrev() {
 	if len(g.liveIters) == 0 {
 		return
@@ -607,6 +654,17 @@ func (g *generator) iterPrev() {
 
 	g.add(&iterPrevOp{
 		iterID: g.liveIters.rand(g.rng),
+	})
+}
+
+func (g *generator) iterPrevWithLimit() {
+	if len(g.liveIters) == 0 {
+		return
+	}
+
+	g.add(&iterPrevOp{
+		iterID: g.liveIters.rand(g.rng),
+		limit:  g.randKey(0.001), // 0.1% new keys
 	})
 }
 

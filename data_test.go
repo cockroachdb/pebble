@@ -73,7 +73,9 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 		if len(parts) == 0 {
 			continue
 		}
+		printValidityState := false
 		var valid bool
+		var validityState IterValidityState
 		switch parts[0] {
 		case "seek-ge":
 			if len(parts) != 2 {
@@ -90,6 +92,32 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 				return "seek-lt <key>\n"
 			}
 			valid = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+		case "seek-ge-limit":
+			if len(parts) != 3 {
+				return "seek-ge-limit <key> <limit>\n"
+			}
+			validityState = iter.SeekGEWithLimit(
+				[]byte(strings.TrimSpace(parts[1])), []byte(strings.TrimSpace(parts[2])))
+			printValidityState = true
+		case "seek-lt-limit":
+			if len(parts) != 3 {
+				return "seek-lt-limit <key> <limit>\n"
+			}
+			validityState = iter.SeekLTWithLimit(
+				[]byte(strings.TrimSpace(parts[1])), []byte(strings.TrimSpace(parts[2])))
+			printValidityState = true
+		case "next-limit":
+			if len(parts) != 2 {
+				return "next-limit <limit>\n"
+			}
+			validityState = iter.NextWithLimit([]byte(strings.TrimSpace(parts[1])))
+			printValidityState = true
+		case "prev-limit":
+			if len(parts) != 2 {
+				return "prev-limit <limit>\n"
+			}
+			validityState = iter.PrevWithLimit([]byte(strings.TrimSpace(parts[1])))
+			printValidityState = true
 		case "first":
 			valid = iter.First()
 		case "last":
@@ -130,14 +158,26 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}
+		var validityStateStr string
+		if printValidityState {
+			valid = validityState == IterValid
+			switch validityState {
+			case IterExhausted:
+				validityStateStr = " exhausted"
+			case IterValid:
+				validityStateStr = " valid"
+			case IterAtLimit:
+				validityStateStr = " at-limit"
+			}
+		}
 		if err := iter.Error(); err != nil {
 			fmt.Fprintf(&b, "err=%v\n", err)
 		} else if valid != iter.Valid() {
 			fmt.Fprintf(&b, "mismatched valid states: %t vs %t\n", valid, iter.Valid())
 		} else if valid {
-			fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
+			fmt.Fprintf(&b, "%s:%s%s\n", iter.Key(), iter.Value(), validityStateStr)
 		} else {
-			fmt.Fprintf(&b, ".\n")
+			fmt.Fprintf(&b, ".%s\n", validityStateStr)
 		}
 	}
 	return b.String()
