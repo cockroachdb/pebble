@@ -244,7 +244,7 @@ func TestSnapshotRangeDeletionStress(t *testing.T) {
 	// Check that all the snapshots contain the expected number of keys.
 	// Iterating over so many keys is slow, so do it in parallel.
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, runtime.NumCPU())
+	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
 	for r := range snapshots {
 		wg.Add(1)
 		sem <- struct{}{}
