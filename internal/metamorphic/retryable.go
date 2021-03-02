@@ -81,10 +81,22 @@ func (i *retryableIter) Next() bool {
 	return valid
 }
 
+func (i *retryableIter) NextWithLimit(limit []byte) pebble.IterValidityState {
+	var validity pebble.IterValidityState
+	i.withRetry(func() { validity = i.iter.NextWithLimit(limit) })
+	return validity
+}
+
 func (i *retryableIter) Prev() bool {
 	var valid bool
 	i.withRetry(func() { valid = i.iter.Prev() })
 	return valid
+}
+
+func (i *retryableIter) PrevWithLimit(limit []byte) pebble.IterValidityState {
+	var validity pebble.IterValidityState
+	i.withRetry(func() { validity = i.iter.PrevWithLimit(limit) })
+	return validity
 }
 
 func (i *retryableIter) SeekGE(key []byte) bool {
@@ -93,10 +105,22 @@ func (i *retryableIter) SeekGE(key []byte) bool {
 	return valid
 }
 
+func (i *retryableIter) SeekGEWithLimit(key []byte, limit []byte) pebble.IterValidityState {
+	var validity pebble.IterValidityState
+	i.withRetry(func() { validity = i.iter.SeekGEWithLimit(key, limit) })
+	return validity
+}
+
 func (i *retryableIter) SeekLT(key []byte) bool {
 	var valid bool
 	i.withRetry(func() { valid = i.iter.SeekLT(key) })
 	return valid
+}
+
+func (i *retryableIter) SeekLTWithLimit(key []byte, limit []byte) pebble.IterValidityState {
+	var validity pebble.IterValidityState
+	i.withRetry(func() { validity = i.iter.SeekLTWithLimit(key, limit) })
+	return validity
 }
 
 func (i *retryableIter) SeekPrefixGE(key []byte) bool {

@@ -42,7 +42,14 @@ var (
 		"the directory storing test state")
 	disk = flag.Bool("disk", false,
 		"whether to use an in-mem DB or on-disk (in-mem is significantly faster)")
-	// TODO: default error rate to a non-zero value
+	// TODO: default error rate to a non-zero value. Currently, retrying is
+	// non-deterministic because of the Ierator.*WithLimit() methods since
+	// they may say that the Iterator is not valid, but be positioned at a
+	// certain key that can be returned in the future if the limit is changed.
+	// Since that key is hidden from clients of Iterator, the retryableIter
+	// using SeekGE will not necessarily position the Iterator that saw an
+	// injected error at the same place as an Iterator that did not see that
+	// error.
 	errorRate = flag.Float64("error-rate", 0.0,
 		"rate of errors injected into filesystem operations (0 ≤ r < 1)")
 	failRE = flag.String("fail", "",

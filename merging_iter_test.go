@@ -72,19 +72,19 @@ func TestMergingIterNextPrev(t *testing.T) {
 	// iterators differently. This data must match the definition in
 	// testdata/internal_iter_next.
 	iterCases := [][]string{
-		[]string{
+		{
 			"a.SET.2:2 a.SET.1:1 b.SET.2:2 b.SET.1:1 c.SET.2:2 c.SET.1:1",
 		},
-		[]string{
+		{
 			"a.SET.2:2 b.SET.2:2 c.SET.2:2",
 			"a.SET.1:1 b.SET.1:1 c.SET.1:1",
 		},
-		[]string{
+		{
 			"a.SET.2:2 b.SET.2:2",
 			"a.SET.1:1 b.SET.1:1",
 			"c.SET.2:2 c.SET.1:1",
 		},
-		[]string{
+		{
 			"a.SET.2:2",
 			"a.SET.1:1",
 			"b.SET.2:2",
@@ -437,7 +437,7 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 // levels. File 1 in other levels is similar to File 1 in the aforementioned level
 // since it is only for stepping into.
 func buildLevelsForMergingIterSeqSeek(
-	b *testing.B, blockSize, restartInterval, levelCount int,
+	b *testing.B, blockSize, restartInterval, levelCount int, keyOffset int,
 ) ([][]*sstable.Reader, []manifest.LevelSlice, [][]byte) {
 	mem := vfs.NewMem()
 	files := make([][]vfs.File, levelCount)
@@ -467,7 +467,7 @@ func buildLevelsForMergingIterSeqSeek(
 	const targetSize = 2 << 20
 	w := writers[0][0]
 	for ; w.EstimatedSize() < targetSize; i++ {
-		key := []byte(fmt.Sprintf("%08d", i))
+		key := []byte(fmt.Sprintf("%08d", i+keyOffset))
 		keys = append(keys, key)
 		ikey := base.MakeInternalKey(key, 0, InternalKeyKindSet)
 		w.Add(ikey, nil)
@@ -478,7 +478,7 @@ func buildLevelsForMergingIterSeqSeek(
 			writers[j][0].Add(ikey, nil)
 		}
 	}
-	lastKey := []byte(fmt.Sprintf("%08d", i))
+	lastKey := []byte(fmt.Sprintf("%08d", i+keyOffset))
 	keys = append(keys, lastKey)
 	for j := 0; j < len(files); j++ {
 		lastIKey := base.MakeInternalKey(lastKey, uint64(j), InternalKeyKindSet)
@@ -571,7 +571,7 @@ func BenchmarkMergingIterSeqSeekGEWithBounds(b *testing.B) {
 		b.Run(fmt.Sprintf("levelCount=%d", levelCount),
 			func(b *testing.B) {
 				readers, levelSlices, keys :=
-					buildLevelsForMergingIterSeqSeek(b, blockSize, restartInterval, levelCount)
+					buildLevelsForMergingIterSeqSeek(b, blockSize, restartInterval, levelCount, 0 /* keyOffset */)
 				m := buildMergingIter(readers, levelSlices)
 				keyCount := len(keys)
 				b.ResetTimer()
@@ -599,7 +599,7 @@ func BenchmarkMergingIterSeqSeekPrefixGE(b *testing.B) {
 	const restartInterval = 16
 	const levelCount = 5
 	readers, levelSlices, keys :=
-		buildLevelsForMergingIterSeqSeek(b, blockSize, restartInterval, levelCount)
+		buildLevelsForMergingIterSeqSeek(b, blockSize, restartInterval, levelCount, 0 /* keyOffset */)
 
 	for _, skip := range []int{1, 2, 4, 8, 16} {
 		for _, useNext := range []bool{false, true} {
