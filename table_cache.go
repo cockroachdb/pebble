@@ -38,7 +38,7 @@ func (c *tableCache) init(cacheID uint64, dirname string, fs vfs.FS, opts *Optio
 	c.cache = opts.Cache
 	c.cache.Ref()
 
-	c.shards = make([]*tableCacheShard, runtime.NumCPU())
+	c.shards = make([]*tableCacheShard, runtime.GOMAXPROCS(0))
 	for i := range c.shards {
 		c.shards[i] = &tableCacheShard{}
 		c.shards[i].init(cacheID, dirname, fs, opts, size/len(c.shards))
