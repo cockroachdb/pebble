@@ -863,6 +863,11 @@ func (i *Iterator) Close() error {
 		} else {
 			alloc.keyBuf = i.keyBuf
 		}
+		if cap(i.prefixOrFullSeekKey) >= maxKeyBufCacheSize {
+			alloc.prefixOrFullSeekKey = nil
+		} else {
+			alloc.prefixOrFullSeekKey = i.prefixOrFullSeekKey
+		}
 		*i = Iterator{}
 		iterAllocPool.Put(alloc)
 	}
