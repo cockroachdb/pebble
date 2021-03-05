@@ -956,18 +956,19 @@ func (i *Iterator) Clone() (*Iterator, error) {
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
 	*dbi = Iterator{
-		opts:      i.opts,
-		alloc:     buf,
-		cmp:       i.cmp,
-		equal:     i.equal,
-		iter:      &buf.merging,
-		merge:     i.merge,
-		split:     i.split,
-		readState: readState,
-		keyBuf:    buf.keyBuf,
-		batch:     i.batch,
-		newIters:  i.newIters,
-		seqNum:    i.seqNum,
+		opts:                i.opts,
+		alloc:               buf,
+		cmp:                 i.cmp,
+		equal:               i.equal,
+		iter:                &buf.merging,
+		merge:               i.merge,
+		split:               i.split,
+		readState:           readState,
+		keyBuf:              buf.keyBuf,
+		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
+		batch:               i.batch,
+		newIters:            i.newIters,
+		seqNum:              i.seqNum,
 	}
 	return finishInitializingIter(buf), nil
 }
