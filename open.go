@@ -66,17 +66,6 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		closedCh:            make(chan struct{}),
 	}
 
-	if !opts.NoFinalizer {
-		runtime.SetFinalizer(d, func(obj interface{}) {
-			// Nothing here!
-		})
-	} else {
-		fauxD := &DB{}
-		runtime.SetFinalizer(fauxD, func(obj interface{}) {
-			// Nothing here as well, however this causes no leak!
-		})
-	}
-
 	d.mu.versions = &versionSet{}
 
 	defer func() {
@@ -372,6 +361,21 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
+
+	if !opts.NoFinalizer {
+		// Holding on to `d` leaks memory, but holding on only
+		// to `d.commit` does as well!
+		runtime.SetFinalizer(d.commit, func(obj interface{}) {
+			// Nothing here!
+		})
+	} else {
+		// Holding on to an empty DB does not leak. If we added
+		// `d.commit` in, it would leak.
+		fauxD := &DB{}
+		runtime.SetFinalizer(fauxD, func(obj interface{}) {
+			// Nothing here as well, however this causes no leak!
+		})
+	}
 
 	d.fileLock, fileLock = fileLock, nil
 	return d, nil
