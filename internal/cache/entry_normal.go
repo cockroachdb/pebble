@@ -7,7 +7,6 @@
 package cache
 
 import (
-	"runtime"
 	"sync"
 	"unsafe"
 
@@ -53,9 +52,6 @@ type entryAllocCache struct {
 
 func newEntryAllocCache() *entryAllocCache {
 	c := &entryAllocCache{}
-	if !entriesGoAllocated {
-		runtime.SetFinalizer(c, freeEntryAllocCache)
-	}
 	return c
 }
 

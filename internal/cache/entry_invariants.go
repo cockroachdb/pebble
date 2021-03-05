@@ -19,14 +19,6 @@ const entriesGoAllocated = true
 
 func entryAllocNew() *entry {
 	e := &entry{}
-	runtime.SetFinalizer(e, func(obj interface{}) {
-		e := obj.(*entry)
-		if v := e.ref.refs(); v != 0 {
-			fmt.Fprintf(os.Stderr, "%p: cache entry has non-zero reference count: %d\n%s",
-				e, v, e.ref.traces())
-			os.Exit(1)
-		}
-	})
 	return e
 }
 

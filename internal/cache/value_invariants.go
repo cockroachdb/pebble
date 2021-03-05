@@ -27,14 +27,6 @@ func newValue(n int) *Value {
 	b := manual.New(n)
 	v := &Value{buf: b}
 	v.ref.init(1)
-	runtime.SetFinalizer(v, func(obj interface{}) {
-		v := obj.(*Value)
-		if v.buf != nil {
-			fmt.Fprintf(os.Stderr, "%p: cache value was not freed: refs=%d\n%s",
-				v, v.refs(), v.ref.traces())
-			os.Exit(1)
-		}
-	})
 	return v
 }
 
