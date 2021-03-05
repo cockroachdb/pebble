@@ -500,7 +500,7 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			f := c.flushing[0]
 			iter := f.newFlushIter(nil, &c.bytesIterated)
 			if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
-				return newMergingIter(c.logger, c.cmp, iter, rangeDelIter), nil
+				return newMergingIter(c.logger, c.cmp, nil, iter, rangeDelIter), nil
 			}
 			return iter, nil
 		}
@@ -513,7 +513,7 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 				iters = append(iters, rangeDelIter)
 			}
 		}
-		return newMergingIter(c.logger, c.cmp, iters...), nil
+		return newMergingIter(c.logger, c.cmp, nil, iters...), nil
 	}
 
 	// Check that the LSM ordering invariants are ok in order to prevent
@@ -666,7 +666,7 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 	if err != nil {
 		return nil, err
 	}
-	return newMergingIter(c.logger, c.cmp, iters...), nil
+	return newMergingIter(c.logger, c.cmp, nil, iters...), nil
 }
 
 func (c *compaction) String() string {

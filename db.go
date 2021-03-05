@@ -778,7 +778,7 @@ func (d *DB) newIterInternal(
 		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
 	}
 
-	buf.merging.init(&dbi.opts, d.cmp, finalMLevels...)
+	buf.merging.init(&dbi.opts, dbi.cmp, dbi.split, finalMLevels...)
 	buf.merging.snapshot = seqNum
 	buf.merging.elideRangeTombstones = true
 	return dbi
@@ -930,7 +930,7 @@ func (d *DB) Compact(
 
 	iStart := base.MakeInternalKey(start, InternalKeySeqNumMax, InternalKeyKindMax)
 	iEnd := base.MakeInternalKey(end, 0, 0)
-	meta := []*fileMetadata{&fileMetadata{Smallest: iStart, Largest: iEnd}}
+	meta := []*fileMetadata{{Smallest: iStart, Largest: iEnd}}
 
 	d.mu.Lock()
 	maxLevelWithFiles := 1

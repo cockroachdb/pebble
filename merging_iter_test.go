@@ -22,7 +22,8 @@ import (
 
 func TestMergingIter(t *testing.T) {
 	newFunc := func(iters ...internalIterator) internalIterator {
-		return newMergingIter(nil /* logger */, DefaultComparer.Compare, iters...)
+		return newMergingIter(nil /* logger */, DefaultComparer.Compare,
+			func(a []byte) int { return len(a) }, iters...)
 	}
 	testIterator(t, newFunc, func(r *rand.Rand) [][]string {
 		// Shuffle testKeyValuePairs into one or more splits. Each individual
@@ -57,7 +58,8 @@ func TestMergingIterSeek(t *testing.T) {
 				iters = append(iters, f)
 			}
 
-			iter := newMergingIter(nil /* logger */, DefaultComparer.Compare, iters...)
+			iter := newMergingIter(nil /* logger */, DefaultComparer.Compare,
+				func(a []byte) int { return len(a) }, iters...)
 			defer iter.Close()
 			return runInternalIterCmd(d, iter)
 
@@ -72,19 +74,19 @@ func TestMergingIterNextPrev(t *testing.T) {
 	// iterators differently. This data must match the definition in
 	// testdata/internal_iter_next.
 	iterCases := [][]string{
-		[]string{
+		{
 			"a.SET.2:2 a.SET.1:1 b.SET.2:2 b.SET.1:1 c.SET.2:2 c.SET.1:1",
 		},
-		[]string{
+		{
 			"a.SET.2:2 b.SET.2:2 c.SET.2:2",
 			"a.SET.1:1 b.SET.1:1 c.SET.1:1",
 		},
-		[]string{
+		{
 			"a.SET.2:2 b.SET.2:2",
 			"a.SET.1:1 b.SET.1:1",
 			"c.SET.2:2 c.SET.1:1",
 		},
-		[]string{
+		{
 			"a.SET.2:2",
 			"a.SET.1:1",
 			"b.SET.2:2",
@@ -114,7 +116,8 @@ func TestMergingIterNextPrev(t *testing.T) {
 						}
 					}
 
-					iter := newMergingIter(nil /* logger */, DefaultComparer.Compare, iters...)
+					iter := newMergingIter(nil /* logger */, DefaultComparer.Compare,
+						func(a []byte) int { return len(a) }, iters...)
 					defer iter.Close()
 					return runInternalIterCmd(d, iter)
 
@@ -250,7 +253,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 					&levelIters[i].smallestUserKey, &levelIters[i].largestUserKey, &levelIters[i].isLargestUserKeyRangeDelSentinel)
 			}
 			miter := &mergingIter{}
-			miter.init(nil /* opts */, cmp, levelIters...)
+			miter.init(nil /* opts */, cmp, func(a []byte) int { return len(a) }, levelIters...)
 			defer miter.Close()
 			return runInternalIterCmd(d, miter, iterCmdVerboseKey)
 		default:
@@ -341,7 +344,8 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
 								require.NoError(b, err)
 							}
-							m := newMergingIter(nil /* logger */, DefaultComparer.Compare, iters...)
+							m := newMergingIter(nil /* logger */, DefaultComparer.Compare,
+								func(a []byte) int { return len(a) }, iters...)
 							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 							b.ResetTimer()
@@ -370,7 +374,8 @@ func BenchmarkMergingIterNext(b *testing.B) {
 								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
 								require.NoError(b, err)
 							}
-							m := newMergingIter(nil /* logger */, DefaultComparer.Compare, iters...)
+							m := newMergingIter(nil /* logger */, DefaultComparer.Compare,
+								func(a []byte) int { return len(a) }, iters...)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
@@ -402,7 +407,8 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
 								require.NoError(b, err)
 							}
-							m := newMergingIter(nil /* logger */, DefaultComparer.Compare, iters...)
+							m := newMergingIter(nil /* logger */, DefaultComparer.Compare,
+								func(a []byte) int { return len(a) }, iters...)
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
@@ -416,4 +422,152 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 				}
 			})
 	}
+}
+
+// Builds levels for BenchmarkMergingIterSeqSeekGEWithBounds. The lowest level,
+// index 0 here, contains most of the data. Each level has 2 files, to allow for
+// stepping into the second file if needed. The lowest level has all the keys in
+// the file 0, and a single "lastIKey" in file 1. File 0 in all other levels have
+// only the first and last key of file 0 of the aforementioned level -- this
+// simulates sparseness of data, but not necessarily of file width, in higher
+// levels. File 1 in other levels is similar to File 1 in the aforementioned level
+// since it is only for stepping into. If writeRangeTombstoneToLowestLevel is
+// true, a range tombstone is written to the first lowest level file that
+// deletes all the keys in it, and no other levels should be written.
+func buildLevelsForMergingIterSeqSeek(
+	b *testing.B,
+	blockSize, restartInterval, levelCount int,
+	keyOffset int,
+	writeRangeTombstoneToLowestLevel bool,
+) ([][]*sstable.Reader, []manifest.LevelSlice, [][]byte) {
+	mem := vfs.NewMem()
+	if writeRangeTombstoneToLowestLevel && levelCount != 1 {
+		panic("expect to write only 1 level")
+	}
+	files := make([][]vfs.File, levelCount)
+	for i := range files {
+		for j := 0; j < 2; j++ {
+			f, err := mem.Create(fmt.Sprintf("bench%d_%d", i, j))
+			if err != nil {
+				b.Fatal(err)
+			}
+			files[i] = append(files[i], f)
+		}
+	}
+
+	writers := make([][]*sstable.Writer, levelCount)
+	for i := range files {
+		for j := range files[i] {
+			writers[i] = append(writers[i], sstable.NewWriter(files[i][j], sstable.WriterOptions{
+				BlockRestartInterval: restartInterval,
+				BlockSize:            blockSize,
+				Compression:          NoCompression,
+			}))
+		}
+	}
+
+	var keys [][]byte
+	i := keyOffset
+	const targetSize = 2 << 20
+	w := writers[0][0]
+	for ; w.EstimatedSize() < targetSize; i++ {
+		key := []byte(fmt.Sprintf("%08d", i))
+		keys = append(keys, key)
+		ikey := base.MakeInternalKey(key, 0, InternalKeyKindSet)
+		w.Add(ikey, nil)
+	}
+	if writeRangeTombstoneToLowestLevel {
+		tombstoneKey := base.MakeInternalKey(keys[0], 1, InternalKeyKindRangeDelete)
+		w.Add(tombstoneKey, []byte(fmt.Sprintf("%08d", i)))
+	}
+	for j := 1; j < len(files); j++ {
+		for _, k := range []int{0, len(keys) - 1} {
+			ikey := base.MakeInternalKey(keys[k], uint64(j), InternalKeyKindSet)
+			writers[j][0].Add(ikey, nil)
+		}
+	}
+	lastKey := []byte(fmt.Sprintf("%08d", i))
+	keys = append(keys, lastKey)
+	for j := 0; j < len(files); j++ {
+		lastIKey := base.MakeInternalKey(lastKey, uint64(j), InternalKeyKindSet)
+		writers[j][1].Add(lastIKey, nil)
+	}
+	for _, levelWriters := range writers {
+		for _, w := range levelWriters {
+			if err := w.Close(); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+
+	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20)}
+	defer opts.Cache.Unref()
+
+	readers := make([][]*sstable.Reader, levelCount)
+	for i := range files {
+		for j := range files[i] {
+			f, err := mem.Open(fmt.Sprintf("bench%d_%d", i, j))
+			if err != nil {
+				b.Fatal(err)
+			}
+			r, err := sstable.NewReader(f, opts)
+			if err != nil {
+				b.Fatal(err)
+			}
+			readers[i] = append(readers[i], r)
+		}
+	}
+	levelSlices := make([]manifest.LevelSlice, levelCount)
+	for i := range readers {
+		meta := make([]*fileMetadata, len(readers[i]))
+		for j := range readers[i] {
+			iter, err := readers[i][j].NewIter(nil /* lower */, nil /* upper */)
+			require.NoError(b, err)
+			key, _ := iter.First()
+			meta[j] = &fileMetadata{}
+			// The same FileNum is being reused across different levels, which
+			// is harmless for the benchmark since each level has its own iterator
+			// creation func.
+			meta[j].FileNum = FileNum(j)
+			meta[j].Smallest = key.Clone()
+			key, _ = iter.Last()
+			meta[j].Largest = key.Clone()
+		}
+		levelSlices[i] = manifest.NewLevelSlice(meta)
+	}
+	return readers, levelSlices, keys
+}
+
+func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelSlice) *mergingIter {
+	mils := make([]mergingIterLevel, len(levelSlices))
+	for i := len(readers) - 1; i >= 0; i-- {
+		levelIndex := i
+		level := len(readers) - 1 - i
+		newIters := func(
+			file manifest.LevelFile, opts *IterOptions, _ *uint64,
+		) (internalIterator, internalIterator, error) {
+			iter, err := readers[levelIndex][file.FileNum].NewIter(
+				opts.LowerBound, opts.UpperBound)
+			if err != nil {
+				return nil, nil, err
+			}
+			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter()
+			if err != nil {
+				iter.Close()
+				return nil, nil, err
+			}
+			return iter, rdIter, err
+		}
+		l := newLevelIter(IterOptions{}, DefaultComparer.Compare,
+			newIters, levelSlices[i].Iter(), manifest.Level(level), nil)
+		l.initRangeDel(&mils[level].rangeDelIter)
+		l.initSmallestLargestUserKey(
+			&mils[level].smallestUserKey, &mils[level].largestUserKey,
+			&mils[level].isLargestUserKeyRangeDelSentinel)
+		mils[level].iter = l
+	}
+	m := &mergingIter{}
+	m.init(nil /* logger */, DefaultComparer.Compare,
+		func(a []byte) int { return len(a) }, mils...)
+	return m
 }
