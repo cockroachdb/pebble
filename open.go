@@ -362,6 +362,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
 
+	d.fileLock, fileLock = fileLock, nil
+
 	if !opts.NoFinalizer {
 		// Holding on to `d` leaks memory, but holding on only
 		// to `d.commit` does as well!
@@ -380,7 +382,6 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		})
 	}
 
-	d.fileLock, fileLock = fileLock, nil
 	return d, nil
 }
 
