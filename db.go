@@ -396,10 +396,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		seqNum = atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum)
 	}
 
-	var buf struct {
-		dbi Iterator
-		get getIter
-	}
+	buf := iterAllocPool.Get().(*iterAlloc)
 
 	get := &buf.get
 	get.logger = d.opts.Logger
@@ -424,12 +421,17 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	}
 
 	i := &buf.dbi
-	i.cmp = d.cmp
-	i.equal = d.equal
-	i.merge = d.merge
-	i.split = d.split
-	i.iter = get
-	i.readState = readState
+	*i = Iterator{
+		alloc:               buf,
+		cmp:                 d.cmp,
+		equal:               d.equal,
+		iter:                &buf.get,
+		merge:               d.merge,
+		split:               d.split,
+		readState:           readState,
+		keyBuf:              buf.keyBuf,
+		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
+	}
 
 	if !i.First() {
 		err := i.Close()
@@ -674,6 +676,7 @@ type iterAlloc struct {
 	keyBuf               []byte
 	prefixOrFullSeekKey  []byte
 	merging              mergingIter
+	get                  getIter
 	mlevels              [3 + numLevels]mergingIterLevel
 	levels               [3 + numLevels]levelIter
 }
