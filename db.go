@@ -399,7 +399,6 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	buf := iterAllocPool.Get().(*iterAlloc)
 
 	get := &buf.get
-
 	*get = getIter{
 		logger: d.opts.Logger,
 		cmp: d.cmp,
