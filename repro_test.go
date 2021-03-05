@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"sync"
 	"testing"
 	"time"
 )
@@ -42,6 +43,17 @@ func testFoo(t *testing.T, finalizer bool) {
 	ch := make(chan struct{})
 	go func() {
 		defer close(ch)
+
+		if !finalizer {
+			// Making only a commit pipeline does not leak.
+			commit := newCommitPipeline(commitEnv{
+				logSeqNum:     new(uint64),
+				visibleSeqNum: new(uint64),
+				apply:         func(b *Batch, mem *memTable) error { return nil },
+				write:         func(b *Batch, wg *sync.WaitGroup, err *error) (*memTable, error) { return nil, nil },
+			})
+			runtime.SetFinalizer(commit, func(obj interface{}) {})
+		}
 
 		var opts Options
 		opts.EnsureDefaults()
