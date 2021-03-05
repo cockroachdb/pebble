@@ -212,6 +212,7 @@ type mergingIterLevel struct {
 // heap and range-del iterator positioning).
 type mergingIter struct {
 	logger   Logger
+	split    Split
 	dir      int
 	snapshot uint64
 	levels   []mergingIterLevel
@@ -238,17 +239,21 @@ var _ base.InternalIterator = (*mergingIter)(nil)
 // keys: if iters[i] contains a key k then iters[j] will not contain that key k.
 //
 // None of the iters may be nil.
-func newMergingIter(logger Logger, cmp Compare, iters ...internalIterator) *mergingIter {
+func newMergingIter(
+	logger Logger, cmp Compare, split Split, iters ...internalIterator,
+) *mergingIter {
 	m := &mergingIter{}
 	levels := make([]mergingIterLevel, len(iters))
 	for i := range levels {
 		levels[i].iter = iters[i]
 	}
-	m.init(&IterOptions{logger: logger}, cmp, levels...)
+	m.init(&IterOptions{logger: logger}, cmp, split, levels...)
 	return m
 }
 
-func (m *mergingIter) init(opts *IterOptions, cmp Compare, levels ...mergingIterLevel) {
+func (m *mergingIter) init(
+	opts *IterOptions, cmp Compare, split Split, levels ...mergingIterLevel,
+) {
 	m.err = nil // clear cached iteration error
 	m.logger = opts.getLogger()
 	if opts != nil {
@@ -258,6 +263,7 @@ func (m *mergingIter) init(opts *IterOptions, cmp Compare, levels ...mergingIter
 	m.snapshot = InternalKeySeqNumMax
 	m.levels = levels
 	m.heap.cmp = cmp
+	m.split = split
 	if cap(m.heap.items) < len(levels) {
 		m.heap.items = make([]mergingIterItem, 0, len(levels))
 	} else {
@@ -614,12 +620,21 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 
 // Starting from the current entry, finds the first (next) entry that can be returned.
 func (m *mergingIter) findNextEntry() (*InternalKey, []byte) {
+	i := 0
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
 		if m.levels[item.index].isSyntheticIterBoundsKey {
 			break
 		}
 		if m.isNextEntryDeleted(item) {
+			i++
+			// Amortize the cost of the comparison, by doing it once every 10
+			// iterations. The choice of 10 is arbitrary.
+			if m.prefix != nil && i%10 == 0 {
+				if n := m.split(item.key.UserKey); !bytes.Equal(m.prefix, item.key.UserKey[:n]) {
+					return nil, nil
+				}
+			}
 			continue
 		}
 		if item.key.Visible(m.snapshot) &&
