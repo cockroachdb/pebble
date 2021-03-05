@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/internal/record"
@@ -362,9 +361,14 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
 
-	if !opts.NoFinalizer && invariants.Enabled {
+	if !opts.NoFinalizer {
 		runtime.SetFinalizer(d, func(obj interface{}) {
 			// Nothing here!
+		})
+	} else {
+		fauxD := &DB{}
+		runtime.SetFinalizer(fauxD, func(obj interface{}) {
+			// Nothing here as well, however this causes no leak!
 		})
 	}
 
