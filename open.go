@@ -65,6 +65,18 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
 		closedCh:            make(chan struct{}),
 	}
+
+	if !opts.NoFinalizer {
+		runtime.SetFinalizer(d, func(obj interface{}) {
+			// Nothing here!
+		})
+	} else {
+		fauxD := &DB{}
+		runtime.SetFinalizer(fauxD, func(obj interface{}) {
+			// Nothing here as well, however this causes no leak!
+		})
+	}
+
 	d.mu.versions = &versionSet{}
 
 	defer func() {
@@ -356,21 +368,10 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 	d.mu.tableStats.cond.L = &d.mu.Mutex
 	if !d.opts.ReadOnly && !d.opts.private.disableTableStats {
-		d.maybeCollectTableStats()
+		// d.maybeCollectTableStats()
 	}
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
-
-	if !opts.NoFinalizer {
-		runtime.SetFinalizer(d, func(obj interface{}) {
-			// Nothing here!
-		})
-	} else {
-		fauxD := &DB{}
-		runtime.SetFinalizer(fauxD, func(obj interface{}) {
-			// Nothing here as well, however this causes no leak!
-		})
-	}
 
 	d.fileLock, fileLock = fileLock, nil
 	return d, nil
