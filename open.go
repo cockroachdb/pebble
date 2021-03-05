@@ -100,12 +100,13 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 	d.tableCache.init(d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
-	d.commit = newCommitPipeline(commitEnv{
+	isolatedCommit := newCommitPipeline(commitEnv{
 		logSeqNum:     &d.mu.versions.atomic.logSeqNum,
 		visibleSeqNum: &d.mu.versions.atomic.visibleSeqNum,
 		apply:         d.commitApply,
 		write:         d.commitWrite,
 	})
+	d.commit = nil // HACK
 	d.compactionLimiter = rate.NewLimiter(
 		rate.Limit(d.opts.private.minCompactionRate),
 		d.opts.private.minCompactionRate)
@@ -365,14 +366,15 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if !opts.NoFinalizer {
 		// Holding on to `d` leaks memory, but holding on only
 		// to `d.commit` does as well!
-		runtime.SetFinalizer(d.commit, func(obj interface{}) {
+		runtime.SetFinalizer(d, func(obj interface{}) {
 			// Nothing here!
 		})
 	} else {
 		// Holding on to an empty DB does not leak. If we added
-		// `d.commit` in, it would leak.
-		fauxD := &DB{}
-		runtime.SetFinalizer(fauxD, func(obj interface{}) {
+		// a populated `d.commit` in, it would leak. However,
+		// holding on to `isolatedCommit` (not referenced from `d`)
+		// does not leak.
+		runtime.SetFinalizer(isolatedCommit, func(obj interface{}) {
 			// Nothing here as well, however this causes no leak!
 		})
 	}
