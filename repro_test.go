@@ -46,9 +46,13 @@ func testFoo(t *testing.T, finalizer bool) {
 		var opts Options
 		opts.EnsureDefaults()
 		opts.FS = vfs.NewMem()
-		opts.NoFinalizer = !finalizer
 
 		db, err := Open("foo", &opts)
+
+		if finalizer {
+			runtime.SetFinalizer(db, func(interface{}) {})
+		}
+
 		require.NoError(t, err)
 		require.NoError(t, db.Close())
 	}()

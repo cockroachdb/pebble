@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"runtime"
 	"sort"
 	"time"
 
@@ -363,24 +362,6 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.maybeScheduleCompaction()
 
 	d.fileLock, fileLock = fileLock, nil
-
-	if !opts.NoFinalizer {
-		// Holding on to `d` leaks memory, but holding on only
-		// to `d.commit` does as well!
-		runtime.SetFinalizer(d, func(obj interface{}) {
-			// Nothing here!
-		})
-	} else {
-		// Holding on to an empty DB does not leak. If we added
-		// a populated `d.commit` in, it would leak. However,
-		// holding on to `isolatedCommit` (not referenced from `d`)
-		// does not leak.
-		// Holding on to a copy of `d` does not leak.
-		dcpy := *d
-		runtime.SetFinalizer(&dcpy, func(obj interface{}) {
-			// Nothing here as well, however this causes no leak!
-		})
-	}
 
 	return d, nil
 }
