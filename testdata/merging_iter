@@ -502,3 +502,51 @@ next
 ----
 iwoeionch#792,1:792
 jyk#72057594037927935,15:
+
+# Exercise the early stopping behavior for prefix iteration when encountering
+# range deletion tombstones. Keys a, d are not deleted, while the rest are.
+define
+L
+a.SET.10 d.SET.10
+a.SET.10:a10 b.SET.10:b10 c.SET.10:c10 d.SET.10:d10 b.RANGEDEL.12:d
+----
+1:
+  000025:[a#10,SET-d#10,SET]
+
+iter
+first
+next
+next
+----
+a#10,1:a10
+d#10,1:d10
+.
+
+# The seek to c does not find d. Note that on the master branch, the seek to c
+# does find d. Both are okay since mergingIter is an InternalIterator. The
+# difference here is due to other optimizations on the master branch.
+iter
+seek-prefix-ge a
+seek-prefix-ge aa
+seek-prefix-ge b
+seek-prefix-ge c
+seek-prefix-ge d
+----
+a#10,1:a10
+.
+.
+.
+d#10,1:d10
+
+iter
+seek-prefix-ge a
+next
+seek-prefix-ge b
+seek-prefix-ge d
+next
+----
+a#10,1:a10
+.
+.
+d#10,1:d10
+.
