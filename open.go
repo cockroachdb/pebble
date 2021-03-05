@@ -363,7 +363,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
 
-	if invariants.Enabled {
+	if !opts.NoFinalizer && invariants.Enabled {
 		runtime.SetFinalizer(d, func(obj interface{}) {
 			d := obj.(*DB)
 			if err := d.closed.Load(); err == nil {

@@ -219,6 +219,7 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 // apply to the DB at large; per-query options are defined by the IterOptions
 // and WriteOptions types.
 type Options struct {
+	NoFinalizer bool
 	// Sync sstables periodically in order to smooth out writes to disk. This
 	// option does not provide any persistency guarantee, but is used to avoid
 	// latency spikes if the OS automatically decides to write out a large chunk
