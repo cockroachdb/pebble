@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -414,7 +415,7 @@ func TestIterator(t *testing.T) {
 		equal := DefaultComparer.Equal
 		split := func(a []byte) int { return len(a) }
 		// NB: Use a mergingIter to filter entries newer than seqNum.
-		iter := newMergingIter(nil /* logger */, cmp, &fakeIter{
+		iter := newMergingIter(nil /* logger */, cmp, split, &fakeIter{
 			lower: opts.GetLowerBound(),
 			upper: opts.GetUpperBound(),
 			keys:  keys,
@@ -986,5 +987,88 @@ func BenchmarkIteratorPrev(b *testing.B) {
 			iter.Last()
 		}
 		iter.Prev()
+	}
+}
+
+// BenchmarkIteratorSeqSeekPrefixGENotFound exercises the case of SeekPrefixGE
+// specifying monotonic keys all of which precede actual keys present in L6 of
+// the DB. Moreover, with-tombstone=true exercises the sub-case where those
+// actual keys are deleted using a range tombstone that has not physically
+// deleted those keys due to the presence of a snapshot that needs to see
+// those keys. This sub-case needs to be efficient in (a) avoiding iteration
+// over all those deleted keys, including repeated iteration, (b) using the
+// next optimization, since the seeks are monotonic.
+func BenchmarkIteratorSeqSeekPrefixGENotFound(b *testing.B) {
+	const blockSize = 32 << 10
+	const restartInterval = 16
+	const levelCount = 5
+	const keyOffset = 100000
+	readers, levelSlices, _ := buildLevelsForMergingIterSeqSeek(
+		b, blockSize, restartInterval, levelCount, keyOffset, false)
+	readersWithTombstone, levelSlicesWithTombstone, _ := buildLevelsForMergingIterSeqSeek(
+		b, blockSize, restartInterval, 1, keyOffset, true)
+	// We will not be seeking to the keys that were written but instead to
+	// keys before the written keys. This is to validate that the optimization
+	// to use Next still functions when mergingIter checks for the prefix
+	// match, and that mergingIter can avoid iterating over all the keys
+	// deleted by a range tombstone when there is no possibility of matching
+	// the prefix.
+	var keys [][]byte
+	for i := 0; i < keyOffset; i++ {
+		keys = append(keys, []byte(fmt.Sprintf("%08d", i)))
+	}
+	for _, skip := range []int{1, 2, 4} {
+		for _, withTombstone := range []bool{false, true} {
+			b.Run(fmt.Sprintf("skip=%d/with-tombstone=%t", skip, withTombstone),
+				func(b *testing.B) {
+					readers := readers
+					levelSlices := levelSlices
+					if withTombstone {
+						readers = readersWithTombstone
+						levelSlices = levelSlicesWithTombstone
+					}
+					m := buildMergingIter(readers, levelSlices)
+					iter := Iterator{
+						cmp:   DefaultComparer.Compare,
+						equal: DefaultComparer.Equal,
+						split: func(a []byte) int { return len(a) },
+						merge: DefaultMerger.Merge,
+						iter:  m,
+					}
+					pos := 0
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						// When withTombstone=true, and prior to the
+						// optimization to stop early due to a range
+						// tombstone, the iteration would continue into the
+						// next file, and not be able to use Next at the lower
+						// level in the next SeekPrefixGE call. So we would
+						// incur the cost of iterating over all the deleted
+						// keys for every seek. Note that it is not possible
+						// to do a noop optimization in Iterator for the
+						// prefix case, unlike SeekGE/SeekLT, since we don't
+						// know if the iterators inside mergingIter are all
+						// appropriately positioned -- some may not be due to
+						// bloom filters not matching.
+						valid := iter.SeekPrefixGE(keys[pos])
+						if valid {
+							b.Fatalf("key should not be found")
+						}
+						pos += skip
+						if pos >= keyOffset {
+							pos = 0
+						}
+					}
+					b.StopTimer()
+					iter.Close()
+				})
+		}
+	}
+	for _, r := range [][][]*sstable.Reader{readers, readersWithTombstone} {
+		for i := range r {
+			for j := range r[i] {
+				r[i][j].Close()
+			}
+		}
 	}
 }

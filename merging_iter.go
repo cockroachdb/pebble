@@ -212,6 +212,7 @@ type mergingIterLevel struct {
 // heap and range-del iterator positioning).
 type mergingIter struct {
 	logger   Logger
+	split    Split
 	dir      int
 	snapshot uint64
 	levels   []mergingIterLevel
@@ -232,23 +233,29 @@ var _ base.InternalIterator = (*mergingIter)(nil)
 
 // newMergingIter returns an iterator that merges its input. Walking the
 // resultant iterator will return all key/value pairs of all input iterators
-// in strictly increasing key order, as defined by cmp.
+// in strictly increasing key order, as defined by cmp. It is permissible to
+// pass a nil split parameter if the caller is never going to call
+// SeekPrefixGE.
 //
 // The input's key ranges may overlap, but there are assumed to be no duplicate
 // keys: if iters[i] contains a key k then iters[j] will not contain that key k.
 //
 // None of the iters may be nil.
-func newMergingIter(logger Logger, cmp Compare, iters ...internalIterator) *mergingIter {
+func newMergingIter(
+	logger Logger, cmp Compare, split Split, iters ...internalIterator,
+) *mergingIter {
 	m := &mergingIter{}
 	levels := make([]mergingIterLevel, len(iters))
 	for i := range levels {
 		levels[i].iter = iters[i]
 	}
-	m.init(&IterOptions{logger: logger}, cmp, levels...)
+	m.init(&IterOptions{logger: logger}, cmp, split, levels...)
 	return m
 }
 
-func (m *mergingIter) init(opts *IterOptions, cmp Compare, levels ...mergingIterLevel) {
+func (m *mergingIter) init(
+	opts *IterOptions, cmp Compare, split Split, levels ...mergingIterLevel,
+) {
 	m.err = nil // clear cached iteration error
 	m.logger = opts.getLogger()
 	if opts != nil {
@@ -258,6 +265,7 @@ func (m *mergingIter) init(opts *IterOptions, cmp Compare, levels ...mergingIter
 	m.snapshot = InternalKeySeqNumMax
 	m.levels = levels
 	m.heap.cmp = cmp
+	m.split = split
 	if cap(m.heap.items) < len(levels) {
 		m.heap.items = make([]mergingIterItem, 0, len(levels))
 	} else {
@@ -620,6 +628,19 @@ func (m *mergingIter) findNextEntry() (*InternalKey, []byte) {
 			break
 		}
 		if m.isNextEntryDeleted(item) {
+			// For prefix iteration, stop if we are past the prefix. We could
+			// amortize the cost of this comparison, by doing it only after we
+			// have iterated in this for loop a few times. But unless we find
+			// a performance benefit to that, we do the simple thing and
+			// compare each time. Note that isNextEntryDeleted already did at
+			// least 4 key comparisons in order to return true, and
+			// additionally at least one heap comparison to step to the next
+			// entry.
+			if m.prefix != nil {
+				if n := m.split(item.key.UserKey); !bytes.Equal(m.prefix, item.key.UserKey[:n]) {
+					return nil, nil
+				}
+			}
 			continue
 		}
 		if item.key.Visible(m.snapshot) &&

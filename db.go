@@ -817,7 +817,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
 	}
 
-	buf.merging.init(&dbi.opts, dbi.cmp, finalMLevels...)
+	buf.merging.init(&dbi.opts, dbi.cmp, dbi.split, finalMLevels...)
 	buf.merging.snapshot = seqNum
 	buf.merging.elideRangeTombstones = true
 	return dbi
