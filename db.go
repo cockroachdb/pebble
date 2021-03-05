@@ -399,16 +399,19 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	buf := iterAllocPool.Get().(*iterAlloc)
 
 	get := &buf.get
-	get.logger = d.opts.Logger
-	get.cmp = d.cmp
-	get.equal = d.equal
-	get.newIters = d.newIters
-	get.snapshot = seqNum
-	get.key = key
-	get.batch = b
-	get.mem = readState.memtables
-	get.l0 = readState.current.L0Sublevels.Levels
-	get.version = readState.current
+
+	*get = getIter{
+		logger: d.opts.Logger,
+		cmp: d.cmp,
+		equal: d.equal,
+		newIters: d.newIters,
+		snapshot: seqNum,
+		key: key,
+		batch: b,
+		mem: readState.memtables,
+		l0: readState.current.L0Sublevels.Levels,
+		version: readState.current,
+	}
 
 	// Strip off memtables which cannot possibly contain the seqNum being read
 	// at.
@@ -425,7 +428,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		alloc:               buf,
 		cmp:                 d.cmp,
 		equal:               d.equal,
-		iter:                &buf.get,
+		iter:                get,
 		merge:               d.merge,
 		split:               d.split,
 		readState:           readState,
