@@ -100,13 +100,12 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 	d.tableCache.init(d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
-	isolatedCommit := newCommitPipeline(commitEnv{
+	d.commit = newCommitPipeline(commitEnv{
 		logSeqNum:     &d.mu.versions.atomic.logSeqNum,
 		visibleSeqNum: &d.mu.versions.atomic.visibleSeqNum,
 		apply:         d.commitApply,
 		write:         d.commitWrite,
 	})
-	d.commit = nil // HACK
 	d.compactionLimiter = rate.NewLimiter(
 		rate.Limit(d.opts.private.minCompactionRate),
 		d.opts.private.minCompactionRate)
@@ -374,7 +373,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		// a populated `d.commit` in, it would leak. However,
 		// holding on to `isolatedCommit` (not referenced from `d`)
 		// does not leak.
-		runtime.SetFinalizer(isolatedCommit, func(obj interface{}) {
+		// Holding on to a copy of `d` does not leak.
+		dcpy := *d
+		runtime.SetFinalizer(&dcpy, func(obj interface{}) {
 			// Nothing here as well, however this causes no leak!
 		})
 	}
