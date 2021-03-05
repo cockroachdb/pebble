@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"os"
 	"runtime"
 	"sort"
 	"time"
@@ -365,11 +364,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 	if !opts.NoFinalizer && invariants.Enabled {
 		runtime.SetFinalizer(d, func(obj interface{}) {
-			d := obj.(*DB)
-			if err := d.closed.Load(); err == nil {
-				fmt.Fprintf(os.Stderr, "%p: unreferenced DB not closed\n", d)
-				os.Exit(1)
-			}
+			// Nothing here!
 		})
 	}
 
