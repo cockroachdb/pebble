@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 	"sort"
 	"sync"
 	"unsafe"
@@ -165,9 +164,8 @@ var _ base.InternalIterator = (*singleLevelIterator)(nil)
 var singleLevelIterPool = sync.Pool{
 	New: func() interface{} {
 		i := &singleLevelIterator{}
-		if invariants.Enabled {
-			runtime.SetFinalizer(i, checkSingleLevelIterator)
-		}
+		// Note: this is a no-op if invariants are disabled or race is enabled.
+		invariants.SetFinalizer(i, checkSingleLevelIterator)
 		return i
 	},
 }
@@ -175,9 +173,8 @@ var singleLevelIterPool = sync.Pool{
 var twoLevelIterPool = sync.Pool{
 	New: func() interface{} {
 		i := &twoLevelIterator{}
-		if invariants.Enabled {
-			runtime.SetFinalizer(i, checkTwoLevelIterator)
-		}
+		// Note: this is a no-op if invariants are disabled or race is enabled.
+		invariants.SetFinalizer(i, checkTwoLevelIterator)
 		return i
 	},
 }

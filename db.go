@@ -8,7 +8,6 @@ package pebble // import "github.com/cockroachdb/pebble"
 import (
 	"fmt"
 	"io"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -670,12 +669,12 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 }
 
 type iterAlloc struct {
-	dbi                  Iterator
-	keyBuf               []byte
-	prefixOrFullSeekKey  []byte
-	merging              mergingIter
-	mlevels              [3 + numLevels]mergingIterLevel
-	levels               [3 + numLevels]levelIter
+	dbi                 Iterator
+	keyBuf              []byte
+	prefixOrFullSeekKey []byte
+	merging             mergingIter
+	mlevels             [3 + numLevels]mergingIterLevel
+	levels              [3 + numLevels]levelIter
 }
 
 var iterAllocPool = sync.Pool{
@@ -1293,9 +1292,9 @@ func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushabl
 		arenaBuf:  manual.New(int(size)),
 		logSeqNum: logSeqNum,
 	})
-	if invariants.Enabled {
-		runtime.SetFinalizer(mem, checkMemTable)
-	}
+
+	// Note: this is a no-op if invariants are disabled or race is enabled.
+	invariants.SetFinalizer(mem, checkMemTable)
 
 	entry := d.newFlushableEntry(mem, logNum, logSeqNum)
 	entry.releaseMemAccounting = func() {

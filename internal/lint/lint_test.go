@@ -115,6 +115,21 @@ func TestLint(t *testing.T) {
 		}
 	})
 
+	t.Run("TestSetFinalizer", func(t *testing.T) {
+		t.Parallel()
+
+		if err := stream.ForEach(
+			stream.Sequence(
+				dirCmd(t, pkg.Dir, "git", "grep", "runtime\\.SetFinalizer("),
+				stream.GrepNot(`^vendor/`), // ignore vendor
+				stream.GrepNot(`^internal/invariants/finalizer_on.go`),
+			), func(s string) {
+				t.Errorf("\n%s <- please use the \"invariants.SetFinalizer\" equivalent instead", s)
+			}); err != nil {
+			t.Error(err)
+		}
+	})
+
 	t.Run("TestForbiddenImports", func(t *testing.T) {
 		t.Parallel()
 

@@ -2,14 +2,15 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 //
-// +build invariants tracing
+// +build invariants,!race tracing,!race
 
 package cache
 
 import (
 	"fmt"
 	"os"
-	"runtime"
+
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // When the "invariants" or "tracing" build tags are enabled, we need to
@@ -19,7 +20,9 @@ const entriesGoAllocated = true
 
 func entryAllocNew() *entry {
 	e := &entry{}
-	runtime.SetFinalizer(e, func(obj interface{}) {
+	// Note: this is a no-op if invariants and tracing are disabled or race is
+	// enabled.
+	invariants.SetFinalizer(e, func(obj interface{}) {
 		e := obj.(*entry)
 		if v := e.ref.refs(); v != 0 {
 			fmt.Fprintf(os.Stderr, "%p: cache entry has non-zero reference count: %d\n%s",
