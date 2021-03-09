@@ -670,12 +670,12 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 }
 
 type iterAlloc struct {
-	dbi                  Iterator
-	keyBuf               []byte
-	prefixOrFullSeekKey  []byte
-	merging              mergingIter
-	mlevels              [3 + numLevels]mergingIterLevel
-	levels               [3 + numLevels]levelIter
+	dbi                 Iterator
+	keyBuf              []byte
+	prefixOrFullSeekKey []byte
+	merging             mergingIter
+	mlevels             [3 + numLevels]mergingIterLevel
+	levels              [3 + numLevels]levelIter
 }
 
 var iterAllocPool = sync.Pool{
@@ -1293,7 +1293,11 @@ func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushabl
 		arenaBuf:  manual.New(int(size)),
 		logSeqNum: logSeqNum,
 	})
-	if invariants.Enabled {
+
+	// Note: invariants.Enabled is true for race builds, but we don't want to use
+	// finalizers in race builds or under any build tag used by CRDB as the use
+	// of finalizers has historically led to problems (e.g. rapid memory leaks).
+	if invariants.Enabled && !invariants.RaceEnabled {
 		runtime.SetFinalizer(mem, checkMemTable)
 	}
 

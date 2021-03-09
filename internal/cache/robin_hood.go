@@ -134,7 +134,11 @@ func maxDistForSize(size uint32) uint32 {
 func newRobinHoodMap(initialCapacity int) *robinHoodMap {
 	m := &robinHoodMap{}
 	m.init(initialCapacity)
-	if invariants.Enabled {
+
+	// Note: invariants.Enabled is true for race builds, but we don't want to use
+	// finalizers in race builds or under any build tag used by CRDB as the use
+	// of finalizers has historically led to problems (e.g. rapid memory leaks).
+	if invariants.Enabled && !invariants.RaceEnabled {
 		runtime.SetFinalizer(m, func(obj interface{}) {
 			m := obj.(*robinHoodMap)
 			if m.entries.ptr != nil {

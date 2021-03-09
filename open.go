@@ -363,7 +363,10 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
 
-	if invariants.Enabled {
+	// Note: invariants.Enabled is true for race builds, but we don't want to use
+	// finalizers in race builds or under any build tag used by CRDB as the use
+	// of finalizers has historically led to problems (e.g. rapid memory leaks).
+	if invariants.Enabled && !invariants.RaceEnabled {
 		runtime.SetFinalizer(d, func(obj interface{}) {
 			d := obj.(*DB)
 			if err := d.closed.Load(); err == nil {

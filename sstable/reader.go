@@ -165,7 +165,12 @@ var _ base.InternalIterator = (*singleLevelIterator)(nil)
 var singleLevelIterPool = sync.Pool{
 	New: func() interface{} {
 		i := &singleLevelIterator{}
-		if invariants.Enabled {
+
+		// Note: invariants.Enabled is true for race builds, but we don't want to
+		// use finalizers in race builds or under any build tag used by CRDB as the
+		// use of finalizers has historically led to problems (e.g. rapid memory
+		// leaks).
+		if invariants.Enabled && !invariants.RaceEnabled {
 			runtime.SetFinalizer(i, checkSingleLevelIterator)
 		}
 		return i
@@ -175,7 +180,12 @@ var singleLevelIterPool = sync.Pool{
 var twoLevelIterPool = sync.Pool{
 	New: func() interface{} {
 		i := &twoLevelIterator{}
-		if invariants.Enabled {
+
+		// Note: invariants.Enabled is true for race builds, but we don't want to
+		// use finalizers in race builds or under any build tag used by CRDB as the
+		// use of finalizers has historically led to problems (e.g. rapid memory
+		// leaks).
+		if invariants.Enabled && !invariants.RaceEnabled {
 			runtime.SetFinalizer(i, checkTwoLevelIterator)
 		}
 		return i

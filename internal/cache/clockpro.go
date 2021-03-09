@@ -567,6 +567,10 @@ func newShards(size int64, shards int) *Cache {
 		c.shards[i].blocks.init(16)
 		c.shards[i].files.init(16)
 	}
+
+	// Note: we don't want to use finalizers in race builds or under any build
+	// tag used by CRDB as the use of finalizers has historically led to problems
+	// (e.g. rapid memory leaks).
 	if !invariants.RaceEnabled {
 		runtime.SetFinalizer(c, func(obj interface{}) {
 			c := obj.(*Cache)
