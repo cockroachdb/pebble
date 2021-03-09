@@ -222,7 +222,7 @@ type DB struct {
 	// updates.
 	logRecycler logRecycler
 
-	closed   atomic.Value
+	closed   *atomic.Value
 	closedCh chan struct{}
 
 	compactionLimiter limiter
@@ -883,6 +883,14 @@ func (d *DB) Close() error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
+
+	// Clear the finalizer that is used to check that an unreferenced DB has been
+	// closed. We're closing the DB here, so the check performed by that
+	// finalizer isn't necessary.
+	//
+	// Note: this is a no-op if invariants are disabled or race is enabled.
+	invariants.SetFinalizer(d.closed, nil)
+
 	d.closed.Store(errors.WithStack(ErrClosed))
 	close(d.closedCh)
 

@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"os"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -64,6 +65,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
 		largeBatchThreshold: (opts.MemTableSize - int(memTableEmptySize)) / 2,
 		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
+		closed:              new(atomic.Value),
 		closedCh:            make(chan struct{}),
 	}
 	d.mu.versions = &versionSet{}
@@ -363,10 +365,26 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	d.maybeScheduleCompaction()
 
 	// Note: this is a no-op if invariants are disabled or race is enabled.
-	invariants.SetFinalizer(d, func(obj interface{}) {
-		d := obj.(*DB)
-		if err := d.closed.Load(); err == nil {
-			fmt.Fprintf(os.Stderr, "%p: unreferenced DB not closed\n", d)
+	//
+	// Setting a finalizer on *DB causes *DB to never be reclaimed and the
+	// finalizer to never be run. The problem is due to this limitation of
+	// finalizers mention in the SetFinalizer docs:
+	//
+	//   If a cyclic structure includes a block with a finalizer, that cycle is
+	//   not guaranteed to be garbage collected and the finalizer is not
+	//   guaranteed to run, because there is no ordering that respects the
+	//   dependencies.
+	//
+	// DB has cycles with several of its internal structures: readState,
+	// newIters, tableCache, versions, etc. Each of this individually cause a
+	// cycle and prevent the finalizer from being run. But we can workaround this
+	// finializer limitation by setting a finalizer on another object that is
+	// tied to the lifetime of DB: the DB.closed atomic.Value.
+	dPtr := fmt.Sprintf("%p", d)
+	invariants.SetFinalizer(d.closed, func(obj interface{}) {
+		v := obj.(*atomic.Value)
+		if err := v.Load(); err == nil {
+			fmt.Fprintf(os.Stderr, "%s: unreferenced DB not closed\n", dPtr)
 			os.Exit(1)
 		}
 	})
