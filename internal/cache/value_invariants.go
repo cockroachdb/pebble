@@ -2,15 +2,15 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-// +build invariants tracing
+// +build invariants,!race tracing,!race
 
 package cache
 
 import (
 	"fmt"
 	"os"
-	"runtime"
 
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
 )
 
@@ -27,7 +27,9 @@ func newValue(n int) *Value {
 	b := manual.New(n)
 	v := &Value{buf: b}
 	v.ref.init(1)
-	runtime.SetFinalizer(v, func(obj interface{}) {
+	// Note: this is a no-op if invariants and tracing are disabled or race is
+	// enabled.
+	invariants.SetFinalizer(v, func(obj interface{}) {
 		v := obj.(*Value)
 		if v.buf != nil {
 			fmt.Fprintf(os.Stderr, "%p: cache value was not freed: refs=%d\n%s",
