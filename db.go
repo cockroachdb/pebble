@@ -222,7 +222,7 @@ type DB struct {
 	// updates.
 	logRecycler logRecycler
 
-	closed   atomic.Value
+	closed   *atomic.Value
 	closedCh chan struct{}
 
 	compactionLimiter limiter
@@ -883,6 +883,14 @@ func (d *DB) Close() error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
+
+	// Clear the finalizer that is used to check that an unreferenced DB has been
+	// closed. We're closing the DB here, so the check performed by that
+	// finalizer isn't necessary.
+	//
+	// Note: this is a no-op if invariants are disabled or race is enabled.
+	invariants.SetFinalizer(d.closed, nil)
+
 	d.closed.Store(errors.WithStack(ErrClosed))
 	close(d.closedCh)
 
@@ -916,29 +924,27 @@ func (d *DB) Close() error {
 		err = firstError(err, d.walDir.Close())
 	}
 
-	if err == nil {
-		d.readState.val.unrefLocked()
+	d.readState.val.unrefLocked()
 
-		current := d.mu.versions.currentVersion()
-		for v := d.mu.versions.versions.Front(); true; v = v.Next() {
-			refs := v.Refs()
-			if v == current {
-				if refs != 1 {
-					return errors.Errorf("leaked iterators: current\n%s", v)
-				}
-				break
+	current := d.mu.versions.currentVersion()
+	for v := d.mu.versions.versions.Front(); true; v = v.Next() {
+		refs := v.Refs()
+		if v == current {
+			if refs != 1 {
+				err = firstError(err, errors.Errorf("leaked iterators: current\n%s", v))
 			}
-			if refs != 0 {
-				return errors.Errorf("leaked iterators:\n%s", v)
-			}
+			break
 		}
+		if refs != 0 {
+			err = firstError(err, errors.Errorf("leaked iterators:\n%s", v))
+		}
+	}
 
-		for _, mem := range d.mu.mem.queue {
-			mem.readerUnref()
-		}
-		if reserved := atomic.LoadInt64(&d.atomic.memTableReserved); reserved != 0 {
-			return errors.Errorf("leaked memtable reservation: %d", errors.Safe(reserved))
-		}
+	for _, mem := range d.mu.mem.queue {
+		mem.readerUnref()
+	}
+	if reserved := atomic.LoadInt64(&d.atomic.memTableReserved); reserved != 0 {
+		err = firstError(err, errors.Errorf("leaked memtable reservation: %d", errors.Safe(reserved)))
 	}
 
 	// No more cleaning can start. Wait for any async cleaning to complete.

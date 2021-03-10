@@ -773,7 +773,9 @@ func TestMemTableReservationLeak(t *testing.T) {
 	require.NoError(t, err)
 
 	d.mu.Lock()
-	d.mu.mem.queue[len(d.mu.mem.queue)-1].readerRef()
+	last := d.mu.mem.queue[len(d.mu.mem.queue)-1]
+	last.readerRef()
+	defer last.readerUnref()
 	d.mu.Unlock()
 	if err := d.Close(); err == nil {
 		t.Fatalf("expected failure, but found success")
