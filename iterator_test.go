@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -785,6 +786,99 @@ func TestIteratorNextPrev(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+// duplicatedKeyDetectMerger check if there are multiple merge operation with the same key
+// This implement copy all the key and values byte to ensure at any time, the bytes values is the expected value.
+type duplicatedKeyDetectMerger struct {
+	key    []byte
+	values [][]byte
+	// callback expose the duplicated key and values
+	callback func([]byte, [][]byte)
+}
+
+func (merger *duplicatedKeyDetectMerger) MergeNewer(value []byte) error {
+	merger.values = append(merger.values, append([]byte{}, value...))
+	return nil
+}
+
+func (merger *duplicatedKeyDetectMerger) MergeOlder(value []byte) error {
+	buf := make([][]byte, 0, len(merger.values)+1)
+	buf = append(buf, append([]byte{}, value...))
+	buf = append(buf, merger.values...)
+	merger.values = buf
+	return nil
+}
+
+func (merger *duplicatedKeyDetectMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
+	if len(merger.values) > 1 {
+		merger.callback(merger.key, merger.values)
+	}
+	return merger.values[len(merger.values)-1], nil, nil
+}
+
+func TestMerger(t *testing.T) {
+	type dupRecord struct {
+		key    []byte
+		values [][]byte
+	}
+	duplicatedRecords := make([]dupRecord, 0)
+	addRecord := func(key []byte, values [][]byte) {
+		duplicatedRecords = append(duplicatedRecords, dupRecord{
+			key:    key,
+			values: values,
+		})
+	}
+	db, err := Open("", &Options{
+		FS: vfs.NewMem(),
+		L0CompactionThreshold: 10,
+		Merger: &Merger{
+			Merge: func(key, value []byte) (ValueMerger, error) {
+				// Copy the key and value bytes to make sure they are not change
+				return &duplicatedKeyDetectMerger{
+					key:      append([]byte{}, key...),
+					values:   [][]byte{append([]byte{}, value...)},
+					callback: addRecord,
+				}, nil
+			},
+			Name: "TestMerge",
+		},
+	})
+	require.NoError(t, err)
+	defer db.Close()
+
+	merge := func(kvs [][]byte) {
+		for i := 0; i < len(kvs); i += 2 {
+			err = db.Merge(kvs[i], kvs[i+1], NoSync)
+			require.NoError(t, err)
+		}
+		err = db.Flush()
+		require.NoError(t, err)
+	}
+	// Batch merge kvs pair (1,1),(2,2),(1,2) this will trigger a merge during flush
+	merge([][]byte{{1}, {1}, {2}, {2}, {1}, {2}})
+	require.Len(t, duplicatedRecords, 1)
+	require.Equal(t, duplicatedRecords[0], dupRecord{key: []byte{1}, values: [][]byte{{1}, {2}}})
+
+	// Merge another batch (2,3) this won't trigger a merge
+	merge([][]byte{{2}, {3}})
+	require.Len(t, duplicatedRecords, 1)
+
+	// After this iterator, will detect another duplicate record
+	iter := db.NewIter(nil)
+	defer iter.Clone()
+	require.True(t, iter.First())
+	require.EqualValues(t, iter.Key(), []byte{1})
+	require.EqualValues(t, iter.Value(), []byte{2})
+
+	require.True(t, iter.Next())
+	require.EqualValues(t, iter.Key(), []byte{2})
+	require.EqualValues(t, iter.Value(), []byte{3})
+
+	require.False(t, iter.Next())
+
+	require.Len(t, duplicatedRecords, 2)
+	require.Equal(t, duplicatedRecords[1], dupRecord{key: []byte{2}, values: [][]byte{{2}, {3}}})
 }
 
 type errorSeekIter struct {
