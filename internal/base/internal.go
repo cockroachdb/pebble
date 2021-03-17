@@ -143,7 +143,16 @@ var kindsMap = map[string]InternalKeyKind{
 // format is <user-key>.<kind>.<seq-num>. If the seq-num starts with a "b" it
 // is marked as a batch-seq-num (i.e. the InternalKeySeqNumBatch bit is set).
 func ParseInternalKey(s string) InternalKey {
-	x := strings.Split(s, ".")
+	var x [3]string
+	for i, k, elem := 0, 0, ""; i >= 0; k += 1 {
+		i = strings.IndexByte(s, '.')
+		if i < 0 {
+			elem, s = s, ""
+		} else {
+			elem, s = s[:i], s[i+1:]
+		}
+		x[k] = elem
+	}
 	ukey := x[0]
 	kind, ok := kindsMap[x[1]]
 	if !ok {
