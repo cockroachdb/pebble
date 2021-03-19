@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -1003,10 +1004,31 @@ func BenchmarkIteratorSeqSeekPrefixGENotFound(b *testing.B) {
 	const restartInterval = 16
 	const levelCount = 5
 	const keyOffset = 100000
-	readers, levelSlices, _ := buildLevelsForMergingIterSeqSeek(
-		b, blockSize, restartInterval, levelCount, keyOffset, false)
-	readersWithTombstone, levelSlicesWithTombstone, _ := buildLevelsForMergingIterSeqSeek(
-		b, blockSize, restartInterval, 1, keyOffset, true)
+
+	var readers [4][][]*sstable.Reader
+	var levelSlices [4][]manifest.LevelSlice
+	indexFunc := func(bloom bool, withTombstone bool) int {
+		index := 0
+		if bloom {
+			index = 2
+		}
+		if withTombstone {
+			index++
+		}
+		return index
+	}
+	for _, bloom := range []bool{false, true} {
+		for _, withTombstone := range []bool{false, true} {
+			index := indexFunc(bloom, withTombstone)
+			levels := levelCount
+			if withTombstone {
+				levels = 1
+			}
+			readers[index], levelSlices[index], _ = buildLevelsForMergingIterSeqSeek(
+				b, blockSize, restartInterval, levels, keyOffset, withTombstone, bloom)
+
+		}
+	}
 	// We will not be seeking to the keys that were written but instead to
 	// keys before the written keys. This is to validate that the optimization
 	// to use Next still functions when mergingIter checks for the prefix
@@ -1018,53 +1040,52 @@ func BenchmarkIteratorSeqSeekPrefixGENotFound(b *testing.B) {
 		keys = append(keys, []byte(fmt.Sprintf("%08d", i)))
 	}
 	for _, skip := range []int{1, 2, 4} {
-		for _, withTombstone := range []bool{false, true} {
-			b.Run(fmt.Sprintf("skip=%d/with-tombstone=%t", skip, withTombstone),
-				func(b *testing.B) {
-					readers := readers
-					levelSlices := levelSlices
-					if withTombstone {
-						readers = readersWithTombstone
-						levelSlices = levelSlicesWithTombstone
-					}
-					m := buildMergingIter(readers, levelSlices)
-					iter := Iterator{
-						cmp:   DefaultComparer.Compare,
-						equal: DefaultComparer.Equal,
-						split: func(a []byte) int { return len(a) },
-						merge: DefaultMerger.Merge,
-						iter:  m,
-					}
-					pos := 0
-					b.ResetTimer()
-					for i := 0; i < b.N; i++ {
-						// When withTombstone=true, and prior to the
-						// optimization to stop early due to a range
-						// tombstone, the iteration would continue into the
-						// next file, and not be able to use Next at the lower
-						// level in the next SeekPrefixGE call. So we would
-						// incur the cost of iterating over all the deleted
-						// keys for every seek. Note that it is not possible
-						// to do a noop optimization in Iterator for the
-						// prefix case, unlike SeekGE/SeekLT, since we don't
-						// know if the iterators inside mergingIter are all
-						// appropriately positioned -- some may not be due to
-						// bloom filters not matching.
-						valid := iter.SeekPrefixGE(keys[pos])
-						if valid {
-							b.Fatalf("key should not be found")
+		for _, bloom := range []bool{false, true} {
+			for _, withTombstone := range []bool{false, true} {
+				b.Run(fmt.Sprintf("skip=%d/bloom=%t/with-tombstone=%t", skip, bloom, withTombstone),
+					func(b *testing.B) {
+						index := indexFunc(bloom, withTombstone)
+						readers := readers[index]
+						levelSlices := levelSlices[index]
+						m := buildMergingIter(readers, levelSlices)
+						iter := Iterator{
+							cmp:   DefaultComparer.Compare,
+							equal: DefaultComparer.Equal,
+							split: func(a []byte) int { return len(a) },
+							merge: DefaultMerger.Merge,
+							iter:  m,
 						}
-						pos += skip
-						if pos >= keyOffset {
-							pos = 0
+						pos := 0
+						b.ResetTimer()
+						for i := 0; i < b.N; i++ {
+							// When withTombstone=true, and prior to the
+							// optimization to stop early due to a range
+							// tombstone, the iteration would continue into the
+							// next file, and not be able to use Next at the lower
+							// level in the next SeekPrefixGE call. So we would
+							// incur the cost of iterating over all the deleted
+							// keys for every seek. Note that it is not possible
+							// to do a noop optimization in Iterator for the
+							// prefix case, unlike SeekGE/SeekLT, since we don't
+							// know if the iterators inside mergingIter are all
+							// appropriately positioned -- some may not be due to
+							// bloom filters not matching.
+							valid := iter.SeekPrefixGE(keys[pos])
+							if valid {
+								b.Fatalf("key should not be found")
+							}
+							pos += skip
+							if pos >= keyOffset {
+								pos = 0
+							}
 						}
-					}
-					b.StopTimer()
-					iter.Close()
-				})
+						b.StopTimer()
+						iter.Close()
+					})
+			}
 		}
 	}
-	for _, r := range [][][]*sstable.Reader{readers, readersWithTombstone} {
+	for _, r := range readers {
 		for i := range r {
 			for j := range r[i] {
 				r[i][j].Close()
@@ -1081,7 +1102,7 @@ func BenchmarkIteratorSeqSeekGEWithBounds(b *testing.B) {
 	const restartInterval = 16
 	const levelCount = 5
 	readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
-		b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false)
+		b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false)
 	m := buildMergingIter(readers, levelSlices)
 	iter := Iterator{
 		cmp:   DefaultComparer.Compare,
@@ -1118,7 +1139,7 @@ func BenchmarkIteratorSeekGENoop(b *testing.B) {
 	const levelCount = 5
 	const keyOffset = 10000
 	readers, levelSlices, _ := buildLevelsForMergingIterSeqSeek(
-		b, blockSize, restartInterval, levelCount, keyOffset, false)
+		b, blockSize, restartInterval, levelCount, keyOffset, false, false)
 	var keys [][]byte
 	for i := 0; i < keyOffset; i++ {
 		keys = append(keys, []byte(fmt.Sprintf("%08d", i)))

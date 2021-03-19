@@ -1028,8 +1028,8 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 
 	iterOpts := IterOptions{logger: c.logger}
 	addItersForLevel := func(iters []internalIterator, level *compactionLevel) ([]internalIterator, error) {
-		iters = append(iters, newLevelIter(iterOpts, c.cmp, newIters, level.files.Iter(),
-			manifest.Level(level.level), &c.bytesIterated))
+		iters = append(iters, newLevelIter(iterOpts, c.cmp, nil /* split */, newIters,
+			level.files.Iter(), manifest.Level(level.level), &c.bytesIterated))
 		// Add the range deletion iterator for each file as an independent level
 		// in mergingIter, as opposed to making a levelIter out of those. This
 		// is safer as levelIter expects all keys coming from underlying

@@ -45,6 +45,7 @@ type tableNewIters func(
 type levelIter struct {
 	logger Logger
 	cmp    Compare
+	split  Split
 	// The lower/upper bounds for iteration as specified at creation or the most
 	// recent call to SetBounds.
 	lower []byte
@@ -153,22 +154,26 @@ type levelIter struct {
 // levelIter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*levelIter)(nil)
 
+// newLevelIter returns a levelIter. It is permissible to pass a nil split
+// parameter if the caller is never going to call SeekPrefixGE.
 func newLevelIter(
 	opts IterOptions,
 	cmp Compare,
+	split Split,
 	newIters tableNewIters,
 	files manifest.LevelIterator,
 	level manifest.Level,
 	bytesIterated *uint64,
 ) *levelIter {
 	l := &levelIter{}
-	l.init(opts, cmp, newIters, files, level, bytesIterated)
+	l.init(opts, cmp, split, newIters, files, level, bytesIterated)
 	return l
 }
 
 func (l *levelIter) init(
 	opts IterOptions,
 	cmp Compare,
+	split Split,
 	newIters tableNewIters,
 	files manifest.LevelIterator,
 	level manifest.Level,
@@ -181,6 +186,7 @@ func (l *levelIter) init(
 	l.upper = opts.UpperBound
 	l.tableOpts.TableFilter = opts.TableFilter
 	l.cmp = cmp
+	l.split = split
 	l.iterFile = nil
 	l.newIters = newIters
 	l.files = files
@@ -434,6 +440,17 @@ func (l *levelIter) SeekPrefixGE(
 			*l.isSyntheticIterBoundsKey = false
 		}
 		return l.verify(l.largestBoundary, nil)
+	}
+	// It is possible that we are here because bloom filter matching failed.
+	// In that case it is likely that all keys matching the prefix are wholly
+	// within the current file and cannot be in the subsequent file. In that
+	// case we don't want to go to the next file, since loading and seeking in
+	// there has some cost. Additionally, for sparse key spaces, loading the
+	// next file will defeat the optimization for the next SeekPrefixGE that
+	// is called with trySeekUsingNext=true, since for sparse key spaces it is
+	// likely that the next key will also be contained in the current file.
+	if n := l.split(l.iterFile.Largest.UserKey); l.cmp(prefix, l.iterFile.Largest.UserKey[:n]) < 0 {
+		return nil, nil
 	}
 	return l.verify(l.skipEmptyFileForward())
 }

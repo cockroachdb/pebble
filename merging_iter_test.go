@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -245,7 +246,8 @@ func TestMergingIterCornerCases(t *testing.T) {
 					continue
 				}
 				li := &levelIter{}
-				li.init(IterOptions{}, cmp, newIters, slice.Iter(), manifest.Level(i), nil)
+				li.init(IterOptions{}, cmp, func(a []byte) int { return len(a) }, newIters,
+					slice.Iter(), manifest.Level(i), nil)
 				i := len(levelIters)
 				levelIters = append(levelIters, mergingIterLevel{iter: li})
 				li.initRangeDel(&levelIters[i].rangeDelIter)
@@ -449,6 +451,7 @@ func buildLevelsForMergingIterSeqSeek(
 	blockSize, restartInterval, levelCount int,
 	keyOffset int,
 	writeRangeTombstoneToLowestLevel bool,
+	writeBloomFilters bool,
 ) ([][]*sstable.Reader, []manifest.LevelSlice, [][]byte) {
 	mem := vfs.NewMem()
 	if writeRangeTombstoneToLowestLevel && levelCount != 1 {
@@ -466,13 +469,20 @@ func buildLevelsForMergingIterSeqSeek(
 	}
 
 	writers := make([][]*sstable.Writer, levelCount)
+	// A policy unlikely to have false positives.
+	filterPolicy := bloom.FilterPolicy(100)
 	for i := range files {
 		for j := range files[i] {
-			writers[i] = append(writers[i], sstable.NewWriter(files[i][j], sstable.WriterOptions{
+			writerOptions := sstable.WriterOptions{
 				BlockRestartInterval: restartInterval,
 				BlockSize:            blockSize,
 				Compression:          NoCompression,
-			}))
+			}
+			if writeBloomFilters {
+				writerOptions.FilterPolicy = filterPolicy
+				writerOptions.FilterType = base.TableFilter
+			}
+			writers[i] = append(writers[i], sstable.NewWriter(files[i][j], writerOptions))
 		}
 	}
 
@@ -511,6 +521,10 @@ func buildLevelsForMergingIterSeqSeek(
 	}
 
 	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20)}
+	if writeBloomFilters {
+		opts.Filters = make(map[string]FilterPolicy)
+		opts.Filters[filterPolicy.Name()] = filterPolicy
+	}
 	defer opts.Cache.Unref()
 
 	readers := make([][]*sstable.Reader, levelCount)
@@ -569,7 +583,8 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 			return iter, rdIter, err
 		}
 		l := newLevelIter(IterOptions{}, DefaultComparer.Compare,
-			newIters, levelSlices[i].Iter(), manifest.Level(level), nil)
+			func(a []byte) int { return len(a) }, newIters, levelSlices[i].Iter(),
+			manifest.Level(level), nil)
 		l.initRangeDel(&mils[level].rangeDelIter)
 		l.initSmallestLargestUserKey(
 			&mils[level].smallestUserKey, &mils[level].largestUserKey,
@@ -598,7 +613,7 @@ func BenchmarkMergingIterSeqSeekGEWithBounds(b *testing.B) {
 		b.Run(fmt.Sprintf("levelCount=%d", levelCount),
 			func(b *testing.B) {
 				readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
-					b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false)
+					b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false)
 				m := buildMergingIter(readers, levelSlices)
 				keyCount := len(keys)
 				b.ResetTimer()
@@ -626,7 +641,7 @@ func BenchmarkMergingIterSeqSeekPrefixGE(b *testing.B) {
 	const restartInterval = 16
 	const levelCount = 5
 	readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
-		b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false)
+		b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false)
 
 	for _, skip := range []int{1, 2, 4, 8, 16} {
 		for _, useNext := range []bool{false, true} {
