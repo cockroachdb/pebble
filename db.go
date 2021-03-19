@@ -793,7 +793,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 			li = &levelIter{}
 		}
 
-		li.init(dbi.opts, dbi.cmp, dbi.newIters, files, level, nil)
+		li.init(dbi.opts, dbi.cmp, dbi.split, dbi.newIters, files, level, nil)
 		li.initRangeDel(&mlevels[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevels[0].smallestUserKey, &mlevels[0].largestUserKey,
 			&mlevels[0].isLargestUserKeyRangeDelSentinel)

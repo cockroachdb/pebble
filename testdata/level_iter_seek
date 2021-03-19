@@ -56,10 +56,32 @@ c#7,1:c
 d#72057594037927935,15:
 .
 
+# There is no point key with d, but since there is a rangedel, levelIter
+# returns a synthetic boundary key using the largest key, f, in the file.
 iter
 seek-prefix-ge d
 ----
 f/d-e#6#5,15:
+
+# Tests a sequence of SeekPrefixGE with monotonically increasing keys, some of
+# which are present and some not (so fail the bloom filter match). The seek to
+# cc returns a synthetic boundary key.
+iter
+seek-prefix-ge aa
+seek-prefix-ge c
+seek-prefix-ge cc
+seek-prefix-ge f
+seek-prefix-ge g
+seek-prefix-ge gg
+seek-prefix-ge h
+----
+./<empty>#0,0:
+c/d-e#6#7,1:c
+f/d-e#6#5,15:
+f/<empty>#5,1:f
+g/<empty>#4,1:g
+./<empty>#0,0:
+h/<empty>#3,1:h
 
 iter
 set-bounds lower=d
