@@ -262,14 +262,8 @@ func runTest(dir string, t test) {
 	switch engineType {
 	case "badger":
 		db = newBadgerDB(dir)
-	case "boltdb":
-		db = newBoltDB(dir)
 	case "pebble":
 		db = newPebbleDB(dir)
-	case "crdb-pebble":
-		db = newCRDBPebbleDB(dir)
-	case "rocksdb":
-		db = newRocksDB(dir)
 	}
 
 	var wg sync.WaitGroup
