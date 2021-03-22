@@ -71,7 +71,7 @@ func main() {
 		cmd.Flags().DurationVarP(
 			&duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
 		cmd.Flags().StringVarP(
-			&engineType, "engine", "e", "pebble", "engine type (pebble, badger, boltdb, rocksdb)")
+			&engineType, "engine", "e", "pebble", "engine type (pebble, badger)")
 		cmd.Flags().VarP(
 			maxOpsPerSec, "rate", "m", "max ops per second [{zipf,uniform}:]min[-max][/period (sec)]")
 		cmd.Flags().BoolVar(

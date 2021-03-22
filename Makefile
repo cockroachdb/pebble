@@ -40,12 +40,12 @@ stressmeta: stress
 generate:
 	${GO} generate -mod=vendor ${PKG}
 
-# The cmd/pebble/{badger,boltdb,rocksdb}.go files causes various
-# cockroach dependencies to be pulled in which is undesirable. Hack
-# around this by temporarily moving hiding that file.
+# The cmd/pebble/{badger}.go file causes various "false" dependencies
+# to be pulled in which is undesirable. Hack around this by
+# temporarily hiding those files.
 mod-update:
 	mkdir -p cmd/pebble/_bak
-	mv cmd/pebble/{badger,boltdb,rocksdb}.go cmd/pebble/_bak
+	mv cmd/pebble/{badger}.go cmd/pebble/_bak
 	${GO} get -u
 	${GO} mod tidy
 	${GO} mod vendor
