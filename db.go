@@ -376,6 +376,18 @@ func (d *DB) Get(key []byte) ([]byte, io.Closer, error) {
 	return d.getInternal(key, nil /* batch */, nil /* snapshot */)
 }
 
+type getIterAlloc struct {
+	dbi                 Iterator
+	keyBuf              []byte
+	get                 getIter
+}
+
+var getIterAllocPool = sync.Pool{
+	New: func() interface{} {
+		return &getIterAlloc{}
+	},
+}
+
 func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
@@ -395,22 +407,21 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		seqNum = atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum)
 	}
 
-	var buf struct {
-		dbi Iterator
-		get getIter
-	}
+	buf := getIterAllocPool.Get().(*getIterAlloc)
 
 	get := &buf.get
-	get.logger = d.opts.Logger
-	get.cmp = d.cmp
-	get.equal = d.equal
-	get.newIters = d.newIters
-	get.snapshot = seqNum
-	get.key = key
-	get.batch = b
-	get.mem = readState.memtables
-	get.l0 = readState.current.L0Sublevels.Levels
-	get.version = readState.current
+	*get = getIter{
+		logger: d.opts.Logger,
+		cmp: d.cmp,
+		equal: d.equal,
+		newIters: d.newIters,
+		snapshot: seqNum,
+		key: key,
+		batch: b,
+		mem: readState.memtables,
+		l0: readState.current.L0Sublevels.Levels,
+		version: readState.current,
+	}
 
 	// Strip off memtables which cannot possibly contain the seqNum being read
 	// at.
@@ -423,12 +434,16 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	}
 
 	i := &buf.dbi
-	i.cmp = d.cmp
-	i.equal = d.equal
-	i.merge = d.merge
-	i.split = d.split
-	i.iter = get
-	i.readState = readState
+	*i = Iterator{
+		getIterAlloc:        buf,
+		cmp:                 d.cmp,
+		equal:               d.equal,
+		iter:                get,
+		merge:               d.merge,
+		split:               d.split,
+		readState:           readState,
+		keyBuf:              buf.keyBuf,
+	}
 
 	if !i.First() {
 		err := i.Close()
