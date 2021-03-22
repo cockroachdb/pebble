@@ -95,6 +95,7 @@ type Iterator struct {
 	iterKey             *InternalKey
 	iterValue           []byte
 	alloc               *iterAlloc
+	getIterAlloc        *getIterAlloc
 	prefixOrFullSeekKey []byte
 	readSampling        readSampling
 
@@ -1035,6 +1036,20 @@ func (i *Iterator) Close() error {
 		}
 		*i = Iterator{}
 		iterAllocPool.Put(alloc)
+	} else if alloc := i.getIterAlloc; alloc != nil {
+		const maxKeyBufCacheSize = 4 << 10 // 4 KB
+		if cap(i.keyBuf) >= maxKeyBufCacheSize {
+			alloc.keyBuf = nil
+		} else {
+			alloc.keyBuf = i.keyBuf
+		}
+		if cap(i.prefixOrFullSeekKey) >= maxKeyBufCacheSize {
+			alloc.prefixOrFullSeekKey = nil
+		} else {
+			alloc.prefixOrFullSeekKey = i.prefixOrFullSeekKey
+		}
+		*i = Iterator{}
+		getIterAllocPool.Put(alloc)
 	}
 	return err
 }
@@ -1121,18 +1136,19 @@ func (i *Iterator) Clone() (*Iterator, error) {
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
 	*dbi = Iterator{
-		opts:      i.opts,
-		alloc:     buf,
-		cmp:       i.cmp,
-		equal:     i.equal,
-		iter:      &buf.merging,
-		merge:     i.merge,
-		split:     i.split,
-		readState: readState,
-		keyBuf:    buf.keyBuf,
-		batch:     i.batch,
-		newIters:  i.newIters,
-		seqNum:    i.seqNum,
+		opts:                i.opts,
+		alloc:               buf,
+		cmp:                 i.cmp,
+		equal:               i.equal,
+		iter:                &buf.merging,
+		merge:               i.merge,
+		split:               i.split,
+		readState:           readState,
+		keyBuf:              buf.keyBuf,
+		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
+		batch:               i.batch,
+		newIters:            i.newIters,
+		seqNum:              i.seqNum,
 	}
 	return finishInitializingIter(buf), nil
 }
