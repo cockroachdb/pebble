@@ -94,7 +94,7 @@ type Iterator struct {
 	// SetBounds is called. In that case, these are explicitly set to nil.
 	iterKey             *InternalKey
 	iterValue           []byte
-	alloc               *iterAlloc
+	alloc               iAlloc
 	prefixOrFullSeekKey []byte
 	readSampling        readSampling
 
@@ -121,6 +121,12 @@ type Iterator struct {
 	// Used for deriving the value of SeekPrefixGE(..., trySeekUsingNext),
 	// and SeekGE/SeekLT optimizations
 	lastPositioningOp lastPositioningOpKind
+}
+
+type iAlloc interface {
+	SetPrefixOrFullSeekKey([]byte)
+	SetKeyBuf([]byte)
+	Release()
 }
 
 type lastPositioningOpKind int8
@@ -1024,17 +1030,17 @@ func (i *Iterator) Close() error {
 		// arbitrary.
 		const maxKeyBufCacheSize = 4 << 10 // 4 KB
 		if cap(i.keyBuf) >= maxKeyBufCacheSize {
-			alloc.keyBuf = nil
+			alloc.SetKeyBuf(nil)
 		} else {
-			alloc.keyBuf = i.keyBuf
+			alloc.SetKeyBuf(i.keyBuf)
 		}
 		if cap(i.prefixOrFullSeekKey) >= maxKeyBufCacheSize {
-			alloc.prefixOrFullSeekKey = nil
+			alloc.SetPrefixOrFullSeekKey(nil)
 		} else {
-			alloc.prefixOrFullSeekKey = i.prefixOrFullSeekKey
+			alloc.SetPrefixOrFullSeekKey(i.prefixOrFullSeekKey)
 		}
 		*i = Iterator{}
-		iterAllocPool.Put(alloc)
+		alloc.Release()
 	}
 	return err
 }
@@ -1121,18 +1127,19 @@ func (i *Iterator) Clone() (*Iterator, error) {
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
 	*dbi = Iterator{
-		opts:      i.opts,
-		alloc:     buf,
-		cmp:       i.cmp,
-		equal:     i.equal,
-		iter:      &buf.merging,
-		merge:     i.merge,
-		split:     i.split,
-		readState: readState,
-		keyBuf:    buf.keyBuf,
-		batch:     i.batch,
-		newIters:  i.newIters,
-		seqNum:    i.seqNum,
+		opts:                i.opts,
+		alloc:               buf,
+		cmp:                 i.cmp,
+		equal:               i.equal,
+		iter:                &buf.merging,
+		merge:               i.merge,
+		split:               i.split,
+		readState:           readState,
+		keyBuf:              buf.keyBuf,
+		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
+		batch:               i.batch,
+		newIters:            i.newIters,
+		seqNum:              i.seqNum,
 	}
 	return finishInitializingIter(buf), nil
 }
