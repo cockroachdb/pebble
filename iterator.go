@@ -42,7 +42,7 @@ const (
 )
 
 // Approximate gap in bytes between samples of data read during iteration.
-const readBytesPeriod uint64 = 1048576
+const readBytesPeriod uint64 = 1 << 20
 
 var errReversePrefixIteration = errors.New("pebble: unsupported reverse prefix iteration")
 
@@ -166,6 +166,7 @@ const (
 // compaction
 type readSampling struct {
 	bytesUntilReadSampling uint64
+	initialSamplePassed    bool
 	pendingCompactions     []readCompaction
 	// forceReadSampling is used for testing purposes to force a read sample on every
 	// call to Iterator.maybeSampleRead()
@@ -282,13 +283,17 @@ func (i *Iterator) maybeSampleRead() {
 		i.sampleRead()
 		return
 	}
-	samplingPeriod := uint32(readBytesPeriod * i.readState.db.opts.Experimental.ReadSamplingMultiplier)
+	samplingPeriod := int32(int64(readBytesPeriod) * i.readState.db.opts.Experimental.ReadSamplingMultiplier)
 	if samplingPeriod <= 0 {
 		return
 	}
 	bytesRead := uint64(len(i.key) + len(i.value))
 	for i.readSampling.bytesUntilReadSampling < bytesRead {
-		i.readSampling.bytesUntilReadSampling += uint64(fastrand.Uint32n(2 * samplingPeriod))
+		i.readSampling.bytesUntilReadSampling += uint64(fastrand.Uint32n(2 * uint32(samplingPeriod)))
+		if !i.readSampling.initialSamplePassed {
+			i.readSampling.initialSamplePassed = true
+			continue
+		}
 		i.sampleRead()
 	}
 	i.readSampling.bytesUntilReadSampling -= bytesRead
