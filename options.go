@@ -337,7 +337,7 @@ type Options struct {
 		// iterator.maybeSampleRead() to control the frequency of read sampling
 		// to trigger a read triggered compaction. A value of -1 prevents sampling
 		// and disables read triggered compactions.
-		ReadSamplingMultiplier uint64
+		ReadSamplingMultiplier int64
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
