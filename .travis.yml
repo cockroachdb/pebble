@@ -3,6 +3,7 @@ language: go
 branches:
   only:
   - master
+  - /^crl-release-\d+\.\d+$/
 
 install:
   - go get -v golang.org/x/lint/golint
