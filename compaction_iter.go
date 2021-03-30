@@ -229,6 +229,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 		i.err = i.valueCloser.Close()
 		i.valueCloser = nil
 		if i.err != nil {
+			i.valid = false
 			return nil, nil
 		}
 	}
@@ -344,12 +345,14 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				return &i.key, i.value
 			}
 			if i.err != nil {
+				i.valid = false
 				i.err = base.MarkCorruptionError(i.err)
 			}
 			return nil, nil
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
+			i.valid = false
 			return nil, nil
 		}
 	}
@@ -455,11 +458,23 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 		}
 		key := i.iterKey
 		switch key.Kind() {
-		case InternalKeyKindDelete:
+		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			// We've hit a deletion tombstone. Return everything up to this point and
 			// then skip entries until the next snapshot stripe. We change the kind
 			// of the result key to a Set so that it shadows keys in lower
 			// levels. That is, MERGE+DEL -> SET.
+			// We do the same for SingleDelete since SingleDelete is only
+			// permitted (with deterministic behavior) for keys that have been
+			// set once since the last SingleDelete/Delete, so everything
+			// older is acceptable to shadow. Note that this is slightly
+			// different from singleDeleteNext() which implements stricter
+			// semantics in terms of applying the SingleDelete to the single
+			// next Set. But those stricter semantics are not observable to
+			// the end-user since Iterator interprets SingleDelete as Delete.
+			// We could do something more complicated here and consume only a
+			// single Set, and then merge in any following Sets, but that is
+			// complicated wrt code and unnecessary given the narrow permitted
+			// use of SingleDelete.
 			i.key.SetKind(InternalKeyKindSet)
 			i.skip = true
 			return sameStripeSkippable
@@ -480,6 +495,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			// in lower levels. That is, MERGE+SET -> SET.
 			i.err = valueMerger.MergeOlder(i.iterValue)
 			if i.err != nil {
+				i.valid = false
 				return sameStripeSkippable
 			}
 			i.key.SetKind(InternalKeyKindSet)
@@ -501,11 +517,13 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			// continue looping.
 			i.err = valueMerger.MergeOlder(i.iterValue)
 			if i.err != nil {
+				i.valid = false
 				return sameStripeSkippable
 			}
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
+			i.valid = false
 			return sameStripeSkippable
 		}
 	}
@@ -542,6 +560,7 @@ func (i *compactionIter) singleDeleteNext() bool {
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
+			i.valid = false
 			return false
 		}
 	}

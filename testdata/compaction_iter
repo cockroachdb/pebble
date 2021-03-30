@@ -779,6 +779,35 @@ a#2,1:b
 .
 
 define
+a.MERGE.6:b
+a.SINGLEDEL.5:
+a.SET.4:a
+----
+
+iter
+first
+next
+----
+a#6,1:b[base]
+.
+
+# Non-deterministic use of SINGLEDEL where there are two older SETs that have
+# not been deleted or single deleted. It is permitted to shadow both.
+define
+a.MERGE.6:b
+a.SINGLEDEL.5:
+a.SET.4:a
+a.SET.3:a
+----
+
+iter
+first
+next
+----
+a#6,1:b[base]
+.
+
+define
 a.SINGLEDEL.2:
 a.SET.1:b
 b.SET.3:c
