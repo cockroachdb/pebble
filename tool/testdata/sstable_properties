@@ -148,11 +148,11 @@ test.key-count: 1727
 # https://github.com/cockroachdb/pebble/issues/532
 sstable properties
 -v
-testdata/find-db/000011.sst
+testdata/find-db/archive/000011.sst
 ----
 000011.sst
 rocksdb.column.family.id: -
-rocksdb.comparator: leveldb.BytewiseComparator
+rocksdb.comparator: alt-comparer
 rocksdb.compression: Snappy
 rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 rocksdb.creation.time: 0
@@ -164,7 +164,7 @@ rocksdb.index.key.is.user.key: 0
 rocksdb.index.size: 27
 rocksdb.block.based.table.index.type: 0
 rocksdb.index.value.is.delta.encoded: 0
-rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operator: test-merger
 rocksdb.num.data.blocks: 1
 rocksdb.deleted.keys: 2
 rocksdb.num.entries: 8

@@ -113,7 +113,7 @@ func New(opts ...Option) *T {
 	}
 
 	t.db = newDB(&t.opts, t.comparers, t.mergers)
-	t.find = newFind(&t.opts, t.comparers, t.defaultComparer)
+	t.find = newFind(&t.opts, t.comparers, t.defaultComparer, t.mergers)
 	t.lsm = newLSM(&t.opts, t.comparers)
 	t.manifest = newManifest(&t.opts, t.comparers)
 	t.sstable = newSSTable(&t.opts, t.comparers, t.mergers)

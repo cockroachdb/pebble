@@ -33,6 +33,7 @@ type findT struct {
 	// Configuration.
 	opts      *pebble.Options
 	comparers sstable.Comparers
+	mergers   sstable.Mergers
 
 	// Flags.
 	comparerName string
@@ -58,10 +59,16 @@ type findT struct {
 	tableMeta map[base.FileNum]*manifest.FileMetadata
 }
 
-func newFind(opts *pebble.Options, comparers sstable.Comparers, defaultComparer string) *findT {
+func newFind(
+	opts *pebble.Options,
+	comparers sstable.Comparers,
+	defaultComparer string,
+	mergers sstable.Mergers,
+) *findT {
 	f := &findT{
 		opts:      opts,
 		comparers: comparers,
+		mergers:   mergers,
 	}
 	f.fmtKey.mustSet("quoted")
 	f.fmtValue.mustSet("[%x]")
@@ -401,8 +408,10 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 			opts := sstable.ReaderOptions{
 				Cache:    cache,
 				Comparer: f.opts.Comparer,
+				Filters:  f.opts.Filters,
 			}
-			r, err := sstable.NewReader(tf, opts, private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
+			r, err := sstable.NewReader(tf, opts, f.comparers, f.mergers,
+				private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
 			if err != nil {
 				return err
 			}
