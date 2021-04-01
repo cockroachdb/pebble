@@ -101,13 +101,18 @@ func runTests(t *testing.T, path string) {
 					}
 					return &c
 				}()
+				altComparer := func() *Comparer {
+					c := *base.DefaultComparer
+					c.Name = "alt-comparer"
+					return &c
+				}()
 				merger := func() *Merger {
 					m := *base.DefaultMerger
 					m.Name = "test-merger"
 					return &m
 				}()
 
-				tool := New(DefaultComparer(comparer), Mergers(merger))
+				tool := New(DefaultComparer(comparer), Comparers(altComparer), Mergers(merger))
 				tool.setFS(fs)
 
 				c := &cobra.Command{}

@@ -11,25 +11,38 @@ import (
 	"log"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
 type db struct {
-	db *pebble.DB
+	db       *pebble.DB
+	comparer *base.Comparer
+	merger   *base.Merger
 }
 
 func open(fs vfs.FS, dir string) *db {
+	c := *base.DefaultComparer
+	c.Name = "alt-comparer"
+
+	m := *base.DefaultMerger
+	m.Name = "test-merger"
+
 	d, err := pebble.Open(dir, &pebble.Options{
 		Cleaner:       pebble.ArchiveCleaner{},
+		Comparer:      &c,
 		EventListener: pebble.MakeLoggingEventListener(pebble.DefaultLogger),
 		FS:            fs,
+		Merger:        &m,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	return &db{
-		db: d,
+		db:       d,
+		comparer: &c,
+		merger:   &m,
 	}
 }
 
@@ -81,7 +94,10 @@ func (d *db) ingest(keyVals ...string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	w := sstable.NewWriter(f, sstable.WriterOptions{})
+	w := sstable.NewWriter(f, sstable.WriterOptions{
+		Comparer:   d.comparer,
+		MergerName: d.merger.Name,
+	})
 
 	for i := 0; i < len(keyVals); i += 2 {
 		key := keyVals[i]
