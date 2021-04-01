@@ -193,47 +193,51 @@ manifest dump
 ----
 MANIFEST-000001
 0
-  comparer:     leveldb.BytewiseComparator
+  comparer:     alt-comparer
   next-file-num: 2
-39
+25
   log-num:       2
   next-file-num: 3
-50
+36
   log-num:       4
   next-file-num: 6
   last-seq-num:  5
-  added:         L0 000005:797<#0-#4>[aaa#0,SET-ccc#4,MERGE] (2020-02-26T00:47:32Z)
-102
+  added:         L0 000005:784<#1-#5>[aaa#1,SET-ccc#5,MERGE] (2021-04-01T20:24:02Z)
+88
   next-file-num: 6
   last-seq-num:  5
   deleted:       L0 000005
-  added:         L6 000005:797<#0-#4>[aaa#0,SET-ccc#4,MERGE] (2020-02-26T00:47:32Z)
-155
+  added:         L6 000005:784<#1-#5>[aaa#1,SET-ccc#5,MERGE] (2021-04-01T20:24:02Z)
+141
   next-file-num: 7
   last-seq-num:  6
-  added:         L0 000006:838<#5-#5>[bbb#5,SET-ccc#5,SET] (2020-02-26T00:47:32Z)
-205
+  added:         L0 000006:817<#6-#6>[bbb#6,SET-ccc#6,SET] (2021-04-01T20:24:02Z)
+191
   next-file-num: 8
   last-seq-num:  7
-  added:         L6 000007:829<#6-#6>[ddd#6,SET-ddd#6,SET] (2020-02-26T00:47:32Z)
-255
+  added:         L6 000007:808<#7-#7>[ddd#7,SET-ddd#7,SET] (2021-04-01T20:24:02Z)
+241
   next-file-num: 9
   last-seq-num:  7
   deleted:       L0 000006
   deleted:       L6 000005
-  added:         L6 000008:812<#0-#5>[aaa#0,SET-ccc#0,MERGE] (2020-02-26T00:47:32Z)
-311
+  added:         L6 000008:791<#0-#6>[aaa#0,SET-ccc#0,MERGE] (2021-04-01T20:24:02Z)
+297
   log-num:       9
   next-file-num: 11
   last-seq-num:  10
-  added:         L0 000010:855<#7-#9>[aaa#7,DEL-eee#72057594037927935,RANGEDEL] (2020-02-26T00:47:32Z)
-363
+  added:         L0 000010:834<#8-#10>[aaa#8,DEL-eee#72057594037927935,RANGEDEL] (2021-04-01T20:24:02Z)
+349
   next-file-num: 12
   last-seq-num:  10
   deleted:       L0 000010
   deleted:       L6 000007
   deleted:       L6 000008
-  added:         L6 000011:919<#0-#9>[aaa#7,DEL-eee#72057594037927935,RANGEDEL] (2020-02-26T00:47:32Z)
+  added:         L6 000011:898<#0-#10>[aaa#8,DEL-eee#72057594037927935,RANGEDEL] (2021-04-01T20:24:02Z)
+408
+  next-file-num: 12
+  last-seq-num:  10
+  deleted:       L6 000011
 EOF
 --- L0 ---
 --- L1 ---
@@ -242,4 +246,3 @@ EOF
 --- L4 ---
 --- L5 ---
 --- L6 ---
-  000011:919<#0-#9>[aaa#7,DEL-eee#72057594037927935,RANGEDEL]
