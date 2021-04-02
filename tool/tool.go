@@ -83,6 +83,13 @@ func Filters(filters ...FilterPolicy) Option {
 	}
 }
 
+// FS sets the filesystem implementation to use by the introspection tools.
+func FS(fs vfs.FS) Option {
+	return func(t *T) {
+		t.opts.FS = fs
+	}
+}
+
 // New creates a new introspection tool.
 func New(opts ...Option) *T {
 	t := &T{
@@ -120,9 +127,4 @@ func New(opts ...Option) *T {
 		t.wal.Root,
 	}
 	return t
-}
-
-// setFS sets the filesystem implementation to use by the introspection tools.
-func (t *T) setFS(fs vfs.FS) {
-	t.opts.FS = fs
 }
