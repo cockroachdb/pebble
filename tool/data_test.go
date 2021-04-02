@@ -107,8 +107,7 @@ func runTests(t *testing.T, path string) {
 					return &m
 				}()
 
-				tool := New(DefaultComparer(comparer), Mergers(merger))
-				tool.setFS(fs)
+				tool := New(DefaultComparer(comparer), Mergers(merger), FS(fs))
 
 				c := &cobra.Command{}
 				c.AddCommand(tool.Commands...)
