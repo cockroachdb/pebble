@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/golang/snappy"
+	"github.com/klauspost/compress/s2"
 )
 
 // decompressBlock decompresses an SST block, with space allocated from a cache.
@@ -25,6 +26,8 @@ func decompressBlock(cache *cache.Cache, blockType byte, b []byte) (*cache.Value
 		return nil, nil
 	case snappyCompressionBlockType:
 		decodedLen, err = snappy.DecodedLen(b)
+	case s2CompressionBlockType:
+		decodedLen, err = s2.DecodedLen(b)
 	case zstdCompressionBlockType:
 		// This will also be used by zlib, bzip2 and lz4 to retrieve the decodedLen
 		// if we implement these algorithms in the future.
@@ -55,6 +58,8 @@ func decompressBlock(cache *cache.Cache, blockType byte, b []byte) (*cache.Value
 	switch blockType {
 	case snappyCompressionBlockType:
 		result, err = snappy.Decode(decodedBuf, b)
+	case s2CompressionBlockType:
+		result, err = s2.Decode(decodedBuf, b)
 	case zstdCompressionBlockType:
 		result, err = decodeZstd(decodedBuf, b)
 	}
@@ -76,6 +81,8 @@ func compressBlock(compression Compression, b []byte, compressedBuf []byte) (blo
 	switch compression {
 	case SnappyCompression:
 		return snappyCompressionBlockType, snappy.Encode(compressedBuf, b)
+	case S2Compression:
+		return s2CompressionBlockType, s2.Encode(compressedBuf, b)
 	case NoCompression:
 		return noCompressionBlockType, b
 	}

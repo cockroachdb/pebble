@@ -168,6 +168,7 @@ const (
 	lz4hcCompressionBlockType  byte = 5
 	xpressCompressionBlockType byte = 6
 	zstdCompressionBlockType   byte = 7
+	s2CompressionBlockType     byte = 8
 
 	metaPropertiesName = "rocksdb.properties"
 	metaRangeDelName   = "rocksdb.range_del"

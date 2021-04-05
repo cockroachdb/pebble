@@ -1,5 +1,7 @@
 # github.com/DataDog/zstd v1.4.5
 github.com/DataDog/zstd
+# github.com/cespare/xxhash v1.1.0
+github.com/cespare/xxhash
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
 # github.com/cockroachdb/errors v1.8.1
@@ -33,19 +35,37 @@ github.com/cockroachdb/sentry-go
 github.com/codahale/hdrhistogram
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
+# github.com/dgraph-io/badger/v2 v2.2007.2
+github.com/dgraph-io/badger/v2
+github.com/dgraph-io/badger/v2/options
+github.com/dgraph-io/badger/v2/pb
+github.com/dgraph-io/badger/v2/skl
+github.com/dgraph-io/badger/v2/table
+github.com/dgraph-io/badger/v2/trie
+github.com/dgraph-io/badger/v2/y
+# github.com/dgraph-io/ristretto v0.0.3-0.20200630154024-f66de99634de
+github.com/dgraph-io/ristretto
+github.com/dgraph-io/ristretto/z
+# github.com/dgryski/go-farm v0.0.0-20190423205320-6a90982ecee2
+github.com/dgryski/go-farm
+# github.com/dustin/go-humanize v1.0.0
+github.com/dustin/go-humanize
 # github.com/ghemawat/stream v0.0.0-20171120220530-696b145b53b9
 github.com/ghemawat/stream
 # github.com/gogo/protobuf v1.3.1
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/sortkeys
 github.com/gogo/protobuf/types
+# github.com/golang/protobuf v1.4.2
+github.com/golang/protobuf/proto
 # github.com/golang/snappy v0.0.2-0.20190904063534-ff6b7dc882cf
 github.com/golang/snappy
 # github.com/inconshreveable/mousetrap v1.0.0
 github.com/inconshreveable/mousetrap
-# github.com/klauspost/compress v1.11.7
+# github.com/klauspost/compress v1.11.13
 github.com/klauspost/compress/fse
 github.com/klauspost/compress/huff0
+github.com/klauspost/compress/s2
 github.com/klauspost/compress/snappy
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
@@ -66,11 +86,42 @@ github.com/stretchr/testify/assert
 github.com/stretchr/testify/require
 # golang.org/x/exp v0.0.0-20200513190911-00229845015e
 golang.org/x/exp/rand
+# golang.org/x/net v0.0.0-20200520004742-59133d7f0dd7
+golang.org/x/net/internal/timeseries
+golang.org/x/net/trace
 # golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
 golang.org/x/sync/errgroup
 # golang.org/x/sys v0.0.0-20200519105757-fe76b779f299
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
+# google.golang.org/protobuf v1.23.0
+google.golang.org/protobuf/encoding/prototext
+google.golang.org/protobuf/encoding/protowire
+google.golang.org/protobuf/internal/descfmt
+google.golang.org/protobuf/internal/descopts
+google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/encoding/defval
+google.golang.org/protobuf/internal/encoding/messageset
+google.golang.org/protobuf/internal/encoding/tag
+google.golang.org/protobuf/internal/encoding/text
+google.golang.org/protobuf/internal/errors
+google.golang.org/protobuf/internal/fieldnum
+google.golang.org/protobuf/internal/fieldsort
+google.golang.org/protobuf/internal/filedesc
+google.golang.org/protobuf/internal/filetype
+google.golang.org/protobuf/internal/flags
+google.golang.org/protobuf/internal/genname
+google.golang.org/protobuf/internal/impl
+google.golang.org/protobuf/internal/mapsort
+google.golang.org/protobuf/internal/pragma
+google.golang.org/protobuf/internal/set
+google.golang.org/protobuf/internal/strs
+google.golang.org/protobuf/internal/version
+google.golang.org/protobuf/proto
+google.golang.org/protobuf/reflect/protoreflect
+google.golang.org/protobuf/reflect/protoregistry
+google.golang.org/protobuf/runtime/protoiface
+google.golang.org/protobuf/runtime/protoimpl
 # gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
 gopkg.in/yaml.v3

@@ -17,6 +17,7 @@ const (
 	DefaultCompression Compression = iota
 	NoCompression
 	SnappyCompression
+	S2Compression
 	ZstdCompression
 	NCompression
 )
@@ -29,6 +30,8 @@ func (c Compression) String() string {
 		return "NoCompression"
 	case SnappyCompression:
 		return "Snappy"
+	case S2Compression:
+		return "S2"
 	case ZstdCompression:
 		return "ZSTD"
 	default:
