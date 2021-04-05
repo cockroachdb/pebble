@@ -336,7 +336,8 @@ type Options struct {
 		// ReadSamplingMultiplier is a multiplier for the readSamplingPeriod in
 		// iterator.maybeSampleRead() to control the frequency of read sampling
 		// to trigger a read triggered compaction. A value of -1 prevents sampling
-		// and disables read triggered compactions.
+		// and disables read triggered compactions. The default is 1 << 4. which
+		// gets multiplied with a constant of 1 << 16 to yield 1 << 20 (1MB).
 		ReadSamplingMultiplier int64
 	}
 
@@ -599,7 +600,7 @@ func (o *Options) EnsureDefaults() *Options {
 		o.Experimental.ReadCompactionRate = 16000
 	}
 	if o.Experimental.ReadSamplingMultiplier == 0 {
-		o.Experimental.ReadSamplingMultiplier = 1
+		o.Experimental.ReadSamplingMultiplier = 1 << 4
 	}
 
 	o.initMaps()

@@ -42,7 +42,10 @@ const (
 )
 
 // Approximate gap in bytes between samples of data read during iteration.
-const readBytesPeriod uint64 = 1 << 20
+// This is multiplied with a default ReadSamplingMultiplier of 1 << 4 to yield
+// 1 << 20 (1MB). The 1MB factor comes from:
+// https://github.com/cockroachdb/pebble/issues/29#issuecomment-494477985
+const readBytesPeriod uint64 = 1 << 16
 
 var errReversePrefixIteration = errors.New("pebble: unsupported reverse prefix iteration")
 
@@ -290,9 +293,15 @@ func (i *Iterator) maybeSampleRead() {
 	bytesRead := uint64(len(i.key) + len(i.value))
 	for i.readSampling.bytesUntilReadSampling < bytesRead {
 		i.readSampling.bytesUntilReadSampling += uint64(fastrand.Uint32n(2 * uint32(samplingPeriod)))
+		// The block below tries to adjust for the case where this is the
+		// first read in a newly-opened iterator. As bytesUntilReadSampling
+		// starts off at zero, we don't want to sample the first read of
+		// every newly-opened iterator, but we do want to sample some of them.
 		if !i.readSampling.initialSamplePassed {
 			i.readSampling.initialSamplePassed = true
-			continue
+			if fastrand.Uint32n(uint32(i.readSampling.bytesUntilReadSampling)) > uint32(bytesRead) {
+				continue
+			}
 		}
 		i.sampleRead()
 	}
