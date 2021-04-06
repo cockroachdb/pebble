@@ -5,8 +5,11 @@
   bytes_per_sync=524288
   cache_size=8388608
   cleaner=archive
-  comparer=leveldb.BytewiseComparator
+  comparer=alt-comparer
+  delete_range_flush_delay=0s
   disable_wal=false
+  flush_split_bytes=4194304
+  l0_compaction_concurrency=10
   l0_compaction_threshold=4
   l0_stop_writes_threshold=12
   lbase_max_bytes=67108864
@@ -17,9 +20,11 @@
   mem_table_stop_writes_threshold=2
   min_compaction_rate=4194304
   min_flush_rate=1048576
-  merger=pebble.concatenate
+  merger=test-merger
+  strict_wal_tail=true
   table_property_collectors=[]
   wal_dir=
+  wal_bytes_per_sync=0
 
 [Level "0"]
   block_restart_interval=16

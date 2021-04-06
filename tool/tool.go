@@ -83,6 +83,13 @@ func Filters(filters ...FilterPolicy) Option {
 	}
 }
 
+// FS sets the filesystem implementation to use by the introspection tools.
+func FS(fs vfs.FS) Option {
+	return func(t *T) {
+		t.opts.FS = fs
+	}
+}
+
 // New creates a new introspection tool.
 func New(opts ...Option) *T {
 	t := &T{
@@ -106,7 +113,7 @@ func New(opts ...Option) *T {
 	}
 
 	t.db = newDB(&t.opts, t.comparers, t.mergers)
-	t.find = newFind(&t.opts, t.comparers, t.defaultComparer)
+	t.find = newFind(&t.opts, t.comparers, t.defaultComparer, t.mergers)
 	t.lsm = newLSM(&t.opts, t.comparers)
 	t.manifest = newManifest(&t.opts, t.comparers)
 	t.sstable = newSSTable(&t.opts, t.comparers, t.mergers)
@@ -120,9 +127,4 @@ func New(opts ...Option) *T {
 		t.wal.Root,
 	}
 	return t
-}
-
-// setFS sets the filesystem implementation to use by the introspection tools.
-func (t *T) setFS(fs vfs.FS) {
-	t.opts.FS = fs
 }
