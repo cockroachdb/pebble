@@ -389,7 +389,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	get.key = key
 	get.batch = b
 	get.mem = readState.memtables
-	get.l0 = readState.current.L0Sublevels.Levels
+	get.l0 = readState.current.L0SublevelFiles
 	get.version = readState.current
 
 	// Strip off memtables which cannot possibly contain the seqNum being read
@@ -731,8 +731,8 @@ func (d *DB) newIterInternal(
 	// reference to elements in mlevels.
 	start := len(mlevels)
 	current := readState.current
-	for sl := 0; sl < len(current.L0Sublevels.Levels); sl++ {
-		if len(current.L0Sublevels.Levels[sl]) > 0 {
+	for sl := 0; sl < len(current.L0SublevelFiles); sl++ {
+		if len(current.L0SublevelFiles[sl]) > 0 {
 			mlevels = append(mlevels, mergingIterLevel{})
 		}
 	}
@@ -768,8 +768,8 @@ func (d *DB) newIterInternal(
 
 	// Add level iterators for the L0 sublevels, iterating from newest to
 	// oldest.
-	for i := len(current.L0Sublevels.Levels) - 1; i >= 0; i-- {
-		iter := manifest.NewLevelSlice(current.L0Sublevels.Levels[i]).Iter()
+	for i := len(current.L0SublevelFiles) - 1; i >= 0; i-- {
+		iter := manifest.NewLevelSlice(current.L0SublevelFiles[i]).Iter()
 		addLevelIterForFiles(iter, manifest.L0Sublevel(i))
 	}
 
