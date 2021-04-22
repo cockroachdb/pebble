@@ -419,7 +419,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		key: key,
 		batch: b,
 		mem: readState.memtables,
-		l0: readState.current.L0Sublevels.Levels,
+		l0: readState.current.L0SublevelFiles,
 		version: readState.current,
 	}
 
@@ -786,7 +786,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	// reference to elements in mlevels.
 	start := len(mlevels)
 	current := readState.current
-	for sl := 0; sl < len(current.L0Sublevels.Levels); sl++ {
+	for sl := 0; sl < len(current.L0SublevelFiles); sl++ {
 		mlevels = append(mlevels, mergingIterLevel{})
 	}
 	for level := 1; level < len(current.Levels); level++ {
@@ -819,8 +819,8 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 
 	// Add level iterators for the L0 sublevels, iterating from newest to
 	// oldest.
-	for i := len(current.L0Sublevels.Levels) - 1; i >= 0; i-- {
-		addLevelIterForFiles(current.L0Sublevels.Levels[i].Iter(), manifest.L0Sublevel(i))
+	for i := len(current.L0SublevelFiles) - 1; i >= 0; i-- {
+		addLevelIterForFiles(current.L0SublevelFiles[i].Iter(), manifest.L0Sublevel(i))
 	}
 
 	// Add level iterators for the non-empty non-L0 levels.
