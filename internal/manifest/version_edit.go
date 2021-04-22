@@ -530,6 +530,7 @@ func (b *BulkVersionEdit) Apply(
 					}
 				} else {
 					v.L0Sublevels = curr.L0Sublevels
+					v.SublevelFiles = v.L0Sublevels.Levels
 				}
 			}
 			continue
