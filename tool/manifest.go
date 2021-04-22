@@ -80,10 +80,10 @@ Check the contents of the MANIFEST files.
 func (m *manifestT) printLevels(v *manifest.Version) {
 	for level := range v.Levels {
 		iter := v.Levels[level].Iter()
-		if level == 0 && v.L0Sublevels != nil && !iter.Empty() {
-			for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
+		if level == 0 && len(v.L0SublevelFiles) > 0 && !iter.Empty() {
+			for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 				fmt.Fprintf(stdout, "--- L0.%d ---\n", sublevel)
-				for _, f := range v.L0Sublevels.Levels[sublevel] {
+				for _, f := range v.L0SublevelFiles[sublevel] {
 					fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
 					formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
 					formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)

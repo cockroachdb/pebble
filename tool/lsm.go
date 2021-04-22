@@ -242,7 +242,7 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 		}
 		v := manifest.NewVersion(l.cmp.Compare, l.fmtKey.fn, 0, currentFiles)
 		edit.Sublevels = make(map[base.FileNum]int)
-		for sublevel, files := range v.L0Sublevels.Levels {
+		for sublevel, files := range v.L0SublevelFiles {
 			for _, f := range files {
 				if len(l.state.Edits) > 0 {
 					lastEdit := l.state.Edits[len(l.state.Edits)-1]
