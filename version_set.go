@@ -509,7 +509,7 @@ func (vs *versionSet) logAndApply(
 			}
 		}
 	}
-	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0Sublevels.Levels))
+	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
 
 	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgress, vs.metrics.levelSizes())
 	if !vs.dynamicBaseLevel {

@@ -323,9 +323,18 @@ type Version struct {
 	// levels, sublevel n contains older tables (lower sequence numbers) than
 	// sublevel n+1.
 	//
+	// The L0Sublevels struct is mostly used for compaction picking. As most
+	// internal data structures in it are only necessary for compaction picking
+	// and not for iterator creation, the reference to L0Sublevels is nil'd
+	// after this version becomes the non-newest version, to reduce memory
+	// usage.
+	//
 	// L0Sublevels.Levels contains L0 files ordered by sublevels. All the files
-	// in Files[0] are in L0Sublevels.Levels.
-	L0Sublevels *L0Sublevels
+	// in Files[0] are in L0Sublevels.Levels. L0SublevelFiles is also set to
+	// a reference to that slice, as that slice is necessary for iterator
+	// creation and needs to outlast L0Sublevels.
+	L0Sublevels     *L0Sublevels
+	L0SublevelFiles []LevelSlice
 
 	Levels [NumLevels]LevelMetadata
 
@@ -347,10 +356,10 @@ func (v *Version) String() string {
 // Pretty returns a string representation of the version.
 func (v *Version) Pretty(format base.FormatKey) string {
 	var buf bytes.Buffer
-	if v.L0Sublevels != nil {
-		for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
+	if len(v.L0SublevelFiles) > 0 {
+		for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 			fmt.Fprintf(&buf, "0.%d:\n", sublevel)
-			v.L0Sublevels.Levels[sublevel].Each(func(f *FileMetadata) {
+			v.L0SublevelFiles[sublevel].Each(func(f *FileMetadata) {
 				fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
 					format(f.Smallest.UserKey), format(f.Largest.UserKey))
 			})
@@ -375,10 +384,10 @@ func (v *Version) Pretty(format base.FormatKey) string {
 func (v *Version) DebugString(format base.FormatKey) string {
 	var buf bytes.Buffer
 
-	if v.L0Sublevels != nil {
-		for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
+	if len(v.L0SublevelFiles) > 0 {
+		for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 			fmt.Fprintf(&buf, "0.%d:\n", sublevel)
-			v.L0Sublevels.Levels[sublevel].Each(func(f *FileMetadata) {
+			v.L0SublevelFiles[sublevel].Each(func(f *FileMetadata) {
 				fmt.Fprintf(&buf, "  %06d:[%s-%s]\n", f.FileNum,
 					f.Smallest.Pretty(format), f.Largest.Pretty(format))
 			})
@@ -453,6 +462,9 @@ func (v *Version) InitL0Sublevels(
 ) error {
 	var err error
 	v.L0Sublevels, err = NewL0Sublevels(&v.Levels[0], cmp, formatKey, flushSplitBytes)
+	if err == nil && v.L0Sublevels != nil {
+		v.L0SublevelFiles = v.L0Sublevels.Levels
+	}
 	return err
 }
 
@@ -557,8 +569,8 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelSlice
 // increasing file numbers (for level 0 files) and increasing and non-
 // overlapping internal key ranges (for level non-0 files).
 func (v *Version) CheckOrdering(cmp Compare, format base.FormatKey) error {
-	for sublevel := len(v.L0Sublevels.Levels) - 1; sublevel >= 0; sublevel-- {
-		sublevelIter := v.L0Sublevels.Levels[sublevel].Iter()
+	for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
+		sublevelIter := v.L0SublevelFiles[sublevel].Iter()
 		if err := CheckOrdering(cmp, format, L0Sublevel(sublevel), sublevelIter); err != nil {
 			return base.CorruptionErrorf("%s\n%s", err, v.DebugString(format))
 		}
@@ -645,6 +657,9 @@ func (l *VersionList) PushBack(v *Version) {
 	v.next = &l.root
 	v.next.prev = v
 	v.list = l
+	// Let L0Sublevels on the second newest version get GC'd, as it is no longer
+	// necessary. See the comment in Version.
+	v.prev.L0Sublevels = nil
 }
 
 // Remove removes the specified version from the list.
