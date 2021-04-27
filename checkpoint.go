@@ -6,11 +6,34 @@ package pebble
 
 import (
 	"os"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 )
+
+
+// checkpointOptions hold the optional parameters to construct checkpoint
+// snapshots.
+type checkpointOptions struct {
+	// flushWAL set to true will force a flush and sync of the WAL prior to
+	// checkpointing.
+	flushWAL bool
+}
+
+// CheckpointOption set optional parameters used by `DB.Checkpoint`.
+type CheckpointOption func(*checkpointOptions)
+
+// WithFlushedWAL enables flushing and syncing the WAL when constructing a
+// checkpoint. Note that this setting can only be useful in cases when some
+// writes are performed with Sync = false. Otherwise, the WAL will already
+// have been persisted beforehand.
+func WithFlushedWAL() CheckpointOption {
+	return func(opt *checkpointOptions) {
+		opt.flushWAL = true
+	}
+}
 
 // Checkpoint constructs a snapshot of the DB instance in the specified
 // directory. The WAL, MANIFEST, OPTIONS, and sstables will be copied into the
@@ -18,7 +41,12 @@ import (
 // space overhead for a checkpoint if hard links are disabled. Also beware that
 // even if hard links are used, the space overhead for the checkpoint will
 // increase over time as the DB performs compactions.
-func (d *DB) Checkpoint(destDir string) (err error) {
+func (d *DB) Checkpoint(destDir string, opts ...CheckpointOption) (err error) {
+	opt := checkpointOptions{}
+	for _, fn := range opts {
+		fn(&opt)
+	}
+
 	if _, err := d.opts.FS.Stat(destDir); !oserror.IsNotExist(err) {
 		if err == nil {
 			return &os.PathError{
@@ -30,6 +58,23 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 		return err
 	}
 
+	if opt.flushWAL && !d.opts.DisableWAL {
+		// Increment the WAL sync override for the duration of the checkpoint
+		// construction. We then write an empty log-data record to guarantee
+		// that the persisted WAL is up-to-date when we acquire the DB lock
+		// again to construct the checkpoint snapshot.
+		// This override mechanism is necessary because the DB lock also needs
+		// to be acquired by the empty log-data write.
+		atomic.AddInt64(&d.atomic.syncWALOverrides, 1)
+		defer func() {
+			atomic.AddInt64(&d.atomic.syncWALOverrides, -1)
+		}()
+		err = d.LogData(nil /* data */, nil /* opts */)
+		if err != nil {
+			return err
+		}
+	}
+
 	// Disable file deletions.
 	d.mu.Lock()
 	d.disableFileDeletions()
@@ -39,9 +84,8 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 		d.enableFileDeletions()
 	}()
 
-	// TODO(peter): RocksDB provides the option to flush if the WAL size is too
-	// large, or roll the manifest if the MANIFEST size is too large. Should we
-	// do this too?
+	// TODO(peter): RocksDB provides the option to roll the manifest if the
+	// MANIFEST size is too large. Should we do this too?
 
 	// Lock the manifest before getting the current version. We need the
 	// length of the manifest that we read to match the current version that

@@ -184,6 +184,11 @@ type DB struct {
 
 		// The size of the current log file (i.e. db.mu.log.queue[len(queue)-1].
 		logSize uint64
+
+		// syncWALOverrides is the number of WAL sync overrides currently applied.
+		// A Sync = false for a write will be honored if and only if this number
+		// is zero.
+		syncWALOverrides int64
 	}
 
 	cacheID        uint64
@@ -553,7 +558,7 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 		panic(fmt.Sprintf("pebble: batch db mismatch: %p != %p", batch.db, d))
 	}
 
-	sync := opts.GetSync()
+	sync := opts.GetSync() || (atomic.LoadInt64(&d.atomic.syncWALOverrides) != 0)
 	if sync && d.opts.DisableWAL {
 		return errors.New("pebble: WAL disabled")
 	}
