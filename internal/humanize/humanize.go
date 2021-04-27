@@ -7,6 +7,8 @@ package humanize
 import (
 	"fmt"
 	"math"
+
+	"github.com/cockroachdb/redact"
 )
 
 func logn(n, b float64) float64 {
@@ -40,26 +42,39 @@ var IEC = config{1024, []string{" B", " K", " M", " G", " T", " P", " E"}}
 var SI = config{1000, []string{"", " K", " M", " G", " T", " P", " E"}}
 
 // Int64 produces a human readable representation of the value.
-func (c *config) Int64(s int64) string {
+func (c *config) Int64(s int64) FormattedString {
 	if s < 0 {
-		return "-" + humanate(uint64(-s), c.base, c.suffix)
+		return FormattedString("-" + humanate(uint64(-s), c.base, c.suffix))
 	}
-	return humanate(uint64(s), c.base, c.suffix)
+	return FormattedString(humanate(uint64(s), c.base, c.suffix))
 }
 
 // Uint64 produces a human readable representation of the value.
-func (c *config) Uint64(s uint64) string {
-	return humanate(s, c.base, c.suffix)
+func (c *config) Uint64(s uint64) FormattedString {
+	return FormattedString(humanate(s, c.base, c.suffix))
 }
 
 // Int64 produces a human readable representation of the value in IEC units
 // (base 1024).
-func Int64(s int64) string {
+func Int64(s int64) FormattedString {
 	return IEC.Int64(s)
 }
 
 // Uint64 produces a human readable representation of the value in IEC units
 // (base 1024).
-func Uint64(s uint64) string {
+func Uint64(s uint64) FormattedString {
 	return IEC.Uint64(s)
 }
+
+// FormattedString represents a human readable representation of a value. It
+// implements the redact.SafeValue interface to signal that it represents a
+// a string that does not need to be redacted.
+type FormattedString string
+
+var _ redact.SafeValue = FormattedString("")
+
+// SafeValue implements redact.SafeValue.
+func (fs FormattedString) SafeValue() {}
+
+// String implements fmt.Stringer.
+func (fs FormattedString) String() string { return string(fs) }
