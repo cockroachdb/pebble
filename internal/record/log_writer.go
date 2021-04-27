@@ -529,6 +529,22 @@ func (w *LogWriter) queueBlock() {
 	w.blockNum++
 }
 
+// Flush flushes and syncs any unwritten data.
+func (w *LogWriter) Flush() (err error) {
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	f := &w.flusher
+
+	f.Lock()
+	f.syncQ.push(&wg, &err)
+	f.ready.Signal()
+	f.Unlock()
+
+	// Wait for sync to complete before returning.
+	wg.Wait()
+	return err
+}
+
 // Close flushes and syncs any unwritten data and closes the writer.
 // Where required, external synchronisation is provided by commitPipeline.mu.
 func (w *LogWriter) Close() error {

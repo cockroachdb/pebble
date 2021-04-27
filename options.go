@@ -454,6 +454,12 @@ type Options struct {
 	// (i.e. the directory passed to pebble.Open).
 	WALDir string
 
+	// WALFlushInCheckpoint is whether the WAL is to be flushed and synced when
+	// constructing a checkpoint. Note that this setting can only be useful in
+	// cases when some writes are performed with Sync = false. Otherwise, the
+	// WAL will already have been persisted prior to constructing a checkpoint.
+	WALFlushInCheckpoint bool
+
 	// WALMinSyncInterval is the minimum duration between syncs of the WAL. If
 	// WAL syncs are requested faster than this interval, they will be
 	// artificially delayed. Introducing a small artificial delay (500us) between

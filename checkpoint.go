@@ -39,9 +39,14 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 		d.enableFileDeletions()
 	}()
 
-	// TODO(peter): RocksDB provides the option to flush if the WAL size is too
-	// large, or roll the manifest if the MANIFEST size is too large. Should we
-	// do this too?
+	// TODO(peter): RocksDB provides the option to roll the manifest if the
+	// MANIFEST size is too large. Should we do this too?
+	if d.opts.WALFlushInCheckpoint {
+		err = d.mu.log.Flush()
+		if err != nil {
+			return err
+		}
+	}
 
 	// Lock the manifest before getting the current version. We need the
 	// length of the manifest that we read to match the current version that
