@@ -5,12 +5,12 @@
 package pebble
 
 import (
-	"bytes"
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/redact"
 )
 
 // CacheMetrics holds metrics for the block and table cache.
@@ -19,12 +19,12 @@ type CacheMetrics = cache.Metrics
 // FilterMetrics holds metrics for the filter policy
 type FilterMetrics = sstable.FilterMetrics
 
-func formatCacheMetrics(buf *bytes.Buffer, m *CacheMetrics, name string) {
-	fmt.Fprintf(buf, "%7s %9s %7s %6.1f%%  (score == hit-rate)\n",
+func formatCacheMetrics(w redact.SafePrinter, m *CacheMetrics, name redact.SafeString) {
+	w.Printf("%7s %9s %7s %6.1f%%  (score == hit-rate)\n",
 		name,
 		humanize.SI.Int64(m.Count),
 		humanize.IEC.Int64(m.Size),
-		hitRate(m.Hits, m.Misses))
+		redact.Safe(hitRate(m.Hits, m.Misses)))
 }
 
 // LevelMetrics holds per-level metrics such as the number of files and total
@@ -99,9 +99,9 @@ func (m *LevelMetrics) WriteAmp() float64 {
 
 // format generates a string of the receiver's metrics, formatting it into the
 // supplied buffer.
-func (m *LevelMetrics) format(buf *bytes.Buffer, score string) {
-	fmt.Fprintf(buf, "%9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7d %7.1f\n",
-		m.NumFiles,
+func (m *LevelMetrics) format(w redact.SafePrinter, score redact.SafeValue) {
+	w.Printf("%9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7d %7.1f\n",
+		redact.Safe(m.NumFiles),
 		humanize.IEC.Int64(m.Size),
 		score,
 		humanize.IEC.Uint64(m.BytesIn),
@@ -112,8 +112,8 @@ func (m *LevelMetrics) format(buf *bytes.Buffer, score string) {
 		humanize.IEC.Uint64(m.BytesFlushed+m.BytesCompacted),
 		humanize.SI.Uint64(m.TablesFlushed+m.TablesCompacted),
 		humanize.IEC.Uint64(m.BytesRead),
-		m.Sublevels,
-		m.WriteAmp())
+		redact.Safe(m.Sublevels),
+		redact.Safe(m.WriteAmp()))
 }
 
 // Metrics holds metrics for various subsystems of the DB such as the Cache,
@@ -228,15 +228,15 @@ func (m *Metrics) Total() LevelMetrics {
 	return total
 }
 
-const notApplicable = "-"
+const notApplicable = redact.SafeString("-")
 
-func (m *Metrics) formatWAL(buf *bytes.Buffer) {
+func (m *Metrics) formatWAL(w redact.SafePrinter) {
 	var writeAmp float64
 	if m.WAL.BytesIn > 0 {
 		writeAmp = float64(m.WAL.BytesWritten) / float64(m.WAL.BytesIn)
 	}
-	fmt.Fprintf(buf, "    WAL %9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7.1f\n",
-		m.WAL.Files,
+	w.Printf("    WAL %9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7.1f\n",
+		redact.Safe(m.WAL.Files),
 		humanize.Uint64(m.WAL.Size),
 		notApplicable,
 		humanize.Uint64(m.WAL.BytesIn),
@@ -248,7 +248,7 @@ func (m *Metrics) formatWAL(buf *bytes.Buffer) {
 		notApplicable,
 		notApplicable,
 		notApplicable,
-		writeAmp)
+		redact.Safe(writeAmp))
 }
 
 // String pretty-prints the metrics, showing a line for the WAL, a line per-level, and
@@ -280,19 +280,39 @@ func (m *Metrics) formatWAL(buf *bytes.Buffer) {
 // bytes-written / bytes-in, except for the total row where bytes-in is
 // replaced with WAL-bytes-written + bytes-ingested.
 func (m *Metrics) String() string {
-	var buf bytes.Buffer
+	return redact.StringWithoutMarkers(m)
+}
+
+var _ redact.SafeFormatter = &Metrics{}
+
+// SafeFormat implements redact.SafeFormatter.
+func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
+	// NB: Pebble does not make any assumptions as to which Go primitive types
+	// have been registered as safe with redact.RegisterSafeType and does not
+	// register any types itself. Some of the calls to `redact.Safe`, etc are
+	// superfluous in the context of CockroachDB, which registers all the Go
+	// numeric types as safe.
+
+	// TODO(jackson): There are a few places where we use redact.SafeValue
+	// instead of redact.RedactableString. This is necessary because of a bug
+	// whereby formatting a redact.RedactableString argument does not respect
+	// width specifiers. When the issue is fixed, we can convert these to
+	// RedactableStrings. https://github.com/cockroachdb/redact/issues/17
+
 	var total LevelMetrics
-	fmt.Fprintf(&buf, "__level_____count____size___score______in__ingest(sz_cnt)"+
+	w.SafeString("__level_____count____size___score______in__ingest(sz_cnt)" +
 		"____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp\n")
-	m.formatWAL(&buf)
+	m.formatWAL(w)
 	for level := 0; level < numLevels; level++ {
 		l := &m.Levels[level]
-		fmt.Fprintf(&buf, "%7d ", level)
-		score := "-"
+		w.Printf("%7d ", redact.Safe(level))
+
+		// Format the score.
+		var score redact.SafeValue = notApplicable
 		if level < numLevels-1 {
-			score = fmt.Sprintf("%0.2f", l.Score)
+			score = redact.Safe(fmt.Sprintf("%0.2f", l.Score))
 		}
-		l.format(&buf, score)
+		l.format(w, score)
 		total.Add(l)
 		total.Sublevels += l.Sublevels
 	}
@@ -302,32 +322,31 @@ func (m *Metrics) String() string {
 	// the bytes written to the log and bytes written externally and then
 	// ingested.
 	total.BytesFlushed += total.BytesIn
-	fmt.Fprintf(&buf, "  total ")
-	total.format(&buf, "-")
+	w.SafeString("  total ")
+	total.format(w, notApplicable)
 
-	fmt.Fprintf(&buf, "  flush %9d\n", m.Flush.Count)
-	fmt.Fprintf(&buf, "compact %9d %7s %7s %7s  (size == estimated-debt, in = in-progress-bytes)\n",
-		m.Compact.Count,
+	w.Printf("  flush %9d\n", redact.Safe(m.Flush.Count))
+	w.Printf("compact %9d %7s %7s %7s  (size == estimated-debt, in = in-progress-bytes)\n",
+		redact.Safe(m.Compact.Count),
 		humanize.IEC.Uint64(m.Compact.EstimatedDebt),
-		"",
+		redact.SafeString(""),
 		humanize.IEC.Int64(m.Compact.InProgressBytes))
-	fmt.Fprintf(&buf, " memtbl %9d %7s\n",
-		m.MemTable.Count,
+	w.Printf(" memtbl %9d %7s\n",
+		redact.Safe(m.MemTable.Count),
 		humanize.IEC.Uint64(m.MemTable.Size))
-	fmt.Fprintf(&buf, "zmemtbl %9d %7s\n",
-		m.MemTable.ZombieCount,
+	w.Printf("zmemtbl %9d %7s\n",
+		redact.Safe(m.MemTable.ZombieCount),
 		humanize.IEC.Uint64(m.MemTable.ZombieSize))
-	fmt.Fprintf(&buf, "   ztbl %9d %7s\n",
-		m.Table.ZombieCount,
+	w.Printf("   ztbl %9d %7s\n",
+		redact.Safe(m.Table.ZombieCount),
 		humanize.IEC.Uint64(m.Table.ZombieSize))
-	formatCacheMetrics(&buf, &m.BlockCache, "bcache")
-	formatCacheMetrics(&buf, &m.TableCache, "tcache")
-	fmt.Fprintf(&buf, " titers %9d\n", m.TableIters)
-	fmt.Fprintf(&buf, " filter %9s %7s %6.1f%%  (score == utility)\n",
+	formatCacheMetrics(w, &m.BlockCache, "bcache")
+	formatCacheMetrics(w, &m.TableCache, "tcache")
+	w.Printf(" titers %9d\n", redact.Safe(m.TableIters))
+	w.Printf(" filter %9s %7s %6.1f%%  (score == utility)\n",
 		notApplicable,
 		notApplicable,
-		hitRate(m.Filter.Hits, m.Filter.Misses))
-	return buf.String()
+		redact.Safe(hitRate(m.Filter.Hits, m.Filter.Misses)))
 }
 
 func hitRate(hits, misses int64) float64 {
