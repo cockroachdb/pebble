@@ -5,12 +5,74 @@
 package pebble
 
 import (
-	"os"
-
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
+	"os"
 )
+
+
+// checkpointOptions hold the optional parameters to construct checkpoint
+// snapshots.
+type checkpointOptions struct {
+	// flushWAL set to true will force a flush and sync of the WAL prior to
+	// checkpointing.
+	flushWAL bool
+}
+
+// CheckpointOption set optional parameters used by `DB.Checkpoint`.
+type CheckpointOption func(*checkpointOptions)
+
+// WithFlushedWAL enables flushing and syncing the WAL when constructing a
+// checkpoint. Note that this setting can only be useful in cases when some
+// writes are performed with Sync = false. Otherwise, the WAL will already
+// have been persisted beforehand.
+func WithFlushedWAL() CheckpointOption {
+	return func(opt *checkpointOptions) {
+		opt.flushWAL = true
+	}
+}
+
+// mkdirAllCollect creates destDir and any of its missing ancestors and returns
+// handles to all created directories, from child to parent, plus the
+// previously-existing common ancestor to the created directories.
+func mkdirAllCollect(fs vfs.FS, destDir string) (dirs []vfs.File, _ error) {
+	// Find the closest ancestor directory of destDir which exists.
+	existingAncestorPath := ""
+	for path := fs.PathDir(destDir); path != "."; path = fs.PathDir(path) {
+		dir, err := fs.OpenDir(path)
+		if err == nil {
+			err = dir.Close()
+			if err != nil {
+				return nil, err
+			}
+			existingAncestorPath = path
+			break
+		}
+		if !oserror.IsNotExist(err) {
+			return nil, err
+		}
+	}
+	// Create destDir and any of its missing ancestors.
+	if err := fs.MkdirAll(destDir, 0755); err != nil {
+		return nil, err
+	}
+	// Walk up the directory hierarchy and sync each directory.
+	for path := destDir; true; path = fs.PathDir(path) {
+		if path == "." {
+			path = ""
+		}
+		dir, err := fs.OpenDir(path)
+		if err != nil {
+			return nil, err
+		}
+		dirs = append(dirs, dir)
+		if path == existingAncestorPath {
+			break
+		}
+	}
+	return dirs, nil
+}
 
 // Checkpoint constructs a snapshot of the DB instance in the specified
 // directory. The WAL, MANIFEST, OPTIONS, and sstables will be copied into the
@@ -18,7 +80,12 @@ import (
 // space overhead for a checkpoint if hard links are disabled. Also beware that
 // even if hard links are used, the space overhead for the checkpoint will
 // increase over time as the DB performs compactions.
-func (d *DB) Checkpoint(destDir string) (err error) {
+func (d *DB) Checkpoint(destDir string, opts ...CheckpointOption) (ckErr error /* used in deferred cleanup */) {
+	opt := checkpointOptions{}
+	for _, fn := range opts {
+		fn(&opt)
+	}
+
 	if _, err := d.opts.FS.Stat(destDir); !oserror.IsNotExist(err) {
 		if err == nil {
 			return &os.PathError{
@@ -30,6 +97,13 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 		return err
 	}
 
+	if opt.flushWAL && !d.opts.DisableWAL {
+		// Write an empty log-data record to flush and sync the WAL.
+		if err := d.LogData(nil /* data */, Sync); err != nil {
+			return err
+		}
+	}
+
 	// Disable file deletions.
 	d.mu.Lock()
 	d.disableFileDeletions()
@@ -39,9 +113,8 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 		d.enableFileDeletions()
 	}()
 
-	// TODO(peter): RocksDB provides the option to flush if the WAL size is too
-	// large, or roll the manifest if the MANIFEST size is too large. Should we
-	// do this too?
+	// TODO(peter): RocksDB provides the option to roll the manifest if the
+	// MANIFEST size is too large. Should we do this too?
 
 	// Lock the manifest before getting the current version. We need the
 	// length of the manifest that we read to match the current version that
@@ -69,21 +142,15 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 			BytesPerSync: d.opts.BytesPerSync,
 		},
 	}
-	// TODO(peter): We don't call sync on the parent directory of destDir. In
-	// fact, if multiple directories are created, we don't call sync on any of
-	// the parent directories.
-	if err := fs.MkdirAll(destDir, 0755); err != nil {
-		return err
-	}
-	dir, err := fs.OpenDir(destDir)
-	if err != nil {
-		return err
-	}
 
+	// Create the dir and its parents (if necessary)
+	var syncDirs []vfs.File
+	syncDirs, ckErr = mkdirAllCollect(fs, destDir)
+	if ckErr != nil {
+		return ckErr
+	}
 	defer func() {
-		dir.Close()
-
-		if err != nil {
+		if ckErr != nil {
 			// Attempt to cleanup on error.
 			paths, _ := fs.List(destDir)
 			for _, path := range paths {
@@ -97,8 +164,9 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 		// Link or copy the OPTIONS.
 		srcPath := base.MakeFilename(fs, d.dirname, fileTypeOptions, optionsFileNum)
 		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
-		if err := vfs.LinkOrCopy(fs, srcPath, destPath); err != nil {
-			return err
+		ckErr = vfs.LinkOrCopy(fs, srcPath, destPath)
+		if ckErr != nil {
+			return ckErr
 		}
 	}
 
@@ -110,11 +178,13 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 		// MANIFEST we copy.
 		srcPath := base.MakeFilename(fs, d.dirname, fileTypeManifest, manifestFileNum)
 		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
-		if err := vfs.LimitedCopy(fs, srcPath, destPath, manifestSize); err != nil {
-			return err
+		ckErr = vfs.LimitedCopy(fs, srcPath, destPath, manifestSize)
+		if ckErr != nil {
+			return ckErr
 		}
-		if err := setCurrentFile(destDir, fs, manifestFileNum); err != nil {
-			return err
+		ckErr = setCurrentFile(destDir, fs, manifestFileNum)
+		if ckErr != nil {
+			return ckErr
 		}
 	}
 
@@ -124,8 +194,9 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 		for f := iter.First(); f != nil; f = iter.Next() {
 			srcPath := base.MakeFilename(fs, d.dirname, fileTypeTable, f.FileNum)
 			destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
-			if err := vfs.LinkOrCopy(fs, srcPath, destPath); err != nil {
-				return err
+			ckErr = vfs.LinkOrCopy(fs, srcPath, destPath)
+			if ckErr != nil {
+				return ckErr
 			}
 		}
 	}
@@ -140,11 +211,22 @@ func (d *DB) Checkpoint(destDir string) (err error) {
 		}
 		srcPath := base.MakeFilename(fs, d.walDirname, fileTypeLog, logNum)
 		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
-		if err := vfs.Copy(fs, srcPath, destPath); err != nil {
-			return err
+		ckErr = vfs.Copy(fs, srcPath, destPath)
+		if ckErr != nil {
+			return ckErr
 		}
 	}
 
-	// Sync the destination directory.
-	return dir.Sync()
+	// Sync the destination directory and its ancestors.
+	for _, dir := range syncDirs {
+		ckErr = dir.Sync()
+		if ckErr != nil {
+			return ckErr
+		}
+		ckErr = dir.Close()
+		if ckErr != nil {
+			return ckErr
+		}
+	}
+	return nil
 }

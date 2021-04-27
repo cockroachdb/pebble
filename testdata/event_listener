@@ -185,6 +185,7 @@ checkpoint
 ----
 mkdir-all: checkpoint 0755
 open-dir: checkpoint
+open-dir: 
 link: db/OPTIONS-000004 -> checkpoint/OPTIONS-000004
 create: checkpoint/MANIFEST-000017
 sync: checkpoint/MANIFEST-000017
@@ -201,6 +202,8 @@ sync: checkpoint/000013.log
 close: checkpoint/000013.log
 sync: checkpoint
 close: checkpoint
+sync: 
+close: 
 
 enable-file-deletions
 ----
