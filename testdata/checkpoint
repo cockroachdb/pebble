@@ -65,6 +65,9 @@ sync: db/000006.log
 checkpoint db checkpoint1
 ----
 mkdir-all: checkpoint1 0755
+open-dir: 
+sync: 
+close: 
 open-dir: checkpoint1
 link: db/OPTIONS-000003 -> checkpoint1/OPTIONS-000003
 create: checkpoint1/MANIFEST-000001
