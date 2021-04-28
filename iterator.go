@@ -659,7 +659,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 //    // Only keys beginning with "prefix" will be visited.
 //  }
 //
-// See Example_prefixiteration for a working example.
+// See ExampleIterator_SeekPrefixGE for a working example.
 func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	lastPositioningOp := i.lastPositioningOp
 	// Set it to unknown, since this operation may not succeed, in which case
