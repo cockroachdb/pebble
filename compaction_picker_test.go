@@ -423,15 +423,6 @@ func TestCompactionPickerIntraL0(t *testing.T) {
 }
 
 func TestCompactionPickerL0(t *testing.T) {
-	fileNums := func(files manifest.LevelSlice) string {
-		var ss []string
-		files.Each(func(f *fileMetadata) {
-			ss = append(ss, f.FileNum.String())
-		})
-		sort.Strings(ss)
-		return strings.Join(ss, ",")
-	}
-
 	parseMeta := func(s string) (*fileMetadata, error) {
 		parts := strings.Split(s, ":")
 		fileNum, err := strconv.Atoi(parts[0])
@@ -640,15 +631,6 @@ func TestCompactionPickerL0(t *testing.T) {
 }
 
 func TestCompactionPickerConcurrency(t *testing.T) {
-	fileNums := func(files manifest.LevelSlice) string {
-		var ss []string
-		files.Each(func(f *fileMetadata) {
-			ss = append(ss, f.FileNum.String())
-		})
-		sort.Strings(ss)
-		return strings.Join(ss, ",")
-	}
-
 	parseMeta := func(s string) (*fileMetadata, error) {
 		parts := strings.Split(s, ":")
 		fileNum, err := strconv.Atoi(parts[0])
@@ -1014,4 +996,121 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
+}
+
+func TestCompactionOutputFileSize(t *testing.T) {
+	opts := (*Options)(nil).EnsureDefaults()
+	var picker *compactionPickerByScore
+	var vers *version
+
+	parseMeta := func(s string) (*fileMetadata, error) {
+		parts := strings.Split(s, ":")
+		fileNum, err := strconv.Atoi(parts[0])
+		if err != nil {
+			return nil, err
+		}
+		fields := strings.Fields(parts[1])
+		parts = strings.Split(fields[0], "-")
+		if len(parts) != 2 {
+			return nil, errors.Errorf("malformed table spec: %s. usage: <file-num>:start.SET.1-end.SET.2", s)
+		}
+		m := &fileMetadata{
+			FileNum:  base.FileNum(fileNum),
+			Size:     1028,
+			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		}
+		for _, p := range fields[1:] {
+			if strings.HasPrefix(p, "size=") {
+				v, err := strconv.Atoi(strings.TrimPrefix(p, "size="))
+				if err != nil {
+					return nil, err
+				}
+				m.Size = uint64(v)
+			}
+			if strings.HasPrefix(p, "range-deletions-bytes-estimate=") {
+				v, err := strconv.Atoi(strings.TrimPrefix(p, "range-deletions-bytes-estimate="))
+				if err != nil {
+					return nil, err
+				}
+				m.Stats.Valid = true
+				m.Stats.RangeDeletionsBytesEstimate = uint64(v)
+			}
+		}
+		m.SmallestSeqNum = m.Smallest.SeqNum()
+		m.LargestSeqNum = m.Largest.SeqNum()
+		return m, nil
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_output_file_size", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			fileMetas := [manifest.NumLevels][]*fileMetadata{}
+			level := 0
+			var err error
+			lines := strings.Split(td.Input, "\n")
+
+			for len(lines) > 0 {
+				data := strings.TrimSpace(lines[0])
+				lines = lines[1:]
+				switch data {
+				case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+					level, err = strconv.Atoi(data[1:])
+					if err != nil {
+						return err.Error()
+					}
+				default:
+					meta, err := parseMeta(data)
+					if err != nil {
+						return err.Error()
+					}
+					fileMetas[level] = append(fileMetas[level], meta)
+				}
+			}
+
+			vers = newVersion(opts, fileMetas)
+			vs := &versionSet{
+				opts:    opts,
+				cmp:     DefaultComparer.Compare,
+				cmpName: DefaultComparer.Name,
+			}
+			vs.versions.Init(nil)
+			vs.append(vers)
+			var inProgressCompactions []compactionInfo
+			picker = newCompactionPicker(vers, opts, inProgressCompactions).(*compactionPickerByScore)
+			vs.picker = picker
+
+			var buf bytes.Buffer
+			fmt.Fprint(&buf, vers.DebugString(base.DefaultFormatter))
+			return buf.String()
+
+		case "pick-auto":
+			pc := picker.pickAuto(compactionEnv{
+				bytesCompacted:          new(uint64),
+				earliestUnflushedSeqNum: math.MaxUint64,
+				earliestSnapshotSeqNum:  math.MaxUint64,
+			})
+			var buf bytes.Buffer
+			if pc != nil {
+				fmt.Fprintf(&buf, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
+				fmt.Fprintf(&buf, "L%d: %s\n", pc.startLevel.level, fileNums(pc.startLevel.files))
+				fmt.Fprintf(&buf, "maxOutputFileSize: %d\n", pc.maxOutputFileSize)
+			} else {
+				return "nil"
+			}
+			return buf.String()
+
+		default:
+			return fmt.Sprintf("unrecognized command: %s", td.Cmd)
+		}
+	})
+}
+
+func fileNums(files manifest.LevelSlice) string {
+	var ss []string
+	files.Each(func(f *fileMetadata) {
+		ss = append(ss, f.FileNum.String())
+	})
+	sort.Strings(ss)
+	return strings.Join(ss, ",")
 }
