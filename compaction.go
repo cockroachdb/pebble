@@ -1017,7 +1017,7 @@ func (d *DB) flush1() error {
 		d.updateReadStateLocked(d.opts.DebugCheck)
 		d.updateTableStatsLocked(ve.NewFiles)
 	}
-	d.deleteObsoleteFiles(jobID)
+	d.deleteObsoleteFiles(jobID, false /* waitForOngoing */)
 
 	// Mark all the memtables we flushed as flushed. Note that we do this last so
 	// that a synchronous call to DB.Flush() will not return until the deletion
@@ -1417,7 +1417,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		d.updateReadStateLocked(d.opts.DebugCheck)
 		d.updateTableStatsLocked(ve.NewFiles)
 	}
-	d.deleteObsoleteFiles(jobID)
+	d.deleteObsoleteFiles(jobID, true /* waitForOngoing */)
 
 	return err
 }
@@ -2150,7 +2150,7 @@ func (d *DB) enableFileDeletions() {
 	}
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
-	d.deleteObsoleteFiles(jobID)
+	d.deleteObsoleteFiles(jobID, true /* waitForOngoing */)
 }
 
 // d.mu must be held when calling this.
@@ -2177,12 +2177,14 @@ func (d *DB) releaseCleaningTurn() {
 	d.mu.cleaner.cond.Broadcast()
 }
 
-// deleteObsoleteFiles deletes those files that are no longer needed.
+// deleteObsoleteFiles deletes those files that are no longer needed. If
+// waitForOngoing is true, it waits for any ongoing cleaning turns to complete,
+// and if false, it returns rightaway if a cleaning turn is ongoing.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) deleteObsoleteFiles(jobID int) {
-	if !d.acquireCleaningTurn(true) {
+func (d *DB) deleteObsoleteFiles(jobID int, waitForOngoing bool) {
+	if !d.acquireCleaningTurn(waitForOngoing) {
 		return
 	}
 	d.doDeleteObsoleteFiles(jobID)
