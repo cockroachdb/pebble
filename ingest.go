@@ -685,7 +685,7 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 	}
 	d.updateReadStateLocked(d.opts.DebugCheck)
 	d.updateTableStatsLocked(ve.NewFiles)
-	d.deleteObsoleteFiles(jobID)
+	d.deleteObsoleteFiles(jobID, false /* waitForOngoing */)
 	// The ingestion may have pushed a level over the threshold for compaction,
 	// so check to see if one is necessary and schedule it.
 	d.maybeScheduleCompaction()
