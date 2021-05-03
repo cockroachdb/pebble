@@ -1069,7 +1069,7 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 
 	// Construct a picked compaction of the elision candidate's atomic
 	// compaction unit.
-	pc = newPickedCompaction(p.opts, p.vers, numLevels-1, numLevels-1)
+	pc = newPickedCompaction(p.opts, p.vers, numLevels-1, p.baseLevel)
 	pc.startLevel.files = expandToAtomicUnit(p.opts.Comparer.Compare, p.elisionCandidate.Slice())
 
 	p.elisionThreshold = nil
