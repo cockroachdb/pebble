@@ -352,7 +352,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 	if !d.opts.ReadOnly {
 		d.scanObsoleteFiles(ls)
-		d.deleteObsoleteFiles(jobID)
+		d.deleteObsoleteFiles(jobID, true /* waitForOngoing */)
 	} else {
 		// All the log files are obsolete.
 		d.mu.versions.metrics.WAL.Files = int64(len(logFiles))
