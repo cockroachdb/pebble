@@ -970,7 +970,7 @@ func (d *DB) Close() error {
 	// prevented a new cleaning job when a readState was unrefed. If needed,
 	// synchronously delete obsolete files.
 	if len(d.mu.versions.obsoleteTables) > 0 {
-		d.deleteObsoleteFiles(d.mu.nextJobID)
+		d.deleteObsoleteFiles(d.mu.nextJobID, true /* waitForOngoing */)
 	}
 	// Wait for all the deletion goroutines spawned by cleaning jobs to finish.
 	d.mu.Unlock()
