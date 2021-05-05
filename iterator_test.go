@@ -473,7 +473,9 @@ func TestIterator(t *testing.T) {
 			}
 
 			iter := newIter(uint64(seqNum), opts)
-			return runIterCmd(d, iter, true)
+			iterOutput := runIterCmd(d, iter, true)
+			stats := iter.Stats()
+			return fmt.Sprintf("%sstats: %s\n", iterOutput, stats.String())
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
