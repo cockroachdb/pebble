@@ -39,6 +39,7 @@ type T struct {
 	comparers       sstable.Comparers
 	mergers         sstable.Mergers
 	defaultComparer string
+	vfsForDir       vfs.DirFSRetriever
 }
 
 // A Option configures the Pebble introspection tool.
@@ -84,9 +85,9 @@ func Filters(filters ...FilterPolicy) Option {
 }
 
 // FS sets the filesystem implementation to use by the introspection tools.
-func FS(fs vfs.FS) Option {
+func FS(f vfs.DirFSRetriever) Option {
 	return func(t *T) {
-		t.opts.FS = fs
+		t.vfsForDir = f
 	}
 }
 
@@ -101,6 +102,7 @@ func New(opts ...Option) *T {
 		comparers:       make(sstable.Comparers),
 		mergers:         make(sstable.Mergers),
 		defaultComparer: base.DefaultComparer.Name,
+		vfsForDir:       vfs.DefaultFSForDir,
 	}
 
 	opts = append(opts,
@@ -112,7 +114,7 @@ func New(opts ...Option) *T {
 		opt(t)
 	}
 
-	t.db = newDB(&t.opts, t.comparers, t.mergers)
+	t.db = newDB(&t.opts, t.comparers, t.mergers, t.vfsForDir)
 	t.find = newFind(&t.opts, t.comparers, t.defaultComparer, t.mergers)
 	t.lsm = newLSM(&t.opts, t.comparers)
 	t.manifest = newManifest(&t.opts, t.comparers)

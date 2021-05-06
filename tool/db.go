@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -39,6 +40,7 @@ type dbT struct {
 	opts      *pebble.Options
 	comparers sstable.Comparers
 	mergers   sstable.Mergers
+	vfsForDir vfs.DirFSRetriever
 
 	// Flags.
 	comparerName string
@@ -51,7 +53,12 @@ type dbT struct {
 	verbose      bool
 }
 
-func newDB(opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers) *dbT {
+func newDB(
+	opts *pebble.Options,
+	comparers sstable.Comparers,
+	mergers sstable.Mergers,
+	vfsForDir vfs.DirFSRetriever,
+) *dbT {
 	d := &dbT{
 		opts:      opts,
 		comparers: comparers,
@@ -174,6 +181,15 @@ use by another process.
 	d.Scan.Flags().Int64Var(
 		&d.count, "count", 0, "key count for scan (0 is unlimited)")
 	return d
+}
+
+func (d *dbT) determineFS(dir string) error {
+	fs, err := d.vfsForDir(dir)
+	if err != nil {
+		return err
+	}
+	d.opts.FS = fs
+	return nil
 }
 
 func (d *dbT) loadOptions(dir string) error {
@@ -350,7 +366,13 @@ func (d *dbT) runGet(cmd *cobra.Command, args []string) {
 }
 
 func (d *dbT) runLSM(cmd *cobra.Command, args []string) {
-	db, err := d.openDB(args[0])
+	dir := args[0]
+	err := d.determineFS(dir)
+	if err != nil {
+		fmt.Fprintf(stdout, "%s\n", err)
+		return
+	}
+	db, err := d.openDB(dir)
 	if err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
 		return

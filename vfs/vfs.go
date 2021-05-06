@@ -314,3 +314,11 @@ func Root(fs FS) FS {
 	}
 	return fs
 }
+
+// DirFSRetriever is a function that returns the FS for a directory.
+type DirFSRetriever func(dir string) (FS, error)
+
+// DefaultFSForDir is a DirFSRetriever that returns the default file system.
+func DefaultFSForDir(dir string) (FS, error) {
+	return Default, nil
+}

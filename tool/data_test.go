@@ -45,6 +45,9 @@ func runTests(t *testing.T, path string) {
 		require.NoError(t, err)
 
 		fs := vfs.NewMem()
+		vfsForDir := func(dir string) (vfs.FS, error) {
+			return fs, nil
+		}
 		t.Run(name, func(t *testing.T) {
 			datadriven.RunTest(t, path, func(d *datadriven.TestData) string {
 				args := []string{d.Cmd}
@@ -112,7 +115,7 @@ func runTests(t *testing.T, path string) {
 					return &m
 				}()
 
-				tool := New(DefaultComparer(comparer), Comparers(altComparer), Mergers(merger), FS(fs))
+				tool := New(DefaultComparer(comparer), Comparers(altComparer), Mergers(merger), FS(vfsForDir))
 
 				c := &cobra.Command{}
 				c.AddCommand(tool.Commands...)
