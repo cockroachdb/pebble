@@ -220,7 +220,7 @@ func (w *Writer) Add(key InternalKey, value []byte) error {
 }
 
 func (w *Writer) addPoint(key InternalKey, value []byte) error {
-	if !w.disableKeyOrderChecks {
+	if !w.disableKeyOrderChecks && w.meta.LargestPoint.UserKey != nil {
 		// TODO(peter): Manually inlined version of base.InternalCompare(). This is
 		// 3.5% faster on BenchmarkWriter on go1.13. Remove if go1.14 or future
 		// versions show this to not be a performance win.
@@ -246,8 +246,14 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	w.block.add(key, value)
 
 	w.meta.updateSeqNum(key.SeqNum())
-	if w.props.NumEntries == 0 {
+	if w.meta.SmallestPoint.UserKey == nil {
 		w.meta.SmallestPoint = key.Clone()
+		// Ensure that SmallestPoint.UserKey is not nil. This is required by
+		// WriterMetadata.Smallest in order to distinguish between an unset
+		// SmallestPoint and a zero-length one.
+		if w.meta.SmallestPoint.UserKey == nil {
+			w.meta.SmallestPoint.UserKey = make([]byte, 0)
+		}
 	}
 	// block.curKey contains the most recently added key to the block.
 	w.meta.LargestPoint.UserKey = w.block.curKey[:len(w.block.curKey)-8]
