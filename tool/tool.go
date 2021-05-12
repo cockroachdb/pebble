@@ -112,6 +112,8 @@ func New(opts ...Option) *T {
 		opt(t)
 	}
 
+	t.opts.FS = &absoluteFS{t.opts.FS}
+
 	t.db = newDB(&t.opts, t.comparers, t.mergers)
 	t.find = newFind(&t.opts, t.comparers, t.defaultComparer, t.mergers)
 	t.lsm = newLSM(&t.opts, t.comparers)
