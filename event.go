@@ -74,18 +74,18 @@ func (i CompactionInfo) String() string {
 // SafeFormat implements redact.SafeFormatter.
 func (i CompactionInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	if i.Err != nil {
-		w.Printf("[JOB %d] compaction to L%d error: %s",
-			redact.Safe(i.JobID), redact.Safe(i.Output.Level), i.Err)
+		w.Printf("[JOB %d] compaction(%s) to L%d error: %s",
+			redact.Safe(i.JobID), redact.SafeString(i.Reason), redact.Safe(i.Output.Level), i.Err)
 		return
 	}
 
 	if !i.Done {
-		w.Printf("[JOB %d] compacting ", redact.Safe(i.JobID))
+		w.Printf("[JOB %d] compacting(%s) ", redact.Safe(i.JobID), redact.SafeString(i.Reason))
 		w.Print(levelInfos(i.Input))
 		return
 	}
 	outputSize := tablesTotalSize(i.Output.Tables)
-	w.Printf("[JOB %d] compacted ", redact.Safe(i.JobID))
+	w.Printf("[JOB %d] compacted(%s) ", redact.Safe(i.JobID), redact.SafeString(i.Reason))
 	w.Print(levelInfos(i.Input))
 	w.Printf(" -> L%d [%s] (%s), in %.1fs, output rate %s/s",
 		redact.Safe(i.Output.Level),
