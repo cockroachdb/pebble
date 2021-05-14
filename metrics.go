@@ -265,7 +265,7 @@ func (m *Metrics) formatWAL(buf *bytes.Buffer) {
 //         6         1   825 B    0.00   1.6 K     0 B       0     0 B       0   825 B       1   1.6 K     0.5
 //     total         3   2.4 K       -   933 B   825 B       1     0 B       0   4.1 K       4   1.6 K     4.5
 //     flush         3
-//   compact         1   1.6 K          (size == estimated-debt)
+//   compact         1   1.6 K             0 B  (size == estimated-debt, in = in-progress-bytes)
 //    memtbl         1   4.0 M
 //   zmemtbl         0     0 B
 //      ztbl         0     0 B
