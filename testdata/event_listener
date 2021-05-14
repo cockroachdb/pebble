@@ -82,7 +82,7 @@ sync: db
 [JOB 5] MANIFEST created 000010
 [JOB 5] flushed 1 memtable to L0 [000009] (770 B), in 1.0s, output rate 770 B/s
 [JOB 5] MANIFEST deleted 000007
-[JOB 6] compacting L0 [000006 000009] (1.5 K) + L6 [] (0 B)
+[JOB 6] compacting(default) L0 [000006 000009] (1.5 K) + L6 [] (0 B)
 create: db/000011.sst
 [JOB 6] compacting: sstable created 000011
 sync: db/000011.sst
@@ -97,7 +97,7 @@ close: db/CURRENT.000012.dbtmp
 rename: db/CURRENT.000012.dbtmp -> db/CURRENT
 sync: db
 [JOB 6] MANIFEST created 000012
-[JOB 6] compacted L0 [000006 000009] (1.5 K) + L6 [] (0 B) -> L6 [000011] (770 B), in 1.0s, output rate 770 B/s
+[JOB 6] compacted(default) L0 [000006 000009] (1.5 K) + L6 [] (0 B) -> L6 [000011] (770 B), in 1.0s, output rate 770 B/s
 [JOB 6] sstable deleted 000006
 [JOB 6] sstable deleted 000009
 [JOB 6] MANIFEST deleted 000010
