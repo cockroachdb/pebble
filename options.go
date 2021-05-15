@@ -667,6 +667,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  bytes_per_sync=%d\n", o.BytesPerSync)
 	fmt.Fprintf(&buf, "  cache_size=%d\n", cacheSize)
 	fmt.Fprintf(&buf, "  cleaner=%s\n", o.Cleaner)
+	fmt.Fprintf(&buf, "  compaction_debt_concurrency=%d\n", o.Experimental.CompactionDebtConcurrency)
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  delete_range_flush_delay=%s\n", o.Experimental.DeleteRangeFlushDelay)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
@@ -681,8 +682,11 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
 	fmt.Fprintf(&buf, "  min_compaction_rate=%d\n", o.private.minCompactionRate)
+	fmt.Fprintf(&buf, "  min_deletion_rate=%d\n", o.Experimental.MinDeletionRate)
 	fmt.Fprintf(&buf, "  min_flush_rate=%d\n", o.private.minFlushRate)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
+	fmt.Fprintf(&buf, "  read_compaction_rate=%d\n", o.Experimental.ReadCompactionRate)
+	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
 	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", o.private.strictWALTail)
 	fmt.Fprintf(&buf, "  table_property_collectors=[")
 	for i := range o.TablePropertyCollectors {
@@ -777,6 +781,11 @@ type ParseHooks struct {
 // merger.
 func (o *Options) Parse(s string, hooks *ParseHooks) error {
 	return parseOptions(s, func(section, key, value string) error {
+		// WARNING: DO NOT remove entries from the switches below because doing so
+		// causes a key previously written to the OPTIONS file to be considered unknown,
+		// a backwards incompatible change. Instead, leave in support for parsing the
+		// key but simply don't parse the value.
+
 		switch {
 		case section == "Version":
 			switch key {
@@ -826,6 +835,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 						o.Comparer, err = hooks.NewComparer(value)
 					}
 				}
+			case "compaction_debt_concurrency":
+				o.Experimental.CompactionDebtConcurrency, err = strconv.Atoi(value)
 			case "delete_range_flush_delay":
 				o.Experimental.DeleteRangeFlushDelay, err = time.ParseDuration(value)
 			case "disable_wal":
@@ -854,6 +865,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.MemTableStopWritesThreshold, err = strconv.Atoi(value)
 			case "min_compaction_rate":
 				o.private.minCompactionRate, err = strconv.Atoi(value)
+			case "min_deletion_rate":
+				o.Experimental.MinDeletionRate, err = strconv.Atoi(value)
 			case "min_flush_rate":
 				o.private.minFlushRate, err = strconv.Atoi(value)
 			case "strict_wal_tail":
@@ -869,6 +882,10 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 						o.Merger, err = hooks.NewMerger(value)
 					}
 				}
+			case "read_compaction_rate":
+				o.Experimental.ReadCompactionRate, err = strconv.ParseInt(value, 10, 64)
+			case "read_sampling_multiplier":
+				o.Experimental.ReadSamplingMultiplier, err = strconv.ParseInt(value, 10, 64)
 			case "table_format":
 				switch value {
 				case "leveldb":
