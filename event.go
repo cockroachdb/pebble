@@ -417,6 +417,9 @@ type EventListener struct {
 	// ManifestDeleted is invoked after a manifest has been deleted.
 	ManifestDeleted func(ManifestDeleteInfo)
 
+	// ReadCompactionAdded is invoked after a read compaction is enqueued.
+	ReadCompactionAdded func(LevelInfo)
+
 	// TableCreated is invoked when a table has been created.
 	TableCreated func(TableCreateInfo)
 
@@ -475,6 +478,9 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 	if l.ManifestDeleted == nil {
 		l.ManifestDeleted = func(info ManifestDeleteInfo) {}
 	}
+	if l.ReadCompactionAdded == nil {
+		l.ReadCompactionAdded = func(info LevelInfo) {}
+	}
 	if l.TableCreated == nil {
 		l.TableCreated = func(info TableCreateInfo) {}
 	}
@@ -532,6 +538,9 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 		},
 		ManifestDeleted: func(info ManifestDeleteInfo) {
 			logger.Infof("%s", info)
+		},
+		ReadCompactionAdded: func(info LevelInfo) {
+			logger.Infof("read compaction appended: %s", info)
 		},
 		TableCreated: func(info TableCreateInfo) {
 			logger.Infof("%s", info)

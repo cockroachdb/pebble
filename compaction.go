@@ -1140,8 +1140,9 @@ type readCompaction struct {
 	level int
 	// Key ranges are used instead of file handles as versions could change
 	// between the read sampling and scheduling a compaction.
-	start []byte
-	end   []byte
+	start   []byte
+	end     []byte
+	tableInfo manifest.TableInfo
 }
 
 func (d *DB) addInProgressCompaction(c *compaction) {
