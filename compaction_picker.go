@@ -1359,6 +1359,9 @@ func pickReadTriggeredCompactionHelper(
 ) (pc *pickedCompaction) {
 	cmp := p.opts.Comparer.Compare
 	overlapSlice := p.vers.Overlaps(rc.level, cmp, rc.start, rc.end)
+	p.opts.Logger.Infof("pickReadTriggeredCompactionHelper: L%d [%s] (%s - %s)",
+		rc.level, rc.tableInfo.FileNum, rc.tableInfo.Smallest.Pretty(p.opts.Comparer.FormatKey),
+		rc.tableInfo.Largest.Pretty(p.opts.Comparer.FormatKey))
 	if overlapSlice.Empty() {
 		var shouldCompact bool
 		// If the file for the given key range has moved levels since the compaction
@@ -1367,9 +1370,12 @@ func pickReadTriggeredCompactionHelper(
 		if !shouldCompact {
 			return nil
 		}
+		p.opts.Logger.Infof("pickReadTriggeredCompactionHelper: updated level to L%d",
+			rc.level)
 	}
 	pc = newPickedCompaction(p.opts, p.vers, rc.level, p.baseLevel)
 	pc.startLevel.files = overlapSlice
+	p.opts.Logger.Infof("pickReadTriggeredCompactionHelper: overlaps %s", overlapSlice.String())
 	if !pc.setupInputs() {
 		return nil
 	}

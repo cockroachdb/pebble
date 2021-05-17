@@ -355,6 +355,7 @@ func (i *Iterator) sampleRead() {
 				start: topFile.Smallest.UserKey,
 				end:   topFile.Largest.UserKey,
 				level: topLevel,
+				tableInfo: topFile.TableInfo(),
 			}
 			i.readSampling.pendingCompactions = append(i.readSampling.pendingCompactions, read)
 		}
@@ -1021,6 +1022,12 @@ func (i *Iterator) Close() error {
 			i.readState.db.mu.Lock()
 			i.readState.db.mu.compact.readCompactions = append(i.readState.db.mu.compact.readCompactions, i.readSampling.pendingCompactions...)
 			i.readState.db.mu.Unlock()
+			for j := range i.readSampling.pendingCompactions {
+				i.readState.db.opts.Logger.Infof("read compaction appended: %s", LevelInfo{
+					Level:  i.readSampling.pendingCompactions[j].level,
+					Tables: []TableInfo{i.readSampling.pendingCompactions[j].tableInfo},
+				})
+			}
 		}
 
 		i.readState.unref()
