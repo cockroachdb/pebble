@@ -126,8 +126,13 @@ type Metrics struct {
 	BlockCache CacheMetrics
 
 	Compact struct {
-		// The total number of compactions.
-		Count int64
+		// The total number of compactions, and per-compaction type counts.
+		Count            int64
+		DefaultCount     int64
+		DeleteOnlyCount  int64
+		ElisionOnlyCount int64
+		MoveCount        int64
+		ReadCount        int64
 		// An estimate of the number of bytes that need to be compacted for the LSM
 		// to reach a stable state.
 		EstimatedDebt uint64
@@ -265,7 +270,8 @@ func (m *Metrics) formatWAL(w redact.SafePrinter) {
 //         6         1   825 B    0.00   1.6 K     0 B       0     0 B       0   825 B       1   1.6 K     0.5
 //     total         3   2.4 K       -   933 B   825 B       1     0 B       0   4.1 K       4   1.6 K     4.5
 //     flush         3
-//   compact         1   1.6 K             0 B  (size == estimated-debt, in = in-progress-bytes)
+//   compact         1   1.6 K             0 B          (size == estimated-debt, in = in-progress-bytes)
+//     ctype         0       0       0       0       0  (default, delete, elision, move, read)
 //    memtbl         1   4.0 M
 //   zmemtbl         0     0 B
 //      ztbl         0     0 B
@@ -326,11 +332,18 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	total.format(w, notApplicable)
 
 	w.Printf("  flush %9d\n", redact.Safe(m.Flush.Count))
-	w.Printf("compact %9d %7s %7s %7s  (size == estimated-debt, in = in-progress-bytes)\n",
+	w.Printf("compact %9d %7s %7s %7s %7s  (size == estimated-debt, in = in-progress-bytes)\n",
 		redact.Safe(m.Compact.Count),
 		humanize.IEC.Uint64(m.Compact.EstimatedDebt),
 		redact.SafeString(""),
-		humanize.IEC.Int64(m.Compact.InProgressBytes))
+		humanize.IEC.Int64(m.Compact.InProgressBytes),
+		redact.SafeString(""))
+	w.Printf("  ctype %9d %7d %7d %7d %7d  (default, delete, elision, move, read)\n",
+		redact.Safe(m.Compact.DefaultCount),
+		redact.Safe(m.Compact.DeleteOnlyCount),
+		redact.Safe(m.Compact.ElisionOnlyCount),
+		redact.Safe(m.Compact.MoveCount),
+		redact.Safe(m.Compact.ReadCount))
 	w.Printf(" memtbl %9d %7s\n",
 		redact.Safe(m.MemTable.Count),
 		humanize.IEC.Uint64(m.MemTable.Size))

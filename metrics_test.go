@@ -75,7 +75,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6       701   702 B       -   704 B   704 B     712   706 B     713   1.4 K   1.4 K   707 B       7     2.0
   total      2807   2.7 K       -   2.8 K   2.8 K   2.9 K   2.8 K   2.9 K   8.4 K   5.7 K   2.8 K      28     3.0
   flush         8
-compact         5     6 B             7 B  (size == estimated-debt, in = in-progress-bytes)
+compact         5     6 B             7 B          (size == estimated-debt, in = in-progress-bytes)
+  ctype         0       0       0       0       0  (default, delete, elision, move, read)
  memtbl        12    11 B
 zmemtbl        14    13 B
    ztbl        16    15 B
@@ -206,7 +207,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   total         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   flush         0
-compact         0     0 B             0 B  (size == estimated-debt, in = in-progress-bytes)
+compact         0     0 B             0 B          (size == estimated-debt, in = in-progress-bytes)
+  ctype         0       0       0       0       0  (default, delete, elision, move, read)
  memtbl         0     0 B
 zmemtbl         0     0 B
    ztbl         0     0 B
