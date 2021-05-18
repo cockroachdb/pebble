@@ -519,8 +519,31 @@ func (vs *versionSet) logAndApply(
 	return nil
 }
 
-func (vs *versionSet) incrementCompactions() {
-	vs.metrics.Compact.Count++
+func (vs *versionSet) incrementCompactions(kind compactionKind) {
+	switch kind {
+	case compactionKindDefault:
+		vs.metrics.Compact.Count++
+		vs.metrics.Compact.DefaultCount++
+
+	case compactionKindFlush:
+		vs.metrics.Flush.Count++
+
+	case compactionKindMove:
+		vs.metrics.Compact.Count++
+		vs.metrics.Compact.MoveCount++
+
+	case compactionKindDeleteOnly:
+		vs.metrics.Compact.Count++
+		vs.metrics.Compact.DeleteOnlyCount++
+
+	case compactionKindElisionOnly:
+		vs.metrics.Compact.Count++
+		vs.metrics.Compact.ElisionOnlyCount++
+
+	case compactionKindRead:
+		vs.metrics.Compact.Count++
+		vs.metrics.Compact.ReadCount++
+	}
 }
 
 func (vs *versionSet) incrementFlushes() {

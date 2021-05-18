@@ -413,16 +413,34 @@ func (c *compactionFile) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
-type compactionKind string
+type compactionKind int
 
 const (
-	compactionKindDefault     compactionKind = "default"
-	compactionKindFlush       compactionKind = "flush"
-	compactionKindMove        compactionKind = "move"
-	compactionKindDeleteOnly  compactionKind = "delete-only"
-	compactionKindElisionOnly compactionKind = "elision-only"
-	compactionKindRead        compactionKind = "read"
+	compactionKindDefault compactionKind = iota
+	compactionKindFlush
+	compactionKindMove
+	compactionKindDeleteOnly
+	compactionKindElisionOnly
+	compactionKindRead
 )
+
+func (k compactionKind) String() string {
+	switch k {
+	case compactionKindDefault:
+		return "default"
+	case compactionKindFlush:
+		return "flush"
+	case compactionKindMove:
+		return "move"
+	case compactionKindDeleteOnly:
+		return "delete-only"
+	case compactionKindElisionOnly:
+		return "elision-only"
+	case compactionKindRead:
+		return "read"
+	}
+	return "?"
+}
 
 // compaction is a table compaction from one level to the next, starting from a
 // given version.
@@ -511,7 +529,7 @@ type compaction struct {
 func (c *compaction) makeInfo(jobID int) CompactionInfo {
 	info := CompactionInfo{
 		JobID:  jobID,
-		Reason: string(c.kind),
+		Reason: c.kind.String(),
 		Input:  make([]LevelInfo, 0, len(c.inputs)),
 	}
 	for _, cl := range c.inputs {
@@ -1472,8 +1490,8 @@ func (d *DB) flush1() error {
 
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
+	d.mu.versions.incrementCompactions(c.kind)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
-	d.mu.versions.incrementFlushes()
 	d.opts.EventListener.FlushEnd(info)
 
 	// Refresh bytes flushed count.
@@ -1881,7 +1899,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
-	d.mu.versions.incrementCompactions()
+	d.mu.versions.incrementCompactions(c.kind)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
 	d.opts.EventListener.CompactionEnd(info)
 
