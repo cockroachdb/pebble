@@ -124,7 +124,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "no compaction",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -139,7 +139,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "1 L0 file",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -159,7 +159,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "2 L0 files (0 overlaps)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -185,7 +185,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "2 L0 files, with ikey overlap",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -211,7 +211,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "2 L0 files, with ukey overlap",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -237,7 +237,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "1 L0 file, 2 L1 files (0 overlaps)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -245,7 +245,7 @@ func TestPickCompaction(t *testing.T) {
 						Largest:  base.ParseInternalKey("i.SET.102"),
 					},
 				},
-				1: []*fileMetadata{
+				1: {
 					{
 						FileNum:  200,
 						Size:     1,
@@ -271,7 +271,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "1 L0 file, 2 L1 files (1 overlap), 4 L2 files (3 overlaps)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -279,7 +279,7 @@ func TestPickCompaction(t *testing.T) {
 						Largest:  base.ParseInternalKey("t.SET.102"),
 					},
 				},
-				1: []*fileMetadata{
+				1: {
 					{
 						FileNum:  200,
 						Size:     1,
@@ -293,7 +293,7 @@ func TestPickCompaction(t *testing.T) {
 						Largest:  base.ParseInternalKey("j.SET.212"),
 					},
 				},
-				2: []*fileMetadata{
+				2: {
 					{
 						FileNum:  300,
 						Size:     1,
@@ -331,7 +331,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "4 L1 files, 2 L2 files, can grow",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				1: []*fileMetadata{
+				1: {
 					{
 						FileNum:  200,
 						Size:     1,
@@ -357,7 +357,7 @@ func TestPickCompaction(t *testing.T) {
 						Largest:  base.ParseInternalKey("l2.SET.232"),
 					},
 				},
-				2: []*fileMetadata{
+				2: {
 					{
 						FileNum:  300,
 						Size:     1,
@@ -383,7 +383,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "4 L1 files, 2 L2 files, can't grow (range)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				1: []*fileMetadata{
+				1: {
 					{
 						FileNum:  200,
 						Size:     1,
@@ -409,7 +409,7 @@ func TestPickCompaction(t *testing.T) {
 						Largest:  base.ParseInternalKey("l2.SET.232"),
 					},
 				},
-				2: []*fileMetadata{
+				2: {
 					{
 						FileNum:  300,
 						Size:     1,
@@ -435,7 +435,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "4 L1 files, 2 L2 files, can't grow (size)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				1: []*fileMetadata{
+				1: {
 					{
 						FileNum:  200,
 						Size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
@@ -461,7 +461,7 @@ func TestPickCompaction(t *testing.T) {
 						Largest:  base.ParseInternalKey("l2.SET.232"),
 					},
 				},
-				2: []*fileMetadata{
+				2: {
 					{
 						FileNum:  300,
 						Size:     expandedCompactionByteSizeLimit(opts, 2) - 1,
@@ -539,7 +539,7 @@ func TestElideTombstone(t *testing.T) {
 			desc:  "non-empty",
 			level: 1,
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				1: []*fileMetadata{
+				1: {
 					{
 						Smallest: base.ParseInternalKey("c.SET.801"),
 						Largest:  base.ParseInternalKey("g.SET.800"),
@@ -549,7 +549,7 @@ func TestElideTombstone(t *testing.T) {
 						Largest:  base.ParseInternalKey("y.SET.700"),
 					},
 				},
-				2: []*fileMetadata{
+				2: {
 					{
 						Smallest: base.ParseInternalKey("d.SET.601"),
 						Largest:  base.ParseInternalKey("h.SET.600"),
@@ -559,7 +559,7 @@ func TestElideTombstone(t *testing.T) {
 						Largest:  base.ParseInternalKey("t.SET.500"),
 					},
 				},
-				3: []*fileMetadata{
+				3: {
 					{
 						Smallest: base.ParseInternalKey("f.SET.401"),
 						Largest:  base.ParseInternalKey("g.SET.400"),
@@ -569,7 +569,7 @@ func TestElideTombstone(t *testing.T) {
 						Largest:  base.ParseInternalKey("x.SET.300"),
 					},
 				},
-				4: []*fileMetadata{
+				4: {
 					{
 						Smallest: base.ParseInternalKey("f.SET.201"),
 						Largest:  base.ParseInternalKey("m.SET.200"),
@@ -607,7 +607,7 @@ func TestElideTombstone(t *testing.T) {
 			desc:  "repeated ukey",
 			level: 1,
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				6: []*fileMetadata{
+				6: {
 					{
 						Smallest: base.ParseInternalKey("i.SET.401"),
 						Largest:  base.ParseInternalKey("i.SET.400"),
@@ -684,7 +684,7 @@ func TestElideRangeTombstone(t *testing.T) {
 			desc:  "non-empty",
 			level: 1,
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				1: []*fileMetadata{
+				1: {
 					{
 						Smallest: base.ParseInternalKey("c.SET.801"),
 						Largest:  base.ParseInternalKey("g.SET.800"),
@@ -694,7 +694,7 @@ func TestElideRangeTombstone(t *testing.T) {
 						Largest:  base.ParseInternalKey("y.SET.700"),
 					},
 				},
-				2: []*fileMetadata{
+				2: {
 					{
 						Smallest: base.ParseInternalKey("d.SET.601"),
 						Largest:  base.ParseInternalKey("h.SET.600"),
@@ -704,7 +704,7 @@ func TestElideRangeTombstone(t *testing.T) {
 						Largest:  base.ParseInternalKey("t.SET.500"),
 					},
 				},
-				3: []*fileMetadata{
+				3: {
 					{
 						Smallest: base.ParseInternalKey("f.SET.401"),
 						Largest:  base.ParseInternalKey("g.SET.400"),
@@ -714,7 +714,7 @@ func TestElideRangeTombstone(t *testing.T) {
 						Largest:  base.ParseInternalKey("x.SET.300"),
 					},
 				},
-				4: []*fileMetadata{
+				4: {
 					{
 						Smallest: base.ParseInternalKey("f.SET.201"),
 						Largest:  base.ParseInternalKey("m.SET.200"),
@@ -751,13 +751,13 @@ func TestElideRangeTombstone(t *testing.T) {
 			desc:  "flushing",
 			level: -1,
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						Smallest: base.ParseInternalKey("h.SET.901"),
 						Largest:  base.ParseInternalKey("j.SET.900"),
 					},
 				},
-				1: []*fileMetadata{
+				1: {
 					{
 						Smallest: base.ParseInternalKey("c.SET.801"),
 						Largest:  base.ParseInternalKey("g.SET.800"),
@@ -1838,7 +1838,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 						if i > 0 {
 							fmt.Fprintf(&buf, " ")
 						}
-						fmt.Fprintf(&buf, "%s-%s", r.start, r.end)
+						fmt.Fprintf(&buf, "%s-%s", r.Start, r.End)
 					}
 					fmt.Fprintf(&buf, "\n")
 				}
