@@ -767,53 +767,117 @@ func newFlush(
 
 func (c *compaction) setupInuseKeyRanges() {
 	level := c.outputLevel.level + 1
-
-	var input []manifest.UserKeyRange
 	if c.outputLevel.level == 0 {
-		// Level 0 can contain overlapping sstables, so we need to check it
-		// for overlaps. Rather than collect overlapping sstables through
-		// version.Overlaps, we use the L0 Sublevels structure to calculate
-		// the merged in-use key ranges.
-		input = c.version.L0Sublevels.InUseKeyRanges(c.smallest.UserKey, c.largest.UserKey)
+		level = 0
+	}
+	c.inuseKeyRanges = calculateInuseKeyRanges(c.version, c.cmp, level,
+		c.smallest.UserKey, c.largest.UserKey)
+}
+
+func calculateInuseKeyRanges(
+	v *version, cmp base.Compare, level int, smallest, largest []byte,
+) []manifest.UserKeyRange {
+	// Use two slices, alternating which one is input and which one is output
+	// as we descend the LSM.
+	var input, output []manifest.UserKeyRange
+
+	// L0 requires special treatment, since sstables within L0 may overlap.
+	// We use the L0 Sublevels structure to efficiently calculate the merged
+	// in-use key ranges.
+	if level == 0 {
+		output = v.L0Sublevels.InUseKeyRanges(smallest, largest)
+		level++
 	}
 
-	// Gather up the raw list of key ranges from overlapping tables in lower
-	// levels.
 	for ; level < numLevels; level++ {
-		overlaps := c.version.Overlaps(level, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+		overlaps := v.Overlaps(level, cmp, smallest, largest)
 		iter := overlaps.Iter()
-		for m := iter.First(); m != nil; m = iter.Next() {
-			input = append(input, manifest.UserKeyRange{
-				Start: m.Smallest.UserKey,
-				End:   m.Largest.UserKey,
-			})
+
+		// We may already have in-use key ranges from higher levels. Iterate
+		// through both our accumulated in-use key ranges and this level's
+		// files, merging the two.
+		//
+		// Tables higher within the LSM have broader key spaces. We use this
+		// when possible to seek past a level's files that are contained by
+		// our current accumulated in-use key ranges. This helps avoid
+		// per-sstable work during flushes or compactions in high levels which
+		// overlap the majority of the LSM's sstables.
+		input, output = output, input
+		output = output[:0]
+
+		var currFile *fileMetadata
+		var currAccum *manifest.UserKeyRange
+		if len(input) > 0 {
+			currAccum, input = &input[0], input[1:]
+		}
+
+		// If we have an accumulated key range and its start is ≤ smallest,
+		// we can seek to the accumulated range's end. Otherwise, we need to
+		// start at the first overlapping file within the level.
+		if currAccum != nil && cmp(currAccum.Start, smallest) <= 0 {
+			currFile = seekGT(&iter, cmp, currAccum.End)
+		} else {
+			currFile = iter.First()
+		}
+
+		for currFile != nil || currAccum != nil {
+			// If we've exhausted either the files in the level or the
+			// accumulated key ranges, we just need to append the one we have.
+			// If we have both a currFile and a currAccum, they either overlap
+			// or they're disjoint. If they're disjoint, we append whichever
+			// one sorts first and move on to the next file or range. If they
+			// overlap, we merge them into currAccum and proceed to the next
+			// file.
+			switch {
+			case currAccum == nil || (currFile != nil && cmp(currFile.Largest.UserKey, currAccum.Start) < 0):
+				// This file is strictly before the current accumulated range,
+				// or there are no more accumulated ranges.
+				output = append(output, manifest.UserKeyRange{
+					Start: currFile.Smallest.UserKey,
+					End:   currFile.Largest.UserKey,
+				})
+				currFile = iter.Next()
+			case currFile == nil || (currAccum != nil && cmp(currAccum.End, currFile.Smallest.UserKey) < 0):
+				// The current accumulated key range is strictly before the
+				// current file, or there are no more files.
+				output = append(output, *currAccum)
+				currAccum = nil
+				if len(input) > 0 {
+					currAccum, input = &input[0], input[1:]
+				}
+			default:
+				// The current accumulated range and the current file overlap.
+				// Adjust the accumulated range to be the union.
+				if cmp(currFile.Smallest.UserKey, currAccum.Start) < 0 {
+					currAccum.Start = currFile.Smallest.UserKey
+				}
+				if cmp(currFile.Largest.UserKey, currAccum.End) > 0 {
+					currAccum.End = currFile.Largest.UserKey
+				}
+
+				// Extending `currAccum`'s end boundary may have caused it to
+				// overlap with `input` key ranges that we haven't processed
+				// yet. Merge any such key ranges.
+				for len(input) > 0 && cmp(input[0].Start, currAccum.End) <= 0 {
+					if cmp(input[0].End, currAccum.End) > 0 {
+						currAccum.End = input[0].End
+					}
+					input = input[1:]
+				}
+				// Seek the level iterator past our current accumulated end.
+				currFile = seekGT(&iter, cmp, currAccum.End)
+			}
 		}
 	}
+	return output
+}
 
-	if len(input) == 0 {
-		// Nothing more to do.
-		return
+func seekGT(iter *manifest.LevelIterator, cmp base.Compare, key []byte) *manifest.FileMetadata {
+	f := iter.SeekGE(cmp, key)
+	for f != nil && cmp(f.Largest.UserKey, key) == 0 {
+		f = iter.Next()
 	}
-
-	// Sort the raw list of key ranges by start key.
-	sort.Slice(input, func(i, j int) bool {
-		return c.cmp(input[i].Start, input[j].Start) < 0
-	})
-
-	// Take the first input as the first output. This key range is guaranteed to
-	// have the smallest start key (or share the smallest start key) with another
-	// range. Loop over the remaining input key ranges and either add a new
-	// output, or merge with the last output.
-	c.inuseKeyRanges = input[:1]
-	for _, v := range input[1:] {
-		last := &c.inuseKeyRanges[len(c.inuseKeyRanges)-1]
-		switch {
-		case c.cmp(last.End, v.Start) < 0:
-			c.inuseKeyRanges = append(c.inuseKeyRanges, v)
-		case c.cmp(last.End, v.End) < 0:
-			last.End = v.End
-		}
-	}
+	return f
 }
 
 // findGrandparentLimit takes the start user key for a table and returns the

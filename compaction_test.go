@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"math/rand"
 	"regexp"
 	"runtime"
 	"sort"
@@ -1849,6 +1850,109 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
+	var (
+		fileNum     = FileNum(0)
+		opts        = (*Options)(nil).EnsureDefaults()
+		seed        = int64(time.Now().UnixNano())
+		rng         = rand.New(rand.NewSource(seed))
+		endKeyspace = 26 * 26
+	)
+	t.Logf("Using rng seed %d.", seed)
+
+	for iter := 0; iter < 100; iter++ {
+		makeUserKey := func(i int) []byte {
+			if i >= endKeyspace {
+				i = endKeyspace - 1
+			}
+			return []byte{byte(i/26 + 'a'), byte(i%26 + 'a')}
+		}
+		makeIK := func(level, i int) InternalKey {
+			return base.MakeInternalKey(
+				makeUserKey(i),
+				uint64(numLevels-level),
+				base.InternalKeyKindSet,
+			)
+		}
+		makeFile := func(level, start, end int) *fileMetadata {
+			fileNum++
+			m := &fileMetadata{
+				FileNum:  fileNum,
+				Smallest: makeIK(level, start),
+				Largest:  makeIK(level, end),
+			}
+			m.SmallestSeqNum = m.Smallest.SeqNum()
+			m.LargestSeqNum = m.Largest.SeqNum()
+			return m
+		}
+		overlaps := func(startA, endA, startB, endB []byte) bool {
+			disjoint := opts.Comparer.Compare(endB, startA) < 0 || opts.Comparer.Compare(endA, startB) < 0
+			return !disjoint
+		}
+		var files [numLevels][]*fileMetadata
+		for l := 0; l < numLevels; l++ {
+			for i := 0; i < rand.Intn(10); i++ {
+				s := rng.Intn(endKeyspace)
+				maxWidth := rng.Intn(endKeyspace-s) + 1
+				e := rng.Intn(maxWidth) + s
+				sKey, eKey := makeUserKey(s), makeUserKey(e)
+				// Discard the key range if it overlaps any existing files
+				// within this level.
+				var o bool
+				for _, f := range files[l] {
+					o = o || overlaps(sKey, eKey, f.Smallest.UserKey, f.Largest.UserKey)
+				}
+				if o {
+					continue
+				}
+				files[l] = append(files[l], makeFile(l, s, e))
+			}
+			sort.Slice(files[l], func(i, j int) bool {
+				return opts.Comparer.Compare(files[l][i].Smallest.UserKey, files[l][j].Smallest.UserKey) < 0
+			})
+		}
+		v := newVersion(opts, files)
+		t.Log(v.DebugString(opts.Comparer.FormatKey))
+		for i := 0; i < 1000; i++ {
+			l := rng.Intn(numLevels)
+			s := rng.Intn(endKeyspace)
+			maxWidth := rng.Intn(endKeyspace-s) + 1
+			e := rng.Intn(maxWidth) + s
+			sKey, eKey := makeUserKey(s), makeUserKey(e)
+			keyRanges := calculateInuseKeyRanges(v, opts.Comparer.Compare, l, sKey, eKey)
+
+			for level := l; level < numLevels; level++ {
+				for _, f := range files[level] {
+					if !overlaps(sKey, eKey, f.Smallest.UserKey, f.Largest.UserKey) {
+						// This file doesn't overlap the queried range. Skip it.
+						continue
+					}
+					// This file does overlap the queried range. The key range
+					// [MAX(f.Smallest, sKey), MIN(f.Largest, eKey)] must be fully
+					// contained by a key range in keyRanges.
+					checkStart, checkEnd := f.Smallest.UserKey, f.Largest.UserKey
+					if opts.Comparer.Compare(checkStart, sKey) < 0 {
+						checkStart = sKey
+					}
+					if opts.Comparer.Compare(checkEnd, eKey) > 0 {
+						checkEnd = eKey
+					}
+					var contained bool
+					for _, kr := range keyRanges {
+						contained = contained ||
+							(opts.Comparer.Compare(checkStart, kr.Start) >= 0 &&
+								opts.Comparer.Compare(checkEnd, kr.End) <= 0)
+					}
+					if !contained {
+						t.Errorf("Seed %d, iter %d: File %s overlaps %q-%q, but is not fully contained in any of the key ranges.",
+							seed, iter, f, sKey, eKey)
+					}
+				}
+			}
+		}
+	}
 }
 
 func TestCompactionAllowZeroSeqNum(t *testing.T) {
