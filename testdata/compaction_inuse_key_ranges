@@ -129,3 +129,66 @@ inuse-key-ranges
 0 a z
 ----
 a-j k-z
+
+define
+L0
+  a.SET.1-b.SET.1
+  c.SET.1-d.SET.1
+  f.SET.1-g.SET.1
+  i.SET.1-j.SET.1
+L6
+  a.SET.0-i.SET.0
+  k.SET.0-z.SET.0
+----
+0.0:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[f#1,SET-g#1,SET]
+  000004:[i#1,SET-j#1,SET]
+6:
+  000005:[a#0,SET-i#0,SET]
+  000006:[k#0,SET-z#0,SET]
+
+inuse-key-ranges
+0 a z
+----
+a-j k-z
+
+define
+L0
+  a.SET.1-b.SET.1
+  aa.SET.1-ab.SET.1
+  b.SET.2-d.SET.1
+  bb.SET.1-dd.SET.1
+  c.SET.1-d.SET.1
+  e.SET.1-m.SET.1
+  g.SET.1-p.SET.1
+----
+0.3:
+  000005:[c#1,SET-d#1,SET]
+0.2:
+  000004:[bb#1,SET-dd#1,SET]
+0.1:
+  000002:[aa#1,SET-ab#1,SET]
+  000003:[b#2,SET-d#1,SET]
+  000007:[g#1,SET-p#1,SET]
+0.0:
+  000001:[a#1,SET-b#1,SET]
+  000006:[e#1,SET-m#1,SET]
+
+inuse-key-ranges
+0 a z
+0 e p
+0 e f
+0 b c
+0 q r
+0 1 2
+0 ddd dddd
+----
+a-dd e-p
+e-p
+e-m
+b-dd
+.
+.
+.
