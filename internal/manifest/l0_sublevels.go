@@ -521,7 +521,8 @@ func (s *L0Sublevels) ReadAmplification() int {
 	return amp
 }
 
-// UserKeyRange encodes a key range in user key space.
+// UserKeyRange encodes a key range in user key space. A UserKeyRange's Start
+// and End boundaries are both inclusive.
 type UserKeyRange struct {
 	Start, End []byte
 }

@@ -1136,46 +1136,82 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 	}
 }
 
-// BenchmarkManySSTablesNewVersion measures the cost of ingesting a small
-// SSTable at various counts of SSTables within the database.
-func BenchmarkManySSTablesNewVersion(b *testing.B) {
+// BenchmarkManySSTables measures the cost of various operations with various
+// counts of SSTables within the database.
+func BenchmarkManySSTables(b *testing.B) {
 	counts := []int{10, 1_000, 10_000, 100_000, 1_000_000}
+	ops := []string{"ingest", "calculateInuseKeyRanges"}
+	for _, op := range ops {
+		b.Run(op, func(b *testing.B) {
+			for _, count := range counts {
+				b.Run(fmt.Sprintf("sstables=%d", count), func(b *testing.B) {
+					mem := vfs.NewMem()
+					d, err := Open("", &Options{
+						FS: mem,
+					})
+					require.NoError(b, err)
 
-	for _, count := range counts {
-		b.Run(fmt.Sprintf("sstables=%d", count), func(b *testing.B) {
-			mem := vfs.NewMem()
-			d, err := Open("", &Options{
-				FS: mem,
-			})
-			require.NoError(b, err)
+					var paths []string
+					for i := 0; i < count; i++ {
+						n := fmt.Sprintf("%07d", i)
+						f, err := mem.Create(n)
+						require.NoError(b, err)
+						w := sstable.NewWriter(f, sstable.WriterOptions{})
+						require.NoError(b, w.Set([]byte(n), nil))
+						require.NoError(b, w.Close())
+						paths = append(paths, n)
+					}
+					require.NoError(b, d.Ingest(paths))
 
-			var paths []string
-			for i := 0; i < count; i++ {
-				n := strconv.Itoa(i)
-				f, err := mem.Create(n)
-				require.NoError(b, err)
-				w := sstable.NewWriter(f, sstable.WriterOptions{})
-				require.NoError(b, w.Set([]byte(n), nil))
-				require.NoError(b, w.Close())
-				paths = append(paths, n)
+					{
+						const broadIngest = "broad.sst"
+						f, err := mem.Create(broadIngest)
+						require.NoError(b, err)
+						w := sstable.NewWriter(f, sstable.WriterOptions{})
+						require.NoError(b, w.Set([]byte("0"), nil))
+						require.NoError(b, w.Set([]byte("Z"), nil))
+						require.NoError(b, w.Close())
+						require.NoError(b, d.Ingest([]string{broadIngest}))
+					}
+
+					switch op {
+					case "ingest":
+						runBenchmarkManySSTablesIngest(b, d, mem, count)
+					case "calculateInuseKeyRanges":
+						runBenchmarkManySSTablesInUseKeyRanges(b, d, count)
+					}
+					require.NoError(b, d.Close())
+				})
 			}
-			require.NoError(b, d.Ingest(paths))
-
-			b.ResetTimer()
-			runBenchmarkSSTables(b, d, mem, count)
-			require.NoError(b, d.Close())
 		})
 	}
 }
 
-func runBenchmarkSSTables(b *testing.B, d *DB, fs vfs.FS, count int) {
+func runBenchmarkManySSTablesIngest(b *testing.B, d *DB, fs vfs.FS, count int) {
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		n := strconv.Itoa(count + i)
+		n := fmt.Sprintf("%07d", count+i)
 		f, err := fs.Create(n)
 		require.NoError(b, err)
 		w := sstable.NewWriter(f, sstable.WriterOptions{})
 		require.NoError(b, w.Set([]byte(n), nil))
 		require.NoError(b, w.Close())
 		require.NoError(b, d.Ingest([]string{n}))
+	}
+}
+
+func runBenchmarkManySSTablesInUseKeyRanges(b *testing.B, d *DB, count int) {
+	// This benchmark is pretty contrived, but it's not easy to write a
+	// microbenchmark for this in a more natural way. L6 has many files, and
+	// L5 has 1 file spanning the entire breadth of L5.
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	v := d.mu.versions.currentVersion()
+	b.ResetTimer()
+
+	smallest := []byte("0")
+	largest := []byte("z")
+	for i := 0; i < b.N; i++ {
+		_ = calculateInuseKeyRanges(v, d.cmp, 0, smallest, largest)
 	}
 }
