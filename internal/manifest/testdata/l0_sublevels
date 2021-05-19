@@ -2,6 +2,35 @@
 define
 L0
   000009:a.SET.10-b.SET.10
+  000007:c.SET.6-d.SET.8
+  000003:e.SET.5-j.SET.7
+----
+file count: 3, sublevels: 1, intervals: 6
+flush split keys(3): [b, d, j]
+0.0: file count: 3, bytes: 768, width (mean, max): 1.0, 1, interval range: [0, 4]
+	000009:a#10,1-b#10,1
+	000007:c#6,1-d#8,1
+	000003:e#5,1-j#7,1
+compacting file count: 0, base compacting intervals: none
+L0.0:  a---b c---d e---------------j
+       aa bb cc dd ee ff gg hh ii jj
+
+in-use-key-ranges
+a-z
+a-c
+aa-cc
+f-g
+e-j
+----
+a-b, c-d, e-j
+a-b, c-d
+a-b, c-d
+e-j
+e-j
+
+define
+L0
+  000009:a.SET.10-b.SET.10
   000007:b.SET.6-j.SET.8
   000003:e.SET.5-j.SET.7
 ----
@@ -18,6 +47,21 @@ L0.2:  a---b
 L0.1:     b------------------------j
 L0.0:              e---------------j
        aa bb cc dd ee ff gg hh ii jj
+
+in-use-key-ranges
+a-z
+a-b
+a-aa
+b-bb
+b-j
+j-j
+----
+a-j
+a-j
+a-b
+b-j
+b-j
+e-j
 
 define no_initialize
 L0.2
@@ -125,6 +169,11 @@ L6:    a---------------f g------------------------------------s
 # overlap with base files that overlap with L0 files in the seed interval.
 # Marking 0002 as compacting should be enough to exclude both from the
 # chosen compaction.
+
+in-use-key-ranges
+a-z
+----
+a-b, c-d, e-i
 
 define
 L0
@@ -243,6 +292,11 @@ L0.1:                 f------h
 L0.0:                 f---g                   n------p
 L6:    a---------------f g------------------------------------s
        aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss
+
+in-use-key-ranges
+a-z
+----
+f-p
 
 pick-base-compaction min_depth=3
 ----
@@ -817,6 +871,11 @@ read-amp
 ----
 2
 
+in-use-key-ranges
+a-z
+----
+a-j
+
 # The comparison of a cumulative count of interpolated bytes and
 # flushSplitMaxBytes is a <, so even though the cumulative count equals 32 after
 # a-c, we do not emit a flush split key until the end of the next interval, c-e.
@@ -912,6 +971,21 @@ L0.1:           d---e
 L0.0:  a---------d e------g h------j
 L6:    a---------------f g------------------------------------s
        aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss
+
+in-use-key-ranges
+b-b
+dd-e
+dd-i
+dd-h
+dd-j
+dd-s
+----
+a-d
+d-g
+d-g, h-j
+d-g, h-j
+d-g, h-j
+d-g, h-j
 
 flush-split-keys
 ----
@@ -1057,6 +1131,13 @@ L0.0:                 f+++g h++++++j k+++l    n+++o
 L6:    a------------------------------------------o p---------s
        aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss
 
+in-use-key-ranges
+a-z
+n-o
+----
+f-j, k-l, n-o
+n-o
+
 # Ensure that two L0 sstables where one ends at a rangedel sentinel key and
 # the other starts at the same user key occupy the same sublevel.
 
@@ -1077,3 +1158,83 @@ compacting file count: 0, base compacting intervals: none
 L0.0:  a--------d---------g
 L6:    a------------------------------------------o p---------s
        aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss
+
+in-use-key-ranges
+a-z
+a-g
+b-c
+----
+a-g
+a-g
+a-d
+
+define
+L0
+  000004:a.SET.2-d.RANGEDEL.72057594037927935
+  000005:d.SET.3-g.SET.5
+  000006:f.SET.4-i.SET.6
+  000008:g.SET.7-i.SET.7
+  000007:h.SET.7-m.SET.7
+  000008:m.SET.7-p.SET.7
+  000009:q.SET.7-r.SET.7
+----
+file count: 7, sublevels: 4, intervals: 10
+flush split keys(4): [f, g, i, r]
+0.3: file count: 1, bytes: 256, width (mean, max): 3.0, 3, interval range: [3, 5]
+	000008:g#7,1-i#7,1
+0.2: file count: 1, bytes: 256, width (mean, max): 2.0, 2, interval range: [5, 6]
+	000007:h#7,1-m#7,1
+0.1: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [2, 5]
+	000006:f#4,1-i#6,1
+0.0: file count: 3, bytes: 768, width (mean, max): 1.7, 3, interval range: [0, 8]
+	000004:a#2,1-d#72057594037927935,15
+	000005:d#3,1-g#5,1
+	000009:q#7,1-r#7,1
+compacting file count: 0, base compacting intervals: none
+L0.3:                    g------i
+L0.2:                       h---------------m
+L0.1:                 f---------i
+L0.0:  a--------d---------g                            q---r
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr
+
+in-use-key-ranges
+f-m
+f-n
+f-l
+ff-m
+ff-n
+ff-l
+----
+f-m
+f-m
+f-m
+f-m
+f-m
+f-m
+
+in-use-key-ranges
+n-o
+m-q
+l-qq
+----
+.
+i-m, q-r
+i-m, q-r
+
+in-use-key-ranges
+a-z
+g-l
+----
+a-m, q-r
+g-m
+
+in-use-key-ranges
+a-ff
+a-gg
+a-i
+d-d
+----
+a-g
+a-i
+a-m
+d-g
