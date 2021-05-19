@@ -5,6 +5,7 @@
 package manifest
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"math"
@@ -426,6 +427,20 @@ func TestL0Sublevels(t *testing.T) {
 			return builder.String()
 		case "read-amp":
 			return strconv.Itoa(sublevels.ReadAmplification())
+		case "in-use-key-ranges":
+			keyRange := strings.Split(strings.TrimSpace(td.Input), "-")
+			smallest := []byte(strings.TrimSpace(keyRange[0]))
+			largest := []byte(strings.TrimSpace(keyRange[1]))
+
+			keyRanges := sublevels.InUseKeyRanges(smallest, largest)
+			var buf bytes.Buffer
+			for i, r := range keyRanges {
+				fmt.Fprintf(&buf, "%s-%s", sublevels.formatKey(r.Start), sublevels.formatKey(r.End))
+				if i < len(keyRanges)-1 {
+					fmt.Fprint(&buf, ", ")
+				}
+			}
+			return buf.String()
 		case "flush-split-keys":
 			var builder strings.Builder
 			builder.WriteString("flush user split keys: ")

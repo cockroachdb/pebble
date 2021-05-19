@@ -57,10 +57,6 @@ func (i noCloseIter) Close() error {
 	return nil
 }
 
-type userKeyRange struct {
-	start, end []byte
-}
-
 type compactionLevel struct {
 	level int
 	files manifest.LevelSlice
@@ -496,7 +492,7 @@ type compaction struct {
 	// grandparent and lower levels. See setupInuseKeyRanges() for the
 	// construction. Used by elideTombstone() and elideRangeTombstone() to
 	// determine if keys affected by a tombstone possibly exist at a lower level.
-	inuseKeyRanges      []userKeyRange
+	inuseKeyRanges      []manifest.UserKeyRange
 	elideTombstoneIndex int
 
 	// allowedZeroSeqNum is true if seqnums can be zeroed if there are no
@@ -753,20 +749,26 @@ func newFlush(
 
 func (c *compaction) setupInuseKeyRanges() {
 	level := c.outputLevel.level + 1
+
+	var input []manifest.UserKeyRange
 	if c.outputLevel.level == 0 {
-		// Level 0 can contain overlapping sstables so we need to check it for
-		// overlaps.
-		level = 0
+		// Level 0 can contain overlapping sstables, so we need to check it
+		// for overlaps. Rather than collect overlapping sstables through
+		// version.Overlaps, we use the L0 Sublevels structure to calculate
+		// the merged in-use key ranges.
+		input = c.version.L0Sublevels.InUseKeyRanges(c.smallest.UserKey, c.largest.UserKey)
 	}
 
 	// Gather up the raw list of key ranges from overlapping tables in lower
 	// levels.
-	var input []userKeyRange
 	for ; level < numLevels; level++ {
 		overlaps := c.version.Overlaps(level, c.cmp, c.smallest.UserKey, c.largest.UserKey)
 		iter := overlaps.Iter()
 		for m := iter.First(); m != nil; m = iter.Next() {
-			input = append(input, userKeyRange{m.Smallest.UserKey, m.Largest.UserKey})
+			input = append(input, manifest.UserKeyRange{
+				Start: m.Smallest.UserKey,
+				End:   m.Largest.UserKey,
+			})
 		}
 	}
 
@@ -777,7 +779,7 @@ func (c *compaction) setupInuseKeyRanges() {
 
 	// Sort the raw list of key ranges by start key.
 	sort.Slice(input, func(i, j int) bool {
-		return c.cmp(input[i].start, input[j].start) < 0
+		return c.cmp(input[i].Start, input[j].Start) < 0
 	})
 
 	// Take the first input as the first output. This key range is guaranteed to
@@ -788,10 +790,10 @@ func (c *compaction) setupInuseKeyRanges() {
 	for _, v := range input[1:] {
 		last := &c.inuseKeyRanges[len(c.inuseKeyRanges)-1]
 		switch {
-		case c.cmp(last.end, v.start) < 0:
+		case c.cmp(last.End, v.Start) < 0:
 			c.inuseKeyRanges = append(c.inuseKeyRanges, v)
-		case c.cmp(last.end, v.end) < 0:
-			last.end = v.end
+		case c.cmp(last.End, v.End) < 0:
+			last.End = v.End
 		}
 	}
 }
@@ -883,8 +885,8 @@ func (c *compaction) elideTombstone(key []byte) bool {
 
 	for ; c.elideTombstoneIndex < len(c.inuseKeyRanges); c.elideTombstoneIndex++ {
 		r := &c.inuseKeyRanges[c.elideTombstoneIndex]
-		if c.cmp(key, r.end) <= 0 {
-			if c.cmp(key, r.start) >= 0 {
+		if c.cmp(key, r.End) <= 0 {
+			if c.cmp(key, r.Start) >= 0 {
 				return false
 			}
 			break
@@ -920,10 +922,10 @@ func (c *compaction) elideRangeTombstone(start, end []byte) bool {
 	}
 
 	lower := sort.Search(len(c.inuseKeyRanges), func(i int) bool {
-		return c.cmp(c.inuseKeyRanges[i].end, start) >= 0
+		return c.cmp(c.inuseKeyRanges[i].End, start) >= 0
 	})
 	upper := sort.Search(len(c.inuseKeyRanges), func(i int) bool {
-		return c.cmp(c.inuseKeyRanges[i].start, end) > 0
+		return c.cmp(c.inuseKeyRanges[i].Start, end) > 0
 	})
 	return lower >= upper
 }
