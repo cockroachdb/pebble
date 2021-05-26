@@ -1170,6 +1170,47 @@ func BenchmarkDelete(b *testing.B) {
 	})
 }
 
+func BenchmarkNewIterLevels10(b *testing.B) {
+	benchmarkNewIterLevels(10, b)
+}
+
+func BenchmarkNewIterLevels100(b *testing.B) {
+	benchmarkNewIterLevels(100, b)
+}
+
+func BenchmarkNewIterLevels1000(b *testing.B) {
+	benchmarkNewIterLevels(1000, b)
+}
+
+func benchmarkNewIterLevels(numL0Sublevels int, b *testing.B) {
+	opts := &Options{
+		FS:                    vfs.NewMem(),
+		L0StopWritesThreshold: 1000,
+	}
+	opts.private.disableAutomaticCompactions = true
+
+	d, err := Open("", opts)
+	require.NoError(b, err)
+
+	for i := 0; i < numL0Sublevels; i++ {
+		require.NoError(b, d.Set([]byte("a"), []byte("b"), NoSync))
+		require.NoError(b, d.Flush())
+	}
+
+	require.Equal(b, d.Metrics().ReadAmp(), numL0Sublevels)
+
+	b.StopTimer()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StartTimer()
+		iter := d.NewIter(nil)
+		b.StopTimer()
+		require.NoError(b, iter.Close())
+	}
+
+	require.NoError(b, d.Close())
+}
+
 func verifyGet(t *testing.T, r Reader, key, expected []byte) {
 	val, closer, err := r.Get(key)
 	require.NoError(t, err)
