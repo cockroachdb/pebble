@@ -377,9 +377,9 @@ func (d *DB) Get(key []byte) ([]byte, io.Closer, error) {
 }
 
 type getIterAlloc struct {
-	dbi                 Iterator
-	keyBuf              []byte
-	get                 getIter
+	dbi    Iterator
+	keyBuf []byte
+	get    getIter
 }
 
 var getIterAllocPool = sync.Pool{
@@ -411,16 +411,16 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 
 	get := &buf.get
 	*get = getIter{
-		logger: d.opts.Logger,
-		cmp: d.cmp,
-		equal: d.equal,
+		logger:   d.opts.Logger,
+		cmp:      d.cmp,
+		equal:    d.equal,
 		newIters: d.newIters,
 		snapshot: seqNum,
-		key: key,
-		batch: b,
-		mem: readState.memtables,
-		l0: readState.current.L0SublevelFiles,
-		version: readState.current,
+		key:      key,
+		batch:    b,
+		mem:      readState.memtables,
+		l0:       readState.current.L0SublevelFiles,
+		version:  readState.current,
 	}
 
 	// Strip off memtables which cannot possibly contain the seqNum being read
@@ -435,14 +435,14 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 
 	i := &buf.dbi
 	*i = Iterator{
-		getIterAlloc:        buf,
-		cmp:                 d.cmp,
-		equal:               d.equal,
-		iter:                get,
-		merge:               d.merge,
-		split:               d.split,
-		readState:           readState,
-		keyBuf:              buf.keyBuf,
+		getIterAlloc: buf,
+		cmp:          d.cmp,
+		equal:        d.equal,
+		iter:         get,
+		merge:        d.merge,
+		split:        d.split,
+		readState:    readState,
+		keyBuf:       buf.keyBuf,
 	}
 
 	if !i.First() {
@@ -752,9 +752,45 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	readState := dbi.readState
 	batch := dbi.batch
 	seqNum := dbi.seqNum
+	memtables := readState.memtables
+	current := readState.current
 
-	// Merging levels.
+	// Merging levels and levels from iterAlloc.
 	mlevels := buf.mlevels[:0]
+	levels := buf.levels[:0]
+
+	// We compute the number of levels needed ahead of time and reallocate a slice if
+	// the array from the iterAlloc isn't large enough. Doing this allocation once
+	// should improve the performance.
+	numMergingLevels := 0
+	numLevelIters := 0
+	if batch != nil {
+		numMergingLevels++
+	}
+	for i := len(memtables) - 1; i >= 0; i-- {
+		mem := memtables[i]
+		// We only need to read from memtables which contain sequence numbers older
+		// than seqNum.
+		if logSeqNum := mem.logSeqNum; logSeqNum >= seqNum {
+			continue
+		}
+		numMergingLevels++
+	}
+	numMergingLevels += len(current.L0SublevelFiles)
+	numLevelIters += len(current.L0SublevelFiles)
+	for level := 1; level < len(current.Levels); level++ {
+		if current.Levels[level].Empty() {
+			continue
+		}
+		numMergingLevels++
+		numLevelIters++
+	}
+	if numMergingLevels > cap(mlevels) {
+		mlevels = make([]mergingIterLevel, 0, numMergingLevels)
+	}
+	if numLevelIters > cap(levels) {
+		levels = make([]levelIter, 0, numLevelIters)
+	}
 
 	// Top-level is the batch, if any.
 	if batch != nil {
@@ -765,7 +801,6 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	}
 
 	// Next are the memtables.
-	memtables := readState.memtables
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
 		// We only need to read from memtables which contain sequence numbers older
@@ -780,41 +815,24 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	}
 
 	// Next are the file levels: L0 sub-levels followed by lower levels.
+	mlevelsIndex := len(mlevels)
+	levelsIndex := len(levels)
+	mlevels = mlevels[:numMergingLevels]
+	levels = levels[:numLevelIters]
 
-	// Determine the final size for mlevels so that we can avoid any more
-	// reallocations. This is important because each levelIter will hold a
-	// reference to elements in mlevels.
-	start := len(mlevels)
-	current := readState.current
-	for sl := 0; sl < len(current.L0SublevelFiles); sl++ {
-		mlevels = append(mlevels, mergingIterLevel{})
-	}
-	for level := 1; level < len(current.Levels); level++ {
-		if current.Levels[level].Empty() {
-			continue
-		}
-		mlevels = append(mlevels, mergingIterLevel{})
-	}
-	finalMLevels := mlevels
-	mlevels = mlevels[start:]
-
-	levels := buf.levels[:]
 	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
-		var li *levelIter
-		if len(levels) > 0 {
-			li = &levels[0]
-			levels = levels[1:]
-		} else {
-			li = &levelIter{}
-		}
+		li := &levels[levelsIndex]
 
 		li.init(dbi.opts, dbi.cmp, dbi.split, dbi.newIters, files, level, nil)
-		li.initRangeDel(&mlevels[0].rangeDelIter)
-		li.initSmallestLargestUserKey(&mlevels[0].smallestUserKey, &mlevels[0].largestUserKey,
-			&mlevels[0].isLargestUserKeyRangeDelSentinel)
-		li.initIsSyntheticIterBoundsKey(&mlevels[0].isSyntheticIterBoundsKey)
-		mlevels[0].iter = li
-		mlevels = mlevels[1:]
+		li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
+		li.initSmallestLargestUserKey(&mlevels[mlevelsIndex].smallestUserKey,
+			&mlevels[mlevelsIndex].largestUserKey,
+			&mlevels[mlevelsIndex].isLargestUserKeyRangeDelSentinel)
+		li.initIsSyntheticIterBoundsKey(&mlevels[mlevelsIndex].isSyntheticIterBoundsKey)
+		mlevels[mlevelsIndex].iter = li
+
+		levelsIndex++
+		mlevelsIndex++
 	}
 
 	// Add level iterators for the L0 sublevels, iterating from newest to
@@ -831,7 +849,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
 	}
 
-	buf.merging.init(&dbi.opts, dbi.cmp, dbi.split, finalMLevels...)
+	buf.merging.init(&dbi.opts, dbi.cmp, dbi.split, mlevels...)
 	buf.merging.snapshot = seqNum
 	buf.merging.elideRangeTombstones = true
 	return dbi
