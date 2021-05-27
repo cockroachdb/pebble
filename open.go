@@ -294,7 +294,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		// Create an empty .log file.
 		newLogNum := d.mu.versions.getNextFileNum()
 		newLogName := base.MakeFilename(opts.FS, d.walDirname, fileTypeLog, newLogNum)
-		d.mu.log.queue = append(d.mu.log.queue, newLogNum)
+		d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: 0})
 		logFile, err := opts.FS.Create(newLogName)
 		if err != nil {
 			return nil, err
@@ -340,9 +340,11 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := optionsFile.Write([]byte(opts.String())); err != nil {
+		serializedOpts := []byte(opts.String())
+		if _, err := optionsFile.Write(serializedOpts); err != nil {
 			return nil, err
 		}
+		d.optionsFileSize = uint64(len(serializedOpts))
 		_ = optionsFile.Sync()
 		_ = optionsFile.Close()
 		if err := d.dataDir.Sync(); err != nil {

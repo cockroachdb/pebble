@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 	"github.com/stretchr/testify/require"
@@ -192,6 +193,9 @@ func TestMetrics(t *testing.T) {
 			d.mu.Unlock()
 
 			return d.Metrics().String()
+
+		case "disk-usage":
+			return humanize.IEC.Uint64(d.Metrics().DiskSpaceUsage()).String()
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

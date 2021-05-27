@@ -14,7 +14,7 @@ import (
 func (r *logRecycler) logNums() []FileNum {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return append([]FileNum(nil), r.mu.logNums...)
+	return fileInfoNums(r.mu.logs)
 }
 
 func (r *logRecycler) maxLogNum() FileNum {
@@ -27,30 +27,32 @@ func TestLogRecycler(t *testing.T) {
 	r := logRecycler{limit: 3, minRecycleLogNum: 4}
 
 	// Logs below the min-recycle number are not recycled.
-	require.False(t, r.add(1))
-	require.False(t, r.add(2))
-	require.False(t, r.add(3))
+	require.False(t, r.add(fileInfo{1, 0}))
+	require.False(t, r.add(fileInfo{2, 0}))
+	require.False(t, r.add(fileInfo{3, 0}))
 
 	// Logs are recycled up to the limit.
-	require.True(t, r.add(4))
+	require.True(t, r.add(fileInfo{4, 0}))
 	require.EqualValues(t, []FileNum{4}, r.logNums())
 	require.EqualValues(t, 4, r.maxLogNum())
-	require.EqualValues(t, 4, r.peek())
-	require.True(t, r.add(5))
+	fi, ok := r.peek()
+	require.True(t, ok)
+	require.EqualValues(t, 4, fi.fileNum)
+	require.True(t, r.add(fileInfo{5, 0}))
 	require.EqualValues(t, []FileNum{4, 5}, r.logNums())
 	require.EqualValues(t, 5, r.maxLogNum())
-	require.True(t, r.add(6))
+	require.True(t, r.add(fileInfo{6, 0}))
 	require.EqualValues(t, []FileNum{4, 5, 6}, r.logNums())
 	require.EqualValues(t, 6, r.maxLogNum())
 
 	// Trying to add a file past the limit fails.
-	require.False(t, r.add(7))
+	require.False(t, r.add(fileInfo{7, 0}))
 	require.EqualValues(t, []FileNum{4, 5, 6}, r.logNums())
 	require.EqualValues(t, 7, r.maxLogNum())
 
 	// Trying to add a previously recycled file returns success, but the internal
 	// state is unchanged.
-	require.True(t, r.add(4))
+	require.True(t, r.add(fileInfo{4, 0}))
 	require.EqualValues(t, []FileNum{4, 5, 6}, r.logNums())
 	require.EqualValues(t, 7, r.maxLogNum())
 
@@ -61,10 +63,10 @@ func TestLogRecycler(t *testing.T) {
 	require.EqualValues(t, []FileNum{5, 6}, r.logNums())
 
 	// Log number 7 was already considered, so it won't be recycled.
-	require.True(t, r.add(7))
+	require.True(t, r.add(fileInfo{7, 0}))
 	require.EqualValues(t, []FileNum{5, 6}, r.logNums())
 
-	require.True(t, r.add(8))
+	require.True(t, r.add(fileInfo{8, 0}))
 	require.EqualValues(t, []FileNum{5, 6, 8}, r.logNums())
 	require.EqualValues(t, 8, r.maxLogNum())
 
@@ -88,7 +90,7 @@ func TestRecycleLogs(t *testing.T) {
 	logNum := func() FileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return d.mu.log.queue[len(d.mu.log.queue)-1]
+		return d.mu.log.queue[len(d.mu.log.queue)-1].fileNum
 	}
 	logCount := func() int {
 		d.mu.Lock()
@@ -120,8 +122,10 @@ func TestRecycleLogs(t *testing.T) {
 	if n := logCount(); n != int(metrics.WAL.Files) {
 		t.Fatalf("expected %d WAL files, but found %d", n, metrics.WAL.Files)
 	}
-	if n := d.logRecycler.count(); n != int(metrics.WAL.ObsoleteFiles) {
+	if n, sz := d.logRecycler.stats(); n != int(metrics.WAL.ObsoleteFiles) {
 		t.Fatalf("expected %d obsolete WAL files, but found %d", n, metrics.WAL.ObsoleteFiles)
+	} else if sz != metrics.WAL.ObsoletePhysicalSize {
+		t.Fatalf("expected %d obsolete physical WAL size, but found %d", sz, metrics.WAL.ObsoletePhysicalSize)
 	}
 	if recycled := d.logRecycler.logNums(); len(recycled) != 0 {
 		t.Fatalf("expected no recycled WAL files after recovery, but found %d", recycled)
