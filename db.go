@@ -8,6 +8,7 @@ package pebble // import "github.com/cockroachdb/pebble"
 import (
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -200,6 +201,8 @@ type DB struct {
 	largeBatchThreshold int
 	// The current OPTIONS file number.
 	optionsFileNum FileNum
+	// The on-disk size of the current OPTIONS file.
+	optionsFileSize uint64
 
 	fileLock io.Closer
 	dataDir  vfs.File
@@ -265,7 +268,7 @@ type DB struct {
 			// flushed logs will be a prefix, the unflushed logs a suffix. The
 			// delimeter between flushed and unflushed logs is
 			// versionSet.minUnflushedLogNum.
-			queue []FileNum
+			queue []fileInfo
 			// The number of input bytes to the log. This is the raw size of the
 			// batches written to the WAL, without the overhead of the record
 			// envelopes.
@@ -377,9 +380,9 @@ func (d *DB) Get(key []byte) ([]byte, io.Closer, error) {
 }
 
 type getIterAlloc struct {
-	dbi                 Iterator
-	keyBuf              []byte
-	get                 getIter
+	dbi    Iterator
+	keyBuf []byte
+	get    getIter
 }
 
 var getIterAllocPool = sync.Pool{
@@ -411,16 +414,16 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 
 	get := &buf.get
 	*get = getIter{
-		logger: d.opts.Logger,
-		cmp: d.cmp,
-		equal: d.equal,
+		logger:   d.opts.Logger,
+		cmp:      d.cmp,
+		equal:    d.equal,
 		newIters: d.newIters,
 		snapshot: seqNum,
-		key: key,
-		batch: b,
-		mem: readState.memtables,
-		l0: readState.current.L0SublevelFiles,
-		version: readState.current,
+		key:      key,
+		batch:    b,
+		mem:      readState.memtables,
+		l0:       readState.current.L0SublevelFiles,
+		version:  readState.current,
 	}
 
 	// Strip off memtables which cannot possibly contain the seqNum being read
@@ -435,14 +438,14 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 
 	i := &buf.dbi
 	*i = Iterator{
-		getIterAlloc:        buf,
-		cmp:                 d.cmp,
-		equal:               d.equal,
-		iter:                get,
-		merge:               d.merge,
-		split:               d.split,
-		readState:           readState,
-		keyBuf:              buf.keyBuf,
+		getIterAlloc: buf,
+		cmp:          d.cmp,
+		equal:        d.equal,
+		iter:         get,
+		merge:        d.merge,
+		split:        d.split,
+		readState:    readState,
+		keyBuf:       buf.keyBuf,
 	}
 
 	if !i.First() {
@@ -1113,7 +1116,7 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 // Metrics returns metrics about the database.
 func (d *DB) Metrics() *Metrics {
 	metrics := &Metrics{}
-	recycledLogs := d.logRecycler.count()
+	recycledLogsCount, recycledLogSize := d.logRecycler.stats()
 
 	d.mu.Lock()
 	*metrics = d.mu.versions.metrics
@@ -1125,8 +1128,22 @@ func (d *DB) Metrics() *Metrics {
 	metrics.MemTable.Count = int64(len(d.mu.mem.queue))
 	metrics.MemTable.ZombieCount = atomic.LoadInt64(&d.atomic.memTableCount) - metrics.MemTable.Count
 	metrics.MemTable.ZombieSize = uint64(atomic.LoadInt64(&d.atomic.memTableReserved)) - metrics.MemTable.Size
-	metrics.WAL.ObsoleteFiles = int64(recycledLogs)
+	metrics.WAL.ObsoleteFiles = int64(recycledLogsCount)
+	metrics.WAL.ObsoletePhysicalSize = recycledLogSize
 	metrics.WAL.Size = atomic.LoadUint64(&d.atomic.logSize)
+	// The current WAL size (d.atomic.logSize) is the current logical size,
+	// which may be less than the WAL's physical size if it was recycled.
+	// The file sizes in d.mu.log.queue are updated to the physical size
+	// during WAL rotation. Use the larger of the two for the current WAL. All
+	// the previous WALs's fileSizes in d.mu.log.queue are already updated.
+	metrics.WAL.PhysicalSize = metrics.WAL.Size
+	if len(d.mu.log.queue) > 0 && metrics.WAL.PhysicalSize < d.mu.log.queue[len(d.mu.log.queue)-1].fileSize {
+		metrics.WAL.PhysicalSize = d.mu.log.queue[len(d.mu.log.queue)-1].fileSize
+	}
+	for i, n := 0, len(d.mu.log.queue)-1; i < n; i++ {
+		metrics.WAL.PhysicalSize += d.mu.log.queue[i].fileSize
+	}
+
 	metrics.WAL.BytesIn = d.mu.log.bytesIn // protected by d.mu
 	for i, n := 0, len(d.mu.mem.queue)-1; i < n; i++ {
 		metrics.WAL.Size += d.mu.mem.queue[i].logSize
@@ -1142,6 +1159,11 @@ func (d *DB) Metrics() *Metrics {
 	for _, size := range d.mu.versions.zombieTables {
 		metrics.Table.ZombieSize += size
 	}
+	metrics.private.optionsFileSize = d.optionsFileSize
+
+	d.mu.versions.logLock()
+	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())
+	d.mu.versions.logUnlock()
 	d.mu.Unlock()
 
 	metrics.BlockCache = d.opts.Cache.Metrics()
@@ -1403,6 +1425,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 
 		var newLogNum FileNum
 		var newLogFile vfs.File
+		var newLogSize uint64
 		var prevLogSize uint64
 		var err error
 
@@ -1411,6 +1434,15 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.nextJobID++
 			newLogNum = d.mu.versions.getNextFileNum()
 			d.mu.mem.switching = true
+
+			prevLogSize = uint64(d.mu.log.Size())
+
+			// The previous log may have grown past its original physical
+			// size. Update its file size in the queue so we have a proper
+			// accounting of its file size.
+			if d.mu.log.queue[len(d.mu.log.queue)-1].fileSize < prevLogSize {
+				d.mu.log.queue[len(d.mu.log.queue)-1].fileSize = prevLogSize
+			}
 			d.mu.Unlock()
 
 			// Close the previous log first. This writes an EOF trailer
@@ -1418,7 +1450,6 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// close the previous log before linking the new log file,
 			// otherwise a crash could leave both logs with unclean tails, and
 			// Open will treat the previous log as corrupt.
-			prevLogSize = uint64(d.mu.log.Size())
 			err = d.mu.log.Close()
 
 			newLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
@@ -1429,16 +1460,33 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// time. This is due to the need to sync file metadata when a file is
 			// being written for the first time. Note this is true even if file
 			// preallocation is performed (e.g. fallocate).
-			var recycleLogNum base.FileNum
+			var recycleLog fileInfo
+			var recycleOK bool
 			if err == nil {
-				recycleLogNum = d.logRecycler.peek()
-				if recycleLogNum > 0 {
-					recycleLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, recycleLogNum)
+				recycleLog, recycleOK = d.logRecycler.peek()
+				if recycleOK {
+					recycleLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, recycleLog.fileNum)
 					newLogFile, err = d.opts.FS.ReuseForWrite(recycleLogName, newLogName)
 					base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
 				} else {
 					newLogFile, err = d.opts.FS.Create(newLogName)
 					base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
+				}
+			}
+
+			if err == nil && recycleOK {
+				// Figure out the recycled WAL size. This Stat is necessary
+				// because ReuseForWrite's contract allows for removing the
+				// old file and creating a new one. We don't know whether the
+				// WAL was actually recycled.
+				// TODO(jackson): Adding a boolean to the ReuseForWrite return
+				// value indicating whether or not the file was actually
+				// reused would allow us to skip the stat and use
+				// recycleLog.fileSize.
+				var finfo os.FileInfo
+				finfo, err = newLogFile.Stat()
+				if err == nil {
+					newLogSize = uint64(finfo.Size())
 				}
 			}
 
@@ -1457,15 +1505,15 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				})
 			}
 
-			if recycleLogNum > 0 {
-				err = firstError(err, d.logRecycler.pop(recycleLogNum))
+			if recycleOK {
+				err = firstError(err, d.logRecycler.pop(recycleLog.fileNum))
 			}
 
 			d.opts.EventListener.WALCreated(WALCreateInfo{
 				JobID:           jobID,
 				Path:            newLogName,
 				FileNum:         newLogNum,
-				RecycledFileNum: recycleLogNum,
+				RecycledFileNum: recycleLog.fileNum,
 				Err:             err,
 			})
 
@@ -1486,7 +1534,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		}
 
 		if !d.opts.DisableWAL {
-			d.mu.log.queue = append(d.mu.log.queue, newLogNum)
+			d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: newLogSize})
 			d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNum)
 			d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
 		}

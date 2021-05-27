@@ -187,14 +187,41 @@ type Metrics struct {
 		Files int64
 		// Number of obsolete WAL files.
 		ObsoleteFiles int64
+		// Physical size of the obsolete WAL files.
+		ObsoletePhysicalSize uint64
 		// Size of the live data in the WAL files. Note that with WAL file
 		// recycling this is less than the actual on-disk size of the WAL files.
 		Size uint64
+		// Physical size of the WAL files on-disk. With WAL file recycling,
+		// this is greater than the live data in WAL files.
+		PhysicalSize uint64
 		// Number of logical bytes written to the WAL.
 		BytesIn uint64
 		// Number of bytes written to the WAL.
 		BytesWritten uint64
 	}
+
+	private struct {
+		optionsFileSize  uint64
+		manifestFileSize uint64
+	}
+}
+
+// DiskSpaceUsage returns the total disk space used by the database in bytes,
+// including live and obsolete files.
+func (m *Metrics) DiskSpaceUsage() uint64 {
+	var usageBytes uint64
+	usageBytes += m.WAL.PhysicalSize
+	usageBytes += m.WAL.ObsoletePhysicalSize
+	for _, lm := range m.Levels {
+		usageBytes += uint64(lm.Size)
+	}
+	usageBytes += m.Table.ObsoleteSize
+	usageBytes += m.Table.ZombieSize
+	usageBytes += m.private.optionsFileSize
+	usageBytes += m.private.manifestFileSize
+	usageBytes += uint64(m.Compact.InProgressBytes)
+	return usageBytes
 }
 
 func (m *Metrics) levelSizes() [numLevels]int64 {
