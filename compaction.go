@@ -2566,10 +2566,10 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	minUnflushedLogNum := d.mu.versions.minUnflushedLogNum
 	manifestFileNum := d.mu.versions.manifestFileNum
 
-	var obsoleteLogs []FileNum
+	var obsoleteLogs []fileInfo
 	var obsoleteTables []*fileMetadata
-	var obsoleteManifests []FileNum
-	var obsoleteOptions []FileNum
+	var obsoleteManifests []fileInfo
+	var obsoleteOptions []fileInfo
 
 	for _, filename := range list {
 		fileType, fileNum, ok := base.ParseFilename(d.opts.FS, filename)
@@ -2581,17 +2581,29 @@ func (d *DB) scanObsoleteFiles(list []string) {
 			if fileNum >= minUnflushedLogNum {
 				continue
 			}
-			obsoleteLogs = append(obsoleteLogs, fileNum)
+			fi := fileInfo{fileNum: fileNum}
+			if stat, err := d.opts.FS.Stat(filename); err == nil {
+				fi.fileSize = uint64(stat.Size())
+			}
+			obsoleteLogs = append(obsoleteLogs, fi)
 		case fileTypeManifest:
 			if fileNum >= manifestFileNum {
 				continue
 			}
-			obsoleteManifests = append(obsoleteManifests, fileNum)
+			fi := fileInfo{fileNum: fileNum}
+			if stat, err := d.opts.FS.Stat(filename); err == nil {
+				fi.fileSize = uint64(stat.Size())
+			}
+			obsoleteManifests = append(obsoleteManifests, fi)
 		case fileTypeOptions:
 			if fileNum >= d.optionsFileNum {
 				continue
 			}
-			obsoleteOptions = append(obsoleteOptions, fileNum)
+			fi := fileInfo{fileNum: fileNum}
+			if stat, err := d.opts.FS.Stat(filename); err == nil {
+				fi.fileSize = uint64(stat.Size())
+			}
+			obsoleteOptions = append(obsoleteOptions, fi)
 		case fileTypeTable:
 			if _, ok := liveFileNums[fileNum]; ok {
 				continue
@@ -2697,24 +2709,29 @@ type obsoleteFile struct {
 	fileSize uint64
 }
 
+type fileInfo struct {
+	fileNum  FileNum
+	fileSize uint64
+}
+
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) doDeleteObsoleteFiles(jobID int) {
-	var obsoleteTables []FileNum
+	var obsoleteTables []fileInfo
 
 	defer func() {
-		for _, fileNum := range obsoleteTables {
-			delete(d.mu.versions.zombieTables, fileNum)
+		for _, tbl := range obsoleteTables {
+			delete(d.mu.versions.zombieTables, tbl.fileNum)
 		}
 	}()
 
-	var obsoleteLogs []FileNum
+	var obsoleteLogs []fileInfo
 	for i := range d.mu.log.queue {
 		// NB: d.mu.versions.minUnflushedLogNum is the log number of the earliest
 		// log that has not had its contents flushed to an sstable. We can recycle
 		// the prefix of d.mu.log.queue with log numbers less than
 		// minUnflushedLogNum.
-		if d.mu.log.queue[i] >= d.mu.versions.minUnflushedLogNum {
+		if d.mu.log.queue[i].fileNum >= d.mu.versions.minUnflushedLogNum {
 			obsoleteLogs = d.mu.log.queue[:i]
 			d.mu.log.queue = d.mu.log.queue[i:]
 			d.mu.versions.metrics.WAL.Files -= int64(len(obsoleteLogs))
@@ -2722,10 +2739,11 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		}
 	}
 
-	tableSizeMap := make(map[FileNum]uint64, len(d.mu.versions.obsoleteTables))
 	for _, table := range d.mu.versions.obsoleteTables {
-		tableSizeMap[table.FileNum] = table.Size
-		obsoleteTables = append(obsoleteTables, table.FileNum)
+		obsoleteTables = append(obsoleteTables, fileInfo{
+			fileNum:  table.FileNum,
+			fileSize: table.Size,
+		})
 	}
 	d.mu.versions.obsoleteTables = nil
 
@@ -2742,7 +2760,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 
 	files := [4]struct {
 		fileType fileType
-		obsolete []FileNum
+		obsolete []fileInfo
 	}{
 		{fileTypeLog, obsoleteLogs},
 		{fileTypeTable, obsoleteTables},
@@ -2755,27 +2773,25 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		// We sort to make the order of deletions deterministic, which is nice for
 		// tests.
 		sort.Slice(f.obsolete, func(i, j int) bool {
-			return f.obsolete[i] < f.obsolete[j]
+			return f.obsolete[i].fileNum < f.obsolete[j].fileNum
 		})
-		for _, fileNum := range f.obsolete {
+		for _, fi := range f.obsolete {
 			dir := d.dirname
-			var fileSize uint64
 			switch f.fileType {
 			case fileTypeLog:
-				if !noRecycle && d.logRecycler.add(fileNum) {
+				if !noRecycle && d.logRecycler.add(fi) {
 					continue
 				}
 				dir = d.walDirname
 			case fileTypeTable:
-				d.tableCache.evict(fileNum)
-				fileSize = tableSizeMap[fileNum]
+				d.tableCache.evict(fi.fileNum)
 			}
 
 			filesToDelete = append(filesToDelete, obsoleteFile{
 				dir:      dir,
-				fileNum:  fileNum,
+				fileNum:  fi.fileNum,
 				fileType: f.fileType,
-				fileSize: fileSize,
+				fileSize: fi.fileSize,
 			})
 		}
 	}
@@ -2870,19 +2886,19 @@ func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileN
 	}
 }
 
-func merge(a, b []FileNum) []FileNum {
+func merge(a, b []fileInfo) []fileInfo {
 	if len(b) == 0 {
 		return a
 	}
 
 	a = append(a, b...)
 	sort.Slice(a, func(i, j int) bool {
-		return a[i] < a[j]
+		return a[i].fileNum < a[j].fileNum
 	})
 
 	n := 0
 	for i := 0; i < len(a); i++ {
-		if n == 0 || a[i] != a[n-1] {
+		if n == 0 || a[i].fileNum != a[n-1].fileNum {
 			a[n] = a[i]
 			n++
 		}

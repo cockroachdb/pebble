@@ -38,6 +38,10 @@ zmemtbl         1   256 K
  titers         1
  filter         -       -    0.0%  (score == utility)
 
+disk-usage
+----
+1.8 K
+
 batch
 set b 2
 ----
@@ -80,6 +84,10 @@ zmemtbl         2   512 K
  tcache         2   1.2 K   50.0%  (score == hit-rate)
  titers         2
  filter         -       -    0.0%  (score == utility)
+
+disk-usage
+----
+3.5 K
 
 # Closing iter a will release one of the zombie memtables.
 
@@ -138,6 +146,10 @@ zmemtbl         1   256 K
  titers         1
  filter         -       -    0.0%  (score == utility)
 
+disk-usage
+----
+2.7 K
+
 # Closing iter b will release the last zombie sstable and the last zombie memtable.
 
 iter-close b
@@ -165,3 +177,7 @@ zmemtbl         0     0 B
  tcache         0     0 B   50.0%  (score == hit-rate)
  titers         0
  filter         -       -    0.0%  (score == utility)
+
+disk-usage
+----
+1.9 K

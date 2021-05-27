@@ -23,23 +23,23 @@ type logRecycler struct {
 
 	mu struct {
 		sync.Mutex
-		logNums   []FileNum
+		logs      []fileInfo
 		maxLogNum FileNum
 	}
 }
 
-// add attempts to recycle the log file specified by logNum. Returns true if
+// add attempts to recycle the log file specified by logInfo. Returns true if
 // the log file should not be deleted (i.e. the log is being recycled), and
 // false otherwise.
-func (r *logRecycler) add(logNum FileNum) bool {
-	if logNum < r.minRecycleLogNum {
+func (r *logRecycler) add(logInfo fileInfo) bool {
+	if logInfo.fileNum < r.minRecycleLogNum {
 		return false
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if logNum <= r.mu.maxLogNum {
+	if logInfo.fileNum <= r.mu.maxLogNum {
 		// The log file number was already considered for recycling. Don't consider
 		// it again. This avoids a race between adding the same log file for
 		// recycling multiple times, and removing the log file for actual
@@ -49,30 +49,34 @@ func (r *logRecycler) add(logNum FileNum) bool {
 		// shouldn't be deleted.
 		return true
 	}
-	r.mu.maxLogNum = logNum
-	if len(r.mu.logNums) >= r.limit {
+	r.mu.maxLogNum = logInfo.fileNum
+	if len(r.mu.logs) >= r.limit {
 		return false
 	}
-	r.mu.logNums = append(r.mu.logNums, logNum)
+	r.mu.logs = append(r.mu.logs, logInfo)
 	return true
 }
 
-// peek returns the log number at the head of the recycling queue, or zero if
-// the queue is empty.
-func (r *logRecycler) peek() FileNum {
+// peek returns the log at the head of the recycling queue, or the zero value
+// fileInfo and false if the queue is empty.
+func (r *logRecycler) peek() (fileInfo, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if len(r.mu.logNums) == 0 {
-		return 0
+	if len(r.mu.logs) == 0 {
+		return fileInfo{}, false
 	}
-	return r.mu.logNums[0]
+	return r.mu.logs[0], true
 }
 
-func (r *logRecycler) count() int {
+func (r *logRecycler) stats() (count int, size uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return len(r.mu.logNums)
+	count = len(r.mu.logs)
+	for i := 0; i < count; i++ {
+		size += r.mu.logs[i].fileSize
+	}
+	return count, size
 }
 
 // pop removes the log number at the head of the recycling queue, enforcing
@@ -82,12 +86,23 @@ func (r *logRecycler) pop(logNum FileNum) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if len(r.mu.logNums) == 0 {
+	if len(r.mu.logs) == 0 {
 		return errors.New("pebble: log recycler empty")
 	}
-	if r.mu.logNums[0] != logNum {
-		return errors.Errorf("pebble: log recycler invalid %d vs %d", errors.Safe(logNum), errors.Safe(r.mu.logNums))
+	if r.mu.logs[0].fileNum != logNum {
+		return errors.Errorf("pebble: log recycler invalid %d vs %d", errors.Safe(logNum), errors.Safe(fileInfoNums(r.mu.logs)))
 	}
-	r.mu.logNums = r.mu.logNums[1:]
+	r.mu.logs = r.mu.logs[1:]
 	return nil
+}
+
+func fileInfoNums(finfos []fileInfo) []FileNum {
+	if len(finfos) == 0 {
+		return nil
+	}
+	nums := make([]FileNum, len(finfos))
+	for i := range finfos {
+		nums[i] = finfos[i].fileNum
+	}
+	return nums
 }

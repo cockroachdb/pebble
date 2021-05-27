@@ -371,7 +371,7 @@ func TestLargeBatch(t *testing.T) {
 	logNum := func() FileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return d.mu.log.queue[len(d.mu.log.queue)-1]
+		return d.mu.log.queue[len(d.mu.log.queue)-1].fileNum
 	}
 	fileSize := func(fileNum FileNum) int64 {
 		info, err := d.opts.FS.Stat(base.MakeFilename(d.opts.FS, "", fileTypeLog, fileNum))

@@ -79,8 +79,8 @@ type versionSet struct {
 	// on the creation of every version.
 	obsoleteFn        func(obsolete []*manifest.FileMetadata)
 	obsoleteTables    []*manifest.FileMetadata
-	obsoleteManifests []FileNum
-	obsoleteOptions   []FileNum
+	obsoleteManifests []fileInfo
+	obsoleteOptions   []fileInfo
 
 	// Zombie tables which have been removed from the current version but are
 	// still referenced by an inuse iterator.
@@ -387,8 +387,10 @@ func (vs *versionSet) logAndApply(
 	// Generate a new manifest if we don't currently have one, or the current one
 	// is too large.
 	var newManifestFileNum FileNum
+	var prevManifestFileSize uint64
 	if vs.manifest == nil || vs.manifest.Size() >= vs.opts.MaxManifestFileSize {
 		newManifestFileNum = vs.getNextFileNum()
+		prevManifestFileSize = uint64(vs.manifest.Size())
 	}
 
 	// Grab certain values before releasing vs.mu, in case createManifest() needs
@@ -485,7 +487,10 @@ func (vs *versionSet) logAndApply(
 	}
 	if newManifestFileNum != 0 {
 		if vs.manifestFileNum != 0 {
-			vs.obsoleteManifests = append(vs.obsoleteManifests, vs.manifestFileNum)
+			vs.obsoleteManifests = append(vs.obsoleteManifests, fileInfo{
+				fileNum:  vs.manifestFileNum,
+				fileSize: prevManifestFileSize,
+			})
 		}
 		vs.manifestFileNum = newManifestFileNum
 	}
