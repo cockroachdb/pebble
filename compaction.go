@@ -2418,6 +2418,14 @@ func (d *DB) runCompaction(
 		}
 	}
 
+	// NB: we avoid calling maybeThrottle on a nilPacer because the cost of
+	// dynamic dispatch in the hot loop below is pronounced in CPU profiles (see
+	// #1030). Additionally, even the cost of this interface comparison is
+	// pronounced in CPU profiles, so we hoist the entire thing out of the hot
+	// loop. This allows the branch predictor to do its job and make the pacer
+	// interactions ~free when a nilPacer is used.
+	isNilPacer := pacer == nilPacer
+
 	// Each outer loop iteration produces one output file. An iteration that
 	// produces a file containing point keys (and optionally range tombstones)
 	// guarantees that the input iterator advanced. An iteration that produces
@@ -2460,7 +2468,7 @@ func (d *DB) runCompaction(
 			}
 
 			atomic.StoreUint64(c.atomicBytesIterated, c.bytesIterated)
-			if pacer != nilPacer {
+			if !isNilPacer {
 				if err := pacer.maybeThrottle(c.bytesIterated); err != nil {
 					return nil, pendingOutputs, err
 				}
