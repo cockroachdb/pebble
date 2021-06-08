@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"unicode/utf8"
+	"unsafe"
 )
 
 // Compare returns -1, 0, or +1 depending on whether a is 'less than', 'equal
@@ -190,6 +191,12 @@ func SharedPrefixLen(a, b []byte) int {
 	i, n := 0, len(a)
 	if n > len(b) {
 		n = len(b)
+	}
+	asUint64 := func(c []byte, i int) uint64 {
+		return *(*uint64)(unsafe.Pointer(&c[i]))
+	}
+	for i < n-7 && asUint64(a, i) == asUint64(b, i) {
+		i += 8
 	}
 	for i < n && a[i] == b[i] {
 		i++
