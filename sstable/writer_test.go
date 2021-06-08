@@ -194,8 +194,10 @@ func (f discardFile) Sync() error {
 func BenchmarkWriter(b *testing.B) {
 	keys := make([][]byte, 1e6)
 	for i := range keys {
-		key := make([]byte, 8)
-		binary.BigEndian.PutUint64(key, uint64(i))
+		key := make([]byte, 24)
+		binary.BigEndian.PutUint64(key[:8], 123) // 16-byte shared prefix
+		binary.BigEndian.PutUint64(key[8:16], 456)
+		binary.BigEndian.PutUint64(key[16:], uint64(i))
 		keys[i] = key
 	}
 
