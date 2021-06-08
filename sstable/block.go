@@ -39,10 +39,19 @@ func (w *blockWriter) store(keySize int, value []byte) {
 		w.nextRestart = w.nEntries + w.restartInterval
 		w.restarts = append(w.restarts, uint32(len(w.buf)))
 	} else {
-		// TODO(peter): Manually inlined version of base.SharedPrefixLen()
+		// TODO(peter): Manually inlined version of base.SharedPrefixLen(). This
+		// is 3% faster on BenchmarkWriter on go1.16. Remove if future versions
+		// show this to not be a performance win. For now, functions that use of
+		// unsafe cannot be inlined.
 		n := len(w.curKey)
 		if n > len(w.prevKey) {
 			n = len(w.prevKey)
+		}
+		asUint64 := func(b []byte, i int) uint64 {
+			return binary.LittleEndian.Uint64(b[i:])
+		}
+		for shared < n-7 && asUint64(w.curKey, shared) == asUint64(w.prevKey, shared) {
+			shared += 8
 		}
 		for shared < n && w.curKey[shared] == w.prevKey[shared] {
 			shared++
