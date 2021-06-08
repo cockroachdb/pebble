@@ -816,8 +816,10 @@ func calculateInuseKeyRanges(
 				if cmp(currFile.Smallest.UserKey, currAccum.Start) < 0 {
 					currAccum.Start = currFile.Smallest.UserKey
 				}
+				var fileEnd bool
 				if cmp(currFile.Largest.UserKey, currAccum.End) > 0 {
 					currAccum.End = currFile.Largest.UserKey
+					fileEnd = true
 				}
 
 				// Extending `currAccum`'s end boundary may have caused it to
@@ -826,11 +828,19 @@ func calculateInuseKeyRanges(
 				for len(input) > 0 && cmp(input[0].Start, currAccum.End) <= 0 {
 					if cmp(input[0].End, currAccum.End) > 0 {
 						currAccum.End = input[0].End
+						fileEnd = false
 					}
 					input = input[1:]
 				}
-				// Seek the level iterator past our current accumulated end.
-				currFile = seekGT(&iter, cmp, currAccum.End)
+
+				if fileEnd {
+					// If currAccum.End came from currFile, it's more
+					// efficient to just Next to the next file.
+					currFile = iter.Next()
+				} else {
+					// Seek the level iterator past our current accumulated end.
+					currFile = seekGT(&iter, cmp, currAccum.End)
+				}
 			}
 		}
 	}
