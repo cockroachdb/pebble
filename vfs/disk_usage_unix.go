@@ -13,5 +13,5 @@ func (defaultFS) GetFreeSpace(path string) (uint64, error) {
 	if err := unix.Statfs(path, &stat); err != nil {
 		return 0, err
 	}
-	return uint64(stat.Bsize) * stat.Bfree, nil
+	return uint64(stat.Bsize) * uint64(stat.Bavail), nil
 }
