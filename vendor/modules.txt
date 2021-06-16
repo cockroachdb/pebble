@@ -39,7 +39,7 @@ github.com/ghemawat/stream
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/sortkeys
 github.com/gogo/protobuf/types
-# github.com/golang/snappy v0.0.2-0.20190904063534-ff6b7dc882cf
+# github.com/golang/snappy v0.0.3
 github.com/golang/snappy
 # github.com/inconshreveable/mousetrap v1.0.0
 github.com/inconshreveable/mousetrap
