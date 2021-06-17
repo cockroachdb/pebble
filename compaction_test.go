@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"math/rand"
 	"regexp"
 	"runtime"
 	"sort"
@@ -124,7 +125,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "no compaction",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -139,7 +140,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "1 L0 file",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -159,7 +160,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "2 L0 files (0 overlaps)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -185,7 +186,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "2 L0 files, with ikey overlap",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -211,7 +212,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "2 L0 files, with ukey overlap",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -237,7 +238,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "1 L0 file, 2 L1 files (0 overlaps)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -245,7 +246,7 @@ func TestPickCompaction(t *testing.T) {
 						Largest:  base.ParseInternalKey("i.SET.102"),
 					},
 				},
-				1: []*fileMetadata{
+				1: {
 					{
 						FileNum:  200,
 						Size:     1,
@@ -271,7 +272,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "1 L0 file, 2 L1 files (1 overlap), 4 L2 files (3 overlaps)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						FileNum:  100,
 						Size:     1,
@@ -279,7 +280,7 @@ func TestPickCompaction(t *testing.T) {
 						Largest:  base.ParseInternalKey("t.SET.102"),
 					},
 				},
-				1: []*fileMetadata{
+				1: {
 					{
 						FileNum:  200,
 						Size:     1,
@@ -293,7 +294,7 @@ func TestPickCompaction(t *testing.T) {
 						Largest:  base.ParseInternalKey("j.SET.212"),
 					},
 				},
-				2: []*fileMetadata{
+				2: {
 					{
 						FileNum:  300,
 						Size:     1,
@@ -331,7 +332,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "4 L1 files, 2 L2 files, can grow",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				1: []*fileMetadata{
+				1: {
 					{
 						FileNum:  200,
 						Size:     1,
@@ -357,7 +358,7 @@ func TestPickCompaction(t *testing.T) {
 						Largest:  base.ParseInternalKey("l2.SET.232"),
 					},
 				},
-				2: []*fileMetadata{
+				2: {
 					{
 						FileNum:  300,
 						Size:     1,
@@ -383,7 +384,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "4 L1 files, 2 L2 files, can't grow (range)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				1: []*fileMetadata{
+				1: {
 					{
 						FileNum:  200,
 						Size:     1,
@@ -409,7 +410,7 @@ func TestPickCompaction(t *testing.T) {
 						Largest:  base.ParseInternalKey("l2.SET.232"),
 					},
 				},
-				2: []*fileMetadata{
+				2: {
 					{
 						FileNum:  300,
 						Size:     1,
@@ -435,7 +436,7 @@ func TestPickCompaction(t *testing.T) {
 		{
 			desc: "4 L1 files, 2 L2 files, can't grow (size)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				1: []*fileMetadata{
+				1: {
 					{
 						FileNum:  200,
 						Size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
@@ -461,7 +462,7 @@ func TestPickCompaction(t *testing.T) {
 						Largest:  base.ParseInternalKey("l2.SET.232"),
 					},
 				},
-				2: []*fileMetadata{
+				2: {
 					{
 						FileNum:  300,
 						Size:     expandedCompactionByteSizeLimit(opts, 2) - 1,
@@ -539,7 +540,7 @@ func TestElideTombstone(t *testing.T) {
 			desc:  "non-empty",
 			level: 1,
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				1: []*fileMetadata{
+				1: {
 					{
 						Smallest: base.ParseInternalKey("c.SET.801"),
 						Largest:  base.ParseInternalKey("g.SET.800"),
@@ -549,7 +550,7 @@ func TestElideTombstone(t *testing.T) {
 						Largest:  base.ParseInternalKey("y.SET.700"),
 					},
 				},
-				2: []*fileMetadata{
+				2: {
 					{
 						Smallest: base.ParseInternalKey("d.SET.601"),
 						Largest:  base.ParseInternalKey("h.SET.600"),
@@ -559,7 +560,7 @@ func TestElideTombstone(t *testing.T) {
 						Largest:  base.ParseInternalKey("t.SET.500"),
 					},
 				},
-				3: []*fileMetadata{
+				3: {
 					{
 						Smallest: base.ParseInternalKey("f.SET.401"),
 						Largest:  base.ParseInternalKey("g.SET.400"),
@@ -569,7 +570,7 @@ func TestElideTombstone(t *testing.T) {
 						Largest:  base.ParseInternalKey("x.SET.300"),
 					},
 				},
-				4: []*fileMetadata{
+				4: {
 					{
 						Smallest: base.ParseInternalKey("f.SET.201"),
 						Largest:  base.ParseInternalKey("m.SET.200"),
@@ -607,7 +608,7 @@ func TestElideTombstone(t *testing.T) {
 			desc:  "repeated ukey",
 			level: 1,
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				6: []*fileMetadata{
+				6: {
 					{
 						Smallest: base.ParseInternalKey("i.SET.401"),
 						Largest:  base.ParseInternalKey("i.SET.400"),
@@ -684,7 +685,7 @@ func TestElideRangeTombstone(t *testing.T) {
 			desc:  "non-empty",
 			level: 1,
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				1: []*fileMetadata{
+				1: {
 					{
 						Smallest: base.ParseInternalKey("c.SET.801"),
 						Largest:  base.ParseInternalKey("g.SET.800"),
@@ -694,7 +695,7 @@ func TestElideRangeTombstone(t *testing.T) {
 						Largest:  base.ParseInternalKey("y.SET.700"),
 					},
 				},
-				2: []*fileMetadata{
+				2: {
 					{
 						Smallest: base.ParseInternalKey("d.SET.601"),
 						Largest:  base.ParseInternalKey("h.SET.600"),
@@ -704,7 +705,7 @@ func TestElideRangeTombstone(t *testing.T) {
 						Largest:  base.ParseInternalKey("t.SET.500"),
 					},
 				},
-				3: []*fileMetadata{
+				3: {
 					{
 						Smallest: base.ParseInternalKey("f.SET.401"),
 						Largest:  base.ParseInternalKey("g.SET.400"),
@@ -714,7 +715,7 @@ func TestElideRangeTombstone(t *testing.T) {
 						Largest:  base.ParseInternalKey("x.SET.300"),
 					},
 				},
-				4: []*fileMetadata{
+				4: {
 					{
 						Smallest: base.ParseInternalKey("f.SET.201"),
 						Largest:  base.ParseInternalKey("m.SET.200"),
@@ -751,13 +752,13 @@ func TestElideRangeTombstone(t *testing.T) {
 			desc:  "flushing",
 			level: -1,
 			version: newVersion(opts, [numLevels][]*fileMetadata{
-				0: []*fileMetadata{
+				0: {
 					{
 						Smallest: base.ParseInternalKey("h.SET.901"),
 						Largest:  base.ParseInternalKey("j.SET.900"),
 					},
 				},
-				1: []*fileMetadata{
+				1: {
 					{
 						Smallest: base.ParseInternalKey("c.SET.801"),
 						Largest:  base.ParseInternalKey("g.SET.800"),
@@ -1838,7 +1839,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 						if i > 0 {
 							fmt.Fprintf(&buf, " ")
 						}
-						fmt.Fprintf(&buf, "%s-%s", r.start, r.end)
+						fmt.Fprintf(&buf, "%s-%s", r.Start, r.End)
 					}
 					fmt.Fprintf(&buf, "\n")
 				}
@@ -1849,6 +1850,109 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
+	var (
+		fileNum     = FileNum(0)
+		opts        = (*Options)(nil).EnsureDefaults()
+		seed        = int64(time.Now().UnixNano())
+		rng         = rand.New(rand.NewSource(seed))
+		endKeyspace = 26 * 26
+	)
+	t.Logf("Using rng seed %d.", seed)
+
+	for iter := 0; iter < 100; iter++ {
+		makeUserKey := func(i int) []byte {
+			if i >= endKeyspace {
+				i = endKeyspace - 1
+			}
+			return []byte{byte(i/26 + 'a'), byte(i%26 + 'a')}
+		}
+		makeIK := func(level, i int) InternalKey {
+			return base.MakeInternalKey(
+				makeUserKey(i),
+				uint64(numLevels-level),
+				base.InternalKeyKindSet,
+			)
+		}
+		makeFile := func(level, start, end int) *fileMetadata {
+			fileNum++
+			m := &fileMetadata{
+				FileNum:  fileNum,
+				Smallest: makeIK(level, start),
+				Largest:  makeIK(level, end),
+			}
+			m.SmallestSeqNum = m.Smallest.SeqNum()
+			m.LargestSeqNum = m.Largest.SeqNum()
+			return m
+		}
+		overlaps := func(startA, endA, startB, endB []byte) bool {
+			disjoint := opts.Comparer.Compare(endB, startA) < 0 || opts.Comparer.Compare(endA, startB) < 0
+			return !disjoint
+		}
+		var files [numLevels][]*fileMetadata
+		for l := 0; l < numLevels; l++ {
+			for i := 0; i < rand.Intn(10); i++ {
+				s := rng.Intn(endKeyspace)
+				maxWidth := rng.Intn(endKeyspace-s) + 1
+				e := rng.Intn(maxWidth) + s
+				sKey, eKey := makeUserKey(s), makeUserKey(e)
+				// Discard the key range if it overlaps any existing files
+				// within this level.
+				var o bool
+				for _, f := range files[l] {
+					o = o || overlaps(sKey, eKey, f.Smallest.UserKey, f.Largest.UserKey)
+				}
+				if o {
+					continue
+				}
+				files[l] = append(files[l], makeFile(l, s, e))
+			}
+			sort.Slice(files[l], func(i, j int) bool {
+				return opts.Comparer.Compare(files[l][i].Smallest.UserKey, files[l][j].Smallest.UserKey) < 0
+			})
+		}
+		v := newVersion(opts, files)
+		t.Log(v.DebugString(opts.Comparer.FormatKey))
+		for i := 0; i < 1000; i++ {
+			l := rng.Intn(numLevels)
+			s := rng.Intn(endKeyspace)
+			maxWidth := rng.Intn(endKeyspace-s) + 1
+			e := rng.Intn(maxWidth) + s
+			sKey, eKey := makeUserKey(s), makeUserKey(e)
+			keyRanges := calculateInuseKeyRanges(v, opts.Comparer.Compare, l, sKey, eKey)
+
+			for level := l; level < numLevels; level++ {
+				for _, f := range files[level] {
+					if !overlaps(sKey, eKey, f.Smallest.UserKey, f.Largest.UserKey) {
+						// This file doesn't overlap the queried range. Skip it.
+						continue
+					}
+					// This file does overlap the queried range. The key range
+					// [MAX(f.Smallest, sKey), MIN(f.Largest, eKey)] must be fully
+					// contained by a key range in keyRanges.
+					checkStart, checkEnd := f.Smallest.UserKey, f.Largest.UserKey
+					if opts.Comparer.Compare(checkStart, sKey) < 0 {
+						checkStart = sKey
+					}
+					if opts.Comparer.Compare(checkEnd, eKey) > 0 {
+						checkEnd = eKey
+					}
+					var contained bool
+					for _, kr := range keyRanges {
+						contained = contained ||
+							(opts.Comparer.Compare(checkStart, kr.Start) >= 0 &&
+								opts.Comparer.Compare(checkEnd, kr.End) <= 0)
+					}
+					if !contained {
+						t.Errorf("Seed %d, iter %d: File %s overlaps %q-%q, but is not fully contained in any of the key ranges.",
+							seed, iter, f, sKey, eKey)
+					}
+				}
+			}
+		}
+	}
 }
 
 func TestCompactionAllowZeroSeqNum(t *testing.T) {

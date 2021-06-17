@@ -100,6 +100,9 @@ type pickedCompaction struct {
 	// score of the chosen compaction. Taken from candidateLevelInfo.
 	score float64
 
+	// readTrigger is true if the compaction was triggered due to reads.
+	readTriggered bool
+
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
 	startLevel *compactionLevel
@@ -1083,7 +1086,7 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 
 	// Construct a picked compaction of the elision candidate's atomic
 	// compaction unit.
-	pc = newPickedCompaction(p.opts, p.vers, numLevels-1, numLevels-1)
+	pc = newPickedCompaction(p.opts, p.vers, numLevels-1, p.baseLevel)
 	var isCompacting bool
 	pc.startLevel.files, isCompacting = expandToAtomicUnit(p.opts.Comparer.Compare, lf.Slice(), false /* disableIsCompacting */)
 	if isCompacting {
@@ -1373,6 +1376,7 @@ func pickReadTriggeredCompactionHelper(
 	if inputRangeAlreadyCompacting(env, pc) {
 		return nil
 	}
+	pc.readTriggered = true
 	return pc
 }
 

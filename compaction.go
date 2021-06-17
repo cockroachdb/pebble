@@ -57,10 +57,6 @@ func (i noCloseIter) Close() error {
 	return nil
 }
 
-type userKeyRange struct {
-	start, end []byte
-}
-
 type compactionLevel struct {
 	level int
 	files manifest.LevelSlice
@@ -413,15 +409,34 @@ func (c *compactionFile) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
-type compactionKind string
+type compactionKind int
 
 const (
-	compactionKindDefault     compactionKind = "default"
-	compactionKindFlush       compactionKind = "flush"
-	compactionKindMove        compactionKind = "move"
-	compactionKindDeleteOnly  compactionKind = "delete-only"
-	compactionKindElisionOnly compactionKind = "elision-only"
+	compactionKindDefault compactionKind = iota
+	compactionKindFlush
+	compactionKindMove
+	compactionKindDeleteOnly
+	compactionKindElisionOnly
+	compactionKindRead
 )
+
+func (k compactionKind) String() string {
+	switch k {
+	case compactionKindDefault:
+		return "default"
+	case compactionKindFlush:
+		return "flush"
+	case compactionKindMove:
+		return "move"
+	case compactionKindDeleteOnly:
+		return "delete-only"
+	case compactionKindElisionOnly:
+		return "elision-only"
+	case compactionKindRead:
+		return "read"
+	}
+	return "?"
+}
 
 // compaction is a table compaction from one level to the next, starting from a
 // given version.
@@ -495,7 +510,7 @@ type compaction struct {
 	// grandparent and lower levels. See setupInuseKeyRanges() for the
 	// construction. Used by elideTombstone() and elideRangeTombstone() to
 	// determine if keys affected by a tombstone possibly exist at a lower level.
-	inuseKeyRanges      []userKeyRange
+	inuseKeyRanges      []manifest.UserKeyRange
 	elideTombstoneIndex int
 
 	// allowedZeroSeqNum is true if seqnums can be zeroed if there are no
@@ -509,8 +524,9 @@ type compaction struct {
 
 func (c *compaction) makeInfo(jobID int) CompactionInfo {
 	info := CompactionInfo{
-		JobID: jobID,
-		Input: make([]LevelInfo, 0, len(c.inputs)),
+		JobID:  jobID,
+		Reason: c.kind.String(),
+		Input:  make([]LevelInfo, 0, len(c.inputs)),
 	}
 	for _, cl := range c.inputs {
 		inputInfo := LevelInfo{Level: cl.level, Tables: nil}
@@ -563,12 +579,15 @@ func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) 
 	}
 	c.setupInuseKeyRanges()
 
-	if c.startLevel.level == numLevels-1 {
+	switch {
+	case pc.readTriggered:
+		c.kind = compactionKindRead
+	case c.startLevel.level == numLevels-1:
 		// This compaction is an L6->L6 elision-only compaction to rewrite
 		// a sstable without unnecessary tombstones.
 		c.kind = compactionKindElisionOnly
-	} else if c.outputLevel.files.Empty() && c.startLevel.files.Len() == 1 &&
-		c.grandparents.SizeSum() <= c.maxOverlapBytes {
+	case c.outputLevel.files.Empty() && c.startLevel.files.Len() == 1 &&
+		c.grandparents.SizeSum() <= c.maxOverlapBytes:
 		// This compaction can be converted into a trivial move from one level
 		// to the next. We avoid such a move if there is lots of overlapping
 		// grandparent data. Otherwise, the move could create a parent file
@@ -749,46 +768,116 @@ func newFlush(
 func (c *compaction) setupInuseKeyRanges() {
 	level := c.outputLevel.level + 1
 	if c.outputLevel.level == 0 {
-		// Level 0 can contain overlapping sstables so we need to check it for
-		// overlaps.
 		level = 0
 	}
+	c.inuseKeyRanges = calculateInuseKeyRanges(c.version, c.cmp, level,
+		c.smallest.UserKey, c.largest.UserKey)
+}
 
-	// Gather up the raw list of key ranges from overlapping tables in lower
-	// levels.
-	var input []userKeyRange
+func calculateInuseKeyRanges(
+	v *version, cmp base.Compare, level int, smallest, largest []byte,
+) []manifest.UserKeyRange {
+	// Use two slices, alternating which one is input and which one is output
+	// as we descend the LSM.
+	var input, output []manifest.UserKeyRange
+
+	// L0 requires special treatment, since sstables within L0 may overlap.
+	// We use the L0 Sublevels structure to efficiently calculate the merged
+	// in-use key ranges.
+	if level == 0 {
+		output = v.L0Sublevels.InUseKeyRanges(smallest, largest)
+		level++
+	}
+
 	for ; level < numLevels; level++ {
-		overlaps := c.version.Overlaps(level, c.cmp, c.smallest.UserKey, c.largest.UserKey)
+		overlaps := v.Overlaps(level, cmp, smallest, largest)
 		iter := overlaps.Iter()
-		for m := iter.First(); m != nil; m = iter.Next() {
-			input = append(input, userKeyRange{m.Smallest.UserKey, m.Largest.UserKey})
+
+		// We may already have in-use key ranges from higher levels. Iterate
+		// through both our accumulated in-use key ranges and this level's
+		// files, merging the two.
+		//
+		// Tables higher within the LSM have broader key spaces. We use this
+		// when possible to seek past a level's files that are contained by
+		// our current accumulated in-use key ranges. This helps avoid
+		// per-sstable work during flushes or compactions in high levels which
+		// overlap the majority of the LSM's sstables.
+		input, output = output, input
+		output = output[:0]
+
+		var currFile *fileMetadata
+		var currAccum *manifest.UserKeyRange
+		if len(input) > 0 {
+			currAccum, input = &input[0], input[1:]
+		}
+
+		// If we have an accumulated key range and its start is ≤ smallest,
+		// we can seek to the accumulated range's end. Otherwise, we need to
+		// start at the first overlapping file within the level.
+		if currAccum != nil && cmp(currAccum.Start, smallest) <= 0 {
+			currFile = seekGT(&iter, cmp, currAccum.End)
+		} else {
+			currFile = iter.First()
+		}
+
+		for currFile != nil || currAccum != nil {
+			// If we've exhausted either the files in the level or the
+			// accumulated key ranges, we just need to append the one we have.
+			// If we have both a currFile and a currAccum, they either overlap
+			// or they're disjoint. If they're disjoint, we append whichever
+			// one sorts first and move on to the next file or range. If they
+			// overlap, we merge them into currAccum and proceed to the next
+			// file.
+			switch {
+			case currAccum == nil || (currFile != nil && cmp(currFile.Largest.UserKey, currAccum.Start) < 0):
+				// This file is strictly before the current accumulated range,
+				// or there are no more accumulated ranges.
+				output = append(output, manifest.UserKeyRange{
+					Start: currFile.Smallest.UserKey,
+					End:   currFile.Largest.UserKey,
+				})
+				currFile = iter.Next()
+			case currFile == nil || (currAccum != nil && cmp(currAccum.End, currFile.Smallest.UserKey) < 0):
+				// The current accumulated key range is strictly before the
+				// current file, or there are no more files.
+				output = append(output, *currAccum)
+				currAccum = nil
+				if len(input) > 0 {
+					currAccum, input = &input[0], input[1:]
+				}
+			default:
+				// The current accumulated range and the current file overlap.
+				// Adjust the accumulated range to be the union.
+				if cmp(currFile.Smallest.UserKey, currAccum.Start) < 0 {
+					currAccum.Start = currFile.Smallest.UserKey
+				}
+				if cmp(currFile.Largest.UserKey, currAccum.End) > 0 {
+					currAccum.End = currFile.Largest.UserKey
+				}
+
+				// Extending `currAccum`'s end boundary may have caused it to
+				// overlap with `input` key ranges that we haven't processed
+				// yet. Merge any such key ranges.
+				for len(input) > 0 && cmp(input[0].Start, currAccum.End) <= 0 {
+					if cmp(input[0].End, currAccum.End) > 0 {
+						currAccum.End = input[0].End
+					}
+					input = input[1:]
+				}
+				// Seek the level iterator past our current accumulated end.
+				currFile = seekGT(&iter, cmp, currAccum.End)
+			}
 		}
 	}
+	return output
+}
 
-	if len(input) == 0 {
-		// Nothing more to do.
-		return
+func seekGT(iter *manifest.LevelIterator, cmp base.Compare, key []byte) *manifest.FileMetadata {
+	f := iter.SeekGE(cmp, key)
+	for f != nil && cmp(f.Largest.UserKey, key) == 0 {
+		f = iter.Next()
 	}
-
-	// Sort the raw list of key ranges by start key.
-	sort.Slice(input, func(i, j int) bool {
-		return c.cmp(input[i].start, input[j].start) < 0
-	})
-
-	// Take the first input as the first output. This key range is guaranteed to
-	// have the smallest start key (or share the smallest start key) with another
-	// range. Loop over the remaining input key ranges and either add a new
-	// output, or merge with the last output.
-	c.inuseKeyRanges = input[:1]
-	for _, v := range input[1:] {
-		last := &c.inuseKeyRanges[len(c.inuseKeyRanges)-1]
-		switch {
-		case c.cmp(last.end, v.start) < 0:
-			c.inuseKeyRanges = append(c.inuseKeyRanges, v)
-		case c.cmp(last.end, v.end) < 0:
-			last.end = v.end
-		}
-	}
+	return f
 }
 
 // findGrandparentLimit takes the start user key for a table and returns the
@@ -878,8 +967,8 @@ func (c *compaction) elideTombstone(key []byte) bool {
 
 	for ; c.elideTombstoneIndex < len(c.inuseKeyRanges); c.elideTombstoneIndex++ {
 		r := &c.inuseKeyRanges[c.elideTombstoneIndex]
-		if c.cmp(key, r.end) <= 0 {
-			if c.cmp(key, r.start) >= 0 {
+		if c.cmp(key, r.End) <= 0 {
+			if c.cmp(key, r.Start) >= 0 {
 				return false
 			}
 			break
@@ -915,10 +1004,10 @@ func (c *compaction) elideRangeTombstone(start, end []byte) bool {
 	}
 
 	lower := sort.Search(len(c.inuseKeyRanges), func(i int) bool {
-		return c.cmp(c.inuseKeyRanges[i].end, start) >= 0
+		return c.cmp(c.inuseKeyRanges[i].End, start) >= 0
 	})
 	upper := sort.Search(len(c.inuseKeyRanges), func(i int) bool {
-		return c.cmp(c.inuseKeyRanges[i].start, end) > 0
+		return c.cmp(c.inuseKeyRanges[i].Start, end) > 0
 	})
 	return lower >= upper
 }
@@ -1467,8 +1556,8 @@ func (d *DB) flush1() error {
 
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
+	d.mu.versions.incrementCompactions(c.kind)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
-	d.mu.versions.incrementFlushes()
 	d.opts.EventListener.FlushEnd(info)
 
 	// Refresh bytes flushed count.
@@ -1481,7 +1570,7 @@ func (d *DB) flush1() error {
 		d.updateReadStateLocked(d.opts.DebugCheck)
 		d.updateTableStatsLocked(ve.NewFiles)
 	}
-	d.deleteObsoleteFiles(jobID)
+	d.deleteObsoleteFiles(jobID, false /* waitForOngoing */)
 
 	// Mark all the memtables we flushed as flushed. Note that we do this last so
 	// that a synchronous call to DB.Flush() will not return until the deletion
@@ -1876,7 +1965,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
-	d.mu.versions.incrementCompactions()
+	d.mu.versions.incrementCompactions(c.kind)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
 	d.opts.EventListener.CompactionEnd(info)
 
@@ -1888,7 +1977,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		d.updateReadStateLocked(d.opts.DebugCheck)
 		d.updateTableStatsLocked(ve.NewFiles)
 	}
-	d.deleteObsoleteFiles(jobID)
+	d.deleteObsoleteFiles(jobID, true /* waitForOngoing */)
 
 	return err
 }
@@ -2329,6 +2418,14 @@ func (d *DB) runCompaction(
 		}
 	}
 
+	// NB: we avoid calling maybeThrottle on a nilPacer because the cost of
+	// dynamic dispatch in the hot loop below is pronounced in CPU profiles (see
+	// #1030). Additionally, even the cost of this interface comparison is
+	// pronounced in CPU profiles, so we hoist the entire thing out of the hot
+	// loop. This allows the branch predictor to do its job and make the pacer
+	// interactions ~free when a nilPacer is used.
+	isNilPacer := pacer == nilPacer
+
 	// Each outer loop iteration produces one output file. An iteration that
 	// produces a file containing point keys (and optionally range tombstones)
 	// guarantees that the input iterator advanced. An iteration that produces
@@ -2371,7 +2468,7 @@ func (d *DB) runCompaction(
 			}
 
 			atomic.StoreUint64(c.atomicBytesIterated, c.bytesIterated)
-			if pacer != nilPacer {
+			if !isNilPacer {
 				if err := pacer.maybeThrottle(c.bytesIterated); err != nil {
 					return nil, pendingOutputs, err
 				}
@@ -2477,10 +2574,10 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	minUnflushedLogNum := d.mu.versions.minUnflushedLogNum
 	manifestFileNum := d.mu.versions.manifestFileNum
 
-	var obsoleteLogs []FileNum
+	var obsoleteLogs []fileInfo
 	var obsoleteTables []*fileMetadata
-	var obsoleteManifests []FileNum
-	var obsoleteOptions []FileNum
+	var obsoleteManifests []fileInfo
+	var obsoleteOptions []fileInfo
 
 	for _, filename := range list {
 		fileType, fileNum, ok := base.ParseFilename(d.opts.FS, filename)
@@ -2492,17 +2589,29 @@ func (d *DB) scanObsoleteFiles(list []string) {
 			if fileNum >= minUnflushedLogNum {
 				continue
 			}
-			obsoleteLogs = append(obsoleteLogs, fileNum)
+			fi := fileInfo{fileNum: fileNum}
+			if stat, err := d.opts.FS.Stat(filename); err == nil {
+				fi.fileSize = uint64(stat.Size())
+			}
+			obsoleteLogs = append(obsoleteLogs, fi)
 		case fileTypeManifest:
 			if fileNum >= manifestFileNum {
 				continue
 			}
-			obsoleteManifests = append(obsoleteManifests, fileNum)
+			fi := fileInfo{fileNum: fileNum}
+			if stat, err := d.opts.FS.Stat(filename); err == nil {
+				fi.fileSize = uint64(stat.Size())
+			}
+			obsoleteManifests = append(obsoleteManifests, fi)
 		case fileTypeOptions:
 			if fileNum >= d.optionsFileNum {
 				continue
 			}
-			obsoleteOptions = append(obsoleteOptions, fileNum)
+			fi := fileInfo{fileNum: fileNum}
+			if stat, err := d.opts.FS.Stat(filename); err == nil {
+				fi.fileSize = uint64(stat.Size())
+			}
+			obsoleteOptions = append(obsoleteOptions, fi)
 		case fileTypeTable:
 			if _, ok := liveFileNums[fileNum]; ok {
 				continue
@@ -2559,7 +2668,7 @@ func (d *DB) enableFileDeletions() {
 	}
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
-	d.deleteObsoleteFiles(jobID)
+	d.deleteObsoleteFiles(jobID, true /* waitForOngoing */)
 }
 
 // d.mu must be held when calling this.
@@ -2586,12 +2695,14 @@ func (d *DB) releaseCleaningTurn() {
 	d.mu.cleaner.cond.Broadcast()
 }
 
-// deleteObsoleteFiles deletes those files that are no longer needed.
+// deleteObsoleteFiles deletes those files that are no longer needed. If
+// waitForOngoing is true, it waits for any ongoing cleaning turns to complete,
+// and if false, it returns rightaway if a cleaning turn is ongoing.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) deleteObsoleteFiles(jobID int) {
-	if !d.acquireCleaningTurn(true) {
+func (d *DB) deleteObsoleteFiles(jobID int, waitForOngoing bool) {
+	if !d.acquireCleaningTurn(waitForOngoing) {
 		return
 	}
 	d.doDeleteObsoleteFiles(jobID)
@@ -2606,24 +2717,29 @@ type obsoleteFile struct {
 	fileSize uint64
 }
 
+type fileInfo struct {
+	fileNum  FileNum
+	fileSize uint64
+}
+
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) doDeleteObsoleteFiles(jobID int) {
-	var obsoleteTables []FileNum
+	var obsoleteTables []fileInfo
 
 	defer func() {
-		for _, fileNum := range obsoleteTables {
-			delete(d.mu.versions.zombieTables, fileNum)
+		for _, tbl := range obsoleteTables {
+			delete(d.mu.versions.zombieTables, tbl.fileNum)
 		}
 	}()
 
-	var obsoleteLogs []FileNum
+	var obsoleteLogs []fileInfo
 	for i := range d.mu.log.queue {
 		// NB: d.mu.versions.minUnflushedLogNum is the log number of the earliest
 		// log that has not had its contents flushed to an sstable. We can recycle
 		// the prefix of d.mu.log.queue with log numbers less than
 		// minUnflushedLogNum.
-		if d.mu.log.queue[i] >= d.mu.versions.minUnflushedLogNum {
+		if d.mu.log.queue[i].fileNum >= d.mu.versions.minUnflushedLogNum {
 			obsoleteLogs = d.mu.log.queue[:i]
 			d.mu.log.queue = d.mu.log.queue[i:]
 			d.mu.versions.metrics.WAL.Files -= int64(len(obsoleteLogs))
@@ -2631,10 +2747,11 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		}
 	}
 
-	tableSizeMap := make(map[FileNum]uint64, len(d.mu.versions.obsoleteTables))
 	for _, table := range d.mu.versions.obsoleteTables {
-		tableSizeMap[table.FileNum] = table.Size
-		obsoleteTables = append(obsoleteTables, table.FileNum)
+		obsoleteTables = append(obsoleteTables, fileInfo{
+			fileNum:  table.FileNum,
+			fileSize: table.Size,
+		})
 	}
 	d.mu.versions.obsoleteTables = nil
 
@@ -2651,7 +2768,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 
 	files := [4]struct {
 		fileType fileType
-		obsolete []FileNum
+		obsolete []fileInfo
 	}{
 		{fileTypeLog, obsoleteLogs},
 		{fileTypeTable, obsoleteTables},
@@ -2664,27 +2781,25 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		// We sort to make the order of deletions deterministic, which is nice for
 		// tests.
 		sort.Slice(f.obsolete, func(i, j int) bool {
-			return f.obsolete[i] < f.obsolete[j]
+			return f.obsolete[i].fileNum < f.obsolete[j].fileNum
 		})
-		for _, fileNum := range f.obsolete {
+		for _, fi := range f.obsolete {
 			dir := d.dirname
-			var fileSize uint64
 			switch f.fileType {
 			case fileTypeLog:
-				if !noRecycle && d.logRecycler.add(fileNum) {
+				if !noRecycle && d.logRecycler.add(fi) {
 					continue
 				}
 				dir = d.walDirname
 			case fileTypeTable:
-				d.tableCache.evict(fileNum)
-				fileSize = tableSizeMap[fileNum]
+				d.tableCache.evict(fi.fileNum)
 			}
 
 			filesToDelete = append(filesToDelete, obsoleteFile{
 				dir:      dir,
-				fileNum:  fileNum,
+				fileNum:  fi.fileNum,
 				fileType: f.fileType,
-				fileSize: fileSize,
+				fileSize: fi.fileSize,
 			})
 		}
 	}
@@ -2779,19 +2894,19 @@ func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileN
 	}
 }
 
-func merge(a, b []FileNum) []FileNum {
+func merge(a, b []fileInfo) []fileInfo {
 	if len(b) == 0 {
 		return a
 	}
 
 	a = append(a, b...)
 	sort.Slice(a, func(i, j int) bool {
-		return a[i] < a[j]
+		return a[i].fileNum < a[j].fileNum
 	})
 
 	n := 0
 	for i := 0; i < len(a); i++ {
-		if n == 0 || a[i] != a[n-1] {
+		if n == 0 || a[i].fileNum != a[n-1].fileNum {
 			a[n] = a[i]
 			n++
 		}

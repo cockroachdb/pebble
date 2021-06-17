@@ -10,7 +10,9 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/redact"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,6 +23,11 @@ func TestMetricsFormat(t *testing.T) {
 	m.BlockCache.Hits = 3
 	m.BlockCache.Misses = 4
 	m.Compact.Count = 5
+	m.Compact.DefaultCount = 27
+	m.Compact.DeleteOnlyCount = 28
+	m.Compact.ElisionOnlyCount = 29
+	m.Compact.MoveCount = 30
+	m.Compact.ReadCount = 31
 	m.Compact.EstimatedDebt = 6
 	m.Compact.InProgressBytes = 7
 	m.Flush.Count = 8
@@ -74,7 +81,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6       701   702 B       -   704 B   704 B     712   706 B     713   1.4 K   1.4 K   707 B       7     2.0
   total      2807   2.7 K       -   2.8 K   2.8 K   2.9 K   2.8 K   2.9 K   8.4 K   5.7 K   2.8 K      28     3.0
   flush         8
-compact         5     6 B             7 B  (size == estimated-debt, in = in-progress-bytes)
+compact         5     6 B             7 B          (size == estimated-debt, in = in-progress-bytes)
+  ctype        27      28      29      30      31  (default, delete, elision, move, read)
  memtbl        12    11 B
 zmemtbl        14    13 B
    ztbl        16    15 B
@@ -186,8 +194,41 @@ func TestMetrics(t *testing.T) {
 
 			return d.Metrics().String()
 
+		case "disk-usage":
+			return humanize.IEC.Uint64(d.Metrics().DiskSpaceUsage()).String()
+
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestMetricsRedact(t *testing.T) {
+	const expected = `
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         0     0 B       -     0 B       -       -       -       -     0 B       -       -       -     0.0
+      0         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+  total         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+  flush         0
+compact         0     0 B             0 B          (size == estimated-debt, in = in-progress-bytes)
+  ctype         0       0       0       0       0  (default, delete, elision, move, read)
+ memtbl         0     0 B
+zmemtbl         0     0 B
+   ztbl         0     0 B
+ bcache         0     0 B    0.0%  (score == hit-rate)
+ tcache         0     0 B    0.0%  (score == hit-rate)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+`
+
+	got := redact.Sprintf("%s", &Metrics{}).Redact()
+	if s := "\n" + got; expected != s {
+		t.Fatalf("expected%s\nbut found%s", expected, s)
+	}
 }

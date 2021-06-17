@@ -21,7 +21,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   total         1   986 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   flush         0
-compact         0     0 B             0 B  (size == estimated-debt, in = in-progress-bytes)
+compact         0     0 B             0 B          (size == estimated-debt, in = in-progress-bytes)
+  ctype         0       0       0       0       0  (default, delete, elision, move, read)
  memtbl         1   256 K
 zmemtbl         0     0 B
    ztbl         0     0 B

@@ -79,8 +79,8 @@ type versionSet struct {
 	// on the creation of every version.
 	obsoleteFn        func(obsolete []*manifest.FileMetadata)
 	obsoleteTables    []*manifest.FileMetadata
-	obsoleteManifests []FileNum
-	obsoleteOptions   []FileNum
+	obsoleteManifests []fileInfo
+	obsoleteOptions   []fileInfo
 
 	// Zombie tables which have been removed from the current version but are
 	// still referenced by an inuse iterator.
@@ -387,8 +387,10 @@ func (vs *versionSet) logAndApply(
 	// Generate a new manifest if we don't currently have one, or the current one
 	// is too large.
 	var newManifestFileNum FileNum
+	var prevManifestFileSize uint64
 	if vs.manifest == nil || vs.manifest.Size() >= vs.opts.MaxManifestFileSize {
 		newManifestFileNum = vs.getNextFileNum()
+		prevManifestFileSize = uint64(vs.manifest.Size())
 	}
 
 	// Grab certain values before releasing vs.mu, in case createManifest() needs
@@ -485,7 +487,10 @@ func (vs *versionSet) logAndApply(
 	}
 	if newManifestFileNum != 0 {
 		if vs.manifestFileNum != 0 {
-			vs.obsoleteManifests = append(vs.obsoleteManifests, vs.manifestFileNum)
+			vs.obsoleteManifests = append(vs.obsoleteManifests, fileInfo{
+				fileNum:  vs.manifestFileNum,
+				fileSize: prevManifestFileSize,
+			})
 		}
 		vs.manifestFileNum = newManifestFileNum
 	}
@@ -509,7 +514,7 @@ func (vs *versionSet) logAndApply(
 			}
 		}
 	}
-	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0Sublevels.Levels))
+	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
 
 	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgress, vs.metrics.levelSizes())
 	if !vs.dynamicBaseLevel {
@@ -519,8 +524,31 @@ func (vs *versionSet) logAndApply(
 	return nil
 }
 
-func (vs *versionSet) incrementCompactions() {
-	vs.metrics.Compact.Count++
+func (vs *versionSet) incrementCompactions(kind compactionKind) {
+	switch kind {
+	case compactionKindDefault:
+		vs.metrics.Compact.Count++
+		vs.metrics.Compact.DefaultCount++
+
+	case compactionKindFlush:
+		vs.metrics.Flush.Count++
+
+	case compactionKindMove:
+		vs.metrics.Compact.Count++
+		vs.metrics.Compact.MoveCount++
+
+	case compactionKindDeleteOnly:
+		vs.metrics.Compact.Count++
+		vs.metrics.Compact.DeleteOnlyCount++
+
+	case compactionKindElisionOnly:
+		vs.metrics.Compact.Count++
+		vs.metrics.Compact.ElisionOnlyCount++
+
+	case compactionKindRead:
+		vs.metrics.Compact.Count++
+		vs.metrics.Compact.ReadCount++
+	}
 }
 
 func (vs *versionSet) incrementFlushes() {

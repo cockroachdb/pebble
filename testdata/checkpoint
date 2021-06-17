@@ -62,29 +62,35 @@ set g 10
 ----
 sync: db/000006.log
 
-checkpoint db checkpoint1
+checkpoint db checkpoints/checkpoint1
 ----
-mkdir-all: checkpoint1 0755
-open-dir: checkpoint1
-link: db/OPTIONS-000003 -> checkpoint1/OPTIONS-000003
-create: checkpoint1/MANIFEST-000001
-sync: checkpoint1/MANIFEST-000001
-close: checkpoint1/MANIFEST-000001
-create: checkpoint1/CURRENT.000001.dbtmp
-sync: checkpoint1/CURRENT.000001.dbtmp
-close: checkpoint1/CURRENT.000001.dbtmp
-rename: checkpoint1/CURRENT.000001.dbtmp -> checkpoint1/CURRENT
-link: db/000005.sst -> checkpoint1/000005.sst
-link: db/000007.sst -> checkpoint1/000007.sst
-create: checkpoint1/000006.log
-sync: checkpoint1/000006.log
-close: checkpoint1/000006.log
-sync: checkpoint1
-close: checkpoint1
+mkdir-all: checkpoints/checkpoint1 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: 
+sync: 
+close: 
+open-dir: checkpoints/checkpoint1
+link: db/OPTIONS-000003 -> checkpoints/checkpoint1/OPTIONS-000003
+create: checkpoints/checkpoint1/MANIFEST-000001
+sync: checkpoints/checkpoint1/MANIFEST-000001
+close: checkpoints/checkpoint1/MANIFEST-000001
+create: checkpoints/checkpoint1/CURRENT.000001.dbtmp
+sync: checkpoints/checkpoint1/CURRENT.000001.dbtmp
+close: checkpoints/checkpoint1/CURRENT.000001.dbtmp
+rename: checkpoints/checkpoint1/CURRENT.000001.dbtmp -> checkpoints/checkpoint1/CURRENT
+link: db/000005.sst -> checkpoints/checkpoint1/000005.sst
+link: db/000007.sst -> checkpoints/checkpoint1/000007.sst
+create: checkpoints/checkpoint1/000006.log
+sync: checkpoints/checkpoint1/000006.log
+close: checkpoints/checkpoint1/000006.log
+sync: checkpoints/checkpoint1
+close: checkpoints/checkpoint1
 
-checkpoint db checkpoint1
+checkpoint db checkpoints/checkpoint1
 ----
-checkpoint checkpoint1: file already exists
+checkpoint checkpoints/checkpoint1: file already exists
 
 compact db
 ----
@@ -118,7 +124,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000003
 
-list checkpoint1
+list checkpoints/checkpoint1
 ----
 000005.sst
 000006.log
@@ -127,12 +133,12 @@ CURRENT
 MANIFEST-000001
 OPTIONS-000003
 
-open checkpoint1 readonly
+open checkpoints/checkpoint1 readonly
 ----
-open-dir: checkpoint1
-lock: checkpoint1/LOCK
+open-dir: checkpoints/checkpoint1
+lock: checkpoints/checkpoint1/LOCK
 
-scan checkpoint1
+scan checkpoints/checkpoint1
 ----
 a 1
 b 5

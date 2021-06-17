@@ -191,6 +191,12 @@ func SharedPrefixLen(a, b []byte) int {
 	if n > len(b) {
 		n = len(b)
 	}
+	asUint64 := func(c []byte, i int) uint64 {
+		return binary.LittleEndian.Uint64(c[i:])
+	}
+	for i < n-7 && asUint64(a, i) == asUint64(b, i) {
+		i += 8
+	}
 	for i < n && a[i] == b[i] {
 		i++
 	}

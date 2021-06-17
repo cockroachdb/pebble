@@ -77,6 +77,18 @@ func TestManualFlush(t *testing.T) {
 			d.mu.Unlock()
 			return s
 
+		case "acquire-cleaning-turn":
+			d.mu.Lock()
+			d.acquireCleaningTurn(false)
+			d.mu.Unlock()
+			return ""
+
+		case "release-cleaning-turn":
+			d.mu.Lock()
+			d.releaseCleaningTurn()
+			d.mu.Unlock()
+			return ""
+
 		case "reset":
 			if err := d.Close(); err != nil {
 				return err.Error()
@@ -100,5 +112,19 @@ func TestFlushDelRangeEmptyKey(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, d.DeleteRange([]byte{}, []byte("z"), nil))
 	require.NoError(t, d.Flush())
+	require.NoError(t, d.Close())
+}
+
+// TestFlushEmptyKey tests that flushing an empty key does not trigger that key
+// order invariant assertions.
+func TestFlushEmptyKey(t *testing.T) {
+	d, err := Open("", &Options{FS: vfs.NewMem()})
+	require.NoError(t, err)
+	require.NoError(t, d.Set(nil, []byte("hello"), nil))
+	require.NoError(t, d.Flush())
+	val, closer, err := d.Get(nil)
+	require.NoError(t, err)
+	require.Equal(t, val, []byte("hello"))
+	require.NoError(t, closer.Close())
 	require.NoError(t, d.Close())
 }

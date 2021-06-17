@@ -28,7 +28,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   total         1   771 B       -    56 B     0 B       0     0 B       0   827 B       1     0 B       1    14.8
   flush         1
-compact         0     0 B             0 B  (size == estimated-debt, in = in-progress-bytes)
+compact         0     0 B             0 B          (size == estimated-debt, in = in-progress-bytes)
+  ctype         0       0       0       0       0  (default, delete, elision, move, read)
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         0     0 B
@@ -36,6 +37,10 @@ zmemtbl         1   256 K
  tcache         1   616 B    0.0%  (score == hit-rate)
  titers         1
  filter         -       -    0.0%  (score == utility)
+
+disk-usage
+----
+1.8 K
 
 batch
 set b 2
@@ -70,7 +75,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
   total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
-compact         1     0 B             0 B  (size == estimated-debt, in = in-progress-bytes)
+compact         1     0 B             0 B          (size == estimated-debt, in = in-progress-bytes)
+  ctype         1       0       0       0       0  (default, delete, elision, move, read)
  memtbl         1   256 K
 zmemtbl         2   512 K
    ztbl         2   1.5 K
@@ -78,6 +84,10 @@ zmemtbl         2   512 K
  tcache         2   1.2 K   50.0%  (score == hit-rate)
  titers         2
  filter         -       -    0.0%  (score == utility)
+
+disk-usage
+----
+3.5 K
 
 # Closing iter a will release one of the zombie memtables.
 
@@ -97,7 +107,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
   total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
-compact         1     0 B             0 B  (size == estimated-debt, in = in-progress-bytes)
+compact         1     0 B             0 B          (size == estimated-debt, in = in-progress-bytes)
+  ctype         1       0       0       0       0  (default, delete, elision, move, read)
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         2   1.5 K
@@ -125,7 +136,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
   total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
-compact         1     0 B             0 B  (size == estimated-debt, in = in-progress-bytes)
+compact         1     0 B             0 B          (size == estimated-debt, in = in-progress-bytes)
+  ctype         1       0       0       0       0  (default, delete, elision, move, read)
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         1   771 B
@@ -133,6 +145,10 @@ zmemtbl         1   256 K
  tcache         1   616 B   50.0%  (score == hit-rate)
  titers         1
  filter         -       -    0.0%  (score == utility)
+
+disk-usage
+----
+2.7 K
 
 # Closing iter b will release the last zombie sstable and the last zombie memtable.
 
@@ -152,7 +168,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
   total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
-compact         1     0 B             0 B  (size == estimated-debt, in = in-progress-bytes)
+compact         1     0 B             0 B          (size == estimated-debt, in = in-progress-bytes)
+  ctype         1       0       0       0       0  (default, delete, elision, move, read)
  memtbl         1   256 K
 zmemtbl         0     0 B
    ztbl         0     0 B
@@ -160,3 +177,7 @@ zmemtbl         0     0 B
  tcache         0     0 B   50.0%  (score == hit-rate)
  titers         0
  filter         -       -    0.0%  (score == utility)
+
+disk-usage
+----
+1.9 K

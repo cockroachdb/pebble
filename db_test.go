@@ -371,7 +371,7 @@ func TestLargeBatch(t *testing.T) {
 	logNum := func() FileNum {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return d.mu.log.queue[len(d.mu.log.queue)-1]
+		return d.mu.log.queue[len(d.mu.log.queue)-1].fileNum
 	}
 	fileSize := func(fileNum FileNum) int64 {
 		info, err := d.opts.FS.Stat(base.MakeFilename(d.opts.FS, "", fileTypeLog, fileNum))
@@ -1168,6 +1168,39 @@ func BenchmarkDelete(b *testing.B) {
 			benchmark(b, true)
 		}
 	})
+}
+
+func BenchmarkNewIterReadAmp(b *testing.B) {
+	for _, readAmp := range []int{10, 100, 1000} {
+		b.Run(strconv.Itoa(readAmp), func(b *testing.B) {
+			opts := &Options{
+				FS:                    vfs.NewMem(),
+				L0StopWritesThreshold: 1000,
+			}
+			opts.private.disableAutomaticCompactions = true
+
+			d, err := Open("", opts)
+			require.NoError(b, err)
+
+			for i := 0; i < readAmp; i++ {
+				require.NoError(b, d.Set([]byte("a"), []byte("b"), NoSync))
+				require.NoError(b, d.Flush())
+			}
+
+			require.Equal(b, d.Metrics().ReadAmp(), readAmp)
+
+			b.StopTimer()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				b.StartTimer()
+				iter := d.NewIter(nil)
+				b.StopTimer()
+				require.NoError(b, iter.Close())
+			}
+
+			require.NoError(b, d.Close())
+		})
+	}
 }
 
 func verifyGet(t *testing.T, r Reader, key, expected []byte) {

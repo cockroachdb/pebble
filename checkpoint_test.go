@@ -217,3 +217,56 @@ func TestCheckpointCompaction(t *testing.T) {
 	wg.Wait()
 	require.NoError(t, d.Close())
 }
+
+func TestCheckpointFlushWAL(t *testing.T) {
+	const checkpointPath = "checkpoints/checkpoint"
+	fs := vfs.NewStrictMem()
+	opts := &Options{FS: fs}
+	key, value := []byte("key"), []byte("value")
+
+	// Create a checkpoint from an unsynced DB.
+	{
+		d, err := Open("", opts)
+		require.NoError(t, err)
+		{
+			wb := d.NewBatch()
+			err = wb.Set(key, value, nil)
+			require.NoError(t, err)
+			err = d.Apply(wb, NoSync)
+			require.NoError(t, err)
+		}
+		err = d.Checkpoint(checkpointPath, WithFlushedWAL())
+		require.NoError(t, err)
+		require.NoError(t, d.Close())
+		fs.ResetToSyncedState()
+	}
+
+	// Check that the WAL has been flushed in the checkpoint.
+	{
+		files, err := fs.List(checkpointPath)
+		require.NoError(t, err)
+		hasLogFile := false
+		for _, f := range files {
+			info, err := fs.Stat(fs.PathJoin(checkpointPath, f))
+			require.NoError(t, err)
+			if strings.HasSuffix(f, ".log") {
+				hasLogFile = true
+				require.NotZero(t, info.Size())
+			}
+		}
+		require.True(t, hasLogFile)
+	}
+
+	// Check that the checkpoint contains the expected data.
+	{
+		d, err := Open(checkpointPath, opts)
+		require.NoError(t, err)
+		iter := d.NewIter(nil)
+		require.True(t, iter.First())
+		require.Equal(t, key, iter.Key())
+		require.Equal(t, value, iter.Value())
+		require.False(t, iter.Next())
+		require.NoError(t, iter.Close())
+		require.NoError(t, d.Close())
+	}
+}

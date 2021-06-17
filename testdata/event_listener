@@ -82,7 +82,7 @@ sync: db
 [JOB 5] MANIFEST created 000010
 [JOB 5] flushed 1 memtable to L0 [000009] (770 B), in 1.0s, output rate 770 B/s
 [JOB 5] MANIFEST deleted 000007
-[JOB 6] compacting L0 [000006 000009] (1.5 K) + L6 [] (0 B)
+[JOB 6] compacting(default) L0 [000006 000009] (1.5 K) + L6 [] (0 B)
 create: db/000011.sst
 [JOB 6] compacting: sstable created 000011
 sync: db/000011.sst
@@ -97,7 +97,7 @@ close: db/CURRENT.000012.dbtmp
 rename: db/CURRENT.000012.dbtmp -> db/CURRENT
 sync: db
 [JOB 6] MANIFEST created 000012
-[JOB 6] compacted L0 [000006 000009] (1.5 K) + L6 [] (0 B) -> L6 [000011] (770 B), in 1.0s, output rate 770 B/s
+[JOB 6] compacted(default) L0 [000006 000009] (1.5 K) + L6 [] (0 B) -> L6 [000011] (770 B), in 1.0s, output rate 770 B/s
 [JOB 6] sstable deleted 000006
 [JOB 6] sstable deleted 000009
 [JOB 6] MANIFEST deleted 000010
@@ -164,7 +164,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         1   770 B       -   1.5 K     0 B       0     0 B       0   770 B       1   1.5 K       1     0.5
   total         3   2.3 K       -   933 B   825 B       1     0 B       0   3.9 K       4   1.5 K       3     4.3
   flush         3
-compact         1   2.3 K             0 B  (size == estimated-debt, in = in-progress-bytes)
+compact         1   2.3 K             0 B          (size == estimated-debt, in = in-progress-bytes)
+  ctype         1       0       0       0       0  (default, delete, elision, move, read)
  memtbl         1   256 K
 zmemtbl         0     0 B
    ztbl         0     0 B
@@ -184,6 +185,9 @@ sstables
 checkpoint
 ----
 mkdir-all: checkpoint 0755
+open-dir: 
+sync: 
+close: 
 open-dir: checkpoint
 link: db/OPTIONS-000004 -> checkpoint/OPTIONS-000004
 create: checkpoint/MANIFEST-000017

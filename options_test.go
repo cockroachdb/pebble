@@ -47,6 +47,7 @@ func TestOptionsString(t *testing.T) {
   bytes_per_sync=524288
   cache_size=8388608
   cleaner=delete
+  compaction_debt_concurrency=1073741824
   comparer=leveldb.BytewiseComparator
   delete_range_flush_delay=0s
   disable_wal=false
@@ -61,8 +62,11 @@ func TestOptionsString(t *testing.T) {
   mem_table_size=4194304
   mem_table_stop_writes_threshold=2
   min_compaction_rate=4194304
+  min_deletion_rate=0
   min_flush_rate=1048576
   merger=pebble.concatenate
+  read_compaction_rate=16000
+  read_sampling_multiplier=16
   strict_wal_tail=true
   table_property_collectors=[]
   wal_dir=
@@ -189,7 +193,11 @@ func TestOptionsParse(t *testing.T) {
 			opts.Levels[0].BlockSize = 1024
 			opts.Levels[1].BlockSize = 2048
 			opts.Levels[2].BlockSize = 4096
+			opts.Experimental.CompactionDebtConcurrency = 100
 			opts.Experimental.DeleteRangeFlushDelay = 10 * time.Second
+			opts.Experimental.MinDeletionRate = 200
+			opts.Experimental.ReadCompactionRate = 300
+			opts.Experimental.ReadSamplingMultiplier = 400
 			opts.EnsureDefaults()
 			str := opts.String()
 

@@ -285,7 +285,7 @@ func (k InternalKey) Valid() bool {
 
 // Clone clones the storage for the UserKey component of the key.
 func (k InternalKey) Clone() InternalKey {
-	if k.UserKey == nil {
+	if len(k.UserKey) == 0 {
 		return k
 	}
 	return InternalKey{

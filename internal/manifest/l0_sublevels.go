@@ -521,6 +521,72 @@ func (s *L0Sublevels) ReadAmplification() int {
 	return amp
 }
 
+// UserKeyRange encodes a key range in user key space. A UserKeyRange's Start
+// and End boundaries are both inclusive.
+type UserKeyRange struct {
+	Start, End []byte
+}
+
+// InUseKeyRanges returns the merged table bounds of L0 files overlapping the
+// provided user key range. The returned key ranges are sorted and
+// nonoverlapping.
+func (s *L0Sublevels) InUseKeyRanges(smallest, largest []byte) []UserKeyRange {
+	// Binary search to find the provided keys within the intervals.
+	startIK := intervalKey{key: smallest, isLargest: false}
+	endIK := intervalKey{key: largest, isLargest: true}
+	start := sort.Search(len(s.orderedIntervals), func(i int) bool {
+		return intervalKeyCompare(s.cmp, s.orderedIntervals[i].startKey, startIK) > 0
+	})
+	if start > 0 {
+		// Back up to the first interval with a start key <= startIK.
+		start--
+	}
+	end := sort.Search(len(s.orderedIntervals), func(i int) bool {
+		return intervalKeyCompare(s.cmp, s.orderedIntervals[i].startKey, endIK) > 0
+	})
+
+	var keyRanges []UserKeyRange
+	var curr *UserKeyRange
+	for i := start; i < end; {
+		// Intervals with no files are not in use and can be skipped, once we
+		// end the current UserKeyRange.
+		if s.orderedIntervals[i].fileCount == 0 {
+			curr = nil
+			i++
+			continue
+		}
+
+		// If curr is nil, start a new in-use key range.
+		if curr == nil {
+			keyRanges = append(keyRanges, UserKeyRange{
+				Start: s.orderedIntervals[i].startKey.key,
+			})
+			curr = &keyRanges[len(keyRanges)-1]
+		}
+
+		// If the filesMaxIntervalIndex is not the current index, we can jump
+		// to the max index, knowing that all intermediary intervals are
+		// overlapped by some file.
+		if maxIdx := s.orderedIntervals[i].filesMaxIntervalIndex; maxIdx != i {
+			// Note that end may be less than or equal to maxIdx if we're
+			// concerned with a key range that ends before the interval at
+			// maxIdx starts. We must set curr.End now, before making that
+			// leap, because this iteration may be the last.
+			i = maxIdx
+			curr.End = s.orderedIntervals[i+1].startKey.key
+			continue
+		}
+
+		// No files overlapping with this interval overlap with the next
+		// interval. Update the current end to be the next interval's start
+		// key. Note that curr is not necessarily finished, because there may
+		// be an abutting non-empty interval.
+		curr.End = s.orderedIntervals[i+1].startKey.key
+		i++
+	}
+	return keyRanges
+}
+
 // FlushSplitKeys returns a slice of user keys to split flushes at.
 // Used by flushes to avoid writing sstables that straddle these split keys.
 // These should be interpreted as the keys to start the next sstable (not the
