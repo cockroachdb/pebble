@@ -559,3 +559,67 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 		},
 	}
 }
+
+// TeeEventListener wraps two EventListeners, forwarding all events to both.
+func TeeEventListener(a, b EventListener) EventListener {
+	a.EnsureDefaults(nil)
+	b.EnsureDefaults(nil)
+	return EventListener{
+		BackgroundError: func(err error) {
+			a.BackgroundError(err)
+			b.BackgroundError(err)
+		},
+		CompactionBegin: func(info CompactionInfo) {
+			a.CompactionBegin(info)
+			b.CompactionBegin(info)
+		},
+		CompactionEnd: func(info CompactionInfo) {
+			a.CompactionEnd(info)
+			b.CompactionEnd(info)
+		},
+		FlushBegin: func(info FlushInfo) {
+			a.FlushBegin(info)
+			b.FlushBegin(info)
+		},
+		FlushEnd: func(info FlushInfo) {
+			a.FlushEnd(info)
+			b.FlushEnd(info)
+		},
+		ManifestCreated: func(info ManifestCreateInfo) {
+			a.ManifestCreated(info)
+			b.ManifestCreated(info)
+		},
+		ManifestDeleted: func(info ManifestDeleteInfo) {
+			a.ManifestDeleted(info)
+			b.ManifestDeleted(info)
+		},
+		TableCreated: func(info TableCreateInfo) {
+			a.TableCreated(info)
+			b.TableCreated(info)
+		},
+		TableDeleted: func(info TableDeleteInfo) {
+			a.TableDeleted(info)
+			b.TableDeleted(info)
+		},
+		TableIngested: func(info TableIngestInfo) {
+			a.TableIngested(info)
+			b.TableIngested(info)
+		},
+		WALCreated: func(info WALCreateInfo) {
+			a.WALCreated(info)
+			b.WALCreated(info)
+		},
+		WALDeleted: func(info WALDeleteInfo) {
+			a.WALDeleted(info)
+			b.WALDeleted(info)
+		},
+		WriteStallBegin: func(info WriteStallBeginInfo) {
+			a.WriteStallBegin(info)
+			b.WriteStallBegin(info)
+		},
+		WriteStallEnd: func() {
+			a.WriteStallEnd()
+			b.WriteStallEnd()
+		},
+	}
+}

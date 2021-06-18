@@ -114,8 +114,10 @@ func open(dir string, listener pebble.EventListener) (*replay.DB, error) {
 
 	opts.EventListener = listener
 	if verbose {
-		opts.EventListener = teeEventListener(opts.EventListener,
-			pebble.MakeLoggingEventListener(nil))
+		opts.EventListener = pebble.TeeEventListener(
+			opts.EventListener,
+			pebble.MakeLoggingEventListener(nil),
+		)
 	}
 	rd, err := replay.Open(dir, opts)
 	return rd, err
@@ -420,69 +422,5 @@ func removeAll(dir string) {
 	verbosef("Removing %q.\n", dir)
 	if err := os.RemoveAll(dir); err != nil {
 		log.Fatal(err)
-	}
-}
-
-// teeEventListener wraps two event listeners, forwarding all events to both.
-func teeEventListener(a, b pebble.EventListener) pebble.EventListener {
-	a.EnsureDefaults(nil)
-	b.EnsureDefaults(nil)
-	return pebble.EventListener{
-		BackgroundError: func(err error) {
-			a.BackgroundError(err)
-			b.BackgroundError(err)
-		},
-		CompactionBegin: func(info pebble.CompactionInfo) {
-			a.CompactionBegin(info)
-			b.CompactionBegin(info)
-		},
-		CompactionEnd: func(info pebble.CompactionInfo) {
-			a.CompactionEnd(info)
-			b.CompactionEnd(info)
-		},
-		FlushBegin: func(info pebble.FlushInfo) {
-			a.FlushBegin(info)
-			b.FlushBegin(info)
-		},
-		FlushEnd: func(info pebble.FlushInfo) {
-			a.FlushEnd(info)
-			b.FlushEnd(info)
-		},
-		ManifestCreated: func(info pebble.ManifestCreateInfo) {
-			a.ManifestCreated(info)
-			b.ManifestCreated(info)
-		},
-		ManifestDeleted: func(info pebble.ManifestDeleteInfo) {
-			a.ManifestDeleted(info)
-			b.ManifestDeleted(info)
-		},
-		TableCreated: func(info pebble.TableCreateInfo) {
-			a.TableCreated(info)
-			b.TableCreated(info)
-		},
-		TableDeleted: func(info pebble.TableDeleteInfo) {
-			a.TableDeleted(info)
-			b.TableDeleted(info)
-		},
-		TableIngested: func(info pebble.TableIngestInfo) {
-			a.TableIngested(info)
-			b.TableIngested(info)
-		},
-		WALCreated: func(info pebble.WALCreateInfo) {
-			a.WALCreated(info)
-			b.WALCreated(info)
-		},
-		WALDeleted: func(info pebble.WALDeleteInfo) {
-			a.WALDeleted(info)
-			b.WALDeleted(info)
-		},
-		WriteStallBegin: func(info pebble.WriteStallBeginInfo) {
-			a.WriteStallBegin(info)
-			b.WriteStallBegin(info)
-		},
-		WriteStallEnd: func() {
-			a.WriteStallEnd()
-			b.WriteStallEnd()
-		},
 	}
 }
