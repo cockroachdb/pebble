@@ -19,7 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
-	"github.com/cockroachdb/pebble/internal/record"
+	"github.com/cockroachdb/pebble/record"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
@@ -51,11 +51,11 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			NextFileNum:        44,
 			LastSeqNum:         55,
 			DeletedFiles: map[DeletedFileEntry]*FileMetadata{
-				DeletedFileEntry{
+				{
 					Level:   3,
 					FileNum: 703,
 				}: nil,
-				DeletedFileEntry{
+				{
 					Level:   4,
 					FileNum: 704,
 				}: nil,
