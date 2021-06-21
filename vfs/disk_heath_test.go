@@ -107,7 +107,7 @@ func (m mockFS) PathDir(path string) string {
 	panic("unimplemented")
 }
 
-func (m mockFS) GetFreeSpace(path string) (uint64, error) {
+func (m mockFS) GetDiskUsage(path string) (DiskUsage, error) {
 	panic("unimplemented")
 }
 

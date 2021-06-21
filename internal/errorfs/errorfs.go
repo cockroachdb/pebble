@@ -166,12 +166,12 @@ func (fs *FS) OpenDir(name string) (vfs.File, error) {
 	return &errorFile{f, fs.inj}, nil
 }
 
-// GetFreeSpace implements FS.GetFreeSpace.
-func (fs *FS) GetFreeSpace(path string) (uint64, error) {
+// GetDiskUsage implements FS.GetDiskUsage.
+func (fs *FS) GetDiskUsage(path string) (vfs.DiskUsage, error) {
 	if err := fs.inj.MaybeError(OpRead); err != nil {
-		return 0, err
+		return vfs.DiskUsage{}, err
 	}
-	return fs.fs.GetFreeSpace(path)
+	return fs.fs.GetDiskUsage(path)
 }
 
 // PathBase implements FS.PathBase.

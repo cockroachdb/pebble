@@ -340,8 +340,8 @@ func (fs *enospcFS) PathDir(path string) string {
 	return fs.inner.PathDir(path)
 }
 
-func (fs *enospcFS) GetFreeSpace(path string) (uint64, error) {
-	return fs.inner.GetFreeSpace(path)
+func (fs *enospcFS) GetDiskUsage(path string) (DiskUsage, error) {
+	return fs.inner.GetDiskUsage(path)
 }
 
 type enospcFile struct {
