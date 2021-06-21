@@ -8,10 +8,18 @@ package vfs
 
 import "golang.org/x/sys/unix"
 
-func (defaultFS) GetFreeSpace(path string) (uint64, error) {
+func (defaultFS) GetDiskUsage(path string) (DiskUsage, error) {
 	stat := unix.Statfs_t{}
 	if err := unix.Statfs(path, &stat); err != nil {
-		return 0, err
+		return DiskUsage{}, err
 	}
-	return uint64(stat.Bsize) * uint64(stat.Bavail), nil
+
+	freeBytes := uint64(stat.Bsize) * uint64(stat.Bfree)
+	availBytes := uint64(stat.Bsize) * uint64(stat.Bavail)
+	totalBytes := uint64(stat.Bsize) * uint64(stat.Blocks)
+	return DiskUsage{
+		AvailBytes: availBytes,
+		TotalBytes: totalBytes,
+		UsedBytes:  totalBytes - freeBytes,
+	}, nil
 }

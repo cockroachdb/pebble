@@ -8,14 +8,14 @@ package vfs
 
 import "golang.org/x/sys/unix"
 
-func (defaultFS) GetFreeSpace(path string) (uint64, error) {
+func (defaultFS) GetDiskUsage(path string) (DiskUsage, error) {
 	stat := unix.Statfs_t{}
 	if err := unix.Statfs(path, &stat); err != nil {
-		return 0, err
+		return DiskUsage{}, err
 	}
 
 	// We use stat.Frsize here rather than stat.Bsize because on
-	// Linux Bavail is in Frsize units.
+	// Linux Bavail and Bfree are in Frsize units.
 	//
 	// On most filesystems Frsize and Bsize will be set to the
 	// same value, but on some filesystems bsize returns the
@@ -32,5 +32,12 @@ func (defaultFS) GetFreeSpace(path string) (uint64, error) {
 	//
 	// [1] https://man7.org/linux/man-pages/man2/statfs.2.html
 	// [2] https://man7.org/linux/man-pages/man3/statvfs.3.html
-	return uint64(stat.Frsize) * uint64(stat.Bavail), nil
+	freeBytes := uint64(stat.Frsize) * uint64(stat.Bfree)
+	availBytes := uint64(stat.Frsize) * uint64(stat.Bavail)
+	totalBytes := uint64(stat.Bsize) * uint64(stat.Blocks)
+	return DiskUsage{
+		AvailBytes: availBytes,
+		TotalBytes: totalBytes,
+		UsedBytes:  totalBytes - freeBytes,
+	}, nil
 }
