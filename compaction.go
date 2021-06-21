@@ -1335,12 +1335,12 @@ func (d *DB) getFlushPacerInfo() flushPacerInfo {
 
 func (d *DB) getDeletionPacerInfo() deletionPacerInfo {
 	var pacerInfo deletionPacerInfo
-	// Call GetFreeSpace after every file deletion. This may seem inefficient,
+	// Call GetDiskUsage after every file deletion. This may seem inefficient,
 	// but in practice this was observed to take constant time, regardless of
 	// volume size used, at least on linux with ext4 and zfs. All invocations
 	// take 10 microseconds or less.
-	if space, err := d.opts.FS.GetFreeSpace(d.dirname); err == nil {
-		pacerInfo.freeBytes = space
+	if space, err := d.opts.FS.GetDiskUsage(d.dirname); err == nil {
+		pacerInfo.freeBytes = space.AvailBytes
 	}
 	d.mu.Lock()
 	pacerInfo.obsoleteBytes = d.mu.versions.metrics.Table.ObsoleteSize
