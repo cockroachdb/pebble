@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"sync"
 	"sync/atomic"
 
@@ -60,11 +61,12 @@ type versionSet struct {
 	// Immutable fields.
 	dirname string
 	// Set to DB.mu.
-	mu      *sync.Mutex
-	opts    *Options
-	fs      vfs.FS
-	cmp     Compare
-	cmpName string
+	mu             *sync.Mutex
+	opts           *Options
+	fs             vfs.FS
+	cmp            Compare
+	cmpName        string
+	diskAvailBytes func() uint64
 	// Dynamic base level allows the dynamic base level computation to be
 	// disabled. Used by tests which want to create specific LSM structures.
 	dynamicBaseLevel bool
@@ -117,6 +119,9 @@ func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
 	vs.obsoleteFn = vs.addObsoleteLocked
 	vs.zombieTables = make(map[FileNum]uint64)
 	vs.nextFileNum = 1
+	if vs.diskAvailBytes == nil {
+		vs.diskAvailBytes = func() uint64 { return math.MaxUint64 }
+	}
 }
 
 // create creates a version set for a fresh DB.
@@ -126,12 +131,14 @@ func (vs *versionSet) create(
 	vs.init(dirname, opts, mu)
 	newVersion := &version{}
 	vs.append(newVersion)
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes())
+	var err error
+
+	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes(), vs.diskAvailBytes)
 
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
 	vs.manifestFileNum = vs.getNextFileNum()
-	err := vs.createManifest(vs.dirname, vs.manifestFileNum, vs.minUnflushedLogNum, vs.nextFileNum)
+	err = vs.createManifest(vs.dirname, vs.manifestFileNum, vs.minUnflushedLogNum, vs.nextFileNum)
 	if err == nil {
 		if err = vs.manifest.Flush(); err != nil {
 			vs.opts.Logger.Fatalf("MANIFEST flush failed: %v", err)
@@ -287,7 +294,8 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		files := newVersion.Levels[i].Slice()
 		l.Size = int64(files.SizeSum())
 	}
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes())
+
+	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes(), vs.diskAvailBytes)
 	return nil
 }
 
@@ -516,11 +524,10 @@ func (vs *versionSet) logAndApply(
 	}
 	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgress, vs.metrics.levelSizes())
+	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgress, vs.metrics.levelSizes(), vs.diskAvailBytes)
 	if !vs.dynamicBaseLevel {
 		vs.picker.forceBaseLevel1()
 	}
-
 	return nil
 }
 
