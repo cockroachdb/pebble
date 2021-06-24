@@ -248,10 +248,6 @@ max-overlap-bytes
 ----
 41943040
 
-max-expanded-bytes
-----
-104857600
-
 # 1 L0 file. Should not choose any compaction, as an intra-L0 compaction
 # with one input is unhelpful.
 

@@ -80,7 +80,7 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedComp
 		outputLevel: outputLevel,
 		file:        iter.Take(),
 	}
-	return pickAutoHelper(env, p.opts, p.vers, cInfo, p.baseLevel)
+	return pickAutoHelper(env, p.opts, p.vers, cInfo, p.baseLevel, diskAvailBytesInf)
 }
 
 func (p *compactionPickerForTesting) pickElisionOnlyCompaction(
@@ -95,7 +95,7 @@ func (p *compactionPickerForTesting) pickManual(
 	if p == nil {
 		return nil, false
 	}
-	return pickManualHelper(p.opts, manual, p.vers, p.baseLevel), false
+	return pickManualHelper(p.opts, manual, p.vers, p.baseLevel, diskAvailBytesInf), false
 }
 
 func (p *compactionPickerForTesting) pickReadTriggeredCompaction(
@@ -438,25 +438,25 @@ func TestPickCompaction(t *testing.T) {
 				1: {
 					{
 						FileNum:  200,
-						Size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
+						Size:     expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64) - 1,
 						Smallest: base.ParseInternalKey("i1.SET.201"),
 						Largest:  base.ParseInternalKey("i2.SET.202"),
 					},
 					{
 						FileNum:  210,
-						Size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
+						Size:     expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64) - 1,
 						Smallest: base.ParseInternalKey("j1.SET.211"),
 						Largest:  base.ParseInternalKey("j2.SET.212"),
 					},
 					{
 						FileNum:  220,
-						Size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
+						Size:     expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64) - 1,
 						Smallest: base.ParseInternalKey("k1.SET.221"),
 						Largest:  base.ParseInternalKey("k2.SET.222"),
 					},
 					{
 						FileNum:  230,
-						Size:     expandedCompactionByteSizeLimit(opts, 1) - 1,
+						Size:     expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64) - 1,
 						Smallest: base.ParseInternalKey("l1.SET.231"),
 						Largest:  base.ParseInternalKey("l2.SET.232"),
 					},
@@ -464,13 +464,13 @@ func TestPickCompaction(t *testing.T) {
 				2: {
 					{
 						FileNum:  300,
-						Size:     expandedCompactionByteSizeLimit(opts, 2) - 1,
+						Size:     expandedCompactionByteSizeLimit(opts, 2, math.MaxUint64) - 1,
 						Smallest: base.ParseInternalKey("a0.SET.301"),
 						Largest:  base.ParseInternalKey("l0.SET.302"),
 					},
 					{
 						FileNum:  310,
-						Size:     expandedCompactionByteSizeLimit(opts, 2) - 1,
+						Size:     expandedCompactionByteSizeLimit(opts, 2, math.MaxUint64) - 1,
 						Smallest: base.ParseInternalKey("l2.SET.311"),
 						Largest:  base.ParseInternalKey("z2.SET.312"),
 					},

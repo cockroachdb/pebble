@@ -71,6 +71,36 @@ L1
 L2
   000003:a#3,1-d#4,1
 
+# Verify we limit the start level input expansion according to available
+# disk capacity.
+setup-inputs avail-bytes=10 a a
+L1
+  a.SET.5-b.SET.6 size=2
+  c.SET.4-e.SET.3 size=1
+L2
+  a.SET.3-d.SET.4 size=3
+----
+L1
+  000001:a#5,1-b#6,1
+L2
+  000003:a#3,1-d#4,1
+
+# Verify the available disk capacity limit doesn't affect the
+# output level clean-cut expansion.
+setup-inputs avail-bytes=10 a a
+L1
+  a.SET.5-b.SET.6 size=5
+  c.SET.4-e.SET.3 size=10
+L2
+  a.SET.3-d.SET.4 size=5
+  d.SET.2-e.SET.2 size=5
+----
+L1
+  000001:a#5,1-b#6,1
+L2
+  000003:a#3,1-d#4,1
+  000004:d#2,1-e#2,1
+
 # We won't grow the start level inputs if doing so would grow the
 # output level inputs.
 setup-inputs a a
