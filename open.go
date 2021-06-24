@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"sort"
 	"sync/atomic"
@@ -69,6 +70,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		closedCh:            make(chan struct{}),
 	}
 	d.mu.versions = &versionSet{}
+	d.atomic.diskAvailBytes = math.MaxUint64
+	d.mu.versions.diskAvailBytes = d.getDiskAvailableBytesCached
 
 	defer func() {
 		// If an error or panic occurs during open, attempt to release the manually
@@ -363,6 +366,10 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if !d.opts.ReadOnly && !d.opts.private.disableTableStats {
 		d.maybeCollectTableStats()
 	}
+	if du, err := opts.FS.GetDiskUsage(dirname); err == nil {
+		atomic.StoreUint64(&d.atomic.diskAvailBytes, du.AvailBytes)
+	}
+
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
 

@@ -185,6 +185,9 @@ type DB struct {
 
 		// The size of the current log file (i.e. db.mu.log.queue[len(queue)-1].
 		logSize uint64
+
+		// The number of bytes available on disk.
+		diskAvailBytes uint64
 	}
 
 	cacheID        uint64
