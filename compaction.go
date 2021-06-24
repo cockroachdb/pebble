@@ -36,8 +36,20 @@ var gcLabels = pprof.Labels("pebble", "gc")
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction
 // if it would make the total compaction cover more than this many bytes.
-func expandedCompactionByteSizeLimit(opts *Options, level int) uint64 {
-	return uint64(25 * opts.Level(level).TargetFileSize)
+func expandedCompactionByteSizeLimit(opts *Options, level int, availBytes uint64) uint64 {
+	v := uint64(25 * opts.Level(level).TargetFileSize)
+
+	// Never expand a compaction beyond half the available capacity, divided
+	// by the maximum number of concurrent compactions. Each of the concurrent
+	// compactions may expand up to this limit, so this attempts to limit
+	// compactions to half of available disk space. Note that this will not
+	// prevent compaction picking from pursuing compactions that are larger
+	// than this threshold before expansion.
+	diskMax := (availBytes / 2) / uint64(opts.MaxConcurrentCompactions)
+	if v > diskMax {
+		v = diskMax
+	}
+	return v
 }
 
 // maxGrandparentOverlapBytes is the maximum bytes of overlap with level+1
@@ -1279,15 +1291,27 @@ func (d *DB) getFlushPacerInfo() flushPacerInfo {
 	return pacerInfo
 }
 
+func (d *DB) calculateDiskAvailableBytes() uint64 {
+	if space, err := d.opts.FS.GetDiskUsage(d.dirname); err == nil {
+		atomic.StoreUint64(&d.atomic.diskAvailBytes, space.AvailBytes)
+		return space.AvailBytes
+	} else if !errors.Is(err, vfs.ErrUnsupported) {
+		d.opts.EventListener.BackgroundError(err)
+	}
+	return atomic.LoadUint64(&d.atomic.diskAvailBytes)
+}
+
+func (d *DB) getDiskAvailableBytesCached() uint64 {
+	return atomic.LoadUint64(&d.atomic.diskAvailBytes)
+}
+
 func (d *DB) getDeletionPacerInfo() deletionPacerInfo {
 	var pacerInfo deletionPacerInfo
 	// Call GetDiskUsage after every file deletion. This may seem inefficient,
 	// but in practice this was observed to take constant time, regardless of
 	// volume size used, at least on linux with ext4 and zfs. All invocations
 	// take 10 microseconds or less.
-	if space, err := d.opts.FS.GetDiskUsage(d.dirname); err == nil {
-		pacerInfo.freeBytes = space.AvailBytes
-	}
+	pacerInfo.freeBytes = d.calculateDiskAvailableBytes()
 	d.mu.Lock()
 	pacerInfo.obsoleteBytes = d.mu.versions.metrics.Table.ObsoleteSize
 	pacerInfo.liveBytes = uint64(d.mu.versions.metrics.Total().Size)
@@ -2493,12 +2517,18 @@ func (d *DB) runCompaction(
 		return nil, pendingOutputs, err
 	}
 
+	// Refresh the disk available statistic whenever a compaction/flush
+	// completes, before re-acquiring the mutex.
+	_ = d.calculateDiskAvailableBytes()
+
 	return ve, pendingOutputs, nil
 }
 
 // validateVersionEdit validates that start and end keys across new and deleted
 // files in a versionEdit pass the given validation function.
-func validateVersionEdit(ve *versionEdit, validateFn func([]byte) error, format base.FormatKey) error {
+func validateVersionEdit(
+	ve *versionEdit, validateFn func([]byte) error, format base.FormatKey,
+) error {
 	if validateFn == nil {
 		return nil
 	}

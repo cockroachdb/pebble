@@ -88,6 +88,10 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, [numLevels]int64, 
 	return vers, opts, sizes, ""
 }
 
+func diskAvailBytesInf() uint64 {
+	return math.MaxUint64
+}
+
 func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_picker_level_max_bytes",
 		func(d *datadriven.TestData) string {
@@ -98,7 +102,7 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 					return errMsg
 				}
 
-				p, ok := newCompactionPicker(vers, opts, nil, sizes).(*compactionPickerByScore)
+				p, ok := newCompactionPicker(vers, opts, nil, sizes, diskAvailBytesInf).(*compactionPickerByScore)
 				require.True(t, ok)
 				var buf bytes.Buffer
 				for level := p.getBaseLevel(); level < numLevels; level++ {
@@ -177,7 +181,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					}
 				}
 
-				p := newCompactionPicker(vers, opts, inProgress, sizes)
+				p := newCompactionPicker(vers, opts, inProgress, sizes, diskAvailBytesInf)
 				var ok bool
 				pickerByScore, ok = p.(*compactionPickerByScore)
 				require.True(t, ok)
@@ -329,7 +333,7 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 				}
 				opts.MemTableSize = 1000
 
-				p := newCompactionPicker(vers, opts, nil, sizes)
+				p := newCompactionPicker(vers, opts, nil, sizes, diskAvailBytesInf)
 				return fmt.Sprintf("%d\n", p.estimatedCompactionDebt(0))
 
 			default:
@@ -571,9 +575,10 @@ func TestCompactionPickerL0(t *testing.T) {
 			vs.versions.Init(nil)
 			vs.append(version)
 			picker = &compactionPickerByScore{
-				opts:      opts,
-				vers:      version,
-				baseLevel: baseLevel,
+				opts:           opts,
+				vers:           version,
+				baseLevel:      baseLevel,
+				diskAvailBytes: diskAvailBytesInf,
 			}
 			vs.picker = picker
 			for l := 0; l < len(picker.levelSizes); l++ {
@@ -634,11 +639,6 @@ func TestCompactionPickerL0(t *testing.T) {
 				return "no compaction"
 			}
 			return fmt.Sprintf("%d", pc.maxOverlapBytes)
-		case "max-expanded-bytes":
-			if pc == nil {
-				return "no compaction"
-			}
-			return fmt.Sprintf("%d", pc.maxExpandedBytes)
 		}
 		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
 	})
@@ -797,7 +797,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 					sizes[l] += int64(m.Size)
 				})
 			}
-			picker = newCompactionPicker(version, opts, inProgressCompactions, sizes).(*compactionPickerByScore)
+			picker = newCompactionPicker(version, opts, inProgressCompactions, sizes, diskAvailBytesInf).(*compactionPickerByScore)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -936,7 +936,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 				})
 			}
 			var inProgressCompactions []compactionInfo
-			picker = newCompactionPicker(vers, opts, inProgressCompactions, sizes).(*compactionPickerByScore)
+			picker = newCompactionPicker(vers, opts, inProgressCompactions, sizes, diskAvailBytesInf).(*compactionPickerByScore)
 			vs.picker = picker
 
 			var buf bytes.Buffer
@@ -1007,9 +1007,17 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 	opts.EnsureDefaults()
 	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(strings.TrimSpace(s), " ")
-		compacting := false
-		if len(parts) == 2 {
-			compacting = parts[1] == "compacting"
+		var fileSize uint64
+		var compacting bool
+		for _, part := range parts {
+			switch {
+			case part == "compacting":
+				compacting = true
+			case strings.HasPrefix(part, "size="):
+				v, err := strconv.ParseUint(strings.TrimPrefix(part, "size="), 10, 64)
+				require.NoError(t, err)
+				fileSize = v
+			}
 		}
 		tableParts := strings.Split(parts[0], "-")
 		if len(tableParts) != 2 {
@@ -1019,6 +1027,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			Smallest:   base.ParseInternalKey(strings.TrimSpace(tableParts[0])),
 			Largest:    base.ParseInternalKey(strings.TrimSpace(tableParts[1])),
 			Compacting: compacting,
+			Size:       fileSize,
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
@@ -1029,14 +1038,24 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 		func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "setup-inputs":
-				if len(d.CmdArgs) != 2 {
-					return "setup-inputs <start> <end>"
+				var availBytes uint64 = math.MaxUint64
+				args := d.CmdArgs
+
+				if len(args) > 0 && args[0].Key == "avail-bytes" {
+					require.Equal(t, 1, len(args[0].Vals))
+					var err error
+					availBytes, err = strconv.ParseUint(args[0].Vals[0], 10, 64)
+					require.NoError(t, err)
+					args = args[1:]
+				}
+
+				if len(args) != 2 {
+					return "setup-inputs [avail-bytes=XXX] <start> <end>"
 				}
 
 				pc := &pickedCompaction{
-					cmp:              DefaultComparer.Compare,
-					inputs:           []compactionLevel{{level: -1}, {level: -1}},
-					maxExpandedBytes: 1 << 30,
+					cmp:    DefaultComparer.Compare,
+					inputs: []compactionLevel{{level: -1}, {level: -1}},
 				}
 				pc.startLevel, pc.outputLevel = &pc.inputs[0], &pc.inputs[1]
 				var currentLevel int
@@ -1076,10 +1095,10 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				}
 				pc.version = newVersion(opts, files)
 				pc.startLevel.files = pc.version.Overlaps(pc.startLevel.level, pc.cmp,
-					[]byte(d.CmdArgs[0].String()), []byte(d.CmdArgs[1].String()))
+					[]byte(args[0].String()), []byte(args[1].String()))
 
 				var isCompacting bool
-				if !pc.setupInputs() {
+				if !pc.setupInputs(opts, availBytes) {
 					isCompacting = true
 				}
 
@@ -1262,7 +1281,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 				sizes[l] = int64(slice.SizeSum())
 			}
 			var inProgressCompactions []compactionInfo
-			picker = newCompactionPicker(vers, opts, inProgressCompactions, sizes).(*compactionPickerByScore)
+			picker = newCompactionPicker(vers, opts, inProgressCompactions, sizes, diskAvailBytesInf).(*compactionPickerByScore)
 			vs.picker = picker
 
 			var buf bytes.Buffer
