@@ -1,0 +1,58 @@
+name: Test
+on:
+  pull_request:
+  push:
+    branches: [master]
+jobs:
+  test:
+    name: go${{ matrix.go }}-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        go: [1.14, 1.15, 1.16]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+        # Only test go1.14 and go1.15 on linux.
+        exclude:
+        - go: 1.14
+          os: macos-latest
+        - go: 1.14
+          os: windows-latest
+        - go: 1.15
+          os: macos-latest
+        - go: 1.15
+          os: windows-latest
+
+    steps:
+    - name: Set up go${{ matrix.go }}
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go }}
+      id: go
+
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Get golint
+      run: go get -x -v golang.org/x/lint/golint
+
+    - name: Test
+      run: go test ./...
+
+    # Only run race tests on Linux
+    - name: Testrace
+      run: go test -race ./...
+      if: ${{ matrix.go == 1.16 && matrix.os == 'ubuntu-latest' }}
+
+    # Verify that go generate can compile the necessary binaries. We
+    # only need to do this on one job.
+    - name: Generate
+      run: go generate ./...
+      if: ${{ matrix.go == 1.16 && matrix.os == 'ubuntu-latest' }}
+
+    # Verify that we can build with GOOS=freebsd. We only need to do
+    # this on one job.
+    - name: Build (freebsd)
+      run: GOOS=freebsd go build ./...
+      if: ${{ matrix.go == 1.16 && matrix.os == 'ubuntu-latest' }}
