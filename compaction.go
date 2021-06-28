@@ -2331,14 +2331,6 @@ func (d *DB) runCompaction(
 			switch v := d.cmp(meta.Largest.UserKey, c.largest.UserKey); {
 			case v <= 0:
 				// Nothing to do.
-			case v == 0:
-				if meta.Largest.Trailer >= c.largest.Trailer {
-					break
-				}
-				if c.allowedZeroSeqNum && meta.Largest.SeqNum() == 0 {
-					break
-				}
-				fallthrough
 			case v > 0:
 				return errors.Errorf("pebble: compaction output grew beyond bounds of input: %s > %s",
 					meta.Largest.Pretty(d.opts.Comparer.FormatKey),
