@@ -241,6 +241,61 @@ func (w *histogramRegistry) Tick(fn func(histogramTick)) {
 	}
 }
 
+type testWithoutDB struct {
+	init func(wg *sync.WaitGroup)
+	tick func(elapsed time.Duration, i int)
+	done func(wg *sync.WaitGroup, elapsed time.Duration)
+}
+
+func runTestWithoutDB(t testWithoutDB) {
+	var wg sync.WaitGroup
+	t.init(&wg)
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	done := make(chan os.Signal, 3)
+	workersDone := make(chan struct{})
+	signal.Notify(done, os.Interrupt)
+
+	go func() {
+		wg.Wait()
+		close(workersDone)
+	}()
+
+	if duration > 0 {
+		go func() {
+			time.Sleep(duration)
+			done <- syscall.Signal(0)
+		}()
+	}
+
+	stopProf := startCPUProfile()
+	defer stopProf()
+
+	start := time.Now()
+	for i := 0; ; i++ {
+		select {
+		case <-ticker.C:
+			if workersDone != nil {
+				t.tick(time.Since(start), i)
+			}
+
+		case <-workersDone:
+			workersDone = nil
+			t.done(&wg, time.Since(start))
+			return
+
+		case sig := <-done:
+			fmt.Println("operating system is killing the op.", sig)
+			if workersDone != nil {
+				t.done(&wg, time.Since(start))
+			}
+			return
+		}
+	}
+}
+
 type test struct {
 	init func(db DB, wg *sync.WaitGroup)
 	tick func(elapsed time.Duration, i int)

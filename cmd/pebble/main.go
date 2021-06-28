@@ -44,6 +44,7 @@ func main() {
 		syncCmd,
 		tombstoneCmd,
 		ycsbCmd,
+		fsBenchCmd,
 	)
 
 	rootCmd := &cobra.Command{
@@ -63,13 +64,15 @@ func main() {
 		cmd.Flags().Int64Var(
 			&cacheSize, "cache", 1<<30, "cache size")
 	}
+	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, ycsbCmd, fsBenchCmd} {
+		cmd.Flags().DurationVarP(
+			&duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
+	}
 	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
 		cmd.Flags().IntVarP(
 			&concurrency, "concurrency", "c", 1, "number of concurrent workers")
 		cmd.Flags().BoolVar(
 			&disableWAL, "disable-wal", false, "disable the WAL (voiding persistence guarantees)")
-		cmd.Flags().DurationVarP(
-			&duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
 		cmd.Flags().StringVarP(
 			&engineType, "engine", "e", "pebble", "engine type (pebble, badger)")
 		cmd.Flags().VarP(
