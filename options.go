@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -339,6 +340,16 @@ type Options struct {
 		// and disables read triggered compactions. The default is 1 << 4. which
 		// gets multiplied with a constant of 1 << 16 to yield 1 << 20 (1MB).
 		ReadSamplingMultiplier int64
+
+		// TableCacheShards is the number of shards per table cache.
+		// Reducing the value can reduce the number of idle goroutines per DB
+		// instance which can be useful in scenarios with a lot of DB instances
+		// and a large number of CPUs, but doing so can lead to higher contention
+		// in the table cache and reduced performance.
+		//
+		// The default value is the number of logical CPUs, which can be
+		// limited by runtime.GOMAXPROCS.
+		TableCacheShards int
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -602,6 +613,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.ReadSamplingMultiplier == 0 {
 		o.Experimental.ReadSamplingMultiplier = 1 << 4
 	}
+	if o.Experimental.TableCacheShards <= 0 {
+		o.Experimental.TableCacheShards = runtime.GOMAXPROCS(0)
+	}
 
 	o.initMaps()
 	return o
@@ -688,6 +702,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  read_compaction_rate=%d\n", o.Experimental.ReadCompactionRate)
 	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
 	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", o.private.strictWALTail)
+	fmt.Fprintf(&buf, "  table_cache_shards=%d\n", o.Experimental.TableCacheShards)
 	fmt.Fprintf(&buf, "  table_property_collectors=[")
 	for i := range o.TablePropertyCollectors {
 		if i > 0 {
@@ -886,6 +901,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.Experimental.ReadCompactionRate, err = strconv.ParseInt(value, 10, 64)
 			case "read_sampling_multiplier":
 				o.Experimental.ReadSamplingMultiplier, err = strconv.ParseInt(value, 10, 64)
+			case "table_cache_shards":
+				o.Experimental.TableCacheShards, err = strconv.Atoi(value)
 			case "table_format":
 				switch value {
 				case "leveldb":
