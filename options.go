@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -233,6 +234,9 @@ type Options struct {
 	//
 	// The default cache size is 8 MB.
 	Cache *cache.Cache
+
+	// CacheShards is the number of shards per table cache
+	CacheShards int
 
 	// Cleaner cleans obsolete files.
 	//
@@ -518,6 +522,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.BytesPerSync <= 0 {
 		o.BytesPerSync = 512 << 10 // 512 KB
 	}
+	if o.CacheShards <= 0 {
+		o.CacheShards = runtime.GOMAXPROCS(0)
+	}
 	if o.Cleaner == nil {
 		o.Cleaner = DeleteCleaner{}
 	}
@@ -666,6 +673,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "[Options]\n")
 	fmt.Fprintf(&buf, "  bytes_per_sync=%d\n", o.BytesPerSync)
 	fmt.Fprintf(&buf, "  cache_size=%d\n", cacheSize)
+	fmt.Fprintf(&buf, "  cache_shards=%d\n", o.CacheShards)
 	fmt.Fprintf(&buf, "  cleaner=%s\n", o.Cleaner)
 	fmt.Fprintf(&buf, "  compaction_debt_concurrency=%d\n", o.Experimental.CompactionDebtConcurrency)
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
@@ -815,6 +823,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				}
 				// We avoid calling cache.New in parsing because it makes it
 				// too easy to leak a cache.
+			case "cache_shards":
+				o.CacheShards, err = strconv.Atoi(value)
 			case "cleaner":
 				switch value {
 				case "archive":
