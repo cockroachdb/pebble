@@ -40,7 +40,7 @@ zmemtbl         1   256 K
 
 disk-usage
 ----
-1.8 K
+1.9 K
 
 batch
 set b 2
@@ -180,4 +180,4 @@ zmemtbl         0     0 B
 
 disk-usage
 ----
-1.9 K
+2.0 K
