@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -554,7 +556,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 						require.NoError(t, w.Close())
 					}
 
-					// Load the layout so that we no the location of the data blocks.
+					// Load the layout so that we know the location of the data blocks.
 					var layout *Layout
 					{
 						f, err := mem.Open("test")
@@ -808,6 +810,289 @@ func TestValidateBlockChecksums(t *testing.T) {
 				testFn(t, file, tc.corruptionLocations)
 			})
 		}
+	}
+}
+
+type mockCorruptionReporter struct {
+	sync.Mutex
+	cond sync.Cond
+
+	lastSmallest, lastLargest []byte
+}
+
+func (m *mockCorruptionReporter) reset() {
+	m.Lock()
+	m.cond.L = m
+	m.lastSmallest = nil
+	m.lastLargest = nil
+	m.Unlock()
+}
+
+func (m *mockCorruptionReporter) ReportCorruption(smallest, largest []byte) {
+	m.Lock()
+	m.lastSmallest = smallest
+	m.lastLargest = largest
+	m.cond.Broadcast()
+	m.Unlock()
+}
+
+func TestDataBlockCorruptionReporting(t *testing.T) {
+	for _, twoLevelIndex := range []bool{false, true} {
+		t.Run(fmt.Sprintf("two-level-index=%t", twoLevelIndex), func(t *testing.T) {
+			mem := vfs.NewMem()
+			corruptionReporter := &mockCorruptionReporter{}
+			corruptionReporter.reset()
+			var smallest, largest []byte
+			var keys [5][]byte
+
+			{
+				// Create an sstable with 3 data blocks.
+				f, err := mem.Create("test")
+				require.NoError(t, err)
+
+				const blockSize = 32
+				indexBlockSize := 4096
+				if twoLevelIndex {
+					indexBlockSize = 1
+				}
+
+				w := NewWriter(f, WriterOptions{
+					BlockSize:      blockSize,
+					IndexBlockSize: indexBlockSize,
+					Checksum:       ChecksumTypeCRC32c,
+				})
+				keys[0] = bytes.Repeat([]byte("a"), blockSize)
+				keys[1] = bytes.Repeat([]byte("b"), blockSize)
+				keys[2] = bytes.Repeat([]byte("c"), blockSize)
+				keys[3] = bytes.Repeat([]byte("d"), blockSize)
+				keys[4] = bytes.Repeat([]byte("e"), blockSize)
+				smallest = keys[0]
+				largest = keys[4]
+				for _, key := range keys {
+					require.NoError(t, w.Set(key, nil))
+				}
+				require.NoError(t, w.Close())
+			}
+
+			// Load the layout so that we know the location of the data blocks.
+			var layout *Layout
+			{
+				f, err := mem.Open("test")
+				require.NoError(t, err)
+
+				corruptionReporter.reset()
+				r, err := NewReader(f, ReaderOptions{}, CorruptionReportingOpt{
+					CR:       corruptionReporter,
+					FileMeta: &manifest.FileMetadata{
+						Smallest: manifest.InternalKey{UserKey: smallest},
+						Largest:  manifest.InternalKey{UserKey: largest},
+					},
+				})
+				require.NoError(t, err)
+				layout, err = r.Layout()
+				require.NoError(t, err)
+				require.EqualValues(t, len(layout.Data), 5)
+				require.NoError(t, r.Close())
+				time.Sleep(500 * time.Millisecond)
+				corruptionReporter.Lock()
+				require.Nil(t, corruptionReporter.lastSmallest)
+				corruptionReporter.Unlock()
+			}
+
+			for i, bh := range layout.Data {
+				expectedSmallest := smallest
+				expectedLargest := largest
+				if i > 1 {
+					expectedSmallest = keys[i-1]
+				}
+				if i < 3 {
+					expectedLargest = keys[i+1]
+				}
+				// Read the sstable and corrupt the first byte in the target data
+				// block.
+				orig, err := mem.Open("test")
+				require.NoError(t, err)
+				data, err := ioutil.ReadAll(orig)
+				require.NoError(t, err)
+				require.NoError(t, orig.Close())
+
+				// Corrupt the first byte in the block.
+				data[bh.Offset] ^= 0xff
+
+				corrupted, err := mem.Create("corrupted")
+				require.NoError(t, err)
+				_, err = corrupted.Write(data)
+				require.NoError(t, err)
+				require.NoError(t, corrupted.Close())
+
+				// Verify that we encounter a checksum mismatch error while iterating
+				// over the sstable.
+				corrupted, err = mem.Open("corrupted")
+				require.NoError(t, err)
+
+				corruptionReporter.reset()
+				r, err := NewReader(corrupted, ReaderOptions{}, CorruptionReportingOpt{
+					CR:       corruptionReporter,
+					FileMeta: &manifest.FileMetadata{
+						Smallest: manifest.InternalKey{UserKey: smallest},
+						Largest:  manifest.InternalKey{UserKey: largest},
+					},
+				})
+				require.NoError(t, err)
+
+				iter, err := r.NewIter(nil, nil)
+				require.NoError(t, err)
+				for k, _ := iter.First(); k != nil; k, _ = iter.Next() {
+				}
+				require.Regexp(t, `checksum mismatch`, iter.Error())
+				require.Regexp(t, `checksum mismatch`, iter.Close())
+				timeout := time.After(2 * time.Second)
+				for {
+					time.Sleep(100 * time.Millisecond)
+					r.fileMeta.Mu.Lock()
+					if !r.fileMeta.Mu.CorruptSpans.Empty() {
+						r.fileMeta.Mu.Unlock()
+						break
+					}
+					r.fileMeta.Mu.Unlock()
+					select {
+					case <-timeout:
+						t.Fatal("did not return a corrupt span before timeout")
+						break
+					}
+				}
+				corruptionReporter.Lock()
+				if corruptionReporter.lastSmallest == nil {
+					corruptionReporter.cond.Wait()
+				}
+				require.Equal(t, expectedSmallest, corruptionReporter.lastSmallest, "when checking block %d", i)
+				require.Equal(t, expectedLargest, corruptionReporter.lastLargest, "when checking block %d", i)
+				corruptionReporter.Unlock()
+
+				require.NoError(t, r.Close())
+			}
+		})
+	}
+}
+
+func TestReaderCorruptionReporting(t *testing.T) {
+	for _, twoLevelIndex := range []bool{false, true} {
+		t.Run(fmt.Sprintf("two-level-index=%t", twoLevelIndex), func(t *testing.T) {
+			mem := vfs.NewMem()
+			corruptionReporter := &mockCorruptionReporter{}
+			corruptionReporter.reset()
+			var smallest, largest []byte
+
+			{
+				// Create an sstable with 3 data blocks.
+				f, err := mem.Create("test")
+				require.NoError(t, err)
+
+				const blockSize = 32
+				indexBlockSize := 4096
+				if twoLevelIndex {
+					indexBlockSize = 1
+				}
+
+				w := NewWriter(f, WriterOptions{
+					BlockSize:      blockSize,
+					IndexBlockSize: indexBlockSize,
+					Checksum:       ChecksumTypeCRC32c,
+				})
+				smallest = bytes.Repeat([]byte("a"), blockSize)
+				largest = bytes.Repeat([]byte("e"), blockSize)
+				require.NoError(t, w.Set(smallest, nil))
+				require.NoError(t, w.Set(bytes.Repeat([]byte("b"), blockSize), nil))
+				require.NoError(t, w.Set(bytes.Repeat([]byte("c"), blockSize), nil))
+				require.NoError(t, w.Set(bytes.Repeat([]byte("d"), blockSize), nil))
+				require.NoError(t, w.Set(largest, nil))
+				require.NoError(t, w.Close())
+			}
+
+			// Load the layout so that we know the location of the data blocks.
+			var layout *Layout
+			{
+				f, err := mem.Open("test")
+				require.NoError(t, err)
+
+				corruptionReporter.reset()
+				r, err := NewReader(f, ReaderOptions{}, CorruptionReportingOpt{
+					CR:       corruptionReporter,
+					FileMeta: &manifest.FileMetadata{
+						Smallest: manifest.InternalKey{UserKey: smallest},
+						Largest:  manifest.InternalKey{UserKey: largest},
+					},
+				})
+				require.NoError(t, err)
+				defer r.Close()
+				layout, err = r.Layout()
+				require.NoError(t, err)
+				require.EqualValues(t, len(layout.Data), 5)
+				corruptionReporter.Lock()
+				require.Nil(t, corruptionReporter.lastSmallest)
+				corruptionReporter.Unlock()
+			}
+
+			checkCorruptionInBlock := func(bh BlockHandle) {
+				// Read the sstable and corrupt the first byte in the target
+				// block.
+				orig, err := mem.Open("test")
+				require.NoError(t, err)
+				data, err := ioutil.ReadAll(orig)
+				require.NoError(t, err)
+				require.NoError(t, orig.Close())
+
+				// Corrupt the first byte in the block.
+				data[bh.Offset] ^= 0xff
+
+				corrupted, err := mem.Create("corrupted")
+				require.NoError(t, err)
+				_, err = corrupted.Write(data)
+				require.NoError(t, err)
+				require.NoError(t, corrupted.Close())
+
+				// Verify that we encounter a checksum mismatch error while iterating
+				// over the sstable.
+				corrupted, err = mem.Open("corrupted")
+				require.NoError(t, err)
+
+				r, err := NewReader(corrupted, ReaderOptions{}, CorruptionReportingOpt{
+					CR:       corruptionReporter,
+					FileMeta: &manifest.FileMetadata{
+						Smallest: manifest.InternalKey{UserKey: smallest},
+						Largest:  manifest.InternalKey{UserKey: largest},
+					},
+				})
+				if err == nil {
+					defer r.Close()
+
+					var iter Iterator
+					iter, err = r.NewIter(nil, nil)
+					if err == nil {
+						defer iter.Close()
+						for k, _ := iter.First(); k != nil; k, _ = iter.Next() {
+						}
+						err = iter.Error()
+					}
+				}
+				require.Error(t, err)
+				corruptionReporter.Lock()
+				if corruptionReporter.lastSmallest == nil {
+					corruptionReporter.cond.Wait()
+				}
+				require.Equal(t, smallest, corruptionReporter.lastSmallest)
+				require.Equal(t, largest, corruptionReporter.lastLargest)
+				corruptionReporter.Unlock()
+				corruptionReporter.reset()
+			}
+
+			for _, bh := range layout.Index {
+				checkCorruptionInBlock(bh)
+			}
+			checkCorruptionInBlock(layout.Footer)
+			checkCorruptionInBlock(layout.Properties)
+			checkCorruptionInBlock(layout.MetaIndex)
+		})
 	}
 }
 
