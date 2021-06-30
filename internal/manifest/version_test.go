@@ -418,7 +418,7 @@ func TestVersionUnref(t *testing.T) {
 func TestCheckOrdering(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	fmtKey := base.DefaultComparer.FormatKey
-	parseMeta := func(s string) FileMetadata {
+	parseMeta := func(s string) *FileMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
@@ -429,7 +429,7 @@ func TestCheckOrdering(t *testing.T) {
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
-		return m
+		return &m
 	}
 
 	datadriven.RunTest(t, "testdata/version_check_ordering",
@@ -456,7 +456,7 @@ func TestCheckOrdering(t *testing.T) {
 						meta := parseMeta(data)
 						meta.FileNum = fileNum
 						fileNum++
-						*files = append(*files, &meta)
+						*files = append(*files, meta)
 					}
 				}
 

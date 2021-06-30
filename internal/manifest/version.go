@@ -76,6 +76,12 @@ type FileMetadata struct {
 		// in pebble.Iterator after every after every positioning operation
 		// that returns a user key (eg. Next, Prev, SeekGE, SeekLT, etc).
 		AllowedSeeks int64
+
+		// IsCorrupt is used to determine if this file has known instances
+		// of corruption. If non-zero, Mu.CorruptSpans is either already
+		// populated or will soon be populated with all spans of corrupt
+		// user keys in this sstable.
+		IsCorrupt int32
 	}
 
 	// Reference count for the file: incremented when a file is added to a
@@ -101,6 +107,19 @@ type FileMetadata struct {
 	Compacting bool
 	// Stats describe table statistics. Protected by DB.mu.
 	Stats TableStats
+	// Fields protected by a Mutex.
+	Mu struct {
+		sync.Mutex
+
+		// CorruptSpans is a span of all keys found to be corrupt in this file.
+		// This field is protected by a mutex as it is expected to be used in
+		// compaction logic when special-casing deletion of corrupt spans of
+		// keys.
+		//
+		// TODO(bilal): Change this comment after compactions are able to delete
+		// corrupt spans.
+		CorruptSpans Spans
+	}
 	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
 	// pick L0 compactions.
 	//
