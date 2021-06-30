@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"sort"
 
 	"github.com/cockroachdb/pebble"
@@ -60,9 +61,10 @@ type lsmT struct {
 	opts      *pebble.Options
 	comparers sstable.Comparers
 
-	fmtKey keyFormatter
-	embed  bool
-	pretty bool
+	fmtKey    keyFormatter
+	embed     bool
+	pretty    bool
+	editCount int
 
 	cmp    *base.Comparer
 	state  lsmState
@@ -89,6 +91,7 @@ Visualize the evolution of an LSM from the version edits in a MANIFEST.
 	l.Root.Flags().Var(&l.fmtKey, "key", "key formatter")
 	l.Root.Flags().BoolVar(&l.embed, "embed", true, "embed javascript in HTML (disable for development)")
 	l.Root.Flags().BoolVar(&l.pretty, "pretty", false, "pretty JSON output")
+	l.Root.Flags().IntVar(&l.editCount, "edit-count", math.MaxInt64, "count of edits to include in visualization")
 	return l
 }
 
@@ -97,6 +100,11 @@ func (l *lsmT) runLSM(cmd *cobra.Command, args []string) {
 	if edits == nil {
 		return
 	}
+
+	if l.editCount < len(edits) {
+		edits = edits[:l.editCount]
+	}
+
 	l.buildKeys(edits)
 	l.buildEdits(edits)
 	w := l.Root.OutOrStdout()
