@@ -552,7 +552,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 						require.NoError(t, w.Close())
 					}
 
-					// Load the layout so that we no the location of the data blocks.
+					// Load the layout so that we know the location of the data blocks.
 					var layout *Layout
 					{
 						f, err := mem.Open("test")
@@ -610,6 +610,270 @@ func TestReaderChecksumErrors(t *testing.T) {
 					}
 				})
 			}
+		})
+	}
+}
+
+type mockCorruptionReporter struct {
+	lastSmallest, lastLargest []byte
+}
+
+func (m *mockCorruptionReporter) reset() {
+	m.lastSmallest = nil
+	m.lastLargest = nil
+}
+
+func (m *mockCorruptionReporter) ReportCorruption(smallest, largest []byte) {
+	m.lastSmallest = smallest
+	m.lastLargest = largest
+}
+
+func TestDataBlockCorruptionReporting(t *testing.T) {
+	for _, twoLevelIndex := range []bool{false, true} {
+		t.Run(fmt.Sprintf("two-level-index=%t", twoLevelIndex), func(t *testing.T) {
+			mem := vfs.NewMem()
+			corruptionReporter := &mockCorruptionReporter{}
+			var smallest, largest []byte
+			var keys [5][]byte
+
+			{
+				// Create an sstable with 3 data blocks.
+				f, err := mem.Create("test")
+				require.NoError(t, err)
+
+				const blockSize = 32
+				indexBlockSize := 4096
+				if twoLevelIndex {
+					indexBlockSize = 1
+				}
+
+				w := NewWriter(f, WriterOptions{
+					BlockSize:      blockSize,
+					IndexBlockSize: indexBlockSize,
+					Checksum:       ChecksumTypeCRC32c,
+				})
+				keys[0] = bytes.Repeat([]byte("a"), blockSize)
+				keys[1] = bytes.Repeat([]byte("b"), blockSize)
+				keys[2] = bytes.Repeat([]byte("c"), blockSize)
+				keys[3] = bytes.Repeat([]byte("d"), blockSize)
+				keys[4] = bytes.Repeat([]byte("e"), blockSize)
+				smallest = keys[0]
+				largest = keys[4]
+				for _, key := range keys {
+					require.NoError(t, w.Set(key, nil))
+				}
+				require.NoError(t, w.Close())
+			}
+
+			// Load the layout so that we know the location of the data blocks.
+			var layout *Layout
+			{
+				f, err := mem.Open("test")
+				require.NoError(t, err)
+
+				corruptionReporter.reset()
+				r, err := NewReader(f, ReaderOptions{}, CorruptionReportingOpt{
+					CR:       corruptionReporter,
+					Smallest: smallest,
+					Largest:  largest,
+				})
+				require.NoError(t, err)
+				layout, err = r.Layout()
+				require.NoError(t, err)
+				require.EqualValues(t, len(layout.Data), 5)
+				require.NoError(t, r.Close())
+				require.Nil(t, corruptionReporter.lastSmallest)
+			}
+
+			for i, bh := range layout.Data {
+				expectedSmallest := smallest
+				expectedLargest := largest
+				if !twoLevelIndex {
+					// Tighter determination of corrupt bounds fails around
+					// index block boundaries with two level indexes, and falls
+					// back to reporting the entire SSTable as corrupt.
+					if i > 1 {
+						expectedSmallest = keys[i-1]
+					}
+					if i < 3 {
+						expectedLargest = keys[i+1]
+					}
+				}
+				// Read the sstable and corrupt the first byte in the target data
+				// block.
+				orig, err := mem.Open("test")
+				require.NoError(t, err)
+				data, err := ioutil.ReadAll(orig)
+				require.NoError(t, err)
+				require.NoError(t, orig.Close())
+
+				// Corrupt the first byte in the block.
+				data[bh.Offset] ^= 0xff
+
+				corrupted, err := mem.Create("corrupted")
+				require.NoError(t, err)
+				_, err = corrupted.Write(data)
+				require.NoError(t, err)
+				require.NoError(t, corrupted.Close())
+
+				// Verify that we encounter a checksum mismatch error while iterating
+				// over the sstable.
+				corrupted, err = mem.Open("corrupted")
+				require.NoError(t, err)
+
+				r, err := NewReader(corrupted, ReaderOptions{}, CorruptionReportingOpt{
+					CR:       corruptionReporter,
+					Smallest: smallest,
+					Largest:  largest,
+				})
+				require.NoError(t, err)
+
+				iter, err := r.NewIter(nil, nil)
+				require.NoError(t, err)
+				for k, _ := iter.First(); k != nil; k, _ = iter.Next() {
+				}
+				require.Regexp(t, `checksum mismatch`, iter.Error())
+				require.Regexp(t, `checksum mismatch`, iter.Close())
+				require.Equal(t, expectedSmallest, corruptionReporter.lastSmallest)
+				require.Equal(t, expectedLargest, corruptionReporter.lastLargest)
+				corruptionReporter.reset()
+
+				iter, err = r.NewIter(nil, nil)
+				require.NoError(t, err)
+				for k, _ := iter.Last(); k != nil; k, _ = iter.Prev() {
+				}
+				require.Regexp(t, `checksum mismatch`, iter.Error())
+				require.Regexp(t, `checksum mismatch`, iter.Close())
+				require.Equal(t, expectedSmallest, corruptionReporter.lastSmallest)
+				require.Equal(t, expectedLargest, corruptionReporter.lastLargest)
+				corruptionReporter.reset()
+
+				require.NoError(t, r.Close())
+			}
+		})
+	}
+}
+
+func TestReaderCorruptionReporting(t *testing.T) {
+	for _, twoLevelIndex := range []bool{false, true} {
+		t.Run(fmt.Sprintf("two-level-index=%t", twoLevelIndex), func(t *testing.T) {
+			mem := vfs.NewMem()
+			corruptionReporter := &mockCorruptionReporter{}
+			var smallest, largest []byte
+
+			{
+				// Create an sstable with 3 data blocks.
+				f, err := mem.Create("test")
+				require.NoError(t, err)
+
+				const blockSize = 32
+				indexBlockSize := 4096
+				if twoLevelIndex {
+					indexBlockSize = 1
+				}
+
+				w := NewWriter(f, WriterOptions{
+					BlockSize:      blockSize,
+					IndexBlockSize: indexBlockSize,
+					Checksum:       ChecksumTypeCRC32c,
+				})
+				smallest = bytes.Repeat([]byte("a"), blockSize)
+				largest = bytes.Repeat([]byte("e"), blockSize)
+				require.NoError(t, w.Set(smallest, nil))
+				require.NoError(t, w.Set(bytes.Repeat([]byte("b"), blockSize), nil))
+				require.NoError(t, w.Set(bytes.Repeat([]byte("c"), blockSize), nil))
+				require.NoError(t, w.Set(bytes.Repeat([]byte("d"), blockSize), nil))
+				require.NoError(t, w.Set(largest, nil))
+				require.NoError(t, w.Close())
+			}
+
+			// Load the layout so that we know the location of the data blocks.
+			var layout *Layout
+			{
+				f, err := mem.Open("test")
+				require.NoError(t, err)
+
+				corruptionReporter.reset()
+				r, err := NewReader(f, ReaderOptions{}, CorruptionReportingOpt{
+					CR:       corruptionReporter,
+					Smallest: smallest,
+					Largest:  largest,
+				})
+				require.NoError(t, err)
+				layout, err = r.Layout()
+				require.NoError(t, err)
+				require.EqualValues(t, len(layout.Data), 5)
+				require.NoError(t, r.Close())
+				require.Nil(t, corruptionReporter.lastSmallest)
+			}
+
+			checkCorruptionInBlock := func(bh BlockHandle) {
+				// Read the sstable and corrupt the first byte in the target
+				// block.
+				orig, err := mem.Open("test")
+				require.NoError(t, err)
+				data, err := ioutil.ReadAll(orig)
+				require.NoError(t, err)
+				require.NoError(t, orig.Close())
+
+				// Corrupt the first byte in the block.
+				data[bh.Offset] ^= 0xff
+
+				corrupted, err := mem.Create("corrupted")
+				require.NoError(t, err)
+				_, err = corrupted.Write(data)
+				require.NoError(t, err)
+				require.NoError(t, corrupted.Close())
+
+				// Verify that we encounter a checksum mismatch error while iterating
+				// over the sstable.
+				corrupted, err = mem.Open("corrupted")
+				require.NoError(t, err)
+
+				r, err := NewReader(corrupted, ReaderOptions{}, CorruptionReportingOpt{
+					CR:       corruptionReporter,
+					Smallest: smallest,
+					Largest:  largest,
+				})
+				if err == nil {
+					var iter Iterator
+					iter, err = r.NewIter(nil, nil)
+					if err == nil {
+						for k, _ := iter.First(); k != nil; k, _ = iter.Next() {
+						}
+						err = iter.Error()
+					}
+				}
+				require.Error(t, err)
+				require.Equal(t, smallest, corruptionReporter.lastSmallest)
+				require.Equal(t, largest, corruptionReporter.lastLargest)
+				corruptionReporter.reset()
+
+				err = nil
+				if r != nil {
+					var iter Iterator
+					iter, err = r.NewIter(nil, nil)
+					if err == nil {
+						for k, _ := iter.Last(); k != nil; k, _ = iter.Prev() {
+						}
+						err = iter.Error()
+					}
+					require.Error(t, err)
+					require.Equal(t, smallest, corruptionReporter.lastSmallest)
+					require.Equal(t, largest, corruptionReporter.lastLargest)
+					corruptionReporter.reset()
+
+					_ = r.Close()
+				}
+
+			}
+
+			for _, bh := range layout.Index {
+				checkCorruptionInBlock(bh)
+			}
+			checkCorruptionInBlock(layout.Footer)
+			checkCorruptionInBlock(layout.Properties)
+			checkCorruptionInBlock(layout.MetaIndex)
 		})
 	}
 }

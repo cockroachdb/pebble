@@ -287,21 +287,119 @@ func (i *singleLevelIterator) loadBlock() bool {
 	i.dataBH, n = decodeBlockHandle(v)
 	if n == 0 || n != len(v) {
 		i.err = errCorruptIndexEntry
+		i.reader.maybeReportCorruption()
 		return false
 	}
 	block, err := i.reader.readBlock(i.dataBH, nil /* transform */, &i.dataRS)
 	if err != nil {
+		if errors.Is(err, base.ErrCorruption) {
+			i.maybeReportDataBlockCorruption()
+		}
 		i.err = err
 		return false
 	}
 	i.err = i.data.initHandle(i.cmp, block, i.reader.Properties.GlobalSeqNum)
 	if i.err != nil {
+		if errors.Is(err, base.ErrCorruption) {
+			i.maybeReportDataBlockCorruption()
+		}
 		// The block is partially loaded, and we don't want it to appear valid.
 		i.data.invalidate()
 		return false
 	}
 	i.initBounds()
 	return true
+}
+
+func (i *singleLevelIterator) maybeReportDataBlockCorruption() {
+	if i.reader.corruptionRep == nil {
+		// No-op.
+		return
+	}
+
+	// Figure out user key corruption bounds. The fallback is to resort to the
+	// file's [smallest,largest] user keys in the file metadata. But since
+	// this corruption is in a data block, we can likely use nearby data blocks
+	// to find a narrower bound for corruption.
+	smallest := i.reader.smallest
+	largest := i.reader.largest
+
+	if !i.index.Valid() {
+		// Not a data block. Fall back to reporting the entire SST as corrupt.
+		i.reader.corruptionRep.ReportCorruption(smallest, largest)
+		return
+	}
+
+	_, v := i.index.Prev()
+	// If the iter is invalidated (eg. v == nil), leave `smallest` at the file
+	// bound.
+	if v != nil {
+		dataBH, n := decodeBlockHandle(v)
+		data := blockIter{}
+		defer data.Close()
+		if n == 0 || n != len(v) {
+			// Fall back to reporting the entire SST as corrupt.
+			i.index.Next()
+			i.reader.corruptionRep.ReportCorruption(smallest, largest)
+			return
+		}
+		block, err := i.reader.readBlock(dataBH, nil /* transform */, nil /* raState */)
+		if err != nil {
+			// Fall back to reporting the entire SST as corrupt.
+			i.index.Next()
+			i.reader.corruptionRep.ReportCorruption(smallest, largest)
+			return
+		}
+		i.err = data.initHandle(i.cmp, block, i.reader.Properties.GlobalSeqNum)
+		if i.err != nil {
+			// Fall back to reporting the entire SST as corrupt.
+			i.index.Next()
+			i.reader.corruptionRep.ReportCorruption(smallest, largest)
+			return
+		}
+		lastKey, _ := data.Last()
+		smallest = make([]byte, len(lastKey.UserKey))
+		copy(smallest, lastKey.UserKey)
+	}
+
+	i.index.Next()
+	_, v = i.index.Next()
+	if v == nil {
+		// Iterator invalidated.
+		i.index.Prev()
+		i.reader.corruptionRep.ReportCorruption(smallest, largest)
+		return
+	}
+	{
+		dataBH, n := decodeBlockHandle(v)
+		data := blockIter{}
+		defer data.Close()
+		if n == 0 || n != len(v) {
+			// Fall back to reporting the remainder of the SST as corrupt.
+			i.index.Prev()
+			i.reader.corruptionRep.ReportCorruption(smallest, largest)
+			return
+		}
+		block, err := i.reader.readBlock(dataBH, nil /* transform */, nil /* raState */)
+		if err != nil {
+			// Fall back to reporting the remainder of the SST as corrupt.
+			i.index.Prev()
+			i.reader.corruptionRep.ReportCorruption(smallest, largest)
+			return
+		}
+		i.err = data.initHandle(i.cmp, block, i.reader.Properties.GlobalSeqNum)
+		if i.err != nil {
+			// Fall back to reporting the remainder of the SST as corrupt.
+			i.index.Prev()
+			i.reader.corruptionRep.ReportCorruption(smallest, largest)
+			return
+		}
+		firstKey, _ := data.First()
+		largest = make([]byte, len(firstKey.UserKey))
+		copy(largest, firstKey.UserKey)
+	}
+	i.index.Prev()
+	i.reader.corruptionRep.ReportCorruption(smallest, largest)
 }
 
 func (i *singleLevelIterator) initBoundsForAlreadyLoadedBlock() {
@@ -956,15 +1054,22 @@ func (i *twoLevelIterator) loadIndex() bool {
 	}
 	h, n := decodeBlockHandle(i.topLevelIndex.Value())
 	if n == 0 || n != len(i.topLevelIndex.Value()) {
+		i.reader.maybeReportCorruption()
 		i.err = base.CorruptionErrorf("pebble/table: corrupt top level index entry")
 		return false
 	}
 	indexBlock, err := i.reader.readBlock(h, nil /* transform */, nil /* readaheadState */)
 	if err != nil {
+		if errors.Is(err, base.ErrCorruption) {
+			i.reader.maybeReportCorruption()
+		}
 		i.err = err
 		return false
 	}
 	i.err = i.index.initHandle(i.cmp, indexBlock, i.reader.Properties.GlobalSeqNum)
+	if i.err != nil && errors.Is(i.err, base.ErrCorruption) {
+		i.reader.maybeReportCorruption()
+	}
 	return i.err == nil
 }
 
@@ -983,6 +1088,9 @@ func (i *twoLevelIterator) init(r *Reader, lower, upper []byte) error {
 	i.cmp = r.Compare
 	err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum)
 	if err != nil {
+		if errors.Is(err, base.ErrCorruption) {
+			i.reader.maybeReportCorruption()
+		}
 		// blockIter.Close releases topLevelIndexH and always returns a nil error
 		_ = i.topLevelIndex.Close()
 		return err
@@ -1660,6 +1768,35 @@ func (f FileReopenOpt) readerApply(r *Reader) {
 	}
 }
 
+// CorruptionReporter is an interface for reporting sstable corruption.
+type CorruptionReporter interface {
+	// ReportCorruption reports an instance of sstable corruption. The sstable
+	// Reader will call this method before returning a CorruptionError if an
+	// instance of sstable corruption was detected. The reporter is expected
+	// to inform any callers to stop issuing more read requests over the
+	// user-key range [start, end], as those will return CorruptionErrors again.
+	// This method is also expected to be idempotent; multiple successive calls
+	// should be acceptable. A report of a wider key range after a report of
+	// a narrower range is also possible, as well as any arbitrary combination
+	// of a report of overlapping ranges.
+	ReportCorruption(start, end []byte)
+}
+
+// CorruptionReportingOpt is specified for any Readers that are connected to
+// a CorruptionReporter for reporting sstable corruption.
+type CorruptionReportingOpt struct {
+	CR                CorruptionReporter
+	Smallest, Largest []byte
+}
+
+func (c CorruptionReportingOpt) readerApply(r *Reader) {
+	r.corruptionRep = c.CR
+	r.smallest = c.Smallest
+	r.largest = c.Largest
+}
+
+func (CorruptionReportingOpt) preApply() {}
+
 // rawTombstonesOpt is a Reader open option for specifying that range
 // tombstones returned by Reader.NewRangeDelIter() should not be
 // fragmented. Used by debug tools to get a raw view of the tombstones
@@ -1703,6 +1840,8 @@ type Reader struct {
 	checksumType      ChecksumType
 	tableFilter       *tableFilterReader
 	Properties        Properties
+	corruptionRep     CorruptionReporter
+	smallest, largest []byte
 }
 
 // Close implements DB.Close, as documented in the pebble package.
@@ -1847,15 +1986,36 @@ func (r *Reader) NewRawRangeDelIter() (base.InternalIterator, error) {
 }
 
 func (r *Reader) readIndex() (cache.Handle, error) {
-	return r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */)
+	handle, err := r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */)
+	if err != nil {
+		if errors.Is(err, base.ErrCorruption) {
+			r.maybeReportCorruption()
+		}
+		return handle, err
+	}
+	return handle, nil
 }
 
 func (r *Reader) readFilter() (cache.Handle, error) {
-	return r.readBlock(r.filterBH, nil /* transform */, nil /* readaheadState */)
+	handle, err := r.readBlock(r.filterBH, nil /* transform */, nil /* readaheadState */)
+	if err != nil {
+		if errors.Is(err, base.ErrCorruption) {
+			r.maybeReportCorruption()
+		}
+		return handle, err
+	}
+	return handle, nil
 }
 
 func (r *Reader) readRangeDel() (cache.Handle, error) {
-	return r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadState */)
+	handle, err := r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadState */)
+	if err != nil {
+		if errors.Is(err, base.ErrCorruption) {
+			r.maybeReportCorruption()
+		}
+		return handle, err
+	}
+	return handle, nil
 }
 
 // readBlock reads and decompresses a block from disk into memory.
@@ -1965,6 +2125,18 @@ func (r *Reader) readBlock(
 	return h, nil
 }
 
+// maybeReportCorruption reports the entire sstable as corrupt to the corruption
+// reporter, if one exists. For use when corruption is in a part of the sstable
+// (eg. footer, index, or properties blocks) that makes finding a narrower bound
+// for corruption harder. For isolating data block corruption, see
+// singleLevelIterator.maybeReportDataBlockCorruption.
+func (r *Reader) maybeReportCorruption() {
+	if r.corruptionRep == nil {
+		return
+	}
+	r.corruptionRep.ReportCorruption(r.smallest, r.largest)
+}
+
 func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	// Convert v1 (RocksDB format) range-del blocks to v2 blocks on the fly. The
 	// v1 format range-del blocks have unfragmented and unsorted range
@@ -2011,12 +2183,16 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	b, err := r.readBlock(metaindexBH, nil /* transform */, nil /* readaheadState */)
 	if err != nil {
+		if errors.Is(err, base.ErrCorruption) {
+			r.maybeReportCorruption()
+		}
 		return err
 	}
 	data := b.Get()
 	defer b.Release()
 
 	if uint64(len(data)) != metaindexBH.Length {
+		r.maybeReportCorruption()
 		return base.CorruptionErrorf("pebble/table: unexpected metaindex block size: %d vs %d",
 			errors.Safe(len(data)), errors.Safe(metaindexBH.Length))
 	}
@@ -2030,6 +2206,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	for valid := i.First(); valid; valid = i.Next() {
 		bh, n := decodeBlockHandle(i.Value())
 		if n == 0 {
+			r.maybeReportCorruption()
 			return base.CorruptionErrorf("pebble/table: invalid table (bad filter block handle)")
 		}
 		meta[string(i.Key().UserKey)] = bh
@@ -2041,12 +2218,18 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	if bh, ok := meta[metaPropertiesName]; ok {
 		b, err = r.readBlock(bh, nil /* transform */, nil /* readaheadState */)
 		if err != nil {
+			if errors.Is(err, base.ErrCorruption) {
+				r.maybeReportCorruption()
+			}
 			return err
 		}
 		r.propertiesBH = bh
 		err := r.Properties.load(b.Get(), bh.Offset)
 		b.Release()
 		if err != nil {
+			if errors.Is(err, base.ErrCorruption) {
+				r.maybeReportCorruption()
+			}
 			return err
 		}
 	}
@@ -2076,6 +2259,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 				case TableFilter:
 					r.tableFilter = newTableFilterReader(fp)
 				default:
+					r.maybeReportCorruption()
 					return base.CorruptionErrorf("unknown filter type: %v", errors.Safe(t.ftype))
 				}
 
@@ -2301,6 +2485,9 @@ func NewReader(f ReadableFile, o ReaderOptions, extraOpts ...ReaderOption) (*Rea
 
 	footer, err := readFooter(f)
 	if err != nil {
+		if errors.Is(err, base.ErrCorruption) {
+			r.maybeReportCorruption()
+		}
 		r.err = err
 		return nil, r.Close()
 	}
