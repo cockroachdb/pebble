@@ -775,10 +775,6 @@ compact a-r L1
 3:
   000006:[q#6,SET-q#6,SET]
 
-
-# Test a case where the output ends one key after a grandparent limit is
-# crossed, but we couldn't have split outputs at that key due to the point
-# key before that having a zero seqnum.
 define target-file-sizes=(100, 100, 100)
 L1
   a.RANGEDEL.10:b
@@ -811,10 +807,61 @@ L4
 compact a-r L1
 ----
 2:
-  000010:[a#10,RANGEDEL-j#10,SET]
+  000010:[a#10,RANGEDEL-b#0,SET]
+  000011:[d#0,RANGEDEL-j#10,SET]
 3:
   000006:[c#6,SET-c#6,SET]
   000007:[c#5,SET-c#5,SET]
   000008:[c#4,SET-c#4,SET]
 4:
   000009:[a#0,SET-f#0,SET]
+
+# Test a snapshot that separates a range deletion from all the data that it
+# deletes. Ensure that we respect the target-file-size and split into multiple
+# outputs.
+
+define target-file-sizes=(1, 1, 1) snapshots=(14)
+L1
+  a.RANGEDEL.15:z
+  b.SET.11:foo
+  c.SET.11:foo
+L2
+  c.SET.0:foo
+  d.SET.0:foo
+----
+1:
+  000004:[a-z]
+2:
+  000005:[c-d]
+
+compact a-z L1
+----
+2:
+  000006:[a#15,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000007:[c#15,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000008:[d#15,RANGEDEL-z#72057594037927935,RANGEDEL]
+
+# Test an interaction between a range deletion that will be elided with
+# output splitting. Ensure that the output is still split (previous versions
+# of the code did not, because of intricacies around preventing a zero
+# sequence number in an output's largest key).
+
+define target-file-sizes=(1, 1, 1)
+L1
+  a.RANGEDEL.10:z
+  b.SET.11:foo
+  c.SET.11:foo
+L2
+  c.SET.0:foo
+  d.SET.0:foo
+----
+1:
+  000004:[a-z]
+2:
+  000005:[c-d]
+
+compact a-z L1
+----
+2:
+  000006:[b#0,SET-b#0,SET]
+  000007:[c#0,SET-c#0,SET]
