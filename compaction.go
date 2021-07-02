@@ -315,7 +315,7 @@ func (a *splitterGroup) onNewOutput(key *InternalKey) []byte {
 // the compaction output is at the boundary between two user keys (also
 // the boundary between atomic compaction units). Use this splitter to wrap
 // any splitters that don't guarantee user key splits (i.e. splitters that make
-// their determinatino in ways other than comparing the current key against a
+// their determination in ways other than comparing the current key against a
 // limit key.
 type userKeyChangeSplitter struct {
 	cmp                Compare
@@ -342,49 +342,6 @@ func (u *userKeyChangeSplitter) shouldSplitBefore(
 
 func (u *userKeyChangeSplitter) onNewOutput(key *InternalKey) []byte {
 	return u.splitter.onNewOutput(key)
-}
-
-// nonZeroSeqNumSplitter is a compactionOutputSplitter that takes in a child
-// splitter, and advises a split when 1) that child splitter advises a split,
-// and 2) the compaction output is at a point where the previous point sequence
-// number is nonzero.
-type nonZeroSeqNumSplitter struct {
-	c                    *compaction
-	splitter             compactionOutputSplitter
-	prevPointSeqNum      uint64
-	splitOnNonZeroSeqNum bool
-}
-
-func (n *nonZeroSeqNumSplitter) shouldSplitBefore(
-	key *InternalKey, tw *sstable.Writer,
-) compactionSplitSuggestion {
-	curSeqNum := key.SeqNum()
-	keyKind := key.Kind()
-	prevPointSeqNum := n.prevPointSeqNum
-	if keyKind != InternalKeyKindRangeDelete {
-		n.prevPointSeqNum = curSeqNum
-	}
-
-	if n.splitOnNonZeroSeqNum {
-		if prevPointSeqNum > 0 || n.c.rangeDelFrag.Empty() {
-			n.splitOnNonZeroSeqNum = false
-			return splitNow
-		}
-	} else if split := n.splitter.shouldSplitBefore(key, tw); split == splitNow {
-		userKeyChange := curSeqNum > prevPointSeqNum
-		if prevPointSeqNum > 0 || n.c.rangeDelFrag.Empty() || userKeyChange {
-			return splitNow
-		}
-		n.splitOnNonZeroSeqNum = true
-		return splitSoon
-	}
-	return noSplit
-}
-
-func (n *nonZeroSeqNumSplitter) onNewOutput(key *InternalKey) []byte {
-	n.prevPointSeqNum = InternalKeySeqNumMax
-	n.splitOnNonZeroSeqNum = false
-	return n.splitter.onNewOutput(key)
 }
 
 // compactionFile is a vfs.File wrapper that, on every write, updates a metric
@@ -951,7 +908,7 @@ func (c *compaction) errorOnUserKeyOverlap(ve *versionEdit) error {
 // snapshots requiring them to be kept. It performs this determination by
 // looking for an sstable which overlaps the bounds of the compaction at a
 // lower level in the LSM.
-func (c *compaction) allowZeroSeqNum(iter internalIterator) bool {
+func (c *compaction) allowZeroSeqNum() bool {
 	return c.elideRangeTombstone(c.smallest.UserKey, c.largest.UserKey)
 }
 
@@ -2060,7 +2017,7 @@ func (d *DB) runCompaction(
 	if err != nil {
 		return nil, pendingOutputs, err
 	}
-	c.allowedZeroSeqNum = c.allowZeroSeqNum(iiter)
+	c.allowedZeroSeqNum = c.allowZeroSeqNum()
 	iter := newCompactionIter(c.cmp, c.formatKey, d.merge, iiter, snapshots,
 		&c.rangeDelFrag, c.allowedZeroSeqNum, c.elideTombstone, c.elideRangeTombstone)
 
@@ -2365,27 +2322,11 @@ func (d *DB) runCompaction(
 	// we start off with splitters for file sizes, grandparent limits, and (for
 	// L0 splits) L0 limits, before wrapping them in an splitterGroup.
 	//
-	// There is a complication here: we can't split outputs where the largest
-	// key on the left side has a seqnum of zero. This limitation
-	// exists because a range tombstone which extends into the next sstable
-	// will cause the smallest key for the next sstable to have the same user
-	// key, but we need the two tables to be disjoint in key space. Consider
-	// the scenario:
-	//
-	//    a#RANGEDEL-c,3 b#SET,0
-	//
-	// If b#SET,0 is the last key added to an sstable, the range tombstone
-	// [b-c)#3 will extend into the next sstable. The boundary generation
-	// code in finishOutput() will compute the smallest key for that sstable
-	// as b#RANGEDEL,3 which sorts before b#SET,0. Normally we just adjust
-	// the seqnum of this key, but that isn't possible for seqnum 0. To ensure
-	// we only split where the previous point key has a zero seqnum, we wrap
-	// our splitters with a nonZeroSeqNumSplitter.
-	//
-	// Another case where we may not be able to switch SSTables right away is
-	// when we are splitting an L0 output. We do not split the same user key
-	// across different sstables within one flush, so the userKeyChangeSplitter
-	// ensures we are at a user key change boundary when doing a split.
+	// There is a complication here: We may not be able to switch SSTables
+	// right away is when we are splitting an L0 output. We do not split the
+	// same user key across different sstables within one flush, so the
+	// userKeyChangeSplitter ensures we are at a user key change boundary when
+	// doing a split.
 	outputSplitters := []compactionOutputSplitter{
 		&fileSizeSplitter{maxFileSize: c.maxOutputFileSize},
 		&grandparentLimitSplitter{c: c, ve: ve},
@@ -2404,18 +2345,6 @@ func (d *DB) runCompaction(
 	splitter = &splitterGroup{
 		cmp:       c.cmp,
 		splitters: outputSplitters,
-	}
-	// Compactions to L0 don't need nonzero last-point-key seqnums at split
-	// boundaries because when writing to L0, we are able to guarantee that
-	// the end key of tombstones will also be truncated (through the
-	// TruncateAndFlushTo call), and no user keys will
-	// be split between sstables. So a nonZeroSeqNumSplitter is unnecessary
-	// in that case.
-	if !splitL0Outputs {
-		splitter = &nonZeroSeqNumSplitter{
-			c:        c,
-			splitter: splitter,
-		}
 	}
 
 	// NB: we avoid calling maybeThrottle on a nilPacer because the cost of
@@ -2492,6 +2421,40 @@ func (d *DB) runCompaction(
 			prevPointSeqNum = key.SeqNum()
 		}
 
+		// We're ready to finish the output. We must take care to ensure we
+		// don't split outputs where the largest key on the left side has a
+		// seqnum of zero. This limitation exists because we need the two
+		// tables to be disjoint in key space. Consider the scenario:
+		//
+		//    a#RANGEDEL-c,3 b#SET,0
+		//
+		// If b#SET,0 is the last key added to an sstable, the range tombstone
+		// extends into the next sstable. If we let the first key of the next
+		// table be b#RANGEDEL,3, the boundary generation code in
+		// finishOutput() would compute the smallest key for that sstable as
+		// b#RANGEDEL,3 which sorts before b#SET,0. Normally we just adjust
+		// the seqnum of this key, but that isn't possible for seqnum 0. We
+		// avoid this problematic split point by adjusting limit, which
+		// determines the key we pass into (*rangedel.Fragmenter).FlushTo.
+		//
+		// If limit > last key added to the sstable: the pending tombstone
+		// will be truncated to a clean user key boundary.
+		//
+		// If limit == last key added to the sstable (this may happen due to
+		// file size limits or we ran out of keys):
+		//
+		//   If key != nil: the last key added to the sstable must not have a
+		//   zero sequence number, because we set limit = key.UserKey when we
+		//   decided to split, and there are no keys with the same user key
+		//   greater than the zero-sequence numbered key.
+		//
+		//	 If prevPointSeqNum != 0: There's no problem, because we'll always
+		//	 be able to adjust the next sstable's smallest boundary.
+		//
+		//   If prevPointSeqNum == 0: We flush all pending range tombstones to
+		//   the current table, ensuring that there are no future compaction
+		//   outputs. (See the TODO below.)
+		//
 		switch {
 		case key == nil && prevPointSeqNum == 0 && !c.rangeDelFrag.Empty():
 			// We ran out of keys and the last key added to the sstable has a zero
@@ -2500,6 +2463,11 @@ func (d *DB) runCompaction(
 			// in the loop above with range tombstones straddling sstables. Setting
 			// limit to nil ensures that we flush the entirety of the rangedel
 			// fragmenter when writing the last output.
+			//
+			// TODO(jackson): This case is only problematic if limit equals
+			// the last point key added. We also don't need to flush *all*
+			// sstables to the current sstable. We could flush up to the next
+			// grandparent limit greater than `limit` instead.
 			limit = nil
 		case key == nil && splitL0Outputs && !c.rangeDelFrag.Empty():
 			// We ran out of keys with flush splits enabled, and have remaining
