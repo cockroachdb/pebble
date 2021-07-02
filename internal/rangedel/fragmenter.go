@@ -89,6 +89,21 @@ type Fragmenter struct {
 	finished   bool
 }
 
+// MaxSeqNum returns the highest sequence number of a pending tombstone. If
+// there are no pending tombstones, MaxSeqNum returns zero.
+func (f *Fragmenter) MaxSeqNum() uint64 {
+	if f.finished {
+		return 0
+	}
+	var v uint64
+	for _, t := range f.pending {
+		if x := t.Start.SeqNum(); v < x {
+			v = x
+		}
+	}
+	return v
+}
+
 func (f *Fragmenter) checkInvariants(buf []Tombstone) {
 	for i := 1; i < len(buf); i++ {
 		if f.Cmp(buf[i].Start.UserKey, buf[i].End) >= 0 {

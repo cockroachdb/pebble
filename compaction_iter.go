@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"io"
+	"math"
 	"sort"
 
 	"github.com/cockroachdb/errors"
@@ -667,8 +668,22 @@ func (i *compactionIter) maybeZeroSeqnum(snapshotIdx int) {
 		return
 	}
 	if snapshotIdx > 0 {
-		// This is not the last snapshot
+		// This is not the last snapshot.
 		return
 	}
+
+	// If there are any range tombstones that would have dropped this key but
+	// were prevented by a snapshot, don't zero the sequence number.
+	//
+	// If we did, the non-zero sequence number splitter would prevent us from
+	// splitting the output table until the range tombstones end or we
+	// encounter a key that is not in the last snapshot stripe. In the worst
+	// case, this could create a single sstable spanning all of L6. The risk
+	// of creating an excessively large sstable outweighs the zero sequence
+	// number optimization, so we do not zero.
+	if i.rangeDelFrag.Deleted(i.key, math.MaxUint64) {
+		return
+	}
+
 	i.key.SetSeqNum(0)
 }
