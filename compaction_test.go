@@ -23,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -1919,7 +1918,6 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 					c.startLevel.level = -1
 
 					var startFiles, outputFiles []*fileMetadata
-					var iter internalIterator
 
 					switch {
 					case len(parts) == 1 && parts[0] == "flush":
@@ -1928,10 +1926,6 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						c.flushing = d.mu.mem.queue
 						d.mu.Unlock()
 
-						var err error
-						if iter, err = c.newInputIter(nil); err != nil {
-							return err.Error()
-						}
 					default:
 						for _, p := range parts {
 							level, meta := parseMeta(p)
@@ -1960,7 +1954,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 
 					c.inuseKeyRanges = nil
 					c.setupInuseKeyRanges()
-					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum(iter))
+					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum())
 				}
 				return buf.String()
 
@@ -2230,25 +2224,6 @@ func TestCompactionOutputSplitters(t *testing.T) {
 						cmp:      base.DefaultComparer.Compare,
 						splitter: child0,
 					}
-				case "nonzeroseqnum":
-					c := &compaction{
-						rangeDelFrag: rangedel.Fragmenter{
-							Cmp:    base.DefaultComparer.Compare,
-							Format: base.DefaultFormatter,
-							Emit:   func(fragmented []rangedel.Tombstone) {},
-						},
-					}
-					frag := &c.rangeDelFrag
-					if len(d.CmdArgs) >= 3 {
-						if d.CmdArgs[2].Key == "tombstone" {
-							// Add a tombstone so Empty() returns false.
-							frag.Add(base.ParseInternalKey("foo.RANGEDEL.10"), []byte("pan"))
-						}
-					}
-					*splitterToInit = &nonZeroSeqNumSplitter{
-						c:        c,
-						splitter: child0,
-					}
 				}
 				(*splitterToInit).onNewOutput(nil)
 			case "set-should-split":
@@ -2260,8 +2235,6 @@ func TestCompactionOutputSplitters(t *testing.T) {
 				switch d.CmdArgs[1].Key {
 				case "split-now":
 					val = splitNow
-				case "split-soon":
-					val = splitSoon
 				case "no-split":
 					val = noSplit
 				default:
