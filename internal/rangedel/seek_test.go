@@ -67,7 +67,7 @@ func TestSeek(t *testing.T) {
 	datadriven.RunTest(t, "testdata/seek", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
-			tombstones := buildTombstones(t, cmp, fmtKey, d.Input)
+			tombstones, _ := buildTombstones(t, cmp, fmtKey, d.Input)
 			iter.Iter = NewIter(cmp, tombstones)
 			return formatTombstones(tombstones)
 

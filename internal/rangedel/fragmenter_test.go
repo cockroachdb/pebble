@@ -34,8 +34,9 @@ func parseTombstone(t *testing.T, s string) Tombstone {
 
 func buildTombstones(
 	t *testing.T, cmp base.Compare, formatKey base.FormatKey, s string,
-) []Tombstone {
+) ([]Tombstone, []uint64) {
 	var tombstones []Tombstone
+	var maxSeqNums []uint64
 	f := &Fragmenter{
 		Cmp:    cmp,
 		Format: formatKey,
@@ -62,9 +63,10 @@ func buildTombstones(
 
 		t := parseTombstone(t, line)
 		f.Add(t.Start, t.End)
+		maxSeqNums = append(maxSeqNums, f.MaxSeqNum())
 	}
 	f.Finish()
-	return tombstones
+	return tombstones, maxSeqNums
 }
 
 func formatTombstones(tombstones []Tombstone) string {
@@ -112,6 +114,7 @@ func TestFragmenter(t *testing.T) {
 	}
 
 	var iter base.InternalIterator
+	var maxSeqNums []uint64
 
 	// Returns true if the specified <key,seq> pair is deleted at the specified
 	// read sequence number. Get ignores tombstones newer than the read sequence
@@ -132,10 +135,22 @@ func TestFragmenter(t *testing.T) {
 					}
 				}()
 
-				tombstones := buildTombstones(t, cmp, fmtKey, d.Input)
+				var tombstones []Tombstone
+				tombstones, maxSeqNums = buildTombstones(t, cmp, fmtKey, d.Input)
 				iter = NewIter(cmp, tombstones)
 				return formatTombstones(tombstones)
 			}()
+
+		case "max-seqnums":
+			var buf bytes.Buffer
+			for i, v := range maxSeqNums {
+				if i > 0 {
+					fmt.Fprint(&buf, ", ")
+				}
+				fmt.Fprintf(&buf, "%d", v)
+			}
+			fmt.Fprintln(&buf)
+			return buf.String()
 
 		case "get":
 			if len(d.CmdArgs) != 1 {
@@ -214,7 +229,7 @@ func TestFragmenterFlushTo(t *testing.T) {
 					}
 				}()
 
-				tombstones := buildTombstones(t, cmp, fmtKey, d.Input)
+				tombstones, _ := buildTombstones(t, cmp, fmtKey, d.Input)
 				return formatTombstones(tombstones)
 			}()
 
@@ -238,7 +253,7 @@ func TestFragmenterTruncateAndFlushTo(t *testing.T) {
 					}
 				}()
 
-				tombstones := buildTombstones(t, cmp, fmtKey, d.Input)
+				tombstones, _ := buildTombstones(t, cmp, fmtKey, d.Input)
 				return formatTombstones(tombstones)
 			}()
 

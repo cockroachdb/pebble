@@ -1164,3 +1164,51 @@ next
 a#3,15:c
 b#5,1:5[base]
 b#1,2:1
+
+
+# A snapshot preventing a tombstone's elision should also prevent zeroing
+# sequence numbers of covered keys.
+define
+a.RANGEDEL.3:b
+a.SET.1:v1
+ab.SET.1:v1
+b.SET.1:v1
+----
+
+iter allow-zero-seqnum=true snapshots=(2)
+first
+next
+next
+next
+tombstones
+----
+a#3,15:b
+a#1,1:v1
+ab#1,1:v1
+b#0,1:v1
+a-b#3
+.
+
+define
+a.RANGEDEL.4:c
+b.SET.2:v1
+d.RANGEDEL.5:f
+e.SET.1:v1
+----
+
+iter allow-zero-seqnum=true snapshots=(3)
+first
+next
+next
+next
+next
+tombstones
+----
+a#4,15:c
+b#2,1:v1
+d#5,15:f
+e#1,1:v1
+.
+a-c#4
+d-f#5
+.

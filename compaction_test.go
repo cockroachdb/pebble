@@ -2023,7 +2023,6 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 					c.startLevel.level = -1
 
 					var startFiles, outputFiles []*fileMetadata
-					var iter internalIterator
 
 					switch {
 					case len(parts) == 1 && parts[0] == "flush":
@@ -2032,10 +2031,6 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						c.flushing = d.mu.mem.queue
 						d.mu.Unlock()
 
-						var err error
-						if iter, err = c.newInputIter(nil); err != nil {
-							return err.Error()
-						}
 					default:
 						for _, p := range parts {
 							level, meta := parseMeta(p)
@@ -2064,7 +2059,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 
 					c.inuseKeyRanges = nil
 					c.setupInuseKeyRanges()
-					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum(iter))
+					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum())
 				}
 				return buf.String()
 

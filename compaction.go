@@ -315,7 +315,7 @@ func (a *splitterGroup) onNewOutput(key *InternalKey) []byte {
 // the compaction output is at the boundary between two user keys (also
 // the boundary between atomic compaction units). Use this splitter to wrap
 // any splitters that don't guarantee user key splits (i.e. splitters that make
-// their determinatino in ways other than comparing the current key against a
+// their determination in ways other than comparing the current key against a
 // limit key.
 type userKeyChangeSplitter struct {
 	cmp                Compare
@@ -349,10 +349,54 @@ func (u *userKeyChangeSplitter) onNewOutput(key *InternalKey) []byte {
 // and 2) the compaction output is at a point where the previous point sequence
 // number is nonzero.
 type nonZeroSeqNumSplitter struct {
-	c                    *compaction
-	splitter             compactionOutputSplitter
-	prevPointSeqNum      uint64
-	splitOnNonZeroSeqNum bool
+	c                      *compaction
+	splitter               compactionOutputSplitter
+	prevPointSeqNum        uint64
+	splitOnNonZeroSeqNum   bool
+	earliestSnapshotSeqNum uint64
+}
+
+// pendingRangeDelsEmpty returns true if there are no pending range deletions
+// in the fragmenter that will need to be added to the output sstable if we
+// split now.
+func (n *nonZeroSeqNumSplitter) pendingRangeDelsEmpty() bool {
+	if n.c.rangeDelFrag.Empty() {
+		return true
+	}
+	// If there are pending tombstones, we still may not need to wait for a
+	// non-zero sequence number if all the pending tombstones will be elided,
+	// avoiding the sstable-boundary issue that motivates the non-zero seqnum
+	// splitting. A tombstone may be elided if there are no overlapping keys
+	// in lower levels and it's in the last snapshot:
+	// * If the compaction is zeroing sequence numbers, we know there are no
+	//   overlapping keys in the lower levels.
+	// * If all the pending tombstones' sequence numbers are less than the
+	//   earliest snapshot, we know all pending tombstones fall in the last
+	//   snapshot stripe.
+	// If both of these conditions hold, the range tombstones will be elided
+	// by the `elideRangeTombstone` check in compactionIter.emitRangeDelChunk.
+	//
+	// To illustrate visually, in the below diagram, assume allowedZeroSeqNum
+	// is true.
+	//
+	// #5    |-b.RANGEDEL#5:k--|
+	// #4 __________________________________________________ snapshot #4
+	// #3  |-a.RANGEDEL#3:j--|
+	// #1                |--h.RANGEDEL#1:t-------|
+	// #0      . (c.SET#0)         . (m.SET#0)
+	// ______________________________________________________________
+	//     a b c d e f g h i j k l m n o p q r s t u v w x y z
+	//
+	// When c.SET#0 is encountered, two range deletions have been added to the
+	// fragmenter. Only the one at sequence number #3 will be elided, because
+	// the snapshot at #4 prevents the other's elision. We cannot split
+	// outputs at c.
+	//
+	// When m.SET#0 is encountered, the only range deletion in the fragmenter
+	// is at sequence number #1. There's no snapshot preserving it. That fact
+	// combined with the lack over overlapping in-use ranges indicates the
+	// tombstone will be elided, and it's okay to split the output at m.
+	return n.c.allowedZeroSeqNum && (n.c.rangeDelFrag.MaxSeqNum() < n.earliestSnapshotSeqNum)
 }
 
 func (n *nonZeroSeqNumSplitter) shouldSplitBefore(
@@ -366,13 +410,13 @@ func (n *nonZeroSeqNumSplitter) shouldSplitBefore(
 	}
 
 	if n.splitOnNonZeroSeqNum {
-		if prevPointSeqNum > 0 || n.c.rangeDelFrag.Empty() {
+		if prevPointSeqNum > 0 || n.pendingRangeDelsEmpty() {
 			n.splitOnNonZeroSeqNum = false
 			return splitNow
 		}
 	} else if split := n.splitter.shouldSplitBefore(key, tw); split == splitNow {
 		userKeyChange := curSeqNum > prevPointSeqNum
-		if prevPointSeqNum > 0 || n.c.rangeDelFrag.Empty() || userKeyChange {
+		if prevPointSeqNum > 0 || n.pendingRangeDelsEmpty() || userKeyChange {
 			return splitNow
 		}
 		n.splitOnNonZeroSeqNum = true
@@ -951,7 +995,7 @@ func (c *compaction) errorOnUserKeyOverlap(ve *versionEdit) error {
 // snapshots requiring them to be kept. It performs this determination by
 // looking for an sstable which overlaps the bounds of the compaction at a
 // lower level in the LSM.
-func (c *compaction) allowZeroSeqNum(iter internalIterator) bool {
+func (c *compaction) allowZeroSeqNum() bool {
 	return c.elideRangeTombstone(c.smallest.UserKey, c.largest.UserKey)
 }
 
@@ -2060,7 +2104,7 @@ func (d *DB) runCompaction(
 	if err != nil {
 		return nil, pendingOutputs, err
 	}
-	c.allowedZeroSeqNum = c.allowZeroSeqNum(iiter)
+	c.allowedZeroSeqNum = c.allowZeroSeqNum()
 	iter := newCompactionIter(c.cmp, c.formatKey, d.merge, iiter, snapshots,
 		&c.rangeDelFrag, c.allowedZeroSeqNum, c.elideTombstone, c.elideRangeTombstone)
 
@@ -2412,9 +2456,14 @@ func (d *DB) runCompaction(
 	// be split between sstables. So a nonZeroSeqNumSplitter is unnecessary
 	// in that case.
 	if !splitL0Outputs {
+		var earliestSnapshotSeqNum uint64 = math.MaxUint64
+		if len(snapshots) > 0 {
+			earliestSnapshotSeqNum = snapshots[0]
+		}
 		splitter = &nonZeroSeqNumSplitter{
-			c:        c,
-			splitter: splitter,
+			c:                      c,
+			splitter:               splitter,
+			earliestSnapshotSeqNum: earliestSnapshotSeqNum,
 		}
 	}
 

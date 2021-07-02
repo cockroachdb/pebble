@@ -13,6 +13,10 @@ build
 1:             m-----s
 1:                   s------z
 
+max-seqnums
+----
+3, 3, 3
+
 # Building is idempotent.
 build
 3: a----f
@@ -35,10 +39,18 @@ build
 1:             m-----s
 1:                   s------z
 
+max-seqnums
+----
+3, 3, 3, 3, 3, 3, 2, 2, 1
+
 # An empty tombstone will not get emitted.
 build
 1: a-a
 ----
+
+max-seqnums
+----
+0
 
 build
 2:   c-e
@@ -63,6 +75,10 @@ build
 3:  b-d
 1:  b-d
 1:    de
+
+max-seqnums
+----
+1, 3
 
 get t=4
 a#3 a#2 a#1 a#0

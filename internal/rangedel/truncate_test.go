@@ -21,7 +21,7 @@ func TestTruncate(t *testing.T) {
 	datadriven.RunTest(t, "testdata/truncate", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
-			tombstones := buildTombstones(t, cmp, fmtKey, d.Input)
+			tombstones, _ := buildTombstones(t, cmp, fmtKey, d.Input)
 			iter = NewIter(cmp, tombstones)
 			return formatTombstones(tombstones)
 
