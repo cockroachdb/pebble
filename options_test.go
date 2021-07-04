@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"runtime"
 	"testing"
 	"time"
 
@@ -40,6 +41,9 @@ func TestLevelOptions(t *testing.T) {
 }
 
 func TestOptionsString(t *testing.T) {
+	n := runtime.GOMAXPROCS(8)
+	defer runtime.GOMAXPROCS(n)
+
 	const expected = `[Version]
   pebble_version=0.1
 
@@ -68,6 +72,7 @@ func TestOptionsString(t *testing.T) {
   read_compaction_rate=16000
   read_sampling_multiplier=16
   strict_wal_tail=true
+  table_cache_shards=8
   table_property_collectors=[]
   wal_dir=
   wal_bytes_per_sync=0
@@ -198,6 +203,7 @@ func TestOptionsParse(t *testing.T) {
 			opts.Experimental.MinDeletionRate = 200
 			opts.Experimental.ReadCompactionRate = 300
 			opts.Experimental.ReadSamplingMultiplier = 400
+			opts.Experimental.TableCacheShards = 500
 			opts.EnsureDefaults()
 			str := opts.String()
 
