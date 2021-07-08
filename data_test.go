@@ -1099,6 +1099,25 @@ func runTableFileSizesCmd(td *datadriven.TestData, d *DB) string {
 	return buf.String()
 }
 
+func runVersionFileSizes(v *version) string {
+	var buf bytes.Buffer
+	for l, levelMetadata := range v.Levels {
+		if levelMetadata.Empty() {
+			continue
+		}
+		fmt.Fprintf(&buf, "L%d:\n", l)
+		iter := levelMetadata.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			fmt.Fprintf(&buf, "  %s: %d bytes (%s)", f, f.Size, humanize.IEC.Uint64(f.Size))
+			if f.IsCompacting() {
+				fmt.Fprintf(&buf, " (IsCompacting)")
+			}
+			fmt.Fprintln(&buf)
+		}
+	}
+	return buf.String()
+}
+
 func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) string {
 	var file string
 	td.ScanArgs(t, "file", &file)
