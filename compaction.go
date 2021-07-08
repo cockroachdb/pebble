@@ -395,6 +395,7 @@ type compaction struct {
 	//    - if startLevel is 0, the output level equals compactionPicker.baseLevel().
 	//    - in multilevel compaction, the output level is the lowest level involved in
 	//      the compaction
+	// A compaction's outputLevel is nil for delete-only compactions.
 	outputLevel *compactionLevel
 
 	// extraLevels point to additional levels in between the input and output
