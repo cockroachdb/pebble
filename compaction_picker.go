@@ -563,10 +563,16 @@ func newCompactionPicker(
 // Information about a candidate compaction level that has been identified by
 // the compaction picker.
 type candidateLevelInfo struct {
-	// The score of the level to be compacted.
-	score     float64
+	// The score of the level to be compacted, with compensated file sizes and
+	// adjustments.
+	score float64
+	// The original score of the level to be compacted, before adjusting
+	// according to other levels' sizes.
 	origScore float64
-	level     int
+	// The raw score of the level to be compacted, calculated using
+	// uncompensated file sizes and without any adjustments.
+	rawScore float64
+	level    int
 	// The level to compact to.
 	outputLevel int
 	// The file in level that will be compacted. Additional files may be
@@ -826,25 +832,50 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	}
 }
 
-func calculateSizeAdjust(inProgressCompactions []compactionInfo) [numLevels]int64 {
-	// Compute a size adjustment for each level based on the in-progress
-	// compactions. We subtract the compensated size of start level inputs.
+type levelSizeAdjust struct {
+	incomingActualBytes      int64
+	outgoingActualBytes      int64
+	outgoingCompensatedBytes int64
+}
+
+func (a levelSizeAdjust) compensated() int64 {
+	return a.incomingActualBytes - a.outgoingCompensatedBytes
+}
+
+func (a levelSizeAdjust) actual() int64 {
+	return a.incomingActualBytes - a.outgoingActualBytes
+}
+
+func calculateSizeAdjust(inProgressCompactions []compactionInfo) [numLevels]levelSizeAdjust {
+	// Compute size adjustments for each level based on the in-progress
+	// compactions. We sum the file sizes of all files leaving and entering each
+	// level in in-progress compactions. For outgoing files, we also sum a
+	// separate sum of 'compensated file sizes', which are inflated according
+	// to deletion estimates.
+	//
+	// When we adjust a level's size according to these values during score
+	// calculation, we subtract the compensated size of start level inputs to
+	// account for the fact that score calculation uses compensated sizes.
+	//
 	// Since compensated file sizes may be compensated because they reclaim
-	// space from the output level's files, we add the real file size to the
-	// output level. This is slightly different from RocksDB's behavior, which
-	// simply elides compacting files from the level size calculation.
-	var sizeAdjust [numLevels]int64
+	// space from the output level's files, we only add the real file size to
+	// the output level.
+	//
+	// This is slightly different from RocksDB's behavior, which simply elides
+	// compacting files from the level size calculation.
+	var sizeAdjust [numLevels]levelSizeAdjust
 	for i := range inProgressCompactions {
 		c := &inProgressCompactions[i]
 
 		for _, input := range c.inputs {
-			real := int64(input.files.SizeSum())
-			compensated := int64(totalCompensatedSize(input.files.Iter()))
+			actualSize := int64(input.files.SizeSum())
+			compensatedSize := int64(totalCompensatedSize(input.files.Iter()))
 
 			if input.level != c.outputLevel {
-				sizeAdjust[input.level] -= compensated
+				sizeAdjust[input.level].outgoingCompensatedBytes += compensatedSize
+				sizeAdjust[input.level].outgoingActualBytes += actualSize
 				if c.outputLevel != -1 {
-					sizeAdjust[c.outputLevel] += real
+					sizeAdjust[c.outputLevel].incomingActualBytes += actualSize
 				}
 			}
 		}
@@ -868,9 +899,15 @@ func (p *compactionPickerByScore) calculateScores(
 
 	sizeAdjust := calculateSizeAdjust(inProgressCompactions)
 	for level := 1; level < numLevels; level++ {
-		levelSize := int64(levelCompensatedSize(p.vers.Levels[level])) + sizeAdjust[level]
-		scores[level].score = float64(levelSize) / float64(p.levelMaxBytes[level])
+		compensatedLevelSize := int64(levelCompensatedSize(p.vers.Levels[level])) + sizeAdjust[level].compensated()
+		scores[level].score = float64(compensatedLevelSize) / float64(p.levelMaxBytes[level])
 		scores[level].origScore = scores[level].score
+
+		// In addition to the compensated score, we calculate a separate score
+		// that uses actual file sizes, not compensated sizes. This is used
+		// during score smoothing down below to prevent excessive
+		// prioritization of reclaiming disk space.
+		scores[level].rawScore = float64(p.levelSizes[level]+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
 	}
 
 	// Adjust each level's score by the score of the next level. If the next
@@ -900,8 +937,8 @@ func (p *compactionPickerByScore) calculateScores(
 			// Avoid absurdly large scores by placing a floor on the score that we'll
 			// adjust a level by. The value of 0.01 was chosen somewhat arbitrarily
 			const minScore = 0.01
-			if scores[level].score >= minScore {
-				scores[prevLevel].score /= scores[level].score
+			if scores[level].rawScore >= minScore {
+				scores[prevLevel].score /= scores[level].rawScore
 			} else {
 				scores[prevLevel].score /= minScore
 			}
@@ -1063,7 +1100,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 
 	scores := p.calculateScores(env.inProgressCompactions)
 
-	// TODO(peter): Either remove, or change this into an event sent to the
+	// TODO(bananabrick): Either remove, or change this into an event sent to the
 	// EventListener.
 	logCompaction := func(pc *pickedCompaction) {
 		var buf bytes.Buffer
@@ -1084,8 +1121,8 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			if pc.startLevel.level == info.level {
 				marker = "*"
 			}
-			fmt.Fprintf(&buf, "  %sL%d: %5.1f  %5.1f  %8s  %8s",
-				marker, info.level, info.score, info.origScore,
+			fmt.Fprintf(&buf, "  %sL%d: %5.1f  %5.1f  %5.1f %8s  %8s",
+				marker, info.level, info.score, info.origScore, info.rawScore,
 				humanize.Int64(int64(totalCompensatedSize(
 					p.vers.Levels[info.level].Iter(),
 				))),
@@ -1133,7 +1170,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			// concurrently.
 			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 				pc.score = info.score
-				// TODO(peter): remove
+				// TODO(bananabrick): Create an EventListener for logCompaction.
 				if false {
 					logCompaction(pc)
 				}
@@ -1153,7 +1190,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		// Fail-safe to protect against compacting the same sstable concurrently.
 		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 			pc.score = info.score
-			// TODO(peter): remove
+			// TODO(bananabrick): Create an EventListener for logCompaction.
 			if false {
 				logCompaction(pc)
 			}
