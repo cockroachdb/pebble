@@ -39,6 +39,14 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, [numLevels]int64, 
 
 	var files [numLevels][]*fileMetadata
 	if len(d.Input) > 0 {
+		// Parse each line as
+		//
+		// <level>: <size> [compensation]
+		//
+		// Creating sstables within the level whose file sizes total to `size`
+		// and whose compensated file sizes total to `size`+`compensation`. If
+		// size is sufficiently large, only one single file is created. See
+		// the TODO below.
 		for _, data := range strings.Split(d.Input, "\n") {
 			parts := strings.Split(data, " ")
 			parts[0] = strings.TrimSuffix(strings.TrimSpace(parts[0]), ":")
@@ -56,6 +64,15 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, [numLevels]int64, 
 			if err != nil {
 				return nil, nil, sizes, err.Error()
 			}
+			var compensation uint64
+			if len(parts) == 3 {
+				compensation, err = strconv.ParseUint(strings.TrimSpace(parts[2]), 10, 64)
+				if err != nil {
+					return nil, nil, sizes, err.Error()
+				}
+			}
+
+			var lastFile *fileMetadata
 			for i := uint64(1); sizes[level] < int64(size); i++ {
 				var key InternalKey
 				if level == 0 {
@@ -65,10 +82,16 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, [numLevels]int64, 
 					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), i, InternalKeyKindSet)
 				}
 				m := (&fileMetadata{
+					FileNum:        base.FileNum(uint64(level)*100_000 + i),
 					SmallestSeqNum: key.SeqNum(),
 					LargestSeqNum:  key.SeqNum(),
 					Size:           1,
+					Stats: manifest.TableStats{
+						RangeDeletionsBytesEstimate: 0,
+					},
 				}).ExtendPointKeyBounds(opts.Comparer.Compare, key, key)
+				m.StatsMarkValid()
+				lastFile = m
 				if size >= 100 {
 					// If the requested size of the level is very large only add a single
 					// file in order to avoid massive blow-up in the number of files in
@@ -78,9 +101,17 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, [numLevels]int64, 
 					// TestCompactionPickerLevelMaxBytes and
 					// TestCompactionPickerTargetLevel. Clean this up somehow.
 					m.Size = size
+					if level != 0 {
+						endKey := base.MakeInternalKey([]byte(fmt.Sprintf("%04d", size)), i, InternalKeyKindSet)
+						m.ExtendPointKeyBounds(opts.Comparer.Compare, key, endKey)
+					}
 				}
 				files[level] = append(files[level], m)
 				sizes[level] += int64(m.Size)
+			}
+			// Let all the compensation be due to the last file.
+			if lastFile != nil && compensation > 0 {
+				lastFile.Stats.RangeDeletionsBytesEstimate = compensation
 			}
 		}
 	}
@@ -160,12 +191,21 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
+				// loadVersion expects a single datadriven argument that it
+				// sets as Options.LBaseMaxBytes. It parses the input as
+				// newline-separated levels, specifying the level's file size
+				// and optionally additional compensation to be added during
+				// compensated file size calculations. Eg:
+				//
+				// init <LBaseMaxBytes>
+				// <level>: <size> [compensation]
+				// <level>: <size> [compensation]
 				var errMsg string
 				vers, opts, sizes, errMsg = loadVersion(d)
 				if errMsg != "" {
 					return errMsg
 				}
-				return ""
+				return runVersionFileSizes(vers)
 			case "init_cp":
 				resetCompacting()
 
@@ -212,6 +252,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					for _, cl := range pc.inputs {
 						cl.files.Each(func(f *fileMetadata) {
 							f.CompactionState = manifest.CompactionStateCompacting
+							fmt.Fprintf(&b, "  %s marked as compacting\n", f)
 						})
 					}
 				}
