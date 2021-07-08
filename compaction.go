@@ -454,7 +454,8 @@ type compaction struct {
 	startLevel *compactionLevel
 	// outputLevel is the level that files are being produced in. outputLevel is
 	// equal to startLevel+1 except when startLevel is 0 in which case it is
-	// equal to compactionPicker.baseLevel().
+	// equal to compactionPicker.baseLevel(). A compaction's outputLevel is
+	// nil for delete-only compactions.
 	outputLevel *compactionLevel
 
 	inputs []compactionLevel
