@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -374,4 +375,31 @@ func TestEventListenerRedact(t *testing.T) {
 		Err:     errors.Errorf("unredacted error: %s", "unredacted string"),
 	})
 	require.Equal(t, "[JOB 5] WAL delete error: unredacted error: ‹×›\n", log.String())
+}
+
+func TestEventListenerEnsureDefaultsSetsAllCallbacks(t *testing.T) {
+	e := EventListener{}
+	e.EnsureDefaults(nil)
+	testAllCallbacksSetInEventListener(t, e)
+}
+
+func TestMakeLoggingEventListenerSetsAllCallbacks(t *testing.T) {
+	e := MakeLoggingEventListener(nil)
+	testAllCallbacksSetInEventListener(t, e)
+}
+
+func TestTeeEventListenerSetsAllCallbacks(t *testing.T) {
+	e := TeeEventListener(EventListener{}, EventListener{})
+	testAllCallbacksSetInEventListener(t, e)
+}
+
+func testAllCallbacksSetInEventListener(t *testing.T, e EventListener) {
+	t.Helper()
+	v := reflect.ValueOf(e)
+	for i := 0; i < v.NumField(); i++ {
+		fType := v.Type().Field(i)
+		fVal := v.Field(i)
+		require.Equal(t, reflect.Func, fType.Type.Kind(), "unexpected non-func field: %s", fType.Name)
+		require.False(t, fVal.IsNil(), "unexpected nil field: %s", fType.Name)
+	}
 }

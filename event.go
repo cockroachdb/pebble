@@ -577,6 +577,10 @@ func TeeEventListener(a, b EventListener) EventListener {
 			a.CompactionEnd(info)
 			b.CompactionEnd(info)
 		},
+		DiskSlow: func(info DiskSlowInfo) {
+			a.DiskSlow(info)
+			b.DiskSlow(info)
+		},
 		FlushBegin: func(info FlushInfo) {
 			a.FlushBegin(info)
 			b.FlushBegin(info)
@@ -604,6 +608,10 @@ func TeeEventListener(a, b EventListener) EventListener {
 		TableIngested: func(info TableIngestInfo) {
 			a.TableIngested(info)
 			b.TableIngested(info)
+		},
+		TableStatsLoaded: func(info TableStatsInfo) {
+			a.TableStatsLoaded(info)
+			b.TableStatsLoaded(info)
 		},
 		WALCreated: func(info WALCreateInfo) {
 			a.WALCreated(info)
