@@ -44,6 +44,14 @@ func loadVersion(
 
 	var files [numLevels][]*fileMetadata
 	if len(d.Input) > 0 {
+		// Parse each line as
+		//
+		// <level>: <size> [compensation]
+		//
+		// Creating sstables within the level whose file sizes total to `size`
+		// and whose compensated file sizes total to `size`+`compensation`. If
+		// size is sufficiently large, only one single file is created. See
+		// the TODO below.
 		for _, data := range strings.Split(d.Input, "\n") {
 			parts := strings.Split(data, " ")
 			parts[0] = strings.TrimSuffix(strings.TrimSpace(parts[0]), ":")
@@ -61,6 +69,15 @@ func loadVersion(
 			if err != nil {
 				return nil, nil, sizes, err.Error()
 			}
+			var compensation uint64
+			if len(parts) == 3 {
+				compensation, err = strconv.ParseUint(strings.TrimSpace(parts[2]), 10, 64)
+				if err != nil {
+					return nil, nil, sizes, err.Error()
+				}
+			}
+
+			var lastFile *fileMetadata
 			for i := uint64(1); sizes[level] < int64(size); i++ {
 				var key InternalKey
 				if level == 0 {
@@ -74,8 +91,13 @@ func loadVersion(
 					SmallestSeqNum: key.SeqNum(),
 					LargestSeqNum:  key.SeqNum(),
 					Size:           1,
+					Stats: manifest.TableStats{
+						RangeDeletionsBytesEstimate: 0,
+					},
 				}).ExtendPointKeyBounds(opts.Comparer.Compare, key, key)
 				m.InitPhysicalBacking()
+				m.StatsMarkValid()
+				lastFile = m
 				if size >= 100 {
 					// If the requested size of the level is very large only add a single
 					// file in order to avoid massive blow-up in the number of files in
@@ -92,6 +114,10 @@ func loadVersion(
 				}
 				files[level] = append(files[level], m)
 				sizes[level] += int64(m.Size)
+			}
+			// Let all the compensation be due to the last file.
+			if lastFile != nil && compensation > 0 {
+				lastFile.Stats.RangeDeletionsBytesEstimate = compensation
 			}
 		}
 	}
@@ -171,6 +197,15 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
+				// loadVersion expects a single datadriven argument that it
+				// sets as Options.LBaseMaxBytes. It parses the input as
+				// newline-separated levels, specifying the level's file size
+				// and optionally additional compensation to be added during
+				// compensated file size calculations. Eg:
+				//
+				// init <LBaseMaxBytes>
+				// <level>: <size> [compensation]
+				// <level>: <size> [compensation]
 				var errMsg string
 				vers, opts, sizes, errMsg = loadVersion(t, d)
 				if errMsg != "" {
