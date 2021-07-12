@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
@@ -21,20 +22,24 @@ import (
 // manifestT implements manifest-level tools, including both configuration
 // state and the commands themselves.
 type manifestT struct {
-	Root  *cobra.Command
-	Dump  *cobra.Command
-	Check *cobra.Command
+	Root      *cobra.Command
+	Dump      *cobra.Command
+	Summarize *cobra.Command
+	Check     *cobra.Command
 
 	opts      *pebble.Options
 	comparers sstable.Comparers
 	fmtKey    keyFormatter
 	verbose   bool
+
+	summarizeDur time.Duration
 }
 
 func newManifest(opts *pebble.Options, comparers sstable.Comparers) *manifestT {
 	m := &manifestT{
-		opts:      opts,
-		comparers: comparers,
+		opts:         opts,
+		comparers:    comparers,
+		summarizeDur: time.Hour,
 	}
 	m.fmtKey.mustSet("quoted")
 
@@ -59,6 +64,20 @@ Print the contents of the MANIFEST files.
 
 	m.Dump.Flags().Var(
 		&m.fmtKey, "key", "key formatter")
+
+	// Add summarize command
+	m.Summarize = &cobra.Command{
+		Use:   "summarize <manifest-files>",
+		Short: "summarize manifest contents",
+		Long: `
+Summarize the edits to the MANIFEST files over time.
+`,
+		Args: cobra.MinimumNArgs(1),
+		Run:  m.runSummarize,
+	}
+	m.Root.AddCommand(m.Summarize)
+	m.Summarize.Flags().DurationVar(
+		&m.summarizeDur, "dur", time.Hour, "bucket duration as a Go duration string (eg, '1h', '15m')")
 
 	// Add check command
 	m.Check = &cobra.Command{
@@ -211,6 +230,201 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			}
 		}()
 	}
+}
+
+func (m *manifestT) runSummarize(cmd *cobra.Command, args []string) {
+	for _, arg := range args {
+		err := m.runSummarizeOne(arg)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+		}
+	}
+}
+
+func (m *manifestT) runSummarizeOne(arg string) error {
+	f, err := m.opts.FS.Open(arg)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	fmt.Fprintf(stdout, "%s\n", arg)
+
+	type summaryBucket struct {
+		bytesAdded      [manifest.NumLevels]uint64
+		bytesCompactOut [manifest.NumLevels]uint64
+	}
+	var (
+		bve           manifest.BulkVersionEdit
+		newestOverall time.Time
+		oldestOverall time.Time // oldest after initial version edit
+		buckets       = map[time.Time]*summaryBucket{}
+		metadatas     = map[base.FileNum]*manifest.FileMetadata{}
+	)
+	bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+	rr := record.NewReader(f, 0 /* logNum */)
+	for i := 0; ; i++ {
+		r, err := rr.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+
+		var ve manifest.VersionEdit
+		err = ve.Decode(r)
+		if err != nil {
+			return err
+		}
+		if err := bve.Accumulate(&ve); err != nil {
+			return err
+		}
+
+		veNewest, veOldest := newestOverall, newestOverall
+		for _, nf := range ve.NewFiles {
+			_, seen := metadatas[nf.Meta.FileNum]
+			metadatas[nf.Meta.FileNum] = nf.Meta
+			if nf.Meta.CreationTime == 0 {
+				continue
+			}
+
+			t := time.Unix(nf.Meta.CreationTime, 0).UTC()
+			if veNewest.Before(t) {
+				veNewest = t
+			}
+			// Only update the oldest if we haven't already seen this
+			// file; it might've been moved in which case the sstable's
+			// creation time is from when it was originally created.
+			if veOldest.After(t) && !seen {
+				veOldest = t
+			}
+		}
+		// Ratchet up the most recent timestamp we've seen.
+		if newestOverall.Before(veNewest) {
+			newestOverall = veNewest
+		}
+
+		if i == 0 || newestOverall.IsZero() {
+			continue
+		}
+		// Update oldestOverall once, when we encounter the first version edit
+		// at index >= 1. It should be approximately the start time of the
+		// manifest.
+		if !newestOverall.IsZero() && oldestOverall.IsZero() {
+			oldestOverall = newestOverall
+		}
+
+		bucketKey := newestOverall.Truncate(m.summarizeDur)
+		b := buckets[bucketKey]
+		if b == nil {
+			b = &summaryBucket{}
+			buckets[bucketKey] = b
+		}
+
+		// Increase `bytesAdded` for any version edits that only add files.
+		// These are either flushes or ingests.
+		if len(ve.NewFiles) > 0 && len(ve.DeletedFiles) == 0 {
+			for _, nf := range ve.NewFiles {
+				b.bytesAdded[nf.Level] += nf.Meta.Size
+			}
+			continue
+		}
+
+		// Increase `bytesCompactOut` for the input level of any compactions
+		// that remove bytes from a level (excluding intra-L0 compactions).
+		// compactions.
+		destLevel := -1
+		if len(ve.NewFiles) > 0 {
+			destLevel = ve.NewFiles[0].Level
+		}
+		for dfe := range ve.DeletedFiles {
+			if dfe.Level != destLevel {
+				b.bytesCompactOut[dfe.Level] += metadatas[dfe.FileNum].Size
+			}
+		}
+	}
+
+	formatUint64 := func(v uint64, _ time.Duration) string {
+		if v == 0 {
+			return "."
+		}
+		return humanize.Uint64(v).String()
+	}
+	formatRate := func(v uint64, dur time.Duration) string {
+		if v == 0 {
+			return "."
+		}
+		secs := dur.Seconds()
+		if secs == 0 {
+			secs = 1
+		}
+		return humanize.Uint64(uint64(float64(v)/secs)).String() + "/s"
+	}
+
+	if newestOverall.IsZero() {
+		fmt.Fprintf(stdout, "(no timestamps)\n")
+	} else {
+		// NB: bt begins unaligned with the bucket duration (m.summarizeDur),
+		// but after the first bucket will always be aligned.
+		for bi, bt := 0, oldestOverall; !bt.After(newestOverall); bi, bt = bi+1, bt.Truncate(m.summarizeDur).Add(m.summarizeDur) {
+			// Truncate the start time to calculate the bucket key, and
+			// retrieve the appropriate bucket.
+			bk := bt.Truncate(m.summarizeDur)
+			var bucket summaryBucket
+			if buckets[bk] != nil {
+				bucket = *buckets[bk]
+			}
+
+			if bi%10 == 0 {
+				fmt.Fprintf(stdout, "                     ")
+				fmt.Fprintf(stdout, "_______L0_______L1_______L2_______L3_______L4_______L5_______L6_____TOTAL\n")
+			}
+			fmt.Fprintf(stdout, "%s\n", bt.Format(time.RFC3339))
+
+			// Compute the bucket duration. It may < `m.summarizeDur` if this is
+			// the first or last bucket.
+			bucketEnd := bt.Truncate(m.summarizeDur).Add(m.summarizeDur)
+			if bucketEnd.After(newestOverall) {
+				bucketEnd = newestOverall
+			}
+			dur := bucketEnd.Sub(bt)
+
+			stats := []struct {
+				label  string
+				format func(uint64, time.Duration) string
+				vals   [manifest.NumLevels]uint64
+			}{
+				{"Ingest+Flush", formatUint64, bucket.bytesAdded},
+				{"Ingest+Flush", formatRate, bucket.bytesAdded},
+				{"Compact (out)", formatUint64, bucket.bytesCompactOut},
+				{"Compact (out)", formatRate, bucket.bytesCompactOut},
+			}
+			for _, stat := range stats {
+				var sum uint64
+				for _, v := range stat.vals {
+					sum += v
+				}
+				fmt.Fprintf(stdout, "%20s   %8s %8s %8s %8s %8s %8s %8s %8s\n",
+					stat.label,
+					stat.format(stat.vals[0], dur),
+					stat.format(stat.vals[1], dur),
+					stat.format(stat.vals[2], dur),
+					stat.format(stat.vals[3], dur),
+					stat.format(stat.vals[4], dur),
+					stat.format(stat.vals[5], dur),
+					stat.format(stat.vals[6], dur),
+					stat.format(sum, dur))
+			}
+		}
+		fmt.Fprintf(stdout, "%s\n", newestOverall.Format(time.RFC3339))
+	}
+
+	dur := newestOverall.Sub(oldestOverall)
+	fmt.Fprintf(stdout, "---\n")
+	fmt.Fprintf(stdout, "Estimated start time: %s\n", oldestOverall.Format(time.RFC3339))
+	fmt.Fprintf(stdout, "Estimated end time:   %s\n", newestOverall.Format(time.RFC3339))
+	fmt.Fprintf(stdout, "Estimated duration:   %s\n", dur.String())
+
+	return nil
 }
 
 func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
