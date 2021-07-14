@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,6 +41,8 @@ var ycsbConfig struct {
 	scans            *randvar.Flag
 	values           *randvar.BytesFlag
 	workload         string
+	rangeDelWidth    *randvar.Flag
+	rangeDelFreq     time.Duration
 }
 
 var ycsbCmd = &cobra.Command{
@@ -113,6 +116,14 @@ func initYCSB(cmd *cobra.Command) {
 	cmd.Flags().Var(
 		ycsbConfig.values, "values",
 		"value size distribution [{zipf,uniform}:]min[-max][/<target-compression>]")
+
+	cmd.Flags().DurationVar(
+		&ycsbConfig.rangeDelFreq, "rangedel-freq", 0,
+		"frequency with which to delete a portion of the keyspace")
+	ycsbConfig.rangeDelWidth = randvar.NewFlag("uniform:1-100")
+	cmd.Flags().Var(
+		ycsbConfig.rangeDelWidth, "rangedel-width",
+		"range deletion width distribution, in basis points [{zipf,uniform}:]min[-max]")
 }
 
 type ycsbWeights []float64
@@ -125,27 +136,27 @@ func (w ycsbWeights) get(i int) float64 {
 }
 
 var ycsbWorkloads = map[string]ycsbWeights{
-	"A": ycsbWeights{
+	"A": {
 		ycsbRead:   0.5,
 		ycsbUpdate: 0.5,
 	},
-	"B": ycsbWeights{
+	"B": {
 		ycsbRead:   0.95,
 		ycsbUpdate: 0.05,
 	},
-	"C": ycsbWeights{
+	"C": {
 		ycsbRead: 1.0,
 	},
-	"D": ycsbWeights{
+	"D": {
 		ycsbInsert: 0.05,
 		ycsbRead:   0.95,
 		// TODO(peter): default to skewed-latest distribution.
 	},
-	"E": ycsbWeights{
+	"E": {
 		ycsbInsert: 0.05,
 		ycsbScan:   0.95,
 	},
-	"F": ycsbWeights{
+	"F": {
 		ycsbInsert: 1.0,
 		// TODO(peter): the real workload is read-modify-write.
 	},
@@ -332,7 +343,7 @@ func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 				b = db.NewBatch()
 				size = 0
 			}
-			key := y.makeKey(uint64(i+ycsbConfig.prepopulatedKeys), buf)
+			key := ycsbMakeKey(uint64(i+ycsbConfig.prepopulatedKeys), buf)
 			value := y.randBytes(buf)
 			if err := b.Set(key, value, nil); err != nil {
 				log.Fatal(err)
@@ -354,6 +365,11 @@ func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 	wg.Add(concurrency)
 	for i := 0; i < concurrency; i++ {
 		go y.run(db, wg)
+	}
+	if ycsbConfig.rangeDelFreq > 0 {
+		wg.Add(1)
+		lim := rate.NewLimiter(rate.Every(ycsbConfig.rangeDelFreq), 1)
+		go ycsbRangeDel(y.keyDist, ycsbConfig.rangeDelWidth, lim, db, wg)
 	}
 }
 
@@ -396,7 +412,7 @@ func (y *ycsb) run(db DB, wg *sync.WaitGroup) {
 	}
 }
 
-func (y *ycsb) hashKey(key uint64) uint64 {
+func ycsbHashKey(key uint64) uint64 {
 	// Inlined version of fnv.New64 + Write.
 	const offset64 = 14695981039346656037
 	const prime64 = 1099511628211
@@ -410,14 +426,18 @@ func (y *ycsb) hashKey(key uint64) uint64 {
 	return h
 }
 
-func (y *ycsb) makeKey(keyNum uint64, buf *ycsbBuf) []byte {
+func ycsbMakeKey(keyNum uint64, buf *ycsbBuf) []byte {
+	return ycsbSerializeKey(ycsbHashKey(keyNum), buf)
+}
+
+func ycsbSerializeKey(keyHash uint64, buf *ycsbBuf) []byte {
 	const size = 24 + 10
 	if cap(buf.keyBuf) < size {
 		buf.keyBuf = make([]byte, size)
 	}
 	key := buf.keyBuf[:4]
 	copy(key, "user")
-	key = strconv.AppendUint(key, y.hashKey(keyNum), 10)
+	key = strconv.AppendUint(key, keyHash, 10)
 	// Use the MVCC encoding for keys. This appends a timestamp with
 	// walltime=1. That knowledge is utilized by rocksDB.Scan.
 	key = append(key, '\x00', '\x00', '\x00', '\x00', '\x00',
@@ -430,7 +450,7 @@ func (y *ycsb) nextReadKey(buf *ycsbBuf) []byte {
 	// NB: the range of values returned by keyDist is tied to the range returned
 	// by keyNum.Base. See how these are both incremented by ycsb.insert().
 	keyNum := y.keyDist.Uint64(buf.rng)
-	return y.makeKey(keyNum, buf)
+	return ycsbMakeKey(keyNum, buf)
 }
 
 func (y *ycsb) randBytes(buf *ycsbBuf) []byte {
@@ -448,7 +468,7 @@ func (y *ycsb) insert(db DB, buf *ycsbBuf) {
 	b := db.NewBatch()
 	for i := range keyNums {
 		keyNums[i] = y.keyNum.Next()
-		_ = b.Set(y.makeKey(keyNums[i], buf), y.randBytes(buf), nil)
+		_ = b.Set(ycsbMakeKey(keyNums[i], buf), y.randBytes(buf), nil)
 	}
 	if err := b.Commit(y.writeOpts); err != nil {
 		log.Fatal(err)
@@ -585,4 +605,43 @@ func (y *ycsb) done(elapsed time.Duration) {
 		float64(readAmpSum)/float64(readAmpCount),
 		total.WriteAmp(),
 	)
+}
+
+// ycsbRangeDel deletes ranges of YCSB keys, no more frequently than permitted
+// by the provided limiter. The width of each range deletion is determined by
+// the widthBasisPointDist which dictates the distribution of the width as
+// basis points (one hundredth of one percent).
+func ycsbRangeDel(
+	keyDist, widthBasisPointDist randvar.Static, limiter *rate.Limiter, d DB, wg *sync.WaitGroup,
+) {
+	defer wg.Done()
+
+	// Divide the full uint64 keyspace into 10000, so we can calculate widths
+	// of it in terms of basis points. A basis point is 1/100 of a percentage
+	// point.
+	const bip = math.MaxUint64 / 10_000
+
+	startBuf := &ycsbBuf{rng: randvar.NewRand()}
+	endBuf := &ycsbBuf{rng: randvar.NewRand()}
+
+	for {
+		keyHash := ycsbHashKey(keyDist.Uint64(startBuf.rng))
+		startKey := ycsbSerializeKey(keyHash, startBuf)
+
+		end := keyHash + bip*widthBasisPointDist.Uint64(endBuf.rng) + 1
+		if end <= keyHash {
+			end = math.MaxUint64 // overflow
+		}
+		endKey := ycsbSerializeKey(end, endBuf)
+
+		b := d.NewBatch()
+		if err := b.DeleteRange(startKey, endKey, pebble.Sync); err != nil {
+			log.Fatal(err)
+		}
+		if err := b.Commit(pebble.Sync); err != nil {
+			log.Fatal(err)
+		}
+		_ = b.Close()
+		wait(limiter)
+	}
 }

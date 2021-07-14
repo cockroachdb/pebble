@@ -142,6 +142,10 @@ func (b badgerBatch) Delete(key []byte, _ *pebble.WriteOptions) error {
 	return b.txn.Delete(key)
 }
 
+func (b badgerBatch) DeleteRange(start, end []byte, _ *pebble.WriteOptions) error {
+	panic("badgerBatch.DeleteRange: unimplemented")
+}
+
 func (b badgerBatch) LogData(data []byte, _ *pebble.WriteOptions) error {
 	panic("badgerBatch.logData: unimplemented")
 }

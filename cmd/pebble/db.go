@@ -40,6 +40,7 @@ type batch interface {
 	Commit(opts *pebble.WriteOptions) error
 	Set(key, value []byte, opts *pebble.WriteOptions) error
 	Delete(key []byte, opts *pebble.WriteOptions) error
+	DeleteRange(start, end []byte, opts *pebble.WriteOptions) error
 	LogData(data []byte, opts *pebble.WriteOptions) error
 }
 
