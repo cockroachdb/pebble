@@ -602,10 +602,11 @@ func TestReadSampling(t *testing.T) {
 
 			d.mu.Lock()
 			var sb strings.Builder
-			if len(d.mu.compact.readCompactions) == 0 {
+			if d.mu.compact.readCompactions.size == 0 {
 				sb.WriteString("(none)")
 			}
-			for _, rc := range d.mu.compact.readCompactions {
+			for i := 0; i < d.mu.compact.readCompactions.size; i++ {
+				rc := d.mu.compact.readCompactions.at(i)
 				sb.WriteString(fmt.Sprintf("(level: %d, start: %s, end: %s)\n", rc.level, string(rc.start), string(rc.end)))
 			}
 			d.mu.Unlock()
@@ -617,10 +618,11 @@ func TestReadSampling(t *testing.T) {
 			}
 
 			var sb strings.Builder
-			if len(iter.readSampling.pendingCompactions) == 0 {
+			if iter.readSampling.pendingCompactions.size == 0 {
 				sb.WriteString("(none)")
 			}
-			for _, rc := range iter.readSampling.pendingCompactions {
+			for i := 0; i < iter.readSampling.pendingCompactions.size; i++ {
+				rc := iter.readSampling.pendingCompactions.at(i)
 				sb.WriteString(fmt.Sprintf("(level: %d, start: %s, end: %s)\n", rc.level, string(rc.start), string(rc.end)))
 			}
 			return sb.String()

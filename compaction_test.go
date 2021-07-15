@@ -1711,18 +1711,19 @@ func TestCompactionReadTriggered(t *testing.T) {
 						continue
 					}
 					parts := strings.Split(line, " ")
-					if len(parts) != 2 {
-						return "error: malformed data for add-read-compaction. usage: <level>: <start>-<end>"
+					if len(parts) != 3 {
+						return "error: malformed data for add-read-compaction. usage: <level>: <start>-<end> <filenum>"
 					}
 					if l, err := strconv.Atoi(parts[0][:1]); err == nil {
 						keys := strings.Split(parts[1], "-")
-
+						fileNum, _ := strconv.Atoi(parts[2])
 						rc := readCompaction{
-							level: l,
-							start: []byte(keys[0]),
-							end:   []byte(keys[1]),
+							level:   l,
+							start:   []byte(keys[0]),
+							end:     []byte(keys[1]),
+							fileNum: base.FileNum(fileNum),
 						}
-						d.mu.compact.readCompactions = append(d.mu.compact.readCompactions, rc)
+						d.mu.compact.readCompactions.add(&rc, DefaultComparer.Compare)
 					} else {
 						return err.Error()
 					}
@@ -1733,10 +1734,11 @@ func TestCompactionReadTriggered(t *testing.T) {
 			case "show-read-compactions":
 				d.mu.Lock()
 				var sb strings.Builder
-				if len(d.mu.compact.readCompactions) == 0 {
+				if d.mu.compact.readCompactions.size == 0 {
 					sb.WriteString("(none)")
 				}
-				for _, rc := range d.mu.compact.readCompactions {
+				for i := 0; i < d.mu.compact.readCompactions.size; i++ {
+					rc := d.mu.compact.readCompactions.at(i)
 					sb.WriteString(fmt.Sprintf("(level: %d, start: %s, end: %s)\n", rc.level, string(rc.start), string(rc.end)))
 				}
 				d.mu.Unlock()
