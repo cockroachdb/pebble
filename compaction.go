@@ -46,6 +46,12 @@ func maxGrandparentOverlapBytes(opts *Options, level int) uint64 {
 	return uint64(10 * opts.Level(level).TargetFileSize)
 }
 
+// maxReadCompactionBytes is used to prevent read compactions which
+// are too wide.
+func maxReadCompactionBytes(opts *Options, level int) uint64 {
+	return uint64(10 * opts.Level(level).TargetFileSize)
+}
+
 // noCloseIter wraps around an internal iterator, intercepting and eliding
 // calls to Close. It is used during compaction to ensure that rangeDelIters
 // are not closed prematurely.
@@ -1168,10 +1174,108 @@ type manualCompaction struct {
 
 type readCompaction struct {
 	level int
-	// Key ranges are used instead of file handles as versions could change
-	// between the read sampling and scheduling a compaction.
+	// [start, end] key ranges are used instead of file handles as versions
+	// could change between the read sampling and scheduling a compaction.
 	start []byte
 	end   []byte
+
+	// The file associated with the compaction.
+	// If the file no longer belongs in the same
+	// level, then we skip the compaction.
+	fileNum base.FileNum
+}
+
+// The maximum number of elements in the readCompactions queue.
+// We want to limit the number of elements so that we only do
+// compactions for ranges which are being read recently.
+const readCompactionMaxQueueSize = 5
+
+// The readCompactionQueue is a queue of read compactions with
+// 0 overlapping ranges.
+type readCompactionQueue struct {
+	// Invariant: 0 is the index of the oldest element in the queue.
+	queue [readCompactionMaxQueueSize]*readCompaction
+
+	// The size of the queue which is occupied.
+	// size <= readCompactionMaxQueueSize.
+	size int
+}
+
+func (qu *readCompactionQueue) at(i int) *readCompaction {
+	if i >= qu.size {
+		return nil
+	}
+
+	return qu.queue[i]
+}
+
+// combine should be used to combine an older queue with a newer
+// queue.
+func (qu *readCompactionQueue) combine(
+	newQu *readCompactionQueue, cmp base.Compare) {
+
+	for i := 0; i < newQu.size; i++ {
+		qu.add(newQu.queue[i], cmp)
+	}
+}
+
+// add adds read compactions to the queue, while maintaining the invariant
+// that there are no overlapping ranges in the queue.
+func (qu *readCompactionQueue) add(rc *readCompaction, cmp base.Compare) {
+	sz := qu.size
+	for i := 0; i < sz; i++ {
+		left := qu.queue[i]
+		right := rc
+		if cmp(left.start, right.start) > 0 {
+			left, right = right, left
+		}
+		if cmp(right.start, left.end) <= 0 {
+			qu.queue[i] = nil
+			qu.size--
+		}
+	}
+
+	// Get rid of the holes which may have been formed
+	// in the queue.
+	qu.shiftLeft()
+
+	if qu.size == readCompactionMaxQueueSize {
+		// Make space at the end.
+		copy(qu.queue[0:], qu.queue[1:])
+		qu.queue[qu.size-1] = rc
+	} else {
+		qu.size++
+		qu.queue[qu.size-1] = rc
+	}
+}
+
+// Shifts the non-nil elements of the queue to the left so
+// that a continguous prefix of the queue is non-nil.
+func (qu *readCompactionQueue) shiftLeft() {
+	nilPos := -1
+	for i := 0; i < readCompactionMaxQueueSize; i++ {
+		if qu.queue[i] == nil && nilPos == -1 {
+			nilPos = i
+		} else if qu.queue[i] != nil && nilPos != -1 {
+			qu.queue[nilPos] = qu.queue[i]
+			qu.queue[i] = nil
+			nilPos++
+		}
+	}
+}
+
+// remove will remove the oldest element from the queue.
+func (qu *readCompactionQueue) remove() *readCompaction {
+	if qu.size == 0 {
+		return nil
+	}
+
+	c := qu.queue[0]
+	// todo: benchmark this change again.
+	copy(qu.queue[0:], qu.queue[1:])
+	qu.queue[qu.size-1] = nil
+	qu.size--
+	return c
 }
 
 func (d *DB) addInProgressCompaction(c *compaction) {

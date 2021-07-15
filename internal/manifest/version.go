@@ -76,6 +76,10 @@ type FileMetadata struct {
 		// in pebble.Iterator after every after every positioning operation
 		// that returns a user key (eg. Next, Prev, SeekGE, SeekLT, etc).
 		AllowedSeeks int64
+
+		// AllowedSeeksInit is the inital value of allowed seeks. This is used
+		// to re-set allowed seeks on a file once it hits 0.
+		AllowedSeeksInit int64
 	}
 
 	// Reference count for the file: incremented when a file is added to a

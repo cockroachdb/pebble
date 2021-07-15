@@ -1,0 +1,530 @@
+# Verify these invariants:
+# No overlapping ranges.
+# Size should reflect what's currently in the queue.
+# Empty queue should return nil.
+# Oldest element should be removed first.
+
+# Remove from empty queue.
+# Removing from the empty queue should return nil.
+create
+----
+(success)
+
+print-size
+----
+0
+
+remove-compaction
+----
+(nil)
+
+# Add to empty queue.
+create
+----
+(success)
+
+add-compaction
+5: a-e 1
+----
+
+print-size
+----
+1
+
+remove-compaction
+----
+5: a-e 1
+
+print-size
+----
+0
+
+remove-compaction
+----
+(nil)
+
+# No intersection in a non-full queue.
+create
+----
+(success)
+
+add-compaction
+5: a-e 1
+----
+
+print-queue
+----
+5: a-e 1
+
+add-compaction
+5: g-k 2
+----
+
+print-queue
+----
+5: a-e 1
+5: g-k 2
+
+print-size
+----
+2
+
+remove-compaction
+----
+5: a-e 1
+
+print-size
+----
+1
+
+remove-compaction
+----
+5: g-k 2
+
+print-size
+----
+0
+
+# No intersection in a full queue.
+# This adds a compaction once the queue is already full.
+# This new compaction doesn't intersect with any compaction
+# already in the queue, so the oldest element is evicted.
+create
+----
+(success)
+
+add-compaction
+5: a-e 1
+----
+
+add-compaction
+5: f-g 2
+----
+
+add-compaction
+5: k-m 3
+----
+
+add-compaction
+5: n-o 4
+----
+
+add-compaction
+5: p-r 5
+----
+
+print-size
+----
+5
+
+print-queue
+----
+5: a-e 1
+5: f-g 2
+5: k-m 3
+5: n-o 4
+5: p-r 5
+
+add-compaction
+4: t-u 6
+----
+
+print-queue
+----
+5: f-g 2
+5: k-m 3
+5: n-o 4
+5: p-r 5
+4: t-u 6
+
+print-size
+----
+5
+
+
+# One intersection in a non-full queue.
+# Try intersections with intervals at
+# various positions in the queue, and examine
+# the state of the queue after.
+create
+----
+(success)
+
+add-compaction
+5: a-e 1
+----
+
+add-compaction
+5: f-g 2
+----
+
+add-compaction
+5: k-m 3
+----
+
+add-compaction
+5: n-w 4
+----
+
+# 
+print-size
+----
+4
+
+print-queue
+----
+5: a-e 1
+5: f-g 2
+5: k-m 3
+5: n-w 4
+
+# Add interval which intersects with the first
+# interval in the queue.
+add-compaction
+4: c-d 5
+----
+
+print-queue
+----
+5: f-g 2
+5: k-m 3
+5: n-w 4
+4: c-d 5
+
+print-size
+----
+4
+
+# Add an interval which intersects with the last
+# element in the queue.
+add-compaction
+3: a-d 6
+----
+
+print-queue
+----
+5: f-g 2
+5: k-m 3
+5: n-w 4
+3: a-d 6
+
+print-size
+----
+4
+
+# Add an interval which intersects with an element in the
+# middle of the queue.
+add-compaction
+3: u-z 7
+----
+
+print-queue
+----
+5: f-g 2
+5: k-m 3
+3: a-d 6
+3: u-z 7
+
+print-size
+----
+4
+
+remove-compaction
+----
+5: f-g 2
+
+remove-compaction
+----
+5: k-m 3
+
+remove-compaction
+----
+3: a-d 6
+
+remove-compaction
+----
+3: u-z 7
+
+remove-compaction
+----
+(nil)
+
+# One intersection in a full queue.
+# We're doing some tests with full/non-full queues
+# because the logic for those cases is sometimes different.
+create
+----
+(success)
+
+add-compaction
+5: a-e 1
+----
+
+add-compaction
+5: f-g 2
+----
+
+add-compaction
+5: k-m 3
+----
+
+add-compaction
+5: n-w 4
+----
+
+add-compaction
+5: x-z 5
+----
+ 
+print-size
+----
+5
+
+print-queue
+----
+5: a-e 1
+5: f-g 2
+5: k-m 3
+5: n-w 4
+5: x-z 5
+
+# Add interval which intersects with the first
+# interval in the queue.
+add-compaction
+4: c-d 6
+----
+
+print-queue
+----
+5: f-g 2
+5: k-m 3
+5: n-w 4
+5: x-z 5
+4: c-d 6
+
+print-size
+----
+5
+
+# Add an interval which intersects with the last
+# element in the queue.
+add-compaction
+3: a-d 6
+----
+
+print-queue
+----
+5: f-g 2
+5: k-m 3
+5: n-w 4
+5: x-z 5
+3: a-d 6
+
+print-size
+----
+5
+
+# Add an interval which intersects with an element in the
+# middle of the queue.
+add-compaction
+3: u-z 7
+----
+
+print-queue
+----
+5: f-g 2
+5: k-m 3
+3: a-d 6
+3: u-z 7
+
+print-size
+----
+4
+
+remove-compaction
+----
+5: f-g 2
+
+remove-compaction
+----
+5: k-m 3
+
+remove-compaction
+----
+3: a-d 6
+
+remove-compaction
+----
+3: u-z 7
+
+remove-compaction
+----
+(nil)
+
+# More than one intersection in a non-full queue.
+create
+----
+(success)
+
+add-compaction
+5: a-e 1
+----
+
+add-compaction
+5: f-g 2
+----
+
+add-compaction
+5: k-m 3
+----
+
+add-compaction
+5: n-w 4
+----
+
+# 
+print-size
+----
+4
+
+print-queue
+----
+5: a-e 1
+5: f-g 2
+5: k-m 3
+5: n-w 4
+
+# Add an interval with intersects with two elements of the queue.
+add-compaction
+4: f-m 5
+----
+
+print-queue
+----
+5: a-e 1
+5: n-w 4
+4: f-m 5
+
+print-size
+----
+3
+
+# Add an interval which clears the entire queue.
+add-compaction
+3: a-z 6
+----
+
+print-queue
+----
+3: a-z 6
+
+print-size
+----
+1
+
+remove-compaction
+----
+3: a-z 6
+
+
+remove-compaction
+----
+(nil)
+
+print-size
+----
+0
+
+# More than one intersection in a full queue.
+create
+----
+(success)
+
+add-compaction
+5: a-e 1
+----
+
+add-compaction
+5: f-g 2
+----
+
+add-compaction
+5: k-m 3
+----
+
+add-compaction
+5: n-w 4
+----
+
+add-compaction
+3: y-z 5
+----
+
+add-compaction
+2: a-z 6
+----
+
+print-queue
+----
+2: a-z 6
+
+print-size
+----
+1
+
+create
+----
+(success)
+
+add-compaction
+5: a-e 1
+----
+
+add-compaction
+5: f-g 2
+----
+
+add-compaction
+5: k-m 3
+----
+
+add-compaction
+5: n-w 4
+----
+
+add-compaction
+3: y-z 5
+----
+
+# Test multiple overlap which doesn't cover the entire full queue.
+
+add-compaction
+2: o-y 6
+----
+
+print-queue
+----
+5: a-e 1
+5: f-g 2
+5: k-m 3
+2: o-y 6
+
+remove-compaction
+----
+5: a-e 1
+
+remove-compaction
+----
+5: f-g 2
+
+remove-compaction
+----
+5: k-m 3
+
+remove-compaction
+----
+2: o-y 6
+
+remove-compaction
+----
+(nil)
