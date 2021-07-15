@@ -1179,10 +1179,17 @@ type readCompaction struct {
 	end   []byte
 }
 
-// The maximum number of elements in the readCompactions queue.
-// We want to limit the number of elements so that we don't
-// pick older compactions which we no longer care for.
-const readCompactionMaxQueueSize = 5
+const (
+	// The maximum number of elements in the readCompactions queue.
+	// We want to limit the number of elements so that we don't
+	// pick older compactions which we no longer care for.
+	readCompactionMaxQueueSize = 5
+
+	// If the level which we're compacting out of has
+	// a low score, then skip the read compaction.
+	// TODO(bananbrick) : What should this limit be?
+	readCompactionSkipScore = 0.5
+)
 
 type readCompactionQueue struct {
 	// readCompactions is ordered by how old the compactions are.

@@ -17,10 +17,7 @@ import (
 
 // The minimum count for an intra-L0 compaction. This matches the RocksDB
 // heuristic.
-const (
-	minIntraL0Count            = 4
-	ReadCompactionMaxQueueSize = 5
-)
+const minIntraL0Count = 4
 
 type compactionEnv struct {
 	bytesCompacted          *uint64
@@ -38,7 +35,7 @@ type compactionPicker interface {
 	pickAuto(env compactionEnv) (pc *pickedCompaction)
 	pickManual(env compactionEnv, manual *manualCompaction) (c *pickedCompaction, retryLater bool)
 	pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction)
-	pickReadTriggeredCompaction(env compactionEnv) (pc *pickedCompaction)
+	pickReadTriggeredCompaction(env compactionEnv, scores [7]candidateLevelInfo) (pc *pickedCompaction)
 	forceBaseLevel1()
 }
 
@@ -1007,7 +1004,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		return pc
 	}
 
-	if pc := p.pickReadTriggeredCompaction(env); pc != nil {
+	if pc := p.pickReadTriggeredCompaction(env, scores); pc != nil {
 		return pc
 	}
 
@@ -1344,7 +1341,7 @@ func pickManualHelper(
 }
 
 func (p *compactionPickerByScore) pickReadTriggeredCompaction(
-	env compactionEnv,
+	env compactionEnv, scores [7]candidateLevelInfo,
 ) (pc *pickedCompaction) {
 	// If a flush is in-progress or expected to happen soon, it means more writes are taking place. We would
 	// soon be scheduling more write focussed compactions. In this case, skip read compactions as they are
@@ -1354,7 +1351,7 @@ func (p *compactionPickerByScore) pickReadTriggeredCompaction(
 	}
 	for env.readCompactionEnv.readCompactions.size > 0 {
 		rc := env.readCompactionEnv.readCompactions.remove()
-		if pc = pickReadTriggeredCompactionHelper(p, rc, env); pc != nil {
+		if pc = pickReadTriggeredCompactionHelper(p, rc, env, scores); pc != nil {
 			break
 		}
 	}
@@ -1362,7 +1359,7 @@ func (p *compactionPickerByScore) pickReadTriggeredCompaction(
 }
 
 func pickReadTriggeredCompactionHelper(
-	p *compactionPickerByScore, rc *readCompaction, env compactionEnv,
+	p *compactionPickerByScore, rc *readCompaction, env compactionEnv, scores [7]candidateLevelInfo,
 ) (pc *pickedCompaction) {
 	cmp := p.opts.Comparer.Compare
 	overlapSlice := p.vers.Overlaps(rc.level, cmp, rc.start, rc.end)
@@ -1383,6 +1380,12 @@ func pickReadTriggeredCompactionHelper(
 
 	pc = newPickedCompaction(p.opts, p.vers, rc.level, p.baseLevel)
 	pc.startLevel.files = overlapSlice
+
+	if pc.startLevel.level < numLevels &&
+		scores[pc.startLevel.level].score <= readCompactionSkipScore {
+		return nil
+	}
+
 	if !pc.setupInputs() {
 		return nil
 	}
