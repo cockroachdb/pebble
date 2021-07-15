@@ -497,7 +497,7 @@ func (*MemFS) PathDir(p string) string {
 
 // GetDiskUsage implements FS.GetDiskUsage.
 func (*MemFS) GetDiskUsage(string) (DiskUsage, error) {
-	return DiskUsage{}, errors.New("pebble: not supported")
+	return DiskUsage{}, ErrUnsupported
 }
 
 // memNode holds a file's data or a directory's children, and implements os.FileInfo.
