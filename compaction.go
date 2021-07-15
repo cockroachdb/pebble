@@ -1174,6 +1174,133 @@ type readCompaction struct {
 	end   []byte
 }
 
+// The maximum number of elements in the readCompactions queue.
+// We want to limit the number of elements so that we don't
+// pick older compactions which we no longer care for.
+const readCompactionMaxQueueSize = 5
+
+// TODO(bananabrick): See if keeping track of a "score", of how
+// many times a key range has been added to the queue, without
+// being removed, and then removing the element with the lowest
+// "score", instead of removing the oldest element is worth it.
+type readCompactionQueueNode struct {
+	rc       *readCompaction
+	keyRange string
+	prev     *readCompactionQueueNode
+	next     *readCompactionQueueNode
+}
+
+// A readCompactionQueue allows for O(1) remove, and insertions which are
+// O((start + end)), where start, end are the byte slices in a readCompaction
+// struct, which indicate the key range associated with a read compaction.
+// TODO(bananabrick) : Might want to move deduplication to remove instead of
+// add since add is primarily called by iterators, whereas remove is called
+// by compaction code.
+// The readCompactionQueue, with its default values is usable, as the values
+// which are needed are init later.
+type readCompactionQueue struct {
+	// queued is map from "start,end" range in the readCompaction, to
+	// a readCompactionQueueNode. A map is used for deduplication
+	// purposes.
+	// TODO(bananabrick) : Replace "," with a character which will never
+	// be in a UserKey for this to work.
+	queued map[string]*readCompactionQueueNode
+
+	// The queued nodes are arranged in order of insertion.
+	sentinel *readCompactionQueueNode
+
+	initialized bool
+}
+
+// makeReadCompactionQueue will create an empty read compaction
+// queue with its fields initialized appropriately.
+func (qu *readCompactionQueue) initReadCompactionQueue() {
+	qu.queued = make(map[string]*readCompactionQueueNode)
+
+	qu.sentinel = &readCompactionQueueNode{}
+	qu.sentinel.prev = qu.sentinel
+	qu.sentinel.next = qu.sentinel
+
+	qu.initialized = true
+}
+
+// addMany should be used to combine an older queue with a newer
+// queue.
+func (qu *readCompactionQueue) combine(newQu *readCompactionQueue) {
+	it := newQu.sentinel
+	for i := 0; i < len(newQu.queued); i++ {
+		it = it.next
+		qu.add(it.rc)
+	}
+}
+
+// removeNode removes node from the queue.
+func (qu *readCompactionQueue) unlinkNode(node *readCompactionQueueNode) *readCompactionQueueNode {
+	node.prev.next = node.next
+	node.next.prev = node.prev
+
+	node.next = nil
+	node.prev = nil
+
+	return node
+}
+
+// addNode adds a node to the end of the queue.
+func (qu *readCompactionQueue) addNode(node *readCompactionQueueNode) {
+	oldLast := qu.sentinel.prev
+	oldLast.next = node
+	qu.sentinel.prev = node
+	node.prev = oldLast
+	node.next = qu.sentinel
+}
+
+func (qu *readCompactionQueue) size() int {
+	return len(qu.queued)
+}
+
+// add adds read compaction to the queue. Deduplication can take a long time
+// since we have no upper limits on key sizes.
+// TODO(bananabrick): should this be constrained to read compactions with small key sizes?
+func (qu *readCompactionQueue) add(rc *readCompaction) {
+	if !qu.initialized {
+		qu.initReadCompactionQueue()
+	}
+
+	// TODO(bananabrick) : the ',' needs to be replaced by
+	// a char which isn't present in UserKey.
+	keyRange := append(rc.start, ',')
+	keyRangeS := string(append(keyRange, rc.end...))
+
+	if oldNode, ok := qu.queued[keyRangeS]; ok {
+		oldNode.rc = rc
+		qu.addNode(qu.unlinkNode(oldNode))
+	} else {
+		// Just add this into the queue, and then remove the first item.
+		newNode := &readCompactionQueueNode{}
+		newNode.rc = rc
+		newNode.keyRange = keyRangeS
+		qu.queued[keyRangeS] = newNode
+		qu.addNode(newNode)
+	}
+
+	// Remove the oldest node, if necessary.
+	if len(qu.queued) > readCompactionMaxQueueSize {
+		removed := qu.unlinkNode(qu.sentinel.next)
+		delete(qu.queued, removed.keyRange)
+	}
+}
+
+// remove will remove the oldest element from the queue.
+func (qu *readCompactionQueue) remove() *readCompaction {
+	if len(qu.queued) == 0 {
+		return nil
+	}
+
+	removed := qu.unlinkNode(qu.sentinel.next)
+	delete(qu.queued, removed.keyRange)
+	return removed.rc
+}
+
 func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	var isBase, isIntraL0 bool
