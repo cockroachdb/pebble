@@ -1174,6 +1174,85 @@ type readCompaction struct {
 	end   []byte
 }
 
+// The maximum number of elements in the readCompactions queue.
+// We want to limit the number of elements so that we don't
+// pick older compactions which we no longer care for.
+const readCompactionMaxQueueSize = 5
+
+type readCompactionQueue struct {
+	// readCompactions is ordered by how old the compactions are.
+	readCompactions [readCompactionMaxQueueSize]readCompaction
+
+	// oldestIndex is the index to the oldest element in readCompactions.
+	// It has no meaning if size is 0.
+	oldestIndex int
+
+	// Number of items in the queue.
+	size int
+}
+
+// addMany adds compactions from a newer queue to an older queue.
+func (qu *readCompactionQueue) addMany(otherQu *readCompactionQueue) {
+	for _, rc := range otherQu.readCompactions {
+		qu.add(&rc)
+	}
+}
+
+// add will add a readCompaction to the readCompactionQueue.
+// If the read compaction being added has a duplicate range
+// to one of the compactions in the queue, then the new
+// compaction will replace the old one.
+// If the range of the readCompaction being added, doesn't
+// overlap with any of the read compactions already in
+// the queue, and the queue has no space, the oldest item
+// is evicted.
+func (qu *readCompactionQueue) add(rc *readCompaction) {
+	if qu.size == 0 {
+		qu.oldestIndex = 0
+	}
+
+	qu.size++
+
+	for i := qu.oldestIndex; i < qu.oldestIndex+qu.size; i++ {
+		i = i % len(qu.readCompactions)
+
+		if bytes.Equal(qu.readCompactions[i].start, rc.start) &&
+			bytes.Equal(qu.readCompactions[i].end, rc.end) {
+
+			lastIndex := (qu.oldestIndex + qu.size - 1) % qu.size
+			qu.readCompactions[lastIndex], qu.readCompactions[i] = qu.readCompactions[i], qu.readCompactions[lastIndex]
+			qu.readCompactions[lastIndex] = *rc
+			return
+		}
+	}
+
+	// There were no duplicates.
+	if qu.size == len(qu.readCompactions) {
+		// There's no space left in the queue, so we'll just eject
+		// the first item.
+		qu.readCompactions[qu.oldestIndex] = *rc
+		qu.oldestIndex = (qu.oldestIndex + 1) % qu.size
+	} else {
+		nextIndex := (qu.oldestIndex + qu.size) % qu.size
+		qu.readCompactions[nextIndex] = *rc
+	}
+}
+
+// remove will remove the oldest element from the queue.
+// A O(n) remove algorithm is fine.
+// If there are no elements to remove, then a nil is returned.
+func (qu *readCompactionQueue) remove() *readCompaction {
+	if qu.size == 0 {
+		return nil
+	}
+
+	rc := qu.readCompactions[qu.oldestIndex]
+	qu.oldestIndex = (qu.oldestIndex + 1) % qu.size
+	qu.size--
+
+	return &rc
+}
+
 func (d *DB) addInProgressCompaction(c *compaction) {
 	d.mu.compact.inProgress[c] = struct{}{}
 	var isBase, isIntraL0 bool
@@ -1629,7 +1708,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 	for !d.opts.private.disableAutomaticCompactions && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
 		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
 		env.readCompactionEnv = readCompactionEnv{
-			readCompactions: &d.mu.compact.readCompactions,
+			readCompactions: d.mu.compact.readCompactions,
 			flushing:        d.mu.compact.flushing || d.passedFlushThreshold(),
 		}
 		pc := pickFunc(d.mu.versions.picker, env)

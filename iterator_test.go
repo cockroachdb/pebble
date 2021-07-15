@@ -602,12 +602,12 @@ func TestReadSampling(t *testing.T) {
 
 			d.mu.Lock()
 			var sb strings.Builder
-			if len(d.mu.compact.readCompactions) == 0 {
+			if d.mu.compact.readCompactions.size == 0 {
 				sb.WriteString("(none)")
 			}
-			for _, rc := range d.mu.compact.readCompactions {
-				sb.WriteString(fmt.Sprintf("(level: %d, start: %s, end: %s)\n", rc.level, string(rc.start), string(rc.end)))
-			}
+			// for _, rc := range d.mu.compact.readCompactions {
+			// 	sb.WriteString(fmt.Sprintf("(level: %d, start: %s, end: %s)\n", rc.level, string(rc.start), string(rc.end)))
+			// }
 			d.mu.Unlock()
 			return sb.String()
 

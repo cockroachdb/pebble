@@ -1733,12 +1733,12 @@ func TestCompactionReadTriggered(t *testing.T) {
 			case "show-read-compactions":
 				d.mu.Lock()
 				var sb strings.Builder
-				if len(d.mu.compact.readCompactions) == 0 {
-					sb.WriteString("(none)")
-				}
-				for _, rc := range d.mu.compact.readCompactions {
-					sb.WriteString(fmt.Sprintf("(level: %d, start: %s, end: %s)\n", rc.level, string(rc.start), string(rc.end)))
-				}
+				// if len(d.mu.compact.readCompactions) == 0 {
+				// 	sb.WriteString("(none)")
+				// }
+				// for _, rc := range d.mu.compact.readCompactions {
+				// 	sb.WriteString(fmt.Sprintf("(level: %d, start: %s, end: %s)\n", rc.level, string(rc.start), string(rc.end)))
+				// }
 				d.mu.Unlock()
 				return sb.String()
 
