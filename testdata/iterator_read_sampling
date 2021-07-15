@@ -297,3 +297,55 @@ close-iter
 read-compactions
 ----
 (none)
+
+# Test to see if the allowedSeeks associated with a file
+# is reset once it hits 0.
+define auto-compactions=off
+L0
+  a.SET.4:4
+  c.SET.8:8
+L1
+  a.SET.3:3
+  c.SET.9:9
+L2
+  d.SET.2:2
+  l.SET.7:7
+L3
+  d.SET.1:1
+  l.SET.8:8
+----
+0.0:
+  000004:[a#4,SET-c#8,SET]
+1:
+  000005:[a#3,SET-c#9,SET]
+2:
+  000006:[d#2,SET-l#7,SET]
+3:
+  000007:[d#1,SET-l#8,SET]
+
+set allowed-seeks=1
+----
+
+iter
+last
+----
+l:8
+
+iter-read-compactions
+----
+(level: 2, start: d, end: l)
+
+close-iter
+----
+
+read-compactions
+----
+(level: 2, start: d, end: l)
+
+# The allowedSeeks on this file should have been reset.
+# Since the value of allowedSeeks determined
+# by the code is 100, we check if allowed-seeks has been
+# reset to 100.
+show allowed-seeks=(000006,)
+----
+100

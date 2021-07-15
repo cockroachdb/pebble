@@ -860,7 +860,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 func TestCompactionPickerPickReadTriggered(t *testing.T) {
 	opts := (*Options)(nil).EnsureDefaults()
 	var picker *compactionPickerByScore
-	var rcList []readCompaction
+	var rcList readCompactionQueue
 	var vers *version
 
 	parseMeta := func(s string) (*fileMetadata, error) {
@@ -897,7 +897,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_picker_read_triggered", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
-			rcList = []readCompaction{}
+			rcList = readCompactionQueue{}
 			fileMetas := [manifest.NumLevels][]*fileMetadata{}
 			level := 0
 			var err error
@@ -949,18 +949,20 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 					continue
 				}
 				parts := strings.Split(line, " ")
-				if len(parts) != 2 {
-					return "error: malformed data for add-read-compaction. usage: <level>: <start>-<end>"
+				if len(parts) != 3 {
+					return "error: malformed data for add-read-compaction. usage: <level>: <start>-<end> <filenum>"
 				}
 				if l, err := strconv.Atoi(parts[0][:1]); err == nil {
 					keys := strings.Split(parts[1], "-")
+					fileNum, _ := strconv.Atoi(parts[2])
 
 					rc := readCompaction{
-						level: l,
-						start: []byte(keys[0]),
-						end:   []byte(keys[1]),
+						level:   l,
+						start:   []byte(keys[0]),
+						end:     []byte(keys[1]),
+						fileNum: base.FileNum(fileNum),
 					}
-					rcList = append(rcList, rc)
+					rcList.add(&rc, DefaultComparer.Compare)
 				} else {
 					return err.Error()
 				}
@@ -969,10 +971,11 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 
 		case "show-read-compactions":
 			var sb strings.Builder
-			if len(rcList) == 0 {
+			if rcList.size == 0 {
 				sb.WriteString("(none)")
 			}
-			for _, rc := range rcList {
+			for i := 0; i < rcList.size; i++ {
+				rc := rcList.at(i)
 				sb.WriteString(fmt.Sprintf("(level: %d, start: %s, end: %s)\n", rc.level, string(rc.start), string(rc.end)))
 			}
 			return sb.String()

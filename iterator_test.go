@@ -597,6 +597,43 @@ func TestReadSampling(t *testing.T) {
 			d.mu.Unlock()
 			return ""
 
+		case "show":
+			if d == nil {
+				return fmt.Sprintf("%s: db is not defined", td.Cmd)
+			}
+
+			var fileNum int64
+			for _, arg := range td.CmdArgs {
+				if len(arg.Vals) != 2 {
+					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
+				}
+				switch arg.Key {
+				case "allowed-seeks":
+					var err error
+					fileNum, err = strconv.ParseInt(arg.Vals[0], 10, 64)
+					if err != nil {
+						return err.Error()
+					}
+				}
+			}
+
+			var foundAllowedSeeks int64 = -1
+			d.mu.Lock()
+			for _, l := range d.mu.versions.currentVersion().Levels {
+				l.Slice().Each(func(f *fileMetadata) {
+					if f.FileNum == base.FileNum(fileNum) {
+						actualAllowedSeeks := atomic.LoadInt64(&f.Atomic.AllowedSeeks)
+						foundAllowedSeeks = actualAllowedSeeks
+					}
+				})
+			}
+			d.mu.Unlock()
+
+			if foundAllowedSeeks == -1 {
+				return fmt.Sprintf("invalid file num: %d", fileNum)
+			}
+			return fmt.Sprintf("%d", foundAllowedSeeks)
+
 		case "iter":
 			if iter == nil || iter.iter == nil {
 				// TODO(peter): runDBDefineCmd doesn't properly update the visible
@@ -618,10 +655,11 @@ func TestReadSampling(t *testing.T) {
 
 			d.mu.Lock()
 			var sb strings.Builder
-			if len(d.mu.compact.readCompactions) == 0 {
+			if d.mu.compact.readCompactions.size == 0 {
 				sb.WriteString("(none)")
 			}
-			for _, rc := range d.mu.compact.readCompactions {
+			for i := 0; i < d.mu.compact.readCompactions.size; i++ {
+				rc := d.mu.compact.readCompactions.at(i)
 				sb.WriteString(fmt.Sprintf("(level: %d, start: %s, end: %s)\n", rc.level, string(rc.start), string(rc.end)))
 			}
 			d.mu.Unlock()
@@ -633,10 +671,11 @@ func TestReadSampling(t *testing.T) {
 			}
 
 			var sb strings.Builder
-			if len(iter.readSampling.pendingCompactions) == 0 {
+			if iter.readSampling.pendingCompactions.size == 0 {
 				sb.WriteString("(none)")
 			}
-			for _, rc := range iter.readSampling.pendingCompactions {
+			for i := 0; i < iter.readSampling.pendingCompactions.size; i++ {
+				rc := iter.readSampling.pendingCompactions.at(i)
 				sb.WriteString(fmt.Sprintf("(level: %d, start: %s, end: %s)\n", rc.level, string(rc.start), string(rc.end)))
 			}
 			return sb.String()
