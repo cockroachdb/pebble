@@ -46,6 +46,11 @@ func maxGrandparentOverlapBytes(opts *Options, level int) uint64 {
 	return uint64(10 * opts.Level(level).TargetFileSize)
 }
 
+func maxReadCompactionBytes(opts *Options, level int) uint64 {
+	// TODO(bananabrick): What should this limit be?
+	return uint64(5 * opts.Level(level).TargetFileSize)
+}
+
 // noCloseIter wraps around an internal iterator, intercepting and eliding
 // calls to Close. It is used during compaction to ensure that rangeDelIters
 // are not closed prematurely.
