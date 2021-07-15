@@ -78,6 +78,10 @@ type FileMetadata struct {
 		AllowedSeeks int64
 	}
 
+	// InitAllowedSeeks is the inital value of allowed seeks. This is used
+	// to re-set allowed seeks on a file once it hits 0.
+	InitAllowedSeeks int64
+
 	// Reference count for the file: incremented when a file is added to a
 	// version and decremented when the version is unreferenced. The file is
 	// obsolete when the reference count falls to zero.
