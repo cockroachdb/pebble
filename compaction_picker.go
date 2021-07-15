@@ -19,6 +19,8 @@ import (
 // heuristic.
 const minIntraL0Count = 4
 
+const levelMultiplier = 10
+
 type compactionEnv struct {
 	bytesCompacted          *uint64
 	earliestUnflushedSeqNum uint64
@@ -41,9 +43,9 @@ type compactionPicker interface {
 
 // readCompactionEnv is used to hold data required to perform read compactions
 type readCompactionEnv struct {
-	readCompactions          *[]readCompaction
-	flushing                 bool
 	rescheduleReadCompaction *bool
+	readCompactions          *readCompactionQueue
+	flushing                 bool
 }
 
 // Information about in-progress compactions provided to the compaction picker. These are used to
@@ -128,6 +130,10 @@ type pickedCompaction struct {
 	// maxOverlapBytes is the maximum number of bytes of overlap allowed for a
 	// single output table with the tables in the grandparent level.
 	maxOverlapBytes uint64
+	// maxReadCompactionBytes is the maximum bytes a read compaction is allowed to
+	// overlap in its output level with. If the overlap is greater than
+	// maxReadCompaction bytes, then we don't proceed with the compaction.
+	maxReadCompactionBytes uint64
 
 	// The boundaries of the input data.
 	smallest InternalKey
@@ -155,12 +161,13 @@ func newPickedCompaction(opts *Options, cur *version, startLevel, baseLevel int)
 	adjustedOutputLevel := 1 + outputLevel - baseLevel
 
 	pc := &pickedCompaction{
-		cmp:                 opts.Comparer.Compare,
-		version:             cur,
-		inputs:              []compactionLevel{{level: startLevel}, {level: outputLevel}},
-		adjustedOutputLevel: adjustedOutputLevel,
-		maxOutputFileSize:   uint64(opts.Level(adjustedOutputLevel).TargetFileSize),
-		maxOverlapBytes:     maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
+		cmp:                    opts.Comparer.Compare,
+		version:                cur,
+		inputs:                 []compactionLevel{{level: startLevel}, {level: outputLevel}},
+		adjustedOutputLevel:    adjustedOutputLevel,
+		maxOutputFileSize:      uint64(opts.Level(adjustedOutputLevel).TargetFileSize),
+		maxOverlapBytes:        maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
+		maxReadCompactionBytes: maxReadCompactionBytes(opts, adjustedOutputLevel),
 	}
 	pc.startLevel = &pc.inputs[0]
 	pc.outputLevel = &pc.inputs[1]
@@ -663,7 +670,6 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 		return
 	}
 
-	const levelMultiplier = 10
 	dbSize += p.levelSizes[0]
 	bottomLevelSize := dbSize - dbSize/levelMultiplier
 
@@ -759,7 +765,7 @@ func (p *compactionPickerByScore) calculateScores(
 	// priority for compacting the current level.
 	//
 	// The effect of this adjustment is to help prioritize compactions in lower
-	// levels. The following shows the adjusted score and original score. In this
+	// levels. The following shows the new score and original score. In this
 	// scenario, L0 has 68 sublevels. L3 (a.k.a. Lbase) is significantly above
 	// its target size. The original score prioritizes compactions from those two
 	// levels, but doing so ends up causing a future problem: data piles up in
@@ -1397,10 +1403,9 @@ func (p *compactionPickerByScore) pickReadTriggeredCompaction(
 	if env.readCompactionEnv.flushing || env.readCompactionEnv.readCompactions == nil {
 		return nil
 	}
-	for len(*env.readCompactionEnv.readCompactions) > 0 {
-		rc := (*env.readCompactionEnv.readCompactions)[0]
-		*env.readCompactionEnv.readCompactions = (*env.readCompactionEnv.readCompactions)[1:]
-		if pc = pickReadTriggeredCompactionHelper(p, &rc, env); pc != nil {
+	for env.readCompactionEnv.readCompactions.size > 0 {
+		rc := env.readCompactionEnv.readCompactions.remove()
+		if pc = pickReadTriggeredCompactionHelper(p, rc, env); pc != nil {
 			break
 		}
 	}
@@ -1408,20 +1413,30 @@ func (p *compactionPickerByScore) pickReadTriggeredCompaction(
 }
 
 func pickReadTriggeredCompactionHelper(
-	p *compactionPickerByScore, rc *readCompaction, env compactionEnv,
-) (pc *pickedCompaction) {
+	p *compactionPickerByScore, rc *readCompaction, env compactionEnv) (pc *pickedCompaction) {
 	cmp := p.opts.Comparer.Compare
 	overlapSlice := p.vers.Overlaps(rc.level, cmp, rc.start, rc.end)
 	if overlapSlice.Empty() {
-		var shouldCompact bool
-		// If the file for the given key range has moved levels since the compaction
-		// was scheduled, check to see if the range still has overlapping files
-		overlapSlice, shouldCompact = updateReadCompaction(p.vers, cmp, rc)
-		if !shouldCompact {
-			return nil
+		// If there is no overlap, then the file with the key range
+		// must have been compacted away. So, we don't proceed to
+		// compact the same key range again.
+		return nil
+	}
+
+	iter := overlapSlice.Iter()
+	var fileMatches bool
+	for f := iter.First(); f != nil; f = iter.Next() {
+		if f.FileNum == rc.fileNum {
+			fileMatches = true
+			break
 		}
 	}
+	if !fileMatches {
+		return nil
+	}
+
 	pc = newPickedCompaction(p.opts, p.vers, rc.level, p.baseLevel)
+
 	pc.startLevel.files = overlapSlice
 	if !pc.setupInputs(p.opts, p.diskAvailBytes()) {
 		return nil
@@ -1430,30 +1445,23 @@ func pickReadTriggeredCompactionHelper(
 		return nil
 	}
 	pc.readTriggered = true
-	return pc
-}
 
-func updateReadCompaction(
-	vers *version, cmp Compare, rc *readCompaction,
-) (slice manifest.LevelSlice, shouldCompact bool) {
-	numOverlap, topLevel := 0, 0
-	var topOverlaps manifest.LevelSlice
-	for l := 0; l < numLevels; l++ {
-		overlaps := vers.Overlaps(l, cmp, rc.start, rc.end)
-		if !overlaps.Empty() {
-			numOverlap++
-			if numOverlap >= 2 {
-				break
-			}
-			topOverlaps = overlaps
-			topLevel = l
-		}
+	// Prevent read compactions which are too wide.
+	outputOverlaps := pc.version.Overlaps(
+		pc.outputLevel.level, pc.cmp, pc.smallest.UserKey, pc.largest.UserKey,
+	)
+	if outputOverlaps.SizeSum() > pc.maxReadCompactionBytes {
+		return nil
 	}
-	if numOverlap >= 2 {
-		rc.level = topLevel
-		return topOverlaps, true
+
+	// Prevent compactions which start with a small seed file X, but overlap
+	// with over allowedCompactionWidth * X file sizes in the output layer.
+	const allowedCompactionWidth = 35
+	if outputOverlaps.SizeSum() > overlapSlice.SizeSum()*allowedCompactionWidth {
+		return nil
 	}
-	return manifest.LevelSlice{}, false
+
+	return pc
 }
 
 func (p *compactionPickerByScore) forceBaseLevel1() {
