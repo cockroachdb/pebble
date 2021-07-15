@@ -130,6 +130,10 @@ type pickedCompaction struct {
 	// a compaction results in a larger size, the original compaction is used
 	// instead.
 	maxExpandedBytes uint64
+	// maxReadCompactionBytes is the maximum size of files in a level which a read
+	// compaction from a lower level overlaps with. If the overlap is greater than
+	// maxReadCompaction bytes, then we don't proceed with the compaction.
+	maxReadCompactionBytes uint64
 
 	// The boundaries of the input data.
 	smallest InternalKey
@@ -157,12 +161,13 @@ func newPickedCompaction(opts *Options, cur *version, startLevel, baseLevel int)
 	adjustedOutputLevel := 1 + outputLevel - baseLevel
 
 	pc := &pickedCompaction{
-		cmp:               opts.Comparer.Compare,
-		version:           cur,
-		inputs:            []compactionLevel{{level: startLevel}, {level: outputLevel}},
-		maxOutputFileSize: uint64(opts.Level(adjustedOutputLevel).TargetFileSize),
-		maxOverlapBytes:   maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
-		maxExpandedBytes:  expandedCompactionByteSizeLimit(opts, adjustedOutputLevel),
+		cmp:                    opts.Comparer.Compare,
+		version:                cur,
+		inputs:                 []compactionLevel{{level: startLevel}, {level: outputLevel}},
+		maxOutputFileSize:      uint64(opts.Level(adjustedOutputLevel).TargetFileSize),
+		maxOverlapBytes:        maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
+		maxExpandedBytes:       expandedCompactionByteSizeLimit(opts, adjustedOutputLevel),
+		maxReadCompactionBytes: maxReadCompactionBytes(opts, adjustedOutputLevel),
 	}
 	pc.startLevel = &pc.inputs[0]
 	pc.outputLevel = &pc.inputs[1]
@@ -1361,10 +1366,21 @@ func pickReadTriggeredCompactionHelper(
 ) (pc *pickedCompaction) {
 	cmp := p.opts.Comparer.Compare
 	overlapSlice := p.vers.Overlaps(rc.level, cmp, rc.start, rc.end)
-	// TODO: Do we want to drop this compaction if the overlap slice
 	if overlapSlice.Empty() {
+		// If there is no overlap, then the file with the key range
+		// must have been compacted away. So, we don't proceed to
+		// compact the same key range again.
 		return nil
 	}
+
+	// TODO: Do we want to still check if the original file associated
+	// with the compaction still belongs in the version?
+	// We know that the range associated with that file belongs to
+	// p.vers.
+
+	// We want to check if the compaction is wide, and disregard it
+	// if it is wide.
+
 	pc = newPickedCompaction(p.opts, p.vers, rc.level, p.baseLevel)
 	pc.startLevel.files = overlapSlice
 	if !pc.setupInputs() {
@@ -1374,6 +1390,15 @@ func pickReadTriggeredCompactionHelper(
 		return nil
 	}
 	pc.readTriggered = true
+
+	// Prevent read compactions which are too wide.
+	outputOverlaps := pc.version.Overlaps(
+		pc.outputLevel.level, pc.cmp, pc.smallest.UserKey, pc.largest.UserKey,
+	)
+	if outputOverlaps.SizeSum() > pc.maxReadCompactionBytes {
+		return nil
+	}
+
 	return pc
 }
 
