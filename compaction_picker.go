@@ -1361,14 +1361,9 @@ func pickReadTriggeredCompactionHelper(
 ) (pc *pickedCompaction) {
 	cmp := p.opts.Comparer.Compare
 	overlapSlice := p.vers.Overlaps(rc.level, cmp, rc.start, rc.end)
+	// TODO: Do we want to drop this compaction if the overlap slice
 	if overlapSlice.Empty() {
-		var shouldCompact bool
-		// If the file for the given key range has moved levels since the compaction
-		// was scheduled, check to see if the range still has overlapping files
-		overlapSlice, shouldCompact = updateReadCompaction(p.vers, cmp, rc)
-		if !shouldCompact {
-			return nil
-		}
+		return nil
 	}
 	pc = newPickedCompaction(p.opts, p.vers, rc.level, p.baseLevel)
 	pc.startLevel.files = overlapSlice
