@@ -324,3 +324,6 @@ func Root(fs FS) FS {
 	}
 	return fs
 }
+
+// ErrUnsupported may be returned a FS when it does not support an operation.
+var ErrUnsupported = errors.New("pebble: not supported")
