@@ -46,6 +46,12 @@ func maxGrandparentOverlapBytes(opts *Options, level int) uint64 {
 	return uint64(10 * opts.Level(level).TargetFileSize)
 }
 
+// maxReadCompactionBytes is used to prevent read compactions which
+// are too wide.
+func maxReadCompactionBytes(opts *Options, level int) uint64 {
+	return uint64(10 * opts.Level(level).TargetFileSize)
+}
+
 // noCloseIter wraps around an internal iterator, intercepting and eliding
 // calls to Close. It is used during compaction to ensure that rangeDelIters
 // are not closed prematurely.
@@ -1168,10 +1174,14 @@ type manualCompaction struct {
 
 type readCompaction struct {
 	level int
-	// Key ranges are used instead of file handles as versions could change
-	// between the read sampling and scheduling a compaction.
+	// [start, end] key ranges are used for de-duping.
 	start []byte
 	end   []byte
+
+	// The file associated with the compaction.
+	// If the file no longer belongs in the same
+	// level, then we skip the compaction.
+	fileNum base.FileNum
 }
 
 func (d *DB) addInProgressCompaction(c *compaction) {
@@ -1533,6 +1543,17 @@ func (d *DB) flush1() error {
 		close(flushed[i].flushed)
 	}
 	return err
+}
+
+// maybeScheduleCompactionAsync should be used when
+// we want to possible schedule a compaction, but don't
+// want to eat the cost of running maybeScheduleCompaction.
+// This method should be launched in a separate go routine.
+// todo(bananabrick) : stop this go routine from leaking.
+func (d *DB) maybeScheduleCompactionAsync() {
+	d.mu.Lock()
+	d.maybeScheduleCompaction()
+	d.mu.Unlock()
 }
 
 // maybeScheduleCompaction schedules a compaction if necessary.

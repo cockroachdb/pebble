@@ -200,7 +200,7 @@ const (
 type readSampling struct {
 	bytesUntilReadSampling uint64
 	initialSamplePassed    bool
-	pendingCompactions     []readCompaction
+	pendingCompactions     readCompactionQueue
 	// forceReadSampling is used for testing purposes to force a read sample on every
 	// call to Iterator.maybeSampleRead()
 	forceReadSampling bool
@@ -382,12 +382,20 @@ func (i *Iterator) sampleRead() {
 	if numOverlappingLevels >= 2 {
 		allowedSeeks := atomic.AddInt64(&topFile.Atomic.AllowedSeeks, -1)
 		if allowedSeeks == 0 {
+
+			// Since the compaction queue can handle duplicates, we can keep
+			// adding to the queue even once allowedSeeks hits 0.
+			// In fact, we NEED to keep adding to the queue, because the queue
+			// is small and evicts older and possibly useful compactions.
+			atomic.AddInt64(&topFile.Atomic.AllowedSeeks, topFile.InitAllowedSeeks)
+
 			read := readCompaction{
-				start: topFile.Smallest.UserKey,
-				end:   topFile.Largest.UserKey,
-				level: topLevel,
+				start:   topFile.Smallest.UserKey,
+				end:     topFile.Largest.UserKey,
+				level:   topLevel,
+				fileNum: topFile.FileNum,
 			}
-			i.readSampling.pendingCompactions = append(i.readSampling.pendingCompactions, read)
+			i.readSampling.pendingCompactions.add(&read, i.cmp)
 		}
 	}
 }
@@ -1072,11 +1080,19 @@ func (i *Iterator) Close() error {
 	err := i.err
 
 	if i.readState != nil {
-		if len(i.readSampling.pendingCompactions) > 0 {
+		if i.readSampling.pendingCompactions.size > 0 {
 			// Copy pending read compactions using db.mu.Lock()
 			i.readState.db.mu.Lock()
-			i.readState.db.mu.compact.readCompactions = append(i.readState.db.mu.compact.readCompactions, i.readSampling.pendingCompactions...)
+			prevSize := i.readState.db.mu.compact.readCompactions.size
+			i.readState.db.mu.compact.readCompactions.combine(&i.readSampling.pendingCompactions, i.cmp)
 			i.readState.db.mu.Unlock()
+
+			if prevSize == 0 {
+				// In a read heavy workload, flushes may not happen frequently enough to
+				// schedule compactions. prevSize doesn't hit 0 very often, so this call should
+				// be rare.
+				go i.readState.db.maybeScheduleCompactionAsync()
+			}
 		}
 
 		i.readState.unref()
@@ -1235,8 +1251,10 @@ func (stats *IteratorStats) String() string {
 func (stats *IteratorStats) SafeFormat(s redact.SafePrinter, verb rune) {
 	for i := range stats.ForwardStepCount {
 		switch IteratorStatsKind(i) {
-		case InterfaceCall: s.SafeString("(interface (dir, seek, step): ")
-		case InternalIterCall: s.SafeString(", (internal (dir, seek, step): ")
+		case InterfaceCall:
+			s.SafeString("(interface (dir, seek, step): ")
+		case InternalIterCall:
+			s.SafeString(", (internal (dir, seek, step): ")
 		}
 		s.Printf("(fwd, %d, %d), (rev, %d, %d))",
 			redact.Safe(stats.ForwardSeekCount[i]), redact.Safe(stats.ForwardStepCount[i]),
