@@ -579,6 +579,7 @@ func (b *BulkVersionEdit) Apply(
 				allowedSeeks = 100
 			}
 			atomic.StoreInt64(&f.Atomic.AllowedSeeks, allowedSeeks)
+			f.InitAllowedSeeks = allowedSeeks
 
 			err := lm.tree.insert(f)
 			if err != nil {

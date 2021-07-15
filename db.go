@@ -243,6 +243,11 @@ type DB struct {
 	// could grab db.mu, it must *not* be held while deleters.Wait() is called.
 	deleters sync.WaitGroup
 
+	// During an iterator close, we may asynchronously schedule read compactions.
+	// We want to wait for those go routines to finish, before closing the DB.
+	// compactionShedulers.Wait() should not be called while the DB.mu is held.
+	compactionSchedulers sync.WaitGroup
+
 	// The main mutex protecting internal DB state. This mutex encompasses many
 	// fields because those fields need to be accessed and updated atomically. In
 	// particular, the current version, log.*, mem.*, and snapshot list need to
@@ -336,9 +341,10 @@ type DB struct {
 			manual []*manualCompaction
 			// inProgress is the set of in-progress flushes and compactions.
 			inProgress map[*compaction]struct{}
-			// readCompactions is a list of read triggered compactions. The next
-			// compaction to perform is as the start. New entries are added to the end.
-			readCompactions []readCompaction
+
+			// readCompactions is a readCompactionQueue which keeps track of the
+			// compactions which we might have to perform.
+			readCompactions readCompactionQueue
 		}
 
 		cleaner struct {
@@ -1014,6 +1020,7 @@ func (d *DB) Close() error {
 	// Wait for all the deletion goroutines spawned by cleaning jobs to finish.
 	d.mu.Unlock()
 	d.deleters.Wait()
+	d.compactionSchedulers.Wait()
 	d.mu.Lock()
 	return err
 }
