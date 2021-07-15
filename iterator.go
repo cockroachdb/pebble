@@ -383,9 +383,10 @@ func (i *Iterator) sampleRead() {
 		allowedSeeks := atomic.AddInt64(&topFile.Atomic.AllowedSeeks, -1)
 		if allowedSeeks == 0 {
 			read := readCompaction{
-				start: topFile.Smallest.UserKey,
-				end:   topFile.Largest.UserKey,
-				level: topLevel,
+				start:   topFile.Smallest.UserKey,
+				end:     topFile.Largest.UserKey,
+				level:   topLevel,
+				fileNum: topFile.FileNum,
 			}
 			i.readSampling.pendingCompactions = append(i.readSampling.pendingCompactions, read)
 		}
@@ -1235,8 +1236,10 @@ func (stats *IteratorStats) String() string {
 func (stats *IteratorStats) SafeFormat(s redact.SafePrinter, verb rune) {
 	for i := range stats.ForwardStepCount {
 		switch IteratorStatsKind(i) {
-		case InterfaceCall: s.SafeString("(interface (dir, seek, step): ")
-		case InternalIterCall: s.SafeString(", (internal (dir, seek, step): ")
+		case InterfaceCall:
+			s.SafeString("(interface (dir, seek, step): ")
+		case InternalIterCall:
+			s.SafeString(", (internal (dir, seek, step): ")
 		}
 		s.Printf("(fwd, %d, %d), (rev, %d, %d))",
 			redact.Safe(stats.ForwardSeekCount[i]), redact.Safe(stats.ForwardStepCount[i]),

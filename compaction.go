@@ -1172,6 +1172,11 @@ type readCompaction struct {
 	// between the read sampling and scheduling a compaction.
 	start []byte
 	end   []byte
+
+	// The file associated with the compaction.
+	// If the file no longer belongs in the same
+	// level, then we skip the compaction.
+	fileNum base.FileNum
 }
 
 func (d *DB) addInProgressCompaction(c *compaction) {

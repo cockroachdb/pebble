@@ -1360,14 +1360,26 @@ func pickReadTriggeredCompactionHelper(
 	cmp := p.opts.Comparer.Compare
 	overlapSlice := p.vers.Overlaps(rc.level, cmp, rc.start, rc.end)
 	if overlapSlice.Empty() {
-		var shouldCompact bool
-		// If the file for the given key range has moved levels since the compaction
-		// was scheduled, check to see if the range still has overlapping files
-		overlapSlice, shouldCompact = updateReadCompaction(p.vers, cmp, rc)
-		if !shouldCompact {
+		// If there is no overlap, then the file with the key range
+		// must have been compacted away. So, we don't proceed to
+		// compact the same key range again.
+		return nil
+	}
+	if overlapSlice.Len() != 1 {
+		return nil
+	}
+	iter := overlapSlice.Iter()
+	for f := iter.First(); f != nil; f = iter.Next() {
+		if f.FileNum != rc.fileNum {
 			return nil
 		}
 	}
+
+	// TODO(bananabrick): Do we want to still check if the original file associated
+	// with the compaction still belongs in the version?
+	// We know that the range associated with that file belongs to
+	// p.vers.
+
 	pc = newPickedCompaction(p.opts, p.vers, rc.level, p.baseLevel)
 	pc.startLevel.files = overlapSlice
 	if !pc.setupInputs() {
