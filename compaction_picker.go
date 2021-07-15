@@ -41,7 +41,7 @@ type compactionPicker interface {
 
 // readCompactionEnv is used to hold data required to perform read compactions
 type readCompactionEnv struct {
-	readCompactions *[]readCompaction
+	readCompactions *readCompactionQueue
 	flushing        bool
 }
 
@@ -1344,10 +1344,9 @@ func (p *compactionPickerByScore) pickReadTriggeredCompaction(
 	if env.readCompactionEnv.flushing || env.readCompactionEnv.readCompactions == nil {
 		return nil
 	}
-	for len(*env.readCompactionEnv.readCompactions) > 0 {
-		rc := (*env.readCompactionEnv.readCompactions)[0]
-		*env.readCompactionEnv.readCompactions = (*env.readCompactionEnv.readCompactions)[1:]
-		if pc = pickReadTriggeredCompactionHelper(p, &rc, env); pc != nil {
+	for env.readCompactionEnv.readCompactions.size() > 0 {
+		rc := env.readCompactionEnv.readCompactions.remove()
+		if pc = pickReadTriggeredCompactionHelper(p, rc, env); pc != nil {
 			break
 		}
 	}
