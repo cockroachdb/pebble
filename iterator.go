@@ -200,7 +200,7 @@ const (
 type readSampling struct {
 	bytesUntilReadSampling uint64
 	initialSamplePassed    bool
-	pendingCompactions     []readCompaction
+	pendingCompactions     readCompactionQueue
 	// forceReadSampling is used for testing purposes to force a read sample on every
 	// call to Iterator.maybeSampleRead()
 	forceReadSampling bool
@@ -382,12 +382,20 @@ func (i *Iterator) sampleRead() {
 	if numOverlappingLevels >= 2 {
 		allowedSeeks := atomic.AddInt64(&topFile.Atomic.AllowedSeeks, -1)
 		if allowedSeeks == 0 {
+
+			// Since the compaction queue can handle duplicates, we can keep
+			// adding to the queue even once allowedSeeks hits 0.
+			// In fact, we NEED to keep adding to the queue, because the queue
+			// is small and evicts older and possibly useful compactions.
+			atomic.AddInt64(&topFile.Atomic.AllowedSeeks, topFile.InitAllowedSeeks)
+
 			read := readCompaction{
-				start: topFile.Smallest.UserKey,
-				end:   topFile.Largest.UserKey,
-				level: topLevel,
+				start:   topFile.Smallest.UserKey,
+				end:     topFile.Largest.UserKey,
+				level:   topLevel,
+				fileNum: topFile.FileNum,
 			}
-			i.readSampling.pendingCompactions = append(i.readSampling.pendingCompactions, read)
+			i.readSampling.pendingCompactions.add(&read, i.cmp)
 		}
 	}
 }
@@ -1072,16 +1080,18 @@ func (i *Iterator) Close() error {
 	err := i.err
 
 	if i.readState != nil {
-		if len(i.readSampling.pendingCompactions) > 0 {
+		if i.readSampling.pendingCompactions.size > 0 {
 			// Copy pending read compactions using db.mu.Lock()
 			i.readState.db.mu.Lock()
-			i.readState.db.mu.compact.readCompactions = append(i.readState.db.mu.compact.readCompactions, i.readSampling.pendingCompactions...)
+			i.readState.db.mu.compact.readCompactions.combine(&i.readSampling.pendingCompactions, i.cmp)
 			reschedule := i.readState.db.mu.compact.rescheduleReadCompaction
 			i.readState.db.mu.compact.rescheduleReadCompaction = false
 			concurrentCompactions := i.readState.db.mu.compact.compactingCount
 			i.readState.db.mu.Unlock()
 
 			if reschedule && concurrentCompactions == 0 {
+				// In a read heavy workload, flushes may not happen frequently enough to
+				// schedule compactions.
 				i.readState.db.compactionSchedulers.Add(1)
 				go i.readState.db.maybeScheduleCompactionAsync()
 			}
