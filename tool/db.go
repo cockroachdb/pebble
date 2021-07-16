@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -487,12 +488,16 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 		tw := tabwriter.NewWriter(stdout, 2, 1, 4, ' ', 0)
 		var total props
 		var all []props
+		var doesNotExistCount int
 		for _, l := range v.Levels {
 			iter := l.Iter()
 			var level props
 			for t := iter.First(); t != nil; t = iter.Next() {
 				err := d.addProps(dirname, t, &level)
-				if err != nil {
+				if oserror.IsNotExist(err) {
+					doesNotExistCount++
+					continue
+				} else if err != nil {
 					return err
 				}
 			}
@@ -544,6 +549,9 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 
 		if err := tw.Flush(); err != nil {
 			return err
+		}
+		if doesNotExistCount > 0 {
+			fmt.Fprintf(stdout, "Skipped %d sstables because they no longer exist.\n", doesNotExistCount)
 		}
 		return nil
 	}()
