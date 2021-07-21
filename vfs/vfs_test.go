@@ -250,3 +250,48 @@ func TestVFSGetDiskUsage(t *testing.T) {
 	_, err = Default.GetDiskUsage(dir)
 	require.Nil(t, err)
 }
+
+func TestVFSCreateLinkSemantics(t *testing.T) {
+	dir, err := ioutil.TempDir("", "test-create-link")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	for _, fs := range []FS{Default, NewMem()} {
+		t.Run(fmt.Sprintf("%T", fs), func(t *testing.T) {
+			writeFile := func(path, contents string) {
+				path = fs.PathJoin(dir, path)
+				f, err := fs.Create(path)
+				require.NoError(t, err)
+				_, err = f.Write([]byte(contents))
+				require.NoError(t, err)
+				require.NoError(t, f.Close())
+			}
+			readFile := func(path string) string {
+				path = fs.PathJoin(dir, path)
+				f, err := fs.Open(path)
+				require.NoError(t, err)
+				b, err := ioutil.ReadAll(f)
+				require.NoError(t, err)
+				require.NoError(t, f.Close())
+				return string(b)
+			}
+			require.NoError(t, fs.MkdirAll(dir, 0755))
+
+			// Write a file 'foo' and create a hardlink at 'bar'.
+			writeFile("foo", "foo")
+			require.NoError(t, fs.Link(fs.PathJoin(dir, "foo"), fs.PathJoin(dir, "bar")))
+
+			// Both files should contain equal contents, because they're backed by
+			// the same inode.
+			require.Equal(t, "foo", readFile("foo"))
+			require.Equal(t, "foo", readFile("bar"))
+
+			// Calling Create on 'bar' must NOT truncate 'foo'. It should create a
+			// new file at path 'bar' with a new inode.
+			writeFile("bar", "bar")
+
+			require.Equal(t, "foo", readFile("foo"))
+			require.Equal(t, "bar", readFile("bar"))
+		})
+	}
+}
