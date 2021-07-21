@@ -22,6 +22,7 @@ func TestSyncingFile(t *testing.T) {
 	require.NoError(t, err)
 
 	filename := tmpf.Name()
+	require.NoError(t, tmpf.Close())
 	defer os.Remove(filename)
 
 	f, err := Default.Create(filename)
@@ -89,6 +90,7 @@ close: test [<nil>]
 			require.NoError(t, err)
 
 			filename := tmpf.Name()
+			require.NoError(t, tmpf.Close())
 			defer os.Remove(filename)
 
 			f, err := Default.Create(filename)
