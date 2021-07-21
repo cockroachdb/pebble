@@ -42,8 +42,9 @@ type OpenOption interface {
 // The names are filepath names: they may be / separated or \ separated,
 // depending on the underlying operating system.
 type FS interface {
-	// Create creates the named file for writing, truncating it if it already
-	// exists.
+	// Create creates the named file for reading and writing. If a file
+	// already exists at the provided name, it's removed first ensuring the
+	// resulting file descriptor points to a new inode.
 	Create(name string) (File, error)
 
 	// Link creates newname as a hard link to the oldname file.
@@ -141,7 +142,23 @@ var Default FS = defaultFS{}
 type defaultFS struct{}
 
 func (defaultFS) Create(name string) (File, error) {
-	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC|syscall.O_CLOEXEC, 0666)
+	const openFlags = os.O_RDWR | os.O_CREATE | os.O_EXCL | syscall.O_CLOEXEC
+
+	f, err := os.OpenFile(name, openFlags, 0666)
+	// If the file already exists, remove it and try again.
+	//
+	// NB: We choose to remove the file instead of truncating it, despite the
+	// fact that we can't do so atomically, because it's more resistant to
+	// misuse when using hard links.
+
+	// We must loop in case another goroutine/thread/process is also
+	// attempting to create the a file at the same path.
+	for oserror.IsExist(err) {
+		if removeErr := os.Remove(name); removeErr != nil && !oserror.IsNotExist(removeErr) {
+			return f, errors.WithStack(removeErr)
+		}
+		f, err = os.OpenFile(name, openFlags, 0666)
+	}
 	return f, errors.WithStack(err)
 }
 
