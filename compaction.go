@@ -1169,7 +1169,7 @@ type manualCompaction struct {
 // If the level which we're compacting out of has
 // a low score, then skip the read compaction.
 // TODO(bananbrick) : What should this limit be?
-const readCompactionSkipScore = 0.25
+const readCompactionSkipScore = 0.20
 
 type readCompaction struct {
 	level int
