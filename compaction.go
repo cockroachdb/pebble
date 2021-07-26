@@ -1166,10 +1166,10 @@ type manualCompaction struct {
 	end         InternalKey
 }
 
-// If the level which we're compacting out of has
-// a low score, then skip the read compaction.
-// TODO(bananbrick) : What should this limit be?
-const readCompactionSkipScore = 0.20
+// If the score of level L * readCompactionSkipFactor, is less than the
+// score of level L + 1, then skip the compaction. This is used to prevent
+// imbalanced compactions between the levels.
+const readCompactionSkipFactor = 2
 
 type readCompaction struct {
 	level int

@@ -1372,10 +1372,13 @@ func pickReadTriggeredCompactionHelper(
 	pc = newPickedCompaction(p.opts, p.vers, rc.level, p.baseLevel)
 	pc.startLevel.files = overlapSlice
 
-	// Don't do the compaction if level score is already low.
-	if pc.startLevel.level < numLevels &&
-		scores[pc.startLevel.level].score <= readCompactionSkipScore {
-		return nil
+	// Check the relative score compared to the next level, and skip
+	// the compaction if the score is too low.
+	if pc.startLevel.level < numLevels-1 {
+		if scores[pc.startLevel.level].score*readCompactionSkipFactor <
+			scores[pc.startLevel.level+1].score {
+			return nil
+		}
 	}
 
 	if !pc.setupInputs() {
