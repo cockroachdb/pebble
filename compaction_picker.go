@@ -1365,20 +1365,10 @@ func pickReadTriggeredCompactionHelper(
 		// compact the same key range again.
 		return nil
 	}
-	if overlapSlice.Len() != 1 {
+	iter := overlapSlice.Iter()
+	if f := iter.First(); f == nil || f.FileNum != rc.fileNum {
 		return nil
 	}
-	iter := overlapSlice.Iter()
-	for f := iter.First(); f != nil; f = iter.Next() {
-		if f.FileNum != rc.fileNum {
-			return nil
-		}
-	}
-
-	// TODO(bananabrick): Do we want to still check if the original file associated
-	// with the compaction still belongs in the version?
-	// We know that the range associated with that file belongs to
-	// p.vers.
 
 	pc = newPickedCompaction(p.opts, p.vers, rc.level, p.baseLevel)
 	pc.startLevel.files = overlapSlice
