@@ -1169,7 +1169,7 @@ type manualCompaction struct {
 // If the score of level L * readCompactionSkipFactor, is less than the
 // score of level L + 1, then skip the compaction. This is used to prevent
 // imbalanced compactions between the levels.
-const readCompactionSkipFactor = 1.5
+const readCompactionSkipFactor = 2
 
 type readCompaction struct {
 	level int
