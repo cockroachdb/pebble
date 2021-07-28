@@ -45,7 +45,7 @@ generate:
 # temporarily hiding those files.
 mod-update:
 	mkdir -p cmd/pebble/_bak
-	mv cmd/pebble/{badger}.go cmd/pebble/_bak
+	mv cmd/pebble/badger.go cmd/pebble/_bak
 	${GO} get -u
 	${GO} mod tidy
 	${GO} mod vendor
