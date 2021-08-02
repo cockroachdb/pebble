@@ -5,6 +5,7 @@
 package errorfs
 
 import (
+	"fmt"
 	"io"
 	"math/rand"
 	"os"
@@ -20,14 +21,73 @@ import (
 // ErrInjected is an error artifically injected for testing fs error paths.
 var ErrInjected = errors.New("injected error")
 
-// Op is an enum describing the type of operation performed.
+// Op is an enum describing the type of operation.
 type Op int
 
 const (
-	// OpRead describes read operations.
-	OpRead Op = iota
-	// OpWrite describes write operations.
-	OpWrite
+	// OpCreate describes a create file operation.
+	OpCreate Op = iota
+	// OpLink describes a hardlink operation.
+	OpLink
+	// OpOpen describes a file open operation.
+	OpOpen
+	// OpOpenDir describes a directory open operation.
+	OpOpenDir
+	// OpRemove describes a remove file operation.
+	OpRemove
+	// OpRemoveAll describes a recursive remove operation.
+	OpRemoveAll
+	// OpRename describes a rename operation.
+	OpRename
+	// OpReuseForRewrite describes a reuse for rewriting operation.
+	OpReuseForRewrite
+	// OpMkdirAll describes a make directory including parents operation.
+	OpMkdirAll
+	// OpLock describes a lock file operation.
+	OpLock
+	// OpList describes a list directory operation.
+	OpList
+	// OpStat describes a path-based stat operation.
+	OpStat
+	// OpGetDiskUsage describes a disk usage operation.
+	OpGetDiskUsage
+	// OpFileClose describes a close file operation.
+	OpFileClose
+	// OpFileRead describes a file read operation.
+	OpFileRead
+	// OpFileReadAt describes a file seek read operation.
+	OpFileReadAt
+	// OpFileWrite describes a file write operation.
+	OpFileWrite
+	// OpFileStat describes a file stat operation.
+	OpFileStat
+	// OpFileSync describes a file sync operation.
+	OpFileSync
+	// OpFileFlush describes a file flush operation.
+	OpFileFlush
+)
+
+// OpKind returns the operation's kind.
+func (o Op) OpKind() OpKind {
+	switch o {
+	case OpOpen, OpOpenDir, OpList, OpStat, OpGetDiskUsage, OpFileRead, OpFileReadAt, OpFileStat:
+		return OpKindRead
+	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForRewrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileSync, OpFileFlush:
+		return OpKindWrite
+	default:
+		panic(fmt.Sprintf("unrecognized op %v\n", o))
+	}
+}
+
+// OpKind is an enum describing whether an operation is a read or write
+// operation.
+type OpKind int
+
+const (
+	// OpKindRead describes read operations.
+	OpKindRead OpKind = iota
+	// OpKindWrite describes write operations.
+	OpKindWrite
 )
 
 // OnIndex constructs an injector that returns an error on
@@ -49,7 +109,7 @@ func (ii *InjectIndex) Index() int32 { return atomic.LoadInt32(&ii.index) }
 func (ii *InjectIndex) SetIndex(v int32) { atomic.StoreInt32(&ii.index, v) }
 
 // MaybeError implements the Injector interface.
-func (ii *InjectIndex) MaybeError(op Op) error {
+func (ii *InjectIndex) MaybeError(_ Op, _ string) error {
 	if atomic.AddInt32(&ii.index, -1) == -1 {
 		return errors.WithStack(ErrInjected)
 	}
@@ -60,13 +120,13 @@ func (ii *InjectIndex) MaybeError(op Op) error {
 // probability when passed op. It may be passed to Wrap to inject an error
 // into an ErrFS with the provided probability. p should be within the range
 // [0.0,1.0].
-func WithProbability(op Op, p float64) Injector {
+func WithProbability(op OpKind, p float64) Injector {
 	mu := new(sync.Mutex)
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return InjectorFunc(func(currOp Op) error {
+	return InjectorFunc(func(currOp Op, _ string) error {
 		mu.Lock()
 		defer mu.Unlock()
-		if currOp == op && rnd.Float64() < p {
+		if currOp.OpKind() == op && rnd.Float64() < p {
 			return errors.WithStack(ErrInjected)
 		}
 		return nil
@@ -75,14 +135,18 @@ func WithProbability(op Op, p float64) Injector {
 
 // InjectorFunc implements the Injector interface for a function with
 // MaybeError's signature.
-type InjectorFunc func(Op) error
+type InjectorFunc func(Op, string) error
 
 // MaybeError implements the Injector interface.
-func (f InjectorFunc) MaybeError(op Op) error { return f(op) }
+func (f InjectorFunc) MaybeError(op Op, path string) error { return f(op, path) }
 
 // Injector injects errors into FS operations.
 type Injector interface {
-	MaybeError(Op) error
+	// MaybeError is invoked by an errorfs before an operation is executed. It
+	// is passed an enum indicating the type of operation and a path of the
+	// subject file or directory. If the operation takes two paths (eg,
+	// Rename, Link), the original source path is provided.
+	MaybeError(op Op, path string) error
 }
 
 // FS implements vfs.FS, injecting errors into
@@ -120,19 +184,19 @@ func (fs *FS) Unwrap() vfs.FS {
 
 // Create implements FS.Create.
 func (fs *FS) Create(name string) (vfs.File, error) {
-	if err := fs.inj.MaybeError(OpWrite); err != nil {
+	if err := fs.inj.MaybeError(OpCreate, name); err != nil {
 		return nil, err
 	}
 	f, err := fs.fs.Create(name)
 	if err != nil {
 		return nil, err
 	}
-	return &errorFile{f, fs.inj}, nil
+	return &errorFile{name, f, fs.inj}, nil
 }
 
 // Link implements FS.Link.
 func (fs *FS) Link(oldname, newname string) error {
-	if err := fs.inj.MaybeError(OpWrite); err != nil {
+	if err := fs.inj.MaybeError(OpLink, oldname); err != nil {
 		return err
 	}
 	return fs.fs.Link(oldname, newname)
@@ -140,14 +204,14 @@ func (fs *FS) Link(oldname, newname string) error {
 
 // Open implements FS.Open.
 func (fs *FS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
-	if err := fs.inj.MaybeError(OpRead); err != nil {
+	if err := fs.inj.MaybeError(OpOpen, name); err != nil {
 		return nil, err
 	}
 	f, err := fs.fs.Open(name)
 	if err != nil {
 		return nil, err
 	}
-	ef := &errorFile{f, fs.inj}
+	ef := &errorFile{name, f, fs.inj}
 	for _, opt := range opts {
 		opt.Apply(ef)
 	}
@@ -156,19 +220,19 @@ func (fs *FS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
 
 // OpenDir implements FS.OpenDir.
 func (fs *FS) OpenDir(name string) (vfs.File, error) {
-	if err := fs.inj.MaybeError(OpRead); err != nil {
+	if err := fs.inj.MaybeError(OpOpenDir, name); err != nil {
 		return nil, err
 	}
 	f, err := fs.fs.OpenDir(name)
 	if err != nil {
 		return nil, err
 	}
-	return &errorFile{f, fs.inj}, nil
+	return &errorFile{name, f, fs.inj}, nil
 }
 
 // GetDiskUsage implements FS.GetDiskUsage.
 func (fs *FS) GetDiskUsage(path string) (vfs.DiskUsage, error) {
-	if err := fs.inj.MaybeError(OpRead); err != nil {
+	if err := fs.inj.MaybeError(OpGetDiskUsage, path); err != nil {
 		return vfs.DiskUsage{}, err
 	}
 	return fs.fs.GetDiskUsage(path)
@@ -195,7 +259,7 @@ func (fs *FS) Remove(name string) error {
 		return nil
 	}
 
-	if err := fs.inj.MaybeError(OpWrite); err != nil {
+	if err := fs.inj.MaybeError(OpRemove, name); err != nil {
 		return err
 	}
 	return fs.fs.Remove(name)
@@ -203,7 +267,7 @@ func (fs *FS) Remove(name string) error {
 
 // RemoveAll implements FS.RemoveAll.
 func (fs *FS) RemoveAll(fullname string) error {
-	if err := fs.inj.MaybeError(OpWrite); err != nil {
+	if err := fs.inj.MaybeError(OpRemoveAll, fullname); err != nil {
 		return err
 	}
 	return fs.fs.RemoveAll(fullname)
@@ -211,7 +275,7 @@ func (fs *FS) RemoveAll(fullname string) error {
 
 // Rename implements FS.Rename.
 func (fs *FS) Rename(oldname, newname string) error {
-	if err := fs.inj.MaybeError(OpWrite); err != nil {
+	if err := fs.inj.MaybeError(OpRename, oldname); err != nil {
 		return err
 	}
 	return fs.fs.Rename(oldname, newname)
@@ -219,7 +283,7 @@ func (fs *FS) Rename(oldname, newname string) error {
 
 // ReuseForWrite implements FS.ReuseForWrite.
 func (fs *FS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
-	if err := fs.inj.MaybeError(OpWrite); err != nil {
+	if err := fs.inj.MaybeError(OpReuseForRewrite, oldname); err != nil {
 		return nil, err
 	}
 	return fs.fs.ReuseForWrite(oldname, newname)
@@ -227,7 +291,7 @@ func (fs *FS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
 
 // MkdirAll implements FS.MkdirAll.
 func (fs *FS) MkdirAll(dir string, perm os.FileMode) error {
-	if err := fs.inj.MaybeError(OpWrite); err != nil {
+	if err := fs.inj.MaybeError(OpMkdirAll, dir); err != nil {
 		return err
 	}
 	return fs.fs.MkdirAll(dir, perm)
@@ -235,7 +299,7 @@ func (fs *FS) MkdirAll(dir string, perm os.FileMode) error {
 
 // Lock implements FS.Lock.
 func (fs *FS) Lock(name string) (io.Closer, error) {
-	if err := fs.inj.MaybeError(OpWrite); err != nil {
+	if err := fs.inj.MaybeError(OpLock, name); err != nil {
 		return nil, err
 	}
 	return fs.fs.Lock(name)
@@ -243,7 +307,7 @@ func (fs *FS) Lock(name string) (io.Closer, error) {
 
 // List implements FS.List.
 func (fs *FS) List(dir string) ([]string, error) {
-	if err := fs.inj.MaybeError(OpRead); err != nil {
+	if err := fs.inj.MaybeError(OpList, dir); err != nil {
 		return nil, err
 	}
 	return fs.fs.List(dir)
@@ -251,7 +315,7 @@ func (fs *FS) List(dir string) ([]string, error) {
 
 // Stat implements FS.Stat.
 func (fs *FS) Stat(name string) (os.FileInfo, error) {
-	if err := fs.inj.MaybeError(OpRead); err != nil {
+	if err := fs.inj.MaybeError(OpStat, name); err != nil {
 		return nil, err
 	}
 	return fs.fs.Stat(name)
@@ -260,6 +324,7 @@ func (fs *FS) Stat(name string) (os.FileInfo, error) {
 // errorFile implements vfs.File. The interface is implemented on the pointer
 // type to allow pointer equality comparisons.
 type errorFile struct {
+	path string
 	file vfs.File
 	inj  Injector
 }
@@ -271,35 +336,35 @@ func (f *errorFile) Close() error {
 }
 
 func (f *errorFile) Read(p []byte) (int, error) {
-	if err := f.inj.MaybeError(OpRead); err != nil {
+	if err := f.inj.MaybeError(OpFileRead, f.path); err != nil {
 		return 0, err
 	}
 	return f.file.Read(p)
 }
 
 func (f *errorFile) ReadAt(p []byte, off int64) (int, error) {
-	if err := f.inj.MaybeError(OpRead); err != nil {
+	if err := f.inj.MaybeError(OpFileReadAt, f.path); err != nil {
 		return 0, err
 	}
 	return f.file.ReadAt(p, off)
 }
 
 func (f *errorFile) Write(p []byte) (int, error) {
-	if err := f.inj.MaybeError(OpWrite); err != nil {
+	if err := f.inj.MaybeError(OpFileWrite, f.path); err != nil {
 		return 0, err
 	}
 	return f.file.Write(p)
 }
 
 func (f *errorFile) Stat() (os.FileInfo, error) {
-	if err := f.inj.MaybeError(OpRead); err != nil {
+	if err := f.inj.MaybeError(OpFileStat, f.path); err != nil {
 		return nil, err
 	}
 	return f.file.Stat()
 }
 
 func (f *errorFile) Sync() error {
-	if err := f.inj.MaybeError(OpWrite); err != nil {
+	if err := f.inj.MaybeError(OpFileSync, f.path); err != nil {
 		return err
 	}
 	return f.file.Sync()
