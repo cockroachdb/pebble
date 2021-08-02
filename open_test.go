@@ -14,9 +14,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
@@ -625,6 +627,110 @@ func TestTwoWALReplayPermissive(t *testing.T) {
 
 	// Re-opening the database should not report the corruption.
 	d, err = Open(dir, nil)
+	require.NoError(t, err)
+	require.NoError(t, d.Close())
+}
+
+// TestCrashOpenCrashAfterWALCreation tests a database that exits
+// ungracefully, begins recovery, creates the new WAL but promptly exits
+// ungracefully again.
+//
+// This sequence has the potential to be problematic with the strict_wal_tail
+// behavior because the first crash's WAL has an unclean tail. By the time the
+// new WAL is created, the current manifest's MinUnflushedLogNum must be
+// higher than the previous WAL.
+func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
+	fs := vfs.NewStrictMem()
+
+	getLogs := func() (logs []string) {
+		ls, err := fs.List("")
+		require.NoError(t, err)
+		for _, name := range ls {
+			if filepath.Ext(name) == ".log" {
+				logs = append(logs, name)
+			}
+		}
+		return logs
+	}
+
+	{
+		d, err := Open("", &Options{FS: fs})
+		require.NoError(t, err)
+		require.NoError(t, d.Set([]byte("abc"), nil, Sync))
+
+		// Ignore syncs during close to simulate a crash. This will leave the WAL
+		// without an EOF trailer. It won't be an 'unclean tail' yet since the
+		// log file was not recycled, but we'll fix that down below.
+		fs.SetIgnoreSyncs(true)
+		require.NoError(t, d.Close())
+		fs.ResetToSyncedState()
+		fs.SetIgnoreSyncs(false)
+	}
+
+	// There should be one WAL.
+	logs := getLogs()
+	if len(logs) != 1 {
+		t.Fatalf("expected one log file, found %d", len(logs))
+	}
+
+	// The one WAL file doesn't have an EOF trailer, but since it wasn't
+	// recycled it won't have garbage at the end. Rewrite it so that it has
+	// the same contents it currently has, followed by garbage.
+	{
+		f, err := fs.Open(logs[0])
+		require.NoError(t, err)
+		b, err := ioutil.ReadAll(f)
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+		f, err = fs.Create(logs[0])
+		_, err = f.Write(b)
+		require.NoError(t, err)
+		_, err = f.Write([]byte{0xde, 0xad, 0xbe, 0xef})
+		require.NoError(t, err)
+		require.NoError(t, f.Sync())
+		require.NoError(t, f.Close())
+		dir, err := fs.OpenDir("")
+		require.NoError(t, err)
+		require.NoError(t, dir.Sync())
+		require.NoError(t, dir.Close())
+	}
+
+	// Open the database again (with syncs respected again). Wrap the
+	// filesystem with an errorfs that will turn off syncs after a new .log
+	// file is created and after a subsequent directory sync occurs. This
+	// simulates a crash after the new log file is created and synced.
+	{
+		var atomicWALCreated, atomicDirSynced uint32
+		d, err := Open("", &Options{
+			FS: errorfs.Wrap(fs, errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
+				if atomic.LoadUint32(&atomicDirSynced) == 1 {
+					fs.SetIgnoreSyncs(true)
+				}
+				if op == errorfs.OpCreate && filepath.Ext(path) == ".log" {
+					atomic.StoreUint32(&atomicWALCreated, 1)
+				}
+				// Record when there's a sync of the data directory after the
+				// WAL was created. The data directory will have an empty
+				// path because that's what we passed into Open.
+				if op == errorfs.OpFileSync && path == "" && atomic.LoadUint32(&atomicWALCreated) == 1 {
+					atomic.StoreUint32(&atomicDirSynced, 1)
+				}
+				return nil
+			})),
+		})
+		require.NoError(t, err)
+		require.NoError(t, d.Close())
+	}
+
+	fs.ResetToSyncedState()
+	fs.SetIgnoreSyncs(false)
+
+	if n := len(getLogs()); n != 2 {
+		t.Fatalf("expected two logs, found %d\n", n)
+	}
+
+	// Finally, open the database with syncs enabled.
+	d, err := Open("", &Options{FS: fs})
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
 }
