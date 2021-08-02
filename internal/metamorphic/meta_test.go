@@ -106,7 +106,7 @@ func testMetaRun(t *testing.T, runDir string, seed uint64) {
 	}
 	// Wrap the filesystem with one that will inject errors into read
 	// operations with *errorRate probability.
-	opts.FS = errorfs.Wrap(opts.FS, errorfs.WithProbability(errorfs.OpRead, *errorRate))
+	opts.FS = errorfs.Wrap(opts.FS, errorfs.WithProbability(errorfs.OpKindRead, *errorRate))
 
 	if opts.WALDir != "" {
 		opts.WALDir = opts.FS.PathJoin(runDir, opts.WALDir)
