@@ -293,6 +293,23 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if !d.opts.ReadOnly {
 		// Create an empty .log file.
 		newLogNum := d.mu.versions.getNextFileNum()
+
+		// This logic is slightly different than RocksDB's. Specifically, RocksDB
+		// sets MinUnflushedLogNum to max-recovered-log-num + 1. We set it to the
+		// newLogNum. There should be no difference in using either value.
+		ve.MinUnflushedLogNum = newLogNum
+
+		// Create the manifest with the updated MinUnflushedLogNum before
+		// creating the new log file. If we created the log file first, a
+		// crash before the manifest is synced could leave two WALs with
+		// unclean tails.
+		d.mu.versions.logLock()
+		if err := d.mu.versions.logAndApply(jobID, &ve, newFileMetrics(ve.NewFiles), d.dataDir, func() []compactionInfo {
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+
 		newLogName := base.MakeFilename(opts.FS, d.walDirname, fileTypeLog, newLogNum)
 		d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: 0})
 		logFile, err := opts.FS.Create(newLogName)
@@ -318,17 +335,6 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		d.mu.log.LogWriter = record.NewLogWriter(logFile, newLogNum)
 		d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
 		d.mu.versions.metrics.WAL.Files++
-
-		// This logic is slightly different than RocksDB's. Specifically, RocksDB
-		// sets MinUnflushedLogNum to max-recovered-log-num + 1. We set it to the
-		// newLogNum. There should be no difference in using either value.
-		ve.MinUnflushedLogNum = newLogNum
-		d.mu.versions.logLock()
-		if err := d.mu.versions.logAndApply(jobID, &ve, newFileMetrics(ve.NewFiles), d.dataDir, func() []compactionInfo {
-			return nil
-		}); err != nil {
-			return nil, err
-		}
 	}
 	d.updateReadStateLocked(d.opts.DebugCheck)
 

@@ -12,9 +12,9 @@ sync: db/CURRENT.000001.dbtmp
 close: db/CURRENT.000001.dbtmp
 rename: db/CURRENT.000001.dbtmp -> db/CURRENT
 sync: db
+sync: db/MANIFEST-000001
 create: wal/000002.log
 sync: wal
-sync: db/MANIFEST-000001
 create: db/OPTIONS-000003
 sync: db/OPTIONS-000003
 close: db/OPTIONS-000003
