@@ -335,8 +335,8 @@ func TestDBWALRotationCrash(t *testing.T) {
 	memfs := vfs.NewStrictMem()
 
 	var index int32
-	inj := errorfs.InjectorFunc(func(op errorfs.Op) error {
-		if op == errorfs.OpWrite && atomic.AddInt32(&index, -1) == -1 {
+	inj := errorfs.InjectorFunc(func(op errorfs.Op, _ string) error {
+		if op.OpKind() == errorfs.OpKindWrite && atomic.AddInt32(&index, -1) == -1 {
 			memfs.SetIgnoreSyncs(true)
 		}
 		return nil
