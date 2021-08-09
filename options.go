@@ -438,6 +438,11 @@ type Options struct {
 	// when L0 read-amplification passes the L0CompactionConcurrency threshold.
 	MaxConcurrentCompactions int
 
+	// NumPrevManifest is the number of non-current or older manifests which
+	// we want to keep around for debugging purposes. By default, we're going
+	// to keep one older manifest.
+	NumPrevManifest int
+
 	// ReadOnly indicates that the DB should be opened in read-only mode. Writes
 	// to the DB will return an error, background compactions are disabled, and
 	// the flush that normally occurs after replaying the WAL at startup is
@@ -595,6 +600,10 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.MaxConcurrentCompactions <= 0 {
 		o.MaxConcurrentCompactions = 1
 	}
+	if o.NumPrevManifest <= 0 {
+		o.NumPrevManifest = 1
+	}
+
 	if o.FS == nil {
 		o.FS = vfs.WithDiskHealthChecks(vfs.Default, 5*time.Second,
 			func(name string, duration time.Duration) {

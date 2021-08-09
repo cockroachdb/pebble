@@ -29,7 +29,6 @@ create: db/OPTIONS-000004
 sync: db/OPTIONS-000004
 close: db/OPTIONS-000004
 sync: db
-[JOB 1] MANIFEST deleted 000001
 
 flush
 ----
@@ -55,7 +54,7 @@ rename: db/CURRENT.000007.dbtmp -> db/CURRENT
 sync: db
 [JOB 3] MANIFEST created 000007
 [JOB 3] flushed 1 memtable to L0 [000006] (770 B), in 1.0s, output rate 770 B/s
-[JOB 3] MANIFEST deleted 000003
+[JOB 3] MANIFEST deleted 000001
 
 compact
 ----
@@ -81,7 +80,7 @@ rename: db/CURRENT.000010.dbtmp -> db/CURRENT
 sync: db
 [JOB 5] MANIFEST created 000010
 [JOB 5] flushed 1 memtable to L0 [000009] (770 B), in 1.0s, output rate 770 B/s
-[JOB 5] MANIFEST deleted 000007
+[JOB 5] MANIFEST deleted 000003
 [JOB 6] compacting(default) L0 [000006 000009] (1.5 K) + L6 [] (0 B)
 create: db/000011.sst
 [JOB 6] compacting: sstable created 000011
@@ -100,7 +99,7 @@ sync: db
 [JOB 6] compacted(default) L0 [000006 000009] (1.5 K) + L6 [] (0 B) -> L6 [000011] (770 B), in 1.0s, output rate 770 B/s
 [JOB 6] sstable deleted 000006
 [JOB 6] sstable deleted 000009
-[JOB 6] MANIFEST deleted 000010
+[JOB 6] MANIFEST deleted 000007
 
 disable-file-deletions
 ----
@@ -132,7 +131,7 @@ sync: db
 
 enable-file-deletions
 ----
-[JOB 9] MANIFEST deleted 000012
+[JOB 9] MANIFEST deleted 000010
 
 ingest
 ----
@@ -148,7 +147,7 @@ close: db/CURRENT.000017.dbtmp
 rename: db/CURRENT.000017.dbtmp -> db/CURRENT
 sync: db
 [JOB 10] MANIFEST created 000017
-[JOB 10] MANIFEST deleted 000015
+[JOB 10] MANIFEST deleted 000012
 [JOB 10] ingested L0:000016 (825 B)
 
 metrics

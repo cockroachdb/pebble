@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -837,10 +838,12 @@ func TestFlushEmpty(t *testing.T) {
 }
 
 func TestRollManifest(t *testing.T) {
+	toPreserve := rand.Int31n(5) + 1
 	opts := &Options{
 		MaxManifestFileSize:   1,
 		L0CompactionThreshold: 10,
 		FS:                    vfs.NewMem(),
+		NumPrevManifest:       int(toPreserve),
 	}
 	opts.private.disableAutomaticCompactions = true
 	d, err := Open("", opts)
@@ -868,6 +871,7 @@ func TestRollManifest(t *testing.T) {
 	}
 
 	lastManifestNum := manifestFileNumber()
+	manifestNums := []base.FileNum{lastManifestNum}
 	for i := 0; i < 5; i++ {
 		require.NoError(t, d.Set([]byte("a"), nil, nil))
 		require.NoError(t, d.Flush())
@@ -875,6 +879,8 @@ func TestRollManifest(t *testing.T) {
 		if lastManifestNum == num {
 			t.Fatalf("manifest failed to roll: %d == %d", lastManifestNum, num)
 		}
+
+		manifestNums = append(manifestNums, num)
 		lastManifestNum = num
 
 		expectedCurrent := fmt.Sprintf("MANIFEST-%s\n", lastManifestNum)
@@ -896,7 +902,18 @@ func TestRollManifest(t *testing.T) {
 			manifests = append(manifests, filename)
 		}
 	}
-	expected := []string{fmt.Sprintf("MANIFEST-%s", lastManifestNum)}
+
+	sort.Slice(manifests, func(i, j int) bool {
+		return manifests[i] < manifests[j]
+	})
+
+	var expected []string
+	for i := len(manifestNums) - int(toPreserve) - 1; i < len(manifestNums); i++ {
+		expected = append(
+			expected,
+			fmt.Sprintf("MANIFEST-%s", manifestNums[i]),
+		)
+	}
 	require.EqualValues(t, expected, manifests)
 
 	require.NoError(t, d.Close())
