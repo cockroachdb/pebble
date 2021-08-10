@@ -292,7 +292,6 @@ func NewL0Sublevels(
 				subLevel <= interval.files[len(interval.files)-1].subLevel {
 				subLevel = interval.files[len(interval.files)-1].subLevel + 1
 			}
-			s.orderedIntervals[i].fileCount++
 			interval.estimatedBytes += interpolatedBytes
 			if f.minIntervalIndex < interval.filesMinIntervalIndex {
 				interval.filesMinIntervalIndex = f.minIntervalIndex
@@ -300,9 +299,7 @@ func NewL0Sublevels(
 			if f.maxIntervalIndex > interval.filesMaxIntervalIndex {
 				interval.filesMaxIntervalIndex = f.maxIntervalIndex
 			}
-		}
-		for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
-			interval := &s.orderedIntervals[i]
+			interval.fileCount++
 			interval.files = append(interval.files, f)
 		}
 		f.subLevel = subLevel
