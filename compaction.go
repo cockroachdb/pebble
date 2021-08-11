@@ -2683,8 +2683,22 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 	}
 	d.mu.versions.obsoleteTables = nil
 
-	obsoleteManifests := d.mu.versions.obsoleteManifests
-	d.mu.versions.obsoleteManifests = nil
+	// Sort the manifests cause we want to delete some contiguous prefix
+	// of the older manifests.
+	sort.Slice(d.mu.versions.obsoleteManifests, func(i, j int) bool {
+		return d.mu.versions.obsoleteManifests[i].fileNum <
+			d.mu.versions.obsoleteManifests[j].fileNum
+	})
+
+	var obsoleteManifests []fileInfo
+	manifestsToDelete := len(d.mu.versions.obsoleteManifests) - d.opts.NumPrevManifest
+	if manifestsToDelete > 0 {
+		obsoleteManifests = d.mu.versions.obsoleteManifests[:manifestsToDelete]
+		d.mu.versions.obsoleteManifests = d.mu.versions.obsoleteManifests[manifestsToDelete:]
+		if len(d.mu.versions.obsoleteManifests) == 0 {
+			d.mu.versions.obsoleteManifests = nil
+		}
+	}
 
 	obsoleteOptions := d.mu.versions.obsoleteOptions
 	d.mu.versions.obsoleteOptions = nil
