@@ -998,6 +998,171 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 	})
 }
 
+type testBlockIntervalCollector struct {
+	offsetFromEnd int
+	initialized bool
+	lower, upper uint64
+}
+
+func (bi *testBlockIntervalCollector) Add(key InternalKey, value []byte) error {
+	k := key.UserKey
+	if len(k) < 2 + bi.offsetFromEnd {
+		return nil
+	}
+	n := len(k)-bi.offsetFromEnd-2
+	val, err := strconv.Atoi(string(k[n:n+2]))
+	if err != nil {
+		return err
+	}
+	if val < 0 {
+		panic("testBlockIntervalCollector expects values >= 0")
+	}
+	uval := uint64(val)
+	if !bi.initialized {
+		bi.lower, bi.upper = uval, uval+1
+		bi.initialized = true
+		return nil
+	}
+	if bi.lower > uval {
+		bi.lower = uval
+	}
+	if uval >= bi.upper {
+		bi.upper = uval+1
+	}
+	return nil
+}
+
+func (bi *testBlockIntervalCollector) FinishDataBlock() (lower uint64, upper uint64, err error) {
+	bi.initialized = false
+	l, u := bi.lower, bi.upper
+	bi.lower, bi.upper = 0, 0
+	return l, u, nil
+}
+
+func TestIteratorBlockIntervalFilter(t *testing.T) {
+	var mem vfs.FS
+	var d *DB
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+
+	type collector struct {
+		id uint16
+		offset int
+	}
+	createDB := func(collectors []collector) {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+
+		mem = vfs.NewMem()
+		require.NoError(t, mem.MkdirAll("ext", 0755))
+
+		var bpCollectors []func() BlockPropertyCollector
+		for _, c := range collectors {
+			coll := c
+			bpCollectors = append(bpCollectors, func() BlockPropertyCollector {
+				return sstable.NewBlockIntervalCollector(
+					fmt.Sprintf("%d", coll.id),
+					&testBlockIntervalCollector{offsetFromEnd: coll.offset})
+			})
+		}
+		opts := &Options{
+			FS: mem,
+			FormatMajorVersion:    FormatNewest,
+			BlockPropertyCollectors: bpCollectors,
+		}
+		lo := LevelOptions{BlockSize: 1, IndexBlockSize: 1}
+		opts.Levels = append(opts.Levels, lo)
+
+		// Automatic compactions may compact away tombstones from L6, making
+		// some testcases non-deterministic.
+		opts.private.disableAutomaticCompactions = true
+		var err error
+		d, err = Open("", opts)
+		require.NoError(t, err)
+	}
+
+	datadriven.RunTest(
+		t, "testdata/iterator_block_interval_filter", func(td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "build":
+				var collectors []collector
+				for _, arg := range td.CmdArgs {
+					switch arg.Key {
+					case "id_offset":
+						if len(arg.Vals) != 2 {
+							return "id and offset not provided"
+						}
+						var id, offset int
+						var err error
+						if id, err = strconv.Atoi(arg.Vals[0]); err != nil {
+							return err.Error()
+						}
+						if offset, err = strconv.Atoi(arg.Vals[1]); err != nil {
+							return err.Error()
+						}
+						collectors = append(collectors, collector{id: uint16(id), offset: offset})
+					default:
+						return fmt.Sprintf("unknown key: %s", arg.Key)
+					}
+				}
+				createDB(collectors)
+				b := d.NewBatch()
+				if err := runBatchDefineCmd(td, b); err != nil {
+					return err.Error()
+				}
+				if err := b.Commit(nil); err != nil {
+					return err.Error()
+				}
+				if err := d.Flush(); err != nil {
+					return err.Error()
+				}
+				return runLSMCmd(td, d)
+
+			case "iter":
+				var opts IterOptions
+				for _, arg := range td.CmdArgs {
+					switch arg.Key {
+					case "id_lower_upper":
+						if len(arg.Vals) != 3 {
+							return "id, lower, upper not provided"
+						}
+						var id, lower, upper int
+						var err error
+						if id, err = strconv.Atoi(arg.Vals[0]); err != nil {
+							return err.Error()
+						}
+						if lower, err = strconv.Atoi(arg.Vals[1]); err != nil {
+							return err.Error()
+						}
+						if upper, err = strconv.Atoi(arg.Vals[2]); err != nil {
+							return err.Error()
+						}
+						opts.BlockPropertyFilters = append(opts.BlockPropertyFilters,
+							sstable.NewBlockIntervalFilter(fmt.Sprintf("%d", id),
+								uint64(lower), uint64(upper)))
+					default:
+						return fmt.Sprintf("unknown key: %s", arg.Key)
+					}
+				}
+				rand.Shuffle(len(opts.BlockPropertyFilters), func(i, j int) {
+					opts.BlockPropertyFilters[i], opts.BlockPropertyFilters[j] =
+						opts.BlockPropertyFilters[j], opts.BlockPropertyFilters[i]
+				})
+				iter := d.NewIter(&opts)
+				return runIterCmd(td, iter, true)
+
+			default:
+				return fmt.Sprintf("unknown command: %s", td.Cmd)
+			}
+		})
+}
+
+// TODO(sumeer): randomized block interval filter test, with a single
+// collector, that varies block sizes and checks subset relationship with
+// source of truth computed using block size of 1.
+
 func BenchmarkIteratorSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &Iterator{
@@ -1233,3 +1398,5 @@ func BenchmarkIteratorSeekGENoop(b *testing.B) {
 		}
 	}
 }
+
+// TODO(sumeer): add block interval filtering benchmark

@@ -34,6 +34,10 @@ create: db/marker.format-version.000003.004
 close: db/marker.format-version.000003.004
 sync: db
 upgraded to format version: 004
+create: db/marker.format-version.000004.005
+close: db/marker.format-version.000004.005
+sync: db
+upgraded to format version: 005
 create: db/MANIFEST-000003
 close: db/MANIFEST-000001
 sync: db/MANIFEST-000003
@@ -200,9 +204,9 @@ close:
 open-dir: checkpoint
 link: db/OPTIONS-000004 -> checkpoint/OPTIONS-000004
 open-dir: checkpoint
-create: checkpoint/marker.format-version.000001.004
-sync: checkpoint/marker.format-version.000001.004
-close: checkpoint/marker.format-version.000001.004
+create: checkpoint/marker.format-version.000001.005
+sync: checkpoint/marker.format-version.000001.005
+close: checkpoint/marker.format-version.000001.005
 sync: checkpoint
 close: checkpoint
 create: checkpoint/MANIFEST-000017

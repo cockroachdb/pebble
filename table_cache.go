@@ -318,13 +318,33 @@ func (c *tableCacheShard) newIters(
 		c.unrefValue(v)
 		return emptyIter, nil, nil
 	}
+	var bpfs []BlockPropertyFilter
+	if opts != nil {
+		bpfs = opts.BlockPropertyFilters
+	}
+	var filterer *sstable.BlockPropertiesFilterer
+	if len(bpfs) > 0 {
+		filterer = sstable.NewBlockPropertiesFilterer(bpfs)
+		intersects, err :=
+			filterer.IntersectsUserPropsAndFinishInit(v.reader.Properties.UserProperties)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !intersects {
+			// Return the empty iterator. This iterator has no mutable state, so
+			// using a singleton is fine.
+			c.unrefValue(v)
+			return emptyIter, nil, nil
+		}
+	}
 
 	var iter sstable.Iterator
 	var err error
 	if bytesIterated != nil {
 		iter, err = v.reader.NewCompactionIter(bytesIterated)
 	} else {
-		iter, err = v.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
+		iter, err = v.reader.NewIterWithBlockPropertyFilters(
+			opts.GetLowerBound(), opts.GetUpperBound(), filterer)
 	}
 	if err != nil {
 		c.unrefValue(v)

@@ -101,7 +101,7 @@ func TestNewDBFilenames(t *testing.T) {
 			"LOCK",
 			"MANIFEST-000001",
 			"OPTIONS-000003",
-			"marker.format-version.000003.004",
+			"marker.format-version.000004.005",
 			"marker.manifest.000001.MANIFEST-000001",
 		},
 	}
