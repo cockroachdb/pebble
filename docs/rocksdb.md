@@ -704,7 +704,7 @@ looking at the number of bytes that have been flushed by the current
 flush routine, adding those bytes to the size of the level 0 sstables,
 then seeing how many bytes exceed the target number of bytes for the
 level 0 sstables. We multiply the number of bytes exceeded by the
-the level ratio and add that number to the compaction debt estimate.
+level ratio and add that number to the compaction debt estimate.
 We repeat this process until the final level, which gives us a final
 compaction debt estimate for the entire LSM tree.
 
