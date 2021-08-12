@@ -66,8 +66,11 @@ const (
 	// kind, base.InternalKeyKindSetWithDelete. Previous Pebble versions will be
 	// unable to open this database.
 	FormatSetWithDelete
+	// FormatBlockPropertyCollector is a format major version that introduces
+	// BlockPropertyCollectors.
+	FormatBlockPropertyCollector
 	// FormatNewest always contains the most recent format major version.
-	FormatNewest FormatMajorVersion = FormatSetWithDelete
+	FormatNewest FormatMajorVersion = FormatBlockPropertyCollector
 )
 
 // formatMajorVersionMigrations defines the migrations from one format
@@ -142,6 +145,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	// simply finalize the format version and we're done.
 	FormatSetWithDelete: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatSetWithDelete)
+	},
+	FormatBlockPropertyCollector: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatBlockPropertyCollector)
 	},
 }
 

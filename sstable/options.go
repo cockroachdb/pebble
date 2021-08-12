@@ -199,6 +199,11 @@ type WriterOptions struct {
 	// and lives for the lifetime of the table.
 	TablePropertyCollectors []func() TablePropertyCollector
 
+	// BlockPropertyCollectors is a list of BlockPropertyCollector creation
+	// functions. A new BlockPropertyCollector is created for each sstable
+	// built and lives for the lifetime of writing that table.
+	BlockPropertyCollectors []func() BlockPropertyCollector
+
 	// Checksum specifies which checksum to use.
 	Checksum ChecksumType
 }

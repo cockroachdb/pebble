@@ -33,6 +33,8 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatVersioned, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatSetWithDelete))
 	require.Equal(t, FormatSetWithDelete, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatBlockPropertyCollector))
+	require.Equal(t, FormatBlockPropertyCollector, d.FormatMajorVersion())
 	require.NoError(t, d.Close())
 
 	// If we Open the database again, leaving the default format, the
