@@ -163,6 +163,9 @@ type WriterOptions struct {
 	// The default value uses the same ordering as bytes.Compare.
 	Comparer *Comparer
 
+	// Optional. If absent, no block interval annotation is performed.
+	BlockIntervalAnnotatorFunc base.BlockIntervalAnnotatorFunc
+
 	// Compression defines the per-block compression to use.
 	//
 	// The default value (DefaultCompression) uses snappy compression.

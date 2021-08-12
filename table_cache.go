@@ -313,12 +313,17 @@ func (c *tableCacheShard) newIters(
 		return emptyIter, nil, nil
 	}
 
+	var bi BlockInterval
+	if opts != nil {
+		bi = opts.BlockInterval
+	}
 	var iter sstable.Iterator
 	var err error
 	if bytesIterated != nil {
 		iter, err = v.reader.NewCompactionIter(bytesIterated)
 	} else {
-		iter, err = v.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
+		iter, err = v.reader.NewIterWithBlockInterval(
+			opts.GetLowerBound(), opts.GetUpperBound(), bi)
 	}
 	if err != nil {
 		c.unrefValue(v)

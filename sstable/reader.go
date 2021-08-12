@@ -42,19 +42,53 @@ const (
 // decodeBlockHandle returns the block handle encoded at the start of src, as
 // well as the number of bytes it occupies. It returns zero if given invalid
 // input.
-func decodeBlockHandle(src []byte) (BlockHandle, int) {
+func decodeBlockHandle(src []byte, encodedHandleIsIndexValue bool) (BlockHandle, int) {
 	offset, n := binary.Uvarint(src)
-	length, m := binary.Uvarint(src[n:])
-	if n == 0 || m == 0 {
+	if n == 0 {
 		return BlockHandle{}, 0
 	}
-	return BlockHandle{offset, length}, n + m
+	pos := n
+	length, n := binary.Uvarint(src[pos:])
+	if n == 0 {
+		return BlockHandle{}, 0
+	}
+	pos += n
+	var bi base.BlockInterval
+	if encodedHandleIsIndexValue {
+		if pos < len(src) {
+			bi.Lower, n = binary.Uvarint(src[pos:])
+			if n == 0 {
+				return BlockHandle{}, 0
+			}
+			pos += n
+			if pos < len(src) {
+				bi.Upper, n = binary.Uvarint(src[pos:])
+			}
+			if n == 0 {
+				return BlockHandle{}, 0
+			}
+			pos += n
+			// Delta decode.
+			bi.Upper += bi.Lower
+		}
+	}
+	return BlockHandle{Offset: offset, Length: length, BlockInterval: bi}, pos
 }
 
 func encodeBlockHandle(dst []byte, b BlockHandle) int {
 	n := binary.PutUvarint(dst, b.Offset)
-	m := binary.PutUvarint(dst[n:], b.Length)
-	return n + m
+	n += binary.PutUvarint(dst[n:], b.Length)
+	if b.BlockInterval.Lower > 0 {
+		// TODO: remove printf.
+		fmt.Printf("ebh: [%d,%d)\n",
+			b.BlockInterval.Lower, b.BlockInterval.Upper)
+		n += binary.PutUvarint(dst[n:], b.BlockInterval.Lower)
+		delta := b.BlockInterval.Upper - b.BlockInterval.Lower
+		if delta > 0 {
+			n += binary.PutUvarint(dst[n:], delta)
+		}
+	}
+	return n
 }
 
 // block is a []byte that holds a sequence of key/value pairs plus an index
@@ -76,6 +110,9 @@ type singleLevelIterator struct {
 	// Global lower/upper bound for the iterator.
 	lower []byte
 	upper []byte
+	// Block interval does not change for the lifetime of the
+	// singleLevelIterator or the twoLevelIterator
+	blockInterval base.BlockInterval
 	// Per-block lower/upper bound. Nil if the bound does not apply to the block
 	// because we determined the block lies completely within the bound.
 	blockLower []byte
@@ -145,7 +182,22 @@ type singleLevelIterator struct {
 	//  not need to do anything.
 	//
 	// Similar examples can be constructed for backward iteration.
-
+	//
+	// This notion of exactly one key before or after the bounds is not quite
+	// true when block interval annotations are used to ignore blocks. In that
+	// case we can't stop precisely at the first block that is past the bounds
+	// since we are using the index entries to enforce the bounds.
+	//
+	// e.g. 3 blocks with keys [b, c]  [f, g], [i, j, k] with index entries d,
+	// h, l. And let the lower bound be k. If the block [j, k] is ignored due
+	// to the block interval annotations we do need to move the index to block
+	// [f, g] since the index entry for the [j, k] block is l which is not
+	// less than the lower bound of k. So we've passed the entries i, j.
+	//
+	// This is harmless since the block interval constraints never change for
+	// the iterator so i, j are irrelevant. In addition, the current code will
+	// not load the [f, g] block, so the seek optimization that attempts to
+	// use Next/Prev do not apply anyway.
 	boundsCmp                   int
 	positionedUsingLatestBounds bool
 
@@ -206,7 +258,7 @@ func checkTwoLevelIterator(obj interface{}) {
 // init initializes a singleLevelIterator for reading from the table. It is
 // synonmous with Reader.NewIter, but allows for reusing of the iterator
 // between different Readers.
-func (i *singleLevelIterator) init(r *Reader, lower, upper []byte) error {
+func (i *singleLevelIterator) init(r *Reader, lower, upper []byte, bi base.BlockInterval) error {
 	if r.err != nil {
 		return r.err
 	}
@@ -217,6 +269,7 @@ func (i *singleLevelIterator) init(r *Reader, lower, upper []byte) error {
 
 	i.lower = lower
 	i.upper = upper
+	i.blockInterval = bi
 	i.reader = r
 	i.cmp = r.Compare
 	err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum)
@@ -271,37 +324,48 @@ func (i *singleLevelIterator) initBounds() {
 	}
 }
 
+type loadBlockResult int8
+const (
+	loadBlockOK loadBlockResult = iota
+	// Could be due to error or because no block left to load.
+	loadBlockFailed
+	loadBlockIrrelevant
+)
+
 // loadBlock loads the block at the current index position and leaves i.data
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.
-func (i *singleLevelIterator) loadBlock() bool {
+func (i *singleLevelIterator) loadBlock() loadBlockResult {
 	// Ensure the data block iterator is invalidated even if loading of the block
 	// fails.
 	i.data.invalidate()
 	if !i.index.Valid() {
-		return false
+		return loadBlockFailed
 	}
 	// Load the next block.
 	v := i.index.Value()
 	var n int
-	i.dataBH, n = decodeBlockHandle(v)
+	i.dataBH, n = decodeBlockHandle(v, true)
 	if n == 0 || n != len(v) {
 		i.err = errCorruptIndexEntry
-		return false
+		return loadBlockFailed
+	}
+	if !base.BlockIntervalsIntersect(i.blockInterval, i.dataBH.BlockInterval) {
+		return loadBlockIrrelevant
 	}
 	block, err := i.reader.readBlock(i.dataBH, nil /* transform */, &i.dataRS)
 	if err != nil {
 		i.err = err
-		return false
+		return loadBlockFailed
 	}
 	i.err = i.data.initHandle(i.cmp, block, i.reader.Properties.GlobalSeqNum)
 	if i.err != nil {
 		// The block is partially loaded, and we don't want it to appear valid.
 		i.data.invalidate()
-		return false
+		return loadBlockFailed
 	}
 	i.initBounds()
-	return true
+	return loadBlockOK
 }
 
 func (i *singleLevelIterator) initBoundsForAlreadyLoadedBlock() {
@@ -456,15 +520,30 @@ func (i *singleLevelIterator) seekGEHelper(
 			}
 		}
 		// Slow-path.
-		if ikey, _ := i.index.SeekGE(key); ikey == nil {
+		var ikey *InternalKey
+		if ikey, _ = i.index.SeekGE(key); ikey == nil {
 			// The target key is greater than any key in the sstable. Invalidate the
 			// block iterator so that a subsequent call to Prev() will return the last
 			// key in the table.
 			i.data.invalidate()
 			return nil, nil
 		}
-		if !i.loadBlock() {
+		result := i.loadBlock()
+		if result == loadBlockFailed {
 			return nil, nil
+		}
+		if result == loadBlockIrrelevant {
+			// Enforce the upper bound here since don't want to bother moving
+			// to the next block if upper bound is already exceeded. Note that
+			// the next block starts with keys >= ikey.UserKey since even
+			// though this is the block separator, the same user key can span
+			// multiple blocks. Since upper is exclusive we use >= below.
+			if i.upper != nil && i.cmp(ikey.UserKey, i.upper) >= 0 {
+				i.exhaustedBounds = +1
+				return nil, nil
+			}
+			// Want to skip to the next block.
+			dontSeekWithinBlock = true
 		}
 	}
 	if !dontSeekWithinBlock {
@@ -520,6 +599,9 @@ func (i *singleLevelIterator) seekPrefixGE(
 		}
 		i.lastBloomFilterMatched = true
 	}
+	// The i.exhaustedBounds comparison indicates that the upper bound was
+	// reached. The i.data.isDataInvalidated() indicates that the sstable was
+	// exhausted.
 	if trySeekUsingNext && (i.exhaustedBounds == +1 || i.data.isDataInvalidated()) {
 		// Already exhausted, so return nil.
 		return nil, nil
@@ -568,11 +650,30 @@ func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 			dontSeekWithinBlock = true
 		}
 	} else {
-		if ikey, _ := i.index.SeekGE(key); ikey == nil {
-			i.index.Last()
+		var ikey *InternalKey
+		if ikey, _ = i.index.SeekGE(key); ikey == nil {
+			ikey, _ = i.index.Last()
+			if ikey == nil {
+				return nil, nil
+			}
 		}
-		if !i.loadBlock() {
+		// INVARIANT: ikey != nil.
+		result := i.loadBlock()
+		if result == loadBlockFailed {
 			return nil, nil
+		}
+		if result == loadBlockIrrelevant {
+			// Enforce the lower bound here since don't want to bother moving
+			// to the previous block if lower bound is already exceeded. Note
+			// that the previous block starts with keys <= ikey.UserKey since
+			// even though this is the current block's separator, the same
+			// user key can span multiple blocks.
+			if i.lower != nil && i.cmp(ikey.UserKey, i.lower) < 0 {
+				i.exhaustedBounds = -1
+				return nil, nil
+			}
+			// Want to skip to the previous block.
+			dontSeekWithinBlock = true
 		}
 	}
 	if !dontSeekWithinBlock {
@@ -620,20 +721,38 @@ func (i *singleLevelIterator) firstInternal() (*InternalKey, []byte) {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
-	if ikey, _ := i.index.First(); ikey == nil {
+	var ikey *InternalKey
+	if ikey, _ = i.index.First(); ikey == nil {
 		i.data.invalidate()
 		return nil, nil
 	}
-	if !i.loadBlock() {
+	result := i.loadBlock()
+	if result == loadBlockFailed {
 		return nil, nil
 	}
-	if ikey, val := i.data.First(); ikey != nil {
-		if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
+	if result == loadBlockOK {
+		if ikey, val := i.data.First(); ikey != nil {
+			if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
+				i.exhaustedBounds = +1
+				return nil, nil
+			}
+			return ikey, val
+		}
+		// Else fall through to skipForward.
+	} else {
+		// result == loadBlockIrrelevant. Enforce the upper bound here since
+		// don't want to bother moving to the next block if upper bound is
+		// already exceeded. Note that the next block starts with keys >=
+		// ikey.UserKey since even though this is the block separator, the
+		// same user key can span multiple blocks. Since upper is exclusive we
+		// use >= below.
+		if i.upper != nil && i.cmp(ikey.UserKey, i.upper) >= 0 {
 			i.exhaustedBounds = +1
 			return nil, nil
 		}
-		return ikey, val
+		// Else fall through to skipForward.
 	}
+
 	return i.skipForward()
 }
 
@@ -659,20 +778,36 @@ func (i *singleLevelIterator) lastInternal() (*InternalKey, []byte) {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
-	if ikey, _ := i.index.Last(); ikey == nil {
+	var ikey *InternalKey
+	if ikey, _ = i.index.Last(); ikey == nil {
 		i.data.invalidate()
 		return nil, nil
 	}
-	if !i.loadBlock() {
+	result := i.loadBlock()
+	if result == loadBlockFailed {
 		return nil, nil
 	}
-	if ikey, val := i.data.Last(); ikey != nil {
-		if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
+	if result == loadBlockOK {
+		if ikey, val := i.data.Last(); ikey != nil {
+			if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
+				i.exhaustedBounds = -1
+				return nil, nil
+			}
+			return ikey, val
+		}
+		// Else fall through to skipBackward.
+	} else {
+		// result == loadBlockIrrelevant. Enforce the lower bound here since
+		// don't want to bother moving to the previous block if lower bound is
+		// already exceeded. Note that the previous block starts with keys <=
+		// key.UserKey since even though this is the current block's
+		// separator, the same user key can span multiple blocks.
+		if i.lower != nil && i.cmp(ikey.UserKey, i.lower) < 0 {
 			i.exhaustedBounds = -1
 			return nil, nil
 		}
-		return ikey, val
 	}
+
 	return i.skipBackward()
 }
 
@@ -726,13 +861,31 @@ func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
 
 func (i *singleLevelIterator) skipForward() (*InternalKey, []byte) {
 	for {
-		if key, _ := i.index.Next(); key == nil {
+		var key *InternalKey
+		if key, _ = i.index.Next(); key == nil {
 			i.data.invalidate()
 			break
 		}
-		if !i.loadBlock() {
+		result := i.loadBlock()
+		if result != loadBlockOK {
 			if i.err != nil {
 				break
+			}
+			if result == loadBlockFailed {
+				// We checked that i.index was at a valid entry, so
+				// loadBlockFailed could not have happened due to to i.index
+				// being exhausted, and must be due to an error.
+				panic("loadBlock should not have failed with no error")
+			}
+			// result == loadBlockIrrelevant. Enforce the upper bound here
+			// since don't want to bother moving to the next block if upper
+			// bound is already exceeded. Note that the next block starts with
+			// keys >= key.UserKey since even though this is the block
+			// separator, the same user key can span multiple blocks. Since
+			// upper is exclusive we use >= below.
+			if i.upper != nil && i.cmp(key.UserKey, i.upper) >= 0 {
+				i.exhaustedBounds = +1
+				return nil, nil
 			}
 			continue
 		}
@@ -749,13 +902,30 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, []byte) {
 
 func (i *singleLevelIterator) skipBackward() (*InternalKey, []byte) {
 	for {
-		if key, _ := i.index.Prev(); key == nil {
+		var key *InternalKey
+		if key, _ = i.index.Prev(); key == nil {
 			i.data.invalidate()
 			break
 		}
-		if !i.loadBlock() {
+		result := i.loadBlock()
+		if result != loadBlockOK {
 			if i.err != nil {
 				break
+			}
+			if result == loadBlockFailed {
+				// We checked that i.index was at a valid entry, so
+				// loadBlockFailed could not have happened due to to i.index
+				// being exhausted, and must be due to an error.
+				panic("loadBlock should not have failed with no error")
+			}
+			// result == loadBlockIrrelevant. Enforce the lower bound here
+			// since don't want to bother moving to the previous block if lower
+			// bound is already exceeded. Note that the previous block starts with
+			// keys <= key.UserKey since even though this is the current block's
+			// separator, the same user key can span multiple blocks.
+			if i.lower != nil && i.cmp(key.UserKey, i.lower) < 0 {
+				i.exhaustedBounds = -1
+				return nil, nil
 			}
 			continue
 		}
@@ -915,12 +1085,24 @@ func (i *compactionIterator) skipForward(key *InternalKey, val []byte) (*Interna
 			if key, _ := i.index.Next(); key == nil {
 				break
 			}
-			if !i.loadBlock() {
+			result := i.loadBlock()
+			if result != loadBlockOK {
 				if i.err != nil {
 					break
 				}
-				continue
+				switch result {
+				case loadBlockFailed:
+					// We checked that i.index was at a valid entry, so
+					// loadBlockFailed could not have happened due to to i.index
+					// being exhausted, and must be due to an error.
+					panic("loadBlock should not have failed with no error")
+				case loadBlockIrrelevant:
+					panic("compactionIter should not be using block intervals for skipping")
+				default:
+					panic(fmt.Sprintf("unexpected case %d", result))
+				}
 			}
+			// result == loadBlockOK
 			if key, val = i.data.First(); key != nil {
 				break
 			}
@@ -945,30 +1127,37 @@ var _ base.InternalIterator = (*twoLevelIterator)(nil)
 // leaves i.index unpositioned. If unsuccessful, it gets i.err to any error
 // encountered, which may be nil if we have simply exhausted the entire table.
 // This is used for two level indexes.
-func (i *twoLevelIterator) loadIndex() bool {
+func (i *twoLevelIterator) loadIndex() loadBlockResult {
 	// Ensure the data block iterator is invalidated even if loading of the
 	// index fails.
 	i.data.invalidate()
 	if !i.topLevelIndex.Valid() {
 		i.index.offset = 0
 		i.index.restarts = 0
-		return false
+		return loadBlockFailed
 	}
-	h, n := decodeBlockHandle(i.topLevelIndex.Value())
+	h, n := decodeBlockHandle(i.topLevelIndex.Value(), true)
 	if n == 0 || n != len(i.topLevelIndex.Value()) {
 		i.err = base.CorruptionErrorf("pebble/table: corrupt top level index entry")
-		return false
+		return loadBlockFailed
+	}
+	if !base.BlockIntervalsIntersect(i.blockInterval, h.BlockInterval) {
+		return loadBlockIrrelevant
 	}
 	indexBlock, err := i.reader.readBlock(h, nil /* transform */, nil /* readaheadState */)
 	if err != nil {
 		i.err = err
-		return false
+		return loadBlockFailed
 	}
-	i.err = i.index.initHandle(i.cmp, indexBlock, i.reader.Properties.GlobalSeqNum)
-	return i.err == nil
+	if i.err = i.index.initHandle(
+		i.cmp, indexBlock, i.reader.Properties.GlobalSeqNum); i.err == nil {
+		return loadBlockOK
+	}
+	return loadBlockFailed
 }
 
-func (i *twoLevelIterator) init(r *Reader, lower, upper []byte) error {
+func (i *twoLevelIterator) init(
+	r *Reader, lower, upper []byte, bi base.BlockInterval) error {
 	if r.err != nil {
 		return r.err
 	}
@@ -979,6 +1168,7 @@ func (i *twoLevelIterator) init(r *Reader, lower, upper []byte) error {
 
 	i.lower = lower
 	i.upper = upper
+	i.blockInterval = bi
 	i.reader = r
 	i.cmp = r.Compare
 	err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum)
@@ -1001,17 +1191,33 @@ func (i *twoLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 	i.exhaustedBounds = 0
 	i.err = nil // clear cached iteration error
 
+	var dontSeekWithinSingleLevelIter bool
 	if i.topLevelIndex.isDataInvalidated() || !i.topLevelIndex.Valid() || i.boundsCmp <= 0 ||
 		i.cmp(key, i.topLevelIndex.Key().UserKey) > 0 {
 		// Slow-path: need to position the topLevelIndex.
-		if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
+		var ikey *InternalKey
+		if ikey, _ = i.topLevelIndex.SeekGE(key); ikey == nil {
 			i.data.invalidate()
 			i.index.invalidate()
 			return nil, nil
 		}
 
-		if !i.loadIndex() {
+		result := i.loadIndex()
+		if result == loadBlockFailed {
 			return nil, nil
+		}
+		if result == loadBlockIrrelevant {
+			// Enforce the upper bound here since don't want to bother moving
+			// to the next entry in the top level index if upper bound is
+			// already exceeded. Note that the next entry starts with keys >=
+			// ikey.UserKey since even though this is the block separator, the
+			// same user key can span multiple index blocks. Since upper is
+			// exclusive we use >= below.
+			if i.upper != nil && i.cmp(ikey.UserKey, i.upper) >= 0 {
+				i.exhaustedBounds = +1
+			}
+			// Fall through to skipForward.
+			dontSeekWithinSingleLevelIter = true
 		}
 	}
 	// Else fast-path: The bounds have moved forward and this SeekGE is
@@ -1023,8 +1229,10 @@ func (i *twoLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 	// confirms that it is not behind. Since it is not ahead and not behind
 	// it must be at the right position.
 
-	if ikey, val := i.singleLevelIterator.SeekGE(key); ikey != nil {
-		return ikey, val
+	if !dontSeekWithinSingleLevelIter {
+		if ikey, val := i.singleLevelIterator.SeekGE(key); ikey != nil {
+			return ikey, val
+		}
 	}
 	return i.skipForward()
 }
@@ -1067,6 +1275,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	// Bloom filter matches.
 	i.exhaustedBounds = 0
 
+	var dontSeekWithinSingleLevelIter bool
 	if i.topLevelIndex.isDataInvalidated() || !i.topLevelIndex.Valid() || i.boundsCmp <= 0 ||
 		i.cmp(key, i.topLevelIndex.Key().UserKey) > 0 {
 		// Slow-path: need to position the topLevelIndex.
@@ -1079,14 +1288,29 @@ func (i *twoLevelIterator) SeekPrefixGE(
 		// block, and in that case we don't need to invalidate and reload the
 		// singleLevelIterator state.
 		trySeekUsingNext = false
-		if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
+		var ikey *InternalKey
+		if ikey, _ = i.topLevelIndex.SeekGE(key); ikey == nil {
 			i.data.invalidate()
 			i.index.invalidate()
 			return nil, nil
 		}
 
-		if !i.loadIndex() {
+		result := i.loadIndex()
+		if result == loadBlockFailed {
 			return nil, nil
+		}
+		if result == loadBlockIrrelevant {
+			// Enforce the upper bound here since don't want to bother moving
+			// to the next entry in the top level index if upper bound is
+			// already exceeded. Note that the next entry starts with keys >=
+			// ikey.UserKey since even though this is the block separator, the
+			// same user key can span multiple index blocks. Since upper is
+			// exclusive we use >= below.
+			if i.upper != nil && i.cmp(ikey.UserKey, i.upper) >= 0 {
+				i.exhaustedBounds = +1
+			}
+			// Fall through to skipForward.
+			dontSeekWithinSingleLevelIter = true
 		}
 	}
 	// Else fast-path: The bounds have moved forward and this SeekGE is
@@ -1098,18 +1322,14 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	// confirms that it is not behind. Since it is not ahead and not behind
 	// it must be at the right position.
 
-	if ikey, val := i.singleLevelIterator.seekPrefixGE(
-		prefix, key, trySeekUsingNext, false /* checkFilter */); ikey != nil {
-		return ikey, val
+	if !dontSeekWithinSingleLevelIter {
+		if ikey, val := i.singleLevelIterator.seekPrefixGE(
+			prefix, key, trySeekUsingNext, false /* checkFilter */); ikey != nil {
+			return ikey, val
+		}
 	}
+	// NB: skipForward checks whether exhaustedBounds is already +1.
 	return i.skipForward()
-}
-
-func (i *twoLevelIterator) SeekPrefixGEWithExhaustionIndicator(
-	prefix, key []byte, trySeekUsingNext bool,
-) (k *base.InternalKey, value []byte, iterExhaustedAndNotBloomFilterFail bool) {
-	k, value = i.SeekPrefixGE(prefix, key, trySeekUsingNext)
-	return k, value, false
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
@@ -1121,31 +1341,58 @@ func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
+	var result loadBlockResult
+	var ikey *InternalKey
 	// NB: Unlike SeekGE, we don't have a fast-path here since we don't know
 	// whether the topLevelIndex is positioned after the position that would
 	// be returned by doing i.topLevelIndex.SeekGE(). To know this we would
 	// need to know the index key preceding the current one.
-	if ikey, _ := i.topLevelIndex.SeekGE(key); ikey == nil {
-		if ikey, _ := i.topLevelIndex.Last(); ikey == nil {
+	if ikey, _ = i.topLevelIndex.SeekGE(key); ikey == nil {
+		if ikey, _ = i.topLevelIndex.Last(); ikey == nil {
 			i.data.invalidate()
 			i.index.invalidate()
 			return nil, nil
 		}
 
-		if !i.loadIndex() {
+		result = i.loadIndex()
+		if result == loadBlockFailed {
 			return nil, nil
 		}
-
-		return i.singleLevelIterator.lastInternal()
+		if result == loadBlockOK {
+			if ikey, val := i.singleLevelIterator.lastInternal(); ikey != nil {
+				return ikey, val
+			}
+			// Fall through to skipBackward since the singleLevelIterator did
+			// not have any blocks that satisfy the block interval
+			// constraints, or the lower bound was reached.
+		}
+		// Else loadBlockIrrelevant, so fall through.
+	} else {
+		result = i.loadIndex()
+		if result == loadBlockFailed {
+			return nil, nil
+		}
+		if result == loadBlockOK {
+			if ikey, val := i.singleLevelIterator.SeekLT(key); ikey != nil {
+				return ikey, val
+			}
+			// Fall through to skipBackward since the singleLevelIterator did
+			// not have any blocks that satisfy the block interval
+			// constraint, or the lower bound was reached.
+		}
+		// Else loadBlockIrrelevant, so fall through.
 	}
-
-	if !i.loadIndex() {
-		return nil, nil
+	if result == loadBlockIrrelevant {
+		// Enforce the lower bound here since don't want to bother moving to
+		// the previous entry in the top level index if lower bound is already
+		// exceeded. Note that the previous entry starts with keys <=
+		// ikey.UserKey since even though this is the current block's
+		// separator, the same user key can span multiple index blocks.
+		if i.lower != nil && i.cmp(ikey.UserKey, i.upper) < 0 {
+			i.exhaustedBounds = -1
+		}
 	}
-
-	if ikey, val := i.singleLevelIterator.SeekLT(key); ikey != nil {
-		return ikey, val
-	}
+	// NB: skipBackward checks whether exhaustedBounds is already -1.
 	return i.skipBackward()
 }
 
@@ -1162,17 +1409,32 @@ func (i *twoLevelIterator) First() (*InternalKey, []byte) {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
-	if ikey, _ := i.topLevelIndex.First(); ikey == nil {
+	var ikey *InternalKey
+	if ikey, _ = i.topLevelIndex.First(); ikey == nil {
 		return nil, nil
 	}
 
-	if !i.loadIndex() {
+	result := i.loadIndex()
+	if result == loadBlockFailed {
 		return nil, nil
 	}
-
-	if ikey, val := i.singleLevelIterator.First(); ikey != nil {
-		return ikey, val
+	if result == loadBlockOK {
+		if ikey, val := i.singleLevelIterator.First(); ikey != nil {
+			return ikey, val
+		}
+		// Else fall through to skipForward.
+	} else {
+		// result == loadBlockIrrelevant. Enforce the upper bound here since
+		// don't want to bother moving to the next entry in the top level
+		// index if upper bound is already exceeded. Note that the next entry
+		// starts with keys >= ikey.UserKey since even though this is the
+		// block separator, the same user key can span multiple index blocks.
+		// Since upper is exclusive we use >= below.
+		if i.upper != nil && i.cmp(ikey.UserKey, i.upper) >= 0 {
+			i.exhaustedBounds = +1
+		}
 	}
+	// NB: skipForward checks whether exhaustedBounds is already +1.
 	return i.skipForward()
 }
 
@@ -1189,17 +1451,32 @@ func (i *twoLevelIterator) Last() (*InternalKey, []byte) {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
-	if ikey, _ := i.topLevelIndex.Last(); ikey == nil {
+	var ikey *InternalKey
+	if ikey, _ = i.topLevelIndex.Last(); ikey == nil {
 		return nil, nil
 	}
 
-	if !i.loadIndex() {
+	result := i.loadIndex()
+	if result == loadBlockFailed {
 		return nil, nil
 	}
-
-	if ikey, val := i.singleLevelIterator.Last(); ikey != nil {
-		return ikey, val
+	if result == loadBlockOK {
+		if ikey, val := i.singleLevelIterator.Last(); ikey != nil {
+			return ikey, val
+		}
+		// Else fall through to skipBackward.
+	} else {
+		// result == loadBlockIrrelevant. Enforce the lower bound here
+		// since don't want to bother moving to the previous entry in the
+		// top level index if lower bound is already exceeded. Note that
+		// the previous entry starts with keys <= ikey.UserKey since even
+		// though this is the current block's separator, the same user key
+		// can span multiple index blocks.
+		if i.lower != nil && i.cmp(ikey.UserKey, i.upper) < 0 {
+			i.exhaustedBounds = -1
+		}
 	}
+	// NB: skipBackward checks whether exhaustedBounds is already -1.
 	return i.skipBackward()
 }
 
@@ -1235,51 +1512,75 @@ func (i *twoLevelIterator) Prev() (*InternalKey, []byte) {
 
 func (i *twoLevelIterator) skipForward() (*InternalKey, []byte) {
 	for {
-		if i.err != nil {
-			return nil, nil
-		}
-		if i.singleLevelIterator.valid() {
-			// The iterator is positioned at valid record in the current data block
-			// which implies the previous positioning call reached the upper bound.
-			//
+		if i.err != nil || i.exhaustedBounds > 0 {
 			return nil, nil
 		}
 		i.exhaustedBounds = 0
-		if ikey, _ := i.topLevelIndex.Next(); ikey == nil {
+		var ikey *InternalKey
+		if ikey, _ = i.topLevelIndex.Next(); ikey == nil {
 			i.data.invalidate()
 			i.index.invalidate()
 			return nil, nil
 		}
-		if !i.loadIndex() {
+		result := i.loadIndex()
+		if result == loadBlockFailed {
 			return nil, nil
 		}
-		if ikey, val := i.singleLevelIterator.firstInternal(); ikey != nil {
-			return ikey, val
+		if result == loadBlockOK {
+			if ikey, val := i.singleLevelIterator.firstInternal(); ikey != nil {
+				return ikey, val
+			}
+			// Next iteration will return if singleLevelIterator set
+			// exhaustedBounds = +1.
+		} else {
+			// result == loadBlockIrrelevant. Enforce the upper bound here
+			// since don't want to bother moving to the next entry in the top
+			// level index if upper bound is already exceeded. Note that the
+			// next entry starts with keys >= ikey.UserKey since even though
+			// this is the block separator, the same user key can span
+			// multiple index blocks. Since upper is exclusive we use >=
+			// below.
+			if i.upper != nil && i.cmp(ikey.UserKey, i.upper) >= 0 {
+				i.exhaustedBounds = +1
+				// Next iteration will return.
+			}
 		}
 	}
 }
 
 func (i *twoLevelIterator) skipBackward() (*InternalKey, []byte) {
 	for {
-		if i.err != nil {
-			return nil, nil
-		}
-		if i.singleLevelIterator.valid() {
-			// The iterator is positioned at valid record in the current data block
-			// which implies the previous positioning call reached the lower bound.
+		if i.err != nil || i.exhaustedBounds < 0 {
 			return nil, nil
 		}
 		i.exhaustedBounds = 0
-		if ikey, _ := i.topLevelIndex.Prev(); ikey == nil {
+		var ikey *InternalKey
+		if ikey, _ = i.topLevelIndex.Prev(); ikey == nil {
 			i.data.invalidate()
 			i.index.invalidate()
 			return nil, nil
 		}
-		if !i.loadIndex() {
+		result := i.loadIndex()
+		if result == loadBlockFailed {
 			return nil, nil
 		}
-		if ikey, val := i.singleLevelIterator.lastInternal(); ikey != nil {
-			return ikey, val
+		if result == loadBlockOK {
+			if ikey, val := i.singleLevelIterator.lastInternal(); ikey != nil {
+				return ikey, val
+			}
+			// Next iteration will return if singleLevelIterator set
+			// exhaustedBounds = -1.
+		} else {
+			// result == loadBlockIrrelevant. Enforce the lower bound here
+			// since don't want to bother moving to the previous entry in the
+			// top level index if lower bound is already exceeded. Note that
+			// the previous entry starts with keys <= ikey.UserKey since even
+			// though this is the current block's separator, the same user key
+			// can span multiple index blocks.
+			if i.lower != nil && i.cmp(ikey.UserKey, i.upper) < 0 {
+				i.exhaustedBounds = -1
+				// Next iteration will return.
+			}
 		}
 	}
 }
@@ -1370,10 +1671,26 @@ func (i *twoLevelCompactionIterator) skipForward(
 			if key, _ := i.topLevelIndex.Next(); key == nil {
 				break
 			}
-			if i.loadIndex() {
-				if key, val = i.singleLevelIterator.First(); key != nil {
+			result := i.loadIndex()
+			if result != loadBlockOK {
+				if i.err != nil {
 					break
 				}
+				switch result {
+				case loadBlockFailed:
+					// We checked that i.index was at a valid entry, so
+					// loadBlockFailed could not have happened due to to i.index
+					// being exhausted, and must be due to an error.
+					panic("loadBlock should not have failed with no error")
+				case loadBlockIrrelevant:
+					panic("compactionIter should not be using block intervals for skipping")
+				default:
+					panic(fmt.Sprintf("unexpected case %d", result))
+				}
+			}
+			// result == loadBlockOK
+			if key, val = i.singleLevelIterator.First(); key != nil {
+				break
 			}
 		}
 	}
@@ -1777,15 +2094,18 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	return newValue, nil
 }
 
-// NewIter returns an iterator for the contents of the table. If an error
-// occurs, NewIter cleans up after itself and returns a nil iterator.
-func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
+// NewIterWithBlockInterval returns an iterator for the contents of the table.
+// If an error occurs, NewIterWithBlockInterval cleans up after itself and
+// returns a nil iterator. The BlockInterval parameter is used to ignore
+// irrelevant blocks. A default initialized BlockIntervals ignores nothing.
+func (r *Reader) NewIterWithBlockInterval(
+	lower, upper []byte, bi base.BlockInterval) (Iterator, error) {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(r, lower, upper)
+		err := i.init(r, lower, upper, bi)
 		if err != nil {
 			return nil, err
 		}
@@ -1793,11 +2113,17 @@ func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
 	}
 
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(r, lower, upper)
+	err := i.init(r, lower, upper, bi)
 	if err != nil {
 		return nil, err
 	}
 	return i, nil
+}
+
+// NewIter returns an iterator for the contents of the table. If an error
+// occurs, NewIter cleans up after itself and returns a nil iterator.
+func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
+	return r.NewIterWithBlockInterval(lower, upper, base.BlockInterval{})
 }
 
 // NewCompactionIter returns an iterator similar to NewIter but it also increments
@@ -1806,7 +2132,7 @@ func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
 func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(r, nil /* lower */, nil /* upper */)
+		err := i.init(r, nil /* lower */, nil /* upper */, base.BlockInterval{})
 		if err != nil {
 			return nil, err
 		}
@@ -1817,7 +2143,7 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 		}, nil
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(r, nil /* lower */, nil /* upper */)
+	err := i.init(r, nil /* lower */, nil /* upper */, base.BlockInterval{})
 	if err != nil {
 		return nil, err
 	}
@@ -2029,7 +2355,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 
 	meta := map[string]BlockHandle{}
 	for valid := i.First(); valid; valid = i.Next() {
-		bh, n := decodeBlockHandle(i.Value())
+		bh, n := decodeBlockHandle(i.Value(), false)
 		if n == 0 {
 			return base.CorruptionErrorf("pebble/table: invalid table (bad filter block handle)")
 		}
@@ -2116,7 +2442,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		l.Index = append(l.Index, r.indexBH)
 		iter, _ := newBlockIter(r.Compare, indexH.Get())
 		for key, value := iter.First(); key != nil; key, value = iter.Next() {
-			dataBH, n := decodeBlockHandle(value)
+			dataBH, n := decodeBlockHandle(value, true)
 			if n == 0 || n != len(value) {
 				return nil, errCorruptIndexEntry
 			}
@@ -2126,7 +2452,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		l.TopIndex = r.indexBH
 		topIter, _ := newBlockIter(r.Compare, indexH.Get())
 		for key, value := topIter.First(); key != nil; key, value = topIter.Next() {
-			indexBH, n := decodeBlockHandle(value)
+			indexBH, n := decodeBlockHandle(value, true)
 			if n == 0 || n != len(value) {
 				return nil, errCorruptIndexEntry
 			}
@@ -2138,7 +2464,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 			iter, _ := newBlockIter(r.Compare, subIndex.Get())
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
-				dataBH, n := decodeBlockHandle(value)
+				dataBH, n := decodeBlockHandle(value, true)
 				if n == 0 || n != len(value) {
 					return nil, errCorruptIndexEntry
 				}
@@ -2237,7 +2563,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			// The range falls completely after this file, or an error occurred.
 			return 0, topIter.Error()
 		}
-		startIdxBH, n := decodeBlockHandle(val)
+		startIdxBH, n := decodeBlockHandle(val, true)
 		if n == 0 || n != len(val) {
 			return 0, errCorruptIndexEntry
 		}
@@ -2257,7 +2583,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 				return 0, err
 			}
 		} else {
-			endIdxBH, n := decodeBlockHandle(val)
+			endIdxBH, n := decodeBlockHandle(val, true)
 			if n == 0 || n != len(val) {
 				return 0, errCorruptIndexEntry
 			}
@@ -2280,7 +2606,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		// The range falls completely after this file, or an error occurred.
 		return 0, startIdxIter.Error()
 	}
-	startBH, n := decodeBlockHandle(val)
+	startBH, n := decodeBlockHandle(val, true)
 	if n == 0 || n != len(val) {
 		return 0, errCorruptIndexEntry
 	}
@@ -2297,7 +2623,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		// The range spans beyond this file. Include data blocks through the last.
 		return r.Properties.DataSize - startBH.Offset, nil
 	}
-	endBH, n := decodeBlockHandle(val)
+	endBH, n := decodeBlockHandle(val, true)
 	if n == 0 || n != len(val) {
 		return 0, errCorruptIndexEntry
 	}
@@ -2532,7 +2858,7 @@ func (l *Layout) Describe(
 		case "index", "top-index":
 			iter, _ := newBlockIter(r.Compare, h.Get())
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
-				bh, n := decodeBlockHandle(value)
+				bh, n := decodeBlockHandle(value, true)
 				if n == 0 || n != len(value) {
 					fmt.Fprintf(w, "%10d    [err: %s]\n", b.Offset+uint64(iter.offset), err)
 					continue
@@ -2554,7 +2880,7 @@ func (l *Layout) Describe(
 			iter, _ := newRawBlockIter(r.Compare, h.Get())
 			for valid := iter.First(); valid; valid = iter.Next() {
 				value := iter.Value()
-				bh, n := decodeBlockHandle(value)
+				bh, n := decodeBlockHandle(value, false)
 				if n == 0 || n != len(value) {
 					fmt.Fprintf(w, "%10d    [err: %s]\n", b.Offset+uint64(iter.offset), err)
 					continue

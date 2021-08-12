@@ -102,6 +102,7 @@ type Writer struct {
 	compression             Compression
 	separator               Separator
 	successor               Successor
+	blockIntervalAnnotatorFunc base.BlockIntervalAnnotatorFunc
 	tableFormat             TableFormat
 	checksumType            ChecksumType
 	cache                   *cache.Cache
@@ -128,12 +129,14 @@ type Writer struct {
 	// Internal flag to allow creation of range-del-v1 format blocks. Only used
 	// for testing. Note that v2 format blocks are backwards compatible with v1
 	// format blocks.
-	rangeDelV1Format bool
-	block            blockWriter
-	indexBlock       blockWriter
-	rangeDelBlock    blockWriter
-	props            Properties
-	propCollectors   []TablePropertyCollector
+	rangeDelV1Format       bool
+	block                  blockWriter
+	blockIntervalAnnotator base.BlockIntervalAnnotator
+	indexBlock             blockWriter
+	indexBlockInterval     indexBlockInterval
+	rangeDelBlock          blockWriter
+	props                  Properties
+	propCollectors         []TablePropertyCollector
 	// compressedBuf is the destination buffer for compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
@@ -149,7 +152,17 @@ type Writer struct {
 	xxHasher *xxhash.Digest
 
 	topLevelIndexBlock blockWriter
-	indexPartitions    []blockWriter
+	indexPartitions    []indexBlockWriterAndInterval
+}
+
+type indexBlockInterval struct {
+	initialized bool
+	base.BlockInterval
+}
+
+type indexBlockWriterAndInterval struct {
+	writer        blockWriter
+	blockInterval indexBlockInterval
 }
 
 // Set sets the value for the given key. The sequence number is set to
@@ -244,6 +257,12 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 
 	w.maybeAddToFilter(key.UserKey)
 	w.block.add(key, value)
+	if w.blockIntervalAnnotatorFunc != nil && w.blockIntervalAnnotator == nil {
+		w.blockIntervalAnnotator = w.blockIntervalAnnotatorFunc(nil)
+	}
+	if w.blockIntervalAnnotator != nil {
+		w.blockIntervalAnnotator.AddKey(key.UserKey)
+	}
 
 	w.meta.updateSeqNum(key.SeqNum())
 	// block.curKey contains the most recently added key to the block.
@@ -376,8 +395,33 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 		w.err = err
 		return w.err
 	}
+	if bh, err = w.maybeAddBlockIntervalToBlockHandle(bh); err != nil {
+		return err
+	}
 	w.addIndexEntry(key, bh)
 	return nil
+}
+
+func (w *Writer) maybeAddBlockIntervalToBlockHandle(bh BlockHandle) (BlockHandle, error) {
+	var err error
+	if w.blockIntervalAnnotator != nil {
+		bh.BlockInterval, err = w.blockIntervalAnnotator.Finish()
+		if err != nil {
+			w.err = err
+			return bh, err
+		}
+		w.blockIntervalAnnotator = w.blockIntervalAnnotatorFunc(w.blockIntervalAnnotator)
+	}
+	return bh, nil
+}
+
+func (w *Writer) mergeBlockIntervalIntoIndexBlock(bh BlockHandle) {
+	if !w.indexBlockInterval.initialized {
+		w.indexBlockInterval = indexBlockInterval{
+			initialized: true, BlockInterval: bh.BlockInterval}
+		return
+	}
+	w.indexBlockInterval.BlockInterval.Union(bh.BlockInterval)
 }
 
 // addIndexEntry adds an index entry for the specified key and block handle.
@@ -404,6 +448,7 @@ func (w *Writer) addIndexEntry(key InternalKey, bh BlockHandle) {
 	}
 
 	w.indexBlock.add(sep, w.tmp[:n])
+	w.mergeBlockIntervalIntoIndexBlock(bh)
 }
 
 func shouldFlush(
@@ -439,10 +484,15 @@ func shouldFlush(
 // finishIndexBlock finishes the current index block and adds it to the top
 // level index block. This is only used when two level indexes are enabled.
 func (w *Writer) finishIndexBlock() {
-	w.indexPartitions = append(w.indexPartitions, w.indexBlock)
+	w.indexPartitions = append(w.indexPartitions,
+		indexBlockWriterAndInterval{
+			writer:        w.indexBlock,
+			blockInterval: w.indexBlockInterval,
+		})
 	w.indexBlock = blockWriter{
 		restartInterval: 1,
 	}
+	w.indexBlockInterval = indexBlockInterval{}
 }
 
 func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
@@ -451,14 +501,15 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 
 	for i := range w.indexPartitions {
 		b := &w.indexPartitions[i]
-		w.props.NumDataBlocks += uint64(b.nEntries)
-		sep := base.DecodeInternalKey(b.curKey)
-		data := b.finish()
+		w.props.NumDataBlocks += uint64(b.writer.nEntries)
+		sep := base.DecodeInternalKey(b.writer.curKey)
+		data := b.writer.finish()
 		w.props.IndexSize += uint64(len(data))
 		bh, err := w.writeBlock(data, w.compression)
 		if err != nil {
 			return BlockHandle{}, err
 		}
+		bh.BlockInterval = b.blockInterval.BlockInterval
 		n := encodeBlockHandle(w.tmp[:], bh)
 		w.topLevelIndexBlock.add(sep, w.tmp[:n])
 	}
@@ -506,7 +557,7 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 		return BlockHandle{}, errors.Newf("unsupported checksum type: %d", w.checksumType)
 	}
 	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
-	bh := BlockHandle{w.meta.Size, uint64(len(b))}
+	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(b))}
 
 	if w.cacheID != 0 && w.fileNum != 0 {
 		// Remove the block being written from the cache. This provides defense in
@@ -556,6 +607,9 @@ func (w *Writer) Close() (err error) {
 		if err != nil {
 			w.err = err
 			return w.err
+		}
+		if bh, err = w.maybeAddBlockIntervalToBlockHandle(bh); err != nil {
+			return err
 		}
 		w.addIndexEntry(InternalKey{}, bh)
 	}
@@ -769,6 +823,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		compression:             o.Compression,
 		separator:               o.Comparer.Separator,
 		successor:               o.Comparer.Successor,
+		blockIntervalAnnotatorFunc: o.BlockIntervalAnnotatorFunc,
 		tableFormat:             o.TableFormat,
 		checksumType:            o.Checksum,
 		cache:                   o.Cache,

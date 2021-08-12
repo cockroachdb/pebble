@@ -123,20 +123,23 @@ is a key that is >= every key in block i and is < every key i block i+1. The
 successor for the final block is a key that is >= every key in block N-1. The
 index block restart interval is 1: every entry is a restart point.
 
-A block handle is an offset and a length; the length does not include the 5
-byte trailer. Both numbers are varint-encoded, with no padding between the two
-values. The maximum size of an encoded block handle is therefore 20 bytes.
+
+A block handle is an offset, a length, and two optional uint64 annotation; the
+length does not include the 5 byte trailer. All numbers are varint-encoded, with
+no padding between the two values. The maximum size of an encoded block handle
+is therefore 40 bytes.
 */
 
 const (
 	blockTrailerLen   = 5
-	blockHandleMaxLen = 10 + 10
+	blockHandleMaxLen = 10 + 10 + 10 + 10
+	blockHandleMaxLenWithoutAnnotations = 10 + 10
 
 	levelDBFooterLen   = 48
 	levelDBMagic       = "\x57\xfb\x80\x8b\x24\x75\x47\xdb"
 	levelDBMagicOffset = levelDBFooterLen - len(levelDBMagic)
 
-	rocksDBFooterLen     = 1 + 2*blockHandleMaxLen + 4 + 8
+	rocksDBFooterLen     = 1 + 2*blockHandleMaxLenWithoutAnnotations + 4 + 8
 	rocksDBMagic         = "\xf7\xcf\xf4\x85\xb7\x41\xe2\x88"
 	rocksDBMagicOffset   = rocksDBFooterLen - len(rocksDBMagic)
 	rocksDBVersionOffset = rocksDBMagicOffset - 4
@@ -271,13 +274,13 @@ func readFooter(f ReadableFile) (footer, error) {
 	{
 		end := uint64(stat.Size())
 		var n int
-		footer.metaindexBH, n = decodeBlockHandle(buf)
+		footer.metaindexBH, n = decodeBlockHandle(buf, false)
 		if n == 0 || footer.metaindexBH.Offset+footer.metaindexBH.Length > end {
 			return footer, base.CorruptionErrorf("pebble/table: invalid table (bad metaindex block handle)")
 		}
 		buf = buf[n:]
 
-		footer.indexBH, n = decodeBlockHandle(buf)
+		footer.indexBH, n = decodeBlockHandle(buf, false)
 		if n == 0 || footer.indexBH.Offset+footer.indexBH.Length > end {
 			return footer, base.CorruptionErrorf("pebble/table: invalid table (bad index block handle)")
 		}

@@ -52,6 +52,16 @@ type FilterPolicy = base.FilterPolicy
 // TablePropertyCollector exports the sstable.TablePropertyCollector type.
 type TablePropertyCollector = sstable.TablePropertyCollector
 
+// BlockIntervalAnnotatorFunc exports the base.BlockIntervalAnnotatorFunc
+// type.
+type BlockIntervalAnnotatorFunc = base.BlockIntervalAnnotatorFunc
+
+// BlockIntervalAnnotator exports the base.BlockIntervalAnnotator type.
+type BlockIntervalAnnotator = base.BlockIntervalAnnotator
+
+// BlockInterval exports the base.BlockInterval type.
+type BlockInterval = base.BlockInterval
+
 // IterOptions hold the optional per-query parameters for NewIter.
 //
 // Like Options, a nil *IterOptions is valid and means to use the default
@@ -72,6 +82,13 @@ type IterOptions struct {
 	// false to skip scanning. This function must be thread-safe since the same
 	// function can be used by multiple iterators, if the iterator is cloned.
 	TableFilter func(userProps map[string]string) bool
+	// BlockInterval represents the set the caller is interested in, and
+	// sstable blocks not intersecting with this set can be ignored by the
+	// iterator implementation. This is a best-effort performance optimization
+	// and keys that are not in this set can be returned. The default
+	// initialized set represents the universal set, so no blocks will be
+	// ignored.
+	BlockInterval BlockInterval
 
 	// Internal options.
 	logger Logger
@@ -461,6 +478,17 @@ type Options struct {
 	//
 	// The default merger concatenates values.
 	Merger *Merger
+
+	// Optional. If absent, no block interval annotation is performed.
+	//
+	// TODO: make this similar to a Merger in that the name is stored on disk,
+	// and opening a database with no annotator is always allowed (and the
+	// current annotator name is written to disk), but with a different
+	// annotator is not.
+	//
+	// TODO: Also plumb this into the ingested sstable construction code in
+	// CockroachDB.
+	BlockIntervalAnnotatorFunc BlockIntervalAnnotatorFunc
 
 	// MaxConcurrentCompactions specifies the maximum number of concurrent
 	// compactions. The default is 1. Concurrent compactions are only performed
@@ -1152,6 +1180,7 @@ func (o *Options) MakeWriterOptions(level int) sstable.WriterOptions {
 	if o != nil {
 		writerOpts.Cache = o.Cache
 		writerOpts.Comparer = o.Comparer
+		writerOpts.BlockIntervalAnnotatorFunc = o.BlockIntervalAnnotatorFunc
 		if o.Merger != nil {
 			writerOpts.MergerName = o.Merger.Name
 		}

@@ -959,6 +959,129 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 	})
 }
 
+type testBlockIntervalAnnotator struct {
+	initialized bool
+	blockInterval BlockInterval
+	count int
+	addCount int
+}
+
+func (bi *testBlockIntervalAnnotator) AddKey(key []byte) error {
+	bi.addCount++
+	if len(key) < 2 {
+		return nil
+	}
+	val, err := strconv.Atoi(string(key[len(key)-2:]))
+	if err != nil {
+		return nil
+	}
+	if val <= 0 {
+		panic("testBlockIntervalAnnotator expects values > 0")
+	}
+	bi.count++
+	uval := uint64(val)
+	if !bi.initialized {
+		bi.blockInterval = BlockInterval{Lower: uval, Upper: uval+1}
+		bi.initialized = true
+		return nil
+	}
+	if bi.blockInterval.Lower > uval {
+		bi.blockInterval.Lower = uval
+	}
+	if uval >= bi.blockInterval.Upper {
+		bi.blockInterval.Upper = uval+1
+	}
+	return nil
+}
+
+func (bi *testBlockIntervalAnnotator) Finish() (BlockInterval, error) {
+	// TODO: remove printf
+	fmt.Printf("tbia: %d, %d, [%d,%d)\n", bi.addCount, bi.count,
+		bi.blockInterval.Lower, bi.blockInterval.Upper)
+	if !bi.initialized {
+		return BlockInterval{Lower: 1, Upper: 1}, nil
+	}
+	return bi.blockInterval, nil
+}
+
+func testBlockIntervalAnnotatorFunc(reuse BlockIntervalAnnotator) BlockIntervalAnnotator {
+	if reuse != nil {
+		bi := reuse.(*testBlockIntervalAnnotator)
+		*bi = testBlockIntervalAnnotator{}
+		return bi
+	}
+	return &testBlockIntervalAnnotator{}
+}
+
+func TestIteratorBlockIntervalFilter(t *testing.T) {
+	var mem vfs.FS
+	var d *DB
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+
+	reset := func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+
+		mem = vfs.NewMem()
+		require.NoError(t, mem.MkdirAll("ext", 0755))
+
+		opts := &Options{FS: mem, BlockIntervalAnnotatorFunc: testBlockIntervalAnnotatorFunc}
+		lo := LevelOptions{BlockSize: 1}
+		opts.Levels = append(opts.Levels, lo)
+
+		// Automatic compactions may compact away tombstones from L6, making
+		// some testcases non-deterministic.
+		opts.private.disableAutomaticCompactions = true
+		var err error
+		d, err = Open("", opts)
+		require.NoError(t, err)
+	}
+	reset()
+
+	datadriven.RunTest(
+		t, "testdata/iterator_block_interval_filter", func(td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "reset":
+				reset()
+				return ""
+
+			case "build":
+				b := d.NewBatch()
+				if err := runBatchDefineCmd(td, b); err != nil {
+					return err.Error()
+				}
+				if err := b.Commit(nil); err != nil {
+					return err.Error()
+				}
+				if err := d.Flush(); err != nil {
+					return err.Error()
+				}
+				return runLSMCmd(td, d)
+
+			case "ingest":
+				if err := runIngestCmd(td, d, mem); err != nil {
+					return err.Error()
+				}
+				return runLSMCmd(td, d)
+
+			case "iter":
+				var opts IterOptions
+				if len(td.CmdArgs) == 2 {
+					td.ScanArgs(t, "lower", &opts.BlockInterval.Lower)
+					td.ScanArgs(t, "upper", &opts.BlockInterval.Upper)
+				}
+				iter := d.NewIter(&opts)
+				return runIterCmd(td, iter, true)
+
+			default:
+				return fmt.Sprintf("unknown command: %s", td.Cmd)
+			}
+		})
+}
+
 func BenchmarkIteratorSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &Iterator{
