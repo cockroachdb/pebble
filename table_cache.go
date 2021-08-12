@@ -318,13 +318,53 @@ func (c *tableCacheShard) newIters(
 		c.unrefValue(v)
 		return emptyIter, nil, nil
 	}
+	var bpfs []BlockPropertyFilter
+	if opts != nil {
+		bpfs = opts.BlockPropertyFilters
+	}
+	if len(bpfs) > 0 {
+		intersects := false
+		someFiltersAbsent := false
+		for i := range bpfs {
+			props, ok := v.reader.Properties.UserProperties[bpfs[i].Name()]
+			if !ok {
+				intersects = true
+				someFiltersAbsent = true
+			}
+			filterIntersects, err := bpfs[i].Intersects([]byte(props))
+			if err != nil {
+				return nil, nil, err
+			}
+			intersects = intersects || filterIntersects
+		}
+		if !intersects {
+			// Return the empty iterator. This iterator has no mutable state, so
+			// using a singleton is fine.
+			c.unrefValue(v)
+			return emptyIter, nil, nil
+		}
+		if someFiltersAbsent {
+			// The common case is exactly one filter, and if that is absent,
+			// we don't append to this slice. So we don't bother with trying
+			// to optimize memory allocations for this slice.
+			var customizedBpfs []BlockPropertyFilter
+			for i := range bpfs {
+				_, ok := v.reader.Properties.UserProperties[bpfs[i].Name()]
+				if ok {
+					customizedBpfs = append(customizedBpfs, bpfs[i])
+				}
+			}
+			bpfs = customizedBpfs
+		}
+	}
 
 	var iter sstable.Iterator
 	var err error
 	if bytesIterated != nil {
 		iter, err = v.reader.NewCompactionIter(bytesIterated)
 	} else {
-		iter, err = v.reader.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
+		iter, err = v.reader.NewIterWithBlockPropertyFilters(
+			opts.GetLowerBound(), opts.GetUpperBound(), bpfs)
 	}
 	if err != nil {
 		c.unrefValue(v)
