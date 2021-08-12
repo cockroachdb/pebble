@@ -185,6 +185,7 @@ func (l *levelIter) init(
 	l.lower = opts.LowerBound
 	l.upper = opts.UpperBound
 	l.tableOpts.TableFilter = opts.TableFilter
+	l.tableOpts.BlockPropertyFilters = opts.BlockPropertyFilters
 	l.cmp = cmp
 	l.split = split
 	l.iterFile = nil

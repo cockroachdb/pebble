@@ -959,6 +959,122 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 	})
 }
 
+type testBlockIntervalCollector struct {
+	initialized bool
+	lower, upper uint64
+}
+
+func (bi *testBlockIntervalCollector) Add(key InternalKey, value []byte) error {
+	k := key.UserKey
+	if len(k) < 2 {
+		return nil
+	}
+	val, err := strconv.Atoi(string(k[len(k)-2:]))
+	if err != nil {
+		return err
+	}
+	if val < 0 {
+		panic("testBlockIntervalCollector expects values >= 0")
+	}
+	uval := uint64(val)
+	if !bi.initialized {
+		bi.lower, bi.upper = uval, uval+1
+		bi.initialized = true
+		return nil
+	}
+	if bi.lower > uval {
+		bi.lower = uval
+	}
+	if uval >= bi.upper {
+		bi.upper = uval+1
+	}
+	return nil
+}
+
+func (bi *testBlockIntervalCollector) FinishDataBlock() (lower uint64, upper uint64, err error) {
+	// TODO: remove printf
+	fmt.Printf("tbia: %t [%d,%d)\n", bi.initialized, bi.lower, bi.upper)
+	bi.initialized = false
+	l, u := bi.lower, bi.upper
+	bi.lower, bi.upper = 0, 0
+	return l, u, nil
+}
+
+func TestIteratorBlockIntervalFilter(t *testing.T) {
+	var mem vfs.FS
+	var d *DB
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+
+	reset := func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+
+		mem = vfs.NewMem()
+		require.NoError(t, mem.MkdirAll("ext", 0755))
+
+		opts := &Options{
+			FS: mem,
+			FormatMajorVersion:    FormatNewest,
+			BlockPropertyCollectors: []func() BlockPropertyCollector{
+				func() BlockPropertyCollector {
+					return sstable.NewBlockIntervalCollector("test", 0, &testBlockIntervalCollector{})
+				},
+			},
+		}
+		lo := LevelOptions{BlockSize: 1, IndexBlockSize: 1}
+		opts.Levels = append(opts.Levels, lo)
+
+		// Automatic compactions may compact away tombstones from L6, making
+		// some testcases non-deterministic.
+		opts.private.disableAutomaticCompactions = true
+		var err error
+		d, err = Open("", opts)
+		require.NoError(t, err)
+	}
+	reset()
+
+	datadriven.RunTest(
+		t, "testdata/iterator_block_interval_filter", func(td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "reset":
+				reset()
+				return ""
+
+			case "build":
+				b := d.NewBatch()
+				if err := runBatchDefineCmd(td, b); err != nil {
+					return err.Error()
+				}
+				if err := b.Commit(nil); err != nil {
+					return err.Error()
+				}
+				if err := d.Flush(); err != nil {
+					return err.Error()
+				}
+				return runLSMCmd(td, d)
+
+			case "iter":
+				var opts IterOptions
+				if len(td.CmdArgs) == 2 {
+					var lower, upper uint64
+					td.ScanArgs(t, "lower", &lower)
+					td.ScanArgs(t, "upper", &upper)
+					opts.BlockPropertyFilters = []BlockPropertyFilter{
+						sstable.NewBlockIntervalFilter("test", 0, lower, upper),
+					}
+				}
+				iter := d.NewIter(&opts)
+				return runIterCmd(td, iter, true)
+
+			default:
+				return fmt.Sprintf("unknown command: %s", td.Cmd)
+			}
+		})
+}
+
 func BenchmarkIteratorSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &Iterator{
