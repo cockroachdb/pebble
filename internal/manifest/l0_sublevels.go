@@ -903,6 +903,29 @@ func (is intervalSorterByDecreasingScore) Swap(i, j int) {
 //
 //    Lbase a--------i    m---------w
 //
+// Note that when ExtendL0ForBaseCompactionTo is called, the compaction expands
+// to the following, given that the [l,o] file can be added without including
+// additional files in Lbase:
+//
+//         _____________
+//    L0.3 |a--d    g-j|      _________
+//    L0.2 |       f--j|      |  r-t  |
+//    L0.1 | b-d  e---j|______|       |
+//    L0.0 |a--d   f--j||l--o  p-----x|
+//
+//    Lbase a--------i    m---------w
+//
+// If an additional file existed in LBase that overlapped with [l,o], it would
+// be excluded from the compaction. Concretely:
+//
+//         _____________
+//    L0.3 |a--d    g-j|      _________
+//    L0.2 |       f--j|      |  r-t  |
+//    L0.1 | b-d  e---j|      |       |
+//    L0.0 |a--d   f--j| l--o |p-----x|
+//
+//    Lbase a--------ij--lm---------w
+//
 // Intra-L0: If the L0 score is high, but PickBaseCompaction() is unable to
 // pick a compaction, PickIntraL0Compaction will be used to pick an intra-L0
 // compaction. Similar to L0 -> Lbase compactions, we want to allow for

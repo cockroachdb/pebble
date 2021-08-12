@@ -1238,3 +1238,242 @@ a-g
 a-i
 a-m
 d-g
+
+# The following test cases cover the examples provided in the documentation.
+# NOTE: following initialization, some of the files fall down into lower levels
+# where there is space.
+
+# Example 1. No in-progress L0 -> LBase compaction.
+
+define
+L0.3
+  000011:a.SET.18-d.SET.19
+  000012:g.SET.20-j.SET.21
+L0.2
+  000009:f.SET.14-j.SET.15
+  000010:r.SET.16-t.SET.17
+L0.1
+  000007:b.SET.10-d.SET.11
+  000008:e.SET.12-j.SET.13
+L0.0
+  000003:a.SET.2-d.SET.3
+  000004:f.SET.4-j.SET.5
+  000005:l.SET.6-o.SET.7
+  000006:p.SET.8-x.SET.9
+L6
+  000001:a.SET.0-i.SET.0
+  000002:m.SET.0-w.SET.0
+----
+file count: 10, sublevels: 4, intervals: 13
+flush split keys(5): [d, g, j, r, t]
+0.3: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [5, 5]
+	000012:g#20,1-j#21,1
+0.2: file count: 2, bytes: 512, width (mean, max): 2.0, 2, interval range: [0, 5]
+	000011:a#18,1-d#19,1
+	000009:f#14,1-j#15,1
+0.1: file count: 3, bytes: 768, width (mean, max): 1.7, 3, interval range: [1, 10]
+	000007:b#10,1-d#11,1
+	000008:e#12,1-j#13,1
+	000010:r#16,1-t#17,1
+0.0: file count: 4, bytes: 1024, width (mean, max): 2.0, 3, interval range: [0, 11]
+	000003:a#2,1-d#3,1
+	000004:f#4,1-j#5,1
+	000005:l#6,1-o#7,1
+	000006:p#8,1-x#9,1
+compacting file count: 0, base compacting intervals: none
+L0.3:                    g---------j
+L0.2:  a---------d    f------------j
+L0.1:     b------d e---------------j                      r------t
+L0.0:  a---------d    f------------j    l---------o p------------------------x
+L6:    a------------------------i          m------------------------------w
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss tt uu vv ww xx
+
+pick-base-compaction min_depth=3
+----
+compaction picked with stack depth reduction 4
+000004,000008,000009,000012,000003,000007,000011
+seed interval: g-j
+L0.3:                    g+++++++++j
+L0.2:  a+++++++++d    f++++++++++++j
+L0.1:     b++++++d e+++++++++++++++j                      r------t
+L0.0:  a+++++++++d    f++++++++++++j    l---------o p------------------------x
+L6:    a------------------------i          m------------------------------w
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss tt uu vv ww xx
+
+# Example 2. Left half of the keyspace compacting. Select the "next best"
+# compaction.
+
+define
+L0.3
+  000011:a.SET.18-d.SET.19 base_compacting
+  000012:g.SET.20-j.SET.21 base_compacting
+L0.2
+  000009:f.SET.14-j.SET.15 base_compacting
+  000010:r.SET.16-t.SET.17
+L0.1
+  000007:b.SET.10-d.SET.11 base_compacting
+  000008:e.SET.12-j.SET.13 base_compacting
+L0.0
+  000003:a.SET.2-d.SET.3 base_compacting
+  000004:f.SET.4-j.SET.5 base_compacting
+  000005:l.SET.6-o.SET.7
+  000006:p.SET.8-x.SET.9
+L6
+  000001:a.SET.0-i.SET.0
+  000002:m.SET.0-w.SET.0
+----
+file count: 10, sublevels: 4, intervals: 13
+flush split keys(5): [d, g, j, r, t]
+0.3: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [5, 5]
+	000012:g#20,1-j#21,1
+0.2: file count: 2, bytes: 512, width (mean, max): 2.0, 2, interval range: [0, 5]
+	000011:a#18,1-d#19,1
+	000009:f#14,1-j#15,1
+0.1: file count: 3, bytes: 768, width (mean, max): 1.7, 3, interval range: [1, 10]
+	000007:b#10,1-d#11,1
+	000008:e#12,1-j#13,1
+	000010:r#16,1-t#17,1
+0.0: file count: 4, bytes: 1024, width (mean, max): 2.0, 3, interval range: [0, 11]
+	000003:a#2,1-d#3,1
+	000004:f#4,1-j#5,1
+	000005:l#6,1-o#7,1
+	000006:p#8,1-x#9,1
+compacting file count: 7, base compacting intervals: [0, 6]
+L0.3:                    gvvvvvvvvvj
+L0.2:  avvvvvvvvvd    fvvvvvvvvvvvvj
+L0.1:     bvvvvvvd evvvvvvvvvvvvvvvj                      r------t
+L0.0:  avvvvvvvvvd    fvvvvvvvvvvvvj    l---------o p------------------------x
+L6:    a------------------------i          m------------------------------w
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss tt uu vv ww xx
+
+pick-base-compaction min_depth=3
+----
+no compaction picked
+
+pick-base-compaction min_depth=2
+----
+compaction picked with stack depth reduction 2
+000006,000010,000005
+seed interval: r-t
+L0.3:                    gvvvvvvvvvj
+L0.2:  avvvvvvvvvd    fvvvvvvvvvvvvj
+L0.1:     bvvvvvvd evvvvvvvvvvvvvvvj                      r++++++t
+L0.0:  avvvvvvvvvd    fvvvvvvvvvvvvj    l+++++++++o p++++++++++++++++++++++++x
+L6:    a------------------------i          m------------------------------w
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss tt uu vv ww xx
+
+# Example 3. The same as Example 2, except there is now an additional file in
+# LBase that overlaps with the [l,o] file in L0.0.
+
+define
+L0.3
+  000011:a.SET.18-d.SET.19 base_compacting
+  000012:g.SET.20-j.SET.21 base_compacting
+L0.2
+  000009:f.SET.14-j.SET.15 base_compacting
+  000010:r.SET.16-t.SET.17
+L0.1
+  000007:b.SET.10-d.SET.11 base_compacting
+  000008:e.SET.12-j.SET.13 base_compacting
+L0.0
+  000003:a.SET.2-d.SET.3 base_compacting
+  000004:f.SET.4-j.SET.5 base_compacting
+  000005:l.SET.6-o.SET.7
+  000006:p.SET.8-x.SET.9
+L6
+  000001:a.SET.0-i.SET.0
+  000013:j.SET.0-l.SET.0
+  000002:m.SET.0-w.SET.0
+----
+file count: 10, sublevels: 4, intervals: 13
+flush split keys(5): [d, g, j, r, t]
+0.3: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [5, 5]
+	000012:g#20,1-j#21,1
+0.2: file count: 2, bytes: 512, width (mean, max): 2.0, 2, interval range: [0, 5]
+	000011:a#18,1-d#19,1
+	000009:f#14,1-j#15,1
+0.1: file count: 3, bytes: 768, width (mean, max): 1.7, 3, interval range: [1, 10]
+	000007:b#10,1-d#11,1
+	000008:e#12,1-j#13,1
+	000010:r#16,1-t#17,1
+0.0: file count: 4, bytes: 1024, width (mean, max): 2.0, 3, interval range: [0, 11]
+	000003:a#2,1-d#3,1
+	000004:f#4,1-j#5,1
+	000005:l#6,1-o#7,1
+	000006:p#8,1-x#9,1
+compacting file count: 7, base compacting intervals: [0, 6]
+L0.3:                    gvvvvvvvvvj
+L0.2:  avvvvvvvvvd    fvvvvvvvvvvvvj
+L0.1:     bvvvvvvd evvvvvvvvvvvvvvvj                      r------t
+L0.0:  avvvvvvvvvd    fvvvvvvvvvvvvj    l---------o p------------------------x
+L6:    a------------------------i j------l m------------------------------w
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss tt uu vv ww xx
+
+pick-base-compaction min_depth=2
+----
+compaction picked with stack depth reduction 2
+000006,000010
+seed interval: r-t
+L0.3:                    gvvvvvvvvvj
+L0.2:  avvvvvvvvvd    fvvvvvvvvvvvvj
+L0.1:     bvvvvvvd evvvvvvvvvvvvvvvj                      r++++++t
+L0.0:  avvvvvvvvvd    fvvvvvvvvvvvvj    l---------o p++++++++++++++++++++++++x
+L6:    a------------------------i j------l m------------------------------w
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss tt uu vv ww xx
+
+# Example 4. Intra-L0 compactions.
+
+define
+L0.3
+  000011:a.SET.18-d.SET.19
+  000012:g.SET.20-j.SET.21 base_compacting
+L0.2
+  000009:f.SET.14-j.SET.15 base_compacting
+  000010:r.SET.16-t.SET.17 base_compacting
+L0.1
+  000007:b.SET.10-d.SET.11
+  000008:e.SET.12-j.SET.13 base_compacting
+L0.0
+  000003:a.SET.2-d.SET.3
+  000004:f.SET.4-j.SET.5 base_compacting
+  000005:l.SET.6-o.SET.7
+  000006:p.SET.8-x.SET.9 base_compacting
+L6
+  000001:a.SET.0-i.SET.0
+  000002:m.SET.0-w.SET.0
+----
+file count: 10, sublevels: 4, intervals: 13
+flush split keys(5): [d, g, j, r, t]
+0.3: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [5, 5]
+	000012:g#20,1-j#21,1
+0.2: file count: 2, bytes: 512, width (mean, max): 2.0, 2, interval range: [0, 5]
+	000011:a#18,1-d#19,1
+	000009:f#14,1-j#15,1
+0.1: file count: 3, bytes: 768, width (mean, max): 1.7, 3, interval range: [1, 10]
+	000007:b#10,1-d#11,1
+	000008:e#12,1-j#13,1
+	000010:r#16,1-t#17,1
+0.0: file count: 4, bytes: 1024, width (mean, max): 2.0, 3, interval range: [0, 11]
+	000003:a#2,1-d#3,1
+	000004:f#4,1-j#5,1
+	000005:l#6,1-o#7,1
+	000006:p#8,1-x#9,1
+compacting file count: 6, base compacting intervals: [3, 6], [9, 12]
+L0.3:                    gvvvvvvvvvj
+L0.2:  a---------d    fvvvvvvvvvvvvj
+L0.1:     b------d evvvvvvvvvvvvvvvj                      rvvvvvvt
+L0.0:  a---------d    fvvvvvvvvvvvvj    l---------o pvvvvvvvvvvvvvvvvvvvvvvvvx
+L6:    a------------------------i          m------------------------------w
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss tt uu vv ww xx
+
+pick-intra-l0-compaction min_depth=2
+----
+compaction picked with stack depth reduction 3
+000011,000007,000003
+seed interval: b-d
+L0.3:                    gvvvvvvvvvj
+L0.2:  a+++++++++d    fvvvvvvvvvvvvj
+L0.1:     b++++++d evvvvvvvvvvvvvvvj                      rvvvvvvt
+L0.0:  a+++++++++d    fvvvvvvvvvvvvj    l---------o pvvvvvvvvvvvvvvvvvvvvvvvvx
+L6:    a------------------------i          m------------------------------w
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss tt uu vv ww xx
