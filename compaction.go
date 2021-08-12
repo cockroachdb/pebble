@@ -2052,7 +2052,7 @@ func (d *DB) runCompaction(
 	}()
 
 	snapshots := d.mu.snapshots.toSlice()
-
+	formatVers := d.mu.formatVers.vers
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
 	d.mu.Unlock()
@@ -2105,6 +2105,10 @@ func (d *DB) runCompaction(
 	}
 
 	writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level)
+	if formatVers < FormatBlockPropertyCollector {
+		// Cannot yet write block properties.
+		writerOpts.BlockPropertyCollectors = nil
+	}
 
 	newOutput := func() error {
 		fileMeta := &fileMetadata{}

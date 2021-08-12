@@ -128,12 +128,14 @@ type Writer struct {
 	// Internal flag to allow creation of range-del-v1 format blocks. Only used
 	// for testing. Note that v2 format blocks are backwards compatible with v1
 	// format blocks.
-	rangeDelV1Format bool
-	block            blockWriter
-	indexBlock       blockWriter
-	rangeDelBlock    blockWriter
-	props            Properties
-	propCollectors   []TablePropertyCollector
+	rangeDelV1Format    bool
+	block               blockWriter
+	indexBlock          blockWriter
+	rangeDelBlock       blockWriter
+	props               Properties
+	propCollectors      []TablePropertyCollector
+	blockPropCollectors []BlockPropertyCollector
+	blockPropsEncoder   blockPropertiesEncoder
 	// compressedBuf is the destination buffer for compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
@@ -143,13 +145,19 @@ type Writer struct {
 	// nil, or the full keys otherwise.
 	filter filterWriter
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
-	// blockTrailerLen bytes, or (5 * binary.MaxVarintLen64) bytes.
-	tmp [rocksDBFooterLen]byte
+	// blockTrailerLen bytes, (5 * binary.MaxVarintLen64) bytes, and most
+	// likely large enough for a block handle with properties.
+	tmp [blockHandleLikelyMaxLen]byte
 
 	xxHasher *xxhash.Digest
 
 	topLevelIndexBlock blockWriter
-	indexPartitions    []blockWriter
+	indexPartitions    []indexBlockWriterAndBlockProperties
+}
+
+type indexBlockWriterAndBlockProperties struct {
+	writer     blockWriter
+	properties []byte
 }
 
 // Set sets the value for the given key. The sequence number is set to
@@ -238,6 +246,11 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 
 	for i := range w.propCollectors {
 		if err := w.propCollectors[i].Add(key, value); err != nil {
+			return err
+		}
+	}
+	for i := range w.blockPropCollectors {
+		if err := w.blockPropCollectors[i].Add(key, value); err != nil {
 			return err
 		}
 	}
@@ -376,16 +389,44 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 		w.err = err
 		return w.err
 	}
-	w.addIndexEntry(key, bh)
+	var bhp BlockHandleWithProperties
+	if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
+		return err
+	}
+	if err = w.addIndexEntry(key, bhp); err != nil {
+		return err
+	}
 	return nil
 }
 
+// The BlockHandleWithProperties returned by this method must be encoded
+// before any future use of the Writer.blockPropsEncoder, since the properties
+// slice will get reused by the blockPropsEncoder.
+func (w *Writer) maybeAddBlockPropertiesToBlockHandle(
+	bh BlockHandle) (BlockHandleWithProperties, error) {
+	if len(w.blockPropCollectors) == 0 {
+		return BlockHandleWithProperties{BlockHandle: bh}, nil
+	}
+	var err error
+	w.blockPropsEncoder.resetProps()
+	for i := range w.blockPropCollectors {
+		scratch := w.blockPropsEncoder.getScratchForProp()
+		if scratch, err = w.blockPropCollectors[i].FinishDataBlock(scratch); err != nil {
+			return BlockHandleWithProperties{}, nil
+		}
+		if len(scratch) > 0 {
+			w.blockPropsEncoder.addProp(shortID(i), scratch)
+		}
+	}
+	return BlockHandleWithProperties{BlockHandle: bh, Props: w.blockPropsEncoder.unsafeProps()}, nil
+}
+
 // addIndexEntry adds an index entry for the specified key and block handle.
-func (w *Writer) addIndexEntry(key InternalKey, bh BlockHandle) {
-	if bh.Length == 0 {
+func (w *Writer) addIndexEntry(key InternalKey, bhp BlockHandleWithProperties) error {
+	if bhp.Length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
-		return
+		return nil
 	}
 	prevKey := base.DecodeInternalKey(w.block.curKey)
 	var sep InternalKey
@@ -394,16 +435,22 @@ func (w *Writer) addIndexEntry(key InternalKey, bh BlockHandle) {
 	} else {
 		sep = prevKey.Separator(w.compare, w.separator, nil, key)
 	}
-	n := encodeBlockHandle(w.tmp[:], bh)
+	encoded := encodeBlockHandleWithProperties(w.tmp[:], bhp)
 
 	if supportsTwoLevelIndex(w.tableFormat) &&
-		shouldFlush(sep, w.tmp[:n], &w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
+		shouldFlush(sep, encoded, &w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
 		// Enable two level indexes if there is more than one index block.
 		w.twoLevelIndex = true
-		w.finishIndexBlock()
+		if err := w.finishIndexBlock(); err != nil {
+			return err
+		}
 	}
 
-	w.indexBlock.add(sep, w.tmp[:n])
+	for i := range w.blockPropCollectors {
+		w.blockPropCollectors[i].AddPrevDataBlockToIndexBlock()
+	}
+	w.indexBlock.add(sep, encoded)
+	return nil
 }
 
 func shouldFlush(
@@ -438,29 +485,51 @@ func shouldFlush(
 
 // finishIndexBlock finishes the current index block and adds it to the top
 // level index block. This is only used when two level indexes are enabled.
-func (w *Writer) finishIndexBlock() {
-	w.indexPartitions = append(w.indexPartitions, w.indexBlock)
+func (w *Writer) finishIndexBlock() error {
+	w.blockPropsEncoder.resetProps()
+	for i := range w.blockPropCollectors {
+		scratch := w.blockPropsEncoder.getScratchForProp()
+		var err error
+		if scratch, err = w.blockPropCollectors[i].FinishIndexBlock(scratch); err != nil {
+			return err
+		}
+		if len(scratch) > 0 {
+			w.blockPropsEncoder.addProp(shortID(i), scratch)
+		}
+	}
+	w.indexPartitions = append(w.indexPartitions,
+		indexBlockWriterAndBlockProperties{
+			writer:     w.indexBlock,
+			properties: w.blockPropsEncoder.props(),
+		})
 	w.indexBlock = blockWriter{
 		restartInterval: 1,
 	}
+	return nil
 }
 
 func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	// Add the final unfinished index.
-	w.finishIndexBlock()
+	if err := w.finishIndexBlock(); err != nil {
+		return BlockHandle{}, err
+	}
 
 	for i := range w.indexPartitions {
 		b := &w.indexPartitions[i]
-		w.props.NumDataBlocks += uint64(b.nEntries)
-		sep := base.DecodeInternalKey(b.curKey)
-		data := b.finish()
+		w.props.NumDataBlocks += uint64(b.writer.nEntries)
+		sep := base.DecodeInternalKey(b.writer.curKey)
+		data := b.writer.finish()
 		w.props.IndexSize += uint64(len(data))
 		bh, err := w.writeBlock(data, w.compression)
 		if err != nil {
 			return BlockHandle{}, err
 		}
-		n := encodeBlockHandle(w.tmp[:], bh)
-		w.topLevelIndexBlock.add(sep, w.tmp[:n])
+		bhp := BlockHandleWithProperties{
+			BlockHandle: bh,
+			Props:       b.properties,
+		}
+		encoded := encodeBlockHandleWithProperties(w.tmp[:], bhp)
+		w.topLevelIndexBlock.add(sep, encoded)
 	}
 
 	// NB: RocksDB includes the block trailer length in the index size
@@ -506,7 +575,7 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 		return BlockHandle{}, errors.Newf("unsupported checksum type: %d", w.checksumType)
 	}
 	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
-	bh := BlockHandle{w.meta.Size, uint64(len(b))}
+	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(b))}
 
 	if w.cacheID != 0 && w.fileNum != 0 {
 		// Remove the block being written from the cache. This provides defense in
@@ -557,7 +626,13 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return w.err
 		}
-		w.addIndexEntry(InternalKey{}, bh)
+		var bhp BlockHandleWithProperties
+		if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
+			return err
+		}
+		if err = w.addIndexEntry(InternalKey{}, bhp); err != nil {
+			return err
+		}
 	}
 	w.props.DataSize = w.meta.Size
 
@@ -637,6 +712,24 @@ func (w *Writer) Close() (err error) {
 			if err := w.propCollectors[i].Finish(userProps); err != nil {
 				return err
 			}
+		}
+		for i := range w.blockPropCollectors {
+			scratch := w.blockPropsEncoder.getScratchForProp()
+			// Place the shortID in the first byte.
+			scratch = append(scratch, byte(i))
+			buf, err :=
+				w.blockPropCollectors[i].FinishTable(scratch)
+			if err != nil {
+				return err
+			}
+			var prop string
+			if len(buf) > 0 {
+				prop = string(buf)
+			}
+			// NB: The property is populated in the map even if it is the
+			// empty string, since the presence in the map is what indicates
+			// that the block property collector was used when writing.
+			userProps[w.blockPropCollectors[i].Name()] = prop
 		}
 		if len(userProps) > 0 {
 			w.props.UserProperties = userProps
@@ -823,16 +916,36 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 	w.props.PropertyCollectorNames = "[]"
 	w.props.ExternalFormatVersion = rocksDBExternalFormatVersion
 
-	if len(o.TablePropertyCollectors) > 0 {
-		w.propCollectors = make([]TablePropertyCollector, len(o.TablePropertyCollectors))
+	if len(o.TablePropertyCollectors) > 0 || len(o.BlockPropertyCollectors) > 0 {
 		var buf bytes.Buffer
 		buf.WriteString("[")
-		for i := range o.TablePropertyCollectors {
-			w.propCollectors[i] = o.TablePropertyCollectors[i]()
-			if i > 0 {
-				buf.WriteString(",")
+		if len(o.TablePropertyCollectors) > 0 {
+			w.propCollectors = make([]TablePropertyCollector, len(o.TablePropertyCollectors))
+			for i := range o.TablePropertyCollectors {
+				w.propCollectors[i] = o.TablePropertyCollectors[i]()
+				if i > 0 {
+					buf.WriteString(",")
+				}
+				buf.WriteString(w.propCollectors[i].Name())
 			}
-			buf.WriteString(w.propCollectors[i].Name())
+		}
+		if len(o.BlockPropertyCollectors) > 0 {
+			// shortID is a uint8, so we cannot exceed that number of block
+			// property collectors.
+			if len(o.BlockPropertyCollectors) > math.MaxUint8 {
+				w.err = errors.New("pebble: too many block property collectors")
+				return w
+			}
+			// The shortID assigned to a collector is the same as its index in
+			// this slice.
+			w.blockPropCollectors = make([]BlockPropertyCollector, len(o.BlockPropertyCollectors))
+			for i := range o.BlockPropertyCollectors {
+				w.blockPropCollectors[i] = o.BlockPropertyCollectors[i]()
+				if i > 0 || len(o.TablePropertyCollectors) > 0 {
+					buf.WriteString(",")
+				}
+				buf.WriteString(w.blockPropCollectors[i].Name())
+			}
 		}
 		buf.WriteString("]")
 		w.props.PropertyCollectorNames = buf.String()
