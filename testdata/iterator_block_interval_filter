@@ -1,0 +1,61 @@
+# Block size is 1, so each block contains one key, and two level index is used
+# since even the lower index blocks have only one key.
+build
+set a01 a
+set b02 b
+set c03 c
+set d04 d
+set e05 e
+set f06 f
+----
+0.0:
+  000005:[a01#1,SET-f06#6,SET]
+
+iter
+first
+next
+next
+next
+next
+next
+next
+----
+a01:a
+b02:b
+c03:c
+d04:d
+e05:e
+f06:f
+.
+
+iter lower=1 upper=2
+first
+next
+----
+a01:a
+.
+
+iter lower=3 upper=5
+first
+next
+next
+last
+prev
+prev
+seek-lt f
+prev
+next
+prev
+prev
+----
+c03:c
+d04:d
+.
+d04:d
+c03:c
+.
+d04:d
+c03:c
+d04:d
+c03:c
+.

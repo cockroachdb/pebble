@@ -4,7 +4,10 @@
 
 package sstable
 
-import "sync/atomic"
+import (
+	"github.com/cockroachdb/pebble/internal/base"
+	"sync/atomic"
+)
 
 // FilterMetrics holds metrics for the filter policy.
 type FilterMetrics struct {
@@ -26,9 +29,14 @@ func (m *FilterMetrics) readerApply(r *Reader) {
 	}
 }
 
-// BlockHandle is the file offset and length of a block.
+// BlockHandle is the file offset and length of a block. BlockInterval may be
+// non-zero if the block was annotated when writing. See
+// BlockIntervalAnnotator. The zero values are used for blocks that never have
+// annotation, or to represent the universal set for data blocks and first
+// level index blocks.
 type BlockHandle struct {
 	Offset, Length uint64
+	BlockInterval base.BlockInterval
 }
 
 type filterWriter interface {
