@@ -251,7 +251,6 @@ type ycsb struct {
 	writeOpts    *pebble.WriteOptions
 	weights      ycsbWeights
 	reg          *histogramRegistry
-	ops          *randvar.Weighted
 	keyDist      randvar.Dynamic
 	batchDist    randvar.Static
 	scanDist     randvar.Static
@@ -273,7 +272,6 @@ func newYcsb(
 	y := &ycsb{
 		reg:       newHistogramRegistry(),
 		weights:   weights,
-		ops:       randvar.NewWeighted(nil, weights...),
 		keyDist:   keyDist,
 		batchDist: batchDist,
 		scanDist:  scanDist,
@@ -367,12 +365,13 @@ func (y *ycsb) run(db DB, wg *sync.WaitGroup) {
 
 	buf := &ycsbBuf{rng: randvar.NewRand()}
 
+	ops := randvar.NewWeighted(nil, y.weights...)
 	for {
 		wait(y.limiter)
 
 		start := time.Now()
 
-		op := y.ops.Int()
+		op := ops.Int()
 		switch op {
 		case ycsbInsert:
 			y.insert(db, buf)
