@@ -5,7 +5,10 @@
 package pebble
 
 import (
+	"fmt"
 	"io"
+	"io/ioutil"
+	"strings"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -105,4 +108,135 @@ func TestVersionSetSeqNums(t *testing.T) {
 	require.Equal(t, uint64(2), lastSeqNum)
 	// logSeqNum is always one greater than the last assigned sequence number.
 	require.Equal(t, d.mu.versions.atomic.logSeqNum, lastSeqNum+1)
+}
+
+func readFile(t testing.TB, fs vfs.FS, path string) []byte {
+	f, err := fs.Open(path)
+	require.NoError(t, err)
+	b, err := ioutil.ReadAll(f)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	return b
+}
+
+func writeFile(t testing.TB, fs vfs.FS, path string, data []byte) {
+	f, err := fs.Create(path)
+	require.NoError(t, err)
+	_, err = f.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+}
+
+type fauxEncryptedFS struct {
+	vfs.FS
+}
+
+func (fs fauxEncryptedFS) Create(path string) (vfs.File, error) {
+	f, err := fs.FS.Create(path)
+	if err != nil {
+		return nil, err
+	}
+	return fauxEncryptedFile{f}, nil
+}
+
+func (fs fauxEncryptedFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
+	f, err := fs.FS.Open(name, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return fauxEncryptedFile{f}, nil
+}
+
+func (fs fauxEncryptedFS) Attributes() vfs.Attributes {
+	attrs := fs.FS.Attributes()
+	attrs.Description = fmt.Sprintf("faux-encrypted( %s )", attrs.Description)
+	attrs.RenameIsAtomic = false
+	return attrs
+}
+
+func (fs fauxEncryptedFS) Unwrap() vfs.FS {
+	return fs.FS
+}
+
+type fauxEncryptedFile struct {
+	vfs.File
+}
+
+func (f fauxEncryptedFile) Write(b []byte) (int, error) {
+	for i := range b {
+		b[i] = b[i] + 1
+	}
+	return f.File.Write(b)
+}
+
+func (f fauxEncryptedFile) Read(b []byte) (int, error) {
+	n, err := f.File.Read(b)
+	for i := 0; i < n; i++ {
+		b[i] = b[i] - 1
+	}
+	return n, err
+}
+
+func (f fauxEncryptedFile) ReadAt(p []byte, off int64) (int, error) {
+	n, err := f.File.ReadAt(p, off)
+	for i := 0; i < n; i++ {
+		p[i] = p[i] - 1
+	}
+	return n, err
+}
+
+// TestManifestRotation_NonAtomicEncrypted tests a VFS similar to
+// CockroachDB's encryption-at-rest VFS. The faux encryption-at-rest VFS
+// used here increments each byte once on write, decrements each byte on
+// read and does not provide atomic renames. Pebble should unwrap the
+// encryption-at-rest VFS and use the underlying MemFS for storing the
+// `CURRENT-XXXXXX` file.
+func TestManifestRotation_NonAtomicEncrypted(t *testing.T) {
+	mem := vfs.NewMem()
+	fs := fauxEncryptedFS{mem}
+	require.NoError(t, fs.MkdirAll("ext", 0755))
+	opts := &Options{
+		FS:                  fs,
+		MaxManifestFileSize: 1,
+		FormatMajorVersion:  FormatMostCompatible,
+	}
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	writeAndIngest(t, fs, d, base.MakeInternalKey([]byte("a"), 0, InternalKeyKindSet), []byte("a"), "a")
+
+	require.True(t, strings.HasPrefix(string(readFile(t, fs, "CURRENT")), "MANIFEST-"))
+	require.True(t, strings.HasPrefix(string(readFile(t, mem, "CURRENT")), "NBOJGFTU."))
+
+	// Perform the upgrade to the next format version.
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatCurrentVersioned))
+
+	// The previous CURRENT file should now point a dummy nonexistent
+	// manifest.
+	require.Equal(t, string(readFile(t, fs, "CURRENT")), "MANIFEST-000000\n")
+
+	// There should be a CURRENT-000002 file containing a reasonable
+	// MANIFEST value. Pebble should have unwrapped the encryption VFS
+	// since it does not provide atomic renames and stored the
+	// CURRENT-000002 file directly on the memFS. It should be legible
+	// directly through the mem FS, without any decryption.
+	require.True(t, strings.HasPrefix(string(readFile(t, mem, "CURRENT-000002")), "MANIFEST-"))
+
+	writeAndIngest(t, fs, d, base.MakeInternalKey([]byte("b"), 0, InternalKeyKindSet), []byte("b"), "b")
+	writeAndIngest(t, fs, d, base.MakeInternalKey([]byte("c"), 0, InternalKeyKindSet), []byte("c"), "c")
+	require.True(t, strings.HasPrefix(string(readFile(t, mem, "CURRENT-000002")), "MANIFEST-"))
+
+	// Pebble must still read and write the old `CURRENT` file through
+	// the top-level encrypted FS for backwards compatibility. When
+	// Pebble wrote the 'tombstone' to the old `CURRENT` file to prevent
+	// older versions from opening the database, it should have written
+	// it using the top-level encrypted FS, not the memFS.
+	require.Equal(t, "MANIFEST-000000\n", string(readFile(t, fs, "CURRENT")))
+	require.Equal(t, "NBOJGFTU.111111\v", string(readFile(t, mem, "CURRENT")))
+	require.NoError(t, d.Close())
+
+	// Re-open the database, using the same options, including the encrypted FS.
+	d, err = Open("", opts)
+	require.NoError(t, err)
+	require.Equal(t, FormatCurrentVersioned, d.FormatMajorVersion())
+	require.NoError(t, d.Close())
 }

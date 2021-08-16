@@ -1266,6 +1266,90 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 	return destLevels, nil
 }
 
+// FormatMajorVersion returns the database's active format major
+// version. The format major version may be higher than the one
+// provided in Options when the database was opened if the existing
+// database was written with a higher format version.
+func (d *DB) FormatMajorVersion() FormatMajorVersion {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.mu.versions.formatVers
+}
+
+// RatchetFormatMajorVersion ratchets the opened database's format major
+// version to the provided version. It errors if the provided format
+// major version is below the database's current version. Once a
+// database's format major version is upgraded, previous Pebble versions
+// that do not know of the format version will be unable to open the
+// database.
+func (d *DB) RatchetFormatMajorVersion(fmv FormatMajorVersion) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.ratchetFormatMajorVersionLocked(fmv)
+}
+
+func (d *DB) ratchetFormatMajorVersionLocked(formatVers FormatMajorVersion) error {
+	newCurrentFS, err := getCurrentFS(formatVers, d.opts.FS)
+	if err != nil {
+		return err
+	}
+
+	d.mu.versions.logLock()
+	defer d.mu.versions.logUnlock()
+
+	if d.mu.versions.formatVers > formatVers {
+		return errors.Newf("pebble: database already at format major version %d; cannot reduce to %d",
+			d.mu.versions.formatVers, formatVers)
+	}
+	if d.mu.versions.formatVers == formatVers {
+		return nil
+	}
+
+	vs := d.mu.versions
+	prevCurrentFS, prevFormatVers := vs.currentFS, vs.formatVers
+	if err := setCurrentFile(vs.dirname, newCurrentFS, formatVers, vs.manifestFileNum); err != nil {
+		return err
+	}
+	if err := preventEarlierVersionsFromOpening(vs.dirname, prevCurrentFS, prevFormatVers, formatVers); err != nil {
+		vs.opts.Logger.Fatalf("ratcheting format major version: %v", err)
+	}
+	d.mu.versions.formatVers = formatVers
+	d.mu.versions.currentFS = newCurrentFS
+	return nil
+}
+
+func preventEarlierVersionsFromOpening(
+	dirname string, prevCurrentFS vfs.FS, prevVers, newVers FormatMajorVersion,
+) error {
+	// Versions lower than FormatCurrentVersioned used an un-numbered
+	// `CURRENT` file, instead of `CURRENT-xxxxxx` files. If we're
+	// upgrading from a format prior to the versioning, replace the
+	// `CURRENT` file with one that ensures previous versions of Pebble
+	// will fail to open. The resulting error message won't be the most
+	// indicative, but there's nothing we can do to update old Pebble
+	// versions.
+	//
+	// NB: We do this instead of removing the old `CURRENT` file because
+	// Open uses the existence of the `CURRENT` file to determine
+	// whether a database already exists. We need to prevent older
+	// Pebble versions from opening the same data directory as a new
+	// database, clobbering existing sstables as it goes.
+	if prevVers < FormatCurrentVersioned && newVers >= FormatCurrentVersioned {
+		// TODO(jackson): We could write a human readable message to the
+		// deprecated `CURRENT` file.
+		if err := setCurrentFile(dirname, prevCurrentFS, FormatMostCompatible, 0 /* manifest file number */); err != nil {
+			return errors.Wrap(err, "setting CURRENT tombstone")
+		}
+	} else if prevVers >= FormatCurrentVersioned {
+		prevCurrentFilename := base.MakeCurrentFilename(prevCurrentFS, dirname, prevVers)
+		if err := prevCurrentFS.Remove(prevCurrentFilename); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // EstimateDiskUsage returns the estimated filesystem space used in bytes for
 // storing the range `[start, end]`. The estimation is computed as follows:
 //

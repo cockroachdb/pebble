@@ -53,9 +53,11 @@ func TestParseFilename(t *testing.T) {
 
 func TestFilenameRoundTrip(t *testing.T) {
 	testCases := map[FileType]bool{
-		// CURRENT and LOCK files aren't numbered.
-		FileTypeCurrent: false,
-		FileTypeLock:    false,
+		// CURRENT files are handled separately; they have their own
+		// constructor function.
+
+		// LOCK files aren't numbered.
+		FileTypeLock: false,
 		// The remaining file types are numbered.
 		FileTypeLog:      true,
 		FileTypeManifest: true,

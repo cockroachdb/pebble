@@ -5,7 +5,6 @@
 package tool
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -434,19 +433,14 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 	dirname := args[0]
 	err := func() error {
 		// Read CURRENT to identify the current manifest.
-		f, err := d.opts.FS.Open(base.MakeFilename(d.opts.FS, dirname, base.FileTypeCurrent, 0))
+		_, manifestNum, err := pebble.ReadCurrentFile(d.opts.FS, dirname)
 		if err != nil {
 			return err
 		}
-		currentBytes, err := ioutil.ReadAll(f)
-		_ = f.Close()
-		if err != nil {
-			return err
-		}
-		manifestFilename := string(bytes.TrimSpace(currentBytes))
+		manifestFilename := base.MakeFilename(d.opts.FS, dirname, base.FileTypeManifest, manifestNum)
 
 		// Replay the manifest to get the current version.
-		f, err = d.opts.FS.Open(d.opts.FS.PathJoin(dirname, manifestFilename))
+		f, err := d.opts.FS.Open(manifestFilename)
 		if err != nil {
 			return errors.Wrapf(err, "pebble: could not open MANIFEST file %q", manifestFilename)
 		}

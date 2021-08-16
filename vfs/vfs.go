@@ -66,7 +66,9 @@ type FS interface {
 	RemoveAll(name string) error
 
 	// Rename renames a file. It overwrites the file at newname if one exists,
-	// the same as os.Rename.
+	// the same as os.Rename. If the file at newname exists, Rename may
+	// not be atomic. If the FS's Attributes set the RenameIsAtomic
+	// field to true, Rename must always be atomic.
 	Rename(oldname, newname string) error
 
 	// ReuseForWrite attempts to reuse the file with oldname by renaming it to newname and opening
@@ -150,6 +152,9 @@ type Attributes struct {
 	Description string
 	// InMemory is true if the filesystem's state is held in-memory.
 	InMemory bool
+	// RenameIsAtomic is true if the filesystem's Rename operation is
+	// guaranteed to be atomic.
+	RenameIsAtomic bool
 }
 
 // Default is a FS implementation backed by the underlying operating system's
@@ -247,8 +252,9 @@ func (defaultFS) PathDir(path string) string {
 
 func (fs defaultFS) Attributes() Attributes {
 	return Attributes{
-		Description: fmt.Sprintf("%T", fs),
-		InMemory:    false,
+		Description:    fmt.Sprintf("%T", fs),
+		InMemory:       false,
+		RenameIsAtomic: true,
 	}
 }
 
