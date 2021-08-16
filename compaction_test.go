@@ -930,6 +930,181 @@ func TestCompaction(t *testing.T) {
 	}
 }
 
+func TestValidateVersionEdit(t *testing.T) {
+	const badKey = "malformed-key"
+
+	errValidationFailed := errors.New("validation failed")
+	validateFn := func(key []byte) error {
+		if string(key) == badKey {
+			return errValidationFailed
+		}
+		return nil
+	}
+
+	testCases := []struct {
+		desc    string
+		ve      *versionEdit
+		vFunc   func([]byte) error
+		wantErr error
+	}{
+		{
+			desc: "validation function absent",
+			ve: &versionEdit{
+				NewFiles: []manifest.NewFileEntry{
+					{
+						Meta: &fileMetadata{
+							Smallest: manifest.InternalKey{UserKey: []byte(badKey)},
+							Largest:  manifest.InternalKey{UserKey: []byte("z")},
+						},
+					},
+				},
+			},
+			vFunc: nil,
+		},
+		{
+			desc: "single new file; start key",
+			ve: &versionEdit{
+				NewFiles: []manifest.NewFileEntry{
+					{
+						Meta: &fileMetadata{
+							Smallest: manifest.InternalKey{UserKey: []byte(badKey)},
+							Largest:  manifest.InternalKey{UserKey: []byte("z")},
+						},
+					},
+				},
+			},
+			vFunc:   validateFn,
+			wantErr: errValidationFailed,
+		},
+		{
+			desc: "single new file; end key",
+			ve: &versionEdit{
+				NewFiles: []manifest.NewFileEntry{
+					{
+						Meta: &fileMetadata{
+							Smallest: manifest.InternalKey{UserKey: []byte("a")},
+							Largest:  manifest.InternalKey{UserKey: []byte(badKey)},
+						},
+					},
+				},
+			},
+			vFunc:   validateFn,
+			wantErr: errValidationFailed,
+		},
+		{
+			desc: "multiple new files",
+			ve: &versionEdit{
+				NewFiles: []manifest.NewFileEntry{
+					{
+						Meta: &fileMetadata{
+							Smallest: manifest.InternalKey{UserKey: []byte("a")},
+							Largest:  manifest.InternalKey{UserKey: []byte("c")},
+						},
+					},
+					{
+						Meta: &fileMetadata{
+							Smallest: manifest.InternalKey{UserKey: []byte(badKey)},
+							Largest:  manifest.InternalKey{UserKey: []byte("z")},
+						},
+					},
+				},
+			},
+			vFunc:   validateFn,
+			wantErr: errValidationFailed,
+		},
+		{
+			desc: "single deleted file; start key",
+			ve: &versionEdit{
+				DeletedFiles: map[manifest.DeletedFileEntry]*manifest.FileMetadata{
+					deletedFileEntry{Level: 0, FileNum: 0}: {
+						Smallest: manifest.InternalKey{UserKey: []byte(badKey)},
+						Largest:  manifest.InternalKey{UserKey: []byte("z")},
+					},
+				},
+			},
+			vFunc:   validateFn,
+			wantErr: errValidationFailed,
+		},
+		{
+			desc: "single deleted file; end key",
+			ve: &versionEdit{
+				DeletedFiles: map[manifest.DeletedFileEntry]*manifest.FileMetadata{
+					deletedFileEntry{Level: 0, FileNum: 0}: {
+						Smallest: manifest.InternalKey{UserKey: []byte("a")},
+						Largest:  manifest.InternalKey{UserKey: []byte(badKey)},
+					},
+				},
+			},
+			vFunc:   validateFn,
+			wantErr: errValidationFailed,
+		},
+		{
+			desc: "multiple deleted files",
+			ve: &versionEdit{
+				DeletedFiles: map[manifest.DeletedFileEntry]*manifest.FileMetadata{
+					deletedFileEntry{Level: 0, FileNum: 0}: {
+						Smallest: manifest.InternalKey{UserKey: []byte("a")},
+						Largest:  manifest.InternalKey{UserKey: []byte("c")},
+					},
+					deletedFileEntry{Level: 0, FileNum: 1}: {
+						Smallest: manifest.InternalKey{UserKey: []byte(badKey)},
+						Largest:  manifest.InternalKey{UserKey: []byte("z")},
+					},
+				},
+			},
+			vFunc:   validateFn,
+			wantErr: errValidationFailed,
+		},
+		{
+			desc: "no errors",
+			ve: &versionEdit{
+				NewFiles: []manifest.NewFileEntry{
+					{
+						Level: 0,
+						Meta: &fileMetadata{
+							Smallest: manifest.InternalKey{UserKey: []byte("b")},
+							Largest:  manifest.InternalKey{UserKey: []byte("c")},
+						},
+					},
+					{
+						Level: 0,
+						Meta: &fileMetadata{
+							Smallest: manifest.InternalKey{UserKey: []byte("d")},
+							Largest:  manifest.InternalKey{UserKey: []byte("g")},
+						},
+					},
+				},
+				DeletedFiles: map[manifest.DeletedFileEntry]*manifest.FileMetadata{
+					deletedFileEntry{Level: 6, FileNum: 0}: {
+						Smallest: manifest.InternalKey{UserKey: []byte("a")},
+						Largest:  manifest.InternalKey{UserKey: []byte("d")},
+					},
+					deletedFileEntry{Level: 6, FileNum: 1}: {
+						Smallest: manifest.InternalKey{UserKey: []byte("x")},
+						Largest:  manifest.InternalKey{UserKey: []byte("z")},
+					},
+				},
+			},
+			vFunc: validateFn,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			err := validateVersionEdit(tc.ve, tc.vFunc, base.DefaultFormatter)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("got: %s; want: %s", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("got %s; wanted no error", err)
+			}
+		})
+	}
+}
+
 func TestManualCompaction(t *testing.T) {
 	var mem vfs.FS
 	var d *DB
