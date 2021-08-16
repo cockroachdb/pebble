@@ -856,7 +856,7 @@ func TestRollManifest(t *testing.T) {
 	}
 
 	current := func() string {
-		f, err := d.opts.FS.Open(base.MakeFilename(d.opts.FS, d.dirname, fileTypeCurrent, 0))
+		f, err := d.opts.FS.Open(base.MakeCurrentFilename(d.opts.FS, d.dirname, FormatMostCompatible))
 		require.NoError(t, err)
 		defer f.Close()
 
@@ -1130,6 +1130,17 @@ func TestSSTables(t *testing.T) {
 			require.NotNil(t, info.Properties)
 		}
 	}
+}
+
+func TestRatchetFormat(t *testing.T) {
+	fs := vfs.NewMem()
+	d, err := Open("", &Options{FS: fs})
+	require.NoError(t, err)
+	require.NoError(t, d.Set([]byte("foo"), []byte("bar"), Sync))
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatCurrentVersioned))
+	require.NoError(t, d.Close())
+	v := readFile(t, fs, "CURRENT-000002")
+	require.True(t, bytes.HasPrefix(v, []byte("MANIFEST-")))
 }
 
 func BenchmarkDelete(b *testing.B) {
