@@ -13,12 +13,14 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -434,8 +436,17 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 	dirname := args[0]
 	err := func() error {
 		// Read CURRENT to identify the current manifest.
-		f, err := d.opts.FS.Open(base.MakeFilename(d.opts.FS, dirname, base.FileTypeCurrent, 0))
-		if err != nil {
+		var f vfs.File
+		var err error
+		for vers := base.FormatNewest; vers >= base.FormatMostCompatible; vers-- {
+			f, err = d.opts.FS.Open(base.MakeCurrentFilename(d.opts.FS, dirname, vers))
+			if err != nil && oserror.IsNotExist(err) {
+				continue
+			} else if err != nil {
+				return err
+			}
+		}
+		if oserror.IsNotExist(err) {
 			return err
 		}
 		currentBytes, err := ioutil.ReadAll(f)
