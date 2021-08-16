@@ -912,3 +912,70 @@ func TestRocksDBNoFlushManifest(t *testing.T) {
 	require.NotEmpty(t, val)
 	require.NoError(t, closer.Close())
 }
+
+type nonAtomicRenameFS struct {
+	vfs.FS
+	unwrapFS vfs.FS
+}
+
+func (fs nonAtomicRenameFS) Attributes() vfs.Attributes {
+	attrs := fs.FS.Attributes()
+	attrs.Description = fmt.Sprintf("non-atomic-rename( %s )", attrs.Description)
+	attrs.RenameIsAtomic = false
+	return attrs
+}
+
+func (fs nonAtomicRenameFS) Unwrap() vfs.FS {
+	return fs.unwrapFS
+}
+
+func TestOpenRequireAtomicRenameFS(t *testing.T) {
+	t.Run("rename already atomic", func(t *testing.T) {
+		d, err := Open("", &Options{FS: vfs.NewMem()})
+		require.NoError(t, err)
+		defer d.Close()
+
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		require.Equal(t, d.opts.FS, d.mu.versions.currentFS)
+	})
+	t.Run("no atomic rename available", func(t *testing.T) {
+		fs := nonAtomicRenameFS{
+			FS:       vfs.NewMem(),
+			unwrapFS: nil, // fake nonAtomicRenameFS as the leaf FS
+		}
+		_, err := Open("", &Options{FS: fs})
+		require.Error(t, err)
+		require.EqualError(t, err, "pebble: database \"\": filesystem has no support for atomic renames: non-atomic-rename( *vfs.MemFS )")
+	})
+	t.Run("inner filesystem supports atomic renames", func(t *testing.T) {
+		memFS := vfs.NewMem()
+		fs := nonAtomicRenameFS{FS: memFS, unwrapFS: memFS}
+		d, err := Open("", &Options{FS: fs, FormatMajorVersion: FormatCurrentVersioned})
+		require.NoError(t, err)
+		defer d.Close()
+
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		require.Equal(t, fs, d.opts.FS)
+		require.Equal(t, memFS, d.mu.versions.currentFS)
+	})
+}
+
+func TestOpen_ErrorIfUnknownVersion(t *testing.T) {
+	fs := vfs.NewMem()
+	d, err := Open("", &Options{
+		FS:                 fs,
+		FormatMajorVersion: FormatCurrentVersioned,
+	})
+	require.NoError(t, err)
+	require.NoError(t, d.Close())
+	current := readFile(t, fs, "CURRENT-000002")
+	writeFile(t, fs, "CURRENT-999999", current)
+	_, err = Open("", &Options{
+		FS:                 fs,
+		FormatMajorVersion: FormatCurrentVersioned,
+	})
+	require.Error(t, err)
+	require.EqualError(t, err, `pebble: database "" written in format major version 999999 by more recent Pebble`)
+}

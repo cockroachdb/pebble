@@ -12,7 +12,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-
 // checkpointOptions hold the optional parameters to construct checkpoint
 // snapshots.
 type checkpointOptions struct {
@@ -93,7 +92,11 @@ func mkdirAllAndSyncParents(fs vfs.FS, destDir string) (vfs.File, error) {
 // space overhead for a checkpoint if hard links are disabled. Also beware that
 // even if hard links are used, the space overhead for the checkpoint will
 // increase over time as the DB performs compactions.
-func (d *DB) Checkpoint(destDir string, opts ...CheckpointOption) (ckErr error /* used in deferred cleanup */) {
+func (d *DB) Checkpoint(
+	destDir string, opts ...CheckpointOption,
+) (
+	ckErr error, /* used in deferred cleanup */
+) {
 	opt := &checkpointOptions{}
 	for _, fn := range opts {
 		fn(opt)
@@ -141,6 +144,8 @@ func (d *DB) Checkpoint(destDir string, opts ...CheckpointOption) (ckErr error /
 	manifestFileNum := d.mu.versions.manifestFileNum
 	manifestSize := d.mu.versions.manifest.Size()
 	optionsFileNum := d.optionsFileNum
+	currentFS := d.mu.versions.currentFS
+	formatVers := d.mu.versions.formatVers
 
 	// Release the manifest and DB.mu so we don't block other operations on
 	// the database.
@@ -198,7 +203,7 @@ func (d *DB) Checkpoint(destDir string, opts ...CheckpointOption) (ckErr error /
 		if ckErr != nil {
 			return ckErr
 		}
-		ckErr = setCurrentFile(destDir, fs, manifestFileNum)
+		ckErr = setCurrentFile(destDir, currentFS, formatVers, manifestFileNum)
 		if ckErr != nil {
 			return ckErr
 		}

@@ -71,6 +71,21 @@ type versionSet struct {
 	// disabled. Used by tests which want to create specific LSM structures.
 	dynamicBaseLevel bool
 
+	// currentFS is a FS implementation that is used when interacting
+	// with the CURRENT file.
+	//
+	// It must provide atomic Renames to ensure that manifest roations
+	// are atomic. The vfs.FS interface does not guarantee atomicity of
+	// Rename operations unless (vfs.FS).Attributes's RenameIsAtomic
+	// field is true.  On initialization, we unwrap the opts.FS until we
+	// find an FS implementation that supports atomic renames, which we
+	// then use for the `CURRENT-00000x` file.
+	currentFS vfs.FS
+	// formatVers is the database's current format major version. It's
+	// encoded within the numeric portion of the CURRENT-xxxxxx
+	// filename.
+	formatVers FormatMajorVersion
+
 	// Mutable fields.
 	versions versionList
 	picker   compactionPicker
@@ -106,12 +121,34 @@ type versionSet struct {
 	writerCond sync.Cond
 }
 
-func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
+func getAtomicRenameFS(fs vfs.FS) (vfs.FS, error) {
+	atomicRenameFS := fs
+	for atomicRenameFS != nil && !atomicRenameFS.Attributes().RenameIsAtomic {
+		atomicRenameFS = atomicRenameFS.Unwrap()
+	}
+	if atomicRenameFS == nil {
+		return nil, errors.Newf("filesystem has no support for atomic renames: %s", fs.Attributes().Description)
+	}
+	return atomicRenameFS, nil
+}
+
+func (vs *versionSet) init(
+	dirname string, opts *Options, formatVers FormatMajorVersion, mu *sync.Mutex,
+) error {
 	vs.dirname = dirname
 	vs.mu = mu
 	vs.writerCond.L = mu
 	vs.opts = opts
 	vs.fs = opts.FS
+	vs.formatVers = formatVers
+	vs.currentFS = opts.FS
+	if formatVers >= FormatCurrentVersioned {
+		var err error
+		vs.currentFS, err = getAtomicRenameFS(opts.FS)
+		if err != nil {
+			return err
+		}
+	}
 	vs.cmp = opts.Comparer.Compare
 	vs.cmpName = opts.Comparer.Name
 	vs.dynamicBaseLevel = true
@@ -122,13 +159,16 @@ func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
 	if vs.diskAvailBytes == nil {
 		vs.diskAvailBytes = func() uint64 { return math.MaxUint64 }
 	}
+	return nil
 }
 
 // create creates a version set for a fresh DB.
 func (vs *versionSet) create(
 	jobID int, dirname string, dir vfs.File, opts *Options, mu *sync.Mutex,
 ) error {
-	vs.init(dirname, opts, mu)
+	if err := vs.init(dirname, opts, opts.FormatMajorVersion, mu); err != nil {
+		return err
+	}
 	newVersion := &version{}
 	vs.append(newVersion)
 	var err error
@@ -150,10 +190,23 @@ func (vs *versionSet) create(
 		}
 	}
 	if err == nil {
-		if err = setCurrentFile(vs.dirname, vs.fs, vs.manifestFileNum); err != nil {
+		if err = setCurrentFile(vs.dirname, vs.currentFS, vs.formatVers, vs.manifestFileNum); err != nil {
 			vs.opts.Logger.Fatalf("MANIFEST set current failed: %v", err)
 		}
 	}
+
+	// Pebble versions at FormatMostCompatible used the `CURRENT` file,
+	// instead of `CURRENT-xxxxxx` files. If the database is using a
+	// later format version, write a `CURRENT` file that ensures
+	// previous versions of Pebble will fail to open. The resulting
+	// error message won't be the most indicative, but there's nothing
+	// we can do to update old Pebble versions.
+	if vs.formatVers > FormatMostCompatible {
+		if err = setCurrentFile(vs.dirname, vs.opts.FS, FormatMostCompatible, 0 /* manifest file numbber */); err != nil {
+			vs.opts.Logger.Fatalf("setting CURRENT tombstone: %v", err)
+		}
+	}
+
 	if err == nil {
 		if err = dir.Sync(); err != nil {
 			vs.opts.Logger.Fatalf("MANIFEST dirsync failed: %v", err)
@@ -172,49 +225,110 @@ func (vs *versionSet) create(
 	return nil
 }
 
-// load loads the version set from the manifest file.
-func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error {
-	vs.init(dirname, opts, mu)
-
-	// Read the CURRENT file to find the current manifest file.
-	current, err := vs.fs.Open(base.MakeFilename(vs.fs, dirname, fileTypeCurrent, 0))
+func readCurrentFile(fs vfs.FS, dirname string) (FormatMajorVersion, FileNum, error) {
+	// First check for the existence of the new CURRENT-xxxxxx files,
+	// using the atomic FS.
+	atomicFS, err := getAtomicRenameFS(fs)
 	if err != nil {
-		return errors.Wrapf(err, "pebble: could not open CURRENT file for DB %q", dirname)
+		return 0, 0, err
+	}
+
+	// The database's current format version is encoded in the
+	// CURRENT-xxxxxx file. There may be multiple CURRENT-xxxxxx files
+	// if the database crashed mid-upgrade. Use the highest (most
+	// recent) value.
+	ls, err := atomicFS.List(dirname)
+	if err != nil {
+		return 0, 0, err
+	}
+	formatVers := FormatMostCompatible
+	for _, filename := range ls {
+		typ, num, ok := base.ParseFilename(atomicFS, filename)
+		if !ok || typ != fileTypeCurrent {
+			continue
+		}
+		if formatVers < FormatMajorVersion(num) {
+			formatVers = FormatMajorVersion(num)
+		}
+	}
+
+	// All the CURRENT-xxxxxx files are accessed via the atomic rename
+	// FS. If the database was created before the format major version
+	// was introduced, formatVers will be `FormatMostCompatible` and
+	// there will only be an unnumbered `CURRENT` file. This file exists
+	// on the opts.FS, regardless of whether opts.FS provides atomic
+	// renames.
+	currentFS := atomicFS
+	if formatVers == FormatMostCompatible {
+		currentFS = fs
+
+	}
+	manifestFileNum, err := readCurrentFile1(dirname, currentFS, formatVers)
+	if err != nil {
+		return 0, 0, err
+	}
+	return formatVers, manifestFileNum, nil
+}
+
+func readCurrentFile1(
+	dirname string, currentFS vfs.FS, formatVers FormatMajorVersion,
+) (base.FileNum, error) {
+	filename := base.MakeCurrentFilename(currentFS, dirname, formatVers)
+	current, err := currentFS.Open(filename)
+	if err != nil {
+		return 0, errors.Wrapf(err, "pebble: could not open %q file for DB %q", filename, dirname)
 	}
 	defer current.Close()
 	stat, err := current.Stat()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	n := stat.Size()
 	if n == 0 {
-		return errors.Errorf("pebble: CURRENT file for DB %q is empty", dirname)
+		return 0, errors.Errorf("pebble: %q file for DB %q is empty", filename, dirname)
 	}
 	if n > 4096 {
-		return errors.Errorf("pebble: CURRENT file for DB %q is too large", dirname)
+		return 0, errors.Errorf("pebble: %q file for DB %q is too large", filename, dirname)
 	}
 	b := make([]byte, n)
 	_, err = current.ReadAt(b, 0)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if b[n-1] != '\n' {
-		return base.CorruptionErrorf("pebble: CURRENT file for DB %q is malformed", dirname)
+		return 0, base.CorruptionErrorf("pebble: %q file for DB %q is malformed", filename, dirname)
 	}
 	b = bytes.TrimSpace(b)
 
-	var ok bool
-	if _, vs.manifestFileNum, ok = base.ParseFilename(vs.fs, string(b)); !ok {
-		return base.CorruptionErrorf("pebble: MANIFEST name %q is malformed", errors.Safe(b))
+	_, fn, ok := base.ParseFilename(currentFS, string(b))
+	if !ok {
+		return 0, base.CorruptionErrorf("pebble: MANIFEST name %q is malformed", errors.Safe(b))
 	}
+	return fn, nil
+}
+
+// load loads the version set from the manifest file.
+func (vs *versionSet) load(
+	dirname string,
+	opts *Options,
+	formatVers FormatMajorVersion,
+	manifestFileNum base.FileNum,
+	mu *sync.Mutex,
+) error {
+	if err := vs.init(dirname, opts, formatVers, mu); err != nil {
+		return err
+	}
+	vs.formatVers = formatVers
+	vs.manifestFileNum = manifestFileNum
+	manifestFilename := base.MakeFilename(vs.fs, dirname, fileTypeManifest, vs.manifestFileNum)
 
 	// Read the versionEdits in the manifest file.
 	var bve bulkVersionEdit
 	bve.AddedByFileNum = make(map[base.FileNum]*fileMetadata)
-	manifest, err := vs.fs.Open(vs.fs.PathJoin(dirname, string(b)))
+	manifest, err := vs.fs.Open(manifestFilename)
 	if err != nil {
 		return errors.Wrapf(err, "pebble: could not open manifest file %q for DB %q",
-			errors.Safe(b), dirname)
+			errors.Safe(vs.fs.PathBase(manifestFilename)), dirname)
 	}
 	defer manifest.Close()
 	rr := record.NewReader(manifest, 0 /* logNum */)
@@ -225,7 +339,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 		}
 		if err != nil {
 			return errors.Wrapf(err, "pebble: error when loading manifest file %q",
-				errors.Safe(b))
+				errors.Safe(vs.fs.PathBase(manifestFilename)))
 		}
 		var ve versionEdit
 		err = ve.Decode(r)
@@ -241,7 +355,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			if ve.ComparerName != vs.cmpName {
 				return errors.Errorf("pebble: manifest file %q for DB %q: "+
 					"comparer name from file %q != comparer name from Options %q",
-					errors.Safe(b), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmpName))
+					errors.Safe(vs.fs.PathBase(manifestFilename)), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmpName))
 			}
 		}
 		if err := bve.Accumulate(&ve); err != nil {
@@ -276,7 +390,7 @@ func (vs *versionSet) load(dirname string, opts *Options, mu *sync.Mutex) error 
 			// present in the directory.
 		} else {
 			return base.CorruptionErrorf("pebble: malformed manifest file %q for DB %q",
-				errors.Safe(b), dirname)
+				errors.Safe(vs.fs.PathBase(manifestFilename)), dirname)
 		}
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
@@ -456,7 +570,7 @@ func (vs *versionSet) logAndApply(
 			return err
 		}
 		if newManifestFileNum != 0 {
-			if err := setCurrentFile(vs.dirname, vs.fs, newManifestFileNum); err != nil {
+			if err := setCurrentFile(vs.dirname, vs.currentFS, vs.formatVers, newManifestFileNum); err != nil {
 				vs.opts.Logger.Fatalf("MANIFEST set current failed: %v", err)
 				return err
 			}

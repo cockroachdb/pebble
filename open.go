@@ -189,9 +189,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 
-	currentName := base.MakeFilename(opts.FS, dirname, fileTypeCurrent, 0)
-	if _, err := opts.FS.Stat(currentName); oserror.IsNotExist(err) &&
-		!d.opts.ReadOnly && !d.opts.ErrorIfNotExists {
+	formatVers, manifestFileNum, err := readCurrentFile(opts.FS, dirname)
+	if oserror.IsNotExist(err) && !d.opts.ReadOnly && !d.opts.ErrorIfNotExists {
 		// Create the DB if it did not already exist.
 		if err := d.mu.versions.create(jobID, dirname, d.dataDir, opts, &d.mu.Mutex); err != nil {
 			return nil, err
@@ -201,12 +200,25 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	} else if opts.ErrorIfExists {
 		return nil, errors.Errorf("pebble: database %q already exists", dirname)
 	} else {
+		// If the format version is more recent than we can handle,
+		// error with an informative error message.
+		if formatVers > FormatNewest {
+			return nil, errors.Newf("pebble: database %q written in format major version %d by more recent Pebble",
+				dirname, formatVers)
+		}
 		// Load the version set.
-		if err := d.mu.versions.load(dirname, opts, &d.mu.Mutex); err != nil {
+		if err := d.mu.versions.load(dirname, opts, formatVers, manifestFileNum, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 		if err := d.mu.versions.currentVersion().CheckConsistency(dirname, opts.FS); err != nil {
 			return nil, err
+		}
+		// If the Options specify a format major version higher than the
+		// loaded database's, upgrade it.
+		if opts.FormatMajorVersion > formatVers {
+			if err := d.ratchetFormatMajorVersionLocked(opts.FormatMajorVersion); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -246,7 +258,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 		// Don't reuse any obsolete file numbers to avoid modifying an
 		// ingested sstable's original external file.
-		if d.mu.versions.nextFileNum <= fn {
+		if d.mu.versions.nextFileNum <= fn && ft != fileTypeCurrent {
 			d.mu.versions.nextFileNum = fn + 1
 		}
 

@@ -1266,6 +1266,69 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 	return destLevels, nil
 }
 
+// FormatMajorVersion returns the database's active format major
+// version. The format major version may be higher than the one
+// provided in Options when the database was opened if the existing
+// database was written with a higher format version.
+func (d *DB) FormatMajorVersion() FormatMajorVersion {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.mu.versions.formatVers
+}
+
+// RatchetFormatMajorVersion ratchets the opened database's format major
+// version to the provided version. It errors if the provided format
+// major version is below the database's current version. Once a
+// database's format major version is upgraded, previous Pebble versions
+// that do not know of the format version will be unable to open the
+// database.
+func (d *DB) RatchetFormatMajorVersion(fmv FormatMajorVersion) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.ratchetFormatMajorVersionLocked(fmv)
+}
+
+func (d *DB) ratchetFormatMajorVersionLocked(formatVers FormatMajorVersion) error {
+	atomicRenameFS, err := getAtomicRenameFS(d.opts.FS)
+	if err != nil {
+		return err
+	}
+
+	d.mu.versions.logLock()
+	defer d.mu.versions.logUnlock()
+
+	if d.mu.versions.formatVers > formatVers {
+		return errors.Newf("pebble: database already at format major version %d; cannot reduce to %d",
+			d.mu.versions.formatVers, formatVers)
+	}
+	if d.mu.versions.formatVers == formatVers {
+		return nil
+	}
+
+	vs := d.mu.versions
+	prevCurrentFS := vs.currentFS
+	if err := setCurrentFile(vs.dirname, atomicRenameFS, formatVers, vs.manifestFileNum); err != nil {
+		return err
+	}
+
+	// Pebble versions at FormatMostCompatible used a `CURRENT` file,
+	// instead of `CURRENT-xxxxxx` files. If we're upgrading from the
+	// initial format version, replace the `CURRENT` file with one that
+	// ensures previous versions of Pebble will fail to open.  The
+	// resulting error message won't be the most indicative, but there's
+	// nothing we can do to update old Pebble versions.
+	if d.mu.versions.formatVers == FormatMostCompatible {
+		// TODO(jackson): We could write a human readable message to the
+		// deprecated `CURRENT` file.
+		if err := setCurrentFile(vs.dirname, prevCurrentFS, FormatMostCompatible, 0 /* manifest file number */); err != nil {
+			vs.opts.Logger.Fatalf("setting CURRENT tombstone: %v", err)
+		}
+	}
+	d.mu.versions.formatVers = formatVers
+	d.mu.versions.currentFS = atomicRenameFS
+	return nil
+}
+
 // EstimateDiskUsage returns the estimated filesystem space used in bytes for
 // storing the range `[start, end]`. The estimation is computed as follows:
 //
