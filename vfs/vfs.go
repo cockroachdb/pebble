@@ -5,6 +5,7 @@
 package vfs
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -123,6 +124,9 @@ type FS interface {
 	// GetDiskUsage returns disk space statistics for the filesystem where
 	// path is any file or directory within that filesystem.
 	GetDiskUsage(path string) (DiskUsage, error)
+
+	// Attributes describes the filesystem and its features.
+	Attributes() Attributes
 }
 
 // DiskUsage summarizes disk space usage on a filesystem.
@@ -133,6 +137,14 @@ type DiskUsage struct {
 	TotalBytes uint64
 	// Used disk space in bytes.
 	UsedBytes uint64
+}
+
+// Attributes describes a filesystem and its features.
+type Attributes struct {
+	// Description is a human-readable string describing the filesystem.
+	Description string
+	// InMemory is true if the filesystem's state is held in-memory.
+	InMemory bool
 }
 
 // Default is a FS implementation backed by the underlying operating system's
@@ -226,6 +238,13 @@ func (defaultFS) PathJoin(elem ...string) string {
 
 func (defaultFS) PathDir(path string) string {
 	return filepath.Dir(path)
+}
+
+func (fs defaultFS) Attributes() Attributes {
+	return Attributes{
+		Description: fmt.Sprintf("%T", fs),
+		InMemory:    false,
+	}
 }
 
 type randomReadsOption struct{}
