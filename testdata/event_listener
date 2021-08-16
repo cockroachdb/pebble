@@ -10,12 +10,20 @@ sync: db/MANIFEST-000001
 create: db/CURRENT.000001.dbtmp
 sync: db/CURRENT.000001.dbtmp
 close: db/CURRENT.000001.dbtmp
+rename: db/CURRENT.000001.dbtmp -> db/CURRENT-v2
+create: db/CURRENT.000001.dbtmp
+sync: db/CURRENT.000001.dbtmp
+close: db/CURRENT.000001.dbtmp
 rename: db/CURRENT.000001.dbtmp -> db/CURRENT
 sync: db
 [JOB 1] MANIFEST created 000001
 create: db/MANIFEST-000003
 close: db/MANIFEST-000001
 sync: db/MANIFEST-000003
+create: db/CURRENT.000003.dbtmp
+sync: db/CURRENT.000003.dbtmp
+close: db/CURRENT.000003.dbtmp
+rename: db/CURRENT.000003.dbtmp -> db/CURRENT-v2
 create: db/CURRENT.000003.dbtmp
 sync: db/CURRENT.000003.dbtmp
 close: db/CURRENT.000003.dbtmp
@@ -50,6 +58,10 @@ sync: db/MANIFEST-000007
 create: db/CURRENT.000007.dbtmp
 sync: db/CURRENT.000007.dbtmp
 close: db/CURRENT.000007.dbtmp
+rename: db/CURRENT.000007.dbtmp -> db/CURRENT-v2
+create: db/CURRENT.000007.dbtmp
+sync: db/CURRENT.000007.dbtmp
+close: db/CURRENT.000007.dbtmp
 rename: db/CURRENT.000007.dbtmp -> db/CURRENT
 sync: db
 [JOB 3] MANIFEST created 000007
@@ -76,6 +88,10 @@ sync: db/MANIFEST-000010
 create: db/CURRENT.000010.dbtmp
 sync: db/CURRENT.000010.dbtmp
 close: db/CURRENT.000010.dbtmp
+rename: db/CURRENT.000010.dbtmp -> db/CURRENT-v2
+create: db/CURRENT.000010.dbtmp
+sync: db/CURRENT.000010.dbtmp
+close: db/CURRENT.000010.dbtmp
 rename: db/CURRENT.000010.dbtmp -> db/CURRENT
 sync: db
 [JOB 5] MANIFEST created 000010
@@ -90,6 +106,10 @@ sync: db
 create: db/MANIFEST-000012
 close: db/MANIFEST-000010
 sync: db/MANIFEST-000012
+create: db/CURRENT.000012.dbtmp
+sync: db/CURRENT.000012.dbtmp
+close: db/CURRENT.000012.dbtmp
+rename: db/CURRENT.000012.dbtmp -> db/CURRENT-v2
 create: db/CURRENT.000012.dbtmp
 sync: db/CURRENT.000012.dbtmp
 close: db/CURRENT.000012.dbtmp
@@ -124,10 +144,15 @@ sync: db/MANIFEST-000015
 create: db/CURRENT.000015.dbtmp
 sync: db/CURRENT.000015.dbtmp
 close: db/CURRENT.000015.dbtmp
+rename: db/CURRENT.000015.dbtmp -> db/CURRENT-v2
+create: db/CURRENT.000015.dbtmp
+sync: db/CURRENT.000015.dbtmp
+close: db/CURRENT.000015.dbtmp
 rename: db/CURRENT.000015.dbtmp -> db/CURRENT
 sync: db
 [JOB 8] MANIFEST created 000015
 [JOB 8] flushed 1 memtable to L0 [000014] (770 B), in 1.0s, output rate 770 B/s
+
 
 enable-file-deletions
 ----
@@ -141,6 +166,10 @@ sync: db
 create: db/MANIFEST-000017
 close: db/MANIFEST-000015
 sync: db/MANIFEST-000017
+create: db/CURRENT.000017.dbtmp
+sync: db/CURRENT.000017.dbtmp
+close: db/CURRENT.000017.dbtmp
+rename: db/CURRENT.000017.dbtmp -> db/CURRENT-v2
 create: db/CURRENT.000017.dbtmp
 sync: db/CURRENT.000017.dbtmp
 close: db/CURRENT.000017.dbtmp
@@ -192,6 +221,10 @@ link: db/OPTIONS-000004 -> checkpoint/OPTIONS-000004
 create: checkpoint/MANIFEST-000017
 sync: checkpoint/MANIFEST-000017
 close: checkpoint/MANIFEST-000017
+create: checkpoint/CURRENT.000017.dbtmp
+sync: checkpoint/CURRENT.000017.dbtmp
+close: checkpoint/CURRENT.000017.dbtmp
+rename: checkpoint/CURRENT.000017.dbtmp -> checkpoint/CURRENT-v2
 create: checkpoint/CURRENT.000017.dbtmp
 sync: checkpoint/CURRENT.000017.dbtmp
 close: checkpoint/CURRENT.000017.dbtmp

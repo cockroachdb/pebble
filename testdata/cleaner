@@ -10,6 +10,10 @@ sync: db/MANIFEST-000001
 create: db/CURRENT.000001.dbtmp
 sync: db/CURRENT.000001.dbtmp
 close: db/CURRENT.000001.dbtmp
+rename: db/CURRENT.000001.dbtmp -> db/CURRENT-v2
+create: db/CURRENT.000001.dbtmp
+sync: db/CURRENT.000001.dbtmp
+close: db/CURRENT.000001.dbtmp
 rename: db/CURRENT.000001.dbtmp -> db/CURRENT
 sync: db
 sync: db/MANIFEST-000001
@@ -73,6 +77,7 @@ list db
 ----
 000008.sst
 CURRENT
+CURRENT-v2
 LOCK
 MANIFEST-000001
 OPTIONS-000003

@@ -503,8 +503,9 @@ func (*MemFS) GetDiskUsage(string) (DiskUsage, error) {
 // Attributes implements FS.Attributes.
 func (y *MemFS) Attributes() Attributes {
 	return Attributes{
-		Description: fmt.Sprintf("%T", y),
-		InMemory:    true,
+		Description:    fmt.Sprintf("%T", y),
+		InMemory:       true,
+		RenameIsAtomic: true,
 	}
 }
 
