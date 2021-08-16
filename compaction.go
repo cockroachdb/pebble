@@ -2482,7 +2482,43 @@ func (d *DB) runCompaction(
 	if err := d.dataDir.Sync(); err != nil {
 		return nil, pendingOutputs, err
 	}
+
+	// As a sanity check, confirm that the smallest / largest keys for new and
+	// deleted files in the new versionEdit pass a validation function before
+	// returning the edit.
+	err = validateVersionEdit(ve, d.opts.Experimental.CompactionKeyValidationFunc, d.opts.Comparer.FormatKey)
+	if err != nil {
+		d.opts.Logger.Fatalf("pebble: version edit validation failed: %s", err)
+	}
+
 	return ve, pendingOutputs, nil
+}
+
+// validateVersionEdit validates that start and end keys across new and deleted
+// files in a versionEdit pass the given validation function.
+func validateVersionEdit(ve *versionEdit, validateFn func([]byte) error, format base.FormatKey) error {
+	if validateFn == nil {
+		return nil
+	}
+
+	// Validate both new and deleted files.
+	var files []*fileMetadata
+	for _, f := range ve.NewFiles {
+		files = append(files, f.Meta)
+	}
+	for _, m := range ve.DeletedFiles {
+		files = append(files, m)
+	}
+
+	for _, f := range files {
+		for _, key := range []InternalKey{f.Smallest, f.Largest} {
+			if err := validateFn(key.UserKey); err != nil {
+				return errors.Wrapf(err, "key=%q; file=%s", format(key.UserKey), f)
+			}
+		}
+	}
+
+	return nil
 }
 
 // scanObsoleteFiles scans the filesystem for files that are no longer needed
