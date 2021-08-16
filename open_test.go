@@ -103,6 +103,7 @@ func TestNewDBFilenames(t *testing.T) {
 	want := []string{
 		"000002.log",
 		"CURRENT",
+		"CURRENT-v2",
 		"LOCK",
 		"MANIFEST-000001",
 		"OPTIONS-000003",
@@ -911,4 +912,53 @@ func TestRocksDBNoFlushManifest(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, val)
 	require.NoError(t, closer.Close())
+}
+
+type nonAtomicRenameFS struct {
+	vfs.FS
+	unwrapFS vfs.FS
+}
+
+func (fs nonAtomicRenameFS) Attributes() vfs.Attributes {
+	attrs := fs.FS.Attributes()
+	attrs.Description = fmt.Sprintf("non-atomic-rename( %s )", attrs.Description)
+	attrs.RenameIsAtomic = false
+	return attrs
+}
+
+func (fs nonAtomicRenameFS) Unwrap() vfs.FS {
+	return fs.unwrapFS
+}
+
+func TestOpenRequireAtomicRenameFS(t *testing.T) {
+	t.Run("rename already atomic", func(t *testing.T) {
+		d, err := Open("", &Options{FS: vfs.NewMem()})
+		require.NoError(t, err)
+		defer d.Close()
+
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		require.Equal(t, d.opts.FS, d.mu.versions.atomicRenameFS)
+	})
+	t.Run("no atomic rename available", func(t *testing.T) {
+		fs := nonAtomicRenameFS{
+			FS:       vfs.NewMem(),
+			unwrapFS: nil, // fake nonAtomicRenameFS as the leaf FS
+		}
+		_, err := Open("", &Options{FS: fs})
+		require.Error(t, err)
+		require.EqualError(t, err, "filesystem has no support for atomic renames: non-atomic-rename( *vfs.MemFS )")
+	})
+	t.Run("inner filesystem supports atomic renames", func(t *testing.T) {
+		memFS := vfs.NewMem()
+		fs := nonAtomicRenameFS{FS: memFS, unwrapFS: memFS}
+		d, err := Open("", &Options{FS: fs})
+		require.NoError(t, err)
+		defer d.Close()
+
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		require.Equal(t, fs, d.opts.FS)
+		require.Equal(t, memFS, d.mu.versions.atomicRenameFS)
+	})
 }

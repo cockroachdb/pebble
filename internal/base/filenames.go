@@ -30,6 +30,7 @@ const (
 	FileTypeTable
 	FileTypeManifest
 	FileTypeCurrent
+	FileTypeCurrentV2
 	FileTypeOptions
 	FileTypeTemp
 )
@@ -47,6 +48,8 @@ func MakeFilename(fs vfs.FS, dirname string, fileType FileType, fileNum FileNum)
 		return fs.PathJoin(dirname, fmt.Sprintf("MANIFEST-%s", fileNum))
 	case FileTypeCurrent:
 		return fs.PathJoin(dirname, "CURRENT")
+	case FileTypeCurrentV2:
+		return fs.PathJoin(dirname, "CURRENT-v2")
 	case FileTypeOptions:
 		return fs.PathJoin(dirname, fmt.Sprintf("OPTIONS-%s", fileNum))
 	case FileTypeTemp:
