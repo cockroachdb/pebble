@@ -238,6 +238,13 @@ func (fs *FS) GetDiskUsage(path string) (vfs.DiskUsage, error) {
 	return fs.fs.GetDiskUsage(path)
 }
 
+// Attributes implements FS.Attributes.
+func (fs *FS) Attributes() vfs.Attributes {
+	attrs := fs.fs.Attributes()
+	attrs.Description = fmt.Sprintf("error-injecting( %s )", attrs.Description)
+	return attrs
+}
+
 // PathBase implements FS.PathBase.
 func (fs *FS) PathBase(p string) string {
 	return fs.fs.PathBase(p)

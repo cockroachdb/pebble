@@ -500,6 +500,14 @@ func (*MemFS) GetDiskUsage(string) (DiskUsage, error) {
 	return DiskUsage{}, ErrUnsupported
 }
 
+// Attributes implements FS.Attributes.
+func (y *MemFS) Attributes() Attributes {
+	return Attributes{
+		Description: fmt.Sprintf("%T", y),
+		InMemory:    true,
+	}
+}
+
 // memNode holds a file's data or a directory's children, and implements os.FileInfo.
 type memNode struct {
 	name  string
