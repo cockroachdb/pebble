@@ -5,6 +5,7 @@
 package vfs
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -65,7 +66,10 @@ type FS interface {
 	RemoveAll(name string) error
 
 	// Rename renames a file. It overwrites the file at newname if one exists,
-	// the same as os.Rename.
+	// the same as os.Rename. If the file at newname exists, Rename may
+	// not be atomic. If the FS's Attributes set the RenameIsAtomic
+	// field to true, Rename must always be atomic. Rename is atomic if
+	// no file exists at newname.
 	Rename(oldname, newname string) error
 
 	// ReuseForWrite attempts to reuse the file with oldname by renaming it to newname and opening
@@ -123,6 +127,9 @@ type FS interface {
 	// GetDiskUsage returns disk space statistics for the filesystem where
 	// path is any file or directory within that filesystem.
 	GetDiskUsage(path string) (DiskUsage, error)
+
+	// Attributes describes the filesystem and its features.
+	Attributes() Attributes
 }
 
 // DiskUsage summarizes disk space usage on a filesystem.
@@ -133,6 +140,17 @@ type DiskUsage struct {
 	TotalBytes uint64
 	// Used disk space in bytes.
 	UsedBytes uint64
+}
+
+// Attributes describes a filesystem and its features.
+type Attributes struct {
+	// Description is a human-readable string describing the filesystem.
+	Description string
+	// InMemory is true if the filesystem's state is held in-memory.
+	InMemory bool
+	// RenameIsAtomic is true if the filesystem's Rename operation is
+	// guaranteed to be atomic.
+	RenameIsAtomic bool
 }
 
 // Default is a FS implementation backed by the underlying operating system's
@@ -226,6 +244,14 @@ func (defaultFS) PathJoin(elem ...string) string {
 
 func (defaultFS) PathDir(path string) string {
 	return filepath.Dir(path)
+}
+
+func (fs defaultFS) Attributes() Attributes {
+	return Attributes{
+		Description:    fmt.Sprintf("%T", fs),
+		InMemory:       false,
+		RenameIsAtomic: true,
+	}
 }
 
 type randomReadsOption struct{}

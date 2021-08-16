@@ -111,6 +111,10 @@ func (m mockFS) GetDiskUsage(path string) (DiskUsage, error) {
 	panic("unimplemented")
 }
 
+func (m mockFS) Attributes() Attributes {
+	panic("unimplemented")
+}
+
 var _ FS = &mockFS{}
 
 func TestDiskHealthChecking(t *testing.T) {

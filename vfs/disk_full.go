@@ -5,6 +5,7 @@
 package vfs
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -342,6 +343,12 @@ func (fs *enospcFS) PathDir(path string) string {
 
 func (fs *enospcFS) GetDiskUsage(path string) (DiskUsage, error) {
 	return fs.inner.GetDiskUsage(path)
+}
+
+func (fs *enospcFS) Attributes() Attributes {
+	attrs := fs.inner.Attributes()
+	attrs.Description = fmt.Sprintf("disk-full-monitor( %s )", attrs.Description)
+	return attrs
 }
 
 type enospcFile struct {
