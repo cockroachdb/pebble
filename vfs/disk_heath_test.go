@@ -115,6 +115,10 @@ func (m mockFS) Attributes() Attributes {
 	panic("unimplemented")
 }
 
+func (m mockFS) Unwrap() FS {
+	return nil
+}
+
 var _ FS = &mockFS{}
 
 func TestDiskHealthChecking(t *testing.T) {

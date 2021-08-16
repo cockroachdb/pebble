@@ -508,6 +508,11 @@ func (y *MemFS) Attributes() Attributes {
 	}
 }
 
+// Unwrap implements FS.Unwrap.
+func (y *MemFS) Unwrap() FS {
+	return nil
+}
+
 // memNode holds a file's data or a directory's children, and implements os.FileInfo.
 type memNode struct {
 	name  string

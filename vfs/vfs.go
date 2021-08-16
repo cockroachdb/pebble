@@ -127,6 +127,11 @@ type FS interface {
 
 	// Attributes describes the filesystem and its features.
 	Attributes() Attributes
+
+	// Unwrap unwraps the filesystem, returning the contained
+	// filesystem, if any. If this filesystem is a leaf filesystem
+	// implementation, Unwrap must return nil.
+	Unwrap() FS
 }
 
 // DiskUsage summarizes disk space usage on a filesystem.
@@ -247,6 +252,10 @@ func (fs defaultFS) Attributes() Attributes {
 	}
 }
 
+func (defaultFS) Unwrap() FS {
+	return nil
+}
+
 type randomReadsOption struct{}
 
 // RandomReadsOption is an OpenOption that optimizes opened file handle for
@@ -344,19 +353,12 @@ func LinkOrCopy(fs FS, oldname, newname string) error {
 	return Copy(fs, oldname, newname)
 }
 
-// Root returns the base FS implementation, unwrapping all nested FSs that
-// expose an Unwrap method.
+// Root returns the base FS implementation, unwrapping all nested FSs.
 func Root(fs FS) FS {
-	type unwrapper interface {
-		Unwrap() FS
-	}
-
-	for {
-		u, ok := fs.(unwrapper)
-		if !ok {
-			break
-		}
-		fs = u.Unwrap()
+	v := fs
+	for v != nil {
+		fs = v
+		v = fs.Unwrap()
 	}
 	return fs
 }
