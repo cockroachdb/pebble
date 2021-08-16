@@ -34,6 +34,35 @@ const (
 	FileTypeTemp
 )
 
+// FormatMajorVersion is a constant controlling the format of persisted
+// data. Backwards incompatible changes to durable formats are gated
+// behind a new format major version.
+//
+// At any point, a database's format major version may be bumped.
+// However, once a database's format major version is increased,
+// previous versions of Pebble will refuse to open the database.
+//
+// The zero value format is the earliest format with maximum
+// backwards compatibility.
+type FormatMajorVersion uint64
+
+const (
+	// FormatDefault leaves the format version unspecified. The
+	// FormatDefault constant may be ratcheted upwards over time.
+	FormatDefault FormatMajorVersion = iota
+	// FormatMostCompatible maintains the most backwards compatibility,
+	// maintaining bi-directional compatibility with RocksDB 6.2.1 in
+	// the particular configuration described in the Pebble README.
+	FormatMostCompatible
+	// FormatCurrentVersioned is the first backwards-incompatible change
+	// made to Pebble, replacing the CURRENT file with a versioned
+	// equivalent (CURRENT-XXXXXX) where the numeric portion encodes the
+	// format major version.
+	FormatCurrentVersioned
+	// FormatNewest always contains the most recent format major version.
+	FormatNewest FormatMajorVersion = FormatCurrentVersioned
+)
+
 // MakeFilename builds a filename from components.
 func MakeFilename(fs vfs.FS, dirname string, fileType FileType, fileNum FileNum) string {
 	switch fileType {
@@ -45,8 +74,6 @@ func MakeFilename(fs vfs.FS, dirname string, fileType FileType, fileNum FileNum)
 		return fs.PathJoin(dirname, fmt.Sprintf("%s.sst", fileNum))
 	case FileTypeManifest:
 		return fs.PathJoin(dirname, fmt.Sprintf("MANIFEST-%s", fileNum))
-	case FileTypeCurrent:
-		return fs.PathJoin(dirname, "CURRENT")
 	case FileTypeOptions:
 		return fs.PathJoin(dirname, fmt.Sprintf("OPTIONS-%s", fileNum))
 	case FileTypeTemp:
@@ -55,12 +82,32 @@ func MakeFilename(fs vfs.FS, dirname string, fileType FileType, fileNum FileNum)
 	panic("unreachable")
 }
 
+// MakeCurrentFilename builds a filename for the current file.
+func MakeCurrentFilename(fs vfs.FS, dirname string, formatVers FormatMajorVersion) string {
+	if formatVers == FormatDefault {
+		panic("cannot create current filename with default constant")
+	}
+	// The FormatMostCompatible format predates versioned CURRENT-XXXXXX
+	// files and uses the `CURRENT` filename shared by RocksDB, LevelDB,
+	// etc.
+	if formatVers == FormatMostCompatible {
+		return fs.PathJoin(dirname, "CURRENT")
+	}
+	return fs.PathJoin(dirname, fmt.Sprintf("CURRENT-%s", FileNum(formatVers)))
+}
+
 // ParseFilename parses the components from a filename.
 func ParseFilename(fs vfs.FS, filename string) (fileType FileType, fileNum FileNum, ok bool) {
 	filename = fs.PathBase(filename)
 	switch {
 	case filename == "CURRENT":
 		return FileTypeCurrent, 0, true
+	case strings.HasPrefix(filename, "CURRENT-"):
+		fileNum, ok = parseFileNum(filename[len("CURRENT-"):])
+		if !ok {
+			break
+		}
+		return FileTypeCurrent, fileNum, true
 	case filename == "LOCK":
 		return FileTypeLock, 0, true
 	case strings.HasPrefix(filename, "MANIFEST-"):

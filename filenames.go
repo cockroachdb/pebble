@@ -26,15 +26,16 @@ const (
 	fileTypeTemp     = base.FileTypeTemp
 )
 
-func setCurrentFile(dirname string, fs vfs.FS, fileNum FileNum) error {
-	newFilename := base.MakeFilename(fs, dirname, fileTypeCurrent, fileNum)
-	oldFilename := base.MakeFilename(fs, dirname, fileTypeTemp, fileNum)
-	fs.Remove(oldFilename)
+func setCurrentFile(
+	dirname string, fs vfs.FS, formatVers FormatMajorVersion, manifestFileNum FileNum,
+) error {
+	newFilename := base.MakeCurrentFilename(fs, dirname, formatVers)
+	oldFilename := base.MakeFilename(fs, dirname, fileTypeTemp, manifestFileNum)
 	f, err := fs.Create(oldFilename)
 	if err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(f, "MANIFEST-%s\n", fileNum); err != nil {
+	if _, err := fmt.Fprintf(f, "MANIFEST-%s\n", manifestFileNum); err != nil {
 		return err
 	}
 	if err := f.Sync(); err != nil {
