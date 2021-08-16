@@ -350,6 +350,20 @@ type Options struct {
 		// The default value is the number of logical CPUs, which can be
 		// limited by runtime.GOMAXPROCS.
 		TableCacheShards int
+
+		// CompactionValidationFunc is a function to validate a given user key
+		// that represents either the first or last key in a file being
+		// compacted. The checked key could exist within either a new or deleted
+		// file.
+		//
+		// Returning an error from this validation function will result in a
+		// panic at runtime, given that there is rarely any way of recovering
+		// from malformed keys present in compacted files.
+		//
+		// By default, validation is not performed.
+		//
+		// NOTE: callers should take care to not mutate the key being validated.
+		CompactionKeyValidationFunc func(userKey []byte) error
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
