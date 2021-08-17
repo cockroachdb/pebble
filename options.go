@@ -350,6 +350,19 @@ type Options struct {
 		// The default value is the number of logical CPUs, which can be
 		// limited by runtime.GOMAXPROCS.
 		TableCacheShards int
+
+		// KeyValidationFunc is a function to validate a user key in an SSTable.
+		//
+		// Currently, this function is used to validate the smallest and largest
+		// keys in an SSTable undergoing compaction. In this case, returning an
+		// error from the validation function will result in a panic at runtime,
+		// given that there is rarely any way of recovering from malformed keys
+		// present in compacted files. By default, validation is not performed.
+		//
+		// Additional use-cases may be added in the future.
+		//
+		// NOTE: callers should take care to not mutate the key being validated.
+		KeyValidationFunc func(userKey []byte) error
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
