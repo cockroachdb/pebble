@@ -1539,3 +1539,43 @@ a:a valid
 . exhausted
 a:a valid
 stats: (interface (dir, seek, step): (fwd, 0, 1), (rev, 1, 4)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 1, 5))
+
+# NB: Zero values are skipped by deletable merger.
+define merger=deletable
+a.MERGE.1:1
+a.MERGE.2:2
+a.MERGE.3:-1
+a.MERGE.4:-2
+b.MERGE.4:-3
+b.MERGE.3:3
+b.MERGE.2:2
+b.MERGE.1:-2
+----
+
+iter seq=5
+seek-ge a
+next
+next
+prev
+prev
+----
+.
+.
+.
+.
+.
+stats: (interface (dir, seek, step): (fwd, 1, 2), (rev, 0, 2)), (internal (dir, seek, step): (fwd, 1, 8), (rev, 1, 8))
+
+iter seq=4
+seek-ge a
+next
+next
+prev
+prev
+----
+a:2
+b:3
+.
+b:3
+a:2
+stats: (interface (dir, seek, step): (fwd, 1, 2), (rev, 0, 2)), (internal (dir, seek, step): (fwd, 1, 6), (rev, 1, 6))

@@ -60,6 +60,22 @@ type ValueMerger interface {
 	Finish(includesBase bool) ([]byte, io.Closer, error)
 }
 
+// DeletableValueMerger is an extension to ValueMerger which allows indicating that the
+// result of a merge operation is non-existent. Such non-existent entries will eventually
+// be deleted during compaction. Note that during compaction, non-existence of the result
+// of a merge means that the merge operands will not result in any record being output.
+// This is not the same as transforming the merge operands into a deletion tombstone, as
+// older merge operands will still be visible during iteration. Deletion of the merge operands
+// in this way is akin to the way a SingleDelete+Set combine into non-existence while leaving
+// older records for the same key unaffected.
+type DeletableValueMerger interface {
+	ValueMerger
+
+	// DeletableFinish enables a value merger to indicate that the result of a merge operation
+	// is non-existent. See Finish for a description of includesBase.
+	DeletableFinish(includesBase bool) (value []byte, delete bool, closer io.Closer, err error)
+}
+
 // Merger defines an associative merge operation. The merge operation merges
 // two or more values for a single key. A merge operation is requested by
 // writing a value using {Batch,DB}.Merge(). The value at that key is merged

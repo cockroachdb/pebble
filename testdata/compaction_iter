@@ -1164,3 +1164,24 @@ next
 a#3,15:c
 b#5,1:5[base]
 b#1,2:1
+
+# NB: Zero values are skipped by deletable merger.
+define merger=deletable
+a.MERGE.1:1
+a.MERGE.2:2
+a.MERGE.3:-1
+a.MERGE.4:-2
+b.MERGE.4:-3
+b.MERGE.3:3
+b.MERGE.2:2
+b.MERGE.1:-2
+----
+
+iter
+first
+next
+next
+----
+.
+.
+.
