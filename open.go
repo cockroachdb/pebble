@@ -78,10 +78,16 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		// look for the return of a nil DB pointer.
 		if r := recover(); db == nil {
 			// Release our references to the Cache. Note that both the DB, and
-			// tableCache have a reference. The tableCache.Close will release
-			// the tableCache's reference.
+			// tableCache have a reference. When we release the reference to
+			// the tableCache, and if there are no other references to
+			// the tableCache, then the tableCache will also release its
+			// reference to the cache.
 			opts.Cache.Unref()
-			_ = d.tableCache.Close()
+
+			if d.tableCache != nil {
+				_ = d.tableCache.close()
+			}
+
 			for _, mem := range d.mu.mem.queue {
 				switch t := mem.flushable.(type) {
 				case *memTable:
@@ -98,12 +104,14 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if d.equal == nil {
 		d.equal = bytes.Equal
 	}
+
 	tableCacheSize := opts.MaxOpenFiles - numNonTableCacheFiles
 	if tableCacheSize < minTableCacheSize {
 		tableCacheSize = minTableCacheSize
 	}
-	d.tableCache.init(d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
+	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
+
 	d.commit = newCommitPipeline(commitEnv{
 		logSeqNum:     &d.mu.versions.atomic.logSeqNum,
 		visibleSeqNum: &d.mu.versions.atomic.visibleSeqNum,

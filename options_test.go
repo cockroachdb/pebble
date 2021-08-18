@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"fmt"
 	"math/rand"
 	"runtime"
 	"testing"
@@ -287,5 +288,23 @@ func TestOptionsValidate(t *testing.T) {
 				require.Regexp(t, c.expected, err.Error())
 			}
 		})
+	}
+}
+
+// This test isn't being done in TestOptionsValidate
+// cause it doesn't support setting pointers.
+func TestOptionsValidateCache(t *testing.T) {
+	var opts Options
+	opts.EnsureDefaults()
+	opts.Cache = NewCache(8 << 20)
+	defer opts.Cache.Unref()
+	opts.TableCache = NewTableCache(NewCache(8<<20), 10, 1)
+	defer opts.TableCache.cache.Unref()
+	defer opts.TableCache.Unref()
+
+	err := opts.Validate()
+	require.Error(t, err)
+	if fmt.Sprint(err) != "underlying cache in the TableCache and the Cache dont match" {
+		t.Errorf("Unexpected error message")
 	}
 }
