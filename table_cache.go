@@ -27,46 +27,46 @@ var emptyIter = &errorIter{err: nil}
 
 var tableCacheLabels = pprof.Labels("pebble", "table-cache")
 
-type tableCache struct {
-	cache         *Cache
-	shards        []*tableCacheShard
+type tableCacheDB struct {
+	// shared is the underlying table cache which
+	// can be shared my multiple db instances.
+	shared *tableCacheShared
+
+	// Fields unique to a db.
+	logger        Logger
+	cacheID       uint64
+	dirname       string
+	fs            vfs.FS
+	opts          sstable.ReaderOptions
 	filterMetrics FilterMetrics
 }
 
-func (c *tableCache) init(cacheID uint64, dirname string, fs vfs.FS, opts *Options, size int) {
-	c.cache = opts.Cache
-	c.cache.Ref()
+// Invariant: shared shouldn't be nil, and tableCacheShared.init should
+// already have been called.
+func (c *tableCacheDB) init(
+	shared *tableCacheShared, cacheID uint64, dirname string, fs vfs.FS, opts *Options,
+) {
+	c.shared = shared
+	// Create a ref to the shared table cache which will be released once
+	// c.close is called.
+	c.shared.Ref()
 
-	c.shards = make([]*tableCacheShard, opts.Experimental.TableCacheShards)
-	for i := range c.shards {
-		c.shards[i] = &tableCacheShard{}
-		c.shards[i].init(cacheID, dirname, fs, opts, size/len(c.shards))
-		c.shards[i].filterMetrics = &c.filterMetrics
-	}
+	c.logger = opts.Logger
+	c.cacheID = cacheID
+	c.fs = fs
+	c.opts = opts.MakeReaderOptions()
 }
 
-func (c *tableCache) getShard(fileNum FileNum) *tableCacheShard {
-	return c.shards[uint64(fileNum)%uint64(len(c.shards))]
+func (c *tableCacheDB) close() error {
+	// Get rid of the ref to the shared table cache which
+	// we're holding.
+	return c.shared.Unref()
 }
 
-func (c *tableCache) newIters(
-	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
-) (internalIterator, internalIterator, error) {
-	return c.getShard(file.FileNum).newIters(file, opts, bytesIterated)
-}
-
-func (c *tableCache) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
-	return c.getShard(file.FileNum).getTableProperties(file)
-}
-
-func (c *tableCache) evict(fileNum FileNum) {
-	c.getShard(fileNum).evict(fileNum)
-}
-
-func (c *tableCache) metrics() (CacheMetrics, FilterMetrics) {
+func (c *tableCacheDB) metrics() (CacheMetrics, FilterMetrics) {
 	var m CacheMetrics
-	for i := range c.shards {
-		s := c.shards[i]
+	for i := range c.shared.shards {
+		s := c.shared.shards[i]
 		s.mu.RLock()
 		m.Count += int64(len(s.mu.nodes))
 		s.mu.RUnlock()
@@ -81,36 +81,120 @@ func (c *tableCache) metrics() (CacheMetrics, FilterMetrics) {
 	return m, f
 }
 
-func (c *tableCache) withReader(meta *fileMetadata, fn func(*sstable.Reader) error) error {
-	s := c.getShard(meta.FileNum)
-	v := s.findNode(meta)
+func (c *tableCacheDB) newIters(
+	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
+) (internalIterator, internalIterator, error) {
+	return c.shared.getShard(c.cacheID, file.FileNum).newIters(
+		file, opts, bytesIterated, c,
+	)
+}
+
+func (c *tableCacheDB) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
+	return c.shared.getShard(c.cacheID, file.FileNum).getTableProperties(c, file)
+}
+
+func (c *tableCacheDB) evict(fileNum FileNum) {
+	c.shared.getShard(c.cacheID, fileNum).evict(c, fileNum)
+}
+
+func (c *tableCacheDB) withReader(meta *fileMetadata, fn func(*sstable.Reader) error) error {
+	s := c.shared.getShard(c.cacheID, meta.FileNum)
+	v := s.findNode(c, meta)
 	defer s.unrefValue(v)
 	if v.err != nil {
-		base.MustExist(s.fs, v.filename, s.logger, v.err)
+		base.MustExist(c.fs, v.filename, c.logger, v.err)
 		return v.err
 	}
 	return fn(v.reader)
 }
 
-func (c *tableCache) iterCount() int64 {
+func (c *tableCacheDB) iterCount() int64 {
 	var n int64
-	for i := range c.shards {
-		n += int64(atomic.LoadInt32(&c.shards[i].atomic.iterCount))
+	for i := range c.shared.shards {
+		n += int64(atomic.LoadInt32(&c.shared.shards[i].atomic.iterCount))
 	}
 	return n
 }
 
-func (c *tableCache) Close() error {
-	var err error
-	for i := range c.shards {
-		// The cache shard is not allocated yet, nothing to close
-		if c.shards[i] == nil {
-			continue
-		}
-		err = firstError(err, c.shards[i].Close())
+// tableCacheShared is a reference counted, shared
+// structure, which can be used my multiple db instances
+// once it has been initialized.
+type tableCacheShared struct {
+	// Atomic contains fields which are accessed atomically. Go allocations
+	// are guaranteed to be 64-bit aligned which we take advantage of by
+	// placing the 64-bit fields which we access atomically at the beginning
+	// of the FileMetadata struct. For more information, see
+	// https://golang.org/pkg/sync/atomic/#pkg-note-BUG.
+	atomic struct {
+		refs int64
 	}
-	c.cache.Unref()
-	return err
+
+	cache  *Cache
+	shards []*tableCacheShard
+}
+
+// This init call adds a reference to the shared table cache, and so does
+// the pebble.Open function call. The caller of init must call Unref once
+// pebble.Open returns to avoid having an extra reference to the shared
+// table cache.
+func (c *tableCacheShared) init(opts *Options, size int) {
+	c.cache = opts.Cache
+	c.cache.Ref()
+
+	c.shards = make([]*tableCacheShard, opts.Experimental.TableCacheShards)
+	for i := range c.shards {
+		c.shards[i] = &tableCacheShard{}
+		c.shards[i].init(size / len(c.shards))
+	}
+
+	// Create a reference to the shared table cache.
+	// todo: maybe we should let the caller create a reference to this
+	// if they must, instead of creating a reference here.
+	c.Ref()
+}
+
+// Ref adds a reference to the cache. Once tableCacheShared.init is
+// called, the cache only remains valid if there is at least one
+// reference to it.
+func (c *tableCacheShared) Ref() {
+	v := atomic.AddInt64(&c.atomic.refs, 1)
+	if v < 1 {
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+	}
+}
+
+func (c *tableCacheShared) Unref() error {
+	v := atomic.AddInt64(&c.atomic.refs, -1)
+	switch {
+	case v < 0:
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+	case v == 0:
+		var err error
+		for i := range c.shards {
+			// The cache shard is not allocated yet, nothing to close
+			if c.shards[i] == nil {
+				continue
+			}
+			err = firstError(err, c.shards[i].Close())
+		}
+
+		// Unref the cache which we hold a reference to when the tableCacheShared
+		// is first instantiated.
+		c.cache.Unref()
+		return err
+	}
+	return nil
+}
+
+func (c *tableCacheShared) getShard(cacheId uint64, fileNum FileNum) *tableCacheShard {
+	// todo(bananabrick) : Do we need to change this, and index the shard using
+	// cacheId + fileNum?
+	return c.shards[uint64(fileNum)%uint64(len(c.shards))]
+}
+
+type tableCacheKey struct {
+	cacheID uint64
+	fileNum FileNum
 }
 
 type tableCacheShard struct {
@@ -125,16 +209,13 @@ type tableCacheShard struct {
 		iterCount int32
 	}
 
-	logger  Logger
-	cacheID uint64
-	dirname string
-	fs      vfs.FS
-	opts    sstable.ReaderOptions
-	size    int
+	size int
 
 	mu struct {
 		sync.RWMutex
-		nodes map[FileNum]*tableCacheNode
+
+		nodes map[tableCacheKey]*tableCacheNode
+
 		// The iters map is only created and populated in race builds.
 		iters map[sstable.Iterator][]byte
 
@@ -147,20 +228,14 @@ type tableCacheShard struct {
 		sizeCold   int
 		sizeTest   int
 	}
-	releasing     sync.WaitGroup
-	releasingCh   chan *tableCacheValue
-	filterMetrics *FilterMetrics
+	releasing   sync.WaitGroup
+	releasingCh chan *tableCacheValue
 }
 
-func (c *tableCacheShard) init(cacheID uint64, dirname string, fs vfs.FS, opts *Options, size int) {
-	c.logger = opts.Logger
-	c.cacheID = cacheID
-	c.dirname = dirname
-	c.fs = fs
-	c.opts = opts.MakeReaderOptions()
+func (c *tableCacheShard) init(size int) {
 	c.size = size
 
-	c.mu.nodes = make(map[FileNum]*tableCacheNode)
+	c.mu.nodes = make(map[tableCacheKey]*tableCacheNode)
 	c.mu.coldTarget = size
 	c.releasingCh = make(chan *tableCacheValue, 100)
 	go c.releaseLoop()
@@ -180,15 +255,16 @@ func (c *tableCacheShard) releaseLoop() {
 
 func (c *tableCacheShard) newIters(
 	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
+	tableCacheDB *tableCacheDB,
 ) (internalIterator, internalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
 	// the sstable iterator, which decrements when it is closed.
-	v := c.findNode(file)
+	v := c.findNode(tableCacheDB, file)
 	if v.err != nil {
 		defer c.unrefValue(v)
-		base.MustExist(c.fs, v.filename, c.logger, v.err)
+		base.MustExist(tableCacheDB.fs, v.filename, tableCacheDB.logger, v.err)
 		return nil, nil, v.err
 	}
 
@@ -237,9 +313,9 @@ func (c *tableCacheShard) newIters(
 }
 
 // getTableProperties return sst table properties for target file
-func (c *tableCacheShard) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
+func (c *tableCacheShard) getTableProperties(tableCacheDB *tableCacheDB, file *fileMetadata) (*sstable.Properties, error) {
 	// Calling findNode gives us the responsibility of decrementing v's refCount here
-	v := c.findNode(file)
+	v := c.findNode(tableCacheDB, file)
 	defer c.unrefValue(v)
 
 	if v.err != nil {
@@ -261,7 +337,9 @@ func (c *tableCacheShard) releaseNode(n *tableCacheNode) {
 //
 // c.mu must be held when calling this.
 func (c *tableCacheShard) unlinkNode(n *tableCacheNode) {
-	delete(c.mu.nodes, n.meta.FileNum)
+	// todo(bananabrick) : use the real key here.
+	key := tableCacheKey{n.cacheID, n.meta.FileNum}
+	delete(c.mu.nodes, key)
 
 	switch n.ptype {
 	case tableCacheNodeHot:
@@ -314,11 +392,12 @@ func (c *tableCacheShard) unrefValue(v *tableCacheValue) {
 // findNode returns the node for the table with the given file number, creating
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
-func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
+func (c *tableCacheShard) findNode(tableCacheDB *tableCacheDB, meta *fileMetadata) *tableCacheValue {
 	// Fast-path for a hit in the cache. We grab the lock in shared mode, and use
 	// a batching mechanism to perform updates to the LRU list.
 	c.mu.RLock()
-	if n := c.mu.nodes[meta.FileNum]; n != nil && n.value != nil {
+	key := tableCacheKey{tableCacheDB.cacheID, meta.FileNum}
+	if n := c.mu.nodes[key]; n != nil && n.value != nil {
 		// Fast-path hit.
 		//
 		// The caller is responsible for decrementing the refCount.
@@ -334,7 +413,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 
 	c.mu.Lock()
 
-	n := c.mu.nodes[meta.FileNum]
+	n := c.mu.nodes[key]
 	switch {
 	case n == nil:
 		// Slow-path miss of a non-existent node.
@@ -396,14 +475,15 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 	// Note adding to the cache lists must complete before we begin loading the
 	// table as a failure during load will result in the node being unlinked.
 	pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
-		v.load(meta, c)
+		v.load(meta, c, tableCacheDB)
 	})
 	return v
 }
 
 func (c *tableCacheShard) addNode(n *tableCacheNode) {
 	c.evictNodes()
-	c.mu.nodes[n.meta.FileNum] = n
+	key := tableCacheKey{n.cacheID, n.meta.FileNum}
+	c.mu.nodes[key] = n
 
 	n.links.next = n
 	n.links.prev = n
@@ -496,10 +576,11 @@ func (c *tableCacheShard) runHandTest() {
 	c.mu.handTest = c.mu.handTest.next()
 }
 
-func (c *tableCacheShard) evict(fileNum FileNum) {
+func (c *tableCacheShard) evict(tableCacheDB *tableCacheDB, fileNum FileNum) {
 	c.mu.Lock()
 
-	n := c.mu.nodes[fileNum]
+	key := tableCacheKey{tableCacheDB.cacheID, fileNum}
+	n := c.mu.nodes[key]
 	var v *tableCacheValue
 	if n != nil {
 		// NB: This is equivalent to tableCacheShard.releaseNode(), but we perform
@@ -511,7 +592,9 @@ func (c *tableCacheShard) evict(fileNum FileNum) {
 		v = n.value
 		if v != nil {
 			if t := atomic.AddInt32(&v.refCount, -1); t != 0 {
-				c.logger.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
+				tableCacheDB.logger.Fatalf(
+					"sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack(),
+				)
 			}
 			c.releasing.Add(1)
 		}
@@ -523,7 +606,7 @@ func (c *tableCacheShard) evict(fileNum FileNum) {
 		v.release(c)
 	}
 
-	c.opts.Cache.EvictFile(c.cacheID, fileNum)
+	tableCacheDB.shared.cache.EvictFile(tableCacheDB.cacheID, fileNum)
 }
 
 func (c *tableCacheShard) Close() error {
@@ -584,15 +667,17 @@ type tableCacheValue struct {
 	refCount int32
 }
 
-func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard) {
+func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, tableCacheDB *tableCacheDB) {
 	// Try opening the fileTypeTable first.
 	var f vfs.File
-	v.filename = base.MakeFilename(c.fs, c.dirname, fileTypeTable, meta.FileNum)
-	f, v.err = c.fs.Open(v.filename, vfs.RandomReadsOption)
+	v.filename = base.MakeFilename(tableCacheDB.fs, tableCacheDB.dirname, fileTypeTable, meta.FileNum)
+	f, v.err = tableCacheDB.fs.Open(v.filename, vfs.RandomReadsOption)
 	if v.err == nil {
-		cacheOpts := private.SSTableCacheOpts(c.cacheID, meta.FileNum).(sstable.ReaderOption)
-		reopenOpt := sstable.FileReopenOpt{FS: c.fs, Filename: v.filename}
-		v.reader, v.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics, reopenOpt)
+		cacheOpts := private.SSTableCacheOpts(tableCacheDB.cacheID, meta.FileNum).(sstable.ReaderOption)
+		reopenOpt := sstable.FileReopenOpt{FS: tableCacheDB.fs, Filename: v.filename}
+
+		// todo(bananabrick) : check if just passing this pointer here is fine.
+		v.reader, v.err = sstable.NewReader(f, tableCacheDB.opts, cacheOpts, &tableCacheDB.filterMetrics, reopenOpt)
 	}
 	if v.err == nil {
 		if meta.SmallestSeqNum == meta.LargestSeqNum {
@@ -604,7 +689,8 @@ func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard) {
 		defer c.mu.Unlock()
 		// Lookup the node in the cache again as it might have already been
 		// removed.
-		n := c.mu.nodes[meta.FileNum]
+		key := tableCacheKey{tableCacheDB.cacheID, meta.FileNum}
+		n := c.mu.nodes[key]
 		if n != nil && n.value == v {
 			c.releaseNode(n)
 		}
@@ -654,6 +740,10 @@ type tableCacheNode struct {
 	// referenced is atomically set to indicate that this entry has been accessed
 	// since the last time one of the clock hands swept it.
 	referenced int32
+
+	// cacheID is stored along with the table cache node to prevent constantly
+	// passing around the cacheID.
+	cacheID uint64
 }
 
 func (n *tableCacheNode) next() *tableCacheNode {

@@ -68,12 +68,12 @@ func (fs *tableCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File,
 	return &tableCacheTestFile{f, fs, name}, nil
 }
 
-func (fs *tableCacheTestFS) validate(t *testing.T, c *tableCache, f func(i, gotO, gotC int) error) {
+func (fs *tableCacheTestFS) validate(t *testing.T, c *tableCacheDB, f func(i, gotO, gotC int) error) {
 	if err := fs.validateOpenTables(f); err != nil {
 		t.Error(err)
 		return
 	}
-	c.Close()
+	c.close()
 	if err := fs.validateNoneStillOpen(); err != nil {
 		t.Error(err)
 		return
@@ -141,7 +141,7 @@ const (
 	tableCacheTestCacheSize = 100
 )
 
-func newTableCache() (*tableCache, *tableCacheTestFS, error) {
+func newTableCache() (*tableCacheDB, *tableCacheTestFS, error) {
 	xxx := bytes.Repeat([]byte("x"), tableCacheTestNumTables)
 	fs := &tableCacheTestFS{
 		FS: vfs.NewMem(),
@@ -172,8 +172,10 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	opts.EnsureDefaults()
 	defer opts.Cache.Unref()
 
-	c := &tableCache{}
-	c.init(opts.Cache.NewID(), "", fs, opts, tableCacheTestCacheSize)
+	s := &tableCacheShared{}
+	s.init(opts, tableCacheTestCacheSize)
+	c := &tableCacheDB{}
+	c.init(s, opts.Cache.NewID(), "", fs, opts)
 	return c, fs, nil
 }
 
@@ -329,7 +331,7 @@ func TestTableCacheIterLeak(t *testing.T) {
 		nil /* bytes iterated */)
 	require.NoError(t, err)
 
-	if err := c.Close(); err == nil {
+	if err := c.close(); err == nil {
 		t.Fatalf("expected failure, but found success")
 	} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
 		t.Fatalf("expected leaked iterators, but found %+v", err)
@@ -380,6 +382,7 @@ func TestTableCacheEvictClose(t *testing.T) {
 	require.NoError(t, db.Set(start, nil, nil))
 	require.NoError(t, db.Flush())
 	require.NoError(t, db.DeleteRange(start, end, nil))
+	fmt.Println("here", db.Compact(start, end))
 	require.NoError(t, db.Compact(start, end))
 	require.NoError(t, db.Close())
 	close(errs)
@@ -411,11 +414,17 @@ func TestTableCacheClockPro(t *testing.T) {
 	opts.EnsureDefaults()
 	defer opts.Cache.Unref()
 
-	cache := &tableCacheShard{
-		filterMetrics: &FilterMetrics{},
-	}
+	shared := &tableCacheShared{}
+	shared.init(opts, 200*opts.Experimental.TableCacheShards)
+	defer shared.Unref()
+	tableCacheDB := &tableCacheDB{}
+	tableCacheDB.init(shared, 1, "", opts.FS, opts)
+	defer tableCacheDB.close()
+	cache := shared.shards[0]
+
+	// cache := &tableCacheShard{}
 	// NB: The table cache size of 200 is required for the expected test values.
-	cache.init(0, "", mem, opts, 200)
+	// cache.init(200)
 
 	scanner := bufio.NewScanner(f)
 	tables := make(map[int]bool)
@@ -435,7 +444,7 @@ func TestTableCacheClockPro(t *testing.T) {
 		}
 
 		oldHits := atomic.LoadInt64(&cache.atomic.hits)
-		v := cache.findNode(&fileMetadata{FileNum: FileNum(key)})
+		v := cache.findNode(tableCacheDB, &fileMetadata{FileNum: FileNum(key)})
 		cache.unrefValue(v)
 
 		hit := atomic.LoadInt64(&cache.atomic.hits) != oldHits

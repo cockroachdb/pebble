@@ -444,6 +444,11 @@ type Options struct {
 	// disabled.
 	ReadOnly bool
 
+	// SharedTableCache can be used to share a table cache between multiple
+	// DB instances. If this is nil, then each DB will create its own
+	// when pebble.Open is called.
+	SharedTableCache *tableCacheShared
+
 	// TablePropertyCollectors is a list of TablePropertyCollector creation
 	// functions. A new TablePropertyCollector is created for each sstable built
 	// and lives for the lifetime of the table.

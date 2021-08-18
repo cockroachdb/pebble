@@ -208,7 +208,7 @@ type DB struct {
 	dataDir  vfs.File
 	walDir   vfs.File
 
-	tableCache tableCache
+	tableCache tableCacheDB
 	newIters   tableNewIters
 
 	commit *commitPipeline
@@ -943,7 +943,7 @@ func (d *DB) Close() error {
 	if n := len(d.mu.compact.inProgress); n > 0 {
 		err = errors.Errorf("pebble: %d unexpected in-progress compactions", errors.Safe(n))
 	}
-	err = firstError(err, d.tableCache.Close())
+	err = firstError(err, d.tableCache.close())
 	if !d.opts.ReadOnly {
 		err = firstError(err, d.mu.log.Close())
 	} else if d.mu.log.LogWriter != nil {

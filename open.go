@@ -79,7 +79,13 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			// tableCache have a reference. The tableCache.Close will release
 			// the tableCache's reference.
 			opts.Cache.Unref()
-			_ = d.tableCache.Close()
+
+			// Release our reference to the shared table cache. Similar to the Cache,
+			// both the DB and the tableCache have a reference to the shared table
+			// cache.
+			opts.SharedTableCache.Unref()
+
+			_ = d.tableCache.close()
 			for _, mem := range d.mu.mem.queue {
 				switch t := mem.flushable.(type) {
 				case *memTable:
@@ -100,7 +106,11 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if tableCacheSize < minTableCacheSize {
 		tableCacheSize = minTableCacheSize
 	}
-	d.tableCache.init(d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
+	if opts.SharedTableCache == nil {
+		opts.SharedTableCache = &tableCacheShared{}
+		opts.SharedTableCache.init(opts, tableCacheSize)
+	}
+	d.tableCache.init(opts.SharedTableCache, d.cacheID, dirname, opts.FS, d.opts)
 	d.newIters = d.tableCache.newIters
 	d.commit = newCommitPipeline(commitEnv{
 		logSeqNum:     &d.mu.versions.atomic.logSeqNum,
