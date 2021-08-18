@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/cockroachdb/errors"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -325,7 +326,11 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				// includesBase is true whenever we've transformed the MERGE record
 				// into a SET.
 				includesBase := i.key.Kind() == InternalKeyKindSet
-				i.value, i.valueCloser, i.err = valueMerger.Finish(includesBase)
+				var needDelete bool
+				i.value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, includesBase)
+				if i.err == nil && needDelete && includesBase {
+					i.key.SetKind(InternalKeyKindDelete)
+				}
 			}
 			if i.err == nil {
 				// A non-skippable entry does not necessarily cover later merge
