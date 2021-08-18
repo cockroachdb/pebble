@@ -250,7 +250,7 @@ func (d *DB) loadTableStats(
 ) (manifest.TableStats, []deleteCompactionHint, error) {
 	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
-	err := d.tableCache.withReader(meta, func(r *sstable.Reader) (err error) {
+	err := d.tableCacheContainer.withReader(meta, func(r *sstable.Reader) (err error) {
 		stats.NumEntries = r.Properties.NumEntries
 		stats.NumDeletions = r.Properties.NumDeletions
 		if r.Properties.NumPointDeletions() > 0 {
@@ -345,7 +345,7 @@ func (d *DB) averageEntrySizeBeneath(
 		overlaps := v.Overlaps(l, d.cmp, meta.Smallest.UserKey, meta.Largest.UserKey)
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
-			err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
+			err := d.tableCacheContainer.withReader(file, func(r *sstable.Reader) (err error) {
 				fileSum += file.Size
 				entryCount += r.Properties.NumEntries
 				keySum += r.Properties.RawKeySize
@@ -406,7 +406,7 @@ func (d *DB) estimateSizeBeneath(
 				}
 			} else if d.cmp(file.Smallest.UserKey, end) <= 0 && d.cmp(start, file.Largest.UserKey) <= 0 {
 				var size uint64
-				err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
+				err := d.tableCacheContainer.withReader(file, func(r *sstable.Reader) (err error) {
 					size, err = r.EstimateDiskUsage(start, end)
 					return err
 				})

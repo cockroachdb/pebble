@@ -462,6 +462,15 @@ type Options struct {
 	// disabled.
 	ReadOnly bool
 
+	// TableCache is an initialized tableCache which should be set as an
+	// option if the DB needs to be initialized with a pre-existing table cache.
+	// If TableCache is nil, then a table cache which is unique
+	// to the DB instance is created.
+	// TableCache can be shared between db instances by setting it here.
+	// The TableCache set here must use the same underlying cache as Options.Cache
+	// and pebble will panic otherwise.
+	TableCache *TableCache
+
 	// TablePropertyCollectors is a list of TablePropertyCollector creation
 	// functions. A new TablePropertyCollector is created for each sstable built
 	// and lives for the lifetime of the table.
@@ -1071,6 +1080,9 @@ func (o *Options) Validate() error {
 	if o.MemTableStopWritesThreshold < 2 {
 		fmt.Fprintf(&buf, "MemTableStopWritesThreshold (%d) must be >= 2\n",
 			o.MemTableStopWritesThreshold)
+	}
+	if o.TableCache != nil && o.Cache != o.TableCache.cache {
+		fmt.Fprint(&buf, "Underlying cache in the TableCache and the Cache dont match\n")
 	}
 	if buf.Len() == 0 {
 		return nil

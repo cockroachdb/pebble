@@ -208,8 +208,8 @@ type DB struct {
 	dataDir  vfs.File
 	walDir   vfs.File
 
-	tableCache tableCache
-	newIters   tableNewIters
+	tableCacheContainer *tableCacheContainer
+	newIters            tableNewIters
 
 	commit *commitPipeline
 
@@ -943,7 +943,7 @@ func (d *DB) Close() error {
 	if n := len(d.mu.compact.inProgress); n > 0 {
 		err = errors.Errorf("pebble: %d unexpected in-progress compactions", errors.Safe(n))
 	}
-	err = firstError(err, d.tableCache.Close())
+	err = firstError(err, d.tableCacheContainer.close())
 	if !d.opts.ReadOnly {
 		err = firstError(err, d.mu.log.Close())
 	} else if d.mu.log.LogWriter != nil {
@@ -1185,8 +1185,8 @@ func (d *DB) Metrics() *Metrics {
 	d.mu.Unlock()
 
 	metrics.BlockCache = d.opts.Cache.Metrics()
-	metrics.TableCache, metrics.Filter = d.tableCache.metrics()
-	metrics.TableIters = int64(d.tableCache.iterCount())
+	metrics.TableCache, metrics.Filter = d.tableCacheContainer.metrics()
+	metrics.TableIters = int64(d.tableCacheContainer.iterCount())
 	return metrics
 }
 
@@ -1249,7 +1249,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 		for m := iter.First(); m != nil; m = iter.Next() {
 			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
 			if opt.withProperties {
-				p, err := d.tableCache.getTableProperties(m)
+				p, err := d.tableCacheContainer.getTableProperties(m)
 				if err != nil {
 					return nil, err
 				}
@@ -1307,7 +1307,7 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			} else if d.opts.Comparer.Compare(file.Smallest.UserKey, end) <= 0 &&
 				d.opts.Comparer.Compare(start, file.Largest.UserKey) <= 0 {
 				var size uint64
-				err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
+				err := d.tableCacheContainer.withReader(file, func(r *sstable.Reader) (err error) {
 					size, err = r.EstimateDiskUsage(start, end)
 					return err
 				})

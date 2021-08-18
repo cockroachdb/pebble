@@ -2776,7 +2776,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 				}
 				dir = d.walDirname
 			case fileTypeTable:
-				d.tableCache.evict(fi.fileNum)
+				d.tableCacheContainer.evict(fi.fileNum)
 			}
 
 			filesToDelete = append(filesToDelete, obsoleteFile{
