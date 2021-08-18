@@ -68,12 +68,12 @@ func (fs *tableCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File,
 	return &tableCacheTestFile{f, fs, name}, nil
 }
 
-func (fs *tableCacheTestFS) validate(t *testing.T, c *tableCache, f func(i, gotO, gotC int) error) {
+func (fs *tableCacheTestFS) validate(t *testing.T, c *tableCacheContainer, f func(i, gotO, gotC int) error) {
 	if err := fs.validateOpenTables(f); err != nil {
 		t.Error(err)
 		return
 	}
-	c.Close()
+	c.close()
 	if err := fs.validateNoneStillOpen(); err != nil {
 		t.Error(err)
 		return
@@ -141,13 +141,13 @@ const (
 	tableCacheTestCacheSize = 100
 )
 
-func newTableCache() (*tableCache, *tableCacheTestFS, error) {
+func newTableCacheContainerTest(dirname string) (*tableCacheContainer, *tableCacheTestFS, error) {
 	xxx := bytes.Repeat([]byte("x"), tableCacheTestNumTables)
 	fs := &tableCacheTestFS{
 		FS: vfs.NewMem(),
 	}
 	for i := 0; i < tableCacheTestNumTables; i++ {
-		f, err := fs.Create(base.MakeFilename(fs, "", fileTypeTable, FileNum(i)))
+		f, err := fs.Create(base.MakeFilename(fs, dirname, fileTypeTable, FileNum(i)))
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "fs.Create")
 		}
@@ -172,14 +172,13 @@ func newTableCache() (*tableCache, *tableCacheTestFS, error) {
 	opts.EnsureDefaults()
 	defer opts.Cache.Unref()
 
-	c := &tableCache{}
-	c.init(opts.Cache.NewID(), "", fs, opts, tableCacheTestCacheSize)
+	c := newTableCacheContainer(nil, opts.Cache.NewID(), dirname, fs, opts, tableCacheTestCacheSize)
 	return c, fs, nil
 }
 
 func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 	const N = 2000
-	c, fs, err := newTableCache()
+	c, fs, err := newTableCacheContainerTest("")
 	require.NoError(t, err)
 
 	rngMu := sync.Mutex{}
@@ -242,7 +241,7 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 		pinned0 = 7
 		pinned1 = 11
 	)
-	c, fs, err := newTableCache()
+	c, fs, err := newTableCacheContainerTest("")
 	require.NoError(t, err)
 
 	for i := 0; i < N; i++ {
@@ -275,7 +274,7 @@ func TestTableCacheEvictions(t *testing.T) {
 		N      = 1000
 		lo, hi = 10, 20
 	)
-	c, fs, err := newTableCache()
+	c, fs, err := newTableCacheContainerTest("")
 	require.NoError(t, err)
 
 	rng := rand.New(rand.NewSource(2))
@@ -320,7 +319,7 @@ func TestTableCacheEvictions(t *testing.T) {
 }
 
 func TestTableCacheIterLeak(t *testing.T) {
-	c, _, err := newTableCache()
+	c, _, err := newTableCacheContainerTest("")
 	require.NoError(t, err)
 
 	iter, _, err := c.newIters(
@@ -329,7 +328,7 @@ func TestTableCacheIterLeak(t *testing.T) {
 		nil /* bytes iterated */)
 	require.NoError(t, err)
 
-	if err := c.Close(); err == nil {
+	if err := c.close(); err == nil {
 		t.Fatalf("expected failure, but found success")
 	} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
 		t.Fatalf("expected leaked iterators, but found %+v", err)
@@ -341,7 +340,7 @@ func TestTableCacheIterLeak(t *testing.T) {
 
 func TestTableCacheRetryAfterFailure(t *testing.T) {
 	// Test a retry can succeed after a failure, i.e., errors are not cached.
-	c, fs, err := newTableCache()
+	c, fs, err := newTableCacheContainerTest("")
 	require.NoError(t, err)
 
 	fs.setOpenError(true /* enabled */)
@@ -411,11 +410,15 @@ func TestTableCacheClockPro(t *testing.T) {
 	opts.EnsureDefaults()
 	defer opts.Cache.Unref()
 
-	cache := &tableCacheShard{
-		filterMetrics: &FilterMetrics{},
-	}
+	cache := &tableCacheShard{}
 	// NB: The table cache size of 200 is required for the expected test values.
-	cache.init(0, "", mem, opts, 200)
+	cache.init(200)
+	dbOpts := &tableCacheDBOpts{}
+	dbOpts.logger = opts.Logger
+	dbOpts.cacheID = 0
+	dbOpts.dirname = ""
+	dbOpts.fs = mem
+	dbOpts.opts = opts.MakeReaderOptions()
 
 	scanner := bufio.NewScanner(f)
 	tables := make(map[int]bool)
@@ -435,7 +438,7 @@ func TestTableCacheClockPro(t *testing.T) {
 		}
 
 		oldHits := atomic.LoadInt64(&cache.atomic.hits)
-		v := cache.findNode(&fileMetadata{FileNum: FileNum(key)})
+		v := cache.findNode(&fileMetadata{FileNum: FileNum(key)}, dbOpts)
 		cache.unrefValue(v)
 
 		hit := atomic.LoadInt64(&cache.atomic.hits) != oldHits
