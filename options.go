@@ -444,6 +444,13 @@ type Options struct {
 	// disabled.
 	ReadOnly bool
 
+	// SharedTableCache is an initialized tableCache which should be set as an
+	// option if there should be a shared table cache for more than one DB
+	// instance. If SharedTableCache is nil, then a table cache which is unique
+	// to the DB instance is created.
+	// Note that a shared table cache must imply that opts.Cache is also shared.
+	SharedTableCache *TableCache
+
 	// TablePropertyCollectors is a list of TablePropertyCollector creation
 	// functions. A new TablePropertyCollector is created for each sstable built
 	// and lives for the lifetime of the table.
