@@ -60,6 +60,16 @@ type ValueMerger interface {
 	Finish(includesBase bool) ([]byte, io.Closer, error)
 }
 
+// DeletableValueMerger is the same as ValueMerger, except it will hide the value if
+// DeletableFinish returns true and includesBase is true, eventually, pebble will
+// delete those keys during compaction.
+type DeletableValueMerger interface {
+	ValueMerger
+
+	// DeletableFinish enables caller to indicate if the key is deletable.
+	DeletableFinish(includesBase bool) ([]byte, bool, io.Closer, error)
+}
+
 // Merger defines an associative merge operation. The merge operation merges
 // two or more values for a single key. A merge operation is requested by
 // writing a value using {Batch,DB}.Merge(). The value at that key is merged

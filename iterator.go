@@ -11,11 +11,12 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/redact"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/fastrand"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/redact"
 )
 
 // iterPos describes the state of the internal iterator, in terms of whether it is
@@ -254,12 +255,20 @@ func (i *Iterator) findNextEntry(limit []byte) {
 
 		case InternalKeyKindMerge:
 			var valueMerger ValueMerger
-			valueMerger, i.err = i.merge(i.key, i.iterValue)
+			valueMerger, i.err = i.merge(key.UserKey, i.iterValue)
 			if i.err == nil {
 				i.mergeNext(key, valueMerger)
 			}
 			if i.err == nil {
-				i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
+				var needDelete bool
+				i.value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, true /* includesBase */)
+				if i.err == nil && needDelete {
+					i.iterValidityState = IterExhausted
+					if i.pos != iterPosNext {
+						i.nextUserKey()
+					}
+					continue
+				}
 			} else {
 				// mergeNext may have been called, which can set
 				// i.iterValidityState=IterValid.
@@ -427,7 +436,14 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 				// We've iterated to the previous user key.
 				i.pos = iterPosPrev
 				if valueMerger != nil {
-					i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
+					var needDelete bool
+					i.value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, true /* includesBase */)
+					if i.err == nil && needDelete {
+						i.value = nil
+						i.iterValidityState = IterExhausted
+						valueMerger = nil
+						continue
+					}
 				}
 				if i.err != nil {
 					i.iterValidityState = IterExhausted
@@ -514,7 +530,13 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 	if i.iterValidityState == IterValid {
 		i.pos = iterPosPrev
 		if valueMerger != nil {
-			i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
+			var needDelete bool
+			i.value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, true /* includesBase */)
+			if i.err == nil && needDelete {
+				i.key = nil
+				i.value = nil
+				i.iterValidityState = IterExhausted
+			}
 		}
 		if i.err != nil {
 			i.iterValidityState = IterExhausted
@@ -1235,8 +1257,10 @@ func (stats *IteratorStats) String() string {
 func (stats *IteratorStats) SafeFormat(s redact.SafePrinter, verb rune) {
 	for i := range stats.ForwardStepCount {
 		switch IteratorStatsKind(i) {
-		case InterfaceCall: s.SafeString("(interface (dir, seek, step): ")
-		case InternalIterCall: s.SafeString(", (internal (dir, seek, step): ")
+		case InterfaceCall:
+			s.SafeString("(interface (dir, seek, step): ")
+		case InternalIterCall:
+			s.SafeString(", (internal (dir, seek, step): ")
 		}
 		s.Printf("(fwd, %d, %d), (rev, %d, %d))",
 			redact.Safe(stats.ForwardSeekCount[i]), redact.Safe(stats.ForwardStepCount[i]),
