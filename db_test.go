@@ -713,6 +713,76 @@ func TestIterLeak(t *testing.T) {
 	}
 }
 
+// Make sure that we detect an iter leak when only one DB closes
+// while the second db still holds a reference to the TableCache.
+func TestIterLeakSharedCache(t *testing.T) {
+	for _, leak := range []bool{true, false} {
+		t.Run(fmt.Sprintf("leak=%t", leak), func(t *testing.T) {
+			for _, flush := range []bool{true, false} {
+				t.Run(fmt.Sprintf("flush=%t", flush), func(t *testing.T) {
+					d1, err := Open("", &Options{
+						FS: vfs.NewMem(),
+					})
+					require.NoError(t, err)
+
+					d2, err := Open("", &Options{
+						FS: vfs.NewMem(),
+					})
+					require.NoError(t, err)
+
+					require.NoError(t, d1.Set([]byte("a"), []byte("a"), nil))
+					if flush {
+						require.NoError(t, d1.Flush())
+					}
+
+					require.NoError(t, d2.Set([]byte("a"), []byte("a"), nil))
+					if flush {
+						require.NoError(t, d2.Flush())
+					}
+
+					// Check if leak detection works with only one db closing.
+					{
+						iter1 := d1.NewIter(nil)
+						iter1.First()
+						if !leak {
+							require.NoError(t, iter1.Close())
+							require.NoError(t, d1.Close())
+						} else {
+							defer iter1.Close()
+							if err := d1.Close(); err == nil {
+								t.Fatalf("expected failure, but found success")
+							} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
+								t.Fatalf("expected leaked iterators, but found %+v", err)
+							} else {
+								t.Log(err.Error())
+							}
+						}
+					}
+
+					{
+						iter2 := d2.NewIter(nil)
+						iter2.First()
+						if !leak {
+							require.NoError(t, iter2.Close())
+							require.NoError(t, d2.Close())
+						} else {
+							defer iter2.Close()
+							if err := d2.Close(); err == nil {
+								t.Fatalf("expected failure, but found success")
+							} else if !strings.HasPrefix(err.Error(), "leaked iterators:") {
+								t.Fatalf("expected leaked iterators, but found %+v", err)
+							} else {
+								t.Log(err.Error())
+							}
+						}
+					}
+
+				})
+			}
+		})
+	}
+}
+
 func TestMemTableReservation(t *testing.T) {
 	cache := NewCache(128 << 10 /* 128 KB */)
 	defer cache.Unref()
