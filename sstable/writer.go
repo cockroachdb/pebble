@@ -473,6 +473,24 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	return w.writeBlock(w.topLevelIndexBlock.finish(), w.compression)
 }
 
+func (w *Writer) checksumBlock(b []byte, blockType []byte, checksumType ChecksumType) (uint32, error) {
+	switch checksumType {
+	case ChecksumTypeCRC32c:
+		return crc.New(b).Update(blockType).Value(), nil
+	case ChecksumTypeXXHash64:
+		if w.xxHasher == nil {
+			w.xxHasher = xxhash.New()
+		} else {
+			w.xxHasher.Reset()
+		}
+		w.xxHasher.Write(b)
+		w.xxHasher.Write(blockType)
+		return uint32(w.xxHasher.Sum64()), nil
+	default:
+		return 0, errors.Newf("unsupported checksum type: %d", checksumType)
+	}
+}
+
 func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
@@ -487,22 +505,9 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 	}
 
 	w.tmp[0] = blockType
-
 	// Calculate the checksum.
-	var checksum uint32
-	switch w.checksumType {
-	case ChecksumTypeCRC32c:
-		checksum = crc.New(b).Update(w.tmp[:1]).Value()
-	case ChecksumTypeXXHash64:
-		if w.xxHasher == nil {
-			w.xxHasher = xxhash.New()
-		} else {
-			w.xxHasher.Reset()
-		}
-		w.xxHasher.Write(b)
-		w.xxHasher.Write(w.tmp[:1])
-		checksum = uint32(w.xxHasher.Sum64())
-	default:
+	checksum, err := w.checksumBlock(b, w.tmp[:1], w.checksumType)
+	if err != nil {
 		return BlockHandle{}, errors.Newf("unsupported checksum type: %d", w.checksumType)
 	}
 	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
