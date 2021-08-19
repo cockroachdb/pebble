@@ -31,6 +31,11 @@ type tableCache struct {
 	cache         *Cache
 	shards        []*tableCacheShard
 	filterMetrics FilterMetrics
+	// logger        Logger
+	// cacheID       uint64
+	// dirname       string
+	// fs            vfs.FS
+	// opts          sstable.ReaderOptions
 }
 
 func (c *tableCache) init(cacheID uint64, dirname string, fs vfs.FS, opts *Options, size int) {
@@ -43,6 +48,12 @@ func (c *tableCache) init(cacheID uint64, dirname string, fs vfs.FS, opts *Optio
 		c.shards[i].init(cacheID, dirname, fs, opts, size/len(c.shards))
 		c.shards[i].filterMetrics = &c.filterMetrics
 	}
+
+	// c.logger = opts.Logger
+	// c.cacheID = cacheID
+	// c.dirname = dirname
+	// c.fs = fs
+	// c.opts = opts.MakeReaderOptions()
 }
 
 func (c *tableCache) getShard(fileNum FileNum) *tableCacheShard {

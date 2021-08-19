@@ -79,7 +79,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			// tableCache have a reference. The tableCache.Close will release
 			// the tableCache's reference.
 			opts.Cache.Unref()
-			_ = d.tableCache.Close()
+			if d.tableCache != nil {
+				_ = d.tableCache.Close()
+			}
 			for _, mem := range d.mu.mem.queue {
 				switch t := mem.flushable.(type) {
 				case *memTable:
@@ -100,6 +102,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if tableCacheSize < minTableCacheSize {
 		tableCacheSize = minTableCacheSize
 	}
+	d.tableCache = &tableCache{}
 	d.tableCache.init(d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
 	d.commit = newCommitPipeline(commitEnv{
