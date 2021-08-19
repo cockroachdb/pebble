@@ -37,7 +37,13 @@ const (
 	// as opposed to a hardcoded value.
 	initialReadaheadSize = 64 << 10  /* 64KB */
 	maxReadaheadSize     = 256 << 10 /* 256KB */
+
+	UserPropertyCockroachMVCCTimestampSuffix = "crdb.ts.synthesize"
 )
+
+// MVCCTimestampSuffixPlaceholder is the byte string that represents a cockroach
+// hlc.Timestamp{WallTime: 1<<62, Logical: 1} encoded as an MVCC key suffix.
+var MVCCTimestampSuffixPlaceholder = []byte{0x0, 0x40, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0xd}
 
 // decodeBlockHandle returns the block handle encoded at the start of src, as
 // well as the number of bytes it occupies. It returns zero if given invalid
@@ -271,6 +277,21 @@ func (i *singleLevelIterator) initBounds() {
 	}
 }
 
+func (r *Reader) maybeSwapSuffix(b []byte) ([]byte, error) {
+	if r.mvccTSSuffix != nil {
+		iter := &blockIter{}
+		if err := iter.init(r.Compare, b, r.Properties.GlobalSeqNum); err != nil {
+			return nil, err
+		}
+		for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
+			if bytes.HasSuffix(key.UserKey, MVCCTimestampSuffixPlaceholder) {
+				copy(key.UserKey[len(key.UserKey)-len(r.mvccTSSuffix):], r.mvccTSSuffix)
+			}
+		}
+	}
+	return b, nil
+}
+
 // loadBlock loads the block at the current index position and leaves i.data
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.
@@ -289,7 +310,8 @@ func (i *singleLevelIterator) loadBlock() bool {
 		i.err = errCorruptIndexEntry
 		return false
 	}
-	block, err := i.reader.readBlock(i.dataBH, nil /* transform */, &i.dataRS)
+
+	block, err := i.reader.readBlock(i.dataBH, i.reader.maybeSwapSuffix, &i.dataRS)
 	if err != nil {
 		i.err = err
 		return false
@@ -959,7 +981,7 @@ func (i *twoLevelIterator) loadIndex() bool {
 		i.err = base.CorruptionErrorf("pebble/table: corrupt top level index entry")
 		return false
 	}
-	indexBlock, err := i.reader.readBlock(h, nil /* transform */, nil /* readaheadState */)
+	indexBlock, err := i.reader.readBlock(h, i.reader.maybeSwapSuffix, nil /* readaheadState */)
 	if err != nil {
 		i.err = err
 		return false
@@ -1703,6 +1725,7 @@ type Reader struct {
 	checksumType      ChecksumType
 	tableFilter       *tableFilterReader
 	Properties        Properties
+	mvccTSSuffix      []byte
 }
 
 // Close implements DB.Close, as documented in the pebble package.
@@ -1847,7 +1870,7 @@ func (r *Reader) NewRawRangeDelIter() (base.InternalIterator, error) {
 }
 
 func (r *Reader) readIndex() (cache.Handle, error) {
-	return r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */)
+	return r.readBlock(r.indexBH, r.maybeSwapSuffix, nil /* readaheadState */)
 }
 
 func (r *Reader) readFilter() (cache.Handle, error) {
@@ -1949,16 +1972,21 @@ func (r *Reader) readBlock(
 	if transform != nil {
 		// Transforming blocks is rare, so the extra copy of the transformed data
 		// is not problematic.
+		oldB := b
 		var err error
 		b, err = transform(b)
 		if err != nil {
 			r.opts.Cache.Free(v)
 			return cache.Handle{}, err
 		}
-		newV := r.opts.Cache.Alloc(len(b))
-		copy(newV.Buf(), b)
-		r.opts.Cache.Free(v)
-		v = newV
+
+		// if transform returned a new slice, copy it into cache, free old one.
+		if len(b) == 0 || len(oldB) == 0 || &b[0] != &oldB[0] {
+			newV := r.opts.Cache.Alloc(len(b))
+			copy(newV.Buf(), b)
+			r.opts.Cache.Free(v)
+			v = newV
+		}
 	}
 
 	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, v)
@@ -2051,6 +2079,13 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 		}
 	}
 
+	if v, ok := r.Properties.UserProperties[UserPropertyCockroachMVCCTimestampSuffix]; ok {
+		r.mvccTSSuffix = []byte(v)
+		if l, exp := len(r.mvccTSSuffix), len(MVCCTimestampSuffixPlaceholder); l != exp {
+			return errors.Errorf("invalid mvcc timestamp suffix %v (len %d vs %d)", r.mvccTSSuffix, l, MVCCTimestampSuffixPlaceholder)
+		}
+	}
+
 	if bh, ok := meta[metaRangeDelV2Name]; ok {
 		r.rangeDelBH = bh
 	} else if bh, ok := meta[metaRangeDelName]; ok {
@@ -2097,12 +2132,13 @@ func (r *Reader) Layout() (*Layout, error) {
 	}
 
 	l := &Layout{
-		Data:       make([]BlockHandle, 0, r.Properties.NumDataBlocks),
-		Filter:     r.filterBH,
-		RangeDel:   r.rangeDelBH,
-		Properties: r.propertiesBH,
-		MetaIndex:  r.metaIndexBH,
-		Footer:     r.footerBH,
+		Data:         make([]BlockHandle, 0, r.Properties.NumDataBlocks),
+		Filter:       r.filterBH,
+		RangeDel:     r.rangeDelBH,
+		Properties:   r.propertiesBH,
+		MetaIndex:    r.metaIndexBH,
+		Footer:       r.footerBH,
+		ChecksumType: r.checksumType,
 	}
 
 	indexH, err := r.readIndex()
@@ -2131,7 +2167,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 			l.Index = append(l.Index, indexBH)
 
-			subIndex, err := r.readBlock(indexBH, nil /* transform */, nil /* readaheadState */)
+			subIndex, err := r.readBlock(indexBH, r.maybeSwapSuffix, nil /* readaheadState */)
 			if err != nil {
 				return nil, err
 			}
@@ -2197,7 +2233,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if n == 0 || n != len(val) {
 			return 0, errCorruptIndexEntry
 		}
-		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */, nil /* readaheadState */)
+		startIdxBlock, err := r.readBlock(startIdxBH, r.maybeSwapSuffix, nil /* readaheadState */)
 		if err != nil {
 			return 0, err
 		}
@@ -2217,7 +2253,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			if n == 0 || n != len(val) {
 				return 0, errCorruptIndexEntry
 			}
-			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */, nil /* readaheadState */)
+			endIdxBlock, err := r.readBlock(endIdxBH, r.maybeSwapSuffix, nil /* readaheadState */)
 			if err != nil {
 				return 0, err
 			}
@@ -2350,14 +2386,15 @@ func NewReader(f ReadableFile, o ReaderOptions, extraOpts ...ReaderOption) (*Rea
 
 // Layout describes the block organization of an sstable.
 type Layout struct {
-	Data       []BlockHandle
-	Index      []BlockHandle
-	TopIndex   BlockHandle
-	Filter     BlockHandle
-	RangeDel   BlockHandle
-	Properties BlockHandle
-	MetaIndex  BlockHandle
-	Footer     BlockHandle
+	Data         []BlockHandle
+	Index        []BlockHandle
+	TopIndex     BlockHandle
+	Filter       BlockHandle
+	RangeDel     BlockHandle
+	Properties   BlockHandle
+	MetaIndex    BlockHandle
+	Footer       BlockHandle
+	ChecksumType ChecksumType
 }
 
 // Describe returns a description of the layout. If the verbose parameter is
@@ -2415,7 +2452,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadState */)
+		h, err := r.readBlock(b.BlockHandle, r.maybeSwapSuffix, nil /* readaheadState */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue

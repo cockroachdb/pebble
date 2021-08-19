@@ -13,6 +13,7 @@ import (
 	"sort"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/intern"
 )
 
@@ -195,6 +196,26 @@ func (p *Properties) String() string {
 		fmt.Fprintf(&buf, "%s: %s\n", key, p.UserProperties[key])
 	}
 	return buf.String()
+}
+
+// ReplacePropValues replaces the values for named properties with new values
+// from overrides which must be of the same length.
+func ReplacePropValues(propsBlock []byte, overrides map[string][]byte) error {
+	i, err := newRawBlockIter(bytes.Compare, propsBlock)
+	if err != nil {
+		return err
+	}
+	for valid := i.First(); valid; valid = i.Next() {
+		tag := i.Key().UserKey
+		if override, ok := overrides[string(tag)]; ok {
+			if len(override) != len(i.val) {
+				return errors.Errorf("cannot update prop %q with %d len value to %d len value",
+					tag, len(i.val), len(override))
+			}
+			copy(i.val, override)
+		}
+	}
+	return nil
 }
 
 func (p *Properties) load(b block, blockOffset uint64) error {
