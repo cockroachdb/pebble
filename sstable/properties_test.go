@@ -5,6 +5,7 @@
 package sstable
 
 import (
+	"io/ioutil"
 	"math"
 	"math/rand"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"testing/quick"
 	"time"
 
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
@@ -123,4 +125,40 @@ func TestPropertiesSave(t *testing.T) {
 		}
 		check1(&props)
 	}
+}
+
+func TestPropertiesEditPropsInFile(t *testing.T) {
+	f, err := os.Open(filepath.FromSlash("testdata/h.sst"))
+	require.NoError(t, err)
+	bytes, err := ioutil.ReadAll(f)
+	require.NoError(t, err)
+
+	t.Run("success", func(t *testing.T) {
+		copied := append([]byte{}, bytes...)
+		require.NoError(t, EditPropsInFile(copied, ReaderOptions{}, map[string][]byte{
+			"test.key-count": []byte("4321"),
+		}))
+
+		r, err := NewReader(vfs.NewMemFile(copied), ReaderOptions{})
+		require.NoError(t, err)
+		defer r.Close()
+
+		require.Equal(t, r.Properties.UserProperties["test.key-count"], "4321")
+	})
+
+	t.Run("does-not-exist", func(t *testing.T) {
+		require.Error(t, EditPropsInFile(bytes, ReaderOptions{}, map[string][]byte{
+			"test.key-count": []byte("4321"),
+			"does-not-exist": []byte("nope"),
+		}))
+	})
+
+	t.Run("length-mismatch", func(t *testing.T) {
+		require.Error(t, EditPropsInFile(bytes, ReaderOptions{}, map[string][]byte{
+			"test.key-count": []byte(""),
+		}))
+		require.Error(t, EditPropsInFile(bytes, ReaderOptions{}, map[string][]byte{
+			"test.key-count": []byte("12345"),
+		}))
+	})
 }

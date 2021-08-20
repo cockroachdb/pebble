@@ -13,7 +13,9 @@ import (
 	"sort"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/intern"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 const propertiesBlockRestartInterval = math.MaxInt32
@@ -195,6 +197,53 @@ func (p *Properties) String() string {
 		fmt.Fprintf(&buf, "%s: %s\n", key, p.UserProperties[key])
 	}
 	return buf.String()
+}
+
+// EditPropsInFile edits the contents of the passed sst file bytes to update the
+// values for each user property in the passed overrides. The updated properties
+// must exist and the new value must have the same length as the prior value.
+func EditPropsInFile(f []byte, opts ReaderOptions, overrides map[string][]byte) error {
+	r, err := NewReader(vfs.NewMemFile(f), opts)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	// Check that the overriden properties exist and have matching lengths.
+	for k, override := range overrides {
+		if existing, ok := r.Properties.UserProperties[k]; !ok {
+			return errors.Errorf("no existing property %q to override")
+		} else if len(existing) != len(override) {
+			return errors.Errorf("cannot update prop %q with length %d value to with length %d",
+				k, len(existing), len(override))
+		}
+	}
+
+	// Replace the props values in the raw block.
+	bh := r.propertiesBH
+	propsBlock := f[bh.Offset : bh.Offset+bh.Length]
+	i, err := newRawBlockIter(bytes.Compare, propsBlock)
+	if err != nil {
+		return err
+	}
+	for valid := i.First(); valid; valid = i.Next() {
+		tag := i.Key().UserKey
+		if override, ok := overrides[string(tag)]; ok {
+			// Writing to i.val edits `f` because MemFile and rawBlockIter just slice.
+			// TODO(dt): change this function to take a file-like interface that adds
+			// a WriteAt method then use that.
+			copy(i.val, override)
+		}
+	}
+
+	// Update checksum after block to reflect updates.
+	blockType := f[bh.Offset+bh.Length : bh.Offset+bh.Length+1]
+	checksum, err := (&Writer{}).checksumBlock(propsBlock, blockType, r.checksumType)
+	if err != nil {
+		return err
+	}
+	binary.LittleEndian.PutUint32(f[bh.Offset+bh.Length+1:bh.Offset+bh.Length+5], checksum)
+	return nil
 }
 
 func (p *Properties) load(b block, blockOffset uint64) error {
