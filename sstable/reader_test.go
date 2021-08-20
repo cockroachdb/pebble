@@ -407,30 +407,53 @@ func testBytesIteratedWithCompression(
 	blockSizes []int,
 	maxNumEntries []uint64,
 ) {
+	var noSuffix []byte
+	restarts := []int{0}
+	testBytesIteratedWithCompressionAndSuffixReplacement(
+		t, compression, allowedSizeDeviationPercent, blockSizes, maxNumEntries, restarts, noSuffix, noSuffix,
+	)
+}
+
+func testBytesIteratedWithCompressionAndSuffixReplacement(
+	t *testing.T,
+	compression Compression,
+	allowedSizeDeviationPercent uint64,
+	blockSizes []int,
+	maxNumEntries []uint64,
+	restarts []int,
+	writeSuffix, readSuffix []byte,
+) {
 	for i, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
 			for _, numEntries := range []uint64{0, 1, maxNumEntries[i]} {
-				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, compression)
-				var bytesIterated, prevIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated)
-				require.NoError(t, err)
+				for _, restarts := range restarts {
+					r := buildTestTable(t, numEntries, blockSize, indexBlockSize, restarts, compression, writeSuffix, readSuffix)
+					var bytesIterated, prevIterated uint64
+					citer, err := r.NewCompactionIter(&bytesIterated)
+					require.NoError(t, err)
 
-				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
-					if bytesIterated < prevIterated {
-						t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
+					var i uint64
+					for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
+						if bytesIterated < prevIterated {
+							t.Fatalf("bytesIterated moved backward: %d < %d", bytesIterated, prevIterated)
+						}
+						prevIterated = bytesIterated
+						if exp := ithKey(i, readSuffix); !bytes.Equal(exp, key.UserKey) {
+							require.Equal(t, ithKey(i, readSuffix), key.UserKey)
+						}
+						i++
 					}
-					prevIterated = bytesIterated
-				}
 
-				expected := r.Properties.DataSize
-				allowedSizeDeviation := expected * allowedSizeDeviationPercent / 100
-				// There is some inaccuracy due to compression estimation.
-				if bytesIterated < expected-allowedSizeDeviation || bytesIterated > expected+allowedSizeDeviation {
-					t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
-				}
+					expected := r.Properties.DataSize
+					allowedSizeDeviation := expected * allowedSizeDeviationPercent / 100
+					// There is some inaccuracy due to compression estimation.
+					if bytesIterated < expected-allowedSizeDeviation || bytesIterated > expected+allowedSizeDeviation {
+						t.Fatalf("bytesIterated: got %d, want %d", bytesIterated, expected)
+					}
 
-				require.NoError(t, citer.Close())
-				require.NoError(t, r.Close())
+					require.NoError(t, citer.Close())
+					require.NoError(t, r.Close())
+				}
 			}
 		}
 	}
@@ -455,12 +478,26 @@ func TestBytesIterated(t *testing.T) {
 	})
 }
 
+func TestSuffixReplacement(t *testing.T) {
+	blockSizes := []int{5, 4000, 500, math.MaxInt32}
+	maxEntries := []uint64{5, 5, 1e5, 1e5}
+	restarts := []int{0, 1, 2, math.MaxInt32}
+	testBytesIteratedWithCompressionAndSuffixReplacement(
+		t, NoCompression, 1, blockSizes, maxEntries, restarts, []byte("ABC"), []byte("xyz"),
+	)
+	testBytesIteratedWithCompressionAndSuffixReplacement(
+		t, NoCompression, 1, blockSizes[:2], maxEntries[:2], restarts, []byte("z"), []byte("a"),
+	)
+
+}
+
 func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
 	for _, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
-				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, DefaultCompression)
+				noSuffix := []byte(nil)
+				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, 0, DefaultCompression, noSuffix, noSuffix)
 				var bytesIterated uint64
 				citer, err := r.NewCompactionIter(&bytesIterated)
 				require.NoError(t, err)
@@ -614,26 +651,43 @@ func TestReaderChecksumErrors(t *testing.T) {
 	}
 }
 
+func ithKey(i uint64, keySuffix []byte) []byte {
+	key := make([]byte, 8+i%3)
+	binary.BigEndian.PutUint64(key, i)
+	if keySuffix != nil {
+		key = append(key, keySuffix...)
+	}
+	return key
+}
+
 func buildTestTable(
-	t *testing.T, numEntries uint64, blockSize, indexBlockSize int, compression Compression,
+	t *testing.T, numEntries uint64, blockSize, indexBlockSize int, restarts int, compression Compression, writeSuffix, readSuffix []byte,
 ) *Reader {
 	mem := vfs.NewMem()
 	f0, err := mem.Create("test")
 	require.NoError(t, err)
 
+	var collectors []func() TablePropertyCollector
+
+	if writeSuffix != nil {
+		collectors = append(collectors, func() TablePropertyCollector {
+			return SuffixReplacementPropCollector{From: writeSuffix, To: readSuffix}
+		})
+	}
+
 	w := NewWriter(f0, WriterOptions{
-		BlockSize:      blockSize,
-		IndexBlockSize: indexBlockSize,
-		Compression:    compression,
-		FilterPolicy:   nil,
+		BlockSize:               blockSize,
+		IndexBlockSize:          indexBlockSize,
+		Compression:             compression,
+		FilterPolicy:            nil,
+		BlockRestartInterval:    restarts,
+		TablePropertyCollectors: collectors,
 	})
 
 	var ikey InternalKey
 	for i := uint64(0); i < numEntries; i++ {
-		key := make([]byte, 8+i%3)
 		value := make([]byte, i%100)
-		binary.BigEndian.PutUint64(key, i)
-		ikey.UserKey = key
+		ikey.UserKey = ithKey(i, writeSuffix)
 		w.Add(ikey, value)
 	}
 
