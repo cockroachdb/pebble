@@ -1981,16 +1981,21 @@ func (r *Reader) readBlock(
 	if transform != nil {
 		// Transforming blocks is rare, so the extra copy of the transformed data
 		// is not problematic.
+		oldB := b
 		var err error
 		b, err = transform(b)
 		if err != nil {
 			r.opts.Cache.Free(v)
 			return cache.Handle{}, err
 		}
-		newV := r.opts.Cache.Alloc(len(b))
-		copy(newV.Buf(), b)
-		r.opts.Cache.Free(v)
-		v = newV
+
+		// if transform returned a new slice, copy it into cache, free old one.
+		if len(b) == 0 || len(oldB) == 0 || &b[0] != &oldB[0] {
+			newV := r.opts.Cache.Alloc(len(b))
+			copy(newV.Buf(), b)
+			r.opts.Cache.Free(v)
+			v = newV
+		}
 	}
 
 	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, v)
