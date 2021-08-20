@@ -1113,6 +1113,8 @@ func TestSSTables(t *testing.T) {
 			require.NotNil(t, info.Properties)
 		}
 	}
+
+	d.Close()
 }
 
 func BenchmarkDelete(b *testing.B) {

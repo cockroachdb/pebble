@@ -1534,6 +1534,8 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
 		})
+
+	d.Close()
 }
 
 func TestCompactionTombstones(t *testing.T) {
@@ -1637,6 +1639,8 @@ func TestCompactionTombstones(t *testing.T) {
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
 		})
+
+	d.Close()
 }
 
 func TestCompactionReadTriggered(t *testing.T) {
@@ -1760,6 +1764,8 @@ func TestCompactionReadTriggered(t *testing.T) {
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
 		})
+
+	d.Close()
 }
 
 func TestCompactionInuseKeyRanges(t *testing.T) {
