@@ -37,6 +37,15 @@ const (
 	// as opposed to a hardcoded value.
 	initialReadaheadSize = 64 << 10  /* 64KB */
 	maxReadaheadSize     = 256 << 10 /* 256KB */
+
+	// PropSuffixReplacement is the name of a user property which if set indicates
+	// keys with a suffix matching the first half of the property's value should
+	// be read instead with that suffix replaced with value in the second half, eg
+	// if the property has value "aaabbb" it would mean all keys ending in "aaa"
+	// would instead end in "bbb" (the first and second halves must have the same
+	// length). The replaced suffix must always appear after any shared prefix of
+	// a key.
+	PropSuffixReplacement = "pebble.suffix_replacement"
 )
 
 // decodeBlockHandle returns the block handle encoded at the start of src, as
@@ -271,6 +280,27 @@ func (i *singleLevelIterator) initBounds() {
 	}
 }
 
+func (r *Reader) maybeSwapSuffix(b []byte) ([]byte, error) {
+	if r.suffixReplacement != nil {
+		split := len(r.suffixReplacement) >> 1
+		from, to := r.suffixReplacement[:split], r.suffixReplacement[split:]
+		iter := &blockIter{}
+		if err := iter.init(r.Compare, b, r.Properties.GlobalSeqNum); err != nil {
+			return nil, err
+		}
+		for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
+			if bytes.HasSuffix(key.UserKey, from) {
+				dest := len(iter.unsharedKey) - len(from) - 8
+				if dest < 0 {
+					return nil, errors.New("cannot replace suffix in shared key")
+				}
+				copy(iter.unsharedKey[dest:], to)
+			}
+		}
+	}
+	return b, nil
+}
+
 // loadBlock loads the block at the current index position and leaves i.data
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.
@@ -289,7 +319,8 @@ func (i *singleLevelIterator) loadBlock() bool {
 		i.err = errCorruptIndexEntry
 		return false
 	}
-	block, err := i.reader.readBlock(i.dataBH, nil /* transform */, &i.dataRS)
+
+	block, err := i.reader.readBlock(i.dataBH, i.reader.maybeSwapSuffix, &i.dataRS)
 	if err != nil {
 		i.err = err
 		return false
@@ -959,7 +990,7 @@ func (i *twoLevelIterator) loadIndex() bool {
 		i.err = base.CorruptionErrorf("pebble/table: corrupt top level index entry")
 		return false
 	}
-	indexBlock, err := i.reader.readBlock(h, nil /* transform */, nil /* readaheadState */)
+	indexBlock, err := i.reader.readBlock(h, i.reader.maybeSwapSuffix, nil /* readaheadState */)
 	if err != nil {
 		i.err = err
 		return false
@@ -1703,6 +1734,7 @@ type Reader struct {
 	checksumType      ChecksumType
 	tableFilter       *tableFilterReader
 	Properties        Properties
+	suffixReplacement []byte
 }
 
 // Close implements DB.Close, as documented in the pebble package.
@@ -1847,7 +1879,7 @@ func (r *Reader) NewRawRangeDelIter() (base.InternalIterator, error) {
 }
 
 func (r *Reader) readIndex() (cache.Handle, error) {
-	return r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */)
+	return r.readBlock(r.indexBH, r.maybeSwapSuffix, nil /* readaheadState */)
 }
 
 func (r *Reader) readFilter() (cache.Handle, error) {
@@ -2051,6 +2083,13 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 		}
 	}
 
+	if replacement := r.Properties.UserProperties[PropSuffixReplacement]; len(replacement) > 0 {
+		if len(replacement)%2 != 0 {
+			return errors.Errorf("invalid replacement property")
+		}
+		r.suffixReplacement = []byte(replacement)
+	}
+
 	if bh, ok := meta[metaRangeDelV2Name]; ok {
 		r.rangeDelBH = bh
 	} else if bh, ok := meta[metaRangeDelName]; ok {
@@ -2131,7 +2170,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 			l.Index = append(l.Index, indexBH)
 
-			subIndex, err := r.readBlock(indexBH, nil /* transform */, nil /* readaheadState */)
+			subIndex, err := r.readBlock(indexBH, r.maybeSwapSuffix, nil /* readaheadState */)
 			if err != nil {
 				return nil, err
 			}
@@ -2197,7 +2236,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if n == 0 || n != len(val) {
 			return 0, errCorruptIndexEntry
 		}
-		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */, nil /* readaheadState */)
+		startIdxBlock, err := r.readBlock(startIdxBH, r.maybeSwapSuffix, nil /* readaheadState */)
 		if err != nil {
 			return 0, err
 		}
@@ -2217,7 +2256,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			if n == 0 || n != len(val) {
 				return 0, errCorruptIndexEntry
 			}
-			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */, nil /* readaheadState */)
+			endIdxBlock, err := r.readBlock(endIdxBH, r.maybeSwapSuffix, nil /* readaheadState */)
 			if err != nil {
 				return 0, err
 			}
@@ -2415,7 +2454,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadState */)
+		h, err := r.readBlock(b.BlockHandle, r.maybeSwapSuffix, nil /* readaheadState */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue

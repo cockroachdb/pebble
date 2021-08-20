@@ -339,3 +339,27 @@ func (p *Properties) save(w *rawBlockWriter) {
 		w.add(InternalKey{UserKey: []byte(key)}, m[key])
 	}
 }
+
+// SuffixReplacementPropCollector is a predefined collector that can be used to
+// set the value of the special user-property used for suffix replacement.
+type SuffixReplacementPropCollector struct {
+	From, To []byte
+}
+
+var _ TablePropertyCollector = SuffixReplacementPropCollector{}
+
+// Add implements the TablePropertyCollector inferface.
+func (SuffixReplacementPropCollector) Add(_ InternalKey, _ []byte) error {
+	return nil
+}
+
+// Finish implements the TablePropertyCollector inferface.
+func (s SuffixReplacementPropCollector) Finish(userProps map[string]string) error {
+	userProps[PropSuffixReplacement] = string(append(s.From, s.To...))
+	return nil
+}
+
+// Name implements the TablePropertyCollector inferface.
+func (SuffixReplacementPropCollector) Name() string {
+	return "SuffixReplacement"
+}

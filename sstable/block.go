@@ -221,6 +221,8 @@ type blockIter struct {
 	key []byte
 	// fullKey is a buffer used for key prefix decompression.
 	fullKey []byte
+	// unsharedKey is the unshared suffix of i.key.
+	unsharedKey []byte
 	// val contains the value the iterator is currently pointed at. If non-nil,
 	// this points to a slice of the block data.
 	val []byte
@@ -388,14 +390,14 @@ func (i *blockIter) readEntry() {
 		ptr = unsafe.Pointer(uintptr(ptr) + 5)
 	}
 
-	unsharedKey := getBytes(ptr, int(unshared))
-	i.fullKey = append(i.fullKey[:shared], unsharedKey...)
+	i.unsharedKey = getBytes(ptr, int(unshared))
+	i.fullKey = append(i.fullKey[:shared], i.unsharedKey...)
 	if shared == 0 {
 		// Provide stability for the key across positioning calls if the key
 		// doesn't share a prefix with the previous key. This removes requiring the
 		// key to be copied if the caller knows the block has a restart interval of
 		// 1. An important example of this is range-del blocks.
-		i.key = unsharedKey
+		i.key = i.unsharedKey
 	} else {
 		i.key = i.fullKey
 	}
