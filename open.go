@@ -390,6 +390,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	// tied to the lifetime of DB: the DB.closed atomic.Value.
 	dPtr := fmt.Sprintf("%p", d)
 	invariants.SetFinalizer(d.closed, func(obj interface{}) {
+		if opts.DBFinalizerCond != nil {
+			opts.DBFinalizerCond.Broadcast()
+		}
 		v := obj.(*atomic.Value)
 		if err := v.Load(); err == nil {
 			fmt.Fprintf(os.Stderr, "%s: unreferenced DB not closed\n", dPtr)

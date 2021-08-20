@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -246,6 +247,8 @@ type Options struct {
 	//
 	// The default value uses the same ordering as bytes.Compare.
 	Comparer *Comparer
+
+	DBFinalizerCond *sync.Cond
 
 	// DebugCheck is invoked, if non-nil, whenever a new version is being
 	// installed. Typically, this is set to pebble.DebugCheckLevels in tests
