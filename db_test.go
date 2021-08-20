@@ -1089,6 +1089,11 @@ func TestSSTables(t *testing.T) {
 		FS: vfs.NewMem(),
 	})
 	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
 
 	// Create two sstables.
 	require.NoError(t, d.Set([]byte("hello"), nil, nil))
