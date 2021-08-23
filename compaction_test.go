@@ -1595,6 +1595,12 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 		return v
 	}
 	var d *DB
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
 	var compactInfo *CompactionInfo // protected by d.mu
 
 	datadriven.RunTest(t, "testdata/compaction_delete_only_hints",
@@ -1713,6 +1719,12 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 
 func TestCompactionTombstones(t *testing.T) {
 	var d *DB
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
 	var compactInfo *CompactionInfo // protected by d.mu
 
 	compactionString := func() string {
@@ -1816,6 +1828,12 @@ func TestCompactionTombstones(t *testing.T) {
 
 func TestCompactionReadTriggered(t *testing.T) {
 	var d *DB
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
 	var compactInfo *CompactionInfo // protected by d.mu
 
 	compactionString := func() string {
