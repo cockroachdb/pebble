@@ -216,9 +216,7 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 	for i := range meta {
 		target := base.MakeFilename(fs, dirname, fileTypeTable, meta[i].FileNum)
 		if err := fs.Remove(target); err != nil {
-			if firstErr != nil {
-				firstErr = err
-			}
+			firstErr = firstError(firstErr, err)
 		}
 	}
 	return firstErr
