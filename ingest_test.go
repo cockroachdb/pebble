@@ -1136,6 +1136,77 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 	}
 }
 
+func TestIngestCleanup(t *testing.T) {
+	fns := []base.FileNum{0, 1, 2}
+
+	testCases := []struct {
+		closeFiles   []base.FileNum
+		cleanupFiles []base.FileNum
+		wantErr      error
+	}{
+		// Close and remove all files.
+		{
+			closeFiles:   fns,
+			cleanupFiles: fns,
+		},
+		// Remove a non-existent file.
+		{
+			closeFiles:   fns,
+			cleanupFiles: []base.FileNum{3},
+			wantErr:      oserror.ErrNotExist,
+		},
+		// Remove a file that has not been closed.
+		{
+			closeFiles:   []base.FileNum{0, 2},
+			cleanupFiles: fns,
+			wantErr:      oserror.ErrInvalid,
+		},
+		// Remove all files, one of which is still open, plus a file that does not exist.
+		{
+			closeFiles:   []base.FileNum{0, 2},
+			cleanupFiles: []base.FileNum{0, 1, 2, 3},
+			wantErr:      oserror.ErrInvalid, // The first error encountered is due to the open file.
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run("", func(t *testing.T) {
+			mem := vfs.NewMem()
+
+			// Create the files in the VFS.
+			metaMap := make(map[base.FileNum]vfs.File)
+			for _, fn := range fns {
+				path := base.MakeFilename(mem, "", base.FileTypeTable, fn)
+				f, err := mem.Create(path)
+				metaMap[fn] = f
+				require.NoError(t, err)
+			}
+
+			// Close a select number of files.
+			for _, m := range tc.closeFiles {
+				f, ok := metaMap[m]
+				if !ok {
+					continue
+				}
+				require.NoError(t, f.Close())
+			}
+
+			// Cleanup the set of files in the FS.
+			var toRemove []*fileMetadata
+			for _, fn := range tc.cleanupFiles {
+				toRemove = append(toRemove, &fileMetadata{FileNum: fn})
+			}
+
+			err := ingestCleanup(mem, "", toRemove)
+			if tc.wantErr != nil {
+				require.Equal(t, tc.wantErr, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 // BenchmarkManySSTables measures the cost of various operations with various
 // counts of SSTables within the database.
 func BenchmarkManySSTables(b *testing.B) {
