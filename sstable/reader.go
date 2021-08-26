@@ -2150,6 +2150,49 @@ func (r *Reader) Layout() (*Layout, error) {
 	return l, nil
 }
 
+// ValidateBlockChecksums validates the checksums for each block in the SSTable.
+func (r *Reader) ValidateBlockChecksums() error {
+	// Pre-compute the BlockHandles for the underlying file.
+	l, err := r.Layout()
+	if err != nil {
+		return err
+	}
+
+	// Construct the set of blocks to check. Note that the footer is not checked
+	// as it is not a block with a checksum.
+	var blocks []BlockHandle
+	blocks = append(blocks, l.Data...)
+	blocks = append(blocks, l.Index...)
+	blocks = append(blocks, l.TopIndex, l.Filter, l.RangeDel, l.Properties, l.MetaIndex)
+
+	// Sorting by offset ensures we are performing a sequential scan of the
+	// file.
+	sort.Slice(blocks, func(i, j int) bool {
+		return blocks[i].Offset < blocks[j].Offset
+	})
+
+	// Check all blocks sequentially. Make use of read-ahead, given we are
+	// scanning the entire file from start to end.
+	blockRS := &readaheadState{
+		size: initialReadaheadSize,
+	}
+	for _, bh := range blocks {
+		// Certain blocks may not be present, in which case we skip them.
+		if bh.Length == 0 {
+			continue
+		}
+
+		// Read the block, which validates the checksum.
+		h, err := r.readBlock(bh, nil /* transform */, blockRS)
+		if err != nil {
+			return err
+		}
+		h.Release()
+	}
+
+	return nil
+}
+
 // EstimateDiskUsage returns the total size of data blocks overlapping the range
 // `[start, end]`. Even if a data block partially overlaps, or we cannot determine
 // overlap due to abbreviated index keys, the full data block size is included in
@@ -2350,6 +2393,10 @@ func NewReader(f ReadableFile, o ReaderOptions, extraOpts ...ReaderOption) (*Rea
 
 // Layout describes the block organization of an sstable.
 type Layout struct {
+	// NOTE: changes to fields in this struct should also be reflected in
+	// ValidateBlockChecksums, which validates a static list of BlockHandles
+	// referenced in this struct.
+
 	Data       []BlockHandle
 	Index      []BlockHandle
 	TopIndex   BlockHandle
