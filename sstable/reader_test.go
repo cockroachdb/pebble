@@ -8,9 +8,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -611,6 +613,201 @@ func TestReaderChecksumErrors(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestValidateBlockChecksums(t *testing.T) {
+	seed := uint64(time.Now().UnixNano())
+	rng := rand.New(rand.NewSource(seed))
+	t.Logf("using seed = %d", seed)
+
+	allFiles := []string{
+		"testdata/h.no-compression.sst",
+		"testdata/h.no-compression.two_level_index.sst",
+		"testdata/h.sst",
+		"testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
+		"testdata/h.table-bloom.no-compression.sst",
+		"testdata/h.table-bloom.sst",
+		"testdata/h.zstd-compression.sst",
+	}
+
+	type corruptionLocation int
+	const (
+		corruptionLocationData corruptionLocation = iota
+		corruptionLocationIndex
+		corruptionLocationTopIndex
+		corruptionLocationFilter
+		corruptionLocationRangeDel
+		corruptionLocationProperties
+		corruptionLocationMetaIndex
+	)
+
+	testCases := []struct {
+		name                string
+		files               []string
+		corruptionLocations []corruptionLocation
+	}{
+		{
+			name:                "no corruption",
+			corruptionLocations: []corruptionLocation{},
+		},
+		{
+			name: "data block corruption",
+			corruptionLocations: []corruptionLocation{
+				corruptionLocationData,
+			},
+		},
+		{
+			name: "index block corruption",
+			corruptionLocations: []corruptionLocation{
+				corruptionLocationIndex,
+			},
+		},
+		{
+			name: "top index block corruption",
+			files: []string{
+				"testdata/h.no-compression.two_level_index.sst",
+			},
+			corruptionLocations: []corruptionLocation{
+				corruptionLocationTopIndex,
+			},
+		},
+		{
+			name: "filter block corruption",
+			files: []string{
+				"testdata/h.table-bloom.no-compression.prefix_extractor.no_whole_key_filter.sst",
+				"testdata/h.table-bloom.no-compression.sst",
+				"testdata/h.table-bloom.sst",
+			},
+			corruptionLocations: []corruptionLocation{
+				corruptionLocationFilter,
+			},
+		},
+		{
+			name: "range deletion block corruption",
+			corruptionLocations: []corruptionLocation{
+				corruptionLocationRangeDel,
+			},
+		},
+		{
+			name: "properties block corruption",
+			corruptionLocations: []corruptionLocation{
+				corruptionLocationProperties,
+			},
+		},
+		{
+			name: "metaindex block corruption",
+			corruptionLocations: []corruptionLocation{
+				corruptionLocationMetaIndex,
+			},
+		},
+		{
+			name: "multiple blocks corrupted",
+			corruptionLocations: []corruptionLocation{
+				corruptionLocationData,
+				corruptionLocationIndex,
+				corruptionLocationRangeDel,
+				corruptionLocationProperties,
+				corruptionLocationMetaIndex,
+			},
+		},
+	}
+
+	testFn := func(t *testing.T, file string, corruptionLocations []corruptionLocation) {
+		// Create a copy of the SSTable that we can freely corrupt.
+		f, err := os.Open(filepath.FromSlash(file))
+		require.NoError(t, err)
+
+		pathCopy := path.Join(t.TempDir(), path.Base(file))
+		fCopy, err := os.OpenFile(pathCopy, os.O_CREATE|os.O_RDWR, 0600)
+		require.NoError(t, err)
+		defer fCopy.Close()
+
+		_, err = io.Copy(fCopy, f)
+		require.NoError(t, err)
+		err = fCopy.Sync()
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+
+		filter := bloom.FilterPolicy(10)
+		r, err := NewReader(fCopy, ReaderOptions{
+			Filters: map[string]FilterPolicy{
+				filter.Name(): filter,
+			},
+		})
+		require.NoError(t, err)
+		defer func() { require.NoError(t, r.Close()) }()
+
+		// Prior to corruption, validation is successful.
+		require.NoError(t, r.ValidateBlockChecksums())
+
+		// If we are not testing for corruption, we can stop here.
+		if len(corruptionLocations) == 0 {
+			return
+		}
+
+		// Perform bit flips in various corruption locations.
+		layout, err := r.Layout()
+		require.NoError(t, err)
+		for _, location := range corruptionLocations {
+			var bh BlockHandle
+			switch location {
+			case corruptionLocationData:
+				bh = layout.Data[rng.Intn(len(layout.Data))]
+			case corruptionLocationIndex:
+				bh = layout.Index[rng.Intn(len(layout.Index))]
+			case corruptionLocationTopIndex:
+				bh = layout.TopIndex
+			case corruptionLocationFilter:
+				bh = layout.Filter
+			case corruptionLocationRangeDel:
+				bh = layout.RangeDel
+			case corruptionLocationProperties:
+				bh = layout.Properties
+			case corruptionLocationMetaIndex:
+				bh = layout.MetaIndex
+			default:
+				t.Fatalf("unknown location")
+			}
+
+			// Corrupt a random byte within the selected block.
+			pos := int64(bh.Offset) + rng.Int63n(int64(bh.Length))
+			t.Logf("altering file=%s @ offset = %d", file, pos)
+
+			b := make([]byte, 1)
+			n, err := fCopy.ReadAt(b, pos)
+			require.NoError(t, err)
+			require.Equal(t, 1, n)
+			t.Logf("data (before) = %08b", b)
+
+			b[0] ^= 0xff
+			t.Logf("data (after) = %08b", b)
+
+			_, err = fCopy.WriteAt(b, pos)
+			require.NoError(t, err)
+		}
+
+		// Write back to the file.
+		err = fCopy.Sync()
+		require.NoError(t, err)
+
+		// Confirm that checksum validation fails.
+		err = r.ValidateBlockChecksums()
+		require.Error(t, err)
+		require.Regexp(t, `checksum mismatch`, err.Error())
+	}
+
+	for _, tc := range testCases {
+		// By default, test across all files, unless overridden.
+		files := tc.files
+		if files == nil {
+			files = allFiles
+		}
+		for _, file := range files {
+			t.Run(tc.name+" "+path.Base(file), func(t *testing.T) {
+				testFn(t, file, tc.corruptionLocations)
+			})
+		}
 	}
 }
 
