@@ -15,7 +15,6 @@ jobs:
       fail-fast: false
       matrix:
         go:
-          - "1.14"
           - "1.15"
           - "1.16"
     steps:

@@ -15,10 +15,6 @@ cache:
 
 matrix:
   include:
-    - name: "go1.14.x-linux"
-      go: 1.14.x
-      os: linux
-      script: make test
     - name: "go1.15.x-linux"
       go: 1.15.x
       os: linux
