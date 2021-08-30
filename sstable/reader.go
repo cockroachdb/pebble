@@ -1896,7 +1896,7 @@ func (r *Reader) readBlock(
 					base.MustExist(r.fs, r.filename, panicFataler{}, err)
 				}
 			}
-			if raState.sequentialFile != nil {
+			if raState.sequentialFile == nil {
 				type fd interface {
 					Fd() uintptr
 				}
