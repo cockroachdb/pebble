@@ -819,11 +819,11 @@ func TestCacheEvict(t *testing.T) {
 
 	require.NoError(t, d.Compact([]byte("0"), []byte("1")))
 
+	require.NoError(t, d.Close())
+
 	if size := cache.Size(); size != 0 {
 		t.Fatalf("expected empty cache, but found %d", size)
 	}
-
-	require.NoError(t, d.Close())
 }
 
 func TestFlushEmpty(t *testing.T) {
