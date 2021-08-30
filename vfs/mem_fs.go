@@ -296,6 +296,41 @@ func (y *MemFS) Open(fullname string, opts ...OpenOption) (File, error) {
 	return y.open(fullname, false /* allowEmptyName */)
 }
 
+// OpenForAppend implements FS.OpenForAppend.
+func (y *MemFS) OpenForAppend(fullname string) (File, error) {
+	var ret *memFile
+	err := y.walk(fullname, func(dir *memNode, frag string, final bool) error {
+		if final {
+			if frag == "" {
+				return errors.New("pebble/vfs: empty file name")
+			}
+			if n := dir.children[frag]; n != nil {
+				ret = &memFile{
+					n:     n,
+					fs:    y,
+					write: true,
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if ret == nil {
+		return nil, &os.PathError{
+			Op:   "open",
+			Path: fullname,
+			Err:  oserror.ErrNotExist,
+		}
+	}
+	atomic.AddInt32(&ret.n.refs, 1)
+	ret.n.mu.Lock()
+	defer ret.n.mu.Unlock()
+	ret.wpos = len(ret.n.mu.data)
+	return ret, nil
+}
+
 // OpenDir implements FS.OpenDir.
 func (y *MemFS) OpenDir(fullname string) (File, error) {
 	return y.open(fullname, true /* allowEmptyName */)

@@ -230,6 +230,17 @@ func (fs *enospcFS) Open(name string, opts ...OpenOption) (File, error) {
 	return f, err
 }
 
+func (fs *enospcFS) OpenForAppend(name string) (File, error) {
+	f, err := fs.inner.OpenForAppend(name)
+	if f != nil {
+		f = WithFd(f, enospcFile{
+			fs:    fs,
+			inner: f,
+		})
+	}
+	return f, err
+}
+
 func (fs *enospcFS) OpenDir(name string) (File, error) {
 	f, err := fs.inner.OpenDir(name)
 	if f != nil {

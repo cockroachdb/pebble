@@ -53,6 +53,11 @@ type FS interface {
 	// Open opens the named file for reading. openOptions provides
 	Open(name string, opts ...OpenOption) (File, error)
 
+	// OpenForAppend opens the named file for reading and writing,
+	// positioned to the end. OpenForAppend errors if the named file
+	// does not exist.
+	OpenForAppend(name string) (File, error)
+
 	// OpenDir opens the named directory for syncing.
 	OpenDir(name string) (File, error)
 
@@ -173,6 +178,18 @@ func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
 	}
 	for _, opt := range opts {
 		opt.Apply(file)
+	}
+	return file, nil
+}
+
+func (defaultFS) OpenForAppend(name string) (File, error) {
+	file, err := os.OpenFile(name, os.O_RDWR|os.O_APPEND|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	_, err = file.Seek(0, os.SEEK_END)
+	if err != nil {
+		return nil, err
 	}
 	return file, nil
 }

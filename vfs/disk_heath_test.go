@@ -59,6 +59,10 @@ func (m mockFS) Open(name string, opts ...OpenOption) (File, error) {
 	panic("unimplemented")
 }
 
+func (m mockFS) OpenForAppend(name string) (File, error) {
+	panic("unimplemented")
+}
+
 func (m mockFS) OpenDir(name string) (File, error) {
 	panic("unimplemented")
 }

@@ -31,6 +31,8 @@ const (
 	OpLink
 	// OpOpen describes a file open operation.
 	OpOpen
+	// OpOpenForAppend describes a file open-for-append operation.
+	OpOpenForAppend
 	// OpOpenDir describes a directory open operation.
 	OpOpenDir
 	// OpRemove describes a remove file operation.
@@ -70,7 +72,7 @@ const (
 // OpKind returns the operation's kind.
 func (o Op) OpKind() OpKind {
 	switch o {
-	case OpOpen, OpOpenDir, OpList, OpStat, OpGetDiskUsage, OpFileRead, OpFileReadAt, OpFileStat:
+	case OpOpen, OpOpenForAppend, OpOpenDir, OpList, OpStat, OpGetDiskUsage, OpFileRead, OpFileReadAt, OpFileStat:
 		return OpKindRead
 	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForRewrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileSync, OpFileFlush:
 		return OpKindWrite
@@ -215,6 +217,19 @@ func (fs *FS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
 	for _, opt := range opts {
 		opt.Apply(ef)
 	}
+	return ef, nil
+}
+
+// OpenForAppend implements FS.OpenForAppend.
+func (fs *FS) OpenForAppend(name string) (vfs.File, error) {
+	if err := fs.inj.MaybeError(OpOpenForAppend, name); err != nil {
+		return nil, err
+	}
+	f, err := fs.fs.OpenForAppend(name)
+	if err != nil {
+		return nil, err
+	}
+	ef := &errorFile{name, f, fs.inj}
 	return ef, nil
 }
 

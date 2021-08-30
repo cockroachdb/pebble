@@ -295,3 +295,38 @@ func TestVFSCreateLinkSemantics(t *testing.T) {
 		})
 	}
 }
+
+func TestVFS_OpenForAppend(t *testing.T) {
+	dir, err := ioutil.TempDir("", "test-create-link")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	for _, fs := range []FS{Default, NewMem()} {
+		t.Run(fmt.Sprintf("%T", fs), func(t *testing.T) {
+			require.NoError(t, fs.MkdirAll(dir, 0755))
+
+			_, err := fs.OpenForAppend(fs.PathJoin(dir, "foo"))
+			require.Error(t, err)
+			require.True(t, oserror.IsNotExist(err))
+
+			f, err := fs.Create(fs.PathJoin(dir, "foo"))
+			require.NoError(t, err)
+			_, err = f.Write([]byte("hello "))
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
+
+			f, err = fs.OpenForAppend(fs.PathJoin(dir, "foo"))
+			require.NoError(t, err)
+			_, err = f.Write([]byte("world!"))
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
+
+			f, err = fs.Open(fs.PathJoin(dir, "foo"))
+			require.NoError(t, err)
+			b, err := ioutil.ReadAll(f)
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
+			require.Equal(t, []byte("hello world!"), b)
+		})
+	}
+}

@@ -41,6 +41,8 @@ func runTestCases(t *testing.T, testCases []string, fs *MemFS) {
 			err = fs.Link(s[1], s[2])
 		case "open":
 			g, err = fs.Open(s[1])
+		case "openForAppend":
+			g, err = fs.OpenForAppend(s[1])
 		case "openDir":
 			g, err = fs.OpenDir(s[1])
 		case "mkdirall":
@@ -167,6 +169,16 @@ func TestBasics(t *testing.T) {
 		"10a: reuseForWrite /bar/caz/z /bar/z",
 		"10b: open /bar/caz/z fails",
 		"10c: open /bar/z",
+		// OpenForAppend
+		"11a: f = create /bax",
+		"11b: f.write abcde",
+		"11c: f.close",
+		"11d: f = openForAppend /bax",
+		"11e: f.write fghij",
+		"11f: f.close",
+		"11g: f = open /bax",
+		"11h: f.read 10 == abcdefghij",
+		"11i: f.close",
 	}
 	runTestCases(t, testCases, fs)
 }
