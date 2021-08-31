@@ -32,6 +32,8 @@ type generator struct {
 	writerToSingleSetKeys map[objID]singleSetKeysForBatch
 	// Ensures no duplication of single set keys for the duration of the test.
 	generatedWriteKeys map[string]struct{}
+	// Keys that have either been deleted via a SINGLEDEL.
+	singleDeleteKeys [][]byte
 
 	// Unordered sets of object IDs for live objects. Used to randomly select on
 	// object when generating an operation. There are 4 concrete objects: the DB
@@ -156,6 +158,10 @@ func (g *generator) randKey(newKey float64) []byte {
 
 func (g *generator) randKeyForWrite(newKey float64, singleSetKey float64, writerID objID) []byte {
 	if n := len(g.keys); n > 0 && g.rng.Float64() > newKey {
+		// 25% chance of a key that has been single deleted.
+		if m := len(g.singleDeleteKeys); m > 0 && g.rng.Float64() < 0.25 {
+			return g.randSingleDeleteKey()
+		}
 		return g.keys[g.rng.Intn(n)]
 	}
 	key := g.randValue(4, 12)
@@ -182,6 +188,14 @@ func (g *generator) randKeyToSingleDelete() []byte {
 		return nil
 	}
 	return g.singleSetKeysInDB.removeKey(g.rng.Intn(length))
+}
+
+func (g *generator) randSingleDeleteKey() []byte {
+	length := len(g.singleDeleteKeys)
+	if length == 0 {
+		return nil
+	}
+	return g.singleDeleteKeys[g.rng.Intn(length)]
 }
 
 // TODO(peter): make the value size configurable. See valueSizeDist in
@@ -844,6 +858,7 @@ func (g *generator) writerSingleDelete() {
 		writerID: writerID,
 		key:      key,
 	})
+	g.singleDeleteKeys = append(g.singleDeleteKeys, key)
 	g.tryRepositionBatchIters(writerID)
 }
 
