@@ -28,10 +28,16 @@ type generator struct {
 	keys [][]byte
 	// singleSetKeysInDB is also in the writerToSingleSetKeys map. This tracks
 	// keys that are eligible to be single deleted.
-	singleSetKeysInDB     singleSetKeysForBatch
-	writerToSingleSetKeys map[objID]singleSetKeysForBatch
+	singleSetKeysInDB     indexedSet
+	writerToSingleSetKeys map[objID]indexedSet
 	// Ensures no duplication of single set keys for the duration of the test.
 	generatedWriteKeys map[string]struct{}
+	// singleDeleteKeysInDB tracks keys that have been deleted via a SINGLEDEL
+	// operation.
+	singleDeleteKeysInDB indexedSet
+	// writerToSingleDeleteKeys maps writers to an associated set of
+	// deleted keys.
+	writerToSingleDeleteKeys map[objID]indexedSet
 
 	// Unordered sets of object IDs for live objects. Used to randomly select on
 	// object when generating an operation. There are 4 concrete objects: the DB
@@ -71,19 +77,22 @@ type generator struct {
 
 func newGenerator(rng *rand.Rand) *generator {
 	g := &generator{
-		rng:                   rng,
-		init:                  &initOp{},
-		singleSetKeysInDB:     makeSingleSetKeysForBatch(),
-		writerToSingleSetKeys: make(map[objID]singleSetKeysForBatch),
-		generatedWriteKeys:    make(map[string]struct{}),
-		liveReaders:           objIDSlice{makeObjID(dbTag, 0)},
-		liveWriters:           objIDSlice{makeObjID(dbTag, 0)},
-		batches:               make(map[objID]objIDSet),
-		iters:                 make(map[objID]objIDSet),
-		readers:               make(map[objID]objIDSet),
-		snapshots:             make(map[objID]objIDSet),
+		rng:                      rng,
+		init:                     &initOp{},
+		singleSetKeysInDB:        makeIndexedSet(),
+		writerToSingleSetKeys:    make(map[objID]indexedSet),
+		singleDeleteKeysInDB:     makeIndexedSet(),
+		writerToSingleDeleteKeys: make(map[objID]indexedSet),
+		generatedWriteKeys:       make(map[string]struct{}),
+		liveReaders:              objIDSlice{makeObjID(dbTag, 0)},
+		liveWriters:              objIDSlice{makeObjID(dbTag, 0)},
+		batches:                  make(map[objID]objIDSet),
+		iters:                    make(map[objID]objIDSet),
+		readers:                  make(map[objID]objIDSet),
+		snapshots:                make(map[objID]objIDSet),
 	}
 	g.writerToSingleSetKeys[makeObjID(dbTag, 0)] = g.singleSetKeysInDB
+	g.writerToSingleDeleteKeys[makeObjID(dbTag, 0)] = g.singleDeleteKeysInDB
 	// Note that the initOp fields are populated during generation.
 	g.ops = append(g.ops, g.init)
 	return g
@@ -147,6 +156,10 @@ func (g *generator) add(op op) {
 // keyDist and keySizeDist in config.go.
 func (g *generator) randKey(newKey float64) []byte {
 	if n := len(g.keys); n > 0 && g.rng.Float64() > newKey {
+		// 25% chance of reusing a key that has been SINGLEDELd.
+		if m := g.singleDeleteKeysInDB.len(); m > 0 && g.rng.Float64() < 0.25 {
+			return g.singleDeleteKeysInDB.removeRand(g.rng)
+		}
 		return g.keys[g.rng.Intn(n)]
 	}
 	key := g.randValue(4, 12)
@@ -156,6 +169,10 @@ func (g *generator) randKey(newKey float64) []byte {
 
 func (g *generator) randKeyForWrite(newKey float64, singleSetKey float64, writerID objID) []byte {
 	if n := len(g.keys); n > 0 && g.rng.Float64() > newKey {
+		// 25% chance of reusing a key that has been SINGLEDELd.
+		if m := g.singleDeleteKeysInDB.len(); m > 0 && g.rng.Float64() < 0.25 {
+			return g.writerToSingleDeleteKeys[writerID].removeRand(g.rng)
+		}
 		return g.keys[g.rng.Intn(n)]
 	}
 	key := g.randValue(4, 12)
@@ -174,14 +191,6 @@ func (g *generator) randKeyForWrite(newKey float64, singleSetKey float64, writer
 		g.keys = append(g.keys, key)
 	}
 	return key
-}
-
-func (g *generator) randKeyToSingleDelete() []byte {
-	length := len(*g.singleSetKeysInDB.keys)
-	if length == 0 {
-		return nil
-	}
-	return g.singleSetKeysInDB.removeKey(g.rng.Intn(length))
 }
 
 // TODO(peter): make the value size configurable. See valueSizeDist in
@@ -222,7 +231,8 @@ func (g *generator) newBatch() {
 	g.init.batchSlots++
 	g.liveBatches = append(g.liveBatches, batchID)
 	g.liveWriters = append(g.liveWriters, batchID)
-	g.writerToSingleSetKeys[batchID] = makeSingleSetKeysForBatch()
+	g.writerToSingleSetKeys[batchID] = makeIndexedSet()
+	g.writerToSingleDeleteKeys[batchID] = makeIndexedSet()
 
 	g.add(&newBatchOp{
 		batchID: batchID,
@@ -239,7 +249,8 @@ func (g *generator) newIndexedBatch() {
 	iters := make(objIDSet)
 	g.batches[batchID] = iters
 	g.readers[batchID] = iters
-	g.writerToSingleSetKeys[batchID] = makeSingleSetKeysForBatch()
+	g.writerToSingleSetKeys[batchID] = makeIndexedSet()
+	g.writerToSingleDeleteKeys[batchID] = makeIndexedSet()
 
 	g.add(&newIndexedBatchOp{
 		batchID: batchID,
@@ -262,6 +273,7 @@ func (g *generator) batchClose(batchID objID) {
 		g.add(&closeOp{objID: id})
 	}
 	delete(g.writerToSingleSetKeys, batchID)
+	delete(g.writerToSingleDeleteKeys, batchID)
 }
 
 func (g *generator) batchAbort() {
@@ -282,6 +294,7 @@ func (g *generator) batchCommit() {
 
 	batchID := g.liveBatches.rand(g.rng)
 	g.writerToSingleSetKeys[batchID].transferTo(g.singleSetKeysInDB)
+	g.writerToSingleDeleteKeys[batchID].transferTo(g.singleDeleteKeysInDB)
 	g.batchClose(batchID)
 
 	g.add(&batchCommitOp{
@@ -784,9 +797,15 @@ func (g *generator) writerIngest() {
 	batchIDs := make([]objID, 0, 1+g.rng.Intn(3))
 	for i := 0; i < cap(batchIDs); i++ {
 		batchID := g.liveBatches.rand(g.rng)
-		// After the ingest runs, it either succeeds and the keys are in the
-		// DB, or it fails and these keys never make it to the DB.
+		// After the ingest runs, it either succeeds and the keys are in the DB,
+		// or it fails and these keys never make it to the DB. As the keys have
+		// been SET at most once in the DB, the conditions for SINGLEDEL are
+		// satisfied (attempting to delete a missing key is valid).
 		g.writerToSingleSetKeys[batchID].transferTo(g.singleSetKeysInDB)
+		// The same applies for keys that have been removed by a SINGLEDEL. It
+		// is valid to perform a read or write operation on a key that has been
+		// SINGLEDEL'd, whether it was removed from the DB or not.
+		g.writerToSingleDeleteKeys[batchID].transferTo(g.singleDeleteKeysInDB)
 		g.batchClose(batchID)
 		batchIDs = append(batchIDs, batchID)
 		if len(g.liveBatches) == 0 {
@@ -836,7 +855,7 @@ func (g *generator) writerSingleDelete() {
 	}
 
 	writerID := g.liveWriters.rand(g.rng)
-	key := g.randKeyToSingleDelete()
+	key := g.singleSetKeysInDB.removeRand(g.rng)
 	if key == nil {
 		return
 	}
@@ -844,6 +863,7 @@ func (g *generator) writerSingleDelete() {
 		writerID: writerID,
 		key:      key,
 	})
+	g.writerToSingleDeleteKeys[writerID].addKey(key)
 	g.tryRepositionBatchIters(writerID)
 }
 
