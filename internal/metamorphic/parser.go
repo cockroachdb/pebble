@@ -97,7 +97,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *iterSetBoundsOp:
 		return &t.iterID, nil, []interface{}{&t.lower, &t.upper}
 	case *singleDeleteOp:
-		return &t.writerID, nil, []interface{}{&t.key}
+		return &t.writerID, nil, []interface{}{&t.key, &t.maybeReplaceDelete}
 	}
 	panic(fmt.Sprintf("unsupported op type: %T", op))
 }
@@ -261,6 +261,14 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 			} else {
 				*t = []byte(s)
 			}
+
+		case *bool:
+			_, lit := p.scanToken(token.IDENT)
+			b, err := strconv.ParseBool(lit)
+			if err != nil {
+				panic(err)
+			}
+			*t = b
 
 		case *objID:
 			pos, lit := p.scanToken(token.IDENT)
