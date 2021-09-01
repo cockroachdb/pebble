@@ -40,8 +40,8 @@ import (
 var (
 	dir = flag.String("dir", "_meta",
 		"the directory storing test state")
-	disk = flag.Bool("disk", false,
-		"whether to use an in-mem DB or on-disk (in-mem is significantly faster)")
+	fs = flag.String("fs", "rand",
+		`force the tests to use either memory or disk-backed filesystems (valid: "mem", "disk", "rand")`)
 	// TODO: default error rate to a non-zero value. Currently, retrying is
 	// non-deterministic because of the Ierator.*WithLimit() methods since
 	// they may say that the Iterator is not valid, but be positioned at a
@@ -93,7 +93,7 @@ func testMetaRun(t *testing.T, runDir string, seed uint64) {
 
 	// Set up the filesystem to use for the test. Note that by default we use an
 	// in-memory FS.
-	if *disk && !testOpts.strictFS {
+	if testOpts.useDisk {
 		opts.FS = vfs.Default
 		require.NoError(t, os.RemoveAll(opts.FS.PathJoin(runDir, "data")))
 	} else {
@@ -134,7 +134,7 @@ func testMetaRun(t *testing.T, runDir string, seed uint64) {
 		}
 	}
 
-	if *keep && !*disk {
+	if *keep && !testOpts.useDisk {
 		m.maybeSaveData()
 	}
 }
@@ -211,12 +211,23 @@ func TestMeta(t *testing.T) {
 		runDir := filepath.Join(metaDir, path.Base(t.Name()))
 		require.NoError(t, os.MkdirAll(runDir, 0755))
 
+		// If the filesystem type was forced, all tests will use that value.
+		switch *fs {
+		case "rand":
+			// No-op. Use the generated value for the filesystem.
+		case "disk":
+			opts.useDisk = true
+		case "mem":
+			opts.useDisk = false
+		default:
+			t.Fatalf("unknown forced filesystem type: %q", *fs)
+		}
+
 		optionsPath := filepath.Join(runDir, "OPTIONS")
 		optionsStr := optionsToString(opts)
 		require.NoError(t, ioutil.WriteFile(optionsPath, []byte(optionsStr), 0644))
 
 		args := []string{
-			"-disk=" + fmt.Sprint(*disk),
 			"-keep=" + fmt.Sprint(*keep),
 			"-run-dir=" + runDir,
 			"-test.run=" + rootName + "$",
