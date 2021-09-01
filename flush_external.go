@@ -60,17 +60,17 @@ func flushExternalTable(untypedDB interface{}, path string, originalMeta *fileMe
 	d.mu.Lock()
 	d.mu.versions.logLock()
 	ve := &versionEdit{
-		NewFiles: []newFileEntry{newFileEntry{Level: 0, Meta: m}},
+		NewFiles: []newFileEntry{{Level: 0, Meta: m}},
 	}
 	metrics := map[int]*LevelMetrics{
-		0: &LevelMetrics{
+		0: {
 			NumFiles:       1,
 			Size:           int64(m.Size),
 			BytesIngested:  m.Size,
 			TablesIngested: 1,
 		},
 	}
-	err := d.mu.versions.logAndApply(jobID, ve, metrics, d.dataDir, func() []compactionInfo {
+	err := d.mu.versions.logAndApply(jobID, ve, metrics, func() []compactionInfo {
 		return d.getInProgressCompactionInfoLocked(nil)
 	})
 	if err != nil {

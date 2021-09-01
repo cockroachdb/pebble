@@ -30,6 +30,7 @@ func TestCheckpoint(t *testing.T) {
 	mem := vfs.NewMem()
 	opts := &Options{
 		FS:                    loggingFS{mem, &buf},
+		FormatMajorVersion:    FormatNewest,
 		L0CompactionThreshold: 10,
 	}
 

@@ -5,7 +5,7 @@ accepts 1 arg(s), received 0
 db properties
 non-existent
 ----
-open non-existent/CURRENT: file does not exist
+open non-existent/: file does not exist
 
 db properties
 ../testdata/db-stage-4
