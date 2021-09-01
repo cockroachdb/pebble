@@ -1515,7 +1515,7 @@ func (d *DB) flush1() error {
 		}
 
 		d.mu.versions.logLock()
-		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir,
+		err = d.mu.versions.logAndApply(jobID, ve, c.metrics,
 			func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) })
 		if err != nil {
 			// TODO(peter): untested.
@@ -1914,7 +1914,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
 		d.mu.versions.logLock()
-		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, d.dataDir, func() []compactionInfo {
+		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, func() []compactionInfo {
 			return d.getInProgressCompactionInfoLocked(c)
 		})
 		if err != nil {

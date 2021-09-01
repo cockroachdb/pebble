@@ -144,6 +144,7 @@ func TestEventListener(t *testing.T) {
 			buf.Reset()
 			opts := &Options{
 				FS:                    loggingFS{mem, &buf},
+				FormatMajorVersion:    FormatNewest,
 				EventListener:         MakeLoggingEventListener(&buf),
 				MaxManifestFileSize:   1,
 				L0CompactionThreshold: 10,
