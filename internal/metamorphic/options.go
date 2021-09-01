@@ -8,7 +8,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/internal/randvar"
 	"golang.org/x/exp/rand"
 )
 
@@ -39,6 +39,9 @@ func parseOptions(opts *testOptions, data string) error {
 			case "TestOptions.ingest_using_apply":
 				opts.ingestUsingApply = true
 				return true
+			case "TestOptions.use_disk":
+				opts.useDisk = true
+				return true
 			default:
 				return false
 			}
@@ -50,7 +53,7 @@ func parseOptions(opts *testOptions, data string) error {
 
 func optionsToString(opts *testOptions) string {
 	str := opts.opts.String()
-	if opts.strictFS || opts.ingestUsingApply {
+	if opts.strictFS || opts.ingestUsingApply || opts.useDisk {
 		str += "\n[TestOptions]\n"
 	}
 	if opts.strictFS {
@@ -59,13 +62,15 @@ func optionsToString(opts *testOptions) string {
 	if opts.ingestUsingApply {
 		str += "  ingest_using_apply=true\n"
 	}
+	if opts.useDisk {
+		str += "  use_disk=true\n"
+	}
 	return str
 }
 
 func defaultOptions() *pebble.Options {
 	opts := &pebble.Options{
 		Comparer: &comparer,
-		FS:       vfs.NewMem(),
 		Levels: []pebble.LevelOptions{{
 			FilterPolicy: bloom.FilterPolicy(10),
 		}},
@@ -76,6 +81,7 @@ func defaultOptions() *pebble.Options {
 
 type testOptions struct {
 	opts     *pebble.Options
+	useDisk  bool
 	strictFS bool
 	// Use Batch.Apply rather than DB.Ingest.
 	ingestUsingApply bool
@@ -166,6 +172,10 @@ func standardOptions() []*testOptions {
 [TestOptions]
   ingest_using_apply=true
 `,
+		20: `
+[TestOptions]
+  use_disk=true
+`,
 	}
 
 	opts := make([]*testOptions, len(stdOpts))
@@ -209,7 +219,10 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts.Levels = []pebble.LevelOptions{lopts}
 
 	testOpts.opts = opts
-	testOpts.strictFS = rng.Intn(2) != 0
+	testOpts.useDisk = randvar.NewWeighted(rng, 0.75, 0.25).Int() == 1 // Use disk 25% of the time.
+	if !testOpts.useDisk {
+		testOpts.strictFS = rng.Intn(2) != 0 // Only relevant for MemFS.
+	}
 	if testOpts.strictFS {
 		opts.DisableWAL = false
 	}
