@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -14,13 +15,14 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/rand"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 var testKeyValuePairs = []string{
@@ -407,7 +409,45 @@ func testIterator(
 	}
 }
 
+type deletableSumValueMerger struct {
+	sum int64
+}
+
+func newDeletableSumValueMerger(key, value []byte) (ValueMerger, error) {
+	m := &deletableSumValueMerger{}
+	return m, m.MergeNewer(value)
+}
+
+func (m *deletableSumValueMerger) parseAndCalculate(value []byte) error {
+	v, err := strconv.ParseInt(string(value), 10, 64)
+	if err == nil {
+		m.sum += v
+	}
+	return err
+}
+
+func (m *deletableSumValueMerger) MergeNewer(value []byte) error {
+	return m.parseAndCalculate(value)
+}
+
+func (m *deletableSumValueMerger) MergeOlder(value []byte) error {
+	return m.parseAndCalculate(value)
+}
+
+func (m *deletableSumValueMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
+	if m.sum == 0 {
+		return nil, nil, nil
+	}
+	return []byte(strconv.FormatInt(m.sum, 10)), nil, nil
+}
+
+func (m *deletableSumValueMerger) DeletableFinish(includesBase bool) ([]byte, bool, io.Closer, error) {
+	value, closer, err := m.Finish(includesBase)
+	return value, len(value) == 0, closer, err
+}
+
 func TestIterator(t *testing.T) {
+	var merge Merge
 	var keys []InternalKey
 	var vals [][]byte
 
@@ -426,12 +466,15 @@ func TestIterator(t *testing.T) {
 		iter.elideRangeTombstones = true
 		// NB: This Iterator cannot be cloned since it is not constructed
 		// with a readState. It suffices for this test.
+		if merge == nil {
+			merge = DefaultMerger.Merge
+		}
 		return &Iterator{
 			opts:  opts,
 			cmp:   cmp,
 			equal: equal,
 			split: split,
-			merge: DefaultMerger.Merge,
+			merge: merge,
 			iter:  newInvalidatingIter(iter),
 		}
 	}
@@ -439,6 +482,11 @@ func TestIterator(t *testing.T) {
 	datadriven.RunTest(t, "testdata/iterator", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
+			merge = nil
+			if len(d.CmdArgs) > 0 && d.CmdArgs[0].Key == "merger" &&
+				len(d.CmdArgs[0].Vals) > 0 && d.CmdArgs[0].Vals[0] == "deletable" {
+				merge = newDeletableSumValueMerger
+			}
 			keys = keys[:0]
 			vals = vals[:0]
 			for _, key := range strings.Split(d.Input, "\n") {

@@ -73,6 +73,7 @@ func (m *debugMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 }
 
 func TestCompactionIter(t *testing.T) {
+	var merge Merge
 	var keys []InternalKey
 	var vals [][]byte
 	var snapshots []uint64
@@ -80,14 +81,17 @@ func TestCompactionIter(t *testing.T) {
 	var allowZeroSeqnum bool
 
 	newIter := func() *compactionIter {
-		return newCompactionIter(
-			DefaultComparer.Compare,
-			DefaultComparer.FormatKey,
-			func(key, value []byte) (base.ValueMerger, error) {
+		if merge == nil {
+			merge = func(_, value []byte) (base.ValueMerger, error) {
 				m := &debugMerger{}
 				m.buf = append(m.buf, value...)
 				return m, nil
-			},
+			}
+		}
+		return newCompactionIter(
+			DefaultComparer.Compare,
+			DefaultComparer.FormatKey,
+			merge,
 			&fakeIter{keys: keys, vals: vals},
 			snapshots,
 			&rangedel.Fragmenter{},
@@ -104,6 +108,11 @@ func TestCompactionIter(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_iter", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
+			merge = nil
+			if len(d.CmdArgs) > 0 && d.CmdArgs[0].Key == "merger" &&
+				len(d.CmdArgs[0].Vals) > 0 && d.CmdArgs[0].Vals[0] == "deletable" {
+				merge = newDeletableSumValueMerger
+			}
 			keys = keys[:0]
 			vals = vals[:0]
 			for _, key := range strings.Split(d.Input, "\n") {
