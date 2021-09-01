@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
@@ -84,31 +85,48 @@ func TestErrorIfNotExists(t *testing.T) {
 }
 
 func TestNewDBFilenames(t *testing.T) {
-	mem := vfs.NewMem()
-	fooBar := mem.PathJoin("foo", "bar")
-	d, err := Open(fooBar, &Options{
-		FS: mem,
-	})
-	if err != nil {
-		t.Fatalf("Open: %v", err)
+	versions := map[FormatMajorVersion][]string{
+		FormatMostCompatible: {
+			"000002.log",
+			"CURRENT",
+			"LOCK",
+			"MANIFEST-000001",
+			"OPTIONS-000003",
+		},
+		FormatNewest: {
+			"000002.log",
+			"CURRENT",
+			"LOCK",
+			"MANIFEST-000001",
+			"OPTIONS-000003",
+			"marker.format-version.000002.003",
+			"marker.manifest.000001.MANIFEST-000001",
+		},
 	}
-	if err := d.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-	got, err := mem.List(fooBar)
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	sort.Strings(got)
-	want := []string{
-		"000002.log",
-		"CURRENT",
-		"LOCK",
-		"MANIFEST-000001",
-		"OPTIONS-000003",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("\ngot  %v\nwant %v", got, want)
+
+	for formatVers, want := range versions {
+		t.Run(fmt.Sprintf("vers=%s", formatVers), func(t *testing.T) {
+			mem := vfs.NewMem()
+			fooBar := mem.PathJoin("foo", "bar")
+			d, err := Open(fooBar, &Options{
+				FS:                 mem,
+				FormatMajorVersion: formatVers,
+			})
+			if err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+			if err := d.Close(); err != nil {
+				t.Fatalf("Close: %v", err)
+			}
+			got, err := mem.List(fooBar)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			sort.Strings(got)
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("\ngot  %v\nwant %v", got, want)
+			}
+		})
 	}
 }
 
@@ -911,4 +929,27 @@ func TestRocksDBNoFlushManifest(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, val)
 	require.NoError(t, closer.Close())
+}
+
+func TestOpen_ErrorIfUnknownFormatVersion(t *testing.T) {
+	fs := vfs.NewMem()
+	d, err := Open("", &Options{
+		FS:                 fs,
+		FormatMajorVersion: FormatVersioned,
+	})
+	require.NoError(t, err)
+	require.NoError(t, d.Close())
+
+	// Move the marker to a version that does not exist.
+	m, _, err := atomicfs.LocateMarker(fs, "", formatVersionMarkerName)
+	require.NoError(t, err)
+	require.NoError(t, m.Move("999999"))
+	require.NoError(t, m.Close())
+
+	_, err = Open("", &Options{
+		FS:                 fs,
+		FormatMajorVersion: FormatVersioned,
+	})
+	require.Error(t, err)
+	require.EqualError(t, err, `pebble: database "" written in format major version 999999`)
 }

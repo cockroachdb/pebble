@@ -5,7 +5,6 @@
 package tool
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -433,20 +433,16 @@ func (d *dbT) runSpace(cmd *cobra.Command, args []string) {
 func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 	dirname := args[0]
 	err := func() error {
-		// Read CURRENT to identify the current manifest.
-		f, err := d.opts.FS.Open(base.MakeFilename(d.opts.FS, dirname, base.FileTypeCurrent, 0))
+		desc, err := pebble.Peek(dirname, d.opts.FS)
 		if err != nil {
 			return err
+		} else if !desc.Exists {
+			return oserror.ErrNotExist
 		}
-		currentBytes, err := ioutil.ReadAll(f)
-		_ = f.Close()
-		if err != nil {
-			return err
-		}
-		manifestFilename := string(bytes.TrimSpace(currentBytes))
+		manifestFilename := d.opts.FS.PathBase(desc.ManifestFilename)
 
 		// Replay the manifest to get the current version.
-		f, err = d.opts.FS.Open(d.opts.FS.PathJoin(dirname, manifestFilename))
+		f, err := d.opts.FS.Open(desc.ManifestFilename)
 		if err != nil {
 			return errors.Wrapf(err, "pebble: could not open MANIFEST file %q", manifestFilename)
 		}

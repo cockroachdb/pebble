@@ -26,6 +26,12 @@ const (
 	fileTypeTemp     = base.FileTypeTemp
 )
 
+// setCurrentFile sets the CURRENT file to point to the manifest with
+// provided file number.
+//
+// NB: This is a low-level routine and typically not what you want to
+// use. Newer versions of Pebble running newer format major versions do
+// not use the CURRENT file. See setCurrentFunc in version_set.go.
 func setCurrentFile(dirname string, fs vfs.FS, fileNum FileNum) error {
 	newFilename := base.MakeFilename(fs, dirname, fileTypeCurrent, fileNum)
 	oldFilename := base.MakeFilename(fs, dirname, fileTypeTemp, fileNum)

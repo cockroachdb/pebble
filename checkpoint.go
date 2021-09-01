@@ -10,8 +10,8 @@ import (
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/atomicfs"
 )
-
 
 // checkpointOptions hold the optional parameters to construct checkpoint
 // snapshots.
@@ -93,7 +93,11 @@ func mkdirAllAndSyncParents(fs vfs.FS, destDir string) (vfs.File, error) {
 // space overhead for a checkpoint if hard links are disabled. Also beware that
 // even if hard links are used, the space overhead for the checkpoint will
 // increase over time as the DB performs compactions.
-func (d *DB) Checkpoint(destDir string, opts ...CheckpointOption) (ckErr error /* used in deferred cleanup */) {
+func (d *DB) Checkpoint(
+	destDir string, opts ...CheckpointOption,
+) (
+	ckErr error, /* used in deferred cleanup */
+) {
 	opt := &checkpointOptions{}
 	for _, fn := range opts {
 		fn(opt)
@@ -138,6 +142,7 @@ func (d *DB) Checkpoint(destDir string, opts ...CheckpointOption) (ckErr error /
 	// file number.
 	memQueue := d.mu.mem.queue
 	current := d.mu.versions.currentVersion()
+	formatVers := d.mu.formatVers.vers
 	manifestFileNum := d.mu.versions.manifestFileNum
 	manifestSize := d.mu.versions.manifest.Size()
 	optionsFileNum := d.optionsFileNum
@@ -187,18 +192,56 @@ func (d *DB) Checkpoint(destDir string, opts ...CheckpointOption) (ckErr error /
 	}
 
 	{
-		// Copy the MANIFEST, and create CURRENT. We copy rather than link because
-		// additional version edits added to the MANIFEST after we took our
-		// snapshot of the sstables will reference sstables that aren't in our
-		// checkpoint. For a similar reason, we need to limit how much of the
-		// MANIFEST we copy.
+		// Set the format major version in the destination directory.
+		var versionMarker *atomicfs.Marker
+		versionMarker, _, ckErr = atomicfs.LocateMarker(fs, destDir, formatVersionMarkerName)
+		if ckErr != nil {
+			return ckErr
+		}
+
+		// We use the marker to encode the active format version in the
+		// marker filename. Unlike other uses of the atomic marker,
+		// there is no file with the filename `formatVers.String()` on
+		// the filesystem.
+		ckErr = versionMarker.Move(formatVers.String())
+		if ckErr != nil {
+			return ckErr
+		}
+		ckErr = versionMarker.Close()
+		if ckErr != nil {
+			return ckErr
+		}
+	}
+
+	{
+		// Copy the MANIFEST, and create a pointer to it. We copy rather
+		// than link because additional version edits added to the
+		// MANIFEST after we took our snapshot of the sstables will
+		// reference sstables that aren't in our checkpoint. For a
+		// similar reason, we need to limit how much of the MANIFEST we
+		// copy.
 		srcPath := base.MakeFilename(fs, d.dirname, fileTypeManifest, manifestFileNum)
 		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 		ckErr = vfs.LimitedCopy(fs, srcPath, destPath, manifestSize)
 		if ckErr != nil {
 			return ckErr
 		}
-		ckErr = setCurrentFile(destDir, fs, manifestFileNum)
+
+		// Recent format versions use an atomic marker for setting the
+		// active manifest. Older versions use the CURRENT file. The
+		// setCurrentFunc function will return a closure that will
+		// take the appropriate action for the database's format
+		// version.
+		var manifestMarker *atomicfs.Marker
+		manifestMarker, _, ckErr = atomicfs.LocateMarker(fs, destDir, manifestMarkerName)
+		if ckErr != nil {
+			return ckErr
+		}
+		ckErr = setCurrentFunc(formatVers, manifestMarker, fs, destDir, dir)(manifestFileNum)
+		if ckErr != nil {
+			return ckErr
+		}
+		ckErr = manifestMarker.Close()
 		if ckErr != nil {
 			return ckErr
 		}

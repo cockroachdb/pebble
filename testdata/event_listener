@@ -5,6 +5,8 @@ open-dir: db
 mkdir-all: wal 0755
 open-dir: wal
 lock: db/LOCK
+open-dir: db
+open-dir: db
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
 create: db/CURRENT.000001.dbtmp
@@ -13,13 +15,24 @@ close: db/CURRENT.000001.dbtmp
 rename: db/CURRENT.000001.dbtmp -> db/CURRENT
 sync: db
 [JOB 1] MANIFEST created 000001
+create: db/marker.manifest.000001.MANIFEST-000001
+close: db/marker.manifest.000001.MANIFEST-000001
+sync: db
+create: db/marker.format-version.000001.002
+close: db/marker.format-version.000001.002
+sync: db
+create: db/CURRENT.000000.dbtmp
+sync: db/CURRENT.000000.dbtmp
+close: db/CURRENT.000000.dbtmp
+rename: db/CURRENT.000000.dbtmp -> db/CURRENT
+create: db/marker.format-version.000002.003
+close: db/marker.format-version.000002.003
+sync: db
 create: db/MANIFEST-000003
 close: db/MANIFEST-000001
 sync: db/MANIFEST-000003
-create: db/CURRENT.000003.dbtmp
-sync: db/CURRENT.000003.dbtmp
-close: db/CURRENT.000003.dbtmp
-rename: db/CURRENT.000003.dbtmp -> db/CURRENT
+create: db/marker.manifest.000002.MANIFEST-000003
+close: db/marker.manifest.000002.MANIFEST-000003
 sync: db
 [JOB 1] MANIFEST created 000003
 create: wal/000002.log
@@ -47,10 +60,8 @@ sync: db
 create: db/MANIFEST-000007
 close: db/MANIFEST-000003
 sync: db/MANIFEST-000007
-create: db/CURRENT.000007.dbtmp
-sync: db/CURRENT.000007.dbtmp
-close: db/CURRENT.000007.dbtmp
-rename: db/CURRENT.000007.dbtmp -> db/CURRENT
+create: db/marker.manifest.000003.MANIFEST-000007
+close: db/marker.manifest.000003.MANIFEST-000007
 sync: db
 [JOB 3] MANIFEST created 000007
 [JOB 3] flushed 1 memtable to L0 [000006] (770 B), in 1.0s, output rate 770 B/s
@@ -73,10 +84,8 @@ sync: db
 create: db/MANIFEST-000010
 close: db/MANIFEST-000007
 sync: db/MANIFEST-000010
-create: db/CURRENT.000010.dbtmp
-sync: db/CURRENT.000010.dbtmp
-close: db/CURRENT.000010.dbtmp
-rename: db/CURRENT.000010.dbtmp -> db/CURRENT
+create: db/marker.manifest.000004.MANIFEST-000010
+close: db/marker.manifest.000004.MANIFEST-000010
 sync: db
 [JOB 5] MANIFEST created 000010
 [JOB 5] flushed 1 memtable to L0 [000009] (770 B), in 1.0s, output rate 770 B/s
@@ -90,10 +99,8 @@ sync: db
 create: db/MANIFEST-000012
 close: db/MANIFEST-000010
 sync: db/MANIFEST-000012
-create: db/CURRENT.000012.dbtmp
-sync: db/CURRENT.000012.dbtmp
-close: db/CURRENT.000012.dbtmp
-rename: db/CURRENT.000012.dbtmp -> db/CURRENT
+create: db/marker.manifest.000005.MANIFEST-000012
+close: db/marker.manifest.000005.MANIFEST-000012
 sync: db
 [JOB 6] MANIFEST created 000012
 [JOB 6] compacted(default) L0 [000006 000009] (1.5 K) + L6 [] (0 B) -> L6 [000011] (770 B), in 1.0s, output rate 770 B/s
@@ -121,10 +128,8 @@ sync: db
 create: db/MANIFEST-000015
 close: db/MANIFEST-000012
 sync: db/MANIFEST-000015
-create: db/CURRENT.000015.dbtmp
-sync: db/CURRENT.000015.dbtmp
-close: db/CURRENT.000015.dbtmp
-rename: db/CURRENT.000015.dbtmp -> db/CURRENT
+create: db/marker.manifest.000006.MANIFEST-000015
+close: db/marker.manifest.000006.MANIFEST-000015
 sync: db
 [JOB 8] MANIFEST created 000015
 [JOB 8] flushed 1 memtable to L0 [000014] (770 B), in 1.0s, output rate 770 B/s
@@ -141,10 +146,8 @@ sync: db
 create: db/MANIFEST-000017
 close: db/MANIFEST-000015
 sync: db/MANIFEST-000017
-create: db/CURRENT.000017.dbtmp
-sync: db/CURRENT.000017.dbtmp
-close: db/CURRENT.000017.dbtmp
-rename: db/CURRENT.000017.dbtmp -> db/CURRENT
+create: db/marker.manifest.000007.MANIFEST-000017
+close: db/marker.manifest.000007.MANIFEST-000017
 sync: db
 [JOB 10] MANIFEST created 000017
 [JOB 10] MANIFEST deleted 000012
@@ -189,13 +192,21 @@ sync:
 close: 
 open-dir: checkpoint
 link: db/OPTIONS-000004 -> checkpoint/OPTIONS-000004
+open-dir: checkpoint
+create: checkpoint/marker.format-version.000001.003
+sync: checkpoint/marker.format-version.000001.003
+close: checkpoint/marker.format-version.000001.003
+sync: checkpoint
+close: checkpoint
 create: checkpoint/MANIFEST-000017
 sync: checkpoint/MANIFEST-000017
 close: checkpoint/MANIFEST-000017
-create: checkpoint/CURRENT.000017.dbtmp
-sync: checkpoint/CURRENT.000017.dbtmp
-close: checkpoint/CURRENT.000017.dbtmp
-rename: checkpoint/CURRENT.000017.dbtmp -> checkpoint/CURRENT
+open-dir: checkpoint
+create: checkpoint/marker.manifest.000001.MANIFEST-000017
+sync: checkpoint/marker.manifest.000001.MANIFEST-000017
+close: checkpoint/marker.manifest.000001.MANIFEST-000017
+sync: checkpoint
+close: checkpoint
 link: db/000014.sst -> checkpoint/000014.sst
 link: db/000016.sst -> checkpoint/000016.sst
 link: db/000011.sst -> checkpoint/000011.sst
@@ -211,8 +222,10 @@ pebble: file deletion disablement invariant violated
 
 close
 ----
+close: db
 sync: wal/000013.log
 close: wal/000013.log
 close: db/MANIFEST-000017
+close: db
 close: db
 close: wal

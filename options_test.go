@@ -56,6 +56,7 @@ func TestOptionsString(t *testing.T) {
   delete_range_flush_delay=0s
   disable_wal=false
   flush_split_bytes=4194304
+  format_major_version=1
   l0_compaction_concurrency=10
   l0_compaction_threshold=4
   l0_stop_writes_threshold=12
