@@ -840,10 +840,20 @@ func (g *generator) writerSingleDelete() {
 	if key == nil {
 		return
 	}
-	g.add(&singleDeleteOp{
-		writerID: writerID,
-		key:      key,
-	})
+
+	// Keys eligible for single deletes can be removed with a regular delete.
+	// Mutate a percentage of SINGLEDEL ops into DELETEs.
+	if g.rng.Float64() < 0.25 {
+		g.add(&deleteOp{
+			writerID:        writerID,
+			key:             key,
+		})
+	} else {
+		g.add(&singleDeleteOp{
+			writerID: writerID,
+			key:      key,
+		})
+	}
 	g.tryRepositionBatchIters(writerID)
 }
 
