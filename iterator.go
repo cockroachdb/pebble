@@ -212,12 +212,8 @@ func (i *Iterator) findNextEntry(limit []byte) {
 	i.pos = iterPosCurForward
 
 	// Close the closer for the current value if one was open.
-	if i.valueCloser != nil {
-		i.err = i.valueCloser.Close()
-		i.valueCloser = nil
-		if i.err != nil {
-			return
-		}
+	if i.closeValueCloser() != nil {
+		return
 	}
 
 	for i.iterKey != nil {
@@ -267,7 +263,9 @@ func (i *Iterator) findNextEntry(limit []byte) {
 					if i.pos != iterPosNext {
 						i.nextUserKey()
 					}
-					i.findNextEntry(limit)
+					if i.closeValueCloser() == nil {
+						continue
+					}
 				}
 			} else {
 				// mergeNext may have been called, which can set
@@ -282,6 +280,14 @@ func (i *Iterator) findNextEntry(limit []byte) {
 			return
 		}
 	}
+}
+
+func (i *Iterator) closeValueCloser() error {
+	if i.valueCloser != nil {
+		i.err = i.valueCloser.Close()
+		i.valueCloser = nil
+	}
+	return i.err
 }
 
 func (i *Iterator) nextUserKey() {
@@ -449,7 +455,9 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 					if i.err == nil && needDelete {
 						i.value = nil
 						i.iterValidityState = IterExhausted
-						i.findPrevEntry(limit)
+						if i.closeValueCloser() == nil {
+							continue
+						}
 					}
 				}
 				if i.err != nil {

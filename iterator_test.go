@@ -425,6 +425,8 @@ func testIterator(
 	}
 }
 
+// deletableSumValueMerger computes the sum of its arguments,
+// but transforms a zero sum into a non-existent entry.
 type deletableSumValueMerger struct {
 	sum int64
 }
@@ -609,7 +611,7 @@ func TestReadSampling(t *testing.T) {
 
 			d.mu.Lock()
 			// Disable the "dynamic base level" code for this test.
-			//d.mu.versions.picker.forceBaseLevel1()
+			// d.mu.versions.picker.forceBaseLevel1()
 			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 			d.mu.Unlock()
 			return s
@@ -632,7 +634,6 @@ func TestReadSampling(t *testing.T) {
 					if err != nil {
 						return err.Error()
 					}
-
 				}
 			}
 
@@ -740,7 +741,6 @@ func TestReadSampling(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
-
 }
 
 func TestIteratorTableFilter(t *testing.T) {
