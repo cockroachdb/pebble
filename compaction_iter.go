@@ -226,13 +226,8 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	}
 
 	// Close the closer for the current value if one was open.
-	if i.valueCloser != nil {
-		i.err = i.valueCloser.Close()
-		i.valueCloser = nil
-		if i.err != nil {
-			i.valid = false
-			return nil, nil
-		}
+	if i.closeValueCloser() != nil {
+		return nil, nil
 	}
 
 	// Prior to this call to `Next()` we are in one of three situations with
@@ -331,7 +326,11 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			}
 			if i.err == nil {
 				if needDelete {
-					return i.Next()
+					i.valid = false
+					if i.closeValueCloser() != nil {
+						return nil, nil
+					}
+					continue
 				}
 				// A non-skippable entry does not necessarily cover later merge
 				// operands, so we must not zero the current merge result's seqnum.
@@ -363,6 +362,19 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	}
 
 	return nil, nil
+}
+
+func (i *compactionIter) closeValueCloser() error {
+	if i.valueCloser == nil {
+		return nil
+	}
+
+	i.err = i.valueCloser.Close()
+	i.valueCloser = nil
+	if i.err != nil {
+		i.valid = false
+	}
+	return i.err
 }
 
 // snapshotIndex returns the index of the first sequence number in snapshots
