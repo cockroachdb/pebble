@@ -1922,6 +1922,7 @@ func (r *Reader) readBlock(
 	case ChecksumTypeXXHash64:
 		computedChecksum = uint32(xxhash.Sum64(b[:bh.Length+1]))
 	default:
+		r.opts.Cache.Free(v)
 		return cache.Handle{}, errors.Errorf("unsupported checksum type: %d", r.checksumType)
 	}
 
