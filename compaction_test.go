@@ -1135,167 +1135,170 @@ func TestManualCompaction(t *testing.T) {
 
 	var ongoingCompaction *compaction
 
-	datadriven.RunTest(t, "testdata/manual_compaction", func(td *datadriven.TestData) string {
-		switch td.Cmd {
-		case "reset":
-			reset()
-			return ""
+	paths := []string{"testdata/manual_compaction", "testdata/singledel_manual_compaction"}
+	for _, path := range paths {
+		datadriven.RunTest(t, path, func(td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "reset":
+				reset()
+				return ""
 
-		case "batch":
-			b := d.NewIndexedBatch()
-			if err := runBatchDefineCmd(td, b); err != nil {
-				return err.Error()
-			}
-			require.NoError(t, b.Commit(nil))
-			return ""
-
-		case "build":
-			if err := runBuildCmd(td, d, mem); err != nil {
-				return err.Error()
-			}
-			return ""
-
-		case "compact":
-			if err := runCompactCmd(td, d); err != nil {
-				return err.Error()
-			}
-			return runLSMCmd(td, d)
-
-		case "define":
-			if d != nil {
-				if err := d.Close(); err != nil {
+			case "batch":
+				b := d.NewIndexedBatch()
+				if err := runBatchDefineCmd(td, b); err != nil {
 					return err.Error()
 				}
-			}
+				require.NoError(t, b.Commit(nil))
+				return ""
 
-			mem = vfs.NewMem()
-			opts := &Options{
-				FS:         mem,
-				DebugCheck: DebugCheckLevels,
-			}
-			opts.private.disableAutomaticCompactions = true
+			case "build":
+				if err := runBuildCmd(td, d, mem); err != nil {
+					return err.Error()
+				}
+				return ""
 
-			var err error
-			if d, err = runDBDefineCmd(td, opts); err != nil {
-				return err.Error()
-			}
-
-			d.mu.Lock()
-			s := d.mu.versions.currentVersion().String()
-			d.mu.Unlock()
-			return s
-
-		case "ingest":
-			if err := runIngestCmd(td, d, mem); err != nil {
-				return err.Error()
-			}
-			return runLSMCmd(td, d)
-
-		case "iter":
-			// TODO(peter): runDBDefineCmd doesn't properly update the visible
-			// sequence number. So we have to use a snapshot with a very large
-			// sequence number, otherwise the DB appears empty.
-			snap := Snapshot{
-				db:     d,
-				seqNum: InternalKeySeqNumMax,
-			}
-			iter := snap.NewIter(nil)
-			return runIterCmd(td, iter, true)
-
-		case "async-compact":
-			var s string
-			ch := make(chan error, 1)
-			go func() {
+			case "compact":
 				if err := runCompactCmd(td, d); err != nil {
-					ch <- err
-					close(ch)
-					return
+					return err.Error()
 				}
+				return runLSMCmd(td, d)
+
+			case "define":
+				if d != nil {
+					if err := d.Close(); err != nil {
+						return err.Error()
+					}
+				}
+
+				mem = vfs.NewMem()
+				opts := &Options{
+					FS:         mem,
+					DebugCheck: DebugCheckLevels,
+				}
+				opts.private.disableAutomaticCompactions = true
+
+				var err error
+				if d, err = runDBDefineCmd(td, opts); err != nil {
+					return err.Error()
+				}
+
 				d.mu.Lock()
-				s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				s := d.mu.versions.currentVersion().String()
 				d.mu.Unlock()
-				close(ch)
-			}()
+				return s
 
-			manualDone := func() bool {
-				select {
-				case <-ch:
-					return true
-				default:
-					return false
+			case "ingest":
+				if err := runIngestCmd(td, d, mem); err != nil {
+					return err.Error()
 				}
-			}
+				return runLSMCmd(td, d)
 
-			err := try(100*time.Microsecond, 20*time.Second, func() error {
-				if manualDone() {
+			case "iter":
+				// TODO(peter): runDBDefineCmd doesn't properly update the visible
+				// sequence number. So we have to use a snapshot with a very large
+				// sequence number, otherwise the DB appears empty.
+				snap := Snapshot{
+					db:     d,
+					seqNum: InternalKeySeqNumMax,
+				}
+				iter := snap.NewIter(nil)
+				return runIterCmd(td, iter, true)
+
+			case "async-compact":
+				var s string
+				ch := make(chan error, 1)
+				go func() {
+					if err := runCompactCmd(td, d); err != nil {
+						ch <- err
+						close(ch)
+						return
+					}
+					d.mu.Lock()
+					s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+					d.mu.Unlock()
+					close(ch)
+				}()
+
+				manualDone := func() bool {
+					select {
+					case <-ch:
+						return true
+					default:
+						return false
+					}
+				}
+
+				err := try(100*time.Microsecond, 20*time.Second, func() error {
+					if manualDone() {
+						return nil
+					}
+
+					d.mu.Lock()
+					defer d.mu.Unlock()
+					if len(d.mu.compact.manual) == 0 {
+						return errors.New("no manual compaction queued")
+					}
+					manual := d.mu.compact.manual[0]
+					if manual.retries == 0 {
+						return errors.New("manual compaction has not been retried")
+					}
 					return nil
+				})
+				if err != nil {
+					return err.Error()
+				}
+
+				if manualDone() {
+					return "manual compaction did not block for ongoing\n" + s
 				}
 
 				d.mu.Lock()
-				defer d.mu.Unlock()
-				if len(d.mu.compact.manual) == 0 {
-					return errors.New("no manual compaction queued")
+				delete(d.mu.compact.inProgress, ongoingCompaction)
+				d.mu.compact.compactingCount--
+				ongoingCompaction = nil
+				d.maybeScheduleCompaction()
+				d.mu.Unlock()
+				if err := <-ch; err != nil {
+					return err.Error()
 				}
-				manual := d.mu.compact.manual[0]
-				if manual.retries == 0 {
-					return errors.New("manual compaction has not been retried")
+				return "manual compaction blocked until ongoing finished\n" + s
+
+			case "add-ongoing-compaction":
+				var startLevel int
+				var outputLevel int
+				td.ScanArgs(t, "startLevel", &startLevel)
+				td.ScanArgs(t, "outputLevel", &outputLevel)
+				ongoingCompaction = &compaction{
+					inputs: []compactionLevel{{level: startLevel}, {level: outputLevel}},
 				}
-				return nil
-			})
-			if err != nil {
-				return err.Error()
+				ongoingCompaction.startLevel = &ongoingCompaction.inputs[0]
+				ongoingCompaction.outputLevel = &ongoingCompaction.inputs[1]
+				d.mu.Lock()
+				d.mu.compact.inProgress[ongoingCompaction] = struct{}{}
+				d.mu.compact.compactingCount++
+				d.mu.Unlock()
+				return ""
+
+			case "remove-ongoing-compaction":
+				d.mu.Lock()
+				delete(d.mu.compact.inProgress, ongoingCompaction)
+				d.mu.compact.compactingCount--
+				ongoingCompaction = nil
+				d.mu.Unlock()
+				return ""
+
+			case "set-concurrent-compactions":
+				td.ScanArgs(t, "num", &d.opts.MaxConcurrentCompactions)
+				return ""
+
+			case "wait-pending-table-stats":
+				return runTableStatsCmd(td, d)
+
+			default:
+				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
-
-			if manualDone() {
-				return "manual compaction did not block for ongoing\n" + s
-			}
-
-			d.mu.Lock()
-			delete(d.mu.compact.inProgress, ongoingCompaction)
-			d.mu.compact.compactingCount--
-			ongoingCompaction = nil
-			d.maybeScheduleCompaction()
-			d.mu.Unlock()
-			if err := <-ch; err != nil {
-				return err.Error()
-			}
-			return "manual compaction blocked until ongoing finished\n" + s
-
-		case "add-ongoing-compaction":
-			var startLevel int
-			var outputLevel int
-			td.ScanArgs(t, "startLevel", &startLevel)
-			td.ScanArgs(t, "outputLevel", &outputLevel)
-			ongoingCompaction = &compaction{
-				inputs: []compactionLevel{{level: startLevel}, {level: outputLevel}},
-			}
-			ongoingCompaction.startLevel = &ongoingCompaction.inputs[0]
-			ongoingCompaction.outputLevel = &ongoingCompaction.inputs[1]
-			d.mu.Lock()
-			d.mu.compact.inProgress[ongoingCompaction] = struct{}{}
-			d.mu.compact.compactingCount++
-			d.mu.Unlock()
-			return ""
-
-		case "remove-ongoing-compaction":
-			d.mu.Lock()
-			delete(d.mu.compact.inProgress, ongoingCompaction)
-			d.mu.compact.compactingCount--
-			ongoingCompaction = nil
-			d.mu.Unlock()
-			return ""
-
-		case "set-concurrent-compactions":
-			td.ScanArgs(t, "num", &d.opts.MaxConcurrentCompactions)
-			return ""
-
-		case "wait-pending-table-stats":
-			return runTableStatsCmd(td, d)
-
-		default:
-			return fmt.Sprintf("unknown command: %s", td.Cmd)
-		}
-	})
+		})
+	}
 }
 
 func TestCompactionFindGrandparentLimit(t *testing.T) {
