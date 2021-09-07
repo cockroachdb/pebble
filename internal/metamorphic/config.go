@@ -41,6 +41,7 @@ const (
 	writerMerge
 	writerSet
 	writerSingleDelete
+	pickScenario
 )
 
 type config struct {
@@ -93,5 +94,6 @@ var defaultConfig = config{
 		writerMerge:         100,
 		writerSet:           100,
 		writerSingleDelete:  25,
+		pickScenario:        100,
 	},
 }

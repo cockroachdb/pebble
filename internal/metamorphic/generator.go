@@ -67,6 +67,8 @@ type generator struct {
 	// snapshotID -> snapshot iters: used to keep track of the open iterators on
 	// a snapshot. The iter set value will also be indexed by the readers map.
 	snapshots map[objID]objIDSet
+	// Set of custom scenarios for which to generate ops for.
+	scenarios []*sequenceGenerator
 }
 
 func newGenerator(rng *rand.Rand) *generator {
@@ -86,6 +88,11 @@ func newGenerator(rng *rand.Rand) *generator {
 	g.writerToSingleSetKeys[makeObjID(dbTag, 0)] = g.singleSetKeysInDB
 	// Note that the initOp fields are populated during generation.
 	g.ops = append(g.ops, g.init)
+
+	// Specific scenarios for which to generate operations for.
+	// TODO(travers): Add additional sequences.
+	g.scenarios = []*sequenceGenerator{}
+
 	return g
 }
 
@@ -126,12 +133,13 @@ func generate(rng *rand.Rand, count uint64, cfg config) []op {
 		writerMerge:         g.writerMerge,
 		writerSet:           g.writerSet,
 		writerSingleDelete:  g.writerSingleDelete,
+		pickScenario:        g.pickScenario,
 	}
 
 	// TPCC-style deck of cards randomization. Every time the end of the deck is
 	// reached, we shuffle the deck.
 	deck := randvar.NewDeck(g.rng, cfg.ops...)
-	for i := uint64(0); i < count; i++ {
+	for uint64(len(g.ops)) < count {
 		generators[deck.Int()]()
 	}
 
@@ -860,6 +868,24 @@ func (g *generator) tryRepositionBatchIters(writerID objID) {
 	for _, id := range iters.sorted() {
 		g.add(&iterFirstOp{iterID: id})
 	}
+}
+
+func (g *generator) pickScenario() {
+	// All scenarios have been exhausted.
+	if len(g.scenarios) == 0 {
+		return
+	}
+	// Pick a random scenario to generate the next operation.
+	idx := g.rng.Intn(len(g.scenarios))
+	s := g.scenarios[idx]
+	op := s.next(g.rng)
+	if op == nil {
+		// The scenario ran to completion. Remove the scenario from the slice.
+		g.scenarios[idx] = g.scenarios[len(g.scenarios)-1]
+		g.scenarios = g.scenarios[:len(g.scenarios)-1]
+		return
+	}
+	g.add(op)
 }
 
 func (g *generator) String() string {
