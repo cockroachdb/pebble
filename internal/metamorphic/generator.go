@@ -91,7 +91,9 @@ func newGenerator(rng *rand.Rand) *generator {
 
 	// Specific scenarios for which to generate operations for.
 	// TODO(travers): Add additional sequences.
-	g.scenarios = []*sequenceGenerator{}
+	g.scenarios = []*sequenceGenerator{
+		makeDelToSingleDelSequence(g.randValue(4, 12), func() []byte { return g.randValue(4, 12) }),
+	}
 
 	return g
 }
