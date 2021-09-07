@@ -10,6 +10,14 @@ mkdir-all data
 locate dir=data marker=foo
 ----
 
+next-iter  dir=data marker=foo
+----
+1
+
+next-iter  dir=data marker=foo
+----
+1
+
 # The directory should still be empty.
 list data
 ----
@@ -23,10 +31,18 @@ list data
 ----
 marker.foo.000001.MANIFEST-000010
 
+next-iter  dir=data marker=foo
+----
+2
+
 # Moving the marker should move the existing marker file.
 move dir=data marker=foo
 MANIFEST-000016
 ----
+
+next-iter  dir=data marker=foo
+----
+3
 
 list data
 ----

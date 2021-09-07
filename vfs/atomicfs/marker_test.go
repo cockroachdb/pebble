@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package vfs
+package atomicfs
 
 import (
 	"bytes"
@@ -116,6 +116,14 @@ func TestMarker(t *testing.T) {
 				return err.Error()
 			}
 			return ""
+
+		case "next-iter":
+			var dir, marker string
+			td.ScanArgs(t, "dir", &dir)
+			td.ScanArgs(t, "marker", &marker)
+			m := markers[memFS.PathJoin(dir, marker)]
+			require.NotNil(t, m)
+			return fmt.Sprintf("%d", m.NextIter())
 
 		case "remove-obsolete":
 			var dir, marker string
