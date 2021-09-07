@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package vfs
+package atomicfs
 
 import (
 	"fmt"
@@ -193,6 +193,13 @@ func (a *Marker) Move(filename string) error {
 		panic(errors.WithStack(err))
 	}
 	return nil
+}
+
+// NextIter returns the next iteration number that the marker will use.
+// Clients may use this number for formulating filenames that are
+// unused.
+func (a *Marker) NextIter() uint64 {
+	return a.iter + 1
 }
 
 // RemoveObsolete removes any obsolete files discovered while locating
