@@ -810,6 +810,7 @@ func TestCompaction(t *testing.T) {
 		L0CompactionThreshold: 8,
 	}
 	opts.private.enablePacing = true
+	opts.testingRandomized()
 	d, err := Open("", opts)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -1126,6 +1127,7 @@ func TestManualCompaction(t *testing.T) {
 			DebugCheck: DebugCheckLevels,
 		}
 		opts.private.disableAutomaticCompactions = true
+		opts.testingRandomized()
 
 		var err error
 		d, err = Open("", opts)
@@ -2346,6 +2348,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 	for i := range opts.Levels {
 		opts.Levels[i].TargetFileSize = 1
 	}
+	opts.testingRandomized()
 	d, err := Open("", opts)
 	require.NoError(t, err)
 
@@ -2565,7 +2568,7 @@ func TestFlushInvariant(t *testing.T) {
 				t.Run("", func(t *testing.T) {
 					errCh := make(chan error, 1)
 					defer close(errCh)
-					d, err := Open("", &Options{
+					d, err := Open("", testingRandomized(&Options{
 						DisableWAL: disableWAL,
 						FS:         vfs.NewMem(),
 						EventListener: EventListener{
@@ -2577,7 +2580,7 @@ func TestFlushInvariant(t *testing.T) {
 							},
 						},
 						DebugCheck: DebugCheckLevels,
-					})
+					}))
 					require.NoError(t, err)
 
 					require.NoError(t, d.Set([]byte("hello"), nil, NoSync))
@@ -2622,9 +2625,9 @@ func TestCompactFlushQueuedMemTable(t *testing.T) {
 	// Verify that manual compaction forces a flush of a queued memtable.
 
 	mem := vfs.NewMem()
-	d, err := Open("", &Options{
+	d, err := Open("", testingRandomized(&Options{
 		FS: mem,
-	})
+	}))
 	require.NoError(t, err)
 
 	// Add the key "a" to the memtable, then fill up the memtable with the key
@@ -2652,9 +2655,9 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 	// Verify that compaction forces a flush of a queued large batch.
 
 	mem := vfs.NewMem()
-	d, err := Open("", &Options{
+	d, err := Open("", testingRandomized(&Options{
 		FS: mem,
-	})
+	}))
 	require.NoError(t, err)
 
 	// The default large batch threshold is slightly less than 1/2 of the
@@ -2686,9 +2689,9 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 // that could previously lead to DB.disableFileDeletions blocking forever even
 // though no cleaning was in progress.
 func TestCleanerCond(t *testing.T) {
-	d, err := Open("", &Options{
+	d, err := Open("", testingRandomized(&Options{
 		FS: vfs.NewMem(),
-	})
+	}))
 	require.NoError(t, err)
 
 	for i := 0; i < 10; i++ {
@@ -2768,9 +2771,9 @@ func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
 }
 
 func TestCompactionInvalidBounds(t *testing.T) {
-	db, err := Open("", &Options{
+	db, err := Open("", testingRandomized(&Options{
 		FS: vfs.NewMem(),
-	})
+	}))
 	require.NoError(t, err)
 	defer db.Close()
 	require.NoError(t, db.Compact([]byte("a"), []byte("b")))

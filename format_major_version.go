@@ -183,6 +183,10 @@ func (d *DB) FormatMajorVersion() FormatMajorVersion {
 // that do not know of the format version will be unable to open the
 // database.
 func (d *DB) RatchetFormatMajorVersion(fmv FormatMajorVersion) error {
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.ratchetFormatMajorVersionLocked(fmv)
