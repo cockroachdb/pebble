@@ -14,11 +14,22 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+// ReadMarker looks up the current state of a marker returning just the
+// current value of the marker. Callers that may need to move the marker
+// should use LocateMarker.
+func ReadMarker(fs vfs.FS, dir, markerName string) (string, error) {
+	state, err := scanForMarker(fs, dir, markerName)
+	if err != nil {
+		return "", err
+	}
+	return state.value, nil
+}
+
 // LocateMarker loads the current state of a marker. It returns a handle
 // to the Marker that may be used to move the marker and the
 // current value of the marker.
 func LocateMarker(fs vfs.FS, dir, markerName string) (*Marker, string, error) {
-	ls, err := fs.List(dir)
+	state, err := scanForMarker(fs, dir, markerName)
 	if err != nil {
 		return nil, "", err
 	}
@@ -26,11 +37,30 @@ func LocateMarker(fs vfs.FS, dir, markerName string) (*Marker, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	return &Marker{
+		fs:            fs,
+		dir:           dir,
+		dirFD:         dirFD,
+		name:          markerName,
+		filename:      state.filename,
+		iter:          state.iter,
+		obsoleteFiles: state.obsolete,
+	}, state.value, nil
+}
 
-	var markerFilename string
-	var markerIteration uint64
-	var markerValue string
-	var obsolete []string
+type scannedState struct {
+	filename string
+	iter     uint64
+	value    string
+	obsolete []string
+}
+
+func scanForMarker(fs vfs.FS, dir, markerName string) (scannedState, error) {
+	ls, err := fs.List(dir)
+	if err != nil {
+		return scannedState{}, err
+	}
+	var state scannedState
 	for _, filename := range ls {
 		if !strings.HasPrefix(filename, `marker.`) {
 			continue
@@ -39,33 +69,24 @@ func LocateMarker(fs vfs.FS, dir, markerName string) (*Marker, string, error) {
 		// well-formed and parse as markers.
 		name, iter, value, err := parseMarkerFilename(filename)
 		if err != nil {
-			return nil, "", errors.CombineErrors(err, dirFD.Close())
+			return scannedState{}, err
 		}
 		if name != markerName {
 			continue
 		}
 
-		if markerFilename == "" || markerIteration < iter {
-			if markerFilename != "" {
-				obsolete = append(obsolete, markerFilename)
+		if state.filename == "" || state.iter < iter {
+			if state.filename != "" {
+				state.obsolete = append(state.obsolete, state.filename)
 			}
-			markerFilename = filename
-			markerIteration = iter
-			markerValue = value
+			state.filename = filename
+			state.iter = iter
+			state.value = value
 		} else {
-			obsolete = append(obsolete, filename)
+			state.obsolete = append(state.obsolete, filename)
 		}
 	}
-
-	return &Marker{
-		fs:            fs,
-		dir:           dir,
-		dirFD:         dirFD,
-		name:          markerName,
-		filename:      markerFilename,
-		iter:          markerIteration,
-		obsoleteFiles: obsolete,
-	}, markerValue, nil
+	return state, nil
 }
 
 // A Marker provides an interface for marking a single file on the

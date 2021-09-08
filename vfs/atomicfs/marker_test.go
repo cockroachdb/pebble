@@ -125,6 +125,16 @@ func TestMarker(t *testing.T) {
 			require.NotNil(t, m)
 			return fmt.Sprintf("%d", m.NextIter())
 
+		case "read":
+			var dir, marker string
+			td.ScanArgs(t, "dir", &dir)
+			td.ScanArgs(t, "marker", &marker)
+			v, err := ReadMarker(memFS, dir, marker)
+			if err != nil {
+				return err.Error()
+			}
+			return v
+
 		case "remove-obsolete":
 			var dir, marker string
 			td.ScanArgs(t, "dir", &dir)
