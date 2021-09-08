@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"math/rand"
 	"runtime"
 	"testing"
 	"time"
@@ -14,6 +15,25 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
+
+// testingRandomized randomizes some default options. Currently, it's
+// used for testing under a random format major version in some tests.
+func (o *Options) testingRandomized() *Options {
+	if o == nil {
+		o = &Options{}
+	}
+	if o.FormatMajorVersion == FormatDefault {
+		// Pick a random format major version from the range
+		// [MostCompatible, FormatNewest].
+		o.FormatMajorVersion = FormatMajorVersion(rand.Intn(int(FormatNewest)) + 1)
+	}
+	return o
+}
+
+func testingRandomized(o *Options) *Options {
+	o.testingRandomized()
+	return o
+}
 
 func TestLevelOptions(t *testing.T) {
 	var opts *Options
