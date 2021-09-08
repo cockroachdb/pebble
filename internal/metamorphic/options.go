@@ -39,6 +39,9 @@ func parseOptions(opts *testOptions, data string) error {
 			case "TestOptions.ingest_using_apply":
 				opts.ingestUsingApply = true
 				return true
+			case "TestOptions.replace_single_delete":
+				opts.replaceSingleDelete = true
+				return true
 			default:
 				return false
 			}
@@ -50,7 +53,7 @@ func parseOptions(opts *testOptions, data string) error {
 
 func optionsToString(opts *testOptions) string {
 	str := opts.opts.String()
-	if opts.strictFS || opts.ingestUsingApply {
+	if opts.strictFS || opts.ingestUsingApply || opts.replaceSingleDelete {
 		str += "\n[TestOptions]\n"
 	}
 	if opts.strictFS {
@@ -58,6 +61,9 @@ func optionsToString(opts *testOptions) string {
 	}
 	if opts.ingestUsingApply {
 		str += "  ingest_using_apply=true\n"
+	}
+	if opts.replaceSingleDelete {
+		str += "  replace_single_delete=true\n"
 	}
 	return str
 }
@@ -79,6 +85,8 @@ type testOptions struct {
 	strictFS bool
 	// Use Batch.Apply rather than DB.Ingest.
 	ingestUsingApply bool
+	// Replace a SINGLEDEL with a DELETE.
+	replaceSingleDelete bool
 }
 
 func standardOptions() []*testOptions {
@@ -166,6 +174,10 @@ func standardOptions() []*testOptions {
 [TestOptions]
   ingest_using_apply=true
 `,
+		20: `
+[TestOptions]
+  replace_single_delete=true
+`,
 	}
 
 	opts := make([]*testOptions, len(stdOpts))
@@ -214,5 +226,6 @@ func randomOptions(rng *rand.Rand) *testOptions {
 		opts.DisableWAL = false
 	}
 	testOpts.ingestUsingApply = rng.Intn(2) != 0
+	testOpts.replaceSingleDelete = rng.Intn(2) != 0
 	return testOpts
 }

@@ -132,18 +132,29 @@ func (o *deleteOp) String() string {
 
 // singleDeleteOp models a Write.SingleDelete operation.
 type singleDeleteOp struct {
-	writerID objID
-	key      []byte
+	writerID           objID
+	key                []byte
+	maybeReplaceDelete bool
 }
 
 func (o *singleDeleteOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.SingleDelete(o.key, t.writeOpts)
+	var err error
+	if t.testOpts.replaceSingleDelete && o.maybeReplaceDelete {
+		err = w.Delete(o.key, t.writeOpts)
+	} else {
+		err = w.SingleDelete(o.key, t.writeOpts)
+	}
+	// NOTE: even if the SINGLEDEL was replaced with a DELETE, we must still
+	// write the former to the history log. The log line will indicate whether
+	// or not the delete *could* have been replaced. The OPTIONS file should
+	// also be consulted to determine what happened at runtime (i.e. by taking
+	// the logical AND).
 	h.Recordf("%s // %v", o, err)
 }
 
 func (o *singleDeleteOp) String() string {
-	return fmt.Sprintf("%s.SingleDelete(%q)", o.writerID, o.key)
+	return fmt.Sprintf("%s.SingleDelete(%q, %v /* maybeReplaceDelete */)", o.writerID, o.key, o.maybeReplaceDelete)
 }
 
 // deleteRangeOp models a Write.DeleteRange operation.

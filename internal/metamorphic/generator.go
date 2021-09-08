@@ -843,6 +843,12 @@ func (g *generator) writerSingleDelete() {
 	g.add(&singleDeleteOp{
 		writerID: writerID,
 		key:      key,
+		// Keys eligible for single deletes can be removed with a regular
+		// delete. Mutate a percentage of SINGLEDEL ops into DELETEs. Note that
+		// here we are only determining whether the replacement *could* happen.
+		// At test runtime, the `replaceSingleDelete` test option must also be
+		// set to true for the single delete to be replaced.
+		maybeReplaceDelete: g.rng.Float64() < 0.25,
 	})
 	g.tryRepositionBatchIters(writerID)
 }

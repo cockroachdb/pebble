@@ -256,8 +256,10 @@ func TestMeta(t *testing.T) {
 		})
 	}
 
-	// Perform runs with random options.
-	for i := 0; i < 20; i++ {
+	// Perform runs with random options. We make an arbitrary choice to run with
+	// as many random options as we have standard options.
+	nOpts := len(options)
+	for i := 0; i < nOpts; i++ {
 		name := fmt.Sprintf("random-%03d", i)
 		names = append(names, name)
 		opts := randomOptions(rng)
