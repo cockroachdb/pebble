@@ -231,5 +231,6 @@ func (d *DB) finalizeFormatVersUpgrade(formatVers FormatMajorVersion) error {
 		return err
 	}
 	d.mu.formatVers.vers = formatVers
+	d.opts.EventListener.FormatUpgrade(formatVers)
 	return nil
 }
