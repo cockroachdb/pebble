@@ -64,8 +64,9 @@ func optionsToString(opts *testOptions) string {
 
 func defaultOptions() *pebble.Options {
 	opts := &pebble.Options{
-		Comparer: &comparer,
-		FS:       vfs.NewMem(),
+		Comparer:           &comparer,
+		FS:                 vfs.NewMem(),
+		FormatMajorVersion: pebble.FormatNewest,
 		Levels: []pebble.LevelOptions{{
 			FilterPolicy: bloom.FilterPolicy(10),
 		}},
@@ -184,11 +185,12 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts.BytesPerSync = 1 << uint(rng.Intn(28))     // 1B - 256MB
 	opts.Cache = cache.New(1 << uint(rng.Intn(30))) // 1B - 1GB
 	opts.DisableWAL = rng.Intn(2) == 0
-	opts.FlushSplitBytes = 1 << rng.Intn(20)       // 1B - 1MB
-	opts.Experimental.L0CompactionConcurrency = 1 + rng.Intn(4) // 1-4
-	opts.Experimental.MinDeletionRate = 1 << uint(20 + rng.Intn(10)) // 1MB - 1GB
-	opts.L0CompactionThreshold = 1 + rng.Intn(100)                   // 1 - 100
-	opts.L0StopWritesThreshold = 1 + rng.Intn(100)                   // 1 - 100
+	opts.FlushSplitBytes = 1 << rng.Intn(20) // 1B - 1MB
+	opts.FormatMajorVersion = pebble.FormatMajorVersion(rng.Intn(int(pebble.FormatNewest)) + 1)
+	opts.Experimental.L0CompactionConcurrency = 1 + rng.Intn(4)    // 1-4
+	opts.Experimental.MinDeletionRate = 1 << uint(20+rng.Intn(10)) // 1MB - 1GB
+	opts.L0CompactionThreshold = 1 + rng.Intn(100)                 // 1 - 100
+	opts.L0StopWritesThreshold = 1 + rng.Intn(100)                 // 1 - 100
 	if opts.L0StopWritesThreshold < opts.L0CompactionThreshold {
 		opts.L0StopWritesThreshold = opts.L0CompactionThreshold
 	}
