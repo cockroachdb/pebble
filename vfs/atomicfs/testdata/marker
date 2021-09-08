@@ -6,6 +6,9 @@ open bar/: file does not exist
 mkdir-all data
 ----
 
+read dir=data marker=foo
+----
+
 # Loads a nonexistent marker correctly.
 locate dir=data marker=foo
 ----
@@ -35,6 +38,10 @@ next-iter  dir=data marker=foo
 ----
 2
 
+read dir=data marker=foo
+----
+MANIFEST-000010
+
 # Moving the marker should move the existing marker file.
 move dir=data marker=foo
 MANIFEST-000016
@@ -47,6 +54,10 @@ next-iter  dir=data marker=foo
 list data
 ----
 marker.foo.000002.MANIFEST-000016
+
+read dir=data marker=foo
+----
+MANIFEST-000016
 
 # Create non-marker files.
 touch
@@ -116,3 +127,10 @@ CURRENT
 MANIFEST-000016
 marker.bar.000009.MANIFEST-000099
 marker.foo.000003.MANIFEST-000021
+
+read dir=data marker=bar
+----
+MANIFEST-000099
+
+read dir=data marker=garbage
+----
