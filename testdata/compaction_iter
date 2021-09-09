@@ -969,9 +969,9 @@ a-c#2
 
 define
 a.RANGEDEL.3:d
-a.DEL.2:a
+a.DEL.2:
 a.SET.1:a
-d.DEL.2:a
+d.DEL.2:
 ----
 
 iter
@@ -981,7 +981,7 @@ next
 tombstones
 ----
 a#3,15:d
-d#2,0:a
+d#2,0:
 .
 a-d#3
 .
@@ -993,8 +993,8 @@ next
 next
 ----
 a#3,15:d
-a#2,0:a
-d#2,0:a
+a#2,0:
+d#2,0:
 .
 
 iter snapshots=2
@@ -1005,7 +1005,7 @@ next
 ----
 a#3,15:d
 a#1,1:a
-d#2,0:a
+d#2,0:
 .
 
 iter snapshots=1
@@ -1014,7 +1014,7 @@ next
 next
 ----
 a#3,15:d
-d#2,0:a
+d#2,0:
 .
 
 define
@@ -1060,7 +1060,7 @@ a-b#1
 
 define
 a.MERGE.5:5
-a.DEL.3:3
+a.DEL.3:
 a.MERGE.1:1
 ----
 
