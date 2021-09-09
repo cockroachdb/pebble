@@ -31,13 +31,15 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatVersioned, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatVersioned))
 	require.Equal(t, FormatVersioned, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatSetWithDelete))
+	require.Equal(t, FormatSetWithDelete, d.FormatMajorVersion())
 	require.NoError(t, d.Close())
 
 	// If we Open the database again, leaving the default format, the
-	// database should Open using the persisted FormatVersioned format.
+	// database should Open using the persisted FormatNewest.
 	d, err = Open("", &Options{FS: fs})
 	require.NoError(t, err)
-	require.Equal(t, FormatVersioned, d.FormatMajorVersion())
+	require.Equal(t, FormatNewest, d.FormatMajorVersion())
 	require.NoError(t, d.Close())
 
 	// Move the marker to a version that does not exist.

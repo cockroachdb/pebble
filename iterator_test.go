@@ -218,7 +218,7 @@ type invalidatingIter struct {
 	iter        internalIterator
 	lastKey     *InternalKey
 	lastValue   []byte
-	ignoreKinds [base.InternalKeyKindMax]bool
+	ignoreKinds [base.InternalKeyKindMax + 1]bool
 }
 
 func newInvalidatingIter(iter internalIterator) *invalidatingIter {
