@@ -47,6 +47,11 @@ const (
 	// seqNum.
 	InternalKeyKindMax InternalKeyKind = 17
 
+	// InternalKeyKindSetWithDelete keys are SET keys that have met with a
+	// DELETE key in a prior compaction. This key kind is specific to Pebble.
+	// See https://github.com/cockroachdb/pebble/issues/1255.
+	InternalKeyKindSetWithDelete InternalKeyKind = 18
+
 	// A marker for an invalid key.
 	InternalKeyKindInvalid InternalKeyKind = 255
 
@@ -66,14 +71,15 @@ const (
 )
 
 var internalKeyKindNames = []string{
-	InternalKeyKindDelete:       "DEL",
-	InternalKeyKindSet:          "SET",
-	InternalKeyKindMerge:        "MERGE",
-	InternalKeyKindLogData:      "LOGDATA",
-	InternalKeyKindSingleDelete: "SINGLEDEL",
-	InternalKeyKindRangeDelete:  "RANGEDEL",
-	InternalKeyKindMax:          "MAX",
-	InternalKeyKindInvalid:      "INVALID",
+	InternalKeyKindDelete:        "DEL",
+	InternalKeyKindSet:           "SET",
+	InternalKeyKindMerge:         "MERGE",
+	InternalKeyKindLogData:       "LOGDATA",
+	InternalKeyKindSingleDelete:  "SINGLEDEL",
+	InternalKeyKindRangeDelete:   "RANGEDEL",
+	InternalKeyKindMax:           "MAX",
+	InternalKeyKindSetWithDelete: "SETWITHDEL",
+	InternalKeyKindInvalid:       "INVALID",
 }
 
 func (k InternalKeyKind) String() string {
@@ -130,13 +136,14 @@ func MakeRangeDeleteSentinelKey(userKey []byte) InternalKey {
 }
 
 var kindsMap = map[string]InternalKeyKind{
-	"DEL":       InternalKeyKindDelete,
-	"SINGLEDEL": InternalKeyKindSingleDelete,
-	"RANGEDEL":  InternalKeyKindRangeDelete,
-	"SET":       InternalKeyKindSet,
-	"MERGE":     InternalKeyKindMerge,
-	"INVALID":   InternalKeyKindInvalid,
-	"MAX":       InternalKeyKindMax,
+	"DEL":        InternalKeyKindDelete,
+	"SINGLEDEL":  InternalKeyKindSingleDelete,
+	"RANGEDEL":   InternalKeyKindRangeDelete,
+	"SET":        InternalKeyKindSet,
+	"MERGE":      InternalKeyKindMerge,
+	"INVALID":    InternalKeyKindInvalid,
+	"MAX":        InternalKeyKindMax,
+	"SETWITHDEL": InternalKeyKindSetWithDelete,
 }
 
 // ParseInternalKey parses the string representation of an internal key. The
