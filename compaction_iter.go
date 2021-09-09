@@ -303,12 +303,8 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				continue
 			}
 
-		case InternalKeyKindSet:
-			i.saveKey()
-			i.value = i.iterValue
-			i.valid = true
-			i.skip = true
-			i.maybeZeroSeqnum(i.curSnapshotIdx)
+		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
+			i.setNext()
 			return &i.key, i.value
 
 		case InternalKeyKindMerge:
@@ -444,6 +440,33 @@ func (i *compactionIter) nextInStripe() stripeChangeType {
 	return newStripe
 }
 
+func (i *compactionIter) setNext() {
+	// Save the current key.
+	i.saveKey()
+	i.value = i.iterValue
+	i.valid = true
+	i.skip = true
+	i.maybeZeroSeqnum(i.curSnapshotIdx)
+
+	// If this key is a SETWITHDEL, we can emit it immediately.
+	if i.iterKey.Kind() == InternalKeyKindSetWithDelete {
+		return
+	}
+
+	// Else, we must consider the next record to test for a DEL.
+	if change := i.nextInStripe(); change == sameStripeNonSkippable || change == newStripe {
+		i.pos = iterPosNext
+		return
+	}
+
+	// If the next record is a DEL, alter this current record to be a
+	// SETWITHDEL. This guards against a SINGLEDEL above us removing the
+	// original SET and erroneously exposing keys underneath is.
+	if i.iterKey.Kind() == InternalKeyKindDelete {
+		i.key.SetKind(InternalKeyKindSetWithDelete)
+	}
+}
+
 func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 	// Save the current key.
 	i.saveKey()
@@ -479,7 +502,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			i.skip = true
 			return sameStripeSkippable
 
-		case InternalKeyKindSet:
+		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
 			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
 				// We change the kind of the result key to a Set so that it shadows
 				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
@@ -490,9 +513,10 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 				return sameStripeSkippable
 			}
 
-			// We've hit a Set value. Merge with the existing value and return. We
-			// change the kind of the resulting key to a Set so that it shadows keys
-			// in lower levels. That is, MERGE+SET -> SET.
+			// We've hit a Set or SetWithDel value. Merge with the existing
+			// value and return. We change the kind of the resulting key to a
+			// Set so that it shadows keys in lower levels. That is:
+			// MERGE + (SET*) -> SET.
 			i.err = valueMerger.MergeOlder(i.iterValue)
 			if i.err != nil {
 				i.valid = false
@@ -544,8 +568,9 @@ func (i *compactionIter) singleDeleteNext() bool {
 
 		key := i.iterKey
 		switch key.Kind() {
-		case InternalKeyKindDelete, InternalKeyKindMerge:
-			// We've hit a Delete or Merge, transform the SingleDelete into a full Delete.
+		case InternalKeyKindDelete, InternalKeyKindMerge, InternalKeyKindSetWithDelete:
+			// We've hit a Delete, Merge or SetWithDelete, transform the
+			// SingleDelete into a full Delete.
 			i.key.SetKind(InternalKeyKindDelete)
 			i.skip = true
 			return true
