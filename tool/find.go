@@ -345,7 +345,8 @@ func (f *findT) searchLogs(searchKey []byte, refs []findRef) []findRef {
 					case base.InternalKeyKindDelete,
 						base.InternalKeyKindSet,
 						base.InternalKeyKindMerge,
-						base.InternalKeyKindSingleDelete:
+						base.InternalKeyKindSingleDelete,
+						base.InternalKeyKindSetWithDelete:
 						if cmp(searchKey, ikey.UserKey) != 0 {
 							continue
 						}
