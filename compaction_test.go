@@ -1103,7 +1103,15 @@ func TestManualCompaction(t *testing.T) {
 		}
 	}()
 
-	reset := func() {
+	seed := time.Now().UnixNano()
+	rng := rand.New(rand.NewSource(seed))
+	t.Logf("seed: %d", seed)
+
+	randVersion := func(min, max FormatMajorVersion) FormatMajorVersion {
+		return FormatMajorVersion(int(min) + rng.Intn(int(max)-int(min)+1))
+	}
+
+	reset := func(minVersion, maxVersion FormatMajorVersion) {
 		if d != nil {
 			require.NoError(t, d.Close())
 		}
@@ -1111,26 +1119,24 @@ func TestManualCompaction(t *testing.T) {
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 
 		opts := &Options{
-			FS:         mem,
-			DebugCheck: DebugCheckLevels,
+			FS:                 mem,
+			DebugCheck:         DebugCheckLevels,
+			FormatMajorVersion: randVersion(minVersion, maxVersion),
 		}
 		opts.private.disableAutomaticCompactions = true
-		opts.testingRandomized()
 
 		var err error
 		d, err = Open("", opts)
 		require.NoError(t, err)
 	}
-	reset()
 
-	var ongoingCompaction *compaction
-
-	paths := []string{"testdata/manual_compaction", "testdata/singledel_manual_compaction"}
-	for _, path := range paths {
-		datadriven.RunTest(t, path, func(td *datadriven.TestData) string {
+	runTest := func(t *testing.T, testData string, minVersion, maxVersion FormatMajorVersion) {
+		reset(minVersion, maxVersion)
+		var ongoingCompaction *compaction
+		datadriven.RunTest(t, testData, func(td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "reset":
-				reset()
+				reset(minVersion, maxVersion)
 				return ""
 
 			case "batch":
@@ -1162,8 +1168,9 @@ func TestManualCompaction(t *testing.T) {
 
 				mem = vfs.NewMem()
 				opts := &Options{
-					FS:         mem,
-					DebugCheck: DebugCheckLevels,
+					FS:                 mem,
+					DebugCheck:         DebugCheckLevels,
+					FormatMajorVersion: randVersion(minVersion, maxVersion),
 				}
 				opts.private.disableAutomaticCompactions = true
 
@@ -1287,6 +1294,39 @@ func TestManualCompaction(t *testing.T) {
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
+		})
+	}
+
+	testCases := []struct {
+		testData   string
+		minVersion FormatMajorVersion
+		maxVersion FormatMajorVersion // inclusive
+	}{
+		{
+			testData:   "testdata/manual_compaction",
+			minVersion: FormatMostCompatible,
+			maxVersion: FormatSetWithDelete - 1,
+		},
+		{
+			testData:   "testdata/manual_compaction_set_with_del",
+			minVersion: FormatSetWithDelete,
+			maxVersion: FormatNewest,
+		},
+		{
+			testData:   "testdata/singledel_manual_compaction",
+			minVersion: FormatMostCompatible,
+			maxVersion: FormatSetWithDelete - 1,
+		},
+		{
+			testData:   "testdata/singledel_manual_compaction_set_with_del",
+			minVersion: FormatSetWithDelete,
+			maxVersion: FormatNewest,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.testData, func(t *testing.T) {
+			runTest(t, tc.testData, tc.minVersion, tc.maxVersion)
 		})
 	}
 }
