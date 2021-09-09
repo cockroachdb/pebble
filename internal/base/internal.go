@@ -45,6 +45,11 @@ const (
 	// when new key kinds are supported in Pebble.
 	InternalKeyKindSeparator = 17
 
+	// InternalKeyKindSetWithDelete keys are SET keys that have met with a
+	// DELETE key in a prior compaction. This key kind is specific to Pebble.
+	// See https://github.com/cockroachdb/pebble/issues/1255.
+	InternalKeyKindSetWithDelete InternalKeyKind = 18
+
 	// This maximum value isn't part of the file format. It's unlikely,
 	// but future extensions may increase this value.
 	//
@@ -54,7 +59,7 @@ const (
 	// which sorts 'less than or equal to' any other valid internalKeyKind, when
 	// searching for any kind of internal key formed by a certain user key and
 	// seqNum.
-	InternalKeyKindMax InternalKeyKind = 17
+	InternalKeyKindMax InternalKeyKind = 18
 
 	// A marker for an invalid key.
 	InternalKeyKindInvalid InternalKeyKind = 255
@@ -75,14 +80,15 @@ const (
 )
 
 var internalKeyKindNames = []string{
-	InternalKeyKindDelete:       "DEL",
-	InternalKeyKindSet:          "SET",
-	InternalKeyKindMerge:        "MERGE",
-	InternalKeyKindLogData:      "LOGDATA",
-	InternalKeyKindSingleDelete: "SINGLEDEL",
-	InternalKeyKindRangeDelete:  "RANGEDEL",
-	InternalKeyKindSeparator:    "SEPARATOR",
-	InternalKeyKindInvalid:      "INVALID",
+	InternalKeyKindDelete:        "DEL",
+	InternalKeyKindSet:           "SET",
+	InternalKeyKindMerge:         "MERGE",
+	InternalKeyKindLogData:       "LOGDATA",
+	InternalKeyKindSingleDelete:  "SINGLEDEL",
+	InternalKeyKindRangeDelete:   "RANGEDEL",
+	InternalKeyKindSeparator:     "SEPARATOR",
+	InternalKeyKindSetWithDelete: "SETWITHDEL",
+	InternalKeyKindInvalid:       "INVALID",
 }
 
 func (k InternalKeyKind) String() string {
@@ -139,13 +145,14 @@ func MakeRangeDeleteSentinelKey(userKey []byte) InternalKey {
 }
 
 var kindsMap = map[string]InternalKeyKind{
-	"DEL":       InternalKeyKindDelete,
-	"SINGLEDEL": InternalKeyKindSingleDelete,
-	"RANGEDEL":  InternalKeyKindRangeDelete,
-	"SET":       InternalKeyKindSet,
-	"MERGE":     InternalKeyKindMerge,
-	"INVALID":   InternalKeyKindInvalid,
-	"SEPARATOR": InternalKeyKindSeparator,
+	"DEL":        InternalKeyKindDelete,
+	"SINGLEDEL":  InternalKeyKindSingleDelete,
+	"RANGEDEL":   InternalKeyKindRangeDelete,
+	"SET":        InternalKeyKindSet,
+	"MERGE":      InternalKeyKindMerge,
+	"INVALID":    InternalKeyKindInvalid,
+	"SEPARATOR":  InternalKeyKindSeparator,
+	"SETWITHDEL": InternalKeyKindSetWithDelete,
 }
 
 // ParseInternalKey parses the string representation of an internal key. The

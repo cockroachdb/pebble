@@ -167,7 +167,7 @@ func (m *simpleMergingIter) step() bool {
 					m.err = closer.Close()
 				}
 				m.valueMerger = nil
-			case InternalKeyKindSet:
+			case InternalKeyKindSet, InternalKeyKindSetWithDelete:
 				m.err = m.valueMerger.MergeOlder(item.value)
 				if m.err == nil {
 					var closer io.Closer
