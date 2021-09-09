@@ -156,73 +156,75 @@ func TestDeleteRangeFlushDelay(t *testing.T) {
 // problem is that range tombstones are not truncated to sstable boundaries on
 // disk, only in memory.
 func TestRangeDelCompactionTruncation(t *testing.T) {
-	// Use a small target file size so that there is a single key per sstable.
-	d, err := Open("", &Options{
-		FS: vfs.NewMem(),
-		Levels: []LevelOptions{
-			{TargetFileSize: 100},
-			{TargetFileSize: 100},
-			{TargetFileSize: 1},
-		},
-		DebugCheck: DebugCheckLevels,
-	})
-	require.NoError(t, err)
-	defer d.Close()
+	runTest := func(formatVersion FormatMajorVersion) {
+		// Use a small target file size so that there is a single key per sstable.
+		d, err := Open("", &Options{
+			FS: vfs.NewMem(),
+			Levels: []LevelOptions{
+				{TargetFileSize: 100},
+				{TargetFileSize: 100},
+				{TargetFileSize: 1},
+			},
+			DebugCheck:         DebugCheckLevels,
+			FormatMajorVersion: formatVersion,
+		})
+		require.NoError(t, err)
+		defer d.Close()
 
-	d.mu.Lock()
-	d.mu.versions.dynamicBaseLevel = false
-	d.mu.Unlock()
-
-	lsm := func() string {
 		d.mu.Lock()
-		s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+		d.mu.versions.dynamicBaseLevel = false
 		d.mu.Unlock()
-		return s
-	}
-	expectLSM := func(expected string) {
-		t.Helper()
-		expected = strings.TrimSpace(expected)
-		actual := strings.TrimSpace(lsm())
-		if expected != actual {
-			t.Fatalf("expected\n%s\nbut found\n%s", expected, actual)
+
+		lsm := func() string {
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			d.mu.Unlock()
+			return s
 		}
-	}
+		expectLSM := func(expected string) {
+			t.Helper()
+			expected = strings.TrimSpace(expected)
+			actual := strings.TrimSpace(lsm())
+			if expected != actual {
+				t.Fatalf("expected\n%s\nbut found\n%s", expected, actual)
+			}
+		}
 
-	require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("b"), 100), nil))
-	snap1 := d.NewSnapshot()
-	defer snap1.Close()
-	// Flush so that each version of "a" ends up in its own L0 table. If we
-	// allowed both versions in the same L0 table, compaction could trivially
-	// move the single L0 table to L1.
-	require.NoError(t, d.Flush())
-	require.NoError(t, d.Set([]byte("b"), bytes.Repeat([]byte("c"), 100), nil))
+		require.NoError(t, d.Set([]byte("a"), bytes.Repeat([]byte("b"), 100), nil))
+		snap1 := d.NewSnapshot()
+		defer snap1.Close()
+		// Flush so that each version of "a" ends up in its own L0 table. If we
+		// allowed both versions in the same L0 table, compaction could trivially
+		// move the single L0 table to L1.
+		require.NoError(t, d.Flush())
+		require.NoError(t, d.Set([]byte("b"), bytes.Repeat([]byte("c"), 100), nil))
 
-	snap2 := d.NewSnapshot()
-	defer snap2.Close()
-	require.NoError(t, d.DeleteRange([]byte("a"), []byte("d"), nil))
+		snap2 := d.NewSnapshot()
+		defer snap2.Close()
+		require.NoError(t, d.DeleteRange([]byte("a"), []byte("d"), nil))
 
-	// Compact to produce the L1 tables.
-	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00")))
-	expectLSM(`
+		// Compact to produce the L1 tables.
+		require.NoError(t, d.Compact([]byte("c"), []byte("c\x00")))
+		expectLSM(`
 1:
   000008:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
   000009:[b#3,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
-	// Compact again to move one of the tables to L2.
-	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00")))
-	expectLSM(`
+		// Compact again to move one of the tables to L2.
+		require.NoError(t, d.Compact([]byte("c"), []byte("c\x00")))
+		expectLSM(`
 1:
   000008:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
 2:
   000009:[b#3,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
-	// Write "b" and "c" to a new table.
-	require.NoError(t, d.Set([]byte("b"), []byte("d"), nil))
-	require.NoError(t, d.Set([]byte("c"), []byte("e"), nil))
-	require.NoError(t, d.Flush())
-	expectLSM(`
+		// Write "b" and "c" to a new table.
+		require.NoError(t, d.Set([]byte("b"), []byte("d"), nil))
+		require.NoError(t, d.Set([]byte("c"), []byte("e"), nil))
+		require.NoError(t, d.Flush())
+		expectLSM(`
 0.0:
   000011:[b#4,SET-c#5,SET]
 1:
@@ -231,36 +233,37 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
   000009:[b#3,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
-	// "b" is still visible at this point as it should be.
-	if _, closer, err := d.Get([]byte("b")); err != nil {
-		t.Fatalf("expected success, but found %v", err)
-	} else {
-		closer.Close()
-	}
-
-	keys := func() string {
-		iter := d.NewIter(nil)
-		defer iter.Close()
-		var buf bytes.Buffer
-		var sep string
-		for iter.First(); iter.Valid(); iter.Next() {
-			fmt.Fprintf(&buf, "%s%s", sep, iter.Key())
-			sep = " "
+		// "b" is still visible at this point as it should be.
+		if _, closer, err := d.Get([]byte("b")); err != nil {
+			t.Fatalf("expected success, but found %v", err)
+		} else {
+			closer.Close()
 		}
-		return buf.String()
-	}
 
-	if expected, actual := `b c`, keys(); expected != actual {
-		t.Fatalf("expected %q, but found %q", expected, actual)
-	}
+		keys := func() string {
+			iter := d.NewIter(nil)
+			defer iter.Close()
+			var buf bytes.Buffer
+			var sep string
+			for iter.First(); iter.Valid(); iter.Next() {
+				fmt.Fprintf(&buf, "%s%s", sep, iter.Key())
+				sep = " "
+			}
+			return buf.String()
+		}
 
-	// Compact the L0 table. This will compact the L0 table into L1 and do to the
-	// sstable target size settings will create 2 tables in L1. Then L1 table
-	// containing "c" will be compacted again with the L2 table creating two
-	// tables in L2. Lastly, the L2 table containing "c" will be compacted
-	// creating the L3 table.
-	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00")))
-	expectLSM(`
+		if expected, actual := `b c`, keys(); expected != actual {
+			t.Fatalf("expected %q, but found %q", expected, actual)
+		}
+
+		// Compact the L0 table. This will compact the L0 table into L1 and do to the
+		// sstable target size settings will create 2 tables in L1. Then L1 table
+		// containing "c" will be compacted again with the L2 table creating two
+		// tables in L2. Lastly, the L2 table containing "c" will be compacted
+		// creating the L3 table.
+		require.NoError(t, d.Compact([]byte("c"), []byte("c\x00")))
+		if formatVersion < FormatSetWithDelete {
+			expectLSM(`
 1:
   000012:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
 3:
@@ -268,17 +271,40 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
   000018:[b#3,RANGEDEL-c#72057594037927935,RANGEDEL]
   000019:[c#5,SET-d#72057594037927935,RANGEDEL]
 `)
+		} else {
+			expectLSM(`
+1:
+  000012:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
+3:
+  000017:[b#4,SETWITHDEL-b#4,SETWITHDEL]
+  000018:[b#3,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000019:[c#5,SETWITHDEL-d#72057594037927935,RANGEDEL]
+`)
+		}
 
-	// The L1 table still contains a tombstone from [a,d) which will improperly
-	// delete the newer version of "b" in L2.
-	if _, closer, err := d.Get([]byte("b")); err != nil {
-		t.Errorf("expected success, but found %v", err)
-	} else {
-		closer.Close()
+		// The L1 table still contains a tombstone from [a,d) which will improperly
+		// delete the newer version of "b" in L2.
+		if _, closer, err := d.Get([]byte("b")); err != nil {
+			t.Errorf("expected success, but found %v", err)
+		} else {
+			closer.Close()
+		}
+
+		if expected, actual := `b c`, keys(); expected != actual {
+			t.Errorf("expected %q, but found %q", expected, actual)
+		}
 	}
 
-	if expected, actual := `b c`, keys(); expected != actual {
-		t.Errorf("expected %q, but found %q", expected, actual)
+	versions := []FormatMajorVersion{
+		FormatMostCompatible,
+		FormatSetWithDelete - 1,
+		FormatSetWithDelete,
+		FormatNewest,
+	}
+	for _, version := range versions {
+		t.Run(fmt.Sprintf("version-%s", version), func(t *testing.T) {
+			runTest(version)
+		})
 	}
 }
 

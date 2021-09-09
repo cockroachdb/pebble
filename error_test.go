@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"strings"
 	"sync/atomic"
@@ -164,13 +165,14 @@ func TestErrors(t *testing.T) {
 // cannot require operations fail since it involves flush/compaction, which retry
 // internally and succeed following an injected error.
 func TestRequireReadError(t *testing.T) {
-	run := func(index int32) (err error) {
+	run := func(formatVersion FormatMajorVersion, index int32) (err error) {
 		// Perform setup with error injection disabled as it involves writes/background ops.
 		inj := errorfs.OnIndex(-1)
 		fs := errorfs.Wrap(vfs.NewMem(), inj)
 		opts := &Options{
-			FS:     fs,
-			Logger: panicLogger{},
+			FS:                 fs,
+			Logger:             panicLogger{},
+			FormatMajorVersion: formatVersion,
 		}
 		opts.private.disableTableStats = true
 		d, err := Open("", opts)
@@ -192,12 +194,21 @@ func TestRequireReadError(t *testing.T) {
 		require.NoError(t, d.DeleteRange(key1, key2, nil))
 		require.NoError(t, d.Set(key1, value, nil))
 		require.NoError(t, d.Flush())
-		expectLSM(`
+		if formatVersion < FormatSetWithDelete {
+			expectLSM(`
 0.0:
   000007:[a1#4,SET-a2#72057594037927935,RANGEDEL]
 6:
   000005:[a1#1,SET-a2#2,SET]
 `, d, t)
+		} else {
+			expectLSM(`
+0.0:
+  000007:[a1#4,SETWITHDEL-a2#72057594037927935,RANGEDEL]
+6:
+  000005:[a1#1,SET-a2#2,SET]
+`, d, t)
+		}
 
 		// Now perform foreground ops with error injection enabled.
 		inj.SetIndex(index)
@@ -235,12 +246,17 @@ func TestRequireReadError(t *testing.T) {
 		return nil
 	}
 
-	for i := int32(0); ; i++ {
-		err := run(i)
-		if err == nil {
-			t.Logf("no failures reported at index %d", i)
-			break
-		}
+	versions := []FormatMajorVersion{FormatMostCompatible, FormatSetWithDelete}
+	for _, version := range versions {
+		t.Run(fmt.Sprintf("version-%s", version), func(t *testing.T) {
+			for i := int32(0); ; i++ {
+				err := run(version, i)
+				if err == nil {
+					t.Logf("no failures reported at index %d", i)
+					break
+				}
+			}
+		})
 	}
 }
 
@@ -248,15 +264,16 @@ func TestRequireReadError(t *testing.T) {
 // corruption and return an error. In this case the filesystem reads return
 // successful status but the data they return is corrupt.
 func TestCorruptReadError(t *testing.T) {
-	run := func(index int32) (err error) {
+	run := func(formatVersion FormatMajorVersion, index int32) (err error) {
 		// Perform setup with corruption injection disabled as it involves writes/background ops.
 		fs := &corruptFS{
 			FS:    vfs.NewMem(),
 			index: -1,
 		}
 		opts := &Options{
-			FS:     fs,
-			Logger: panicLogger{},
+			FS:                 fs,
+			Logger:             panicLogger{},
+			FormatMajorVersion: formatVersion,
 		}
 		opts.private.disableTableStats = true
 		d, err := Open("", opts)
@@ -279,12 +296,22 @@ func TestCorruptReadError(t *testing.T) {
 		require.NoError(t, d.DeleteRange(key1, key2, nil))
 		require.NoError(t, d.Set(key1, value, nil))
 		require.NoError(t, d.Flush())
-		expectLSM(`
+		if formatVersion < FormatSetWithDelete {
+			expectLSM(`
 0.0:
   000007:[a1#4,SET-a2#72057594037927935,RANGEDEL]
 6:
   000005:[a1#1,SET-a2#2,SET]
 `, d, t)
+
+		} else {
+			expectLSM(`
+0.0:
+  000007:[a1#4,SETWITHDEL-a2#72057594037927935,RANGEDEL]
+6:
+  000005:[a1#1,SET-a2#2,SET]
+`, d, t)
+		}
 
 		// Now perform foreground ops with corruption injection enabled.
 		atomic.StoreInt32(&fs.index, index)
@@ -322,12 +349,17 @@ func TestCorruptReadError(t *testing.T) {
 		}
 		return nil
 	}
-	for i := int32(0); ; i++ {
-		err := run(i)
-		if err == nil {
-			t.Logf("no failures reported at index %d", i)
-			break
-		}
+	versions := []FormatMajorVersion{FormatMostCompatible, FormatSetWithDelete}
+	for _, version := range versions {
+		t.Run(fmt.Sprintf("version-%s", version), func(t *testing.T) {
+			for i := int32(0); ; i++ {
+				err := run(version, i)
+				if err == nil {
+					t.Logf("no failures reported at index %d", i)
+					break
+				}
+			}
+		})
 	}
 }
 

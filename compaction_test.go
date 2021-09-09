@@ -1115,7 +1115,7 @@ func TestManualCompaction(t *testing.T) {
 		}
 	}()
 
-	reset := func() {
+	reset := func(formatVersion FormatMajorVersion) {
 		if d != nil {
 			require.NoError(t, d.Close())
 		}
@@ -1123,26 +1123,24 @@ func TestManualCompaction(t *testing.T) {
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 
 		opts := &Options{
-			FS:         mem,
-			DebugCheck: DebugCheckLevels,
+			FS:                 mem,
+			DebugCheck:         DebugCheckLevels,
+			FormatMajorVersion: formatVersion,
 		}
 		opts.private.disableAutomaticCompactions = true
-		opts.testingRandomized()
 
 		var err error
 		d, err = Open("", opts)
 		require.NoError(t, err)
 	}
-	reset()
 
-	var ongoingCompaction *compaction
-
-	paths := []string{"testdata/manual_compaction", "testdata/singledel_manual_compaction"}
-	for _, path := range paths {
-		datadriven.RunTest(t, path, func(td *datadriven.TestData) string {
+	runTest := func(testData string, formatVersion FormatMajorVersion) {
+		reset(formatVersion)
+		var ongoingCompaction *compaction
+		datadriven.RunTest(t, testData, func(td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "reset":
-				reset()
+				reset(formatVersion)
 				return ""
 
 			case "batch":
@@ -1174,8 +1172,9 @@ func TestManualCompaction(t *testing.T) {
 
 				mem = vfs.NewMem()
 				opts := &Options{
-					FS:         mem,
-					DebugCheck: DebugCheckLevels,
+					FS:                 mem,
+					DebugCheck:         DebugCheckLevels,
+					FormatMajorVersion: formatVersion,
 				}
 				opts.private.disableAutomaticCompactions = true
 
@@ -1299,6 +1298,34 @@ func TestManualCompaction(t *testing.T) {
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
+		})
+	}
+
+	testCases := []struct {
+		formatVersion FormatMajorVersion
+		testData      string
+	}{
+		{
+			formatVersion: FormatMostCompatible,
+			testData:      "testdata/manual_compaction",
+		},
+		{
+			formatVersion: FormatSetWithDelete,
+			testData:      "testdata/manual_compaction_set_with_del",
+		},
+		{
+			formatVersion: FormatMostCompatible,
+			testData:      "testdata/singledel_manual_compaction",
+		},
+		{
+			formatVersion: FormatSetWithDelete,
+			testData:      "testdata/singledel_manual_compaction_set_with_del",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("version-%s", tc.formatVersion), func(t *testing.T) {
+			runTest(tc.testData, tc.formatVersion)
 		})
 	}
 }

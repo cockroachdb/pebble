@@ -245,7 +245,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 			i.nextUserKey()
 			continue
 
-		case InternalKeyKindSet:
+		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
 			i.value = i.iterValue
@@ -459,7 +459,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			}
 			continue
 
-		case InternalKeyKindSet:
+		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
 			// iterValue is owned by i.iter and could change after the Prev()
@@ -570,7 +570,7 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 			// point.
 			return
 
-		case InternalKeyKindSet:
+		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
 			// We've hit a Set value. Merge with the existing value and return.
 			i.err = valueMerger.MergeOlder(i.iterValue)
 			return
