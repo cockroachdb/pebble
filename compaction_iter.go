@@ -7,6 +7,7 @@ package pebble
 import (
 	"io"
 	"sort"
+	"strconv"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -140,6 +141,10 @@ type compactionIter struct {
 	// determine when iteration has advanced to a new user key and thus a new
 	// snapshot stripe.
 	keyBuf []byte
+	// Temporary buffer used for storing the previous value, which may be an
+	// unsafe, i.iter-owned slice that could be altered when the iterator is
+	// advanced.
+	valueBuf []byte
 	// Is the current entry valid?
 	valid     bool
 	iterKey   *InternalKey
@@ -303,12 +308,8 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				continue
 			}
 
-		case InternalKeyKindSet:
-			i.saveKey()
-			i.value = i.iterValue
-			i.valid = true
-			i.skip = true
-			i.maybeZeroSeqnum(i.curSnapshotIdx)
+		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
+			i.setNext()
 			return &i.key, i.value
 
 		case InternalKeyKindMerge:
@@ -444,6 +445,52 @@ func (i *compactionIter) nextInStripe() stripeChangeType {
 	return newStripe
 }
 
+func (i *compactionIter) setNext() {
+	// Save the current key.
+	i.saveKey()
+	// iterValue is owned by i.iter and could change after the Next() call, so
+	// use valueBuf instead. Note that valueBuf is only used in this one
+	// instance; everywhere else, we just point i.value to the unsafe
+	// i.iter-owned value buffer.
+	i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
+	i.value = i.valueBuf
+	i.valid = true
+	i.maybeZeroSeqnum(i.curSnapshotIdx)
+
+	// If this key is a SETWITHDEL, we can emit it immediately. Records with the
+	// same key are safe to skip.
+	if i.iterKey.Kind() == InternalKeyKindSetWithDelete {
+		i.skip = true
+		return
+	}
+
+	// Else, we continue to loop through records in the stripe.
+	for {
+		switch t := i.nextInStripe(); t {
+		case newStripe, sameStripeNonSkippable:
+			i.pos = iterPosNext
+			if t == sameStripeNonSkippable {
+				// This is a key we cannot skip. We can safely emit a SETWITHDEL
+				// here, though it is suboptimal due to ... FIXME
+				// TODO(travers): Optimize this after undertaking a larger
+				// refactoring to make this check simpler.
+				i.key.SetKind(InternalKeyKindSetWithDelete)
+			}
+			return
+		case sameStripeSkippable:
+			// We're still in the same stripe. If this is a DEL, we stop looking
+			// and emit a SETWITHDEL. Subsequent keys are eligible for skipping.
+			if i.iterKey.Kind() == InternalKeyKindDelete {
+				i.key.SetKind(InternalKeyKindSetWithDelete)
+				i.skip = true
+				return
+			}
+		default:
+			panic("pebble: unexpected stripeChangeType: " + strconv.Itoa(int(t)))
+		}
+	}
+}
+
 func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 	// Save the current key.
 	i.saveKey()
@@ -479,7 +526,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			i.skip = true
 			return sameStripeSkippable
 
-		case InternalKeyKindSet:
+		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
 			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
 				// We change the kind of the result key to a Set so that it shadows
 				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
@@ -490,9 +537,10 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 				return sameStripeSkippable
 			}
 
-			// We've hit a Set value. Merge with the existing value and return. We
-			// change the kind of the resulting key to a Set so that it shadows keys
-			// in lower levels. That is, MERGE+SET -> SET.
+			// We've hit a Set or SetWithDel value. Merge with the existing
+			// value and return. We change the kind of the resulting key to a
+			// Set so that it shadows keys in lower levels. That is:
+			// MERGE + (SET*) -> SET.
 			i.err = valueMerger.MergeOlder(i.iterValue)
 			if i.err != nil {
 				i.valid = false
@@ -544,8 +592,9 @@ func (i *compactionIter) singleDeleteNext() bool {
 
 		key := i.iterKey
 		switch key.Kind() {
-		case InternalKeyKindDelete, InternalKeyKindMerge:
-			// We've hit a Delete or Merge, transform the SingleDelete into a full Delete.
+		case InternalKeyKindDelete, InternalKeyKindMerge, InternalKeyKindSetWithDelete:
+			// We've hit a Delete, Merge or SetWithDelete, transform the
+			// SingleDelete into a full Delete.
 			i.key.SetKind(InternalKeyKindDelete)
 			i.skip = true
 			return true

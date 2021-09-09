@@ -264,9 +264,9 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 1:
   000012:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
 3:
-  000017:[b#4,SET-b#4,SET]
+  000017:[b#4,SETWITHDEL-b#4,SETWITHDEL]
   000018:[b#3,RANGEDEL-c#72057594037927935,RANGEDEL]
-  000019:[c#5,SET-d#72057594037927935,RANGEDEL]
+  000019:[c#5,SETWITHDEL-d#72057594037927935,RANGEDEL]
 `)
 
 	// The L1 table still contains a tombstone from [a,d) which will improperly

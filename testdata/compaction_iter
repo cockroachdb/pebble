@@ -169,7 +169,7 @@ iter
 first
 next
 ----
-a#9,1:b
+a#9,18:b
 .
 
 iter snapshots=6
@@ -177,7 +177,7 @@ first
 next
 next
 ----
-a#9,1:b
+a#9,18:b
 a#5,1:f
 .
 
@@ -186,7 +186,7 @@ first
 next
 next
 ----
-a#9,1:b
+a#9,18:b
 a#6,0:
 .
 
@@ -195,8 +195,8 @@ first
 next
 next
 ----
-a#9,1:b
-a#7,1:d
+a#9,18:b
+a#7,18:d
 .
 
 iter snapshots=9
@@ -212,7 +212,7 @@ iter snapshots=10
 first
 next
 ----
-a#9,1:b
+a#9,18:b
 .
 
 iter snapshots=(5,6,7,8,9)
@@ -249,7 +249,7 @@ iter
 first
 next
 ----
-a#2,1:b
+a#2,18:b
 err=invalid internal key kind: 255
 
 define
@@ -308,7 +308,7 @@ next
 next
 tombstones
 ----
-a#2,1:b
+a#2,18:b
 a#1,15:c
 b#4,15:d
 .
@@ -342,7 +342,7 @@ next
 next
 tombstones
 ----
-a#2,1:b
+a#2,18:b
 a#1,15:c
 b#4,15:d
 b#2,1:e
@@ -362,7 +362,7 @@ next
 next
 tombstones
 ----
-a#2,1:b
+a#2,18:b
 a#1,15:c
 b#4,15:d
 b#2,1:e
@@ -1164,3 +1164,173 @@ next
 a#3,15:c
 b#5,1:5[base]
 b#1,2:1
+
+# SET that meets a DEL is transformed into a SETWITHDEL.
+
+define
+a.SET.2:b
+a.DEL.1:
+----
+
+iter
+first
+next
+----
+a#2,18:b
+.
+
+iter snapshots=2
+first
+next
+next
+----
+a#2,1:b
+a#1,0:
+.
+
+define
+a.SET.3:c
+a.DEL.2:
+a.SET.1:b
+----
+
+iter
+first
+next
+----
+a#3,18:c
+.
+
+iter snapshots=2
+first
+next
+next
+----
+a#3,18:c
+a#1,1:b
+.
+
+define
+a.SET.3:c
+a.SET.2:b
+a.DEL.1:
+----
+
+iter
+first
+next
+----
+a#3,18:c
+.
+
+iter snapshots=3
+first
+next
+next
+----
+a#3,1:c
+a#2,18:b
+.
+
+iter snapshots=2
+first
+next
+next
+----
+a#3,1:c
+a#1,0:
+.
+
+define
+a.DEL.3:
+a.SET.2:b
+a.DEL.1:
+----
+
+iter
+first
+next
+----
+a#3,0:
+.
+
+iter snapshots=3
+first
+next
+next
+----
+a#3,0:
+a#2,18:b
+.
+
+iter snapshots=2
+first
+next
+next
+----
+a#3,0:
+a#1,0:
+.
+
+# SINGLEDEL that meets a SETWITHDEL is transformed into a DEL.
+
+define
+a.SINGLEDEL.3:
+a.SETWITHDEL.2:d
+b.SET.1:c
+----
+
+iter
+first
+next
+next
+----
+a#3,0:
+b#1,1:c
+.
+
+iter snapshots=2
+first
+next
+next
+----
+a#3,0:
+b#1,1:c
+.
+
+iter snapshots=3
+first
+next
+next
+next
+----
+a#3,7:
+a#2,18:d
+b#1,1:c
+.
+
+define
+a.SETWITHDEL.3:3
+a.SET.2:d
+b.SET.1:c
+----
+
+iter
+first
+next
+next
+----
+a#3,18:3
+b#1,1:c
+.
+
+iter snapshots=3
+first
+next
+next
+next
+----
+a#3,18:3
+a#2,1:d
+b#1,1:c
+.
