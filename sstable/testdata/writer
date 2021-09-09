@@ -14,11 +14,11 @@ scan-range-del
 
 build
 a.SET.1:a
-b.DEL.2:b
+b.DEL.2:
 c.MERGE.3:c
 d.RANGEDEL.4:e
 f.SET.5:f
-g.DEL.6:g
+g.DEL.6:
 h.MERGE.7:h
 i.RANGEDEL.8:j
 ----
@@ -28,11 +28,11 @@ seqnums: [1,8]
 
 build
 a.SET.1:a
-b.DEL.2:b
+b.DEL.2:
 c.MERGE.3:c
 d.RANGEDEL.4:e
 f.SET.5:f
-g.DEL.6:g
+g.DEL.6:
 h.MERGE.7:h
 i.RANGEDEL.8:j
 ----
@@ -43,10 +43,10 @@ seqnums: [1,8]
 scan
 ----
 a#1,1:a
-b#2,0:b
+b#2,0:
 c#3,2:c
 f#5,1:f
-g#6,0:g
+g#6,0:
 h#7,2:h
 
 scan-range-del
