@@ -348,7 +348,7 @@ merge processing error on key a#9,DEL in L1: fileNum=000032: finish failed
 define
 L
 a.MERGE.10 a.SINGLEDEL.9
-a.MERGE.10:fail-finish a.SINGLEDEL.9:fail-finish
+a.MERGE.10:fail-finish a.SINGLEDEL.9:
 ----
 Level 1
   file 0: [a#10,2-a#9,7]
