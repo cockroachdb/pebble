@@ -1,7 +1,6 @@
 # This is not actually a manual compaction test, and simply uses manual
-# compaction to demonstrate single delete semantics. Specifically, it
-# demonstrates that the behavior can be non-deterministic if not used
-# correctly.
+# compaction to demonstrate single delete semantics when used with
+# set-with-delete.
 
 # Define a sequence of SET=>SET=>DEL=>SET=>SINGLEDEL.
 define target-file-sizes=(1, 1, 1, 1, 1)
@@ -39,7 +38,7 @@ compact a-b L2
 1:
   000004:[a#10,SINGLEDEL-a#10,SINGLEDEL]
 3:
-  000009:[a#9,SET-a#9,SET]
+  000009:[a#9,SETWITHDEL-a#9,SETWITHDEL]
 4:
   000007:[a#7,SET-a#7,SET]
 5:
@@ -57,7 +56,7 @@ compact a-b L1
 2:
   000010:[a#10,SINGLEDEL-a#10,SINGLEDEL]
 3:
-  000009:[a#9,SET-a#9,SET]
+  000009:[a#9,SETWITHDEL-a#9,SETWITHDEL]
 4:
   000007:[a#7,SET-a#7,SET]
 5:
@@ -65,13 +64,15 @@ compact a-b L1
 
 compact a-b L2
 ----
+3:
+  000011:[a#10,DEL-a#10,DEL]
 4:
   000007:[a#7,SET-a#7,SET]
 5:
   000008:[a#6,SET-a#6,SET]
 
-# Deleted data reappears.
+# Deleted data is not resurrected.
 iter
 first
 ----
-a:v2
+.
