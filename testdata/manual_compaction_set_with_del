@@ -1,0 +1,867 @@
+batch
+set a 1
+set b 2
+----
+
+compact a-b
+----
+6:
+  000005:[a#1,SET-b#2,SET]
+
+batch
+set c 3
+set d 4
+----
+
+compact c-d
+----
+6:
+  000005:[a#1,SET-b#2,SET]
+  000007:[c#3,SET-d#4,SET]
+
+batch
+set b 5
+set c 6
+----
+
+compact a-d
+----
+6:
+  000010:[a#0,SET-d#0,SET]
+
+# This also tests flushing a memtable that only contains range
+# deletions.
+
+batch
+del-range a e
+----
+
+compact a-d
+----
+
+# Test that a multi-output-file compaction generates non-overlapping files.
+
+define target-file-sizes=(100, 1)
+L0
+  b.SET.1:v
+L0
+  a.SET.2:v
+----
+0.0:
+  000005:[a-a]
+  000004:[b-b]
+
+compact a-b
+----
+1:
+  000006:[a#0,SET-a#0,SET]
+  000007:[b#0,SET-b#0,SET]
+
+# A range tombstone extends past the grandparent file boundary used to limit the
+# size of future compactions. Verify the range tombstone is split at that file
+# boundary.
+
+define target-file-sizes=(1, 1, 1, 1)
+L1
+  a.SET.3:v
+L2
+  a.RANGEDEL.2:e
+L3
+  a.SET.0:v
+  b.SET.0:v
+L3
+  c.SET.0:v
+  d.SET.0:v
+----
+1:
+  000004:[a-a]
+2:
+  000005:[a-e]
+3:
+  000006:[a-b]
+  000007:[c-d]
+
+wait-pending-table-stats
+000005
+----
+num-entries: 1
+num-deletions: 1
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 1552
+
+compact a-e L1
+----
+2:
+  000008:[a#3,SETWITHDEL-b#72057594037927935,RANGEDEL]
+  000009:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000010:[d#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+3:
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
+
+wait-pending-table-stats
+000008
+----
+num-entries: 2
+num-deletions: 1
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 776
+
+# Same as above, except range tombstone covers multiple grandparent file boundaries.
+
+define target-file-sizes=(1, 1, 1, 1)
+L1
+  a.SET.3:v
+L2
+  a.RANGEDEL.2:g
+L3
+  a.SET.0:v
+  b.SET.0:v
+L3
+  c.SET.0:v
+  d.SET.0:v
+L3
+  e.SET.0:v
+  f.SET.1:v
+L3
+  f.SET.0:v
+  g.SET.0:v
+----
+1:
+  000004:[a-a]
+2:
+  000005:[a-g]
+3:
+  000006:[a-b]
+  000007:[c-d]
+  000008:[e-f]
+  000009:[f-g]
+
+compact a-e L1
+----
+2:
+  000010:[a#3,SETWITHDEL-b#72057594037927935,RANGEDEL]
+  000011:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000012:[d#2,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000013:[f#2,RANGEDEL-g#72057594037927935,RANGEDEL]
+3:
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
+  000008:[e#0,SET-f#1,SET]
+  000009:[f#0,SET-g#0,SET]
+
+# A range tombstone covers multiple grandparent file boundaries between point keys,
+# rather than after all point keys.
+
+define target-file-sizes=(1, 1, 1, 1)
+L1
+  a.SET.3:v
+  h.SET.3:v
+L2
+  a.RANGEDEL.2:g
+L3
+  a.SET.0:v
+  b.SET.0:v
+L3
+  c.SET.0:v
+  d.SET.0:v
+L3
+  e.SET.0:v
+  f.SET.1:v
+----
+1:
+  000004:[a-h]
+2:
+  000005:[a-g]
+3:
+  000006:[a-b]
+  000007:[c-d]
+  000008:[e-f]
+
+compact a-e L1
+----
+2:
+  000009:[a#3,SETWITHDEL-g#72057594037927935,RANGEDEL]
+  000010:[h#3,SET-h#3,SET]
+3:
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
+  000008:[e#0,SET-f#1,SET]
+
+# A range tombstone is the first and only item output by a compaction, and it
+# extends past the grandparent file boundary used to limit the size of future
+# compactions. Verify the range tombstone is split at that file boundary.
+
+define target-file-sizes=(1, 1, 1, 1)
+L1
+  a.RANGEDEL.3:e
+L2
+  a.SET.2:v
+L3
+  a.SET.0:v
+  b.SET.0:v
+L3
+  c.SET.0:v
+  d.SET.0:v
+----
+1:
+  000004:[a-e]
+2:
+  000005:[a-a]
+3:
+  000006:[a-b]
+  000007:[c-d]
+
+compact a-e L1
+----
+2:
+  000008:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000009:[b#3,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000010:[d#3,RANGEDEL-e#72057594037927935,RANGEDEL]
+3:
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
+
+# An elided range tombstone is the first item encountered by a compaction,
+# and the grandparent limit set by it extends to the next item, also a range
+# tombstone. The first item should be elided, and the second item should
+# reset the grandparent limit.
+
+define target-file-sizes=(100, 100, 100, 100)
+L1
+  a.RANGEDEL.4:d
+L1
+  grandparent.RANGEDEL.2:z
+  h.SET.3:v
+L2
+  grandparent.SET.1:v
+L3
+  grandparent.SET.0:v
+L3
+  m.SET.0:v
+----
+1:
+  000004:[a-d]
+  000005:[grandparent-z]
+2:
+  000006:[grandparent-grandparent]
+3:
+  000007:[grandparent-grandparent]
+  000008:[m-m]
+
+compact a-h L1
+----
+2:
+  000009:[grandparent#2,RANGEDEL-m#72057594037927935,RANGEDEL]
+  000010:[m#2,RANGEDEL-z#72057594037927935,RANGEDEL]
+3:
+  000007:[grandparent#0,SET-grandparent#0,SET]
+  000008:[m#0,SET-m#0,SET]
+
+# Setup such that grandparent overlap limit is exceeded multiple times at the same user key ("b").
+# Ensures the compaction output files are non-overlapping.
+
+define target-file-sizes=(1, 1, 1, 1)
+L1
+  a.SET.2:v
+  c.SET.2:v
+L2
+  a.RANGEDEL.3:c
+L3
+  b.SET.2:v
+L3
+  b.SET.1:v
+L3
+  b.SET.0:v
+----
+1:
+  000004:[a-c]
+2:
+  000005:[a-c]
+3:
+  000006:[b-b]
+  000007:[b-b]
+  000008:[b-b]
+
+compact a-c L1
+----
+2:
+  000009:[a#3,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000010:[c#2,SET-c#2,SET]
+3:
+  000006:[b#2,SET-b#2,SET]
+  000007:[b#1,SET-b#1,SET]
+  000008:[b#0,SET-b#0,SET]
+
+# Regression test for a bug where compaction would stop process range
+# tombstones for an input level upon finding an sstable in the input
+# level with no range tombstones. In the scenario below, sstable 6
+# does not contain any range tombstones while sstable 7 does. Both are
+# compacted together with sstable 5.
+
+reset
+----
+
+batch
+set a 1
+set b 1
+set c 1
+set d 1
+set z 1
+----
+
+compact a-z
+----
+6:
+  000005:[a#1,SET-z#5,SET]
+
+build ext1
+set a 2
+----
+
+build ext2
+set b 2
+del-range c z
+----
+
+ingest ext1 ext2
+----
+0.0:
+  000006:[a#6,SET-a#6,SET]
+  000007:[b#7,SET-z#72057594037927935,RANGEDEL]
+6:
+  000005:[a#1,SET-z#5,SET]
+
+iter
+first
+next
+next
+next
+----
+a:2
+b:2
+z:1
+.
+
+compact a-z
+----
+6:
+  000008:[a#0,SET-z#0,SET]
+
+iter
+first
+next
+next
+next
+----
+a:2
+b:2
+z:1
+.
+
+# Regresion test for a bug in sstable smallest boundary generation
+# where the smallest key for an sstable was set to a key "larger" than
+# the start key of the first range tombstone. This in turn fouled up
+# the processing logic of range tombstones used by mergingIter which
+# allowed stepping out of an sstable even though it contained a range
+# tombstone that covered keys in lower levels.
+
+define target-file-sizes=(1, 1, 1, 1)
+L0
+  c.SET.4:4
+L1
+  a.SET.3:3
+L2
+  a.RANGEDEL.2:e
+L3
+  b.SET.1:1
+----
+0.0:
+  000004:[c-c]
+1:
+  000005:[a-a]
+2:
+  000006:[a-e]
+3:
+  000007:[b-b]
+
+compact a-e L1
+----
+0.0:
+  000004:[c#4,SET-c#4,SET]
+2:
+  000008:[a#3,SETWITHDEL-b#72057594037927935,RANGEDEL]
+  000009:[b#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+3:
+  000007:[b#1,SET-b#1,SET]
+
+# We should only see a:3 and c:4 at this point.
+
+iter
+first
+next
+next
+----
+a:3
+c:4
+.
+
+# The bug allowed seeing b:1 during reverse iteration.
+
+iter
+last
+prev
+prev
+----
+c:4
+a:3
+.
+
+# This is a similar scenario to the one above, but we've arranged for
+# the compaction to produce an sstable (9) for which the smallest
+# range tombstone overlaps in key space with the largest key in the
+# previous sstable (8). This necessitates adjusting the seqnum of the
+# range tombstone. There was no actual iteration bug from earlier
+# behavior of setting the seqnum to 0, but now we set the seqnum to
+# prev.LargestKey.SeqNum-1.
+#
+# Note the target-file-size of 26 is specially tailored to get the
+# desired compaction output.
+
+define target-file-sizes=(26, 26, 26, 26) snapshots=(1, 2, 3)
+L1
+  a.SET.4:4
+L1
+  b.SET.2:2
+  b.RANGEDEL.3:e
+L3
+  b.SET.1:1
+----
+1:
+  000004:[a-a]
+  000005:[b-e]
+3:
+  000006:[b-b]
+
+compact a-e L1
+----
+2:
+  000007:[a#4,SET-b#2,SET]
+  000008:[b#1,RANGEDEL-e#72057594037927935,RANGEDEL]
+3:
+  000006:[b#1,SET-b#1,SET]
+
+iter
+first
+next
+last
+prev
+----
+a:4
+.
+a:4
+.
+
+# Similar to the preceding scenario, except the range tombstone has
+# the same seqnum as the largest key in the preceding file.
+
+define target-file-sizes=(26, 26, 26, 26) snapshots=(1, 2, 3)
+L1
+  a.SET.4:4
+L1
+  b.SET.3:3
+  b.RANGEDEL.3:e
+L3
+  b.SET.1:1
+----
+1:
+  000004:[a-a]
+  000005:[b-e]
+3:
+  000006:[b-b]
+
+compact a-e L1
+----
+2:
+  000007:[a#4,SET-b#3,SET]
+  000008:[b#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+3:
+  000006:[b#1,SET-b#1,SET]
+
+iter
+first
+next
+next
+last
+prev
+prev
+----
+a:4
+b:3
+.
+b:3
+a:4
+.
+
+# Similar to the preceding scenario, except the range tombstone has
+# a smaller seqnum than the largest key in the preceding file.
+
+define target-file-sizes=(26, 26, 26, 26) snapshots=(1, 2, 3)
+L1
+  a.SET.4:4
+L1
+  b.SET.4:4
+  b.RANGEDEL.2:e
+L3
+  b.SET.1:1
+----
+1:
+  000004:[a-a]
+  000005:[b-e]
+3:
+  000006:[b-b]
+
+compact a-e L1
+----
+2:
+  000007:[a#4,SET-b#4,SET]
+  000008:[b#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+3:
+  000006:[b#1,SET-b#1,SET]
+
+iter
+first
+next
+next
+last
+prev
+prev
+----
+a:4
+b:4
+.
+b:4
+a:4
+.
+
+# Test a scenario where the last point key in an sstable has a seqnum
+# of 0, and the smallest range tombstone in the next sstable starts
+# with the same key. We have to tweak the kind of the boundary key in
+# sstable 8 to be a DEL rather than a RANGEDEL so that the two tables
+# are disjoint in the key space.
+
+define target-file-sizes=(1, 1, 26) snapshots=(2)
+L1
+  a.SET.3:3
+  b.RANGEDEL.3:e
+  b.SET.0:0
+L3
+  a.RANGEDEL.2:b
+L3
+  c.SET.0:0
+  d.SET.0:0
+----
+1:
+  000004:[a-e]
+3:
+  000005:[a-b]
+  000006:[c-d]
+
+iter
+last
+prev
+----
+a:3
+.
+
+compact a-e L1
+----
+2:
+  000007:[a#3,SET-e#72057594037927935,RANGEDEL]
+3:
+  000005:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000006:[c#0,SET-d#0,SET]
+
+iter
+last
+prev
+----
+a:3
+.
+
+# Test a scenario where the last point key in an sstable before the
+# grandparent limit is reached has a seqnum of 0. We want to cut the
+# sstable after the next point key is added, rather than continuing to
+# add keys indefinitely (or till the size limit is reached).
+
+define target-file-sizes=(100, 1, 52) snapshots=(2)
+L1
+  a.SET.3:3
+  b.RANGEDEL.3:e
+  b.SET.0:0
+  c.SET.1:1
+  d.SET.1:1
+L3
+  a.RANGEDEL.2:b
+----
+1:
+  000004:[a-e]
+3:
+  000005:[a-b]
+
+compact a-f L1
+----
+2:
+  000006:[a#3,SET-c#72057594037927935,RANGEDEL]
+  000007:[c#3,RANGEDEL-e#72057594037927935,RANGEDEL]
+3:
+  000005:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+
+# Test a scenario where we the last point key in an sstable has a
+# seqnum of 0, but there is another range tombstone later in the
+# compaction. This scenario was previously triggering an assertion due
+# to the rangedel.Fragmenter being finished prematurely.
+
+define target-file-sizes=(1, 1, 1)
+L1
+  a.SET.0:0
+  c.RANGEDEL.1:d
+L3
+  b.SET.0:0
+----
+1:
+  000004:[a-d]
+3:
+  000005:[b-b]
+
+compact a-e L1
+----
+2:
+  000006:[a#0,SET-a#0,SET]
+3:
+  000005:[b#0,SET-b#0,SET]
+
+define target-file-sizes=(1, 1, 1, 1)
+L0
+  b.SET.1:v
+L0
+  a.SET.2:v
+----
+0.0:
+  000005:[a-a]
+  000004:[b-b]
+
+add-ongoing-compaction startLevel=0 outputLevel=1
+----
+
+async-compact a-b L0
+----
+manual compaction blocked until ongoing finished
+1:
+  000006:[a#0,SET-a#0,SET]
+  000007:[b#0,SET-b#0,SET]
+
+compact a-b L1
+----
+2:
+  000008:[a#0,SET-a#0,SET]
+  000009:[b#0,SET-b#0,SET]
+
+add-ongoing-compaction startLevel=0 outputLevel=1
+----
+
+async-compact a-b L2
+----
+manual compaction blocked until ongoing finished
+3:
+  000010:[a#0,SET-a#0,SET]
+  000011:[b#0,SET-b#0,SET]
+
+add-ongoing-compaction startLevel=0 outputLevel=1
+----
+
+set-concurrent-compactions num=2
+----
+
+async-compact a-b L3
+----
+manual compaction did not block for ongoing
+4:
+  000012:[a#0,SET-a#0,SET]
+  000013:[b#0,SET-b#0,SET]
+
+remove-ongoing-compaction
+----
+
+add-ongoing-compaction startLevel=5 outputLevel=6
+----
+
+async-compact a-b L4
+----
+manual compaction blocked until ongoing finished
+5:
+  000014:[a#0,SET-a#0,SET]
+  000015:[b#0,SET-b#0,SET]
+
+# Test of a scenario where consecutive elided range tombstones and grandparent
+# boundaries could result in an invariant violation in the rangedel fragmenter.
+
+define target-file-sizes=(1, 1, 1, 1)
+L1
+  a.RANGEDEL.4:b
+  c.RANGEDEL.4:d
+  e.RANGEDEL.4:f
+L1
+  g.RANGEDEL.6:h
+  i.RANGEDEL.4:j
+L1
+  k.RANGEDEL.5:q
+  m.RANGEDEL.4:q
+L2
+  a.SET.2:foo
+L3
+  a.SET.1:foo
+  c.SET.1:foo
+L3
+  ff.SET.1:v
+L3
+  k.SET.1:foo
+----
+1:
+  000004:[a-f]
+  000005:[g-j]
+  000006:[k-q]
+2:
+  000007:[a-a]
+3:
+  000008:[a-c]
+  000009:[ff-ff]
+  000010:[k-k]
+
+compact a-q L1
+----
+2:
+  000011:[a#4,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000012:[k#5,RANGEDEL-m#72057594037927935,RANGEDEL]
+3:
+  000008:[a#1,SET-c#1,SET]
+  000009:[ff#1,SET-ff#1,SET]
+  000010:[k#1,SET-k#1,SET]
+
+# Test a case where a new output file is started, there are no previous output
+# files, there are no additional keys (key = nil) and the rangedel fragmenter
+# is non-empty.
+define target-file-sizes=(1, 1, 1)
+L1
+  a.RANGEDEL.10:b
+  d.RANGEDEL.9:e
+  q.RANGEDEL.8:r
+L2
+  g.RANGEDEL.7:h
+L3
+  q.SET.6:6
+----
+1:
+  000004:[a-r]
+2:
+  000005:[g-h]
+3:
+  000006:[q-q]
+
+compact a-r L1
+----
+2:
+  000007:[q#8,RANGEDEL-r#72057594037927935,RANGEDEL]
+3:
+  000006:[q#6,SET-q#6,SET]
+
+define target-file-sizes=(100, 100, 100)
+L1
+  a.RANGEDEL.10:b
+  b.SET.0:foo
+  d.RANGEDEL.0:e
+  j.SET.10:foo
+L2
+  f.RANGEDEL.7:g
+L3
+  c.SET.6:6
+L3
+  c.SET.5:5
+L3
+  c.SET.4:4
+L4
+  a.SET.0:0
+  f.SET.0:0
+----
+1:
+  000004:[a-j]
+2:
+  000005:[f-g]
+3:
+  000006:[c-c]
+  000007:[c-c]
+  000008:[c-c]
+4:
+  000009:[a-f]
+
+compact a-r L1
+----
+2:
+  000010:[a#10,RANGEDEL-b#0,SET]
+  000011:[d#0,RANGEDEL-j#10,SET]
+3:
+  000006:[c#6,SET-c#6,SET]
+  000007:[c#5,SET-c#5,SET]
+  000008:[c#4,SET-c#4,SET]
+4:
+  000009:[a#0,SET-f#0,SET]
+
+# Test a snapshot that separates a range deletion from all the data that it
+# deletes. Ensure that we respect the target-file-size and split into multiple
+# outputs.
+
+define target-file-sizes=(1, 1, 1) snapshots=(14)
+L1
+  a.RANGEDEL.15:z
+  b.SET.11:foo
+  c.SET.11:foo
+L2
+  c.SET.0:foo
+  d.SET.0:foo
+----
+1:
+  000004:[a-z]
+2:
+  000005:[c-d]
+
+compact a-z L1
+----
+2:
+  000006:[a#15,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000007:[c#15,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000008:[d#15,RANGEDEL-z#72057594037927935,RANGEDEL]
+
+# Test an interaction between a range deletion that will be elided with
+# output splitting. Ensure that the output is still split (previous versions
+# of the code did not, because of intricacies around preventing a zero
+# sequence number in an output's largest key).
+
+define target-file-sizes=(1, 1, 1)
+L1
+  a.RANGEDEL.10:z
+  b.SET.11:foo
+  c.SET.11:foo
+L2
+  c.SET.0:foo
+  d.SET.0:foo
+----
+1:
+  000004:[a-z]
+2:
+  000005:[c-d]
+
+compact a-z L1
+----
+2:
+  000006:[b#0,SET-b#0,SET]
+  000007:[c#0,SET-c#0,SET]

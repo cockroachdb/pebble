@@ -62,8 +62,12 @@ const (
 	// Pebble versions will be unable to open the database unless
 	// they're aware of format versions.
 	FormatVersioned
+	// FormatSetWithDelete is a format major version that introduces a new key
+	// kind, base.InternalKeyKindSetWithDelete. Previous Pebble versions will be
+	// unable to open this database.
+	FormatSetWithDelete
 	// FormatNewest always contains the most recent format major version.
-	FormatNewest FormatMajorVersion = FormatVersioned
+	FormatNewest FormatMajorVersion = FormatSetWithDelete
 )
 
 // formatMajorVersionMigrations defines the migrations from one format
@@ -137,6 +141,11 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 			return err
 		}
 		return d.finalizeFormatVersUpgrade(FormatVersioned)
+	},
+	// As SetWithDelete is a new key kind, there is nothing to migrate. We can
+	// simply finalize the format version and we're done.
+	FormatSetWithDelete: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatSetWithDelete)
 	},
 }
 
