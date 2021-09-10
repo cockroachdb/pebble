@@ -271,7 +271,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		name string
 	}
 	var logFiles []fileNumAndName
-	var strictWALTail bool
+	var previousOptionsFileNum FileNum
+	var previousOptionsFilename string
 	for _, filename := range ls {
 		ft, fn, ok := base.ParseFilename(opts.FS, filename)
 		if !ok {
@@ -293,14 +294,16 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 				d.logRecycler.minRecycleLogNum = fn + 1
 			}
 		case fileTypeOptions:
-			strictWALTail, err = checkOptions(opts, opts.FS.PathJoin(dirname, filename))
-			if err != nil {
-				return nil, err
+			if previousOptionsFileNum < fn {
+				previousOptionsFileNum = fn
+				previousOptionsFilename = filename
 			}
-		case fileTypeTemp:
+		case fileTypeTemp, fileTypeOldTemp:
 			if !d.opts.ReadOnly {
-				// A temp file is leftover if a process exits in the middle of
-				// updating the CURRENT file. Remove it.
+				// Some codepaths write to a temporary file and then
+				// rename it to its final location when complete.  A
+				// temp file is leftover if a process exits before the
+				// rename.  Remove it.
 				err := opts.FS.Remove(opts.FS.PathJoin(dirname, filename))
 				if err != nil {
 					return nil, err
@@ -308,6 +311,17 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			}
 		}
 	}
+
+	// Validate the most-recent OPTIONS file, if there is one.
+	var strictWALTail bool
+	if previousOptionsFilename != "" {
+		path := opts.FS.PathJoin(dirname, previousOptionsFilename)
+		strictWALTail, err = checkOptions(opts, path)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	sort.Slice(logFiles, func(i, j int) bool {
 		return logFiles[i].num < logFiles[j].num
 	})
@@ -378,18 +392,33 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if !d.opts.ReadOnly {
 		// Write the current options to disk.
 		d.optionsFileNum = d.mu.versions.getNextFileNum()
-		optionsFile, err := opts.FS.Create(
-			base.MakeFilename(opts.FS, dirname, fileTypeOptions, d.optionsFileNum))
+		tmpPath := base.MakeFilename(opts.FS, dirname, fileTypeTemp, d.optionsFileNum)
+		optionsPath := base.MakeFilename(opts.FS, dirname, fileTypeOptions, d.optionsFileNum)
+
+		// Write them to a temporary file first, in case we crash before
+		// we're done. A corrupt options file prevents opening the
+		// database.
+		optionsFile, err := opts.FS.Create(tmpPath)
 		if err != nil {
 			return nil, err
 		}
 		serializedOpts := []byte(opts.String())
 		if _, err := optionsFile.Write(serializedOpts); err != nil {
-			return nil, err
+			return nil, errors.CombineErrors(err, optionsFile.Close())
 		}
 		d.optionsFileSize = uint64(len(serializedOpts))
-		_ = optionsFile.Sync()
-		_ = optionsFile.Close()
+		if err := optionsFile.Sync(); err != nil {
+			return nil, errors.CombineErrors(err, optionsFile.Close())
+		}
+		if err := optionsFile.Close(); err != nil {
+			return nil, err
+		}
+		// Atomically rename to the OPTIONS-XXXXXX path. This rename is
+		// guaranteed to be atomic because the destination path does not
+		// exist.
+		if err := opts.FS.Rename(tmpPath, optionsPath); err != nil {
+			return nil, err
+		}
 		if err := d.dataDir.Sync(); err != nil {
 			return nil, err
 		}
