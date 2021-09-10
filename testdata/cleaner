@@ -9,17 +9,18 @@ open-dir: db
 open-dir: db
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
-create: db/CURRENT.000001.dbtmp
-sync: db/CURRENT.000001.dbtmp
-close: db/CURRENT.000001.dbtmp
-rename: db/CURRENT.000001.dbtmp -> db/CURRENT
+create: db/temporary.000001.dbtmp
+sync: db/temporary.000001.dbtmp
+close: db/temporary.000001.dbtmp
+rename: db/temporary.000001.dbtmp -> db/CURRENT
 sync: db
 sync: db/MANIFEST-000001
 create: wal/000002.log
 sync: wal
-create: db/OPTIONS-000003
-sync: db/OPTIONS-000003
-close: db/OPTIONS-000003
+create: db/temporary.000003.dbtmp
+sync: db/temporary.000003.dbtmp
+close: db/temporary.000003.dbtmp
+rename: db/temporary.000003.dbtmp -> db/OPTIONS-000003
 sync: db
 
 batch db

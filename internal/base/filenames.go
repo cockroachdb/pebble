@@ -31,6 +31,7 @@ const (
 	FileTypeManifest
 	FileTypeCurrent
 	FileTypeOptions
+	FileTypeOldTemp
 	FileTypeTemp
 )
 
@@ -49,8 +50,10 @@ func MakeFilename(fs vfs.FS, dirname string, fileType FileType, fileNum FileNum)
 		return fs.PathJoin(dirname, "CURRENT")
 	case FileTypeOptions:
 		return fs.PathJoin(dirname, fmt.Sprintf("OPTIONS-%s", fileNum))
-	case FileTypeTemp:
+	case FileTypeOldTemp:
 		return fs.PathJoin(dirname, fmt.Sprintf("CURRENT.%s.dbtmp", fileNum))
+	case FileTypeTemp:
+		return fs.PathJoin(dirname, fmt.Sprintf("temporary.%s.dbtmp", fileNum))
 	}
 	panic("unreachable")
 }
@@ -77,6 +80,13 @@ func ParseFilename(fs vfs.FS, filename string) (fileType FileType, fileNum FileN
 		return FileTypeOptions, fileNum, ok
 	case strings.HasPrefix(filename, "CURRENT.") && strings.HasSuffix(filename, ".dbtmp"):
 		s := strings.TrimSuffix(filename[len("CURRENT."):], ".dbtmp")
+		fileNum, ok = parseFileNum(s)
+		if !ok {
+			break
+		}
+		return FileTypeOldTemp, fileNum, ok
+	case strings.HasPrefix(filename, "temporary.") && strings.HasSuffix(filename, ".dbtmp"):
+		s := strings.TrimSuffix(filename[len("temporary."):], ".dbtmp")
 		fileNum, ok = parseFileNum(s)
 		if !ok {
 			break

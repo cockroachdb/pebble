@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 
 	"github.com/cockroachdb/errors/oserror"
@@ -267,6 +269,53 @@ func TestOpenOptionsCheck(t *testing.T) {
 	}
 	_, err = Open("", opts)
 	require.Regexp(t, `merger name from file.*!=.*`, err)
+}
+
+func TestOpenCrashWritingOptions(t *testing.T) {
+	memFS := vfs.NewMem()
+
+	d, err := Open("", &Options{FS: memFS})
+	require.NoError(t, err)
+	require.NoError(t, d.Close())
+
+	// Open the database again, this time with a mocked filesystem that
+	// will only succeed in partially writing the OPTIONS file.
+	fs := optionsTornWriteFS{FS: memFS}
+	d, err = Open("", &Options{FS: fs})
+	require.Error(t, err)
+
+	// Re-opening the database must succeed.
+	d, err = Open("", &Options{FS: memFS})
+	require.NoError(t, err)
+	require.NoError(t, d.Close())
+}
+
+type optionsTornWriteFS struct {
+	vfs.FS
+}
+
+func (fs optionsTornWriteFS) Create(name string) (vfs.File, error) {
+	file, err := fs.FS.Create(name)
+	if file != nil {
+		file = optionsTornWriteFile{File: file}
+	}
+	return file, err
+}
+
+type optionsTornWriteFile struct {
+	vfs.File
+}
+
+func (f optionsTornWriteFile) Write(b []byte) (int, error) {
+	// Look for the OPTIONS-XXXXXX file's `comparer=` field.
+	comparerKey := []byte("comparer=")
+	i := bytes.Index(b, comparerKey)
+	if i == -1 {
+		return f.File.Write(b)
+	}
+	// Write only the contents through `comparer=` and return an error.
+	n, _ := f.File.Write(b[:i+len(comparerKey)])
+	return n, syscall.EIO
 }
 
 func TestOpenReadOnly(t *testing.T) {
