@@ -9,10 +9,10 @@ open-dir: db
 open-dir: db
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
-create: db/CURRENT.000001.dbtmp
-sync: db/CURRENT.000001.dbtmp
-close: db/CURRENT.000001.dbtmp
-rename: db/CURRENT.000001.dbtmp -> db/CURRENT
+create: db/temporary.000001.dbtmp
+sync: db/temporary.000001.dbtmp
+close: db/temporary.000001.dbtmp
+rename: db/temporary.000001.dbtmp -> db/CURRENT
 sync: db
 [JOB 1] MANIFEST created 000001
 create: db/marker.manifest.000001.MANIFEST-000001
@@ -22,10 +22,10 @@ create: db/marker.format-version.000001.002
 close: db/marker.format-version.000001.002
 sync: db
 upgraded to format version: 002
-create: db/CURRENT.000000.dbtmp
-sync: db/CURRENT.000000.dbtmp
-close: db/CURRENT.000000.dbtmp
-rename: db/CURRENT.000000.dbtmp -> db/CURRENT
+create: db/temporary.000000.dbtmp
+sync: db/temporary.000000.dbtmp
+close: db/temporary.000000.dbtmp
+rename: db/temporary.000000.dbtmp -> db/CURRENT
 create: db/marker.format-version.000002.003
 close: db/marker.format-version.000002.003
 sync: db
@@ -44,9 +44,10 @@ sync: db
 create: wal/000002.log
 sync: wal
 [JOB 1] WAL created 000002
-create: db/OPTIONS-000004
-sync: db/OPTIONS-000004
-close: db/OPTIONS-000004
+create: db/temporary.000004.dbtmp
+sync: db/temporary.000004.dbtmp
+close: db/temporary.000004.dbtmp
+rename: db/temporary.000004.dbtmp -> db/OPTIONS-000004
 sync: db
 
 flush
