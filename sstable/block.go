@@ -187,6 +187,10 @@ type blockEntry struct {
 // tombstones are always encoded with a restart interval of 1. This per-block
 // key stability guarantee is sufficient for range tombstones as they are
 // always encoded in a single block.
+//
+// A blockIter also provides a value stability guarantee for range deletions
+// since there is only a single range deletion block per sstable and the
+// blockIter will not release the bytes for the block until it is closed.
 type blockIter struct {
 	cmp Compare
 	// offset is the byte index that marks where the current key/value is
