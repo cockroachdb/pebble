@@ -80,6 +80,13 @@ func TestCompactionIter(t *testing.T) {
 	var allowZeroSeqnum bool
 
 	newIter := func() *compactionIter {
+		// To adhere to the existing assumption that range deletion blocks in
+		// SSTables are not released while iterating, and therefore not
+		// susceptible to use-after-free bugs, we skip the zeroing of
+		// RangeDelete keys.
+		iter := newInvalidatingIter(&fakeIter{keys: keys, vals: vals})
+		iter.ignoreKind(InternalKeyKindRangeDelete)
+
 		return newCompactionIter(
 			DefaultComparer.Compare,
 			DefaultComparer.FormatKey,
@@ -88,7 +95,7 @@ func TestCompactionIter(t *testing.T) {
 				m.buf = append(m.buf, value...)
 				return m, nil
 			},
-			&fakeIter{keys: keys, vals: vals},
+			iter,
 			snapshots,
 			&rangedel.Fragmenter{},
 			allowZeroSeqnum,

@@ -43,9 +43,9 @@ func newValue(n int) *Value {
 func (v *Value) free() {
 	// When "invariants" are enabled set the value contents to 0xff in order to
 	// cache use-after-free bugs.
-	// for i := range v.buf {
-	// 	v.buf[i] = 0xff
-	// }
+	for i := range v.buf {
+		v.buf[i] = 0xff
+	}
 	manual.Free(v.buf)
 	// Setting Value.buf to nil is needed for correctness of the leak checking
 	// that is performed when the "invariants" or "tracing" build tags are

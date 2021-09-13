@@ -215,25 +215,22 @@ func (f *fakeIter) SetBounds(lower, upper []byte) {
 // invalidatingIter tests unsafe key/value slice reuse by modifying the last
 // returned key/value to all 1s.
 type invalidatingIter struct {
-	iter      internalIterator
-	lastKey   *InternalKey
-	lastValue []byte
+	iter        internalIterator
+	lastKey     *InternalKey
+	lastValue   []byte
+	ignoreKinds [base.InternalKeyKindMax]bool
 }
 
 func newInvalidatingIter(iter internalIterator) *invalidatingIter {
 	return &invalidatingIter{iter: iter}
 }
 
+func (i *invalidatingIter) ignoreKind(kind base.InternalKeyKind) {
+	i.ignoreKinds[kind] = true
+}
+
 func (i *invalidatingIter) update(key *InternalKey, value []byte) (*InternalKey, []byte) {
-	if i.lastKey != nil {
-		for j := range i.lastKey.UserKey {
-			i.lastKey.UserKey[j] = 0xff
-		}
-		i.lastKey.Trailer = 0
-	}
-	for j := range i.lastValue {
-		i.lastValue[j] = 0xff
-	}
+	i.zeroLast()
 
 	if key == nil {
 		i.lastKey = nil
@@ -246,6 +243,25 @@ func (i *invalidatingIter) update(key *InternalKey, value []byte) (*InternalKey,
 	i.lastValue = make([]byte, len(value))
 	copy(i.lastValue, value)
 	return i.lastKey, i.lastValue
+}
+
+func (i *invalidatingIter) zeroLast() {
+	if i.lastKey == nil {
+		return
+	}
+	if i.ignoreKinds[i.lastKey.Kind()] {
+		return
+	}
+
+	if i.lastKey != nil {
+		for j := range i.lastKey.UserKey {
+			i.lastKey.UserKey[j] = 0xff
+		}
+		i.lastKey.Trailer = 0
+	}
+	for j := range i.lastValue {
+		i.lastValue[j] = 0xff
+	}
 }
 
 func (i *invalidatingIter) SeekGE(key []byte) (*InternalKey, []byte) {
