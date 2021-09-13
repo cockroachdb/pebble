@@ -265,6 +265,12 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			// Although, note that `skip` may already be true before reaching here
 			// due to an earlier key in the stripe. Then it is fine to leave it set
 			// to true, as the earlier key must have had a higher sequence number.
+			//
+			// Note that storing and returning a reference to the key and value
+			// here is safe. There is no risk that these stored values that are
+			// passed elsewhere will released, as long as the assumption that
+			// the underlying sstable block containing the range deletion
+			// records is not released, holds.
 			i.saveKey()
 			i.value = i.iterValue
 			i.valid = true
