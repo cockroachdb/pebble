@@ -122,6 +122,27 @@ import (
 // to take the range tombstones into consideration when outputting normal
 // keys. Just as with point deletions, a range deletion covering an entry can
 // cause the entry to be elided.
+//
+// A note on the stability of keys and values.
+//
+// The stability guarantees of keys and values returned by the iterator tree
+// that backs a compactionIter is nuanced and care must be taken when
+// referencing any returned items.
+//
+// Keys and values returned by exported functions (i.e. First, Next, etc.) have
+// lifetimes that fall into two categories:
+//
+// Lifetime valid for duration of compaction. Range deletion keys and values are
+// stable for the duration of the compaction, due to way in which a
+// compactionIter is typically constructed (i.e. via (*compaction).newInputIter,
+// which wraps the iterator over the range deletion block in a noCloseIter,
+// preventing the release of the backing memory until the compaction is
+// finished).
+//
+// Lifetime limited to duration of sstable block liveness. Point keys (SET, DEL,
+// etc.) and values must be cloned / copied following the return from the
+// exported function, and before a subsequent call to Next advances the iterator
+// and mutates the contents of the returned key and value.
 type compactionIter struct {
 	cmp   Compare
 	merge Merge
@@ -265,6 +286,20 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			// Although, note that `skip` may already be true before reaching here
 			// due to an earlier key in the stripe. Then it is fine to leave it set
 			// to true, as the earlier key must have had a higher sequence number.
+			//
+			// NOTE: there is a subtle invariant violation here in that calling
+			// saveKey and returning a reference to the temporary slice violates
+			// the stability guarantee for range deletion keys. A potential
+			// mediation could return the original iterKey and iterValue
+			// directly, as the backing memory is guaranteed to be stable until
+			// the compaction completes. The violation here is only minor in
+			// that the caller immediately clones the range deletion InternalKey
+			// when passing the key to the deletion fragmenter (see the
+			// call-site in compaction.go).
+			// TODO(travers): address this violation by removing the call to
+			// saveKey and instead return the original iterKey and iterValue.
+			// This goes against the comment on i.key in the struct, and
+			// therefore warrants some investigation.
 			i.saveKey()
 			i.value = i.iterValue
 			i.valid = true
@@ -412,6 +447,12 @@ const (
 
 // nextInStripe advances the iterator and returns one of the above const ints
 // indicating how its state changed.
+//
+// Calls to nextInStripe must be preceded by a call to saveKey to retain a
+// temporary reference to the original key, so that forward iteration can
+// proceed with a reference to the original key. Care should be taken to avoid
+// overwriting or mutating the saved key or value before they have been returned
+// to the caller of the exported function (i.e. the caller of Next, First, etc.)
 func (i *compactionIter) nextInStripe() stripeChangeType {
 	if !i.iterNext() {
 		return newStripe
