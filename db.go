@@ -29,9 +29,9 @@ const (
 	// minTableCacheSize is the minimum size of the table cache.
 	minTableCacheSize = 64
 
-	// numNonTableCacheFiles is an approximation for the number of MaxOpenFiles
-	// that we don't use for table caches.
-	numNonTableCacheFiles = 10
+	// NumNonTableCacheFiles is an approximation for the number of MaxOpenFiles
+	// that we don't use for table caches, for a given store.
+	NumNonTableCacheFiles = 10
 )
 
 var (
