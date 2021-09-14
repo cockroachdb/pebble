@@ -105,9 +105,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		d.equal = bytes.Equal
 	}
 
-	tableCacheSize := opts.MaxOpenFiles - numNonTableCacheFiles
-	if tableCacheSize < minTableCacheSize {
-		tableCacheSize = minTableCacheSize
+	tableCacheSize := opts.MaxOpenFiles - NumNonTableCacheFiles
+	if tableCacheSize < MinTableCacheSize {
+		tableCacheSize = MinTableCacheSize
 	}
 	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
