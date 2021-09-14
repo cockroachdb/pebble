@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -1199,6 +1200,21 @@ func TestSSTables(t *testing.T) {
 			require.NotNil(t, info.Properties)
 		}
 	}
+}
+
+func TestDBFinalizerCalled(t *testing.T) {
+	{
+		mem := vfs.NewMem()
+		d, err := Open("", &Options{
+			FS: mem,
+		})
+		if err != nil {
+			t.Errorf("DB didn't open.")
+		}
+		_ = d
+	}
+
+	runtime.GC()
 }
 
 func BenchmarkDelete(b *testing.B) {
