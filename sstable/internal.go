@@ -17,6 +17,7 @@ const (
 	InternalKeyKindLogData         = base.InternalKeyKindLogData
 	InternalKeyKindRangeDelete     = base.InternalKeyKindRangeDelete
 	InternalKeyKindMax             = base.InternalKeyKindMax
+	InternalKeyKindForSeek         = base.InternalKeyKindForSeek
 	InternalKeyKindInvalid         = base.InternalKeyKindInvalid
 	InternalKeySeqNumBatch         = base.InternalKeySeqNumBatch
 	InternalKeySeqNumMax           = base.InternalKeySeqNumMax

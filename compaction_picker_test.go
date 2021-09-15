@@ -299,7 +299,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					}
 				}
 
-				iStart := base.MakeInternalKey([]byte(start), InternalKeySeqNumMax, InternalKeyKindMax)
+				iStart := base.MakeInternalKey([]byte(start), InternalKeySeqNumMax, InternalKeyKindForSeek)
 				iEnd := base.MakeInternalKey([]byte(end), 0, 0)
 				manual := &manualCompaction{
 					done:  make(chan error, 1),

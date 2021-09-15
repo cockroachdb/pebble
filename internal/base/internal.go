@@ -34,21 +34,26 @@ const (
 	// InternalKeyKindColumnFamilyRangeDelete                  = 14
 	InternalKeyKindRangeDelete = 15
 	// InternalKeyKindColumnFamilyBlobIndex                    = 16
-	// InternalKeyKindBlobIndex                                = 17
+	InternalKeyKindBlobIndex = 17
 
-	// This maximum value isn't part of the file format. It's unlikely,
-	// but future extensions may increase this value.
-	//
-	// When constructing an internal key to pass to DB.Seek{GE,LE},
-	// internalKeyComparer sorts decreasing by kind (after sorting increasing by
-	// user key and decreasing by sequence number). Thus, use InternalKeyKindMax,
-	// which sorts 'less than or equal to' any other valid internalKeyKind, when
-	// searching for any kind of internal key formed by a certain user key and
-	// seqNum.
-	InternalKeyKindMax InternalKeyKind = 17
+	// InternalKeyKindMax is the maximum in-use InternalKeyKind. This maximum
+	// value isn't part of the file format. It's unlikely, but future extensions
+	// may increase this value.
+	InternalKeyKindMax InternalKeyKind = InternalKeyKindBlobIndex
 
 	// A marker for an invalid key.
 	InternalKeyKindInvalid InternalKeyKind = 255
+
+	// InternalKeyKindForSeek is an InternalKeyKind used when constructing a
+	// InternalKey for seeking to a particular sequence number.
+	//
+	// When constructing an internal key to pass to DB.Seek{GE,LE},
+	// internalKeyComparer sorts decreasing by kind (after sorting increasing by
+	// user key and decreasing by sequence number). Thus, use
+	// InternalKeyKindSeek, which sorts 'less than or equal to' any other valid
+	// internalKeyKind, when searching for any kind of internal key formed by a
+	// certain user key and seqNum.
+	InternalKeyKindForSeek InternalKeyKind = InternalKeyKindBlobIndex
 
 	// InternalKeySeqNumBatch is a bit that is set on batch sequence numbers
 	// which prevents those entries from being excluded from iteration.
@@ -72,7 +77,7 @@ var internalKeyKindNames = []string{
 	InternalKeyKindLogData:      "LOGDATA",
 	InternalKeyKindSingleDelete: "SINGLEDEL",
 	InternalKeyKindRangeDelete:  "RANGEDEL",
-	InternalKeyKindMax:          "MAX",
+	InternalKeyKindBlobIndex:    "BLOBINDEX",
 	InternalKeyKindInvalid:      "INVALID",
 }
 
@@ -115,7 +120,7 @@ func MakeInternalKey(userKey []byte, seqNum uint64, kind InternalKeyKind) Intern
 func MakeSearchKey(userKey []byte) InternalKey {
 	return InternalKey{
 		UserKey: userKey,
-		Trailer: (InternalKeySeqNumMax << 8) | uint64(InternalKeyKindMax),
+		Trailer: (InternalKeySeqNumMax << 8) | uint64(InternalKeyKindForSeek),
 	}
 }
 
@@ -136,7 +141,7 @@ var kindsMap = map[string]InternalKeyKind{
 	"SET":       InternalKeyKindSet,
 	"MERGE":     InternalKeyKindMerge,
 	"INVALID":   InternalKeyKindInvalid,
-	"MAX":       InternalKeyKindMax,
+	"BLOBINDEX": InternalKeyKindBlobIndex,
 }
 
 // ParseInternalKey parses the string representation of an internal key. The
@@ -224,7 +229,7 @@ func (k InternalKey) Separator(
 		// any sequence number and kind here to create a valid separator key. We
 		// use the max sequence number to match the behavior of LevelDB and
 		// RocksDB.
-		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindMax)
+		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindBlobIndex)
 	}
 	return k
 }
@@ -241,7 +246,7 @@ func (k InternalKey) Successor(cmp Compare, succ Successor, buf []byte) Internal
 		// any sequence number and kind here to create a valid separator key. We
 		// use the max sequence number to match the behavior of LevelDB and
 		// RocksDB.
-		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindMax)
+		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindBlobIndex)
 	}
 	return k
 }

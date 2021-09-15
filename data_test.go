@@ -363,7 +363,7 @@ func runCompactCmd(td *datadriven.TestData, d *DB) error {
 	}
 	if len(td.CmdArgs) == 2 {
 		levelString := td.CmdArgs[1].String()
-		iStart := base.MakeInternalKey([]byte(parts[0]), InternalKeySeqNumMax, InternalKeyKindMax)
+		iStart := base.MakeInternalKey([]byte(parts[0]), InternalKeySeqNumMax, InternalKeyKindForSeek)
 		iEnd := base.MakeInternalKey([]byte(parts[1]), 0, 0)
 		if levelString[0] != 'L' {
 			return errors.Errorf("expected L<n>: %s", levelString)
