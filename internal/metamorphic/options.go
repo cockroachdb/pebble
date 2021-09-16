@@ -189,7 +189,7 @@ func standardOptions() []*testOptions {
 `,
 		21: `
 [TestOptions]
-  use_disk=true
+ use_disk=true
 `,
 	}
 
