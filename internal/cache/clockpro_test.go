@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -183,6 +184,66 @@ func TestReserve(t *testing.T) {
 	cache.Set(1, 0, 0, testValue(cache, "a", 1)).Release()
 	cache.Set(2, 0, 0, testValue(cache, "a", 1)).Release()
 	require.EqualValues(t, 4, cache.Size())
+}
+
+func TestCacheStressReserve(t *testing.T) {
+	const (
+		maxCacheSize    = 256
+		maxOffsets      = 4 * maxCacheSize
+		maxWorkers      = 10
+		maxReservers    = 2
+		maxReserveDelay = time.Millisecond
+		reserveIters    = 100
+	)
+
+	seed := uint64(time.Now().UnixNano())
+	t.Logf("using seed %d", seed)
+	rootRng := rand.New(rand.NewSource(seed))
+
+	var (
+		cacheSize = int64(rootRng.Intn(maxCacheSize) + 1) // [1, maxCacheSize]
+		offsets   = rootRng.Intn(maxOffsets) + 1          // [1, maxOffsets]
+		workers   = rootRng.Intn(maxWorkers) + 1          // [1, maxWorkers]
+		reservers = rootRng.Intn(maxReservers) + 1        // [1, maxReservers]
+	)
+
+	randOffset := func(rng *rand.Rand) uint64 {
+		return uint64(rng.Intn(offsets))
+	}
+
+	cache := newShards(cacheSize, 1)
+	defer cache.Unref()
+	inflightReservers := int32(reservers)
+
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int, rng *rand.Rand) {
+			defer wg.Done()
+			for atomic.LoadInt32(&inflightReservers) > 0 {
+				off := randOffset(rng)
+				cache.Get(1, 1, off).Release()
+
+				cache.Set(1, 1, off, testValue(cache, "a", 2)).Release()
+			}
+		}(i, rand.New(rand.NewSource(rootRng.Uint64())))
+	}
+
+	for i := 0; i < reservers; i++ {
+		wg.Add(1)
+		go func(i int, rng *rand.Rand) {
+			defer wg.Done()
+			defer atomic.AddInt32(&inflightReservers, -1)
+			for j := 0; j < reserveIters; j++ {
+				size := rng.Intn(int(2 * cacheSize))
+				release := cache.Reserve(size)
+				time.Sleep(time.Duration(rng.Intn(int(maxReserveDelay))))
+				release()
+				time.Sleep(time.Duration(rng.Intn(int(maxReserveDelay))))
+			}
+		}(i, rand.New(rand.NewSource(rootRng.Uint64())))
+	}
+	wg.Wait()
 }
 
 func TestReserveDoubleRelease(t *testing.T) {
