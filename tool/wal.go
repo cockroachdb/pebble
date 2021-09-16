@@ -138,6 +138,8 @@ func (w *walT) runDump(cmd *cobra.Command, args []string) {
 						fmt.Fprintf(stdout, "<%d>", len(value))
 					case base.InternalKeyKindSingleDelete:
 						fmt.Fprintf(stdout, "%s", w.fmtKey.fn(ukey))
+					case base.InternalKeyKindSetWithDelete:
+						fmt.Fprintf(stdout, "%s", w.fmtKey.fn(ukey))
 					case base.InternalKeyKindRangeDelete:
 						fmt.Fprintf(stdout, "%s,%s", w.fmtKey.fn(ukey), w.fmtKey.fn(value))
 					}
