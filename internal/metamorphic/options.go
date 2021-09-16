@@ -189,7 +189,7 @@ func standardOptions() []*testOptions {
 `,
 		21: `
 [TestOptions]
-  use_disk=true
+ use_disk=true
 `,
 	}
 
@@ -210,7 +210,13 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts.Cache = cache.New(1 << uint(rng.Intn(30))) // 1B - 1GB
 	opts.DisableWAL = rng.Intn(2) == 0
 	opts.FlushSplitBytes = 1 << rng.Intn(20) // 1B - 1MB
-	opts.FormatMajorVersion = pebble.FormatMajorVersion(rng.Intn(int(pebble.FormatNewest)) + 1)
+	// The metamorphic test exercises the latest SingleDelete semantics, that
+	// require SetWithDelete so we cannot use an older FormatMajorVersion.
+	opts.FormatMajorVersion = pebble.FormatSetWithDelete
+	n := int(pebble.FormatNewest - pebble.FormatSetWithDelete)
+	if n > 0 {
+		opts.FormatMajorVersion += pebble.FormatMajorVersion(rng.Intn(n))
+	}
 	opts.Experimental.L0CompactionConcurrency = 1 + rng.Intn(4)    // 1-4
 	opts.Experimental.MinDeletionRate = 1 << uint(20+rng.Intn(10)) // 1MB - 1GB
 	opts.L0CompactionThreshold = 1 + rng.Intn(100)                 // 1 - 100

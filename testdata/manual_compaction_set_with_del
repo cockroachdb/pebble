@@ -48,8 +48,8 @@ L0
   a.SET.2:v
 ----
 0.0:
-  000005:[a-a]
-  000004:[b-b]
+  000005:[a#2,SET-a#2,SET]
+  000004:[b#1,SET-b#1,SET]
 
 compact a-b
 ----
@@ -74,12 +74,12 @@ L3
   d.SET.0:v
 ----
 1:
-  000004:[a-a]
+  000004:[a#3,SET-a#3,SET]
 2:
-  000005:[a-e]
+  000005:[a#2,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
-  000006:[a-b]
-  000007:[c-d]
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
 
 wait-pending-table-stats
 000005
@@ -128,14 +128,14 @@ L3
   g.SET.0:v
 ----
 1:
-  000004:[a-a]
+  000004:[a#3,SET-a#3,SET]
 2:
-  000005:[a-g]
+  000005:[a#2,RANGEDEL-g#72057594037927935,RANGEDEL]
 3:
-  000006:[a-b]
-  000007:[c-d]
-  000008:[e-f]
-  000009:[f-g]
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
+  000008:[e#0,SET-f#1,SET]
+  000009:[f#0,SET-g#0,SET]
 
 compact a-e L1
 ----
@@ -170,13 +170,13 @@ L3
   f.SET.1:v
 ----
 1:
-  000004:[a-h]
+  000004:[a#3,SET-h#3,SET]
 2:
-  000005:[a-g]
+  000005:[a#2,RANGEDEL-g#72057594037927935,RANGEDEL]
 3:
-  000006:[a-b]
-  000007:[c-d]
-  000008:[e-f]
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
+  000008:[e#0,SET-f#1,SET]
 
 compact a-e L1
 ----
@@ -205,12 +205,12 @@ L3
   d.SET.0:v
 ----
 1:
-  000004:[a-e]
+  000004:[a#3,RANGEDEL-e#72057594037927935,RANGEDEL]
 2:
-  000005:[a-a]
+  000005:[a#2,SET-a#2,SET]
 3:
-  000006:[a-b]
-  000007:[c-d]
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-d#0,SET]
 
 compact a-e L1
 ----
@@ -241,13 +241,13 @@ L3
   m.SET.0:v
 ----
 1:
-  000004:[a-d]
-  000005:[grandparent-z]
+  000004:[a#4,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000005:[grandparent#2,RANGEDEL-z#72057594037927935,RANGEDEL]
 2:
-  000006:[grandparent-grandparent]
+  000006:[grandparent#1,SET-grandparent#1,SET]
 3:
-  000007:[grandparent-grandparent]
-  000008:[m-m]
+  000007:[grandparent#0,SET-grandparent#0,SET]
+  000008:[m#0,SET-m#0,SET]
 
 compact a-h L1
 ----
@@ -275,13 +275,13 @@ L3
   b.SET.0:v
 ----
 1:
-  000004:[a-c]
+  000004:[a#2,SET-c#2,SET]
 2:
-  000005:[a-c]
+  000005:[a#3,RANGEDEL-c#72057594037927935,RANGEDEL]
 3:
-  000006:[b-b]
-  000007:[b-b]
-  000008:[b-b]
+  000006:[b#2,SET-b#2,SET]
+  000007:[b#1,SET-b#1,SET]
+  000008:[b#0,SET-b#0,SET]
 
 compact a-c L1
 ----
@@ -377,13 +377,13 @@ L3
   b.SET.1:1
 ----
 0.0:
-  000004:[c-c]
+  000004:[c#4,SET-c#4,SET]
 1:
-  000005:[a-a]
+  000005:[a#3,SET-a#3,SET]
 2:
-  000006:[a-e]
+  000006:[a#2,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
-  000007:[b-b]
+  000007:[b#1,SET-b#1,SET]
 
 compact a-e L1
 ----
@@ -438,10 +438,10 @@ L3
   b.SET.1:1
 ----
 1:
-  000004:[a-a]
-  000005:[b-e]
+  000004:[a#4,SET-a#4,SET]
+  000005:[b#3,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
-  000006:[b-b]
+  000006:[b#1,SET-b#1,SET]
 
 compact a-e L1
 ----
@@ -475,10 +475,10 @@ L3
   b.SET.1:1
 ----
 1:
-  000004:[a-a]
-  000005:[b-e]
+  000004:[a#4,SET-a#4,SET]
+  000005:[b#3,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
-  000006:[b-b]
+  000006:[b#1,SET-b#1,SET]
 
 compact a-e L1
 ----
@@ -516,10 +516,10 @@ L3
   b.SET.1:1
 ----
 1:
-  000004:[a-a]
-  000005:[b-e]
+  000004:[a#4,SET-a#4,SET]
+  000005:[b#4,SET-e#72057594037927935,RANGEDEL]
 3:
-  000006:[b-b]
+  000006:[b#1,SET-b#1,SET]
 
 compact a-e L1
 ----
@@ -562,10 +562,10 @@ L3
   d.SET.0:0
 ----
 1:
-  000004:[a-e]
+  000004:[a#3,SET-e#72057594037927935,RANGEDEL]
 3:
-  000005:[a-b]
-  000006:[c-d]
+  000005:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000006:[c#0,SET-d#0,SET]
 
 iter
 last
@@ -605,9 +605,9 @@ L3
   a.RANGEDEL.2:b
 ----
 1:
-  000004:[a-e]
+  000004:[a#3,SET-e#72057594037927935,RANGEDEL]
 3:
-  000005:[a-b]
+  000005:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
 
 compact a-f L1
 ----
@@ -630,9 +630,9 @@ L3
   b.SET.0:0
 ----
 1:
-  000004:[a-d]
+  000004:[a#0,SET-d#72057594037927935,RANGEDEL]
 3:
-  000005:[b-b]
+  000005:[b#0,SET-b#0,SET]
 
 compact a-e L1
 ----
@@ -648,8 +648,8 @@ L0
   a.SET.2:v
 ----
 0.0:
-  000005:[a-a]
-  000004:[b-b]
+  000005:[a#2,SET-a#2,SET]
+  000004:[b#1,SET-b#1,SET]
 
 add-ongoing-compaction startLevel=0 outputLevel=1
 ----
@@ -728,15 +728,15 @@ L3
   k.SET.1:foo
 ----
 1:
-  000004:[a-f]
-  000005:[g-j]
-  000006:[k-q]
+  000004:[a#4,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000005:[g#6,RANGEDEL-j#72057594037927935,RANGEDEL]
+  000006:[k#5,RANGEDEL-q#72057594037927935,RANGEDEL]
 2:
-  000007:[a-a]
+  000007:[a#2,SET-a#2,SET]
 3:
-  000008:[a-c]
-  000009:[ff-ff]
-  000010:[k-k]
+  000008:[a#1,SET-c#1,SET]
+  000009:[ff#1,SET-ff#1,SET]
+  000010:[k#1,SET-k#1,SET]
 
 compact a-q L1
 ----
@@ -762,11 +762,11 @@ L3
   q.SET.6:6
 ----
 1:
-  000004:[a-r]
+  000004:[a#10,RANGEDEL-r#72057594037927935,RANGEDEL]
 2:
-  000005:[g-h]
+  000005:[g#7,RANGEDEL-h#72057594037927935,RANGEDEL]
 3:
-  000006:[q-q]
+  000006:[q#6,SET-q#6,SET]
 
 compact a-r L1
 ----
@@ -794,15 +794,15 @@ L4
   f.SET.0:0
 ----
 1:
-  000004:[a-j]
+  000004:[a#10,RANGEDEL-j#10,SET]
 2:
-  000005:[f-g]
+  000005:[f#7,RANGEDEL-g#72057594037927935,RANGEDEL]
 3:
-  000006:[c-c]
-  000007:[c-c]
-  000008:[c-c]
+  000006:[c#6,SET-c#6,SET]
+  000007:[c#5,SET-c#5,SET]
+  000008:[c#4,SET-c#4,SET]
 4:
-  000009:[a-f]
+  000009:[a#0,SET-f#0,SET]
 
 compact a-r L1
 ----
@@ -830,9 +830,9 @@ L2
   d.SET.0:foo
 ----
 1:
-  000004:[a-z]
+  000004:[a#15,RANGEDEL-z#72057594037927935,RANGEDEL]
 2:
-  000005:[c-d]
+  000005:[c#0,SET-d#0,SET]
 
 compact a-z L1
 ----
@@ -856,9 +856,9 @@ L2
   d.SET.0:foo
 ----
 1:
-  000004:[a-z]
+  000004:[a#10,RANGEDEL-z#72057594037927935,RANGEDEL]
 2:
-  000005:[c-d]
+  000005:[c#0,SET-d#0,SET]
 
 compact a-z L1
 ----
