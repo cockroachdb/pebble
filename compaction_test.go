@@ -1180,7 +1180,7 @@ func TestManualCompaction(t *testing.T) {
 				}
 
 				d.mu.Lock()
-				s := d.mu.versions.currentVersion().String()
+				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 				d.mu.Unlock()
 				return s
 
@@ -1291,6 +1291,20 @@ func TestManualCompaction(t *testing.T) {
 			case "wait-pending-table-stats":
 				return runTableStatsCmd(td, d)
 
+			case "close-snapshots":
+				d.mu.Lock()
+				var ss []*Snapshot
+				l := &d.mu.snapshots
+				for i := l.root.next; i != &l.root; i = i.next {
+					ss = append(ss, i)
+				}
+				d.mu.Unlock()
+				for i := range ss {
+					if err := ss[i].Close(); err != nil {
+						return err.Error()
+					}
+				}
+				return ""
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}

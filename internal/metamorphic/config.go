@@ -92,6 +92,6 @@ var defaultConfig = config{
 		writerIngest:        100,
 		writerMerge:         100,
 		writerSet:           100,
-		writerSingleDelete:  25,
+		writerSingleDelete:  50,
 	},
 }
