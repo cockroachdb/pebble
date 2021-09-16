@@ -23,16 +23,8 @@ type generator struct {
 	init *initOp
 	ops  []op
 
-	// keys that have been set in the DB. Used to reuse already generated keys
-	// during random key selection.
-	keys [][]byte
-	// singleSetKeysInDB is also in the writerToSingleSetKeys map. This tracks
-	// keys that are eligible to be single deleted.
-	singleSetKeysInDB     singleSetKeysForBatch
-	writerToSingleSetKeys map[objID]singleSetKeysForBatch
-	// Ensures no duplication of single set keys for the duration of the test.
-	generatedWriteKeys map[string]struct{}
-
+	// keyManager tracks the state of keys a operation generation time.
+	keyManager *keyManager
 	// Unordered sets of object IDs for live objects. Used to randomly select on
 	// object when generating an operation. There are 4 concrete objects: the DB
 	// (of which there is exactly 1), batches, iterators, and snapshots.
@@ -71,19 +63,16 @@ type generator struct {
 
 func newGenerator(rng *rand.Rand) *generator {
 	g := &generator{
-		rng:                   rng,
-		init:                  &initOp{},
-		singleSetKeysInDB:     makeSingleSetKeysForBatch(),
-		writerToSingleSetKeys: make(map[objID]singleSetKeysForBatch),
-		generatedWriteKeys:    make(map[string]struct{}),
-		liveReaders:           objIDSlice{makeObjID(dbTag, 0)},
-		liveWriters:           objIDSlice{makeObjID(dbTag, 0)},
-		batches:               make(map[objID]objIDSet),
-		iters:                 make(map[objID]objIDSet),
-		readers:               make(map[objID]objIDSet),
-		snapshots:             make(map[objID]objIDSet),
+		rng:         rng,
+		init:        &initOp{},
+		keyManager:  newKeyManager(),
+		liveReaders: objIDSlice{makeObjID(dbTag, 0)},
+		liveWriters: objIDSlice{makeObjID(dbTag, 0)},
+		batches:     make(map[objID]objIDSet),
+		iters:       make(map[objID]objIDSet),
+		readers:     make(map[objID]objIDSet),
+		snapshots:   make(map[objID]objIDSet),
 	}
-	g.writerToSingleSetKeys[makeObjID(dbTag, 0)] = g.singleSetKeysInDB
 	// Note that the initOp fields are populated during generation.
 	g.ops = append(g.ops, g.init)
 	return g
@@ -141,47 +130,41 @@ func generate(rng *rand.Rand, count uint64, cfg config) []op {
 
 func (g *generator) add(op op) {
 	g.ops = append(g.ops, op)
+	g.keyManager.update(op)
 }
 
+// randKeyToWrite returns a key for any write other than SingleDelete.
+//
 // TODO(peter): make the size and distribution of keys configurable. See
 // keyDist and keySizeDist in config.go.
-func (g *generator) randKey(newKey float64) []byte {
-	if n := len(g.keys); n > 0 && g.rng.Float64() > newKey {
-		return g.keys[g.rng.Intn(n)]
-	}
-	key := g.randValue(4, 12)
-	g.keys = append(g.keys, key)
-	return key
+func (g *generator) randKeyToWrite(newKey float64) []byte {
+	return g.randKeyHelper(g.keyManager.eligibleWriteKeys(), newKey)
 }
 
-func (g *generator) randKeyForWrite(newKey float64, singleSetKey float64, writerID objID) []byte {
-	if n := len(g.keys); n > 0 && g.rng.Float64() > newKey {
-		return g.keys[g.rng.Intn(n)]
-	}
-	key := g.randValue(4, 12)
-	if g.rng.Float64() < singleSetKey {
-		for {
-			if _, ok := g.generatedWriteKeys[string(key)]; ok {
-				key = g.randValue(4, 12)
-				continue
-			}
-			g.generatedWriteKeys[string(key)] = struct{}{}
-			g.writerToSingleSetKeys[writerID].addKey(key)
-			break
-		}
-	} else {
-		g.generatedWriteKeys[string(key)] = struct{}{}
-		g.keys = append(g.keys, key)
-	}
-	return key
-}
-
-func (g *generator) randKeyToSingleDelete() []byte {
-	length := len(*g.singleSetKeysInDB.keys)
+func (g *generator) randKeyToSingleDelete(id objID) []byte {
+	keys := g.keyManager.eligibleSingleDeleteKeys(id)
+	length := len(keys)
 	if length == 0 {
 		return nil
 	}
-	return g.singleSetKeysInDB.removeKey(g.rng.Intn(length))
+	return keys[g.rng.Intn(length)]
+}
+
+// randKeyToRead returns a key for read operations.
+func (g *generator) randKeyToRead(newKey float64) []byte {
+	return g.randKeyHelper(g.keyManager.eligibleReadKeys(), newKey)
+}
+
+func (g *generator) randKeyHelper(keys [][]byte, newKey float64) []byte {
+	if n := len(keys); n > 0 && g.rng.Float64() > newKey {
+		return keys[g.rng.Intn(n)]
+	}
+	for {
+		key := g.randValue(4, 12)
+		if g.keyManager.addNewKey(key) {
+			return key
+		}
+	}
 }
 
 // TODO(peter): make the value size configurable. See valueSizeDist in
@@ -222,7 +205,6 @@ func (g *generator) newBatch() {
 	g.init.batchSlots++
 	g.liveBatches = append(g.liveBatches, batchID)
 	g.liveWriters = append(g.liveWriters, batchID)
-	g.writerToSingleSetKeys[batchID] = makeSingleSetKeysForBatch()
 
 	g.add(&newBatchOp{
 		batchID: batchID,
@@ -239,7 +221,6 @@ func (g *generator) newIndexedBatch() {
 	iters := make(objIDSet)
 	g.batches[batchID] = iters
 	g.readers[batchID] = iters
-	g.writerToSingleSetKeys[batchID] = makeSingleSetKeysForBatch()
 
 	g.add(&newIndexedBatchOp{
 		batchID: batchID,
@@ -261,7 +242,6 @@ func (g *generator) batchClose(batchID objID) {
 		delete(g.iters, id)
 		g.add(&closeOp{objID: id})
 	}
-	delete(g.writerToSingleSetKeys, batchID)
 }
 
 func (g *generator) batchAbort() {
@@ -281,7 +261,6 @@ func (g *generator) batchCommit() {
 	}
 
 	batchID := g.liveBatches.rand(g.rng)
-	g.writerToSingleSetKeys[batchID].transferTo(g.singleSetKeysInDB)
 	g.batchClose(batchID)
 
 	g.add(&batchCommitOp{
@@ -307,8 +286,8 @@ func (g *generator) dbCheckpoint() {
 
 func (g *generator) dbCompact() {
 	// Generate new key(s) with a 1% probability.
-	start := g.randKey(0.01)
-	end := g.randKey(0.01)
+	start := g.randKeyToRead(0.01)
+	end := g.randKeyToRead(0.01)
 	if bytes.Compare(start, end) > 0 {
 		start, end = end, start
 	}
@@ -360,11 +339,11 @@ func (g *generator) newIter() {
 	var lower, upper []byte
 	if g.rng.Float64() <= 0.1 {
 		// Generate a new key with a .1% probability.
-		lower = g.randKey(0.001)
+		lower = g.randKeyToRead(0.001)
 	}
 	if g.rng.Float64() <= 0.1 {
 		// Generate a new key with a .1% probability.
-		upper = g.randKey(0.001)
+		upper = g.randKeyToRead(0.001)
 	}
 	if bytes.Compare(lower, upper) > 0 {
 		lower, upper = upper, lower
@@ -446,11 +425,11 @@ func (g *generator) iterSetBounds() {
 		attempts++
 		if genLower {
 			// Generate a new key with a .1% probability.
-			lower = g.randKey(0.001)
+			lower = g.randKeyToRead(0.001)
 		}
 		if genUpper {
 			// Generate a new key with a .1% probability.
-			upper = g.randKey(0.001)
+			upper = g.randKeyToRead(0.001)
 		}
 		if bytes.Compare(lower, upper) > 0 {
 			lower, upper = upper, lower
@@ -548,7 +527,7 @@ func (g *generator) iterSeekGE() {
 
 	g.add(&iterSeekGEOp{
 		iterID: g.liveIters.rand(g.rng),
-		key:    g.randKey(0.001), // 0.1% new keys
+		key:    g.randKeyToRead(0.001), // 0.1% new keys
 	})
 }
 
@@ -557,7 +536,7 @@ func (g *generator) iterSeekGEWithLimit() {
 		return
 	}
 	// 0.1% new keys
-	key, limit := g.randKey(0.001), g.randKey(0.001)
+	key, limit := g.randKeyToRead(0.001), g.randKeyToRead(0.001)
 	if bytes.Compare(key, limit) > 0 {
 		key, limit = limit, key
 	}
@@ -575,7 +554,7 @@ func (g *generator) iterSeekPrefixGE() {
 
 	g.add(&iterSeekPrefixGEOp{
 		iterID: g.liveIters.rand(g.rng),
-		key:    g.randKey(0), // 0% new keys
+		key:    g.randKeyToRead(0), // 0% new keys
 	})
 }
 
@@ -586,7 +565,7 @@ func (g *generator) iterSeekLT() {
 
 	g.add(&iterSeekLTOp{
 		iterID: g.liveIters.rand(g.rng),
-		key:    g.randKey(0.001), // 0.1% new keys
+		key:    g.randKeyToRead(0.001), // 0.1% new keys
 	})
 }
 
@@ -595,7 +574,7 @@ func (g *generator) iterSeekLTWithLimit() {
 		return
 	}
 	// 0.1% new keys
-	key, limit := g.randKey(0.001), g.randKey(0.001)
+	key, limit := g.randKeyToRead(0.001), g.randKeyToRead(0.001)
 	if bytes.Compare(limit, key) > 0 {
 		key, limit = limit, key
 	}
@@ -643,7 +622,7 @@ func (g *generator) iterNextWithLimit() {
 
 	g.add(&iterNextOp{
 		iterID: g.liveIters.rand(g.rng),
-		limit:  g.randKey(0.001), // 0.1% new keys
+		limit:  g.randKeyToRead(0.001), // 0.1% new keys
 	})
 }
 
@@ -664,7 +643,7 @@ func (g *generator) iterPrevWithLimit() {
 
 	g.add(&iterPrevOp{
 		iterID: g.liveIters.rand(g.rng),
-		limit:  g.randKey(0.001), // 0.1% new keys
+		limit:  g.randKeyToRead(0.001), // 0.1% new keys
 	})
 }
 
@@ -675,7 +654,7 @@ func (g *generator) readerGet() {
 
 	g.add(&getOp{
 		readerID: g.liveReaders.rand(g.rng),
-		key:      g.randKey(0.001), // 0.1% new keys
+		key:      g.randKeyToRead(0.001), // 0.1% new keys
 	})
 }
 
@@ -733,7 +712,6 @@ func (g *generator) writerApply() {
 		}
 	}
 
-	g.writerToSingleSetKeys[batchID].transferTo(g.writerToSingleSetKeys[writerID])
 	g.batchClose(batchID)
 
 	g.add(&applyOp{
@@ -750,7 +728,7 @@ func (g *generator) writerDelete() {
 	writerID := g.liveWriters.rand(g.rng)
 	g.add(&deleteOp{
 		writerID: writerID,
-		key:      g.randKey(0.001), // 0.1% new keys
+		key:      g.randKeyToWrite(0.001), // 0.1% new keys
 	})
 	g.tryRepositionBatchIters(writerID)
 }
@@ -760,8 +738,8 @@ func (g *generator) writerDeleteRange() {
 		return
 	}
 
-	start := g.randKey(0.001)
-	end := g.randKey(0.001)
+	start := g.randKeyToWrite(0.001)
+	end := g.randKeyToWrite(0.001)
 	if bytes.Compare(start, end) > 0 {
 		start, end = end, start
 	}
@@ -780,20 +758,34 @@ func (g *generator) writerIngest() {
 		return
 	}
 
+	// TODO(nicktrav): this is resulting in too many single batch ingests.
+	// Consider alternatives. One possibility would be to pass through whether
+	// we can tolerate failure or not, and if the ingestOp encounters a
+	// failure, it would retry after splitting into single batch ingests.
+
 	// Ingest between 1 and 3 batches.
 	batchIDs := make([]objID, 0, 1+g.rng.Intn(3))
+	canFail := cap(batchIDs) > 1
 	for i := 0; i < cap(batchIDs); i++ {
 		batchID := g.liveBatches.rand(g.rng)
+		if canFail && !g.keyManager.canTolerateApplyFailure(batchID) {
+			continue
+		}
 		// After the ingest runs, it either succeeds and the keys are in the
 		// DB, or it fails and these keys never make it to the DB.
-		g.writerToSingleSetKeys[batchID].transferTo(g.singleSetKeysInDB)
 		g.batchClose(batchID)
 		batchIDs = append(batchIDs, batchID)
 		if len(g.liveBatches) == 0 {
 			break
 		}
 	}
-
+	if len(batchIDs) == 0 && len(g.liveBatches) > 0 {
+		// Unable to find multiple batches because of the
+		// canTolerateApplyFailure call above, so just pick one batch.
+		batchID := g.liveBatches.rand(g.rng)
+		g.batchClose(batchID)
+		batchIDs = append(batchIDs, batchID)
+	}
 	g.add(&ingestOp{
 		batchIDs: batchIDs,
 	})
@@ -807,8 +799,8 @@ func (g *generator) writerMerge() {
 	writerID := g.liveWriters.rand(g.rng)
 	g.add(&mergeOp{
 		writerID: writerID,
-		// 20% new keys, and none are set once.
-		key:   g.randKeyForWrite(0.2, 0, writerID),
+		// 20% new keys.
+		key:   g.randKeyToWrite(0.2),
 		value: g.randValue(0, 20),
 	})
 	g.tryRepositionBatchIters(writerID)
@@ -822,9 +814,8 @@ func (g *generator) writerSet() {
 	writerID := g.liveWriters.rand(g.rng)
 	g.add(&setOp{
 		writerID: writerID,
-		// 50% new keys, and of those 50%, half are keys that will be set
-		// once.
-		key:   g.randKeyForWrite(0.5, 0.5, writerID),
+		// 50% new keys.
+		key:   g.randKeyToWrite(0.5),
 		value: g.randValue(0, 20),
 	})
 	g.tryRepositionBatchIters(writerID)
@@ -836,7 +827,7 @@ func (g *generator) writerSingleDelete() {
 	}
 
 	writerID := g.liveWriters.rand(g.rng)
-	key := g.randKeyToSingleDelete()
+	key := g.randKeyToSingleDelete(writerID)
 	if key == nil {
 		return
 	}
