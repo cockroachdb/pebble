@@ -36,6 +36,15 @@ const (
 	// InternalKeyKindColumnFamilyBlobIndex                    = 16
 	// InternalKeyKindBlobIndex                                = 17
 
+	// InternalKeyKindSeparator is a key used for separator / successor keys
+	// written to sstable block indexes.
+	//
+	// NOTE: the RocksDB value has been repurposed. This was done to ensure that
+	// keys written to block indexes with value "17" (when 17 happened to be the
+	// max value, and InternalKeyKindMax was therefore set to 17), remain stable
+	// when new key kinds are supported in Pebble.
+	InternalKeyKindSeparator = 17
+
 	// This maximum value isn't part of the file format. It's unlikely,
 	// but future extensions may increase this value.
 	//
@@ -72,7 +81,7 @@ var internalKeyKindNames = []string{
 	InternalKeyKindLogData:      "LOGDATA",
 	InternalKeyKindSingleDelete: "SINGLEDEL",
 	InternalKeyKindRangeDelete:  "RANGEDEL",
-	InternalKeyKindMax:          "MAX",
+	InternalKeyKindSeparator:    "SEPARATOR",
 	InternalKeyKindInvalid:      "INVALID",
 }
 
@@ -136,7 +145,7 @@ var kindsMap = map[string]InternalKeyKind{
 	"SET":       InternalKeyKindSet,
 	"MERGE":     InternalKeyKindMerge,
 	"INVALID":   InternalKeyKindInvalid,
-	"MAX":       InternalKeyKindMax,
+	"SEPARATOR": InternalKeyKindSeparator,
 }
 
 // ParseInternalKey parses the string representation of an internal key. The
@@ -224,7 +233,7 @@ func (k InternalKey) Separator(
 		// any sequence number and kind here to create a valid separator key. We
 		// use the max sequence number to match the behavior of LevelDB and
 		// RocksDB.
-		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindMax)
+		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindSeparator)
 	}
 	return k
 }
@@ -241,7 +250,7 @@ func (k InternalKey) Successor(cmp Compare, succ Successor, buf []byte) Internal
 		// any sequence number and kind here to create a valid separator key. We
 		// use the max sequence number to match the behavior of LevelDB and
 		// RocksDB.
-		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindMax)
+		return MakeInternalKey(buf, InternalKeySeqNumMax, InternalKeyKindSeparator)
 	}
 	return k
 }
