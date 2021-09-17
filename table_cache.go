@@ -251,7 +251,7 @@ type tableCacheShard struct {
 
 	mu struct {
 		sync.RWMutex
-		nodes map[tableCacheKey]*tableCacheNode
+		nodes map[FileNum]*tableCacheNode
 		// The iters map is only created and populated in race builds.
 		iters map[sstable.Iterator][]byte
 
@@ -271,7 +271,7 @@ type tableCacheShard struct {
 func (c *tableCacheShard) init(size int) {
 	c.size = size
 
-	c.mu.nodes = make(map[tableCacheKey]*tableCacheNode)
+	c.mu.nodes = make(map[FileNum]*tableCacheNode)
 	c.mu.coldTarget = size
 	c.releasingCh = make(chan *tableCacheValue, 100)
 	go c.releaseLoop()
@@ -374,8 +374,8 @@ func (c *tableCacheShard) releaseNode(n *tableCacheNode) {
 //
 // c.mu must be held when calling this.
 func (c *tableCacheShard) unlinkNode(n *tableCacheNode) {
-	key := tableCacheKey{n.cacheID, n.meta.FileNum}
-	delete(c.mu.nodes, key)
+	// key := tableCacheKey{n.cacheID, n.meta.FileNum}
+	delete(c.mu.nodes, n.meta.FileNum)
 
 	switch n.ptype {
 	case tableCacheNodeHot:
@@ -432,8 +432,8 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 	// Fast-path for a hit in the cache. We grab the lock in shared mode, and use
 	// a batching mechanism to perform updates to the LRU list.
 	c.mu.RLock()
-	key := tableCacheKey{dbOpts.cacheID, meta.FileNum}
-	if n := c.mu.nodes[key]; n != nil && n.value != nil {
+	// key := tableCacheKey{dbOpts.cacheID, meta.FileNum}
+	if n := c.mu.nodes[meta.FileNum]; n != nil && n.value != nil {
 		// Fast-path hit.
 		//
 		// The caller is responsible for decrementing the refCount.
@@ -449,7 +449,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 
 	c.mu.Lock()
 
-	n := c.mu.nodes[key]
+	n := c.mu.nodes[meta.FileNum]
 	switch {
 	case n == nil:
 		// Slow-path miss of a non-existent node.
@@ -520,8 +520,8 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 func (c *tableCacheShard) addNode(n *tableCacheNode, dbOpts *tableCacheOpts) {
 	c.evictNodes()
 	n.cacheID = dbOpts.cacheID
-	key := tableCacheKey{n.cacheID, n.meta.FileNum}
-	c.mu.nodes[key] = n
+	// key := tableCacheKey{n.cacheID, n.meta.FileNum}
+	c.mu.nodes[n.meta.FileNum] = n
 
 	n.links.next = n
 	n.links.prev = n
@@ -616,8 +616,8 @@ func (c *tableCacheShard) runHandTest() {
 
 func (c *tableCacheShard) evict(fileNum FileNum, dbOpts *tableCacheOpts, allowLeak bool) {
 	c.mu.Lock()
-	key := tableCacheKey{dbOpts.cacheID, fileNum}
-	n := c.mu.nodes[key]
+	// key := tableCacheKey{dbOpts.cacheID, fileNum}
+	n := c.mu.nodes[fileNum]
 	var v *tableCacheValue
 	if n != nil {
 		// NB: This is equivalent to tableCacheShard.releaseNode(), but we perform
@@ -754,8 +754,8 @@ func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *t
 		defer c.mu.Unlock()
 		// Lookup the node in the cache again as it might have already been
 		// removed.
-		key := tableCacheKey{dbOpts.cacheID, meta.FileNum}
-		n := c.mu.nodes[key]
+		// key := tableCacheKey{dbOpts.cacheID, meta.FileNum}
+		n := c.mu.nodes[meta.FileNum]
 		if n != nil && n.value == v {
 			c.releaseNode(n)
 		}
