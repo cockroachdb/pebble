@@ -249,3 +249,18 @@ func BenchmarkCacheGet(b *testing.B) {
 		}
 	})
 }
+
+func TestCacheOverflow(t *testing.T) {
+	var maxSize int64 = 100
+	cache := newShards(maxSize, 1)
+	defer cache.Unref()
+
+	cache.Set(1, 0, 0, testValue(cache, "a", 1)).Release()
+	cache.Set(2, 0, 0, testValue(cache, "a", 98)).Release()
+	cache.Set(3, 0, 0, testValue(cache, "a", 100)).Release()
+
+	metrics := cache.Metrics()
+	if metrics.Size > maxSize {
+		t.Fatalf("cache size is greater than allowed, maxSize %d, sizeFound %d", maxSize, metrics.Size)
+	}
+}

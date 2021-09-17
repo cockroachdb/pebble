@@ -277,7 +277,9 @@ func (c *shard) targetSize() int64 {
 // Add the entry to the cache, returning true if the entry was added and false
 // if it would not fit in the cache.
 func (c *shard) metaAdd(key key, e *entry) bool {
+	c.reservedSize += e.size
 	c.evict()
+	c.reservedSize -= e.size
 	if e.size > c.targetSize() {
 		// The entry is larger than the target cache size.
 		return false
