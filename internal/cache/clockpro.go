@@ -168,6 +168,7 @@ func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value
 		c.metaDel(e)
 		c.metaCheck(e)
 
+		e.size = int64(len(value.buf))
 		c.coldTarget += e.size
 		if c.coldTarget > c.targetSize() {
 			c.coldTarget = c.targetSize()
