@@ -176,6 +176,7 @@ func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value
 		atomic.StoreInt32(&e.referenced, 0)
 		e.setValue(value)
 		e.ptype = etHot
+		e.size = int64(len(value.buf))
 		if c.metaAdd(k, e) {
 			value.ref.trace("add-hot")
 			c.sizeHot += e.size
