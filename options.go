@@ -583,6 +583,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.CompactionDebtConcurrency <= 0 {
 		o.Experimental.CompactionDebtConcurrency = 1 << 30 // 1 GB
 	}
+	if o.Experimental.KeyValidationFunc == nil {
+		o.Experimental.KeyValidationFunc = func([]byte) error { return nil }
+	}
 	if o.L0CompactionThreshold <= 0 {
 		o.L0CompactionThreshold = 4
 	}
