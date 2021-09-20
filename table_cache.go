@@ -31,6 +31,18 @@ var tableCacheLabels = pprof.Labels("pebble", "table-cache")
 // of a table cache. This is stored in the tableCacheContainer
 // along with the table cache.
 type tableCacheOpts struct {
+	atomic struct {
+		// iterCount in the tableCacheOpts keeps track of iterators
+		// opened or closed by a DB. It's used to keep track of
+		// leaked iterators on a per-db level.
+		iterCount int32
+	}
+
+	logger        Logger
+	cacheID       uint64
+	dirname       string
+	fs            vfs.FS
+	opts          sstable.ReaderOptions
 	filterMetrics FilterMetrics
 }
 
@@ -51,6 +63,12 @@ func newTableCacheContainer(
 	fs vfs.FS, opts *Options, size int) *tableCacheContainer {
 	// We will release a ref to table cache acquired here when tableCacheContainer.close is called.
 	t := &tableCacheContainer{}
+	t.dbOpts.cacheID = cacheID
+	t.dbOpts.logger = opts.Logger
+	t.dbOpts.dirname = dirname
+	t.dbOpts.fs = fs
+	t.dbOpts.opts = opts.MakeReaderOptions()
+
 	if tc != nil {
 		if tc.cache != opts.Cache {
 			panic("pebble: underlying cache for the table cache and db are different")
@@ -59,7 +77,7 @@ func newTableCacheContainer(
 	} else {
 		// NewTableCache should create a ref to tc which the container should
 		// drop whenever it is closed.
-		tc = NewTableCache(opts.Cache, opts.Experimental.TableCacheShards, size, opts, cacheID, dirname, fs, &t.dbOpts.filterMetrics)
+		tc = NewTableCache(opts.Cache, opts.Experimental.TableCacheShards, size, &t.dbOpts)
 	}
 
 	t.tableCache = tc
@@ -73,14 +91,14 @@ func (c *tableCacheContainer) close() error {
 	// by the DB using this container. Note that we'll still perform cleanup
 	// below in the case that there are leaked iterators.
 	var err error
-	// if v := atomic.LoadInt32(&c.dbOpts.atomic.iterCount); v > 0 {
-	// 	err = errors.Errorf("leaked iterators: %d", errors.Safe(v))
-	// }
+	if v := atomic.LoadInt32(&c.dbOpts.atomic.iterCount); v > 0 {
+		err = errors.Errorf("leaked iterators: %d", errors.Safe(v))
+	}
 
 	// Release nodes here.
 	for _, shard := range c.tableCache.shards {
 		if shard != nil {
-			shard.removeDB()
+			shard.removeDB(c.dbOpts.cacheID)
 		}
 	}
 	return firstError(err, c.tableCache.Unref())
@@ -123,15 +141,14 @@ func (c *tableCacheContainer) withReader(meta *fileMetadata, fn func(*sstable.Re
 	v := s.findNode(meta)
 	defer s.unrefValue(v)
 	if v.err != nil {
-		base.MustExist(s.fs, v.filename, s.logger, v.err)
+		base.MustExist(c.dbOpts.fs, v.filename, c.dbOpts.logger, v.err)
 		return v.err
 	}
 	return fn(v.reader)
 }
 
 func (c *tableCacheContainer) iterCount() int64 {
-	// return int64(atomic.LoadInt32(&c.dbOpts.atomic.iterCount))
-	return 0
+	return int64(atomic.LoadInt32(&c.dbOpts.atomic.iterCount))
 }
 
 // TableCache is a shareable cache for open sstables.
@@ -187,7 +204,7 @@ func (c *TableCache) Unref() error {
 
 // NewTableCache will create a reference to the table cache. It is the callers responsibility
 // to call tableCache.Unref if they will no longer hold a reference to the table cache.
-func NewTableCache(cache *Cache, numShards int, size int, opts *Options, cacheID uint64, dirname string, fs vfs.FS, filterMetrics *FilterMetrics) *TableCache {
+func NewTableCache(cache *Cache, numShards int, size int, dbOpts *tableCacheOpts) *TableCache {
 	if size == 0 {
 		panic("pebble: cannot create a table cache of size 0")
 	} else if numShards == 0 {
@@ -201,7 +218,7 @@ func NewTableCache(cache *Cache, numShards int, size int, opts *Options, cacheID
 	c.shards = make([]*tableCacheShard, numShards)
 	for i := range c.shards {
 		c.shards[i] = &tableCacheShard{}
-		c.shards[i].init(size/len(c.shards), opts, cacheID, dirname, fs, filterMetrics)
+		c.shards[i].init(size/len(c.shards), dbOpts)
 	}
 
 	// Hold a ref to the cache here.
@@ -231,12 +248,7 @@ type tableCacheShard struct {
 		iterCount int32
 	}
 
-	logger        Logger
-	cacheID       uint64
-	dirname       string
-	fs            vfs.FS
-	opts          sstable.ReaderOptions
-	filterMetrics *FilterMetrics
+	dbSpecific map[uint64]*tableCacheOpts
 
 	size int
 
@@ -259,14 +271,12 @@ type tableCacheShard struct {
 	releasingCh chan *tableCacheValue
 }
 
-func (c *tableCacheShard) init(size int, opts *Options, cacheID uint64, dirname string, fs vfs.FS, filterMetrics *FilterMetrics) {
+func (c *tableCacheShard) init(size int, dbOpts *tableCacheOpts) {
 	c.size = size
-	c.logger = opts.Logger
-	c.cacheID = cacheID
-	c.dirname = dirname
-	c.fs = fs
-	c.filterMetrics = filterMetrics
-	c.opts = opts.MakeReaderOptions()
+	if c.dbSpecific == nil {
+		c.dbSpecific = make(map[uint64]*tableCacheOpts)
+	}
+	c.dbSpecific[dbOpts.cacheID] = dbOpts
 
 	c.mu.nodes = make(map[tableCacheKey]*tableCacheNode)
 	c.mu.coldTarget = size
@@ -294,9 +304,10 @@ func (c *tableCacheShard) newIters(
 	// decrement this straight away. Otherwise, we pass that responsibility to
 	// the sstable iterator, which decrements when it is closed.
 	v := c.findNode(file)
+	dbOpts := c.dbSpecific[2]
 	if v.err != nil {
 		defer c.unrefValue(v)
-		base.MustExist(c.fs, v.filename, c.logger, v.err)
+		base.MustExist(dbOpts.fs, v.filename, dbOpts.logger, v.err)
 		return nil, nil, v.err
 	}
 
@@ -324,7 +335,7 @@ func (c *tableCacheShard) newIters(
 	iter.SetCloseHook(v.closeHook)
 
 	atomic.AddInt32(&c.atomic.iterCount, 1)
-	// atomic.AddInt32(&dbOpts.atomic.iterCount, 1)
+	atomic.AddInt32(&dbOpts.atomic.iterCount, 1)
 	if invariants.RaceEnabled {
 		c.mu.Lock()
 		c.mu.iters[iter] = debug.Stack()
@@ -428,7 +439,8 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 	// Fast-path for a hit in the cache. We grab the lock in shared mode, and use
 	// a batching mechanism to perform updates to the LRU list.
 	c.mu.RLock()
-	key := tableCacheKey{c.cacheID, meta.FileNum}
+	dbOpts := c.dbSpecific[2]
+	key := tableCacheKey{dbOpts.cacheID, meta.FileNum}
 	if n := c.mu.nodes[key]; n != nil && n.value != nil {
 		// Fast-path hit.
 		//
@@ -450,8 +462,9 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 	case n == nil:
 		// Slow-path miss of a non-existent node.
 		n = &tableCacheNode{
-			meta:  meta,
-			ptype: tableCacheNodeCold,
+			meta:    meta,
+			ptype:   tableCacheNodeCold,
+			cacheID: dbOpts.cacheID, // make sure that the node is initialized with cache id.
 		}
 		c.addNode(n)
 		c.mu.sizeCold++
@@ -498,7 +511,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 		}
 		c.unrefValue(v)
 		atomic.AddInt32(&c.atomic.iterCount, -1)
-		// atomic.AddInt32(&dbOpts.atomic.iterCount, -1)
+		atomic.AddInt32(&dbOpts.atomic.iterCount, -1)
 		return nil
 	}
 	n.value = v
@@ -515,7 +528,6 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 
 func (c *tableCacheShard) addNode(n *tableCacheNode) {
 	c.evictNodes()
-	n.cacheID = c.cacheID
 	key := tableCacheKey{n.cacheID, n.meta.FileNum}
 	c.mu.nodes[key] = n
 
@@ -612,7 +624,8 @@ func (c *tableCacheShard) runHandTest() {
 
 func (c *tableCacheShard) evict(fileNum FileNum, allowLeak bool) {
 	c.mu.Lock()
-	key := tableCacheKey{c.cacheID, fileNum}
+	dbOpts := c.dbSpecific[2]
+	key := tableCacheKey{dbOpts.cacheID, fileNum}
 	n := c.mu.nodes[key]
 	var v *tableCacheValue
 	if n != nil {
@@ -626,7 +639,7 @@ func (c *tableCacheShard) evict(fileNum FileNum, allowLeak bool) {
 		if v != nil {
 			if !allowLeak {
 				if t := atomic.AddInt32(&v.refCount, -1); t != 0 {
-					c.logger.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
+					dbOpts.logger.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
 				}
 			}
 			c.releasing.Add(1)
@@ -639,13 +652,13 @@ func (c *tableCacheShard) evict(fileNum FileNum, allowLeak bool) {
 		v.release(c)
 	}
 
-	c.opts.Cache.EvictFile(c.cacheID, fileNum)
+	dbOpts.opts.Cache.EvictFile(dbOpts.cacheID, fileNum)
 }
 
 // removeDB evicts any nodes which have a reference to the DB
 // associated with dbOpts.cacheID. Make sure that there will
 // be no more accesses to the files associated with the DB.
-func (c *tableCacheShard) removeDB() {
+func (c *tableCacheShard) removeDB(cacheID uint64) {
 	var fileNums []base.FileNum
 
 	c.mu.RLock()
@@ -657,7 +670,7 @@ func (c *tableCacheShard) removeDB() {
 			firstNode = node
 		}
 
-		if node.cacheID == c.cacheID {
+		if node.cacheID == cacheID {
 			fileNums = append(fileNums, node.meta.FileNum)
 		}
 		node = node.next()
@@ -733,12 +746,13 @@ type tableCacheValue struct {
 func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard) {
 	// Try opening the fileTypeTable first.
 	var f vfs.File
-	v.filename = base.MakeFilename(c.fs, c.dirname, fileTypeTable, meta.FileNum)
-	f, v.err = c.fs.Open(v.filename, vfs.RandomReadsOption)
+	dbOpts := c.dbSpecific[2]
+	v.filename = base.MakeFilename(dbOpts.fs, dbOpts.dirname, fileTypeTable, meta.FileNum)
+	f, v.err = dbOpts.fs.Open(v.filename, vfs.RandomReadsOption)
 	if v.err == nil {
-		cacheOpts := private.SSTableCacheOpts(c.cacheID, meta.FileNum).(sstable.ReaderOption)
-		reopenOpt := sstable.FileReopenOpt{FS: c.fs, Filename: v.filename}
-		v.reader, v.err = sstable.NewReader(f, c.opts, cacheOpts, c.filterMetrics, reopenOpt)
+		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, meta.FileNum).(sstable.ReaderOption)
+		reopenOpt := sstable.FileReopenOpt{FS: dbOpts.fs, Filename: v.filename}
+		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, &dbOpts.filterMetrics, reopenOpt)
 	}
 	if v.err == nil {
 		if meta.SmallestSeqNum == meta.LargestSeqNum {
@@ -750,7 +764,7 @@ func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard) {
 		defer c.mu.Unlock()
 		// Lookup the node in the cache again as it might have already been
 		// removed.
-		key := tableCacheKey{c.cacheID, meta.FileNum}
+		key := tableCacheKey{dbOpts.cacheID, meta.FileNum}
 		n := c.mu.nodes[key]
 		if n != nil && n.value == v {
 			c.releaseNode(n)
