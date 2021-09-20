@@ -1964,9 +1964,11 @@ func (d *DB) runCompaction(
 	// deleted files in the new versionEdit pass a validation function before
 	// returning the edit.
 	defer func() {
-		err := validateVersionEdit(ve, d.opts.Experimental.KeyValidationFunc, d.opts.Comparer.FormatKey)
-		if err != nil {
-			d.opts.Logger.Fatalf("pebble: version edit validation failed: %s", err)
+		if ve != nil {
+			err := validateVersionEdit(ve, d.opts.Experimental.KeyValidationFunc, d.opts.Comparer.FormatKey)
+			if err != nil {
+				d.opts.Logger.Fatalf("pebble: version edit validation failed: %s", err)
+			}
 		}
 	}()
 
@@ -2529,10 +2531,6 @@ func (d *DB) runCompaction(
 func validateVersionEdit(
 	ve *versionEdit, validateFn func([]byte) error, format base.FormatKey,
 ) error {
-	if validateFn == nil {
-		return nil
-	}
-
 	validateMetaFn := func(f *manifest.FileMetadata) error {
 		for _, key := range []InternalKey{f.Smallest, f.Largest} {
 			if err := validateFn(key.UserKey); err != nil {

@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -948,20 +950,6 @@ func TestValidateVersionEdit(t *testing.T) {
 		vFunc   func([]byte) error
 		wantErr error
 	}{
-		{
-			desc: "validation function absent",
-			ve: &versionEdit{
-				NewFiles: []manifest.NewFileEntry{
-					{
-						Meta: &fileMetadata{
-							Smallest: manifest.InternalKey{UserKey: []byte(badKey)},
-							Largest:  manifest.InternalKey{UserKey: []byte("z")},
-						},
-					},
-				},
-			},
-			vFunc: nil,
-		},
 		{
 			desc: "single new file; start key",
 			ve: &versionEdit{
@@ -2730,6 +2718,29 @@ func TestCleanerCond(t *testing.T) {
 		wg.Wait()
 	}
 
+	require.NoError(t, d.Close())
+}
+
+func TestFlushError(t *testing.T) {
+	// Error the first five times we try to write a sstable.
+	errorOps := int32(3)
+	fs := errorfs.Wrap(vfs.NewMem(), errorfs.InjectorFunc(func(op errorfs.Op, path string) error {
+		if op == errorfs.OpCreate && filepath.Ext(path) == ".sst" && atomic.AddInt32(&errorOps, -1) >= 0 {
+			return errorfs.ErrInjected
+		}
+		return nil
+	}))
+	d, err := Open("", testingRandomized(&Options{
+		FS: fs,
+		EventListener: EventListener{
+			BackgroundError: func(err error) {
+				t.Log(err)
+			},
+		},
+	}))
+	require.NoError(t, err)
+	require.NoError(t, d.Set([]byte("a"), []byte("foo"), NoSync))
+	require.NoError(t, d.Flush())
 	require.NoError(t, d.Close())
 }
 
