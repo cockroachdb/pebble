@@ -350,9 +350,10 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
 			// The key we emit for this entry is a function of the current key
-			// kind, and whether this entry is followed by a DEL entry.
-			// setNext() does the work to move the iterator forward, preserving
-			// the original value, and potentially mutating the key kind.
+			// kind, and whether this entry is followed by a DEL/SINGLEDEL
+			// entry. setNext() does the work to move the iterator forward,
+			// preserving the original value, and potentially mutating the key
+			// kind.
 			i.setNext()
 			return &i.key, i.value
 
@@ -525,32 +526,33 @@ func (i *compactionIter) setNext() {
 			if t == sameStripeNonSkippable {
 				// We iterated onto a key that we cannot skip. We can
 				// conservatively transform the original SET into a SETWITHDEL
-				// as an indication that there *may* still be a DEL under this
-				// SET, even if we did not actually encounter one.
+				// as an indication that there *may* still be a DEL/SINGLEDEL
+				// under this SET, even if we did not actually encounter one.
 				//
 				// This is safe to do, as:
 				//
-				// - in the case that there *is not* actually a DEL under this
-				// entry, any SINGLEDEL above this now-transformed SETWITHDEL
-				// will become a DEL when the two encounter in a compaction. The
-				// DEL will eventually be elided in a subsequent compaction. The
-				// cost for ensuring correctness is that this entry is kept
-				// around for an additional compaction cycle(s).
+				// - in the case that there *is not* actually a DEL/SINGLEDEL
+				// under this entry, any SINGLEDEL above this now-transformed
+				// SETWITHDEL will become a DEL when the two encounter in a
+				// compaction. The DEL will eventually be elided in a
+				// subsequent compaction. The cost for ensuring correctness is
+				// that this entry is kept around for an additional compaction
+				// cycle(s).
 				//
-				// - in the case there *is* indeed a DEL under us (but in a
-				// different stripe or sstable), then we will have already done
-				// the work to transform the SET into a SETWITHDEL, and we will
-				// skip any additional iteration when this entry is encountered
-				// again in a subsequent compaction.
+				// - in the case there *is* indeed a DEL/SINGLEDEL under us
+				// (but in a different stripe or sstable), then we will have
+				// already done the work to transform the SET into a
+				// SETWITHDEL, and we will skip any additional iteration when
+				// this entry is encountered again in a subsequent compaction.
 				//
 				// Ideally, this codepath would be smart enough to handle the
-				// case of SET <- RANGEDEL <- ... <- DEL <- .... This requires
-				// preserving any RANGEDEL entries we encounter along the way,
-				// then emitting the original (possibly transformed) key,
-				// followed by the RANGEDELs. This requires a sizable
-				// refactoring of the existing code, as nextInStripe currently
-				// returns a sameStripeNonSkippable when it encounters a
-				// RANGEDEL.
+				// case of SET <- RANGEDEL <- ... <- DEL/SINGLEDEL <- ....
+				// This requires preserving any RANGEDEL entries we encounter
+				// along the way, then emitting the original (possibly
+				// transformed) key, followed by the RANGEDELs. This requires
+				// a sizable refactoring of the existing code, as nextInStripe
+				// currently returns a sameStripeNonSkippable when it
+				// encounters a RANGEDEL.
 				// TODO(travers): optimize to handle the RANGEDEL case if it
 				// turns out to be a performance problem.
 				i.key.SetKind(InternalKeyKindSetWithDelete)
@@ -563,9 +565,11 @@ func (i *compactionIter) setNext() {
 			}
 			return
 		case sameStripeSkippable:
-			// We're still in the same stripe. If this is a DEL, we stop looking
-			// and emit a SETWITHDEL. Subsequent keys are eligible for skipping.
-			if i.iterKey.Kind() == InternalKeyKindDelete {
+			// We're still in the same stripe. If this is a DEL/SINGLEDEL, we
+			// stop looking and emit a SETWITHDEL. Subsequent keys are
+			// eligible for skipping.
+			if i.iterKey.Kind() == InternalKeyKindDelete ||
+				i.iterKey.Kind() == InternalKeyKindSingleDelete {
 				i.key.SetKind(InternalKeyKindSetWithDelete)
 				i.skip = true
 				return

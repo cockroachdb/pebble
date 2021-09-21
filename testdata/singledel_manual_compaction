@@ -17,15 +17,15 @@ L5
   a.SET.6:v1
 ----
 1:
-  000004:[a-a]
+  000004:[a#10,SINGLEDEL-a#10,SINGLEDEL]
 2:
-  000005:[a-a]
+  000005:[a#9,SET-a#9,SET]
 3:
-  000006:[a-a]
+  000006:[a#8,DEL-a#8,DEL]
 4:
-  000007:[a-a]
+  000007:[a#7,SET-a#7,SET]
 5:
-  000008:[a-a]
+  000008:[a#6,SET-a#6,SET]
 
 # No data.
 iter
