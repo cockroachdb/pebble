@@ -378,6 +378,12 @@ func TestEventListenerRedact(t *testing.T) {
 	require.Equal(t, "[JOB 5] WAL delete error: unredacted error: ‹×›\n", log.String())
 }
 
+func TestEventListenerEnsureDefaultsBackgroundError(t *testing.T) {
+	e := EventListener{}
+	e.EnsureDefaults(nil)
+	e.BackgroundError(errors.New("an example error"))
+}
+
 func TestEventListenerEnsureDefaultsSetsAllCallbacks(t *testing.T) {
 	e := EventListener{}
 	e.EnsureDefaults(nil)
