@@ -438,11 +438,20 @@ func (c *shard) metaEvict(e *entry) {
 
 func (c *shard) evict() {
 	for c.targetSize() <= c.sizeHot+c.sizeCold && c.handCold != nil {
-		c.runHandCold()
+		c.runHandCold(c.sizeCold)
 	}
 }
 
-func (c *shard) runHandCold() {
+func (c *shard) runHandCold(sizeColdDebug int64) {
+	// sizeColdDebug should equal c.sizeCold. It's a parameter only to
+	// aid in debugging of cockroachdb/cockroach#70154. Since it's a
+	// parameter, it'll appear within stack traces should we encounter
+	// another reproduction.
+	if c.sizeCold != sizeColdDebug {
+		panic(fmt.Sprintf("runHandCold: cold size is %d, passed %d cold size argument",
+			c.sizeCold, sizeColdDebug))
+	}
+
 	e := c.handCold
 	if e.ptype == etCold {
 		if atomic.LoadInt32(&e.referenced) == 1 {
@@ -504,7 +513,7 @@ func (c *shard) runHandTest() {
 			panic(fmt.Sprintf("pebble: mismatch %d cold size, %d cold count", c.sizeCold, c.countCold))
 		}
 
-		c.runHandCold()
+		c.runHandCold(c.sizeCold)
 		if c.handTest == nil {
 			return
 		}
