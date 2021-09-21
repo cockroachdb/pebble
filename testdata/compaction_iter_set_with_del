@@ -766,6 +766,8 @@ first
 ----
 .
 
+# SET that meets a SINGLEDEL is transformed into a SETWITHDEL.
+
 define
 a.SET.2:b
 a.SINGLEDEL.1:
@@ -775,7 +777,7 @@ iter
 first
 next
 ----
-a#2,1:b
+a#2,18:b
 .
 
 define
