@@ -1,6 +1,7 @@
 package metamorphic
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -28,7 +29,7 @@ func TestObjKey(t *testing.T) {
 	}
 }
 
-func TestKeyMeta_CanSingleDelete(t *testing.T) {
+func TestGlobalStateIndicatesEligibleForSingleDelete(t *testing.T) {
 	key := makeObjKey(makeObjID(dbTag, 0), []byte("foo"))
 	testCases := []struct {
 		meta keyMeta
@@ -38,7 +39,7 @@ func TestKeyMeta_CanSingleDelete(t *testing.T) {
 			meta: keyMeta{
 				objKey: key,
 			},
-			want: true,
+			want: false,
 		},
 		{
 			meta: keyMeta{
@@ -62,42 +63,118 @@ func TestKeyMeta_CanSingleDelete(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			meta: keyMeta{
+				objKey: key,
+				sets:   1,
+				dels: 1,
+			},
+			want: false,
+		},
+		{
+			meta: keyMeta{
+				objKey: key,
+				sets:   1,
+				singleDel: true,
+			},
+			want: false,
+		},
 	}
 
 	for _, tc := range testCases {
+		k := newKeyManager()
 		t.Run("", func(t *testing.T) {
-			require.Equal(t, tc.want, tc.meta.canSingleDelete())
+			k.globalKeysMap[string(key.key)] = &tc.meta
+			require.Equal(t, tc.want, k.globalStateIndicatesEligibleForSingleDelete(key.key))
 		})
 	}
 }
 
 func TestKeyMeta_MergeInto(t *testing.T) {
-	key1 := &keyMeta{
-		sets:      1,
-		merges:    2,
-		singleDel: false,
-	}
-	key2 := &keyMeta{
-		sets:      3,
-		merges:    1,
-		singleDel: true,
+	testCases := []struct {
+		existing keyMeta
+		toMerge keyMeta
+		expected keyMeta
+	}{
+		{
+			existing: keyMeta{
+				sets:      1,
+				merges:    0,
+				singleDel: false,
+			},
+			toMerge: keyMeta{
+				sets:      0,
+				merges:    0,
+				singleDel: true,
+			},
+			expected: keyMeta {
+				sets:      1,
+				merges:    0,
+				singleDel: true,
+			},
+		},
+		{
+			existing: keyMeta{
+				sets:      3,
+				merges:    1,
+				dels: 7,
+			},
+			toMerge: keyMeta{
+				sets:      4,
+				merges:    2,
+				dels: 8,
+				del: true,
+			},
+			expected: keyMeta {
+				sets:      7,
+				merges:    3,
+				dels: 15,
+				del: true,
+			},
+		},
+		{
+			existing: keyMeta{
+				sets:      3,
+				merges:    1,
+				dels: 7,
+				del: true,
+			},
+			toMerge: keyMeta{
+				sets:      1,
+				merges:    0,
+				dels: 8,
+				del: false,
+			},
+			expected: keyMeta {
+				sets:      4,
+				merges:    1,
+				dels: 15,
+				del: false,
+			},
+		},
 	}
 
-	key2.mergeInto(key1)
-
-	require.Equal(t, 4, key1.sets)
-	require.Equal(t, 3, key1.merges)
-	require.True(t, key1.singleDel)
+	for _, tc := range testCases {
+		t.Run("", func(t *testing.T) {
+			tc.toMerge.mergeInto(&tc.existing)
+			require.Equal(t, tc.expected, tc.existing)
+		})
+	}
 }
 
 func TestKeyManager_AddKey(t *testing.T) {
 	m := newKeyManager()
 	require.Empty(t, m.globalKeys)
 
-	k := []byte("foo")
-	m.addKey(k)
+	k1 := []byte("foo")
+	require.True(t, m.addNewKey(k1))
 	require.Len(t, m.globalKeys, 1)
-	require.Contains(t, m.globalKeys, k)
+	require.Contains(t, m.globalKeys, k1)
+	require.False(t, m.addNewKey(k1))
+	k2 := []byte("bar")
+	require.True(t, m.addNewKey(k2))
+	require.Len(t, m.globalKeys, 2)
+	require.Contains(t, m.globalKeys, k2)
 }
 
 func TestKeyManager_GetOrInit(t *testing.T) {
@@ -168,273 +245,201 @@ func TestKeyManager_MergeInto(t *testing.T) {
 	require.NotContains(t, m.byObj, fromID)
 }
 
-func TestKeyManager_GlobalSetCount(t *testing.T) {
-	key := []byte("foo")
-	id1 := makeObjID(dbTag, 0)
-	id2 := makeObjID(batchTag, 1)
+type seqFn func(t *testing.T, k *keyManager)
 
-	km := newKeyManager()
-
-	// Perform a set on on the key in the DB.
-	km.update(&setOp{writerID: id1, key: key})
-	m1 := km.getOrInit(id1, key)
-	require.Equal(t, 1, m1.sets)
-	require.Equal(t, 1, km.getGlobalSet(key))
-
-	// Perform a set on the key in the batch.
-	km.update(&setOp{writerID: id2, key: key})
-	m2 := km.getOrInit(id2, key)
-	require.Equal(t, 1, m2.sets)              // (id, key) set count is one
-	require.Equal(t, 2, km.getGlobalSet(key)) // global set count is two
+func updateForOp(op op) seqFn {
+	return func(t *testing.T, k *keyManager) {
+		k.update(op)
+	}
 }
 
-func TestKeyManager_Update(t *testing.T) {
+func addKey(key []byte, expected bool) seqFn {
+	return func(t *testing.T, k *keyManager) {
+		require.Equal(t, expected, k.addNewKey(key))
+	}
+}
+
+func eligibleRead(key []byte, val bool) seqFn {
+	return func(t *testing.T, k *keyManager) {
+		require.Equal(t, val, contains(key, k.eligibleReadKeys()))
+	}
+}
+
+func eligibleWrite(key []byte, val bool) seqFn {
+	return func(t *testing.T, k *keyManager) {
+		require.Equal(t, val, contains(key, k.eligibleWriteKeys()))
+	}
+}
+
+func eligibleSingleDelete(key []byte, val bool, id objID) seqFn {
+	return func(t *testing.T, k *keyManager) {
+		require.Equal(t, val, contains(key, k.eligibleSingleDeleteKeys(id)))
+	}
+}
+
+func contains(key []byte, keys [][]byte) bool {
+	for _, k := range keys {
+		if bytes.Equal(key, k) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestKeyManager(t *testing.T) {
 	var (
-		idDB = makeObjID(dbTag, 0)
 		id1  = makeObjID(batchTag, 0)
 		id2  = makeObjID(batchTag, 1)
 		key1 = []byte("foo")
-		key2 = []byte("bar")
 	)
 
 	testCases := []struct {
 		description string
-		ops         []op
-		checkFn     func(t *testing.T, m *keyManager)
+		ops         []seqFn
 		wantPanic   bool
 	}{
 		{
-			description: "single set",
-			ops: []op{
-				&setOp{writerID: idDB, key: key1},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 1, m.getOrInit(idDB, key1).sets)
-				require.Len(t, m.eligibleSingleDeleteKeys(idDB), 1)
-			},
-		},
-		{
-			description: "multi set; same key; same writer",
-			ops: []op{
-				&setOp{writerID: idDB, key: key1},
-				&setOp{writerID: idDB, key: key1},
-				&setOp{writerID: idDB, key: key1},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 3, m.getOrInit(idDB, key1).sets)
-				require.Empty(t, m.eligibleSingleDeleteKeys(idDB))
+			description: "set, single del, on db",
+			ops: []seqFn{
+				addKey(key1, true),
+				addKey(key1, false),
+				eligibleRead(key1, true),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, false, dbObjID),
+				eligibleSingleDelete(key1, false, id1),
+				updateForOp(&setOp{writerID: dbObjID, key: key1}),
+				eligibleRead(key1, true),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, true, dbObjID),
+				eligibleSingleDelete(key1, true, id1),
+				updateForOp(&singleDeleteOp{writerID: dbObjID, key: key1}),
+				eligibleRead(key1, true),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, false, dbObjID),
 			},
 		},
 		{
-			description: "multi set; same key; different writer",
-			ops: []op{
-				&setOp{writerID: idDB, key: key1},
-				&setOp{writerID: id1, key: key1},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 1, m.getOrInit(idDB, key1).sets)
-				require.Equal(t, 1, m.getOrInit(id1, key1).sets)
-				require.Len(t, m.eligibleSingleDeleteKeys(id1), 0) // global set count violated.
-			},
-		},
-		{
-			description: "multi set; different key; same writer",
-			ops: []op{
-				&setOp{writerID: idDB, key: key1},
-				&setOp{writerID: idDB, key: key2},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 1, m.getOrInit(idDB, key1).sets)
-				require.Equal(t, 1, m.getOrInit(idDB, key2).sets)
-				require.Len(t, m.eligibleSingleDeleteKeys(idDB), 2)
+			description: "set, single del, on batch",
+			ops: []seqFn{
+				addKey(key1, true),
+				updateForOp(&setOp{writerID: id1, key: key1}),
+				eligibleRead(key1, true),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, false, dbObjID),
+				eligibleSingleDelete(key1, true, id1),
+				eligibleSingleDelete(key1, false, id2),
+				updateForOp(&singleDeleteOp{writerID: id1, key: key1}),
+				eligibleRead(key1, true),
+				eligibleWrite(key1, false),
+				eligibleSingleDelete(key1, false, dbObjID),
+				eligibleSingleDelete(key1, false, id1),
+				updateForOp(&applyOp{batchID: id1, writerID: dbObjID}),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, false, dbObjID),
 			},
 		},
 		{
-			description: "multi set; different key; different writer",
-			ops: []op{
-				&setOp{writerID: idDB, key: key1},
-				&setOp{writerID: id1, key: key2},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 1, m.getOrInit(idDB, key1).sets)
-				require.Equal(t, 1, m.getOrInit(id1, key2).sets)
-				require.Len(t, m.eligibleSingleDeleteKeys(idDB), 1)
-				require.Len(t, m.eligibleSingleDeleteKeys(id1), 1)
-			},
-		},
-		{
-			description: "set then merge",
-			ops: []op{
-				&setOp{writerID: idDB, key: key1},
-				&mergeOp{writerID: idDB, key: key1},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 1, m.getOrInit(idDB, key1).sets)
-				require.Equal(t, 1, m.getOrInit(idDB, key1).merges)
-				require.Empty(t, m.eligibleSingleDeleteKeys(idDB))
+			description: "set on db, single del on batch",
+			ops: []seqFn{
+				addKey(key1, true),
+				updateForOp(&setOp{writerID: dbObjID, key: key1}),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, true, dbObjID),
+				eligibleSingleDelete(key1, true, id1),
+				updateForOp(&singleDeleteOp{writerID: id1, key: key1}),
+				eligibleWrite(key1, false),
+				eligibleSingleDelete(key1, false, dbObjID),
+				eligibleSingleDelete(key1, false, id1),
+				updateForOp(&applyOp{batchID: id1, writerID: dbObjID}),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, false, dbObjID),
+				updateForOp(&setOp{writerID: dbObjID, key: key1}),
+				eligibleSingleDelete(key1, true, dbObjID),
+				eligibleSingleDelete(key1, true, id1),
 			},
 		},
 		{
-			description: "single delete",
-			ops: []op{
-				&setOp{writerID: idDB, key: key1},
-				&singleDeleteOp{writerID: idDB, key: key1},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 1, m.getOrInit(idDB, key1).sets)
-				require.True(t, m.getOrInit(idDB, key1).singleDel)
-				require.Len(t, m.eligibleSingleDeleteKeys(idDB), 1)
-			},
-		},
-		{
-			description: "single delete with key not present",
-			ops: []op{
-				&singleDeleteOp{writerID: idDB, key: key1},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.True(t, m.getOrInit(idDB, key1).singleDel)
+			description: "set, del, set, single del, on db",
+			ops: []seqFn{
+				addKey(key1, true),
+				updateForOp(&setOp{writerID: dbObjID, key: key1}),
+				updateForOp(&deleteOp{writerID: dbObjID, key: key1}),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, false, dbObjID),
+				updateForOp(&setOp{writerID: dbObjID, key: key1}),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, true, dbObjID),
+				updateForOp(&singleDeleteOp{writerID: dbObjID, key: key1}),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, false, dbObjID),
 			},
 		},
 		{
-			description: "single delete with merge present",
-			ops: []op{
-				&mergeOp{writerID: idDB, key: key1},
-				&setOp{writerID: idDB, key: key1},
-				&singleDeleteOp{writerID: idDB, key: key1},
-			},
-			wantPanic: true,
-		},
-		{
-			description: "ingest; single batch; single set",
-			ops: []op{
-				&setOp{writerID: id1, key: key1},
-				&ingestOp{batchIDs: []objID{id1}},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 1, m.getOrInit(idDB, key1).sets)
-				require.Len(t, m.eligibleSingleDeleteKeys(idDB), 1)
-				require.True(t, m.contains(idDB, key1))
-				require.False(t, m.contains(id1, key1))
-			},
-		},
-		{
-			description: "ingest; multi batch; single key",
-			ops: []op{
-				&setOp{writerID: id1, key: key1},
-				&setOp{writerID: id2, key: key1},
-				&ingestOp{batchIDs: []objID{id1, id2}},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 2, m.getOrInit(idDB, key1).sets)
-				require.Empty(t, m.eligibleSingleDeleteKeys(idDB))
-				require.True(t, m.contains(idDB, key1))
-				require.False(t, m.contains(id1, key1))
-				require.False(t, m.contains(id2, key1))
+			description: "set, del, set, del, on batches",
+			ops: []seqFn{
+				addKey(key1, true),
+				updateForOp(&setOp{writerID: id1, key: key1}),
+				updateForOp(&deleteOp{writerID: id1, key: key1}),
+				updateForOp(&setOp{writerID: id1, key: key1}),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, false, id1),
+				updateForOp(&applyOp{batchID: id1, writerID: dbObjID}),
+				eligibleWrite(key1, true),
+				// Not eligible for single del since the set count is 2.
+				eligibleSingleDelete(key1, false, dbObjID),
+				updateForOp(&setOp{writerID: dbObjID, key: key1}),
+				// Not eligible for single del since the set count is 3.
+				eligibleSingleDelete(key1, false, dbObjID),
+				updateForOp(&deleteOp{writerID: id2, key: key1}),
+				updateForOp(&applyOp{batchID: id2, writerID: dbObjID}),
+				// Set count is 0.
+				eligibleSingleDelete(key1, false, dbObjID),
+				// Set count is 1.
+				updateForOp(&setOp{writerID: dbObjID, key: key1}),
+				eligibleSingleDelete(key1, true, dbObjID),
 			},
 		},
 		{
-			description: "ingest; multi batch; different keys",
-			ops: []op{
-				&setOp{writerID: id1, key: key1},
-				&setOp{writerID: id2, key: key2},
-				&ingestOp{batchIDs: []objID{id1, id2}},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 1, m.getOrInit(idDB, key1).sets)
-				require.Equal(t, 1, m.getOrInit(idDB, key2).sets)
-				require.Len(t, m.eligibleSingleDeleteKeys(idDB), 2)
-				require.True(t, m.contains(idDB, key1))
-				require.True(t, m.contains(idDB, key2))
-				require.False(t, m.contains(id1, key1))
-				require.False(t, m.contains(id2, key2))
-			},
-		},
-		{
-			description: "apply; single set",
-			ops: []op{
-				&setOp{writerID: id1, key: key1},
-				&applyOp{batchID: id1, writerID: idDB},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 1, m.getOrInit(idDB, key1).sets)
-				require.Len(t, m.eligibleSingleDeleteKeys(idDB), 1)
-				require.True(t, m.contains(idDB, key1))
-				require.False(t, m.contains(id1, key1))
+			description: "set, merge, del, set, single del, on db",
+			ops: []seqFn{
+				addKey(key1, true),
+				updateForOp(&setOp{writerID: dbObjID, key: key1}),
+				eligibleSingleDelete(key1, true, dbObjID),
+				updateForOp(&mergeOp{writerID: dbObjID, key: key1}),
+				eligibleSingleDelete(key1, false, dbObjID),
+				updateForOp(&deleteOp{writerID: dbObjID, key: key1}),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, false, dbObjID),
+				updateForOp(&setOp{writerID: dbObjID, key: key1}),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, true, dbObjID),
+				updateForOp(&singleDeleteOp{writerID: dbObjID, key: key1}),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, false, dbObjID),
 			},
 		},
 		{
-			description: "apply; multi set; same key",
-			ops: []op{
-				&setOp{writerID: id1, key: key1},
-				&setOp{writerID: id1, key: key1},
-				&applyOp{batchID: id1, writerID: idDB},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 2, m.getOrInit(idDB, key1).sets)
-				require.Empty(t, m.eligibleSingleDeleteKeys(idDB))
-				require.True(t, m.contains(idDB, key1))
-				require.False(t, m.contains(id1, key1))
-			},
-		},
-		{
-			description: "apply; multi set; different key",
-			ops: []op{
-				&setOp{writerID: id1, key: key1},
-				&setOp{writerID: id1, key: key2},
-				&applyOp{batchID: id1, writerID: idDB},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 1, m.getOrInit(idDB, key1).sets)
-				require.Equal(t, 1, m.getOrInit(idDB, key2).sets)
-				require.Len(t, m.eligibleSingleDeleteKeys(idDB), 2)
-				require.True(t, m.contains(idDB, key1))
-				require.True(t, m.contains(idDB, key2))
-				require.False(t, m.contains(id1, key1))
-				require.False(t, m.contains(id1, key2))
-			},
-		},
-		{
-			description: "batch commit; single set",
-			ops: []op{
-				&setOp{writerID: id1, key: key1},
-				&batchCommitOp{batchID: id1},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 1, m.getOrInit(idDB, key1).sets)
-				require.Len(t, m.eligibleSingleDeleteKeys(idDB), 1)
-				require.True(t, m.contains(idDB, key1))
-				require.False(t, m.contains(id1, key1))
-			},
-		},
-		{
-			description: "batch commit; multi set; same key",
-			ops: []op{
-				&setOp{writerID: id1, key: key1},
-				&setOp{writerID: id1, key: key1},
-				&batchCommitOp{batchID: id1},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 2, m.getOrInit(idDB, key1).sets)
-				require.Empty(t, m.eligibleSingleDeleteKeys(idDB))
-				require.True(t, m.contains(idDB, key1))
-				require.False(t, m.contains(id1, key1))
-			},
-		},
-		{
-			description: "batch commit; multi set; different key",
-			ops: []op{
-				&setOp{writerID: id1, key: key1},
-				&setOp{writerID: id1, key: key2},
-				&batchCommitOp{batchID: id1},
-			},
-			checkFn: func(t *testing.T, m *keyManager) {
-				require.Equal(t, 1, m.getOrInit(idDB, key1).sets)
-				require.Equal(t, 1, m.getOrInit(idDB, key2).sets)
-				require.Len(t, m.eligibleSingleDeleteKeys(idDB), 2)
-				require.True(t, m.contains(idDB, key1))
-				require.True(t, m.contains(idDB, key2))
-				require.False(t, m.contains(id1, key1))
-				require.False(t, m.contains(id1, key2))
+			description: "set, del on db, set, single del on batch",
+			ops: []seqFn{
+				addKey(key1, true),
+				updateForOp(&setOp{writerID: dbObjID, key: key1}),
+				eligibleSingleDelete(key1, true, dbObjID),
+				updateForOp(&deleteOp{writerID: dbObjID, key: key1}),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, false, dbObjID),
+				updateForOp(&setOp{writerID: id1, key: key1}),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, false, dbObjID),
+				eligibleSingleDelete(key1, true, id1),
+				updateForOp(&singleDeleteOp{writerID: id1, key: key1}),
+				eligibleWrite(key1, false),
+				eligibleSingleDelete(key1, false, id1),
+				eligibleSingleDelete(key1, false, dbObjID),
+				updateForOp(&applyOp{batchID: id1, writerID: dbObjID}),
+				eligibleWrite(key1, true),
+				eligibleSingleDelete(key1, false, dbObjID),
+				updateForOp(&setOp{writerID: dbObjID, key: key1}),
+				eligibleSingleDelete(key1, true, dbObjID),
 			},
 		},
 	}
@@ -444,14 +449,13 @@ func TestKeyManager_Update(t *testing.T) {
 			m := newKeyManager()
 			tFunc := func() {
 				for _, op := range tc.ops {
-					m.update(op)
+					op(t, m)
 				}
 			}
 			if tc.wantPanic {
 				require.Panics(t, tFunc)
 			} else {
 				tFunc()
-				tc.checkFn(t, m)
 			}
 		})
 	}
