@@ -3,12 +3,11 @@ package metamorphic
 import (
 	"fmt"
 	"sort"
-
-	"github.com/cockroachdb/errors"
 )
 
 // objKey is a tuple of (objID, key). This struct is used primarily as a map
-// key for keyManager.
+// key for keyManager. Only writer objTags can occur here, i.e., dbTag and
+// batchTag, since this is used for tracking the keys in a writer.
 type objKey struct {
 	id  objID
 	key []byte
@@ -16,6 +15,9 @@ type objKey struct {
 
 // makeObjKey returns a new objKey given and id and key.
 func makeObjKey(id objID, key []byte) objKey {
+	if id.tag() != dbTag && id.tag() != batchTag {
+		panic("unexpected non-writer tag")
+	}
 	return objKey{id, key}
 }
 
@@ -25,76 +27,170 @@ func (o objKey) String() string {
 	return fmt.Sprintf("%s:%s", o.id, o.key)
 }
 
-// keyMeta is metadata associated with an (objID, key) pair participating in a
-// metamorphic test.
+// keyMeta is metadata associated with an (objID, key) pair, where objID is
+// a writer containing the key.
 type keyMeta struct {
 	objKey
 
+	// The number of Sets of the key in this writer.
 	sets      int
+	// The number of Merges of the key in this writer.
 	merges    int
+	// singleDel can be true only if sets <= 1 && merges == 0 and the
+	// SingleDelete was added to this writer after the set.
 	singleDel bool
+	// del can be true only if a Delete was added to this writer after the
+	// Sets and Merges counted above.
+	del bool
+	dels int
+}
+
+func (m *keyMeta) clear() {
+	m.sets = 0
+	m.merges = 0
+	m.singleDel = false
+	m.del = false
+	m.dels = 0
 }
 
 // mergeInto merges this metadata this into the metadata for other.
 func (m *keyMeta) mergeInto(other *keyMeta) {
-	// Sets and merges are additive.
+	if other.del && !m.del {
+		// m's Sets and Merges are later.
+		if m.sets > 0 || m.merges > 0 {
+			other.del = false
+		}
+	} else {
+		other.del = m.del
+	}
+	// Sets, merges, dels are additive.
 	other.sets += m.sets
 	other.merges += m.merges
+	other.dels += m.dels
 
-	// Single deletes are preserved.
+	// Single deletes are preserved. This is valid since we are also
+	// maintaining a global invariant that SingleDelete will only be added for
+	// a key that has no inflight Sets or Merges (Sets have made their way to
+	// the DB), and no subsequent Sets or Merges will happen until the
+	// SingleDelete makes its way to th DB.
 	other.singleDel = other.singleDel || m.singleDel
+	if other.singleDel {
+		if other.sets > 1 || other.merges > 0 || other.dels > 0 {
+			panic(fmt.Sprintf("invalid sets %d or merges %d or dels %t",
+				other.sets, other.merges, other.dels))
+		}
+	}
 }
 
-// canSingleDelete returns true if this key is eligible for single deletion.
-func (m *keyMeta) canSingleDelete() bool {
-	return m.sets <= 1 && m.merges == 0
-}
-
-// keyManager tracks the operations performed on keys across all readers /
-// writers participating in the metamorphic test.
+// keyManager tracks the write operations performed on keys in the generation
+// phase of the metamorphic test. We make the assumption that write operations
+// do not fail, since that can cause the keyManager state to be not in-sync
+// with the actual state of the writers. This assumption is needed to
+// correctly decide when it is safe to generate a SingleDelete.
 type keyManager struct {
-	// TODO(travers): These two maps could likely be combined into something
-	// like a multi-map / multi-set.
+	// byObjKey tracks the state for each (writer, key) pair. It refers to the
+	// same *keyMeta as in the byObj slices. Using a map allows for fast state
+	// lookups when changing the state based on a writer operation on the key.
 	byObjKey map[string]*keyMeta
+	// List of keys per writer, and what has happened to it in that writer.
+	// Will be transferred when needed.
 	byObj    map[objID][]*keyMeta
 
+	// globalKeys represents all the keys that have been generated so far. Not
+	// all these keys have been written to.
 	globalKeys     [][]byte
-	globalSetCount map[string]int
+	// globalKeysMap contains the same keys as globalKeys. It ensures no
+	// duplication, and contains the aggregate state of the key across all
+	// writers, including inflight state that has not made its way to the DB
+	// yet.The keyMeta.objKey is uninitialized.
+	globalKeysMap map[string]*keyMeta
+
+	// Using SingleDeletes imposes some constraints on the above state, and
+	// causes some state transitions that help with generating complex but
+	// correct sequences involving SingleDeletes.
+	// - Generating a SingleDelete requires for that key: global.merges==0 &&
+	//   global.sets==1 && !global.del && !global.singleDel && (db.sets==1 ||
+	//   writer.sets==1), where global represents the entry in
+	//   globalKeysMap[key] and db represents the entry in
+	//   byObjKey[makeObjKey(makeObjID(dbTag, 0), key)], and writer is the
+	//   entry in byObjKey[makeObjKey(writerID, key)].
+	//
+	// - We do not track state changes due to range deletes, so one should
+	//   think of these counts as upper bounds. Also we are not preventing
+	//   interactions caused by concurrently in-flight range deletes and
+	//   SingleDelete. This is acceptable since it does not cause
+	//   non-determinism.
+	//
+	// - When the SingleDelete is generated, it is recorded as
+	//   writer.singleDel=true and global.singleDel=true. No more write
+	//   operations are permitted on this key until db.singleDel transitions
+	//   to true.
+	//
+	// - When db.singleDel transitions to true, we are guaranteed that no
+	//   writer other than the DB has any writes for this key. We set
+	//   db.singleDel and global.singleDel to false and the corresponding sets
+	//   and merges counts in global and db also to 0. This allows this key to
+	//   fully participate again in write operations. This means we can
+	//   generate sequences of the form:
+	//   SET => SINGLEDEL => SET* => MERGE* => DEL
+	//   SET => SINGLEDEL => SET => SINGLEDEL, among others.
+	//
+	// - The above logic is insufficient to generate sequences of the form
+	//   SET => DEL => SET => SINGLEDEL
+	//   To do this we need to track Deletes. When db.del transitions to true,
+	//   we check if db.sets==global.sets && db.merges==global.merges. If
+	//   true, there are no in-flight sets/merges to this key. We then default
+	//   initialize the global and db entries since we can behave as if this
+	//   key was never written in this system. This enables the above
+	//   sequence, among others.
+
+	// TODO: remember to handle the corner case where the SingleDel is initially
+	// generated on the DB.
+	// TODO: update the comment since dels are counted.
+
+
 }
 
-// newKeyManager returns a pointer to a new keyManager.
+var dbObjID objID = makeObjID(dbTag, 0)
+
+// newKeyManager returns a pointer to a new keyManager. Callers should
+// interact with this using addNewKey, eligible*Keys, update methods only.
 func newKeyManager() *keyManager {
 	m := &keyManager{
 		byObjKey:       make(map[string]*keyMeta),
 		byObj:          make(map[objID][]*keyMeta),
-		globalSetCount: make(map[string]int),
+		globalKeysMap: make(map[string]*keyMeta),
 	}
-	m.byObj[makeObjID(dbTag, 0)] = []*keyMeta{}
+	m.byObj[dbObjID] = []*keyMeta{}
 	return m
 }
 
 // addKey adds the given key to the key manager for global key tracking.
-func (k *keyManager) addKey(key []byte) {
+// Returns false iff this is not a new key.
+func (k *keyManager) addNewKey(key []byte) bool {
+	_, ok := k.globalKeysMap[string(key)]
+	if ok {
+		return false
+	}
 	k.globalKeys = append(k.globalKeys, key)
+	k.globalKeysMap[string(key)] = &keyMeta{objKey: objKey{key: key}}
+	return true
 }
 
 // getOrInit returns the keyMeta for the (objID, key) pair, if it exists, else
 // allocates, initializes and returns a new value.
-func (k *keyManager) getOrInit(id objID, key []byte) (m *keyMeta) {
+func (k *keyManager) getOrInit(id objID, key []byte) *keyMeta {
 	o := makeObjKey(id, key)
 	m, ok := k.byObjKey[o.String()]
 	if ok {
-		return
+		return m
 	}
 	m = &keyMeta{objKey: makeObjKey(id, key)}
-
 	// Initialize the key-to-meta index.
 	k.byObjKey[o.String()] = m
-
-	// Initialize the id-to-metas index.
+	// Add to the id-to-metas slide.
 	k.byObj[o.id] = append(k.byObj[o.id], m)
-
-	return
+	return m
 }
 
 // contains returns true if the (objID, key) pair is tracked by the keyManager.
@@ -135,17 +231,17 @@ func (k *keyManager) mergeKeysInto(from, to objID) {
 			iTo++
 		}
 
-		var mNew *keyMeta
+		var mTo *keyMeta
 		if iTo < len(msTo) && string(msTo[iTo].key) == string(m.key) {
-			mNew = msTo[iTo]
+			mTo = msTo[iTo]
 			iTo++
 		} else {
-			mNew = &keyMeta{objKey: makeObjKey(to, m.key)}
-			k.byObjKey[mNew.String()] = mNew
+			mTo = &keyMeta{objKey: makeObjKey(to, m.key)}
+			k.byObjKey[mTo.String()] = mTo
 		}
 
-		m.mergeInto(mNew)
-		msNew = append(msNew, mNew)
+		m.mergeInto(mTo)
+		msNew = append(msNew, mTo)
 
 		delete(k.byObjKey, m.String()) // Unlink "from".
 	}
@@ -160,66 +256,133 @@ func (k *keyManager) mergeKeysInto(from, to objID) {
 	delete(k.byObj, from) // Unlink "from".
 }
 
+func (k *keyManager) checkForDelOrSingleDelTransition(dbMeta *keyMeta, globalMeta *keyMeta) {
+	if dbMeta.singleDel {
+		if !globalMeta.singleDel {
+			panic("inconsistency with globalMeta")
+		}
+		if dbMeta.del || globalMeta.del || dbMeta.dels > 0 || globalMeta.dels > 0 ||
+			dbMeta.merges > 0 || globalMeta.merges > 0 || dbMeta.sets != 1 || globalMeta.sets != 1 {
+			panic("inconsistency in metas when SingleDelete applied to DB")
+		}
+		dbMeta.clear()
+		globalMeta.clear()
+		return
+	}
+	if dbMeta.del && globalMeta.sets == dbMeta.sets && globalMeta.merges == dbMeta.merges &&
+		globalMeta.dels == dbMeta.dels {
+		if dbMeta.singleDel || globalMeta.singleDel {
+			panic("Delete should not have happened given SingleDelete")
+		}
+		dbMeta.clear()
+		globalMeta.clear()
+	}
+}
+
+func (k *keyManager) checkForDelOrSingleDelTransitionInDB() {
+	keys := k.byObj[dbObjID]
+	for _, dbMeta := range keys {
+		globalMeta := k.globalKeysMap[string(dbMeta.key)]
+		k.checkForDelOrSingleDelTransition(dbMeta, globalMeta)
+	}
+}
+
 // update updates the internal state of the keyManager according to the given
 // op.
 func (k *keyManager) update(o op) {
 	switch s := o.(type) {
 	case *setOp:
 		meta := k.getOrInit(s.writerID, s.key)
+		globalMeta := k.globalKeysMap[string(s.key)]
 		meta.sets++           // Update the set count on this specific (id, key) pair.
-		k.incGlobalSet(s.key) // Update the set count globally for the key.
+		meta.del = false
+		globalMeta.sets++
+		if meta.singleDel || globalMeta.singleDel {
+			panic("setting a key that has in-flight SingleDelete")
+		}
 	case *mergeOp:
 		meta := k.getOrInit(s.writerID, s.key)
+		globalMeta := k.globalKeysMap[string(s.key)]
 		meta.merges++
-	case *singleDeleteOp:
-		meta := k.getOrInit(s.writerID, s.key)
-		// Sanity check. Key should be able to be SingleDeleted.
-		if !meta.canSingleDelete() {
-			panic(errors.Newf("cannot single delete key: %+v", meta))
+		meta.del = false
+		globalMeta.merges++
+		if meta.singleDel || globalMeta.singleDel {
+			panic("merging a key that has in-flight SingleDelete")
 		}
+	case *deleteOp:
+		meta := k.getOrInit(s.writerID, s.key)
+		globalMeta := k.globalKeysMap[string(s.key)]
+		meta.del = true
+		globalMeta.del = true
+		meta.dels++
+		globalMeta.dels++
+		if s.writerID == dbObjID {
+			k.checkForDelOrSingleDelTransition(meta, globalMeta)
+		}
+	case *singleDeleteOp:
+		if !k.globalStateIndicatesEligibleForSingleDelete(s.key) {
+			panic("key ineligible for SingleDelete")
+		}
+		meta := k.getOrInit(s.writerID, s.key)
+		globalMeta := k.globalKeysMap[string(s.key)]
 		meta.singleDel = true
+		globalMeta.singleDel = true
+		if s.writerID == dbObjID {
+			k.checkForDelOrSingleDelTransition(meta, globalMeta)
+		}
 	case *ingestOp:
 		// For each batch, merge all keys with the keys in the DB.
-		dbID := makeObjID(dbTag, 0)
 		for _, batchID := range s.batchIDs {
-			k.mergeKeysInto(batchID, dbID)
+			k.mergeKeysInto(batchID, dbObjID)
 		}
+		k.checkForDelOrSingleDelTransitionInDB()
 	case *applyOp:
 		// Merge the keys from this writer into the parent writer.
 		k.mergeKeysInto(s.batchID, s.writerID)
+		if s.writerID == dbObjID {
+			k.checkForDelOrSingleDelTransitionInDB()
+		}
 	case *batchCommitOp:
 		// Merge the keys from the batch with the keys from the DB.
-		k.mergeKeysInto(s.batchID, makeObjID(dbTag, 0))
+		k.mergeKeysInto(s.batchID, dbObjID)
+		k.checkForDelOrSingleDelTransitionInDB()
 	}
 }
 
-// incGlobalSet increments the global set count for the key.
-func (k *keyManager) incGlobalSet(key []byte) {
-	count, ok := k.globalSetCount[string(key)]
-	if !ok {
-		count = 0
-	}
-	count++
-	k.globalSetCount[string(key)] = count
+func (k *keyManager) eligibleReadKeys() (keys [][]byte) {
+	return k.globalKeys
 }
 
-// getGlobalSet returns the number of set operations that have been performed
-// on a key, globally (i.e. across all objIDs).
-func (k *keyManager) getGlobalSet(key []byte) int {
-	count, ok := k.globalSetCount[string(key)]
-	if !ok {
-		return 0
+func (k *keyManager) eligibleWriteKeys() (keys [][]byte) {
+	// Creating this slice is wasteful given that the caller will pick one,
+	// but makes it simpler for unit testing.
+	for _, v := range k.globalKeysMap {
+		if v.singleDel {
+			continue
+		}
+		keys = append(keys, v.key)
 	}
-	return count
+	return keys
 }
 
-// eligibleSingleDeleteKeys returns a slice of keys associated with an ID that
-// can be safely single deleted.
+// eligibleSingleDeleteKeys returns a slice of keys that can be safely single
+// deleted, given the writer id.
 func (k *keyManager) eligibleSingleDeleteKeys(id objID) (keys [][]byte) {
-	for _, m := range k.byObj[id] {
-		if k.getGlobalSet(m.key) == 1 && m.canSingleDelete() {
-			keys = append(keys, m.key)
+	addForObjID := func(id objID) {
+		for _, m := range k.byObj[id] {
+			if m.sets == 1 && k.globalStateIndicatesEligibleForSingleDelete(m.key) {
+				keys = append(keys, m.key)
+			}
 		}
 	}
-	return
+	addForObjID(id)
+	if id != dbObjID {
+		addForObjID(dbObjID)
+	}
+	return keys
+}
+
+func (k *keyManager) globalStateIndicatesEligibleForSingleDelete(key []byte) bool {
+	m := k.globalKeysMap[string(key)]
+	return m.merges==0 && m.sets==1 && m.dels==0 && !m.singleDel
 }
