@@ -335,7 +335,7 @@ func (c *tableCacheShard) newIters(
 	iter.SetCloseHook(v.closeHook)
 
 	atomic.AddInt32(&c.atomic.iterCount, 1)
-	atomic.AddInt32(&dbOpts.atomic.iterCount, 1)
+	// atomic.AddInt32(&dbOpts.atomic.iterCount, 1)
 	if invariants.RaceEnabled {
 		c.mu.Lock()
 		c.mu.iters[iter] = debug.Stack()
@@ -511,7 +511,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata) *tableCacheValue {
 		}
 		c.unrefValue(v)
 		atomic.AddInt32(&c.atomic.iterCount, -1)
-		atomic.AddInt32(&dbOpts.atomic.iterCount, -1)
+		// atomic.AddInt32(&dbOpts.atomic.iterCount, -1)
 		return nil
 	}
 	n.value = v
