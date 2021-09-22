@@ -418,12 +418,39 @@ func (c *shard) metaCheck(e *entry) {
 		}
 		// NB: c.hand{Hot,Cold,Test} are pointers into a single linked list. We
 		// only have to traverse one of them to check all of them.
-		for t := c.handHot.next(); t != c.handHot; t = t.next() {
+		var countHot, countCold, countTest int64
+		var sizeHot, sizeCold, sizeTest int64
+		for t := c.handHot.next(); t != nil; t = t.next() {
+			// Recompute count{Hot,Cold,Test} and size{Hot,Cold,Test}.
+			switch t.ptype {
+			case etHot:
+				countHot++
+				sizeHot += t.size
+			case etCold:
+				countCold++
+				sizeCold += t.size
+			case etTest:
+				countTest++
+				sizeTest += t.size
+			}
 			if e == t {
 				fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in blocks list\n%s",
 					e, e.key, debug.Stack())
 				os.Exit(1)
 			}
+			if t == c.handHot {
+				break
+			}
+		}
+		if countHot != c.countHot || countCold != c.countCold || countTest != c.countTest ||
+			sizeHot != c.sizeHot || sizeCold != c.sizeCold || sizeTest != c.sizeTest {
+			fmt.Fprintf(os.Stderr, `divergence of Hot,Cold,Test statistics
+				cache's statistics: hot %d, %d, cold %d, %d, test %d, %d
+				recalculated statistics: hot %d, %d, cold %d, %d, test %d, %d\n%s`,
+				c.countHot, c.sizeHot, c.countCold, c.sizeCold, c.countTest, c.sizeTest,
+				countHot, sizeHot, countCold, sizeCold, countTest, sizeTest,
+				debug.Stack())
+			os.Exit(1)
 		}
 	}
 }
