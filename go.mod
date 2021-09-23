@@ -16,6 +16,7 @@ require (
 	golang.org/x/exp v0.0.0-20200513190911-00229845015e
 	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
 	golang.org/x/sys v0.0.0-20200519105757-fe76b779f299
+	modernc.org/memory v1.0.4
 )
 
 go 1.13
