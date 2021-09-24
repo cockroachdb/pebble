@@ -179,7 +179,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 
 	// Lock the database directory.
-	fileLock, err := opts.FS.Lock(base.MakeFilename(opts.FS, dirname, fileTypeLock, 0))
+	fileLock, err := opts.FS.Lock(base.MakeFilepath(opts.FS, dirname, fileTypeLock, 0))
 	if err != nil {
 		d.dataDir.Close()
 		if d.dataDir != d.walDir {
@@ -369,7 +369,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			return nil, err
 		}
 
-		newLogName := base.MakeFilename(opts.FS, d.walDirname, fileTypeLog, newLogNum)
+		newLogName := base.MakeFilepath(opts.FS, d.walDirname, fileTypeLog, newLogNum)
 		d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: 0})
 		logFile, err := opts.FS.Create(newLogName)
 		if err != nil {
@@ -400,8 +400,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if !d.opts.ReadOnly {
 		// Write the current options to disk.
 		d.optionsFileNum = d.mu.versions.getNextFileNum()
-		tmpPath := base.MakeFilename(opts.FS, dirname, fileTypeTemp, d.optionsFileNum)
-		optionsPath := base.MakeFilename(opts.FS, dirname, fileTypeOptions, d.optionsFileNum)
+		tmpPath := base.MakeFilepath(opts.FS, dirname, fileTypeTemp, d.optionsFileNum)
+		optionsPath := base.MakeFilepath(opts.FS, dirname, fileTypeOptions, d.optionsFileNum)
 
 		// Write them to a temporary file first, in case we crash before
 		// we're done. A corrupt options file prevents opening the
@@ -740,7 +740,7 @@ func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
 		FormatMajorVersion: vers,
 	}
 	if exists {
-		desc.ManifestFilename = base.MakeFilename(fs, dirname, fileTypeManifest, manifestFileNum)
+		desc.ManifestFilename = base.MakeFilepath(fs, dirname, fileTypeManifest, manifestFileNum)
 	}
 	return desc, nil
 }

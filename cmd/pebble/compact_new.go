@@ -61,12 +61,12 @@ func runCompactNew(cmd *cobra.Command, args []string) error {
 
 		for _, f := range logItem.ve.NewFiles {
 			// First look in the archive, because that's likely where it is.
-			srcPath := base.MakeFilename(vfs.Default, archiveDir, base.FileTypeTable, f.Meta.FileNum)
-			dstPath := base.MakeFilename(vfs.Default, workloadDst, base.FileTypeTable, f.Meta.FileNum)
+			srcPath := base.MakeFilepath(vfs.Default, archiveDir, base.FileTypeTable, f.Meta.FileNum)
+			dstPath := base.MakeFilepath(vfs.Default, workloadDst, base.FileTypeTable, f.Meta.FileNum)
 			err := vfs.LinkOrCopy(vfs.Default, srcPath, dstPath)
 			if oserror.IsNotExist(err) {
 				// Maybe it's still in the data directory.
-				srcPath = base.MakeFilename(vfs.Default, src, base.FileTypeTable, f.Meta.FileNum)
+				srcPath = base.MakeFilepath(vfs.Default, src, base.FileTypeTable, f.Meta.FileNum)
 				err = vfs.LinkOrCopy(vfs.Default, srcPath, dstPath)
 			}
 			if err != nil {

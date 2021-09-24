@@ -1176,7 +1176,7 @@ func TestIngestCleanup(t *testing.T) {
 			// Create the files in the VFS.
 			metaMap := make(map[base.FileNum]vfs.File)
 			for _, fn := range fns {
-				path := base.MakeFilename(mem, "", base.FileTypeTable, fn)
+				path := base.MakeFilepath(mem, "", base.FileTypeTable, fn)
 				f, err := mem.Create(path)
 				metaMap[fn] = f
 				require.NoError(t, err)

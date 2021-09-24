@@ -375,7 +375,7 @@ func TestLargeBatch(t *testing.T) {
 		return d.mu.log.queue[len(d.mu.log.queue)-1].fileNum
 	}
 	fileSize := func(fileNum FileNum) int64 {
-		info, err := d.opts.FS.Stat(base.MakeFilename(d.opts.FS, "", fileTypeLog, fileNum))
+		info, err := d.opts.FS.Stat(base.MakeFilepath(d.opts.FS, "", fileTypeLog, fileNum))
 		require.NoError(t, err)
 		return info.Size()
 	}

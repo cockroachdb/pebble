@@ -177,7 +177,7 @@ func (vs *versionSet) create(
 
 	vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 		JobID:   jobID,
-		Path:    base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, vs.manifestFileNum),
+		Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, vs.manifestFileNum),
 		FileNum: vs.manifestFileNum,
 		Err:     err,
 	})
@@ -199,7 +199,7 @@ func (vs *versionSet) load(
 	vs.init(dirname, opts, marker, setCurrent, mu)
 
 	vs.manifestFileNum = manifestFileNum
-	manifestPath := base.MakeFilename(opts.FS, dirname, fileTypeManifest, vs.manifestFileNum)
+	manifestPath := base.MakeFilepath(opts.FS, dirname, fileTypeManifest, vs.manifestFileNum)
 	manifestFilename := opts.FS.PathBase(manifestPath)
 
 	// Read the versionEdits in the manifest file.
@@ -424,7 +424,7 @@ func (vs *versionSet) logAndApply(
 			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum); err != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 					JobID:   jobID,
-					Path:    base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
+					Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
 					FileNum: newManifestFileNum,
 					Err:     err,
 				})
@@ -461,7 +461,7 @@ func (vs *versionSet) logAndApply(
 			}
 			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 				JobID:   jobID,
-				Path:    base.MakeFilename(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
+				Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
 				FileNum: newManifestFileNum,
 			})
 		}
@@ -566,7 +566,7 @@ func (vs *versionSet) createManifest(
 	dirname string, fileNum, minUnflushedLogNum, nextFileNum FileNum,
 ) (err error) {
 	var (
-		filename     = base.MakeFilename(vs.fs, dirname, fileTypeManifest, fileNum)
+		filename     = base.MakeFilepath(vs.fs, dirname, fileTypeManifest, fileNum)
 		manifestFile vfs.File
 		manifest     *record.Writer
 	)
@@ -722,11 +722,7 @@ func setCurrentFunc(
 
 func setCurrentFuncMarker(marker *atomicfs.Marker, fs vfs.FS, dirname string) func(FileNum) error {
 	return func(manifestFileNum FileNum) error {
-		path := base.MakeFilename(fs, dirname, fileTypeManifest, manifestFileNum)
-		// TODO(jackson): Refactor MakeFilename to return just the base
-		// and add MakePath for constructing the dirname-prefixed path.
-		filename := fs.PathBase(path)
-		return marker.Move(filename)
+		return marker.Move(base.MakeFilename(fileTypeManifest, manifestFileNum))
 	}
 }
 
@@ -776,7 +772,7 @@ func findCurrentManifest(
 
 func readCurrentFile(fs vfs.FS, dirname string) (FileNum, error) {
 	// Read the CURRENT file to find the current manifest file.
-	current, err := fs.Open(base.MakeFilename(fs, dirname, fileTypeCurrent, 0))
+	current, err := fs.Open(base.MakeFilepath(fs, dirname, fileTypeCurrent, 0))
 	if err != nil {
 		return 0, errors.Wrapf(err, "pebble: could not open CURRENT file for DB %q", dirname)
 	}

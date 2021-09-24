@@ -34,8 +34,8 @@ const (
 // use. Newer versions of Pebble running newer format major versions do
 // not use the CURRENT file. See setCurrentFunc in version_set.go.
 func setCurrentFile(dirname string, fs vfs.FS, fileNum FileNum) error {
-	newFilename := base.MakeFilename(fs, dirname, fileTypeCurrent, fileNum)
-	oldFilename := base.MakeFilename(fs, dirname, fileTypeTemp, fileNum)
+	newFilename := base.MakeFilepath(fs, dirname, fileTypeCurrent, fileNum)
+	oldFilename := base.MakeFilepath(fs, dirname, fileTypeTemp, fileNum)
 	fs.Remove(oldFilename)
 	f, err := fs.Create(oldFilename)
 	if err != nil {

@@ -72,7 +72,7 @@ func TestFilenameRoundTrip(t *testing.T) {
 			fileNums = []FileNum{0, 1, 2, 3, 10, 42, 99, 1001}
 		}
 		for _, fileNum := range fileNums {
-			filename := MakeFilename(fs, "foo", fileType, fileNum)
+			filename := MakeFilepath(fs, "foo", fileType, fileNum)
 			gotFT, gotFN, gotOK := ParseFilename(fs, filename)
 			if !gotOK {
 				t.Errorf("could not parse %q", filename)

@@ -214,7 +214,7 @@ func ingestSortAndVerify(cmp Compare, meta []*fileMetadata, paths []string) erro
 func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 	var firstErr error
 	for i := range meta {
-		target := base.MakeFilename(fs, dirname, fileTypeTable, meta[i].FileNum)
+		target := base.MakeFilepath(fs, dirname, fileTypeTable, meta[i].FileNum)
 		if err := fs.Remove(target); err != nil {
 			firstErr = firstError(firstErr, err)
 		}
@@ -235,7 +235,7 @@ func ingestLink(
 	}
 
 	for i := range paths {
-		target := base.MakeFilename(fs, dirname, fileTypeTable, meta[i].FileNum)
+		target := base.MakeFilepath(fs, dirname, fileTypeTable, meta[i].FileNum)
 		var err error
 		if _, ok := opts.FS.(*vfs.MemFS); ok && opts.DebugCheck != nil {
 			// The combination of MemFS+Ingest+DebugCheck produces awkwardness around

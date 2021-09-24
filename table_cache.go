@@ -59,8 +59,8 @@ type tableCacheContainer struct {
 // newTableCacheContainer will panic if the underlying cache in the table cache
 // doesn't match Options.Cache.
 func newTableCacheContainer(
-	tc *TableCache, cacheID uint64, dirname string,
-	fs vfs.FS, opts *Options, size int) *tableCacheContainer {
+	tc *TableCache, cacheID uint64, dirname string, fs vfs.FS, opts *Options, size int,
+) *tableCacheContainer {
 	// We will release a ref to table cache acquired here when tableCacheContainer.close is called.
 	if tc != nil {
 		if tc.cache != opts.Cache {
@@ -290,8 +290,7 @@ func (c *tableCacheShard) releaseLoop() {
 }
 
 func (c *tableCacheShard) newIters(
-	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
-	dbOpts *tableCacheOpts,
+	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64, dbOpts *tableCacheOpts,
 ) (internalIterator, internalIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount. If opening the underlying table resulted in error, then we
@@ -350,7 +349,9 @@ func (c *tableCacheShard) newIters(
 }
 
 // getTableProperties return sst table properties for target file
-func (c *tableCacheShard) getTableProperties(file *fileMetadata, dbOpts *tableCacheOpts) (*sstable.Properties, error) {
+func (c *tableCacheShard) getTableProperties(
+	file *fileMetadata, dbOpts *tableCacheOpts,
+) (*sstable.Properties, error) {
 	// Calling findNode gives us the responsibility of decrementing v's refCount here
 	v := c.findNode(file, dbOpts)
 	defer c.unrefValue(v)
@@ -737,7 +738,7 @@ type tableCacheValue struct {
 func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *tableCacheOpts) {
 	// Try opening the fileTypeTable first.
 	var f vfs.File
-	v.filename = base.MakeFilename(dbOpts.fs, dbOpts.dirname, fileTypeTable, meta.FileNum)
+	v.filename = base.MakeFilepath(dbOpts.fs, dbOpts.dirname, fileTypeTable, meta.FileNum)
 	f, v.err = dbOpts.fs.Open(v.filename, vfs.RandomReadsOption)
 	if v.err == nil {
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, meta.FileNum).(sstable.ReaderOption)

@@ -626,7 +626,7 @@ func (p *props) update(o props) {
 }
 
 func (d *dbT) addProps(dir string, m *manifest.FileMetadata, p *props) error {
-	path := base.MakeFilename(d.opts.FS, dir, base.FileTypeTable, m.FileNum)
+	path := base.MakeFilepath(d.opts.FS, dir, base.FileTypeTable, m.FileNum)
 	f, err := d.opts.FS.Open(path)
 	if err != nil {
 		return err
