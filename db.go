@@ -1488,7 +1488,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// Open will treat the previous log as corrupt.
 			err = d.mu.log.Close()
 
-			newLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
+			newLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
 
 			// Try to use a recycled log file. Recycling log files is an important
 			// performance optimization as it is faster to sync a file that has
@@ -1501,7 +1501,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			if err == nil {
 				recycleLog, recycleOK = d.logRecycler.peek()
 				if recycleOK {
-					recycleLogName := base.MakeFilename(d.opts.FS, d.walDirname, fileTypeLog, recycleLog.fileNum)
+					recycleLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, recycleLog.fileNum)
 					newLogFile, err = d.opts.FS.ReuseForWrite(recycleLogName, newLogName)
 					base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
 				} else {

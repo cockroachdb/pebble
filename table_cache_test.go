@@ -68,7 +68,9 @@ func (fs *tableCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File,
 	return &tableCacheTestFile{f, fs, name}, nil
 }
 
-func (fs *tableCacheTestFS) validate(t *testing.T, c *tableCacheContainer, f func(i, gotO, gotC int) error) {
+func (fs *tableCacheTestFS) validate(
+	t *testing.T, c *tableCacheContainer, f func(i, gotO, gotC int) error,
+) {
 	if err := fs.validateOpenTables(f); err != nil {
 		t.Error(err)
 		return
@@ -96,7 +98,7 @@ func (fs *tableCacheTestFS) validateOpenTables(f func(i, gotO, gotC int) error) 
 
 		numStillOpen := 0
 		for i := 0; i < tableCacheTestNumTables; i++ {
-			filename := base.MakeFilename(fs, "", fileTypeTable, FileNum(i))
+			filename := base.MakeFilepath(fs, "", fileTypeTable, FileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO > gotC {
 				numStillOpen++
@@ -126,7 +128,7 @@ func (fs *tableCacheTestFS) validateNoneStillOpen() error {
 		defer fs.mu.Unlock()
 
 		for i := 0; i < tableCacheTestNumTables; i++ {
-			filename := base.MakeFilename(fs, "", fileTypeTable, FileNum(i))
+			filename := base.MakeFilepath(fs, "", fileTypeTable, FileNum(i))
 			gotO, gotC := fs.openCounts[filename], fs.closeCounts[filename]
 			if gotO != gotC {
 				return errors.Errorf("i=%d: opened %d times, closed %d times", i, gotO, gotC)
@@ -149,13 +151,15 @@ func newTableCacheTest(size int64, tableCacheSize int, numShards int) *TableCach
 	return NewTableCache(cache, numShards, tableCacheSize)
 }
 
-func newTableCacheContainerTest(tc *TableCache, dirname string) (*tableCacheContainer, *tableCacheTestFS, error) {
+func newTableCacheContainerTest(
+	tc *TableCache, dirname string,
+) (*tableCacheContainer, *tableCacheTestFS, error) {
 	xxx := bytes.Repeat([]byte("x"), tableCacheTestNumTables)
 	fs := &tableCacheTestFS{
 		FS: vfs.NewMem(),
 	}
 	for i := 0; i < tableCacheTestNumTables; i++ {
-		f, err := fs.Create(base.MakeFilename(fs, dirname, fileTypeTable, FileNum(i)))
+		f, err := fs.Create(base.MakeFilepath(fs, dirname, fileTypeTable, FileNum(i)))
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "fs.Create")
 		}
@@ -821,7 +825,7 @@ func TestTableCacheClockPro(t *testing.T) {
 	mem := vfs.NewMem()
 	makeTable := func(fileNum FileNum) {
 		require.NoError(t, err)
-		f, err := mem.Create(base.MakeFilename(mem, "", fileTypeTable, fileNum))
+		f, err := mem.Create(base.MakeFilepath(mem, "", fileTypeTable, fileNum))
 		require.NoError(t, err)
 		w := sstable.NewWriter(f, sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte("a"), nil))

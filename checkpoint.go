@@ -183,7 +183,7 @@ func (d *DB) Checkpoint(
 
 	{
 		// Link or copy the OPTIONS.
-		srcPath := base.MakeFilename(fs, d.dirname, fileTypeOptions, optionsFileNum)
+		srcPath := base.MakeFilepath(fs, d.dirname, fileTypeOptions, optionsFileNum)
 		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 		ckErr = vfs.LinkOrCopy(fs, srcPath, destPath)
 		if ckErr != nil {
@@ -220,7 +220,7 @@ func (d *DB) Checkpoint(
 		// reference sstables that aren't in our checkpoint. For a
 		// similar reason, we need to limit how much of the MANIFEST we
 		// copy.
-		srcPath := base.MakeFilename(fs, d.dirname, fileTypeManifest, manifestFileNum)
+		srcPath := base.MakeFilepath(fs, d.dirname, fileTypeManifest, manifestFileNum)
 		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 		ckErr = vfs.LimitedCopy(fs, srcPath, destPath, manifestSize)
 		if ckErr != nil {
@@ -251,7 +251,7 @@ func (d *DB) Checkpoint(
 	for l := range current.Levels {
 		iter := current.Levels[l].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			srcPath := base.MakeFilename(fs, d.dirname, fileTypeTable, f.FileNum)
+			srcPath := base.MakeFilepath(fs, d.dirname, fileTypeTable, f.FileNum)
 			destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 			ckErr = vfs.LinkOrCopy(fs, srcPath, destPath)
 			if ckErr != nil {
@@ -268,7 +268,7 @@ func (d *DB) Checkpoint(
 		if logNum == 0 {
 			continue
 		}
-		srcPath := base.MakeFilename(fs, d.walDirname, fileTypeLog, logNum)
+		srcPath := base.MakeFilepath(fs, d.walDirname, fileTypeLog, logNum)
 		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 		ckErr = vfs.Copy(fs, srcPath, destPath)
 		if ckErr != nil {

@@ -842,7 +842,7 @@ func TestCompaction(t *testing.T) {
 		for _, levelMetadata := range v.Levels {
 			iter := levelMetadata.Iter()
 			for meta := iter.First(); meta != nil; meta = iter.Next() {
-				f, err := mem.Open(base.MakeFilename(mem, "", fileTypeTable, meta.FileNum))
+				f, err := mem.Open(base.MakeFilepath(mem, "", fileTypeTable, meta.FileNum))
 				if err != nil {
 					return "", "", errors.WithStack(err)
 				}

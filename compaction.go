@@ -2094,7 +2094,7 @@ func (d *DB) runCompaction(
 		pendingOutputs = append(pendingOutputs, fileMeta)
 		d.mu.Unlock()
 
-		filename := base.MakeFilename(d.opts.FS, d.dirname, fileTypeTable, fileNum)
+		filename := base.MakeFilepath(d.opts.FS, d.dirname, fileTypeTable, fileNum)
 		file, err := d.opts.FS.Create(filename)
 		if err != nil {
 			return err
@@ -2837,7 +2837,7 @@ func (d *DB) paceAndDeleteObsoleteFiles(jobID int, files []obsoleteFile) {
 	}
 
 	for _, of := range files {
-		path := base.MakeFilename(d.opts.FS, of.dir, of.fileType, of.fileNum)
+		path := base.MakeFilepath(d.opts.FS, of.dir, of.fileType, of.fileNum)
 		if of.fileType == fileTypeTable {
 			_ = pacer.maybeThrottle(of.fileSize)
 			d.mu.Lock()
