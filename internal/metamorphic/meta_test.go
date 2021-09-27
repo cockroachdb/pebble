@@ -63,13 +63,62 @@ var (
 	ops    = randvar.NewFlag("uniform:5000-10000")
 	runDir = flag.String("run-dir", "",
 		"the specific configuration to (re-)run (used for post-mortem debugging)")
+	compare = flag.String("compare", "",
+		`comma separated list of options files to compare. The result of each run is compared with
+the result of the run from the first options file in the list. Example, -compare
+random-003,standard-000. The dir flag should have the directory containing these directories.
+Example, -dir _meta/200610-203012.077`)
 )
 
 func init() {
 	flag.Var(ops, "ops", "")
 }
 
-func testMetaRun(t *testing.T, runDir string, seed uint64) {
+func testCompareRun(t *testing.T, compare string) {
+	runDirs := strings.Split(compare, ",")
+	historyPaths := make([]string, len(runDirs))
+	for i := 0; i < len(runDirs); i++ {
+		historyPath := filepath.Join(*dir, runDirs[i]+"-"+time.Now().Format("060102-150405.000"))
+		runDirs[i] = filepath.Join(*dir, runDirs[i])
+		_ = os.Remove(historyPath)
+		historyPaths[i] = historyPath
+	}
+	defer func() {
+		for _, path := range historyPaths {
+			_ = os.Remove(path)
+		}
+	}()
+
+	for i, runDir := range runDirs {
+		testMetaRun(t, runDir, *seed, historyPaths[i])
+	}
+
+	if t.Failed() {
+		return
+	}
+
+	base := readHistory(t, historyPaths[0])
+	for i := 1; i < len(historyPaths); i++ {
+		lines := readHistory(t, historyPaths[i])
+		diff := difflib.UnifiedDiff{
+			A:       base,
+			B:       lines,
+			Context: 5,
+		}
+		text, err := difflib.GetUnifiedDiffString(diff)
+		require.NoError(t, err)
+		if text != "" {
+			fmt.Printf(`
+===== DIFF =====
+%s/{%s,%s}
+%s
+`, *dir, runDirs[0], runDirs[i], text)
+			os.Exit(1)
+		}
+	}
+}
+
+func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 	opsPath := filepath.Join(filepath.Dir(filepath.Clean(runDir)), "ops")
 	opsData, err := ioutil.ReadFile(opsPath)
 	require.NoError(t, err)
@@ -112,7 +161,6 @@ func testMetaRun(t *testing.T, runDir string, seed uint64) {
 		opts.WALDir = opts.FS.PathJoin(runDir, opts.WALDir)
 	}
 
-	historyPath := filepath.Join(runDir, "history")
 	historyFile, err := os.Create(historyPath)
 	require.NoError(t, err)
 	defer historyFile.Close()
@@ -139,6 +187,21 @@ func testMetaRun(t *testing.T, runDir string, seed uint64) {
 	}
 }
 
+// Read a history file, stripping out lines that begin with a comment.
+func readHistory(t *testing.T, historyPath string) []string {
+	data, err := ioutil.ReadFile(historyPath)
+	require.NoError(t, err)
+	lines := difflib.SplitLines(string(data))
+	newLines := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.HasPrefix(line, "// ") {
+			continue
+		}
+		newLines = append(newLines, line)
+	}
+	return newLines
+}
+
 // TestMeta generates a random set of operations to run, then runs the test
 // with different options. See standardOptions() for the set of options that
 // are always run, and randomOptions() for the randomly generated options. The
@@ -163,11 +226,16 @@ func testMetaRun(t *testing.T, runDir string, seed uint64) {
 // failure, otherwise changes to the metamorphic tests may cause the generated
 // operations and options to differ.
 func TestMeta(t *testing.T) {
+	if *compare != "" {
+		testCompareRun(t, *compare)
+		return
+	}
+
 	if *runDir != "" {
 		// The --run-dir flag is specified either in the child process (see
 		// runOptions() below) or the user specified it manually in order to re-run
 		// a test.
-		testMetaRun(t, *runDir, *seed)
+		testMetaRun(t, *runDir, *seed, filepath.Join(*runDir, "history"))
 		return
 	}
 
@@ -251,7 +319,7 @@ func TestMeta(t *testing.T) {
 ===== OPS =====
 %s
 ===== HISTORY =====
-%s`, seed, err, out, optionsStr, formattedOps, readHistory(filepath.Join(runDir, "history")))
+%s`, seed, err, out, optionsStr, formattedOps, readFile(filepath.Join(runDir, "history")))
 		}
 	}
 
@@ -285,25 +353,14 @@ func TestMeta(t *testing.T) {
 		return
 	}
 
-	// Read a history file, stripping out lines that begin with a comment.
-	readHistory := func(name string) []string {
-		historyPath := filepath.Join(metaDir, name, "history")
-		data, err := ioutil.ReadFile(historyPath)
-		require.NoError(t, err)
-		lines := difflib.SplitLines(string(data))
-		newLines := make([]string, 0, len(lines))
-		for _, line := range lines {
-			if strings.HasPrefix(line, "// ") {
-				continue
-			}
-			newLines = append(newLines, line)
-		}
-		return newLines
+	getHistoryPath := func(name string) string {
+		return filepath.Join(metaDir, name, "history")
+
 	}
 
-	base := readHistory(names[0])
+	base := readHistory(t, getHistoryPath(names[0]))
 	for i := 1; i < len(names); i++ {
-		lines := readHistory(names[i])
+		lines := readHistory(t, getHistoryPath(names[i]))
 		diff := difflib.UnifiedDiff{
 			A:       base,
 			B:       lines,
@@ -336,7 +393,7 @@ func TestMeta(t *testing.T) {
 	}
 }
 
-func readHistory(path string) string {
+func readFile(path string) string {
 	history, err := ioutil.ReadFile(path)
 	if err != nil {
 		return fmt.Sprintf("err: %v", err)
