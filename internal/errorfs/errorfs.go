@@ -18,7 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// ErrInjected is an error artifically injected for testing fs error paths.
+// ErrInjected is an error artificially injected for testing fs error paths.
 var ErrInjected = errors.New("injected error")
 
 // Op is an enum describing the type of operation.

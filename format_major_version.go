@@ -107,7 +107,7 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 		// Now that we have a manifest marker file in place and pointing
 		// to the current MANIFEST, finalize the upgrade. If we fail for
 		// some reason, a retry of this migration is guaranteed to again
-		// move the manfiest marker file to the latest manifest. If
+		// move the manifest marker file to the latest manifest. If
 		// we're unable to finalize the upgrade, a subsequent call to
 		// Open will ignore the manifest marker.
 		if err := d.finalizeFormatVersUpgrade(formatVersionedManifestMarker); err != nil {

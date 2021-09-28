@@ -80,7 +80,7 @@ func (r *logRecycler) stats() (count int, size uint64) {
 }
 
 // pop removes the log number at the head of the recycling queue, enforcing
-// that it matches the specifed logNum. An error is returned of the recycling
+// that it matches the specified logNum. An error is returned of the recycling
 // queue is empty or the head log number does not match the specified one.
 func (r *logRecycler) pop(logNum FileNum) error {
 	r.mu.Lock()

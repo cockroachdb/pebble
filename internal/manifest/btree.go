@@ -903,7 +903,7 @@ func cmpIter(a, b iterator) int {
 
 	// Each iterator has a stack of frames marking the path from the root node
 	// to the current iterator position. We walk both paths formed by the
-	// iterators' stacks simulatenously, descending from the shared root node,
+	// iterators' stacks simultaneously, descending from the shared root node,
 	// always comparing nodes at the same level in the tree.
 	//
 	// If the iterators' paths ever diverge and point to different nodes, the

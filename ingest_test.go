@@ -828,7 +828,7 @@ func TestConcurrentIngestCompact(t *testing.T) {
 `)
 
 			// At this point ingestion of an sstable containing only key "b" will be
-			// targetted at L6. Yet a concurrent compaction of sstables 5 and 7 will
+			// targeted at L6. Yet a concurrent compaction of sstables 5 and 7 will
 			// create a new sstable in L6 spanning ["a"-"c"]. So the ingestion must
 			// actually target L5.
 

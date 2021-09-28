@@ -64,7 +64,7 @@ func (d *DB) Ingest(tables []Table) error {
 	// because only overlapping memtables are flushed before an ingest.
 	// We need the ingested files to adopt the same sequence numbers as they
 	// originally did to ensure the sequence number invariants still hold.
-	// To accomodate this, we bump the sequence number up to just below the
+	// To accommodate this, we bump the sequence number up to just below the
 	// sequence number these files' were originally ingested at.
 	smallest := tables[0].FileMetadata.SmallestSeqNum
 	private.RatchetSeqNum(d.d, smallest)

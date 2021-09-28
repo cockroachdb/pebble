@@ -92,7 +92,7 @@ func scanForMarker(fs vfs.FS, dir, markerName string) (scannedState, error) {
 // A Marker provides an interface for marking a single file on the
 // filesystem. The marker may be atomically moved from name to name.
 // Marker is not safe for concurrent use. Multiple processes may not
-// read or move the same marker simulatenously. An Marker may only be
+// read or move the same marker simultaneously. An Marker may only be
 // constructed through LocateMarker.
 //
 // Marker names must be unique within the directory.

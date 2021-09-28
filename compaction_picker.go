@@ -820,7 +820,7 @@ func (p *compactionPickerByScore) pickFile(
 	// the target level, which minimizes write amplification.
 	//
 	// It uses a "compensated size" for the denominator, which is the file
-	// size but artifically inflated by an estimate of the space that may be
+	// size but artificially inflated by an estimate of the space that may be
 	// reclaimed through compaction. Currently, we only compensate for range
 	// deletions and only with a rough estimate of the reclaimable bytes. This
 	// differs from RocksDB which only compensates for point tombstones and

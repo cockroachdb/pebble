@@ -221,7 +221,7 @@ func (d *DB) scanReadStateTableStats(
 			// Limit how much work we do per read state. The older the read
 			// state is, the higher the likelihood files are no longer being
 			// used in the current version. If we've exhausted our allowance,
-			// return true for the second return value to signal there's more
+			// return true for the last return value to signal there's more
 			// work to do.
 			if len(fill) == cap(fill) {
 				moreRemain = true
@@ -288,7 +288,7 @@ func (d *DB) loadTableStats(
 			func(startUserKey, endUserKey []byte, smallestSeqNum, largestSeqNum uint64) error {
 				// If the file is in the last level of the LSM, there is no
 				// data beneath it. The fact that there is still a range
-				// tombstone in a bottomost file suggests that an open
+				// tombstone in a bottommost file suggests that an open
 				// snapshot kept the tombstone around. Estimate disk usage
 				// within the file itself.
 				if level == numLevels-1 {
