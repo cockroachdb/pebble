@@ -1099,8 +1099,8 @@ func (d *DB) Compact(
 		}
 		level = manual.outputLevel
 		if level == numLevels-1 {
-			// A manual compaction of the bottommost level occured. There is no next
-			// level to try and compact.
+			// A manual compaction of the bottommost level occurred.
+			// There is no next level to try and compact.
 			break
 		}
 	}

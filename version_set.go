@@ -373,7 +373,7 @@ func (vs *versionSet) logAndApply(
 	// used to initialize versionSet.logSeqNum and versionSet.visibleSeqNum on
 	// replay. It must be higher than or equal to any than any sequence number
 	// written to an sstable, including sequence numbers in ingested files.
-	// Note that LastSeqNum is not (and cannot be) the minumum unflushed sequence
+	// Note that LastSeqNum is not (and cannot be) the minimum unflushed sequence
 	// number. This is fallout from ingestion which allows a sequence number X to
 	// be assigned to an ingested sstable even though sequence number X-1 resides
 	// in an unflushed memtable. logSeqNum is the _next_ sequence number that

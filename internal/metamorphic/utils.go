@@ -83,7 +83,7 @@ func (s *objIDSlice) rand(rng *rand.Rand) objID {
 // objIDSet is an unordered set of object IDs.
 type objIDSet map[objID]struct{}
 
-// sortedKeys returns a sorted slice of the set's keys for deterministc
+// sortedKeys returns a sorted slice of the set's keys for deterministic
 // iteration.
 func (s objIDSet) sorted() []objID {
 	keys := make(objIDSlice, 0, len(s))

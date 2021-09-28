@@ -54,7 +54,7 @@ func runTests(t *testing.T, path string) {
 				args = append(args, strings.Fields(d.Input)...)
 
 				// The testdata files contain paths with "/" path separators, but we
-				// might be running on a sytem with a different path separator
+				// might be running on a system with a different path separator
 				// (e.g. Windows). Copy the input data into a mem filesystem which
 				// always uses "/" for the path separator.
 				for i := range args {

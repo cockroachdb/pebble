@@ -393,7 +393,7 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 
 // SeekLT seeks to the last file in the iterator's file set with a smallest
 // user key less than the provided user key. The iterator must have been
-// constructed from L1+, because it requries the underlying files to be sorted
+// constructed from L1+, because it requires the underlying files to be sorted
 // by user keys and non-overlapping.
 func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
 	// TODO(jackson): Assert that i.iter.cmp == btreeCmpSmallestKey.
@@ -409,14 +409,14 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
 func (i *LevelIterator) seek(fn func(*FileMetadata) bool) *FileMetadata {
 	i.iter.seek(fn)
 
-	// i.iter.seek seeked in the unbounded underyling B-Tree. If the iterator
+	// i.iter.seek seeked in the unbounded underlying B-Tree. If the iterator
 	// has start or end bounds, we may have exceeded them. Reset to the bounds
 	// if necessary.
 	//
 	// NB: The LevelIterator and LevelSlice semantics require that a bounded
 	// LevelIterator/LevelSlice containing files x0, x1, ..., xn behave
 	// identically to an unbounded LevelIterator/LevelSlice of a B-Tree
-	// contianing x0, x1, ..., xn. In other words, any files outside the
+	// containing x0, x1, ..., xn. In other words, any files outside the
 	// LevelIterator's bounds should not influence the iterator's behavior.
 	// When seeking, this means a SeekGE that seeks beyond the end bound,
 	// followed by a Prev should return the last element within bounds.

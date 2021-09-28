@@ -51,7 +51,7 @@ type tableCacheOpts struct {
 type tableCacheContainer struct {
 	tableCache *TableCache
 
-	// dbOpts contains fields relevent to the table cache
+	// dbOpts contains fields relevant to the table cache
 	// which are unique to each DB.
 	dbOpts tableCacheOpts
 }

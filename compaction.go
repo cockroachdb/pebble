@@ -1693,7 +1693,7 @@ type deleteCompactionHint struct {
 	// by this hint. The hint cannot be resolved until this sequence number is
 	// in the same snapshot stripe as the largest tombstone sequence number.
 	// This is set when a hint is created, so the LSM may look different and
-	// notably no longer contian the sstable that contained the key at this
+	// notably no longer contain the sstable that contained the key at this
 	// sequence number.
 	fileSmallestSeqNum uint64
 }

@@ -82,7 +82,7 @@ func TestZetaIncMax(t *testing.T) {
 		z0.IncMax(1)
 	}
 
-	// Contruct a zipf generator covering the range [0,10] via the constructor.
+	// Construct a zipf generator covering the range [0,10] via the constructor.
 	z10, err := NewZipf(0, 10, 0.99)
 	require.NoError(t, err)
 
