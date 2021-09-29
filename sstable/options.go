@@ -188,6 +188,26 @@ type WriterOptions struct {
 	// with the value stored in the sstable when it was written.
 	MergerName string
 
+	// SuffixPlaceholder enables key suffix replacement. When
+	// SuffixPlaceholder is set, Comparer.Split must be set as well.
+	// Suffix replacement only occurs within the suffix after the index
+	// returned by Split.  Additionally, a suffix placeholder prevents
+	// key sharing after the index returned by Split.
+	//
+	// When a SuffixPlaceholder is set, all added keys that contain a
+	// prefix must have a suffix exactly equal to the SuffixPlaceholder.
+	// That is, if Split(k) < len(k), then k[Split(k):] must equal
+	// SuffixPlaceholder.
+	//
+	// When configured with a SuffixPlaceholder, Writer includes a
+	// SuffixReplacement table property indicating the placeholder and the
+	// intent to replace. A SSTable created with a non-empty SuffixPlaceholder
+	// cannot be read by Reader until modified by ReplaceSuffix to embed a
+	// replacement suffix.
+	//
+	// Range tombstones are not subject to suffix replacement.
+	SuffixPlaceholder []byte
+
 	// TableFormat specifies the format version for writing sstables. The default
 	// is TableFormatRocksDBv2 which creates RocksDB compatible sstables. Use
 	// TableFormatLevelDB to create LevelDB compatible sstable which can be used
