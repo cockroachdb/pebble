@@ -24,22 +24,50 @@ func TestBlockWriter(t *testing.T) {
 		return InternalKey{UserKey: []byte(s)}
 	}
 
-	w := &rawBlockWriter{
-		blockWriter: blockWriter{restartInterval: 16},
-	}
-	w.add(ikey("apple"), nil)
-	w.add(ikey("apricot"), nil)
-	w.add(ikey("banana"), nil)
-	block := w.finish()
+	t.Run("simple", func(t *testing.T) {
+		w := &rawBlockWriter{
+			blockWriter: blockWriter{restartInterval: 16},
+		}
+		w.add(ikey("apple"), nil)
+		w.add(ikey("apricot"), nil)
+		w.add(ikey("banana"), nil)
+		block := w.finish()
 
-	expected := []byte(
-		"\x00\x05\x00apple" +
-			"\x02\x05\x00ricot" +
-			"\x00\x06\x00banana" +
-			"\x00\x00\x00\x00\x01\x00\x00\x00")
-	if !bytes.Equal(expected, block) {
-		t.Fatalf("expected\n%q\nfound\n%q", expected, block)
-	}
+		expected := []byte(
+			"\x00\x05\x00apple" +
+				"\x02\x05\x00ricot" +
+				"\x00\x06\x00banana" +
+				"\x00\x00\x00\x00\x01\x00\x00\x00")
+		if !bytes.Equal(expected, block) {
+			t.Fatalf("expected\n%q\nfound\n%q", expected, block)
+		}
+	})
+	t.Run("split-prevents-key-sharing", func(t *testing.T) {
+		w := &rawBlockWriter{
+			blockWriter: blockWriter{
+				restartInterval: 16,
+				split: func(k []byte) int {
+					i := bytes.IndexByte(k, ' ')
+					if i < 0 {
+						return len(k)
+					}
+					return i
+				},
+			},
+		}
+		w.add(ikey("hello world"), nil)
+		w.add(ikey("hello worms"), nil)
+		w.add(ikey("hello worts"), nil)
+		block := w.finish()
+		expected := []byte(
+			"\x00\x0b\x00hello world" +
+				"\x05\x06\x00 worms" +
+				"\x05\x06\x00 worts" +
+				"\x00\x00\x00\x00\x01\x00\x00\x00")
+		if !bytes.Equal(expected, block) {
+			t.Fatalf("expected\n%q\nfound\n%q", expected, block)
+		}
+	})
 }
 
 func TestInvalidInternalKeyDecoding(t *testing.T) {

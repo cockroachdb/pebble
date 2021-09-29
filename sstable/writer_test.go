@@ -8,9 +8,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io/ioutil"
 	"testing"
 
 	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
@@ -102,6 +104,82 @@ func TestWriter(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestReplaceSuffix(t *testing.T) {
+	mem := vfs.NewMem()
+
+	// Suffix replacement requires a Split function. Add one that splits a key
+	// at the first space.
+	comparer := *base.DefaultComparer
+	comparer.Split = func(a []byte) int {
+		v := bytes.IndexByte(a, ' ')
+		if v < 0 {
+			return len(a)
+		}
+		return v
+	}
+
+	// Write a new file containing a few keys, including a few with the `world`
+	// suffix.
+	f, err := mem.Create("prereplacement.sst")
+	require.NoError(t, err)
+	w := NewWriter(f, WriterOptions{
+		Comparer:          &comparer,
+		SuffixPlaceholder: []byte(` world`),
+	})
+	inputKeys := []string{
+		`bonjour world`,
+		`foo`,
+		`hello world`,
+		`hi world`,
+		`world`,
+		`worms`,
+	}
+	for _, k := range inputKeys {
+		require.NoError(t, w.Add(base.MakeInternalKey([]byte(k), 0, InternalKeyKindSet), nil))
+	}
+	require.NoError(t, w.Close())
+
+	// The SSTable's SuffixReplacement property should be `worldworld`,
+	// indicating that the suffix placeholder is `world` and that the
+	// replacement value is not yet known.
+	m, err := w.Metadata()
+	require.NoError(t, err)
+	require.Equal(t, []byte(` world world`), m.Properties.SuffixReplacement)
+
+	// Trying to read the sstable without a replacement value in the sstable
+	// property should error. This behavior helps avoid accidental reading of
+	// unfinished sstables.
+	readOpts := ReaderOptions{Comparer: &comparer}
+	f, err = mem.Open("prereplacement.sst")
+	require.NoError(t, err)
+	_, err = NewReader(f, readOpts)
+	require.Error(t, err, `pebble: unreplaced suffix`)
+
+	// Perform the replacement.
+	f, err = mem.Open("prereplacement.sst")
+	require.NoError(t, err)
+	sstableBytes, err := ioutil.ReadAll(f)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	require.NoError(t, ReplaceSuffix(sstableBytes, readOpts, []byte(` world`), []byte(` monde`)))
+
+	// Read the file post-replacement. All the ` world` suffixes should be
+	// replaced with ` monde`.
+	f = vfs.NewMemFile(sstableBytes)
+	r, err := NewReader(f, readOpts)
+	require.NoError(t, err)
+	defer r.Close()
+	iter, err := r.NewIter(nil, nil)
+	require.NoError(t, err)
+	defer iter.Close()
+	var got []string
+	for k, _ := iter.First(); k != nil; k, _ = iter.Next() {
+		got = append(got, string(k.UserKey))
+	}
+	want := []string{`bonjour monde`, `foo`, `hello monde`, `hi monde`, `world`, `worms`}
+	require.Equal(t, want, got)
 }
 
 func TestWriterClearCache(t *testing.T) {
