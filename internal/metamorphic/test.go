@@ -163,7 +163,7 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 }
 
 func (t *test) restartDB() error {
-	if !t.testOpts.strictFS {
+	if !t.testOpts.strictFS || t.testOpts.useDisk {
 		return nil
 	}
 	t.opts.Cache.Ref()
