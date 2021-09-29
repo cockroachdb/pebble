@@ -289,7 +289,7 @@ func (i *singleLevelIterator) loadBlock() bool {
 		i.err = errCorruptIndexEntry
 		return false
 	}
-	block, err := i.reader.readBlock(i.dataBH, nil /* transform */, &i.dataRS)
+	block, err := i.reader.readBlock(i.dataBH, i.reader.transformMaybeSwapSuffix, &i.dataRS)
 	if err != nil {
 		i.err = err
 		return false
@@ -959,7 +959,7 @@ func (i *twoLevelIterator) loadIndex() bool {
 		i.err = base.CorruptionErrorf("pebble/table: corrupt top level index entry")
 		return false
 	}
-	indexBlock, err := i.reader.readBlock(h, nil /* transform */, nil /* readaheadState */)
+	indexBlock, err := i.reader.readBlock(h, i.reader.transformMaybeSwapSuffix, nil /* readaheadState */)
 	if err != nil {
 		i.err = err
 		return false
@@ -1681,28 +1681,29 @@ func init() {
 
 // Reader is a table reader.
 type Reader struct {
-	file              ReadableFile
-	fs                vfs.FS
-	filename          string
-	cacheID           uint64
-	fileNum           base.FileNum
-	rawTombstones     bool
-	err               error
-	indexBH           BlockHandle
-	filterBH          BlockHandle
-	rangeDelBH        BlockHandle
-	rangeDelTransform blockTransform
-	propertiesBH      BlockHandle
-	metaIndexBH       BlockHandle
-	footerBH          BlockHandle
-	opts              ReaderOptions
-	Compare           Compare
-	FormatKey         base.FormatKey
-	Split             Split
-	mergerOK          bool
-	checksumType      ChecksumType
-	tableFilter       *tableFilterReader
-	Properties        Properties
+	file               ReadableFile
+	fs                 vfs.FS
+	filename           string
+	cacheID            uint64
+	fileNum            base.FileNum
+	rawTombstones      bool
+	err                error
+	indexBH            BlockHandle
+	filterBH           BlockHandle
+	rangeDelBH         BlockHandle
+	rangeDelTransform  blockTransform
+	propertiesBH       BlockHandle
+	metaIndexBH        BlockHandle
+	footerBH           BlockHandle
+	opts               ReaderOptions
+	Compare            Compare
+	FormatKey          base.FormatKey
+	Split              Split
+	mergerOK           bool
+	unreplacedSuffixOK bool
+	checksumType       ChecksumType
+	tableFilter        *tableFilterReader
+	Properties         Properties
 }
 
 // Close implements DB.Close, as documented in the pebble package.
@@ -1847,7 +1848,7 @@ func (r *Reader) NewRawRangeDelIter() (base.InternalIterator, error) {
 }
 
 func (r *Reader) readIndex() (cache.Handle, error) {
-	return r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */)
+	return r.readBlock(r.indexBH, r.transformMaybeSwapSuffix, nil /* readaheadState */)
 }
 
 func (r *Reader) readFilter() (cache.Handle, error) {
@@ -1948,22 +1949,73 @@ func (r *Reader) readBlock(
 	}
 
 	if transform != nil {
+		pretransformBlock := b
 		// Transforming blocks is rare, so the extra copy of the transformed data
 		// is not problematic.
-		var err error
-		b, err = transform(b)
+		b, err = transform(pretransformBlock)
 		if err != nil {
 			r.opts.Cache.Free(v)
 			return cache.Handle{}, err
 		}
-		newV := r.opts.Cache.Alloc(len(b))
-		copy(newV.Buf(), b)
-		r.opts.Cache.Free(v)
-		v = newV
+
+		// If transform returned a new slice, copy it into cache and
+		// free the old one.
+		if len(b) == 0 || len(pretransformBlock) == 0 || &b[0] != &pretransformBlock[0] {
+			newV := r.opts.Cache.Alloc(len(b))
+			copy(newV.Buf(), b)
+			r.opts.Cache.Free(v)
+			v = newV
+		}
 	}
 
 	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, v)
 	return h, nil
+}
+
+// transformMaybeSwapSuffix is a blockTransform that performs a
+// replacement of a key suffix. If the sstable's user properties
+// contains the suffix replacement property, transformMaybeSwapSuffix
+// adjusts all keys with the specified placeholder suffix with the
+// indicated replacement value.
+func (r *Reader) transformMaybeSwapSuffix(b []byte) ([]byte, error) {
+	if len(r.Properties.SuffixReplacement) == 0 {
+		return b, nil
+	}
+
+	// The suffix replacement property holds the placeholder value
+	// concatenated with the replacement value. Values are required to
+	// be equal length. The SuffixReplacement property was already
+	// validated when the reader was constructed.
+	split := len(r.Properties.SuffixReplacement) >> 1
+	from, to := r.Properties.SuffixReplacement[:split], r.Properties.SuffixReplacement[split:]
+
+	iter := &blockIter{}
+	if err := iter.init(r.Compare, b, r.Properties.GlobalSeqNum); err != nil {
+		return nil, err
+	}
+	for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
+		split := r.Split(key.UserKey)
+		switch {
+		case split == len(key.UserKey):
+			panic(errors.New("pebble: suffix replacement sstable contains key without a suffix"))
+		case !bytes.Equal(key.UserKey[split:], from):
+			// This key has a suffix, but it doesn't match the placeholder
+			// value. The sstable Writer should not have allowed such an
+			// sstable to be produced, because we cannot know whether or not
+			// rewriting another key with the same prefix but the placeholder
+			// suffix might violate the key ordering.
+			panic(errors.New("pebble: suffix replacement sstable contains non-placeholder suffix"))
+		default:
+			// The suffix matches the expected placeholder. Overwrite it with
+			// the replacement suffix.
+			dest := len(iter.unsharedKey) - len(from) - base.InternalKeyTrailerLength
+			if dest < 0 {
+				panic(errors.New("pebble: suffix placeholder unexpectedly shared between keys"))
+			}
+			copy(iter.unsharedKey[dest:], to)
+		}
+	}
+	return b, nil
 }
 
 func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
@@ -2184,7 +2236,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 		}
 
 		// Read the block, which validates the checksum.
-		h, err := r.readBlock(bh, nil /* transform */, blockRS)
+		h, err := r.readBlock(bh, r.transformMaybeSwapSuffix, blockRS)
 		if err != nil {
 			return err
 		}
@@ -2241,7 +2293,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if n == 0 || n != len(val) {
 			return 0, errCorruptIndexEntry
 		}
-		startIdxBlock, err := r.readBlock(startIdxBH, nil /* transform */, nil /* readaheadState */)
+		startIdxBlock, err := r.readBlock(startIdxBH, r.transformMaybeSwapSuffix, nil /* readaheadState */)
 		if err != nil {
 			return 0, err
 		}
@@ -2261,7 +2313,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			if n == 0 || n != len(val) {
 				return 0, errCorruptIndexEntry
 			}
-			endIdxBlock, err := r.readBlock(endIdxBH, nil /* transform */, nil /* readaheadState */)
+			endIdxBlock, err := r.readBlock(endIdxBH, r.transformMaybeSwapSuffix, nil /* readaheadState */)
 			if err != nil {
 				return 0, err
 			}
@@ -2386,6 +2438,29 @@ func NewReader(f ReadableFile, o ReaderOptions, extraOpts ...ReaderOption) (*Rea
 				errors.Safe(r.fileNum), errors.Safe(r.Properties.MergerName))
 		}
 	}
+
+	if len(r.Properties.SuffixReplacement) > 0 {
+		// The suffix replacement property holds the placeholder value
+		// concatenated with the replacement value. Values are required to
+		// be equal length.
+		if len(r.Properties.SuffixReplacement)%2 != 0 {
+			r.err = errors.New("pebble: invalid suffix replacement property: odd length")
+			return nil, r.Close()
+		}
+		split := len(r.Properties.SuffixReplacement) >> 1
+		if !r.unreplacedSuffixOK && bytes.Equal(r.Properties.SuffixReplacement[:split], r.Properties.SuffixReplacement[split:]) {
+			r.err = errors.Newf("pebble: unreplaced suffix")
+			return nil, r.Close()
+		}
+		// Require that r.Split is set. Suffix replacement only occurs after a
+		// key's Split prefix.
+		if r.Split == nil {
+			r.err = errors.Errorf("pebble/table: %d: suffix replacement requires Split, comparer %s omits",
+				errors.Safe(r.fileNum), errors.Safe(r.Properties.ComparerName))
+			return nil, r.Close()
+		}
+	}
+
 	if r.err != nil {
 		return nil, r.Close()
 	}
@@ -2505,7 +2580,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadState */)
+		h, err := r.readBlock(b.BlockHandle, r.transformMaybeSwapSuffix, nil /* readaheadState */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue

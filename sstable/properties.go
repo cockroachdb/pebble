@@ -18,6 +18,7 @@ import (
 
 const propertiesBlockRestartInterval = math.MaxInt32
 const propGlobalSeqnumName = "rocksdb.external_sst_file.global_seqno"
+const propSuffixReplacementName = "pebble.suffix_replacement"
 
 var propTagMap = make(map[string]reflect.StructField)
 var propBoolTrue = []byte{'1'}
@@ -43,6 +44,12 @@ func init() {
 			case reflect.Uint32:
 			case reflect.Uint64:
 			case reflect.String:
+			case reflect.Slice:
+				switch f.Type.Elem().Kind() {
+				case reflect.Uint8:
+				default:
+					panic(fmt.Sprintf("unsupported property field type: %s %s", f.Name, f.Type))
+				}
 			default:
 				panic(fmt.Sprintf("unsupported property field type: %s %s", f.Name, f.Type))
 			}
@@ -128,6 +135,18 @@ type Properties struct {
 	RawKeySize uint64 `prop:"rocksdb.raw.key.size"`
 	// Total raw value size.
 	RawValueSize uint64 `prop:"rocksdb.raw.value.size"`
+	// SuffixReplacement configures sstable readers to apply a block
+	// transform replacing a configured placeholder key suffix with a
+	// new suffix of the same length. The property value must be an even
+	// length, containing first the placeholder suffix followed by the
+	// replacement suffix.
+	//
+	// For example a property value `aaabbb` instructs readers to transform
+	// blocks, replacing any instances of the key suffix `aaa` with `bbb`.
+	//
+	// See WriterOptions.SuffixPlaceholder and ReplaceSuffix for
+	// additional documentation.
+	SuffixReplacement []byte `prop:"pebble.suffix_replacement"`
 	// Size of the top-level index if kTwoLevelIndexSearch is used.
 	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
 	// User collected properties.
@@ -159,8 +178,7 @@ func (p *Properties) String() string {
 		}
 
 		f := v.Field(i)
-		// TODO(peter): Use f.IsZero() when we can rely on go1.13.
-		if zero := reflect.Zero(f.Type()); zero.Interface() == f.Interface() {
+		if f.IsZero() {
 			// Skip printing of zero values which were not loaded from disk.
 			if _, ok := p.Loaded[ft.Offset]; !ok {
 				continue
@@ -179,6 +197,13 @@ func (p *Properties) String() string {
 				fmt.Fprintf(&buf, "-\n")
 			} else {
 				fmt.Fprintf(&buf, "%d\n", f.Uint())
+			}
+		case reflect.Slice:
+			switch ft.Type.Elem().Kind() {
+			case reflect.Uint8:
+				fmt.Fprintf(&buf, "%x\n", f.Bytes())
+			default:
+				panic("not reached")
 			}
 		case reflect.String:
 			fmt.Fprintf(&buf, "%s\n", f.String())
@@ -222,6 +247,16 @@ func (p *Properties) load(b block, blockOffset uint64) error {
 					n, _ = binary.Uvarint(i.Value())
 				}
 				field.SetUint(n)
+			case reflect.Slice:
+				switch f.Type.Elem().Kind() {
+				case reflect.Uint8:
+					unsafeValue := i.Value()
+					b := make([]byte, len(unsafeValue))
+					copy(b, unsafeValue)
+					field.SetBytes(b)
+				default:
+					panic("not reached")
+				}
 			case reflect.String:
 				field.SetString(intern.Bytes(i.Value()))
 			default:
@@ -266,6 +301,10 @@ func (p *Properties) saveUvarint(m map[string][]byte, offset uintptr, value uint
 
 func (p *Properties) saveString(m map[string][]byte, offset uintptr, value string) {
 	m[propOffsetTagMap[offset]] = []byte(value)
+}
+
+func (p *Properties) saveBytes(m map[string][]byte, offset uintptr, value []byte) {
+	m[propOffsetTagMap[offset]] = value
 }
 
 func (p *Properties) save(w *rawBlockWriter) {
@@ -328,6 +367,9 @@ func (p *Properties) save(w *rawBlockWriter) {
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.RawKeySize), p.RawKeySize)
 	p.saveUvarint(m, unsafe.Offsetof(p.RawValueSize), p.RawValueSize)
+	if len(p.SuffixReplacement) > 0 {
+		p.saveBytes(m, unsafe.Offsetof(p.SuffixReplacement), p.SuffixReplacement)
+	}
 	p.saveBool(m, unsafe.Offsetof(p.WholeKeyFiltering), p.WholeKeyFiltering)
 
 	keys := make([]string, 0, len(m))

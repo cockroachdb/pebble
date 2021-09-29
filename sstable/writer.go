@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 // WriterMetadata holds info about a finished sstable.
@@ -105,6 +106,7 @@ type Writer struct {
 	tableFormat             TableFormat
 	checksumType            ChecksumType
 	cache                   *cache.Cache
+	suffixPlaceholder       []byte
 	// disableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
 	// of invalid sstables for testing. See tool/make_test_sstables.go.
@@ -228,6 +230,13 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		if x > 0 || (x == 0 && w.meta.LargestPoint.Trailer < key.Trailer) {
 			w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
 				w.meta.LargestPoint.Pretty(w.formatKey), key.Pretty(w.formatKey))
+			return w.err
+		}
+	}
+
+	if len(w.suffixPlaceholder) > 0 {
+		if i := w.split(key.UserKey); !bytes.Equal(w.suffixPlaceholder, key.UserKey[i:]) {
+			w.err = errors.New("pebble: all keys must contain the suffix placeholder")
 			return w.err
 		}
 	}
@@ -473,6 +482,26 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	return w.writeBlock(w.topLevelIndexBlock.finish(), w.compression)
 }
 
+func (w *Writer) checksumBlock(
+	b []byte, blockType []byte, checksumType ChecksumType,
+) (uint32, error) {
+	switch checksumType {
+	case ChecksumTypeCRC32c:
+		return crc.New(b).Update(blockType).Value(), nil
+	case ChecksumTypeXXHash64:
+		if w.xxHasher == nil {
+			w.xxHasher = xxhash.New()
+		} else {
+			w.xxHasher.Reset()
+		}
+		w.xxHasher.Write(b)
+		w.xxHasher.Write(blockType)
+		return uint32(w.xxHasher.Sum64()), nil
+	default:
+		return 0, errors.Newf("unsupported checksum type: %d", checksumType)
+	}
+}
+
 func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
@@ -489,21 +518,9 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 	w.tmp[0] = byte(blockType)
 
 	// Calculate the checksum.
-	var checksum uint32
-	switch w.checksumType {
-	case ChecksumTypeCRC32c:
-		checksum = crc.New(b).Update(w.tmp[:1]).Value()
-	case ChecksumTypeXXHash64:
-		if w.xxHasher == nil {
-			w.xxHasher = xxhash.New()
-		} else {
-			w.xxHasher.Reset()
-		}
-		w.xxHasher.Write(b)
-		w.xxHasher.Write(w.tmp[:1])
-		checksum = uint32(w.xxHasher.Sum64())
-	default:
-		return BlockHandle{}, errors.Newf("unsupported checksum type: %d", w.checksumType)
+	checksum, err := w.checksumBlock(b, w.tmp[:1], w.checksumType)
+	if err != nil {
+		return BlockHandle{}, err
 	}
 	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
 	bh := BlockHandle{w.meta.Size, uint64(len(b))}
@@ -734,7 +751,7 @@ func (w *Writer) Metadata() (*WriterMetadata, error) {
 // WriterOption provide an interface to do work on Writer while it is being
 // opened.
 type WriterOption interface {
-	// writerAPply is called on the writer during opening in order to set
+	// writerApply is called on the writer during opening in order to set
 	// internal parameters.
 	writerApply(*Writer)
 }
@@ -772,6 +789,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		tableFormat:             o.TableFormat,
 		checksumType:            o.Checksum,
 		cache:                   o.Cache,
+		suffixPlaceholder:       o.SuffixPlaceholder,
 		block: blockWriter{
 			restartInterval: o.BlockRestartInterval,
 		},
@@ -784,6 +802,15 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		topLevelIndexBlock: blockWriter{
 			restartInterval: 1,
 		},
+	}
+	// If we're using a suffix placeholder, we can't have
+	// separator/successor returning keys that are appropriate for the
+	// pre-suffix replacement values but not post-replacement. Use the
+	// identity separator and successor so that indexes have keys with
+	// the suffix placeholder.
+	if len(o.SuffixPlaceholder) > 0 {
+		w.separator = func(dst, a, b []byte) []byte { return a }
+		w.successor = func(dst, a []byte) []byte { return a }
 	}
 	if f == nil {
 		w.err = errors.New("pebble: nil file")
@@ -823,6 +850,23 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 	w.props.PropertyCollectorNames = "[]"
 	w.props.ExternalFormatVersion = rocksDBExternalFormatVersion
 
+	if len(o.SuffixPlaceholder) > 0 {
+		w.props.SuffixReplacement = make([]byte, 2*len(o.SuffixPlaceholder))
+		copy(w.props.SuffixReplacement, o.SuffixPlaceholder)
+		copy(w.props.SuffixReplacement[len(o.SuffixPlaceholder):], o.SuffixPlaceholder)
+
+		// Configure block writers to prevent sharing of suffixes after
+		// a key's Split point. If SuffixPlaceholder is set, the caller
+		// must use a Comparer that provides a Split function.
+		if w.split == nil {
+			w.err = errors.New("pebble: SuffixPlaceholder requires a comparer Split function")
+			return w
+		}
+		w.block.split = w.split
+		w.indexBlock.split = w.split
+		w.topLevelIndexBlock.split = w.split
+	}
+
 	if len(o.TablePropertyCollectors) > 0 {
 		w.propCollectors = make([]TablePropertyCollector, len(o.TablePropertyCollectors))
 		var buf bytes.Buffer
@@ -853,6 +897,110 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		w.writer = w.bufWriter
 	}
 	return w
+}
+
+// AllowUnreplacedSuffix is a ReaderOption that may be passed to
+// NewReader to allow reading from an sstable intended for
+// suffix-replacement but which does not yet have its suffix written.
+// Ordinarily, NewReader will error if there's an attempt to read an
+// sstable that supports suffix replacement but does not yet specify a
+// replacement suffix.
+var AllowUnreplacedSuffix ReaderOption = unreplacedSuffixOK{}
+
+type unreplacedSuffixOK struct{}
+
+func (unreplacedSuffixOK) readerApply(r *Reader) {
+	r.unreplacedSuffixOK = true
+}
+
+// ReplaceSuffix mutates the passed byte slice containing a serialized
+// sstable, setting the replacement suffix to the provided value. The
+// passed sstable must have been created with a SuffixPlaceholder set on
+// the WriterOptions.
+//
+// ReplaceSuffix errors if the sstable was not created with a
+// SuffixPlaceholder, or the existing placeholder does not match
+// placeholderSuffix.
+//
+// Range tombstones are not subject to suffix replacement.
+func ReplaceSuffix(
+	sstableBytes []byte, opts ReaderOptions, placeholderSuffix, replacementSuffix []byte,
+) error {
+	if len(placeholderSuffix) != len(replacementSuffix) {
+		return errors.New("pebble: placeholder and replacement suffixes must be equal length")
+	}
+
+	// Read the sstable to find the location of the properties block and
+	// validate the existing SuffixReplacement property. We pass the
+	// AllowUnreplacedSuffix reader option to indicate that this reading
+	// of a pre-replacement sstable is intentional.
+	offset, length, checksumType, err := func() (uint64, uint64, ChecksumType, error) {
+		r, err := NewReader(vfs.NewMemFile(sstableBytes), opts, AllowUnreplacedSuffix)
+		if err != nil {
+			return 0, 0, ChecksumTypeNone, err
+		}
+		defer r.Close()
+
+		v := r.Properties.SuffixReplacement
+		switch {
+		case len(v) == 0:
+			return 0, 0, ChecksumTypeNone, errors.New("pebble: sstable does not support suffix replacement")
+		case len(v) != len(placeholderSuffix)+len(replacementSuffix) || !bytes.HasPrefix(v, placeholderSuffix):
+			return 0, 0, ChecksumTypeNone, errors.New("pebble: sstable created with a different placeholder suffix")
+		default:
+			return r.propertiesBH.Offset, r.propertiesBH.Length, r.checksumType, nil
+		}
+	}()
+	if err != nil {
+		return err
+	}
+
+	// Iterate through the properties block, looking for the suffix
+	// replacement property. Find the offset of the suffix replacement
+	// property's value within the block, so that the replacement
+	// portion of the value may be overwritten with the provided
+	// replacement suffix.
+	propsBlock := sstableBytes[offset : offset+length]
+	i, err := newRawBlockIter(bytes.Compare, propsBlock)
+	if err != nil {
+		return err
+	}
+	var found bool
+	var valueOffset uint32
+	for valid := i.First(); valid; valid = i.Next() {
+		if bytes.Equal(i.Key().UserKey, []byte(propSuffixReplacementName)) {
+			found = true
+			var valueLength uint32
+			valueOffset, valueLength = i.valueLocation()
+			if int(valueLength) != 2*len(replacementSuffix) {
+				// Already validated the property value length above. A
+				// mismatch here indicates something very wrong.
+				panic("unreachable")
+			}
+			break
+		}
+	}
+	if !found {
+		// We already read the SuffixReplacement property through the
+		// reader up above, so we should always find the property.
+		panic("unreachable")
+	}
+
+	// Replace the second half of the property's value to be the
+	// given replacement suffix. For example, if configuring a suffix
+	// replacement from `aaa` to `bbb`, the existing property value will
+	// be `aaaaaa`. Overwrite the second half so that the resulting
+	// property value is `aaabbb`.
+	copy(propsBlock[int(valueOffset)+len(placeholderSuffix):], replacementSuffix)
+
+	// Update checksum after block to reflect the mutated values.
+	blockType := sstableBytes[offset+length : offset+length+1]
+	checksum, err := (&Writer{}).checksumBlock(propsBlock, blockType, checksumType)
+	if err != nil {
+		return err
+	}
+	binary.LittleEndian.PutUint32(sstableBytes[offset+length+1:offset+length+5], checksum)
+	return nil
 }
 
 func init() {

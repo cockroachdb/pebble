@@ -8,9 +8,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io/ioutil"
 	"testing"
 
 	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
@@ -101,6 +103,157 @@ func TestWriter(t *testing.T) {
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
+	})
+}
+
+func spaceSplit(a []byte) int {
+	v := bytes.IndexByte(a, ' ')
+	if v < 0 {
+		return len(a)
+	}
+	return v
+}
+
+func TestReplaceSuffix(t *testing.T) {
+	mem := vfs.NewMem()
+
+	// Suffix replacement requires a Split function. Add one that splits a key
+	// at the first space.
+	comparer := *base.DefaultComparer
+	comparer.Split = spaceSplit
+
+	// Write a new file containing a few keys, including a few with the
+	// ` world` suffix.
+	f, err := mem.Create("prereplacement.sst")
+	require.NoError(t, err)
+	w := NewWriter(f, WriterOptions{
+		Comparer:          &comparer,
+		SuffixPlaceholder: []byte(` world`),
+	})
+	inputKeys := []string{
+		`bonjour world`,
+		`hello world`,
+		`hi world`,
+	}
+	for _, k := range inputKeys {
+		require.NoError(t, w.Add(base.MakeInternalKey([]byte(k), 0, InternalKeyKindSet), nil))
+	}
+	require.NoError(t, w.Close())
+
+	// The SSTable's SuffixReplacement property should be
+	// ` world world`, indicating that the suffix placeholder is
+	// ` world` and that the replacement value is not yet known.
+	m, err := w.Metadata()
+	require.NoError(t, err)
+	require.Equal(t, []byte(` world world`), m.Properties.SuffixReplacement)
+
+	// Trying to read the sstable without a replacement value in the sstable
+	// property should error. This behavior helps avoid accidental reading of
+	// unfinished sstables.
+	readOpts := ReaderOptions{Comparer: &comparer}
+	f, err = mem.Open("prereplacement.sst")
+	require.NoError(t, err)
+	_, err = NewReader(f, readOpts)
+	require.EqualError(t, err, `pebble: unreplaced suffix`)
+
+	// Perform the replacement.
+	f, err = mem.Open("prereplacement.sst")
+	require.NoError(t, err)
+	sstableBytes, err := ioutil.ReadAll(f)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	require.NoError(t, ReplaceSuffix(sstableBytes, readOpts, []byte(` world`), []byte(` monde`)))
+
+	// Read the file post-replacement. All the ` world` suffixes should be
+	// replaced with ` monde`.
+	f = vfs.NewMemFile(sstableBytes)
+	r, err := NewReader(f, readOpts)
+	require.NoError(t, err)
+	defer r.Close()
+	iter, err := r.NewIter(nil, nil)
+	require.NoError(t, err)
+	defer iter.Close()
+	var got []string
+	for k, _ := iter.First(); k != nil; k, _ = iter.Next() {
+		got = append(got, string(k.UserKey))
+	}
+	want := []string{`bonjour monde`, `hello monde`, `hi monde`}
+	require.Equal(t, want, got)
+}
+
+func TestReplaceSuffixErrors(t *testing.T) {
+	mem := vfs.NewMem()
+	writeFile := func(wo WriterOptions, keys ...string) ([]byte, error) {
+		filename := fmt.Sprintf("%s.sst", t.Name())
+		f, err := mem.Create(filename)
+		require.NoError(t, err)
+		w := NewWriter(f, wo)
+		for _, k := range keys {
+			err = w.Add(base.MakeInternalKey([]byte(k), 0, InternalKeyKindSet), nil)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if err = w.Close(); err != nil {
+			return nil, err
+		}
+		f, err = mem.Open(filename)
+		require.NoError(t, err)
+		defer f.Close()
+		b, err := ioutil.ReadAll(f)
+		require.NoError(t, err)
+		return b, err
+	}
+
+	comparer := *base.DefaultComparer
+	comparer.Split = spaceSplit
+
+	t.Run("need split function", func(t *testing.T) {
+		_, err := writeFile(WriterOptions{
+			Comparer:          base.DefaultComparer,
+			SuffixPlaceholder: []byte{0xde, 0xad, 0xbe, 0xef},
+		}, "hello world")
+		require.EqualError(t, err, `pebble: SuffixPlaceholder requires a comparer Split function`)
+	})
+	t.Run("all suffixes must match", func(t *testing.T) {
+		_, err := writeFile(WriterOptions{
+			Comparer:          &comparer,
+			SuffixPlaceholder: []byte(" world"),
+		}, "hello world", "hi everyone")
+		require.EqualError(t, err, `pebble: all keys must contain the suffix placeholder`)
+	})
+	t.Run("replacement and placeholder must be equal lengths", func(t *testing.T) {
+		prereplacementFile, err := writeFile(WriterOptions{
+			Comparer:          &comparer,
+			SuffixPlaceholder: []byte(" world"),
+		}, "hello world")
+		require.NoError(t, err)
+		err = ReplaceSuffix(prereplacementFile, ReaderOptions{Comparer: &comparer},
+			[]byte(" world"),
+			[]byte(" universe"))
+		require.EqualError(t, err, `pebble: placeholder and replacement suffixes must be equal length`)
+	})
+	t.Run("sstable must contain suffix replacement property", func(t *testing.T) {
+		prereplacementFile, err := writeFile(WriterOptions{
+			Comparer:          &comparer,
+			SuffixPlaceholder: nil, /* no suffix replacement */
+		}, "hello world")
+		require.NoError(t, err)
+		err = ReplaceSuffix(prereplacementFile, ReaderOptions{Comparer: &comparer},
+			[]byte(" world"),
+			[]byte(" globe"))
+		require.EqualError(t, err, `pebble: sstable does not support suffix replacement`)
+	})
+	t.Run("ReplaceSuffix placeholder must match property's placeholder", func(t *testing.T) {
+		prereplacementFile, err := writeFile(WriterOptions{
+			Comparer:          &comparer,
+			SuffixPlaceholder: []byte(" world"),
+		}, "hello world")
+		require.NoError(t, err)
+		err = ReplaceSuffix(prereplacementFile, ReaderOptions{Comparer: &comparer},
+			[]byte(" globe"),
+			[]byte(" monde"))
+		require.EqualError(t, err, `pebble: sstable created with a different placeholder suffix`)
 	})
 }
 

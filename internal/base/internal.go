@@ -78,6 +78,10 @@ const (
 	// necessary because sstable boundaries are inclusive, while the end key of a
 	// range deletion tombstone is exclusive.
 	InternalKeyRangeDeleteSentinel = (InternalKeySeqNumMax << 8) | uint64(InternalKeyKindRangeDelete)
+
+	// InternalKeyTrailerLength is the length in bytes of the internal key
+	// trailer encoding the key kind and sequence number.
+	InternalKeyTrailerLength = 8
 )
 
 var internalKeyKindNames = []string{
@@ -179,7 +183,7 @@ func ParseInternalKey(s string) InternalKey {
 
 // DecodeInternalKey decodes an encoded internal key. See InternalKey.Encode().
 func DecodeInternalKey(encodedKey []byte) InternalKey {
-	n := len(encodedKey) - 8
+	n := len(encodedKey) - InternalKeyTrailerLength
 	var trailer uint64
 	if n >= 0 {
 		trailer = binary.LittleEndian.Uint64(encodedKey[n:])
@@ -220,8 +224,8 @@ func (k InternalKey) Encode(buf []byte) {
 }
 
 // EncodeTrailer returns the trailer encoded to an 8-byte array.
-func (k InternalKey) EncodeTrailer() [8]byte {
-	var buf [8]byte
+func (k InternalKey) EncodeTrailer() [InternalKeyTrailerLength]byte {
+	var buf [InternalKeyTrailerLength]byte
 	binary.LittleEndian.PutUint64(buf[:], k.Trailer)
 	return buf
 }
@@ -265,7 +269,7 @@ func (k InternalKey) Successor(cmp Compare, succ Successor, buf []byte) Internal
 
 // Size returns the encoded size of the key.
 func (k InternalKey) Size() int {
-	return len(k.UserKey) + 8
+	return len(k.UserKey) + InternalKeyTrailerLength
 }
 
 // SetSeqNum sets the sequence number component of the key.
