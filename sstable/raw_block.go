@@ -85,6 +85,14 @@ func (i *rawBlockIter) readEntry() {
 	i.nextOffset = int32(uintptr(ptr)-uintptr(i.ptr)) + int32(value)
 }
 
+func (i *rawBlockIter) valueLocation() (offset, length uint32) {
+	ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(i.offset))
+	_ /*shared*/, ptr = decodeVarint(ptr)
+	unshared, ptr := decodeVarint(ptr)
+	value, ptr := decodeVarint(ptr)
+	return uint32(uintptr(ptr) + uintptr(unshared) - uintptr(i.ptr) - uintptr(i.offset)), value
+}
+
 func (i *rawBlockIter) loadEntry() {
 	i.readEntry()
 	i.ikey.UserKey = i.key
