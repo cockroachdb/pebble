@@ -1092,6 +1092,7 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 	if isCompacting {
 		return nil
 	}
+	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
 	// Fail-safe to protect against compacting the same sstable concurrently.
 	if !inputRangeAlreadyCompacting(env, pc) {
 		return pc
