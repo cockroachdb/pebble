@@ -1428,7 +1428,6 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 						},
 					},
 				}
-				opts.private.disableTableStats = true
 				var err error
 				d, err = runDBDefineCmd(td, opts)
 				if err != nil {
@@ -1444,7 +1443,21 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				d.mu.Unlock()
 				return s
 
+			// TODO(travers): Rather than setting hints manually, rely on the
+			// code itself to generate the hints, and instead assert in tests
+			// that the hints are as expected. However, this directive still
+			// needs to allow for hints to be forcibly added.
 			case "set-hints":
+				force := false
+				for _, arg := range td.CmdArgs {
+					switch arg.Key {
+					case "force":
+						force, _ = strconv.ParseBool(arg.Vals[0])
+					default:
+						return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
+					}
+				}
+
 				d.mu.Lock()
 				defer d.mu.Unlock()
 				d.mu.compact.deletionHints = d.mu.compact.deletionHints[:0]
@@ -1457,17 +1470,27 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 
 					var tombstoneFile *fileMetadata
 					tombstoneLevel := int(parseUint64(parts[0][1:]))
-					// Find the file in the current version.
-					v := d.mu.versions.currentVersion()
-					overlaps := v.Overlaps(tombstoneLevel, d.opts.Comparer.Compare, start, end).Iter()
-					for m := overlaps.First(); m != nil; m = overlaps.Next() {
-						if m.FileNum.String() == parts[1] {
-							tombstoneFile = m
+
+					if !force {
+						// Find the file in the current version.
+						v := d.mu.versions.currentVersion()
+						overlaps := v.Overlaps(tombstoneLevel, d.opts.Comparer.Compare, start, end)
+						iter := overlaps.Iter()
+						for m := iter.First(); m != nil; m = iter.Next() {
+							if m.FileNum.String() == parts[1] {
+								tombstoneFile = m
+							}
+						}
+					} else {
+						// Set file number to the value provided in the input.
+						tombstoneFile = &fileMetadata{
+							FileNum: base.FileNum(parseUint64(parts[1])),
 						}
 					}
+
 					h := deleteCompactionHint{
-						start:                   []byte(parts[2]),
-						end:                     []byte(parts[3]),
+						start:                   start,
+						end:                     end,
 						fileSmallestSeqNum:      parseUint64(parts[4]),
 						tombstoneLevel:          tombstoneLevel,
 						tombstoneFile:           tombstoneFile,
@@ -1477,6 +1500,21 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					d.mu.compact.deletionHints = append(d.mu.compact.deletionHints, h)
 					fmt.Fprintln(&buf, h.String())
 				}
+				return buf.String()
+
+			case "get-hints":
+				var buf bytes.Buffer
+				d.mu.Lock()
+				defer d.mu.Unlock()
+
+				hints := d.mu.compact.deletionHints
+				if len(hints) == 0 {
+					return "(none)"
+				}
+				for _, h := range hints {
+					buf.WriteString(h.String() + "\n")
+				}
+
 				return buf.String()
 
 			case "maybe-compact":
@@ -1515,6 +1553,59 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 				d.mu.Unlock()
 				return s
+
+			case "close-snapshot":
+				seqNum, err := strconv.ParseUint(strings.TrimSpace(td.Input), 0, 64)
+				if err != nil {
+					return err.Error()
+				}
+				d.mu.Lock()
+				var s *Snapshot
+				l := &d.mu.snapshots
+				for i := l.root.next; i != &l.root; i = i.next {
+					if i.seqNum == seqNum {
+						s = i
+					}
+				}
+				d.mu.Unlock()
+				if s == nil {
+					return "(not found)"
+				} else if err := s.Close(); err != nil {
+					return err.Error()
+				}
+
+				compactionString := func() string {
+					for d.mu.compact.compactingCount > 0 {
+						d.mu.compact.cond.Wait()
+					}
+
+					s := "(none)"
+					if compactInfo != nil {
+						// JobID's aren't deterministic, especially w/ table stats
+						// enabled. Use a fixed job ID for data-driven test output.
+						compactInfo.JobID = 100
+						s = compactInfo.String()
+						compactInfo = nil
+					}
+					return s
+				}
+
+				d.mu.Lock()
+				// Closing the snapshot may have triggered a compaction.
+				str := compactionString()
+				d.mu.Unlock()
+				return str
+
+			case "wait-pending-table-stats":
+				return runTableStatsCmd(td, d)
+
+			case "iter":
+				snap := Snapshot{
+					db:     d,
+					seqNum: InternalKeySeqNumMax,
+				}
+				iter := snap.NewIter(nil)
+				return runIterCmd(td, iter)
 
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
