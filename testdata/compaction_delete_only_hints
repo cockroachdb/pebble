@@ -169,3 +169,83 @@ Deletion hints:
   (none)
 Compactions:
   (none)
+
+# A deletion hint present on an sstable in a higher level should NOT result in a
+# deletion-only compaction incorrectly removing an sstable in L6 following an
+# elision-only compaction that zeroes the sequence numbers in an L6 table.
+#
+# This is a regression test for pebble#1285.
+
+# Create an sstable at L6. We expect that the SET survives the following
+# sequence of compactions.
+define snapshots=(10, 25)
+L6
+a.SET.20:b a.RANGEDEL.15:z
+----
+6:
+  000004:[a#20,SET-z#72057594037927935,RANGEDEL]
+
+# Place a compaction hint on a non-existent table in a higher level in the LSM.
+#
+# The selection of the sequence numbers for the hints is nuanced, and warrants
+# some explanation. The largest tombstone sequence number (27) and file smallest
+# sequence number (0) were chosen such that they fall into different snapshot
+# stripes, which ensures the hint is not resolved and dropped. The deletion
+# range 5-27 is also chosen such that it covers the sequence number range from
+# the table, i.e. 15-20, which *appears* to make the keys eligible for deletion.
+set-hints force=true
+L0.000001 a-z 0 5-27
+----
+L0.000001 a-z seqnums(tombstone=5-27, file-smallest=0)
+
+# Populate stats on the table. Without stats on the table, an elision-only
+# compaction cannot take place.
+wait-pending-table-stats
+000004
+----
+num-entries: 2
+num-deletions: 1
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 26
+
+# Hints on the table are unchanged, as the new sstable is at L6, and hints are
+# not generated on tables at this level.
+get-hints
+----
+L0.000001 a-z seqnums(tombstone=5-27, file-smallest=0)
+
+# Closing snapshot 10 triggers an elision-only compaction in L6, as the earliest
+# snapshot that remains open is 25, and this is greater than the largest
+# sequence number present in the L6 sstable (i.e. 20).
+close-snapshot
+10
+----
+[JOB 100] compacted L6 [000004] (850 B) + L6 [] (0 B) -> L6 [000005] (771 B), in 1.0s, output rate 771 B/s
+
+# The deletion hint was removed by the elision-only compaction.
+get-hints
+----
+(none)
+
+# The LSM contains the key, as expected.
+iter
+first
+next
+----
+a:b
+.
+
+# Closing the next snapshot should NOT trigger another compaction, as the
+# deletion hint was removed in the elision-only compaction.
+close-snapshot
+25
+----
+(none)
+
+# The key remains in the LSM.
+iter
+first
+next
+----
+a:b
+.

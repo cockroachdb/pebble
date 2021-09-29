@@ -1071,6 +1071,7 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 	// compaction unit.
 	pc = newPickedCompaction(p.opts, p.vers, numLevels-1, p.baseLevel)
 	pc.startLevel.files = expandToAtomicUnit(p.opts.Comparer.Compare, p.elisionCandidate.Slice())
+	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
 
 	p.elisionThreshold = nil
 	p.elisionCandidate = nil
