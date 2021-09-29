@@ -585,8 +585,10 @@ func (d *DB) Ingest(paths []string) error {
 			return
 		}
 
-		// Update the sequence number for all of the sstables, both in the metadata
-		// and the global sequence number property on disk.
+		// Update the sequence number for all of the sstables in the
+		// metadata. Writing the metadata to the manifest when the
+		// version edit is applied is the mechanism that persists the
+		// sequence number. The sstables themselves are left unmodified.
 		if err = ingestUpdateSeqNum(d.opts, d.dirname, seqNum, meta); err != nil {
 			return
 		}
