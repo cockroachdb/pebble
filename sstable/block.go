@@ -22,6 +22,9 @@ func uvarintLen(v uint32) int {
 }
 
 type blockWriter struct {
+	// split, if set, will prevent sharing any portion of the key
+	// after the split point.
+	split           Split
 	restartInterval int
 	nEntries        int
 	nextRestart     int
@@ -39,13 +42,19 @@ func (w *blockWriter) store(keySize int, value []byte) {
 		w.nextRestart = w.nEntries + w.restartInterval
 		w.restarts = append(w.restarts, uint32(len(w.buf)))
 	} else {
-		// TODO(peter): Manually inlined version of base.SharedPrefixLen(). This
-		// is 3% faster on BenchmarkWriter on go1.16. Remove if future versions
-		// show this to not be a performance win. For now, functions that use of
-		// unsafe cannot be inlined.
-		n := len(w.curKey)
-		if n > len(w.prevKey) {
-			n = len(w.prevKey)
+		// This is adapted from base.SharedPrefixLen. Unlike SharedPrefixLen,
+		// this version prevents the sharing of any suffix indicated by Split.
+		var n int
+		if w.split != nil {
+			n = w.split(w.curKey)
+			if p := w.split(w.prevKey); n > p {
+				n = p
+			}
+		} else {
+			n = len(w.curKey)
+			if n > len(w.prevKey) {
+				n = len(w.prevKey)
+			}
 		}
 		asUint64 := func(b []byte, i int) uint64 {
 			return binary.LittleEndian.Uint64(b[i:])
@@ -225,6 +234,8 @@ type blockIter struct {
 	key []byte
 	// fullKey is a buffer used for key prefix decompression.
 	fullKey []byte
+	// unsharedKey is the unshared suffix of key.
+	unsharedKey []byte
 	// val contains the value the iterator is currently pointed at. If non-nil,
 	// this points to a slice of the block data.
 	val []byte
@@ -392,14 +403,14 @@ func (i *blockIter) readEntry() {
 		ptr = unsafe.Pointer(uintptr(ptr) + 5)
 	}
 
-	unsharedKey := getBytes(ptr, int(unshared))
-	i.fullKey = append(i.fullKey[:shared], unsharedKey...)
+	i.unsharedKey = getBytes(ptr, int(unshared))
+	i.fullKey = append(i.fullKey[:shared], i.unsharedKey...)
 	if shared == 0 {
 		// Provide stability for the key across positioning calls if the key
 		// doesn't share a prefix with the previous key. This removes requiring the
 		// key to be copied if the caller knows the block has a restart interval of
 		// 1. An important example of this is range-del blocks.
-		i.key = unsharedKey
+		i.key = i.unsharedKey
 	} else {
 		i.key = i.fullKey
 	}
