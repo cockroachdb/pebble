@@ -167,7 +167,12 @@ func (t *test) restartDB() error {
 		return nil
 	}
 	t.opts.Cache.Ref()
-	fs := vfs.Root(t.opts.FS).(*vfs.MemFS)
+	fs, ok := vfs.Root(t.opts.FS).(*vfs.MemFS)
+	if !ok {
+		// We can't do this if we're not using a mem fs.
+		return nil
+	}
+
 	fs.SetIgnoreSyncs(true)
 	if err := t.db.Close(); err != nil {
 		return err
