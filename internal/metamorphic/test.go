@@ -167,13 +167,18 @@ func (t *test) restartDB() error {
 		return nil
 	}
 	t.opts.Cache.Ref()
-	fs := vfs.Root(t.opts.FS).(*vfs.MemFS)
-	fs.SetIgnoreSyncs(true)
+	// The fs isn't necessarily a MemFS.
+	fs, ok := vfs.Root(t.opts.FS).(*vfs.MemFS)
+	if ok {
+		fs.SetIgnoreSyncs(true)
+	}
 	if err := t.db.Close(); err != nil {
 		return err
 	}
-	fs.ResetToSyncedState()
-	fs.SetIgnoreSyncs(false)
+	if ok {
+		fs.ResetToSyncedState()
+		fs.SetIgnoreSyncs(false)
+	}
 	err := withRetries(func() (err error) {
 		t.db, err = pebble.Open(t.dir, t.opts)
 		return err
