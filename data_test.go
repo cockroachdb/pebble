@@ -444,6 +444,12 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			default:
 				return nil, errors.Errorf("Unrecognized %q %q arg value: %q", td.Cmd, arg.Key, arg.Vals[0])
 			}
+		case "enable-table-stats":
+			enable, err := strconv.ParseBool(arg.Vals[0])
+			if err != nil {
+				return nil, errors.Errorf("%s: could not parse %q as bool: %s", td.Cmd, arg.Vals[0], err)
+			}
+			opts.private.disableTableStats = !enable
 		default:
 			return nil, errors.Errorf("%s: unknown arg: %s", td.Cmd, arg.Key)
 		}
