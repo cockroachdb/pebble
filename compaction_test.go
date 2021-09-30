@@ -1669,6 +1669,11 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 						},
 					},
 				}
+
+				// Disable stats by default. This can be overridden with the
+				// 'enable-table-stats=true' option to the 'define' command.
+				opts.private.disableTableStats = true
+
 				var err error
 				d, err = runDBDefineCmd(td, opts)
 				if err != nil {
