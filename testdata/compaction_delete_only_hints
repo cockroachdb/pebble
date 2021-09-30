@@ -177,8 +177,9 @@ Compactions:
 # This is a regression test for pebble#1285.
 
 # Create an sstable at L6. We expect that the SET survives the following
-# sequence of compactions.
-define snapshots=(10, 25)
+# sequence of compactions. Note that this test depends on stats being present on
+# the sstables, so we re-enable the off-by-default option.
+define snapshots=(10, 25) enable-table-stats=true
 L6
 a.SET.20:b a.RANGEDEL.15:z
 ----
