@@ -2,9 +2,13 @@ name: Test
 
 on:
   push:
-    branches: [ master ]
+    branches:
+    - master
+    - crl-release-*
   pull_request:
-    branches: [ master ]
+    branches:
+    - master
+    - crl-release-*
 
 jobs:
 
