@@ -46,7 +46,6 @@ type rawBlockIter struct {
 	ikey        InternalKey
 	cached      []blockEntry
 	cachedBuf   []byte
-	err         error
 }
 
 func newRawBlockIter(cmp Compare, block block) (*rawBlockIter, error) {
@@ -270,12 +269,12 @@ func (i *rawBlockIter) Valid() bool {
 // Error implements internalIterator.Error, as documented in the pebble
 // package.
 func (i *rawBlockIter) Error() error {
-	return i.err
+	return nil
 }
 
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *rawBlockIter) Close() error {
 	i.val = nil
-	return i.err
+	return nil
 }
