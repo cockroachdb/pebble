@@ -1076,7 +1076,15 @@ func (i *Iterator) Close() error {
 			// Copy pending read compactions using db.mu.Lock()
 			i.readState.db.mu.Lock()
 			i.readState.db.mu.compact.readCompactions = append(i.readState.db.mu.compact.readCompactions, i.readSampling.pendingCompactions...)
+			reschedule := i.readState.db.mu.compact.rescheduleReadCompaction
+			i.readState.db.mu.compact.rescheduleReadCompaction = false
+			concurrentCompactions := i.readState.db.mu.compact.compactingCount
 			i.readState.db.mu.Unlock()
+
+			if reschedule && concurrentCompactions == 0 {
+				i.readState.db.compactionSchedulers.Add(1)
+				go i.readState.db.maybeScheduleCompactionAsync()
+			}
 		}
 
 		i.readState.unref()
@@ -1235,8 +1243,10 @@ func (stats *IteratorStats) String() string {
 func (stats *IteratorStats) SafeFormat(s redact.SafePrinter, verb rune) {
 	for i := range stats.ForwardStepCount {
 		switch IteratorStatsKind(i) {
-		case InterfaceCall: s.SafeString("(interface (dir, seek, step): ")
-		case InternalIterCall: s.SafeString(", (internal (dir, seek, step): ")
+		case InterfaceCall:
+			s.SafeString("(interface (dir, seek, step): ")
+		case InternalIterCall:
+			s.SafeString(", (internal (dir, seek, step): ")
 		}
 		s.Printf("(fwd, %d, %d), (rev, %d, %d))",
 			redact.Safe(stats.ForwardSeekCount[i]), redact.Safe(stats.ForwardStepCount[i]),

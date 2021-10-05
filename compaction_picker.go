@@ -41,8 +41,9 @@ type compactionPicker interface {
 
 // readCompactionEnv is used to hold data required to perform read compactions
 type readCompactionEnv struct {
-	readCompactions *[]readCompaction
-	flushing        bool
+	readCompactions          *[]readCompaction
+	flushing                 bool
+	rescheduleReadCompaction *bool
 }
 
 // Information about in-progress compactions provided to the compaction picker. These are used to
@@ -1024,6 +1025,24 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 
 	if pc := p.pickReadTriggeredCompaction(env); pc != nil {
 		return pc
+	}
+
+	// NB: This should only be run if a read compaction wasn't
+	// scheduled.
+	//
+	// We won't be scheduling a read compaction right now, and in
+	// read heavy workloads, compactions won't be scheduled frequently
+	// because flushes aren't frequent. So we need to signal to the
+	// iterator to schedule a compaction when it adds compactions to
+	// the read compaction queue.
+	//
+	// We need the nil check here because without it, we have some
+	// tests which don't set that variable fail. Since there's a
+	// chance that one of those tests wouldn't want extra compactions
+	// to be scheduled, I added this check here, instead of
+	// setting rescheduleReadCompaction in those tests.
+	if env.readCompactionEnv.rescheduleReadCompaction != nil {
+		*env.readCompactionEnv.rescheduleReadCompaction = true
 	}
 
 	return nil
