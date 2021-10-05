@@ -43,6 +43,7 @@ type compactionPicker interface {
 type readCompactionEnv struct {
 	readCompactions *[]readCompaction
 	flushing        bool
+	rescheduleReadCompaction              *bool
 }
 
 // Information about in-progress compactions provided to the compaction picker. These are used to
@@ -1024,6 +1025,12 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 
 	if pc := p.pickReadTriggeredCompaction(env); pc != nil {
 		return pc
+	} else {
+		// We won't be scheduling a read compaction, and in read
+		// heavy workloads, compactions won't be scheduled during flushes,
+		// so we need to signal to the iterator to schedule a compaction
+		// when it adds compactions to the read compaction queue.
+		*env.readCompactionEnv.rescheduleReadCompaction = true //nolint
 	}
 
 	return nil
