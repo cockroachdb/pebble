@@ -372,6 +372,10 @@ func TestBatchIncrement(t *testing.T) {
 		if got != want {
 			t.Errorf("input=%d: got %d, want %d", tc, got, want)
 		}
+		_, count := ReadBatch(b.Repr())
+		if got != want {
+			t.Errorf("input=%d: got %d, want %d", tc, count, want)
+		}
 	}
 
 	err := func() (err error) {

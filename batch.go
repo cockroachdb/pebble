@@ -24,6 +24,7 @@ import (
 )
 
 const (
+	batchCountOffset     = 8
 	batchHeaderLen       = 12
 	batchInitialSize     = 1 << 10 // 1 KB
 	batchMaxRetainedSize = 1 << 20 // 1 MB
@@ -886,13 +887,15 @@ func batchDecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
 // BatchReader iterates over the entries contained in a batch.
 type BatchReader []byte
 
-// MakeBatchReader constructs a BatchReader from a batch representation. The
-// header (containing the batch count and seqnum) is ignored.
-func MakeBatchReader(repr []byte) BatchReader {
+// ReadBatch constructs a BatchReader from a batch representation.  The
+// header is not validated. ReadBatch returns a new batch reader and the
+// count of entries contained within the batch.
+func ReadBatch(repr []byte) (r BatchReader, count uint32) {
 	if len(repr) <= batchHeaderLen {
-		return nil
+		return nil, count
 	}
-	return repr[batchHeaderLen:]
+	count = binary.LittleEndian.Uint32(repr[batchCountOffset:batchHeaderLen])
+	return repr[batchHeaderLen:], count
 }
 
 // Next returns the next entry in this batch. The final return value is false
