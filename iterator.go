@@ -1076,7 +1076,14 @@ func (i *Iterator) Close() error {
 			// Copy pending read compactions using db.mu.Lock()
 			i.readState.db.mu.Lock()
 			i.readState.db.mu.compact.readCompactions = append(i.readState.db.mu.compact.readCompactions, i.readSampling.pendingCompactions...)
+			reschedule := i.readState.db.mu.compact.rescheduleReadCompaction
+			i.readState.db.mu.compact.rescheduleReadCompaction = false
 			i.readState.db.mu.Unlock()
+
+			if reschedule {
+				i.readState.db.compactionSchedulers.Add(1)
+				go i.readState.db.maybeScheduleCompactionAsync()
+			}
 		}
 
 		i.readState.unref()
