@@ -437,8 +437,7 @@ func (c *tableCacheShard) unrefValue(v *tableCacheValue) {
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
 func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *tableCacheValue {
-	// Fast-path for a hit in the cache. We grab the lock in shared mode, and use
-	// a batching mechanism to perform updates to the LRU list.
+	// Fast-path for a hit in the cache.
 	c.mu.RLock()
 	key := tableCacheKey{dbOpts.cacheID, meta.FileNum}
 	if n := c.mu.nodes[key]; n != nil && n.value != nil {
