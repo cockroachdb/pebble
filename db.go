@@ -229,7 +229,7 @@ type DB struct {
 	// updates.
 	logRecycler logRecycler
 
-	closed   *atomic.Value
+	closed   atomic.Value
 	closedCh chan struct{}
 
 	compactionLimiter limiter
