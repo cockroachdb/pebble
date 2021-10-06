@@ -691,5 +691,97 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 	// The ingestion may have pushed a level over the threshold for compaction,
 	// so check to see if one is necessary and schedule it.
 	d.maybeScheduleCompaction()
+	d.maybeValidateSSTables(ve.NewFiles)
 	return ve, nil
+}
+
+// maybeValidateSSTables adds the slice of newFileEntrys to the pending queue of
+// files to be validated, when the feature is enabled.
+// DB.mu must be locked when calling.
+func (d *DB) maybeValidateSSTables(newFiles []newFileEntry) {
+	// Only add to the validation queue when the feature is enabled.
+	if !d.opts.Experimental.ValidateOnIngest {
+		return
+	}
+
+	d.mu.tableValidation.pending = append(d.mu.tableValidation.pending, newFiles...)
+	if d.shouldValidateSSTables() {
+		go d.validateSSTables()
+	}
+}
+
+// shouldValidateSSTables returns true if SSTable validation should run.
+// DB.mu must be locked when calling.
+func (d *DB) shouldValidateSSTables() bool {
+	ok := !d.mu.tableValidation.validating
+	ok = ok && d.closed.Load() == nil
+	ok = ok && d.opts.Experimental.ValidateOnIngest
+	ok = ok && len(d.mu.tableValidation.pending) > 0
+	return ok
+}
+
+// validateSSTables runs a round of validation on the tables in the pending
+// queue.
+func (d *DB) validateSSTables() {
+	d.mu.Lock()
+	if !d.shouldValidateSSTables() {
+		d.mu.Unlock()
+		return
+	}
+
+	pending := d.mu.tableValidation.pending
+	d.mu.tableValidation.pending = nil
+	d.mu.tableValidation.validating = true
+	jobID := d.mu.nextJobID
+	d.mu.nextJobID++
+	rs := d.loadReadState()
+
+	// Drop DB.mu before performing IO.
+	d.mu.Unlock()
+
+	// Validate all tables in the pending queue. This could lead to a situation
+	// where we are starving IO from other tasks due to having to page through
+	// all the blocks in all the sstables in the queue.
+	// TODO(travers): Add some form of pacing to avoid IO starvation.
+	for _, f := range pending {
+		// The file may have been moved or deleted since it was ingested, in
+		// which case we skip.
+		if !rs.current.Contains(f.Level, d.cmp, f.Meta) {
+			// Assume the file was moved to a lower level. It is rare enough
+			// that a table is moved or deleted between the time it was ingested
+			// and the time the validation routine runs that the overall cost of
+			// this inner loop is tolerably low, when amortized over all
+			// ingested tables.
+			found := false
+			for i := f.Level + 1; i < numLevels; i++ {
+				if rs.current.Contains(i, d.cmp, f.Meta) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+
+		err := d.tableCache.withReader(f.Meta, func(r *sstable.Reader) error {
+			return r.ValidateBlockChecksums()
+		})
+		// TODO(travers): Hook into the corruption reporting pipeline, once
+		// available. See pebble#1192.
+		d.opts.EventListener.TableValidated(TableValidatedInfo{
+			JobID: jobID,
+			Meta:  f.Meta,
+			Err:   err,
+		})
+	}
+	rs.unref()
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.mu.tableValidation.validating = false
+	d.mu.tableValidation.cond.Broadcast()
+	if d.shouldValidateSSTables() {
+		go d.validateSSTables()
+	}
 }

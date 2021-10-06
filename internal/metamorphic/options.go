@@ -219,8 +219,9 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	}
 	opts.Experimental.L0CompactionConcurrency = 1 + rng.Intn(4)    // 1-4
 	opts.Experimental.MinDeletionRate = 1 << uint(20+rng.Intn(10)) // 1MB - 1GB
-	opts.L0CompactionThreshold = 1 + rng.Intn(100)                 // 1 - 100
-	opts.L0StopWritesThreshold = 1 + rng.Intn(100)                 // 1 - 100
+	opts.Experimental.ValidateOnIngest = rng.Intn(2) != 0
+	opts.L0CompactionThreshold = 1 + rng.Intn(100) // 1 - 100
+	opts.L0StopWritesThreshold = 1 + rng.Intn(100) // 1 - 100
 	if opts.L0StopWritesThreshold < opts.L0CompactionThreshold {
 		opts.L0StopWritesThreshold = opts.L0CompactionThreshold
 	}
