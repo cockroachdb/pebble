@@ -363,6 +363,12 @@ type Options struct {
 		//
 		// NOTE: callers should take care to not mutate the key being validated.
 		KeyValidationFunc func(userKey []byte) error
+
+		// ValidateOnIngest schedules validation of sstables after they have
+		// been ingested.
+		//
+		// By default, this value is false.
+		ValidateOnIngest bool
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -767,6 +773,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "%s", o.TablePropertyCollectors[i]().Name())
 	}
 	fmt.Fprintf(&buf, "]\n")
+	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
 
@@ -979,6 +986,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				}
 			case "table_property_collectors":
 				// TODO(peter): set o.TablePropertyCollectors
+			case "validate_on_ingest":
+				o.Experimental.ValidateOnIngest, err = strconv.ParseBool(value)
 			case "wal_dir":
 				o.WALDir = value
 			case "wal_bytes_per_sync":
