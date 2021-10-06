@@ -1207,6 +1207,226 @@ func TestIngestCleanup(t *testing.T) {
 	}
 }
 
+// fatalCapturingLogger captures a fatal error instead of panicking.
+type fatalCapturingLogger struct {
+	defaultLogger
+	err error
+}
+
+// Fatalf implements the Logger.Fatalf interface.
+func (l *fatalCapturingLogger) Fatalf(_ string, args ...interface{}) {
+	l.err = args[0].(error)
+}
+
+func TestIngestValidation(t *testing.T) {
+	type keyVal struct {
+		key, val []byte
+	}
+	type corruptionLocation int
+	const (
+		corruptionLocationNone corruptionLocation = iota
+		corruptionLocationStart
+		corruptionLocationEnd
+		corruptionLocationInternal
+	)
+	type errLocation int
+	const (
+		errLocationNone errLocation = iota
+		errLocationIngest
+		errLocationValidation
+	)
+	const (
+		nKeys     = 1_000
+		keySize   = 10
+		valSize   = 100
+		blockSize = 100
+
+		ingestTableName = "ext"
+	)
+
+	seed := uint64(time.Now().UnixNano())
+	rng := rand.New(rand.NewSource(seed))
+	t.Logf("rng seed = %d", seed)
+
+	testCases := []struct {
+		description string
+		cLoc        corruptionLocation
+		wantErrType errLocation
+	}{
+		{
+			description: "no corruption",
+			cLoc:        corruptionLocationNone,
+			wantErrType: errLocationNone,
+		},
+		{
+			description: "start block",
+			cLoc:        corruptionLocationStart,
+			wantErrType: errLocationIngest,
+		},
+		{
+			description: "end block",
+			cLoc:        corruptionLocationEnd,
+			wantErrType: errLocationIngest,
+		},
+		{
+			description: "non-end block",
+			cLoc:        corruptionLocationInternal,
+			wantErrType: errLocationValidation,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			var wg sync.WaitGroup
+			wg.Add(1)
+
+			fs := vfs.NewMem()
+			logger := &fatalCapturingLogger{}
+			opts := &Options{
+				FS:     fs,
+				Logger: logger,
+				EventListener: EventListener{
+					TableValidated: func(i TableValidatedInfo) {
+						wg.Done()
+					},
+				},
+			}
+			opts.Experimental.ValidateOnIngest = true
+			d, err := Open("", opts)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, d.Close()) }()
+
+			corrupt := func(f vfs.File) {
+				// Compute the layout of the sstable in order to find the
+				// appropriate block locations to corrupt.
+				r, err := sstable.NewReader(f, sstable.ReaderOptions{})
+				require.NoError(t, err)
+				l, err := r.Layout()
+				require.NoError(t, err)
+				require.NoError(t, r.Close())
+
+				// Select an appropriate data block to corrupt.
+				var blockIdx int
+				switch tc.cLoc {
+				case corruptionLocationStart:
+					blockIdx = 0
+				case corruptionLocationEnd:
+					blockIdx = len(l.Data) - 1
+				case corruptionLocationInternal:
+					blockIdx = 1 + rng.Intn(len(l.Data)-2)
+				default:
+					t.Fatalf("unknown corruptionLocation: %T", tc.cLoc)
+				}
+				bh := l.Data[blockIdx]
+
+				osF, err := os.OpenFile(ingestTableName, os.O_RDWR, 0600)
+				require.NoError(t, err)
+				defer func() { require.NoError(t, osF.Close()) }()
+
+				// Corrupting a key will cause the ingestion to fail due to a
+				// malformed key, rather than a block checksum mismatch.
+				// Instead, we corrupt the last byte in the selected block,
+				// before the trailer, which corresponds to a value.
+				offset := bh.Offset + bh.Length - 1
+				_, err = osF.WriteAt([]byte("\xff"), int64(offset))
+				require.NoError(t, err)
+			}
+
+			type errT struct {
+				errLoc errLocation
+				err    error
+			}
+			runIngest := func(keyVals []keyVal) (et errT) {
+				// The vfs.File does not allow for random reads and writes.
+				// Create a disk-backed file outside of the DB FS that we can
+				// open as a regular os.File, if required.
+				tmpFS := vfs.Default
+				f, err := tmpFS.Create(ingestTableName)
+				require.NoError(t, err)
+				defer func() { _ = tmpFS.Remove(ingestTableName) }()
+
+				w := sstable.NewWriter(f, sstable.WriterOptions{
+					BlockSize:   blockSize,     // Create many smaller blocks.
+					Compression: NoCompression, // For simpler debugging.
+				})
+				for _, kv := range keyVals {
+					require.NoError(t, w.Set(kv.key, kv.val))
+				}
+				require.NoError(t, w.Close())
+
+				// Possibly corrupt the file.
+				if tc.cLoc != corruptionLocationNone {
+					f, err = tmpFS.Open(ingestTableName)
+					require.NoError(t, err)
+					corrupt(f)
+				}
+
+				// Copy the file into the DB's FS.
+				_, err = vfs.Clone(tmpFS, fs, ingestTableName, ingestTableName)
+				require.NoError(t, err)
+
+				// Ingest the external table.
+				err = d.Ingest([]string{ingestTableName})
+				if err != nil {
+					et.errLoc = errLocationIngest
+					et.err = err
+					return
+				}
+
+				// Wait for the validation on the sstable to complete.
+				wg.Wait()
+
+				// Return any error encountered during validation.
+				if logger.err != nil {
+					et.errLoc = errLocationValidation
+					et.err = logger.err
+				}
+
+				return
+			}
+
+			// Construct a set of keys to ingest.
+			var keyVals []keyVal
+			for i := 0; i < nKeys; i++ {
+				key := make([]byte, 0, keySize)
+				_, err = rng.Read(key)
+				require.NoError(t, err)
+
+				val := make([]byte, 0, valSize)
+				_, err = rng.Read(val)
+				require.NoError(t, err)
+
+				keyVals = append(keyVals, keyVal{key, val})
+			}
+
+			// Keys must be sorted.
+			sort.Slice(keyVals, func(i, j int) bool {
+				return d.cmp(keyVals[i].key, keyVals[j].key) <= 0
+			})
+
+			// Run the ingestion.
+			et := runIngest(keyVals)
+
+			// Assert we saw the errors we expect.
+			switch tc.wantErrType {
+			case errLocationNone:
+				require.Equal(t, errLocationNone, et.errLoc)
+				require.NoError(t, et.err)
+			case errLocationIngest:
+				require.Equal(t, errLocationIngest, et.errLoc)
+				require.Error(t, et.err)
+				require.True(t, errors.Is(et.err, base.ErrCorruption))
+			case errLocationValidation:
+				require.Equal(t, errLocationValidation, et.errLoc)
+				require.Error(t, et.err)
+				require.True(t, errors.Is(et.err, base.ErrCorruption))
+			default:
+				t.Fatalf("unknown wantErrType %T", tc.wantErrType)
+			}
+		})
+	}
+}
+
 // BenchmarkManySSTables measures the cost of various operations with various
 // counts of SSTables within the database.
 func BenchmarkManySSTables(b *testing.B) {

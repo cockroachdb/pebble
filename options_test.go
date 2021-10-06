@@ -96,6 +96,7 @@ func TestOptionsString(t *testing.T) {
   strict_wal_tail=true
   table_cache_shards=8
   table_property_collectors=[]
+  validate_on_ingest=false
   wal_dir=
   wal_bytes_per_sync=0
 

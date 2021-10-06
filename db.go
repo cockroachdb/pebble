@@ -376,6 +376,17 @@ type DB struct {
 			// them.
 			pending []manifest.NewFileEntry
 		}
+
+		tableValidation struct {
+			// cond is a condition variable used to signal the completion of a
+			// job to validate one or more sstables.
+			cond sync.Cond
+			// pending is a slice of metadata for sstables waiting to be
+			// validated.
+			pending []newFileEntry
+			// validating is set to true when validation is running.
+			validating bool
+		}
 	}
 
 	// Normally equal to time.Now() but may be overridden in tests.
@@ -954,6 +965,9 @@ func (d *DB) Close() error {
 	}
 	for d.mu.tableStats.loading {
 		d.mu.tableStats.cond.Wait()
+	}
+	for d.mu.tableValidation.validating {
+		d.mu.tableValidation.cond.Wait()
 	}
 
 	var err error

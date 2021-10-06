@@ -311,6 +311,22 @@ func (i TableStatsInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("[JOB %d] all initial table stats loaded", redact.Safe(i.JobID))
 }
 
+// TableValidatedInfo contains information on the result of a validation run
+// on an sstable.
+type TableValidatedInfo struct {
+	JobID int
+	Meta  *fileMetadata
+}
+
+func (i TableValidatedInfo) String() string {
+	return redact.StringWithoutMarkers(i)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (i TableValidatedInfo) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Printf("[JOB %d] validated table: %s", redact.Safe(i.JobID), i.Meta)
+}
+
 // WALCreateInfo contains info about a WAL creation event.
 type WALCreateInfo struct {
 	// JobID is the ID of the job the caused the WAL to be created.
@@ -435,6 +451,9 @@ type EventListener struct {
 	// collector has loaded statistics for all tables that existed at Open.
 	TableStatsLoaded func(TableStatsInfo)
 
+	// TableValidated is invoked after validation runs on an sstable.
+	TableValidated func(TableValidatedInfo)
+
 	// WALCreated is invoked after a WAL has been created.
 	WALCreated func(WALCreateInfo)
 
@@ -498,6 +517,9 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 	if l.TableStatsLoaded == nil {
 		l.TableStatsLoaded = func(info TableStatsInfo) {}
 	}
+	if l.TableValidated == nil {
+		l.TableValidated = func(validated TableValidatedInfo) {}
+	}
 	if l.WALCreated == nil {
 		l.WALCreated = func(info WALCreateInfo) {}
 	}
@@ -557,6 +579,9 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 			logger.Infof("%s", info)
 		},
 		TableStatsLoaded: func(info TableStatsInfo) {
+			logger.Infof("%s", info)
+		},
+		TableValidated: func(info TableValidatedInfo) {
 			logger.Infof("%s", info)
 		},
 		WALCreated: func(info WALCreateInfo) {
@@ -630,6 +655,10 @@ func TeeEventListener(a, b EventListener) EventListener {
 		TableStatsLoaded: func(info TableStatsInfo) {
 			a.TableStatsLoaded(info)
 			b.TableStatsLoaded(info)
+		},
+		TableValidated: func(info TableValidatedInfo) {
+			a.TableValidated(info)
+			b.TableValidated(info)
 		},
 		WALCreated: func(info WALCreateInfo) {
 			a.WALCreated(info)
