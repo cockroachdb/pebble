@@ -691,5 +691,75 @@ func (d *DB) ingestApply(jobID int, meta []*fileMetadata) (*versionEdit, error) 
 	// The ingestion may have pushed a level over the threshold for compaction,
 	// so check to see if one is necessary and schedule it.
 	d.maybeScheduleCompaction()
+	d.maybeValidateSSTables(meta)
 	return ve, nil
+}
+
+// maybeValidateSSTables adds the slice of fileMetadata to the pending queue of
+// files to be validated, when the feature is enabled.
+// DB.mu must be locked when calling.
+func (d *DB) maybeValidateSSTables(meta []*fileMetadata) {
+	// Only add to the validation queue when the feature is enabled.
+	if !d.opts.Experimental.ValidateOnIngest {
+		return
+	}
+
+	d.mu.tableValidation.pending = append(d.mu.tableValidation.pending, meta...)
+	if d.shouldValidateSSTables() {
+		go d.validateSSTables()
+	}
+}
+
+// shouldValidateSSTables returns true if SSTable validation should run.
+// DB.mu must be locked when calling.
+func (d *DB) shouldValidateSSTables() bool {
+	ok := !d.mu.tableValidation.validating
+	ok = ok && d.closed.Load() == nil
+	ok = ok && d.opts.Experimental.ValidateOnIngest
+	ok = ok && len(d.mu.tableValidation.pending) > 0
+	return ok
+}
+
+// validateSSTables runs a round of validation on the tables in the pending
+// queue.
+func (d *DB) validateSSTables() {
+	d.mu.Lock()
+	if !d.shouldValidateSSTables() {
+		d.mu.Unlock()
+		return
+	}
+
+	pending := d.mu.tableValidation.pending
+	d.mu.tableValidation.pending = nil
+	d.mu.tableValidation.validating = true
+	jobID := d.mu.nextJobID
+	d.mu.nextJobID++
+
+	// Drop DB.mu before performing IO.
+	d.mu.Unlock()
+
+	// Validate all tables in the pending queue. This could lead to a situation
+	// where we are starving IO from other tasks due to having to page through
+	// all the blocks in all the sstables in the queue.
+	// TODO(travers): Add some form of pacing to avoid IO starvation.
+	for _, meta := range pending {
+		err := d.tableCache.withReader(meta, func(r *sstable.Reader) error {
+			return r.ValidateBlockChecksums()
+		})
+		// TODO(travers): Hook into the corruption reporting pipeline, once
+		// available. See pebble#1192.
+		d.opts.EventListener.TableValidated(TableValidatedInfo{
+			JobID: jobID,
+			Meta:  meta,
+			Err:   err,
+		})
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.mu.tableValidation.validating = false
+	d.mu.tableValidation.cond.Broadcast()
+	if d.shouldValidateSSTables() {
+		go d.validateSSTables()
+	}
 }

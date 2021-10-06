@@ -363,6 +363,12 @@ type Options struct {
 		//
 		// NOTE: callers should take care to not mutate the key being validated.
 		KeyValidationFunc func(userKey []byte) error
+
+		// ValidateOnIngest schedules validation of sstables after they have
+		// been ingested.
+		//
+		// By default, this value is false.
+		ValidateOnIngest bool
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
