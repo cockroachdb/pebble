@@ -553,10 +553,6 @@ func (vs *versionSet) incrementCompactions(kind compactionKind) {
 	}
 }
 
-func (vs *versionSet) incrementFlushes() {
-	vs.metrics.Flush.Count++
-}
-
 func (vs *versionSet) incrementCompactionBytes(numBytes int64) {
 	atomic.AddInt64(&vs.atomic.atomicInProgressBytes, numBytes)
 }
