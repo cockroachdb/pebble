@@ -486,7 +486,7 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 		blockType = noCompressionBlockType
 	}
 
-	w.tmp[0] = blockType
+	w.tmp[0] = byte(blockType)
 
 	// Calculate the checksum.
 	var checksum uint32
