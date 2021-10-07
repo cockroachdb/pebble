@@ -26,12 +26,12 @@ import (
 )
 
 const (
-	// MinTableCacheSize is the minimum size of the table cache, for a given store.
-	MinTableCacheSize = 64
+	// minTableCacheSize is the minimum size of the table cache, for a single db.
+	minTableCacheSize = 64
 
-	// NumNonTableCacheFiles is an approximation for the number of MaxOpenFiles
-	// that we don't use for table caches, for a given store.
-	NumNonTableCacheFiles = 10
+	// numNonTableCacheFiles is an approximation for the number of files
+	// that we don't use for table caches, for a given db.
+	numNonTableCacheFiles = 10
 )
 
 var (
