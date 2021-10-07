@@ -38,8 +38,8 @@ var (
 	// ErrNotFound is returned when a get operation does not find the requested
 	// key.
 	ErrNotFound = base.ErrNotFound
-	// ErrClosed is returned when an operation is performed on a closed snapshot
-	// or DB. Use errors.Is(err, ErrClosed) to check for this error.
+	// ErrClosed is panicked when an operation is performed on a closed snapshot or
+	// DB. Use errors.Is(err, ErrClosed) to check for this error.
 	ErrClosed = errors.New("pebble: closed")
 	// ErrReadOnly is returned when a write operation is performed on a read-only
 	// database.
