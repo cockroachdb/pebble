@@ -25,6 +25,7 @@ h.sst
      14589  properties (719)
      15313  meta-index (61)
      15379  footer (53)
+     15432  EOF
 
 sstable layout
 ../sstable/testdata/h.ldb
@@ -49,6 +50,7 @@ h.ldb
      14589  properties (673)
      15267  meta-index (61)
      15333  leveldb-footer (48)
+     15381  EOF
 
 sstable layout
 ../sstable/testdata/h.table-bloom.no-compression.sst
@@ -74,6 +76,7 @@ h.table-bloom.no-compression.sst
      29805  properties (717)
      30527  meta-index (112)
      30644  footer (53)
+     30697  EOF
 
 sstable layout
 ../sstable/testdata/h.no-compression.two_level_index.sst
@@ -101,6 +104,7 @@ h.no-compression.two_level_index.sst
      27648  properties (765)
      28418  meta-index (63)
      28486  footer (53)
+     28539  EOF
 
 sstable layout
 -v
@@ -376,6 +380,7 @@ h.no-compression.two_level_index.sst
       2025    [restart 1497]
       2029    [restart 1736]
       2033    [restart 1983]
+      2041    [trailer compression=none checksum=0x13c15fb]
       2046  data (2044)
       2046    record (21 = 3 [0] + 17 + 1) [restart]
               bethought#0,SET test value formatter: 1
@@ -644,6 +649,7 @@ h.no-compression.two_level_index.sst
       4074    [restart 3522]
       4078    [restart 3785]
       4082    [restart 4030]
+      4090    [trailer compression=none checksum=0x334c5e54]
       4095  data (2039)
       4095    record (22 = 3 [0] + 18 + 1) [restart]
               complexion#0,SET test value formatter: 1
@@ -905,6 +911,7 @@ h.no-compression.two_level_index.sst
       6118    [restart 5359]
       6122    [restart 5618]
       6126    [restart 5885]
+      6134    [trailer compression=none checksum=0xa3c2c00f]
       6139  data (2036)
       6139    record (16 = 3 [0] + 12 + 1) [restart]
               dram#0,SET test value formatter: 1
@@ -1177,6 +1184,7 @@ h.no-compression.two_level_index.sst
       8159    [restart 7627]
       8163    [restart 7859]
       8167    [restart 8089]
+      8175    [trailer compression=none checksum=0xc4a3b6e0]
       8180  data (2032)
       8180    record (17 = 3 [0] + 13 + 1) [restart]
               flood#0,SET test value formatter: 1
@@ -1451,6 +1459,7 @@ h.no-compression.two_level_index.sst
      10196    [restart 9642]
      10200    [restart 9881]
      10204    [restart 10112]
+     10212    [trailer compression=none checksum=0x23db05a]
      10217  data (2042)
      10217    record (18 = 3 [0] + 14 + 1) [restart]
               health#0,SET test value formatter: 3
@@ -1716,6 +1725,7 @@ h.no-compression.two_level_index.sst
      12243    [restart 11454]
      12247    [restart 11724]
      12251    [restart 11980]
+     12259    [trailer compression=none checksum=0x935ea812]
      12264  data (2039)
      12264    record (15 = 3 [0] + 11 + 1) [restart]
               kin#0,SET test value formatter: 1
@@ -1996,6 +2006,7 @@ h.no-compression.two_level_index.sst
      14287    [restart 13682]
      14291    [restart 13924]
      14295    [restart 14160]
+     14303    [trailer compression=none checksum=0xb57d9fa6]
      14308  data (2037)
      14308    record (20 = 3 [0] + 16 + 1) [restart]
               methinks#0,SET test value formatter: 2
@@ -2268,6 +2279,7 @@ h.no-compression.two_level_index.sst
      16329    [restart 15770]
      16333    [restart 16017]
      16337    [restart 16251]
+     16345    [trailer compression=none checksum=0x88e82f4b]
      16350  data (2029)
      16350    record (19 = 3 [0] + 15 + 1) [restart]
               passing#0,SET test value formatter: 1
@@ -2529,6 +2541,7 @@ h.no-compression.two_level_index.sst
      18363    [restart 17624]
      18367    [restart 17882]
      18371    [restart 18128]
+     18379    [trailer compression=none checksum=0xa251cc65]
      18384  data (2040)
      18384    record (18 = 3 [0] + 14 + 1) [restart]
               report#0,SET test value formatter: 1
@@ -2805,6 +2818,7 @@ h.no-compression.two_level_index.sst
      20408    [restart 19826]
      20412    [restart 20061]
      20416    [restart 20303]
+     20424    [trailer compression=none checksum=0x8953c396]
      20429  data (2030)
      20429    record (16 = 3 [0] + 12 + 1) [restart]
               slay#0,SET test value formatter: 1
@@ -3079,6 +3093,7 @@ h.no-compression.two_level_index.sst
      22443    [restart 21868]
      22447    [restart 22132]
      22451    [restart 22358]
+     22459    [trailer compression=none checksum=0x53c39637]
      22464  data (2035)
      22464    record (17 = 3 [0] + 13 + 1) [restart]
               tempt#0,SET test value formatter: 1
@@ -3344,6 +3359,7 @@ h.no-compression.two_level_index.sst
      24483    [restart 23662]
      24487    [restart 23906]
      24491    [restart 24175]
+     24499    [trailer compression=none checksum=0xe12c134e]
      24504  data (2036)
      24504    record (15 = 3 [0] + 10 + 2) [restart]
               up#0,SET test value formatter: 10
@@ -3622,6 +3638,7 @@ h.no-compression.two_level_index.sst
      26524    [restart 25941]
      26528    [restart 26172]
      26532    [restart 26410]
+     26540    [trailer compression=none checksum=0x99c293d8]
      26545  data (249)
      26545    record (16 = 3 [0] + 12 + 1) [restart]
               writ#0,SET test value formatter: 2
@@ -3656,6 +3673,7 @@ h.no-compression.two_level_index.sst
      26772    record (14 = 3 [3] + 10 + 1)
               youth#0,SET test value formatter: 5
      26786    [restart 26545]
+     26794    [trailer compression=none checksum=0x2bb2856]
      26799  index (120)
      26799    block:0/2041 [restart]
      26817    block:2046/2044 [restart]
@@ -3667,6 +3685,7 @@ h.no-compression.two_level_index.sst
      26903    [restart 26839]
      26907    [restart 26858]
      26911    [restart 26876]
+     26919    [trailer compression=none checksum=0x4b1bc52e]
      26924  index (118)
      26924    block:10217/2042 [restart]
      26941    block:12264/2039 [restart]
@@ -3678,6 +3697,7 @@ h.no-compression.two_level_index.sst
      27026    [restart 26959]
      27030    [restart 26979]
      27034    [restart 26998]
+     27042    [trailer compression=none checksum=0xe1dd6a77]
      27047  index (95)
      27047    block:20429/2030 [restart]
      27068    block:22464/2035 [restart]
@@ -3687,6 +3707,7 @@ h.no-compression.two_level_index.sst
      27126    [restart 27068]
      27130    [restart 27086]
      27134    [restart 27105]
+     27142    [trailer compression=none checksum=0x3b1313e3]
      27147  top-index (70)
      27147    block:26799/120 [restart]
      27166    block:26924/118 [restart]
@@ -3694,6 +3715,7 @@ h.no-compression.two_level_index.sst
      27201    [restart 27147]
      27205    [restart 27166]
      27209    [restart 27185]
+     27217    [trailer compression=none checksum=0xd20fdc47]
      27222  range-del (421)
      27222    record (13 = 3 [0] + 9 + 1) [restart]
               a-a#0,RANGEDEL
@@ -3746,6 +3768,7 @@ h.no-compression.two_level_index.sst
      27627    [restart 27499]
      27631    [restart 27523]
      27635    [restart 27546]
+     27643    [trailer compression=none checksum=0xb93b31c5]
      27648  properties (765)
      27648    rocksdb.block.based.table.index.type (43) [restart]
      27691    rocksdb.block.based.table.prefix.filtering (20)
@@ -3779,12 +3802,21 @@ h.no-compression.two_level_index.sst
      28360    rocksdb.top-level.index.size (24)
      28384    test.key-count (21)
      28405    [restart 27648]
+     28413    [trailer compression=none checksum=0x8542f94f]
      28418  meta-index (63)
      28418    rocksdb.properties block:27648/765 [restart]
      28444    rocksdb.range_del block:27222/421 [restart]
      28469    [restart 28418]
      28473    [restart 28444]
+     28481    [trailer compression=none checksum=0xabc8467e]
      28486  footer (53)
+     28486    checksum type: crc32c
+     28487    meta: offset=28418, length=63
+     28491    index: offset=27147, length=70
+     28495    [padding]
+     28527    version: 2
+     28531    magic number: 0xf7cff485b741e288
+     28539  EOF
 
 sstable layout
 -v
@@ -3800,9 +3832,11 @@ out-of-order.sst
               b#0,SET []
               WARNING: OUT OF ORDER KEYS!
         36    [restart 0]
+        28    [trailer compression=snappy checksum=0x94ebf32b]
         33  index (22)
         33    block:0/28 [restart]
         47    [restart 33]
+        55    [trailer compression=none checksum=0xc316e0d2]
         60  properties (678)
         60    rocksdb.block.based.table.index.type (43) [restart]
        103    rocksdb.block.based.table.prefix.filtering (20)
@@ -3833,7 +3867,16 @@ out-of-order.sst
        700    rocksdb.raw.key.size (16)
        716    rocksdb.raw.value.size (14)
        730    [restart 60]
+       738    [trailer compression=none checksum=0xbbcd4fc4]
        743  meta-index (32)
        743    rocksdb.properties block:60/678 [restart]
        767    [restart 743]
+       775    [trailer compression=none checksum=0x1a67e403]
        780  footer (53)
+       780    checksum type: crc32c
+       781    meta: offset=743, length=32
+       784    index: offset=33, length=22
+       786    [padding]
+       821    version: 2
+       825    magic number: 0xf7cff485b741e288
+       833  EOF
