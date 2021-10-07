@@ -150,21 +150,6 @@ const (
 	levelDBFormatVersion  = 0
 	rocksDBFormatVersion2 = 2
 
-	// The block type gives the per-block compression format.
-	// These constants are part of the file format and should not be changed.
-	// They are different from the Compression constants because the latter
-	// are designed so that the zero value of the Compression type means to
-	// use the default compression (which is snappy).
-	// Not all compression types listed here are supported.
-	noCompressionBlockType     byte = 0
-	snappyCompressionBlockType byte = 1
-	zlibCompressionBlockType   byte = 2
-	bzip2CompressionBlockType  byte = 3
-	lz4CompressionBlockType    byte = 4
-	lz4hcCompressionBlockType  byte = 5
-	xpressCompressionBlockType byte = 6
-	zstdCompressionBlockType   byte = 7
-
 	metaPropertiesName = "rocksdb.properties"
 	metaRangeDelName   = "rocksdb.range_del"
 	metaRangeDelV2Name = "rocksdb.range_del2"
@@ -195,6 +180,65 @@ const (
 	ChecksumTypeXXHash   ChecksumType = 2
 	ChecksumTypeXXHash64 ChecksumType = 3
 )
+
+// String implements fmt.Stringer.
+func (t ChecksumType) String() string {
+	switch t {
+	case ChecksumTypeCRC32c:
+		return "crc32c"
+	case ChecksumTypeNone:
+		return "none"
+	case ChecksumTypeXXHash:
+		return "xxhash"
+	case ChecksumTypeXXHash64:
+		return "xxhash64"
+	default:
+		panic(errors.Newf("sstable: unknown checksum type: %d", t))
+	}
+}
+
+type blockType byte
+
+const (
+	// The block type gives the per-block compression format.
+	// These constants are part of the file format and should not be changed.
+	// They are different from the Compression constants because the latter
+	// are designed so that the zero value of the Compression type means to
+	// use the default compression (which is snappy).
+	// Not all compression types listed here are supported.
+	noCompressionBlockType     blockType = 0
+	snappyCompressionBlockType blockType = 1
+	zlibCompressionBlockType   blockType = 2
+	bzip2CompressionBlockType  blockType = 3
+	lz4CompressionBlockType    blockType = 4
+	lz4hcCompressionBlockType  blockType = 5
+	xpressCompressionBlockType blockType = 6
+	zstdCompressionBlockType   blockType = 7
+)
+
+// String implements fmt.Stringer.
+func (t blockType) String() string {
+	switch t {
+	case 0:
+		return "none"
+	case 1:
+		return "snappy"
+	case 2:
+		return "zlib"
+	case 3:
+		return "bzip2"
+	case 4:
+		return "lz4"
+	case 5:
+		return "lz4hc"
+	case 6:
+		return "xpress"
+	case 7:
+		return "zstd"
+	default:
+		panic(errors.Newf("sstable: unknown block type: %d", t))
+	}
+}
 
 // legacy (LevelDB) footer format:
 //    metaindex handle (varint64 offset, varint64 size)

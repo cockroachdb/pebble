@@ -1933,7 +1933,7 @@ func (r *Reader) readBlock(
 			errors.Safe(r.fileNum), errors.Safe(bh.Offset), errors.Safe(bh.Length))
 	}
 
-	typ := b[bh.Length]
+	typ := blockType(b[bh.Length])
 	b = b[:bh.Length]
 	v.Truncate(len(b))
 
@@ -2459,7 +2459,49 @@ func (l *Layout) Describe(
 		if !verbose {
 			continue
 		}
-		if b.name == "footer" || b.name == "leveldb-footer" || b.name == "filter" {
+		if b.name == "filter" {
+			continue
+		}
+
+		if b.name == "footer" || b.name == "leveldb-footer" {
+			trailer, offset := make([]byte, b.Length), b.Offset
+			_, _ = r.file.ReadAt(trailer, int64(offset))
+
+			if b.name == "footer" {
+				checksumType := ChecksumType(trailer[0])
+				fmt.Fprintf(w, "%10d    checksum type: %s\n", offset, checksumType)
+				trailer, offset = trailer[1:], offset+1
+			}
+
+			metaHandle, n := binary.Uvarint(trailer)
+			metaLen, m := binary.Uvarint(trailer[n:])
+			fmt.Fprintf(w, "%10d    meta: offset=%d, length=%d\n", offset, metaHandle, metaLen)
+			trailer, offset = trailer[n+m:], offset+uint64(n+m)
+
+			indexHandle, n := binary.Uvarint(trailer)
+			indexLen, m := binary.Uvarint(trailer[n:])
+			fmt.Fprintf(w, "%10d    index: offset=%d, length=%d\n", offset, indexHandle, indexLen)
+			trailer, offset = trailer[n+m:], offset+uint64(n+m)
+
+			fmt.Fprintf(w, "%10d    [padding]\n", offset)
+
+			trailing := 12
+			if b.name == "leveldb-footer" {
+				trailing = 8
+			}
+
+			offset += uint64(len(trailer) - trailing)
+			trailer = trailer[len(trailer)-trailing:]
+
+			if b.name == "footer" {
+				version := trailer[:4]
+				fmt.Fprintf(w, "%10d    version: %d\n", offset, binary.LittleEndian.Uint32(version))
+				trailer, offset = trailer[4:], offset+4
+			}
+
+			magicNumber := trailer
+			fmt.Fprintf(w, "%10d    magic number: 0x%x\n", offset, magicNumber)
+
 			continue
 		}
 
@@ -2490,6 +2532,15 @@ func (l *Layout) Describe(
 				fmt.Fprintf(w, "%10d    [restart %d]\n",
 					b.Offset+uint64(restarts+4*i), b.Offset+uint64(offset))
 			}
+		}
+
+		formatTrailer := func() {
+			trailer := make([]byte, blockTrailerLen)
+			offset := int64(b.Offset + b.Length)
+			_, _ = r.file.ReadAt(trailer, offset)
+			bt := blockType(trailer[0])
+			checksum := binary.LittleEndian.Uint32(trailer[1:])
+			fmt.Fprintf(w, "%10d    [trailer compression=%s checksum=0x%04x]\n", offset, bt, checksum)
 		}
 
 		var lastKey InternalKey
@@ -2529,6 +2580,7 @@ func (l *Layout) Describe(
 				lastKey.UserKey = append(lastKey.UserKey[:0], key.UserKey...)
 			}
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
+			formatTrailer()
 		case "index", "top-index":
 			iter, _ := newBlockIter(r.Compare, h.Get())
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
@@ -2542,6 +2594,7 @@ func (l *Layout) Describe(
 				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
 			}
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
+			formatTrailer()
 		case "properties":
 			iter, _ := newRawBlockIter(r.Compare, h.Get())
 			for valid := iter.First(); valid; valid = iter.Next() {
@@ -2550,6 +2603,7 @@ func (l *Layout) Describe(
 				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
 			}
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
+			formatTrailer()
 		case "meta-index":
 			iter, _ := newRawBlockIter(r.Compare, h.Get())
 			for valid := iter.First(); valid; valid = iter.Next() {
@@ -2566,10 +2620,14 @@ func (l *Layout) Describe(
 				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
 			}
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
+			formatTrailer()
 		}
 
 		h.Release()
 	}
+
+	last := blocks[len(blocks)-1]
+	fmt.Fprintf(w, "%10d  EOF\n", last.Offset+last.Length)
 }
 
 type panicFataler struct{}
