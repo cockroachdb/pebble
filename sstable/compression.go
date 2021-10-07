@@ -14,7 +14,7 @@ import (
 )
 
 // decompressBlock decompresses an SST block, with space allocated from a cache.
-func decompressBlock(cache *cache.Cache, blockType byte, b []byte) (*cache.Value, error) {
+func decompressBlock(cache *cache.Cache, blockType blockType, b []byte) (*cache.Value, error) {
 	// first obtain the decoded length.
 	var (
 		decodedLen int
@@ -72,7 +72,7 @@ func decompressBlock(cache *cache.Cache, blockType byte, b []byte) (*cache.Value
 }
 
 // compressBlock compresses an SST block, using compressBuf as the desired destination.
-func compressBlock(compression Compression, b []byte, compressedBuf []byte) (blockType byte, compressed []byte) {
+func compressBlock(compression Compression, b []byte, compressedBuf []byte) (blockType blockType, compressed []byte) {
 	switch compression {
 	case SnappyCompression:
 		return snappyCompressionBlockType, snappy.Encode(compressedBuf, b)

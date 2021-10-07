@@ -154,21 +154,6 @@ const (
 	checksumXXHash   = 2
 	checksumXXHash64 = 3
 
-	// The block type gives the per-block compression format.
-	// These constants are part of the file format and should not be changed.
-	// They are different from the Compression constants because the latter
-	// are designed so that the zero value of the Compression type means to
-	// use the default compression (which is snappy).
-	// Not all compression types listed here are supported.
-	noCompressionBlockType     byte = 0
-	snappyCompressionBlockType byte = 1
-	zlibCompressionBlockType   byte = 2
-	bzip2CompressionBlockType  byte = 3
-	lz4CompressionBlockType    byte = 4
-	lz4hcCompressionBlockType  byte = 5
-	xpressCompressionBlockType byte = 6
-	zstdCompressionBlockType   byte = 7
-
 	metaPropertiesName = "rocksdb.properties"
 	metaRangeDelName   = "rocksdb.range_del"
 	metaRangeDelV2Name = "rocksdb.range_del2"
@@ -188,6 +173,49 @@ const (
 	// properties block.
 	rocksDBCompressionOptions = "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; "
 )
+
+type blockType byte
+
+const (
+	// The block type gives the per-block compression format.
+	// These constants are part of the file format and should not be changed.
+	// They are different from the Compression constants because the latter
+	// are designed so that the zero value of the Compression type means to
+	// use the default compression (which is snappy).
+	// Not all compression types listed here are supported.
+	noCompressionBlockType blockType = iota
+	snappyCompressionBlockType
+	zlibCompressionBlockType
+	bzip2CompressionBlockType
+	lz4CompressionBlockType
+	lz4hcCompressionBlockType
+	xpressCompressionBlockType
+	zstdCompressionBlockType
+)
+
+// String implements fmt.Stringer.
+func (t blockType) String() string {
+	switch t {
+	case 0:
+		return "none"
+	case 1:
+		return "snappy"
+	case 2:
+		return "zlib"
+	case 3:
+		return "bzip2"
+	case 4:
+		return "lz4"
+	case 5:
+		return "lz4hc"
+	case 6:
+		return "xpress"
+	case 7:
+		return "zstd"
+	default:
+		panic(errors.Newf("sstable: unknown block type: %d", t))
+	}
+}
 
 // legacy (LevelDB) footer format:
 //    metaindex handle (varint64 offset, varint64 size)

@@ -5,6 +5,7 @@
 package sstable
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 )
@@ -68,11 +69,27 @@ type ChecksumType uint32
 // The available checksum types. Note that these values are not (and should not)
 // be serialized to disk (for the constants that are persisted, see table.go).
 const (
-	ChecksumTypeCRC32c ChecksumType = iota
-	ChecksumTypeNone
+	ChecksumTypeNone ChecksumType = iota
+	ChecksumTypeCRC32c
 	ChecksumTypeXXHash
 	ChecksumTypeXXHash64
 )
+
+// String implements fmt.Stringer.
+func (t ChecksumType) String() string {
+	switch t {
+	case ChecksumTypeCRC32c:
+		return "crc32c"
+	case ChecksumTypeNone:
+		return "none"
+	case ChecksumTypeXXHash:
+		return "xxhash"
+	case ChecksumTypeXXHash64:
+		return "xxhash64"
+	default:
+		panic(errors.Newf("sstable: unknown checksum type: %d", t))
+	}
+}
 
 // TablePropertyCollector provides a hook for collecting user-defined
 // properties based on the keys and values stored in an sstable. A new
@@ -236,6 +253,9 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	}
 	if o.MergerName == "" {
 		o.MergerName = base.DefaultMerger.Name
+	}
+	if o.Checksum == ChecksumTypeNone {
+		o.Checksum = ChecksumTypeCRC32c
 	}
 	return o
 }

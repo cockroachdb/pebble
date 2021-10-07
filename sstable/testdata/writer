@@ -255,6 +255,7 @@ layout
        214  properties (717)
        936  meta-index (33)
        974  footer (53)
+      1027  EOF
 
 scan
 ----
@@ -283,3 +284,4 @@ layout
        130  properties (678)
        813  meta-index (33)
        851  leveldb-footer (48)
+       899  EOF
