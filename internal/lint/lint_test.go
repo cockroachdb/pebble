@@ -72,6 +72,19 @@ func TestLint(t *testing.T) {
 		}
 	})
 
+	t.Run("TestStaticcheck", func(t *testing.T) {
+		t.Parallel()
+
+		if err := stream.ForEach(
+			stream.Sequence(
+				dirCmd(t, pkg.Dir, "staticcheck", pkgs...),
+			), func(s string) {
+				t.Errorf("\n%s", s)
+			}); err != nil {
+			t.Error(err)
+		}
+	})
+
 	t.Run("TestGoVet", func(t *testing.T) {
 		t.Parallel()
 
