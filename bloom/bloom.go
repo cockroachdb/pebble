@@ -17,34 +17,6 @@ const (
 	cacheLineBits = cacheLineSize * 8
 )
 
-// blockFilter is an encoded set of []byte keys.
-type blockFilter []byte
-
-// MayContain returns whether the filter may contain given key. False positives
-// are possible, where it returns true for keys not in the original set.
-func (f blockFilter) MayContain(key []byte) bool {
-	if len(f) <= 1 {
-		return false
-	}
-	nProbes := f[len(f)-1]
-	if nProbes > 30 {
-		// This is reserved for potentially new encodings for short Bloom filters.
-		// Consider it a match.
-		return true
-	}
-	nBits := uint32(8 * (len(f) - 1))
-	h := hash(key)
-	delta := h>>17 | h<<15
-	for j := uint8(0); j < nProbes; j++ {
-		bitPos := h % nBits
-		if f[bitPos/8]&(1<<(bitPos%8)) == 0 {
-			return false
-		}
-		h += delta
-	}
-	return true
-}
-
 type tableFilter []byte
 
 func (f tableFilter) MayContain(key []byte) bool {

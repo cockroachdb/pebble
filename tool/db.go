@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/ioutil"
 	"text/tabwriter"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -594,13 +593,6 @@ type props struct {
 	RawKeySize        uint64
 	RawValueSize      uint64
 	TopLevelIndexSize uint64
-}
-
-func formatTime(unixSec int64) string {
-	if unixSec == 0 {
-		return "n/a"
-	}
-	return time.Unix(unixSec, 0).Format(time.RFC3339)
 }
 
 func (p *props) update(o props) {
