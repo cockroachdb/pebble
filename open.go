@@ -38,6 +38,16 @@ const (
 	maxMemTableSize = 4 << 30 // 4 GB
 )
 
+// TableCacheSizeForStore can be used to determine the table
+// cache size for a single store.
+func TableCacheSizeForStore(maxOpenFilesPerStore int) int {
+	tableCacheSize := maxOpenFilesPerStore - NumNonTableCacheFiles
+	if tableCacheSize < MinTableCacheSize {
+		tableCacheSize = MinTableCacheSize
+	}
+	return tableCacheSize
+}
+
 // Open opens a DB whose files live in the given directory.
 func Open(dirname string, opts *Options) (db *DB, _ error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
@@ -105,10 +115,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		d.equal = bytes.Equal
 	}
 
-	tableCacheSize := opts.MaxOpenFiles - NumNonTableCacheFiles
-	if tableCacheSize < MinTableCacheSize {
-		tableCacheSize = MinTableCacheSize
-	}
+	tableCacheSize := TableCacheSizeForStore(opts.MaxOpenFiles)
 	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
 
