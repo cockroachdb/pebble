@@ -126,10 +126,6 @@ func leafToNode(ln *leafNode) *node {
 	return (*node)(unsafe.Pointer(ln))
 }
 
-func nodeToLeaf(n *node) *leafNode {
-	return (*leafNode)(unsafe.Pointer(n))
-}
-
 func newLeafNode() *node {
 	n := leafToNode(new(leafNode))
 	n.leaf = true

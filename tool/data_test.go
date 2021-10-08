@@ -70,7 +70,6 @@ func runTests(t *testing.T, path string) {
 				var buf bytes.Buffer
 				stdout = &buf
 				stderr = &buf
-				osExit = func(int) {}
 
 				var secs int64
 				timeNow = func() time.Time { secs++; return time.Unix(secs, 0) }
@@ -78,7 +77,6 @@ func runTests(t *testing.T, path string) {
 				defer func() {
 					stdout = os.Stdout
 					stderr = os.Stderr
-					osExit = os.Exit
 					timeNow = time.Now
 				}()
 

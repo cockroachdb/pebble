@@ -282,13 +282,6 @@ func (t *test) getReader(id objID) pebble.Reader {
 	panic(fmt.Sprintf("invalid reader ID: %s", id))
 }
 
-func (t *test) getSnapshot(id objID) *pebble.Snapshot {
-	if id.tag() != snapTag {
-		panic(fmt.Sprintf("invalid snapshot ID: %s", id))
-	}
-	return t.snapshots[id.slot()]
-}
-
 func (t *test) getWriter(id objID) pebble.Writer {
 	switch id.tag() {
 	case dbTag:

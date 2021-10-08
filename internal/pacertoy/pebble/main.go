@@ -313,15 +313,6 @@ func (db *DB) fillMemtable(size int64) {
 	db.mu.Unlock()
 }
 
-// printLevels prints the levels.
-func (db *DB) printLevels() {
-	db.mu.Lock()
-	for i := range db.sstables {
-		fmt.Printf("Level %d: %d/%d\n", i+1, db.sstables[i]/(1024*1024), db.maxSSTableSizes[i]/(1024*1024))
-	}
-	db.mu.Unlock()
-}
-
 // simulateWrite simulates user writes.
 func simulateWrite(db *DB, measureLatencyMode bool) {
 	limiter := rate.NewLimiter(10<<20, 10<<20) // 10 MB/s

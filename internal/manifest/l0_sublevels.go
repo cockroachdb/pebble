@@ -614,6 +614,7 @@ func (s *L0Sublevels) MaxDepthAfterOngoingCompactions() int {
 //
 // TODO(bilal): Simplify away the debugging statements in this method, and make
 // this a pure sanity checker.
+//lint:ignore U1000 - useful for debugging
 func (s *L0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 	includedFiles := newBitSet(s.levelMetadata.Len())
 	fileIntervalsByLevel := make([]struct {

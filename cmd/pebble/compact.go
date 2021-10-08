@@ -49,8 +49,6 @@ func init() {
 		"profile", false, "collect pprof profiles throughout the benchmark run")
 }
 
-const numLevels = 7
-
 type compactionTracker struct {
 	mu         sync.Mutex
 	activeJobs map[int]bool

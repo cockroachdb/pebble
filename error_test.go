@@ -35,14 +35,6 @@ type corruptFS struct {
 	bytesRead int32
 }
 
-func newCorruptFS(index int32) *corruptFS {
-	return &corruptFS{
-		FS:        vfs.NewMem(),
-		index:     index,
-		bytesRead: 0,
-	}
-}
-
 func (fs corruptFS) maybeCorrupt(n int32, p []byte) {
 	newBytesRead := atomic.AddInt32(&fs.bytesRead, n)
 	pIdx := newBytesRead - 1 - fs.index

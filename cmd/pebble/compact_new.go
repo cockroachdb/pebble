@@ -90,11 +90,6 @@ type logItem struct {
 	ve         manifest.VersionEdit
 }
 
-type fileEntry struct {
-	level int
-	meta  *manifest.FileMetadata
-}
-
 // replayManifests replays all manifests from the archive and the data
 // directory in order, returning an in-order history of sstable additions,
 // deletions and moves.
