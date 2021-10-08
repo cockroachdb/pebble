@@ -278,10 +278,10 @@ func TestLevelIterBoundaries(t *testing.T) {
 				}
 			}
 			if !cont && iter != nil {
-				return fmt.Sprintf("preceding iter was not closed")
+				return "preceding iter was not closed"
 			}
 			if cont && iter == nil {
-				return fmt.Sprintf("no existing iter")
+				return "no existing iter"
 			}
 			if iter == nil {
 				slice := manifest.NewLevelSliceKeySorted(lt.cmp.Compare, lt.metas)

@@ -197,13 +197,13 @@ func runIterCmd(td *datadriven.TestData, r *Reader) string {
 		switch parts[0] {
 		case "seek-ge":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-ge <key>\n")
+				return "seek-ge <key>\n"
 			}
 			prefix = nil
 			iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
 		case "seek-prefix-ge":
 			if len(parts) != 2 && len(parts) != 3 {
-				return fmt.Sprintf("seek-prefix-ge <key> [<try-seek-using-next>]\n")
+				return "seek-prefix-ge <key> [<try-seek-using-next>]\n"
 			}
 			prefix = []byte(strings.TrimSpace(parts[1]))
 			trySeekUsingNext := false
@@ -217,7 +217,7 @@ func runIterCmd(td *datadriven.TestData, r *Reader) string {
 			iter.SeekPrefixGE(prefix, prefix /* key */, trySeekUsingNext)
 		case "seek-lt":
 			if len(parts) != 2 {
-				return fmt.Sprintf("seek-lt <key>\n")
+				return "seek-lt <key>\n"
 			}
 			prefix = nil
 			iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
@@ -235,7 +235,7 @@ func runIterCmd(td *datadriven.TestData, r *Reader) string {
 			iter.Prev()
 		case "set-bounds":
 			if len(parts) <= 1 || len(parts) > 3 {
-				return fmt.Sprintf("set-bounds lower=<lower> upper=<upper>\n")
+				return "set-bounds lower=<lower> upper=<upper>\n"
 			}
 			var lower []byte
 			var upper []byte
