@@ -350,10 +350,6 @@ func main() {
 			fmt.Printf("_elapsed___memtbs____dirty_____fill____drain____cdebt__l0count___max-w-rate\n")
 		}
 
-		if (i % 7) == 0 {
-			//db.printLevels()
-		}
-
 		db.mu.Lock()
 		memtableCount := len(db.memtables)
 		db.mu.Unlock()

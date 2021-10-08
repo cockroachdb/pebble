@@ -18,23 +18,23 @@ type InternalKeyKind uint8
 // These constants are part of the file format, and should not be changed.
 const (
 	InternalKeyKindDelete  InternalKeyKind = 0
-	InternalKeyKindSet                     = 1
-	InternalKeyKindMerge                   = 2
-	InternalKeyKindLogData                 = 3
-	// InternalKeyKindColumnFamilyDeletion                     = 4
-	// InternalKeyKindColumnFamilyValue                        = 5
-	// InternalKeyKindColumnFamilyMerge                        = 6
-	InternalKeyKindSingleDelete = 7
-	// InternalKeyKindColumnFamilySingleDelete                 = 8
-	// InternalKeyKindBeginPrepareXID                          = 9
-	// InternalKeyKindEndPrepareXID                            = 10
-	// InternalKeyKindCommitXID                                = 11
-	// InternalKeyKindRollbackXID                              = 12
-	// InternalKeyKindNoop                                     = 13
-	// InternalKeyKindColumnFamilyRangeDelete                  = 14
-	InternalKeyKindRangeDelete = 15
-	// InternalKeyKindColumnFamilyBlobIndex                    = 16
-	// InternalKeyKindBlobIndex                                = 17
+	InternalKeyKindSet     InternalKeyKind = 1
+	InternalKeyKindMerge   InternalKeyKind = 2
+	InternalKeyKindLogData InternalKeyKind = 3
+	//InternalKeyKindColumnFamilyDeletion     InternalKeyKind = 4
+	//InternalKeyKindColumnFamilyValue        InternalKeyKind = 5
+	//InternalKeyKindColumnFamilyMerge        InternalKeyKind = 6
+	InternalKeyKindSingleDelete InternalKeyKind = 7
+	//InternalKeyKindColumnFamilySingleDelete InternalKeyKind = 8
+	//InternalKeyKindBeginPrepareXID          InternalKeyKind = 9
+	//InternalKeyKindEndPrepareXID            InternalKeyKind = 10
+	//InternalKeyKindCommitXID                InternalKeyKind = 11
+	//InternalKeyKindRollbackXID              InternalKeyKind = 12
+	//InternalKeyKindNoop                     InternalKeyKind = 13
+	//InternalKeyKindColumnFamilyRangeDelete  InternalKeyKind = 14
+	InternalKeyKindRangeDelete InternalKeyKind = 15
+	//InternalKeyKindColumnFamilyBlobIndex    InternalKeyKind = 16
+	//InternalKeyKindBlobIndex                InternalKeyKind = 17
 
 	// InternalKeyKindSeparator is a key used for separator / successor keys
 	// written to sstable block indexes.
@@ -43,7 +43,7 @@ const (
 	// keys written to block indexes with value "17" (when 17 happened to be the
 	// max value, and InternalKeyKindMax was therefore set to 17), remain stable
 	// when new key kinds are supported in Pebble.
-	InternalKeyKindSeparator = 17
+	InternalKeyKindSeparator InternalKeyKind = 17
 
 	// InternalKeyKindSetWithDelete keys are SET keys that have met with a
 	// DELETE or SINGLEDEL key in a prior compaction. This key kind is
@@ -77,7 +77,7 @@ const (
 	// when a range deletion tombstone is the largest key in an sstable. This is
 	// necessary because sstable boundaries are inclusive, while the end key of a
 	// range deletion tombstone is exclusive.
-	InternalKeyRangeDeleteSentinel = (InternalKeySeqNumMax << 8) | InternalKeyKindRangeDelete
+	InternalKeyRangeDeleteSentinel = (InternalKeySeqNumMax << 8) | uint64(InternalKeyKindRangeDelete)
 )
 
 var internalKeyKindNames = []string{
