@@ -1363,11 +1363,7 @@ func (d *DB) passedFlushThreshold() bool {
 	// while we're undergoing the ramp period on the memtable size. See
 	// DB.newMemTable().
 	minFlushSize := uint64(d.opts.MemTableSize) / 2
-	if size < minFlushSize {
-		return false
-	}
-
-	return true
+	return size >= minFlushSize
 }
 
 func (d *DB) maybeScheduleDelayedFlush(tbl *memTable) {

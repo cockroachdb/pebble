@@ -599,10 +599,8 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		d.updateTableStatsLocked(ve.NewFiles)
 	}
 
-	if levelMaxBytes != nil {
-		for l, maxBytes := range levelMaxBytes {
-			d.mu.versions.picker.(*compactionPickerByScore).levelMaxBytes[l] = maxBytes
-		}
+	for l, maxBytes := range levelMaxBytes {
+		d.mu.versions.picker.(*compactionPickerByScore).levelMaxBytes[l] = maxBytes
 	}
 
 	return d, nil

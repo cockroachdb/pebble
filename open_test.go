@@ -281,7 +281,7 @@ func TestOpenCrashWritingOptions(t *testing.T) {
 	// Open the database again, this time with a mocked filesystem that
 	// will only succeed in partially writing the OPTIONS file.
 	fs := optionsTornWriteFS{FS: memFS}
-	d, err = Open("", &Options{FS: fs})
+	_, err = Open("", &Options{FS: fs})
 	require.Error(t, err)
 
 	// Re-opening the database must succeed.
@@ -750,6 +750,7 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, f.Close())
 		f, err = fs.Create(logs[0])
+		require.NoError(t, err)
 		_, err = f.Write(b)
 		require.NoError(t, err)
 		_, err = f.Write([]byte{0xde, 0xad, 0xbe, 0xef})
