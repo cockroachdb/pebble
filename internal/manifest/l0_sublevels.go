@@ -1027,10 +1027,10 @@ func (s *L0Sublevels) PickBaseCompaction(
 		// nearby. Note that it is possible that those intervals
 		// have seed files at lower sub-levels so could be
 		// viable for compaction.
-		consideredIntervals.markBits(f.minIntervalIndex, f.maxIntervalIndex+1)
 		if f == nil {
 			return nil, errors.New("no seed file found in sublevel intervals")
 		}
+		consideredIntervals.markBits(f.minIntervalIndex, f.maxIntervalIndex+1)
 		if f.Compacting {
 			if f.IsIntraL0Compacting {
 				// If we're picking a base compaction and we came across a

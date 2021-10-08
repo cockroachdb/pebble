@@ -111,7 +111,7 @@ type testStorage struct {
 
 func (d *testStorage) add(key string) uint32 {
 	offset := uint32(len(d.data))
-	d.data = append(d.data, base.InternalKeyKindSet)
+	d.data = append(d.data, uint8(base.InternalKeyKindSet))
 	var buf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(buf[:], uint64(len(key)))
 	d.data = append(d.data, buf[:n]...)
@@ -121,7 +121,7 @@ func (d *testStorage) add(key string) uint32 {
 
 func (d *testStorage) addBytes(key []byte) uint32 {
 	offset := uint32(len(d.data))
-	d.data = append(d.data, base.InternalKeyKindSet)
+	d.data = append(d.data, uint8(base.InternalKeyKindSet))
 	var buf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(buf[:], uint64(len(key)))
 	d.data = append(d.data, buf[:n]...)

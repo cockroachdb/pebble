@@ -48,7 +48,7 @@ type mockFS struct {
 }
 
 func (m mockFS) Create(name string) (File, error) {
-	return mockFile{syncDuration: m.syncDuration}, nil
+	return mockFile(m), nil
 }
 
 func (m mockFS) Link(oldname, newname string) error {
@@ -76,7 +76,7 @@ func (m mockFS) Rename(oldname, newname string) error {
 }
 
 func (m mockFS) ReuseForWrite(oldname, newname string) (File, error) {
-	return mockFile{syncDuration: m.syncDuration}, nil
+	return mockFile(m), nil
 }
 
 func (m mockFS) MkdirAll(dir string, perm os.FileMode) error {
