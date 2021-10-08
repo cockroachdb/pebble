@@ -152,44 +152,44 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 			for _, line := range strings.Split(td.Input, "\n") {
 				parts := strings.Fields(line)
 				if len(parts) == 0 {
-					return fmt.Sprintf("<op> [<args>]")
+					return "<op> [<args>]"
 				}
 
 				switch parts[0] {
 				case "clone":
 					if len(parts) != 3 {
-						return fmt.Sprintf("clone <src> <dest>")
+						return "clone <src> <dest>"
 					}
 					_, _ = Clone(fs, fs, fs.PathJoin(dir, parts[1]), fs.PathJoin(dir, parts[2]))
 
 				case "create":
 					if len(parts) != 2 {
-						return fmt.Sprintf("create <name>")
+						return "create <name>"
 					}
 					f, _ := fs.Create(fs.PathJoin(dir, parts[1]))
 					f.Close()
 
 				case "link":
 					if len(parts) != 3 {
-						return fmt.Sprintf("link <oldname> <newname>")
+						return "link <oldname> <newname>"
 					}
 					_ = fs.Link(fs.PathJoin(dir, parts[1]), fs.PathJoin(dir, parts[2]))
 
 				case "link-or-copy":
 					if len(parts) != 3 {
-						return fmt.Sprintf("link-or-copy <oldname> <newname>")
+						return "link-or-copy <oldname> <newname>"
 					}
 					_ = LinkOrCopy(fs, fs.PathJoin(dir, parts[1]), fs.PathJoin(dir, parts[2]))
 
 				case "reuseForWrite":
 					if len(parts) != 3 {
-						return fmt.Sprintf("reuseForWrite <oldname> <newname>")
+						return "reuseForWrite <oldname> <newname>"
 					}
 					_, _ = fs.ReuseForWrite(fs.PathJoin(dir, parts[1]), fs.PathJoin(dir, parts[2]))
 
 				case "list":
 					if len(parts) != 2 {
-						return fmt.Sprintf("list <dir>")
+						return "list <dir>"
 					}
 					paths, _ := fs.List(fs.PathJoin(dir, parts[1]))
 					sort.Strings(paths)
@@ -199,19 +199,19 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 
 				case "mkdir":
 					if len(parts) != 2 {
-						return fmt.Sprintf("mkdir <dir>")
+						return "mkdir <dir>"
 					}
 					_ = fs.MkdirAll(fs.PathJoin(dir, parts[1]), 0755)
 
 				case "remove":
 					if len(parts) != 2 {
-						return fmt.Sprintf("remove <name>")
+						return "remove <name>"
 					}
 					_ = fs.Remove(fs.PathJoin(dir, parts[1]))
 
 				case "remove-all":
 					if len(parts) != 2 {
-						return fmt.Sprintf("remove-all <name>")
+						return "remove-all <name>"
 					}
 					_ = fs.RemoveAll(fs.PathJoin(dir, parts[1]))
 				}

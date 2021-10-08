@@ -152,12 +152,12 @@ func TestSnapshot(t *testing.T) {
 					iter.Last()
 				case "seek-ge":
 					if len(parts) != 2 {
-						return fmt.Sprintf("seek-ge <key>\n")
+						return "seek-ge <key>\n"
 					}
 					iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
 				case "seek-lt":
 					if len(parts) != 2 {
-						return fmt.Sprintf("seek-lt <key>\n")
+						return "seek-lt <key>\n"
 					}
 					iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
 				case "next":
