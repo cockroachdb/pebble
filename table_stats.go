@@ -40,8 +40,8 @@ import (
 // collection job only needs to load statistics for new files appended to the
 // pending list.
 
-func (d *DB) maybeCollectTableStats() {
-	if d.shouldCollectTableStats() {
+func (d *DB) maybeCollectTableStatsLocked() {
+	if d.shouldCollectTableStatsLocked() {
 		go d.collectTableStats()
 	}
 }
@@ -62,22 +62,21 @@ func (d *DB) updateTableStatsLocked(newFiles []manifest.NewFileEntry) {
 	}
 
 	d.mu.tableStats.pending = append(d.mu.tableStats.pending, newFiles...)
-	d.maybeCollectTableStats()
+	d.maybeCollectTableStatsLocked()
 }
 
-func (d *DB) shouldCollectTableStats() bool {
-	ok := !d.mu.tableStats.loading
-	ok = ok && d.closed.Load() == nil
-	ok = ok && !d.opts.private.disableTableStats
-	ok = ok && (len(d.mu.tableStats.pending) > 0 || !d.mu.tableStats.loadedInitial)
-	return ok
+func (d *DB) shouldCollectTableStatsLocked() bool {
+	return !d.mu.tableStats.loading &&
+		d.closed.Load() == nil &&
+		!d.opts.private.disableTableStats &&
+		(len(d.mu.tableStats.pending) > 0 || !d.mu.tableStats.loadedInitial)
 }
 
 func (d *DB) collectTableStats() {
 	const maxTableStatsPerScan = 50
 
 	d.mu.Lock()
-	if !d.shouldCollectTableStats() {
+	if !d.shouldCollectTableStatsLocked() {
 		d.mu.Unlock()
 		return
 	}
@@ -126,7 +125,7 @@ func (d *DB) collectTableStats() {
 		maybeCompact = maybeCompact || c.fileMetadata.Stats.RangeDeletionsBytesEstimate > 0
 	}
 	d.mu.tableStats.cond.Broadcast()
-	d.maybeCollectTableStats()
+	d.maybeCollectTableStatsLocked()
 	if len(hints) > 0 {
 		// Verify that all of the hint tombstones' files still exist in the
 		// current version. Otherwise, the tombstone itself may have been

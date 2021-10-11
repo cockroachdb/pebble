@@ -441,7 +441,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 	d.mu.tableStats.cond.L = &d.mu.Mutex
 	if !d.opts.ReadOnly && !d.opts.private.disableTableStats {
-		d.maybeCollectTableStats()
+		d.maybeCollectTableStatsLocked()
 	}
 	d.calculateDiskAvailableBytes()
 

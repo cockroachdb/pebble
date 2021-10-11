@@ -48,7 +48,7 @@ func TestTableStats(t *testing.T) {
 		case "enable":
 			d.mu.Lock()
 			d.opts.private.disableTableStats = false
-			d.maybeCollectTableStats()
+			d.maybeCollectTableStatsLocked()
 			d.mu.Unlock()
 			return ""
 
