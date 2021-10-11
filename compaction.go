@@ -2717,6 +2717,20 @@ type fileInfo struct {
 	fileSize uint64
 }
 
+type filesInfo []fileInfo
+
+func (f filesInfo) Len() int {
+	return len(f)
+}
+
+func (f filesInfo) Less(i, j int) bool {
+	return f[i].fileNum < f[j].fileNum
+}
+
+func (f filesInfo) Swap(i, j int) {
+	f[i], f[j] = f[j], f[i]
+}
+
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) doDeleteObsoleteFiles(jobID int) {
@@ -2752,10 +2766,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 
 	// Sort the manifests cause we want to delete some contiguous prefix
 	// of the older manifests.
-	sort.Slice(d.mu.versions.obsoleteManifests, func(i, j int) bool {
-		return d.mu.versions.obsoleteManifests[i].fileNum <
-			d.mu.versions.obsoleteManifests[j].fileNum
-	})
+	sort.Sort(d.mu.versions.obsoleteManifests)
 
 	var obsoleteManifests []fileInfo
 	manifestsToDelete := len(d.mu.versions.obsoleteManifests) - d.opts.NumPrevManifest
@@ -2777,7 +2788,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 
 	files := [4]struct {
 		fileType fileType
-		obsolete []fileInfo
+		obsolete filesInfo
 	}{
 		{fileTypeLog, obsoleteLogs},
 		{fileTypeTable, obsoleteTables},
@@ -2789,9 +2800,8 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 	for _, f := range files {
 		// We sort to make the order of deletions deterministic, which is nice for
 		// tests.
-		sort.Slice(f.obsolete, func(i, j int) bool {
-			return f.obsolete[i].fileNum < f.obsolete[j].fileNum
-		})
+		sort.Sort(f.obsolete)
+
 		for _, fi := range f.obsolete {
 			dir := d.dirname
 			switch f.fileType {
@@ -2903,15 +2913,13 @@ func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileN
 	}
 }
 
-func merge(a, b []fileInfo) []fileInfo {
+func merge(a, b filesInfo) []fileInfo {
 	if len(b) == 0 {
 		return a
 	}
 
 	a = append(a, b...)
-	sort.Slice(a, func(i, j int) bool {
-		return a[i].fileNum < a[j].fileNum
-	})
+	sort.Sort(a)
 
 	n := 0
 	for i := 0; i < len(a); i++ {

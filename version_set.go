@@ -85,7 +85,7 @@ type versionSet struct {
 	// on the creation of every version.
 	obsoleteFn        func(obsolete []*manifest.FileMetadata)
 	obsoleteTables    []*manifest.FileMetadata
-	obsoleteManifests []fileInfo
+	obsoleteManifests filesInfo
 	obsoleteOptions   []fileInfo
 
 	// Zombie tables which have been removed from the current version but are
