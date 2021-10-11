@@ -382,8 +382,9 @@ func runWait(t *testing.T, lim *Limiter, w wait) {
 }
 
 func TestWaitSimple(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("flaky on Windows")
+	switch runtime.GOOS {
+	case "windows", "darwin":
+		t.Skip("flaky; see #1256")
 	}
 
 	lim := NewLimiter(10, 3)
@@ -399,8 +400,9 @@ func TestWaitSimple(t *testing.T) {
 }
 
 func TestWaitCancel(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("flaky on Windows")
+	switch runtime.GOOS {
+	case "windows", "darwin":
+		t.Skip("flaky; see #1187")
 	}
 
 	lim := NewLimiter(10, 3)
