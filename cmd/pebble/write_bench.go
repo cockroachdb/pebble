@@ -1,0 +1,514 @@
+// Copyright 2021 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// of this source code is governed by a BSD-style license that can be found in
+// the LICENSE file.
+
+package main
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"sync"
+	"time"
+
+	"github.com/cockroachdb/pebble/internal/ackseq"
+	"github.com/cockroachdb/pebble/internal/randvar"
+	"github.com/cockroachdb/pebble/internal/rate"
+	"github.com/spf13/cobra"
+)
+
+var writeBenchConfig struct {
+	batch             *randvar.Flag
+	keys              string
+	values            *randvar.BytesFlag
+	concurrency       int
+	rateStart         int
+	incBase           int
+	testPeriod        time.Duration
+	cooloffPeriod     time.Duration
+	targetL0Files     int
+	targetL0SubLevels int
+	debug             bool
+}
+
+var writeBenchCmd = &cobra.Command{
+	Use:   "write <dir>",
+	Short: "Run YCSB F to find an a sustainable write throughput",
+	Long: `
+Run YCSB F (100% writes) at varying levels of sustained write load (ops/sec) to
+determine an optimal value of write throughput.
+
+The benchmark works by maintaining a fixed amount of write load on the DB for a
+fixed amount of time. If the database can handle the sustained load - determined
+by a heuristic that takes into account the number of files in L0 sub-levels, the
+number of L0 sub-levels, and whether the DB has encountered a write stall (i.e.
+measured load on the DB drops to zero) - the load is increased on the DB.
+
+Load increases exponentially from an initial load. If the DB fails the heuristic
+at the given write load, the load on the DB is paused for a period of time (the
+cool-off period) before returning to the last value at which the DB could handle
+the load. The exponent is then reset and the process repeats from this new
+initial value. This allows the benchmark to converge on and oscillate around the
+optimal write load.
+
+The values of load at which the DB passes and fails the heuristic are maintained
+over the duration of the benchmark. On completion of the benchmark, an "optimal"
+value is computed. The optimal value is computed as the value that minimizes the
+mis-classification of the recorded "passes" and "fails"". This can be visualized
+as a point on the x-axis that separates the passes and fails into the left and
+right half-planes, minimizing the number of fails that fall to the left of this
+point (i.e. mis-classified fails) and the number of passes that fall to the
+right (i.e. mis-classified passes).
+
+The resultant "optimal sustained write load" value provides an estimate of the
+write load that the DB can sustain without failing the target heuristic.
+
+A typical invocation of the benchmark is as follows:
+
+  pebble bench write [PATH] --wipe -c 1024 -d 8h --rate-start 30000 --debug
+`,
+	Args: cobra.ExactArgs(1),
+	RunE: runWriteBenchmark,
+}
+
+func init() {
+	initWriteBench(writeBenchCmd)
+}
+
+func initWriteBench(cmd *cobra.Command) {
+	// Default values for custom flags.
+	writeBenchConfig.batch = randvar.NewFlag("1")
+	writeBenchConfig.values = randvar.NewBytesFlag("1000")
+
+	cmd.Flags().Var(
+		writeBenchConfig.batch, "batch",
+		"batch size distribution [{zipf,uniform}:]min[-max]")
+	cmd.Flags().StringVar(
+		&writeBenchConfig.keys, "keys", "zipf", "latest, uniform, or zipf")
+	cmd.Flags().Var(
+		writeBenchConfig.values, "values",
+		"value size distribution [{zipf,uniform}:]min[-max][/<target-compression>]")
+	cmd.Flags().IntVarP(
+		&writeBenchConfig.concurrency, "concurrency", "c",
+		1, "number of concurrent workers")
+	cmd.Flags().IntVar(
+		&writeBenchConfig.rateStart, "rate-start",
+		1000, "starting write load (ops/sec)")
+	cmd.Flags().IntVar(
+		&writeBenchConfig.incBase, "rate-inc-base",
+		100, "increment / decrement base")
+	cmd.Flags().DurationVar(
+		&writeBenchConfig.testPeriod, "test-period",
+		60*time.Second, "time to run at a given write load")
+	cmd.Flags().DurationVar(
+		&writeBenchConfig.cooloffPeriod, "cooloff-period",
+		30*time.Second, "time to pause write load after a failure")
+	cmd.Flags().IntVar(
+		&writeBenchConfig.targetL0Files, "l0-files",
+		1000, "target L0 file count")
+	cmd.Flags().IntVar(
+		&writeBenchConfig.targetL0SubLevels, "l0-sublevels",
+		20, "target L0 sublevel count")
+	cmd.Flags().BoolVarP(
+		&wipe, "wipe", "w", false, "wipe the database before starting")
+	cmd.Flags().BoolVar(
+		&writeBenchConfig.debug, "debug", false, "print benchmark debug information")
+}
+
+// writeBenchResult contains the results of a test run at a given rate. The
+// independent variable is the rate (in ops/sec) and the dependent variable is
+// whether the test passed or failed. Additional metadata associated with the
+// test run is also captured.
+type writeBenchResult struct {
+	name    string
+	rate    int           // The rate at which the test is currently running.
+	passed  bool          // Was the test successful at this rate.
+	elapsed time.Duration // The total elapsed time of the test.
+	bytes   uint64        // The size of the LSM.
+	levels  int           // The number of levels occupied in the LSM.
+}
+
+// String implements fmt.Stringer, printing a raw benchmark line. These lines
+// are used when performing analysis on a given benchmark run.
+func (r writeBenchResult) String() string {
+	return fmt.Sprintf("BenchmarkRaw%s %d ops/sec %v pass %s elapsed %d bytes %d levels",
+		r.name,
+		r.rate,
+		r.passed,
+		r.elapsed,
+		r.bytes,
+		r.levels,
+	)
+}
+
+func runWriteBenchmark(_ *cobra.Command, args []string) error {
+	const workload = "F" // 100% inserts.
+	var (
+		writers      []*pauseWriter
+		writersWg    *sync.WaitGroup // Tracks completion of all pauseWriters.
+		cooloff      bool            // Is cool-off enabled.
+		streak       int             // The number of successive passes.
+		clockStart   time.Time       // Start time for current load.
+		cooloffStart time.Time       // When cool-off was enabled.
+		stack        []int           // Stack of passing load values.
+		pass, fail   []int           // Values of load that pass and fail, respectively.
+	)
+
+	limit := writeBenchConfig.rateStart
+	incBase := writeBenchConfig.incBase
+	weights, err := ycsbParseWorkload(workload)
+
+	if err != nil {
+		return err
+	}
+
+	keyDist, err := ycsbParseKeyDist(writeBenchConfig.keys)
+	if err != nil {
+		return err
+	}
+	batchDist := writeBenchConfig.batch
+	valueDist := writeBenchConfig.values
+
+	// Construct a new YCSB F benchmark with the configured values.
+	y := newYcsb(weights, keyDist, batchDist, nil /* scans */, valueDist)
+	y.keyNum = ackseq.New(0)
+
+	setLimit := func(l int) {
+		perWriterLimit := float64(l) / float64(len(writers))
+		for _, w := range writers {
+			w.setLimit(perWriterLimit)
+		}
+	}
+
+	name := fmt.Sprintf("write/values=%s", writeBenchConfig.values)
+	ctx, cancel := context.WithCancel(context.Background())
+	runTest(args[0], test{
+		init: func(db DB, wg *sync.WaitGroup) {
+			y.db = db
+			writersWg = wg
+
+			// Spawn the writers.
+			for i := 0; i < writeBenchConfig.concurrency; i++ {
+				writer := newPauseWriter(y, float64(limit), incBase)
+				writers = append(writers, writer)
+				writersWg.Add(1)
+				go writer.run(ctx, wg)
+			}
+			setLimit(limit)
+
+			// Start the clock on the current load.
+			clockStart = time.Now()
+		},
+		tick: func(elapsed time.Duration, i int) {
+			m := y.db.Metrics()
+			if i%20 == 0 {
+				if writeBenchConfig.debug && i > 0 {
+					fmt.Printf("%s\n", m)
+				}
+				fmt.Println("___elapsed___clock___rate(desired)___rate(actual)___L0files___L0levels___levels______lsmBytes")
+			}
+
+			// Print the current stats.
+			l0Files := m.Levels[0].NumFiles
+			l0Sublevels := m.Levels[0].Sublevels
+			nLevels := 0
+			for _, l := range m.Levels {
+				if l.BytesIn > 0 {
+					nLevels++
+				}
+			}
+			lsmBytes := m.DiskSpaceUsage()
+
+			var curLoad float64
+			var stalled bool
+			y.reg.Tick(func(tick histogramTick) {
+				h := tick.Hist
+				curLoad = float64(h.TotalCount()) / tick.Elapsed.Seconds()
+				stalled = !cooloff && curLoad == 0
+			})
+
+			// The heuristic by which the DB can sustain a given write load is
+			// determined by whether the DB, for the configured window of time:
+			// 1) did not encounter a write stall (i.e. write load fell to
+			//    zero),
+			// 2) number of files in L0 was at or below the target, and
+			// 3) number of L0 sub-levels is at or below the target.
+			failed := stalled ||
+				int(l0Files) > writeBenchConfig.targetL0Files ||
+				int(l0Sublevels) > writeBenchConfig.targetL0SubLevels
+
+			// Print the result for this tick.
+			fmt.Printf("%10s %7s %15d %14.1f %9d %10d %8d %13d\n",
+				time.Duration(elapsed.Seconds()+0.5)*time.Second,
+				time.Duration(time.Since(clockStart).Seconds()+0.5)*time.Second,
+				limit,
+				curLoad,
+				l0Files,
+				l0Sublevels,
+				nLevels,
+				lsmBytes,
+			)
+
+			// If we're in cool-off mode, allow it to complete before resuming
+			// writing.
+			if cooloff {
+				if time.Since(cooloffStart) < writeBenchConfig.cooloffPeriod {
+					return
+				}
+				debugPrint("ending cool-off")
+
+				// Else, resume writing.
+				cooloff = false
+				for _, w := range writers {
+					w.unpause()
+				}
+				clockStart = time.Now()
+
+				return
+			}
+
+			r := writeBenchResult{
+				name:    name,
+				rate:    limit,
+				elapsed: time.Duration(elapsed.Seconds()+0.5) * time.Second,
+				bytes:   lsmBytes,
+				levels:  nLevels,
+			}
+
+			if failed {
+				fail = append(fail, limit)
+
+				// Emit a benchmark raw datapoint.
+				fmt.Println(r)
+
+				// We failed at the current load, we have two options:
+
+				// a) No room to backtrack. We're done.
+				if len(stack) == 0 {
+					debugPrint("no room to backtrack; exiting ...\n")
+					cancel()
+					writersWg.Wait()
+					return
+				}
+
+				// b) We still have room to backtrack. Reduce the load to the
+				// last known passing value.
+				limit, stack = stack[len(stack)-1], stack[:len(stack)-1]
+				setLimit(limit)
+
+				// Enter the cool-off period.
+				cooloff = true
+				var wg sync.WaitGroup
+				for _, w := range writers {
+					// With a large number of writers, pausing synchronously can
+					// take a material amount of time. Instead, pause the
+					// writers in parallel in the background, and wait for all
+					// to complete before continuing.
+					wg.Add(1)
+					go func(writer *pauseWriter) {
+						writer.pause()
+						wg.Done()
+					}(w)
+				}
+				wg.Wait()
+
+				// Reset the counters and clocks.
+				streak = 0
+				cooloffStart = time.Now()
+				clockStart = time.Now()
+				debugPrint("Fail. Pausing writers for cool-off period.\n")
+				debugPrint(fmt.Sprintf("new limit=%d\npasses=%v\nfails=%v\nstack=%v\n",
+					limit, pass, fail, stack))
+
+				return
+			}
+
+			// Else, the DB could handle the current load. We only increase
+			// after a fixed amount of time at this load as elapsed.
+			if time.Since(clockStart) > writeBenchConfig.testPeriod {
+				streak++
+				pass = append(pass, limit)
+				stack = append(stack, limit)
+
+				// Emit a benchmark raw datapoint.
+				r.passed = true
+				fmt.Println(r)
+
+				// Increase the limit.
+				limit = limit + incBase*(1<<(streak-1))
+				setLimit(limit)
+
+				// Restart the test.
+				clockStart = time.Now()
+
+				debugPrint(fmt.Sprintf("Pass.\nnew limit=%d\npasses=%v\nfails=%v\nstreak=%d\nstack=%v\n",
+					limit, pass, fail, streak, stack))
+			}
+		},
+		done: func(elapsed time.Duration) {
+			// Print final analysis.
+			var total int64
+			y.reg.Tick(func(tick histogramTick) {
+				total = tick.Cumulative.TotalCount()
+			})
+			split := findOptimalSplit(pass, fail, writeBenchConfig.incBase/2 /* resolution */)
+			fmt.Println("___elapsed___ops(total)___split(ops/sec)")
+			fmt.Printf("%10s %12d %16d\n", elapsed.Truncate(time.Second), total, split)
+
+			// Print benchmark summary line.
+			fmt.Printf("BenchmarkSummary%s %d ops/sec\n", name, split)
+		},
+	})
+
+	return nil
+}
+
+// debugPrint prints a debug line to stdout if debug logging is enabled via the
+// --debug flag.
+func debugPrint(s string) {
+	if !writeBenchConfig.debug {
+		return
+	}
+	fmt.Print("DEBUG: " + s)
+}
+
+// pauseWriter issues load against a pebble instance, and can be paused on
+// demand to allow the DB to recover.
+type pauseWriter struct {
+	y        *ycsb
+	limiter  *rate.Limiter
+	pauseC   chan struct{}
+	unpauseC chan struct{}
+}
+
+// newPauseWriter returns a new pauseWriter.
+func newPauseWriter(y *ycsb, initialLimit float64, burst int) *pauseWriter {
+	return &pauseWriter{
+		y:        y,
+		limiter:  rate.NewLimiter(rate.Limit(initialLimit), burst),
+		pauseC:   make(chan struct{}),
+		unpauseC: make(chan struct{}),
+	}
+}
+
+// run starts the pauseWriter, issuing load against the DB.
+func (w *pauseWriter) run(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	buf := &ycsbBuf{rng: randvar.NewRand()}
+	hist := w.y.reg.Register("insert")
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-w.pauseC:
+			// Hold the goroutine here until we unpause.
+			<-w.unpauseC
+		default:
+			wait(w.limiter)
+			start := time.Now()
+			w.y.insert(w.y.db, buf)
+			hist.Record(time.Since(start))
+		}
+	}
+}
+
+// pause signals that the writer should pause after the current operation.
+func (w *pauseWriter) pause() {
+	w.pauseC <- struct{}{}
+}
+
+// unpause unpauses the writer.
+func (w *pauseWriter) unpause() {
+	w.unpauseC <- struct{}{}
+}
+
+// setLimit sets the rate limit for this writer.
+func (w *pauseWriter) setLimit(limit float64) {
+	w.limiter.SetLimit(rate.Limit(limit))
+}
+
+// findOptimalSplit computes and returns a value that separates the given pass
+// and fail measurements optimally, such that the number of mis-classified
+// passes (pass values that fall above the split) and fails (fail values that
+// fall below the split) is minimized.
+//
+// The following gives a visual representation of the problem:
+//
+//                        Optimal partition (=550) -----> |
+// Passes:   o          o        o              o o o oo  |
+// Fails:                         x             x         |x    x  x     x x        x
+// |---------|---------|---------|---------|---------|----|----|---------|---------|---------|---> x
+// 0        100       200       300       400       500   |   600       700       800       900
+//	                                                      |
+//
+// The algorithm works by computing the error (i.e. mis-classifications) at
+// various points along the x-axis, starting from the origin and increasing by
+// the given increment.
+func findOptimalSplit(pass, fail []int, inc int) int {
+	// Not enough data to compute a sensible score.
+	if len(pass) == 0 || len(fail) == 0 {
+		return -1
+	}
+
+	// Maintain counters for the number of incorrectly classified passes and
+	// fails. All passes are initially incorrect, as we start at 0. Conversely,
+	// no fails are incorrectly classified, as all scores are >= 0.
+	pCount, fCount := len(pass), 0
+	p, f := make([]int, len(pass)), make([]int, len(fail))
+	copy(p, pass)
+	copy(f, fail)
+
+	// Sort the inputs.
+	sort.Slice(p, func(i, j int) bool {
+		return p[i] < p[j]
+	})
+	sort.Slice(f, func(i, j int) bool {
+		return f[i] < f[j]
+	})
+
+	// Find the global min and max.
+	min, max := p[0], f[len(fail)-1]
+
+	// Iterate over the range in increments.
+	var result [][]int
+	for x := min; x <= max; x = x + inc {
+		// Reduce the count of incorrect passes as x increases (i.e. fewer pass
+		// values are incorrect as x increases).
+		for len(p) > 0 && p[0] <= x {
+			pCount--
+			p = p[1:]
+		}
+
+		// Increase the count of incorrect fails as x increases (i.e. more fail
+		// values are incorrect as x increases).
+		for len(f) > 0 && f[0] < x {
+			fCount++
+			f = f[1:]
+		}
+
+		// Add a (x, score) tuple to result slice.
+		result = append(result, []int{x, pCount + fCount})
+	}
+
+	// Sort the (x, score) result slice by score ascending. Tie-break by x
+	// ascending.
+	sort.Slice(result, func(i, j int) bool {
+		if result[i][1] == result[j][1] {
+			return result[i][0] < result[j][0]
+		}
+		return result[i][1] < result[j][1]
+	})
+
+	// If there is more than one interval, split the difference between the min
+	// and the max.
+	splitMin, splitMax := result[0][0], result[0][0]
+	for i := 1; i < len(result); i++ {
+		if result[i][1] != result[0][1] {
+			break
+		}
+		splitMax = result[i][0]
+	}
+
+	return (splitMin + splitMax) / 2
+}
