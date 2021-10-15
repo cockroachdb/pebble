@@ -45,6 +45,7 @@ func main() {
 		tombstoneCmd,
 		ycsbCmd,
 		fsBenchCmd,
+		writeBenchCmd,
 	)
 
 	rootCmd := &cobra.Command{
@@ -56,7 +57,7 @@ func main() {
 	t := tool.New(tool.Comparers(mvccComparer), tool.Mergers(fauxMVCCMerger))
 	rootCmd.AddCommand(t.Commands...)
 
-	for _, cmd := range []*cobra.Command{compactNewCmd, compactRunCmd, scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
+	for _, cmd := range []*cobra.Command{compactNewCmd, compactRunCmd, scanCmd, syncCmd, tombstoneCmd, writeBenchCmd, ycsbCmd} {
 		cmd.Flags().BoolVarP(
 			&verbose, "verbose", "v", false, "enable verbose event logging")
 	}
@@ -64,7 +65,7 @@ func main() {
 		cmd.Flags().Int64Var(
 			&cacheSize, "cache", 1<<30, "cache size")
 	}
-	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, ycsbCmd, fsBenchCmd} {
+	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, ycsbCmd, fsBenchCmd, writeBenchCmd} {
 		cmd.Flags().DurationVarP(
 			&duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
 	}
