@@ -836,6 +836,27 @@ type WriterOption interface {
 	writerApply(*Writer)
 }
 
+// PreviousPointKeyOpt is a WriterOption that provides access to the last
+// point key written to the writer while building a sstable.
+type PreviousPointKeyOpt struct {
+	w *Writer
+}
+
+// UnsafeKey returns the last point key written to the writer to which this
+// option was passed during creation. The returned key points directly into
+// a buffer belonging the Writer. The value's lifetime ends the next time a
+// point key is added to the Writer.
+func (o PreviousPointKeyOpt) UnsafeKey() base.InternalKey {
+	if o.w == nil {
+		return base.InvalidInternalKey
+	}
+	return o.w.meta.LargestPoint
+}
+
+func (o *PreviousPointKeyOpt) writerApply(w *Writer) {
+	o.w = w
+}
+
 // internalTableOpt is a WriterOption that sets properties for sstables being
 // created by the db itself (i.e. through flushes and compactions), as opposed
 // to those meant for ingestion.

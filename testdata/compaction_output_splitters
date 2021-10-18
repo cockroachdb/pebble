@@ -107,10 +107,6 @@ should-split-before food.SET.4
 ----
 no-split
 
-set-should-split child0 no-split
-----
-ok
-
 should-split-before food2.SET.4
 ----
 split-now
