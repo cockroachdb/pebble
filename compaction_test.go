@@ -2698,6 +2698,7 @@ func (m *mockSplitter) onNewOutput(key *InternalKey) []byte {
 
 func TestCompactionOutputSplitters(t *testing.T) {
 	var main, child0, child1 compactionOutputSplitter
+	var prevUserKey []byte
 	pickSplitter := func(input string) *compactionOutputSplitter {
 		switch input {
 		case "main":
@@ -2734,7 +2735,10 @@ func TestCompactionOutputSplitters(t *testing.T) {
 					*splitterToInit = &mockSplitter{}
 				case "userkey":
 					*splitterToInit = &userKeyChangeSplitter{
-						cmp:      base.DefaultComparer.Compare,
+						cmp: base.DefaultComparer.Compare,
+						unsafePrevUserKey: func() []byte {
+							return prevUserKey
+						},
 						splitter: child0,
 					}
 				}
@@ -2762,6 +2766,9 @@ func TestCompactionOutputSplitters(t *testing.T) {
 				shouldSplit := main.shouldSplitBefore(&key, nil)
 				if shouldSplit == splitNow {
 					main.onNewOutput(&key)
+					prevUserKey = nil
+				} else {
+					prevUserKey = key.UserKey
 				}
 				return shouldSplit.String()
 			default:

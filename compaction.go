@@ -323,26 +323,22 @@ func (a *splitterGroup) onNewOutput(key *InternalKey) []byte {
 // the boundary between atomic compaction units). Use this splitter to wrap
 // any splitters that don't guarantee user key splits (i.e. splitters that make
 // their determination in ways other than comparing the current key against a
-// limit key.
+// limit key.) If a wrapped splitter advises a split, it must continue
+// to advise a split until a new output.
 type userKeyChangeSplitter struct {
-	cmp                Compare
-	splitOnNextUserKey bool
-	savedKey           []byte
-	splitter           compactionOutputSplitter
+	cmp               Compare
+	splitter          compactionOutputSplitter
+	unsafePrevUserKey func() []byte
 }
 
 func (u *userKeyChangeSplitter) shouldSplitBefore(
 	key *InternalKey, tw *sstable.Writer,
 ) compactionSplitSuggestion {
-	if u.splitOnNextUserKey && u.cmp(u.savedKey, key.UserKey) != 0 {
-		u.splitOnNextUserKey = false
-		u.savedKey = u.savedKey[:0]
-		return splitNow
+	if split := u.splitter.shouldSplitBefore(key, tw); split != splitNow {
+		return split
 	}
-	if split := u.splitter.shouldSplitBefore(key, tw); split == splitNow {
-		u.splitOnNextUserKey = true
-		u.savedKey = append(u.savedKey[:0], key.UserKey...)
-		return noSplit
+	if u.cmp(key.UserKey, u.unsafePrevUserKey()) > 0 {
+		return splitNow
 	}
 	return noSplit
 }
@@ -2106,6 +2102,16 @@ func (d *DB) runCompaction(
 
 	writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level)
 
+	// prevPointKey is a sstable.WriterOption that provides access to
+	// the last point key written to a writer's sstable. When a new
+	// output begins in newOutput, prevPointKey is updated to point to
+	// the new output's sstable.Writer. This allows the compaction loop
+	// to access the last written point key without requiring the
+	// compaction loop to make a copy of each key ahead of time. Users
+	// must be careful, because the byte slice returned by UnsafeKey
+	// points directly into the Writer's block buffer.
+	var prevPointKey sstable.PreviousPointKeyOpt
+
 	newOutput := func() error {
 		fileMeta := &fileMetadata{}
 		d.mu.Lock()
@@ -2140,7 +2146,7 @@ func (d *DB) runCompaction(
 		filenames = append(filenames, filename)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
 		internalTableOpt := private.SSTableInternalTableOpt.(sstable.WriterOption)
-		tw = sstable.NewWriter(file, writerOpts, cacheOpts, internalTableOpt)
+		tw = sstable.NewWriter(file, writerOpts, cacheOpts, internalTableOpt, &prevPointKey)
 
 		fileMeta.CreationTime = time.Now().Unix()
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
@@ -2378,6 +2384,16 @@ func (d *DB) runCompaction(
 		outputSplitters[0] = &userKeyChangeSplitter{
 			cmp:      c.cmp,
 			splitter: outputSplitters[0],
+			unsafePrevUserKey: func() []byte {
+				// Return the largest point key written to tw or the start of
+				// the current range deletion in the fragmenter, whichever is
+				// greater.
+				prevPoint := prevPointKey.UnsafeKey()
+				if c.cmp(prevPoint.UserKey, c.rangeDelFrag.Start()) > 0 {
+					return prevPoint.UserKey
+				}
+				return c.rangeDelFrag.Start()
+			},
 		}
 		outputSplitters = append(outputSplitters, &l0LimitSplitter{c: c, ve: ve})
 	}

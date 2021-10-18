@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -483,6 +484,14 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			d.mu.versions.picker.getBaseLevel(), toFlush, &d.atomic.bytesFlushed)
 		c.disableRangeTombstoneElision = true
+		// NB: define allows the test to exactly specify which keys go
+		// into which sstables. If the test has a small target file
+		// size to test grandparent limits, etc, the maxOutputFileSize
+		// can cause splitting /within/ the bounds specified to the
+		// test. Ignore the target size here, and split only according
+		// to the user-defined boundaries.
+		c.maxOutputFileSize = math.MaxUint64
+
 		newVE, _, err := d.runCompaction(0, c, nilPacer)
 		if err != nil {
 			return err
