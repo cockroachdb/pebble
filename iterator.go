@@ -1686,6 +1686,9 @@ func (i *Iterator) HasPointAndRange() (hasPoint, hasRange bool) {
 // range key covering the current iterator position. RangeBounds returns nil
 // bounds if there is no range key covering the current iterator position, or
 // the iterator is not configured to surface range keys.
+//
+// If valid, the returned start bound is less than or equal to Key() and the
+// returned end bound is greater than Key().
 func (i *Iterator) RangeBounds() (start, end []byte) {
 	if i.rangeKey == nil || !i.opts.rangeKeys() || !i.rangeKey.hasRangeKey {
 		return nil, nil
@@ -1696,6 +1699,10 @@ func (i *Iterator) RangeBounds() (start, end []byte) {
 // Key returns the key of the current key/value pair, or nil if done. The
 // caller should not modify the contents of the returned slice, and its
 // contents may change on the next call to Next.
+//
+// If positioned at an iterator position that only holds a range key, Key()
+// always returns the start bound of the range key. Otherwise, it returns the
+// point key's key.
 func (i *Iterator) Key() []byte {
 	return i.key
 }
