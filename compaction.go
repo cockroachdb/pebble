@@ -876,6 +876,21 @@ func (c *compaction) findGrandparentLimit(start []byte) []byte {
 	return nil
 }
 
+// findGrandparentGT searches for a grandparent with a largest key
+// greater than the provided key. If key is nil, or there is no such
+// grandparent, findNextGrandparentGT returns nil. Otherwise, it returns
+// the grandparent's largest key.
+func (c *compaction) findGrandparentGT(key []byte) []byte {
+	if key == nil {
+		return nil
+	}
+	grandparentIter := c.grandparents.Iter()
+	if m := seekGT(&grandparentIter, c.cmp, key); m != nil {
+		return m.Largest.UserKey
+	}
+	return nil
+}
+
 // findL0Limit takes the start key for a table and returns the user key to which
 // that table can be extended without hitting the next l0Limit. Having flushed
 // sstables "bridging across" an l0Limit could lead to increased L0 -> LBase
@@ -2476,8 +2491,8 @@ func (d *DB) runCompaction(
 			// a potentially unbounded number of grandparents.
 			splitKey = key.UserKey
 		case key == nil && splitL0Outputs:
-			// We ran out of keys with flush splits enabled. Set splitKey to
-			// nil so all range tombstones get flushed in the current sstable.
+			// We ran out of keys with flush splits enabled. We need to be
+			// careful to not split in the middle of a user key.
 			// Consider this example:
 			//
 			// a.SET.4
@@ -2490,15 +2505,12 @@ func (d *DB) runCompaction(
 			// point (as it's <= splitterSuggestion), and flushes cannot have
 			// user keys split across multiple sstables, we have to set
 			// splitKey to a key greater than 'd' to ensure the range deletion
-			// also gets flushed. Setting the splitKey to nil is the simplest
-			// way to ensure that.
+			// also gets flushed. We set splitKey to the next grandparent limit
+			// greater than the splitterSuggestion, or nil if there is none.
 			//
 			// TODO(jackson): This case is only problematic if splitKey equals
-			// the user key of the last point key added. We don't need to
-			// flush *all* range tombstones to the current sstable. We could
-			// flush up to the next grandparent limit greater than
-			// `splitterSuggestion` instead.
-			splitKey = nil
+			// the user key of the last point key added.
+			splitKey = c.findGrandparentGT(splitterSuggestion)
 		case key == nil && prevPointSeqNum != 0:
 			// The last key added did not have a zero sequence number, so
 			// we'll always be able to adjust the next table's smallest key.
@@ -2510,15 +2522,11 @@ func (d *DB) runCompaction(
 			// The last key added did have a zero sequence number. The
 			// splitters' suggested split point might have the same user key,
 			// which would cause the next output to have an unadjustable
-			// smallest key. To prevent that, we ignore the splitter's
-			// suggestion, leaving splitKey nil to flush all pending range
-			// tombstones.
+			// smallest key. To prevent that, we search for a grandparent key
+			// strictly greater than the suggested split point.
 			// TODO(jackson): This case is only problematic if splitKey equals
-			// the user key of the last point key added. We don't need to
-			// flush *all* range tombstones to the current sstable. We could
-			// flush up to the next grandparent limit greater than
-			// `splitterSuggestion` instead.
-			splitKey = nil
+			// the user key of the last point key added.
+			splitKey = c.findGrandparentGT(splitterSuggestion)
 		default:
 			return nil, nil, errors.New("pebble: not reached")
 		}
