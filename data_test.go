@@ -450,6 +450,12 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				return nil, errors.Errorf("%s: could not parse %q as bool: %s", td.Cmd, arg.Vals[0], err)
 			}
 			opts.private.disableTableStats = !enable
+		case "flush-split-bytes":
+			splitBytes, err := strconv.ParseInt(arg.Vals[0], 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			opts.FlushSplitBytes = splitBytes
 		default:
 			return nil, errors.Errorf("%s: unknown arg: %s", td.Cmd, arg.Key)
 		}

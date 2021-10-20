@@ -2696,6 +2696,10 @@ func (m *mockSplitter) onNewOutput(key *InternalKey) []byte {
 	return nil
 }
 
+func (m *mockSplitter) nextLimitGT(userKey []byte) []byte {
+	return nil
+}
+
 func TestCompactionOutputSplitters(t *testing.T) {
 	var main, child0, child1 compactionOutputSplitter
 	pickSplitter := func(input string) *compactionOutputSplitter {

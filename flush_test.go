@@ -41,6 +41,23 @@ func TestManualFlush(t *testing.T) {
 			b.Commit(nil)
 			return ""
 
+		case "define":
+			if d != nil {
+				if err := d.Close(); err != nil {
+					return err.Error()
+				}
+			}
+
+			var err error
+			if d, err = runDBDefineCmd(td, getOptions()); err != nil {
+				return err.Error()
+			}
+
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			d.mu.Unlock()
+			return s
+
 		case "flush":
 			if err := d.Flush(); err != nil {
 				return err.Error()

@@ -95,3 +95,101 @@ flush
 
 release-cleaning-turn
 ----
+
+# Test a flush with a memtable that contains a broad range tombstone at
+# the end of the keyspace. When we run out of point keys, we should use
+# the grandparents in L1 to split the range tombstone.
+
+define target-file-sizes=(1, 1, 1, 1)
+L1
+  a.SET.0:v
+L1
+  b.SET.0:v
+L1
+  c.SET.0:v
+L1
+  d.SET.0:v
+L1
+  e.SET.0:v
+L1
+  f.SET.0:v
+L1
+  g.SET.0:v
+----
+1:
+  000004:[a#0,SET-a#0,SET]
+  000005:[b#0,SET-b#0,SET]
+  000006:[c#0,SET-c#0,SET]
+  000007:[d#0,SET-d#0,SET]
+  000008:[e#0,SET-e#0,SET]
+  000009:[f#0,SET-f#0,SET]
+  000010:[g#0,SET-g#0,SET]
+
+batch
+set b v2
+del-range c g
+----
+
+flush
+----
+0.0:
+  000012:[b#1,SET-d#72057594037927935,RANGEDEL]
+  000013:[d#2,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000014:[f#2,RANGEDEL-g#72057594037927935,RANGEDEL]
+1:
+  000004:[a#0,SET-a#0,SET]
+  000005:[b#0,SET-b#0,SET]
+  000006:[c#0,SET-c#0,SET]
+  000007:[d#0,SET-d#0,SET]
+  000008:[e#0,SET-e#0,SET]
+  000009:[f#0,SET-f#0,SET]
+  000010:[g#0,SET-g#0,SET]
+
+# Test a similar scenario, but in this case there are many files in L0.
+# We want the L0 FlushSplitBytes to trigger splitting of the flush
+# across multiple sstables.
+
+define target-file-sizes=(1, 1, 1, 1) flush-split-bytes=1
+L0
+  a.SET.0:v
+L0
+  b.SET.0:v
+L0
+  c.SET.0:v
+L0
+  d.SET.0:v
+L0
+  e.SET.0:v
+L0
+  f.SET.0:v
+L0
+  g.SET.0:v
+----
+0.0:
+  000004:[a#0,SET-a#0,SET]
+  000005:[b#0,SET-b#0,SET]
+  000006:[c#0,SET-c#0,SET]
+  000007:[d#0,SET-d#0,SET]
+  000008:[e#0,SET-e#0,SET]
+  000009:[f#0,SET-f#0,SET]
+  000010:[g#0,SET-g#0,SET]
+
+batch
+set a v2
+del-range c g
+----
+
+flush
+----
+0.1:
+  000012:[a#1,SET-a#1,SET]
+  000013:[c#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000014:[e#2,RANGEDEL-g#72057594037927935,RANGEDEL]
+0.0:
+  000004:[a#0,SET-a#0,SET]
+  000005:[b#0,SET-b#0,SET]
+  000006:[c#0,SET-c#0,SET]
+  000007:[d#0,SET-d#0,SET]
+  000008:[e#0,SET-e#0,SET]
+  000009:[f#0,SET-f#0,SET]
+  000010:[g#0,SET-g#0,SET]

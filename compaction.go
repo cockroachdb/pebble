@@ -116,6 +116,11 @@ type compactionOutputSplitter interface {
 	// output, or nil if this sstable will only contain range tombstones already
 	// in the fragmenter.
 	onNewOutput(key *InternalKey) []byte
+	// nextLimitGT returns the next limit greater than the provided user key. If
+	// a compaction is unable to split at the key previously returned by
+	// onNewOutput, the compaction will call nextLimitGT to find a new split
+	// point. The returned key must be strictly greater than userKey.
+	nextLimitGT(userKey []byte) []byte
 }
 
 // fileSizeSplitter is a compactionOutputSplitter that makes a determination
@@ -140,6 +145,10 @@ func (f *fileSizeSplitter) shouldSplitBefore(
 }
 
 func (f *fileSizeSplitter) onNewOutput(key *InternalKey) []byte {
+	return nil
+}
+
+func (f *fileSizeSplitter) nextLimitGT(userKey []byte) []byte {
 	return nil
 }
 
@@ -240,6 +249,10 @@ func (g *grandparentLimitSplitter) onNewOutput(key *InternalKey) []byte {
 	return g.limit
 }
 
+func (g *grandparentLimitSplitter) nextLimitGT(userKey []byte) []byte {
+	return g.c.findGrandparentGT(userKey)
+}
+
 type l0LimitSplitter struct {
 	c     *compaction
 	ve    *versionEdit
@@ -285,6 +298,11 @@ func (l *l0LimitSplitter) onNewOutput(key *InternalKey) []byte {
 	return l.limit
 }
 
+func (l *l0LimitSplitter) nextLimitGT(userKey []byte) []byte {
+	l.limit = l.c.findL0Limit(userKey)
+	return l.limit
+}
+
 // splitterGroup is a compactionOutputSplitter that splits whenever one of its
 // child splitters advises a compaction split.
 type splitterGroup struct {
@@ -307,6 +325,20 @@ func (a *splitterGroup) onNewOutput(key *InternalKey) []byte {
 	var earliestLimit []byte
 	for _, splitter := range a.splitters {
 		limit := splitter.onNewOutput(key)
+		if limit == nil {
+			continue
+		}
+		if earliestLimit == nil || a.cmp(limit, earliestLimit) < 0 {
+			earliestLimit = limit
+		}
+	}
+	return earliestLimit
+}
+
+func (a *splitterGroup) nextLimitGT(userKey []byte) []byte {
+	var earliestLimit []byte
+	for _, splitter := range a.splitters {
+		limit := splitter.nextLimitGT(userKey)
 		if limit == nil {
 			continue
 		}
@@ -349,6 +381,10 @@ func (u *userKeyChangeSplitter) shouldSplitBefore(
 
 func (u *userKeyChangeSplitter) onNewOutput(key *InternalKey) []byte {
 	return u.splitter.onNewOutput(key)
+}
+
+func (u *userKeyChangeSplitter) nextLimitGT(key []byte) []byte {
+	return u.splitter.nextLimitGT(key)
 }
 
 // compactionFile is a vfs.File wrapper that, on every write, updates a metric
@@ -872,6 +908,21 @@ func (c *compaction) findGrandparentLimit(start []byte) []byte {
 		if overlappedBytes > c.maxOverlapBytes && c.cmp(start, f.Largest.UserKey) < 0 {
 			return f.Largest.UserKey
 		}
+	}
+	return nil
+}
+
+// findGrandparentGT searches for a grandparent with a largest key
+// greater than the provided key. If key is nil, or there is no such
+// grandparent, findNextGrandparentGT returns nil. Otherwise, it returns
+// the grandparent's largest key.
+func (c *compaction) findGrandparentGT(key []byte) []byte {
+	if key == nil {
+		return nil
+	}
+	grandparentIter := c.grandparents.Iter()
+	if m := seekGT(&grandparentIter, c.cmp, key); m != nil {
+		return m.Largest.UserKey
 	}
 	return nil
 }
@@ -2476,8 +2527,8 @@ func (d *DB) runCompaction(
 			// a potentially unbounded number of grandparents.
 			splitKey = key.UserKey
 		case key == nil && splitL0Outputs:
-			// We ran out of keys with flush splits enabled. Set splitKey to
-			// nil so all range tombstones get flushed in the current sstable.
+			// We ran out of keys with flush splits enabled. We need to be
+			// careful to not split in the middle of a user key.
 			// Consider this example:
 			//
 			// a.SET.4
@@ -2490,15 +2541,14 @@ func (d *DB) runCompaction(
 			// point (as it's <= splitterSuggestion), and flushes cannot have
 			// user keys split across multiple sstables, we have to set
 			// splitKey to a key greater than 'd' to ensure the range deletion
-			// also gets flushed. Setting the splitKey to nil is the simplest
-			// way to ensure that.
+			// also gets flushed. We set splitKey to the next grandparent limit
+			// greater than the splitterSuggestion, or nil if there is none.
 			//
 			// TODO(jackson): This case is only problematic if splitKey equals
-			// the user key of the last point key added. We don't need to
-			// flush *all* range tombstones to the current sstable. We could
-			// flush up to the next grandparent limit greater than
-			// `splitterSuggestion` instead.
-			splitKey = nil
+			// the user key of the last point key added.
+			if splitterSuggestion != nil {
+				splitKey = splitter.nextLimitGT(splitterSuggestion)
+			}
 		case key == nil && prevPointSeqNum != 0:
 			// The last key added did not have a zero sequence number, so
 			// we'll always be able to adjust the next table's smallest key.
@@ -2510,15 +2560,13 @@ func (d *DB) runCompaction(
 			// The last key added did have a zero sequence number. The
 			// splitters' suggested split point might have the same user key,
 			// which would cause the next output to have an unadjustable
-			// smallest key. To prevent that, we ignore the splitter's
-			// suggestion, leaving splitKey nil to flush all pending range
-			// tombstones.
+			// smallest key. To prevent that, we search for a grandparent key
+			// strictly greater than the suggested split point.
 			// TODO(jackson): This case is only problematic if splitKey equals
-			// the user key of the last point key added. We don't need to
-			// flush *all* range tombstones to the current sstable. We could
-			// flush up to the next grandparent limit greater than
-			// `splitterSuggestion` instead.
-			splitKey = nil
+			// the user key of the last point key added.
+			if splitterSuggestion != nil {
+				splitKey = splitter.nextLimitGT(splitterSuggestion)
+			}
 		default:
 			return nil, nil, errors.New("pebble: not reached")
 		}
