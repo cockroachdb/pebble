@@ -81,9 +81,8 @@ when the key is fragmented.
   be masking behavior applied on points due to later range
   writes. This masking behavior is explicitly requested by the user in
   the context of the iteration, and does not apply to internal
-  iterators used for compaction writes.
-
-- Point deletes only apply to points.
+  iterators used for compaction writes. Point deletes only apply to
+  points.
 
 - Range deletes apply to both point keys and range keys. A RANGEDEL
   can remove part of a range key, just like the new Del we introduced
@@ -115,6 +114,8 @@ when the key is fragmented.
     these range keys are interleaved with the point keys in the
     sstable we would need to potentially read all the blocks to find
     these range keys, which is why we do not make this design choice.
+    Pebble does not use bloom filters in L6, so once a range key is
+    compacted into L6 its impact to SeekPrefixGE is lessened.
 
 A user iterating over a key interval [k1,k2) can request:
 
@@ -150,7 +151,7 @@ like
 HasPointAndRange() (hasPoint bool, hasRange bool)
 Key() []byte
 PointValue() []byte
-RangeEndKey) []byte
+RangeEndKey() []byte
 RangeValue() []byte
 ```
 
