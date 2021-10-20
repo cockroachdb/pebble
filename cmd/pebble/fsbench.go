@@ -47,6 +47,9 @@ var fsConfig struct {
 	fs vfs.FS
 
 	precomputedWriteBatch []byte
+
+	// The background operation to run.
+	background string
 }
 
 func init() {
@@ -58,6 +61,9 @@ func init() {
 	fsBenchCmd.Flags().StringVar(
 		&fsConfig.benchname, "bench-name", "", "The benchmark to run.")
 	fsBenchCmd.MarkFlagRequired("bench-name")
+
+	fsBenchCmd.Flags().StringVar(
+		&fsConfig.background, "background", "", "The background op to run.")
 
 	fsBenchCmd.Flags().IntVar(
 		&fsConfig.numTimes, "num-times", 1,
@@ -107,6 +113,10 @@ type fsBench struct {
 	// Clean should be only called after making sure
 	// that the run function is no longer executing.
 	clean func()
+
+	// A function which simulates some workload in the background while
+	// we measure the latencies of some foreground ops.
+	background func()
 }
 
 // createFile can be used to create an empty file.
@@ -582,6 +592,56 @@ var benchmarks = map[string]fsBenchmark{
 	),
 }
 
+var backgroundOps = map[string]func(){
+	"random_4KiB_1_writer_nosync":   randomWritesNoSync(4<<10, 1),
+	"random_4KiB_2_writers_nosync":  randomWritesNoSync(4<<10, 2),
+	"random_4KiB_4_writers_nosync":  randomWritesNoSync(4<<10, 4),
+	"random_4KiB_8_writers_nosync":  randomWritesNoSync(4<<10, 8),
+	"random_4KiB_16_writers_nosync": randomWritesSync(4<<10, 16),
+	"random_4KiB_1_writer_sync":     randomWritesSync(4<<10, 1),
+	"random_4KiB_2_writers_sync":    randomWritesSync(4<<10, 2),
+	"random_4KiB_4_writers_sync":    randomWritesSync(4<<10, 4),
+	"random_4KiB_8_writers_sync":    randomWritesSync(4<<10, 8),
+	"random_4KiB_16_writers_sync":   randomWritesSync(4<<10, 16),
+}
+
+// randomWritesNoSync is a background operation which randomly creates
+// and writes to files on the disk. It is used to create a spike in
+// disk activity.
+func randomWritesNoSync(size int, concurrency int) func() {
+	f := func() {
+		for i := 0; i < concurrency; i++ {
+			go func(i int) {
+				filename := fmt.Sprintf("test%d", i)
+				fh := createFile(filename)
+				for {
+					writeToFile(fh, size)
+				}
+			}(i)
+		}
+	}
+	return f
+}
+
+// randomWritesSync is a background operation which randomly creates
+// and writes files to the disk, and calls sync. It is used to create
+// a spike in  disk activity.
+func randomWritesSync(size int, concurrency int) func() {
+	f := func() {
+		for i := 0; i < concurrency; i++ {
+			go func(i int) {
+				filename := fmt.Sprintf("test%d", i)
+				fh := createFile(filename)
+				for {
+					writeToFile(fh, size)
+					syncFile(fh)
+				}
+			}(i)
+		}
+	}
+	return f
+}
+
 func runFsBench(_ *cobra.Command, args []string) error {
 	benchmark, ok := benchmarks[fsConfig.benchname]
 	if !ok {
@@ -606,6 +666,15 @@ func (bench *fsBench) init(wg *sync.WaitGroup) {
 	fmt.Println("Running benchmark:", bench.name)
 	fmt.Println("Description:", bench.description)
 
+	if fsConfig.background != "" {
+		f, ok := backgroundOps[fsConfig.background]
+		if !ok {
+			fmt.Println("WARNING: background op is unknown", fsConfig.background)
+		} else {
+			bench.background = f
+		}
+	}
+
 	wg.Add(1)
 	go bench.execute(wg)
 }
@@ -614,6 +683,10 @@ func (bench *fsBench) execute(wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	latencyHist := bench.reg.Register(bench.name)
+
+	if bench.background != nil {
+		go bench.background()
+	}
 
 	for {
 		// run the op which we're benchmarking.
