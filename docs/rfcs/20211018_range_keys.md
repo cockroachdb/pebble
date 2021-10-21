@@ -450,7 +450,7 @@ which data is logically deleted.
 
 ## Pebble
 
-Pebble requires the user provide an implementation of `ColorMixer` interface in
+Pebble requires the user provide an implementation of a `ColorMixer` interface in
 order to apply colorings to point keys. During compactions, when two overlapping
 colorings are encountered, the spans are fragmented at the span bounadries. The
 span contained within both colorings is merged (or 'mixed') through invoking the
@@ -461,13 +461,14 @@ bottomost level of the LSM, the coloring span may be elided.
 
 Snapshots prevent colors from mixing, and colors may only mix within a snapshot
 stripe. At a given sequence number, there is at most one fragmented coloring
-covering a point. This ensures the number of fragments within a sstable are O(N
-× S) where N is the number of overlapping colorings provided and S is the number
-of open snapshots. This merging avoids the quadratic blowup of fragments when
-range keys cannot be merged. Since fragments encode the range within long user
-keys, this is important in reducing the number of key comparisons required
-during iteraiton. This also ensures that an iterator reading at a particular
-sequence number is only concerned with at most one coloring span per level.
+within a level covering a point. This ensures the number of fragments within a
+sstable are O(N × S) where N is the number of overlapping colorings provided and
+S is the number of open snapshots. This merging avoids the quadratic blowup of
+fragments when range keys cannot be merged. Since fragments encode the range
+within long user keys, this is important in reducing the number of key
+comparisons required during iteraiton. This also ensures that an iterator
+reading at a particular sequence number is only concerned with at most one
+coloring span per level.
 
 During iteration over a LSM containing N levels, there may exist up to N
 coloring spans that overlap a given point. If the iterator had requested access
@@ -507,7 +508,7 @@ type ColorMixer interface {
   // ColorMix mixes color values, producing a single color value
   // representing the combination. Operands are provided in-order
   // left-to-right representing newest to oldest.
-  ColorMix(dst []byte, includesBase bool, operands []byte) []byte
+  ColorMix(dst []byte, includesBase bool, operands ...[]byte) []byte
 }
 
 // ColorRange writes a new coloring to the key range specified by [startKey,
@@ -537,7 +538,7 @@ type Color struct {
 // Mixed applies the color mixer on the set of colorings, yielding a single
 // color.
 func (c Color) Mixed() []byte {
-  switch len(c) {
+  switch len(c.Colorings) {
   case 0:
       return nil
   case 1:
@@ -576,8 +577,8 @@ from the left operand and removes any overwritten entries from the right. If
 `includesBase` is set, the operator may drop any timestamp removals because
 there exist no operands in lower levels. If there exist no entries, because
 they've all been dropped, the operator may return an empty value. If the
-coloring is in the bottommost layer of the LSM, the corresponding coloring span
-will be dropped altogether.
+coloring with an empty value is in the bottommost layer of the LSM, the
+corresponding coloring span will be dropped altogether.
 
 When requested during iteration, a Pebble iterator directly exposes the unmerged
 coloring spans. To evaluate whether the current point is key deleted, the MVCC
