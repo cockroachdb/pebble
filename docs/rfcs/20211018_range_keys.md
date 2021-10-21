@@ -474,24 +474,25 @@ During iteration over a LSM containing N levels, there may exist up to N
 coloring spans that overlap a given point. If the iterator had requested access
 to point key coverings when it was constructed, the iterator may surface a data
 structure encompassing the O(N) overlapping coloring spans, in level-descending
-order. For conveinence, this data structure exposes a method that mixes the
-values of all the coloring values, yielding the point key's discrete color. For
-efficiency, a user may also iterate over the coloring spans directly (which
-point directly into each coloring span's data block), to avoid mixing colors.
+order. This data structure holds pointers into the O(N) coloring span blocks.
+For convenience, this data structure exposes a method that mixes the values of
+all the coloring values, yielding the point key's discrete color. For
+efficiency, a user may alternatively iterate over the coloring spans directly
+to avoid unnecessary work.
 
 An individual point key's mixed color is deterministic as long as the
-user-defined color mixing operation is associative. The coloring spans surfaces
-are not deterministic and depend on physical sstable boundaries.
+user-defined color mixing operation is associative. The coloring spans directly
+surfaced by the iterator are not deterministic and depend on physical sstable
+boundaries.
 
 DeleteRange operations delete all overlapping coloring spans as well.
 
 Removing colorings from ranges without removing the described point keys may be
 implemented through the semantics of the user-defined color mixer. Coloring
 fragments with zero-length values are elided when they reach the last snapshot
-stripe of the bottommmost level of the LSM. Writing an empty value color to a
-range, and allowing the empty value color to subsume lower-leveled colorings
-in the color mixing operation ensures the span will be elided when it reaches
-L6.
+stripe of the bottommmost level of the LSM.  User-defined color mixers can
+ensure that they can write new color values that yield an empty value when
+merged, to implement removal.
 
 Note that Pebble's range tombstones and these coloring spans are very closely
 related. They're both defined over the same keyspace. For both of these kinds of
@@ -499,6 +500,10 @@ range keys, at most 1 of the range keys within a level overlap a given point at
 a given sequence number. This design aspires to closely mirror range deletions
 in semantics and mechanics (eg, fragmenting) so that learnings, code, etc may be
 shared between the two implementations.
+
+With respect to sstable boundaries and truncation, coloring fragments behave
+identically to range deletions. A coloring fragment is only "effective within"
+the span of the sstable boundaries.
 
 ```
 type ColorMixer interface {
