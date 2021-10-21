@@ -434,3 +434,161 @@ provide the name of the block property to utilize. In this example,
 when the iterator will encounter [a,e)@100 it can skip blocks whose
 keys are guaranteed to be in [a,e) and whose timestamp interval is <
 100.
+
+------
+
+# Color Range
+
+In this design Pebble exposes an API to color, or label, ranges of its
+1-dimensional keyspace with a value. A coloring may be applied to a range of the
+keyspace multiple times, and compactions handle merging colors through a
+user-defined color mixing operation.
+
+CockroachDB uses this key-coloring API to implement MVCC range deletions,
+coloring point keys with MVCC range tombstone(s) encoding the timestamps at
+which data is logically deleted.
+
+## Pebble
+
+Pebble requires the user provide an implementation of `ColorMixer` interface in
+order to apply colorings to point keys. During compactions, when two overlapping
+colorings are encountered, the spans are fragmented at the span bounadries. The
+span contained within both colorings is merged (or 'mixed') through invoking the
+user-provided `ColorMixer`. This operation yields a single value, which is then
+associated with the span. If mixing colors yields an empty value and the
+coloring span containing the empty value reaches the last snapshot stripe of the
+bottomost level of the LSM, the coloring span may be elided.
+
+Snapshots prevent colors from mixing, and colors may only mix within a snapshot
+stripe. At a given sequence number, there is at most one fragmented coloring
+covering a point. This ensures the number of fragments within a sstable are O(N
+× S) where N is the number of overlapping colorings provided and S is the number
+of open snapshots. This merging avoids the quadratic blowup of fragments when
+range keys cannot be merged. Since fragments encode the range within long user
+keys, this is important in reducing the number of key comparisons required
+during iteraiton. This also ensures that an iterator reading at a particular
+sequence number is only concerned with at most one coloring span per level.
+
+During iteration over a LSM containing N levels, there may exist up to N
+coloring spans that overlap a given point. If the iterator had requested access
+to point key coverings when it was constructed, the iterator may surface a data
+structure encompassing the O(N) overlapping coloring spans, in level-descending
+order. For conveinence, this data structure exposes a method that mixes the
+values of all the coloring values, yielding the point key's discrete color. For
+efficiency, a user may also iterate over the coloring spans directly (which
+point directly into each coloring span's data block), to avoid mixing colors.
+
+An individual point key's mixed color is deterministic as long as the
+user-defined color mixing operation is associative. The coloring spans surfaces
+are not deterministic and depend on physical sstable boundaries.
+
+DeleteRange operations delete all overlapping coloring spans as well.
+
+Removing colorings from ranges without removing the described point keys may be
+implemented through the semantics of the user-defined color mixer. Coloring
+fragments with zero-length values are elided when they reach the last snapshot
+stripe of the bottommmost level of the LSM. Writing an empty value color to a
+range, and allowing the empty value color to subsume lower-leveled colorings
+in the color mixing operation ensures the span will be elided when it reaches
+L6.
+
+Note that Pebble's range tombstones and these coloring spans are very closely
+related. They're both defined over the same keyspace. For both of these kinds of
+range keys, at most 1 of the range keys within a level overlap a given point at
+a given sequence number. This design aspires to closely mirror range deletions
+in semantics and mechanics (eg, fragmenting) so that learnings, code, etc may be
+shared between the two implementations.
+
+```
+type ColorMixer interface {
+  // Name returns the name of the color mixer. It must be stable and is
+  // serialized within a database’s OPTIONS file.
+  Name() string
+  // ColorMix mixes color values, producing a single color value
+  // representing the combination. Operands are provided in-order
+  // left-to-right representing newest to oldest.
+  ColorMix(dst []byte, includesBase bool, operands []byte) []byte
+}
+
+// ColorRange writes a new coloring to the key range specified by [startKey,
+// endKey).
+(d *DB) ColorRange(startKey, endKey, value []byte, *WriteOptions) error
+
+// A Coloring represents a span of color applied to point keys.
+type Coloring struct {
+  StartKey []byte
+  EndKey   []byte
+  Color    []byte
+}
+
+// Color provides facility to access the color of a point key under the
+// iterator. Its Mixed method returns the color of the point key, fully merged.
+// Color also exposes the set of unmerged, physical coloring spans encountered
+// so that some use cases may avoid unneccessarily mixing colors.
+type Color struct {
+  buf       []byte
+  colorMix  ColorMixer
+
+  // Colorings contains the physical coloring spans that cover the current point
+  // key, that when mixed, yield the point's color.
+  Colorings []Coloring
+}
+
+// Mixed applies the color mixer on the set of colorings, yielding a single
+// color.
+func (c Color) Mixed() []byte {
+  switch len(c) {
+  case 0:
+      return nil
+  case 1:
+      return c.Colorings[0].Color
+  default:
+      // ...
+  }
+}
+```
+
+## CockroachDB
+
+CockroachDB may use the new Pebble coloring API to implement MVCC range deletes.
+Point keys are 'colored' with the timestamp at which they are deleted. The
+Pebble keyspace is one-dimensional, and Pebble has limited knowledge of MVCC
+timestamp suffixes. When a coloring is applied to a range, it's applied to this
+one-dimensional keyrange, which includes point keys both above and below the
+range delete timestamp.
+
+To accommodate this, CockroachDB's color values encode a sequence of MVCC
+timestamps, sorted. These timestamps encode whether a 'MVCC DeleteRange' is
+being applied or removed at the provided timestamp:
+
+```
+1-byte version header
+[-1|1] [timestamp len] timestamp1
+[-1|1] [timestamp len] timestamp2
+[-1|1] [timestamp len] timestamp3
+0
+```
+
+[Is there other metadata we would want to encode?]
+
+CockroachDB's implementation of the `ColorMix` operator adds all the entries
+from the left operand and removes any overwritten entries from the right. If
+`includesBase` is set, the operator may drop any timestamp removals because
+there exist no operands in lower levels. If there exist no entries, because
+they've all been dropped, the operator may return an empty value. If the
+coloring is in the bottommost layer of the LSM, the corresponding coloring span
+will be dropped altogether.
+
+When requested during iteration, a Pebble iterator directly exposes the unmerged
+coloring spans. To evaluate whether the current point is key deleted, the MVCC
+iterator must find the first coloring span containing a timestamp beneath the
+iterator's read timestamp. For reads at recent timestamps, this should be the
+first coloring span's first timestamp entry.
+
+The first entry less than the read timestamp but greater than the point key's
+timestamp, if such an entry exists, indicates whether or not the point key is
+deleted by a MVCC range tombstone.
+
+The MVCC iterator may use the corresponding coloring span's range bounds in
+order to mask entries beneath the deleted timestamp.
+
