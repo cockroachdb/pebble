@@ -1,56 +1,99 @@
+- Feature Name: Range Keys
+- Status: draft
+- Start Date: 2021-10-18
+- Authors: Sumeer Bhola
+- RFC PR: #1341
+- Pebble Issues:
+  https://github.com/cockroachdb/pebble/issues/1339
+- Cockroach Issues:
+  https://github.com/cockroachdb/cockroach/issues/70429
+  https://github.com/cockroachdb/cockroach/issues/70412
 
 ** Design Draft**
+
 TODO:
 - Fully flesh out the design.
-- consider following CockroachDB RFC format.
+  - Name the operations: tentatively RangeSet and RangeUnset:
+    thoughts?
+- Consider following CockroachDB RFC format.
+- Document relationship to CockroachDB's MVCC and new key ordering requirements
+  (eg, encoding-agnostic, prefix < prefix@t1)
 - Fix formatting.
 
-### Context
+# Summary
 
-Pebble currently has only one kind of key that is associated with a
-range: `RANGEDEL [k1, k2)#seq`, where [k1, k2) is supplied by the
-caller, and is used to efficiently remove a set of point keys.
+An ongoing effort within CockroachDB to preserve MVCC history across all SQL
+operations (see cockroachdb/cockroach#69380) requires a more efficient method of
+deleting ranges of MVCC history.
+
+This document describes an extension to Pebble introducing first-class support
+for MVCC range keys. Range keys map a range of keyspace to a value. Optionally,
+the key range may include an suffix encoding a MVCC timestamp. Pebble iterators
+may be configured to surface range keys during iteration, or to mask point keys
+at lower MVCC timestamps.
+
+CockroachDB will make use of these range keys to enable history-preserving
+removal of contiguous ranges of MVCC keys with constant writes.
+
+# Background
+
+Pebble currently has only one kind of key that is associated with a range:
+`RANGEDEL [k1, k2)#seq`, where [k1, k2) is supplied by the caller, and is used
+to efficiently remove a set of point keys.
+
+A previous CockroachDB RFC cockroach/cockroachdb#69380 describes the motivation
+for the larger project of migrating MVCC-noncompliant operations into MVCC
+compliance. Implemented with the existing MVCC primitives, some operations like
+removal of an index or table would require performing writes linearly
+proportional to the size of the table. Dropping a large table using existing
+MVCC point-delete primitives would be prohibitively expensive. The desire for a
+sublinear delete of an MVCC range motivates this work.
 
 The detailed design for MVCC compliant bulk operations ([high-level
 description](https://github.com/cockroachdb/cockroach/blob/master/docs/RFCS/20210825_mvcc_bulk_ops.md);
 detailed design draft for DeleteRange in internal
 [doc](https://docs.google.com/document/d/1ItxpitNwuaEnwv95RJORLCGuOczuS2y_GoM2ckJCnFs/edit#heading=h.x6oktstoeb9t)),
-is running into increasing complexity by placing range operations
-above the Pebble layer, such that Pebble sees these as points. The
-complexity causes are various: (a) which key (start or end) to anchor
-this range on, when represented as a point (there are performance
-consequences), (b) rewriting on CockroachDB range splits (and concerns
-about rewrite volume), (c) fragmentation on writes and complexity
-thereof (and performance concerns for reads when not fragmenting), (d)
-inability to efficiently skip older MVCC versions that are masked by a
-`[k1,k2)@ts` (where ts is the MVCC timestamp).
+ran into complexity by placing range operations above the Pebble layer, such
+that Pebble sees these as points. The complexity causes are various: (a) which
+key (start or end) to anchor this range on, when represented as a point (there
+are performance consequences), (b) rewriting on CockroachDB range splits (and
+concerns about rewrite volume), (c) fragmentation on writes and complexity
+thereof (and performance concerns for reads when not fragmenting), (d) inability
+to efficiently skip older MVCC versions that are masked by a `[k1,k2)@ts` (where
+ts is the MVCC timestamp).
 
-First-class support for range keys in Pebble would eliminate all these
-issues. Additionally, it could allow for future extensions like
-efficient transactional range operations. This issue describes how
-this feature would work from the perspective of a user of Pebble (like
-CockroachDB), and sketches some implementation details.
+First-class support for range keys in Pebble would eliminate all these issues.
+Additionally, it could allow for future extensions like efficient transactional
+range operations. This issue describes how this feature would work from the
+perspective of a user of Pebble (like CockroachDB), and sketches some
+implementation details.
+
+# Design
+
+## Interface
 
 ### 1. Writes
 
 There are two new operations: 
 
-- `Set([k1, k2), [optional suffix], <value>)`: This represents the
-  mapping `[k1, k2)@suffix => value`.
+- `RangeSet([k1, k2), [optional suffix], <value>)`: This represents
+  the mapping `[k1, k2)@suffix => value`.
 
-- `Del([k1, k2), [optional suffix])`: The delete can use a smaller key
-  range than the original Set, in which case part of the range is
-  deleted. The optional suffix must match the original Set.
+- `RangeUnset([k1, k2), [optional suffix])`: This removes a mapping
+  previously applied by `RangeSet`. The unset may use a smaller key
+  range than the original `RangeSet`, in which case part of the range
+  is deleted. The unset only applies to range keys with a matching
+  optional suffix.
 
-For example, consider `Set([a,d), foo)` (i.e., no suffix). If there is
-a later call `Del([b,c))`, the resulting state seen by a reader is
-`[a,b) => foo`, `[c,d) => foo`. Note that the value is not modified
-when the key is fragmented.
+For example, consider `RangeSet([a,d), foo)` (i.e., no suffix). If
+there is a later call `RangeUnset([b,c))`, the resulting state seen by
+a reader is `[a,b) => foo`, `[c,d) => foo`. Note that the value is not
+modified when the key is fragmented.
 
-- Partially overlapping Sets overlay as expected based on
-  fragments. For example, consider `Set([a,d), foo)`, followed by
-  `Set([c,e), bar)`. The resulting state is `[a,c) => foo`, `[c,e) =>
-  bar`.
+- Partially overlapping RangeSets overlay as expected based on
+  fragments. For example, consider `RangeSet([a,d), foo)`, followed by
+  `RangeSet([c,e), bar)`.  The resulting state is `[a,c) => foo`,
+  `[c,e) => bar`.
 
 - The optional suffix is related to the pebble Split operation which
   is explicitly documented as being for [MVCC
@@ -58,21 +101,22 @@ when the key is fragmented.
   without mandating exactly how the versions are represented.
 
 - Pebble internally is free to fragment the range even if there was no
-  Del. This fragmentation is essential for preserving the performance
-  characteristics of a log-structured merge tree.
+  unset. This fragmentation is essential for preserving the
+  performance characteristics of a log-structured merge tree.
 
 - Iteration will see fragmented state, i.e., there is no attempt to
   hide the physical fragmentation during iteration. Additionally,
   iteration may expose finer fragments than the physical fragments
-  (discussed later). This is considered acceptable since (a) the Del
-  semantics are over the logical range, and not a physical key, (b)
-  our current use cases don't need to know when all the fragments for
-  an original Set have been seen, (c) users that want to know when all
-  the fragments have been seen can store the original k2 in the
-  `<value>` and iterate until they are past that k2.
+  (discussed later). This is considered acceptable since (a) the
+  RangeUnset semantics are over the logical range, and not a physical
+  key, (b) our current use cases don't need to know when all the
+  fragments for an original RangeSet have been seen, (c) users that
+  want to know when all the fragments have been seen can store the
+  original k2 in the `<value>` and iterate until they are past that
+  k2.
 
-- Like point deletion, the Del can be elided when it falls to L6 and
-  there is no snapshot preventing its elision. So there is no
+- Like point deletion, the unset key can be elided when it falls to L6
+  and there is no snapshot preventing its elision. So there is no
   additional garbage collection problem introduced by these keys.
 
 - Point keys and range keys do not interact in terms of overwriting
@@ -85,24 +129,25 @@ when the key is fragmented.
   points.
 
 - Range deletes apply to both point keys and range keys. A RANGEDEL
-  can remove part of a range key, just like the new Del we introduced
-  earlier. Note that these two delete operations are different since
-  the Del requires that the suffix match. A RANGEDEL on the other hand
-  is trying to remove a set of keys (historically only point keys),
-  which can be point keys or range keys. We will discuss this in more
-  detail below after we elaborate on the semantics of the range
-  keys. Our current notion of RANGEDEL fails to fully consider the
-  behavior of range keys and will need to be strengthened.
+  can remove part of a range key, just like the new RangeUnset we
+  introduced earlier. Note that these two delete operations are
+  different since the RangeUnset requires that the suffix match. A
+  RANGEDEL on the other hand is trying to remove a set of keys
+  (historically only point keys), which can be point keys or range
+  keys. We will discuss this in more detail below after we elaborate
+  on the semantics of the range keys. Our current notion of RANGEDEL
+  fails to fully consider the behavior of range keys and will need to
+  be strengthened.
 
 - There is no Merge operaton.
 
-- Pebble will assign seqnums to the Set and Del, like it does for the
-  existing internal keys.
+- Pebble will assign seqnums to the RangeSet and RangeUnset, like it
+  does for the existing internal keys.
 
   - The LSM level invariants are valid across range and point keys
     (just like they are for RANGEDEL + point keys). That is,
-    `Set([k1,k2))#s2` cannot be at a lower level than `Set(k)#s1`
-    where `k \in [k1,k2)` and `s1 < s2`.
+    `RangeSet([k1,k2))#s2` cannot be at a lower level than
+    `RangeSet(k)#s1` where `k \in [k1,k2)` and `s1 < s2`.
 
   - These range keys will be stored in the same sstable as point
     keys. They will be in separate block(s).
@@ -266,8 +311,8 @@ determinism.
 
 #### 2.4 MVCC keys, i.e., may have suffix
 
-As a reminder, we will have range writes of the form `Set([k1, k2),
-<ver>, <value>)`.
+As a reminder, we will have range writes of the form `RangeSet([k1,
+k2), <ver>, <value>)`.
 
 - The requirement is that running split on `k1+<ver>` and `k2+<ver>`
   will give us prefix k1 and k2 respectively (+ is simply
