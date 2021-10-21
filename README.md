@@ -34,6 +34,7 @@ Pebble:
 * Backups
 * Column families
 * Delete files in range
+* Direct IO
 * FIFO compaction style
 * Forward iterator / tailing iterator
 * Hash table format
