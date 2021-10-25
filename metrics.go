@@ -140,6 +140,8 @@ type Metrics struct {
 		// compactions. This value will be zero if there are no in-progress
 		// compactions.
 		InProgressBytes int64
+		// Number of compactions that are in-progress.
+		NumInProgress int64
 	}
 
 	Flush struct {
@@ -297,7 +299,7 @@ func (m *Metrics) formatWAL(w redact.SafePrinter) {
 //         6         1   825 B    0.00   1.6 K     0 B       0     0 B       0   825 B       1   1.6 K     0.5
 //     total         3   2.4 K       -   933 B   825 B       1     0 B       0   4.1 K       4   1.6 K     4.5
 //     flush         3
-//   compact         1   1.6 K             0 B          (size == estimated-debt, in = in-progress-bytes)
+//   compact         1   1.6 K     0 B       1          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
 //     ctype         0       0       0       0       0  (default, delete, elision, move, read)
 //    memtbl         1   4.0 M
 //   zmemtbl         0     0 B
@@ -359,11 +361,11 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	total.format(w, notApplicable)
 
 	w.Printf("  flush %9d\n", redact.Safe(m.Flush.Count))
-	w.Printf("compact %9d %7s %7s %7s %7s  (size == estimated-debt, in = in-progress-bytes)\n",
+	w.Printf("compact %9d %7s %7s %7d %7s  (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)\n",
 		redact.Safe(m.Compact.Count),
 		humanize.IEC.Uint64(m.Compact.EstimatedDebt),
-		redact.SafeString(""),
 		humanize.IEC.Int64(m.Compact.InProgressBytes),
+		redact.Safe(m.Compact.NumInProgress),
 		redact.SafeString(""))
 	w.Printf("  ctype %9d %7d %7d %7d %7d  (default, delete, elision, move, read)\n",
 		redact.Safe(m.Compact.DefaultCount),
