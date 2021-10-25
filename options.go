@@ -678,6 +678,7 @@ func (o *Options) EnsureDefaults() *Options {
 					Duration: duration,
 				})
 			})
+		o.FS = vfs.NewStatFS()
 	}
 	if o.FlushSplitBytes <= 0 {
 		o.FlushSplitBytes = 2 * o.Levels[0].TargetFileSize

@@ -1231,6 +1231,9 @@ func (d *DB) Metrics() *Metrics {
 	metrics.BlockCache = d.opts.Cache.Metrics()
 	metrics.TableCache, metrics.Filter = d.tableCache.metrics()
 	metrics.TableIters = int64(d.tableCache.iterCount())
+	if fs, ok := d.opts.FS.(*vfs.StatFS); ok {
+		metrics.FSMetrics = fs.Metrics()
+	}
 	return metrics
 }
 

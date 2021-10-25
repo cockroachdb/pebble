@@ -10,14 +10,18 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 )
 
 // CacheMetrics holds metrics for the block and table cache.
 type CacheMetrics = cache.Metrics
 
-// FilterMetrics holds metrics for the filter policy
+// FilterMetrics holds metrics for the filter policy.
 type FilterMetrics = sstable.FilterMetrics
+
+// FSMetrics holds file system level stats.
+type FSMetrics = vfs.FSMetrics
 
 func formatCacheMetrics(w redact.SafePrinter, m *CacheMetrics, name redact.SafeString) {
 	w.Printf("%7s %9s %7s %6.1f%%  (score == hit-rate)\n",
@@ -150,6 +154,8 @@ type Metrics struct {
 	}
 
 	Filter FilterMetrics
+
+	FSMetrics *FSMetrics
 
 	Levels [numLevels]LevelMetrics
 
@@ -389,6 +395,13 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		notApplicable,
 		notApplicable,
 		redact.Safe(hitRate(m.Filter.Hits, m.Filter.Misses)))
+
+	if m.FSMetrics != nil {
+		w.Printf("     fs %9s %7.1f %6.1f   (size == ewma, score == dev)\n",
+			notApplicable,
+			m.FSMetrics.SyncLatencyEWMA,
+			m.FSMetrics.SyncLatencyDev)
+	}
 }
 
 func hitRate(hits, misses int64) float64 {
