@@ -316,7 +316,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			return &i.key, i.value
 		}
 
-		if i.rangeDelFrag.Deleted(*i.iterKey, i.curSnapshotSeqNum) {
+		if i.rangeDelFrag.Covers(*i.iterKey, i.curSnapshotSeqNum) {
 			i.saveKey()
 			i.skipInStripe()
 			continue
@@ -616,7 +616,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			return sameStripeSkippable
 
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
-			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
+			if i.rangeDelFrag.Covers(*key, i.curSnapshotSeqNum) {
 				// We change the kind of the result key to a Set so that it shadows
 				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
 				// strictly necessary, but provides consistency with the behavior of
@@ -640,7 +640,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			return sameStripeSkippable
 
 		case InternalKeyKindMerge:
-			if i.rangeDelFrag.Deleted(*key, i.curSnapshotSeqNum) {
+			if i.rangeDelFrag.Covers(*key, i.curSnapshotSeqNum) {
 				// We change the kind of the result key to a Set so that it shadows
 				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
 				// strictly necessary, but provides consistency with the behavior of

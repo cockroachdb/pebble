@@ -225,11 +225,11 @@ func (f *Fragmenter) Add(start base.InternalKey, end []byte) {
 	})
 }
 
-// Deleted returns true if the specified key is covered by one of the pending
+// Covers returns true if the specified key is covered by one of the pending
 // spans. The key must be consistent with the ordering of the
 // spans. That is, it is invalid to specify a key here that is out of
 // order with the span start keys passed to Add.
-func (f *Fragmenter) Deleted(key base.InternalKey, snapshot uint64) bool {
+func (f *Fragmenter) Covers(key base.InternalKey, snapshot uint64) bool {
 	if f.finished {
 		panic("pebble: span fragmenter already finished")
 	}
