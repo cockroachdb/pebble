@@ -219,7 +219,7 @@ type Batch struct {
 	// Fragmented range deletion tombstones. Cached the first time a range
 	// deletion iterator is requested. The cache is invalidated whenever a new
 	// range deletion is added to the batch.
-	tombstones []keyspan.Tombstone
+	tombstones []keyspan.Span
 
 	// The flushableBatch wrapper if the batch is too large to fit in the
 	// memtable.
@@ -704,7 +704,7 @@ func (b *Batch) newRangeDelIter(o *IterOptions) internalIterator {
 		frag := &keyspan.Fragmenter{
 			Cmp:    b.cmp,
 			Format: b.formatKey,
-			Emit: func(fragmented []keyspan.Tombstone) {
+			Emit: func(fragmented []keyspan.Span) {
 				b.tombstones = append(b.tombstones, fragmented...)
 			},
 		}
@@ -1076,7 +1076,7 @@ type flushableBatch struct {
 	offsets []flushableBatchEntry
 
 	// Fragmented range deletion tombstones.
-	tombstones []keyspan.Tombstone
+	tombstones []keyspan.Span
 }
 
 var _ flushable = (*flushableBatch)(nil)
@@ -1141,7 +1141,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 		frag := &keyspan.Fragmenter{
 			Cmp:    b.cmp,
 			Format: b.formatKey,
-			Emit: func(fragmented []keyspan.Tombstone) {
+			Emit: func(fragmented []keyspan.Span) {
 				b.tombstones = append(b.tombstones, fragmented...)
 			},
 		}

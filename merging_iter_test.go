@@ -194,11 +194,11 @@ func TestMergingIterCornerCases(t *testing.T) {
 					return err.Error()
 				}
 				w := sstable.NewWriter(f, sstable.WriterOptions{})
-				var tombstones []keyspan.Tombstone
+				var tombstones []keyspan.Span
 				frag := keyspan.Fragmenter{
 					Cmp:    cmp,
 					Format: fmtKey,
-					Emit: func(fragmented []keyspan.Tombstone) {
+					Emit: func(fragmented []keyspan.Span) {
 						tombstones = append(tombstones, fragmented...)
 					},
 				}

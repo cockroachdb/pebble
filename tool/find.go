@@ -352,7 +352,7 @@ func (f *findT) searchLogs(searchKey []byte, refs []findRef) []findRef {
 						}
 					case base.InternalKeyKindRangeDelete:
 						// Output tombstones that contain or end with the search key.
-						t := keyspan.Tombstone{Start: ikey, End: value}
+						t := keyspan.Span{Start: ikey, End: value}
 						if !t.Contains(cmp, searchKey) && cmp(t.End, searchKey) != 0 {
 							continue
 						}
@@ -442,9 +442,9 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 				}
 				defer iter.Close()
 
-				var tombstones []keyspan.Tombstone
+				var tombstones []keyspan.Span
 				for key, value := iter.First(); key != nil; key, value = iter.Next() {
-					t := keyspan.Tombstone{
+					t := keyspan.Span{
 						Start: *key,
 						End:   value,
 					}

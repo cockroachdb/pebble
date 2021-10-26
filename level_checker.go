@@ -53,7 +53,7 @@ type simpleMergingIterLevel struct {
 
 	iterKey   *InternalKey
 	iterValue []byte
-	tombstone keyspan.Tombstone
+	tombstone keyspan.Span
 }
 
 type simpleMergingIter struct {
@@ -287,7 +287,7 @@ func (m *simpleMergingIter) step() bool {
 
 // A tombstone and the corresponding level it was found in.
 type tombstoneWithLevel struct {
-	keyspan.Tombstone
+	keyspan.Span
 	level int
 	// The level in LSM. A -1 means it's a memtable.
 	lsmLevel int
@@ -330,7 +330,7 @@ func iterateAndCheckTombstones(
 		if cmp(lastTombstone.Start.UserKey, t.Start.UserKey) == 0 && lastTombstone.level > t.level {
 			return errors.Errorf("encountered tombstone %s in %s"+
 				" that has a lower seqnum than the same tombstone in %s",
-				t.Tombstone.Pretty(formatKey), levelOrMemtable(t.lsmLevel, t.fileNum),
+				t.Span.Pretty(formatKey), levelOrMemtable(t.lsmLevel, t.fileNum),
 				levelOrMemtable(lastTombstone.lsmLevel, lastTombstone.fileNum))
 		}
 		lastTombstone = t
@@ -381,7 +381,7 @@ func checkRangeTombstones(c *checkConfig) error {
 			if iter == nil {
 				continue
 			}
-			truncate := func(t keyspan.Tombstone) keyspan.Tombstone {
+			truncate := func(t keyspan.Span) keyspan.Span {
 				// Same checks as in keyspan.Truncate.
 				if c.cmp(t.Start.UserKey, lower.UserKey) < 0 {
 					t.Start.UserKey = lower.UserKey
@@ -444,18 +444,18 @@ func addTombstonesFromIter(
 	seqNum uint64,
 	cmp Compare,
 	formatKey base.FormatKey,
-	truncate func(tombstone keyspan.Tombstone) keyspan.Tombstone,
+	truncate func(tombstone keyspan.Span) keyspan.Span,
 ) (_ []tombstoneWithLevel, err error) {
 	defer func() {
 		err = firstError(err, iter.Close())
 	}()
 
-	var prevTombstone keyspan.Tombstone
+	var prevTombstone keyspan.Span
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
 		if !key.Visible(seqNum) {
 			continue
 		}
-		var t keyspan.Tombstone
+		var t keyspan.Span
 		t.Start = key.Clone()
 		t.End = append(t.End[:0], value...)
 		// This is mainly a test for rangeDelV2 formatted blocks which are expected to
@@ -478,7 +478,7 @@ func addTombstonesFromIter(
 		}
 		if !t.Empty() {
 			tombstones = append(tombstones, tombstoneWithLevel{
-				Tombstone: t,
+				Span: t,
 				level:     level,
 				lsmLevel:  lsmLevel,
 				fileNum:   fileNum,

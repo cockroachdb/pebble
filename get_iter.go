@@ -25,7 +25,7 @@ type getIter struct {
 	key          []byte
 	iter         internalIterator
 	rangeDelIter internalIterator
-	tombstone    keyspan.Tombstone
+	tombstone    keyspan.Span
 	levelIter    levelIter
 	level        int
 	batch        *Batch

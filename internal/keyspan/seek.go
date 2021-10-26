@@ -12,7 +12,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 // iterator must contain fragmented tombstones: any overlapping tombstones must
 // have the same start and end key. The position of the iterator is undefined
 // after calling SeekGE and may not be pointing at the returned tombstone.
-func SeekGE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint64) Tombstone {
+func SeekGE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint64) Span {
 	// NB: We use SeekLT in order to land on the proper tombstone for a search
 	// key that resides in the middle of a tombstone. Consider the scenario:
 	//
@@ -47,7 +47,7 @@ func SeekGE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 		iterKey, iterValue = iter.Next()
 		if iterKey == nil {
 			// We've run out of tombstones.
-			return Tombstone{}
+			return Span{}
 		}
 	}
 
@@ -61,7 +61,7 @@ func SeekGE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 	for {
 		if start := iterKey; start.Visible(snapshot) {
 			// The tombstone is visible at our read sequence number.
-			return Tombstone{
+			return Span{
 				Start: *start,
 				End:   iterValue,
 			}
@@ -69,7 +69,7 @@ func SeekGE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 		iterKey, iterValue = iter.Next()
 		if iterKey == nil {
 			// We've run out of tombstones.
-			return Tombstone{}
+			return Span{}
 		}
 	}
 }
@@ -80,7 +80,7 @@ func SeekGE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 // iterator must contain fragmented tombstones: any overlapping tombstones must
 // have the same start and end key. The position of the iterator is undefined
 // after calling SeekLE and may not be pointing at the returned tombstone.
-func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint64) Tombstone {
+func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint64) Span {
 	// NB: We use SeekLT in order to land on the proper tombstone for a search
 	// key that resides in the middle of a tombstone. Consider the scenario:
 	//
@@ -159,10 +159,10 @@ func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 			iterKey, iterValue = iter.Next()
 			if iterKey == nil || cmp(key, iterKey.UserKey) < 0 {
 				// The iterator is exhausted or we've hit the next tombstone.
-				return Tombstone{}
+				return Span{}
 			}
 			if start := iterKey; start.Visible(snapshot) {
-				return Tombstone{
+				return Span{
 					Start: *start,
 					End:   iterValue,
 				}
@@ -187,7 +187,7 @@ func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 					if start := iterKey; start.Visible(snapshot) {
 						// We've found our tombstone as we know earlier tombstones are
 						// either not visible or lie before this tombstone.
-						return Tombstone{
+						return Span{
 							Start: *start,
 							End:   iterValue,
 						}
@@ -213,7 +213,7 @@ func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 			iterKey, iterValue = iter.Prev()
 			if iterKey == nil {
 				// No visible tombstones before our search key.
-				return Tombstone{}
+				return Span{}
 			}
 		}
 
@@ -221,7 +221,7 @@ func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 		// key and is visible. Walk backwards until we find the latest version of
 		// this tombstone that is visible (i.e. has a sequence number less than the
 		// snapshot sequence number).
-		t := Tombstone{Start: *iterKey, End: iterValue} // current candidate to return
+		t := Span{Start: *iterKey, End: iterValue} // current candidate to return
 		for {
 			iterKey, _ = iter.Prev()
 			if iterKey == nil {

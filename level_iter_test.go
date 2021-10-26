@@ -188,11 +188,11 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		Comparer:     &lt.cmp,
 		FilterPolicy: fp,
 	})
-	var tombstones []keyspan.Tombstone
+	var tombstones []keyspan.Span
 	f := keyspan.Fragmenter{
 		Cmp:    lt.cmp.Compare,
 		Format: lt.cmp.FormatKey,
-		Emit: func(fragmented []keyspan.Tombstone) {
+		Emit: func(fragmented []keyspan.Span) {
 			tombstones = append(tombstones, fragmented...)
 		},
 	}
@@ -325,7 +325,7 @@ type levelIterTestIter struct {
 func (i *levelIterTestIter) rangeDelSeek(
 	key []byte, ikey *InternalKey, val []byte, dir int,
 ) (*InternalKey, []byte) {
-	var tombstone keyspan.Tombstone
+	var tombstone keyspan.Span
 	if i.rangeDelIter != nil {
 		if dir < 0 {
 			tombstone = keyspan.SeekLE(i.levelIter.cmp, i.rangeDelIter, key, 1000)

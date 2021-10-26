@@ -296,8 +296,8 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, value) != 0 {
 				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
-					(keyspan.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
-					(keyspan.Tombstone{Start: key, End: value}).Pretty(w.formatKey))
+					(keyspan.Span{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
+					(keyspan.Span{Start: key, End: value}).Pretty(w.formatKey))
 				return w.err
 			}
 			if prevKey.SeqNum() <= key.SeqNum() {
@@ -309,8 +309,8 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, key.UserKey) > 0 {
 				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
-					(keyspan.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
-					(keyspan.Tombstone{Start: key, End: value}).Pretty(w.formatKey))
+					(keyspan.Span{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
+					(keyspan.Span{Start: key, End: value}).Pretty(w.formatKey))
 				return w.err
 			}
 		}

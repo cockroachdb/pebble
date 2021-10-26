@@ -39,7 +39,7 @@ type mergingIterLevel struct {
 	// only valid for the levels in the range [0,heap[0].index]. This avoids
 	// positioning tombstones at lower levels which cannot possibly shadow the
 	// current key.
-	tombstone keyspan.Tombstone
+	tombstone keyspan.Span
 }
 
 // mergingIter provides a merged view of multiple iterators from different

@@ -398,9 +398,9 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			}
 			defer iter.Close()
 
-			var tombstones []keyspan.Tombstone
+			var tombstones []keyspan.Span
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
-				t := keyspan.Tombstone{
+				t := keyspan.Span{
 					Start: *key,
 					End:   value,
 				}

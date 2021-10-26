@@ -57,11 +57,11 @@ func runBuildCmd(
 	}
 
 	w := NewWriter(f0, writerOpts)
-	var tombstones []keyspan.Tombstone
+	var tombstones []keyspan.Span
 	f := keyspan.Fragmenter{
 		Cmp:    DefaultComparer.Compare,
 		Format: DefaultComparer.FormatKey,
-		Emit: func(fragmented []keyspan.Tombstone) {
+		Emit: func(fragmented []keyspan.Span) {
 			tombstones = append(tombstones, fragmented...)
 		},
 	}

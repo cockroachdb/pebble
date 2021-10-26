@@ -14,7 +14,7 @@ import (
 
 type tombstonesByStartKey struct {
 	cmp base.Compare
-	buf []Tombstone
+	buf []Span
 }
 
 func (v *tombstonesByStartKey) Len() int { return len(v.buf) }
@@ -27,7 +27,7 @@ func (v *tombstonesByStartKey) Swap(i, j int) {
 
 type tombstonesByEndKey struct {
 	cmp base.Compare
-	buf []Tombstone
+	buf []Span
 }
 
 func (v *tombstonesByEndKey) Len() int { return len(v.buf) }
@@ -38,7 +38,7 @@ func (v *tombstonesByEndKey) Swap(i, j int) {
 	v.buf[i], v.buf[j] = v.buf[j], v.buf[i]
 }
 
-type tombstonesBySeqNum []Tombstone
+type tombstonesBySeqNum []Span
 
 func (v *tombstonesBySeqNum) Len() int { return len(*v) }
 func (v *tombstonesBySeqNum) Less(i, j int) bool {
@@ -51,7 +51,7 @@ func (v *tombstonesBySeqNum) Swap(i, j int) {
 // Sort the tombstones by start key. This is the ordering required by the
 // Fragmenter. Usually tombstones are naturally sorted by their start key, but
 // that isn't true for tombstones in the legacy range-del-v1 block format.
-func Sort(cmp base.Compare, tombstones []Tombstone) {
+func Sort(cmp base.Compare, tombstones []Span) {
 	sorter := tombstonesByStartKey{
 		cmp: cmp,
 		buf: tombstones,
@@ -68,16 +68,16 @@ type Fragmenter struct {
 	// Emit is called to emit a chunk of tombstone fragments. Every tombstone
 	// within the chunk has the same start and end key and are in decreasing
 	// order of their sequence numbers.
-	Emit func([]Tombstone)
+	Emit func([]Span)
 	// pending contains the list of pending range tombstone fragments that have
 	// not been flushed to the block writer. Note that the tombstones have not
 	// been fragmented on the end keys yet. That happens as the tombstones are
 	// flushed. All pending tombstones have the same Start.UserKey.
-	pending []Tombstone
+	pending []Span
 	// doneBuf is used to buffer completed tombstone fragments when flushing to a
 	// specific key (e.g. FlushTo). It is cached in the Fragmenter to allow
 	// reuse.
-	doneBuf []Tombstone
+	doneBuf []Span
 	// sortBuf is used to sort fragments by end key when flushing.
 	sortBuf tombstonesByEndKey
 	// flushBuf is used to sort fragments by seqnum before emitting.
@@ -89,7 +89,7 @@ type Fragmenter struct {
 	finished   bool
 }
 
-func (f *Fragmenter) checkInvariants(buf []Tombstone) {
+func (f *Fragmenter) checkInvariants(buf []Span) {
 	for i := 1; i < len(buf); i++ {
 		if f.Cmp(buf[i].Start.UserKey, buf[i].End) >= 0 {
 			panic(fmt.Sprintf("pebble: empty pending tombstone invariant violated: %s", buf[i]))
@@ -205,7 +205,7 @@ func (f *Fragmenter) Add(start base.InternalKey, end []byte) {
 		case c == 0:
 			// The new tombstone has the same start key as the existing pending
 			// tombstones. Add it to the pending buffer.
-			f.pending = append(f.pending, Tombstone{
+			f.pending = append(f.pending, Span{
 				Start: start,
 				End:   end,
 			})
@@ -217,7 +217,7 @@ func (f *Fragmenter) Add(start base.InternalKey, end []byte) {
 		f.truncateAndFlush(start.UserKey)
 	}
 
-	f.pending = append(f.pending, Tombstone{
+	f.pending = append(f.pending, Span{
 		Start: start,
 		End:   end,
 	})
@@ -321,7 +321,7 @@ func (f *Fragmenter) FlushTo(key []byte) {
 		if f.Cmp(key, t.End) < 0 {
 			//   t: a--+--e
 			// new:    c------
-			f.pending = append(f.pending, Tombstone{
+			f.pending = append(f.pending, Span{
 				Start: base.MakeInternalKey(key, t.Start.SeqNum(), t.Start.Kind()),
 				End:   t.End,
 			})
@@ -410,9 +410,9 @@ func (f *Fragmenter) truncateAndFlush(key []byte) {
 			//   t: a--+--e
 			// new:    c------
 			if f.Cmp(t.Start.UserKey, key) < 0 {
-				done = append(done, Tombstone{Start: t.Start, End: key})
+				done = append(done, Span{Start: t.Start, End: key})
 			}
-			f.pending = append(f.pending, Tombstone{
+			f.pending = append(f.pending, Span{
 				Start: base.MakeInternalKey(key, t.Start.SeqNum(), t.Start.Kind()),
 				End:   t.End,
 			})
@@ -441,7 +441,7 @@ func (f *Fragmenter) truncateAndFlush(key []byte) {
 // contain the tombstones [a,e)#10 and [a,e)#9. Fragmentation would naturally
 // produce a tombstone [e,h)#9, but we don't need to output that tombstone to
 // the first sstable.
-func (f *Fragmenter) flush(buf []Tombstone, lastKey []byte) {
+func (f *Fragmenter) flush(buf []Span, lastKey []byte) {
 	if invariants.RaceEnabled {
 		f.checkInvariants(buf)
 	}
@@ -465,7 +465,7 @@ func (f *Fragmenter) flush(buf []Tombstone, lastKey []byte) {
 			if f.Cmp(split, buf[i].End) == 0 {
 				remove++
 			}
-			f.flushBuf = append(f.flushBuf, Tombstone{
+			f.flushBuf = append(f.flushBuf, Span{
 				Start: buf[i].Start,
 				End:   split,
 			})

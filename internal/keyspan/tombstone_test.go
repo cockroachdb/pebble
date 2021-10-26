@@ -48,12 +48,12 @@ func TestTombstone_Overlaps(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		start, end := parse(tc.a)
-		a := Tombstone{
+		a := Span{
 			Start: base.ParseInternalKey(start),
 			End:   []byte(end),
 		}
 		start, end = parse(tc.b)
-		b := Tombstone{
+		b := Span{
 			Start: base.ParseInternalKey(start),
 			End:   []byte(end),
 		}

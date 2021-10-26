@@ -162,11 +162,11 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 						return fmt.Sprintf("unknown arg: %s", arg.Key)
 					}
 				}
-				var tombstones []keyspan.Tombstone
+				var tombstones []keyspan.Span
 				frag := keyspan.Fragmenter{
 					Cmp:    cmp,
 					Format: formatKey,
-					Emit: func(fragmented []keyspan.Tombstone) {
+					Emit: func(fragmented []keyspan.Span) {
 						tombstones = append(tombstones, fragmented...)
 					},
 				}

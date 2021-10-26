@@ -9,7 +9,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 // Iter is an iterator over a set of fragmented tombstones.
 type Iter struct {
 	cmp        base.Compare
-	tombstones []Tombstone
+	tombstones []Span
 	index      int
 }
 
@@ -17,7 +17,7 @@ type Iter struct {
 var _ base.InternalIterator = (*Iter)(nil)
 
 // NewIter returns a new iterator over a set of fragmented tombstones.
-func NewIter(cmp base.Compare, tombstones []Tombstone) *Iter {
+func NewIter(cmp base.Compare, tombstones []Span) *Iter {
 	return &Iter{
 		cmp:        cmp,
 		tombstones: tombstones,

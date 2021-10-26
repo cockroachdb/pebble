@@ -12,7 +12,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 // older than the snapshot sequence number are visible). The iterator must
 // contain fragmented tombstones: any overlapping tombstones must have the same
 // start and end key.
-func Get(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint64) Tombstone {
+func Get(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint64) Span {
 	// NB: We use SeekLT in order to land on the proper tombstone for a search
 	// key that resides in the middle of a tombstone. Consider the scenario:
 	//
@@ -30,11 +30,11 @@ func Get(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint
 		iterKey, iterValue = iter.Next()
 		if iterKey == nil {
 			// The iterator is empty.
-			return Tombstone{}
+			return Span{}
 		}
 		if cmp(key, iterKey.UserKey) < 0 {
 			// The search key lies before the first tombstone.
-			return Tombstone{}
+			return Span{}
 		}
 	}
 
@@ -60,7 +60,7 @@ func Get(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint
 			if iterKey == nil || cmp(key, iterKey.UserKey) < 0 {
 				// We've run out of tombstones or we've moved on to a tombstone which
 				// starts after our search key.
-				return Tombstone{}
+				return Span{}
 			}
 			if cmp(key, iterValue) < 0 {
 				break
@@ -71,7 +71,7 @@ func Get(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint
 	for {
 		if start := iterKey; start.Visible(snapshot) {
 			// The tombstone is visible at our read sequence number.
-			return Tombstone{
+			return Span{
 				Start: *start,
 				End:   iterValue,
 			}
@@ -80,7 +80,7 @@ func Get(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint
 		if iterKey == nil || cmp(key, iterKey.UserKey) < 0 {
 			// We've run out of tombstones or we've moved on to a tombstone which
 			// starts after our search key.
-			return Tombstone{}
+			return Span{}
 		}
 	}
 }

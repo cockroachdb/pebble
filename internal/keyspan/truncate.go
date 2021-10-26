@@ -13,9 +13,9 @@ import "github.com/cockroachdb/pebble/internal/base"
 func Truncate(
 	cmp base.Compare, iter base.InternalIterator, lower, upper []byte, start, end *base.InternalKey,
 ) *Iter {
-	var tombstones []Tombstone
+	var tombstones []Span
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
-		t := Tombstone{
+		t := Span{
 			Start: *key,
 			End:   value,
 		}

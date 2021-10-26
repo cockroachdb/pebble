@@ -19,14 +19,14 @@ import (
 
 var tombstoneRe = regexp.MustCompile(`(\d+):\s*(\w+)-*(\w+)`)
 
-func parseTombstone(t *testing.T, s string) Tombstone {
+func parseTombstone(t *testing.T, s string) Span {
 	m := tombstoneRe.FindStringSubmatch(s)
 	if len(m) != 4 {
 		t.Fatalf("expected 4 components, but found %d: %s", len(m), s)
 	}
 	seqNum, err := strconv.Atoi(m[1])
 	require.NoError(t, err)
-	return Tombstone{
+	return Span{
 		Start: base.MakeInternalKey([]byte(m[2]), uint64(seqNum), base.InternalKeyKindRangeDelete),
 		End:   []byte(m[3]),
 	}
@@ -34,12 +34,12 @@ func parseTombstone(t *testing.T, s string) Tombstone {
 
 func buildTombstones(
 	t *testing.T, cmp base.Compare, formatKey base.FormatKey, s string,
-) []Tombstone {
-	var tombstones []Tombstone
+) []Span {
+	var tombstones []Span
 	f := &Fragmenter{
 		Cmp:    cmp,
 		Format: formatKey,
-		Emit: func(fragmented []Tombstone) {
+		Emit: func(fragmented []Span) {
 			tombstones = append(tombstones, fragmented...)
 		},
 	}
@@ -67,7 +67,7 @@ func buildTombstones(
 	return tombstones
 }
 
-func formatTombstones(tombstones []Tombstone) string {
+func formatTombstones(tombstones []Span) string {
 	isLetter := func(b []byte) bool {
 		if len(b) != 1 {
 			return false
@@ -171,7 +171,7 @@ func TestFragmenterDeleted(t *testing.T) {
 			f := &Fragmenter{
 				Cmp:    base.DefaultComparer.Compare,
 				Format: base.DefaultComparer.FormatKey,
-				Emit: func(fragmented []Tombstone) {
+				Emit: func(fragmented []Span) {
 				},
 			}
 			var buf bytes.Buffer

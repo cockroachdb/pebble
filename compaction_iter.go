@@ -198,7 +198,7 @@ type compactionIter struct {
 	// `compaction.rangeDelFrag`).
 	rangeDelFrag *keyspan.Fragmenter
 	// The fragmented tombstones.
-	tombstones []keyspan.Tombstone
+	tombstones []keyspan.Span
 	// Byte allocator for the tombstone keys.
 	alloc               bytealloc.A
 	allowZeroSeqNum     bool
@@ -751,7 +751,7 @@ func (i *compactionIter) Close() error {
 // exclude specifies if the specified key is exclusive or inclusive.
 // When exclude = true, all returned range tombstones are truncated to the
 // specified key.
-func (i *compactionIter) Tombstones(key []byte, exclude bool) []keyspan.Tombstone {
+func (i *compactionIter) Tombstones(key []byte, exclude bool) []keyspan.Span {
 	switch {
 	case key == nil:
 		i.rangeDelFrag.Finish()
@@ -768,7 +768,7 @@ func (i *compactionIter) Tombstones(key []byte, exclude bool) []keyspan.Tombston
 	return tombstones
 }
 
-func (i *compactionIter) emitRangeDelChunk(fragmented []keyspan.Tombstone) {
+func (i *compactionIter) emitRangeDelChunk(fragmented []keyspan.Span) {
 	// Apply the snapshot stripe rules, keeping only the latest tombstone for
 	// each snapshot stripe.
 	currentIdx := -1
