@@ -14,8 +14,8 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -394,13 +394,13 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 				return nil, err
 			}
 			if iter == nil {
-				return rangedel.NewIter(r.Compare, nil), nil
+				return keyspan.NewIter(r.Compare, nil), nil
 			}
 			defer iter.Close()
 
-			var tombstones []rangedel.Tombstone
+			var tombstones []keyspan.Span
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
-				t := rangedel.Tombstone{
+				t := keyspan.Span{
 					Start: *key,
 					End:   value,
 				}
@@ -418,7 +418,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			sort.Slice(tombstones, func(i, j int) bool {
 				return r.Compare(tombstones[i].Start.UserKey, tombstones[j].Start.UserKey) < 0
 			})
-			return rangedel.NewIter(r.Compare, tombstones), nil
+			return keyspan.NewIter(r.Compare, tombstones), nil
 		}()
 		if err != nil {
 			fmt.Fprintf(stdout, "%s%s\n", prefix, err)

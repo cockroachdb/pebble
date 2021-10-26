@@ -15,7 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 func memTableEntrySize(keyBytes, valueBytes int) uint64 {
@@ -240,7 +240,7 @@ func (m *memTable) newRangeDelIter(*IterOptions) internalIterator {
 	if tombstones == nil {
 		return nil
 	}
-	return rangedel.NewIter(m.cmp, tombstones)
+	return keyspan.NewIter(m.cmp, tombstones)
 }
 
 func (m *memTable) availBytes() uint32 {
@@ -279,7 +279,7 @@ func (m *memTable) empty() bool {
 type rangeTombstoneFrags struct {
 	count      uint32
 	once       sync.Once
-	tombstones []rangedel.Tombstone
+	tombstones []keyspan.Span
 }
 
 // get retrieves the fragmented tombstones, populating them if necessary. Note
@@ -290,12 +290,12 @@ type rangeTombstoneFrags struct {
 // additions of range tombstones and a concurrent reader. The reader can load a
 // tombstoneFrags and populate it even though is has been invalidated
 // (i.e. replaced with a newer tombstoneFrags).
-func (f *rangeTombstoneFrags) get(m *memTable) []rangedel.Tombstone {
+func (f *rangeTombstoneFrags) get(m *memTable) []keyspan.Span {
 	f.once.Do(func() {
-		frag := &rangedel.Fragmenter{
+		frag := &keyspan.Fragmenter{
 			Cmp:    m.cmp,
 			Format: m.formatKey,
-			Emit: func(fragmented []rangedel.Tombstone) {
+			Emit: func(fragmented []keyspan.Span) {
 				f.tombstones = append(f.tombstones, fragmented...)
 			},
 		}
@@ -343,7 +343,7 @@ func (c *rangeTombstoneCache) invalidate(count uint32) {
 	}
 }
 
-func (c *rangeTombstoneCache) get(m *memTable) []rangedel.Tombstone {
+func (c *rangeTombstoneCache) get(m *memTable) []keyspan.Span {
 	frags := (*rangeTombstoneFrags)(atomic.LoadPointer(&c.frags))
 	if frags == nil {
 		return nil

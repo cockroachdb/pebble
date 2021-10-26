@@ -17,8 +17,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
 // WriterMetadata holds info about a finished sstable.
@@ -215,7 +215,7 @@ func (w *Writer) Merge(key, value []byte) error {
 // rule is range deletion tombstones. Range deletion tombstones need to be
 // added ordered by their start key, but they can be added out of order from
 // point entries. Additionally, range deletion tombstones must be fragmented
-// (i.e. by rangedel.Fragmenter).
+// (i.e. by keyspan.Fragmenter).
 func (w *Writer) Add(key InternalKey, value []byte) error {
 	if w.err != nil {
 		return w.err
@@ -296,8 +296,8 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, value) != 0 {
 				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
-					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
-					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatKey))
+					(keyspan.Span{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
+					(keyspan.Span{Start: key, End: value}).Pretty(w.formatKey))
 				return w.err
 			}
 			if prevKey.SeqNum() <= key.SeqNum() {
@@ -309,8 +309,8 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, key.UserKey) > 0 {
 				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
-					(rangedel.Tombstone{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
-					(rangedel.Tombstone{Start: key, End: value}).Pretty(w.formatKey))
+					(keyspan.Span{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
+					(keyspan.Span{Start: key, End: value}).Pretty(w.formatKey))
 				return w.err
 			}
 		}
@@ -403,7 +403,8 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 // before any future use of the Writer.blockPropsEncoder, since the properties
 // slice will get reused by the blockPropsEncoder.
 func (w *Writer) maybeAddBlockPropertiesToBlockHandle(
-	bh BlockHandle) (BlockHandleWithProperties, error) {
+	bh BlockHandle,
+) (BlockHandleWithProperties, error) {
 	if len(w.blockPropCollectors) == 0 {
 		return BlockHandleWithProperties{BlockHandle: bh}, nil
 	}

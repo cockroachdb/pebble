@@ -13,7 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
-	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -57,11 +57,11 @@ func runBuildCmd(
 	}
 
 	w := NewWriter(f0, writerOpts)
-	var tombstones []rangedel.Tombstone
-	f := rangedel.Fragmenter{
+	var tombstones []keyspan.Span
+	f := keyspan.Fragmenter{
 		Cmp:    DefaultComparer.Compare,
 		Format: DefaultComparer.FormatKey,
-		Emit: func(fragmented []rangedel.Tombstone) {
+		Emit: func(fragmented []keyspan.Span) {
 			tombstones = append(tombstones, fragmented...)
 		},
 	}

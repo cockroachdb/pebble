@@ -18,8 +18,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/batchskl"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rawalloc"
 )
 
@@ -219,7 +219,7 @@ type Batch struct {
 	// Fragmented range deletion tombstones. Cached the first time a range
 	// deletion iterator is requested. The cache is invalidated whenever a new
 	// range deletion is added to the batch.
-	tombstones []rangedel.Tombstone
+	tombstones []keyspan.Span
 
 	// The flushableBatch wrapper if the batch is too large to fit in the
 	// memtable.
@@ -701,10 +701,10 @@ func (b *Batch) newRangeDelIter(o *IterOptions) internalIterator {
 	// requested. The cached tombstones are invalidated if another range deletion
 	// tombstone is added to the batch.
 	if b.tombstones == nil {
-		frag := &rangedel.Fragmenter{
+		frag := &keyspan.Fragmenter{
 			Cmp:    b.cmp,
 			Format: b.formatKey,
-			Emit: func(fragmented []rangedel.Tombstone) {
+			Emit: func(fragmented []keyspan.Span) {
 				b.tombstones = append(b.tombstones, fragmented...)
 			},
 		}
@@ -725,7 +725,7 @@ func (b *Batch) newRangeDelIter(o *IterOptions) internalIterator {
 		frag.Finish()
 	}
 
-	return rangedel.NewIter(b.cmp, b.tombstones)
+	return keyspan.NewIter(b.cmp, b.tombstones)
 }
 
 // Commit applies the batch to its parent writer.
@@ -1076,7 +1076,7 @@ type flushableBatch struct {
 	offsets []flushableBatchEntry
 
 	// Fragmented range deletion tombstones.
-	tombstones []rangedel.Tombstone
+	tombstones []keyspan.Span
 }
 
 var _ flushable = (*flushableBatch)(nil)
@@ -1138,10 +1138,10 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 	rangeDelOffsets, b.offsets = b.offsets, rangeDelOffsets
 
 	if len(rangeDelOffsets) > 0 {
-		frag := &rangedel.Fragmenter{
+		frag := &keyspan.Fragmenter{
 			Cmp:    b.cmp,
 			Format: b.formatKey,
-			Emit: func(fragmented []rangedel.Tombstone) {
+			Emit: func(fragmented []keyspan.Span) {
 				b.tombstones = append(b.tombstones, fragmented...)
 			},
 		}
@@ -1223,7 +1223,7 @@ func (b *flushableBatch) newRangeDelIter(o *IterOptions) internalIterator {
 	if len(b.tombstones) == 0 {
 		return nil
 	}
-	return rangedel.NewIter(b.cmp, b.tombstones)
+	return keyspan.NewIter(b.cmp, b.tombstones)
 }
 
 func (b *flushableBatch) inuseBytes() uint64 {

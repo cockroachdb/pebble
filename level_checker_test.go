@@ -15,9 +15,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -162,11 +162,11 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 						return fmt.Sprintf("unknown arg: %s", arg.Key)
 					}
 				}
-				var tombstones []rangedel.Tombstone
-				frag := rangedel.Fragmenter{
+				var tombstones []keyspan.Span
+				frag := keyspan.Fragmenter{
 					Cmp:    cmp,
 					Format: formatKey,
-					Emit: func(fragmented []rangedel.Tombstone) {
+					Emit: func(fragmented []keyspan.Span) {
 						tombstones = append(tombstones, fragmented...)
 					},
 				}

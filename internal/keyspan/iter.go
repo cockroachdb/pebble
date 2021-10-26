@@ -2,26 +2,26 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangedel
+package keyspan
 
 import "github.com/cockroachdb/pebble/internal/base"
 
-// Iter is an iterator over a set of fragmented tombstones.
+// Iter is an iterator over a set of fragmented spans.
 type Iter struct {
-	cmp        base.Compare
-	tombstones []Tombstone
-	index      int
+	cmp   base.Compare
+	spans []Span
+	index int
 }
 
 // Iter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*Iter)(nil)
 
-// NewIter returns a new iterator over a set of fragmented tombstones.
-func NewIter(cmp base.Compare, tombstones []Tombstone) *Iter {
+// NewIter returns a new iterator over a set of fragmented spans.
+func NewIter(cmp base.Compare, spans []Span) *Iter {
 	return &Iter{
-		cmp:        cmp,
-		tombstones: tombstones,
-		index:      -1,
+		cmp:   cmp,
+		spans: spans,
+		index: -1,
 	}
 }
 
@@ -34,11 +34,11 @@ func (i *Iter) SeekGE(key []byte) (*base.InternalKey, []byte) {
 	// Invariant: f(index-1) == false, f(upper) == true.
 	ikey := base.MakeSearchKey(key)
 	i.index = 0
-	upper := len(i.tombstones)
+	upper := len(i.spans)
 	for i.index < upper {
 		h := int(uint(i.index+upper) >> 1) // avoid overflow when computing h
 		// i.index ≤ h < upper
-		if base.InternalCompare(i.cmp, ikey, i.tombstones[h].Start) >= 0 {
+		if base.InternalCompare(i.cmp, ikey, i.spans[h].Start) >= 0 {
 			i.index = h + 1 // preserves f(i-1) == false
 		} else {
 			upper = h // preserves f(j) == true
@@ -46,11 +46,11 @@ func (i *Iter) SeekGE(key []byte) (*base.InternalKey, []byte) {
 	}
 	// i.index == upper, f(i.index-1) == false, and f(upper) (= f(i.index)) ==
 	// true => answer is i.index.
-	if i.index >= len(i.tombstones) {
+	if i.index >= len(i.spans) {
 		return nil, nil
 	}
-	t := &i.tombstones[i.index]
-	return &t.Start, t.End
+	s := &i.spans[i.index]
+	return &s.Start, s.End
 }
 
 // SeekPrefixGE implements InternalIterator.SeekPrefixGE, as documented in the
@@ -69,11 +69,11 @@ func (i *Iter) SeekLT(key []byte) (*base.InternalKey, []byte) {
 	// Invariant: f(index-1) == false, f(upper) == true.
 	ikey := base.MakeSearchKey(key)
 	i.index = 0
-	upper := len(i.tombstones)
+	upper := len(i.spans)
 	for i.index < upper {
 		h := int(uint(i.index+upper) >> 1) // avoid overflow when computing h
 		// i.index ≤ h < upper
-		if base.InternalCompare(i.cmp, ikey, i.tombstones[h].Start) > 0 {
+		if base.InternalCompare(i.cmp, ikey, i.spans[h].Start) > 0 {
 			i.index = h + 1 // preserves f(i-1) == false
 		} else {
 			upper = h // preserves f(j) == true
@@ -88,44 +88,44 @@ func (i *Iter) SeekLT(key []byte) (*base.InternalKey, []byte) {
 	if i.index < 0 {
 		return nil, nil
 	}
-	t := &i.tombstones[i.index]
-	return &t.Start, t.End
+	s := &i.spans[i.index]
+	return &s.Start, s.End
 }
 
 // First implements InternalIterator.First, as documented in the internal/base
 // package.
 func (i *Iter) First() (*base.InternalKey, []byte) {
-	if len(i.tombstones) == 0 {
+	if len(i.spans) == 0 {
 		return nil, nil
 	}
 	i.index = 0
-	t := &i.tombstones[i.index]
-	return &t.Start, t.End
+	s := &i.spans[i.index]
+	return &s.Start, s.End
 }
 
 // Last implements InternalIterator.Last, as documented in the internal/base
 // package.
 func (i *Iter) Last() (*base.InternalKey, []byte) {
-	if len(i.tombstones) == 0 {
+	if len(i.spans) == 0 {
 		return nil, nil
 	}
-	i.index = len(i.tombstones) - 1
-	t := &i.tombstones[i.index]
-	return &t.Start, t.End
+	i.index = len(i.spans) - 1
+	s := &i.spans[i.index]
+	return &s.Start, s.End
 }
 
 // Next implements InternalIterator.Next, as documented in the internal/base
 // package.
 func (i *Iter) Next() (*base.InternalKey, []byte) {
-	if i.index == len(i.tombstones) {
+	if i.index == len(i.spans) {
 		return nil, nil
 	}
 	i.index++
-	if i.index == len(i.tombstones) {
+	if i.index == len(i.spans) {
 		return nil, nil
 	}
-	t := &i.tombstones[i.index]
-	return &t.Start, t.End
+	s := &i.spans[i.index]
+	return &s.Start, s.End
 }
 
 // Prev implements InternalIterator.Prev, as documented in the internal/base
@@ -138,26 +138,26 @@ func (i *Iter) Prev() (*base.InternalKey, []byte) {
 	if i.index < 0 {
 		return nil, nil
 	}
-	t := &i.tombstones[i.index]
-	return &t.Start, t.End
+	s := &i.spans[i.index]
+	return &s.Start, s.End
 }
 
 // Key implements InternalIterator.Key, as documented in the internal/base
 // package.
 func (i *Iter) Key() *base.InternalKey {
-	return &i.tombstones[i.index].Start
+	return &i.spans[i.index].Start
 }
 
 // Value implements InternalIterator.Value, as documented in the internal/base
 // package.
 func (i *Iter) Value() []byte {
-	return i.tombstones[i.index].End
+	return i.spans[i.index].End
 }
 
 // Valid implements InternalIterator.Valid, as documented in the internal/base
 // package.
 func (i *Iter) Valid() bool {
-	return i.index >= 0 && i.index < len(i.tombstones)
+	return i.index >= 0 && i.index < len(i.spans)
 }
 
 // Error implements InternalIterator.Error, as documented in the internal/base
@@ -180,5 +180,5 @@ func (i *Iter) SetBounds(lower, upper []byte) {
 }
 
 func (i *Iter) String() string {
-	return "range-del"
+	return "fragmented-spans"
 }

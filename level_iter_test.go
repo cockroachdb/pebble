@@ -14,8 +14,8 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -188,11 +188,11 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		Comparer:     &lt.cmp,
 		FilterPolicy: fp,
 	})
-	var tombstones []rangedel.Tombstone
-	f := rangedel.Fragmenter{
+	var tombstones []keyspan.Span
+	f := keyspan.Fragmenter{
 		Cmp:    lt.cmp.Compare,
 		Format: lt.cmp.FormatKey,
-		Emit: func(fragmented []rangedel.Tombstone) {
+		Emit: func(fragmented []keyspan.Span) {
 			tombstones = append(tombstones, fragmented...)
 		},
 	}
@@ -325,12 +325,12 @@ type levelIterTestIter struct {
 func (i *levelIterTestIter) rangeDelSeek(
 	key []byte, ikey *InternalKey, val []byte, dir int,
 ) (*InternalKey, []byte) {
-	var tombstone rangedel.Tombstone
+	var tombstone keyspan.Span
 	if i.rangeDelIter != nil {
 		if dir < 0 {
-			tombstone = rangedel.SeekLE(i.levelIter.cmp, i.rangeDelIter, key, 1000)
+			tombstone = keyspan.SeekLE(i.levelIter.cmp, i.rangeDelIter, key, 1000)
 		} else {
-			tombstone = rangedel.SeekGE(i.levelIter.cmp, i.rangeDelIter, key, 1000)
+			tombstone = keyspan.SeekGE(i.levelIter.cmp, i.rangeDelIter, key, 1000)
 		}
 	}
 	if ikey == nil {

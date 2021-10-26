@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangedel
+package keyspan
 
 import (
 	"bytes"
@@ -88,7 +88,7 @@ func TestSeek(t *testing.T) {
 					return err.Error()
 				}
 				tombstone := seek(cmp, iter, []byte(parts[0]), seq)
-				fmt.Fprintf(&buf, "%s", strings.TrimSpace(formatTombstones([]Tombstone{tombstone})))
+				fmt.Fprintf(&buf, "%s", strings.TrimSpace(formatTombstones([]Span{tombstone})))
 				fmt.Fprintf(&buf, "\n")
 			}
 			return buf.String()

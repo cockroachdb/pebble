@@ -8,8 +8,8 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
 // getIter is an internal iterator used to perform gets. It iterates through
@@ -25,7 +25,7 @@ type getIter struct {
 	key          []byte
 	iter         internalIterator
 	rangeDelIter internalIterator
-	tombstone    rangedel.Tombstone
+	tombstone    keyspan.Span
 	levelIter    levelIter
 	level        int
 	batch        *Batch
@@ -79,7 +79,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 			// key. Every call to levelIter.Next() potentially switches to a new
 			// table and thus reinitializes rangeDelIter.
 			if g.rangeDelIter != nil {
-				g.tombstone = rangedel.Get(g.cmp, g.rangeDelIter, g.key, g.snapshot)
+				g.tombstone = keyspan.Get(g.cmp, g.rangeDelIter, g.key, g.snapshot)
 				if g.err = g.rangeDelIter.Close(); g.err != nil {
 					return nil, nil
 				}
@@ -88,7 +88,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 
 			if g.iterKey != nil {
 				key := g.iterKey
-				if g.tombstone.Deletes(key.SeqNum()) {
+				if g.tombstone.Covers(key.SeqNum()) {
 					// We have a range tombstone covering this key. Rather than return a
 					// point or range deletion here, we return false and close our
 					// internal iterator which will make Valid() return false,

@@ -19,9 +19,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -454,7 +454,7 @@ type compaction struct {
 	// The range deletion tombstone fragmenter. Adds range tombstones as they are
 	// returned from `compactionIter` and fragments them for output to files.
 	// Referenced by `compactionIter` which uses it to check whether keys are deleted.
-	rangeDelFrag rangedel.Fragmenter
+	rangeDelFrag keyspan.Fragmenter
 
 	// A list of objects to close when the compaction finishes. Used by input
 	// iteration to keep rangeDelIters open for the lifetime of the compaction,
@@ -1070,7 +1070,7 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			// tombstones to an output file sometimes has an incomplete view
 			// of range tombstones outside the file's internal key bounds. Skip
 			// any range tombstones completely outside file bounds.
-			rangeDelIter = rangedel.Truncate(
+			rangeDelIter = keyspan.Truncate(
 				c.cmp, rangeDelIter, lowerBound.UserKey, upperBound.UserKey, &f.Smallest, &f.Largest)
 		}
 		if rangeDelIter == nil {
@@ -2183,7 +2183,7 @@ func (d *DB) runCompaction(
 		}
 
 		// NB: clone the key because the data can be held on to by the call to
-		// compactionIter.Tombstones via rangedel.Fragmenter.FlushTo.
+		// compactionIter.Tombstones via keyspan.Fragmenter.FlushTo.
 		splitKey = append([]byte(nil), splitKey...)
 		for _, v := range iter.Tombstones(splitKey, splitL0Outputs) {
 			if tw == nil {
