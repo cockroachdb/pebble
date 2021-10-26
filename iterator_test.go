@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"strconv"
 	"strings"
@@ -1159,9 +1160,95 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 		})
 }
 
-// TODO(sumeer): randomized block interval filter test, with a single
-// collector, that varies block sizes and checks subset relationship with
-// source of truth computed using block size of 1.
+var seed = flag.Uint64("seed", 0, "a pseudorandom number generator seed")
+
+func randValue(n int, rng *rand.Rand) []byte {
+	const letters = "abcdefghijklmnopqrstuvwxyz"
+	const lettersLen = len(letters)
+	buf := make([]byte, n)
+	for i := 0; i < len(buf); i++ {
+		buf[i] = letters[rng.Intn(lettersLen)]
+	}
+	return buf
+}
+
+func randKey(n int, rng *rand.Rand) ([]byte, int) {
+	keyPrefix := randValue(n, rng)
+	suffix := rng.Intn(100)
+	return append(keyPrefix, []byte(fmt.Sprintf("%02d", suffix))...), suffix
+}
+
+func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
+	mem := vfs.NewMem()
+	opts := &Options{
+		FS:                 mem,
+		FormatMajorVersion: FormatNewest,
+		BlockPropertyCollectors: []func() BlockPropertyCollector{
+			func() BlockPropertyCollector {
+				return sstable.NewBlockIntervalCollector("0", &testBlockIntervalCollector{})
+			},
+		},
+	}
+	seed := *seed
+	if seed == 0 {
+		seed = uint64(time.Now().UnixNano())
+		fmt.Printf("seed: %d\n", seed)
+	}
+	rng := rand.New(rand.NewSource(seed))
+	opts.FlushSplitBytes = 1 << rng.Intn(8) // 1B - 256B
+	opts.L0CompactionThreshold = 1 << rng.Intn(2) // 1-2
+	opts.LBaseMaxBytes = 1 << rng.Intn(10) // 1B - 1KB
+	opts.MemTableSize = 1 << 10 // 1KB
+	var lopts LevelOptions
+	lopts.BlockSize = 1 << rng.Intn(8) // 1B - 256B
+	lopts.IndexBlockSize = 1 << rng.Intn(8) // 1B - 256B
+	opts.Levels = []LevelOptions{lopts}
+
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+	matchingKeyValues := make(map[string]string)
+	lower := rng.Intn(100)
+	upper := rng.Intn(100)
+	if lower > upper {
+		lower, upper = upper, lower
+	}
+	n := 2000
+	for i := 0; i < n; i++ {
+		key, suffix := randKey(20 + rng.Intn(5), rng)
+		value := randValue(50, rng)
+		if lower <= suffix && suffix < upper {
+			matchingKeyValues[string(key)] = string(value)
+		}
+		d.Set(key, value, nil)
+	}
+
+	var iterOpts IterOptions
+	iterOpts.BlockPropertyFilters = []BlockPropertyFilter{
+		sstable.NewBlockIntervalFilter("0",
+			uint64(lower), uint64(upper)),
+	}
+	iter := d.NewIter(&iterOpts)
+	defer func() {
+		require.NoError(t, iter.Close())
+	}()
+	iter.First()
+	found := 0
+	matchingCount := len(matchingKeyValues)
+	for ; iter.Valid(); iter.Next() {
+		found++
+		key := string(iter.Key())
+		value, ok := matchingKeyValues[key]
+		if ok {
+			require.Equal(t, value, string(iter.Value()))
+			delete(matchingKeyValues, key)
+		}
+	}
+	fmt.Printf("generated %d keys: %d matching, %d found\n", n, matchingCount, found)
+	require.Equal(t, 0, len(matchingKeyValues))
+}
 
 func BenchmarkIteratorSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
