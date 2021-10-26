@@ -119,7 +119,7 @@ func TestFragmenter(t *testing.T) {
 	// tombstones looks like.
 	deleted := func(key []byte, seq, readSeq uint64) bool {
 		tombstone := Get(cmp, iter, key, readSeq)
-		return tombstone.Deletes(seq)
+		return tombstone.Covers(seq)
 	}
 
 	datadriven.RunTest(t, "testdata/fragmenter", func(d *datadriven.TestData) string {

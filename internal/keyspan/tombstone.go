@@ -49,8 +49,8 @@ func (s Span) Contains(cmp base.Compare, key []byte) bool {
 	return cmp(s.Start.UserKey, key) <= 0 && cmp(key, s.End) < 0
 }
 
-// Deletes returns true if the span deletes keys at seqNum.
-func (s Span) Deletes(seqNum uint64) bool {
+// Covers returns true if the span covers keys at seqNum.
+func (s Span) Covers(seqNum uint64) bool {
 	return !s.Empty() && s.Start.SeqNum() > seqNum
 }
 

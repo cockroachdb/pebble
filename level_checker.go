@@ -207,7 +207,7 @@ func (m *simpleMergingIter) step() bool {
 			}
 			if (lvl.smallestUserKey == nil || m.heap.cmp(lvl.smallestUserKey, item.key.UserKey) <= 0) &&
 				lvl.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
-				if lvl.tombstone.Deletes(item.key.SeqNum()) {
+				if lvl.tombstone.Covers(item.key.SeqNum()) {
 					m.err = errors.Errorf("tombstone %s in %s deletes key %s in %s",
 						lvl.tombstone.Pretty(m.formatKey), lvl.iter, item.key.Pretty(m.formatKey),
 						l.iter)

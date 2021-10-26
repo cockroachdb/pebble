@@ -611,7 +611,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 				m.seekGE(seekKey, item.index, false /* trySeekUsingNext */)
 				return true
 			}
-			if l.tombstone.Deletes(item.key.SeqNum()) {
+			if l.tombstone.Covers(item.key.SeqNum()) {
 				m.nextEntry(item)
 				return true
 			}
@@ -769,7 +769,7 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 				m.seekLT(seekKey, item.index)
 				return true
 			}
-			if l.tombstone.Deletes(item.key.SeqNum()) {
+			if l.tombstone.Covers(item.key.SeqNum()) {
 				m.prevEntry(item)
 				return true
 			}
