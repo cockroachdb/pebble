@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangedel
+package keyspan
 
 import "github.com/cockroachdb/pebble/internal/base"
 
@@ -11,10 +11,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 // If start and end are specified, filter out any range tombstones that
 // are completely outside those bounds.
 func Truncate(
-	cmp base.Compare,
-	iter base.InternalIterator,
-	lower, upper []byte,
-	start, end *base.InternalKey,
+	cmp base.Compare, iter base.InternalIterator, lower, upper []byte, start, end *base.InternalKey,
 ) *Iter {
 	var tombstones []Tombstone
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {

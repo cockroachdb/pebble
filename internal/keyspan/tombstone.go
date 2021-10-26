@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangedel // import "github.com/cockroachdb/pebble/internal/rangedel"
+package keyspan // import "github.com/cockroachdb/pebble/internal/keyspan"
 
 import (
 	"bytes"

@@ -15,7 +15,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
-	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 func TestSnapshotIndex(t *testing.T) {
@@ -106,7 +106,7 @@ func TestCompactionIter(t *testing.T) {
 			},
 			iter,
 			snapshots,
-			&rangedel.Fragmenter{},
+			&keyspan.Fragmenter{},
 			allowZeroSeqnum,
 			func([]byte) bool {
 				return elideTombstones

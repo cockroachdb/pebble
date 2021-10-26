@@ -12,7 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // compactionIter provides a forward-only iterator that encapsulates the logic
@@ -104,7 +104,7 @@ import (
 // key. The end key of the range is stored in the value. In order to support
 // lookup of the range deletions which overlap with a particular key, the range
 // deletion tombstones need to be fragmented whenever they overlap. This
-// fragmentation is performed by rangedel.Fragmenter. The fragments are then
+// fragmentation is performed by keyspan.Fragmenter. The fragments are then
 // subject to the rules for snapshots. For example, consider the two range
 // tombstones [a,e)#1 and [c,g)#2:
 //
@@ -196,9 +196,9 @@ type compactionIter struct {
 	snapshots []uint64
 	// Reference to the range deletion tombstone fragmenter (e.g.,
 	// `compaction.rangeDelFrag`).
-	rangeDelFrag *rangedel.Fragmenter
+	rangeDelFrag *keyspan.Fragmenter
 	// The fragmented tombstones.
-	tombstones []rangedel.Tombstone
+	tombstones []keyspan.Tombstone
 	// Byte allocator for the tombstone keys.
 	alloc               bytealloc.A
 	allowZeroSeqNum     bool
@@ -215,7 +215,7 @@ func newCompactionIter(
 	merge Merge,
 	iter internalIterator,
 	snapshots []uint64,
-	rangeDelFrag *rangedel.Fragmenter,
+	rangeDelFrag *keyspan.Fragmenter,
 	allowZeroSeqNum bool,
 	elideTombstone func(key []byte) bool,
 	elideRangeTombstone func(start, end []byte) bool,
@@ -751,7 +751,7 @@ func (i *compactionIter) Close() error {
 // exclude specifies if the specified key is exclusive or inclusive.
 // When exclude = true, all returned range tombstones are truncated to the
 // specified key.
-func (i *compactionIter) Tombstones(key []byte, exclude bool) []rangedel.Tombstone {
+func (i *compactionIter) Tombstones(key []byte, exclude bool) []keyspan.Tombstone {
 	switch {
 	case key == nil:
 		i.rangeDelFrag.Finish()
@@ -768,7 +768,7 @@ func (i *compactionIter) Tombstones(key []byte, exclude bool) []rangedel.Tombsto
 	return tombstones
 }
 
-func (i *compactionIter) emitRangeDelChunk(fragmented []rangedel.Tombstone) {
+func (i *compactionIter) emitRangeDelChunk(fragmented []keyspan.Tombstone) {
 	// Apply the snapshot stripe rules, keeping only the latest tombstone for
 	// each snapshot stripe.
 	currentIdx := -1

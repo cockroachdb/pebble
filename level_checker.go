@@ -12,8 +12,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
 // This file implements DB.CheckLevels() which checks that every entry in the
@@ -53,7 +53,7 @@ type simpleMergingIterLevel struct {
 
 	iterKey   *InternalKey
 	iterValue []byte
-	tombstone rangedel.Tombstone
+	tombstone keyspan.Tombstone
 }
 
 type simpleMergingIter struct {
@@ -116,7 +116,7 @@ func (m *simpleMergingIter) positionRangeDels() {
 		if l.rangeDelIter == nil {
 			continue
 		}
-		l.tombstone = rangedel.SeekGE(m.heap.cmp, l.rangeDelIter, item.key.UserKey, m.snapshot)
+		l.tombstone = keyspan.SeekGE(m.heap.cmp, l.rangeDelIter, item.key.UserKey, m.snapshot)
 	}
 }
 
@@ -287,7 +287,7 @@ func (m *simpleMergingIter) step() bool {
 
 // A tombstone and the corresponding level it was found in.
 type tombstoneWithLevel struct {
-	rangedel.Tombstone
+	keyspan.Tombstone
 	level int
 	// The level in LSM. A -1 means it's a memtable.
 	lsmLevel int
@@ -381,8 +381,8 @@ func checkRangeTombstones(c *checkConfig) error {
 			if iter == nil {
 				continue
 			}
-			truncate := func(t rangedel.Tombstone) rangedel.Tombstone {
-				// Same checks as in rangedel.Truncate.
+			truncate := func(t keyspan.Tombstone) keyspan.Tombstone {
+				// Same checks as in keyspan.Truncate.
 				if c.cmp(t.Start.UserKey, lower.UserKey) < 0 {
 					t.Start.UserKey = lower.UserKey
 				}
@@ -444,18 +444,18 @@ func addTombstonesFromIter(
 	seqNum uint64,
 	cmp Compare,
 	formatKey base.FormatKey,
-	truncate func(tombstone rangedel.Tombstone) rangedel.Tombstone,
+	truncate func(tombstone keyspan.Tombstone) keyspan.Tombstone,
 ) (_ []tombstoneWithLevel, err error) {
 	defer func() {
 		err = firstError(err, iter.Close())
 	}()
 
-	var prevTombstone rangedel.Tombstone
+	var prevTombstone keyspan.Tombstone
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
 		if !key.Visible(seqNum) {
 			continue
 		}
-		var t rangedel.Tombstone
+		var t keyspan.Tombstone
 		t.Start = key.Clone()
 		t.End = append(t.End[:0], value...)
 		// This is mainly a test for rangeDelV2 formatted blocks which are expected to
