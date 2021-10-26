@@ -6,40 +6,40 @@ package keyspan
 
 import "github.com/cockroachdb/pebble/internal/base"
 
-// Truncate creates a new iterator where every tombstone in the supplied
+// Truncate creates a new iterator where every span in the supplied
 // iterator is truncated to be contained within the range [lower, upper).
-// If start and end are specified, filter out any range tombstones that
+// If start and end are specified, filter out any spans that
 // are completely outside those bounds.
 func Truncate(
 	cmp base.Compare, iter base.InternalIterator, lower, upper []byte, start, end *base.InternalKey,
 ) *Iter {
-	var tombstones []Span
+	var spans []Span
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
-		t := Span{
+		s := Span{
 			Start: *key,
 			End:   value,
 		}
-		// Ignore this tombstone if it lies completely outside [start, end].
-		// The comparison between t.End and start is by user key only, as
-		// the range tombstone is exclusive at t.End, so comparing by user keys
+		// Ignore this span if it lies completely outside [start, end].
+		// The comparison between s.End and start is by user key only, as
+		// the span is exclusive at s.End, so comparing by user keys
 		// is sufficient. Alternatively, the below comparison can be seen to
 		// be logically equivalent to:
-		// InternalKey{UserKey: t.End, SeqNum: SeqNumMax} < start
-		if start != nil && cmp(t.End, start.UserKey) <= 0 {
+		// InternalKey{UserKey: s.End, SeqNum: SeqNumMax} < start
+		if start != nil && cmp(s.End, start.UserKey) <= 0 {
 			continue
 		}
-		if end != nil && base.InternalCompare(cmp, t.Start, *end) > 0 {
+		if end != nil && base.InternalCompare(cmp, s.Start, *end) > 0 {
 			continue
 		}
-		if cmp(t.Start.UserKey, lower) < 0 {
-			t.Start.UserKey = lower
+		if cmp(s.Start.UserKey, lower) < 0 {
+			s.Start.UserKey = lower
 		}
-		if cmp(t.End, upper) > 0 {
-			t.End = upper
+		if cmp(s.End, upper) > 0 {
+			s.End = upper
 		}
-		if cmp(t.Start.UserKey, t.End) < 0 {
-			tombstones = append(tombstones, t)
+		if cmp(s.Start.UserKey, s.End) < 0 {
+			spans = append(spans, s)
 		}
 	}
-	return NewIter(cmp, tombstones)
+	return NewIter(cmp, spans)
 }

@@ -53,7 +53,7 @@ func TestTruncate(t *testing.T) {
 			upper := []byte(parts[1])
 
 			truncated := Truncate(cmp, iter, lower, upper, startKey, endKey)
-			return formatTombstones(truncated.tombstones)
+			return formatTombstones(truncated.spans)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
