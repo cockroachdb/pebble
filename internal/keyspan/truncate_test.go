@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangedel
+package keyspan
 
 import (
 	"fmt"
@@ -53,7 +53,7 @@ func TestTruncate(t *testing.T) {
 			upper := []byte(parts[1])
 
 			truncated := Truncate(cmp, iter, lower, upper, startKey, endKey)
-			return formatTombstones(truncated.tombstones)
+			return formatTombstones(truncated.spans)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)

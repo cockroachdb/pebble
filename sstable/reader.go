@@ -20,8 +20,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -113,9 +113,9 @@ type singleLevelIterator struct {
 	// dataBH refers to the last data block that the iterator considered
 	// loading. It may not actually have loaded the block, due to an error or
 	// because it was considered irrelevant.
-	dataBH     BlockHandle
-	err        error
-	closeHook  func(i Iterator) error
+	dataBH    BlockHandle
+	err       error
+	closeHook func(i Iterator) error
 
 	// boundsCmp and positionedUsingLatestBounds are for optimizing iteration
 	// that uses multiple adjacent bounds. The seek after setting a new bound
@@ -252,7 +252,8 @@ func checkTwoLevelIterator(obj interface{}) {
 // synonmous with Reader.NewIter, but allows for reusing of the iterator
 // between different Readers.
 func (i *singleLevelIterator) init(
-	r *Reader, lower, upper []byte, filterer *BlockPropertiesFilterer) error {
+	r *Reader, lower, upper []byte, filterer *BlockPropertiesFilterer,
+) error {
 	if r.err != nil {
 		return r.err
 	}
@@ -319,6 +320,7 @@ func (i *singleLevelIterator) initBounds() {
 }
 
 type loadBlockResult int8
+
 const (
 	loadBlockOK loadBlockResult = iota
 	// Could be due to error or because no block left to load.
@@ -1161,7 +1163,8 @@ func (i *twoLevelIterator) loadIndex() loadBlockResult {
 }
 
 func (i *twoLevelIterator) init(
-	r *Reader, lower, upper []byte, filterer *BlockPropertiesFilterer) error {
+	r *Reader, lower, upper []byte, filterer *BlockPropertiesFilterer,
+) error {
 	if r.err != nil {
 		return r.err
 	}
@@ -2105,7 +2108,8 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 // table. If an error occurs, NewIterWithBlockPropertyFilters cleans up after
 // itself and returns a nil iterator.
 func (r *Reader) NewIterWithBlockPropertyFilters(
-	lower, upper []byte, filterer *BlockPropertiesFilterer) (Iterator, error) {
+	lower, upper []byte, filterer *BlockPropertiesFilterer,
+) (Iterator, error) {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
@@ -2307,24 +2311,24 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	if err := iter.init(r.Compare, b, r.Properties.GlobalSeqNum); err != nil {
 		return nil, err
 	}
-	var tombstones []rangedel.Tombstone
+	var tombstones []keyspan.Span
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
-		t := rangedel.Tombstone{
+		t := keyspan.Span{
 			Start: *key,
 			End:   value,
 		}
 		tombstones = append(tombstones, t)
 	}
-	rangedel.Sort(r.Compare, tombstones)
+	keyspan.Sort(r.Compare, tombstones)
 
 	// Fragment the tombstones, outputting them directly to a block writer.
 	rangeDelBlock := blockWriter{
 		restartInterval: 1,
 	}
-	frag := rangedel.Fragmenter{
+	frag := keyspan.Fragmenter{
 		Cmp:    r.Compare,
 		Format: r.FormatKey,
-		Emit: func(fragmented []rangedel.Tombstone) {
+		Emit: func(fragmented []keyspan.Span) {
 			for i := range fragmented {
 				t := &fragmented[i]
 				rangeDelBlock.add(t.Start, t.End)

@@ -12,9 +12,9 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/spf13/cobra"
@@ -352,7 +352,7 @@ func (f *findT) searchLogs(searchKey []byte, refs []findRef) []findRef {
 						}
 					case base.InternalKeyKindRangeDelete:
 						// Output tombstones that contain or end with the search key.
-						t := rangedel.Tombstone{Start: ikey, End: value}
+						t := keyspan.Span{Start: ikey, End: value}
 						if !t.Contains(cmp, searchKey) && cmp(t.End, searchKey) != 0 {
 							continue
 						}
@@ -438,13 +438,13 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 					return nil, err
 				}
 				if iter == nil {
-					return rangedel.NewIter(r.Compare, nil), nil
+					return keyspan.NewIter(r.Compare, nil), nil
 				}
 				defer iter.Close()
 
-				var tombstones []rangedel.Tombstone
+				var tombstones []keyspan.Span
 				for key, value := iter.First(); key != nil; key, value = iter.Next() {
-					t := rangedel.Tombstone{
+					t := keyspan.Span{
 						Start: *key,
 						End:   value,
 					}
@@ -457,7 +457,7 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 				sort.Slice(tombstones, func(i, j int) bool {
 					return r.Compare(tombstones[i].Start.UserKey, tombstones[j].Start.UserKey) < 0
 				})
-				return rangedel.NewIter(r.Compare, tombstones), nil
+				return keyspan.NewIter(r.Compare, tombstones), nil
 			}()
 			if err != nil {
 				return err

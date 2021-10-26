@@ -8,8 +8,8 @@ import (
 	"math"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -281,7 +281,7 @@ func (d *DB) loadTableStats(
 		defer rangeDelIter.Close()
 		// Truncate tombstones to the containing file's bounds if necessary.
 		// See docs/range_deletions.md for why this is necessary.
-		rangeDelIter = rangedel.Truncate(
+		rangeDelIter = keyspan.Truncate(
 			d.cmp, rangeDelIter, meta.Smallest.UserKey, meta.Largest.UserKey, nil, nil)
 		err = foreachDefragmentedTombstone(rangeDelIter, d.cmp,
 			func(startUserKey, endUserKey []byte, smallestSeqNum, largestSeqNum uint64) error {

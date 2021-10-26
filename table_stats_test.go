@@ -10,7 +10,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
-	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -122,18 +122,18 @@ func TestTableStats(t *testing.T) {
 }
 
 func TestForeachDefragmentedTombstone(t *testing.T) {
-	mktomb := func(start, end string, seqnum uint64) rangedel.Tombstone {
+	mktomb := func(start, end string, seqnum uint64) keyspan.Span {
 		s := base.MakeInternalKey([]byte(start), seqnum, base.InternalKeyKindRangeDelete)
-		return rangedel.Tombstone{Start: s, End: []byte(end)}
+		return keyspan.Span{Start: s, End: []byte(end)}
 	}
 
 	testCases := []struct {
-		fragmented []rangedel.Tombstone
+		fragmented []keyspan.Span
 		want       [][2]string
 		wantSeq    [][2]uint64
 	}{
 		{
-			fragmented: []rangedel.Tombstone{
+			fragmented: []keyspan.Span{
 				mktomb("a", "c", 2),
 				mktomb("e", "g", 2),
 				mktomb("l", "m", 2),
@@ -143,7 +143,7 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 			wantSeq: [][2]uint64{{2, 2}, {2, 2}, {2, 2}, {2, 2}},
 		},
 		{
-			fragmented: []rangedel.Tombstone{
+			fragmented: []keyspan.Span{
 				mktomb("a", "c", 2),
 				mktomb("c", "f", 5),
 				mktomb("c", "f", 2),
@@ -153,7 +153,7 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 			wantSeq: [][2]uint64{{2, 5}},
 		},
 		{
-			fragmented: []rangedel.Tombstone{
+			fragmented: []keyspan.Span{
 				mktomb("a", "b", 10),
 				mktomb("a", "b", 8),
 				mktomb("a", "b", 7),
@@ -164,7 +164,7 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 			wantSeq: [][2]uint64{{2, 10}, {4, 4}},
 		},
 		{
-			fragmented: []rangedel.Tombstone{
+			fragmented: []keyspan.Span{
 				mktomb("a", "b", 10),
 				mktomb("b", "c", 10),
 				mktomb("b", "c", 7),
@@ -179,7 +179,7 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		iter := rangedel.NewIter(DefaultComparer.Compare, tc.fragmented)
+		iter := keyspan.NewIter(DefaultComparer.Compare, tc.fragmented)
 		var got [][2]string
 		var gotSeq [][2]uint64
 		err := foreachDefragmentedTombstone(iter, DefaultComparer.Compare,
