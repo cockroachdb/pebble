@@ -189,7 +189,7 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 
 			// Spawn the writers.
 			for i := 0; i < writeBenchConfig.concurrency; i++ {
-				writer := newPauseWriter(y, float64(limit), incBase)
+				writer := newPauseWriter(y, float64(limit))
 				writers = append(writers, writer)
 				writersWg.Add(1)
 				go writer.run(ctx, wg)
@@ -382,10 +382,10 @@ type pauseWriter struct {
 }
 
 // newPauseWriter returns a new pauseWriter.
-func newPauseWriter(y *ycsb, initialLimit float64, burst int) *pauseWriter {
+func newPauseWriter(y *ycsb, initialLimit float64) *pauseWriter {
 	return &pauseWriter{
 		y:        y,
-		limiter:  rate.NewLimiter(rate.Limit(initialLimit), burst),
+		limiter:  rate.NewLimiter(rate.Limit(initialLimit), 1 /* avoid bursts */),
 		pauseC:   make(chan struct{}),
 		unpauseC: make(chan struct{}),
 	}
