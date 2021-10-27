@@ -18,17 +18,18 @@ import (
 )
 
 var writeBenchConfig struct {
-	batch             *randvar.Flag
-	keys              string
-	values            *randvar.BytesFlag
-	concurrency       int
-	rateStart         int
-	incBase           int
-	testPeriod        time.Duration
-	cooloffPeriod     time.Duration
-	targetL0Files     int
-	targetL0SubLevels int
-	debug             bool
+	batch              *randvar.Flag
+	keys               string
+	values             *randvar.BytesFlag
+	concurrency        int
+	rateStart          int
+	incBase            int
+	testPeriod         time.Duration
+	cooloffPeriod      time.Duration
+	targetL0Files      int
+	targetL0SubLevels  int
+	maxRateDipFraction float64
+	debug              bool
 }
 
 var writeBenchCmd = &cobra.Command{
@@ -111,6 +112,9 @@ func initWriteBench(cmd *cobra.Command) {
 		20, "target L0 sublevel count")
 	cmd.Flags().BoolVarP(
 		&wipe, "wipe", "w", false, "wipe the database before starting")
+	cmd.Flags().Float64Var(
+		&writeBenchConfig.maxRateDipFraction, "max-rate-dip-fraction", 0.1,
+		"fraction at which to mark a test-run as failed if the actual rate dips below (relative to the desired rate)")
 	cmd.Flags().BoolVar(
 		&writeBenchConfig.debug, "debug", false, "print benchmark debug information")
 }
@@ -152,9 +156,10 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 		cooloffStart time.Time       // When cool-off was enabled.
 		stack        []int           // Stack of passing load values.
 		pass, fail   []int           // Values of load that pass and fail, respectively.
+		rateAcc      float64         // Accumulator of measured rates for a single test run.
 	)
 
-	limit := writeBenchConfig.rateStart
+	desiredRate := writeBenchConfig.rateStart
 	incBase := writeBenchConfig.incBase
 	weights, err := ycsbParseWorkload(workload)
 
@@ -174,10 +179,80 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 	y.keyNum = ackseq.New(0)
 
 	setLimit := func(l int) {
-		perWriterLimit := float64(l) / float64(len(writers))
+		perWriterRate := float64(l) / float64(len(writers))
 		for _, w := range writers {
-			w.setLimit(perWriterLimit)
+			w.setRate(perWriterRate)
 		}
+	}
+
+	// Function closure to run on test-run failure.
+	onTestFail := func(r writeBenchResult, cancel func()) {
+		fail = append(fail, desiredRate)
+
+		// Emit a benchmark raw datapoint.
+		fmt.Println(r)
+
+		// We failed at the current load, we have two options:
+
+		// a) No room to backtrack. We're done.
+		if len(stack) == 0 {
+			debugPrint("no room to backtrack; exiting ...\n")
+			cancel()
+			writersWg.Wait()
+			return
+		}
+
+		// b) We still have room to backtrack. Reduce the load to the
+		// last known passing value.
+		desiredRate, stack = stack[len(stack)-1], stack[:len(stack)-1]
+		setLimit(desiredRate)
+
+		// Enter the cool-off period.
+		cooloff = true
+		var wg sync.WaitGroup
+		for _, w := range writers {
+			// With a large number of writers, pausing synchronously can
+			// take a material amount of time. Instead, pause the
+			// writers in parallel in the background, and wait for all
+			// to complete before continuing.
+			wg.Add(1)
+			go func(writer *pauseWriter) {
+				writer.pause()
+				wg.Done()
+			}(w)
+		}
+		wg.Wait()
+
+		// Reset the counters and clocks.
+		streak = 0
+		rateAcc = 0
+		cooloffStart = time.Now()
+		clockStart = time.Now()
+		debugPrint("Fail. Pausing writers for cool-off period.\n")
+		debugPrint(fmt.Sprintf("new rate=%d\npasses=%v\nfails=%v\nstack=%v\n",
+			desiredRate, pass, fail, stack))
+	}
+
+	// Function closure to run on test-run success.
+	onTestSuccess := func(r writeBenchResult) {
+		streak++
+		pass = append(pass, desiredRate)
+		stack = append(stack, desiredRate)
+
+		// Emit a benchmark raw datapoint.
+		r.passed = true
+		fmt.Println(r)
+
+		// Increase the rate.
+		desiredRate = desiredRate + incBase*(1<<(streak-1))
+		setLimit(desiredRate)
+
+		// Restart the test.
+		rateAcc = 0
+		clockStart = time.Now()
+
+		debugPrint(fmt.Sprintf("Pass.\nnew rate=%d\npasses=%v\nfails=%v\nstreak=%d\nstack=%v\n",
+			desiredRate, pass, fail, streak, stack))
 	}
 
 	name := fmt.Sprintf("write/values=%s", writeBenchConfig.values)
@@ -189,12 +264,12 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 
 			// Spawn the writers.
 			for i := 0; i < writeBenchConfig.concurrency; i++ {
-				writer := newPauseWriter(y, float64(limit), incBase)
+				writer := newPauseWriter(y, float64(desiredRate), incBase)
 				writers = append(writers, writer)
 				writersWg.Add(1)
 				go writer.run(ctx, wg)
 			}
-			setLimit(limit)
+			setLimit(desiredRate)
 
 			// Start the clock on the current load.
 			clockStart = time.Now()
@@ -219,13 +294,14 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 			}
 			lsmBytes := m.DiskSpaceUsage()
 
-			var curLoad float64
+			var currRate float64
 			var stalled bool
 			y.reg.Tick(func(tick histogramTick) {
 				h := tick.Hist
-				curLoad = float64(h.TotalCount()) / tick.Elapsed.Seconds()
-				stalled = !cooloff && curLoad == 0
+				currRate = float64(h.TotalCount()) / tick.Elapsed.Seconds()
+				stalled = !cooloff && currRate == 0
 			})
+			rateAcc += currRate
 
 			// The heuristic by which the DB can sustain a given write load is
 			// determined by whether the DB, for the configured window of time:
@@ -241,8 +317,8 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 			fmt.Printf("%10s %7s %15d %14.1f %9d %10d %8d %13d\n",
 				time.Duration(elapsed.Seconds()+0.5)*time.Second,
 				time.Duration(time.Since(clockStart).Seconds()+0.5)*time.Second,
-				limit,
-				curLoad,
+				desiredRate,
+				currRate,
 				l0Files,
 				l0Sublevels,
 				nLevels,
@@ -269,81 +345,45 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 
 			r := writeBenchResult{
 				name:    name,
-				rate:    limit,
+				rate:    desiredRate,
 				elapsed: time.Duration(elapsed.Seconds()+0.5) * time.Second,
 				bytes:   lsmBytes,
 				levels:  nLevels,
 			}
 
 			if failed {
-				fail = append(fail, limit)
-
-				// Emit a benchmark raw datapoint.
-				fmt.Println(r)
-
-				// We failed at the current load, we have two options:
-
-				// a) No room to backtrack. We're done.
-				if len(stack) == 0 {
-					debugPrint("no room to backtrack; exiting ...\n")
-					cancel()
-					writersWg.Wait()
-					return
-				}
-
-				// b) We still have room to backtrack. Reduce the load to the
-				// last known passing value.
-				limit, stack = stack[len(stack)-1], stack[:len(stack)-1]
-				setLimit(limit)
-
-				// Enter the cool-off period.
-				cooloff = true
-				var wg sync.WaitGroup
-				for _, w := range writers {
-					// With a large number of writers, pausing synchronously can
-					// take a material amount of time. Instead, pause the
-					// writers in parallel in the background, and wait for all
-					// to complete before continuing.
-					wg.Add(1)
-					go func(writer *pauseWriter) {
-						writer.pause()
-						wg.Done()
-					}(w)
-				}
-				wg.Wait()
-
-				// Reset the counters and clocks.
-				streak = 0
-				cooloffStart = time.Now()
-				clockStart = time.Now()
-				debugPrint("Fail. Pausing writers for cool-off period.\n")
-				debugPrint(fmt.Sprintf("new limit=%d\npasses=%v\nfails=%v\nstack=%v\n",
-					limit, pass, fail, stack))
-
+				onTestFail(r, cancel)
 				return
 			}
 
 			// Else, the DB could handle the current load. We only increase
 			// after a fixed amount of time at this load as elapsed.
-			if time.Since(clockStart) > writeBenchConfig.testPeriod {
-				streak++
-				pass = append(pass, limit)
-				stack = append(stack, limit)
-
-				// Emit a benchmark raw datapoint.
-				r.passed = true
-				fmt.Println(r)
-
-				// Increase the limit.
-				limit = limit + incBase*(1<<(streak-1))
-				setLimit(limit)
-
-				// Restart the test.
-				clockStart = time.Now()
-
-				debugPrint(fmt.Sprintf("Pass.\nnew limit=%d\npasses=%v\nfails=%v\nstreak=%d\nstack=%v\n",
-					limit, pass, fail, streak, stack))
+			testElapsed := time.Since(clockStart)
+			if testElapsed < writeBenchConfig.testPeriod {
+				// This test-run still has time on the clock.
+				return
 			}
+
+			// This test-run has completed.
+
+			// If the average rate over the test is less than the desired rate,
+			// we mark this test-run as a failure. This handles cases where we
+			// encounter a bottleneck that limits write throughput but
+			// incorrectly mark the test as passed.
+			diff := 1 - rateAcc/(float64(desiredRate)*testElapsed.Seconds())
+			if diff > writeBenchConfig.maxRateDipFraction {
+				if writeBenchConfig.debug {
+					debugPrint(fmt.Sprintf(
+						"difference in rates (%.2f) exceeded threshold (%.2f); marking test as failed\n",
+						diff, writeBenchConfig.maxRateDipFraction,
+					))
+				}
+				onTestFail(r, cancel)
+				return
+			}
+
+			// Mark this test-run as passed.
+			onTestSuccess(r)
 		},
 		done: func(elapsed time.Duration) {
 			// Print final analysis.
@@ -382,10 +422,10 @@ type pauseWriter struct {
 }
 
 // newPauseWriter returns a new pauseWriter.
-func newPauseWriter(y *ycsb, initialLimit float64, burst int) *pauseWriter {
+func newPauseWriter(y *ycsb, initialRate float64, burst int) *pauseWriter {
 	return &pauseWriter{
 		y:        y,
-		limiter:  rate.NewLimiter(rate.Limit(initialLimit), burst),
+		limiter:  rate.NewLimiter(rate.Limit(initialRate), burst),
 		pauseC:   make(chan struct{}),
 		unpauseC: make(chan struct{}),
 	}
@@ -423,9 +463,9 @@ func (w *pauseWriter) unpause() {
 	w.unpauseC <- struct{}{}
 }
 
-// setLimit sets the rate limit for this writer.
-func (w *pauseWriter) setLimit(limit float64) {
-	w.limiter.SetLimit(rate.Limit(limit))
+// setRate sets the rate limit for this writer.
+func (w *pauseWriter) setRate(r float64) {
+	w.limiter.SetLimit(rate.Limit(r))
 }
 
 // findOptimalSplit computes and returns a value that separates the given pass
