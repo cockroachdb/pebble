@@ -97,7 +97,7 @@ jobs:
 
   darwin:
     name: go1.16-macos
-    runs-on: macos-latest
+    runs-on: macos-11
     steps:
     - uses: actions/checkout@v2
 
