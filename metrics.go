@@ -157,6 +157,8 @@ type Metrics struct {
 
 	FSMetrics *FSMetrics
 
+	CommitMetrics *commitMetrics
+
 	Levels [numLevels]LevelMetrics
 
 	MemTable struct {
@@ -402,6 +404,11 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 			m.FSMetrics.SyncLatencyEWMA,
 			m.FSMetrics.SyncLatencyDev)
 	}
+
+	w.Printf(" commit %9s %7.1f %6.1f   (size == ewma, score == dev)\n",
+		notApplicable,
+		m.CommitMetrics.latencyEWMA,
+		m.CommitMetrics.latencyDev)
 }
 
 func hitRate(hits, misses int64) float64 {

@@ -1234,6 +1234,8 @@ func (d *DB) Metrics() *Metrics {
 	if fs, ok := d.opts.FS.(*vfs.StatFS); ok {
 		metrics.FSMetrics = fs.Metrics()
 	}
+	metrics.CommitMetrics = d.commit.Metrics()
+
 	return metrics
 }
 

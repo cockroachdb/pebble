@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/record"
@@ -221,6 +222,47 @@ type commitPipeline struct {
 	// The mutex to use for synchronizing access to logSeqNum and serializing
 	// calls to commitEnv.write().
 	mu sync.Mutex
+
+	// latencyCh measures the latencies of commit operations.
+	latencyCh chan float64
+
+	metrics struct {
+		sync.Mutex
+
+		// These should only be updated by the commitPipeline.sample go routine.
+		latencyEWMA float64
+		latencyDev  float64
+	}
+}
+
+type commitMetrics struct {
+	latencyEWMA float64
+	latencyDev  float64
+}
+
+func abs(a float64) float64 {
+	if a < 0 {
+		return -a
+	}
+	return a
+}
+
+func (p *commitPipeline) sample() {
+	for lat := range p.latencyCh {
+		p.metrics.Lock()
+		p.metrics.latencyEWMA = 0.875*p.metrics.latencyEWMA + 0.125*lat
+		p.metrics.latencyDev = 0.75*p.metrics.latencyDev + 0.25*abs(lat-p.metrics.latencyEWMA)
+		p.metrics.Unlock()
+	}
+}
+
+func (p *commitPipeline) Metrics() *commitMetrics {
+	m := &commitMetrics{}
+	p.metrics.Lock()
+	m.latencyDev = p.metrics.latencyDev
+	m.latencyEWMA = p.metrics.latencyEWMA
+	p.metrics.Unlock()
+	return m
 }
 
 func newCommitPipeline(env commitEnv) *commitPipeline {
@@ -231,6 +273,11 @@ func newCommitPipeline(env commitEnv) *commitPipeline {
 		// and sync the WAL.
 		sem: make(chan struct{}, record.SyncConcurrency-1),
 	}
+
+	// todo: make this buffer smaller
+	p.latencyCh = make(chan float64, 1000000)
+
+	go p.sample()
 	return p
 }
 
@@ -243,6 +290,8 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	}
 
 	p.sem <- struct{}{}
+
+	t1 := time.Now()
 
 	// Prepare the batch for committing: enqueuing the batch in the pending
 	// queue, determining the batch sequence number and writing the data to the
@@ -264,6 +313,9 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 
 	// Publish the batch sequence number.
 	p.publish(b)
+
+	sample := time.Since(t1).Milliseconds()
+	p.latencyCh <- float64(sample)
 
 	<-p.sem
 
