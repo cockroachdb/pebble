@@ -264,7 +264,7 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 
 			// Spawn the writers.
 			for i := 0; i < writeBenchConfig.concurrency; i++ {
-				writer := newPauseWriter(y, float64(desiredRate), incBase)
+				writer := newPauseWriter(y, float64(desiredRate))
 				writers = append(writers, writer)
 				writersWg.Add(1)
 				go writer.run(ctx, wg)
@@ -422,7 +422,12 @@ type pauseWriter struct {
 }
 
 // newPauseWriter returns a new pauseWriter.
-func newPauseWriter(y *ycsb, initialRate float64, burst int) *pauseWriter {
+func newPauseWriter(y *ycsb, initialRate float64) *pauseWriter {
+	// Set the burst rate for the limiter to the lowest sensible value to
+	// prevent excessive bursting. Note that a burst of zero effectively
+	// disables the rate limiter, as a wait time of +Inf is returned from all
+	// calls, and `wait(l *rate.Limiter)` will not sleep in this case.
+	const burst = 1
 	return &pauseWriter{
 		y:        y,
 		limiter:  rate.NewLimiter(rate.Limit(initialRate), burst),
