@@ -148,12 +148,17 @@ func (l *loader) loadRaw(dir string) {
 			return nil
 		}
 
-		parts := strings.Split(path, string(os.PathSeparator))
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+
+		parts := strings.Split(rel, string(os.PathSeparator))
 		if len(parts) < 2 {
 			return nil // stumble forward on invalid paths
 		}
 
-		day := parts[1]
+		day := parts[0]
 		if l.cookedDays[day] {
 			return nil
 		}
@@ -292,14 +297,12 @@ func prettyJSON(v interface{}) []byte {
 	return data
 }
 
-func main() {
-	const raw = "data"
-	const cooked = "data.js"
-
+// ParseYCSB coalesces YCSB benchmark data.
+func ParseYCSB(dataDir, inFile, outFile string) {
 	log.SetFlags(log.Lshortfile)
 
 	l := newLoader()
-	l.loadCooked(cooked)
-	l.loadRaw(raw)
-	l.cook(cooked)
+	l.loadCooked(inFile)
+	l.loadRaw(dataDir)
+	l.cook(outFile)
 }
