@@ -39,7 +39,7 @@ jobs:
     - run: make test generate
 
   linux-race:
-    name: go1.16-linux-race
+    name: go-linux-race
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -47,7 +47,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.16"
+        go-version: "1.17"
 
     - name: install golint
       run: go get golang.org/x/lint/golint
@@ -58,7 +58,7 @@ jobs:
     - run: make testrace TAGS=
 
   linux-no-invariants:
-    name: go1.16-linux-no-invariants
+    name: go-linux-no-invariants
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -66,7 +66,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.16"
+        go-version: "1.17"
 
     - name: install golint
       run: go get golang.org/x/lint/golint
@@ -77,7 +77,7 @@ jobs:
     - run: make test TAGS=
 
   linux-no-cgo:
-    name: go1.16-linux-no-cgo
+    name: go-linux-no-cgo
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -85,7 +85,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.16"
+        go-version: "1.17"
 
     - name: install golint
       run: go get golang.org/x/lint/golint
@@ -96,7 +96,7 @@ jobs:
     - run: CGO_ENABLED=0 make test TAGS=
 
   darwin:
-    name: go1.16-macos
+    name: go-macos
     runs-on: macos-11
     steps:
     - uses: actions/checkout@v2
@@ -104,7 +104,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.16"
+        go-version: "1.17"
 
     - name: install golint
       run: go get golang.org/x/lint/golint
@@ -115,7 +115,7 @@ jobs:
     - run: make test
 
   windows:
-    name: go1.16-windows
+    name: go-windows
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v2
@@ -123,12 +123,12 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.16"
+        go-version: "1.17"
 
     - run: go test -v ./...
 
   freebsd:
-    name: go1.16-freebsd
+    name: go-freebsd
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -136,7 +136,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.16"
+        go-version: "1.17"
 
     - name: FreeBSD build
       env:
