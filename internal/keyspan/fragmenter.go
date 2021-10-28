@@ -172,23 +172,22 @@ func (f *Fragmenter) checkInvariants(buf []Span) {
 //
 // This process continues until there are no more fragments to flush.
 //
-// WARNING: the slices backing start.UserKey and end are retained after
-// this method returns and should not be modified. This is safe for
-// spans that are added from a memtable or batch. It is not safe for a
-// range deletion span added from an sstable where the range-del block
-// has been prefix compressed.
-func (f *Fragmenter) Add(start base.InternalKey, end []byte) {
+// WARNING: the slices backing start.UserKey and end are retained after this
+// method returns and should not be modified. This is safe for spans that are
+// added from a memtable or batch. It is not safe for a range deletion span
+// added from an sstable where the range-del block has been prefix compressed.
+func (f *Fragmenter) Add(s Span) {
 	if f.finished {
 		panic("pebble: span fragmenter already finished")
 	}
 	if f.flushedKey != nil {
-		switch c := f.Cmp(start.UserKey, f.flushedKey); {
+		switch c := f.Cmp(s.Start.UserKey, f.flushedKey); {
 		case c < 0:
 			panic(fmt.Sprintf("pebble: start key (%s) < flushed key (%s)",
-				f.Format(start.UserKey), f.Format(f.flushedKey)))
+				f.Format(s.Start.UserKey), f.Format(f.flushedKey)))
 		}
 	}
-	if f.Cmp(start.UserKey, end) >= 0 {
+	if f.Cmp(s.Start.UserKey, s.End) >= 0 {
 		// An empty span, we can ignore it.
 		return
 	}
@@ -200,29 +199,23 @@ func (f *Fragmenter) Add(start base.InternalKey, end []byte) {
 	if len(f.pending) > 0 {
 		// Since all of the pending spans have the same start key, we only need
 		// to compare against the first one.
-		switch c := f.Cmp(f.pending[0].Start.UserKey, start.UserKey); {
+		switch c := f.Cmp(f.pending[0].Start.UserKey, s.Start.UserKey); {
 		case c > 0:
 			panic(fmt.Sprintf("pebble: keys must be added in order: %s > %s",
-				f.pending[0].Start.Pretty(f.Format), start.Pretty(f.Format)))
+				f.pending[0].Start.Pretty(f.Format), s.Start.Pretty(f.Format)))
 		case c == 0:
 			// The new span has the same start key as the existing pending
 			// spans. Add it to the pending buffer.
-			f.pending = append(f.pending, Span{
-				Start: start,
-				End:   end,
-			})
+			f.pending = append(f.pending, s)
 			return
 		}
 
 		// At this point we know that the new start key is greater than the pending
 		// spans start keys.
-		f.truncateAndFlush(start.UserKey)
+		f.truncateAndFlush(s.Start.UserKey)
 	}
 
-	f.pending = append(f.pending, Span{
-		Start: start,
-		End:   end,
-	})
+	f.pending = append(f.pending, s)
 }
 
 // Covers returns true if the specified key is covered by one of the pending
@@ -243,12 +236,12 @@ func (f *Fragmenter) Covers(key base.InternalKey, snapshot uint64) bool {
 	}
 
 	seqNum := key.SeqNum()
-	for _, t := range f.pending {
-		if f.Cmp(key.UserKey, t.End) < 0 {
+	for _, s := range f.pending {
+		if f.Cmp(key.UserKey, s.End) < 0 {
 			// NB: A range deletion tombstone does not delete a point operation
 			// at the same sequence number, and broadly a span is not considered
 			// to cover a point operation at the same sequence number.
-			if t.Start.Visible(snapshot) && t.Start.SeqNum() > seqNum {
+			if s.Start.Visible(snapshot) && s.Start.SeqNum() > seqNum {
 				return true
 			}
 		}
@@ -261,9 +254,10 @@ func (f *Fragmenter) Empty() bool {
 	return f.finished || len(f.pending) == 0
 }
 
-// FlushTo flushes all of the fragments before key. Used during compaction to
-// force emitting of spans which straddle an sstable boundary. Note that the
-// emitted spans are not truncated to the specified key. Consider the scenario:
+// FlushTo flushes all of the fragments with a start key <= key. Used during
+// compaction to force emitting of spans which straddle an sstable boundary.
+// Note that the emitted spans are not truncated to the specified key. Consider
+// the scenario:
 //
 //     a---------k#10
 //          f#8
@@ -319,13 +313,14 @@ func (f *Fragmenter) FlushTo(key []byte) {
 	// would become empty.
 	pending := f.pending
 	f.pending = f.pending[:0]
-	for _, t := range pending {
-		if f.Cmp(key, t.End) < 0 {
-			//   t: a--+--e
+	for _, s := range pending {
+		if f.Cmp(key, s.End) < 0 {
+			//   s: a--+--e
 			// new:    c------
 			f.pending = append(f.pending, Span{
-				Start: base.MakeInternalKey(key, t.Start.SeqNum(), t.Start.Kind()),
-				End:   t.End,
+				Start: base.MakeInternalKey(key, s.Start.SeqNum(), s.Start.Kind()),
+				End:   s.End,
+				Value: s.Value,
 			})
 		}
 	}
@@ -407,21 +402,26 @@ func (f *Fragmenter) truncateAndFlush(key []byte) {
 	// pending and f.pending share the same underlying storage. As we iterate
 	// over pending we append to f.pending, but only one entry is appended in
 	// each iteration, after we have read the entry being overwritten.
-	for _, t := range pending {
-		if f.Cmp(key, t.End) < 0 {
-			//   t: a--+--e
+	for _, s := range pending {
+		if f.Cmp(key, s.End) < 0 {
+			//   s: a--+--e
 			// new:    c------
-			if f.Cmp(t.Start.UserKey, key) < 0 {
-				done = append(done, Span{Start: t.Start, End: key})
+			if f.Cmp(s.Start.UserKey, key) < 0 {
+				done = append(done, Span{
+					Start: s.Start,
+					End:   key,
+					Value: s.Value,
+				})
 			}
 			f.pending = append(f.pending, Span{
-				Start: base.MakeInternalKey(key, t.Start.SeqNum(), t.Start.Kind()),
-				End:   t.End,
+				Start: base.MakeInternalKey(key, s.Start.SeqNum(), s.Start.Kind()),
+				End:   s.End,
+				Value: s.Value,
 			})
 		} else {
-			//   t: a-----e
+			//   s: a-----e
 			// new:       e----
-			done = append(done, t)
+			done = append(done, s)
 		}
 	}
 
@@ -469,6 +469,7 @@ func (f *Fragmenter) flush(buf []Span, lastKey []byte) {
 			f.flushBuf = append(f.flushBuf, Span{
 				Start: buf[i].Start,
 				End:   split,
+				Value: buf[i].Value,
 			})
 		}
 

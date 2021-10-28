@@ -202,7 +202,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		value := []byte(key[j+1:])
 		switch ikey.Kind() {
 		case InternalKeyKindRangeDelete:
-			f.Add(ikey, value)
+			f.Add(keyspan.Span{Start: ikey, End: value})
 		default:
 			if err := w.Add(ikey, value); err != nil {
 				return err.Error()

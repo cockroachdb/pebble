@@ -203,7 +203,10 @@ func TestCompactionIter(t *testing.T) {
 					if iter.Valid() {
 						fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
 						if iter.Key().Kind() == InternalKeyKindRangeDelete {
-							iter.rangeDelFrag.Add(iter.cloneKey(iter.Key()), iter.Value())
+							iter.rangeDelFrag.Add(keyspan.Span{
+								Start: iter.cloneKey(iter.Key()),
+								End:   iter.Value(),
+							})
 						}
 					} else if err := iter.Error(); err != nil {
 						fmt.Fprintf(&b, "err=%v\n", err)
