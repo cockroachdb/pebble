@@ -67,9 +67,9 @@ func TestSeek(t *testing.T) {
 	datadriven.RunTest(t, "testdata/seek", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
-			tombstones := buildTombstones(t, cmp, fmtKey, d.Input)
+			tombstones := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
 			iter.Iter = NewIter(cmp, tombstones)
-			return formatTombstones(tombstones)
+			return formatSpans(tombstones)
 
 		case "seek-ge", "seek-le":
 			seek := SeekGE
@@ -88,7 +88,7 @@ func TestSeek(t *testing.T) {
 					return err.Error()
 				}
 				tombstone := seek(cmp, iter, []byte(parts[0]), seq)
-				fmt.Fprintf(&buf, "%s", strings.TrimSpace(formatTombstones([]Span{tombstone})))
+				fmt.Fprintf(&buf, "%s", strings.TrimSpace(formatSpans([]Span{tombstone})))
 				fmt.Fprintf(&buf, "\n")
 			}
 			return buf.String()

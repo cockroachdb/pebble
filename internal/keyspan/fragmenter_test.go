@@ -17,30 +17,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var tombstoneRe = regexp.MustCompile(`(\d+):\s*(\w+)-*(\w+)`)
+var spanRe = regexp.MustCompile(`(\d+):\s*(\w+)-*(\w+)\w*([^\n]*)`)
 
-func parseTombstone(t *testing.T, s string) Span {
-	m := tombstoneRe.FindStringSubmatch(s)
-	if len(m) != 4 {
-		t.Fatalf("expected 4 components, but found %d: %s", len(m), s)
+func parseSpan(t *testing.T, s string, kind base.InternalKeyKind) Span {
+	m := spanRe.FindStringSubmatch(s)
+	if len(m) != 5 {
+		t.Fatalf("expected 5 components, but found %d: %s", len(m), s)
 	}
 	seqNum, err := strconv.Atoi(m[1])
 	require.NoError(t, err)
 	return Span{
-		Start: base.MakeInternalKey([]byte(m[2]), uint64(seqNum), base.InternalKeyKindRangeDelete),
+		Start: base.MakeInternalKey([]byte(m[2]), uint64(seqNum), kind),
 		End:   []byte(m[3]),
+		Value: []byte(strings.TrimSpace(m[4])),
 	}
 }
 
-func buildTombstones(
-	t *testing.T, cmp base.Compare, formatKey base.FormatKey, s string,
+func buildSpans(
+	t *testing.T, cmp base.Compare, formatKey base.FormatKey, s string, kind base.InternalKeyKind,
 ) []Span {
-	var tombstones []Span
+	var spans []Span
 	f := &Fragmenter{
 		Cmp:    cmp,
 		Format: formatKey,
 		Emit: func(fragmented []Span) {
-			tombstones = append(tombstones, fragmented...)
+			spans = append(spans, fragmented...)
 		},
 	}
 	for _, line := range strings.Split(s, "\n") {
@@ -60,14 +61,13 @@ func buildTombstones(
 			continue
 		}
 
-		t := parseTombstone(t, line)
-		f.Add(t.Start, t.End)
+		f.Add(parseSpan(t, line, kind))
 	}
 	f.Finish()
-	return tombstones
+	return spans
 }
 
-func formatTombstones(tombstones []Span) string {
+func formatSpans(spans []Span) string {
 	isLetter := func(b []byte) bool {
 		if len(b) != 1 {
 			return false
@@ -76,21 +76,25 @@ func formatTombstones(tombstones []Span) string {
 	}
 
 	var buf bytes.Buffer
-	for _, v := range tombstones {
-		if v.Empty() {
-			fmt.Fprintf(&buf, "<empty>\n")
-			continue
+	for _, v := range spans {
+		switch {
+		case v.Empty():
+			fmt.Fprintf(&buf, "<empty>")
+		case !isLetter(v.Start.UserKey) || !isLetter(v.End) || v.Start.UserKey[0] == v.End[0]:
+			fmt.Fprintf(&buf, "%d: %s-%s", v.Start.SeqNum(), v.Start.UserKey, v.End)
+		default:
+			fmt.Fprintf(&buf, "%d: %s%s%s%s",
+				v.Start.SeqNum(),
+				strings.Repeat(" ", int(v.Start.UserKey[0]-'a')),
+				v.Start.UserKey,
+				strings.Repeat("-", int(v.End[0]-v.Start.UserKey[0]-1)),
+				v.End)
 		}
-		if !isLetter(v.Start.UserKey) || !isLetter(v.End) || v.Start.UserKey[0] == v.End[0] {
-			fmt.Fprintf(&buf, "%d: %s-%s\n", v.Start.SeqNum(), v.Start.UserKey, v.End)
-			continue
+		if len(v.Value) > 0 {
+			buf.WriteString(strings.Repeat(" ", int('z'-v.End[0]+1)))
+			buf.WriteString(string(v.Value))
 		}
-		fmt.Fprintf(&buf, "%d: %s%s%s%s\n",
-			v.Start.SeqNum(),
-			strings.Repeat(" ", int(v.Start.UserKey[0]-'a')),
-			v.Start.UserKey,
-			strings.Repeat("-", int(v.End[0]-v.Start.UserKey[0]-1)),
-			v.End)
+		buf.WriteRune('\n')
 	}
 	return buf.String()
 }
@@ -114,12 +118,12 @@ func TestFragmenter(t *testing.T) {
 	var iter base.InternalIterator
 
 	// Returns true if the specified <key,seq> pair is deleted at the specified
-	// read sequence number. Get ignores tombstones newer than the read sequence
+	// read sequence number. Get ignores spans newer than the read sequence
 	// number. This is a simple version of what full processing of range
 	// tombstones looks like.
 	deleted := func(key []byte, seq, readSeq uint64) bool {
-		tombstone := Get(cmp, iter, key, readSeq)
-		return tombstone.Covers(seq)
+		s := Get(cmp, iter, key, readSeq)
+		return s.Covers(seq)
 	}
 
 	datadriven.RunTest(t, "testdata/fragmenter", func(d *datadriven.TestData) string {
@@ -132,9 +136,9 @@ func TestFragmenter(t *testing.T) {
 					}
 				}()
 
-				tombstones := buildTombstones(t, cmp, fmtKey, d.Input)
-				iter = NewIter(cmp, tombstones)
-				return formatTombstones(tombstones)
+				spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
+				iter = NewIter(cmp, spans)
+				return formatSpans(spans)
 			}()
 
 		case "get":
@@ -178,8 +182,8 @@ func TestFragmenterDeleted(t *testing.T) {
 			for _, line := range strings.Split(d.Input, "\n") {
 				switch {
 				case strings.HasPrefix(line, "add "):
-					t := parseTombstone(t, strings.TrimPrefix(line, "add "))
-					f.Add(t.Start, t.End)
+					t := parseSpan(t, strings.TrimPrefix(line, "add "), base.InternalKeyKindRangeDelete)
+					f.Add(t)
 				case strings.HasPrefix(line, "deleted "):
 					key := base.ParseInternalKey(strings.TrimPrefix(line, "deleted "))
 					func() {
@@ -214,8 +218,8 @@ func TestFragmenterFlushTo(t *testing.T) {
 					}
 				}()
 
-				tombstones := buildTombstones(t, cmp, fmtKey, d.Input)
-				return formatTombstones(tombstones)
+				spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
+				return formatSpans(spans)
 			}()
 
 		default:
@@ -238,8 +242,35 @@ func TestFragmenterTruncateAndFlushTo(t *testing.T) {
 					}
 				}()
 
-				tombstones := buildTombstones(t, cmp, fmtKey, d.Input)
-				return formatTombstones(tombstones)
+				spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
+				return formatSpans(spans)
+			}()
+
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
+}
+
+func TestFragmenter_Values(t *testing.T) {
+	cmp := base.DefaultComparer.Compare
+	fmtKey := base.DefaultComparer.FormatKey
+
+	datadriven.RunTest(t, "testdata/fragmenter_values", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "build":
+			return func() (result string) {
+				defer func() {
+					if r := recover(); r != nil {
+						result = fmt.Sprint(r)
+					}
+				}()
+
+				// TODO(jackson): Keys of kind InternalKeyKindRangeDelete don't
+				// have values. Update the call below when we have KindRangeSet,
+				// KindRangeUnset.
+				spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
+				return formatSpans(spans)
 			}()
 
 		default:

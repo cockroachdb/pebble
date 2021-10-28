@@ -182,7 +182,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 							err = w.Add(ikey, value)
 							break
 						}
-						frag.Add(ikey, value)
+						frag.Add(keyspan.Span{Start: ikey, End: value})
 					default:
 						err = w.Add(ikey, value)
 					}
