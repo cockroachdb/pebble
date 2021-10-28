@@ -209,7 +209,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 					value := []byte(kv[j+1:])
 					switch ikey.Kind() {
 					case InternalKeyKindRangeDelete:
-						frag.Add(ikey, value)
+						frag.Add(keyspan.Span{Start: ikey, End: value})
 					default:
 						if err := w.Add(ikey, value); err != nil {
 							return err.Error()

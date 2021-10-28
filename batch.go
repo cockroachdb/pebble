@@ -720,7 +720,7 @@ func (b *Batch) newRangeDelIter(o *IterOptions) internalIterator {
 		// tombstones will remain valid, pointing into the old Batch.data. GC for
 		// the win.
 		for key, val := it.First(); key != nil; key, val = it.Next() {
-			frag.Add(*key, val)
+			frag.Add(keyspan.Span{Start: *key, End: val})
 		}
 		frag.Finish()
 	}
@@ -1153,7 +1153,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 			index:   -1,
 		}
 		for key, val := it.First(); key != nil; key, val = it.Next() {
-			frag.Add(*key, val)
+			frag.Add(keyspan.Span{Start: *key, End: val})
 		}
 		frag.Finish()
 	}

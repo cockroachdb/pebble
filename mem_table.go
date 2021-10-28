@@ -295,7 +295,7 @@ func (f *keySpanFrags) get(
 		}
 		it := skl.NewIter(nil, nil)
 		for key, val := it.First(); key != nil; key, val = it.Next() {
-			frag.Add(*key, val)
+			frag.Add(keyspan.Span{Start: *key, End: val})
 		}
 		frag.Finish()
 	})

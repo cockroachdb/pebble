@@ -12,7 +12,7 @@ import (
 )
 
 // Span represents a key-kind over a span of user keys, along with the
-// sequence number at which it was written.
+// sequence number at which it was written and optionally a value.
 //
 // Conceptually it represents (key-kind, [start, end))#seqnum. The key
 // kind, start and sequence number are stored in a base.InternalKey
@@ -26,6 +26,7 @@ import (
 type Span struct {
 	Start base.InternalKey
 	End   []byte
+	Value []byte // optional
 }
 
 // Overlaps returns 0 if this span overlaps the other, -1 if there's no

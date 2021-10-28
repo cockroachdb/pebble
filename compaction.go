@@ -2436,7 +2436,7 @@ func (d *DB) runCompaction(
 				// written later during `finishOutput()`. We add them to the
 				// `Fragmenter` now to make them visible to `compactionIter` so covered
 				// keys in the same snapshot stripe can be elided.
-				c.rangeDelFrag.Add(iter.cloneKey(*key), val)
+				c.rangeDelFrag.Add(keyspan.Span{Start: iter.cloneKey(*key), End: val})
 				continue
 			}
 			if tw == nil {

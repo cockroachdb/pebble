@@ -78,7 +78,7 @@ func runBuildCmd(
 						err = errors.Errorf("%v", r)
 					}
 				}()
-				f.Add(key, value)
+				f.Add(keyspan.Span{Start: key, End: value})
 			}()
 			if err != nil {
 				return nil, nil, err
