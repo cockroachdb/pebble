@@ -1341,6 +1341,7 @@ func (d *DB) maybeScheduleFlush() {
 	}
 
 	if !d.passedFlushThreshold() {
+		fmt.Println("not scheduling flush: maybeScheduleFlush threshold not passed")
 		return
 	}
 
@@ -1451,6 +1452,7 @@ func (d *DB) flush1() error {
 	var n int
 	for ; n < len(d.mu.mem.queue)-1; n++ {
 		if !d.mu.mem.queue[n].readyForFlush() {
+			fmt.Println("not scheduling flush: flush1 ready for flush")
 			break
 		}
 	}
