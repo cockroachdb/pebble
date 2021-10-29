@@ -350,15 +350,6 @@ keys (just like they are for RANGEDEL + point keys). That is,
 `RangeSet([k1,k2))#s2` cannot be at a lower level than `RangeSet(k)#s1`
 where `k \in [k1,k2)` and `s1 < s2`.
 
-Unlike other Pebble keys, the `RANGESET` and `RANGEUNSET` keys have
-values encoding multiple fields of data known to Pebble. This encoded
-representation is used in batches, sstables and within the memtable's
-skiplist:
-```
-RangeSet: varint(len(k2)) <k2> [varint(len(suffix)) varint(len(value)) <suffix> <value>]
-RangeUnset: varint(len(k2)) <k2> varint(len(suffix)) <suffix> [varint(len(suffix)) <suffix>...]
-```
-
 Like point and range deletion tombstones, the `RangeUnset` key can be
 elided when it falls to L6 and there is no snapshot preventing its
 elision. So there is no additional garbage collection problem introduced
@@ -382,6 +373,75 @@ potentially read all the blocks to find these range keys, which is why
 we do not make this design choice.  Pebble does not use bloom filters in
 L6, so once a range key is compacted into L6 its impact to
 `SeekPrefixGE` is lessened.
+
+#### Physical representation
+
+`RANGESET` and `RANGEUNSET` keys are keyed by their start key. This
+poses an obstacle. Consider the two range keys:
+* `RangeSet([k1,k2), @t1, v1)#s2`
+* `RangeSet([k1,k2), @t2, v2)#s1`
+
+Since the keys are physically keyed by just the start key, these keys
+are represented by the key→value pairs:
+* `k1.RANGESET#s2` → `(k2,@t1,v1)`
+* `k1.RANGESET#s1` → `(k2,@t2,v2)`
+
+Since these two keys are equal in user key, they're ordered by sequence
+number: `k1.RANGESET#s2` followed by `k1.RANGESET#s1`. The keys are not
+ordered by their suffixes `@t1` and `@t2` (the order they're surfaced
+during iteration). An iterator would need to buffer all of overlapping
+fragments in-memory and sort them. Additionally, we must be able to
+support multiple range keys at the same sequence number, because all
+keys within an ingested sstable adopt the same sequence number. To
+resolve this issue, fragments with the same bounds are merged within
+snapshot stripes into a single physical key-value, representing multiple
+logical key-value pairs:
+
+```
+k1.RANGESET#s2` → `(k2,[(@t2,v2),(@t1,v1)])
+```
+
+Within a physical key-value pair, suffix-value pairs are stored sorted
+by suffix, descending. This has a minor additional advantage of reducing
+iteration-time user-key comparisons when there exist multiple range keys
+in a table.
+
+Unlike other Pebble keys, the `RANGESET` and `RANGEUNSET` keys have
+values that encode fields of data known to Pebble. The value that the
+user sets in a call to `RangeSet` is opaque to Pebble, but the physical
+representation of the `RANGESET`'s value is known. This encoding is a
+sequence of fields:
+
+* End key, `varstring`, encodes the end user key of the fragment.
+* A series of (suffix, offset) tuples representing the logical range
+  keys that were merged into this one physical `RANGESET` key:
+  * Suffix, `varstring`
+  * Offset, `varint`, an offset from the beginning of the `RANGESET`'s
+    value at which a reader may find the logical key's value.
+* A zero byte, representing the end of the (suffix, offset) tuples.
+* A series of `varstring` values, in the same order as the above suffix
+  tuples, holding the corresponding suffix's value.
+
+Similarly, `RANGEUNSET` keys are merged within snapshot stripes and
+have a physical representation like:
+
+```
+k1.RANGEUNSET#s2` → `(k2,[(@t2),(@t1)])
+```
+
+A `RANGEUNSET` key's value is encoded as:
+* End key, `varstring`, encodes the end user key of the fragment.
+* A series of suffix `varstring`s.
+
+When `RANGESET` and `RANGEUNSET` fragments with identical bounds meet
+within the same snapshot stripe within a compaction, any of the
+`RANGEUNSET`'s suffixes that exist within the `RANGESET` key are
+removed.
+
+NB: `RANGESET` and `RANGEUNSET` keys are not merged within batches or
+the memtable. That's okay, because batches are append-only and indexed
+batches will refragment and merge the range keys on-demand. In the
+memtable, every key is guaranteed to have a unique sequence number.
 
 ### Boundaries for sstables
 
