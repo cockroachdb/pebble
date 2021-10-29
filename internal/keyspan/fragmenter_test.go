@@ -266,10 +266,7 @@ func TestFragmenter_Values(t *testing.T) {
 					}
 				}()
 
-				// TODO(jackson): Keys of kind InternalKeyKindRangeDelete don't
-				// have values. Update the call below when we have KindRangeSet,
-				// KindRangeUnset.
-				spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
+				spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeKeySet)
 				return formatSpans(spans)
 			}()
 
