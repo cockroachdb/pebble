@@ -409,14 +409,15 @@ representation of the `RANGESET`'s value is known. This encoding is a
 sequence of fields:
 
 * End key, `varstring`, encodes the end user key of the fragment.
-* A series of (suffix, offset) tuples representing the logical range
-  keys that were merged into this one physical `RANGESET` key:
+* A varint count of the number of logical range keys encoded.
+* A series of (suffix, value-length) tuples representing the logical
+  range keys that were merged into this one physical `RANGESET` key:
   * Suffix, `varstring`
-  * Offset, `varint`, an offset from the beginning of the `RANGESET`'s
-    value at which a reader may find the logical key's value.
-* A zero byte, representing the end of the (suffix, offset) tuples.
-* A series of `varstring` values, in the same order as the above suffix
-  tuples, holding the corresponding suffix's value.
+  * Value length, `varint`, the length of the logical range key's value.
+    The value itself is encoded at the end of the `RANGESET`'s value.
+* The values in opposite order as the above suffix tuples and without
+  any delimiters. A reader uses the value offset from above to index
+  from the end of the `RANGESET` value.
 
 Similarly, `RANGEUNSET` keys are merged within snapshot stripes and
 have a physical representation like:
