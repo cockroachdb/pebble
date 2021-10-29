@@ -2055,55 +2055,6 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-// get is a testing helper that simulates a read and helps verify bloom filters
-// until they are available through iterators.
-func (r *Reader) get(key []byte) (value []byte, err error) {
-	if r.err != nil {
-		return nil, r.err
-	}
-
-	if r.tableFilter != nil {
-		dataH, err := r.readFilter()
-		if err != nil {
-			return nil, err
-		}
-		var lookupKey []byte
-		if r.Split != nil {
-			lookupKey = key[:r.Split(key)]
-		} else {
-			lookupKey = key
-		}
-		mayContain := r.tableFilter.mayContain(dataH.Get(), lookupKey)
-		dataH.Release()
-		if !mayContain {
-			return nil, base.ErrNotFound
-		}
-	}
-
-	i, err := r.NewIter(nil /* lower */, nil /* upper */)
-	if err != nil {
-		return nil, err
-	}
-	ikey, value := i.SeekGE(key)
-
-	if ikey == nil || r.Compare(key, ikey.UserKey) != 0 {
-		err := i.Close()
-		if err == nil {
-			err = base.ErrNotFound
-		}
-		return nil, err
-	}
-
-	// The value will be "freed" when the iterator is closed, so make a copy
-	// which will outlast the lifetime of the iterator.
-	newValue := make([]byte, len(value))
-	copy(newValue, value)
-	if err := i.Close(); err != nil {
-		return nil, err
-	}
-	return newValue, nil
-}
-
 // NewIterWithBlockPropertyFilters returns an iterator for the contents of the
 // table. If an error occurs, NewIterWithBlockPropertyFilters cleans up after
 // itself and returns a nil iterator.

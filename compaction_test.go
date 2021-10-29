@@ -2039,6 +2039,14 @@ func TestCompactionReadTriggeredQueue(t *testing.T) {
 	)
 }
 
+func (qu *readCompactionQueue) at(i int) *readCompaction {
+	if i >= qu.size {
+		return nil
+	}
+
+	return qu.queue[i]
+}
+
 func TestCompactionReadTriggered(t *testing.T) {
 	var d *DB
 	defer func() {

@@ -26,18 +26,9 @@ type readCompactionQueue struct {
 	size int
 }
 
-func (qu *readCompactionQueue) at(i int) *readCompaction {
-	if i >= qu.size {
-		return nil
-	}
-
-	return qu.queue[i]
-}
-
 // combine should be used to combine an older queue with a newer
 // queue.
-func (qu *readCompactionQueue) combine(
-	newQu *readCompactionQueue, cmp base.Compare) {
+func (qu *readCompactionQueue) combine(newQu *readCompactionQueue, cmp base.Compare) {
 
 	for i := 0; i < newQu.size; i++ {
 		qu.add(newQu.queue[i], cmp)

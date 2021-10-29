@@ -12,17 +12,6 @@ import (
 	"github.com/DataDog/zstd"
 )
 
-// useStandardZstdLib indicates whether the zstd implementation is a port of the
-// official one in the facebook/zstd repository.
-//
-// This constant is only used in tests. Some tests rely on reproducibility of
-// SST files, but a custom implementation of zstd will produce different
-// compression result. So those tests have to be disabled in such cases.
-//
-// We cannot always use the official facebook/zstd implementation since it
-// relies on CGo.
-const useStandardZstdLib = true
-
 // decodeZstd decompresses b with the Zstandard algorithm.
 // It reuses the preallocated capacity of decodedBuf if it is sufficient.
 // On success, it returns the decoded byte slice.
