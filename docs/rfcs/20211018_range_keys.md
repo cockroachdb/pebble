@@ -12,16 +12,12 @@
 ** Design Draft**
 
 TODO:
-- Fully flesh out the design.
-  - Name the operations: tentatively RangeSet and RangeUnset:
-    thoughts?
-- Consider following CockroachDB RFC format.
-- Document relationship to CockroachDB's MVCC and new key ordering requirements
-  (eg, encoding-agnostic, prefix < prefix@t1)
 - Expand on masking implementation.
 - Expand the sstable boundaries discussion.
 - Decide if blanket prohibiting splitting user keys across sstables.
 - Fix formatting.
+- Decide on range deletion interaction: Does it or does it not remove
+  range keys.
 
 # Summary
 
@@ -350,15 +346,6 @@ keys (just like they are for RANGEDEL + point keys). That is,
 `RangeSet([k1,k2))#s2` cannot be at a lower level than `RangeSet(k)#s1`
 where `k \in [k1,k2)` and `s1 < s2`.
 
-Unlike other Pebble keys, the `RANGESET` and `RANGEUNSET` keys have
-values encoding multiple fields of data known to Pebble. This encoded
-representation is used in batches, sstables and within the memtable's
-skiplist:
-```
-RangeSet: varint(len(k2)) <k2> [varint(len(suffix)) varint(len(value)) <suffix> <value>]
-RangeUnset: varint(len(k2)) <k2> varint(len(suffix)) <suffix> [varint(len(suffix)) <suffix>...]
-```
-
 Like point and range deletion tombstones, the `RangeUnset` key can be
 elided when it falls to L6 and there is no snapshot preventing its
 elision. So there is no additional garbage collection problem introduced
@@ -382,6 +369,75 @@ potentially read all the blocks to find these range keys, which is why
 we do not make this design choice.  Pebble does not use bloom filters in
 L6, so once a range key is compacted into L6 its impact to
 `SeekPrefixGE` is lessened.
+
+#### Physical representation
+
+`RANGESET` and `RANGEUNSET` keys are keyed by their start key. This
+poses an obstacle. Consider the two range keys:
+* `RangeSet([k1,k2), @t1, v1)#s2`
+* `RangeSet([k1,k2), @t2, v2)#s1`
+
+Since the keys are physically keyed by just the start key, these keys
+are represented by the key→value pairs:
+* `k1.RANGESET#s2` → `(k2,@t1,v1)`
+* `k1.RANGESET#s1` → `(k2,@t2,v2)`
+
+Since these two keys are equal in user key, they're ordered by sequence
+number: `k1.RANGESET#s2` followed by `k1.RANGESET#s1`. The keys are not
+ordered by their suffixes `@t1` and `@t2` (the order they're surfaced
+during iteration). An iterator would need to buffer all of overlapping
+fragments in-memory and sort them. Additionally, we must be able to
+support multiple range keys at the same sequence number, because all
+keys within an ingested sstable adopt the same sequence number. To
+resolve this issue, fragments with the same bounds are merged within
+snapshot stripes into a single physical key-value, representing multiple
+logical key-value pairs:
+
+```
+k1.RANGESET#s2 → (k2,[(@t2,v2),(@t1,v1)])
+```
+
+Within a physical key-value pair, suffix-value pairs are stored sorted
+by suffix, descending. This has a minor additional advantage of reducing
+iteration-time user-key comparisons when there exist multiple range keys
+in a table.
+
+Unlike other Pebble keys, the `RANGESET` and `RANGEUNSET` keys have
+values that encode fields of data known to Pebble. The value that the
+user sets in a call to `RangeSet` is opaque to Pebble, but the physical
+representation of the `RANGESET`'s value is known. This encoding is a
+sequence of fields:
+
+* End key, `varstring`, encodes the end user key of the fragment.
+* A series of (suffix, offset) tuples representing the logical range
+  keys that were merged into this one physical `RANGESET` key:
+  * Suffix, `varstring`
+  * Offset, `varint`, an offset from the beginning of the `RANGESET`'s
+    value at which a reader may find the logical key's value.
+* A zero byte, representing the end of the (suffix, offset) tuples.
+* A series of `varstring` values, in the same order as the above suffix
+  tuples, holding the corresponding suffix's value.
+
+Similarly, `RANGEUNSET` keys are merged within snapshot stripes and
+have a physical representation like:
+
+```
+k1.RANGEUNSET#s2 → (k2,[(@t2),(@t1)])
+```
+
+A `RANGEUNSET` key's value is encoded as:
+* End key, `varstring`, encodes the end user key of the fragment.
+* A series of suffix `varstring`s.
+
+When `RANGESET` and `RANGEUNSET` fragments with identical bounds meet
+within the same snapshot stripe within a compaction, any of the
+`RANGEUNSET`'s suffixes that exist within the `RANGESET` key are
+removed.
+
+NB: `RANGESET` and `RANGEUNSET` keys are not merged within batches or
+the memtable. That's okay, because batches are append-only and indexed
+batches will refragment and merge the range keys on-demand. In the
+memtable, every key is guaranteed to have a unique sequence number.
 
 ### Boundaries for sstables
 
@@ -434,7 +490,7 @@ determined by the user key. Since the first point key of the next
 sstable is `b@30`, the compaction flushes the fragment `[a,e)@50` to the
 first sstable and updates the existing fragment to begin at `b@30`.
 
-If a range key extends into the next file, and the range key's end is
+If a range key extends into the next file, the range key's end is
 truncated for the purposes of determining the sstable end boundary. The
 first sstable's end boundary becomes `b@30#inf`, signifying the range
 key does not cover `b@30`. The second sstable's start boundary is
@@ -462,9 +518,13 @@ exclusively point keys (the current behavior).
 
 When an iterator is configured to expose range keys, Pebble's internal
 level iterators will each maintain a pointer into the current open
-sstable's range key block.
+sstable's range key block. Because logical `RangeSet`s are merged, in
+the absence of snapshots, at most one physical `RANGESET` key is
+relevant at any given position. Each level iterator parses the
+`RANGESET` suffix entries, maintaining a slice of (suffix, offset)
+tuples and a current index among them.
 
-[TODO(jackson): This explanation needs work.]
+The details of masking during iteration are discussed below.
 
 #### Determinism
 
@@ -514,7 +574,7 @@ useful only for testing and verification purposes:
 
 In short, we will not guarantee determinism of output.
 
-TODO: think more about whether there is an efficient way to offer
+TODO: Think more about whether there is an efficient way to offer
 determinism.
 
 #### Efficient masking
@@ -532,8 +592,6 @@ will support iteration in this MVCC-masked mode, when specified as an
 iterator option. This iterator option requires a `suffix` such that the
 caller wants to allow all range keys with suffixes `< suffix` to mask.
 
-TODO(jackson): Expand and rephrase this.
-
 To efficiently implement this we cannot rely on the LSM invariant since
 `b@100` can be at a lower level than `[a,e)@50`. However, we do have (a)
 per-block key bounds, and (b) for time-bound iteration purposes we will
@@ -542,3 +600,32 @@ CockroachDB). We will require that for efficient masking, the user
 provide the name of the block property to utilize. In this example, when
 the iterator will encounter `[a,e)@100` it can skip blocks whose keys
 are guaranteed to be in [a,e) and whose timestamp interval is < 100.
+
+TODO(jackson): Expand and rephrase this.
+
+### CockroachDB implications
+
+CockroachDB will use range keys to represent an MVCC delete range. What
+will be the MVCCStats contribution of these range keys?
+
+During a CockroachDB KV range split, CockroachDB reads the the left-hand
+side of the split, computing stats for the LHS and subtracting the
+computed stats from the original range's stats to retrieve stats for the
+RHS. The arbitrary physical fragmentation of range keys makes it
+difficult for this one-sided iteration to determine what range keys, if
+any, exist on the RHS of the split.
+
+Possiblities:
+* Range keys don't contribute to `MVCCStats` themselves. Additionally,
+  range key fragments may be elided if they cover zero point keys. This
+  means that garbage collection does not need to explicitly remove the
+  range keys, only the point keys they deleted. Note that this option is
+  clean when paired with `RANGEDEL`s dropping both point and range keys.
+  CockroachDB can issue `RANGEDEL`s whenever it wants to drop a
+  contiguous swath of points, and not worry about the fact that it might
+  also need to update the MVCC stats for the range key.
+* Range keys are considered as a point key on the start key, for the
+  purposes of `MVCCStats`. [Is this partial contribution to MVCCStats
+  useful in any way? It bears no relationship to whether or not a range
+  might need to be GC'd]
+
