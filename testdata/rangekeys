@@ -1,0 +1,279 @@
+reset
+----
+
+batch
+set a a
+set b b
+set c c
+set d d
+range-key-set b   c   @5 boop
+range-key-set cat dog @3 beep
+----
+wrote 6 keys
+
+# Scan forward
+
+combined-iter
+seek-ge a
+next
+next
+next
+next
+next
+----
+a: (a, .)
+b: (b, [b-c) @5=boop)
+c: (c, .)
+cat: (., [cat-dog) @3=beep)
+d: (d, [cat-dog) @3=beep)
+.
+
+# Scan backward
+
+combined-iter
+seek-lt z
+prev
+prev
+prev
+prev
+prev
+----
+d: (d, [cat-dog) @3=beep)
+cat: (., [cat-dog) @3=beep)
+c: (c, .)
+b: (b, [b-c) @5=boop)
+a: (a, .)
+.
+
+combined-iter
+seek-ge ace
+seek-ge b
+seek-ge c
+seek-ge cab
+seek-ge cat
+seek-ge d
+seek-ge day
+seek-ge dog
+----
+b: (b, [b-c) @5=boop)
+b: (b, [b-c) @5=boop)
+c: (c, .)
+cat: (., [cat-dog) @3=beep)
+cat: (., [cat-dog) @3=beep)
+d: (d, [cat-dog) @3=beep)
+day: (., [cat-dog) @3=beep)
+.
+
+combined-iter
+seek-lt 1
+seek-lt ace
+seek-lt b
+seek-lt c
+seek-lt cab
+seek-lt cat
+seek-lt d
+seek-lt day
+seek-lt dog
+seek-lt zebra
+----
+.
+a: (a, .)
+a: (a, .)
+b: (b, [b-c) @5=boop)
+c: (c, .)
+c: (c, .)
+cat: (., [cat-dog) @3=beep)
+d: (d, [cat-dog) @3=beep)
+d: (d, [cat-dog) @3=beep)
+d: (d, [cat-dog) @3=beep)
+
+rangekey-iter
+first
+next
+next
+set-bounds lower=bat upper=catatonic
+first
+next
+next
+----
+b [b-c) @5=boop
+cat [cat-dog) @3=beep
+.
+.
+bat [bat-c) @5=boop
+cat [cat-catatonic) @3=beep
+.
+
+rangekey-iter
+seek-ge bat
+----
+bat [b-c) @5=boop
+
+# Delete 'b': The Iterator should still stop at b because of the range key
+# with a start boundary at b.
+
+batch
+del b
+----
+wrote 1 keys
+
+combined-iter
+seek-ge b
+seek-ge ace
+----
+b: (., [b-c) @5=boop)
+b: (., [b-c) @5=boop)
+
+rangekey-iter
+seek-ge b
+seek-ge ace
+----
+b [b-c) @5=boop
+b [b-c) @5=boop
+
+# Delete the b-c range key and the beginning of the cat-dog range key,
+# truncating it to now begin at 'd'.
+
+batch
+range-key-del b d
+----
+wrote 1 keys
+
+combined-iter
+seek-ge b
+next
+----
+c: (c, .)
+d: (d, [d-dog) @3=beep)
+
+reset
+----
+
+batch
+range-key-set c d @1 boop
+range-key-set apple c @3 beep
+range-key-set ace apple @3 beep
+set a a1
+set b b1
+set c c1
+del a
+set b b2
+set c c2
+----
+wrote 9 keys
+
+# Test that reverse iteration surfaces range key start boundaries alongside
+# point keys at the same key.
+
+combined-iter
+last
+prev
+prev
+prev
+prev
+----
+c: (c2, [c-d) @1=boop)
+b: (b2, [apple-c) @3=beep)
+apple: (., [apple-c) @3=beep)
+ace: (., [ace-apple) @3=beep)
+.
+
+# Test that forward iteration surfaces range key start boundaries alongside
+# point keys at the same key.
+
+combined-iter
+first
+next
+next
+next
+next
+----
+ace: (., [ace-apple) @3=beep)
+apple: (., [apple-c) @3=beep)
+b: (b2, [apple-c) @3=beep)
+c: (c2, [c-d) @1=boop)
+.
+
+combined-iter
+seek-prefix-ge b
+next
+----
+b: (b2, [apple-c) @3=beep)
+.
+
+reset
+----
+
+batch
+range-key-set a d @8 boop
+set a@2 a@2
+set a@3 a#3
+set a@9 a@9
+set a@10 a@10
+set b b
+----
+wrote 6 keys
+
+combined-iter
+seek-prefix-ge a
+next
+next
+next
+next
+next
+----
+a: (., [a-d) @8=boop)
+a@10: (a@10, [a-d) @8=boop)
+a@9: (a@9, [a-d) @8=boop)
+a@3: (a#3, [a-d) @8=boop)
+a@2: (a@2, [a-d) @8=boop)
+.
+
+reset
+----
+
+# For all prefixes a, aa, ab, ... zz, write 3 keys at timestamps @1, @10, @100.
+# This populates a total of (26**2 + 26) * 3 = 2106 keys.
+
+populate keylen=2 timestamps=(1, 10, 100)
+----
+wrote 2106 keys
+
+batch
+range-key-set   b c @5 beep
+range-key-unset c d @1
+range-key-del   d e
+----
+wrote 3 keys
+
+combined-iter
+seek-ge az
+next
+next
+next
+next
+next
+seek-ge bz@10
+next
+next
+----
+az@100: (v, .)
+az@10: (v, .)
+az@1: (v, .)
+b: (., [b-c) @5=beep)
+b@100: (v, [b-c) @5=beep)
+b@10: (v, [b-c) @5=beep)
+bz@10: (v, [b-c) @5=beep)
+bz@1: (v, [b-c) @5=beep)
+c@100: (v, .)
+
+# Ensure that a cloned iterator includes range keys.
+
+combined-iter
+seek-ge bz@10
+clone
+seek-ge bz@10
+----
+bz@10: (v, [b-c) @5=beep)
+.
+bz@10: (v, [b-c) @5=beep)
