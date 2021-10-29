@@ -7,16 +7,20 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"strconv"
 	"strings"
+	"testing"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
 )
 
 type iterCmdOpt int
@@ -176,12 +180,54 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 		} else if valid != iter.Valid() {
 			fmt.Fprintf(&b, "mismatched valid states: %t vs %t\n", valid, iter.Valid())
 		} else if valid {
-			fmt.Fprintf(&b, "%s:%s%s\n", iter.Key(), iter.Value(), validityStateStr)
+			switch {
+			case iter.opts.rangeKeys() && iter.opts.pointKeys():
+				hasPoint, hasRange := iter.HasPointAndRange()
+				fmt.Fprintf(&b, "%s:%s (", iter.Key(), validityStateStr)
+				if hasPoint {
+					fmt.Fprintf(&b, "%s, ", iter.Value())
+				} else {
+					fmt.Fprint(&b, "., ")
+				}
+				if hasRange {
+					start, end := iter.RangeBounds()
+					fmt.Fprintf(&b, "[%s-%s)", start, end)
+					writeRangeKeys(&b, iter)
+				} else {
+					fmt.Fprint(&b, ".")
+				}
+				fmt.Fprint(&b, ")")
+			case iter.opts.rangeKeys():
+				if iter.Valid() {
+					hasPoint, hasRange := iter.HasPointAndRange()
+					if hasPoint || !hasRange {
+						panic(fmt.Sprintf("pebble: unexpected HasPointAndRange (%t, %t)", hasPoint, hasRange))
+					}
+					start, end := iter.RangeBounds()
+					fmt.Fprintf(&b, "%s [%s-%s)", iter.Key(), start, end)
+					writeRangeKeys(&b, iter)
+				} else {
+					fmt.Fprint(&b, ".")
+				}
+			default:
+				fmt.Fprintf(&b, "%s:%s%s", iter.Key(), iter.Value(), validityStateStr)
+			}
+			fmt.Fprintln(&b)
 		} else {
 			fmt.Fprintf(&b, ".%s\n", validityStateStr)
 		}
 	}
 	return b.String()
+}
+
+func writeRangeKeys(b io.Writer, iter *Iterator) {
+	rangeKeys := iter.RangeKeys()
+	for j := 0; j < len(rangeKeys); j++ {
+		if j > 0 {
+			fmt.Fprint(b, ",")
+		}
+		fmt.Fprintf(b, " %s=%s", rangeKeys[j].Suffix, rangeKeys[j].Value)
+	}
 }
 
 func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...iterCmdOpt) string {
@@ -311,6 +357,33 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 				return errors.Errorf("%s expects 2 arguments", parts[0])
 			}
 			err = b.Merge([]byte(parts[1]), []byte(parts[2]), nil)
+		case "range-key-set":
+			if len(parts) != 5 {
+				return errors.Errorf("%s expects 4 arguments", parts[0])
+			}
+			err = b.Experimental().RangeKeySet(
+				[]byte(parts[1]),
+				[]byte(parts[2]),
+				[]byte(parts[3]),
+				[]byte(parts[4]),
+				nil)
+		case "range-key-unset":
+			if len(parts) != 4 {
+				return errors.Errorf("%s expects 3 arguments", parts[0])
+			}
+			err = b.Experimental().RangeKeyUnset(
+				[]byte(parts[1]),
+				[]byte(parts[2]),
+				[]byte(parts[3]),
+				nil)
+		case "range-key-del":
+			if len(parts) != 3 {
+				return errors.Errorf("%s expects 2 arguments", parts[0])
+			}
+			err = b.Experimental().RangeKeyDelete(
+				[]byte(parts[1]),
+				[]byte(parts[2]),
+				nil)
 		default:
 			return errors.Errorf("unknown op: %s", parts[0])
 		}
@@ -650,6 +723,31 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 		}
 	}
 	return "(not found)"
+}
+
+func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {
+	var timestamps []int
+	var maxKeyLength int
+	td.ScanArgs(t, "keylen", &maxKeyLength)
+	for _, cmdArg := range td.CmdArgs {
+		if cmdArg.Key != "timestamps" {
+			continue
+		}
+		for _, timestampVal := range cmdArg.Vals {
+			v, err := strconv.Atoi(timestampVal)
+			require.NoError(t, err)
+			timestamps = append(timestamps, v)
+		}
+	}
+
+	ks := testkeys.Alpha(maxKeyLength)
+	buf := make([]byte, ks.MaxLen()+testkeys.MaxSuffixLen)
+	for i := 0; i < ks.Count(); i++ {
+		for _, ts := range timestamps {
+			n := testkeys.WriteKeyAt(buf, ks, i, ts)
+			require.NoError(t, b.Set(buf[:n], buf[:n], nil))
+		}
+	}
 }
 
 // waitTableStats waits until all new files' statistics have been loaded. It's
