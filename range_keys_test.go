@@ -4,35 +4,67 @@
 package pebble
 
 import (
+	"bytes"
+	"fmt"
 	"testing"
 
+	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRangeKeys(t *testing.T) {
-	d, err := Open("", &Options{
-		FS:       vfs.NewMem(),
-		Comparer: testkeys.Comparer,
+	var d *DB
+	datadriven.RunTest(t, "testdata/rangekeys", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "reset":
+			if d != nil {
+				require.NoError(t, d.Close())
+			}
+			opts := &Options{
+				FS:       vfs.NewMem(),
+				Comparer: testkeys.Comparer,
+			}
+			opts.Experimental.RangeKeys = new(RangeKeysArena)
+			var err error
+			d, err = Open("", opts)
+			require.NoError(t, err)
+			return ""
+		case "populate":
+			b := d.NewBatch()
+			runPopulateCmd(t, td, b)
+			count := b.Count()
+			require.NoError(t, b.Commit(nil))
+			return fmt.Sprintf("wrote %d keys\n", count)
+		case "batch":
+			b := d.NewBatch()
+			require.NoError(t, runBatchDefineCmd(td, b))
+			count := b.Count()
+			require.NoError(t, b.Commit(nil))
+			return fmt.Sprintf("wrote %d keys\n", count)
+		case "combined-iter":
+			iter := d.NewIter(&IterOptions{KeyTypes: IterKeyTypePointsAndRanges})
+			return runIterCmd(td, iter, true /* close iter */)
+		case "rangekey-iter":
+			iter := d.NewIter(&IterOptions{KeyTypes: IterKeyTypeRangesOnly})
+			return runIterCmd(td, iter, true /* close iter */)
+		case "scan-rangekeys":
+			var buf bytes.Buffer
+			iter := d.NewIter(&IterOptions{KeyTypes: IterKeyTypeRangesOnly})
+			defer iter.Close()
+			for iter.First(); iter.Valid(); iter.Next() {
+				start, end := iter.RangeBounds()
+				fmt.Fprintf(&buf, "[%s, %s)\n", start, end)
+				writeRangeKeys(&buf, iter)
+				fmt.Fprintln(&buf)
+			}
+			return buf.String()
+		default:
+			return fmt.Sprintf("unknown command %q", td.Cmd)
+		}
 	})
-	require.NoError(t, err)
-	defer d.Close()
-
-	b := d.NewBatch()
-	b.Experimental().RangeKeySet([]byte("a"), []byte("c"), []byte("@t10"), []byte("hello world"), nil)
-	b.Experimental().RangeKeySet([]byte("b"), []byte("f"), []byte("@t20"), []byte("hello monde"), nil)
-	require.NoError(t, b.Commit(nil))
-
-	b = d.NewBatch()
-	b.Experimental().RangeKeySet([]byte("h"), []byte("q"), []byte("@t30"), []byte("foo"), nil)
-	require.NoError(t, b.Commit(nil))
-
-	b = d.NewBatch()
-	b.Experimental().RangeKeyUnset([]byte("e"), []byte("j"), []byte("@t20"), nil)
-	b.Experimental().RangeKeyUnset([]byte("e"), []byte("j"), []byte("@t10"), nil)
-	b.Experimental().RangeKeyUnset([]byte("e"), []byte("j"), []byte("@t30"), nil)
-	require.NoError(t, b.Commit(nil))
-
-	// TODO(jackson): Fill out when implemented.
+	if d != nil {
+		require.NoError(t, d.Close())
+	}
 }

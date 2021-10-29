@@ -58,6 +58,21 @@ type BlockPropertyCollector = sstable.BlockPropertyCollector
 // BlockPropertyFilter exports the sstable.BlockPropertyFilter type.
 type BlockPropertyFilter = sstable.BlockPropertyFilter
 
+// IterKeyType configures which types of keys an iterator should surface.
+type IterKeyType int8
+
+const (
+	// IterKeyTypePointsOnly configures an iterator to iterate over point keys
+	// only.
+	IterKeyTypePointsOnly IterKeyType = iota
+	// IterKeyTypeRangesOnly configures an iterator to iterate over range keys
+	// only.
+	IterKeyTypeRangesOnly
+	// IterKeyTypePointsAndRanges configures an iterator iterate over both point
+	// keys and range keys simultaneously.
+	IterKeyTypePointsAndRanges
+)
+
 // IterOptions hold the optional per-query parameters for NewIter.
 //
 // Like Options, a nil *IterOptions is valid and means to use the default
@@ -84,6 +99,9 @@ type IterOptions struct {
 	// across all filters, i.e., all filters must indicate that the block is
 	// relevant.
 	BlockPropertyFilters []BlockPropertyFilter
+	// KeyTypes configures which types of keys to iterate over: point keys,
+	// range keys, or both.
+	KeyTypes IterKeyType
 	// Internal options.
 	logger Logger
 }
@@ -102,6 +120,20 @@ func (o *IterOptions) GetUpperBound() []byte {
 		return nil
 	}
 	return o.UpperBound
+}
+
+func (o *IterOptions) pointKeys() bool {
+	if o == nil {
+		return true
+	}
+	return o.KeyTypes == IterKeyTypePointsOnly || o.KeyTypes == IterKeyTypePointsAndRanges
+}
+
+func (o *IterOptions) rangeKeys() bool {
+	if o == nil {
+		return false
+	}
+	return o.KeyTypes == IterKeyTypeRangesOnly || o.KeyTypes == IterKeyTypePointsAndRanges
 }
 
 func (o *IterOptions) getLogger() Logger {
@@ -321,6 +353,12 @@ type Options struct {
 		// there isn't enough disk space available. Setting this to 0 disables
 		// deletion pacing, which is also the default.
 		MinDeletionRate int
+
+		// RangeKeys enables the experimental use of range keys, stored in an
+		// in-memory nondurable arena. This option is only intended to be
+		// temporary, to allow the Pebble metamorphic tests to reuse the
+		// range-key arena across DB restarts.
+		RangeKeys *RangeKeysArena
 
 		// ReadCompactionRate controls the frequency of read triggered
 		// compactions by adjusting `AllowedSeeks` in manifest.FileMetadata:

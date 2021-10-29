@@ -6,7 +6,8 @@
 // meaning it contains both an internal key kind and a sequence number.
 //
 // Spans are used within Pebble as an in-memory representation of range
-// deletion tombstones. Spans are fragmented at overlapping key
-// boundaries by the Fragmenter type. This package's various iteration
-// facilities require these non-overlapping fragmented spans.
+// deletion tombstones, and range key sets, unsets and deletes. Spans
+// are fragmented at overlapping key boundaries by the Fragmenter type.
+// This package's various iteration facilities require these
+// non-overlapping fragmented spans.
 package keyspan

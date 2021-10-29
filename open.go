@@ -75,6 +75,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		merge:               opts.Merger.Merge,
 		split:               opts.Comparer.Split,
 		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
+		rangeKeys:           opts.Experimental.RangeKeys,
 		largeBatchThreshold: (opts.MemTableSize - int(memTableEmptySize)) / 2,
 		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
 		closed:              new(atomic.Value),
