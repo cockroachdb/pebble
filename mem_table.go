@@ -117,9 +117,10 @@ func newMemTable(opts memTableOptions) *memTable {
 		logSeqNum:  opts.logSeqNum,
 	}
 	m.tombstones = keySpanCache{
-		cmp:       m.cmp,
-		formatKey: m.formatKey,
-		skl:       &m.rangeDelSkl,
+		cmp:        m.cmp,
+		formatKey:  m.formatKey,
+		skl:        &m.rangeDelSkl,
+		splitValue: rangeDelSplitValue,
 	}
 
 	if m.arenaBuf == nil {
@@ -276,6 +277,15 @@ type keySpanFrags struct {
 	spans []keyspan.Span
 }
 
+type splitValue func(kind base.InternalKeyKind, rawValue []byte) (endKey []byte, value []byte, err error)
+
+func rangeDelSplitValue(kind base.InternalKeyKind, rawValue []byte) (endKey []byte, value []byte, err error) {
+	if kind != base.InternalKeyKindRangeDelete {
+		panic(fmt.Sprintf("pebble: rangeDelSplitValue called on %s key kind", kind))
+	}
+	return rawValue, nil, nil
+}
+
 // get retrieves the fragmented spans, populating them if necessary. Note that
 // the populated span fragments may be built from more than f.count memTable
 // spans, but that is ok for correctness. All we're requiring is that the
@@ -285,7 +295,7 @@ type keySpanFrags struct {
 // it even though is has been invalidated (i.e. replaced with a newer
 // keySpanFrags).
 func (f *keySpanFrags) get(
-	skl *arenaskl.Skiplist, cmp Compare, formatKey base.FormatKey,
+	skl *arenaskl.Skiplist, cmp Compare, formatKey base.FormatKey, splitValue splitValue,
 ) []keyspan.Span {
 	f.once.Do(func() {
 		frag := &keyspan.Fragmenter{
@@ -297,7 +307,11 @@ func (f *keySpanFrags) get(
 		}
 		it := skl.NewIter(nil, nil)
 		for key, val := it.First(); key != nil; key, val = it.Next() {
-			frag.Add(keyspan.Span{Start: *key, End: val})
+			e, v, err := splitValue(key.Kind(), val)
+			if err != nil {
+				panic(err)
+			}
+			frag.Add(keyspan.Span{Start: *key, End: e, Value: v})
 		}
 		frag.Finish()
 	})
@@ -308,11 +322,12 @@ func (f *keySpanFrags) get(
 // invalidated whenever a key of the same kind is added to a memTable, and
 // populated when empty when a span iterator of that key kind is created.
 type keySpanCache struct {
-	count     uint32
-	frags     unsafe.Pointer
-	cmp       Compare
-	formatKey base.FormatKey
-	skl       *arenaskl.Skiplist
+	count      uint32
+	frags      unsafe.Pointer
+	cmp        Compare
+	formatKey  base.FormatKey
+	splitValue splitValue
+	skl        *arenaskl.Skiplist
 }
 
 // Invalidate the current set of cached spans, indicating the number of
@@ -347,5 +362,5 @@ func (c *keySpanCache) get() []keyspan.Span {
 	if frags == nil {
 		return nil
 	}
-	return frags.get(c.skl, c.cmp, c.formatKey)
+	return frags.get(c.skl, c.cmp, c.formatKey, c.splitValue)
 }

@@ -42,6 +42,17 @@ func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum ui
 	})
 }
 
+// Clone clones the iterator, returning an independent iterator over the same
+// state. This method is temporary and may be deleted once range keys' state is
+// properly reflected in readState.
+func (i *Iter) Clone() *Iter {
+	newIter := &Iter{}
+	*newIter = *i
+	newIter.iter = &keyspan.Iter{}
+	*newIter.iter = *i.iter
+	return newIter
+}
+
 // Error returns any accumulated error.
 func (i *Iter) Error() error {
 	return i.err
