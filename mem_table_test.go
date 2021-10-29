@@ -23,6 +23,25 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// get gets the value for the given key. It returns ErrNotFound if the DB does
+// not contain the key.
+func (m *memTable) get(key []byte) (value []byte, err error) {
+	it := m.skl.NewIter(nil, nil)
+	ikey, val := it.SeekGE(key)
+	if ikey == nil {
+		return nil, ErrNotFound
+	}
+	if !m.equal(key, ikey.UserKey) {
+		return nil, ErrNotFound
+	}
+	switch ikey.Kind() {
+	case InternalKeyKindDelete, InternalKeyKindSingleDelete:
+		return nil, ErrNotFound
+	default:
+		return val, nil
+	}
+}
+
 // Set sets the value for the given key. It overwrites any previous value for
 // that key; a DB is not a multi-map. NB: this might have unexpected
 // interaction with prepare/apply. Caveat emptor!
@@ -115,10 +134,6 @@ func TestMemTableBasic(t *testing.T) {
 	if got, want := m.count(), 5; got != want {
 		t.Fatalf("13.count: got %v, want %v", got, want)
 	}
-	// Clean up.
-	if err := m.close(); err != nil {
-		t.Fatalf("14.close: %v", err)
-	}
 }
 
 func TestMemTableCount(t *testing.T) {
@@ -129,7 +144,6 @@ func TestMemTableCount(t *testing.T) {
 		}
 		m.set(InternalKey{UserKey: []byte{byte(i)}}, nil)
 	}
-	require.NoError(t, m.close())
 }
 
 func TestMemTableBytesIterated(t *testing.T) {
@@ -142,7 +156,6 @@ func TestMemTableBytesIterated(t *testing.T) {
 		}
 		m.set(InternalKey{UserKey: []byte{byte(i)}}, nil)
 	}
-	require.NoError(t, m.close())
 }
 
 func TestMemTableEmpty(t *testing.T) {
@@ -224,10 +237,6 @@ func TestMemTable1000Entries(t *testing.T) {
 		x.Next()
 	}
 	if err := x.Close(); err != nil {
-		t.Fatalf("close: %v", err)
-	}
-	// Clean up.
-	if err := m0.close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
 }

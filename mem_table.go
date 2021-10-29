@@ -154,25 +154,6 @@ func (m *memTable) readyForFlush() bool {
 	return atomic.LoadInt32(&m.writerRefs) == 0
 }
 
-// Get gets the value for the given key. It returns ErrNotFound if the DB does
-// not contain the key.
-func (m *memTable) get(key []byte) (value []byte, err error) {
-	it := m.skl.NewIter(nil, nil)
-	ikey, val := it.SeekGE(key)
-	if ikey == nil {
-		return nil, ErrNotFound
-	}
-	if !m.equal(key, ikey.UserKey) {
-		return nil, ErrNotFound
-	}
-	switch ikey.Kind() {
-	case InternalKeyKindDelete, InternalKeyKindSingleDelete:
-		return nil, ErrNotFound
-	default:
-		return val, nil
-	}
-}
-
 // Prepare reserves space for the batch in the memtable and references the
 // memtable preventing it from being flushed until the batch is applied. Note
 // that prepare is not thread-safe, while apply is. The caller must call
@@ -265,10 +246,6 @@ func (m *memTable) inuseBytes() uint64 {
 
 func (m *memTable) totalBytes() uint64 {
 	return uint64(m.skl.Arena().Capacity())
-}
-
-func (m *memTable) close() error {
-	return nil
 }
 
 // empty returns whether the MemTable has no key/value pairs.
