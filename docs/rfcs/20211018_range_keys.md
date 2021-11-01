@@ -247,23 +247,26 @@ Consider the following state in terms of user keys (the `@number` part
 is the version or "suffix"):
 
 ```
-point keys: a@100, a@30, b@100, b@40, b@30, c@40, d@40, e@30
+point keys: a@100, a@30, b@100, b@40, b@30, c@40, d@40, e@30, f@20
 range key: [a,e)@50
 ```
 
 If we consider the user key ordering across the union of these keys,
-where we have used ' and '' to mark the start and end keys for the
+where we have used ↦ and ↤ to mark the start and end keys for the
 range key, we get:
 
 ```
-a@100, a@50', a@30, b@100, b@40, b@30, c@40, d@40, e@50'', e@30
+        [a@50                                          e#inf)
+        ↦                                                   ↤
+ ·      ·     ·     ·      ·     ·     ·     ·     ·     ·     ·
+a@100, a@50, a@30, b@100, b@40, b@30, c@40, d@40, e@50, e@30, f@20
 ```
 
 A `pebble.Iterator`, which shows user keys, will output (during forward
 iteration), the following keys:
 
 ```
-a@100, [a,e)@50, a@30, b@100, [b,e)@50, b@40, b@30, [c,e)@50, c@40, [d,e)@50, d@40, e@30
+a@100, [a,e)@50, a@30, b@100, [b,e)@50, b@40, b@30, [c,e)@50, c@40, [d,e)@50, d@40, e@30 f@20
 ```
 
 - In this example each Next will be positioned such that there is only
@@ -277,7 +280,7 @@ a@100, [a,e)@50, a@30, b@100, [b,e)@50, b@40, b@30, [c,e)@50, c@40, [d,e)@50, d@
 - As a generalization of what we described earlier, the start key of
   the range is being adjusted such that the prefix matches the prefix
   of the succeeding point key, which this "masks" from an MVCC
-  perspective. This repetition of parts of the original `[a,e)@502, in
+  perspective. This repetition of parts of the original `[a,e)@50`, in
   the context of the latest point key, is useful to a caller that is
   making decisions on how to interpret the latest prefix and its various
   versions. The same repetition will happen during reverse iteration.
@@ -301,14 +304,14 @@ type IterOptions struct {
 //
 // Specifically, if the iterator encounters a range key for which
 //
-//   Compare(RangeKeySuffix(), suffix) < 0
+//   Compare(RangeKeySuffix(), maskSuffix) <= 0
 //
 // the iterator will skip over all point keys k contained within the
 // range key's span such that
 //
 //   Compare(k[Split(k):], RangeKeySuffix()) < 0
 //
-func RangeKeyMask(suffixBlockPropertyName string, suffix []byte) IteratorMask {
+func RangeKeyMask(suffixBlockPropertyName string, maskSuffix []byte) IteratorMask {
     // ...
 }
 ```
@@ -323,9 +326,11 @@ key `[a,c)@30` masks `a@20` and `apple@10` but not `apple@40`.
 
 This design introduces two new Pebble write operations: `RangeSet` and
 `RangeUnset`. Internally, these operations are represented as keys with
-`RANGESET` and `RANGEUNSET` key kinds stored within the same sstables as
-point keys, but in different blocks. Within the memtables, these keys
-are stored in a separate skip list.
+`RANGESET` and `RANGEUNSET` key kinds. These keys are stored within 'range key'
+blocks within same sstables as point keys. The 'range key' blocks hold both
+`RANGESET` and `RANGEUNSET` keys, but are separate from the blocks holding
+ordinary point keys. Within the memtables, these keys are stored in a separate
+skip list.
 
 - `RangeSet([k1,k2), @suffix, value)` is encoded as a `k1.RANGESET` key
   with a value encoding the tuple `(k2,@suffix,value)`.
@@ -421,9 +426,13 @@ sequence of fields:
   * Suffix, `varstring`
   * Value length, `varint`, the length of the logical range key's value.
     The value itself is encoded at the end of the `RANGESET`'s value.
-* The values in opposite order as the above suffix tuples and without
-  any delimiters. A reader uses the value offset from above to index
-  from the end of the `RANGESET` value.
+* The values in opposite order as the above suffix tuples and without any
+  delimiters. A reader calculates the value offset by summing value lengths,
+  and indexes from the end of the `RANGESET` value. Storing the values in
+  opposite order allows readers to incrementally decode suffix/value pairs
+  while iterating forward. Storing values separate from suffixes improves
+  cpu cache locality while searching among suffixes for the appropriate
+  range key.
 
 Similarly, `RANGEUNSET` keys are merged within snapshot stripes and
 have a physical representation like:
@@ -493,12 +502,26 @@ second sstable: points: b@30, c@40, d@40, e@30, ranges: [c,e)@50
 When the compaction code decides to defer `b@30` to the next sstable and
 finish the first sstable, the range key `[a,c)@50` is sitting in the
 fragmenter. The compaction must split the range key at the bounds
-determined by the user key. Since the first point key of the next
-sstable is `b@30`, the compaction flushes the fragment `[a,e)@50` to the
-first sstable and updates the existing fragment to begin at `b@30`.
+determined by the user key. The compaction uses the first point key of
+the next sstable, in this case `b@30`, to truncate the range key. The
+compaction flushes the fragment `[a,b@30)@50` to the first sstable and
+updates the existing fragment to begin at `b@30`.
 
-If a range key extends into the next file, the range key's end is
-truncated for the purposes of determining the sstable end boundary. The
+Note that the above truncate-and-flush behavior is the same as Pebble's
+current treatment of Pebble range tombstones during flushes to L0. It is
+a divergence from Pebble's existing _compaction_ range tombstone
+behavior that flushes without truncation and allows a Pebble user key to
+span multiple sstables. We choose to flush-and-truncate both range keys
+and range tombstones from now on and prohibit user keys spanning
+mulitple sstables. CockroachDB rarely uses snapshots and rarely writes
+the same user key multiple times, so the requirement that the same user
+key be output to the same sstable should not pose a problem for
+CockroachDB. The flush-and-truncation behavior is conceptually simpler
+and allows us to simplify compaction and eventually compaction-picking
+logic.
+
+If a range key extends into the next file, the range key's truncated end
+is is used for the purposes of determining the sstable end boundary. The
 first sstable's end boundary becomes `b@30#inf`, signifying the range
 key does not cover `b@30`. The second sstable's start boundary is
 `b@30`.
@@ -612,8 +635,57 @@ TODO(jackson): Expand and rephrase this.
 
 ### CockroachDB implications
 
-CockroachDB will use range keys to represent an MVCC delete range. What
-will be the MVCCStats contribution of these range keys?
+CockroachDB will use range keys to represent MVCC delete ranges.
+
+#### Replica divergence detection
+
+CockroachDB detects replica divergence through periodically computing a
+checksum over a replica. The consistency checker queue orchestrates
+these computations. This checksum is calculated by iterating over all
+the keys within the replica, hashing keys and values. While hashing, it
+also recomputes MVCCStats.
+
+The `storage.ComputeStatsForRange` function is responsible for driving
+this iteration over the replica's data and recomputing the MVCC stats.
+This requires knowledge of MVCC Delete Range tombstones in order to
+know which keys have been deleted and when. Today, this function relies
+on Pebble surfacing overwriting key-value pairs or tombstones before
+the overwritten key-value pairs they shadow.
+
+The `ComputeStatsForRange` will use a **[I2]** pebble combined iterator
+over both point and range keys. For every key, it will iterate through
+the range keys covering the point key to find the first one whose suffix
+(MVCC timestamp) is greater than the point key's timestamp. If there is
+such a range key covering the point key, `storage.ComputeStatsForRange`
+will set `implictMeta = false`, indicating that the key is not a live
+key. If the discovered range key's timestamp is less than the existing
+`accrueGCAgeNanos` populated from a previous (point or range) key, it
+updates it to the range key timestamp.
+
+The above paragraph describes how the MVCCStats recomputation for point
+keys is updated to account for MVCC range deletions. However, it ignores
+the state of MVCC range tombstones themselves. If range keys are never
+surfaced as materialized point keys, they're never hashed as part of the
+consistency checker's checksum. To account for that, we additionally use
+a defragmenting range-key-only iterator to iterate through all of a
+replica's range keys, normalized into deterministic, defragmented
+bounds, hashing the start, end and value. This separate, second
+iteration is reasonable because:
+
+1. We expect range keys to be rare. The Pebble range-key iterator only
+   needs to load sstables with sstable properties indicating that they
+   contain range keys.
+2. When a sstable does contain range keys, the Pebble range-key iterator
+   only needs to read 'range key' blocks.
+
+Since we intend to use MVCC Delete Range only to delete many point keys,
+this second iteration is expected to be cheaper than the alternative of
+hashing a synthesized point key for every point key deleted by a MVCC
+delete range tombstone.
+
+#### MVCCStats
+
+What will be the MVCCStats contribution of these range keys?
 
 During a CockroachDB KV range split, CockroachDB reads the the left-hand
 side of the split, computing stats for the LHS and subtracting the
@@ -622,17 +694,55 @@ RHS. The arbitrary physical fragmentation of range keys makes it
 difficult for this one-sided iteration to determine what range keys, if
 any, exist on the RHS of the split.
 
-Possiblities:
-* Range keys don't contribute to `MVCCStats` themselves. Additionally,
-  range key fragments may be elided if they cover zero point keys. This
-  means that garbage collection does not need to explicitly remove the
-  range keys, only the point keys they deleted. Note that this option is
-  clean when paired with `RANGEDEL`s dropping both point and range keys.
-  CockroachDB can issue `RANGEDEL`s whenever it wants to drop a
-  contiguous swath of points, and not worry about the fact that it might
-  also need to update the MVCC stats for the range key.
-* Range keys are considered as a point key on the start key, for the
-  purposes of `MVCCStats`. [Is this partial contribution to MVCCStats
-  useful in any way? It bears no relationship to whether or not a range
-  might need to be GC'd]
+We consider a few possibilities:
 
+**1. No contribution**
+Range keys don't contribute to `MVCCStats` themselves. Additionally,
+range key fragments may be elided if they cover zero point keys. This
+means that garbage collection does not need to explicitly remove the
+range keys, only the point keys they deleted. Note that this option is
+clean when paired with `RANGEDEL`s dropping both point and range keys.
+CockroachDB can issue `RANGEDEL`s whenever it wants to drop a contiguous
+swath of points, and not worry about the fact that it might also need to
+update the MVCC stats for overlapping range keys.
+
+However, this option makes deterministic iteration over defragmented
+range keys for replica divergence detection challenging, because
+internal fragmentation may elide regions of a range key at any point.
+Producing a normalized form would require storing state in the value
+(ie, the original start key) and recalculating the smallest and largest
+extant covered point keys within the range key and replica bounds. This
+would require maintaining _O_(range-keys) state during the
+`storage.ComputeStatsForRange` pass over a replica's combined point and
+range iterator.
+
+**2. Maintain stats for boundary-crossing range keys**
+For the purposes of calculating range keys' MVCC stats, CockroachDB
+could additionally iterate over the right-hand side's range keys. This
+iteration would only need to read sstables that contain range keys and
+only their range-key block(s), which is expected to be fast. This could
+produce an accurate count of the logical range keys in both left and
+right ranges.
+
+Merges pose a new obstacle. Determining how many ranges cross the merge
+boundary requires coordination from the split logic. In addition to
+stats about the range keys that lie within a range's bounds, a split
+calculates statistics about the range keys that span the range boundary.
+The statistics about these boundary-spanning range keys are set in both
+ranges `MVCCStats`: the LHS's `DeleteRangeRHS` field and the RHS's
+`DeleteRangeLHS` field. When a MVCC delete range is GC'd, CockroachDB
+must read its value to observe its original start and end boundaries. If
+either or both extend beyond the range's boundaries, it must subtract
+the range's statistics from the appropriate sides' fields, in addition
+to the range-level fields.
+
+During a merge, the two ranges' delete range stats are summed, and the
+`min(lhs.DeleteRangeRHS, rhs.DeleteRangeLHS)` is subtracted to avoid
+double-counting MVCC delete range tombstones that still exist on both
+sides of the split point.
+
+#### Garbage collection
+
+#### MVCC reads
+
+#### MVCC writes
