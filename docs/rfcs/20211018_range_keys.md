@@ -79,6 +79,10 @@ surrounding the `Split` function and the ordering of keys. The details
 of why these new requirements are necessary are explained in the
 implementation section.
 
+The Split function is already documented as producing a suffix
+representing an MVCC version, without specifying what constitutes an
+MVCC version and how it is encoded.
+
 1. The user key consisting of just a key prefix `k` must sort before all
    other user keys containing that prefix. Specifically
    `Compare(k[:Split(k)], k) < 0` where `Split(k) < len(k)`.
@@ -92,15 +96,17 @@ implementation section.
 
 This design introduces two new write operations:
 
-- `RangeSet([k1, k2), [optional suffix], <value>)`: This represents
-  the mapping `[k1, k2)@suffix => value`. Keys `k1` and `k2` must not
-  contain a suffix.
+- `RangeSet([k1, k2), [optional suffix], <value>)`: This represents the
+  mapping `[k1, k2)@suffix => value`. Keys `k1` and `k2` must not
+  contain a suffix (i.e., `Split(k1)==len(k1)` and
+  `Split(k2)==len(k2))`.
 
 - `RangeUnset([k1, k2), [optional suffix])`: This removes a mapping
   previously applied by `RangeSet`. The unset may use a smaller key
   range than the original `RangeSet`, in which case part of the range
   is deleted. The unset only applies to range keys with a matching
-  optional suffix.
+  optional suffix. If the optional suffix is absent in both the RangeSet
+  and RangeUnset, they are considered matching.
 
 For example, consider `RangeSet([a,d), foo)` (i.e., no suffix). If
 there is a later call `RangeUnset([b,c))`, the resulting state seen by
