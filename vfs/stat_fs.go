@@ -5,6 +5,7 @@
 package vfs // import "github.com/cockroachdb/pebble/vfs"
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -213,8 +214,9 @@ func (f *statFile) Sync() error {
 	err := f.file.Sync()
 	if old%100 == 0 && err == nil {
 		newSample := float64(time.Since(t1).Milliseconds())
-
 		f.metrics.mu.Lock()
+		timeout := f.metrics.mu.syncLatencyEWMA + 2*f.metrics.mu.syncLatencyDev
+		fmt.Println("timeout?", timeout >= f.metrics.mu.syncLatencyEWMA, f.metrics.mu.syncLatencyEWMA, f.metrics.mu.syncLatencyDev, timeout)
 		f.metrics.mu.syncLatencyEWMA = 0.875*f.metrics.mu.syncLatencyEWMA + 0.125*newSample
 		f.metrics.mu.syncLatencyDev = 0.75*f.metrics.mu.syncLatencyDev + 0.25*abs(newSample-f.metrics.mu.syncLatencyEWMA)
 		f.metrics.mu.Unlock()
