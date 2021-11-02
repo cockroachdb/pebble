@@ -216,7 +216,8 @@ func (f *statFile) Sync() error {
 		newSample := float64(time.Since(t1).Milliseconds())
 		f.metrics.mu.Lock()
 		timeout := f.metrics.mu.syncLatencyEWMA + 2*f.metrics.mu.syncLatencyDev
-		fmt.Println("timeout?", timeout >= f.metrics.mu.syncLatencyEWMA, f.metrics.mu.syncLatencyEWMA, f.metrics.mu.syncLatencyDev, timeout)
+		fmt.Println("timeout?", timeout <= f.metrics.mu.syncLatencyEWMA, f.metrics.mu.syncLatencyEWMA, f.metrics.mu.syncLatencyDev, timeout)
+		fmt.Println("numSyncs", old)
 		f.metrics.mu.syncLatencyEWMA = 0.875*f.metrics.mu.syncLatencyEWMA + 0.125*newSample
 		f.metrics.mu.syncLatencyDev = 0.75*f.metrics.mu.syncLatencyDev + 0.25*abs(newSample-f.metrics.mu.syncLatencyEWMA)
 		f.metrics.mu.Unlock()
