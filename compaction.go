@@ -455,9 +455,10 @@ type compaction struct {
 	// and only close them when the compaction finishes.
 	closers []io.Closer
 
-	// grandparents are the tables in level+2 that overlap with the files being
-	// compacted. Used to determine output table boundaries. Do not assume that the actual files
-	// in the grandparent when this compaction finishes will be the same.
+	// grandparents are the tables in the first nonempty level in
+	// [level+2,maxLevels) that overlap with the files being compacted. Used to
+	// determine output table boundaries. Do not assume that the actual files in
+	// the grandparent when this compaction finishes will be the same.
 	grandparents manifest.LevelSlice
 
 	// Boundaries at which flushes to L0 should be split. Determined by
@@ -529,10 +530,12 @@ func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) 
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
 
-	// Compute the set of outputLevel+1 files that overlap this compaction (these
-	// are the grandparent sstables).
-	if c.outputLevel.level+1 < numLevels {
-		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.cmp,
+	// Compute the set of files beneath the output level that overlap this
+	// compaction (these are the grandparent sstables). The level outputLevel+1
+	// may not have any overlapping files, in which case we continue on to the
+	// great grandparent and so on.
+	for gp := c.outputLevel.level + 1; gp < numLevels && c.grandparents.Empty(); gp++ {
+		c.grandparents = c.version.Overlaps(gp, c.cmp,
 			c.smallest.UserKey, c.largest.UserKey)
 	}
 	c.setupInuseKeyRanges()
