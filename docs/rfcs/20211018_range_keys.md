@@ -745,6 +745,140 @@ During a merge, the two ranges' delete range stats are summed, and the
 double-counting MVCC delete range tombstones that still exist on both
 sides of the split point.
 
+Example: Imagine an initial range `a-z` containing 4 range keys:
+```
+                                                               original
+                              fragments                          bounds
+
+                                     m---------r                   m-r
+                       f---------------n                           f-n
+                                 k---------p                       k-p
+                                                 s-------w         s-w
+             a b c d e f g h i j k l m n o p q r s t u v w x y z
+                               r1 [a,z)
+lhs,tot,rhs                    0, 4, 0
+```
+
+This range has 4 range keys. The range is split at key `m`:
+```
+                                     |
+                                     m---------r                   m-r
+                       f-------------|-n                           f-n
+                                 k---|-----p                       k-p
+                                     |           s-------w         s-w
+                    r1 [a,m)         |           r2 [m,z)
+lhs,tot,rhs         0, 2, 2          |           2, 4, 0
+```
+
+Range keys `f-n` and `k-p` overlap the range boundary, _r1_'s RHS count
+and _r2_'s LGHS count are both set to 2. _r2_ inherits _r1_'s old
+RHS count of 0.
+
+_r1_ splits again at _g_:
+```
+                         |           |
+                         |           m---------r                   m-r
+                       f-|-----------|-n                           f-n
+                         |       k---|-----p                       k-p
+                         |           |           s-------w         s-w
+               r1 [a,g)  | r3 [g,m)  |      r2 [m,z)
+lhs,tot,rhs    0, 1, 1   | 1, 2, 2   |      2, 4, 0
+```
+
+Adjacent ranges' RHS,LHS counts are always equal immediately after a
+split but may diverge.
+
+The range `f-n` is now eligible for GC. _r1_ is the first to perform GC
+and removes its `[f,g)` fragment. GC observes that the range boundaries
+contained within the value indicate that it used to span beyond `g`, so
+in addition to decrementing the total, it decrements its RHS count.
+```
+                         |           |
+                         |           m---------r                   m-r
+                         g-----------|-n                           f-n
+                         |       k---|-----p                       k-p
+                         |           |           s-------w         s-w
+               r1 [a,g)  | r3 [g,m)  |      r2 [m,z)
+lhs,tot,rhs    0, 0, 0   | 1, 2, 2   |      2, 4, 0
+```
+
+Now imagine user deletes all data `a-z`. This would manifest as three
+spearate range tombstones, one-per range:
+
+```
+                         |           |
+             a-----------g           |                             a-g
+                         g-----------m                             g-m
+                         |           m-------------------------z   m-z
+                         |           m---------r                   m-r
+                         g-----------|-n                           f-n
+                         |       k---|-----p                       k-p
+                         |           |           s-------w         s-w
+               r1 [a,g)  | r3 [g,m)  |      r2 [m,z)
+lhs,tot,rhs    0, 1, 0   | 1, 3, 2   |      2, 5, 0
+```
+
+Although these del-ranges abut at range boundaries, each encodes their
+original bounds and are not considered range-boundary spanning and do
+not increment LHS/RHS counts. Now imagine r1 and r3 are merged. _r1_ has
+1 range, _r3_ has 4 ranges. They disagree on how many overlap the range
+boundary (0 vs 1). The number of range keys spanning the boundary can
+only have reduced, so the correct is answer is the minimum (0). The new
+range key count ignoring double-counting is `tot(r1)+tot(r3)`. In this
+case there is no double counting, because _r1_ already GC'd the relevant
+range. When double-counting is calculating, it's calculated as
+`min(rhs(r1), lhs(r3)) = 0` and the total is left unchanged.
+
+The merged range inherits _r3_'s RHS:
+```
+                                     |
+             a-----------g           |                             a-g
+                         g-----------m                             g-m
+                                     m-------------------------z   m-z
+                                     m---------r                   m-r
+                         g-----------|-n                           f-n
+                                 k---|-----p                       k-p
+                                     |           s-------w         s-w
+                    r1 [a,m)         |      r2 [m,z)
+lhs,tot,rhs         0, 4, 2          |      2, 5, 0
+```
+
+Note that `a-g` and `g-m` are still separate range keys, because they
+were written with different original bounds. Say now, the `m-n` fragment
+of range key `f-n` is GC'd from _r2_. Garbage collection would notice
+that the fragment `m-n` fragment had an original start bound of `f`, and
+decrement its LHS, in addition to its total:
+
+```
+                                     |
+             a-----------g           |                             a-g
+                         g-----------m                             g-m
+                                     m-------------------------z   m-z
+                                     m---------r                   m-r
+                         g-----------m                             f-n
+                                 k---|-----p                       k-p
+                                     |           s-------w         s-w
+                    r1 [a,m)         |      r2 [m,z)
+lhs,tot,rhs         0, 4, 2          |      1, 4, 0
+```
+
+If these two ranges were to merge again, the resulting range would
+calculate its new range key count as:
+```
+tot(r1)+tot(r2)-min(rhs(r1),lhs(r2)) = 4 + 4 - min(2, 1) = 7
+
+
+             a-----------g                                         a-g
+                         g-----------m                             g-m
+                                     m-------------------------z   m-z
+                                     m---------r                   m-r
+                         g-----------m                             f-n
+                                 k---------p                       k-p
+                                                 s-------w         s-w
+                                r1 [a,z)
+lhs,tot,rhs                      0, 7, 0
+```
+
 #### Garbage collection
 
 Currently, to identify garbage eligible for collection, CockroachDB
