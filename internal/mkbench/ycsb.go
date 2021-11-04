@@ -2,29 +2,6 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-// mkbench is a utility for processing the raw nightly benchmark data in JSON
-// data that can be visualized by docs/js/app.js. The raw data is expected to
-// be stored in dated directories underneath the "data/" directory:
-//
-//   data/YYYYMMDD/.../<file>
-//
-// The files are expected to be bzip2 compressed. Within each file mkbench
-// looks for Go-bench-style lines of the form:
-//
-//   Benchmark<name> %d %f ops/sec %d read %d write %f r-amp %f w-amp
-//
-// The output is written to "data.js". In order to avoid reading all of the raw
-// data to regenerate "data.js" on every run, mkbench first reads "data.js",
-// noting which days have already been processed and exluding files in those
-// directories from being read. This has the additional effect of merging the
-// existing "data.js" with new raw data, which avoids needing to have all of
-// the raw data present to construct a new "data.js" (only the new raw data is
-// necessary).
-//
-// The nightly Pebble benchmarks are orchestrated from the CockroachDB
-// repo:
-//
-//   https://github.com/cockroachdb/cockroach/blob/master/build/teamcity-nightly-pebble.sh
 package main
 
 import (
@@ -44,9 +21,50 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors/oserror"
+	"github.com/spf13/cobra"
 )
 
-type run struct {
+const (
+	defaultDir        = "data"
+	defaultCookedFile = "data.js"
+)
+
+var ycsbCmd = &cobra.Command{
+	Use:   "ycsb",
+	Short: "parse YCSB benchmark data",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dataDir, err := cmd.Flags().GetString("dir")
+		if err != nil {
+			return err
+		}
+
+		inFile, err := cmd.Flags().GetString("in")
+		if err != nil {
+			return err
+		}
+
+		outFile, err := cmd.Flags().GetString("out")
+		if err != nil {
+			return err
+		}
+
+		parseYCSB(dataDir, inFile, outFile)
+		return nil
+	},
+}
+
+func init() {
+	initYCSBCmd(ycsbCmd)
+}
+
+func initYCSBCmd(cmd *cobra.Command) {
+	cmd.Flags().String("dir", defaultDir, "path to data directory")
+	cmd.Flags().String("in", defaultCookedFile, "path to (possibly non-empty) input cooked data file")
+	cmd.Flags().String("out", defaultCookedFile, "path to output data file")
+	cmd.SilenceUsage = true
+}
+
+type ycsbRun struct {
 	opsSec     float64
 	readBytes  int64
 	writeBytes int64
@@ -54,37 +72,37 @@ type run struct {
 	writeAmp   float64
 }
 
-func (r run) formatCSV() string {
+func (r ycsbRun) formatCSV() string {
 	return fmt.Sprintf("%.1f,%d,%d,%.1f,%.1f",
 		r.opsSec, r.readBytes, r.writeBytes, r.readAmp, r.writeAmp)
 }
 
-type workload struct {
-	days map[string][]run // data -> runs
+type ycsbWorkload struct {
+	days map[string][]ycsbRun // data -> runs
 }
 
-type loader struct {
-	cookedDays map[string]bool      // set of already cooked days
-	data       map[string]*workload // workload name -> workload data
+type ycsbLoader struct {
+	cookedDays map[string]bool          // set of already cooked days
+	data       map[string]*ycsbWorkload // workload name -> workload data
 }
 
-func newLoader() *loader {
-	return &loader{
+func newYCSBLoader() *ycsbLoader {
+	return &ycsbLoader{
 		cookedDays: make(map[string]bool),
-		data:       make(map[string]*workload),
+		data:       make(map[string]*ycsbWorkload),
 	}
 }
 
-func (l *loader) addRun(name, day string, r run) {
+func (l *ycsbLoader) addRun(name, day string, r ycsbRun) {
 	w := l.data[name]
 	if w == nil {
-		w = &workload{days: make(map[string][]run)}
+		w = &ycsbWorkload{days: make(map[string][]ycsbRun)}
 		l.data[name] = w
 	}
 	w.days[day] = append(w.days[day], r)
 }
 
-func (l *loader) loadCooked(path string) {
+func (l *ycsbLoader) loadCooked(path string) {
 	data, err := ioutil.ReadFile(path)
 	if oserror.IsNotExist(err) {
 		return
@@ -118,7 +136,7 @@ func (l *loader) loadCooked(path string) {
 			line := s.Text()
 			line = strings.Replace(line, ",", " ", -1)
 
-			var r run
+			var r ycsbRun
 			var day string
 			n, err := fmt.Sscanf(line, "%s %f %d %d %f %f",
 				&day, &r.opsSec, &r.readBytes, &r.writeBytes, &r.readAmp, &r.writeAmp)
@@ -131,7 +149,7 @@ func (l *loader) loadCooked(path string) {
 	}
 }
 
-func (l *loader) loadRaw(dir string) {
+func (l *ycsbLoader) loadRaw(dir string) {
 	var walkFn filepath.WalkFunc
 	walkFn = func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -153,9 +171,16 @@ func (l *loader) loadRaw(dir string) {
 			return err
 		}
 
+		// The directory structure is of the form:
+		//   $date/pebble/ycsb/$name/$run/$file
 		parts := strings.Split(rel, string(os.PathSeparator))
-		if len(parts) < 2 {
+		if len(parts) < 6 {
 			return nil // stumble forward on invalid paths
+		}
+
+		// We're only interested in YCSB benchmark data.
+		if parts[2] != "ycsb" {
+			return nil
 		}
 
 		day := parts[0]
@@ -189,7 +214,7 @@ func (l *loader) loadRaw(dir string) {
 				continue
 			}
 
-			var r run
+			var r ycsbRun
 			var name string
 			var ops int64
 			n, err := fmt.Sscanf(line,
@@ -210,7 +235,7 @@ func (l *loader) loadRaw(dir string) {
 	_ = filepath.Walk(dir, walkFn)
 }
 
-func (l *loader) cook(path string) {
+func (l *ycsbLoader) cook(path string) {
 	m := make(map[string]string)
 	for name, workload := range l.data {
 		m[name] = l.cookWorkload(workload)
@@ -218,13 +243,13 @@ func (l *loader) cook(path string) {
 
 	out := []byte("data = ")
 	out = append(out, prettyJSON(m)...)
-	out = append(out, []byte(";")...)
+	out = append(out, []byte(";\n")...)
 	if err := ioutil.WriteFile(path, out, 0644); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func (l *loader) cookWorkload(w *workload) string {
+func (l *ycsbLoader) cookWorkload(w *ycsbWorkload) string {
 	days := make([]string, 0, len(w.days))
 	for day := range w.days {
 		days = append(days, day)
@@ -238,7 +263,7 @@ func (l *loader) cookWorkload(w *workload) string {
 	return buf.String()
 }
 
-func (l *loader) cookDay(runs []run) string {
+func (l *ycsbLoader) cookDay(runs []ycsbRun) string {
 	if len(runs) == 1 {
 		return runs[0].formatCSV()
 	}
@@ -266,7 +291,7 @@ func (l *loader) cookDay(runs []run) string {
 	lo := mean - stddev
 	hi := mean + stddev
 
-	var avg run
+	var avg ycsbRun
 	var count int
 	for i := range runs {
 		r := &runs[i]
@@ -289,19 +314,11 @@ func (l *loader) cookDay(runs []run) string {
 	return avg.formatCSV()
 }
 
-func prettyJSON(v interface{}) []byte {
-	data, err := json.MarshalIndent(v, "", "\t")
-	if err != nil {
-		log.Fatal(err)
-	}
-	return data
-}
-
-// ParseYCSB coalesces YCSB benchmark data.
-func ParseYCSB(dataDir, inFile, outFile string) {
+// parseYCSB coalesces YCSB benchmark data.
+func parseYCSB(dataDir, inFile, outFile string) {
 	log.SetFlags(log.Lshortfile)
 
-	l := newLoader()
+	l := newYCSBLoader()
 	l.loadCooked(inFile)
 	l.loadRaw(dataDir)
 	l.cook(outFile)
