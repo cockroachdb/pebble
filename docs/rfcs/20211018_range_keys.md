@@ -94,7 +94,8 @@ MVCC version and how it is encoded.
 
 ### Writes
 
-This design introduces two new write operations:
+This design splits introduces a new separate Range API with three write
+operations:
 
 - `RangeSet([k1, k2), [optional suffix], <value>)`: This represents the
   mapping `[k1, k2)@suffix => value`. Keys `k1` and `k2` must not
@@ -107,6 +108,10 @@ This design introduces two new write operations:
   is deleted. The unset only applies to range keys with a matching
   optional suffix. If the optional suffix is absent in both the RangeSet
   and RangeUnset, they are considered matching.
+
+- `RangeDelete([k1, k2))`: This removes all range keys within the
+  provided key span. It behaves like an `Unset` unencumbered by suffix
+  restrictions.
 
 For example, consider `RangeSet([a,d), foo)` (i.e., no suffix). If
 there is a later call `RangeUnset([b,c))`, the resulting state seen by
@@ -126,16 +131,11 @@ explicitly requested by the user in the context of the iteration and
 does not apply to internal iterators used for compaction writes. Masking
 is described in more detail below.
 
-Range deletes apply to both point keys and range keys. A range delete
-can remove part of a range key, just like the new `RangeUnset` operation
-introduced earlier. Range deletes differ from `RangeUnset`s, because the
-latter requires that the suffix matches and applies only to range keys.
-
-[TODO(jackson): The new internal range key bounds scheme makes it
-possible to support deleting point keys with RANGEDEL (eg, does not
-_require_ RANGEDEL_PREFIX). Think about whether we might want a
-point-only range deletion operation regardless, for example, maybe when
-GC-ing swaths of point keys.]
+Theere exist separate range delete operations for point keys and range
+keys. A `RangeDelete` issued through the range API can remove part of a
+range key, just like the new `RangeUnset` operation introduced earlier.
+Range deletes differ from `RangeUnset`s, because the latter requires
+that the suffix matches and applies only to range keys.
 
 The optional suffix is related to the pebble `Comparer.Split` operation
 which is explicitly documented as being for [MVCC
@@ -144,6 +144,30 @@ without mandating exactly how the versions are represented. `RangeSet`
 and `RangeUnset` keys with different suffixes do not interact logically,
 although Pebble may observably fragment ranges at any user key,
 including at range keys intersection points.
+
+The introduction of a second `RangeDelete` that applies to range keys
+only is confusing. To clarify the interface, writing interfaces may
+be refactored:
+
+```
+Delete(key []byte, _ *WriteOptions) error
+DeleteDeferred(keyLen int) *DeferredBatchOp
+Merge(key, value []byte, _ *WriteOptions) error
+MergeDeferred(keyLen, valueLen int) *DeferredBatchOp
+Set(key, value []byte, _ *WriteOptions) error
+SetDeferred(keyLen, valueLen int) *DeferredBatchOp
+SingleDelete(key []byte, _ *WriteOptions) error
+SingleDeleteDeferred(keyLen int) *DeferredBatchOp
+
+Range(start, end []byte) RangeWriter
+
+type RangeWriter struct {
+    Set(suffix, value []byte, _ *WriteOptions) error
+    Unset(suffix []byte, _ *WriteOptions) error
+    DeletePoints(_ *WriteOptions) error
+    DeleteRanges(_ *WriteOptions) error
+}
+```
 
 ### Iteration
 
