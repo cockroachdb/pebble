@@ -518,6 +518,70 @@ the memtable. That's okay, because batches are append-only and indexed
 batches will refragment and merge the range keys on-demand. In the
 memtable, every key is guaranteed to have a unique sequence number.
 
+### Sequence numbers
+
+Like all Pebble keys, `RANGESET` and `RANGEUNSET` are assigned sequence
+numbers when committed. As described above, overlapping `RANGESET`s and
+`RANGEUNSET`s within the same snapshot stripe and sstable are merged
+into a single internal key-value pair. The original unmerged internal
+keys each have their own sequence number, indicating the moment they
+were committed within the history of all write operations.
+
+Remember, sequence numbers are used within Pebble to determine which
+keys appear live to which iterators. When an iterator is constructed, it
+takes note of the current _visible sequence number_, and for the
+lifetime of the iterator, only surfaces keys less than that sequence
+number. Similarly, snapshots read the current _visible sequence number_,
+remember it, but also leave a note asking compactions to preserve
+history at that sequence number. The space between snapshotted sequence
+numbers is referred to as a _snapshot stripe_, and operations cannot
+drop or otherwise mutate keys unless they fall within the same _snapshot
+stripe_. For example a `k.MERGE#5` key may not be merged with a
+`k.MERGE#1` operation if there's an open snapshot at `#3`.
+
+The new `RANGESET` and `RANGEUNSET` keys behave similarly. Overlapping
+range keys won't be merged if there's an open snapshot separating them.
+Consider a range key `a-z` written at sequence number `#1` and a point
+key `d.SET#2`. A combined point-and-range iterator using a sequence
+number `#3` and positioned at `d` will surface both the range key `a-z`
+and the point key `d`.
+
+In the context of masking, the suffix-based masking of range keys can cause
+potentially unexpected behavior. A range key `[a,z)@t10` may be
+committed as sequence number `#1`. Afterwards, a point key `d@t5#2` may
+be committed. An iterator that is configured with range-key masking with
+suffix `@t20` would mask the point key `d@t5#2` because although
+`d@t5#2`'s sequence number is higher, range-key masking uses suffixes to
+impose order, not sequence numbers.
+
+In the CockroachDB MVCCDeleteRange use case, a point key should never be
+written below an existing range key with a higher timestamp. The
+MVCCDeleteRange use case would allow us to _also_ dictate that an
+overlapping range key with a higher sequence number always masks range
+keys with lower sequence numbers. Adding this additional masking scope
+would avoid the comparatively costly suffix comparison when a point key
+_is_ masked by a range key. We need to consider how sequence number
+masking might be affected by the merging of range keys within snapshot
+stripes.
+
+Consider the committing of range key `[a,z)@{t1}#10`, followed by point
+keys `d@t2#11` and `m@t2#11`, followed by range key `[j,z)@{t3}#12`.
+This sequencing respects the expected timestamp, sequence number
+relationship in CockroachDB's use case. If all keys are flushed within
+the same sstable, fragmentation and merging overlapping fragments yields
+range keys `[a,j)@{t1}#10`, `[j,z)@{t3,t1}#12`. The key `d@t2#11` must
+not be masked because it's not covered by the new range key, and indeed
+that's the case because the covering range key's fragment is unchanged
+`[a,j)@{t1}#10`.
+
+For now we defer the judgment on adding sequence number masking until
+we're absolutely sure CockroachDB has no requirement of 'backfilling'
+history beneath a MVCCDeleteRange tombstone. Note that this may always
+be layered in after the fact as a performance optimization to avoid
+suffix comparisons.
+
+TODO: Make a decision.
+
 ### Boundaries for sstables
 
 Range keys will follow the same relationship to sstable bounadries as
@@ -590,6 +654,12 @@ key does not cover `b@30`. The second sstable's start boundary is
 `b@30`.
 
 [TODO(jackson): This explanation needs work.]
+
+### Block property collectors
+
+Block property collectors will be fed range keys, just like point keys.
+This is necessary for CockroachDB's MVCC block property collectors to
+ensure the sstable-level properties are correct.
 
 ### Iteration
 
