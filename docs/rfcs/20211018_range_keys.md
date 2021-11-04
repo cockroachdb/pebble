@@ -768,7 +768,34 @@ TODO(jackson): Expand and rephrase this.
 
 ### CockroachDB implications
 
-CockroachDB will use range keys to represent MVCC delete ranges.
+CockroachDB will use range keys to represent MVCC delete ranges. An
+MVCC Delete Range specifies a range of user keys and a MVCC timestamp.
+
+```
+MVCCDeleteRange(start, end []roachpb.Key, timestamp hlc.Timestamp, /* ... */)
+```
+
+This operation will translate into a Pebble-level `RangeSet` operation,
+with the same key bounds, the encoded timestamp as the suffix and a
+marshalled `enginepb.MVCCRangeTombstone` protocol buffer as the value.
+The value will re-encode the start and end key bounds. This may appear
+to be redundant, but it's useful for defragmenting keys to construct the
+current bounds of a MVCCRangeTombstone. They may change overtime, for
+example if a subregion of the tombstone is garbage collected.
+
+```
+RangeSet(start, end, encode(timestamp), encode(enginepb.MVCCRangeTombstone{
+    Start:     start,
+    End:       end,
+}))
+```
+
+TODO: Is there anything else to encode within the value?
+
+The CockroachDB `pkg/storage` package will provide higher-level
+utilities like the existing MVCC utlities, and implement heuristics for
+deciding when to write point tombstones and when to write a
+`MVCCRangeTombstone`.
 
 #### Replica divergence detection
 
