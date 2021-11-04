@@ -163,31 +163,44 @@ range keys for use in the combined and exclusively range iteration
 modes.
 
 ```
-HasPointAndRange() (hasPoint bool, hasRange bool)
+HasPointAndRange() (hasPoint, hasRange bool)
 Key() []byte
 
-PointValue() []byte
+Value() []byte
 
-RangeEndKey() []byte
-RangeSuffix() []byte
-RangeValue() []byte
+RangeBounds() (start, end []byte)
+RangeKeys() []RangeKey
+
+type RangeKey struct {
+    Suffix []byte
+    Value  []byte
+}
 ```
 
-During iteration with a combined iterator, an iteration position may
-surface both a point key and a range key at the currently-positioned
-`Key`.
+When a combined iterator exposes range keys, it exposes all the range
+keys covering `Key`.  During iteration with a combined iterator, an
+iteration position may surface just a point key, just a range key or
+both at the currently-positioned `Key`.
 
-Range keys surfaced through iteration may be fragmented. Range keys are
-physically fragmented as an artifact of the log-structured merge tree
-structure and internal sstable boundaries. Range key fragments surfaced
-through a user-facing iterator may be split at any user key boundary
-within the original range's user key range. This allows for range keys
-with boundary keys that have suffixes that sort above or below the range
-key's suffix. For example a `RangeSet([a,c), @50, <value>)` may be
-surfaced as the range key fragments `RangeSet([a, b@30), @50, <value>)`
-and `RangeSet([b@30,c), @50, <value>)`. The exposed fragments may also
-be finer than the physical fragments. This is considered acceptable
-since:
+Described another way, a Pebble combined iterator guarantees that it
+will stop at all positions within the keyspace where:
+1. There exists a point key at that position.
+2. There exists a range key that logically begins at that postition.
+
+In addition to the above positions, a Pebble iterator may also stop at
+keys in-between the above positions due to internal fragmentation. The
+range keys surfaced through iteration may be fragmented.
+
+Range keys are physically fragmented as an artifact of the
+log-structured merge tree structure and internal sstable boundaries.
+Range key fragments surfaced through a user-facing iterator may be split
+at any user key boundary within the original range's user key range.
+This allows for range keys with boundary keys that have suffixes that
+sort above or below the range key's suffix. For example a
+`RangeSet([a,c), @50, <value>)` may be surfaced as the range key
+fragments `RangeSet([a, b@30), @50, <value>)` and `RangeSet([b@30,c),
+@50, <value>)`. The exposed fragments may also be finer than the
+physical fragments. This is considered acceptable since:
 
 1. the `RangeUnset` semantics are over the logical range and not a
    physical key,
@@ -197,6 +210,26 @@ since:
    store the original _k2_ in the `<value>` and iterate until they are
    past that _k2_.
 
+This finer fragmentation is necessary during iteration to ensure that
+range keys are truncated appropriately by unsets. Consider this example:
+
+```
+                   iterator pos          [ ] - sstable bounds
+                         |
+L1:         [a----v1@t2--|-h]     [l-----unset@t1----u]
+L2:                 [e---|------v1@t1----------r]
+             a b c d e f g h i j k l m n o p q r s t u v w x y z
+```
+
+If the iterator is at point `g`, there are two overlapping range keys:
+`[a,h)@t2→v1` and `[e,r)@t1→v1`. The range key `[e,r)@t1→v1` isn't valid
+for its entire key span: It's unset within `[l,r)`. The iterator can't
+tell without looking ahead in the next sstable. So instead, the iterator
+fragments to the nearest fragment bound (in this case `h`), Because
+range key fragments are truncated to sstable bounds, this also
+guarantees fragments won't extend beyond the sstables open under the
+current iterator position.
+
 #### Iteration order
 
 Recall that the user-provided `Comparer.Split(k)` function divides all
@@ -205,10 +238,7 @@ user keys into a prefix and a suffix, such that the prefix is
 contain a suffix, the user key equals the prefix.
 
 An iterator that is configured to surface range keys alongside point
-keys will surface them at unique encountered key _prefixes_. If the
-range key was created with a suffix, the range key appears at that
-suffix. For example, first consider these user keys without suffixes:
-
+keys will surface all range keys covering the current `Key()` position.
 ```
   Point keys: a, b, c, d, e, f
   Range key: [a,e)
@@ -218,30 +248,28 @@ A pebble.Iterator, which shows user keys, will output (during forward
 iteration), the following keys:
 
 ```
-  (a,[a,e)), (b,[b,e)), (c,[c,e)), (d,[d,e)),  e
+  (a,[a,e)), (b,[a,e)), (c,[a,e)), (d,[a,e)), e
 ```
 
-The notation `(b,[b,e))` indicates both these keys and their
+The notation `(b,[a,e))` indicates both these keys and their
 corresponding values are visible at the same time when the iterator is
 at that position.
 
-- There cannot be multiple ranges with start key at `Key()` since the
-  one with the highest seqnum will win, just like for point keys.
+- There can be multiple range keys covering a `Key()`, each with a
+  different suffix.
 
-- The reason the `[b,e)` key in the pair `(b,[b,e))` cannot be truncated
-  to c is that the iterator at that point does not know what point key
-  it will find next, and we do not want the cost and complexity of
-  looking ahead (which may need to switch sstables).
+- There cannot be multiple range keys covering a `Key()` with the same
+  suffix, since the one with the highest sequence number will win, just
+  like for point keys.
 
 - If the iterator has a configured upper bound, it will truncate the
   range key to that upper bound. e.g. if the upper bound was c, the
-  sequence seen would be `(a,[a,c))`, `(b,[b,c))`. The same applies to
+  sequence seen would be `(a,[a,c))`, `(b,[a,c))`. The same applies to
   lower bound and backward iteration.
 
-In the above example, the range key `[a,e)` had no suffix, so the range
-key appeared at key prefixes without any suffix. Remember these range
-keys may also specify a suffix: `RangeSet([k1,k2), @suffix, <value>)`
-and point keys optionally have suffixes.
+In the above example, the range key `[a,e)` had no suffix. Remember
+these range keys may also specify a suffix: `RangeSet([k1,k2), @suffix,
+<value>)` and point keys optionally have suffixes.
 
 Consider the following state in terms of user keys (the `@number` part
 is the version or "suffix"):
@@ -256,8 +284,8 @@ where we have used ↦ and ↤ to mark the start and end keys for the
 range key, we get:
 
 ```
-        [a@50                                          e#inf)
-        ↦                                                   ↤
+[a                                         e#inf)
+↦                                               ↤
  ·      ·     ·     ·      ·     ·     ·     ·     ·     ·     ·
 a@100, a@50, a@30, b@100, b@40, b@30, c@40, d@40, e@50, e@30, f@20
 ```
@@ -266,24 +294,22 @@ A `pebble.Iterator`, which shows user keys, will output (during forward
 iteration), the following keys:
 
 ```
-a@100, [a,e)@50, a@30, b@100, [b,e)@50, b@40, b@30, [c,e)@50, c@40, [d,e)@50, d@40, e@30 f@20
+(point,    range)
+(       [a,e)@50)
+(a@100, [a,e)@50)
+(a@50,  [a,e)@50)
+(a@30,  [a,e)@50)
+(b@100, [a,e)@50)
+(b@40,  [a,e)@50)
+       ⋮
+(d@40,  [a,e)@50)
+(e@50,          )
+(e@30,          )
+(f@20,          )
 ```
-
-- In this example each Next will be positioned such that there is only
-  either a point key or a range key, but not both. If there existed a
-  point key `b@50`, Next-ing from `b@100` would position the iterator
-  over both the range key `[b,e)@50` and the point key `b@50`.
 
 - Like the non-MVCC case, the end key for the range is not being
   fragmented using the succeeding point key.
-
-- As a generalization of what we described earlier, the start key of
-  the range is being adjusted such that the prefix matches the prefix
-  of the succeeding point key, which this "masks" from an MVCC
-  perspective. This repetition of parts of the original `[a,e)@50`, in
-  the context of the latest point key, is useful to a caller that is
-  making decisions on how to interpret the latest prefix and its various
-  versions. The same repetition will happen during reverse iteration.
 
 #### Masking
 
@@ -311,14 +337,27 @@ type IterOptions struct {
 //
 //   Compare(k[Split(k):], RangeKeySuffix()) < 0
 //
-func RangeKeyMask(suffixBlockPropertyName string, maskSuffix []byte) IteratorMask {
+func RangeKeyMask(
+    maskSuffix   []byte,
+    newFilter    func(lessThanSuffix []byte) BlockPropertyFilter,
+    adjustFilter func(lessThanSuffix, filter BlockPropertyFilter),
+) IteratorMask {
     // ...
 }
 ```
 
-Example: A user may construct an iterator with a mask
-`RangeKeyMask(@t50)`. A range key `[a, c)@t60` masks nothing. A range
-key `[a,c)@30` masks `a@20` and `apple@10` but not `apple@40`.
+Example: A user may construct an iterator with a mask `RangeKeyMask(@t50, ...)`.
+A range key `[a, c)@t60` masks nothing. A range key `[a,c)@30` masks `a@20` and
+`apple@10` but not `apple@40`.
+
+A Pebble iterator with a mask may still be opened in combined point-and-range
+key iteration mode. In this case, any range keys with suffixes ≤ `maskSuffix`
+will be hidden form the iterator. Any point keys with suffixes contained within
+the bounds of range keys with suffixes ≤ `maskSuffix` and with suffixes less
+than one of these range keys' suffixes will also be hidden from the iterator.
+
+Range keys with suffixes greater than the `maskSuffix` will be surfaced through
+the iterator.
 
 ## Implementation
 
