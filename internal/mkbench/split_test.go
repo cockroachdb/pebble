@@ -13,42 +13,36 @@ import (
 func TestFindOptimalSplit(t *testing.T) {
 	testCases := []struct {
 		passes, fails []int
-		interval      int
 		want          int
 	}{
 		{
 			// Not enough data.
 			passes:   []int{},
 			fails:    []int{},
-			interval: 50,
 			want:     -1,
 		},
 		{
 			// Not enough data.
 			passes:   []int{1, 2, 3},
 			fails:    []int{},
-			interval: 50,
 			want:     -1,
 		},
 		{
 			// Not enough data.
 			passes:   []int{},
 			fails:    []int{1, 2, 3},
-			interval: 50,
 			want:     -1,
 		},
 		{
 			// Trivial example.
-			passes:   []int{10},
-			fails:    []int{20},
-			interval: 5,
-			want:     15,
+			passes:   []int{100},
+			fails:    []int{200},
+			want:     150,
 		},
 		{
 			// Example given in the doc comment for the function.
 			passes:   []int{100, 210, 300, 380, 450, 470, 490, 510, 520},
 			fails:    []int{310, 450, 560, 610, 640, 700, 720, 810},
-			interval: 50,
 			want:     550,
 		},
 		{
@@ -65,14 +59,13 @@ func TestFindOptimalSplit(t *testing.T) {
 				33200, 33200, 33200, 33200, 33100, 33300, 33100, 33100, 33000,
 				39200, 36100,
 			},
-			interval: 50,
 			want:     33100,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run("", func(t *testing.T) {
-			split := findOptimalSplit(tc.passes, tc.fails, tc.interval)
+			split := findOptimalSplit(tc.passes, tc.fails)
 			require.Equal(t, tc.want, split)
 		})
 	}

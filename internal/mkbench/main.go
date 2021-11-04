@@ -46,6 +46,7 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.SilenceUsage = true
 	rootCmd.AddCommand(ycsbCmd)
+	rootCmd.AddCommand(writeCmd)
 
 	// For backwards compatability, the YCSB command is run, with the same
 	// flags, if a subcommand is not specified.
