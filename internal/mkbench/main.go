@@ -36,22 +36,20 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "mkbench",
 	Short: "pebble benchmark data tools",
-	// For backwards compatibility, parse YCSB data if no subcommand is
-	// specified.
-	// TODO(travers): Remove this after updating the call site in the
-	// nightly-pebble script in cockroach.
-	RunE: ycsbCmd.RunE,
 }
 
 func init() {
+	y := getYCSBCommand()
+	rootCmd.AddCommand(getYCSBCommand())
+	rootCmd.AddCommand(getWriteCommand())
 	rootCmd.SilenceUsage = true
-	rootCmd.AddCommand(ycsbCmd)
 
 	// For backwards compatability, the YCSB command is run, with the same
 	// flags, if a subcommand is not specified.
 	// TODO(travers): Remove this after updating the call site in the
 	// nightly-pebble script in cockroach.
-	initYCSBCmd(rootCmd)
+	*rootCmd.Flags() = *y.Flags()
+	rootCmd.RunE = y.RunE
 }
 
 func main() {

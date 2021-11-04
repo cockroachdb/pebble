@@ -29,39 +29,37 @@ const (
 	defaultCookedFile = "data.js"
 )
 
-var ycsbCmd = &cobra.Command{
-	Use:   "ycsb",
-	Short: "parse YCSB benchmark data",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		dataDir, err := cmd.Flags().GetString("dir")
-		if err != nil {
-			return err
-		}
+func getYCSBCommand() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "ycsb",
+		Short: "parse YCSB benchmark data",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dataDir, err := cmd.Flags().GetString("dir")
+			if err != nil {
+				return err
+			}
 
-		inFile, err := cmd.Flags().GetString("in")
-		if err != nil {
-			return err
-		}
+			inFile, err := cmd.Flags().GetString("in")
+			if err != nil {
+				return err
+			}
 
-		outFile, err := cmd.Flags().GetString("out")
-		if err != nil {
-			return err
-		}
+			outFile, err := cmd.Flags().GetString("out")
+			if err != nil {
+				return err
+			}
 
-		parseYCSB(dataDir, inFile, outFile)
-		return nil
-	},
-}
+			parseYCSB(dataDir, inFile, outFile)
+			return nil
+		},
+	}
 
-func init() {
-	initYCSBCmd(ycsbCmd)
-}
+	c.Flags().String("dir", defaultDir, "path to data directory")
+	c.Flags().String("in", defaultCookedFile, "path to (possibly non-empty) input cooked data file")
+	c.Flags().String("out", defaultCookedFile, "path to output data file")
+	c.SilenceUsage = true
 
-func initYCSBCmd(cmd *cobra.Command) {
-	cmd.Flags().String("dir", defaultDir, "path to data directory")
-	cmd.Flags().String("in", defaultCookedFile, "path to (possibly non-empty) input cooked data file")
-	cmd.Flags().String("out", defaultCookedFile, "path to output data file")
-	cmd.SilenceUsage = true
+	return c
 }
 
 type ycsbRun struct {
