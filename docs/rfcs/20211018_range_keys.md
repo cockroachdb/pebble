@@ -131,7 +131,7 @@ explicitly requested by the user in the context of the iteration and
 does not apply to internal iterators used for compaction writes. Masking
 is described in more detail below.
 
-Theere exist separate range delete operations for point keys and range
+There exist separate range delete operations for point keys and range
 keys. A `RangeDelete` issued through the range API can remove part of a
 range key, just like the new `RangeUnset` operation introduced earlier.
 Range deletes differ from `RangeUnset`s, because the latter requires
@@ -159,9 +159,9 @@ SetDeferred(keyLen, valueLen int) *DeferredBatchOp
 SingleDelete(key []byte, _ *WriteOptions) error
 SingleDeleteDeferred(keyLen int) *DeferredBatchOp
 
-Range(start, end []byte) RangeWriter
+Range(start, end []byte) RangeOpWriter
 
-type RangeWriter struct {
+type RangeOpWriter interface {
     Set(suffix, value []byte, _ *WriteOptions) error
     Unset(suffix []byte, _ *WriteOptions) error
     DeletePoints(_ *WriteOptions) error
@@ -1152,11 +1152,17 @@ A quick grep looks like it's only used by `AddSSTable`.
 #### MVCC reads
 
 All MVCC Reads will need to use the combined range and point key
-iterator. Whenever a key is surface that otherwise appears to be live at
-the read timestamp, the pebble Iterator's range keys must be traversed
-to find the oldest-suffixed range key with a suffix greater than the
-point keys. If none exists, the key is still live. If one exists, the
-key is deleted.
+iterator. They may configure masking of point keys, configuring the
+masking with their read timestamp so that only range keys that exist at
+the read timestamp mask. There may be range keys that exist at
+timestamps higher than the read's timestamp. These range keys are
+surfaced by the Pebble iterator, which allow readers to handle
+conditions where they need to consider versions in the future up to the
+`GlobalUncertaintyLimit`.
+
+Since range keys are surfaced by the Pebble iterator even when there are
+no point keys beneath them, the MVCC read is capable of detecting MVCC
+Delete Range writes at higher timestamps.
 
 #### MVCC writes
 
