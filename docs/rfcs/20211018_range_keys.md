@@ -14,10 +14,6 @@
 TODO:
 - Expand on masking implementation.
 - Expand the sstable boundaries discussion.
-- Decide if blanket prohibiting splitting user keys across sstables.
-- Fix formatting.
-- Decide on range deletion interaction: Does it or does it not remove
-  range keys.
 
 # Summary
 
@@ -845,6 +841,43 @@ utilities like the existing MVCC utlities, and implement heuristics for
 deciding when to write point tombstones and when to write a
 `MVCCRangeTombstone`.
 
+#### Long-term MVCC Iterator API
+
+Within CockroachDB's `pkg/storage` package and within the rest of
+CockroachDB, we use a `MVCCIterator` interface for iterating over
+keyspaces containing MVCC-versioned data. This iterator interface is an
+iterator over key-value pairs where a key-value pair may be a point key,
+a MVCC point tombstone or an intent. Clients use knowledge of the
+represenation of each and context to determine what type of key-value
+pair they're reading. This interface at one time reflected the physical
+reality where point keys, MVCC point tombstones and intents were all
+interleaved within the same keyspace and sstables.
+
+With the separated intents project, intents are no longer physically
+interleaved. The `intentInterleavingIter` in the CockroachDB storage
+package handles artifically interleaving intents to satisfy the existing
+interface. The range keys project introduces a new key that must be
+exposed to clients, and like intents, they're not interleaved.
+
+We should consider alternative iterator APIs, both for internal use
+within the storage package and externally for the rest of CockroachDB,
+that don't interleave. There may be options that leak less of
+intricacies of MVCC to clients or offer more performance. The design
+space is large, and we don't hope to offer an API now. We hope to offer
+enough flexibility within the Pebble API that the storage package is not
+committed to interleaving MVCC range deletions forever.
+
+#### MVCC Range Deletion interleaving
+
+Initially, we may follow the pattern set by the `intentInterleavingIter`
+and offer an iteration mode that interleaves range deletion tombstones
+as synthetic point tombstones. Existing code paths that don't require
+specific knowledge of MVCC range tombstones may use this iterator
+without explicitly needing to learn about the existence of range
+tombstones. Eventually, there would likely be both performance and
+clarity benefits to migrating to a richer MVCC API so that clients don't
+need to step over synthetic tombstones if they don't care about them.
+
 #### Replica divergence detection
 
 CockroachDB detects replica divergence through periodically computing a
@@ -893,7 +926,9 @@ delete range tombstone.
 
 #### MVCCStats
 
-What will be the MVCCStats contribution of these range keys?
+Range keys have a contribution to MVCCStats, recording the count of all
+range keys within a range. For a discussion of the possibility of
+omitting range keys from MVCCStats, see section A1 below.
 
 During a CockroachDB KV range split, CockroachDB reads the the left-hand
 side of the split, computing stats for the LHS and subtracting the
@@ -902,33 +937,6 @@ RHS. The arbitrary physical fragmentation of range keys makes it
 difficult for this one-sided iteration to determine what range keys, if
 any, exist on the RHS of the split.
 
-We consider a few possibilities:
-
-**1. No contribution**
-Range keys don't contribute to `MVCCStats` themselves. Additionally,
-range key fragments may be elided if they cover zero point keys. This
-means that garbage collection does not need to explicitly remove the
-range keys, only the point keys they deleted. Note that this option is
-clean when paired with `RANGEDEL`s dropping both point and range keys.
-CockroachDB can issue `RANGEDEL`s whenever it wants to drop a contiguous
-swath of points, and not worry about the fact that it might also need to
-update the MVCC stats for overlapping range keys.
-
-However, this option makes deterministic iteration over defragmented
-range keys for replica divergence detection challenging, because
-internal fragmentation may elide regions of a range key at any point.
-Producing a normalized form would require storing state in the value
-(ie, the original start key) and recalculating the smallest and largest
-extant covered point keys within the range key and replica bounds. This
-would require maintaining _O_(range-keys) state during the
-`storage.ComputeStatsForRange` pass over a replica's combined point and
-range iterator.
-
-This likely forces replica divergence detection to use other means (eg,
-altering the checksum of covered points) to incorporate MVCC range
-tombstone state.
-
-**2. Maintain stats for boundary-crossing range keys**
 For the purposes of calculating range keys' MVCC stats, CockroachDB
 could additionally iterate over the right-hand side's range keys. This
 iteration would only need to read sstables that contain range keys and
@@ -1112,18 +1120,6 @@ removed by a MVCC DeleteRange but not how the MVCC DeleteRange
 tombstones themselves may be detected as garbage when all the keys they
 delete have been covered.
 
-
-**1. Pebble automatic elision**
-
-Pebble may automatically elide range keys that no longer cover point
-keys. This allows fragments of a range key to be dropped as the point
-keys they cover are deleted. It prohibits maintaining detailed MVCCStats
-about range keys, because fragments may be elided at any time. It also
-may make divergence detection checks more expensive, if we need to
-incorporate range key state into point keys' checksum contribution.
-
-**2. Range key iteration**
-
 After iterating through all the point keys of a range and issuing GC
 requests for all the garbage points, we may separately use a range-key
 only iterator to iterate through all range keys written below the
@@ -1133,7 +1129,9 @@ separately support specifying range keys `GCRequest_GCRangeKey`.
 TODO(jackson): Discuss options for efficiently GC-ing point keys using
 Pebble delete ranges. We never do this today with MVCC-ful deletes, but
 since we anticipate using MVCC Delete Range for `TRUNCATE`, `DROP
-TABLE`, we should consider it.
+TABLE`, we should consider it. Would it be enough to just have a fast
+path for GC-ing a whole range? Eg, If we continue to _not_ reuse table
+keyspaces are a `DROP TABLE` or `TRUNCATE`.
 
 #### CheckForKeyCollisions
 
@@ -1146,8 +1144,7 @@ The process of checking for key collisions must be updated to check
 whether there exist any MVCC Delete Range tombstones covering any of a
 SST's keys at a timestamp higher than _x_.
 
-TODO(jackson): Do we need this if `AddSSTable` is going to be MVCC-ful?
-A quick grep looks like it's only used by `AddSSTable`.
+TODO:
 
 #### MVCC reads
 
@@ -1162,8 +1159,45 @@ conditions where they need to consider versions in the future up to the
 
 Since range keys are surfaced by the Pebble iterator even when there are
 no point keys beneath them, the MVCC read is capable of detecting MVCC
-Delete Range writes at higher timestamps.
+Delete Range writes at higher timestamps. The exact mechanism for
+checking these keys via internal iterator interfaces is to-be-decided.
+We may choose to use the synthetic point tombstone interleaving
+iterator.
 
 #### MVCC writes
 
 TODO
+
+### Alternatives
+
+#### A1. Automatic elision of range keys that don't cover keys
+
+We could decide that range keys:
+
+- Don't contribute to `MVCCStats` themselves.
+- May be elided by Pebble when they cover zero point keys.
+
+This means that garbage collection does not need to explicitly remove
+the range keys, only the point keys they deleted. This option is clean
+when paired with `RANGEDEL`s dropping both point and range keys.
+CockroachDB can issue `RANGEDEL`s whenever it wants to drop a contiguous
+swath of points, and not worry about the fact that it might also need to
+update the MVCC stats for overlapping range keys.
+
+However, this option makes deterministic iteration over defragmented
+range keys for replica divergence detection challenging, because
+internal fragmentation may elide regions of a range key at any point.
+Producing a normalized form would require storing state in the value
+(ie, the original start key) and recalculating the smallest and largest
+extant covered point keys within the range key and replica bounds. This
+would require maintaining _O_(range-keys) state during the
+`storage.ComputeStatsForRange` pass over a replica's combined point and
+range iterator.
+
+This likely forces replica divergence detection to use other means (eg,
+altering the checksum of covered points) to incorporate MVCC range
+tombstone state.
+
+This option is also highly tailored to the MVCC Delete Range use case.
+Other range key usages, like ranged intents, would not want this
+behavior, so we don't consider it further.
