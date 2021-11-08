@@ -390,7 +390,7 @@ the iterator.
 This design introduces two new Pebble write operations: `RangeSet` and
 `RangeUnset`. Internally, these operations are represented as keys with
 `RANGESET` and `RANGEUNSET` key kinds. These keys are stored within 'range key'
-blocks within same sstables as point keys. The 'range key' blocks hold both
+blocks separate from point keys. The 'range key' blocks hold both
 `RANGESET` and `RANGEUNSET` keys, but are separate from the blocks holding
 ordinary point keys. Within the memtables, these keys are stored in a separate
 skip list.
@@ -434,15 +434,63 @@ lower than the suffix of the range key.
 
 There is no Merge operation that affects range keys.
 
-Range keys are expected to be rare compared to point keys. This rarity
-is important since bloom filters used for `SeekPrefixGE` cannot
-efficiently eliminate an sstable that contains such range keys -- we
-also need to read the range key block(s). Note that if these range keys
-were interleaved with the point keys in the sstable we would need to
-potentially read all the blocks to find these range keys, which is why
-we do not make this design choice.  Pebble does not use bloom filters in
-L6, so once a range key is compacted into L6 its impact to
-`SeekPrefixGE` is lessened.
+These range keys may be encoded within the same sstables as points in
+separate blocks, or in separate sstables forming a parallel range-key
+LSM:
+
+- Storing range keys in separate sstables is possible because the only
+  iteractions between range keys and point keys happens at a global
+  level. Masking is defined over suffixes. It may be extended to be
+  defiend over sequence numbers too (see 'Sequence numbers' section
+  below), but that is optional. Unlike `RANGEDELs`, range keys have no
+  effect on point keys during compactions.
+
+- With shared sstables, reads must iterate through all the range key
+  blocks of every overlapping sstable that contains range keys. Range
+  keys are expected to be rare, so this is expected to be okay. If many
+  range keys are accumulated within L6, a read may need to iterate
+  through them all because there is no index. With separate sstables,
+  reads may need to open additional sstable(s) and read additional
+  blocks. The number of additional sstables is the number of nonempty
+  levels in the range-key LSM, so it grows logarithmically with the
+  number of range keys. For each sstable, a read must read the index
+  block and a data block.
+
+- With our expectation of few range keys, the range-key LSM is expected
+  to be small, with one or two levels. Heuristics around sstable
+  boundaries may prevent unnecessary range-key reads when there is no
+  covering range key. Range key sstables and blocks are expected to have
+  much higher hit rates, since they are orders of magnitude less dense.
+  Reads in any overlapping point sstables all access the same range key
+  sstables.
+
+- With shared sstables, `SeekPrefixGE` cannot use bloom filters to
+  eliminate sstables that contain range keys. Pebble does not use bloom
+  filters in L6, so once a range key is compacted into L6 its impact to
+  `SeekPrefixGE` is lessened. With separate sstables, `SeekPrefixGE` can
+  always use bloom filters for point-key sstables.  If there are any
+  overlapping range-key sstables, the read must read them.
+
+- With shared sstables, range keys create dense sstable boundaries. A
+  range key spanning an sstable boundary leaves no gap between the
+  sstables' bounds. This can force ingested sstables into higher levels
+  of the LSM, even if the sstables' point key spans don't overlap. This
+  problem was previously observed with wide `RANGEDEL` tombstones and
+  was mitigated by prioritizing compaction of sstables that contain
+  `RANGEDEL` keys. We could do the same with range keys, but the write
+  amplification is expected to be much worse. The `RANGEDEL` tombstones
+  drop keys and eventually are dropped themselves as long as there is
+  not an open snapshot. Range keys do not drop data and are expected to
+  persist in L6 for long durations, always requiring ingests to target
+  at least L5.
+
+- With separate sstables, compaction logic is separate, which helps
+  avoid complexity of tricky sstable boundary conditions. Because there
+  are expected to be order of magnitude fewer range keys, we could
+  impose the constraint that a prefix cannot be split across multiple
+  range key sstables. The simplified compaction logic comes at the cost
+  of higher levels, iterators, etc all needing to deal with the concept
+  of two parallel LSMs.
 
 #### Physical representation
 
