@@ -11,52 +11,63 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
+	for _, arg := range td.CmdArgs {
+		switch arg.Key {
+		case "leveldb":
+			if len(arg.Vals) != 0 {
+				return errors.Errorf("%s: arg %s expects 0 values", td.Cmd, arg.Key)
+			}
+			writerOpts.TableFormat = TableFormatLevelDB
+		case "block-size":
+			if len(arg.Vals) != 1 {
+				return errors.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
+			}
+			var err error
+			writerOpts.BlockSize, err = strconv.Atoi(arg.Vals[0])
+			if err != nil {
+				return err
+			}
+		case "index-block-size":
+			if len(arg.Vals) != 1 {
+				return errors.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
+			}
+			var err error
+			writerOpts.IndexBlockSize, err = strconv.Atoi(arg.Vals[0])
+			if err != nil {
+				return err
+			}
+		case "filter":
+			writerOpts.FilterPolicy = bloom.FilterPolicy(10)
+		case "comparer-split-4b-suffix":
+			writerOpts.Comparer = test4bSuffixComparer
+		}
+	}
+	return nil
+}
+
 func runBuildCmd(
-	td *datadriven.TestData, writerOpts WriterOptions,
+	td *datadriven.TestData, writerOpts *WriterOptions,
 ) (*WriterMetadata, *Reader, error) {
+
 	mem := vfs.NewMem()
 	f0, err := mem.Create("test")
 	if err != nil {
 		return nil, nil, err
 	}
 
-	for _, arg := range td.CmdArgs {
-		switch arg.Key {
-		case "leveldb":
-			if len(arg.Vals) != 0 {
-				return nil, nil, errors.Errorf("%s: arg %s expects 0 values", td.Cmd, arg.Key)
-			}
-			writerOpts.TableFormat = TableFormatLevelDB
-		case "block-size":
-			if len(arg.Vals) != 1 {
-				return nil, nil, errors.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
-			}
-			var err error
-			writerOpts.BlockSize, err = strconv.Atoi(arg.Vals[0])
-			if err != nil {
-				return nil, nil, err
-			}
-		case "index-block-size":
-			if len(arg.Vals) != 1 {
-				return nil, nil, errors.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
-			}
-			var err error
-			writerOpts.IndexBlockSize, err = strconv.Atoi(arg.Vals[0])
-			if err != nil {
-				return nil, nil, err
-			}
-		default:
-			return nil, nil, errors.Errorf("%s: unknown arg %s", td.Cmd, arg.Key)
-		}
+	if err := optsFromArgs(td, writerOpts); err != nil {
+		return nil, nil, err
 	}
 
-	w := NewWriter(f0, writerOpts)
+	w := NewWriter(f0, *writerOpts)
 	var tombstones []keyspan.Span
 	f := keyspan.Fragmenter{
 		Cmp:    DefaultComparer.Compare,
@@ -108,7 +119,7 @@ func runBuildCmd(
 	if err != nil {
 		return nil, nil, err
 	}
-	readerOpts := ReaderOptions{}
+	readerOpts := ReaderOptions{Comparer: writerOpts.Comparer}
 	if writerOpts.FilterPolicy != nil {
 		readerOpts.Filters = map[string]FilterPolicy{
 			writerOpts.FilterPolicy.Name(): writerOpts.FilterPolicy,
