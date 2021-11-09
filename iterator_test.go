@@ -1000,6 +1000,7 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 }
 
 type testBlockIntervalCollector struct {
+	numLength int
 	offsetFromEnd int
 	initialized bool
 	lower, upper uint64
@@ -1007,11 +1008,11 @@ type testBlockIntervalCollector struct {
 
 func (bi *testBlockIntervalCollector) Add(key InternalKey, value []byte) error {
 	k := key.UserKey
-	if len(k) < 2 + bi.offsetFromEnd {
+	if len(k) < bi.numLength + bi.offsetFromEnd {
 		return nil
 	}
-	n := len(k)-bi.offsetFromEnd-2
-	val, err := strconv.Atoi(string(k[n:n+2]))
+	n := len(k)-bi.offsetFromEnd-bi.numLength
+	val, err := strconv.Atoi(string(k[n:n+bi.numLength]))
 	if err != nil {
 		return err
 	}
@@ -1065,7 +1066,7 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 			bpCollectors = append(bpCollectors, func() BlockPropertyCollector {
 				return sstable.NewBlockIntervalCollector(
 					fmt.Sprintf("%d", coll.id),
-					&testBlockIntervalCollector{offsetFromEnd: coll.offset})
+					&testBlockIntervalCollector{numLength: 2, offsetFromEnd: coll.offset})
 			})
 		}
 		opts := &Options{
@@ -1185,7 +1186,9 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 		FormatMajorVersion: FormatNewest,
 		BlockPropertyCollectors: []func() BlockPropertyCollector{
 			func() BlockPropertyCollector {
-				return sstable.NewBlockIntervalCollector("0", &testBlockIntervalCollector{})
+				return sstable.NewBlockIntervalCollector("0", &testBlockIntervalCollector{
+					numLength: 2,
+				})
 			},
 		},
 	}
@@ -1486,4 +1489,61 @@ func BenchmarkIteratorSeekGENoop(b *testing.B) {
 	}
 }
 
-// TODO(sumeer): add block interval filtering benchmark
+func BenchmarkBlockPropertyFilter(b *testing.B) {
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	for _, matchInterval := range []int{1, 10, 100, 1000} {
+		b.Run(fmt.Sprintf("match-interval=%d", matchInterval), func(b *testing.B) {
+			mem := vfs.NewMem()
+			opts := &Options{
+				FS:                 mem,
+				FormatMajorVersion: FormatNewest,
+				BlockPropertyCollectors: []func() BlockPropertyCollector{
+					func() BlockPropertyCollector {
+						return sstable.NewBlockIntervalCollector("0", &testBlockIntervalCollector{
+							numLength: 3,
+						})
+					},
+				},
+			}
+			d, err := Open("", opts)
+			require.NoError(b, err)
+			defer func() {
+				require.NoError(b, d.Close())
+			}()
+			batch := d.NewBatch()
+			const numKeys = 20*1000
+			const valueSize = 1000
+			for i := 0; i < numKeys; i++ {
+				key := fmt.Sprintf("%06d%03d", i, i%matchInterval)
+				value := randValue(valueSize, rng)
+				require.NoError(b, batch.Set([]byte(key), value, nil))
+			}
+			require.NoError(b, batch.Commit(nil))
+			require.NoError(b, d.Flush())
+			require.NoError(b, d.Compact(nil, []byte{0xFF}))
+
+			for _, filter := range []bool{false, true} {
+				b.Run(fmt.Sprintf("filter=%t", filter), func(b *testing.B) {
+					var iterOpts IterOptions
+					if filter {
+						iterOpts.BlockPropertyFilters = []BlockPropertyFilter{
+							sstable.NewBlockIntervalFilter("0",
+								uint64(0), uint64(1)),
+						}
+					}
+					iter := d.NewIter(&iterOpts)
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						valid := iter.First()
+						for valid {
+							valid = iter.Next()
+						}
+					}
+					b.StopTimer()
+					require.NoError(b, iter.Close())
+				})
+			}
+
+		})
+	}
+}
