@@ -184,11 +184,11 @@ modes.
 
 ```
 HasPointAndRange() (hasPoint, hasRange bool)
+
 Key() []byte
+RangeBounds() (start, end []byte)
 
 Value() []byte
-
-RangeBounds() (start, end []byte)
 RangeKeys() []RangeKey
 
 type RangeKey struct {
@@ -345,6 +345,12 @@ type IterOptions struct {
     Mask IteratorMask
 }
 
+// IteratorMask is a mask that when configured on an iterator hides some keys
+// from view.
+type IteratorMask interface {
+    // ...
+}
+
 // RangeKeyMask may be used as an iterator mask to mask all point
 // keys covered by range keys with suffixes less than suffix.
 //
@@ -372,7 +378,7 @@ A range key `[a, c)@t60` masks nothing. A range key `[a,c)@30` masks `a@20` and
 
 A Pebble iterator with a mask may still be opened in combined point-and-range
 key iteration mode. In this case, any range keys with suffixes ≤ `maskSuffix`
-will be hidden form the iterator. Any point keys with suffixes contained within
+will be hidden from the iterator. Any point keys with suffixes contained within
 the bounds of range keys with suffixes ≤ `maskSuffix` and with suffixes less
 than one of these range keys' suffixes will also be hidden from the iterator.
 
@@ -437,7 +443,7 @@ LSM:
 - Storing range keys in separate sstables is possible because the only
   iteractions between range keys and point keys happens at a global
   level. Masking is defined over suffixes. It may be extended to be
-  defiend over sequence numbers too (see 'Sequence numbers' section
+  defined over sequence numbers too (see 'Sequence numbers' section
   below), but that is optional. Unlike `RANGEDELs`, range keys have no
   effect on point keys during compactions.
 
@@ -1104,9 +1110,8 @@ This range has 4 range keys. The range is split at key `m`:
 lhs,tot,rhs         0, 2, 2          |           2, 4, 0
 ```
 
-Range keys `f-n` and `k-p` overlap the range boundary, _r1_'s RHS count
-and _r2_'s LGHS count are both set to 2. _r2_ inherits _r1_'s old
-RHS count of 0.
+Range keys `f-n` and `k-p` overlap the range boundary, _r1_'s RHS count and
+_r2_'s LHS count are both set to 2. _r2_ inherits _r1_'s old RHS count of 0.
 
 _r1_ splits again at _g_:
 ```
@@ -1137,7 +1142,7 @@ lhs,tot,rhs    0, 0, 0   | 1, 2, 2   |      2, 4, 0
 ```
 
 Now imagine user deletes all data `a-z`. This would manifest as three
-spearate range tombstones, one-per range:
+separate range tombstones, one-per range:
 
 ```
                          |           |
@@ -1155,7 +1160,7 @@ lhs,tot,rhs    0, 1, 0   | 1, 3, 2   |      2, 5, 0
 Although these del-ranges abut at range boundaries, each encodes their
 original bounds and are not considered range-boundary spanning and do
 not increment LHS/RHS counts. Now imagine r1 and r3 are merged. _r1_ has
-1 range, _r3_ has 4 ranges. They disagree on how many overlap the range
+1 range, _r3_ has 3 ranges. They disagree on how many overlap the range
 boundary (0 vs 1). The number of range keys spanning the boundary can
 only have reduced, so the correct is answer is the minimum (0). The new
 range key count ignoring double-counting is `tot(r1)+tot(r3)`. In this
