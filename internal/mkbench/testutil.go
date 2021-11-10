@@ -10,6 +10,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
+	"testing"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -44,19 +46,10 @@ func filesEqual(a, b string) error {
 
 // copyDir recursively copies the fromPath to toPath, excluding certain paths.
 func copyDir(fromPath, toPath string) error {
-	return filepath.Walk(fromPath, func(path string, info os.FileInfo, e error) error {
-		if e != nil {
-			return e
-		}
-
-		rel, err := filepath.Rel(fromPath, path)
-		if err != nil {
-			return err
-		}
-
+	walkFn := func(path, pathRel string, info os.FileInfo) error {
 		// Preserve the directory structure.
 		if info.IsDir() {
-			err := os.Mkdir(filepath.Join(toPath, rel), 0700)
+			err := os.Mkdir(filepath.Join(toPath, pathRel), 0700)
 			if err != nil && !oserror.IsNotExist(err) {
 				return err
 			}
@@ -70,7 +63,7 @@ func copyDir(fromPath, toPath string) error {
 		}
 		defer func() { _ = fIn.Close() }()
 
-		fOut, err := os.OpenFile(filepath.Join(toPath, rel), os.O_CREATE|os.O_WRONLY, 0700)
+		fOut, err := os.OpenFile(filepath.Join(toPath, pathRel), os.O_CREATE|os.O_WRONLY, 0700)
 		if err != nil {
 			return err
 		}
@@ -78,5 +71,15 @@ func copyDir(fromPath, toPath string) error {
 
 		_, err = io.Copy(fOut, fIn)
 		return err
-	})
+	}
+	return walkDir(fromPath, walkFn)
+}
+
+func maybeSkip(t *testing.T) {
+	// The paths in the per-run summary.json files are UNIX-oriented. To avoid
+	// duplicating the test fixtures just for Windows, just skip the tests on
+	// Windows.
+	if runtime.GOOS == "windows" {
+		t.Skipf("skipped on windows")
+	}
 }

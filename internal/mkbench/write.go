@@ -361,23 +361,10 @@ func (l *writeLoader) loadCooked() error {
 
 // loadRaw loads the raw data from the root data directory.
 func (l *writeLoader) loadRaw() error {
-	return filepath.Walk(l.dataDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if info.IsDir() {
-			return nil
-		}
-
-		rel, err := filepath.Rel(l.dataDir, path)
-		if err != nil {
-			return err
-		}
-
+	walkFn := func(path, pathRel string, info os.FileInfo) error {
 		// The relative directory structure is of the form:
 		//   $day/pebble/write/$name/$run/$file
-		parts := strings.Split(rel, string(os.PathSeparator))
+		parts := strings.Split(pathRel, string(os.PathSeparator))
 		if len(parts) < 6 {
 			return nil // stumble forward on invalid paths
 		}
@@ -392,7 +379,7 @@ func (l *writeLoader) loadRaw() error {
 		// loadCooked having been called previously to seed the map with cooked
 		// data.
 		if m, ok := l.cookedMap[name]; ok {
-			_, _ = fmt.Fprintf(os.Stderr, "skipping previously cooked file %s\n", rel)
+			_, _ = fmt.Fprintf(os.Stderr, "skipping previously cooked file %s\n", pathRel)
 			if m[day] {
 				return nil
 			}
@@ -450,10 +437,11 @@ func (l *writeLoader) loadRaw() error {
 		}
 
 		// Add the raw run to the map.
-		l.addRawRun(name, day, rel, r)
+		l.addRawRun(name, day, pathRel, r)
 
 		return nil
-	})
+	}
+	return walkDir(l.dataDir, walkFn)
 }
 
 // addRawRun adds a rawWriteRun to the corresponding datastructures by looking
