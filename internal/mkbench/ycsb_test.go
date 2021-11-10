@@ -13,43 +13,66 @@ import (
 )
 
 const (
-	dataDirPath = "./testdata/data"
-	dataJSPath  = "./testdata/data.js"
+	dataDirPath          = "./testdata/data"
+	dataSymlinkedDirPath = "./testdata/data-symlink"
+	dataJSPath           = "./testdata/data.js"
 )
 
-func TestParseYCSB_FromScratch(t *testing.T) {
-	// Write out a new data.js file from the input data.
-	fPath := filepath.Join(t.TempDir(), "data.js")
-	parseYCSB(dataDirPath, fPath, fPath)
+var dataDirPaths = []string{dataDirPath, dataSymlinkedDirPath}
 
-	// Confirm the two data.js files are now equal.
-	err := filesEqual(dataJSPath, fPath)
-	require.NoError(t, err)
+func TestParseYCSB_FromScratch(t *testing.T) {
+	maybeSkip(t)
+
+	testFn := func(t *testing.T, dataDir string) {
+		// Write out a new data.js file from the input data.
+		fPath := filepath.Join(t.TempDir(), "data.js")
+		parseYCSB(dataDir, fPath, fPath)
+
+		// Confirm the two data.js files are now equal.
+		err := filesEqual(dataJSPath, fPath)
+		require.NoError(t, err)
+	}
+
+	for _, dir := range dataDirPaths {
+		t.Run(dir, func(t *testing.T) {
+			testFn(t, dir)
+		})
+	}
 }
 
 func TestYCSB_Existing(t *testing.T) {
-	// Set up the test directory.
-	testDir := t.TempDir()
-	newDataDir := filepath.Join(testDir, "data")
-	newDataJS := filepath.Join(testDir, "data.js")
+	maybeSkip(t)
 
-	// Copy all files into the test dir excluding one day.
-	err := copyDir(dataDirPath, newDataDir)
-	require.NoError(t, err)
-	err = os.RemoveAll(filepath.Join(newDataDir, "20211027"))
-	require.NoError(t, err)
+	testFn := func(t *testing.T, dataDir string) {
+		// Set up the test directory.
+		testDir := t.TempDir()
+		newDataDir := filepath.Join(testDir, "data")
+		newDataJS := filepath.Join(testDir, "data.js")
 
-	// Construct the data.js file on the test data with a single day removed.
-	parseYCSB(newDataDir, newDataJS, newDataJS)
+		// Copy all files into the test dir excluding one day.
+		err := copyDir(dataDir, newDataDir)
+		require.NoError(t, err)
+		err = os.RemoveAll(filepath.Join(newDataDir, "20211027"))
+		require.NoError(t, err)
 
-	// Confirm the two data.js files are not equal.
-	err = filesEqual(dataJSPath, newDataJS)
-	require.Error(t, err)
+		// Construct the data.js file on the test data with a single day removed.
+		parseYCSB(newDataDir, newDataJS, newDataJS)
 
-	// Re-construct the data.js file with the full set of data.
-	parseYCSB(dataDirPath, dataJSPath, newDataJS)
+		// Confirm the two data.js files are not equal.
+		err = filesEqual(dataJSPath, newDataJS)
+		require.Error(t, err)
 
-	// Confirm the two data.js files are now equal.
-	err = filesEqual(dataJSPath, newDataJS)
-	require.NoError(t, err)
+		// Re-construct the data.js file with the full set of data.
+		parseYCSB(dataDir, dataJSPath, newDataJS)
+
+		// Confirm the two data.js files are now equal.
+		err = filesEqual(dataJSPath, newDataJS)
+		require.NoError(t, err)
+	}
+
+	for _, dir := range dataDirPaths {
+		t.Run(dir, func(t *testing.T) {
+			testFn(t, dir)
+		})
+	}
 }

@@ -16,7 +16,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -148,30 +147,10 @@ func (l *ycsbLoader) loadCooked(path string) {
 }
 
 func (l *ycsbLoader) loadRaw(dir string) {
-	var walkFn filepath.WalkFunc
-	walkFn = func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info == nil {
-			return nil
-		}
-		if !info.Mode().IsRegular() && !info.Mode().IsDir() {
-			info, err = os.Stat(path)
-			if err == nil && info.Mode().IsDir() {
-				_ = filepath.Walk(path+string(os.PathSeparator), walkFn)
-			}
-			return nil
-		}
-
-		rel, err := filepath.Rel(dir, path)
-		if err != nil {
-			return err
-		}
-
+	walkFn := func(path, pathRel string, info os.FileInfo) error {
 		// The directory structure is of the form:
 		//   $date/pebble/ycsb/$name/$run/$file
-		parts := strings.Split(rel, string(os.PathSeparator))
+		parts := strings.Split(pathRel, string(os.PathSeparator))
 		if len(parts) < 6 {
 			return nil // stumble forward on invalid paths
 		}
@@ -230,7 +209,7 @@ func (l *ycsbLoader) loadRaw(dir string) {
 		return nil
 	}
 
-	_ = filepath.Walk(dir, walkFn)
+	_ = walkDir(dir, walkFn)
 }
 
 func (l *ycsbLoader) cook(path string) {
