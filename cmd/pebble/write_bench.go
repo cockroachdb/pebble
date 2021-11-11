@@ -16,6 +16,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// The following constants match the values that Cockroach uses in Admission
+// Control at the time of writing.
+// See: https://github.com/cockroachdb/cockroach/blob/8f24d350aef508e14b74546fc5f24f52a51548d9/pkg/util/admission/granter.go#L790-L804
+const (
+	defaultL0FileLimit     = 1_000
+	defaultL0SubLevelLimit = 10
+)
+
 var writeBenchConfig struct {
 	batch              *randvar.Flag
 	keys               string
@@ -105,10 +113,10 @@ func initWriteBench(cmd *cobra.Command) {
 		30*time.Second, "time to pause write load after a failure")
 	cmd.Flags().IntVar(
 		&writeBenchConfig.targetL0Files, "l0-files",
-		1000, "target L0 file count")
+		defaultL0FileLimit, "target L0 file count")
 	cmd.Flags().IntVar(
 		&writeBenchConfig.targetL0SubLevels, "l0-sublevels",
-		20, "target L0 sublevel count")
+		defaultL0SubLevelLimit, "target L0 sublevel count")
 	cmd.Flags().BoolVarP(
 		&wipe, "wipe", "w", false, "wipe the database before starting")
 	cmd.Flags().Float64Var(
