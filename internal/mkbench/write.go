@@ -288,6 +288,11 @@ type writeWorkload struct {
 // map from day to writeRun.
 type writeWorkloads map[string]*writeWorkload
 
+// nameDay is a (name, day) tuple, used as a map key.
+type nameDay struct {
+	name, day string
+}
+
 type writeLoader struct {
 	// rootDir is the path to the root directory containing the data.
 	dataDir string
@@ -298,10 +303,9 @@ type writeLoader struct {
 	// workloads is a map from workload name to its corresponding data.
 	workloads writeWorkloads
 
-	// cookedMap is a "multi-set" of workload name to day to boolean
-	// representing whether previously parsed data was present for the
-	// (workload, day).
-	cookedMap map[string]map[string]bool
+	// cooked is a "set" of (workload, day) tuples representing whether
+	// previously parsed data was present for the (workload, day).
+	cooked map[nameDay]bool
 
 	// cookedSummaries is a map from workload name to previously generated data
 	// for the workload. This data is "mixed-in" with new data when the summary
@@ -316,7 +320,7 @@ func newWriteLoader(dataDir, summaryDir string) *writeLoader {
 		dataDir:         dataDir,
 		summaryDir:      summaryDir,
 		workloads:       make(writeWorkloads),
-		cookedMap:       make(map[string]map[string]bool),
+		cooked:          make(map[nameDay]bool),
 		cookedSummaries: make(map[string]writeWorkloadSummary),
 	}
 }
@@ -343,16 +347,10 @@ func (l *writeLoader) loadCooked() error {
 	// Populate the cooked map.
 	l.cookedSummaries = summaries
 
-	// Populate the multi-map used for determining whether we can skip a raw
-	// file.
+	// Populate the set used for determining whether we can skip a raw file.
 	for name, workloadSummary := range summaries {
-		m, ok := l.cookedMap[name]
-		if !ok {
-			m = make(map[string]bool)
-			l.cookedMap[name] = m
-		}
 		for _, runSummary := range workloadSummary {
-			m[runSummary.Date] = true
+			l.cooked[nameDay{name, runSummary.Date}] = true
 		}
 	}
 
@@ -373,17 +371,7 @@ func (l *writeLoader) loadRaw() error {
 		if parts[2] != "write" {
 			return nil
 		}
-		day, name := parts[0], parts[3]
-
-		// Skip days that have been parsed previously. Note that this relies on
-		// loadCooked having been called previously to seed the map with cooked
-		// data.
-		if m, ok := l.cookedMap[name]; ok {
-			_, _ = fmt.Fprintf(os.Stderr, "skipping previously cooked file %s\n", pathRel)
-			if m[day] {
-				return nil
-			}
-		}
+		day := parts[0]
 
 		f, err := os.Open(path)
 		if err != nil {
@@ -407,6 +395,7 @@ func (l *writeLoader) loadRaw() error {
 		// Parse the data for this file and add to the appropriate workload.
 		s := bufio.NewScanner(rd)
 		r := rawWriteRun{}
+		var name string
 		for s.Scan() {
 			line := s.Text()
 			if !strings.HasPrefix(line, "BenchmarkRaw") {
@@ -414,13 +403,33 @@ func (l *writeLoader) loadRaw() error {
 			}
 
 			var p writePoint
-			var name, elapsed string
+			var nameInner, elapsed string
 			n, err := fmt.Sscanf(line, rawRunFmt,
-				&name, &p.opsSec, &p.passed, &elapsed, &p.size, &p.levels)
+				&nameInner, &p.opsSec, &p.passed, &elapsed, &p.size, &p.levels)
 			if err != nil || n != 6 {
 				// Stumble forward on error.
 				_, _ = fmt.Fprintf(os.Stderr, "%s: %v\n", s.Text(), err)
 				continue
+			}
+
+			// The first datapoint we see in the file is assumed to be the same
+			// for all datapoints.
+			if name == "" {
+				name = nameInner
+
+				// Skip files for (workload, day) pairs that have been parsed
+				// previously. Note that this relies on loadCooked having been
+				// called previously to seed the map with cooked data.
+				if ok := l.cooked[nameDay{name, day}]; ok {
+					_, _ = fmt.Fprintf(os.Stderr,
+						"skipping previously cooked data in file %s (workload=%q, day=%q)\n",
+						pathRel, name, day)
+					return nil
+				}
+			} else if name != nameInner {
+				_, _ = fmt.Fprintf(os.Stderr,
+					"WARN: benchmark name %q differs from previously seen name %q: %s",
+					nameInner, name, s.Text())
 			}
 
 			// Convert the elapsed time into seconds.
@@ -454,7 +463,7 @@ func (l *writeLoader) addRawRun(name, day, path string, raw rawWriteRun) {
 	}
 
 	_, _ = fmt.Fprintf(
-		os.Stderr, "%s: adding raw run: day=%s; nPoints=%d; file=%s\n",
+		os.Stderr, "adding raw run: (workload=%q, day=%q); nPoints=%d; file=%s\n",
 		name, day, len(raw.points), path)
 
 	w := l.workloads[name]
