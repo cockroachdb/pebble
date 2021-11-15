@@ -89,6 +89,16 @@ svg.chart {
     height: 200px;
 }
 
+.write-throughput {
+    flex: 50%;
+    height: 300px;
+}
+
+.write-throughput-detail {
+    flex: 50%;
+    height: 300px;
+}
+
 text.hover {
     font-size: 8pt;
     font-weight: bold;
