@@ -362,7 +362,9 @@ function renderChart(chart) {
             }
 
             d3.selectAll(".chart").each(function() {
-                this.updateZoom(t);
+                if (this.updateZoom != null) {
+                    this.updateZoom(t);
+                }
             });
 
             d3.selectAll(".chart").each(function() {
@@ -374,7 +376,7 @@ function renderChart(chart) {
                 mouse[0] -= margin.left; // adjust for rect.mouse position
                 const date = x.invert(mouse[0]);
                 const hover = hoverSeries(mouse);
-                d3.selectAll(".chart").each(function() {
+                d3.selectAll(".chart.ycsb").each(function() {
                     this.updateMouse(mouse, date, hover);
                 });
             }
@@ -491,7 +493,9 @@ function renderChart(chart) {
             }
 
             d3.selectAll(".chart").each(function() {
-                this.updateMouse(mouse, date, hover);
+                if (this.updateMouse != null) {
+                    this.updateMouse(mouse, date, hover);
+                }
             });
         })
         .on("mouseover", function() {
@@ -508,8 +512,8 @@ function renderChart(chart) {
         });
 }
 
-function render() {
-    d3.selectAll(".chart").each(function(d, i) {
+function renderYCSB() {
+    d3.selectAll(".chart.ycsb").each(function(d, i) {
         renderChart(d3.select(this));
     });
 }
@@ -544,6 +548,21 @@ function initData() {
         max.readAmp = Math.max(max.readAmp, max.perChart[key].readAmp);
         max.writeAmp = Math.max(max.writeAmp, max.perChart[key].writeAmp);
     }
+
+    // Load the write-throughput data and merge with the existing data. We
+    // return a promise here to allow us to continue to make progress elsewhere.
+    return new Promise(function (resolve, _) {
+        let req = new XMLHttpRequest();
+        req.open("GET", writeThroughputSummaryURL());
+        req.addEventListener("load", function () {
+            let wtData = JSON.parse(req.responseText);
+            for (let key in wtData) {
+                data[key] = wtData[key];
+            }
+            resolve()
+        });
+        req.send();
+    });
 }
 
 function initDateRange() {
@@ -618,7 +637,7 @@ function toggleDetail(name) {
         setDetail(null);
     }
     setQueryParams();
-    render();
+    renderYCSB();
 }
 
 function toggleLocalMax() {
@@ -627,7 +646,7 @@ function toggleLocalMax() {
     link.classed("selected", selected);
     usePerChartMax = selected;
     setQueryParams();
-    render();
+    renderYCSB();
 }
 
 window.onload = function init() {
@@ -640,27 +659,47 @@ window.onload = function init() {
         link.attr("href", 'javascript:toggleLocalMax()');
     });
 
-    initData();
-    initDateRange();
-    initAnnotations();
-    initQueryParams();
-    render();
+    initData().then(_ => {
+        initDateRange();
+        initAnnotations();
+        initQueryParams();
 
-    let lastUpdate;
-    for (key in data) {
-        const max = d3.max(data[key], d => d.date);
-        if (!lastUpdate || lastUpdate < max) {
-            lastUpdate = max;
+        renderYCSB();
+        renderWriteThroughputSummary(data);
+
+        // Use the max date to bisect into the workload data to pluck out the
+        // correct datapoint.
+        let workloadData = data[writeThroughputWorkload];
+        const bisect = d3.bisector(d => parseTime(d.date)).left;
+        let i = bisect(workloadData, max.date, 1);
+
+        let workload = workloadData[i];
+        let date = workload.date;
+        let name = workload.name;
+        let opsSec = workload.opsSec;
+        let filename = workload.summaryPath;
+
+        fetchWriteThroughputSummaryData(filename)
+            .then(
+              d => renderWriteThroughputSummaryDetail(workload, date, opsSec, d),
+              _ => renderWriteThroughputSummaryDetail(workload, date, opsSec, null),
+            );
+
+        let lastUpdate;
+        for (let key in data) {
+            const max = d3.max(data[key], d => d.date);
+            if (!lastUpdate || lastUpdate < max) {
+                lastUpdate = max;
+            }
         }
-    }
-    d3
-        .selectAll(".updated")
-        .text("Last updated: " + d3.timeFormat("%b %e, %Y")(lastUpdate));
+        d3.selectAll(".updated")
+            .text("Last updated: " + d3.timeFormat("%b %e, %Y")(lastUpdate));
+    })
 };
 
 window.onpopstate = function() {
     initQueryParams();
-    render();
+    renderYCSB();
 };
 
-window.addEventListener("resize", render);
+window.addEventListener("resize", renderYCSB);
