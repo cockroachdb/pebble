@@ -18,7 +18,8 @@ import (
 // TODO(peter): describe the MANIFEST file format, independently of the C++
 // project.
 
-var errCorruptManifest = base.CorruptionErrorf("pebble: corrupt manifest")
+// ErrCorruptManifest indicates that a manifest is corrupted.
+var ErrCorruptManifest = base.CorruptionErrorf("pebble: corrupt manifest")
 
 type byteReader interface {
 	io.ByteReader
@@ -277,7 +278,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			return base.CorruptionErrorf("column families are not supported")
 
 		default:
-			return errCorruptManifest
+			return ErrCorruptManifest
 		}
 	}
 	return nil
@@ -361,7 +362,7 @@ func (d versionEditDecoder) readBytes() ([]byte, error) {
 	_, err = io.ReadFull(d, s)
 	if err != nil {
 		if err == io.ErrUnexpectedEOF {
-			return nil, errCorruptManifest
+			return nil, ErrCorruptManifest
 		}
 		return nil, err
 	}
@@ -374,7 +375,7 @@ func (d versionEditDecoder) readLevel() (int, error) {
 		return 0, err
 	}
 	if u >= NumLevels {
-		return 0, errCorruptManifest
+		return 0, ErrCorruptManifest
 	}
 	return int(u), nil
 }
@@ -391,7 +392,7 @@ func (d versionEditDecoder) readUvarint() (uint64, error) {
 	u, err := binary.ReadUvarint(d)
 	if err != nil {
 		if err == io.EOF {
-			return 0, errCorruptManifest
+			return 0, ErrCorruptManifest
 		}
 		return 0, err
 	}

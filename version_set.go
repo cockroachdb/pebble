@@ -26,6 +26,8 @@ const numLevels = manifest.NumLevels
 
 const manifestMarkerName = `manifest`
 
+var corruptedManifest = manifest.ErrCorruptManifest
+
 // Provide type aliases for the various manifest structs.
 type bulkVersionEdit = manifest.BulkVersionEdit
 type deletedFileEntry = manifest.DeletedFileEntry
@@ -226,7 +228,7 @@ func (vs *versionSet) load(
 		if err != nil {
 			// Break instead of returning an error if the record is corrupted
 			// or invalid.
-			if err == io.EOF || record.IsInvalidRecord(err) {
+			if err == io.EOF || err == corruptedManifest || record.IsInvalidRecord(err) {
 				break
 			}
 			return err
