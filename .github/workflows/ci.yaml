@@ -142,3 +142,17 @@ jobs:
       env:
         GOOS: freebsd
       run: go build -v ./...
+
+  mod-tidy-check:
+    name: mod-tidy-check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: "1.17"
+
+    - name: mod-tidy-check
+      run: make mod-tidy-check
