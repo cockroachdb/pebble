@@ -2,10 +2,15 @@ package sstable
 
 import (
 	"bytes"
+	"encoding/binary"
 	"os"
+	"sync"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/crc"
 )
 
 // RewriteKeySuffixes copies the sstable in the passed reader to out, but with
@@ -13,15 +18,61 @@ import (
 // required that the SST consist of only SETs, and that every key have `from` as
 // its suffix, and furthermore the length of from must match the suffix length
 // designated by the Split() function if one is set in the WriterOptions.
+//
+// If concurrency is zero, a new Writer configured with the passed options is
+// simply passed each key from the Reader, and its result is returned, with the
+// only constraints being that the input SST is entirely SETs and that each has
+// the suffix from. In this implementation, all filters and properties are
+// re-derived just as if the new SST had been constructed from arbitrary
+// external keys.
+//
+// However if concurrency is 1 or more, a specialized implementation is used, in
+// which data blocks are rewritten in parallel by `concurrency` workers and then
+// assembled into a final SST, with filters copied over from the original SST
+// unmodified, and block and table properties are only minimally computed. This
+// is a much cheaper and faster implementation, but its use comes with some
+// limitations:
+//
+// 1) to be able to copy unmodified filters, it is required that the writer's
+// comparer have a Split function and that the replaced suffix of each key not
+// overlap with the prefix determined by it designates (i.e. no part of the key
+// added to the filter is being modified).
+//
+// 2) any block and table property collectors in-use must be able to derive a
+// correct result -- for a block wherein *all keys had and will have the same
+// suffix* -- from a single updated key per block.
+//
+// These requirements are met by the current splitter and property collectors
+// in-use by CockroachDB, where this function is used to set the MVCC-Timestamp
+// suffix of each key during ingestion which is correspondingly designated by
+// Split as outside the prefix, and its current collectors only look at the key
+// suffix, so because every key is being assigned the *same* suffix, being
+// passed any one such key is the same as being passed all the keys for these
+// collectors.
+//
+// However in the future, if this helper needed to support rewriting suffixes in
+// SSTables that made use of other collectors, this approach could be updated to
+// make this less restrictive. Ideally, where possible, the original property
+// should be copied over to the new sstable rather than being recomputed at all,
+// if it is unchanged by the change in the suffix, which could easily be the
+// case depending on the nature of the property. Alternatively if some new
+// collector's value depended on key prefixes, suffixes and values and thus had
+// to be passed every updated k/v pair to compute a correct result, the API for
+// collectors could potentially be extended to include a facility for collecting
+// partial results and aggregating them together.
 func RewriteKeySuffixes(
 	r *Reader,
 	out writeCloseSyncer, o WriterOptions,
 	from, to []byte,
+	concurrency int,
 ) (*WriterMetadata, error) {
-	return iterateReaderIntoWriter(r, out, o, from, to)
+	if concurrency == 0 {
+		return replaceSuffixWithReaderWriterLoop(r, out, o, from, to)
+	}
+	return replaceSuffixInBlocks(r, out, o, from, to, concurrency)
 }
 
-func iterateReaderIntoWriter(
+func replaceSuffixWithReaderWriterLoop(
 	r *Reader, out writeCloseSyncer, o WriterOptions, from, to []byte,
 ) (*WriterMetadata, error) {
 	w := NewWriter(out, o)
@@ -93,3 +144,285 @@ func (sizeOnlyStat) ModTime() time.Time { panic(errors.AssertionFailedf("unimple
 func (sizeOnlyStat) Mode() os.FileMode  { panic(errors.AssertionFailedf("unimplemented")) }
 func (sizeOnlyStat) Name() string       { panic(errors.AssertionFailedf("unimplemented")) }
 func (sizeOnlyStat) Sys() interface{}   { panic(errors.AssertionFailedf("unimplemented")) }
+
+// replaceSuffixInBlocks is described in the comment on RewriteKeySuffixes.
+//
+// TODO(dt): rework block reading to avoid cache.Set contention.
+func replaceSuffixInBlocks(
+	r *Reader, out writeCloseSyncer, o WriterOptions, from, to []byte, concurrency int,
+) (*WriterMetadata, error) {
+	l, err := r.Layout()
+	if err != nil {
+		return nil, errors.Wrap(err, "reading layout")
+	}
+
+	w := NewWriter(out, o)
+
+	if err := rewriteDataBlocksToWriter(r, w, l.Data, from, to, concurrency); err != nil {
+		return nil, errors.Wrap(err, "rewriting data blocks")
+	}
+
+	// Copy over the filter block if it exists (if it does, copyDataBlocks will
+	// already have ensured this is valid).
+	var filterBlock cache.Handle
+	if w.filter != nil {
+		if l.Filter.Length == 0 {
+			return nil, errors.New("input table has no filter")
+		}
+		filterBlock, err = r.readBlock(l.Filter, nil, nil)
+		if err != nil {
+			return nil, errors.Wrap(err, "reading filter")
+		}
+		w.filter = copyFilterWriter{
+			origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filterBlock.Get(),
+		}
+	}
+
+	if err := w.Close(); err != nil {
+		filterBlock.Release()
+		return nil, err
+	}
+	filterBlock.Release()
+
+	return w.Metadata()
+}
+
+var errBadKind = errors.New("key does not have expected kind (set)")
+
+type blockWithSpan struct {
+	start, end InternalKey
+	data       []byte
+}
+
+func asyncRewriteBlocks(
+	r *Reader, restartInterval int, checksumType ChecksumType, compression Compression,
+	input []BlockHandle, output []blockWithSpan,
+	totalWorkers, worker int,
+	from, to []byte,
+	errCh chan error,
+	g *sync.WaitGroup,
+) {
+	err := rewriteBlocks(
+		r, restartInterval, checksumType, compression, input, output, totalWorkers, worker, from, to,
+	)
+	if err != nil {
+		errCh <- err
+	}
+	g.Done()
+}
+
+func rewriteBlocks(
+	r *Reader, restartInterval int, checksumType ChecksumType, compression Compression,
+	input []BlockHandle, output []blockWithSpan,
+	totalWorkers, worker int,
+	from, to []byte,
+) error {
+	bw := blockWriter{
+		restartInterval: restartInterval,
+	}
+	var compressionBuf []byte
+	var xxHasher *xxhash.Digest
+	if checksumType == ChecksumTypeXXHash {
+		xxHasher = xxhash.New()
+	}
+
+	var blockAlloc []byte
+	var keySlab []byte
+	var scratch InternalKey
+	iter := &blockIter{}
+
+	for i := worker; i < len(input); i += totalWorkers {
+		bh := input[i]
+
+		h, err := r.readBlock(bh, nil /* transform */, nil /*rs*/)
+		if err != nil {
+			return err
+		}
+		inputBlock := h.Get()
+		if err := iter.init(r.Compare, inputBlock, r.Properties.GlobalSeqNum); err != nil {
+			h.Release()
+			return err
+		}
+
+		if cap(bw.restarts) < int(iter.restarts) {
+			bw.restarts = make([]uint32, 0, iter.restarts)
+		}
+		if cap(bw.buf) == 0 {
+			bw.buf = make([]byte, 0, len(inputBlock))
+		}
+		if cap(bw.restarts) < int(iter.numRestarts) {
+			bw.restarts = make([]uint32, 0, iter.numRestarts)
+		}
+
+		for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
+			if key.Kind() != InternalKeyKindSet {
+				h.Release()
+				return errBadKind
+			}
+			if !bytes.HasSuffix(iter.Key().UserKey, from) {
+				h.Release()
+				return errors.Errorf("key %q does not have expected suffix %q", iter.Key().UserKey, from)
+			}
+			prefixLen := len(key.UserKey) - len(from)
+			newLen := prefixLen + len(to)
+			if cap(scratch.UserKey) < newLen {
+				scratch.UserKey = make([]byte, 0, len(key.UserKey)*2+len(to)-len(from))
+			}
+
+			scratch.Trailer = key.Trailer
+			scratch.UserKey = scratch.UserKey[:newLen]
+			copy(scratch.UserKey, key.UserKey[:prefixLen])
+			copy(scratch.UserKey[prefixLen:], to)
+
+			bw.add(scratch, iter.Value())
+			if output[i].start.UserKey == nil {
+				keySlab, output[i].start = cloneKeyWithBuf(scratch, keySlab)
+			}
+		}
+		*iter = iter.resetForReuse()
+
+		keySlab, output[i].end = cloneKeyWithBuf(scratch, keySlab)
+		h.Release()
+		b := bw.finish()
+
+		blockType, compressed := compressBlock(compression, b, compressionBuf)
+		if blockType != noCompressionBlockType && cap(compressed) > cap(compressionBuf) {
+			compressionBuf = compressed[:cap(compressed)]
+		}
+
+		if len(compressed) < len(b)-len(b)/8 {
+			b = compressed
+		} else {
+			blockType = noCompressionBlockType
+		}
+
+		sz := len(b) + blockTrailerLen
+		if cap(blockAlloc) < sz {
+			blockAlloc = make([]byte, sz*512)
+		}
+		output[i].data = blockAlloc[:sz:sz]
+		blockAlloc = blockAlloc[sz:]
+		copy(output[i].data, b)
+
+		trailer := output[i].data[len(b):]
+		trailer[0] = byte(blockType)
+
+		// Calculate the checksum.
+		var checksum uint32
+		switch checksumType {
+		case ChecksumTypeCRC32c:
+			checksum = crc.New(b).Update(trailer[:1]).Value()
+		case ChecksumTypeXXHash64:
+			xxHasher.Reset()
+			xxHasher.Write(b)
+			xxHasher.Write(trailer[:1])
+			checksum = uint32(xxHasher.Sum64())
+		default:
+			return errors.Newf("unsupported checksum type: %d", checksumType)
+		}
+		binary.LittleEndian.PutUint32(trailer[1:5], checksum)
+	}
+	return nil
+}
+
+func rewriteDataBlocksToWriter(r *Reader, w *Writer, data []BlockHandle, from, to []byte, concurrency int) error {
+	blocks := make([]blockWithSpan, len(data))
+
+	if w.filter != nil {
+		if r.Properties.FilterPolicyName != w.filter.policyName() {
+			return errors.New("mismatched filters")
+		}
+		if w.split == nil {
+			return errors.New("no splitter, cannot copy filters")
+		}
+		if was, is := r.Properties.ComparerName, w.props.ComparerName; was != is {
+			return errors.Errorf("mismatched Comparer %s vs %s, replacement requires same splitter to copy filters", was, is)
+		}
+	}
+
+	g := &sync.WaitGroup{}
+	g.Add(concurrency)
+	errCh := make(chan error, concurrency)
+	for i := 0; i < concurrency; i++ {
+		worker := i
+		go asyncRewriteBlocks(
+			r, w.block.restartInterval, w.checksumType, w.compression, data, blocks, concurrency, worker, from, to, errCh, g,
+		)
+	}
+	g.Wait()
+	close(errCh)
+	if err, ok := <-errCh; ok {
+		return err
+	}
+
+	if w.split != nil {
+		if len(blocks[0].start.UserKey)-w.split(blocks[0].start.UserKey) != len(from) {
+			return errors.New("cannot replace outside split suffix")
+		}
+	}
+
+	for _, p := range w.propCollectors {
+		// TODO(dt): we're not passing value here. Perhaps we should have a separate
+		// method in the interface like AddSingleExampleKeyForTable(key) that an
+		// impl could choose to implement or not?
+		if err := p.Add(blocks[0].start, nil); err != nil {
+			return err
+		}
+	}
+
+	for i := range blocks {
+		// Write the rewritten block to the file.
+		n, err := w.writer.Write(blocks[i].data)
+		if err != nil {
+			return err
+		}
+
+		bh := BlockHandle{Offset: w.meta.Size, Length: uint64(n) - blockTrailerLen}
+		// Update the overall size.
+		w.meta.Size += uint64(n)
+
+		// Pass each block property collector the first key from the block, so that
+		// it can collect any properties for the block. This assumes that it'd
+		// collect the same property from this one key that it'd collect if passed
+		// all keys in the block.
+		// TODO(dt): perhaps we should add a method to the collector interface like
+		// AddExampleForBlock so that implementations can decide if they are okay
+		// with this? also ditto above, no value here.
+		for _, p := range w.blockPropCollectors {
+			if err := p.Add(blocks[i].start, nil); err != nil {
+				return err
+			}
+		}
+
+		var bhp BlockHandleWithProperties
+		if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
+			return err
+		}
+		var nextKey InternalKey
+		if i+1 < len(blocks) {
+			nextKey = blocks[i+1].start
+		}
+		if err = w.addIndexEntry(blocks[i].end, nextKey, bhp); err != nil {
+			return err
+		}
+	}
+
+	w.meta.updateSeqNum(blocks[0].start.SeqNum())
+	w.props.NumEntries = r.Properties.NumEntries
+	w.props.RawKeySize = r.Properties.RawKeySize
+	w.props.RawValueSize = r.Properties.RawValueSize
+	w.meta.SmallestPoint = blocks[0].start
+	w.meta.LargestPoint = blocks[len(blocks)-1].end
+	return nil
+}
+
+type copyFilterWriter struct {
+	origMetaName   string
+	origPolicyName string
+	data           []byte
+}
+
+func (copyFilterWriter) addKey(key []byte)         { panic("unimplemented") }
+func (c copyFilterWriter) finish() ([]byte, error) { return c.data, nil }
+func (c copyFilterWriter) metaName() string        { return c.origMetaName }
+func (c copyFilterWriter) policyName() string      { return c.origPolicyName }
