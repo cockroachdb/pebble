@@ -280,3 +280,51 @@ func runIterCmd(td *datadriven.TestData, r *Reader) string {
 	}
 	return b.String()
 }
+
+func runRewriteCmd(
+	td *datadriven.TestData, r *Reader, writerOpts WriterOptions,
+) (*WriterMetadata, *Reader, error) {
+	var from, to []byte
+	concurrency := 1
+	for _, arg := range td.CmdArgs {
+		switch arg.Key {
+		case "from":
+			from = []byte(arg.Vals[0])
+		case "to":
+			to = []byte(arg.Vals[0])
+		case "concurrency":
+			i, err := strconv.Atoi(arg.Vals[0])
+			if err != nil {
+				return nil, r, err
+			}
+			concurrency = i
+		}
+	}
+	if from == nil || to == nil {
+		return nil, r, errors.New("missing from/to")
+	}
+
+	opts := writerOpts
+	if err := optsFromArgs(td, &opts); err != nil {
+		return nil, r, err
+	}
+
+	f := &memFile{}
+	meta, err := RewriteKeySuffixes(r, f, opts, from, to, concurrency)
+	if err != nil {
+		return nil, r, errors.Wrap(err, "rewrite failed")
+	}
+	readerOpts := ReaderOptions{Comparer: opts.Comparer}
+	if opts.FilterPolicy != nil {
+		readerOpts.Filters = map[string]FilterPolicy{
+			opts.FilterPolicy.Name(): opts.FilterPolicy,
+		}
+	}
+	r.Close()
+
+	r, err = NewReader(vfs.NewMemFile(f.Data()), readerOpts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return meta, r, nil
+}
