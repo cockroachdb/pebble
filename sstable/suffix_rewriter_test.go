@@ -89,11 +89,22 @@ func BenchmarkRewriteSST(b *testing.B) {
 						stat, _ := r.file.Stat()
 						b.SetBytes(stat.Size())
 						for i := 0; i < b.N; i++ {
-							if _, err := iterateReaderIntoWriter(r, &discardFile{}, writerOpts, []byte("_123"), []byte("_456")); err != nil {
+							if _, err := RewriteKeySuffixesViaWriter(r, &discardFile{}, writerOpts, []byte("_123"), []byte("_456")); err != nil {
 								b.Fatal(err)
 							}
 						}
 					})
+					for _, concurrency := range []int{1, 2, 4, 8, 16} {
+						b.Run(fmt.Sprintf("RewriteKeySuffixes,concurrency=%d", concurrency), func(b *testing.B) {
+							stat, _ := r.file.Stat()
+							b.SetBytes(stat.Size())
+							for i := 0; i < b.N; i++ {
+								if _, err := RewriteKeySuffixes(r, &discardFile{}, writerOpts, []byte("_123"), []byte("_456"), concurrency); err != nil {
+									b.Fatal(err)
+								}
+							}
+						})
+					}
 				})
 			}
 		})
