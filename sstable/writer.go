@@ -397,7 +397,8 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 	if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
 		return err
 	}
-	if err = w.addIndexEntry(key, bhp); err != nil {
+	prevKey := base.DecodeInternalKey(w.block.curKey)
+	if err = w.addIndexEntry(prevKey, key, bhp); err != nil {
 		return err
 	}
 	return nil
@@ -427,13 +428,12 @@ func (w *Writer) maybeAddBlockPropertiesToBlockHandle(
 }
 
 // addIndexEntry adds an index entry for the specified key and block handle.
-func (w *Writer) addIndexEntry(key InternalKey, bhp BlockHandleWithProperties) error {
+func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProperties) error {
 	if bhp.Length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
 		return nil
 	}
-	prevKey := base.DecodeInternalKey(w.block.curKey)
 	var sep InternalKey
 	if key.UserKey == nil && key.Trailer == 0 {
 		if len(w.keyAlloc) < len(prevKey.UserKey) {
@@ -661,7 +661,8 @@ func (w *Writer) Close() (err error) {
 		if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
 			return err
 		}
-		if err = w.addIndexEntry(InternalKey{}, bhp); err != nil {
+		prevKey := base.DecodeInternalKey(w.block.curKey)
+		if err = w.addIndexEntry(prevKey, InternalKey{}, bhp); err != nil {
 			return err
 		}
 	}
