@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -15,13 +16,14 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/rand"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 var testKeyValuePairs = []string{
@@ -424,7 +426,47 @@ func testIterator(
 	}
 }
 
+// deletableSumValueMerger computes the sum of its arguments,
+// but transforms a zero sum into a non-existent entry.
+type deletableSumValueMerger struct {
+	sum int64
+}
+
+func newDeletableSumValueMerger(key, value []byte) (ValueMerger, error) {
+	m := &deletableSumValueMerger{}
+	return m, m.MergeNewer(value)
+}
+
+func (m *deletableSumValueMerger) parseAndCalculate(value []byte) error {
+	v, err := strconv.ParseInt(string(value), 10, 64)
+	if err == nil {
+		m.sum += v
+	}
+	return err
+}
+
+func (m *deletableSumValueMerger) MergeNewer(value []byte) error {
+	return m.parseAndCalculate(value)
+}
+
+func (m *deletableSumValueMerger) MergeOlder(value []byte) error {
+	return m.parseAndCalculate(value)
+}
+
+func (m *deletableSumValueMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
+	if m.sum == 0 {
+		return nil, nil, nil
+	}
+	return []byte(strconv.FormatInt(m.sum, 10)), nil, nil
+}
+
+func (m *deletableSumValueMerger) DeletableFinish(includesBase bool) ([]byte, bool, io.Closer, error) {
+	value, closer, err := m.Finish(includesBase)
+	return value, len(value) == 0, closer, err
+}
+
 func TestIterator(t *testing.T) {
+	var merge Merge
 	var keys []InternalKey
 	var vals [][]byte
 
@@ -443,12 +485,21 @@ func TestIterator(t *testing.T) {
 		iter.elideRangeTombstones = true
 		// NB: This Iterator cannot be cloned since it is not constructed
 		// with a readState. It suffices for this test.
+		if merge == nil {
+			merge = DefaultMerger.Merge
+		}
+		wrappedMerge := func(key, value []byte) (ValueMerger, error) {
+			if len(key) == 0 {
+				t.Fatalf("an empty key is passed into Merge")
+			}
+			return merge(key, value)
+		}
 		return &Iterator{
 			opts:  opts,
 			cmp:   cmp,
 			equal: equal,
 			split: split,
-			merge: DefaultMerger.Merge,
+			merge: wrappedMerge,
 			iter:  newInvalidatingIter(iter),
 		}
 	}
@@ -456,6 +507,11 @@ func TestIterator(t *testing.T) {
 	datadriven.RunTest(t, "testdata/iterator", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
+			merge = nil
+			if len(d.CmdArgs) > 0 && d.CmdArgs[0].Key == "merger" &&
+				len(d.CmdArgs[0].Vals) > 0 && d.CmdArgs[0].Vals[0] == "deletable" {
+				merge = newDeletableSumValueMerger
+			}
 			keys = keys[:0]
 			vals = vals[:0]
 			for _, key := range strings.Split(d.Input, "\n") {
@@ -562,7 +618,7 @@ func TestReadSampling(t *testing.T) {
 
 			d.mu.Lock()
 			// Disable the "dynamic base level" code for this test.
-			//d.mu.versions.picker.forceBaseLevel1()
+			// d.mu.versions.picker.forceBaseLevel1()
 			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 			d.mu.Unlock()
 			return s
@@ -585,7 +641,6 @@ func TestReadSampling(t *testing.T) {
 					if err != nil {
 						return err.Error()
 					}
-
 				}
 			}
 
@@ -693,7 +748,6 @@ func TestReadSampling(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
-
 }
 
 func TestIteratorTableFilter(t *testing.T) {
@@ -1000,19 +1054,19 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 }
 
 type testBlockIntervalCollector struct {
-	numLength int
+	numLength     int
 	offsetFromEnd int
-	initialized bool
-	lower, upper uint64
+	initialized   bool
+	lower, upper  uint64
 }
 
 func (bi *testBlockIntervalCollector) Add(key InternalKey, value []byte) error {
 	k := key.UserKey
-	if len(k) < bi.numLength + bi.offsetFromEnd {
+	if len(k) < bi.numLength+bi.offsetFromEnd {
 		return nil
 	}
-	n := len(k)-bi.offsetFromEnd-bi.numLength
-	val, err := strconv.Atoi(string(k[n:n+bi.numLength]))
+	n := len(k) - bi.offsetFromEnd - bi.numLength
+	val, err := strconv.Atoi(string(k[n : n+bi.numLength]))
 	if err != nil {
 		return err
 	}
@@ -1029,7 +1083,7 @@ func (bi *testBlockIntervalCollector) Add(key InternalKey, value []byte) error {
 		bi.lower = uval
 	}
 	if uval >= bi.upper {
-		bi.upper = uval+1
+		bi.upper = uval + 1
 	}
 	return nil
 }
@@ -1049,7 +1103,7 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 	}()
 
 	type collector struct {
-		id uint16
+		id     uint16
 		offset int
 	}
 	createDB := func(collectors []collector) {
@@ -1070,8 +1124,8 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 			})
 		}
 		opts := &Options{
-			FS: mem,
-			FormatMajorVersion:    FormatNewest,
+			FS:                      mem,
+			FormatMajorVersion:      FormatNewest,
 			BlockPropertyCollectors: bpCollectors,
 		}
 		lo := LevelOptions{BlockSize: 1, IndexBlockSize: 1}
@@ -1198,12 +1252,12 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 		fmt.Printf("seed: %d\n", seed)
 	}
 	rng := rand.New(rand.NewSource(seed))
-	opts.FlushSplitBytes = 1 << rng.Intn(8) // 1B - 256B
+	opts.FlushSplitBytes = 1 << rng.Intn(8)       // 1B - 256B
 	opts.L0CompactionThreshold = 1 << rng.Intn(2) // 1-2
-	opts.LBaseMaxBytes = 1 << rng.Intn(10) // 1B - 1KB
-	opts.MemTableSize = 1 << 10 // 1KB
+	opts.LBaseMaxBytes = 1 << rng.Intn(10)        // 1B - 1KB
+	opts.MemTableSize = 1 << 10                   // 1KB
 	var lopts LevelOptions
-	lopts.BlockSize = 1 << rng.Intn(8) // 1B - 256B
+	lopts.BlockSize = 1 << rng.Intn(8)      // 1B - 256B
 	lopts.IndexBlockSize = 1 << rng.Intn(8) // 1B - 256B
 	opts.Levels = []LevelOptions{lopts}
 
@@ -1220,7 +1274,7 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 	}
 	n := 2000
 	for i := 0; i < n; i++ {
-		key, suffix := randKey(20 + rng.Intn(5), rng)
+		key, suffix := randKey(20+rng.Intn(5), rng)
 		value := randValue(50, rng)
 		if lower <= suffix && suffix < upper {
 			matchingKeyValues[string(key)] = string(value)
@@ -1511,7 +1565,7 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 				require.NoError(b, d.Close())
 			}()
 			batch := d.NewBatch()
-			const numKeys = 20*1000
+			const numKeys = 20 * 1000
 			const valueSize = 1000
 			for i := 0; i < numKeys; i++ {
 				key := fmt.Sprintf("%06d%03d", i, i%matchInterval)
@@ -1543,7 +1597,6 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 					require.NoError(b, iter.Close())
 				})
 			}
-
 		})
 	}
 }

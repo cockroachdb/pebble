@@ -11,11 +11,12 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/redact"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/fastrand"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/redact"
 )
 
 // iterPos describes the state of the internal iterator, in terms of whether it is
@@ -211,12 +212,8 @@ func (i *Iterator) findNextEntry(limit []byte) {
 	i.pos = iterPosCurForward
 
 	// Close the closer for the current value if one was open.
-	if i.valueCloser != nil {
-		i.err = i.valueCloser.Close()
-		i.valueCloser = nil
-		if i.err != nil {
-			return
-		}
+	if i.closeValueCloser() != nil {
+		return
 	}
 
 	for i.iterKey != nil {
@@ -254,12 +251,23 @@ func (i *Iterator) findNextEntry(limit []byte) {
 
 		case InternalKeyKindMerge:
 			var valueMerger ValueMerger
-			valueMerger, i.err = i.merge(i.key, i.iterValue)
+			valueMerger, i.err = i.merge(key.UserKey, i.iterValue)
 			if i.err == nil {
 				i.mergeNext(key, valueMerger)
 			}
 			if i.err == nil {
-				i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
+				var needDelete bool
+				i.value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, true /* includesBase */)
+				if i.err == nil && needDelete {
+					i.iterValidityState = IterExhausted
+					if i.pos != iterPosNext {
+						i.nextUserKey()
+					}
+					if i.closeValueCloser() == nil {
+						i.pos = iterPosCurForward
+						continue
+					}
+				}
 			} else {
 				// mergeNext may have been called, which can set
 				// i.iterValidityState=IterValid.
@@ -273,6 +281,14 @@ func (i *Iterator) findNextEntry(limit []byte) {
 			return
 		}
 	}
+}
+
+func (i *Iterator) closeValueCloser() error {
+	if i.valueCloser != nil {
+		i.err = i.valueCloser.Close()
+		i.valueCloser = nil
+	}
+	return i.err
 }
 
 func (i *Iterator) nextUserKey() {
@@ -435,7 +451,15 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 				// We've iterated to the previous user key.
 				i.pos = iterPosPrev
 				if valueMerger != nil {
-					i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
+					var needDelete bool
+					i.value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, true /* includesBase */)
+					if i.err == nil && needDelete {
+						i.value = nil
+						i.iterValidityState = IterExhausted
+						if i.closeValueCloser() == nil {
+							continue
+						}
+					}
 				}
 				if i.err != nil {
 					i.iterValidityState = IterExhausted
@@ -522,7 +546,13 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 	if i.iterValidityState == IterValid {
 		i.pos = iterPosPrev
 		if valueMerger != nil {
-			i.value, i.valueCloser, i.err = valueMerger.Finish(true /* includesBase */)
+			var needDelete bool
+			i.value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, true /* includesBase */)
+			if i.err == nil && needDelete {
+				i.key = nil
+				i.value = nil
+				i.iterValidityState = IterExhausted
+			}
 		}
 		if i.err != nil {
 			i.iterValidityState = IterExhausted
