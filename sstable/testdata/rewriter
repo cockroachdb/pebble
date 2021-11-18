@@ -8,13 +8,13 @@ rangedel: [#0,0,#0,0]
 rangekey: [#0,0,#0,0]
 seqnums:  [1,1]
 
-# rewrite from=xyz to=123 block-size=1 index-block-size=1 filter
-# ----
-# rewrite failed: rewriting data blocks: no splitter, cannot copy filters
+rewrite from=xyz to=123 block-size=1 index-block-size=1 filter
+----
+rewrite failed: rewriting data blocks: no splitter, cannot copy filters
 
-# rewrite from=xyz to=123 block-size=1 index-block-size=1 filter comparer-split-4b-suffix
-# ----
-# rewrite failed: rewriting data blocks: mismatched Comparer leveldb.BytewiseComparator vs comparer-split-4b-suffix, replacement requires same splitter to copy filters
+rewrite from=xyz to=123 block-size=1 index-block-size=1 filter comparer-split-4b-suffix
+----
+rewrite failed: rewriting data blocks: mismatched Comparer leveldb.BytewiseComparator vs comparer-split-4b-suffix, replacement requires same splitter to copy filters
 
 build block-size=1 index-block-size=1 filter comparer-split-4b-suffix
 aa_xyz.SET.1:a
@@ -28,11 +28,11 @@ seqnums:  [1,1]
 
 rewrite from=yz to=23 block-size=1 index-block-size=1 filter comparer-split-4b-suffix
 ----
-rewrite failed: mismatched replacement (2) vs Split (4) suffix
+rewrite failed: rewriting data blocks: cannot replace outside split suffix
 
 rewrite from=a_xyz to=a_123 block-size=1 index-block-size=1 filter comparer-split-4b-suffix
 ----
-rewrite failed: mismatched replacement (5) vs Split (4) suffix
+rewrite failed: rewriting data blocks: cannot replace outside split suffix
 
 build block-size=1 index-block-size=1 filter comparer-split-4b-suffix
 a_xyz.SET.1:a
