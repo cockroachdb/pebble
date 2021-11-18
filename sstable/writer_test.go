@@ -21,6 +21,14 @@ import (
 )
 
 func TestWriter(t *testing.T) {
+	runDataDriven(t, "testdata/writer")
+}
+
+func TestRewriter(t *testing.T) {
+	runDataDriven(t, "testdata/rewriter")
+}
+
+func runDataDriven(t *testing.T, file string) {
 	var r *Reader
 	defer func() {
 		if r != nil {
@@ -28,7 +36,7 @@ func TestWriter(t *testing.T) {
 		}
 	}()
 
-	datadriven.RunTest(t, "testdata/writer", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, file, func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
 			if r != nil {
@@ -120,6 +128,21 @@ func TestWriter(t *testing.T) {
 			var buf bytes.Buffer
 			l.Describe(&buf, verbose, r, nil)
 			return buf.String()
+
+		case "rewrite":
+			var meta *WriterMetadata
+			var err error
+			meta, r, err = runRewriteCmd(td, r, WriterOptions{})
+			if err != nil {
+				return err.Error()
+			}
+			if err != nil {
+				return err.Error()
+			}
+			return fmt.Sprintf("point:   [%s,%s]\nrange:   [%s,%s]\nseqnums: [%d,%d]\n",
+				meta.SmallestPoint, meta.LargestPoint,
+				meta.SmallestRange, meta.LargestRange,
+				meta.SmallestSeqNum, meta.LargestSeqNum)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
