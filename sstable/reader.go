@@ -319,6 +319,12 @@ func (i *singleLevelIterator) initBounds() {
 	}
 }
 
+var noSkip = skipPrefix{}
+
+type skipPrefix struct {
+	skip bool
+}
+
 type loadBlockResult int8
 
 const (
@@ -331,7 +337,7 @@ const (
 // loadBlock loads the block at the current index position and leaves i.data
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.
-func (i *singleLevelIterator) loadBlock() loadBlockResult {
+func (i *singleLevelIterator) loadBlock(skipState skipPrefix) loadBlockResult {
 	// Ensure the data block iterator is invalidated even if loading of the block
 	// fails.
 	i.data.invalidate()
@@ -353,6 +359,16 @@ func (i *singleLevelIterator) loadBlock() loadBlockResult {
 			return loadBlockFailed
 		}
 		if !intersects {
+			return loadBlockIrrelevant
+		}
+	}
+	if skipState.skip {
+		prefixChange, err := extractPrefixChange(*i.reader.prefixShortID, bhp.Props)
+		if err != nil {
+			i.err = errCorruptIndexEntry
+			return loadBlockFailed
+		}
+		if !prefixChange {
 			return loadBlockIrrelevant
 		}
 	}
@@ -531,7 +547,7 @@ func (i *singleLevelIterator) seekGEHelper(
 			i.data.invalidate()
 			return nil, nil
 		}
-		result := i.loadBlock()
+		result := i.loadBlock(noSkip)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -558,7 +574,7 @@ func (i *singleLevelIterator) seekGEHelper(
 			return ikey, val
 		}
 	}
-	return i.skipForward()
+	return i.skipForward(noSkip)
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -661,7 +677,7 @@ func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 			}
 		}
 		// INVARIANT: ikey != nil.
-		result := i.loadBlock()
+		result := i.loadBlock(noSkip)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -729,7 +745,7 @@ func (i *singleLevelIterator) firstInternal() (*InternalKey, []byte) {
 		i.data.invalidate()
 		return nil, nil
 	}
-	result := i.loadBlock()
+	result := i.loadBlock(noSkip)
 	if result == loadBlockFailed {
 		return nil, nil
 	}
@@ -756,7 +772,7 @@ func (i *singleLevelIterator) firstInternal() (*InternalKey, []byte) {
 		// Else fall through to skipForward.
 	}
 
-	return i.skipForward()
+	return i.skipForward(noSkip)
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -786,7 +802,7 @@ func (i *singleLevelIterator) lastInternal() (*InternalKey, []byte) {
 		i.data.invalidate()
 		return nil, nil
 	}
-	result := i.loadBlock()
+	result := i.loadBlock(noSkip)
 	if result == loadBlockFailed {
 		return nil, nil
 	}
@@ -836,7 +852,32 @@ func (i *singleLevelIterator) Next() (*InternalKey, []byte) {
 		}
 		return key, val
 	}
-	return i.skipForward()
+	return i.skipForward(noSkip)
+}
+
+// NextPrefix ...
+func (i *singleLevelIterator) NextPrefix() (*InternalKey, []byte) {
+	if i.exhaustedBounds == +1 {
+		panic("Next called even though exhausted upper bound")
+	}
+	i.exhaustedBounds = 0
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.boundsCmp = 0
+
+	if i.err != nil {
+		return nil, nil
+	}
+	if key, val := i.data.NextPrefix(); key != nil {
+		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
+			i.exhaustedBounds = +1
+			return nil, nil
+		}
+		return key, val
+	}
+
+	// We need to skip forward. We might be able to skip whole blocks with this
+	// prefix if they encode that they contain no prefix change.
+	return i.skipForward(skipPrefix{skip: true})
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -862,14 +903,18 @@ func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
 	return i.skipBackward()
 }
 
-func (i *singleLevelIterator) skipForward() (*InternalKey, []byte) {
+func (i *singleLevelIterator) PrevPrefix() (*InternalKey, []byte) {
+	return i.Prev()
+}
+
+func (i *singleLevelIterator) skipForward(skipState skipPrefix) (*InternalKey, []byte) {
 	for {
 		var key *InternalKey
 		if key, _ = i.index.Next(); key == nil {
 			i.data.invalidate()
 			break
 		}
-		result := i.loadBlock()
+		result := i.loadBlock(skipState)
 		if result != loadBlockOK {
 			if i.err != nil {
 				break
@@ -910,7 +955,7 @@ func (i *singleLevelIterator) skipBackward() (*InternalKey, []byte) {
 			i.data.invalidate()
 			break
 		}
-		result := i.loadBlock()
+		result := i.loadBlock(noSkip)
 		if result != loadBlockOK {
 			if i.err != nil {
 				break
@@ -1083,7 +1128,7 @@ func (i *compactionIterator) skipForward(key *InternalKey, val []byte) (*Interna
 			if key, _ := i.index.Next(); key == nil {
 				break
 			}
-			result := i.loadBlock()
+			result := i.loadBlock(noSkip)
 			if result != loadBlockOK {
 				if i.err != nil {
 					break
@@ -1125,7 +1170,7 @@ var _ base.InternalIterator = (*twoLevelIterator)(nil)
 // leaves i.index unpositioned. If unsuccessful, it gets i.err to any error
 // encountered, which may be nil if we have simply exhausted the entire table.
 // This is used for two level indexes.
-func (i *twoLevelIterator) loadIndex() loadBlockResult {
+func (i *twoLevelIterator) loadIndex(skipState skipPrefix) loadBlockResult {
 	// Ensure the data block iterator is invalidated even if loading of the
 	// index fails.
 	i.data.invalidate()
@@ -1146,6 +1191,16 @@ func (i *twoLevelIterator) loadIndex() loadBlockResult {
 			return loadBlockFailed
 		}
 		if !intersects {
+			return loadBlockIrrelevant
+		}
+	}
+	if skipState.skip {
+		prefixChange, err := extractPrefixChange(*i.reader.prefixShortID, bhp.Props)
+		if err != nil {
+			i.err = errCorruptIndexEntry
+			return loadBlockFailed
+		}
+		if !prefixChange {
 			return loadBlockIrrelevant
 		}
 	}
@@ -1209,7 +1264,7 @@ func (i *twoLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 			return nil, nil
 		}
 
-		result := i.loadIndex()
+		result := i.loadIndex(noSkip)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -1241,7 +1296,7 @@ func (i *twoLevelIterator) SeekGE(key []byte) (*InternalKey, []byte) {
 			return ikey, val
 		}
 	}
-	return i.skipForward()
+	return i.skipForward(noSkip)
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -1302,7 +1357,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 			return nil, nil
 		}
 
-		result := i.loadIndex()
+		result := i.loadIndex(noSkip)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -1336,7 +1391,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 		}
 	}
 	// NB: skipForward checks whether exhaustedBounds is already +1.
-	return i.skipForward()
+	return i.skipForward(noSkip)
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
@@ -1361,7 +1416,7 @@ func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 			return nil, nil
 		}
 
-		result = i.loadIndex()
+		result = i.loadIndex(noSkip)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -1375,7 +1430,7 @@ func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 		}
 		// Else loadBlockIrrelevant, so fall through.
 	} else {
-		result = i.loadIndex()
+		result = i.loadIndex(noSkip)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -1421,7 +1476,7 @@ func (i *twoLevelIterator) First() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	result := i.loadIndex()
+	result := i.loadIndex(noSkip)
 	if result == loadBlockFailed {
 		return nil, nil
 	}
@@ -1442,7 +1497,7 @@ func (i *twoLevelIterator) First() (*InternalKey, []byte) {
 		}
 	}
 	// NB: skipForward checks whether exhaustedBounds is already +1.
-	return i.skipForward()
+	return i.skipForward(noSkip)
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -1463,7 +1518,7 @@ func (i *twoLevelIterator) Last() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	result := i.loadIndex()
+	result := i.loadIndex(noSkip)
 	if result == loadBlockFailed {
 		return nil, nil
 	}
@@ -1500,7 +1555,19 @@ func (i *twoLevelIterator) Next() (*InternalKey, []byte) {
 	if key, val := i.singleLevelIterator.Next(); key != nil {
 		return key, val
 	}
-	return i.skipForward()
+	return i.skipForward(noSkip)
+}
+
+func (i *twoLevelIterator) NextPrefix() (*InternalKey, []byte) {
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.boundsCmp = 0
+	if i.err != nil {
+		return nil, nil
+	}
+	if key, val := i.singleLevelIterator.NextPrefix(); key != nil {
+		return key, val
+	}
+	return i.skipForward(skipPrefix{skip: true})
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -1517,7 +1584,11 @@ func (i *twoLevelIterator) Prev() (*InternalKey, []byte) {
 	return i.skipBackward()
 }
 
-func (i *twoLevelIterator) skipForward() (*InternalKey, []byte) {
+func (i *twoLevelIterator) PrevPrefix() (*InternalKey, []byte) {
+	return i.Prev()
+}
+
+func (i *twoLevelIterator) skipForward(skipState skipPrefix) (*InternalKey, []byte) {
 	for {
 		if i.err != nil || i.exhaustedBounds > 0 {
 			return nil, nil
@@ -1529,7 +1600,7 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, []byte) {
 			i.index.invalidate()
 			return nil, nil
 		}
-		result := i.loadIndex()
+		result := i.loadIndex(skipState)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -1567,7 +1638,7 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, []byte) {
 			i.index.invalidate()
 			return nil, nil
 		}
-		result := i.loadIndex()
+		result := i.loadIndex(noSkip)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -1681,7 +1752,7 @@ func (i *twoLevelCompactionIterator) skipForward(
 			if key, _ := i.topLevelIndex.Next(); key == nil {
 				break
 			}
-			result := i.loadIndex()
+			result := i.loadIndex(noSkip)
 			if result != loadBlockOK {
 				if i.err != nil {
 					break
@@ -2027,6 +2098,7 @@ type Reader struct {
 	FormatKey         base.FormatKey
 	Split             Split
 	mergerOK          bool
+	prefixShortID     *shortID
 	checksumType      ChecksumType
 	tableFilter       *tableFilterReader
 	Properties        Properties
@@ -2656,6 +2728,14 @@ func NewReader(f ReadableFile, o ReaderOptions, extraOpts ...ReaderOption) (*Rea
 
 	if o.MergerName == r.Properties.MergerName {
 		r.mergerOK = true
+	}
+
+	// Determine whether this sstable was generated with the prefix change block
+	// collector, and if so, the shortID used to encode the block-level hints.
+	r.prefixShortID, err = findPrefixChangeShortID(r.Properties.UserProperties)
+	if err != nil {
+		r.err = err
+		return nil, r.Close()
 	}
 
 	// Apply the extra options again now that the comparer and merger names are

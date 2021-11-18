@@ -43,7 +43,15 @@ func (c *errorIter) Next() (*InternalKey, []byte) {
 	return nil, nil
 }
 
+func (c *errorIter) NextPrefix() (*InternalKey, []byte) {
+	return nil, nil
+}
+
 func (c *errorIter) Prev() (*InternalKey, []byte) {
+	return nil, nil
+}
+
+func (c *errorIter) PrevPrefix() (*InternalKey, []byte) {
 	return nil, nil
 }
 

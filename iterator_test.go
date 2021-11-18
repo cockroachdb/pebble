@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -154,6 +155,10 @@ func (f *fakeIter) Next() (*InternalKey, []byte) {
 	return f.Key(), f.Value()
 }
 
+func (f *fakeIter) NextPrefix() (*InternalKey, []byte) {
+	return f.Next()
+}
+
 func (f *fakeIter) Prev() (*InternalKey, []byte) {
 	f.valid = false
 	if f.index < 0 {
@@ -168,6 +173,10 @@ func (f *fakeIter) Prev() (*InternalKey, []byte) {
 	}
 	f.valid = true
 	return f.Key(), f.Value()
+}
+
+func (f *fakeIter) PrevPrefix() (*InternalKey, []byte) {
+	return f.Prev()
 }
 
 // key returns the current Key the iterator is positioned at regardless of the
@@ -293,8 +302,16 @@ func (i *invalidatingIter) Next() (*InternalKey, []byte) {
 	return i.update(i.iter.Next())
 }
 
+func (i *invalidatingIter) NextPrefix() (*InternalKey, []byte) {
+	return i.update(i.iter.NextPrefix())
+}
+
 func (i *invalidatingIter) Prev() (*InternalKey, []byte) {
 	return i.update(i.iter.Prev())
+}
+
+func (i *invalidatingIter) PrevPrefix() (*InternalKey, []byte) {
+	return i.update(i.iter.PrevPrefix())
 }
 
 func (i *invalidatingIter) Error() error {
@@ -1597,6 +1614,67 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 					require.NoError(b, iter.Close())
 				})
 			}
+		})
+	}
+}
+
+func BenchmarkNextPrefix(b *testing.B) {
+	const keyCount = 1000
+	const valueSize = 10
+
+	for _, versionCount := range []int{1, 10, 100, 1000, 10000} {
+		b.Run(fmt.Sprintf("versions=%d", versionCount), func(b *testing.B) {
+			r := rand.New(rand.NewSource(7))
+			mem := vfs.NewMem()
+			opts := &Options{
+				Comparer:           testkeys.Comparer,
+				FS:                 mem,
+				FormatMajorVersion: FormatNewest,
+				PrefixSkipIndexing: true,
+			}
+			d, err := Open("", opts)
+			require.NoError(b, err)
+
+			ks := testkeys.Alpha(8)
+			if v := ks.Count() / keyCount; v > 0 {
+				ks = ks.EveryN(v)
+			}
+			key := make([]byte, ks.MaxLen()+testkeys.MaxSuffixLen)
+			value := make([]byte, valueSize)
+			for i := 0; i < keyCount; i++ {
+				batch := d.NewBatch()
+				n := testkeys.WriteKey(key, ks, i)
+				for j := 0; j < versionCount; j++ {
+					sn := testkeys.WriteSuffix(key[n:], j)
+					r.Read(value)
+					require.NoError(b, batch.Set(key[:n+sn], value, nil))
+				}
+				require.NoError(b, batch.Commit(nil))
+			}
+			require.NoError(b, d.Flush())
+			require.NoError(b, d.Compact(nil, []byte{0xFF}))
+
+			iter := d.NewIter(nil)
+			var prevPrefix []byte
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				count := 0
+				prevPrefix = prevPrefix[:0]
+				valid := iter.First()
+				for valid {
+					k := iter.Key()
+					si := testkeys.Comparer.Split(k)
+					if testkeys.Comparer.Compare(prevPrefix, k[:si]) != 0 {
+						count++
+						prevPrefix = append(prevPrefix[:0], k[:si]...)
+					}
+					valid = iter.NextPrefix()
+				}
+				require.Equal(b, keyCount, count)
+			}
+			b.StopTimer()
+			require.NoError(b, iter.Close())
+			require.NoError(b, d.Close())
 		})
 	}
 }

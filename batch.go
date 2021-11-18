@@ -991,12 +991,20 @@ func (i *batchIter) Next() (*InternalKey, []byte) {
 	return ikey, i.Value()
 }
 
+func (i *batchIter) NextPrefix() (*InternalKey, []byte) {
+	return i.Next()
+}
+
 func (i *batchIter) Prev() (*InternalKey, []byte) {
 	ikey := i.iter.Prev()
 	if ikey == nil {
 		return nil, nil
 	}
 	return ikey, i.Value()
+}
+
+func (i *batchIter) PrevPrefix() (*InternalKey, []byte) {
+	return i.Prev()
 }
 
 func (i *batchIter) Key() *InternalKey {
@@ -1367,6 +1375,10 @@ func (i *flushableBatchIter) Next() (*InternalKey, []byte) {
 	return &i.key, i.Value()
 }
 
+func (i *flushableBatchIter) NextPrefix() (*InternalKey, []byte) {
+	return i.Next()
+}
+
 func (i *flushableBatchIter) Prev() (*InternalKey, []byte) {
 	if i.index < 0 {
 		return nil, nil
@@ -1381,6 +1393,10 @@ func (i *flushableBatchIter) Prev() (*InternalKey, []byte) {
 		return nil, nil
 	}
 	return &i.key, i.Value()
+}
+
+func (i *flushableBatchIter) PrevPrefix() (*InternalKey, []byte) {
+	return i.Prev()
 }
 
 func (i *flushableBatchIter) getKey(index int) InternalKey {

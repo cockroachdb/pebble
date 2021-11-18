@@ -507,7 +507,7 @@ func (l *levelIter) Last() (*InternalKey, []byte) {
 	return l.verify(l.skipEmptyFileBackward())
 }
 
-func (l *levelIter) Next() (*InternalKey, []byte) {
+func (l *levelIter) next(skipPrefix bool) (*InternalKey, []byte) {
 	if l.err != nil || l.iter == nil {
 		return nil, nil
 	}
@@ -540,11 +540,26 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 	default:
 		// Reset the smallest boundary since we're moving away from it.
 		l.smallestBoundary = nil
-		if key, val := l.iter.Next(); key != nil {
+		var key *base.InternalKey
+		var val []byte
+		if skipPrefix {
+			key, val = l.iter.NextPrefix()
+		} else {
+			key, val = l.iter.Next()
+		}
+		if key != nil {
 			return l.verify(key, val)
 		}
 	}
 	return l.verify(l.skipEmptyFileForward())
+}
+
+func (l *levelIter) Next() (*InternalKey, []byte) {
+	return l.next(false /* skip prefix */)
+}
+
+func (l *levelIter) NextPrefix() (*InternalKey, []byte) {
+	return l.next(true /* skip prefix */)
 }
 
 func (l *levelIter) Prev() (*InternalKey, []byte) {
@@ -585,6 +600,10 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 		}
 	}
 	return l.verify(l.skipEmptyFileBackward())
+}
+
+func (l *levelIter) PrevPrefix() (*InternalKey, []byte) {
+	return l.Prev()
 }
 
 func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {

@@ -128,6 +128,12 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 	return &s.Start, s.End
 }
 
+// Next implements InternalIterator.NextPrefix, as documented in the
+// internal/base package.
+func (i *Iter) NextPrefix() (*base.InternalKey, []byte) {
+	return i.Next()
+}
+
 // Prev implements InternalIterator.Prev, as documented in the internal/base
 // package.
 func (i *Iter) Prev() (*base.InternalKey, []byte) {
@@ -140,6 +146,12 @@ func (i *Iter) Prev() (*base.InternalKey, []byte) {
 	}
 	s := &i.spans[i.index]
 	return &s.Start, s.End
+}
+
+// PrevPrefix implements InternalIterator.PrevPrefix, as documented in the
+// internal/base package.
+func (i *Iter) PrevPrefix() (*base.InternalKey, []byte) {
+	return i.Prev()
 }
 
 // Key implements InternalIterator.Key, as documented in the internal/base

@@ -25,12 +25,16 @@ import "fmt"
 // The relative positioning methods are:
 //
 // - Next
+// - NextPrefix
 // - Prev
+// - PrevPrefix
 //
 // The relative positioning methods can be used in conjunction with any of the
 // absolute positioning methods with one exception: SeekPrefixGE does not
 // support reverse iteration via Prev. It is undefined to call relative
 // positioning methods without ever calling an absolute positioning method.
+//
+// TODO: Explain NextPrefix, PrevPrefix
 //
 // InternalIterators can optionally implement a prefix iteration mode. This
 // mode is entered by calling SeekPrefixGE and exited by any other absolute
@@ -170,6 +174,9 @@ type InternalIterator interface {
 	// SeekPrefixGE or Next returned (nil, nil).
 	Next() (*InternalKey, []byte)
 
+	// NextPrefix ...
+	NextPrefix() (*InternalKey, []byte)
+
 	// Prev moves the iterator to the previous key/value pair. Returns the key
 	// and value if the iterator is pointing at a valid entry, and (nil, nil)
 	// otherwise. Note that Prev only checks the lower bound. It is up to the
@@ -180,6 +187,9 @@ type InternalIterator interface {
 	// (nil, nil). It is not allowed to call Prev when the previous call to SeekLT
 	// or Prev returned (nil, nil).
 	Prev() (*InternalKey, []byte)
+
+	// PrevPrefix ...
+	PrevPrefix() (*InternalKey, []byte)
 
 	// Error returns any accumulated error.
 	Error() error

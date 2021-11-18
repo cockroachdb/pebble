@@ -489,6 +489,9 @@ type Options struct {
 	// to keep one older manifest.
 	NumPrevManifest int
 
+	// PrefixSkipIndexing
+	PrefixSkipIndexing bool
+
 	// ReadOnly indicates that the DB should be opened in read-only mode. Writes
 	// to the DB will return an error, background compactions are disabled, and
 	// the flush that normally occurs after replaying the WAL at startup is
@@ -1183,6 +1186,10 @@ func (o *Options) MakeWriterOptions(level int) sstable.WriterOptions {
 		writerOpts.TableFormat = sstable.TableFormatRocksDBv2
 		writerOpts.TablePropertyCollectors = o.TablePropertyCollectors
 		writerOpts.BlockPropertyCollectors = o.BlockPropertyCollectors
+		if o.PrefixSkipIndexing && o.Comparer.Split != nil {
+			writerOpts.BlockPropertyCollectors = append(writerOpts.BlockPropertyCollectors,
+				sstable.PrefixSkipIndexing(o.Comparer.Compare, o.Comparer.Split))
+		}
 	}
 	levelOpts := o.Level(level)
 	writerOpts.BlockRestartInterval = levelOpts.BlockRestartInterval

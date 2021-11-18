@@ -75,6 +75,15 @@ func (it *flushIterator) Next() (*base.InternalKey, []byte) {
 	return &it.key, it.value()
 }
 
+// NextPrefix ...
+func (it *flushIterator) NextPrefix() (*base.InternalKey, []byte) {
+	return it.Next()
+}
+
 func (it *flushIterator) Prev() (*base.InternalKey, []byte) {
 	panic("pebble: Prev unimplemented")
+}
+
+func (it *flushIterator) PrevPrefix() (*base.InternalKey, []byte) {
+	panic("pebble: PrevPrefix unimplemented")
 }

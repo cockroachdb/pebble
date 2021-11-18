@@ -102,8 +102,8 @@ type BlockPropertyFilter interface {
 // Users must not expect this to preserve differences between empty sets --
 // they will all get turned into the semantically equivalent [0,0).
 type BlockIntervalCollector struct {
-	name    string
-	dbic    DataBlockIntervalCollector
+	name string
+	dbic DataBlockIntervalCollector
 
 	blockInterval interval
 	indexInterval interval
@@ -182,7 +182,7 @@ type interval struct {
 
 func (i interval) encode(buf []byte) []byte {
 	if i.lower < i.upper {
-		var encoded [binary.MaxVarintLen64*2]byte
+		var encoded [binary.MaxVarintLen64 * 2]byte
 		n := binary.PutUvarint(encoded[:], i.lower)
 		n += binary.PutUvarint(encoded[n:], i.upper-i.lower)
 		buf = append(buf, encoded[:n]...)
@@ -246,7 +246,7 @@ func (i interval) intersects(x interval) bool {
 // corresponding collector is a BlockIntervalCollector. That is, the set is of
 // the form [lower, upper).
 type BlockIntervalFilter struct {
-	name string
+	name           string
 	filterInterval interval
 }
 
@@ -255,7 +255,7 @@ type BlockIntervalFilter struct {
 func NewBlockIntervalFilter(
 	name string, lower uint64, upper uint64) *BlockIntervalFilter {
 	return &BlockIntervalFilter{
-		name: name,
+		name:           name,
 		filterInterval: interval{lower: lower, upper: upper},
 	}
 }
@@ -282,7 +282,7 @@ type shortID uint8
 
 type blockPropertiesEncoder struct {
 	propsBuf []byte
-	scratch []byte
+	scratch  []byte
 }
 
 func (e *blockPropertiesEncoder) getScratchForProp() []byte {
@@ -296,24 +296,24 @@ func (e *blockPropertiesEncoder) resetProps() {
 func (e *blockPropertiesEncoder) addProp(id shortID, scratch []byte) {
 	const lenID = 1
 	lenProp := uvarintLen(uint32(len(scratch)))
-	n :=  lenID + lenProp + len(scratch)
-	if cap(e.propsBuf) - len(e.propsBuf) < n {
+	n := lenID + lenProp + len(scratch)
+	if cap(e.propsBuf)-len(e.propsBuf) < n {
 		size := len(e.propsBuf) + 2*n
 		if size < 2*cap(e.propsBuf) {
-			size = 2*cap(e.propsBuf)
+			size = 2 * cap(e.propsBuf)
 		}
 		buf := make([]byte, len(e.propsBuf), size)
 		copy(buf, e.propsBuf)
 		e.propsBuf = buf
 	}
 	pos := len(e.propsBuf)
-	b := e.propsBuf[pos:pos+lenID]
+	b := e.propsBuf[pos : pos+lenID]
 	b[0] = byte(id)
 	pos += lenID
-	b = e.propsBuf[pos:pos+lenProp]
+	b = e.propsBuf[pos : pos+lenProp]
 	n = binary.PutUvarint(b, uint64(len(scratch)))
 	pos += n
-	b = e.propsBuf[pos:pos+len(scratch)]
+	b = e.propsBuf[pos : pos+len(scratch)]
 	pos += len(scratch)
 	copy(b, scratch)
 	e.propsBuf = e.propsBuf[0:pos]
@@ -344,10 +344,10 @@ func (d *blockPropertiesDecoder) next() (id shortID, prop []byte, err error) {
 	id = shortID(d.props[0])
 	propLen, m := binary.Uvarint(d.props[lenID:])
 	n := lenID + m
-	if m <= 0 || propLen == 0 || (n + int(propLen)) > len(d.props) {
+	if m <= 0 || propLen == 0 || (n+int(propLen)) > len(d.props) {
 		return 0, nil, base.CorruptionErrorf("corrupt block property length")
 	}
-	prop = d.props[n:n+int(propLen)]
+	prop = d.props[n : n+int(propLen)]
 	d.props = d.props[n+int(propLen):]
 	return id, prop, nil
 }
@@ -450,7 +450,7 @@ func (f *BlockPropertiesFilterer) intersects(props []byte) (bool, error) {
 			}
 			id = int(shortID)
 		} else {
-			id = math.MaxUint8+1
+			id = math.MaxUint8 + 1
 		}
 		for i < len(f.shortIDToFiltersIndex) && id > i {
 			if f.shortIDToFiltersIndex[i] >= 0 {
@@ -485,4 +485,105 @@ func (f *BlockPropertiesFilterer) intersects(props []byte) (bool, error) {
 		i++
 	}
 	return true, nil
+}
+
+// PrefixSkipIndexing ...
+func PrefixSkipIndexing(cmp base.Compare, split base.Split) func() BlockPropertyCollector {
+	return func() BlockPropertyCollector {
+		return &prefixChangeCollector{cmp: cmp, split: split}
+	}
+}
+
+const prefixChangeCollectorName = `pebble.collectors.prefix-change`
+
+type prefixChangeCollector struct {
+	dataChange    bool
+	indexChange   bool
+	currentPrefix []byte
+	cmp           base.Compare
+	split         base.Split
+}
+
+func (c *prefixChangeCollector) Name() string { return prefixChangeCollectorName }
+
+func (c *prefixChangeCollector) Add(key InternalKey, value []byte) error {
+	prefixLen := c.split(key.UserKey)
+	if prefixLen == len(c.currentPrefix) && c.cmp(c.currentPrefix, key.UserKey[:prefixLen]) == 0 {
+		// Same prefix.
+		return nil
+	}
+
+	// New prefix.
+	if prefixLen <= cap(c.currentPrefix) {
+		c.currentPrefix = c.currentPrefix[:prefixLen]
+	} else {
+		c.currentPrefix = make([]byte, prefixLen)
+	}
+	copy(c.currentPrefix, key.UserKey[:prefixLen])
+	c.dataChange = true
+	return nil
+}
+
+func (c *prefixChangeCollector) FinishDataBlock(buf []byte) ([]byte, error) {
+	if c.dataChange {
+		return nil, nil
+	}
+	return append(buf, 0x01), nil
+}
+
+func (c *prefixChangeCollector) AddPrevDataBlockToIndexBlock() {
+	c.indexChange = c.indexChange || c.dataChange
+	c.dataChange = false
+}
+
+func (c *prefixChangeCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
+	if c.indexChange {
+		c.indexChange = false
+		return nil, nil
+	}
+	return append(buf, 0x01), nil
+}
+
+func (c *prefixChangeCollector) FinishTable(buf []byte) ([]byte, error) {
+	buf = append(buf, 0x00)
+	return buf, nil
+}
+
+func findPrefixChangeShortID(userProperties map[string]string) (*shortID, error) {
+	props, ok := userProperties[prefixChangeCollectorName]
+	if !ok {
+		// Collector was not used when writing this file.
+		return nil, nil
+	}
+	byteProps := []byte(props)
+	if len(byteProps) < 1 {
+		return nil, base.CorruptionErrorf("block properties for %s is corrupted",
+			prefixChangeCollectorName)
+	}
+	id := shortID(byteProps[0])
+	return &id, nil
+}
+
+func extractPrefixChange(prefixShortID shortID, props []byte) (bool, error) {
+	decoder := blockPropertiesDecoder{props: props}
+	var prop []byte
+	for !decoder.done() {
+		var err error
+		var entryShortID shortID
+		entryShortID, prop, err = decoder.next()
+		if err != nil {
+			return false, err
+		}
+		if entryShortID != prefixShortID {
+			continue
+		}
+	}
+	// An empty prop indicates that the prefix did change within this span.
+	if len(prop) == 0 {
+		return true, nil
+	}
+	if len(prop) != 1 || prop[0] != 0x01 {
+		return false, base.CorruptionErrorf("unexpected prefix change property value %x", prop)
+	}
+	return false, nil
 }

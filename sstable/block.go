@@ -833,6 +833,11 @@ func (i *blockIter) Next() (*InternalKey, []byte) {
 	return &i.ikey, i.val
 }
 
+// NextPrefix ...
+func (i *blockIter) NextPrefix() (*InternalKey, []byte) {
+	return i.Next()
+}
+
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
 func (i *blockIter) Prev() (*InternalKey, []byte) {
@@ -902,6 +907,11 @@ func (i *blockIter) Prev() (*InternalKey, []byte) {
 
 	i.decodeInternalKey(i.key)
 	return &i.ikey, i.val
+}
+
+// PrevPrefix ...
+func (i *blockIter) PrevPrefix() (*InternalKey, []byte) {
+	return i.Prev()
 }
 
 // Key implements internalIterator.Key, as documented in the pebble package.
