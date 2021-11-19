@@ -991,7 +991,7 @@ func (i *batchIter) Next() (*InternalKey, []byte) {
 	return ikey, i.Value()
 }
 
-func (i *batchIter) NextPrefix() (*InternalKey, []byte) {
+func (i *batchIter) NextPrefix(int) (*InternalKey, []byte) {
 	return i.Next()
 }
 
@@ -1375,7 +1375,7 @@ func (i *flushableBatchIter) Next() (*InternalKey, []byte) {
 	return &i.key, i.Value()
 }
 
-func (i *flushableBatchIter) NextPrefix() (*InternalKey, []byte) {
+func (i *flushableBatchIter) NextPrefix(int) (*InternalKey, []byte) {
 	return i.Next()
 }
 

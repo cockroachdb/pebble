@@ -856,7 +856,7 @@ func (i *singleLevelIterator) Next() (*InternalKey, []byte) {
 }
 
 // NextPrefix ...
-func (i *singleLevelIterator) NextPrefix() (*InternalKey, []byte) {
+func (i *singleLevelIterator) NextPrefix(currentPrefixLen int) (*InternalKey, []byte) {
 	if i.exhaustedBounds == +1 {
 		panic("Next called even though exhausted upper bound")
 	}
@@ -867,7 +867,7 @@ func (i *singleLevelIterator) NextPrefix() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
-	if key, val := i.data.NextPrefix(); key != nil {
+	if key, val := i.data.NextPrefix(currentPrefixLen); key != nil {
 		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
 			i.exhaustedBounds = +1
 			return nil, nil
@@ -1558,13 +1558,13 @@ func (i *twoLevelIterator) Next() (*InternalKey, []byte) {
 	return i.skipForward(noSkip)
 }
 
-func (i *twoLevelIterator) NextPrefix() (*InternalKey, []byte) {
+func (i *twoLevelIterator) NextPrefix(currentPrefixLen int) (*InternalKey, []byte) {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 	if i.err != nil {
 		return nil, nil
 	}
-	if key, val := i.singleLevelIterator.NextPrefix(); key != nil {
+	if key, val := i.singleLevelIterator.NextPrefix(currentPrefixLen); key != nil {
 		return key, val
 	}
 	return i.skipForward(skipPrefix{skip: true})

@@ -175,7 +175,7 @@ type InternalIterator interface {
 	Next() (*InternalKey, []byte)
 
 	// NextPrefix ...
-	NextPrefix() (*InternalKey, []byte)
+	NextPrefix(currentPrefixLen int) (*InternalKey, []byte)
 
 	// Prev moves the iterator to the previous key/value pair. Returns the key
 	// and value if the iterator is pointing at a valid entry, and (nil, nil)

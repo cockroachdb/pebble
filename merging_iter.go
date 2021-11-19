@@ -499,13 +499,13 @@ func (m *mergingIter) switchToMaxHeap() {
 }
 
 // Steps to the next entry. item is the current top item in the heap.
-func (m *mergingIter) nextEntry(item *mergingIterItem, prefixSkip bool) {
+func (m *mergingIter) nextEntry(item *mergingIterItem, prefixSkip bool, currentPrefixLen int) {
 	l := &m.levels[item.index]
 	oldTopLevel := item.index
 	oldRangeDelIter := l.rangeDelIter
 
 	if prefixSkip {
-		l.iterKey, l.iterValue = l.iter.NextPrefix()
+		l.iterKey, l.iterValue = l.iter.NextPrefix(currentPrefixLen)
 	} else {
 		l.iterKey, l.iterValue = l.iter.Next()
 	}
@@ -619,7 +619,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 				return true
 			}
 			if l.tombstone.Covers(item.key.SeqNum()) {
-				m.nextEntry(item, false)
+				m.nextEntry(item, false, 0)
 				return true
 			}
 		}
@@ -654,7 +654,7 @@ func (m *mergingIter) findNextEntry() (*InternalKey, []byte) {
 			(item.key.Kind() != InternalKeyKindRangeDelete || !m.elideRangeTombstones) {
 			return &item.key, item.value
 		}
-		m.nextEntry(item, false)
+		m.nextEntry(item, false, 0)
 	}
 	return nil, nil
 }
@@ -1007,14 +1007,14 @@ func (m *mergingIter) Last() (*InternalKey, []byte) {
 }
 
 func (m *mergingIter) Next() (*InternalKey, []byte) {
-	return m.next(false)
+	return m.next(false, 0)
 }
 
-func (m *mergingIter) NextPrefix() (*InternalKey, []byte) {
-	return m.next(true)
+func (m *mergingIter) NextPrefix(currentPrefixLen int) (*InternalKey, []byte) {
+	return m.next(true, currentPrefixLen)
 }
 
-func (m *mergingIter) next(prefixSkip bool) (*InternalKey, []byte) {
+func (m *mergingIter) next(prefixSkip bool, currentPrefixLen int) (*InternalKey, []byte) {
 	if m.err != nil {
 		return nil, nil
 	}
@@ -1028,7 +1028,7 @@ func (m *mergingIter) next(prefixSkip bool) (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	m.nextEntry(&m.heap.items[0], prefixSkip)
+	m.nextEntry(&m.heap.items[0], prefixSkip, currentPrefixLen)
 	return m.findNextEntry()
 }
 

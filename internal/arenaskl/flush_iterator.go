@@ -76,7 +76,7 @@ func (it *flushIterator) Next() (*base.InternalKey, []byte) {
 }
 
 // NextPrefix ...
-func (it *flushIterator) NextPrefix() (*base.InternalKey, []byte) {
+func (it *flushIterator) NextPrefix(int) (*base.InternalKey, []byte) {
 	return it.Next()
 }
 

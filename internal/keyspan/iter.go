@@ -130,7 +130,7 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 
 // Next implements InternalIterator.NextPrefix, as documented in the
 // internal/base package.
-func (i *Iter) NextPrefix() (*base.InternalKey, []byte) {
+func (i *Iter) NextPrefix(int) (*base.InternalKey, []byte) {
 	return i.Next()
 }
 

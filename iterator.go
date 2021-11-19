@@ -300,9 +300,11 @@ func (i *Iterator) nextUserKey(skipPrefix bool) {
 		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
 		i.key = i.keyBuf
 	}
+	currentPrefixLen := i.split(i.key)
+	currentHasPrefix := currentPrefixLen < len(i.key)
 	for {
-		if skipPrefix {
-			i.iterKey, i.iterValue = i.iter.NextPrefix()
+		if skipPrefix && currentHasPrefix {
+			i.iterKey, i.iterValue = i.iter.NextPrefix(currentPrefixLen)
 		} else {
 			i.iterKey, i.iterValue = i.iter.Next()
 		}

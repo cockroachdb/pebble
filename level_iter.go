@@ -507,7 +507,7 @@ func (l *levelIter) Last() (*InternalKey, []byte) {
 	return l.verify(l.skipEmptyFileBackward())
 }
 
-func (l *levelIter) next(skipPrefix bool) (*InternalKey, []byte) {
+func (l *levelIter) next(skipPrefix bool, currentPrefixLen int) (*InternalKey, []byte) {
 	if l.err != nil || l.iter == nil {
 		return nil, nil
 	}
@@ -543,7 +543,7 @@ func (l *levelIter) next(skipPrefix bool) (*InternalKey, []byte) {
 		var key *base.InternalKey
 		var val []byte
 		if skipPrefix {
-			key, val = l.iter.NextPrefix()
+			key, val = l.iter.NextPrefix(currentPrefixLen)
 		} else {
 			key, val = l.iter.Next()
 		}
@@ -555,11 +555,11 @@ func (l *levelIter) next(skipPrefix bool) (*InternalKey, []byte) {
 }
 
 func (l *levelIter) Next() (*InternalKey, []byte) {
-	return l.next(false /* skip prefix */)
+	return l.next(false /* skip prefix */, 0)
 }
 
-func (l *levelIter) NextPrefix() (*InternalKey, []byte) {
-	return l.next(true /* skip prefix */)
+func (l *levelIter) NextPrefix(currentPrefixLen int) (*InternalKey, []byte) {
+	return l.next(true /* skip prefix */, currentPrefixLen)
 }
 
 func (l *levelIter) Prev() (*InternalKey, []byte) {

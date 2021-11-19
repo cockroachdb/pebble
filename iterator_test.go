@@ -155,7 +155,7 @@ func (f *fakeIter) Next() (*InternalKey, []byte) {
 	return f.Key(), f.Value()
 }
 
-func (f *fakeIter) NextPrefix() (*InternalKey, []byte) {
+func (f *fakeIter) NextPrefix(int) (*InternalKey, []byte) {
 	return f.Next()
 }
 
@@ -302,8 +302,8 @@ func (i *invalidatingIter) Next() (*InternalKey, []byte) {
 	return i.update(i.iter.Next())
 }
 
-func (i *invalidatingIter) NextPrefix() (*InternalKey, []byte) {
-	return i.update(i.iter.NextPrefix())
+func (i *invalidatingIter) NextPrefix(currentPrefixLen int) (*InternalKey, []byte) {
+	return i.update(i.iter.NextPrefix(currentPrefixLen))
 }
 
 func (i *invalidatingIter) Prev() (*InternalKey, []byte) {

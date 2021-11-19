@@ -195,7 +195,7 @@ func (it *Iterator) Next() (*base.InternalKey, []byte) {
 }
 
 // NextPrefix ...
-func (it *Iterator) NextPrefix() (*base.InternalKey, []byte) {
+func (it *Iterator) NextPrefix(int) (*base.InternalKey, []byte) {
 	return it.Next()
 }
 
