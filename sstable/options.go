@@ -206,6 +206,10 @@ type WriterOptions struct {
 
 	// Checksum specifies which checksum to use.
 	Checksum ChecksumType
+
+	// WriteQueueSize determines the number of items which can be written
+	// to the Writer.writeQueue without blocking.
+	WriteQueueSize uint64
 }
 
 func (o WriterOptions) ensureDefaults() WriterOptions {

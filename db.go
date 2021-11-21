@@ -399,6 +399,10 @@ type DB struct {
 		}
 	}
 
+	// compressionQueue is used to queue blocks which need to be compressed.
+	// Goroutines will read these blocks and process them in parallel.
+	compressionQueue *sstable.CompressionWorkersQueue
+
 	// Normally equal to time.Now() but may be overridden in tests.
 	timeNow func() time.Time
 }
@@ -1039,6 +1043,9 @@ func (d *DB) Close() error {
 	d.mu.Unlock()
 	d.deleters.Wait()
 	d.compactionSchedulers.Wait()
+	if d.compressionQueue != nil {
+		d.compressionQueue.Close()
+	}
 	d.mu.Lock()
 	return err
 }

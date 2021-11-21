@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
@@ -79,6 +80,11 @@ type writeCloseSyncer interface {
 	Sync() error
 }
 
+type checksumData struct {
+	checksumType ChecksumType
+	xxHasher     *xxhash.Digest
+}
+
 // Writer is a table writer.
 type Writer struct {
 	writer    io.Writer
@@ -103,7 +109,6 @@ type Writer struct {
 	separator               Separator
 	successor               Successor
 	tableFormat             TableFormat
-	checksumType            ChecksumType
 	cache                   *cache.Cache
 	// disableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
@@ -135,7 +140,11 @@ type Writer struct {
 	props               Properties
 	propCollectors      []TablePropertyCollector
 	blockPropCollectors []BlockPropertyCollector
-	blockPropsEncoder   blockPropertiesEncoder
+
+	// todo(bananabrick) : Add some sort of acquire/release mechanism to
+	// the writer.blockPropsEncoder, so that we don't accidentally reuse
+	// the slice returned when blockPropsEncoder.unsafeProps is called.
+	blockPropsEncoder blockPropertiesEncoder
 	// compressedBuf is the destination buffer for compression. It is
 	// re-used over the lifetime of the writer, avoiding the allocation of a
 	// temporary buffer for each block.
@@ -149,15 +158,60 @@ type Writer struct {
 	// likely large enough for a block handle with properties.
 	tmp [blockHandleLikelyMaxLen]byte
 
-	xxHasher *xxhash.Digest
-
 	topLevelIndexBlock blockWriter
 	indexPartitions    []indexBlockWriterAndBlockProperties
+
+	checksumData checksumData
+
+	parallelWriterState parallelWriterState
+
+	// writerMu is used to provide mutual exclusion between
+	// the compaction goroutine and the writer goroutine. The
+	// writerMu only has an effect if parallel compression is
+	// enabled. The indexBlock, and the writer.Meta.Size is
+	// accessed by both the parallel writer goroutine,
+	// and writer.EstimatedSize.
+	writerMu sync.Mutex
+}
+
+// parallelWriterState contains the state which is specific to parallel
+// compression.
+type parallelWriterState struct {
+	// writeQueue is used to process compressed blocks and
+	// write them to disk. It is only valid when
+	// writer.compressionQueueRef != nil.
+	writeQueue *writeQueueContainer
+
+	// compressionQueueRef holds a reference to the
+	// CompressionQueueContainer. If this is non-nil,
+	// then parallel compression is enabled.
+	compressionQueueRef *CompressionWorkersQueue
+
+	// historicEncodedBlockHandleWithPropertiesLength helps determine whether
+	// an index block should be flushed.
+	historicEncodedBlockHandleWithPropertiesLength int
+
+	// errCh is only used when parallel compression is enabled. Any error
+	// encountered while compressing blocks in parallel or writing blocks
+	// to disk is sent to this channel. errCh will be written to
+	// atmost once.
+	errCh chan error
 }
 
 type indexBlockWriterAndBlockProperties struct {
 	writer     blockWriter
 	properties []byte
+}
+
+func (w *Writer) fetchEncounteredError() error {
+	if w.err != nil {
+		return w.err
+	}
+
+	if len(w.parallelWriterState.errCh) > 0 {
+		w.err = <-w.parallelWriterState.errCh
+	}
+	return w.err
 }
 
 // Set sets the value for the given key. The sequence number is set to
@@ -166,9 +220,10 @@ type indexBlockWriterAndBlockProperties struct {
 //
 // TODO(peter): untested
 func (w *Writer) Set(key, value []byte) error {
-	if w.err != nil {
-		return w.err
+	if err := w.fetchEncounteredError(); err != nil {
+		return err
 	}
+
 	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindSet), value)
 }
 
@@ -178,9 +233,10 @@ func (w *Writer) Set(key, value []byte) error {
 //
 // TODO(peter): untested
 func (w *Writer) Delete(key []byte) error {
-	if w.err != nil {
+	if err := w.fetchEncounteredError(); err != nil {
 		return w.err
 	}
+
 	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindDelete), nil)
 }
 
@@ -191,9 +247,10 @@ func (w *Writer) Delete(key []byte) error {
 //
 // TODO(peter): untested
 func (w *Writer) DeleteRange(start, end []byte) error {
-	if w.err != nil {
-		return w.err
+	if err := w.fetchEncounteredError(); err != nil {
+		return err
 	}
+
 	return w.addTombstone(base.MakeInternalKey(start, 0, InternalKeyKindRangeDelete), end)
 }
 
@@ -204,9 +261,10 @@ func (w *Writer) DeleteRange(start, end []byte) error {
 //
 // TODO(peter): untested
 func (w *Writer) Merge(key, value []byte) error {
-	if w.err != nil {
-		return w.err
+	if err := w.fetchEncounteredError(); err != nil {
+		return err
 	}
+
 	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindMerge), value)
 }
 
@@ -217,8 +275,8 @@ func (w *Writer) Merge(key, value []byte) error {
 // point entries. Additionally, range deletion tombstones must be fragmented
 // (i.e. by keyspan.Fragmenter).
 func (w *Writer) Add(key InternalKey, value []byte) error {
-	if w.err != nil {
-		return w.err
+	if err := w.fetchEncounteredError(); err != nil {
+		return err
 	}
 
 	if key.Kind() == InternalKeyKindRangeDelete {
@@ -379,83 +437,210 @@ func (w *Writer) maybeAddToFilter(key []byte) {
 	}
 }
 
-func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
-	if !shouldFlush(key, value, &w.block, w.blockSize, w.blockSizeThreshold) {
-		return nil
-	}
+func (w *Writer) queueBlockForParallelCompression(key InternalKey) error {
+	compressionCoordinator := <-w.parallelWriterState.compressionQueueRef.compressionCoordinators
+	writeCoordinator := <-w.parallelWriterState.compressionQueueRef.writeCoordinators
 
-	bh, err := w.writeBlock(w.block.finish(), w.compression)
+	// We will share this channel so that the compression go routine, and the go routine which
+	// writes the block to disk can communicate.
+	doneCh := make(chan *CompressedData, 1)
+
+	// Populate compression coordinator.
+	copySliceToDst(&compressionCoordinator.toCompress, w.block.finish())
+	compressionCoordinator.compression = w.compression
+	compressionCoordinator.checksum = w.checksumData.checksumType
+	compressionCoordinator.doneCh = doneCh
+
+	props, err := w.getDataBlockProps()
 	if err != nil {
 		w.err = err
 		return w.err
 	}
-	var bhp BlockHandleWithProperties
-	if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
-		return err
+
+	indexSep := w.indexEntrySeparator(base.DecodeInternalKey(w.block.curKey), key)
+	flushIndexBlock := w.shouldFlushIndexBlock(indexSep)
+	var indexProps []byte
+
+	// We need to copy props here, before we call w.getIndexBlockProps
+	// because the underylying slice is used by the w.blockPropsEncoder.
+	copySliceToDst(&writeCoordinator.props, copySlice(props))
+	if flushIndexBlock {
+		indexProps, err = w.getIndexBlockProps()
+		if err != nil {
+			w.err = err
+			return err
+		}
 	}
-	if err = w.addIndexEntry(key, bhp); err != nil {
-		return err
-	}
+
+	// Populate the rest of the fields for the writeCoordinator.
+	copySliceToDst(&writeCoordinator.indexProps, indexProps)
+	writeCoordinator.indexSep = copyInternalKey(indexSep)
+	writeCoordinator.flushIndexBlock = flushIndexBlock
+	writeCoordinator.doneCh = doneCh
+
+	// Queue compression + write jobs.
+	w.parallelWriterState.writeQueue.queue <- writeCoordinator
+	w.parallelWriterState.compressionQueueRef.queue <- compressionCoordinator
+
+	w.addDataBlockToIndexBlockForCollectors()
 	return nil
 }
 
-// The BlockHandleWithProperties returned by this method must be encoded
-// before any future use of the Writer.blockPropsEncoder, since the properties
-// slice will get reused by the blockPropsEncoder.
-func (w *Writer) maybeAddBlockPropertiesToBlockHandle(
-	bh BlockHandle,
-) (BlockHandleWithProperties, error) {
-	if len(w.blockPropCollectors) == 0 {
-		return BlockHandleWithProperties{BlockHandle: bh}, nil
+func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
+	if !shouldFlush(key.Size(), len(value), &w.block, w.blockSize, w.blockSizeThreshold) {
+		return nil
 	}
+
+	if w.parallelWriterState.compressionQueueRef != nil {
+		return w.queueBlockForParallelCompression(key)
+	}
+
+	// Parallel compression is disabled, so proceed as usual.
+	bh, err := w.writeBlock(w.block.finish(), w.compression)
+	if err != nil {
+		w.err = err
+		return err
+	}
+	props, err := w.getDataBlockProps()
+	if err != nil {
+		w.err = err
+		return err
+	}
+
+	bhp := BlockHandleWithProperties{BlockHandle: bh, Props: props}
+	indexSep := w.indexEntrySeparator(base.DecodeInternalKey(w.block.curKey), key)
+	// We need to encode the bhp first, before we get the block properties for the
+	// index block, because the writer.blockPropsEncoder reuses the props slice.
+	encodedBHP := encodeBlockHandleWithProperties(w.tmp[:], bhp)
+	flushIndexBlock := w.shouldFlushIndexBlock(indexSep)
+	var indexProps []byte
+	if flushIndexBlock {
+		// If we decide that we're going to flush the index block,
+		// then we compute the block properties for the index block,
+		// which will be used later.
+		indexProps, err = w.getIndexBlockProps()
+		if err != nil {
+			return err
+		}
+	}
+	if err = w.addIndexEntry(indexSep, encodedBHP, bhp, flushIndexBlock, indexProps); err != nil {
+		return err
+	}
+
+	w.addDataBlockToIndexBlockForCollectors()
+	return nil
+}
+
+// getBlockProps will return a byte slice of block
+// properties. This slice should not be modified without copying
+// and the writer.blockPropsEncoder should not be used, if the slice
+// is still in use.
+func (w *Writer) getDataBlockProps() ([]byte, error) {
+	if len(w.blockPropCollectors) == 0 {
+		return nil, nil
+	}
+
 	var err error
 	w.blockPropsEncoder.resetProps()
 	for i := range w.blockPropCollectors {
 		scratch := w.blockPropsEncoder.getScratchForProp()
 		if scratch, err = w.blockPropCollectors[i].FinishDataBlock(scratch); err != nil {
-			return BlockHandleWithProperties{}, nil
+			return nil, err
 		}
 		if len(scratch) > 0 {
 			w.blockPropsEncoder.addProp(shortID(i), scratch)
 		}
 	}
-	return BlockHandleWithProperties{BlockHandle: bh, Props: w.blockPropsEncoder.unsafeProps()}, nil
+	return w.blockPropsEncoder.unsafeProps(), nil
+
 }
 
-// addIndexEntry adds an index entry for the specified key and block handle.
-func (w *Writer) addIndexEntry(key InternalKey, bhp BlockHandleWithProperties) error {
-	if bhp.Length == 0 {
-		// A valid blockHandle must be non-zero.
-		// In particular, it must have a non-zero length.
-		return nil
+// getIndexBlockProps will return a byte slice of block
+// properties.
+func (w *Writer) getIndexBlockProps() ([]byte, error) {
+	w.blockPropsEncoder.resetProps()
+	for i := range w.blockPropCollectors {
+		scratch := w.blockPropsEncoder.getScratchForProp()
+		var err error
+		if scratch, err = w.blockPropCollectors[i].FinishIndexBlock(scratch); err != nil {
+			return nil, err
+		}
+		if len(scratch) > 0 {
+			w.blockPropsEncoder.addProp(shortID(i), scratch)
+		}
 	}
-	prevKey := base.DecodeInternalKey(w.block.curKey)
+	return w.blockPropsEncoder.props(), nil
+}
+
+func (w *Writer) addDataBlockToIndexBlockForCollectors() {
+	for i := range w.blockPropCollectors {
+		w.blockPropCollectors[i].AddPrevDataBlockToIndexBlock()
+	}
+}
+
+func (w *Writer) indexEntrySeparator(prevKey InternalKey, key InternalKey) InternalKey {
 	var sep InternalKey
 	if key.UserKey == nil && key.Trailer == 0 {
 		sep = prevKey.Successor(w.compare, w.successor, nil)
 	} else {
 		sep = prevKey.Separator(w.compare, w.separator, nil, key)
 	}
-	encoded := encodeBlockHandleWithProperties(w.tmp[:], bhp)
+	return sep
+}
 
-	if supportsTwoLevelIndex(w.tableFormat) &&
-		shouldFlush(sep, encoded, &w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
+// shouldFlushIndexBlock determines if the index block should be flushed.
+// It doesn't modify any state.
+func (w *Writer) shouldFlushIndexBlock(sep InternalKey) (flush bool) {
+	w.writerMu.Lock()
+	defer w.writerMu.Unlock()
+
+	historicEncodedBlockHandleWithPropertiesLength :=
+		w.parallelWriterState.historicEncodedBlockHandleWithPropertiesLength
+
+	flush = supportsTwoLevelIndex(w.tableFormat) &&
+		shouldFlush(
+			sep.Size(), historicEncodedBlockHandleWithPropertiesLength,
+			&w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold,
+		)
+	return flush
+}
+
+// addIndexEntry adds an index entry for the specified key and block handle.
+func (w *Writer) addIndexEntry(
+	sep InternalKey, encodedBHP []byte, bhp BlockHandleWithProperties, flushIndexBlock bool, indexProps []byte,
+) error {
+	if bhp.Length == 0 {
+		// A valid blockHandle must be non-zero.
+		// In particular, it must have a non-zero length.
+		return nil
+	}
+
+	// If parallel compression is enabled, then we keep a weighted average value of
+	// the encodedBHP length to re-use.
+	if w.parallelWriterState.compressionQueueRef != nil {
+		w.writerMu.Lock()
+		w.parallelWriterState.historicEncodedBlockHandleWithPropertiesLength =
+			len(encodedBHP)/2 + w.parallelWriterState.historicEncodedBlockHandleWithPropertiesLength/2
+		w.writerMu.Unlock()
+	}
+
+	if flushIndexBlock {
+		w.writerMu.Lock()
 		// Enable two level indexes if there is more than one index block.
 		w.twoLevelIndex = true
-		if err := w.finishIndexBlock(); err != nil {
-			return err
-		}
+		w.finishIndexBlock(indexProps)
+		w.writerMu.Unlock()
 	}
 
-	for i := range w.blockPropCollectors {
-		w.blockPropCollectors[i].AddPrevDataBlockToIndexBlock()
-	}
-	w.indexBlock.add(sep, encoded)
+	w.writerMu.Lock()
+	w.indexBlock.add(sep, encodedBHP)
+	w.writerMu.Unlock()
+
 	return nil
 }
 
 func shouldFlush(
-	key InternalKey, value []byte, block *blockWriter, blockSize, sizeThreshold int,
+	keySize int, valueSize int, block *blockWriter, blockSize, sizeThreshold int,
 ) bool {
 	if block.nEntries == 0 {
 		return false
@@ -473,47 +658,37 @@ func shouldFlush(
 		return false
 	}
 
-	newSize := size + key.Size() + len(value)
+	newSize := size + keySize + valueSize
 	if block.nEntries%block.restartInterval == 0 {
 		newSize += 4
 	}
-	newSize += 4                              // varint for shared prefix length
-	newSize += uvarintLen(uint32(key.Size())) // varint for unshared key bytes
-	newSize += uvarintLen(uint32(len(value))) // varint for value size
+	newSize += 4                             // varint for shared prefix length
+	newSize += uvarintLen(uint32(keySize))   // varint for unshared key bytes
+	newSize += uvarintLen(uint32(valueSize)) // varint for value size
 	// Flush if the block plus the new entry is larger than the target size.
 	return newSize > blockSize
 }
 
 // finishIndexBlock finishes the current index block and adds it to the top
 // level index block. This is only used when two level indexes are enabled.
-func (w *Writer) finishIndexBlock() error {
-	w.blockPropsEncoder.resetProps()
-	for i := range w.blockPropCollectors {
-		scratch := w.blockPropsEncoder.getScratchForProp()
-		var err error
-		if scratch, err = w.blockPropCollectors[i].FinishIndexBlock(scratch); err != nil {
-			return err
-		}
-		if len(scratch) > 0 {
-			w.blockPropsEncoder.addProp(shortID(i), scratch)
-		}
-	}
+func (w *Writer) finishIndexBlock(props []byte) {
 	w.indexPartitions = append(w.indexPartitions,
 		indexBlockWriterAndBlockProperties{
 			writer:     w.indexBlock,
-			properties: w.blockPropsEncoder.props(),
+			properties: props,
 		})
 	w.indexBlock = blockWriter{
 		restartInterval: 1,
 	}
-	return nil
 }
 
 func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	// Add the final unfinished index.
-	if err := w.finishIndexBlock(); err != nil {
+	indexProps, err := w.getIndexBlockProps()
+	if err != nil {
 		return BlockHandle{}, err
 	}
+	w.finishIndexBlock(indexProps)
 
 	for i := range w.indexPartitions {
 		b := &w.indexPartitions[i]
@@ -543,12 +718,15 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	return w.writeBlock(w.topLevelIndexBlock.finish(), w.compression)
 }
 
-func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
+// compressAndChecksum will compress the data, and return
+// the compressed data.
+func compressAndChecksum(
+	b []byte, compression Compression, compressedBuf *[]byte, trailerBuf *[blockHandleLikelyMaxLen]byte, checksumData *checksumData) ([]byte, error) {
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
-	blockType, compressed := compressBlock(compression, b, w.compressedBuf)
-	if blockType != noCompressionBlockType && cap(compressed) > cap(w.compressedBuf) {
-		w.compressedBuf = compressed[:cap(compressed)]
+	blockType, compressed := compressBlock(compression, b, *compressedBuf)
+	if blockType != noCompressionBlockType && cap(compressed) > cap(*compressedBuf) {
+		*compressedBuf = compressed[:cap(compressed)]
 	}
 	if len(compressed) < len(b)-len(b)/8 {
 		b = compressed
@@ -556,27 +734,35 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 		blockType = noCompressionBlockType
 	}
 
-	w.tmp[0] = byte(blockType)
-
+	(*trailerBuf)[0] = byte(blockType)
 	// Calculate the checksum.
 	var checksum uint32
-	switch w.checksumType {
+	switch checksumData.checksumType {
 	case ChecksumTypeCRC32c:
-		checksum = crc.New(b).Update(w.tmp[:1]).Value()
+		checksum = crc.New(b).Update((*trailerBuf)[:1]).Value()
 	case ChecksumTypeXXHash64:
-		if w.xxHasher == nil {
-			w.xxHasher = xxhash.New()
+		if checksumData.xxHasher == nil {
+			checksumData.xxHasher = xxhash.New()
 		} else {
-			w.xxHasher.Reset()
+			checksumData.xxHasher.Reset()
 		}
-		w.xxHasher.Write(b)
-		w.xxHasher.Write(w.tmp[:1])
-		checksum = uint32(w.xxHasher.Sum64())
+		checksumData.xxHasher.Write(b)
+		checksumData.xxHasher.Write((*trailerBuf)[:1])
+		checksum = uint32(checksumData.xxHasher.Sum64())
 	default:
-		return BlockHandle{}, errors.Newf("unsupported checksum type: %d", w.checksumType)
+		return nil, errors.Newf("unsupported checksum type: %d", checksumData.checksumType)
 	}
-	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
-	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(b))}
+	binary.LittleEndian.PutUint32((*trailerBuf)[1:5], checksum)
+
+	return b, nil
+}
+
+func (w *Writer) writeBlockPostCompression(toWrite []byte, blockTrailerBuf [blockHandleLikelyMaxLen]byte) (BlockHandle, error) {
+	w.writerMu.Lock()
+	size := w.meta.Size
+	w.writerMu.Unlock()
+
+	bh := BlockHandle{Offset: size, Length: uint64(len(toWrite))}
 
 	if w.cacheID != 0 && w.fileNum != 0 {
 		// Remove the block being written from the cache. This provides defense in
@@ -588,18 +774,30 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 	}
 
 	// Write the bytes to the file.
-	n, err := w.writer.Write(b)
+	n, err := w.writer.Write(toWrite)
 	if err != nil {
 		return BlockHandle{}, err
 	}
+	w.writerMu.Lock()
 	w.meta.Size += uint64(n)
-	n, err = w.writer.Write(w.tmp[:blockTrailerLen])
+	w.writerMu.Unlock()
+	n, err = w.writer.Write(blockTrailerBuf[:blockTrailerLen])
 	if err != nil {
 		return BlockHandle{}, err
 	}
+	w.writerMu.Lock()
 	w.meta.Size += uint64(n)
+	w.writerMu.Unlock()
 
 	return bh, nil
+}
+
+func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
+	b, err := compressAndChecksum(b, compression, &w.compressedBuf, &w.tmp, &w.checksumData)
+	if err != nil {
+		return BlockHandle{}, err
+	}
+	return w.writeBlockPostCompression(b, w.tmp)
 }
 
 // Close finishes writing the table and closes the underlying file that the
@@ -615,8 +813,17 @@ func (w *Writer) Close() (err error) {
 		}
 		w.syncer = nil
 	}()
-	if w.err != nil {
-		return w.err
+
+	// finish will only return after the queued up blocks have been compressed,
+	// and written to disk. Note that it is important to call writeQueue.finish
+	// before we check for w.err, because the write queue will set an error if it
+	// finds one and we don't want to ignore it.
+	if w.parallelWriterState.writeQueue != nil {
+		w.parallelWriterState.writeQueue.finish()
+	}
+
+	if err := w.fetchEncounteredError(); err != nil {
+		return err
 	}
 
 	// Finish the last data block, or force an empty data block if there
@@ -627,14 +834,31 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return w.err
 		}
-		var bhp BlockHandleWithProperties
-		if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
+		props, err := w.getDataBlockProps()
+		if err != nil {
+			w.err = err
 			return err
 		}
-		if err = w.addIndexEntry(InternalKey{}, bhp); err != nil {
+
+		bhp := BlockHandleWithProperties{BlockHandle: bh, Props: props}
+		sep := w.indexEntrySeparator(base.DecodeInternalKey(w.block.curKey), InternalKey{})
+		encoded := encodeBlockHandleWithProperties(w.tmp[:], bhp)
+		flushIndexBlock := w.shouldFlushIndexBlock(sep)
+		var indexProps []byte
+		if flushIndexBlock {
+			indexProps, err = w.getIndexBlockProps()
+			if err != nil {
+				w.err = err
+				return err
+			}
+		}
+		if err = w.addIndexEntry(sep, encoded, bhp, flushIndexBlock, indexProps); err != nil {
+			w.err = err
 			return err
 		}
+		w.addDataBlockToIndexBlockForCollectors()
 	}
+
 	w.props.DataSize = w.meta.Size
 
 	// Write the filter block.
@@ -780,7 +1004,7 @@ func (w *Writer) Close() (err error) {
 	// Write the table footer.
 	footer := footer{
 		format:      w.tableFormat,
-		checksum:    w.checksumType,
+		checksum:    w.checksumData.checksumType,
 		metaindexBH: metaindexBH,
 		indexBH:     indexBH,
 	}
@@ -789,6 +1013,7 @@ func (w *Writer) Close() (err error) {
 		w.err = err
 		return w.err
 	}
+
 	w.meta.Size += uint64(n)
 	w.meta.Properties = w.props
 
@@ -813,6 +1038,8 @@ func (w *Writer) Close() (err error) {
 // EstimatedSize returns the estimated size of the sstable being written if a
 // called to Finish() was made without adding additional keys.
 func (w *Writer) EstimatedSize() uint64 {
+	w.writerMu.Lock()
+	defer w.writerMu.Unlock()
 	return w.meta.Size + uint64(w.block.estimatedSize()+w.indexBlock.estimatedSize())
 }
 
@@ -844,6 +1071,21 @@ func (i internalTableOpt) writerApply(w *Writer) {
 	w.props.ExternalFormatVersion = 0
 }
 
+// ParallelCompressionOpt is a WriterOption that sets fields associated
+// with parallel compression in the Writer, and sets up the writer
+// to write blocks to disk asynchronously.
+type ParallelCompressionOpt struct {
+	CompressionQueue *CompressionWorkersQueue
+	WriteQueueSize   uint64
+}
+
+func (p ParallelCompressionOpt) writerApply(w *Writer) {
+	if p.CompressionQueue != nil {
+		w.parallelWriterState.writeQueue = newWriteQueueContainer(int(p.WriteQueueSize), w)
+		w.parallelWriterState.compressionQueueRef = p.CompressionQueue
+	}
+}
+
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
 func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *Writer {
@@ -864,7 +1106,6 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		separator:               o.Comparer.Separator,
 		successor:               o.Comparer.Successor,
 		tableFormat:             o.TableFormat,
-		checksumType:            o.Checksum,
 		cache:                   o.Cache,
 		block: blockWriter{
 			restartInterval: o.BlockRestartInterval,
@@ -879,6 +1120,8 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 			restartInterval: 1,
 		},
 	}
+	w.checksumData.checksumType = o.Checksum
+	w.parallelWriterState.errCh = make(chan error, 1)
 	if f == nil {
 		w.err = errors.New("pebble: nil file")
 		return w
@@ -966,6 +1209,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		w.bufWriter = bufio.NewWriter(f)
 		w.writer = w.bufWriter
 	}
+
 	return w
 }
 

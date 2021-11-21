@@ -2144,7 +2144,13 @@ func (d *DB) runCompaction(
 		filenames = append(filenames, filename)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
 		internalTableOpt := private.SSTableInternalTableOpt.(sstable.WriterOption)
-		tw = sstable.NewWriter(file, writerOpts, cacheOpts, internalTableOpt)
+		parallelCompressionOpt := sstable.ParallelCompressionOpt{
+			CompressionQueue: d.compressionQueue, WriteQueueSize: writerOpts.WriteQueueSize,
+		}
+		tw = sstable.NewWriter(
+			file, writerOpts, cacheOpts,
+			internalTableOpt, parallelCompressionOpt,
+		)
 
 		fileMeta.CreationTime = time.Now().Unix()
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{

@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/record"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -98,6 +99,10 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 			if d.tableCache != nil {
 				_ = d.tableCache.close()
+			}
+
+			if d.compressionQueue != nil {
+				d.compressionQueue.Close()
 			}
 
 			for _, mem := range d.mu.mem.queue {
@@ -357,6 +362,21 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 	}
 	d.mu.versions.atomic.visibleSeqNum = d.mu.versions.atomic.logSeqNum
+
+	if opts.Experimental.MaxCompressionConcurrency >= 1 {
+		queueSize := opts.Experimental.MaxCompressionConcurrency
+		if opts.MaxConcurrentCompactions > int(queueSize) {
+			queueSize = uint64(opts.MaxConcurrentCompactions)
+		}
+
+		// We have MaxCompressionConcurrencyWorkers. We make the queue size equal to
+		// at least the MaxConcurrentCompactions since each compaction thread will
+		// be adding blocks to the queue for compression. Experimentally, we found that
+		// using a bufferSize equivalent to twice the queue size is appropriate.
+		d.compressionQueue = sstable.NewCompressionWorkersQueue(
+			int(queueSize), int(opts.Experimental.MaxCompressionConcurrency), 2*int(queueSize),
+		)
+	}
 
 	if !d.opts.ReadOnly {
 		// Create an empty .log file.

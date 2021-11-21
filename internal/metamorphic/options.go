@@ -191,6 +191,10 @@ func standardOptions() []*testOptions {
 [TestOptions]
  use_disk=true
 `,
+		22: `
+[Options]
+  max_compression_concurrency=5
+`,
 	}
 
 	opts := make([]*testOptions, len(stdOpts))
@@ -232,6 +236,10 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts.MemTableStopWritesThreshold = 2 + rng.Intn(5) // 2 - 5
 	if rng.Intn(2) == 0 {
 		opts.WALDir = "wal"
+	}
+	if rng.Intn(4) == 0 {
+		// Enable this for a quarter of the random options.
+		opts.Experimental.MaxCompressionConcurrency = 1 + uint64(rng.Intn(6)) // 1 - 6
 	}
 	var lopts pebble.LevelOptions
 	lopts.BlockRestartInterval = 1 + rng.Intn(64)  // 1 - 64

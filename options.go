@@ -380,6 +380,13 @@ type Options struct {
 		//
 		// By default, this value is false.
 		ValidateOnIngest bool
+
+		// MaxCompressionConcurrency is the maximum number of gorotuines to be used for
+		// compressing blocks during compactions. MaxCompressionConcurrency == 0
+		// will skip the entire parallel compression codepaths. MaxCompressionConcurrency
+		// >= 1 will use the parallel compression codepaths. MaxCompressionConcurrency only
+		// matters if compression is enabled.
+		MaxCompressionConcurrency uint64
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -691,7 +698,10 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.TableCacheShards <= 0 {
 		o.Experimental.TableCacheShards = runtime.GOMAXPROCS(0)
 	}
-
+	// todo(bananabrick) : revert this
+	if o.Experimental.MaxCompressionConcurrency <= 1 {
+		o.Experimental.MaxCompressionConcurrency = 3
+	}
 	o.initMaps()
 	return o
 }
@@ -1008,6 +1018,11 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.WALDir = value
 			case "wal_bytes_per_sync":
 				o.WALBytesPerSync, err = strconv.Atoi(value)
+			case "max_compression_concurrency":
+				compressionConcurrency, e := strconv.Atoi(value)
+				o.Experimental.MaxCompressionConcurrency = uint64(compressionConcurrency)
+				fmt.Println("set compression concurrency", o.Experimental.MaxCompressionConcurrency)
+				err = e
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key) {
 					return nil
@@ -1192,5 +1207,16 @@ func (o *Options) MakeWriterOptions(level int) sstable.WriterOptions {
 	writerOpts.FilterPolicy = levelOpts.FilterPolicy
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
+
+	// todo(bananabrick) : This function is called by the compaction thread,
+	// and some tests call Options.EnsureDefaults concurrently, so we have
+	// a data race here.
+	if o.Experimental.MaxCompressionConcurrency >= 1 {
+		writerOpts.WriteQueueSize = o.Experimental.MaxCompressionConcurrency
+		if writerOpts.WriteQueueSize < uint64(o.MaxConcurrentCompactions) {
+			writerOpts.WriteQueueSize = uint64(o.MaxConcurrentCompactions)
+		}
+	}
+
 	return writerOpts
 }
