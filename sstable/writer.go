@@ -92,19 +92,20 @@ type Writer struct {
 	cacheID uint64
 	fileNum base.FileNum
 	// The following fields are copied from Options.
-	blockSize               int
-	blockSizeThreshold      int
-	indexBlockSize          int
-	indexBlockSizeThreshold int
-	compare                 Compare
-	split                   Split
-	formatKey               base.FormatKey
-	compression             Compression
-	separator               Separator
-	successor               Successor
-	tableFormat             TableFormat
-	checksumType            ChecksumType
-	cache                   *cache.Cache
+	blockSize                  int
+	blockSizeThreshold         int
+	indexBlockSize             int
+	indexBlockSizeThreshold    int
+	compare                    Compare
+	split                      Split
+	formatKey                  base.FormatKey
+	compression                Compression
+	separator                  Separator
+	successor                  Successor
+	tableFormat                TableFormat
+	checksumType               ChecksumType
+	cache                      *cache.Cache
+	parallelCompressionEnabled bool
 	// disableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
 	// of invalid sstables for testing. See tool/make_test_sstables.go.
@@ -153,6 +154,11 @@ type Writer struct {
 
 	topLevelIndexBlock blockWriter
 	indexPartitions    []indexBlockWriterAndBlockProperties
+
+	// writeQueue is used to process compressed blocks and
+	// write them to disk. It is only valid when
+	// writer.ParallelCompressionEnabled is true.
+	writeQueue *writeQueueContainer
 }
 
 type indexBlockWriterAndBlockProperties struct {
@@ -576,6 +582,8 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 		return BlockHandle{}, errors.Newf("unsupported checksum type: %d", w.checksumType)
 	}
 	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
+
+	// todo(bananabrick): This stuff will be done by the writer thread.
 	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(b))}
 
 	if w.cacheID != 0 && w.fileNum != 0 {
@@ -853,19 +861,20 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
-		blockSize:               o.BlockSize,
-		blockSizeThreshold:      (o.BlockSize*o.BlockSizeThreshold + 99) / 100,
-		indexBlockSize:          o.IndexBlockSize,
-		indexBlockSizeThreshold: (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
-		compare:                 o.Comparer.Compare,
-		split:                   o.Comparer.Split,
-		formatKey:               o.Comparer.FormatKey,
-		compression:             o.Compression,
-		separator:               o.Comparer.Separator,
-		successor:               o.Comparer.Successor,
-		tableFormat:             o.TableFormat,
-		checksumType:            o.Checksum,
-		cache:                   o.Cache,
+		blockSize:                  o.BlockSize,
+		blockSizeThreshold:         (o.BlockSize*o.BlockSizeThreshold + 99) / 100,
+		indexBlockSize:             o.IndexBlockSize,
+		indexBlockSizeThreshold:    (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
+		compare:                    o.Comparer.Compare,
+		split:                      o.Comparer.Split,
+		formatKey:                  o.Comparer.FormatKey,
+		compression:                o.Compression,
+		separator:                  o.Comparer.Separator,
+		successor:                  o.Comparer.Successor,
+		tableFormat:                o.TableFormat,
+		checksumType:               o.Checksum,
+		cache:                      o.Cache,
+		parallelCompressionEnabled: o.ParallelCompressionEnabled,
 		block: blockWriter{
 			restartInterval: o.BlockRestartInterval,
 		},
@@ -966,6 +975,12 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		w.bufWriter = bufio.NewWriter(f)
 		w.writer = w.bufWriter
 	}
+
+	if o.ParallelCompressionEnabled {
+		// What should size of the queue be? 10 is arbitrary.
+		w.writeQueue = newWriteQueueContainer(int(o.WriteQueueSize))
+	}
+
 	return w
 }
 

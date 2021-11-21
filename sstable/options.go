@@ -206,6 +206,14 @@ type WriterOptions struct {
 
 	// Checksum specifies which checksum to use.
 	Checksum ChecksumType
+
+	// ParallelCompressionEnabled specifies if the parallel compression
+	// code paths should be used.
+	ParallelCompressionEnabled bool
+
+	// WriteQueueSize determines the number of items which can be written
+	// to the Writer.writeQueue without blocking.
+	WriteQueueSize uint64
 }
 
 func (o WriterOptions) ensureDefaults() WriterOptions {

@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/record"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -98,6 +99,10 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 			if d.tableCache != nil {
 				_ = d.tableCache.close()
+			}
+
+			if d.compressionQueue != nil {
+				d.compressionQueue.Close()
 			}
 
 			for _, mem := range d.mu.mem.queue {
@@ -357,6 +362,14 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 	}
 	d.mu.versions.atomic.visibleSeqNum = d.mu.versions.atomic.logSeqNum
+
+	if opts.Experimental.MaxCompressionThreads > 1 {
+		bufferSize := opts.Experimental.MaxCompressionThreads
+		if opts.MaxConcurrentCompactions > int(bufferSize) {
+			bufferSize = uint64(opts.MaxConcurrentCompactions)
+		}
+		d.compressionQueue = sstable.NewCompressionQueueContainer(int(bufferSize), int(opts.Experimental.MaxCompressionThreads))
+	}
 
 	if !d.opts.ReadOnly {
 		// Create an empty .log file.

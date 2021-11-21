@@ -380,6 +380,13 @@ type Options struct {
 		//
 		// By default, this value is false.
 		ValidateOnIngest bool
+
+		// MaxCompressionThreads is the maximum number of gorotuines to be used for
+		// compressing blocks during compactions. MaxCompressionThreads == 0 or 1
+		// will skip the entire parallel compression codepaths. MaxCompressionThreads
+		// > 1 will use the parallel compression codepaths. MaxCompressionThreads only
+		// matters if compression is enabled.
+		MaxCompressionThreads uint64
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -1192,5 +1199,18 @@ func (o *Options) MakeWriterOptions(level int) sstable.WriterOptions {
 	writerOpts.FilterPolicy = levelOpts.FilterPolicy
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
+
+	writerOpts.ParallelCompressionEnabled =
+		o.MaxConcurrentCompactions > 1 && writerOpts.Compression != NoCompression
+	if writerOpts.ParallelCompressionEnabled {
+		// todo(bananabrick) : The size of the queue here seems arbitrary. We can have
+		// atmost one thread write to the queue at a time.
+		writerOpts.WriteQueueSize = o.Experimental.MaxCompressionThreads
+		if writerOpts.WriteQueueSize < uint64(o.MaxConcurrentCompactions) {
+			writerOpts.WriteQueueSize = uint64(o.MaxConcurrentCompactions)
+		}
+
+	}
+
 	return writerOpts
 }
