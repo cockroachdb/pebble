@@ -5,6 +5,11 @@ import (
 	"sync/atomic"
 )
 
+type CompressionData struct {
+	toCompress  []byte
+	compression Compression
+}
+
 // CompressionQueueContainer is used to queue up blocks
 // which will get compressed in parallel.
 type CompressionQueueContainer struct {
@@ -14,7 +19,7 @@ type CompressionQueueContainer struct {
 
 	// todo(bananabrick): this shouldn't be an int.
 	// queue will have a single writer, and many readers.
-	queue chan int
+	queue chan CompressionData
 
 	// closeWG is used to wait for the background workers
 	// to finish executing.
@@ -27,7 +32,7 @@ func NewCompressionQueueContainer(
 	maxSize int, numWorkers int) *CompressionQueueContainer {
 
 	qu := &CompressionQueueContainer{}
-	qu.queue = make(chan int, maxSize)
+	qu.queue = make(chan CompressionData, maxSize)
 
 	for i := 0; i < numWorkers; i++ {
 		qu.closeWG.Add(1)
@@ -63,7 +68,8 @@ type writeQueueContainer struct {
 		done int32
 	}
 
-	queue chan int
+	queue  chan int
+	writer *Writer
 
 	// closeWG is used to wait for the background workers
 	// to finish executing.
@@ -72,7 +78,7 @@ type writeQueueContainer struct {
 
 // newwriteQueueContainer will start a single goroutine to process
 // compression of blocks, and return a usable *writeQueueContainer.
-func newWriteQueueContainer(maxSize int) *writeQueueContainer {
+func newWriteQueueContainer(maxSize int, w *Writer) *writeQueueContainer {
 	qu := &writeQueueContainer{}
 
 	// We're using a buffered channel for the write queue. Since,
@@ -80,6 +86,7 @@ func newWriteQueueContainer(maxSize int) *writeQueueContainer {
 	// its buffer size is at least equal to the maximum number of goroutines
 	// which will write to it.
 	qu.queue = make(chan int, maxSize)
+	qu.writer = w
 
 	qu.closeWG.Add(1)
 	qu.startWorker()

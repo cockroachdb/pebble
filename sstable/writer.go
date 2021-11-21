@@ -79,6 +79,11 @@ type writeCloseSyncer interface {
 	Sync() error
 }
 
+type checksumData struct {
+	checksumType ChecksumType
+	xxHasher     *xxhash.Digest
+}
+
 // Writer is a table writer.
 type Writer struct {
 	writer    io.Writer
@@ -103,7 +108,6 @@ type Writer struct {
 	separator                  Separator
 	successor                  Successor
 	tableFormat                TableFormat
-	checksumType               ChecksumType
 	cache                      *cache.Cache
 	parallelCompressionEnabled bool
 	// disableKeyOrderChecks disables the checks that keys are added to an
@@ -150,8 +154,6 @@ type Writer struct {
 	// likely large enough for a block handle with properties.
 	tmp [blockHandleLikelyMaxLen]byte
 
-	xxHasher *xxhash.Digest
-
 	topLevelIndexBlock blockWriter
 	indexPartitions    []indexBlockWriterAndBlockProperties
 
@@ -159,6 +161,8 @@ type Writer struct {
 	// write them to disk. It is only valid when
 	// writer.ParallelCompressionEnabled is true.
 	writeQueue *writeQueueContainer
+
+	checksumData checksumData
 }
 
 type indexBlockWriterAndBlockProperties struct {
@@ -566,20 +570,20 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 
 	// Calculate the checksum.
 	var checksum uint32
-	switch w.checksumType {
+	switch w.checksumData.checksumType {
 	case ChecksumTypeCRC32c:
 		checksum = crc.New(b).Update(w.tmp[:1]).Value()
 	case ChecksumTypeXXHash64:
-		if w.xxHasher == nil {
-			w.xxHasher = xxhash.New()
+		if w.checksumData.xxHasher == nil {
+			w.checksumData.xxHasher = xxhash.New()
 		} else {
-			w.xxHasher.Reset()
+			w.checksumData.xxHasher.Reset()
 		}
-		w.xxHasher.Write(b)
-		w.xxHasher.Write(w.tmp[:1])
-		checksum = uint32(w.xxHasher.Sum64())
+		w.checksumData.xxHasher.Write(b)
+		w.checksumData.xxHasher.Write(w.tmp[:1])
+		checksum = uint32(w.checksumData.xxHasher.Sum64())
 	default:
-		return BlockHandle{}, errors.Newf("unsupported checksum type: %d", w.checksumType)
+		return BlockHandle{}, errors.Newf("unsupported checksum type: %d", w.checksumData.checksumType)
 	}
 	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
 
@@ -788,7 +792,7 @@ func (w *Writer) Close() (err error) {
 	// Write the table footer.
 	footer := footer{
 		format:      w.tableFormat,
-		checksum:    w.checksumType,
+		checksum:    w.checksumData.checksumType,
 		metaindexBH: metaindexBH,
 		indexBH:     indexBH,
 	}
@@ -872,7 +876,6 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		separator:                  o.Comparer.Separator,
 		successor:                  o.Comparer.Successor,
 		tableFormat:                o.TableFormat,
-		checksumType:               o.Checksum,
 		cache:                      o.Cache,
 		parallelCompressionEnabled: o.ParallelCompressionEnabled,
 		block: blockWriter{
@@ -888,6 +891,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 			restartInterval: 1,
 		},
 	}
+	w.checksumData.checksumType = o.Checksum
 	if f == nil {
 		w.err = errors.New("pebble: nil file")
 		return w
@@ -978,7 +982,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 
 	if o.ParallelCompressionEnabled {
 		// What should size of the queue be? 10 is arbitrary.
-		w.writeQueue = newWriteQueueContainer(int(o.WriteQueueSize))
+		w.writeQueue = newWriteQueueContainer(int(o.WriteQueueSize), w)
 	}
 
 	return w
