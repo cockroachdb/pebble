@@ -184,7 +184,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	}
 
 	fp := bloom.FilterPolicy(10)
-	w := sstable.NewWriter(f0, sstable.WriterOptions{
+	w := sstable.NewWriter(f0, nil, sstable.WriterOptions{
 		Comparer:     &lt.cmp,
 		FilterPolicy: fp,
 	})
@@ -409,7 +409,7 @@ func buildLevelIterTables(
 
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(files[i], sstable.WriterOptions{
+		writers[i] = sstable.NewWriter(files[i], nil, sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
 			Compression:          NoCompression,

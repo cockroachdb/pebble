@@ -1200,16 +1200,13 @@ func (o *Options) MakeWriterOptions(level int) sstable.WriterOptions {
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
 
-	writerOpts.ParallelCompressionEnabled =
-		o.MaxConcurrentCompactions > 1 && writerOpts.Compression != NoCompression
-	if writerOpts.ParallelCompressionEnabled {
+	if o.Experimental.MaxCompressionThreads > 1 {
 		// todo(bananabrick) : The size of the queue here seems arbitrary. We can have
 		// atmost one thread write to the queue at a time.
 		writerOpts.WriteQueueSize = o.Experimental.MaxCompressionThreads
 		if writerOpts.WriteQueueSize < uint64(o.MaxConcurrentCompactions) {
 			writerOpts.WriteQueueSize = uint64(o.MaxConcurrentCompactions)
 		}
-
 	}
 
 	return writerOpts

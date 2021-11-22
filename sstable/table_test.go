@@ -373,7 +373,7 @@ func build(
 		writerOpts.TablePropertyCollectors = append(writerOpts.TablePropertyCollectors, propCollector)
 	}
 
-	w := NewWriter(f0, writerOpts)
+	w := NewWriter(f0, nil, writerOpts)
 	// Use rangeDelV1Format for testing byte equality with RocksDB.
 	w.rangeDelV1Format = true
 	var rangeDelLength int
@@ -613,7 +613,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
 						continue
 					}
-					w := NewWriter(wf, WriterOptions{
+					w := NewWriter(wf, nil, WriterOptions{
 						BlockSize:      blockSize,
 						IndexBlockSize: indexBlockSize,
 					})
@@ -834,7 +834,7 @@ func TestTablePropertyCollectorErrors(t *testing.T) {
 			return errorPropCollector{}
 		})
 
-	w := NewWriter(f, opts)
+	w := NewWriter(f, nil, opts)
 	require.Regexp(t, `add a#0,1 failed`, w.Set([]byte("a"), []byte("b")))
 	require.Regexp(t, `add c#0,0 failed`, w.Delete([]byte("c")))
 	require.Regexp(t, `add d#0,15 failed`, w.DeleteRange([]byte("d"), []byte("e")))

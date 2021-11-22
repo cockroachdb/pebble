@@ -30,13 +30,12 @@ type CompressionQueueContainer struct {
 // compression of blocks, and return a usable *CompressionQueueContainer.
 func NewCompressionQueueContainer(
 	maxSize int, numWorkers int) *CompressionQueueContainer {
-
 	qu := &CompressionQueueContainer{}
 	qu.queue = make(chan CompressionData, maxSize)
 
 	for i := 0; i < numWorkers; i++ {
 		qu.closeWG.Add(1)
-		qu.startWorker()
+		go qu.startWorker()
 	}
 
 	return qu
@@ -80,16 +79,11 @@ type writeQueueContainer struct {
 // compression of blocks, and return a usable *writeQueueContainer.
 func newWriteQueueContainer(maxSize int, w *Writer) *writeQueueContainer {
 	qu := &writeQueueContainer{}
-
-	// We're using a buffered channel for the write queue. Since,
-	// we never want the writes to the queue to block, we make sure that
-	// its buffer size is at least equal to the maximum number of goroutines
-	// which will write to it.
 	qu.queue = make(chan int, maxSize)
 	qu.writer = w
 
 	qu.closeWG.Add(1)
-	qu.startWorker()
+	go qu.startWorker()
 
 	return qu
 }
@@ -99,7 +93,6 @@ func (qu *writeQueueContainer) startWorker() {
 		if atomic.LoadInt32(&qu.atomic.done) == 1 {
 			break
 		}
-
 	}
 	qu.closeWG.Done()
 }

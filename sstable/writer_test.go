@@ -123,7 +123,7 @@ func TestWriterClearCache(t *testing.T) {
 		f, err := mem.Create(name)
 		require.NoError(t, err)
 
-		w := NewWriter(f, writerOpts, cacheOpts)
+		w := NewWriter(f, nil, writerOpts, cacheOpts)
 		require.NoError(t, w.Set([]byte("hello"), []byte("world")))
 		require.NoError(t, w.Close())
 	}
@@ -228,7 +228,7 @@ func BenchmarkWriter(b *testing.B) {
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				w := NewWriter(discardFile{}, bm.options)
+				w := NewWriter(discardFile{}, nil, bm.options)
 
 				for j := range keys {
 					if err := w.Set(keys[j], keys[j]); err != nil {

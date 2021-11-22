@@ -19,7 +19,7 @@ func writeAndIngest(t *testing.T, mem vfs.FS, d *DB, k InternalKey, v []byte, fi
 	path := mem.PathJoin("ext", filename)
 	f, err := mem.Create(path)
 	require.NoError(t, err)
-	w := sstable.NewWriter(f, sstable.WriterOptions{})
+	w := sstable.NewWriter(f, nil, sstable.WriterOptions{})
 	require.NoError(t, w.Add(k, v))
 	require.NoError(t, w.Close())
 	require.NoError(t, d.Ingest([]string{path}))

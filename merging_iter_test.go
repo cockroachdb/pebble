@@ -193,7 +193,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				w := sstable.NewWriter(f, sstable.WriterOptions{})
+				w := sstable.NewWriter(f, nil, sstable.WriterOptions{})
 				var tombstones []keyspan.Span
 				frag := keyspan.Fragmenter{
 					Cmp:    cmp,
@@ -280,7 +280,7 @@ func buildMergingIterTables(
 
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(files[i], sstable.WriterOptions{
+		writers[i] = sstable.NewWriter(files[i], nil, sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
 			Compression:          NoCompression,
@@ -482,7 +482,7 @@ func buildLevelsForMergingIterSeqSeek(
 				writerOptions.FilterPolicy = filterPolicy
 				writerOptions.FilterType = base.TableFilter
 			}
-			writers[i] = append(writers[i], sstable.NewWriter(files[i][j], writerOptions))
+			writers[i] = append(writers[i], sstable.NewWriter(files[i][j], nil, writerOptions))
 		}
 	}
 

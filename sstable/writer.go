@@ -97,19 +97,18 @@ type Writer struct {
 	cacheID uint64
 	fileNum base.FileNum
 	// The following fields are copied from Options.
-	blockSize                  int
-	blockSizeThreshold         int
-	indexBlockSize             int
-	indexBlockSizeThreshold    int
-	compare                    Compare
-	split                      Split
-	formatKey                  base.FormatKey
-	compression                Compression
-	separator                  Separator
-	successor                  Successor
-	tableFormat                TableFormat
-	cache                      *cache.Cache
-	parallelCompressionEnabled bool
+	blockSize               int
+	blockSizeThreshold      int
+	indexBlockSize          int
+	indexBlockSizeThreshold int
+	compare                 Compare
+	split                   Split
+	formatKey               base.FormatKey
+	compression             Compression
+	separator               Separator
+	successor               Successor
+	tableFormat             TableFormat
+	cache                   *cache.Cache
 	// disableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
 	// of invalid sstables for testing. See tool/make_test_sstables.go.
@@ -161,6 +160,8 @@ type Writer struct {
 	// write them to disk. It is only valid when
 	// writer.ParallelCompressionEnabled is true.
 	writeQueue *writeQueueContainer
+
+	compressionQueueRef *CompressionQueueContainer
 
 	checksumData checksumData
 }
@@ -553,12 +554,15 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	return w.writeBlock(w.topLevelIndexBlock.finish(), w.compression)
 }
 
-func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
+// compressAndChecksum will compress the data, and return
+// the compressed data.
+func compressAndChecksum(
+	b []byte, compression Compression, compressedBuf *[]byte, trailerBuf *[120]byte, checksumData *checksumData) ([]byte, error) {
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
-	blockType, compressed := compressBlock(compression, b, w.compressedBuf)
-	if blockType != noCompressionBlockType && cap(compressed) > cap(w.compressedBuf) {
-		w.compressedBuf = compressed[:cap(compressed)]
+	blockType, compressed := compressBlock(compression, b, *compressedBuf)
+	if blockType != noCompressionBlockType && cap(compressed) > cap(*compressedBuf) {
+		*compressedBuf = compressed[:cap(compressed)]
 	}
 	if len(compressed) < len(b)-len(b)/8 {
 		b = compressed
@@ -566,26 +570,35 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 		blockType = noCompressionBlockType
 	}
 
-	w.tmp[0] = byte(blockType)
+	(*trailerBuf)[0] = byte(blockType)
 
 	// Calculate the checksum.
 	var checksum uint32
-	switch w.checksumData.checksumType {
+	switch checksumData.checksumType {
 	case ChecksumTypeCRC32c:
-		checksum = crc.New(b).Update(w.tmp[:1]).Value()
+		checksum = crc.New(b).Update((*trailerBuf)[:1]).Value()
 	case ChecksumTypeXXHash64:
-		if w.checksumData.xxHasher == nil {
-			w.checksumData.xxHasher = xxhash.New()
+		if checksumData.xxHasher == nil {
+			checksumData.xxHasher = xxhash.New()
 		} else {
-			w.checksumData.xxHasher.Reset()
+			checksumData.xxHasher.Reset()
 		}
-		w.checksumData.xxHasher.Write(b)
-		w.checksumData.xxHasher.Write(w.tmp[:1])
-		checksum = uint32(w.checksumData.xxHasher.Sum64())
+		checksumData.xxHasher.Write(b)
+		checksumData.xxHasher.Write((*trailerBuf)[:1])
+		checksum = uint32(checksumData.xxHasher.Sum64())
 	default:
-		return BlockHandle{}, errors.Newf("unsupported checksum type: %d", w.checksumData.checksumType)
+		return nil, errors.Newf("unsupported checksum type: %d", checksumData.checksumType)
 	}
-	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
+	binary.LittleEndian.PutUint32((*trailerBuf)[1:5], checksum)
+
+	return b, nil
+}
+
+func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
+	b, err := compressAndChecksum(b, compression, &w.compressedBuf, &w.tmp, &w.checksumData)
+	if err != nil {
+		return BlockHandle{}, err
+	}
 
 	// todo(bananabrick): This stuff will be done by the writer thread.
 	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(b))}
@@ -618,6 +631,11 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 // table was written to.
 func (w *Writer) Close() (err error) {
 	defer func() {
+		if w.writeQueue != nil {
+			w.writeQueue.close()
+			w.writeQueue = nil
+		}
+
 		if w.syncer == nil {
 			return
 		}
@@ -858,26 +876,25 @@ func (i internalTableOpt) writerApply(w *Writer) {
 
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *Writer {
+func NewWriter(f writeCloseSyncer, compressionQueue *CompressionQueueContainer, o WriterOptions, extraOpts ...WriterOption) *Writer {
 	o = o.ensureDefaults()
 	w := &Writer{
 		syncer: f,
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
-		blockSize:                  o.BlockSize,
-		blockSizeThreshold:         (o.BlockSize*o.BlockSizeThreshold + 99) / 100,
-		indexBlockSize:             o.IndexBlockSize,
-		indexBlockSizeThreshold:    (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
-		compare:                    o.Comparer.Compare,
-		split:                      o.Comparer.Split,
-		formatKey:                  o.Comparer.FormatKey,
-		compression:                o.Compression,
-		separator:                  o.Comparer.Separator,
-		successor:                  o.Comparer.Successor,
-		tableFormat:                o.TableFormat,
-		cache:                      o.Cache,
-		parallelCompressionEnabled: o.ParallelCompressionEnabled,
+		blockSize:               o.BlockSize,
+		blockSizeThreshold:      (o.BlockSize*o.BlockSizeThreshold + 99) / 100,
+		indexBlockSize:          o.IndexBlockSize,
+		indexBlockSizeThreshold: (o.IndexBlockSize*o.BlockSizeThreshold + 99) / 100,
+		compare:                 o.Comparer.Compare,
+		split:                   o.Comparer.Split,
+		formatKey:               o.Comparer.FormatKey,
+		compression:             o.Compression,
+		separator:               o.Comparer.Separator,
+		successor:               o.Comparer.Successor,
+		tableFormat:             o.TableFormat,
+		cache:                   o.Cache,
 		block: blockWriter{
 			restartInterval: o.BlockRestartInterval,
 		},
@@ -980,9 +997,10 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		w.writer = w.bufWriter
 	}
 
-	if o.ParallelCompressionEnabled {
+	if compressionQueue != nil {
 		// What should size of the queue be? 10 is arbitrary.
 		w.writeQueue = newWriteQueueContainer(int(o.WriteQueueSize), w)
+		w.compressionQueueRef = compressionQueue
 	}
 
 	return w

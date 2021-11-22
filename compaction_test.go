@@ -2575,7 +2575,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 		f, err := mem.Create("ext")
 		require.NoError(t, err)
 
-		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		w := sstable.NewWriter(f, nil, sstable.WriterOptions{})
 		for _, k := range keys {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}

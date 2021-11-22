@@ -56,7 +56,7 @@ func runBuildCmd(
 		}
 	}
 
-	w := NewWriter(f0, writerOpts)
+	w := NewWriter(f0, nil, writerOpts)
 	var tombstones []keyspan.Span
 	f := keyspan.Fragmenter{
 		Cmp:    DefaultComparer.Compare,
@@ -128,7 +128,7 @@ func runBuildRawCmd(td *datadriven.TestData) (*WriterMetadata, *Reader, error) {
 		return nil, nil, err
 	}
 
-	w := NewWriter(f0, WriterOptions{})
+	w := NewWriter(f0, nil, WriterOptions{})
 	for i := range td.CmdArgs {
 		arg := &td.CmdArgs[i]
 		if arg.Key == "range-del-v1" {

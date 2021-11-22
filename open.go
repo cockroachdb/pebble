@@ -363,7 +363,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 	d.mu.versions.atomic.visibleSeqNum = d.mu.versions.atomic.logSeqNum
 
-	if opts.Experimental.MaxCompressionThreads > 1 {
+	if opts.Experimental.MaxCompressionThreads > 1 || true {
+		opts.Experimental.MaxCompressionThreads = 2
 		bufferSize := opts.Experimental.MaxCompressionThreads
 		if opts.MaxConcurrentCompactions > int(bufferSize) {
 			bufferSize = uint64(opts.MaxConcurrentCompactions)

@@ -163,7 +163,7 @@ func newTableCacheContainerTest(
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "fs.Create")
 		}
-		tw := sstable.NewWriter(f, sstable.WriterOptions{})
+		tw := sstable.NewWriter(f, nil, sstable.WriterOptions{})
 		ik := base.ParseInternalKey(fmt.Sprintf("k.SET.%d", i))
 		if err := tw.Add(ik, xxx[:i]); err != nil {
 			return nil, nil, errors.Wrap(err, "tw.Set")
@@ -827,7 +827,7 @@ func TestTableCacheClockPro(t *testing.T) {
 		require.NoError(t, err)
 		f, err := mem.Create(base.MakeFilepath(mem, "", fileTypeTable, fileNum))
 		require.NoError(t, err)
-		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		w := sstable.NewWriter(f, nil, sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte("a"), nil))
 		require.NoError(t, w.Close())
 	}

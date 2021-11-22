@@ -151,7 +151,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					return err.Error()
 				}
 				writeUnfragmented := false
-				w := sstable.NewWriter(f, sstable.WriterOptions{})
+				w := sstable.NewWriter(f, nil, sstable.WriterOptions{})
 				for _, arg := range d.CmdArgs {
 					switch arg.Key {
 					case "disable-key-order-checks":

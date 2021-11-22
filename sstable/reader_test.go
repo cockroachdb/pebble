@@ -376,7 +376,7 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 	f0, err := mem.Create(testTable)
 	require.NoError(t, err)
 
-	w := NewWriter(f0, writerOpts)
+	w := NewWriter(f0, nil, writerOpts)
 	require.NoError(t, w.Set([]byte("test"), nil))
 	require.NoError(t, w.Close())
 
@@ -592,7 +592,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 							indexBlockSize = 1
 						}
 
-						w := NewWriter(f, WriterOptions{
+						w := NewWriter(f, nil, WriterOptions{
 							BlockSize:      blockSize,
 							IndexBlockSize: indexBlockSize,
 							Checksum:       checksumType,
@@ -867,7 +867,7 @@ func buildTestTable(
 	f0, err := mem.Create("test")
 	require.NoError(t, err)
 
-	w := NewWriter(f0, WriterOptions{
+	w := NewWriter(f0, nil, WriterOptions{
 		BlockSize:      blockSize,
 		IndexBlockSize: indexBlockSize,
 		Compression:    compression,
@@ -908,7 +908,7 @@ func buildBenchmarkTable(b *testing.B, options WriterOptions) (*Reader, [][]byte
 		b.Fatal(err)
 	}
 
-	w := NewWriter(f0, options)
+	w := NewWriter(f0, nil, options)
 
 	var keys [][]byte
 	var ikey InternalKey

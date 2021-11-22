@@ -330,7 +330,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	if err != nil {
 		return err
 	}
-	w := sstable.NewWriter(f, sstable.WriterOptions{})
+	w := sstable.NewWriter(f, nil, sstable.WriterOptions{})
 	iters := []internalIterator{
 		b.newInternalIter(nil),
 		b.newRangeDelIter(nil),
