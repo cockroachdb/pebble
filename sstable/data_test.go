@@ -58,12 +58,7 @@ func runBuildCmd(
 	td *datadriven.TestData, writerOpts *WriterOptions,
 ) (*WriterMetadata, *Reader, error) {
 
-	mem := vfs.NewMem()
-	f0, err := mem.Create("test")
-	if err != nil {
-		return nil, nil, err
-	}
-
+	f0 := &memFile{}
 	if err := optsFromArgs(td, writerOpts); err != nil {
 		return nil, nil, err
 	}
@@ -154,17 +149,13 @@ func runBuildCmd(
 		return nil, nil, err
 	}
 
-	f1, err := mem.Open("test")
-	if err != nil {
-		return nil, nil, err
-	}
 	readerOpts := ReaderOptions{Comparer: writerOpts.Comparer}
 	if writerOpts.FilterPolicy != nil {
 		readerOpts.Filters = map[string]FilterPolicy{
 			writerOpts.FilterPolicy.Name(): writerOpts.FilterPolicy,
 		}
 	}
-	r, err := NewReader(f1, readerOpts)
+	r, err := NewMemReader(f0.Data(), readerOpts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -375,7 +366,7 @@ func runRewriteCmd(
 	}
 	r.Close()
 
-	r, err = NewReader(vfs.NewMemFile(f.Data()), readerOpts)
+	r, err = NewMemReader(f.Data(), readerOpts)
 	if err != nil {
 		return nil, nil, err
 	}
