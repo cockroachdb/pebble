@@ -1,6 +1,7 @@
 package sstable
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 )
@@ -8,8 +9,15 @@ import (
 // todo(bananabrick): rethink error handling in the writer
 // in the parallel compression case
 
-// todo(bananabrick): check for races for any fields in the writer
+// todo(bananabrick): check for races for any fields in the Writer
 // which will be accessed from the writer thread.
+
+// todo(bananabrick) : make sure the startWorker goroutines terminate
+// when pebble is closed. Right now, they may block and leak.
+
+// todo(bananabrick) : sequence the blocks written by a writer, which
+// will be used to terminate the writer goroutine, and make sure
+// that all of the blocks for a given file have been written.
 
 type CompressedData struct {
 	compressed []byte
@@ -19,6 +27,7 @@ type CompressedData struct {
 type BlockCompressionCoordinator struct {
 	toCompress  []byte
 	compression Compression
+	checksum    ChecksumType
 
 	// doneCh is used to signal to the writer
 	// thread that the compression has been
@@ -33,9 +42,7 @@ type BlockWriteCoordinator struct {
 	// buffered channel of size 1.
 	doneCh <-chan *CompressedData
 
-	// postFunc should be called after the compressed
-	// block has been written to the file.
-	postFunc func()
+	key InternalKey
 }
 
 // CompressionQueueContainer is used to queue up blocks
@@ -77,6 +84,7 @@ func (qu *CompressionQueueContainer) startWorker() {
 		}
 
 		toCompress := <-qu.queue
+		checksumData.checksumType = toCompress.checksum
 		b, err := compressAndChecksum(
 			toCompress.toCompress, toCompress.compression, &compressBuf, &trailerScratch, &checksumData,
 		)
@@ -138,7 +146,8 @@ func (qu *writeQueueContainer) startWorker() {
 		}
 
 		// The write queue will block until the specific
-		// block in this order has been compressed.
+		// block in the queue has been compressed. This
+		// ensures the ordering of writes in the file.
 		blockWriteCoordinator := <-qu.queue
 		compressedData := <-blockWriteCoordinator.doneCh
 
@@ -146,16 +155,45 @@ func (qu *writeQueueContainer) startWorker() {
 			// todo(bananabrick): figure out how to asynchronously
 			// handle the errors.
 		} else {
-			qu.writer.writeBlockPostCompression(compressedData.compressed)
+			bh, err := qu.writer.writeBlockPostCompression(compressedData.compressed)
+			if err != nil {
+				// todo(bananabrick)
+				fmt.Println("handle this")
+			}
+			err = qu.writer.addBlockPropertiesandIndexEntry(blockWriteCoordinator.key, bh)
+			if err != nil {
+				// todo(bananabrick)
+				fmt.Println("handle this")
+			}
+			fmt.Println("writing", bh, err)
 		}
 	}
 	qu.closeWG.Done()
+}
+
+// finish will write an item to the write queue
+// to indicate that this was the last block. It will
+// then block until the last block has been processed
+// by the queue.
+// qu shouldn't be used once finish is called.
+func (qu *writeQueueContainer) finish() {
+	doneCh := make(chan *CompressedData, 1)
+	doneCh <- &CompressedData{}
+	qu.queue <- &BlockWriteCoordinator{
+		doneCh: doneCh,
+		key:    InternalKey{},
+	}
+	qu.closeWG.Wait()
+	atomic.StoreInt32(&qu.atomic.done, 1)
 }
 
 // Close will only return after the goroutine started
 // by NewWompressionQueueContainer has stopped running.
 // Items shouldn't be added to the queue once close has
 // been called.
+// Note that calling close will shut down the worker
+// even if there are more blocks which need to be written
+// to disk.
 func (qu *writeQueueContainer) close() {
 	atomic.StoreInt32(&qu.atomic.done, 1)
 	qu.closeWG.Wait()

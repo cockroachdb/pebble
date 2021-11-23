@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
@@ -161,9 +162,21 @@ type Writer struct {
 	// writer.ParallelCompressionEnabled is true.
 	writeQueue *writeQueueContainer
 
+	// compressionQueueRef holds a reference to the
+	// CompressionQueueContainer. If this is non-nil,
+	// then parallel compression is enabled.
 	compressionQueueRef *CompressionQueueContainer
 
 	checksumData checksumData
+
+	sequenceMu struct {
+		sync.Mutex
+		// highestBlockSequenceNumber is used to make sure that
+		// all the blocks are written by the writer thread
+		// before we Close the Writer. It's only useful when
+		// compressionQueueRef != nil.
+		highestBlockSequenceNumber uint64
+	}
 }
 
 type indexBlockWriterAndBlockProperties struct {
@@ -390,17 +403,9 @@ func (w *Writer) maybeAddToFilter(key []byte) {
 	}
 }
 
-func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
-	if !shouldFlush(key, value, &w.block, w.blockSize, w.blockSizeThreshold) {
-		return nil
-	}
-
-	bh, err := w.writeBlock(w.block.finish(), w.compression)
-	if err != nil {
-		w.err = err
-		return w.err
-	}
+func (w *Writer) addBlockPropertiesandIndexEntry(key InternalKey, bh BlockHandle) error {
 	var bhp BlockHandleWithProperties
+	var err error
 	if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
 		return err
 	}
@@ -408,6 +413,35 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 		return err
 	}
 	return nil
+}
+
+func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
+	if !shouldFlush(key, value, &w.block, w.blockSize, w.blockSizeThreshold) {
+		return nil
+	}
+
+	if w.compressionQueueRef != nil {
+		finished := w.block.finish()
+		doneCh := make(chan *CompressedData, 1)
+		w.writeQueue.queue <- &BlockWriteCoordinator{
+			doneCh: doneCh,
+			key:    key,
+		}
+		w.compressionQueueRef.queue <- &BlockCompressionCoordinator{
+			toCompress:  finished,
+			compression: w.compression,
+			checksum:    w.checksumData.checksumType,
+			doneCh:      doneCh,
+		}
+		return nil
+	} else {
+		bh, err := w.writeBlock(w.block.finish(), w.compression)
+		if err != nil {
+			w.err = err
+			return w.err
+		}
+		return w.addBlockPropertiesandIndexEntry(key, bh)
+	}
 }
 
 // The BlockHandleWithProperties returned by this method must be encoded
@@ -633,11 +667,6 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 // table was written to.
 func (w *Writer) Close() (err error) {
 	defer func() {
-		if w.writeQueue != nil {
-			w.writeQueue.close()
-			w.writeQueue = nil
-		}
-
 		if w.syncer == nil {
 			return
 		}
@@ -647,6 +676,12 @@ func (w *Writer) Close() (err error) {
 		}
 		w.syncer = nil
 	}()
+
+	// finish will only return after the queued up blocks have been processed.
+	if w.writeQueue != nil {
+		w.writeQueue.finish()
+	}
+
 	if w.err != nil {
 		return w.err
 	}
@@ -1000,7 +1035,6 @@ func NewWriter(f writeCloseSyncer, compressionQueue *CompressionQueueContainer, 
 	}
 
 	if compressionQueue != nil {
-		// What should size of the queue be? 10 is arbitrary.
 		w.writeQueue = newWriteQueueContainer(int(o.WriteQueueSize), w)
 		w.compressionQueueRef = compressionQueue
 	}
