@@ -8,10 +8,9 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/cache"
 )
 
-// RewriteKeySuffixes copies the content of the passed SSTable Reader to a new
+// RewriteKeySuffixes copies the content of the passed SSTable bytes to a new
 // sstable, written to `out`, in which the suffix `from` has is replaced with
 // `to` in every key. The input sstable must consist of only Sets and every key
 // must have `from` as its suffix as determined by the Split function of the
@@ -29,9 +28,18 @@ import (
 // their collected value based on the change in suffix or indicate if that is
 // unsupported. Until that follow-up change however, this method should only be
 // used iff the collectors are verified to be correct with this behavior.
-//
-// TODO(dt): rework block reading to avoid cache.Set contention.
 func RewriteKeySuffixes(
+	sst []byte, rOpts ReaderOptions, out writeCloseSyncer, o WriterOptions, from, to []byte, concurrency int,
+) (*WriterMetadata, error) {
+	r, err := NewMemReader(sst, rOpts)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return rewriteKeySuffixesInBlocks(r, out, o, from, to, concurrency)
+}
+
+func rewriteKeySuffixesInBlocks(
 	r *Reader, out writeCloseSyncer, o WriterOptions, from, to []byte, concurrency int,
 ) (*WriterMetadata, error) {
 	if o.Comparer == nil || o.Comparer.Split == nil {
@@ -54,25 +62,22 @@ func RewriteKeySuffixes(
 
 	// Copy over the filter block if it exists (rewriteDataBlocksToWriter will
 	// already have ensured this is valid if it exists).
-	var filterBlock cache.Handle
 	if w.filter != nil {
 		if l.Filter.Length == 0 {
 			return nil, errors.New("input table has no filter")
 		}
-		filterBlock, err = r.readBlock(l.Filter, nil, nil)
+		filterBlock, _, err := readBlockBuf(r, l.Filter, nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "reading filter")
 		}
 		w.filter = copyFilterWriter{
-			origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filterBlock.Get(),
+			origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filterBlock,
 		}
 	}
 
 	if err := w.Close(); err != nil {
-		filterBlock.Release()
 		return nil, err
 	}
-	filterBlock.Release()
 
 	return w.Metadata()
 }
@@ -102,6 +107,9 @@ func rewriteBlocks(
 	var blockAlloc []byte
 	var keyAlloc []byte
 	var scratch InternalKey
+
+	var inputBlock, inputBlockBuf []byte
+
 	iter := &blockIter{}
 
 	// We'll assume all blocks are _roughly_ equal so round-robin static partition
@@ -109,13 +117,12 @@ func rewriteBlocks(
 	for i := worker; i < len(input); i += totalWorkers {
 		bh := input[i]
 
-		h, err := r.readBlock(bh, nil /* transform */, nil /*rs*/)
+		var err error
+		inputBlock, inputBlockBuf, err = readBlockBuf(r, bh, inputBlockBuf)
 		if err != nil {
 			return err
 		}
-		inputBlock := h.Get()
 		if err := iter.init(r.Compare, inputBlock, r.Properties.GlobalSeqNum); err != nil {
-			h.Release()
 			return err
 		}
 
@@ -131,14 +138,12 @@ func rewriteBlocks(
 
 		for key, val := iter.First(); key != nil; key, val = iter.Next() {
 			if key.Kind() != InternalKeyKindSet {
-				h.Release()
 				return errBadKind
 			}
 			si := split(key.UserKey)
 			oldSuffix := key.UserKey[si:]
 			if !bytes.Equal(oldSuffix, from) {
 				err := errors.Errorf("key has suffix %q, expected %q", oldSuffix, from)
-				h.Release()
 				return err
 			}
 			newLen := si + len(to)
@@ -159,7 +164,6 @@ func rewriteBlocks(
 		*iter = iter.resetForReuse()
 
 		keyAlloc, output[i].end = cloneKeyWithBuf(scratch, keyAlloc)
-		h.Release()
 
 		finished := compressAndChecksum(bw.finish(), compression, &buf)
 
@@ -331,6 +335,27 @@ func RewriteKeySuffixesViaWriter(
 // NewMemReader opens a reader over the SST stored in the passed []byte.
 func NewMemReader(sst []byte, o ReaderOptions) (*Reader, error) {
 	return NewReader(memReader{sst, bytes.NewReader(sst), sizeOnlyStat(int64(len(sst)))}, o)
+}
+
+func readBlockBuf(r *Reader, bh BlockHandle, buf []byte) ([]byte, []byte, error) {
+	raw := r.file.(memReader).b[bh.Offset : bh.Offset+bh.Length+blockTrailerLen]
+	if err := checkChecksum(r.checksumType, raw, bh, 0); err != nil {
+		return nil, buf, err
+	}
+	typ := blockType(raw[bh.Length])
+	raw = raw[:bh.Length]
+	if typ == noCompressionBlockType {
+		return raw, buf, nil
+	}
+	decompressedLen, prefix, err := decompressedLen(typ, raw)
+	if err != nil {
+		return nil, buf, err
+	}
+	if cap(buf) < decompressedLen {
+		buf = make([]byte, decompressedLen)
+	}
+	res, err := decompressInto(typ, raw[prefix:], buf[:decompressedLen])
+	return res, buf, err
 }
 
 // memReader is a thin wrapper around a []byte such that it can be passed to an

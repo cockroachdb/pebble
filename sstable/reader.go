@@ -2207,6 +2207,26 @@ func (r *Reader) readRangeKey() (cache.Handle, error) {
 	return r.readBlock(r.rangeKeyBH, nil /* transform */, nil /* readaheadState */)
 }
 
+func checkChecksum(checksumType ChecksumType, b []byte, bh BlockHandle, fileNum base.FileNum) error {
+	expectedChecksum := binary.LittleEndian.Uint32(b[bh.Length+1:])
+	var computedChecksum uint32
+	switch checksumType {
+	case ChecksumTypeCRC32c:
+		computedChecksum = crc.New(b[:bh.Length+1]).Value()
+	case ChecksumTypeXXHash64:
+		computedChecksum = uint32(xxhash.Sum64(b[:bh.Length+1]))
+	default:
+		return errors.Errorf("unsupported checksum type: %d", checksumType)
+	}
+
+	if expectedChecksum != computedChecksum {
+		return base.CorruptionErrorf(
+			"pebble/table: invalid table %s (checksum mismatch at %d/%d)",
+			errors.Safe(fileNum), errors.Safe(bh.Offset), errors.Safe(bh.Length))
+	}
+	return nil
+}
+
 // readBlock reads and decompresses a block from disk into memory.
 func (r *Reader) readBlock(
 	bh BlockHandle, transform blockTransform, raState *readaheadState,
@@ -2263,23 +2283,9 @@ func (r *Reader) readBlock(
 		return cache.Handle{}, err
 	}
 
-	expectedChecksum := binary.LittleEndian.Uint32(b[bh.Length+1:])
-	var computedChecksum uint32
-	switch r.checksumType {
-	case ChecksumTypeCRC32c:
-		computedChecksum = crc.New(b[:bh.Length+1]).Value()
-	case ChecksumTypeXXHash64:
-		computedChecksum = uint32(xxhash.Sum64(b[:bh.Length+1]))
-	default:
+	if err := checkChecksum(r.checksumType, b, bh, r.fileNum); err != nil {
 		r.opts.Cache.Free(v)
-		return cache.Handle{}, errors.Errorf("unsupported checksum type: %d", r.checksumType)
-	}
-
-	if expectedChecksum != computedChecksum {
-		r.opts.Cache.Free(v)
-		return cache.Handle{}, base.CorruptionErrorf(
-			"pebble/table: invalid table %s (checksum mismatch at %d/%d)",
-			errors.Safe(r.fileNum), errors.Safe(bh.Offset), errors.Safe(bh.Length))
+		return cache.Handle{}, err
 	}
 
 	typ := blockType(b[bh.Length])
