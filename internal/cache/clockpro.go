@@ -28,6 +28,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 type fileKey struct {
@@ -111,9 +112,16 @@ type shard struct {
 	countHot  int64
 	countCold int64
 	countTest int64
+
+	sc     SecondaryCache
+	parent *Cache
 }
 
-func (c *shard) Get(id uint64, fileNum base.FileNum, offset uint64) Handle {
+func (c *shard) setSecondaryCache(sc SecondaryCache) {
+	c.sc = sc
+}
+
+func (c *shard) Get(id uint64, fileNum base.FileNum, offset uint64, secondary bool) Handle {
 	c.mu.RLock()
 	var value *Value
 	if e := c.blocks.Get(key{fileKey{id, fileNum}, offset}); e != nil {
@@ -125,13 +133,24 @@ func (c *shard) Get(id uint64, fileNum base.FileNum, offset uint64) Handle {
 	c.mu.RUnlock()
 	if value == nil {
 		atomic.AddInt64(&c.misses, 1)
+		if c.sc != nil && secondary {
+			if secondaryVal := c.sc.GetAndEvict(id, fileNum, offset); len(secondaryVal) > 0 {
+				v := c.parent.Alloc(len(secondaryVal))
+				copy(v.Buf(), secondaryVal)
+				c.Set(id, fileNum, offset, v, true)
+				atomic.AddInt64(&c.hits, 1)
+				return Handle{value: value}
+			}
+		}
 		return Handle{}
 	}
 	atomic.AddInt64(&c.hits, 1)
 	return Handle{value: value}
 }
 
-func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value) Handle {
+func (c *shard) Set(
+	id uint64, fileNum base.FileNum, offset uint64, value *Value, eligibleForSecondary bool,
+) Handle {
 	if n := value.refs(); n != 1 {
 		panic(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n))
 	}
@@ -147,6 +166,7 @@ func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value
 		// no cache entry? add it
 		e = newEntry(c, k, int64(len(value.buf)))
 		e.setValue(value)
+		e.eligibleForSecondary = eligibleForSecondary
 		if c.metaAdd(k, e) {
 			value.ref.trace("add-cold")
 			c.sizeCold += e.size
@@ -177,6 +197,9 @@ func (c *shard) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value
 		c.sizeTest -= e.size
 		c.countTest--
 		c.metaDel(e)
+		if c.sc != nil && e.eligibleForSecondary {
+			c.sc.Set(e.key.id, e.key.fileNum, e.key.offset, e.val.Buf())
+		}
 		c.metaCheck(e)
 
 		e.size = int64(len(value.buf))
@@ -261,6 +284,9 @@ func (c *shard) EvictFile(id uint64, fileNum base.FileNum) {
 		if b == n {
 			break
 		}
+	}
+	if c.sc != nil {
+		c.sc.DeleteFile(id, fileNum)
 	}
 
 	c.checkConsistency()
@@ -565,6 +591,9 @@ func (c *shard) runHandTest() {
 			c.coldTarget = 0
 		}
 		c.metaDel(e)
+		if c.sc != nil && e.eligibleForSecondary {
+			c.sc.Set(e.key.id, e.key.fileNum, e.key.offset, e.val.Buf())
+		}
 		c.metaCheck(e)
 		e.free()
 	}
@@ -658,6 +687,7 @@ func newShards(size int64, shards int) *Cache {
 		c.shards[i] = shard{
 			maxSize:    size / int64(len(c.shards)),
 			coldTarget: size / int64(len(c.shards)),
+			parent:     c,
 		}
 		if entriesGoAllocated {
 			c.shards[i].entries = make(map[*entry]struct{})
@@ -736,18 +766,29 @@ func (c *Cache) Unref() {
 	}
 }
 
+func (c *Cache) AddSecondaryCache(dir string, fs vfs.FSWithOpenForWrites, capacity uint64) {
+	capacity = capacity / uint64(len(c.shards))
+	for i := range c.shards {
+		path := fs.PathJoin(dir, fmt.Sprintf("shard-%d", i+1))
+		fs.MkdirAll(path, 0755)
+		c.shards[i].setSecondaryCache(NewPersistentCache(path, fs, capacity))
+	}
+}
+
 // Get retrieves the cache value for the specified file and offset, returning
 // nil if no value is present.
-func (c *Cache) Get(id uint64, fileNum base.FileNum, offset uint64) Handle {
-	return c.getShard(id, fileNum, offset).Get(id, fileNum, offset)
+func (c *Cache) Get(id uint64, fileNum base.FileNum, offset uint64, secondary bool) Handle {
+	return c.getShard(id, fileNum, offset).Get(id, fileNum, offset, secondary)
 }
 
 // Set sets the cache value for the specified file and offset, overwriting an
 // existing value if present. A Handle is returned which provides faster
 // retrieval of the cached value than Get (lock-free and avoidance of the map
 // lookup). The value must have been allocated by Cache.Alloc.
-func (c *Cache) Set(id uint64, fileNum base.FileNum, offset uint64, value *Value) Handle {
-	return c.getShard(id, fileNum, offset).Set(id, fileNum, offset, value)
+func (c *Cache) Set(
+	id uint64, fileNum base.FileNum, offset uint64, value *Value, eligibleForSecondary bool,
+) Handle {
+	return c.getShard(id, fileNum, offset).Set(id, fileNum, offset, value, eligibleForSecondary)
 }
 
 // Delete deletes the cached value for the specified file and offset.

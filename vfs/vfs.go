@@ -33,6 +33,11 @@ type File interface {
 	Sync() error
 }
 
+type RandomWriteFile interface {
+	File
+	io.WriterAt
+}
+
 // OpenOption provide an interface to do work on file handles in the Open()
 // call.
 type OpenOption interface {
@@ -128,6 +133,12 @@ type FS interface {
 	GetDiskUsage(path string) (DiskUsage, error)
 }
 
+type FSWithOpenForWrites interface {
+	FS
+
+	OpenForWrites(name string, opts ...OpenOption) (RandomWriteFile, error)
+}
+
 // DiskUsage summarizes disk space usage on a filesystem.
 type DiskUsage struct {
 	// Total disk space available to the current process in bytes.
@@ -171,6 +182,19 @@ func (defaultFS) Link(oldname, newname string) error {
 
 func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
 	file, err := os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	for _, opt := range opts {
+		opt.Apply(file)
+	}
+	return file, nil
+}
+
+func (defaultFS) OpenForWrites(name string, opts ...OpenOption) (RandomWriteFile, error) {
+	// TODO(bilal): Once secondary cache supports reopening existing files, remove
+	// O_TRUNC.
+	file, err := os.OpenFile(name, os.O_RDWR|syscall.O_CLOEXEC|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -275,6 +299,27 @@ func Copy(fs FS, oldname, newname string) error {
 	defer src.Close()
 
 	dst, err := fs.Create(newname)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return err
+	}
+	return dst.Sync()
+}
+
+// CopyAcrossFS copies the contents of oldname to newname. If newname exists, it will
+// be overwritten.
+func CopyAcrossFS(fs FS, oldname string, newFS FS, newname string) error {
+	src, err := fs.Open(oldname)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	dst, err := newFS.Create(newname)
 	if err != nil {
 		return err
 	}

@@ -23,3 +23,11 @@ func preallocExtend(fd uintptr, offset, length int64) error {
 	// fallocate or posix_fallocate in order to be effective.
 	return nil
 }
+
+// Preallocate TODO
+func Preallocate(f File, offset, length int64) error {
+	if fdFile, ok := f.(fdGetter); ok {
+		return preallocExtend(fdFile.Fd(), offset, length)
+	}
+	return nil
+}

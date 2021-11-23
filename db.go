@@ -283,6 +283,8 @@ type DB struct {
 	// compactionShedulers.Wait() should not be called while the DB.mu is held.
 	compactionSchedulers sync.WaitGroup
 
+	persistentCache *persistentCache
+
 	// The main mutex protecting internal DB state. This mutex encompasses many
 	// fields because those fields need to be accessed and updated atomically. In
 	// particular, the current version, log.*, mem.*, and snapshot list need to
@@ -1226,6 +1228,10 @@ func (d *DB) Close() error {
 	}
 	for d.mu.tableValidation.validating {
 		d.mu.tableValidation.cond.Wait()
+	}
+
+	if d.persistentCache != nil {
+		d.persistentCache.Close()
 	}
 
 	var err error

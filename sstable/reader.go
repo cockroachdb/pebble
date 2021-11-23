@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -38,6 +39,17 @@ const (
 	initialReadaheadSize = 64 << 10  /* 64KB */
 	maxReadaheadSize     = 256 << 10 /* 256KB */
 )
+
+type PersistentCacheValue interface {
+	File() vfs.File
+	Ref()
+	Unref()
+}
+
+type PersistentCache interface {
+	Get(fileNum base.FileNum) PersistentCacheValue
+	MaybeCache(meta *manifest.FileMetadata, amountRead int64)
+}
 
 // decodeBlockHandle returns the block handle encoded at the start of src, as
 // well as the number of bytes it occupies. It returns zero if given invalid
@@ -2326,6 +2338,16 @@ func (f FileReopenOpt) readerApply(r *Reader) {
 	}
 }
 
+type PersistentCacheOpt struct {
+	PsCache PersistentCache
+	Meta    *manifest.FileMetadata
+}
+
+func (p PersistentCacheOpt) readerApply(r *Reader) {
+	//r.psCache = p.PsCache
+	r.meta = p.Meta
+}
+
 // rawTombstonesOpt is a Reader open option for specifying that range
 // tombstones returned by Reader.NewRangeDelIter() should not be
 // fragmented. Used by debug tools to get a raw view of the tombstones
@@ -2371,6 +2393,8 @@ type Reader struct {
 	tableFilter       *tableFilterReader
 	tableFormat       TableFormat
 	Properties        Properties
+	psCache           PersistentCache
+	meta              *manifest.FileMetadata
 }
 
 // Close implements DB.Close, as documented in the pebble package.
@@ -2542,13 +2566,24 @@ func checkChecksum(
 func (r *Reader) readBlock(
 	bh BlockHandle, transform blockTransform, raState *readaheadState,
 ) (_ cache.Handle, cacheHit bool, _ error) {
-	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
+	usesSharedFS := false
+	if r.meta != nil {
+		usesSharedFS = r.meta.UsesSharedFS
+	}
+	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset, usesSharedFS); h.Get() != nil {
 		if raState != nil {
 			raState.recordCacheHit(int64(bh.Offset), int64(bh.Length+blockTrailerLen))
 		}
 		return h, true, nil
 	}
 	file := r.file
+
+	if r.psCache != nil {
+		if val := r.psCache.Get(r.fileNum); val != nil {
+			file = val.File()
+			defer val.Unref()
+		}
+	}
 
 	if raState != nil {
 		if raState.sequentialFile != nil {
@@ -2628,7 +2663,10 @@ func (r *Reader) readBlock(
 		v = newV
 	}
 
-	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, v)
+	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, v, usesSharedFS)
+	if r.psCache != nil {
+		r.psCache.MaybeCache(r.meta, int64(bh.Length))
+	}
 	return h, false, nil
 }
 

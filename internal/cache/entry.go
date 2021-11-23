@@ -56,8 +56,9 @@ type entry struct {
 	ptype entryType
 	// referenced is atomically set to indicate that this entry has been accessed
 	// since the last time one of the clock hands swept it.
-	referenced int32
-	shard      *shard
+	referenced           int32
+	shard                *shard
+	eligibleForSecondary bool
 	// Reference count for the entry. The entry is freed when the reference count
 	// drops to zero.
 	ref refcnt

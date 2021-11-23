@@ -113,11 +113,6 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 	}()
 
-	tableCacheSize := TableCacheSize(opts.MaxOpenFiles)
-	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
-	d.newIters = d.tableCache.newIters
-	d.tableNewRangeKeyIter = d.tableCache.newRangeKeyIter
-
 	d.commit = newCommitPipeline(commitEnv{
 		logSeqNum:     &d.mu.versions.atomic.logSeqNum,
 		visibleSeqNum: &d.mu.versions.atomic.visibleSeqNum,
@@ -255,7 +250,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		if err := d.mu.versions.load(dirname, opts, manifestFileNum, manifestMarker, setCurrent, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
-		if err := d.mu.versions.currentVersion().CheckConsistency(dirname, opts.FS); err != nil {
+		if err := d.mu.versions.currentVersion().CheckConsistency(dirname, opts.FS, opts.SharedFS); err != nil {
 			return nil, err
 		}
 	}
@@ -349,13 +344,27 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 	// Validate the most-recent OPTIONS file, if there is one.
 	var strictWALTail bool
+	var uniqueID uint16
 	if previousOptionsFilename != "" {
 		path := opts.FS.PathJoin(dirname, previousOptionsFilename)
-		strictWALTail, err = checkOptions(opts, path)
+		strictWALTail, uniqueID, err = checkOptions(opts, path)
 		if err != nil {
 			return nil, err
 		}
 	}
+	if uniqueID != 0 {
+		// Overwrite the uniqueID in opts with this one.
+		opts.UniqueID = uniqueID
+	}
+
+	//if opts.SharedFS != nil {
+	//	d.persistentCache = newPersistentCache(opts.FS, dirname, opts.SharedFS, opts.SharedDir, opts.UniqueID)
+	//	d.persistentCache.Start()
+	//}
+	tableCacheSize := TableCacheSize(opts.MaxOpenFiles)
+	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, dirname, opts.FS, opts.SharedDir, opts.SharedFS, d.persistentCache, d.opts, tableCacheSize)
+	d.newIters = d.tableCache.newIters
+	d.tableNewRangeKeyIter = d.tableCache.newRangeKeyIter
 
 	sort.Slice(logFiles, func(i, j int) bool {
 		return logFiles[i].num < logFiles[j].num
@@ -713,16 +722,16 @@ func (d *DB) replayWAL(
 	return maxSeqNum, err
 }
 
-func checkOptions(opts *Options, path string) (strictWALTail bool, err error) {
+func checkOptions(opts *Options, path string) (strictWALTail bool, uniqueID uint16, err error) {
 	f, err := opts.FS.Open(path)
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 	defer f.Close()
 
 	data, err := ioutil.ReadAll(f)
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 	return opts.checkOptions(string(data))
 }

@@ -131,6 +131,11 @@ type FileMetadata struct {
 		// that returns a user key (eg. Next, Prev, SeekGE, SeekLT, etc).
 		AllowedSeeks int64
 
+		// BytesBeforeLocalCache is used to determine how many bytes should
+		// be read from this file before it's cached in the persistent cache.
+		// Only used when UsesSharedFS = true.
+		BytesBeforeLocalCache int64
+
 		// statsValid is 1 if stats have been loaded for the table. The
 		// TableStats structure is populated only if valid is 1.
 		statsValid uint32
@@ -139,6 +144,10 @@ type FileMetadata struct {
 	// InitAllowedSeeks is the inital value of allowed seeks. This is used
 	// to re-set allowed seeks on a file once it hits 0.
 	InitAllowedSeeks int64
+
+	// InitBytesBeforeLocalCache is the initial value of BytesBeforeLocalCache.
+	// It is used to reset BytesBeforeLocalCache on a file once it hits 0.
+	InitBytesBeforeLocalCache int64
 
 	// Reference count for the file: incremented when a file is added to a
 	// version and decremented when the version is unreferenced. The file is
@@ -152,6 +161,9 @@ type FileMetadata struct {
 	// UTC). For ingested sstables, this corresponds to the time the file was
 	// ingested.
 	CreationTime int64
+	// UsesSharedFS is true if this file is stored in the shared FS. A copy
+	// of it could also be cached on the local FS.
+	UsesSharedFS bool
 	// Smallest and largest sequence numbers in the table, across both point and
 	// range keys.
 	SmallestSeqNum uint64
@@ -1037,13 +1049,16 @@ func (v *Version) CheckOrdering(cmp Compare, format base.FormatKey) error {
 
 // CheckConsistency checks that all of the files listed in the version exist
 // and their on-disk sizes match the sizes listed in the version.
-func (v *Version) CheckConsistency(dirname string, fs vfs.FS) error {
+func (v *Version) CheckConsistency(dirname string, fs vfs.FS, sharedFS vfs.FS) error {
 	var buf bytes.Buffer
 	var args []interface{}
 
 	for level, files := range v.Levels {
 		iter := files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
+			if f.UsesSharedFS && sharedFS != nil {
+				continue
+			}
 			path := base.MakeFilepath(fs, dirname, base.FileTypeTable, f.FileNum)
 			info, err := fs.Stat(path)
 			if err != nil {

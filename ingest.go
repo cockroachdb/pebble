@@ -298,6 +298,10 @@ func ingestLink(
 		} else {
 			err = vfs.LinkOrCopy(fs, paths[i], target)
 		}
+		if err == nil && opts.SharedFS != nil {
+			sharedTarget := base.MakeSharedSSTPath(opts.SharedFS, opts.SharedDir, opts.UniqueID, meta[i].FileNum)
+			err = vfs.CopyAcrossFS(fs, paths[i], opts.SharedFS, sharedTarget)
+		}
 		if err != nil {
 			if err2 := ingestCleanup(fs, dirname, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
@@ -822,6 +826,7 @@ func (d *DB) ingestApply(
 	current := d.mu.versions.currentVersion()
 	baseLevel := d.mu.versions.picker.getBaseLevel()
 	iterOps := IterOptions{logger: d.opts.Logger}
+	obsoleteFiles := make([]obsoleteFile, 0)
 	for i := range meta {
 		// Determine the lowest level in the LSM for which the sstable doesn't
 		// overlap any existing files in the level.
@@ -832,6 +837,16 @@ func (d *DB) ingestApply(
 		if err != nil {
 			d.mu.versions.logUnlock()
 			return nil, err
+		}
+		if f.Level >= 5 && d.opts.SharedFS != nil {
+			m.UsesSharedFS = true
+			obsoleteFiles = append(obsoleteFiles, obsoleteFile{
+				dir:         d.dirname,
+				fileNum:     m.FileNum,
+				fileType:    fileTypeTable,
+				fileSize:    m.Size,
+				skipMetrics: true,
+			})
 		}
 		f.Meta = m
 		levelMetrics := metrics[f.Level]
@@ -851,6 +866,8 @@ func (d *DB) ingestApply(
 	}
 	d.updateReadStateLocked(d.opts.DebugCheck)
 	d.updateTableStatsLocked(ve.NewFiles)
+	d.deleters.Add(1)
+	go d.paceAndDeleteObsoleteFiles(jobID, obsoleteFiles)
 	d.deleteObsoleteFiles(jobID, false /* waitForOngoing */)
 	// The ingestion may have pushed a level over the threshold for compaction,
 	// so check to see if one is necessary and schedule it.

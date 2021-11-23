@@ -54,6 +54,7 @@ const (
 	customTagTerminate         = 1
 	customTagNeedsCompaction   = 2
 	customTagCreationTime      = 6
+	customTagSharedFS          = 7
 	customTagPathID            = 65
 	customTagNonSafeIgnoreMask = 1 << 6
 )
@@ -265,7 +266,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					return err
 				}
 			}
-			var markedForCompaction bool
+			var markedForCompaction, usesSharedFS bool
 			var creationTime uint64
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
@@ -296,6 +297,12 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 
 					case customTagPathID:
 						return base.CorruptionErrorf("new-file4: path-id field not supported")
+
+					case customTagSharedFS:
+						if len(field) != 1 {
+							return base.CorruptionErrorf("new-file4: need-compaction field wrong size")
+						}
+						usesSharedFS = (field[0] == 1)
 
 					default:
 						if (customTag & customTagNonSafeIgnoreMask) != 0 {
@@ -342,6 +349,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 			}
 			m.boundsSet = true
+			m.UsesSharedFS = usesSharedFS
 			v.NewFiles = append(v.NewFiles, NewFileEntry{
 				Level: level,
 				Meta:  m,
@@ -397,7 +405,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewFiles {
-		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0
+		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 || x.Meta.UsesSharedFS
 		var tag uint64
 		switch {
 		case x.Meta.HasRangeKeys:
@@ -448,6 +456,10 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 			}
 			if x.Meta.MarkedForCompaction {
 				e.writeUvarint(customTagNeedsCompaction)
+				e.writeBytes([]byte{1})
+			}
+			if x.Meta.UsesSharedFS {
+				e.writeUvarint(customTagSharedFS)
 				e.writeBytes([]byte{1})
 			}
 			e.writeUvarint(customTagTerminate)
@@ -725,6 +737,13 @@ func (b *BulkVersionEdit) Apply(
 			}
 			atomic.StoreInt64(&f.Atomic.AllowedSeeks, allowedSeeks)
 			f.InitAllowedSeeks = allowedSeeks
+
+			bytesBeforeLocalCache := int64(f.Size) / 10
+			if bytesBeforeLocalCache < 1024*1024 {
+				bytesBeforeLocalCache = 1024 * 1024
+			}
+			atomic.StoreInt64(&f.Atomic.BytesBeforeLocalCache, bytesBeforeLocalCache)
+			f.InitBytesBeforeLocalCache = bytesBeforeLocalCache
 
 			err := lm.tree.insert(f)
 			if err != nil {
