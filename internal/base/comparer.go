@@ -81,10 +81,25 @@ type Successor func(dst, a []byte) []byte
 //
 // The returned prefix must have the following properties:
 //
-// 1) bytes.HasPrefix(a, prefix(a))
-// 2) Compare(prefix(a), a) <= 0,
-// 3) If Compare(a, b) <= 0, then Compare(prefix(a), prefix(b)) <= 0
-// 4) if b begins with a, then prefix(b) = prefix(a).
+// 1) The prefix must be a byte prefix:
+//
+//    bytes.HasPrefix(a, prefix(a))
+//
+// 2) A key consisting of just a prefix must sort before all other keys with
+//    that prefix:
+//
+//    Compare(prefix(a), a) < 0 if suffix(a) > 0
+//
+// 3) Prefixes must be used to order keys before suffixes:
+//
+//    If Compare(a, b) <= 0, then Compare(prefix(a), prefix(b)) <= 0
+//
+// 4) Suffixes themselves must be valid keys and comparable, respecting the same
+//    ordering as within a key.
+//
+//    If Compare(prefix(a), prefix(b)) == 0, then Compare(suffix(a), suffix(b)) == Compare(a, b)
+//
+// 5) If b begins with a, then prefix(b) = prefix(a).
 type Split func(a []byte) int
 
 // Comparer defines a total ordering over the space of []byte keys: a 'less
