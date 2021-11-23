@@ -113,7 +113,8 @@ func (qu *CompressionQueueContainer) Close() {
 // in parallel.
 type writeQueueContainer struct {
 	atomic struct {
-		done int32
+		done      int32
+		numQueued uint64
 	}
 
 	// queue is sequenced by the order of the writes to
@@ -124,6 +125,10 @@ type writeQueueContainer struct {
 	// closeWG is used to wait for the background workers
 	// to finish executing.
 	closeWG sync.WaitGroup
+
+	// highestBlockSequenceNumProcessed is used to keep
+	// track of the last block which has been processed.
+	highestBlockSequenceNumProcessed uint64
 }
 
 // newwriteQueueContainer will start a single goroutine to process
@@ -141,10 +146,6 @@ func newWriteQueueContainer(maxSize int, w *Writer) *writeQueueContainer {
 
 func (qu *writeQueueContainer) startWorker() {
 	for {
-		if atomic.LoadInt32(&qu.atomic.done) == 1 {
-			break
-		}
-
 		// The write queue will block until the specific
 		// block in the queue has been compressed. This
 		// ensures the ordering of writes in the file.
@@ -167,6 +168,12 @@ func (qu *writeQueueContainer) startWorker() {
 			}
 			fmt.Println("writing", bh, err)
 		}
+
+		qu.highestBlockSequenceNumProcessed++
+		highestQueued := atomic.LoadUint64(&qu.atomic.numQueued)
+		if atomic.LoadInt32(&qu.atomic.done) == 1 && qu.highestBlockSequenceNumProcessed == highestQueued {
+			break
+		}
 	}
 	qu.closeWG.Done()
 }
@@ -177,24 +184,6 @@ func (qu *writeQueueContainer) startWorker() {
 // by the queue.
 // qu shouldn't be used once finish is called.
 func (qu *writeQueueContainer) finish() {
-	doneCh := make(chan *CompressedData, 1)
-	doneCh <- &CompressedData{}
-	qu.queue <- &BlockWriteCoordinator{
-		doneCh: doneCh,
-		key:    InternalKey{},
-	}
-	qu.closeWG.Wait()
-	atomic.StoreInt32(&qu.atomic.done, 1)
-}
-
-// Close will only return after the goroutine started
-// by NewWompressionQueueContainer has stopped running.
-// Items shouldn't be added to the queue once close has
-// been called.
-// Note that calling close will shut down the worker
-// even if there are more blocks which need to be written
-// to disk.
-func (qu *writeQueueContainer) close() {
 	atomic.StoreInt32(&qu.atomic.done, 1)
 	qu.closeWG.Wait()
 }

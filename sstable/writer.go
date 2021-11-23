@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"sync"
+	"sync/atomic"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
@@ -168,15 +168,6 @@ type Writer struct {
 	compressionQueueRef *CompressionQueueContainer
 
 	checksumData checksumData
-
-	sequenceMu struct {
-		sync.Mutex
-		// highestBlockSequenceNumber is used to make sure that
-		// all the blocks are written by the writer thread
-		// before we Close the Writer. It's only useful when
-		// compressionQueueRef != nil.
-		highestBlockSequenceNumber uint64
-	}
 }
 
 type indexBlockWriterAndBlockProperties struct {
@@ -427,6 +418,7 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 			doneCh: doneCh,
 			key:    key,
 		}
+		atomic.AddUint64(&w.writeQueue.atomic.numQueued, 1)
 		w.compressionQueueRef.queue <- &BlockCompressionCoordinator{
 			toCompress:  finished,
 			compression: w.compression,
