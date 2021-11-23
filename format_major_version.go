@@ -69,8 +69,10 @@ const (
 	// FormatBlockPropertyCollector is a format major version that introduces
 	// BlockPropertyCollectors.
 	FormatBlockPropertyCollector
+	// FormatRangeKeys is a format major version that introduces range keys.
+	FormatRangeKeys
 	// FormatNewest always contains the most recent format major version.
-	FormatNewest FormatMajorVersion = FormatBlockPropertyCollector
+	FormatNewest FormatMajorVersion = FormatRangeKeys
 )
 
 // formatMajorVersionMigrations defines the migrations from one format
@@ -148,6 +150,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatBlockPropertyCollector: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatBlockPropertyCollector)
+	},
+	FormatRangeKeys: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatRangeKeys)
 	},
 }
 
