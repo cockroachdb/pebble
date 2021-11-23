@@ -71,9 +71,9 @@ type Successor func(dst, a []byte) []byte
 // filters.
 //
 // The method will only ever be called with valid MVCC keys, that is, keys that
-// the user could potentially store in the database. Typically this means that
-// the method must only handle valid MVCC encoded keys and should panic on any
-// other input.
+// the user could potentially store in the database. Pebble does not know which
+// keys are MVCC keys and which are not, and may call Split on both MVCC keys
+// and non-MVCC keys.
 //
 // A trivial MVCC scheme is one in which Split() returns len(a). This
 // corresponds to assigning a constant version to each key in the database. For
@@ -81,10 +81,24 @@ type Successor func(dst, a []byte) []byte
 //
 // The returned prefix must have the following properties:
 //
-// 1) bytes.HasPrefix(a, prefix(a))
-// 2) Compare(prefix(a), a) <= 0,
-// 3) If Compare(a, b) <= 0, then Compare(prefix(a), prefix(b)) <= 0
-// 4) if b begins with a, then prefix(b) = prefix(a).
+// 1) The prefix must be a byte prefix:
+//
+//    bytes.HasPrefix(a, prefix(a))
+//
+// 2) A key consisting of just a prefix must sort before all other keys with
+//    that prefix:
+//
+//    Compare(prefix(a), a) < 0 if len(suffix(a)) > 0
+//
+// 3) Prefixes must be used to order keys before suffixes:
+//
+//    If Compare(a, b) <= 0, then Compare(prefix(a), prefix(b)) <= 0
+//
+// 4) Suffixes themselves must be valid keys and comparable, respecting the same
+//    ordering as within a key.
+//
+//    If Compare(prefix(a), prefix(b)) == 0, then Compare(suffix(a), suffix(b)) == Compare(a, b)
+//
 type Split func(a []byte) int
 
 // Comparer defines a total ordering over the space of []byte keys: a 'less
