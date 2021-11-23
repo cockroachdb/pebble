@@ -21,6 +21,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/private"
 )
 
+var errWriterClosed = errors.New("pebble: writer is closed")
+
 // WriterMetadata holds info about a finished sstable.
 type WriterMetadata struct {
 	Size           uint64
@@ -806,7 +808,7 @@ func (w *Writer) Close() (err error) {
 	}
 
 	// Make any future calls to Set or Close return an error.
-	w.err = errors.New("pebble: writer is closed")
+	w.err = errWriterClosed
 	return nil
 }
 
