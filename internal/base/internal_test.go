@@ -37,14 +37,13 @@ func TestInvalidInternalKey(t *testing.T) {
 		"\x01\x02\x03\x04\x05\x06\x07",
 		"foo",
 		"foo\x08\x07\x06\x05\x04\x03\x02",
-		"foo\x13\x07\x06\x05\x04\x03\x02\x01",
+		"foo\x16\x07\x06\x05\x04\x03\x02\x01",
 	}
 	for _, tc := range testCases {
 		k := DecodeInternalKey([]byte(tc))
 		if k.Valid() {
 			t.Errorf("%q is a valid key, want invalid", tc)
 		}
-
 		// Invalid key kind because the key doesn't have an 8 byte trailer.
 		if k.Kind() == InternalKeyKindInvalid && k.UserKey != nil {
 			t.Errorf("expected nil UserKey after decoding encodedKey=%q", tc)

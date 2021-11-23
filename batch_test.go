@@ -46,6 +46,9 @@ func TestBatch(t *testing.T) {
 		}
 	}
 
+	// RangeKeySet and RangeKeyUnset are untested here because they don't expose
+	// deferred variants. This is a consequence of these keys' more complex
+	// value encodings.
 	testCases := []testCase{
 		{InternalKeyKindSet, "roses", "red"},
 		{InternalKeyKindSet, "violets", "blue"},
@@ -69,6 +72,8 @@ func TestBatch(t *testing.T) {
 		{InternalKeyKindRangeDelete, "", ""},
 		{InternalKeyKindLogData, "logdata", ""},
 		{InternalKeyKindLogData, "", ""},
+		{InternalKeyKindRangeKeyDelete, "grass", "green"},
+		{InternalKeyKindRangeKeyDelete, "", ""},
 	}
 	var b Batch
 	for _, tc := range testCases {
@@ -85,6 +90,8 @@ func TestBatch(t *testing.T) {
 			_ = b.DeleteRange([]byte(tc.key), []byte(tc.value), nil)
 		case InternalKeyKindLogData:
 			_ = b.LogData([]byte(tc.key), nil)
+		case InternalKeyKindRangeKeyDelete:
+			_ = b.Experimental().RangeKeyDelete([]byte(tc.key), []byte(tc.value), nil)
 		}
 	}
 	verifyTestCases(&b, testCases)
@@ -123,6 +130,11 @@ func TestBatch(t *testing.T) {
 			d.Finish()
 		case InternalKeyKindLogData:
 			_ = b.LogData([]byte(tc.key), nil)
+		case InternalKeyKindRangeKeyDelete:
+			d := b.Experimental().RangeKeyDeleteDeferred(len(key), len(value))
+			copy(d.Key, key)
+			copy(d.Value, value)
+			d.Finish()
 		}
 	}
 	verifyTestCases(&b, testCases)
@@ -132,37 +144,26 @@ func TestBatchEmpty(t *testing.T) {
 	var b Batch
 	require.True(t, b.Empty())
 
-	b.Set(nil, nil, nil)
-	require.False(t, b.Empty())
-	b.Reset()
-	require.True(t, b.Empty())
-	// Reset may choose to reuse b.data, so clear it to the zero value in
-	// order to test the lazy initialization of b.data.
-	b = Batch{}
+	ops := []func(*Batch) error{
+		func(b *Batch) error { return b.Set(nil, nil, nil) },
+		func(b *Batch) error { return b.Merge(nil, nil, nil) },
+		func(b *Batch) error { return b.Delete(nil, nil) },
+		func(b *Batch) error { return b.DeleteRange(nil, nil, nil) },
+		func(b *Batch) error { return b.LogData(nil, nil) },
+		func(b *Batch) error { return b.Experimental().RangeKeySet(nil, nil, nil, nil, nil) },
+		func(b *Batch) error { return b.Experimental().RangeKeyUnset(nil, nil, nil, nil) },
+		func(b *Batch) error { return b.Experimental().RangeKeyDelete(nil, nil, nil) },
+	}
 
-	b.Merge(nil, nil, nil)
-	require.False(t, b.Empty())
-	b.Reset()
-	require.True(t, b.Empty())
-	b = Batch{}
-
-	b.Delete(nil, nil)
-	require.False(t, b.Empty())
-	b.Reset()
-	require.True(t, b.Empty())
-	b = Batch{}
-
-	b.DeleteRange(nil, nil, nil)
-	require.False(t, b.Empty())
-	b.Reset()
-	require.True(t, b.Empty())
-	b = Batch{}
-
-	b.LogData(nil, nil)
-	require.False(t, b.Empty())
-	b.Reset()
-	require.True(t, b.Empty())
-	b = Batch{}
+	for _, op := range ops {
+		require.NoError(t, op(&b))
+		require.False(t, b.Empty())
+		b.Reset()
+		require.True(t, b.Empty())
+		// Reset may choose to reuse b.data, so clear it to the zero value in
+		// order to test the lazy initialization of b.data.
+		b = Batch{}
+	}
 
 	_ = b.Reader()
 	require.True(t, b.Empty())

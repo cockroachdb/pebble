@@ -44,6 +44,10 @@ var (
 	// ErrReadOnly is returned when a write operation is performed on a read-only
 	// database.
 	ErrReadOnly = errors.New("pebble: read-only")
+	// errNoSplit indicates that the user is trying to perform a range key
+	// operation but the configured Comparer does not provide a Split
+	// implementation.
+	errNoSplit = errors.New("pebble: Comparer.Split required for range key operations")
 )
 
 // Reader is a readable key/value store.
@@ -108,10 +112,12 @@ type Writer interface {
 	// It is safe to modify the contents of the arguments after SingleDelete returns.
 	SingleDelete(key []byte, o *WriteOptions) error
 
-	// DeleteRange deletes all of the keys (and values) in the range [start,end)
-	// (inclusive on start, exclusive on end).
+	// DeleteRange deletes all of the point keys (and values) in the range
+	// [start,end) (inclusive on start, exclusive on end). DeleteRange does NOT
+	// delete overlapping range keys (eg, keys set via RangeKeySet).
 	//
-	// It is safe to modify the contents of the arguments after Delete returns.
+	// It is safe to modify the contents of the arguments after DeleteRange
+	// returns.
 	DeleteRange(start, end []byte, o *WriteOptions) error
 
 	// LogData adds the specified to the batch. The data will be written to the
@@ -612,6 +618,17 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 	sync := opts.GetSync()
 	if sync && d.opts.DisableWAL {
 		return errors.New("pebble: WAL disabled")
+	}
+
+	if batch.countRangeKeys > 0 {
+		if d.split == nil {
+			return errNoSplit
+		}
+		// TODO(jackson): Assert that all range key operands are suffixless.
+
+		// TODO(jackson): Once the format major version for range keys is
+		// introduced, error if the batch includes range keys but the active
+		// format major version doesn't enable them.
 	}
 
 	if batch.db == nil {
