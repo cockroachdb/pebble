@@ -10,7 +10,6 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
 )
 
@@ -103,40 +102,6 @@ func replaceSuffixWithReaderWriterLoop(
 	return &w.meta, nil
 }
 
-// NewMemReader opens a reader over the SST stored in the passed []byte.
-func NewMemReader(sst []byte, o ReaderOptions) (*Reader, error) {
-	return NewReader(memReader{sst, bytes.NewReader(sst), sizeOnlyStat(int64(len(sst)))}, o)
-}
-
-// memReader is a thin wrapper around a []byte such that it can be passed to an
-// sstable.Reader. It supports concurrent use, and does so without locking in
-// contrast to the heavier read/write vfs.MemFile.
-type memReader struct {
-	b []byte
-	r *bytes.Reader
-	s sizeOnlyStat
-}
-
-var _ ReadableFile = memReader{}
-
-// ReadAt implements io.ReaderAt.
-func (m memReader) ReadAt(p []byte, off int64) (n int, err error) { return m.r.ReadAt(p, off) }
-
-// Close implements io.Closer.
-func (memReader) Close() error { return nil }
-
-// Stat implements ReadableFile.
-func (m memReader) Stat() (os.FileInfo, error) { return m.s, nil }
-
-type sizeOnlyStat int64
-
-func (s sizeOnlyStat) Size() int64      { return int64(s) }
-func (sizeOnlyStat) IsDir() bool        { panic(errors.AssertionFailedf("unimplemented")) }
-func (sizeOnlyStat) ModTime() time.Time { panic(errors.AssertionFailedf("unimplemented")) }
-func (sizeOnlyStat) Mode() os.FileMode  { panic(errors.AssertionFailedf("unimplemented")) }
-func (sizeOnlyStat) Name() string       { panic(errors.AssertionFailedf("unimplemented")) }
-func (sizeOnlyStat) Sys() interface{}   { panic(errors.AssertionFailedf("unimplemented")) }
-
 // replaceSuffixInBlocks is described in the comment on RewriteKeySuffixes.
 //
 // TODO(dt): rework block reading to avoid cache.Set contention.
@@ -167,25 +132,22 @@ func replaceSuffixInBlocks(
 
 	// Copy over the filter block if it exists (if it does, copyDataBlocks will
 	// already have ensured this is valid).
-	var filterBlock cache.Handle
 	if w.filter != nil {
 		if l.Filter.Length == 0 {
 			return nil, errors.New("input table has no filter")
 		}
-		filterBlock, err = r.readBlock(l.Filter, nil, nil)
+		filterBlock, _, err := readBlockBuf(r, l.Filter, nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "reading filter")
 		}
 		w.filter = copyFilterWriter{
-			origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filterBlock.Get(),
+			origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filterBlock,
 		}
 	}
 
 	if err := w.Close(); err != nil {
-		filterBlock.Release()
 		return nil, err
 	}
-	filterBlock.Release()
 
 	return w.Metadata()
 }
@@ -214,6 +176,27 @@ func asyncRewriteBlocks(
 	g.Done()
 }
 
+func readBlockBuf(r *Reader, bh BlockHandle, buf []byte) ([]byte, []byte, error) {
+	raw := r.file.(memReader).b[bh.Offset : bh.Offset+bh.Length+blockTrailerLen]
+	if err := checkChecksum(r.checksumType, raw, bh, 0); err != nil {
+		return nil, buf, err
+	}
+	typ := blockType(raw[bh.Length])
+	raw = raw[:bh.Length]
+	if typ == noCompressionBlockType {
+		return raw, buf, nil
+	}
+	decompressedLen, prefix, err := decompressedLen(typ, raw)
+	if err != nil {
+		return nil, buf, err
+	}
+	if cap(buf) < decompressedLen {
+		buf = make([]byte, decompressedLen)
+	}
+	res, err := decompressInto(typ, raw[prefix:], buf[:decompressedLen])
+	return res, buf, err
+}
+
 func rewriteBlocks(
 	r *Reader, restartInterval int, checksumType ChecksumType, compression Compression,
 	input []BlockHandleWithProperties, output []blockWithSpan,
@@ -232,18 +215,20 @@ func rewriteBlocks(
 	var blockAlloc []byte
 	var keySlab []byte
 	var scratch InternalKey
+
+	var inputBlock, inputBlockBuf []byte
+
 	iter := &blockIter{}
 
 	for i := worker; i < len(input); i += totalWorkers {
 		bh := input[i]
 
-		h, err := r.readBlock(bh.BlockHandle, nil /* transform */, nil /*rs*/)
+		var err error
+		inputBlock, inputBlockBuf, err = readBlockBuf(r, bh.BlockHandle, inputBlockBuf)
 		if err != nil {
 			return err
 		}
-		inputBlock := h.Get()
 		if err := iter.init(r.Compare, inputBlock, r.Properties.GlobalSeqNum); err != nil {
-			h.Release()
 			return err
 		}
 
@@ -259,11 +244,9 @@ func rewriteBlocks(
 
 		for key, _ := iter.First(); key != nil; key, _ = iter.Next() {
 			if key.Kind() != InternalKeyKindSet {
-				h.Release()
 				return errBadKind
 			}
 			if !bytes.HasSuffix(iter.Key().UserKey, from) {
-				h.Release()
 				return errors.Errorf("key %q does not have expected suffix %q", iter.Key().UserKey, from)
 			}
 			prefixLen := len(key.UserKey) - len(from)
@@ -285,7 +268,6 @@ func rewriteBlocks(
 		*iter = iter.resetForReuse()
 
 		keySlab, output[i].end = cloneKeyWithBuf(scratch, keySlab)
-		h.Release()
 		b := bw.finish()
 
 		blockType, compressed := compressBlock(compression, b, compressionBuf)
@@ -446,3 +428,37 @@ func (copyFilterWriter) addKey(key []byte)         { panic("unimplemented") }
 func (c copyFilterWriter) finish() ([]byte, error) { return c.data, nil }
 func (c copyFilterWriter) metaName() string        { return c.origMetaName }
 func (c copyFilterWriter) policyName() string      { return c.origPolicyName }
+
+// NewMemReader opens a reader over the SST stored in the passed []byte.
+func NewMemReader(sst []byte, o ReaderOptions) (*Reader, error) {
+	return NewReader(memReader{sst, bytes.NewReader(sst), sizeOnlyStat(int64(len(sst)))}, o)
+}
+
+// memReader is a thin wrapper around a []byte such that it can be passed to an
+// sstable.Reader. It supports concurrent use, and does so without locking in
+// contrast to the heavier read/write vfs.MemFile.
+type memReader struct {
+	b []byte
+	r *bytes.Reader
+	s sizeOnlyStat
+}
+
+var _ ReadableFile = memReader{}
+
+// ReadAt implements io.ReaderAt.
+func (m memReader) ReadAt(p []byte, off int64) (n int, err error) { return m.r.ReadAt(p, off) }
+
+// Close implements io.Closer.
+func (memReader) Close() error { return nil }
+
+// Stat implements ReadableFile.
+func (m memReader) Stat() (os.FileInfo, error) { return m.s, nil }
+
+type sizeOnlyStat int64
+
+func (s sizeOnlyStat) Size() int64      { return int64(s) }
+func (sizeOnlyStat) IsDir() bool        { panic(errors.AssertionFailedf("unimplemented")) }
+func (sizeOnlyStat) ModTime() time.Time { panic(errors.AssertionFailedf("unimplemented")) }
+func (sizeOnlyStat) Mode() os.FileMode  { panic(errors.AssertionFailedf("unimplemented")) }
+func (sizeOnlyStat) Name() string       { panic(errors.AssertionFailedf("unimplemented")) }
+func (sizeOnlyStat) Sys() interface{}   { panic(errors.AssertionFailedf("unimplemented")) }
