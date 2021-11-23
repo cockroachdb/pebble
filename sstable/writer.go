@@ -594,14 +594,8 @@ func compressAndChecksum(
 	return b, nil
 }
 
-func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
-	b, err := compressAndChecksum(b, compression, &w.compressedBuf, &w.tmp, &w.checksumData)
-	if err != nil {
-		return BlockHandle{}, err
-	}
-
-	// todo(bananabrick): This stuff will be done by the writer thread.
-	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(b))}
+func (w *Writer) writeBlockPostCompression(toWrite []byte) (BlockHandle, error) {
+	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(toWrite))}
 
 	if w.cacheID != 0 && w.fileNum != 0 {
 		// Remove the block being written from the cache. This provides defense in
@@ -613,7 +607,7 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 	}
 
 	// Write the bytes to the file.
-	n, err := w.writer.Write(b)
+	n, err := w.writer.Write(toWrite)
 	if err != nil {
 		return BlockHandle{}, err
 	}
@@ -625,6 +619,14 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 	w.meta.Size += uint64(n)
 
 	return bh, nil
+}
+
+func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
+	b, err := compressAndChecksum(b, compression, &w.compressedBuf, &w.tmp, &w.checksumData)
+	if err != nil {
+		return BlockHandle{}, err
+	}
+	return w.writeBlockPostCompression(b)
 }
 
 // Close finishes writing the table and closes the underlying file that the
