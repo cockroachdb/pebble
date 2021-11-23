@@ -11,8 +11,10 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -177,13 +179,14 @@ func TestWriterClearCache(t *testing.T) {
 	require.NoError(t, r.Close())
 }
 
-type discardFile struct{}
+type discardFile struct{ wrote int64 }
 
 func (f discardFile) Close() error {
 	return nil
 }
 
-func (f discardFile) Write(p []byte) (int, error) {
+func (f *discardFile) Write(p []byte) (int, error) {
+	f.wrote += int64(len(p))
 	return len(p), nil
 }
 
@@ -193,48 +196,50 @@ func (f discardFile) Sync() error {
 
 func BenchmarkWriter(b *testing.B) {
 	keys := make([][]byte, 1e6)
+	const keyLen = 24
+	keySlab := make([]byte, keyLen*len(keys))
 	for i := range keys {
-		key := make([]byte, 24)
+		key := keySlab[i*keyLen : i*keyLen+keyLen]
 		binary.BigEndian.PutUint64(key[:8], 123) // 16-byte shared prefix
 		binary.BigEndian.PutUint64(key[8:16], 456)
 		binary.BigEndian.PutUint64(key[16:], uint64(i))
 		keys[i] = key
 	}
 
-	benchmarks := []struct {
-		name    string
-		options WriterOptions
-	}{
-		{
-			name: "Default",
-			options: WriterOptions{
-				BlockRestartInterval: 16,
-				BlockSize:            32 << 10,
-				Compression:          SnappyCompression,
-				FilterPolicy:         bloom.FilterPolicy(10),
-			},
-		},
-		{
-			name: "Zstd",
-			options: WriterOptions{
-				BlockRestartInterval: 16,
-				BlockSize:            32 << 10,
-				Compression:          ZstdCompression,
-				FilterPolicy:         bloom.FilterPolicy(10),
-			},
-		},
-	}
+	b.ResetTimer()
 
-	for _, bm := range benchmarks {
-		b.Run(bm.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				w := NewWriter(discardFile{}, bm.options)
+	for _, bs := range []int{base.DefaultBlockSize, 32 << 10} {
+		b.Run(fmt.Sprintf("block=%s", humanize.IEC.Int64(int64(bs))), func(b *testing.B) {
+			for _, filter := range []bool{true, false} {
+				b.Run(fmt.Sprintf("filter=%t", filter), func(b *testing.B) {
+					for _, comp := range []Compression{NoCompression, SnappyCompression, ZstdCompression} {
+						b.Run(fmt.Sprintf("compression=%s", comp), func(b *testing.B) {
+							opts := WriterOptions{
+								BlockRestartInterval: 16,
+								BlockSize:            bs,
+								Compression:          comp,
+							}
+							if filter {
+								opts.FilterPolicy = bloom.FilterPolicy(10)
+							}
+							f := &discardFile{}
+							for i := 0; i < b.N; i++ {
+								f.wrote = 0
+								w := NewWriter(f, opts)
 
-				for j := range keys {
-					if err := w.Set(keys[j], keys[j]); err != nil {
-						b.Fatal(err)
+								for j := range keys {
+									if err := w.Set(keys[j], keys[j]); err != nil {
+										b.Fatal(err)
+									}
+								}
+								if err := w.Close(); err != nil {
+									b.Fatal(err)
+								}
+								b.SetBytes(int64(f.wrote))
+							}
+						})
 					}
-				}
+				})
 			}
 		})
 	}
