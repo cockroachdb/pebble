@@ -1653,12 +1653,7 @@ func BenchmarkNextPrefix(b *testing.B) {
 				prevPrefix = prevPrefix[:0]
 				valid := iter.First()
 				for valid {
-					k := iter.Key()
-					si := testkeys.Comparer.Split(k)
-					if testkeys.Comparer.Compare(prevPrefix, k[:si]) != 0 {
-						count++
-						prevPrefix = append(prevPrefix[:0], k[:si]...)
-					}
+					count++
 					valid = iter.NextPrefix()
 				}
 				require.Equal(b, keyCount, count)

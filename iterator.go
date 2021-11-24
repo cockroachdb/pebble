@@ -239,7 +239,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 
 		switch key.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
-			i.nextUserKey(false /* skipPrefix */)
+			i.nextUserKey()
 			continue
 
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
@@ -261,7 +261,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 				if i.err == nil && needDelete {
 					i.iterValidityState = IterExhausted
 					if i.pos != iterPosNext {
-						i.nextUserKey(false /* skipPrefix */)
+						i.nextUserKey()
 					}
 					if i.closeValueCloser() == nil {
 						i.pos = iterPosCurForward
@@ -291,7 +291,7 @@ func (i *Iterator) closeValueCloser() error {
 	return i.err
 }
 
-func (i *Iterator) nextUserKey(skipPrefix bool) {
+func (i *Iterator) nextUserKey() {
 	if i.iterKey == nil {
 		return
 	}
@@ -300,17 +300,8 @@ func (i *Iterator) nextUserKey(skipPrefix bool) {
 		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
 		i.key = i.keyBuf
 	}
-	var currentPrefixLen int
-	if skipPrefix {
-		currentPrefixLen = i.split(i.key)
-		skipPrefix = currentPrefixLen < len(i.key)
-	}
 	for {
-		if skipPrefix {
-			i.iterKey, i.iterValue = i.iter.NextPrefix(currentPrefixLen)
-		} else {
-			i.iterKey, i.iterValue = i.iter.Next()
-		}
+		i.iterKey, i.iterValue = i.iter.Next()
 		i.stats.ForwardStepCount[InternalIterCall]++
 		if done || i.iterKey == nil {
 			break
@@ -319,6 +310,33 @@ func (i *Iterator) nextUserKey(skipPrefix bool) {
 			break
 		}
 		done = i.iterKey.SeqNum() == 0
+	}
+}
+
+func (i *Iterator) nextPrefixKey() {
+	if i.iterKey == nil {
+		return
+	}
+	if i.iterValidityState != IterValid {
+		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
+		i.key = i.keyBuf
+	}
+	currentPrefixLen := i.split(i.key)
+	if currentPrefixLen == len(i.key) {
+		// Unsuffixed user key.
+		i.nextUserKey()
+		return
+	}
+	for {
+		i.iterKey, i.iterValue = i.iter.NextPrefix(currentPrefixLen)
+		i.stats.ForwardStepCount[InternalIterCall]++
+		if i.iterKey == nil {
+			break
+		}
+		split := i.split(i.iterKey.UserKey)
+		if currentPrefixLen != split || !i.equal(i.key[:currentPrefixLen], i.iterKey.UserKey[:split]) {
+			break
+		}
 	}
 }
 
@@ -941,7 +959,8 @@ func (i *Iterator) Next() bool {
 }
 
 // NextPrefix moves the iterator to the next key/value pair with a different
-// prefix than the current key.
+// prefix than the current key. When switching directions, NextPrefix moves the
+// iterator to the next user key, regardless of prefix.
 func (i *Iterator) NextPrefix() bool {
 	return i.nextWithLimit(nil, true /* skipPrefix */) == IterValid
 }
@@ -964,7 +983,11 @@ func (i *Iterator) nextWithLimit(limit []byte, skipPrefix bool) IterValidityStat
 	i.lastPositioningOp = unknownLastPositionOp
 	switch i.pos {
 	case iterPosCurForward:
-		i.nextUserKey(skipPrefix)
+		if skipPrefix {
+			i.nextPrefixKey()
+		} else {
+			i.nextUserKey()
+		}
 	case iterPosCurForwardPaused:
 		// Already at the right place.
 	case iterPosCurReverse:
@@ -993,7 +1016,7 @@ func (i *Iterator) nextWithLimit(limit []byte, skipPrefix bool) IterValidityStat
 			i.iterValidityState = IterExhausted
 			return i.iterValidityState
 		}
-		i.nextUserKey(false /* skipPrefix */)
+		i.nextUserKey()
 	case iterPosPrev:
 		// The underlying iterator is pointed to the previous key (this can
 		// only happen when switching iteration directions). We set
@@ -1012,9 +1035,9 @@ func (i *Iterator) nextWithLimit(limit []byte, skipPrefix bool) IterValidityStat
 				i.stats.ForwardSeekCount[InternalIterCall]++
 			}
 		} else {
-			i.nextUserKey(false /* skipPrefix */)
+			i.nextUserKey()
 		}
-		i.nextUserKey(false /* skipPrefix */)
+		i.nextUserKey()
 	case iterPosNext:
 		// Already at the right place.
 	}
