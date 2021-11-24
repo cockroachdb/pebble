@@ -239,7 +239,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 
 		switch key.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
-			i.nextUserKey()
+			i.nextUserKey(false /* skipPrefix */)
 			continue
 
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
@@ -261,7 +261,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 				if i.err == nil && needDelete {
 					i.iterValidityState = IterExhausted
 					if i.pos != iterPosNext {
-						i.nextUserKey()
+						i.nextUserKey(false /* skipPrefix */)
 					}
 					if i.closeValueCloser() == nil {
 						i.pos = iterPosCurForward
@@ -291,7 +291,7 @@ func (i *Iterator) closeValueCloser() error {
 	return i.err
 }
 
-func (i *Iterator) nextUserKey() {
+func (i *Iterator) nextUserKey(skipPrefix bool) {
 	if i.iterKey == nil {
 		return
 	}
@@ -300,8 +300,17 @@ func (i *Iterator) nextUserKey() {
 		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
 		i.key = i.keyBuf
 	}
+	var currentPrefixLen int
+	if skipPrefix {
+		currentPrefixLen = i.split(i.key)
+		skipPrefix = currentPrefixLen < len(i.key)
+	}
 	for {
-		i.iterKey, i.iterValue = i.iter.Next()
+		if skipPrefix {
+			i.iterKey, i.iterValue = i.iter.NextPrefix(currentPrefixLen)
+		} else {
+			i.iterKey, i.iterValue = i.iter.Next()
+		}
 		i.stats.ForwardStepCount[InternalIterCall]++
 		if done || i.iterKey == nil {
 			break
@@ -928,11 +937,21 @@ func (i *Iterator) Last() bool {
 // Next moves the iterator to the next key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) Next() bool {
-	return i.NextWithLimit(nil) == IterValid
+	return i.nextWithLimit(nil, false /* skipPrefix */) == IterValid
+}
+
+// NextPrefix moves the iterator to the next key/value pair with a different
+// prefix than the current key.
+func (i *Iterator) NextPrefix() bool {
+	return i.nextWithLimit(nil, true /* skipPrefix */) == IterValid
 }
 
 // NextWithLimit ...
 func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
+	return i.nextWithLimit(limit, false /* skipPrefix */)
+}
+
+func (i *Iterator) nextWithLimit(limit []byte, skipPrefix bool) IterValidityState {
 	i.stats.ForwardStepCount[InterfaceCall]++
 	if limit != nil && i.hasPrefix {
 		i.err = errors.New("cannot use limit with prefix iteration")
@@ -945,7 +964,7 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 	i.lastPositioningOp = unknownLastPositionOp
 	switch i.pos {
 	case iterPosCurForward:
-		i.nextUserKey()
+		i.nextUserKey(skipPrefix)
 	case iterPosCurForwardPaused:
 		// Already at the right place.
 	case iterPosCurReverse:
@@ -974,7 +993,7 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 			i.iterValidityState = IterExhausted
 			return i.iterValidityState
 		}
-		i.nextUserKey()
+		i.nextUserKey(false /* skipPrefix */)
 	case iterPosPrev:
 		// The underlying iterator is pointed to the previous key (this can
 		// only happen when switching iteration directions). We set
@@ -993,9 +1012,9 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 				i.stats.ForwardSeekCount[InternalIterCall]++
 			}
 		} else {
-			i.nextUserKey()
+			i.nextUserKey(false /* skipPrefix */)
 		}
-		i.nextUserKey()
+		i.nextUserKey(false /* skipPrefix */)
 	case iterPosNext:
 		// Already at the right place.
 	}

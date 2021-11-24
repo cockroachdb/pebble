@@ -145,7 +145,7 @@ func TestSuffix(t *testing.T) {
 	}
 
 	// Suffixes should be comparable on their own too.
-	a, b := make([]byte, maxSuffixLen), make([]byte, maxSuffixLen)
+	a, b := make([]byte, MaxSuffixLen), make([]byte, MaxSuffixLen)
 	for ts := 2; ts < 150; ts++ {
 		an := WriteSuffix(a, ts-1)
 		bn := WriteSuffix(b, ts)

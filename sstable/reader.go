@@ -839,6 +839,29 @@ func (i *singleLevelIterator) Next() (*InternalKey, []byte) {
 	return i.skipForward()
 }
 
+// NextPrefix implements internalIterator.NextPrefix, as documented in the pebble
+// package.
+func (i *singleLevelIterator) NextPrefix(currentPrefixLen int) (*InternalKey, []byte) {
+	if i.exhaustedBounds == +1 {
+		panic("Next called even though exhausted upper bound")
+	}
+	i.exhaustedBounds = 0
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.boundsCmp = 0
+
+	if i.err != nil {
+		return nil, nil
+	}
+	if key, val := i.data.NextPrefix(currentPrefixLen); key != nil {
+		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
+			i.exhaustedBounds = +1
+			return nil, nil
+		}
+		return key, val
+	}
+	return i.skipForward()
+}
+
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
 func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
@@ -1498,6 +1521,20 @@ func (i *twoLevelIterator) Next() (*InternalKey, []byte) {
 		return nil, nil
 	}
 	if key, val := i.singleLevelIterator.Next(); key != nil {
+		return key, val
+	}
+	return i.skipForward()
+}
+
+// NextPrefix implements internalIterator.NextPrefix, as documented in the
+// pebble package.
+func (i *twoLevelIterator) NextPrefix(currentPrefixLen int) (*InternalKey, []byte) {
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.boundsCmp = 0
+	if i.err != nil {
+		return nil, nil
+	}
+	if key, val := i.singleLevelIterator.NextPrefix(currentPrefixLen); key != nil {
 		return key, val
 	}
 	return i.skipForward()
