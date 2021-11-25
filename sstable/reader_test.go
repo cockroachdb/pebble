@@ -802,7 +802,7 @@ func TestValidateBlockChecksums(t *testing.T) {
 			var bh BlockHandle
 			switch location {
 			case corruptionLocationData:
-				bh = layout.Data[rng.Intn(len(layout.Data))]
+				bh = layout.Data[rng.Intn(len(layout.Data))].BlockHandle
 			case corruptionLocationIndex:
 				bh = layout.Index[rng.Intn(len(layout.Index))]
 			case corruptionLocationTopIndex:
