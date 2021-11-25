@@ -8,7 +8,103 @@ import (
 
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/stretchr/testify/require"
 )
+
+func TestRewriteSuffixProps(t *testing.T) {
+	from, to := []byte("_212"), []byte("_646")
+
+	wOpts := WriterOptions{
+		FilterPolicy: bloom.FilterPolicy(10),
+		Comparer:     test4bSuffixComparer,
+		TablePropertyCollectors: []func() TablePropertyCollector{
+			intSuffixTablePropCollectorFn("ts3", 3), intSuffixTablePropCollectorFn("ts2", 2),
+		},
+		BlockPropertyCollectors: []func() BlockPropertyCollector{
+			keyCountCollectorFn("count"),
+			intSuffixIntervalCollectorFn("bp3", 3),
+			intSuffixIntervalCollectorFn("bp2", 2),
+			intSuffixIntervalCollectorFn("bp1", 1),
+		},
+	}
+
+	// Setup our test SST.
+	sst := make4bSuffixTestSST(t, wOpts, []byte(from), 1e5)
+
+	expectedProps := make(map[string]string)
+	expectedProps["ts2.min"] = "46"
+	expectedProps["ts2.max"] = "46"
+	expectedProps["ts3.min"] = "646"
+	expectedProps["ts3.max"] = "646"
+
+	// Also expect to see the aggregated block properties with their updated value
+	// at the correct (new) shortIDs. Seeing the rolled up value here is almost an
+	// end-to-end test since we only fed them each block during rewrite.
+	expectedProps["count"] = string(append([]byte{1}, "100000"...))
+	expectedProps["bp2"] = string(interval{46, 47}.encode([]byte{2}))
+	expectedProps["bp3"] = string(interval{646, 647}.encode([]byte{0}))
+
+	// Swap the order of two of the props so they have new shortIDs, and remove
+	// one.
+	rwOpts := wOpts
+	rwOpts.BlockPropertyCollectors = rwOpts.BlockPropertyCollectors[:3]
+	rwOpts.BlockPropertyCollectors[0], rwOpts.BlockPropertyCollectors[1] = rwOpts.BlockPropertyCollectors[1], rwOpts.BlockPropertyCollectors[0]
+
+	// Rewrite the SST using updated options and check the returned props.
+	readerOpts := ReaderOptions{
+		Comparer: test4bSuffixComparer,
+		Filters:  map[string]base.FilterPolicy{wOpts.FilterPolicy.Name(): wOpts.FilterPolicy},
+	}
+	r, err := NewMemReader(sst, readerOpts)
+	require.NoError(t, err)
+
+	for _, byBlocks := range []bool{false, true} {
+		t.Run(fmt.Sprintf("byBlocks=%v", byBlocks), func(t *testing.T) {
+			rewrittenSST := &memFile{}
+			if byBlocks {
+				_, err := replaceSuffixInBlocks(r, rewrittenSST, rwOpts, from, to, 8)
+				require.NoError(t, err)
+			} else {
+				_, err := replaceSuffixWithReaderWriterLoop(r, rewrittenSST, rwOpts, from, to)
+				require.NoError(t, err)
+			}
+
+			// Check that a reader on the rewritten STT has the expected props.
+			rRewritten, err := NewMemReader(rewrittenSST.Bytes(), readerOpts)
+			require.NoError(t, err)
+			require.Equal(t, expectedProps, rRewritten.Properties.UserProperties)
+
+			// Compare the block level props from the data blocks in the layout.
+			layout, err := r.Layout()
+			require.NoError(t, err)
+			newLayout, err := rRewritten.Layout()
+			require.NoError(t, err)
+
+			ival := interval{}
+			for i := range layout.Data {
+				oldProps := make([][]byte, len(wOpts.BlockPropertyCollectors))
+				oldDecoder := blockPropertiesDecoder{layout.Data[i].Props}
+				for !oldDecoder.done() {
+					id, val, err := oldDecoder.next()
+					require.NoError(t, err)
+					oldProps[id] = val
+				}
+				newProps := make([][]byte, len(rwOpts.BlockPropertyCollectors))
+				newDecoder := blockPropertiesDecoder{newLayout.Data[i].Props}
+				for !newDecoder.done() {
+					id, val, err := newDecoder.next()
+					require.NoError(t, err)
+					newProps[id] = val
+				}
+				require.Equal(t, oldProps[0], newProps[1])
+				ival.decode(newProps[0])
+				require.Equal(t, interval{646, 647}, ival)
+				ival.decode(newProps[2])
+				require.Equal(t, interval{46, 47}, ival)
+			}
+		})
+	}
+}
 
 // memFile is a file-like struct that buffers all data written to it in memory.
 // Implements the writeCloseSyncer interface.
@@ -36,14 +132,34 @@ func (f *memFile) Flush() error {
 	return nil
 }
 
+func make4bSuffixTestSST(t testing.TB, writerOpts WriterOptions, suffix []byte, keys int) []byte {
+	key := make([]byte, 28)
+	copy(key[24:], suffix)
+
+	f := &memFile{}
+	w := NewWriter(f, writerOpts)
+	for i := 0; i < keys; i++ {
+		binary.BigEndian.PutUint64(key[:8], 123) // 16-byte shared prefix
+		binary.BigEndian.PutUint64(key[8:16], 456)
+		binary.BigEndian.PutUint64(key[16:], uint64(i))
+		if err := w.Set(key, key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	return f.Bytes()
+}
+
 func BenchmarkRewriteSST(b *testing.B) {
+	from, to := []byte("_123"), []byte("_456")
 	writerOpts := WriterOptions{
 		FilterPolicy: bloom.FilterPolicy(10),
 		Comparer:     test4bSuffixComparer,
 	}
 
-	key := make([]byte, 28)
-	copy(key[24:], "_123")
 	sizes := []int{100, 10000, 1e6}
 	compressions := []Compression{NoCompression, SnappyCompression}
 
@@ -54,21 +170,8 @@ func BenchmarkRewriteSST(b *testing.B) {
 
 		for size := range sizes {
 			writerOpts.Compression = compressions[comp]
-			f := &memFile{}
-			w := NewWriter(f, writerOpts)
-			for i := 0; i < sizes[size]; i++ {
-				binary.BigEndian.PutUint64(key[:8], 123) // 16-byte shared prefix
-				binary.BigEndian.PutUint64(key[8:16], 456)
-				binary.BigEndian.PutUint64(key[16:], uint64(i))
-				if err := w.Set(key, key); err != nil {
-					b.Fatal(err)
-				}
-			}
-
-			if err := w.Close(); err != nil {
-				b.Fatal(err)
-			}
-			r, err := NewMemReader(f.Bytes(), ReaderOptions{
+			sst := make4bSuffixTestSST(b, writerOpts, from, sizes[size])
+			r, err := NewMemReader(sst, ReaderOptions{
 				Comparer: test4bSuffixComparer,
 				Filters:  map[string]base.FilterPolicy{writerOpts.FilterPolicy.Name(): writerOpts.FilterPolicy},
 			})
@@ -89,7 +192,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 						stat, _ := r.file.Stat()
 						b.SetBytes(stat.Size())
 						for i := 0; i < b.N; i++ {
-							if _, err := replaceSuffixWithReaderWriterLoop(r, &discardFile{}, writerOpts, []byte("_123"), []byte("_456")); err != nil {
+							if _, err := replaceSuffixWithReaderWriterLoop(r, &discardFile{}, writerOpts, from, to); err != nil {
 								b.Fatal(err)
 							}
 						}
@@ -99,7 +202,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 							stat, _ := r.file.Stat()
 							b.SetBytes(stat.Size())
 							for i := 0; i < b.N; i++ {
-								if _, err := replaceSuffixInBlocks(r, &discardFile{}, writerOpts, []byte("_123"), []byte("_456"), concurrency); err != nil {
+								if _, err := replaceSuffixInBlocks(r, &discardFile{}, writerOpts, from, to, concurrency); err != nil {
 									b.Fatal(err)
 								}
 							}

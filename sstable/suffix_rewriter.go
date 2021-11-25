@@ -3,6 +3,7 @@ package sstable
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -38,28 +39,8 @@ import (
 // overlap with the prefix determined by it designates (i.e. no part of the key
 // added to the filter is being modified).
 //
-// 2) any block and table property collectors in-use must be able to derive a
-// correct result -- for a block wherein *all keys had and will have the same
-// suffix* -- from a single updated key per block.
-//
-// These requirements are met by the current splitter and property collectors
-// in-use by CockroachDB, where this function is used to set the MVCC-Timestamp
-// suffix of each key during ingestion which is correspondingly designated by
-// Split as outside the prefix, and its current collectors only look at the key
-// suffix, so because every key is being assigned the *same* suffix, being
-// passed any one such key is the same as being passed all the keys for these
-// collectors.
-//
-// However in the future, if this helper needed to support rewriting suffixes in
-// SSTables that made use of other collectors, this approach could be updated to
-// make this less restrictive. Ideally, where possible, the original property
-// should be copied over to the new sstable rather than being recomputed at all,
-// if it is unchanged by the change in the suffix, which could easily be the
-// case depending on the nature of the property. Alternatively if some new
-// collector's value depended on key prefixes, suffixes and values and thus had
-// to be passed every updated k/v pair to compute a correct result, the API for
-// collectors could potentially be extended to include a facility for collecting
-// partial results and aggregating them together.
+// 2) any block and table property collectors configured in the WriterOptions
+// must implement SuffixReplaceableTableCollector/SuffixReplaceableBlockCollector.
 func RewriteKeySuffixes(
 	r *Reader,
 	out writeCloseSyncer, o WriterOptions,
@@ -76,6 +57,17 @@ func replaceSuffixWithReaderWriterLoop(
 	r *Reader, out writeCloseSyncer, o WriterOptions, from, to []byte,
 ) (*WriterMetadata, error) {
 	w := NewWriter(out, o)
+	for _, c := range w.propCollectors {
+		if _, ok := c.(SuffixReplaceableTableCollector); !ok {
+			return nil, errors.Errorf("property collector %s does not support suffix replacement", c.Name())
+		}
+	}
+	for _, c := range w.blockPropCollectors {
+		if _, ok := c.(SuffixReplaceableBlockCollector); !ok {
+			return nil, errors.Errorf("block property collector %s does not support suffix replacement", c.Name())
+		}
+	}
+
 	i, err := r.NewIter(nil, nil)
 	if err != nil {
 		return nil, err
@@ -151,12 +143,23 @@ func (sizeOnlyStat) Sys() interface{}   { panic(errors.AssertionFailedf("unimple
 func replaceSuffixInBlocks(
 	r *Reader, out writeCloseSyncer, o WriterOptions, from, to []byte, concurrency int,
 ) (*WriterMetadata, error) {
+	w := NewWriter(out, o)
+
+	for _, c := range w.propCollectors {
+		if _, ok := c.(SuffixReplaceableTableCollector); !ok {
+			return nil, errors.Errorf("property collector %s does not support suffix replacement", c.Name())
+		}
+	}
+	for _, c := range w.blockPropCollectors {
+		if _, ok := c.(SuffixReplaceableBlockCollector); !ok {
+			return nil, errors.Errorf("block property collector %s does not support suffix replacement", c.Name())
+		}
+	}
+
 	l, err := r.Layout()
 	if err != nil {
 		return nil, errors.Wrap(err, "reading layout")
 	}
-
-	w := NewWriter(out, o)
 
 	if err := rewriteDataBlocksToWriter(r, w, l.Data, from, to, concurrency); err != nil {
 		return nil, errors.Wrap(err, "rewriting data blocks")
@@ -196,7 +199,7 @@ type blockWithSpan struct {
 
 func asyncRewriteBlocks(
 	r *Reader, restartInterval int, checksumType ChecksumType, compression Compression,
-	input []BlockHandle, output []blockWithSpan,
+	input []BlockHandleWithProperties, output []blockWithSpan,
 	totalWorkers, worker int,
 	from, to []byte,
 	errCh chan error,
@@ -213,7 +216,7 @@ func asyncRewriteBlocks(
 
 func rewriteBlocks(
 	r *Reader, restartInterval int, checksumType ChecksumType, compression Compression,
-	input []BlockHandle, output []blockWithSpan,
+	input []BlockHandleWithProperties, output []blockWithSpan,
 	totalWorkers, worker int,
 	from, to []byte,
 ) error {
@@ -234,7 +237,7 @@ func rewriteBlocks(
 	for i := worker; i < len(input); i += totalWorkers {
 		bh := input[i]
 
-		h, err := r.readBlock(bh, nil /* transform */, nil /*rs*/)
+		h, err := r.readBlock(bh.BlockHandle, nil /* transform */, nil /*rs*/)
 		if err != nil {
 			return err
 		}
@@ -325,7 +328,7 @@ func rewriteBlocks(
 	return nil
 }
 
-func rewriteDataBlocksToWriter(r *Reader, w *Writer, data []BlockHandle, from, to []byte, concurrency int) error {
+func rewriteDataBlocksToWriter(r *Reader, w *Writer, data []BlockHandleWithProperties, from, to []byte, concurrency int) error {
 	blocks := make([]blockWithSpan, len(data))
 
 	if w.filter != nil {
@@ -362,11 +365,22 @@ func rewriteDataBlocksToWriter(r *Reader, w *Writer, data []BlockHandle, from, t
 	}
 
 	for _, p := range w.propCollectors {
-		// TODO(dt): we're not passing value here. Perhaps we should have a separate
-		// method in the interface like AddSingleExampleKeyForTable(key) that an
-		// impl could choose to implement or not?
-		if err := p.Add(blocks[0].start, nil); err != nil {
+		if err := p.(SuffixReplaceableTableCollector).UpdateKeySuffixes(r.Properties.UserProperties, from, to); err != nil {
 			return err
+		}
+	}
+
+	var decoder blockPropertiesDecoder
+	var oldShortIDs []shortID
+	var oldProps [][]byte
+	if len(w.blockPropCollectors) > 0 {
+		oldProps = make([][]byte, len(w.blockPropCollectors))
+		oldShortIDs = make([]shortID, math.MaxUint8)
+		for i, p := range w.blockPropCollectors {
+			if prop, ok := r.Properties.UserProperties[p.Name()]; ok {
+				was, is := shortID(byte(prop[0])), shortID(i)
+				oldShortIDs[was] = is
+			}
 		}
 	}
 
@@ -381,15 +395,21 @@ func rewriteDataBlocksToWriter(r *Reader, w *Writer, data []BlockHandle, from, t
 		// Update the overall size.
 		w.meta.Size += uint64(n)
 
-		// Pass each block property collector the first key from the block, so that
-		// it can collect any properties for the block. This assumes that it'd
-		// collect the same property from this one key that it'd collect if passed
-		// all keys in the block.
-		// TODO(dt): perhaps we should add a method to the collector interface like
-		// AddExampleForBlock so that implementations can decide if they are okay
-		// with this? also ditto above, no value here.
-		for _, p := range w.blockPropCollectors {
-			if err := p.Add(blocks[i].start, nil); err != nil {
+		// Load any previous values for our prop collectors into oldProps.
+		for i := range oldProps {
+			oldProps[i] = nil
+		}
+		decoder.props = data[i].Props
+		for !decoder.done() {
+			id, val, err := decoder.next()
+			if err != nil {
+				return err
+			}
+			oldProps[oldShortIDs[id]] = val
+		}
+
+		for i, p := range w.blockPropCollectors {
+			if err := p.(SuffixReplaceableBlockCollector).UpdateKeySuffixes(oldProps[i], from, to); err != nil {
 				return err
 			}
 		}

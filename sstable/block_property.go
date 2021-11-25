@@ -126,12 +126,49 @@ type DataBlockIntervalCollector interface {
 	FinishDataBlock() (lower uint64, upper uint64, err error)
 }
 
+// SuffixReplaceableBlockCollector is an extension to the BlockPropertyCollector
+// interface that allows a block property collector to indicate the it supports
+// being *updated* during suffix replacement, i.e. when an existing SST in which
+// all keys have the same key suffix is updated to have a new suffix.
+//
+// A collector which supports being updated in such cases must be able to derive
+// its updated value from its old value and the change being made to the suffix,
+// without needing to be passed each updated K/V.
+//
+// For example, a collector that only inspects values would can simply copy its
+// previously computed property as-is, since key-suffix replacement does not
+// change values, while a collector that depends only on key suffixes, like one
+// which collected mvcc-timestamp bounds from timestamp-suffixed keys, can just
+// set its new bounds from the new suffix, as it is common to all keys, without
+// needing to recompute it from every key.
+//
+// An implementation of DataBlockIntervalCollector can also implement this
+// interface, in which case the BlockPropertyCollector returned by passing it to
+// NewBlockIntervalCollector will also implement this interface automatically.
+type SuffixReplaceableBlockCollector interface {
+	// UpdateKeySuffixes is called when a block is updated to change the suffix of
+	// all keys in the block, and is passed the old value for that prop, if any,
+	// for that block as well as the old and new suffix.
+	UpdateKeySuffixes(oldProp []byte, oldSuffix, newSuffix []byte) error
+}
+
+type suffixReplacementBlockCollectorWrapper struct {
+	BlockIntervalCollector
+}
+
+func (w *suffixReplacementBlockCollectorWrapper) UpdateKeySuffixes(oldProp []byte, from, to []byte) error {
+	return w.dbic.(SuffixReplaceableBlockCollector).UpdateKeySuffixes(oldProp, from, to)
+}
+
 // NewBlockIntervalCollector constructs a BlockIntervalCollector, with the
 // given name and data block collector.
 func NewBlockIntervalCollector(
-	name string, blockAttributeCollector DataBlockIntervalCollector) *BlockIntervalCollector {
-	return &BlockIntervalCollector{
-		name: name, dbic: blockAttributeCollector}
+	name string, blockAttributeCollector DataBlockIntervalCollector) BlockPropertyCollector {
+	bic := BlockIntervalCollector{name: name, dbic: blockAttributeCollector}
+	if _, ok := blockAttributeCollector.(SuffixReplaceableBlockCollector); ok {
+		return &suffixReplacementBlockCollectorWrapper{bic}
+	}
+	return &bic
 }
 
 // Name implements the BlockPropertyCollector interface.

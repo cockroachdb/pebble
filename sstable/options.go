@@ -83,6 +83,28 @@ type TablePropertyCollector interface {
 	Name() string
 }
 
+// SuffixReplaceableBlockCollector is an extension to the TablePropertyCollector
+// interface that allows a table property collector to indicate the it supports
+// being *updated* during suffix replacement, i.e. when an existing SST in which
+// all keys have the same key suffix is updated to have a new suffix.
+//
+// A collector which supports being updated in such cases must be able to derive
+// its updated value from its old value and the change being made to the suffix,
+// without needing to be passed each updated K/V.
+//
+// For example, a collector that only inspects values would can simply copy its
+// previously computed property as-is, since key-suffix replacement does not
+// change values, while a collector that depends only on key suffixes, like one
+// which collected mvcc-timestamp bounds from timestamp-suffixed keys, can just
+// set its new bounds from the new suffix, as it is common to all keys, without
+// needing to recompute it from every key.
+type SuffixReplaceableTableCollector interface {
+	// UpdateKeySuffixes is called when a block is updated to change the suffix of
+	// all keys in the block, and is passed the old value for that prop, if any,
+	// for that block as well as the old and new suffix.
+	UpdateKeySuffixes(oldProps map[string]string, oldSuffix, newSuffix []byte) error
+}
+
 // ReaderOptions holds the parameters needed for reading an sstable.
 type ReaderOptions struct {
 	// Cache is used to cache uncompressed blocks from sstables.
