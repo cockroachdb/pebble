@@ -2456,7 +2456,7 @@ func (r *Reader) Layout() (*Layout, error) {
 	}
 
 	l := &Layout{
-		Data:       make([]BlockHandle, 0, r.Properties.NumDataBlocks),
+		Data:       make([]BlockHandleWithProperties, 0, r.Properties.NumDataBlocks),
 		Filter:     r.filterBH,
 		RangeDel:   r.rangeDelBH,
 		RangeKey:   r.rangeKeyBH,
@@ -2471,6 +2471,8 @@ func (r *Reader) Layout() (*Layout, error) {
 	}
 	defer indexH.Release()
 
+	var alloc []byte
+
 	if r.Properties.IndexPartitions == 0 {
 		l.Index = append(l.Index, r.indexBH)
 		iter, _ := newBlockIter(r.Compare, indexH.Get())
@@ -2479,7 +2481,15 @@ func (r *Reader) Layout() (*Layout, error) {
 			if err != nil {
 				return nil, errCorruptIndexEntry
 			}
-			l.Data = append(l.Data, dataBH.BlockHandle)
+			if len(dataBH.Props) > 0 {
+				if len(alloc) < len(dataBH.Props) {
+					alloc = make([]byte, 256<<10)
+				}
+				n := copy(alloc, dataBH.Props)
+				dataBH.Props = alloc[:n:n]
+				alloc = alloc[n:]
+			}
+			l.Data = append(l.Data, dataBH)
 		}
 	} else {
 		l.TopIndex = r.indexBH
@@ -2502,10 +2512,18 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				dataBH, err := decodeBlockHandleWithProperties(value)
+				if len(dataBH.Props) > 0 {
+					if len(alloc) < len(dataBH.Props) {
+						alloc = make([]byte, 256<<10)
+					}
+					n := copy(alloc, dataBH.Props)
+					dataBH.Props = alloc[:n:n]
+					alloc = alloc[n:]
+				}
 				if err != nil {
 					return nil, errCorruptIndexEntry
 				}
-				l.Data = append(l.Data, dataBH.BlockHandle)
+				l.Data = append(l.Data, dataBH)
 			}
 			subIndex.Release()
 			*iter = iter.resetForReuse()
@@ -2525,8 +2543,10 @@ func (r *Reader) ValidateBlockChecksums() error {
 
 	// Construct the set of blocks to check. Note that the footer is not checked
 	// as it is not a block with a checksum.
-	var blocks []BlockHandle
-	blocks = append(blocks, l.Data...)
+	blocks := make([]BlockHandle, len(l.Data))
+	for i := range l.Data {
+		blocks[i] = l.Data[i].BlockHandle
+	}
 	blocks = append(blocks, l.Index...)
 	blocks = append(blocks, l.TopIndex, l.Filter, l.RangeDel, l.RangeKey, l.Properties, l.MetaIndex)
 
@@ -2764,7 +2784,7 @@ type Layout struct {
 	// ValidateBlockChecksums, which validates a static list of BlockHandles
 	// referenced in this struct.
 
-	Data       []BlockHandle
+	Data       []BlockHandleWithProperties
 	Index      []BlockHandle
 	TopIndex   BlockHandle
 	Filter     BlockHandle
@@ -2787,7 +2807,7 @@ func (l *Layout) Describe(
 	var blocks []block
 
 	for i := range l.Data {
-		blocks = append(blocks, block{l.Data[i], "data"})
+		blocks = append(blocks, block{l.Data[i].BlockHandle, "data"})
 	}
 	for i := range l.Index {
 		blocks = append(blocks, block{l.Index[i], "index"})

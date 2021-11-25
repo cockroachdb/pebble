@@ -81,6 +81,32 @@ type BlockPropertyCollector interface {
 	FinishTable(buf []byte) ([]byte, error)
 }
 
+// SuffixReplaceableBlockCollector is an extension to the BlockPropertyCollector
+// interface that allows a block property collector to indicate the it supports
+// being *updated* during suffix replacement, i.e. when an existing SST in which
+// all keys have the same key suffix is updated to have a new suffix.
+//
+// A collector which supports being updated in such cases must be able to derive
+// its updated value from its old value and the change being made to the suffix,
+// without needing to be passed each updated K/V.
+//
+// For example, a collector that only inspects values would can simply copy its
+// previously computed property as-is, since key-suffix replacement does not
+// change values, while a collector that depends only on key suffixes, like one
+// which collected mvcc-timestamp bounds from timestamp-suffixed keys, can just
+// set its new bounds from the new suffix, as it is common to all keys, without
+// needing to recompute it from every key.
+//
+// An implementation of DataBlockIntervalCollector can also implement this
+// interface, in which case the BlockPropertyCollector returned by passing it to
+// NewBlockIntervalCollector will also implement this interface automatically.
+type SuffixReplaceableBlockCollector interface {
+	// UpdateKeySuffixes is called when a block is updated to change the suffix of
+	// all keys in the block, and is passed the old value for that prop, if any,
+	// for that block as well as the old and new suffix.
+	UpdateKeySuffixes(oldProp []byte, oldSuffix, newSuffix []byte) error
+}
+
 // BlockPropertyFilter is used in an Iterator to filter sstables and blocks
 // within the sstable. It should not maintain any per-sstable state, and must
 // be thread-safe.
@@ -152,15 +178,19 @@ type DataBlockIntervalCollector interface {
 func NewBlockIntervalCollector(
 	name string,
 	pointCollector, rangeCollector DataBlockIntervalCollector,
-) *BlockIntervalCollector {
+) BlockPropertyCollector {
 	if pointCollector == nil && rangeCollector == nil {
 		panic("sstable: at least one interval collector must be provided")
 	}
-	return &BlockIntervalCollector{
+	bic := BlockIntervalCollector{
 		name:   name,
 		points: pointCollector,
 		ranges: rangeCollector,
 	}
+	if _, ok := pointCollector.(SuffixReplaceableBlockCollector); ok {
+		return &suffixReplacementBlockCollectorWrapper{bic}
+	}
+	return &bic
 }
 
 // Name implements the BlockPropertyCollector interface.
@@ -290,6 +320,15 @@ func (i interval) intersects(x interval) bool {
 	}
 	// Neither set is empty.
 	return i.upper > x.lower && i.lower < x.upper
+}
+
+type suffixReplacementBlockCollectorWrapper struct {
+	BlockIntervalCollector
+}
+
+// UpdateKeySuffixes implements the SuffixReplaceableBlockCollector interface.
+func (w *suffixReplacementBlockCollectorWrapper) UpdateKeySuffixes(oldProp []byte, from, to []byte) error {
+	return w.BlockIntervalCollector.points.(SuffixReplaceableBlockCollector).UpdateKeySuffixes(oldProp, from, to)
 }
 
 // blockIntervalFilter is an implementation of BlockPropertyFilter when the

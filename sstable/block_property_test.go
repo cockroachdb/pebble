@@ -1123,3 +1123,142 @@ func TestBlockProperties(t *testing.T) {
 		}
 	})
 }
+
+type keyCountCollector struct {
+	name                string
+	block, index, table int
+}
+
+var _ BlockPropertyCollector = &keyCountCollector{}
+var _ SuffixReplaceableBlockCollector = &keyCountCollector{}
+
+func keyCountCollectorFn(name string) func() BlockPropertyCollector {
+	return func() BlockPropertyCollector { return &keyCountCollector{name: name} }
+}
+
+func (p *keyCountCollector) Name() string { return p.name }
+
+func (p *keyCountCollector) Add(_ InternalKey, _ []byte) error {
+	p.block++
+	return nil
+}
+
+func (p *keyCountCollector) FinishDataBlock(buf []byte) ([]byte, error) {
+	buf = append(buf, []byte(strconv.Itoa(int(p.block)))...)
+	p.table += p.block
+	return buf, nil
+}
+
+func (p *keyCountCollector) AddPrevDataBlockToIndexBlock() {
+	p.index += p.block
+	p.block = 0
+}
+
+func (p *keyCountCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
+	buf = append(buf, []byte(strconv.Itoa(int(p.index)))...)
+	p.index = 0
+	return buf, nil
+}
+
+func (p *keyCountCollector) FinishTable(buf []byte) ([]byte, error) {
+	buf = append(buf, []byte(strconv.Itoa(int(p.table)))...)
+	p.table = 0
+	return buf, nil
+}
+
+func (p *keyCountCollector) UpdateKeySuffixes(old []byte, _, _ []byte) error {
+	n, err := strconv.Atoi(string(old))
+	if err != nil {
+		return err
+	}
+	p.block = n
+	return nil
+}
+
+// intSuffixCollector is testing prop collector that collects the min and
+// max value of numeric suffix of keys (interpreting suffixLen bytes as ascii
+// for conversion with atoi).
+type intSuffixCollector struct {
+	suffixLen int
+	min, max  uint64 // inclusive
+}
+
+func makeIntSuffixCollector(len int) intSuffixCollector {
+	return intSuffixCollector{len, math.MaxUint64, 0}
+}
+
+func (p *intSuffixCollector) setFromSuffix(to []byte) error {
+	if len(to) >= p.suffixLen {
+		parsed, err := strconv.Atoi(string(to[len(to)-p.suffixLen:]))
+		if err != nil {
+			return err
+		}
+		p.min = uint64(parsed)
+		p.max = uint64(parsed)
+	}
+	return nil
+}
+
+type intSuffixTablePropCollector struct {
+	name string
+	intSuffixCollector
+}
+
+var _ TablePropertyCollector = &intSuffixTablePropCollector{}
+var _ SuffixReplaceableTableCollector = &intSuffixTablePropCollector{}
+
+func intSuffixTablePropCollectorFn(name string, len int) func() TablePropertyCollector {
+	return func() TablePropertyCollector { return &intSuffixTablePropCollector{name, makeIntSuffixCollector(len)} }
+}
+
+func (p *intSuffixCollector) Add(key InternalKey, _ []byte) error {
+	if len(key.UserKey) > p.suffixLen {
+		parsed, err := strconv.Atoi(string(key.UserKey[len(key.UserKey)-p.suffixLen:]))
+		if err != nil {
+			return err
+		}
+		v := uint64(parsed)
+		if v > p.max {
+			p.max = v
+		}
+		if v < p.min {
+			p.min = v
+		}
+	}
+	return nil
+}
+
+func (p *intSuffixTablePropCollector) Finish(userProps map[string]string) error {
+	userProps[p.name+".min"] = fmt.Sprint(p.min)
+	userProps[p.name+".max"] = fmt.Sprint(p.max)
+	return nil
+}
+
+func (p *intSuffixTablePropCollector) Name() string { return p.name }
+
+func (p *intSuffixTablePropCollector) UpdateKeySuffixes(oldProps map[string]string, from, to []byte) error {
+	return p.setFromSuffix(to)
+}
+
+// testIntSuffixIntervalCollector is a wrapper for testIntSuffixCollector that
+// uses it to implement a block interval collector.
+type intSuffixIntervalCollector struct {
+	intSuffixCollector
+}
+
+func intSuffixIntervalCollectorFn(name string, length int) func() BlockPropertyCollector {
+	return func() BlockPropertyCollector {
+		return NewBlockIntervalCollector(name, &intSuffixIntervalCollector{makeIntSuffixCollector(length)}, nil)
+	}
+}
+
+var _ DataBlockIntervalCollector = &intSuffixIntervalCollector{}
+var _ SuffixReplaceableBlockCollector = &intSuffixIntervalCollector{}
+
+func (p *intSuffixIntervalCollector) FinishDataBlock() (lower uint64, upper uint64, err error) {
+	return p.min, p.max + 1, nil
+}
+
+func (p *intSuffixIntervalCollector) UpdateKeySuffixes(oldProp []byte, from, to []byte) error {
+	return p.setFromSuffix(to)
+}
