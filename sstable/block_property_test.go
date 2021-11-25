@@ -18,37 +18,37 @@ func TestIntervalEncodeDecode(t *testing.T) {
 		name  string
 		lower uint64
 		upper uint64
-		len int
+		len   int
 	}{
 		{
-			name: "empty zero",
+			name:  "empty zero",
 			lower: 0,
 			upper: 0,
-			len: 0,
+			len:   0,
 		},
 		{
-			name: "empty non-zero",
+			name:  "empty non-zero",
 			lower: 5,
 			upper: 5,
-			len: 0,
+			len:   0,
 		},
 		{
-			name: "empty lower > upper",
+			name:  "empty lower > upper",
 			lower: math.MaxUint64,
-			upper: math.MaxUint64-1,
-			len: 0,
+			upper: math.MaxUint64 - 1,
+			len:   0,
 		},
 		{
-			name: "small",
+			name:  "small",
 			lower: 50,
 			upper: 61,
-			len: 2,
+			len:   2,
 		},
 		{
-			name: "big",
+			name:  "big",
 			lower: 0,
 			upper: math.MaxUint64,
-			len: 11,
+			len:   11,
 		},
 	}
 	for _, tc := range testCases {
@@ -63,7 +63,7 @@ func TestIntervalEncodeDecode(t *testing.T) {
 				expectedInterval = interval{}
 			}
 			// Arbitrary initial value.
-			arbitraryInterval := interval{lower: 1000, upper:1000}
+			arbitraryInterval := interval{lower: 1000, upper: 1000}
 			i2 := arbitraryInterval
 			i2.decode(b1)
 			require.Equal(t, expectedInterval, i2)
@@ -77,52 +77,52 @@ func TestIntervalEncodeDecode(t *testing.T) {
 
 func TestIntervalUnionIntersects(t *testing.T) {
 	testCases := []struct {
-		name  string
-		i1 interval
-		i2 interval
-		union interval
+		name       string
+		i1         interval
+		i2         interval
+		union      interval
 		intersects bool
 	}{
 		{
-			name: "empty and empty",
-			i1: interval{},
-			i2: interval{},
-			union: interval{},
+			name:       "empty and empty",
+			i1:         interval{},
+			i2:         interval{},
+			union:      interval{},
 			intersects: false,
 		},
 		{
-			name: "empty and empty non-zero",
-			i1: interval{},
-			i2: interval{100, 99},
-			union: interval{},
+			name:       "empty and empty non-zero",
+			i1:         interval{},
+			i2:         interval{100, 99},
+			union:      interval{},
 			intersects: false,
 		},
 		{
-			name: "empty and non-empty",
-			i1: interval{},
-			i2: interval{80, 100},
-			union: interval{80, 100},
+			name:       "empty and non-empty",
+			i1:         interval{},
+			i2:         interval{80, 100},
+			union:      interval{80, 100},
 			intersects: false,
 		},
 		{
-			name: "disjoint sets",
-			i1: interval{50, 60},
-			i2: interval{math.MaxUint64-5, math.MaxUint64},
-			union: interval{50, math.MaxUint64},
+			name:       "disjoint sets",
+			i1:         interval{50, 60},
+			i2:         interval{math.MaxUint64 - 5, math.MaxUint64},
+			union:      interval{50, math.MaxUint64},
 			intersects: false,
 		},
 		{
-			name: "adjacent sets",
-			i1: interval{50, 60},
-			i2: interval{60, 100},
-			union: interval{50, 100},
+			name:       "adjacent sets",
+			i1:         interval{50, 60},
+			i2:         interval{60, 100},
+			union:      interval{50, 100},
 			intersects: false,
 		},
 		{
-			name: "overlapping sets",
-			i1: interval{50, 60},
-			i2: interval{59, 120},
-			union: interval{50, 120},
+			name:       "overlapping sets",
+			i1:         interval{50, 60},
+			i2:         interval{59, 120},
+			union:      interval{50, 120},
 			intersects: true,
 		},
 	}
@@ -230,27 +230,27 @@ func TestBlockIntervalCollector(t *testing.T) {
 
 func TestBlockIntervalFilter(t *testing.T) {
 	testCases := []struct {
-		name  string
-		filter interval
-		prop interval
+		name       string
+		filter     interval
+		prop       interval
 		intersects bool
 	}{
 		{
-			name: "non-empty and empty",
-			filter: interval{10, 15},
-			prop: interval{},
+			name:       "non-empty and empty",
+			filter:     interval{10, 15},
+			prop:       interval{},
 			intersects: false,
 		},
 		{
-			name: "does not intersect",
-			filter: interval{10, 15},
-			prop: interval{15, 20},
+			name:       "does not intersect",
+			filter:     interval{10, 15},
+			prop:       interval{15, 20},
 			intersects: false,
 		},
 		{
-			name: "intersects",
-			filter: interval{10, 15},
-			prop: interval{14, 20},
+			name:       "intersects",
+			filter:     interval{10, 15},
+			prop:       interval{14, 20},
 			intersects: true,
 		},
 	}
@@ -323,6 +323,7 @@ func TestBlockPropertiesEncoderDecoder(t *testing.T) {
 type filterWithTrueForEmptyProp struct {
 	*BlockIntervalFilter
 }
+
 func (b filterWithTrueForEmptyProp) Intersects(prop []byte) (bool, error) {
 	if len(prop) == 0 {
 		return true, nil
@@ -353,15 +354,15 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 	prop10Str := string(prop10)
 	type filter struct {
 		name string
-		i interval
+		i    interval
 	}
-	testCases := []struct{
-		name string
+	testCases := []struct {
+		name      string
 		userProps map[string]string
-		filters []filter
+		filters   []filter
 
 		// Expected results
-		intersects bool
+		intersects            bool
 		shortIDToFiltersIndex []int
 	}{
 		{
@@ -494,206 +495,205 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 	encoder.addProp(bic10Id, prop)
 	props0And10 := encoder.props()
 	type filter struct {
-		shortID shortID
-		i interval
+		shortID                shortID
+		i                      interval
 		intersectsForEmptyProp bool
 	}
-	testCases := []struct{
-		name string
+	testCases := []struct {
+		name  string
 		props []byte
 		// filters must be in ascending order of shortID.
-		filters []filter
+		filters    []filter
 		intersects bool
 	}{
 		{
-			name: "no filter, empty props",
-			props: emptyProps,
+			name:       "no filter, empty props",
+			props:      emptyProps,
 			intersects: true,
 		},
 		{
-			name: "no filter",
-			props: props0And10,
+			name:       "no filter",
+			props:      props0And10,
 			intersects: true,
 		},
 		{
-			name: "filter 0, empty props, does not intersect",
-			props: emptyProps,
-			filters: []filter{
-				{
-					shortID: 0,
-					i: interval{5, 15},
-				},
-			},
-			intersects: false,
-		},
-		{
-			name: "filter 10, empty props, does not intersect",
+			name:  "filter 0, empty props, does not intersect",
 			props: emptyProps,
 			filters: []filter{
 				{
 					shortID: 0,
-					i: interval{105, 111},
+					i:       interval{5, 15},
 				},
 			},
 			intersects: false,
 		},
 		{
-			name: "filter 0, intersects",
+			name:  "filter 10, empty props, does not intersect",
+			props: emptyProps,
+			filters: []filter{
+				{
+					shortID: 0,
+					i:       interval{105, 111},
+				},
+			},
+			intersects: false,
+		},
+		{
+			name:  "filter 0, intersects",
 			props: props0And10,
 			filters: []filter{
 				{
 					shortID: 0,
-					i: interval{5, 15},
+					i:       interval{5, 15},
 				},
 			},
 			intersects: true,
 		},
 		{
-			name: "filter 0, does not intersect",
+			name:  "filter 0, does not intersect",
 			props: props0And10,
 			filters: []filter{
 				{
 					shortID: 0,
-					i: interval{20, 25},
+					i:       interval{20, 25},
 				},
 			},
 			intersects: false,
 		},
 		{
-			name: "filter 10, intersects",
+			name:  "filter 10, intersects",
 			props: props0And10,
 			filters: []filter{
 				{
 					shortID: 10,
-					i: interval{105, 111},
+					i:       interval{105, 111},
 				},
 			},
 			intersects: true,
 		},
 		{
-			name: "filter 10, does not intersect",
+			name:  "filter 10, does not intersect",
 			props: props0And10,
 			filters: []filter{
 				{
 					shortID: 10,
-					i: interval{105, 110},
+					i:       interval{105, 110},
 				},
 			},
 			intersects: false,
 		},
 		{
-			name: "filter 5, does not intersect since no property",
+			name:  "filter 5, does not intersect since no property",
 			props: props0And10,
 			filters: []filter{
 				{
 					shortID: 5,
-					i: interval{105, 110},
+					i:       interval{105, 110},
 				},
 			},
 			intersects: false,
 		},
 		{
-			name: "filter 0 and 5, intersects and not intersects means overall not intersects",
+			name:  "filter 0 and 5, intersects and not intersects means overall not intersects",
 			props: props0And10,
 			filters: []filter{
 				{
 					shortID: 0,
-					i: interval{5, 15},
+					i:       interval{5, 15},
 				},
 				{
 					shortID: 5,
-					i: interval{105, 110},
+					i:       interval{105, 110},
 				},
 			},
 			intersects: false,
 		},
 		{
-			name: "filter 0, 5, 7, 11, all intersect",
+			name:  "filter 0, 5, 7, 11, all intersect",
 			props: props0And10,
 			filters: []filter{
 				{
 					shortID: 0,
-					i: interval{5, 15},
+					i:       interval{5, 15},
 				},
 				{
-					shortID: 5,
-					i: interval{105, 110},
+					shortID:                5,
+					i:                      interval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 				{
-					shortID: 7,
-					i: interval{105, 110},
+					shortID:                7,
+					i:                      interval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 				{
-					shortID: 11,
-					i: interval{105, 110},
-					intersectsForEmptyProp: true,
-				},
-			},
-			intersects: true,
-		},
-		{
-			name: "filter 0, 5, 7, 10, 11, all intersect",
-			props: props0And10,
-			filters: []filter{
-				{
-					shortID: 0,
-					i: interval{5, 15},
-				},
-				{
-					shortID: 5,
-					i: interval{105, 110},
-					intersectsForEmptyProp: true,
-				},
-				{
-					shortID: 7,
-					i: interval{105, 110},
-					intersectsForEmptyProp: true,
-				},
-				{
-					shortID: 10,
-					i: interval{105, 111},
-				},
-				{
-					shortID: 11,
-					i: interval{105, 110},
+					shortID:                11,
+					i:                      interval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 			},
 			intersects: true,
 		},
 		{
-			name: "filter 0, 5, 7, 10, 11, all intersect except for 10",
+			name:  "filter 0, 5, 7, 10, 11, all intersect",
 			props: props0And10,
 			filters: []filter{
 				{
 					shortID: 0,
-					i: interval{5, 15},
+					i:       interval{5, 15},
 				},
 				{
-					shortID: 5,
-					i: interval{105, 110},
+					shortID:                5,
+					i:                      interval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 				{
-					shortID: 7,
-					i: interval{105, 110},
+					shortID:                7,
+					i:                      interval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 				{
 					shortID: 10,
-					i: interval{105, 110},
+					i:       interval{105, 111},
 				},
 				{
-					shortID: 11,
-					i: interval{105, 110},
+					shortID:                11,
+					i:                      interval{105, 110},
+					intersectsForEmptyProp: true,
+				},
+			},
+			intersects: true,
+		},
+		{
+			name:  "filter 0, 5, 7, 10, 11, all intersect except for 10",
+			props: props0And10,
+			filters: []filter{
+				{
+					shortID: 0,
+					i:       interval{5, 15},
+				},
+				{
+					shortID:                5,
+					i:                      interval{105, 110},
+					intersectsForEmptyProp: true,
+				},
+				{
+					shortID:                7,
+					i:                      interval{105, 110},
+					intersectsForEmptyProp: true,
+				},
+				{
+					shortID: 10,
+					i:       interval{105, 110},
+				},
+				{
+					shortID:                11,
+					i:                      interval{105, 110},
 					intersectsForEmptyProp: true,
 				},
 			},
 			intersects: false,
 		},
-
 	}
 
 	for _, tc := range testCases {
