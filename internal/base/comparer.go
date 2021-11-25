@@ -58,12 +58,18 @@ type FormatValue func(key, value []byte) fmt.Formatter
 // "aqua", "black" and "blue", then the result may be "aquablb".
 // Similarly, if the arguments were "aqua", "green" and "", then the result
 // may be "aquah".
+//
+// The returned key k may be stored in dst, but if it is, it must be stored in a
+// prefix of dst i.e. &dst[0] == &k[0].
 type Separator func(dst, a, b []byte) []byte
 
 // Successor returns a shortened key given a key a, such that Compare(k, a) >=
 // 0. A simple implementation may return a unchanged. The dst parameter may be
 // used to store the returned key, though it is valid to pass nil. The returned
 // key must be valid to pass to Compare.
+//
+// The returned key k may be stored in dst, but if it is, it must be stored in a
+// prefix of dst i.e. &dst[0] == &k[0].
 type Successor func(dst, a []byte) []byte
 
 // Split returns the length of the prefix of the user key that corresponds to
