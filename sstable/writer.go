@@ -158,7 +158,9 @@ type Writer struct {
 	xxHasher *xxhash.Digest
 
 	topLevelIndexBlock blockWriter
-	indexPartitions    []indexBlockWriterAndBlockProperties
+	indexPartitions    []indexBlockAndBlockProperties
+	keyAlloc           []byte
+	indexBlockAlloc    []byte
 
 	// To allow potentially overlapping (i.e. un-fragmented) range keys spans to
 	// be added to the Writer, a keyspan.Fragmenter and rangekey.Coalescer are
@@ -169,9 +171,11 @@ type Writer struct {
 	rkBuf      []byte
 }
 
-type indexBlockWriterAndBlockProperties struct {
-	writer     blockWriter
+type indexBlockAndBlockProperties struct {
+	nEntries   int
+	sep        InternalKey
 	properties []byte
+	block      []byte
 }
 
 // Set sets the value for the given key. The sequence number is set to
@@ -288,6 +292,11 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		// semantically identical, because we need to ensure that SmallestPoint.UserKey
 		// is not nil. This is required by WriterMetadata.Smallest in order to
 		// distinguish between an unset SmallestPoint and a zero-length one.
+		// NB: We don't clone this off of some alloc-pool since it will outlive this
+		// Writer as a field of the returned metadata that users like compaction.go
+		// then hang on to, and would otherwise continue to alias that whole pool's
+		// slice if we did so. So since we'll need to allocate it its own slice at
+		// some point anyway, we may as well do so here.
 		w.meta.SmallestPoint = w.meta.LargestPoint.Clone()
 	}
 
@@ -704,15 +713,27 @@ func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProp
 		return nil
 	}
 	var sep InternalKey
+	if len(w.keyAlloc) < len(prevKey.UserKey) {
+		w.keyAlloc = make([]byte, len(prevKey.UserKey)+keyAllocSize)
+	}
 	if key.UserKey == nil && key.Trailer == 0 {
-		sep = prevKey.Successor(w.compare, w.successor, nil)
+		sep = prevKey.Successor(w.compare, w.successor, w.keyAlloc[:0])
 	} else {
-		sep = prevKey.Separator(w.compare, w.separator, nil, key)
+		sep = prevKey.Separator(w.compare, w.separator, w.keyAlloc[:0], key)
+	}
+	// Check if the called function used a prefix of keyAlloc and if so, slice it
+	// off, by checking if the address of the first byte of keyAlloc is the same
+	// as the key's.
+	if len(w.keyAlloc) > 0 && len(sep.UserKey) > 0 && &w.keyAlloc[0] == &sep.UserKey[0] {
+		w.keyAlloc = w.keyAlloc[len(sep.UserKey):]
 	}
 	encoded := encodeBlockHandleWithProperties(w.tmp[:], bhp)
 
 	if supportsTwoLevelIndex(w.tableFormat) &&
 		shouldFlush(sep, encoded, &w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
+		if cap(w.indexPartitions) == 0 {
+			w.indexPartitions = make([]indexBlockAndBlockProperties, 0, 32)
+		}
 		// Enable two level indexes if there is more than one index block.
 		w.twoLevelIndex = true
 		if err := w.finishIndexBlock(); err != nil {
@@ -757,6 +778,19 @@ func shouldFlush(
 	return newSize > blockSize
 }
 
+const keyAllocSize = 256 << 10
+
+func cloneKeyWithBuf(k InternalKey, buf []byte) ([]byte, InternalKey) {
+	if len(k.UserKey) == 0 {
+		return buf, k
+	}
+	if len(buf) < len(k.UserKey) {
+		buf = make([]byte, len(k.UserKey)+keyAllocSize)
+	}
+	n := copy(buf, k.UserKey)
+	return buf[n:], InternalKey{UserKey: buf[:n:n], Trailer: k.Trailer}
+}
+
 // finishIndexBlock finishes the current index block and adds it to the top
 // level index block. This is only used when two level indexes are enabled.
 func (w *Writer) finishIndexBlock() error {
@@ -771,14 +805,16 @@ func (w *Writer) finishIndexBlock() error {
 			w.blockPropsEncoder.addProp(shortID(i), scratch)
 		}
 	}
-	w.indexPartitions = append(w.indexPartitions,
-		indexBlockWriterAndBlockProperties{
-			writer:     w.indexBlock,
-			properties: w.blockPropsEncoder.props(),
-		})
-	w.indexBlock = blockWriter{
-		restartInterval: 1,
+	part := indexBlockAndBlockProperties{nEntries: w.indexBlock.nEntries, properties: w.blockPropsEncoder.props()}
+	w.keyAlloc, part.sep = cloneKeyWithBuf(base.DecodeInternalKey(w.indexBlock.curKey), w.keyAlloc)
+	bk := w.indexBlock.finish()
+	if len(w.indexBlockAlloc) < len(bk) {
+		w.indexBlockAlloc = make([]byte, len(bk)*16)
 	}
+	n := copy(w.indexBlockAlloc, bk)
+	part.block = w.indexBlockAlloc[:n:n]
+	w.indexBlockAlloc = w.indexBlockAlloc[n:]
+	w.indexPartitions = append(w.indexPartitions, part)
 	return nil
 }
 
@@ -790,9 +826,9 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 
 	for i := range w.indexPartitions {
 		b := &w.indexPartitions[i]
-		w.props.NumDataBlocks += uint64(b.writer.nEntries)
-		sep := base.DecodeInternalKey(b.writer.curKey)
-		data := b.writer.finish()
+		w.props.NumDataBlocks += uint64(b.nEntries)
+
+		data := b.block
 		w.props.IndexSize += uint64(len(data))
 		bh, err := w.writeBlock(data, w.compression)
 		if err != nil {
@@ -803,7 +839,7 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 			Props:       b.properties,
 		}
 		encoded := encodeBlockHandleWithProperties(w.tmp[:], bhp)
-		w.topLevelIndexBlock.add(sep, encoded)
+		w.topLevelIndexBlock.add(b.sep, encoded)
 	}
 
 	// NB: RocksDB includes the block trailer length in the index size
