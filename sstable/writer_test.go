@@ -209,7 +209,7 @@ func TestWriterClearCache(t *testing.T) {
 
 	foreachBH := func(layout *Layout, f func(bh BlockHandle)) {
 		for _, bh := range layout.Data {
-			f(bh)
+			f(bh.BlockHandle)
 		}
 		for _, bh := range layout.Index {
 			f(bh)
