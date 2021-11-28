@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/cockroachdb/pebble/bloom"
@@ -20,6 +21,14 @@ import (
 )
 
 func TestWriter(t *testing.T) {
+	runDataDriven(t, "testdata/writer")
+}
+
+func TestRewriter(t *testing.T) {
+	runDataDriven(t, "testdata/rewriter")
+}
+
+func runDataDriven(t *testing.T, file string) {
 	var r *Reader
 	defer func() {
 		if r != nil {
@@ -27,7 +36,7 @@ func TestWriter(t *testing.T) {
 		}
 	}()
 
-	datadriven.RunTest(t, "testdata/writer", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, file, func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
 			if r != nil {
@@ -36,7 +45,7 @@ func TestWriter(t *testing.T) {
 			}
 			var meta *WriterMetadata
 			var err error
-			meta, r, err = runBuildCmd(td, WriterOptions{})
+			meta, r, err = runBuildCmd(td, &WriterOptions{})
 			if err != nil {
 				return err.Error()
 			}
@@ -75,6 +84,18 @@ func TestWriter(t *testing.T) {
 			}
 			return buf.String()
 
+		case "get":
+			var buf bytes.Buffer
+			for _, k := range strings.Split(td.Input, "\n") {
+				value, err := r.get([]byte(k))
+				if err != nil {
+					fmt.Fprintf(&buf, "get %s: %s\n", k, err.Error())
+				} else {
+					fmt.Fprintf(&buf, "%s\n", value)
+				}
+			}
+			return buf.String()
+
 		case "scan-range-del":
 			iter, err := r.NewRawRangeDelIter()
 			if err != nil {
@@ -96,9 +117,32 @@ func TestWriter(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
+			verbose := false
+			if len(td.CmdArgs) > 0 {
+				if td.CmdArgs[0].Key == "verbose" {
+					verbose = true
+				} else {
+					return "unknown arg"
+				}
+			}
 			var buf bytes.Buffer
-			l.Describe(&buf, false, r, nil)
+			l.Describe(&buf, verbose, r, nil)
 			return buf.String()
+
+		case "rewrite":
+			var meta *WriterMetadata
+			var err error
+			meta, r, err = runRewriteCmd(td, r, WriterOptions{})
+			if err != nil {
+				return err.Error()
+			}
+			if err != nil {
+				return err.Error()
+			}
+			return fmt.Sprintf("point:   [%s,%s]\nrange:   [%s,%s]\nseqnums: [%d,%d]\n",
+				meta.SmallestPoint, meta.LargestPoint,
+				meta.SmallestRange, meta.LargestRange,
+				meta.SmallestSeqNum, meta.LargestSeqNum)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
@@ -243,4 +287,18 @@ func BenchmarkWriter(b *testing.B) {
 			}
 		})
 	}
+}
+
+var test4bSuffixComparer = &base.Comparer{
+	Compare:   base.DefaultComparer.Compare,
+	Equal:     base.DefaultComparer.Equal,
+	Separator: base.DefaultComparer.Separator,
+	Successor: base.DefaultComparer.Successor,
+	Split: func(key []byte) int {
+		if len(key) > 4 {
+			return len(key) - 4
+		}
+		return len(key)
+	},
+	Name: "comparer-split-4b-suffix",
 }
