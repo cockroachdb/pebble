@@ -17,33 +17,33 @@ func TestFindOptimalSplit(t *testing.T) {
 	}{
 		{
 			// Not enough data.
-			passes:   []int{},
-			fails:    []int{},
-			want:     -1,
+			passes: []int{},
+			fails:  []int{},
+			want:   -1,
 		},
 		{
 			// Not enough data.
-			passes:   []int{1, 2, 3},
-			fails:    []int{},
-			want:     -1,
+			passes: []int{1, 2, 3},
+			fails:  []int{},
+			want:   -1,
 		},
 		{
 			// Not enough data.
-			passes:   []int{},
-			fails:    []int{1, 2, 3},
-			want:     -1,
+			passes: []int{},
+			fails:  []int{1, 2, 3},
+			want:   -1,
 		},
 		{
 			// Trivial example.
-			passes:   []int{100},
-			fails:    []int{200},
-			want:     150,
+			passes: []int{100},
+			fails:  []int{200},
+			want:   150,
 		},
 		{
 			// Example given in the doc comment for the function.
-			passes:   []int{100, 210, 300, 380, 450, 470, 490, 510, 520},
-			fails:    []int{310, 450, 560, 610, 640, 700, 720, 810},
-			want:     550,
+			passes: []int{100, 210, 300, 380, 450, 470, 490, 510, 520},
+			fails:  []int{310, 450, 560, 610, 640, 700, 720, 810},
+			want:   550,
 		},
 		{
 			// Empirical data from an actual test run (~1hr).
@@ -59,7 +59,7 @@ func TestFindOptimalSplit(t *testing.T) {
 				33200, 33200, 33200, 33200, 33100, 33300, 33100, 33100, 33000,
 				39200, 36100,
 			},
-			want:     33100,
+			want: 33100,
 		},
 	}
 

@@ -1,3 +1,4 @@
+//go:build race
 // +build race
 
 // Copyright 2020 The LevelDB-Go and Pebble Authors. All rights reserved. Use

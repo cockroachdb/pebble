@@ -34,9 +34,9 @@ type keyMeta struct {
 	objKey
 
 	// The number of Sets of the key in this writer.
-	sets      int
+	sets int
 	// The number of Merges of the key in this writer.
-	merges    int
+	merges int
 	// singleDel can be true only if sets <= 1 && merges == 0 and the
 	// SingleDelete was added to this writer after the set.
 	singleDel bool
@@ -102,11 +102,11 @@ type keyManager struct {
 	byObjKey map[string]*keyMeta
 	// List of keys per writer, and what has happened to it in that writer.
 	// Will be transferred when needed.
-	byObj    map[objID][]*keyMeta
+	byObj map[objID][]*keyMeta
 
 	// globalKeys represents all the keys that have been generated so far. Not
 	// all these keys have been written to.
-	globalKeys     [][]byte
+	globalKeys [][]byte
 	// globalKeysMap contains the same keys as globalKeys. It ensures no
 	// duplication, and contains the aggregate state of the key across all
 	// writers, including inflight state that has not made its way to the DB
@@ -161,8 +161,8 @@ var dbObjID objID = makeObjID(dbTag, 0)
 // canTolerateApplyFailure methods only.
 func newKeyManager() *keyManager {
 	m := &keyManager{
-		byObjKey:       make(map[string]*keyMeta),
-		byObj:          make(map[objID][]*keyMeta),
+		byObjKey:      make(map[string]*keyMeta),
+		byObj:         make(map[objID][]*keyMeta),
 		globalKeysMap: make(map[string]*keyMeta),
 	}
 	m.byObj[dbObjID] = []*keyMeta{}
@@ -298,7 +298,7 @@ func (k *keyManager) update(o op) {
 	case *setOp:
 		meta := k.getOrInit(s.writerID, s.key)
 		globalMeta := k.globalKeysMap[string(s.key)]
-		meta.sets++           // Update the set count on this specific (id, key) pair.
+		meta.sets++ // Update the set count on this specific (id, key) pair.
 		meta.del = false
 		globalMeta.sets++
 		if meta.singleDel || globalMeta.singleDel {
@@ -396,7 +396,7 @@ func (k *keyManager) eligibleSingleDeleteKeys(id objID) (keys [][]byte) {
 
 func (k *keyManager) globalStateIndicatesEligibleForSingleDelete(key []byte) bool {
 	m := k.globalKeysMap[string(key)]
-	return m.merges==0 && m.sets==1 && m.dels==0 && !m.singleDel
+	return m.merges == 0 && m.sets == 1 && m.dels == 0 && !m.singleDel
 }
 
 // canTolerateApplyFailure is called with a batch ID and returns true iff a

@@ -2,6 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
+//go:build make_test_sstables
 // +build make_test_sstables
 
 // Run using: go run -tags make_test_sstables make_test_sstables.go

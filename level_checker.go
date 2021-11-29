@@ -478,10 +478,10 @@ func addTombstonesFromIter(
 		}
 		if !t.Empty() {
 			tombstones = append(tombstones, tombstoneWithLevel{
-				Span: t,
-				level:     level,
-				lsmLevel:  lsmLevel,
-				fileNum:   fileNum,
+				Span:     t,
+				level:    level,
+				lsmLevel: lsmLevel,
+				fileNum:  fileNum,
 			})
 		}
 	}
