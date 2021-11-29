@@ -143,8 +143,8 @@ jobs:
         GOOS: freebsd
       run: go build -v ./...
 
-  mod-tidy-check:
-    name: mod-tidy-check
+  go-lint-checks:
+    name: go-lint-checks
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -156,3 +156,6 @@ jobs:
 
     - name: mod-tidy-check
       run: make mod-tidy-check
+
+    - name: format-check
+      run: make format-check

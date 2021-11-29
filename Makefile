@@ -63,7 +63,21 @@ endif
 .PHONY: mod-tidy-check
 mod-tidy-check:
 ifneq ($(git_dirty),)
-	$(error tidy-check must be invoked on a clean repository)
+	$(error mod-tidy-check must be invoked on a clean repository)
 endif
 	@${GO} mod tidy
+	$(MAKE) git-clean-check
+
+.PHONY: format
+format:
+	for _file in $$(gofmt -s -l . | grep -vE '^vendor/'); do \
+		gofmt -s -w $$_file ; \
+	done
+
+.PHONY: format-check
+format-check:
+ifneq ($(git_dirty),)
+	$(error format-check must be invoked on a clean repository)
+endif
+	$(MAKE) format
 	$(MAKE) git-clean-check
