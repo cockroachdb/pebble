@@ -148,8 +148,8 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 				case "deletion":
 					getInfo := func() deletionPacerInfo {
 						return deletionPacerInfo{
-							freeBytes: freeBytes,
-							liveBytes: liveBytes,
+							freeBytes:     freeBytes,
+							liveBytes:     liveBytes,
 							obsoleteBytes: obsoleteBytes,
 						}
 					}

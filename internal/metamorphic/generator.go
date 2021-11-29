@@ -330,7 +330,7 @@ func (g *generator) newIter() {
 	if iters := g.readers[readerID]; iters != nil {
 		iters[iterID] = struct{}{}
 		g.iters[iterID] = iters
-	//lint:ignore SA9003 - readability
+		//lint:ignore SA9003 - readability
 	} else {
 		// NB: the DB object does not track its open iterators because it never
 		// closes.
@@ -369,7 +369,7 @@ func (g *generator) newIterUsingClone() {
 	if iters := g.iters[existingIterID]; iters != nil {
 		iters[iterID] = struct{}{}
 		g.iters[iterID] = iters
-	//lint:ignore SA9003 - readability
+		//lint:ignore SA9003 - readability
 	} else {
 		// NB: the DB object does not track its open iterators because it never
 		// closes.
@@ -391,7 +391,7 @@ func (g *generator) iterClose() {
 	if readerIters, ok := g.iters[iterID]; ok {
 		delete(g.iters, iterID)
 		delete(readerIters, iterID)
-	//lint:ignore SA9003 - readability
+		//lint:ignore SA9003 - readability
 	} else {
 		// NB: the DB object does not track its open iterators because it never
 		// closes.

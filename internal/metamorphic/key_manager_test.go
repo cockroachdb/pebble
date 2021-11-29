@@ -67,14 +67,14 @@ func TestGlobalStateIndicatesEligibleForSingleDelete(t *testing.T) {
 			meta: keyMeta{
 				objKey: key,
 				sets:   1,
-				dels: 1,
+				dels:   1,
 			},
 			want: false,
 		},
 		{
 			meta: keyMeta{
-				objKey: key,
-				sets:   1,
+				objKey:    key,
+				sets:      1,
 				singleDel: true,
 			},
 			want: false,
@@ -93,7 +93,7 @@ func TestGlobalStateIndicatesEligibleForSingleDelete(t *testing.T) {
 func TestKeyMeta_MergeInto(t *testing.T) {
 	testCases := []struct {
 		existing keyMeta
-		toMerge keyMeta
+		toMerge  keyMeta
 		expected keyMeta
 	}{
 		{
@@ -107,7 +107,7 @@ func TestKeyMeta_MergeInto(t *testing.T) {
 				merges:    0,
 				singleDel: true,
 			},
-			expected: keyMeta {
+			expected: keyMeta{
 				sets:      1,
 				merges:    0,
 				singleDel: true,
@@ -115,41 +115,41 @@ func TestKeyMeta_MergeInto(t *testing.T) {
 		},
 		{
 			existing: keyMeta{
-				sets:      3,
-				merges:    1,
-				dels: 7,
+				sets:   3,
+				merges: 1,
+				dels:   7,
 			},
 			toMerge: keyMeta{
-				sets:      4,
-				merges:    2,
-				dels: 8,
-				del: true,
+				sets:   4,
+				merges: 2,
+				dels:   8,
+				del:    true,
 			},
-			expected: keyMeta {
-				sets:      7,
-				merges:    3,
-				dels: 15,
-				del: true,
+			expected: keyMeta{
+				sets:   7,
+				merges: 3,
+				dels:   15,
+				del:    true,
 			},
 		},
 		{
 			existing: keyMeta{
-				sets:      3,
-				merges:    1,
-				dels: 7,
-				del: true,
+				sets:   3,
+				merges: 1,
+				dels:   7,
+				del:    true,
 			},
 			toMerge: keyMeta{
-				sets:      1,
-				merges:    0,
-				dels: 8,
-				del: false,
+				sets:   1,
+				merges: 0,
+				dels:   8,
+				del:    false,
 			},
-			expected: keyMeta {
-				sets:      4,
-				merges:    1,
-				dels: 15,
-				del: false,
+			expected: keyMeta{
+				sets:   4,
+				merges: 1,
+				dels:   15,
+				del:    false,
 			},
 		},
 	}

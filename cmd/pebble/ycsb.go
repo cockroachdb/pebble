@@ -125,27 +125,27 @@ func (w ycsbWeights) get(i int) float64 {
 }
 
 var ycsbWorkloads = map[string]ycsbWeights{
-	"A": ycsbWeights{
+	"A": {
 		ycsbRead:   0.5,
 		ycsbUpdate: 0.5,
 	},
-	"B": ycsbWeights{
+	"B": {
 		ycsbRead:   0.95,
 		ycsbUpdate: 0.05,
 	},
-	"C": ycsbWeights{
+	"C": {
 		ycsbRead: 1.0,
 	},
-	"D": ycsbWeights{
+	"D": {
 		ycsbInsert: 0.05,
 		ycsbRead:   0.95,
 		// TODO(peter): default to skewed-latest distribution.
 	},
-	"E": ycsbWeights{
+	"E": {
 		ycsbInsert: 0.05,
 		ycsbScan:   0.95,
 	},
-	"F": ycsbWeights{
+	"F": {
 		ycsbInsert: 1.0,
 		// TODO(peter): the real workload is read-modify-write.
 	},
