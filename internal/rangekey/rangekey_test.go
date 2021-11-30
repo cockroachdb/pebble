@@ -86,7 +86,7 @@ func TestUnsetValue_Roundtrip(t *testing.T) {
 		{
 			endKey: []byte("hello world"),
 			suffixes: [][]byte{
-				[]byte{},
+				{},
 				[]byte("foo"),
 				[]byte("bar"),
 				[]byte("bax"),
