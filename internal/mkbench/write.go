@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -76,7 +77,7 @@ const (
 	summaryFilename = "summary.json"
 
 	// rawRunFmt is the format string for raw benchmark data.
-	rawRunFmt = "BenchmarkRaw%s %d ops/sec %v pass %s elapsed %d bytes %d levels"
+	rawRunFmt = "BenchmarkRaw%s %d ops/sec %v pass %s elapsed %d bytes %d levels %f writeAmp"
 )
 
 func getWriteCommand() *cobra.Command {
@@ -137,13 +138,14 @@ type writePoint struct {
 	passed      bool
 	size        uint64
 	levels      int
+	writeAmp    float64
 }
 
 // formatCSV returns a comma-separated string representation of the datapoint.
 func (p writePoint) formatCSV() string {
 	return fmt.Sprintf(
-		"%d,%d,%v,%d,%d",
-		p.elapsedSecs, p.opsSec, p.passed, p.size, p.levels)
+		"%d,%d,%v,%d,%d,%.2f",
+		p.elapsedSecs, p.opsSec, p.passed, p.size, p.levels, p.writeAmp)
 }
 
 // rawWriteRun is a collection of datapoints from a single instance of a
@@ -178,6 +180,11 @@ func (r *rawWriteRun) opsPerSecSplit() int {
 	return split
 }
 
+// writeAmp returns the value of the write-amplification at the end of the run.
+func (r *rawWriteRun) writeAmp() float64 {
+	return r.points[len(r.points)-1].writeAmp
+}
+
 // formatCSV returns a comma-separated string representation of the rawWriteRun.
 // The value itself is a newline-delimited string value comprised of the CSV
 // representation of the individual writePoints.
@@ -194,10 +201,11 @@ func (r rawWriteRun) formatCSV() string {
 // value, in addition to a path to the summary.json file with the combined data
 // for the run.
 type writeRunSummary struct {
-	Name        string `json:"name"`
-	Date        string `json:"date"`
-	OpsSec      int    `json:"opsSec"`
-	SummaryPath string `json:"summaryPath"`
+	Name        string  `json:"name"`
+	Date        string  `json:"date"`
+	OpsSec      int     `json:"opsSec"`
+	WriteAmp    float64 `json:"writeAmp"`
+	SummaryPath string  `json:"summaryPath"`
 }
 
 // writeWorkloadSummary is an alias for a slice of writeRunSummaries.
@@ -232,10 +240,16 @@ func (r writeRun) summaryFilename() string {
 
 // summarize computes a writeRunSummary datapoint for the writeRun.
 func (r writeRun) summarize() writeRunSummary {
-	var sum int
+	var (
+		sumOpsSec   int
+		sumWriteAmp float64
+	)
 	for _, rr := range r.rawRuns {
-		sum += rr.opsPerSecSplit()
+		sumOpsSec += rr.opsPerSecSplit()
+		sumWriteAmp += rr.writeAmp()
 	}
+	l := len(r.rawRuns)
+
 	return writeRunSummary{
 		Name:        r.name,
 		Date:        r.date,
@@ -243,7 +257,8 @@ func (r writeRun) summarize() writeRunSummary {
 		// Calculate an average across all raw runs in this run.
 		// TODO(travers): test how this works in practice, after we have
 		// gathered enough data.
-		OpsSec: sum / len(r.rawRuns),
+		OpsSec:   sumOpsSec / l,
+		WriteAmp: math.Round(100*sumWriteAmp/float64(l)) / 100, // round to 2dp.
 	}
 }
 
@@ -405,8 +420,8 @@ func (l *writeLoader) loadRaw() error {
 			var p writePoint
 			var nameInner, elapsed string
 			n, err := fmt.Sscanf(line, rawRunFmt,
-				&nameInner, &p.opsSec, &p.passed, &elapsed, &p.size, &p.levels)
-			if err != nil || n != 6 {
+				&nameInner, &p.opsSec, &p.passed, &elapsed, &p.size, &p.levels, &p.writeAmp)
+			if err != nil || n != 7 {
 				// Stumble forward on error.
 				_, _ = fmt.Fprintf(os.Stderr, "%s: %v\n", s.Text(), err)
 				continue

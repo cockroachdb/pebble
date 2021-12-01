@@ -131,24 +131,26 @@ func initWriteBench(cmd *cobra.Command) {
 // whether the test passed or failed. Additional metadata associated with the
 // test run is also captured.
 type writeBenchResult struct {
-	name    string
-	rate    int           // The rate at which the test is currently running.
-	passed  bool          // Was the test successful at this rate.
-	elapsed time.Duration // The total elapsed time of the test.
-	bytes   uint64        // The size of the LSM.
-	levels  int           // The number of levels occupied in the LSM.
+	name     string
+	rate     int           // The rate at which the test is currently running.
+	passed   bool          // Was the test successful at this rate.
+	elapsed  time.Duration // The total elapsed time of the test.
+	bytes    uint64        // The size of the LSM.
+	levels   int           // The number of levels occupied in the LSM.
+	writeAmp float64       // The write amplification.
 }
 
 // String implements fmt.Stringer, printing a raw benchmark line. These lines
 // are used when performing analysis on a given benchmark run.
 func (r writeBenchResult) String() string {
-	return fmt.Sprintf("BenchmarkRaw%s %d ops/sec %v pass %s elapsed %d bytes %d levels",
+	return fmt.Sprintf("BenchmarkRaw%s %d ops/sec %v pass %s elapsed %d bytes %d levels %.2f writeAmp",
 		r.name,
 		r.rate,
 		r.passed,
 		r.elapsed,
 		r.bytes,
 		r.levels,
+		r.writeAmp,
 	)
 }
 
@@ -287,7 +289,7 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 				if writeBenchConfig.debug && i > 0 {
 					fmt.Printf("%s\n", m)
 				}
-				fmt.Println("___elapsed___clock___rate(desired)___rate(actual)___L0files___L0levels___levels______lsmBytes")
+				fmt.Println("___elapsed___clock___rate(desired)___rate(actual)___L0files___L0levels___levels______lsmBytes___writeAmp")
 			}
 
 			// Print the current stats.
@@ -300,6 +302,8 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 				}
 			}
 			lsmBytes := m.DiskSpaceUsage()
+			total := m.Total()
+			writeAmp := (&total).WriteAmp()
 
 			var currRate float64
 			var stalled bool
@@ -321,7 +325,7 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 				int(l0Sublevels) > writeBenchConfig.targetL0SubLevels
 
 			// Print the result for this tick.
-			fmt.Printf("%10s %7s %15d %14.1f %9d %10d %8d %13d\n",
+			fmt.Printf("%10s %7s %15d %14.1f %9d %10d %8d %13d %10.2f\n",
 				time.Duration(elapsed.Seconds()+0.5)*time.Second,
 				time.Duration(time.Since(clockStart).Seconds()+0.5)*time.Second,
 				desiredRate,
@@ -330,6 +334,7 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 				l0Sublevels,
 				nLevels,
 				lsmBytes,
+				writeAmp,
 			)
 
 			// If we're in cool-off mode, allow it to complete before resuming
@@ -351,11 +356,12 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 			}
 
 			r := writeBenchResult{
-				name:    name,
-				rate:    desiredRate,
-				elapsed: time.Duration(elapsed.Seconds()+0.5) * time.Second,
-				bytes:   lsmBytes,
-				levels:  nLevels,
+				name:     name,
+				rate:     desiredRate,
+				elapsed:  time.Duration(elapsed.Seconds()+0.5) * time.Second,
+				bytes:    lsmBytes,
+				levels:   nLevels,
+				writeAmp: writeAmp,
 			}
 
 			if failed {
