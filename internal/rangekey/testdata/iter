@@ -1,0 +1,214 @@
+define
+a.RANGEKEYSET.10  : c [(@t5=apples)]
+a.RANGEKEYDEL.10  : c
+a.RANGEKEYUNSET.8 : c [@t1]
+a.RANGEKEYSET.4   : c [(@t3=bananas)]
+a.RANGEKEYSET.4   : c [(@t2=oranges)]
+c.RANGEKEYSET.4   : d [(@t3=coconut)]
+e.RANGEKEYSET.20  : f [(@t5=pineapple),(@t3=guava)]
+h.RANGEKEYDEL.22  : j
+h.RANGEKEYSET.21  : j [(@t5=peaches),(@t3=starfruit)]
+l.RANGEKEYUNSET.2 : m [@t5,@t9]
+q.RANGEKEYSET.14  : z [(@t9=mangos)]
+----
+OK
+
+iter
+first
+next
+next
+next
+next
+next
+next
+----
+●   [a, c)#10 (DEL)
+└── @t5 : apples
+●   [c, d)#4
+└── @t3 : coconut
+●   [e, f)#20
+├── @t5 : pineapple
+└── @t3 : guava
+●   [h, j)#22 (DEL)
+●   [l, m)#2
+├── @t9 unset
+└── @t5 unset
+●   [q, z)#14
+└── @t9 : mangos
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+prev
+----
+●   [q, z)#14
+└── @t9 : mangos
+●   [l, m)#2
+├── @t9 unset
+└── @t5 unset
+●   [h, j)#22 (DEL)
+●   [e, f)#20
+├── @t5 : pineapple
+└── @t3 : guava
+●   [c, d)#4
+└── @t3 : coconut
+●   [a, c)#10 (DEL)
+└── @t5 : apples
+.
+
+iter
+seek-ge cat
+prev
+next
+next
+next
+----
+●   [c, d)#4
+└── @t3 : coconut
+●   [a, c)#10 (DEL)
+└── @t5 : apples
+●   [c, d)#4
+└── @t3 : coconut
+●   [e, f)#20
+├── @t5 : pineapple
+└── @t3 : guava
+●   [h, j)#22 (DEL)
+
+iter
+seek-ge c
+prev
+next
+next
+next
+----
+●   [c, d)#4
+└── @t3 : coconut
+●   [a, c)#10 (DEL)
+└── @t5 : apples
+●   [c, d)#4
+└── @t3 : coconut
+●   [e, f)#20
+├── @t5 : pineapple
+└── @t3 : guava
+●   [h, j)#22 (DEL)
+
+iter
+seek-ge cat
+seek-ge c
+prev
+prev
+next
+next
+next
+----
+●   [c, d)#4
+└── @t3 : coconut
+●   [c, d)#4
+└── @t3 : coconut
+●   [a, c)#10 (DEL)
+└── @t5 : apples
+.
+●   [a, c)#10 (DEL)
+└── @t5 : apples
+●   [c, d)#4
+└── @t3 : coconut
+●   [e, f)#20
+├── @t5 : pineapple
+└── @t3 : guava
+
+iter
+seek-ge dog
+next
+prev
+next
+next
+next
+next
+----
+●   [e, f)#20
+├── @t5 : pineapple
+└── @t3 : guava
+●   [h, j)#22 (DEL)
+●   [e, f)#20
+├── @t5 : pineapple
+└── @t3 : guava
+●   [h, j)#22 (DEL)
+●   [l, m)#2
+├── @t9 unset
+└── @t5 unset
+●   [q, z)#14
+└── @t9 : mangos
+.
+
+iter
+seek-ge a
+seek-ge ace
+seek-ge bat
+seek-ge c
+----
+●   [a, c)#10 (DEL)
+└── @t5 : apples
+●   [a, c)#10 (DEL)
+└── @t5 : apples
+●   [a, c)#10 (DEL)
+└── @t5 : apples
+●   [c, d)#4
+└── @t3 : coconut
+
+iter
+seek-ge 1
+----
+●   [a, c)#10 (DEL)
+└── @t5 : apples
+
+iter
+seek-ge zoo
+prev
+seek-ge z
+prev
+seek-ge yeti
+----
+.
+●   [q, z)#14
+└── @t9 : mangos
+.
+●   [q, z)#14
+└── @t9 : mangos
+●   [q, z)#14
+└── @t9 : mangos
+
+iter
+seek-ge h
+seek-ge j
+----
+●   [h, j)#22 (DEL)
+●   [l, m)#2
+├── @t9 unset
+└── @t5 unset
+
+iter
+first
+prev
+next
+----
+●   [a, c)#10 (DEL)
+└── @t5 : apples
+.
+●   [a, c)#10 (DEL)
+└── @t5 : apples
+
+iter
+last
+next
+prev
+----
+●   [q, z)#14
+└── @t9 : mangos
+.
+●   [q, z)#14
+└── @t9 : mangos

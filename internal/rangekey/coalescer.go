@@ -343,7 +343,10 @@ func (c *Coalescer) flush() {
 	*c = Coalescer{
 		emit:      c.emit,
 		formatKey: c.formatKey,
-		items:     suffixItems{cmp: c.items.cmp},
+		items: suffixItems{
+			cmp:   c.items.cmp,
+			items: c.items.items[:0],
+		},
 	}
 }
 
