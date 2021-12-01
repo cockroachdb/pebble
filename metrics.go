@@ -246,7 +246,7 @@ func (m *Metrics) ReadAmp() int {
 }
 
 // Total returns the sum of the per-level metrics and WAL metrics.
-func (m *Metrics) Total() LevelMetrics {
+func (m *Metrics) Total() *LevelMetrics {
 	var total LevelMetrics
 	for level := 0; level < numLevels; level++ {
 		l := &m.Levels[level]
@@ -259,7 +259,7 @@ func (m *Metrics) Total() LevelMetrics {
 	// the bytes written to the log and bytes written externally and then
 	// ingested.
 	total.BytesFlushed += total.BytesIn
-	return total
+	return &total
 }
 
 const notApplicable = redact.SafeString("-")
