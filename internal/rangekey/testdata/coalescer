@@ -1,0 +1,270 @@
+# All disjoint RANGEKEYSETs.
+
+add
+a.RANGEKEYSET.10: c [(@t5=foo)]
+----
+
+add
+c.RANGEKEYSET.4: d [(@t3=foo)]
+----
+●   [a, c)#10
+└── @t5 : foo
+
+add
+e.RANGEKEYSET.20: f [(@t5=bar),(@t3=foo)]
+----
+●   [c, d)#4
+└── @t3 : foo
+
+finish
+----
+●   [e, f)#20
+├── @t5 : bar
+└── @t3 : foo
+
+# All disjoint RANGEKEYSETs in reverse.
+
+add-reverse
+e.RANGEKEYSET.20: f [(@t5=bar),(@t3=foo)]
+----
+
+add-reverse
+c.RANGEKEYSET.4: d [(@t3=foo)]
+----
+●   [e, f)#20
+├── @t5 : bar
+└── @t3 : foo
+
+add-reverse
+a.RANGEKEYSET.10: c [(@t5=foo)]
+----
+●   [c, d)#4
+└── @t3 : foo
+
+finish
+----
+●   [a, c)#10
+└── @t5 : foo
+
+# Merge overlapping RANGEKEYSETs.
+
+add
+a.RANGEKEYSET.10: c [(@t5=foo5)]
+a.RANGEKEYSET.4:  c [(@t3=foo3)]
+a.RANGEKEYSET.4:  c [(@t2=foo2)]
+----
+
+finish
+----
+●   [a, c)#10
+├── @t5 : foo5
+├── @t3 : foo3
+└── @t2 : foo2
+
+# All disjoint RANGEKEYUNSETs.
+
+add
+a.RANGEKEYUNSET.10: c [@t5]
+----
+
+add
+c.RANGEKEYUNSET.4:  d [@t3]
+----
+●   [a, c)#10
+└── @t5 unset
+
+add
+e.RANGEKEYUNSET.20: f [@t5,@t3]
+----
+●   [c, d)#4
+└── @t3 unset
+
+finish
+----
+●   [e, f)#20
+├── @t5 unset
+└── @t3 unset
+
+# All disjoint RANGEKEYUNSETs in reverse.
+
+add-reverse
+e.RANGEKEYUNSET.20: f [@t5,@t3]
+----
+
+add-reverse
+c.RANGEKEYUNSET.4:  d [@t3]
+----
+●   [e, f)#20
+├── @t5 unset
+└── @t3 unset
+
+add-reverse
+a.RANGEKEYUNSET.10: c [@t5]
+----
+●   [c, d)#4
+└── @t3 unset
+
+finish
+----
+●   [a, c)#10
+└── @t5 unset
+
+# Merge overlapping RANGEKEYUNSETs.
+
+add
+a.RANGEKEYUNSET.10: c [@t5]
+----
+
+add
+a.RANGEKEYUNSET.4: c [@t3]
+----
+
+add
+a.RANGEKEYUNSET.4: c [@t2]
+----
+
+finish
+----
+●   [a, c)#10
+├── @t5 unset
+├── @t3 unset
+└── @t2 unset
+
+# Merge overlapping RANGEKEYUNSETs in reverse.
+
+add-reverse
+a.RANGEKEYUNSET.4: c [@t2]
+----
+
+add-reverse
+a.RANGEKEYUNSET.4: c [@t3]
+----
+
+add-reverse
+a.RANGEKEYUNSET.10: c [@t5]
+----
+
+finish
+----
+●   [a, c)#10
+├── @t5 unset
+├── @t3 unset
+└── @t2 unset
+
+# Unsets may partially remove sets.
+
+add
+a.RANGEKEYUNSET.10 : c [@t100]
+a.RANGEKEYSET.9    : c [(@t100=v100), (@t50=v50)]
+c.RANGEKEYSET.9    : d [(@t100=v100), (@t50=v50)]
+----
+●   [a, c)#10
+├── @t100 unset
+└── @t50 : v50
+
+finish
+----
+●   [c, d)#9
+├── @t100 : v100
+└── @t50 : v50
+
+# Unsets may partially remove sets in reverse.
+
+add-reverse
+c.RANGEKEYSET.9    : d [(@t100=v100), (@t50=v50)]
+a.RANGEKEYSET.9    : c [(@t100=v100), (@t50=v50)]
+a.RANGEKEYUNSET.10 : c [@t100]
+----
+●   [c, d)#9
+├── @t100 : v100
+└── @t50 : v50
+
+finish
+----
+●   [a, c)#10
+├── @t100 unset
+└── @t50 : v50
+
+# Unsets may wholly remove sets.
+
+add
+b.RANGEKEYUNSET.10 : c [@t3,@t2,@t1]
+b.RANGEKEYSET.8    : c [(@t3=v3),(@t2=v2),(@t1=v1)]
+----
+
+finish
+----
+●   [b, c)#10
+├── @t3 unset
+├── @t2 unset
+└── @t1 unset
+
+# Unsets may wholly remove sets in reverse.
+
+add-reverse
+b.RANGEKEYSET.8    : c [(@t3=v3),(@t2=v2),(@t1=v1)]
+b.RANGEKEYUNSET.10 : c [@t3,@t2,@t1]
+----
+
+finish
+----
+●   [b, c)#10
+├── @t3 unset
+├── @t2 unset
+└── @t1 unset
+
+
+# Sets may shadow unsets.
+
+add
+a.RANGEKEYSET.5   : c [(@t5=v5)]
+a.RANGEKEYUNSET.4 : c [@t5]
+----
+
+finish
+----
+●   [a, c)#5
+└── @t5 : v5
+
+# Sets may shadow unsets in reverse.
+
+add-reverse
+a.RANGEKEYUNSET.4 : c [@t5]
+a.RANGEKEYSET.5   : c [(@t5=v5)]
+----
+
+finish
+----
+●   [a, c)#5
+└── @t5 : v5
+
+# Deletes shadow Sets and Unsets, but not at the same sequence number.
+
+add
+a.RANGEKEYSET.10  : c [(@t5=foo5)]
+a.RANGEKEYDEL.10  : c
+a.RANGEKEYUNSET.8 : c [@t1]
+a.RANGEKEYSET.4   : c [(@t3=foo3)]
+a.RANGEKEYSET.4   : c [(@t2=foo2)]
+----
+
+finish
+----
+●   [a, c)#10 (DEL)
+└── @t5 : foo5
+
+# Deletes shadow Sets and Unsets, but not at the same sequence number, in
+# reverse
+
+add-reverse
+a.RANGEKEYSET.4   : c [(@t2=foo2)]
+a.RANGEKEYSET.4   : c [(@t3=foo3)]
+a.RANGEKEYUNSET.8 : c [@t1]
+a.RANGEKEYDEL.10  : c
+a.RANGEKEYSET.10  : c [(@t5=foo5)]
+----
+
+finish
+----
+●   [a, c)#10 (DEL)
+└── @t5 : foo5
