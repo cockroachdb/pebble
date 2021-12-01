@@ -142,6 +142,14 @@ func (i *Iter) Prev() (*base.InternalKey, []byte) {
 	return &s.Start, s.End
 }
 
+// Current returns the current span.
+func (i *Iter) Current() *Span {
+	if i.Valid() {
+		return &i.spans[i.index]
+	}
+	return nil
+}
+
 // Key implements InternalIterator.Key, as documented in the internal/base
 // package.
 func (i *Iter) Key() *base.InternalKey {

@@ -68,6 +68,67 @@ func TestCoalescer(t *testing.T) {
 	})
 }
 
+func TestIter(t *testing.T) {
+	cmp := testkeys.Comparer.Compare
+	var iter Iter
+	var buf bytes.Buffer
+
+	datadriven.RunTest(t, "testdata/iter", func(td *datadriven.TestData) string {
+		buf.Reset()
+		switch td.Cmd {
+		case "define":
+			var spans []keyspan.Span
+			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
+			for _, line := range lines {
+				startKey, value := Parse(line)
+				endKey, v, ok := DecodeEndKey(startKey.Kind(), value)
+				require.True(t, ok)
+				spans = append(spans, keyspan.Span{
+					Start: startKey,
+					End:   endKey,
+					Value: v,
+				})
+			}
+			iter.Init(cmp, testkeys.Comparer.FormatKey, keyspan.NewIter(cmp, spans))
+			return "OK"
+		case "iter":
+			buf.Reset()
+			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				i := strings.IndexByte(line, ' ')
+				iterCmd := line
+				if i > 0 {
+					iterCmd = string(line[:i])
+				}
+				switch iterCmd {
+				case "first":
+					formatRangeKeySpan(&buf, iter.First())
+				case "last":
+					formatRangeKeySpan(&buf, iter.Last())
+				case "next":
+					formatRangeKeySpan(&buf, iter.Next())
+				case "prev":
+					formatRangeKeySpan(&buf, iter.Prev())
+				case "seek-ge":
+					formatRangeKeySpan(&buf, iter.SeekGE([]byte(strings.TrimSpace(line[i:]))))
+				case "seek-lt":
+					formatRangeKeySpan(&buf, iter.SeekLT([]byte(strings.TrimSpace(line[i:]))))
+				default:
+					return fmt.Sprintf("unrecognized iter command %q", iterCmd)
+				}
+				require.NoError(t, iter.Error())
+				if buf.Len() > 0 {
+					fmt.Fprintln(&buf)
+				}
+			}
+			return buf.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
+}
+
 func formatRangeKeySpan(w io.Writer, rks *CoalescedSpan) {
 	if rks == nil {
 		fmt.Fprintf(w, ".")
