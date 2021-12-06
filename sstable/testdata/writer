@@ -1,9 +1,9 @@
 build
 a.SET.1:a
 ----
-point:   [a#1,1,a#1,1]
-range:   [#0,0,#0,0]
-seqnums: [1,1]
+point:    [a#1,1,a#1,1]
+rangedel: [#0,0,#0,0]
+seqnums:  [1,1]
 
 scan
 ----
@@ -22,9 +22,9 @@ g.DEL.6:
 h.MERGE.7:h
 i.RANGEDEL.8:j
 ----
-point:   [a#1,1,h#7,2]
-range:   [d#4,15,j#72057594037927935,15]
-seqnums: [1,8]
+point:    [a#1,1,h#7,2]
+rangedel: [d#4,15,j#72057594037927935,15]
+seqnums:  [1,8]
 
 build
 a.SET.1:a
@@ -36,9 +36,9 @@ g.DEL.6:
 h.MERGE.7:h
 i.RANGEDEL.8:j
 ----
-point:   [a#1,1,h#7,2]
-range:   [d#4,15,j#72057594037927935,15]
-seqnums: [1,8]
+point:    [a#1,1,h#7,2]
+rangedel: [d#4,15,j#72057594037927935,15]
+seqnums:  [1,8]
 
 scan
 ----
@@ -63,9 +63,9 @@ a.RANGEDEL.3:m
 f.RANGEDEL.2:s
 j.RANGEDEL.1:z
 ----
-point:   [#0,0,#0,0]
-range:   [a#3,15,z#72057594037927935,15]
-seqnums: [1,3]
+point:    [#0,0,#0,0]
+rangedel: [a#3,15,z#72057594037927935,15]
+seqnums:  [1,3]
 
 scan
 ----
@@ -89,25 +89,25 @@ build
 a.RANGEDEL.3:b
 b.SET.4:c
 ----
-point:   [b#4,1,b#4,1]
-range:   [a#3,15,b#72057594037927935,15]
-seqnums: [3,4]
+point:    [b#4,1,b#4,1]
+rangedel: [a#3,15,b#72057594037927935,15]
+seqnums:  [3,4]
 
 build
 a.RANGEDEL.3:b
 b.SET.2:c
 ----
-point:   [b#2,1,b#2,1]
-range:   [a#3,15,b#72057594037927935,15]
-seqnums: [2,3]
+point:    [b#2,1,b#2,1]
+rangedel: [a#3,15,b#72057594037927935,15]
+seqnums:  [2,3]
 
 build
 a.RANGEDEL.3:c
 b.SET.2:c
 ----
-point:   [b#2,1,b#2,1]
-range:   [a#3,15,c#72057594037927935,15]
-seqnums: [2,3]
+point:    [b#2,1,b#2,1]
+rangedel: [a#3,15,c#72057594037927935,15]
+seqnums:  [2,3]
 
 # Keys must be added in order.
 
@@ -132,9 +132,9 @@ pebble: keys must be added in order: b#1,RANGEDEL > a#2,RANGEDEL
 build-raw
 .RANGEDEL.1:b
 ----
-point:   [#0,0,#0,0]
-range:   [#1,15,b#72057594037927935,15]
-seqnums: [1,1]
+point:    [#0,0,#0,0]
+rangedel: [#1,15,b#72057594037927935,15]
+seqnums:  [1,1]
 
 build-raw
 a.RANGEDEL.1:c
@@ -158,9 +158,9 @@ build-raw
 a.RANGEDEL.1:c
 c.RANGEDEL.2:d
 ----
-point:   [#0,0,#0,0]
-range:   [a#1,15,d#72057594037927935,15]
-seqnums: [1,2]
+point:    [#0,0,#0,0]
+rangedel: [a#1,15,d#72057594037927935,15]
+seqnums:  [1,2]
 
 # The range-del-v1 format supports unfragmented and unsorted range
 # tombstones.
@@ -169,9 +169,9 @@ build-raw range-del-v1
 a.RANGEDEL.1:c
 a.RANGEDEL.2:c
 ----
-point:   [#0,0,#0,0]
-range:   [a#2,15,c#72057594037927935,15]
-seqnums: [1,2]
+point:    [#0,0,#0,0]
+rangedel: [a#2,15,c#72057594037927935,15]
+seqnums:  [1,2]
 
 scan-range-del
 ----
@@ -182,9 +182,9 @@ build-raw range-del-v1
 a.RANGEDEL.1:c
 b.RANGEDEL.2:d
 ----
-point:   [#0,0,#0,0]
-range:   [a#1,15,d#72057594037927935,15]
-seqnums: [1,2]
+point:    [#0,0,#0,0]
+rangedel: [a#1,15,d#72057594037927935,15]
+seqnums:  [1,2]
 
 scan-range-del
 ----
@@ -197,9 +197,9 @@ build-raw range-del-v1
 a.RANGEDEL.2:c
 a.RANGEDEL.1:d
 ----
-point:   [#0,0,#0,0]
-range:   [a#2,15,d#72057594037927935,15]
-seqnums: [1,2]
+point:    [#0,0,#0,0]
+rangedel: [a#2,15,d#72057594037927935,15]
+seqnums:  [1,2]
 
 scan-range-del
 ----
@@ -216,9 +216,9 @@ j.RANGEDEL.1:z
 f.RANGEDEL.2:s
 a.RANGEDEL.3:m
 ----
-point:   [#0,0,#0,0]
-range:   [a#3,15,z#72057594037927935,15]
-seqnums: [1,3]
+point:    [#0,0,#0,0]
+rangedel: [a#3,15,z#72057594037927935,15]
+seqnums:  [1,3]
 
 scan-range-del
 ----
@@ -239,9 +239,9 @@ a.SET.1:a
 b.SET.1:b
 c.SET.1:c
 ----
-point:   [a#1,1,c#1,1]
-range:   [#0,0,#0,0]
-seqnums: [1,1]
+point:    [a#1,1,c#1,1]
+rangedel: [#0,0,#0,0]
+seqnums:  [1,1]
 
 layout
 ----
@@ -271,9 +271,9 @@ a.SET.1:a
 b.SET.1:b
 c.SET.1:c
 ----
-point:   [a#1,1,c#1,1]
-range:   [#0,0,#0,0]
-seqnums: [1,1]
+point:    [a#1,1,c#1,1]
+rangedel: [#0,0,#0,0]
+seqnums:  [1,1]
 
 layout
 ----
