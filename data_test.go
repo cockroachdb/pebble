@@ -296,6 +296,11 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 				return errors.Errorf("%s expects 1 argument", parts[0])
 			}
 			err = b.Delete([]byte(parts[1]), nil)
+		case "singledel":
+			if len(parts) != 2 {
+				return errors.Errorf("%s expects 1 argument", parts[0])
+			}
+			err = b.SingleDelete([]byte(parts[1]), nil)
 		case "del-range":
 			if len(parts) != 3 {
 				return errors.Errorf("%s expects 2 arguments", parts[0])

@@ -226,3 +226,36 @@ prev
 .
 a:a
 .
+
+reset
+----
+
+# Test demonstrating inadvertent exposure of ordering effects of the
+# InternalKeyKind numbering. We build an sst with a (del/singledel, set) pair
+# for two user keys. When ingested, all 4 keys have the same seqnum. The set
+# overrides the del, and the singedel overrides the set.
+#
+# The test input setup looks peculiar because the build uses an indexed batch,
+# and iterates over it to write to the sst, so we need to place the set after
+# the del, and the singledel after the set in order for the batch ordering to
+# be one that is suitable for feeding into the sstable writer. All 4 keys are
+# being written to the sst (notice the bounds in the ingest).
+
+build ext1
+del a
+set a 1
+set b 2
+singledel b
+----
+
+ingest ext1
+----
+6:
+  000004:[a#1,SET-b#1,SET]
+
+iter
+first
+next
+----
+a:1
+.
