@@ -2265,15 +2265,15 @@ func (d *DB) runCompaction(
 			// This is not the first output file. Bound the smallest range key by the
 			// previous tables largest key.
 			prevMeta := ve.NewFiles[n-2].Meta
-			if writerMeta.SmallestRange.UserKey != nil {
-				c := d.cmp(writerMeta.SmallestRange.UserKey, prevMeta.Largest.UserKey)
+			if writerMeta.SmallestRangeDel.UserKey != nil {
+				c := d.cmp(writerMeta.SmallestRangeDel.UserKey, prevMeta.Largest.UserKey)
 				if c < 0 {
 					return errors.Errorf(
 						"pebble: smallest range tombstone start key is less than previous sstable largest key: %s < %s",
-						writerMeta.SmallestRange.Pretty(d.opts.Comparer.FormatKey),
+						writerMeta.SmallestRangeDel.Pretty(d.opts.Comparer.FormatKey),
 						prevMeta.Largest.Pretty(d.opts.Comparer.FormatKey))
 				}
-				if c == 0 && prevMeta.Largest.SeqNum() <= writerMeta.SmallestRange.SeqNum() {
+				if c == 0 && prevMeta.Largest.SeqNum() <= writerMeta.SmallestRangeDel.SeqNum() {
 					// The user key portion of the range boundary start key is equal to
 					// the previous table's largest key. We need the tables to be
 					// key-space partitioned, so force the boundary to a key that we know
@@ -2305,12 +2305,12 @@ func (d *DB) runCompaction(
 					// https://github.com/cockroachdb/pebble/pull/479#pullrequestreview-340600654
 					// into docs/range_deletions.md and reference the correctness
 					// argument here. Note that that comment might be slightly incorrect.
-					writerMeta.SmallestRange.SetSeqNum(prevMeta.Largest.SeqNum() - 1)
+					writerMeta.SmallestRangeDel.SetSeqNum(prevMeta.Largest.SeqNum() - 1)
 				}
 			}
 		}
 
-		if splitKey != nil && writerMeta.LargestRange.UserKey != nil {
+		if splitKey != nil && writerMeta.LargestRangeDel.UserKey != nil {
 			// The current file is not the last output file and there is a range tombstone in it.
 			// If the tombstone extends into the next file, then truncate it for the purposes of
 			// computing meta.Largest. For example, say the next file's first key is c#7,1 and the
@@ -2319,9 +2319,9 @@ func (d *DB) runCompaction(
 			// c#inf where inf is the InternalKeyRangeDeleteSentinel. Note that this is just for
 			// purposes of bounds computation -- the current sstable will end up with a Largest key
 			// of c#7,1 so the range tombstone in the current file will be able to delete c#7.
-			if d.cmp(writerMeta.LargestRange.UserKey, splitKey) >= 0 {
-				writerMeta.LargestRange.UserKey = splitKey
-				writerMeta.LargestRange.Trailer = InternalKeyRangeDeleteSentinel
+			if d.cmp(writerMeta.LargestRangeDel.UserKey, splitKey) >= 0 {
+				writerMeta.LargestRangeDel.UserKey = splitKey
+				writerMeta.LargestRangeDel.Trailer = InternalKeyRangeDeleteSentinel
 			}
 		}
 

@@ -25,14 +25,14 @@ var errWriterClosed = errors.New("pebble: writer is closed")
 
 // WriterMetadata holds info about a finished sstable.
 type WriterMetadata struct {
-	Size           uint64
-	SmallestPoint  InternalKey
-	SmallestRange  InternalKey
-	LargestPoint   InternalKey
-	LargestRange   InternalKey
-	SmallestSeqNum uint64
-	LargestSeqNum  uint64
-	Properties     Properties
+	Size             uint64
+	SmallestPoint    InternalKey
+	SmallestRangeDel InternalKey
+	LargestPoint     InternalKey
+	LargestRangeDel  InternalKey
+	SmallestSeqNum   uint64
+	LargestSeqNum    uint64
+	Properties       Properties
 }
 
 func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
@@ -44,32 +44,32 @@ func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
 	}
 }
 
-// Smallest returns the smaller of SmallestPoint and SmallestRange.
+// Smallest returns the smaller of SmallestPoint and SmallestRangeDel.
 func (m *WriterMetadata) Smallest(cmp Compare) InternalKey {
 	if m.SmallestPoint.UserKey == nil {
-		return m.SmallestRange
+		return m.SmallestRangeDel
 	}
-	if m.SmallestRange.UserKey == nil {
+	if m.SmallestRangeDel.UserKey == nil {
 		return m.SmallestPoint
 	}
-	if base.InternalCompare(cmp, m.SmallestPoint, m.SmallestRange) < 0 {
+	if base.InternalCompare(cmp, m.SmallestPoint, m.SmallestRangeDel) < 0 {
 		return m.SmallestPoint
 	}
-	return m.SmallestRange
+	return m.SmallestRangeDel
 }
 
-// Largest returns the larget of LargestPoint and LargestRange.
+// Largest returns the larget of LargestPoint and LargestRangeDel.
 func (m *WriterMetadata) Largest(cmp Compare) InternalKey {
 	if m.LargestPoint.UserKey == nil {
-		return m.LargestRange
+		return m.LargestRangeDel
 	}
-	if m.LargestRange.UserKey == nil {
+	if m.LargestRangeDel.UserKey == nil {
 		return m.LargestPoint
 	}
-	if base.InternalCompare(cmp, m.LargestPoint, m.LargestRange) > 0 {
+	if base.InternalCompare(cmp, m.LargestPoint, m.LargestRangeDel) > 0 {
 		return m.LargestPoint
 	}
-	return m.LargestRange
+	return m.LargestRangeDel
 }
 
 type flusher interface {
@@ -339,15 +339,15 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		//
 		// Note that writing the v1 format is only supported for tests.
 		if w.props.NumRangeDeletions == 0 {
-			w.meta.SmallestRange = key.Clone()
-			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(value).Clone()
+			w.meta.SmallestRangeDel = key.Clone()
+			w.meta.LargestRangeDel = base.MakeRangeDeleteSentinelKey(value).Clone()
 		} else {
-			if base.InternalCompare(w.compare, w.meta.SmallestRange, key) > 0 {
-				w.meta.SmallestRange = key.Clone()
+			if base.InternalCompare(w.compare, w.meta.SmallestRangeDel, key) > 0 {
+				w.meta.SmallestRangeDel = key.Clone()
 			}
 			end := base.MakeRangeDeleteSentinelKey(value)
-			if base.InternalCompare(w.compare, w.meta.LargestRange, end) < 0 {
-				w.meta.LargestRange = end.Clone()
+			if base.InternalCompare(w.compare, w.meta.LargestRangeDel, end) < 0 {
+				w.meta.LargestRangeDel = end.Clone()
 			}
 		}
 
@@ -357,7 +357,7 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		// range tombstone key. The largest range tombstone key will be determined
 		// in Writer.Close() as the end key of the last range tombstone added.
 		if w.props.NumRangeDeletions == 0 {
-			w.meta.SmallestRange = key.Clone()
+			w.meta.SmallestRangeDel = key.Clone()
 		}
 	}
 
@@ -701,7 +701,7 @@ func (w *Writer) Close() (err error) {
 			// slice passed into Write(). Also, w.meta will often outlive the
 			// blockWriter, and so cloning curValue allows the rangeDelBlock's
 			// internal buffer to get gc'd.
-			w.meta.LargestRange = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue).Clone()
+			w.meta.LargestRangeDel = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue).Clone()
 		}
 		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.finish(), NoCompression)
 		if err != nil {

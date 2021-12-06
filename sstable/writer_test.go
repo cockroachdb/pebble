@@ -49,9 +49,9 @@ func runDataDriven(t *testing.T, file string) {
 			if err != nil {
 				return err.Error()
 			}
-			return fmt.Sprintf("point:   [%s,%s]\nrange:   [%s,%s]\nseqnums: [%d,%d]\n",
+			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nseqnums:  [%d,%d]\n",
 				meta.SmallestPoint, meta.LargestPoint,
-				meta.SmallestRange, meta.LargestRange,
+				meta.SmallestRangeDel, meta.LargestRangeDel,
 				meta.SmallestSeqNum, meta.LargestSeqNum)
 
 		case "build-raw":
@@ -65,9 +65,9 @@ func runDataDriven(t *testing.T, file string) {
 			if err != nil {
 				return err.Error()
 			}
-			return fmt.Sprintf("point:   [%s,%s]\nrange:   [%s,%s]\nseqnums: [%d,%d]\n",
+			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nseqnums:  [%d,%d]\n",
 				meta.SmallestPoint, meta.LargestPoint,
-				meta.SmallestRange, meta.LargestRange,
+				meta.SmallestRangeDel, meta.LargestRangeDel,
 				meta.SmallestSeqNum, meta.LargestSeqNum)
 
 		case "scan":
@@ -139,9 +139,9 @@ func runDataDriven(t *testing.T, file string) {
 			if err != nil {
 				return err.Error()
 			}
-			return fmt.Sprintf("point:   [%s,%s]\nrange:   [%s,%s]\nseqnums: [%d,%d]\n",
+			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nseqnums:  [%d,%d]\n",
 				meta.SmallestPoint, meta.LargestPoint,
-				meta.SmallestRange, meta.LargestRange,
+				meta.SmallestRangeDel, meta.LargestRangeDel,
 				meta.SmallestSeqNum, meta.LargestSeqNum)
 
 		default:
