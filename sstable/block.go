@@ -183,14 +183,15 @@ type blockEntry struct {
 // interval of 1 (no prefix compression), blockIter guarantees that
 // InternalKey.UserKey will point to the key as stored in the block itself
 // which will remain valid until the blockIter is closed. The key stability
-// guarantee is used by the range tombstone code which knows that range
-// tombstones are always encoded with a restart interval of 1. This per-block
-// key stability guarantee is sufficient for range tombstones as they are
-// always encoded in a single block.
+// guarantee is used by the range tombstone and range key code, which knows that
+// the respective blocks are always encoded with a restart interval of 1. This
+// per-block key stability guarantee is sufficient for range tombstones and
+// range deletes as they are always encoded in a single block.
 //
-// A blockIter also provides a value stability guarantee for range deletions
-// since there is only a single range deletion block per sstable and the
-// blockIter will not release the bytes for the block until it is closed.
+// A blockIter also provides a value stability guarantee for range deletions and
+// range keys since there is only a single range deletion and range key block
+// per sstable and the blockIter will not release the bytes for the block until
+// it is closed.
 type blockIter struct {
 	cmp Compare
 	// offset is the byte index that marks where the current key/value is
