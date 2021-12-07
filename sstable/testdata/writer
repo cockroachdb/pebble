@@ -3,6 +3,7 @@ a.SET.1:a
 ----
 point:    [a#1,1,a#1,1]
 rangedel: [#0,0,#0,0]
+rangekey: [#0,0,#0,0]
 seqnums:  [1,1]
 
 scan
@@ -12,6 +13,9 @@ a#1,1:a
 scan-range-del
 ----
 
+scan-range-key
+----
+
 build
 a.SET.1:a
 b.DEL.2:
@@ -21,10 +25,14 @@ f.SET.5:f
 g.DEL.6:
 h.MERGE.7:h
 i.RANGEDEL.8:j
+j.RANGEKEYDEL.9:k
+k.RANGEKEYUNSET.10:l [@t5]
+l.RANGEKEYSET.11:m [(@t10=foo)]
 ----
 point:    [a#1,1,h#7,2]
 rangedel: [d#4,15,j#72057594037927935,15]
-seqnums:  [1,8]
+rangekey: [j#9,19,m#72057594037927935,21]
+seqnums:  [1,11]
 
 build
 a.SET.1:a
@@ -38,6 +46,7 @@ i.RANGEDEL.8:j
 ----
 point:    [a#1,1,h#7,2]
 rangedel: [d#4,15,j#72057594037927935,15]
+rangekey: [#0,0,#0,0]
 seqnums:  [1,8]
 
 scan
@@ -65,6 +74,7 @@ j.RANGEDEL.1:z
 ----
 point:    [#0,0,#0,0]
 rangedel: [a#3,15,z#72057594037927935,15]
+rangekey: [#0,0,#0,0]
 seqnums:  [1,3]
 
 scan
@@ -82,6 +92,9 @@ m#2,15:s
 m#1,15:s
 s#1,15:z
 
+scan-range-key
+----
+
 # The range tombstone upper bound is exclusive, so a point operation
 # on that same key will be the actual boundary.
 
@@ -91,6 +104,7 @@ b.SET.4:c
 ----
 point:    [b#4,1,b#4,1]
 rangedel: [a#3,15,b#72057594037927935,15]
+rangekey: [#0,0,#0,0]
 seqnums:  [3,4]
 
 build
@@ -99,6 +113,7 @@ b.SET.2:c
 ----
 point:    [b#2,1,b#2,1]
 rangedel: [a#3,15,b#72057594037927935,15]
+rangekey: [#0,0,#0,0]
 seqnums:  [2,3]
 
 build
@@ -107,6 +122,7 @@ b.SET.2:c
 ----
 point:    [b#2,1,b#2,1]
 rangedel: [a#3,15,c#72057594037927935,15]
+rangekey: [#0,0,#0,0]
 seqnums:  [2,3]
 
 # Keys must be added in order.
@@ -134,6 +150,7 @@ build-raw
 ----
 point:    [#0,0,#0,0]
 rangedel: [#1,15,b#72057594037927935,15]
+rangekey: [#0,0,#0,0]
 seqnums:  [1,1]
 
 build-raw
@@ -160,7 +177,60 @@ c.RANGEDEL.2:d
 ----
 point:    [#0,0,#0,0]
 rangedel: [a#1,15,d#72057594037927935,15]
+rangekey: [#0,0,#0,0]
 seqnums:  [1,2]
+
+build-raw
+a.RANGEKEYSET.1:b [(@t10=foo)]
+a.RANGEKEYSET.2:b [(@t10=foo)]
+----
+pebble: range keys starts must be added in strictly increasing order: a#1,RANGEKEYSET, a#2,RANGEKEYSET
+
+build-raw
+b.RANGEKEYSET.2:c [(@t10=foo)]
+a.RANGEKEYSET.1:b [(@t10=foo)]
+----
+pebble: range keys starts must be added in strictly increasing order: b#2,RANGEKEYSET, a#1,RANGEKEYSET
+
+build-raw
+a.RANGEKEYSET.1:c [(@t10=foo)]
+b.RANGEKEYSET.2:d [(@t10=foo)]
+----
+pebble: overlapping range keys must be fragmented: a-c#1, b-d#2
+
+build-raw
+a.RANGEKEYSET.2:c [(@t10=foo)]
+a.RANGEKEYSET.1:d [(@t10=foo)]
+----
+pebble: overlapping range keys must be fragmented: a-c#2, a-d#1
+
+build-raw
+a.RANGEKEYSET.1:c [(@t10=foo)]
+c.RANGEKEYSET.2:d [(@t10=foo)]
+----
+point:    [#0,0,#0,0]
+rangedel: [#0,0,#0,0]
+rangekey: [a#1,21,d#72057594037927935,21]
+seqnums:  [1,2]
+
+# Range keys may have perfectly aligned spans (including sequence numbers),
+# though the key kinds must be ordered (descending).
+
+build-raw
+a.RANGEKEYUNSET.1:b [@t10]
+a.RANGEKEYSET.1:b [(@t10=foo)]
+----
+pebble: range keys starts must be added in strictly increasing order: a#1,RANGEKEYUNSET, a#1,RANGEKEYSET
+
+build-raw
+a.RANGEKEYSET.1:b [(@t10=foo)]
+a.RANGEKEYUNSET.1:b [@t10]
+a.RANGEKEYDEL.1:b
+----
+point:    [#0,0,#0,0]
+rangedel: [#0,0,#0,0]
+rangekey: [a#1,21,b#72057594037927935,19]
+seqnums:  [1,1]
 
 # The range-del-v1 format supports unfragmented and unsorted range
 # tombstones.
@@ -171,6 +241,7 @@ a.RANGEDEL.2:c
 ----
 point:    [#0,0,#0,0]
 rangedel: [a#2,15,c#72057594037927935,15]
+rangekey: [#0,0,#0,0]
 seqnums:  [1,2]
 
 scan-range-del
@@ -184,6 +255,7 @@ b.RANGEDEL.2:d
 ----
 point:    [#0,0,#0,0]
 rangedel: [a#1,15,d#72057594037927935,15]
+rangekey: [#0,0,#0,0]
 seqnums:  [1,2]
 
 scan-range-del
@@ -199,6 +271,7 @@ a.RANGEDEL.1:d
 ----
 point:    [#0,0,#0,0]
 rangedel: [a#2,15,d#72057594037927935,15]
+rangekey: [#0,0,#0,0]
 seqnums:  [1,2]
 
 scan-range-del
@@ -218,6 +291,7 @@ a.RANGEDEL.3:m
 ----
 point:    [#0,0,#0,0]
 rangedel: [a#3,15,z#72057594037927935,15]
+rangekey: [#0,0,#0,0]
 seqnums:  [1,3]
 
 scan-range-del
@@ -241,6 +315,7 @@ c.SET.1:c
 ----
 point:    [a#1,1,c#1,1]
 rangedel: [#0,0,#0,0]
+rangekey: [#0,0,#0,0]
 seqnums:  [1,1]
 
 layout
@@ -273,6 +348,7 @@ c.SET.1:c
 ----
 point:    [a#1,1,c#1,1]
 rangedel: [#0,0,#0,0]
+rangekey: [#0,0,#0,0]
 seqnums:  [1,1]
 
 layout
