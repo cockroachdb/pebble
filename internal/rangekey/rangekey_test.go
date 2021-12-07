@@ -2,6 +2,7 @@ package rangekey
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -144,5 +145,29 @@ func TestParseFormatRoundtrip(t *testing.T) {
 		if got != in {
 			t.Errorf("Format(Parse(%q)) = %q, want %q", in, got, in)
 		}
+	}
+}
+
+func TestRecombinedValueLen_RoundTrip(t *testing.T) {
+	testCases := []string{
+		"a.RANGEKEYSET.1: [(@t22=foo),(@t1=bar)]",
+		"a.RANGEKEYSET.1: [(@t1=bar)]",
+		"a.RANGEKEYUNSET.1: [@t9,@t8,@t7,@t6,@t5]",
+		"a.RANGEKEYDEL.5: foo",
+	}
+	for i, in := range testCases {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			k, v := Parse(in)
+
+			// Split the value into an end key and a user-value.
+			endKey, restValue, ok := DecodeEndKey(k.Kind(), v)
+			require.True(t, ok)
+
+			// Re-encode the end key and user-value.
+			dst := make([]byte, RecombinedValueLen(k.Kind(), endKey, restValue))
+			RecombineValue(k.Kind(), dst, endKey, restValue)
+
+			require.Equal(t, v, dst)
+		})
 	}
 }

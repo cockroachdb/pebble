@@ -49,9 +49,10 @@ func runDataDriven(t *testing.T, file string) {
 			if err != nil {
 				return err.Error()
 			}
-			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nseqnums:  [%d,%d]\n",
+			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nrangekey: [%s,%s]\nseqnums:  [%d,%d]\n",
 				meta.SmallestPoint, meta.LargestPoint,
 				meta.SmallestRangeDel, meta.LargestRangeDel,
+				meta.SmallestRangeKey, meta.LargestRangeKey,
 				meta.SmallestSeqNum, meta.LargestSeqNum)
 
 		case "build-raw":
@@ -65,9 +66,10 @@ func runDataDriven(t *testing.T, file string) {
 			if err != nil {
 				return err.Error()
 			}
-			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nseqnums:  [%d,%d]\n",
+			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nrangekey: [%s,%s]\nseqnums:  [%d,%d]\n",
 				meta.SmallestPoint, meta.LargestPoint,
 				meta.SmallestRangeDel, meta.LargestRangeDel,
+				meta.SmallestRangeKey, meta.LargestRangeKey,
 				meta.SmallestSeqNum, meta.LargestSeqNum)
 
 		case "scan":
@@ -112,6 +114,22 @@ func runDataDriven(t *testing.T, file string) {
 			}
 			return buf.String()
 
+		case "scan-range-key":
+			iter, err := r.NewRawRangeKeyIter()
+			if err != nil {
+				return err.Error()
+			}
+			if iter == nil {
+				return ""
+			}
+			defer iter.Close()
+
+			var buf bytes.Buffer
+			for key, val := iter.First(); key != nil; key, val = iter.Next() {
+				fmt.Fprintf(&buf, "%s:%s\n", key, val)
+			}
+			return buf.String()
+
 		case "layout":
 			l, err := r.Layout()
 			if err != nil {
@@ -139,9 +157,10 @@ func runDataDriven(t *testing.T, file string) {
 			if err != nil {
 				return err.Error()
 			}
-			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nseqnums:  [%d,%d]\n",
+			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nrangekey: [%s,%s]\nseqnums:  [%d,%d]\n",
 				meta.SmallestPoint, meta.LargestPoint,
 				meta.SmallestRangeDel, meta.LargestRangeDel,
+				meta.SmallestRangeKey, meta.LargestRangeKey,
 				meta.SmallestSeqNum, meta.LargestSeqNum)
 
 		default:

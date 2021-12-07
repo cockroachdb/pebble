@@ -2018,6 +2018,7 @@ type Reader struct {
 	indexBH           BlockHandle
 	filterBH          BlockHandle
 	rangeDelBH        BlockHandle
+	rangeKeyBH        BlockHandle
 	rangeDelTransform blockTransform
 	propertiesBH      BlockHandle
 	metaIndexBH       BlockHandle
@@ -2133,6 +2134,24 @@ func (r *Reader) NewRawRangeDelIter() (base.InternalIterator, error) {
 	return i, nil
 }
 
+// NewRawRangeKeyIter returns an internal iterator for the contents of the
+// range-key block for the table. Returns nil if the table does not contain any
+// range keys.
+func (r *Reader) NewRawRangeKeyIter() (base.InternalIterator, error) {
+	if r.rangeKeyBH.Length == 0 {
+		return nil, nil
+	}
+	h, err := r.readRangeKey()
+	if err != nil {
+		return nil, err
+	}
+	i := &blockIter{}
+	if err := i.initHandle(r.Compare, h, r.Properties.GlobalSeqNum); err != nil {
+		return nil, err
+	}
+	return i, nil
+}
+
 func (r *Reader) readIndex() (cache.Handle, error) {
 	return r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */)
 }
@@ -2143,6 +2162,10 @@ func (r *Reader) readFilter() (cache.Handle, error) {
 
 func (r *Reader) readRangeDel() (cache.Handle, error) {
 	return r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadState */)
+}
+
+func (r *Reader) readRangeKey() (cache.Handle, error) {
+	return r.readBlock(r.rangeKeyBH, nil /* transform */, nil /* readaheadState */)
 }
 
 // readBlock reads and decompresses a block from disk into memory.
@@ -2345,6 +2368,10 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 		if !r.rawTombstones {
 			r.rangeDelTransform = r.transformRangeDelV1
 		}
+	}
+
+	if bh, ok := meta[metaRangeKeyName]; ok {
+		r.rangeKeyBH = bh
 	}
 
 	for name, fp := range r.opts.Filters {
