@@ -114,6 +114,8 @@ type Properties struct {
 	NumMergeOperands uint64 `prop:"rocksdb.merge.operands"`
 	// The number of range deletions in this table.
 	NumRangeDeletions uint64 `prop:"rocksdb.num.range-deletions"`
+	// The number of range keys in this table.
+	NumRangeKeys uint64 `prop:"pebble.num.range-keys"`
 	// Timestamp of the earliest key. 0 if unknown.
 	OldestKeyTime uint64 `prop:"rocksdb.oldest.key.time"`
 	// The name of the prefix extractor used in this table. Empty if no prefix
@@ -318,6 +320,9 @@ func (p *Properties) save(w *rawBlockWriter) {
 	p.saveUvarint(m, unsafe.Offsetof(p.NumDeletions), p.NumDeletions)
 	p.saveUvarint(m, unsafe.Offsetof(p.NumMergeOperands), p.NumMergeOperands)
 	p.saveUvarint(m, unsafe.Offsetof(p.NumRangeDeletions), p.NumRangeDeletions)
+	if p.NumRangeKeys > 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.NumRangeKeys), p.NumRangeKeys)
+	}
 	p.saveUvarint(m, unsafe.Offsetof(p.OldestKeyTime), p.OldestKeyTime)
 	if p.PrefixExtractorName != "" {
 		p.saveString(m, unsafe.Offsetof(p.PrefixExtractorName), p.PrefixExtractorName)

@@ -159,6 +159,8 @@ const (
 	levelDBFormatVersion  = 0
 	rocksDBFormatVersion2 = 2
 
+	// FIXME(travers): Are we ok with this naming?
+	metaRangeKeyName   = "pebble.range_key"
 	metaPropertiesName = "rocksdb.properties"
 	metaRangeDelName   = "rocksdb.range_del"
 	metaRangeDelV2Name = "rocksdb.range_del2"

@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
 var errWriterClosed = errors.New("pebble: writer is closed")
@@ -28,8 +29,10 @@ type WriterMetadata struct {
 	Size             uint64
 	SmallestPoint    InternalKey
 	SmallestRangeDel InternalKey
+	SmallestRangeKey InternalKey
 	LargestPoint     InternalKey
 	LargestRangeDel  InternalKey
+	LargestRangeKey  InternalKey
 	SmallestSeqNum   uint64
 	LargestSeqNum    uint64
 	Properties       Properties
@@ -134,6 +137,7 @@ type Writer struct {
 	block               blockWriter
 	indexBlock          blockWriter
 	rangeDelBlock       blockWriter
+	rangeKeyBlock       blockWriter
 	props               Properties
 	propCollectors      []TablePropertyCollector
 	blockPropCollectors []BlockPropertyCollector
@@ -212,19 +216,30 @@ func (w *Writer) Merge(key, value []byte) error {
 	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindMerge), value)
 }
 
-// Add adds a key/value pair to the table being written. For a given Writer,
-// the keys passed to Add must be in increasing order. The exception to this
-// rule is range deletion tombstones. Range deletion tombstones need to be
-// added ordered by their start key, but they can be added out of order from
-// point entries. Additionally, range deletion tombstones must be fragmented
-// (i.e. by keyspan.Fragmenter).
+// Add adds a key/value pair to the table being written. For a given Writer, the
+// keys passed to Add must be in increasing order. The exceptions to this rule
+// are range deletion tombstones, and range key sets, unsets and deletes.
+//
+// Range deletion tombstones need to be added ordered by their start key, but
+// they can be added out of order from point entries. Additionally, range
+// deletion tombstones must be fragmented (i.e. by keyspan.Fragmenter).
+//
+// Range keys must be added ordered by their start key, and in their fragmented
+// span order. Other than spans that are perfectly aligned (same start and end
+// keys), spans may not overlap. Range keys can be added out of order with point
+// keys and range deletions.
 func (w *Writer) Add(key InternalKey, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
 
-	if key.Kind() == InternalKeyKindRangeDelete {
+	switch key.Kind() {
+	case InternalKeyKindRangeDelete:
 		return w.addTombstone(key, value)
+	case base.InternalKeyKindRangeKeyDelete,
+		base.InternalKeyKindRangeKeyUnset,
+		base.InternalKeyKindRangeKeySet:
+		return w.addRangeKey(key, value)
 	}
 	return w.addPoint(key, value)
 }
@@ -367,6 +382,92 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 	w.props.RawKeySize += uint64(key.Size())
 	w.props.RawValueSize += uint64(len(value))
 	w.rangeDelBlock.add(key, value)
+	return nil
+}
+
+func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
+	if !w.disableKeyOrderChecks && w.rangeKeyBlock.nEntries > 0 {
+		// Convert both the previous and current keys into spans so that we can
+		// compare them.
+		prevStartKey := base.DecodeInternalKey(w.rangeKeyBlock.curKey)
+		prevEndKey, prevVal, ok := rangekey.DecodeEndKey(prevStartKey.Kind(), w.rangeKeyBlock.curValue)
+		if !ok {
+			// We panic here as we should have previously decoded and validated this
+			// key and value when it was first added to teh range key block.
+			panic(errors.Errorf("pebble: invalid end key for span: %s",
+				(keyspan.Span{Start: prevStartKey, End: prevEndKey}).Pretty(w.formatKey)))
+		}
+
+		curStartKey := key
+		curEndKey, curVal, ok := rangekey.DecodeEndKey(curStartKey.Kind(), value)
+		if !ok {
+			w.err = errors.Errorf("pebble: invalid end key for span: %s",
+				(keyspan.Span{Start: prevStartKey, End: prevEndKey}).Pretty(w.formatKey))
+			return w.err
+		}
+
+		switch c := base.InternalCompare(w.compare, prevStartKey, curStartKey); {
+		case c > 0:
+			// Previous start key is greater than the current start key.
+			w.err = errors.Errorf("pebble: range keys must be added in order: %s, %s",
+				prevStartKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
+			return w.err
+		case c == 0:
+			// Start keys are equal. End keys must also be equal.
+			if w.compare(prevVal, curVal) != 0 {
+				w.err = errors.Errorf("pebble: overlapping range keys must be fragmented: %s, %s",
+					(keyspan.Span{Start: prevStartKey, End: prevEndKey}).Pretty(w.formatKey),
+					(keyspan.Span{Start: curStartKey, End: curEndKey}).Pretty(w.formatKey))
+				return w.err
+			}
+		default:
+			// Previous start key sorts before the current start key. There are two
+			// sub-cases:
+			// 1. If the start user keys are equal, the end keys must be equal (i.e.
+			// aligned spans).
+			if w.compare(prevStartKey.UserKey, curStartKey.UserKey) == 0 {
+				if w.compare(prevEndKey, curEndKey) != 0 {
+					w.err = errors.Errorf("pebble: overlapping range keys must be fragmented: %s, %s",
+						(keyspan.Span{Start: prevStartKey, End: prevEndKey}).Pretty(w.formatKey),
+						(keyspan.Span{Start: curStartKey, End: curEndKey}).Pretty(w.formatKey))
+					return w.err
+				}
+			} else if w.compare(prevEndKey, curStartKey.UserKey) > 0 {
+				// 2. If the start user keys are NOT equal, the spans must be disjoint
+				// (i.e. no overlap).
+				// NOTE: the inequality excludes zero, as we allow the end key of the
+				// lower span be the same as the start key of the upper span, even
+				// though the range end key is considered an exclusive bound.
+				w.err = errors.Errorf("pebble: overlapping range keys must be fragmented: %s, %s",
+					(keyspan.Span{Start: prevStartKey, End: prevEndKey}).Pretty(w.formatKey),
+					(keyspan.Span{Start: curStartKey, End: curEndKey}).Pretty(w.formatKey))
+				return w.err
+			}
+		}
+	}
+
+	// FIXME(travers): Does there need to be sorting of the suffix-values for
+	// RANGEKEYSETs and RANGEKEYUNSETs?
+
+	// FIXME(travers): Should this seqnum exist in a "parallel keyspace", or can
+	// it coexist with the point key seqnums?
+	w.meta.updateSeqNum(key.SeqNum())
+
+	// Range tombstones are fragmented, so the start key of the first range key
+	// added will be the smallest. The largest range key is determined in
+	// Writer.Close() as the end key of the last range key added to the block.
+	if w.props.NumRangeKeys == 0 {
+		w.meta.SmallestRangeKey = key.Clone()
+	}
+
+	// FIXME(travers): More granular properties for RANGEKEYSET, *UNSET, *DEL
+	// counts?
+	// FIXME(travers): Update existing point-key properties to count range keys?
+	// Probably not?
+	// - raw key / value sizes
+	// - num entries
+	w.props.NumRangeKeys++
+	w.rangeKeyBlock.add(key, value)
 	return nil
 }
 
@@ -708,6 +809,34 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return w.err
 		}
+	}
+
+	// Write the range-key block.
+	var rangeKeyBH BlockHandle
+	if w.props.NumRangeKeys > 0 {
+		key := base.DecodeInternalKey(w.rangeKeyBlock.curKey)
+		kind := key.Kind()
+		endKey, _, ok := rangekey.DecodeEndKey(kind, w.rangeKeyBlock.curValue)
+		if !ok {
+			w.err = errors.Newf("invalid end key: %s", w.rangeKeyBlock.curValue)
+			return w.err
+		}
+		w.meta.LargestRangeKey = base.MakeInternalKey(endKey, base.InternalKeySeqNumMax, key.Kind()).Clone()
+		rangeKeyBH, err = w.writeBlock(w.rangeKeyBlock.finish(), NoCompression)
+		if err != nil {
+			w.err = err
+			return w.err
+		}
+	}
+
+	// Add the range key block handle to the metaindex block. Note that we add the
+	// block handle to the metaindex block before the other meta blocks as the
+	// metaindex block entries must be sorted, and the range key block name sorts
+	// before the other block names.
+	// FIXME(travers): update if we use a name other than "pebble.range_key".
+	if w.props.NumRangeKeys > 0 {
+		n := encodeBlockHandle(w.tmp[:], rangeKeyBH)
+		metaindex.add(InternalKey{UserKey: []byte(metaRangeKeyName)}, w.tmp[:n])
 	}
 
 	{
