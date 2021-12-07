@@ -212,8 +212,8 @@ func DecodeInternalKey(encodedKey []byte) InternalKey {
 // InternalCompare compares two internal keys using the specified comparison
 // function. For equal user keys, internal keys compare in descending sequence
 // number order. For equal user keys and sequence numbers, internal keys
-// compare in descending kind order (though this should never happen in
-// practice).
+// compare in descending kind order (this may happen in practice among range
+// keys).
 func InternalCompare(userCmp Compare, a, b InternalKey) int {
 	if x := userCmp(a.UserKey, b.UserKey); x != 0 {
 		return x
