@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -68,12 +69,20 @@ func runBuildCmd(
 	}
 
 	w := NewWriter(f0, *writerOpts)
-	var tombstones []keyspan.Span
-	f := keyspan.Fragmenter{
+	var rangeDels []keyspan.Span
+	rangeDelFrag := keyspan.Fragmenter{
 		Cmp:    DefaultComparer.Compare,
 		Format: DefaultComparer.FormatKey,
 		Emit: func(fragmented []keyspan.Span) {
-			tombstones = append(tombstones, fragmented...)
+			rangeDels = append(rangeDels, fragmented...)
+		},
+	}
+	var rangeKeys []keyspan.Span
+	rangeKeyFrag := keyspan.Fragmenter{
+		Cmp:    DefaultComparer.Compare,
+		Format: DefaultComparer.FormatKey,
+		Emit: func(fragmented []keyspan.Span) {
+			rangeKeys = append(rangeKeys, fragmented...)
 		},
 	}
 	for _, data := range strings.Split(td.Input, "\n") {
@@ -89,7 +98,28 @@ func runBuildCmd(
 						err = errors.Errorf("%v", r)
 					}
 				}()
-				f.Add(keyspan.Span{Start: key, End: value})
+				rangeDelFrag.Add(keyspan.Span{Start: key, End: value})
+			}()
+			if err != nil {
+				return nil, nil, err
+			}
+		case base.InternalKeyKindRangeKeyDelete,
+			base.InternalKeyKindRangeKeyUnset,
+			base.InternalKeyKindRangeKeySet:
+			var err error
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						err = errors.Errorf("%v", r)
+					}
+				}()
+				key, value := rangekey.Parse(data)
+				endKey, value, ok := rangekey.DecodeEndKey(key.Kind(), value)
+				if !ok {
+					err = errors.New("could not decode end key")
+					return
+				}
+				rangeKeyFrag.Add(keyspan.Span{Start: key, End: endKey, Value: value})
 			}()
 			if err != nil {
 				return nil, nil, err
@@ -98,12 +128,21 @@ func runBuildCmd(
 			if err := w.Add(key, value); err != nil {
 				return nil, nil, err
 			}
-
 		}
 	}
-	f.Finish()
-	for _, v := range tombstones {
+	rangeDelFrag.Finish()
+	for _, v := range rangeDels {
 		if err := w.Add(v.Start, v.End); err != nil {
+			return nil, nil, err
+		}
+	}
+	rangeKeyFrag.Finish()
+	for _, v := range rangeKeys {
+		// Reconstitute the value from the end key and the user value.
+		n := rangekey.RecombinedValueLen(v.Start.Kind(), v.End, v.Value)
+		b := make([]byte, n)
+		_ = rangekey.RecombineValue(v.Start.Kind(), b, v.End, v.Value)
+		if err := w.AddInternalRangeKey(v.Start, b); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -151,9 +190,22 @@ func runBuildRawCmd(td *datadriven.TestData) (*WriterMetadata, *Reader, error) {
 	for _, data := range strings.Split(td.Input, "\n") {
 		j := strings.Index(data, ":")
 		key := base.ParseInternalKey(data[:j])
-		value := []byte(data[j+1:])
-		if err := w.Add(key, value); err != nil {
-			return nil, nil, err
+
+		switch key.Kind() {
+		case base.InternalKeyKindRangeKeyDelete,
+			base.InternalKeyKindRangeKeyUnset,
+			base.InternalKeyKindRangeKeySet:
+			// Values for range keys must be converted into their "packed" form before
+			// being added to the Writer.
+			_, value := rangekey.Parse(data)
+			if err := w.AddInternalRangeKey(key, value); err != nil {
+				return nil, nil, err
+			}
+		default:
+			value := []byte(data[j+1:])
+			if err := w.Add(key, value); err != nil {
+				return nil, nil, err
+			}
 		}
 	}
 	if err := w.Close(); err != nil {

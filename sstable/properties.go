@@ -114,6 +114,14 @@ type Properties struct {
 	NumMergeOperands uint64 `prop:"rocksdb.merge.operands"`
 	// The number of range deletions in this table.
 	NumRangeDeletions uint64 `prop:"rocksdb.num.range-deletions"`
+	// The number of RANGEKEYDELs in this table.
+	NumRangeKeyDels uint64 `prop:"pebble.num.range-key-dels"`
+	// The number of range keys in this table.
+	NumRangeKeys uint64 `prop:"pebble.num.range-keys"`
+	// The number of RANGEKEYSETs in this table.
+	NumRangeKeySets uint64 `prop:"pebble.num.range-key-sets"`
+	// The number of RANGEKEYUNSETs in this table.
+	NumRangeKeyUnsets uint64 `prop:"pebble.num.range-key-unsets"`
 	// Timestamp of the earliest key. 0 if unknown.
 	OldestKeyTime uint64 `prop:"rocksdb.oldest.key.time"`
 	// The name of the prefix extractor used in this table. Empty if no prefix
@@ -126,6 +134,10 @@ type Properties struct {
 	PropertyCollectorNames string `prop:"rocksdb.property.collectors"`
 	// Total raw key size.
 	RawKeySize uint64 `prop:"rocksdb.raw.key.size"`
+	// Total raw rangekey key size.
+	RawRangeKeyKeySize uint64 `prop:"pebble.raw.rangekey.key.size"`
+	// Total raw rangekey value size.
+	RawRangeKeyValueSize uint64 `prop:"pebble.raw.rangekey.value.size"`
 	// Total raw value size.
 	RawValueSize uint64 `prop:"rocksdb.raw.value.size"`
 	// Size of the top-level index if kTwoLevelIndexSearch is used.
@@ -318,6 +330,14 @@ func (p *Properties) save(w *rawBlockWriter) {
 	p.saveUvarint(m, unsafe.Offsetof(p.NumDeletions), p.NumDeletions)
 	p.saveUvarint(m, unsafe.Offsetof(p.NumMergeOperands), p.NumMergeOperands)
 	p.saveUvarint(m, unsafe.Offsetof(p.NumRangeDeletions), p.NumRangeDeletions)
+	if p.NumRangeKeys > 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.NumRangeKeyDels), p.NumRangeKeyDels)
+		p.saveUvarint(m, unsafe.Offsetof(p.NumRangeKeys), p.NumRangeKeys)
+		p.saveUvarint(m, unsafe.Offsetof(p.NumRangeKeySets), p.NumRangeKeySets)
+		p.saveUvarint(m, unsafe.Offsetof(p.NumRangeKeyUnsets), p.NumRangeKeyUnsets)
+		p.saveUvarint(m, unsafe.Offsetof(p.RawRangeKeyKeySize), p.RawRangeKeyKeySize)
+		p.saveUvarint(m, unsafe.Offsetof(p.RawRangeKeyValueSize), p.RawRangeKeyValueSize)
+	}
 	p.saveUvarint(m, unsafe.Offsetof(p.OldestKeyTime), p.OldestKeyTime)
 	if p.PrefixExtractorName != "" {
 		p.saveString(m, unsafe.Offsetof(p.PrefixExtractorName), p.PrefixExtractorName)

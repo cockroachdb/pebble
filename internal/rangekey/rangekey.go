@@ -323,6 +323,30 @@ func Parse(s string) (key base.InternalKey, value []byte) {
 	}
 }
 
+// RecombinedValueLen returns the length of the byte slice that results from
+// re-encoding the end key and the user-value as a physical range key value.
+func RecombinedValueLen(kind base.InternalKeyKind, endKey, userValue []byte) int {
+	n := len(endKey)
+	if kind == base.InternalKeyKindRangeKeyDelete {
+		// RANGEKEYDELs are not varint encoded.
+		return n
+	}
+	return lenVarint(len(endKey)) + len(endKey) + len(userValue)
+}
+
+// RecombineValue re-encodes the end key and user-value as a physical range key
+// value into the destination byte slice.
+func RecombineValue(kind base.InternalKeyKind, dst, endKey, userValue []byte) int {
+	if kind == base.InternalKeyKindRangeKeyDelete {
+		// RANGEKEYDELs are not varint encoded.
+		return copy(dst, endKey)
+	}
+	n := binary.PutUvarint(dst, uint64(len(endKey)))
+	n += copy(dst[n:], endKey)
+	n += copy(dst[n:], userValue)
+	return n
+}
+
 func lenVarint(v int) (n int) {
 	x := uint32(v)
 	n++
