@@ -138,18 +138,22 @@ func formatRangeKeySpan(w io.Writer, rks *CoalescedSpan) {
 	if rks.Delete {
 		fmt.Fprintf(w, " (DEL)")
 	}
-	for i := range rks.Items {
+	formatRangeKeyItems(w, rks.Items)
+}
+
+func formatRangeKeyItems(w io.Writer, items []SuffixItem) {
+	for i := range items {
 		fmt.Fprintln(w)
-		if i != len(rks.Items)-1 {
+		if i != len(items)-1 {
 			fmt.Fprint(w, "├──")
 		} else {
 			fmt.Fprint(w, "└──")
 		}
-		fmt.Fprintf(w, " %s", rks.Items[i].Suffix)
-		if rks.Items[i].Unset {
+		fmt.Fprintf(w, " %s", items[i].Suffix)
+		if items[i].Unset {
 			fmt.Fprint(w, " unset")
 		} else {
-			fmt.Fprintf(w, " : %s", rks.Items[i].Value)
+			fmt.Fprintf(w, " : %s", items[i].Value)
 		}
 	}
 }
