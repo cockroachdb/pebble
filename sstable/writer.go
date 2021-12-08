@@ -155,6 +155,14 @@ type Writer struct {
 
 	topLevelIndexBlock blockWriter
 	indexPartitions    []indexBlockWriterAndBlockProperties
+
+	// historicEncodedBlockHandleWithPropertiesLength helps determine whether
+	// an index block should be flushed.
+	historicEncodedBlockHandleWithPropertiesLength int
+
+	// historicSepLength helps determine whether an index block should
+	// be flushed.
+	historicSepLength int
 }
 
 type indexBlockWriterAndBlockProperties struct {
@@ -382,7 +390,7 @@ func (w *Writer) maybeAddToFilter(key []byte) {
 }
 
 func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
-	if !shouldFlush(key, value, &w.block, w.blockSize, w.blockSizeThreshold) {
+	if !shouldFlush(key.Size(), len(value), &w.block, w.blockSize, w.blockSizeThreshold) {
 		return nil
 	}
 
@@ -391,73 +399,102 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 		w.err = err
 		return w.err
 	}
+	props, err := w.getBlockHandleProps()
+	if err != nil {
+		w.err = err
+		return w.err
+	}
 	var bhp BlockHandleWithProperties
-	if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
+	if bhp, err = w.addBlockPropertiesToBlockHandle(bh, props); err != nil {
 		return err
 	}
-	prevKey := base.DecodeInternalKey(w.block.curKey)
-	if err = w.addIndexEntry(prevKey, key, bhp); err != nil {
+
+	indexSep := w.indexEntrySeparator(base.DecodeInternalKey(w.block.curKey), key)
+	encodedBHP := encodeBlockHandleWithProperties(w.tmp[:], bhp)
+	shouldFlushIndexBlock := supportsTwoLevelIndex(w.tableFormat) &&
+		shouldFlush(
+			w.historicSepLength, w.historicEncodedBlockHandleWithPropertiesLength,
+			&w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold,
+		)
+	var indexProps []byte
+	if shouldFlushIndexBlock {
+		// Enable two level indexes if there is more than one index block.
+		w.twoLevelIndex = true
+
+		indexProps, err = w.getIndexProps()
+		if err != nil {
+			return err
+		}
+	}
+	if err = w.addIndexEntry(indexSep, encodedBHP, bhp, shouldFlushIndexBlock, indexProps); err != nil {
 		return err
+	}
+	for i := range w.blockPropCollectors {
+		w.blockPropCollectors[i].AddPrevDataBlockToIndexBlock()
 	}
 	return nil
 }
 
-// The BlockHandleWithProperties returned by this method must be encoded
-// before any future use of the Writer.blockPropsEncoder, since the properties
-// slice will get reused by the blockPropsEncoder.
-func (w *Writer) maybeAddBlockPropertiesToBlockHandle(
-	bh BlockHandle,
-) (BlockHandleWithProperties, error) {
+func (w *Writer) getBlockHandleProps() ([]byte, error) {
 	if len(w.blockPropCollectors) == 0 {
-		return BlockHandleWithProperties{BlockHandle: bh}, nil
+		return nil, nil
 	}
 	var err error
 	w.blockPropsEncoder.resetProps()
 	for i := range w.blockPropCollectors {
 		scratch := w.blockPropsEncoder.getScratchForProp()
 		if scratch, err = w.blockPropCollectors[i].FinishDataBlock(scratch); err != nil {
-			return BlockHandleWithProperties{}, nil
+			return nil, err
 		}
 		if len(scratch) > 0 {
 			w.blockPropsEncoder.addProp(shortID(i), scratch)
 		}
 	}
-	return BlockHandleWithProperties{BlockHandle: bh, Props: w.blockPropsEncoder.unsafeProps()}, nil
+	return w.blockPropsEncoder.unsafeProps(), err
 }
 
-// addIndexEntry adds an index entry for the specified key and block handle.
-func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProperties) error {
-	if bhp.Length == 0 {
-		// A valid blockHandle must be non-zero.
-		// In particular, it must have a non-zero length.
-		return nil
-	}
+// The BlockHandleWithProperties returned by this method must be encoded
+// before any future use of the Writer.blockPropsEncoder, since the properties
+// slice will get reused by the blockPropsEncoder.
+func (w *Writer) addBlockPropertiesToBlockHandle(
+	bh BlockHandle, props []byte,
+) (BlockHandleWithProperties, error) {
+	return BlockHandleWithProperties{BlockHandle: bh, Props: props}, nil
+}
+
+func (w *Writer) indexEntrySeparator(prevKey InternalKey, key InternalKey) InternalKey {
 	var sep InternalKey
 	if key.UserKey == nil && key.Trailer == 0 {
 		sep = prevKey.Successor(w.compare, w.successor, nil)
 	} else {
 		sep = prevKey.Separator(w.compare, w.separator, nil, key)
 	}
-	encoded := encodeBlockHandleWithProperties(w.tmp[:], bhp)
+	return sep
+}
 
-	if supportsTwoLevelIndex(w.tableFormat) &&
-		shouldFlush(sep, encoded, &w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
+// addIndexEntry adds an index entry for the specified key and block handle.
+func (w *Writer) addIndexEntry(
+	sep InternalKey, encodedBHP []byte, bhp BlockHandleWithProperties, shouldFlushIndexBlock bool, indexProps []byte,
+) error {
+	if bhp.Length == 0 {
+		// A valid blockHandle must be non-zero.
+		// In particular, it must have a non-zero length.
+		return nil
+	}
+	w.historicEncodedBlockHandleWithPropertiesLength = len(encodedBHP)
+	w.historicSepLength = sep.Size()
+
+	if shouldFlushIndexBlock {
 		// Enable two level indexes if there is more than one index block.
 		w.twoLevelIndex = true
-		if err := w.finishIndexBlock(); err != nil {
-			return err
-		}
+		w.finishIndexBlock(indexProps)
 	}
-
-	for i := range w.blockPropCollectors {
-		w.blockPropCollectors[i].AddPrevDataBlockToIndexBlock()
-	}
-	w.indexBlock.add(sep, encoded)
+	w.indexBlock.add(sep, encodedBHP)
 	return nil
 }
 
 func shouldFlush(
-	key InternalKey, value []byte, block *blockWriter, blockSize, sizeThreshold int,
+	keySize int, valueSize int, block *blockWriter, blockSize, sizeThreshold int,
 ) bool {
 	if block.nEntries == 0 {
 		return false
@@ -475,47 +512,53 @@ func shouldFlush(
 		return false
 	}
 
-	newSize := size + key.Size() + len(value)
+	newSize := size + keySize + valueSize
 	if block.nEntries%block.restartInterval == 0 {
 		newSize += 4
 	}
-	newSize += 4                              // varint for shared prefix length
-	newSize += uvarintLen(uint32(key.Size())) // varint for unshared key bytes
-	newSize += uvarintLen(uint32(len(value))) // varint for value size
+	newSize += 4                             // varint for shared prefix length
+	newSize += uvarintLen(uint32(keySize))   // varint for unshared key bytes
+	newSize += uvarintLen(uint32(valueSize)) // varint for value size
 	// Flush if the block plus the new entry is larger than the target size.
 	return newSize > blockSize
 }
 
-// finishIndexBlock finishes the current index block and adds it to the top
-// level index block. This is only used when two level indexes are enabled.
-func (w *Writer) finishIndexBlock() error {
+func (w *Writer) getIndexProps() ([]byte, error) {
 	w.blockPropsEncoder.resetProps()
 	for i := range w.blockPropCollectors {
 		scratch := w.blockPropsEncoder.getScratchForProp()
 		var err error
 		if scratch, err = w.blockPropCollectors[i].FinishIndexBlock(scratch); err != nil {
-			return err
+			return nil, err
 		}
 		if len(scratch) > 0 {
 			w.blockPropsEncoder.addProp(shortID(i), scratch)
 		}
 	}
+	return w.blockPropsEncoder.props(), nil
+}
+
+// finishIndexBlock finishes the current index block and adds it to the top
+// level index block. This is only used when two level indexes are enabled.
+func (w *Writer) finishIndexBlock(props []byte) {
 	w.indexPartitions = append(w.indexPartitions,
 		indexBlockWriterAndBlockProperties{
 			writer:     w.indexBlock,
-			properties: w.blockPropsEncoder.props(),
+			properties: props,
 		})
 	w.indexBlock = blockWriter{
 		restartInterval: 1,
 	}
-	return nil
 }
 
 func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	// Add the final unfinished index.
-	if err := w.finishIndexBlock(); err != nil {
+	indexProps, err := w.getIndexProps()
+	if err != nil {
 		return BlockHandle{}, err
 	}
+
+	w.finishIndexBlock(indexProps)
 
 	for i := range w.indexPartitions {
 		b := &w.indexPartitions[i]
@@ -629,13 +672,37 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return w.err
 		}
+		props, err := w.getBlockHandleProps()
+		if err != nil {
+			w.err = err
+			return w.err
+		}
 		var bhp BlockHandleWithProperties
-		if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
+		if bhp, err = w.addBlockPropertiesToBlockHandle(bh, props); err != nil {
 			return err
 		}
-		prevKey := base.DecodeInternalKey(w.block.curKey)
-		if err = w.addIndexEntry(prevKey, InternalKey{}, bhp); err != nil {
+		sep := w.indexEntrySeparator(base.DecodeInternalKey(w.block.curKey), InternalKey{})
+		encoded := encodeBlockHandleWithProperties(w.tmp[:], bhp)
+		shouldFlushIndexBlock := supportsTwoLevelIndex(w.tableFormat) &&
+			shouldFlush(
+				w.historicSepLength, w.historicEncodedBlockHandleWithPropertiesLength,
+				&w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold,
+			)
+		var indexProps []byte
+		if shouldFlushIndexBlock {
+			// Enable two level indexes if there is more than one index block.
+			w.twoLevelIndex = true
+
+			indexProps, err = w.getIndexProps()
+			if err != nil {
+				return err
+			}
+		}
+		if err = w.addIndexEntry(sep, encoded, bhp, shouldFlushIndexBlock, indexProps); err != nil {
 			return err
+		}
+		for i := range w.blockPropCollectors {
+			w.blockPropCollectors[i].AddPrevDataBlockToIndexBlock()
 		}
 	}
 	w.props.DataSize = w.meta.Size
