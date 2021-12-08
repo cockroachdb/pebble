@@ -17,6 +17,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestHasSets(t *testing.T) {
+	testCases := map[*CoalescedSpan]bool{
+		{
+			Items: []SuffixItem{{Suffix: []byte("foo")}},
+		}: true,
+		{
+			Items: []SuffixItem{{Unset: true, Suffix: []byte("foo")}},
+		}: false,
+		{
+			Items: []SuffixItem{
+				{Unset: true, Suffix: []byte("foo")},
+				{Unset: true, Suffix: []byte("foo2")},
+				{Unset: true, Suffix: []byte("foo3")},
+			},
+		}: false,
+		{
+			Items: []SuffixItem{
+				{Unset: true, Suffix: []byte("foo")},
+				{Unset: false, Suffix: []byte("foo2")},
+				{Unset: true, Suffix: []byte("foo3")},
+			},
+		}: true,
+	}
+	for s, want := range testCases {
+		got := s.HasSets()
+		if got != want {
+			var buf bytes.Buffer
+			formatRangeKeySpan(&buf, s)
+			t.Errorf("%s.HasSets() = %t, want %t", buf.String(), got, want)
+		}
+	}
+}
+
 func TestCoalescer(t *testing.T) {
 	var c Coalescer
 	var buf bytes.Buffer
@@ -138,18 +171,22 @@ func formatRangeKeySpan(w io.Writer, rks *CoalescedSpan) {
 	if rks.Delete {
 		fmt.Fprintf(w, " (DEL)")
 	}
-	for i := range rks.Items {
+	formatRangeKeyItems(w, rks.Items)
+}
+
+func formatRangeKeyItems(w io.Writer, items []SuffixItem) {
+	for i := range items {
 		fmt.Fprintln(w)
-		if i != len(rks.Items)-1 {
+		if i != len(items)-1 {
 			fmt.Fprint(w, "├──")
 		} else {
 			fmt.Fprint(w, "└──")
 		}
-		fmt.Fprintf(w, " %s", rks.Items[i].Suffix)
-		if rks.Items[i].Unset {
+		fmt.Fprintf(w, " %s", items[i].Suffix)
+		if items[i].Unset {
 			fmt.Fprint(w, " unset")
 		} else {
-			fmt.Fprintf(w, " : %s", rks.Items[i].Value)
+			fmt.Fprintf(w, " : %s", items[i].Value)
 		}
 	}
 }
