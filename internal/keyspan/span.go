@@ -22,7 +22,8 @@ import (
 // Note that the start user key is inclusive and the end user key is
 // exclusive.
 //
-// Currently the only supported key kind is RANGEDEL.
+// Currently the only supported key kinds are: RANGEDEL, RANGEKEYSET,
+// RANGEKEYUNSET and RANGEKEYDEL.
 type Span struct {
 	Start base.InternalKey
 	End   []byte
@@ -50,7 +51,16 @@ func (s Span) Overlaps(cmp base.Compare, other Span) int {
 
 // Empty returns true if the span does not cover any keys.
 func (s Span) Empty() bool {
-	return s.Start.Kind() != base.InternalKeyKindRangeDelete
+	// Only RANGEDELs, RANGEKEYSETs, RANGEKEYUNSETs and RANGEKEYDELs may be used
+	// as spans.
+	switch s.Start.Kind() {
+	case base.InternalKeyKindRangeDelete:
+		return false
+	case base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:
+		return false
+	default:
+		return true
+	}
 }
 
 // Contains returns true if the specified key resides within the span's
