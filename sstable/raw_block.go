@@ -26,7 +26,7 @@ func (w *rawBlockWriter) add(key InternalKey, value []byte) {
 	w.curKey = w.curKey[:size]
 	copy(w.curKey, key.UserKey)
 
-	w.store(size, value)
+	w.store(size, value, false)
 }
 
 // rawBlockIter is an iterator over a single block of data. Unlike blockIter,
