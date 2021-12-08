@@ -48,7 +48,7 @@ compact         0     0 B     0 B       0          (size == estimated-debt, scor
 zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         8   1.5 K   46.7%  (score == hit-rate)
- tcache         1   672 B   50.0%  (score == hit-rate)
+ tcache         1   712 B   50.0%  (score == hit-rate)
  titers         0
  filter         -       -    0.0%  (score == utility)
 

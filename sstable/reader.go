@@ -109,11 +109,16 @@ type singleLevelIterator struct {
 	reader     *Reader
 	index      blockIter
 	data       blockIter
-	dataRS     readaheadState
+	// val and valNeedsReader are used with NextLazyValue and Value.
+	val            []byte
+	valNeedsReader bool
+	dataRS         readaheadState
 	// dataBH refers to the last data block that the iterator considered
 	// loading. It may not actually have loaded the block, due to an error or
 	// because it was considered irrelevant.
-	dataBH    BlockHandle
+	dataBH BlockHandle
+	// TODO(sumeer): add read-ahead support for reading value blocks.
+	vbReader  *valueBlockReader
 	err       error
 	closeHook func(i Iterator) error
 
@@ -274,7 +279,19 @@ func (i *singleLevelIterator) init(
 		return err
 	}
 	i.dataRS.size = initialReadaheadSize
+	if r.Properties.ValueBlocksAreEnabled {
+		i.vbReader = &valueBlockReader{
+			bp:   i,
+			vbih: r.valueBIH,
+		}
+	}
 	return nil
+}
+
+// readBlock implements the blockProvider interface for use by the
+// valueBlockReader.
+func (i *singleLevelIterator) readBlock(h BlockHandle) (cache.Handle, error) {
+	return i.reader.readBlock(h, nil /* transform */, nil /* raState */)
 }
 
 // setupForCompaction sets up the singleLevelIterator for use with compactionIter.
@@ -401,7 +418,7 @@ const numStepsBeforeSeek = 4
 func (i *singleLevelIterator) trySeekGEUsingNextWithinBlock(
 	key []byte,
 ) (k *InternalKey, v []byte, done bool) {
-	k, v = i.data.Key(), i.data.Value()
+	k, v = i.valueExtract(i.data.Key(), i.data.Value())
 	for j := 0; j < numStepsBeforeSeek; j++ {
 		curKeyCmp := i.cmp(k.UserKey, key)
 		if curKeyCmp >= 0 {
@@ -411,7 +428,7 @@ func (i *singleLevelIterator) trySeekGEUsingNextWithinBlock(
 			}
 			return k, v, true
 		}
-		k, v = i.data.Next()
+		k, v = i.valueExtract(i.data.Next())
 		if k == nil {
 			break
 		}
@@ -422,7 +439,7 @@ func (i *singleLevelIterator) trySeekGEUsingNextWithinBlock(
 func (i *singleLevelIterator) trySeekLTUsingPrevWithinBlock(
 	key []byte,
 ) (k *InternalKey, v []byte, done bool) {
-	k, v = i.data.Key(), i.data.Value()
+	k, v = i.valueExtract(i.data.Key(), i.data.Value())
 	for j := 0; j < numStepsBeforeSeek; j++ {
 		curKeyCmp := i.cmp(k.UserKey, key)
 		if curKeyCmp < 0 {
@@ -432,7 +449,7 @@ func (i *singleLevelIterator) trySeekLTUsingPrevWithinBlock(
 			}
 			return k, v, true
 		}
-		k, v = i.data.Prev()
+		k, v = i.valueExtract(i.data.Prev())
 		if k == nil {
 			break
 		}
@@ -506,6 +523,7 @@ func (i *singleLevelIterator) seekGEHelper(
 			// !i.data.isDataInvalidated() && i.exhaustedBounds != +1
 			currKey := i.data.Key()
 			value := i.data.Value()
+			_, value = i.valueExtract(nil, value)
 			less := i.cmp(currKey.UserKey, key) < 0
 			// We could be more sophisticated and confirm that the seek
 			// position is within the current block before applying this
@@ -550,7 +568,7 @@ func (i *singleLevelIterator) seekGEHelper(
 		}
 	}
 	if !dontSeekWithinBlock {
-		if ikey, val := i.data.SeekGE(key); ikey != nil {
+		if ikey, val := i.valueExtract(i.data.SeekGE(key)); ikey != nil {
 			if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
 				i.exhaustedBounds = +1
 				return nil, nil
@@ -558,7 +576,7 @@ func (i *singleLevelIterator) seekGEHelper(
 			return ikey, val
 		}
 	}
-	return i.skipForward()
+	return i.skipForward(true)
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -680,7 +698,7 @@ func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 		}
 	}
 	if !dontSeekWithinBlock {
-		if ikey, val := i.data.SeekLT(key); ikey != nil {
+		if ikey, val := i.valueExtract(i.data.SeekLT(key)); ikey != nil {
 			if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
 				i.exhaustedBounds = -1
 				return nil, nil
@@ -734,7 +752,7 @@ func (i *singleLevelIterator) firstInternal() (*InternalKey, []byte) {
 		return nil, nil
 	}
 	if result == loadBlockOK {
-		if ikey, val := i.data.First(); ikey != nil {
+		if ikey, val := i.valueExtract(i.data.First()); ikey != nil {
 			if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
 				i.exhaustedBounds = +1
 				return nil, nil
@@ -756,7 +774,7 @@ func (i *singleLevelIterator) firstInternal() (*InternalKey, []byte) {
 		// Else fall through to skipForward.
 	}
 
-	return i.skipForward()
+	return i.skipForward(true)
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -791,7 +809,7 @@ func (i *singleLevelIterator) lastInternal() (*InternalKey, []byte) {
 		return nil, nil
 	}
 	if result == loadBlockOK {
-		if ikey, val := i.data.Last(); ikey != nil {
+		if ikey, val := i.valueExtract(i.data.Last()); ikey != nil {
 			if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
 				i.exhaustedBounds = -1
 				return nil, nil
@@ -829,14 +847,75 @@ func (i *singleLevelIterator) Next() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
-	if key, val := i.data.Next(); key != nil {
+	if key, val := i.valueExtract(i.data.Next()); key != nil {
 		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
 			i.exhaustedBounds = +1
 			return nil, nil
 		}
 		return key, val
 	}
-	return i.skipForward()
+	return i.skipForward(true)
+}
+
+// NextLazyValue is a temporary hack for testing and benchmarking -- it does
+// not return the value. When ValueBlocksAreEnabled, this avoids reading the
+// value from a value block.
+// The proper way to do this will be by changing the InternalIterator
+// interface to allow for lazy loading of the value.
+func (i *singleLevelIterator) NextLazyValue() *InternalKey {
+	if i.exhaustedBounds == +1 {
+		panic("Next called even though exhausted upper bound")
+	}
+	i.exhaustedBounds = 0
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.boundsCmp = 0
+
+	if i.err != nil {
+		return nil
+	}
+	i.val = nil
+	if key, val := i.data.Next(); key != nil {
+		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
+			i.exhaustedBounds = +1
+			return nil
+		}
+		i.val = val
+		i.valNeedsReader = i.vbReader != nil && key.Kind() == InternalKeyKindSet
+		return key
+	}
+	var key *InternalKey
+	key, i.val = i.skipForward(false)
+	if key != nil {
+		i.valNeedsReader = i.vbReader != nil && key.Kind() == InternalKeyKindSet
+	}
+	return key
+}
+
+// Value is a temporary hack. Only call if the preceding call was a
+// NextLazyValue that returned a non-nil key.
+func (i *singleLevelIterator) Value() ([]byte, error) {
+	if !i.valNeedsReader {
+		return i.val, nil
+	}
+	val, err := i.vbReader.getValue(i.val)
+	if err != nil {
+		i.err = err
+	}
+	return val, err
+}
+
+func (i *singleLevelIterator) valueExtract(k *InternalKey, v []byte) (*InternalKey, []byte) {
+	if k == nil || i.vbReader == nil || k.Kind() != InternalKeyKindSet {
+		return k, v
+	}
+	value, err := i.vbReader.getValue(v)
+	if err != nil {
+		i.err = err
+		value = nil
+		// TODO(sumeer): should also return nil key, but need to change the
+		// callers to handle that properly.
+	}
+	return k, value
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -852,7 +931,7 @@ func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
-	if key, val := i.data.Prev(); key != nil {
+	if key, val := i.valueExtract(i.data.Prev()); key != nil {
 		if i.blockLower != nil && i.cmp(key.UserKey, i.blockLower) < 0 {
 			i.exhaustedBounds = -1
 			return nil, nil
@@ -862,7 +941,7 @@ func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
 	return i.skipBackward()
 }
 
-func (i *singleLevelIterator) skipForward() (*InternalKey, []byte) {
+func (i *singleLevelIterator) skipForward(extractValue bool) (*InternalKey, []byte) {
 	for {
 		var key *InternalKey
 		if key, _ = i.index.Next(); key == nil {
@@ -892,7 +971,11 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, []byte) {
 			}
 			continue
 		}
-		if key, val := i.data.First(); key != nil {
+		key, val := i.data.First()
+		if extractValue {
+			key, val = i.valueExtract(key, val)
+		}
+		if key != nil {
 			if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
 				i.exhaustedBounds = +1
 				return nil, nil
@@ -932,7 +1015,7 @@ func (i *singleLevelIterator) skipBackward() (*InternalKey, []byte) {
 			}
 			continue
 		}
-		key, val := i.data.Last()
+		key, val := i.valueExtract(i.data.Last())
 		if key == nil {
 			return nil, nil
 		}
@@ -983,6 +1066,9 @@ func (i *singleLevelIterator) Close() error {
 	err = firstError(err, i.err)
 	if i.bpfs != nil {
 		releaseBlockPropertiesFilterer(i.bpfs)
+	}
+	if i.vbReader != nil {
+		i.vbReader.close()
 	}
 	*i = i.resetForReuse()
 	singleLevelIterPool.Put(i)
@@ -1070,7 +1156,7 @@ func (i *compactionIterator) Next() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
-	return i.skipForward(i.data.Next())
+	return i.skipForward(i.valueExtract(i.data.Next()))
 }
 
 func (i *compactionIterator) Prev() (*InternalKey, []byte) {
@@ -1101,7 +1187,7 @@ func (i *compactionIterator) skipForward(key *InternalKey, val []byte) (*Interna
 				}
 			}
 			// result == loadBlockOK
-			if key, val = i.data.First(); key != nil {
+			if key, val = i.valueExtract(i.data.First()); key != nil {
 				break
 			}
 		}
@@ -1183,6 +1269,12 @@ func (i *twoLevelIterator) init(
 		// blockIter.Close releases topLevelIndexH and always returns a nil error
 		_ = i.topLevelIndex.Close()
 		return err
+	}
+	if r.Properties.ValueBlocksAreEnabled {
+		i.vbReader = &valueBlockReader{
+			bp:   i,
+			vbih: r.valueBIH,
+		}
 	}
 	return nil
 }
@@ -1610,6 +1702,9 @@ func (i *twoLevelIterator) Close() error {
 	if i.bpfs != nil {
 		releaseBlockPropertiesFilterer(i.bpfs)
 	}
+	if i.vbReader != nil {
+		i.vbReader.close()
+	}
 	*i = twoLevelIterator{
 		singleLevelIterator: i.singleLevelIterator.resetForReuse(),
 		topLevelIndex:       i.topLevelIndex.resetForReuse(),
@@ -2020,6 +2115,7 @@ type Reader struct {
 	rangeDelBH        BlockHandle
 	rangeKeyBH        BlockHandle
 	rangeDelTransform blockTransform
+	valueBIH          valueBlocksIndexHandle
 	propertiesBH      BlockHandle
 	metaIndexBH       BlockHandle
 	footerBH          BlockHandle
@@ -2338,11 +2434,23 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 
 	meta := map[string]BlockHandle{}
 	for valid := i.First(); valid; valid = i.Next() {
-		bh, n := decodeBlockHandle(i.Value())
-		if n == 0 {
-			return base.CorruptionErrorf("pebble/table: invalid table (bad filter block handle)")
+		value := i.Value()
+		if bytes.Equal(i.Key().UserKey, []byte(metaValueIndexName)) {
+			vbih, n, err := decodeValueBlocksIndexHandle(i.Value())
+			if err != nil {
+				return err
+			}
+			if n == 0 || n != len(value) {
+				return base.CorruptionErrorf("pebble/table: invalid table (bad value blocks index handle)")
+			}
+			r.valueBIH = vbih
+		} else {
+			bh, n := decodeBlockHandle(value)
+			if n == 0 || n != len(value) {
+				return base.CorruptionErrorf("pebble/table: invalid table (bad block handle)")
+			}
+			meta[string(i.Key().UserKey)] = bh
 		}
-		meta[string(i.Key().UserKey)] = bh
 	}
 	if err := i.Close(); err != nil {
 		return err
@@ -2929,15 +3037,29 @@ func (l *Layout) Describe(
 			iter, _ := newRawBlockIter(r.Compare, h.Get())
 			for valid := iter.First(); valid; valid = iter.Next() {
 				value := iter.Value()
-				bh, n := decodeBlockHandle(value)
+				var bh BlockHandle
+				var n int
+				var vbih valueBlocksIndexHandle
+				isValueBlocksIndexHandle := false
+				if bytes.Equal(iter.Key().UserKey, []byte(metaValueIndexName)) {
+					vbih, n, err = decodeValueBlocksIndexHandle(value)
+					bh = vbih.h
+					isValueBlocksIndexHandle = true
+				} else {
+					bh, n = decodeBlockHandle(value)
+				}
 				if n == 0 || n != len(value) {
 					fmt.Fprintf(w, "%10d    [err: %s]\n", b.Offset+uint64(iter.offset), err)
 					continue
 				}
-
-				fmt.Fprintf(w, "%10d    %s block:%d/%d",
+				var vbihStr string
+				if isValueBlocksIndexHandle {
+					vbihStr = fmt.Sprintf(" value-blocks-index-lengths: %d(num), %d(offset), %d(length)",
+						vbih.blockNumByteLength, vbih.blockOffsetByteLength, vbih.blockLengthByteLength)
+				}
+				fmt.Fprintf(w, "%10d    %s block:%d/%d%s",
 					b.Offset+uint64(iter.offset), iter.Key().UserKey,
-					bh.Offset, bh.Length)
+					bh.Offset, bh.Length, vbihStr)
 				formatIsRestart(iter.data, iter.restarts, iter.numRestarts, iter.offset)
 			}
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)

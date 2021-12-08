@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -860,6 +861,102 @@ func TestValidateBlockChecksums(t *testing.T) {
 	}
 }
 
+// TestValueBlocks is a partial test of all the sstable logic involved in
+// writing and reading values in value blocks.
+//
+// TODO(sumeer): test other key kinds; add unit tests for the lower-level
+// components.
+func TestValueBlocks(t *testing.T) {
+	for _, bs := range []int{1, 20, 4096} {
+		t.Run(fmt.Sprintf("blockSize=%d", bs), func(t *testing.T) {
+			mem := vfs.NewMem()
+			f0, err := mem.Create("test")
+			require.NoError(t, err)
+
+			w := NewWriter(f0, WriterOptions{
+				Comparer:              testkeys.Comparer,
+				ValueBlocksAreEnabled: true,
+				BlockSize:             bs,
+				IndexBlockSize:        1 << 15,
+			})
+			type kvPair struct {
+				k InternalKey
+				v []byte
+			}
+			var kvPairs []kvPair
+			writeKeyValue := func(k []byte, v string) {
+				ikey := base.MakeInternalKey(k, 0, InternalKeyKindSet)
+				require.NoError(t, w.Add(ikey, []byte(v)))
+				kvPairs = append(kvPairs, kvPair{ikey.Clone(), []byte(v)})
+			}
+			var buf [10]byte
+			ks := testkeys.Alpha(5)
+			n := testkeys.WriteKeyAt(buf[:], ks, 0, 10)
+			writeKeyValue(buf[:n], "value_0_10")
+			n = testkeys.WriteKeyAt(buf[:], ks, 1, 20)
+			writeKeyValue(buf[:n], "value_1_20")
+			n = testkeys.WriteKeyAt(buf[:], ks, 1, 10)
+			writeKeyValue(buf[:n], "value_1_10")
+			n = testkeys.WriteKeyAt(buf[:], ks, 1, 9)
+			writeKeyValue(buf[:n], "value_1_9")
+			n = testkeys.WriteKeyAt(buf[:], ks, 1, 8)
+			writeKeyValue(buf[:n], "value_1_8")
+			n = testkeys.WriteKeyAt(buf[:], ks, 1, 7)
+			writeKeyValue(buf[:n], "value_1_7")
+			n = testkeys.WriteKeyAt(buf[:], ks, 1, 6)
+			writeKeyValue(buf[:n], "value_1_6")
+			n = testkeys.WriteKeyAt(buf[:], ks, 1, 3)
+			writeKeyValue(buf[:n], "value_1_3")
+			n = testkeys.WriteKeyAt(buf[:], ks, 2, 42)
+			writeKeyValue(buf[:n], "value_2_42")
+			n = testkeys.WriteKeyAt(buf[:], ks, 2, 21)
+			writeKeyValue(buf[:n], "value_2_21")
+
+			require.NoError(t, w.Close())
+
+			f1, err := mem.Open("test")
+			require.NoError(t, err)
+
+			r, err := NewReader(f1, ReaderOptions{
+				Comparer: testkeys.Comparer,
+			})
+			require.NoError(t, err)
+			defer r.Close()
+
+			for _, lazy := range []bool{false, true} {
+				t.Run(fmt.Sprintf("lazyValue=%t", lazy), func(t *testing.T) {
+					iiter, err := r.NewIter(nil, nil)
+					require.NoError(t, err)
+					iter := iiter.(*singleLevelIterator)
+					defer iter.Close()
+					k, v := iter.SeekGE(kvPairs[0].k.UserKey)
+					i := 0
+					fmt.Printf("iterate\n")
+					for ; i < len(kvPairs); i++ {
+						require.NotNil(t, k)
+						require.Equal(t, kvPairs[i].k, *k)
+						require.Equal(t, kvPairs[i].v, v)
+						fmt.Printf("%s=>%s\n", string(k.UserKey), string(v))
+						if lazy {
+							k = iter.NextLazyValue()
+							if k != nil {
+								v, err = iter.Value()
+								require.NoError(t, err)
+							} else {
+								v = nil
+							}
+						} else {
+							k, v = iter.Next()
+						}
+					}
+					require.Nil(t, v)
+					require.NoError(t, iter.Error())
+				})
+			}
+		})
+	}
+}
+
 func buildTestTable(
 	t *testing.T, numEntries uint64, blockSize, indexBlockSize int, compression Compression,
 ) *Reader {
@@ -1061,5 +1158,110 @@ func BenchmarkTableIterPrev(b *testing.B) {
 				it.Close()
 				r.Close()
 			})
+	}
+}
+
+// TODO(sumeer): add benchmark for 2 versions where the latest version has an
+// empty value. This mimics MVCC deletions and represents workloads which
+// create a high number of garbage rows by writing and deleting.
+
+// BenchmarkValueBlocks benchmarks iteration over a sstable that places values
+// of older key versions in value blocks.
+func BenchmarkValueBlocks(b *testing.B) {
+	numKeys := 10000
+	valueBlocksAreEnabled := true
+	for _, valueSize := range []int{100, 1000, 10000} {
+		b.Run(fmt.Sprintf("valueSize=%d", valueSize), func(b *testing.B) {
+			for _, versions := range []int{1, 10, 100} {
+				b.Run(fmt.Sprintf("versions=%d", versions), func(b *testing.B) {
+					mem := vfs.NewMem()
+					f0, err := mem.Create("test")
+					require.NoError(b, err)
+					w := NewWriter(f0, WriterOptions{
+						Comparer:              testkeys.Comparer,
+						ValueBlocksAreEnabled: valueBlocksAreEnabled,
+						// Force single level index since the prototype is limited to singleLevelIterator
+						IndexBlockSize: 1 << 30,
+						BlockSize:      32 << 10,
+					})
+					var buf [10]byte
+					ks := testkeys.Alpha(5)
+					i := 0
+					rng := rand.New(rand.NewSource(0))
+					value := make([]byte, valueSize)
+					k := 0
+					for i < numKeys {
+						for j := 0; j < versions && i < numKeys; j++ {
+							n := testkeys.WriteKeyAt(buf[:], ks, k, 1000-j)
+							ikey := base.MakeInternalKey(buf[:n], 0, InternalKeyKindSet)
+							const letters = "abcdefghijklmnopqrstuvwxyz"
+							const lettersLen = len(letters)
+							for i := 0; i < len(value); i++ {
+								value[i] = letters[rng.Intn(lettersLen)]
+							}
+							require.NoError(b, w.Add(ikey, value))
+							i++
+						}
+						k++
+					}
+					require.NoError(b, w.Close())
+					// !needValue represents a workload where only the latest version's
+					// value is needed (which is stored inline). The benchmark mimics
+					// this by using NextLazyValue() and never calling Value() (since it
+					// is simpler than calling Value() only on the latest versions).
+					for _, needValue := range []bool{false, true} {
+						b.Run(fmt.Sprintf("needValue=%t", needValue), func(b *testing.B) {
+							// !hasCache represents a situation where all the steps into a
+							// new block result in a cache miss. That is, it is reading cold
+							// data.
+							for _, hasCache := range []bool{false, true} {
+								b.Run(fmt.Sprintf("hasCache=%t", hasCache), func(b *testing.B) {
+									f1, err := mem.Open("test")
+									require.NoError(b, err)
+									var c *cache.Cache
+									if hasCache {
+										c = cache.New(256 << 20)
+										defer c.Unref()
+									}
+									r, err := NewReader(f1, ReaderOptions{
+										Comparer: testkeys.Comparer,
+										Cache:    c,
+									})
+									require.NoError(b, err)
+									defer r.Close()
+
+									iiter, err := r.NewIter(nil, nil)
+									require.NoError(b, err)
+									iter := iiter.(*singleLevelIterator)
+									defer iter.Close()
+									b.ResetTimer()
+									var k *InternalKey
+									for i := 0; i < b.N; i++ {
+										if k == nil {
+											if i%numKeys != 0 {
+												panic(fmt.Sprintf(
+													"iterator should not be exhausted %d, %d", i, b.N))
+											}
+											k, _ = iter.SeekGE([]byte(""))
+										} else {
+											if needValue {
+												k, _ = iter.Next()
+											} else {
+												k = iter.NextLazyValue()
+											}
+											if k == nil {
+												i--
+											}
+										}
+									}
+									b.StopTimer()
+									require.NoError(b, iter.Error())
+								})
+							}
+						})
+					}
+				})
+			}
+		})
 	}
 }

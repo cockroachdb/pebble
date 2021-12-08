@@ -12,6 +12,15 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 )
 
+// NB: blockWriter supports addInlineValuePrefix for efficiency reasons, in
+// that we don't want the caller to have to copy the value to a new slice in
+// order to add the prefix. It does not know about valueHandlePrefix since the
+// serialization of valueHandle includes that prefix. Similarly, blockReader
+// knows nothing about these prefixes since the value read from a block that
+// has such prefixes is passed to valueBlockReader for interpretation. A
+// cleaner abstraction would remove all knowledge of the prefix from this
+// file.
+
 func uvarintLen(v uint32) int {
 	i := 0
 	for v >= 0x80 {
@@ -28,12 +37,13 @@ type blockWriter struct {
 	buf             []byte
 	restarts        []uint32
 	curKey          []byte
-	curValue        []byte
-	prevKey         []byte
-	tmp             [4]byte
+	// curValue excludes the optional inlineValuePrefix.
+	curValue []byte
+	prevKey  []byte
+	tmp      [4]byte
 }
 
-func (w *blockWriter) store(keySize int, value []byte) {
+func (w *blockWriter) store(keySize int, value []byte, addInlineValuePrefix bool) {
 	shared := 0
 	if w.nEntries == w.nextRestart {
 		w.nextRestart = w.nEntries + w.restartInterval
@@ -58,7 +68,11 @@ func (w *blockWriter) store(keySize int, value []byte) {
 		}
 	}
 
-	needed := 3*binary.MaxVarintLen32 + len(w.curKey[shared:]) + len(value)
+	lenValuePlusOptionalPrefix := len(value)
+	if addInlineValuePrefix {
+		lenValuePlusOptionalPrefix++
+	}
+	needed := 3*binary.MaxVarintLen32 + len(w.curKey[shared:]) + lenValuePlusOptionalPrefix
 	n := len(w.buf)
 	if cap(w.buf) < n+needed {
 		newCap := 2 * cap(w.buf)
@@ -100,7 +114,7 @@ func (w *blockWriter) store(keySize int, value []byte) {
 	}
 
 	{
-		x := uint32(len(value))
+		x := uint32(lenValuePlusOptionalPrefix)
 		for x >= 0x80 {
 			w.buf[n] = byte(x) | 0x80
 			x >>= 7
@@ -111,6 +125,10 @@ func (w *blockWriter) store(keySize int, value []byte) {
 	}
 
 	n += copy(w.buf[n:], w.curKey[shared:])
+	if addInlineValuePrefix {
+		w.buf[n : n+1][0] = byte(inlineValuePrefix)
+		n++
+	}
 	n += copy(w.buf[n:], value)
 	w.buf = w.buf[:n]
 
@@ -120,6 +138,11 @@ func (w *blockWriter) store(keySize int, value []byte) {
 }
 
 func (w *blockWriter) add(key InternalKey, value []byte) {
+	w.addWithOptionalInlineValuePrefix(key, value, false)
+}
+
+func (w *blockWriter) addWithOptionalInlineValuePrefix(
+	key InternalKey, value []byte, addInlineValuePrefix bool) {
 	w.curKey, w.prevKey = w.prevKey, w.curKey
 
 	size := key.Size()
@@ -129,7 +152,7 @@ func (w *blockWriter) add(key InternalKey, value []byte) {
 	w.curKey = w.curKey[:size]
 	key.Encode(w.curKey)
 
-	w.store(size, value)
+	w.store(size, value, addInlineValuePrefix)
 }
 
 func (w *blockWriter) finish() []byte {
