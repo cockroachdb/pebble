@@ -87,6 +87,12 @@ const (
 	// necessary because sstable boundaries are inclusive, while the end key of a
 	// range deletion tombstone is exclusive.
 	InternalKeyRangeDeleteSentinel = (InternalKeySeqNumMax << 8) | uint64(InternalKeyKindRangeDelete)
+
+	// InternalKeyBoundaryRangeKey is the marker for a range key boundary. This
+	// sequence number and kind are used during interleaved range key and point
+	// iteration to allow an iterator to stop at range key start keys where
+	// there exists no point key.
+	InternalKeyBoundaryRangeKey = (InternalKeySeqNumMax << 8) | uint64(InternalKeyKindRangeKeySet)
 )
 
 var internalKeyKindNames = []string{

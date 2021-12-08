@@ -28,6 +28,19 @@ type CoalescedSpan struct {
 	Delete bool
 }
 
+// HasSets returns true if the coalesced span contains any Sets. When several
+// internal range keys are coalesced, it's possible for the resulting span to
+// only contain unsets or deletes. If encountered during user iteration, these
+// range keys may be elided.
+func (s *CoalescedSpan) HasSets() bool {
+	for _, i := range s.Items {
+		if !i.Unset {
+			return true
+		}
+	}
+	return false
+}
+
 // SuffixItem describes either a set or unset of a value at a particular
 // suffix.
 type SuffixItem struct {
