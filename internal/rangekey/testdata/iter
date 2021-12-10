@@ -1,15 +1,15 @@
 define
-a.RANGEKEYSET.10  : c [(@t5=apples)]
+a.RANGEKEYSET.10  : c [(@5=apples)]
 a.RANGEKEYDEL.10  : c
-a.RANGEKEYUNSET.8 : c [@t1]
-a.RANGEKEYSET.4   : c [(@t3=bananas)]
-a.RANGEKEYSET.4   : c [(@t2=oranges)]
-c.RANGEKEYSET.4   : d [(@t3=coconut)]
-e.RANGEKEYSET.20  : f [(@t5=pineapple),(@t3=guava)]
+a.RANGEKEYUNSET.8 : c [@1]
+a.RANGEKEYSET.4   : c [(@3=bananas)]
+a.RANGEKEYSET.4   : c [(@2=oranges)]
+c.RANGEKEYSET.4   : d [(@3=coconut)]
+e.RANGEKEYSET.20  : f [(@5=pineapple),(@3=guava)]
 h.RANGEKEYDEL.22  : j
-h.RANGEKEYSET.21  : j [(@t5=peaches),(@t3=starfruit)]
-l.RANGEKEYUNSET.2 : m [@t9,@t5]
-q.RANGEKEYSET.14  : z [(@t9=mangos)]
+h.RANGEKEYSET.21  : j [(@5=peaches),(@3=starfruit)]
+l.RANGEKEYUNSET.2 : m [@9,@5]
+q.RANGEKEYSET.14  : z [(@9=mangos)]
 ----
 OK
 
@@ -23,18 +23,18 @@ next
 next
 ----
 ●   [a, c)#10 (DEL)
-└── @t5 : apples
+└── @5 : apples
 ●   [c, d)#4
-└── @t3 : coconut
+└── @3 : coconut
 ●   [e, f)#20
-├── @t5 : pineapple
-└── @t3 : guava
+├── @5 : pineapple
+└── @3 : guava
 ●   [h, j)#22 (DEL)
 ●   [l, m)#2
-├── @t9 unset
-└── @t5 unset
+├── @9 unset
+└── @5 unset
 ●   [q, z)#14
-└── @t9 : mangos
+└── @9 : mangos
 .
 
 iter
@@ -47,18 +47,18 @@ prev
 prev
 ----
 ●   [q, z)#14
-└── @t9 : mangos
+└── @9 : mangos
 ●   [l, m)#2
-├── @t9 unset
-└── @t5 unset
+├── @9 unset
+└── @5 unset
 ●   [h, j)#22 (DEL)
 ●   [e, f)#20
-├── @t5 : pineapple
-└── @t3 : guava
+├── @5 : pineapple
+└── @3 : guava
 ●   [c, d)#4
-└── @t3 : coconut
+└── @3 : coconut
 ●   [a, c)#10 (DEL)
-└── @t5 : apples
+└── @5 : apples
 .
 
 iter
@@ -69,14 +69,14 @@ next
 next
 ----
 ●   [c, d)#4
-└── @t3 : coconut
+└── @3 : coconut
 ●   [a, c)#10 (DEL)
-└── @t5 : apples
+└── @5 : apples
 ●   [c, d)#4
-└── @t3 : coconut
+└── @3 : coconut
 ●   [e, f)#20
-├── @t5 : pineapple
-└── @t3 : guava
+├── @5 : pineapple
+└── @3 : guava
 ●   [h, j)#22 (DEL)
 
 iter
@@ -87,14 +87,14 @@ next
 next
 ----
 ●   [c, d)#4
-└── @t3 : coconut
+└── @3 : coconut
 ●   [a, c)#10 (DEL)
-└── @t5 : apples
+└── @5 : apples
 ●   [c, d)#4
-└── @t3 : coconut
+└── @3 : coconut
 ●   [e, f)#20
-├── @t5 : pineapple
-└── @t3 : guava
+├── @5 : pineapple
+└── @3 : guava
 ●   [h, j)#22 (DEL)
 
 iter
@@ -107,19 +107,19 @@ next
 next
 ----
 ●   [c, d)#4
-└── @t3 : coconut
+└── @3 : coconut
 ●   [c, d)#4
-└── @t3 : coconut
+└── @3 : coconut
 ●   [a, c)#10 (DEL)
-└── @t5 : apples
+└── @5 : apples
 .
 ●   [a, c)#10 (DEL)
-└── @t5 : apples
+└── @5 : apples
 ●   [c, d)#4
-└── @t3 : coconut
+└── @3 : coconut
 ●   [e, f)#20
-├── @t5 : pineapple
-└── @t3 : guava
+├── @5 : pineapple
+└── @3 : guava
 
 iter
 seek-ge dog
@@ -131,18 +131,18 @@ next
 next
 ----
 ●   [e, f)#20
-├── @t5 : pineapple
-└── @t3 : guava
+├── @5 : pineapple
+└── @3 : guava
 ●   [h, j)#22 (DEL)
 ●   [e, f)#20
-├── @t5 : pineapple
-└── @t3 : guava
+├── @5 : pineapple
+└── @3 : guava
 ●   [h, j)#22 (DEL)
 ●   [l, m)#2
-├── @t9 unset
-└── @t5 unset
+├── @9 unset
+└── @5 unset
 ●   [q, z)#14
-└── @t9 : mangos
+└── @9 : mangos
 .
 
 iter
@@ -152,22 +152,22 @@ seek-ge bat
 seek-ge c
 ----
 ●   [a, c)#10 (DEL)
-└── @t5 : apples
+└── @5 : apples
 ●   [a, c)#10 (DEL)
-└── @t5 : apples
+└── @5 : apples
 ●   [a, c)#10 (DEL)
-└── @t5 : apples
+└── @5 : apples
 ●   [c, d)#4
-└── @t3 : coconut
+└── @3 : coconut
 
 iter
 seek-ge 1
 seek-ge c1
 ----
 ●   [a, c)#10 (DEL)
-└── @t5 : apples
+└── @5 : apples
 ●   [c, d)#4
-└── @t3 : coconut
+└── @3 : coconut
 
 iter
 seek-ge zoo
@@ -178,12 +178,12 @@ seek-ge yeti
 ----
 .
 ●   [q, z)#14
-└── @t9 : mangos
+└── @9 : mangos
 .
 ●   [q, z)#14
-└── @t9 : mangos
+└── @9 : mangos
 ●   [q, z)#14
-└── @t9 : mangos
+└── @9 : mangos
 
 iter
 seek-ge h
@@ -191,8 +191,8 @@ seek-ge j
 ----
 ●   [h, j)#22 (DEL)
 ●   [l, m)#2
-├── @t9 unset
-└── @t5 unset
+├── @9 unset
+└── @5 unset
 
 iter
 first
@@ -200,10 +200,10 @@ prev
 next
 ----
 ●   [a, c)#10 (DEL)
-└── @t5 : apples
+└── @5 : apples
 .
 ●   [a, c)#10 (DEL)
-└── @t5 : apples
+└── @5 : apples
 
 iter
 last
@@ -211,10 +211,10 @@ next
 prev
 ----
 ●   [q, z)#14
-└── @t9 : mangos
+└── @9 : mangos
 .
 ●   [q, z)#14
-└── @t9 : mangos
+└── @9 : mangos
 
 iter
 seek-lt a
@@ -228,11 +228,11 @@ prev
 .
 .
 ●   [a, c)#10 (DEL)
-└── @t5 : apples
+└── @5 : apples
 ●   [q, z)#14
-└── @t9 : mangos
+└── @9 : mangos
 ●   [q, z)#14
-└── @t9 : mangos
+└── @9 : mangos
 .
 ●   [q, z)#14
-└── @t9 : mangos
+└── @9 : mangos
