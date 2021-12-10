@@ -122,9 +122,9 @@ func TestSlice(t *testing.T) {
 
 func TestSuffix(t *testing.T) {
 	ks := Alpha(3)
-	require.Equal(t, "a@t1", string(KeyAt(ks, 0, 1)))
-	require.Equal(t, "a@t10", string(KeyAt(ks, 0, 10)))
-	require.Equal(t, "aab@t5", string(KeyAt(ks, 3, 5)))
+	require.Equal(t, "a@1", string(KeyAt(ks, 0, 1)))
+	require.Equal(t, "a@10", string(KeyAt(ks, 0, 10)))
+	require.Equal(t, "aab@5", string(KeyAt(ks, 3, 5)))
 
 	assertCmp := func(want int, a, b []byte) {
 		got := Comparer.Compare(a, b)
@@ -145,7 +145,7 @@ func TestSuffix(t *testing.T) {
 	}
 
 	// Suffixes should be comparable on their own too.
-	a, b := make([]byte, maxSuffixLen), make([]byte, maxSuffixLen)
+	a, b := make([]byte, MaxSuffixLen), make([]byte, MaxSuffixLen)
 	for ts := 2; ts < 150; ts++ {
 		an := WriteSuffix(a, ts-1)
 		bn := WriteSuffix(b, ts)
