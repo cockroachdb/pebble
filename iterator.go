@@ -187,6 +187,8 @@ type Iterator struct {
 	// Used for deriving the value of SeekPrefixGE(..., trySeekUsingNext),
 	// and SeekGE/SeekLT optimizations
 	lastPositioningOp lastPositioningOpKind
+	// Used in some tests to disable the random disabling of seek optimizations.
+	forceEnableSeekOpt bool
 }
 
 type iteratorRangeKeyState struct {
@@ -863,6 +865,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 		key = upperBound
 	}
 	seekInternalIter := true
+	trySeekUsingNext := false
 	// The following noop optimization only applies when i.batch == nil, since
 	// an iterator over a batch is iterating over mutable data, that may have
 	// changed since the last seek.
@@ -877,10 +880,27 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 				(i.iterValidityState == IterValid && i.cmp(key, i.key) <= 0 &&
 					(limit == nil || i.cmp(i.key, limit) < 0)) {
 				// Noop
-				if !invariants.Enabled || !disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
+				if !invariants.Enabled || !disableSeekOpt(key, uintptr(unsafe.Pointer(i))) || i.forceEnableSeekOpt {
 					i.lastPositioningOp = seekGELastPositioningOp
 					return i.iterValidityState
 				}
+			}
+			// cmp == 0 is not safe to optimize since
+			// - i.pos could be at iterPosNext, due to a merge.
+			// - Even if i.pos were at iterPosCurForward, we could have a DELETE,
+			//   SET pair for a key, and the iterator would have moved past DELETE
+			//   but stayed at iterPosCurForward. A similar situation occurs for a
+			//   MERGE, SET pair where the MERGE is consumed and the iterator is
+			//   at the SET.
+			// We also leverage the IterAtLimit <=> i.pos invariant defined in the
+			// comment on iterValidityState, to exclude any cases where i.pos
+			// is iterPosCur{Forward,Reverse}Paused. This avoids the need to
+			// special-case those iterator positions and their interactions with
+			// trySeekUsingNext, as the main uses for trySeekUsingNext in CockroachDB
+			// do not use limited Seeks in the first place.
+			trySeekUsingNext = cmp < 0 && i.iterValidityState != IterAtLimit && limit == nil
+			if invariants.Enabled && trySeekUsingNext && !i.forceEnableSeekOpt && disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
+				trySeekUsingNext = false
 			}
 			if i.pos == iterPosCurForwardPaused && i.cmp(key, i.iterKey.UserKey) <= 0 {
 				// Have some work to do, but don't need to seek, and we can
@@ -890,7 +910,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 		}
 	}
 	if seekInternalIter {
-		i.iterKey, i.iterValue = i.iter.SeekGE(key)
+		i.iterKey, i.iterValue = i.iter.SeekGE(key, trySeekUsingNext)
 		i.stats.ForwardSeekCount[InternalIterCall]++
 	}
 	i.findNextEntry(limit)
@@ -986,7 +1006,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 		// In general some versions of i.prefix could have been consumed by
 		// the iterator, so we only optimize for cmp < 0.
 		trySeekUsingNext = cmp < 0
-		if invariants.Enabled && trySeekUsingNext && disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
+		if invariants.Enabled && trySeekUsingNext && !i.forceEnableSeekOpt && disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
 			trySeekUsingNext = false
 		}
 	}
@@ -1106,7 +1126,7 @@ func (i *Iterator) First() bool {
 	i.lastPositioningOp = unknownLastPositionOp
 	i.stats.ForwardSeekCount[InterfaceCall]++
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound)
+		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, false /* trySeekUsingNext */)
 		i.stats.ForwardSeekCount[InternalIterCall]++
 	} else {
 		i.iterKey, i.iterValue = i.iter.First()
@@ -1171,7 +1191,7 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 		// We're positioned before the first key. Need to reposition to point to
 		// the first key.
 		if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-			i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound)
+			i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, false /* trySeekUsingNext */)
 			i.stats.ForwardSeekCount[InternalIterCall]++
 		} else {
 			i.iterKey, i.iterValue = i.iter.First()
@@ -1197,7 +1217,7 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 			// We're positioned before the first key. Need to reposition to point to
 			// the first key.
 			if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-				i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound)
+				i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, false /* trySeekUsingNext */)
 				i.stats.ForwardSeekCount[InternalIterCall]++
 			} else {
 				i.iterKey, i.iterValue = i.iter.First()

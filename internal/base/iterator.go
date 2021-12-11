@@ -85,7 +85,23 @@ type InternalIterator interface {
 	// is pointing at a valid entry, and (nil, nil) otherwise. Note that SeekGE
 	// only checks the upper bound. It is up to the caller to ensure that key
 	// is greater than or equal to the lower bound.
-	SeekGE(key []byte) (*InternalKey, []byte)
+	//
+	// trySeekUsingNext is a performance optimization that callers can use to
+	// indicate that they have not done any action to move this iterator beyond
+	// the first key that would be found if this iterator were to honestly do
+	// the intended seek. For example, say the caller did a
+	// SeekGE(k1...), followed by SeekGE(k2...) where k1 <= k2, without any
+	// intermediate positioning calls. The caller can safely specify true for this
+	// parameter in the second call. As another example, say the caller did do one
+	// call to Next between the two Seek calls, and k1 < k2. Again, the caller can
+	// safely specify a true value for this parameter. Note that a false value is
+	// always safe. The callee is free to ignore the true value if its
+	// implementation does not permit this optimization.
+	// - We make the caller do this determination since a string comparison of
+	//   k1, k2 is not necessarily cheap, and there may be many iterators in
+	//   the iterator stack. Doing it once at the root of the iterator stack
+	//   is cheaper.
+	SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte)
 
 	// SeekPrefixGE moves the iterator to the first key/value pair whose key is
 	// greater than or equal to the given key. Returns the key and value if the
@@ -127,15 +143,15 @@ type InternalIterator interface {
 	//   k1, k2 is not necessarily cheap, and there may be many iterators in
 	//   the iterator stack. Doing it once at the root of the iterator stack
 	//   is cheaper.
-	// - This optimization could also be applied to SeekGE and SeekLT (where
-	//   it would be trySeekUsingPrev). We currently only do it for
-	//   SeekPrefixGE because this is where this optimization helps the
-	//   performance of CockroachDB. The SeekGE and SeekLT cases in
-	//   CockroachDB are typically accompanied with bounds that change between
-	//   seek calls, and is optimized inside certain iterator implementations,
-	//   like singleLevelIterator, without any extra parameter passing (though
-	//   the same amortization of string comparisons could be done to improve
-	//   that optimization, by making the root of the iterator stack do it).
+	// - This optimization could also be applied to SeekLT (where it would be
+	//   trySeekUsingPrev). We currently only do it for SeekPrefixGE and SeekGE
+	//   because this is where this optimization helps the performance of
+	//   CockroachDB. The SeekLT cases in CockroachDB are typically accompanied
+	//   with bounds that change between seek calls, and is optimized inside
+	//   certain iterator implementations, like singleLevelIterator, without any
+	//   extra parameter passing (though the same amortization of string
+	//   comparisons could be done to improve that optimization, by making the
+	//   root of the iterator stack do it).
 	SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) (*InternalKey, []byte)
 
 	// SeekLT moves the iterator to the last key/value pair whose key is less

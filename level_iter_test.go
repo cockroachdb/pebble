@@ -125,7 +125,7 @@ func TestLevelIter(t *testing.T) {
 			iter := newLevelIter(opts, DefaultComparer.Compare,
 				func(a []byte) int { return len(a) }, newIters2, files.Iter(),
 				manifest.Level(level), nil)
-			iter.SeekGE([]byte(key))
+			iter.SeekGE([]byte(key), false /* trySeekUsingNext */)
 			lower, upper := tableOpts.GetLowerBound(), tableOpts.GetUpperBound()
 			return fmt.Sprintf("[%s,%s]\n", lower, upper)
 
@@ -348,8 +348,8 @@ func (i *levelIterTestIter) String() string {
 	return "level-iter-test"
 }
 
-func (i *levelIterTestIter) SeekGE(key []byte) (*InternalKey, []byte) {
-	ikey, val := i.levelIter.SeekGE(key)
+func (i *levelIterTestIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+	ikey, val := i.levelIter.SeekGE(key, trySeekUsingNext)
 	return i.rangeDelSeek(key, ikey, val, 1)
 }
 
@@ -488,7 +488,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								l.SeekGE(keys[rng.Intn(len(keys))])
+								l.SeekGE(keys[rng.Intn(len(keys))], false /* trySeekUsingNext */)
 							}
 							l.Close()
 						})
@@ -535,7 +535,7 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 								pos := i % (keyCount - 1)
 								l.SetBounds(keys[pos], keys[pos+1])
 								// SeekGE will return keys[pos].
-								k, _ := l.SeekGE(keys[pos])
+								k, _ := l.SeekGE(keys[pos], false /* trySeekUsingNext */)
 								// Next() will get called once and return nil.
 								for k != nil {
 									k, _ = l.Next()
