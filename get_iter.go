@@ -44,7 +44,7 @@ func (g *getIter) String() string {
 	return fmt.Sprintf("len(l0)=%d, len(mem)=%d, level=%d", len(g.l0), len(g.mem), g.level)
 }
 
-func (g *getIter) SeekGE(key []byte) (*InternalKey, []byte) {
+func (g *getIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
 }
 
@@ -119,7 +119,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 			g.iter = g.batch.newInternalIter(nil)
 			g.rangeDelIter = g.batch.newRangeDelIter(nil)
 			g.batch = nil
-			g.iterKey, g.iterValue = g.iter.SeekGE(g.key)
+			g.iterKey, g.iterValue = g.iter.SeekGE(g.key, false /* trySeekUsingNext */)
 			continue
 		}
 
@@ -135,7 +135,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 			g.iter = m.newIter(nil)
 			g.rangeDelIter = m.newRangeDelIter(nil)
 			g.mem = g.mem[:n-1]
-			g.iterKey, g.iterValue = g.iter.SeekGE(g.key)
+			g.iterKey, g.iterValue = g.iter.SeekGE(g.key, false /* trySeekUsingNext */)
 			continue
 		}
 
@@ -149,7 +149,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 					files, manifest.L0Sublevel(n), nil)
 				g.levelIter.initRangeDel(&g.rangeDelIter)
 				g.iter = &g.levelIter
-				g.iterKey, g.iterValue = g.iter.SeekGE(g.key)
+				g.iterKey, g.iterValue = g.iter.SeekGE(g.key, false /* trySeekUsingNext */)
 				continue
 			}
 			g.level++
@@ -169,7 +169,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter
-		g.iterKey, g.iterValue = g.iter.SeekGE(g.key)
+		g.iterKey, g.iterValue = g.iter.SeekGE(g.key, false /* trySeekUsingNext */)
 	}
 }
 

@@ -240,6 +240,24 @@ next
 .
 <a:1>
 
+
+# Verify the optimization to use next when doing SeekGE.
+
+iter
+seek-ge a false
+seek-ge a true
+seek-ge b true
+seek-ge c true
+seek-ge d true
+seek-ge e true
+----
+<a:1>
+<a:1>
+<b:2>
+<c:3>
+<d:4>
+.
+
 # Verify the optimization to use next when doing SeekPrefixGE.
 
 iter

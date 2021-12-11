@@ -27,7 +27,7 @@ import (
 // not contain the key.
 func (m *memTable) get(key []byte) (value []byte, err error) {
 	it := m.skl.NewIter(nil, nil)
-	ikey, val := it.SeekGE(key)
+	ikey, val := it.SeekGE(key, false /* trySeekUsingNext */)
 	if ikey == nil {
 		return nil, ErrNotFound
 	}
@@ -118,7 +118,7 @@ func TestMemTableBasic(t *testing.T) {
 	}
 	// Check an iterator.
 	s, x := "", newInternalIterAdapter(m.newIter(nil))
-	for valid := x.SeekGE([]byte("mango")); valid; valid = x.Next() {
+	for valid := x.SeekGE([]byte("mango"), false); valid; valid = x.Next() {
 		s += fmt.Sprintf("%s/%s.", x.Key().UserKey, x.Value())
 	}
 	if want := "peach/yellow.plum/purple."; s != want {
@@ -220,7 +220,7 @@ func TestMemTable1000Entries(t *testing.T) {
 		"507",
 	}
 	x := newInternalIterAdapter(m0.newIter(nil))
-	x.SeekGE([]byte(wants[0]))
+	x.SeekGE([]byte(wants[0]), false)
 	for _, want := range wants {
 		if !x.Valid() {
 			t.Fatalf("iter: next failed, want=%q", want)
@@ -364,7 +364,7 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 
 				var count int
 				it := newInternalIterAdapter(m.newRangeDelIter(nil))
-				for valid := it.SeekGE(start); valid; valid = it.Next() {
+				for valid := it.SeekGE(start, false /* trySeekUsingNext */); valid; valid = it.Next() {
 					if m.cmp(it.Key().UserKey, end) >= 0 {
 						break
 					}
@@ -405,7 +405,7 @@ func BenchmarkMemTableIterSeekGE(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		iter.SeekGE(keys[rng.Intn(len(keys))])
+		iter.SeekGE(keys[rng.Intn(len(keys))], false /* trySeekUsingNext */)
 	}
 }
 

@@ -518,7 +518,7 @@ func (i *blockIter) cacheEntry() {
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
-func (i *blockIter) SeekGE(key []byte) (*InternalKey, []byte) {
+func (i *blockIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
 	i.clearCache()
 
 	ikey := base.MakeSearchKey(key)

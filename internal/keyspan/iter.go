@@ -67,7 +67,7 @@ func NewIter(cmp base.Compare, spans []Span) *Iter {
 
 // SeekGE implements InternalIterator.SeekGE, as documented in the
 // internal/base package.
-func (i *Iter) SeekGE(key []byte) (*base.InternalKey, []byte) {
+func (i *Iter) SeekGE(key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
 	// NB: manually inlined sort.Seach is ~5% faster.
 	//
 	// Define f(-1) == false and f(n) == true.

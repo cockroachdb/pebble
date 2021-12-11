@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 
@@ -78,7 +79,7 @@ func (f *fakeIter) String() string {
 	return "fake"
 }
 
-func (f *fakeIter) SeekGE(key []byte) (*InternalKey, []byte) {
+func (f *fakeIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
 	f.valid = false
 	for f.index = 0; f.index < len(f.keys); f.index++ {
 		if DefaultComparer.Compare(key, f.key().UserKey) <= 0 {
@@ -95,7 +96,7 @@ func (f *fakeIter) SeekGE(key []byte) (*InternalKey, []byte) {
 func (f *fakeIter) SeekPrefixGE(
 	prefix, key []byte, trySeekUsingNext bool,
 ) (*base.InternalKey, []byte) {
-	return f.SeekGE(key)
+	return f.SeekGE(key, trySeekUsingNext)
 }
 
 func (f *fakeIter) SeekLT(key []byte) (*InternalKey, []byte) {
@@ -267,8 +268,8 @@ func (i *invalidatingIter) zeroLast() {
 	}
 }
 
-func (i *invalidatingIter) SeekGE(key []byte) (*InternalKey, []byte) {
-	return i.update(i.iter.SeekGE(key))
+func (i *invalidatingIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+	return i.update(i.iter.SeekGE(key, trySeekUsingNext))
 }
 
 func (i *invalidatingIter) SeekPrefixGE(
@@ -900,6 +901,109 @@ func TestIteratorNextPrev(t *testing.T) {
 	})
 }
 
+type iterSeekOptWrapper struct {
+	internalIterator
+
+	seekGEUsingNext, seekPrefixGEUsingNext *int
+}
+
+func (i *iterSeekOptWrapper) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+	if trySeekUsingNext {
+		*i.seekGEUsingNext++
+	}
+	return i.internalIterator.SeekGE(key, trySeekUsingNext)
+}
+
+func (i *iterSeekOptWrapper) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+	if trySeekUsingNext {
+		*i.seekPrefixGEUsingNext++
+	}
+	return i.internalIterator.SeekPrefixGE(prefix, key, trySeekUsingNext)
+}
+
+func TestIteratorSeekOpt(t *testing.T) {
+	var d *DB
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+	var iter *Iterator
+	defer func() {
+		if iter != nil {
+			require.NoError(t, iter.Close())
+		}
+	}()
+	var seekGEUsingNext, seekPrefixGEUsingNext int
+
+	datadriven.RunTest(t, "testdata/iterator_seek_opt", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			if iter != nil {
+				if err := iter.Close(); err != nil {
+					return err.Error()
+				}
+			}
+			if d != nil {
+				if err := d.Close(); err != nil {
+					return err.Error()
+				}
+			}
+			seekGEUsingNext = 0
+			seekPrefixGEUsingNext = 0
+
+			opts := &Options{}
+			opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
+				func() TablePropertyCollector {
+					return &minSeqNumPropertyCollector{}
+				})
+
+			var err error
+			if d, err = runDBDefineCmd(td, opts); err != nil {
+				return err.Error()
+			}
+
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			d.mu.Unlock()
+			oldNewIters := d.newIters
+			d.newIters = func(file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, keyspan.FragmentIterator, error) {
+				iter, rangeIter, err := oldNewIters(file, opts, bytesIterated)
+				iterWrapped := &iterSeekOptWrapper{
+					internalIterator:      iter,
+					seekGEUsingNext:       &seekGEUsingNext,
+					seekPrefixGEUsingNext: &seekPrefixGEUsingNext,
+				}
+				return iterWrapped, rangeIter, err
+			}
+			return s
+
+		case "iter":
+			if iter == nil || iter.iter == nil {
+				// TODO(peter): runDBDefineCmd doesn't properly update the visible
+				// sequence number. So we have to use a snapshot with a very large
+				// sequence number, otherwise the DB appears empty.
+				snap := Snapshot{
+					db:     d,
+					seqNum: InternalKeySeqNumMax,
+				}
+				iter = snap.NewIter(nil)
+				iter.readSampling.forceReadSampling = true
+				iter.split = func(a []byte) int { return len(a) }
+				iter.forceEnableSeekOpt = true
+			}
+			iterOutput := runIterCmd(td, iter, false)
+			stats := iter.Stats()
+			var builder strings.Builder
+			fmt.Fprintf(&builder, "%sstats: %s\n", iterOutput, stats.String())
+			fmt.Fprintf(&builder, "SeekGEs with trySeekUsingNext: %d\n", seekGEUsingNext)
+			fmt.Fprintf(&builder, "SeekPrefixGEs with trySeekUsingNext: %d\n", seekPrefixGEUsingNext)
+			return builder.String()
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
 type errorSeekIter struct {
 	internalIterator
 	// Fields controlling error injection for seeks.
@@ -908,13 +1012,13 @@ type errorSeekIter struct {
 	err                   error
 }
 
-func (i *errorSeekIter) SeekGE(key []byte) (*InternalKey, []byte) {
+func (i *errorSeekIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
 	if i.tryInjectError() {
 		return nil, nil
 	}
 	i.err = nil
 	i.seekCount++
-	return i.internalIterator.SeekGE(key)
+	return i.internalIterator.SeekGE(key, trySeekUsingNext)
 }
 
 func (i *errorSeekIter) SeekPrefixGE(

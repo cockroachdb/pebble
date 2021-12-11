@@ -383,7 +383,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			return
 		}
 		defer iter.Close()
-		key, value := iter.SeekGE(s.start)
+		key, value := iter.SeekGE(s.start, false /* trySeekUsingNext */)
 
 		// We configured sstable.Reader to return raw tombstones which requires a
 		// bit more work here to put them in a form that can be iterated in

@@ -30,8 +30,8 @@ func (i *internalIterAdapter) String() string {
 	return "internal-iter-adapter"
 }
 
-func (i *internalIterAdapter) SeekGE(key []byte) bool {
-	return i.update(i.internalIterator.SeekGE(key))
+func (i *internalIterAdapter) SeekGE(key []byte, trySeekUsingNext bool) bool {
+	return i.update(i.internalIterator.SeekGE(key, trySeekUsingNext))
 }
 
 func (i *internalIterAdapter) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) bool {

@@ -1,0 +1,222 @@
+
+define auto-compactions=off
+L0
+  a.SET.4:4
+L1
+  a.SET.3:3
+L2
+  d.SET.2:2
+L3
+  b.SET.1:1
+  c.SET.1:1
+  d.SET.1:1
+  e.SET.1:1
+----
+0.0:
+  000004:[a#4,SET-a#4,SET]
+1:
+  000005:[a#3,SET-a#3,SET]
+2:
+  000006:[d#2,SET-d#2,SET]
+3:
+  000007:[b#1,SET-e#1,SET]
+
+# Simple case: three successive seeks, at increasing keys. Should use
+# trySeekUsingNext.
+
+iter
+seek-ge a
+----
+a:4
+stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0))
+SeekGEs with trySeekUsingNext: 0
+SeekPrefixGEs with trySeekUsingNext: 0
+
+iter
+seek-ge b
+----
+b:1
+stats: (interface (dir, seek, step): (fwd, 2, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 2, 0), (rev, 0, 0))
+SeekGEs with trySeekUsingNext: 2
+SeekPrefixGEs with trySeekUsingNext: 0
+
+iter
+seek-ge c
+----
+c:1
+stats: (interface (dir, seek, step): (fwd, 3, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 3, 0), (rev, 0, 0))
+SeekGEs with trySeekUsingNext: 4
+SeekPrefixGEs with trySeekUsingNext: 0
+
+# Seek at a lower key. Should not call with trySeekUsingNext = true.
+
+iter
+seek-ge bb
+----
+c:1
+stats: (interface (dir, seek, step): (fwd, 4, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 4, 0), (rev, 0, 0))
+SeekGEs with trySeekUsingNext: 4
+SeekPrefixGEs with trySeekUsingNext: 0
+
+# Seek at a greater key than last seek, but lands on the same key. Should
+# not call internalIterator at all.
+
+iter
+seek-ge bbb
+----
+c:1
+stats: (interface (dir, seek, step): (fwd, 5, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 4, 0), (rev, 0, 0))
+SeekGEs with trySeekUsingNext: 4
+SeekPrefixGEs with trySeekUsingNext: 0
+
+# A step followed by a seek should not call with trySeekUsingNext = true.
+
+iter
+next
+seek-ge e
+----
+d:2
+e:1
+stats: (interface (dir, seek, step): (fwd, 6, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 5, 1), (rev, 0, 0))
+SeekGEs with trySeekUsingNext: 4
+SeekPrefixGEs with trySeekUsingNext: 0
+
+iter
+prev
+seek-ge b
+----
+d:2
+b:1
+stats: (interface (dir, seek, step): (fwd, 7, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 6, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 4
+SeekPrefixGEs with trySeekUsingNext: 0
+
+# SeekPrefixGE simple case.
+
+iter
+seek-prefix-ge a
+----
+a:4
+stats: (interface (dir, seek, step): (fwd, 8, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 7, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 4
+SeekPrefixGEs with trySeekUsingNext: 0
+
+iter
+seek-prefix-ge b
+----
+b:1
+stats: (interface (dir, seek, step): (fwd, 9, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 8, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 4
+SeekPrefixGEs with trySeekUsingNext: 2
+
+iter
+seek-prefix-ge c
+----
+c:1
+stats: (interface (dir, seek, step): (fwd, 10, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 9, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 4
+SeekPrefixGEs with trySeekUsingNext: 4
+
+# Seek at a lower key. Should not call with trySeekUsingNext = true.
+
+iter
+seek-prefix-ge bb
+----
+.
+stats: (interface (dir, seek, step): (fwd, 11, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 10, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 4
+SeekPrefixGEs with trySeekUsingNext: 4
+
+# Shifting bounds followed by SeekGEs. The one immediately after a bounds change
+# does not use trySeekUsingNext, but successive ones do (while still respecting
+# bounds).
+
+iter
+set-bounds lower=a upper=aa
+seek-ge a
+----
+.
+a:4
+stats: (interface (dir, seek, step): (fwd, 12, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 11, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 4
+SeekPrefixGEs with trySeekUsingNext: 4
+
+iter
+set-bounds lower=a upper=c
+seek-ge b
+----
+.
+b:1
+stats: (interface (dir, seek, step): (fwd, 13, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 12, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 4
+SeekPrefixGEs with trySeekUsingNext: 4
+
+iter
+seek-ge bb
+----
+.
+stats: (interface (dir, seek, step): (fwd, 14, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 13, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 5
+SeekPrefixGEs with trySeekUsingNext: 4
+
+iter
+set-bounds lower=a upper=d
+seek-ge bbb
+----
+.
+c:1
+stats: (interface (dir, seek, step): (fwd, 15, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 14, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 5
+SeekPrefixGEs with trySeekUsingNext: 4
+
+iter
+seek-ge cc
+----
+.
+stats: (interface (dir, seek, step): (fwd, 16, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 15, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 6
+SeekPrefixGEs with trySeekUsingNext: 4
+
+# Shifting bounds, with non-overlapping and monotonic bounds. We don't call
+# trySeekUsingNext=true at all here as the set-bounds sits in between every two
+# seeks, but the results are still correct and within bounds.
+
+iter
+set-bounds lower=a upper=c
+seek-ge b
+----
+.
+b:1
+stats: (interface (dir, seek, step): (fwd, 17, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 16, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 6
+SeekPrefixGEs with trySeekUsingNext: 4
+
+iter
+set-bounds lower=c upper=e
+seek-ge c
+----
+.
+c:1
+stats: (interface (dir, seek, step): (fwd, 18, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 17, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 6
+SeekPrefixGEs with trySeekUsingNext: 4
+
+iter
+set-bounds lower=a upper=c
+seek-prefix-ge b
+----
+.
+b:1
+stats: (interface (dir, seek, step): (fwd, 19, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 18, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 6
+SeekPrefixGEs with trySeekUsingNext: 4
+
+iter
+set-bounds lower=c upper=e
+seek-prefix-ge c
+----
+.
+c:1
+stats: (interface (dir, seek, step): (fwd, 20, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 19, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 6
+SeekPrefixGEs with trySeekUsingNext: 4
