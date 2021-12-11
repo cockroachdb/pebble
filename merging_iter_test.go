@@ -357,7 +357,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								m.SeekGE(keys[rng.Intn(len(keys))])
+								m.SeekGE(keys[rng.Intn(len(keys))], false /* trySeekUsingNext */)
 							}
 							m.Close()
 						})
@@ -621,7 +621,7 @@ func BenchmarkMergingIterSeqSeekGEWithBounds(b *testing.B) {
 					pos := i % (keyCount - 1)
 					m.SetBounds(keys[pos], keys[pos+1])
 					// SeekGE will return keys[pos].
-					k, _ := m.SeekGE(keys[pos])
+					k, _ := m.SeekGE(keys[pos], false /* trySeekUsingNext */)
 					for k != nil {
 						k, _ = m.Next()
 					}

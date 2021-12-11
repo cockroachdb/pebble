@@ -1105,7 +1105,9 @@ func (i *batchIter) String() string {
 	return "batch"
 }
 
-func (i *batchIter) SeekGE(key []byte) (*InternalKey, []byte) {
+func (i *batchIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+	// Ignore trySeekUsingNext since the batch may have changed, so using Next
+	// would be incorrect.
 	i.err = nil // clear cached iteration error
 	ikey := i.iter.SeekGE(key)
 	if ikey == nil {
@@ -1117,10 +1119,8 @@ func (i *batchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 func (i *batchIter) SeekPrefixGE(
 	prefix, key []byte, trySeekUsingNext bool,
 ) (*base.InternalKey, []byte) {
-	// Ignore trySeekUsingNext since the batch may have changed, so using Next
-	// would be incorrect.
 	i.err = nil // clear cached iteration error
-	return i.SeekGE(key)
+	return i.SeekGE(key, trySeekUsingNext)
 }
 
 func (i *batchIter) SeekLT(key []byte) (*InternalKey, []byte) {
@@ -1468,8 +1468,9 @@ func (i *flushableBatchIter) String() string {
 }
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
-// package.
-func (i *flushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
+// package. Ignore trySeekUsingNext since we don't expect this optimization
+// to provide much benefit here at the moment.
+func (i *flushableBatchIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
 	i.err = nil // clear cached iteration error
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
@@ -1491,9 +1492,7 @@ func (i *flushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
 func (i *flushableBatchIter) SeekPrefixGE(
 	prefix, key []byte, trySeekUsingNext bool,
 ) (*base.InternalKey, []byte) {
-	// Ignore trySeekUsingNext since flushable batches are not user-facing, so
-	// optimizing prefix seeks is not important.
-	return i.SeekGE(key)
+	return i.SeekGE(key, trySeekUsingNext)
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
@@ -1649,7 +1648,7 @@ func (i *flushFlushableBatchIter) String() string {
 	return "flushable-batch"
 }
 
-func (i *flushFlushableBatchIter) SeekGE(key []byte) (*InternalKey, []byte) {
+func (i *flushFlushableBatchIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
 }
 

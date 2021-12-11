@@ -186,8 +186,8 @@ func (i *InterleavingIter) cmp(a, b []byte) int {
 //
 // NB: In accordance with the base.InternalIterator contract:
 //   i.lower ≤ key
-func (i *InterleavingIter) SeekGE(key []byte) (*base.InternalKey, []byte) {
-	i.pointKey, i.pointVal = i.pointIter.SeekGE(key)
+func (i *InterleavingIter) SeekGE(key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
+	i.pointKey, i.pointVal = i.pointIter.SeekGE(key, trySeekUsingNext)
 	i.pointKeyInterleaved = false
 	i.nextRangeKey(i.rangeKeyIter.SeekGE(key))
 	i.dir = +1

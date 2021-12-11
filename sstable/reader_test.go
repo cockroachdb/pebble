@@ -59,7 +59,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
-	ikey, value := i.SeekGE(key)
+	ikey, value := i.SeekGE(key, false /* trySeekUsingNext */)
 
 	if ikey == nil || r.Compare(key, ikey.UserKey) != 0 {
 		err := i.Close()
@@ -104,8 +104,8 @@ func (i *iterAdapter) String() string {
 	return "iter-adapter"
 }
 
-func (i *iterAdapter) SeekGE(key []byte) bool {
-	return i.update(i.Iterator.SeekGE(key))
+func (i *iterAdapter) SeekGE(key []byte, trySeekUsingNext bool) bool {
+	return i.update(i.Iterator.SeekGE(key, trySeekUsingNext))
 }
 
 func (i *iterAdapter) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) bool {
@@ -975,7 +975,7 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					it.SeekGE(keys[rng.Intn(len(keys))])
+					it.SeekGE(keys[rng.Intn(len(keys))], false /* trySeekUsingNext */)
 				}
 
 				b.StopTimer()

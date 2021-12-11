@@ -34,7 +34,7 @@ func (it *flushIterator) String() string {
 	return "memtable"
 }
 
-func (it *flushIterator) SeekGE(key []byte) (*base.InternalKey, []byte) {
+func (it *flushIterator) SeekGE(key []byte, tryNextUsingSeek bool) (*base.InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
 }
 

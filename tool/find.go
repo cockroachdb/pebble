@@ -427,7 +427,7 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 				return err
 			}
 			defer iter.Close()
-			key, value := iter.SeekGE(searchKey)
+			key, value := iter.SeekGE(searchKey, false /* trySeekUsingNext */)
 
 			// We configured sstable.Reader to return raw tombstones which requires a
 			// bit more work here to put them in a form that can be iterated in

@@ -45,7 +45,7 @@ func TestIter(t *testing.T) {
 					if len(parts) != 2 {
 						return "seek-ge <key>\n"
 					}
-					start, _ = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+					start, _ = iter.SeekGE([]byte(strings.TrimSpace(parts[1])), false /* trySeekUsingNext */)
 				case "seek-lt":
 					if len(parts) != 2 {
 						return "seek-lt <key>\n"

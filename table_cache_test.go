@@ -446,7 +446,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
 			}
-			key, value := iter.SeekGE([]byte("k"))
+			key, value := iter.SeekGE([]byte("k"), false /* trySeekUsingNext */)
 			if concurrent {
 				time.Sleep(time.Duration(sleepTime) * time.Microsecond)
 			}
