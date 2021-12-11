@@ -17,7 +17,7 @@ func newErrorIter(err error) *errorIter {
 	return &errorIter{err: err}
 }
 
-func (c *errorIter) SeekGE(key []byte) (*InternalKey, []byte) {
+func (c *errorIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
 	return nil, nil
 }
 

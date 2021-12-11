@@ -35,8 +35,8 @@ func (i *iterAdapter) verify(key *base.InternalKey, val []byte) (*base.InternalK
 	return key, val
 }
 
-func (i *iterAdapter) SeekGE(key []byte) (*base.InternalKey, []byte) {
-	return i.verify(i.Iter.SeekGE(key))
+func (i *iterAdapter) SeekGE(key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
+	return i.verify(i.Iter.SeekGE(key, trySeekUsingNext))
 }
 
 func (i *iterAdapter) SeekLT(key []byte) (*base.InternalKey, []byte) {

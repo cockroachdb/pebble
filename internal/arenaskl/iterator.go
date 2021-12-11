@@ -78,26 +78,7 @@ func (it *Iterator) Error() error {
 // pointing at a valid entry, and (nil, nil) otherwise. Note that SeekGE only
 // checks the upper bound. It is up to the caller to ensure that key is greater
 // than or equal to the lower bound.
-func (it *Iterator) SeekGE(key []byte) (*base.InternalKey, []byte) {
-	_, it.nd, _ = it.seekForBaseSplice(key)
-	if it.nd == it.list.tail {
-		return nil, nil
-	}
-	it.decodeKey()
-	if it.upper != nil && it.list.cmp(it.upper, it.key.UserKey) <= 0 {
-		it.nd = it.list.tail
-		return nil, nil
-	}
-	return &it.key, it.value()
-}
-
-// SeekPrefixGE moves the iterator to the first entry whose key is greater than
-// or equal to the given key. This method is equivalent to SeekGE and is
-// provided so that an arenaskl.Iterator implements the
-// internal/base.InternalIterator interface.
-func (it *Iterator) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
-) (*base.InternalKey, []byte) {
+func (it *Iterator) SeekGE(key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
 	if trySeekUsingNext {
 		if it.nd == it.list.tail {
 			// Iterator is done.
@@ -121,7 +102,26 @@ func (it *Iterator) SeekPrefixGE(
 			return &it.key, it.value()
 		}
 	}
-	return it.SeekGE(key)
+	_, it.nd, _ = it.seekForBaseSplice(key)
+	if it.nd == it.list.tail {
+		return nil, nil
+	}
+	it.decodeKey()
+	if it.upper != nil && it.list.cmp(it.upper, it.key.UserKey) <= 0 {
+		it.nd = it.list.tail
+		return nil, nil
+	}
+	return &it.key, it.value()
+}
+
+// SeekPrefixGE moves the iterator to the first entry whose key is greater than
+// or equal to the given key. This method is equivalent to SeekGE and is
+// provided so that an arenaskl.Iterator implements the
+// internal/base.InternalIterator interface.
+func (it *Iterator) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
+	return it.SeekGE(key, trySeekUsingNext)
 }
 
 // SeekLT moves the iterator to the last entry whose key is less than the given

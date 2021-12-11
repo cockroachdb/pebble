@@ -379,7 +379,7 @@ func (l *levelIter) verify(key *InternalKey, val []byte) (*InternalKey, []byte) 
 	return key, val
 }
 
-func (l *levelIter) SeekGE(key []byte) (*InternalKey, []byte) {
+func (l *levelIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
 	if l.isSyntheticIterBoundsKey != nil {
 		*l.isSyntheticIterBoundsKey = false
@@ -387,10 +387,16 @@ func (l *levelIter) SeekGE(key []byte) (*InternalKey, []byte) {
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
-	if l.loadFile(l.findFileGE(key), +1) == noFileLoaded {
+	loadFileIndicator := l.loadFile(l.findFileGE(key), +1)
+	if loadFileIndicator == noFileLoaded {
 		return nil, nil
 	}
-	if ikey, val := l.iter.SeekGE(key); ikey != nil {
+	if loadFileIndicator == newFileLoaded {
+		// File changed, so l.iter has changed, and that iterator is not
+		// positioned appropriately.
+		trySeekUsingNext = false
+	}
+	if ikey, val := l.iter.SeekGE(key, trySeekUsingNext); ikey != nil {
 		return l.verify(ikey, val)
 	}
 	return l.verify(l.skipEmptyFileForward())
