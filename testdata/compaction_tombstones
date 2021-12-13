@@ -39,7 +39,7 @@ range-deletions-bytes-estimate: 0
 
 maybe-compact
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (853 B) + L6 [] (0 B) -> L6 [] (0 B), in 1.0s, output rate 0 B/s
+[JOB 100] compacted(elision-only) L6 [000004] (853 B) + L6 [] (0 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
 
 # Test a table that straddles a snapshot. It should not be compacted.
 define snapshots=(50)
@@ -81,7 +81,7 @@ range-deletions-bytes-estimate: 0
 
 maybe-compact
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (783 B) + L6 [] (0 B) -> L6 [000005] (771 B), in 1.0s, output rate 771 B/s
+[JOB 100] compacted(elision-only) L6 [000004] (783 B) + L6 [] (0 B) -> L6 [000005] (771 B), in 1.0s (2.0s total), output rate 771 B/s
 
 version
 ----
@@ -129,7 +129,7 @@ close-snapshot
 close-snapshot
 103
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (901 B) + L6 [] (0 B) -> L6 [] (0 B), in 1.0s, output rate 0 B/s
+[JOB 100] compacted(elision-only) L6 [000004] (901 B) + L6 [] (0 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
 
 # Test a table that contains both deletions and non-deletions, but whose
 # non-deletions well outnumber its deletions. The table should not be
@@ -201,7 +201,7 @@ range-deletions-bytes-estimate: 16488
 
 maybe-compact
 ----
-[JOB 100] compacted(default) L5 [000004 000005] (26 K) + L6 [000007] (17 K) -> L6 [000009] (25 K), in 1.0s, output rate 25 K/s
+[JOB 100] compacted(default) L5 [000004 000005] (26 K) + L6 [000007] (17 K) -> L6 [000009] (25 K), in 1.0s (2.0s total), output rate 25 K/s
 
 define level-max-bytes=(L5 : 1000) auto-compactions=off
 L5
@@ -235,4 +235,4 @@ range-deletions-bytes-estimate: 0
 
 maybe-compact
 ----
-[JOB 100] compacted(default) L5 [000004] (794 B) + L6 [000006] (13 K) -> L6 [] (0 B), in 1.0s, output rate 0 B/s
+[JOB 100] compacted(default) L5 [000004] (794 B) + L6 [000006] (13 K) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s

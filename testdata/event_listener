@@ -75,7 +75,7 @@ create: db/marker.manifest.000003.MANIFEST-000007
 close: db/marker.manifest.000003.MANIFEST-000007
 sync: db
 [JOB 3] MANIFEST created 000007
-[JOB 3] flushed 1 memtable to L0 [000006] (770 B), in 1.0s, output rate 770 B/s
+[JOB 3] flushed 1 memtable to L0 [000006] (770 B), in 1.0s (2.0s total), output rate 770 B/s
 [JOB 3] MANIFEST deleted 000001
 
 compact
@@ -99,7 +99,7 @@ create: db/marker.manifest.000004.MANIFEST-000010
 close: db/marker.manifest.000004.MANIFEST-000010
 sync: db
 [JOB 5] MANIFEST created 000010
-[JOB 5] flushed 1 memtable to L0 [000009] (770 B), in 1.0s, output rate 770 B/s
+[JOB 5] flushed 1 memtable to L0 [000009] (770 B), in 1.0s (2.0s total), output rate 770 B/s
 [JOB 5] MANIFEST deleted 000003
 [JOB 6] compacting(default) L0 [000006 000009] (1.5 K) + L6 [] (0 B)
 create: db/000011.sst
@@ -114,7 +114,7 @@ create: db/marker.manifest.000005.MANIFEST-000012
 close: db/marker.manifest.000005.MANIFEST-000012
 sync: db
 [JOB 6] MANIFEST created 000012
-[JOB 6] compacted(default) L0 [000006 000009] (1.5 K) + L6 [] (0 B) -> L6 [000011] (770 B), in 1.0s, output rate 770 B/s
+[JOB 6] compacted(default) L0 [000006 000009] (1.5 K) + L6 [] (0 B) -> L6 [000011] (770 B), in 1.0s (2.0s total), output rate 770 B/s
 [JOB 6] sstable deleted 000006
 [JOB 6] sstable deleted 000009
 [JOB 6] MANIFEST deleted 000007
@@ -143,7 +143,7 @@ create: db/marker.manifest.000006.MANIFEST-000015
 close: db/marker.manifest.000006.MANIFEST-000015
 sync: db
 [JOB 8] MANIFEST created 000015
-[JOB 8] flushed 1 memtable to L0 [000014] (770 B), in 1.0s, output rate 770 B/s
+[JOB 8] flushed 1 memtable to L0 [000014] (770 B), in 1.0s (2.0s total), output rate 770 B/s
 
 enable-file-deletions
 ----
