@@ -1494,11 +1494,10 @@ func (d *DB) flush1() error {
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, flushPacer)
 
 	info := FlushInfo{
-		JobID:    jobID,
-		Input:    n,
-		Duration: d.timeNow().Sub(startTime),
-		Done:     true,
-		Err:      err,
+		JobID: jobID,
+		Input: n,
+		Done:  true,
+		Err:   err,
 	}
 	if err == nil {
 		for i := range ve.NewFiles {
@@ -1532,6 +1531,8 @@ func (d *DB) flush1() error {
 	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementCompactions(c.kind)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
+
+	info.Duration = d.timeNow().Sub(startTime)
 	d.opts.EventListener.FlushEnd(info)
 
 	// Refresh bytes flushed count.
@@ -1929,7 +1930,6 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	}
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, compactionPacer)
 
-	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
 		d.mu.versions.logLock()
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, func() []compactionInfo {
@@ -1955,6 +1955,8 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementCompactions(c.kind)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
+
+	info.Duration = d.timeNow().Sub(startTime)
 	d.opts.EventListener.CompactionEnd(info)
 
 	// Update the read state before deleting obsolete files because the
