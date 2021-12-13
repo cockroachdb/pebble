@@ -1532,6 +1532,8 @@ func (d *DB) flush1() error {
 	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementCompactions(c.kind)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
+
+	info.TotalDuration = d.timeNow().Sub(startTime)
 	d.opts.EventListener.FlushEnd(info)
 
 	// Refresh bytes flushed count.
@@ -1955,6 +1957,8 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementCompactions(c.kind)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
+
+	info.TotalDuration = d.timeNow().Sub(startTime)
 	d.opts.EventListener.CompactionEnd(info)
 
 	// Update the read state before deleting obsolete files because the
