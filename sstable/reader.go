@@ -2414,6 +2414,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		Data:       make([]BlockHandle, 0, r.Properties.NumDataBlocks),
 		Filter:     r.filterBH,
 		RangeDel:   r.rangeDelBH,
+		RangeKey:   r.rangeKeyBH,
 		Properties: r.propertiesBH,
 		MetaIndex:  r.metaIndexBH,
 		Footer:     r.footerBH,
@@ -2478,7 +2479,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 	var blocks []BlockHandle
 	blocks = append(blocks, l.Data...)
 	blocks = append(blocks, l.Index...)
-	blocks = append(blocks, l.TopIndex, l.Filter, l.RangeDel, l.Properties, l.MetaIndex)
+	blocks = append(blocks, l.TopIndex, l.Filter, l.RangeDel, l.RangeKey, l.Properties, l.MetaIndex)
 
 	// Sorting by offset ensures we are performing a sequential scan of the
 	// file.
@@ -2719,6 +2720,7 @@ type Layout struct {
 	TopIndex   BlockHandle
 	Filter     BlockHandle
 	RangeDel   BlockHandle
+	RangeKey   BlockHandle
 	Properties BlockHandle
 	MetaIndex  BlockHandle
 	Footer     BlockHandle
@@ -2749,6 +2751,9 @@ func (l *Layout) Describe(
 	}
 	if l.RangeDel.Length != 0 {
 		blocks = append(blocks, block{l.RangeDel, "range-del"})
+	}
+	if l.RangeKey.Length != 0 {
+		blocks = append(blocks, block{l.RangeKey, "range-key"})
 	}
 	if l.Properties.Length != 0 {
 		blocks = append(blocks, block{l.Properties, "properties"})
@@ -2861,7 +2866,7 @@ func (l *Layout) Describe(
 
 		var lastKey InternalKey
 		switch b.name {
-		case "data", "range-del":
+		case "data", "range-del", "range-key":
 			iter, _ := newBlockIter(r.Compare, h.Get())
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				ptr := unsafe.Pointer(uintptr(iter.ptr) + uintptr(iter.offset))
