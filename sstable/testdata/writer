@@ -361,3 +361,25 @@ layout
        813  meta-index (33)
        851  leveldb-footer (48)
        899  EOF
+
+# Range keys, if present, are shown in the layout.
+
+build
+a.RANGEKEYSET.3:b [(@t3=foo)]
+b.RANGEKEYSET.2:c [(@t2=bar)]
+c.RANGEKEYSET.1:d [(@t1=baz)]
+----
+point:    [#0,0,#0,0]
+rangedel: [#0,0,#0,0]
+rangekey: [a#3,21,d#72057594037927935,21]
+seqnums:  [1,3]
+
+layout
+----
+         0  data (8)
+        13  index (21)
+        39  range-key (82)
+       126  properties (765)
+       896  meta-index (57)
+       958  footer (53)
+      1011  EOF

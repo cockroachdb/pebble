@@ -133,9 +133,9 @@ type Properties struct {
 	// Total raw key size.
 	RawKeySize uint64 `prop:"rocksdb.raw.key.size"`
 	// Total raw rangekey key size.
-	RawRangeKeyKeySize uint64 `prop:"pebble.raw.rangekey.key.size"`
+	RawRangeKeyKeySize uint64 `prop:"pebble.raw.range-key.key.size"`
 	// Total raw rangekey value size.
-	RawRangeKeyValueSize uint64 `prop:"pebble.raw.rangekey.value.size"`
+	RawRangeKeyValueSize uint64 `prop:"pebble.raw.range-key.value.size"`
 	// Total raw value size.
 	RawValueSize uint64 `prop:"rocksdb.raw.value.size"`
 	// Size of the top-level index if kTwoLevelIndexSearch is used.
