@@ -85,8 +85,8 @@ The table file format looks like:
 [data block N-1]
 [meta filter block] (optional)
 [index block] (for single level index)
-[meta range key block] (optional)
 [meta rangedel block] (optional)
+[meta range key block] (optional)
 [meta properties block]
 [metaindex block]
 [footer]
@@ -110,21 +110,22 @@ byte of the trailer (i.e. the block type), and is serialized as little-endian.
 The block type gives the per-block compression used; each block is compressed
 independently. The checksum algorithm is described in the pebble/crc package.
 
-Most blocks, other than the meta filter block, contain key/value pairs.
-The decompressed block data consists of a sequence of such key/value entries
-followed by a trailer. Each key is encoded as a shared prefix length and a
-remainder string. For example, if two adjacent keys are "tweedledee" and
-"tweedledum", then the second key would be encoded as {8, "um"}. The shared
-prefix length is varint encoded. The remainder string and the value are
-encoded as a varint-encoded length followed by the literal contents. To
-continue the example, suppose that the key "tweedledum" mapped to the value
+Most blocks, other than the meta filter block, contain key/value pairs. The
+remainder of this comment refers to the decompressed block, which has its 5 byte
+trailer stripped. The decompressed block data consists of a sequence of such
+key/value entries followed by a block suffix. Each key is encoded as a shared
+prefix length and a remainder string. For example, if two adjacent keys are
+"tweedledee" and "tweedledum", then the second key would be encoded as {8,
+"um"}. The shared prefix length is varint encoded. The remainder string and the
+value are encoded as a varint-encoded length followed by the literal contents.
+To continue the example, suppose that the key "tweedledum" mapped to the value
 "socks". The encoded key/value entry would be: "\x08\x02\x05umsocks".
 
 Every block has a restart interval I. Every I'th key/value entry in that block
 is called a restart point, and shares no key prefix with the previous entry.
 Continuing the example above, if the key after "tweedledum" was "two", but was
 part of a restart point, then that key would be encoded as {0, "two"} instead
-of {2, "o"}. If a block has P restart points, then the block trailer consists
+of {2, "o"}. If a block has P restart points, then the block suffix consists
 of (P+1)*4 bytes: (P+1) little-endian uint32 values. The first P of these
 uint32 values are the block offsets of each restart point. The final uint32
 value is P itself. Thus, when seeking for a particular key, one can use binary
