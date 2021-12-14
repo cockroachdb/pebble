@@ -124,11 +124,12 @@ Every block has a restart interval I. Every I'th key/value entry in that block
 is called a restart point, and shares no key prefix with the previous entry.
 Continuing the example above, if the key after "tweedledum" was "two", but was
 part of a restart point, then that key would be encoded as {0, "two"} instead
-of {2, "o"}. If a block has P restart points, then the block trailer consists
-of (P+1)*4 bytes: (P+1) little-endian uint32 values. The first P of these
-uint32 values are the block offsets of each restart point. The final uint32
-value is P itself. Thus, when seeking for a particular key, one can use binary
-search to find the largest restart point whose key is <= the key sought.
+of {2, "o"}. If a block has P restart points, then the bytes immediately
+preceding the five byte block trailer consists of (P+1)*4 bytes: (P+1)
+little-endian uint32 values. The first P of these uint32 values are the block
+offsets of each restart point. The final uint32 value is P itself. Thus, when
+seeking for a particular key, one can use binary search to find the largest
+restart point whose key is <= the key sought.
 
 An index block is a block with N key/value entries. The i'th value is the
 encoded block handle of the i'th data block. The i'th key is a separator for
