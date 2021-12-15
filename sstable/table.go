@@ -86,8 +86,8 @@ The table file format looks like:
 [meta filter block] (optional)
 [index block] (for single level index)
 [meta range key block] (optional)
-[meta properties block]
 [meta rangedel block] (optional)
+[meta properties block]
 [metaindex block]
 [footer]
 <end_of_file>
