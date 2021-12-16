@@ -12,7 +12,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 // are completely outside those bounds.
 func Truncate(
 	cmp base.Compare, iter base.InternalIterator, lower, upper []byte, start, end *base.InternalKey,
-) *Iter {
+) Iter {
 	var spans []Span
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
 		s := Span{

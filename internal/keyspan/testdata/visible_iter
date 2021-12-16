@@ -1,0 +1,85 @@
+define
+a.SET.2:b
+a.SET.1:b
+b.SET.2:c
+b.SET.1:c
+c.SET.2:d
+c.SET.1:d
+----
+
+iter seqnum=5
+seek-ge a
+seek-ge b
+seek-ge c
+seek-ge d
+seek-lt a
+seek-lt b
+seek-lt c
+seek-lt d
+----
+a-b#2
+b-c#2
+c-d#2
+.
+.
+a-b#1
+b-c#1
+c-d#1
+
+iter seqnum=2
+seek-ge a
+seek-ge b
+seek-ge c
+seek-ge d
+seek-lt a
+seek-lt b
+seek-lt c
+seek-lt d
+----
+a-b#1
+b-c#1
+c-d#1
+.
+.
+a-b#1
+b-c#1
+c-d#1
+
+iter seqnum=2
+first
+next
+next
+next
+last
+prev
+prev
+prev
+----
+a-b#1
+b-c#1
+c-d#1
+.
+c-d#1
+b-c#1
+a-b#1
+.
+
+define
+a.SET.11:b
+b.SET.10:b
+c.SET.12:c
+c.SET.10:c
+d.SET.20:d
+e.SET.14:d
+----
+
+iter seqnum=5
+first
+last
+seek-ge a
+seek-lt z
+----
+.
+.
+.
+.

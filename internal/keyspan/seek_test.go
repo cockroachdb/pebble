@@ -16,7 +16,7 @@ import (
 )
 
 type iterAdapter struct {
-	*Iter
+	Iter
 }
 
 func (i *iterAdapter) verify(key *base.InternalKey, val []byte) (*base.InternalKey, []byte) {

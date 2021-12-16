@@ -24,7 +24,7 @@ import (
 // Iter handles 'coalescing' spans on-the-fly, including dropping key spans that
 // are no longer relevant.
 type Iter struct {
-	iter      *keyspan.Iter
+	iter      keyspan.Iter
 	coalescer Coalescer
 	curr      CoalescedSpan
 	err       error
@@ -33,7 +33,7 @@ type Iter struct {
 }
 
 // Init initializes an iterator over a set of fragmented, coalesced spans.
-func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, iter *keyspan.Iter) {
+func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, iter keyspan.Iter) {
 	*i = Iter{
 		iter: iter,
 	}

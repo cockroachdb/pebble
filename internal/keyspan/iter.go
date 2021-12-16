@@ -7,18 +7,32 @@ package keyspan
 import "github.com/cockroachdb/pebble/internal/base"
 
 // Iter is an iterator over a set of fragmented spans.
-type Iter struct {
+type Iter interface {
+	base.InternalIterator
+
+	// Current returns the current span.
+	Current() *Span
+	// Valid returns true if the iterator is positioned over a valid value.
+	Valid() bool
+	// Key returns the key under the current iterator position.
+	Key() *base.InternalKey
+	// Value returns the value under the current iterator position.
+	Value() []byte
+}
+
+// keyspanIter is an iterator over a set of fragmented spans.
+type keyspanIter struct {
 	cmp   base.Compare
 	spans []Span
 	index int
 }
 
 // Iter implements the base.InternalIterator interface.
-var _ base.InternalIterator = (*Iter)(nil)
+var _ base.InternalIterator = (*keyspanIter)(nil)
 
 // NewIter returns a new iterator over a set of fragmented spans.
-func NewIter(cmp base.Compare, spans []Span) *Iter {
-	return &Iter{
+func NewIter(cmp base.Compare, spans []Span) Iter {
+	return &keyspanIter{
 		cmp:   cmp,
 		spans: spans,
 		index: -1,
@@ -27,7 +41,7 @@ func NewIter(cmp base.Compare, spans []Span) *Iter {
 
 // SeekGE implements InternalIterator.SeekGE, as documented in the
 // internal/base package.
-func (i *Iter) SeekGE(key []byte) (*base.InternalKey, []byte) {
+func (i *keyspanIter) SeekGE(key []byte) (*base.InternalKey, []byte) {
 	// NB: manually inlined sort.Seach is ~5% faster.
 	//
 	// Define f(-1) == false and f(n) == true.
@@ -55,14 +69,14 @@ func (i *Iter) SeekGE(key []byte) (*base.InternalKey, []byte) {
 
 // SeekPrefixGE implements InternalIterator.SeekPrefixGE, as documented in the
 // internal/base package.
-func (i *Iter) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
+func (i *keyspanIter) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
 	// This should never be called as prefix iteration is only done for point records.
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
 // SeekLT implements InternalIterator.SeekLT, as documented in the
 // internal/base package.
-func (i *Iter) SeekLT(key []byte) (*base.InternalKey, []byte) {
+func (i *keyspanIter) SeekLT(key []byte) (*base.InternalKey, []byte) {
 	// NB: manually inlined sort.Search is ~5% faster.
 	//
 	// Define f(-1) == false and f(n) == true.
@@ -94,7 +108,7 @@ func (i *Iter) SeekLT(key []byte) (*base.InternalKey, []byte) {
 
 // First implements InternalIterator.First, as documented in the internal/base
 // package.
-func (i *Iter) First() (*base.InternalKey, []byte) {
+func (i *keyspanIter) First() (*base.InternalKey, []byte) {
 	if len(i.spans) == 0 {
 		return nil, nil
 	}
@@ -105,7 +119,7 @@ func (i *Iter) First() (*base.InternalKey, []byte) {
 
 // Last implements InternalIterator.Last, as documented in the internal/base
 // package.
-func (i *Iter) Last() (*base.InternalKey, []byte) {
+func (i *keyspanIter) Last() (*base.InternalKey, []byte) {
 	if len(i.spans) == 0 {
 		return nil, nil
 	}
@@ -116,7 +130,7 @@ func (i *Iter) Last() (*base.InternalKey, []byte) {
 
 // Next implements InternalIterator.Next, as documented in the internal/base
 // package.
-func (i *Iter) Next() (*base.InternalKey, []byte) {
+func (i *keyspanIter) Next() (*base.InternalKey, []byte) {
 	if i.index == len(i.spans) {
 		return nil, nil
 	}
@@ -130,7 +144,7 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 
 // Prev implements InternalIterator.Prev, as documented in the internal/base
 // package.
-func (i *Iter) Prev() (*base.InternalKey, []byte) {
+func (i *keyspanIter) Prev() (*base.InternalKey, []byte) {
 	if i.index < 0 {
 		return nil, nil
 	}
@@ -143,7 +157,7 @@ func (i *Iter) Prev() (*base.InternalKey, []byte) {
 }
 
 // Current returns the current span.
-func (i *Iter) Current() *Span {
+func (i *keyspanIter) Current() *Span {
 	if i.Valid() {
 		return &i.spans[i.index]
 	}
@@ -152,41 +166,41 @@ func (i *Iter) Current() *Span {
 
 // Key implements InternalIterator.Key, as documented in the internal/base
 // package.
-func (i *Iter) Key() *base.InternalKey {
+func (i *keyspanIter) Key() *base.InternalKey {
 	return &i.spans[i.index].Start
 }
 
 // Value implements InternalIterator.Value, as documented in the internal/base
 // package.
-func (i *Iter) Value() []byte {
+func (i *keyspanIter) Value() []byte {
 	return i.spans[i.index].End
 }
 
 // Valid implements InternalIterator.Valid, as documented in the internal/base
 // package.
-func (i *Iter) Valid() bool {
+func (i *keyspanIter) Valid() bool {
 	return i.index >= 0 && i.index < len(i.spans)
 }
 
 // Error implements InternalIterator.Error, as documented in the internal/base
 // package.
-func (i *Iter) Error() error {
+func (i *keyspanIter) Error() error {
 	return nil
 }
 
 // Close implements InternalIterator.Close, as documented in the internal/base
 // package.
-func (i *Iter) Close() error {
+func (i *keyspanIter) Close() error {
 	return nil
 }
 
 // SetBounds implements InternalIterator.SetBounds, as documented in the
 // internal/base package.
-func (i *Iter) SetBounds(lower, upper []byte) {
+func (i *keyspanIter) SetBounds(lower, upper []byte) {
 	// This should never be called as bounds are only used for point records.
 	panic("pebble: SetBounds unimplemented")
 }
 
-func (i *Iter) String() string {
+func (i *keyspanIter) String() string {
 	return "fragmented-spans"
 }

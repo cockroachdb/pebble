@@ -15,8 +15,16 @@ import (
 )
 
 func TestIter(t *testing.T) {
+	runIterTest(t, "testdata/iter")
+}
+
+func TestVisibleIter(t *testing.T) {
+	runIterTest(t, "testdata/visible_iter")
+}
+
+func runIterTest(t *testing.T, filename string) {
 	var tombstones []Span
-	datadriven.RunTest(t, "testdata/iter", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, filename, func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			tombstones = nil
@@ -30,7 +38,16 @@ func TestIter(t *testing.T) {
 			return ""
 
 		case "iter":
-			iter := NewIter(base.DefaultComparer.Compare, tombstones)
+			var iter Iter
+			if len(d.CmdArgs) > 0 {
+				var seqNum uint64
+				d.ScanArgs(t, "seqnum", &seqNum)
+				vi := new(VisibleIter)
+				vi.Init(base.DefaultComparer.Compare, seqNum, tombstones)
+				iter = vi
+			} else {
+				iter = NewIter(base.DefaultComparer.Compare, tombstones)
+			}
 			defer iter.Close()
 
 			var b bytes.Buffer
