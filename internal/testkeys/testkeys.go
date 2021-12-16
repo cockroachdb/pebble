@@ -175,6 +175,18 @@ func Suffix(t int) []byte {
 	return b[:WriteSuffix(b, t)]
 }
 
+// SuffixLen returns the exact length of the given suffix when encoded.
+func SuffixLen(t int) int {
+	// Begin at 1 for the '@' delimiter, 1 for a single digit.
+	n := 2
+	t /= 10
+	for t > 0 {
+		t /= 10
+		n++
+	}
+	return n
+}
+
 // WriteSuffix writes the test keys suffix representation of timestamp t to dst,
 // returning the number of bytes written.
 func WriteSuffix(dst []byte, t int) int {
