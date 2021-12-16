@@ -169,12 +169,37 @@ func TestKeyManager_AddKey(t *testing.T) {
 	k1 := []byte("foo")
 	require.True(t, m.addNewKey(k1))
 	require.Len(t, m.globalKeys, 1)
+	require.Len(t, m.globalKeyPrefixes, 1)
 	require.Contains(t, m.globalKeys, k1)
+	require.Contains(t, m.globalKeyPrefixes, k1)
 	require.False(t, m.addNewKey(k1))
+	require.True(t, m.prefixExists([]byte("foo")))
+	require.False(t, m.prefixExists([]byte("bar")))
+
 	k2 := []byte("bar")
 	require.True(t, m.addNewKey(k2))
 	require.Len(t, m.globalKeys, 2)
+	require.Len(t, m.globalKeyPrefixes, 2)
 	require.Contains(t, m.globalKeys, k2)
+	require.Contains(t, m.globalKeyPrefixes, k2)
+	require.True(t, m.prefixExists([]byte("bar")))
+	k3 := []byte("bax@4")
+	require.True(t, m.addNewKey(k3))
+	require.Len(t, m.globalKeys, 3)
+	require.Len(t, m.globalKeyPrefixes, 3)
+	require.Contains(t, m.globalKeys, k3)
+	require.Contains(t, m.globalKeyPrefixes, []byte("bax"))
+	require.True(t, m.prefixExists([]byte("bax")))
+	k4 := []byte("foo@6")
+	require.True(t, m.addNewKey(k4))
+	require.Len(t, m.globalKeys, 4)
+	require.Len(t, m.globalKeyPrefixes, 3)
+	require.Contains(t, m.globalKeys, k4)
+	require.True(t, m.prefixExists([]byte("foo")))
+
+	require.Equal(t, [][]byte{
+		[]byte("foo"), []byte("bar"), []byte("bax"),
+	}, m.prefixes())
 }
 
 func TestKeyManager_GetOrInit(t *testing.T) {

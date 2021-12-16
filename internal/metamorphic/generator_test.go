@@ -16,7 +16,7 @@ import (
 
 func TestGenerator(t *testing.T) {
 	rng := randvar.NewRand()
-	g := newGenerator(rng)
+	g := newGenerator(rng, defaultConfig())
 
 	g.newBatch()
 	g.newBatch()
@@ -61,7 +61,7 @@ func TestGenerator(t *testing.T) {
 		t.Logf("\n%s", g)
 	}
 
-	g = newGenerator(rng)
+	g = newGenerator(rng, defaultConfig())
 
 	g.newSnapshot()
 	g.newSnapshot()
@@ -94,7 +94,7 @@ func TestGenerator(t *testing.T) {
 		t.Logf("\n%s", g)
 	}
 
-	g = newGenerator(rng)
+	g = newGenerator(rng, defaultConfig())
 
 	g.newIndexedBatch()
 	g.newIndexedBatch()
@@ -129,7 +129,7 @@ func TestGeneratorRandom(t *testing.T) {
 	generateFromSeed := func() string {
 		rng := rand.New(rand.NewSource(seed))
 		count := ops.Uint64(rng)
-		return formatOps(generate(rng, count, defaultConfig))
+		return formatOps(generate(rng, count, defaultConfig()))
 	}
 
 	// Ensure that generate doesn't use any other source of randomness other

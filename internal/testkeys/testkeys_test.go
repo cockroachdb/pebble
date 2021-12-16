@@ -153,6 +153,28 @@ func TestSuffix(t *testing.T) {
 	}
 }
 
+func TestSuffixLen(t *testing.T) {
+	testCases := map[int]int{
+		0:    2,
+		1:    2,
+		5:    2,
+		9:    2,
+		10:   3,
+		17:   3,
+		20:   3,
+		99:   3,
+		100:  4,
+		101:  4,
+		999:  4,
+		1000: 5,
+	}
+	for ts, want := range testCases {
+		if got := SuffixLen(ts); got != want {
+			t.Errorf("SuffixLen(%d) = %d, want %d", ts, got, want)
+		}
+	}
+}
+
 func keyspaceToString(ks Keyspace) string {
 	var buf bytes.Buffer
 	b := make([]byte, ks.MaxLen())

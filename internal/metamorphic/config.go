@@ -4,6 +4,8 @@
 
 package metamorphic
 
+import "github.com/cockroachdb/pebble/internal/randvar"
+
 type opType int
 
 const (
@@ -48,6 +50,15 @@ type config struct {
 	// weight for opType(i).
 	ops []int
 
+	// newPrefix configures the probability that when generating a new user key,
+	// the generated key uses a new key prefix rather than an existing prefix
+	// with a suffix.
+	newPrefix float64
+	// suffixDist defines the distribution of key suffixes. It's a dynamic
+	// randvar to roughly emulate workloads with MVCC timestamps, skewing
+	// towards most recent timestamps.
+	suffixDist randvar.Dynamic
+
 	// TODO(peter): unimplemented
 	// keyDist        randvar.Dynamic
 	// keySizeDist    randvar.Static
@@ -57,41 +68,57 @@ type config struct {
 	// upperBoundFrac float64
 }
 
-var defaultConfig = config{
-	// dbClose is not in this list since it is deterministically generated once, at the end of the test.
-	ops: []int{
-		batchAbort:          5,
-		batchCommit:         5,
-		dbCheckpoint:        1,
-		dbCompact:           1,
-		dbFlush:             2,
-		dbRestart:           2,
-		iterClose:           5,
-		iterFirst:           100,
-		iterLast:            100,
-		iterNext:            100,
-		iterNextWithLimit:   20,
-		iterPrev:            100,
-		iterPrevWithLimit:   20,
-		iterSeekGE:          100,
-		iterSeekGEWithLimit: 20,
-		iterSeekLT:          100,
-		iterSeekLTWithLimit: 20,
-		iterSeekPrefixGE:    100,
-		iterSetBounds:       100,
-		newBatch:            5,
-		newIndexedBatch:     5,
-		newIter:             10,
-		newIterUsingClone:   5,
-		newSnapshot:         10,
-		readerGet:           100,
-		snapshotClose:       10,
-		writerApply:         10,
-		writerDelete:        100,
-		writerDeleteRange:   50,
-		writerIngest:        100,
-		writerMerge:         100,
-		writerSet:           100,
-		writerSingleDelete:  50,
-	},
+func defaultConfig() config {
+	return config{
+		// dbClose is not in this list since it is deterministically generated once, at the end of the test.
+		ops: []int{
+			batchAbort:          5,
+			batchCommit:         5,
+			dbCheckpoint:        1,
+			dbCompact:           1,
+			dbFlush:             2,
+			dbRestart:           2,
+			iterClose:           5,
+			iterFirst:           100,
+			iterLast:            100,
+			iterNext:            100,
+			iterNextWithLimit:   20,
+			iterPrev:            100,
+			iterPrevWithLimit:   20,
+			iterSeekGE:          100,
+			iterSeekGEWithLimit: 20,
+			iterSeekLT:          100,
+			iterSeekLTWithLimit: 20,
+			iterSeekPrefixGE:    100,
+			iterSetBounds:       100,
+			newBatch:            5,
+			newIndexedBatch:     5,
+			newIter:             10,
+			newIterUsingClone:   5,
+			newSnapshot:         10,
+			readerGet:           100,
+			snapshotClose:       10,
+			writerApply:         10,
+			writerDelete:        100,
+			writerDeleteRange:   50,
+			writerIngest:        100,
+			writerMerge:         100,
+			writerSet:           100,
+			writerSingleDelete:  50,
+		},
+		// Use a new prefix 75% of the time (and 25% of the time use an existing
+		// prefix with an alternative suffix).
+		newPrefix: 0.75,
+		// Use a skewed distribution of suffixes to mimic MVCC timestamps. The
+		// range will be widened whenever a suffix is found to already be in use
+		// for a particular prefix.
+		suffixDist: mustDynamic(randvar.NewSkewedLatest(0, 1, 0.99)),
+	}
+}
+
+func mustDynamic(dyn randvar.Dynamic, err error) randvar.Dynamic {
+	if err != nil {
+		panic(err)
+	}
+	return dyn
 }
