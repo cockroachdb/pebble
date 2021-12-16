@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/randvar"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
@@ -135,8 +136,9 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 	testOpts := &testOptions{opts: opts}
 	require.NoError(t, parseOptions(testOpts, string(optionsData)))
 
-	// Always use our custom comparer which provides a Split method.
-	opts.Comparer = &comparer
+	// Always use our custom comparer which provides a Split method, splitting
+	// keys at the trailing '@'.
+	opts.Comparer = testkeys.Comparer
 	// Use an archive cleaner to ease post-mortem debugging.
 	opts.Cleaner = base.ArchiveCleaner{}
 
@@ -263,7 +265,7 @@ func TestMeta(t *testing.T) {
 
 	// Generate a new set of random ops, writing them to <dir>/ops. These will be
 	// read by the child processes when performing a test run.
-	ops := generate(rng, opCount, defaultConfig)
+	ops := generate(rng, opCount, defaultConfig())
 	opsPath := filepath.Join(metaDir, "ops")
 	formattedOps := formatOps(ops)
 	require.NoError(t, ioutil.WriteFile(opsPath, []byte(formattedOps), 0644))

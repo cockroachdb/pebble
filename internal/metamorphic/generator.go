@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/randvar"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"golang.org/x/exp/rand"
 )
 
@@ -18,6 +19,7 @@ type iterBounds struct {
 }
 
 type generator struct {
+	cfg config
 	rng *rand.Rand
 
 	init *initOp
@@ -61,8 +63,9 @@ type generator struct {
 	snapshots map[objID]objIDSet
 }
 
-func newGenerator(rng *rand.Rand) *generator {
+func newGenerator(rng *rand.Rand, cfg config) *generator {
 	g := &generator{
+		cfg:         cfg,
 		rng:         rng,
 		init:        &initOp{},
 		keyManager:  newKeyManager(),
@@ -79,7 +82,7 @@ func newGenerator(rng *rand.Rand) *generator {
 }
 
 func generate(rng *rand.Rand, count uint64, cfg config) []op {
-	g := newGenerator(rng)
+	g := newGenerator(rng, cfg)
 
 	generators := []func(){
 		batchAbort:          g.batchAbort,
@@ -156,20 +159,96 @@ func (g *generator) randKeyToRead(newKey float64) []byte {
 }
 
 func (g *generator) randKeyHelper(keys [][]byte, newKey float64) []byte {
-	if n := len(keys); n > 0 && g.rng.Float64() > newKey {
-		return keys[g.rng.Intn(n)]
-	}
-	for {
-		key := g.randValue(4, 12)
-		if g.keyManager.addNewKey(key) {
-			return key
+	switch {
+	case len(keys) > 0 && g.rng.Float64() > newKey:
+		// Use an existing user key.
+		return keys[g.rng.Intn(len(keys))]
+
+	case len(keys) > 0 && g.rng.Float64() > g.cfg.newPrefix:
+		// Use an existing prefix but a new suffix, producing a new user key.
+		prefixes := g.keyManager.prefixes()
+		var key []byte
+		for {
+			// Pick a prefix on each iteration in case most or all suffixes are
+			// already in use for any individual prefix.
+			p := g.rng.Intn(len(prefixes))
+			suffix := int(g.cfg.suffixDist.Uint64(g.rng))
+
+			if suffix > 0 {
+				key = resizeBuffer(key, len(prefixes[p]), testkeys.SuffixLen(suffix))
+				n := copy(key, prefixes[p])
+				testkeys.WriteSuffix(key[n:], suffix)
+			} else {
+				key = resizeBuffer(key, len(prefixes[p]), 0)
+				copy(key, prefixes[p])
+			}
+			if g.keyManager.addNewKey(key) {
+				return key
+			}
+
+			// If the generated key already existed, increase the suffix
+			// distribution to make a generating a new user key with an existing
+			// prefix more likely.
+			g.cfg.suffixDist.IncMax(1)
+		}
+
+	default:
+		// Use a new prefix, producing a new user key.
+		suffix := int(g.cfg.suffixDist.Uint64(g.rng))
+		var key []byte
+		for {
+			key = g.randKeyHelperSuffix(nil, 4, 12, suffix)
+			if !g.keyManager.prefixExists(key[:testkeys.Comparer.Split(key)]) {
+				if !g.keyManager.addNewKey(key) {
+					panic("key must not exist if prefix doesn't exist")
+				}
+				return key
+			}
 		}
 	}
+}
+
+// randKeyHelperSuffix is a helper function for randKeyHelper, and should not be
+// invoked directly.
+func (g *generator) randKeyHelperSuffix(dst []byte, minPrefixLen, maxPrefixLen, suffix int) []byte {
+	n := minPrefixLen
+	if maxPrefixLen > minPrefixLen {
+		n += g.rng.Intn(maxPrefixLen - minPrefixLen)
+	}
+	// In order to test a mix of suffixed and unsuffixed keys, omit the zero
+	// suffix.
+	if suffix == 0 {
+		dst = resizeBuffer(dst, n, 0)
+		g.fillRand(dst)
+		return dst
+	}
+	suffixLen := testkeys.SuffixLen(suffix)
+	dst = resizeBuffer(dst, n, suffixLen)
+	g.fillRand(dst[:n])
+	testkeys.WriteSuffix(dst[n:], suffix)
+	return dst
+}
+
+func resizeBuffer(buf []byte, prefixLen, suffixLen int) []byte {
+	if cap(buf) >= prefixLen+suffixLen {
+		return buf[:prefixLen+suffixLen]
+	}
+	return make([]byte, prefixLen+suffixLen)
 }
 
 // TODO(peter): make the value size configurable. See valueSizeDist in
 // config.go.
 func (g *generator) randValue(min, max int) []byte {
+	n := min
+	if max > min {
+		n += g.rng.Intn(max - min)
+	}
+	buf := make([]byte, n)
+	g.fillRand(buf)
+	return buf
+}
+
+func (g *generator) fillRand(buf []byte) {
 	// NB: The actual random values are not particularly important. We only use
 	// lowercase letters because that makes visual determination of ordering
 	// easier, rather than having to remember the lexicographic ordering of
@@ -177,13 +256,6 @@ func (g *generator) randValue(min, max int) []byte {
 	const letters = "abcdefghijklmnopqrstuvwxyz"
 	const lettersLen = uint64(len(letters))
 	const lettersCharsPerRand = 12 // floor(log(math.MaxUint64)/log(lettersLen))
-
-	n := min
-	if max > min {
-		n += g.rng.Intn(max - min)
-	}
-
-	buf := make([]byte, n)
 
 	var r uint64
 	var q int
@@ -196,8 +268,6 @@ func (g *generator) randValue(min, max int) []byte {
 		r = r / lettersLen
 		q--
 	}
-
-	return buf
 }
 
 func (g *generator) newBatch() {
@@ -288,7 +358,7 @@ func (g *generator) dbCompact() {
 	// Generate new key(s) with a 1% probability.
 	start := g.randKeyToRead(0.01)
 	end := g.randKeyToRead(0.01)
-	if bytes.Compare(start, end) > 0 {
+	if g.cmp(start, end) > 0 {
 		start, end = end, start
 	}
 	g.add(&compactOp{
@@ -346,7 +416,7 @@ func (g *generator) newIter() {
 		// Generate a new key with a .1% probability.
 		upper = g.randKeyToRead(0.001)
 	}
-	if bytes.Compare(lower, upper) > 0 {
+	if g.cmp(lower, upper) > 0 {
 		lower, upper = upper, lower
 	}
 
@@ -434,10 +504,10 @@ func (g *generator) iterSetBounds() {
 			// Generate a new key with a .1% probability.
 			upper = g.randKeyToRead(0.001)
 		}
-		if bytes.Compare(lower, upper) > 0 {
+		if g.cmp(lower, upper) > 0 {
 			lower, upper = upper, lower
 		}
-		if ensureLowerGE && bytes.Compare(iterLastBounds.upper, lower) > 0 {
+		if ensureLowerGE && g.cmp(iterLastBounds.upper, lower) > 0 {
 			if attempts < 25 {
 				continue
 			}
@@ -445,7 +515,7 @@ func (g *generator) iterSetBounds() {
 			upper = lower
 			break
 		}
-		if ensureUpperLE && bytes.Compare(upper, iterLastBounds.lower) > 0 {
+		if ensureUpperLE && g.cmp(upper, iterLastBounds.lower) > 0 {
 			if attempts < 25 {
 				continue
 			}
@@ -540,7 +610,7 @@ func (g *generator) iterSeekGEWithLimit() {
 	}
 	// 0.1% new keys
 	key, limit := g.randKeyToRead(0.001), g.randKeyToRead(0.001)
-	if bytes.Compare(key, limit) > 0 {
+	if g.cmp(key, limit) > 0 {
 		key, limit = limit, key
 	}
 	g.add(&iterSeekGEOp{
@@ -578,7 +648,7 @@ func (g *generator) iterSeekLTWithLimit() {
 	}
 	// 0.1% new keys
 	key, limit := g.randKeyToRead(0.001), g.randKeyToRead(0.001)
-	if bytes.Compare(limit, key) > 0 {
+	if g.cmp(limit, key) > 0 {
 		key, limit = limit, key
 	}
 	g.add(&iterSeekLTOp{
@@ -743,7 +813,7 @@ func (g *generator) writerDeleteRange() {
 
 	start := g.randKeyToWrite(0.001)
 	end := g.randKeyToWrite(0.001)
-	if bytes.Compare(start, end) > 0 {
+	if g.cmp(start, end) > 0 {
 		start, end = end, start
 	}
 
@@ -860,6 +930,10 @@ func (g *generator) tryRepositionBatchIters(writerID objID) {
 	for _, id := range iters.sorted() {
 		g.add(&iterFirstOp{iterID: id})
 	}
+}
+
+func (g *generator) cmp(a, b []byte) int {
+	return g.keyManager.comparer.Compare(a, b)
 }
 
 func (g *generator) String() string {

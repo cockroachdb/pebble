@@ -9,17 +9,10 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/randvar"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
-
-var comparer = func() pebble.Comparer {
-	c := *pebble.DefaultComparer
-	c.Split = func(a []byte) int {
-		return len(a)
-	}
-	return c
-}()
 
 func parseOptions(opts *testOptions, data string) error {
 	hooks := &pebble.ParseHooks{
@@ -77,7 +70,7 @@ func optionsToString(opts *testOptions) string {
 
 func defaultOptions() *pebble.Options {
 	opts := &pebble.Options{
-		Comparer:           &comparer,
+		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: pebble.FormatNewest,
 		Levels: []pebble.LevelOptions{{

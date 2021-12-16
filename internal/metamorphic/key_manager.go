@@ -1,9 +1,11 @@
 package metamorphic
 
 import (
-	"bytes"
 	"fmt"
 	"sort"
+
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 )
 
 // objKey is a tuple of (objID, key). This struct is used primarily as a map
@@ -96,6 +98,8 @@ func (m *keyMeta) mergeInto(other *keyMeta) {
 // are what we cannot tolerate (doing SingleDelete on a key that has not been
 // written to because the Set was lost is harmless).
 type keyManager struct {
+	comparer *base.Comparer
+
 	// byObjKey tracks the state for each (writer, key) pair. It refers to the
 	// same *keyMeta as in the byObj slices. Using a map allows for fast state
 	// lookups when changing the state based on a writer operation on the key.
@@ -112,6 +116,12 @@ type keyManager struct {
 	// writers, including inflight state that has not made its way to the DB
 	// yet.The keyMeta.objKey is uninitialized.
 	globalKeysMap map[string]*keyMeta
+	// globalKeyPrefixes contains all the key prefixes (as defined by the
+	// comparer's Split) generated so far.
+	globalKeyPrefixes [][]byte
+	// globalKeyPrefixesMap contains the same keys as globalKeyPrefixes. It
+	// ensures no duplication.
+	globalKeyPrefixesMap map[string]struct{}
 
 	// Using SingleDeletes imposes some constraints on the above state, and
 	// causes some state transitions that help with generating complex but
@@ -161,23 +171,32 @@ var dbObjID objID = makeObjID(dbTag, 0)
 // canTolerateApplyFailure methods only.
 func newKeyManager() *keyManager {
 	m := &keyManager{
-		byObjKey:      make(map[string]*keyMeta),
-		byObj:         make(map[objID][]*keyMeta),
-		globalKeysMap: make(map[string]*keyMeta),
+		comparer:             testkeys.Comparer,
+		byObjKey:             make(map[string]*keyMeta),
+		byObj:                make(map[objID][]*keyMeta),
+		globalKeysMap:        make(map[string]*keyMeta),
+		globalKeyPrefixesMap: make(map[string]struct{}),
 	}
 	m.byObj[dbObjID] = []*keyMeta{}
 	return m
 }
 
-// addKey adds the given key to the key manager for global key tracking.
+// addNewKey adds the given key to the key manager for global key tracking.
 // Returns false iff this is not a new key.
 func (k *keyManager) addNewKey(key []byte) bool {
 	_, ok := k.globalKeysMap[string(key)]
 	if ok {
 		return false
 	}
+	keyString := string(key)
 	k.globalKeys = append(k.globalKeys, key)
-	k.globalKeysMap[string(key)] = &keyMeta{objKey: objKey{key: key}}
+	k.globalKeysMap[keyString] = &keyMeta{objKey: objKey{key: key}}
+
+	prefixLen := k.comparer.Split(key)
+	if _, ok := k.globalKeyPrefixesMap[keyString[:prefixLen]]; !ok {
+		k.globalKeyPrefixes = append(k.globalKeyPrefixes, key[:prefixLen])
+		k.globalKeyPrefixesMap[keyString[:prefixLen]] = struct{}{}
+	}
 	return true
 }
 
@@ -357,6 +376,17 @@ func (k *keyManager) eligibleReadKeys() (keys [][]byte) {
 	return k.globalKeys
 }
 
+func (k *keyManager) prefixes() (prefixes [][]byte) {
+	return k.globalKeyPrefixes
+}
+
+// prefixExists returns true if a key has been generated with the provided
+// prefix before.
+func (k *keyManager) prefixExists(prefix []byte) bool {
+	_, exists := k.globalKeyPrefixesMap[string(prefix)]
+	return exists
+}
+
 func (k *keyManager) eligibleWriteKeys() (keys [][]byte) {
 	// Creating and sorting this slice of keys is wasteful given that the
 	// caller will pick one, but makes it simpler for unit testing.
@@ -367,7 +397,7 @@ func (k *keyManager) eligibleWriteKeys() (keys [][]byte) {
 		keys = append(keys, v.key)
 	}
 	sort.Slice(keys, func(i, j int) bool {
-		return bytes.Compare(keys[i], keys[j]) < 0
+		return k.comparer.Compare(keys[i], keys[j]) < 0
 	})
 	return keys
 }
@@ -389,7 +419,7 @@ func (k *keyManager) eligibleSingleDeleteKeys(id objID) (keys [][]byte) {
 		addForObjID(dbObjID)
 	}
 	sort.Slice(keys, func(i, j int) bool {
-		return bytes.Compare(keys[i], keys[j]) < 0
+		return k.comparer.Compare(keys[i], keys[j]) < 0
 	})
 	return keys
 }
