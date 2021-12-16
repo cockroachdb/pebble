@@ -6,10 +6,6 @@ package tool
 
 import (
 	"fmt"
-	"io"
-	"io/ioutil"
-	"text/tabwriter"
-
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble"
@@ -18,7 +14,11 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/tool/logs"
 	"github.com/spf13/cobra"
+	"io"
+	"io/ioutil"
+	"text/tabwriter"
 )
 
 // dbT implements db-level tools, including both configuration state and the
@@ -28,6 +28,7 @@ type dbT struct {
 	Check      *cobra.Command
 	Checkpoint *cobra.Command
 	Get        *cobra.Command
+	Logs       *cobra.Command
 	LSM        *cobra.Command
 	Properties *cobra.Command
 	Scan       *cobra.Command
@@ -95,6 +96,7 @@ process.
 		Args: cobra.ExactArgs(2),
 		Run:  d.runGet,
 	}
+	d.Logs = logs.NewCmd()
 	d.LSM = &cobra.Command{
 		Use:   "lsm <dir>",
 		Short: "print LSM structure",
@@ -146,7 +148,7 @@ use by another process.
 		Run:  d.runSpace,
 	}
 
-	d.Root.AddCommand(d.Check, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space)
+	d.Root.AddCommand(d.Check, d.Checkpoint, d.Get, d.Logs, d.LSM, d.Properties, d.Scan, d.Set, d.Space)
 	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
 	for _, cmd := range []*cobra.Command{d.Check, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space} {
