@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"text/tabwriter"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -24,15 +25,16 @@ import (
 // dbT implements db-level tools, including both configuration state and the
 // commands themselves.
 type dbT struct {
-	Root       *cobra.Command
-	Check      *cobra.Command
-	Checkpoint *cobra.Command
-	Get        *cobra.Command
-	LSM        *cobra.Command
-	Properties *cobra.Command
-	Scan       *cobra.Command
-	Set        *cobra.Command
-	Space      *cobra.Command
+	Root        *cobra.Command
+	Check       *cobra.Command
+	Checkpoint  *cobra.Command
+	Compactions *cobra.Command
+	Get         *cobra.Command
+	LSM         *cobra.Command
+	Properties  *cobra.Command
+	Scan        *cobra.Command
+	Set         *cobra.Command
+	Space       *cobra.Command
 
 	// Configuration.
 	opts      *pebble.Options
@@ -83,6 +85,11 @@ database not be in use by another process.
 `,
 		Args: cobra.ExactArgs(2),
 		Run:  d.runCheckpoint,
+	}
+	d.Compactions = &cobra.Command{
+		Use:   "compactions",
+		Short: "Scan and summarize compaction logs",
+		RunE:  d.runCompactionLogs,
 	}
 	d.Get = &cobra.Command{
 		Use:   "get <dir> <key>",
@@ -146,7 +153,7 @@ use by another process.
 		Run:  d.runSpace,
 	}
 
-	d.Root.AddCommand(d.Check, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space)
+	d.Root.AddCommand(d.Check, d.Checkpoint, d.Compactions, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space)
 	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
 	for _, cmd := range []*cobra.Command{d.Check, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space} {
@@ -172,6 +179,11 @@ use by another process.
 
 	d.Scan.Flags().Int64Var(
 		&d.count, "count", 0, "key count for scan (0 is unlimited)")
+
+	d.Compactions.Flags().Duration(
+		"window", 10*time.Minute, "time window in which to aggregate compactions")
+	d.Compactions.Flags().Duration(
+		"long-running-limit", 0, "log compactions greater with runtime greater than the limit")
 	return d
 }
 
