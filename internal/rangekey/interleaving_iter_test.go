@@ -19,11 +19,20 @@ import (
 )
 
 func TestInterleavingIter(t *testing.T) {
+	runInterleavingIterTest(t, "testdata/interleaving_iter")
+}
+
+func TestInterleavingIter_Masking(t *testing.T) {
+	runInterleavingIterTest(t, "testdata/interleaving_iter_masking")
+}
+
+func runInterleavingIterTest(t *testing.T, filename string) {
 	cmp := testkeys.Comparer.Compare
 	var rangeKeyIter Iter
 	var pointIter pointIterator
 	var iter InterleavingIter
 	var buf bytes.Buffer
+	var maskingThreshold []byte
 
 	formatKey := func(k *base.InternalKey, v []byte) {
 		if k == nil {
@@ -41,9 +50,13 @@ func TestInterleavingIter(t *testing.T) {
 		fmt.Fprint(&buf, "\n-")
 	}
 
-	datadriven.RunTest(t, "testdata/interleaving_iter", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, filename, func(td *datadriven.TestData) string {
 		buf.Reset()
 		switch td.Cmd {
+		case "set-masking-threshold":
+			maskingThreshold = []byte(strings.TrimSpace(td.Input))
+			iter.Init(testkeys.Comparer.Split, &pointIter, &rangeKeyIter, maskingThreshold)
+			return "OK"
 		case "define-rangekeys":
 			var spans []keyspan.Span
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
@@ -58,7 +71,7 @@ func TestInterleavingIter(t *testing.T) {
 				})
 			}
 			rangeKeyIter.Init(cmp, testkeys.Comparer.FormatKey, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, spans))
-			iter.Init(&pointIter, &rangeKeyIter)
+			iter.Init(testkeys.Comparer.Split, &pointIter, &rangeKeyIter, maskingThreshold)
 			return "OK"
 		case "define-pointkeys":
 			var points []base.InternalKey
@@ -67,7 +80,7 @@ func TestInterleavingIter(t *testing.T) {
 				points = append(points, base.ParseInternalKey(line))
 			}
 			pointIter = pointIterator{cmp: cmp, keys: points}
-			iter.Init(&pointIter, &rangeKeyIter)
+			iter.Init(testkeys.Comparer.Split, &pointIter, &rangeKeyIter, maskingThreshold)
 			return "OK"
 		case "iter":
 			buf.Reset()
