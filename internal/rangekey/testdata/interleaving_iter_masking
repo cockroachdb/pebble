@@ -1,0 +1,470 @@
+# Test the scenario illustrated in the below visualization.
+#
+#        ^
+#     @9 |        •―――――――――――――――○ [e,m)@9
+#   s  8 |                      • l@8
+#   u  7 |------------------------------------ @7 masking
+#   f  6 |      [h,q)@6 •―――――――――――――――――○     threshold
+#   f  5 |              • h@5
+#   f  4 |                          • n@4
+#   i  3 |          •―――――――――――○ [f,l)@3
+#   x  2 |  • b@2
+#      1 |
+#      0 |___________________________________
+#         a b c d e f g h i j k l m n o p q
+#
+
+define-rangekeys
+e.RANGEKEYSET.1 : f [(@9=foo)]
+f.RANGEKEYSET.1 : h [(@9=foo),(@3=bar)]
+h.RANGEKEYSET.1 : l [(@9=foo),(@6=bax),(@3=bar)]
+l.RANGEKEYSET.1 : m [(@9=foo),(@6=bax)]
+m.RANGEKEYSET.1 : q [(@6=bax)]
+----
+OK
+
+define-pointkeys
+b@2.SET.1
+h@5.SET.1
+l@8.SET.1
+n@4.SET.1
+----
+OK
+
+set-masking-threshold
+@7
+----
+OK
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+----
+PointKey: b@2#1,1
+RangeKey: .
+-
+PointKey: e#72057594037927935,21
+RangeKey: [e, f)
+└── @9 : foo
+-
+PointKey: f#72057594037927935,21
+RangeKey: [f, h)
+├── @9 : foo
+└── @3 : bar
+-
+PointKey: h#72057594037927935,21
+RangeKey: [h, l)
+├── @9 : foo
+├── @6 : bax
+└── @3 : bar
+-
+PointKey: l#72057594037927935,21
+RangeKey: [l, m)
+├── @9 : foo
+└── @6 : bax
+-
+PointKey: l@8#1,1
+RangeKey: [l, m)
+├── @9 : foo
+└── @6 : bax
+-
+PointKey: m#72057594037927935,21
+RangeKey: [m, q)
+└── @6 : bax
+-
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+prev
+prev
+----
+PointKey: m#72057594037927935,21
+RangeKey: [m, q)
+└── @6 : bax
+-
+PointKey: l@8#1,1
+RangeKey: [l, m)
+├── @9 : foo
+└── @6 : bax
+-
+PointKey: l#72057594037927935,21
+RangeKey: [l, m)
+├── @9 : foo
+└── @6 : bax
+-
+PointKey: h#72057594037927935,21
+RangeKey: [h, l)
+├── @9 : foo
+├── @6 : bax
+└── @3 : bar
+-
+PointKey: f#72057594037927935,21
+RangeKey: [f, h)
+├── @9 : foo
+└── @3 : bar
+-
+PointKey: e#72057594037927935,21
+RangeKey: [e, f)
+└── @9 : foo
+-
+PointKey: b@2#1,1
+RangeKey: .
+-
+.
+
+iter
+seek-ge a
+seek-ge c
+seek-ge h
+seek-ge i
+seek-ge l
+next
+seek-ge m
+seek-ge r
+----
+PointKey: b@2#1,1
+RangeKey: .
+-
+PointKey: e#72057594037927935,21
+RangeKey: [e, f)
+└── @9 : foo
+-
+PointKey: h#72057594037927935,21
+RangeKey: [h, l)
+├── @9 : foo
+├── @6 : bax
+└── @3 : bar
+-
+PointKey: i#72057594037927935,21
+RangeKey: [h, l)
+├── @9 : foo
+├── @6 : bax
+└── @3 : bar
+-
+PointKey: l#72057594037927935,21
+RangeKey: [l, m)
+├── @9 : foo
+└── @6 : bax
+-
+PointKey: l@8#1,1
+RangeKey: [l, m)
+├── @9 : foo
+└── @6 : bax
+-
+PointKey: m#72057594037927935,21
+RangeKey: [m, q)
+└── @6 : bax
+-
+.
+
+# Setting the masking threshold to @9 should result in l@8 being masked by
+# [e,m)@9.
+
+set-masking-threshold
+@9
+----
+OK
+
+iter
+seek-ge l
+next
+seek-lt l
+seek-lt ll
+prev
+----
+PointKey: l#72057594037927935,21
+RangeKey: [l, m)
+├── @9 : foo
+└── @6 : bax
+-
+PointKey: m#72057594037927935,21
+RangeKey: [m, q)
+└── @6 : bax
+-
+PointKey: h#72057594037927935,21
+RangeKey: [h, l)
+├── @9 : foo
+├── @6 : bax
+└── @3 : bar
+-
+PointKey: l#72057594037927935,21
+RangeKey: [l, m)
+├── @9 : foo
+└── @6 : bax
+-
+PointKey: h#72057594037927935,21
+RangeKey: [h, l)
+├── @9 : foo
+├── @6 : bax
+└── @3 : bar
+-
+
+iter
+seek-ge l
+next
+----
+PointKey: l#72057594037927935,21
+RangeKey: [l, m)
+├── @9 : foo
+└── @6 : bax
+-
+PointKey: m#72057594037927935,21
+RangeKey: [m, q)
+└── @6 : bax
+-
+
+define-rangekeys
+a.RANGEKEYSET.1 : c [(@5=apples),(@2=bananas)]
+----
+OK
+
+define-pointkeys
+a.SET.1
+a@3.SET.1
+a@12.SET.1
+b@2.SET.1
+----
+OK
+
+set-masking-threshold
+@10
+----
+OK
+
+# Test that both a@3 and b@2 are masked by the rangekey.
+# The unsuffixed point key 'a' and the point key at a higher timestamp 'a@12'
+# are not masked.
+
+iter
+first
+next
+next
+next
+----
+PointKey: a#72057594037927935,21
+RangeKey: [a, c)
+├── @5 : apples
+└── @2 : bananas
+-
+PointKey: a#1,1
+RangeKey: [a, c)
+├── @5 : apples
+└── @2 : bananas
+-
+PointKey: a@12#1,1
+RangeKey: [a, c)
+├── @5 : apples
+└── @2 : bananas
+-
+.
+
+iter
+last
+prev
+prev
+prev
+----
+PointKey: a@12#1,1
+RangeKey: [a, c)
+├── @5 : apples
+└── @2 : bananas
+-
+PointKey: a#1,1
+RangeKey: [a, c)
+├── @5 : apples
+└── @2 : bananas
+-
+PointKey: a#72057594037927935,21
+RangeKey: [a, c)
+├── @5 : apples
+└── @2 : bananas
+-
+.
+
+# Try the same test, but with a range key that sorts before the masking
+# threshold (eg, higher MVCC timestamp). Nothing should be masked.
+
+define-rangekeys
+a.RANGEKEYSET.2 : c [(@20=apples)]
+----
+OK
+
+iter
+first
+next
+next
+next
+next
+next
+----
+PointKey: a#72057594037927935,21
+RangeKey: [a, c)
+└── @20 : apples
+-
+PointKey: a#1,1
+RangeKey: [a, c)
+└── @20 : apples
+-
+PointKey: a@3#1,1
+RangeKey: [a, c)
+└── @20 : apples
+-
+PointKey: a@12#1,1
+RangeKey: [a, c)
+└── @20 : apples
+-
+PointKey: b@2#1,1
+RangeKey: [a, c)
+└── @20 : apples
+-
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+----
+PointKey: b@2#1,1
+RangeKey: [a, c)
+└── @20 : apples
+-
+PointKey: a@12#1,1
+RangeKey: [a, c)
+└── @20 : apples
+-
+PointKey: a@3#1,1
+RangeKey: [a, c)
+└── @20 : apples
+-
+PointKey: a#1,1
+RangeKey: [a, c)
+└── @20 : apples
+-
+PointKey: a#72057594037927935,21
+RangeKey: [a, c)
+└── @20 : apples
+-
+.
+
+# Try the original test, but with an internal range key containing just an
+# Unset, and no Set. Nothing should be masked. No range keys should be surfaced,
+# because there are none.
+
+define-rangekeys
+a.RANGEKEYUNSET.1 : c [@5,@2]
+----
+OK
+
+iter
+first
+next
+next
+next
+next
+----
+PointKey: a#1,1
+RangeKey: .
+-
+PointKey: a@3#1,1
+RangeKey: .
+-
+PointKey: a@12#1,1
+RangeKey: .
+-
+PointKey: b@2#1,1
+RangeKey: .
+-
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+----
+PointKey: b@2#1,1
+RangeKey: .
+-
+PointKey: a@12#1,1
+RangeKey: .
+-
+PointKey: a@3#1,1
+RangeKey: .
+-
+PointKey: a#1,1
+RangeKey: .
+-
+.
+
+# Test a scenario where a point key is masked in the forward direction, which in
+# turn requires nexting to the next range key as well.
+
+define-rangekeys
+a.RANGEKEYSET.1 : c [(@5=apples)]
+c.RANGEKEYSET.1 : z [(@10=bananas)]
+----
+OK
+
+define-pointkeys
+b@3.SET.2
+d@9.SET.4
+j@11.SET.3
+----
+OK
+
+set-masking-threshold
+@20
+----
+OK
+
+iter
+first
+next
+next
+----
+PointKey: a#72057594037927935,21
+RangeKey: [a, c)
+└── @5 : apples
+-
+PointKey: c#72057594037927935,21
+RangeKey: [c, z)
+└── @10 : bananas
+-
+PointKey: j@11#3,1
+RangeKey: [c, z)
+└── @10 : bananas
+-
+
+iter
+last
+prev
+prev
+----
+PointKey: j@11#3,1
+RangeKey: [c, z)
+└── @10 : bananas
+-
+PointKey: c#72057594037927935,21
+RangeKey: [c, z)
+└── @10 : bananas
+-
+PointKey: a#72057594037927935,21
+RangeKey: [a, c)
+└── @5 : apples
+-

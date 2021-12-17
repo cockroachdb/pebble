@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
@@ -26,6 +27,27 @@ type CoalescedSpan struct {
 	// Delete is true if a RANGEKEYDEL covering this user key span was coalesced
 	// into this span.
 	Delete bool
+}
+
+// SmallestSetSuffix returns the smallest suffix of an actively set range key
+// (excluding suffixes that are unset or deleted), that's also greater than or
+// equal to (as defined by cmp) than the suffixThreshold argument.
+// SmallestSetSuffix returns nil if suffixThreshold is nil.
+func (s *CoalescedSpan) SmallestSetSuffix(cmp base.Compare, suffixThreshold []byte) []byte {
+	if suffixThreshold == nil {
+		return nil
+	}
+	// NB: s.Items is sorted in ascending order, so return the first matching
+	// suffix.
+	for i := range s.Items {
+		if invariants.Enabled && i > 0 && cmp(s.Items[i-1].Suffix, s.Items[i].Suffix) >= 0 {
+			panic("pebble: invariant violation: coalesced span's suffixes out-of-order")
+		}
+		if !s.Items[i].Unset && cmp(s.Items[i].Suffix, suffixThreshold) >= 0 {
+			return s.Items[i].Suffix
+		}
+	}
+	return nil
 }
 
 // HasSets returns true if the coalesced span contains any Sets. When several

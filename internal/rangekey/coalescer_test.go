@@ -52,6 +52,48 @@ func TestHasSets(t *testing.T) {
 	}
 }
 
+func TestSmallestSetSuffix(t *testing.T) {
+	testCases := []struct {
+		span      *CoalescedSpan
+		threshold []byte
+		want      []byte
+	}{
+		{
+			span:      &CoalescedSpan{Items: []SuffixItem{{Suffix: []byte("foo")}}},
+			threshold: []byte("apple"),
+			want:      []byte("foo"),
+		},
+		{
+			span:      &CoalescedSpan{Items: []SuffixItem{{Suffix: []byte("foo")}}},
+			threshold: []byte("xyz"),
+			want:      nil,
+		},
+		{
+			span:      &CoalescedSpan{Items: []SuffixItem{{Suffix: []byte("foo")}}},
+			threshold: []byte("foo"),
+			want:      []byte("foo"),
+		},
+		{
+			span: &CoalescedSpan{Items: []SuffixItem{
+				{Suffix: []byte("ace")},
+				{Suffix: []byte("bar"), Unset: true},
+				{Suffix: []byte("foo")},
+			}},
+			threshold: []byte("apple"),
+			want:      []byte("foo"),
+		},
+	}
+	for _, tc := range testCases {
+		got := tc.span.SmallestSetSuffix(base.DefaultComparer.Compare, tc.threshold)
+		if !bytes.Equal(got, tc.want) {
+			var buf bytes.Buffer
+			formatRangeKeySpan(&buf, tc.span)
+			t.Errorf("%s.SmallestSetSuffix(%q) = %q, want %q",
+				buf.String(), tc.threshold, got, tc.want)
+		}
+	}
+}
+
 func TestCoalescer(t *testing.T) {
 	var c Coalescer
 	var buf bytes.Buffer
