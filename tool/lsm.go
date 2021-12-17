@@ -83,6 +83,16 @@ func newLSM(opts *pebble.Options, comparers sstable.Comparers) *lsmT {
 		Short: "LSM visualization tool",
 		Long: `
 Visualize the evolution of an LSM from the version edits in a MANIFEST.
+
+Given an input MANIFEST, output an HTML file containing a visualization showing
+the evolution of the LSM. Each version edit in the MANIFEST becomes a single
+step in the visualization. The 7 levels of the LSM are depicted with each
+sstable represented as a 1-pixel wide rectangle. The height of the rectangle is
+proportional to the size (in bytes) of the sstable. The sstables are displayed
+in the same order as they occur in the LSM. Note that the sstables from
+different levels are NOT aligned according to their start and end keys (doing so
+is also interesting, but it works against using the area of the rectangle to
+indicate size).
 `,
 		Args: cobra.ExactArgs(1),
 		Run:  l.runLSM,
