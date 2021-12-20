@@ -295,3 +295,32 @@ finish
 ----
 ●   [a, c)#5 (DEL)
 └── @5 : foo
+
+# Test coalescer filterrs out fragments that aren't visible at the specified
+# visible seqnum.
+
+set-visible-seqnum 10
+----
+OK
+
+add
+a.RANGEKEYSET.20  : c [(@20=foo5)]
+a.RANGEKEYSET.10  : c [(@10=foo5)]
+a.RANGEKEYSET.5   : c [(@5=foo5)]
+----
+
+finish
+----
+●   [a, c)#5
+└── @5 : foo5
+
+add-reverse
+a.RANGEKEYSET.5   : c [(@5=foo5)]
+a.RANGEKEYSET.10  : c [(@10=foo5)]
+a.RANGEKEYSET.20  : c [(@20=foo5)]
+----
+
+finish
+----
+●   [a, c)#5
+└── @5 : foo5

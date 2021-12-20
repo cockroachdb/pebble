@@ -108,8 +108,9 @@ type SuffixItem struct {
 // are expected to be consistent with respect to the set/unset suffixes: A
 // given suffix should be set or unset but not both.
 type Coalescer struct {
-	emit      func(CoalescedSpan)
-	formatKey base.FormatKey
+	emit          func(CoalescedSpan)
+	formatKey     base.FormatKey
+	visibleSeqNum uint64
 
 	largestSeqNum uint64
 	prevKey       base.InternalKey
@@ -125,9 +126,10 @@ type Coalescer struct {
 }
 
 // Init initializes a coalescer.
-func (c *Coalescer) Init(cmp base.Compare, formatKey base.FormatKey, emit func(CoalescedSpan)) {
+func (c *Coalescer) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum uint64, emit func(CoalescedSpan)) {
 	c.emit = emit
 	c.formatKey = formatKey
+	c.visibleSeqNum = visibleSeqNum
 	c.items.cmp = cmp
 }
 
@@ -153,6 +155,9 @@ func (c *Coalescer) Finish() {
 func (c *Coalescer) Add(s keyspan.Span) error {
 	if c.dir == -1 {
 		panic("pebble: cannot change directions during range key coalescence")
+	}
+	if !s.Start.Visible(c.visibleSeqNum) {
+		return nil
 	}
 
 	// If s is the first fragment with new bounds, flush.
@@ -267,6 +272,9 @@ func (c *Coalescer) Add(s keyspan.Span) error {
 func (c *Coalescer) AddReverse(s keyspan.Span) error {
 	if c.dir == +1 {
 		panic("pebble: cannot change directions during range key coalescence")
+	}
+	if !s.Start.Visible(c.visibleSeqNum) {
+		return nil
 	}
 
 	// If s is the first fragment with new bounds, flush.
@@ -404,8 +412,9 @@ func (c *Coalescer) flush() {
 	})
 	// Clear all state of the flushed span.
 	*c = Coalescer{
-		emit:      c.emit,
-		formatKey: c.formatKey,
+		emit:          c.emit,
+		formatKey:     c.formatKey,
+		visibleSeqNum: c.visibleSeqNum,
 		items: suffixItems{
 			cmp:   c.items.cmp,
 			items: c.items.items[:0],

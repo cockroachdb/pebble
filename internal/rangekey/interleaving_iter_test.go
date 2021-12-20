@@ -57,7 +57,7 @@ func TestInterleavingIter(t *testing.T) {
 					Value: v,
 				})
 			}
-			rangeKeyIter.Init(cmp, testkeys.Comparer.FormatKey, keyspan.NewIter(cmp, spans))
+			rangeKeyIter.Init(cmp, testkeys.Comparer.FormatKey, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, spans))
 			iter.Init(&pointIter, &rangeKeyIter)
 			return "OK"
 		case "define-pointkeys":

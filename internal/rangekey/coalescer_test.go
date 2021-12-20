@@ -8,9 +8,11 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -53,12 +55,25 @@ func TestHasSets(t *testing.T) {
 func TestCoalescer(t *testing.T) {
 	var c Coalescer
 	var buf bytes.Buffer
-	c.Init(testkeys.Comparer.Compare, testkeys.Comparer.FormatKey, func(rks CoalescedSpan) {
-		formatRangeKeySpan(&buf, &rks)
-	})
+	init := func(visibleSeqNum uint64) {
+		c.Init(testkeys.Comparer.Compare, testkeys.Comparer.FormatKey, visibleSeqNum,
+			func(rks CoalescedSpan) { formatRangeKeySpan(&buf, &rks) })
+	}
+	init(base.InternalKeySeqNumMax)
 
 	datadriven.RunTest(t, "testdata/coalescer", func(td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "set-visible-seqnum":
+			if len(td.CmdArgs) != 1 {
+				return "expected 1 command arg"
+			}
+			v, err := strconv.ParseUint(td.CmdArgs[0].String(), 10, 64)
+			if err != nil {
+				return err.Error()
+			}
+			init(v)
+			return "OK"
+
 		case "add":
 			buf.Reset()
 
@@ -95,6 +110,7 @@ func TestCoalescer(t *testing.T) {
 			buf.Reset()
 			c.Finish()
 			return buf.String()
+
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
@@ -122,7 +138,7 @@ func TestIter(t *testing.T) {
 					Value: v,
 				})
 			}
-			iter.Init(cmp, testkeys.Comparer.FormatKey, keyspan.NewIter(cmp, spans))
+			iter.Init(cmp, testkeys.Comparer.FormatKey, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, spans))
 			return "OK"
 		case "iter":
 			buf.Reset()

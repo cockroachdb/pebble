@@ -33,11 +33,11 @@ type Iter struct {
 }
 
 // Init initializes an iterator over a set of fragmented, coalesced spans.
-func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, iter *keyspan.Iter) {
+func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum uint64, iter *keyspan.Iter) {
 	*i = Iter{
 		iter: iter,
 	}
-	i.coalescer.Init(cmp, formatKey, func(span CoalescedSpan) {
+	i.coalescer.Init(cmp, formatKey, visibleSeqNum, func(span CoalescedSpan) {
 		i.curr = span
 	})
 }
