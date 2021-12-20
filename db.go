@@ -401,7 +401,7 @@ type DB struct {
 
 	// compressionQueue is used to queue blocks which need to be compressed.
 	// Goroutines will read these blocks and process them in parallel.
-	compressionQueue *sstable.CompressionWorkersQueue
+	compressionQueue *sstable.CompressionQueue
 
 	// Normally equal to time.Now() but may be overridden in tests.
 	timeNow func() time.Time

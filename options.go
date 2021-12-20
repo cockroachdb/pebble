@@ -1019,10 +1019,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "wal_bytes_per_sync":
 				o.WALBytesPerSync, err = strconv.Atoi(value)
 			case "max_compression_concurrency":
-				compressionConcurrency, e := strconv.Atoi(value)
-				o.Experimental.MaxCompressionConcurrency = uint64(compressionConcurrency)
-				fmt.Println("set compression concurrency", o.Experimental.MaxCompressionConcurrency)
-				err = e
+				o.Experimental.MaxCompressionConcurrency, err = strconv.ParseUint(value, 10, 64)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key) {
 					return nil

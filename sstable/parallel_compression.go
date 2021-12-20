@@ -5,18 +5,18 @@ import (
 )
 
 // Overall Algorithm:
-// We initialize a CompressionWorkersQueue, and launch
+// We initialize a CompressionQueue, and launch
 // MaxCompressionConcurreny compression workers. Each worker
 // blocks on a channel waiting for a compression job which is
-// represented using a BlockCompressionCoordinator. Once the
-// compression job is complete, it writes the CompressedData
-// to the BlockCompressionCoordinator.doneCh.
+// represented using a compressionTask. Once the
+// compression job is complete, it writes the compressedData
+// to the compressionTask.doneCh.
 //
-// Each sstable Writer will have a writeQueueContainer which
+// Each sstable Writer will have a writeQueue which
 // launches a single worker to write blocks to disk.
-// BlockWriteCoordinators are queued in the writeQueueContainer
+// writeTaskBuffer are queued in the writeQueue
 // in the order in which the blocks need to be written to disk. The
-// worker will block on the BlockWriteCoordinator.doneCh as it waits
+// worker will block on the writeTask.doneCh as it waits
 // for the corresponding compression job to complete. Once the compression
 // job is complete, the worker will write the block to disk.
 
@@ -45,36 +45,36 @@ func copyInternalKey(key InternalKey) InternalKey {
 	return key
 }
 
-// CompressedData is used to send the compressed block to the
+// compressedData is used to send the compressed block to the
 // writer thread.
-type CompressedData struct {
+type compressedData struct {
 	compressed  []byte
 	tmpBuf      [blockHandleLikelyMaxLen]byte
 	err         error
 	compressBuf []byte
 }
 
-// BlockCompressionCoordinator is added to the compression
+// compressionTask is added to the compression
 // queue to indicate a pending compression.
-type BlockCompressionCoordinator struct {
+type compressionTask struct {
 	toCompress  []byte
 	compression Compression
 	checksum    ChecksumType
 
 	// doneCh is used to signal to the writer
 	// thread that the compression has been
-	// completed. doneCh should be a
+	// completed. doneCh is a
 	// buffered channel of size 1.
-	doneCh chan<- *CompressedData
+	doneCh chan<- *compressedData
 }
 
-// BlockWriteCoordinator is added to the write queue
+// writeTask is added to the write queue
 // to maintain the order of block writes to disk.
-type BlockWriteCoordinator struct {
+type writeTask struct {
 	// doneCh is used to maintain write order
-	// in the write queue. doneCh should be a
+	// in the write queue. doneCh is a
 	// buffered channel of size 1.
-	doneCh <-chan *CompressedData
+	doneCh <-chan *compressedData
 
 	indexSep        InternalKey
 	props           []byte
@@ -82,44 +82,46 @@ type BlockWriteCoordinator struct {
 	flushIndexBlock bool
 }
 
-// CompressionWorkersQueue is used to queue up blocks
+// CompressionQueue queues up blocks
 // which will get compressed in parallel.
-type CompressionWorkersQueue struct {
-	queue chan *BlockCompressionCoordinator
+type CompressionQueue struct {
+	queue chan *compressionTask
 
-	writeCoordinators       chan *BlockWriteCoordinator
-	compressionCoordinators chan *BlockCompressionCoordinator
-	compressedDataState     chan *CompressedData
+	// The following channels contain preallocated
+	// writeTask, compressionTask, and compressedData
+	// structs. We don't want to preallocate these when
+	// every single block is flushed.
+	writeTaskBuffer       chan *writeTask
+	compressionTaskBuffer chan *compressionTask
+	compressedDataBuffer  chan *compressedData
 
 	// closeWG is used to wait for the background workers
 	// to finish executing.
 	closeWG sync.WaitGroup
 }
 
-func (qu *CompressionWorkersQueue) allocateBuffers(bufferSize int) {
+// NewCompressionQueue will start numWorkers goroutines to process
+// compression of blocks, and return a usable *CompressionQueue.
+func NewCompressionQueue(
+	maxSize int, numWorkers int, bufferSize int) *CompressionQueue {
+	qu := &CompressionQueue{}
+	qu.queue = make(chan *compressionTask, maxSize)
+
+	qu.writeTaskBuffer = make(chan *writeTask, bufferSize)
+	qu.compressionTaskBuffer = make(chan *compressionTask, bufferSize)
+	qu.compressedDataBuffer = make(chan *compressedData, bufferSize)
+
+	// preallocate the structs, to avoid allocations on every
+	// block flush.
 	for i := 0; i < bufferSize; i++ {
-		w := &BlockWriteCoordinator{}
-		c := &BlockCompressionCoordinator{}
-		data := &CompressedData{}
+		w := &writeTask{}
+		c := &compressionTask{}
+		data := &compressedData{}
 
-		qu.writeCoordinators <- w
-		qu.compressionCoordinators <- c
-		qu.compressedDataState <- data
+		qu.writeTaskBuffer <- w
+		qu.compressionTaskBuffer <- c
+		qu.compressedDataBuffer <- data
 	}
-}
-
-// NewCompressionWorkersQueue will start numWorkers goroutines to process
-// compression of blocks, and return a usable *CompressionWorkersQueue.
-func NewCompressionWorkersQueue(
-	maxSize int, numWorkers int, bufferSize int) *CompressionWorkersQueue {
-	qu := &CompressionWorkersQueue{}
-	qu.queue = make(chan *BlockCompressionCoordinator, maxSize)
-
-	qu.writeCoordinators = make(chan *BlockWriteCoordinator, bufferSize)
-	qu.compressionCoordinators = make(chan *BlockCompressionCoordinator, bufferSize)
-	qu.compressedDataState = make(chan *CompressedData, bufferSize)
-
-	qu.allocateBuffers(bufferSize)
 
 	for i := 0; i < numWorkers; i++ {
 		qu.closeWG.Add(1)
@@ -129,23 +131,22 @@ func NewCompressionWorkersQueue(
 	return qu
 }
 
-func (qu *CompressionWorkersQueue) runWorker() {
+func (qu *CompressionQueue) runWorker() {
 	defer qu.closeWG.Done()
 
 	var checksumData checksumData
 	for {
-		toCompress := <-qu.queue
-		if toCompress == nil {
-			// The channel was closed. There might still be more
-			// blocks queued for compression, but we're going to ignore
-			// those.
-			// todo(bananabrick) : Might want to process every item
-			// added to the compression queue, so that the writer worker
-			// doesn't block when the the db is closed.
+		toCompress, ok := <-qu.queue
+		if !ok {
+			// The channel was closed
 			break
 		}
+		if toCompress == nil {
+			panic("a nil compression job was queued")
+		}
+
 		checksumData.checksumType = toCompress.checksum
-		compressedData := <-qu.compressedDataState
+		compressedData := <-qu.compressedDataBuffer
 		b, err := compressAndChecksum(
 			toCompress.toCompress, toCompress.compression,
 			&compressedData.compressBuf, &compressedData.tmpBuf,
@@ -164,43 +165,44 @@ func (qu *CompressionWorkersQueue) runWorker() {
 		// must be a buffered channel of size 1.
 		toCompress.doneCh <- compressedData
 
-		// Release the compression coordinator.
-		qu.releaseCompressionCoordinator(toCompress)
+		// Release the compression task, for future use to compress
+		// a different block.
+		qu.releaseCompressionTask(toCompress)
 	}
 }
 
 // todo(bananabrick) : We need to make sure that there are no references
 // to any of the fields of the values we're releasing. Add a reference
 // counted byte slice to make sure of this.
-func (qu *CompressionWorkersQueue) releaseCompressionCoordinator(c *BlockCompressionCoordinator) {
+func (qu *CompressionQueue) releaseCompressionTask(c *compressionTask) {
 	c.doneCh = nil
-	qu.compressionCoordinators <- c
+	qu.compressionTaskBuffer <- c
 }
 
-func (qu *CompressionWorkersQueue) releaseWriteCoordinator(w *BlockWriteCoordinator) {
+func (qu *CompressionQueue) releaseWriteTask(w *writeTask) {
 	w.doneCh = nil
-	qu.writeCoordinators <- w
+	qu.writeTaskBuffer <- w
 }
 
-func (qu *CompressionWorkersQueue) releaseCompressedData(c *CompressedData) {
-	qu.compressedDataState <- c
+func (qu *CompressionQueue) releaseCompressedData(c *compressedData) {
+	qu.compressedDataBuffer <- c
 }
 
 // Close will only return after the goroutines started
-// by NewCompressionWorkersQueue have stopped running.
+// by NewCompressionQueue have stopped running.
 // Items shouldn't be added to the queue once close has
 // been called.
-func (qu *CompressionWorkersQueue) Close() {
+func (qu *CompressionQueue) Close() {
 	close(qu.queue)
 	qu.closeWG.Wait()
 }
 
-// writeQueueContainer is used to process compressed blocks
+// writeQueue is used to process compressed blocks
 // in parallel.
-type writeQueueContainer struct {
+type writeQueue struct {
 	// queue is sequenced by the order of the writes to
 	// the file.
-	queue  chan *BlockWriteCoordinator
+	queue  chan *writeTask
 	writer *Writer
 
 	// closeWG is used to wait for the background workers
@@ -208,11 +210,11 @@ type writeQueueContainer struct {
 	closeWG sync.WaitGroup
 }
 
-// newwriteQueueContainer will start a single goroutine to process
-// compression of blocks, and return a usable *writeQueueContainer.
-func newWriteQueueContainer(maxSize int, w *Writer) *writeQueueContainer {
-	qu := &writeQueueContainer{}
-	qu.queue = make(chan *BlockWriteCoordinator, maxSize)
+// newWriteQueue will start a single goroutine to process
+// compression of blocks, and return a usable *writeQueue.
+func newWriteQueue(maxSize int, w *Writer) *writeQueue {
+	qu := &writeQueue{}
+	qu.queue = make(chan *writeTask, maxSize)
 	qu.writer = w
 
 	qu.closeWG.Add(1)
@@ -221,37 +223,40 @@ func newWriteQueueContainer(maxSize int, w *Writer) *writeQueueContainer {
 	return qu
 }
 
-func (qu *writeQueueContainer) releaseBuffers(w *BlockWriteCoordinator, c *CompressedData) {
-	qu.writer.parallelWriterState.compressionQueueRef.releaseWriteCoordinator(w)
+func (qu *writeQueue) releaseBuffers(w *writeTask, c *compressedData) {
+	qu.writer.parallelWriterState.compressionQueueRef.releaseWriteTask(w)
 	qu.writer.parallelWriterState.compressionQueueRef.releaseCompressedData(c)
 }
 
-func (qu *writeQueueContainer) runWorker() {
+func (qu *writeQueue) runWorker() {
 	defer qu.closeWG.Done()
 
 	var err error
 	for {
-		blockWriteCoordinator := <-qu.queue
-		if blockWriteCoordinator == nil {
-			// If blockWriteCoordinator == nil, then
+		writeTask, ok := <-qu.queue
+		if !ok {
+			// If qu.queue was closed, then
 			// we've already processed all other blocks
 			// since blocks are added to the queue in order.
 			// It's okay to break here.
 			break
 		}
+		if writeTask == nil {
+			panic("a nil write job was queued")
+		}
 
-		compressedData := <-blockWriteCoordinator.doneCh
+		compressedData := <-writeTask.doneCh
 		// If we've already encountered an error, then we don't
 		// want to write the current sstable using this worker.
 		if err != nil {
-			qu.releaseBuffers(blockWriteCoordinator, compressedData)
+			qu.releaseBuffers(writeTask, compressedData)
 			continue
 		}
 
 		if compressedData.err != nil {
 			err = compressedData.err
 			qu.writer.parallelWriterState.errCh <- err
-			qu.releaseBuffers(blockWriteCoordinator, compressedData)
+			qu.releaseBuffers(writeTask, compressedData)
 			continue
 		}
 
@@ -260,25 +265,28 @@ func (qu *writeQueueContainer) runWorker() {
 		)
 		if err != nil {
 			qu.writer.parallelWriterState.errCh <- err
-			qu.releaseBuffers(blockWriteCoordinator, compressedData)
+			qu.releaseBuffers(writeTask, compressedData)
 			continue
 		}
 
-		bhp := BlockHandleWithProperties{BlockHandle: bh, Props: blockWriteCoordinator.props}
+		bhp := BlockHandleWithProperties{BlockHandle: bh, Props: writeTask.props}
 		encodedBHP := encodeBlockHandleWithProperties(compressedData.tmpBuf[:], bhp)
 		if err = qu.writer.addIndexEntry(
-			blockWriteCoordinator.indexSep, encodedBHP, bhp,
+			writeTask.indexSep, encodedBHP, bhp,
 			// We're copying indexProps here because addIndexEntry will end up holding a reference
 			// to this, and we don't want two references to the same byte slice, which can happen
 			// once we call qu.releaseBuffers.
-			blockWriteCoordinator.flushIndexBlock, copySlice(blockWriteCoordinator.indexProps),
+			writeTask.flushIndexBlock, copySlice(writeTask.indexProps),
 		); err != nil {
 			qu.writer.parallelWriterState.errCh <- err
-			qu.releaseBuffers(blockWriteCoordinator, compressedData)
+			qu.releaseBuffers(writeTask, compressedData)
 			continue
 		}
 
-		qu.releaseBuffers(blockWriteCoordinator, compressedData)
+		// release the writeTask, compressedData structs so
+		// that they can be used for other compression/write
+		// tasks in the future.
+		qu.releaseBuffers(writeTask, compressedData)
 	}
 }
 
@@ -286,7 +294,7 @@ func (qu *writeQueueContainer) runWorker() {
 // to to the compression queue has been written to
 // the disk, assuming no errors occur.
 // The queue is no longer usable after finish is called.
-func (qu *writeQueueContainer) finish() {
+func (qu *writeQueue) finish() {
 	close(qu.queue)
 	qu.closeWG.Wait()
 }

@@ -365,15 +365,17 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 	if opts.Experimental.MaxCompressionConcurrency >= 1 {
 		queueSize := opts.Experimental.MaxCompressionConcurrency
-		if opts.MaxConcurrentCompactions > int(queueSize) {
-			queueSize = uint64(opts.MaxConcurrentCompactions)
+
+		// +1 for flushes.
+		if opts.MaxConcurrentCompactions+1 > int(queueSize) {
+			queueSize = uint64(opts.MaxConcurrentCompactions) + 1
 		}
 
 		// We have MaxCompressionConcurrencyWorkers. We make the queue size equal to
 		// at least the MaxConcurrentCompactions since each compaction thread will
 		// be adding blocks to the queue for compression. Experimentally, we found that
 		// using a bufferSize equivalent to twice the queue size is appropriate.
-		d.compressionQueue = sstable.NewCompressionWorkersQueue(
+		d.compressionQueue = sstable.NewCompressionQueue(
 			int(queueSize), int(opts.Experimental.MaxCompressionConcurrency), 2*int(queueSize),
 		)
 	}

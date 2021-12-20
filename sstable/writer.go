@@ -180,12 +180,12 @@ type parallelWriterState struct {
 	// writeQueue is used to process compressed blocks and
 	// write them to disk. It is only valid when
 	// writer.compressionQueueRef != nil.
-	writeQueue *writeQueueContainer
+	writeQueue *writeQueue
 
 	// compressionQueueRef holds a reference to the
 	// CompressionQueueContainer. If this is non-nil,
 	// then parallel compression is enabled.
-	compressionQueueRef *CompressionWorkersQueue
+	compressionQueueRef *CompressionQueue
 
 	// historicEncodedBlockHandleWithPropertiesLength helps determine whether
 	// an index block should be flushed.
@@ -438,18 +438,18 @@ func (w *Writer) maybeAddToFilter(key []byte) {
 }
 
 func (w *Writer) queueBlockForParallelCompression(key InternalKey) error {
-	compressionCoordinator := <-w.parallelWriterState.compressionQueueRef.compressionCoordinators
-	writeCoordinator := <-w.parallelWriterState.compressionQueueRef.writeCoordinators
+	compressionTask := <-w.parallelWriterState.compressionQueueRef.compressionTaskBuffer
+	writeTask := <-w.parallelWriterState.compressionQueueRef.writeTaskBuffer
 
 	// We will share this channel so that the compression go routine, and the go routine which
 	// writes the block to disk can communicate.
-	doneCh := make(chan *CompressedData, 1)
+	doneCh := make(chan *compressedData, 1)
 
 	// Populate compression coordinator.
-	copySliceToDst(&compressionCoordinator.toCompress, w.block.finish())
-	compressionCoordinator.compression = w.compression
-	compressionCoordinator.checksum = w.checksumData.checksumType
-	compressionCoordinator.doneCh = doneCh
+	copySliceToDst(&compressionTask.toCompress, w.block.finish())
+	compressionTask.compression = w.compression
+	compressionTask.checksum = w.checksumData.checksumType
+	compressionTask.doneCh = doneCh
 
 	props, err := w.getDataBlockProps()
 	if err != nil {
@@ -463,7 +463,7 @@ func (w *Writer) queueBlockForParallelCompression(key InternalKey) error {
 
 	// We need to copy props here, before we call w.getIndexBlockProps
 	// because the underylying slice is used by the w.blockPropsEncoder.
-	copySliceToDst(&writeCoordinator.props, copySlice(props))
+	copySliceToDst(&writeTask.props, copySlice(props))
 	if flushIndexBlock {
 		indexProps, err = w.getIndexBlockProps()
 		if err != nil {
@@ -472,15 +472,15 @@ func (w *Writer) queueBlockForParallelCompression(key InternalKey) error {
 		}
 	}
 
-	// Populate the rest of the fields for the writeCoordinator.
-	copySliceToDst(&writeCoordinator.indexProps, indexProps)
-	writeCoordinator.indexSep = copyInternalKey(indexSep)
-	writeCoordinator.flushIndexBlock = flushIndexBlock
-	writeCoordinator.doneCh = doneCh
+	// Populate the rest of the fields for the writeTask.
+	copySliceToDst(&writeTask.indexProps, indexProps)
+	writeTask.indexSep = copyInternalKey(indexSep)
+	writeTask.flushIndexBlock = flushIndexBlock
+	writeTask.doneCh = doneCh
 
-	// Queue compression + write jobs.
-	w.parallelWriterState.writeQueue.queue <- writeCoordinator
-	w.parallelWriterState.compressionQueueRef.queue <- compressionCoordinator
+	// Queue compression + write tasks.
+	w.parallelWriterState.writeQueue.queue <- writeTask
+	w.parallelWriterState.compressionQueueRef.queue <- compressionTask
 
 	w.addDataBlockToIndexBlockForCollectors()
 	return nil
@@ -1075,13 +1075,13 @@ func (i internalTableOpt) writerApply(w *Writer) {
 // with parallel compression in the Writer, and sets up the writer
 // to write blocks to disk asynchronously.
 type ParallelCompressionOpt struct {
-	CompressionQueue *CompressionWorkersQueue
+	CompressionQueue *CompressionQueue
 	WriteQueueSize   uint64
 }
 
 func (p ParallelCompressionOpt) writerApply(w *Writer) {
 	if p.CompressionQueue != nil {
-		w.parallelWriterState.writeQueue = newWriteQueueContainer(int(p.WriteQueueSize), w)
+		w.parallelWriterState.writeQueue = newWriteQueue(int(p.WriteQueueSize), w)
 		w.parallelWriterState.compressionQueueRef = p.CompressionQueue
 	}
 }
