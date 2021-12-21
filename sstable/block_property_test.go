@@ -6,10 +6,15 @@ package sstable
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"math/rand"
+	"sort"
+	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/stretchr/testify/require"
 )
 
@@ -739,4 +744,177 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 			}
 		})
 	}
+}
+
+// valueCharBlockIntervalCollector implements DataBlockIntervalCollector by
+// maintaining the lower and upped bound of a fixed character position in the
+// value, when represented as an integer.
+type valueCharBlockIntervalCollector struct {
+	charIdx      int
+	initialized  bool
+	lower, upper uint64
+}
+
+var _ DataBlockIntervalCollector = &valueCharBlockIntervalCollector{}
+
+// Add implements DataBlockIntervalCollector by maintaining the lower and upper
+// bound of a fixed character position in the value.
+func (c *valueCharBlockIntervalCollector) Add(_ InternalKey, value []byte) error {
+	charIdx := c.charIdx
+	if charIdx == -1 {
+		charIdx = len(value) - 1
+	}
+	val, err := strconv.Atoi(string(value[charIdx]))
+	if err != nil {
+		return err
+	}
+	uval := uint64(val)
+	if !c.initialized {
+		c.lower, c.upper = uval, uval
+		c.initialized = true
+		return nil
+	}
+	if uval < c.lower {
+		c.lower = uval
+	}
+	if uval > c.upper {
+		c.upper = uval
+	}
+
+	return nil
+}
+
+// Finish implements DataBlockIntervalCollector, returning the lower and upper
+// bound for the block. The range is reset to zero in anticipation of the next
+// block.
+func (c *valueCharBlockIntervalCollector) FinishDataBlock() (lower, upper uint64, err error) {
+	l, u := c.lower, c.upper
+	c.lower, c.upper = 0, 0
+	c.initialized = false
+	return l, u, nil
+}
+
+func TestBlockProperties(t *testing.T) {
+	var r *Reader
+	defer func() {
+		if r != nil {
+			require.NoError(t, r.Close())
+		}
+	}()
+
+	datadriven.RunTest(t, "testdata/block_properties", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "build":
+			if r != nil {
+				_ = r.Close()
+				r = nil
+			}
+			var opts WriterOptions
+			for _, cmd := range td.CmdArgs {
+				switch cmd.Key {
+				case "block-size":
+					if len(cmd.Vals) != 1 {
+						return fmt.Sprintf("%s: arg %s expects 1 value", td.Cmd, cmd.Key)
+					}
+					var err error
+					opts.BlockSize, err = strconv.Atoi(cmd.Vals[0])
+					if err != nil {
+						return err.Error()
+					}
+				case "collector":
+					for _, c := range cmd.Vals {
+						var idx int
+						switch c {
+						case "value-first":
+							idx = 0
+						case "value-last":
+							idx = -1
+						default:
+							return fmt.Sprintf("unknown collector: %s", c)
+						}
+						opts.BlockPropertyCollectors = append(opts.BlockPropertyCollectors, func() BlockPropertyCollector {
+							return NewBlockIntervalCollector(c, &valueCharBlockIntervalCollector{
+								charIdx: idx,
+							})
+						})
+					}
+				}
+			}
+			var meta *WriterMetadata
+			var err error
+			meta, r, err = runBuildCmd(td, &opts)
+			if err != nil {
+				return err.Error()
+			}
+			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nrangekey: [%s,%s]\nseqnums:  [%d,%d]\n",
+				meta.SmallestPoint, meta.LargestPoint,
+				meta.SmallestRangeDel, meta.LargestRangeDel,
+				meta.SmallestRangeKey, meta.LargestRangeKey,
+				meta.SmallestSeqNum, meta.LargestSeqNum)
+
+		case "collectors":
+			var lines []string
+			for k, v := range r.Properties.UserProperties {
+				lines = append(lines, fmt.Sprintf("%d: %s", v[0], k))
+			}
+			linesSorted := sort.StringSlice(lines)
+			linesSorted.Sort()
+			return strings.Join(lines, "\n")
+
+		case "table-props":
+			var lines []string
+			for _, val := range r.Properties.UserProperties {
+				id := shortID(val[0])
+				var i interval
+				if err := i.decode([]byte(val[1:])); err != nil {
+					return err.Error()
+				}
+				lines = append(lines, fmt.Sprintf("%d: [%d, %d]", id, i.lower, i.upper))
+			}
+			linesSorted := sort.StringSlice(lines)
+			linesSorted.Sort()
+			return strings.Join(lines, "\n")
+
+		case "block-props":
+			bh, err := r.readIndex()
+			if err != nil {
+				return err.Error()
+			}
+			i, err := newBlockIter(r.Compare, bh.Get())
+			if err != nil {
+				return err.Error()
+			}
+			defer bh.Release()
+			var sb strings.Builder
+			for key, val := i.First(); key != nil; key, val = i.Next() {
+				sb.WriteString(fmt.Sprintf("%s:\n", key))
+				bhp, err := decodeBlockHandleWithProperties(val)
+				if err != nil {
+					return err.Error()
+				}
+				d := blockPropertiesDecoder{props: bhp.Props}
+				var lines []string
+				for !d.done() {
+					id, prop, err := d.next()
+					if err != nil {
+						return err.Error()
+					}
+					var i interval
+					if err := i.decode(prop); err != nil {
+						return err.Error()
+					}
+					lines = append(lines, fmt.Sprintf("  %d: [%d, %d]\n", id, i.lower, i.upper))
+				}
+				linesSorted := sort.StringSlice(lines)
+				linesSorted.Sort()
+				for _, line := range lines {
+					sb.WriteString(line)
+				}
+			}
+			return sb.String()
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
 }
