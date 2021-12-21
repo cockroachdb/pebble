@@ -747,8 +747,8 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 }
 
 // valueCharBlockIntervalCollector implements DataBlockIntervalCollector by
-// maintaining the lower and upped bound of a fixed character position in the
-// value, when represented as an integer.
+// maintaining the (inclusive) lower and (exclusive) upper bound of a fixed
+// character position in the value, when represented as an integer.
 type valueCharBlockIntervalCollector struct {
 	charIdx      int
 	initialized  bool
@@ -770,15 +770,15 @@ func (c *valueCharBlockIntervalCollector) Add(_ InternalKey, value []byte) error
 	}
 	uval := uint64(val)
 	if !c.initialized {
-		c.lower, c.upper = uval, uval
+		c.lower, c.upper = uval, uval+1
 		c.initialized = true
 		return nil
 	}
 	if uval < c.lower {
 		c.lower = uval
 	}
-	if uval > c.upper {
-		c.upper = uval
+	if uval >= c.upper {
+		c.upper = uval + 1
 	}
 
 	return nil
@@ -869,7 +869,7 @@ func TestBlockProperties(t *testing.T) {
 				if err := i.decode([]byte(val[1:])); err != nil {
 					return err.Error()
 				}
-				lines = append(lines, fmt.Sprintf("%d: [%d, %d]", id, i.lower, i.upper))
+				lines = append(lines, fmt.Sprintf("%d: [%d, %d)", id, i.lower, i.upper))
 			}
 			linesSorted := sort.StringSlice(lines)
 			linesSorted.Sort()
@@ -903,7 +903,7 @@ func TestBlockProperties(t *testing.T) {
 					if err := i.decode(prop); err != nil {
 						return err.Error()
 					}
-					lines = append(lines, fmt.Sprintf("  %d: [%d, %d]\n", id, i.lower, i.upper))
+					lines = append(lines, fmt.Sprintf("  %d: [%d, %d)\n", id, i.lower, i.upper))
 				}
 				linesSorted := sort.StringSlice(lines)
 				linesSorted.Sort()
