@@ -24,6 +24,8 @@ import (
 // Try and move indexBlock/meta.Size stuff to the main thread
 // to avoid writerMu.
 
+// todo(bananabrick): pool block writer buffers.
+
 func copySliceToDst(dst *[]byte, src []byte) {
 	if len(src) > cap(*dst) {
 		// We assume that eventually dst will have enough cap
@@ -65,6 +67,8 @@ type compressionTask struct {
 	// thread that the compression has been
 	// completed. doneCh is a
 	// buffered channel of size 1.
+	// The write to doneCh won't block because
+	// the doneCh is a buffered channel of size 1.
 	doneCh chan<- *compressedData
 }
 
@@ -113,14 +117,13 @@ func NewCompressionQueue(
 
 	// preallocate the structs, to avoid allocations on every
 	// block flush.
+	writeTasks := make([]writeTask, bufferSize)
+	compressionTasks := make([]compressionTask, bufferSize)
+	compressedDatas := make([]compressedData, bufferSize)
 	for i := 0; i < bufferSize; i++ {
-		w := &writeTask{}
-		c := &compressionTask{}
-		data := &compressedData{}
-
-		qu.writeTaskBuffer <- w
-		qu.compressionTaskBuffer <- c
-		qu.compressedDataBuffer <- data
+		qu.writeTaskBuffer <- &writeTasks[i]
+		qu.compressionTaskBuffer <- &compressionTasks[i]
+		qu.compressedDataBuffer <- &compressedDatas[i]
 	}
 
 	for i := 0; i < numWorkers; i++ {
@@ -233,6 +236,11 @@ func (qu *writeQueue) runWorker() {
 
 	var err error
 	for {
+		// We continue to read from qu.queue even if we've encountered an
+		// error because the main compaction goroutine might not have detected
+		// the error yet, and may still add to this queue. We don't want
+		// the main compaction goroutine to block. Once the compaction
+		// goroutine encounters the error, it will call qu.finish.
 		writeTask, ok := <-qu.queue
 		if !ok {
 			// If qu.queue was closed, then
@@ -253,34 +261,35 @@ func (qu *writeQueue) runWorker() {
 			continue
 		}
 
-		if compressedData.err != nil {
-			err = compressedData.err
-			qu.writer.parallelWriterState.errCh <- err
-			qu.releaseBuffers(writeTask, compressedData)
-			continue
-		}
+		err = func() error {
+			if compressedData.err != nil {
+				return compressedData.err
+			}
 
-		bh, err := qu.writer.writeBlockPostCompression(
-			compressedData.compressed, compressedData.tmpBuf,
-		)
+			bh, err := qu.writer.writeBlockPostCompression(
+				compressedData.compressed, compressedData.tmpBuf,
+			)
+			if err != nil {
+				return err
+			}
+
+			bhp := BlockHandleWithProperties{BlockHandle: bh, Props: writeTask.props}
+			encodedBHP := encodeBlockHandleWithProperties(compressedData.tmpBuf[:], bhp)
+			if err = qu.writer.addIndexEntry(
+				writeTask.indexSep, encodedBHP, bhp,
+				// We're copying indexProps here because addIndexEntry will end up holding a reference
+				// to this, and we don't want two references to the same byte slice, which can happen
+				// once we call qu.releaseBuffers.
+				writeTask.flushIndexBlock, copySlice(writeTask.indexProps),
+			); err != nil {
+				return err
+			}
+
+			return nil
+		}()
+
 		if err != nil {
 			qu.writer.parallelWriterState.errCh <- err
-			qu.releaseBuffers(writeTask, compressedData)
-			continue
-		}
-
-		bhp := BlockHandleWithProperties{BlockHandle: bh, Props: writeTask.props}
-		encodedBHP := encodeBlockHandleWithProperties(compressedData.tmpBuf[:], bhp)
-		if err = qu.writer.addIndexEntry(
-			writeTask.indexSep, encodedBHP, bhp,
-			// We're copying indexProps here because addIndexEntry will end up holding a reference
-			// to this, and we don't want two references to the same byte slice, which can happen
-			// once we call qu.releaseBuffers.
-			writeTask.flushIndexBlock, copySlice(writeTask.indexProps),
-		); err != nil {
-			qu.writer.parallelWriterState.errCh <- err
-			qu.releaseBuffers(writeTask, compressedData)
-			continue
 		}
 
 		// release the writeTask, compressedData structs so
