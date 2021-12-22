@@ -50,10 +50,11 @@ func copyInternalKey(key InternalKey) InternalKey {
 // compressedData is used to send the compressed block to the
 // writer thread.
 type compressedData struct {
-	compressed  []byte
-	tmpBuf      [blockHandleLikelyMaxLen]byte
-	err         error
-	compressBuf []byte
+	compressed       []byte
+	tmpBuf           [blockHandleLikelyMaxLen]byte
+	err              error
+	compressBuf      []byte
+	compressionRatio float64
 }
 
 // compressionTask is added to the compression
@@ -186,14 +187,21 @@ func (qu *CompressionQueue) runWorker() {
 
 		checksummer.checksumType = toCompress.checksum
 		compressedData := <-qu.compressedDataBuffer
+
+		toCompressLen := len(toCompress.toCompress)
+
 		b, err := compressAndChecksum(
 			toCompress.toCompress, toCompress.compression,
 			&compressedData.compressBuf, &compressedData.tmpBuf,
 			&checksummer,
 		)
+
+		compressedLen := len(b)
+
 		if err != nil {
 			compressedData.err = err
 		} else {
+			compressedData.compressionRatio = float64(compressedLen) / float64(toCompressLen)
 			// b could be just returning toCompress.toCompress. Since
 			// we'll be releasing toCompress so that it can be re-used,
 			// we copy over the slice here.
@@ -319,6 +327,9 @@ func (qu *writeQueue) runWorker() {
 			if compressedData.err != nil {
 				return compressedData.err
 			}
+
+			// Update average compression ratio
+			qu.writer.parallelWriterState.updateAverageCompressionRatio(compressedData.compressionRatio)
 
 			bh, err := qu.writer.writeBlockPostCompression(
 				compressedData.compressed, compressedData.tmpBuf,

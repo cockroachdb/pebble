@@ -24,6 +24,7 @@ import (
 
 // WriterMetadata holds info about a finished sstable.
 type WriterMetadata struct {
+	EstimatedSize  uint64
 	Size           uint64
 	SmallestPoint  InternalKey
 	SmallestRange  InternalKey
@@ -83,6 +84,27 @@ type writeCloseSyncer interface {
 type checksummer struct {
 	checksumType ChecksumType
 	xxHasher     *xxhash.Digest
+}
+
+type averageValue struct {
+	// n represents the number of values
+	n uint64
+
+	// avg represents the average value for
+	// n samples.
+	avg float64
+}
+
+func (a *averageValue) add(f float64) {
+	oldSum := float64(a.n) * a.avg
+	newSum := oldSum + f
+	newAvg := newSum / float64(a.n+1)
+	a.n++
+	a.avg = newAvg
+}
+
+func (a *averageValue) average() float64 {
+	return a.avg
 }
 
 // Writer is a table writer.
@@ -163,7 +185,9 @@ type Writer struct {
 
 	checksummer checksummer
 
-	parallelWriterState parallelWriterState
+	// parallelWriterState != nil implies that parallel compression
+	// is enabled.
+	parallelWriterState *parallelWriterState
 
 	// writerMu is used to provide mutual exclusion between
 	// the compaction goroutine and the writer goroutine. The
@@ -178,24 +202,62 @@ type Writer struct {
 // compression.
 type parallelWriterState struct {
 	// writeQueue is used to process compressed blocks and
-	// write them to disk. It is only valid when
-	// writer.compressionQueueRef != nil.
+	// write them to disk.
 	writeQueue *writeQueue
 
 	// compressionQueueRef holds a reference to the
-	// CompressionQueueContainer. If this is non-nil,
-	// then parallel compression is enabled.
+	// CompressionQueueContainer.
 	compressionQueueRef *CompressionQueue
 
-	// historicEncodedBlockHandleWithPropertiesLength helps determine whether
-	// an index block should be flushed.
-	historicEncodedBlockHandleWithPropertiesLength int
+	mu struct {
+		sync.Mutex
+
+		// averageBHPLength helps determine whether
+		// an index block should be flushed.
+		averageBHPLength averageValue
+
+		// averageCompressionRatio is used to update writer.meta.EstimatedSize.
+		averageCompressionRatio averageValue
+	}
 
 	// errCh is only used when parallel compression is enabled. Any error
 	// encountered while compressing blocks in parallel or writing blocks
 	// to disk is sent to this channel. errCh will be written to
 	// atmost once.
 	errCh chan error
+}
+
+func newParallelWriterState(writeQueue *writeQueue, compressionQueue *CompressionQueue) *parallelWriterState {
+	p := &parallelWriterState{
+		writeQueue:          writeQueue,
+		compressionQueueRef: compressionQueue,
+		errCh:               make(chan error, 1),
+	}
+	return p
+}
+
+func (p *parallelWriterState) updateEncodedBHPLength(len float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.mu.averageBHPLength.add(len)
+}
+
+func (p *parallelWriterState) getAverageEncodedBHPLength() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.mu.averageBHPLength.average()
+}
+
+func (p *parallelWriterState) updateAverageCompressionRatio(newRatio float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.mu.averageCompressionRatio.add(newRatio)
+}
+
+func (p *parallelWriterState) getAverageCompressionRatio() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.mu.averageCompressionRatio.average()
 }
 
 type indexBlockWriterAndBlockProperties struct {
@@ -208,7 +270,7 @@ func (w *Writer) fetchEncounteredError() error {
 		return w.err
 	}
 
-	if len(w.parallelWriterState.errCh) > 0 {
+	if w.parallelWriterState != nil && len(w.parallelWriterState.errCh) > 0 {
 		w.err = <-w.parallelWriterState.errCh
 	}
 	return w.err
@@ -445,8 +507,13 @@ func (w *Writer) queueBlockForParallelCompression(key InternalKey) error {
 	// writes the block to disk can communicate.
 	doneCh := make(chan *compressedData, 1)
 
+	finishedBlock := w.block.finish()
+	w.meta.EstimatedSize += uint64(
+		w.parallelWriterState.getAverageCompressionRatio() *
+			float64(len(finishedBlock)))
+
 	// Populate compression coordinator.
-	copySliceToDst(&compressionTask.toCompress, w.block.finish())
+	copySliceToDst(&compressionTask.toCompress, finishedBlock)
 	compressionTask.compression = w.compression
 	compressionTask.checksum = w.checksummer.checksumType
 	compressionTask.doneCh = doneCh
@@ -457,8 +524,9 @@ func (w *Writer) queueBlockForParallelCompression(key InternalKey) error {
 		return w.err
 	}
 
+	averageBHPLength := w.parallelWriterState.getAverageEncodedBHPLength()
 	indexSep := w.indexEntrySeparator(base.DecodeInternalKey(w.block.curKey), key)
-	flushIndexBlock := w.shouldFlushIndexBlock(indexSep)
+	flushIndexBlock := w.shouldFlushIndexBlock(indexSep, int(averageBHPLength))
 	var indexProps []byte
 
 	// We need to copy props here, before we call w.getIndexBlockProps
@@ -492,7 +560,7 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 		return nil
 	}
 
-	if w.parallelWriterState.compressionQueueRef != nil {
+	if w.parallelWriterState != nil {
 		return w.queueBlockForParallelCompression(key)
 	}
 
@@ -513,7 +581,7 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 	// We need to encode the bhp first, before we get the block properties for the
 	// index block, because the writer.blockPropsEncoder reuses the props slice.
 	encodedBHP := encodeBlockHandleWithProperties(w.tmp[:], bhp)
-	flushIndexBlock := w.shouldFlushIndexBlock(indexSep)
+	flushIndexBlock := w.shouldFlushIndexBlock(indexSep, len(encodedBHP))
 	var indexProps []byte
 	if flushIndexBlock {
 		// If we decide that we're going to flush the index block,
@@ -591,16 +659,12 @@ func (w *Writer) indexEntrySeparator(prevKey InternalKey, key InternalKey) Inter
 
 // shouldFlushIndexBlock determines if the index block should be flushed.
 // It doesn't modify any state.
-func (w *Writer) shouldFlushIndexBlock(sep InternalKey) (flush bool) {
+func (w *Writer) shouldFlushIndexBlock(sep InternalKey, encodedBHPLength int) (flush bool) {
 	w.writerMu.Lock()
 	defer w.writerMu.Unlock()
-
-	historicEncodedBlockHandleWithPropertiesLength :=
-		w.parallelWriterState.historicEncodedBlockHandleWithPropertiesLength
-
 	flush = supportsTwoLevelIndex(w.tableFormat) &&
 		shouldFlush(
-			sep.Size(), historicEncodedBlockHandleWithPropertiesLength,
+			sep.Size(), encodedBHPLength,
 			&w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold,
 		)
 	return flush
@@ -618,11 +682,8 @@ func (w *Writer) addIndexEntry(
 
 	// If parallel compression is enabled, then we keep a weighted average value of
 	// the encodedBHP length to re-use.
-	if w.parallelWriterState.compressionQueueRef != nil {
-		w.writerMu.Lock()
-		w.parallelWriterState.historicEncodedBlockHandleWithPropertiesLength =
-			len(encodedBHP)/2 + w.parallelWriterState.historicEncodedBlockHandleWithPropertiesLength/2
-		w.writerMu.Unlock()
+	if w.parallelWriterState != nil {
+		w.parallelWriterState.updateEncodedBHPLength(float64(len(encodedBHP)))
 	}
 
 	if flushIndexBlock {
@@ -759,9 +820,7 @@ func compressAndChecksum(
 }
 
 func (w *Writer) writeBlockPostCompression(toWrite []byte, blockTrailerBuf [blockHandleLikelyMaxLen]byte) (BlockHandle, error) {
-	w.writerMu.Lock()
 	size := w.meta.Size
-	w.writerMu.Unlock()
 
 	bh := BlockHandle{Offset: size, Length: uint64(len(toWrite))}
 
@@ -779,16 +838,12 @@ func (w *Writer) writeBlockPostCompression(toWrite []byte, blockTrailerBuf [bloc
 	if err != nil {
 		return BlockHandle{}, err
 	}
-	w.writerMu.Lock()
 	w.meta.Size += uint64(n)
-	w.writerMu.Unlock()
 	n, err = w.writer.Write(blockTrailerBuf[:blockTrailerLen])
 	if err != nil {
 		return BlockHandle{}, err
 	}
-	w.writerMu.Lock()
 	w.meta.Size += uint64(n)
-	w.writerMu.Unlock()
 
 	return bh, nil
 }
@@ -819,7 +874,7 @@ func (w *Writer) Close() (err error) {
 	// and written to disk. Note that it is important to call writeQueue.finish
 	// before we check for w.err, because the write queue will set an error if it
 	// finds one and we don't want to ignore it.
-	if w.parallelWriterState.writeQueue != nil {
+	if w.parallelWriterState != nil {
 		w.parallelWriterState.writeQueue.finish()
 	}
 
@@ -844,7 +899,7 @@ func (w *Writer) Close() (err error) {
 		bhp := BlockHandleWithProperties{BlockHandle: bh, Props: props}
 		sep := w.indexEntrySeparator(base.DecodeInternalKey(w.block.curKey), InternalKey{})
 		encoded := encodeBlockHandleWithProperties(w.tmp[:], bhp)
-		flushIndexBlock := w.shouldFlushIndexBlock(sep)
+		flushIndexBlock := w.shouldFlushIndexBlock(sep, len(encoded))
 		var indexProps []byte
 		if flushIndexBlock {
 			indexProps, err = w.getIndexBlockProps()
@@ -1039,9 +1094,16 @@ func (w *Writer) Close() (err error) {
 // EstimatedSize returns the estimated size of the sstable being written if a
 // called to Finish() was made without adding additional keys.
 func (w *Writer) EstimatedSize() uint64 {
+	var size uint64
+	if w.parallelWriterState != nil {
+		size = w.meta.EstimatedSize
+	} else {
+		size = w.meta.Size
+	}
+
 	w.writerMu.Lock()
 	defer w.writerMu.Unlock()
-	return w.meta.Size + uint64(w.block.estimatedSize()+w.indexBlock.estimatedSize())
+	return size + uint64(w.block.estimatedSize()+w.indexBlock.estimatedSize())
 }
 
 // Metadata returns the metadata for the finished sstable. Only valid to call
@@ -1082,8 +1144,8 @@ type ParallelCompressionOpt struct {
 
 func (p ParallelCompressionOpt) writerApply(w *Writer) {
 	if p.CompressionQueue != nil {
-		w.parallelWriterState.writeQueue = newWriteQueue(int(p.WriteQueueSize), w)
-		w.parallelWriterState.compressionQueueRef = p.CompressionQueue
+		writeQueue := newWriteQueue(int(p.WriteQueueSize), w)
+		w.parallelWriterState = newParallelWriterState(writeQueue, p.CompressionQueue)
 	}
 }
 
@@ -1122,7 +1184,6 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		},
 	}
 	w.checksummer.checksumType = o.Checksum
-	w.parallelWriterState.errCh = make(chan error, 1)
 	if f == nil {
 		w.err = errors.New("pebble: nil file")
 		return w
