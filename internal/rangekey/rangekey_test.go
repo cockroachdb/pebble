@@ -171,3 +171,36 @@ func TestRecombinedValueLen_RoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestIsRangeKey(t *testing.T) {
+	testCases := []struct {
+		kind base.InternalKeyKind
+		want bool
+	}{
+		{
+			kind: base.InternalKeyKindRangeKeyDelete,
+			want: true,
+		},
+		{
+			kind: base.InternalKeyKindRangeKeyUnset,
+			want: true,
+		},
+		{
+			kind: base.InternalKeyKindRangeKeyDelete,
+			want: true,
+		},
+		{
+			kind: base.InternalKeyKindDelete,
+			want: false,
+		},
+		{
+			kind: base.InternalKeyKindSet,
+			want: false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run("", func(t *testing.T) {
+			require.Equal(t, tc.want, IsRangeKey(tc.kind))
+		})
+	}
+}
