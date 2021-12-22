@@ -347,6 +347,18 @@ func RecombineValue(kind base.InternalKeyKind, dst, endKey, userValue []byte) in
 	return n
 }
 
+// IsRangeKey returns true if the given key kind is one of the range key kinds.
+func IsRangeKey(kind base.InternalKeyKind) bool {
+	switch kind {
+	case base.InternalKeyKindRangeKeyDelete,
+		base.InternalKeyKindRangeKeyUnset,
+		base.InternalKeyKindRangeKeySet:
+		return true
+	default:
+		return false
+	}
+}
+
 func lenVarint(v int) (n int) {
 	x := uint32(v)
 	n++
