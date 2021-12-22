@@ -478,7 +478,8 @@ func (w *Writer) queueBlockForParallelCompression(key InternalKey) error {
 	writeTask.flushIndexBlock = flushIndexBlock
 	writeTask.doneCh = doneCh
 
-	// Queue compression + write tasks.
+	// Queue compression + write tasks. It is important that
+	// the tasks are queued in the order here.
 	w.parallelWriterState.writeQueue.queue <- writeTask
 	w.parallelWriterState.compressionQueueRef.queue <- compressionTask
 

@@ -75,9 +75,12 @@ type compressionTask struct {
 // writeTask is added to the write queue
 // to maintain the order of block writes to disk.
 type writeTask struct {
-	// doneCh is used to maintain write order
-	// in the write queue. doneCh is a
-	// buffered channel of size 1.
+	// doneCh is a buffered channel of size 1.
+	// The writer goroutine will wait on the doneCh
+	// in the writeTask for the corresponding compressionTask
+	// to complete. This ensures write order of the blocks
+	// to disk since writeTasks are added to the writeQueue
+	// in order.
 	// This channel will be read from at most once.
 	// The read from this channel will block until
 	// the corresponding compressionTask is complete.
