@@ -446,6 +446,12 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 		}
 	}
 
+	for i := range w.blockPropCollectors {
+		if err := w.blockPropCollectors[i].Add(key, value); err != nil {
+			return err
+		}
+	}
+
 	// TODO(travers): Add an invariant-gated check to ensure that suffix-values
 	// are sorted within coalesced spans.
 

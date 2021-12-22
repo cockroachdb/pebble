@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
 // Block properties are an optional user-facing feature that can be used to
@@ -91,9 +92,23 @@ type BlockPropertyFilter interface {
 	Intersects(prop []byte) (bool, error)
 }
 
-// BlockIntervalCollector is a helper implementation of BlockPropertyCollector
-// for users who want to represent a set of the form [lower,upper) where both
-// lower and upper are uint64, and lower <= upper.
+// BlockIntervalCollector is the interface used by BlockIntervalCollector
+// that contains the actual logic pertaining to the property. It only
+// maintains state for the current data block, and resets that state in
+// FinishDataBlock. This interface can be used to reduce parsing costs.
+type BlockIntervalCollector interface {
+	// Add is called with each new entry added to a block in the sstable. The
+	// callee can assume that these are in sorted order.
+	Add(key InternalKey, value []byte) error
+	// FinishBlock is called when all the entries have been added to a block.
+	// Subsequent calls to Add will be for the next block, if applicable. It
+	// returns the [lower, upper) for the finished block.
+	FinishBlock() (lower uint64, upper uint64, err error)
+}
+
+// DataBlockIntervalCollector is a helper implementation of
+// BlockPropertyCollector for users who want to represent a set of the form
+// [lower,upper) where both lower and upper are uint64, and lower <= upper.
 //
 // The set is encoded as:
 // - Two varint integers, (lower,upper-lower), when upper-lower > 0
@@ -101,53 +116,45 @@ type BlockPropertyFilter interface {
 //
 // Users must not expect this to preserve differences between empty sets --
 // they will all get turned into the semantically equivalent [0,0).
-type BlockIntervalCollector struct {
+type DataBlockIntervalCollector struct {
 	name string
-	dbic DataBlockIntervalCollector
+	bic  BlockIntervalCollector
 
 	blockInterval interval
 	indexInterval interval
 	tableInterval interval
 }
 
-var _ BlockPropertyCollector = &BlockIntervalCollector{}
+var _ BlockPropertyCollector = &DataBlockIntervalCollector{}
 
-// DataBlockIntervalCollector is the interface used by BlockIntervalCollector
-// that contains the actual logic pertaining to the property. It only
-// maintains state for the current data block, and resets that state in
-// FinishDataBlock. This interface can be used to reduce parsing costs.
-type DataBlockIntervalCollector interface {
-	// Add is called with each new entry added to a data block in the sstable.
-	// The callee can assume that these are in sorted order.
-	Add(key InternalKey, value []byte) error
-	// FinishDataBlock is called when all the entries have been added to a
-	// data block. Subsequent Add calls will be for the next data block. It
-	// returns the [lower, upper) for the finished block.
-	FinishDataBlock() (lower uint64, upper uint64, err error)
-}
-
-// NewBlockIntervalCollector constructs a BlockIntervalCollector, with the
-// given name and data block collector.
-func NewBlockIntervalCollector(
-	name string, blockAttributeCollector DataBlockIntervalCollector) *BlockIntervalCollector {
-	return &BlockIntervalCollector{
-		name: name, dbic: blockAttributeCollector}
+// NewDataBlockIntervalCollector constructs a DataBlockIntervalCollector, with
+// the given name and BlockIntervalCollector.
+func NewDataBlockIntervalCollector(
+	name string, collector BlockIntervalCollector) *DataBlockIntervalCollector {
+	return &DataBlockIntervalCollector{
+		name: name,
+		bic:  collector,
+	}
 }
 
 // Name implements the BlockPropertyCollector interface.
-func (b *BlockIntervalCollector) Name() string {
+func (b *DataBlockIntervalCollector) Name() string {
 	return b.name
 }
 
 // Add implements the BlockPropertyCollector interface.
-func (b *BlockIntervalCollector) Add(key InternalKey, value []byte) error {
-	return b.dbic.Add(key, value)
+func (b *DataBlockIntervalCollector) Add(key InternalKey, value []byte) error {
+	// Skip range keys.
+	if rangekey.IsRangeKey(key.Kind()) {
+		return nil
+	}
+	return b.bic.Add(key, value)
 }
 
 // FinishDataBlock implements the BlockPropertyCollector interface.
-func (b *BlockIntervalCollector) FinishDataBlock(buf []byte) ([]byte, error) {
+func (b *DataBlockIntervalCollector) FinishDataBlock(buf []byte) ([]byte, error) {
 	var err error
-	b.blockInterval.lower, b.blockInterval.upper, err = b.dbic.FinishDataBlock()
+	b.blockInterval.lower, b.blockInterval.upper, err = b.bic.FinishBlock()
 	if err != nil {
 		return buf, err
 	}
@@ -158,21 +165,91 @@ func (b *BlockIntervalCollector) FinishDataBlock(buf []byte) ([]byte, error) {
 
 // AddPrevDataBlockToIndexBlock implements the BlockPropertyCollector
 // interface.
-func (b *BlockIntervalCollector) AddPrevDataBlockToIndexBlock() {
+func (b *DataBlockIntervalCollector) AddPrevDataBlockToIndexBlock() {
 	b.indexInterval.union(b.blockInterval)
 	b.blockInterval = interval{}
 }
 
 // FinishIndexBlock implements the BlockPropertyCollector interface.
-func (b *BlockIntervalCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
+func (b *DataBlockIntervalCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
 	buf = b.indexInterval.encode(buf)
 	b.indexInterval = interval{}
 	return buf, nil
 }
 
 // FinishTable implements the BlockPropertyCollector interface.
-func (b *BlockIntervalCollector) FinishTable(buf []byte) ([]byte, error) {
+func (b *DataBlockIntervalCollector) FinishTable(buf []byte) ([]byte, error) {
 	return b.tableInterval.encode(buf), nil
+}
+
+// RangeBlockIntervalCollector is a helper implementation of
+// BlockPropertyCollector for users who want to represent a set of the form
+// [lower,upper) where both lower and upper are uint64, and lower <= upper.
+//
+// This BlockPropertyCollector is specific to range keys. Keys of kinds other
+// than range keys will be ignored.
+type RangeBlockIntervalCollector struct {
+	name string
+	bic  BlockIntervalCollector
+}
+
+var _ BlockPropertyCollector = &RangeBlockIntervalCollector{}
+
+// NewRangeBlockIntervalCollector constructs a RangeBlockIntervalCollector, with
+// the given name and BlockIntervalCollector.
+func NewRangeBlockIntervalCollector(
+	name string, collector BlockIntervalCollector) *RangeBlockIntervalCollector {
+	return &RangeBlockIntervalCollector{
+		name: name,
+		bic:  collector,
+	}
+}
+
+// Name implements the BlockPropertyCollector interface.
+func (b *RangeBlockIntervalCollector) Name() string {
+	return b.name
+}
+
+// Add implements the BlockPropertyCollector interface.
+func (b *RangeBlockIntervalCollector) Add(key InternalKey, value []byte) error {
+	// Skip non-range keys.
+	if !rangekey.IsRangeKey(key.Kind()) {
+		return nil
+	}
+	return b.bic.Add(key, value)
+}
+
+// FinishDataBlock implements the BlockPropertyCollector interface.
+//
+// As range keys are confined to their own data block, this method is a no-op.
+func (b *RangeBlockIntervalCollector) FinishDataBlock(_ []byte) ([]byte, error) {
+	return nil, nil // no-op
+}
+
+// AddPrevDataBlockToIndexBlock implements the BlockPropertyCollector
+// interface.
+//
+// As range keys do not have an associated index block, this method is a no-op.
+func (b *RangeBlockIntervalCollector) AddPrevDataBlockToIndexBlock() {
+	// no-op
+}
+
+// FinishIndexBlock implements the BlockPropertyCollector interface.
+//
+// As range keys do not have an associated index block, this method is a no-op.
+func (b *RangeBlockIntervalCollector) FinishIndexBlock(_ []byte) ([]byte, error) {
+	return nil, nil // no-op
+}
+
+// FinishTable implements the BlockPropertyCollector interface, encoding the
+// lower and upper bound as delta-encoded interval.
+func (b *RangeBlockIntervalCollector) FinishTable(buf []byte) ([]byte, error) {
+	lower, upper, err := b.bic.FinishBlock()
+	if err != nil {
+		return nil, err
+	}
+	i := interval{lower: lower, upper: upper}
+	return i.encode(buf), nil
 }
 
 type interval struct {

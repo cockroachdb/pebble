@@ -7,6 +7,7 @@ package sstable
 import (
 	"bytes"
 	"fmt"
+	"github.com/cockroachdb/errors"
 	"math"
 	"math/rand"
 	"sort"
@@ -14,7 +15,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
 
@@ -171,13 +175,13 @@ func (c *testDataBlockIntervalCollector) Add(key InternalKey, value []byte) erro
 	return nil
 }
 
-func (c *testDataBlockIntervalCollector) FinishDataBlock() (lower uint64, upper uint64, err error) {
+func (c *testDataBlockIntervalCollector) FinishBlock() (lower uint64, upper uint64, err error) {
 	return c.i.lower, c.i.upper, nil
 }
 
 func TestBlockIntervalCollector(t *testing.T) {
 	var dbic testDataBlockIntervalCollector
-	bic := NewBlockIntervalCollector("foo", &dbic)
+	bic := NewDataBlockIntervalCollector("foo", &dbic)
 	require.Equal(t, "foo", bic.Name())
 	// Single key to call Add once. The real action is in the other methods.
 	key := InternalKey{UserKey: []byte("a")}
@@ -263,7 +267,7 @@ func TestBlockIntervalFilter(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var dbic testDataBlockIntervalCollector
 			name := "foo"
-			bic := NewBlockIntervalCollector(name, &dbic)
+			bic := NewDataBlockIntervalCollector(name, &dbic)
 			bif := NewBlockIntervalFilter(name, tc.filter.lower, tc.filter.upper)
 			dbic.i = tc.prop
 			prop, _ := bic.FinishDataBlock(nil)
@@ -339,9 +343,9 @@ func (b filterWithTrueForEmptyProp) Intersects(prop []byte) (bool, error) {
 func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) {
 	// props with id=0, interval [10, 20); id=10, interval [110, 120).
 	var dbic testDataBlockIntervalCollector
-	bic0 := NewBlockIntervalCollector("p0", &dbic)
+	bic0 := NewDataBlockIntervalCollector("p0", &dbic)
 	bic0Id := byte(0)
-	bic10 := NewBlockIntervalCollector("p10", &dbic)
+	bic10 := NewDataBlockIntervalCollector("p10", &dbic)
 	bic10Id := byte(10)
 	dbic.i = interval{10, 20}
 	prop0 := append([]byte(nil), bic0Id)
@@ -486,9 +490,9 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 	// props with id=0, interval [10, 20); id=10, interval [110, 120).
 	var encoder blockPropertiesEncoder
 	var dbic testDataBlockIntervalCollector
-	bic0 := NewBlockIntervalCollector("", &dbic)
+	bic0 := NewDataBlockIntervalCollector("", &dbic)
 	bic0Id := shortID(0)
-	bic10 := NewBlockIntervalCollector("", &dbic)
+	bic10 := NewDataBlockIntervalCollector("", &dbic)
 	bic10Id := shortID(10)
 	dbic.i = interval{10, 20}
 	prop, err := bic0.FinishDataBlock(encoder.getScratchForProp())
@@ -755,11 +759,16 @@ type valueCharBlockIntervalCollector struct {
 	lower, upper uint64
 }
 
-var _ DataBlockIntervalCollector = &valueCharBlockIntervalCollector{}
+var _ BlockIntervalCollector = &valueCharBlockIntervalCollector{}
 
 // Add implements DataBlockIntervalCollector by maintaining the lower and upper
 // bound of a fixed character position in the value.
-func (c *valueCharBlockIntervalCollector) Add(_ InternalKey, value []byte) error {
+func (c *valueCharBlockIntervalCollector) Add(key InternalKey, value []byte) error {
+	// Sanity check: we should never see a range key.
+	if rangekey.IsRangeKey(key.Kind()) {
+		return errors.Newf("encountered non range-key key: %s", key.Kind())
+	}
+
 	charIdx := c.charIdx
 	if charIdx == -1 {
 		charIdx = len(value) - 1
@@ -787,11 +796,90 @@ func (c *valueCharBlockIntervalCollector) Add(_ InternalKey, value []byte) error
 // Finish implements DataBlockIntervalCollector, returning the lower and upper
 // bound for the block. The range is reset to zero in anticipation of the next
 // block.
-func (c *valueCharBlockIntervalCollector) FinishDataBlock() (lower, upper uint64, err error) {
+func (c *valueCharBlockIntervalCollector) FinishBlock() (lower, upper uint64, err error) {
 	l, u := c.lower, c.upper
 	c.lower, c.upper = 0, 0
 	c.initialized = false
 	return l, u, nil
+}
+
+type rangeKeySuffixBlockIntervalCollector struct {
+	cmp          *base.Comparer
+	initialized  bool
+	lower, upper uint64
+}
+
+var _ BlockIntervalCollector = &rangeKeySuffixBlockIntervalCollector{}
+
+func (c *rangeKeySuffixBlockIntervalCollector) Add(key InternalKey, value []byte) error {
+	// Sanity check: we should never see a non-range key.
+	if !rangekey.IsRangeKey(key.Kind()) {
+		return errors.Newf("encountered non range-key key: %s", key.Kind())
+	}
+
+	updateBounds := func(val uint64) {
+		if val < c.lower {
+			c.lower = val
+		}
+		if val >= c.upper {
+			c.upper = val + 1
+		}
+	}
+
+	// Handle the start key.
+	n := c.cmp.Split(key.UserKey)
+	suffix := key.UserKey[n+1:]
+	i, err := strconv.Atoi(string(suffix))
+	if err != nil {
+		return base.CorruptionErrorf("could not decode start key suffix as integer")
+	}
+	iUint := uint64(i)
+	if !c.initialized {
+		c.lower, c.upper = iUint, iUint+1
+		c.initialized = true
+	} else {
+		updateBounds(iUint)
+	}
+
+	// RANGEKEYDELs do not have an end key. We're done.
+	if key.Kind() == base.InternalKeyKindRangeKeyDelete {
+		return nil
+	}
+
+	// Separate the user value from the end key.
+	_, userValue, ok := rangekey.DecodeEndKey(key.Kind(), value)
+	if !ok {
+		return base.CorruptionErrorf("could not decode range end key")
+	}
+
+	// Decode successive suffixes from the user value.
+	var sv rangekey.SuffixValue
+	for len(userValue) > 0 {
+		if key.Kind() == base.InternalKeyKindRangeKeySet {
+			sv, userValue, ok = rangekey.DecodeSuffixValue(userValue)
+			suffix = sv.Suffix
+		} else {
+			suffix, userValue, ok = rangekey.DecodeSuffix(userValue)
+		}
+		if !ok {
+			return base.CorruptionErrorf("could not decode range key suffix")
+		}
+		suffix = suffix[c.cmp.Split(suffix)+1:]
+
+		i, err = strconv.Atoi(string(suffix))
+		if err != nil {
+			return base.CorruptionErrorf("could not decode end key suffix as integer")
+		}
+		updateBounds(uint64(i))
+	}
+
+	return nil
+}
+
+func (c *rangeKeySuffixBlockIntervalCollector) FinishBlock() (lower, upper uint64, err error) {
+	lower, upper = c.lower, c.upper
+	c.lower, c.upper, c.initialized = 0, 0, false
+	return
 }
 
 func TestBlockProperties(t *testing.T) {
@@ -823,19 +911,21 @@ func TestBlockProperties(t *testing.T) {
 					}
 				case "collector":
 					for _, c := range cmd.Vals {
-						var idx int
+						var collector BlockPropertyCollector
 						switch c {
 						case "value-first":
-							idx = 0
+							collector = NewDataBlockIntervalCollector(c, &valueCharBlockIntervalCollector{charIdx: 0})
 						case "value-last":
-							idx = -1
+							collector = NewDataBlockIntervalCollector(c, &valueCharBlockIntervalCollector{charIdx: -1})
+						case "range-key":
+							collector = NewRangeBlockIntervalCollector(c, &rangeKeySuffixBlockIntervalCollector{
+								cmp: testkeys.Comparer,
+							})
 						default:
 							return fmt.Sprintf("unknown collector: %s", c)
 						}
 						opts.BlockPropertyCollectors = append(opts.BlockPropertyCollectors, func() BlockPropertyCollector {
-							return NewBlockIntervalCollector(c, &valueCharBlockIntervalCollector{
-								charIdx: idx,
-							})
+							return collector
 						})
 					}
 				}

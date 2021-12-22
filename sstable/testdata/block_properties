@@ -102,3 +102,78 @@ f#6,1:
 i#72057594037927935,17:
   0: [3, 7)
   1: [3, 9)
+
+
+# Table contains range-keys.
+
+build collector=range-key
+a@3.RANGEKEYSET.3:b [(@3=foo)]
+b@2.RANGEKEYSET.2:c [(@2=bar)]
+c@1.RANGEKEYSET.1:d [(@1=baz)]
+----
+point:    [#0,0,#0,0]
+rangedel: [#0,0,#0,0]
+rangekey: [a@3#3,21,d#72057594037927935,21]
+seqnums:  [1,3]
+
+collectors
+----
+0: range-key
+
+table-props
+----
+0: [1, 4)
+
+# Table contains range-keys with multiple suffix-values and different range key
+# kinds.
+
+build collector=range-key
+a@300.RANGEKEYSET.3:b [(@90=foo,@80=bar,@70=baz)]
+b@200.RANGEKEYUNSET.2:c [@60,@50,@40]
+c@100.RANGEKEYDEL.1:d
+----
+point:    [#0,0,#0,0]
+rangedel: [#0,0,#0,0]
+rangekey: [a@300#3,21,d#72057594037927935,19]
+seqnums:  [1,3]
+
+collectors
+----
+0: range-key
+
+table-props
+----
+0: [40, 301)
+
+# Table contains a mixture of point and range keys, with three collectors.
+
+build collector=value-first collector=range-key collector=value-last
+a@60.SET.6:123
+a@50.RANGEKEYSET.5:b [(@3=foo)]
+b@40.SET.4:456
+b@30.RANGEKEYDEL.3:c
+c@20.SET.2:789
+c@10.RANGEKEYUNSET.1:d [@5]
+----
+point:    [a@60#6,1,c@20#2,1]
+rangedel: [#0,0,#0,0]
+rangekey: [a@50#5,21,d#72057594037927935,20]
+seqnums:  [1,6]
+
+collectors
+----
+0: value-first
+1: range-key
+2: value-last
+
+table-props
+----
+0: [1, 8)
+1: [3, 51)
+2: [3, 10)
+
+block-props
+----
+d#72057594037927935,17:
+  0: [1, 8)
+  2: [3, 10)

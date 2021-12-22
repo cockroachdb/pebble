@@ -1088,7 +1088,7 @@ func (bi *testBlockIntervalCollector) Add(key InternalKey, value []byte) error {
 	return nil
 }
 
-func (bi *testBlockIntervalCollector) FinishDataBlock() (lower uint64, upper uint64, err error) {
+func (bi *testBlockIntervalCollector) FinishBlock() (lower uint64, upper uint64, err error) {
 	bi.initialized = false
 	l, u := bi.lower, bi.upper
 	bi.lower, bi.upper = 0, 0
@@ -1118,7 +1118,7 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 		for _, c := range collectors {
 			coll := c
 			bpCollectors = append(bpCollectors, func() BlockPropertyCollector {
-				return sstable.NewBlockIntervalCollector(
+				return sstable.NewDataBlockIntervalCollector(
 					fmt.Sprintf("%d", coll.id),
 					&testBlockIntervalCollector{numLength: 2, offsetFromEnd: coll.offset})
 			})
@@ -1240,7 +1240,7 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 		FormatMajorVersion: FormatNewest,
 		BlockPropertyCollectors: []func() BlockPropertyCollector{
 			func() BlockPropertyCollector {
-				return sstable.NewBlockIntervalCollector("0", &testBlockIntervalCollector{
+				return sstable.NewDataBlockIntervalCollector("0", &testBlockIntervalCollector{
 					numLength: 2,
 				})
 			},
@@ -1553,7 +1553,7 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 				FormatMajorVersion: FormatNewest,
 				BlockPropertyCollectors: []func() BlockPropertyCollector{
 					func() BlockPropertyCollector {
-						return sstable.NewBlockIntervalCollector("0", &testBlockIntervalCollector{
+						return sstable.NewDataBlockIntervalCollector("0", &testBlockIntervalCollector{
 							numLength: 3,
 						})
 					},
