@@ -161,7 +161,7 @@ func NewCompressionQueue(
 func (qu *CompressionQueue) runWorker() {
 	defer qu.closeWG.Done()
 
-	var checksumData checksumData
+	var checksummer checksummer
 	for {
 		toCompress, ok := <-qu.queue
 		if !ok {
@@ -181,12 +181,12 @@ func (qu *CompressionQueue) runWorker() {
 			break
 		}
 
-		checksumData.checksumType = toCompress.checksum
+		checksummer.checksumType = toCompress.checksum
 		compressedData := <-qu.compressedDataBuffer
 		b, err := compressAndChecksum(
 			toCompress.toCompress, toCompress.compression,
 			&compressedData.compressBuf, &compressedData.tmpBuf,
-			&checksumData,
+			&checksummer,
 		)
 		if err != nil {
 			compressedData.err = err

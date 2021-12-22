@@ -80,7 +80,7 @@ type writeCloseSyncer interface {
 	Sync() error
 }
 
-type checksumData struct {
+type checksummer struct {
 	checksumType ChecksumType
 	xxHasher     *xxhash.Digest
 }
@@ -161,7 +161,7 @@ type Writer struct {
 	topLevelIndexBlock blockWriter
 	indexPartitions    []indexBlockWriterAndBlockProperties
 
-	checksumData checksumData
+	checksummer checksummer
 
 	parallelWriterState parallelWriterState
 
@@ -448,7 +448,7 @@ func (w *Writer) queueBlockForParallelCompression(key InternalKey) error {
 	// Populate compression coordinator.
 	copySliceToDst(&compressionTask.toCompress, w.block.finish())
 	compressionTask.compression = w.compression
-	compressionTask.checksum = w.checksumData.checksumType
+	compressionTask.checksum = w.checksummer.checksumType
 	compressionTask.doneCh = doneCh
 
 	props, err := w.getDataBlockProps()
@@ -721,7 +721,7 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 // compressAndChecksum will compress the data, and return
 // the compressed data.
 func compressAndChecksum(
-	b []byte, compression Compression, compressedBuf *[]byte, trailerBuf *[blockHandleLikelyMaxLen]byte, checksumData *checksumData) ([]byte, error) {
+	b []byte, compression Compression, compressedBuf *[]byte, trailerBuf *[blockHandleLikelyMaxLen]byte, checksummer *checksummer) ([]byte, error) {
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
 	blockType, compressed := compressBlock(compression, b, *compressedBuf)
@@ -737,20 +737,20 @@ func compressAndChecksum(
 	(*trailerBuf)[0] = byte(blockType)
 	// Calculate the checksum.
 	var checksum uint32
-	switch checksumData.checksumType {
+	switch checksummer.checksumType {
 	case ChecksumTypeCRC32c:
 		checksum = crc.New(b).Update((*trailerBuf)[:1]).Value()
 	case ChecksumTypeXXHash64:
-		if checksumData.xxHasher == nil {
-			checksumData.xxHasher = xxhash.New()
+		if checksummer.xxHasher == nil {
+			checksummer.xxHasher = xxhash.New()
 		} else {
-			checksumData.xxHasher.Reset()
+			checksummer.xxHasher.Reset()
 		}
-		checksumData.xxHasher.Write(b)
-		checksumData.xxHasher.Write((*trailerBuf)[:1])
-		checksum = uint32(checksumData.xxHasher.Sum64())
+		checksummer.xxHasher.Write(b)
+		checksummer.xxHasher.Write((*trailerBuf)[:1])
+		checksum = uint32(checksummer.xxHasher.Sum64())
 	default:
-		return nil, errors.Newf("unsupported checksum type: %d", checksumData.checksumType)
+		return nil, errors.Newf("unsupported checksum type: %d", checksummer.checksumType)
 	}
 	binary.LittleEndian.PutUint32((*trailerBuf)[1:5], checksum)
 
@@ -793,7 +793,7 @@ func (w *Writer) writeBlockPostCompression(toWrite []byte, blockTrailerBuf [bloc
 }
 
 func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
-	b, err := compressAndChecksum(b, compression, &w.compressedBuf, &w.tmp, &w.checksumData)
+	b, err := compressAndChecksum(b, compression, &w.compressedBuf, &w.tmp, &w.checksummer)
 	if err != nil {
 		return BlockHandle{}, err
 	}
@@ -1004,7 +1004,7 @@ func (w *Writer) Close() (err error) {
 	// Write the table footer.
 	footer := footer{
 		format:      w.tableFormat,
-		checksum:    w.checksumData.checksumType,
+		checksum:    w.checksummer.checksumType,
 		metaindexBH: metaindexBH,
 		indexBH:     indexBH,
 	}
@@ -1120,7 +1120,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 			restartInterval: 1,
 		},
 	}
-	w.checksumData.checksumType = o.Checksum
+	w.checksummer.checksumType = o.Checksum
 	w.parallelWriterState.errCh = make(chan error, 1)
 	if f == nil {
 		w.err = errors.New("pebble: nil file")
