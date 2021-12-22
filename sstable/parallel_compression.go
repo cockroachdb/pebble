@@ -78,6 +78,11 @@ type writeTask struct {
 	// doneCh is used to maintain write order
 	// in the write queue. doneCh is a
 	// buffered channel of size 1.
+	// This channel will be read from at most once.
+	// The read from this channel will block until
+	// the corresponding compressionTask is complete.
+	// The compressionTask is guaranteed to eventually
+	// write to the doneCh.
 	doneCh <-chan *compressedData
 
 	indexSep        InternalKey
@@ -89,12 +94,31 @@ type writeTask struct {
 // CompressionQueue queues up blocks
 // which will get compressed in parallel.
 type CompressionQueue struct {
+	// sends to queue may block, but they'll be processed
+	// once the workers process the items already sent
+	// successully to the queue. The send can block forever
+	// if the workers stop processing compressionTasks.
+	// This can only happen if the queue is closed.
+	// But the queue will only be closed after all the compaction
+	// goroutines terminate.
+	// Reads from the queue will block if the queue is empty.
+	// compressionTasks will either be added to the queue, or
+	// the queue will be closed, so reads won't block forever.
 	queue chan *compressionTask
 
-	// The following channels contain preallocated
+	// The following buffered channels contain preallocated
 	// writeTask, compressionTask, and compressedData
-	// structs. We don't want to preallocate these when
+	// structs. We don't want to allocate these when
 	// every single block is flushed.
+	//
+	// Writes to these channels will never block, as
+	// all the writes to these channels have been previously
+	// read from the channel.
+	//
+	// Reads from these channels may block, but they won't
+	// block forever. CompressionQueue.runWorker, and
+	// writeQueue.runWorker will always add items back to
+	// these channels.
 	writeTaskBuffer       chan *writeTask
 	compressionTaskBuffer chan *compressionTask
 	compressedDataBuffer  chan *compressedData
@@ -141,11 +165,20 @@ func (qu *CompressionQueue) runWorker() {
 	for {
 		toCompress, ok := <-qu.queue
 		if !ok {
-			// The channel was closed
+			// qu.queue was closed. This can only happen
+			// once all the compaction goroutines finish
+			// running. This means that no more
+			// compressionTasks will be sent on the queue.
+			// Since none of the compaction goroutines were
+			// blocked, we know that there are no blocked sends
+			// on qu.queue. Since the FIFO order of channels
+			// is maintained, we know that by the time
+			// the close is processed, all the queue compressionTasks
+			// must already have been processed.
+			//
+			// INVARIANT: Every single item added to qu.queue
+			// is processed before the workers are shut down.
 			break
-		}
-		if toCompress == nil {
-			panic("a nil compression job was queued")
 		}
 
 		checksumData.checksumType = toCompress.checksum
@@ -194,7 +227,8 @@ func (qu *CompressionQueue) releaseCompressedData(c *compressedData) {
 // Close will only return after the goroutines started
 // by NewCompressionQueue have stopped running.
 // Items shouldn't be added to the queue once close has
-// been called.
+// been called. Close must only be called after all
+// the compaction goroutines have finished running.
 func (qu *CompressionQueue) Close() {
 	close(qu.queue)
 	qu.closeWG.Wait()
@@ -203,8 +237,16 @@ func (qu *CompressionQueue) Close() {
 // writeQueue is used to process compressed blocks
 // in parallel.
 type writeQueue struct {
-	// queue is sequenced by the order of the writes to
-	// the file.
+	// writeTasks are added to the queue in the order of
+	// the writes to the file.
+	//
+	// Writes to the queue may block if it is already full.
+	// The writes will be unblocked as writeTasks are
+	// processed by the workers. The write may block
+	// forever, if the queue is closed before all the
+	// writeTasks are processed. But this is impossible
+	// as the queue will be closed by the compaction
+	// go routine, only after it sends items to the queue.
 	queue  chan *writeTask
 	writer *Writer
 
@@ -243,14 +285,23 @@ func (qu *writeQueue) runWorker() {
 		// goroutine encounters the error, it will call qu.finish.
 		writeTask, ok := <-qu.queue
 		if !ok {
+			// It is the compaction goroutine which adds
+			// writeTasks to qu.queue. When qu.finish is called,
+			// we know that no more writeTasks will be added to
+			// the queue.
+			//
+			// When qu.finish calls close(qu.queue), we know that
+			// none of the sends to qu.queue are currently blocked,
+			// and that there will be no more sends.
+			//
 			// If qu.queue was closed, then
 			// we've already processed all other blocks
 			// since blocks are added to the queue in order.
 			// It's okay to break here.
+			//
+			// INVARIANT: Every single item added to qu.queue
+			// is processed before the workers are shut down.
 			break
-		}
-		if writeTask == nil {
-			panic("a nil write job was queued")
 		}
 
 		compressedData := <-writeTask.doneCh

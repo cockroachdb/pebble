@@ -1043,6 +1043,9 @@ func (d *DB) Close() error {
 	d.mu.Unlock()
 	d.deleters.Wait()
 	d.compactionSchedulers.Wait()
+
+	// NB: compressionQueue must only be closed, once all the compaction
+	// goroutines have stopped running.
 	if d.compressionQueue != nil {
 		d.compressionQueue.Close()
 	}
