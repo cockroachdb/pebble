@@ -505,7 +505,7 @@ func (w *Writer) queueBlockForParallelCompression(key InternalKey) error {
 
 	// We will share this channel so that the compression go routine, and the go routine which
 	// writes the block to disk can communicate.
-	doneCh := make(chan *compressedData, 1)
+	compressionDoneCh := make(chan *compressedData, 1)
 
 	finishedBlock := w.block.finish()
 	w.meta.EstimatedSize += uint64(
@@ -516,7 +516,7 @@ func (w *Writer) queueBlockForParallelCompression(key InternalKey) error {
 	copySliceToDst(&compressionTask.toCompress, finishedBlock)
 	compressionTask.compression = w.compression
 	compressionTask.checksum = w.checksummer.checksumType
-	compressionTask.doneCh = doneCh
+	compressionTask.compressionDone = compressionDoneCh
 
 	props, err := w.getDataBlockProps()
 	if err != nil {
@@ -544,7 +544,7 @@ func (w *Writer) queueBlockForParallelCompression(key InternalKey) error {
 	copySliceToDst(&writeTask.indexProps, indexProps)
 	writeTask.indexSep = copyInternalKey(indexSep)
 	writeTask.flushIndexBlock = flushIndexBlock
-	writeTask.doneCh = doneCh
+	writeTask.compressionDone = compressionDoneCh
 
 	// Queue compression + write tasks. It is important that
 	// the tasks are queued in the order here.

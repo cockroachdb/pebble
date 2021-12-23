@@ -10,18 +10,18 @@ import (
 // blocks on a channel waiting for a compression job which is
 // represented using a compressionTask. Once the
 // compression job is complete, it writes the compressedData
-// to the compressionTask.doneCh.
+// to the compressionTask.compressionDone.
 //
 // Each sstable Writer will have a writeQueue which
 // launches a single worker to write blocks to disk.
 // writeTaskBuffer are queued in the writeQueue
 // in the order in which the blocks need to be written to disk. The
-// worker will block on the writeTask.doneCh as it waits
+// worker will block on the writeTask.compressionDone as it waits
 // for the corresponding compression job to complete. Once the compression
 // job is complete, the worker will write the block to disk.
 
 // todo(bananabrick) : historic compression ratio for size.
-// Try and move indexBlock/meta.Size stuff to the main thread
+// Try and move indexBlock/meta.Size stuff to the main goroutine
 // to avoid writerMu.
 
 // todo(bananabrick): pool block writer buffers.
@@ -48,7 +48,7 @@ func copyInternalKey(key InternalKey) InternalKey {
 }
 
 // compressedData is used to send the compressed block to the
-// writer thread.
+// writer goroutine.
 type compressedData struct {
 	compressed       []byte
 	tmpBuf           [blockHandleLikelyMaxLen]byte
@@ -64,20 +64,20 @@ type compressionTask struct {
 	compression Compression
 	checksum    ChecksumType
 
-	// doneCh is used to signal to the writer
-	// thread that the compression has been
-	// completed. doneCh is a
+	// compressionDone is used to signal to the writer
+	// goroutine that the compression has been
+	// completed. compressionDone is a
 	// buffered channel of size 1.
-	// The write to doneCh won't block because
-	// the doneCh is a buffered channel of size 1.
-	doneCh chan<- *compressedData
+	// The write to compressionDone won't block because
+	// the compressionDone is a buffered channel of size 1.
+	compressionDone chan<- *compressedData
 }
 
 // writeTask is added to the write queue
 // to maintain the order of block writes to disk.
 type writeTask struct {
-	// doneCh is a buffered channel of size 1.
-	// The writer goroutine will wait on the doneCh
+	// compressionDone is a buffered channel of size 1.
+	// The writer goroutine will wait on the compressionDone
 	// in the writeTask for the corresponding compressionTask
 	// to complete. This ensures write order of the blocks
 	// to disk since writeTasks are added to the writeQueue
@@ -86,8 +86,8 @@ type writeTask struct {
 	// The read from this channel will block until
 	// the corresponding compressionTask is complete.
 	// The compressionTask is guaranteed to eventually
-	// write to the doneCh.
-	doneCh <-chan *compressedData
+	// write to the compressionDone.
+	compressionDone <-chan *compressedData
 
 	indexSep        InternalKey
 	props           []byte
@@ -208,9 +208,9 @@ func (qu *CompressionQueue) runWorker() {
 			copySliceToDst(&compressedData.compressed, b)
 		}
 
-		// This call will never block because the doneCh
+		// This call will never block because the compressionDone
 		// must be a buffered channel of size 1.
-		toCompress.doneCh <- compressedData
+		toCompress.compressionDone <- compressedData
 
 		// Release the compression task, for future use to compress
 		// a different block.
@@ -222,12 +222,12 @@ func (qu *CompressionQueue) runWorker() {
 // to any of the fields of the values we're releasing. Add a reference
 // counted byte slice to make sure of this.
 func (qu *CompressionQueue) releaseCompressionTask(c *compressionTask) {
-	c.doneCh = nil
+	c.compressionDone = nil
 	qu.compressionTaskBuffer <- c
 }
 
 func (qu *CompressionQueue) releaseWriteTask(w *writeTask) {
-	w.doneCh = nil
+	w.compressionDone = nil
 	qu.writeTaskBuffer <- w
 }
 
@@ -315,7 +315,7 @@ func (qu *writeQueue) runWorker() {
 			break
 		}
 
-		compressedData := <-writeTask.doneCh
+		compressedData := <-writeTask.compressionDone
 		// If we've already encountered an error, then we don't
 		// want to write the current sstable using this worker.
 		if err != nil {
