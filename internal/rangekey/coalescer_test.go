@@ -178,6 +178,69 @@ func TestIter(t *testing.T) {
 	})
 }
 
+func TestCoalescingFragmenter(t *testing.T) {
+	var f CoalescingFragmenter
+	var buf bytes.Buffer
+	init := func() {
+		f.Init(testkeys.Comparer.Compare, testkeys.Comparer.FormatKey,
+			base.InternalKeySeqNumMax, func(rks CoalescedSpan) {
+				formatRangeKeySpan(&buf, &rks)
+				buf.WriteRune('\n')
+			})
+	}
+	init()
+
+	datadriven.RunTest(t, "testdata/coalescing_fragmenter", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "add":
+			buf.Reset()
+
+			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
+			for _, line := range lines {
+				startKey, value := Parse(line)
+				endKey, splitValue, ok := DecodeEndKey(startKey.Kind(), value)
+				require.True(t, ok)
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							buf.WriteString(r.(string))
+						}
+					}()
+					err := f.Add(keyspan.Span{
+						Start: startKey,
+						End:   endKey,
+						Value: splitValue,
+					})
+					if err != nil {
+						buf.WriteString(err.Error())
+					}
+				}()
+			}
+			return buf.String()
+
+		case "finish":
+			buf.Reset()
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						buf.WriteString(r.(string))
+					}
+				}()
+				f.Finish()
+			}()
+			return buf.String()
+
+		case "reset":
+			buf.Reset()
+			init()
+			return ""
+
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
+}
+
 func formatRangeKeySpan(w io.Writer, rks *CoalescedSpan) {
 	if rks == nil {
 		fmt.Fprintf(w, ".")
