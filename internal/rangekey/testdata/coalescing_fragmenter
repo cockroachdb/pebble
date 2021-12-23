@@ -1,0 +1,235 @@
+# All disjoint RANGEKEYSETs.
+#
+#  ^
+#  |                •―――○    [e,f)#20 SET   [(@2=baz),(@1=bam)]
+#  |        •―――○            [c,d)#4  SET   [(@3=bar)]
+#  |•―――――――○                [a,c)#10 SET   [(@5=foo)]
+#  |___________________________________
+#   a   b   c   d   e   f   g   h   i
+
+add
+a.RANGEKEYSET.10: c [(@5=foo)]
+----
+
+add
+c.RANGEKEYSET.4: d [(@3=bar)]
+----
+●   [a, c)#10
+└── @5 : foo
+
+add
+e.RANGEKEYSET.20: f [(@2=baz),(@1=bam)]
+----
+●   [c, d)#4
+└── @3 : bar
+
+finish
+----
+●   [e, f)#20
+├── @2 : baz
+└── @1 : bam
+
+# Merge aligned RANGEKEYSETs.
+#
+#  ^
+#  |•―――――――○    [a,c)#4  SET   [(@2=foo2)]
+#  |•―――――――○    [a,c)#4  SET   [(@3=foo3)]
+#  |•―――――――○    [a,c)#10 SET   [(@5=foo5)]
+#  |___________________________________
+#   a   b   c   d   e   f   g   h   i
+
+reset
+----
+
+add
+a.RANGEKEYSET.10: c [(@5=foo5)]
+----
+
+add
+a.RANGEKEYSET.4:c [(@3=foo3)]
+----
+
+add
+a.RANGEKEYSET.4: c [(@2=foo2)]
+----
+
+finish
+----
+●   [a, c)#10
+├── @5 : foo5
+├── @3 : foo3
+└── @2 : foo2
+
+# Aligned spans, mixed range key kinds.
+#
+#  ^
+#  |                    •―――――――――――○    [f,i)#6  SET   [(@50=v50),(@40=v40)]
+#  |                    •―――――――――――○    [f,i)#7  DEL
+#  |                    •―――――――――――○    [f,i)#8  SET   [(@100=v100),(@80=v80)]
+#  |                    •―――――――――――○    [f,i)#9  UNSET [(@100)]
+#  |                    •―――――――――――○    [f,i)#10 SET   [(@200=v200)]
+#  |            •―――○                    [d,e)#8  SET   [(@100=v100)]
+#  |            •―――○                    [d,e)#9  UNSET [@100]
+#  |            •―――○                    [d,e)#10 DEL
+#  |        •―――○                        [c,d)#9  SET   [(@100=v100),(@50=v50)]
+#  |•―――――――○                            [a,c)#9  SET   [(@100=v100),(@50=v50)]
+#  |•―――――――○                            [a,c)#10 UNSET [@100]
+#  |___________________________________
+#   a   b   c   d   e   f   g   h   i
+
+reset
+----
+
+add
+a.RANGEKEYUNSET.10: c [@100]
+a.RANGEKEYSET.9: c [(@100=v100), (@50=v50)]
+c.RANGEKEYSET.9: d [(@100=v100), (@50=v50)]
+----
+●   [a, c)#10
+├── @100 unset
+└── @50 : v50
+
+add
+d.RANGEKEYDEL.10: e
+d.RANGEKEYUNSET.9: e [@100]
+d.RANGEKEYSET.8: e [(@100=v100)]
+----
+●   [c, d)#9
+├── @100 : v100
+└── @50 : v50
+
+add
+w.RANGEKEYSET.10: z [(@200=v200)]
+w.RANGEKEYUNSET.9: z [@100]
+w.RANGEKEYSET.8: z [(@100=v100), (@80=v80)]
+w.RANGEKEYDEL.7: z
+w.RANGEKEYSET.6: z [(@50=v50), (@40=v40)]
+----
+●   [d, e)#10 (DEL)
+
+# NOTE: the DEL is allowed to "bubble up" from #7 to #10.
+finish
+----
+●   [w, z)#10 (DEL)
+├── @200 : v200
+├── @100 unset
+└── @80 : v80
+
+# Merge overlapping RANGEKEYSETs.
+#
+#  ^
+#  |        •―――○           [c,d)#3 SET   [(@3=baz)]
+#  |    •―――――――――――――――○   [b,f)#2 SET   [(@5=bar)]
+#  |•―――――――○               [a,c)#4 SET   [(@10=foo)]
+#  |___________________________________
+#   a   b   c   d   e   f
+
+reset
+----
+
+add
+a.RANGEKEYSET.4: c [(@10=foo)]
+----
+
+add
+b.RANGEKEYSET.10: f [(@5=bar)]
+----
+●   [a, b)#4
+└── @10 : foo
+
+add
+c.RANGEKEYSET.4: d [(@3=baz)]
+----
+●   [b, c)#10
+├── @10 : foo
+└── @5 : bar
+
+finish
+----
+●   [c, d)#10
+├── @5 : bar
+└── @3 : baz
+●   [d, f)#10
+└── @5 : bar
+
+# Overlapping spans, mixed range keys kinds.
+#
+#  ^
+#  |                      •―――――○     [l,o)#7 DEL
+#  |            •―――――――――――――○       [g,n)#6 UNSET [@10,@1]
+#  |        •―――――――――――――――――――――――○ [e,p)#5 SET   [(@1=baz)]
+#  |    •―○                           [c,d)#4 DEL
+#  |    •―――――――――○                   [c,h)#3 UNSET [@10]
+#  |  •―○                             [b,c)#2 SET   [(@5=bar)]
+#  |•―――――――――――――――○                 [a,i)#1 SET   [(@10=foo)]
+#  |___________________________________
+#   a b c d e f g h i j k l m n o p q
+
+reset
+----
+
+add
+a.RANGEKEYSET.1: i [(@10=foo)]
+b.RANGEKEYSET.2: c [(@5=bar)]
+c.RANGEKEYUNSET.3: h [@10]
+c.RANGEKEYDEL.4: d
+e.RANGEKEYSET.5: p [(@1=baz)]
+g.RANGEKEYUNSET.6: n [@10,@1]
+l.RANGEKEYDEL.7: o
+----
+●   [a, b)#1
+└── @10 : foo
+●   [b, c)#2
+├── @10 : foo
+└── @5 : bar
+●   [c, d)#4 (DEL)
+●   [d, e)#3
+└── @10 unset
+●   [e, g)#5
+├── @10 unset
+└── @1 : baz
+●   [g, h)#6
+├── @10 unset
+└── @1 unset
+●   [h, i)#6
+├── @10 unset
+└── @1 unset
+●   [i, l)#6
+├── @10 unset
+└── @1 unset
+
+finish
+----
+●   [l, n)#7 (DEL)
+●   [n, o)#7 (DEL)
+●   [o, p)#5
+└── @1 : baz
+
+# Keys must be added in order of start key.
+
+reset
+----
+
+add
+b.RANGEKEYSET.1: d [(@3=foo)]
+a.RANGEKEYSET.2: c [(@5=bar)]
+----
+pebble: spans must be added in order: b > a
+
+# Finish cannot be called more than once.
+
+reset
+----
+
+add
+a.RANGEKEYSET.1: c [(@5=bar)]
+----
+
+finish
+----
+●   [a, c)#1
+└── @5 : bar
+
+finish
+----
+pebble: span fragmenter already finished

@@ -422,6 +422,91 @@ func (c *Coalescer) flush() {
 	}
 }
 
+// CoalescingFragmenter combines a keyspan.Fragmenter with a Coalescer to output
+// fragmented, CoalescedSpans of range keys. Spans are first fragmented then
+// aligned spans are coalesced.
+//
+// Keys must be added to the CoalescingFragmenter in order of Span start key.
+//
+// Finish should be called once all Spans have been added to ensure any
+// un-flushed Spans are emitted.
+type CoalescingFragmenter struct {
+	cmp       base.Compare
+	formatKey base.FormatKey
+
+	c *Coalescer
+	f *keyspan.Fragmenter
+
+	prevUserKey []byte
+}
+
+// Init initializes a CoalescingFragmenter.
+func (cf *CoalescingFragmenter) Init(
+	cmp base.Compare,
+	formatKey base.FormatKey,
+	visibleSeqNum uint64,
+	emit func(CoalescedSpan),
+) {
+	cf.cmp = cmp
+	cf.formatKey = formatKey
+
+	var c Coalescer
+	c.Init(cmp, formatKey, visibleSeqNum, emit)
+	cf.c = &c
+
+	emitSpansFn := func(spans []keyspan.Span) {
+		// Feed the spans into the Coalescer.
+		for _, span := range spans {
+			if err := c.Add(span); err != nil {
+				panic(fmt.Sprintf("pebble: could not coalesce span: %s", err))
+			}
+		}
+
+		// As keys are received in order, and we only truncate-and-flush the
+		// fragmenter when we are ratcheting up the start key, we know that we have
+		// all the spans fragments ready to coalesce.
+		c.Finish()
+	}
+
+	cf.f = &keyspan.Fragmenter{
+		Cmp:    cmp,
+		Format: formatKey,
+		Emit:   emitSpansFn,
+	}
+}
+
+// Add adds the keyspan to the CoalescingFragmenter. Keys are required to be
+// passed in order of start key (user key ascending).
+//
+// Unlike the Coalescer, a CoalescingFragmenter can accept overlapping spans.
+// The only requirement is the start key ordering.
+func (cf *CoalescingFragmenter) Add(s keyspan.Span) error {
+	if cf.f.Start() != nil && cf.cmp(cf.f.Start(), s.Start.UserKey) > 0 {
+		return errors.Errorf("pebble: spans must be added in order: %s > %s",
+			cf.formatKey(cf.f.Start()), cf.formatKey(s.Start.UserKey))
+	}
+
+	// It is possible that we will receive keys with the same user key. We can
+	// only flush when we've moved past the previous key.
+	if cf.cmp(s.Start.UserKey, cf.prevUserKey) > 0 {
+		cf.f.TruncateAndFlushTo(cf.prevUserKey)
+
+		// The current span start key becomes the new previous key as we only expect
+		// to see start keys >= the current span start.
+		cf.prevUserKey = s.Start.UserKey
+	}
+
+	// Add this span to the fragmenter.
+	cf.f.Add(s)
+
+	return nil
+}
+
+// Finish flushes any un-flushed fragments through the coalescer.
+func (cf *CoalescingFragmenter) Finish() {
+	cf.f.Finish()
+}
+
 type suffixItems struct {
 	cmp   base.Compare
 	items []SuffixItem
