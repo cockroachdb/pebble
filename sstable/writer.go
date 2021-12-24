@@ -500,8 +500,8 @@ func (w *Writer) maybeAddToFilter(key []byte) {
 }
 
 func (w *Writer) queueBlockForParallelCompression(key InternalKey) error {
-	compressionTask := <-w.parallelWriterState.compressionQueueRef.compressionTaskBuffer
-	writeTask := <-w.parallelWriterState.compressionQueueRef.writeTaskBuffer
+	compressionTask := w.parallelWriterState.compressionQueueRef.compressionTaskBuffer.Get().(*compressionTask)
+	writeTask := w.parallelWriterState.compressionQueueRef.writeTaskBuffer.Get().(*writeTask)
 
 	// We will share this channel so that the compression go routine, and the go routine which
 	// writes the block to disk can communicate.

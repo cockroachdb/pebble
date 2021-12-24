@@ -700,7 +700,7 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	// todo(bananabrick) : revert this
 	if o.Experimental.MaxCompressionConcurrency <= 1 {
-		o.Experimental.MaxCompressionConcurrency = 0
+		o.Experimental.MaxCompressionConcurrency = 1
 	}
 	o.initMaps()
 	return o

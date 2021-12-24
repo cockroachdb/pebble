@@ -10,13 +10,13 @@ import (
 // blocks on a channel waiting for a compression job which is
 // represented using a compressionTask. Once the
 // compression job is complete, it writes the compressedData
-// to the compressionTask.compressionDone.
+// to compressionTask.compressionDone.
 //
 // Each sstable Writer will have a writeQueue which
 // launches a single worker to write blocks to disk.
 // writeTaskBuffer are queued in the writeQueue
 // in the order in which the blocks need to be written to disk. The
-// worker will block on the writeTask.compressionDone as it waits
+// worker will block on writeTask.compressionDone as it waits
 // for the corresponding compression job to complete. Once the compression
 // job is complete, the worker will write the block to disk.
 
@@ -77,7 +77,7 @@ type compressionTask struct {
 // to maintain the order of block writes to disk.
 type writeTask struct {
 	// compressionDone is a buffered channel of size 1.
-	// The writer goroutine will wait on the compressionDone
+	// The writer goroutine will wait on compressionDone
 	// in the writeTask for the corresponding compressionTask
 	// to complete. This ensures write order of the blocks
 	// to disk since writeTasks are added to the writeQueue
@@ -86,7 +86,7 @@ type writeTask struct {
 	// The read from this channel will block until
 	// the corresponding compressionTask is complete.
 	// The compressionTask is guaranteed to eventually
-	// write to the compressionDone.
+	// write to compressionDone.
 	compressionDone <-chan *compressedData
 
 	indexSep        InternalKey
@@ -123,9 +123,9 @@ type CompressionQueue struct {
 	// block forever. CompressionQueue.runWorker, and
 	// writeQueue.runWorker will always add items back to
 	// these channels.
-	writeTaskBuffer       chan *writeTask
-	compressionTaskBuffer chan *compressionTask
-	compressedDataBuffer  chan *compressedData
+	writeTaskBuffer       sync.Pool
+	compressionTaskBuffer sync.Pool
+	compressedDataBuffer  sync.Pool
 
 	// closeWG is used to wait for the background workers
 	// to finish executing.
@@ -139,19 +139,20 @@ func NewCompressionQueue(
 	qu := &CompressionQueue{}
 	qu.queue = make(chan *compressionTask, maxSize)
 
-	qu.writeTaskBuffer = make(chan *writeTask, bufferSize)
-	qu.compressionTaskBuffer = make(chan *compressionTask, bufferSize)
-	qu.compressedDataBuffer = make(chan *compressedData, bufferSize)
-
-	// preallocate the structs, to avoid allocations on every
-	// block flush.
-	writeTasks := make([]writeTask, bufferSize)
-	compressionTasks := make([]compressionTask, bufferSize)
-	compressedDatas := make([]compressedData, bufferSize)
-	for i := 0; i < bufferSize; i++ {
-		qu.writeTaskBuffer <- &writeTasks[i]
-		qu.compressionTaskBuffer <- &compressionTasks[i]
-		qu.compressedDataBuffer <- &compressedDatas[i]
+	qu.writeTaskBuffer = sync.Pool{
+		New: func() interface{} {
+			return &writeTask{}
+		},
+	}
+	qu.compressionTaskBuffer = sync.Pool{
+		New: func() interface{} {
+			return &compressionTask{}
+		},
+	}
+	qu.compressedDataBuffer = sync.Pool{
+		New: func() interface{} {
+			return &compressedData{}
+		},
 	}
 
 	for i := 0; i < numWorkers; i++ {
@@ -186,7 +187,7 @@ func (qu *CompressionQueue) runWorker() {
 		}
 
 		checksummer.checksumType = toCompress.checksum
-		compressedData := <-qu.compressedDataBuffer
+		compressedData := qu.compressedDataBuffer.Get().(*compressedData)
 
 		toCompressLen := len(toCompress.toCompress)
 
@@ -208,7 +209,7 @@ func (qu *CompressionQueue) runWorker() {
 			copySliceToDst(&compressedData.compressed, b)
 		}
 
-		// This call will never block because the compressionDone
+		// This call will never block because compressionDone
 		// must be a buffered channel of size 1.
 		toCompress.compressionDone <- compressedData
 
@@ -223,16 +224,16 @@ func (qu *CompressionQueue) runWorker() {
 // counted byte slice to make sure of this.
 func (qu *CompressionQueue) releaseCompressionTask(c *compressionTask) {
 	c.compressionDone = nil
-	qu.compressionTaskBuffer <- c
+	qu.compressionTaskBuffer.Put(c)
 }
 
 func (qu *CompressionQueue) releaseWriteTask(w *writeTask) {
 	w.compressionDone = nil
-	qu.writeTaskBuffer <- w
+	qu.writeTaskBuffer.Put(w)
 }
 
 func (qu *CompressionQueue) releaseCompressedData(c *compressedData) {
-	qu.compressedDataBuffer <- c
+	qu.compressedDataBuffer.Put(c)
 }
 
 // Close will only return after the goroutines started
