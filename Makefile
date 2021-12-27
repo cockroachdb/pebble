@@ -15,6 +15,7 @@ all:
 	@echo "  make stressmeta"
 	@echo "  make mod-update"
 	@echo "  make clean"
+	@echo "  make build"
 
 override testflags :=
 .PHONY: test
@@ -48,6 +49,7 @@ mod-update:
 .PHONY: clean
 clean:
 	rm -f $(patsubst %,%.test,$(notdir $(shell go list ${PKG})))
+	rm -rf bin
 
 git_dirty := $(shell git status -s)
 
@@ -67,6 +69,10 @@ ifneq ($(git_dirty),)
 endif
 	@${GO} mod tidy
 	$(MAKE) git-clean-check
+
+.PHONY: build
+build:
+	cd cmd/pebble && go build -gcflags=all="-N -l" -o="../../bin/pebble" . || return 2
 
 .PHONY: format
 format:
