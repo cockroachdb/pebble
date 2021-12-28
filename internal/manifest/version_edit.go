@@ -608,7 +608,8 @@ func (b *BulkVersionEdit) Apply(
 
 		// Check consistency of the level in the vicinity of our edits.
 		if sm != nil && la != nil {
-			overlap := overlaps(v.Levels[level].Iter(), cmp, sm.Smallest.UserKey, la.Largest.UserKey)
+			overlap := overlaps(v.Levels[level].Iter(), cmp, sm.Smallest.UserKey,
+				la.Largest.UserKey, la.Largest.IsExclusiveSentinel())
 			// overlap contains all of the added files. We want to ensure that
 			// the added files are consistent with neighboring existing files
 			// too, so reslice the overlap to pull in a neighbor on each side.

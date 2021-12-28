@@ -537,7 +537,7 @@ func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) 
 	// are the grandparent sstables).
 	if c.outputLevel.level+1 < numLevels {
 		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.cmp,
-			c.smallest.UserKey, c.largest.UserKey)
+			c.smallest.UserKey, c.largest.UserKey, c.largest.IsExclusiveSentinel())
 	}
 	c.setupInuseKeyRanges()
 
@@ -718,8 +718,8 @@ func newFlush(
 	if opts.FlushSplitBytes > 0 {
 		c.maxOutputFileSize = uint64(opts.Level(0).TargetFileSize)
 		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
-		c.grandparents = c.version.Overlaps(baseLevel, c.cmp,
-			c.smallest.UserKey, c.largest.UserKey)
+		c.grandparents = c.version.Overlaps(baseLevel, c.cmp, c.smallest.UserKey,
+			c.largest.UserKey, c.largest.IsExclusiveSentinel())
 		adjustGrandparentOverlapBytesForFlush(c, flushingBytes)
 	}
 
@@ -752,7 +752,10 @@ func calculateInuseKeyRanges(
 	}
 
 	for ; level < numLevels; level++ {
-		overlaps := v.Overlaps(level, cmp, smallest, largest)
+		// NB: We always treat `largest` as inclusive for simplicity, because
+		// there's little consequence to calculating slightly broader in-use key
+		// ranges.
+		overlaps := v.Overlaps(level, cmp, smallest, largest, false /* exclusiveEnd */)
 		iter := overlaps.Iter()
 
 		// We may already have in-use key ranges from higher levels. Iterate
@@ -898,7 +901,7 @@ func (c *compaction) errorOnUserKeyOverlap(ve *versionEdit) error {
 	if n := len(ve.NewFiles); n > 1 {
 		meta := ve.NewFiles[n-1].Meta
 		prevMeta := ve.NewFiles[n-2].Meta
-		if prevMeta.Largest.Trailer != InternalKeyRangeDeleteSentinel &&
+		if !prevMeta.Largest.IsExclusiveSentinel() &&
 			c.cmp(prevMeta.Largest.UserKey, meta.Smallest.UserKey) >= 0 {
 			return errors.Errorf("pebble: compaction split user key across two sstables: %s in %s and %s",
 				prevMeta.Largest.Pretty(c.formatKey),
@@ -1694,6 +1697,8 @@ func (d *DB) maybeScheduleCompactionPicker(
 // into the same snapshot stripe, a delete-only compaction may delete any
 // sstables within the range.
 type deleteCompactionHint struct {
+	// start and end are user keys specifying a key range [start, end) of
+	// deleted keys.
 	start []byte
 	end   []byte
 	// The level of the file containing the range tombstone(s) when the hint
@@ -1742,7 +1747,7 @@ func (h *deleteCompactionHint) canDelete(cmp Compare, m *fileMetadata, snapshots
 		return false
 	}
 
-	// The file's keys must be completely contianed within the hint range.
+	// The file's keys must be completely contained within the hint range.
 	return cmp(h.start, m.Smallest.UserKey) <= 0 && cmp(m.Largest.UserKey, h.end) < 0
 }
 
@@ -1854,7 +1859,7 @@ func checkDeleteCompactionHints(
 		// The hint h will be resolved and dropped, regardless of whether
 		// there are any tables that can be deleted.
 		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
-			overlaps := v.Overlaps(l, cmp, h.start, h.end)
+			overlaps := v.Overlaps(l, cmp, h.start, h.end, true /* exclusiveEnd */)
 			iter := overlaps.Iter()
 			for m := iter.First(); m != nil; m = iter.Next() {
 				if m.Compacting || !h.canDelete(cmp, m, snapshots) || files[m] {
