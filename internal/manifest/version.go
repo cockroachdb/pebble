@@ -246,6 +246,17 @@ func overlaps(iter LevelIterator, cmp Compare, start, end []byte) LevelSlice {
 	startIter := iter.Clone()
 	startIter.SeekGE(cmp, start)
 
+	// SeekGE compares user keys. The user key `start` may be equal to the
+	// f.Largest because f.Largest is a range deletion sentinel, indicating that
+	// the user key `start` is NOT contained within the file f. If that's the
+	// case, we can narrow the overlapping bounds to exclude the file with the
+	// sentinel.
+	if f := startIter.Current(); f != nil &&
+		f.Largest.Trailer == base.InternalKeyRangeDeleteSentinel &&
+		cmp(f.Largest.UserKey, start) == 0 {
+		startIter.Next()
+	}
+
 	endIter := iter.Clone()
 	endIter.SeekGE(cmp, end)
 
@@ -520,7 +531,8 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelSlice
 				}
 				smallest := meta.Smallest.UserKey
 				largest := meta.Largest.UserKey
-				if cmp(largest, start) < 0 {
+				if c := cmp(largest, start); c < 0 || c == 0 &&
+					meta.Largest.Trailer == base.InternalKeyRangeDeleteSentinel {
 					// meta is completely before the specified range; skip it.
 					continue
 				}

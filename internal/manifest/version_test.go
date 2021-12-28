@@ -141,29 +141,38 @@ func TestOverlaps(t *testing.T) {
 	m10 := &FileMetadata{
 		FileNum:  710,
 		Size:     1,
-		Smallest: base.ParseInternalKey("d.SET.7108"),
-		Largest:  base.ParseInternalKey("g.SET.7109"),
+		Smallest: base.ParseInternalKey("a.SET.7140"),
+		Largest: base.InternalKey{
+			UserKey: []byte("d"),
+			Trailer: base.InternalKeyRangeDeleteSentinel,
+		},
 	}
 	m11 := &FileMetadata{
 		FileNum:  711,
 		Size:     1,
-		Smallest: base.ParseInternalKey("g.SET.7118"),
-		Largest:  base.ParseInternalKey("j.SET.7119"),
+		Smallest: base.ParseInternalKey("d.SET.7108"),
+		Largest:  base.ParseInternalKey("g.SET.7109"),
 	}
 	m12 := &FileMetadata{
 		FileNum:  712,
 		Size:     1,
-		Smallest: base.ParseInternalKey("n.SET.7128"),
-		Largest:  base.ParseInternalKey("p.SET.7129"),
+		Smallest: base.ParseInternalKey("g.SET.7118"),
+		Largest:  base.ParseInternalKey("j.SET.7119"),
 	}
 	m13 := &FileMetadata{
 		FileNum:  713,
 		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7148"),
-		Largest:  base.ParseInternalKey("p.SET.7149"),
+		Smallest: base.ParseInternalKey("n.SET.7128"),
+		Largest:  base.ParseInternalKey("p.SET.7129"),
 	}
 	m14 := &FileMetadata{
 		FileNum:  714,
+		Size:     1,
+		Smallest: base.ParseInternalKey("p.SET.7148"),
+		Largest:  base.ParseInternalKey("p.SET.7149"),
+	}
+	m15 := &FileMetadata{
+		FileNum:  715,
 		Size:     1,
 		Smallest: base.ParseInternalKey("p.SET.7138"),
 		Largest:  base.ParseInternalKey("u.SET.7139"),
@@ -172,7 +181,7 @@ func TestOverlaps(t *testing.T) {
 	v := Version{
 		Levels: [NumLevels]LevelMetadata{
 			0: levelMetadata(0, m00, m01, m02, m03, m04, m05, m06, m07),
-			1: levelMetadata(1, m10, m11, m12, m13, m14),
+			1: levelMetadata(1, m10, m11, m12, m13, m14, m15),
 		},
 	}
 
@@ -215,31 +224,32 @@ func TestOverlaps(t *testing.T) {
 		{0, "y", "z", "m03"},
 		{0, "z", "z", ""},
 
-		// Level 1: m10=d-g, m11=g-j, m12=n-p, m13=p-p, m14=p-u.
-		{1, "a", "a", ""},
-		{1, "a", "b", ""},
-		{1, "a", "d", "m10"},
-		{1, "a", "e", "m10"},
-		{1, "a", "g", "m10 m11"},
-		{1, "a", "z", "m10 m11 m12 m13 m14"},
-		{1, "c", "e", "m10"},
-		{1, "d", "d", "m10"},
-		{1, "g", "n", "m10 m11 m12"},
-		{1, "h", "i", "m11"},
-		{1, "h", "o", "m11 m12"},
-		{1, "h", "u", "m11 m12 m13 m14"},
+		// Level 1: m10=a-d* m11=d-g, m12=g-j, m13=n-p, m14=p-p, m15=p-u.
+		// d* - exclusive, rangedel sentinel
+		{1, "a", "a", "m10"},
+		{1, "a", "b", "m10"},
+		{1, "a", "d", "m10 m11"},
+		{1, "a", "e", "m10 m11"},
+		{1, "a", "g", "m10 m11 m12"},
+		{1, "a", "z", "m10 m11 m12 m13 m14 m15"},
+		{1, "c", "e", "m10 m11"},
+		{1, "d", "d", "m11"},
+		{1, "g", "n", "m11 m12 m13"},
+		{1, "h", "i", "m12"},
+		{1, "h", "o", "m12 m13"},
+		{1, "h", "u", "m12 m13 m14 m15"},
 		{1, "k", "l", ""},
-		{1, "k", "o", "m12"},
-		{1, "k", "p", "m12 m13 m14"},
-		{1, "n", "o", "m12"},
-		{1, "n", "z", "m12 m13 m14"},
-		{1, "o", "z", "m12 m13 m14"},
-		{1, "p", "z", "m12 m13 m14"},
-		{1, "q", "z", "m14"},
-		{1, "r", "s", "m14"},
-		{1, "r", "z", "m14"},
-		{1, "s", "z", "m14"},
-		{1, "u", "z", "m14"},
+		{1, "k", "o", "m13"},
+		{1, "k", "p", "m13 m14 m15"},
+		{1, "n", "o", "m13"},
+		{1, "n", "z", "m13 m14 m15"},
+		{1, "o", "z", "m13 m14 m15"},
+		{1, "p", "z", "m13 m14 m15"},
+		{1, "q", "z", "m15"},
+		{1, "r", "s", "m15"},
+		{1, "r", "z", "m15"},
+		{1, "s", "z", "m15"},
+		{1, "u", "z", "m15"},
 		{1, "y", "z", ""},
 		{1, "z", "z", ""},
 
