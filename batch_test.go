@@ -131,7 +131,7 @@ func TestBatch(t *testing.T) {
 		case InternalKeyKindLogData:
 			_ = b.LogData([]byte(tc.key), nil)
 		case InternalKeyKindRangeKeyDelete:
-			d := b.Experimental().RangeKeyDeleteDeferred(len(key), len(value))
+			d := b.Experimental().(experimentalBatch).RangeKeyDeleteDeferred(len(key), len(value))
 			copy(d.Key, key)
 			copy(d.Value, value)
 			d.Finish()
