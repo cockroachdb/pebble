@@ -1239,11 +1239,14 @@ type flushableBatch struct {
 	// Sorted in increasing order of key and decreasing order of offset (since
 	// higher offsets correspond to higher sequence numbers).
 	//
-	// Does not include range deletion entries.
+	// Does not include range deletion entries or range key entries.
 	offsets []flushableBatchEntry
 
 	// Fragmented range deletion tombstones.
 	tombstones []keyspan.Span
+
+	// Fragmented range keys.
+	rangeKeys []keyspan.Span
 }
 
 var _ flushable = (*flushableBatch)(nil)
@@ -1267,6 +1270,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 		b.seqNum = batch.SeqNum()
 	}
 	var rangeDelOffsets []flushableBatchEntry
+	var rangeKeyOffsets []flushableBatchEntry
 	if len(b.data) > batchHeaderLen {
 		// Non-empty batch.
 		var index uint32
@@ -1290,19 +1294,26 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 					uintptr(unsafe.Pointer(&b.data[0])))
 				entry.keyEnd = entry.keyStart + keySize
 			}
-			if kind == InternalKeyKindRangeDelete {
+			switch kind {
+			case InternalKeyKindRangeDelete:
 				rangeDelOffsets = append(rangeDelOffsets, entry)
-			} else {
+			case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+				rangeKeyOffsets = append(rangeKeyOffsets, entry)
+			default:
 				b.offsets = append(b.offsets, entry)
 			}
 		}
 	}
 
-	// Sort both offsets and rangeDelOffsets.
+	// Sort all of offsets, rangeDelOffsets and rangeKeyOffsets, using *batch's
+	// sort.Interface implementation.
+	pointOffsets := b.offsets
 	sort.Sort(b)
-	rangeDelOffsets, b.offsets = b.offsets, rangeDelOffsets
+	b.offsets = rangeDelOffsets
 	sort.Sort(b)
-	rangeDelOffsets, b.offsets = b.offsets, rangeDelOffsets
+	b.offsets = rangeKeyOffsets
+	sort.Sort(b)
+	b.offsets = pointOffsets
 
 	if len(rangeDelOffsets) > 0 {
 		frag := &keyspan.Fragmenter{
@@ -1321,6 +1332,27 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 		}
 		for key, val := it.First(); key != nil; key, val = it.Next() {
 			frag.Add(keyspan.Span{Start: *key, End: val})
+		}
+		frag.Finish()
+	}
+	if len(rangeKeyOffsets) > 0 {
+		frag := &keyspan.Fragmenter{
+			Cmp:    b.cmp,
+			Format: b.formatKey,
+			Emit: func(fragmented []keyspan.Span) {
+				b.rangeKeys = append(b.rangeKeys, fragmented...)
+			},
+		}
+		it := &flushableBatchIter{
+			batch:   b,
+			data:    b.data,
+			offsets: rangeKeyOffsets,
+			cmp:     b.cmp,
+			index:   -1,
+		}
+		for key, val := it.First(); key != nil; key, val = it.Next() {
+			endKey, rangeKeyVal, _ := rangekey.DecodeEndKey(key.Kind(), val)
+			frag.Add(keyspan.Span{Start: *key, End: endKey, Value: rangeKeyVal})
 		}
 		frag.Finish()
 	}
