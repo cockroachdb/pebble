@@ -655,26 +655,17 @@ func (b *Batch) DeleteRangeDeferred(startLen, endLen int) *DeferredBatchOp {
 	return &b.deferredOp
 }
 
-// Experimental returns the same batch, with experimental portions of the API
-// exposed.
-func (b *Batch) Experimental() ExperimentalBatch {
-	return ExperimentalBatch{b}
+// Experimental returns the experimental write API, backed by the same batch.
+func (b *Batch) Experimental() ExperimentalWriter {
+	return experimentalBatch{b}
 }
 
-// ExperimentalBatch provides access to experimental features of a Batch.
-type ExperimentalBatch struct {
+type experimentalBatch struct {
 	*Batch
 }
 
-// RangeKeySet sets a range key mapping the key range [start, end) at the MVCC
-// timestamp suffix to value. The suffix is optional. If any portion of the key
-// range [start, end) is already set by a range key with the same suffix value,
-// RangeKeySet overrides it.
-//
-// It is safe to modify the contents of the arguments after RangeKeySet returns.
-//
-// WARNING: This is an experimental feature with limited functionality.
-func (b ExperimentalBatch) RangeKeySet(start, end, suffix, value []byte, _ *WriteOptions) error {
+// RangeKeySet implements the ExperimentalWriter interface.
+func (b experimentalBatch) RangeKeySet(start, end, suffix, value []byte, _ *WriteOptions) error {
 	suffixValues := [1]rangekey.SuffixValue{{Suffix: suffix, Value: value}}
 	internalValueLen := rangekey.EncodedSetValueLen(end, suffixValues[:])
 
@@ -713,17 +704,8 @@ func (b *Batch) incrementRangeKeysCount() {
 	}
 }
 
-// RangeKeyUnset removes a range key mapping the key range [start, end) at the
-// MVCC timestamp suffix. The suffix may be omitted to remove an unsuffixed
-// range key. RangeKeyUnset only removes portions of range keys that fall within
-// the [start, end) key span, and only range keys with suffixes that exactly
-// match the unset suffix.
-//
-// It is safe to modify the contents of the arguments after RangeKeyUnset
-// returns.
-//
-// WARNING: This is an experimental feature with limited functionality.
-func (b ExperimentalBatch) RangeKeyUnset(start, end, suffix []byte, _ *WriteOptions) error {
+// RangeKeyUnset implements the ExperimentalWriter interface.
+func (b experimentalBatch) RangeKeyUnset(start, end, suffix []byte, _ *WriteOptions) error {
 	suffixes := [1][]byte{suffix}
 	internalValueLen := rangekey.EncodedUnsetValueLen(end, suffixes[:])
 
@@ -750,16 +732,8 @@ func (b *Batch) rangeKeyUnsetDeferred(startLen, internalValueLen int) *DeferredB
 	return &b.deferredOp
 }
 
-// RangeKeyDelete deletes all of the range keys in the range [start,end)
-// (inclusive on start, exclusive on end). It does not delete point keys (for
-// that use DeleteRange). RangeKeyDelete removes all range keys within the
-// bounds, including those with or without suffixes.
-//
-// It is safe to modify the contents of the arguments after RangeKeyDelete
-// returns.
-//
-// WARNING: This is an experimental feature with limited functionality.
-func (b ExperimentalBatch) RangeKeyDelete(start, end []byte, _ *WriteOptions) error {
+// RangeKeyDelete implements the ExperimentalWriter interface.
+func (b experimentalBatch) RangeKeyDelete(start, end []byte, _ *WriteOptions) error {
 	deferredOp := b.RangeKeyDeleteDeferred(len(start), len(end))
 	copy(deferredOp.Key, start)
 	copy(deferredOp.Value, end)
@@ -779,7 +753,7 @@ func (b ExperimentalBatch) RangeKeyDelete(start, end []byte, _ *WriteOptions) er
 // objects and then call Finish() on the returned object. Note that
 // DeferredBatchOp.Key should be populated with the start key, and
 // DeferredBatchOp.Value should be populated with the end key.
-func (b ExperimentalBatch) RangeKeyDeleteDeferred(startLen, endLen int) *DeferredBatchOp {
+func (b *Batch) RangeKeyDeleteDeferred(startLen, endLen int) *DeferredBatchOp {
 	b.prepareDeferredKeyValueRecord(startLen, endLen, InternalKeyKindRangeKeyDelete)
 	b.incrementRangeKeysCount()
 	return &b.deferredOp
