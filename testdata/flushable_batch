@@ -6,7 +6,14 @@ b.DEL.2:
 c.SET.1:1
 c.MERGE.2:2
 1.RANGEDEL.3:
+2.RANGEKEYSET.4:
+2.RANGEKEYDEL.5:
+2.RANGEKEYUNSET.6:
 ----
+
+# TODO(jackson): This test includes RANGEDELs but not RANGEKEYs, because this
+# test doesn't yet incoporate a RANGEKEY iterator. Once we have a RANGEKEY
+# flushable batch iterator, update this test to incorporate it.
 
 dump seq=0
 ----

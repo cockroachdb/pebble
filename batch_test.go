@@ -696,6 +696,12 @@ func TestFlushableBatch(t *testing.T) {
 					batch.Merge(ikey.UserKey, value, nil)
 				case InternalKeyKindRangeDelete:
 					batch.DeleteRange(ikey.UserKey, value, nil)
+				case InternalKeyKindRangeKeyDelete:
+					batch.Experimental().RangeKeyDelete(ikey.UserKey, value, nil)
+				case InternalKeyKindRangeKeySet:
+					batch.Experimental().RangeKeySet(ikey.UserKey, value, value, value, nil)
+				case InternalKeyKindRangeKeyUnset:
+					batch.Experimental().RangeKeyUnset(ikey.UserKey, value, value, nil)
 				}
 			}
 			b = newFlushableBatch(batch, DefaultComparer)
