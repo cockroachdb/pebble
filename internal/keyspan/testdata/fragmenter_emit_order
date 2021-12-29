@@ -1,0 +1,25 @@
+build
+a.RANGEKEYSET.5 b
+a.RANGEKEYSET.4 b
+a.RANGEKEYUNSET.6 b
+----
+a#6,RANGEKEYUNSET b
+a#5,RANGEKEYSET b
+a#4,RANGEKEYSET b
+-
+
+# Test that keys emitted together that share the same sequence number are
+# ordered by key kind, descending.
+# NB: RANGEKEYSET > RANGEKEYUNSET > RANGEKEYDEL
+
+build
+b.RANGEKEYSET.5 c
+b.RANGEKEYUNSET.5 d
+b.RANGEKEYDEL.5 c
+----
+b#5,RANGEKEYSET c
+b#5,RANGEKEYUNSET c
+b#5,RANGEKEYDEL c
+-
+c#5,RANGEKEYUNSET d
+-
