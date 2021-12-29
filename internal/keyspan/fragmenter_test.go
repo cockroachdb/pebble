@@ -266,15 +266,48 @@ func TestFragmenter_Values(t *testing.T) {
 					}
 				}()
 
-				// TODO(jackson): Keys of kind InternalKeyKindRangeDelete don't
-				// have values. Update the call below when we have KindRangeSet,
-				// KindRangeUnset.
-				spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
+				spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeKeySet)
 				return formatSpans(spans)
 			}()
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
+}
+
+func TestFragmenter_EmitOrder(t *testing.T) {
+	var buf bytes.Buffer
+
+	datadriven.RunTest(t, "testdata/fragmenter_emit_order", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "build":
+			buf.Reset()
+			f := Fragmenter{
+				Cmp:    base.DefaultComparer.Compare,
+				Format: base.DefaultComparer.FormatKey,
+				Emit: func(spans []Span) {
+					for _, s := range spans {
+						fmt.Fprintf(&buf, "%s %s\n", s.Start.Pretty(base.DefaultComparer.FormatKey), s.End)
+					}
+					fmt.Fprintln(&buf, "-")
+				},
+			}
+			for _, line := range strings.Split(d.Input, "\n") {
+				fields := strings.Fields(line)
+				if len(fields) != 2 {
+					panic(fmt.Sprintf("datadriven test: expect 2 fields, found %d", len(fields)))
+				}
+				f.Add(Span{
+					Start: base.ParseInternalKey(fields[0]),
+					End:   []byte(fields[1]),
+				})
+			}
+
+			f.Finish()
+			return buf.String()
+		default:
+			panic(fmt.Sprintf("unrecognized command %q", d.Cmd))
 		}
 	})
 }

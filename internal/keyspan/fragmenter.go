@@ -38,13 +38,25 @@ func (v *spansByEndKey) Swap(i, j int) {
 	v.buf[i], v.buf[j] = v.buf[j], v.buf[i]
 }
 
-type spansBySeqNum []Span
+// spansBySeqNumKind sorts spans by the start key's sequence number in
+// descending order. If two spans have equal sequence number, they're compared
+// by key kind in descending order. This ordering matches the ordering of
+// base.InternalCompare among keys with matching user keys.
+type spansBySeqNumKind []Span
 
-func (v *spansBySeqNum) Len() int { return len(*v) }
-func (v *spansBySeqNum) Less(i, j int) bool {
-	return (*v)[i].Start.SeqNum() > (*v)[j].Start.SeqNum()
+func (v *spansBySeqNumKind) Len() int { return len(*v) }
+func (v *spansBySeqNumKind) Less(i, j int) bool {
+	a, b := (*v)[i].Start, (*v)[j].Start
+	switch {
+	case a.SeqNum() > b.SeqNum():
+		return true
+	case a.SeqNum() == b.SeqNum():
+		return a.Kind() > b.Kind()
+	default:
+		return false
+	}
 }
-func (v *spansBySeqNum) Swap(i, j int) {
+func (v *spansBySeqNumKind) Swap(i, j int) {
 	(*v)[i], (*v)[j] = (*v)[j], (*v)[i]
 }
 
@@ -81,8 +93,8 @@ type Fragmenter struct {
 	doneBuf []Span
 	// sortBuf is used to sort fragments by end key when flushing.
 	sortBuf spansByEndKey
-	// flushBuf is used to sort fragments by seqnum before emitting.
-	flushBuf spansBySeqNum
+	// flushBuf is used to sort fragments by (seqnum,kind) before emitting.
+	flushBuf spansBySeqNumKind
 	// flushedKey is the key that fragments have been flushed up to. Any
 	// additional spans added to the fragmenter must have a start key >=
 	// flushedKey. A nil value indicates flushedKey has not been set.
