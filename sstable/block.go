@@ -6,10 +6,13 @@ package sstable
 
 import (
 	"encoding/binary"
+	"fmt"
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 func uvarintLen(v uint32) int {
@@ -916,12 +919,6 @@ func (i *blockIter) Value() []byte {
 	return i.val
 }
 
-// Valid implements internalIterator.Valid, as documented in the pebble
-// package.
-func (i *blockIter) Valid() bool {
-	return i.offset >= 0 && i.offset < i.restarts
-}
-
 // Error implements internalIterator.Error, as documented in the pebble
 // package.
 func (i *blockIter) Error() error {
@@ -940,4 +937,42 @@ func (i *blockIter) Close() error {
 func (i *blockIter) SetBounds(lower, upper []byte) {
 	// This should never be called as bounds are handled by sstable.Iterator.
 	panic("pebble: SetBounds unimplemented")
+}
+
+// Implement additional methods required to satisfy the keyspan.FragmentIterator
+// interface. This implementation is intended to be used with range deletion
+// tombstones only, because range deletions have no associated value and store
+// the end key bound directly within the internal value.
+//
+// This blockIter implementation of keyspan.FragmentIterator should not be used
+// with range keys.
+
+// TODO(jackson): Is there a more robust way to prevent accidental misuse of
+// this FragmentIterator implementation while avoiding extra indirection in the
+// case of range deletions?
+
+var _ keyspan.FragmentIterator = (*blockIter)(nil)
+
+// Valid implements (keyspan.FragmentIterator).Valid, as documented in the
+// internal/keyspan package.
+func (i *blockIter) Valid() bool {
+	return i.offset >= 0 && i.offset < i.restarts
+}
+
+// End implements (keyspan.FragmentIterator).End, as documented in the
+// internal/keyspan package.
+func (i *blockIter) End() []byte {
+	return i.val
+}
+
+// Current implements (keyspan.FragmentIterator).Current, as documented in the
+// internal/keyspan package.
+func (i *blockIter) Current() keyspan.Span {
+	if !i.Valid() {
+		return keyspan.Span{}
+	}
+	if invariants.Enabled && i.ikey.Kind() != InternalKeyKindRangeDelete {
+		panic(fmt.Sprintf("pebble: blockIter's fragment iterator implementation used on non-RANGEDELs (kind %d)", i.ikey.Kind()))
+	}
+	return keyspan.Span{Start: i.ikey, End: i.val, Value: nil}
 }

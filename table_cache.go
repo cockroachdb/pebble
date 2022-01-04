@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
@@ -112,7 +113,7 @@ func (c *tableCacheContainer) close() error {
 
 func (c *tableCacheContainer) newIters(
 	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
-) (internalIterator, internalIterator, error) {
+) (internalIterator, keyspan.FragmentIterator, error) {
 	return c.tableCache.getShard(file.FileNum).newIters(file, opts, bytesIterated, &c.dbOpts)
 }
 
@@ -298,7 +299,7 @@ func (c *tableCacheShard) releaseLoop() {
 
 func (c *tableCacheShard) newIters(
 	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64, dbOpts *tableCacheOpts,
-) (internalIterator, internalIterator, error) {
+) (internalIterator, keyspan.FragmentIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to

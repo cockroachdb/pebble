@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
@@ -311,7 +312,7 @@ func ingestUpdateSeqNum(opts *Options, dirname string, seqNum uint64, meta []*fi
 }
 
 func overlapWithIterator(
-	iter internalIterator, rangeDelIter *internalIterator, meta *fileMetadata, cmp Compare,
+	iter internalIterator, rangeDelIter *keyspan.FragmentIterator, meta *fileMetadata, cmp Compare,
 ) bool {
 	// Check overlap with point operations.
 	//
@@ -417,7 +418,7 @@ func ingestTargetLevel(
 	for ; level < numLevels; level++ {
 		levelIter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
 			v.Levels[level].Iter(), manifest.Level(level), nil)
-		var rangeDelIter internalIterator
+		var rangeDelIter keyspan.FragmentIterator
 		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE sets it up for the target file.
 		levelIter.initRangeDel(&rangeDelIter)
 		overlap := overlapWithIterator(levelIter, &rangeDelIter, meta, cmp)

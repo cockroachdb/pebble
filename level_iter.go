@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
@@ -18,7 +19,7 @@ import (
 // iterated through.
 type tableNewIters func(
 	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
-) (internalIterator, internalIterator, error)
+) (internalIterator, keyspan.FragmentIterator, error)
 
 // levelIter provides a merged view of the sstables in a level.
 //
@@ -82,8 +83,8 @@ type levelIter struct {
 	// close iter and *rangeDelIterPtr since we could reuse it in the next seek. But
 	// we need to set *rangeDelIterPtr to nil because of the aforementioned contract.
 	// This copy is used to revive the *rangeDelIterPtr in the case of reuse.
-	rangeDelIterPtr  *internalIterator
-	rangeDelIterCopy internalIterator
+	rangeDelIterPtr  *keyspan.FragmentIterator
+	rangeDelIterCopy keyspan.FragmentIterator
 	files            manifest.LevelIterator
 	err              error
 
@@ -194,7 +195,7 @@ func (l *levelIter) init(
 	l.bytesIterated = bytesIterated
 }
 
-func (l *levelIter) initRangeDel(rangeDelIter *internalIterator) {
+func (l *levelIter) initRangeDel(rangeDelIter *keyspan.FragmentIterator) {
 	l.rangeDelIterPtr = rangeDelIter
 }
 
@@ -335,7 +336,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			continue
 		}
 
-		var rangeDelIter internalIterator
+		var rangeDelIter keyspan.FragmentIterator
 		l.iter, rangeDelIter, l.err = l.newIters(l.files.Current(), &l.tableOpts, l.bytesIterated)
 		if l.err != nil {
 			return noFileLoaded

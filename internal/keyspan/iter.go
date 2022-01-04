@@ -10,6 +10,35 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
+// TODO(jackson): Disentangle FragmentIterator from InternalIterator and return
+// full Spans from the positioning methods.
+
+// FragmentIterator defines an interator interface over keyspan fragments. The
+// spans surfaced by a FragmentIterator must already be fragmented — that is if
+// two spans overlap, they must have identical start and end bounds. In forward
+// iteration, spans are returned ascending by their start keys:
+//
+//     (user key ASC, sequence number DESC, kind DESC)
+//
+// In reverse iteration, spans are returned in opposite order:
+//
+//     (user key DESC, sequence number ASC, kind ASC)
+//
+type FragmentIterator interface {
+	base.InternalIterator
+
+	// Valid returns true iff the iterator is currently positioned over a
+	// fragment.
+	Valid() bool
+
+	// End returns the end user key for the fragment at the current iterator
+	// position.
+	End() []byte
+
+	// Current returns the fragment at the current iterator position.
+	Current() Span
+}
+
 // Iter is an iterator over a set of fragmented spans.
 type Iter struct {
 	cmp   base.Compare
@@ -22,8 +51,8 @@ type Iter struct {
 	upper int
 }
 
-// Iter implements the base.InternalIterator interface.
-var _ base.InternalIterator = (*Iter)(nil)
+// Iter implements the FragmentIterator interface.
+var _ FragmentIterator = (*Iter)(nil)
 
 // NewIter returns a new iterator over a set of fragmented spans.
 func NewIter(cmp base.Compare, spans []Span) *Iter {
@@ -154,22 +183,15 @@ func (i *Iter) Prev() (*base.InternalKey, []byte) {
 }
 
 // Current returns the current span.
-func (i *Iter) Current() *Span {
+func (i *Iter) Current() Span {
 	if i.Valid() {
-		return &i.spans[i.index]
+		return i.spans[i.index]
 	}
-	return nil
+	return Span{}
 }
 
-// Key implements InternalIterator.Key, as documented in the internal/base
-// package.
-func (i *Iter) Key() *base.InternalKey {
-	return &i.spans[i.index].Start
-}
-
-// Value implements InternalIterator.Value, as documented in the internal/base
-// package.
-func (i *Iter) Value() []byte {
+// End returns the end user key of the fragment at the current iterator position.
+func (i *Iter) End() []byte {
 	return i.spans[i.index].End
 }
 

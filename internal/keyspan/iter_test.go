@@ -39,25 +39,26 @@ func TestIter(t *testing.T) {
 				if len(parts) == 0 {
 					continue
 				}
+				var start *base.InternalKey
 				switch parts[0] {
 				case "seek-ge":
 					if len(parts) != 2 {
 						return "seek-ge <key>\n"
 					}
-					iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+					start, _ = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
 				case "seek-lt":
 					if len(parts) != 2 {
 						return "seek-lt <key>\n"
 					}
-					iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+					start, _ = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
 				case "first":
-					iter.First()
+					start, _ = iter.First()
 				case "last":
-					iter.Last()
+					start, _ = iter.Last()
 				case "next":
-					iter.Next()
+					start, _ = iter.Next()
 				case "prev":
-					iter.Prev()
+					start, _ = iter.Prev()
 				case "set-bounds":
 					if len(parts) != 3 {
 						return fmt.Sprintf("set-bounds expects 2 bounds, got %d", len(parts)-1)
@@ -76,7 +77,7 @@ func TestIter(t *testing.T) {
 					return fmt.Sprintf("unknown op: %s", parts[0])
 				}
 				if iter.Valid() {
-					fmt.Fprintf(&b, "%s-%s#%d\n", iter.Key().UserKey, iter.Value(), iter.Key().SeqNum())
+					fmt.Fprintf(&b, "%s-%s#%d\n", start.UserKey, iter.End(), start.SeqNum())
 				} else if err := iter.Error(); err != nil {
 					fmt.Fprintf(&b, "err=%v\n", err)
 				} else {
