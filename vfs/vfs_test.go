@@ -295,3 +295,21 @@ func TestVFSCreateLinkSemantics(t *testing.T) {
 		})
 	}
 }
+
+// TestVFSRootDirName ensures that opening the root directory on both the
+// Default and MemFS works and returns a File which has the name of the
+// path separator for the FS (always sep for MemFS).
+func TestVFSRootDirName(t *testing.T) {
+	for _, fs := range []FS{Default, NewMem()} {
+		rootDir, err := fs.Open("/")
+		require.NoError(t, err)
+		fi, err := rootDir.Stat()
+		require.NoError(t, err)
+
+		exp := sep
+		if fs == Default {
+			exp = string(os.PathSeparator)
+		}
+		require.Equal(t, exp, fi.Name())
+	}
+}
