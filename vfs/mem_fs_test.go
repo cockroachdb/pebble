@@ -17,6 +17,14 @@ import (
 func runTestCases(t *testing.T, testCases []string, fs *MemFS) {
 	var f File
 	for _, tc := range testCases {
+
+		// Exercise cloning by cloning the FS at each step and running each case
+		// on both the clone and the fs being tested.
+		cloneCtx := makeMemFSClone(fs)
+		clonedF := cloneCtx.cloneFile(t, f)
+		runTestCase(t, tc, cloneCtx.clonedFS, clonedF)
+
+		// Make sure to set the file to its expected value for the next case.
 		f = runTestCase(t, tc, fs, f)
 	}
 }
@@ -380,4 +388,22 @@ func TestStrictFS(t *testing.T) {
 		"7l: f.close",
 	}
 	runTestCases(t, testCases, fs)
+}
+
+// cloneFile is a helper to clone a file corresponding to the source MemFS to
+// create a file belonging to the clonedFS.
+func (cc memFSClone) cloneFile(t *testing.T, f File) File {
+	if f == nil {
+		return nil
+	}
+	mf, ok := f.(*memFile)
+	if !ok {
+		t.Fatalf("cannot clone %T which is not a *memFile", f)
+	}
+	cloned := *mf
+	if mf.fs != nil {
+		cloned.fs = cc.clonedFS
+	}
+	cloned.n = cc.cloneNode(mf.n)
+	return &cloned
 }

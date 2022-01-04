@@ -86,6 +86,11 @@ type MemFS struct {
 	ignoreSyncs bool
 }
 
+// Clone copies the deep-copies the contents of the MemFS into a new MemFS.
+func (y *MemFS) Clone() *MemFS {
+	return makeMemFSClone(y).clonedFS
+}
+
 var _ FS = &MemFS{}
 
 // String dumps the contents of the MemFS.
