@@ -17,102 +17,110 @@ import (
 func runTestCases(t *testing.T, testCases []string, fs *MemFS) {
 	var f File
 	for _, tc := range testCases {
-		s := strings.Split(tc, " ")[1:]
-
-		saveF := s[0] == "f" && s[1] == "="
-		if saveF {
-			s = s[2:]
-		}
-
-		fails := s[len(s)-1] == "fails"
-		if fails {
-			s = s[:len(s)-1]
-		}
-
-		var (
-			fi  os.FileInfo
-			g   File
-			err error
-		)
-		switch s[0] {
-		case "create":
-			g, err = fs.Create(s[1])
-		case "link":
-			err = fs.Link(s[1], s[2])
-		case "open":
-			g, err = fs.Open(s[1])
-		case "openDir":
-			g, err = fs.OpenDir(s[1])
-		case "mkdirall":
-			err = fs.MkdirAll(s[1], 0755)
-		case "remove":
-			err = fs.Remove(s[1])
-		case "rename":
-			err = fs.Rename(s[1], s[2])
-		case "reuseForWrite":
-			g, err = fs.ReuseForWrite(s[1], s[2])
-		case "resetToSynced":
-			fs.ResetToSyncedState()
-		case "ignoreSyncs":
-			fs.SetIgnoreSyncs(true)
-		case "stopIgnoringSyncs":
-			fs.SetIgnoreSyncs(false)
-		case "f.write":
-			_, err = f.Write([]byte(s[1]))
-		case "f.sync":
-			err = f.Sync()
-		case "f.read":
-			n, _ := strconv.Atoi(s[1])
-			buf := make([]byte, n)
-			_, err = io.ReadFull(f, buf)
-			if err != nil {
-				break
-			}
-			if got, want := string(buf), s[3]; got != want {
-				t.Fatalf("%q: got %q, want %q", tc, got, want)
-			}
-		case "f.readat":
-			n, _ := strconv.Atoi(s[1])
-			off, _ := strconv.Atoi(s[2])
-			buf := make([]byte, n)
-			_, err = f.ReadAt(buf, int64(off))
-			if err != nil {
-				break
-			}
-			if got, want := string(buf), s[4]; got != want {
-				t.Fatalf("%q: got %q, want %q", tc, got, want)
-			}
-		case "f.close":
-			f, err = nil, f.Close()
-		case "f.stat.name":
-			fi, err = f.Stat()
-			if err != nil {
-				break
-			}
-			if got, want := fi.Name(), s[2]; got != want {
-				t.Fatalf("%q: got %q, want %q", tc, got, want)
-			}
-		default:
-			t.Fatalf("bad test case: %q", tc)
-		}
-
-		if saveF {
-			f, g = g, nil
-		} else if g != nil {
-			g.Close()
-		}
-
-		if fails {
-			if err == nil {
-				t.Fatalf("%q: got nil error, want non-nil", tc)
-			}
-		} else {
-			if err != nil {
-				t.Fatalf("%q: %v", tc, err)
-			}
-		}
+		f = runTestCase(t, tc, fs, f)
 	}
 }
+
+// runTestCase runs a test case string against fs with the current file
+// state provided. The file state at the end of the case is returned.
+func runTestCase(t *testing.T, tc string, fs *MemFS, f File) File {
+	s := strings.Split(tc, " ")[1:]
+
+	saveF := s[0] == "f" && s[1] == "="
+	if saveF {
+		s = s[2:]
+	}
+
+	fails := s[len(s)-1] == "fails"
+	if fails {
+		s = s[:len(s)-1]
+	}
+
+	var (
+		fi  os.FileInfo
+		g   File
+		err error
+	)
+	switch s[0] {
+	case "create":
+		g, err = fs.Create(s[1])
+	case "link":
+		err = fs.Link(s[1], s[2])
+	case "open":
+		g, err = fs.Open(s[1])
+	case "openDir":
+		g, err = fs.OpenDir(s[1])
+	case "mkdirall":
+		err = fs.MkdirAll(s[1], 0755)
+	case "remove":
+		err = fs.Remove(s[1])
+	case "rename":
+		err = fs.Rename(s[1], s[2])
+	case "reuseForWrite":
+		g, err = fs.ReuseForWrite(s[1], s[2])
+	case "resetToSynced":
+		fs.ResetToSyncedState()
+	case "ignoreSyncs":
+		fs.SetIgnoreSyncs(true)
+	case "stopIgnoringSyncs":
+		fs.SetIgnoreSyncs(false)
+	case "f.write":
+		_, err = f.Write([]byte(s[1]))
+	case "f.sync":
+		err = f.Sync()
+	case "f.read":
+		n, _ := strconv.Atoi(s[1])
+		buf := make([]byte, n)
+		_, err = io.ReadFull(f, buf)
+		if err != nil {
+			break
+		}
+		if got, want := string(buf), s[3]; got != want {
+			t.Fatalf("%q: got %q, want %q", tc, got, want)
+		}
+	case "f.readat":
+		n, _ := strconv.Atoi(s[1])
+		off, _ := strconv.Atoi(s[2])
+		buf := make([]byte, n)
+		_, err = f.ReadAt(buf, int64(off))
+		if err != nil {
+			break
+		}
+		if got, want := string(buf), s[4]; got != want {
+			t.Fatalf("%q: got %q, want %q", tc, got, want)
+		}
+	case "f.close":
+		f, err = nil, f.Close()
+	case "f.stat.name":
+		fi, err = f.Stat()
+		if err != nil {
+			break
+		}
+		if got, want := fi.Name(), s[2]; got != want {
+			t.Fatalf("%q: got %q, want %q", tc, got, want)
+		}
+	default:
+		t.Fatalf("bad test case: %q", tc)
+	}
+
+	if saveF {
+		f, g = g, nil
+	} else if g != nil {
+		g.Close()
+	}
+
+	if fails {
+		if err == nil {
+			t.Fatalf("%q: got nil error, want non-nil", tc)
+		}
+	} else {
+		if err != nil {
+			t.Fatalf("%q: %v", tc, err)
+		}
+	}
+	return f
+}
+
 func TestBasics(t *testing.T) {
 	fs := NewMem()
 	testCases := []string{
