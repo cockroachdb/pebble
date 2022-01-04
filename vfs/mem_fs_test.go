@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func runTestCases(t *testing.T, testCases []string, fs *MemFS) {
@@ -112,7 +114,22 @@ func runTestCases(t *testing.T, testCases []string, fs *MemFS) {
 			}
 		}
 	}
+
+	// Both "" and "/" are allowed to be used to refer to the root of the FS
+	// for the purposes of cloning.
+	checkClonedIsEquivalent(t, fs, "")
+	checkClonedIsEquivalent(t, fs, "/")
 }
+
+// Test that the FS can be cloned and that the clone serializes identically.
+func checkClonedIsEquivalent(t *testing.T, fs *MemFS, path string) {
+	clone := NewMem()
+	cloned, err := Clone(fs, clone, path, path)
+	require.NoError(t, err)
+	require.True(t, cloned)
+	require.Equal(t, fs.String(), clone.String())
+}
+
 func TestBasics(t *testing.T) {
 	fs := NewMem()
 	testCases := []string{

@@ -293,7 +293,13 @@ func (y *MemFS) open(fullname string, allowEmptyName bool) (File, error) {
 
 // Open implements FS.Open.
 func (y *MemFS) Open(fullname string, opts ...OpenOption) (File, error) {
-	return y.open(fullname, false /* allowEmptyName */)
+
+	// Note that in general we don't want to allow for an empty name when opening
+	// a path in the FS, but the root of the MemFS has an empty name. We ought to
+	// be able to open the root directory. We also allow "" for parity with
+	// OpenDir.
+	allowEmptyName := fullname == "/" || fullname == ""
+	return y.open(fullname, allowEmptyName)
 }
 
 // OpenDir implements FS.OpenDir.
