@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -2674,7 +2675,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 
 				newIters := func(
 					_ *manifest.FileMetadata, _ *IterOptions, _ *uint64,
-				) (internalIterator, internalIterator, error) {
+				) (internalIterator, keyspan.FragmentIterator, error) {
 					return &errorIter{}, nil, nil
 				}
 				result := "OK"

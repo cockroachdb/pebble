@@ -7,13 +7,15 @@ package pebble
 import (
 	"fmt"
 	"sync/atomic"
+
+	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // flushable defines the interface for immutable memtables.
 type flushable interface {
 	newIter(o *IterOptions) internalIterator
 	newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator
-	newRangeDelIter(o *IterOptions) internalIterator
+	newRangeDelIter(o *IterOptions) keyspan.FragmentIterator
 	// inuseBytes returns the number of inuse bytes by the flushable.
 	inuseBytes() uint64
 	// totalBytes returns the total number of bytes allocated by the flushable.

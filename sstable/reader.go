@@ -2119,7 +2119,7 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 // NewRawRangeDelIter returns an internal iterator for the contents of the
 // range-del block for the table. Returns nil if the table does not contain
 // any range deletions.
-func (r *Reader) NewRawRangeDelIter() (base.InternalIterator, error) {
+func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 	if r.rangeDelBH.Length == 0 {
 		return nil, nil
 	}
@@ -2131,6 +2131,9 @@ func (r *Reader) NewRawRangeDelIter() (base.InternalIterator, error) {
 	if err := i.initHandle(r.Compare, h, r.Properties.GlobalSeqNum); err != nil {
 		return nil, err
 	}
+	// NB: *blockIter implements keyspan.FragmentIter, assuming the raw value is
+	// is the span's end key, and the span has no other value. This is
+	// sufficient for range deletion tombstones, but not for range keys.
 	return i, nil
 }
 

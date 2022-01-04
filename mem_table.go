@@ -224,7 +224,7 @@ func (m *memTable) newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIt
 	return m.skl.NewFlushIter(bytesFlushed)
 }
 
-func (m *memTable) newRangeDelIter(*IterOptions) internalIterator {
+func (m *memTable) newRangeDelIter(*IterOptions) keyspan.FragmentIterator {
 	tombstones := m.tombstones.get()
 	if tombstones == nil {
 		return nil

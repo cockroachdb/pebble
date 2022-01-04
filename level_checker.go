@@ -48,7 +48,7 @@ import (
 // The per-level structure used by simpleMergingIter.
 type simpleMergingIterLevel struct {
 	iter            internalIterator
-	rangeDelIter    internalIterator
+	rangeDelIter    keyspan.FragmentIterator
 	smallestUserKey []byte
 
 	iterKey   *InternalKey

@@ -856,7 +856,7 @@ func (b *Batch) newInternalIter(o *IterOptions) internalIterator {
 	}
 }
 
-func (b *Batch) newRangeDelIter(o *IterOptions) internalIterator {
+func (b *Batch) newRangeDelIter(o *IterOptions) keyspan.FragmentIterator {
 	if b.index == nil {
 		return newErrorIter(ErrNotIndexed)
 	}
@@ -1418,7 +1418,7 @@ func (b *flushableBatch) newFlushIter(o *IterOptions, bytesFlushed *uint64) inte
 	}
 }
 
-func (b *flushableBatch) newRangeDelIter(o *IterOptions) internalIterator {
+func (b *flushableBatch) newRangeDelIter(o *IterOptions) keyspan.FragmentIterator {
 	if len(b.tombstones) == 0 {
 		return nil
 	}

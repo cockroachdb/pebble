@@ -68,7 +68,7 @@ func maxReadCompactionBytes(opts *Options, level int) uint64 {
 // calls to Close. It is used during compaction to ensure that rangeDelIters
 // are not closed prematurely.
 type noCloseIter struct {
-	base.InternalIterator
+	keyspan.FragmentIterator
 }
 
 func (i noCloseIter) Close() error {

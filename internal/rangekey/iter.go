@@ -25,6 +25,7 @@ import (
 // are no longer relevant.
 type Iter struct {
 	iter      *keyspan.Iter
+	iterKey   *base.InternalKey
 	coalescer Coalescer
 	curr      CoalescedSpan
 	err       error
@@ -62,7 +63,7 @@ func (i *Iter) Error() error {
 	return i.err
 }
 
-func (i *Iter) coalesceForward(k *base.InternalKey) *CoalescedSpan {
+func (i *Iter) coalesceForward() *CoalescedSpan {
 	i.dir = +1
 	i.valid = false
 	// As long as we have a key and that key matches the coalescer's current
@@ -70,13 +71,13 @@ func (i *Iter) coalesceForward(k *base.InternalKey) *CoalescedSpan {
 	// TODO(jackson): This key comparison is redundant with the one performed by
 	// Coalescer.Add. Tweaking the interfaces should be able to remove the
 	// comparison.
-	for k != nil && (!i.valid || i.coalescer.items.cmp(k.UserKey, i.coalescer.Start()) == 0) {
-		if err := i.coalescer.Add(*i.iter.Current()); err != nil {
+	for i.iterKey != nil && (!i.valid || i.coalescer.items.cmp(i.iterKey.UserKey, i.coalescer.Start()) == 0) {
+		if err := i.coalescer.Add(i.iter.Current()); err != nil {
 			i.valid, i.err = false, err
 			return nil
 		}
 		i.valid = true
-		k, _ = i.iter.Next()
+		i.iterKey, _ = i.iter.Next()
 	}
 	// NB: Finish populates i.curr with the coalesced span.
 	i.coalescer.Finish()
@@ -86,7 +87,7 @@ func (i *Iter) coalesceForward(k *base.InternalKey) *CoalescedSpan {
 	return &i.curr
 }
 
-func (i *Iter) coalesceBackward(k *base.InternalKey) *CoalescedSpan {
+func (i *Iter) coalesceBackward() *CoalescedSpan {
 	i.dir = -1
 	i.valid = false
 	// As long as we have a key and that key matches the coalescer's current
@@ -94,13 +95,13 @@ func (i *Iter) coalesceBackward(k *base.InternalKey) *CoalescedSpan {
 	// TODO(jackson): This key comparison is redundant with the one performed by
 	// Coalescer.AddReverse. Tweaking the interfaces should be able to remove
 	// the comparison.
-	for k != nil && (!i.valid || i.coalescer.items.cmp(k.UserKey, i.coalescer.Start()) == 0) {
-		if err := i.coalescer.AddReverse(*i.iter.Current()); err != nil {
+	for i.iterKey != nil && (!i.valid || i.coalescer.items.cmp(i.iterKey.UserKey, i.coalescer.Start()) == 0) {
+		if err := i.coalescer.AddReverse(i.iter.Current()); err != nil {
 			i.valid, i.err = false, err
 			return nil
 		}
 		i.valid = true
-		k, _ = i.iter.Prev()
+		i.iterKey, _ = i.iter.Prev()
 	}
 	// NB: Finish populates i.curr with the coalesced span.
 	i.coalescer.Finish()
@@ -113,43 +114,43 @@ func (i *Iter) coalesceBackward(k *base.InternalKey) *CoalescedSpan {
 // SeekGE seeks the iterator to the first span covering a key greater than or
 // equal to key and returns it.
 func (i *Iter) SeekGE(key []byte) *CoalescedSpan {
-	k, _ := i.iter.SeekLT(key)
-	if s := i.iter.Current(); s != nil && i.coalescer.items.cmp(key, s.End) < 0 {
+	i.iterKey, _ = i.iter.SeekLT(key)
+	if s := i.iter.Current(); !s.Empty() && i.coalescer.items.cmp(key, s.End) < 0 {
 		// We landed on a range key that begins before `key`, but extends beyond
 		// it. Since we performed a SeekLT, we're on the last fragment with
 		// those range key bounds and we need to coalesce backwards.
-		return i.coalesceBackward(k)
+		return i.coalesceBackward()
 	}
 	// It's still possible that the next key is a range key with a start key
 	// exactly equal to key. Move forward one. There's no point in checking
 	// whether the next fragment actually covers the search key, because if it
 	// doesn't it's still the first fragment covering a key ≥ the search key.
-	k, _ = i.iter.Next()
-	return i.coalesceForward(k)
+	i.iterKey, _ = i.iter.Next()
+	return i.coalesceForward()
 }
 
 // SeekLT seeks the iterator to the first span covering a key less than key and
 // returns it.
 func (i *Iter) SeekLT(key []byte) *CoalescedSpan {
-	k, _ := i.iter.SeekLT(key)
+	i.iterKey, _ = i.iter.SeekLT(key)
 	// We landed on the range key with the greatest start key that still sorts
 	// before `key`.  Since we performed a SeekLT, we're on the last fragment
 	// with those range key bounds and we need to coalesce backwards.
-	return i.coalesceBackward(k)
+	return i.coalesceBackward()
 }
 
 // First seeks the iterator to the first span and returns it.
 func (i *Iter) First() *CoalescedSpan {
 	i.dir = +1
-	k, _ := i.iter.First()
-	return i.coalesceForward(k)
+	i.iterKey, _ = i.iter.First()
+	return i.coalesceForward()
 }
 
 // Last seeks the iterator to the last span and returns it.
 func (i *Iter) Last() *CoalescedSpan {
 	i.dir = -1
-	k, _ := i.iter.Last()
-	return i.coalesceBackward(k)
+	i.iterKey, _ = i.iter.Last()
+	return i.coalesceBackward()
 }
 
 // Next advances to the next span and returns it.
@@ -166,7 +167,7 @@ func (i *Iter) Next() *CoalescedSpan {
 		// at the very beginning, we only need to Next once to position
 		// ourselves over the first fragment.
 		i.dir = +1
-		_, _ = i.iter.Next()
+		i.iterKey, _ = i.iter.Next()
 	case i.dir == -1:
 		// Switching directions; We're currently positioned at the last of the
 		// previous set of fragments. The iterator is valid. In the example
@@ -180,7 +181,7 @@ func (i *Iter) Next() *CoalescedSpan {
 		// skip over the rest of y's fragments and land on the first fragment of
 		// z, if it exists.
 		i.dir = +1
-		if k, _ := i.iter.Next(); k == nil {
+		if i.iterKey, _ = i.iter.Next(); i.iterKey == nil {
 			// Since i.valid, there must be a next fragment on the underlying
 			// span.
 			i.err = errors.Newf("pebble: invariant violation: next span must exist")
@@ -201,7 +202,7 @@ func (i *Iter) Next() *CoalescedSpan {
 		i.valid = false
 		return nil
 	}
-	return i.coalesceForward(i.iter.Key())
+	return i.coalesceForward()
 }
 
 // Prev steps back to the previous span and returns it.
@@ -218,7 +219,7 @@ func (i *Iter) Prev() *CoalescedSpan {
 		// the very end, we only need to Prev once to position ourselves over
 		// the last fragment.
 		i.dir = -1
-		_, _ = i.iter.Prev()
+		i.iterKey, _ = i.iter.Prev()
 	case i.dir == +1:
 		// Switching directions; We're currently positioned at the first of the
 		// next set of fragments. The iterator is valid. In the example
@@ -232,7 +233,7 @@ func (i *Iter) Prev() *CoalescedSpan {
 		// skip over the rest of x's fragments and land on the first fragment of
 		// w, if it exists.
 		i.dir = -1
-		if k, _ := i.iter.Prev(); k == nil {
+		if i.iterKey, _ = i.iter.Prev(); i.iterKey == nil {
 			i.err = errors.Newf("pebble: invariant violation: next span must exist")
 			return nil
 		}
@@ -251,7 +252,7 @@ func (i *Iter) Prev() *CoalescedSpan {
 		i.valid = false
 		return nil
 	}
-	return i.coalesceBackward(i.iter.Key())
+	return i.coalesceBackward()
 }
 
 // Current returns the span at the iterator's current position, if any.

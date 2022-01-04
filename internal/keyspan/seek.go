@@ -12,7 +12,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 // fragmented spans: any overlapping spans must have the same start and end key.
 // The position of the iterator is undefined after calling SeekGE and may not be
 // pointing at the returned span.
-func SeekGE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint64) Span {
+func SeekGE(cmp base.Compare, iter FragmentIterator, key []byte, snapshot uint64) Span {
 	// NB: We use SeekLT in order to land on the proper span for a search
 	// key that resides in the middle of a span. Consider the scenario:
 	//
@@ -25,18 +25,18 @@ func SeekGE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 	// we'd have to backtrack. The one complexity here is what happens for the
 	// search key `e`. In that case SeekLT will land us on the span [a,e)
 	// and we'll have to move forward.
-	iterKey, iterValue := iter.SeekLT(key)
+	iterKey, _ := iter.SeekLT(key)
 
-	// Invariant: key < iter.Key().UserKey
+	// Invariant: key < iter.Current().Start.UserKey
 
-	if iterKey != nil && cmp(key, iterValue) < 0 {
+	if iterKey != nil && cmp(key, iter.End()) < 0 {
 		// The current spans contains or is past the search key, but SeekLT
 		// returns the oldest entry for a key, so backup until we hit the previous
 		// span or an entry which is not visible.
 		for savedKey := iterKey.UserKey; ; {
-			iterKey, iterValue = iter.Prev()
-			if iterKey == nil || cmp(savedKey, iterValue) >= 0 || !iterKey.Visible(snapshot) {
-				iterKey, iterValue = iter.Next()
+			iterKey, _ = iter.Prev()
+			if iterKey == nil || cmp(savedKey, iter.End()) >= 0 || !iterKey.Visible(snapshot) {
+				iterKey, _ = iter.Next()
 				break
 			}
 		}
@@ -44,7 +44,7 @@ func SeekGE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 		// The current span lies before the search key. Advance the iterator
 		// to the next span which is guaranteed to lie at or past the search
 		// key.
-		iterKey, iterValue = iter.Next()
+		iterKey, _ = iter.Next()
 		if iterKey == nil {
 			// We've run out of spans.
 			return Span{}
@@ -61,12 +61,9 @@ func SeekGE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 	for {
 		if start := iterKey; start.Visible(snapshot) {
 			// The span is visible at our read sequence number.
-			return Span{
-				Start: *start,
-				End:   iterValue,
-			}
+			return iter.Current()
 		}
-		iterKey, iterValue = iter.Next()
+		iterKey, _ = iter.Next()
 		if iterKey == nil {
 			// We've run out of spans.
 			return Span{}
@@ -80,7 +77,7 @@ func SeekGE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 // iterator must contain fragmented spans: any overlapping spans must
 // have the same start and end key. The position of the iterator is undefined
 // after calling SeekLE and may not be pointing at the returned span.
-func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint64) Span {
+func SeekLE(cmp base.Compare, iter FragmentIterator, key []byte, snapshot uint64) Span {
 	// NB: We use SeekLT in order to land on the proper span for a search
 	// key that resides in the middle of a span. Consider the scenario:
 	//
@@ -93,7 +90,7 @@ func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 	// we'd have to backtrack. The one complexity here is what happens for the
 	// search key `e`. In that case SeekLT will land us on the span [a,e)
 	// and we'll have to move forward.
-	iterKey, iterValue := iter.SeekLT(key)
+	iterKey, _ := iter.SeekLT(key)
 
 	// Consider the following set of fragmented spans, ordered by increasing
 	// key and decreasing seqnum:
@@ -156,30 +153,27 @@ func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 		// Cases 1 and 2. Advance the iterator until we find a visible version, we
 		// exhaust the iterator, or we hit the next span.
 		for {
-			iterKey, iterValue = iter.Next()
+			iterKey, _ = iter.Next()
 			if iterKey == nil || cmp(key, iterKey.UserKey) < 0 {
 				// The iterator is exhausted or we've hit the next span.
 				return Span{}
 			}
 			if start := iterKey; start.Visible(snapshot) {
-				return Span{
-					Start: *start,
-					End:   iterValue,
-				}
+				return iter.Current()
 			}
 		}
 
 	default:
 		// Invariant: key > iterKey.UserKey
-		if cmp(key, iterValue) >= 0 {
+		if cmp(key, iter.End()) >= 0 {
 			// Cases 3 and 4 (forward search). The current span lies before the
 			// search key. Check to see if the next span contains the search
 			// key. If it doesn't, we'll backup and look for an earlier span.
-			iterKey, iterValue = iter.Next()
+			iterKey, _ = iter.Next()
 			if iterKey == nil || cmp(key, iterKey.UserKey) < 0 {
 				// Case 3. The next span is past our search key (or there is no next
 				// span).
-				iterKey, iterValue = iter.Prev()
+				iterKey, _ = iter.Prev()
 			} else {
 				// Case 4. Advance the iterator until we find a visible version or we hit
 				// the next span.
@@ -187,19 +181,16 @@ func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 					if start := iterKey; start.Visible(snapshot) {
 						// We've found our span as we know earlier spans are
 						// either not visible or lie before this span.
-						return Span{
-							Start: *start,
-							End:   iterValue,
-						}
+						return iter.Current()
 					}
-					iterKey, iterValue = iter.Next()
+					iterKey, _ = iter.Next()
 					if iterKey == nil || cmp(key, iterKey.UserKey) < 0 {
 						// There is no next span, or the next span is past our
 						// search key. Back up to the previous span. Note that we'll
 						// immediately fall into the loop below which will keep on
 						// iterating backwards until we find a visible span and that
 						// span must contain or be before our search key.
-						iterKey, iterValue = iter.Prev()
+						iterKey, _ = iter.Prev()
 						break
 					}
 				}
@@ -210,7 +201,7 @@ func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 		// that contains or is before the search key. Walk backward until we find a
 		// visible span from this point.
 		for !iterKey.Visible(snapshot) {
-			iterKey, iterValue = iter.Prev()
+			iterKey, _ = iter.Prev()
 			if iterKey == nil {
 				// No visible spans before our search key.
 				return Span{}
@@ -221,7 +212,7 @@ func SeekLE(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot u
 		// key and is visible. Walk backwards until we find the latest version of
 		// this span that is visible (i.e. has a sequence number less than the
 		// snapshot sequence number).
-		s := Span{Start: *iterKey, End: iterValue} // current candidate to return
+		s := iter.Current() // current candidate to return
 		for {
 			iterKey, _ = iter.Prev()
 			if iterKey == nil {
