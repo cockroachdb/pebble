@@ -32,7 +32,7 @@ func TestLevelIter(t *testing.T) {
 
 	newIters := func(
 		file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
-	) (internalIterator, internalIterator, error) {
+	) (internalIterator, keyspan.FragmentIterator, error) {
 		f := *iters[file.FileNum]
 		f.lower = opts.GetLowerBound()
 		f.upper = opts.GetUpperBound()
@@ -85,7 +85,7 @@ func TestLevelIter(t *testing.T) {
 				nil)
 			defer iter.Close()
 			// Fake up the range deletion initialization.
-			iter.initRangeDel(new(internalIterator))
+			iter.initRangeDel(new(keyspan.FragmentIterator))
 			iter.disableInvariants = true
 			return runInternalIterCmd(d, iter, iterCmdVerboseKey)
 
@@ -117,7 +117,7 @@ func TestLevelIter(t *testing.T) {
 			var tableOpts *IterOptions
 			newIters2 := func(
 				file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
-			) (internalIterator, internalIterator, error) {
+			) (internalIterator, keyspan.FragmentIterator, error) {
 				tableOpts = opts
 				return newIters(file, opts, nil)
 			}
@@ -153,7 +153,7 @@ func newLevelIterTest() *levelIterTest {
 
 func (lt *levelIterTest) newIters(
 	file *manifest.FileMetadata, opts *IterOptions, _ *uint64,
-) (internalIterator, internalIterator, error) {
+) (internalIterator, keyspan.FragmentIterator, error) {
 	iter, err := lt.readers[file.FileNum].NewIter(opts.LowerBound, opts.UpperBound)
 	if err != nil {
 		return nil, nil, err
@@ -289,7 +289,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 					func(a []byte) int { return len(a) }, lt.newIters, slice.Iter(),
 					manifest.Level(level), nil)
 				// Fake up the range deletion initialization.
-				iter.initRangeDel(new(internalIterator))
+				iter.initRangeDel(new(keyspan.FragmentIterator))
 			}
 			if !save {
 				defer func() {
@@ -319,7 +319,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 // perform parallel operations on both both a levelIter and rangeDelIter.
 type levelIterTestIter struct {
 	*levelIter
-	rangeDelIter internalIterator
+	rangeDelIter keyspan.FragmentIterator
 }
 
 func (i *levelIterTestIter) rangeDelSeek(
@@ -479,7 +479,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							defer cleanup()
 							newIters := func(
 								file *manifest.FileMetadata, _ *IterOptions, _ *uint64,
-							) (internalIterator, internalIterator, error) {
+							) (internalIterator, keyspan.FragmentIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
 							}
@@ -520,7 +520,7 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 							// tableCacheShard.findNode.
 							newIters := func(
 								file *manifest.FileMetadata, opts *IterOptions, _ *uint64,
-							) (internalIterator, internalIterator, error) {
+							) (internalIterator, keyspan.FragmentIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(
 									opts.LowerBound, opts.UpperBound)
 								return iter, nil, err
@@ -528,7 +528,7 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 							l := newLevelIter(IterOptions{}, DefaultComparer.Compare, nil, newIters, metas.Iter(), manifest.Level(level), nil)
 							// Fake up the range deletion initialization, to resemble the usage
 							// in a mergingIter.
-							l.initRangeDel(new(internalIterator))
+							l.initRangeDel(new(keyspan.FragmentIterator))
 							keyCount := len(keys)
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
@@ -562,7 +562,7 @@ func BenchmarkLevelIterSeqSeekPrefixGE(b *testing.B) {
 	// tableCacheShard.findNode.
 	newIters := func(
 		file *manifest.FileMetadata, opts *IterOptions, _ *uint64,
-	) (internalIterator, internalIterator, error) {
+	) (internalIterator, keyspan.FragmentIterator, error) {
 		iter, err := readers[file.FileNum].NewIter(
 			opts.LowerBound, opts.UpperBound)
 		return iter, nil, err
@@ -577,7 +577,7 @@ func BenchmarkLevelIterSeqSeekPrefixGE(b *testing.B) {
 						manifest.Level(level), nil)
 					// Fake up the range deletion initialization, to resemble the usage
 					// in a mergingIter.
-					l.initRangeDel(new(internalIterator))
+					l.initRangeDel(new(keyspan.FragmentIterator))
 					keyCount := len(keys)
 					pos := 0
 					l.SeekPrefixGE(keys[pos], keys[pos], false)
@@ -612,7 +612,7 @@ func BenchmarkLevelIterNext(b *testing.B) {
 							defer cleanup()
 							newIters := func(
 								file *manifest.FileMetadata, _ *IterOptions, _ *uint64,
-							) (internalIterator, internalIterator, error) {
+							) (internalIterator, keyspan.FragmentIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
 							}
@@ -646,7 +646,7 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 							defer cleanup()
 							newIters := func(
 								file *manifest.FileMetadata, _ *IterOptions, _ *uint64,
-							) (internalIterator, internalIterator, error) {
+							) (internalIterator, keyspan.FragmentIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
 							}

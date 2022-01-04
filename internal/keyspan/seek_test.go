@@ -15,60 +15,16 @@ import (
 	"github.com/cockroachdb/pebble/internal/datadriven"
 )
 
-type iterAdapter struct {
-	*Iter
-}
-
-func (i *iterAdapter) verify(key *base.InternalKey, val []byte) (*base.InternalKey, []byte) {
-	valid := key != nil
-	if valid != i.Valid() {
-		panic(fmt.Sprintf("inconsistent valid: %t != %t", valid, i.Valid()))
-	}
-	if valid {
-		if base.InternalCompare(bytes.Compare, *key, *i.Key()) != 0 {
-			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Key()))
-		}
-		if !bytes.Equal(val, i.Value()) {
-			panic(fmt.Sprintf("inconsistent value: [% x] != [% x]", val, i.Value()))
-		}
-	}
-	return key, val
-}
-
-func (i *iterAdapter) SeekGE(key []byte) (*base.InternalKey, []byte) {
-	return i.verify(i.Iter.SeekGE(key))
-}
-
-func (i *iterAdapter) SeekLT(key []byte) (*base.InternalKey, []byte) {
-	return i.verify(i.Iter.SeekLT(key))
-}
-
-func (i *iterAdapter) First() (*base.InternalKey, []byte) {
-	return i.verify(i.Iter.First())
-}
-
-func (i *iterAdapter) Last() (*base.InternalKey, []byte) {
-	return i.verify(i.Iter.Last())
-}
-
-func (i *iterAdapter) Next() (*base.InternalKey, []byte) {
-	return i.verify(i.Iter.Next())
-}
-
-func (i *iterAdapter) Prev() (*base.InternalKey, []byte) {
-	return i.verify(i.Iter.Prev())
-}
-
 func TestSeek(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	fmtKey := base.DefaultComparer.FormatKey
-	iter := &iterAdapter{}
+	var iter FragmentIterator
 
 	datadriven.RunTest(t, "testdata/seek", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
 			tombstones := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
-			iter.Iter = NewIter(cmp, tombstones)
+			iter = NewIter(cmp, tombstones)
 			return formatSpans(tombstones)
 
 		case "seek-ge", "seek-le":
