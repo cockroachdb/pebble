@@ -21,7 +21,7 @@ type mergingIterLevel struct {
 	// configured with a levelIter, this pointer changes as sstable boundaries
 	// are crossed. See levelIter.initRangeDel and the Range Deletions comment
 	// below.
-	rangeDelIter internalIterator
+	rangeDelIter keyspan.FragmentIterator
 	// iterKey and iterValue cache the current key and value iter are pointed at.
 	iterKey   *InternalKey
 	iterValue []byte

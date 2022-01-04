@@ -25,11 +25,11 @@ func (i *iterAdapter) verify(key *base.InternalKey, val []byte) (*base.InternalK
 		panic(fmt.Sprintf("inconsistent valid: %t != %t", valid, i.Valid()))
 	}
 	if valid {
-		if base.InternalCompare(bytes.Compare, *key, *i.Key()) != 0 {
-			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Key()))
+		if base.InternalCompare(bytes.Compare, *key, *i.Start()) != 0 {
+			panic(fmt.Sprintf("inconsistent key: %s != %s", *key, i.Start()))
 		}
-		if !bytes.Equal(val, i.Value()) {
-			panic(fmt.Sprintf("inconsistent value: [% x] != [% x]", val, i.Value()))
+		if !bytes.Equal(val, i.End()) {
+			panic(fmt.Sprintf("inconsistent value: [% x] != [% x]", val, i.End()))
 		}
 	}
 	return key, val

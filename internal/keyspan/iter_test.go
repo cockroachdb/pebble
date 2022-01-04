@@ -62,7 +62,7 @@ func TestIter(t *testing.T) {
 					return fmt.Sprintf("unknown op: %s", parts[0])
 				}
 				if iter.Valid() {
-					fmt.Fprintf(&b, "%s-%s#%d\n", iter.Key().UserKey, iter.Value(), iter.Key().SeqNum())
+					fmt.Fprintf(&b, "%s-%s#%d\n", iter.Start().UserKey, iter.End(), iter.Start().SeqNum())
 				} else if err := iter.Error(); err != nil {
 					fmt.Fprintf(&b, "err=%v\n", err)
 				} else {

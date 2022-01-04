@@ -56,7 +56,7 @@ func (i *Iter) coalesceForward(k *base.InternalKey) *CoalescedSpan {
 	// Coalescer.Add. Tweaking the interfaces should be able to remove the
 	// comparison.
 	for k != nil && (!i.valid || i.coalescer.items.cmp(k.UserKey, i.coalescer.Start()) == 0) {
-		if err := i.coalescer.Add(*i.iter.Current()); err != nil {
+		if err := i.coalescer.Add(i.iter.Current()); err != nil {
 			i.valid, i.err = false, err
 			return nil
 		}
@@ -80,7 +80,7 @@ func (i *Iter) coalesceBackward(k *base.InternalKey) *CoalescedSpan {
 	// Coalescer.AddReverse. Tweaking the interfaces should be able to remove
 	// the comparison.
 	for k != nil && (!i.valid || i.coalescer.items.cmp(k.UserKey, i.coalescer.Start()) == 0) {
-		if err := i.coalescer.AddReverse(*i.iter.Current()); err != nil {
+		if err := i.coalescer.AddReverse(i.iter.Current()); err != nil {
 			i.valid, i.err = false, err
 			return nil
 		}
@@ -99,7 +99,7 @@ func (i *Iter) coalesceBackward(k *base.InternalKey) *CoalescedSpan {
 // equal to key and returns it.
 func (i *Iter) SeekGE(key []byte) *CoalescedSpan {
 	k, _ := i.iter.SeekLT(key)
-	if s := i.iter.Current(); s != nil && i.coalescer.items.cmp(key, s.End) < 0 {
+	if s := i.iter.Current(); !s.Empty() && i.coalescer.items.cmp(key, s.End) < 0 {
 		// We landed on a range key that begins before `key`, but extends beyond
 		// it. Since we performed a SeekLT, we're on the last fragment with
 		// those range key bounds and we need to coalesce backwards.
@@ -186,7 +186,7 @@ func (i *Iter) Next() *CoalescedSpan {
 		i.valid = false
 		return nil
 	}
-	return i.coalesceForward(i.iter.Key())
+	return i.coalesceForward(i.iter.Start())
 }
 
 // Prev steps back to the previous span and returns it.
@@ -236,7 +236,7 @@ func (i *Iter) Prev() *CoalescedSpan {
 		i.valid = false
 		return nil
 	}
-	return i.coalesceBackward(i.iter.Key())
+	return i.coalesceBackward(i.iter.Start())
 }
 
 // Current returns the span at the iterator's current position, if any.

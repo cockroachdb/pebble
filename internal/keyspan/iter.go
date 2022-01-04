@@ -6,6 +6,29 @@ package keyspan
 
 import "github.com/cockroachdb/pebble/internal/base"
 
+// FragmentIterator defines an interator interface over keyspan fragments. The
+// spans surfaced by a FragmentIterator must already be fragmented — that is if
+// two spans overlaps, they must have identical start and end bounds.
+// Additionally, the key spans must be sorted by start key.
+type FragmentIterator interface {
+	base.InternalIterator
+
+	// Valid returns true iff the iterator is currently positioned over a
+	// fragment.
+	Valid() bool
+
+	// Start returns the start key of the fragment at the current iterator
+	// position.
+	Start() *base.InternalKey
+
+	// End returns the end user key for the fragment at the current iterator
+	// position.
+	End() []byte
+
+	// Current returns the fragment at the current iterator position.
+	Current() Span
+}
+
 // Iter is an iterator over a set of fragmented spans.
 type Iter struct {
 	cmp   base.Compare
@@ -13,8 +36,8 @@ type Iter struct {
 	index int
 }
 
-// Iter implements the base.InternalIterator interface.
-var _ base.InternalIterator = (*Iter)(nil)
+// Iter implements the FragmentIterator interface.
+var _ FragmentIterator = (*Iter)(nil)
 
 // NewIter returns a new iterator over a set of fragmented spans.
 func NewIter(cmp base.Compare, spans []Span) *Iter {
@@ -143,22 +166,20 @@ func (i *Iter) Prev() (*base.InternalKey, []byte) {
 }
 
 // Current returns the current span.
-func (i *Iter) Current() *Span {
+func (i *Iter) Current() Span {
 	if i.Valid() {
-		return &i.spans[i.index]
+		return i.spans[i.index]
 	}
-	return nil
+	return Span{}
 }
 
-// Key implements InternalIterator.Key, as documented in the internal/base
-// package.
-func (i *Iter) Key() *base.InternalKey {
+// Start returns the start key of the fragment at the current iterator position.
+func (i *Iter) Start() *base.InternalKey {
 	return &i.spans[i.index].Start
 }
 
-// Value implements InternalIterator.Value, as documented in the internal/base
-// package.
-func (i *Iter) Value() []byte {
+// End returns the end user key of the fragment at the current iterator position.
+func (i *Iter) End() []byte {
 	return i.spans[i.index].End
 }
 

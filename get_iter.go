@@ -24,7 +24,7 @@ type getIter struct {
 	snapshot     uint64
 	key          []byte
 	iter         internalIterator
-	rangeDelIter internalIterator
+	rangeDelIter keyspan.FragmentIterator
 	tombstone    keyspan.Span
 	levelIter    levelIter
 	level        int
