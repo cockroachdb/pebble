@@ -27,6 +27,7 @@ const sep = "/"
 func NewMem() *MemFS {
 	return &MemFS{
 		root: &memNode{
+			name:     "/",
 			children: make(map[string]*memNode),
 			isDir:    true,
 		},
@@ -58,6 +59,7 @@ func NewMem() *MemFS {
 func NewStrictMem() *MemFS {
 	return &MemFS{
 		root: &memNode{
+			name:     "/",
 			children: make(map[string]*memNode),
 			isDir:    true,
 		},
@@ -253,14 +255,11 @@ func (y *MemFS) Link(oldname, newname string) error {
 	})
 }
 
-func (y *MemFS) open(fullname string, allowEmptyName bool) (File, error) {
+func (y *MemFS) open(fullname string) (File, error) {
 	var ret *memFile
 	err := y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag == "" {
-				if !allowEmptyName {
-					return errors.New("pebble/vfs: empty file name")
-				}
 				ret = &memFile{
 					n:  dir,
 					fs: y,
@@ -293,12 +292,12 @@ func (y *MemFS) open(fullname string, allowEmptyName bool) (File, error) {
 
 // Open implements FS.Open.
 func (y *MemFS) Open(fullname string, opts ...OpenOption) (File, error) {
-	return y.open(fullname, false /* allowEmptyName */)
+	return y.open(fullname)
 }
 
 // OpenDir implements FS.OpenDir.
 func (y *MemFS) OpenDir(fullname string) (File, error) {
-	return y.open(fullname, true /* allowEmptyName */)
+	return y.open(fullname)
 }
 
 // Remove implements FS.Remove.
@@ -570,7 +569,9 @@ func (f *memNode) dump(w *bytes.Buffer, level int) {
 		w.WriteByte('\n')
 		return
 	}
-	w.WriteByte(sep[0])
+	if level > 0 { // deal with the fact that the root's name is already "/"
+		w.WriteByte(sep[0])
+	}
 	w.WriteByte('\n')
 	names := make([]string, 0, len(f.children))
 	for name := range f.children {
