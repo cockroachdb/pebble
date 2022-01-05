@@ -948,7 +948,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	// an interleaving iterator. The dbi.rangeKeysIter is an iterator into
 	// fragmented range keys read from the global range key arena.
 	if dbi.rangeKey != nil {
-		dbi.rangeKey.iter.Init(&buf.merging, dbi.rangeKey.rangeKeyIter)
+		dbi.rangeKey.iter.Init(dbi.split, &buf.merging, dbi.rangeKey.rangeKeyIter, nil)
 		dbi.iter = &dbi.rangeKey.iter
 	}
 	return dbi
