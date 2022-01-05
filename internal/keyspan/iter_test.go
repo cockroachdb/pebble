@@ -58,6 +58,20 @@ func TestIter(t *testing.T) {
 					iter.Next()
 				case "prev":
 					iter.Prev()
+				case "set-bounds":
+					if len(parts) != 3 {
+						return fmt.Sprintf("set-bounds expects 2 bounds, got %d", len(parts)-1)
+					}
+					l, u := []byte(parts[1]), []byte(parts[2])
+					if parts[1] == "." {
+						l = nil
+					}
+					if parts[2] == "." {
+						u = nil
+					}
+					iter.SetBounds(l, u)
+					fmt.Fprintf(&b, ".\n")
+					continue
 				default:
 					return fmt.Sprintf("unknown op: %s", parts[0])
 				}
