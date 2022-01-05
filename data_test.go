@@ -548,7 +548,8 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				}
 				// Add a memtable layer.
 				if !d.mu.mem.mutable.empty() {
-					d.mu.mem.mutable = newMemTable(memTableOptions{Options: d.opts})
+					d.mu.mem.mutable = newMemTable(memTableOptions{
+						size: d.opts.MemTableSize, cmp: d.opts.Comparer})
 					entry := d.newFlushableEntry(d.mu.mem.mutable, 0, 0)
 					entry.readerRefs++
 					d.mu.mem.queue = append(d.mu.mem.queue, entry)
@@ -565,7 +566,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 					return nil, err
 				}
 				fields = fields[1:]
-				mem = newMemTable(memTableOptions{Options: d.opts})
+				mem = newMemTable(memTableOptions{size: d.opts.MemTableSize, cmp: d.opts.Comparer})
 			}
 		}
 

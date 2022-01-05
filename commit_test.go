@@ -234,7 +234,10 @@ func BenchmarkCommitPipeline(b *testing.B) {
 	for _, parallelism := range []int{1, 2, 4, 8, 16, 32, 64, 128} {
 		b.Run(fmt.Sprintf("parallel=%d", parallelism), func(b *testing.B) {
 			b.SetParallelism(parallelism)
-			mem := newMemTable(memTableOptions{})
+			var opts *Options
+			opts = opts.EnsureDefaults()
+			memOptions := memTableOptions{size: opts.MemTableSize, cmp: opts.Comparer}
+			mem := newMemTable(memOptions)
 			wal := record.NewLogWriter(ioutil.Discard, 0 /* logNum */)
 
 			nullCommitEnv := commitEnv{
@@ -252,7 +255,10 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					for {
 						err := mem.prepare(b)
 						if err == arenaskl.ErrArenaFull {
-							mem = newMemTable(memTableOptions{})
+							var opts *Options
+							opts = opts.EnsureDefaults()
+							memOptions := memTableOptions{size: opts.MemTableSize, cmp: opts.Comparer}
+							mem = newMemTable(memOptions)
 							continue
 						}
 						if err != nil {
