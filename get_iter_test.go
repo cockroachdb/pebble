@@ -481,7 +481,10 @@ func TestGetIter(t *testing.T) {
 
 		var files [numLevels][]*fileMetadata
 		for _, tt := range tc.tables {
-			d := newMemTable(memTableOptions{})
+			var opts *Options
+			opts = opts.EnsureDefaults()
+			memOptions := memTableOptions{size: opts.MemTableSize, cmp: opts.Comparer}
+			d := newMemTable(memOptions)
 			m[tt.fileNum] = d
 
 			meta := &fileMetadata{

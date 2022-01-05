@@ -86,7 +86,7 @@ type memTable struct {
 // the fields are optional and will be filled with defaults if not specified
 // which is used by tests.
 type memTableOptions struct {
-	*Options
+	cmp       *base.Comparer
 	arenaBuf  []byte
 	size      int
 	logSeqNum uint64
@@ -102,16 +102,12 @@ func checkMemTable(obj interface{}) {
 
 // newMemTable returns a new MemTable of the specified size. If size is zero,
 // Options.MemTableSize is used instead.
+// opts.Options should not be nil, and its default values should be initialized.
 func newMemTable(opts memTableOptions) *memTable {
-	opts.Options = opts.Options.EnsureDefaults()
-	if opts.size == 0 {
-		opts.size = opts.MemTableSize
-	}
-
 	m := &memTable{
-		cmp:        opts.Comparer.Compare,
-		formatKey:  opts.Comparer.FormatKey,
-		equal:      opts.Comparer.Equal,
+		cmp:        opts.cmp.Compare,
+		formatKey:  opts.cmp.FormatKey,
+		equal:      opts.cmp.Equal,
 		arenaBuf:   opts.arenaBuf,
 		writerRefs: 1,
 		logSeqNum:  opts.logSeqNum,

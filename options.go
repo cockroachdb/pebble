@@ -584,6 +584,8 @@ func DebugCheckLevels(db *DB) error {
 	return db.CheckLevels(nil)
 }
 
+const defaultMemTableSize = 4 << 20
+
 // EnsureDefaults ensures that the default values for all options are set if a
 // valid value was not already specified. Returns the new options.
 func (o *Options) EnsureDefaults() *Options {
@@ -644,7 +646,7 @@ func (o *Options) EnsureDefaults() *Options {
 		o.MaxOpenFiles = 1000
 	}
 	if o.MemTableSize <= 0 {
-		o.MemTableSize = 4 << 20
+		o.MemTableSize = defaultMemTableSize
 	}
 	if o.MemTableStopWritesThreshold <= 0 {
 		o.MemTableStopWritesThreshold = 2
@@ -691,7 +693,14 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.TableCacheShards <= 0 {
 		o.Experimental.TableCacheShards = runtime.GOMAXPROCS(0)
 	}
+<<<<<<< Updated upstream
 
+=======
+	// todo(bananabrick) : revert this
+	if o.Experimental.MaxCompressionConcurrency <= 1 {
+		o.Experimental.MaxCompressionConcurrency = 1
+	}
+>>>>>>> Stashed changes
 	o.initMaps()
 	return o
 }

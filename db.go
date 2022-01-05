@@ -1410,7 +1410,8 @@ func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushabl
 	releaseAccountingReservation := d.opts.Cache.Reserve(size)
 
 	mem := newMemTable(memTableOptions{
-		Options:   d.opts,
+		size:      d.opts.MemTableSize,
+		cmp:       d.opts.Comparer,
 		arenaBuf:  manual.New(int(size)),
 		logSeqNum: logSeqNum,
 	})
