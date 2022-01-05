@@ -44,7 +44,14 @@ func TestRangeKeys(t *testing.T) {
 			require.NoError(t, b.Commit(nil))
 			return fmt.Sprintf("wrote %d keys\n", count)
 		case "combined-iter":
-			iter := d.NewIter(&IterOptions{KeyTypes: IterKeyTypePointsAndRanges})
+			o := &IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
+			for _, arg := range td.CmdArgs {
+				if arg.Key != "mask-suffix" {
+					continue
+				}
+				o.RangeKeyMasking.Suffix = []byte(arg.Vals[0])
+			}
+			iter := d.NewIter(o)
 			return runIterCmd(td, iter, true /* close iter */)
 		case "rangekey-iter":
 			iter := d.NewIter(&IterOptions{KeyTypes: IterKeyTypeRangesOnly})
