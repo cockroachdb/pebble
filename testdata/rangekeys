@@ -31,6 +31,25 @@ cat: (., [cat-dog) @3=beep)
 d: (d, [cat-dog) @3=beep)
 .
 
+# Do the above forward iteration but with a mask suffix. The results should be
+# identical despite range keys serving as masks, because none of the point keys
+# have suffixes.
+
+combined-iter mask-suffix=@9
+seek-ge a
+next
+next
+next
+next
+next
+----
+a: (a, .)
+b: (b, [b-c) @5=boop)
+c: (c, .)
+cat: (., [cat-dog) @3=beep)
+d: (d, [cat-dog) @3=beep)
+.
+
 # Scan backward
 
 combined-iter
@@ -232,6 +251,39 @@ a@3: (a#3, [a-d) @8=boop)
 a@2: (a@2, [a-d) @8=boop)
 .
 
+# Perform the above iteration with range-key masking enabled at a suffix equal
+# to the range key's. The [a,d)@8 range key should serve as a masking, obscuring
+# the points a@3 and a@2.
+
+combined-iter mask-suffix=@8
+seek-prefix-ge a
+next
+next
+next
+----
+a: (., [a-d) @8=boop)
+a@10: (a@10, [a-d) @8=boop)
+a@9: (a@9, [a-d) @8=boop)
+.
+
+# Perform the same thing but with a mask suffix below the range key's. All the
+# points should be visible again.
+
+combined-iter mask-suffix=@7
+seek-prefix-ge a
+next
+next
+next
+next
+next
+----
+a: (., [a-d) @8=boop)
+a@10: (a@10, [a-d) @8=boop)
+a@9: (a@9, [a-d) @8=boop)
+a@3: (a#3, [a-d) @8=boop)
+a@2: (a@2, [a-d) @8=boop)
+.
+
 reset
 ----
 
@@ -269,6 +321,30 @@ b@10: (b@10, [b-c) @5=beep)
 bz@10: (bz@10, [b-c) @5=beep)
 bz@1: (bz@1, [b-c) @5=beep)
 c@100: (c@100, .)
+
+# Perform the same iteration with all range keys serving as masks. The bz@1
+# point key should be elided.
+
+combined-iter mask-suffix=@100
+seek-ge az
+next
+next
+next
+next
+next
+seek-ge bz@10
+next
+next
+----
+az@100: (az@100, .)
+az@10: (az@10, .)
+az@1: (az@1, .)
+b: (., [b-c) @5=beep)
+b@100: (b@100, [b-c) @5=beep)
+b@10: (b@10, [b-c) @5=beep)
+bz@10: (bz@10, [b-c) @5=beep)
+c@100: (c@100, .)
+c@10: (c@10, .)
 
 # Ensure that a cloned iterator includes range keys.
 
@@ -313,6 +389,37 @@ seek-prefix-ge ca@100
 ca: (., [c-d) @1000=boop, @1=bop)
 ca@100: (ca@100, [c-d) @1000=boop, @1=bop)
 ca@100: (ca@100, [c-d) @1000=boop, @1=bop)
+
+# Perform the same iteration as above, but with @1000 range-key masking. The
+# previously encountered point keys should be elided.
+
+combined-iter mask-suffix=@1000
+seek-prefix-ge ca
+next
+seek-prefix-ge ca@100
+----
+ca: (., [c-d) @1000=boop, @1=bop)
+.
+ca@100: (., [c-d) @1000=boop, @1=bop)
+
+# Test masked, non-prefixed iteration. We should see the range keys, but all the
+# points should be masked except those beginning with z which were excluded by
+# the range key's exclusive z end bound.
+
+combined-iter mask-suffix=@1000
+seek-ge ca
+next
+next
+next
+next
+next
+----
+ca: (., [c-d) @1000=boop, @1=bop)
+d: (., [d-e) @1000=boop, @1=bop)
+e: (., [e-z) @1000=boop)
+z@100: (z@100, .)
+z@10: (z@10, .)
+z@1: (z@1, .)
 
 reset
 ----

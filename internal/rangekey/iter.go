@@ -51,7 +51,7 @@ func (i *Iter) Clone() *Iter {
 	// Copying i.iter will copy its current position, which is harmless.
 	ki := &keyspan.Iter{}
 	*ki = *i.iter
-	// Init the new Iter to ensure err is clearer.
+	// Init the new Iter to ensure err is cleared.
 	newIter := &Iter{}
 	newIter.Init(i.coalescer.items.cmp, i.coalescer.formatKey, i.coalescer.visibleSeqNum, ki)
 	return newIter
