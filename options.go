@@ -102,6 +102,11 @@ type IterOptions struct {
 	// KeyTypes configures which types of keys to iterate over: point keys,
 	// range keys, or both.
 	KeyTypes IterKeyType
+	// RangeKeyMasking can be used to enable automatic masking of point keys by
+	// range keys. Range key masking is only supported during combined range key
+	// and point key iteration mode (IterKeyTypePointsAndRanges).
+	RangeKeyMasking RangeKeyMasking
+
 	// Internal options.
 	logger Logger
 }
@@ -141,6 +146,31 @@ func (o *IterOptions) getLogger() Logger {
 		return DefaultLogger
 	}
 	return o.logger
+}
+
+// RangeKeyMasking configures automatic hiding of point keys by range keys. A
+// non-nil Suffix enables range-key masking. When enabled, range keys with
+// suffixes ≤ Suffix behave as masks. All point keys that are contained within a
+// masking range key's bounds and have suffixes less than the range key's suffix
+// are automatically skipped.
+//
+// Specifically, when configured with a RangeKeyMasking.Suffix _s_, and there
+// exists a range key with suffix _r_ covering a point key with suffix _p_, and
+//
+//     _s_ ≤ _r_ < _p_
+//
+// then the point key is elided.
+//
+// Range-key masking may only be used when iterating over both point keys and
+// range keys with IterKeyTypePointsAndRanges.
+type RangeKeyMasking struct {
+	// Suffix configures which range keys may mask point keys. Only range keys
+	// that are defined at suffixes less than or equal to Suffix will mask point
+	// keys.
+	Suffix []byte
+
+	// TODO(jackson): Add fields necessary for constructing and updating block
+	// property collectors.
 }
 
 // WriteOptions hold the optional per-query parameters for Set and Delete

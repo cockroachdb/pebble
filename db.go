@@ -783,6 +783,9 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 	if o.rangeKeys() && d.opts.Experimental.RangeKeys == nil {
 		panic("pebble: range keys require the Experimental.RangeKeys option")
 	}
+	if o != nil && o.RangeKeyMasking.Suffix != nil && o.KeyTypes != IterKeyTypePointsAndRanges {
+		panic("pebble: range key masking requires IterKeyTypePointsAndRanges")
+	}
 
 	// Grab and reference the current readState. This prevents the underlying
 	// files in the associated version from being deleted if there is a current
@@ -948,7 +951,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	// an interleaving iterator. The dbi.rangeKeysIter is an iterator into
 	// fragmented range keys read from the global range key arena.
 	if dbi.rangeKey != nil {
-		dbi.rangeKey.iter.Init(dbi.split, &buf.merging, dbi.rangeKey.rangeKeyIter, nil)
+		dbi.rangeKey.iter.Init(dbi.split, &buf.merging, dbi.rangeKey.rangeKeyIter, dbi.opts.RangeKeyMasking.Suffix)
 		dbi.iter = &dbi.rangeKey.iter
 	}
 	return dbi
