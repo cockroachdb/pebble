@@ -1,0 +1,176 @@
+# NOTE: The operations SET, UNSET, and DEL in this test file are aliases for
+# RANGEKEYSET, RANGEKEYUNSET and RANGEKEYDEL, respectively.
+
+# Keys must be added in order of start key.
+
+build
+SET b-d @3=foo
+SET a-c @5=bar
+----
+pebble: spans must be added in order: b > a
+
+# All disjoint RANGEKEYSETs.
+#
+#  ^
+#  |                •―――○    [e,f) SET @3=baz
+#  |        •―――○            [c,d) SET @2=bar
+#  |•―――――――○                [a,c) SET @1=foo
+#  |___________________________________
+#   a   b   c   d   e   f   g   h   i
+
+build
+SET a-c @1=foo
+SET c-d @2=bar
+SET e-f @3=baz
+----
+a.RANGEKEYSET.0: c [(@1=foo)]
+c.RANGEKEYSET.0: d [(@2=bar)]
+e.RANGEKEYSET.0: f [(@3=baz)]
+
+# Merge aligned RANGEKEYSETs.
+#
+#  ^
+#  |•―――――――○    [a,c) SET @3=baz
+#  |•―――――――○    [a,c) SET @1=bar
+#  |•―――――――○    [a,c) SET @2=foo
+#  |___________________________________
+#   a   b   c   d   e   f   g   h   i
+#
+# Note that suffixes are sorted in descending order of the timestamp value in
+# the suffix, rather than in lexical order.
+
+build
+SET a-c @2=foo
+SET a-c @1=bar
+SET a-c @3=baz
+----
+a.RANGEKEYSET.0: c [(@3=baz),(@2=foo),(@1=bar)]
+
+# Aligned spans, mixed range key kinds.
+#
+#  ^
+#  |                    •―――――――――――○    [f,i) DEL
+#  |                    •―――――――――――○    [f,i) SET   @9=v9
+#  |                    •―――――――――――○    [f,i) SET   @8=v8
+#  |                    •―――――――――――○    [f,i) SET   @7=v7
+#  |                    •―――――――――――○    [f,i) UNSET @6
+#  |                    •―――――――――――○    [f,i) SET   @5=v5
+#  |                    •―――――――――――○    [f,i) SET   @4=v4
+#  |            •―――○                    [d,e) SET   @9=v9
+#  |            •―――○                    [d,e) DEL
+#  |        •―――○                        [c,d) SET   @5=v5
+#  |        •―――○                        [c,d) SET   @2=v2
+#  |•―――――――○                            [a,c) UNSET @5
+#  |•―――――――○                            [a,c) SET   @1=v1
+#  |___________________________________
+#   a   b   c   d   e   f   g   h   i
+
+build
+SET a-c @1=v1
+UNSET a-c @5
+SET c-d @2=v2
+SET c-d @5=v5
+DEL d-e
+SET d-e @9=v9
+SET f-i @4=v4
+SET f-i @5=v5
+UNSET f-i @6
+SET f-i @7=v7
+SET f-i @8=v8
+SET f-i @9=v9
+DEL f-i
+----
+a.RANGEKEYSET.0: c [(@1=v1)]
+a.RANGEKEYUNSET.0: c [@5]
+c.RANGEKEYSET.0: d [(@5=v5),(@2=v2)]
+d.RANGEKEYSET.0: e [(@9=v9)]
+d.RANGEKEYDEL.0: e
+f.RANGEKEYSET.0: i [(@9=v9),(@8=v8),(@7=v7),(@5=v5),(@4=v4)]
+f.RANGEKEYUNSET.0: i [@6]
+f.RANGEKEYDEL.0: i
+
+# Merge overlapping RANGEKEYSETs.
+#
+#  ^
+#  |        •―――○           [c,d) SET @3=baz
+#  |    •―――――――――――――――○   [b,f) SET @2=bar
+#  |•―――――――○               [a,c) SET @1=foo
+#  |___________________________________
+#   a   b   c   d   e   f
+
+build
+SET a-c @1=foo
+SET b-f @2=bar
+SET c-d @3=baz
+----
+a.RANGEKEYSET.0: b [(@1=foo)]
+b.RANGEKEYSET.0: c [(@2=bar),(@1=foo)]
+c.RANGEKEYSET.0: d [(@3=baz),(@2=bar)]
+d.RANGEKEYSET.0: f [(@2=bar)]
+
+# Overlapping spans, mixed range keys kinds.
+#
+#  ^
+#  |                      •―――――○     [l,o) DEL
+#  |        •―――――――――――――――――――――――○ [e,q) SET   @4=baz
+#  |    •―○                           [c,d) DEL
+#  |    •―――――――――○                   [c,h) UNSET @3
+#  |  •―○                             [b,c) SET   @2=bar
+#  |•―――――――――――――――○                 [a,i) SET   @1=foo
+#  |___________________________________
+#   a b c d e f g h i j k l m n o p q
+
+build
+SET a-i @1=foo
+SET b-c @2=bar
+UNSET c-h @3
+DEL c-d
+SET e-q @4=baz
+DEL l-o
+----
+a.RANGEKEYSET.0: b [(@1=foo)]
+b.RANGEKEYSET.0: c [(@2=bar),(@1=foo)]
+c.RANGEKEYSET.0: d [(@1=foo)]
+c.RANGEKEYUNSET.0: d [@3]
+c.RANGEKEYDEL.0: d
+d.RANGEKEYSET.0: e [(@1=foo)]
+d.RANGEKEYUNSET.0: e [@3]
+e.RANGEKEYSET.0: h [(@4=baz),(@1=foo)]
+e.RANGEKEYUNSET.0: h [@3]
+h.RANGEKEYSET.0: i [(@4=baz),(@1=foo)]
+i.RANGEKEYSET.0: l [(@4=baz)]
+l.RANGEKEYSET.0: o [(@4=baz)]
+l.RANGEKEYDEL.0: o
+o.RANGEKEYSET.0: q [(@4=baz)]
+
+build
+UNSET a-b @1
+SET a-b @1=foo
+----
+a.RANGEKEYSET.0: b [(@1=foo)]
+
+# Within the same fragmented span, key kinds do not affect one another. SETs and
+# DELs will have their own records. A SET will eliminate an UNSET as the former
+# sorts before the latter in a fragmented and coalesced span with the same
+# sequence number.
+#
+#  ^
+#  |        •―――――――○        [c,e) SET   @2=bar
+#  |    •―――――――○            [b,d) UNSET @2
+#  |    •―――――――○            [b,d) UNSET @1
+#  |•―――――――○                [a,c) SET   @1=foo
+#  |___________________________________
+#   a   b   c   d   e   f   g   h   i
+
+build
+SET a-c @1=foo
+UNSET b-d @1
+UNSET b-d @2
+SET c-e @2=bar
+----
+a.RANGEKEYSET.0: b [(@1=foo)]
+b.RANGEKEYSET.0: c [(@1=foo)]
+b.RANGEKEYUNSET.0: c [@2]
+c.RANGEKEYSET.0: d [(@2=bar)]
+c.RANGEKEYUNSET.0: d [@1]
+d.RANGEKEYSET.0: e [(@2=bar)]
