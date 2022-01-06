@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
@@ -108,7 +109,6 @@ type Writer struct {
 	separator               Separator
 	successor               Successor
 	tableFormat             TableFormat
-	checksumType            ChecksumType
 	cache                   *cache.Cache
 	// disableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
@@ -134,7 +134,6 @@ type Writer struct {
 	// for testing. Note that v2 format blocks are backwards compatible with v1
 	// format blocks.
 	rangeDelV1Format    bool
-	block               blockWriter
 	indexBlock          blockWriter
 	rangeDelBlock       blockWriter
 	rangeKeyBlock       blockWriter
@@ -142,23 +141,114 @@ type Writer struct {
 	propCollectors      []TablePropertyCollector
 	blockPropCollectors []BlockPropertyCollector
 	blockPropsEncoder   blockPropertiesEncoder
-	// compressedBuf is the destination buffer for compression. It is
-	// re-used over the lifetime of the writer, avoiding the allocation of a
-	// temporary buffer for each block.
-	compressedBuf []byte
 	// filter accumulates the filter block. If populated, the filter ingests
 	// either the output of w.split (i.e. a prefix extractor) if w.split is not
 	// nil, or the full keys otherwise.
 	filter filterWriter
+
+	topLevelIndexBlock blockWriter
+	indexPartitions    []indexBlockWriterAndBlockProperties
+
+	// curWriterState consists of the state which is currently owned by and
+	// used by the compaction/Writer goroutine. This state can be handed off
+	// to other goroutines. If curWriterState ownership is being handed off
+	// to another goroutine, then it's important to not use the curWriterState
+	// until another passableWriterState is acquired for use.
+	curWriterState *passableWriterState
+
+	// The Writer can acquire a new passableWriterState using the writerStateBuffer.
+	writerStateBuffer chan *passableWriterState
+
+	writeQueue *writeQueue
+
+	checksummer checksummer
+}
+
+type checksummer struct {
+	checksumType ChecksumType
+	xxHasher     *xxhash.Digest
+}
+
+// A passableWriterState is either owned by the compaction/Writer goroutine, or
+// owned by the writeQueue goroutine which is writing blocks to disk. Once a
+// compressionQueue is added, passableWriterState could also be owned by the
+// compressionQueue. A passableWriterState should only be owned by a single
+// goroutine at a time.
+type passableWriterState struct {
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, (5 * binary.MaxVarintLen64) bytes, and most
 	// likely large enough for a block handle with properties.
 	tmp [blockHandleLikelyMaxLen]byte
+	// compressedBuf is the destination buffer for compression. It is re-used over the
+	// lifetime of the writer, avoiding the allocation of a temporary buffer for each block.
+	compressedBuf []byte
 
-	xxHasher *xxhash.Digest
+	dataBlockWriter *blockWriter
 
-	topLevelIndexBlock blockWriter
-	indexPartitions    []indexBlockWriterAndBlockProperties
+	// blockHandle is a temporary field which represents the BlockHandle after a block is
+	// written to disk by the writeQueue goroutine. This block handle is used by the
+	// compaction/Writer goroutines to add an index entry to the index block. Once we
+	// add support for parallel compression, the compaction/Writer goroutine will not
+	// wait for every single writeQueueTask to finish, so we will have to move the
+	// writer.addIndexEntry method to writeQueue goroutine.
+	blockHandle BlockHandle
+
+	// err is a temporary field which represents an error which was encountered while the
+	// writeQueue goroutine attempts to  write the block to disk. Once we add support for
+	// parallel compression, the compaction/Writer goroutine will not wait for every single
+	// writeQueueTask to finish, so we will have to use a different error handling mechanism.
+	err error
+}
+
+type writeQueueTask struct {
+	writerState *passableWriterState
+	// compressed consists of the compressed bytes to be written to disk.
+	compressed []byte
+}
+
+// writeQueue is a queue of writeTasks which must be processed in the order
+// in which they were added to the queue.
+type writeQueue struct {
+	qu      chan *writeQueueTask
+	closeWg sync.WaitGroup
+	writer  *Writer
+}
+
+func newWriterQueue(writeQueueSize int, writer *Writer) *writeQueue {
+	qu := &writeQueue{}
+	qu.qu = make(chan *writeQueueTask, writeQueueSize)
+	qu.writer = writer
+
+	qu.closeWg.Add(1)
+	go qu.runWorker()
+	return qu
+}
+
+func (qu *writeQueue) runWorker() {
+	for task := range qu.qu {
+		bh, err := qu.writer.writeBlockPostCompression(task.compressed, task.writerState.tmp)
+
+		// Note that passing information back to the compaction/Writer goroutine using the
+		// passableWriterState is temporary.
+		task.writerState.err = err
+		task.writerState.blockHandle = bh
+
+		// Relinquish ownership of the passable writer state back to the compaction goroutine.
+		qu.writer.writerStateBuffer <- task.writerState
+	}
+
+	qu.closeWg.Done()
+}
+
+func (qu *writeQueue) Add(w *writeQueueTask) {
+	qu.qu <- w
+}
+
+// close will only be called once no more writeQueueTasks will be added to the
+// write queue.
+func (qu *writeQueue) close() {
+	close(qu.qu)
+	qu.closeWg.Wait()
 }
 
 type indexBlockWriterAndBlockProperties struct {
@@ -269,11 +359,11 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	}
 
 	w.maybeAddToFilter(key.UserKey)
-	w.block.add(key, value)
+	w.curWriterState.dataBlockWriter.add(key, value)
 
 	w.meta.updateSeqNum(key.SeqNum())
 	// block.curKey contains the most recently added key to the block.
-	w.meta.LargestPoint.UserKey = w.block.curKey[:len(w.block.curKey)-8]
+	w.meta.LargestPoint.UserKey = w.curWriterState.dataBlockWriter.curKey[:len(w.curWriterState.dataBlockWriter.curKey)-8]
 	w.meta.LargestPoint.Trailer = key.Trailer
 	if w.meta.SmallestPoint.UserKey == nil {
 		// NB: we clone w.meta.LargestPoint rather than "key", even though they are
@@ -493,20 +583,45 @@ func (w *Writer) maybeAddToFilter(key []byte) {
 }
 
 func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
-	if !shouldFlush(key, value, &w.block, w.blockSize, w.blockSizeThreshold) {
+	if !shouldFlush(key, value, w.curWriterState.dataBlockWriter, w.blockSize, w.blockSizeThreshold) {
 		return nil
 	}
 
-	bh, err := w.writeBlock(w.block.finish(), w.compression)
+	prevWriterState := w.curWriterState
+	w.curWriterState = nil
+
+	finishedBlock := prevWriterState.dataBlockWriter.finish()
+	b, err := compressAndChecksum(
+		finishedBlock, w.compression, &prevWriterState.compressedBuf, &prevWriterState.tmp, &w.checksummer,
+	)
 	if err != nil {
+		w.err = err
+		return err
+	}
+
+	// Add task to the writeQueue so that the writeQueue goroutine can write the block to disk.
+	// We're passing ownership of prevWriterState to the writeQueue goroutine.
+	writeTask := &writeQueueTask{
+		writerState: prevWriterState,
+		compressed:  b,
+	}
+	w.writeQueue.Add(writeTask)
+	// Try and acquire a new passableWriterState for future use. Note that since we've only initialized
+	// one passableWriterState, we will currently block until the write task is finished.
+	w.curWriterState = <-w.writerStateBuffer
+
+	// Note that error handling using w.curWriterState.err is temporary. It only works because we currently
+	// block while the writeQueueTask finishes.
+	if w.curWriterState.err != nil {
 		w.err = err
 		return w.err
 	}
+
 	var bhp BlockHandleWithProperties
-	if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
+	if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(w.curWriterState.blockHandle); err != nil {
 		return err
 	}
-	prevKey := base.DecodeInternalKey(w.block.curKey)
+	prevKey := base.DecodeInternalKey(w.curWriterState.dataBlockWriter.curKey)
 	if err = w.addIndexEntry(prevKey, key, bhp); err != nil {
 		return err
 	}
@@ -549,7 +664,7 @@ func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProp
 	} else {
 		sep = prevKey.Separator(w.compare, w.separator, nil, key)
 	}
-	encoded := encodeBlockHandleWithProperties(w.tmp[:], bhp)
+	encoded := encodeBlockHandleWithProperties(w.curWriterState.tmp[:], bhp)
 
 	if supportsTwoLevelIndex(w.tableFormat) &&
 		shouldFlush(sep, encoded, &w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
@@ -642,7 +757,7 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 			BlockHandle: bh,
 			Props:       b.properties,
 		}
-		encoded := encodeBlockHandleWithProperties(w.tmp[:], bhp)
+		encoded := encodeBlockHandleWithProperties(w.curWriterState.tmp[:], bhp)
 		w.topLevelIndexBlock.add(sep, encoded)
 	}
 
@@ -656,12 +771,15 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	return w.writeBlock(w.topLevelIndexBlock.finish(), w.compression)
 }
 
-func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
+func compressAndChecksum(
+	b []byte, compression Compression, compressedBuf *[]byte, trailerBuf *[blockHandleLikelyMaxLen]byte,
+	checksummer *checksummer,
+) ([]byte, error) {
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
-	blockType, compressed := compressBlock(compression, b, w.compressedBuf)
-	if blockType != noCompressionBlockType && cap(compressed) > cap(w.compressedBuf) {
-		w.compressedBuf = compressed[:cap(compressed)]
+	blockType, compressed := compressBlock(compression, b, *compressedBuf)
+	if blockType != noCompressionBlockType && cap(compressed) > cap(*compressedBuf) {
+		*compressedBuf = compressed[:cap(compressed)]
 	}
 	if len(compressed) < len(b)-len(b)/8 {
 		b = compressed
@@ -669,27 +787,33 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 		blockType = noCompressionBlockType
 	}
 
-	w.tmp[0] = byte(blockType)
+	(*trailerBuf)[0] = byte(blockType)
 
 	// Calculate the checksum.
 	var checksum uint32
-	switch w.checksumType {
+	switch checksummer.checksumType {
 	case ChecksumTypeCRC32c:
-		checksum = crc.New(b).Update(w.tmp[:1]).Value()
+		checksum = crc.New(b).Update((*trailerBuf)[:1]).Value()
 	case ChecksumTypeXXHash64:
-		if w.xxHasher == nil {
-			w.xxHasher = xxhash.New()
+		if checksummer.xxHasher == nil {
+			checksummer.xxHasher = xxhash.New()
 		} else {
-			w.xxHasher.Reset()
+			checksummer.xxHasher.Reset()
 		}
-		w.xxHasher.Write(b)
-		w.xxHasher.Write(w.tmp[:1])
-		checksum = uint32(w.xxHasher.Sum64())
+		checksummer.xxHasher.Write(b)
+		checksummer.xxHasher.Write((*trailerBuf)[:1])
+		checksum = uint32(checksummer.xxHasher.Sum64())
 	default:
-		return BlockHandle{}, errors.Newf("unsupported checksum type: %d", w.checksumType)
+		return nil, errors.Newf("unsupported checksum type: %d", checksummer.checksumType)
 	}
-	binary.LittleEndian.PutUint32(w.tmp[1:5], checksum)
-	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(b))}
+	binary.LittleEndian.PutUint32((*trailerBuf)[1:5], checksum)
+	return b, nil
+}
+
+func (w *Writer) writeBlockPostCompression(
+	toWrite []byte, blockTrailerBuf [blockHandleLikelyMaxLen]byte,
+) (BlockHandle, error) {
+	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(toWrite))}
 
 	if w.cacheID != 0 && w.fileNum != 0 {
 		// Remove the block being written from the cache. This provides defense in
@@ -701,18 +825,26 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 	}
 
 	// Write the bytes to the file.
-	n, err := w.writer.Write(b)
+	n, err := w.writer.Write(toWrite)
 	if err != nil {
 		return BlockHandle{}, err
 	}
 	w.meta.Size += uint64(n)
-	n, err = w.writer.Write(w.tmp[:blockTrailerLen])
+	n, err = w.writer.Write(blockTrailerBuf[:blockTrailerLen])
 	if err != nil {
 		return BlockHandle{}, err
 	}
 	w.meta.Size += uint64(n)
 
 	return bh, nil
+}
+
+func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
+	b, err := compressAndChecksum(b, compression, &w.curWriterState.compressedBuf, &w.curWriterState.tmp, &w.checksummer)
+	if err != nil {
+		return BlockHandle{}, err
+	}
+	return w.writeBlockPostCompression(b, w.curWriterState.tmp)
 }
 
 // Close finishes writing the table and closes the underlying file that the
@@ -728,14 +860,17 @@ func (w *Writer) Close() (err error) {
 		}
 		w.syncer = nil
 	}()
+
+	w.writeQueue.close()
+
 	if w.err != nil {
 		return w.err
 	}
 
 	// Finish the last data block, or force an empty data block if there
 	// aren't any data blocks at all.
-	if w.block.nEntries > 0 || w.indexBlock.nEntries == 0 {
-		bh, err := w.writeBlock(w.block.finish(), w.compression)
+	if w.curWriterState.dataBlockWriter.nEntries > 0 || w.indexBlock.nEntries == 0 {
+		bh, err := w.writeBlock(w.curWriterState.dataBlockWriter.finish(), w.compression)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -744,7 +879,7 @@ func (w *Writer) Close() (err error) {
 		if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
 			return err
 		}
-		prevKey := base.DecodeInternalKey(w.block.curKey)
+		prevKey := base.DecodeInternalKey(w.curWriterState.dataBlockWriter.curKey)
 		if err = w.addIndexEntry(prevKey, InternalKey{}, bhp); err != nil {
 			return err
 		}
@@ -765,8 +900,8 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return w.err
 		}
-		n := encodeBlockHandle(w.tmp[:], bh)
-		metaindex.add(InternalKey{UserKey: []byte(w.filter.metaName())}, w.tmp[:n])
+		n := encodeBlockHandle(w.curWriterState.tmp[:], bh)
+		metaindex.add(InternalKey{UserKey: []byte(w.filter.metaName())}, w.curWriterState.tmp[:n])
 		w.props.FilterPolicyName = w.filter.policyName()
 		w.props.FilterSize = bh.Length
 	}
@@ -847,8 +982,8 @@ func (w *Writer) Close() (err error) {
 	// metaindex block entries must be sorted, and the range key block name sorts
 	// before the other block names.
 	if w.props.NumRangeKeys() > 0 {
-		n := encodeBlockHandle(w.tmp[:], rangeKeyBH)
-		metaindex.add(InternalKey{UserKey: []byte(metaRangeKeyName)}, w.tmp[:n])
+		n := encodeBlockHandle(w.curWriterState.tmp[:], rangeKeyBH)
+		metaindex.add(InternalKey{UserKey: []byte(metaRangeKeyName)}, w.curWriterState.tmp[:n])
 	}
 
 	{
@@ -893,21 +1028,21 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return w.err
 		}
-		n := encodeBlockHandle(w.tmp[:], bh)
-		metaindex.add(InternalKey{UserKey: []byte(metaPropertiesName)}, w.tmp[:n])
+		n := encodeBlockHandle(w.curWriterState.tmp[:], bh)
+		metaindex.add(InternalKey{UserKey: []byte(metaPropertiesName)}, w.curWriterState.tmp[:n])
 	}
 
 	// Add the range deletion block handle to the metaindex block.
 	if w.props.NumRangeDeletions > 0 {
-		n := encodeBlockHandle(w.tmp[:], rangeDelBH)
+		n := encodeBlockHandle(w.curWriterState.tmp[:], rangeDelBH)
 		// The v2 range-del block encoding is backwards compatible with the v1
 		// encoding. We add meta-index entries for both the old name and the new
 		// name so that old code can continue to find the range-del block and new
 		// code knows that the range tombstones in the block are fragmented and
 		// sorted.
-		metaindex.add(InternalKey{UserKey: []byte(metaRangeDelName)}, w.tmp[:n])
+		metaindex.add(InternalKey{UserKey: []byte(metaRangeDelName)}, w.curWriterState.tmp[:n])
 		if !w.rangeDelV1Format {
-			metaindex.add(InternalKey{UserKey: []byte(metaRangeDelV2Name)}, w.tmp[:n])
+			metaindex.add(InternalKey{UserKey: []byte(metaRangeDelV2Name)}, w.curWriterState.tmp[:n])
 		}
 	}
 
@@ -924,12 +1059,12 @@ func (w *Writer) Close() (err error) {
 	// Write the table footer.
 	footer := footer{
 		format:      w.tableFormat,
-		checksum:    w.checksumType,
+		checksum:    w.checksummer.checksumType,
 		metaindexBH: metaindexBH,
 		indexBH:     indexBH,
 	}
 	var n int
-	if n, err = w.writer.Write(footer.encode(w.tmp[:])); err != nil {
+	if n, err = w.writer.Write(footer.encode(w.curWriterState.tmp[:])); err != nil {
 		w.err = err
 		return w.err
 	}
@@ -957,7 +1092,7 @@ func (w *Writer) Close() (err error) {
 // EstimatedSize returns the estimated size of the sstable being written if a
 // called to Finish() was made without adding additional keys.
 func (w *Writer) EstimatedSize() uint64 {
-	return w.meta.Size + uint64(w.block.estimatedSize()+w.indexBlock.estimatedSize())
+	return w.meta.Size + uint64(w.curWriterState.dataBlockWriter.estimatedSize()+w.indexBlock.estimatedSize())
 }
 
 // Metadata returns the metadata for the finished sstable. Only valid to call
@@ -1029,11 +1164,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		separator:               o.Comparer.Separator,
 		successor:               o.Comparer.Successor,
 		tableFormat:             o.TableFormat,
-		checksumType:            o.Checksum,
 		cache:                   o.Cache,
-		block: blockWriter{
-			restartInterval: o.BlockRestartInterval,
-		},
 		indexBlock: blockWriter{
 			restartInterval: 1,
 		},
@@ -1046,7 +1177,22 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		topLevelIndexBlock: blockWriter{
 			restartInterval: 1,
 		},
+		// We use a buffer size of 1, because that's all we need
+		// if parallel compression isn't enabled.
+		writerStateBuffer: make(chan *passableWriterState, 1),
 	}
+	w.checksummer.checksumType = o.Checksum
+
+	w.writerStateBuffer <- &passableWriterState{
+		dataBlockWriter: &blockWriter{
+			restartInterval: o.BlockRestartInterval,
+		},
+	}
+	w.curWriterState = <-w.writerStateBuffer
+
+	// Create a write queue which will write blocks to disk.
+	w.writeQueue = newWriterQueue(1, w)
+
 	if f == nil {
 		w.err = errors.New("pebble: nil file")
 		return w
