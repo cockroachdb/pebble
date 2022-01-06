@@ -824,20 +824,38 @@ func (errorPropCollector) Name() string {
 }
 
 func TestTablePropertyCollectorErrors(t *testing.T) {
-	mem := vfs.NewMem()
-	f, err := mem.Create("foo")
-	require.NoError(t, err)
 
-	var opts WriterOptions
-	opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
-		func() TablePropertyCollector {
-			return errorPropCollector{}
-		})
+	var testcases map[string]func(w *Writer) error = map[string]func(w *Writer) error{
+		"add a#0,1 failed": func(w *Writer) error {
+			return w.Set([]byte("a"), []byte("b"))
+		},
+		"add c#0,0 failed": func(w *Writer) error {
+			return w.Delete([]byte("c"))
+		},
+		"add d#0,15 failed": func(w *Writer) error {
+			return w.DeleteRange([]byte("d"), []byte("e"))
+		},
+		"add f#0,2 failed": func(w *Writer) error {
+			return w.Merge([]byte("f"), []byte("g"))
+		},
+		"finish failed": func(w *Writer) error {
+			return w.Close()
+		},
+	}
 
-	w := NewWriter(f, opts)
-	require.Regexp(t, `add a#0,1 failed`, w.Set([]byte("a"), []byte("b")))
-	require.Regexp(t, `add c#0,0 failed`, w.Delete([]byte("c")))
-	require.Regexp(t, `add d#0,15 failed`, w.DeleteRange([]byte("d"), []byte("e")))
-	require.Regexp(t, `add f#0,2 failed`, w.Merge([]byte("f"), []byte("g")))
-	require.Regexp(t, `finish failed`, w.Close())
+	for e, fun := range testcases {
+		mem := vfs.NewMem()
+		f, err := mem.Create("foo")
+		require.NoError(t, err)
+
+		var opts WriterOptions
+		opts.TablePropertyCollectors = append(opts.TablePropertyCollectors,
+			func() TablePropertyCollector {
+				return errorPropCollector{}
+			})
+
+		w := NewWriter(f, opts)
+
+		require.Regexp(t, e, fun(w))
+	}
 }
