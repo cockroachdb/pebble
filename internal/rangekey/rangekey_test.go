@@ -11,6 +11,47 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSetSuffixValues_RoundTrip(t *testing.T) {
+	testCases := [][]SuffixValue{
+		{
+			{Suffix: []byte{}, Value: []byte("world")},
+		},
+		{
+			{Suffix: []byte("foo"), Value: []byte("bar")},
+		},
+		{
+			{Suffix: []byte(""), Value: []byte("boop")},
+			{Suffix: []byte("foo"), Value: []byte("beep")},
+			{Suffix: []byte("bar"), Value: []byte("bop")},
+			{Suffix: []byte("bax"), Value: []byte("boink")},
+			{Suffix: []byte("zoop"), Value: []byte("zoink")},
+		},
+	}
+
+	var b []byte
+	for _, tc := range testCases {
+		// Encode.
+		l := EncodedSetSuffixValuesLen(tc)
+		if l <= cap(b) {
+			b = b[:l]
+		} else {
+			b = make([]byte, l)
+		}
+		n := EncodeSetSuffixValues(b, tc)
+		require.Equal(t, l, n)
+
+		// Decode.
+		var suffixValues []SuffixValue
+		for len(b) > 0 {
+			sv, rest, ok := DecodeSuffixValue(b)
+			require.True(t, ok)
+			suffixValues = append(suffixValues, sv)
+			b = rest
+		}
+		require.Equal(t, tc, suffixValues)
+	}
+}
+
 func TestSetValue_Roundtrip(t *testing.T) {
 	testCases := []struct {
 		endKey       []byte
@@ -68,6 +109,44 @@ func TestSetValue_Roundtrip(t *testing.T) {
 		}
 		require.Equal(t, tc.endKey, endKey)
 		require.Equal(t, tc.suffixValues, suffixValues)
+	}
+}
+
+func TestUnsetSuffixes_RoundTrip(t *testing.T) {
+	type suffixes [][]byte
+	testCases := []suffixes{
+		{{}},
+		{[]byte("foo")},
+		{
+			{},
+			[]byte("foo"),
+			[]byte("bar"),
+			[]byte("bax"),
+			[]byte("zoop"),
+		},
+	}
+
+	var b []byte
+	for _, tc := range testCases {
+		// Encode.
+		l := EncodedUnsetSuffixesLen(tc)
+		if l <= cap(b) {
+			b = b[:l]
+		} else {
+			b = make([]byte, l)
+		}
+		n := EncodeUnsetSuffixes(b, tc)
+		require.Equal(t, l, n)
+
+		// Decode.
+		var ss suffixes
+		for len(b) > 0 {
+			s, rest, ok := DecodeSuffix(b)
+			require.True(t, ok)
+			ss = append(ss, s)
+			b = rest
+		}
+		require.Equal(t, tc, ss)
 	}
 }
 
