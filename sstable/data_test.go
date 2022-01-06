@@ -142,7 +142,7 @@ func runBuildCmd(
 		n := rangekey.RecombinedValueLen(v.Start.Kind(), v.End, v.Value)
 		b := make([]byte, n)
 		_ = rangekey.RecombineValue(v.Start.Kind(), b, v.End, v.Value)
-		if err := w.AddInternalRangeKey(v.Start, b); err != nil {
+		if err := w.AddRangeKey(v.Start, b); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -198,7 +198,7 @@ func runBuildRawCmd(td *datadriven.TestData) (*WriterMetadata, *Reader, error) {
 			// Values for range keys must be converted into their "packed" form before
 			// being added to the Writer.
 			_, value := rangekey.Parse(data)
-			if err := w.AddInternalRangeKey(key, value); err != nil {
+			if err := w.AddRangeKey(key, value); err != nil {
 				return nil, nil, err
 			}
 		default:
