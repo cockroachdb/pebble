@@ -229,7 +229,8 @@ func (w *valueBlockWriter) addValue(v []byte) (valueHandle, error) {
 		blockNum:      uint32(len(w.blocks)),
 		offsetInBlock: uint32(len(w.buf)),
 	}
-	blockLen := int(vh.offsetInBlock+vh.valueLen) + uvarintLen(vh.valueLen)
+	// blockLen := int(vh.offsetInBlock+vh.valueLen) + uvarintLen(vh.valueLen)
+	blockLen := int(vh.offsetInBlock + vh.valueLen)
 	if cap(w.buf) < blockLen {
 		size := w.blockSize + w.blockSize/2
 		if size < blockLen {
@@ -242,9 +243,9 @@ func (w *valueBlockWriter) addValue(v []byte) (valueHandle, error) {
 		w.buf = w.buf[:blockLen]
 	}
 	buf := w.buf[vh.offsetInBlock:]
-	n := binary.PutUvarint(buf, uint64(vh.valueLen))
-	buf = buf[n:]
-	n = copy(buf, v)
+	// n := binary.PutUvarint(buf, uint64(vh.valueLen))
+	// buf = buf[n:]
+	n := copy(buf, v)
 	if n != len(buf) {
 		panic("incorrect length computation")
 	}
@@ -556,33 +557,36 @@ func (r *valueBlockReader) getValue(valueBytes []byte) ([]byte, error) {
 		r.valueBlock = vbCacheHandle.Get()
 		r.valueBlockPtr = unsafe.Pointer(&r.valueBlock[0])
 	}
-	ptr := unsafe.Pointer(uintptr(r.valueBlockPtr) + uintptr(vh.offsetInBlock))
-	var n uint32
-	// Manually inlined uvarint decoding. Saves ~6% on
-	// BenchmarkValueBlocks/valueSize=100/versions=10/needValue=true/hasCache=true.
-	var valueLen uint32
-	if a := *((*uint8)(ptr)); a < 128 {
-		valueLen = uint32(a)
-		n = 1
-	} else if a, b := a&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); b < 128 {
-		valueLen = uint32(b)<<7 | uint32(a)
-		n = 2
-	} else if b, c := b&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); c < 128 {
-		valueLen = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
-		n = 3
-	} else if c, d := c&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); d < 128 {
-		valueLen = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
-		n = 4
-	} else {
-		d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
-		valueLen = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
-		n = 5
-	}
-	n += vh.offsetInBlock
-	if valueLen != vh.valueLen {
-		return nil, errors.Errorf("TODO8")
-	}
-	return r.valueBlock[n : n+valueLen], nil
+	/*
+		ptr := unsafe.Pointer(uintptr(r.valueBlockPtr) + uintptr(vh.offsetInBlock))
+		var n uint32
+		// Manually inlined uvarint decoding. Saves ~6% on
+		// BenchmarkValueBlocks/valueSize=100/versions=10/needValue=true/hasCache=true.
+		var valueLen uint32
+		if a := *((*uint8)(ptr)); a < 128 {
+			valueLen = uint32(a)
+			n = 1
+		} else if a, b := a&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); b < 128 {
+			valueLen = uint32(b)<<7 | uint32(a)
+			n = 2
+		} else if b, c := b&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); c < 128 {
+			valueLen = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+			n = 3
+		} else if c, d := c&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); d < 128 {
+			valueLen = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+			n = 4
+		} else {
+			d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
+			valueLen = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+			n = 5
+		}
+		n += vh.offsetInBlock
+		if valueLen != vh.valueLen {
+			return nil, errors.Errorf("TODO8")
+		}
+		return r.valueBlock[n : n+valueLen], nil
+	*/
+	return r.valueBlock[vh.offsetInBlock : vh.offsetInBlock+vh.valueLen], nil
 }
 
 func (r *valueBlockReader) getBlockHandle(blockNum uint32) (BlockHandle, error) {
