@@ -1161,10 +1161,6 @@ func BenchmarkTableIterPrev(b *testing.B) {
 	}
 }
 
-// TODO(sumeer): add benchmark for 2 versions where the latest version has an
-// empty value. This mimics MVCC deletions and represents workloads which
-// create a high number of garbage rows by writing and deleting.
-
 // BenchmarkValueBlocks benchmarks iteration over a sstable that places values
 // of older key versions in value blocks.
 func BenchmarkValueBlocks(b *testing.B) {
@@ -1264,6 +1260,110 @@ func BenchmarkValueBlocks(b *testing.B) {
 									require.NoError(b, iter.Error())
 								})
 							}
+						})
+					}
+				})
+			}
+		})
+	}
+}
+
+// Benchmark for 2 versions where the latest version has an empty value. This
+// mimics MVCC deletions and represents workloads which create a high number
+// of garbage rows by writing and deleting.
+func BenchmarkValueBlocksDeletedValue(b *testing.B) {
+	numKeys := 10000
+	valueBlocksAreEnabled := true
+	for _, valueSize := range []int{100, 1000, 10000} {
+		b.Run(fmt.Sprintf("valueSize=%d", valueSize), func(b *testing.B) {
+			mem := vfs.NewMem()
+			f0, err := mem.Create("test")
+			require.NoError(b, err)
+			w := NewWriter(f0, WriterOptions{
+				Comparer:              testkeys.Comparer,
+				ValueBlocksAreEnabled: valueBlocksAreEnabled,
+				// Force single level index since the prototype is limited to singleLevelIterator
+				IndexBlockSize: 1 << 30,
+				BlockSize:      32 << 10,
+			})
+			var buf [10]byte
+			ks := testkeys.Alpha(5)
+			rng := rand.New(rand.NewSource(0))
+			value := make([]byte, valueSize)
+			for i := 0; i < numKeys; i++ {
+				for j := 0; j < 2; j++ {
+					n := testkeys.WriteKeyAt(buf[:], ks, i, 1000-j)
+					ikey := base.MakeInternalKey(buf[:n], 0, InternalKeyKindSet)
+					if j == 1 {
+						const letters = "abcdefghijklmnopqrstuvwxyz"
+						const lettersLen = len(letters)
+						for i := 0; i < len(value); i++ {
+							value[i] = letters[rng.Intn(lettersLen)]
+						}
+						require.NoError(b, w.Add(ikey, value))
+					} else {
+						require.NoError(b, w.Add(ikey, nil))
+					}
+				}
+			}
+			require.NoError(b, w.Close())
+			meta, err := w.Metadata()
+			require.NoError(b, err)
+			fmt.Printf("value-size:%5d,data-block-bytes:%9d,total-bytes:%9d,"+
+				"fraction-in-data-blocks:%.2f\n",
+				valueSize, meta.Properties.DataSize, meta.Size,
+				float64(meta.Properties.DataSize)/float64(meta.Size))
+			// !needValue represents a workload where only the latest version's
+			// value is needed (which is stored inline). The benchmark mimics
+			// this by using NextLazyValue() and never calling Value() (since it
+			// is simpler than calling Value() only on the latest versions).
+			for _, needValue := range []bool{false, true} {
+				b.Run(fmt.Sprintf("needValue=%t", needValue), func(b *testing.B) {
+					// !hasCache represents a situation where all the steps into a
+					// new block result in a cache miss. That is, it is reading cold
+					// data.
+					for _, hasCache := range []bool{false, true} {
+						b.Run(fmt.Sprintf("hasCache=%t", hasCache), func(b *testing.B) {
+							f1, err := mem.Open("test")
+							require.NoError(b, err)
+							var c *cache.Cache
+							if hasCache {
+								c = cache.New(256 << 20)
+								defer c.Unref()
+							}
+							r, err := NewReader(f1, ReaderOptions{
+								Comparer: testkeys.Comparer,
+								Cache:    c,
+							})
+							require.NoError(b, err)
+							defer r.Close()
+
+							iiter, err := r.NewIter(nil, nil)
+							require.NoError(b, err)
+							iter := iiter.(*singleLevelIterator)
+							defer iter.Close()
+							b.ResetTimer()
+							var k *InternalKey
+							for i := 0; i < b.N; i++ {
+								if k == nil {
+									if i%(numKeys*2) != 0 {
+										panic(fmt.Sprintf(
+											"iterator should not be exhausted %d, %d", i, b.N))
+									}
+									k, _ = iter.SeekGE([]byte(""))
+								} else {
+									if needValue {
+										k, _ = iter.Next()
+									} else {
+										k = iter.NextLazyValue()
+									}
+									if k == nil {
+										i--
+									}
+								}
+							}
+							b.StopTimer()
+							require.NoError(b, iter.Error())
 						})
 					}
 				})
