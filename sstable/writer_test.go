@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -255,6 +256,120 @@ func (f *discardFile) Write(p []byte) (int, error) {
 
 func (f discardFile) Sync() error {
 	return nil
+}
+
+type blockPropErrSite uint
+
+const (
+	errSiteAdd blockPropErrSite = iota
+	errSiteFinishBlock
+	errSiteFinishIndex
+	errSiteFinishTable
+)
+
+type testBlockPropCollector struct {
+	errSite blockPropErrSite
+	err     error
+}
+
+func (c *testBlockPropCollector) Name() string { return "testBlockPropCollector" }
+
+func (c *testBlockPropCollector) Add(_ InternalKey, _ []byte) error {
+	if c.errSite == errSiteAdd {
+		return c.err
+	}
+	return nil
+}
+
+func (c *testBlockPropCollector) FinishDataBlock(_ []byte) ([]byte, error) {
+	if c.errSite == errSiteFinishBlock {
+		return nil, c.err
+	}
+	return nil, nil
+}
+
+func (c *testBlockPropCollector) AddPrevDataBlockToIndexBlock() {}
+
+func (c *testBlockPropCollector) FinishIndexBlock(_ []byte) ([]byte, error) {
+	if c.errSite == errSiteFinishIndex {
+		return nil, c.err
+	}
+	return nil, nil
+}
+
+func (c *testBlockPropCollector) FinishTable(_ []byte) ([]byte, error) {
+	if c.errSite == errSiteFinishTable {
+		return nil, c.err
+	}
+	return nil, nil
+}
+
+func TestWriter_BlockProperties_Errors(t *testing.T) {
+	blockPropErr := errors.Newf("block property collector failed")
+	testCases := []blockPropErrSite{
+		errSiteAdd,
+		errSiteFinishBlock,
+		errSiteFinishIndex,
+		errSiteFinishTable,
+	}
+
+	var (
+		k1 = base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet)
+		v1 = []byte("apples")
+		k2 = base.MakeInternalKey([]byte("b"), 0, base.InternalKeyKindSet)
+		v2 = []byte("bananas")
+		k3 = base.MakeInternalKey([]byte("c"), 0, base.InternalKeyKindSet)
+		v3 = []byte("carrots")
+	)
+
+	for _, tc := range testCases {
+		t.Run("", func(t *testing.T) {
+			fs := vfs.NewMem()
+			f, err := fs.Create("test")
+			require.NoError(t, err)
+
+			w := NewWriter(f, WriterOptions{
+				BlockSize: 1,
+				BlockPropertyCollectors: []func() BlockPropertyCollector{
+					func() BlockPropertyCollector {
+						return &testBlockPropCollector{
+							errSite: tc,
+							err:     blockPropErr,
+						}
+					},
+				},
+			})
+
+			err = w.Add(k1, v1)
+			switch tc {
+			case errSiteAdd:
+				require.Error(t, err)
+				require.Equal(t, blockPropErr, err)
+			case errSiteFinishBlock:
+				require.NoError(t, err)
+				// Addition of a second key completes the first block.
+				err = w.Add(k2, v2)
+				require.Error(t, err)
+				require.Equal(t, blockPropErr, err)
+			case errSiteFinishIndex:
+				require.NoError(t, err)
+				// Addition of a second key completes the first block.
+				err = w.Add(k2, v2)
+				require.NoError(t, err)
+				// The index entry for the first block is added after the completion of
+				// the second block, which is triggered by adding a third key.
+				err = w.Add(k3, v3)
+				require.Error(t, err)
+				require.Equal(t, blockPropErr, err)
+			}
+
+			err = w.Close()
+			if tc == errSiteFinishTable {
+				require.Error(t, err)
+				require.Equal(t, blockPropErr, err)
+			}
+		})
+	}
 }
 
 func BenchmarkWriter(b *testing.B) {
