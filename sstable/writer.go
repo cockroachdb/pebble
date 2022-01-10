@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"sync"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
@@ -156,10 +155,10 @@ type Writer struct {
 	// until another passableWriterState is acquired for use.
 	curWriterState *passableWriterState
 
-	// The Writer can acquire a new passableWriterState using the writerStateBuffer.
-	writerStateBuffer chan *passableWriterState
+	// The Writer can acquire a new *passableWriterState using the writerStateBuffer.
+	writerStateBuffer passableStateBuffer
 
-	writeQueue *writeQueue
+	writeQueue writeQueue
 
 	checksummer checksummer
 }
@@ -206,49 +205,67 @@ type writeQueueTask struct {
 	compressed []byte
 }
 
-// writeQueue is a queue of writeTasks which must be processed in the order
-// in which they were added to the queue.
-type writeQueue struct {
-	qu      chan *writeQueueTask
-	closeWg sync.WaitGroup
-	writer  *Writer
+type writeQueue interface {
+	add(w *writeQueueTask)
+	// close will shut down the writeQueue. close should only be called once no more
+	// tasks will be written to the writeQueue.
+	close()
 }
 
-func newWriterQueue(writeQueueSize int, writer *Writer) *writeQueue {
-	qu := &writeQueue{}
-	qu.qu = make(chan *writeQueueTask, writeQueueSize)
-	qu.writer = writer
-
-	qu.closeWg.Add(1)
-	go qu.runWorker()
-	return qu
+// defaultWriteQueue implements a writeQueue for the no parallel compression case.
+type defaultWriteQueue struct {
+	writer *Writer
 }
 
-func (qu *writeQueue) runWorker() {
-	for task := range qu.qu {
-		bh, err := qu.writer.writeBlockPostCompression(task.compressed, task.writerState.tmp)
+func newDefaultWriteQueue(writeQueueSize int, writer *Writer) *defaultWriteQueue {
+	return &defaultWriteQueue{writer: writer}
+}
 
-		// Note that passing information back to the compaction/Writer goroutine using the
-		// passableWriterState is temporary.
-		task.writerState.err = err
-		task.writerState.blockHandle = bh
+func (qu *defaultWriteQueue) add(task *writeQueueTask) {
+	bh, err := qu.writer.writeBlockPostCompression(task.compressed, task.writerState.tmp)
 
-		// Relinquish ownership of the passable writer state back to the compaction goroutine.
-		qu.writer.writerStateBuffer <- task.writerState
+	// Note that passing information back to the compaction/Writer goroutine using the
+	// passableWriterState is temporary.
+	task.writerState.err = err
+	task.writerState.blockHandle = bh
+
+	qu.writer.writerStateBuffer.put(task.writerState)
+}
+
+func (qu *defaultWriteQueue) close() {}
+
+// passableStateBuffer initially owns every initialized passableWriterState.
+type passableStateBuffer interface {
+	get() *passableWriterState
+	put(*passableWriterState)
+}
+
+// defaultPassableStateBuffer implements a buffer for the no parallel compression case.
+type defaultPassableStateBuffer struct {
+	state *passableWriterState
+}
+
+func newDefaultPassableStateBuffer(s *passableWriterState) passableStateBuffer {
+	b := &defaultPassableStateBuffer{state: s}
+	return b
+}
+
+func (b *defaultPassableStateBuffer) get() *passableWriterState {
+	if b.state == nil {
+		panic("default state shouldn't have more than one get in a row")
 	}
 
-	qu.closeWg.Done()
+	buf := b.state
+	b.state = nil
+	return buf
 }
 
-func (qu *writeQueue) Add(w *writeQueueTask) {
-	qu.qu <- w
-}
+func (b *defaultPassableStateBuffer) put(p *passableWriterState) {
+	if b.state != nil {
+		panic("default state shouldn't have more than one put in a row")
+	}
 
-// close will only be called once no more writeQueueTasks will be added to the
-// write queue.
-func (qu *writeQueue) close() {
-	close(qu.qu)
-	qu.closeWg.Wait()
+	b.state = p
 }
 
 type indexBlockWriterAndBlockProperties struct {
@@ -605,10 +622,10 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 		writerState: prevWriterState,
 		compressed:  b,
 	}
-	w.writeQueue.Add(writeTask)
+	w.writeQueue.add(writeTask)
 	// Try and acquire a new passableWriterState for future use. Note that since we've only initialized
 	// one passableWriterState, we will currently block until the write task is finished.
-	w.curWriterState = <-w.writerStateBuffer
+	w.curWriterState = w.writerStateBuffer.get()
 
 	// Note that error handling using w.curWriterState.err is temporary. It only works because we currently
 	// block while the writeQueueTask finishes.
@@ -1177,21 +1194,17 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		topLevelIndexBlock: blockWriter{
 			restartInterval: 1,
 		},
-		// We use a buffer size of 1, because that's all we need
-		// if parallel compression isn't enabled.
-		writerStateBuffer: make(chan *passableWriterState, 1),
 	}
-	w.checksummer.checksumType = o.Checksum
 
-	w.writerStateBuffer <- &passableWriterState{
+	w.checksummer.checksumType = o.Checksum
+	w.writerStateBuffer = newDefaultPassableStateBuffer(&passableWriterState{
 		dataBlockWriter: &blockWriter{
 			restartInterval: o.BlockRestartInterval,
 		},
-	}
-	w.curWriterState = <-w.writerStateBuffer
+	})
 
-	// Create a write queue which will write blocks to disk.
-	w.writeQueue = newWriterQueue(1, w)
+	w.curWriterState = w.writerStateBuffer.get()
+	w.writeQueue = newDefaultWriteQueue(1, w)
 
 	if f == nil {
 		w.err = errors.New("pebble: nil file")
