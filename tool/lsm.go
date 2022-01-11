@@ -12,6 +12,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -48,10 +49,11 @@ type lsmKey struct {
 }
 
 type lsmState struct {
-	Manifest string
-	Edits    []lsmVersionEdit                 `json:",omitempty"`
-	Files    map[base.FileNum]lsmFileMetadata `json:",omitempty"`
-	Keys     []lsmKey                         `json:",omitempty"`
+	Manifest  string
+	Edits     []lsmVersionEdit                 `json:",omitempty"`
+	Files     map[base.FileNum]lsmFileMetadata `json:",omitempty"`
+	Keys      []lsmKey                         `json:",omitempty"`
+	StartEdit int
 }
 
 type lsmT struct {
@@ -64,6 +66,8 @@ type lsmT struct {
 	fmtKey    keyFormatter
 	embed     bool
 	pretty    bool
+	startEdit int
+	endEdit   int
 	editCount int
 
 	cmp    *base.Comparer
@@ -95,28 +99,68 @@ is also interesting, but it works against using the area of the rectangle to
 indicate size).
 `,
 		Args: cobra.ExactArgs(1),
-		Run:  l.runLSM,
+		RunE: l.runLSM,
 	}
 
 	l.Root.Flags().Var(&l.fmtKey, "key", "key formatter")
 	l.Root.Flags().BoolVar(&l.embed, "embed", true, "embed javascript in HTML (disable for development)")
 	l.Root.Flags().BoolVar(&l.pretty, "pretty", false, "pretty JSON output")
+	l.Root.Flags().IntVar(&l.startEdit, "start-edit", 0, "starting edit # to include in visualization")
+	l.Root.Flags().IntVar(&l.endEdit, "end-edit", math.MaxInt64, "ending edit # to include in visualization")
 	l.Root.Flags().IntVar(&l.editCount, "edit-count", math.MaxInt64, "count of edits to include in visualization")
 	return l
 }
 
-func (l *lsmT) runLSM(cmd *cobra.Command, args []string) {
-	edits := l.readManifest(args[0])
-	if edits == nil {
-		return
+func (l *lsmT) isFlagSet(name string) bool {
+	return l.Root.Flags().Changed(name)
+}
+
+func (l *lsmT) validateFlags() error {
+	if l.isFlagSet("edit-count") {
+		if l.isFlagSet("start-edit") && l.isFlagSet("end-edit") {
+			return errors.Errorf("edit-count cannot be provided with both start-edit and end-edit")
+		} else if l.isFlagSet("end-edit") {
+			return errors.Errorf("cannot use edit-count with end-edit, use start-edit and end-edit instead")
+		}
 	}
 
+	if l.startEdit > l.endEdit {
+		return errors.Errorf("start-edit cannot be after end-edit")
+	}
+
+	return nil
+}
+
+func (l *lsmT) runLSM(cmd *cobra.Command, args []string) error {
+	err := l.validateFlags()
+	if err != nil {
+		return err
+	}
+
+	edits := l.readManifest(args[0])
+	if edits == nil {
+		return nil
+	}
+
+	if l.startEdit > 0 {
+		edits, err = l.coalesceEdits(edits)
+		if err != nil {
+			return err
+		}
+	}
+	if l.endEdit < len(edits) {
+		edits = edits[:l.endEdit-l.startEdit+1]
+	}
 	if l.editCount < len(edits) {
 		edits = edits[:l.editCount]
 	}
 
 	l.buildKeys(edits)
-	l.buildEdits(edits)
+	err = l.buildEdits(edits)
+	if err != nil {
+		return err
+	}
+
 	w := l.Root.OutOrStdout()
 
 	fmt.Fprintf(w, `<!DOCTYPE html>
@@ -145,6 +189,8 @@ func (l *lsmT) runLSM(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(w, "<script src=\"data/lsm.js\"></script>\n")
 	}
 	fmt.Fprintf(w, "</body>\n</html>\n")
+
+	return nil
 }
 
 func (l *lsmT) readManifest(path string) []*manifest.VersionEdit {
@@ -222,30 +268,25 @@ func (l *lsmT) buildKeys(edits []*manifest.VersionEdit) {
 	}
 }
 
-func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
+func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 	l.state.Edits = nil
+	l.state.StartEdit = l.startEdit
 	l.state.Files = make(map[base.FileNum]lsmFileMetadata)
 	var currentFiles [manifest.NumLevels][]*manifest.FileMetadata
+
 	for _, ve := range edits {
 		if len(ve.DeletedFiles) == 0 && len(ve.NewFiles) == 0 {
 			continue
 		}
+
 		edit := lsmVersionEdit{
 			Reason:  l.reason(ve),
 			Added:   make(map[int][]base.FileNum),
 			Deleted: make(map[int][]base.FileNum),
 		}
-		for df := range ve.DeletedFiles {
-			edit.Deleted[df.Level] = append(edit.Deleted[df.Level], df.FileNum)
-			for i, f := range currentFiles[df.Level] {
-				if f.FileNum == df.FileNum {
-					copy(currentFiles[df.Level][i:], currentFiles[df.Level][i+1:])
-					currentFiles[df.Level] = currentFiles[df.Level][:len(currentFiles[df.Level])-1]
-				}
-			}
-		}
-		for i := range ve.NewFiles {
-			nf := &ve.NewFiles[i]
+
+		for j := range ve.NewFiles {
+			nf := &ve.NewFiles[j]
 			if _, ok := l.state.Files[nf.Meta.FileNum]; !ok {
 				l.state.Files[nf.Meta.FileNum] = lsmFileMetadata{
 					Size:           nf.Meta.Size,
@@ -258,6 +299,17 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 			edit.Added[nf.Level] = append(edit.Added[nf.Level], nf.Meta.FileNum)
 			currentFiles[nf.Level] = append(currentFiles[nf.Level], nf.Meta)
 		}
+
+		for df := range ve.DeletedFiles {
+			edit.Deleted[df.Level] = append(edit.Deleted[df.Level], df.FileNum)
+			for j, f := range currentFiles[df.Level] {
+				if f.FileNum == df.FileNum {
+					copy(currentFiles[df.Level][j:], currentFiles[df.Level][j+1:])
+					currentFiles[df.Level] = currentFiles[df.Level][:len(currentFiles[df.Level])-1]
+				}
+			}
+		}
+
 		v := manifest.NewVersion(l.cmp.Compare, l.fmtKey.fn, 0, currentFiles)
 		edit.Sublevels = make(map[base.FileNum]int)
 		for sublevel, files := range v.L0SublevelFiles {
@@ -274,6 +326,63 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 		}
 		l.state.Edits = append(l.state.Edits, edit)
 	}
+
+	if l.state.Edits == nil {
+		return errors.Errorf("there are no edits in [start-edit, end-edit], which add or delete files")
+	}
+	return nil
+}
+
+func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.VersionEdit, error) {
+	if l.startEdit >= len(edits) {
+		return nil, errors.Errorf("start-edit is more than the number of edits, %d", len(edits))
+	}
+
+	be := manifest.BulkVersionEdit{}
+	be.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+
+	// Coalesce all edits from [0, l.startEdit) into a BulkVersionEdit.
+	for _, ve := range edits[:l.startEdit] {
+		err := be.Accumulate(ve)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	startingEdit := edits[l.startEdit]
+	var beNewFiles []manifest.NewFileEntry
+	beDeletedFiles := make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
+
+	for level, deletedFiles := range be.Deleted {
+		for _, file := range deletedFiles {
+			dfe := manifest.DeletedFileEntry{
+				Level:   level,
+				FileNum: file.FileNum,
+			}
+			beDeletedFiles[dfe] = file
+		}
+	}
+
+	// Filter out added files that were also deleted in the BulkVersionEdit.
+	for level, newFiles := range be.Added {
+		for _, file := range newFiles {
+			dfe := manifest.DeletedFileEntry{
+				Level:   level,
+				FileNum: file.FileNum,
+			}
+
+			if _, ok := beDeletedFiles[dfe]; !ok {
+				beNewFiles = append(beNewFiles, manifest.NewFileEntry{
+					Level: level,
+					Meta:  file,
+				})
+			}
+		}
+	}
+	startingEdit.NewFiles = append(beNewFiles, startingEdit.NewFiles...)
+
+	edits = edits[l.startEdit:]
+	return edits, nil
 }
 
 func (l *lsmT) findKey(key base.InternalKey) int {
