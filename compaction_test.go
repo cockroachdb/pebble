@@ -1721,7 +1721,8 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					if !force {
 						// Find the file in the current version.
 						v := d.mu.versions.currentVersion()
-						overlaps := v.Overlaps(tombstoneLevel, d.opts.Comparer.Compare, start, end)
+						overlaps := v.Overlaps(tombstoneLevel, d.opts.Comparer.Compare, start,
+							end, true /* exclusiveEnd */)
 						iter := overlaps.Iter()
 						for m := iter.First(); m != nil; m = iter.Next() {
 							if m.FileNum.String() == parts[1] {

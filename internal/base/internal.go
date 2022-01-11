@@ -143,7 +143,7 @@ func MakeInternalKey(userKey []byte, seqNum uint64, kind InternalKeyKind) Intern
 }
 
 // MakeSearchKey constructs an internal key that is appropriate for searching
-// for a the specified user key. The search key contain the maximual sequence
+// for a the specified user key. The search key contain the maximal sequence
 // number and kind ensuring that it sorts before any other internal keys for
 // the same user key.
 func MakeSearchKey(userKey []byte) InternalKey {
@@ -340,6 +340,15 @@ func (k InternalKey) String() string {
 // Pretty returns a formatter for the key.
 func (k InternalKey) Pretty(f FormatKey) fmt.Formatter {
 	return prettyInternalKey{k, f}
+}
+
+// IsExclusiveSentinel returns whether this internal key excludes point keys
+// with the same user key if used as an end boundary. See the comment on
+// InternalKeyRangeDeletionSentinel.
+func (k InternalKey) IsExclusiveSentinel() bool {
+	// TODO(jackson): This may need to change to include separate sentinels for
+	// range key unsets and deletes.
+	return k.Trailer == InternalKeyRangeDeleteSentinel || k.Trailer == InternalKeyBoundaryRangeKey
 }
 
 type prettyInternalKey struct {

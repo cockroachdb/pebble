@@ -161,7 +161,7 @@ func visualizeSublevels(
 				buf.WriteByte(middleChar)
 				lastChar++
 			}
-			if f.Largest.Trailer == base.InternalKeyRangeDeleteSentinel &&
+			if f.Largest.IsExclusiveSentinel() &&
 				j < len(files)-1 && files[j+1].Smallest.UserKey[0] == f.Largest.UserKey[0] {
 				// This case happens where two successive files have
 				// matching end/start user keys but where the left-side file
