@@ -207,6 +207,7 @@ function styleHeight(e) {
 }
 
 let sliderX, sliderHandle;
+let offsetSliderX;
 
 // The version object holds the current LSM state.
 let version = {
@@ -637,7 +638,7 @@ let version = {
         }
 
         sliderHandle.attr("cx", sliderX(version.index));
-        index.node().value = version.index;
+        index.node().value = version.index + data.StartEdit;
     },
 
     onMouseMove: function(i) {
@@ -747,6 +748,13 @@ let version = {
             .domain([0, data.Edits.length - 1])
             .range([0, width])
             .clamp(true);
+				
+	// Used only to generate offset ticks for slider.
+	// sliderX is used to index into the data.Edits array (0-indexed).
+	offsetSliderX = d3
+	    .scaleLinear()
+	    .domain([data.StartEdit, data.StartEdit + data.Edits.length - 1])
+	    .range([0, width]);
 
         let slider = svg
             .append("g")
@@ -782,10 +790,10 @@ let version = {
             .attr("class", "ticks")
             .attr("transform", "translate(0," + 18 + ")")
             .selectAll("text")
-            .data(sliderX.ticks(10))
+            .data(offsetSliderX.ticks(10))
             .enter()
             .append("text")
-            .attr("x", sliderX)
+            .attr("x", offsetSliderX)
             .attr("text-anchor", "middle")
             .text(function(d) {
                 return d;

@@ -48,10 +48,11 @@ type lsmKey struct {
 }
 
 type lsmState struct {
-	Manifest string
-	Edits    []lsmVersionEdit                 `json:",omitempty"`
-	Files    map[base.FileNum]lsmFileMetadata `json:",omitempty"`
-	Keys     []lsmKey                         `json:",omitempty"`
+	Manifest  string
+	Edits     []lsmVersionEdit                 `json:",omitempty"`
+	Files     map[base.FileNum]lsmFileMetadata `json:",omitempty"`
+	Keys      []lsmKey                         `json:",omitempty"`
+	StartEdit int
 }
 
 type lsmT struct {
@@ -64,6 +65,8 @@ type lsmT struct {
 	fmtKey    keyFormatter
 	embed     bool
 	pretty    bool
+	startEdit int
+	endEdit   int
 	editCount int
 
 	cmp    *base.Comparer
@@ -101,6 +104,8 @@ indicate size).
 	l.Root.Flags().Var(&l.fmtKey, "key", "key formatter")
 	l.Root.Flags().BoolVar(&l.embed, "embed", true, "embed javascript in HTML (disable for development)")
 	l.Root.Flags().BoolVar(&l.pretty, "pretty", false, "pretty JSON output")
+	l.Root.Flags().IntVar(&l.startEdit, "start-edit", 0, "starting edit # to include in visualization")
+	l.Root.Flags().IntVar(&l.endEdit, "end-edit", math.MaxInt64, "ending edit # to include in visualization")
 	l.Root.Flags().IntVar(&l.editCount, "edit-count", math.MaxInt64, "count of edits to include in visualization")
 	return l
 }
@@ -224,12 +229,17 @@ func (l *lsmT) buildKeys(edits []*manifest.VersionEdit) {
 
 func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 	l.state.Edits = nil
+	l.state.StartEdit = l.startEdit
 	l.state.Files = make(map[base.FileNum]lsmFileMetadata)
 	var currentFiles [manifest.NumLevels][]*manifest.FileMetadata
-	for _, ve := range edits {
+	for i, ve := range edits {
+		if i > l.endEdit {
+			break
+		}
 		if len(ve.DeletedFiles) == 0 && len(ve.NewFiles) == 0 {
 			continue
 		}
+
 		edit := lsmVersionEdit{
 			Reason:  l.reason(ve),
 			Added:   make(map[int][]base.FileNum),
@@ -237,15 +247,15 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 		}
 		for df := range ve.DeletedFiles {
 			edit.Deleted[df.Level] = append(edit.Deleted[df.Level], df.FileNum)
-			for i, f := range currentFiles[df.Level] {
+			for j, f := range currentFiles[df.Level] {
 				if f.FileNum == df.FileNum {
-					copy(currentFiles[df.Level][i:], currentFiles[df.Level][i+1:])
+					copy(currentFiles[df.Level][j:], currentFiles[df.Level][j+1:])
 					currentFiles[df.Level] = currentFiles[df.Level][:len(currentFiles[df.Level])-1]
 				}
 			}
 		}
-		for i := range ve.NewFiles {
-			nf := &ve.NewFiles[i]
+		for j := range ve.NewFiles {
+			nf := &ve.NewFiles[j]
 			if _, ok := l.state.Files[nf.Meta.FileNum]; !ok {
 				l.state.Files[nf.Meta.FileNum] = lsmFileMetadata{
 					Size:           nf.Meta.Size,
@@ -257,6 +267,10 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 			}
 			edit.Added[nf.Level] = append(edit.Added[nf.Level], nf.Meta.FileNum)
 			currentFiles[nf.Level] = append(currentFiles[nf.Level], nf.Meta)
+		}
+
+		if i < l.startEdit {
+			continue
 		}
 		v := manifest.NewVersion(l.cmp.Compare, l.fmtKey.fn, 0, currentFiles)
 		edit.Sublevels = make(map[base.FileNum]int)
