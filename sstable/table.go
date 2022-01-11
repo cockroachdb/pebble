@@ -87,6 +87,9 @@ The table file format looks like:
 [index block] (for single level index)
 [meta rangedel block] (optional)
 [meta range key block] (optional)
+[value block 0] (optional)
+[value block M-1] (optional)
+[meta value index block] (optional)
 [meta properties block]
 [metaindex block]
 [footer]
@@ -182,6 +185,7 @@ const (
 	rocksDBFormatVersion2 = 2
 
 	metaRangeKeyName   = "pebble.range_key"
+	metaValueIndexName = "pebble.value_index"
 	metaPropertiesName = "rocksdb.properties"
 	metaRangeDelName   = "rocksdb.range_del"
 	metaRangeDelV2Name = "rocksdb.range_del2"

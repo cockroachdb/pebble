@@ -159,6 +159,8 @@ type Writer struct {
 
 	topLevelIndexBlock blockWriter
 	indexPartitions    []indexBlockWriterAndBlockProperties
+
+	valueBlockWriter *valueBlockWriter
 }
 
 type indexBlockWriterAndBlockProperties struct {
@@ -269,7 +271,38 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	}
 
 	w.maybeAddToFilter(key.UserKey)
-	w.block.add(key, value)
+	isSetKey := key.Kind() == InternalKeyKindSet
+	writeToValueBlock := false
+	if w.valueBlockWriter != nil && w.split != nil && isSetKey &&
+		w.meta.LargestPoint.UserKey != nil && w.meta.LargestPoint.Kind() == InternalKeyKindSet {
+		len1 := len(w.meta.LargestPoint.UserKey)
+		n1 := w.split(w.meta.LargestPoint.UserKey)
+		len2 := len(key.UserKey)
+		n2 := w.split(key.UserKey)
+		// TODO(sumeer): add another func to Comparer which returns a bool if
+		// these are true versions (e.g. lock table keys in CockroachDB are not
+		// truly versioned).
+		if n1 == n2 && n1 < len1 && n2 < len2 {
+			// Both are versioned keys, since both have a non-empty suffix.
+			// The prefixes are of equal length, so could be different versions
+			// of the same key.
+			if w.compare(w.meta.LargestPoint.UserKey[:n1], key.UserKey[:n2]) == 0 {
+				writeToValueBlock = true
+			}
+		}
+	}
+	if writeToValueBlock {
+		vh, err := w.valueBlockWriter.addValue(value)
+		if err != nil {
+			return err
+		}
+		w.props.NumValuesInValueBlocks++
+		n := encodeValueHandle(w.tmp[:], vh)
+		// The encoded value handle includes the valueHandlePrefix.
+		w.block.addWithOptionalInlineValuePrefix(key, w.tmp[:n], false)
+	} else {
+		w.block.addWithOptionalInlineValuePrefix(key, value, isSetKey && w.valueBlockWriter != nil)
+	}
 
 	w.meta.updateSeqNum(key.SeqNum())
 	// block.curKey contains the most recently added key to the block.
@@ -851,6 +884,18 @@ func (w *Writer) Close() (err error) {
 		metaindex.add(InternalKey{UserKey: []byte(metaRangeKeyName)}, w.tmp[:n])
 	}
 
+	if w.valueBlockWriter != nil {
+		vbiHandle, vbiStats, err := w.valueBlockWriter.finish(w.writer, w.meta.Size)
+		if err != nil {
+			return err
+		}
+		w.props.NumValueBlocks = vbiStats.numValueBlocks
+		w.meta.Size += vbiStats.writtenBytes
+		if vbiStats.numValueBlocks > 0 {
+			n := encodeValueBlocksIndexHandle(w.tmp[:], vbiHandle)
+			metaindex.add(InternalKey{UserKey: []byte(metaValueIndexName)}, w.tmp[:n])
+		}
+	}
 	{
 		userProps := make(map[string]string)
 		for i := range w.propCollectors {
@@ -1051,6 +1096,13 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		w.err = errors.New("pebble: nil file")
 		return w
 	}
+	if o.ValueBlocksAreEnabled {
+		w.valueBlockWriter = &valueBlockWriter{
+			blockSize:    o.BlockSize,
+			compression:  o.Compression,
+			checksumType: o.Checksum,
+		}
+	}
 
 	// Note that WriterOptions are applied in two places; the ones with a
 	// preApply() method are applied here, and the rest are applied after
@@ -1084,6 +1136,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 	w.props.MergerName = o.MergerName
 	w.props.PropertyCollectorNames = "[]"
 	w.props.ExternalFormatVersion = rocksDBExternalFormatVersion
+	w.props.ValueBlocksAreEnabled = o.ValueBlocksAreEnabled
 
 	if len(o.TablePropertyCollectors) > 0 || len(o.BlockPropertyCollectors) > 0 {
 		var buf bytes.Buffer

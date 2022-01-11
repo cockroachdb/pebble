@@ -206,6 +206,10 @@ type WriterOptions struct {
 
 	// Checksum specifies which checksum to use.
 	Checksum ChecksumType
+
+	// ValueBlocksAreEnabled indicates whether the writer should place older
+	// versions in value blocks.
+	ValueBlocksAreEnabled bool
 }
 
 func (o WriterOptions) ensureDefaults() WriterOptions {

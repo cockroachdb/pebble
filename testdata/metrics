@@ -34,7 +34,7 @@ compact         0     0 B     0 B       0          (size == estimated-debt, scor
 zmemtbl         1   256 K
    ztbl         0     0 B
  bcache         4   698 B    0.0%  (score == hit-rate)
- tcache         1   672 B    0.0%  (score == hit-rate)
+ tcache         1   712 B    0.0%  (score == hit-rate)
  titers         1
  filter         -       -    0.0%  (score == utility)
 
@@ -81,7 +81,7 @@ compact         1     0 B     0 B       0          (size == estimated-debt, scor
 zmemtbl         2   512 K
    ztbl         2   1.5 K
  bcache         8   1.4 K   33.3%  (score == hit-rate)
- tcache         2   1.3 K   50.0%  (score == hit-rate)
+ tcache         2   1.4 K   50.0%  (score == hit-rate)
  titers         2
  filter         -       -    0.0%  (score == utility)
 
@@ -113,7 +113,7 @@ compact         1     0 B     0 B       0          (size == estimated-debt, scor
 zmemtbl         1   256 K
    ztbl         2   1.5 K
  bcache         8   1.4 K   33.3%  (score == hit-rate)
- tcache         2   1.3 K   50.0%  (score == hit-rate)
+ tcache         2   1.4 K   50.0%  (score == hit-rate)
  titers         2
  filter         -       -    0.0%  (score == utility)
 
@@ -142,7 +142,7 @@ compact         1     0 B     0 B       0          (size == estimated-debt, scor
 zmemtbl         1   256 K
    ztbl         1   771 B
  bcache         4   698 B   33.3%  (score == hit-rate)
- tcache         1   672 B   50.0%  (score == hit-rate)
+ tcache         1   712 B   50.0%  (score == hit-rate)
  titers         1
  filter         -       -    0.0%  (score == utility)
 

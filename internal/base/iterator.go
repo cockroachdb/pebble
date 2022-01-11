@@ -6,6 +6,10 @@ package base
 
 import "fmt"
 
+// TODO(sumeer): change the InternalIterator interface to not eagerly return
+// the value. Implementations should continue to cache the value once asked to
+// return it, so that repeated calls to get the value are cheap.
+
 // InternalIterator iterates over a DB's key/value pairs in key order. Unlike
 // the Iterator interface, the returned keys are InternalKeys composed of the
 // user-key, a sequence number and a key kind. In forward iteration, key/value
