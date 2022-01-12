@@ -976,3 +976,10 @@ func (i *blockIter) Current() keyspan.Span {
 	}
 	return keyspan.Span{Start: i.ikey, End: i.val, Value: nil}
 }
+
+// Clone implements (keyspan.FragmentIterator).Clone, as documented in the
+// internal/keyspan package.
+func (i *blockIter) Clone() keyspan.FragmentIterator {
+	// TODO(jackson): Remove keyspan.FragmentIterator.Clone.
+	panic("unimplemented")
+}

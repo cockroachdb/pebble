@@ -16,15 +16,16 @@ import (
 // overlapping fragments coalesced into a single internally consistent span.
 
 // Iter is an iterator over a set of fragmented, coalesced spans. It wraps a
-// keyspan.Iter containing fragmented keyspan.Spans with key kinds RANGEKEYSET,
-// RANGEKEYUNSET and RANGEKEYDEL. The spans within the keyspan.Iter must be
-// sorted by Start key, including by decreasing sequence number if user keys are
-// equal and key kind if sequence numbers are equal.
+// keyspan.FragmentIterator containing fragmented keyspan.Spans with key kinds
+// RANGEKEYSET, RANGEKEYUNSET and RANGEKEYDEL. The spans within the
+// FragmentIterator must be sorted by Start key, including by decreasing
+// sequence number if user keys are equal and key kind if sequence numbers are
+// equal.
 //
 // Iter handles 'coalescing' spans on-the-fly, including dropping key spans that
 // are no longer relevant.
 type Iter struct {
-	iter      *keyspan.Iter
+	iter      keyspan.FragmentIterator
 	iterKey   *base.InternalKey
 	coalescer Coalescer
 	curr      CoalescedSpan
@@ -34,7 +35,7 @@ type Iter struct {
 }
 
 // Init initializes an iterator over a set of fragmented, coalesced spans.
-func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum uint64, iter *keyspan.Iter) {
+func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum uint64, iter keyspan.FragmentIterator) {
 	*i = Iter{
 		iter: iter,
 	}
@@ -49,9 +50,7 @@ func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum ui
 func (i *Iter) Clone() *Iter {
 	// TODO(jackson): Remove this method when the range keys' state is included
 	// in the readState.
-	// Copying i.iter will copy its current position, which is harmless.
-	ki := &keyspan.Iter{}
-	*ki = *i.iter
+	ki := i.iter.Clone()
 	// Init the new Iter to ensure err is cleared.
 	newIter := &Iter{}
 	newIter.Init(i.coalescer.items.cmp, i.coalescer.formatKey, i.coalescer.visibleSeqNum, ki)
