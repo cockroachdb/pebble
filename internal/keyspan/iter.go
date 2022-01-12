@@ -37,6 +37,9 @@ type FragmentIterator interface {
 
 	// Current returns the fragment at the current iterator position.
 	Current() Span
+
+	// Clone returns an unpositioned iterator containing the same spans.
+	Clone() FragmentIterator
 }
 
 // Iter is an iterator over a set of fragmented spans.
@@ -190,7 +193,8 @@ func (i *Iter) Current() Span {
 	return Span{}
 }
 
-// End returns the end user key of the fragment at the current iterator position.
+// End returns the end user key of the fragment at the current iterator
+// position, implementing FragmentIterator.End.
 func (i *Iter) End() []byte {
 	return i.spans[i.index].End
 }
@@ -235,6 +239,13 @@ func (i *Iter) SetBounds(lower, upper []byte) {
 			return i.cmp(i.spans[j].Start.UserKey, upper) >= 0
 		})
 	}
+}
+
+// Clone implements FragmentIterator.Clone.
+func (i *Iter) Clone() FragmentIterator {
+	cloneIter := &Iter{}
+	*cloneIter = *i
+	return cloneIter
 }
 
 func (i *Iter) String() string {

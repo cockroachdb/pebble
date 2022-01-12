@@ -1,0 +1,149 @@
+define
+a.RANGEKEYSET.6   : c [@2=foo]
+a.RANGEKEYUNSET.3 : c [@1]
+h.RANGEKEYDEL.5   : k
+----
+OK
+
+iter
+first
+next
+next
+next
+next
+----
+fragment-start a [a-c#6, a-c#3]
+fragment-end   c [a-c#6, a-c#3]
+fragment-start h [h-k#5]
+fragment-end   k [h-k#5]
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+----
+fragment-end   k [h-k#5]
+fragment-start h [h-k#5]
+fragment-end   c [a-c#3, a-c#6]
+fragment-start a [a-c#3, a-c#6]
+.
+
+iter
+seek-ge a
+seek-ge b
+seek-ge c
+seek-ge d
+seek-ge h
+seek-ge i
+seek-ge k
+seek-ge o
+----
+fragment-start a [a-c#6, a-c#3]
+fragment-end   c [a-c#3, a-c#6]
+fragment-end   c [a-c#3, a-c#6]
+fragment-start h [h-k#5]
+fragment-start h [h-k#5]
+fragment-end   k [h-k#5]
+fragment-end   k [h-k#5]
+.
+
+iter
+seek-lt z
+seek-lt k
+seek-lt d
+seek-lt c
+----
+fragment-end   k [h-k#5]
+fragment-start h [h-k#5]
+fragment-end   c [a-c#3, a-c#6]
+fragment-start a [a-c#3, a-c#6]
+
+define
+a.RANGEKEYUNSET.3 : c [@1]
+h.RANGEKEYDEL.5   : k
+----
+OK
+
+iter
+seek-ge cc
+prev
+prev
+prev
+next
+----
+fragment-start h [h-k#5]
+fragment-end   c [a-c#3]
+fragment-start a [a-c#3]
+.
+fragment-start a [a-c#3]
+
+iter
+seek-ge k
+next
+prev
+prev
+----
+fragment-end   k [h-k#5]
+.
+fragment-end   k [h-k#5]
+fragment-start h [h-k#5]
+
+define
+b.RANGEKEYSET.8   : c [(@1=foo)]
+b.RANGEKEYUNSET.5 : c [@2]
+b.RANGEKEYDEL.3   : c
+d.RANGEKEYSET.5   : e [(@3=foo)]
+d.RANGEKEYSET.4   : e [(@2=bar)]
+e.RANGEKEYDEL.3   : f
+e.RANGEKEYDEL.2   : f
+e.RANGEKEYDEL.1   : f
+----
+OK
+
+iter
+first
+next
+next
+next
+next
+next
+next
+----
+fragment-start b [b-c#8, b-c#5, b-c#3]
+fragment-end   c [b-c#8, b-c#5, b-c#3]
+fragment-start d [d-e#5, d-e#4]
+fragment-end   e [d-e#5, d-e#4]
+fragment-start e [e-f#3, e-f#2, e-f#1]
+fragment-end   f [e-f#3, e-f#2, e-f#1]
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+prev
+----
+fragment-end   f [e-f#1, e-f#2, e-f#3]
+fragment-start e [e-f#1, e-f#2, e-f#3]
+fragment-end   e [d-e#4, d-e#5]
+fragment-start d [d-e#4, d-e#5]
+fragment-end   c [b-c#3, b-c#5, b-c#8]
+fragment-start b [b-c#3, b-c#5, b-c#8]
+.
+
+iter
+seek-ge bat
+prev
+seek-lt bat
+next
+----
+fragment-end   c [b-c#3, b-c#5, b-c#8]
+fragment-start b [b-c#3, b-c#5, b-c#8]
+fragment-start b [b-c#3, b-c#5, b-c#8]
+fragment-end   c [b-c#3, b-c#5, b-c#8]

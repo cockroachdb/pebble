@@ -1,0 +1,397 @@
+# Test a single level.
+
+define
+a.RANGEKEYSET.10  : c [(@5=apples)]
+a.RANGEKEYDEL.10  : c
+a.RANGEKEYUNSET.8 : c [@1]
+a.RANGEKEYSET.4   : c [(@3=bananas)]
+c.RANGEKEYSET.4   : d [(@3=coconut)]
+e.RANGEKEYSET.20  : f [(@5=pineapple),(@3=guava)]
+h.RANGEKEYDEL.22  : j
+h.RANGEKEYSET.21  : j [(@5=peaches),(@3=starfruit)]
+l.RANGEKEYUNSET.2 : m [@9,@5]
+q.RANGEKEYSET.14  : z [(@9=mangos)]
+----
+1 levels
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a-c#10.RANGEKEYSET
+a-c#10.RANGEKEYDEL
+a-c#8.RANGEKEYUNSET
+a-c#4.RANGEKEYSET
+c-d#4.RANGEKEYSET
+e-f#20.RANGEKEYSET
+h-j#22.RANGEKEYDEL
+h-j#21.RANGEKEYSET
+l-m#2.RANGEKEYUNSET
+q-z#14.RANGEKEYSET
+.
+
+define
+b.RANGEKEYSET.10  : d [(@1=apples)]
+e.RANGEKEYDEL.8   : h
+--
+a.RANGEKEYUNSET.3 : c [@1]
+h.RANGEKEYDEL.5   : k
+----
+2 levels
+
+iter
+first
+next
+next
+next
+next
+next
+next
+----
+a-b#3.RANGEKEYUNSET
+b-c#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+c-d#10.RANGEKEYSET
+e-h#8.RANGEKEYDEL
+h-k#5.RANGEKEYDEL
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+prev
+----
+h-k#5.RANGEKEYDEL
+e-h#8.RANGEKEYDEL
+c-d#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+b-c#10.RANGEKEYSET
+a-b#3.RANGEKEYUNSET
+.
+
+# Test changing directions at each iterator position, reverse to forward.
+iter
+last
+next
+last
+prev
+next
+----
+h-k#5.RANGEKEYDEL
+.
+h-k#5.RANGEKEYDEL
+e-h#8.RANGEKEYDEL
+h-k#5.RANGEKEYDEL
+
+iter
+last
+prev
+prev
+next
+----
+h-k#5.RANGEKEYDEL
+e-h#8.RANGEKEYDEL
+c-d#10.RANGEKEYSET
+e-h#8.RANGEKEYDEL
+
+iter
+last
+prev
+prev
+prev
+next
+----
+h-k#5.RANGEKEYDEL
+e-h#8.RANGEKEYDEL
+c-d#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+c-d#10.RANGEKEYSET
+
+iter
+last
+prev
+prev
+prev
+prev
+next
+----
+h-k#5.RANGEKEYDEL
+e-h#8.RANGEKEYDEL
+c-d#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+b-c#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+next
+----
+h-k#5.RANGEKEYDEL
+e-h#8.RANGEKEYDEL
+c-d#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+b-c#10.RANGEKEYSET
+a-b#3.RANGEKEYUNSET
+b-c#10.RANGEKEYSET
+
+# Test changing directions at each iterator position, forward to reverse.
+
+iter
+first
+prev
+first
+next
+prev
+----
+a-b#3.RANGEKEYUNSET
+.
+a-b#3.RANGEKEYUNSET
+b-c#10.RANGEKEYSET
+a-b#3.RANGEKEYUNSET
+
+iter
+first
+next
+next
+prev
+----
+a-b#3.RANGEKEYUNSET
+b-c#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+b-c#10.RANGEKEYSET
+
+iter
+first
+next
+next
+next
+prev
+----
+a-b#3.RANGEKEYUNSET
+b-c#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+c-d#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+
+iter
+first
+next
+next
+next
+next
+next
+prev
+----
+a-b#3.RANGEKEYUNSET
+b-c#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+c-d#10.RANGEKEYSET
+e-h#8.RANGEKEYDEL
+h-k#5.RANGEKEYDEL
+e-h#8.RANGEKEYDEL
+
+iter
+first
+next
+next
+next
+next
+prev
+----
+a-b#3.RANGEKEYUNSET
+b-c#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+c-d#10.RANGEKEYSET
+e-h#8.RANGEKEYDEL
+c-d#10.RANGEKEYSET
+
+# Test SeekGE. Note that MergingIter's SeekGE implements the FragmentIterator's
+# SeekGE semantics. It returns the first fragment with a Start key ≥ the search
+# key, NOT the first fragment that covers a key ≥ the search key.
+
+iter
+seek-ge cc
+----
+e-h#8.RANGEKEYDEL
+
+iter
+seek-ge 1
+seek-ge a
+seek-ge b
+seek-ge bb
+seek-ge c
+seek-ge cc
+seek-ge e
+seek-ge f
+seek-ge h
+seek-ge i
+----
+a-b#3.RANGEKEYUNSET
+a-b#3.RANGEKEYUNSET
+b-c#10.RANGEKEYSET
+c-d#10.RANGEKEYSET
+c-d#10.RANGEKEYSET
+e-h#8.RANGEKEYDEL
+e-h#8.RANGEKEYDEL
+h-k#5.RANGEKEYDEL
+h-k#5.RANGEKEYDEL
+.
+
+# Test SeekLT. Note that MergingIter's SeekLT implements the FragmentIterator's
+# SeekLT semantics. It returns the first fragment with a Start key < the search
+# key, NOT the first fragment that covers a key < the search key.
+#
+# NB: seek-lt bb finds b-c#3.RANGEKEYUNSET (the last fragment with the bounds
+# [b,c), unlike the above seek-ge b which finds the first).
+
+iter
+seek-lt b
+----
+a-b#3.RANGEKEYUNSET
+
+iter
+seek-lt 1
+seek-lt a
+seek-lt aa
+seek-lt b
+seek-lt bb
+seek-lt c
+seek-lt cc
+seek-lt d
+seek-lt dd
+seek-lt e
+seek-lt ee
+seek-lt h
+seek-lt hh
+seek-lt k
+seek-lt z
+----
+.
+.
+a-b#3.RANGEKEYUNSET
+a-b#3.RANGEKEYUNSET
+b-c#3.RANGEKEYUNSET
+b-c#3.RANGEKEYUNSET
+c-d#10.RANGEKEYSET
+c-d#10.RANGEKEYSET
+c-d#10.RANGEKEYSET
+c-d#10.RANGEKEYSET
+e-h#8.RANGEKEYDEL
+e-h#8.RANGEKEYDEL
+h-k#5.RANGEKEYDEL
+h-k#5.RANGEKEYDEL
+h-k#5.RANGEKEYDEL
+
+define
+a.RANGEKEYDEL.5: f
+a.RANGEKEYDEL.4: f
+k.RANGEKEYDEL.5: s
+k.RANGEKEYDEL.4: s
+----
+1 levels
+
+iter
+first
+prev
+next
+----
+a-f#5.RANGEKEYDEL
+.
+a-f#5.RANGEKEYDEL
+
+iter
+last
+next
+prev
+----
+k-s#4.RANGEKEYDEL
+.
+k-s#4.RANGEKEYDEL
+
+define
+w.RANGEKEYDEL.5: x
+w.RANGEKEYDEL.3: x
+x.RANGEKEYDEL.5: z
+--
+w.RANGEKEYDEL.4: y
+w.RANGEKEYDEL.1: y
+----
+2 levels
+
+iter
+last
+next
+prev
+first
+prev
+next
+----
+y-z#5.RANGEKEYDEL
+.
+y-z#5.RANGEKEYDEL
+w-x#5.RANGEKEYDEL
+.
+w-x#5.RANGEKEYDEL
+
+iter
+seek-ge x
+prev
+seek-ge xray
+prev
+----
+x-y#5.RANGEKEYDEL
+w-x#1.RANGEKEYDEL
+y-z#5.RANGEKEYDEL
+x-y#1.RANGEKEYDEL
+
+define
+il.RANGEKEYDEL.10: qb
+sn.RANGEKEYDEL.10: wn
+--
+gt.RANGEKEYDEL.9: kh
+gt.RANGEKEYDEL.8: kh
+gt.RANGEKEYDEL.7: kh
+ky.RANGEKEYDEL.8: sv
+ky.RANGEKEYDEL.7: sv
+--
+as.RANGEKEYDEL.5: fz
+as.RANGEKEYDEL.4: fz
+hh.RANGEKEYDEL.4: ir
+rf.RANGEKEYDEL.4: yx
+----
+3 levels
+
+iter
+seek-ge qp
+next
+next
+next
+next
+seek-ge yz
+prev
+----
+rf-sn#8.RANGEKEYDEL
+rf-sn#7.RANGEKEYDEL
+rf-sn#4.RANGEKEYDEL
+sn-sv#10.RANGEKEYDEL
+sn-sv#8.RANGEKEYDEL
+.
+wn-yx#4.RANGEKEYDEL

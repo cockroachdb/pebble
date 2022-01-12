@@ -10,21 +10,39 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
+// TODO(jackson): Consider modifying the interface to support returning 'empty'
+// spans that contain no range keys. This can avoid the need to open a range key
+// block for a sstable in a distant part of the keyspace if there are no range
+// keys in the vicinity of a read.
+//
+// Imagine you have a dense point keyspace a-z and a single range key covering
+// the span [y, z). If you have an iterator without any bounds and perform a
+// SeekGE('b'), the point iterator might land on an sstable with bounds like
+// b-ba, but the rangekey iterator will need to scan all the sstables'
+// fileMetadata until it finds the file containing [y, z) and opens it.
+//
+// Alternatively, the rangekey iterator could return a span [b, y) with no range
+// keys, reflecting that it seeked and found that no range keys existed all the
+// way up to y, all without reading any blocks. If the point iterator is
+// eventually Next'd to y, the interleaving iterator can handle Next-ing the
+// range key iterator onto the [y,z) range key's sstable and range key.
+
 // This Iter implementation iterates over 'coalesced spans' that are not easily
 // representable within the InternalIterator interface. Instead of iterating
 // over internal keys, this Iter exposes CoalescedSpans that represent a set of
 // overlapping fragments coalesced into a single internally consistent span.
 
 // Iter is an iterator over a set of fragmented, coalesced spans. It wraps a
-// keyspan.Iter containing fragmented keyspan.Spans with key kinds RANGEKEYSET,
-// RANGEKEYUNSET and RANGEKEYDEL. The spans within the keyspan.Iter must be
-// sorted by Start key, including by decreasing sequence number if user keys are
-// equal and key kind if sequence numbers are equal.
+// keyspan.FragmentIterator containing fragmented keyspan.Spans with key kinds
+// RANGEKEYSET, RANGEKEYUNSET and RANGEKEYDEL. The spans within the
+// FragmentIterator must be sorted by Start key, including by decreasing
+// sequence number if user keys are equal and key kind if sequence numbers are
+// equal.
 //
 // Iter handles 'coalescing' spans on-the-fly, including dropping key spans that
 // are no longer relevant.
 type Iter struct {
-	iter      *keyspan.Iter
+	iter      keyspan.FragmentIterator
 	iterKey   *base.InternalKey
 	coalescer Coalescer
 	curr      CoalescedSpan
@@ -34,7 +52,7 @@ type Iter struct {
 }
 
 // Init initializes an iterator over a set of fragmented, coalesced spans.
-func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum uint64, iter *keyspan.Iter) {
+func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum uint64, iter keyspan.FragmentIterator) {
 	*i = Iter{
 		iter: iter,
 	}
@@ -49,9 +67,7 @@ func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum ui
 func (i *Iter) Clone() *Iter {
 	// TODO(jackson): Remove this method when the range keys' state is included
 	// in the readState.
-	// Copying i.iter will copy its current position, which is harmless.
-	ki := &keyspan.Iter{}
-	*ki = *i.iter
+	ki := i.iter.Clone()
 	// Init the new Iter to ensure err is cleared.
 	newIter := &Iter{}
 	newIter.Init(i.coalescer.items.cmp, i.coalescer.formatKey, i.coalescer.visibleSeqNum, ki)

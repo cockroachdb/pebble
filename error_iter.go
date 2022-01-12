@@ -57,6 +57,10 @@ func (c *errorIter) End() []byte {
 	return nil
 }
 
+func (c *errorIter) Clone() keyspan.FragmentIterator {
+	return &errorIter{err: c.err}
+}
+
 func (c *errorIter) Current() keyspan.Span {
 	return keyspan.Span{}
 }
