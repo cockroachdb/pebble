@@ -392,11 +392,13 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 
 	for i := range w.propCollectors {
 		if err := w.propCollectors[i].Add(key, value); err != nil {
+			w.err = err
 			return err
 		}
 	}
 	for i := range w.blockPropCollectors {
 		if err := w.blockPropCollectors[i].Add(key, value); err != nil {
+			w.err = err
 			return err
 		}
 	}
@@ -469,6 +471,7 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 
 	for i := range w.propCollectors {
 		if err := w.propCollectors[i].Add(key, value); err != nil {
+			w.err = err
 			return err
 		}
 	}
@@ -629,7 +632,6 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 	if !shouldFlush(key, value, w.curWriterState.dataBlock, w.blockSize, w.blockSizeThreshold) {
 		return nil
 	}
-
 	prevWriterState := w.curWriterState
 	w.curWriterState = nil
 
@@ -906,10 +908,12 @@ func (w *Writer) Close() (err error) {
 		}
 		var bhp BlockHandleWithProperties
 		if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
+			w.err = err
 			return err
 		}
 		prevKey := base.DecodeInternalKey(w.curWriterState.dataBlock.curKey)
 		if err = w.addIndexEntry(prevKey, InternalKey{}, bhp, w.curWriterState); err != nil {
+			w.err = err
 			return err
 		}
 	}
@@ -1019,6 +1023,7 @@ func (w *Writer) Close() (err error) {
 		userProps := make(map[string]string)
 		for i := range w.propCollectors {
 			if err := w.propCollectors[i].Finish(userProps); err != nil {
+				w.err = err
 				return err
 			}
 		}
@@ -1029,6 +1034,7 @@ func (w *Writer) Close() (err error) {
 			buf, err :=
 				w.blockPropCollectors[i].FinishTable(scratch)
 			if err != nil {
+				w.err = err
 				return err
 			}
 			var prop string
