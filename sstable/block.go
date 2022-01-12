@@ -417,20 +417,37 @@ func (i *blockIter) readEntryOrSkipIfOlderVersion() bool {
 		ptr = unsafe.Pointer(uintptr(ptr) + 5)
 	}
 
+	var keyKind InternalKeyKind
+	if unshared >= 8 {
+		keyKind = InternalKeyKind(
+			(*[manual.MaxArrayLen]byte)(ptr)[unshared-8])
+	} else {
+		offsetFromRear := 8 - unshared
+		keyKind = InternalKeyKind(
+			i.fullKey[:shared][shared-offsetFromRear])
+	}
 	// If this is an older version, the prefix must be the same. Eventually we
 	// will either find a DEL with the same prefix, or a different prefix.
 	// - DEL case: The shared part could include parts of the suffix of the preceding key.
 	// - Different prefix: The shared part would differ in parts of the prefix.
 	// The first case requires us to construct the fullKey here.
-	unsharedKey := getBytes(ptr, int(unshared))
-	i.fullKey = append(i.fullKey[:shared], unsharedKey...)
+	// The following change is a HACK to ignore the first case, since there are
+	// ways to work around it when writing the sstable.
+	/*
+		unsharedKey := getBytes(ptr, int(unshared))
+		i.fullKey = append(i.fullKey[:shared], unsharedKey...)
+	*/
 
-	if i.fullKey[len(i.fullKey)-8] == byte(InternalKeyKindSet) &&
+	if /*i.fullKey[len(i.fullKey)-8] == byte(InternalKeyKindSet) &&*/ keyKind == InternalKeyKindSet &&
 		(*[manual.MaxArrayLen]byte)(unsafe.Pointer(uintptr(ptr) + uintptr(unshared)))[0] ==
 			byte(valueHandlePrefix) {
+		// unsharedKey := getBytes(ptr, int(unshared))
+		// i.fullKey = append(i.fullKey[:shared], unsharedKey...)
 		i.nextOffset = int32(uintptr(ptr)-uintptr(i.ptr)) + int32(unshared) + int32(value)
 		return false
 	}
+	unsharedKey := getBytes(ptr, int(unshared))
+	i.fullKey = append(i.fullKey[:shared], unsharedKey...)
 
 	if shared == 0 {
 		// Provide stability for the key across positioning calls if the key
