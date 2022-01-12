@@ -238,7 +238,7 @@ func NewL0Sublevels(
 		keys = append(keys, intervalKey{key: f.Smallest.UserKey})
 		keys = append(keys, intervalKey{
 			key:       f.Largest.UserKey,
-			isLargest: f.Largest.Trailer != base.InternalKeyRangeDeleteSentinel,
+			isLargest: !f.Largest.IsExclusiveSentinel(),
 		})
 	}
 	keys = sortAndDedup(keys, cmp)
@@ -269,7 +269,7 @@ func NewL0Sublevels(
 					cmp,
 					intervalKey{
 						key:       f.Largest.UserKey,
-						isLargest: f.Largest.Trailer != base.InternalKeyRangeDeleteSentinel},
+						isLargest: !f.Largest.IsExclusiveSentinel()},
 					keys[f.minIntervalIndex+index]) <= 0
 			})
 		if f.maxIntervalIndex == len(keys) {
@@ -381,7 +381,7 @@ func (s *L0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 	// compacting.
 	for _, c := range inProgress {
 		startIK := intervalKey{key: c.Smallest.UserKey, isLargest: false}
-		endIK := intervalKey{key: c.Largest.UserKey, isLargest: c.Largest.Trailer != base.InternalKeyRangeDeleteSentinel}
+		endIK := intervalKey{key: c.Largest.UserKey, isLargest: !c.Largest.IsExclusiveSentinel()}
 		start := sort.Search(len(s.orderedIntervals), func(i int) bool {
 			return intervalKeyCompare(s.cmp, s.orderedIntervals[i].startKey, startIK) >= 0
 		})

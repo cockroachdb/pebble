@@ -641,9 +641,9 @@ L1
 ----
 mem: 1
 1:
-  000004:[a-a]
-  000005:[a-a]
-  000006:[a-a]
+  000004:[a#3,SET-a#3,SET]
+  000005:[a#2,SET-a#2,SET]
+  000006:[a#1,SET-a#1,SET]
 
 get seq=1
 a
@@ -720,9 +720,9 @@ L1
 ----
 mem: 1
 1:
-  000004:[a-a]
-  000005:[a-a]
-  000006:[a-a]
+  000004:[a#3,MERGE-a#3,MERGE]
+  000005:[a#2,MERGE-a#2,MERGE]
+  000006:[a#1,MERGE-a#1,MERGE]
 
 get seq=1
 a
@@ -803,11 +803,11 @@ L3
 ----
 mem: 1
 1:
-  000004:[a-a]
+  000004:[a#3,MERGE-a#3,MERGE]
 2:
-  000005:[a-a]
+  000005:[a#2,MERGE-a#2,MERGE]
 3:
-  000006:[a-a]
+  000006:[a#1,MERGE-a#1,MERGE]
 
 get seq=1
 a
@@ -916,13 +916,13 @@ L3
 ----
 mem: 1
 0.0:
-  000004:[a-d]
+  000004:[a#4,SET-d#4,SET]
 1:
-  000005:[a-d]
+  000005:[a#3,SET-d#3,SET]
 2:
-  000006:[a-d]
+  000006:[a#2,RANGEDEL-d#2,SET]
 3:
-  000007:[a-d]
+  000007:[a#1,SET-d#1,SET]
 
 get seq=2
 a
@@ -1042,11 +1042,11 @@ L2
 ----
 mem: 1
 1:
-  000004:[a-b]
-  000005:[b-c]
-  000006:[c-d]
+  000004:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000005:[b#2,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000006:[c#2,RANGEDEL-d#72057594037927935,RANGEDEL]
 2:
-  000007:[a-d]
+  000007:[a#1,SET-d#1,SET]
 
 get seq=2
 a
@@ -1138,9 +1138,9 @@ L2
 ----
 mem: 1
 1:
-  000004:[a-b]
+  000004:[a#1,RANGEDEL-b#72057594037927935,RANGEDEL]
 2:
-  000005:[a-a]
+  000005:[a#2,SET-a#2,SET]
 
 get seq=3
 a
@@ -1163,23 +1163,23 @@ L0
 ----
 mem: 1
 0.1:
-  000005:[a-a]
-  000006:[c-c]
+  000005:[a#2,SET-a#2,SET]
+  000006:[c#3,SET-c#3,SET]
 0.0:
-  000004:[a-e]
+  000004:[a#1,RANGEDEL-e#72057594037927935,RANGEDEL]
 
 compact a-e
 ----
 1:
-  000007:[a-c]
-  000008:[c-e]
+  000007:[a#2,SET-c#72057594037927935,RANGEDEL]
+  000008:[c#3,SET-e#72057594037927935,RANGEDEL]
 
 compact d-e
 ----
 1:
-  000007:[a-c]
+  000007:[a#2,SET-c#72057594037927935,RANGEDEL]
 2:
-  000008:[c-e]
+  000008:[c#3,SET-e#72057594037927935,RANGEDEL]
 
 iter seq=4
 seek-ge b
@@ -1201,23 +1201,23 @@ L0
 ----
 mem: 1
 0.1:
-  000005:[a-a]
-  000006:[c-c]
+  000005:[a#2,SET-a#2,SET]
+  000006:[c#3,SET-c#3,SET]
 0.0:
-  000004:[a-e]
+  000004:[a#1,RANGEDEL-e#72057594037927935,RANGEDEL]
 
 compact a-e
 ----
 1:
-  000007:[a-c]
-  000008:[c-e]
+  000007:[a#2,SET-c#72057594037927935,RANGEDEL]
+  000008:[c#3,SET-e#72057594037927935,RANGEDEL]
 
 compact a-b
 ----
 1:
-  000008:[c-e]
+  000008:[c#3,SET-e#72057594037927935,RANGEDEL]
 2:
-  000007:[a-c]
+  000007:[a#2,SET-c#72057594037927935,RANGEDEL]
 
 iter seq=4
 seek-lt d
@@ -1247,29 +1247,29 @@ L2
 ----
 mem: 1
 0.1:
-  000005:[a-a]
-  000006:[c-c]
+  000005:[a#2,SET-a#2,SET]
+  000006:[c#3,SET-c#3,SET]
 0.0:
-  000004:[a-e]
+  000004:[a#1,RANGEDEL-e#72057594037927935,RANGEDEL]
 2:
-  000007:[d-d]
+  000007:[d#0,SET-d#0,SET]
 
 compact a-b
 ----
 1:
-  000008:[a-c]
-  000009:[c-d]
-  000010:[d-e]
+  000008:[a#2,SET-c#72057594037927935,RANGEDEL]
+  000009:[c#3,SET-d#72057594037927935,RANGEDEL]
+  000010:[d#1,RANGEDEL-e#72057594037927935,RANGEDEL]
 2:
-  000007:[d-d]
+  000007:[d#0,SET-d#0,SET]
 
 compact d-e
 ----
 1:
-  000008:[a-c]
+  000008:[a#2,SET-c#72057594037927935,RANGEDEL]
+  000009:[c#3,SET-d#72057594037927935,RANGEDEL]
 3:
-  000013:[c-d]
-  000014:[d-e]
+  000011:[d#1,RANGEDEL-e#72057594037927935,RANGEDEL]
 
 get seq=4
 c
@@ -1278,11 +1278,12 @@ c:v
 
 compact a-b L1
 ----
+1:
+  000009:[c#3,SET-d#72057594037927935,RANGEDEL]
 2:
-  000015:[a-c]
+  000008:[a#2,SET-c#72057594037927935,RANGEDEL]
 3:
-  000013:[c-d]
-  000014:[d-e]
+  000011:[d#1,RANGEDEL-e#72057594037927935,RANGEDEL]
 
 get seq=4
 c
@@ -1306,34 +1307,34 @@ L2
 ----
 mem: 1
 0.1:
-  000005:[a-a]
-  000006:[c-c]
+  000005:[a#2,SET-a#2,SET]
+  000006:[c#3,SET-c#3,SET]
 0.0:
-  000004:[a-e]
-  000007:[f-f]
+  000004:[a#1,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000007:[f#4,SET-f#4,SET]
 2:
-  000008:[d-d]
+  000008:[d#0,SET-d#0,SET]
 
 compact a-b
 ----
 0.0:
-  000007:[f-f]
+  000007:[f#4,SET-f#4,SET]
 1:
-  000009:[a-c]
-  000010:[c-d]
-  000011:[d-e]
+  000009:[a#2,SET-c#72057594037927935,RANGEDEL]
+  000010:[c#3,SET-d#72057594037927935,RANGEDEL]
+  000011:[d#1,RANGEDEL-e#72057594037927935,RANGEDEL]
 2:
-  000008:[d-d]
+  000008:[d#0,SET-d#0,SET]
 
 compact d-e
 ----
 0.0:
-  000007:[f-f]
+  000007:[f#4,SET-f#4,SET]
 1:
-  000009:[a-c]
+  000009:[a#2,SET-c#72057594037927935,RANGEDEL]
+  000010:[c#3,SET-d#72057594037927935,RANGEDEL]
 3:
-  000014:[c-d]
-  000015:[d-e]
+  000012:[d#1,RANGEDEL-e#72057594037927935,RANGEDEL]
 
 get seq=4
 c
@@ -1343,20 +1344,20 @@ c:v
 compact f-f L0
 ----
 1:
-  000009:[a-c]
-  000007:[f-f]
+  000009:[a#2,SET-c#72057594037927935,RANGEDEL]
+  000010:[c#3,SET-d#72057594037927935,RANGEDEL]
+  000007:[f#4,SET-f#4,SET]
 3:
-  000014:[c-d]
-  000015:[d-e]
+  000012:[d#1,RANGEDEL-e#72057594037927935,RANGEDEL]
 
 compact a-f L1
 ----
 2:
-  000016:[a-c]
-  000017:[f-f]
+  000013:[a#2,SET-c#72057594037927935,RANGEDEL]
+  000014:[c#3,SET-d#72057594037927935,RANGEDEL]
+  000015:[f#4,SET-f#4,SET]
 3:
-  000014:[c-d]
-  000015:[d-e]
+  000012:[d#1,RANGEDEL-e#72057594037927935,RANGEDEL]
 
 get seq=4
 c
@@ -1376,13 +1377,13 @@ L2
 ----
 mem: 1
 0.1:
-  000005:[a-f]
+  000005:[a#4,RANGEDEL-f#72057594037927935,RANGEDEL]
 0.0:
-  000004:[a-f]
+  000004:[a#3,RANGEDEL-f#72057594037927935,RANGEDEL]
 1:
-  000006:[b-e]
+  000006:[b#2,RANGEDEL-e#72057594037927935,RANGEDEL]
 2:
-  000007:[c-d]
+  000007:[c#1,RANGEDEL-d#72057594037927935,RANGEDEL]
 
 wait-pending-table-stats
 000007
@@ -1439,13 +1440,13 @@ L3
 ----
 mem: 1
 0.0:
-  000004:[a-d]
+  000004:[a#4,SET-d#4,SET]
 1:
-  000005:[a-d]
+  000005:[a#3,SET-d#3,SET]
 2:
-  000006:[a-d]
+  000006:[a#2,RANGEDEL-d#2,SET]
 3:
-  000007:[a-d]
+  000007:[a#1,SET-d#1,SET]
 
 wait-pending-table-stats
 000007
@@ -1461,7 +1462,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 1
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 787
+range-deletions-bytes-estimate: 42
 
 wait-pending-table-stats
 000005
@@ -1497,14 +1498,14 @@ L2
 ----
 mem: 1
 0.1:
-  000004:[a-z]
+  000004:[a#6,RANGEDEL-z#72057594037927935,RANGEDEL]
 0.0:
-  000005:[a-d]
-  000006:[e-z]
+  000005:[a#5,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000006:[e#4,RANGEDEL-z#72057594037927935,RANGEDEL]
 1:
-  000007:[a-c]
+  000007:[a#2,SET-c#2,SET]
 2:
-  000008:[x-x]
+  000008:[x#1,SET-x#1,SET]
 
 wait-pending-table-stats
 000005

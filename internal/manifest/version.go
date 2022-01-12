@@ -242,22 +242,44 @@ func SortBySmallest(files []*FileMetadata, cmp Compare) {
 	sort.Sort(bySmallest{files, cmp})
 }
 
-func overlaps(iter LevelIterator, cmp Compare, start, end []byte) LevelSlice {
+func overlaps(iter LevelIterator, cmp Compare, start, end []byte, exclusiveEnd bool) LevelSlice {
 	startIter := iter.Clone()
 	startIter.SeekGE(cmp, start)
+
+	// SeekGE compares user keys. The user key `start` may be equal to the
+	// f.Largest because f.Largest is a range deletion sentinel, indicating that
+	// the user key `start` is NOT contained within the file f. If that's the
+	// case, we can narrow the overlapping bounds to exclude the file with the
+	// sentinel.
+	if f := startIter.Current(); f != nil && f.Largest.IsExclusiveSentinel() &&
+		cmp(f.Largest.UserKey, start) == 0 {
+		startIter.Next()
+	}
 
 	endIter := iter.Clone()
 	endIter.SeekGE(cmp, end)
 
-	// endIter is now pointing at the *first* file with a largest key >= end.
-	// If there are multiple files including the user key `end`, we want all
-	// of them, so move forward.
-	for endIter.Current() != nil && cmp(endIter.Current().Largest.UserKey, end) == 0 {
-		endIter.Next()
+	if !exclusiveEnd {
+		// endIter is now pointing at the *first* file with a largest key >= end.
+		// If there are multiple files including the user key `end`, we want all
+		// of them, so move forward.
+		for f := endIter.Current(); f != nil && cmp(f.Largest.UserKey, end) == 0; {
+			f = endIter.Next()
+		}
 	}
+
 	// LevelSlice uses inclusive bounds, so if we seeked to the end sentinel
 	// or nexted too far because Largest.UserKey equaled `end`, go back.
-	if !endIter.iter.valid() || cmp(endIter.Current().Smallest.UserKey, end) > 0 {
+	//
+	// Consider !exclusiveEnd and end = 'f', with the following file bounds:
+	//
+	//     [b,d] [e, f] [f, f] [g, h]
+	//
+	// the above for loop will Next until it arrives at [g, h]. We need to
+	// observe that g > f, and Prev to the file with bounds [f, f].
+	if !endIter.iter.valid() {
+		endIter.Prev()
+	} else if c := cmp(endIter.Current().Smallest.UserKey, end); c > 0 || c == 0 && exclusiveEnd {
 		endIter.Prev()
 	}
 
@@ -484,7 +506,8 @@ func (v *Version) InitL0Sublevels(
 func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
 	iter := v.Levels[level].Iter()
 	if level > 0 {
-		overlaps := v.Overlaps(level, cmp, m.Smallest.UserKey, m.Largest.UserKey)
+		overlaps := v.Overlaps(level, cmp, m.Smallest.UserKey, m.Largest.UserKey,
+			m.Largest.IsExclusiveSentinel())
 		iter = overlaps.Iter()
 	}
 	for f := iter.First(); f != nil; f = iter.Next() {
@@ -503,7 +526,7 @@ func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
 // and the computation is repeated until [start, end] stabilizes.
 // The returned files are a subsequence of the input files, i.e., the ordering
 // is not changed.
-func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelSlice {
+func (v *Version) Overlaps(level int, cmp Compare, start, end []byte, exclusiveEnd bool) LevelSlice {
 	if level == 0 {
 		// Indices that have been selected as overlapping.
 		l0 := v.Levels[level]
@@ -520,11 +543,11 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelSlice
 				}
 				smallest := meta.Smallest.UserKey
 				largest := meta.Largest.UserKey
-				if cmp(largest, start) < 0 {
+				if c := cmp(largest, start); c < 0 || c == 0 && meta.Largest.IsExclusiveSentinel() {
 					// meta is completely before the specified range; skip it.
 					continue
 				}
-				if cmp(smallest, end) > 0 {
+				if c := cmp(smallest, end); c > 0 || c == 0 && exclusiveEnd {
 					// meta is completely after the specified range; skip it.
 					continue
 				}
@@ -571,7 +594,7 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte) LevelSlice
 		return slice
 	}
 
-	return overlaps(v.Levels[level].Iter(), cmp, start, end)
+	return overlaps(v.Levels[level].Iter(), cmp, start, end, exclusiveEnd)
 }
 
 // CheckOrdering checks that the files are consistent with respect to

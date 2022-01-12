@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"fmt"
 	"io"
 	"sort"
 	"strconv"
@@ -456,9 +457,9 @@ func (i *compactionIter) skipInStripe() {
 
 func (i *compactionIter) iterNext() bool {
 	i.iterKey, i.iterValue = i.iter.Next()
-	// We should never see a range delete sentinel in the compaction input.
-	if i.iterKey != nil && i.iterKey.Trailer == InternalKeyRangeDeleteSentinel {
-		panic("pebble: unexpected range delete sentinel in compaction input")
+	// We should never see an exclusive sentinel in the compaction input.
+	if i.iterKey != nil && i.iterKey.IsExclusiveSentinel() {
+		panic(fmt.Sprintf("pebble: unexpected exclusive sentinel in compaction input, trailer = %x", i.iterKey.Trailer))
 	}
 	return i.iterKey != nil
 }

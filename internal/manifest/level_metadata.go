@@ -72,7 +72,8 @@ func (lm *LevelMetadata) Slice() LevelSlice {
 // key-sorted (eg, non-L0).
 func (lm *LevelMetadata) Find(cmp base.Compare, m *FileMetadata) *LevelFile {
 	// TODO(jackson): Add an assertion that lm is key-sorted.
-	o := overlaps(lm.Iter(), cmp, m.Smallest.UserKey, m.Largest.UserKey)
+	o := overlaps(lm.Iter(), cmp, m.Smallest.UserKey,
+		m.Largest.UserKey, m.Largest.IsExclusiveSentinel())
 	iter := o.Iter()
 	for f := iter.First(); f != nil; f = iter.Next() {
 		if f == m {

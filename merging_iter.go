@@ -400,7 +400,7 @@ func (m *mergingIter) switchToMinHeap() {
 		// bound.  Instead, we seek it to >= f and Next from there.
 
 		if l.iterKey == nil || (m.lower != nil && l.isSyntheticIterBoundsKey &&
-			l.iterKey.Trailer == InternalKeyRangeDeleteSentinel &&
+			l.iterKey.IsExclusiveSentinel() &&
 			m.heap.cmp(l.iterKey.UserKey, m.lower) <= 0) {
 			if m.lower != nil {
 				l.iterKey, l.iterValue = l.iter.SeekGE(m.lower, false /* trySeekUsingNext */)
@@ -475,8 +475,7 @@ func (m *mergingIter) switchToMaxHeap() {
 		// bound.  Instead, we seek it to < g, and Prev from there.
 
 		if l.iterKey == nil || (m.upper != nil && l.isSyntheticIterBoundsKey &&
-			l.iterKey.Trailer == InternalKeyRangeDeleteSentinel &&
-			m.heap.cmp(l.iterKey.UserKey, m.upper) >= 0) {
+			l.iterKey.IsExclusiveSentinel() && m.heap.cmp(l.iterKey.UserKey, m.upper) >= 0) {
 			if m.upper != nil {
 				l.iterKey, l.iterValue = l.iter.SeekLT(m.upper)
 			} else {

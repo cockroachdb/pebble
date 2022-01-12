@@ -341,7 +341,8 @@ func (d *DB) averageEntrySizeBeneath(
 	// summing their value sizes and entry counts.
 	var fileSum, keySum, valSum, entryCount uint64
 	for l := level + 1; l < numLevels; l++ {
-		overlaps := v.Overlaps(l, d.cmp, meta.Smallest.UserKey, meta.Largest.UserKey)
+		overlaps := v.Overlaps(l, d.cmp, meta.Smallest.UserKey,
+			meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
 			err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
@@ -382,7 +383,8 @@ func (d *DB) averageEntrySizeBeneath(
 func (d *DB) estimateSizeBeneath(
 	v *version, level int, meta *fileMetadata, start, end []byte,
 ) (estimate uint64, hintSeqNum uint64, err error) {
-	// Find all files in lower levels that overlap with the deleted range.
+	// Find all files in lower levels that overlap with the deleted range
+	// [start, end).
 	//
 	// An overlapping file might be completely contained by the range
 	// tombstone, in which case we can count the entire file size in
@@ -392,11 +394,12 @@ func (d *DB) estimateSizeBeneath(
 	// additional I/O to read the file's index blocks.
 	hintSeqNum = math.MaxUint64
 	for l := level + 1; l < numLevels; l++ {
-		overlaps := v.Overlaps(l, d.cmp, start, end)
+		overlaps := v.Overlaps(l, d.cmp, start, end, true /* exclusiveEnd */)
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
-			if d.cmp(start, file.Smallest.UserKey) <= 0 &&
-				d.cmp(file.Largest.UserKey, end) <= 0 {
+			startCmp := d.cmp(start, file.Smallest.UserKey)
+			endCmp := d.cmp(file.Largest.UserKey, end)
+			if startCmp <= 0 && (endCmp < 0 || endCmp == 0 && file.Largest.IsExclusiveSentinel()) {
 				// The range fully contains the file, so skip looking it up in
 				// table cache/looking at its indexes and add the full file size.
 				estimate += file.Size

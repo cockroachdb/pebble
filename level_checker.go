@@ -128,7 +128,7 @@ func (m *simpleMergingIter) step() bool {
 	item := &m.heap.items[0]
 	l := &m.levels[item.index]
 	// Sentinels are not relevant for this point checking.
-	if item.key.Trailer != InternalKeyRangeDeleteSentinel && item.key.Visible(m.snapshot) {
+	if !item.key.IsExclusiveSentinel() && item.key.Visible(m.snapshot) {
 		m.numPoints++
 		keyChanged := m.heap.cmp(item.key.UserKey, m.lastKey.UserKey) != 0
 		if !keyChanged {
