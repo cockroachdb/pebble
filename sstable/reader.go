@@ -576,7 +576,7 @@ func (i *singleLevelIterator) seekGEHelper(
 			return ikey, val
 		}
 	}
-	return i.skipForward(true)
+	return i.skipForward(true, false)
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -774,7 +774,7 @@ func (i *singleLevelIterator) firstInternal() (*InternalKey, []byte) {
 		// Else fall through to skipForward.
 	}
 
-	return i.skipForward(true)
+	return i.skipForward(true, false)
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -854,7 +854,32 @@ func (i *singleLevelIterator) Next() (*InternalKey, []byte) {
 		}
 		return key, val
 	}
-	return i.skipForward(true)
+	return i.skipForward(true, false)
+}
+
+// Best-effort for now. Can return key with same prefix.
+func (i *singleLevelIterator) NextSkipOlderVersions() (*InternalKey, []byte) {
+	if i.vbReader == nil {
+		return i.Next()
+	}
+	if i.exhaustedBounds == +1 {
+		panic("Next called even though exhausted upper bound")
+	}
+	i.exhaustedBounds = 0
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.boundsCmp = 0
+
+	if i.err != nil {
+		return nil, nil
+	}
+	if key, val := i.valueExtract(i.data.nextSkipOlderVersions()); key != nil {
+		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
+			i.exhaustedBounds = +1
+			return nil, nil
+		}
+		return key, val
+	}
+	return i.skipForward(true, true)
 }
 
 // NextLazyValue is a temporary hack for testing and benchmarking -- it does
@@ -884,7 +909,7 @@ func (i *singleLevelIterator) NextLazyValue() *InternalKey {
 		return key
 	}
 	var key *InternalKey
-	key, i.val = i.skipForward(false)
+	key, i.val = i.skipForward(false, false)
 	if key != nil {
 		i.valNeedsReader = i.vbReader != nil && key.Kind() == InternalKeyKindSet
 	}
@@ -941,7 +966,8 @@ func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
 	return i.skipBackward()
 }
 
-func (i *singleLevelIterator) skipForward(extractValue bool) (*InternalKey, []byte) {
+func (i *singleLevelIterator) skipForward(
+	extractValue bool, skipOlderVersions bool) (*InternalKey, []byte) {
 	for {
 		var key *InternalKey
 		if key, _ = i.index.Next(); key == nil {
@@ -971,7 +997,11 @@ func (i *singleLevelIterator) skipForward(extractValue bool) (*InternalKey, []by
 			}
 			continue
 		}
-		key, val := i.data.First()
+		fn := i.data.First
+		if skipOlderVersions {
+			fn = i.data.firstSkipOlderVersions
+		}
+		key, val := fn()
 		if extractValue {
 			key, val = i.valueExtract(key, val)
 		}

@@ -10,16 +10,16 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/manual"
 )
 
 // NB: blockWriter supports addInlineValuePrefix for efficiency reasons, in
 // that we don't want the caller to have to copy the value to a new slice in
 // order to add the prefix. It does not know about valueHandlePrefix since the
 // serialization of valueHandle includes that prefix. Similarly, blockReader
-// knows nothing about these prefixes since the value read from a block that
-// has such prefixes is passed to valueBlockReader for interpretation. A
-// cleaner abstraction would remove all knowledge of the prefix from this
-// file.
+// knows little about these prefixes since the value read from a block that
+// has such prefixes is passed to valueBlockReader for interpretation
+// (NextInlineValue is the exception).
 
 func uvarintLen(v uint32) int {
 	i := 0
@@ -346,6 +346,105 @@ func (i *blockIter) resetForReuse() blockIter {
 		cachedBuf: i.cachedBuf[:0],
 		data:      nil,
 	}
+}
+
+// Returns false if older version.
+func (i *blockIter) readEntryOrSkipIfOlderVersion() bool {
+	ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(i.offset))
+
+	// This is an ugly performance hack. Reading entries from blocks is one of
+	// the inner-most routines and decoding the 3 varints per-entry takes
+	// significant time. Neither go1.11 or go1.12 will inline decodeVarint for
+	// us, so we do it manually. This provides a 10-15% performance improvement
+	// on blockIter benchmarks on both go1.11 and go1.12.
+	//
+	// TODO(peter): remove this hack if go:inline is ever supported.
+
+	var shared uint32
+	if a := *((*uint8)(ptr)); a < 128 {
+		shared = uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 1)
+	} else if a, b := a&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); b < 128 {
+		shared = uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 2)
+	} else if b, c := b&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); c < 128 {
+		shared = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 3)
+	} else if c, d := c&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); d < 128 {
+		shared = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 4)
+	} else {
+		d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
+		shared = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 5)
+	}
+
+	var unshared uint32
+	if a := *((*uint8)(ptr)); a < 128 {
+		unshared = uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 1)
+	} else if a, b := a&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); b < 128 {
+		unshared = uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 2)
+	} else if b, c := b&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); c < 128 {
+		unshared = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 3)
+	} else if c, d := c&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); d < 128 {
+		unshared = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 4)
+	} else {
+		d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
+		unshared = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 5)
+	}
+
+	var value uint32
+	if a := *((*uint8)(ptr)); a < 128 {
+		value = uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 1)
+	} else if a, b := a&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 1))); b < 128 {
+		value = uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 2)
+	} else if b, c := b&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 2))); c < 128 {
+		value = uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 3)
+	} else if c, d := c&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 3))); d < 128 {
+		value = uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 4)
+	} else {
+		d, e := d&0x7f, *((*uint8)(unsafe.Pointer(uintptr(ptr) + 4)))
+		value = uint32(e)<<28 | uint32(d)<<21 | uint32(c)<<14 | uint32(b)<<7 | uint32(a)
+		ptr = unsafe.Pointer(uintptr(ptr) + 5)
+	}
+
+	// If this is an older version, the prefix must be the same. Eventually we
+	// will either find a DEL with the same prefix, or a different prefix.
+	// - DEL case: The shared part could include parts of the suffix of the preceding key.
+	// - Different prefix: The shared part would differ in parts of the prefix.
+	// The first case requires us to construct the fullKey here.
+	unsharedKey := getBytes(ptr, int(unshared))
+	i.fullKey = append(i.fullKey[:shared], unsharedKey...)
+
+	if i.fullKey[len(i.fullKey)-8] == byte(InternalKeyKindSet) &&
+		(*[manual.MaxArrayLen]byte)(unsafe.Pointer(uintptr(ptr) + uintptr(unshared)))[0] ==
+			byte(valueHandlePrefix) {
+		i.nextOffset = int32(uintptr(ptr)-uintptr(i.ptr)) + int32(unshared) + int32(value)
+		return false
+	}
+
+	if shared == 0 {
+		// Provide stability for the key across positioning calls if the key
+		// doesn't share a prefix with the previous key. This removes requiring the
+		// key to be copied if the caller knows the block has a restart interval of
+		// 1. An important example of this is range-del blocks.
+		i.key = unsharedKey
+	} else {
+		i.key = i.fullKey
+	}
+	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
+	i.val = getBytes(ptr, int(value))
+	i.nextOffset = int32(uintptr(ptr)-uintptr(i.ptr)) + int32(value)
+	return true
 }
 
 func (i *blockIter) readEntry() {
@@ -799,6 +898,25 @@ func (i *blockIter) First() (*InternalKey, []byte) {
 	return &i.ikey, i.val
 }
 
+func (i *blockIter) firstSkipOlderVersions() (*InternalKey, []byte) {
+	i.offset = 0
+	if !i.Valid() {
+		return nil, nil
+	}
+	i.clearCache()
+	for {
+		if !i.readEntryOrSkipIfOlderVersion() {
+			i.offset = i.nextOffset
+			if !i.Valid() {
+				return nil, nil
+			}
+			continue
+		}
+		i.decodeInternalKey(i.key)
+		return &i.ikey, i.val
+	}
+}
+
 // Last implements internalIterator.Last, as documented in the pebble package.
 func (i *blockIter) Last() (*InternalKey, []byte) {
 	// Seek forward from the last restart point.
@@ -855,6 +973,45 @@ func (i *blockIter) Next() (*InternalKey, []byte) {
 		i.ikey.UserKey = nil
 	}
 	return &i.ikey, i.val
+}
+
+func (i *blockIter) nextSkipOlderVersions() (*InternalKey, []byte) {
+	if len(i.cachedBuf) > 0 {
+		// We're switching from reverse iteration to forward iteration. We need to
+		// populate i.fullKey with the current key we're positioned at so that
+		// readEntry() can use i.fullKey for key prefix decompression. Note that we
+		// don't know whether i.key is backed by i.cachedBuf or i.fullKey (if
+		// SeekLT was the previous call, i.key may be backed by i.fullKey), but
+		// copying into i.fullKey works for both cases.
+		//
+		// TODO(peter): Rather than clearing the cache, we could instead use the
+		// cache until it is exhausted. This would likely be faster than falling
+		// through to the normal forward iteration code below.
+		i.fullKey = append(i.fullKey[:0], i.key...)
+		i.clearCache()
+	}
+
+	for {
+		i.offset = i.nextOffset
+		if !i.Valid() {
+			return nil, nil
+		}
+		if !i.readEntryOrSkipIfOlderVersion() {
+			continue
+		}
+		// Manually inlined version of i.decodeInternalKey(i.key).
+		if n := len(i.key) - 8; n >= 0 {
+			i.ikey.Trailer = binary.LittleEndian.Uint64(i.key[n:])
+			i.ikey.UserKey = i.key[:n:n]
+			if i.globalSeqNum != 0 {
+				i.ikey.SetSeqNum(i.globalSeqNum)
+			}
+		} else {
+			i.ikey.Trailer = uint64(InternalKeyKindInvalid)
+			i.ikey.UserKey = nil
+		}
+		return &i.ikey, i.val
+	}
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble

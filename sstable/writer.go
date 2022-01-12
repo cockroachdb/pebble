@@ -299,8 +299,10 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		w.props.NumValuesInValueBlocks++
 		n := encodeValueHandle(w.tmp[:], vh)
 		// The encoded value handle includes the valueHandlePrefix.
+		// fmt.Printf("     older: block num: %d, current-bytes:%d\n", w.indexBlock.nEntries, len(w.block.buf))
 		w.block.addWithOptionalInlineValuePrefix(key, w.tmp[:n], false)
 	} else {
+		// fmt.Printf("new prefix: block num: %d, current-bytes:%d\n", w.indexBlock.nEntries, len(w.block.buf))
 		w.block.addWithOptionalInlineValuePrefix(key, value, isSetKey && w.valueBlockWriter != nil)
 	}
 

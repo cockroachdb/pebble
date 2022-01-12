@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -867,7 +868,7 @@ func TestValidateBlockChecksums(t *testing.T) {
 // TODO(sumeer): test other key kinds; add unit tests for the lower-level
 // components.
 func TestValueBlocks(t *testing.T) {
-	for _, bs := range []int{1, 20, 4096} {
+	for _, bs := range []int{4096} {
 		t.Run(fmt.Sprintf("blockSize=%d", bs), func(t *testing.T) {
 			mem := vfs.NewMem()
 			f0, err := mem.Create("test")
@@ -884,33 +885,38 @@ func TestValueBlocks(t *testing.T) {
 				v []byte
 			}
 			var kvPairs []kvPair
-			writeKeyValue := func(k []byte, v string) {
+			var latestVersionKVPairs []kvPair
+			writeKeyValue := func(k []byte, v string, latest bool) {
 				ikey := base.MakeInternalKey(k, 0, InternalKeyKindSet)
 				require.NoError(t, w.Add(ikey, []byte(v)))
-				kvPairs = append(kvPairs, kvPair{ikey.Clone(), []byte(v)})
+				kv := kvPair{ikey.Clone(), []byte(v)}
+				kvPairs = append(kvPairs, kv)
+				if latest {
+					latestVersionKVPairs = append(latestVersionKVPairs, kv)
+				}
 			}
 			var buf [10]byte
 			ks := testkeys.Alpha(5)
 			n := testkeys.WriteKeyAt(buf[:], ks, 0, 10)
-			writeKeyValue(buf[:n], "value_0_10")
+			writeKeyValue(buf[:n], "value_0_10", true)
 			n = testkeys.WriteKeyAt(buf[:], ks, 1, 20)
-			writeKeyValue(buf[:n], "value_1_20")
+			writeKeyValue(buf[:n], "value_1_20", true)
 			n = testkeys.WriteKeyAt(buf[:], ks, 1, 10)
-			writeKeyValue(buf[:n], "value_1_10")
+			writeKeyValue(buf[:n], "value_1_10", false)
 			n = testkeys.WriteKeyAt(buf[:], ks, 1, 9)
-			writeKeyValue(buf[:n], "value_1_9")
+			writeKeyValue(buf[:n], "value_1_9", false)
 			n = testkeys.WriteKeyAt(buf[:], ks, 1, 8)
-			writeKeyValue(buf[:n], "value_1_8")
+			writeKeyValue(buf[:n], "value_1_8", false)
 			n = testkeys.WriteKeyAt(buf[:], ks, 1, 7)
-			writeKeyValue(buf[:n], "value_1_7")
+			writeKeyValue(buf[:n], "value_1_7", false)
 			n = testkeys.WriteKeyAt(buf[:], ks, 1, 6)
-			writeKeyValue(buf[:n], "value_1_6")
+			writeKeyValue(buf[:n], "value_1_6", false)
 			n = testkeys.WriteKeyAt(buf[:], ks, 1, 3)
-			writeKeyValue(buf[:n], "value_1_3")
+			writeKeyValue(buf[:n], "value_1_3", false)
 			n = testkeys.WriteKeyAt(buf[:], ks, 2, 42)
-			writeKeyValue(buf[:n], "value_2_42")
+			writeKeyValue(buf[:n], "value_2_42", true)
 			n = testkeys.WriteKeyAt(buf[:], ks, 2, 21)
-			writeKeyValue(buf[:n], "value_2_21")
+			writeKeyValue(buf[:n], "value_2_21", false)
 
 			require.NoError(t, w.Close())
 
@@ -953,6 +959,24 @@ func TestValueBlocks(t *testing.T) {
 					require.NoError(t, iter.Error())
 				})
 			}
+			t.Run("NextSkipOlderVersions", func(t *testing.T) {
+				iiter, err := r.NewIter(nil, nil)
+				require.NoError(t, err)
+				iter := iiter.(*singleLevelIterator)
+				defer iter.Close()
+				k, v := iter.SeekGE(kvPairs[0].k.UserKey)
+				i := 0
+				fmt.Printf("iterate\n")
+				for ; i < len(latestVersionKVPairs); i++ {
+					require.NotNil(t, k)
+					require.Equal(t, latestVersionKVPairs[i].k, *k)
+					require.Equal(t, latestVersionKVPairs[i].v, v)
+					fmt.Printf("%s=>%s\n", string(k.UserKey), string(v))
+					k, v = iter.NextSkipOlderVersions()
+				}
+				require.Nil(t, v)
+				require.NoError(t, iter.Error())
+			})
 		})
 	}
 }
@@ -1357,6 +1381,119 @@ func BenchmarkValueBlocksDeletedValue(b *testing.B) {
 									} else {
 										k = iter.NextLazyValue()
 									}
+									if k == nil {
+										i--
+									}
+								}
+							}
+							b.StopTimer()
+							require.NoError(b, iter.Error())
+						})
+					}
+				})
+			}
+		})
+	}
+}
+
+func BenchmarkValueBlocksNextSkipOlderVersions(b *testing.B) {
+	numKeys := 10000
+	keySize := 1000
+	valueSize := 1000
+	randVal := func(rng *rand.Rand, val []byte) {
+		const letters = "abcdefghijklmnopqrstuvwxyz"
+		const lettersLen = len(letters)
+		for i := 0; i < len(val); i++ {
+			val[i] = letters[rng.Intn(lettersLen)]
+		}
+	}
+	// These keys are unlikely to have a long shared prefix, which is probably
+	// worse than real workloads.
+	var keys [][]byte
+	{
+		rng := rand.New(rand.NewSource(0))
+		for i := 0; i < numKeys; i++ {
+			k := make([]byte, keySize)
+			randVal(rng, k)
+			keys = append(keys, k)
+		}
+		sort.Slice(keys, func(i int, j int) bool {
+			return bytes.Compare(keys[i], keys[j]) < 0
+		})
+	}
+	for _, versions := range []int{1, 2, 10, 100} {
+		b.Run(fmt.Sprintf("versions=%d", versions), func(b *testing.B) {
+			for _, restartInterval := range []int{16, 32, 64} {
+				b.Run(fmt.Sprintf("restartInterval=%d", restartInterval), func(b *testing.B) {
+					mem := vfs.NewMem()
+					f0, err := mem.Create("test")
+					require.NoError(b, err)
+					w := NewWriter(f0, WriterOptions{
+						Comparer:              testkeys.Comparer,
+						ValueBlocksAreEnabled: true,
+						BlockRestartInterval:  restartInterval,
+						// Force single level index since the prototype is limited to singleLevelIterator
+						IndexBlockSize: 1 << 30,
+						BlockSize:      32 << 10,
+					})
+					i := 0
+					rng := rand.New(rand.NewSource(0))
+					value := make([]byte, valueSize)
+					k := 0
+					for i < numKeys {
+						key := keys[k]
+						for j := 0; j < versions && i < numKeys; j++ {
+							keyWithSuffix := append(key, testkeys.Suffix(1000-j)...)
+							ikey := base.MakeInternalKey(keyWithSuffix, 0, InternalKeyKindSet)
+							randVal(rng, value)
+							require.NoError(b, w.Add(ikey, value))
+							i++
+						}
+						k++
+					}
+					numPrefixes := k
+					require.NoError(b, w.Close())
+					meta, err := w.Metadata()
+					require.NoError(b, err)
+					fmt.Printf("versions:%3d,restart-interval:%d,data-block-bytes:%9d,total-bytes:%9d,"+
+						"fraction-in-data-blocks:%.2f\n",
+						versions, restartInterval, meta.Properties.DataSize, meta.Size,
+						float64(meta.Properties.DataSize)/float64(meta.Size))
+					// !hasCache represents a situation where all the steps into a
+					// new block result in a cache miss. That is, it is reading cold
+					// data.
+					for _, hasCache := range []bool{true} {
+						b.Run(fmt.Sprintf("hasCache=%t", hasCache), func(b *testing.B) {
+							f1, err := mem.Open("test")
+							require.NoError(b, err)
+							var c *cache.Cache
+							if hasCache {
+								// Large enough to cache all blocks.
+								c = cache.New(256 << 20)
+								defer c.Unref()
+							}
+							r, err := NewReader(f1, ReaderOptions{
+								Comparer: testkeys.Comparer,
+								Cache:    c,
+							})
+							require.NoError(b, err)
+							defer r.Close()
+
+							iiter, err := r.NewIter(nil, nil)
+							require.NoError(b, err)
+							iter := iiter.(*singleLevelIterator)
+							defer iter.Close()
+							b.ResetTimer()
+							var k *InternalKey
+							for i := 0; i < b.N; i++ {
+								if k == nil {
+									if i%numPrefixes != 0 {
+										panic(fmt.Sprintf(
+											"iterator should not be exhausted %d, %d", i, b.N))
+									}
+									k, _ = iter.SeekGE([]byte(""))
+								} else {
+									k, _ = iter.NextSkipOlderVersions()
 									if k == nil {
 										i--
 									}
