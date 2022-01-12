@@ -349,8 +349,8 @@ func TestWriter_BlockProperties_Errors(t *testing.T) {
 				require.NoError(t, err)
 				// Addition of a second key completes the first block.
 				err = w.Add(k2, v2)
-				require.Error(t, err)
-				require.Equal(t, blockPropErr, err)
+				require.Error(t, w.fetchEncounteredError())
+				require.Equal(t, blockPropErr, w.fetchEncounteredError())
 			case errSiteFinishIndex:
 				require.NoError(t, err)
 				// Addition of a second key completes the first block.
@@ -359,14 +359,14 @@ func TestWriter_BlockProperties_Errors(t *testing.T) {
 				// The index entry for the first block is added after the completion of
 				// the second block, which is triggered by adding a third key.
 				err = w.Add(k3, v3)
-				require.Error(t, err)
-				require.Equal(t, blockPropErr, err)
+				require.Error(t, w.fetchEncounteredError())
+				require.Equal(t, blockPropErr, w.fetchEncounteredError())
 			}
 
 			err = w.Close()
 			if tc == errSiteFinishTable {
 				require.Error(t, err)
-				require.Equal(t, blockPropErr, err)
+				require.Equal(t, blockPropErr, w.fetchEncounteredError())
 			}
 		})
 	}
