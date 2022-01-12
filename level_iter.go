@@ -226,7 +226,7 @@ func (l *levelIter) findFileGE(key []byte) *fileMetadata {
 	// (see the comment in that function).
 
 	m := l.files.SeekGE(l.cmp, key)
-	for m != nil && m.Largest.Trailer == InternalKeyRangeDeleteSentinel &&
+	for m != nil && m.Largest.IsExclusiveSentinel() &&
 		l.cmp(m.Largest.UserKey, key) == 0 {
 		m = l.files.Next()
 	}
@@ -354,7 +354,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			*l.largestUserKey = file.Largest.UserKey
 		}
 		if l.isLargestUserKeyRangeDelSentinel != nil {
-			*l.isLargestUserKeyRangeDelSentinel = file.Largest.Trailer == InternalKeyRangeDeleteSentinel
+			*l.isLargestUserKeyRangeDelSentinel = file.Largest.IsExclusiveSentinel()
 		}
 		return newFileLoaded
 	}

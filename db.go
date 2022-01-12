@@ -1126,7 +1126,7 @@ func (d *DB) Compact(
 	maxLevelWithFiles := 1
 	cur := d.mu.versions.currentVersion()
 	for level := 0; level < numLevels; level++ {
-		overlaps := cur.Overlaps(level, d.cmp, start, end)
+		overlaps := cur.Overlaps(level, d.cmp, start, end, iEnd.IsExclusiveSentinel())
 		if !overlaps.Empty() {
 			maxLevelWithFiles = level + 1
 		}
@@ -1400,7 +1400,7 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			// We can only use `Overlaps` to restrict `files` at L1+ since at L0 it
 			// expands the range iteratively until it has found a set of files that
 			// do not overlap any other L0 files outside that set.
-			overlaps := readState.current.Overlaps(level, d.opts.Comparer.Compare, start, end)
+			overlaps := readState.current.Overlaps(level, d.opts.Comparer.Compare, start, end, false /* exclusiveEnd */)
 			iter = overlaps.Iter()
 		}
 		for file := iter.First(); file != nil; file = iter.Next() {

@@ -39,7 +39,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 796
+range-deletions-bytes-estimate: 51
 
 reopen
 ----
@@ -57,7 +57,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 796
+range-deletions-bytes-estimate: 51
 
 compact a-c
 ----
@@ -176,7 +176,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1542
+range-deletions-bytes-estimate: 771
 
 wait-pending-table-stats
 000012
@@ -184,7 +184,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1542
+range-deletions-bytes-estimate: 771
 
 define snapshots=(10)
 L6
