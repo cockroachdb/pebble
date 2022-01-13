@@ -98,7 +98,7 @@ is also interesting, but it works against using the area of the rectangle to
 indicate size).
 `,
 		Args: cobra.ExactArgs(1),
-		Run:  l.runLSM,
+		RunE: l.runLSM,
 	}
 
 	l.Root.Flags().Var(&l.fmtKey, "key", "key formatter")
@@ -110,31 +110,59 @@ indicate size).
 	return l
 }
 
-func (l *lsmT) runLSM(cmd *cobra.Command, args []string) {
+func (l *lsmT) isFlagSet(name string) bool {
+	return l.Root.Flags().Changed(name)
+}
+
+func (l *lsmT) validateFlags() error {
+	if l.isFlagSet("edit-count") {
+		if l.isFlagSet("start-edit") && l.isFlagSet("end-edit") {
+			return fmt.Errorf("edit-count cannot be provided with both start-edit and end-edit")
+		} else if l.isFlagSet("end-edit") {
+			return fmt.Errorf("cannot use edit-count with end-edit, use start-edit and end-edit instead")
+		}
+	}
+
+	if l.startEdit >= l.endEdit {
+		return fmt.Errorf("start-edit must be before end-edit")
+	}
+
+	return nil
+}
+
+func (l *lsmT) runLSM(cmd *cobra.Command, args []string) error {
+	err := l.validateFlags()
+	if err != nil {
+		return err
+	}
+
 	edits := l.readManifest(args[0])
 	if edits == nil {
-		return
+		return nil
 	}
 
 	if l.startEdit > 0 {
 		be := manifest.BulkVersionEdit{}
 		be.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 
-		// Compact all edits from 0 to l.startEdit-1 into a BulkVersionEdit.
+		// Coalesce all edits from [0, l.startEdit) into a BulkVersionEdit.
 		for _, ve := range edits[:l.startEdit] {
-			be.Accumulate(ve)
+			err = be.Accumulate(ve)
+			if err != nil {
+				return err
+			}
 		}
 
-		firstEdit := &edits[l.startEdit]
+		startingEdit := &edits[l.startEdit]
 		var beNewFiles []manifest.NewFileEntry
 
-		for level, deleted := range be.Deleted {
-			for _, file := range deleted {
+		for level, deletedFiles := range be.Deleted {
+			for _, file := range deletedFiles {
 				dfe := manifest.DeletedFileEntry{
 					Level:   level,
 					FileNum: file.FileNum,
 				}
-				(*firstEdit).DeletedFiles[dfe] = file
+				(*startingEdit).DeletedFiles[dfe] = file
 			}
 		}
 
@@ -145,7 +173,7 @@ func (l *lsmT) runLSM(cmd *cobra.Command, args []string) {
 					FileNum: file.FileNum,
 				}
 
-				if _, ok := (*firstEdit).DeletedFiles[dfe]; !ok {
+				if _, ok := (*startingEdit).DeletedFiles[dfe]; !ok {
 					beNewFiles = append(beNewFiles, manifest.NewFileEntry{
 						Level: level,
 						Meta:  file,
@@ -153,15 +181,14 @@ func (l *lsmT) runLSM(cmd *cobra.Command, args []string) {
 				}
 			}
 		}
-		(*firstEdit).NewFiles = append(beNewFiles, (*firstEdit).NewFiles...)
-		(*firstEdit).DeletedFiles = nil
+		(*startingEdit).NewFiles = append(beNewFiles, (*startingEdit).NewFiles...)
+		(*startingEdit).DeletedFiles = nil
 
 		edits = edits[l.startEdit:]
 	}
 	if l.endEdit < len(edits) {
 		edits = edits[:l.endEdit-l.startEdit]
 	}
-
 	if l.editCount < len(edits) {
 		edits = edits[:l.editCount]
 	}
@@ -196,6 +223,8 @@ func (l *lsmT) runLSM(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(w, "<script src=\"data/lsm.js\"></script>\n")
 	}
 	fmt.Fprintf(w, "</body>\n</html>\n")
+
+	return nil
 }
 
 func (l *lsmT) readManifest(path string) []*manifest.VersionEdit {
