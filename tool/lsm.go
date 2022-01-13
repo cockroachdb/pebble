@@ -142,9 +142,8 @@ func (l *lsmT) runLSM(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	var currentFiles [manifest.NumLevels][]*manifest.FileMetadata
 	if l.startEdit > 0 {
-		edits, currentFiles, err = l.coalesceEdits(edits)
+		edits, err = l.coalesceEdits(edits)
 		if err != nil {
 			return err
 		}
@@ -157,7 +156,7 @@ func (l *lsmT) runLSM(cmd *cobra.Command, args []string) error {
 	}
 
 	l.buildKeys(edits)
-	l.buildEdits(edits, currentFiles)
+	l.buildEdits(edits)
 	w := l.Root.OutOrStdout()
 
 	fmt.Fprintf(w, `<!DOCTYPE html>
@@ -265,14 +264,13 @@ func (l *lsmT) buildKeys(edits []*manifest.VersionEdit) {
 	}
 }
 
-func (l *lsmT) buildEdits(
-	edits []*manifest.VersionEdit, currentFiles [manifest.NumLevels][]*manifest.FileMetadata,
-) {
+func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 	l.state.Edits = nil
 	l.state.StartEdit = l.startEdit
 	l.state.Files = make(map[base.FileNum]lsmFileMetadata)
+	var currentFiles [manifest.NumLevels][]*manifest.FileMetadata
 
-	for i, ve := range edits {
+	for _, ve := range edits {
 		if len(ve.DeletedFiles) == 0 && len(ve.NewFiles) == 0 {
 			continue
 		}
@@ -281,15 +279,6 @@ func (l *lsmT) buildEdits(
 			Reason:  l.reason(ve),
 			Added:   make(map[int][]base.FileNum),
 			Deleted: make(map[int][]base.FileNum),
-		}
-		for df := range ve.DeletedFiles {
-			edit.Deleted[df.Level] = append(edit.Deleted[df.Level], df.FileNum)
-			for j, f := range currentFiles[df.Level] {
-				if f.FileNum == df.FileNum {
-					copy(currentFiles[df.Level][j:], currentFiles[df.Level][j+1:])
-					currentFiles[df.Level] = currentFiles[df.Level][:len(currentFiles[df.Level])-1]
-				}
-			}
 		}
 
 		for j := range ve.NewFiles {
@@ -304,10 +293,16 @@ func (l *lsmT) buildEdits(
 				}
 			}
 			edit.Added[nf.Level] = append(edit.Added[nf.Level], nf.Meta.FileNum)
+			currentFiles[nf.Level] = append(currentFiles[nf.Level], nf.Meta)
+		}
 
-			// Avoid adding duplicates when currentFiles starts non-empty.
-			if i > 0 || l.startEdit == 0 {
-				currentFiles[nf.Level] = append(currentFiles[nf.Level], nf.Meta)
+		for df := range ve.DeletedFiles {
+			edit.Deleted[df.Level] = append(edit.Deleted[df.Level], df.FileNum)
+			for j, f := range currentFiles[df.Level] {
+				if f.FileNum == df.FileNum {
+					copy(currentFiles[df.Level][j:], currentFiles[df.Level][j+1:])
+					currentFiles[df.Level] = currentFiles[df.Level][:len(currentFiles[df.Level])-1]
+				}
 			}
 		}
 
@@ -329,11 +324,7 @@ func (l *lsmT) buildEdits(
 	}
 }
 
-func (l *lsmT) coalesceEdits(
-	edits []*manifest.VersionEdit,
-) ([]*manifest.VersionEdit, [manifest.NumLevels][]*manifest.FileMetadata, error) {
-	var currentFiles [manifest.NumLevels][]*manifest.FileMetadata
-
+func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.VersionEdit, error) {
 	be := manifest.BulkVersionEdit{}
 	be.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 
@@ -341,7 +332,7 @@ func (l *lsmT) coalesceEdits(
 	for _, ve := range edits[:l.startEdit] {
 		err := be.Accumulate(ve)
 		if err != nil {
-			return nil, [manifest.NumLevels][]*manifest.FileMetadata{}, err
+			return nil, err
 		}
 	}
 
@@ -377,12 +368,7 @@ func (l *lsmT) coalesceEdits(
 	(*startingEdit).DeletedFiles = nil
 
 	edits = edits[l.startEdit:]
-
-	for _, nf := range (*startingEdit).NewFiles {
-		currentFiles[nf.Level] = append(currentFiles[nf.Level], nf.Meta)
-	}
-
-	return edits, currentFiles, nil
+	return edits, nil
 }
 
 func (l *lsmT) findKey(key base.InternalKey) int {

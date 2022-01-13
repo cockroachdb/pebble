@@ -313,9 +313,9 @@ let version = {
         for (let file of this.levels[0]) {
             let sublevel = null;
             for (let i = index; i >= 0 && (sublevel === null || sublevel === undefined); i--) {
-								if (!data.Edits[i].Sublevels) {
-									continue;
-								}
+                if (!data.Edits[i].Sublevels) {
+                    continue;
+                }
                 sublevel = data.Edits[i].Sublevels[file];
             }
             this.sublevels[sublevel].push(file);
@@ -893,7 +893,10 @@ document.addEventListener("keydown", function(e) {
 
 index.on("input", function() {
     if (!isNaN(+this.value)) {
-        version.set(Number(this.value));
+        const val = Number(this.value) - data.StartEdit;
+        if (val >= 0) {
+            version.set(val);
+        }
     }
 });
 `
