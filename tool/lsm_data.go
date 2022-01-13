@@ -313,6 +313,9 @@ let version = {
         for (let file of this.levels[0]) {
             let sublevel = null;
             for (let i = index; i >= 0 && (sublevel === null || sublevel === undefined); i--) {
+								if (!data.Edits[i].Sublevels) {
+									continue;
+								}
                 sublevel = data.Edits[i].Sublevels[file];
             }
             this.sublevels[sublevel].push(file);

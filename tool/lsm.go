@@ -116,6 +116,52 @@ func (l *lsmT) runLSM(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	if l.startEdit > 0 {
+		be := manifest.BulkVersionEdit{}
+		be.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+
+		// Compact all edits from 0 to l.startEdit-1 into a BulkVersionEdit.
+		for _, ve := range edits[:l.startEdit] {
+			be.Accumulate(ve)
+		}
+
+		firstEdit := &edits[l.startEdit]
+		var beNewFiles []manifest.NewFileEntry
+
+		for level, deleted := range be.Deleted {
+			for _, file := range deleted {
+				dfe := manifest.DeletedFileEntry{
+					Level:   level,
+					FileNum: file.FileNum,
+				}
+				(*firstEdit).DeletedFiles[dfe] = file
+			}
+		}
+
+		for level, newFiles := range be.Added {
+			for _, file := range newFiles {
+				dfe := manifest.DeletedFileEntry{
+					Level:   level,
+					FileNum: file.FileNum,
+				}
+
+				if _, ok := (*firstEdit).DeletedFiles[dfe]; !ok {
+					beNewFiles = append(beNewFiles, manifest.NewFileEntry{
+						Level: level,
+						Meta:  file,
+					})
+				}
+			}
+		}
+		(*firstEdit).NewFiles = append(beNewFiles, (*firstEdit).NewFiles...)
+		(*firstEdit).DeletedFiles = nil
+
+		edits = edits[l.startEdit:]
+	}
+	if l.endEdit < len(edits) {
+		edits = edits[:l.endEdit-l.startEdit]
+	}
+
 	if l.editCount < len(edits) {
 		edits = edits[:l.editCount]
 	}
@@ -232,10 +278,14 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 	l.state.StartEdit = l.startEdit
 	l.state.Files = make(map[base.FileNum]lsmFileMetadata)
 	var currentFiles [manifest.NumLevels][]*manifest.FileMetadata
-	for i, ve := range edits {
-		if i > l.endEdit {
-			break
+
+	if l.startEdit > 0 {
+		for _, nf := range edits[0].NewFiles {
+			currentFiles[nf.Level] = append(currentFiles[nf.Level], nf.Meta)
 		}
+	}
+
+	for i, ve := range edits {
 		if len(ve.DeletedFiles) == 0 && len(ve.NewFiles) == 0 {
 			continue
 		}
@@ -254,6 +304,7 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 				}
 			}
 		}
+
 		for j := range ve.NewFiles {
 			nf := &ve.NewFiles[j]
 			if _, ok := l.state.Files[nf.Meta.FileNum]; !ok {
@@ -266,12 +317,11 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 				}
 			}
 			edit.Added[nf.Level] = append(edit.Added[nf.Level], nf.Meta.FileNum)
-			currentFiles[nf.Level] = append(currentFiles[nf.Level], nf.Meta)
+			if i > 0 || l.startEdit == 0 {
+				currentFiles[nf.Level] = append(currentFiles[nf.Level], nf.Meta)
+			}
 		}
 
-		if i < l.startEdit {
-			continue
-		}
 		v := manifest.NewVersion(l.cmp.Compare, l.fmtKey.fn, 0, currentFiles)
 		edit.Sublevels = make(map[base.FileNum]int)
 		for sublevel, files := range v.L0SublevelFiles {
