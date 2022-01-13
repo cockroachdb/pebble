@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
 // Block properties are an optional user-facing feature that can be used to
@@ -102,8 +103,9 @@ type BlockPropertyFilter interface {
 // Users must not expect this to preserve differences between empty sets --
 // they will all get turned into the semantically equivalent [0,0).
 type BlockIntervalCollector struct {
-	name string
-	dbic DataBlockIntervalCollector
+	name   string
+	points DataBlockIntervalCollector
+	ranges DataBlockIntervalCollector
 
 	blockInterval interval
 	indexInterval interval
@@ -129,9 +131,14 @@ type DataBlockIntervalCollector interface {
 // NewBlockIntervalCollector constructs a BlockIntervalCollector, with the
 // given name and data block collector.
 func NewBlockIntervalCollector(
-	name string, blockAttributeCollector DataBlockIntervalCollector) *BlockIntervalCollector {
+	name string,
+	pointCollector, rangeCollector DataBlockIntervalCollector,
+) *BlockIntervalCollector {
 	return &BlockIntervalCollector{
-		name: name, dbic: blockAttributeCollector}
+		name:   name,
+		points: pointCollector,
+		ranges: rangeCollector,
+	}
 }
 
 // Name implements the BlockPropertyCollector interface.
@@ -141,13 +148,23 @@ func (b *BlockIntervalCollector) Name() string {
 
 // Add implements the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) Add(key InternalKey, value []byte) error {
-	return b.dbic.Add(key, value)
+	if rangekey.IsRangeKey(key.Kind()) {
+		if b.ranges != nil {
+			return b.ranges.Add(key, value)
+		}
+	} else if b.points != nil {
+		return b.points.Add(key, value)
+	}
+	return nil
 }
 
 // FinishDataBlock implements the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) FinishDataBlock(buf []byte) ([]byte, error) {
+	if b.points == nil {
+		return buf, nil
+	}
 	var err error
-	b.blockInterval.lower, b.blockInterval.upper, err = b.dbic.FinishDataBlock()
+	b.blockInterval.lower, b.blockInterval.upper, err = b.points.FinishDataBlock()
 	if err != nil {
 		return buf, err
 	}
@@ -172,6 +189,17 @@ func (b *BlockIntervalCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
 
 // FinishTable implements the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) FinishTable(buf []byte) ([]byte, error) {
+	// If the collector is tracking range keys, the range key interval is union-ed
+	// with the point key interval for the table.
+	if b.ranges != nil {
+		var rangeInterval interval
+		var err error
+		rangeInterval.lower, rangeInterval.upper, err = b.ranges.FinishDataBlock()
+		if err != nil {
+			return buf, err
+		}
+		b.tableInterval.union(rangeInterval)
+	}
 	return b.tableInterval.encode(buf), nil
 }
 

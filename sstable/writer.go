@@ -618,6 +618,17 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 		panic(errors.Errorf("pebble: invalid range key type: %s", key.Kind()))
 	}
 
+	for i := range w.propCollectors {
+		if err := w.propCollectors[i].Add(key, value); err != nil {
+			return err
+		}
+	}
+	for i := range w.blockPropCollectors {
+		if err := w.blockPropCollectors[i].Add(key, value); err != nil {
+			return err
+		}
+	}
+
 	// Add the key to the block.
 	w.rangeKeyBlock.add(key, value)
 	return nil
