@@ -1224,7 +1224,9 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 			bpCollectors = append(bpCollectors, func() BlockPropertyCollector {
 				return sstable.NewBlockIntervalCollector(
 					fmt.Sprintf("%d", coll.id),
-					&testBlockIntervalCollector{numLength: 2, offsetFromEnd: coll.offset})
+					&testBlockIntervalCollector{numLength: 2, offsetFromEnd: coll.offset},
+					nil, /* range key collector */
+				)
 			})
 		}
 		opts := &Options{
@@ -1344,9 +1346,9 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 		FormatMajorVersion: FormatNewest,
 		BlockPropertyCollectors: []func() BlockPropertyCollector{
 			func() BlockPropertyCollector {
-				return sstable.NewBlockIntervalCollector("0", &testBlockIntervalCollector{
-					numLength: 2,
-				})
+				return sstable.NewBlockIntervalCollector(
+					"0", &testBlockIntervalCollector{numLength: 2}, nil, /* range key collector */
+				)
 			},
 		},
 	}
@@ -1657,9 +1659,9 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 				FormatMajorVersion: FormatNewest,
 				BlockPropertyCollectors: []func() BlockPropertyCollector{
 					func() BlockPropertyCollector {
-						return sstable.NewBlockIntervalCollector("0", &testBlockIntervalCollector{
-							numLength: 3,
-						})
+						return sstable.NewBlockIntervalCollector(
+							"0", &testBlockIntervalCollector{numLength: 3}, nil, /* range key collector */
+						)
 					},
 				},
 			}

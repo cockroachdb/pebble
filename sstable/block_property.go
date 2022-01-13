@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
 // Block properties are an optional user-facing feature that can be used to
@@ -101,9 +102,18 @@ type BlockPropertyFilter interface {
 //
 // Users must not expect this to preserve differences between empty sets --
 // they will all get turned into the semantically equivalent [0,0).
+//
+// A BlockIntervalCollector that collects over point and range keys needs to
+// have both the point and range DataBlockIntervalCollector specified, since
+// point and range keys are fed to the BlockIntervalCollector in an interleaved
+// fashion, independently of one another. This also implies that the
+// DataBlockIntervalCollectors for point and range keys should be references to
+// independent instances, rather than references to the same collector, as point
+// and range keys are tracked independently.
 type BlockIntervalCollector struct {
-	name string
-	dbic DataBlockIntervalCollector
+	name   string
+	points DataBlockIntervalCollector
+	ranges DataBlockIntervalCollector
 
 	blockInterval interval
 	indexInterval interval
@@ -126,12 +136,31 @@ type DataBlockIntervalCollector interface {
 	FinishDataBlock() (lower uint64, upper uint64, err error)
 }
 
-// NewBlockIntervalCollector constructs a BlockIntervalCollector, with the
-// given name and data block collector.
+// NewBlockIntervalCollector constructs a BlockIntervalCollector with the given
+// name. The BlockIntervalCollector makes use of the given point and range key
+// DataBlockIntervalCollectors when encountering point and range keys,
+// respectively.
+//
+// The caller may pass a nil DataBlockIntervalCollector for one of the point or
+// range key collectors, in which case keys of those types will be ignored. This
+// allows for flexible construction of BlockIntervalCollectors that operate on
+// just point keys, just range keys, or both point and range keys.
+//
+// If both point and range keys are to be tracked, two independent collectors
+// should be provided, rather than the same collector passed in twice (see the
+// comment on BlockIntervalCollector for more detail)
 func NewBlockIntervalCollector(
-	name string, blockAttributeCollector DataBlockIntervalCollector) *BlockIntervalCollector {
+	name string,
+	pointCollector, rangeCollector DataBlockIntervalCollector,
+) *BlockIntervalCollector {
+	if pointCollector == nil && rangeCollector == nil {
+		panic("sstable: at least one interval collector must be provided")
+	}
 	return &BlockIntervalCollector{
-		name: name, dbic: blockAttributeCollector}
+		name:   name,
+		points: pointCollector,
+		ranges: rangeCollector,
+	}
 }
 
 // Name implements the BlockPropertyCollector interface.
@@ -141,13 +170,23 @@ func (b *BlockIntervalCollector) Name() string {
 
 // Add implements the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) Add(key InternalKey, value []byte) error {
-	return b.dbic.Add(key, value)
+	if rangekey.IsRangeKey(key.Kind()) {
+		if b.ranges != nil {
+			return b.ranges.Add(key, value)
+		}
+	} else if b.points != nil {
+		return b.points.Add(key, value)
+	}
+	return nil
 }
 
 // FinishDataBlock implements the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) FinishDataBlock(buf []byte) ([]byte, error) {
+	if b.points == nil {
+		return buf, nil
+	}
 	var err error
-	b.blockInterval.lower, b.blockInterval.upper, err = b.dbic.FinishDataBlock()
+	b.blockInterval.lower, b.blockInterval.upper, err = b.points.FinishDataBlock()
 	if err != nil {
 		return buf, err
 	}
@@ -172,6 +211,17 @@ func (b *BlockIntervalCollector) FinishIndexBlock(buf []byte) ([]byte, error) {
 
 // FinishTable implements the BlockPropertyCollector interface.
 func (b *BlockIntervalCollector) FinishTable(buf []byte) ([]byte, error) {
+	// If the collector is tracking range keys, the range key interval is union-ed
+	// with the point key interval for the table.
+	if b.ranges != nil {
+		var rangeInterval interval
+		var err error
+		rangeInterval.lower, rangeInterval.upper, err = b.ranges.FinishDataBlock()
+		if err != nil {
+			return buf, err
+		}
+		b.tableInterval.union(rangeInterval)
+	}
 	return b.tableInterval.encode(buf), nil
 }
 
