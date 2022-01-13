@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
 
@@ -176,20 +177,20 @@ func (c *testDataBlockIntervalCollector) FinishDataBlock() (lower uint64, upper 
 }
 
 func TestBlockIntervalCollector(t *testing.T) {
-	var dbic testDataBlockIntervalCollector
-	bic := NewBlockIntervalCollector("foo", &dbic)
+	var points, ranges testDataBlockIntervalCollector
+	bic := NewBlockIntervalCollector("foo", &points, &ranges)
 	require.Equal(t, "foo", bic.Name())
-	// Single key to call Add once. The real action is in the other methods.
-	key := InternalKey{UserKey: []byte("a")}
-	require.NoError(t, bic.Add(key, nil))
-	dbic.i = interval{1, 1}
-	// First data block has empty interval.
+	// Set up the point key collector with an initial (empty) interval.
+	points.i = interval{1, 1}
+	// First data block has empty point key interval.
 	encoded, err := bic.FinishDataBlock(nil)
 	require.NoError(t, err)
 	require.True(t, bytes.Equal(nil, encoded))
 	bic.AddPrevDataBlockToIndexBlock()
-	// Second data block.
-	dbic.i = interval{20, 25}
+	// Second data block contains a point and range key interval. The latter
+	// should not contribute to the block interval.
+	points.i = interval{20, 25}
+	ranges.i = interval{5, 150}
 	encoded, err = bic.FinishDataBlock(nil)
 	require.NoError(t, err)
 	var decoded interval
@@ -202,14 +203,14 @@ func TestBlockIntervalCollector(t *testing.T) {
 	require.True(t, bytes.Equal(nil, encodedIndexBlock))
 	bic.AddPrevDataBlockToIndexBlock()
 	// Third data block.
-	dbic.i = interval{10, 15}
+	points.i = interval{10, 15}
 	encoded, err = bic.FinishDataBlock(nil)
 	require.NoError(t, err)
 	require.NoError(t, decoded.decode(encoded))
 	require.Equal(t, interval{10, 15}, decoded)
 	bic.AddPrevDataBlockToIndexBlock()
 	// Fourth data block.
-	dbic.i = interval{100, 105}
+	points.i = interval{100, 105}
 	encoded, err = bic.FinishDataBlock(nil)
 	require.NoError(t, err)
 	require.NoError(t, decoded.decode(encoded))
@@ -226,11 +227,12 @@ func TestBlockIntervalCollector(t *testing.T) {
 	require.NoError(t, decoded.decode(encodedIndexBlock))
 	require.Equal(t, interval{100, 105}, decoded)
 	var encodedTable []byte
-	// Finish table.
+	// Finish table. The table interval is the union of the current point key
+	// table interval [10, 105) and the range key interval [5, 150).
 	encodedTable, err = bic.FinishTable(nil)
 	require.NoError(t, err)
 	require.NoError(t, decoded.decode(encodedTable))
-	require.Equal(t, interval{10, 105}, decoded)
+	require.Equal(t, interval{5, 150}, decoded)
 }
 
 func TestBlockIntervalFilter(t *testing.T) {
@@ -261,11 +263,11 @@ func TestBlockIntervalFilter(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			var dbic testDataBlockIntervalCollector
+			var points testDataBlockIntervalCollector
 			name := "foo"
-			bic := NewBlockIntervalCollector(name, &dbic)
+			bic := NewBlockIntervalCollector(name, &points, nil)
 			bif := NewBlockIntervalFilter(name, tc.filter.lower, tc.filter.upper)
-			dbic.i = tc.prop
+			points.i = tc.prop
 			prop, _ := bic.FinishDataBlock(nil)
 			intersects, err := bif.Intersects(prop)
 			require.NoError(t, err)
@@ -339,9 +341,9 @@ func (b filterWithTrueForEmptyProp) Intersects(prop []byte) (bool, error) {
 func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) {
 	// props with id=0, interval [10, 20); id=10, interval [110, 120).
 	var dbic testDataBlockIntervalCollector
-	bic0 := NewBlockIntervalCollector("p0", &dbic)
+	bic0 := NewBlockIntervalCollector("p0", &dbic, nil)
 	bic0Id := byte(0)
-	bic10 := NewBlockIntervalCollector("p10", &dbic)
+	bic10 := NewBlockIntervalCollector("p10", &dbic, nil)
 	bic10Id := byte(10)
 	dbic.i = interval{10, 20}
 	prop0 := append([]byte(nil), bic0Id)
@@ -486,9 +488,9 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 	// props with id=0, interval [10, 20); id=10, interval [110, 120).
 	var encoder blockPropertiesEncoder
 	var dbic testDataBlockIntervalCollector
-	bic0 := NewBlockIntervalCollector("", &dbic)
+	bic0 := NewBlockIntervalCollector("", &dbic, nil)
 	bic0Id := shortID(0)
-	bic10 := NewBlockIntervalCollector("", &dbic)
+	bic10 := NewBlockIntervalCollector("", &dbic, nil)
 	bic10Id := shortID(10)
 	dbic.i = interval{10, 20}
 	prop, err := bic0.FinishDataBlock(encoder.getScratchForProp())
@@ -794,6 +796,43 @@ func (c *valueCharBlockIntervalCollector) FinishDataBlock() (lower, upper uint64
 	return l, u, nil
 }
 
+// suffixIntervalCollector maintains an interval over the timestamps in
+// MVCC-like suffixes for keys (e.g. foo@123).
+type suffixIntervalCollector struct {
+	initialized  bool
+	lower, upper uint64
+}
+
+// Add implements DataBlockIntervalCollector.
+func (c *suffixIntervalCollector) Add(key InternalKey, _ []byte) error {
+	i := testkeys.Comparer.Split(key.UserKey)
+	ts, err := strconv.Atoi(string(key.UserKey[i+1:]))
+	if err != nil {
+		return err
+	}
+	uts := uint64(ts)
+	if !c.initialized {
+		c.lower, c.upper = uts, uts+1
+		c.initialized = true
+		return nil
+	}
+	if uts < c.lower {
+		c.lower = uts
+	}
+	if uts >= c.upper {
+		c.upper = uts + 1
+	}
+	return nil
+}
+
+// FinishDataBlock implements DataBlockIntervalCollector.
+func (c *suffixIntervalCollector) FinishDataBlock() (lower, upper uint64, err error) {
+	l, u := c.lower, c.upper
+	c.lower, c.upper = 0, 0
+	c.initialized = false
+	return l, u, nil
+}
+
 func TestBlockProperties(t *testing.T) {
 	var r *Reader
 	defer func() {
@@ -823,20 +862,26 @@ func TestBlockProperties(t *testing.T) {
 					}
 				case "collector":
 					for _, c := range cmd.Vals {
-						var idx int
+						var points, ranges DataBlockIntervalCollector
 						switch c {
 						case "value-first":
-							idx = 0
+							points = &valueCharBlockIntervalCollector{charIdx: 0}
 						case "value-last":
-							idx = -1
+							points = &valueCharBlockIntervalCollector{charIdx: -1}
+						case "suffix":
+							points, ranges = &suffixIntervalCollector{}, &suffixIntervalCollector{}
+						case "suffix-point-keys-only":
+							points = &suffixIntervalCollector{}
+						case "suffix-range-keys-only":
+							ranges = &suffixIntervalCollector{}
 						default:
 							return fmt.Sprintf("unknown collector: %s", c)
 						}
-						opts.BlockPropertyCollectors = append(opts.BlockPropertyCollectors, func() BlockPropertyCollector {
-							return NewBlockIntervalCollector(c, &valueCharBlockIntervalCollector{
-								charIdx: idx,
+						opts.BlockPropertyCollectors = append(
+							opts.BlockPropertyCollectors,
+							func() BlockPropertyCollector {
+								return NewBlockIntervalCollector(c, points, ranges)
 							})
-						})
 					}
 				}
 			}
