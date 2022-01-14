@@ -173,6 +173,10 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 	}
 }
 
+func (g *getIter) NextPrefix(int) (*InternalKey, []byte) {
+	panic("pebble: NextPrefix unimplemented")
+}
+
 func (g *getIter) Prev() (*InternalKey, []byte) {
 	panic("pebble: Prev unimplemented")
 }
