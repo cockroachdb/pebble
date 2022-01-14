@@ -196,7 +196,8 @@ type blockEntry struct {
 // per sstable and the blockIter will not release the bytes for the block until
 // it is closed.
 type blockIter struct {
-	cmp Compare
+	cmp   Compare
+	split Split
 	// offset is the byte index that marks where the current key/value is
 	// encoded in the block.
 	offset int32
@@ -263,21 +264,22 @@ type blockIter struct {
 // blockIter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*blockIter)(nil)
 
-func newBlockIter(cmp Compare, block block) (*blockIter, error) {
+func newBlockIter(cmp Compare, split Split, block block) (*blockIter, error) {
 	i := &blockIter{}
-	return i, i.init(cmp, block, 0)
+	return i, i.init(cmp, split, block, 0)
 }
 
 func (i *blockIter) String() string {
 	return "block"
 }
 
-func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
+func (i *blockIter) init(cmp Compare, split Split, block block, globalSeqNum uint64) error {
 	numRestarts := int32(binary.LittleEndian.Uint32(block[len(block)-4:]))
 	if numRestarts == 0 {
 		return base.CorruptionErrorf("pebble/table: invalid table (block has no restart points)")
 	}
 	i.cmp = cmp
+	i.split = split
 	i.restarts = int32(len(block)) - 4*(1+numRestarts)
 	i.numRestarts = numRestarts
 	i.globalSeqNum = globalSeqNum
@@ -297,10 +299,10 @@ func (i *blockIter) init(cmp Compare, block block, globalSeqNum uint64) error {
 	return nil
 }
 
-func (i *blockIter) initHandle(cmp Compare, block cache.Handle, globalSeqNum uint64) error {
+func (i *blockIter) initHandle(cmp Compare, split Split, block cache.Handle, globalSeqNum uint64) error {
 	i.cacheHandle.Release()
 	i.cacheHandle = block
-	return i.init(cmp, block.Get(), globalSeqNum)
+	return i.init(cmp, split, block.Get(), globalSeqNum)
 }
 
 func (i *blockIter) invalidate() {
@@ -328,7 +330,7 @@ func (i *blockIter) resetForReuse() blockIter {
 	}
 }
 
-func (i *blockIter) readEntry() {
+func (i *blockIter) readEntry() (shared uint32) {
 	ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(i.offset))
 
 	// This is an ugly performance hack. Reading entries from blocks is one of
@@ -339,7 +341,6 @@ func (i *blockIter) readEntry() {
 	//
 	// TODO(peter): remove this hack if go:inline is ever supported.
 
-	var shared uint32
 	if a := *((*uint8)(ptr)); a < 128 {
 		shared = uint32(a)
 		ptr = unsafe.Pointer(uintptr(ptr) + 1)
@@ -410,6 +411,7 @@ func (i *blockIter) readEntry() {
 	ptr = unsafe.Pointer(uintptr(ptr) + uintptr(unshared))
 	i.val = getBytes(ptr, int(value))
 	i.nextOffset = int32(uintptr(ptr)-uintptr(i.ptr)) + int32(value)
+	return shared
 }
 
 func (i *blockIter) readFirstKey() error {
@@ -833,6 +835,49 @@ func (i *blockIter) Next() (*InternalKey, []byte) {
 	} else {
 		i.ikey.Trailer = uint64(InternalKeyKindInvalid)
 		i.ikey.UserKey = nil
+	}
+	return &i.ikey, i.val
+}
+
+// NextPrefix implements internalIterator.NextPrefix, as documented in the
+// pebble package.
+func (i *blockIter) NextPrefix(currentPrefixLen int) (*InternalKey, []byte) {
+	if len(i.cachedBuf) > 0 {
+		// We're switching from reverse iteration to forward iteration.
+		return i.Next()
+	}
+
+	for {
+		i.offset = i.nextOffset
+		if !i.Valid() {
+			return nil, nil
+		}
+		shared := i.readEntry()
+
+		// Manually inlined version of i.decodeInternalKey(i.key).
+		if n := len(i.key) - 8; n >= 0 {
+			userKey := i.key[:n:n]
+
+			// Compare the number of bytes shared in prefix compression to the
+			// length of the prefix of the previous key, currentPrefixLen. If
+			// the number of bytes shared is greater than or equal to
+			// currentPrefixLen AND the this key has the same prefix length,
+			// then this key must have the same prefix as the key that the user
+			// last saw. In that case, we continue in the loop.
+			if shared >= uint32(currentPrefixLen) && i.split(userKey) == currentPrefixLen {
+				continue
+			}
+
+			i.ikey.Trailer = binary.LittleEndian.Uint64(i.key[n:])
+			i.ikey.UserKey = i.key[:n:n]
+			if i.globalSeqNum != 0 {
+				i.ikey.SetSeqNum(i.globalSeqNum)
+			}
+		} else {
+			i.ikey.Trailer = uint64(InternalKeyKindInvalid)
+			i.ikey.UserKey = nil
+		}
+		break
 	}
 	return &i.ikey, i.val
 }

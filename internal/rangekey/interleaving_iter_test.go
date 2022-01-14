@@ -210,6 +210,10 @@ func (i *pointIterator) Next() (*base.InternalKey, []byte) {
 	return &i.keys[i.index], nil
 }
 
+func (i *pointIterator) NextPrefix(int) (*base.InternalKey, []byte) {
+	return i.Next()
+}
+
 func (i *pointIterator) Prev() (*base.InternalKey, []byte) {
 	i.index--
 	if i.index < 0 || i.index >= len(i.keys) {

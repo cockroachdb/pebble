@@ -194,6 +194,12 @@ func (it *Iterator) Next() (*base.InternalKey, []byte) {
 	return &it.key, it.value()
 }
 
+// NextPrefix advances to the next position. Returns the key and value if the
+// iterator is pointing at a valid entry, and (nil, nil) otherwise.
+func (it *Iterator) NextPrefix(int) (*base.InternalKey, []byte) {
+	return it.Next()
+}
+
 // Prev moves to the previous position. Returns the key and value if the
 // iterator is pointing at a valid entry, and (nil, nil) otherwise.
 func (it *Iterator) Prev() (*base.InternalKey, []byte) {

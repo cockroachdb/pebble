@@ -241,6 +241,15 @@ func (i *InterleavingIter) Last() (*base.InternalKey, []byte) {
 
 // Next implements (base.InternalIterator).Next.
 func (i *InterleavingIter) Next() (*base.InternalKey, []byte) {
+	return i.next(false /* useNextPrefix */, 0)
+}
+
+// NextPrefix implements (base.InternalIterator).NextPrefix.
+func (i *InterleavingIter) NextPrefix(currentPrefixLen int) (*base.InternalKey, []byte) {
+	return i.next(true /* useNextPrefix */, currentPrefixLen)
+}
+
+func (i *InterleavingIter) next(useNextPrefix bool, currentPrefixLen int) (*base.InternalKey, []byte) {
 	if i.dir == -1 {
 		// Switching directions.
 		i.dir = +1
@@ -281,7 +290,11 @@ func (i *InterleavingIter) Next() (*base.InternalKey, []byte) {
 	// Refresh the point key if the current point key has already been
 	// interleaved.
 	if i.pointKeyInterleaved {
-		i.pointKey, i.pointVal = i.pointIter.Next()
+		if useNextPrefix {
+			i.pointKey, i.pointVal = i.pointIter.NextPrefix(currentPrefixLen)
+		} else {
+			i.pointKey, i.pointVal = i.pointIter.Next()
+		}
 		i.pointKeyInterleaved = false
 	}
 	// If we already interleaved the current range key, and the point key is ≥
@@ -450,11 +463,13 @@ func (i *InterleavingIter) interleaveForward(lowerBound []byte) (*base.InternalK
 				// The range key covers the point key. The point key might be
 				// masked too if range-key masking is enabled.
 				if i.maskSuffix != nil {
-					pointSuffix := i.pointKey.UserKey[i.split(i.pointKey.UserKey):]
+					prefixLen := i.split(i.pointKey.UserKey)
+					pointSuffix := i.pointKey.UserKey[prefixLen:]
 					if len(pointSuffix) > 0 && i.cmp(i.maskSuffix, pointSuffix) < 0 {
 						// A range key in the current coalesced span masks this
-						// point key. Skip the point key.
-						i.pointKey, i.pointVal = i.pointIter.Next()
+						// point key. Skip the point key (and the rest of this
+						// prefix).
+						i.pointKey, i.pointVal = i.pointIter.NextPrefix(prefixLen)
 						// We may have just invalidated the invariant that
 						// ensures the range key's End is > the point key, so
 						// reestablish it before the next iteration.
