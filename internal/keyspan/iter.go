@@ -168,6 +168,12 @@ func (i *Iter) Next() (*base.InternalKey, []byte) {
 	return &s.Start, s.End
 }
 
+// NextPrefix implements InternalIterator.NextPrefix, as documented in the
+// internal/base package.
+func (i *Iter) NextPrefix(int) (*base.InternalKey, []byte) {
+	return i.Next()
+}
+
 // Prev implements InternalIterator.Prev, as documented in the internal/base
 // package.
 func (i *Iter) Prev() (*base.InternalKey, []byte) {

@@ -25,6 +25,7 @@ import "fmt"
 // The relative positioning methods are:
 //
 // - Next
+// - NextPrefix
 // - Prev
 //
 // The relative positioning methods can be used in conjunction with any of the
@@ -42,26 +43,25 @@ import "fmt"
 // support prefix iteration mode, and can implement SeekPrefixGE by forwarding
 // to SeekGE.
 //
-// Bounds, [lower, upper), can be set on iterators, either using the
-// SetBounds() function in the interface, or in implementation specific ways
-// during iterator creation. The forward positioning routines (SeekGE, First,
-// and Next) only check the upper bound. The reverse positioning routines
-// (SeekLT, Last, and Prev) only check the lower bound. It is up to the caller
-// to ensure that the forward positioning routines respect the lower bound and
-// the reverse positioning routines respect the upper bound (i.e. calling
-// SeekGE instead of First if there is a lower bound, and SeekLT instead of
-// Last if there is an upper bound). This imposition is done in order to
-// elevate that enforcement to the caller (generally pebble.Iterator or
-// pebble.mergingIter) rather than having it duplicated in every
-// InternalIterator implementation. Additionally, the caller needs to ensure
-// that SeekGE/SeekPrefixGE are not called with a key > the upper bound, and
-// SeekLT is not called with a key < the lower bound.
-// InternalIterator implementations are required to respect the iterator
-// bounds, never returning records outside of the bounds with one exception:
-// an iterator may generate synthetic RANGEDEL marker records. See
+// Bounds, [lower, upper), can be set on iterators, either using the SetBounds()
+// function in the interface, or in implementation specific ways during iterator
+// creation. The forward positioning routines (SeekGE, First, Next, NextPrefix)
+// only check the upper bound. The reverse positioning routines (SeekLT, Last,
+// and Prev) only check the lower bound. It is up to the caller to ensure that
+// the forward positioning routines respect the lower bound and the reverse
+// positioning routines respect the upper bound (i.e. calling SeekGE instead of
+// First if there is a lower bound, and SeekLT instead of Last if there is an
+// upper bound). This imposition is done in order to elevate that enforcement to
+// the caller (generally pebble.Iterator or pebble.mergingIter) rather than
+// having it duplicated in every InternalIterator implementation. Additionally,
+// the caller needs to ensure that SeekGE/SeekPrefixGE are not called with a key
+// > the upper bound, and SeekLT is not called with a key < the lower bound.
+// InternalIterator implementations are required to respect the iterator bounds,
+// never returning records outside of the bounds with one exception: an iterator
+// may generate synthetic RANGEDEL marker records. See
 // levelIter.syntheticBoundary for the sole existing example of this behavior.
-// Specifically, levelIter can return synthetic keys whose user key is equal
-// to the lower/upper bound.
+// Specifically, levelIter can return synthetic keys whose user key is equal to
+// the lower/upper bound.
 //
 // An iterator must be closed after use, but it is not necessary to read an
 // iterator until exhaustion.
@@ -185,6 +185,24 @@ type InternalIterator interface {
 	// (nil, nil). It is not allowed to call Next when the previous call to SeekGE,
 	// SeekPrefixGE or Next returned (nil, nil).
 	Next() (*InternalKey, []byte)
+
+	// NextPrefix advances the iterator at least one step to the next key/value
+	// pair. NextPrefix may optionally advance the iterator additional steps to skip
+	// past keys that have the same prefix (determined by Comparer.Split) as the
+	// current key when NextPrefix was called. NextPrefix is passed the length,
+	// in bytes, of the current key's prefix.
+	//
+	// Calling the iterator's Next method is a valid trivial implementation of
+	// NextPrefix.
+	//
+	// Returns the key and value if the iterator is pointing at a valid entry,
+	// and (nil, nil) otherwise. Note that Next only checks the upper bound. It
+	// is up to the caller to ensure that key is greater than or equal to the
+	// lower bound.
+	//
+	// It is not allowed to call NextPrefix when the previous positioning call
+	// returned (nil, nil).
+	NextPrefix(currentPrefixLength int) (*InternalKey, []byte)
 
 	// Prev moves the iterator to the previous key/value pair. Returns the key
 	// and value if the iterator is pointing at a valid entry, and (nil, nil)

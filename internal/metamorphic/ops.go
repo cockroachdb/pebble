@@ -703,22 +703,15 @@ func (o *iterLastOp) String() string {
 	return fmt.Sprintf("%s.Last()", o.iterID)
 }
 
-// iterNextOp models an Iterator.Next[WithLimit] operation.
+// iterNextOp models an Iterator.Next[WithLimit,Prefix] operation.
 type iterNextOp struct {
 	iterID objID
-	limit  []byte
 }
 
 func (o *iterNextOp) run(t *test, h *history) {
 	i := t.getIter(o.iterID)
-	var valid bool
-	var validStr string
-	if o.limit == nil {
-		valid = i.Next()
-		validStr = validBoolToStr(valid)
-	} else {
-		valid, validStr = validityStateToStr(i.NextWithLimit(o.limit))
-	}
+	valid := i.Next()
+	validStr := validBoolToStr(valid)
 	if valid {
 		h.Recordf("%s // [%s,%q,%q] %v", o, validStr, i.Key(), i.Value(), i.Error())
 	} else {
@@ -727,7 +720,47 @@ func (o *iterNextOp) run(t *test, h *history) {
 }
 
 func (o *iterNextOp) String() string {
-	return fmt.Sprintf("%s.Next(%q)", o.iterID, o.limit)
+	return fmt.Sprintf("%s.Next()", o.iterID)
+}
+
+// iterNextWithLimitOp models an Iterator.NextWithLimit operation.
+type iterNextWithLimitOp struct {
+	iterID objID
+	limit  []byte
+}
+
+func (o *iterNextWithLimitOp) run(t *test, h *history) {
+	i := t.getIter(o.iterID)
+	valid, validStr := validityStateToStr(i.NextWithLimit(o.limit))
+	if valid {
+		h.Recordf("%s // [%s,%q,%q] %v", o, validStr, i.Key(), i.Value(), i.Error())
+	} else {
+		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
+	}
+}
+
+func (o *iterNextWithLimitOp) String() string {
+	return fmt.Sprintf("%s.NextWithLimit(%q)", o.iterID, o.limit)
+}
+
+// iterNextPrefixOp models an Iterator.NextPrefix operation.
+type iterNextPrefixOp struct {
+	iterID objID
+}
+
+func (o *iterNextPrefixOp) run(t *test, h *history) {
+	i := t.getIter(o.iterID)
+	valid := i.NextPrefix()
+	validStr := validBoolToStr(valid)
+	if valid {
+		h.Recordf("%s // [%s,%q,%q] %v", o, validStr, i.Key(), i.Value(), i.Error())
+	} else {
+		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
+	}
+}
+
+func (o *iterNextPrefixOp) String() string {
+	return fmt.Sprintf("%s.NextPrefix()", o.iterID)
 }
 
 // iterPrevOp models an Iterator.Prev[WithLimit] operation.

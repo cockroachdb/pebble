@@ -97,7 +97,8 @@ type Iterator interface {
 // key, it first looks in the index for the block that contains that key, and then
 // looks inside that block.
 type singleLevelIterator struct {
-	cmp Compare
+	cmp   Compare
+	split Split
 	// Global lower/upper bound for the iterator.
 	lower []byte
 	upper []byte
@@ -267,7 +268,8 @@ func (i *singleLevelIterator) init(
 	i.bpfs = filterer
 	i.reader = r
 	i.cmp = r.Compare
-	err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum)
+	i.split = r.Split
+	err = i.index.initHandle(i.cmp, r.Split, indexH, r.Properties.GlobalSeqNum)
 	if err != nil {
 		// blockIter.Close releases indexH and always returns a nil error
 		_ = i.index.Close()
@@ -375,7 +377,7 @@ func (i *singleLevelIterator) loadBlock() loadBlockResult {
 		i.err = err
 		return loadBlockFailed
 	}
-	i.err = i.data.initHandle(i.cmp, block, i.reader.Properties.GlobalSeqNum)
+	i.err = i.data.initHandle(i.cmp, i.split, block, i.reader.Properties.GlobalSeqNum)
 	if i.err != nil {
 		// The block is partially loaded, and we don't want it to appear valid.
 		i.data.invalidate()
@@ -864,6 +866,29 @@ func (i *singleLevelIterator) Next() (*InternalKey, []byte) {
 	return i.skipForward()
 }
 
+// NextPrefix implements internalIterator.NextPrefix, as documented in the pebble
+// package.
+func (i *singleLevelIterator) NextPrefix(currentPrefixLen int) (*InternalKey, []byte) {
+	if i.exhaustedBounds == +1 {
+		panic("Next called even though exhausted upper bound")
+	}
+	i.exhaustedBounds = 0
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.boundsCmp = 0
+
+	if i.err != nil {
+		return nil, nil
+	}
+	if key, val := i.data.NextPrefix(currentPrefixLen); key != nil {
+		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
+			i.exhaustedBounds = +1
+			return nil, nil
+		}
+		return key, val
+	}
+	return i.skipForward()
+}
+
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
 func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
@@ -1181,7 +1206,7 @@ func (i *twoLevelIterator) loadIndex() loadBlockResult {
 		return loadBlockFailed
 	}
 	if i.err = i.index.initHandle(
-		i.cmp, indexBlock, i.reader.Properties.GlobalSeqNum); i.err == nil {
+		i.cmp, i.split, indexBlock, i.reader.Properties.GlobalSeqNum); i.err == nil {
 		return loadBlockOK
 	}
 	return loadBlockFailed
@@ -1203,7 +1228,8 @@ func (i *twoLevelIterator) init(
 	i.bpfs = filterer
 	i.reader = r
 	i.cmp = r.Compare
-	err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum)
+	i.split = r.Split
+	err = i.topLevelIndex.initHandle(i.cmp, i.split, topLevelIndexH, r.Properties.GlobalSeqNum)
 	if err != nil {
 		// blockIter.Close releases topLevelIndexH and always returns a nil error
 		_ = i.topLevelIndex.Close()
@@ -1534,6 +1560,20 @@ func (i *twoLevelIterator) Next() (*InternalKey, []byte) {
 		return nil, nil
 	}
 	if key, val := i.singleLevelIterator.Next(); key != nil {
+		return key, val
+	}
+	return i.skipForward()
+}
+
+// NextPrefix implements internalIterator.NextPrefix, as documented in the
+// pebble package.
+func (i *twoLevelIterator) NextPrefix(currentPrefixLen int) (*InternalKey, []byte) {
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.boundsCmp = 0
+	if i.err != nil {
+		return nil, nil
+	}
+	if key, val := i.singleLevelIterator.NextPrefix(currentPrefixLen); key != nil {
 		return key, val
 	}
 	return i.skipForward()
@@ -2164,7 +2204,7 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 		return nil, err
 	}
 	i := &blockIter{}
-	if err := i.initHandle(r.Compare, h, r.Properties.GlobalSeqNum); err != nil {
+	if err := i.initHandle(r.Compare, r.Split, h, r.Properties.GlobalSeqNum); err != nil {
 		return nil, err
 	}
 	// NB: *blockIter implements keyspan.FragmentIter, assuming the raw value is
@@ -2185,7 +2225,7 @@ func (r *Reader) NewRawRangeKeyIter() (base.InternalIterator, error) {
 		return nil, err
 	}
 	i := &blockIter{}
-	if err := i.initHandle(r.Compare, h, r.Properties.GlobalSeqNum); err != nil {
+	if err := i.initHandle(r.Compare, r.Split, h, r.Properties.GlobalSeqNum); err != nil {
 		return nil, err
 	}
 	return i, nil
@@ -2321,7 +2361,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	// tombstones. We need properly fragmented and sorted range tombstones in
 	// order to serve from them directly.
 	iter := &blockIter{}
-	if err := iter.init(r.Compare, b, r.Properties.GlobalSeqNum); err != nil {
+	if err := iter.init(r.Compare, r.Split, b, r.Properties.GlobalSeqNum); err != nil {
 		return nil, err
 	}
 	var tombstones []keyspan.Span
@@ -2467,7 +2507,7 @@ func (r *Reader) Layout() (*Layout, error) {
 
 	if r.Properties.IndexPartitions == 0 {
 		l.Index = append(l.Index, r.indexBH)
-		iter, _ := newBlockIter(r.Compare, indexH.Get())
+		iter, _ := newBlockIter(r.Compare, r.Split, indexH.Get())
 		for key, value := iter.First(); key != nil; key, value = iter.Next() {
 			dataBH, err := decodeBlockHandleWithProperties(value)
 			if err != nil {
@@ -2477,7 +2517,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		}
 	} else {
 		l.TopIndex = r.indexBH
-		topIter, _ := newBlockIter(r.Compare, indexH.Get())
+		topIter, _ := newBlockIter(r.Compare, r.Split, indexH.Get())
 		iter := &blockIter{}
 		for key, value := topIter.First(); key != nil; key, value = topIter.Next() {
 			indexBH, err := decodeBlockHandleWithProperties(value)
@@ -2491,7 +2531,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			if err != nil {
 				return nil, err
 			}
-			if err := iter.init(r.Compare, subIndex.Get(), 0 /* globalSeqNum */); err != nil {
+			if err := iter.init(r.Compare, r.Split, subIndex.Get(), 0 /* globalSeqNum */); err != nil {
 				return nil, err
 			}
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
@@ -2578,14 +2618,14 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	// to the same blockIter over the single index in the unpartitioned case.
 	var startIdxIter, endIdxIter *blockIter
 	if r.Properties.IndexPartitions == 0 {
-		iter, err := newBlockIter(r.Compare, indexH.Get())
+		iter, err := newBlockIter(r.Compare, r.Split, indexH.Get())
 		if err != nil {
 			return 0, err
 		}
 		startIdxIter = iter
 		endIdxIter = iter
 	} else {
-		topIter, err := newBlockIter(r.Compare, indexH.Get())
+		topIter, err := newBlockIter(r.Compare, r.Split, indexH.Get())
 		if err != nil {
 			return 0, err
 		}
@@ -2605,7 +2645,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			return 0, err
 		}
 		defer startIdxBlock.Release()
-		startIdxIter, err = newBlockIter(r.Compare, startIdxBlock.Get())
+		startIdxIter, err = newBlockIter(r.Compare, r.Split, startIdxBlock.Get())
 		if err != nil {
 			return 0, err
 		}
@@ -2626,7 +2666,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 				return 0, err
 			}
 			defer endIdxBlock.Release()
-			endIdxIter, err = newBlockIter(r.Compare, endIdxBlock.Get())
+			endIdxIter, err = newBlockIter(r.Compare, r.Split, endIdxBlock.Get())
 			if err != nil {
 				return 0, err
 			}
@@ -2910,7 +2950,7 @@ func (l *Layout) Describe(
 		var lastKey InternalKey
 		switch b.name {
 		case "data", "range-del", "range-key":
-			iter, _ := newBlockIter(r.Compare, h.Get())
+			iter, _ := newBlockIter(r.Compare, r.Split, h.Get())
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				ptr := unsafe.Pointer(uintptr(iter.ptr) + uintptr(iter.offset))
 				shared, ptr := decodeVarint(ptr)
@@ -2946,7 +2986,7 @@ func (l *Layout) Describe(
 			formatRestarts(iter.data, iter.restarts, iter.numRestarts)
 			formatTrailer()
 		case "index", "top-index":
-			iter, _ := newBlockIter(r.Compare, h.Get())
+			iter, _ := newBlockIter(r.Compare, r.Split, h.Get())
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				bh, err := decodeBlockHandleWithProperties(value)
 				if err != nil {

@@ -525,6 +525,36 @@ func (m *mergingIter) nextEntry(item *mergingIterItem) {
 	m.initMinRangeDelIters(oldTopLevel)
 }
 
+// Steps to the next entry using NextPrefix. item is the current top item in the heap.
+func (m *mergingIter) nextPrefixEntry(item *mergingIterItem, currentPrefixLen int) {
+	l := &m.levels[item.index]
+	oldTopLevel := item.index
+	oldRangeDelIter := l.rangeDelIter
+
+	l.iterKey, l.iterValue = l.iter.NextPrefix(currentPrefixLen)
+	if l.iterKey != nil {
+		item.key, item.value = *l.iterKey, l.iterValue
+		if m.heap.len() > 1 {
+			m.heap.fix(0)
+		}
+		if l.rangeDelIter != oldRangeDelIter {
+			// The rangeDelIter changed which indicates that the l.iter moved to the
+			// next sstable. We have to update the tombstone for oldTopLevel as well.
+			oldTopLevel--
+		}
+	} else {
+		m.err = l.iter.Error()
+		if m.err == nil {
+			m.heap.pop()
+		}
+	}
+
+	// The cached tombstones are only valid for the levels
+	// [0,oldTopLevel]. Updated the cached tombstones for any levels in the range
+	// [oldTopLevel+1,heap[0].index].
+	m.initMinRangeDelIters(oldTopLevel)
+}
+
 // isNextEntryDeleted() starts from the current entry (as the next entry) and if it is deleted,
 // moves the iterators forward as needed and returns true, else it returns false. item is the top
 // item in the heap.
@@ -1013,6 +1043,24 @@ func (m *mergingIter) Next() (*InternalKey, []byte) {
 	}
 
 	m.nextEntry(&m.heap.items[0])
+	return m.findNextEntry()
+}
+
+func (m *mergingIter) NextPrefix(currentPrefixLen int) (*InternalKey, []byte) {
+	if m.err != nil {
+		return nil, nil
+	}
+
+	if m.dir != 1 {
+		m.switchToMinHeap()
+		return m.findNextEntry()
+	}
+
+	if m.heap.len() == 0 {
+		return nil, nil
+	}
+
+	m.nextPrefixEntry(&m.heap.items[0], currentPrefixLen)
 	return m.findNextEntry()
 }
 

@@ -75,6 +75,14 @@ func (it *flushIterator) Next() (*base.InternalKey, []byte) {
 	return &it.key, it.value()
 }
 
+// NextPrefix advances to the next position. Returns the key and value if the
+// iterator is pointing at a valid entry, and (nil, nil) otherwise.  Note:
+// flushIterator.NextPrefix mirrors the implementation of Iterator.NextPrefix
+// due to performance. Keep the two in sync.
+func (it *flushIterator) NextPrefix(int) (*base.InternalKey, []byte) {
+	return it.Next()
+}
+
 func (it *flushIterator) Prev() (*base.InternalKey, []byte) {
 	panic("pebble: Prev unimplemented")
 }

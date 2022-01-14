@@ -83,7 +83,11 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *newSnapshotOp:
 		return nil, &t.snapID, nil
 	case *iterNextOp:
+		return &t.iterID, nil, nil
+	case *iterNextWithLimitOp:
 		return &t.iterID, nil, []interface{}{&t.limit}
+	case *iterNextPrefixOp:
+		return &t.iterID, nil, nil
 	case *iterPrevOp:
 		return &t.iterID, nil, []interface{}{&t.limit}
 	case *iterSeekLTOp:
@@ -123,6 +127,8 @@ var methods = map[string]*methodInfo{
 	"NewIter":         makeMethod(newIterOp{}, dbTag, batchTag, snapTag),
 	"NewSnapshot":     makeMethod(newSnapshotOp{}, dbTag),
 	"Next":            makeMethod(iterNextOp{}, iterTag),
+	"NextWithLimit":   makeMethod(iterNextWithLimitOp{}, iterTag),
+	"NextPrefix":      makeMethod(iterNextPrefixOp{}, iterTag),
 	"Prev":            makeMethod(iterPrevOp{}, iterTag),
 	"Restart":         makeMethod(dbRestartOp{}, dbTag),
 	"SeekGE":          makeMethod(iterSeekGEOp{}, iterTag),

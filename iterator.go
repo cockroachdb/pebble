@@ -473,6 +473,48 @@ func (i *Iterator) nextUserKey() {
 	}
 }
 
+func (i *Iterator) nextPrefixKey() {
+	if i.iterKey == nil {
+		return
+	}
+	if i.iterValidityState != IterValid {
+		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
+		i.key = i.keyBuf
+	}
+	currentPrefixLen := i.split(i.key)
+
+	// If the iterator is already positioned over the next internal key, we need
+	// to check whether it's already at the next prefix.
+	if i.pos == iterPosNext {
+		split := i.split(i.iterKey.UserKey)
+		if currentPrefixLen != split || !i.equal(i.key[:currentPrefixLen], i.iterKey.UserKey[:split]) {
+			return
+		}
+	}
+
+	// nextPrefixKey should only be called when i.pos is in non-limited,
+	// forward-iteration state. If Iterator.NextPrefix is called after a
+	// reverse-iteration method, NextPrefix behaves as a simple Next and
+	// nextPrefixKey is not invoked. Similarly, if Iterator.NextPrefix is called
+	// after a limited forward-iteration method returns IterAtLimit, it behaves
+	// as a simple Next and nextPrefixKey is not invoked.
+	if invariants.Enabled && i.pos != iterPosCurForward && i.pos != iterPosNext {
+		panic("pebble: nextPrefixKey called from a limited or reverse position state")
+	}
+
+	for {
+		i.iterKey, i.iterValue = i.iter.NextPrefix(currentPrefixLen)
+		i.stats.ForwardStepCount[InternalIterCall]++
+		if i.iterKey == nil {
+			break
+		}
+		split := i.split(i.iterKey.UserKey)
+		if currentPrefixLen != split || !i.equal(i.key[:currentPrefixLen], i.iterKey.UserKey[:split]) {
+			break
+		}
+	}
+}
+
 func (i *Iterator) maybeSampleRead() {
 	// This method is only called when a public method of Iterator is
 	// returning, and below we exclude the case were the iterator is paused at
@@ -1159,11 +1201,23 @@ func (i *Iterator) Last() bool {
 // Next moves the iterator to the next key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) Next() bool {
-	return i.NextWithLimit(nil) == IterValid
+	return i.nextWithLimit(nil, false /* skipPrefix */) == IterValid
+}
+
+// NextPrefix moves the iterator to the next key/value pair with a different
+// prefix than the current key. When switching directions or called after
+// NextWithLimit returns IterAtLimit, NextPrefix moves the iterator to the next
+// user key, regardless of prefix.
+func (i *Iterator) NextPrefix() bool {
+	return i.nextWithLimit(nil, true /* skipPrefix */) == IterValid
 }
 
 // NextWithLimit ...
 func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
+	return i.nextWithLimit(limit, false /* skipPrefix */)
+}
+
+func (i *Iterator) nextWithLimit(limit []byte, skipPrefix bool) IterValidityState {
 	i.stats.ForwardStepCount[InterfaceCall]++
 	if limit != nil && i.hasPrefix {
 		i.err = errors.New("cannot use limit with prefix iteration")
@@ -1176,7 +1230,11 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 	i.lastPositioningOp = unknownLastPositionOp
 	switch i.pos {
 	case iterPosCurForward:
-		i.nextUserKey()
+		if skipPrefix {
+			i.nextPrefixKey()
+		} else {
+			i.nextUserKey()
+		}
 	case iterPosCurForwardPaused:
 		// Already at the right place.
 	case iterPosCurReverse:
@@ -1228,7 +1286,10 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 		}
 		i.nextUserKey()
 	case iterPosNext:
-		// Already at the right place.
+		// Already at the right place, unless we need to skip prefixes.
+		if skipPrefix {
+			i.nextPrefixKey()
+		}
 	}
 	i.findNextEntry(limit)
 	i.maybeSampleRead()

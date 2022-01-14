@@ -982,7 +982,7 @@ func TestBlockProperties(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			i, err := newBlockIter(r.Compare, bh.Get())
+			i, err := newBlockIter(r.Compare, r.Split, bh.Get())
 			if err != nil {
 				return err.Error()
 			}
@@ -1072,7 +1072,7 @@ func TestBlockProperties(t *testing.T) {
 
 					var blocks []int
 					var i int
-					iter, _ := newBlockIter(r.Compare, indexH.Get())
+					iter, _ := newBlockIter(r.Compare, r.Split, indexH.Get())
 					for key, value := iter.First(); key != nil; key, value = iter.Next() {
 						bh, err := decodeBlockHandleWithProperties(value)
 						if err != nil {
