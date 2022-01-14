@@ -880,7 +880,7 @@ func TestBlockProperties(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			i, err := newBlockIter(r.Compare, bh.Get())
+			i, err := newBlockIter(r.Compare, r.Split, bh.Get())
 			if err != nil {
 				return err.Error()
 			}

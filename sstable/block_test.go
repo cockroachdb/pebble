@@ -151,7 +151,7 @@ func TestBlockIter2(t *testing.T) {
 					return ""
 
 				case "iter":
-					iter, err := newBlockIter(bytes.Compare, block)
+					iter, err := newBlockIter(bytes.Compare, nil, block)
 					if err != nil {
 						return err.Error()
 					}
@@ -229,7 +229,7 @@ func TestBlockIterKeyStability(t *testing.T) {
 	}
 	block := w.finish()
 
-	i, err := newBlockIter(bytes.Compare, block)
+	i, err := newBlockIter(bytes.Compare, nil, block)
 	require.NoError(t, err)
 
 	// Check that the supplied slice resides within the bounds of the block.
@@ -289,7 +289,7 @@ func TestBlockIterReverseDirections(t *testing.T) {
 
 	for targetPos := 0; targetPos < w.restartInterval; targetPos++ {
 		t.Run("", func(t *testing.T) {
-			i, err := newBlockIter(bytes.Compare, block)
+			i, err := newBlockIter(bytes.Compare, nil, block)
 			require.NoError(t, err)
 
 			pos := 3
@@ -329,7 +329,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 					w.add(ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, w.finish())
+				it, err := newBlockIter(bytes.Compare, nil, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -371,7 +371,7 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 					w.add(ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, w.finish())
+				it, err := newBlockIter(bytes.Compare, nil, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -417,7 +417,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 					w.add(ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, w.finish())
+				it, err := newBlockIter(bytes.Compare, nil, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -449,7 +449,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 					w.add(ikey, nil)
 				}
 
-				it, err := newBlockIter(bytes.Compare, w.finish())
+				it, err := newBlockIter(bytes.Compare, nil, w.finish())
 				if err != nil {
 					b.Fatal(err)
 				}

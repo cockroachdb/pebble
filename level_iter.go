@@ -514,7 +514,25 @@ func (l *levelIter) Last() (*InternalKey, []byte) {
 	return l.verify(l.skipEmptyFileBackward())
 }
 
+type skipPrefixOpt struct {
+	skip             bool
+	currentPrefixLen int
+}
+
+var noSkipPrefix = skipPrefixOpt{}
+
 func (l *levelIter) Next() (*InternalKey, []byte) {
+	return l.next(noSkipPrefix)
+}
+
+func (l *levelIter) NextPrefix(currentPrefixLen int) (*InternalKey, []byte) {
+	return l.next(skipPrefixOpt{
+		skip:             true,
+		currentPrefixLen: currentPrefixLen,
+	})
+}
+
+func (l *levelIter) next(skipPrefix skipPrefixOpt) (*InternalKey, []byte) {
 	if l.err != nil || l.iter == nil {
 		return nil, nil
 	}
@@ -547,7 +565,14 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 	default:
 		// Reset the smallest boundary since we're moving away from it.
 		l.smallestBoundary = nil
-		if key, val := l.iter.Next(); key != nil {
+		var key *base.InternalKey
+		var val []byte
+		if skipPrefix.skip {
+			key, val = l.iter.NextPrefix(skipPrefix.currentPrefixLen)
+		} else {
+			key, val = l.iter.Next()
+		}
+		if key != nil {
 			return l.verify(key, val)
 		}
 	}
