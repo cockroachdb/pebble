@@ -87,6 +87,12 @@ func (i *retryableIter) NextWithLimit(limit []byte) pebble.IterValidityState {
 	return validity
 }
 
+func (i *retryableIter) NextPrefix() bool {
+	var valid bool
+	i.withRetry(func() { valid = i.iter.NextPrefix() })
+	return valid
+}
+
 func (i *retryableIter) Prev() bool {
 	var valid bool
 	i.withRetry(func() { valid = i.iter.Prev() })

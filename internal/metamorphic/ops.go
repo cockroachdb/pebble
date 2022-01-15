@@ -703,21 +703,26 @@ func (o *iterLastOp) String() string {
 	return fmt.Sprintf("%s.Last()", o.iterID)
 }
 
-// iterNextOp models an Iterator.Next[WithLimit] operation.
+// iterNextOp models an Iterator.Next[WithLimit,Prefix] operation.
 type iterNextOp struct {
 	iterID objID
 	limit  []byte
+	prefix bool
 }
 
 func (o *iterNextOp) run(t *test, h *history) {
 	i := t.getIter(o.iterID)
 	var valid bool
 	var validStr string
-	if o.limit == nil {
+	switch {
+	case o.limit != nil:
+		valid, validStr = validityStateToStr(i.NextWithLimit(o.limit))
+	case o.prefix:
+		valid = i.NextPrefix()
+		validStr = validBoolToStr(valid)
+	default:
 		valid = i.Next()
 		validStr = validBoolToStr(valid)
-	} else {
-		valid, validStr = validityStateToStr(i.NextWithLimit(o.limit))
 	}
 	if valid {
 		h.Recordf("%s // [%s,%q,%q] %v", o, validStr, i.Key(), i.Value(), i.Error())
@@ -727,7 +732,54 @@ func (o *iterNextOp) run(t *test, h *history) {
 }
 
 func (o *iterNextOp) String() string {
-	return fmt.Sprintf("%s.Next(%q)", o.iterID, o.limit)
+	switch {
+	case o.limit != nil:
+		return fmt.Sprintf("%s.NextWithLimit(%q)", o.iterID, o.limit)
+	case o.prefix:
+		return fmt.Sprintf("%s.NextPrefix()", o.iterID)
+	default:
+		return fmt.Sprintf("%s.Next()", o.iterID)
+	}
+}
+
+// iterNextWithLimitOp models an Iterator.NextWithLimit operation.
+type iterNextWithLimitOp struct {
+	iterID objID
+	limit  []byte
+}
+
+func (o *iterNextWithLimitOp) run(t *test, h *history) {
+	i := t.getIter(o.iterID)
+	valid, validStr := validityStateToStr(i.NextWithLimit(o.limit))
+	if valid {
+		h.Recordf("%s // [%s,%q,%q] %v", o, validStr, i.Key(), i.Value(), i.Error())
+	} else {
+		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
+	}
+}
+
+func (o *iterNextWithLimitOp) String() string {
+	return fmt.Sprintf("%s.NextWithLimit(%q)", o.iterID, o.limit)
+}
+
+// iterNextPrefixOp models an Iterator.NextPrefix operation.
+type iterNextPrefixOp struct {
+	iterID objID
+}
+
+func (o *iterNextPrefixOp) run(t *test, h *history) {
+	i := t.getIter(o.iterID)
+	valid := i.NextPrefix()
+	validStr := validBoolToStr(valid)
+	if valid {
+		h.Recordf("%s // [%s,%q,%q] %v", o, validStr, i.Key(), i.Value(), i.Error())
+	} else {
+		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
+	}
+}
+
+func (o *iterNextPrefixOp) String() string {
+	return fmt.Sprintf("%s.NextPrefix()", o.iterID)
 }
 
 // iterPrevOp models an Iterator.Prev[WithLimit] operation.
