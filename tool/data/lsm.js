@@ -99,6 +99,7 @@ function styleHeight(e) {
 }
 
 let sliderX, sliderHandle;
+let offsetSliderX;
 
 // The version object holds the current LSM state.
 let version = {
@@ -203,7 +204,7 @@ let version = {
         }
         for (let file of this.levels[0]) {
             let sublevel = null;
-            for (let i = index; i >= 0 && (sublevel === null || sublevel === undefined); i--) {
+            for (let i = index; i >= 0 && (sublevel === null || sublevel === undefined) && data.Edits[i].Sublevels; i--) {
                 sublevel = data.Edits[i].Sublevels[file];
             }
             this.sublevels[sublevel].push(file);
@@ -529,7 +530,7 @@ let version = {
         }
 
         sliderHandle.attr("cx", sliderX(version.index));
-        index.node().value = version.index;
+        index.node().value = version.index + data.StartEdit;
     },
 
     onMouseMove: function(i) {
@@ -640,6 +641,13 @@ let version = {
             .range([0, width])
             .clamp(true);
 
+        // Used only to generate offset ticks for slider.
+        // sliderX is used to index into the data.Edits array (0-indexed).
+        offsetSliderX = d3
+          .scaleLinear()
+          .domain([data.StartEdit, data.StartEdit + data.Edits.length - 1])
+          .range([0, width]);
+
         let slider = svg
             .append("g")
             .attr("class", "slider")
@@ -674,10 +682,10 @@ let version = {
             .attr("class", "ticks")
             .attr("transform", "translate(0," + 18 + ")")
             .selectAll("text")
-            .data(sliderX.ticks(10))
+            .data(offsetSliderX.ticks(10))
             .enter()
             .append("text")
-            .attr("x", sliderX)
+            .attr("x", offsetSliderX)
             .attr("text-anchor", "middle")
             .text(function(d) {
                 return d;
@@ -774,6 +782,9 @@ document.addEventListener("keydown", function(e) {
 
 index.on("input", function() {
     if (!isNaN(+this.value)) {
-        version.set(Number(this.value));
+        const val = Number(this.value) - data.StartEdit;
+        if (val >= 0) {
+            version.set(val);
+        }
     }
 });
