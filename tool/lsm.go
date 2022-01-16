@@ -124,8 +124,8 @@ func (l *lsmT) validateFlags() error {
 		}
 	}
 
-	if l.startEdit >= l.endEdit {
-		return errors.Errorf("start-edit must be before end-edit")
+	if l.startEdit > l.endEdit {
+		return errors.Errorf("start-edit cannot be after end-edit")
 	}
 
 	return nil
@@ -149,14 +149,18 @@ func (l *lsmT) runLSM(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if l.endEdit < len(edits) {
-		edits = edits[:l.endEdit-l.startEdit]
+		edits = edits[:l.endEdit-l.startEdit+1]
 	}
 	if l.editCount < len(edits) {
 		edits = edits[:l.editCount]
 	}
 
 	l.buildKeys(edits)
-	l.buildEdits(edits)
+	err = l.buildEdits(edits)
+	if err != nil {
+		return err
+	}
+
 	w := l.Root.OutOrStdout()
 
 	fmt.Fprintf(w, `<!DOCTYPE html>
@@ -264,7 +268,7 @@ func (l *lsmT) buildKeys(edits []*manifest.VersionEdit) {
 	}
 }
 
-func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
+func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 	l.state.Edits = nil
 	l.state.StartEdit = l.startEdit
 	l.state.Files = make(map[base.FileNum]lsmFileMetadata)
@@ -322,9 +326,18 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) {
 		}
 		l.state.Edits = append(l.state.Edits, edit)
 	}
+
+	if l.state.Edits == nil {
+		return errors.Errorf("there are no edits to the LSM")
+	}
+	return nil
 }
 
 func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.VersionEdit, error) {
+	if l.startEdit >= len(edits) {
+		return nil, errors.Errorf("start-edit is more than the number of edits, %d", len(edits))
+	}
+
 	be := manifest.BulkVersionEdit{}
 	be.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 
@@ -336,7 +349,7 @@ func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.Version
 		}
 	}
 
-	startingEdit := &edits[l.startEdit]
+	startingEdit := edits[l.startEdit]
 	var beNewFiles []manifest.NewFileEntry
 
 	for level, deletedFiles := range be.Deleted {
@@ -345,7 +358,7 @@ func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.Version
 				Level:   level,
 				FileNum: file.FileNum,
 			}
-			(*startingEdit).DeletedFiles[dfe] = file
+			startingEdit.DeletedFiles[dfe] = file
 		}
 	}
 
@@ -356,7 +369,7 @@ func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.Version
 				FileNum: file.FileNum,
 			}
 
-			if _, ok := (*startingEdit).DeletedFiles[dfe]; !ok {
+			if _, ok := startingEdit.DeletedFiles[dfe]; !ok {
 				beNewFiles = append(beNewFiles, manifest.NewFileEntry{
 					Level: level,
 					Meta:  file,
@@ -364,8 +377,8 @@ func (l *lsmT) coalesceEdits(edits []*manifest.VersionEdit) ([]*manifest.Version
 			}
 		}
 	}
-	(*startingEdit).NewFiles = append(beNewFiles, (*startingEdit).NewFiles...)
-	(*startingEdit).DeletedFiles = nil
+	startingEdit.NewFiles = append(beNewFiles, startingEdit.NewFiles...)
+	startingEdit.DeletedFiles = nil
 
 	edits = edits[l.startEdit:]
 	return edits, nil

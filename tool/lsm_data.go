@@ -312,10 +312,7 @@ let version = {
         }
         for (let file of this.levels[0]) {
             let sublevel = null;
-            for (let i = index; i >= 0 && (sublevel === null || sublevel === undefined); i--) {
-                if (!data.Edits[i].Sublevels) {
-                    continue;
-                }
+            for (let i = index; i >= 0 && (sublevel === null || sublevel === undefined) && data.Edits[i].Sublevels; i--) {
                 sublevel = data.Edits[i].Sublevels[file];
             }
             this.sublevels[sublevel].push(file);
@@ -751,13 +748,13 @@ let version = {
             .domain([0, data.Edits.length - 1])
             .range([0, width])
             .clamp(true);
-				
-	// Used only to generate offset ticks for slider.
-	// sliderX is used to index into the data.Edits array (0-indexed).
-	offsetSliderX = d3
-	    .scaleLinear()
-	    .domain([data.StartEdit, data.StartEdit + data.Edits.length - 1])
-	    .range([0, width]);
+
+        // Used only to generate offset ticks for slider.
+        // sliderX is used to index into the data.Edits array (0-indexed).
+        offsetSliderX = d3
+          .scaleLinear()
+          .domain([data.StartEdit, data.StartEdit + data.Edits.length - 1])
+          .range([0, width]);
 
         let slider = svg
             .append("g")
