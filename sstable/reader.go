@@ -2478,6 +2478,7 @@ func (r *Reader) Layout() (*Layout, error) {
 	} else {
 		l.TopIndex = r.indexBH
 		topIter, _ := newBlockIter(r.Compare, indexH.Get())
+		iter := &blockIter{}
 		for key, value := topIter.First(); key != nil; key, value = topIter.Next() {
 			indexBH, err := decodeBlockHandleWithProperties(value)
 			if err != nil {
@@ -2490,7 +2491,9 @@ func (r *Reader) Layout() (*Layout, error) {
 			if err != nil {
 				return nil, err
 			}
-			iter, _ := newBlockIter(r.Compare, subIndex.Get())
+			if err := iter.init(r.Compare, subIndex.Get(), 0 /* globalSeqNum */); err != nil {
+				return nil, err
+			}
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				dataBH, err := decodeBlockHandleWithProperties(value)
 				if err != nil {
@@ -2499,6 +2502,7 @@ func (r *Reader) Layout() (*Layout, error) {
 				l.Data = append(l.Data, dataBH.BlockHandle)
 			}
 			subIndex.Release()
+			*iter = iter.resetForReuse()
 		}
 	}
 
