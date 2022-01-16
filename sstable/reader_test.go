@@ -1063,3 +1063,13 @@ func BenchmarkTableIterPrev(b *testing.B) {
 			})
 	}
 }
+
+func BenchmarkLayout(b *testing.B) {
+	r, _ := buildBenchmarkTable(b, WriterOptions{})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r.Layout()
+	}
+	b.StopTimer()
+	r.Close()
+}
