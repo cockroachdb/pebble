@@ -144,17 +144,12 @@ type Writer struct {
 	// filter accumulates the filter block. If populated, the filter ingests
 	// either the output of w.split (i.e. a prefix extractor) if w.split is not
 	// nil, or the full keys otherwise.
-	filter filterWriter
-
+	filter          filterWriter
 	indexPartitions []indexBlockWriterAndBlockProperties
-
 	// curWriterState consists of the state which is currently owned by and
 	// used by the Writer client goroutine. This state can be handed off
-	// to other goroutines. If curWriterState ownership is being handed off
-	// to another goroutine, then it's important to not use the curWriterState
-	// until another passableWriterState is acquired for use.
-	curWriterState *passableWriterState
-
+	// to other goroutines.
+	curWriterState *blockBuf
 	// To allow potentially overlapping (i.e. un-fragmented) range keys spans to
 	// be added to the Writer, a keyspan.Fragmenter and rangekey.Coalescer are
 	// used to retain the keys and values, emitting fragmented, coalesced spans as
@@ -169,12 +164,9 @@ type checksummer struct {
 	xxHasher     *xxhash.Digest
 }
 
-// A passableWriterState is either owned by the Writer client goroutine, or
-// owned by the writeQueue goroutine which is writing blocks to disk. Once a
-// compressionQueue is added, passableWriterState could also be owned by the
-// compressionQueue. A passableWriterState should only be owned by a single
-// goroutine at a time.
-type passableWriterState struct {
+// A blockBuf is owned by the Writer client goroutine. Once {compression, write}Queues
+// are added, blockBuf could also be owned by the {compression, write}Queue goroutines.
+type blockBuf struct {
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, (5 * binary.MaxVarintLen64) bytes, and most
 	// likely large enough for a block handle with properties.
@@ -184,6 +176,11 @@ type passableWriterState struct {
 	compressedBuf []byte
 	dataBlock     *blockWriter
 	checksummer   checksummer
+
+	// uncompressed is the uncompressed byte slice. It's a reference to a buffer in the
+	// dataBlock *blockWriter.
+	uncompressed []byte
+	compressed   []byte
 }
 
 func (w *Writer) Error() error {
@@ -692,7 +689,7 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 		}
 
 		var bh BlockHandle
-		if bh, err = w.writeBlockPostCompression(b, w.curWriterState.tmp[:]); err != nil {
+		if bh, err = w.writeCompressedBlock(b, w.curWriterState.tmp[:]); err != nil {
 			return err
 		}
 
@@ -740,7 +737,7 @@ func (w *Writer) maybeAddBlockPropertiesToBlockHandle(
 }
 
 // addIndexEntry adds an index entry for the specified key and block handle.
-func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProperties, writerState *passableWriterState) error {
+func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProperties, writerState *blockBuf) error {
 	if bhp.Length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
@@ -898,7 +895,7 @@ func compressAndChecksum(
 	return b, nil
 }
 
-func (w *Writer) writeBlockPostCompression(
+func (w *Writer) writeCompressedBlock(
 	block []byte, blockTrailerBuf []byte,
 ) (BlockHandle, error) {
 	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(block))}
@@ -934,7 +931,7 @@ func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, err
 	if err != nil {
 		return BlockHandle{}, err
 	}
-	return w.writeBlockPostCompression(b, w.curWriterState.tmp[:])
+	return w.writeCompressedBlock(b, w.curWriterState.tmp[:])
 }
 
 // Close finishes writing the table and closes the underlying file that the
@@ -1279,7 +1276,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		coalescer: rangekey.Coalescer{},
 	}
 
-	w.curWriterState = &passableWriterState{
+	w.curWriterState = &blockBuf{
 		dataBlock: &blockWriter{
 			restartInterval: o.BlockRestartInterval,
 		},
