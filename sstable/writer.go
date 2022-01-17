@@ -146,10 +146,6 @@ type Writer struct {
 	// nil, or the full keys otherwise.
 	filter          filterWriter
 	indexPartitions []indexBlockWriterAndBlockProperties
-	// curWriterState consists of the state which is currently owned by and
-	// used by the Writer client goroutine. This state can be handed off
-	// to other goroutines.
-	curWriterState *blockBuf
 	// To allow potentially overlapping (i.e. un-fragmented) range keys spans to
 	// be added to the Writer, a keyspan.Fragmenter and rangekey.Coalescer are
 	// used to retain the keys and values, emitting fragmented, coalesced spans as
@@ -157,6 +153,13 @@ type Writer struct {
 	fragmenter keyspan.Fragmenter
 	coalescer  rangekey.Coalescer
 	rkBuf      []byte
+	// dataBlockBuf consists of the state which is currently owned by and used by
+	// the Writer client goroutine. This state can be handed off
+	// to other goroutines.
+	dataBlockBuf *dataBlockBuf
+	// blockBuf consists of the state which is owned by and used by the Writer client
+	// goroutine.
+	blockBuf *blockBuf
 }
 
 type checksummer struct {
@@ -164,8 +167,6 @@ type checksummer struct {
 	xxHasher     *xxhash.Digest
 }
 
-// A blockBuf is owned by the Writer client goroutine. Once {compression, write}Queues
-// are added, blockBuf could also be owned by the {compression, write}Queue goroutines.
 type blockBuf struct {
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, (5 * binary.MaxVarintLen64) bytes, and most
@@ -174,13 +175,21 @@ type blockBuf struct {
 	// compressedBuf is the destination buffer for compression. It is re-used over the
 	// lifetime of the writer, avoiding the allocation of a temporary buffer for each block.
 	compressedBuf []byte
-	dataBlock     *blockWriter
 	checksummer   checksummer
+}
 
-	// uncompressed is the uncompressed byte slice. It's a reference to a buffer in the
-	// dataBlock *blockWriter.
+// A dataBlockBuf is owned by the Writer client goroutine. Once {compression, write}Queues
+// are added, blockBuf could also be owned by the {compression, write}Queue goroutines.
+// A dataBlockBuf has all the state required to compress and write a data block to disk.
+type dataBlockBuf struct {
+	blockBuf
+	dataBlock *blockWriter
+	// If uncompressed != nil, then it must only be used by the dataBlockBuf, and the goroutine
+	// which owns dataBlockBuf.
 	uncompressed []byte
-	compressed   []byte
+	// If uncompressed != nil, then it must only be used by the dataBlockBuf, and the goroutine
+	// which owns dataBlockBuf.
+	compressed []byte
 }
 
 func (w *Writer) Error() error {
@@ -297,11 +306,11 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	}
 
 	w.maybeAddToFilter(key.UserKey)
-	w.curWriterState.dataBlock.add(key, value)
+	w.dataBlockBuf.dataBlock.add(key, value)
 
 	w.meta.updateSeqNum(key.SeqNum())
 	// block.curKey contains the most recently added key to the block.
-	w.meta.LargestPoint.UserKey = w.curWriterState.dataBlock.curKey[:len(w.curWriterState.dataBlock.curKey)-8]
+	w.meta.LargestPoint.UserKey = w.dataBlockBuf.dataBlock.curKey[:len(w.dataBlockBuf.dataBlock.curKey)-8]
 	w.meta.LargestPoint.Trailer = key.Trailer
 	if w.meta.SmallestPoint.UserKey == nil {
 		// NB: we clone w.meta.LargestPoint rather than "key", even though they are
@@ -674,22 +683,22 @@ func (w *Writer) maybeAddToFilter(key []byte) {
 }
 
 func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
-	if !shouldFlush(key, value, w.curWriterState.dataBlock, w.blockSize, w.blockSizeThreshold) {
+	if !shouldFlush(key, value, w.dataBlockBuf.dataBlock, w.blockSize, w.blockSizeThreshold) {
 		return nil
 	}
 
 	err := func() error {
-		finishedBlock := w.curWriterState.dataBlock.finish()
+		finishedBlock := w.dataBlockBuf.dataBlock.finish()
 		b, err := compressAndChecksum(
-			finishedBlock, w.compression, &w.curWriterState.compressedBuf,
-			w.curWriterState.tmp[:], &w.curWriterState.checksummer,
+			finishedBlock, w.compression, &w.dataBlockBuf.compressedBuf,
+			w.dataBlockBuf.tmp[:], &w.dataBlockBuf.checksummer,
 		)
 		if err != nil {
 			return err
 		}
 
 		var bh BlockHandle
-		if bh, err = w.writeCompressedBlock(b, w.curWriterState.tmp[:]); err != nil {
+		if bh, err = w.writeCompressedBlock(b, w.dataBlockBuf.tmp[:]); err != nil {
 			return err
 		}
 
@@ -698,8 +707,8 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 			return err
 		}
 
-		prevKey := base.DecodeInternalKey(w.curWriterState.dataBlock.curKey)
-		if err = w.addIndexEntry(prevKey, key, bhp, w.curWriterState); err != nil {
+		prevKey := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
+		if err = w.addIndexEntry(prevKey, key, bhp, w.dataBlockBuf.tmp[:]); err != nil {
 			return err
 		}
 		return nil
@@ -737,7 +746,7 @@ func (w *Writer) maybeAddBlockPropertiesToBlockHandle(
 }
 
 // addIndexEntry adds an index entry for the specified key and block handle.
-func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProperties, writerState *blockBuf) error {
+func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte) error {
 	if bhp.Length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
@@ -749,7 +758,7 @@ func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProp
 	} else {
 		sep = prevKey.Separator(w.compare, w.separator, nil, key)
 	}
-	encoded := encodeBlockHandleWithProperties(writerState.tmp[:], bhp)
+	encoded := encodeBlockHandleWithProperties(tmp, bhp)
 
 	if supportsTwoLevelIndex(w.tableFormat) &&
 		shouldFlush(sep, encoded, &w.indexBlock, w.indexBlockSize, w.indexBlockSizeThreshold) {
@@ -834,7 +843,7 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 		sep := base.DecodeInternalKey(b.writer.curKey)
 		data := b.writer.finish()
 		w.props.IndexSize += uint64(len(data))
-		bh, err := w.writeBlock(data, w.compression)
+		bh, err := w.writeBlock(data, w.compression, w.blockBuf)
 		if err != nil {
 			return BlockHandle{}, err
 		}
@@ -842,7 +851,7 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 			BlockHandle: bh,
 			Props:       b.properties,
 		}
-		encoded := encodeBlockHandleWithProperties(w.curWriterState.tmp[:], bhp)
+		encoded := encodeBlockHandleWithProperties(w.blockBuf.tmp[:], bhp)
 		w.topLevelIndexBlock.add(sep, encoded)
 	}
 
@@ -853,7 +862,7 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	w.props.TopLevelIndexSize = uint64(w.topLevelIndexBlock.estimatedSize())
 	w.props.IndexSize += w.props.TopLevelIndexSize + blockTrailerLen
 
-	return w.writeBlock(w.topLevelIndexBlock.finish(), w.compression)
+	return w.writeBlock(w.topLevelIndexBlock.finish(), w.compression, w.blockBuf)
 }
 
 func compressAndChecksum(
@@ -924,14 +933,16 @@ func (w *Writer) writeCompressedBlock(
 	return bh, nil
 }
 
-func (w *Writer) writeBlock(b []byte, compression Compression) (BlockHandle, error) {
+func (w *Writer) writeBlock(
+	b []byte, compression Compression, blockBuf *blockBuf,
+) (BlockHandle, error) {
 	b, err := compressAndChecksum(
-		b, compression, &w.curWriterState.compressedBuf, w.curWriterState.tmp[:], &w.curWriterState.checksummer,
+		b, compression, &blockBuf.compressedBuf, blockBuf.tmp[:], &blockBuf.checksummer,
 	)
 	if err != nil {
 		return BlockHandle{}, err
 	}
-	return w.writeCompressedBlock(b, w.curWriterState.tmp[:])
+	return w.writeCompressedBlock(b, blockBuf.tmp[:])
 }
 
 // Close finishes writing the table and closes the underlying file that the
@@ -954,8 +965,8 @@ func (w *Writer) Close() (err error) {
 
 	// Finish the last data block, or force an empty data block if there
 	// aren't any data blocks at all.
-	if w.curWriterState.dataBlock.nEntries > 0 || w.indexBlock.nEntries == 0 {
-		bh, err := w.writeBlock(w.curWriterState.dataBlock.finish(), w.compression)
+	if w.dataBlockBuf.dataBlock.nEntries > 0 || w.indexBlock.nEntries == 0 {
+		bh, err := w.writeBlock(w.dataBlockBuf.dataBlock.finish(), w.compression, &w.dataBlockBuf.blockBuf)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -965,8 +976,8 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return err
 		}
-		prevKey := base.DecodeInternalKey(w.curWriterState.dataBlock.curKey)
-		if err = w.addIndexEntry(prevKey, InternalKey{}, bhp, w.curWriterState); err != nil {
+		prevKey := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
+		if err = w.addIndexEntry(prevKey, InternalKey{}, bhp, w.dataBlockBuf.tmp[:]); err != nil {
 			w.err = err
 			return err
 		}
@@ -982,13 +993,13 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return w.err
 		}
-		bh, err := w.writeBlock(b, NoCompression)
+		bh, err := w.writeBlock(b, NoCompression, w.blockBuf)
 		if err != nil {
 			w.err = err
 			return w.err
 		}
-		n := encodeBlockHandle(w.curWriterState.tmp[:], bh)
-		metaindex.add(InternalKey{UserKey: []byte(w.filter.metaName())}, w.curWriterState.tmp[:n])
+		n := encodeBlockHandle(w.blockBuf.tmp[:], bh)
+		metaindex.add(InternalKey{UserKey: []byte(w.filter.metaName())}, w.blockBuf.tmp[:n])
 		w.props.FilterPolicyName = w.filter.policyName()
 		w.props.FilterSize = bh.Length
 	}
@@ -1011,7 +1022,7 @@ func (w *Writer) Close() (err error) {
 		w.props.NumDataBlocks = uint64(w.indexBlock.nEntries)
 
 		// Write the single level index block.
-		indexBH, err = w.writeBlock(w.indexBlock.finish(), w.compression)
+		indexBH, err = w.writeBlock(w.indexBlock.finish(), w.compression, w.blockBuf)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -1036,7 +1047,7 @@ func (w *Writer) Close() (err error) {
 			// internal buffer to get gc'd.
 			w.meta.LargestRangeDel = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue).Clone()
 		}
-		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.finish(), NoCompression)
+		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.finish(), NoCompression, w.blockBuf)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -1060,7 +1071,7 @@ func (w *Writer) Close() (err error) {
 		// TODO(travers): The lack of compression on the range key block matches the
 		// lack of compression on the range-del block. Revisit whether we want to
 		// enable compression on this block.
-		rangeKeyBH, err = w.writeBlock(w.rangeKeyBlock.finish(), NoCompression)
+		rangeKeyBH, err = w.writeBlock(w.rangeKeyBlock.finish(), NoCompression, w.blockBuf)
 		if err != nil {
 			w.err = err
 			return w.err
@@ -1072,8 +1083,8 @@ func (w *Writer) Close() (err error) {
 	// metaindex block entries must be sorted, and the range key block name sorts
 	// before the other block names.
 	if w.props.NumRangeKeys() > 0 {
-		n := encodeBlockHandle(w.curWriterState.tmp[:], rangeKeyBH)
-		metaindex.add(InternalKey{UserKey: []byte(metaRangeKeyName)}, w.curWriterState.tmp[:n])
+		n := encodeBlockHandle(w.blockBuf.tmp[:], rangeKeyBH)
+		metaindex.add(InternalKey{UserKey: []byte(metaRangeKeyName)}, w.blockBuf.tmp[:n])
 	}
 
 	{
@@ -1115,26 +1126,26 @@ func (w *Writer) Close() (err error) {
 		raw.restartInterval = propertiesBlockRestartInterval
 		w.props.CompressionOptions = rocksDBCompressionOptions
 		w.props.save(&raw)
-		bh, err := w.writeBlock(raw.finish(), NoCompression)
+		bh, err := w.writeBlock(raw.finish(), NoCompression, w.blockBuf)
 		if err != nil {
 			w.err = err
 			return w.err
 		}
-		n := encodeBlockHandle(w.curWriterState.tmp[:], bh)
-		metaindex.add(InternalKey{UserKey: []byte(metaPropertiesName)}, w.curWriterState.tmp[:n])
+		n := encodeBlockHandle(w.blockBuf.tmp[:], bh)
+		metaindex.add(InternalKey{UserKey: []byte(metaPropertiesName)}, w.blockBuf.tmp[:n])
 	}
 
 	// Add the range deletion block handle to the metaindex block.
 	if w.props.NumRangeDeletions > 0 {
-		n := encodeBlockHandle(w.curWriterState.tmp[:], rangeDelBH)
+		n := encodeBlockHandle(w.blockBuf.tmp[:], rangeDelBH)
 		// The v2 range-del block encoding is backwards compatible with the v1
 		// encoding. We add meta-index entries for both the old name and the new
 		// name so that old code can continue to find the range-del block and new
 		// code knows that the range tombstones in the block are fragmented and
 		// sorted.
-		metaindex.add(InternalKey{UserKey: []byte(metaRangeDelName)}, w.curWriterState.tmp[:n])
+		metaindex.add(InternalKey{UserKey: []byte(metaRangeDelName)}, w.blockBuf.tmp[:n])
 		if !w.rangeDelV1Format {
-			metaindex.add(InternalKey{UserKey: []byte(metaRangeDelV2Name)}, w.curWriterState.tmp[:n])
+			metaindex.add(InternalKey{UserKey: []byte(metaRangeDelV2Name)}, w.blockBuf.tmp[:n])
 		}
 	}
 
@@ -1142,7 +1153,7 @@ func (w *Writer) Close() (err error) {
 	// policy is nil. NoCompression is specified because a) RocksDB never
 	// compresses the meta-index block and b) RocksDB has some code paths which
 	// expect the meta-index block to not be compressed.
-	metaindexBH, err := w.writeBlock(metaindex.blockWriter.finish(), NoCompression)
+	metaindexBH, err := w.writeBlock(metaindex.blockWriter.finish(), NoCompression, w.blockBuf)
 	if err != nil {
 		w.err = err
 		return w.err
@@ -1151,12 +1162,12 @@ func (w *Writer) Close() (err error) {
 	// Write the table footer.
 	footer := footer{
 		format:      w.tableFormat,
-		checksum:    w.curWriterState.checksummer.checksumType,
+		checksum:    w.blockBuf.checksummer.checksumType,
 		metaindexBH: metaindexBH,
 		indexBH:     indexBH,
 	}
 	var n int
-	if n, err = w.writer.Write(footer.encode(w.curWriterState.tmp[:])); err != nil {
+	if n, err = w.writer.Write(footer.encode(w.blockBuf.tmp[:])); err != nil {
 		w.err = err
 		return w.err
 	}
@@ -1184,7 +1195,7 @@ func (w *Writer) Close() (err error) {
 // EstimatedSize returns the estimated size of the sstable being written if a
 // called to Finish() was made without adding additional keys.
 func (w *Writer) EstimatedSize() uint64 {
-	return w.meta.Size + uint64(w.curWriterState.dataBlock.estimatedSize()+w.indexBlock.estimatedSize())
+	return w.meta.Size + uint64(w.dataBlockBuf.dataBlock.estimatedSize()+w.indexBlock.estimatedSize())
 }
 
 // Metadata returns the metadata for the finished sstable. Only valid to call
@@ -1276,10 +1287,13 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		coalescer: rangekey.Coalescer{},
 	}
 
-	w.curWriterState = &blockBuf{
+	w.dataBlockBuf = &dataBlockBuf{
 		dataBlock: &blockWriter{
 			restartInterval: o.BlockRestartInterval,
 		},
+	}
+	w.dataBlockBuf.checksummer = checksummer{checksumType: o.Checksum}
+	w.blockBuf = &blockBuf{
 		checksummer: checksummer{checksumType: o.Checksum},
 	}
 
