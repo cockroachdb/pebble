@@ -242,31 +242,33 @@ func (i interval) intersects(x interval) bool {
 	return i.upper > x.lower && i.lower < x.upper
 }
 
-// BlockIntervalFilter is an implementation of BlockPropertyFilter when the
+// blockIntervalFilter is an implementation of BlockPropertyFilter when the
 // corresponding collector is a BlockIntervalCollector. That is, the set is of
 // the form [lower, upper).
-type BlockIntervalFilter struct {
+type blockIntervalFilter struct {
 	name           string
 	filterInterval interval
 }
 
-// NewBlockIntervalFilter constructs a BlockIntervalFilter with the given name
-// and [lower, upper) bounds.
+// NewBlockIntervalFilter constructs a BlockPropertyFilter that filters blocks
+// based on an interval property collected by BlockIntervalCollector and the
+// given [lower, upper) bounds. The given name specifies the
+// BlockIntervalCollector's properties to read.
 func NewBlockIntervalFilter(
-	name string, lower uint64, upper uint64) *BlockIntervalFilter {
-	return &BlockIntervalFilter{
+	name string, lower uint64, upper uint64) BlockPropertyFilter {
+	return &blockIntervalFilter{
 		name:           name,
 		filterInterval: interval{lower: lower, upper: upper},
 	}
 }
 
 // Name implements the BlockPropertyFilter interface.
-func (b *BlockIntervalFilter) Name() string {
+func (b *blockIntervalFilter) Name() string {
 	return b.name
 }
 
 // Intersects implements the BlockPropertyFilter interface.
-func (b *BlockIntervalFilter) Intersects(prop []byte) (bool, error) {
+func (b *blockIntervalFilter) Intersects(prop []byte) (bool, error) {
 	var i interval
 	if err := i.decode(prop); err != nil {
 		return false, err
