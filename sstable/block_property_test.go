@@ -322,18 +322,18 @@ func TestBlockPropertiesEncoderDecoder(t *testing.T) {
 	require.True(t, decoder.done())
 }
 
-// filterWithTrueForEmptyProp is a wrapper for BlockIntervalFilter that
+// filterWithTrueForEmptyProp is a wrapper for BlockPropertyFilter that
 // delegates to it except when the property is empty, in which case it returns
 // true.
 type filterWithTrueForEmptyProp struct {
-	*BlockIntervalFilter
+	BlockPropertyFilter
 }
 
 func (b filterWithTrueForEmptyProp) Intersects(prop []byte) (bool, error) {
 	if len(prop) == 0 {
 		return true, nil
 	}
-	return b.BlockIntervalFilter.Intersects(prop)
+	return b.BlockPropertyFilter.Intersects(prop)
 }
 
 func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) {
