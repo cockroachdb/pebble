@@ -2440,15 +2440,6 @@ func (d *DB) runCompaction(
 		prevPointSeqNum := InternalKeySeqNumMax
 		for ; key != nil; key, val = iter.Next() {
 			if split := splitter.shouldSplitBefore(key, tw); split == splitNow {
-				if splitL0Outputs {
-					// Flush all tombstones up until key.UserKey, and
-					// truncate them at that key.
-					//
-					// The fragmenter could save the passed-in key. As this
-					// key could live beyond the write into the current
-					// sstable output file, make a copy.
-					c.rangeDelFrag.TruncateAndFlushTo(key.Clone().UserKey)
-				}
 				break
 			}
 
