@@ -402,6 +402,9 @@ func (f footer) encode(buf []byte) []byte {
 		encodeBlockHandle(buf[n:], f.indexBH)
 		binary.LittleEndian.PutUint32(buf[rocksDBVersionOffset:], rocksDBFormatVersion2)
 		copy(buf[len(buf)-len(rocksDBMagic):], rocksDBMagic)
+
+	default:
+		panic("sstable: unspecified table format version")
 	}
 
 	return buf
@@ -413,6 +416,7 @@ func supportsTwoLevelIndex(format TableFormat) bool {
 		return false
 	case TableFormatRocksDBv2:
 		return true
+	default:
+		panic("sstable: unspecified table format version")
 	}
-	return true
 }
