@@ -191,7 +191,7 @@ func newPickedCompactionFromL0(
 	files := make([]*manifest.FileMetadata, 0, len(lcf.Files))
 	iter := vers.Levels[0].Iter()
 	for j, f := 0, iter.First(); f != nil; j, f = j+1, iter.Next() {
-		if lcf.FilesIncluded[j] {
+		if lcf.FilesIncluded[f.L0Index] {
 			files = append(files, f)
 		}
 	}
@@ -277,7 +277,7 @@ func (pc *pickedCompaction) setupInputs(opts *Options, diskAvailBytes uint64) bo
 			iter := pc.version.Levels[0].Iter()
 			var sizeSum uint64
 			for j, f := 0, iter.First(); f != nil; j, f = j+1, iter.Next() {
-				if pc.lcf.FilesIncluded[j] {
+				if pc.lcf.FilesIncluded[f.L0Index] {
 					newStartLevelFiles = append(newStartLevelFiles, f)
 					sizeSum += f.Size
 				}

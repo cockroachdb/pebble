@@ -597,7 +597,23 @@ func (b *BulkVersionEdit) Apply(
 		}
 
 		if level == 0 {
-			if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
+			if curr != nil && curr.L0Sublevels != nil && len(deletedMap) == 0 {
+				// Flushes and ingestions that do not delete any L0 files do not require
+				// a regeneration of L0Sublevels from scratch. We can instead generate
+				// it incrementally.
+				var err error
+				// AddL0Files requires addedFiles to be sorted in seqnum order.
+				addedFiles = append([]*FileMetadata(nil), addedFiles...)
+				SortBySeqNum(addedFiles)
+				v.L0Sublevels, err = curr.L0Sublevels.AddL0Files(addedFiles, flushSplitBytes, &v.Levels[0])
+				if errors.Is(err, errInvalidL0SublevelsOpt) {
+					err = v.InitL0Sublevels(cmp, formatKey, flushSplitBytes)
+				}
+				if err != nil {
+					return nil, nil, errors.Wrap(err, "pebble: internal error")
+				}
+				v.L0SublevelFiles = v.L0Sublevels.Levels
+			} else if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
 				return nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
 			if err := CheckOrdering(cmp, formatKey, Level(0), v.Levels[level].Iter()); err != nil {
