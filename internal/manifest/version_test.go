@@ -5,6 +5,7 @@
 package manifest
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 )
@@ -89,194 +91,36 @@ func TestIkeyRange(t *testing.T) {
 }
 
 func TestOverlaps(t *testing.T) {
-	m00 := &FileMetadata{
-		FileNum:  700,
-		Size:     1,
-		Smallest: base.ParseInternalKey("b.SET.7008"),
-		Largest:  base.ParseInternalKey("e.SET.7009"),
-	}
-	m01 := &FileMetadata{
-		FileNum:  701,
-		Size:     1,
-		Smallest: base.ParseInternalKey("c.SET.7018"),
-		Largest:  base.ParseInternalKey("f.SET.7019"),
-	}
-	m02 := &FileMetadata{
-		FileNum:  702,
-		Size:     1,
-		Smallest: base.ParseInternalKey("f.SET.7028"),
-		Largest:  base.ParseInternalKey("g.SET.7029"),
-	}
-	m03 := &FileMetadata{
-		FileNum:  703,
-		Size:     1,
-		Smallest: base.ParseInternalKey("x.SET.7038"),
-		Largest:  base.ParseInternalKey("y.SET.7039"),
-	}
-	m04 := &FileMetadata{
-		FileNum:  704,
-		Size:     1,
-		Smallest: base.ParseInternalKey("n.SET.7048"),
-		Largest:  base.ParseInternalKey("p.SET.7049"),
-	}
-	m05 := &FileMetadata{
-		FileNum:  705,
-		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7058"),
-		Largest:  base.ParseInternalKey("p.SET.7059"),
-	}
-	m06 := &FileMetadata{
-		FileNum:  706,
-		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7068"),
-		Largest:  base.ParseInternalKey("u.SET.7069"),
-	}
-	m07 := &FileMetadata{
-		FileNum:  707,
-		Size:     1,
-		Smallest: base.ParseInternalKey("r.SET.7078"),
-		Largest:  base.ParseInternalKey("s.SET.7079"),
-	}
-
-	m10 := &FileMetadata{
-		FileNum:  710,
-		Size:     1,
-		Smallest: base.ParseInternalKey("a.SET.7140"),
-		Largest: base.InternalKey{
-			UserKey: []byte("d"),
-			Trailer: base.InternalKeyRangeDeleteSentinel,
-		},
-	}
-	m11 := &FileMetadata{
-		FileNum:  711,
-		Size:     1,
-		Smallest: base.ParseInternalKey("d.SET.7108"),
-		Largest:  base.ParseInternalKey("g.SET.7109"),
-	}
-	m12 := &FileMetadata{
-		FileNum:  712,
-		Size:     1,
-		Smallest: base.ParseInternalKey("g.SET.7118"),
-		Largest:  base.ParseInternalKey("j.SET.7119"),
-	}
-	m13 := &FileMetadata{
-		FileNum:  713,
-		Size:     1,
-		Smallest: base.ParseInternalKey("n.SET.7128"),
-		Largest:  base.ParseInternalKey("p.SET.7129"),
-	}
-	m14 := &FileMetadata{
-		FileNum:  714,
-		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7148"),
-		Largest:  base.ParseInternalKey("p.SET.7149"),
-	}
-	m15 := &FileMetadata{
-		FileNum:  715,
-		Size:     1,
-		Smallest: base.ParseInternalKey("p.SET.7138"),
-		Largest:  base.ParseInternalKey("u.SET.7139"),
-	}
-
-	v := Version{
-		Levels: [NumLevels]LevelMetadata{
-			0: levelMetadata(0, m00, m01, m02, m03, m04, m05, m06, m07),
-			1: levelMetadata(1, m10, m11, m12, m13, m14, m15),
-		},
-	}
-
-	testCases := []struct {
-		level        int
-		ukey0, ukey1 string
-		exclusiveEnd bool
-		want         string
-	}{
-		// Level 0: m00=b-e, m01=c-f, m02=f-g, m03=x-y, m04=n-p, m05=p-p, m06=p-u, m07=r-s.
-		// Note that:
-		//   - the slice isn't sorted (e.g. m02=f-g, m03=x-y, m04=n-p),
-		//   - m00 and m01 overlap (not just touch),
-		//   - m06 contains m07,
-		//   - m00, m01 and m02 transitively overlap/touch each other, and
-		//   - m04, m05, m06 and m07 transitively overlap/touch each other.
-		{0, "a", "a", false, ""},
-		{0, "a", "b", false, "m00 m01 m02"},
-		{0, "a", "d", false, "m00 m01 m02"},
-		{0, "a", "e", false, "m00 m01 m02"},
-		{0, "a", "g", false, "m00 m01 m02"},
-		{0, "a", "z", false, "m00 m01 m02 m03 m04 m05 m06 m07"},
-		{0, "c", "e", false, "m00 m01 m02"},
-		{0, "d", "d", false, "m00 m01 m02"},
-		{0, "b", "f", true, "m00 m01"},
-		{0, "g", "n", false, "m00 m01 m02 m04 m05 m06 m07"},
-		{0, "h", "i", false, ""},
-		{0, "h", "o", false, "m04 m05 m06 m07"},
-		{0, "h", "u", false, "m04 m05 m06 m07"},
-		{0, "k", "l", false, ""},
-		{0, "k", "o", false, "m04 m05 m06 m07"},
-		{0, "k", "p", false, "m04 m05 m06 m07"},
-		{0, "n", "o", false, "m04 m05 m06 m07"},
-		{0, "n", "z", false, "m03 m04 m05 m06 m07"},
-		{0, "o", "z", false, "m03 m04 m05 m06 m07"},
-		{0, "p", "z", false, "m03 m04 m05 m06 m07"},
-		{0, "q", "z", false, "m03 m04 m05 m06 m07"},
-		{0, "r", "s", false, "m04 m05 m06 m07"},
-		{0, "r", "z", false, "m03 m04 m05 m06 m07"},
-		{0, "s", "z", false, "m03 m04 m05 m06 m07"},
-		{0, "u", "z", false, "m03 m04 m05 m06 m07"},
-		{0, "y", "z", false, "m03"},
-		{0, "z", "z", false, ""},
-
-		// Level 1: m10=a-d* m11=d-g, m12=g-j, m13=n-p, m14=p-p, m15=p-u.
-		// d* - exclusive, rangedel sentinel
-		{1, "a", "a", false, "m10"},
-		{1, "a", "b", false, "m10"},
-		{1, "a", "d", false, "m10 m11"},
-		{1, "a", "e", false, "m10 m11"},
-		{1, "a", "g", false, "m10 m11 m12"},
-		{1, "a", "g", true, "m10 m11"},
-		{1, "a", "z", false, "m10 m11 m12 m13 m14 m15"},
-		{1, "c", "e", false, "m10 m11"},
-		{1, "d", "d", false, "m11"},
-		{1, "g", "n", false, "m11 m12 m13"},
-		{1, "h", "i", false, "m12"},
-		{1, "h", "n", true, "m12"},
-		{1, "h", "n", false, "m12 m13"},
-		{1, "h", "o", false, "m12 m13"},
-		{1, "h", "u", false, "m12 m13 m14 m15"},
-		{1, "k", "l", false, ""},
-		{1, "k", "o", false, "m13"},
-		{1, "k", "p", false, "m13 m14 m15"},
-		{1, "k", "p", true, "m13"},
-		{1, "n", "o", false, "m13"},
-		{1, "n", "z", false, "m13 m14 m15"},
-		{1, "o", "z", false, "m13 m14 m15"},
-		{1, "p", "z", false, "m13 m14 m15"},
-		{1, "q", "z", false, "m15"},
-		{1, "r", "s", false, "m15"},
-		{1, "r", "z", false, "m15"},
-		{1, "s", "z", false, "m15"},
-		{1, "u", "z", false, "m15"},
-		{1, "y", "z", false, ""},
-		{1, "z", "z", false, ""},
-
-		// Level 2: empty.
-		{2, "a", "z", false, ""},
-	}
-
-	cmp := base.DefaultComparer.Compare
-	for _, tc := range testCases {
-		overlaps := v.Overlaps(tc.level, cmp, []byte(tc.ukey0), []byte(tc.ukey1), tc.exclusiveEnd)
-		iter := overlaps.Iter()
-		var s []string
-		for meta := iter.First(); meta != nil; meta = iter.Next() {
-			s = append(s, fmt.Sprintf("m%02d", meta.FileNum%100))
+	var v *Version
+	cmp := testkeys.Comparer.Compare
+	fmtKey := testkeys.Comparer.FormatKey
+	datadriven.RunTest(t, "testdata/overlaps", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "define":
+			var err error
+			v, err = ParseVersionDebug(cmp, fmtKey, 64>>10 /* flush split bytes */, d.Input)
+			if err != nil {
+				return err.Error()
+			}
+			return v.DebugString(fmtKey)
+		case "overlaps":
+			var level int
+			var start, end string
+			var exclusiveEnd bool
+			d.ScanArgs(t, "level", &level)
+			d.ScanArgs(t, "start", &start)
+			d.ScanArgs(t, "end", &end)
+			d.ScanArgs(t, "exclusive-end", &exclusiveEnd)
+			var buf bytes.Buffer
+			v.Overlaps(level, testkeys.Comparer.Compare, []byte(start), []byte(end), exclusiveEnd).Each(func(f *FileMetadata) {
+				fmt.Fprintf(&buf, "%06d:[%s-%s]\n", f.FileNum,
+					f.Smallest.Pretty(fmtKey), f.Largest.Pretty(fmtKey))
+			})
+			return buf.String()
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
-		got := strings.Join(s, " ")
-		if got != tc.want {
-			t.Errorf("level=%d, range=%s-%s (exclusiveEnd = %t)\ngot  %v\nwant %v",
-				tc.level, tc.ukey0, tc.ukey1, tc.exclusiveEnd, got, tc.want)
-		}
-	}
+	})
 }
 
 func TestContains(t *testing.T) {
