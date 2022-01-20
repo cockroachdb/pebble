@@ -1172,20 +1172,19 @@ define
 L0
   000004:a.SET.2-d.RANGEDEL.72057594037927935
   000005:d.SET.3-g.SET.5
-  000006:f.SET.4-i.SET.6
-  000008:g.SET.7-i.SET.7
+  000006:f.SET.6-i.SET.6
   000007:h.SET.7-m.SET.7
-  000008:m.SET.7-p.SET.7
   000009:q.SET.7-r.SET.7
+  000010:g.SET.10-i.SET.10
 ----
-file count: 7, sublevels: 4, intervals: 10
+file count: 6, sublevels: 4, intervals: 10
 flush split keys(4): [f, g, i, r]
 0.3: file count: 1, bytes: 256, width (mean, max): 3.0, 3, interval range: [3, 5]
-	000008:g#7,1-i#7,1
+	000010:g#10,1-i#10,1
 0.2: file count: 1, bytes: 256, width (mean, max): 2.0, 2, interval range: [5, 6]
 	000007:h#7,1-m#7,1
 0.1: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [2, 5]
-	000006:f#4,1-i#6,1
+	000006:f#6,1-i#6,1
 0.0: file count: 3, bytes: 768, width (mean, max): 1.7, 3, interval range: [0, 8]
 	000004:a#2,1-d#72057594037927935,15
 	000005:d#3,1-g#5,1
@@ -1238,6 +1237,213 @@ a-g
 a-i
 a-m
 d-g
+
+# Same example as above, except we incrementally add the sublevels. The output
+# of in-use-key-ranges must be the same.
+
+define
+L0
+  000004:a.SET.2-d.RANGEDEL.72057594037927935
+----
+file count: 1, sublevels: 1, intervals: 2
+flush split keys(1): [d]
+0.0: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [0, 0]
+	000004:a#2,1-d#72057594037927935,15
+compacting file count: 0, base compacting intervals: none
+L0.0:  a---------d
+       aa bb cc dd
+
+add-l0-files
+  000005:d.SET.3-g.SET.5
+----
+file count: 2, sublevels: 1, intervals: 3
+flush split keys(2): [d, g]
+0.0: file count: 2, bytes: 512, width (mean, max): 1.0, 1, interval range: [0, 1]
+	000004:a#2,1-d#72057594037927935,15
+	000005:d#3,1-g#5,1
+compacting file count: 0, base compacting intervals: none
+L0.0:  a--------d---------g
+       aa bb cc dd ee ff gg
+
+add-l0-files
+  000006:f.SET.6-i.SET.6
+----
+file count: 3, sublevels: 2, intervals: 5
+flush split keys(2): [d, g]
+0.1: file count: 1, bytes: 256, width (mean, max): 2.0, 2, interval range: [2, 3]
+	000006:f#6,1-i#6,1
+0.0: file count: 2, bytes: 512, width (mean, max): 1.5, 2, interval range: [0, 2]
+	000004:a#2,1-d#72057594037927935,15
+	000005:d#3,1-g#5,1
+compacting file count: 0, base compacting intervals: none
+L0.1:                 f---------i
+L0.0:  a--------d---------g
+       aa bb cc dd ee ff gg hh ii
+
+add-l0-files
+  000007:h.SET.7-m.SET.7
+  000009:q.SET.8-r.SET.8
+----
+file count: 5, sublevels: 3, intervals: 9
+flush split keys(4): [d, g, i, r]
+0.2: file count: 1, bytes: 256, width (mean, max): 2.0, 2, interval range: [4, 5]
+	000007:h#7,1-m#7,1
+0.1: file count: 1, bytes: 256, width (mean, max): 3.0, 3, interval range: [2, 4]
+	000006:f#6,1-i#6,1
+0.0: file count: 3, bytes: 768, width (mean, max): 1.3, 2, interval range: [0, 7]
+	000004:a#2,1-d#72057594037927935,15
+	000005:d#3,1-g#5,1
+	000009:q#8,1-r#8,1
+compacting file count: 0, base compacting intervals: none
+L0.2:                       h---------------m
+L0.1:                 f---------i
+L0.0:  a--------d---------g                            q---r
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr
+
+# The output below should exactly match the output of the second last define.
+
+add-l0-files
+  000010:g.SET.10-i.SET.10
+----
+file count: 6, sublevels: 4, intervals: 10
+flush split keys(4): [f, g, i, r]
+0.3: file count: 1, bytes: 256, width (mean, max): 3.0, 3, interval range: [3, 5]
+	000010:g#10,1-i#10,1
+0.2: file count: 1, bytes: 256, width (mean, max): 2.0, 2, interval range: [5, 6]
+	000007:h#7,1-m#7,1
+0.1: file count: 1, bytes: 256, width (mean, max): 4.0, 4, interval range: [2, 5]
+	000006:f#6,1-i#6,1
+0.0: file count: 3, bytes: 768, width (mean, max): 1.7, 3, interval range: [0, 8]
+	000004:a#2,1-d#72057594037927935,15
+	000005:d#3,1-g#5,1
+	000009:q#8,1-r#8,1
+compacting file count: 0, base compacting intervals: none
+L0.3:                    g------i
+L0.2:                       h---------------m
+L0.1:                 f---------i
+L0.0:  a--------d---------g                            q---r
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr
+
+in-use-key-ranges
+f-m
+f-n
+f-l
+ff-m
+ff-n
+ff-l
+----
+f-m
+f-m
+f-m
+f-m
+f-m
+f-m
+
+in-use-key-ranges
+n-o
+m-q
+l-qq
+----
+.
+i-m, q-r
+i-m, q-r
+
+in-use-key-ranges
+a-z
+g-l
+----
+a-m, q-r
+g-m
+
+in-use-key-ranges
+a-ff
+a-gg
+a-i
+d-d
+----
+a-g
+a-i
+a-m
+d-g
+
+pick-base-compaction min_depth=3
+----
+compaction picked with stack depth reduction 3
+000005,000006,000010,000007,000004,000009
+seed interval: g-g
+L0.3:                    g++++++i
+L0.2:                       h+++++++++++++++m
+L0.1:                 f+++++++++i
+L0.0:  a++++++++d+++++++++g                            q+++r
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr
+
+# Adding two overlapping L0 files is supported too, as long as they're disjoint
+# in sequence number ranges.
+
+add-l0-files
+  000011:b.SET.13-e.SET.15
+  000012:c.SET.16-e.SET.17
+----
+file count: 8, sublevels: 4, intervals: 13
+flush split keys(5): [d, e, g, i, r]
+0.3: file count: 1, bytes: 256, width (mean, max): 3.0, 3, interval range: [6, 8]
+	000010:g#10,1-i#10,1
+0.2: file count: 2, bytes: 512, width (mean, max): 2.0, 2, interval range: [2, 9]
+	000012:c#16,1-e#17,1
+	000007:h#7,1-m#7,1
+0.1: file count: 2, bytes: 512, width (mean, max): 3.5, 4, interval range: [1, 8]
+	000011:b#13,1-e#15,1
+	000006:f#6,1-i#6,1
+0.0: file count: 3, bytes: 768, width (mean, max): 2.7, 4, interval range: [0, 11]
+	000004:a#2,1-d#72057594037927935,15
+	000005:d#3,1-g#5,1
+	000009:q#8,1-r#8,1
+compacting file count: 0, base compacting intervals: none
+L0.3:                    g------i
+L0.2:        c------e       h---------------m
+L0.1:     b---------e f---------i
+L0.0:  a--------d---------g                            q---r
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr
+
+# Multiple sublevels can also be added in one add-l0-files.
+
+add-l0-files
+  000013:h.SET.18-i.SET.19
+  000014:g.SET.20-i.SET.21
+----
+file count: 10, sublevels: 6, intervals: 13
+flush split keys(4): [d, g, h, i]
+0.5: file count: 1, bytes: 256, width (mean, max): 3.0, 3, interval range: [6, 8]
+	000014:g#20,1-i#21,1
+0.4: file count: 1, bytes: 256, width (mean, max): 1.0, 1, interval range: [8, 8]
+	000013:h#18,1-i#19,1
+0.3: file count: 1, bytes: 256, width (mean, max): 3.0, 3, interval range: [6, 8]
+	000010:g#10,1-i#10,1
+0.2: file count: 2, bytes: 512, width (mean, max): 2.0, 2, interval range: [2, 9]
+	000012:c#16,1-e#17,1
+	000007:h#7,1-m#7,1
+0.1: file count: 2, bytes: 512, width (mean, max): 3.5, 4, interval range: [1, 8]
+	000011:b#13,1-e#15,1
+	000006:f#6,1-i#6,1
+0.0: file count: 3, bytes: 768, width (mean, max): 2.7, 4, interval range: [0, 11]
+	000004:a#2,1-d#72057594037927935,15
+	000005:d#3,1-g#5,1
+	000009:q#8,1-r#8,1
+compacting file count: 0, base compacting intervals: none
+L0.5:                    g------i
+L0.4:                       h---i
+L0.3:                    g------i
+L0.2:        c------e       h---------------m
+L0.1:     b---------e f---------i
+L0.0:  a--------d---------g                            q---r
+       aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr
+
+# Adding an old L0 file returns an error.
+
+add-l0-files
+  000015:h.SET.17-i.SET.17
+----
+pebble: L0 sublevel generation optimization cannot be used
 
 # The following test cases cover the examples provided in the documentation.
 # NOTE: following initialization, some of the files fall down into lower levels
