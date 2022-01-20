@@ -359,3 +359,16 @@ type prettyInternalKey struct {
 func (k prettyInternalKey) Format(s fmt.State, c rune) {
 	fmt.Fprintf(s, "%s#%d,%s", k.formatKey(k.UserKey), k.SeqNum(), k.Kind())
 }
+
+// ParsePrettyInternalKey parses the pretty string representation of an
+// internal key. The format is <user-key>#<seq-num>,<kind>.
+func ParsePrettyInternalKey(s string) InternalKey {
+	x := strings.FieldsFunc(s, func(c rune) bool { return c == '#' || c == ',' })
+	ukey := x[0]
+	kind, ok := kindsMap[x[2]]
+	if !ok {
+		panic(fmt.Sprintf("unknown kind: %q", x[2]))
+	}
+	seqNum, _ := strconv.ParseUint(x[1], 10, 64)
+	return MakeInternalKey([]byte(ukey), seqNum, kind)
+}

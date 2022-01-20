@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -305,6 +307,7 @@ func NewVersion(
 		// they appear within `files`. Some tests depend on this behavior in
 		// order to test consistency checking, etc. Once we've constructed the
 		// initial B-Tree, we swap out the btreeCmp for the correct one.
+		// TODO(jackson): Adjust or remove the tests and remove this.
 		v.Levels[l].tree, _ = makeBTree(btreeCmpSpecificOrder(files[l]), files[l])
 
 		if l == 0 {
@@ -438,6 +441,47 @@ func (v *Version) DebugString(format base.FormatKey) string {
 	return buf.String()
 }
 
+// ParseVersionDebug parses a Version from its DebugString output.
+func ParseVersionDebug(
+	cmp Compare, formatKey base.FormatKey, flushSplitBytes int64, s string,
+) (*Version, error) {
+	var level int
+	var files [NumLevels][]*FileMetadata
+	for _, l := range strings.Split(s, "\n") {
+		l = strings.TrimSpace(l)
+
+		switch l[:2] {
+		case "0.", "0:", "1:", "2:", "3:", "4:", "5:", "6:":
+			var err error
+			level, err = strconv.Atoi(l[:1])
+			if err != nil {
+				return nil, err
+			}
+		default:
+			// Example format:
+			//   000971:[acutc@6#4227,SET-zzhra@12#72057594037927935,RANGEDEL]
+			delim := map[rune]bool{':': true, '[': true, '-': true, ']': true}
+			fields := strings.FieldsFunc(l, func(c rune) bool { return delim[c] })
+			fileNum, err := strconv.ParseUint(fields[0], 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			files[level] = append(files[level], &FileMetadata{
+				FileNum:  base.FileNum(fileNum),
+				Smallest: base.ParsePrettyInternalKey(fields[1]),
+				Largest:  base.ParsePrettyInternalKey(fields[2]),
+			})
+		}
+	}
+	// Reverse the order of L0 files. This ensures we construct the same
+	// sublevels. (They're printed from higher sublevel to lower, which means in
+	// a partial order that represents newest to oldest).
+	for i := 0; i < len(files[0])/2; i++ {
+		files[0][i], files[0][len(files[0])-i-1] = files[0][len(files[0])-i-1], files[0][i]
+	}
+	return NewVersion(cmp, formatKey, flushSplitBytes, files), nil
+}
+
 // Refs returns the number of references to the version.
 func (v *Version) Refs() int32 {
 	return atomic.LoadInt32(&v.refs)
@@ -526,7 +570,9 @@ func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
 // and the computation is repeated until [start, end] stabilizes.
 // The returned files are a subsequence of the input files, i.e., the ordering
 // is not changed.
-func (v *Version) Overlaps(level int, cmp Compare, start, end []byte, exclusiveEnd bool) LevelSlice {
+func (v *Version) Overlaps(
+	level int, cmp Compare, start, end []byte, exclusiveEnd bool,
+) LevelSlice {
 	if level == 0 {
 		// Indices that have been selected as overlapping.
 		l0 := v.Levels[level]
@@ -564,8 +610,14 @@ func (v *Version) Overlaps(level int, cmp Compare, start, end []byte, exclusiveE
 					start = smallest
 					restart = true
 				}
-				if cmp(largest, end) > 0 {
+				if v := cmp(largest, end); v > 0 {
 					end = largest
+					exclusiveEnd = meta.Largest.IsExclusiveSentinel()
+					restart = true
+				} else if v == 0 && exclusiveEnd && !meta.Largest.IsExclusiveSentinel() {
+					// Only update the exclusivity of our existing `end`
+					// bound.
+					exclusiveEnd = false
 					restart = true
 				}
 			}
