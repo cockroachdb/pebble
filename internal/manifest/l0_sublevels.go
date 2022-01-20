@@ -13,7 +13,12 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
+
+// errInvalidL0SublevelsOpt is for use in AddL0Files when the incremental
+// sublevel generation optimization failed, and NewL0Sublevels must be called.
+var errInvalidL0SublevelsOpt = errors.New("pebble: L0 sublevel generation optimization cannot be used")
 
 // Intervals are of the form [start, end) with no gap between intervals. Each
 // file overlaps perfectly with a sequence of intervals. This perfect overlap
@@ -168,6 +173,13 @@ func (b *bitSet) clearAllBits() {
 	}
 }
 
+// L0Compaction describes an active compaction with inputs from L0.
+type L0Compaction struct {
+	Smallest  InternalKey
+	Largest   InternalKey
+	IsIntraL0 bool
+}
+
 // L0Sublevels represents a sublevel view of SSTables in L0. Tables in one
 // sublevel are non-overlapping in key ranges, and keys in higher-indexed
 // sublevels shadow older versions in lower-indexed sublevels. These invariants
@@ -181,7 +193,8 @@ type L0Sublevels struct {
 	// Levels are ordered from oldest sublevel to youngest sublevel in the
 	// outer slice, and the inner slice contains non-overlapping files for
 	// that sublevel in increasing key order. Levels is constructed from
-	// levelFiles and is used by callers that require a LevelSlice.
+	// levelFiles and is used by callers that require a LevelSlice. The below two
+	// fields are treated as immutable once created in NewL0Sublevels.
 	Levels     []LevelSlice
 	levelFiles [][]*FileMetadata
 
@@ -197,6 +210,9 @@ type L0Sublevels struct {
 
 	// Keys to break flushes at.
 	flushSplitUserKeys [][]byte
+
+	// Only used to check invariants.
+	addL0FilesCalled bool
 }
 
 type sublevelSorter []*FileMetadata
@@ -234,7 +250,7 @@ func NewL0Sublevels(
 	keys := make([]intervalKey, 0, 2*s.levelMetadata.Len())
 	iter := levelMetadata.Iter()
 	for i, f := 0, iter.First(); f != nil; i, f = i+1, iter.Next() {
-		f.l0Index = i
+		f.L0Index = i
 		keys = append(keys, intervalKey{key: f.Smallest.UserKey})
 		keys = append(keys, intervalKey{
 			key:       f.Largest.UserKey,
@@ -255,59 +271,8 @@ func NewL0Sublevels(
 	// Initialize minIntervalIndex and maxIntervalIndex for each file, and use that
 	// to update intervals.
 	for f := iter.First(); f != nil; f = iter.Next() {
-		// Set f.minIntervalIndex and f.maxIntervalIndex.
-		f.minIntervalIndex = sort.Search(len(keys), func(index int) bool {
-			return intervalKeyCompare(cmp, intervalKey{key: f.Smallest.UserKey}, keys[index]) <= 0
-		})
-		if f.minIntervalIndex == len(keys) {
-			return nil, errors.Errorf("expected sstable bound to be in interval keys: %s", f.Smallest.UserKey)
-		}
-		// Search starting from f.minIntervalIndex to prune the search.
-		f.maxIntervalIndex = f.minIntervalIndex +
-			sort.Search(len(keys)-f.minIntervalIndex, func(index int) bool {
-				return intervalKeyCompare(
-					cmp,
-					intervalKey{
-						key:       f.Largest.UserKey,
-						isLargest: !f.Largest.IsExclusiveSentinel()},
-					keys[f.minIntervalIndex+index]) <= 0
-			})
-		if f.maxIntervalIndex == len(keys) {
-			return nil, errors.Errorf("expected sstable bound to be in interval keys: %s", f.Largest.UserKey)
-		}
-		f.maxIntervalIndex--
-		// This is a simple and not very accurate estimate of the number of
-		// bytes this SSTable contributes to the intervals it is a part of.
-		//
-		// TODO(bilal): Call EstimateDiskUsage in sstable.Reader with interval
-		// bounds to get a better estimate for each interval.
-		interpolatedBytes := f.Size / uint64(f.maxIntervalIndex-f.minIntervalIndex+1)
-		s.fileBytes += f.Size
-		subLevel := 0
-		// Update state in every fileInterval for this file.
-		for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
-			interval := &s.orderedIntervals[i]
-			if len(interval.files) > 0 &&
-				subLevel <= interval.files[len(interval.files)-1].subLevel {
-				subLevel = interval.files[len(interval.files)-1].subLevel + 1
-			}
-			interval.estimatedBytes += interpolatedBytes
-			if f.minIntervalIndex < interval.filesMinIntervalIndex {
-				interval.filesMinIntervalIndex = f.minIntervalIndex
-			}
-			if f.maxIntervalIndex > interval.filesMaxIntervalIndex {
-				interval.filesMaxIntervalIndex = f.maxIntervalIndex
-			}
-			interval.files = append(interval.files, f)
-		}
-		f.subLevel = subLevel
-		if subLevel > len(s.levelFiles) {
-			return nil, errors.Errorf("chose a sublevel beyond allowed range of sublevels: %d vs 0-%d", subLevel, len(s.levelFiles))
-		}
-		if subLevel == len(s.levelFiles) {
-			s.levelFiles = append(s.levelFiles, []*FileMetadata{f})
-		} else {
-			s.levelFiles[subLevel] = append(s.levelFiles[subLevel], f)
+		if err := s.addFileToSublevels(f, false /* checkInvariant */); err != nil {
+			return nil, err
 		}
 	}
 	// Sort each sublevel in increasing key order.
@@ -323,6 +288,324 @@ func NewL0Sublevels(
 		tr.release()
 	}
 
+	s.calculateFlushSplitKeys(flushSplitMaxBytes)
+	return s, nil
+}
+
+// Helper function to merge new (sorted) intervalKeys into an existing slice
+// of old fileIntervals, into result. Returns the new result and a slice of ints
+// mapping old interval indices to new ones.
+func mergeIntervals(old, result []fileInterval, added []intervalKey, compare Compare) ([]fileInterval, []int) {
+	oldToNewMap := make([]int, len(old))
+	i := 0
+	j := 0
+
+	for i < len(old) || j < len(added) {
+		var cmp int
+		if i >= len(old) {
+			cmp = +1
+		}
+		if j >= len(added) {
+			cmp = -1
+		}
+		if cmp == 0 {
+			cmp = intervalKeyCompare(compare, old[i].startKey, added[j])
+		}
+		switch {
+		case cmp <= 0:
+			// Shallow-copy the existing interval.
+			newInterval := old[i]
+			result = append(result, newInterval)
+			oldToNewMap[i] = len(result) - 1
+			i++
+			if cmp == 0 {
+				j++
+			}
+		case cmp > 0:
+			var prevInterval fileInterval
+			// Insert a new interval for a newly-added file. prevInterval, if
+			// non-zero, will be "inherited"; we copy its files as those extend
+			// into this interval.
+			if len(result) > 0 {
+				prevInterval = result[len(result)-1]
+			}
+			newInterval := fileInterval{
+				index:                 len(result),
+				startKey:              added[j],
+				filesMinIntervalIndex: len(result),
+				filesMaxIntervalIndex: len(result),
+
+				// Copy the below attributes from prevInterval.
+				files:                         append([]*FileMetadata(nil), prevInterval.files...),
+				estimatedBytes:                prevInterval.estimatedBytes,
+				isBaseCompacting:              prevInterval.isBaseCompacting,
+				intervalRangeIsBaseCompacting: prevInterval.intervalRangeIsBaseCompacting,
+				compactingFileCount:           prevInterval.compactingFileCount,
+			}
+			result = append(result, newInterval)
+			j++
+		}
+	}
+	return result, oldToNewMap
+}
+
+// AddL0Files incrementally builds a new L0Sublevels for when the only
+// change since the receiver L0Sublevels was an addition of the specified files,
+// with no L0 deletions. The common case of this is an ingestion or a flush.
+// These files can "sit on top" of existing sublevels, creating at most one
+// new sublevel for a flush (and possibly multiple for an ingestion), and at
+// most 2*len(files) additions to s.orderedIntervals. No files must have been
+// deleted from L0, and the added files must all be newer in sequence numbers
+// than existing files in L0Sublevels. The files parameter must be sorted in
+// seqnum order. The levelMetadata parameter corresponds to the new L0 post
+// addition of files. This method is meant to be significantly more performant
+// than NewL0Sublevels.
+//
+// Note that this function can only be called once on a given receiver; it
+// appends to some slices in s which is only safe when done once. This is okay,
+// as the common case (generating a new L0Sublevels after a flush/ingestion) is
+// only going to necessitate one call of this method on a given receiver. The
+// returned value, if non-nil, can then have AddL0Files called on it again, and
+// so on. If errInvalidL0SublevelsOpt is returned as an error, it likely means
+// the optimization could not be applied (i.e. files added were older than
+// files already in the sublevels, which is possible around ingestions and in
+// tests). Any other non-nil error means L0Sublevels generation failed in the
+// same way as NewL0Sublevels would likely fail.
+func (s *L0Sublevels) AddL0Files(files []*FileMetadata, flushSplitMaxBytes int64, levelMetadata *LevelMetadata) (*L0Sublevels, error) {
+	if invariants.Enabled && s.addL0FilesCalled {
+		panic("AddL0Files called twice on the same receiver")
+	}
+	s.addL0FilesCalled = true
+
+	// Start with a shallow copy of s.
+	newVal := &L0Sublevels{}
+	*newVal = *s
+
+	newVal.addL0FilesCalled = false
+	newVal.levelMetadata = levelMetadata
+	// Deep copy levelFiles and Levels, as they are mutated and sorted below.
+	// Shallow copies of slices that we just append to, are okay.
+	newVal.levelFiles = make([][]*FileMetadata, len(s.levelFiles))
+	for i := range s.levelFiles {
+		newVal.levelFiles[i] = make([]*FileMetadata, len(s.levelFiles[i]))
+		copy(newVal.levelFiles[i], s.levelFiles[i])
+	}
+	newVal.Levels = make([]LevelSlice, len(s.Levels))
+	copy(newVal.Levels, s.Levels)
+
+	fileKeys := make([]intervalKey, 0, 2*len(files))
+	for _, f := range files {
+		left := intervalKey{key: f.Smallest.UserKey}
+		right := intervalKey{
+			key:       f.Largest.UserKey,
+			isLargest: !f.Largest.IsExclusiveSentinel(),
+		}
+		if len(fileKeys) == 0 || intervalKeyCompare(s.cmp, fileKeys[len(fileKeys)-1], left) != 0 {
+			fileKeys = append(fileKeys, left)
+		}
+		if intervalKeyCompare(s.cmp, fileKeys[len(fileKeys)-1], right) != 0 {
+			fileKeys = append(fileKeys, right)
+		}
+	}
+	fileKeys = sortAndDedup(fileKeys, s.cmp)
+	keys := make([]fileInterval, 0, 2*levelMetadata.Len())
+	var oldToNewMap []int
+	// We can avoid the sortAndDedup step by treating this as a merge of two
+	// sorted runs, fileKeys and s.orderedIntervals, into `keys` which will form
+	// newVal.orderedIntervals.
+	keys, oldToNewMap = mergeIntervals(s.orderedIntervals, keys, fileKeys, s.cmp)
+	if invariants.Enabled {
+		for i := 1; i < len(keys); i++ {
+			if intervalKeyCompare(newVal.cmp, keys[i-1].startKey, keys[i].startKey) >= 0 {
+				panic("keys not sorted correctly")
+			}
+		}
+	}
+	newVal.orderedIntervals = keys
+	// Update indices in s.orderedIntervals for fileIntervals we retained.
+	for _, newIdx := range oldToNewMap {
+		newInterval := &keys[newIdx]
+		newInterval.index = newIdx
+		newInterval.filesMinIntervalIndex = oldToNewMap[newInterval.filesMinIntervalIndex]
+		// maxIntervalIndexes are special. Since it's an inclusive end bound, we
+		// actually have to map it to the _next_ old interval's new previous
+		// interval. This logic is easier to understand if you see
+		// [f.minIntervalIndex, f.maxIntervalIndex] as
+		// [f.minIntervalIndex, f.maxIntervalIndex+1). This code adjusts the
+		// interval indices; we make a similar adjustment for files later.
+		if newInterval.filesMaxIntervalIndex < len(oldToNewMap)-1 {
+			newInterval.filesMaxIntervalIndex = oldToNewMap[newInterval.filesMaxIntervalIndex+1] - 1
+		} else {
+			newInterval.filesMaxIntervalIndex = oldToNewMap[newInterval.filesMaxIntervalIndex]
+		}
+	}
+	// Loop through all instances of new intervals added between two old intervals
+	// and expand [filesMinIntervalIndex, filesMaxIntervalIndex] of new intervals
+	// to reflect that of adjacent old intervals.
+	{
+		lastIdx := 0
+		for _, newIdx := range oldToNewMap {
+			for i := lastIdx + 1; i < newIdx; i++ {
+				minIntervalIndex := i
+				maxIntervalIndex := i
+				if keys[lastIdx].filesMaxIntervalIndex != lastIdx {
+					// Last old interval has files extending into keys[i].
+					minIntervalIndex = keys[lastIdx].filesMinIntervalIndex
+					maxIntervalIndex = keys[lastIdx].filesMaxIntervalIndex
+				}
+
+				keys[i].filesMinIntervalIndex = minIntervalIndex
+				keys[i].filesMaxIntervalIndex = maxIntervalIndex
+				// Divide the estimated bytes in the last interval across all the
+				// new intervals. This results in estimatedBytes that are slightly
+				// different from that generated by NewL0Sublevels, but this might
+				// actually be a more accurate estimate, especially when the same
+				// intervals keep getting repeatedly split.
+				keys[i].estimatedBytes = keys[lastIdx].estimatedBytes / uint64(newIdx-lastIdx)
+			}
+			if newIdx != lastIdx {
+				keys[lastIdx].estimatedBytes = keys[lastIdx].estimatedBytes / uint64(newIdx-lastIdx)
+			}
+			lastIdx = newIdx
+		}
+	}
+	// Go through old files and update interval indices.
+	//
+	// TODO(bilal): This is the only place in this method where we loop through
+	// all existing files, which could be much more in number than newly added
+	// files. See if we can avoid the need for this, either by getting rid of
+	// f.minIntervalIndex and f.maxIntervalIndex and calculating them on the
+	// fly with a binary search, or by only looping through files to the right
+	// of the first interval touched by this method.
+	for sublevel := range s.Levels {
+		s.Levels[sublevel].Each(func(f *FileMetadata) {
+			f.minIntervalIndex = oldToNewMap[f.minIntervalIndex]
+			// maxIntervalIndex is special. Since it's an inclusive end bound, we
+			// actually have to map it to the _next_ old interval's new previous
+			// interval. This logic is easier to understand if you see
+			// [f.minIntervalIndex, f.maxIntervalIndex] as
+			// [f.minIntervalIndex, f.maxIntervalIndex+1).
+			f.maxIntervalIndex = oldToNewMap[f.maxIntervalIndex+1] - 1
+		})
+	}
+	updatedSublevels := make([]int, 0)
+	// Update interval indices for new files.
+	for i, f := range files {
+		f.L0Index = s.levelMetadata.Len() + i
+		if err := newVal.addFileToSublevels(f, true /* checkInvariant */); err != nil {
+			return nil, err
+		}
+		updatedSublevels = append(updatedSublevels, f.subLevel)
+	}
+
+	// Sort and deduplicate updatedSublevels.
+	sort.Ints(updatedSublevels)
+	{
+		j := 0
+		for i := 1; i < len(updatedSublevels); i++ {
+			if updatedSublevels[i] != updatedSublevels[j] {
+				j++
+				updatedSublevels[j] = updatedSublevels[i]
+			}
+		}
+		updatedSublevels = updatedSublevels[:j+1]
+	}
+
+	// Sort each updated sublevel in increasing key order.
+	for _, sublevel := range updatedSublevels {
+		sort.Sort(sublevelSorter(newVal.levelFiles[sublevel]))
+	}
+
+	// Construct a parallel slice of sublevel B-Trees.
+	// TODO(jackson): Consolidate and only use the B-Trees.
+	for _, sublevel := range updatedSublevels {
+		tr, ls := makeBTree(btreeCmpSmallestKey(newVal.cmp), newVal.levelFiles[sublevel])
+		if sublevel == len(newVal.Levels) {
+			newVal.Levels = append(newVal.Levels, ls)
+		} else {
+			// sublevel < len(s.Levels). If this panics, updatedSublevels was not
+			// populated correctly.
+			newVal.Levels[sublevel] = ls
+		}
+		tr.release()
+	}
+
+	newVal.flushSplitUserKeys = nil
+	newVal.calculateFlushSplitKeys(flushSplitMaxBytes)
+	return newVal, nil
+}
+
+// addFileToSublevels is called during L0Sublevels generation, and adds f to
+// the correct sublevel's levelFiles, the relevant intervals' files slices, and
+// sets interval indices on f. This method, if called successively on multiple
+// files, _must_ be called on successively newer files (by seqnum). If
+// checkInvariant is true, it could check for this in some cases and return
+// errInvalidL0SublevelsOpt if that invariant isn't held.
+func (s *L0Sublevels) addFileToSublevels(f *FileMetadata, checkInvariant bool) error {
+	// Set f.minIntervalIndex and f.maxIntervalIndex.
+	f.minIntervalIndex = sort.Search(len(s.orderedIntervals), func(index int) bool {
+		return intervalKeyCompare(s.cmp, intervalKey{key: f.Smallest.UserKey}, s.orderedIntervals[index].startKey) <= 0
+	})
+	if f.minIntervalIndex == len(s.orderedIntervals) {
+		return errors.Errorf("expected sstable bound to be in interval keys: %s", f.Smallest.UserKey)
+	}
+	// Search starting from f.minIntervalIndex to prune the search.
+	f.maxIntervalIndex = f.minIntervalIndex +
+		sort.Search(len(s.orderedIntervals)-f.minIntervalIndex, func(index int) bool {
+			return intervalKeyCompare(
+				s.cmp,
+				intervalKey{
+					key:       f.Largest.UserKey,
+					isLargest: !f.Largest.IsExclusiveSentinel()},
+				s.orderedIntervals[f.minIntervalIndex+index].startKey) <= 0
+		})
+	if f.maxIntervalIndex == len(s.orderedIntervals) {
+		return errors.Errorf("expected sstable bound to be in interval keys: %s", f.Largest.UserKey)
+	}
+	f.maxIntervalIndex--
+
+	// This is a simple and not very accurate estimate of the number of
+	// bytes this SSTable contributes to the intervals it is a part of.
+	//
+	// TODO(bilal): Call EstimateDiskUsage in sstable.Reader with interval
+	// bounds to get a better estimate for each interval.
+	interpolatedBytes := f.Size / uint64(f.maxIntervalIndex-f.minIntervalIndex+1)
+	s.fileBytes += f.Size
+	subLevel := 0
+	// Update state in every fileInterval for this file.
+	for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
+		interval := &s.orderedIntervals[i]
+		if len(interval.files) > 0 &&
+			subLevel <= interval.files[len(interval.files)-1].subLevel {
+			if checkInvariant && interval.files[len(interval.files)-1].LargestSeqNum > f.LargestSeqNum {
+				// We are sliding this file "underneath" an existing file. Throw away
+				// and start over in NewL0Sublevels.
+				return errInvalidL0SublevelsOpt
+			}
+			subLevel = interval.files[len(interval.files)-1].subLevel + 1
+		}
+		interval.estimatedBytes += interpolatedBytes
+		if f.minIntervalIndex < interval.filesMinIntervalIndex {
+			interval.filesMinIntervalIndex = f.minIntervalIndex
+		}
+		if f.maxIntervalIndex > interval.filesMaxIntervalIndex {
+			interval.filesMaxIntervalIndex = f.maxIntervalIndex
+		}
+		interval.files = append(interval.files, f)
+	}
+	f.subLevel = subLevel
+	if subLevel > len(s.levelFiles) {
+		return errors.Errorf("chose a sublevel beyond allowed range of sublevels: %d vs 0-%d", subLevel, len(s.levelFiles))
+	}
+	if subLevel == len(s.levelFiles) {
+		s.levelFiles = append(s.levelFiles, []*FileMetadata{f})
+	} else {
+		s.levelFiles[subLevel] = append(s.levelFiles[subLevel], f)
+	}
+	return nil
+}
+
+func (s *L0Sublevels) calculateFlushSplitKeys(flushSplitMaxBytes int64) {
 	var cumulativeBytes uint64
 	// Multiply flushSplitMaxBytes by the number of sublevels. This prevents
 	// excessive flush splitting when the number of sublevels increases.
@@ -337,14 +620,6 @@ func NewL0Sublevels(
 		}
 		cumulativeBytes += s.orderedIntervals[i].estimatedBytes
 	}
-	return s, nil
-}
-
-// L0Compaction describes an active compaction with inputs from L0.
-type L0Compaction struct {
-	Smallest  InternalKey
-	Largest   InternalKey
-	IsIntraL0 bool
 }
 
 // InitCompactingFileInfo initializes internal flags relating to compacting
@@ -648,7 +923,7 @@ func (s *L0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 		if fileIntervalsByLevel[f.subLevel].max < f.maxIntervalIndex {
 			fileIntervalsByLevel[f.subLevel].max = f.maxIntervalIndex
 		}
-		includedFiles.markBit(f.l0Index)
+		includedFiles.markBit(f.L0Index)
 		if c.isIntraL0 {
 			if topLevel > f.subLevel {
 				topLevel = f.subLevel
@@ -683,21 +958,21 @@ func (s *L0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 					f.FileNum, c.earliestUnflushedSeqNum, f.SmallestSeqNum,
 					f.LargestSeqNum)
 			}
-			if !includedFiles[f.l0Index] {
+			if !includedFiles[f.L0Index] {
 				var buf strings.Builder
 				fmt.Fprintf(&buf, "bug %t, seed interval: %d: level %d, sl index %d, f.index %d, min %d, max %d, pre-min %d, pre-max %d, f.min %d, f.max %d, filenum: %d, isCompacting: %t\n%s\n",
-					c.isIntraL0, c.seedInterval, level, index, f.l0Index, min, max, c.preExtensionMinInterval, c.preExtensionMaxInterval,
+					c.isIntraL0, c.seedInterval, level, index, f.L0Index, min, max, c.preExtensionMinInterval, c.preExtensionMaxInterval,
 					f.minIntervalIndex, f.maxIntervalIndex,
 					f.FileNum, f.Compacting, s)
 				fmt.Fprintf(&buf, "files included:\n")
 				for _, f := range c.Files {
 					fmt.Fprintf(&buf, "filenum: %d, sl: %d, index: %d, [%d, %d]\n",
-						f.FileNum, f.subLevel, f.l0Index, f.minIntervalIndex, f.maxIntervalIndex)
+						f.FileNum, f.subLevel, f.L0Index, f.minIntervalIndex, f.maxIntervalIndex)
 				}
 				fmt.Fprintf(&buf, "files added:\n")
 				for _, f := range c.filesAdded {
 					fmt.Fprintf(&buf, "filenum: %d, sl: %d, index: %d, [%d, %d]\n",
-						f.FileNum, f.subLevel, f.l0Index, f.minIntervalIndex, f.maxIntervalIndex)
+						f.FileNum, f.subLevel, f.L0Index, f.minIntervalIndex, f.maxIntervalIndex)
 				}
 				return errors.New(buf.String())
 			}
@@ -783,10 +1058,10 @@ type L0CompactionFiles struct {
 
 // addFile adds the specified file to the LCF.
 func (l *L0CompactionFiles) addFile(f *FileMetadata) {
-	if l.FilesIncluded[f.l0Index] {
+	if l.FilesIncluded[f.L0Index] {
 		return
 	}
-	l.FilesIncluded.markBit(f.l0Index)
+	l.FilesIncluded.markBit(f.L0Index)
 	l.Files = append(l.Files, f)
 	l.filesAdded = append(l.filesAdded, f)
 	l.fileBytes += f.Size
@@ -1095,6 +1370,7 @@ func (s *L0Sublevels) baseCompactionUsingSeed(
 	// successful candidate.
 	var lastCandidate *L0CompactionFiles
 	interval := &s.orderedIntervals[intervalIndex]
+
 	for i := 0; i < len(interval.files); i++ {
 		f2 := interval.files[i]
 		sl := f2.subLevel
@@ -1161,7 +1437,7 @@ func (s *L0Sublevels) baseCompactionUsingSeed(
 	if lastCandidate != nil && lastCandidate.seedIntervalStackDepthReduction >= minCompactionDepth {
 		lastCandidate.FilesIncluded.clearAllBits()
 		for _, f := range lastCandidate.Files {
-			lastCandidate.FilesIncluded.markBit(f.l0Index)
+			lastCandidate.FilesIncluded.markBit(f.L0Index)
 		}
 		return lastCandidate
 	}
@@ -1358,7 +1634,7 @@ func (s *L0Sublevels) intraL0CompactionUsingSeed(
 	if lastCandidate != nil && lastCandidate.seedIntervalStackDepthReduction >= minCompactionDepth {
 		lastCandidate.FilesIncluded.clearAllBits()
 		for _, f := range lastCandidate.Files {
-			lastCandidate.FilesIncluded.markBit(f.l0Index)
+			lastCandidate.FilesIncluded.markBit(f.L0Index)
 		}
 		s.extendCandidateToRectangle(
 			lastCandidate.minIntervalIndex, lastCandidate.maxIntervalIndex, lastCandidate, false)
@@ -1604,7 +1880,7 @@ func (s *L0Sublevels) extendCandidateToRectangle(
 			if nonCompactingFirst == -1 {
 				nonCompactingFirst = index
 			}
-			if candidate.FilesIncluded[f.l0Index] {
+			if candidate.FilesIncluded[f.L0Index] {
 				currentRunHasAlreadyPickedFiles = true
 			}
 		}
@@ -1640,7 +1916,7 @@ func (s *L0Sublevels) extendCandidateToRectangle(
 			if candidate.isIntraL0 && f.LargestSeqNum >= candidate.earliestUnflushedSeqNum {
 				continue
 			}
-			if !candidate.FilesIncluded[f.l0Index] {
+			if !candidate.FilesIncluded[f.L0Index] {
 				addedCount++
 				candidate.addFile(f)
 			}

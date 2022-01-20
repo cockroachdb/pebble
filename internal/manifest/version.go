@@ -108,7 +108,7 @@ type FileMetadata struct {
 	// Stats describe table statistics. Protected by DB.mu.
 	Stats TableStats
 	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
-	// pick L0 compactions.
+	// pick L0 compactions. Only accurate for the most recent Version.
 	//
 	// IsIntraL0Compacting is set to True if this file is part of an intra-L0
 	// compaction. When it's true, Compacting must also be true. If Compacting
@@ -116,7 +116,7 @@ type FileMetadata struct {
 	// be part of a compaction to Lbase.
 	IsIntraL0Compacting bool
 	subLevel            int
-	l0Index             int
+	L0Index             int
 	minIntervalIndex    int
 	maxIntervalIndex    int
 
