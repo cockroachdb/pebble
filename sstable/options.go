@@ -54,12 +54,13 @@ type FilterPolicy = base.FilterPolicy
 // format is format version 0.
 type TableFormat uint32
 
-// The available table formats. Note that these values are not (and should not)
-// be serialized to disk. TableFormatRocksDBv2 is the default if otherwise
-// unspecified.
+// The available table formats, representing the tuple (magic number, version
+// number). Note that these values are not (and should not) be serialized to
+// disk.
 const (
-	TableFormatRocksDBv2 TableFormat = iota
+	TableFormatUnspecified TableFormat = iota
 	TableFormatLevelDB
+	TableFormatRocksDBv2
 )
 
 // TablePropertyCollector provides a hook for collecting user-defined
@@ -232,6 +233,9 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	}
 	if o.Checksum == ChecksumTypeNone {
 		o.Checksum = ChecksumTypeCRC32c
+	}
+	if o.TableFormat == TableFormatUnspecified {
+		o.TableFormat = TableFormatRocksDBv2
 	}
 	return o
 }
