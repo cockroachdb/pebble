@@ -185,6 +185,29 @@ type blockBuf struct {
 type dataBlockBuf struct {
 	blockBuf
 	dataBlock blockWriter
+
+	// uncompressed is a reference to a byte slice which is owned by the dataBlockBuf. It is the
+	// next byte slice to be compressed. The uncompressed byte slice will be backed by the
+	// dataBlock.buf.
+	uncompressed []byte
+	// compressed is a reference to a byte slice which is owned by the dataBlockBuf. It is the
+	// compressed byte slice which must be written to disk. The compressed byte slice may be
+	// backed by the dataBlock.buf, or the dataBlockBuf.compressedBuf, depending on whether
+	// we use the result of the compression.
+	compressed []byte
+}
+
+func (d *dataBlockBuf) finish() {
+	d.uncompressed = d.dataBlock.finish()
+}
+
+func (d *dataBlockBuf) compressAndChecksum(c Compression) error {
+	compressed, err := compressAndChecksum(d.uncompressed, c, &d.blockBuf)
+	if err != nil {
+		return err
+	}
+	d.compressed = compressed
+	return nil
 }
 
 func (w *Writer) Error() error {
@@ -683,15 +706,15 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 	}
 
 	err := func() error {
-		finishedBlock := w.dataBlockBuf.dataBlock.finish()
-		b, err := compressAndChecksum(
-			finishedBlock, w.compression, &w.dataBlockBuf.blockBuf,
-		)
-		if err != nil {
+		var err error
+
+		w.dataBlockBuf.finish()
+		if err = w.dataBlockBuf.compressAndChecksum(w.compression); err != nil {
 			return err
 		}
+
 		var bh BlockHandle
-		if bh, err = w.writeCompressedBlock(b, w.dataBlockBuf.tmp[:]); err != nil {
+		if bh, err = w.writeCompressedBlock(w.dataBlockBuf.compressed, w.dataBlockBuf.tmp[:]); err != nil {
 			return err
 		}
 
