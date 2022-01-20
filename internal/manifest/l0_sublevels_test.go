@@ -127,7 +127,7 @@ func visualizeSublevels(
 			buf.WriteByte(f.Smallest.UserKey[0])
 			middleChar := byte('-')
 			if isL0 {
-				if compactionFiles[f.l0Index] {
+				if compactionFiles[f.L0Index] {
 					middleChar = '+'
 				} else if f.Compacting {
 					if f.IsIntraL0Compacting {
@@ -144,7 +144,7 @@ func visualizeSublevels(
 			}
 			if f.Smallest.UserKey[0] == f.Largest.UserKey[0] {
 				buf.WriteByte(f.Largest.UserKey[0])
-				if compactionFiles[f.l0Index] {
+				if compactionFiles[f.L0Index] {
 					buf.WriteByte('+')
 				} else if j < len(files)-1 {
 					buf.WriteByte(' ')
@@ -220,6 +220,9 @@ func TestL0Sublevels(t *testing.T) {
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		if m.Largest.IsExclusiveSentinel() {
+			m.LargestSeqNum = m.SmallestSeqNum
+		}
 		m.FileNum = base.FileNum(fileNum)
 		m.Size = uint64(256)
 
@@ -248,7 +251,6 @@ func TestL0Sublevels(t *testing.T) {
 		return &m, nil
 	}
 
-	var level int
 	var err error
 	var fileMetas [NumLevels][]*FileMetadata
 	var explicitSublevels [][]*FileMetadata
@@ -258,14 +260,22 @@ func TestL0Sublevels(t *testing.T) {
 
 	datadriven.RunTest(t, "testdata/l0_sublevels", func(td *datadriven.TestData) string {
 		pickBaseCompaction := false
+		level := 0
+		addL0FilesOpt := false
 		switch td.Cmd {
+		case "add-l0-files":
+			addL0FilesOpt = true
+			level = 0
+			fallthrough
 		case "define":
-			fileMetas = [NumLevels][]*FileMetadata{}
+			if !addL0FilesOpt {
+				fileMetas = [NumLevels][]*FileMetadata{}
+				baseLevel = NumLevels - 1
+				activeCompactions = nil
+			}
 			explicitSublevels = [][]*FileMetadata{}
-			activeCompactions = nil
-			baseLevel = NumLevels - 1
 			sublevel := -1
-			sublevels = nil
+			addedL0Files := make([]*FileMetadata, 0)
 			for _, data := range strings.Split(td.Input, "\n") {
 				data = strings.TrimSpace(data)
 				switch data[:2] {
@@ -292,6 +302,9 @@ func TestL0Sublevels(t *testing.T) {
 						baseLevel = level
 					}
 					fileMetas[level] = append(fileMetas[level], meta)
+					if level == 0 {
+						addedL0Files = append(addedL0Files, meta)
+					}
 					if sublevel != -1 {
 						for len(explicitSublevels) <= sublevel {
 							explicitSublevels = append(explicitSublevels, []*FileMetadata{})
@@ -323,11 +336,25 @@ func TestL0Sublevels(t *testing.T) {
 
 			levelMetadata := makeLevelMetadata(base.DefaultComparer.Compare, 0, fileMetas[0])
 			if initialize {
-				sublevels, err = NewL0Sublevels(
-					&levelMetadata,
-					base.DefaultComparer.Compare,
-					base.DefaultFormatter,
-					int64(flushSplitMaxBytes))
+				if addL0FilesOpt {
+					SortBySeqNum(addedL0Files)
+					sublevels, err = sublevels.AddL0Files(addedL0Files, int64(flushSplitMaxBytes), &levelMetadata)
+					// Check if the output matches a full initialization.
+					sublevels2, _ := NewL0Sublevels(&levelMetadata, base.DefaultComparer.Compare, base.DefaultFormatter, int64(flushSplitMaxBytes))
+					if sublevels != nil && sublevels2 != nil {
+						require.Equal(t, sublevels.flushSplitUserKeys, sublevels2.flushSplitUserKeys)
+						require.Equal(t, sublevels.levelFiles, sublevels2.levelFiles)
+					}
+				} else {
+					sublevels, err = NewL0Sublevels(
+						&levelMetadata,
+						base.DefaultComparer.Compare,
+						base.DefaultFormatter,
+						int64(flushSplitMaxBytes))
+				}
+				if err != nil {
+					return err.Error()
+				}
 				sublevels.InitCompactingFileInfo(nil)
 			} else {
 				// This case is for use with explicitly-specified sublevels
@@ -512,6 +539,15 @@ func TestL0Sublevels(t *testing.T) {
 		}
 		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
 	})
+}
+
+func BenchmarkManifestApplyWithL0Sublevels(b *testing.B) {
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		v, err := readManifest("testdata/MANIFEST_import")
+		require.NotNil(b, v)
+		require.NoError(b, err)
+	}
 }
 
 func BenchmarkL0SublevelsInit(b *testing.B) {
