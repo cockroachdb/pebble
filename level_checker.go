@@ -61,8 +61,9 @@ type simpleMergingIter struct {
 	snapshot uint64
 	heap     mergingIterHeap
 	// The last point's key and level. For validation.
-	lastKey   InternalKey
-	lastLevel int
+	lastKey     InternalKey
+	lastLevel   int
+	lastIterMsg string
 	// A non-nil valueMerger means MERGE record processing is ongoing.
 	valueMerger base.ValueMerger
 	// The first error will cause step() to return false.
@@ -135,10 +136,9 @@ func (m *simpleMergingIter) step() bool {
 			// At the same user key. We will see them in decreasing seqnum
 			// order so the lastLevel must not be lower.
 			if m.lastLevel > item.index {
-				lastLevel := m.levels[m.lastLevel]
 				m.err = errors.Errorf("found InternalKey %s in %s and InternalKey %s in %s",
 					item.key.Pretty(m.formatKey), l.iter, m.lastKey.Pretty(m.formatKey),
-					lastLevel.iter)
+					m.lastIterMsg)
 				return false
 			}
 			m.lastLevel = item.index
@@ -216,11 +216,11 @@ func (m *simpleMergingIter) step() bool {
 			}
 		}
 	}
-	// If the current record is the last record in the DB and it happens to be on
-	// L1 or higher, the l.iter.Next() below will cause the underlying levelIter
-	// to be become invalid thereby losing the fileNum where the last
-	// record came from. Hence we save it before calling next.
-	lastRecordMsg := l.iter.String()
+
+	// The iterator for the current level may be closed in the following call to
+	// Next(). We save its debug string for potential use after it is closed -
+	// either in this current step() invocation or on the next invocation.
+	m.lastIterMsg = l.iter.String()
 
 	// Step to the next point.
 	if l.iterKey, l.iterValue = l.iter.Next(); l.iterKey != nil {
@@ -258,7 +258,7 @@ func (m *simpleMergingIter) step() bool {
 			}
 			if m.err != nil {
 				m.err = errors.Wrapf(m.err, "merge processing error on key %s in %s",
-					item.key.Pretty(m.formatKey), lastRecordMsg)
+					item.key.Pretty(m.formatKey), m.lastIterMsg)
 			}
 			m.valueMerger = nil
 		}
