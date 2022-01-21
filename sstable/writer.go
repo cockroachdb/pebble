@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
@@ -158,7 +159,25 @@ type Writer struct {
 	dataBlockBuf *dataBlockBuf
 	// blockBuf consists of the state which is owned by and used by the Writer client
 	// goroutine.
-	blockBuf blockBuf
+	blockBuf         blockBuf
+	dataBlockBuffers chan *dataBlockBuf
+
+	queueState struct {
+		// writeQueue is used to write data blocks to disk. The writeQueue is primarily
+		// used to maintain the order in which data blocks must be written to disk. For
+		// this reason, every single data block write must be done through the writeQueue.
+		writeQueue *writeQueue
+		// errCh is a buffered channel of size 1, and it will be written to at most once.
+		errCh chan error
+	}
+}
+
+var writeQueueTasks sync.Pool = sync.Pool{
+	New: func() interface{} {
+		t := &writeTask{}
+		t.compressionDone = make(chan bool, 1)
+		return t
+	},
 }
 
 type checksummer struct {
@@ -211,6 +230,15 @@ func (d *dataBlockBuf) compressAndChecksum(c Compression) error {
 }
 
 func (w *Writer) Error() error {
+	if w.err != nil {
+		return w.err
+	}
+
+	select {
+	case w.err = <-w.queueState.errCh:
+	default:
+	}
+
 	return w.err
 }
 
@@ -719,20 +747,18 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 			return err
 		}
 
-		var bh BlockHandle
-		if bh, err = w.writeCompressedBlock(w.dataBlockBuf.compressed, w.dataBlockBuf.tmp[:]); err != nil {
-			return err
-		}
+		writeTask := writeQueueTasks.Get().(*writeTask)
+		writeTask.compressionDone <- true
+		writeTask.buf = w.dataBlockBuf
+		w.dataBlockBuf = nil
+		writeTask.key = key
+		w.queueState.writeQueue.add(writeTask)
 
-		var bhp BlockHandleWithProperties
-		if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
-			return err
-		}
+		// Note that if the Writer was created with only a single dataBlockBuf, then
+		// this call will block until writeTask is completed by Writer.writeQueue. This
+		// effectively makes the write pipeline synchronous with the Writer client.
+		w.dataBlockBuf = <-w.dataBlockBuffers
 
-		prevKey := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
-		if err = w.addIndexEntry(prevKey, key, bhp, w.dataBlockBuf.tmp[:]); err != nil {
-			return err
-		}
 		return nil
 	}()
 
@@ -976,6 +1002,10 @@ func (w *Writer) Close() (err error) {
 		w.syncer = nil
 	}()
 
+	// finish must be called before we check for an error, because finish will
+	// block until every single task added to the writeQueue has been processed,
+	// and an error could be encountered while any of those tasks are processed.
+	w.queueState.writeQueue.finish()
 	if err := w.Error(); err != nil {
 		return err
 	}
@@ -1301,7 +1331,8 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 			Cmp:    o.Comparer.Compare,
 			Format: o.Comparer.FormatKey,
 		},
-		coalescer: rangekey.Coalescer{},
+		coalescer:        rangekey.Coalescer{},
+		dataBlockBuffers: make(chan *dataBlockBuf, 1),
 	}
 
 	w.dataBlockBuf = &dataBlockBuf{
@@ -1313,6 +1344,8 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 	w.blockBuf = blockBuf{
 		checksummer: checksummer{checksumType: o.Checksum},
 	}
+	w.queueState.writeQueue = newWriteQueue(1, w)
+	w.queueState.errCh = make(chan error, 1)
 
 	if f == nil {
 		w.err = errors.New("pebble: nil file")

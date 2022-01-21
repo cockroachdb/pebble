@@ -304,7 +304,7 @@ func (c *testBlockPropCollector) FinishTable(_ []byte) ([]byte, error) {
 	return nil, nil
 }
 
-func TestWriter_BlockProperties_Errors(t *testing.T) {
+func TestWriterBlockPropertiesErrors(t *testing.T) {
 	blockPropErr := errors.Newf("block property collector failed")
 	testCases := []blockPropErrSite{
 		errSiteAdd,
