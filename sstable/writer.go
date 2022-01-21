@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
@@ -158,7 +159,25 @@ type Writer struct {
 	dataBlockBuf *dataBlockBuf
 	// blockBuf consists of the state which is owned by and used by the Writer client
 	// goroutine.
-	blockBuf blockBuf
+	blockBuf         blockBuf
+	dataBlockBuffers sync.Pool
+
+	queueState struct {
+		// writeQueue is used to write data blocks to disk. The writeQueue is primarily
+		// used to maintain the order in which data blocks must be written to disk. For
+		// this reason, every single data block write must be done through the writeQueue.
+		writeQueue *writeQueue
+		// errCh is a buffered channel of size 1, and it will be written to at most once.
+		errCh chan error
+	}
+}
+
+var writeQueueTasks sync.Pool = sync.Pool{
+	New: func() interface{} {
+		t := &writeTask{}
+		t.compressionDone = make(chan bool, 1)
+		return t
+	},
 }
 
 type checksummer struct {
@@ -210,10 +229,6 @@ func (d *dataBlockBuf) compressAndChecksum(c Compression) error {
 	return nil
 }
 
-func (w *Writer) Error() error {
-	return w.err
-}
-
 type indexBlockWriterAndBlockProperties struct {
 	writer     blockWriter
 	properties []byte
@@ -225,8 +240,8 @@ type indexBlockWriterAndBlockProperties struct {
 //
 // TODO(peter): untested
 func (w *Writer) Set(key, value []byte) error {
-	if err := w.Error(); err != nil {
-		return err
+	if w.err != nil {
+		return w.err
 	}
 	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindSet), value)
 }
@@ -237,8 +252,8 @@ func (w *Writer) Set(key, value []byte) error {
 //
 // TODO(peter): untested
 func (w *Writer) Delete(key []byte) error {
-	if err := w.Error(); err != nil {
-		return err
+	if w.err != nil {
+		return w.err
 	}
 	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindDelete), nil)
 }
@@ -250,8 +265,8 @@ func (w *Writer) Delete(key []byte) error {
 //
 // TODO(peter): untested
 func (w *Writer) DeleteRange(start, end []byte) error {
-	if err := w.Error(); err != nil {
-		return err
+	if w.err != nil {
+		return w.err
 	}
 	return w.addTombstone(base.MakeInternalKey(start, 0, InternalKeyKindRangeDelete), end)
 }
@@ -263,8 +278,8 @@ func (w *Writer) DeleteRange(start, end []byte) error {
 //
 // TODO(peter): untested
 func (w *Writer) Merge(key, value []byte) error {
-	if err := w.Error(); err != nil {
-		return err
+	if w.err != nil {
+		return w.err
 	}
 	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindMerge), value)
 }
@@ -276,8 +291,8 @@ func (w *Writer) Merge(key, value []byte) error {
 // point entries. Additionally, range deletion tombstones must be fragmented
 // (i.e. by keyspan.Fragmenter).
 func (w *Writer) Add(key InternalKey, value []byte) error {
-	if err := w.Error(); err != nil {
-		return err
+	if w.err != nil {
+		return w.err
 	}
 
 	switch key.Kind() {
@@ -476,8 +491,8 @@ func (w *Writer) RangeKeyDelete(start, end []byte) error {
 // overlap. Range keys may be added out of order relative to point keys and
 // range deletions.
 func (w *Writer) AddRangeKey(key InternalKey, value []byte) error {
-	if err := w.Error(); err != nil {
-		return err
+	if w.err != nil {
+		return w.err
 	}
 	return w.addRangeKey(key, value)
 }
@@ -719,21 +734,18 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 			return err
 		}
 
-		var bh BlockHandle
-		if bh, err = w.writeCompressedBlock(w.dataBlockBuf.compressed, w.dataBlockBuf.tmp[:]); err != nil {
-			return err
-		}
+		writeTask := writeQueueTasks.Get().(*writeTask)
+		// We're setting compressionDone to indicate that compression of this block
+		// has already been completed.
+		writeTask.compressionDone <- true
+		writeTask.buf = w.dataBlockBuf
+		writeTask.indexSepKey = &key
 
-		var bhp BlockHandleWithProperties
-		if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
-			return err
-		}
+		w.dataBlockBuf = nil
+		err = w.queueState.writeQueue.addSync(writeTask)
+		w.dataBlockBuf = w.dataBlockBuffers.Get().(*dataBlockBuf)
 
-		prevKey := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
-		if err = w.addIndexEntry(prevKey, key, bhp, w.dataBlockBuf.tmp[:]); err != nil {
-			return err
-		}
-		return nil
+		return err
 	}()
 
 	if err != nil {
@@ -976,7 +988,11 @@ func (w *Writer) Close() (err error) {
 		w.syncer = nil
 	}()
 
-	if err := w.Error(); err != nil {
+	// finish must be called before we check for an error, because finish will
+	// block until every single task added to the writeQueue has been processed,
+	// and an error could be encountered while any of those tasks are processed.
+	w.err = w.queueState.writeQueue.finish()
+	if w.err != nil {
 		return err
 	}
 
@@ -1302,17 +1318,29 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 			Format: o.Comparer.FormatKey,
 		},
 		coalescer: rangekey.Coalescer{},
-	}
-
-	w.dataBlockBuf = &dataBlockBuf{
-		dataBlock: blockWriter{
-			restartInterval: o.BlockRestartInterval,
+		dataBlockBuffers: sync.Pool{
+			New: func() interface{} {
+				d := &dataBlockBuf{
+					dataBlock: blockWriter{
+						restartInterval: o.BlockRestartInterval,
+					},
+				}
+				d.checksummer = checksummer{checksumType: o.Checksum}
+				return d
+			},
 		},
 	}
-	w.dataBlockBuf.checksummer = checksummer{checksumType: o.Checksum}
+
+	w.dataBlockBuf = w.dataBlockBuffers.Get().(*dataBlockBuf)
+
 	w.blockBuf = blockBuf{
 		checksummer: checksummer{checksumType: o.Checksum},
 	}
+	// We're creating the writeQueue with a size of 0, because we won't be using
+	// the async queue until parallel compression is enabled, and we do all block
+	// writes through writeQueue.addSync.
+	w.queueState.writeQueue = newWriteQueue(0, w)
+	w.queueState.errCh = make(chan error, 1)
 
 	if f == nil {
 		w.err = errors.New("pebble: nil file")
