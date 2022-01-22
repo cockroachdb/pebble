@@ -713,11 +713,8 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 
 func TestFooterRoundTrip(t *testing.T) {
 	buf := make([]byte, 100+maxFooterLen)
-	for _, format := range []TableFormat{
-		TableFormatRocksDBv2,
-		TableFormatLevelDB,
-	} {
-		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
+	for format := TableFormatLevelDB; format < TableFormatMax; format++ {
+		t.Run(fmt.Sprintf("format=%s", format), func(t *testing.T) {
 			checksums := []ChecksumType{ChecksumTypeCRC32c}
 			if format != TableFormatLevelDB {
 				checksums = []ChecksumType{ChecksumTypeCRC32c, ChecksumTypeXXHash64}

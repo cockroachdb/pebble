@@ -333,7 +333,8 @@ func (o *ingestOp) build(t *test, h *history, b *pebble.Batch, i int) (string, e
 	}()
 
 	equal := t.opts.Comparer.Equal
-	w := sstable.NewWriter(f, t.opts.MakeWriterOptions(0))
+	tableFormat := t.db.FormatMajorVersion().MaxTableFormat()
+	w := sstable.NewWriter(f, t.opts.MakeWriterOptions(0, tableFormat))
 
 	var lastUserKey []byte
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {

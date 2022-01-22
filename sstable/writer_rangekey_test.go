@@ -35,7 +35,10 @@ func TestWriter_RangeKeys(t *testing.T) {
 		// Use a "suffix-aware" Comparer, that will sort suffix-values in
 		// descending order of timestamp, rather than in lexical order.
 		cmp := testkeys.Comparer
-		w := NewWriter(f, WriterOptions{Comparer: cmp})
+		w := NewWriter(f, WriterOptions{
+			Comparer:    cmp,
+			TableFormat: TableFormatPebblev2,
+		})
 		for _, data := range strings.Split(td.Input, "\n") {
 			// Format. One of:
 			// - SET $START-$END $SUFFIX=$VALUE

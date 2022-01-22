@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/stretchr/testify/require"
@@ -173,4 +174,30 @@ func TestFormatMajorVersions(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestFormatMajorVersions_TableFormat(t *testing.T) {
+	// NB: This test is intended to validate the mapping between every
+	// FormatMajorVersion and sstable.TableFormat exhaustively. This serves as a
+	// sanity check that new versions have a corresponding mapping. The test
+	// fixture is intentionally verbose.
+
+	m := map[FormatMajorVersion]sstable.TableFormat{
+		FormatDefault:                 sstable.TableFormatRocksDBv2,
+		FormatMostCompatible:          sstable.TableFormatRocksDBv2,
+		formatVersionedManifestMarker: sstable.TableFormatRocksDBv2,
+		FormatVersioned:               sstable.TableFormatRocksDBv2,
+		FormatSetWithDelete:           sstable.TableFormatRocksDBv2,
+		FormatBlockPropertyCollector:  sstable.TableFormatPebblev1,
+	}
+
+	// Valid versions.
+	for fmv := FormatMostCompatible; fmv <= FormatNewest; fmv++ {
+		f := fmv.MaxTableFormat()
+		require.Equalf(t, m[fmv], f, "got %s; want %s", f, m[fmv])
+	}
+
+	// Invalid versions.
+	fmv := FormatNewest + 1
+	require.Panics(t, func() { _ = fmv.MaxTableFormat() })
 }
