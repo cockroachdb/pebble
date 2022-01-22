@@ -166,6 +166,26 @@ type checksummer struct {
 	xxHasher     *xxhash.Digest
 }
 
+func (c *checksummer) checksum(block []byte, blockType []byte) (checksum uint32) {
+	// Calculate the checksum.
+	switch c.checksumType {
+	case ChecksumTypeCRC32c:
+		checksum = crc.New(block).Update(blockType).Value()
+	case ChecksumTypeXXHash64:
+		if c.xxHasher == nil {
+			c.xxHasher = xxhash.New()
+		} else {
+			c.xxHasher.Reset()
+		}
+		c.xxHasher.Write(block)
+		c.xxHasher.Write(blockType)
+		checksum = uint32(c.xxHasher.Sum64())
+	default:
+		panic(errors.Newf("unsupported checksum type: %d", c.checksumType))
+	}
+	return checksum
+}
+
 type blockBuf struct {
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, (5 * binary.MaxVarintLen64) bytes, and most
@@ -201,13 +221,8 @@ func (d *dataBlockBuf) finish() {
 	d.uncompressed = d.dataBlock.finish()
 }
 
-func (d *dataBlockBuf) compressAndChecksum(c Compression) error {
-	compressed, err := compressAndChecksum(d.uncompressed, c, &d.blockBuf)
-	if err != nil {
-		return err
-	}
-	d.compressed = compressed
-	return nil
+func (d *dataBlockBuf) compressAndChecksum(c Compression) {
+	d.compressed = compressAndChecksum(d.uncompressed, c, &d.blockBuf)
 }
 
 func (w *Writer) Error() error {
@@ -712,14 +727,11 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 	}
 
 	err := func() error {
-		var err error
-
 		w.dataBlockBuf.finish()
-		if err = w.dataBlockBuf.compressAndChecksum(w.compression); err != nil {
-			return err
-		}
+		w.dataBlockBuf.compressAndChecksum(w.compression)
 
 		var bh BlockHandle
+		var err error
 		if bh, err = w.writeCompressedBlock(w.dataBlockBuf.compressed, w.dataBlockBuf.tmp[:]); err != nil {
 			return err
 		}
@@ -887,7 +899,7 @@ func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	return w.writeBlock(w.topLevelIndexBlock.finish(), w.compression, &w.blockBuf)
 }
 
-func compressAndChecksum(b []byte, compression Compression, blockBuf *blockBuf) ([]byte, error) {
+func compressAndChecksum(b []byte, compression Compression, blockBuf *blockBuf) []byte {
 	// Compress the buffer, discarding the result if the improvement isn't at
 	// least 12.5%.
 	blockType, compressed := compressBlock(compression, b, blockBuf.compressedBuf)
@@ -903,24 +915,9 @@ func compressAndChecksum(b []byte, compression Compression, blockBuf *blockBuf) 
 	blockBuf.tmp[0] = byte(blockType)
 
 	// Calculate the checksum.
-	var checksum uint32
-	switch blockBuf.checksummer.checksumType {
-	case ChecksumTypeCRC32c:
-		checksum = crc.New(b).Update(blockBuf.tmp[:1]).Value()
-	case ChecksumTypeXXHash64:
-		if blockBuf.checksummer.xxHasher == nil {
-			blockBuf.checksummer.xxHasher = xxhash.New()
-		} else {
-			blockBuf.checksummer.xxHasher.Reset()
-		}
-		blockBuf.checksummer.xxHasher.Write(b)
-		blockBuf.checksummer.xxHasher.Write(blockBuf.tmp[:1])
-		checksum = uint32(blockBuf.checksummer.xxHasher.Sum64())
-	default:
-		return nil, errors.Newf("unsupported checksum type: %d", blockBuf.checksummer.checksumType)
-	}
+	checksum := blockBuf.checksummer.checksum(b, blockBuf.tmp[:1])
 	binary.LittleEndian.PutUint32(blockBuf.tmp[1:5], checksum)
-	return b, nil
+	return b
 }
 
 func (w *Writer) writeCompressedBlock(
@@ -955,10 +952,7 @@ func (w *Writer) writeCompressedBlock(
 func (w *Writer) writeBlock(
 	b []byte, compression Compression, blockBuf *blockBuf,
 ) (BlockHandle, error) {
-	b, err := compressAndChecksum(b, compression, blockBuf)
-	if err != nil {
-		return BlockHandle{}, err
-	}
+	b = compressAndChecksum(b, compression, blockBuf)
 	return w.writeCompressedBlock(b, blockBuf.tmp[:])
 }
 
