@@ -168,12 +168,13 @@ const (
 	levelDBMagic       = "\x57\xfb\x80\x8b\x24\x75\x47\xdb"
 	levelDBMagicOffset = levelDBFooterLen - len(levelDBMagic)
 
-	rocksDBFooterLen     = 1 + 2*blockHandleMaxLenWithoutProperties + 4 + 8
-	rocksDBMagic         = "\xf7\xcf\xf4\x85\xb7\x41\xe2\x88"
-	rocksDBMagicOffset   = rocksDBFooterLen - len(rocksDBMagic)
-	rocksDBVersionOffset = rocksDBMagicOffset - 4
-
+	rocksDBFooterLen             = 1 + 2*blockHandleMaxLenWithoutProperties + 4 + 8
+	rocksDBMagic                 = "\xf7\xcf\xf4\x85\xb7\x41\xe2\x88"
+	rocksDBMagicOffset           = rocksDBFooterLen - len(rocksDBMagic)
+	rocksDBVersionOffset         = rocksDBMagicOffset - 4
 	rocksDBExternalFormatVersion = 2
+
+	pebbleDBMagic = "\xf0\x9f\xaa\xb3\xf0\x9f\xaa\xb3" // 🪳🪳
 
 	minFooterLen = levelDBFooterLen
 	maxFooterLen = rocksDBFooterLen
@@ -313,7 +314,7 @@ func readFooter(f ReadableFile) (footer, error) {
 	}
 	buf = buf[:n]
 
-	switch string(buf[len(buf)-len(rocksDBMagic):]) {
+	switch magic := buf[len(buf)-len(rocksDBMagic):]; string(magic) {
 	case levelDBMagic:
 		if len(buf) < levelDBFooterLen {
 			return footer, base.CorruptionErrorf(
@@ -325,7 +326,9 @@ func readFooter(f ReadableFile) (footer, error) {
 		footer.format = TableFormatLevelDB
 		footer.checksum = ChecksumTypeCRC32c
 
-	case rocksDBMagic:
+	case rocksDBMagic, pebbleDBMagic:
+		// NOTE: The Pebble magic string implies the same footer format as that used
+		// by the RocksDBv2 table format.
 		if len(buf) < rocksDBFooterLen {
 			return footer, base.CorruptionErrorf("pebble/table: invalid table (footer too short): %d", errors.Safe(len(buf)))
 		}
@@ -333,10 +336,13 @@ func readFooter(f ReadableFile) (footer, error) {
 		buf = buf[len(buf)-rocksDBFooterLen:]
 		footer.footerBH.Length = uint64(len(buf))
 		version := binary.LittleEndian.Uint32(buf[rocksDBVersionOffset:rocksDBMagicOffset])
-		if version != rocksDBFormatVersion2 {
-			return footer, base.CorruptionErrorf("pebble/table: unsupported format version %d", errors.Safe(version))
+
+		format, err := ParseTableFormat(magic, version)
+		if err != nil {
+			return footer, err
 		}
-		footer.format = TableFormatRocksDBv2
+		footer.format = format
+
 		switch ChecksumType(buf[0]) {
 		case ChecksumTypeCRC32c:
 			footer.checksum = ChecksumTypeCRC32c
@@ -370,8 +376,8 @@ func readFooter(f ReadableFile) (footer, error) {
 }
 
 func (f footer) encode(buf []byte) []byte {
-	switch f.format {
-	case TableFormatLevelDB:
+	switch magic, version := f.format.AsTuple(); magic {
+	case levelDBMagic:
 		buf = buf[:levelDBFooterLen]
 		for i := range buf {
 			buf[i] = 0
@@ -380,7 +386,7 @@ func (f footer) encode(buf []byte) []byte {
 		encodeBlockHandle(buf[n:], f.indexBH)
 		copy(buf[len(buf)-len(levelDBMagic):], levelDBMagic)
 
-	case TableFormatRocksDBv2:
+	case rocksDBMagic, pebbleDBMagic:
 		buf = buf[:rocksDBFooterLen]
 		for i := range buf {
 			buf[i] = 0
@@ -400,8 +406,8 @@ func (f footer) encode(buf []byte) []byte {
 		n := 1
 		n += encodeBlockHandle(buf[n:], f.metaindexBH)
 		encodeBlockHandle(buf[n:], f.indexBH)
-		binary.LittleEndian.PutUint32(buf[rocksDBVersionOffset:], rocksDBFormatVersion2)
-		copy(buf[len(buf)-len(rocksDBMagic):], rocksDBMagic)
+		binary.LittleEndian.PutUint32(buf[rocksDBVersionOffset:], version)
+		copy(buf[len(buf)-len(rocksDBMagic):], magic)
 
 	default:
 		panic("sstable: unspecified table format version")
@@ -414,7 +420,7 @@ func supportsTwoLevelIndex(format TableFormat) bool {
 	switch format {
 	case TableFormatLevelDB:
 		return false
-	case TableFormatRocksDBv2:
+	case TableFormatRocksDBv2, TableFormatPebblev1, TableFormatPebblev2:
 		return true
 	default:
 		panic("sstable: unspecified table format version")

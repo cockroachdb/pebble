@@ -1027,6 +1027,28 @@ func (w *Writer) writeBlock(
 	return w.writeCompressedBlock(b, blockBuf.tmp[:])
 }
 
+// assertFormatCompatibility ensures that the features present on the table are
+// compatible with the table format version.
+func (w *Writer) assertFormatCompatibility() error {
+	// PebbleDBv1: block properties.
+	if len(w.blockPropCollectors) > 0 && w.tableFormat < TableFormatPebblev1 {
+		return errors.Newf(
+			"table format version %s is less than the minimum required version %s for block properties",
+			w.tableFormat, TableFormatPebblev1,
+		)
+	}
+
+	// PebbleDBv2: range keys.
+	if w.props.NumRangeKeys() > 0 && w.tableFormat < TableFormatPebblev2 {
+		return errors.Newf(
+			"table format version %s is less than the minimum required version %s for range keys",
+			w.tableFormat, TableFormatPebblev2,
+		)
+	}
+
+	return nil
+}
+
 // Close finishes writing the table and closes the underlying file that the
 // table was written to.
 func (w *Writer) Close() (err error) {
@@ -1269,6 +1291,13 @@ func (w *Writer) Close() (err error) {
 			w.err = err
 			return err
 		}
+	}
+
+	// Check that the features present in the table are compatible with the format
+	// configured for the table.
+	if err = w.assertFormatCompatibility(); err != nil {
+		w.err = err
+		return w.err
 	}
 
 	if err := w.syncer.Sync(); err != nil {

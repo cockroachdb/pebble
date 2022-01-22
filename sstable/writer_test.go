@@ -46,7 +46,9 @@ func runDataDriven(t *testing.T, file string) {
 			}
 			var meta *WriterMetadata
 			var err error
-			meta, r, err = runBuildCmd(td, &WriterOptions{})
+			meta, r, err = runBuildCmd(td, &WriterOptions{
+				TableFormat: TableFormatMax,
+			})
 			if err != nil {
 				return err.Error()
 			}
@@ -63,7 +65,9 @@ func runDataDriven(t *testing.T, file string) {
 			}
 			var meta *WriterMetadata
 			var err error
-			meta, r, err = runBuildRawCmd(td)
+			meta, r, err = runBuildRawCmd(td, &WriterOptions{
+				TableFormat: TableFormatMax,
+			})
 			if err != nil {
 				return err.Error()
 			}
@@ -265,6 +269,7 @@ const (
 	errSiteFinishBlock
 	errSiteFinishIndex
 	errSiteFinishTable
+	errSiteNone
 )
 
 type testBlockPropCollector struct {
@@ -311,6 +316,7 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 		errSiteFinishBlock,
 		errSiteFinishIndex,
 		errSiteFinishTable,
+		errSiteNone,
 	}
 
 	var (
@@ -338,6 +344,7 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 						}
 					},
 				},
+				TableFormat: TableFormatPebblev1,
 			})
 
 			err = w.Add(k1, v1)
@@ -345,12 +352,14 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 			case errSiteAdd:
 				require.Error(t, err)
 				require.Equal(t, blockPropErr, err)
+				return
 			case errSiteFinishBlock:
 				require.NoError(t, err)
 				// Addition of a second key completes the first block.
-				w.Add(k2, v2)
-				require.Error(t, w.err)
-				require.Equal(t, blockPropErr, w.err)
+				err = w.Add(k2, v2)
+				require.Error(t, err)
+				require.Equal(t, blockPropErr, err)
+				return
 			case errSiteFinishIndex:
 				require.NoError(t, err)
 				// Addition of a second key completes the first block.
@@ -358,15 +367,78 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 				require.NoError(t, err)
 				// The index entry for the first block is added after the completion of
 				// the second block, which is triggered by adding a third key.
-				w.Add(k3, v3)
-				require.Error(t, w.err)
-				require.Equal(t, blockPropErr, w.err)
+				err = w.Add(k3, v3)
+				require.Error(t, err)
+				require.Equal(t, blockPropErr, err)
+				return
 			}
 
 			err = w.Close()
 			if tc == errSiteFinishTable {
 				require.Error(t, err)
-				require.Equal(t, blockPropErr, w.err)
+				require.Equal(t, blockPropErr, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestWriter_TableFormatCompatibility(t *testing.T) {
+	testCases := []struct {
+		name        string
+		minFormat   TableFormat
+		configureFn func(opts *WriterOptions)
+		writeFn     func(w *Writer) error
+	}{
+		{
+			name:      "block properties",
+			minFormat: TableFormatPebblev1,
+			configureFn: func(opts *WriterOptions) {
+				opts.BlockPropertyCollectors = []func() BlockPropertyCollector{
+					func() BlockPropertyCollector {
+						return NewBlockIntervalCollector(
+							"collector", &valueCharBlockIntervalCollector{charIdx: 0}, nil,
+						)
+					},
+				}
+			},
+		},
+		{
+			name:      "range keys",
+			minFormat: TableFormatPebblev2,
+			writeFn: func(w *Writer) error {
+				return w.RangeKeyDelete([]byte("a"), []byte("b"))
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			for tf := TableFormatLevelDB; tf <= TableFormatMax; tf++ {
+				t.Run(tf.String(), func(t *testing.T) {
+					fs := vfs.NewMem()
+					f, err := fs.Create("sst")
+					require.NoError(t, err)
+
+					opts := WriterOptions{TableFormat: tf}
+					if tc.configureFn != nil {
+						tc.configureFn(&opts)
+					}
+
+					w := NewWriter(f, opts)
+					if tc.writeFn != nil {
+						err = tc.writeFn(w)
+						require.NoError(t, err)
+					}
+
+					err = w.Close()
+					if tf < tc.minFormat {
+						require.Error(t, err)
+					} else {
+						require.NoError(t, err)
+					}
+				})
 			}
 		})
 	}
