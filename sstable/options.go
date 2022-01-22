@@ -50,19 +50,6 @@ type FilterWriter = base.FilterWriter
 // FilterPolicy exports the base.FilterPolicy type.
 type FilterPolicy = base.FilterPolicy
 
-// TableFormat specifies the format version for sstables. The legacy LevelDB
-// format is format version 0.
-type TableFormat uint32
-
-// The available table formats, representing the tuple (magic number, version
-// number). Note that these values are not (and should not) be serialized to
-// disk.
-const (
-	TableFormatUnspecified TableFormat = iota
-	TableFormatLevelDB
-	TableFormatRocksDBv2
-)
-
 // TablePropertyCollector provides a hook for collecting user-defined
 // properties based on the keys and values stored in an sstable. A new
 // TablePropertyCollector is created for an sstable when the sstable is being
@@ -234,6 +221,8 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	if o.Checksum == ChecksumTypeNone {
 		o.Checksum = ChecksumTypeCRC32c
 	}
+	// By default, if the table format is not specified, fall back to using the
+	// most compatible format.
 	if o.TableFormat == TableFormatUnspecified {
 		o.TableFormat = TableFormatRocksDBv2
 	}
