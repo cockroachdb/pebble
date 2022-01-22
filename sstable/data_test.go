@@ -162,14 +162,14 @@ func runBuildCmd(
 	return meta, r, nil
 }
 
-func runBuildRawCmd(td *datadriven.TestData) (*WriterMetadata, *Reader, error) {
+func runBuildRawCmd(td *datadriven.TestData, opts *WriterOptions) (*WriterMetadata, *Reader, error) {
 	mem := vfs.NewMem()
 	f0, err := mem.Create("test")
 	if err != nil {
 		return nil, nil, err
 	}
 
-	w := NewWriter(f0, WriterOptions{})
+	w := NewWriter(f0, *opts)
 	for i := range td.CmdArgs {
 		arg := &td.CmdArgs[i]
 		if arg.Key == "range-del-v1" {

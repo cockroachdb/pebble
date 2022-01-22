@@ -1247,15 +1247,15 @@ func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 
 // MakeWriterOptions constructs sstable.WriterOptions for the specified level
 // from the corresponding options in the receiver.
-func (o *Options) MakeWriterOptions(level int) sstable.WriterOptions {
+func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstable.WriterOptions {
 	var writerOpts sstable.WriterOptions
+	writerOpts.TableFormat = format
 	if o != nil {
 		writerOpts.Cache = o.Cache
 		writerOpts.Comparer = o.Comparer
 		if o.Merger != nil {
 			writerOpts.MergerName = o.Merger.Name
 		}
-		writerOpts.TableFormat = sstable.TableFormatRocksDBv2
 		writerOpts.TablePropertyCollectors = o.TablePropertyCollectors
 		writerOpts.BlockPropertyCollectors = o.BlockPropertyCollectors
 	}

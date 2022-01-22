@@ -2064,6 +2064,10 @@ func (d *DB) runCompaction(
 
 	snapshots := d.mu.snapshots.toSlice()
 	formatVers := d.mu.formatVers.vers
+	// The table is written at the maximum allowable format implied by the current
+	// format major version of the DB.
+	tableFormat := formatVers.MaxTableFormat()
+
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
 	d.mu.Unlock()
@@ -2115,7 +2119,7 @@ func (d *DB) runCompaction(
 		c.metrics[c.startLevel.level] = &LevelMetrics{}
 	}
 
-	writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level)
+	writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
 	if formatVers < FormatBlockPropertyCollector {
 		// Cannot yet write block properties.
 		writerOpts.BlockPropertyCollectors = nil
