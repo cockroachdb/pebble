@@ -1,5 +1,9 @@
 # Range Deletions
 
+TODO: The following explanation of range deletions does not take into account
+the recent change to prohibit splitting of a user key between sstables. This
+change simplifies the logic, removing 'improperly truncated range tombstones.'
+
 TODO: The following explanation of range deletions ignores the
 kind/trailer that appears at the end of keys after the sequence
 number. This should be harmless but need to add a justification on why

@@ -63,26 +63,3 @@ truncate-and-flush-to d
 3:     e-g                    orange
 1:     e-g                    coconut
 3:       g-i                  orange
-
-# NB: Unlike the above truncate-and-flush-to calls, a flush-to does not truncate
-# the end boundary. In this case, the fragments beginning at `c` are not
-# truncated to `d`, they're flushed with the bounadries formed by fragmentation
-# (`e`)
-build
-3: a-c                        apple
-2: a---e                      banana
-1: a-----g                    coconut
-flush-to d
-3:    d----i                  orange
-----
-3: a-c                        apple
-2: a-c                        banana
-1: a-c                        coconut
-2:   c-e                      banana
-1:   c-e                      coconut
-3:    de                      orange
-2:    de                      banana
-1:    de                      coconut
-3:     e-g                    orange
-1:     e-g                    coconut
-3:       g-i                  orange

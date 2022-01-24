@@ -17,27 +17,29 @@ e-f 2
 compact max-overlap=1
 a b c d e f
 ----
-a-b
-c-d
-e-f
+a-c
+d-e
+f-f
 
 compact max-overlap=2
 a b c d e f
 ----
-a-d
-e-f
+a-c
+d-e
+f-f
 
 compact max-overlap=4
 a b c d e f
 ----
-a-f
+a-e
+f-f
 
 compact max-overlap=1
 b c d e f g h i j
 ----
-b-d
-e-f
-g-j
+b-c
+d-e
+f-j
 
 compact max-overlap=1
 a g h i j
@@ -54,8 +56,8 @@ e-f
 compact max-overlap=1
 c d e f
 ----
-c-d
-e-f
+c-e
+f-f
 
 # Unequal size grandparents
 define
@@ -67,13 +69,15 @@ e-f 3
 compact max-overlap=1
 a b c d e f
 ----
-a-d
-e-f
+a-c
+d-e
+f-f
 
 compact max-overlap=3
 a b c d e f
 ----
-a-f
+a-e
+f-f
 
 # Unequal size grandparents
 define
@@ -85,12 +89,12 @@ e-f 1
 compact max-overlap=1
 a b c d e f
 ----
-a-b
-c-d
-e-f
+a-c
+d-e
+f-f
 
 compact max-overlap=3
 a b c d e f
 ----
-a-d
-e-f
+a-c
+d-f
