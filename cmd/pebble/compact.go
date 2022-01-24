@@ -367,7 +367,7 @@ func runReplay(cmd *cobra.Command, args []string) error {
 	if err := iter.Close(); err != nil {
 		return err
 	}
-	if err := d.Compact(first, last); err != nil {
+	if err := d.Compact(first, last, false); err != nil {
 		return err
 	}
 	afterSize := totalSize(d.Metrics())
