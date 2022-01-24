@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/batchskl"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -267,6 +268,9 @@ func TestIndexedBatchReset(t *testing.T) {
 	value := "test-value"
 	b.DeleteRange([]byte(start), []byte(end), nil)
 	b.Set([]byte(key), []byte(value), nil)
+	require.NoError(t, b.Experimental().
+		RangeKeySet([]byte(start), []byte(end), []byte("suffix"), []byte(value), nil))
+	require.NotNil(t, b.rangeKeyIndex)
 	require.NotNil(t, b.rangeDelIndex)
 	require.NotNil(t, b.index)
 	require.Equal(t, 1, indexCount(b.index))
@@ -277,6 +281,7 @@ func TestIndexedBatchReset(t *testing.T) {
 	require.NotNil(t, b.abbreviatedKey)
 	require.NotNil(t, b.index)
 	require.Nil(t, b.rangeDelIndex)
+	require.Nil(t, b.rangeKeyIndex)
 
 	count := func(ib *Batch) int {
 		iter := ib.NewIter(nil)
@@ -577,10 +582,10 @@ func TestBatchIter(t *testing.T) {
 	}
 }
 
-func TestBatchDeleteRange(t *testing.T) {
+func TestBatchRangeOps(t *testing.T) {
 	var b *Batch
 
-	datadriven.RunTest(t, "testdata/batch_delete_range", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/batch_range_ops", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "clear":
 			b = nil
@@ -613,11 +618,17 @@ func TestBatchDeleteRange(t *testing.T) {
 			if len(td.CmdArgs) > 1 {
 				return fmt.Sprintf("%s expects at most 1 argument", td.Cmd)
 			}
+			var fragmentIter keyspan.FragmentIterator
 			if len(td.CmdArgs) == 1 {
-				if td.CmdArgs[0].String() != "range-del" {
+				switch td.CmdArgs[0].String() {
+				case "range-del":
+					iter.internalIterator = b.newRangeDelIter(nil)
+				case "range-key":
+					fragmentIter = b.newRangeKeyIter(nil)
+					iter.internalIterator = fragmentIter
+				default:
 					return fmt.Sprintf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
 				}
-				iter.internalIterator = b.newRangeDelIter(nil)
 			} else {
 				iter.internalIterator = b.newInternalIter(nil)
 			}
@@ -627,7 +638,16 @@ func TestBatchDeleteRange(t *testing.T) {
 			for valid := iter.First(); valid; valid = iter.Next() {
 				key := iter.Key()
 				key.SetSeqNum(key.SeqNum() &^ InternalKeySeqNumBatch)
-				fmt.Fprintf(&buf, "%s:%s\n", key, iter.Value())
+				var spanValue []byte
+				if fragmentIter != nil && fragmentIter.Valid() {
+					s := fragmentIter.Current()
+					spanValue = s.Value
+				}
+				fmt.Fprintf(&buf, "%s:%s", key, iter.Value())
+				if len(spanValue) > 0 {
+					fmt.Fprintf(&buf, " (span value: %x)", spanValue)
+				}
+				fmt.Fprintln(&buf)
 			}
 			return buf.String()
 
@@ -689,19 +709,19 @@ func TestFlushableBatch(t *testing.T) {
 				value := []byte(fmt.Sprint(ikey.SeqNum()))
 				switch ikey.Kind() {
 				case InternalKeyKindDelete:
-					batch.Delete(ikey.UserKey, nil)
+					require.NoError(t, batch.Delete(ikey.UserKey, nil))
 				case InternalKeyKindSet:
-					batch.Set(ikey.UserKey, value, nil)
+					require.NoError(t, batch.Set(ikey.UserKey, value, nil))
 				case InternalKeyKindMerge:
-					batch.Merge(ikey.UserKey, value, nil)
+					require.NoError(t, batch.Merge(ikey.UserKey, value, nil))
 				case InternalKeyKindRangeDelete:
-					batch.DeleteRange(ikey.UserKey, value, nil)
+					require.NoError(t, batch.DeleteRange(ikey.UserKey, value, nil))
 				case InternalKeyKindRangeKeyDelete:
-					batch.Experimental().RangeKeyDelete(ikey.UserKey, value, nil)
+					require.NoError(t, batch.Experimental().RangeKeyDelete(ikey.UserKey, value, nil))
 				case InternalKeyKindRangeKeySet:
-					batch.Experimental().RangeKeySet(ikey.UserKey, value, value, value, nil)
+					require.NoError(t, batch.Experimental().RangeKeySet(ikey.UserKey, value, value, value, nil))
 				case InternalKeyKindRangeKeyUnset:
-					batch.Experimental().RangeKeyUnset(ikey.UserKey, value, value, nil)
+					require.NoError(t, batch.Experimental().RangeKeyUnset(ikey.UserKey, value, value, nil))
 				}
 			}
 			b = newFlushableBatch(batch, DefaultComparer)
@@ -752,6 +772,15 @@ func TestFlushableBatch(t *testing.T) {
 				}
 				iter.Close()
 			}
+
+			if rangeKeyIter := b.newRangeKeyIter(nil); rangeKeyIter != nil {
+				iter := newInternalIterAdapter(rangeKeyIter)
+				for valid := iter.First(); valid; valid = iter.Next() {
+					fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
+				}
+				iter.Close()
+			}
+
 			return buf.String()
 
 		default:
