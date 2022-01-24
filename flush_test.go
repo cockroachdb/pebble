@@ -22,7 +22,7 @@ func TestManualFlush(t *testing.T) {
 			FS:                    vfs.NewMem(),
 			L0CompactionThreshold: 10,
 		}
-		opts.private.disableAutomaticCompactions = true
+		opts.DisableAutomaticCompactions = true
 		return opts
 	}
 	d, err := Open("", getOptions())

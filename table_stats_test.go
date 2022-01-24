@@ -27,7 +27,7 @@ func TestTableStats(t *testing.T) {
 			},
 		},
 	}
-	opts.private.disableAutomaticCompactions = true
+	opts.DisableAutomaticCompactions = true
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -105,7 +105,7 @@ func TestTableStats(t *testing.T) {
 			return s
 
 		case "compact":
-			if err := runCompactCmd(td, d); err != nil {
+			if err := runCompactCmd(td, d, false); err != nil {
 				return err.Error()
 			}
 			d.mu.Lock()
