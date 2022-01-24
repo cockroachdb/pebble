@@ -764,6 +764,13 @@ func (o *Options) EnsureDefaults() *Options {
 	return o
 }
 
+func (o *Options) equal() Equal {
+	if o.Comparer.Equal == nil {
+		return bytes.Equal
+	}
+	return o.Comparer.Equal
+}
+
 // initMaps initializes the Comparers, Filters, and Mergers maps.
 func (o *Options) initMaps() {
 	for i := range o.Levels {
