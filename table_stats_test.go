@@ -27,7 +27,7 @@ func TestTableStats(t *testing.T) {
 			},
 		},
 	}
-	opts.private.disableAutomaticCompactions = true
+	opts.DisableAutomaticCompactions = true
 
 	d, err := Open("", opts)
 	require.NoError(t, err)

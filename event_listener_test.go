@@ -189,7 +189,7 @@ func TestEventListener(t *testing.T) {
 			if err := d.Set([]byte("a"), nil, nil); err != nil {
 				return err.Error()
 			}
-			if err := d.Compact([]byte("a"), []byte("b")); err != nil {
+			if err := d.Compact([]byte("a"), []byte("b"), false); err != nil {
 				return err.Error()
 			}
 			return buf.String()
