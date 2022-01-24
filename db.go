@@ -1263,16 +1263,10 @@ func (d *DB) Compact(
 	}
 
 	for level := 0; level < maxLevelWithFiles; {
-		manual := &manualCompaction{
-			done:  make(chan error, 1),
-			level: level,
-			start: iStart,
-			end:   iEnd,
-		}
-		if err := d.manualCompact(manual); err != nil {
+		if err := d.manualCompact(iStart, iEnd, level); err != nil {
 			return err
 		}
-		level = manual.outputLevel
+		level++
 		if level == numLevels-1 {
 			// A manual compaction of the bottommost level occurred.
 			// There is no next level to try and compact.
@@ -1282,12 +1276,46 @@ func (d *DB) Compact(
 	return nil
 }
 
-func (d *DB) manualCompact(manual *manualCompaction) error {
+func (d *DB) manualCompact(start, end InternalKey, level int) error {
 	d.mu.Lock()
-	d.mu.compact.manual = append(d.mu.compact.manual, manual)
+	splitCompactions := d.splitManualCompaction(start.UserKey, end.UserKey, level)
+	d.mu.compact.manual = append(d.mu.compact.manual, splitCompactions...)
 	d.maybeScheduleCompaction()
 	d.mu.Unlock()
-	return <-manual.done
+	for _, compaction := range splitCompactions {
+		if err := <-compaction.done; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// splitManualCompaction splits a manual compaction such that the resulting compactions have no key overlap.
+func (d *DB) splitManualCompaction(
+	start, end []byte, level int,
+) (concurrentCompactions []*manualCompaction) {
+	if d.opts.MaxConcurrentCompactions > 1 {
+		curr := d.mu.versions.currentVersion()
+		keyRanges := calculateInuseKeyRanges(curr, d.cmp, level, level+1, start, end)
+		for _, keyRange := range keyRanges {
+			concurrentCompactions = append(concurrentCompactions, &manualCompaction{
+				level: level,
+				done:  make(chan error, 1),
+				start: manifest.InternalKey{UserKey: keyRange.Start},
+				end:   manifest.InternalKey{UserKey: keyRange.End},
+			})
+		}
+	}
+
+	if len(concurrentCompactions) == 0 {
+		concurrentCompactions = append(concurrentCompactions, &manualCompaction{
+			level: level,
+			done:  make(chan error, 1),
+			start: InternalKey{UserKey: start},
+			end:   InternalKey{UserKey: end},
+		})
+	}
+	return
 }
 
 // Flush the memtable to stable storage.
