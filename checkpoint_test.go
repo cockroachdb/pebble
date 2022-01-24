@@ -68,7 +68,7 @@ func TestCheckpoint(t *testing.T) {
 			}
 			buf.Reset()
 			d := dbs[td.CmdArgs[0].String()]
-			if err := d.Compact(nil, []byte("\xff")); err != nil {
+			if err := d.Compact(nil, []byte("\xff"), false); err != nil {
 				return err.Error()
 			}
 			return buf.String()
@@ -163,7 +163,7 @@ func TestCheckpointCompaction(t *testing.T) {
 		defer cancel()
 		defer wg.Done()
 		for ctx.Err() == nil {
-			if err := d.Compact([]byte("key"), []byte("key999999")); err != nil {
+			if err := d.Compact([]byte("key"), []byte("key999999"), false); err != nil {
 				t.Error(err)
 				return
 			}
