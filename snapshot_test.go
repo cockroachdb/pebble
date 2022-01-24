@@ -109,7 +109,7 @@ func TestSnapshot(t *testing.T) {
 					if len(keys) != 2 {
 						return fmt.Sprintf("malformed key range: %s", parts[1])
 					}
-					err = d.Compact([]byte(keys[0]), []byte(keys[1]))
+					err = d.Compact([]byte(keys[0]), []byte(keys[1]), false)
 				default:
 					return fmt.Sprintf("unknown op: %s", parts[0])
 				}

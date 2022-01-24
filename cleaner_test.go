@@ -54,7 +54,7 @@ func TestArchiveCleaner(t *testing.T) {
 			}
 			buf.Reset()
 			d := dbs[td.CmdArgs[0].String()]
-			if err := d.Compact(nil, []byte("\xff")); err != nil {
+			if err := d.Compact(nil, []byte("\xff"), false); err != nil {
 				return err.Error()
 			}
 			return buf.String()
