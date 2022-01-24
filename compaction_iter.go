@@ -147,7 +147,7 @@ import (
 // exported function, and before a subsequent call to Next advances the iterator
 // and mutates the contents of the returned key and value.
 type compactionIter struct {
-	cmp   Compare
+	equal Equal
 	merge Merge
 	iter  internalIterator
 	err   error
@@ -213,6 +213,7 @@ type compactionIter struct {
 
 func newCompactionIter(
 	cmp Compare,
+	equal Equal,
 	formatKey base.FormatKey,
 	merge Merge,
 	iter internalIterator,
@@ -224,7 +225,7 @@ func newCompactionIter(
 	formatVersion FormatMajorVersion,
 ) *compactionIter {
 	i := &compactionIter{
-		cmp:                 cmp,
+		equal:               equal,
 		merge:               merge,
 		iter:                iter,
 		snapshots:           snapshots,
@@ -487,7 +488,7 @@ func (i *compactionIter) nextInStripe() stripeChangeType {
 		return newStripe
 	}
 	key := i.iterKey
-	if i.cmp(i.key.UserKey, key.UserKey) != 0 {
+	if !i.equal(i.key.UserKey, key.UserKey) {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
 		return newStripe
 	}

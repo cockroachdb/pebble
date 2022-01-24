@@ -106,6 +106,7 @@ func TestCompactionIter(t *testing.T) {
 
 		return newCompactionIter(
 			DefaultComparer.Compare,
+			DefaultComparer.Equal,
 			DefaultComparer.FormatKey,
 			merge,
 			iter,
