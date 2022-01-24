@@ -644,7 +644,7 @@ L0
   000005:[a#2,SET-a#2,SET]
   000004:[b#1,SET-b#1,SET]
 
-add-ongoing-compaction startLevel=0 outputLevel=1
+add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=b
 ----
 
 async-compact a-b L0
@@ -660,7 +660,7 @@ compact a-b L1
   000008:[a#0,SET-a#0,SET]
   000009:[b#0,SET-b#0,SET]
 
-add-ongoing-compaction startLevel=0 outputLevel=1
+add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=b
 ----
 
 async-compact a-b L2
@@ -670,7 +670,7 @@ manual compaction blocked until ongoing finished
   000010:[a#0,SET-a#0,SET]
   000011:[b#0,SET-b#0,SET]
 
-add-ongoing-compaction startLevel=0 outputLevel=1
+add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=b
 ----
 
 set-concurrent-compactions num=2
@@ -686,15 +686,20 @@ manual compaction did not block for ongoing
 remove-ongoing-compaction
 ----
 
-add-ongoing-compaction startLevel=5 outputLevel=6
+# There are no files in L5 so the compaction below is non-blocking.
+
+add-ongoing-compaction startLevel=5 outputLevel=6 start=a end=b
 ----
 
 async-compact a-b L4
 ----
-manual compaction blocked until ongoing finished
+manual compaction did not block for ongoing
 5:
   000014:[a#0,SET-a#0,SET]
   000015:[b#0,SET-b#0,SET]
+
+remove-ongoing-compaction
+----
 
 # Test of a scenario where consecutive elided range tombstones and grandparent
 # boundaries could result in an invariant violation in the rangedel fragmenter.
@@ -858,3 +863,141 @@ compact a-z L1
 2:
   000006:[b#0,SET-b#0,SET]
   000007:[c#0,SET-c#0,SET]
+
+define target-file-sizes=(1, 1, 1, 1)
+L0
+  a.SET.3:v
+  b.SET.2:v
+L2
+  a.SET.1:v
+L3
+  a.SET.0:v
+  b.SET.0:v
+L3
+  c.SET.0:v
+----
+0.0:
+  000004:[a#3,SET-b#2,SET]
+2:
+  000005:[a#1,SET-a#1,SET]
+3:
+  000006:[a#0,SET-b#0,SET]
+  000007:[c#0,SET-c#0,SET]
+
+set-concurrent-compactions num=3
+----
+
+compact a-c parallel hide-file-num
+----
+4:
+  [a#0,SET-a#0,SET]
+  [b#0,SET-b#0,SET]
+  [c#0,SET-c#0,SET]
+
+define target-file-sizes=(1, 1, 1, 1)
+L0
+  a.SET.3:v
+  b.SET.2:v
+L0
+  a.SET.2:v
+  c.SET.2:v
+L2
+  a.SET.1:v
+  b.SET.1:v
+L2
+  c.SET.1:v
+L2
+  d.SET.0:v
+L3
+  a.SET.0:v
+  b.SET.0:v
+L3
+  c.SET.0:v
+----
+0.1:
+  000004:[a#3,SET-b#2,SET]
+0.0:
+  000005:[a#2,SET-c#2,SET]
+2:
+  000006:[a#1,SET-b#1,SET]
+  000007:[c#1,SET-c#1,SET]
+  000008:[d#0,SET-d#0,SET]
+3:
+  000009:[a#0,SET-b#0,SET]
+  000010:[c#0,SET-c#0,SET]
+
+set-concurrent-compactions num=2
+----
+
+compact a-c L0 parallel
+----
+1:
+  000011:[a#3,SET-a#3,SET]
+  000012:[b#2,SET-b#2,SET]
+  000013:[c#2,SET-c#2,SET]
+2:
+  000006:[a#1,SET-b#1,SET]
+  000007:[c#1,SET-c#1,SET]
+  000008:[d#0,SET-d#0,SET]
+3:
+  000009:[a#0,SET-b#0,SET]
+  000010:[c#0,SET-c#0,SET]
+
+add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=e
+----
+
+# While we allow 2 concurrent compactions, the ongoing compaction conflicts
+# with the compaction below, and thus it is dropped with no change to the LSM.
+
+async-compact a-d L1 parallel
+----
+manual compaction did not block for ongoing
+1:
+  000011:[a#3,SET-a#3,SET]
+  000012:[b#2,SET-b#2,SET]
+  000013:[c#2,SET-c#2,SET]
+2:
+  000006:[a#1,SET-b#1,SET]
+  000007:[c#1,SET-c#1,SET]
+  000008:[d#0,SET-d#0,SET]
+3:
+  000009:[a#0,SET-b#0,SET]
+  000010:[c#0,SET-c#0,SET]
+
+remove-ongoing-compaction
+----
+
+add-ongoing-compaction startLevel=3 outputLevel=4 start=a end=d
+----
+
+# We allow 2 maximum concurrent compactions. The operation below generates
+# 2 concurrent compactions (a-b, c) from L1 to L2. With 1 ongoing compaction with
+# output level L4, there is no conflict and thus the concurrent compactions should
+# be queued up and executed sequentially. We ensure that the compactions finish and
+# that the final result of the compactions is correct.
+
+async-compact a-d L1 parallel
+----
+manual compaction did not block for ongoing
+2:
+  000014:[a#3,SET-a#3,SET]
+  000015:[b#2,SET-b#2,SET]
+  000016:[c#2,SET-c#2,SET]
+  000008:[d#0,SET-d#0,SET]
+3:
+  000009:[a#0,SET-b#0,SET]
+  000010:[c#0,SET-c#0,SET]
+
+remove-ongoing-compaction
+----
+
+set-concurrent-compactions num=3
+----
+
+compact a-d parallel hide-file-num
+----
+4:
+  [a#0,SET-a#0,SET]
+  [b#0,SET-b#0,SET]
+  [c#0,SET-c#0,SET]
+  [d#0,SET-d#0,SET]

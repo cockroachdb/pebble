@@ -1357,11 +1357,6 @@ func (p *compactionPickerByScore) pickManual(
 		// points to an empty level).
 		return nil, false
 	}
-	// TODO(peter): The conflictsWithInProgress call should no longer be
-	// necessary, but TestManualCompaction currently expects it.
-	if conflictsWithInProgress(manual.level, outputLevel, env.inProgressCompactions) {
-		return nil, true
-	}
 	pc = pickManualHelper(p.opts, manual, p.vers, p.baseLevel, p.diskAvailBytes)
 	if pc == nil {
 		return nil, false
@@ -1386,8 +1381,7 @@ func pickManualHelper(
 	pc = newPickedCompaction(opts, vers, manual.level, baseLevel)
 	manual.outputLevel = pc.outputLevel.level
 	cmp := opts.Comparer.Compare
-	pc.startLevel.files = vers.Overlaps(manual.level, cmp, manual.start.UserKey,
-		manual.end.UserKey, manual.end.IsExclusiveSentinel())
+	pc.startLevel.files = vers.Overlaps(manual.level, cmp, manual.start, manual.end, false)
 	if pc.startLevel.files.Empty() {
 		// Nothing to do
 		return nil
@@ -1417,7 +1411,8 @@ func (p *compactionPickerByScore) pickReadTriggeredCompaction(
 }
 
 func pickReadTriggeredCompactionHelper(
-	p *compactionPickerByScore, rc *readCompaction, env compactionEnv) (pc *pickedCompaction) {
+	p *compactionPickerByScore, rc *readCompaction, env compactionEnv,
+) (pc *pickedCompaction) {
 	cmp := p.opts.Comparer.Compare
 	overlapSlice := p.vers.Overlaps(rc.level, cmp, rc.start, rc.end, false /* exclusiveEnd */)
 	if overlapSlice.Empty() {
@@ -1523,22 +1518,6 @@ func inputRangeAlreadyCompacting(env compactionEnv, pc *pickedCompaction) bool {
 			// The picked compaction and the in-progress compaction c are
 			// outputting to the same region of the key space of the same
 			// level.
-			return true
-		}
-	}
-	return false
-}
-
-func conflictsWithInProgress(
-	level int, outputLevel int, inProgressCompactions []compactionInfo,
-) bool {
-	for _, c := range inProgressCompactions {
-		for _, in := range c.inputs {
-			if in.level == level || in.level == outputLevel {
-				return true
-			}
-		}
-		if c.outputLevel == level || c.outputLevel == outputLevel {
 			return true
 		}
 	}

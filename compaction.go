@@ -641,12 +641,13 @@ func (c *compaction) setupInuseKeyRanges() {
 	if c.outputLevel.level == 0 {
 		level = 0
 	}
-	c.inuseKeyRanges = calculateInuseKeyRanges(c.version, c.cmp, level,
-		c.smallest.UserKey, c.largest.UserKey)
+	c.inuseKeyRanges = calculateInuseKeyRanges(
+		c.version, c.cmp, level, numLevels-1, c.smallest.UserKey, c.largest.UserKey,
+	)
 }
 
 func calculateInuseKeyRanges(
-	v *version, cmp base.Compare, level int, smallest, largest []byte,
+	v *version, cmp base.Compare, level, maxLevel int, smallest, largest []byte,
 ) []manifest.UserKeyRange {
 	// Use two slices, alternating which one is input and which one is output
 	// as we descend the LSM.
@@ -660,7 +661,7 @@ func calculateInuseKeyRanges(
 		level++
 	}
 
-	for ; level < numLevels; level++ {
+	for ; level <= maxLevel; level++ {
 		// NB: We always treat `largest` as inclusive for simplicity, because
 		// there's little consequence to calculating slightly broader in-use key
 		// ranges.
@@ -1096,8 +1097,8 @@ type manualCompaction struct {
 	level       int
 	outputLevel int
 	done        chan error
-	start       InternalKey
-	end         InternalKey
+	start       []byte
+	end         []byte
 }
 
 type readCompaction struct {
@@ -1552,7 +1553,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 	// cheap and reduce future compaction work.
 	if len(d.mu.compact.deletionHints) > 0 &&
 		d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions &&
-		!d.opts.private.disableAutomaticCompactions {
+		!d.opts.DisableAutomaticCompactions {
 		v := d.mu.versions.currentVersion()
 		snapshots := d.mu.snapshots.toSlice()
 		inputs, unresolvedHints := checkDeleteCompactionHints(d.cmp, v, d.mu.compact.deletionHints, snapshots)
@@ -1587,7 +1588,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 		}
 	}
 
-	for !d.opts.private.disableAutomaticCompactions && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
+	for !d.opts.DisableAutomaticCompactions && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
 		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
 		env.readCompactionEnv = readCompactionEnv{
 			readCompactions:          &d.mu.compact.readCompactions,

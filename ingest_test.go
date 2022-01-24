@@ -515,7 +515,7 @@ func TestIngest(t *testing.T) {
 		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
-		opts.private.disableAutomaticCompactions = true
+		opts.DisableAutomaticCompactions = true
 
 		var err error
 		d, err = Open("", opts)
@@ -794,7 +794,7 @@ func TestConcurrentIngestCompact(t *testing.T) {
 
 			compact := func(start, end string) {
 				t.Helper()
-				require.NoError(t, d.Compact([]byte(start), []byte(end)))
+				require.NoError(t, d.Compact([]byte(start), []byte(end), false))
 			}
 
 			lsm := func() string {
@@ -1503,6 +1503,6 @@ func runBenchmarkManySSTablesInUseKeyRanges(b *testing.B, d *DB, count int) {
 	smallest := []byte("0")
 	largest := []byte("z")
 	for i := 0; i < b.N; i++ {
-		_ = calculateInuseKeyRanges(v, d.cmp, 0, smallest, largest)
+		_ = calculateInuseKeyRanges(v, d.cmp, 0, numLevels-1, smallest, largest)
 	}
 }
