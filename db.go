@@ -912,7 +912,7 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 	if o.rangeKeys() {
 		// TODO(jackson): Pool range-key iterator objects.
 		dbi.rangeKey = &iteratorRangeKeyState{
-			rangeKeyIter: d.newRangeKeyIter(seqNum, o),
+			rangeKeyIter: d.newRangeKeyIter(seqNum, batch, readState, o),
 		}
 	}
 	if o != nil {

@@ -89,10 +89,45 @@ func (d *DB) maybeInitializeRangeKeys() {
 	})
 }
 
-func (d *DB) newRangeKeyIter(seqNum uint64, opts *IterOptions) *rangekey.Iter {
+func (d *DB) newRangeKeyIter(
+	seqNum uint64, batch *Batch, readState *readState, opts *IterOptions,
+) *rangekey.Iter {
 	d.maybeInitializeRangeKeys()
+
+	// TODO(jackson): Preallocate iters, mergingIter, rangeKeyIter in a
+	// structure analogous to iterAlloc.
+	var iters []keyspan.FragmentIterator
+
+	// If there's an indexed batch with range keys, include it.
+	if batch != nil {
+		if rki := batch.newRangeKeyIter(opts); rki != nil {
+			iters = append(iters, rki)
+		}
+	}
+
+	// Next are the flushables: memtables and large batches.
+	for i := len(readState.memtables) - 1; i >= 0; i-- {
+		mem := readState.memtables[i]
+		// We only need to read from memtables which contain sequence numbers older
+		// than seqNum.
+		if logSeqNum := mem.logSeqNum; logSeqNum >= seqNum {
+			continue
+		}
+		if rki := mem.newRangeKeyIter(opts); rki != nil {
+			iters = append(iters, rki)
+		}
+	}
+
+	// For now while range keys are not fully integrated into Pebble, all range
+	// keys ever written to the DB are persisted in the d.rangeKeys arena.
 	frags := d.rangeKeys.fragCache.get()
+	if len(frags) > 0 {
+		iters = append(iters, keyspan.NewIter(d.cmp, frags))
+	}
+
 	iter := &rangekey.Iter{}
-	iter.Init(d.cmp, d.opts.Comparer.FormatKey, seqNum, keyspan.NewIter(d.cmp, frags))
+	miter := &rangekey.MergingIter{}
+	miter.Init(d.cmp, iters...)
+	iter.Init(d.cmp, d.opts.Comparer.FormatKey, seqNum, miter)
 	return iter
 }

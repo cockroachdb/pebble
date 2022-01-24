@@ -232,6 +232,11 @@ func (m *memTable) newRangeDelIter(*IterOptions) keyspan.FragmentIterator {
 	return keyspan.NewIter(m.cmp, tombstones)
 }
 
+func (m *memTable) newRangeKeyIter(*IterOptions) keyspan.FragmentIterator {
+	// TODO(jackson): Implement once range keys are written to the memtable.
+	return nil
+}
+
 func (m *memTable) availBytes() uint32 {
 	a := m.skl.Arena()
 	if atomic.LoadInt32(&m.writerRefs) == 1 {
@@ -279,7 +284,9 @@ type keySpanFrags struct {
 
 type splitValue func(kind base.InternalKeyKind, rawValue []byte) (endKey []byte, value []byte, err error)
 
-func rangeDelSplitValue(kind base.InternalKeyKind, rawValue []byte) (endKey []byte, value []byte, err error) {
+func rangeDelSplitValue(
+	kind base.InternalKeyKind, rawValue []byte,
+) (endKey []byte, value []byte, err error) {
 	if kind != base.InternalKeyKindRangeDelete {
 		panic(fmt.Sprintf("pebble: rangeDelSplitValue called on %s key kind", kind))
 	}
