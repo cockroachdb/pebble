@@ -1391,6 +1391,7 @@ func TestCompactionFindGrandparentLimit(t *testing.T) {
 			case "compact":
 				c := &compaction{
 					cmp:          cmp,
+					equal:        DefaultComparer.Equal,
 					grandparents: manifest.NewLevelSliceKeySorted(cmp, grandparents),
 				}
 				if len(d.CmdArgs) != 1 {
@@ -1517,6 +1518,7 @@ func TestCompactionFindL0Limit(t *testing.T) {
 			case "flush":
 				c := &compaction{
 					cmp:      cmp,
+					equal:    DefaultComparer.Equal,
 					version:  vers,
 					l0Limits: vers.L0Sublevels.FlushSplitKeys(),
 					inputs:   []compactionLevel{{level: -1}, {level: 0}},
@@ -1610,6 +1612,7 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 			case "atomic-unit-bounds":
 				c := &compaction{
 					cmp:    cmp,
+					equal:  DefaultComparer.Equal,
 					inputs: []compactionLevel{{files: files}, {}},
 				}
 				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
@@ -2203,6 +2206,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 		case "define":
 			c = &compaction{
 				cmp:       DefaultComparer.Compare,
+				equal:     DefaultComparer.Equal,
 				formatKey: DefaultComparer.FormatKey,
 				inputs:    []compactionLevel{{}, {}},
 			}

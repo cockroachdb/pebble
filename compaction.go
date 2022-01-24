@@ -405,6 +405,7 @@ func (k compactionKind) String() string {
 type compaction struct {
 	kind      compactionKind
 	cmp       Compare
+	equal     Equal
 	formatKey base.FormatKey
 	logger    Logger
 	version   *version
@@ -519,6 +520,7 @@ func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) 
 	c := &compaction{
 		kind:                compactionKindDefault,
 		cmp:                 pc.cmp,
+		equal:               opts.equal(),
 		formatKey:           opts.Comparer.FormatKey,
 		score:               pc.score,
 		inputs:              pc.inputs,
@@ -563,6 +565,7 @@ func newDeleteOnlyCompaction(opts *Options, cur *version, inputs []compactionLev
 	c := &compaction{
 		kind:      compactionKindDeleteOnly,
 		cmp:       opts.Comparer.Compare,
+		equal:     opts.equal(),
 		formatKey: opts.Comparer.FormatKey,
 		logger:    opts.Logger,
 		version:   cur,
@@ -651,6 +654,7 @@ func newFlush(
 	c := &compaction{
 		kind:                compactionKindFlush,
 		cmp:                 opts.Comparer.Compare,
+		equal:               opts.equal(),
 		formatKey:           opts.Comparer.FormatKey,
 		logger:              opts.Logger,
 		version:             cur,
@@ -2070,7 +2074,7 @@ func (d *DB) runCompaction(
 		return nil, pendingOutputs, err
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum()
-	iter := newCompactionIter(c.cmp, c.formatKey, d.merge, iiter, snapshots,
+	iter := newCompactionIter(c.cmp, c.equal, c.formatKey, d.merge, iiter, snapshots,
 		&c.rangeDelFrag, c.allowedZeroSeqNum, c.elideTombstone,
 		c.elideRangeTombstone, d.FormatMajorVersion())
 

@@ -71,7 +71,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		walDirname:          opts.WALDir,
 		opts:                opts,
 		cmp:                 opts.Comparer.Compare,
-		equal:               opts.Comparer.Equal,
+		equal:               opts.equal(),
 		merge:               opts.Merger.Merge,
 		split:               opts.Comparer.Split,
 		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
@@ -113,10 +113,6 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			}
 		}
 	}()
-
-	if d.equal == nil {
-		d.equal = bytes.Equal
-	}
 
 	tableCacheSize := TableCacheSize(opts.MaxOpenFiles)
 	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
