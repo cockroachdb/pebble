@@ -192,7 +192,7 @@ func TestCompactionIter(t *testing.T) {
 						if len(parts) == 2 {
 							key = []byte(parts[1])
 						}
-						for _, v := range iter.Tombstones(key, false) {
+						for _, v := range iter.Tombstones(key) {
 							fmt.Fprintf(&b, "%s-%s#%d\n",
 								v.Start.UserKey, v.End, v.Start.SeqNum())
 						}

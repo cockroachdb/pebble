@@ -267,20 +267,18 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 1:
   000008:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
 2:
-  000012:[b#4,SET-b#4,SET]
-  000013:[b#3,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000012:[b#4,SET-c#72057594037927935,RANGEDEL]
 3:
-  000014:[c#5,SET-d#72057594037927935,RANGEDEL]
+  000013:[c#5,SET-d#72057594037927935,RANGEDEL]
 `)
 		} else {
 			expectLSM(`
 1:
   000008:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
 2:
-  000012:[b#4,SETWITHDEL-b#4,SETWITHDEL]
-  000013:[b#3,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000012:[b#4,SETWITHDEL-c#72057594037927935,RANGEDEL]
 3:
-  000014:[c#5,SET-d#72057594037927935,RANGEDEL]
+  000013:[c#5,SET-d#72057594037927935,RANGEDEL]
 `)
 		}
 
@@ -359,17 +357,15 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	require.NoError(t, d.Compact([]byte("b"), []byte("b\x00")))
 	expectLSM(`
 6:
-  000008:[a#3,RANGEDEL-b#2,SET]
-  000009:[b#1,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000009:[a#3,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
 	require.NoError(t, d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil))
 	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00")))
 	expectLSM(`
 6:
-  000012:[a#3,RANGEDEL-b#2,SET]
-  000013:[b#1,RANGEDEL-c#72057594037927935,RANGEDEL]
-  000014:[c#4,SET-d#72057594037927935,RANGEDEL]
+  000012:[a#3,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000013:[c#4,SET-d#72057594037927935,RANGEDEL]
 `)
 }
 
@@ -435,8 +431,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	}
 	expectLSM(`
 3:
-  000012:[a#3,RANGEDEL-b#2,SET]
-  000013:[b#1,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000009:[a#3,RANGEDEL-d#72057594037927935,RANGEDEL]
 `)
 
 	require.NoError(t, d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil))
@@ -444,19 +439,18 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00")))
 	expectLSM(`
 3:
-  000017:[a#3,RANGEDEL-b#2,SET]
-  000018:[b#1,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000013:[a#3,RANGEDEL-c#72057594037927935,RANGEDEL]
 4:
-  000019:[c#4,SET-d#72057594037927935,RANGEDEL]
+  000014:[c#4,SET-d#72057594037927935,RANGEDEL]
 `)
 
 	require.NoError(t, d.Compact([]byte("c"), []byte("c\x00")))
 	expectLSM(`
 3:
-  000017:[a#3,RANGEDEL-b#2,SET]
-  000018:[b#1,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000013:[a#3,RANGEDEL-c#72057594037927935,RANGEDEL]
 5:
-  000019:[c#4,SET-d#72057594037927935,RANGEDEL]`)
+  000014:[c#4,SET-d#72057594037927935,RANGEDEL]
+`)
 
 	if _, _, err := d.Get([]byte("b")); err != ErrNotFound {
 		t.Fatalf("expected not found, but found %v", err)
@@ -465,10 +459,9 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00")))
 	expectLSM(`
 4:
-  000020:[a#3,RANGEDEL-b#2,SET]
-  000021:[b#1,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000013:[a#3,RANGEDEL-c#72057594037927935,RANGEDEL]
 5:
-  000019:[c#4,SET-d#72057594037927935,RANGEDEL]
+  000014:[c#4,SET-d#72057594037927935,RANGEDEL]
 `)
 
 	if v, _, err := d.Get([]byte("b")); err != ErrNotFound {

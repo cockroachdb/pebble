@@ -374,6 +374,11 @@ func (pc *pickedCompaction) grow(sm, la InternalKey, maxExpandedBytes uint64) bo
 // disableIsCompacting is true, isCompacting always returns false. This helps
 // avoid spurious races from being detected when this method is used outside
 // of compaction picking code.
+//
+// TODO(jackson): Compactions and flushes no longer split a user key between two
+// sstables. We could perform a migration, re-compacting any sstables with split
+// user keys, which would allow us to remove atomic compaction unit expansion
+// code.
 func expandToAtomicUnit(
 	cmp Compare, inputs manifest.LevelSlice, disableIsCompacting bool,
 ) (slice manifest.LevelSlice, isCompacting bool) {
