@@ -1195,10 +1195,17 @@ func (d *DB) Compact(
 
 func (d *DB) manualCompact(manual *manualCompaction) error {
 	d.mu.Lock()
-	d.mu.compact.manual = append(d.mu.compact.manual, manual)
+	splitCompactions := d.splitManualCompaction(manual)
+	d.mu.compact.manual = append(d.mu.compact.manual, splitCompactions...)
 	d.maybeScheduleCompaction()
 	d.mu.Unlock()
-	return <-manual.done
+	for _, compaction := range splitCompactions {
+		err := <-compaction.done
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Flush the memtable to stable storage.

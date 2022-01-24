@@ -1690,6 +1690,55 @@ func (d *DB) maybeScheduleCompactionPicker(
 	}
 }
 
+func (d *DB) splitManualCompaction(
+	manual *manualCompaction,
+) (concurrentCompactions []*manualCompaction) {
+	concurrentCompactions = append(concurrentCompactions, manual)
+	concurrentCompactions[0].done = make(chan error, 1)
+
+	// Don't make L0 compactions concurrrent.
+	if manual.level != 0 {
+		curr := d.mu.versions.currentVersion()
+
+		currLevel := curr.Overlaps(manual.level, d.cmp, manual.start.UserKey, manual.end.UserKey, false)
+		nextLevel := curr.Overlaps(manual.outputLevel, d.cmp, manual.start.UserKey, manual.end.UserKey, false)
+
+		currLevelIter := currLevel.Iter()
+		nextLevelIter := nextLevel.Iter()
+
+		// Iterate over files and find key ranges for compactions
+		for f, nextLevelF := currLevelIter.First(), nextLevelIter.First(); f != nil; f = currLevelIter.Next() {
+			if nextLevelF != nil {
+				if d.cmp(f.Smallest.UserKey, nextLevelF.Largest.UserKey) <= 0 && d.cmp(nextLevelF.Smallest.UserKey, f.Largest.UserKey) <= 0 {
+					concurrentCompactions[len(concurrentCompactions)-1].end = f.Largest
+				} else {
+					nextLevelF = nextLevelIter.Next()
+					concurrentCompactions = append(concurrentCompactions, &manualCompaction{
+						retries:     manual.retries,
+						level:       manual.level,
+						outputLevel: manual.outputLevel,
+						done:        make(chan error, 1),
+						start:       f.Smallest,
+						end:         f.Largest,
+					})
+				}
+			} else {
+				// TODO: merge or add new compaction?
+				concurrentCompactions = append(concurrentCompactions, &manualCompaction{
+					retries:     manual.retries,
+					level:       manual.level,
+					outputLevel: manual.outputLevel,
+					done:        make(chan error, 1),
+					start:       f.Smallest,
+					end:         f.Largest,
+				})
+			}
+		}
+	}
+
+	return
+}
+
 // A deleteCompactionHint records a user key and sequence number span that has been
 // deleted by a range tombstone. A hint is recorded if at least one sstable
 // falls completely within both the user key and sequence number spans.
