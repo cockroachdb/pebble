@@ -891,7 +891,7 @@ func TestCacheEvict(t *testing.T) {
 		require.NoError(t, d.Delete(key, nil))
 	}
 
-	require.NoError(t, d.Compact([]byte("0"), []byte("1")))
+	require.NoError(t, d.Compact([]byte("0"), []byte("1"), false))
 
 	require.NoError(t, d.Close())
 
@@ -919,7 +919,7 @@ func TestRollManifest(t *testing.T) {
 		FS:                    vfs.NewMem(),
 		NumPrevManifest:       int(toPreserve),
 	}
-	opts.private.disableAutomaticCompactions = true
+	opts.DisableAutomaticCompactions = true
 	opts.testingRandomized()
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -1004,7 +1004,7 @@ func TestDBClosed(t *testing.T) {
 
 	require.True(t, errors.Is(catch(func() { _ = d.Close() }), ErrClosed))
 
-	require.True(t, errors.Is(catch(func() { _ = d.Compact(nil, nil) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.Compact(nil, nil, false) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _ = d.Flush() }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _, _ = d.AsyncFlush() }), ErrClosed))
 
@@ -1043,7 +1043,7 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 			var err error
 			switch i % 3 {
 			case 0:
-				err = d.Compact(nil, []byte("\xff"))
+				err = d.Compact(nil, []byte("\xff"), false)
 			case 1:
 				err = d.Flush()
 			case 2:
@@ -1142,7 +1142,7 @@ func TestCloseCleanerRace(t *testing.T) {
 		it := db.NewIter(nil)
 		require.NotNil(t, it)
 		require.NoError(t, db.DeleteRange([]byte("a"), []byte("b"), Sync))
-		require.NoError(t, db.Compact([]byte("a"), []byte("b")))
+		require.NoError(t, db.Compact([]byte("a"), []byte("b"), false))
 		// Only the iterator is keeping the sstables alive.
 		files, err := mem.List("/")
 		require.NoError(t, err)
@@ -1266,7 +1266,7 @@ func BenchmarkNewIterReadAmp(b *testing.B) {
 				FS:                    vfs.NewMem(),
 				L0StopWritesThreshold: 1000,
 			}
-			opts.private.disableAutomaticCompactions = true
+			opts.DisableAutomaticCompactions = true
 
 			d, err := Open("", opts)
 			require.NoError(b, err)

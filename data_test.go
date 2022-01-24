@@ -441,14 +441,15 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 }
 
 func runCompactCmd(td *datadriven.TestData, d *DB) error {
-	if len(td.CmdArgs) > 2 {
-		return errors.Errorf("%s expects at most two arguments", td.Cmd)
+	if len(td.CmdArgs) > 4 {
+		return errors.Errorf("%s expects at most four arguments", td.Cmd)
 	}
 	parts := strings.Split(td.CmdArgs[0].Key, "-")
 	if len(parts) != 2 {
 		return errors.Errorf("expected <begin>-<end>: %s", td.Input)
 	}
-	if len(td.CmdArgs) == 2 {
+	parallelize := td.HasArg("parallel")
+	if len(td.CmdArgs) >= 2 && strings.HasPrefix(td.CmdArgs[1].Key, "L") {
 		levelString := td.CmdArgs[1].String()
 		iStart := base.MakeInternalKey([]byte(parts[0]), InternalKeySeqNumMax, InternalKeyKindMax)
 		iEnd := base.MakeInternalKey([]byte(parts[1]), 0, 0)
@@ -459,14 +460,9 @@ func runCompactCmd(td *datadriven.TestData, d *DB) error {
 		if err != nil {
 			return err
 		}
-		return d.manualCompact(&manualCompaction{
-			done:  make(chan error, 1),
-			level: level,
-			start: iStart,
-			end:   iEnd,
-		})
+		return d.manualCompact(iStart.UserKey, iEnd.UserKey, level, parallelize)
 	}
-	return d.Compact([]byte(parts[0]), []byte(parts[1]))
+	return d.Compact([]byte(parts[0]), []byte(parts[1]), parallelize)
 }
 
 func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
@@ -525,9 +521,9 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		case "auto-compactions":
 			switch arg.Vals[0] {
 			case "off":
-				opts.private.disableAutomaticCompactions = true
+				opts.DisableAutomaticCompactions = true
 			case "on":
-				opts.private.disableAutomaticCompactions = false
+				opts.DisableAutomaticCompactions = false
 			default:
 				return nil, errors.Errorf("Unrecognized %q %q arg value: %q", td.Cmd, arg.Key, arg.Vals[0])
 			}

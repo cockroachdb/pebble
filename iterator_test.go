@@ -845,7 +845,7 @@ func TestIteratorNextPrev(t *testing.T) {
 		opts := &Options{FS: mem}
 		// Automatic compactions may compact away tombstones from L6, making
 		// some testcases non-deterministic.
-		opts.private.disableAutomaticCompactions = true
+		opts.DisableAutomaticCompactions = true
 		var err error
 		d, err = Open("", opts)
 		require.NoError(t, err)
@@ -1239,7 +1239,7 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 
 		// Automatic compactions may compact away tombstones from L6, making
 		// some testcases non-deterministic.
-		opts.private.disableAutomaticCompactions = true
+		opts.DisableAutomaticCompactions = true
 		var err error
 		d, err = Open("", opts)
 		require.NoError(t, err)
@@ -1680,7 +1680,7 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 			}
 			require.NoError(b, batch.Commit(nil))
 			require.NoError(b, d.Flush())
-			require.NoError(b, d.Compact(nil, []byte{0xFF}))
+			require.NoError(b, d.Compact(nil, []byte{0xFF}, false))
 
 			for _, filter := range []bool{false, true} {
 				b.Run(fmt.Sprintf("filter=%t", filter), func(b *testing.B) {

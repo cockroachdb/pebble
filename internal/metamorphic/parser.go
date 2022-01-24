@@ -49,7 +49,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *closeOp:
 		return &t.objID, nil, nil
 	case *compactOp:
-		return nil, nil, []interface{}{&t.start, &t.end}
+		return nil, nil, []interface{}{&t.start, &t.end, &t.parallelize}
 	case *batchCommitOp:
 		return &t.batchID, nil, nil
 	case *dbRestartOp:

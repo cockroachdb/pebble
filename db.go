@@ -1194,9 +1194,7 @@ func (d *DB) Close() error {
 }
 
 // Compact the specified range of keys in the database.
-func (d *DB) Compact(
-	start, end []byte, /* CompactionOptions */
-) error {
+func (d *DB) Compact(start, end []byte, parallelize bool) error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1263,16 +1261,10 @@ func (d *DB) Compact(
 	}
 
 	for level := 0; level < maxLevelWithFiles; {
-		manual := &manualCompaction{
-			done:  make(chan error, 1),
-			level: level,
-			start: iStart,
-			end:   iEnd,
-		}
-		if err := d.manualCompact(manual); err != nil {
+		if err := d.manualCompact(iStart.UserKey, iEnd.UserKey, level, parallelize); err != nil {
 			return err
 		}
-		level = manual.outputLevel
+		level++
 		if level == numLevels-1 {
 			// A manual compaction of the bottommost level occurred.
 			// There is no next level to try and compact.
@@ -1282,12 +1274,67 @@ func (d *DB) Compact(
 	return nil
 }
 
-func (d *DB) manualCompact(manual *manualCompaction) error {
+func (d *DB) manualCompact(start, end []byte, level int, parallelize bool) error {
 	d.mu.Lock()
-	d.mu.compact.manual = append(d.mu.compact.manual, manual)
+	curr := d.mu.versions.currentVersion()
+	files := curr.Overlaps(level, d.cmp, start, end, false)
+	if files.Empty() {
+		d.mu.Unlock()
+		return nil
+	}
+
+	var compactions []*manualCompaction
+	if parallelize {
+		compactions = append(compactions, d.splitManualCompaction(start, end, level)...)
+	} else {
+		compactions = append(compactions, &manualCompaction{
+			level: level,
+			done:  make(chan error, 1),
+			start: start,
+			end:   end,
+		})
+	}
+	d.mu.compact.manual = append(d.mu.compact.manual, compactions...)
 	d.maybeScheduleCompaction()
 	d.mu.Unlock()
-	return <-manual.done
+
+	// Each of the channels is guaranteed to be eventually sent to once. After a
+	// compaction is possibly picked in d.maybeScheduleCompaction(), either the
+	// compaction is dropped, executed after being scheduled, or retried later.
+	// Assuming eventual progress when a compaction is retried, all outcomes send
+	// a value to the done channel. Since the channels are buffered, it is not
+	// necessary to read from each channel, and so we can exit early in the event
+	// of an error.
+	for _, compaction := range compactions {
+		if err := <-compaction.done; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// splitManualCompaction splits a manual compaction over [start,end] on level
+// such that the resulting compactions have no key overlap.
+func (d *DB) splitManualCompaction(
+	start, end []byte, level int,
+) (splitCompactions []*manualCompaction) {
+	curr := d.mu.versions.currentVersion()
+	endLevel := level + 1
+	baseLevel := d.mu.versions.picker.getBaseLevel()
+	if level == 0 {
+		endLevel = baseLevel
+	}
+	keyRanges := calculateInuseKeyRanges(curr, d.cmp, level, endLevel, start, end)
+	for _, keyRange := range keyRanges {
+		splitCompactions = append(splitCompactions, &manualCompaction{
+			level: level,
+			done:  make(chan error, 1),
+			start: keyRange.Start,
+			end:   keyRange.End,
+			split: true,
+		})
+	}
+	return splitCompactions
 }
 
 // Flush the memtable to stable storage.

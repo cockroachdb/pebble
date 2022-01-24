@@ -362,8 +362,9 @@ func (g *generator) dbCompact() {
 		start, end = end, start
 	}
 	g.add(&compactOp{
-		start: start,
-		end:   end,
+		start:       start,
+		end:         end,
+		parallelize: g.rng.Float64() < 0.5,
 	})
 }
 

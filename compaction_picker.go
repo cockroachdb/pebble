@@ -1357,9 +1357,14 @@ func (p *compactionPickerByScore) pickManual(
 		// points to an empty level).
 		return nil, false
 	}
-	// TODO(peter): The conflictsWithInProgress call should no longer be
-	// necessary, but TestManualCompaction currently expects it.
-	if conflictsWithInProgress(manual.level, outputLevel, env.inProgressCompactions) {
+	// This conflictsWithInProgress call is necessary for the manual compaction to
+	// be retried when it conflicts with an ongoing automatic compaction. Without
+	// it, the compaction is dropped due to pc.setupInputs returning false since
+	// the input/output range is already being compacted, and the manual
+	// compaction ends with a non-compacted LSM.
+	// The check is skipped when a manual compaction has been split across a level
+	// because we allow parallel execution of compactions in a level.
+	if !manual.split && conflictsWithInProgress(manual.level, outputLevel, env.inProgressCompactions) {
 		return nil, true
 	}
 	pc = pickManualHelper(p.opts, manual, p.vers, p.baseLevel, p.diskAvailBytes)
@@ -1386,8 +1391,7 @@ func pickManualHelper(
 	pc = newPickedCompaction(opts, vers, manual.level, baseLevel)
 	manual.outputLevel = pc.outputLevel.level
 	cmp := opts.Comparer.Compare
-	pc.startLevel.files = vers.Overlaps(manual.level, cmp, manual.start.UserKey,
-		manual.end.UserKey, manual.end.IsExclusiveSentinel())
+	pc.startLevel.files = vers.Overlaps(manual.level, cmp, manual.start, manual.end, false)
 	if pc.startLevel.files.Empty() {
 		// Nothing to do
 		return nil
@@ -1417,7 +1421,8 @@ func (p *compactionPickerByScore) pickReadTriggeredCompaction(
 }
 
 func pickReadTriggeredCompactionHelper(
-	p *compactionPickerByScore, rc *readCompaction, env compactionEnv) (pc *pickedCompaction) {
+	p *compactionPickerByScore, rc *readCompaction, env compactionEnv,
+) (pc *pickedCompaction) {
 	cmp := p.opts.Comparer.Compare
 	overlapSlice := p.vers.Overlaps(rc.level, cmp, rc.start, rc.end, false /* exclusiveEnd */)
 	if overlapSlice.Empty() {

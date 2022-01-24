@@ -109,7 +109,7 @@ func TestMetrics(t *testing.T) {
 	// Prevent foreground flushes and compactions from triggering asynchronous
 	// follow-up compactions. This avoids asynchronously-scheduled work from
 	// interfering with the expected metrics output and reduces test flakiness.
-	opts.private.disableAutomaticCompactions = true
+	opts.DisableAutomaticCompactions = true
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
