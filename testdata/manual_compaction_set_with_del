@@ -92,9 +92,8 @@ range-deletions-bytes-estimate: 1552
 compact a-e L1
 ----
 2:
-  000008:[a#3,SETWITHDEL-b#72057594037927935,RANGEDEL]
-  000009:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
-  000010:[d#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000008:[a#3,SETWITHDEL-c#72057594037927935,RANGEDEL]
+  000009:[c#2,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
@@ -105,7 +104,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 1
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 31
+range-deletions-bytes-estimate: 776
 
 # Same as above, except range tombstone covers multiple grandparent file boundaries.
 
@@ -140,9 +139,9 @@ L3
 compact a-e L1
 ----
 2:
-  000010:[a#3,SETWITHDEL-b#72057594037927935,RANGEDEL]
-  000011:[b#2,RANGEDEL-d#72057594037927935,RANGEDEL]
-  000012:[d#2,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000010:[a#3,SETWITHDEL-c#72057594037927935,RANGEDEL]
+  000011:[c#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000012:[e#2,RANGEDEL-f#72057594037927935,RANGEDEL]
   000013:[f#2,RANGEDEL-g#72057594037927935,RANGEDEL]
 3:
   000006:[a#0,SET-b#0,SET]
@@ -215,9 +214,8 @@ L3
 compact a-e L1
 ----
 2:
-  000008:[a#3,RANGEDEL-b#72057594037927935,RANGEDEL]
-  000009:[b#3,RANGEDEL-d#72057594037927935,RANGEDEL]
-  000010:[d#3,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000008:[a#3,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000009:[c#3,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
   000006:[a#0,SET-b#0,SET]
   000007:[c#0,SET-d#0,SET]
@@ -417,13 +415,10 @@ c:4
 a:3
 .
 
-# This is a similar scenario to the one above, but we've arranged for
-# the compaction to produce an sstable (9) for which the smallest
-# range tombstone overlaps in key space with the largest key in the
-# previous sstable (8). This necessitates adjusting the seqnum of the
-# range tombstone. There was no actual iteration bug from earlier
-# behavior of setting the seqnum to 0, but now we set the seqnum to
-# prev.LargestKey.SeqNum-1.
+# This is a similar scenario to the one above. In older versions of Pebble this
+# case necessitated adjusting the seqnum of the range tombstone to
+# prev.LargestKey.SeqNum-1. We no longer allow user keys to be split across
+# sstables, and the seqnum adjustment is no longer necessary.
 #
 # Note the target-file-size of 26 is specially tailored to get the
 # desired compaction output.
@@ -446,8 +441,8 @@ L3
 compact a-e L1
 ----
 2:
-  000007:[a#4,SET-b#2,SET]
-  000008:[b#1,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000007:[a#4,SET-a#4,SET]
+  000008:[b#3,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
   000006:[b#1,SET-b#1,SET]
 
@@ -483,8 +478,8 @@ L3
 compact a-e L1
 ----
 2:
-  000007:[a#4,SET-b#3,SET]
-  000008:[b#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000007:[a#4,SET-a#4,SET]
+  000008:[b#3,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
   000006:[b#1,SET-b#1,SET]
 
@@ -524,8 +519,8 @@ L3
 compact a-e L1
 ----
 2:
-  000007:[a#4,SET-b#4,SET]
-  000008:[b#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000007:[a#4,SET-a#4,SET]
+  000008:[b#4,SET-e#72057594037927935,RANGEDEL]
 3:
   000006:[b#1,SET-b#1,SET]
 
@@ -545,10 +540,7 @@ a:4
 .
 
 # Test a scenario where the last point key in an sstable has a seqnum
-# of 0, and the smallest range tombstone in the next sstable starts
-# with the same key. We have to tweak the kind of the boundary key in
-# sstable 8 to be a DEL rather than a RANGEDEL so that the two tables
-# are disjoint in the key space.
+# of 0.
 
 define target-file-sizes=(1, 1, 26) snapshots=(2)
 L1
@@ -577,7 +569,8 @@ a:3
 compact a-e L1
 ----
 2:
-  000007:[a#3,SET-e#72057594037927935,RANGEDEL]
+  000007:[a#3,SET-c#72057594037927935,RANGEDEL]
+  000008:[c#3,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
   000005:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
   000006:[c#0,SET-d#0,SET]
@@ -602,12 +595,12 @@ L1
   c.SET.1:1
   d.SET.1:1
 L3
-  a.RANGEDEL.2:b
+  c.RANGEDEL.2:d
 ----
 1:
   000004:[a#3,SET-e#72057594037927935,RANGEDEL]
 3:
-  000005:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000005:[c#2,RANGEDEL-d#72057594037927935,RANGEDEL]
 
 compact a-f L1
 ----
@@ -615,7 +608,8 @@ compact a-f L1
   000006:[a#3,SET-c#72057594037927935,RANGEDEL]
   000007:[c#3,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
-  000005:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000005:[c#2,RANGEDEL-d#72057594037927935,RANGEDEL]
+
 
 # Test a scenario where we the last point key in an sstable has a
 # seqnum of 0, but there is another range tombstone later in the

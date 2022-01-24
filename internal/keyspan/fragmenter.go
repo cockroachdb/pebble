@@ -88,8 +88,8 @@ type Fragmenter struct {
 	// flushed. All pending spans have the same Start.UserKey.
 	pending []Span
 	// doneBuf is used to buffer completed span fragments when flushing to a
-	// specific key (e.g. FlushTo). It is cached in the Fragmenter to allow
-	// reuse.
+	// specific key (e.g. TruncateAndFlushTo). It is cached in the Fragmenter to
+	// allow reuse.
 	doneBuf []Span
 	// sortBuf is used to sort fragments by end key when flushing.
 	sortBuf spansByEndKey
@@ -266,88 +266,15 @@ func (f *Fragmenter) Empty() bool {
 	return f.finished || len(f.pending) == 0
 }
 
-// FlushTo flushes all of the fragments with a start key <= key. Used during
-// compaction to force emitting of spans which straddle an sstable boundary.
-// Note that the emitted spans are not truncated to the specified key. Consider
+// TruncateAndFlushTo flushes all of the fragments with a start key <= key,
+// truncating spans to the specified end key. Used during compaction to force
+// emitting of spans which straddle an sstable boundary. Consider
 // the scenario:
 //
 //     a---------k#10
 //          f#8
 //          f#7
-//
-// If the compaction logic splits f#8 and f#7 into different sstables, we can't
-// truncate the span [a,k) at f. Doing so could produce an sstable with the
-// records:
-//
-//     a----f#10
-//          f#8
-//
-// The span [a,f) does not cover the key f.
-func (f *Fragmenter) FlushTo(key []byte) {
-	if f.finished {
-		panic("pebble: span fragmenter already finished")
-	}
-
-	if f.flushedKey != nil {
-		switch c := f.Cmp(key, f.flushedKey); {
-		case c < 0:
-			panic(fmt.Sprintf("pebble: flush-to key (%s) < flushed key (%s)",
-				f.Format(key), f.Format(f.flushedKey)))
-		}
-	}
-	f.flushedKey = append(f.flushedKey[:0], key...)
-
-	if len(f.pending) > 0 {
-		// Since all of the pending spans have the same start key, we only need
-		// to compare against the first one.
-		switch c := f.Cmp(f.pending[0].Start.UserKey, key); {
-		case c > 0:
-			panic(fmt.Sprintf("pebble: keys must be in order: %s > %s",
-				f.Format(f.pending[0].Start.UserKey), f.Format(key)))
-		}
-		// Note that we explicitly do not return early here if Start.UserKey ==
-		// key. Similar to the scenario described above, consider:
-		//
-		//          f----k#10
-		//          f#8
-		//          f#7
-		//
-		// If the compaction logic splits f#8 and f#7 into different sstables, we
-		// have to emit the span [f,k) in both sstables.
-	}
-
-	// At this point we know that the new start key is greater than the pending
-	// spans start keys. We flush all span fragments with a start key
-	// <= key.
-	f.flush(f.pending, key)
-
-	// Truncate the pending spans to start with key, filtering any which
-	// would become empty.
-	pending := f.pending
-	f.pending = f.pending[:0]
-	for _, s := range pending {
-		if f.Cmp(key, s.End) < 0 {
-			//   s: a--+--e
-			// new:    c------
-			f.pending = append(f.pending, Span{
-				Start: base.MakeInternalKey(key, s.Start.SeqNum(), s.Start.Kind()),
-				End:   s.End,
-				Value: s.Value,
-			})
-		}
-	}
-}
-
-// TruncateAndFlushTo is similar to FlushTo, except it also truncates spans to
-// the specified end key by calling truncateAndFlush. Only called in compactions
-// where we can guarantee that all versions of UserKeys < key have been written,
-// or in other words, where we can ensure we don't split a user key across two
-// sstables. Going back to the scenario from above:
-//
-//    a---------k#10
-//         f#8
-//         f#7
-//
+///
 // Let's say the next user key after f is g. Calling TruncateAndFlushTo(g) will
 // flush this span:
 //
