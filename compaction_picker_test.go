@@ -302,8 +302,8 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				manual := &manualCompaction{
 					done:  make(chan error, 1),
 					level: startLevel,
-					start: iStart,
-					end:   iEnd,
+					start: iStart.UserKey,
+					end:   iEnd.UserKey,
 				}
 
 				pc, retryLater := pickerByScore.pickManual(compactionEnv{

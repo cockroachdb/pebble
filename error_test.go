@@ -114,7 +114,7 @@ func TestErrors(t *testing.T) {
 		if err := d.Flush(); err != nil {
 			return err
 		}
-		if err := d.Compact(nil, []byte("\xff")); err != nil {
+		if err := d.Compact(nil, []byte("\xff"), false); err != nil {
 			return err
 		}
 
@@ -182,7 +182,7 @@ func TestRequireReadError(t *testing.T) {
 		require.NoError(t, d.Set(key1, value, nil))
 		require.NoError(t, d.Set(key2, value, nil))
 		require.NoError(t, d.Flush())
-		require.NoError(t, d.Compact(key1, key2))
+		require.NoError(t, d.Compact(key1, key2, false))
 		require.NoError(t, d.DeleteRange(key1, key2, nil))
 		require.NoError(t, d.Set(key1, value, nil))
 		require.NoError(t, d.Flush())
@@ -284,7 +284,7 @@ func TestCorruptReadError(t *testing.T) {
 		require.NoError(t, d.Set(key1, value, nil))
 		require.NoError(t, d.Set(key2, value, nil))
 		require.NoError(t, d.Flush())
-		require.NoError(t, d.Compact(key1, key2))
+		require.NoError(t, d.Compact(key1, key2, false))
 		require.NoError(t, d.DeleteRange(key1, key2, nil))
 		require.NoError(t, d.Set(key1, value, nil))
 		require.NoError(t, d.Flush())
