@@ -641,12 +641,11 @@ func (c *compaction) setupInuseKeyRanges() {
 	if c.outputLevel.level == 0 {
 		level = 0
 	}
-	c.inuseKeyRanges = calculateInuseKeyRanges(c.version, c.cmp, level,
-		c.smallest.UserKey, c.largest.UserKey)
+	c.inuseKeyRanges = calculateInuseKeyRanges(c.version, c.cmp, level, numLevels, c.smallest.UserKey, c.largest.UserKey)
 }
 
 func calculateInuseKeyRanges(
-	v *version, cmp base.Compare, level int, smallest, largest []byte,
+	v *version, cmp base.Compare, level, depth int, smallest, largest []byte,
 ) []manifest.UserKeyRange {
 	// Use two slices, alternating which one is input and which one is output
 	// as we descend the LSM.
@@ -660,7 +659,7 @@ func calculateInuseKeyRanges(
 		level++
 	}
 
-	for ; level < numLevels; level++ {
+	for ; level <= depth && level < numLevels; level++ {
 		// NB: We always treat `largest` as inclusive for simplicity, because
 		// there's little consequence to calculating slightly broader in-use key
 		// ranges.
