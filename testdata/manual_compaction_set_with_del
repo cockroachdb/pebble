@@ -645,7 +645,7 @@ L0
   000005:[a#2,SET-a#2,SET]
   000004:[b#1,SET-b#1,SET]
 
-add-ongoing-compaction startLevel=0 outputLevel=1
+add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=z
 ----
 
 async-compact a-b L0
@@ -661,7 +661,7 @@ compact a-b L1
   000008:[a#0,SET-a#0,SET]
   000009:[b#0,SET-b#0,SET]
 
-add-ongoing-compaction startLevel=0 outputLevel=1
+add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=z
 ----
 
 async-compact a-b L2
@@ -671,7 +671,7 @@ manual compaction blocked until ongoing finished
   000010:[a#0,SET-a#0,SET]
   000011:[b#0,SET-b#0,SET]
 
-add-ongoing-compaction startLevel=0 outputLevel=1
+add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=z
 ----
 
 set-concurrent-compactions num=2
@@ -687,15 +687,18 @@ manual compaction did not block for ongoing
 remove-ongoing-compaction
 ----
 
-add-ongoing-compaction startLevel=5 outputLevel=6
+add-ongoing-compaction startLevel=5 outputLevel=6 start=a end=b
 ----
 
 async-compact a-b L4
 ----
-manual compaction blocked until ongoing finished
+manual compaction did not block for ongoing
 5:
   000014:[a#0,SET-a#0,SET]
   000015:[b#0,SET-b#0,SET]
+
+remove-ongoing-compaction
+----
 
 # Test of a scenario where consecutive elided range tombstones and grandparent
 # boundaries could result in an invariant violation in the rangedel fragmenter.

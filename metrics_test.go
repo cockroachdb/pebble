@@ -135,7 +135,7 @@ func TestMetrics(t *testing.T) {
 			return ""
 
 		case "compact":
-			if err := runCompactCmd(td, d); err != nil {
+			if err := runCompactCmd(td, d, false); err != nil {
 				return err.Error()
 			}
 

@@ -548,9 +548,16 @@ type Options struct {
 	Merger *Merger
 
 	// MaxConcurrentCompactions specifies the maximum number of concurrent
-	// compactions. The default is 1. Concurrent compactions are only performed
-	// when L0 read-amplification passes the L0CompactionConcurrency threshold.
+	// compactions. The default is 1. Concurrent compactions are performed
+	// - when L0 read-amplification passes the L0CompactionConcurrency threshold
+	// - for automatic background compactions
+	// - when a manual compaction for a level is split and parallelized
 	MaxConcurrentCompactions int
+
+	// DisableAutomaticCompactions dictates whether automatic compactions are
+	// scheduled or not. The default is false (enabled). This option is only used
+	// externally when running a manual compaction, and internally for tests.
+	DisableAutomaticCompactions bool
 
 	// NumPrevManifest is the number of non-current or older manifests which
 	// we want to keep around for debugging purposes. By default, we're going
@@ -629,9 +636,6 @@ type Options struct {
 
 		// A private option to disable stats collection.
 		disableTableStats bool
-
-		// A private option disable automatic compactions.
-		disableAutomaticCompactions bool
 
 		// minCompactionRate sets the minimum rate at which compactions occur. The
 		// default is 4 MB/s. Currently disabled as this option has no effect while
