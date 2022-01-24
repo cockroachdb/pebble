@@ -45,14 +45,7 @@ func buildSpans(
 		},
 	}
 	for _, line := range strings.Split(s, "\n") {
-		if strings.HasPrefix(line, "flush-to ") {
-			parts := strings.Split(line, " ")
-			if len(parts) != 2 {
-				t.Fatalf("expected 2 components, but found %d: %s", len(parts), line)
-			}
-			f.FlushTo([]byte(parts[1]))
-			continue
-		} else if strings.HasPrefix(line, "truncate-and-flush-to ") {
+		if strings.HasPrefix(line, "truncate-and-flush-to ") {
 			parts := strings.Split(line, " ")
 			if len(parts) != 2 {
 				t.Fatalf("expected 2 components, but found %d: %s", len(parts), line)
@@ -197,30 +190,6 @@ func TestFragmenterDeleted(t *testing.T) {
 				}
 			}
 			return buf.String()
-
-		default:
-			return fmt.Sprintf("unknown command: %s", d.Cmd)
-		}
-	})
-}
-
-func TestFragmenterFlushTo(t *testing.T) {
-	cmp := base.DefaultComparer.Compare
-	fmtKey := base.DefaultComparer.FormatKey
-
-	datadriven.RunTest(t, "testdata/fragmenter_flush_to", func(d *datadriven.TestData) string {
-		switch d.Cmd {
-		case "build":
-			return func() (result string) {
-				defer func() {
-					if r := recover(); r != nil {
-						result = fmt.Sprint(r)
-					}
-				}()
-
-				spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
-				return formatSpans(spans)
-			}()
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
