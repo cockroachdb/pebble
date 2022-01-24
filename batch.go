@@ -869,6 +869,49 @@ func (b *Batch) newRangeDelIter(o *IterOptions) keyspan.FragmentIterator {
 	return keyspan.NewIter(b.cmp, b.tombstones)
 }
 
+func (b *Batch) newRangeKeyIter(o *IterOptions) keyspan.FragmentIterator {
+	if b.index == nil {
+		return newErrorIter(ErrNotIndexed)
+	}
+	if b.rangeKeyIndex == nil {
+		return nil
+	}
+
+	// Fragment the range keys the first time a range key iterator is requested.
+	// The cached range keys are invalidated if another range key is added to
+	// the batch.
+	if b.rangeKeys == nil {
+		frag := &keyspan.Fragmenter{
+			Cmp:    b.cmp,
+			Format: b.formatKey,
+			Emit: func(fragmented []keyspan.Span) {
+				b.rangeKeys = append(b.rangeKeys, fragmented...)
+			},
+		}
+		it := &batchIter{
+			cmp:   b.cmp,
+			batch: b,
+			iter:  b.rangeKeyIndex.NewIter(nil, nil),
+		}
+		// The memory management here is a bit subtle. The keys and values
+		// returned by the iterator are slices in Batch.data. Thus the
+		// fragmented key spans are slices within Batch.data. If additional
+		// entries are added to the Batch, Batch.data may be reallocated. The
+		// references in the fragmented keys will remain valid, pointing into
+		// the old Batch.data. GC for the win.
+		for key, val := it.First(); key != nil; key, val = it.Next() {
+			endKey, val, ok := rangekey.DecodeEndKey(key.Kind(), val)
+			if !ok {
+				panic(fmt.Sprintf("pebble: unable to split range key value %s", key.Pretty(b.formatKey)))
+			}
+			frag.Add(keyspan.Span{Start: *key, End: endKey, Value: val})
+		}
+		frag.Finish()
+	}
+
+	return keyspan.NewIter(b.cmp, b.rangeKeys)
+}
+
 // Commit applies the batch to its parent writer.
 func (b *Batch) Commit(o *WriteOptions) error {
 	return b.db.Apply(b, o)
@@ -928,6 +971,7 @@ func (b *Batch) Reset() {
 	if b.index != nil {
 		b.index.Init(&b.data, b.cmp, b.abbreviatedKey)
 		b.rangeDelIndex = nil
+		b.rangeKeyIndex = nil
 	}
 }
 
@@ -1153,7 +1197,7 @@ func (i *batchIter) Value() []byte {
 	}
 
 	switch InternalKeyKind(data[offset]) {
-	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete:
+	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete, InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 		_, value, ok := batchDecodeStr(data[keyEnd:])
 		if !ok {
 			return nil
@@ -1325,7 +1369,11 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 			index:   -1,
 		}
 		for key, val := it.First(); key != nil; key, val = it.Next() {
-			endKey, rangeKeyVal, _ := rangekey.DecodeEndKey(key.Kind(), val)
+			endKey, rangeKeyVal, ok := rangekey.DecodeEndKey(key.Kind(), val)
+			if !ok {
+				panic(base.CorruptionErrorf("pebble: unable to decode range key value for key %s",
+					key.Pretty(b.formatKey)))
+			}
 			frag.Add(keyspan.Span{Start: *key, End: endKey, Value: rangeKeyVal})
 		}
 		frag.Finish()
@@ -1340,6 +1388,10 @@ func (b *flushableBatch) setSeqNum(seqNum uint64) {
 	b.seqNum = seqNum
 	for i := range b.tombstones {
 		start := &b.tombstones[i].Start
+		start.SetSeqNum(seqNum + start.SeqNum())
+	}
+	for i := range b.rangeKeys {
+		start := &b.rangeKeys[i].Start
 		start.SetSeqNum(seqNum + start.SeqNum())
 	}
 }
@@ -1397,6 +1449,13 @@ func (b *flushableBatch) newRangeDelIter(o *IterOptions) keyspan.FragmentIterato
 		return nil
 	}
 	return keyspan.NewIter(b.cmp, b.tombstones)
+}
+
+func (b *flushableBatch) newRangeKeyIter(o *IterOptions) keyspan.FragmentIterator {
+	if len(b.rangeKeys) == 0 {
+		return nil
+	}
+	return keyspan.NewIter(b.cmp, b.rangeKeys)
 }
 
 func (b *flushableBatch) inuseBytes() uint64 {
@@ -1580,7 +1639,7 @@ func (i *flushableBatchIter) Value() []byte {
 	var value []byte
 	var ok bool
 	switch kind {
-	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete:
+	case InternalKeyKindSet, InternalKeyKindMerge, InternalKeyKindRangeDelete, InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 		keyEnd := i.offsets[i.index].keyEnd
 		_, value, ok = batchDecodeStr(i.data[keyEnd:])
 		if !ok {

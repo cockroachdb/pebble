@@ -7,13 +7,11 @@ c.SET.1:1
 c.MERGE.2:2
 1.RANGEDEL.3:
 2.RANGEKEYSET.4:
-2.RANGEKEYDEL.5:
-2.RANGEKEYUNSET.6:
+1.RANGEKEYDEL.3:
+2.RANGEKEYUNSET.3:
 ----
 
-# TODO(jackson): This test includes RANGEDELs but not RANGEKEYs, because this
-# test doesn't yet incoporate a RANGEKEY iterator. Once we have a RANGEKEY
-# flushable batch iterator, update this test to incorporate it.
+# NB: The range keys get fragmented.
 
 dump seq=0
 ----
@@ -24,6 +22,11 @@ b#2,1:1
 c#5,2:2
 c#4,1:1
 1#6,15:3
+1#8,19:2
+2#9,20:3
+2#8,19:3
+2#7,21:3
+3#7,21:4
 
 dump seq=100
 ----
@@ -34,6 +37,11 @@ b#102,1:1
 c#105,2:2
 c#104,1:1
 1#106,15:3
+1#108,19:2
+2#109,20:3
+2#108,19:3
+2#107,21:3
+3#107,21:4
 
 define
 c.SET.1:1

@@ -156,10 +156,27 @@ b [b-c) @5=boop
 # Delete the b-c range key and the beginning of the cat-dog range key,
 # truncating it to now begin at 'd'.
 
-batch
+indexed-batch
 range-key-del b d
 ----
+created indexed batch with 1 keys
+
+# Reading through the indexed batch, we should see the beginning of the cat-dog
+# range key now beginning at 'd'.
+
+combined-iter
+seek-ge b
+next
+----
+c: (c, .)
+d: (d, [d-dog) @3=beep)
+
+commit-batch
+----
 wrote 1 keys
+
+# Reading through the database after applying the batch, we should still see the
+# beginning of the cat-dog range key now beginning at 'd'.
 
 combined-iter
 seek-ge b

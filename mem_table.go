@@ -232,6 +232,11 @@ func (m *memTable) newRangeDelIter(*IterOptions) keyspan.FragmentIterator {
 	return keyspan.NewIter(m.cmp, tombstones)
 }
 
+func (m *memTable) newRangeKeyIter(*IterOptions) keyspan.FragmentIterator {
+	// TODO(jackson): Implement once range keys are persisted to the memtable.
+	return nil
+}
+
 func (m *memTable) availBytes() uint32 {
 	a := m.skl.Arena()
 	if atomic.LoadInt32(&m.writerRefs) == 1 {
