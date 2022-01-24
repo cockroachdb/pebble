@@ -250,6 +250,7 @@ L3
 compact a-h L1
 ----
 2:
+  000004:[a#4,RANGEDEL-d#72057594037927935,RANGEDEL]
   000009:[grandparent#2,RANGEDEL-m#72057594037927935,RANGEDEL]
   000010:[m#2,RANGEDEL-z#72057594037927935,RANGEDEL]
 3:
@@ -441,8 +442,8 @@ L3
 compact a-e L1
 ----
 2:
-  000007:[a#4,SET-a#4,SET]
-  000008:[b#3,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000004:[a#4,SET-a#4,SET]
+  000007:[b#3,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
   000006:[b#1,SET-b#1,SET]
 
@@ -478,8 +479,8 @@ L3
 compact a-e L1
 ----
 2:
-  000007:[a#4,SET-a#4,SET]
-  000008:[b#3,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000004:[a#4,SET-a#4,SET]
+  000007:[b#3,RANGEDEL-e#72057594037927935,RANGEDEL]
 3:
   000006:[b#1,SET-b#1,SET]
 
@@ -519,8 +520,8 @@ L3
 compact a-e L1
 ----
 2:
-  000007:[a#4,SET-a#4,SET]
-  000008:[b#4,SET-e#72057594037927935,RANGEDEL]
+  000004:[a#4,SET-a#4,SET]
+  000007:[b#4,SET-e#72057594037927935,RANGEDEL]
 3:
   000006:[b#1,SET-b#1,SET]
 
@@ -644,7 +645,7 @@ L0
   000005:[a#2,SET-a#2,SET]
   000004:[b#1,SET-b#1,SET]
 
-add-ongoing-compaction startLevel=0 outputLevel=1
+add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=b
 ----
 
 async-compact a-b L0
@@ -657,20 +658,20 @@ manual compaction blocked until ongoing finished
 compact a-b L1
 ----
 2:
-  000008:[a#0,SET-a#0,SET]
-  000009:[b#0,SET-b#0,SET]
+  000006:[a#0,SET-a#0,SET]
+  000007:[b#0,SET-b#0,SET]
 
-add-ongoing-compaction startLevel=0 outputLevel=1
+add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=b
 ----
 
 async-compact a-b L2
 ----
 manual compaction blocked until ongoing finished
 3:
-  000010:[a#0,SET-a#0,SET]
-  000011:[b#0,SET-b#0,SET]
+  000006:[a#0,SET-a#0,SET]
+  000007:[b#0,SET-b#0,SET]
 
-add-ongoing-compaction startLevel=0 outputLevel=1
+add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=b
 ----
 
 set-concurrent-compactions num=2
@@ -680,21 +681,21 @@ async-compact a-b L3
 ----
 manual compaction did not block for ongoing
 4:
-  000012:[a#0,SET-a#0,SET]
-  000013:[b#0,SET-b#0,SET]
+  000006:[a#0,SET-a#0,SET]
+  000007:[b#0,SET-b#0,SET]
 
 remove-ongoing-compaction
 ----
 
-add-ongoing-compaction startLevel=5 outputLevel=6
+add-ongoing-compaction startLevel=4 outputLevel=5 start=a end=b
 ----
 
 async-compact a-b L4
 ----
 manual compaction blocked until ongoing finished
 5:
-  000014:[a#0,SET-a#0,SET]
-  000015:[b#0,SET-b#0,SET]
+  000006:[a#0,SET-a#0,SET]
+  000007:[b#0,SET-b#0,SET]
 
 # Test of a scenario where consecutive elided range tombstones and grandparent
 # boundaries could result in an invariant violation in the rangedel fragmenter.
@@ -735,6 +736,7 @@ compact a-q L1
 ----
 2:
   000011:[a#4,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000005:[g#6,RANGEDEL-j#72057594037927935,RANGEDEL]
   000012:[k#5,RANGEDEL-m#72057594037927935,RANGEDEL]
 3:
   000008:[a#1,SET-c#1,SET]
@@ -858,3 +860,85 @@ compact a-z L1
 2:
   000006:[b#0,SET-b#0,SET]
   000007:[c#0,SET-c#0,SET]
+
+define target-file-sizes=(1, 1, 1, 1)
+L0
+  a.SET.3:v
+  b.SET.2:v
+L0
+  a.SET.2:v
+  c.SET.2:v
+L2
+  a.SET.1:v
+  b.SET.1:v
+L2
+  c.SET.1:v
+L2
+  d.SET.0:v
+L3
+  a.SET.0:v
+  b.SET.0:v
+L3
+  c.SET.0:v
+----
+0.1:
+  000004:[a#3,SET-b#2,SET]
+0.0:
+  000005:[a#2,SET-c#2,SET]
+2:
+  000006:[a#1,SET-b#1,SET]
+  000007:[c#1,SET-c#1,SET]
+  000008:[d#0,SET-d#0,SET]
+3:
+  000009:[a#0,SET-b#0,SET]
+  000010:[c#0,SET-c#0,SET]
+
+compact a-c L0
+----
+1:
+  000011:[a#3,SET-a#3,SET]
+  000012:[b#2,SET-b#2,SET]
+  000013:[c#2,SET-c#2,SET]
+2:
+  000006:[a#1,SET-b#1,SET]
+  000007:[c#1,SET-c#1,SET]
+  000008:[d#0,SET-d#0,SET]
+3:
+  000009:[a#0,SET-b#0,SET]
+  000010:[c#0,SET-c#0,SET]
+
+add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=d
+----
+
+set-concurrent-compactions num=2
+----
+
+# We allow 2 maximum concurrent compactions. The compaction below generates
+# 2 concurrent compactions (a-b, c). With 1 ongoing compaction,
+# the concurrent compactions should be queued up and executed sequentially.
+# We ensure that the compactions finish and that the final
+# result of the compactions is correct.
+
+async-compact a-d L1
+----
+manual compaction did not block for ongoing
+2:
+  000014:[a#3,SET-a#3,SET]
+  000015:[b#2,SET-b#2,SET]
+  000016:[c#2,SET-c#2,SET]
+  000008:[d#0,SET-d#0,SET]
+3:
+  000009:[a#0,SET-b#0,SET]
+  000010:[c#0,SET-c#0,SET]
+
+async-compact a-d L2
+----
+manual compaction did not block for ongoing
+3:
+  000017:[a#0,SET-a#0,SET]
+  000018:[b#0,SET-b#0,SET]
+  000019:[c#0,SET-c#0,SET]
+  000008:[d#0,SET-d#0,SET]
+
+remove-ongoing-compaction
+----

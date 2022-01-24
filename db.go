@@ -1272,7 +1272,10 @@ func (d *DB) Compact(
 		if err := d.manualCompact(manual); err != nil {
 			return err
 		}
-		level = manual.outputLevel
+		level++
+		if level < manual.outputLevel {
+			level = manual.outputLevel
+		}
 		if level == numLevels-1 {
 			// A manual compaction of the bottommost level occurred.
 			// There is no next level to try and compact.
@@ -1284,10 +1287,39 @@ func (d *DB) Compact(
 
 func (d *DB) manualCompact(manual *manualCompaction) error {
 	d.mu.Lock()
-	d.mu.compact.manual = append(d.mu.compact.manual, manual)
+	splitCompactions := d.splitManualCompaction(manual)
+	d.mu.compact.manual = append(d.mu.compact.manual, splitCompactions...)
 	d.maybeScheduleCompaction()
 	d.mu.Unlock()
-	return <-manual.done
+	for _, compaction := range splitCompactions {
+		if err := <-compaction.done; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// splitManualCompaction splits a manual compaction such that the resulting compactions have no key overlap.
+func (d *DB) splitManualCompaction(
+	manual *manualCompaction,
+) (concurrentCompactions []*manualCompaction) {
+	// Don't make L0 compactions concurrrent.
+	if manual.level != 0 {
+		curr := d.mu.versions.currentVersion()
+		keyRanges := calculateInuseKeyRanges(curr, d.cmp, manual.level, manual.level+1, manual.start.UserKey, manual.end.UserKey)
+
+		for _, keyRange := range keyRanges {
+			splitManual := *manual
+			splitManual.done = make(chan error, 1)
+			splitManual.start = manifest.InternalKey{UserKey: keyRange.Start}
+			splitManual.end = manifest.InternalKey{UserKey: keyRange.End}
+			concurrentCompactions = append(concurrentCompactions, &splitManual)
+		}
+	}
+	if len(concurrentCompactions) == 0 {
+		concurrentCompactions = append(concurrentCompactions, manual)
+	}
+	return
 }
 
 // Flush the memtable to stable storage.

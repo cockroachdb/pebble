@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/rand"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"sort"
@@ -1264,10 +1265,16 @@ func TestManualCompaction(t *testing.T) {
 			case "add-ongoing-compaction":
 				var startLevel int
 				var outputLevel int
+				var start string
+				var end string
 				td.ScanArgs(t, "startLevel", &startLevel)
 				td.ScanArgs(t, "outputLevel", &outputLevel)
+				td.ScanArgs(t, "start", &start)
+				td.ScanArgs(t, "end", &end)
 				ongoingCompaction = &compaction{
-					inputs: []compactionLevel{{level: startLevel}, {level: outputLevel}},
+					inputs:   []compactionLevel{{level: startLevel}, {level: outputLevel}},
+					smallest: InternalKey{UserKey: []byte(start)},
+					largest:  InternalKey{UserKey: []byte(end)},
 				}
 				ongoingCompaction.startLevel = &ongoingCompaction.inputs[0]
 				ongoingCompaction.outputLevel = &ongoingCompaction.inputs[1]
@@ -2342,7 +2349,7 @@ func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
 			maxWidth := rng.Intn(endKeyspace-s) + 1
 			e := rng.Intn(maxWidth) + s
 			sKey, eKey := makeUserKey(s), makeUserKey(e)
-			keyRanges := calculateInuseKeyRanges(v, opts.Comparer.Compare, l, sKey, eKey)
+			keyRanges := calculateInuseKeyRanges(v, opts.Comparer.Compare, l, numLevels, sKey, eKey)
 
 			for level := l; level < numLevels; level++ {
 				for _, f := range files[level] {
@@ -3033,4 +3040,239 @@ func TestCompactionInvalidBounds(t *testing.T) {
 	require.NoError(t, db.Compact([]byte("a"), []byte("b")))
 	require.Error(t, db.Compact([]byte("a"), []byte("a")))
 	require.Error(t, db.Compact([]byte("b"), []byte("a")))
+}
+
+func Test_calculateInuseKeyRanges(t *testing.T) {
+	opts := (*Options)(nil).EnsureDefaults()
+	cmp := base.DefaultComparer.Compare
+	tests := []struct {
+		name     string
+		v        *version
+		cmp      base.Compare
+		level    int
+		depth    int
+		smallest []byte
+		largest  []byte
+		want     []manifest.UserKeyRange
+	}{
+		{
+			name: "No files in next level",
+			v: newVersion(opts, [numLevels][]*fileMetadata{
+				1: {
+					{
+						FileNum:  1,
+						Size:     1,
+						Smallest: base.ParseInternalKey("a.SET.2"),
+						Largest:  base.ParseInternalKey("c.SET.2"),
+					},
+					{
+						FileNum:  2,
+						Size:     1,
+						Smallest: base.ParseInternalKey("d.SET.2"),
+						Largest:  base.ParseInternalKey("e.SET.2"),
+					},
+				},
+			}),
+			cmp:      cmp,
+			level:    1,
+			depth:    2,
+			smallest: []byte("a"),
+			largest:  []byte("e"),
+			want: []manifest.UserKeyRange{
+				{
+					Start: []byte("a"),
+					End:   []byte("c"),
+				},
+				{
+					Start: []byte("d"),
+					End:   []byte("e"),
+				},
+			},
+		},
+		{
+			name: "No overlapping key ranges",
+			v: newVersion(opts, [numLevels][]*fileMetadata{
+				1: {
+					{
+						FileNum:  1,
+						Size:     1,
+						Smallest: base.ParseInternalKey("a.SET.1"),
+						Largest:  base.ParseInternalKey("c.SET.1"),
+					},
+					{
+						FileNum:  2,
+						Size:     1,
+						Smallest: base.ParseInternalKey("l.SET.1"),
+						Largest:  base.ParseInternalKey("p.SET.1"),
+					},
+				},
+				2: {
+					{
+						FileNum:  3,
+						Size:     1,
+						Smallest: base.ParseInternalKey("d.SET.1"),
+						Largest:  base.ParseInternalKey("i.SET.1"),
+					},
+					{
+						FileNum:  4,
+						Size:     1,
+						Smallest: base.ParseInternalKey("s.SET.1"),
+						Largest:  base.ParseInternalKey("w.SET.1"),
+					},
+				},
+			}),
+			cmp:      cmp,
+			level:    1,
+			depth:    2,
+			smallest: []byte("a"),
+			largest:  []byte("z"),
+			want: []manifest.UserKeyRange{
+				{
+					Start: []byte("a"),
+					End:   []byte("c"),
+				},
+				{
+					Start: []byte("d"),
+					End:   []byte("i"),
+				},
+				{
+					Start: []byte("l"),
+					End:   []byte("p"),
+				},
+				{
+					Start: []byte("s"),
+					End:   []byte("w"),
+				},
+			},
+		},
+		{
+			name: "First few non-overlapping, followed by overlapping",
+			v: newVersion(opts, [numLevels][]*fileMetadata{
+				1: {
+					{
+						FileNum:  1,
+						Size:     1,
+						Smallest: base.ParseInternalKey("a.SET.1"),
+						Largest:  base.ParseInternalKey("c.SET.1"),
+					},
+					{
+						FileNum:  2,
+						Size:     1,
+						Smallest: base.ParseInternalKey("d.SET.1"),
+						Largest:  base.ParseInternalKey("e.SET.1"),
+					},
+					{
+						FileNum:  3,
+						Size:     1,
+						Smallest: base.ParseInternalKey("n.SET.1"),
+						Largest:  base.ParseInternalKey("o.SET.1"),
+					},
+					{
+						FileNum:  4,
+						Size:     1,
+						Smallest: base.ParseInternalKey("p.SET.1"),
+						Largest:  base.ParseInternalKey("q.SET.1"),
+					},
+				},
+				2: {
+					{
+						FileNum:  5,
+						Size:     1,
+						Smallest: base.ParseInternalKey("m.SET.1"),
+						Largest:  base.ParseInternalKey("q.SET.1"),
+					},
+					{
+						FileNum:  6,
+						Size:     1,
+						Smallest: base.ParseInternalKey("s.SET.1"),
+						Largest:  base.ParseInternalKey("w.SET.1"),
+					},
+				},
+			}),
+			cmp:      cmp,
+			level:    1,
+			depth:    2,
+			smallest: []byte("a"),
+			largest:  []byte("z"),
+			want: []manifest.UserKeyRange{
+				{
+					Start: []byte("a"),
+					End:   []byte("c"),
+				},
+				{
+					Start: []byte("d"),
+					End:   []byte("e"),
+				},
+				{
+					Start: []byte("m"),
+					End:   []byte("q"),
+				},
+				{
+					Start: []byte("s"),
+					End:   []byte("w"),
+				},
+			},
+		},
+		{
+			name: "All overlapping",
+			v: newVersion(opts, [numLevels][]*fileMetadata{
+				1: {
+					{
+						FileNum:  1,
+						Size:     1,
+						Smallest: base.ParseInternalKey("d.SET.1"),
+						Largest:  base.ParseInternalKey("e.SET.1"),
+					},
+					{
+						FileNum:  2,
+						Size:     1,
+						Smallest: base.ParseInternalKey("n.SET.1"),
+						Largest:  base.ParseInternalKey("o.SET.1"),
+					},
+					{
+						FileNum:  3,
+						Size:     1,
+						Smallest: base.ParseInternalKey("p.SET.1"),
+						Largest:  base.ParseInternalKey("q.SET.1"),
+					},
+				},
+				2: {
+					{
+						FileNum:  4,
+						Size:     1,
+						Smallest: base.ParseInternalKey("a.SET.1"),
+						Largest:  base.ParseInternalKey("c.SET.1"),
+					},
+					{
+						FileNum:  5,
+						Size:     1,
+						Smallest: base.ParseInternalKey("d.SET.1"),
+						Largest:  base.ParseInternalKey("w.SET.1"),
+					},
+				},
+			}),
+			cmp:      cmp,
+			level:    1,
+			depth:    2,
+			smallest: []byte("a"),
+			largest:  []byte("z"),
+			want: []manifest.UserKeyRange{
+				{
+					Start: []byte("a"),
+					End:   []byte("c"),
+				},
+				{
+					Start: []byte("d"),
+					End:   []byte("w"),
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := calculateInuseKeyRanges(tt.v, tt.cmp, tt.level, tt.depth, tt.smallest, tt.largest); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("calculateInuseKeyRanges() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
