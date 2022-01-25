@@ -82,6 +82,17 @@ func (l *snapshotList) empty() bool {
 	return l.root.next == &l.root
 }
 
+func (l *snapshotList) count() int {
+	if l.empty() {
+		return 0
+	}
+	var count int
+	for i := l.root.next; i != &l.root; i = i.next {
+		count++
+	}
+	return count
+}
+
 func (l *snapshotList) earliest() uint64 {
 	v := uint64(math.MaxUint64)
 	if !l.empty() {

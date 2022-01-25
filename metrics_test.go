@@ -38,6 +38,8 @@ func TestMetricsFormat(t *testing.T) {
 	m.MemTable.Count = 12
 	m.MemTable.ZombieSize = 13
 	m.MemTable.ZombieCount = 14
+	m.Snapshots.Count = 4
+	m.Snapshots.EarliestSeqNum = 1024
 	m.Table.ZombieSize = 15
 	m.Table.ZombieCount = 16
 	m.TableCache.Size = 17
@@ -89,6 +91,7 @@ zmemtbl        14    13 B
    ztbl        16    15 B
  bcache         2     1 B   42.9%  (score == hit-rate)
  tcache        18    17 B   48.7%  (score == hit-rate)
+  snaps         4       -    1024  (score == earliest seq num)
  titers        21
  filter         -       -   47.4%  (score == utility)
 `
@@ -224,6 +227,7 @@ zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         0     0 B    0.0%  (score == hit-rate)
  tcache         0     0 B    0.0%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
 `

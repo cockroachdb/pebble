@@ -166,6 +166,13 @@ type Metrics struct {
 		ZombieCount int64
 	}
 
+	Snapshots struct {
+		// The number of currently open snapshots.
+		Count int
+		// The sequence number of the earliest, currently open snapshot.
+		EarliestSeqNum uint64
+	}
+
 	Table struct {
 		// The number of bytes present in obsolete tables which are no longer
 		// referenced by the current DB state or any open iterators.
@@ -306,6 +313,7 @@ func (m *Metrics) formatWAL(w redact.SafePrinter) {
 //      ztbl         0     0 B
 //    bcache         4   752 B    7.7%  (score == hit-rate)
 //    tcache         0     0 B    0.0%  (score == hit-rate)
+// snapshots         0               0  (score == earliest seq num)
 //    titers         0
 //    filter         -       -    0.0%  (score == utility)
 //
@@ -384,6 +392,10 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		humanize.IEC.Uint64(m.Table.ZombieSize))
 	formatCacheMetrics(w, &m.BlockCache, "bcache")
 	formatCacheMetrics(w, &m.TableCache, "tcache")
+	w.Printf("  snaps %9d %7s %7d  (score == earliest seq num)\n",
+		redact.Safe(m.Snapshots.Count),
+		notApplicable,
+		redact.Safe(m.Snapshots.EarliestSeqNum))
 	w.Printf(" titers %9d\n", redact.Safe(m.TableIters))
 	w.Printf(" filter %9s %7s %6.1f%%  (score == utility)\n",
 		notApplicable,
