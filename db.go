@@ -1337,6 +1337,10 @@ func (d *DB) Metrics() *Metrics {
 	for _, m := range d.mu.mem.queue {
 		metrics.MemTable.Size += m.totalBytes()
 	}
+	metrics.Snapshots.Count = d.mu.snapshots.count()
+	if metrics.Snapshots.Count > 0 {
+		metrics.Snapshots.EarliestSeqNum = d.mu.snapshots.earliest()
+	}
 	metrics.MemTable.Count = int64(len(d.mu.mem.queue))
 	metrics.MemTable.ZombieCount = atomic.LoadInt64(&d.atomic.memTableCount) - metrics.MemTable.Count
 	metrics.MemTable.ZombieSize = uint64(atomic.LoadInt64(&d.atomic.memTableReserved)) - metrics.MemTable.Size
