@@ -28,5 +28,6 @@ zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         0     0 B    0.0%  (score == hit-rate)
  tcache         0     0 B    0.0%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
