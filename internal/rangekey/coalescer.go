@@ -160,6 +160,11 @@ func (c *Coalescer) Start() []byte {
 	return c.start
 }
 
+// Pending returns true if there exists a pending span in the coalescer.
+func (c *Coalescer) Pending() bool {
+	return len(c.items.items) > 0 || c.delete
+}
+
 // Finish must be called after all spans have been added. It flushes the
 // remaining pending CoalescedSpan if any. Finish may also be called at any time
 // to flush the pending CoalescedSpan and reset the coalescer.

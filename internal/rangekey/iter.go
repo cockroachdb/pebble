@@ -58,6 +58,7 @@ func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum ui
 	}
 	i.coalescer.Init(cmp, formatKey, visibleSeqNum, func(span CoalescedSpan) {
 		i.curr = span
+		i.valid = true
 	})
 }
 
@@ -82,17 +83,17 @@ func (i *Iter) Error() error {
 func (i *Iter) coalesceForward() *CoalescedSpan {
 	i.dir = +1
 	i.valid = false
+	i.curr = CoalescedSpan{}
 	// As long as we have a key and that key matches the coalescer's current
 	// start key, it must be coalesced.
 	// TODO(jackson): This key comparison is redundant with the one performed by
 	// Coalescer.Add. Tweaking the interfaces should be able to remove the
 	// comparison.
-	for i.iterKey != nil && (!i.valid || i.coalescer.items.cmp(i.iterKey.UserKey, i.coalescer.Start()) == 0) {
+	for i.iterKey != nil && (!i.coalescer.Pending() || i.coalescer.items.cmp(i.iterKey.UserKey, i.coalescer.Start()) == 0) {
 		if err := i.coalescer.Add(i.iter.Current()); err != nil {
 			i.valid, i.err = false, err
 			return nil
 		}
-		i.valid = true
 		i.iterKey, _ = i.iter.Next()
 	}
 	// NB: Finish populates i.curr with the coalesced span.
@@ -106,17 +107,17 @@ func (i *Iter) coalesceForward() *CoalescedSpan {
 func (i *Iter) coalesceBackward() *CoalescedSpan {
 	i.dir = -1
 	i.valid = false
+	i.curr = CoalescedSpan{}
 	// As long as we have a key and that key matches the coalescer's current
 	// start key, it must be coalesced.
 	// TODO(jackson): This key comparison is redundant with the one performed by
 	// Coalescer.AddReverse. Tweaking the interfaces should be able to remove
 	// the comparison.
-	for i.iterKey != nil && (!i.valid || i.coalescer.items.cmp(i.iterKey.UserKey, i.coalescer.Start()) == 0) {
+	for i.iterKey != nil && (!i.coalescer.Pending() || i.coalescer.items.cmp(i.iterKey.UserKey, i.coalescer.Start()) == 0) {
 		if err := i.coalescer.AddReverse(i.iter.Current()); err != nil {
 			i.valid, i.err = false, err
 			return nil
 		}
-		i.valid = true
 		i.iterKey, _ = i.iter.Prev()
 	}
 	// NB: Finish populates i.curr with the coalesced span.

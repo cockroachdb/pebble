@@ -236,3 +236,42 @@ prev
 .
 ●   [q, z)#14
 └── @9 : mangos
+
+define visible-seq-num=10
+a.RANGEKEYSET.8  : c [(@5=apples)]
+a.RANGEKEYSET.7  : c [(@3=bananas)]
+a.RANGEKEYSET.4  : c [(@2=oranges)]
+c.RANGEKEYSET.12 : d [(@3=coconut)]
+c.RANGEKEYSET.5  : d [(@1=coconut)]
+d.RANGEKEYSET.5  : f [(@1=coconut)]
+d.RANGEKEYSET.15 : f [(@2=oranges)]
+----
+OK
+
+iter
+first
+next
+next
+----
+●   [a, c)#8
+├── @5 : apples
+├── @3 : bananas
+└── @2 : oranges
+●   [c, d)#5
+└── @1 : coconut
+●   [d, f)#5
+└── @1 : coconut
+
+iter
+last
+prev
+prev
+----
+●   [d, f)#5
+└── @1 : coconut
+●   [c, d)#5
+└── @1 : coconut
+●   [a, c)#8
+├── @5 : apples
+├── @3 : bananas
+└── @2 : oranges
