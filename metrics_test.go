@@ -98,10 +98,17 @@ zmemtbl        14    13 B
 }
 
 func TestMetrics(t *testing.T) {
-	d, err := Open("", &Options{
+	opts := &Options{
 		FS:                    vfs.NewMem(),
 		L0CompactionThreshold: 8,
-	})
+	}
+
+	// Prevent foreground flushes and compactions from triggering asynchronous
+	// follow-up compactions. This avoids asynchronously-scheduled work from
+	// interfering with the expected metrics output and reduces test flakiness.
+	opts.private.disableAutomaticCompactions = true
+
+	d, err := Open("", opts)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, d.Close())
