@@ -179,24 +179,28 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			fmt.Fprintf(&b, "err=%v\n", err)
 		} else if valid != iter.Valid() {
 			fmt.Fprintf(&b, "mismatched valid states: %t vs %t\n", valid, iter.Valid())
-		} else if valid {
+		} else {
 			switch {
 			case iter.opts.rangeKeys() && iter.opts.pointKeys():
 				hasPoint, hasRange := iter.HasPointAndRange()
-				fmt.Fprintf(&b, "%s:%s (", iter.Key(), validityStateStr)
-				if hasPoint {
-					fmt.Fprintf(&b, "%s, ", iter.Value())
+				if !hasPoint && !hasRange {
+					fmt.Fprintf(&b, ".%s", validityStateStr)
 				} else {
-					fmt.Fprint(&b, "., ")
+					fmt.Fprintf(&b, "%s:%s (", iter.Key(), validityStateStr)
+					if hasPoint {
+						fmt.Fprintf(&b, "%s, ", iter.Value())
+					} else {
+						fmt.Fprint(&b, "., ")
+					}
+					if hasRange {
+						start, end := iter.RangeBounds()
+						fmt.Fprintf(&b, "[%s-%s)", start, end)
+						writeRangeKeys(&b, iter)
+					} else {
+						fmt.Fprint(&b, ".")
+					}
+					fmt.Fprint(&b, ")")
 				}
-				if hasRange {
-					start, end := iter.RangeBounds()
-					fmt.Fprintf(&b, "[%s-%s)", start, end)
-					writeRangeKeys(&b, iter)
-				} else {
-					fmt.Fprint(&b, ".")
-				}
-				fmt.Fprint(&b, ")")
 			case iter.opts.rangeKeys():
 				if iter.Valid() {
 					hasPoint, hasRange := iter.HasPointAndRange()
@@ -210,11 +214,13 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 					fmt.Fprint(&b, ".")
 				}
 			default:
-				fmt.Fprintf(&b, "%s:%s%s", iter.Key(), iter.Value(), validityStateStr)
+				if valid {
+					fmt.Fprintf(&b, "%s:%s%s", iter.Key(), iter.Value(), validityStateStr)
+				} else {
+					fmt.Fprintf(&b, ".%s\n", validityStateStr)
+				}
 			}
 			fmt.Fprintln(&b)
-		} else {
-			fmt.Fprintf(&b, ".%s\n", validityStateStr)
 		}
 	}
 	return b.String()

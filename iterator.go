@@ -603,14 +603,8 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 	for i.iterKey != nil {
 		key := *i.iterKey
 
-		// NB: We cannot pause if the current key is covered by a range key.
-		// Otherwise, the user might not ever learn of a range key that covers
-		// the key space being iterated over in which there are no point keys.
-		// Since limits are best effort, ignoring the limit in this case is
-		// allowed by the contract of limit.
-		if firstLoopIter && limit != nil && i.cmp(limit, i.iterKey.UserKey) > 0 && !i.iterHasRangeKey() {
-			i.iterValidityState = IterAtLimit
-			i.pos = iterPosCurReversePaused
+		if firstLoopIter && limit != nil && i.cmp(limit, i.iterKey.UserKey) > 0 {
+			i.atReverseLimit(limit)
 			return
 		}
 		firstLoopIter = false
@@ -688,9 +682,8 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			// other than the firstLoopIter case above, where we could step
 			// to a different user key and start processing it for returning
 			// to the caller.
-			if limit != nil && i.iterKey != nil && i.cmp(limit, i.iterKey.UserKey) > 0 && !i.iterHasRangeKey() {
-				i.iterValidityState = IterAtLimit
-				i.pos = iterPosCurReversePaused
+			if limit != nil && i.iterKey != nil && i.cmp(limit, i.iterKey.UserKey) > 0 {
+				i.atReverseLimit(limit)
 				return
 			}
 			continue
@@ -767,6 +760,36 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			i.iterValidityState = IterExhausted
 		}
 	}
+}
+
+func (i *Iterator) atReverseLimit(limit []byte) {
+	if !i.iterHasRangeKey() {
+		// If there are no pending range keys, leave the iterator in an AtLimit
+		// state.
+		i.iterValidityState = IterAtLimit
+		i.pos = iterPosCurReversePaused
+		return
+	}
+
+	// There are pending range keys. We need to ensure that the iterator exposes
+	// range keys covering the previous iterator position up to limit.
+	i.setRangeKey()
+
+	// If the range key's exclusive end is ≤ limit, then this range key doesn't
+	// overlap the space from the previous iterator position up to limit.
+	if i.cmp(i.rangeKey.end, limit) <= 0 {
+		i.iterValidityState = IterAtLimit
+		i.pos = iterPosCurReversePaused
+		return
+	}
+
+	// The range key covers key(s) ≥ limit. Pause the iterator at a valid
+	// position at the limit.
+	i.rangeKey.rangeKeyOnly = true
+	i.keyBuf = append(i.keyBuf[:0], limit...)
+	i.key = i.keyBuf
+	i.iterValidityState = IterAtLimit
+	i.pos = iterPosCurReversePaused
 }
 
 func (i *Iterator) prevUserKey() {
@@ -1388,13 +1411,17 @@ func (i *Iterator) saveRangeKey() {
 // HasPointAndRange indicates whether there exists a point key, a range key or
 // both at the current iterator position.
 func (i *Iterator) HasPointAndRange() (hasPoint, hasRange bool) {
-	if i.iterValidityState != IterValid {
+	if i.rangeKey == nil {
+		return i.iterValidityState == IterValid, false
+	}
+	switch i.iterValidityState {
+	case IterValid:
+		return !i.rangeKey.rangeKeyOnly, i.rangeKey.hasRangeKey
+	case IterAtLimit:
+		return false, i.rangeKey.hasRangeKey
+	default:
 		return false, false
 	}
-	if i.rangeKey == nil {
-		return true, false
-	}
-	return !i.rangeKey.rangeKeyOnly, i.rangeKey.hasRangeKey
 }
 
 // RangeBounds returns the start (inclusive) and end (exclusive) bounds of the

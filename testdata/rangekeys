@@ -447,9 +447,9 @@ seek-lt-limit z y
 next
 prev-limit y
 ----
-x: valid (., [x-z) @5=boop)
+y: at-limit (., [x-z) @5=boop)
 .
-x: valid (., [x-z) @5=boop)
+y: at-limit (., [x-z) @5=boop)
 
 # Test limited forward iteration. Since range keys are interleaved at the start
 # boundaries, the iterator is guaranteed to encounter covering range keys
@@ -478,6 +478,28 @@ seek-lt-limit z y
 next
 prev-limit y
 ----
-x: valid (., [x-z) @5=boop)
+y: at-limit (., [x-z) @5=boop)
 .
+y: at-limit (., [x-z) @5=boop)
+
+batch
+set xray foo
+----
+wrote 1 keys
+
+combined-iter
+seek-lt-limit z y
+prev-limit y
+next
+prev-limit y
+prev-limit a
+prev-limit a
+prev-limit a
+----
+y: at-limit (., [x-z) @5=boop)
+y: at-limit (., [x-z) @5=boop)
+.
+y: at-limit (., [x-z) @5=boop)
+xray: valid (foo, [x-z) @5=boop)
 x: valid (., [x-z) @5=boop)
+. exhausted
