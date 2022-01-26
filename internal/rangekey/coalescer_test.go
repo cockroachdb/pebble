@@ -168,6 +168,15 @@ func TestIter(t *testing.T) {
 		buf.Reset()
 		switch td.Cmd {
 		case "define":
+			visibleSeqNum := base.InternalKeySeqNumMax
+			for _, arg := range td.CmdArgs {
+				if arg.Key == "visible-seq-num" {
+					var err error
+					visibleSeqNum, err = strconv.ParseUint(arg.Vals[0], 10, 64)
+					require.NoError(t, err)
+				}
+			}
+
 			var spans []keyspan.Span
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
@@ -180,7 +189,7 @@ func TestIter(t *testing.T) {
 					Value: v,
 				})
 			}
-			iter.Init(cmp, testkeys.Comparer.FormatKey, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, spans))
+			iter.Init(cmp, testkeys.Comparer.FormatKey, visibleSeqNum, keyspan.NewIter(cmp, spans))
 			return "OK"
 		case "iter":
 			buf.Reset()
