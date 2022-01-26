@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -22,6 +21,20 @@ import (
 )
 
 var (
+	// Captures a common logging prefix that can be used as the context for the
+	// surrounding information captured by other expressions. Example:
+	//
+	//   I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s5] ...
+	//
+	logContextPattern = regexp.MustCompile(
+		`^.*` +
+			/* Timestamp        */ `(?P<timestamp>\d{6} \d{2}:\d{2}:\d{2}.\d{6}).*` +
+			/* Node / Store     */ `\[n(?P<node>\d+|\?),.*?,s(?P<store>\d+|\?).*?\].*`,
+	)
+	logContextPatternTimestampIdx = logContextPattern.SubexpIndex("timestamp")
+	logContextPatternNodeIdx      = logContextPattern.SubexpIndex("node")
+	logContextPatternStoreIdx     = logContextPattern.SubexpIndex("store")
+
 	// Matches either a compaction or a memtable flush log line.
 	//
 	// A compaction start / end line resembles:
@@ -41,26 +54,20 @@ var (
 	// NOTE: we use the log timestamp to compute the compaction duration rather
 	// than the Pebble log output.
 	compactionPattern = regexp.MustCompile(
-		`^.` +
-			/* Timestamp       */ `(?P<timestamp>\d{6} \d{2}:\d{2}:\d{2}.\d{6}).*` +
-			/* Node / Store    */ `\[n(?P<node>\d+|\?),.*?,s(?P<store>\d+|\?).*?\].*` +
-			/* Job ID          */ `\[JOB (?P<job>\d+)]\s` +
-			/* Start / end     */ `compact(?P<suffix>ed|ing)` +
-			/* Compaction type */ `\((?P<type>.*?)\) ` +
-			/* Start level     */ `L(?P<from>\d)(?:.*(?:\+|->)\s` +
-			/* End level       */ `L(?P<to>\d))?` +
-			/* Bytes           */ `(?:.*?\((?P<digit>.*?)\s(?P<unit>.*?)\))?`,
+		`^.*` +
+			/* Job ID           */ `\[JOB (?P<job>\d+)]\s` +
+			/* Start / end      */ `compact(?P<suffix>ed|ing)` +
+			/* Compaction type  */ `\((?P<type>.*?)\)\s` +
+			/* Start /end level */ `L(?P<from>\d)(?:.*(?:\+|->)\sL(?P<to>\d))?` +
+			/* Bytes            */ `(?:.*?\((?P<digit>.*?)\s(?P<unit>.*?)\))?`,
 	)
-	compactionPatternTimestampIdx = compactionPattern.SubexpIndex("timestamp")
-	compactionPatternNode         = compactionPattern.SubexpIndex("node")
-	compactionPatternStore        = compactionPattern.SubexpIndex("store")
-	compactionPatternJobIdx       = compactionPattern.SubexpIndex("job")
-	compactionPatternSuffixIdx    = compactionPattern.SubexpIndex("suffix")
-	compactionPatternTypeIdx      = compactionPattern.SubexpIndex("type")
-	compactionPatternFromIdx      = compactionPattern.SubexpIndex("from")
-	compactionPatternToIdx        = compactionPattern.SubexpIndex("to")
-	compactionPatternDigitIdx     = compactionPattern.SubexpIndex("digit")
-	compactionPatternUnitIdx      = compactionPattern.SubexpIndex("unit")
+	compactionPatternJobIdx    = compactionPattern.SubexpIndex("job")
+	compactionPatternSuffixIdx = compactionPattern.SubexpIndex("suffix")
+	compactionPatternTypeIdx   = compactionPattern.SubexpIndex("type")
+	compactionPatternFromIdx   = compactionPattern.SubexpIndex("from")
+	compactionPatternToIdx     = compactionPattern.SubexpIndex("to")
+	compactionPatternDigitIdx  = compactionPattern.SubexpIndex("digit")
+	compactionPatternUnitIdx   = compactionPattern.SubexpIndex("unit")
 
 	// Example memtable flush log lines:
 	//
@@ -70,35 +77,24 @@ var (
 	// NOTE: we use the log timestamp to compute the flush duration rather than
 	// the Pebble log output.
 	flushPattern = regexp.MustCompile(
-		`^.` +
-			/* Timestamp    */ `(?P<timestamp>\d{6} \d{2}:\d{2}:\d{2}.\d{6})\s.*` +
-			/* Node / Store */ `\[n(?P<node>\d+|\?),.*?,s(?P<store>\d+|\?).*?\].*` +
-			/* Job ID       */ `\[JOB (?P<job>\d+)]\s` +
-			/* Start / End  */ `flush(?P<suffix>ed|ing)` +
-			/* Bytes        */ `(?:.*?\((?P<digit>.*?)\s(?P<unit>.*?)\))?`,
+		`^..*` +
+			/* Job ID          */ `\[JOB (?P<job>\d+)]\s` +
+			/* Compaction type */ `flush(?P<suffix>ed|ing)` +
+			/* Bytes           */ `(?:.*?\((?P<digit>.*?)\s(?P<unit>.*?)\))?`,
 	)
-	flushPatternTimestampIdx = flushPattern.SubexpIndex("timestamp")
-	flushPatternNode         = flushPattern.SubexpIndex("node")
-	flushPatternStore        = flushPattern.SubexpIndex("store")
-	flushPatternSuffixIdx    = flushPattern.SubexpIndex("suffix")
-	flushPatternJobIdx       = flushPattern.SubexpIndex("job")
-	flushPatternDigitIdx     = flushPattern.SubexpIndex("digit")
-	flushPatternUnitIdx      = flushPattern.SubexpIndex("unit")
+	flushPatternSuffixIdx = flushPattern.SubexpIndex("suffix")
+	flushPatternJobIdx    = flushPattern.SubexpIndex("job")
+	flushPatternDigitIdx  = flushPattern.SubexpIndex("digit")
+	flushPatternUnitIdx   = flushPattern.SubexpIndex("unit")
 
 	// Example read-amp log line:
 	//
-	//   I211215 14:55:15.802648 155 kv/kvserver/store.go:2668 ⋮ [n5,s5] 109057 +  total     44905   672 G       -   1.2 T   714 G   118 K   215 G    34 K   4.0 T   379 K   2.8 T     514     3.4
+	//   total     31766   188 G       -   257 G   187 G    48 K   3.6 G     744   536 G    49 K   278 G       5     2.1
 	//
 	readAmpPattern = regexp.MustCompile(
-		`^.` +
-			/* Timestamp    */ `(?P<timestamp>\d{6} \d{2}:\d{2}:\d{2}.\d{6}).*` +
-			/* Node / Store */ `\[n(?P<node>\d+|\?),s(?P<store>\d+|\?)\].*` +
-			/* Read-amp     */ `total.*?(?P<value>\d+).{8}$`,
+		/* Read-amp     */ `(?:^|\+)\s{2}total.*?(?P<value>\d+).{8}$`,
 	)
-	readAmpPatternTimestampIdx = readAmpPattern.SubexpIndex("timestamp")
-	readAmpPatternNode         = readAmpPattern.SubexpIndex("node")
-	readAmpPatternStore        = readAmpPattern.SubexpIndex("store")
-	readAmpPatternValueIdx     = readAmpPattern.SubexpIndex("value")
+	readAmpPatternValueIdx = readAmpPattern.SubexpIndex("value")
 )
 
 const (
@@ -112,10 +108,6 @@ const (
 
 	// timeFmtHrMinSec prints only the hour, minute and second of the time.
 	timeFmtHrMinSec = "15:04:05"
-
-	// pebbleLogPrefix is the well-known prefix for a pebble log file.
-	// See:https://github.com/cockroachdb/cockroach/blob/master/docs/RFCS/20200728_log_modernization.md
-	pebbleLogPrefix = "cockroach-pebble"
 )
 
 // compactionType is the type of compaction. It tracks the types in
@@ -172,11 +164,9 @@ func parseCompactionType(s string) (t compactionType, err error) {
 
 // compactionStart is a compaction start event.
 type compactionStart struct {
-	nodeID    int
-	storeID   int
+	ctx       logContext
 	jobID     int
 	cType     compactionType
-	time      time.Time
 	fromLevel int
 	toLevel   int
 }
@@ -185,29 +175,6 @@ type compactionStart struct {
 // compaction start log line into a compactionStart event.
 func parseCompactionStart(matches []string) (compactionStart, error) {
 	var start compactionStart
-
-	// Parse start time.
-	tStart, err := time.Parse(timeFmt, matches[compactionPatternTimestampIdx])
-	if err != nil {
-		return start, errors.Newf("could not parse start time: %s", err)
-	}
-
-	// Parse node and store.
-	nodeID, err := strconv.Atoi(matches[compactionPatternNode])
-	if err != nil {
-		if matches[compactionPatternNode] != "?" {
-			return start, errors.Newf("could not parse node ID: %s", err)
-		}
-		nodeID = -1
-	}
-
-	storeID, err := strconv.Atoi(matches[compactionPatternStore])
-	if err != nil {
-		if matches[compactionPatternStore] != "?" {
-			return start, errors.Newf("could not parse store ID: %s", err)
-		}
-		storeID = -1
-	}
 
 	// Parse job ID.
 	jobID, err := strconv.Atoi(matches[compactionPatternJobIdx])
@@ -237,11 +204,8 @@ func parseCompactionStart(matches []string) (compactionStart, error) {
 	}
 
 	start = compactionStart{
-		nodeID:    nodeID,
-		storeID:   storeID,
 		jobID:     jobID,
 		cType:     cType,
-		time:      tStart,
 		fromLevel: from,
 		toLevel:   to,
 	}
@@ -251,10 +215,7 @@ func parseCompactionStart(matches []string) (compactionStart, error) {
 
 // compactionEnd is a compaction end event.
 type compactionEnd struct {
-	nodeID         int
-	storeID        int
 	jobID          int
-	time           time.Time
 	compactedBytes uint64
 }
 
@@ -263,41 +224,12 @@ type compactionEnd struct {
 func parseCompactionEnd(matches []string) (compactionEnd, error) {
 	var end compactionEnd
 
-	// Parse end time.
-	tEnd, err := time.Parse(timeFmt, matches[compactionPatternTimestampIdx])
-	if err != nil {
-		return end, errors.Newf("could not parse start time: %s", err)
-	}
-
-	// Parse node and store.
-	nodeID, err := strconv.Atoi(matches[compactionPatternNode])
-	if err != nil {
-		if matches[compactionPatternNode] != "?" {
-			return end, errors.Newf("could not parse node ID: %s", err)
-		}
-		nodeID = -1
-	}
-
-	storeID, err := strconv.Atoi(matches[compactionPatternStore])
-	if err != nil {
-		if matches[compactionPatternStore] != "?" {
-			return end, errors.Newf("could not parse store ID: %s", err)
-		}
-		storeID = -1
-	}
-
 	// Parse job ID.
 	jobID, err := strconv.Atoi(matches[compactionPatternJobIdx])
 	if err != nil {
 		return end, errors.Newf("could not parse jobID: %s", err)
 	}
-
-	end = compactionEnd{
-		nodeID:  nodeID,
-		storeID: storeID,
-		jobID:   jobID,
-		time:    tEnd,
-	}
+	end = compactionEnd{jobID: jobID}
 
 	// Optionally, if we have compacted bytes.
 	if matches[compactionPatternDigitIdx] != "" {
@@ -315,42 +247,14 @@ func parseCompactionEnd(matches []string) (compactionEnd, error) {
 // memtable flush start log line into a compactionStart event.
 func parseFlushStart(matches []string) (compactionStart, error) {
 	var start compactionStart
-
-	// Parse start time.
-	tStart, err := time.Parse(timeFmt, matches[flushPatternTimestampIdx])
-	if err != nil {
-		return start, errors.Newf("could not parse start time: %s", err)
-	}
-
-	// Parse node and store.
-	nodeID, err := strconv.Atoi(matches[flushPatternNode])
-	if err != nil {
-		if matches[flushPatternNode] != "?" {
-			return start, errors.Newf("could not parse node ID: %s", err)
-		}
-		nodeID = -1
-	}
-
-	storeID, err := strconv.Atoi(matches[flushPatternStore])
-	if err != nil {
-		if matches[flushPatternStore] != "?" {
-			return start, errors.Newf("could not parse store ID: %s", err)
-		}
-		storeID = -1
-	}
-
 	// Parse job ID.
 	jobID, err := strconv.Atoi(matches[flushPatternJobIdx])
 	if err != nil {
 		return start, errors.Newf("could not parse jobID: %s", err)
 	}
-
 	c := compactionStart{
-		nodeID:    nodeID,
-		storeID:   storeID,
 		jobID:     jobID,
 		cType:     compactionTypeFlush,
-		time:      tStart,
 		fromLevel: -1,
 		toLevel:   0,
 	}
@@ -362,41 +266,12 @@ func parseFlushStart(matches []string) (compactionStart, error) {
 func parseFlushEnd(matches []string) (compactionEnd, error) {
 	var end compactionEnd
 
-	// Parse end time.
-	tEnd, err := time.Parse(timeFmt, matches[flushPatternTimestampIdx])
-	if err != nil {
-		return end, errors.Newf("could not parse start time: %s", err)
-	}
-
-	// Parse node and store.
-	nodeID, err := strconv.Atoi(matches[flushPatternNode])
-	if err != nil {
-		if matches[flushPatternNode] != "?" {
-			return end, errors.Newf("could not parse node ID: %s", err)
-		}
-		nodeID = -1
-	}
-
-	storeID, err := strconv.Atoi(matches[flushPatternStore])
-	if err != nil {
-		if matches[flushPatternStore] != "?" {
-			return end, errors.Newf("could not parse store ID: %s", err)
-		}
-		storeID = -1
-	}
-
 	// Parse job ID.
 	jobID, err := strconv.Atoi(matches[flushPatternJobIdx])
 	if err != nil {
 		return end, errors.Newf("could not parse jobID: %s", err)
 	}
-
-	end = compactionEnd{
-		nodeID:  nodeID,
-		storeID: storeID,
-		jobID:   jobID,
-		time:    tEnd,
-	}
+	end = compactionEnd{jobID: jobID}
 
 	// Optionally, if we have flushed bytes.
 	if matches[flushPatternDigitIdx] != "" {
@@ -426,10 +301,16 @@ type compaction struct {
 
 // readAmp represents a read-amp event.
 type readAmp struct {
-	nodeID  int
-	storeID int
-	time    time.Time
+	ctx     logContext
 	readAmp int
+}
+
+type nodeStoreJob struct {
+	node, store, job int
+}
+
+func (n nodeStoreJob) String() string {
+	return fmt.Sprintf("(node=%d,store=%d,job=%d)", n.node, n.store, n.job)
 }
 
 // logEventCollector keeps track of open compaction events and read-amp events
@@ -438,7 +319,8 @@ type readAmp struct {
 // Read-amp events are added as they are encountered (the have no start / end
 // concept).
 type logEventCollector struct {
-	m           map[int]compactionStart
+	ctx         logContext
+	m           map[nodeStoreJob]compactionStart
 	compactions []compaction
 	readAmps    []readAmp
 }
@@ -446,41 +328,44 @@ type logEventCollector struct {
 // newEventCollector instantiates a new logEventCollector.
 func newEventCollector() *logEventCollector {
 	return &logEventCollector{
-		m: make(map[int]compactionStart),
+		m: make(map[nodeStoreJob]compactionStart),
 	}
 }
 
 // addCompactionStart adds a new compactionStart to the collector. The event is
 // tracked by its job ID.
 func (c *logEventCollector) addCompactionStart(start compactionStart) error {
-	if _, ok := c.m[start.jobID]; ok {
-		return errors.Newf("start event already seen for job %d", start.jobID)
+	key := nodeStoreJob{c.ctx.node, c.ctx.store, start.jobID}
+	if _, ok := c.m[key]; ok {
+		return errors.Newf("start event already seen for %s", key)
 	}
-	c.m[start.jobID] = start
+	start.ctx = c.ctx
+	c.m[key] = start
 	return nil
 }
 
-// addCompactionEnd completes the compaction event for the for the given
-// compactionEnd.
+// addCompactionEnd completes the compaction event for the given compactionEnd.
 func (c *logEventCollector) addCompactionEnd(end compactionEnd) {
-	start, ok := c.m[end.jobID]
+	key := nodeStoreJob{c.ctx.node, c.ctx.store, end.jobID}
+	start, ok := c.m[key]
 	if !ok {
 		_, _ = fmt.Fprintf(
 			os.Stderr,
-			"compaction end event missing start event for job ID %d; skipping", end.jobID)
+			"compaction end event missing start event for %s; skipping\n", key,
+		)
 		return
 	}
 
 	// Remove the job from the collector once it has been matched.
-	delete(c.m, end.jobID)
+	delete(c.m, key)
 
 	c.compactions = append(c.compactions, compaction{
-		nodeID:         start.nodeID,
-		storeID:        start.storeID,
+		nodeID:         start.ctx.node,
+		storeID:        start.ctx.store,
 		jobID:          start.jobID,
 		cType:          start.cType,
-		timeStart:      start.time,
-		timeEnd:        end.time,
+		timeStart:      start.ctx.timestamp,
+		timeEnd:        c.ctx.timestamp,
 		fromLevel:      start.fromLevel,
 		toLevel:        start.toLevel,
 		compactedBytes: end.compactedBytes,
@@ -488,13 +373,20 @@ func (c *logEventCollector) addCompactionEnd(end compactionEnd) {
 }
 
 // addReadAmp adds the readAmp event to the collector.
-func (c *logEventCollector) addReadAmp(time time.Time, nodeID, storeID int, val int) {
-	c.readAmps = append(c.readAmps, readAmp{
-		nodeID:  nodeID,
-		storeID: storeID,
-		time:    time,
-		readAmp: val,
-	})
+func (c *logEventCollector) addReadAmp(ra readAmp) {
+	ra.ctx = c.ctx
+	c.readAmps = append(c.readAmps, ra)
+}
+
+// logContext captures the metadata of log lines.
+type logContext struct {
+	timestamp   time.Time
+	node, store int
+}
+
+// saveContext saves the given logContext in the collector.
+func (c *logEventCollector) saveContext(ctx logContext) {
+	c.ctx = ctx
 }
 
 // level is a level in the LSM. The WAL is level -1.
@@ -652,13 +544,13 @@ func (r readAmpSlice) Len() int {
 
 func (r readAmpSlice) Less(i, j int) bool {
 	// Sort by node, store, then read-amp.
-	if r[i].nodeID != r[j].nodeID {
-		return r[i].nodeID < r[j].nodeID
+	if r[i].ctx.node != r[j].ctx.node {
+		return r[i].ctx.node < r[j].ctx.node
 	}
-	if r[i].storeID != r[j].storeID {
-		return r[i].storeID < r[j].storeID
+	if r[i].ctx.store != r[j].ctx.store {
+		return r[i].ctx.store < r[j].ctx.store
 	}
-	return r[i].time.Before(r[j].time)
+	return r[i].ctx.timestamp.Before(r[j].ctx.timestamp)
 }
 
 func (r readAmpSlice) Swap(i, j int) {
@@ -699,30 +591,89 @@ func (a *aggregator) aggregate() []windowSummary {
 	sort.Sort(compactionSlice(a.compactions))
 	sort.Sort(readAmpSlice(a.readAmps))
 
-	newWindow := func(start, end time.Time) windowSummary {
-		return windowSummary{
+	initWindow := func(c compaction) *windowSummary {
+		start := c.timeStart.Truncate(a.window)
+		return &windowSummary{
+			nodeID:           c.nodeID,
+			storeID:          c.storeID,
 			tStart:           start,
-			tEnd:             end,
+			tEnd:             start.Add(a.window),
 			compactionCounts: make(map[fromTo]compactionTypeCount),
 			compactionBytes:  make(map[fromTo]uint64),
 			compactionTime:   make(map[fromTo]time.Duration),
 		}
 	}
-	var windows []windowSummary
-	windowStart := a.compactions[0].timeStart.Truncate(a.window)
-	windowEnd := windowStart.Add(a.window)
-	curWindow := newWindow(windowStart, windowEnd)
 
+	var windows []windowSummary
 	var j int // index for read-amps
-	for i, e := range a.compactions {
+	finishWindow := func(cur *windowSummary) {
+		// Collect read-amp values for the previous window.
+		var readAmps []readAmp
+		for j < len(a.readAmps) {
+			ra := a.readAmps[j]
+
+			// Skip values before the current window.
+			if ra.ctx.node < cur.nodeID ||
+				ra.ctx.store < cur.storeID ||
+				ra.ctx.timestamp.Before(cur.tStart) {
+				j++
+				continue
+			}
+
+			// We've passed over the current window. Stop.
+			if ra.ctx.node > cur.nodeID ||
+				ra.ctx.store > cur.storeID ||
+				ra.ctx.timestamp.After(cur.tEnd) {
+				break
+			}
+
+			// Collect this read-amp value.
+			readAmps = append(readAmps, ra)
+			j++
+		}
+		cur.readAmps = readAmps
+
+		// Sort long running compactions in descending order of duration.
+		sort.Slice(cur.longRunning, func(i, j int) bool {
+			l := cur.longRunning[i]
+			r := cur.longRunning[j]
+			return l.timeEnd.Sub(l.timeStart) > r.timeEnd.Sub(r.timeStart)
+		})
+
+		// Add the completed window to the set of windows.
+		windows = append(windows, *cur)
+	}
+
+	// Move through the compactions, collecting relevant compactions into the same
+	// window. Windows have the same node and store, and a compaction start time
+	// within a given range.
+	i := 0
+	curWindow := initWindow(a.compactions[i])
+	for ; ; i++ {
+		// No more windows. Complete the current window.
+		if i == len(a.compactions) {
+			finishWindow(curWindow)
+			break
+		}
+		c := a.compactions[i]
+
+		// If we're at the start of a new interval, finalize the current window and
+		// start a new one.
+		if curWindow.nodeID != c.nodeID ||
+			curWindow.storeID != c.storeID ||
+			c.timeStart.After(curWindow.tEnd) {
+			finishWindow(curWindow)
+			curWindow = initWindow(c)
+		}
+
 		// Update compaction counts.
-		ft := fromTo{level(e.fromLevel), level(e.toLevel)}
+		ft := fromTo{level(c.fromLevel), level(c.toLevel)}
 		m, ok := curWindow.compactionCounts[ft]
 		if !ok {
 			m = make(compactionTypeCount)
 			curWindow.compactionCounts[ft] = m
 		}
-		m[e.cType]++
+		m[c.cType]++
 		curWindow.eventCount++
 
 		// Update compacted bytes.
@@ -730,81 +681,28 @@ func (a *aggregator) aggregate() []windowSummary {
 		if !ok {
 			curWindow.compactionBytes[ft] = 0
 		}
-		curWindow.compactionBytes[ft] += e.compactedBytes
+		curWindow.compactionBytes[ft] += c.compactedBytes
 
 		// Update compaction time.
 		_, ok = curWindow.compactionTime[ft]
 		if !ok {
 			curWindow.compactionTime[ft] = 0
 		}
-		curWindow.compactionTime[ft] += e.timeEnd.Sub(e.timeStart)
+		curWindow.compactionTime[ft] += c.timeEnd.Sub(c.timeStart)
 
 		// Add "long-running" compactions. Those that start in this window that have
 		// duration longer than the window interval.
-		if e.timeEnd.Sub(e.timeStart) > a.longRunningLimit {
-			curWindow.longRunning = append(curWindow.longRunning, e)
-		}
-
-		// If we're at the end of an interval, finalize the current window and start
-		// a new one.
-		if i == len(a.compactions)-1 ||
-			a.compactions[i+1].nodeID != a.compactions[i].nodeID ||
-			a.compactions[i+1].storeID != a.compactions[i].storeID ||
-			a.compactions[i+1].timeStart.After(windowEnd) {
-			// Collect read-amp values for the current window.
-			var readAmps []readAmp
-			for j < len(a.readAmps) {
-				ra := a.readAmps[j]
-
-				// Skip values before the current window.
-				if ra.nodeID < a.compactions[i].nodeID ||
-					ra.storeID < a.compactions[i].storeID ||
-					ra.time.Before(windowStart) {
-					j++
-					continue
-				}
-
-				// We've passed over the current window. Stop here.
-				if ra.nodeID > a.compactions[i].nodeID ||
-					ra.storeID > a.compactions[i].storeID ||
-					ra.time.After(windowEnd) {
-					break
-				}
-
-				// Collect this read-amp value.
-				readAmps = append(readAmps, ra)
-				j++
-			}
-			curWindow.readAmps = readAmps
-
-			curWindow.nodeID = e.nodeID
-			curWindow.storeID = e.storeID
-
-			// Sort long running compactions in descending order of duration.
-			sort.Slice(curWindow.longRunning, func(i, j int) bool {
-				l := curWindow.longRunning[i]
-				r := curWindow.longRunning[j]
-				return l.timeEnd.Sub(l.timeStart) > r.timeEnd.Sub(r.timeStart)
-			})
-
-			// Add the completed window to the set of windows.
-			windows = append(windows, curWindow)
-
-			// Start a new window.
-			windowStart = windowStart.Add(a.window)
-			windowEnd = windowEnd.Add(a.window)
-			curWindow = newWindow(windowStart, windowEnd)
+		if c.timeEnd.Sub(c.timeStart) > a.longRunningLimit {
+			curWindow.longRunning = append(curWindow.longRunning, c)
 		}
 	}
 
 	return windows
 }
 
-type parseFn func(string, *logEventCollector) error
-
 // parseLog parses the log file with the given path, using the given parse
 // function to collect events in the given logEventCollector.
-func parseLog(path string, b *logEventCollector, parseFn parseFn) error {
+func parseLog(path string, b *logEventCollector) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -813,7 +711,34 @@ func parseLog(path string, b *logEventCollector, parseFn parseFn) error {
 
 	s := bufio.NewScanner(f)
 	for s.Scan() {
-		if err := parseFn(s.Text(), b); err != nil {
+		line := s.Text()
+
+		// Store the log context for the current line, if we have one.
+		if err := parseLogContext(line, b); err != nil {
+			return err
+		}
+
+		// First check for a flush or compaction.
+		matches := sentinelPattern.FindStringSubmatch(line)
+		if matches != nil {
+			// Determine which regexp to apply by testing the first letter of the prefix.
+			switch matches[sentinelPatternPrefixIdx][0] {
+			case 'c':
+				if err = parseCompaction(line, b); err != nil {
+					return err
+				}
+			case 'f':
+				if err = parseFlush(line, b); err != nil {
+					return err
+				}
+			default:
+				return errors.Newf("unexpected line: neither compaction nor flush: %s", line)
+			}
+			continue
+		}
+
+		// Else check for an LSM debug line containing the read-amp value.
+		if err = parseReadAmp(line, b); err != nil {
 			return err
 		}
 	}
@@ -821,15 +746,53 @@ func parseLog(path string, b *logEventCollector, parseFn parseFn) error {
 	return nil
 }
 
-// parseCompaction is a parseFn that parses parses and collects Pebble
-// compaction events.
+// parseLogContext extracts contextual information from the log line (e.g. the
+// timestamp, node and store).
+func parseLogContext(line string, b *logEventCollector) error {
+	matches := logContextPattern.FindStringSubmatch(line)
+	if matches == nil {
+		return nil
+	}
+
+	// Parse start time.
+	t, err := time.Parse(timeFmt, matches[logContextPatternTimestampIdx])
+	if err != nil {
+		return errors.Newf("could not parse timestamp: %s", err)
+	}
+
+	// Parse node and store.
+	nodeID, err := strconv.Atoi(matches[logContextPatternNodeIdx])
+	if err != nil {
+		if matches[logContextPatternNodeIdx] != "?" {
+			return errors.Newf("could not parse node ID: %s", err)
+		}
+		nodeID = -1
+	}
+
+	storeID, err := strconv.Atoi(matches[logContextPatternStoreIdx])
+	if err != nil {
+		if matches[logContextPatternStoreIdx] != "?" {
+			return errors.Newf("could not parse store ID: %s", err)
+		}
+		storeID = -1
+	}
+
+	b.saveContext(logContext{
+		timestamp: t,
+		node:      nodeID,
+		store:     storeID,
+	})
+	return nil
+}
+
+// parseCompaction parses and collects Pebble compaction events.
 func parseCompaction(line string, b *logEventCollector) error {
 	matches := compactionPattern.FindStringSubmatch(line)
 	if matches == nil {
 		return nil
 	}
 
-	if len(matches) != 11 {
+	if len(matches) != 8 {
 		return errors.Newf(
 			"could not parse compaction start / end line; found %d matches: %s",
 			len(matches), line)
@@ -857,15 +820,14 @@ func parseCompaction(line string, b *logEventCollector) error {
 	return nil
 }
 
-// parseFlush is a parseFn that parses parses and collects Pebble memtable flush
-// events.
+// parseFlush parses and collects Pebble memtable flush events.
 func parseFlush(line string, b *logEventCollector) error {
 	matches := flushPattern.FindStringSubmatch(line)
 	if matches == nil {
 		return nil
 	}
 
-	if len(matches) != 8 {
+	if len(matches) != 5 {
 		return errors.Newf(
 			"could not parse flush start / end line; found %d matches: %s",
 			len(matches), line)
@@ -888,63 +850,19 @@ func parseFlush(line string, b *logEventCollector) error {
 	return nil
 }
 
-// parsePebbleFn is a parseFn that parses parses and collects Pebble log lines
-// into compaction events.
-func parsePebbleFn(line string, b *logEventCollector) error {
-	matches := sentinelPattern.FindStringSubmatch(line)
-	if matches == nil {
-		return nil
-	}
-
-	// Determine which regexp to apply by testing the first letter of the prefix.
-	switch matches[sentinelPatternPrefixIdx][0] {
-	case 'c':
-		return parseCompaction(line, b)
-	case 'f':
-		return parseFlush(line, b)
-	default:
-		return errors.Newf("unexpected line: neither compaction nor flush: %s", line)
-	}
-}
-
-// parsePebbleFn is a parseFn that parses parses and collects Cockroach log
-// lines into read-amp events.
-func parseCockroachFn(line string, b *logEventCollector) error {
+// parseReadAmp attempts to parse the current line as a read amp value
+func parseReadAmp(line string, b *logEventCollector) error {
 	matches := readAmpPattern.FindStringSubmatch(line)
 	if matches == nil {
 		return nil
 	}
-
-	// Parse start time.
-	t, err := time.Parse(timeFmt, matches[readAmpPatternTimestampIdx])
+	val, err := strconv.Atoi(matches[readAmpPatternValueIdx])
 	if err != nil {
-		return errors.Newf("could not parse start time: %s", err)
+		return errors.Newf("could not parse read amp: %s", err)
 	}
-
-	// Parse node and store.
-	nodeID, err := strconv.Atoi(matches[readAmpPatternNode])
-	if err != nil {
-		if matches[readAmpPatternNode] != "?" {
-			return errors.Newf("could not parse node ID: %s", err)
-		}
-		nodeID = -1
-	}
-
-	storeID, err := strconv.Atoi(matches[readAmpPatternStore])
-	if err != nil {
-		if matches[readAmpPatternStore] != "?" {
-			return errors.Newf("could not parse store ID: %s", err)
-		}
-		storeID = -1
-	}
-
-	// Parse read-amp.
-	ra, err := strconv.Atoi(matches[readAmpPatternValueIdx])
-	if err != nil {
-		return errors.Newf("could not parse read-amp: %s", err)
-	}
-
-	b.addReadAmp(t, nodeID, storeID, ra)
+	b.addReadAmp(readAmp{
+		readAmp: val,
+	})
 	return nil
 }
 
@@ -957,17 +875,8 @@ func runCompactionLogs(cmd *cobra.Command, args []string) error {
 	// Scan the log files collecting start and end compaction lines.
 	b := newEventCollector()
 	for _, file := range files {
-		// If the filename contains 'cockroach-pebble', parse as a Pebble log file.
-		if strings.HasPrefix(filepath.Base(file), pebbleLogPrefix) {
-			err := parseLog(file, b, parsePebbleFn)
-			if err != nil {
-				return err
-			}
-			continue
-		}
-
-		// Otherwise parse as a DB log.
-		if err := parseLog(file, b, parseCockroachFn); err != nil {
+		err := parseLog(file, b)
+		if err != nil {
 			return err
 		}
 	}
