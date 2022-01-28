@@ -139,6 +139,8 @@ type pickedCompaction struct {
 	smallest InternalKey
 	largest  InternalKey
 
+	splits []*pickedCompaction
+
 	version *version
 }
 
@@ -1387,10 +1389,44 @@ func pickManualHelper(
 		// Nothing to do
 		return nil
 	}
+
+	//pc.splits = pc.splitManualCompaction(manual)
+
 	if !pc.setupInputs(opts, diskAvailBytes()) {
 		return nil
 	}
+
 	return pc
+}
+
+func (d *DB) splitManualCompaction(
+	manual *manualCompaction,
+) (concurrentCompactions []*manualCompaction) {
+	// Don't make L0 compactions concurrrent.
+	if manual.level != 0 {
+		curr := d.mu.versions.currentVersion()
+		startLevelFiles := curr.Overlaps(
+			manual.level, d.cmp, manual.start.UserKey, manual.end.UserKey, manual.end.IsExclusiveSentinel(),
+		)
+		outputLevelFiles := curr.Overlaps(
+			manual.level+1, d.cmp, manual.start.UserKey, manual.end.UserKey, manual.end.IsExclusiveSentinel(),
+		)
+
+		keyRanges := getNonOverlappingKeyRanges(startLevelFiles, outputLevelFiles, d.cmp)
+
+		for _, keyRange := range keyRanges {
+			copyPC := *manual
+			copyPC.start = keyRange.Start
+			copyPC.end = keyRange.End
+			concurrentCompactions = append(concurrentCompactions, &copyPC)
+		}
+	}
+
+	if len(concurrentCompactions) == 0 {
+		concurrentCompactions = append(concurrentCompactions, manual)
+	}
+
+	return
 }
 
 func (p *compactionPickerByScore) pickReadTriggeredCompaction(
@@ -1412,7 +1448,8 @@ func (p *compactionPickerByScore) pickReadTriggeredCompaction(
 }
 
 func pickReadTriggeredCompactionHelper(
-	p *compactionPickerByScore, rc *readCompaction, env compactionEnv) (pc *pickedCompaction) {
+	p *compactionPickerByScore, rc *readCompaction, env compactionEnv,
+) (pc *pickedCompaction) {
 	cmp := p.opts.Comparer.Compare
 	overlapSlice := p.vers.Overlaps(rc.level, cmp, rc.start, rc.end, false /* exclusiveEnd */)
 	if overlapSlice.Empty() {

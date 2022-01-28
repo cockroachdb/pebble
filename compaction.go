@@ -1185,6 +1185,10 @@ type manualCompaction struct {
 	end         InternalKey
 }
 
+type internalKeyRange struct {
+	Start, End InternalKey
+}
+
 type readCompaction struct {
 	level int
 	// [start, end] key ranges are used for de-duping.
@@ -1656,8 +1660,8 @@ func (d *DB) maybeScheduleCompactionPicker(
 		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
 		pc, retryLater := d.mu.versions.picker.pickManual(env, manual)
 		if pc != nil {
-			c := newCompaction(pc, d.opts, env.bytesCompacted)
 			d.mu.compact.manual = d.mu.compact.manual[1:]
+			c := newCompaction(pc, d.opts, env.bytesCompacted)
 			d.mu.compact.compactingCount++
 			d.addInProgressCompaction(c)
 			go d.compact(c, manual.done)
@@ -1690,50 +1694,49 @@ func (d *DB) maybeScheduleCompactionPicker(
 	}
 }
 
-func (d *DB) splitManualCompaction(
-	manual *manualCompaction,
-) (concurrentCompactions []*manualCompaction) {
-	concurrentCompactions = append(concurrentCompactions, manual)
-	concurrentCompactions[0].done = make(chan error, 1)
+func getNonOverlappingKeyRanges(
+	level, nextLevel manifest.LevelSlice, cmp Compare,
+) (ranges []internalKeyRange) {
+	currLevelIter := level.Iter()
+	nextLevelIter := nextLevel.Iter()
 
-	// Don't make L0 compactions concurrrent.
-	if manual.level != 0 {
-		curr := d.mu.versions.currentVersion()
+	lastFileOverlap := false
+	f, nextLevelF := currLevelIter.First(), nextLevelIter.First()
 
-		currLevel := curr.Overlaps(manual.level, d.cmp, manual.start.UserKey, manual.end.UserKey, false)
-		nextLevel := curr.Overlaps(manual.outputLevel, d.cmp, manual.start.UserKey, manual.end.UserKey, false)
+	// Iterate over files and find key ranges for compactions
+	for f != nil {
+		if nextLevelF != nil {
+			// Skip files on lower level outside of the range of keys in upper level.
+			if cmp(nextLevelF.Largest.UserKey, f.Smallest.UserKey) < 0 {
+				nextLevelF = nextLevelIter.Next()
+				continue
+			}
 
-		currLevelIter := currLevel.Iter()
-		nextLevelIter := nextLevel.Iter()
-
-		// Iterate over files and find key ranges for compactions
-		for f, nextLevelF := currLevelIter.First(), nextLevelIter.First(); f != nil; f = currLevelIter.Next() {
-			if nextLevelF != nil {
-				if d.cmp(f.Smallest.UserKey, nextLevelF.Largest.UserKey) <= 0 && d.cmp(nextLevelF.Smallest.UserKey, f.Largest.UserKey) <= 0 {
-					concurrentCompactions[len(concurrentCompactions)-1].end = f.Largest
-				} else {
-					nextLevelF = nextLevelIter.Next()
-					concurrentCompactions = append(concurrentCompactions, &manualCompaction{
-						retries:     manual.retries,
-						level:       manual.level,
-						outputLevel: manual.outputLevel,
-						done:        make(chan error, 1),
-						start:       f.Smallest,
-						end:         f.Largest,
-					})
+			// Overlap
+			if cmp(f.Smallest.UserKey, nextLevelF.Largest.UserKey) <= 0 && cmp(nextLevelF.Smallest.UserKey, f.Largest.UserKey) <= 0 {
+				if len(ranges) == 0 || !lastFileOverlap {
+					ranges = append(ranges, internalKeyRange{Start: f.Smallest})
 				}
+				ranges[len(ranges)-1].End = f.Largest
+				lastFileOverlap = true
 			} else {
-				// TODO: merge or add new compaction?
-				concurrentCompactions = append(concurrentCompactions, &manualCompaction{
-					retries:     manual.retries,
-					level:       manual.level,
-					outputLevel: manual.outputLevel,
-					done:        make(chan error, 1),
-					start:       f.Smallest,
-					end:         f.Largest,
+				// TODO: add comment explaining
+				if cmp(f.Largest.UserKey, nextLevelF.Smallest.UserKey) > 0 {
+					nextLevelF = nextLevelIter.Next()
+				}
+				ranges = append(ranges, internalKeyRange{
+					Start: f.Smallest,
+					End:   f.Largest,
 				})
 			}
+		} else {
+			ranges = append(ranges, internalKeyRange{
+				Start: f.Smallest,
+				End:   f.Largest,
+			})
 		}
+
+		f = currLevelIter.Next()
 	}
 
 	return

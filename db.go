@@ -1201,6 +1201,7 @@ func (d *DB) manualCompact(manual *manualCompaction) error {
 	d.mu.Unlock()
 	for _, compaction := range splitCompactions {
 		err := <-compaction.done
+
 		if err != nil {
 			return err
 		}

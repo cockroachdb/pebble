@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/rand"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"sort"
@@ -3029,4 +3030,159 @@ func TestCompactionInvalidBounds(t *testing.T) {
 	require.NoError(t, db.Compact([]byte("a"), []byte("b")))
 	require.Error(t, db.Compact([]byte("a"), []byte("a")))
 	require.Error(t, db.Compact([]byte("b"), []byte("a")))
+}
+
+func Test_getNonOverlappingKeyRanges(t *testing.T) {
+	var cmp = base.DefaultComparer.Compare
+	tests := []struct {
+		name       string
+		level      manifest.LevelSlice
+		nextLevel  manifest.LevelSlice
+		cmp        Compare
+		wantRanges []internalKeyRange
+	}{
+		{
+			name: "No files in next level",
+			level: manifest.NewLevelSliceSeqSorted([]*manifest.FileMetadata{
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("a")},
+					Largest:  manifest.InternalKey{UserKey: []byte("c")},
+				},
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("d")},
+					Largest:  manifest.InternalKey{UserKey: []byte("e")},
+				},
+			}),
+			nextLevel: manifest.NewLevelSliceSeqSorted(nil),
+			cmp:       base.DefaultComparer.Compare,
+			wantRanges: []internalKeyRange{
+				{
+					Start: manifest.InternalKey{UserKey: []byte("a")},
+					End:   manifest.InternalKey{UserKey: []byte("c")},
+				},
+			},
+		},
+		{
+			name: "No overlapping key ranges",
+			level: manifest.NewLevelSliceKeySorted(cmp, []*manifest.FileMetadata{
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("a")},
+					Largest:  manifest.InternalKey{UserKey: []byte("c")},
+				},
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("l")},
+					Largest:  manifest.InternalKey{UserKey: []byte("p")},
+				},
+			}),
+			nextLevel: manifest.NewLevelSliceKeySorted(cmp, []*manifest.FileMetadata{
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("d")},
+					Largest:  manifest.InternalKey{UserKey: []byte("i")},
+				},
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("s")},
+					Largest:  manifest.InternalKey{UserKey: []byte("w")},
+				},
+			}),
+			cmp: cmp,
+			wantRanges: []internalKeyRange{
+				{
+					Start: manifest.InternalKey{UserKey: []byte("a")},
+					End:   manifest.InternalKey{UserKey: []byte("c")},
+				},
+				{
+					Start: manifest.InternalKey{UserKey: []byte("l")},
+					End:   manifest.InternalKey{UserKey: []byte("p")},
+				},
+			},
+		},
+		{
+			name: "First few non-overlapping, followed by overlapping",
+			level: manifest.NewLevelSliceKeySorted(cmp, []*manifest.FileMetadata{
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("a")},
+					Largest:  manifest.InternalKey{UserKey: []byte("c")},
+				},
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("d")},
+					Largest:  manifest.InternalKey{UserKey: []byte("e")},
+				},
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("n")},
+					Largest:  manifest.InternalKey{UserKey: []byte("o")},
+				},
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("p")},
+					Largest:  manifest.InternalKey{UserKey: []byte("q")},
+				},
+			}),
+			nextLevel: manifest.NewLevelSliceKeySorted(cmp, []*manifest.FileMetadata{
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("m")},
+					Largest:  manifest.InternalKey{UserKey: []byte("q")},
+				},
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("s")},
+					Largest:  manifest.InternalKey{UserKey: []byte("w")},
+				},
+			}),
+			cmp: cmp,
+			wantRanges: []internalKeyRange{
+				{
+					Start: manifest.InternalKey{UserKey: []byte("a")},
+					End:   manifest.InternalKey{UserKey: []byte("c")},
+				},
+				{
+					Start: manifest.InternalKey{UserKey: []byte("d")},
+					End:   manifest.InternalKey{UserKey: []byte("e")},
+				},
+				{
+					Start: manifest.InternalKey{UserKey: []byte("n")},
+					End:   manifest.InternalKey{UserKey: []byte("q")},
+				},
+			},
+		},
+		{
+			// Compact(a, w)
+			name: "All overlapping",
+			level: manifest.NewLevelSliceKeySorted(cmp, []*manifest.FileMetadata{
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("d")},
+					Largest:  manifest.InternalKey{UserKey: []byte("e")},
+				},
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("n")},
+					Largest:  manifest.InternalKey{UserKey: []byte("o")},
+				},
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("p")},
+					Largest:  manifest.InternalKey{UserKey: []byte("q")},
+				},
+			}),
+			nextLevel: manifest.NewLevelSliceKeySorted(cmp, []*manifest.FileMetadata{
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("a")},
+					Largest:  manifest.InternalKey{UserKey: []byte("c")},
+				},
+				{
+					Smallest: manifest.InternalKey{UserKey: []byte("d")},
+					Largest:  manifest.InternalKey{UserKey: []byte("w")},
+				},
+			}),
+			cmp: cmp,
+			wantRanges: []internalKeyRange{
+				{
+					Start: manifest.InternalKey{UserKey: []byte("d")},
+					End:   manifest.InternalKey{UserKey: []byte("q")},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if gotRanges := getNonOverlappingKeyRanges(tt.level, tt.nextLevel, tt.cmp); !reflect.DeepEqual(gotRanges, tt.wantRanges) {
+				t.Errorf("getNonOverlappingKeyRanges() = %v, want %v", gotRanges, tt.wantRanges)
+			}
+		})
+	}
 }
