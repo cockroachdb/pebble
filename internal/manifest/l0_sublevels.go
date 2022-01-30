@@ -51,6 +51,14 @@ type intervalKey struct {
 	isLargest bool
 }
 
+// intervalKeyTemp is used in the sortAndSweep step. It contains additional metadata
+// which is used to generate the {min,max}IntervalIndex for files.
+type intervalKeyTemp struct {
+	intervalKey intervalKey
+	fileMeta    *FileMetadata
+	isEndKey    bool
+}
+
 func intervalKeyCompare(cmp Compare, a, b intervalKey) int {
 	rv := cmp(a.key, b.key)
 	if rv == 0 {
@@ -65,33 +73,58 @@ func intervalKeyCompare(cmp Compare, a, b intervalKey) int {
 }
 
 type intervalKeySorter struct {
-	keys []intervalKey
+	keys []intervalKeyTemp
 	cmp  Compare
 }
 
 func (s intervalKeySorter) Len() int { return len(s.keys) }
 func (s intervalKeySorter) Less(i, j int) bool {
-	return intervalKeyCompare(s.cmp, s.keys[i], s.keys[j]) < 0
+	return intervalKeyCompare(s.cmp, s.keys[i].intervalKey, s.keys[j].intervalKey) < 0
 }
 func (s intervalKeySorter) Swap(i, j int) {
 	s.keys[i], s.keys[j] = s.keys[j], s.keys[i]
 }
 
-func sortAndDedup(keys []intervalKey, cmp Compare) []intervalKey {
+// sortAndSweep will sort the intervalKeys using intervalKeySorter, remove the
+// duplicate fileIntervals, and set the {min, max}IntervalIndex for the files.
+func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 	if len(keys) == 0 {
 		return nil
 	}
 	sorter := intervalKeySorter{keys: keys, cmp: cmp}
 	sort.Sort(sorter)
+
+	// intervalKeys are generated using the file bounds. This means that we can determine
+	// the exact position of file {min,max}IntervalIndex during the deduplication step.
+	i := 0
 	j := 0
-	for i := 1; i < len(keys); i++ {
-		cmp := intervalKeyCompare(cmp, keys[i], keys[j])
-		if cmp != 0 {
-			j++
-			keys[j] = keys[i]
+	for i < len(keys) {
+		// loop invariant: j <= i
+		currKey := keys[i]
+		keys[j] = keys[i]
+
+		for {
+			consider := keys[i]
+			if consider.isEndKey {
+				// This is the right endpoint of some file interval, so the
+				// file.maxIntervalIndex must be j - 1 as maxIntervalIndex is
+				// inclusive.
+				consider.fileMeta.maxIntervalIndex = j - 1
+			} else {
+				// This is the left endpoint for some file interval, so the
+				// file.minIntervalIndex must be j.
+				consider.fileMeta.minIntervalIndex = j
+			}
+			// No longer need the fileMeta after this point.
+			consider.fileMeta = nil
+			i++
+			if i >= len(keys) || intervalKeyCompare(cmp, currKey.intervalKey, keys[i].intervalKey) != 0 {
+				break
+			}
 		}
+		j++
 	}
-	return keys[:j+1]
+	return keys[:j]
 }
 
 // A key interval of the form [start, end). The end is not represented here
@@ -231,23 +264,31 @@ func NewL0Sublevels(
 ) (*L0Sublevels, error) {
 	s := &L0Sublevels{cmp: cmp, formatKey: formatKey}
 	s.levelMetadata = levelMetadata
-	keys := make([]intervalKey, 0, 2*s.levelMetadata.Len())
+	keys := make([]intervalKeyTemp, 0, 2*s.levelMetadata.Len())
 	iter := levelMetadata.Iter()
 	for i, f := 0, iter.First(); f != nil; i, f = i+1, iter.Next() {
 		f.l0Index = i
-		keys = append(keys, intervalKey{key: f.Smallest.UserKey})
-		keys = append(keys, intervalKey{
-			key:       f.Largest.UserKey,
-			isLargest: !f.Largest.IsExclusiveSentinel(),
+		keys = append(keys, intervalKeyTemp{
+			intervalKey: intervalKey{key: f.Smallest.UserKey},
+			fileMeta:    f,
+			isEndKey:    false,
+		})
+		keys = append(keys, intervalKeyTemp{
+			intervalKey: intervalKey{
+				key:       f.Largest.UserKey,
+				isLargest: !f.Largest.IsExclusiveSentinel(),
+			},
+			fileMeta: f,
+			isEndKey: true,
 		})
 	}
-	keys = sortAndDedup(keys, cmp)
+	keys = sortAndSweep(keys, cmp)
 	// All interval indices reference s.orderedIntervals.
 	s.orderedIntervals = make([]fileInterval, len(keys))
 	for i := range keys {
 		s.orderedIntervals[i] = fileInterval{
 			index:                 i,
-			startKey:              keys[i],
+			startKey:              keys[i].intervalKey,
 			filesMinIntervalIndex: i,
 			filesMaxIntervalIndex: i,
 		}
@@ -255,27 +296,6 @@ func NewL0Sublevels(
 	// Initialize minIntervalIndex and maxIntervalIndex for each file, and use that
 	// to update intervals.
 	for f := iter.First(); f != nil; f = iter.Next() {
-		// Set f.minIntervalIndex and f.maxIntervalIndex.
-		f.minIntervalIndex = sort.Search(len(keys), func(index int) bool {
-			return intervalKeyCompare(cmp, intervalKey{key: f.Smallest.UserKey}, keys[index]) <= 0
-		})
-		if f.minIntervalIndex == len(keys) {
-			return nil, errors.Errorf("expected sstable bound to be in interval keys: %s", f.Smallest.UserKey)
-		}
-		// Search starting from f.minIntervalIndex to prune the search.
-		f.maxIntervalIndex = f.minIntervalIndex +
-			sort.Search(len(keys)-f.minIntervalIndex, func(index int) bool {
-				return intervalKeyCompare(
-					cmp,
-					intervalKey{
-						key:       f.Largest.UserKey,
-						isLargest: !f.Largest.IsExclusiveSentinel()},
-					keys[f.minIntervalIndex+index]) <= 0
-			})
-		if f.maxIntervalIndex == len(keys) {
-			return nil, errors.Errorf("expected sstable bound to be in interval keys: %s", f.Largest.UserKey)
-		}
-		f.maxIntervalIndex--
 		// This is a simple and not very accurate estimate of the number of
 		// bytes this SSTable contributes to the intervals it is a part of.
 		//
