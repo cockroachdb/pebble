@@ -1200,13 +1200,42 @@ func (d *DB) manualCompact(manual *manualCompaction) error {
 	d.maybeScheduleCompaction()
 	d.mu.Unlock()
 	for _, compaction := range splitCompactions {
-		err := <-compaction.done
-
-		if err != nil {
+		if err := <-compaction.done; err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// TODO: add method description
+func (d *DB) splitManualCompaction(
+	manual *manualCompaction,
+) (concurrentCompactions []*manualCompaction) {
+	// Don't make L0 compactions concurrrent.
+	if manual.level != 0 {
+		curr := d.mu.versions.currentVersion()
+		startLevelFiles := curr.Overlaps(
+			manual.level, d.cmp, manual.start.UserKey, manual.end.UserKey, manual.end.IsExclusiveSentinel(),
+		)
+		outputLevelFiles := curr.Overlaps(
+			manual.level+1, d.cmp, manual.start.UserKey, manual.end.UserKey, manual.end.IsExclusiveSentinel(),
+		)
+
+		keyRanges := getNonOverlappingKeyRanges(startLevelFiles, outputLevelFiles, d.cmp)
+
+		for _, keyRange := range keyRanges {
+			copyPC := *manual
+			copyPC.start = keyRange.Start
+			copyPC.end = keyRange.End
+			concurrentCompactions = append(concurrentCompactions, &copyPC)
+		}
+	}
+
+	if len(concurrentCompactions) == 0 {
+		concurrentCompactions = append(concurrentCompactions, manual)
+	}
+
+	return
 }
 
 // Flush the memtable to stable storage.

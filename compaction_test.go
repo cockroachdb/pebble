@@ -1265,10 +1265,16 @@ func TestManualCompaction(t *testing.T) {
 			case "add-ongoing-compaction":
 				var startLevel int
 				var outputLevel int
+				var start string
+				var end string
 				td.ScanArgs(t, "startLevel", &startLevel)
 				td.ScanArgs(t, "outputLevel", &outputLevel)
+				td.ScanArgs(t, "start", &start)
+				td.ScanArgs(t, "end", &end)
 				ongoingCompaction = &compaction{
-					inputs: []compactionLevel{{level: startLevel}, {level: outputLevel}},
+					inputs:   []compactionLevel{{level: startLevel}, {level: outputLevel}},
+					smallest: InternalKey{UserKey: []byte(start)},
+					largest:  InternalKey{UserKey: []byte(end)},
 				}
 				ongoingCompaction.startLevel = &ongoingCompaction.inputs[0]
 				ongoingCompaction.outputLevel = &ongoingCompaction.inputs[1]
@@ -3143,7 +3149,6 @@ func Test_getNonOverlappingKeyRanges(t *testing.T) {
 			},
 		},
 		{
-			// Compact(a, w)
 			name: "All overlapping",
 			level: manifest.NewLevelSliceKeySorted(cmp, []*manifest.FileMetadata{
 				{

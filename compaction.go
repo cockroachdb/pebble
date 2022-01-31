@@ -1694,6 +1694,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 	}
 }
 
+// getNonOverlappingKeyRanges finds the key ranges in `level` that do not overlap with the same files in `nextLevel`
 func getNonOverlappingKeyRanges(
 	level, nextLevel manifest.LevelSlice, cmp Compare,
 ) (ranges []internalKeyRange) {
@@ -1704,31 +1705,21 @@ func getNonOverlappingKeyRanges(
 	f, nextLevelF := currLevelIter.First(), nextLevelIter.First()
 
 	// Iterate over files and find key ranges for compactions
-	for f != nil {
-		if nextLevelF != nil {
-			// Skip files on lower level outside of the range of keys in upper level.
-			if cmp(nextLevelF.Largest.UserKey, f.Smallest.UserKey) < 0 {
-				nextLevelF = nextLevelIter.Next()
-				continue
-			}
+	for f != nil && nextLevelF != nil {
+		// Advance pointer on next level if nextLevelF < f
+		if cmp(nextLevelF.Largest.UserKey, f.Smallest.UserKey) < 0 {
+			nextLevelF = nextLevelIter.Next()
+			continue
+		}
 
-			// Overlap
-			if cmp(f.Smallest.UserKey, nextLevelF.Largest.UserKey) <= 0 && cmp(nextLevelF.Smallest.UserKey, f.Largest.UserKey) <= 0 {
-				if len(ranges) == 0 || !lastFileOverlap {
-					ranges = append(ranges, internalKeyRange{Start: f.Smallest})
-				}
-				ranges[len(ranges)-1].End = f.Largest
-				lastFileOverlap = true
-			} else {
-				// TODO: add comment explaining
-				if cmp(f.Largest.UserKey, nextLevelF.Smallest.UserKey) > 0 {
-					nextLevelF = nextLevelIter.Next()
-				}
-				ranges = append(ranges, internalKeyRange{
-					Start: f.Smallest,
-					End:   f.Largest,
-				})
+		// Ranges overlap
+		if cmp(f.Smallest.UserKey, nextLevelF.Largest.UserKey) <= 0 && cmp(nextLevelF.Smallest.UserKey, f.Largest.UserKey) <= 0 {
+			if len(ranges) == 0 || !lastFileOverlap {
+				ranges = append(ranges, internalKeyRange{Start: f.Smallest})
 			}
+			// Extend last range
+			ranges[len(ranges)-1].End = f.Largest
+			lastFileOverlap = true
 		} else {
 			ranges = append(ranges, internalKeyRange{
 				Start: f.Smallest,
@@ -1737,6 +1728,13 @@ func getNonOverlappingKeyRanges(
 		}
 
 		f = currLevelIter.Next()
+	}
+
+	for ; f != nil; f = currLevelIter.Next() {
+		ranges = append(ranges, internalKeyRange{
+			Start: f.Smallest,
+			End:   f.Largest,
+		})
 	}
 
 	return

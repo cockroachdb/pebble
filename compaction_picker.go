@@ -139,8 +139,6 @@ type pickedCompaction struct {
 	smallest InternalKey
 	largest  InternalKey
 
-	splits []*pickedCompaction
-
 	version *version
 }
 
@@ -1354,11 +1352,6 @@ func (p *compactionPickerByScore) pickManual(
 		// points to an empty level).
 		return nil, false
 	}
-	// TODO(peter): The conflictsWithInProgress call should no longer be
-	// necessary, but TestManualCompaction currently expects it.
-	if conflictsWithInProgress(manual.level, outputLevel, env.inProgressCompactions) {
-		return nil, true
-	}
 	pc = pickManualHelper(p.opts, manual, p.vers, p.baseLevel, p.diskAvailBytes)
 	if pc == nil {
 		return nil, false
@@ -1390,43 +1383,11 @@ func pickManualHelper(
 		return nil
 	}
 
-	//pc.splits = pc.splitManualCompaction(manual)
-
 	if !pc.setupInputs(opts, diskAvailBytes()) {
 		return nil
 	}
 
 	return pc
-}
-
-func (d *DB) splitManualCompaction(
-	manual *manualCompaction,
-) (concurrentCompactions []*manualCompaction) {
-	// Don't make L0 compactions concurrrent.
-	if manual.level != 0 {
-		curr := d.mu.versions.currentVersion()
-		startLevelFiles := curr.Overlaps(
-			manual.level, d.cmp, manual.start.UserKey, manual.end.UserKey, manual.end.IsExclusiveSentinel(),
-		)
-		outputLevelFiles := curr.Overlaps(
-			manual.level+1, d.cmp, manual.start.UserKey, manual.end.UserKey, manual.end.IsExclusiveSentinel(),
-		)
-
-		keyRanges := getNonOverlappingKeyRanges(startLevelFiles, outputLevelFiles, d.cmp)
-
-		for _, keyRange := range keyRanges {
-			copyPC := *manual
-			copyPC.start = keyRange.Start
-			copyPC.end = keyRange.End
-			concurrentCompactions = append(concurrentCompactions, &copyPC)
-		}
-	}
-
-	if len(concurrentCompactions) == 0 {
-		concurrentCompactions = append(concurrentCompactions, manual)
-	}
-
-	return
 }
 
 func (p *compactionPickerByScore) pickReadTriggeredCompaction(
@@ -1555,22 +1516,6 @@ func inputRangeAlreadyCompacting(env compactionEnv, pc *pickedCompaction) bool {
 			// The picked compaction and the in-progress compaction c are
 			// outputting to the same region of the key space of the same
 			// level.
-			return true
-		}
-	}
-	return false
-}
-
-func conflictsWithInProgress(
-	level int, outputLevel int, inProgressCompactions []compactionInfo,
-) bool {
-	for _, c := range inProgressCompactions {
-		for _, in := range c.inputs {
-			if in.level == level || in.level == outputLevel {
-				return true
-			}
-		}
-		if c.outputLevel == level || c.outputLevel == outputLevel {
 			return true
 		}
 	}
