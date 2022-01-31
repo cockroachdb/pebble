@@ -29,7 +29,8 @@ type writeQueue struct {
 	// err represents an error which is encountered when the write queue attempts
 	// to write a block to disk. The error is stored here to skip unnecessary block
 	// writes once the first error is encountered.
-	err error
+	err    error
+	closed bool
 }
 
 func newWriteQueue(size int, writer *Writer) *writeQueue {
@@ -105,7 +106,12 @@ func (w *writeQueue) addSync(task *writeTask) error {
 // finish should only be called once no more tasks will be added to the writeQueue.
 // finish will return any error which was encountered while tasks were processed.
 func (w *writeQueue) finish() error {
+	if w.closed {
+		return w.err
+	}
+
 	close(w.tasks)
 	w.wg.Wait()
+	w.closed = true
 	return w.err
 }
