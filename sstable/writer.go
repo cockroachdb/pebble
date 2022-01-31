@@ -1044,9 +1044,12 @@ func (w *Writer) Close() (err error) {
 	// finish must be called before we check for an error, because finish will
 	// block until every single task added to the writeQueue has been processed,
 	// and an error could be encountered while any of those tasks are processed.
-	w.err = w.queueState.writeQueue.finish()
+	if err = w.queueState.writeQueue.finish(); err != nil {
+		w.err = err
+	}
+
 	if w.err != nil {
-		return err
+		return w.err
 	}
 
 	// Finish the last data block, or force an empty data block if there
