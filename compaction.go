@@ -176,15 +176,15 @@ func (lf *limitFuncSplitter) onNewOutput(key *InternalKey) []byte {
 		// last written sstable to effectively handle cases like these:
 		//
 		// a.SET.3
-		// (L0 limit at b)
+		// (lf.limit at b)
 		// d.RANGEDEL.4:f
 		//
 		// In this case, the partition after b has only range deletions,
-		// so if we were to find the L0 limit after the last written
-		// key at the split point (key a), we'd get the limit b again,
-		// and finishOutput() would not advance any further because
-		// the next range tombstone to write does not start until after
-		// the L0 split point.
+		// so if we were to find the limit after the last written key at
+		// the split point (key a), we'd get the limit b again, and
+		// finishOutput() would not advance any further because the next
+		// range tombstone to write does not start until after the L0
+		// split point.
 		if startKey := lf.c.rangeDelFrag.Start(); startKey != nil {
 			lf.limit = lf.limitFunc(startKey)
 		}
@@ -766,12 +766,24 @@ func seekGT(iter *manifest.LevelIterator, cmp base.Compare, key []byte) *manifes
 func (c *compaction) findGrandparentLimit(start []byte) []byte {
 	iter := c.grandparents.Iter()
 	var overlappedBytes uint64
+	var greater bool
 	for f := iter.SeekGE(c.cmp, start); f != nil; f = iter.Next() {
 		overlappedBytes += f.Size
 		// To ensure forward progress we always return a larger user
 		// key than where we started. See comments above clients of
 		// this function for how this is used.
-		if overlappedBytes > c.maxOverlapBytes && c.cmp(start, f.Smallest.UserKey) < 0 {
+		greater = greater || c.cmp(f.Smallest.UserKey, start) > 0
+		if !greater {
+			continue
+		}
+
+		// We return the smallest bound of a sstable rather than the
+		// largest because the smallest is always inclusive, and limits
+		// are used exlusively when truncating range tombstones. If we
+		// truncated an output to the largest key while there's a
+		// pending tombstone, the next output file would also overlap
+		// the same grandparent f.
+		if overlappedBytes > c.maxOverlapBytes {
 			return f.Smallest.UserKey
 		}
 	}
@@ -2338,28 +2350,27 @@ func (d *DB) runCompaction(
 
 		// A splitter requested a split, and we're ready to finish the output.
 		// We need to choose the key at which to split any pending range
-		// tombstones.
-		var splitKey []byte
-		switch {
-		case key != nil:
-			// We hit the size, grandparent, or L0 limit for the sstable.
-			// The next key either has a greater user key than the previous
-			// key, or if not, the previous key must not have had a zero
-			// sequence number.
-
-			// TODO(jackson): If we hit the grandparent limit, the next
-			// grandparent's smallest key may be less than the current key.
-			// Splitting at the current key will cause this output to overlap
-			// a potentially unbounded number of grandparents.
+		// tombstones. There are two options:
+		// 1. splitterSuggestion — The key suggested by the splitter. This key
+		//    is guaranteed to be greater than the last key written to the
+		//    current output.
+		// 2. key.UserKey — the first key of the next sstable output. This user
+		//     key is also guaranteed to be greater than the last user key
+		//     written to the current output (see userKeyChangeSplitter).
+		//
+		// Use whichever is smaller. Using the smaller of the two limits
+		// overlap with grandparents. Consider the case where the
+		// grandparent limit is calculated to be 'b', key is 'x', and
+		// there exist many sstables between 'b' and 'x'. If the range
+		// deletion fragmenter has a pending tombstone [a,x), splitting
+		// at 'x' would cause the output table to overlap many
+		// grandparents well beyond the calculated grandparent limit
+		// 'b'. Splitting at the smaller `splitterSuggestion` avoids
+		// this unbounded overlap with grandparent tables.
+		splitKey := splitterSuggestion
+		if key != nil && (splitKey == nil || c.cmp(splitKey, key.UserKey) > 0) {
 			splitKey = key.UserKey
-		case key == nil:
-			// NB: Because of the userKeyChangeSplitter, `splitterSuggestion`
-			// must be > any key previously added to the current output sstable.
-			splitKey = splitterSuggestion
-		default:
-			return nil, nil, errors.New("pebble: not reached")
 		}
-
 		if err := finishOutput(splitKey); err != nil {
 			return nil, pendingOutputs, err
 		}
