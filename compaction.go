@@ -2330,28 +2330,18 @@ func (d *DB) runCompaction(
 
 		// A splitter requested a split, and we're ready to finish the output.
 		// We need to choose the key at which to split any pending range
-		// tombstones.
-		var splitKey []byte
-		switch {
-		case key != nil:
-			// We hit the size, grandparent, or L0 limit for the sstable.
-			// The next key either has a greater user key than the previous
-			// key, or if not, the previous key must not have had a zero
-			// sequence number.
-
-			// TODO(jackson): If we hit the grandparent limit, the next
-			// grandparent's smallest key may be less than the current key.
-			// Splitting at the current key will cause this output to overlap
-			// a potentially unbounded number of grandparents.
+		// tombstones. There are two options:
+		// 1. splitterSuggestion — The key suggested by the splitter. This key
+		//    is guaranteed to be greater than the last key written to the
+		//    current output.
+		// 2. key.UserKey — the first key of the next sstable output. This user
+		//     key is also guaranteed to be greater than the last user key
+		//     written to the current output (see userKeyChangeSplitter).
+		// Use whichever is smaller.
+		splitKey := splitterSuggestion
+		if key != nil && (splitKey == nil || c.cmp(splitKey, key.UserKey) > 0) {
 			splitKey = key.UserKey
-		case key == nil:
-			// NB: Because of the userKeyChangeSplitter, `splitterSuggestion`
-			// must be > any key previously added to the current output sstable.
-			splitKey = splitterSuggestion
-		default:
-			return nil, nil, errors.New("pebble: not reached")
 		}
-
 		if err := finishOutput(splitKey); err != nil {
 			return nil, pendingOutputs, err
 		}
