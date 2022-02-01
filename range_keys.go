@@ -141,9 +141,9 @@ func (d *DB) newRangeKeyIter(
 		iters = append(iters, keyspan.NewIter(d.cmp, frags))
 	}
 
-	iter := &rangekey.DefragmentingIter{}
-	miter := &rangekey.MergingIter{}
-	miter.Init(d.cmp, iters...)
-	iter.Init(d.cmp, d.split, d.opts.Comparer.FormatKey, seqNum, rangekey.DefragmentLogical, miter)
-	return iter
+	iter := &rangekey.Iter{}
+	iter.Init(d.cmp, d.opts.Comparer.FormatKey, seqNum, iters...)
+	defragIter := &rangekey.DefragmentingIter{}
+	defragIter.Init(d.cmp, iter, rangekey.DefragmentLogical)
+	return defragIter
 }
