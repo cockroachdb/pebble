@@ -67,15 +67,23 @@ import (
 )
 
 const (
-	maxHeight   = 20
-	maxNodeSize = int(unsafe.Sizeof(node{}))
-	linksSize   = int(unsafe.Sizeof(links{}))
+	maxHeight    = 20
+	maxNodeSize  = int(unsafe.Sizeof(node{}))
+	linksSize    = int(unsafe.Sizeof(links{}))
+	maxNodesSize = math.MaxUint32
 )
 
-// ErrExists indicates that a duplicate record was inserted. This should never
-// happen for normal usage of batchskl as every key should have a unique
-// sequence number.
-var ErrExists = errors.New("record with this key already exists")
+var (
+	// ErrExists indicates that a duplicate record was inserted. This should never
+	// happen for normal usage of batchskl as every key should have a unique
+	// sequence number.
+	ErrExists = errors.New("record with this key already exists")
+
+	// ErrTooManyRecords is a sentinel error returned when the size of the raw
+	// nodes slice exceeds the maximum allowed size (currently 1 << 32 - 1). This
+	// corresponds to ~117 M skiplist entries.
+	ErrTooManyRecords = errors.New("too many records")
+)
 
 type links struct {
 	next uint32
@@ -171,9 +179,17 @@ func (s *Skiplist) Init(storage *[]byte, cmp base.Compare, abbreviatedKey base.A
 		s.nodes = make([]byte, 0, initBufSize)
 	}
 
-	// Allocate head and tail nodes.
-	s.head = s.newNode(maxHeight, 0, 0, 0, 0)
-	s.tail = s.newNode(maxHeight, 0, 0, 0, 0)
+	// Allocate head and tail nodes. While allocating a new node can fail, in the
+	// context of initializing the skiplist we consider it unrecoverable.
+	var err error
+	s.head, err = s.newNode(maxHeight, 0, 0, 0, 0)
+	if err != nil {
+		panic(err)
+	}
+	s.tail, err = s.newNode(maxHeight, 0, 0, 0, 0)
+	if err != nil {
+		panic(err)
+	}
 
 	// Link all head/tail levels together.
 	headNode := s.node(s.head)
@@ -230,7 +246,10 @@ func (s *Skiplist) Add(keyOffset uint32) error {
 	// We always insert from the base level and up. After you add a node in base
 	// level, we cannot create a node in the level above because it would have
 	// discovered the node in the base level.
-	nd := s.newNode(height, keyOffset, keyStart, keyEnd, abbreviatedKey)
+	nd, err := s.newNode(height, keyOffset, keyStart, keyEnd, abbreviatedKey)
+	if err != nil {
+		return err
+	}
 	newNode := s.node(nd)
 	for level := uint32(0); level < height; level++ {
 		next := spl[level].next
@@ -255,23 +274,26 @@ func (s *Skiplist) NewIter(lower, upper []byte) Iterator {
 }
 
 func (s *Skiplist) newNode(height,
-	offset, keyStart, keyEnd uint32, abbreviatedKey uint64) uint32 {
+	offset, keyStart, keyEnd uint32, abbreviatedKey uint64) (uint32, error) {
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")
 	}
 
 	unusedSize := (maxHeight - int(height)) * linksSize
-	nodeOffset := s.alloc(uint32(maxNodeSize - unusedSize))
+	nodeOffset, err := s.alloc(uint32(maxNodeSize - unusedSize))
+	if err != nil {
+		return 0, err
+	}
 	nd := s.node(nodeOffset)
 
 	nd.offset = offset
 	nd.keyStart = keyStart
 	nd.keyEnd = keyEnd
 	nd.abbreviatedKey = abbreviatedKey
-	return nodeOffset
+	return nodeOffset, nil
 }
 
-func (s *Skiplist) alloc(size uint32) uint32 {
+func (s *Skiplist) alloc(size uint32) (uint32, error) {
 	offset := len(s.nodes)
 
 	// We only have a need for memory up to offset + size, but we never want
@@ -282,6 +304,19 @@ func (s *Skiplist) alloc(size uint32) uint32 {
 		if allocSize < minAllocSize {
 			allocSize = minAllocSize
 		}
+		// Cap the allocation at the max allowed size to avoid wasted capacity.
+		if allocSize > maxNodesSize {
+			// The new record may still not fit within the allocation, in which case
+			// we return early with an error. This avoids the panic below when we
+			// resize the slice. It also avoids the allocation and copy.
+			if uint64(offset)+uint64(size) > maxNodesSize {
+				return 0, errors.Wrapf(ErrTooManyRecords,
+					"alloc of new record (size=%d) would overflow uint32 (current size=%d)",
+					uint64(offset)+uint64(size), offset,
+				)
+			}
+			allocSize = maxNodesSize
+		}
 		tmp := make([]byte, len(s.nodes), allocSize)
 		copy(tmp, s.nodes)
 		s.nodes = tmp
@@ -289,7 +324,7 @@ func (s *Skiplist) alloc(size uint32) uint32 {
 
 	newSize := uint32(offset) + size
 	s.nodes = s.nodes[:newSize]
-	return uint32(offset)
+	return uint32(offset), nil
 }
 
 func (s *Skiplist) node(offset uint32) *node {

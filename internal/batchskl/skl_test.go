@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -213,6 +214,24 @@ func TestSkiplistAdd(t *testing.T) {
 	require.Nil(t, l.Add(d.add("00002")))
 	require.Equal(t, 6, length(l))
 	require.Equal(t, 6, lengthRev(l))
+}
+
+func TestSkiplistAdd_Overflow(t *testing.T) {
+	// Regression test for cockroachdb/pebble#1258. The length of the nodes buffer
+	// cannot exceed the maximum allowable size.
+	d := &testStorage{}
+	l := newTestSkiplist(d)
+
+	// Simulate a full nodes slice. This speeds up the test significantly, as
+	// opposed to adding data to the list.
+	l.nodes = make([]byte, maxNodesSize)
+
+	// Adding a new node to the list would overflow the nodes slice. Note that it
+	// is the size of a new node struct that is relevant here, rather than the
+	// size of the data being added to the list.
+	err := l.Add(d.add("too much!"))
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrTooManyRecords))
 }
 
 // TestIteratorNext tests a basic iteration over all nodes from the beginning.
@@ -480,7 +499,8 @@ func BenchmarkIterNext(b *testing.B) {
 	for len(d.data)+20 < cap(d.data) {
 		key := randomKey(rng, buf[:])
 		offset := d.addBytes(key)
-		_ = l.Add(offset)
+		err := l.Add(offset)
+		require.NoError(b, err)
 	}
 
 	it := l.NewIter(nil, nil)
@@ -504,7 +524,8 @@ func BenchmarkIterPrev(b *testing.B) {
 	for len(d.data)+20 < cap(d.data) {
 		key := randomKey(rng, buf[:])
 		offset := d.addBytes(key)
-		_ = l.Add(offset)
+		err := l.Add(offset)
+		require.NoError(b, err)
 	}
 
 	it := l.NewIter(nil, nil)
