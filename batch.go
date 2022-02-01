@@ -62,13 +62,13 @@ type DeferredBatchOp struct {
 // have been filled into Key and Value. Not calling Finish or not
 // copying/encoding keys will result in an incomplete index, and calling Finish
 // twice may result in a panic.
-func (d DeferredBatchOp) Finish() {
+func (d DeferredBatchOp) Finish() error {
 	if d.index != nil {
 		if err := d.index.Add(d.offset); err != nil {
-			// We never add duplicate entries, so an error should never occur.
-			panic(err)
+			return err
 		}
 	}
+	return nil
 }
 
 // A Batch is a sequence of Sets, Merges, Deletes, and/or DeleteRanges that are
@@ -357,8 +357,7 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 					err = b.index.Add(uint32(offset))
 				}
 				if err != nil {
-					// We never add duplicate entries, so an error should never occur.
-					panic(err)
+					return err
 				}
 			}
 			b.memTableSize += memTableEntrySize(len(key), len(value))
@@ -475,8 +474,7 @@ func (b *Batch) Set(key, value []byte, _ *WriteOptions) error {
 	// in go1.13 will remove the need for this.
 	if b.index != nil {
 		if err := b.index.Add(deferredOp.offset); err != nil {
-			// We never add duplicate entries, so an error should never occur.
-			panic(err)
+			return err
 		}
 	}
 	return nil
@@ -505,8 +503,7 @@ func (b *Batch) Merge(key, value []byte, _ *WriteOptions) error {
 	// in go1.13 will remove the need for this.
 	if b.index != nil {
 		if err := b.index.Add(deferredOp.offset); err != nil {
-			// We never add duplicate entries, so an error should never occur.
-			panic(err)
+			return err
 		}
 	}
 	return nil
@@ -532,8 +529,7 @@ func (b *Batch) Delete(key []byte, _ *WriteOptions) error {
 	// in go1.13 will remove the need for this.
 	if b.index != nil {
 		if err := b.index.Add(deferredOp.offset); err != nil {
-			// We never add duplicate entries, so an error should never occur.
-			panic(err)
+			return err
 		}
 	}
 	return nil
@@ -560,8 +556,7 @@ func (b *Batch) SingleDelete(key []byte, _ *WriteOptions) error {
 	// in go1.13 will remove the need for this.
 	if b.index != nil {
 		if err := b.index.Add(deferredOp.offset); err != nil {
-			// We never add duplicate entries, so an error should never occur.
-			panic(err)
+			return err
 		}
 	}
 	return nil
@@ -590,8 +585,7 @@ func (b *Batch) DeleteRange(start, end []byte, _ *WriteOptions) error {
 	// in go1.13 will remove the need for this.
 	if deferredOp.index != nil {
 		if err := deferredOp.index.Add(deferredOp.offset); err != nil {
-			// We never add duplicate entries, so an error should never occur.
-			panic(err)
+			return err
 		}
 	}
 	return nil
