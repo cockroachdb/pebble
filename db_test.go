@@ -794,6 +794,9 @@ func TestMemTableReservation(t *testing.T) {
 	}
 	opts.testingRandomized()
 	opts.EnsureDefaults()
+	// We're going to be looking at and asserting the global memtable reservation
+	// amount below so we don't want to race with any triggered stats collections.
+	opts.private.disableTableStats = true
 
 	// Add a block to the cache. Note that the memtable size is larger than the
 	// cache size, so opening the DB should cause this block to be evicted.
