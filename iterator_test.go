@@ -1413,6 +1413,46 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 	require.Equal(t, 0, len(matchingKeyValues))
 }
 
+func TestIteratorGuaranteedDurable(t *testing.T) {
+	mem := vfs.NewMem()
+	opts := &Options{FS: mem}
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+	iterOptions := IterOptions{OnlyReadGuaranteedDurable: true}
+	failFunc := func(t *testing.T, reader Reader) {
+		defer func() {
+			reader.Close()
+		}()
+		iter := reader.NewIter(&iterOptions)
+		defer iter.Close()
+		require.False(t, iter.Valid())
+		require.Error(t, iter.Error())
+	}
+	t.Run("snapshot", func(t *testing.T) {
+		failFunc(t, d.NewSnapshot())
+	})
+	t.Run("batch", func(t *testing.T) {
+		failFunc(t, d.NewBatch())
+	})
+	t.Run("db", func(t *testing.T) {
+		d.Set([]byte("k"), []byte("v"), nil)
+		foundKV := func(o *IterOptions) bool {
+			iter := d.NewIter(o)
+			defer iter.Close()
+			iter.SeekGE([]byte("k"))
+			return iter.Valid()
+		}
+		require.True(t, foundKV(nil))
+		require.False(t, foundKV(&iterOptions))
+		require.NoError(t, d.Flush())
+		require.True(t, foundKV(nil))
+		require.True(t, foundKV(&iterOptions))
+	})
+}
+
 func BenchmarkIteratorSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &Iterator{
