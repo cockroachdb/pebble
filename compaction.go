@@ -1709,6 +1709,7 @@ func getNonOverlappingKeyRanges(
 		// Advance pointer on next level if nextLevelF < f
 		if cmp(nextLevelF.Largest.UserKey, f.Smallest.UserKey) < 0 {
 			nextLevelF = nextLevelIter.Next()
+			lastFileOverlap = false
 			continue
 		}
 

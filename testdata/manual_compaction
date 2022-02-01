@@ -867,3 +867,50 @@ compact a-z L1
 2:
   000006:[b#0,SET-b#0,SET]
   000007:[c#0,SET-c#0,SET]
+
+define target-file-sizes=(1, 1, 1, 1)
+L2
+  a.SET.1:v
+L2
+  b.SET.1:v
+L2
+  c.SET.1:v
+L2
+  d.SET.0:v
+L3
+  a.SET.0:v
+  b.SET.0:v
+L3
+  c.SET.0:v
+----
+2:
+  000004:[a#1,SET-a#1,SET]
+  000005:[b#1,SET-b#1,SET]
+  000006:[c#1,SET-c#1,SET]
+  000007:[d#0,SET-d#0,SET]
+3:
+  000008:[a#0,SET-b#0,SET]
+  000009:[c#0,SET-c#0,SET]
+
+add-ongoing-compaction startLevel=1 outputLevel=2 start=a end=b
+----
+
+set-concurrent-compactions num=2
+----
+
+# We allow 2 maximum concurrent compactions. The compaction below generates
+# 3 concurrent compactions (a-b, c, d). With 1 ongoing compaction,
+# the concurrent compactions should be queued up and executed sequentially.
+# We ensure that the compactions finish and that the final result of the compactions is correct.
+
+async-compact a-d L2
+----
+manual compaction did not block for ongoing
+3:
+  000010:[a#0,SET-a#0,SET]
+  000011:[b#0,SET-b#0,SET]
+  000012:[c#0,SET-c#0,SET]
+  000007:[d#0,SET-d#0,SET]
+
+remove-ongoing-compaction
+----
