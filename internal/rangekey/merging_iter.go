@@ -14,11 +14,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
-// TODO(jackson): We can reduce key comparisons in rangekey.Iter and Coalescer
-// by adjusting MergingIter to return sets of overlapping fragments rather than
-// individual fragments. MergingIter already knows the full set of overlapping
-// fragments, so we may as well.
-
 // TODO(jackson): Document memory safety requirements. Once we're reading from
 // sstables, key spans may only be considered stable between the
 // Table{Start,End} bounds.
@@ -37,6 +32,49 @@ import (
 // removing any explicit mention of range keys. The algorithm works for all key
 // span typees, and could be used to fragment RANGEDELs across levels during a
 // compaction.
+
+// Fragments holds a set of fragments all with the bounds [Start, End).
+// Individual, sorted fragments may be retrieved using the At method.
+type Fragments struct {
+	Start, End []byte
+	spans      bySeqKind
+}
+
+// Empty returns true iff f is an empty set of fragments.
+func (f *Fragments) Empty() bool {
+	return len(f.spans) == 0
+}
+
+// Count returns the number of fragments with these bounds.
+func (f *Fragments) Count() int {
+	return len(f.spans)
+}
+
+// At retrieves the i-th span.
+func (f *Fragments) At(i int) keyspan.Span {
+	// Construct the fragment with f.spans[i].Start's trailer, so it adopts its
+	// sequence number and kind, and with f.spans[i]'s Value.
+	return keyspan.Span{
+		Start: base.InternalKey{UserKey: f.Start, Trailer: f.spans[i].Start.Trailer},
+		End:   f.End,
+		Value: f.spans[i].Value,
+	}
+}
+
+type bySeqKind []*keyspan.Span
+
+func (s bySeqKind) Len() int      { return len(s) }
+func (s bySeqKind) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s bySeqKind) Less(i, j int) bool {
+	switch {
+	case s[i].Start.SeqNum() > s[j].Start.SeqNum():
+		return true
+	case s[i].Start.SeqNum() == s[j].Start.SeqNum():
+		return s[i].Start.Kind() > s[j].Start.Kind()
+	default:
+		return false
+	}
+}
 
 // MergingIter merges range keys across levels of the LSM, exposing a fragment
 // iterator that yields range key spans fragmented at unique range key
@@ -207,34 +245,10 @@ type MergingIter struct {
 	// Each element points into a child iterator's memory, so the spans may not
 	// be directly modified.
 	fragments bySeqKind
-	// index holds the index into fragments indicating the source fragment at
-	// the current iterator position.
-	index int
-	// curr holds the truncated fragment at the current iterator position. It's
-	// the fragment at i.fragments[i.index], but with the bounds [start, end).
-	curr keyspan.Span
 
 	err error
 	dir int8
 }
-
-type bySeqKind []*keyspan.Span
-
-func (s bySeqKind) Len() int      { return len(s) }
-func (s bySeqKind) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
-func (s bySeqKind) Less(i, j int) bool {
-	switch {
-	case s[i].Start.SeqNum() > s[j].Start.SeqNum():
-		return true
-	case s[i].Start.SeqNum() == s[j].Start.SeqNum():
-		return s[i].Start.Kind() > s[j].Start.Kind()
-	default:
-		return false
-	}
-}
-
-// MergingIter implements the keyspan.FragmentIterator interface.
-var _ keyspan.FragmentIterator = (*MergingIter)(nil)
 
 type mergingIterLevel struct {
 	iter fragmentBoundIterator
@@ -264,34 +278,10 @@ func (m *MergingIter) Init(cmp base.Compare, iters ...keyspan.FragmentIterator) 
 	}
 }
 
-// Valid returns true iff the iterator is currently positioned over a
-// fragment.
-func (m *MergingIter) Valid() bool {
-	return m.index >= 0 && m.index < len(m.fragments)
-}
-
-// End returns the end key of the fragment at the current iterator position.
-func (m *MergingIter) End() []byte {
-	// TODO(jackson): Require Valid() and drop the index checks.
-	if m.index < 0 || m.index >= len(m.fragments) {
-		return nil
-	}
-	return m.curr.End
-}
-
-// Current returns the fragment at the current iterator position.
-func (m *MergingIter) Current() keyspan.Span {
-	// TODO(jackson): Require Valid() and drop the index checks.
-	if m.index < 0 || m.index >= len(m.fragments) {
-		return keyspan.Span{}
-	}
-	return m.curr
-}
-
 // SeekGE implements base.InternalIterator.SeekGE. Like other implementations of
 // keyspan.FragmentIterator, MergingIter seeks based on the span's Start key,
 // returning the fragment with the smallest Start ≥ key.
-func (m *MergingIter) SeekGE(key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
+func (m *MergingIter) SeekGE(key []byte, trySeekUsingNext bool) Fragments {
 	m.invalidate() // clear state about current position
 	for i := range m.levels {
 		l := &m.levels[i]
@@ -301,18 +291,10 @@ func (m *MergingIter) SeekGE(key []byte, trySeekUsingNext bool) (*base.InternalK
 	return m.findNextFragmentSet()
 }
 
-// SeekPrefixGE satisfies the InternalIterator interface but is unimplemented.
-func (m *MergingIter) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
-) (*base.InternalKey, []byte) {
-	// This should never be called as prefix iteration is only done for point records.
-	panic("pebble: SeekPrefixGE unimplemented")
-}
-
 // SeekLT implements base.InternalIterator.SeekLT. Like other implementations of
 // keyspan.FragmentIterator, MergingIter seeks based on fragements' Start keys,
 // returning the fragment with the largest Start that's < key.
-func (m *MergingIter) SeekLT(key []byte) (*base.InternalKey, []byte) {
+func (m *MergingIter) SeekLT(key []byte) Fragments {
 	// TODO(jackson): Evaluate whether there's an implementation of SeekLT
 	// independent of SeekGE that is more efficient. It's tricky, because the
 	// fragment we should return might straddle `key` itself.
@@ -332,15 +314,15 @@ func (m *MergingIter) SeekLT(key []byte) (*base.InternalKey, []byte) {
 	// Start user key < key: [b,l)#1. This requires examining bounds both < 'c'
 	// (the 'b' of [b,m)#1's start key) and bounds ≥ 'c' (the 'l' of ([a,l)#2's
 	// end key).
-	if k, _ := m.SeekGE(key, false); k == nil && m.err != nil {
-		return nil, nil
+	if fragments := m.SeekGE(key, false); fragments.Empty() && m.err != nil {
+		return fragments
 	}
 	// Prev to the previous fragment set.
 	return m.Prev()
 }
 
 // First implements base.InternalIterator.First.
-func (m *MergingIter) First() (*base.InternalKey, []byte) {
+func (m *MergingIter) First() Fragments {
 	m.invalidate() // clear state about current position
 	for i := range m.levels {
 		l := &m.levels[i]
@@ -351,7 +333,7 @@ func (m *MergingIter) First() (*base.InternalKey, []byte) {
 }
 
 // Last implements base.InternalIterator.Last.
-func (m *MergingIter) Last() (*base.InternalKey, []byte) {
+func (m *MergingIter) Last() Fragments {
 	m.invalidate() // clear state about current position
 	for i := range m.levels {
 		l := &m.levels[i]
@@ -362,27 +344,13 @@ func (m *MergingIter) Last() (*base.InternalKey, []byte) {
 }
 
 // Next implements base.InternalIterator.Next.
-func (m *MergingIter) Next() (*base.InternalKey, []byte) {
+func (m *MergingIter) Next() Fragments {
 	if m.err != nil {
-		return nil, nil
+		return Fragments{}
 	}
-	if m.dir == +1 && m.curr.Empty() {
-		return nil, nil
+	if m.dir == +1 && len(m.fragments) == 0 {
+		return Fragments{}
 	}
-
-	// If the iterator is not already exhausted, we might only need to move to
-	// the next fragment within our existing set of fragments. Note that it may
-	// be the case that m.dir = -1 (and will stay -1), because m.dir is updated
-	// only when switching heap directions once the existing set of fragments is
-	// exhausted.
-	if !m.curr.Empty() {
-		m.index++
-		if m.index < len(m.fragments) {
-			m.setCurrent()
-			return &m.curr.Start, nil
-		}
-	}
-
 	// If the heap is setup in the reverse direction, we need to reorient it.
 	// We only switch the heap direction in the case that the existing cache of
 	// fragments in m.fragments has been exhausted.
@@ -393,27 +361,13 @@ func (m *MergingIter) Next() (*base.InternalKey, []byte) {
 }
 
 // Prev implements base.InternalIterator.Prev.
-func (m *MergingIter) Prev() (*base.InternalKey, []byte) {
+func (m *MergingIter) Prev() Fragments {
 	if m.err != nil {
-		return nil, nil
+		return Fragments{}
 	}
-	if m.dir == -1 && m.curr.Empty() {
-		return nil, nil
+	if m.dir == -1 && len(m.fragments) == 0 {
+		return Fragments{}
 	}
-
-	// If the iterator is not already exhausted, we might only need to move to
-	// the previous fragment within our existing set of fragments. Note that it
-	// may be the case that m.dir = +1 (and will stay +1), because m.dir is
-	// updated only when switching heap directions once the existing set of
-	// fragments is exhausted.
-	if !m.curr.Empty() {
-		m.index--
-		if m.index >= 0 {
-			m.setCurrent()
-			return &m.curr.Start, nil
-		}
-	}
-
 	// If the heap is setup in the forward direction, we need to reorient it.
 	// We only switch the heap direction in the case that the existing cache of
 	// fragments in m.fragments has been exhausted.
@@ -593,7 +547,7 @@ func (m *MergingIter) cmp(a, b []byte) int {
 	return m.heap.cmp(a, b)
 }
 
-func (m *MergingIter) findNextFragmentSet() (*base.InternalKey, []byte) {
+func (m *MergingIter) findNextFragmentSet() Fragments {
 	// Each iteration of this loop considers a new merged span between unique
 	// user keys. An iteration may find that there exists no overlap for a given
 	// span, (eg, if the spans [a,b), [d, e) exist within level iterators, the
@@ -653,15 +607,22 @@ func (m *MergingIter) findNextFragmentSet() (*base.InternalKey, []byte) {
 		m.synthesizeFragments(+1)
 
 		if len(m.fragments) > 0 {
-			return &m.curr.Start, nil
+			return Fragments{
+				Start: m.start,
+				End:   m.end,
+				spans: m.fragments,
+			}
 		}
 	}
 	// Exhausted.
-	m.curr = keyspan.Span{}
-	return nil, nil
+	for fi := range m.fragments {
+		m.fragments[fi] = nil
+	}
+	m.fragments = m.fragments[:0]
+	return Fragments{}
 }
 
-func (m *MergingIter) findPrevFragmentSet() (*base.InternalKey, []byte) {
+func (m *MergingIter) findPrevFragmentSet() Fragments {
 	// Each iteration of this loop considers a new merged span between unique
 	// user keys. An iteration may find that there exists no overlap for a given
 	// span, (eg, if the spans [a,b), [d, e) exist within level iterators, the
@@ -720,12 +681,19 @@ func (m *MergingIter) findPrevFragmentSet() (*base.InternalKey, []byte) {
 		m.synthesizeFragments(-1)
 
 		if len(m.fragments) > 0 {
-			return &m.curr.Start, nil
+			return Fragments{
+				Start: m.start,
+				End:   m.end,
+				spans: m.fragments,
+			}
 		}
 	}
 	// Exhausted.
-	m.curr = keyspan.Span{}
-	return nil, nil
+	for fi := range m.fragments {
+		m.fragments[fi] = nil
+	}
+	m.fragments = m.fragments[:0]
+	return Fragments{}
 }
 
 func (m *MergingIter) heapRoot() *boundKey {
@@ -760,20 +728,11 @@ func (m *MergingIter) synthesizeFragments(dir int8) {
 		}
 	}
 	sort.Sort(m.fragments)
-	m.index = 0
-	if m.dir == -1 {
-		m.index = len(m.fragments) - 1
-	}
-	if len(m.fragments) > 0 {
-		m.setCurrent()
-	}
 }
 
 func (m *MergingIter) invalidate() {
 	m.err = nil
 	m.start, m.end = nil, nil
-	m.index = 0
-	m.curr = keyspan.Span{}
 	m.heap.items = m.heap.items[:0]
 
 	// Clear existing fragments.
@@ -781,33 +740,6 @@ func (m *MergingIter) invalidate() {
 		m.fragments[fi] = nil
 	}
 	m.fragments = m.fragments[:0]
-}
-
-func (m *MergingIter) setCurrent() {
-	// The fragment at m.fragments[m.index] overlaps the entirety of the span
-	// [start, end), but it may extend beyond the span in either direction.
-	// Truncate the span that we return to [start, end).
-
-	fi := m.fragments[m.index]
-
-	if invariants.Enabled {
-		// Verify that the fragment fi overlaps the entirety of the span
-		// [m.start, m.end).
-		if m.cmp(fi.Start.UserKey, m.start) > 0 {
-			panic("pebble: invariant violation: fragment starts after iterator span")
-		}
-		if m.cmp(fi.End, m.end) < 0 {
-			panic("pebble: invariant violation: fragment ends before iterator span")
-		}
-	}
-
-	// Construct the fragment with fi.Start's trailer, so it adopts fi's
-	// sequence number and kind.
-	m.curr = keyspan.Span{
-		Start: base.InternalKey{UserKey: m.start, Trailer: fi.Start.Trailer},
-		End:   m.end,
-		Value: fi.Value,
-	}
 }
 
 // nextEntry steps to the next entry.
@@ -846,17 +778,15 @@ func (m *MergingIter) prevEntry() {
 	}
 }
 
-// Clone implements (keyspan.FragmentIterator).Clone.
-func (m *MergingIter) Clone() keyspan.FragmentIterator {
-	// TODO(jackson): Remove Clone when range-key state is included in
-	// readState.
+// clonedIters makes a clone of the merging iterator's underlying iterators and
+// returns them.
+func (m *MergingIter) clonedIters() []keyspan.FragmentIterator {
+	// TODO(jackson): Remove when range-key state is included in readState.
 	var iters []keyspan.FragmentIterator
 	for l := range m.levels {
 		iters = append(iters, m.levels[l].iter.iter.Clone())
 	}
-	c := &MergingIter{}
-	c.Init(m.heap.cmp, iters...)
-	return c
+	return iters
 }
 
 // DebugString returns a string representing the current internal state of the

@@ -126,8 +126,6 @@ func (d *DB) newRangeKeyIter(
 	}
 
 	iter := &rangekey.Iter{}
-	miter := &rangekey.MergingIter{}
-	miter.Init(d.cmp, iters...)
-	iter.Init(d.cmp, d.opts.Comparer.FormatKey, seqNum, miter)
+	iter.Init(d.cmp, d.opts.Comparer.FormatKey, seqNum, iters...)
 	return iter
 }
