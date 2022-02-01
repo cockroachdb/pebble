@@ -10,7 +10,6 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // bufferReuseMaxCapacity is the maximum capacity of a DefragmentingIter buffer
@@ -102,8 +101,7 @@ const (
 // defragmented span.
 type DefragmentingIter struct {
 	cmp      base.Compare
-	split    base.Split
-	iter     Iter
+	iter     Iterator
 	iterSpan *CoalescedSpan
 	iterPos  iterPos
 	method   DefragmentMethod
@@ -136,15 +134,9 @@ var _ Iterator = (*DefragmentingIter)(nil)
 // Init initializes the defragmenting iter using the provided defragmentation
 // method.
 func (i *DefragmentingIter) Init(
-	cmp base.Compare,
-	split base.Split,
-	formatKey base.FormatKey,
-	visibleSeqNum uint64,
-	defragmentMethod DefragmentMethod,
-	iter keyspan.FragmentIterator,
+	cmp base.Compare, iter Iterator, defragmentMethod DefragmentMethod,
 ) {
-	*i = DefragmentingIter{cmp: cmp, split: split, method: defragmentMethod}
-	i.iter.Init(cmp, formatKey, visibleSeqNum, iter)
+	*i = DefragmentingIter{cmp: cmp, iter: iter, method: defragmentMethod}
 	switch i.method {
 	case DefragmentInternal:
 		i.equalState = equalRangeKeyInternal
@@ -167,7 +159,7 @@ func (i *DefragmentingIter) Clone() Iterator {
 	// TODO(jackson): Delete Clone() when range-key state is incorporated into
 	// readState.
 	c := &DefragmentingIter{}
-	c.Init(i.cmp, i.split, i.iter.coalescer.formatKey, i.iter.coalescer.visibleSeqNum, i.method, i.iter.iter.Clone())
+	c.Init(i.cmp, i.iter.Clone(), i.method)
 	return c
 }
 

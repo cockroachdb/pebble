@@ -5,7 +5,6 @@
 package rangekey
 
 import (
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 )
@@ -57,8 +56,8 @@ type Iterator interface {
 // Iter handles 'coalescing' spans on-the-fly, including dropping key spans that
 // are no longer relevant.
 type Iter struct {
-	iter      keyspan.FragmentIterator
-	iterKey   *base.InternalKey
+	miter     MergingIter
+	iterFrags Fragments
 	coalescer Coalescer
 	curr      CoalescedSpan
 	err       error
@@ -70,10 +69,9 @@ type Iter struct {
 var _ Iterator = (*Iter)(nil)
 
 // Init initializes an iterator over a set of fragmented, coalesced spans.
-func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum uint64, iter keyspan.FragmentIterator) {
-	*i = Iter{
-		iter: iter,
-	}
+func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum uint64, iters ...keyspan.FragmentIterator) {
+	*i = Iter{}
+	i.miter.Init(cmp, iters...)
 	i.coalescer.Init(cmp, formatKey, visibleSeqNum, func(span CoalescedSpan) {
 		i.curr = span
 		i.valid = true
@@ -86,10 +84,10 @@ func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum ui
 func (i *Iter) Clone() Iterator {
 	// TODO(jackson): Remove this method when the range keys' state is included
 	// in the readState.
-	ki := i.iter.Clone()
 	// Init the new Iter to ensure err is cleared.
 	newIter := &Iter{}
-	newIter.Init(i.coalescer.items.cmp, i.coalescer.formatKey, i.coalescer.visibleSeqNum, ki)
+	newIter.Init(i.coalescer.items.cmp, i.coalescer.formatKey, i.coalescer.visibleSeqNum,
+		i.miter.clonedIters()...)
 	return newIter
 }
 
@@ -102,17 +100,12 @@ func (i *Iter) coalesceForward() *CoalescedSpan {
 	i.dir = +1
 	i.valid = false
 	i.curr = CoalescedSpan{}
-	// As long as we have a key and that key matches the coalescer's current
-	// start key, it must be coalesced.
-	// TODO(jackson): This key comparison is redundant with the one performed by
-	// Coalescer.Add. Tweaking the interfaces should be able to remove the
-	// comparison.
-	for i.iterKey != nil && (!i.coalescer.Pending() || i.coalescer.items.cmp(i.iterKey.UserKey, i.coalescer.Start()) == 0) {
-		if err := i.coalescer.Add(i.iter.Current()); err != nil {
+
+	for j := 0; j < i.iterFrags.Count(); j++ {
+		if err := i.coalescer.Add(i.iterFrags.At(j)); err != nil {
 			i.valid, i.err = false, err
 			return nil
 		}
-		i.iterKey, _ = i.iter.Next()
 	}
 	// NB: Finish populates i.curr with the coalesced span.
 	i.coalescer.Finish()
@@ -126,17 +119,12 @@ func (i *Iter) coalesceBackward() *CoalescedSpan {
 	i.dir = -1
 	i.valid = false
 	i.curr = CoalescedSpan{}
-	// As long as we have a key and that key matches the coalescer's current
-	// start key, it must be coalesced.
-	// TODO(jackson): This key comparison is redundant with the one performed by
-	// Coalescer.AddReverse. Tweaking the interfaces should be able to remove
-	// the comparison.
-	for i.iterKey != nil && (!i.coalescer.Pending() || i.coalescer.items.cmp(i.iterKey.UserKey, i.coalescer.Start()) == 0) {
-		if err := i.coalescer.AddReverse(i.iter.Current()); err != nil {
+
+	for j := i.iterFrags.Count() - 1; j >= 0; j-- {
+		if err := i.coalescer.AddReverse(i.iterFrags.At(j)); err != nil {
 			i.valid, i.err = false, err
 			return nil
 		}
-		i.iterKey, _ = i.iter.Prev()
 	}
 	// NB: Finish populates i.curr with the coalesced span.
 	i.coalescer.Finish()
@@ -149,8 +137,8 @@ func (i *Iter) coalesceBackward() *CoalescedSpan {
 // SeekGE seeks the iterator to the first span covering a key greater than or
 // equal to key and returns it.
 func (i *Iter) SeekGE(key []byte) *CoalescedSpan {
-	i.iterKey, _ = i.iter.SeekLT(key)
-	if s := i.iter.Current(); !s.Empty() && i.coalescer.items.cmp(key, s.End) < 0 {
+	i.iterFrags = i.miter.SeekLT(key)
+	if !i.iterFrags.Empty() && i.coalescer.items.cmp(key, i.iterFrags.End) < 0 {
 		// We landed on a range key that begins before `key`, but extends beyond
 		// it. Since we performed a SeekLT, we're on the last fragment with
 		// those range key bounds and we need to coalesce backwards.
@@ -160,14 +148,14 @@ func (i *Iter) SeekGE(key []byte) *CoalescedSpan {
 	// exactly equal to key. Move forward one. There's no point in checking
 	// whether the next fragment actually covers the search key, because if it
 	// doesn't it's still the first fragment covering a key ≥ the search key.
-	i.iterKey, _ = i.iter.Next()
+	i.iterFrags = i.miter.Next()
 	return i.coalesceForward()
 }
 
 // SeekLT seeks the iterator to the first span covering a key less than key and
 // returns it.
 func (i *Iter) SeekLT(key []byte) *CoalescedSpan {
-	i.iterKey, _ = i.iter.SeekLT(key)
+	i.iterFrags = i.miter.SeekLT(key)
 	// We landed on the range key with the greatest start key that still sorts
 	// before `key`.  Since we performed a SeekLT, we're on the last fragment
 	// with those range key bounds and we need to coalesce backwards.
@@ -177,63 +165,29 @@ func (i *Iter) SeekLT(key []byte) *CoalescedSpan {
 // First seeks the iterator to the first span and returns it.
 func (i *Iter) First() *CoalescedSpan {
 	i.dir = +1
-	i.iterKey, _ = i.iter.First()
+	i.iterFrags = i.miter.First()
 	return i.coalesceForward()
 }
 
 // Last seeks the iterator to the last span and returns it.
 func (i *Iter) Last() *CoalescedSpan {
 	i.dir = -1
-	i.iterKey, _ = i.iter.Last()
+	i.iterFrags = i.miter.Last()
 	return i.coalesceBackward()
 }
 
 // Next advances to the next span and returns it.
 func (i *Iter) Next() *CoalescedSpan {
-	switch {
-	case i.dir == +1 && !i.iter.Valid():
+	if i.dir == +1 && i.iterFrags.Empty() {
 		// If we were already going forward and the underlying iterator is
 		// invalid, there is no next item. Don't move the iterator, just
 		// invalidate the iterator's position.
 		i.valid = false
 		return nil
-	case i.dir == -1 && !i.valid:
-		// If we were previously going backward and the iterator is positioned
-		// at the very beginning, we only need to Next once to position
-		// ourselves over the first fragment.
-		i.dir = +1
-		i.iterKey, _ = i.iter.Next()
-	case i.dir == -1:
-		// Switching directions; We're currently positioned at the last of the
-		// previous set of fragments. The iterator is valid. In the example
-		// below, Current is the span formed by coalescing the y fragments. The
-		// ^ marks the i.iter position, over the last fragment of x.:
-		//   ... x x x y y y ...
-		//           ^
-		// We want to return the coalesced span after y (if it exists). We move
-		// the underlying iterator once to move over the first fragment of y
-		// [which necessarily must exist, since i.valid], coalesce forward to
-		// skip over the rest of y's fragments and land on the first fragment of
-		// z, if it exists.
-		i.dir = +1
-		if i.iterKey, _ = i.iter.Next(); i.iterKey == nil {
-			// Since i.valid, there must be a next fragment on the underlying
-			// span.
-			i.err = errors.Newf("pebble: invariant violation: next span must exist")
-			return nil
-		}
-		// Now we're positioned over the first fragment for the most recently
-		// returned coalesced span (y in the above example). The caller Next'd
-		// because they want the coalesced span after that, so Next() once [on
-		// this iter, not the inner iter] to skip over it.
-		if x := i.Next(); x == nil {
-			i.err = errors.Newf("pebble: invariant violation: next span must exist")
-			return nil
-		}
-		// Now we're positioned over the first fragment for the correct span,
-		// and may proceed as normal.
 	}
-	if !i.iter.Valid() {
+	i.dir = +1
+	i.iterFrags = i.miter.Next()
+	if i.iterFrags.Empty() {
 		i.valid = false
 		return nil
 	}
@@ -242,48 +196,16 @@ func (i *Iter) Next() *CoalescedSpan {
 
 // Prev steps back to the previous span and returns it.
 func (i *Iter) Prev() *CoalescedSpan {
-	switch {
-	case i.dir == -1 && !i.iter.Valid():
+	if i.dir == -1 && i.iterFrags.Empty() {
 		// If we were already going backward and the underlying iterator is
 		// invalid, there is no previous item. Don't move the iterator, just
 		// invalidate the iterator's position.
 		i.valid = false
 		return nil
-	case i.dir == +1 && !i.valid:
-		// If we were previously going forward and the iterator is positioned at
-		// the very end, we only need to Prev once to position ourselves over
-		// the last fragment.
-		i.dir = -1
-		i.iterKey, _ = i.iter.Prev()
-	case i.dir == +1:
-		// Switching directions; We're currently positioned at the first of the
-		// next set of fragments. The iterator is valid. In the example
-		// below, Current is the span formed by coalescing the x fragments. The
-		// ^ marks the i.iter position, over the first fragment of y.:
-		//   ... x x x y y y ...
-		//             ^
-		// We want to return the coalesced span before x (if it exists). We move
-		// the underlying iterator once to move over the last fragment of x
-		// [which necessarily must exist, since i.valid], coalesce backward to
-		// skip over the rest of x's fragments and land on the first fragment of
-		// w, if it exists.
-		i.dir = -1
-		if i.iterKey, _ = i.iter.Prev(); i.iterKey == nil {
-			i.err = errors.Newf("pebble: invariant violation: next span must exist")
-			return nil
-		}
-		// Now we're positioned over the last fragment for the most recently
-		// returned coalesced span (x in the above example). The caller Prev'd
-		// because they want the coalesced span before that, so Prev() once [on
-		// this iter, not the inner iter] to skip over it.
-		if x := i.Prev(); x == nil {
-			i.err = errors.Newf("pebble: invariant violation: next span must exist")
-			return nil
-		}
-		// Now we're positioned over the last fragment for the correct span, and
-		// may proceed as normal.
 	}
-	if !i.iter.Valid() {
+	i.dir = -1
+	i.iterFrags = i.miter.Prev()
+	if i.iterFrags.Empty() {
 		i.valid = false
 		return nil
 	}

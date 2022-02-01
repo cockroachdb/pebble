@@ -22,22 +22,25 @@ next
 next
 next
 next
-next
-next
-next
-next
 ----
 a-c#10.RANGEKEYSET
 a-c#10.RANGEKEYDEL
 a-c#8.RANGEKEYUNSET
 a-c#4.RANGEKEYSET
+-
 c-d#4.RANGEKEYSET
+-
 e-f#20.RANGEKEYSET
+-
 h-j#22.RANGEKEYDEL
 h-j#21.RANGEKEYSET
+-
 l-m#2.RANGEKEYUNSET
+-
 q-z#14.RANGEKEYSET
+-
 .
+-
 
 define
 b.RANGEKEYSET.10  : d [(@1=apples)]
@@ -55,15 +58,20 @@ next
 next
 next
 next
-next
 ----
 a-b#3.RANGEKEYUNSET
+-
 b-c#10.RANGEKEYSET
 b-c#3.RANGEKEYUNSET
+-
 c-d#10.RANGEKEYSET
+-
 e-h#8.RANGEKEYDEL
+-
 h-k#5.RANGEKEYDEL
+-
 .
+-
 
 iter
 last
@@ -72,15 +80,20 @@ prev
 prev
 prev
 prev
-prev
 ----
 h-k#5.RANGEKEYDEL
+-
 e-h#8.RANGEKEYDEL
+-
 c-d#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
+-
 b-c#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+-
 a-b#3.RANGEKEYUNSET
+-
 .
+-
 
 # Test changing directions at each iterator position, reverse to forward.
 iter
@@ -91,10 +104,15 @@ prev
 next
 ----
 h-k#5.RANGEKEYDEL
+-
 .
+-
 h-k#5.RANGEKEYDEL
+-
 e-h#8.RANGEKEYDEL
+-
 h-k#5.RANGEKEYDEL
+-
 
 iter
 last
@@ -103,9 +121,13 @@ prev
 next
 ----
 h-k#5.RANGEKEYDEL
+-
 e-h#8.RANGEKEYDEL
+-
 c-d#10.RANGEKEYSET
+-
 e-h#8.RANGEKEYDEL
+-
 
 iter
 last
@@ -115,25 +137,16 @@ prev
 next
 ----
 h-k#5.RANGEKEYDEL
+-
 e-h#8.RANGEKEYDEL
+-
 c-d#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
-c-d#10.RANGEKEYSET
-
-iter
-last
-prev
-prev
-prev
-prev
-next
-----
-h-k#5.RANGEKEYDEL
-e-h#8.RANGEKEYDEL
-c-d#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
+-
 b-c#10.RANGEKEYSET
 b-c#3.RANGEKEYUNSET
+-
+c-d#10.RANGEKEYSET
+-
 
 iter
 last
@@ -141,16 +154,47 @@ prev
 prev
 prev
 prev
-prev
 next
 ----
 h-k#5.RANGEKEYDEL
+-
 e-h#8.RANGEKEYDEL
+-
 c-d#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
+-
 b-c#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+-
 a-b#3.RANGEKEYUNSET
+-
 b-c#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+-
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+next
+----
+h-k#5.RANGEKEYDEL
+-
+e-h#8.RANGEKEYDEL
+-
+c-d#10.RANGEKEYSET
+-
+b-c#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+-
+a-b#3.RANGEKEYUNSET
+-
+.
+-
+a-b#3.RANGEKEYUNSET
+-
 
 # Test changing directions at each iterator position, forward to reverse.
 
@@ -162,10 +206,16 @@ next
 prev
 ----
 a-b#3.RANGEKEYUNSET
+-
 .
+-
 a-b#3.RANGEKEYUNSET
+-
 b-c#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+-
 a-b#3.RANGEKEYUNSET
+-
 
 iter
 first
@@ -174,39 +224,59 @@ next
 prev
 ----
 a-b#3.RANGEKEYUNSET
+-
 b-c#10.RANGEKEYSET
 b-c#3.RANGEKEYUNSET
-b-c#10.RANGEKEYSET
-
-iter
-first
-next
-next
-next
-prev
-----
-a-b#3.RANGEKEYUNSET
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
+-
 c-d#10.RANGEKEYSET
+-
+b-c#10.RANGEKEYSET
 b-c#3.RANGEKEYUNSET
+-
 
 iter
 first
 next
 next
 next
-next
-next
 prev
 ----
 a-b#3.RANGEKEYUNSET
+-
 b-c#10.RANGEKEYSET
 b-c#3.RANGEKEYUNSET
+-
 c-d#10.RANGEKEYSET
+-
 e-h#8.RANGEKEYDEL
+-
+c-d#10.RANGEKEYSET
+-
+
+iter
+first
+next
+next
+next
+next
+next
+prev
+----
+a-b#3.RANGEKEYUNSET
+-
+b-c#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+-
+c-d#10.RANGEKEYSET
+-
+e-h#8.RANGEKEYDEL
+-
 h-k#5.RANGEKEYDEL
-e-h#8.RANGEKEYDEL
+-
+.
+-
+h-k#5.RANGEKEYDEL
+-
 
 iter
 first
@@ -217,11 +287,18 @@ next
 prev
 ----
 a-b#3.RANGEKEYUNSET
+-
 b-c#10.RANGEKEYSET
 b-c#3.RANGEKEYUNSET
+-
 c-d#10.RANGEKEYSET
+-
 e-h#8.RANGEKEYDEL
-c-d#10.RANGEKEYSET
+-
+h-k#5.RANGEKEYDEL
+-
+e-h#8.RANGEKEYDEL
+-
 
 # Test SeekGE. Note that MergingIter's SeekGE implements the FragmentIterator's
 # SeekGE semantics. It returns the first fragment with a Start key ≥ the search
@@ -231,6 +308,7 @@ iter
 seek-ge cc
 ----
 e-h#8.RANGEKEYDEL
+-
 
 iter
 seek-ge 1
@@ -245,15 +323,26 @@ seek-ge h
 seek-ge i
 ----
 a-b#3.RANGEKEYUNSET
+-
 a-b#3.RANGEKEYUNSET
+-
 b-c#10.RANGEKEYSET
+b-c#3.RANGEKEYUNSET
+-
 c-d#10.RANGEKEYSET
+-
 c-d#10.RANGEKEYSET
+-
 e-h#8.RANGEKEYDEL
+-
 e-h#8.RANGEKEYDEL
+-
 h-k#5.RANGEKEYDEL
+-
 h-k#5.RANGEKEYDEL
+-
 .
+-
 
 # Test SeekLT. Note that MergingIter's SeekLT implements the FragmentIterator's
 # SeekLT semantics. It returns the first fragment with a Start key < the search
@@ -266,6 +355,7 @@ iter
 seek-lt b
 ----
 a-b#3.RANGEKEYUNSET
+-
 
 iter
 seek-lt 1
@@ -285,20 +375,37 @@ seek-lt k
 seek-lt z
 ----
 .
+-
 .
+-
 a-b#3.RANGEKEYUNSET
+-
 a-b#3.RANGEKEYUNSET
+-
+b-c#10.RANGEKEYSET
 b-c#3.RANGEKEYUNSET
+-
+b-c#10.RANGEKEYSET
 b-c#3.RANGEKEYUNSET
+-
 c-d#10.RANGEKEYSET
+-
 c-d#10.RANGEKEYSET
+-
 c-d#10.RANGEKEYSET
+-
 c-d#10.RANGEKEYSET
+-
 e-h#8.RANGEKEYDEL
+-
 e-h#8.RANGEKEYDEL
+-
 h-k#5.RANGEKEYDEL
+-
 h-k#5.RANGEKEYDEL
+-
 h-k#5.RANGEKEYDEL
+-
 
 define
 a.RANGEKEYDEL.5: f
@@ -314,17 +421,27 @@ prev
 next
 ----
 a-f#5.RANGEKEYDEL
+a-f#4.RANGEKEYDEL
+-
 .
+-
 a-f#5.RANGEKEYDEL
+a-f#4.RANGEKEYDEL
+-
 
 iter
 last
 next
 prev
 ----
+k-s#5.RANGEKEYDEL
 k-s#4.RANGEKEYDEL
+-
 .
+-
+k-s#5.RANGEKEYDEL
 k-s#4.RANGEKEYDEL
+-
 
 define
 w.RANGEKEYDEL.5: x
@@ -345,11 +462,23 @@ prev
 next
 ----
 y-z#5.RANGEKEYDEL
+-
 .
+-
 y-z#5.RANGEKEYDEL
+-
 w-x#5.RANGEKEYDEL
+w-x#4.RANGEKEYDEL
+w-x#3.RANGEKEYDEL
+w-x#1.RANGEKEYDEL
+-
 .
+-
 w-x#5.RANGEKEYDEL
+w-x#4.RANGEKEYDEL
+w-x#3.RANGEKEYDEL
+w-x#1.RANGEKEYDEL
+-
 
 iter
 seek-ge x
@@ -358,9 +487,20 @@ seek-ge xray
 prev
 ----
 x-y#5.RANGEKEYDEL
-w-x#1.RANGEKEYDEL
-y-z#5.RANGEKEYDEL
+x-y#4.RANGEKEYDEL
 x-y#1.RANGEKEYDEL
+-
+w-x#5.RANGEKEYDEL
+w-x#4.RANGEKEYDEL
+w-x#3.RANGEKEYDEL
+w-x#1.RANGEKEYDEL
+-
+y-z#5.RANGEKEYDEL
+-
+x-y#5.RANGEKEYDEL
+x-y#4.RANGEKEYDEL
+x-y#1.RANGEKEYDEL
+-
 
 define
 il.RANGEKEYDEL.10: qb
@@ -391,7 +531,20 @@ prev
 rf-sn#8.RANGEKEYDEL
 rf-sn#7.RANGEKEYDEL
 rf-sn#4.RANGEKEYDEL
+-
 sn-sv#10.RANGEKEYDEL
 sn-sv#8.RANGEKEYDEL
-.
+sn-sv#7.RANGEKEYDEL
+sn-sv#4.RANGEKEYDEL
+-
+sv-wn#10.RANGEKEYDEL
+sv-wn#4.RANGEKEYDEL
+-
 wn-yx#4.RANGEKEYDEL
+-
+.
+-
+.
+-
+wn-yx#4.RANGEKEYDEL
+-

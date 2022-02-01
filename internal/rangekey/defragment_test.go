@@ -23,7 +23,6 @@ import (
 
 func TestDefragmentingIter(t *testing.T) {
 	cmp := testkeys.Comparer.Compare
-	split := testkeys.Comparer.Split
 	fmtKey := testkeys.Comparer.FormatKey
 
 	var buf bytes.Buffer
@@ -57,8 +56,10 @@ func TestDefragmentingIter(t *testing.T) {
 			default:
 				panic(fmt.Sprintf("unrecognized defragment method %q", methodStr))
 			}
+			var innerIter Iter
+			innerIter.Init(cmp, fmtKey, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, spans))
 			var iter DefragmentingIter
-			iter.Init(cmp, split, fmtKey, base.InternalKeySeqNumMax, method, keyspan.NewIter(cmp, spans))
+			iter.Init(cmp, &innerIter, method)
 			for _, line := range strings.Split(td.Input, "\n") {
 				runIterOp(&buf, &iter, line)
 			}
@@ -83,7 +84,6 @@ func TestDefragmentingIter_RandomizedFixedSeed(t *testing.T) {
 
 func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	cmp := testkeys.Comparer.Compare
-	split := testkeys.Comparer.Split
 	formatKey := testkeys.Comparer.FormatKey
 
 	rng := rand.New(rand.NewSource(seed))
@@ -141,11 +141,15 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	// overlaps, so we need to sort and fragment them.
 	original = fragment(cmp, formatKey, original)
 	fragmented = fragment(cmp, formatKey, fragmented)
+
+	var originalInner Iter
+	originalInner.Init(cmp, formatKey, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, original))
+	var fragmentedInner Iter
+	fragmentedInner.Init(cmp, formatKey, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, fragmented))
+
 	var referenceIter, fragmentedIter DefragmentingIter
-	referenceIter.Init(cmp, split, formatKey, base.InternalKeySeqNumMax,
-		DefragmentLogical, keyspan.NewIter(cmp, original))
-	fragmentedIter.Init(cmp, split, formatKey, base.InternalKeySeqNumMax,
-		DefragmentLogical, keyspan.NewIter(cmp, fragmented))
+	referenceIter.Init(cmp, &originalInner, DefragmentLogical)
+	fragmentedIter.Init(cmp, &fragmentedInner, DefragmentLogical)
 
 	// Generate 100 random operations and run them against both iterators.
 	const numIterOps = 100
@@ -213,7 +217,12 @@ func fragment(cmp base.Compare, formatKey base.FormatKey, spans []keyspan.Span) 
 	return fragments
 }
 
-func debugContext(cmp base.Compare, formatKey base.FormatKey, original, fragmented []keyspan.Span, refHistory, fragHistory string) string {
+func debugContext(
+	cmp base.Compare,
+	formatKey base.FormatKey,
+	original, fragmented []keyspan.Span,
+	refHistory, fragHistory string,
+) string {
 	var buf bytes.Buffer
 	fmt.Fprintln(&buf, "Reference:")
 	printRangeKeys(&buf, cmp, formatKey, original)
