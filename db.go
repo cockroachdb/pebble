@@ -875,7 +875,13 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 	if o != nil && o.RangeKeyMasking.Suffix != nil && o.KeyTypes != IterKeyTypePointsAndRanges {
 		panic("pebble: range key masking requires IterKeyTypePointsAndRanges")
 	}
-
+	if (batch != nil || s != nil) && (o != nil && o.OnlyReadGuaranteedDurable) {
+		// We could add support for OnlyReadGuaranteedDurable on snapshots if
+		// there was a need: this would require checking that the sequence number
+		// of the snapshot has been flushed, by comparing with
+		// DB.mem.queue[0].logSeqNum.
+		panic("OnlyReadGuaranteedDurable is not supported for batches or snapshots")
+	}
 	// Grab and reference the current readState. This prevents the underlying
 	// files in the associated version from being deleted if there is a current
 	// compaction. The readState is unref'd by Iterator.Close().
@@ -931,6 +937,9 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	batch := dbi.batch
 	seqNum := dbi.seqNum
 	memtables := readState.memtables
+	if dbi.opts.OnlyReadGuaranteedDurable {
+		memtables = nil
+	}
 	current := readState.current
 
 	// Merging levels and levels from iterAlloc.

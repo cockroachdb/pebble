@@ -353,6 +353,8 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
 	if syncWAL {
 		count++
 	}
+	// count represents the waiting needed for publish, and optionally the
+	// waiting needed for the WAL sync.
 	b.commit.Add(count)
 
 	var syncWG *sync.WaitGroup

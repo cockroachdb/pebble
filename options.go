@@ -107,6 +107,34 @@ type IterOptions struct {
 	// and point key iteration mode (IterKeyTypePointsAndRanges).
 	RangeKeyMasking RangeKeyMasking
 
+	// OnlyReadGuaranteedDurable is an advanced option that is only supported by
+	// the Reader implemented by DB. When set to true, only the guaranteed to be
+	// durable state is visible in the iterator.
+	// - This definition is made under the assumption that the FS implementation
+	//   is providing a durability guarantee when data is synced.
+	// - The visible state represents a consistent point in the history of the
+	//   DB.
+	// - The implementation is free to choose a conservative definition of what
+	//   is guaranteed durable. For simplicity, the current implementation
+	//   ignores memtables. A more sophisticated implementation could track the
+	//   highest seqnum that is synced to the WAL and published and use that as
+	//   the visible seqnum for an iterator. Note that the latter approach is
+	//   not strictly better than the former since we can have DBs that are (a)
+	//   synced more rarely than memtable flushes, (b) have no WAL. (a) is
+	//   likely to be true in a future CockroachDB context where the DB
+	//   containing the state machine may be rarely synced.
+	// NB: this current implementation relies on the fact that memtables are
+	// flushed in seqnum order, and any ingested sstables that happen to have a
+	// lower seqnum than a non-flushed memtable don't have any overlapping keys.
+	// This is the fundamental level invariant used in other code too, like when
+	// merging iterators.
+	//
+	// Semantically, using this option provides the caller a "snapshot" as of
+	// the time the most recent memtable was flushed. An alternate interface
+	// would be to add a NewSnapshot variant. Creating a snapshot is heavier
+	// weight than creating an iterator, so we have opted to support this
+	// iterator option.
+	OnlyReadGuaranteedDurable bool
 	// Internal options.
 	logger Logger
 }
