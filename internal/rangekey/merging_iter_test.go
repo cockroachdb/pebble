@@ -24,13 +24,16 @@ func TestMergingIter(t *testing.T) {
 	var buf bytes.Buffer
 	var iter MergingIter
 
-	formatKey := func(k *base.InternalKey, _ []byte) {
-		if k == nil {
-			fmt.Fprint(&buf, ".")
+	formatFragments := func(frags Fragments) {
+		if frags.Empty() {
+			fmt.Fprint(&buf, ".\n-\n")
 			return
 		}
-		s := iter.Current()
-		fmt.Fprintf(&buf, "%s.%s", s, s.Start.Kind())
+		for i := 0; i < frags.Count(); i++ {
+			s := frags.At(i)
+			fmt.Fprintf(&buf, "%s.%s\n", s, s.Start.Kind())
+		}
+		fmt.Fprintln(&buf, "-")
 	}
 
 	datadriven.RunTest(t, "testdata/merging_iter", func(td *datadriven.TestData) string {
@@ -64,7 +67,6 @@ func TestMergingIter(t *testing.T) {
 			buf.Reset()
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
-				bufLen := buf.Len()
 				line = strings.TrimSpace(line)
 				i := strings.IndexByte(line, ' ')
 				iterCmd := line
@@ -73,17 +75,17 @@ func TestMergingIter(t *testing.T) {
 				}
 				switch iterCmd {
 				case "first":
-					formatKey(iter.First())
+					formatFragments(iter.First())
 				case "last":
-					formatKey(iter.Last())
+					formatFragments(iter.Last())
 				case "next":
-					formatKey(iter.Next())
+					formatFragments(iter.Next())
 				case "prev":
-					formatKey(iter.Prev())
+					formatFragments(iter.Prev())
 				case "seek-ge":
-					formatKey(iter.SeekGE([]byte(strings.TrimSpace(line[i:])), false))
+					formatFragments(iter.SeekGE([]byte(strings.TrimSpace(line[i:])), false))
 				case "seek-lt":
-					formatKey(iter.SeekLT([]byte(strings.TrimSpace(line[i:]))))
+					formatFragments(iter.SeekLT([]byte(strings.TrimSpace(line[i:]))))
 				case "set-bounds":
 					bounds := strings.Fields(line[i:])
 					if len(bounds) != 2 {
@@ -101,9 +103,6 @@ func TestMergingIter(t *testing.T) {
 					return fmt.Sprintf("unrecognized iter command %q", iterCmd)
 				}
 				require.NoError(t, iter.Error())
-				if buf.Len() > bufLen {
-					fmt.Fprintln(&buf)
-				}
 			}
 			return strings.TrimSpace(buf.String())
 
@@ -137,7 +136,7 @@ func TestMergingIter_FragmenterEquivalence(t *testing.T) {
 func TestMergingIter_FragmenterEquivalence_Seed(t *testing.T) {
 	// This test uses a fixed seed. It's useful to manually edit its seed when
 	// debugging a test failure of the variable-seed test.
-	const seed = 1642108194329956001
+	const seed = 1644517830186873000
 	testFragmenterEquivalenceOnce(t, seed)
 }
 
@@ -219,8 +218,8 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 	t.Logf("%d levels:\n%s\n", len(levels), buf.String())
 
 	fragmenterIter := keyspan.NewIter(f.Cmp, allFragmented)
-	mergingIter := &MergingIter{}
-	mergingIter.Init(f.Cmp, iters...)
+	mergingIter := &mergingIterAdapter{MergingIter: &MergingIter{}}
+	mergingIter.MergingIter.Init(f.Cmp, iters...)
 
 	// Position both so that it's okay to perform relative positioning
 	// operations immediately.
@@ -298,4 +297,120 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 		}
 		t.Logf("op %d: %s = %s", i, opString, fragmenterBuf.String())
 	}
+}
+
+// mergingIterAdapter adapts MergingIter, which returns Fragments, to fulfill
+// the keyspan.FragmentIterator interface. It's used by
+// TestMergingIter_FragmenterEquivalence to compare a keyspan.Iter with a
+// MergingIter, despite their different interfaces.
+type mergingIterAdapter struct {
+	*MergingIter
+	index int
+	dir   int8
+	frags Fragments
+}
+
+var _ keyspan.FragmentIterator = &mergingIterAdapter{}
+
+func (i *mergingIterAdapter) Clone() keyspan.FragmentIterator {
+	panic("unimplemented")
+}
+
+func (i *mergingIterAdapter) End() []byte {
+	return i.Current().End
+}
+
+func (i *mergingIterAdapter) Current() keyspan.Span {
+	if i.index < 0 || i.index >= i.frags.Count() {
+		return keyspan.Span{}
+	}
+	return i.frags.At(i.index)
+}
+
+func (i *mergingIterAdapter) Valid() bool {
+	return i.index >= 0 && i.index < i.frags.Count()
+}
+
+func (i *mergingIterAdapter) firstFrag() (*base.InternalKey, []byte) {
+	if i.frags.Empty() {
+		return nil, nil
+	}
+	i.index = 0
+	f := i.frags.At(i.index)
+	return &f.Start, nil
+}
+
+func (i *mergingIterAdapter) lastFrag() (*base.InternalKey, []byte) {
+	if i.frags.Empty() {
+		return nil, nil
+	}
+	i.index = i.frags.Count() - 1
+	f := i.frags.At(i.index)
+	return &f.Start, nil
+}
+
+func (i *mergingIterAdapter) First() (*base.InternalKey, []byte) {
+	i.frags = i.MergingIter.First()
+	i.dir = +1
+	return i.firstFrag()
+}
+
+func (i *mergingIterAdapter) Last() (*base.InternalKey, []byte) {
+	i.frags = i.MergingIter.Last()
+	i.dir = -1
+	return i.lastFrag()
+}
+
+func (i *mergingIterAdapter) SeekGE(key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
+	i.frags = i.MergingIter.SeekGE(key, trySeekUsingNext)
+	i.dir = +1
+	return i.firstFrag()
+}
+
+func (i *mergingIterAdapter) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
+	panic("unimplemented")
+}
+
+func (i *mergingIterAdapter) SeekLT(key []byte) (*base.InternalKey, []byte) {
+	i.frags = i.MergingIter.SeekLT(key)
+	i.dir = -1
+	return i.lastFrag()
+}
+
+func (i *mergingIterAdapter) Next() (*base.InternalKey, []byte) {
+	if i.dir == +1 && i.frags.Empty() {
+		// Already exhausted in the forward direction.
+		return nil, nil
+	} else if i.dir == -1 && i.frags.Empty() {
+		i.dir = +1
+		i.frags = i.MergingIter.Next()
+		return i.firstFrag()
+	}
+	i.dir = +1
+	i.index++
+	if i.index >= i.frags.Count() {
+		i.frags = i.MergingIter.Next()
+		return i.firstFrag()
+	}
+	s := i.frags.At(i.index)
+	return &s.Start, nil
+}
+
+func (i *mergingIterAdapter) Prev() (*base.InternalKey, []byte) {
+	if i.dir == -1 && i.frags.Empty() {
+		// Already exhausted in the backward direction.
+		return nil, nil
+	} else if i.dir == +1 && i.frags.Empty() {
+		i.dir = -1
+		i.frags = i.MergingIter.Prev()
+		return i.lastFrag()
+	}
+	i.dir = -1
+	i.index--
+	if i.index < 0 {
+		i.frags = i.MergingIter.Prev()
+		return i.lastFrag()
+	}
+	s := i.frags.At(i.index)
+	return &s.Start, nil
 }
