@@ -15,6 +15,9 @@ type writeTask struct {
 	// todo(bananabrick) : Remove the indexSepKey field once Writer.addIndexEntry is
 	// refactored to not require the indexSepKey.
 	indexSepKey InternalKey
+
+	// estimatedUncompressedSize is used to decrement Writer.coordinationState.shared.inflightSize.
+	estimatedUncompressedSize int
 }
 
 // Note that only the Writer client goroutine will be adding tasks to the writeQueue.
@@ -51,6 +54,9 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 	if bh, err = w.writer.writeCompressedBlock(task.buf.compressed, task.buf.tmp[:]); err != nil {
 		return err
 	}
+
+	// Update the size estimates after writing the data block to disk.
+	w.writer.coordinationState.shared.setTotalSize(w.writer.meta.Size, task.estimatedUncompressedSize)
 
 	if bhp, err = w.writer.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
 		return err
