@@ -36,7 +36,7 @@ type blockWriter struct {
 	tmp             [4]byte
 }
 
-func (w *blockWriter) store(keySize int, value []byte) {
+func (w *blockWriter) store(keySize int, value []byte) int {
 	shared := 0
 	if w.nEntries == w.nextRestart {
 		w.nextRestart = w.nEntries + w.restartInterval
@@ -120,9 +120,11 @@ func (w *blockWriter) store(keySize int, value []byte) {
 	w.curValue = w.buf[n-len(value):]
 
 	w.nEntries++
+
+	return needed
 }
 
-func (w *blockWriter) add(key InternalKey, value []byte) {
+func (w *blockWriter) add(key InternalKey, value []byte) int {
 	w.curKey, w.prevKey = w.prevKey, w.curKey
 
 	size := key.Size()
@@ -132,7 +134,7 @@ func (w *blockWriter) add(key InternalKey, value []byte) {
 	w.curKey = w.curKey[:size]
 	key.Encode(w.curKey)
 
-	w.store(size, value)
+	return w.store(size, value)
 }
 
 func (w *blockWriter) finish() []byte {
