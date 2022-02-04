@@ -219,9 +219,6 @@ type Batch struct {
 
 	// The count of range key sets, unsets and deletes in the batch. Updated
 	// every time a RANGEKEYSET, RANGEKEYUNSET or RANGEKEYDEL key is added.
-	// TODO(jackson): This likely won't be necessary long-term, but it's useful
-	// for the in-memory only implementation in which these keys require special
-	// handling.
 	countRangeKeys uint64
 
 	// A deferredOp struct, stored in the Batch so that a pointer can be returned

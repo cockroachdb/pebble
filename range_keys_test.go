@@ -6,8 +6,10 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
@@ -35,10 +37,24 @@ func TestRangeKeys(t *testing.T) {
 				require.NoError(t, d.Close())
 			}
 			opts := &Options{
-				FS:       vfs.NewMem(),
-				Comparer: testkeys.Comparer,
+				FS:                 vfs.NewMem(),
+				Comparer:           testkeys.Comparer,
+				FormatMajorVersion: FormatRangeKeys,
 			}
 			opts.Experimental.RangeKeys = new(RangeKeysArena)
+
+			for _, cmdArgs := range td.CmdArgs {
+				if cmdArgs.Key != "format-major-version" {
+					return fmt.Sprintf("unknown command %s\n", cmdArgs.Key)
+				}
+				v, err := strconv.Atoi(cmdArgs.Vals[0])
+				if err != nil {
+					return err.Error()
+				}
+				// Override the DB version.
+				opts.FormatMajorVersion = FormatMajorVersion(v)
+			}
+
 			var err error
 			d, err = Open("", opts)
 			require.NoError(t, err)
@@ -52,8 +68,19 @@ func TestRangeKeys(t *testing.T) {
 		case "batch":
 			b := d.NewBatch()
 			require.NoError(t, runBatchDefineCmd(td, b))
+			var err error
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						err = errors.New(r.(string))
+					}
+				}()
+				err = b.Commit(nil)
+			}()
+			if err != nil {
+				return err.Error()
+			}
 			count := b.Count()
-			require.NoError(t, b.Commit(nil))
 			return fmt.Sprintf("wrote %d keys\n", count)
 		case "indexed-batch":
 			b = d.NewIndexedBatch()
@@ -76,7 +103,19 @@ func TestRangeKeys(t *testing.T) {
 				}
 				o.RangeKeyMasking.Suffix = []byte(arg.Vals[0])
 			}
-			iter := newIter(o)
+			var iter *Iterator
+			var err error
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						err = errors.New(r.(string))
+					}
+				}()
+				iter = newIter(o)
+			}()
+			if err != nil {
+				return err.Error()
+			}
 			return runIterCmd(td, iter, true /* close iter */)
 		case "rangekey-iter":
 			iter := newIter(&IterOptions{KeyTypes: IterKeyTypeRangesOnly})

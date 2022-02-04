@@ -723,11 +723,14 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 		if d.opts.Experimental.RangeKeys == nil {
 			panic("pebble: range keys require the Experimental.RangeKeys option")
 		}
-		// TODO(jackson): Assert that all range key operands are suffixless.
+		if d.FormatMajorVersion() < FormatRangeKeys {
+			panic(fmt.Sprintf(
+				"pebble: range keys require at least format major version %d (current: %d)",
+				FormatRangeKeys, d.FormatMajorVersion(),
+			))
+		}
 
-		// TODO(jackson): Once the format major version for range keys is
-		// introduced, error if the batch includes range keys but the active
-		// format major version doesn't enable them.
+		// TODO(jackson): Assert that all range key operands are suffixless.
 	}
 
 	if batch.db == nil {
@@ -871,8 +874,16 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
-	if o.rangeKeys() && d.opts.Experimental.RangeKeys == nil {
-		panic("pebble: range keys require the Experimental.RangeKeys option")
+	if o.rangeKeys() {
+		if d.opts.Experimental.RangeKeys == nil {
+			panic("pebble: range keys require the Experimental.RangeKeys option")
+		}
+		if d.FormatMajorVersion() < FormatRangeKeys {
+			panic(fmt.Sprintf(
+				"pebble: range keys require at least format major version %d (current: %d)",
+				FormatRangeKeys, d.FormatMajorVersion(),
+			))
+		}
 	}
 	if o != nil && o.RangeKeyMasking.Suffix != nil && o.KeyTypes != IterKeyTypePointsAndRanges {
 		panic("pebble: range key masking requires IterKeyTypePointsAndRanges")
