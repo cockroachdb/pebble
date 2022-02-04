@@ -45,7 +45,11 @@ func ingestValidateKey(opts *Options, key *InternalKey) error {
 }
 
 func ingestLoad1(
-	opts *Options, path string, cacheID uint64, fileNum FileNum,
+	opts *Options,
+	fmv FormatMajorVersion,
+	path string,
+	cacheID uint64,
+	fileNum FileNum,
 ) (*fileMetadata, error) {
 	stat, err := opts.FS.Stat(path)
 	if err != nil {
@@ -63,6 +67,18 @@ func ingestLoad1(
 		return nil, err
 	}
 	defer r.Close()
+
+	// Avoid ingesting tables with format versions this DB doesn't support.
+	tf, err := r.TableFormat()
+	if err != nil {
+		return nil, err
+	}
+	if tf > fmv.MaxTableFormat() {
+		return nil, errors.Newf(
+			"pebble: table with format %s unsupported at DB format major version %d, %s",
+			tf, fmv, fmv.MaxTableFormat(),
+		)
+	}
 
 	meta := &fileMetadata{}
 	meta.FileNum = fileNum
@@ -154,12 +170,16 @@ func ingestLoad1(
 }
 
 func ingestLoad(
-	opts *Options, paths []string, cacheID uint64, pending []FileNum,
+	opts *Options,
+	fmv FormatMajorVersion,
+	paths []string,
+	cacheID uint64,
+	pending []FileNum,
 ) ([]*fileMetadata, []string, error) {
 	meta := make([]*fileMetadata, 0, len(paths))
 	newPaths := make([]string, 0, len(paths))
 	for i := range paths {
-		m, err := ingestLoad1(opts, paths[i], cacheID, pending[i])
+		m, err := ingestLoad1(opts, fmv, paths[i], cacheID, pending[i])
 		if err != nil {
 			return nil, nil, err
 		}
@@ -525,7 +545,7 @@ func (d *DB) Ingest(paths []string) error {
 
 	// Load the metadata for all of the files being ingested. This step detects
 	// and elides empty sstables.
-	meta, paths, err := ingestLoad(d.opts, paths, d.cacheID, pendingOutputs)
+	meta, paths, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, d.cacheID, pendingOutputs)
 	if err != nil {
 		return err
 	}
