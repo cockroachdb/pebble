@@ -38,6 +38,10 @@ create: db/marker.format-version.000004.005
 close: db/marker.format-version.000004.005
 sync: db
 upgraded to format version: 005
+create: db/marker.format-version.000005.006
+close: db/marker.format-version.000005.006
+sync: db
+upgraded to format version: 006
 create: db/MANIFEST-000003
 close: db/MANIFEST-000001
 sync: db/MANIFEST-000003
@@ -183,7 +187,7 @@ compact         1   2.3 K     0 B       0          (size == estimated-debt, scor
 zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         8   1.4 K    0.0%  (score == hit-rate)
- tcache         1   672 B    0.0%  (score == hit-rate)
+ tcache         1   680 B    0.0%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
@@ -205,9 +209,9 @@ close:
 open-dir: checkpoint
 link: db/OPTIONS-000004 -> checkpoint/OPTIONS-000004
 open-dir: checkpoint
-create: checkpoint/marker.format-version.000001.005
-sync: checkpoint/marker.format-version.000001.005
-close: checkpoint/marker.format-version.000001.005
+create: checkpoint/marker.format-version.000001.006
+sync: checkpoint/marker.format-version.000001.006
+close: checkpoint/marker.format-version.000001.006
 sync: checkpoint
 close: checkpoint
 create: checkpoint/MANIFEST-000017

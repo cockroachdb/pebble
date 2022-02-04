@@ -860,6 +860,35 @@ func TestValidateBlockChecksums(t *testing.T) {
 	}
 }
 
+func TestReader_TableFormat(t *testing.T) {
+	test := func(t *testing.T, want TableFormat) {
+		fs := vfs.NewMem()
+		f, err := fs.Create("test")
+		require.NoError(t, err)
+
+		opts := WriterOptions{TableFormat: want}
+		w := NewWriter(f, opts)
+		err = w.Close()
+		require.NoError(t, err)
+
+		f, err = fs.Open("test")
+		require.NoError(t, err)
+		r, err := NewReader(f, ReaderOptions{})
+		require.NoError(t, err)
+		defer r.Close()
+
+		got, err := r.TableFormat()
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	}
+
+	for tf := TableFormatLevelDB; tf <= TableFormatMax; tf++ {
+		t.Run(tf.String(), func(t *testing.T) {
+			test(t, tf)
+		})
+	}
+}
+
 func buildTestTable(
 	t *testing.T, numEntries uint64, blockSize, indexBlockSize int, compression Compression,
 ) *Reader {

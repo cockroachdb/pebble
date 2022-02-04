@@ -35,11 +35,28 @@ func TestIngestLoad(t *testing.T) {
 	datadriven.RunTest(t, "testdata/ingest_load", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "load":
+			writerOpts := sstable.WriterOptions{}
+			var dbVersion FormatMajorVersion
+			for _, cmdArgs := range td.CmdArgs {
+				v, err := strconv.Atoi(cmdArgs.Vals[0])
+				if err != nil {
+					return err.Error()
+				}
+				switch k := cmdArgs.Key; k {
+				case "writer-version":
+					fmv := FormatMajorVersion(v)
+					writerOpts.TableFormat = fmv.MaxTableFormat()
+				case "db-version":
+					dbVersion = FormatMajorVersion(v)
+				default:
+					return fmt.Sprintf("unknown cmd %s\n", k)
+				}
+			}
 			f, err := mem.Create("ext")
 			if err != nil {
 				return err.Error()
 			}
-			w := sstable.NewWriter(f, sstable.WriterOptions{})
+			w := sstable.NewWriter(f, writerOpts)
 			for _, data := range strings.Split(td.Input, "\n") {
 				j := strings.Index(data, ":")
 				if j < 0 {
@@ -57,7 +74,7 @@ func TestIngestLoad(t *testing.T) {
 				Comparer: DefaultComparer,
 				FS:       mem,
 			}
-			meta, _, err := ingestLoad(opts, []string{"ext"}, 0, []FileNum{1})
+			meta, _, err := ingestLoad(opts, dbVersion, []string{"ext"}, 0, []FileNum{1})
 			if err != nil {
 				return err.Error()
 			}
@@ -141,7 +158,7 @@ func TestIngestLoadRand(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}
-	meta, _, err := ingestLoad(opts, paths, 0, pending)
+	meta, _, err := ingestLoad(opts, FormatNewest, paths, 0, pending)
 	require.NoError(t, err)
 
 	for _, m := range meta {
@@ -162,7 +179,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}
-	if _, _, err := ingestLoad(opts, []string{"invalid"}, 0, []FileNum{1}); err == nil {
+	if _, _, err := ingestLoad(opts, FormatNewest, []string{"invalid"}, 0, []FileNum{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }

@@ -67,3 +67,10 @@ b.SET.0:
 a.RANGEDEL.0:b
 ----
 1: a#0,15-b#0,1
+
+# Loading tables at an unsupported table format results in an error.
+# Write a table at version 6 (Pebble,v2) into a DB at version 5 (Pebble,v1).
+load writer-version=6 db-version=5
+a.SET.1:
+----
+pebble: table with format (Pebble,v2) unsupported at DB format major version 5, (Pebble,v1)

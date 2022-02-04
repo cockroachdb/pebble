@@ -2066,6 +2066,7 @@ type Reader struct {
 	mergerOK          bool
 	checksumType      ChecksumType
 	tableFilter       *tableFilterReader
+	tableFormat       TableFormat
 	Properties        Properties
 }
 
@@ -2690,6 +2691,14 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	return endBH.Offset + endBH.Length + blockTrailerLen - startBH.Offset, nil
 }
 
+// TableFormat returns the format version for the table.
+func (r *Reader) TableFormat() (TableFormat, error) {
+	if r.err != nil {
+		return TableFormatUnspecified, r.err
+	}
+	return r.tableFormat, nil
+}
+
 // ReadableFile describes subset of vfs.File required for reading SSTs.
 type ReadableFile interface {
 	io.ReaderAt
@@ -2735,6 +2744,7 @@ func NewReader(f ReadableFile, o ReaderOptions, extraOpts ...ReaderOption) (*Rea
 		return nil, r.Close()
 	}
 	r.checksumType = footer.checksum
+	r.tableFormat = footer.format
 	// Read the metaindex.
 	if err := r.readMetaindex(footer.metaindexBH); err != nil {
 		r.err = err
