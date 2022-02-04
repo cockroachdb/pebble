@@ -109,9 +109,12 @@ type ReaderOptions struct {
 
 	// Filters is a map from filter policy name to filter policy. It is used for
 	// debugging tools which may be used on multiple databases configured with
-	// different filter policies. It is not necessary to populate this filters
-	// map during normal usage of a DB.
+	// different filter policies.
 	Filters map[string]FilterPolicy
+
+	// IgnoreMissingFilters allows ignoring filter blocks that correspond to a
+	// FilterPolicy that is missing from the Filters map.
+	IgnoreMissingFilters bool
 
 	// Merger defines the associative merge operation to use for merging values
 	// written with {Batch,DB}.Merge. The MergerName is checked for consistency

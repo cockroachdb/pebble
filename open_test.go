@@ -960,9 +960,10 @@ func TestRocksDBNoFlushManifest(t *testing.T) {
 	comparer.Name = "cockroach_comparator"
 	merger.Name = "cockroach_merge_operator"
 	opts := &Options{
-		FS:       mem,
-		Comparer: &comparer,
-		Merger:   &merger,
+		FS:                   mem,
+		Comparer:             &comparer,
+		Merger:               &merger,
+		IgnoreMissingFilters: true,
 	}
 
 	// rocksdb-ingest-only is a RocksDB-generated db directory that has not had

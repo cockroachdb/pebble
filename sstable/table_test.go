@@ -123,6 +123,8 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		opts.Filters = map[string]FilterPolicy{
 			fp.Name(): fp,
 		}
+	} else {
+		opts.IgnoreMissingFilters = true
 	}
 
 	r, err := NewReader(f, opts)

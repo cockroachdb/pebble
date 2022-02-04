@@ -456,6 +456,10 @@ type Options struct {
 	// map during normal usage of a DB.
 	Filters map[string]FilterPolicy
 
+	// IgnoreMissingFilters allows opening sstables that have filter blocks that
+	// correspond to filter policies that are not configured.
+	IgnoreMissingFilters bool
+
 	// FlushSplitBytes denotes the target number of bytes per sublevel in
 	// each flush split interval (i.e. range between two flush split keys)
 	// in L0 sstables. When set to zero, only a single sstable is generated
@@ -1238,6 +1242,7 @@ func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 		readerOpts.Cache = o.Cache
 		readerOpts.Comparer = o.Comparer
 		readerOpts.Filters = o.Filters
+		readerOpts.IgnoreMissingFilters = o.IgnoreMissingFilters
 		if o.Merger != nil {
 			readerOpts.MergerName = o.Merger.Name
 		}

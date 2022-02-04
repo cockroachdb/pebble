@@ -226,7 +226,7 @@ func TestHamletReader(t *testing.T) {
 		f, err := os.Open(filepath.FromSlash(prebuiltSST))
 		require.NoError(t, err)
 
-		r, err := NewReader(f, ReaderOptions{})
+		r, err := NewReader(f, ReaderOptions{IgnoreMissingFilters: true})
 		require.NoError(t, err)
 
 		t.Run(
@@ -251,7 +251,7 @@ func TestInjectedErrors(t *testing.T) {
 		run := func(i int) (reterr error) {
 			f, err := os.Open(filepath.FromSlash(prebuiltSST))
 			require.NoError(t, err)
-			r, err := NewReader(errorfs.WrapFile(f, errorfs.OnIndex(int32(i))), ReaderOptions{})
+			r, err := NewReader(errorfs.WrapFile(f, errorfs.OnIndex(int32(i))), ReaderOptions{IgnoreMissingFilters: true})
 			if err != nil {
 				return firstError(err, f.Close())
 			}

@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -2419,33 +2420,40 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 		r.rangeKeyBH = bh
 	}
 
-	for name, fp := range r.opts.Filters {
-		types := []struct {
-			ftype  FilterType
-			prefix string
-		}{
-			{TableFilter, "fullfilter."},
-		}
+	for _, t := range []struct {
+		ftype  FilterType
+		prefix string
+	}{
+		{TableFilter, "fullfilter."},
+	} {
 		var done bool
-		for _, t := range types {
-			if bh, ok := meta[t.prefix+name]; ok {
-				r.filterBH = bh
-
-				switch t.ftype {
-				case TableFilter:
-					r.tableFilter = newTableFilterReader(fp)
-				default:
-					return base.CorruptionErrorf("unknown filter type: %v", errors.Safe(t.ftype))
-				}
-
-				done = true
-				break
+		for k, bh := range meta {
+			if !strings.HasPrefix(k, t.prefix) {
+				continue
 			}
+			fp, ok := r.opts.Filters[strings.TrimPrefix(k, t.prefix)]
+			if !ok {
+				if r.opts.IgnoreMissingFilters {
+					continue
+				}
+				return base.CorruptionErrorf("unknown filter policy: %v (%v)", errors.Safe(k), r.opts.Filters)
+			}
+
+			r.filterBH = bh
+			switch t.ftype {
+			case TableFilter:
+				r.tableFilter = newTableFilterReader(fp)
+			default:
+				return base.CorruptionErrorf("unknown filter type: %v", errors.Safe(t.ftype))
+			}
+			done = true
+			break
 		}
 		if done {
 			break
 		}
 	}
+
 	return nil
 }
 
