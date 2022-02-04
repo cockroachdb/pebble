@@ -36,6 +36,8 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatSetWithDelete, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatBlockPropertyCollector))
 	require.Equal(t, FormatBlockPropertyCollector, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatRangeKeys))
+	require.Equal(t, FormatRangeKeys, d.FormatMajorVersion())
 	require.NoError(t, d.Close())
 
 	// If we Open the database again, leaving the default format, the
@@ -189,6 +191,7 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		FormatVersioned:               sstable.TableFormatRocksDBv2,
 		FormatSetWithDelete:           sstable.TableFormatRocksDBv2,
 		FormatBlockPropertyCollector:  sstable.TableFormatPebblev1,
+		FormatRangeKeys:               sstable.TableFormatPebblev2,
 	}
 
 	// Valid versions.

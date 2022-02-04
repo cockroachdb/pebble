@@ -70,11 +70,13 @@ const (
 	// FormatBlockPropertyCollector is a format major version that introduces
 	// BlockPropertyCollectors.
 	FormatBlockPropertyCollector
+	// FormatRangeKeys is a format major version that introduces range keys.
+	FormatRangeKeys
 	// FormatNewest always contains the most recent format major version.
 	// NB: When adding new versions, the MaxTableFormat method should also be
 	// updated to return the maximum allowable version for the new
 	// FormatMajorVersion.
-	FormatNewest FormatMajorVersion = FormatBlockPropertyCollector
+	FormatNewest FormatMajorVersion = FormatRangeKeys
 )
 
 // MaxTableFormat returns the maximum sstable.TableFormat that can be used at
@@ -86,6 +88,8 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatRocksDBv2
 	case FormatBlockPropertyCollector:
 		return sstable.TableFormatPebblev1
+	case FormatRangeKeys:
+		return sstable.TableFormatPebblev2
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
 	}
@@ -166,6 +170,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatBlockPropertyCollector: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatBlockPropertyCollector)
+	},
+	FormatRangeKeys: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatRangeKeys)
 	},
 }
 
