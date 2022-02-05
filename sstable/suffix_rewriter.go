@@ -46,6 +46,7 @@ func rewriteKeySuffixesInBlocks(
 	}
 
 	w := NewWriter(out, o)
+	defer w.Close()
 
 	for _, c := range w.propCollectors {
 		if _, ok := c.(SuffixReplaceableTableCollector); !ok {
