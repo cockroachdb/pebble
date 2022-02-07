@@ -104,13 +104,15 @@ type InterleavingIter struct {
 	// to truncate a range key. The byte slices backing a SeekGE/SeekPrefixGE
 	// search keys can come directly from the end user, so they're copied into
 	// keyBuf to ensure key stability.
-	keyBuf        []byte
-	pointKey      *base.InternalKey
-	pointVal      []byte
+	keyBuf   []byte
+	pointKey *base.InternalKey
+	pointVal []byte
+	// rangeKey, rangeKeyStart and rangeKeyEnd describe the current range key
+	// state. rangeKey{Start,End} are a function of the rangeKey and the
+	// Iterator's bounds. rangeKey{Start,End} will be nil iff rangeKey is nil.
 	rangeKey      *CoalescedSpan
 	rangeKeyStart []byte
 	rangeKeyEnd   []byte
-	rangeKeyItems []SuffixItem
 	// rangeKeyMarker holds the synthetic RangeKeySet key that is returned when
 	// the iterator passes over a range key's start bound.
 	rangeKeyMarker base.InternalKey
@@ -256,26 +258,34 @@ func (i *InterleavingIter) Next() (*base.InternalKey, []byte) {
 		i.pointKey, i.pointVal = i.pointIter.Next()
 		i.pointKeyInterleaved = false
 
-		// Regardless of the current iterator state, we mark the range key as
-		// interleaved when switching to forward iteration, justified below.
-		//
-		// If the point key is the last key returned:
-		//   pointIter    :         ... (y)   z ...
-		//   rangeKeyIter : ... ([x -               )) ...
-		//                               ^
-		// The range key's start must be ≤ the point key, otherwise we'd have
-		// interleaved the range key's start. From a forward-iteration
-		// perspective, the range key's start is in the past and should be
-		// considered already-interleaved.
-		//
-		// If the range key start boundary is the last key returned:
-		//   pointIter    : ... (x)       z ...
-		//   rangeKeyIter :     ... ([y -        )) ...
-		//                            ^
-		// i.rangeKey.Start is the key we last returned during reverse
-		// iteration. From the perspective of forward-iteration, its start key
-		// was just visited.
-		i.rangeKeyInterleaved = true
+		if i.rangeKey == nil {
+			// There was no range key in the reverse direction, but there may be
+			// a range key in the forward direction.
+			i.nextRangeKey(i.rangeKeyIter.Next())
+			i.rangeKeyInterleaved = false
+		} else {
+			// Regardless of the current iterator state, we mark any existing
+			// range key as interleaved when switching to forward iteration,
+			// justified below.
+			//
+			// If the point key is the last key returned:
+			//   pointIter    :         ... (y)   z ...
+			//   rangeKeyIter : ... ([x -               )) ...
+			//                               ^
+			// The range key's start must be ≤ the point key, otherwise we'd have
+			// interleaved the range key's start. From a forward-iteration
+			// perspective, the range key's start is in the past and should be
+			// considered already-interleaved.
+			//
+			// If the range key start boundary is the last key returned:
+			//   pointIter    : ... (x)       z ...
+			//   rangeKeyIter :     ... ([y -        )) ...
+			//                            ^
+			// i.rangeKey.Start is the key we last returned during reverse
+			// iteration. From the perspective of forward-iteration, its start key
+			// was just visited.
+			i.rangeKeyInterleaved = true
+		}
 	}
 
 	// Refresh the point key if the current point key has already been
@@ -637,7 +647,7 @@ func (i *InterleavingIter) verify(k *base.InternalKey, v []byte) (*base.Internal
 		panic("pebble: invariant violation: key < lower bound")
 	case k != nil && i.upper != nil && i.cmp(k.UserKey, i.upper) >= 0:
 		panic("pebble: invariant violation: key ≥ lower bound")
-	case i.HasRangeKey() && len(i.rangeKeyItems) == 0:
+	case i.HasRangeKey() && len(i.rangeKey.Items) == 0:
 		panic("pebble: invariant violation: range key with no items")
 	case i.rangeKey != nil && k != nil && i.maskSuffix != nil && i.pointKeyInterleaved &&
 		i.split(k.UserKey) != len(k.UserKey) &&
@@ -655,13 +665,11 @@ func (i *InterleavingIter) saveRangeKey(rk *CoalescedSpan) {
 	i.rangeKey = rk
 	i.maskSuffix = nil
 	if rk == nil {
-		i.rangeKeyItems = nil
 		i.rangeKeyStart = nil
 		i.rangeKeyEnd = nil
 		return
 	}
 	i.maskSuffix = rk.SmallestSetSuffix(i.cmp, i.maskingThresholdSuffix)
-	i.rangeKeyItems = rk.Items
 	i.rangeKeyStart = rk.Start
 	i.rangeKeyEnd = rk.End
 	// TODO(jackson): The key comparisons below truncate bounds whenever the
@@ -702,7 +710,7 @@ func (i *InterleavingIter) RangeKeyBounds() (start, end []byte) {
 // Suffix). The returned items may include Unsets, which the caller may need to
 // ignore.
 func (i *InterleavingIter) RangeKeys() []SuffixItem {
-	return i.rangeKeyItems
+	return i.rangeKey.Items
 }
 
 // SetBounds implements (base.InternalIterator).SetBounds.
