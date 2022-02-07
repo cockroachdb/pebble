@@ -683,3 +683,94 @@ RangeKey: [c, z)
 └── @1 : v1
 -
 .
+
+# Test switching directions after exhausting a range key iterator.
+# Switching reverse to forward iteration.
+
+define-rangekeys
+j.RANGEKEYSET.3: l [(@1=v0)]
+----
+OK
+
+define-pointkeys
+g.SET.1
+s.SET.1
+v.SET.2
+v.SET.1
+z.SET.1
+----
+OK
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+next
+----
+PointKey: z#1,1
+RangeKey: .
+-
+PointKey: v#1,1
+RangeKey: .
+-
+PointKey: v#2,1
+RangeKey: .
+-
+PointKey: s#1,1
+RangeKey: .
+-
+PointKey: j#72057594037927935,21
+RangeKey: [j, l)
+└── @1 : v0
+-
+PointKey: g#1,1
+RangeKey: .
+-
+PointKey: j#72057594037927935,21
+RangeKey: [j, l)
+└── @1 : v0
+-
+
+# Test switching directions after exhausting a range key iterator.
+# Switching forward to reverse iteration.
+
+define-rangekeys
+j.RANGEKEYSET.3: l [(@1=v0)]
+----
+OK
+
+define-pointkeys
+a.SET.1
+k.SET.1
+m.SET.1
+----
+OK
+
+iter
+first
+next
+next
+next
+prev
+----
+PointKey: a#1,1
+RangeKey: .
+-
+PointKey: j#72057594037927935,21
+RangeKey: [j, l)
+└── @1 : v0
+-
+PointKey: k#1,1
+RangeKey: [j, l)
+└── @1 : v0
+-
+PointKey: m#1,1
+RangeKey: .
+-
+PointKey: k#1,1
+RangeKey: [j, l)
+└── @1 : v0
+-

@@ -256,26 +256,34 @@ func (i *InterleavingIter) Next() (*base.InternalKey, []byte) {
 		i.pointKey, i.pointVal = i.pointIter.Next()
 		i.pointKeyInterleaved = false
 
-		// Regardless of the current iterator state, we mark the range key as
-		// interleaved when switching to forward iteration, justified below.
-		//
-		// If the point key is the last key returned:
-		//   pointIter    :         ... (y)   z ...
-		//   rangeKeyIter : ... ([x -               )) ...
-		//                               ^
-		// The range key's start must be ≤ the point key, otherwise we'd have
-		// interleaved the range key's start. From a forward-iteration
-		// perspective, the range key's start is in the past and should be
-		// considered already-interleaved.
-		//
-		// If the range key start boundary is the last key returned:
-		//   pointIter    : ... (x)       z ...
-		//   rangeKeyIter :     ... ([y -        )) ...
-		//                            ^
-		// i.rangeKey.Start is the key we last returned during reverse
-		// iteration. From the perspective of forward-iteration, its start key
-		// was just visited.
-		i.rangeKeyInterleaved = true
+		// There was no range key in the reverse direction, but there may be a
+		// range key in the forward direction.
+		if i.rangeKey == nil {
+			i.nextRangeKey(i.rangeKeyIter.Next())
+			i.rangeKeyInterleaved = false
+		} else {
+			// Regardless of the current iterator state, we mark any existing
+			// range key as interleaved when switching to forward iteration,
+			// justified below.
+			//
+			// If the point key is the last key returned:
+			//   pointIter    :         ... (y)   z ...
+			//   rangeKeyIter : ... ([x -               )) ...
+			//                               ^
+			// The range key's start must be ≤ the point key, otherwise we'd have
+			// interleaved the range key's start. From a forward-iteration
+			// perspective, the range key's start is in the past and should be
+			// considered already-interleaved.
+			//
+			// If the range key start boundary is the last key returned:
+			//   pointIter    : ... (x)       z ...
+			//   rangeKeyIter :     ... ([y -        )) ...
+			//                            ^
+			// i.rangeKey.Start is the key we last returned during reverse
+			// iteration. From the perspective of forward-iteration, its start key
+			// was just visited.
+			i.rangeKeyInterleaved = true
+		}
 	}
 
 	// Refresh the point key if the current point key has already been
