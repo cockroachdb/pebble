@@ -163,8 +163,13 @@ func (w *blockWriter) finish() []byte {
 	return result
 }
 
+// emptyBlockSize holds the size of an empty block. Every block ends
+// in a uint32 trailer encoding the number of restart points within the
+// block.
+const emptyBlockSize = 4
+
 func (w *blockWriter) estimatedSize() int {
-	return len(w.buf) + 4*(len(w.restarts)+1)
+	return len(w.buf) + 4*len(w.restarts) + emptyBlockSize
 }
 
 type blockEntry struct {
