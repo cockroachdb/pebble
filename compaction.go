@@ -1339,22 +1339,53 @@ func (d *DB) maybeScheduleDelayedFlush(tbl *memTable) {
 	}()
 }
 
+// RegisterFlushCompletedCallback is an experimental feature that is subject
+// to change/removal without notice. It is expected to be used in concert with
+// IterOptions.OnlyReadGuaranteedDurable. It provides a best-effort
+// notification when a flush completion may have advanced what state is
+// durable (see the assumptions around durability listed in the code comment
+// for OnlyReadGuaranteedDurable). It is explicitly not named (something like)
+// RegisterDurabilityAdvancedCallback since a caller may want to rely on the
+// invocation of this callback being coarse-grained, and use it to poll the DB
+// state using an Iterator with OnlyReadGuaranteedDurable=true.
+//
+// Only a single callback func can be registered. Repeated calls will replace
+// the previous registered callback.
+func (d *DB) RegisterFlushCompletedCallback(cb func()) {
+	d.mu.Lock()
+	d.mu.compact.flushCompletedCallback = cb
+	d.mu.Unlock()
+}
+
 func (d *DB) flush() {
 	pprof.Do(context.Background(), flushLabels, func(context.Context) {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-		if err := d.flush1(); err != nil {
-			// TODO(peter): count consecutive flush errors and backoff.
-			d.opts.EventListener.BackgroundError(err)
+		var didFlush bool
+		var flushCompletedCallback func()
+		func() {
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			var err error
+			if didFlush, err = d.flush1(); err != nil {
+				// TODO(peter): count consecutive flush errors and backoff.
+				d.opts.EventListener.BackgroundError(err)
+			}
+			d.mu.compact.flushing = false
+			// More flush work may have arrived while we were flushing, so schedule
+			// another flush if needed.
+			d.maybeScheduleFlush()
+			// The flush may have produced too many files in a level, so schedule a
+			// compaction if needed.
+			d.maybeScheduleCompaction()
+			d.mu.compact.cond.Broadcast()
+			flushCompletedCallback = d.mu.compact.flushCompletedCallback
+		}()
+		// NB: Running callback without holding any locks, to guard against
+		// callback implementation causing a deadlock. This does mean that if a
+		// new callback is registered to replace the previous one, there is no
+		// guarantee that the previous one will not be subsequently called.
+		if didFlush && flushCompletedCallback != nil {
+			flushCompletedCallback()
 		}
-		d.mu.compact.flushing = false
-		// More flush work may have arrived while we were flushing, so schedule
-		// another flush if needed.
-		d.maybeScheduleFlush()
-		// The flush may have produced too many files in a level, so schedule a
-		// compaction if needed.
-		d.maybeScheduleCompaction()
-		d.mu.compact.cond.Broadcast()
 	})
 }
 
@@ -1363,7 +1394,7 @@ func (d *DB) flush() {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) flush1() error {
+func (d *DB) flush1() (didFlush bool, err error) {
 	var n int
 	for ; n < len(d.mu.mem.queue)-1; n++ {
 		if !d.mu.mem.queue[n].readyForFlush() {
@@ -1372,7 +1403,7 @@ func (d *DB) flush1() error {
 	}
 	if n == 0 {
 		// None of the immutable memtables are ready for flushing.
-		return nil
+		return false, nil
 	}
 
 	// Require that every memtable being flushed has a log number less than the
@@ -1382,7 +1413,7 @@ func (d *DB) flush1() error {
 		for i := 0; i < n; i++ {
 			logNum := d.mu.mem.queue[i].logNum
 			if logNum >= minUnflushedLogNum {
-				return errFlushInvariant
+				return false, errFlushInvariant
 			}
 		}
 	}
@@ -1480,7 +1511,7 @@ func (d *DB) flush1() error {
 		flushed[i].readerUnref()
 		close(flushed[i].flushed)
 	}
-	return err
+	return true, err
 }
 
 // maybeScheduleCompactionAsync should be used when
