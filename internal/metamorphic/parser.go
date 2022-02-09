@@ -98,6 +98,12 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.iterID, nil, []interface{}{&t.lower, &t.upper}
 	case *singleDeleteOp:
 		return &t.writerID, nil, []interface{}{&t.key, &t.maybeReplaceDelete}
+	case *rangeKeyDeleteOp:
+		return &t.writerID, nil, []interface{}{&t.start, &t.end}
+	case *rangeKeySetOp:
+		return &t.writerID, nil, []interface{}{&t.start, &t.end, &t.suffix, &t.value}
+	case *rangeKeyUnsetOp:
+		return &t.writerID, nil, []interface{}{&t.start, &t.end, &t.suffix}
 	}
 	panic(fmt.Sprintf("unsupported op type: %T", op))
 }
@@ -124,6 +130,9 @@ var methods = map[string]*methodInfo{
 	"NewSnapshot":     makeMethod(newSnapshotOp{}, dbTag),
 	"Next":            makeMethod(iterNextOp{}, iterTag),
 	"Prev":            makeMethod(iterPrevOp{}, iterTag),
+	"RangeKeyDelete":  makeMethod(rangeKeyDeleteOp{}, dbTag, batchTag),
+	"RangeKeySet":     makeMethod(rangeKeySetOp{}, dbTag, batchTag),
+	"RangeKeyUnset":   makeMethod(rangeKeyUnsetOp{}, dbTag, batchTag),
 	"Restart":         makeMethod(dbRestartOp{}, dbTag),
 	"SeekGE":          makeMethod(iterSeekGEOp{}, iterTag),
 	"SeekLT":          makeMethod(iterSeekLTOp{}, iterTag),
