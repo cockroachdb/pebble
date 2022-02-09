@@ -14,11 +14,14 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/rand"
 )
 
 func readManifest(filename string) (*Version, error) {
@@ -539,6 +542,83 @@ func TestL0Sublevels(t *testing.T) {
 		}
 		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
 	})
+}
+
+func TestAddL0FilesEquivalence(t *testing.T) {
+	seed := uint64(time.Now().UnixNano())
+	rng := rand.New(rand.NewSource(seed))
+	t.Logf("seed: %d", seed)
+
+	var inUseKeys [][]byte
+	const keyReusePct = 0.15
+	var fileMetas []*FileMetadata
+	var s, s2 *L0Sublevels
+	keySpace := testkeys.Alpha(8)
+
+	flushSplitMaxBytes := rng.Int63n(1 << 20)
+
+	// The outer loop runs once for each version edit. The inner loop(s) run
+	// once for each file, or each file bound.
+	for i := 0; i < 100; i++ {
+		var filesToAdd []*FileMetadata
+		numFiles := 1 + rng.Intn(9)
+		keys := make([][]byte, 0, 2*numFiles)
+		for j := 0; j < 2*numFiles; j++ {
+			if rng.Float64() <= keyReusePct && len(inUseKeys) > 0 {
+				keys = append(keys, inUseKeys[rng.Intn(len(inUseKeys))])
+			} else {
+				newKey := testkeys.Key(keySpace, rng.Intn(keySpace.Count()))
+				inUseKeys = append(inUseKeys, newKey)
+				keys = append(keys, newKey)
+			}
+		}
+		sort.Slice(keys, func(i, j int) bool {
+			return bytes.Compare(keys[i], keys[j]) < 0
+		})
+		for j := 0; j < numFiles; j++ {
+			startKey := keys[j*2]
+			endKey := keys[j*2+1]
+			if bytes.Equal(startKey, endKey) {
+				continue
+			}
+			meta := &FileMetadata{
+				FileNum:        base.FileNum(i*10 + j + 1),
+				Size:           rng.Uint64n(1 << 20),
+				Smallest:       base.MakeInternalKey(startKey, uint64(2*i+1), base.InternalKeyKindSet),
+				Largest:        base.MakeRangeDeleteSentinelKey(endKey),
+				SmallestSeqNum: uint64(2*i + 1),
+				LargestSeqNum:  uint64(2*i + 2),
+			}
+			fileMetas = append(fileMetas, meta)
+			filesToAdd = append(filesToAdd, meta)
+		}
+		if len(filesToAdd) == 0 {
+			continue
+		}
+
+		levelMetadata := makeLevelMetadata(testkeys.Comparer.Compare, 0, fileMetas)
+		var err error
+
+		if s2 == nil {
+			s2, err = NewL0Sublevels(&levelMetadata, testkeys.Comparer.Compare, testkeys.Comparer.FormatKey, flushSplitMaxBytes)
+			require.NoError(t, err)
+		} else {
+			// AddL0Files relies on the indices in FileMetadatas pointing to that of
+			// the previous L0Sublevels. So it must be called before NewL0Sublevels;
+			// calling it the other way around results in out-of-bounds panics.
+			SortBySeqNum(filesToAdd)
+			s2, err = s2.AddL0Files(filesToAdd, flushSplitMaxBytes, &levelMetadata)
+			require.NoError(t, err)
+		}
+
+		s, err = NewL0Sublevels(&levelMetadata, testkeys.Comparer.Compare, testkeys.Comparer.FormatKey, flushSplitMaxBytes)
+		require.NoError(t, err)
+
+		// Check for equivalence.
+		require.Equal(t, s.flushSplitUserKeys, s2.flushSplitUserKeys)
+		require.Equal(t, s.orderedIntervals, s2.orderedIntervals)
+		require.Equal(t, s.levelFiles, s2.levelFiles)
+	}
 }
 
 func BenchmarkManifestApplyWithL0Sublevels(b *testing.B) {
