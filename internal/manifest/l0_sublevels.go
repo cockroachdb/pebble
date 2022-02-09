@@ -508,9 +508,11 @@ func (s *L0Sublevels) AddL0Files(files []*FileMetadata, flushSplitMaxBytes int64
 		// maxIntervalIndexes are special. Since it's an inclusive end bound, we
 		// actually have to map it to the _next_ old interval's new previous
 		// interval. This logic is easier to understand if you see
-		// [f.minIntervalIndex, f.maxIntervalIndex] as
-		// [f.minIntervalIndex, f.maxIntervalIndex+1).
-		if newInterval.filesMaxIntervalIndex < len(oldToNewMap)-1 {
+		// [f.minIntervalIndex, f.maxIntervalIndex] as [f.minIntervalIndex,
+		// f.maxIntervalIndex+1). The other case to remember is when the interval is
+		// completely empty (i.e. len(newInterval.files) == 0); in that case we want
+		// to refer back to ourselves regardless of additions to the right of us.
+		if newInterval.filesMaxIntervalIndex < len(oldToNewMap)-1 && len(newInterval.files) > 0 {
 			newInterval.filesMaxIntervalIndex = oldToNewMap[newInterval.filesMaxIntervalIndex+1] - 1
 		} else {
 			// newInterval.filesMaxIntervalIndex == len(oldToNewMap)-1.
