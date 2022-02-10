@@ -671,22 +671,16 @@ func newShards(size int64, shards int) *Cache {
 		c := obj.(*Cache)
 		if v := atomic.LoadInt64(&c.refs); v != 0 {
 			c.tr.Lock()
-			fmt.Fprintf(os.Stderr, "pebble: cache (%p) has non-zero reference count: %d\n%s",
-				c, v, strings.Join(c.tr.msgs, "\n"))
+			fmt.Fprintf(os.Stderr,
+				"pebble: cache (%p) has non-zero reference count: %d\n", c, v)
+			if len(c.tr.msgs) > 0 {
+				fmt.Fprintf(os.Stderr, "%s\n", strings.Join(c.tr.msgs, "\n"))
+			}
 			c.tr.Unlock()
 			os.Exit(1)
 		}
 	})
 	return c
-}
-
-func (c *Cache) trace(msg string, refs int64) {
-	if invariants.Enabled {
-		s := fmt.Sprintf("%s: refs=%d\n%s", msg, refs, debug.Stack())
-		c.tr.Lock()
-		c.tr.msgs = append(c.tr.msgs, s)
-		c.tr.Unlock()
-	}
 }
 
 func (c *Cache) getShard(id uint64, fileNum base.FileNum, offset uint64) *shard {
