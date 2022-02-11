@@ -195,7 +195,7 @@ type iteratorRangeKeyState struct {
 	// rangeKeyIter is temporarily an iterator into a single global in-memory
 	// range keys arena. This will need to be reworked when we have a merging
 	// range key iterator.
-	rangeKeyIter *rangekey.Iter
+	rangeKeyIter rangekey.Iterator
 	iter         rangekey.InterleavingIter
 	// rangeKeyOnly is set to true if at the current iterator position there is
 	// no point key, only a range key start boundary.
