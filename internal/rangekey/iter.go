@@ -10,6 +10,21 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
+// Iterator iterates over coalesced range keys. It's implemented by Iter and
+// DefragmentingIter.
+type Iterator interface {
+	Valid() bool
+	Error() error
+	SeekGE(key []byte) *CoalescedSpan
+	SeekLT(key []byte) *CoalescedSpan
+	First() *CoalescedSpan
+	Last() *CoalescedSpan
+	Next() *CoalescedSpan
+	Prev() *CoalescedSpan
+	Current() *CoalescedSpan
+	Clone() Iterator
+}
+
 // TODO(jackson): Consider modifying the interface to support returning 'empty'
 // spans that contain no range keys. This can avoid the need to open a range key
 // block for a sstable in a distant part of the keyspace if there are no range
@@ -51,6 +66,9 @@ type Iter struct {
 	dir       int8
 }
 
+// Assert that Iter implements the rangekey.Iterator interface.
+var _ Iterator = (*Iter)(nil)
+
 // Init initializes an iterator over a set of fragmented, coalesced spans.
 func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum uint64, iter keyspan.FragmentIterator) {
 	*i = Iter{
@@ -65,7 +83,7 @@ func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum ui
 // Clone clones the iterator, returning an independent iterator over the same
 // state. This method is temporary and may be deleted once range keys' state is
 // properly reflected in readState.
-func (i *Iter) Clone() *Iter {
+func (i *Iter) Clone() Iterator {
 	// TODO(jackson): Remove this method when the range keys' state is included
 	// in the readState.
 	ki := i.iter.Clone()

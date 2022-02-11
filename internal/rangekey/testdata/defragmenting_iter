@@ -1,0 +1,128 @@
+define
+a.RANGEKEYUNSET.3 : c [@5]
+a.RANGEKEYSET.2   : c [(@5=apples)]
+a.RANGEKEYSET.1   : c [(@3=bananas)]
+c.RANGEKEYSET.4   : d [(@3=bananas)]
+d.RANGEKEYSET.4   : e [(@3=bananas)]
+d.RANGEKEYSET.4   : e [(@1=pineapple)]
+----
+
+# Iterating with logical defragmentation should combine [a,c) and [c,d)
+# fragments.
+
+iter method=logical
+first
+next
+next
+last
+prev
+prev
+----
+first     [a, d): "@3" = "bananas"
+next      [d, e): "@3" = "bananas", "@1" = "pineapple"
+next      .
+last      [d, e): "@3" = "bananas", "@1" = "pineapple"
+prev      [a, d): "@3" = "bananas"
+prev      .
+
+iter method=internal
+first
+next
+next
+next
+last
+prev
+prev
+prev
+----
+first     [a, c): "@5" = <unset>, "@3" = "bananas"
+next      [c, d): "@3" = "bananas"
+next      [d, e): "@3" = "bananas", "@1" = "pineapple"
+next      .
+last      [d, e): "@3" = "bananas", "@1" = "pineapple"
+prev      [c, d): "@3" = "bananas"
+prev      [a, c): "@5" = <unset>, "@3" = "bananas"
+prev      .
+
+# Test a scenario that SHOULD result in internal defragmentation ([a,c) and
+# [c,d) should be merged.
+
+define
+a.RANGEKEYUNSET.3 : c [@5]
+a.RANGEKEYSET.2   : c [(@5=apples)]
+a.RANGEKEYSET.1   : c [(@3=bananas)]
+c.RANGEKEYUNSET.3 : d [@5]
+c.RANGEKEYSET.2   : d [(@3=bananas)]
+d.RANGEKEYSET.3   : e [(@3=bananas)]
+----
+
+iter method=internal
+first
+next
+next
+----
+first     [a, d): "@5" = <unset>, "@3" = "bananas"
+next      [d, e): "@3" = "bananas"
+next      .
+
+# Test defragmenting in both directions at seek keys.
+
+define
+a.RANGEKEYUNSET.3 : f [@5]
+a.RANGEKEYSET.2   : f [(@5=apples)]
+a.RANGEKEYSET.1   : f [(@3=bananas)]
+f.RANGEKEYSET.3   : h [(@3=bananas)]
+h.RANGEKEYSET.3   : p [(@3=bananas)]
+p.RANGEKEYSET.3   : t [(@3=bananas)]
+----
+
+iter method=logical
+seekge b
+prev
+seekge b
+next
+seeklt d
+next
+seeklt d
+prev
+----
+seekge b  [a, t): "@3" = "bananas"
+prev      .
+seekge b  [a, t): "@3" = "bananas"
+next      .
+seeklt d  [a, t): "@3" = "bananas"
+next      .
+seeklt d  [a, t): "@3" = "bananas"
+prev      .
+
+iter method=logical
+seeklt d
+next
+prev
+----
+seeklt d  [a, t): "@3" = "bananas"
+next      .
+prev      [a, t): "@3" = "bananas"
+
+# Test next-ing and prev-ing around seek keys.
+
+define
+a.RANGEKEYUNSET.3 : f [@5]
+a.RANGEKEYSET.2   : f [(@5=apples)]
+a.RANGEKEYSET.1   : f [(@3=bananas)]
+f.RANGEKEYSET.3   : h [(@3=bananas)]
+h.RANGEKEYSET.3   : p [(@3=bananas)]
+p.RANGEKEYSET.3   : t [(@3=bananas)]
+t.RANGEKEYSET.4   : z [(@2=oranges)]
+----
+
+iter method=logical
+seekge r
+prev
+next
+next
+----
+seekge r  [a, t): "@3" = "bananas"
+prev      .
+next      [a, t): "@3" = "bananas"
+next      [t, z): "@2" = "oranges"

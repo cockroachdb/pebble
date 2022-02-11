@@ -91,7 +91,7 @@ func (d *DB) maybeInitializeRangeKeys() {
 
 func (d *DB) newRangeKeyIter(
 	seqNum uint64, batch *Batch, readState *readState, opts *IterOptions,
-) *rangekey.Iter {
+) rangekey.Iterator {
 	d.maybeInitializeRangeKeys()
 
 	// TODO(jackson): Preallocate iters, mergingIter, rangeKeyIter in a
@@ -125,9 +125,9 @@ func (d *DB) newRangeKeyIter(
 		iters = append(iters, keyspan.NewIter(d.cmp, frags))
 	}
 
-	iter := &rangekey.Iter{}
+	iter := &rangekey.DefragmentingIter{}
 	miter := &rangekey.MergingIter{}
 	miter.Init(d.cmp, iters...)
-	iter.Init(d.cmp, d.opts.Comparer.FormatKey, seqNum, miter)
+	iter.Init(d.cmp, d.split, d.opts.Comparer.FormatKey, seqNum, rangekey.DefragmentLogical, miter)
 	return iter
 }
