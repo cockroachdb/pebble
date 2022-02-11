@@ -82,8 +82,8 @@ b: (b, [b-c) @5=boop)
 c: (c, .)
 cat: (., [cat-dog) @3=beep)
 cat: (., [cat-dog) @3=beep)
-d: (d, [cat-dog) @3=beep)
-day: (., [cat-dog) @3=beep)
+d: (d, [d-dog) @3=beep)
+day: (., [day-dog) @3=beep)
 .
 
 combined-iter
@@ -104,8 +104,8 @@ a: (a, .)
 b: (b, [b-c) @5=boop)
 c: (c, .)
 c: (c, .)
-cat: (., [cat-dog) @3=beep)
-d: (d, [cat-dog) @3=beep)
+cat: (., [cat-d) @3=beep)
+d: (d, [cat-day) @3=beep)
 d: (d, [cat-dog) @3=beep)
 d: (d, [cat-dog) @3=beep)
 
@@ -129,7 +129,7 @@ cat [cat-catatonic) @3=beep
 rangekey-iter
 seek-ge bat
 ----
-bat [b-c) @5=boop
+bat [bat-c) @5=boop
 
 # Delete 'b': The Iterator should still stop at b because of the range key
 # with a start boundary at b.
@@ -202,34 +202,30 @@ set c c2
 wrote 9 keys
 
 # Test that reverse iteration surfaces range key start boundaries alongside
-# point keys at the same key.
+# point keys at the same key, and defragments logically equivalent ranges.
 
 combined-iter
 last
 prev
 prev
 prev
-prev
 ----
 c: (c2, [c-d) @1=boop)
-b: (b2, [apple-c) @3=beep)
-apple: (., [apple-c) @3=beep)
-ace: (., [ace-apple) @3=beep)
+b: (b2, [ace-c) @3=beep)
+ace: (., [ace-c) @3=beep)
 .
 
 # Test that forward iteration surfaces range key start boundaries alongside
-# point keys at the same key.
+# point keys at the same key, and defragments logically equivalent ranges.
 
 combined-iter
 first
 next
 next
 next
-next
 ----
-ace: (., [ace-apple) @3=beep)
-apple: (., [apple-c) @3=beep)
-b: (b2, [apple-c) @3=beep)
+ace: (., [ace-c) @3=beep)
+b: (b2, [ace-c) @3=beep)
 c: (c2, [c-d) @1=boop)
 .
 
@@ -237,7 +233,7 @@ combined-iter
 seek-prefix-ge b
 next
 ----
-b: (b2, [apple-c) @3=beep)
+b: (b2, [b-c) @3=beep)
 .
 
 reset
@@ -335,8 +331,8 @@ az@1: (az@1, .)
 b: (., [b-c) @5=beep)
 b@100: (b@100, [b-c) @5=beep)
 b@10: (b@10, [b-c) @5=beep)
-bz@10: (bz@10, [b-c) @5=beep)
-bz@1: (bz@1, [b-c) @5=beep)
+bz@10: (bz@10, [bz@10-c) @5=beep)
+bz@1: (bz@1, [bz@10-c) @5=beep)
 c@100: (c@100, .)
 
 # Perform the same iteration with all range keys serving as masks. The bz@1
@@ -359,7 +355,7 @@ az@1: (az@1, .)
 b: (., [b-c) @5=beep)
 b@100: (b@100, [b-c) @5=beep)
 b@10: (b@10, [b-c) @5=beep)
-bz@10: (bz@10, [b-c) @5=beep)
+bz@10: (bz@10, [bz@10-c) @5=beep)
 c@100: (c@100, .)
 c@10: (c@10, .)
 
@@ -370,9 +366,9 @@ seek-ge bz@10
 clone
 seek-ge bz@10
 ----
-bz@10: (bz@10, [b-c) @5=beep)
+bz@10: (bz@10, [bz@10-c) @5=beep)
 .
-bz@10: (bz@10, [b-c) @5=beep)
+bz@10: (bz@10, [bz@10-c) @5=beep)
 
 # Within a batch, later writes overwrite earlier writes. Here, the range-key-del
 # of [bat, bus) overwrites the earlier writes of [b,c) and [b,e).

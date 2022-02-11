@@ -92,9 +92,10 @@ import (
 // All range keys, including those acting as masks, are exposed during
 // iteration.
 type InterleavingIter struct {
+	cmp                    base.Compare
 	split                  base.Split
 	pointIter              base.InternalIterator
-	rangeKeyIter           *Iter
+	rangeKeyIter           Iterator
 	maskingThresholdSuffix []byte
 	maskSuffix             []byte
 
@@ -161,21 +162,19 @@ var _ base.InternalIterator = &InterleavingIter{}
 // will act as a mask, hiding all point keys with suffixes > the range key's
 // suffix within their user key bounds.
 func (i *InterleavingIter) Init(
+	cmp base.Compare,
 	split base.Split,
 	pointIter base.InternalIterator,
-	rangeKeyIter *Iter,
+	rangeKeyIter Iterator,
 	maskingThresholdSuffix []byte,
 ) {
 	*i = InterleavingIter{
+		cmp:                    cmp,
 		split:                  split,
 		pointIter:              pointIter,
 		rangeKeyIter:           rangeKeyIter,
 		maskingThresholdSuffix: maskingThresholdSuffix,
 	}
-}
-
-func (i *InterleavingIter) cmp(a, b []byte) int {
-	return i.rangeKeyIter.coalescer.items.cmp(a, b)
 }
 
 // SeekGE implements (base.InternalIterator).SeekGE.
