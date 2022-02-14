@@ -2,8 +2,6 @@ package sstable
 
 import (
 	"sync"
-
-	"github.com/cockroachdb/pebble/internal/base"
 )
 
 type writeTask struct {
@@ -12,9 +10,12 @@ type writeTask struct {
 	// before adding the writeTask back to the pool.
 	compressionDone chan bool
 	buf             *dataBlockBuf
-	// todo(bananabrick) : Remove the indexSepKey field once Writer.addIndexEntry is
-	// refactored to not require the indexSepKey.
-	indexSepKey InternalKey
+	// If this is not nil, then this index block will be flushed.
+	flushableIndexBlock *indexBlockBuf
+	// currIndexBlock is the index block on which indexBlock.add must be called.
+	currIndexBlock *indexBlockBuf
+
+	indexEntrySep InternalKey
 
 	// inflightSize is used to decrement Writer.coordination.sizeEstimate.inflightSize.
 	inflightSize int
@@ -64,8 +65,8 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 		return err
 	}
 
-	prevKey := base.DecodeInternalKey(task.buf.dataBlock.curKey)
-	if err = w.writer.addIndexEntry(prevKey, task.indexSepKey, bhp, task.buf.tmp[:]); err != nil {
+	if err = w.writer.addIndexEntry(
+		task.indexEntrySep, bhp, task.buf.tmp[:], task.flushableIndexBlock, task.currIndexBlock); err != nil {
 		return err
 	}
 
@@ -75,6 +76,14 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 func (w *writeQueue) releaseBuffers(task *writeTask) {
 	dataBlockBufPool.Put(task.buf)
 	task.buf = nil
+
+	// This index block is no longer used by the Writer, so we can add it back to the pool.
+	if task.flushableIndexBlock != nil {
+		indexBlockBufPool.Put(task.flushableIndexBlock)
+		task.flushableIndexBlock = nil
+	}
+	task.currIndexBlock = nil
+
 	writeTaskPool.Put(task)
 }
 

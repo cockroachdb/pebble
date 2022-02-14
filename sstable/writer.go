@@ -23,6 +23,11 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
+// encodedBHPEstimatedSize estimates the size of the encoded BlockHandleWithProperties.
+// It would also be nice to account for the length of the data block properties here,
+// but isn't necessary since this is an estimate.
+const encodedBHPEstimatedSize = binary.MaxVarintLen64 * 2
+
 var errWriterClosed = errors.New("pebble: writer is closed")
 
 // WriterMetadata holds info about a finished sstable.
@@ -136,7 +141,7 @@ type Writer struct {
 	// for testing. Note that v2 format blocks are backwards compatible with v1
 	// format blocks.
 	rangeDelV1Format    bool
-	indexBlock          indexBlockBuf
+	indexBlock          *indexBlockBuf
 	rangeDelBlock       blockWriter
 	rangeKeyBlock       blockWriter
 	topLevelIndexBlock  blockWriter
@@ -149,9 +154,6 @@ type Writer struct {
 	// nil, or the full keys otherwise.
 	filter          filterWriter
 	indexPartitions []indexBlockAndBlockProperties
-
-	// sepScratch is reusable scratch space for computing separator keys.
-	sepScratch []byte
 
 	// indexBlockAlloc is used to bulk-allocate byte slices used to store index
 	// blocks in indexPartitions. These live until the index finishes.
@@ -185,8 +187,11 @@ type Writer struct {
 }
 
 type indexBlockBuf struct {
-	// block will only be accessed from the writeQueue goroutine if parallelism is enabled.
+	// block will only be accessed from the writeQueue goroutine.
 	block blockWriter
+
+	// sepScratch is reusable scratch space for computing separator keys.
+	sepScratch []byte
 
 	sizeEstimate struct {
 		useMutex bool
@@ -201,9 +206,37 @@ type indexBlockBuf struct {
 		// maxEstimatedSize stores the maximum result returned from indexBlockBuf.estimatedSize. It
 		// ensures that values returned from subsequent calls to Writer.EstimatedSize never decrease.
 		maxEstimatedSize uint64
-		// emptySize is the size of an empty index block.
-		emptySize uint64
 	}
+
+	// restartInterval matches indexBlockBuf.block.restartInterval. We store it twice, because the `block`
+	// must only be accessed from the writeQueue goroutine.
+	restartInterval int
+}
+
+var indexBlockBufPool = sync.Pool{
+	New: func() interface{} {
+		return &indexBlockBuf{}
+	},
+}
+
+const indexBlockRestartInterval = 1
+
+func newIndexBlockBuf() *indexBlockBuf {
+	i := indexBlockBufPool.Get().(*indexBlockBuf)
+	i.restartInterval = indexBlockRestartInterval
+	i.block.restartInterval = indexBlockRestartInterval
+	return i
+}
+
+func (i *indexBlockBuf) shouldFlush(sep InternalKey, valueLen, targetBlockSize, sizeThreshold int) bool {
+	if i.sizeEstimate.useMutex {
+		i.sizeEstimate.mu.Lock()
+		defer i.sizeEstimate.mu.Unlock()
+	}
+
+	return shouldFlush(
+		sep, valueLen, i.restartInterval, int(i.sizeHelper()),
+		int(i.sizeEstimate.numEntries), targetBlockSize, sizeThreshold)
 }
 
 func (i *indexBlockBuf) size() uint64 {
@@ -212,6 +245,11 @@ func (i *indexBlockBuf) size() uint64 {
 		defer i.sizeEstimate.mu.Unlock()
 	}
 
+	return i.sizeHelper()
+}
+
+// i.sizeEstimate.mu must be held before calling this.
+func (i *indexBlockBuf) sizeHelper() uint64 {
 	avgSize := float64(0)
 	if i.sizeEstimate.numEntries > 0 {
 		avgSize = float64(i.sizeEstimate.totalSize) / float64(i.sizeEstimate.numEntries)
@@ -439,6 +477,12 @@ func (d *dataBlockBuf) finish() {
 
 func (d *dataBlockBuf) compressAndChecksum(c Compression) {
 	d.compressed = compressAndChecksum(d.uncompressed, c, &d.blockBuf)
+}
+
+func (d *dataBlockBuf) shouldFlush(key InternalKey, valueLen, targetBlockSize, sizeThreshold int) bool {
+	return shouldFlush(
+		key, valueLen, d.dataBlock.restartInterval, d.dataBlock.estimatedSize(),
+		d.dataBlock.nEntries, targetBlockSize, sizeThreshold)
 }
 
 type indexBlockAndBlockProperties struct {
@@ -949,14 +993,26 @@ func (w *Writer) flush(key InternalKey) error {
 	w.dataBlockBuf.finish()
 	w.dataBlockBuf.compressAndChecksum(w.compression)
 
+	// Determine if the index block should be flushed.
+	prevKey := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
+	sep := w.indexEntrySep(prevKey, key, w.indexBlock)
+	shouldFlushIndexBlock := supportsTwoLevelIndex(w.tableFormat) && w.indexBlock.shouldFlush(
+		sep, encodedBHPEstimatedSize, w.indexBlockSize, w.indexBlockSizeThreshold,
+	)
+
 	var err error
 	writeTask := writeTaskPool.Get().(*writeTask)
 	// We're setting compressionDone to indicate that compression of this block
 	// has already been completed.
 	writeTask.compressionDone <- true
 	writeTask.buf = w.dataBlockBuf
-	writeTask.indexSepKey = key
+	writeTask.indexEntrySep = sep
 	writeTask.inflightSize = estimatedUncompressedSize
+	if shouldFlushIndexBlock {
+		writeTask.flushableIndexBlock = w.indexBlock
+		w.indexBlock = newIndexBlockBuf()
+	}
+	writeTask.currIndexBlock = w.indexBlock
 
 	// The writeTask corresponds to an unwritten index entry.
 	w.indexBlock.addInflight()
@@ -969,7 +1025,7 @@ func (w *Writer) flush(key InternalKey) error {
 }
 
 func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
-	if !shouldFlush(key, value, &w.dataBlockBuf.dataBlock, w.blockSize, w.blockSizeThreshold) {
+	if !w.dataBlockBuf.shouldFlush(key, len(value), w.blockSize, w.blockSizeThreshold) {
 		return nil
 	}
 
@@ -1006,35 +1062,40 @@ func (w *Writer) maybeAddBlockPropertiesToBlockHandle(
 	return BlockHandleWithProperties{BlockHandle: bh, Props: w.blockPropsEncoder.unsafeProps()}, nil
 }
 
-// addIndexEntry adds an index entry for the specified key and block handle.
-func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte) error {
+func (w *Writer) indexEntrySep(prevKey, key InternalKey, indexBlockBuf *indexBlockBuf) InternalKey {
+	// Make a rough guess that we want key-sized scratch to compute the separator.
+	if cap(indexBlockBuf.sepScratch) < key.Size() {
+		indexBlockBuf.sepScratch = make([]byte, 0, key.Size()*2)
+	}
+
+	var sep InternalKey
+	if key.UserKey == nil && key.Trailer == 0 {
+		sep = prevKey.Successor(w.compare, w.successor, indexBlockBuf.sepScratch[:0])
+	} else {
+		sep = prevKey.Separator(w.compare, w.separator, indexBlockBuf.sepScratch[:0], key)
+	}
+	return sep
+}
+
+// addIndexEntry adds an index entry for the specified key and block handle. addIndexEntry can be called from
+// both the Writer client goroutine, and the writeQueue goroutine.
+func (w *Writer) addIndexEntry(
+	sep InternalKey, bhp BlockHandleWithProperties, tmp []byte, flushIndexBuf *indexBlockBuf, writeTo *indexBlockBuf) error {
 	if bhp.Length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
 		return nil
 	}
 
-	// Make a rough guess that we want key-sized scratch to compute the separator.
-	if cap(w.sepScratch) < key.Size() {
-		w.sepScratch = make([]byte, 0, key.Size()*2)
-	}
-
-	var sep InternalKey
-	if key.UserKey == nil && key.Trailer == 0 {
-		sep = prevKey.Successor(w.compare, w.successor, w.sepScratch[:0])
-	} else {
-		sep = prevKey.Separator(w.compare, w.separator, w.sepScratch[:0], key)
-	}
 	encoded := encodeBlockHandleWithProperties(tmp, bhp)
 
-	if supportsTwoLevelIndex(w.tableFormat) &&
-		shouldFlush(sep, encoded, &w.indexBlock.block, w.indexBlockSize, w.indexBlockSizeThreshold) {
+	if flushIndexBuf != nil {
 		if cap(w.indexPartitions) == 0 {
 			w.indexPartitions = make([]indexBlockAndBlockProperties, 0, 32)
 		}
 		// Enable two level indexes if there is more than one index block.
 		w.twoLevelIndex = true
-		if err := w.finishIndexBlock(); err != nil {
+		if err := w.finishIndexBlock(flushIndexBuf); err != nil {
 			return err
 		}
 	}
@@ -1042,38 +1103,55 @@ func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProp
 	for i := range w.blockPropCollectors {
 		w.blockPropCollectors[i].AddPrevDataBlockToIndexBlock()
 	}
-	w.indexBlock.add(sep, encoded)
+	writeTo.add(sep, encoded)
 	return nil
 }
 
+// addIndexEntrySync adds an index entry for the specified key and block handle. Writer.addIndexEntry is only
+// called synchronously once Writer.Close is called. addIndexEntrySync should only be called if we're sure that
+// index entries aren't being written asynchronously.
+func (w *Writer) addIndexEntrySync(prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte) error {
+	sep := w.indexEntrySep(prevKey, key, w.indexBlock)
+	shouldFlush := supportsTwoLevelIndex(
+		w.tableFormat) && w.indexBlock.shouldFlush(
+		sep, encodedBHPEstimatedSize, w.indexBlockSize, w.indexBlockSizeThreshold,
+	)
+	var flushableIndexBlock *indexBlockBuf
+	if shouldFlush {
+		flushableIndexBlock = w.indexBlock
+		w.indexBlock = newIndexBlockBuf()
+	}
+	return w.addIndexEntry(sep, bhp, tmp, flushableIndexBlock, w.indexBlock)
+}
+
 func shouldFlush(
-	key InternalKey, value []byte, block *blockWriter, blockSize, sizeThreshold int,
+	key InternalKey, valueLen int, restartInterval, estimatedBlockSize,
+	numEntries, targetBlockSize, sizeThreshold int,
 ) bool {
-	if block.nEntries == 0 {
+	if numEntries == 0 {
 		return false
 	}
 
-	size := block.estimatedSize()
-	if size >= blockSize {
+	if estimatedBlockSize >= targetBlockSize {
 		return true
 	}
 
 	// The block is currently smaller than the target size.
-	if size <= sizeThreshold {
+	if estimatedBlockSize <= sizeThreshold {
 		// The block is smaller than the threshold size at which we'll consider
 		// flushing it.
 		return false
 	}
 
-	newSize := size + key.Size() + len(value)
-	if block.nEntries%block.restartInterval == 0 {
+	newSize := estimatedBlockSize + key.Size() + valueLen
+	if numEntries%restartInterval == 0 {
 		newSize += 4
 	}
 	newSize += 4                              // varint for shared prefix length
 	newSize += uvarintLen(uint32(key.Size())) // varint for unshared key bytes
-	newSize += uvarintLen(uint32(len(value))) // varint for value size
+	newSize += uvarintLen(uint32(valueLen))   // varint for value size
 	// Flush if the block plus the new entry is larger than the target size.
-	return newSize > blockSize
+	return newSize > targetBlockSize
 }
 
 const keyAllocSize = 256 << 10
@@ -1091,7 +1169,7 @@ func cloneKeyWithBuf(k InternalKey, buf []byte) ([]byte, InternalKey) {
 
 // finishIndexBlock finishes the current index block and adds it to the top
 // level index block. This is only used when two level indexes are enabled.
-func (w *Writer) finishIndexBlock() error {
+func (w *Writer) finishIndexBlock(indexBuf *indexBlockBuf) error {
 	w.blockPropsEncoder.resetProps()
 	for i := range w.blockPropCollectors {
 		scratch := w.blockPropsEncoder.getScratchForProp()
@@ -1104,12 +1182,12 @@ func (w *Writer) finishIndexBlock() error {
 		}
 	}
 	part := indexBlockAndBlockProperties{
-		nEntries: w.indexBlock.block.nEntries, properties: w.blockPropsEncoder.props(),
+		nEntries: indexBuf.block.nEntries, properties: w.blockPropsEncoder.props(),
 	}
 	w.indexSepAlloc, part.sep = cloneKeyWithBuf(
-		base.DecodeInternalKey(w.indexBlock.block.curKey), w.indexSepAlloc,
+		base.DecodeInternalKey(indexBuf.block.curKey), w.indexSepAlloc,
 	)
-	bk := w.indexBlock.finish()
+	bk := indexBuf.finish()
 	if len(w.indexBlockAlloc) < len(bk) {
 		// Allocate enough bytes for approximately 16 index blocks.
 		w.indexBlockAlloc = make([]byte, len(bk)*16)
@@ -1123,7 +1201,7 @@ func (w *Writer) finishIndexBlock() error {
 
 func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
 	// Add the final unfinished index.
-	if err := w.finishIndexBlock(); err != nil {
+	if err := w.finishIndexBlock(w.indexBlock); err != nil {
 		return BlockHandle{}, err
 	}
 
@@ -1273,7 +1351,7 @@ func (w *Writer) Close() (err error) {
 			return err
 		}
 		prevKey := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
-		if err = w.addIndexEntry(prevKey, InternalKey{}, bhp, w.dataBlockBuf.tmp[:]); err != nil {
+		if err = w.addIndexEntrySync(prevKey, InternalKey{}, bhp, w.dataBlockBuf.tmp[:]); err != nil {
 			w.err = err
 			return err
 		}
@@ -1574,11 +1652,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		cache:                   o.Cache,
 		restartInterval:         o.BlockRestartInterval,
 		checksumType:            o.Checksum,
-		indexBlock: indexBlockBuf{
-			block: blockWriter{
-				restartInterval: 1,
-			},
-		},
+		indexBlock:              newIndexBlockBuf(),
 		rangeDelBlock: blockWriter{
 			restartInterval: 1,
 		},
