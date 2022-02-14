@@ -293,7 +293,7 @@ func rewriteDataBlocksToWriter(
 		if i+1 < len(blocks) {
 			nextKey = blocks[i+1].start
 		}
-		if err = w.addIndexEntry(blocks[i].end, nextKey, bhp, w.dataBlockBuf.tmp[:]); err != nil {
+		if err = w.addIndexEntrySync(blocks[i].end, nextKey, bhp, w.dataBlockBuf.tmp[:]); err != nil {
 			return err
 		}
 	}
