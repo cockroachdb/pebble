@@ -150,9 +150,6 @@ type Writer struct {
 	filter          filterWriter
 	indexPartitions []indexBlockAndBlockProperties
 
-	// sepScratch is reusable scratch space for computing separator keys.
-	sepScratch []byte
-
 	// indexBlockAlloc is used to bulk-allocate byte slices used to store index
 	// blocks in indexPartitions. These live until the index finishes.
 	indexBlockAlloc []byte
@@ -204,6 +201,8 @@ type indexBlockBuf struct {
 		// emptySize is the size of an empty index block.
 		emptySize uint64
 	}
+
+	restartInterval int
 }
 
 func (i *indexBlockBuf) size() uint64 {
@@ -217,6 +216,7 @@ func (i *indexBlockBuf) size() uint64 {
 		avgSize = float64(i.sizeEstimate.totalSize) / float64(i.sizeEstimate.numEntries)
 	}
 
+	// todo(bananbrick) : remove the * 0.
 	total := i.sizeEstimate.totalSize + i.sizeEstimate.numInflight*uint64(avgSize)
 	if total > i.sizeEstimate.maxEstimatedSize {
 		i.sizeEstimate.maxEstimatedSize = total
@@ -279,6 +279,15 @@ func (i *indexBlockBuf) clearEstimate() {
 	i.sizeEstimate.numInflight = 0
 	i.sizeEstimate.maxEstimatedSize = 0
 	i.sizeEstimate.totalSize = 0
+}
+
+func (i *indexBlockBuf) numEntries() uint64 {
+	if i.sizeEstimate.useMutex {
+		i.sizeEstimate.mu.Lock()
+		defer i.sizeEstimate.mu.Unlock()
+	}
+
+	return i.sizeEstimate.numEntries
 }
 
 // sizeEstimate is used for sstable size estimation. sizeEstimate can be accessed by
@@ -398,6 +407,9 @@ type blockBuf struct {
 	// lifetime of the blockBuf, avoiding the allocation of a temporary buffer for each block.
 	compressedBuf []byte
 	checksummer   checksummer
+
+	// sepScratch is reusable scratch space for computing separator keys.
+	sepScratch []byte
 }
 
 // A dataBlockBuf holds all the state required to compress and write a data block to disk.
@@ -949,13 +961,21 @@ func (w *Writer) flush(key InternalKey) error {
 	w.dataBlockBuf.finish()
 	w.dataBlockBuf.compressAndChecksum(w.compression)
 
+	// Determine if the index block should be flushed.
+	prevKey := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
+	sep := w.indexEntrySep(prevKey, key, &w.dataBlockBuf.blockBuf)
+	shouldFlush := supportsTwoLevelIndex(w.tableFormat) &&
+		shouldFlush(sep, encodedBHPEstimatedSize, w.indexBlock.restartInterval, int(w.indexBlock.size()),
+			int(w.indexBlock.numEntries()), w.indexBlockSize, w.indexBlockSizeThreshold)
+
 	var err error
 	writeTask := writeTaskPool.Get().(*writeTask)
 	// We're setting compressionDone to indicate that compression of this block
 	// has already been completed.
 	writeTask.compressionDone <- true
 	writeTask.buf = w.dataBlockBuf
-	writeTask.indexSepKey = key
+	writeTask.indexEntrySep = sep
+	writeTask.shouldFlushIndexBlock = shouldFlush
 	writeTask.inflightSize = estimatedUncompressedSize
 
 	// The writeTask corresponds to an unwritten index entry.
@@ -969,7 +989,9 @@ func (w *Writer) flush(key InternalKey) error {
 }
 
 func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
-	if !shouldFlush(key, value, &w.dataBlockBuf.dataBlock, w.blockSize, w.blockSizeThreshold) {
+	if !shouldFlush(
+		key, len(value), w.dataBlockBuf.dataBlock.restartInterval, w.dataBlockBuf.dataBlock.estimatedSize(),
+		w.dataBlockBuf.dataBlock.nEntries, w.blockSize, w.blockSizeThreshold) {
 		return nil
 	}
 
@@ -1006,29 +1028,41 @@ func (w *Writer) maybeAddBlockPropertiesToBlockHandle(
 	return BlockHandleWithProperties{BlockHandle: bh, Props: w.blockPropsEncoder.unsafeProps()}, nil
 }
 
-// addIndexEntry adds an index entry for the specified key and block handle.
-func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte) error {
+func (w *Writer) indexEntrySep(prevKey, key InternalKey, blockBuf *blockBuf) InternalKey {
+	// Make a rough guess that we want key-sized scratch to compute the separator.
+	if cap(blockBuf.sepScratch) < key.Size() {
+		blockBuf.sepScratch = make([]byte, 0, key.Size()*2)
+	}
+
+	var sep InternalKey
+	if key.UserKey == nil && key.Trailer == 0 {
+		sep = prevKey.Successor(w.compare, w.successor, blockBuf.sepScratch[:0])
+	} else {
+		sep = prevKey.Separator(w.compare, w.separator, blockBuf.sepScratch[:0], key)
+	}
+	return sep
+}
+
+// encodedBHPEstimatedSize estimates the size of the encoded BlockHandleWithProperties.
+// It would also be nice to account for the length of the data block properties here,
+// but isn't necessary since this is an estimate.
+const encodedBHPEstimatedSize = binary.MaxVarintLen64 * 2
+
+// addIndexEntry adds an index entry for the specified key and block handle. addIndexEntry can be called from
+// both the Writer client goroutine, and the writeQueue goroutine.
+func addIndexEntry(w *Writer, sep InternalKey, bhp BlockHandleWithProperties, tmp []byte, shouldFlush bool) error {
 	if bhp.Length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
 		return nil
 	}
 
-	// Make a rough guess that we want key-sized scratch to compute the separator.
-	if cap(w.sepScratch) < key.Size() {
-		w.sepScratch = make([]byte, 0, key.Size()*2)
-	}
-
-	var sep InternalKey
-	if key.UserKey == nil && key.Trailer == 0 {
-		sep = prevKey.Successor(w.compare, w.successor, w.sepScratch[:0])
-	} else {
-		sep = prevKey.Separator(w.compare, w.separator, w.sepScratch[:0], key)
-	}
 	encoded := encodeBlockHandleWithProperties(tmp, bhp)
 
-	if supportsTwoLevelIndex(w.tableFormat) &&
-		shouldFlush(sep, encoded, &w.indexBlock.block, w.indexBlockSize, w.indexBlockSizeThreshold) {
+	if shouldFlush {
+		// fmt.Println(w.indexBlock.restartInterval, w.indexBlock.block.restartInterval)
+		// fmt.Println(w.indexBlock.block.estimatedSize(), w.indexBlock.size())
+		// fmt.Println(w.indexBlock.numEntries(), w.indexBlock.block.nEntries)
 		if cap(w.indexPartitions) == 0 {
 			w.indexPartitions = make([]indexBlockAndBlockProperties, 0, 32)
 		}
@@ -1046,32 +1080,43 @@ func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProp
 	return nil
 }
 
+// addIndexEntry adds an index entry for the specified key and block handle. Writer.addIndexEntry is only
+// called synchronously once Writer.Close is called.
+func (w *Writer) addIndexEntry(prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte) error {
+	sep := w.indexEntrySep(prevKey, key, &w.blockBuf)
+	shouldFlush := supportsTwoLevelIndex(w.tableFormat) &&
+		shouldFlush(sep, encodedBHPEstimatedSize, w.indexBlock.restartInterval, int(w.indexBlock.size()),
+			int(w.indexBlock.numEntries()), w.indexBlockSize, w.indexBlockSizeThreshold)
+
+	return addIndexEntry(w, sep, bhp, tmp, shouldFlush)
+}
+
 func shouldFlush(
-	key InternalKey, value []byte, block *blockWriter, blockSize, sizeThreshold int,
+	key InternalKey, valueLen int, restartInterval, estimatedBlockSize,
+	numEntries, blockSize, sizeThreshold int,
 ) bool {
-	if block.nEntries == 0 {
+	if numEntries == 0 {
 		return false
 	}
 
-	size := block.estimatedSize()
-	if size >= blockSize {
+	if estimatedBlockSize >= blockSize {
 		return true
 	}
 
 	// The block is currently smaller than the target size.
-	if size <= sizeThreshold {
+	if estimatedBlockSize <= sizeThreshold {
 		// The block is smaller than the threshold size at which we'll consider
 		// flushing it.
 		return false
 	}
 
-	newSize := size + key.Size() + len(value)
-	if block.nEntries%block.restartInterval == 0 {
+	newSize := estimatedBlockSize + key.Size() + valueLen
+	if numEntries%restartInterval == 0 {
 		newSize += 4
 	}
 	newSize += 4                              // varint for shared prefix length
 	newSize += uvarintLen(uint32(key.Size())) // varint for unshared key bytes
-	newSize += uvarintLen(uint32(len(value))) // varint for value size
+	newSize += uvarintLen(uint32(valueLen))   // varint for value size
 	// Flush if the block plus the new entry is larger than the target size.
 	return newSize > blockSize
 }
@@ -1578,6 +1623,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 			block: blockWriter{
 				restartInterval: 1,
 			},
+			restartInterval: 1,
 		},
 		rangeDelBlock: blockWriter{
 			restartInterval: 1,

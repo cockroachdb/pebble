@@ -2,8 +2,6 @@ package sstable
 
 import (
 	"sync"
-
-	"github.com/cockroachdb/pebble/internal/base"
 )
 
 type writeTask struct {
@@ -12,9 +10,9 @@ type writeTask struct {
 	// before adding the writeTask back to the pool.
 	compressionDone chan bool
 	buf             *dataBlockBuf
-	// todo(bananabrick) : Remove the indexSepKey field once Writer.addIndexEntry is
-	// refactored to not require the indexSepKey.
-	indexSepKey InternalKey
+
+	indexEntrySep         InternalKey
+	shouldFlushIndexBlock bool
 
 	// inflightSize is used to decrement Writer.coordination.sizeEstimate.inflightSize.
 	inflightSize int
@@ -64,8 +62,7 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 		return err
 	}
 
-	prevKey := base.DecodeInternalKey(task.buf.dataBlock.curKey)
-	if err = w.writer.addIndexEntry(prevKey, task.indexSepKey, bhp, task.buf.tmp[:]); err != nil {
+	if err = addIndexEntry(w.writer, task.indexEntrySep, bhp, task.buf.tmp[:], task.shouldFlushIndexBlock); err != nil {
 		return err
 	}
 
