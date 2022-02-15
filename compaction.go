@@ -1495,6 +1495,11 @@ func (d *DB) flush1() (didFlush bool, err error) {
 		d.updateReadStateLocked(d.opts.DebugCheck)
 		d.updateTableStatsLocked(ve.NewFiles)
 	}
+	if err == nil {
+		// TODO(jackson): Remove this when range keys are persisted to sstables.
+		err = d.applyFlushedRangeKeys(flushed)
+	}
+
 	d.deleteObsoleteFiles(jobID, false /* waitForOngoing */)
 
 	// Mark all the memtables we flushed as flushed. Note that we do this last so

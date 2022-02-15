@@ -776,16 +776,6 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 		d.mu.Unlock()
 	}
 
-	// If the batch contains range keys, add them to the range key skiplist.
-	// This is temporary, while we work on implementing range keys. It allows us
-	// to provide an implementation of range keys that aren't persisted, so
-	// CockroachDB packages may build and prototype against them.
-	// TODO(jackson): When the durable implementation is complete, remove this
-	// and the range-key arena.
-	if b.countRangeKeys > 0 {
-		d.applyBatchRangeKeys(b)
-	}
-
 	if mem.writerUnref() {
 		d.mu.Lock()
 		d.maybeScheduleFlush()
