@@ -82,6 +82,12 @@ func TestRangeKeys(t *testing.T) {
 			}
 			count := b.Count()
 			return fmt.Sprintf("wrote %d keys\n", count)
+		case "flush":
+			err := d.Flush()
+			if err != nil {
+				return err.Error()
+			}
+			return ""
 		case "indexed-batch":
 			b = d.NewIndexedBatch()
 			require.NoError(t, runBatchDefineCmd(td, b))

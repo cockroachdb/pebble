@@ -185,6 +185,19 @@ next
 c: (c, .)
 d: (d, [d-dog) @3=beep)
 
+# Reading through the database after flushing, we should still see the
+# beginning of the cat-dog range key now beginning at 'd'.
+
+flush
+----
+
+combined-iter
+seek-ge b
+next
+----
+c: (c, .)
+d: (d, [d-dog) @3=beep)
+
 reset
 ----
 

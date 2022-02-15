@@ -371,7 +371,7 @@ func TestDBWALRotationCrash(t *testing.T) {
 		opts := &Options{
 			FS:           fs,
 			Logger:       panicLogger{},
-			MemTableSize: 1024,
+			MemTableSize: 2048,
 		}
 		opts.private.disableTableStats = true
 		d, err := Open("", opts)

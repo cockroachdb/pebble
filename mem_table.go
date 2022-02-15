@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
 func memTableEntrySize(keyBytes, valueBytes int) uint64 {
@@ -27,9 +28,11 @@ func memTableEntrySize(keyBytes, valueBytes int) uint64 {
 var memTableEmptySize = func() uint32 {
 	var pointSkl arenaskl.Skiplist
 	var rangeDelSkl arenaskl.Skiplist
+	var rangeKeySkl arenaskl.Skiplist
 	arena := arenaskl.NewArena(make([]byte, 16<<10 /* 16 KB */))
 	pointSkl.Reset(arena, bytes.Compare)
 	rangeDelSkl.Reset(arena, bytes.Compare)
+	rangeKeySkl.Reset(arena, bytes.Compare)
 	return arena.Size()
 }()
 
@@ -65,6 +68,7 @@ type memTable struct {
 	arenaBuf    []byte
 	skl         arenaskl.Skiplist
 	rangeDelSkl arenaskl.Skiplist
+	rangeKeySkl arenaskl.Skiplist
 	// reserved tracks the amount of space used by the memtable, both by actual
 	// data stored in the memtable as well as inflight batch commit
 	// operations. This value is incremented pessimistically by prepare() in
@@ -77,6 +81,7 @@ type memTable struct {
 	// drops to zero.
 	writerRefs int32
 	tombstones keySpanCache
+	rangeKeys  keySpanCache
 	// The current logSeqNum at the time the memtable was created. This is
 	// guaranteed to be less than or equal to any seqnum stored in the memtable.
 	logSeqNum uint64
@@ -122,6 +127,20 @@ func newMemTable(opts memTableOptions) *memTable {
 		skl:        &m.rangeDelSkl,
 		splitValue: rangeDelSplitValue,
 	}
+	m.rangeKeys = keySpanCache{
+		cmp:       m.cmp,
+		formatKey: m.formatKey,
+		skl:       &m.rangeKeySkl,
+		splitValue: func(kind base.InternalKeyKind, rawValue []byte) (endKey []byte, value []byte, err error) {
+			var ok bool
+			endKey, value, ok = rangekey.DecodeEndKey(kind, rawValue)
+			if !ok {
+				err = base.CorruptionErrorf("unable to decode end key for key of kind %s", kind)
+			}
+			// NB: This value encodes a series of (suffix,value) tuples.
+			return endKey, value, err
+		},
+	}
 
 	if m.arenaBuf == nil {
 		m.arenaBuf = make([]byte, opts.size)
@@ -130,6 +149,7 @@ func newMemTable(opts memTableOptions) *memTable {
 	arena := arenaskl.NewArena(m.arenaBuf)
 	m.skl.Reset(arena, m.cmp)
 	m.rangeDelSkl.Reset(arena, m.cmp)
+	m.rangeKeySkl.Reset(arena, m.cmp)
 	return m
 }
 
@@ -177,7 +197,7 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	}
 
 	var ins arenaskl.Inserter
-	var tombstoneCount uint32
+	var tombstoneCount, rangeKeyCount uint32
 	startSeqNum := seqNum
 	for r := batch.Reader(); ; seqNum++ {
 		kind, ukey, value, ok := r.Next()
@@ -190,12 +210,13 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 		case InternalKeyKindRangeDelete:
 			err = m.rangeDelSkl.Add(ikey, value)
 			tombstoneCount++
+		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+			err = m.rangeKeySkl.Add(ikey, value)
+			rangeKeyCount++
 		case InternalKeyKindLogData:
 			// Don't increment seqNum for LogData, since these are not applied
 			// to the memtable.
 			seqNum--
-		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
-			// TODO(jackson): Implement.
 		default:
 			err = ins.Add(&m.skl, ikey, value)
 		}
@@ -209,6 +230,9 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	}
 	if tombstoneCount != 0 {
 		m.tombstones.invalidate(tombstoneCount)
+	}
+	if rangeKeyCount != 0 {
+		m.rangeKeys.invalidate(rangeKeyCount)
 	}
 	return nil
 }
@@ -233,8 +257,11 @@ func (m *memTable) newRangeDelIter(*IterOptions) keyspan.FragmentIterator {
 }
 
 func (m *memTable) newRangeKeyIter(*IterOptions) keyspan.FragmentIterator {
-	// TODO(jackson): Implement once range keys are written to the memtable.
-	return nil
+	rangeKeys := m.rangeKeys.get()
+	if rangeKeys == nil {
+		return nil
+	}
+	return keyspan.NewIter(m.cmp, rangeKeys)
 }
 
 func (m *memTable) availBytes() uint32 {

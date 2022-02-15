@@ -138,7 +138,7 @@ func DecodeEndKey(kind base.InternalKeyKind, data []byte) (endKey, value []byte,
 		return data, nil, true
 	case base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset:
 		v, n := binary.Uvarint(data)
-		if n <= 0 {
+		if n <= 0 || uint64(n)+v >= uint64(len(data)) {
 			return nil, nil, false
 		}
 		endKey, value = data[n:n+int(v)], data[n+int(v):]
