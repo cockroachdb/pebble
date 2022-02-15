@@ -21,6 +21,9 @@ const (
 	InternalKeySeqNumBatch         = base.InternalKeySeqNumBatch
 	InternalKeySeqNumMax           = base.InternalKeySeqNumMax
 	InternalKeyRangeDeleteSentinel = base.InternalKeyRangeDeleteSentinel
+	InternalKeyKindRangeKeyDelete  = base.InternalKeyKindRangeKeyDelete
+	InternalKeyKindRangeKeyUnset   = base.InternalKeyKindRangeKeyUnset
+	InternalKeyKindRangeKeySet     = base.InternalKeyKindRangeKeySet
 )
 
 // InternalKey exports the base.InternalKey type.

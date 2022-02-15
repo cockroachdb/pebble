@@ -1,0 +1,63 @@
+build
+SET a-c @1=foo
+SET c-d @2=bar
+SET e-f @3=baz
+----
+
+iter
+first
+next
+next
+next
+----
+[a, c) #0 RANGEKEYSET @1 = foo
+[c, d) #0 RANGEKEYSET @2 = bar
+[e, f) #0 RANGEKEYSET @3 = baz
+.
+
+build
+SET a-c @1=v1
+UNSET a-c @5
+SET c-d @2=v2
+SET c-d @5=v5
+DEL d-e
+SET d-e @9=v9
+SET f-i @4=v4
+SET f-i @5=v5
+UNSET f-i @6
+SET f-i @7=v7
+SET f-i @8=v8
+SET f-i @9=v9
+DEL f-i
+----
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+[a, c) #0 RANGEKEYSET @1 = v1
+[a, c) #0 RANGEKEYUNSET @5
+[c, d) #0 RANGEKEYSET @5 = v5
+[c, d) #0 RANGEKEYSET @2 = v2
+[d, e) #0 RANGEKEYSET @9 = v9
+[d, e) #0 RANGEKEYDEL
+[f, i) #0 RANGEKEYSET @9 = v9
+[f, i) #0 RANGEKEYSET @8 = v8
+[f, i) #0 RANGEKEYSET @7 = v7
+[f, i) #0 RANGEKEYSET @5 = v5
+[f, i) #0 RANGEKEYSET @4 = v4
+[f, i) #0 RANGEKEYUNSET @6
+[f, i) #0 RANGEKEYDEL
+.

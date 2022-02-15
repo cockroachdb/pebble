@@ -2192,6 +2192,16 @@ func (r *Reader) NewRawRangeKeyIter() (base.InternalIterator, error) {
 	return i, nil
 }
 
+// NewRangeKeyIter returns an iterator for the range keys contained within the
+// table.
+func (r *Reader) NewRangeKeyIter() (*RangeKeyIter, error) {
+	ii, err := r.NewRawRangeKeyIter()
+	if err != nil || ii == nil {
+		return nil, err
+	}
+	return newRangeKeyIter(ii), nil
+}
+
 func (r *Reader) readIndex() (cache.Handle, error) {
 	return r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */)
 }
