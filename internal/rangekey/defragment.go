@@ -55,20 +55,12 @@ const (
 // wrapped iter. The defragmenting iter must look ahead or behind when
 // defragmenting forward or backwards respectively, and this enum records that
 // current position.
-//
-// There are also two special positions, iterPosPrevSeek and iterPosNextSeek,
-// used after a SeekLT or SeekGE to denote that while the underlying iter is
-// positioned on a previous or next span respectively, the last returned span
-// was truncated to the seek key. A subsequent Next or Prev in the opposite
-// direction should see the remainder of the fragmented span.
 type iterPos int8
 
 const (
-	iterPosPrev     iterPos = -2
-	iterPosPrevSeek iterPos = -1
-	iterPosCurr     iterPos = 0
-	iterPosNextSeek iterPos = +1
-	iterPosNext     iterPos = +2
+	iterPosPrev iterPos = -1
+	iterPosCurr iterPos = 0
+	iterPosNext iterPos = +1
 )
 
 // DefragmentingIter wraps a range key iterator, defragmenting physical
@@ -103,12 +95,10 @@ const (
 //
 // Seeking (SeekGE, SeekLT) poses an obstacle to defragmentation. A seek may
 // land on a physical fragment in the middle of several fragments that must be
-// defragmented. To avoid needing to defragment in both directions, seeking
-// truncates the defragmented range key to the seek key and defragments only in
-// the direction of iteration.  An iterator that changes direction after the
-// seek will see the other half of the fragmented span. An iterator that moves
-// away from the seek key and then moves back will no longer observe the
-// artifical fragmentation point.
+// defragmented. A seek first degfragments in the opposite direction of
+// iteration to find the beginning of the defragmented span, and then
+// defragments in the iteration direction, ensuring it's found a whole
+// defragmented span.
 type DefragmentingIter struct {
 	cmp      base.Compare
 	split    base.Split
@@ -129,14 +119,6 @@ type DefragmentingIter struct {
 	curr    CoalescedSpan
 	currBuf []byte
 	keyBuf  []byte
-
-	// seekFragKey is set when positioning the iterator using SeekGE or SeekLT.
-	// It holds the search key, which is used to introduce a synthetic fragment
-	// at the key. This is necessary to avoid the requirement of defragmenting
-	// in both directions. seekFragKeyBuf is a buffer into which a seekFragKey
-	// always points if non-nil.
-	seekFragKey    []byte
-	seekFragKeyBuf []byte
 
 	// equalState is a comparison function for two coalesced range key spans.
 	// The value of equalState is dependent on the method of defragmenting being
@@ -200,32 +182,36 @@ func (i *DefragmentingIter) Current() *CoalescedSpan {
 // equal to key and returns it.
 func (i *DefragmentingIter) SeekGE(key []byte) *CoalescedSpan {
 	i.iterSpan = i.iter.SeekGE(key)
-	j := i.split(key)
-	i.seekFragKey = append(i.seekFragKeyBuf[:0], key[:j]...)
-	return i.defragmentForward(i.seekFragKey)
+	// Defragment backward to find the beginning of the defragmented span.
+	i.defragmentBackward()
+	// Next once back onto the span.
+	i.iterSpan = i.iter.Next()
+	// Defragment the full span from its beginning.
+	return i.defragmentForward()
 }
 
 // SeekLT seeks the iterator to the first span covering a key less than key and
 // returns it.
 func (i *DefragmentingIter) SeekLT(key []byte) *CoalescedSpan {
 	i.iterSpan = i.iter.SeekLT(key)
-	j := i.split(key)
-	i.seekFragKey = append(i.seekFragKeyBuf[:0], key[:j]...)
-	return i.defragmentBackward(i.seekFragKey)
+	// Defragment forward to find the end of the defragmented span.
+	i.defragmentForward()
+	// Prev once back onto the span.
+	i.iterSpan = i.iter.Prev()
+	// Defragment the full span from its end.
+	return i.defragmentBackward()
 }
 
 // First seeks the iterator to the first span and returns it.
 func (i *DefragmentingIter) First() *CoalescedSpan {
 	i.iterSpan = i.iter.First()
-	i.seekFragKey = nil
-	return i.defragmentForward(nil)
+	return i.defragmentForward()
 }
 
 // Last seeks the iterator to the last span and returns it.
 func (i *DefragmentingIter) Last() *CoalescedSpan {
 	i.iterSpan = i.iter.Last()
-	i.seekFragKey = nil
-	return i.defragmentBackward(nil)
+	return i.defragmentBackward()
 }
 
 // Next advances to the next span and returns it.
@@ -252,34 +238,17 @@ func (i *DefragmentingIter) Next() *CoalescedSpan {
 		// current iterator position. Skip over the rest of the current iterator
 		// position's constitutent fragments. In the above example, this would
 		// land on the first 'z'.
-		i.defragmentForward(nil)
+		i.defragmentForward()
 
 		// Now that we're positioned over the first of the next set of
 		// fragments, defragment forward.
-		return i.defragmentForward(nil)
-	case iterPosPrevSeek:
-		// i.iter is positioned on the last fragment of the next defragmented
-		// span. Next once back onto the fragment corresponding to the current
-		// iterator position and defragment forward
-		i.iterSpan = i.iter.Next()
-		_ = i.defragmentForward(nil)
-		// i.curr is now the full span that should include i.seekFragKey.
-		// Truncate the span to just the i.seekFragKey.
-		i.curr.Start = i.seekFragKey
-		i.iterPos = iterPosNextSeek
-		return &i.curr
+		return i.defragmentForward()
 	case iterPosCurr:
 		i.iterSpan = i.iter.Next()
-		return i.defragmentForward(nil)
-	case iterPosNextSeek:
-		// Already at the next span.
-		// We're stepping off the span that was split by seekFragKey, so we may
-		// clear it.
-		i.seekFragKey = nil
-		return i.defragmentForward(nil)
+		return i.defragmentForward()
 	case iterPosNext:
 		// Already at the next span.
-		return i.defragmentForward(nil)
+		return i.defragmentForward()
 	default:
 		panic("unreachable")
 	}
@@ -290,27 +259,11 @@ func (i *DefragmentingIter) Prev() *CoalescedSpan {
 	switch i.iterPos {
 	case iterPosPrev:
 		// Already at the previous span.
-		return i.defragmentBackward(nil)
-	case iterPosPrevSeek:
-		// Already at the previous span.
-		// We're stepping off the span that was split by seekFragKey, so we may
-		// clear it.
-		i.seekFragKey = nil
-		return i.defragmentBackward(nil)
+		return i.defragmentBackward()
 	case iterPosCurr:
 		i.iterSpan = i.iter.Prev()
-		return i.defragmentBackward(nil)
-	case iterPosNextSeek:
-		// i.iter is positioned on the first fragment of the next defragmented
-		// span. Prev once back onto the fragment corresponding to the current
-		// iterator position and defragment backward.
-		i.iterSpan = i.iter.Prev()
-		_ = i.defragmentBackward(nil)
-		// i.curr is now the full span that should include i.seekFragKey.
-		// Truncate the span to just the i.seekFragKey.
-		i.curr.End = i.seekFragKey
-		i.iterPos = iterPosPrevSeek
-		return &i.curr
+		return i.defragmentBackward()
+
 	case iterPosNext:
 		// Switching diections; The iterator is currently positioned over the
 		// first fragment of the next set of fragments. In the below diagram,
@@ -332,21 +285,19 @@ func (i *DefragmentingIter) Prev() *CoalescedSpan {
 		// current iterator position. Skip over the rest of the current iterator
 		// position's constitutent fragments. In the above example, this would
 		// land on the last 'x'.
-		i.defragmentBackward(nil)
+		i.defragmentBackward()
 
 		// Now that we're positioned over the last of the prev set of
 		// fragments, defragment backward.
-		return i.defragmentBackward(nil)
+		return i.defragmentBackward()
 	default:
 		panic("unreachable")
 	}
 }
 
 // defragmentForward defragments spans in the forward direction, starting from
-// i.iter's current position. It takes an optional seekKey, indicating the key
-// passed to SeekGE. See the DefragmentIter type's comment for a discussion of
-// the seeking mechanics.
-func (i *DefragmentingIter) defragmentForward(seekKey []byte) *CoalescedSpan {
+// i.iter's current position.
+func (i *DefragmentingIter) defragmentForward() *CoalescedSpan {
 	if i.iterSpan == nil {
 		i.iterPos = iterPosCurr
 		return nil
@@ -368,24 +319,12 @@ func (i *DefragmentingIter) defragmentForward(seekKey []byte) *CoalescedSpan {
 		i.curr.End = i.keyBuf
 		i.iterSpan = i.iter.Next()
 	}
-
-	// If this is a SeekGE and we landed on a fragment that straddles the seek
-	// key, truncate the span we return to the seek key so that it's
-	// deterministic.
-	if seekKey != nil {
-		i.iterPos = iterPosNextSeek
-		if i.cmp(i.curr.Start, seekKey) < 0 {
-			i.curr.Start = seekKey
-		}
-	}
 	return &i.curr
 }
 
 // defragmentBackward defragments spans in the backward direction, starting from
-// i.iter's current position. It takes an optional seekKey, indicating the key
-// passed to SeekLT. See the DefragmentIter type's comment for a discussion of
-// the seeking mechanics.
-func (i *DefragmentingIter) defragmentBackward(seekKey []byte) *CoalescedSpan {
+// i.iter's current position.
+func (i *DefragmentingIter) defragmentBackward() *CoalescedSpan {
 	if i.iterSpan == nil {
 		i.iterPos = iterPosCurr
 		return nil
@@ -406,16 +345,6 @@ func (i *DefragmentingIter) defragmentBackward(seekKey []byte) *CoalescedSpan {
 		i.keyBuf = append(i.keyBuf[:0], i.iterSpan.Start...)
 		i.curr.Start = i.keyBuf
 		i.iterSpan = i.iter.Prev()
-	}
-
-	// If this is a SeekLT and we landed on a fragment that straddles the seek
-	// key, truncate the span we return to the seek key so that it's
-	// deterministic.
-	if seekKey != nil {
-		i.iterPos = iterPosPrevSeek
-		if i.cmp(i.curr.End, seekKey) > 0 {
-			i.curr.End = seekKey
-		}
 	}
 	return &i.curr
 }

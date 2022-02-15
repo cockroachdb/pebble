@@ -65,7 +65,7 @@ first     [a, d): "@5" = <unset>, "@3" = "bananas"
 next      [d, e): "@3" = "bananas"
 next      .
 
-# Test fragmentation at seek keys.
+# Test defragmenting in both directions at seek keys.
 
 define
 a.RANGEKEYUNSET.3 : f [@5]
@@ -79,38 +79,32 @@ p.RANGEKEYSET.3   : t [(@3=bananas)]
 iter method=logical
 seekge b
 prev
-prev
 seekge b
 next
 seeklt d
 next
-next
 seeklt d
 prev
 ----
-seekge b  [b, t): "@3" = "bananas"
-prev      [a, b): "@3" = "bananas"
+seekge b  [a, t): "@3" = "bananas"
 prev      .
-seekge b  [b, t): "@3" = "bananas"
+seekge b  [a, t): "@3" = "bananas"
 next      .
-seeklt d  [a, d): "@3" = "bananas"
-next      [d, t): "@3" = "bananas"
+seeklt d  [a, t): "@3" = "bananas"
 next      .
-seeklt d  [a, d): "@3" = "bananas"
+seeklt d  [a, t): "@3" = "bananas"
 prev      .
 
 iter method=logical
 seeklt d
 next
-next
 prev
 ----
-seeklt d  [a, d): "@3" = "bananas"
-next      [d, t): "@3" = "bananas"
+seeklt d  [a, t): "@3" = "bananas"
 next      .
 prev      [a, t): "@3" = "bananas"
 
-# Test next-ing and prev-ing around truncated seek fragments.
+# Test next-ing and prev-ing around seek keys.
 
 define
 a.RANGEKEYUNSET.3 : f [@5]
@@ -128,7 +122,7 @@ prev
 next
 next
 ----
-seekge r  [r, t): "@3" = "bananas"
-prev      [a, r): "@3" = "bananas"
-next      [r, t): "@3" = "bananas"
+seekge r  [a, t): "@3" = "bananas"
+prev      .
+next      [a, t): "@3" = "bananas"
 next      [t, z): "@2" = "oranges"
