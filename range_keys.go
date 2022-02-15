@@ -7,9 +7,9 @@ package pebble
 import (
 	"sync"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
@@ -26,41 +26,57 @@ type RangeKeysArena struct {
 	fragCache keySpanCache
 }
 
-// applyBatchRangeKeys is a temporary hack to support in-memory only range keys.
-// We use much of the same code that we will use for the memtable, but we use a
-// separate arena that exists beyond the lifetime of any individual memtable.
-// For as long as we're relying on this hack, a single *pebble.DB may only store
-// as many range keys as fit in this arena.
-func (d *DB) applyBatchRangeKeys(b *Batch) error {
-	d.maybeInitializeRangeKeys()
-
-	seqNum := b.SeqNum()
-	startSeqNum := seqNum
-	for r := b.Reader(); ; seqNum++ {
-		kind, ukey, value, ok := r.Next()
-		if !ok {
-			break
-		}
-		switch kind {
-		case InternalKeyKindLogData:
-			// Don't increment seqNum for LogData, since these are not applied
-			// to the memtable.
-			seqNum--
+// applyFlushedRangeKeys is a temporary hack to support in-memory only range
+// keys.  We use much of the same code that we will use for the memtable, but we
+// use a separate arena that exists beyond the lifetime of any individual
+// memtable.  For as long as we're relying on this hack, a single *pebble.DB may
+// only store as many range keys as fit in this arena.
+func (d *DB) applyFlushedRangeKeys(flushable []*flushableEntry) error {
+	var added uint32
+	for i := 0; i < len(flushable); i++ {
+		iter := flushable[i].newRangeKeyIter(nil)
+		if iter == nil {
 			continue
-		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
-			ikey := base.MakeInternalKey(ukey, seqNum, kind)
-			if err := d.rangeKeys.skl.Add(ikey, value); err != nil {
+		}
+		d.maybeInitializeRangeKeys()
+
+		var buf []byte
+		for k, _ := iter.First(); k != nil; k, _ = iter.Next() {
+			if invariants.Enabled && !rangekey.IsRangeKey(k.Kind()) {
+				panic("pebble: non-range key written to range key skiplist")
+			}
+
+			// flushable.newRangeKeyIter provides a FragmentIterator, which
+			// iterates over keyspan.Spans with their end keys already
+			// extracted from the rest of the values.
+			//
+			// While we're faking a flush, we just want to copy the original
+			// key into the global arena, so we need to recombine the span's end
+			// key and value (which encodes a list of suffix-value tuples, a
+			// list of suffixes, or nothing depending on the key kind).
+			//
+			// This awkward recombination will be removed when flushes implement
+			// range-key logic, coalescing fragments into CoalescedSpans and
+			// then constructing internal keys from them.
+			s := iter.Current()
+			buf = buf[:0]
+			n := rangekey.RecombinedValueLen(k.Kind(), s.End, s.Value)
+			if cap(buf) < n {
+				buf = make([]byte, n)
+			} else {
+				buf = buf[:n]
+			}
+			rangekey.RecombineValue(k.Kind(), buf, s.End, s.Value)
+
+			if err := d.rangeKeys.skl.Add(*k, buf[:n]); err != nil {
 				return err
 			}
-		default:
-			// This method only applies range keys; ignore all other key kinds.
+			added++
 		}
 	}
-	if seqNum != startSeqNum+uint64(b.Count()) {
-		return base.CorruptionErrorf("pebble: inconsistent batch count: %d vs %d",
-			errors.Safe(seqNum), errors.Safe(startSeqNum+uint64(b.Count())))
+	if added > 0 {
+		d.rangeKeys.fragCache.invalidate(added)
 	}
-	d.rangeKeys.fragCache.invalidate(uint32(b.countRangeKeys))
 	return nil
 }
 

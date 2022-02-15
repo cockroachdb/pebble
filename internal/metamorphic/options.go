@@ -126,7 +126,7 @@ func standardOptions() []*testOptions {
 `,
 		8: `
 [Options]
-  mem_table_size=1000
+  mem_table_size=2000
 `,
 		9: `
 [Options]
@@ -220,7 +220,7 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts.LBaseMaxBytes = 1 << uint(rng.Intn(30))       // 1B - 1GB
 	opts.MaxConcurrentCompactions = rng.Intn(4)        // 0-3
 	opts.MaxManifestFileSize = 1 << uint(rng.Intn(30)) // 1B  - 1GB
-	opts.MemTableSize = 1 << (10 + uint(rng.Intn(17))) // 1KB - 256MB
+	opts.MemTableSize = 2 << (10 + uint(rng.Intn(16))) // 2KB - 256MB
 	opts.MemTableStopWritesThreshold = 2 + rng.Intn(5) // 2 - 5
 	if rng.Intn(2) == 0 {
 		opts.WALDir = "wal"

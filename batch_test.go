@@ -453,7 +453,7 @@ func TestBatchGet(t *testing.T) {
 		memTableSize int
 	}{
 		{"build", 64 << 20},
-		{"build", 1 << 10},
+		{"build", 2 << 10},
 		{"apply", 64 << 20},
 	}
 
