@@ -8,7 +8,6 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"
@@ -235,10 +234,11 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts.Levels = []pebble.LevelOptions{lopts}
 
 	testOpts.opts = opts
-	testOpts.useDisk = randvar.NewWeighted(rng, 0.9, 0.1).Int() == 1 // Use disk 10% of the time.
-	if !testOpts.useDisk {
-		testOpts.strictFS = rng.Intn(2) != 0 // Only relevant for MemFS.
-	}
+	// Explicitly disable disk-backed FS's for the random configurations. The
+	// single standard test configuration that uses a disk-backed FS is
+	// sufficient.
+	testOpts.useDisk = false
+	testOpts.strictFS = rng.Intn(2) != 0 // Only relevant for MemFS.
 	if testOpts.strictFS {
 		opts.DisableWAL = false
 	}
