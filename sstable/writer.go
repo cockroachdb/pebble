@@ -196,12 +196,11 @@ type indexBlockBuf struct {
 	sizeEstimate struct {
 		useMutex bool
 		mu       sync.Mutex
-		// numInflight is the number of index entries which are inflight and are yet to be added to the
-		// index block.
-		numInflight uint64
+		// inflightSize is the estimated size of the inflight index blocks.
+		inflightSize uint64
 		// totalSize is the estimated size of the index block. This should match indexBlock.estimatedSize().
 		totalSize uint64
-		// numEntries is the total number of entries added to the index block.
+		// numEntries is the total number of entries added to the index block. This should match indexBlock.nEntries.
 		numEntries uint64
 		// maxEstimatedSize stores the maximum result returned from indexBlockBuf.estimatedSize. It
 		// ensures that values returned from subsequent calls to Writer.EstimatedSize never decrease.
@@ -235,7 +234,7 @@ func (i *indexBlockBuf) shouldFlush(sep InternalKey, valueLen, targetBlockSize, 
 	}
 
 	return shouldFlush(
-		sep, valueLen, i.restartInterval, int(i.sizeHelper()),
+		sep, valueLen, i.restartInterval, int(i.sizeLocked()),
 		int(i.sizeEstimate.numEntries), targetBlockSize, sizeThreshold)
 }
 
@@ -245,17 +244,12 @@ func (i *indexBlockBuf) size() uint64 {
 		defer i.sizeEstimate.mu.Unlock()
 	}
 
-	return i.sizeHelper()
+	return i.sizeLocked()
 }
 
 // i.sizeEstimate.mu must be held before calling this.
-func (i *indexBlockBuf) sizeHelper() uint64 {
-	avgSize := float64(0)
-	if i.sizeEstimate.numEntries > 0 {
-		avgSize = float64(i.sizeEstimate.totalSize) / float64(i.sizeEstimate.numEntries)
-	}
-
-	total := i.sizeEstimate.totalSize + i.sizeEstimate.numInflight*uint64(avgSize)
+func (i *indexBlockBuf) sizeLocked() uint64 {
+	total := i.sizeEstimate.totalSize + i.sizeEstimate.inflightSize
 	if total > i.sizeEstimate.maxEstimatedSize {
 		i.sizeEstimate.maxEstimatedSize = total
 	} else {
@@ -269,16 +263,16 @@ func (i *indexBlockBuf) sizeHelper() uint64 {
 	return total
 }
 
-func (i *indexBlockBuf) addInflight() {
+func (i *indexBlockBuf) addInflight(size int) {
 	if i.sizeEstimate.useMutex {
 		i.sizeEstimate.mu.Lock()
 		defer i.sizeEstimate.mu.Unlock()
 	}
 
-	i.sizeEstimate.numInflight++
+	i.sizeEstimate.inflightSize += uint64(size)
 }
 
-func (i *indexBlockBuf) indexEntryWritten() {
+func (i *indexBlockBuf) indexEntryWritten(inflightSize int) {
 	size := i.block.estimatedSize()
 
 	if i.sizeEstimate.useMutex {
@@ -286,19 +280,14 @@ func (i *indexBlockBuf) indexEntryWritten() {
 		defer i.sizeEstimate.mu.Unlock()
 	}
 
-	// When the Writer is closed, we write entries which aren't inflight. At that point
-	// all inflight entries must already be written.
-	if i.sizeEstimate.numInflight > 0 {
-		i.sizeEstimate.numInflight--
-	}
-
+	i.sizeEstimate.inflightSize -= uint64(inflightSize)
 	i.sizeEstimate.numEntries++
 	i.sizeEstimate.totalSize = uint64(size)
 }
 
-func (i *indexBlockBuf) add(key InternalKey, value []byte) {
+func (i *indexBlockBuf) add(key InternalKey, value []byte, inflightSize int) {
 	i.block.add(key, value)
-	i.indexEntryWritten()
+	i.indexEntryWritten(inflightSize)
 }
 
 func (i *indexBlockBuf) finish() []byte {
@@ -314,7 +303,7 @@ func (i *indexBlockBuf) clearEstimate() {
 	}
 
 	i.sizeEstimate.numEntries = 0
-	i.sizeEstimate.numInflight = 0
+	i.sizeEstimate.inflightSize = 0
 	i.sizeEstimate.maxEstimatedSize = 0
 	i.sizeEstimate.totalSize = 0
 }
@@ -996,6 +985,11 @@ func (w *Writer) flush(key InternalKey) error {
 	// Determine if the index block should be flushed.
 	prevKey := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
 	sep := w.indexEntrySep(prevKey, key, w.indexBlock)
+	// We determine that we should flush an index block from the Writer client goroutine, but
+	// we actually finish the index block from the writeQueue. When we determine that an index
+	// block should be flushed, we need to call BlockPropertyCollector.FinishIndexBlock. But
+	// block property collector calls must happen sequentially from the Writer client. Therefore,
+	// we need to determine that we are going to flush the index block from the Writer client.
 	shouldFlushIndexBlock := supportsTwoLevelIndex(w.tableFormat) && w.indexBlock.shouldFlush(
 		sep, encodedBHPEstimatedSize, w.indexBlockSize, w.indexBlockSizeThreshold,
 	)
@@ -1013,9 +1007,10 @@ func (w *Writer) flush(key InternalKey) error {
 		w.indexBlock = newIndexBlockBuf()
 	}
 	writeTask.currIndexBlock = w.indexBlock
+	writeTask.indexInflightSize = sep.Size() + encodedBHPEstimatedSize
 
 	// The writeTask corresponds to an unwritten index entry.
-	w.indexBlock.addInflight()
+	w.indexBlock.addInflight(writeTask.indexInflightSize)
 
 	w.dataBlockBuf = nil
 	err = w.coordination.writeQueue.addSync(writeTask)
@@ -1080,7 +1075,8 @@ func (w *Writer) indexEntrySep(prevKey, key InternalKey, indexBlockBuf *indexBlo
 // addIndexEntry adds an index entry for the specified key and block handle. addIndexEntry can be called from
 // both the Writer client goroutine, and the writeQueue goroutine.
 func (w *Writer) addIndexEntry(
-	sep InternalKey, bhp BlockHandleWithProperties, tmp []byte, flushIndexBuf *indexBlockBuf, writeTo *indexBlockBuf) error {
+	sep InternalKey, bhp BlockHandleWithProperties, tmp []byte,
+	flushIndexBuf *indexBlockBuf, writeTo *indexBlockBuf, inflightSize int) error {
 	if bhp.Length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
@@ -1103,7 +1099,7 @@ func (w *Writer) addIndexEntry(
 	for i := range w.blockPropCollectors {
 		w.blockPropCollectors[i].AddPrevDataBlockToIndexBlock()
 	}
-	writeTo.add(sep, encoded)
+	writeTo.add(sep, encoded, inflightSize)
 	return nil
 }
 
@@ -1121,7 +1117,7 @@ func (w *Writer) addIndexEntrySync(prevKey, key InternalKey, bhp BlockHandleWith
 		flushableIndexBlock = w.indexBlock
 		w.indexBlock = newIndexBlockBuf()
 	}
-	return w.addIndexEntry(sep, bhp, tmp, flushableIndexBlock, w.indexBlock)
+	return w.addIndexEntry(sep, bhp, tmp, flushableIndexBlock, w.indexBlock, 0)
 }
 
 func shouldFlush(

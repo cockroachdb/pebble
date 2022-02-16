@@ -14,11 +14,11 @@ type writeTask struct {
 	flushableIndexBlock *indexBlockBuf
 	// currIndexBlock is the index block on which indexBlock.add must be called.
 	currIndexBlock *indexBlockBuf
-
-	indexEntrySep InternalKey
-
+	indexEntrySep  InternalKey
 	// inflightSize is used to decrement Writer.coordination.sizeEstimate.inflightSize.
 	inflightSize int
+	// inflightIndexEntrySize is used to decrement Writer.indexBlock.sizeEstimate.inflightSize.
+	indexInflightSize int
 }
 
 // Note that only the Writer client goroutine will be adding tasks to the writeQueue.
@@ -66,7 +66,7 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 	}
 
 	if err = w.writer.addIndexEntry(
-		task.indexEntrySep, bhp, task.buf.tmp[:], task.flushableIndexBlock, task.currIndexBlock); err != nil {
+		task.indexEntrySep, bhp, task.buf.tmp[:], task.flushableIndexBlock, task.currIndexBlock, task.indexInflightSize); err != nil {
 		return err
 	}
 
