@@ -117,6 +117,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	tableCacheSize := TableCacheSize(opts.MaxOpenFiles)
 	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
+	d.tableNewRangeKeyIter = d.tableCache.newRangeKeyIter
 
 	d.commit = newCommitPipeline(commitEnv{
 		logSeqNum:     &d.mu.versions.atomic.logSeqNum,

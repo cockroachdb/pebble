@@ -117,6 +117,12 @@ func (c *tableCacheContainer) newIters(
 	return c.tableCache.getShard(file.FileNum).newIters(file, opts, bytesIterated, &c.dbOpts)
 }
 
+func (c *tableCacheContainer) newRangeKeyIter(
+	file *manifest.FileMetadata, opts *IterOptions,
+) (internalIterator, error) {
+	return c.tableCache.getShard(file.FileNum).newRangeKeyIter(file, opts, &c.dbOpts)
+}
+
 func (c *tableCacheContainer) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
 	return c.tableCache.getShard(file.FileNum).getTableProperties(file, &c.dbOpts)
 }
@@ -297,6 +303,33 @@ func (c *tableCacheShard) releaseLoop() {
 	})
 }
 
+func (c *tableCacheShard) checkAndIntersectFilters(
+	v *tableCacheValue, opts *IterOptions,
+) (filterer *sstable.BlockPropertiesFilterer, empty bool, err error) {
+	if opts != nil &&
+		opts.TableFilter != nil &&
+		!opts.TableFilter(v.reader.Properties.UserProperties) {
+		return nil, true, nil
+	}
+
+	var bpfs []BlockPropertyFilter
+	if opts != nil {
+		bpfs = opts.BlockPropertyFilters
+	}
+	if len(bpfs) > 0 {
+		filterer = sstable.NewBlockPropertiesFilterer(bpfs)
+		intersects, err :=
+			filterer.IntersectsUserPropsAndFinishInit(v.reader.Properties.UserProperties)
+		if err != nil {
+			return nil, false, err
+		}
+		if !intersects {
+			return nil, true, nil
+		}
+	}
+	return filterer, false, nil
+}
+
 func (c *tableCacheShard) newIters(
 	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64, dbOpts *tableCacheOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
@@ -311,36 +344,19 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, v.err
 	}
 
-	if opts != nil &&
-		opts.TableFilter != nil &&
-		!opts.TableFilter(v.reader.Properties.UserProperties) {
+	filterer, empty, err := c.checkAndIntersectFilters(v, opts)
+	if err != nil {
+		c.unrefValue(v)
+		return nil, nil, err
+	}
+	if empty {
+		c.unrefValue(v)
 		// Return the empty iterator. This iterator has no mutable state, so
 		// using a singleton is fine.
-		c.unrefValue(v)
-		return emptyIter, nil, nil
-	}
-	var bpfs []BlockPropertyFilter
-	if opts != nil {
-		bpfs = opts.BlockPropertyFilters
-	}
-	var filterer *sstable.BlockPropertiesFilterer
-	if len(bpfs) > 0 {
-		filterer = sstable.NewBlockPropertiesFilterer(bpfs)
-		intersects, err :=
-			filterer.IntersectsUserPropsAndFinishInit(v.reader.Properties.UserProperties)
-		if err != nil {
-			return nil, nil, err
-		}
-		if !intersects {
-			// Return the empty iterator. This iterator has no mutable state, so
-			// using a singleton is fine.
-			c.unrefValue(v)
-			return emptyIter, nil, nil
-		}
+		return emptyIter, nil, err
 	}
 
 	var iter sstable.Iterator
-	var err error
 	if bytesIterated != nil {
 		iter, err = v.reader.NewCompactionIter(bytesIterated)
 	} else {
@@ -374,6 +390,56 @@ func (c *tableCacheShard) newIters(
 	}
 	// NB: Translate a nil range-del iterator into a nil interface.
 	return iter, nil, nil
+}
+
+func (c *tableCacheShard) newRangeKeyIter(
+	file *manifest.FileMetadata, opts *IterOptions, dbOpts *tableCacheOpts,
+) (internalIterator, error) {
+	// Calling findNode gives us the responsibility of decrementing v's
+	// refCount. If opening the underlying table resulted in error, then we
+	// decrement this straight away. Otherwise, we pass that responsibility to
+	// the sstable iterator, which decrements when it is closed.
+	v := c.findNode(file, dbOpts)
+	if v.err != nil {
+		defer c.unrefValue(v)
+		base.MustExist(dbOpts.fs, v.filename, dbOpts.logger, v.err)
+		return nil, v.err
+	}
+
+	_, empty, err := c.checkAndIntersectFilters(v, opts)
+	if err != nil {
+		c.unrefValue(v)
+		return nil, err
+	}
+	if empty {
+		c.unrefValue(v)
+		// Return the empty iterator. This iterator has no mutable state, so
+		// using a singleton is fine.
+		return emptyIter, err
+	}
+
+	var iter sstable.Iterator
+	// TODO(bilal): We are currently passing through the raw blockIter for range
+	// keys. This iter does not support bounds (eg. SetBounds will panic).
+	// Any future users of the iter returned by this function need to make any
+	// bounds-specific optimizations themselves.
+	iter, err = v.reader.NewRawRangeKeyIter()
+	if err != nil || iter == nil {
+		c.unrefValue(v)
+		return nil, err
+	}
+	// NB: v.closeHook takes responsibility for calling unrefValue(v) here.
+	iter.SetCloseHook(v.closeHook)
+
+	atomic.AddInt32(&c.atomic.iterCount, 1)
+	atomic.AddInt32(dbOpts.atomic.iterCount, 1)
+	if invariants.RaceEnabled {
+		c.mu.Lock()
+		c.mu.iters[iter] = debug.Stack()
+		c.mu.Unlock()
+	}
+
+	return iter, nil
 }
 
 // getTableProperties return sst table properties for target file

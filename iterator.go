@@ -166,9 +166,10 @@ type Iterator struct {
 
 	// Following fields are only used in Clone.
 	// Non-nil if this Iterator includes a Batch.
-	batch    *Batch
-	newIters tableNewIters
-	seqNum   uint64
+	batch            *Batch
+	newIters         tableNewIters
+	newRangeKeyIters tableNewRangeKeyIter
+	seqNum           uint64
 
 	// Keeping the bools here after all the 8 byte aligned fields shrinks the
 	// sizeof this struct by 24 bytes.

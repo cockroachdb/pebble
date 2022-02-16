@@ -21,6 +21,10 @@ type tableNewIters func(
 	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, keyspan.FragmentIterator, error)
 
+// tableNewRangeKeyIter creates a new range key iterator for the given file
+// number.
+type tableNewRangeKeyIter func(file *manifest.FileMetadata, opts *IterOptions) (internalIterator, error)
+
 // levelIter provides a merged view of the sstables in a level.
 //
 // levelIter is used during compaction and as part of the Iterator
