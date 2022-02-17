@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -24,6 +25,20 @@ type RangeKeysArena struct {
 	skl       arenaskl.Skiplist
 	arena     *arenaskl.Arena
 	fragCache keySpanCache
+	atomic    struct {
+		ignoreWrites uint32
+	}
+}
+
+// SetIgnoreWrites configures the arena to ignore all writes of range-key data
+// to the arena. It's used by the metamorphic tests to mirror the
+// MemFS.SetIgnoreSyncs behavior.
+func (a *RangeKeysArena) SetIgnoreWrites(ignore bool) {
+	var v uint32
+	if ignore {
+		v = 1
+	}
+	atomic.StoreUint32(&a.atomic.ignoreWrites, v)
 }
 
 // applyFlushedRangeKeys is a temporary hack to support in-memory only range
@@ -32,6 +47,11 @@ type RangeKeysArena struct {
 // memtable.  For as long as we're relying on this hack, a single *pebble.DB may
 // only store as many range keys as fit in this arena.
 func (d *DB) applyFlushedRangeKeys(flushable []*flushableEntry) error {
+	// Return immediately if configured to ignore writes.
+	if d.rangeKeys != nil && atomic.LoadUint32(&d.rangeKeys.atomic.ignoreWrites) == 1 {
+		return nil
+	}
+
 	var added uint32
 	for i := 0; i < len(flushable); i++ {
 		iter := flushable[i].newRangeKeyIter(nil)
