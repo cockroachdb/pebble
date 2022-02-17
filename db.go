@@ -1064,6 +1064,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	if dbi.rangeKey != nil {
 		dbi.rangeKey.iter.Init(dbi.cmp, dbi.split, &buf.merging, dbi.rangeKey.rangeKeyIter, dbi.opts.RangeKeyMasking.Suffix)
 		dbi.iter = &dbi.rangeKey.iter
+		dbi.iter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
 	}
 	return dbi
 }
