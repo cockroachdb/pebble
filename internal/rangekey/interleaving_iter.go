@@ -605,6 +605,15 @@ func (i *InterleavingIter) yieldSyntheticRangeKeyMarker(lowerBound []byte) (*bas
 	// argument is guaranteed to be ≥ i.lower. It may be equal to the SetBounds
 	// lower bound, or it could come from a SeekGE or SeekPrefixGE search key.
 	if lowerBound != nil && i.cmp(lowerBound, i.rangeKey.Start) > 0 {
+		// Truncating to the lower bound may violate the upper bound if
+		// lowerBound == i.upper.  For example, a SeekGE(k) uses a k as a lower
+		// bound for truncating a range key. The range key a-z will be truncated
+		// to [k, z). If i.upper == k, we'd mistakenly try to return a range key
+		// [k, k), an invariant violation.
+		if i.cmp(lowerBound, i.upper) == 0 {
+			return i.yieldNil()
+		}
+
 		// If the lowerBound argument is the lower bound set by SetBounds,
 		// Pebble owns the slice's memory and there's no need to make a copy of
 		// the lower bound.
@@ -645,7 +654,7 @@ func (i *InterleavingIter) verify(k *base.InternalKey, v []byte) (*base.Internal
 	case k != nil && i.lower != nil && i.cmp(k.UserKey, i.lower) < 0:
 		panic("pebble: invariant violation: key < lower bound")
 	case k != nil && i.upper != nil && i.cmp(k.UserKey, i.upper) >= 0:
-		panic("pebble: invariant violation: key ≥ lower bound")
+		panic("pebble: invariant violation: key ≥ upper bound")
 	case i.HasRangeKey() && len(i.rangeKey.Items) == 0:
 		panic("pebble: invariant violation: range key with no items")
 	case i.rangeKey != nil && k != nil && i.maskSuffix != nil && i.pointKeyInterleaved &&

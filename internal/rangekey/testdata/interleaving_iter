@@ -774,3 +774,28 @@ PointKey: k#1,1
 RangeKey: [j, l)
 └── @1 : v0
 -
+
+# Test a seek that moves the lower bound beyond the upper bound.
+
+define-rangekeys
+a.RANGEKEYSET.10  : d [(@5=apples)]
+----
+OK
+
+define-pointkeys
+b.SET.8
+----
+OK
+
+
+iter
+set-bounds a c
+seek-ge c
+----
+.
+
+iter
+set-bounds a c
+seek-lt a
+----
+.
