@@ -77,7 +77,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *newIndexedBatchOp:
 		return nil, &t.batchID, nil
 	case *newIterOp:
-		return &t.readerID, &t.iterID, []interface{}{&t.lower, &t.upper}
+		return &t.readerID, &t.iterID, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.rangeKeyMaskSuffix}
 	case *newIterUsingCloneOp:
 		return &t.existingIterID, &t.iterID, nil
 	case *newSnapshotOp:
