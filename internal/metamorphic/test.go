@@ -171,6 +171,7 @@ func (t *test) restartDB() error {
 	fs, ok := vfs.Root(t.opts.FS).(*vfs.MemFS)
 	if ok {
 		fs.SetIgnoreSyncs(true)
+		t.opts.Experimental.RangeKeys.SetIgnoreWrites(true)
 	}
 	if err := t.db.Close(); err != nil {
 		return err
@@ -178,6 +179,7 @@ func (t *test) restartDB() error {
 	if ok {
 		fs.ResetToSyncedState()
 		fs.SetIgnoreSyncs(false)
+		t.opts.Experimental.RangeKeys.SetIgnoreWrites(false)
 	}
 	err := withRetries(func() (err error) {
 		t.db, err = pebble.Open(t.dir, t.opts)
