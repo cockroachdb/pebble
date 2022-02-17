@@ -238,8 +238,8 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	lt.readers = append(lt.readers, r)
 	lt.metas = append(lt.metas, &fileMetadata{
 		FileNum:  fileNum,
-		Smallest: meta.Smallest(lt.cmp.Compare),
-		Largest:  meta.Largest(lt.cmp.Compare),
+		Smallest: meta.SmallestPointKey(lt.cmp.Compare),
+		Largest:  meta.LargestPointKey(lt.cmp.Compare),
 	})
 
 	var buf bytes.Buffer
