@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -63,8 +64,14 @@ func TestIngestLoad(t *testing.T) {
 					return fmt.Sprintf("malformed input: %s\n", data)
 				}
 				key := base.ParseInternalKey(data[:j])
-				value := []byte(data[j+1:])
-				if err := w.Add(key, value); err != nil {
+				if k := key.Kind(); rangekey.IsRangeKey(k) {
+					value := rangekey.ParseValue(k, data[j+1:])
+					err = w.AddRangeKey(key, value)
+				} else {
+					value := []byte(data[j+1:])
+					err = w.Add(key, value)
+				}
+				if err != nil {
 					return err.Error()
 				}
 			}
@@ -81,6 +88,8 @@ func TestIngestLoad(t *testing.T) {
 			var buf bytes.Buffer
 			for _, m := range meta {
 				fmt.Fprintf(&buf, "%d: %s-%s\n", m.FileNum, m.Smallest, m.Largest)
+				fmt.Fprintf(&buf, "  points: %s-%s\n", m.SmallestPointKey, m.LargestPointKey)
+				fmt.Fprintf(&buf, "  ranges: %s-%s\n", m.SmallestRangeKey, m.LargestRangeKey)
 			}
 			return buf.String()
 
@@ -131,8 +140,10 @@ func TestIngestLoadRand(t *testing.T) {
 				return base.InternalCompare(cmp, keys[i], keys[j]) < 0
 			})
 
-			expected[i].Smallest = keys[0]
-			expected[i].Largest = keys[len(keys)-1]
+			expected[i].SmallestPointKey = keys[0]
+			expected[i].LargestPointKey = keys[len(keys)-1]
+			expected[i].Smallest = expected[i].SmallestPointKey
+			expected[i].Largest = expected[i].LargestPointKey
 
 			w := sstable.NewWriter(f, sstable.WriterOptions{})
 			var count uint64

@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -84,8 +85,6 @@ func ingestLoad1(
 	meta.FileNum = fileNum
 	meta.Size = uint64(stat.Size())
 	meta.CreationTime = time.Now().Unix()
-	meta.Smallest = InternalKey{}
-	meta.Largest = InternalKey{}
 
 	// Avoid loading into into the table cache for collecting stats if we
 	// don't need to. If there are no range deletions, we have all the
@@ -98,9 +97,7 @@ func ingestLoad1(
 	// calculating stats before we can remove the original link.
 	maybeSetStatsFromProperties(meta, &r.Properties)
 
-	smallestSet, largestSet := false, false
-	empty := true
-
+	hasPoints := false
 	{
 		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
 		if err != nil {
@@ -111,9 +108,7 @@ func ingestLoad1(
 			if err := ingestValidateKey(opts, key); err != nil {
 				return nil, err
 			}
-			empty = false
-			meta.Smallest = key.Clone()
-			smallestSet = true
+			meta.SmallestPointKey = key.Clone()
 		}
 		if err := iter.Error(); err != nil {
 			return nil, err
@@ -122,9 +117,8 @@ func ingestLoad1(
 			if err := ingestValidateKey(opts, key); err != nil {
 				return nil, err
 			}
-			empty = false
-			meta.Largest = key.Clone()
-			largestSet = true
+			meta.LargestPointKey = key.Clone()
+			hasPoints = true // Implies smallest point key was also set.
 		}
 		if err := iter.Error(); err != nil {
 			return nil, err
@@ -141,10 +135,9 @@ func ingestLoad1(
 			if err := ingestValidateKey(opts, key); err != nil {
 				return nil, err
 			}
-			empty = false
-			if !smallestSet ||
-				base.InternalCompare(opts.Comparer.Compare, meta.Smallest, *key) > 0 {
-				meta.Smallest = key.Clone()
+			if !hasPoints ||
+				base.InternalCompare(opts.Comparer.Compare, meta.SmallestPointKey, *key) > 0 {
+				meta.SmallestPointKey = key.Clone()
 			}
 		}
 		if err := iter.Error(); err != nil {
@@ -154,18 +147,82 @@ func ingestLoad1(
 			if err := ingestValidateKey(opts, key); err != nil {
 				return nil, err
 			}
-			empty = false
 			end := base.MakeRangeDeleteSentinelKey(val)
-			if !largestSet ||
-				base.InternalCompare(opts.Comparer.Compare, meta.Largest, end) < 0 {
-				meta.Largest = end.Clone()
+			if !hasPoints ||
+				base.InternalCompare(opts.Comparer.Compare, meta.LargestPointKey, end) < 0 {
+				meta.LargestPointKey = end.Clone()
+				hasPoints = true // Implies smallest point key was also set.
 			}
 		}
 	}
 
-	if empty {
+	// Update the range-key bounds for the table.
+	var hasRanges bool
+	{
+		iter, err := r.NewRawRangeKeyIter()
+		if err != nil {
+			return nil, err
+		}
+		if iter != nil {
+			defer iter.Close()
+			if key, _ := iter.First(); key != nil {
+				if err := ingestValidateKey(opts, key); err != nil {
+					return nil, err
+				}
+				meta.SmallestRangeKey = key.Clone()
+			}
+			if err := iter.Error(); err != nil {
+				return nil, err
+			}
+			if key, value := iter.Last(); key != nil {
+				if err := ingestValidateKey(opts, key); err != nil {
+					return nil, err
+				}
+				// As range keys are fragmented, the end key of the last range key in
+				// the table provides the upper bound for the table.
+				end, _, ok := rangekey.DecodeEndKey(key.Kind(), value)
+				if !ok {
+					return nil, errors.Newf("pebble: could not decode range end key")
+				}
+				meta.LargestRangeKey = base.MakeRangeKeySentinelKey(end).Clone()
+				hasRanges = true // Implies smallest range key was also set.
+			}
+			if err := iter.Error(); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if !hasPoints && !hasRanges {
 		return nil, nil
 	}
+
+	// Compute the overall smallest / largest fields from the point and key
+	// ranges.
+	switch {
+	case !hasRanges:
+		// Table has only point keys. Use the point key bounds.
+		meta.Smallest = meta.SmallestPointKey.Clone()
+		meta.Largest = meta.LargestPointKey.Clone()
+	case !hasPoints:
+		// Table has only range key. Use the range key bounds.
+		meta.Smallest = meta.SmallestRangeKey.Clone()
+		meta.Largest = meta.LargestRangeKey.Clone()
+	default:
+		// Table has both points and ranges. Compute the bounds by considering both
+		// the point and range key bounds.
+		if base.InternalCompare(opts.Comparer.Compare, meta.SmallestPointKey, meta.SmallestRangeKey) < 0 {
+			meta.Smallest = meta.SmallestPointKey.Clone()
+		} else {
+			meta.Smallest = meta.SmallestRangeKey.Clone()
+		}
+		if base.InternalCompare(opts.Comparer.Compare, meta.LargestPointKey, meta.LargestRangeKey) > 0 {
+			meta.Largest = meta.LargestPointKey.Clone()
+		} else {
+			meta.Largest = meta.LargestRangeKey.Clone()
+		}
+	}
+
 	return meta, nil
 }
 
@@ -314,12 +371,15 @@ func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bo
 }
 
 func ingestUpdateSeqNum(opts *Options, dirname string, seqNum uint64, meta []*fileMetadata) error {
+	// TODO(travesrs): Do we need to update the seqnums on the point and range
+	// smallest / largest keys? Or just the combined bounds for each table.
 	for _, m := range meta {
 		m.Smallest = base.MakeInternalKey(m.Smallest.UserKey, seqNum, m.Smallest.Kind())
 		// Don't update the seqnum for the largest key if that key is a range
-		// deletion sentinel key as doing so unintentionally extends the bounds of
-		// the table.
-		if m.Largest.Trailer != InternalKeyRangeDeleteSentinel {
+		// deletion sentinel key or a range key boundary, as doing so
+		// unintentionally extends the bounds of the table.
+		if m.Largest.Trailer != InternalKeyRangeDeleteSentinel &&
+			m.Largest.Trailer != base.InternalKeyBoundaryRangeKey {
 			m.Largest = base.MakeInternalKey(m.Largest.UserKey, seqNum, m.Largest.Kind())
 		}
 		// Setting smallestSeqNum == largestSeqNum triggers the setting of
