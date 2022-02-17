@@ -513,3 +513,48 @@ reset format-major-version=5
 combined-iter
 ----
 pebble: range keys require at least format major version 6 (current: 5)
+
+# Test iterator bounds provided via IterOptions.
+
+reset
+----
+
+batch
+set a a
+set b b
+set c c
+set d d
+set f f
+range-key-set a   ap  @6 foo
+range-key-set ap  c   @5 bar
+range-key-set cat zoo @3 bax
+----
+wrote 8 keys
+
+# Ensure bounds provided at initialization are respected, and propagated to
+# cloned iterators.
+
+combined-iter lower=b upper=e
+first
+next
+next
+next
+next
+clone
+first
+next
+next
+next
+next
+----
+b: (b, [b-c) @5=bar)
+c: (c, .)
+cat: (., [cat-e) @3=bax)
+d: (d, [cat-e) @3=bax)
+.
+.
+b: (b, [b-c) @5=bar)
+c: (c, .)
+cat: (., [cat-e) @3=bax)
+d: (d, [cat-e) @3=bax)
+.

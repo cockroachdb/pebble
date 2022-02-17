@@ -98,10 +98,14 @@ func TestRangeKeys(t *testing.T) {
 		case "combined-iter":
 			o := &IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
 			for _, arg := range td.CmdArgs {
-				if arg.Key != "mask-suffix" {
-					continue
+				switch arg.Key {
+				case "mask-suffix":
+					o.RangeKeyMasking.Suffix = []byte(arg.Vals[0])
+				case "lower":
+					o.LowerBound = []byte(arg.Vals[0])
+				case "upper":
+					o.UpperBound = []byte(arg.Vals[0])
 				}
-				o.RangeKeyMasking.Suffix = []byte(arg.Vals[0])
 			}
 			var iter *Iterator
 			var err error
