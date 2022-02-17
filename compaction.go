@@ -2264,6 +2264,10 @@ func (d *DB) runCompaction(
 			)
 		}
 
+		meta.SmallestPointKey = writerMeta.SmallestPointKey(d.cmp)
+		meta.LargestPointKey = writerMeta.LargestPointKey(d.cmp)
+		meta.SmallestRangeKey = writerMeta.SmallestRangeKey
+		meta.LargestRangeKey = writerMeta.LargestRangeKey
 		meta.Smallest = writerMeta.Smallest(d.cmp)
 		meta.Largest = writerMeta.Largest(d.cmp)
 

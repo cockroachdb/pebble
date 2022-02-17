@@ -163,6 +163,16 @@ func MakeRangeDeleteSentinelKey(userKey []byte) InternalKey {
 	}
 }
 
+// MakeRangeKeySentinelKey constructs an internal key that is a range key
+// sentinel key, used as the upper boundary for an sstable when a range key is
+// the largest key in an sstable.
+func MakeRangeKeySentinelKey(userKey []byte) InternalKey {
+	return InternalKey{
+		UserKey: userKey,
+		Trailer: InternalKeyBoundaryRangeKey,
+	}
+}
+
 var kindsMap = map[string]InternalKeyKind{
 	"DEL":           InternalKeyKindDelete,
 	"SINGLEDEL":     InternalKeyKindSingleDelete,
