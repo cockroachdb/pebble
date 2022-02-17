@@ -7,6 +7,7 @@ package pebble
 import (
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -68,10 +69,18 @@ func (d *DB) applyFlushedRangeKeys(flushable []*flushableEntry) error {
 			}
 			rangekey.RecombineValue(k.Kind(), buf, s.End, s.Value)
 
-			if err := d.rangeKeys.skl.Add(*k, buf[:n]); err != nil {
+			err := d.rangeKeys.skl.Add(*k, buf[:n])
+			switch {
+			case err == nil:
+				added++
+			case errors.Is(err, arenaskl.ErrRecordExists):
+				// It's possible that we'll try to add a key to the arena twice
+				// during metamorphic tests that reset the synced state. Ignore
+				// for now.
+			default:
+				// err != nil
 				return err
 			}
-			added++
 		}
 	}
 	if added > 0 {
