@@ -1049,12 +1049,14 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
 		if n := i.split(lowerBound); !bytes.Equal(i.prefixOrFullSeekKey, lowerBound[:n]) {
 			i.err = errors.New("pebble: SeekPrefixGE supplied with key outside of lower bound")
+			i.iterValidityState = IterExhausted
 			return false
 		}
 		key = lowerBound
 	} else if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
 		if n := i.split(upperBound); !bytes.Equal(i.prefixOrFullSeekKey, upperBound[:n]) {
 			i.err = errors.New("pebble: SeekPrefixGE supplied with key outside of upper bound")
+			i.iterValidityState = IterExhausted
 			return false
 		}
 		key = upperBound
@@ -1508,6 +1510,8 @@ func (i *Iterator) Key() []byte {
 // Value returns the value of the current key/value pair, or nil if done. The
 // caller should not modify the contents of the returned slice, and its
 // contents may change on the next call to Next.
+//
+// Only valid if HasPointAndRange() returns true for hasPoint.
 func (i *Iterator) Value() []byte {
 	return i.value
 }

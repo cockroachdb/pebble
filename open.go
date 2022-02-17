@@ -683,6 +683,12 @@ func (d *DB) replayWAL(
 		if err != nil {
 			return 0, err
 		}
+		// TODO(jackson): Remove the below call to applyFlushedRangeKeys once
+		// flushes actually persist range keys to sstables.
+		err = d.applyFlushedRangeKeys(toFlush)
+		if err != nil {
+			return 0, err
+		}
 		ve.NewFiles = append(ve.NewFiles, newVE.NewFiles...)
 		for i := range toFlush {
 			toFlush[i].readerUnref()
