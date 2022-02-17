@@ -190,7 +190,7 @@ func (i *InterleavingIter) Init(
 func (i *InterleavingIter) SeekGE(key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
 	i.pointKey, i.pointVal = i.pointIter.SeekGE(key, trySeekUsingNext)
 	i.pointKeyInterleaved = false
-	i.nextRangeKey(i.rangeKeyIter.SeekGE(key))
+	i.nextRangeKey(i.rangeKeyIter.SeekGE(key), key)
 	i.dir = +1
 	return i.interleaveForward(key)
 }
@@ -208,7 +208,7 @@ func (i *InterleavingIter) SeekGE(key []byte, trySeekUsingNext bool) (*base.Inte
 func (i *InterleavingIter) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
 	i.pointKey, i.pointVal = i.pointIter.SeekPrefixGE(prefix, key, trySeekUsingNext)
 	i.pointKeyInterleaved = false
-	i.nextRangeKey(i.rangeKeyIter.SeekGE(key))
+	i.nextRangeKey(i.rangeKeyIter.SeekGE(key), key)
 	i.dir = +1
 	return i.interleaveForward(key)
 }
@@ -226,7 +226,7 @@ func (i *InterleavingIter) SeekLT(key []byte) (*base.InternalKey, []byte) {
 func (i *InterleavingIter) First() (*base.InternalKey, []byte) {
 	i.pointKey, i.pointVal = i.pointIter.First()
 	i.pointKeyInterleaved = false
-	i.nextRangeKey(i.rangeKeyIter.First())
+	i.nextRangeKey(i.rangeKeyIter.First(), i.lower)
 	i.dir = +1
 	return i.interleaveForward(i.lower)
 }
@@ -260,7 +260,7 @@ func (i *InterleavingIter) Next() (*base.InternalKey, []byte) {
 		if i.rangeKey == nil {
 			// There was no range key in the reverse direction, but there may be
 			// a range key in the forward direction.
-			i.nextRangeKey(i.rangeKeyIter.Next())
+			i.nextRangeKey(i.rangeKeyIter.Next(), i.lower)
 			i.rangeKeyInterleaved = false
 		} else {
 			// Regardless of the current iterator state, we mark any existing
@@ -297,7 +297,7 @@ func (i *InterleavingIter) Next() (*base.InternalKey, []byte) {
 	// the range key's end, move to the next range key.
 	if i.rangeKeyInterleaved && i.pointKey != nil && i.rangeKey != nil &&
 		i.cmp(i.pointKey.UserKey, i.rangeKey.End) >= 0 {
-		i.nextRangeKey(i.rangeKeyIter.Next())
+		i.nextRangeKey(i.rangeKeyIter.Next(), i.lower)
 	}
 	return i.interleaveForward(i.lower)
 }
@@ -426,7 +426,7 @@ func (i *InterleavingIter) interleaveForward(lowerBound []byte) (*base.InternalK
 			// there are no more point keys, we don't need to worry about advancing
 			// past the current point key.
 			if i.rangeKeyInterleaved {
-				i.nextRangeKey(i.rangeKeyIter.Next())
+				i.nextRangeKey(i.rangeKeyIter.Next(), lowerBound)
 				if i.rangeKey == nil {
 					return i.yieldNil()
 				}
@@ -468,7 +468,7 @@ func (i *InterleavingIter) interleaveForward(lowerBound []byte) (*base.InternalK
 						// ensures the range key's End is > the point key, so
 						// reestablish it before the next iteration.
 						if i.pointKey != nil && i.cmp(i.pointKey.UserKey, i.rangeKey.End) >= 0 {
-							i.nextRangeKey(i.rangeKeyIter.Next())
+							i.nextRangeKey(i.rangeKeyIter.Next(), lowerBound)
 						}
 						continue
 					}
@@ -549,19 +549,29 @@ func (i *InterleavingIter) interleaveBackward() (*base.InternalKey, []byte) {
 	}
 }
 
-func (i *InterleavingIter) nextRangeKey(k *CoalescedSpan) {
+func (i *InterleavingIter) nextRangeKey(k *CoalescedSpan, lowerBound []byte) {
 	// Next until we find a range key that includes sets, eliding any range key
 	// spans that only contain RangeKeyUnsets or RangeKeyDeletes.
-	for k != nil {
-		// Check the upper bound if we have one.
-		if i.upper != nil && i.cmp(k.Start, i.upper) >= 0 {
-			k = nil
-			break
+
+	// We check the range key's start against the upper bound within the loop
+	// below, but the upper bound may also be violated if lowerBound == i.upper.
+	// For example, a SeekGE(k) uses a k as a lower bound for truncating a range
+	// key. The range key a-z will be truncated to [k, z). If i.upper == k, we'd
+	// mistakenly try to return a range key [k, k), an invariant violation.
+	if i.upper != nil && lowerBound != nil && i.cmp(i.upper, lowerBound) == 0 {
+		k = nil
+	} else {
+		for k != nil {
+			// Check the upper bound if we have one.
+			if i.upper != nil && i.cmp(k.Start, i.upper) >= 0 {
+				k = nil
+				break
+			}
+			if k.HasSets() {
+				break
+			}
+			k = i.rangeKeyIter.Next()
 		}
-		if k.HasSets() {
-			break
-		}
-		k = i.rangeKeyIter.Next()
 	}
 	i.saveRangeKey(k)
 }
@@ -645,7 +655,7 @@ func (i *InterleavingIter) verify(k *base.InternalKey, v []byte) (*base.Internal
 	case k != nil && i.lower != nil && i.cmp(k.UserKey, i.lower) < 0:
 		panic("pebble: invariant violation: key < lower bound")
 	case k != nil && i.upper != nil && i.cmp(k.UserKey, i.upper) >= 0:
-		panic("pebble: invariant violation: key ≥ lower bound")
+		panic("pebble: invariant violation: key ≥ upper bound")
 	case i.HasRangeKey() && len(i.rangeKey.Items) == 0:
 		panic("pebble: invariant violation: range key with no items")
 	case i.rangeKey != nil && k != nil && i.maskSuffix != nil && i.pointKeyInterleaved &&
