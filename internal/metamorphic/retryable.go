@@ -69,6 +69,18 @@ func (i *retryableIter) Key() []byte {
 	return i.iter.Key()
 }
 
+func (i *retryableIter) HasPointAndRange() (bool, bool) {
+	return i.iter.HasPointAndRange()
+}
+
+func (i *retryableIter) RangeBounds() ([]byte, []byte) {
+	return i.iter.RangeBounds()
+}
+
+func (i *retryableIter) RangeKeys() []pebble.RangeKeyData {
+	return i.iter.RangeKeys()
+}
+
 func (i *retryableIter) Last() bool {
 	var valid bool
 	i.withRetry(func() { valid = i.iter.Last() })

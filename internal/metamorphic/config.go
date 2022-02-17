@@ -57,10 +57,10 @@ type config struct {
 	// the generated key uses a new key prefix rather than an existing prefix
 	// with a suffix.
 	newPrefix float64
-	// suffixDist defines the distribution of key suffixes. It's a dynamic
-	// randvar to roughly emulate workloads with MVCC timestamps, skewing
-	// towards most recent timestamps.
-	suffixDist randvar.Dynamic
+	// writeSuffixDist defines the distribution of key suffixes during writing.
+	// It's a dynamic randvar to roughly emulate workloads with MVCC timestamps,
+	// skewing towards most recent timestamps.
+	writeSuffixDist randvar.Dynamic
 
 	// TODO(peter): unimplemented
 	// keyDist        randvar.Dynamic
@@ -106,9 +106,9 @@ func defaultConfig() config {
 			writerDeleteRange:    50,
 			writerIngest:         100,
 			writerMerge:          100,
-			writerRangeKeySet:    20,
-			writerRangeKeyUnset:  20,
-			writerRangeKeyDelete: 10,
+			writerRangeKeySet:    10,
+			writerRangeKeyUnset:  10,
+			writerRangeKeyDelete: 5,
 			writerSet:            100,
 			writerSingleDelete:   50,
 		},
@@ -118,7 +118,7 @@ func defaultConfig() config {
 		// Use a skewed distribution of suffixes to mimic MVCC timestamps. The
 		// range will be widened whenever a suffix is found to already be in use
 		// for a particular prefix.
-		suffixDist: mustDynamic(randvar.NewSkewedLatest(0, 1, 0.99)),
+		writeSuffixDist: mustDynamic(randvar.NewSkewedLatest(0, 1, 0.99)),
 	}
 }
 

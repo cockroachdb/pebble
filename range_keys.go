@@ -7,6 +7,7 @@ package pebble
 import (
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -31,6 +32,8 @@ type RangeKeysArena struct {
 // use a separate arena that exists beyond the lifetime of any individual
 // memtable.  For as long as we're relying on this hack, a single *pebble.DB may
 // only store as many range keys as fit in this arena.
+//
+// TODO(jackson): Remove applyFlushedRangeKeys when range keys are persisted.
 func (d *DB) applyFlushedRangeKeys(flushable []*flushableEntry) error {
 	var added uint32
 	for i := 0; i < len(flushable); i++ {
@@ -68,10 +71,19 @@ func (d *DB) applyFlushedRangeKeys(flushable []*flushableEntry) error {
 			}
 			rangekey.RecombineValue(k.Kind(), buf, s.End, s.Value)
 
-			if err := d.rangeKeys.skl.Add(*k, buf[:n]); err != nil {
+			err := d.rangeKeys.skl.Add(*k, buf[:n])
+			switch {
+			case err == nil:
+				added++
+			case errors.Is(err, arenaskl.ErrRecordExists):
+				// It's possible that we'll try to add a key to the arena twice
+				// during metamorphic tests that reset the synced state. Ignore.
+				// When range keys are actually flushed to stable storage, this
+				// will go away.
+			default:
+				// err != nil
 				return err
 			}
-			added++
 		}
 	}
 	if added > 0 {

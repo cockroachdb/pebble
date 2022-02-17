@@ -1747,13 +1747,19 @@ func (i flushFlushableBatchIter) valueSize() uint64 {
 // batchSort returns iterators for the sorted contents of the batch. It is
 // intended for testing use only. The batch.Sort dance is done to prevent
 // exposing this method in the public pebble interface.
-func batchSort(i interface{}) (internalIterator, internalIterator) {
+func batchSort(
+	i interface{},
+) (
+	points internalIterator,
+	rangeDels keyspan.FragmentIterator,
+	rangeKeys keyspan.FragmentIterator,
+) {
 	b := i.(*Batch)
 	if b.Indexed() {
-		return b.newInternalIter(nil), b.newRangeDelIter(nil)
+		return b.newInternalIter(nil), b.newRangeDelIter(nil), b.newRangeKeyIter(nil)
 	}
 	f := newFlushableBatch(b, b.db.opts.Comparer)
-	return f.newIter(nil), f.newRangeDelIter(nil)
+	return f.newIter(nil), f.newRangeDelIter(nil), f.newRangeKeyIter(nil)
 }
 
 func init() {

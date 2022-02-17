@@ -120,6 +120,13 @@ func (z *Zipf) IncMax(delta int) {
 	z.mu.Unlock()
 }
 
+// Max returns the max.
+func (z *Zipf) Max() uint64 {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	return z.mu.max
+}
+
 // Uint64 draws a new value between min and max, with probabilities according
 // to the Zipf distribution.
 func (z *Zipf) Uint64(rng *rand.Rand) uint64 {
