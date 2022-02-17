@@ -22,7 +22,7 @@ test:
 	${GO} test -mod=vendor -tags '$(TAGS)' ${testflags} -run ${TESTS} ${PKG}
 
 .PHONY: testrace
-testrace: testflags += -race
+testrace: testflags += -race -timeout 20m
 testrace: test
 
 .PHONY: stress stressrace
