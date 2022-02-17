@@ -96,11 +96,23 @@ type FileMetadata struct {
 	// UTC). For ingested sstables, this corresponds to the time the file was
 	// ingested.
 	CreationTime int64
-	// Smallest and Largest are the inclusive bounds for the internal keys
-	// stored in the table.
+	// SmallestPointKey and LargestPointKey are the inclusive bounds for the
+	// internal point keys stored in the table. This includes RANGEDELs, which
+	// alter point keys.
+	SmallestPointKey InternalKey
+	LargestPointKey  InternalKey
+	// SmallestRangeKey and LargestRangeKey are the inclusive bounds for the
+	// internal range keys stored in the table.
+	SmallestRangeKey InternalKey
+	LargestRangeKey  InternalKey
+	// Smallest and Largest are the inclusive bounds for the internal keys stored
+	// in the table, across both point and range keys. These values can be
+	// reconstructed from the respective point and range key fields.
 	Smallest InternalKey
 	Largest  InternalKey
-	// Smallest and largest sequence numbers in the table.
+	// Smallest and largest sequence numbers in the table, across both point and
+	// range keys. These values can be reconstructed from the respective point and
+	// range key fields.
 	SmallestSeqNum uint64
 	LargestSeqNum  uint64
 	// True if the file is actively being compacted. Protected by DB.mu.
@@ -133,6 +145,24 @@ func (m *FileMetadata) String() string {
 // Validate validates the metadata for consistency with itself, returning an
 // error if inconsistent.
 func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
+	// Point key validation.
+
+	if base.InternalCompare(cmp, m.SmallestPointKey, m.LargestPointKey) > 0 {
+		return base.CorruptionErrorf("file %s has inconsistent point key bounds: %s vs %s",
+			errors.Safe(m.FileNum), m.SmallestPointKey.Pretty(formatKey),
+			m.LargestPointKey.Pretty(formatKey))
+	}
+
+	// Range key validation.
+
+	if base.InternalCompare(cmp, m.SmallestRangeKey, m.LargestRangeKey) > 0 {
+		return base.CorruptionErrorf("file %s has inconsistent range key bounds: %s vs %s",
+			errors.Safe(m.FileNum), m.SmallestRangeKey.Pretty(formatKey),
+			m.LargestRangeKey.Pretty(formatKey))
+	}
+
+	// Combined range and point key validation.
+
 	if base.InternalCompare(cmp, m.Smallest, m.Largest) > 0 {
 		return base.CorruptionErrorf("file %s has inconsistent bounds: %s vs %s",
 			errors.Safe(m.FileNum), m.Smallest.Pretty(formatKey),
@@ -142,6 +172,11 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 		return base.CorruptionErrorf("file %s has inconsistent seqnum bounds: %d vs %d",
 			errors.Safe(m.FileNum), m.SmallestSeqNum, m.LargestSeqNum)
 	}
+
+	// TODO(travers): add consistency checks to ensure that the point / range key
+	// smallest / largest are within the bounds of the combined smallest /
+	// largest.
+
 	return nil
 }
 
@@ -466,10 +501,14 @@ func ParseVersionDebug(
 			if err != nil {
 				return nil, err
 			}
+			smallest := base.ParsePrettyInternalKey(fields[1])
+			largest := base.ParsePrettyInternalKey(fields[2])
 			files[level] = append(files[level], &FileMetadata{
-				FileNum:  base.FileNum(fileNum),
-				Smallest: base.ParsePrettyInternalKey(fields[1]),
-				Largest:  base.ParsePrettyInternalKey(fields[2]),
+				FileNum:          base.FileNum(fileNum),
+				SmallestPointKey: smallest,
+				LargestPointKey:  largest,
+				Smallest:         smallest,
+				Largest:          largest,
 			})
 		}
 	}
