@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -63,8 +64,14 @@ func TestIngestLoad(t *testing.T) {
 					return fmt.Sprintf("malformed input: %s\n", data)
 				}
 				key := base.ParseInternalKey(data[:j])
-				value := []byte(data[j+1:])
-				if err := w.Add(key, value); err != nil {
+				if k := key.Kind(); rangekey.IsRangeKey(k) {
+					value := rangekey.ParseValue(k, data[j+1:])
+					err = w.AddRangeKey(key, value)
+				} else {
+					value := []byte(data[j+1:])
+					err = w.Add(key, value)
+				}
+				if err != nil {
 					return err.Error()
 				}
 			}
@@ -81,6 +88,8 @@ func TestIngestLoad(t *testing.T) {
 			var buf bytes.Buffer
 			for _, m := range meta {
 				fmt.Fprintf(&buf, "%d: %s-%s\n", m.FileNum, m.Smallest, m.Largest)
+				fmt.Fprintf(&buf, "  points: %s-%s\n", m.SmallestPointKey, m.LargestPointKey)
+				fmt.Fprintf(&buf, "  ranges: %s-%s\n", m.SmallestRangeKey, m.LargestRangeKey)
 			}
 			return buf.String()
 
@@ -131,8 +140,10 @@ func TestIngestLoadRand(t *testing.T) {
 				return base.InternalCompare(cmp, keys[i], keys[j]) < 0
 			})
 
-			expected[i].Smallest = keys[0]
-			expected[i].Largest = keys[len(keys)-1]
+			expected[i].SmallestPointKey = keys[0]
+			expected[i].LargestPointKey = keys[len(keys)-1]
+			expected[i].Smallest = expected[i].SmallestPointKey
+			expected[i].Largest = expected[i].LargestPointKey
 
 			w := sstable.NewWriter(f, sstable.WriterOptions{})
 			var count uint64
@@ -1151,6 +1162,123 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 		afterBytes := readFile(f)
 		require.Equal(t, fileBytes[i], afterBytes)
 	}
+}
+
+func TestIngest_UpdateSequenceNumber(t *testing.T) {
+	mem := vfs.NewMem()
+	cmp := base.DefaultComparer.Compare
+	parse := func(input string) (*sstable.Writer, error) {
+		f, err := mem.Create("ext")
+		if err != nil {
+			return nil, err
+		}
+		w := sstable.NewWriter(f, sstable.WriterOptions{
+			TableFormat: sstable.TableFormatMax,
+		})
+		for _, data := range strings.Split(input, "\n") {
+			j := strings.Index(data, ":")
+			if j < 0 {
+				return nil, errors.Newf("malformed input: %s\n", data)
+			}
+			key := base.ParseInternalKey(data[:j])
+			if k := key.Kind(); rangekey.IsRangeKey(k) {
+				value := rangekey.ParseValue(k, data[j+1:])
+				err = w.AddRangeKey(key, value)
+			} else {
+				value := []byte(data[j+1:])
+				err = w.Add(key, value)
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+		return w, nil
+	}
+
+	var (
+		seqnum uint64
+		err    error
+		metas  []*fileMetadata
+	)
+	datadriven.RunTest(t, "testdata/ingest_update_seqnums", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "starting-seqnum":
+			seqnum, err = strconv.ParseUint(td.Input, 10, 64)
+			if err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "reset":
+			metas = metas[:0]
+			return ""
+
+		case "load":
+			w, err := parse(td.Input)
+			if err != nil {
+				return err.Error()
+			}
+			if err = w.Close(); err != nil {
+				return err.Error()
+			}
+			defer w.Close()
+
+			// Format the bounds of the table.
+			wm, err := w.Metadata()
+			if err != nil {
+				return err.Error()
+			}
+
+			// Upper bounds for range dels and range keys are expected to be sentinel
+			// keys.
+			maybeUpdateUpperBound := func(key base.InternalKey) base.InternalKey {
+				switch k := key.Kind(); {
+				case k == base.InternalKeyKindRangeDelete:
+					key.Trailer = base.InternalKeyRangeDeleteSentinel
+				case rangekey.IsRangeKey(k):
+					key.Trailer = base.InternalKeyBoundaryRangeKey
+				}
+				return key
+			}
+
+			// Construct the file metadata from the writer metadata.
+			m := &fileMetadata{
+				SmallestPointKey: wm.SmallestPoint,
+				LargestPointKey:  maybeUpdateUpperBound(wm.LargestPoint),
+				SmallestRangeKey: wm.SmallestRangeKey,
+				LargestRangeKey:  maybeUpdateUpperBound(wm.LargestRangeKey),
+				Smallest:         wm.Smallest(cmp),
+				Largest:          maybeUpdateUpperBound(wm.Largest(cmp)),
+				SmallestSeqNum:   0, // Simulate an ingestion.
+				LargestSeqNum:    0,
+			}
+
+			// Collect this file.
+			metas = append(metas, m)
+
+			// Return an index number for the file.
+			return fmt.Sprintf("file %d\n", len(metas)-1)
+
+		case "update-files":
+			// Update the bounds across all files.
+			if err = ingestUpdateSeqNum(cmp, base.DefaultFormatter, seqnum, metas); err != nil {
+				return err.Error()
+			}
+
+			var buf bytes.Buffer
+			for i, m := range metas {
+				fmt.Fprintf(&buf, "file %d:\n", i)
+				fmt.Fprintf(&buf, "  combined: %s-%s\n", m.Smallest, m.Largest)
+				fmt.Fprintf(&buf, "    points: %s-%s\n", m.SmallestPointKey, m.LargestPointKey)
+				fmt.Fprintf(&buf, "    ranges: %s-%s\n", m.SmallestRangeKey, m.LargestRangeKey)
+			}
+
+			return buf.String()
+
+		default:
+			return fmt.Sprintf("unknown command %s\n", td.Cmd)
+		}
+	})
 }
 
 func TestIngestCleanup(t *testing.T) {
