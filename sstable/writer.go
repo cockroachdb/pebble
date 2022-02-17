@@ -26,6 +26,9 @@ import (
 var errWriterClosed = errors.New("pebble: writer is closed")
 
 // WriterMetadata holds info about a finished sstable.
+// TODO(travers): A table may not have point or range keys, in which case it
+// will have zero-valued smallest and largest keys. Introduce a sentinel key to
+// indicate "absence" of the bound.
 type WriterMetadata struct {
 	Size             uint64
 	SmallestPoint    InternalKey
@@ -48,8 +51,8 @@ func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
 	}
 }
 
-// Smallest returns the smaller of SmallestPoint and SmallestRangeDel.
-func (m *WriterMetadata) Smallest(cmp Compare) InternalKey {
+// SmallestPointKey returns the smaller of SmallestPoint and SmallestRangeDel.
+func (m *WriterMetadata) SmallestPointKey(cmp Compare) InternalKey {
 	if m.SmallestPoint.UserKey == nil {
 		return m.SmallestRangeDel
 	}
@@ -62,8 +65,8 @@ func (m *WriterMetadata) Smallest(cmp Compare) InternalKey {
 	return m.SmallestRangeDel
 }
 
-// Largest returns the larget of LargestPoint and LargestRangeDel.
-func (m *WriterMetadata) Largest(cmp Compare) InternalKey {
+// LargestPointKey returns the larger of LargestPoint and LargestRangeDel.
+func (m *WriterMetadata) LargestPointKey(cmp Compare) InternalKey {
 	if m.LargestPoint.UserKey == nil {
 		return m.LargestRangeDel
 	}
@@ -74,6 +77,36 @@ func (m *WriterMetadata) Largest(cmp Compare) InternalKey {
 		return m.LargestPoint
 	}
 	return m.LargestRangeDel
+}
+
+// Smallest returns the smaller of SmallestPointKey and SmallestRangeKey.
+func (m *WriterMetadata) Smallest(cmp Compare) InternalKey {
+	point := m.SmallestPointKey(cmp)
+	if point.UserKey == nil {
+		return m.SmallestRangeKey
+	}
+	if m.SmallestRangeKey.UserKey == nil {
+		return point
+	}
+	if base.InternalCompare(cmp, point, m.SmallestRangeKey) < 0 {
+		return point
+	}
+	return m.SmallestRangeKey
+}
+
+// Largest returns the larger of LargestPointKey and LargestRangeKey.
+func (m *WriterMetadata) Largest(cmp Compare) InternalKey {
+	point := m.LargestPointKey(cmp)
+	if point.UserKey == nil {
+		return m.LargestRangeKey
+	}
+	if m.LargestRangeKey.UserKey == nil {
+		return point
+	}
+	if base.InternalCompare(cmp, point, m.LargestRangeKey) > 0 {
+		return point
+	}
+	return m.LargestRangeKey
 }
 
 type flusher interface {

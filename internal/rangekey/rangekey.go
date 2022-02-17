@@ -312,13 +312,18 @@ func Parse(s string) (key base.InternalKey, value []byte) {
 		panic("range key string representation missing key-value separator :")
 	}
 	startKey := base.ParseInternalKey(strings.TrimSpace(s[:sep]))
+	return startKey, ParseValue(startKey.Kind(), s[sep+1:])
+}
 
-	switch startKey.Kind() {
+// ParseValue parses a string representation of a range key value into its
+// serialized form. See Parse for the input string format.
+func ParseValue(kind base.InternalKeyKind, s string) (value []byte) {
+	switch kind {
 	case base.InternalKeyKindRangeKeySet:
-		openBracket := strings.IndexByte(s[sep:], '[')
-		closeBracket := strings.IndexByte(s[sep:], ']')
-		endKey := strings.TrimSpace(s[sep+1 : sep+openBracket])
-		itemStrs := strings.Split(s[sep+openBracket+1:sep+closeBracket], ",")
+		openBracket := strings.IndexByte(s[:], '[')
+		closeBracket := strings.IndexByte(s[:], ']')
+		endKey := strings.TrimSpace(s[:openBracket])
+		itemStrs := strings.Split(s[openBracket+1:closeBracket], ",")
 
 		var suffixValues []SuffixValue
 		for _, itemStr := range itemStrs {
@@ -334,13 +339,13 @@ func Parse(s string) (key base.InternalKey, value []byte) {
 		}
 		value = make([]byte, EncodedSetValueLen([]byte(endKey), suffixValues))
 		EncodeSetValue(value, []byte(endKey), suffixValues)
-		return startKey, value
+		return value
 
 	case base.InternalKeyKindRangeKeyUnset:
-		openBracket := strings.IndexByte(s[sep:], '[')
-		closeBracket := strings.IndexByte(s[sep:], ']')
-		endKey := strings.TrimSpace(s[sep+1 : sep+openBracket])
-		itemStrs := strings.Split(s[sep+openBracket+1:sep+closeBracket], ",")
+		openBracket := strings.IndexByte(s[:], '[')
+		closeBracket := strings.IndexByte(s[:], ']')
+		endKey := strings.TrimSpace(s[:openBracket])
+		itemStrs := strings.Split(s[openBracket+1:closeBracket], ",")
 
 		var suffixes [][]byte
 		for _, itemStr := range itemStrs {
@@ -348,13 +353,13 @@ func Parse(s string) (key base.InternalKey, value []byte) {
 		}
 		value = make([]byte, EncodedUnsetValueLen([]byte(endKey), suffixes))
 		EncodeUnsetValue(value, []byte(endKey), suffixes)
-		return startKey, value
+		return value
 
 	case base.InternalKeyKindRangeKeyDelete:
-		return startKey, []byte(strings.TrimSpace(s[sep+1:]))
+		return []byte(strings.TrimSpace(s))
 
 	default:
-		panic(fmt.Sprintf("key kind %q not a range key", startKey.Kind()))
+		panic(fmt.Sprintf("key kind %q not a range key", kind))
 	}
 }
 
