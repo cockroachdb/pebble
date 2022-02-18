@@ -571,3 +571,28 @@ c: (c, .)
 cat: (., [cat-e) @3=bax)
 d: (d, [cat-e) @3=bax)
 .
+
+# Test Prev-ing back over a synthetic range key marker. Synthetic range-key
+# markers (the keys interleaved at 'c' during a SeekGE(c) when there's a
+# straddling range key) are ephemeral, and Prev-ing back must move back the
+# appropriate number of times.
+
+reset
+----
+
+batch
+set a a
+range-key-set b e @1 foo
+----
+wrote 2 keys
+
+combined-iter
+seek-ge b
+prev
+seek-ge c
+prev
+----
+b: (., [b-e) @1=foo)
+a: (a, .)
+c: (., [b-e) @1=foo)
+b: (., [b-e) @1=foo)
