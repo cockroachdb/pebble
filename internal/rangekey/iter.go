@@ -22,6 +22,7 @@ type Iterator interface {
 	Prev() *CoalescedSpan
 	Current() *CoalescedSpan
 	Clone() Iterator
+	Close() error
 }
 
 // TODO(jackson): Consider modifying the interface to support returning 'empty'
@@ -69,7 +70,12 @@ type Iter struct {
 var _ Iterator = (*Iter)(nil)
 
 // Init initializes an iterator over a set of fragmented, coalesced spans.
-func (i *Iter) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum uint64, iters ...keyspan.FragmentIterator) {
+func (i *Iter) Init(
+	cmp base.Compare,
+	formatKey base.FormatKey,
+	visibleSeqNum uint64,
+	iters ...keyspan.FragmentIterator,
+) {
 	*i = Iter{}
 	i.miter.Init(cmp, iters...)
 	i.coalescer.Init(cmp, formatKey, visibleSeqNum, func(span CoalescedSpan) {
@@ -94,6 +100,11 @@ func (i *Iter) Clone() Iterator {
 // Error returns any accumulated error.
 func (i *Iter) Error() error {
 	return i.err
+}
+
+// Close closes all underlying iterators.
+func (i *Iter) Close() error {
+	return i.miter.Close()
 }
 
 func (i *Iter) coalesceForward() *CoalescedSpan {

@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -413,11 +414,13 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	}
 	path := td.CmdArgs[0].String()
 
+	writeOpts := d.opts.MakeWriterOptions(0 /* level */, d.opts.FormatMajorVersion.MaxTableFormat())
+
 	f, err := fs.Create(path)
 	if err != nil {
 		return err
 	}
-	w := sstable.NewWriter(f, sstable.WriterOptions{})
+	w := sstable.NewWriter(f, writeOpts)
 	iters := []internalIterator{
 		b.newInternalIter(nil),
 		b.newRangeDelIter(nil),
@@ -437,6 +440,37 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 			return err
 		}
 	}
+
+	if rki := b.newRangeKeyIter(nil); rki != nil {
+		for key, _ := rki.First(); key != nil; key, _ = rki.Next() {
+			s := rki.Current()
+			s.Start.SetSeqNum(0)
+
+			var err error
+			switch s.Start.Kind() {
+			case base.InternalKeyKindRangeKeySet:
+				suffixValue, rest, ok := rangekey.DecodeSuffixValue(s.Value)
+				if !ok || len(rest) > 0 {
+					panic("expected single unset single suffix")
+				}
+				err = w.RangeKeySet(s.Start.UserKey, s.End, suffixValue.Suffix, suffixValue.Value)
+			case base.InternalKeyKindRangeKeyUnset:
+				suffix, rest, ok := rangekey.DecodeSuffix(s.Value)
+				if !ok || len(rest) > 0 {
+					panic("expected single unset single suffix")
+				}
+				err = w.RangeKeyUnset(s.Start.UserKey, s.End, suffix)
+			case base.InternalKeyKindRangeKeyDelete:
+				err = w.RangeKeyDelete(s.Start.UserKey, s.End)
+			default:
+				panic("not a range key")
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	return w.Close()
 }
 

@@ -168,6 +168,11 @@ func (i *DefragmentingIter) Error() error {
 	return i.iter.Error()
 }
 
+// Close closes the underlying iterators.
+func (i *DefragmentingIter) Close() error {
+	return i.iter.Close()
+}
+
 // Current returns the span at the iterator's current position.
 func (i *DefragmentingIter) Current() *CoalescedSpan {
 	return &i.curr
