@@ -202,24 +202,24 @@ func ingestLoad1(
 	switch {
 	case !hasRanges:
 		// Table has only point keys. Use the point key bounds.
-		meta.Smallest = meta.SmallestPointKey.Clone()
-		meta.Largest = meta.LargestPointKey.Clone()
+		meta.Smallest = meta.SmallestPointKey
+		meta.Largest = meta.LargestPointKey
 	case !hasPoints:
 		// Table has only range key. Use the range key bounds.
-		meta.Smallest = meta.SmallestRangeKey.Clone()
-		meta.Largest = meta.LargestRangeKey.Clone()
+		meta.Smallest = meta.SmallestRangeKey
+		meta.Largest = meta.LargestRangeKey
 	default:
 		// Table has both points and ranges. Compute the bounds by considering both
 		// the point and range key bounds.
 		if base.InternalCompare(opts.Comparer.Compare, meta.SmallestPointKey, meta.SmallestRangeKey) < 0 {
-			meta.Smallest = meta.SmallestPointKey.Clone()
+			meta.Smallest = meta.SmallestPointKey
 		} else {
-			meta.Smallest = meta.SmallestRangeKey.Clone()
+			meta.Smallest = meta.SmallestRangeKey
 		}
 		if base.InternalCompare(opts.Comparer.Compare, meta.LargestPointKey, meta.LargestRangeKey) > 0 {
-			meta.Largest = meta.LargestPointKey.Clone()
+			meta.Largest = meta.LargestPointKey
 		} else {
-			meta.Largest = meta.LargestRangeKey.Clone()
+			meta.Largest = meta.LargestRangeKey
 		}
 	}
 
