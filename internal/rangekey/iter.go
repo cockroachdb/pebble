@@ -23,6 +23,7 @@ type Iterator interface {
 	Prev() *CoalescedSpan
 	Current() *CoalescedSpan
 	Clone() Iterator
+	Close() error
 }
 
 // TODO(jackson): Consider modifying the interface to support returning 'empty'
@@ -96,6 +97,11 @@ func (i *Iter) Clone() Iterator {
 // Error returns any accumulated error.
 func (i *Iter) Error() error {
 	return i.err
+}
+
+// Close closes all underlying iterators.
+func (i *Iter) Close() error {
+	return i.iter.Close()
 }
 
 func (i *Iter) coalesceForward() *CoalescedSpan {

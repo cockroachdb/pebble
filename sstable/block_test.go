@@ -198,7 +198,7 @@ func TestBlockIter2(t *testing.T) {
 						case "prev":
 							iter.Prev()
 						}
-						if iter.Valid() {
+						if iter.valid() {
 							fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 						} else if err := iter.Error(); err != nil {
 							fmt.Fprintf(&b, "<err=%v>", err)
@@ -340,7 +340,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 					k := keys[rng.Intn(len(keys))]
 					it.SeekGE(k, false /* trySeekUsingNext */)
 					if testing.Verbose() {
-						if !it.Valid() {
+						if !it.valid() {
 							b.Fatal("expected to find key")
 						}
 						if !bytes.Equal(k, it.Key().UserKey) {
@@ -383,11 +383,11 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 					it.SeekLT(keys[j])
 					if testing.Verbose() {
 						if j == 0 {
-							if it.Valid() {
+							if it.valid() {
 								b.Fatal("unexpected key")
 							}
 						} else {
-							if !it.Valid() {
+							if !it.valid() {
 								b.Fatal("expected to find key")
 							}
 							k := keys[j-1]
@@ -424,7 +424,7 @@ func BenchmarkBlockIterNext(b *testing.B) {
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					if !it.Valid() {
+					if !it.valid() {
 						it.First()
 					}
 					it.Next()
@@ -456,7 +456,7 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					if !it.Valid() {
+					if !it.valid() {
 						it.Last()
 					}
 					it.Prev()
