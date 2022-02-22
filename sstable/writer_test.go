@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -172,6 +173,63 @@ func runDataDriven(t *testing.T, file string) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestSizeEstimate(t *testing.T) {
+	var sizeEstimate sizeEstimate
+	datadriven.RunTest(t, "testdata/size_estimate",
+		func(td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "init":
+				if len(td.CmdArgs) != 1 {
+					return "init <empty size>"
+				}
+				emptySize, err := strconv.Atoi(td.CmdArgs[0].String())
+				if err != nil {
+					return "invalid empty size"
+				}
+
+				sizeEstimate.init(uint64(emptySize))
+				return "success"
+			case "clear":
+				sizeEstimate.clear()
+				return fmt.Sprintf("%d", sizeEstimate.size())
+			case "size":
+				return fmt.Sprintf("%d", sizeEstimate.size())
+			case "add_inflight":
+				if len(td.CmdArgs) != 1 {
+					return "add_inflight <inflight size estimate>"
+				}
+				inflightSize, err := strconv.Atoi(td.CmdArgs[0].String())
+				if err != nil {
+					return "invalid inflight size"
+				}
+				sizeEstimate.addInflight(inflightSize)
+				return fmt.Sprintf("%d", sizeEstimate.size())
+			case "entry_written":
+				if len(td.CmdArgs) != 3 {
+					return "entry_written <new_size> <prev_inflight_size> <entry_size>"
+				}
+				newSize, err := strconv.Atoi(td.CmdArgs[0].String())
+				if err != nil {
+					return "invalid inflight size"
+				}
+				inflightSize, err := strconv.Atoi(td.CmdArgs[1].String())
+				if err != nil {
+					return "invalid inflight size"
+				}
+				entrySize, err := strconv.Atoi(td.CmdArgs[2].String())
+				if err != nil {
+					return "invalid inflight size"
+				}
+				sizeEstimate.written(uint64(newSize), inflightSize, entrySize)
+				return fmt.Sprintf("%d", sizeEstimate.size())
+			case "num_entries":
+				return fmt.Sprintf("%d", sizeEstimate.numEntries)
+			default:
+				return fmt.Sprintf("unknown command: %s", td.Cmd)
+			}
+		})
 }
 
 func TestWriterClearCache(t *testing.T) {
