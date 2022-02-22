@@ -1,0 +1,112 @@
+build 1
+set b b
+set c c
+----
+
+build 2
+del-range c z
+----
+
+# Test that a delete range in a more recent file shadows keys in an
+# earlier file.
+
+iter files=(2, 1)
+first
+next
+----
+b: (b, .)
+.
+
+build 3
+set a a
+set f f
+----
+
+# Test including an even more recent file with point keys overlapping
+# the rangedel. Since the point keys are assigned a higher sequence
+# number, they should NOT be shadowed by the rangedel.
+
+iter files=(3, 2, 1)
+first
+next
+next
+next
+----
+a: (a, .)
+b: (b, .)
+f: (f, .)
+.
+
+# Test including range keys, and merging the range key state across
+# files. Range keys should be interleaved.
+
+build 4
+range-key-set a c @2 foo
+range-key-set c e @3 bar
+----
+
+build 5
+range-key-del b d
+----
+
+iter files=(5, 4, 3, 2, 1)
+first
+next
+next
+next
+next
+----
+a: (a, [a-b) @2=foo)
+b: (b, .)
+d: (., [d-e) @3=bar)
+f: (f, .)
+.
+
+# Test range keys that overlap each other with identical state. These
+# should be defragmented and exposed as a single range key.
+
+reset
+----
+
+build ag
+range-key-set a g @5 foo
+----
+
+build ek
+range-key-set e k @5 foo
+----
+
+iter files=(ag, ek)
+first
+next
+----
+a: (., [a-k) @5=foo)
+.
+
+# Test range-key masking by creating points, some with suffixes above
+# the range key's suffix, some with suffixes below the range key's
+# suffix.
+
+build points
+set a@4 v
+set c@2 v
+set d@9 v
+set e@5 v
+set k@3 v
+set p@4 v
+----
+
+iter files=(points, ag, ek) mask-suffix=@7
+first
+next
+next
+next
+next
+next
+----
+a: (., [a-k) @5=foo)
+d@9: (v, [a-k) @5=foo)
+e@5: (v, [a-k) @5=foo)
+k@3: (v, .)
+p@4: (v, .)
+.
