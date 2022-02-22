@@ -2177,7 +2177,7 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 // NewRawRangeKeyIter returns an internal iterator for the contents of the
 // range-key block for the table. Returns nil if the table does not contain any
 // range keys.
-func (r *Reader) NewRawRangeKeyIter() (base.InternalIterator, error) {
+func (r *Reader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 	if r.rangeKeyBH.Length == 0 {
 		return nil, nil
 	}
@@ -2185,8 +2185,8 @@ func (r *Reader) NewRawRangeKeyIter() (base.InternalIterator, error) {
 	if err != nil {
 		return nil, err
 	}
-	i := &blockIter{}
-	if err := i.initHandle(r.Compare, h, r.Properties.GlobalSeqNum); err != nil {
+	i := &rangeKeyIter{}
+	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum); err != nil {
 		return nil, err
 	}
 	return i, nil

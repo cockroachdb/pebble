@@ -734,7 +734,9 @@ func (i *InterleavingIter) Error() error {
 
 // Close implements (base.InternalIterator).Close.
 func (i *InterleavingIter) Close() error {
-	return i.pointIter.Close()
+	perr := i.pointIter.Close()
+	rerr := i.rangeKeyIter.Close()
+	return firstError(perr, rerr)
 }
 
 // String implements (base.InternalIterator).String.

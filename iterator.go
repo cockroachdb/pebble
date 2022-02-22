@@ -163,6 +163,7 @@ type Iterator struct {
 	prefixOrFullSeekKey []byte
 	readSampling        readSampling
 	stats               IteratorStats
+	closeHook           func()
 
 	// Following fields are only used in Clone.
 	// Non-nil if this Iterator includes a Batch.
@@ -1507,6 +1508,10 @@ func (i *Iterator) Close() error {
 
 		i.readState.unref()
 		i.readState = nil
+	}
+
+	if i.closeHook != nil {
+		i.closeHook()
 	}
 
 	// Close the closer for the current value if one was open.

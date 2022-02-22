@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
 func uvarintLen(v uint32) int {
@@ -985,6 +986,46 @@ func (i *blockIter) Current() keyspan.Span {
 // Clone implements (keyspan.FragmentIterator).Clone, as documented in the
 // internal/keyspan package.
 func (i *blockIter) Clone() keyspan.FragmentIterator {
+	// TODO(jackson): Remove keyspan.FragmentIterator.Clone.
+	panic("unimplemented")
+}
+
+type rangeKeyIter struct {
+	blockIter
+}
+
+// Valid implements (keyspan.FragmentIterator).Valid, as documented in the
+// internal/keyspan package.
+func (i *rangeKeyIter) Valid() bool {
+	return i.offset >= 0 && i.offset < i.restarts
+}
+
+// End implements (keyspan.FragmentIterator).End, as documented in the
+// internal/keyspan package.
+func (i *rangeKeyIter) End() []byte {
+	return i.val
+}
+
+// Current implements (keyspan.FragmentIterator).Current, as documented in the
+// internal/keyspan package.
+func (i *rangeKeyIter) Current() keyspan.Span {
+	if !i.Valid() {
+		return keyspan.Span{}
+	}
+	kind := i.ikey.Kind()
+	if invariants.Enabled && !rangekey.IsRangeKey(kind) {
+		panic(fmt.Sprintf("pebble: rangeKeyIter fragment iterator implementation used on non-RANGEKEY (kind %d)", kind))
+	}
+	end, rest, ok := rangekey.DecodeEndKey(kind, i.val)
+	if !ok {
+		return keyspan.Span{}
+	}
+	return keyspan.Span{Start: i.ikey, End: end, Value: rest}
+}
+
+// Clone implements (keyspan.FragmentIterator).Clone, as documented in the
+// internal/keyspan package.
+func (i *rangeKeyIter) Clone() keyspan.FragmentIterator {
 	// TODO(jackson): Remove keyspan.FragmentIterator.Clone.
 	panic("unimplemented")
 }

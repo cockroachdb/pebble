@@ -1,0 +1,72 @@
+build 1
+set b b
+set c c
+----
+
+build 2
+del-range c z
+----
+
+new-external-iter
+2
+1
+----
+
+iter
+first
+next
+----
+b: (b, .)
+.
+
+build 3
+set a a
+set f f
+----
+
+new-external-iter
+3
+2
+1
+----
+
+iter
+first
+next
+next
+next
+----
+a: (a, .)
+b: (b, .)
+f: (f, .)
+.
+
+build 4
+range-key-set a c @2 foo
+range-key-set c e @3 bar
+----
+
+build 5
+range-key-del b d
+----
+
+new-external-iter
+5
+4
+3
+2
+1
+----
+
+iter
+first
+next
+next
+next
+next
+----
+a: (a, [a-b) @2=foo)
+b: (b, .)
+d: (., [d-e) @3=bar)
+f: (f, .)
+.
