@@ -97,18 +97,18 @@ func ingestLoad1(
 	// calculating stats before we can remove the original link.
 	maybeSetStatsFromProperties(meta, &r.Properties)
 
-	hasPoints := false
 	{
 		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
 		if err != nil {
 			return nil, err
 		}
 		defer iter.Close()
+		var smallest InternalKey
 		if key, _ := iter.First(); key != nil {
 			if err := ingestValidateKey(opts, key); err != nil {
 				return nil, err
 			}
-			meta.SmallestPointKey = key.Clone()
+			smallest = (*key).Clone()
 		}
 		if err := iter.Error(); err != nil {
 			return nil, err
@@ -117,8 +117,7 @@ func ingestLoad1(
 			if err := ingestValidateKey(opts, key); err != nil {
 				return nil, err
 			}
-			meta.LargestPointKey = key.Clone()
-			hasPoints = true // Implies smallest point key was also set.
+			meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, key.Clone())
 		}
 		if err := iter.Error(); err != nil {
 			return nil, err
@@ -131,14 +130,12 @@ func ingestLoad1(
 	}
 	if iter != nil {
 		defer iter.Close()
+		var smallest InternalKey
 		if key, _ := iter.First(); key != nil {
 			if err := ingestValidateKey(opts, key); err != nil {
 				return nil, err
 			}
-			if !hasPoints ||
-				base.InternalCompare(opts.Comparer.Compare, meta.SmallestPointKey, *key) > 0 {
-				meta.SmallestPointKey = key.Clone()
-			}
+			smallest = (*key).Clone()
 		}
 		if err := iter.Error(); err != nil {
 			return nil, err
@@ -148,16 +145,11 @@ func ingestLoad1(
 				return nil, err
 			}
 			end := base.MakeRangeDeleteSentinelKey(val)
-			if !hasPoints ||
-				base.InternalCompare(opts.Comparer.Compare, meta.LargestPointKey, end) < 0 {
-				meta.LargestPointKey = end.Clone()
-				hasPoints = true // Implies smallest point key was also set.
-			}
+			meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, end.Clone())
 		}
 	}
 
 	// Update the range-key bounds for the table.
-	var hasRanges bool
 	{
 		iter, err := r.NewRawRangeKeyIter()
 		if err != nil {
@@ -165,11 +157,12 @@ func ingestLoad1(
 		}
 		if iter != nil {
 			defer iter.Close()
+			var smallest InternalKey
 			if key, _ := iter.First(); key != nil {
 				if err := ingestValidateKey(opts, key); err != nil {
 					return nil, err
 				}
-				meta.SmallestRangeKey = key.Clone()
+				smallest = (*key).Clone()
 			}
 			if err := iter.Error(); err != nil {
 				return nil, err
@@ -184,8 +177,8 @@ func ingestLoad1(
 				if !ok {
 					return nil, errors.Newf("pebble: could not decode range end key")
 				}
-				meta.LargestRangeKey = base.MakeRangeKeySentinelKey(key.Kind(), end).Clone()
-				hasRanges = true // Implies smallest range key was also set.
+				k := base.MakeRangeKeySentinelKey(key.Kind(), end).Clone()
+				meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallest, k.Clone())
 			}
 			if err := iter.Error(); err != nil {
 				return nil, err
@@ -193,34 +186,8 @@ func ingestLoad1(
 		}
 	}
 
-	if !hasPoints && !hasRanges {
+	if !meta.HasPointKeys && !meta.HasRangeKeys {
 		return nil, nil
-	}
-
-	// Compute the overall smallest / largest fields from the point and key
-	// ranges.
-	switch {
-	case !hasRanges:
-		// Table has only point keys. Use the point key bounds.
-		meta.Smallest = meta.SmallestPointKey
-		meta.Largest = meta.LargestPointKey
-	case !hasPoints:
-		// Table has only range key. Use the range key bounds.
-		meta.Smallest = meta.SmallestRangeKey
-		meta.Largest = meta.LargestRangeKey
-	default:
-		// Table has both points and ranges. Compute the bounds by considering both
-		// the point and range key bounds.
-		if base.InternalCompare(opts.Comparer.Compare, meta.SmallestPointKey, meta.SmallestRangeKey) < 0 {
-			meta.Smallest = meta.SmallestPointKey
-		} else {
-			meta.Smallest = meta.SmallestRangeKey
-		}
-		if base.InternalCompare(opts.Comparer.Compare, meta.LargestPointKey, meta.LargestRangeKey) > 0 {
-			meta.Largest = meta.LargestPointKey
-		} else {
-			meta.Largest = meta.LargestRangeKey
-		}
 	}
 
 	// Sanity check that the various bounds on the file were set consistently.
@@ -385,13 +352,12 @@ func ingestUpdateSeqNum(
 		return base.MakeInternalKey(k.UserKey, seqNum, k.Kind())
 	}
 	for _, m := range meta {
-		// TODO(travers): We currently lack a means of determining whether one of
-		// the bounds is "unset" (e.g. a table without point keys). We use a lack of
-		// user key as a cheap way of checking, for now, until we have a better way.
-		if m.SmallestPointKey.UserKey != nil {
+		// NB: we set the fields directly here, rather than via their Extend*
+		// methods, as we are updating sequence numbers.
+		if m.HasPointKeys {
 			m.SmallestPointKey = setSeqFn(m.SmallestPointKey)
 		}
-		if m.SmallestRangeKey.UserKey != nil {
+		if m.HasRangeKeys {
 			m.SmallestRangeKey = setSeqFn(m.SmallestRangeKey)
 		}
 		m.Smallest = setSeqFn(m.Smallest)
@@ -402,7 +368,7 @@ func ingestUpdateSeqNum(
 		// table.
 		// NB: as the largest range key is always an exclusive sentinel, it is never
 		// updated.
-		if m.LargestPointKey.UserKey != nil && !m.LargestPointKey.IsExclusiveSentinel() {
+		if m.HasPointKeys && !m.LargestPointKey.IsExclusiveSentinel() {
 			m.LargestPointKey = setSeqFn(m.LargestPointKey)
 		}
 		if !m.Largest.IsExclusiveSentinel() {

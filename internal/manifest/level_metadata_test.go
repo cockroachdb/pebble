@@ -38,11 +38,12 @@ func TestLevelIterator(t *testing.T) {
 						if len(parts) != 2 {
 							t.Fatalf("malformed table spec: %q", metaStr)
 						}
-						m := &FileMetadata{
-							FileNum:  base.FileNum(len(files) + 1),
-							Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-							Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
-						}
+						m := &FileMetadata{FileNum: base.FileNum(len(files) + 1)}
+						m.ExtendPointKeyBounds(
+							base.DefaultComparer.Compare,
+							base.ParseInternalKey(strings.TrimSpace(parts[0])),
+							base.ParseInternalKey(strings.TrimSpace(parts[1])),
+						)
 						m.SmallestSeqNum = m.Smallest.SeqNum()
 						m.LargestSeqNum = m.Largest.SeqNum()
 						files = append(files, m)

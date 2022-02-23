@@ -1221,7 +1221,8 @@ func (d *DB) Compact(
 	}
 	iStart := base.MakeInternalKey(start, InternalKeySeqNumMax, InternalKeyKindMax)
 	iEnd := base.MakeInternalKey(end, 0, 0)
-	meta := []*fileMetadata{{Smallest: iStart, Largest: iEnd}}
+	m := (&fileMetadata{}).ExtendPointKeyBounds(d.cmp, iStart, iEnd)
+	meta := []*fileMetadata{m}
 
 	d.mu.Lock()
 	maxLevelWithFiles := 1

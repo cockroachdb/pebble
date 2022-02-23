@@ -140,10 +140,7 @@ func TestIngestLoadRand(t *testing.T) {
 				return base.InternalCompare(cmp, keys[i], keys[j]) < 0
 			})
 
-			expected[i].SmallestPointKey = keys[0]
-			expected[i].LargestPointKey = keys[len(keys)-1]
-			expected[i].Smallest = expected[i].SmallestPointKey
-			expected[i].Largest = expected[i].LargestPointKey
+			expected[i].ExtendPointKeyBounds(cmp, keys[0], keys[len(keys)-1])
 
 			w := sstable.NewWriter(f, sstable.WriterOptions{})
 			var count uint64
@@ -226,10 +223,8 @@ func TestIngestSortAndVerify(t *testing.T) {
 					if cmp(smallest.UserKey, largest.UserKey) > 0 {
 						return fmt.Sprintf("range %v-%v is not valid", smallest, largest)
 					}
-					meta = append(meta, &fileMetadata{
-						Smallest: smallest,
-						Largest:  largest,
-					})
+					m := (&fileMetadata{}).ExtendPointKeyBounds(cmp, smallest, largest)
+					meta = append(meta, m)
 					paths = append(paths, strconv.Itoa(i))
 				}
 				err := ingestSortAndVerify(cmp, meta, paths)
@@ -383,19 +378,22 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 				if len(parts) != 2 {
 					t.Fatalf("malformed table spec: %s", s)
 				}
+				var smallest, largest base.InternalKey
 				if strings.Contains(parts[0], ".") {
 					if !strings.Contains(parts[1], ".") {
 						t.Fatalf("malformed table spec: %s", s)
 					}
-					meta.Smallest = base.ParseInternalKey(parts[0])
-					meta.Largest = base.ParseInternalKey(parts[1])
+					smallest = base.ParseInternalKey(parts[0])
+					largest = base.ParseInternalKey(parts[1])
 				} else {
-					meta.Smallest = InternalKey{UserKey: []byte(parts[0])}
-					meta.Largest = InternalKey{UserKey: []byte(parts[1])}
+					smallest = InternalKey{UserKey: []byte(parts[0])}
+					largest = InternalKey{UserKey: []byte(parts[1])}
 				}
-				if mem.cmp(meta.Smallest.UserKey, meta.Largest.UserKey) > 0 {
-					meta.Smallest, meta.Largest = meta.Largest, meta.Smallest
+				// If we're using a reverse comparer, flip the file bounds.
+				if mem.cmp(smallest.UserKey, largest.UserKey) > 0 {
+					smallest, largest = largest, smallest
 				}
+				meta.ExtendPointKeyBounds(comparer.Compare, smallest, largest)
 				return meta
 			}
 
@@ -456,15 +454,17 @@ func TestIngestTargetLevel(t *testing.T) {
 		}
 	}()
 
-	parseMeta := func(s string) fileMetadata {
+	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		return fileMetadata{
-			Smallest: InternalKey{UserKey: []byte(parts[0])},
-			Largest:  InternalKey{UserKey: []byte(parts[1])},
-		}
+		m := (&fileMetadata{}).ExtendPointKeyBounds(
+			d.cmp,
+			InternalKey{UserKey: []byte(parts[0])},
+			InternalKey{UserKey: []byte(parts[1])},
+		)
+		return m
 	}
 
 	datadriven.RunTest(t, "testdata/ingest_target_level", func(td *datadriven.TestData) string {
@@ -507,7 +507,7 @@ func TestIngestTargetLevel(t *testing.T) {
 			for _, target := range strings.Split(td.Input, "\n") {
 				meta := parseMeta(target)
 				level, err := ingestTargetLevel(d.newIters, IterOptions{logger: d.opts.Logger},
-					d.cmp, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, &meta)
+					d.cmp, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, meta)
 				if err != nil {
 					return err.Error()
 				}
@@ -1243,14 +1243,28 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 
 			// Construct the file metadata from the writer metadata.
 			m := &fileMetadata{
-				SmallestPointKey: wm.SmallestPointKey(cmp),
-				LargestPointKey:  maybeUpdateUpperBound(wm.LargestPointKey(cmp)),
-				SmallestRangeKey: wm.SmallestRangeKey,
-				LargestRangeKey:  maybeUpdateUpperBound(wm.LargestRangeKey),
-				Smallest:         wm.Smallest(cmp),
-				Largest:          maybeUpdateUpperBound(wm.Largest(cmp)),
-				SmallestSeqNum:   0, // Simulate an ingestion.
-				LargestSeqNum:    0,
+				SmallestSeqNum: 0, // Simulate an ingestion.
+				LargestSeqNum:  0,
+			}
+			if wm.HasPointKeys {
+				m.ExtendPointKeyBounds(cmp, wm.SmallestPoint, wm.LargestPoint)
+			}
+			if wm.HasRangeDelKeys {
+				m.ExtendPointKeyBounds(
+					cmp,
+					wm.SmallestRangeDel,
+					maybeUpdateUpperBound(wm.LargestRangeDel),
+				)
+			}
+			if wm.HasRangeKeys {
+				m.ExtendRangeKeyBounds(
+					cmp,
+					wm.SmallestRangeKey,
+					maybeUpdateUpperBound(wm.LargestRangeKey),
+				)
+			}
+			if err := m.Validate(cmp, base.DefaultFormatter); err != nil {
+				return err.Error()
 			}
 
 			// Collect this file.

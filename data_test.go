@@ -632,10 +632,12 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
-		return &fileMetadata{
-			Smallest: InternalKey{UserKey: []byte(parts[0])},
-			Largest:  InternalKey{UserKey: []byte(parts[1])},
-		}, nil
+		m := (&fileMetadata{}).ExtendPointKeyBounds(
+			opts.Comparer.Compare,
+			InternalKey{UserKey: []byte(parts[0])},
+			InternalKey{UserKey: []byte(parts[1])},
+		)
+		return m, nil
 	}
 
 	// Example, compact: a-c.

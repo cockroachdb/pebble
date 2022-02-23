@@ -61,13 +61,11 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, [numLevels]int64, 
 				} else {
 					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), i, InternalKeyKindSet)
 				}
-				m := &fileMetadata{
-					Smallest:       key,
-					Largest:        key,
+				m := (&fileMetadata{
 					SmallestSeqNum: key.SeqNum(),
 					LargestSeqNum:  key.SeqNum(),
 					Size:           1,
-				}
+				}).ExtendPointKeyBounds(opts.Comparer.Compare, key, key)
 				if size >= 100 {
 					// If the requested size of the level is very large only add a single
 					// file in order to avoid massive blow-up in the number of files in
@@ -366,8 +364,11 @@ func TestCompactionPickerIntraL0(t *testing.T) {
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m.Smallest = base.ParseInternalKey(strings.TrimSpace(parts[0]))
-		m.Largest = base.ParseInternalKey(strings.TrimSpace(parts[1]))
+		m.ExtendPointKeyBounds(
+			opts.Comparer.Compare,
+			base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
 		if m.SmallestSeqNum > m.LargestSeqNum {
@@ -437,6 +438,9 @@ func TestCompactionPickerIntraL0(t *testing.T) {
 }
 
 func TestCompactionPickerL0(t *testing.T) {
+	opts := (*Options)(nil).EnsureDefaults()
+	opts.Experimental.L0CompactionConcurrency = 1
+
 	parseMeta := func(s string) (*fileMetadata, error) {
 		parts := strings.Split(s, ":")
 		fileNum, err := strconv.Atoi(parts[0])
@@ -448,18 +452,18 @@ func TestCompactionPickerL0(t *testing.T) {
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
-		m := &fileMetadata{
-			FileNum:  base.FileNum(fileNum),
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		}
+		m := (&fileMetadata{
+			FileNum: base.FileNum(fileNum),
+		}).ExtendPointKeyBounds(
+			opts.Comparer.Compare,
+			base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
 		return m, nil
 	}
 
-	opts := (*Options)(nil).EnsureDefaults()
-	opts.Experimental.L0CompactionConcurrency = 1
 	var picker *compactionPickerByScore
 	var inProgressCompactions []compactionInfo
 	var pc *pickedCompaction
@@ -645,6 +649,9 @@ func TestCompactionPickerL0(t *testing.T) {
 }
 
 func TestCompactionPickerConcurrency(t *testing.T) {
+	opts := (*Options)(nil).EnsureDefaults()
+	opts.Experimental.L0CompactionConcurrency = 1
+
 	parseMeta := func(s string) (*fileMetadata, error) {
 		parts := strings.Split(s, ":")
 		fileNum, err := strconv.Atoi(parts[0])
@@ -656,12 +663,14 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
-		m := &fileMetadata{
-			FileNum:  base.FileNum(fileNum),
-			Size:     1028,
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		}
+		m := (&fileMetadata{
+			FileNum: base.FileNum(fileNum),
+			Size:    1028,
+		}).ExtendPointKeyBounds(
+			opts.Comparer.Compare,
+			base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		)
 		for _, p := range fields[1:] {
 			if strings.HasPrefix(p, "size=") {
 				v, err := strconv.Atoi(strings.TrimPrefix(p, "size="))
@@ -676,8 +685,6 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 		return m, nil
 	}
 
-	opts := (*Options)(nil).EnsureDefaults()
-	opts.Experimental.L0CompactionConcurrency = 1
 	var picker *compactionPickerByScore
 	var inProgressCompactions []compactionInfo
 
@@ -874,12 +881,14 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed table spec: %s. usage: <file-num>:start.SET.1-end.SET.2", s)
 		}
-		m := &fileMetadata{
-			FileNum:  base.FileNum(fileNum),
-			Size:     1028,
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		}
+		m := (&fileMetadata{
+			FileNum: base.FileNum(fileNum),
+			Size:    1028,
+		}).ExtendPointKeyBounds(
+			opts.Comparer.Compare,
+			base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		)
 		for _, p := range fields[1:] {
 			if strings.HasPrefix(p, "size=") {
 				v, err := strconv.Atoi(strings.TrimPrefix(p, "size="))
@@ -1026,12 +1035,14 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 		if len(tableParts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m := &fileMetadata{
-			Smallest:   base.ParseInternalKey(strings.TrimSpace(tableParts[0])),
-			Largest:    base.ParseInternalKey(strings.TrimSpace(tableParts[1])),
+		m := (&fileMetadata{
 			Compacting: compacting,
 			Size:       fileSize,
-		}
+		}).ExtendPointKeyBounds(
+			opts.Comparer.Compare,
+			base.ParseInternalKey(strings.TrimSpace(tableParts[0])),
+			base.ParseInternalKey(strings.TrimSpace(tableParts[1])),
+		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
 		return m
@@ -1138,10 +1149,12 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		return &fileMetadata{
-			Smallest: base.ParseInternalKey(parts[0]),
-			Largest:  base.ParseInternalKey(parts[1]),
-		}
+		m := (&fileMetadata{}).ExtendPointKeyBounds(
+			opts.Comparer.Compare,
+			base.ParseInternalKey(parts[0]),
+			base.ParseInternalKey(parts[1]),
+		)
+		return m
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_expand_inputs",
@@ -1216,12 +1229,14 @@ func TestCompactionOutputFileSize(t *testing.T) {
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed table spec: %s. usage: <file-num>:start.SET.1-end.SET.2", s)
 		}
-		m := &fileMetadata{
-			FileNum:  base.FileNum(fileNum),
-			Size:     1028,
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		}
+		m := (&fileMetadata{
+			FileNum: base.FileNum(fileNum),
+			Size:    1028,
+		}).ExtendPointKeyBounds(
+			opts.Comparer.Compare,
+			base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		)
 		for _, p := range fields[1:] {
 			if strings.HasPrefix(p, "size=") {
 				v, err := strconv.Atoi(strings.TrimPrefix(p, "size="))

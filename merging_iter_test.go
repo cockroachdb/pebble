@@ -178,11 +178,10 @@ func TestMergingIterCornerCases(t *testing.T) {
 				keys := strings.Fields(line)
 				smallestKey := base.ParseInternalKey(keys[0])
 				largestKey := base.ParseInternalKey(keys[1])
-				files[level] = append(files[level], &fileMetadata{
-					FileNum:  fileNum,
-					Smallest: smallestKey,
-					Largest:  largestKey,
-				})
+				m := (&fileMetadata{
+					FileNum: fileNum,
+				}).ExtendPointKeyBounds(cmp, smallestKey, largestKey)
+				files[level] = append(files[level], m)
 
 				i++
 				line = lines[i]
@@ -547,15 +546,14 @@ func buildLevelsForMergingIterSeqSeek(
 		for j := range readers[i] {
 			iter, err := readers[i][j].NewIter(nil /* lower */, nil /* upper */)
 			require.NoError(b, err)
-			key, _ := iter.First()
+			smallest, _ := iter.First()
 			meta[j] = &fileMetadata{}
 			// The same FileNum is being reused across different levels, which
 			// is harmless for the benchmark since each level has its own iterator
 			// creation func.
 			meta[j].FileNum = FileNum(j)
-			meta[j].Smallest = key.Clone()
-			key, _ = iter.Last()
-			meta[j].Largest = key.Clone()
+			largest, _ := iter.Last()
+			meta[j].ExtendPointKeyBounds(opts.Comparer.Compare, smallest.Clone(), largest.Clone())
 		}
 		levelSlices[i] = manifest.NewLevelSliceSpecificOrder(meta)
 	}
