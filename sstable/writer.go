@@ -31,20 +31,103 @@ const encodedBHPEstimatedSize = binary.MaxVarintLen64 * 2
 var errWriterClosed = errors.New("pebble: writer is closed")
 
 // WriterMetadata holds info about a finished sstable.
-// TODO(travers): A table may not have point or range keys, in which case it
-// will have zero-valued smallest and largest keys. Introduce a sentinel key to
-// indicate "absence" of the bound.
 type WriterMetadata struct {
 	Size             uint64
 	SmallestPoint    InternalKey
-	SmallestRangeDel InternalKey
-	SmallestRangeKey InternalKey
 	LargestPoint     InternalKey
+	SmallestRangeDel InternalKey
 	LargestRangeDel  InternalKey
+	SmallestRangeKey InternalKey
 	LargestRangeKey  InternalKey
-	SmallestSeqNum   uint64
-	LargestSeqNum    uint64
-	Properties       Properties
+	HasPointKeys     bool
+	HasRangeDelKeys  bool
+	HasRangeKeys     bool
+	// NB: Smallest and Largest are the overall bounds for the writer and are set
+	// indirectly via calls to SetSmallest* and SetLargest*. These fields should
+	// be treated as read-only.
+	Smallest       InternalKey
+	Largest        InternalKey
+	SmallestSeqNum uint64
+	LargestSeqNum  uint64
+	Properties     Properties
+}
+
+// SetSmallestPointKey sets the smallest point key to the given key. This may
+// also update the overall lower bound in the metadata.
+// NB: this method set the "absolute" smallest point key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetSmallestPointKey(cmp Compare, k InternalKey) {
+	m.SmallestPoint = k
+	m.maybeUpdateSmallest(cmp, k)
+	m.HasPointKeys = true
+}
+
+// SetSmallestRangeDelKey sets the smallest rangedel key to the given key. This
+// may also update the overall lower bound in the metadata.
+// NB: this method set the "absolute" smallest rangedel key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetSmallestRangeDelKey(cmp Compare, k InternalKey) {
+	m.SmallestRangeDel = k
+	m.maybeUpdateSmallest(cmp, k)
+	m.HasRangeDelKeys = true
+}
+
+// SetSmallestRangeKey sets the smallest range key to the given key. This may
+// also update the overall lower bound in the metadata.
+// NB: this method set the "absolute" smallest range key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetSmallestRangeKey(cmp Compare, k InternalKey) {
+	m.SmallestRangeKey = k
+	m.maybeUpdateSmallest(cmp, k)
+	m.HasRangeKeys = true
+}
+
+// SetLargestPointKey sets the largest point key to the given key. This may also
+// update the overall upper bound in the metadata.
+// NB: this method set the "absolute" largest point key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetLargestPointKey(cmp Compare, k InternalKey) {
+	m.LargestPoint = k
+	m.maybeUpdateLargest(cmp, k)
+	m.HasPointKeys = true
+}
+
+// SetLargestRangeDelKey sets the largest rangedel key to the given key. This
+// may also update the overall upper bound in the metadata.
+// NB: this method set the "absolute" largest rangedel key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetLargestRangeDelKey(cmp Compare, k InternalKey) {
+	m.LargestRangeDel = k
+	m.maybeUpdateLargest(cmp, k)
+	m.HasRangeDelKeys = true
+}
+
+// SetLargestRangeKey sets the largest range key to the given key. This may also
+// update the overall lower bound in the metadata.
+// NB: this method set the "absolute" largest range key. Any existing key is
+// overridden.
+func (m *WriterMetadata) SetLargestRangeKey(cmp Compare, k InternalKey) {
+	m.LargestRangeKey = k
+	m.maybeUpdateLargest(cmp, k)
+	m.HasRangeKeys = true
+}
+
+// maybeUpdateSmallest updates the smallest key if no smallest key has been set
+// or if the given key is smaller than the existing smallest key.
+func (m *WriterMetadata) maybeUpdateSmallest(cmp Compare, k InternalKey) {
+	if !(m.HasPointKeys || m.HasRangeDelKeys || m.HasRangeKeys) ||
+		base.InternalCompare(cmp, k, m.Smallest) < 0 {
+		m.Smallest = k
+	}
+}
+
+// maybeUpdateLargest updates the largest key if no largest key has been set or
+// if the given key is smaller than the existing smallest key.
+func (m *WriterMetadata) maybeUpdateLargest(cmp Compare, k InternalKey) {
+	if !(m.HasPointKeys || m.HasRangeDelKeys || m.HasRangeKeys) ||
+		base.InternalCompare(cmp, k, m.Largest) > 0 {
+		m.Largest = k
+	}
 }
 
 func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
@@ -54,64 +137,6 @@ func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
 	if m.LargestSeqNum < seqNum {
 		m.LargestSeqNum = seqNum
 	}
-}
-
-// SmallestPointKey returns the smaller of SmallestPoint and SmallestRangeDel.
-func (m *WriterMetadata) SmallestPointKey(cmp Compare) InternalKey {
-	if m.SmallestPoint.UserKey == nil {
-		return m.SmallestRangeDel
-	}
-	if m.SmallestRangeDel.UserKey == nil {
-		return m.SmallestPoint
-	}
-	if base.InternalCompare(cmp, m.SmallestPoint, m.SmallestRangeDel) < 0 {
-		return m.SmallestPoint
-	}
-	return m.SmallestRangeDel
-}
-
-// LargestPointKey returns the larger of LargestPoint and LargestRangeDel.
-func (m *WriterMetadata) LargestPointKey(cmp Compare) InternalKey {
-	if m.LargestPoint.UserKey == nil {
-		return m.LargestRangeDel
-	}
-	if m.LargestRangeDel.UserKey == nil {
-		return m.LargestPoint
-	}
-	if base.InternalCompare(cmp, m.LargestPoint, m.LargestRangeDel) > 0 {
-		return m.LargestPoint
-	}
-	return m.LargestRangeDel
-}
-
-// Smallest returns the smaller of SmallestPointKey and SmallestRangeKey.
-func (m *WriterMetadata) Smallest(cmp Compare) InternalKey {
-	point := m.SmallestPointKey(cmp)
-	if point.UserKey == nil {
-		return m.SmallestRangeKey
-	}
-	if m.SmallestRangeKey.UserKey == nil {
-		return point
-	}
-	if base.InternalCompare(cmp, point, m.SmallestRangeKey) < 0 {
-		return point
-	}
-	return m.SmallestRangeKey
-}
-
-// Largest returns the larger of LargestPointKey and LargestRangeKey.
-func (m *WriterMetadata) Largest(cmp Compare) InternalKey {
-	point := m.LargestPointKey(cmp)
-	if point.UserKey == nil {
-		return m.LargestRangeKey
-	}
-	if m.LargestRangeKey.UserKey == nil {
-		return point
-	}
-	if base.InternalCompare(cmp, point, m.LargestRangeKey) > 0 {
-		return point
-	}
-	return m.LargestRangeKey
 }
 
 type flusher interface {
@@ -631,9 +656,12 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	w.dataBlockBuf.dataBlock.add(key, value)
 
 	w.meta.updateSeqNum(key.SeqNum())
-	// block.curKey contains the most recently added key to the block.
-	w.meta.LargestPoint.UserKey = w.dataBlockBuf.dataBlock.curKey[:len(w.dataBlockBuf.dataBlock.curKey)-8]
-	w.meta.LargestPoint.Trailer = key.Trailer
+	k := base.InternalKey{
+		// block.curKey contains the most recently added key to the block.
+		UserKey: w.dataBlockBuf.dataBlock.curKey[:len(w.dataBlockBuf.dataBlock.curKey)-8],
+		Trailer: key.Trailer,
+	}
+	w.meta.SetLargestPointKey(w.compare, k)
 	if w.meta.SmallestPoint.UserKey == nil {
 		// NB: we clone w.meta.LargestPoint rather than "key", even though they are
 		// semantically identical, because we need to ensure that SmallestPoint.UserKey
@@ -644,7 +672,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		// then hang on to, and would otherwise continue to alias that whole pool's
 		// slice if we did so. So since we'll need to allocate it its own slice at
 		// some point anyway, we may as well do so here.
-		w.meta.SmallestPoint = w.meta.LargestPoint.Clone()
+		w.meta.SetSmallestPointKey(w.compare, w.meta.LargestPoint.Clone())
 	}
 
 	w.props.NumEntries++
@@ -715,15 +743,15 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		//
 		// Note that writing the v1 format is only supported for tests.
 		if w.props.NumRangeDeletions == 0 {
-			w.meta.SmallestRangeDel = key.Clone()
-			w.meta.LargestRangeDel = base.MakeRangeDeleteSentinelKey(value).Clone()
+			w.meta.SetSmallestRangeDelKey(w.compare, key.Clone())
+			w.meta.SetLargestRangeDelKey(w.compare, base.MakeRangeDeleteSentinelKey(value).Clone())
 		} else {
 			if base.InternalCompare(w.compare, w.meta.SmallestRangeDel, key) > 0 {
-				w.meta.SmallestRangeDel = key.Clone()
+				w.meta.SetSmallestRangeDelKey(w.compare, key.Clone())
 			}
 			end := base.MakeRangeDeleteSentinelKey(value)
 			if base.InternalCompare(w.compare, w.meta.LargestRangeDel, end) < 0 {
-				w.meta.LargestRangeDel = end.Clone()
+				w.meta.SetLargestRangeDelKey(w.compare, end.Clone())
 			}
 		}
 
@@ -733,7 +761,7 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		// range tombstone key. The largest range tombstone key will be determined
 		// in Writer.Close() as the end key of the last range tombstone added.
 		if w.props.NumRangeDeletions == 0 {
-			w.meta.SmallestRangeDel = key.Clone()
+			w.meta.SetSmallestRangeDelKey(w.compare, key.Clone())
 		}
 	}
 
@@ -958,7 +986,7 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 	// added will be the smallest. The largest range key is determined in
 	// Writer.Close() as the end key of the last range key added to the block.
 	if w.props.NumRangeKeys() == 0 {
-		w.meta.SmallestRangeKey = key.Clone()
+		w.meta.SetSmallestRangeKey(w.compare, key.Clone())
 	}
 
 	// Update block properties.
@@ -1514,7 +1542,8 @@ func (w *Writer) Close() (err error) {
 			// slice passed into Write(). Also, w.meta will often outlive the
 			// blockWriter, and so cloning curValue allows the rangeDelBlock's
 			// internal buffer to get gc'd.
-			w.meta.LargestRangeDel = base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue).Clone()
+			k := base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue).Clone()
+			w.meta.SetLargestRangeDelKey(w.compare, k)
 		}
 		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.finish(), NoCompression, &w.blockBuf)
 		if err != nil {
@@ -1536,7 +1565,8 @@ func (w *Writer) Close() (err error) {
 			w.err = errors.Newf("invalid end key: %s", w.rangeKeyBlock.curValue)
 			return w.err
 		}
-		w.meta.LargestRangeKey = base.MakeRangeKeySentinelKey(kind, endKey).Clone()
+		k := base.MakeRangeKeySentinelKey(kind, endKey).Clone()
+		w.meta.SetLargestRangeKey(w.compare, k)
 		// TODO(travers): The lack of compression on the range key block matches the
 		// lack of compression on the range-del block. Revisit whether we want to
 		// enable compression on this block.

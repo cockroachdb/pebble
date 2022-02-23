@@ -19,10 +19,10 @@ import (
 )
 
 func newItem(k InternalKey) *FileMetadata {
-	return &FileMetadata{
-		Smallest: k,
-		Largest:  k,
-	}
+	m := (&FileMetadata{}).ExtendPointKeyBounds(
+		base.DefaultComparer.Compare, k, k,
+	)
+	return m
 }
 
 func cmp(a, b *FileMetadata) int {

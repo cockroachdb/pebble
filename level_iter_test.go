@@ -53,11 +53,13 @@ func TestLevelIter(t *testing.T) {
 				}
 				iters = append(iters, f)
 
-				meta := &fileMetadata{
+				meta := (&fileMetadata{
 					FileNum: FileNum(len(metas)),
-				}
-				meta.Smallest = f.keys[0]
-				meta.Largest = f.keys[len(f.keys)-1]
+				}).ExtendRangeKeyBounds(
+					DefaultComparer.Compare,
+					f.keys[0],
+					f.keys[len(f.keys)-1],
+				)
 				metas = append(metas, meta)
 			}
 			files = manifest.NewLevelSliceKeySorted(base.DefaultComparer.Compare, metas)
@@ -236,11 +238,15 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		return err.Error()
 	}
 	lt.readers = append(lt.readers, r)
-	lt.metas = append(lt.metas, &fileMetadata{
-		FileNum:  fileNum,
-		Smallest: meta.SmallestPointKey(lt.cmp.Compare),
-		Largest:  meta.LargestPointKey(lt.cmp.Compare),
-	})
+	m := &fileMetadata{FileNum: fileNum}
+	if meta.HasPointKeys {
+		m.ExtendPointKeyBounds(lt.cmp.Compare, meta.SmallestPoint, meta.LargestPoint)
+	}
+	if meta.HasRangeDelKeys {
+		m.ExtendPointKeyBounds(lt.cmp.Compare, meta.SmallestRangeDel, meta.LargestRangeDel)
+
+	}
+	lt.metas = append(lt.metas, m)
 
 	var buf bytes.Buffer
 	for _, f := range lt.metas {
@@ -455,12 +461,11 @@ func buildLevelIterTables(
 	for i := range readers {
 		iter, err := readers[i].NewIter(nil /* lower */, nil /* upper */)
 		require.NoError(b, err)
-		key, _ := iter.First()
+		smallest, _ := iter.First()
 		meta[i] = &fileMetadata{}
 		meta[i].FileNum = FileNum(i)
-		meta[i].Smallest = *key
-		key, _ = iter.Last()
-		meta[i].Largest = *key
+		largest, _ := iter.Last()
+		meta[i].ExtendPointKeyBounds(opts.Comparer.Compare, (*smallest).Clone(), (*largest).Clone())
 	}
 	slice := manifest.NewLevelSliceKeySorted(base.DefaultComparer.Compare, meta)
 	return readers, slice, keys, cleanup

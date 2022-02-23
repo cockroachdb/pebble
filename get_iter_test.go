@@ -496,18 +496,11 @@ func TestGetIter(t *testing.T) {
 					t.Fatalf("desc=%q: memtable Set: %v", desc, err)
 				}
 
+				meta.ExtendPointKeyBounds(cmp, ikey, ikey)
 				if i == 0 {
-					meta.Smallest = ikey
 					meta.SmallestSeqNum = ikey.SeqNum()
-					meta.Largest = ikey
 					meta.LargestSeqNum = ikey.SeqNum()
 				} else {
-					if base.InternalCompare(cmp, ikey, meta.Smallest) < 0 {
-						meta.Smallest = ikey
-					}
-					if base.InternalCompare(cmp, ikey, meta.Largest) > 0 {
-						meta.Largest = ikey
-					}
 					if meta.SmallestSeqNum > ikey.SeqNum() {
 						meta.SmallestSeqNum = ikey.SeqNum()
 					}

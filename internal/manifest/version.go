@@ -96,31 +96,40 @@ type FileMetadata struct {
 	// UTC). For ingested sstables, this corresponds to the time the file was
 	// ingested.
 	CreationTime int64
-	// SmallestPointKey and LargestPointKey are the inclusive bounds for the
-	// internal point keys stored in the table. This includes RANGEDELs, which
-	// alter point keys.
-	// TODO(travers): A table may not have point or range keys, in which case it
-	// will have zero-valued smallest and largest keys. Introduce a sentinel key
-	// to indicate "absence" of the bound.
-	SmallestPointKey InternalKey
-	LargestPointKey  InternalKey
-	// SmallestRangeKey and LargestRangeKey are the inclusive bounds for the
-	// internal range keys stored in the table.
-	SmallestRangeKey InternalKey
-	LargestRangeKey  InternalKey
-	// Smallest and Largest are the inclusive bounds for the internal keys stored
-	// in the table, across both point and range keys. These values can be
-	// reconstructed from the respective point and range key fields.
-	Smallest InternalKey
-	Largest  InternalKey
 	// Smallest and largest sequence numbers in the table, across both point and
 	// range keys.
 	SmallestSeqNum uint64
 	LargestSeqNum  uint64
-	// True if the file is actively being compacted. Protected by DB.mu.
-	Compacting bool
+	// SmallestPointKey and LargestPointKey are the inclusive bounds for the
+	// internal point keys stored in the table. This includes RANGEDELs, which
+	// alter point keys.
+	// NB: these field should be set using ExtendPointKeyBounds. They are left
+	// exported for reads as an optimization.
+	SmallestPointKey InternalKey
+	LargestPointKey  InternalKey
+	// SmallestRangeKey and LargestRangeKey are the inclusive bounds for the
+	// internal range keys stored in the table.
+	// NB: these field should be set using ExtendRangeKeyBounds. They are left
+	// exported for reads as an optimization.
+	SmallestRangeKey InternalKey
+	LargestRangeKey  InternalKey
+	// Smallest and Largest are the inclusive bounds for the internal keys stored
+	// in the table, across both point and range keys.
+	// NB: these fields are derived from their point and range key equivalents,
+	// and are updated via the MaybeExtend{Point,Range}KeyBounds methods.
+	Smallest InternalKey
+	Largest  InternalKey
 	// Stats describe table statistics. Protected by DB.mu.
 	Stats TableStats
+
+	subLevel         int
+	L0Index          int
+	minIntervalIndex int
+	maxIntervalIndex int
+
+	// NB: the alignment of this struct is 8 bytes. We pack all the bools to
+	// ensure an optimal packing.
+
 	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
 	// pick L0 compactions. Only accurate for the most recent Version.
 	//
@@ -129,15 +138,87 @@ type FileMetadata struct {
 	// is true and IsIntraL0Compacting is false for an L0 file, the file must
 	// be part of a compaction to Lbase.
 	IsIntraL0Compacting bool
-	subLevel            int
-	L0Index             int
-	minIntervalIndex    int
-	maxIntervalIndex    int
-
+	// True if the file is actively being compacted. Protected by DB.mu.
+	Compacting bool
 	// True if user asked us to compact this file. This flag is only set and
 	// respected by RocksDB but exists here to preserve its value in the
 	// MANIFEST.
 	markedForCompaction bool
+	// HasPointKeys and HasRangeKeys track whether the table contains point and
+	// range keys, respectively.
+	HasPointKeys bool
+	HasRangeKeys bool
+	// smallestSet and largestSet track whether the overall bounds have been set.
+	boundsSet bool
+}
+
+// ExtendPointKeyBounds attempts to extend the lower and upper point key bounds
+// and overall table bounds with the given smallest and largest keys. The
+// smallest and largest bounds may not be extended if the table already has a
+// bound that is smaller or larger, respectively. The receiver is returned.
+// NB: calling this method should be preferred to manually setting the bounds by
+// manipulating the fields directly, to maintain certain invariants.
+func (m *FileMetadata) ExtendPointKeyBounds(
+	cmp Compare, smallest, largest InternalKey,
+) *FileMetadata {
+	// Update the point key bounds.
+	if !m.HasPointKeys {
+		m.SmallestPointKey, m.LargestPointKey = smallest, largest
+		m.HasPointKeys = true
+	} else {
+		if base.InternalCompare(cmp, smallest, m.SmallestPointKey) < 0 {
+			m.SmallestPointKey = smallest
+		}
+		if base.InternalCompare(cmp, largest, m.LargestPointKey) > 0 {
+			m.LargestPointKey = largest
+		}
+	}
+	// Update the overall bounds.
+	m.extendOverallBounds(cmp, m.SmallestPointKey, m.LargestPointKey)
+	return m
+}
+
+// ExtendRangeKeyBounds attempts to extend the lower and upper range key bounds
+// and overall table bounds with the given smallest and largest keys. The
+// smallest and largest bounds may not be extended if the table already has a
+// bound that is smaller or larger, respectively. The receiver is returned.
+// NB: calling this method should be preferred to manually setting the bounds by
+// manipulating the fields directly, to maintain certain invariants.
+func (m *FileMetadata) ExtendRangeKeyBounds(
+	cmp Compare, smallest, largest InternalKey,
+) *FileMetadata {
+	// Update the range key bounds.
+	if !m.HasRangeKeys {
+		m.SmallestRangeKey, m.LargestRangeKey = smallest, largest
+		m.HasRangeKeys = true
+	} else {
+		if base.InternalCompare(cmp, smallest, m.SmallestRangeKey) < 0 {
+			m.SmallestRangeKey = smallest
+		}
+		if base.InternalCompare(cmp, largest, m.LargestRangeKey) > 0 {
+			m.LargestRangeKey = largest
+		}
+	}
+	// Update the overall bounds.
+	m.extendOverallBounds(cmp, m.SmallestRangeKey, m.LargestRangeKey)
+	return m
+}
+
+// extendOverallBounds attempts to extend the overall table lower and upper
+// bounds. The given bounds may not be used if a lower or upper bound already
+// exists that is smaller or larger than the given keys, respectively.
+func (m *FileMetadata) extendOverallBounds(cmp Compare, smallest, largest InternalKey) {
+	if !m.boundsSet {
+		m.Smallest, m.Largest = smallest, largest
+		m.boundsSet = true
+	} else {
+		if base.InternalCompare(cmp, smallest, m.Smallest) < 0 {
+			m.Smallest = smallest
+		}
+		if base.InternalCompare(cmp, largest, m.Largest) > 0 {
+			m.Largest = largest
+		}
+	}
 }
 
 func (m *FileMetadata) String() string {
@@ -147,24 +228,12 @@ func (m *FileMetadata) String() string {
 // Validate validates the metadata for consistency with itself, returning an
 // error if inconsistent.
 func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
-	// Point key validation.
-
-	if base.InternalCompare(cmp, m.SmallestPointKey, m.LargestPointKey) > 0 {
-		return base.CorruptionErrorf("file %s has inconsistent point key bounds: %s vs %s",
-			errors.Safe(m.FileNum), m.SmallestPointKey.Pretty(formatKey),
-			m.LargestPointKey.Pretty(formatKey))
-	}
-
-	// Range key validation.
-
-	if base.InternalCompare(cmp, m.SmallestRangeKey, m.LargestRangeKey) > 0 {
-		return base.CorruptionErrorf("file %s has inconsistent range key bounds: %s vs %s",
-			errors.Safe(m.FileNum), m.SmallestRangeKey.Pretty(formatKey),
-			m.LargestRangeKey.Pretty(formatKey))
-	}
-
 	// Combined range and point key validation.
 
+	if !m.HasPointKeys && !m.HasRangeKeys {
+		return base.CorruptionErrorf("file %s has neither point nor range keys",
+			errors.Safe(m.FileNum))
+	}
 	if base.InternalCompare(cmp, m.Smallest, m.Largest) > 0 {
 		return base.CorruptionErrorf("file %s has inconsistent bounds: %s vs %s",
 			errors.Safe(m.FileNum), m.Smallest.Pretty(formatKey),
@@ -175,11 +244,45 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 			errors.Safe(m.FileNum), m.SmallestSeqNum, m.LargestSeqNum)
 	}
 
-	// TODO(travers): add consistency checks to ensure that the point / range key
-	// smallest / largest are within the bounds of the combined smallest /
-	// largest. However, first we need a "sentinel key" for indicating whether the
-	// point or range key bounds are actually set. See the TODO on
-	// SmallestPointKey.
+	// Point key validation.
+
+	if m.HasPointKeys {
+		if base.InternalCompare(cmp, m.SmallestPointKey, m.LargestPointKey) > 0 {
+			return base.CorruptionErrorf("file %s has inconsistent point key bounds: %s vs %s",
+				errors.Safe(m.FileNum), m.SmallestPointKey.Pretty(formatKey),
+				m.LargestPointKey.Pretty(formatKey))
+		}
+		if base.InternalCompare(cmp, m.SmallestPointKey, m.Smallest) < 0 ||
+			base.InternalCompare(cmp, m.LargestPointKey, m.Largest) > 0 {
+			return base.CorruptionErrorf(
+				"file %s has inconsistent point key bounds relative to overall bounds: "+
+					"overall = [%s-%s], point keys = [%s-%s]",
+				errors.Safe(m.FileNum),
+				m.Smallest.Pretty(formatKey), m.Largest.Pretty(formatKey),
+				m.SmallestPointKey.Pretty(formatKey), m.LargestPointKey.Pretty(formatKey),
+			)
+		}
+	}
+
+	// Range key validation.
+
+	if m.HasRangeKeys {
+		if base.InternalCompare(cmp, m.SmallestRangeKey, m.LargestRangeKey) > 0 {
+			return base.CorruptionErrorf("file %s has inconsistent range key bounds: %s vs %s",
+				errors.Safe(m.FileNum), m.SmallestRangeKey.Pretty(formatKey),
+				m.LargestRangeKey.Pretty(formatKey))
+		}
+		if base.InternalCompare(cmp, m.SmallestRangeKey, m.Smallest) < 0 ||
+			base.InternalCompare(cmp, m.LargestRangeKey, m.Largest) > 0 {
+			return base.CorruptionErrorf(
+				"file %s has inconsistent range key bounds relative to overall bounds: "+
+					"overall = [%s-%s], range keys = [%s-%s]",
+				errors.Safe(m.FileNum),
+				m.Smallest.Pretty(formatKey), m.Largest.Pretty(formatKey),
+				m.SmallestRangeKey.Pretty(formatKey), m.LargestRangeKey.Pretty(formatKey),
+			)
+		}
+	}
 
 	return nil
 }
@@ -509,13 +612,10 @@ func ParseVersionDebug(
 			}
 			smallest := base.ParsePrettyInternalKey(fields[1])
 			largest := base.ParsePrettyInternalKey(fields[2])
-			files[level] = append(files[level], &FileMetadata{
-				FileNum:          base.FileNum(fileNum),
-				SmallestPointKey: smallest,
-				LargestPointKey:  largest,
-				Smallest:         smallest,
-				Largest:          largest,
-			})
+			m := (&FileMetadata{
+				FileNum: base.FileNum(fileNum),
+			}).ExtendPointKeyBounds(cmp, smallest, largest)
+			files[level] = append(files[level], m)
 		}
 	}
 	// Reverse the order of L0 files. This ensures we construct the same

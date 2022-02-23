@@ -2233,12 +2233,15 @@ func (d *DB) runCompaction(
 			)
 		}
 
-		meta.SmallestPointKey = writerMeta.SmallestPointKey(d.cmp)
-		meta.LargestPointKey = writerMeta.LargestPointKey(d.cmp)
-		meta.SmallestRangeKey = writerMeta.SmallestRangeKey
-		meta.LargestRangeKey = writerMeta.LargestRangeKey
-		meta.Smallest = writerMeta.Smallest(d.cmp)
-		meta.Largest = writerMeta.Largest(d.cmp)
+		if writerMeta.HasPointKeys {
+			meta.ExtendPointKeyBounds(d.cmp, writerMeta.SmallestPoint, writerMeta.LargestPoint)
+		}
+		if writerMeta.HasRangeDelKeys {
+			meta.ExtendPointKeyBounds(d.cmp, writerMeta.SmallestRangeDel, writerMeta.LargestRangeDel)
+		}
+		if writerMeta.HasRangeKeys {
+			meta.ExtendRangeKeyBounds(d.cmp, writerMeta.SmallestRangeKey, writerMeta.LargestRangeKey)
+		}
 
 		// Verify that the sstable bounds fall within the compaction input
 		// bounds. This is a sanity check that we don't have a logic error
