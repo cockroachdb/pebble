@@ -93,6 +93,36 @@ type Iterator interface {
 	SetCloseHook(fn func(i Iterator) error)
 }
 
+// FragmentIterator is a version of Iterator that wraps keyspan.FragmentIterator
+// instead of InternalIterator, and adds SetCloseHook.
+type FragmentIterator interface {
+	keyspan.FragmentIterator
+
+	SetCloseHook(fn func(i Iterator) error)
+}
+
+// A wrappedBlockIter implements the Iterator interface and adds close hook
+// support to raw block iterators. For use when the only part of the table
+// we want to iterate over is contained in one block, eg. the range keys block.
+type wrappedBlockIter struct {
+	blockIter
+
+	closeHook func(i Iterator) error
+}
+
+func (w *wrappedBlockIter) SetCloseHook(fn func(i Iterator) error) {
+	w.closeHook = fn
+}
+
+func (w *wrappedBlockIter) Close() error {
+	var err error
+	if w.closeHook != nil {
+		err = w.closeHook(w)
+	}
+	err = firstError(err, w.blockIter.Close())
+	return err
+}
+
 // singleLevelIterator iterates over an entire table of data. To seek for a given
 // key, it first looks in the index for the block that contains that key, and then
 // looks inside that block.
@@ -2177,7 +2207,7 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 // NewRawRangeKeyIter returns an internal iterator for the contents of the
 // range-key block for the table. Returns nil if the table does not contain any
 // range keys.
-func (r *Reader) NewRawRangeKeyIter() (base.InternalIterator, error) {
+func (r *Reader) NewRawRangeKeyIter() (FragmentIterator, error) {
 	if r.rangeKeyBH.Length == 0 {
 		return nil, nil
 	}
@@ -2185,7 +2215,7 @@ func (r *Reader) NewRawRangeKeyIter() (base.InternalIterator, error) {
 	if err != nil {
 		return nil, err
 	}
-	i := &blockIter{}
+	i := &wrappedBlockIter{}
 	if err := i.initHandle(r.Compare, h, r.Properties.GlobalSeqNum); err != nil {
 		return nil, err
 	}
