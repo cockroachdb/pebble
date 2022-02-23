@@ -4,7 +4,11 @@
 
 package base
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func (k InternalKey) encodedString() string {
 	buf := make([]byte, k.Size())
@@ -143,6 +147,68 @@ func TestInternalKeySeparator(t *testing.T) {
 			if cmp := InternalCompare(d.Compare, expected, result); cmp != 0 {
 				t.Fatalf("expected %s, but found %s", expected, result)
 			}
+		})
+	}
+}
+
+func TestIsExclusiveSentinel(t *testing.T) {
+	userKey := []byte("foo")
+	testCases := []struct {
+		name string
+		key  InternalKey
+		want bool
+	}{
+		{
+			name: "rangedel; max seqnum",
+			key:  MakeInternalKey(userKey, InternalKeySeqNumMax, InternalKeyKindRangeKeyDelete),
+			want: true,
+		},
+		{
+			name: "rangedel; non-max seqnum",
+			key:  MakeInternalKey(userKey, 42, InternalKeyKindRangeKeyDelete),
+			want: false,
+		},
+		{
+			name: "rangekeyset; max seqnum",
+			key:  MakeInternalKey(userKey, InternalKeySeqNumMax, InternalKeyKindRangeKeySet),
+			want: true,
+		},
+		{
+			name: "rangekeyset; non-max seqnum",
+			key:  MakeInternalKey(userKey, 42, InternalKeyKindRangeKeySet),
+			want: false,
+		},
+		{
+			name: "rangekeyunset; max seqnum",
+			key:  MakeInternalKey(userKey, InternalKeySeqNumMax, InternalKeyKindRangeKeyUnset),
+			want: true,
+		},
+		{
+			name: "rangekeyunset; non-max seqnum",
+			key:  MakeInternalKey(userKey, 42, InternalKeyKindRangeKeyUnset),
+			want: false,
+		},
+		{
+			name: "rangekeydel; max seqnum",
+			key:  MakeInternalKey(userKey, InternalKeySeqNumMax, InternalKeyKindRangeKeyDelete),
+			want: true,
+		},
+		{
+			name: "rangekeydel; non-max seqnum",
+			key:  MakeInternalKey(userKey, 42, InternalKeyKindRangeKeyDelete),
+			want: false,
+		},
+		{
+			name: "neither rangedel nor rangekey",
+			key:  MakeInternalKey(userKey, InternalKeySeqNumMax, InternalKeyKindSet),
+			want: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.key.IsExclusiveSentinel()
+			require.Equal(t, tc.want, got)
 		})
 	}
 }

@@ -184,7 +184,7 @@ func ingestLoad1(
 				if !ok {
 					return nil, errors.Newf("pebble: could not decode range end key")
 				}
-				meta.LargestRangeKey = base.MakeRangeKeySentinelKey(end).Clone()
+				meta.LargestRangeKey = base.MakeRangeKeySentinelKey(key.Kind(), end).Clone()
 				hasRanges = true // Implies smallest range key was also set.
 			}
 			if err := iter.Error(); err != nil {

@@ -166,10 +166,10 @@ func MakeRangeDeleteSentinelKey(userKey []byte) InternalKey {
 // MakeRangeKeySentinelKey constructs an internal key that is a range key
 // sentinel key, used as the upper boundary for an sstable when a range key is
 // the largest key in an sstable.
-func MakeRangeKeySentinelKey(userKey []byte) InternalKey {
+func MakeRangeKeySentinelKey(kind InternalKeyKind, userKey []byte) InternalKey {
 	return InternalKey{
 		UserKey: userKey,
-		Trailer: InternalKeyBoundaryRangeKey,
+		Trailer: (InternalKeySeqNumMax << 8) | uint64(kind),
 	}
 }
 
@@ -356,9 +356,14 @@ func (k InternalKey) Pretty(f FormatKey) fmt.Formatter {
 // with the same user key if used as an end boundary. See the comment on
 // InternalKeyRangeDeletionSentinel.
 func (k InternalKey) IsExclusiveSentinel() bool {
-	// TODO(jackson): This may need to change to include separate sentinels for
-	// range key unsets and deletes.
-	return k.Trailer == InternalKeyRangeDeleteSentinel || k.Trailer == InternalKeyBoundaryRangeKey
+	switch kind := k.Kind(); kind {
+	case InternalKeyKindRangeDelete:
+		return k.Trailer == InternalKeyRangeDeleteSentinel
+	case InternalKeyKindRangeKeyDelete, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet:
+		return (k.Trailer >> 8) == InternalKeySeqNumMax
+	default:
+		return false
+	}
 }
 
 type prettyInternalKey struct {
