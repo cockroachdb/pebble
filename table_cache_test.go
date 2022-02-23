@@ -163,9 +163,12 @@ func newTableCacheContainerTest(
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "fs.Create")
 		}
-		tw := sstable.NewWriter(f, sstable.WriterOptions{})
+		tw := sstable.NewWriter(f, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
 		ik := base.ParseInternalKey(fmt.Sprintf("k.SET.%d", i))
 		if err := tw.Add(ik, xxx[:i]); err != nil {
+			return nil, nil, errors.Wrap(err, "tw.Set")
+		}
+		if err := tw.RangeKeySet([]byte("k"), []byte("l"), nil, xxx[:i]); err != nil {
 			return nil, nil, errors.Wrap(err, "tw.Set")
 		}
 		if err := tw.Close(); err != nil {
@@ -483,7 +486,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 func TestTableCacheRandomAccessSequential(t *testing.T) { testTableCacheRandomAccess(t, false) }
 func TestTableCacheRandomAccessConcurrent(t *testing.T) { testTableCacheRandomAccess(t, true) }
 
-func TestTableCacheFrequentlyUsed(t *testing.T) {
+func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 	const (
 		N       = 1000
 		pinned0 = 7
@@ -494,10 +497,18 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
-			iter, _, err := c.newIters(
-				&fileMetadata{FileNum: FileNum(j)},
-				nil, /* iter options */
-				nil /* bytes iterated */)
+			var iter internalIterator
+			var err error
+			if rangeIter {
+				iter, err = c.newRangeKeyIter(
+					&fileMetadata{FileNum: FileNum(j)},
+					nil /* iter options */)
+			} else {
+				iter, _, err = c.newIters(
+					&fileMetadata{FileNum: FileNum(j)},
+					nil, /* iter options */
+					nil /* bytes iterated */)
+			}
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
@@ -515,6 +526,14 @@ func TestTableCacheFrequentlyUsed(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+func TestTableCacheFrequentlyUsed(t *testing.T) {
+	for i, iterType := range []string{"point", "range"} {
+		t.Run(fmt.Sprintf("iter=%s", iterType), func(t *testing.T) {
+			testTableCacheFrequentlyUsedInternal(t, i == 1)
+		})
+	}
 }
 
 func TestSharedTableCacheFrequentlyUsed(t *testing.T) {
@@ -575,7 +594,7 @@ func TestSharedTableCacheFrequentlyUsed(t *testing.T) {
 	})
 }
 
-func TestTableCacheEvictions(t *testing.T) {
+func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 	const (
 		N      = 1000
 		lo, hi = 10, 20
@@ -586,10 +605,18 @@ func TestTableCacheEvictions(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 	for i := 0; i < N; i++ {
 		j := rng.Intn(tableCacheTestNumTables)
-		iter, _, err := c.newIters(
-			&fileMetadata{FileNum: FileNum(j)},
-			nil, /* iter options */
-			nil /* bytes iterated */)
+		var iter internalIterator
+		var err error
+		if rangeIter {
+			iter, err = c.newRangeKeyIter(
+				&fileMetadata{FileNum: FileNum(j)},
+				nil /* iter options */)
+		} else {
+			iter, _, err = c.newIters(
+				&fileMetadata{FileNum: FileNum(j)},
+				nil, /* iter options */
+				nil /* bytes iterated */)
+		}
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
@@ -621,6 +648,14 @@ func TestTableCacheEvictions(t *testing.T) {
 	if ratio := fEvicted / fSafe; ratio < 1.25 {
 		t.Errorf("evicted tables were opened %.3f times on average, safe tables %.3f, ratio %.3f < 1.250",
 			fEvicted, fSafe, ratio)
+	}
+}
+
+func TestTableCacheEvictions(t *testing.T) {
+	for i, iterType := range []string{"point", "range"} {
+		t.Run(fmt.Sprintf("iter=%s", iterType), func(t *testing.T) {
+			testTableCacheEvictionsInternal(t, i == 1)
+		})
 	}
 }
 

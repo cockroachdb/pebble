@@ -953,6 +953,7 @@ type fragmentBlockIter struct {
 	blockIter blockIter
 	span      keyspan.Span
 	err       error
+	closeHook func(i keyspan.FragmentIterator) error
 }
 
 func (i *fragmentBlockIter) decodeSpan(
@@ -1029,7 +1030,12 @@ func (i *fragmentBlockIter) Clone() keyspan.FragmentIterator {
 // Close implements (base.InternalIterator).Close, as documented in the
 // internal/base package.
 func (i *fragmentBlockIter) Close() error {
-	return i.blockIter.Close()
+	var err error
+	if i.closeHook != nil {
+		err = i.closeHook(i)
+	}
+	err = firstError(err, i.blockIter.Close())
+	return err
 }
 
 // First implements (base.InternalIterator).First, as documented in the
@@ -1085,4 +1091,9 @@ func (i *fragmentBlockIter) SetBounds(lower, upper []byte) {
 // String implements fmt.Stringer.
 func (i *fragmentBlockIter) String() string {
 	return "fragment-block-iter"
+}
+
+// SetCloseHook implements sstable.FragmentIterator.
+func (i *fragmentBlockIter) SetCloseHook(fn func(i keyspan.FragmentIterator) error) {
+	i.closeHook = fn
 }

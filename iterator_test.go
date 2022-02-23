@@ -1301,16 +1301,16 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 						if upper, err = strconv.Atoi(arg.Vals[2]); err != nil {
 							return err.Error()
 						}
-						opts.BlockPropertyFilters = append(opts.BlockPropertyFilters,
+						opts.PointKeyFilters = append(opts.PointKeyFilters,
 							sstable.NewBlockIntervalFilter(fmt.Sprintf("%d", id),
 								uint64(lower), uint64(upper)))
 					default:
 						return fmt.Sprintf("unknown key: %s", arg.Key)
 					}
 				}
-				rand.Shuffle(len(opts.BlockPropertyFilters), func(i, j int) {
-					opts.BlockPropertyFilters[i], opts.BlockPropertyFilters[j] =
-						opts.BlockPropertyFilters[j], opts.BlockPropertyFilters[i]
+				rand.Shuffle(len(opts.PointKeyFilters), func(i, j int) {
+					opts.PointKeyFilters[i], opts.PointKeyFilters[j] =
+						opts.PointKeyFilters[j], opts.PointKeyFilters[i]
 				})
 				iter := d.NewIter(&opts)
 				return runIterCmd(td, iter, true)
@@ -1389,7 +1389,7 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 	}
 
 	var iterOpts IterOptions
-	iterOpts.BlockPropertyFilters = []BlockPropertyFilter{
+	iterOpts.PointKeyFilters = []BlockPropertyFilter{
 		sstable.NewBlockIntervalFilter("0",
 			uint64(lower), uint64(upper)),
 	}
@@ -1727,7 +1727,7 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 				b.Run(fmt.Sprintf("filter=%t", filter), func(b *testing.B) {
 					var iterOpts IterOptions
 					if filter {
-						iterOpts.BlockPropertyFilters = []BlockPropertyFilter{
+						iterOpts.PointKeyFilters = []BlockPropertyFilter{
 							sstable.NewBlockIntervalFilter("0",
 								uint64(0), uint64(1)),
 						}

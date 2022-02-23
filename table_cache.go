@@ -117,6 +117,12 @@ func (c *tableCacheContainer) newIters(
 	return c.tableCache.getShard(file.FileNum).newIters(file, opts, bytesIterated, &c.dbOpts)
 }
 
+func (c *tableCacheContainer) newRangeKeyIter(
+	file *manifest.FileMetadata, opts *IterOptions,
+) (keyspan.FragmentIterator, error) {
+	return c.tableCache.getShard(file.FileNum).newRangeKeyIter(file, opts, &c.dbOpts)
+}
+
 func (c *tableCacheContainer) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
 	return c.tableCache.getShard(file.FileNum).getTableProperties(file, &c.dbOpts)
 }
@@ -261,7 +267,7 @@ type tableCacheShard struct {
 		sync.RWMutex
 		nodes map[tableCacheKey]*tableCacheNode
 		// The iters map is only created and populated in race builds.
-		iters map[sstable.Iterator][]byte
+		iters map[base.InternalIterator][]byte
 
 		handHot  *tableCacheNode
 		handCold *tableCacheNode
@@ -285,7 +291,7 @@ func (c *tableCacheShard) init(size int) {
 	go c.releaseLoop()
 
 	if invariants.RaceEnabled {
-		c.mu.iters = make(map[sstable.Iterator][]byte)
+		c.mu.iters = make(map[base.InternalIterator][]byte)
 	}
 }
 
@@ -295,6 +301,32 @@ func (c *tableCacheShard) releaseLoop() {
 			v.release(c)
 		}
 	})
+}
+
+// checkAndIntersectFilters checks the specific table and block property filters
+// for intersection with any available table and block-level properties. Returns
+// true for ok if this table should be read by this iterator.
+func (c *tableCacheShard) checkAndIntersectFilters(
+	v *tableCacheValue, tableFilter func(userProps map[string]string) bool,
+	blockPropertyFilters []BlockPropertyFilter,
+) (ok bool, filterer *sstable.BlockPropertiesFilterer, err error) {
+	if tableFilter != nil &&
+		!tableFilter(v.reader.Properties.UserProperties) {
+		return false, nil, nil
+	}
+
+	if len(blockPropertyFilters) > 0 {
+		filterer = sstable.NewBlockPropertiesFilterer(blockPropertyFilters)
+		intersects, err :=
+			filterer.IntersectsUserPropsAndFinishInit(v.reader.Properties.UserProperties)
+		if err != nil {
+			return false, nil, err
+		}
+		if !intersects {
+			return false, nil, nil
+		}
+	}
+	return true, filterer, nil
 }
 
 func (c *tableCacheShard) newIters(
@@ -311,36 +343,24 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, v.err
 	}
 
-	if opts != nil &&
-		opts.TableFilter != nil &&
-		!opts.TableFilter(v.reader.Properties.UserProperties) {
+	ok := true
+	var filterer *sstable.BlockPropertiesFilterer
+	var err error
+	if opts != nil {
+		ok, filterer, err = c.checkAndIntersectFilters(v, opts.TableFilter, opts.PointKeyFilters)
+	}
+	if err != nil {
+		c.unrefValue(v)
+		return nil, nil, err
+	}
+	if !ok {
+		c.unrefValue(v)
 		// Return the empty iterator. This iterator has no mutable state, so
 		// using a singleton is fine.
-		c.unrefValue(v)
-		return emptyIter, nil, nil
-	}
-	var bpfs []BlockPropertyFilter
-	if opts != nil {
-		bpfs = opts.BlockPropertyFilters
-	}
-	var filterer *sstable.BlockPropertiesFilterer
-	if len(bpfs) > 0 {
-		filterer = sstable.NewBlockPropertiesFilterer(bpfs)
-		intersects, err :=
-			filterer.IntersectsUserPropsAndFinishInit(v.reader.Properties.UserProperties)
-		if err != nil {
-			return nil, nil, err
-		}
-		if !intersects {
-			// Return the empty iterator. This iterator has no mutable state, so
-			// using a singleton is fine.
-			c.unrefValue(v)
-			return emptyIter, nil, nil
-		}
+		return emptyIter, nil, err
 	}
 
 	var iter sstable.Iterator
-	var err error
 	if bytesIterated != nil {
 		iter, err = v.reader.NewCompactionIter(bytesIterated)
 	} else {
@@ -352,7 +372,9 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, err
 	}
 	// NB: v.closeHook takes responsibility for calling unrefValue(v) here.
-	iter.SetCloseHook(v.closeHook)
+	iter.SetCloseHook(func(i sstable.Iterator) error {
+		return v.closeHook(i)
+	})
 
 	atomic.AddInt32(&c.atomic.iterCount, 1)
 	atomic.AddInt32(dbOpts.atomic.iterCount, 1)
@@ -374,6 +396,62 @@ func (c *tableCacheShard) newIters(
 	}
 	// NB: Translate a nil range-del iterator into a nil interface.
 	return iter, nil, nil
+}
+
+func (c *tableCacheShard) newRangeKeyIter(
+	file *manifest.FileMetadata, opts *IterOptions, dbOpts *tableCacheOpts,
+) (keyspan.FragmentIterator, error) {
+	// Calling findNode gives us the responsibility of decrementing v's
+	// refCount. If opening the underlying table resulted in error, then we
+	// decrement this straight away. Otherwise, we pass that responsibility to
+	// the sstable iterator, which decrements when it is closed.
+	v := c.findNode(file, dbOpts)
+	if v.err != nil {
+		defer c.unrefValue(v)
+		base.MustExist(dbOpts.fs, v.filename, dbOpts.logger, v.err)
+		return nil, v.err
+	}
+
+	ok := true
+	var err error
+	if opts != nil {
+		ok, _, err = c.checkAndIntersectFilters(v, opts.TableFilter, opts.RangeKeyFilters)
+	}
+	if err != nil {
+		c.unrefValue(v)
+		return nil, err
+	}
+	if !ok {
+		c.unrefValue(v)
+		// Return the empty iterator. This iterator has no mutable state, so
+		// using a singleton is fine.
+		return emptyIter, err
+	}
+
+	var iter sstable.FragmentIterator
+	// TODO(bilal): We are currently passing through the raw blockIter for range
+	// keys. This iter does not support bounds (eg. SetBounds will panic).
+	// Any future users of the iter returned by this function need to make any
+	// bounds-specific optimizations themselves.
+	iter, err = v.reader.NewRawRangeKeyIter()
+	if err != nil || iter == nil {
+		c.unrefValue(v)
+		return nil, err
+	}
+	// NB: v.closeHook takes responsibility for calling unrefValue(v) here.
+	iter.SetCloseHook(func(i keyspan.FragmentIterator) error {
+		return v.closeHook(i)
+	})
+
+	atomic.AddInt32(&c.atomic.iterCount, 1)
+	atomic.AddInt32(dbOpts.atomic.iterCount, 1)
+	if invariants.RaceEnabled {
+		c.mu.Lock()
+		c.mu.iters[iter] = debug.Stack()
+		c.mu.Unlock()
+	}
+
+	return iter, nil
 }
 
 // getTableProperties return sst table properties for target file
@@ -522,7 +600,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 	}
 	// Cache the closure invoked when an iterator is closed. This avoids an
 	// allocation on every call to newIters.
-	v.closeHook = func(i sstable.Iterator) error {
+	v.closeHook = func(i base.InternalIterator) error {
 		if invariants.RaceEnabled {
 			c.mu.Lock()
 			delete(c.mu.iters, i)
@@ -752,7 +830,7 @@ func (c *tableCacheShard) Close() error {
 }
 
 type tableCacheValue struct {
-	closeHook func(i sstable.Iterator) error
+	closeHook func(i base.InternalIterator) error
 	reader    *sstable.Reader
 	filename  string
 	err       error
