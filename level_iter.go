@@ -21,6 +21,9 @@ type tableNewIters func(
 	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
 ) (internalIterator, keyspan.FragmentIterator, error)
 
+// tableNewRangeKeyIter creates a new range key iterator for the given file.
+type tableNewRangeKeyIter func(file *manifest.FileMetadata, opts *IterOptions) (keyspan.FragmentIterator, error)
+
 // levelIter provides a merged view of the sstables in a level.
 //
 // levelIter is used during compaction and as part of the Iterator
@@ -186,7 +189,7 @@ func (l *levelIter) init(
 	l.lower = opts.LowerBound
 	l.upper = opts.UpperBound
 	l.tableOpts.TableFilter = opts.TableFilter
-	l.tableOpts.BlockPropertyFilters = opts.BlockPropertyFilters
+	l.tableOpts.PointKeyFilters = opts.PointKeyFilters
 	l.cmp = cmp
 	l.split = split
 	l.iterFile = nil

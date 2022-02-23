@@ -93,12 +93,16 @@ type IterOptions struct {
 	// false to skip scanning. This function must be thread-safe since the same
 	// function can be used by multiple iterators, if the iterator is cloned.
 	TableFilter func(userProps map[string]string) bool
-	// BlockPropertyFilters can be used to avoid scanning tables and blocks in
-	// tables. It is requires that this slice is sorted in increasing order of
-	// the BlockPropertyFilter.ShortID. This slice represents an intersection
-	// across all filters, i.e., all filters must indicate that the block is
-	// relevant.
-	BlockPropertyFilters []BlockPropertyFilter
+	// PointKeyFilters can be used to avoid scanning tables and blocks in tables
+	// when iterating over point keys. It is requires that this slice is sorted in
+	// increasing order of the BlockPropertyFilter.ShortID. This slice represents
+	// an intersection across all filters, i.e., all filters must indicate that the
+	// block is relevant.
+	PointKeyFilters []BlockPropertyFilter
+	// RangeKeyFilters can be usefd to avoid scanning tables and blocks in tables
+	// when iterating over range keys. The same requirements that apply to
+	// PointKeyFilters apply here too.
+	RangeKeyFilters []BlockPropertyFilter
 	// KeyTypes configures which types of keys to iterate over: point keys,
 	// range keys, or both.
 	KeyTypes IterKeyType

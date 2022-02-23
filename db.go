@@ -259,8 +259,9 @@ type DB struct {
 	dataDir  vfs.File
 	walDir   vfs.File
 
-	tableCache *tableCacheContainer
-	newIters   tableNewIters
+	tableCache           *tableCacheContainer
+	newIters             tableNewIters
+	tableNewRangeKeyIter tableNewRangeKeyIter
 
 	commit *commitPipeline
 
