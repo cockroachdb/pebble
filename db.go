@@ -396,8 +396,6 @@ type DB struct {
 			// readCompactions is a readCompactionQueue which keeps track of the
 			// compactions which we might have to perform.
 			readCompactions readCompactionQueue
-			// See DB.RegisterFlushCompletedCallback.
-			flushCompletedCallback func()
 		}
 
 		cleaner struct {
