@@ -229,7 +229,7 @@ a.RANGEKEYDEL.1:b
 ----
 point:    [#0,0,#0,0]
 rangedel: [#0,0,#0,0]
-rangekey: [a#1,21,b#72057594037927935,19]
+rangekey: [a#1,21,b#72057594037927935,21]
 seqnums:  [1,1]
 
 # The range-del-v1 format supports unfragmented and unsorted range

@@ -120,7 +120,7 @@ f@20.RANGEKEYDEL.6: z@25
 ----
 point:    [a@5#1,1,c@15#3,1]
 rangedel: [#0,0,#0,0]
-rangekey: [d@10#4,21,z@25#72057594037927935,19]
+rangekey: [d@10#4,21,z@25#72057594037927935,21]
 seqnums:  [1,6]
 
 collectors
@@ -148,7 +148,7 @@ f@20.RANGEKEYDEL.6: z@25
 ----
 point:    [a@5#1,1,c@15#3,1]
 rangedel: [#0,0,#0,0]
-rangekey: [d@10#4,21,z@25#72057594037927935,19]
+rangekey: [d@10#4,21,z@25#72057594037927935,21]
 seqnums:  [1,6]
 
 collectors
@@ -176,7 +176,7 @@ f@20.RANGEKEYDEL.6: z@25
 ----
 point:    [a@5#1,1,c@15#3,1]
 rangedel: [#0,0,#0,0]
-rangekey: [d@10#4,21,z@25#72057594037927935,19]
+rangekey: [d@10#4,21,z@25#72057594037927935,21]
 seqnums:  [1,6]
 
 collectors
@@ -205,7 +205,7 @@ f@20.RANGEKEYDEL.6: z@25
 ----
 point:    [a@5#1,1,c@15#3,1]
 rangedel: [#0,0,#0,0]
-rangekey: [d@10#4,21,z@25#72057594037927935,19]
+rangekey: [d@10#4,21,z@25#72057594037927935,21]
 seqnums:  [1,6]
 
 collectors
