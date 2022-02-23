@@ -135,11 +135,9 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				keys := strings.Fields(line)
 				smallestKey := base.ParseInternalKey(keys[0])
 				largestKey := base.ParseInternalKey(keys[1])
-				*li = append(*li, &fileMetadata{
-					FileNum:  fileNum,
-					Smallest: smallestKey,
-					Largest:  largestKey,
-				})
+				m := &fileMetadata{FileNum: fileNum}
+				m.MaybeExtendRangeKeyBounds(cmp, smallestKey, largestKey)
+				*li = append(*li, m)
 
 				i++
 				line = lines[i]

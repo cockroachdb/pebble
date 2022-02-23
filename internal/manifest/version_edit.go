@@ -252,17 +252,29 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					}
 				}
 			}
+			smallestPointKey := base.DecodeInternalKey(smallest)
+			largestPointKey := base.DecodeInternalKey(largest)
 			v.NewFiles = append(v.NewFiles, NewFileEntry{
 				Level: level,
 				Meta: &FileMetadata{
 					FileNum:             fileNum,
 					Size:                size,
 					CreationTime:        int64(creationTime),
-					Smallest:            base.DecodeInternalKey(smallest),
-					Largest:             base.DecodeInternalKey(largest),
+					SmallestPointKey:    smallestPointKey,
+					LargestPointKey:     largestPointKey,
+					HasPointKeys:        true,
 					SmallestSeqNum:      smallestSeqNum,
 					LargestSeqNum:       largestSeqNum,
 					markedForCompaction: markedForCompaction,
+					// TODO(travers): For now the smallest and largest keys are pinned to
+					// the smallest and largest point keys, as these are the only types of
+					// keys supported in the manifest. This will need to change when the
+					// manifest is updated to support range keys, which will most likely
+					// leverage a bitset to infer which key types (points or ranges) are
+					// used for the overall smallest and largest keys.
+					Smallest:  smallestPointKey,
+					Largest:   largestPointKey,
+					boundsSet: true,
 				},
 			})
 
