@@ -477,6 +477,14 @@ type dataBlockBuf struct {
 	// backed by the dataBlock.buf, or the dataBlockBuf.compressedBuf, depending on whether
 	// we use the result of the compression.
 	compressed []byte
+
+	// We're making calls to BlockPropertyCollectors from the Writer client goroutine. We need to
+	// pass the encoded block properties over to the write queue. To prevent copies, and allocations,
+	// we give each dataBlockBuf, a blockPropertiesEncoder.
+	blockPropsEncoder blockPropertiesEncoder
+	// dataBlockProps is set when Writer.finishDataBlockProps is called. The dataBlockProps slice is
+	// a shallow copy of the internal buffer of the dataBlockBuf.blockPropsEncoder.
+	dataBlockProps []byte
 }
 
 var dataBlockBufPool = sync.Pool{
@@ -1011,6 +1019,14 @@ func (w *Writer) flush(key InternalKey) error {
 	estimatedUncompressedSize := w.dataBlockBuf.dataBlock.estimatedSize()
 	w.coordination.sizeEstimate.addInflightDataBlock(estimatedUncompressedSize)
 
+	var err error
+
+	// We're finishing a data block.
+	err = w.finishDataBlockProps(w.dataBlockBuf)
+	if err != nil {
+		return err
+	}
+
 	w.dataBlockBuf.finish()
 	w.dataBlockBuf.compressAndChecksum(w.compression)
 
@@ -1026,7 +1042,23 @@ func (w *Writer) flush(key InternalKey) error {
 		sep, encodedBHPEstimatedSize, w.indexBlockSize, w.indexBlockSizeThreshold,
 	)
 
-	var err error
+	var indexProps []byte
+	var flushableIndexBlock *indexBlockBuf
+	if shouldFlushIndexBlock {
+		flushableIndexBlock = w.indexBlock
+		w.indexBlock = newIndexBlockBuf()
+		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to flush the index block.
+		indexProps, err = w.finishIndexBlockProps()
+		if err != nil {
+			return err
+		}
+	}
+
+	// We've called BlockPropertyCollector.FinishDataBlock, and, if necessary, BlockPropertyCollector.FinishIndexBlock.
+	// Since we've decided to finish the data block, we can call BlockPropertyCollector.AddPrevDataBlockToIndexBlock.
+	w.addPrevDataBlockToIndexBlockProps()
+
+	// Schedule a write.
 	writeTask := writeTaskPool.Get().(*writeTask)
 	// We're setting compressionDone to indicate that compression of this block
 	// has already been completed.
@@ -1034,12 +1066,10 @@ func (w *Writer) flush(key InternalKey) error {
 	writeTask.buf = w.dataBlockBuf
 	writeTask.indexEntrySep = sep
 	writeTask.inflightSize = estimatedUncompressedSize
-	if shouldFlushIndexBlock {
-		writeTask.flushableIndexBlock = w.indexBlock
-		w.indexBlock = newIndexBlockBuf()
-	}
 	writeTask.currIndexBlock = w.indexBlock
 	writeTask.indexInflightSize = sep.Size() + encodedBHPEstimatedSize
+	writeTask.finishedIndexProps = indexProps
+	writeTask.flushableIndexBlock = flushableIndexBlock
 
 	// The writeTask corresponds to an unwritten index entry.
 	w.indexBlock.addInflight(writeTask.indexInflightSize)
@@ -1066,27 +1096,41 @@ func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
 	return nil
 }
 
-// The BlockHandleWithProperties returned by this method must be encoded
-// before any future use of the Writer.blockPropsEncoder, since the properties
-// slice will get reused by the blockPropsEncoder.
+// dataBlockBuf.dataBlockProps set by this method must be encoded before any future use of the
+// dataBlockBuf.blockPropsEncoder, since the properties slice will get reused by the
+// blockPropsEncoder.
+func (w *Writer) finishDataBlockProps(buf *dataBlockBuf) error {
+	if len(w.blockPropCollectors) == 0 {
+		return nil
+	}
+	var err error
+	buf.blockPropsEncoder.resetProps()
+	for i := range w.blockPropCollectors {
+		scratch := buf.blockPropsEncoder.getScratchForProp()
+		if scratch, err = w.blockPropCollectors[i].FinishDataBlock(scratch); err != nil {
+			return err
+		}
+		if len(scratch) > 0 {
+			buf.blockPropsEncoder.addProp(shortID(i), scratch)
+		}
+	}
+
+	buf.dataBlockProps = buf.blockPropsEncoder.unsafeProps()
+	return nil
+}
+
+// The BlockHandleWithProperties returned by this method must be encoded before any future use of
+// the Writer.blockPropsEncoder, since the properties slice will get reused by the blockPropsEncoder.
+// maybeAddBlockPropertiesToBlockHandle should only be called if block is being written synchronously
+// with the Writer client.
 func (w *Writer) maybeAddBlockPropertiesToBlockHandle(
 	bh BlockHandle,
 ) (BlockHandleWithProperties, error) {
-	if len(w.blockPropCollectors) == 0 {
-		return BlockHandleWithProperties{BlockHandle: bh}, nil
+	err := w.finishDataBlockProps(w.dataBlockBuf)
+	if err != nil {
+		return BlockHandleWithProperties{}, err
 	}
-	var err error
-	w.blockPropsEncoder.resetProps()
-	for i := range w.blockPropCollectors {
-		scratch := w.blockPropsEncoder.getScratchForProp()
-		if scratch, err = w.blockPropCollectors[i].FinishDataBlock(scratch); err != nil {
-			return BlockHandleWithProperties{}, err
-		}
-		if len(scratch) > 0 {
-			w.blockPropsEncoder.addProp(shortID(i), scratch)
-		}
-	}
-	return BlockHandleWithProperties{BlockHandle: bh, Props: w.blockPropsEncoder.unsafeProps()}, nil
+	return BlockHandleWithProperties{BlockHandle: bh, Props: w.dataBlockBuf.dataBlockProps}, nil
 }
 
 func (w *Writer) indexEntrySep(prevKey, key InternalKey, indexBlockBuf *indexBlockBuf) InternalKey {
@@ -1105,10 +1149,11 @@ func (w *Writer) indexEntrySep(prevKey, key InternalKey, indexBlockBuf *indexBlo
 }
 
 // addIndexEntry adds an index entry for the specified key and block handle. addIndexEntry can be called from
-// both the Writer client goroutine, and the writeQueue goroutine.
+// both the Writer client goroutine, and the writeQueue goroutine. If the flushIndexBuf != nil, then the
+// indexProps, as they're used when the index block is finished.
 func (w *Writer) addIndexEntry(
 	sep InternalKey, bhp BlockHandleWithProperties, tmp []byte,
-	flushIndexBuf *indexBlockBuf, writeTo *indexBlockBuf, inflightSize int) error {
+	flushIndexBuf *indexBlockBuf, writeTo *indexBlockBuf, inflightSize int, indexProps []byte) error {
 	if bhp.Length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
@@ -1123,16 +1168,19 @@ func (w *Writer) addIndexEntry(
 		}
 		// Enable two level indexes if there is more than one index block.
 		w.twoLevelIndex = true
-		if err := w.finishIndexBlock(flushIndexBuf); err != nil {
+		if err := w.finishIndexBlock(flushIndexBuf, indexProps); err != nil {
 			return err
 		}
 	}
 
+	writeTo.add(sep, encoded, inflightSize)
+	return nil
+}
+
+func (w *Writer) addPrevDataBlockToIndexBlockProps() {
 	for i := range w.blockPropCollectors {
 		w.blockPropCollectors[i].AddPrevDataBlockToIndexBlock()
 	}
-	writeTo.add(sep, encoded, inflightSize)
-	return nil
 }
 
 // addIndexEntrySync adds an index entry for the specified key and block handle. Writer.addIndexEntry is only
@@ -1145,11 +1193,22 @@ func (w *Writer) addIndexEntrySync(prevKey, key InternalKey, bhp BlockHandleWith
 		sep, encodedBHPEstimatedSize, w.indexBlockSize, w.indexBlockSizeThreshold,
 	)
 	var flushableIndexBlock *indexBlockBuf
+	var props []byte
+	var err error
 	if shouldFlush {
 		flushableIndexBlock = w.indexBlock
 		w.indexBlock = newIndexBlockBuf()
+
+		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to flush the index block.
+		props, err = w.finishIndexBlockProps()
+		if err != nil {
+			return err
+		}
 	}
-	return w.addIndexEntry(sep, bhp, tmp, flushableIndexBlock, w.indexBlock, 0)
+
+	err = w.addIndexEntry(sep, bhp, tmp, flushableIndexBlock, w.indexBlock, 0, props)
+	w.addPrevDataBlockToIndexBlockProps()
+	return err
 }
 
 func shouldFlush(
@@ -1195,22 +1254,26 @@ func cloneKeyWithBuf(k InternalKey, buf []byte) ([]byte, InternalKey) {
 	return buf[n:], InternalKey{UserKey: buf[:n:n], Trailer: k.Trailer}
 }
 
-// finishIndexBlock finishes the current index block and adds it to the top
-// level index block. This is only used when two level indexes are enabled.
-func (w *Writer) finishIndexBlock(indexBuf *indexBlockBuf) error {
+func (w *Writer) finishIndexBlockProps() ([]byte, error) {
 	w.blockPropsEncoder.resetProps()
 	for i := range w.blockPropCollectors {
 		scratch := w.blockPropsEncoder.getScratchForProp()
 		var err error
 		if scratch, err = w.blockPropCollectors[i].FinishIndexBlock(scratch); err != nil {
-			return err
+			return nil, err
 		}
 		if len(scratch) > 0 {
 			w.blockPropsEncoder.addProp(shortID(i), scratch)
 		}
 	}
+	return w.blockPropsEncoder.props(), nil
+}
+
+// finishIndexBlock finishes the current index block and adds it to the top
+// level index block. This is only used when two level indexes are enabled.
+func (w *Writer) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) error {
 	part := indexBlockAndBlockProperties{
-		nEntries: indexBuf.block.nEntries, properties: w.blockPropsEncoder.props(),
+		nEntries: indexBuf.block.nEntries, properties: props,
 	}
 	w.indexSepAlloc, part.sep = cloneKeyWithBuf(
 		base.DecodeInternalKey(indexBuf.block.curKey), w.indexSepAlloc,
@@ -1228,8 +1291,12 @@ func (w *Writer) finishIndexBlock(indexBuf *indexBlockBuf) error {
 }
 
 func (w *Writer) writeTwoLevelIndex() (BlockHandle, error) {
+	props, err := w.finishIndexBlockProps()
+	if err != nil {
+		return BlockHandle{}, err
+	}
 	// Add the final unfinished index.
-	if err := w.finishIndexBlock(w.indexBlock); err != nil {
+	if err = w.finishIndexBlock(w.indexBlock, props); err != nil {
 		return BlockHandle{}, err
 	}
 

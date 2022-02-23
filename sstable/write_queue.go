@@ -19,6 +19,8 @@ type writeTask struct {
 	inflightSize int
 	// inflightIndexEntrySize is used to decrement Writer.indexBlock.sizeEstimate.inflightSize.
 	indexInflightSize int
+	// If the index block is finished, then we set the finishedIndexProps here.
+	finishedIndexProps []byte
 }
 
 // Note that only the Writer client goroutine will be adding tasks to the writeQueue.
@@ -61,12 +63,10 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 		w.writer.meta.Size, task.inflightSize, int(bh.Length),
 	)
 
-	if bhp, err = w.writer.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
-		return err
-	}
-
+	bhp = BlockHandleWithProperties{BlockHandle: bh, Props: task.buf.dataBlockProps}
 	if err = w.writer.addIndexEntry(
-		task.indexEntrySep, bhp, task.buf.tmp[:], task.flushableIndexBlock, task.currIndexBlock, task.indexInflightSize); err != nil {
+		task.indexEntrySep, bhp, task.buf.tmp[:], task.flushableIndexBlock, task.currIndexBlock,
+		task.indexInflightSize, task.finishedIndexProps); err != nil {
 		return err
 	}
 
