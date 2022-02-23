@@ -1243,8 +1243,8 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 
 			// Construct the file metadata from the writer metadata.
 			m := &fileMetadata{
-				SmallestPointKey: wm.SmallestPoint,
-				LargestPointKey:  maybeUpdateUpperBound(wm.LargestPoint),
+				SmallestPointKey: wm.SmallestPointKey(cmp),
+				LargestPointKey:  maybeUpdateUpperBound(wm.LargestPointKey(cmp)),
 				SmallestRangeKey: wm.SmallestRangeKey,
 				LargestRangeKey:  maybeUpdateUpperBound(wm.LargestRangeKey),
 				Smallest:         wm.Smallest(cmp),

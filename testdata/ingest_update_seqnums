@@ -16,7 +16,7 @@ file 0
 # Point keys only (range del lower bound).
 
 load
-a.RANGEDEL.0:c
+a.RANGEDEL.0:b
 c.SET.0:
 ----
 file 1
@@ -41,11 +41,11 @@ file 0:
     ranges: #0,0-#0,0
 file 1:
   combined: a#43,15-c#43,1
-    points: c#43,1-c#43,1
+    points: a#43,15-c#43,1
     ranges: #0,0-#0,0
 file 2:
   combined: a#44,1-c#72057594037927935,15
-    points: a#44,1-a#44,1
+    points: a#44,1-c#72057594037927935,15
     ranges: #0,0-#0,0
 
 # Reset to the starting sequence number and reset the slice of files. The
