@@ -118,6 +118,15 @@ func TestPickCompaction(t *testing.T) {
 	}
 
 	opts := (*Options)(nil).EnsureDefaults()
+	newFileMeta := func(fileNum FileNum, size uint64, smallest, largest base.InternalKey) *fileMetadata {
+		m := &fileMetadata{
+			FileNum: fileNum,
+			Size:    size,
+		}
+		m.MaybeExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
+		return m
+	}
+
 	testCases := []struct {
 		desc    string
 		version *version
@@ -128,12 +137,12 @@ func TestPickCompaction(t *testing.T) {
 			desc: "no compaction",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				0: {
-					{
-						FileNum:  100,
-						Size:     1,
-						Smallest: base.ParseInternalKey("i.SET.101"),
-						Largest:  base.ParseInternalKey("j.SET.102"),
-					},
+					newFileMeta(
+						100,
+						1,
+						base.ParseInternalKey("i.SET.101"),
+						base.ParseInternalKey("j.SET.102"),
+					),
 				},
 			}),
 			want: "",
@@ -143,12 +152,12 @@ func TestPickCompaction(t *testing.T) {
 			desc: "1 L0 file",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				0: {
-					{
-						FileNum:  100,
-						Size:     1,
-						Smallest: base.ParseInternalKey("i.SET.101"),
-						Largest:  base.ParseInternalKey("j.SET.102"),
-					},
+					newFileMeta(
+						100,
+						1,
+						base.ParseInternalKey("i.SET.101"),
+						base.ParseInternalKey("j.SET.102"),
+					),
 				},
 			}),
 			picker: compactionPickerForTesting{
@@ -163,18 +172,18 @@ func TestPickCompaction(t *testing.T) {
 			desc: "2 L0 files (0 overlaps)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				0: {
-					{
-						FileNum:  100,
-						Size:     1,
-						Smallest: base.ParseInternalKey("i.SET.101"),
-						Largest:  base.ParseInternalKey("j.SET.102"),
-					},
-					{
-						FileNum:  110,
-						Size:     1,
-						Smallest: base.ParseInternalKey("k.SET.111"),
-						Largest:  base.ParseInternalKey("l.SET.112"),
-					},
+					newFileMeta(
+						100,
+						1,
+						base.ParseInternalKey("i.SET.101"),
+						base.ParseInternalKey("j.SET.102"),
+					),
+					newFileMeta(
+						110,
+						1,
+						base.ParseInternalKey("k.SET.111"),
+						base.ParseInternalKey("l.SET.112"),
+					),
 				},
 			}),
 			picker: compactionPickerForTesting{
@@ -189,18 +198,18 @@ func TestPickCompaction(t *testing.T) {
 			desc: "2 L0 files, with ikey overlap",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				0: {
-					{
-						FileNum:  100,
-						Size:     1,
-						Smallest: base.ParseInternalKey("i.SET.101"),
-						Largest:  base.ParseInternalKey("p.SET.102"),
-					},
-					{
-						FileNum:  110,
-						Size:     1,
-						Smallest: base.ParseInternalKey("j.SET.111"),
-						Largest:  base.ParseInternalKey("q.SET.112"),
-					},
+					newFileMeta(
+						100,
+						1,
+						base.ParseInternalKey("i.SET.101"),
+						base.ParseInternalKey("p.SET.102"),
+					),
+					newFileMeta(
+						110,
+						1,
+						base.ParseInternalKey("j.SET.111"),
+						base.ParseInternalKey("q.SET.112"),
+					),
 				},
 			}),
 			picker: compactionPickerForTesting{
@@ -215,18 +224,18 @@ func TestPickCompaction(t *testing.T) {
 			desc: "2 L0 files, with ukey overlap",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				0: {
-					{
-						FileNum:  100,
-						Size:     1,
-						Smallest: base.ParseInternalKey("i.SET.101"),
-						Largest:  base.ParseInternalKey("i.SET.102"),
-					},
-					{
-						FileNum:  110,
-						Size:     1,
-						Smallest: base.ParseInternalKey("i.SET.111"),
-						Largest:  base.ParseInternalKey("i.SET.112"),
-					},
+					newFileMeta(
+						100,
+						1,
+						base.ParseInternalKey("i.SET.101"),
+						base.ParseInternalKey("i.SET.102"),
+					),
+					newFileMeta(
+						110,
+						1,
+						base.ParseInternalKey("i.SET.111"),
+						base.ParseInternalKey("i.SET.112"),
+					),
 				},
 			}),
 			picker: compactionPickerForTesting{
@@ -241,26 +250,26 @@ func TestPickCompaction(t *testing.T) {
 			desc: "1 L0 file, 2 L1 files (0 overlaps)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				0: {
-					{
-						FileNum:  100,
-						Size:     1,
-						Smallest: base.ParseInternalKey("i.SET.101"),
-						Largest:  base.ParseInternalKey("i.SET.102"),
-					},
+					newFileMeta(
+						100,
+						1,
+						base.ParseInternalKey("i.SET.101"),
+						base.ParseInternalKey("i.SET.102"),
+					),
 				},
 				1: {
-					{
-						FileNum:  200,
-						Size:     1,
-						Smallest: base.ParseInternalKey("a.SET.201"),
-						Largest:  base.ParseInternalKey("b.SET.202"),
-					},
-					{
-						FileNum:  210,
-						Size:     1,
-						Smallest: base.ParseInternalKey("y.SET.211"),
-						Largest:  base.ParseInternalKey("z.SET.212"),
-					},
+					newFileMeta(
+						200,
+						1,
+						base.ParseInternalKey("a.SET.201"),
+						base.ParseInternalKey("b.SET.202"),
+					),
+					newFileMeta(
+						210,
+						1,
+						base.ParseInternalKey("y.SET.211"),
+						base.ParseInternalKey("z.SET.212"),
+					),
 				},
 			}),
 			picker: compactionPickerForTesting{
@@ -275,52 +284,52 @@ func TestPickCompaction(t *testing.T) {
 			desc: "1 L0 file, 2 L1 files (1 overlap), 4 L2 files (3 overlaps)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				0: {
-					{
-						FileNum:  100,
-						Size:     1,
-						Smallest: base.ParseInternalKey("i.SET.101"),
-						Largest:  base.ParseInternalKey("t.SET.102"),
-					},
+					newFileMeta(
+						100,
+						1,
+						base.ParseInternalKey("i.SET.101"),
+						base.ParseInternalKey("t.SET.102"),
+					),
 				},
 				1: {
-					{
-						FileNum:  200,
-						Size:     1,
-						Smallest: base.ParseInternalKey("a.SET.201"),
-						Largest:  base.ParseInternalKey("e.SET.202"),
-					},
-					{
-						FileNum:  210,
-						Size:     1,
-						Smallest: base.ParseInternalKey("f.SET.211"),
-						Largest:  base.ParseInternalKey("j.SET.212"),
-					},
+					newFileMeta(
+						200,
+						1,
+						base.ParseInternalKey("a.SET.201"),
+						base.ParseInternalKey("e.SET.202"),
+					),
+					newFileMeta(
+						210,
+						1,
+						base.ParseInternalKey("f.SET.211"),
+						base.ParseInternalKey("j.SET.212"),
+					),
 				},
 				2: {
-					{
-						FileNum:  300,
-						Size:     1,
-						Smallest: base.ParseInternalKey("a.SET.301"),
-						Largest:  base.ParseInternalKey("b.SET.302"),
-					},
-					{
-						FileNum:  310,
-						Size:     1,
-						Smallest: base.ParseInternalKey("c.SET.311"),
-						Largest:  base.ParseInternalKey("g.SET.312"),
-					},
-					{
-						FileNum:  320,
-						Size:     1,
-						Smallest: base.ParseInternalKey("h.SET.321"),
-						Largest:  base.ParseInternalKey("m.SET.322"),
-					},
-					{
-						FileNum:  330,
-						Size:     1,
-						Smallest: base.ParseInternalKey("n.SET.331"),
-						Largest:  base.ParseInternalKey("z.SET.332"),
-					},
+					newFileMeta(
+						300,
+						1,
+						base.ParseInternalKey("a.SET.301"),
+						base.ParseInternalKey("b.SET.302"),
+					),
+					newFileMeta(
+						310,
+						1,
+						base.ParseInternalKey("c.SET.311"),
+						base.ParseInternalKey("g.SET.312"),
+					),
+					newFileMeta(
+						320,
+						1,
+						base.ParseInternalKey("h.SET.321"),
+						base.ParseInternalKey("m.SET.322"),
+					),
+					newFileMeta(
+						330,
+						1,
+						base.ParseInternalKey("n.SET.331"),
+						base.ParseInternalKey("z.SET.332"),
+					),
 				},
 			}),
 			picker: compactionPickerForTesting{
@@ -335,44 +344,44 @@ func TestPickCompaction(t *testing.T) {
 			desc: "4 L1 files, 2 L2 files, can grow",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				1: {
-					{
-						FileNum:  200,
-						Size:     1,
-						Smallest: base.ParseInternalKey("i1.SET.201"),
-						Largest:  base.ParseInternalKey("i2.SET.202"),
-					},
-					{
-						FileNum:  210,
-						Size:     1,
-						Smallest: base.ParseInternalKey("j1.SET.211"),
-						Largest:  base.ParseInternalKey("j2.SET.212"),
-					},
-					{
-						FileNum:  220,
-						Size:     1,
-						Smallest: base.ParseInternalKey("k1.SET.221"),
-						Largest:  base.ParseInternalKey("k2.SET.222"),
-					},
-					{
-						FileNum:  230,
-						Size:     1,
-						Smallest: base.ParseInternalKey("l1.SET.231"),
-						Largest:  base.ParseInternalKey("l2.SET.232"),
-					},
+					newFileMeta(
+						200,
+						1,
+						base.ParseInternalKey("i1.SET.201"),
+						base.ParseInternalKey("i2.SET.202"),
+					),
+					newFileMeta(
+						210,
+						1,
+						base.ParseInternalKey("j1.SET.211"),
+						base.ParseInternalKey("j2.SET.212"),
+					),
+					newFileMeta(
+						220,
+						1,
+						base.ParseInternalKey("k1.SET.221"),
+						base.ParseInternalKey("k2.SET.222"),
+					),
+					newFileMeta(
+						230,
+						1,
+						base.ParseInternalKey("l1.SET.231"),
+						base.ParseInternalKey("l2.SET.232"),
+					),
 				},
 				2: {
-					{
-						FileNum:  300,
-						Size:     1,
-						Smallest: base.ParseInternalKey("a0.SET.301"),
-						Largest:  base.ParseInternalKey("l0.SET.302"),
-					},
-					{
-						FileNum:  310,
-						Size:     1,
-						Smallest: base.ParseInternalKey("l2.SET.311"),
-						Largest:  base.ParseInternalKey("z2.SET.312"),
-					},
+					newFileMeta(
+						300,
+						1,
+						base.ParseInternalKey("a0.SET.301"),
+						base.ParseInternalKey("l0.SET.302"),
+					),
+					newFileMeta(
+						310,
+						1,
+						base.ParseInternalKey("l2.SET.311"),
+						base.ParseInternalKey("z2.SET.312"),
+					),
 				},
 			}),
 			picker: compactionPickerForTesting{
@@ -387,44 +396,44 @@ func TestPickCompaction(t *testing.T) {
 			desc: "4 L1 files, 2 L2 files, can't grow (range)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				1: {
-					{
-						FileNum:  200,
-						Size:     1,
-						Smallest: base.ParseInternalKey("i1.SET.201"),
-						Largest:  base.ParseInternalKey("i2.SET.202"),
-					},
-					{
-						FileNum:  210,
-						Size:     1,
-						Smallest: base.ParseInternalKey("j1.SET.211"),
-						Largest:  base.ParseInternalKey("j2.SET.212"),
-					},
-					{
-						FileNum:  220,
-						Size:     1,
-						Smallest: base.ParseInternalKey("k1.SET.221"),
-						Largest:  base.ParseInternalKey("k2.SET.222"),
-					},
-					{
-						FileNum:  230,
-						Size:     1,
-						Smallest: base.ParseInternalKey("l1.SET.231"),
-						Largest:  base.ParseInternalKey("l2.SET.232"),
-					},
+					newFileMeta(
+						200,
+						1,
+						base.ParseInternalKey("i1.SET.201"),
+						base.ParseInternalKey("i2.SET.202"),
+					),
+					newFileMeta(
+						210,
+						1,
+						base.ParseInternalKey("j1.SET.211"),
+						base.ParseInternalKey("j2.SET.212"),
+					),
+					newFileMeta(
+						220,
+						1,
+						base.ParseInternalKey("k1.SET.221"),
+						base.ParseInternalKey("k2.SET.222"),
+					),
+					newFileMeta(
+						230,
+						1,
+						base.ParseInternalKey("l1.SET.231"),
+						base.ParseInternalKey("l2.SET.232"),
+					),
 				},
 				2: {
-					{
-						FileNum:  300,
-						Size:     1,
-						Smallest: base.ParseInternalKey("a0.SET.301"),
-						Largest:  base.ParseInternalKey("j0.SET.302"),
-					},
-					{
-						FileNum:  310,
-						Size:     1,
-						Smallest: base.ParseInternalKey("j2.SET.311"),
-						Largest:  base.ParseInternalKey("z2.SET.312"),
-					},
+					newFileMeta(
+						300,
+						1,
+						base.ParseInternalKey("a0.SET.301"),
+						base.ParseInternalKey("j0.SET.302"),
+					),
+					newFileMeta(
+						310,
+						1,
+						base.ParseInternalKey("j2.SET.311"),
+						base.ParseInternalKey("z2.SET.312"),
+					),
 				},
 			}),
 			picker: compactionPickerForTesting{
@@ -439,44 +448,44 @@ func TestPickCompaction(t *testing.T) {
 			desc: "4 L1 files, 2 L2 files, can't grow (size)",
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				1: {
-					{
-						FileNum:  200,
-						Size:     expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64) - 1,
-						Smallest: base.ParseInternalKey("i1.SET.201"),
-						Largest:  base.ParseInternalKey("i2.SET.202"),
-					},
-					{
-						FileNum:  210,
-						Size:     expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64) - 1,
-						Smallest: base.ParseInternalKey("j1.SET.211"),
-						Largest:  base.ParseInternalKey("j2.SET.212"),
-					},
-					{
-						FileNum:  220,
-						Size:     expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64) - 1,
-						Smallest: base.ParseInternalKey("k1.SET.221"),
-						Largest:  base.ParseInternalKey("k2.SET.222"),
-					},
-					{
-						FileNum:  230,
-						Size:     expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64) - 1,
-						Smallest: base.ParseInternalKey("l1.SET.231"),
-						Largest:  base.ParseInternalKey("l2.SET.232"),
-					},
+					newFileMeta(
+						200,
+						expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64)-1,
+						base.ParseInternalKey("i1.SET.201"),
+						base.ParseInternalKey("i2.SET.202"),
+					),
+					newFileMeta(
+						210,
+						expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64)-1,
+						base.ParseInternalKey("j1.SET.211"),
+						base.ParseInternalKey("j2.SET.212"),
+					),
+					newFileMeta(
+						220,
+						expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64)-1,
+						base.ParseInternalKey("k1.SET.221"),
+						base.ParseInternalKey("k2.SET.222"),
+					),
+					newFileMeta(
+						230,
+						expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64)-1,
+						base.ParseInternalKey("l1.SET.231"),
+						base.ParseInternalKey("l2.SET.232"),
+					),
 				},
 				2: {
-					{
-						FileNum:  300,
-						Size:     expandedCompactionByteSizeLimit(opts, 2, math.MaxUint64) - 1,
-						Smallest: base.ParseInternalKey("a0.SET.301"),
-						Largest:  base.ParseInternalKey("l0.SET.302"),
-					},
-					{
-						FileNum:  310,
-						Size:     expandedCompactionByteSizeLimit(opts, 2, math.MaxUint64) - 1,
-						Smallest: base.ParseInternalKey("l2.SET.311"),
-						Largest:  base.ParseInternalKey("z2.SET.312"),
-					},
+					newFileMeta(
+						300,
+						expandedCompactionByteSizeLimit(opts, 2, math.MaxUint64)-1,
+						base.ParseInternalKey("a0.SET.301"),
+						base.ParseInternalKey("l0.SET.302"),
+					),
+					newFileMeta(
+						310,
+						expandedCompactionByteSizeLimit(opts, 2, math.MaxUint64)-1,
+						base.ParseInternalKey("l2.SET.311"),
+						base.ParseInternalKey("z2.SET.312"),
+					),
 				},
 			}),
 			picker: compactionPickerForTesting{
@@ -519,6 +528,12 @@ func TestElideTombstone(t *testing.T) {
 	opts := &Options{}
 	opts.EnsureDefaults()
 
+	newFileMeta := func(smallest, largest base.InternalKey) *fileMetadata {
+		m := &fileMetadata{}
+		m.MaybeExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
+		return m
+	}
+
 	type want struct {
 		key      string
 		expected bool
@@ -543,44 +558,44 @@ func TestElideTombstone(t *testing.T) {
 			level: 1,
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				1: {
-					{
-						Smallest: base.ParseInternalKey("c.SET.801"),
-						Largest:  base.ParseInternalKey("g.SET.800"),
-					},
-					{
-						Smallest: base.ParseInternalKey("x.SET.701"),
-						Largest:  base.ParseInternalKey("y.SET.700"),
-					},
+					newFileMeta(
+						base.ParseInternalKey("c.SET.801"),
+						base.ParseInternalKey("g.SET.800"),
+					),
+					newFileMeta(
+						base.ParseInternalKey("x.SET.701"),
+						base.ParseInternalKey("y.SET.700"),
+					),
 				},
 				2: {
-					{
-						Smallest: base.ParseInternalKey("d.SET.601"),
-						Largest:  base.ParseInternalKey("h.SET.600"),
-					},
-					{
-						Smallest: base.ParseInternalKey("r.SET.501"),
-						Largest:  base.ParseInternalKey("t.SET.500"),
-					},
+					newFileMeta(
+						base.ParseInternalKey("d.SET.601"),
+						base.ParseInternalKey("h.SET.600"),
+					),
+					newFileMeta(
+						base.ParseInternalKey("r.SET.501"),
+						base.ParseInternalKey("t.SET.500"),
+					),
 				},
 				3: {
-					{
-						Smallest: base.ParseInternalKey("f.SET.401"),
-						Largest:  base.ParseInternalKey("g.SET.400"),
-					},
-					{
-						Smallest: base.ParseInternalKey("w.SET.301"),
-						Largest:  base.ParseInternalKey("x.SET.300"),
-					},
+					newFileMeta(
+						base.ParseInternalKey("f.SET.401"),
+						base.ParseInternalKey("g.SET.400"),
+					),
+					newFileMeta(
+						base.ParseInternalKey("w.SET.301"),
+						base.ParseInternalKey("x.SET.300"),
+					),
 				},
 				4: {
-					{
-						Smallest: base.ParseInternalKey("f.SET.201"),
-						Largest:  base.ParseInternalKey("m.SET.200"),
-					},
-					{
-						Smallest: base.ParseInternalKey("t.SET.101"),
-						Largest:  base.ParseInternalKey("t.SET.100"),
-					},
+					newFileMeta(
+						base.ParseInternalKey("f.SET.201"),
+						base.ParseInternalKey("m.SET.200"),
+					),
+					newFileMeta(
+						base.ParseInternalKey("t.SET.101"),
+						base.ParseInternalKey("t.SET.100"),
+					),
 				},
 			}),
 			wants: []want{
@@ -611,22 +626,22 @@ func TestElideTombstone(t *testing.T) {
 			level: 1,
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				6: {
-					{
-						Smallest: base.ParseInternalKey("i.SET.401"),
-						Largest:  base.ParseInternalKey("i.SET.400"),
-					},
-					{
-						Smallest: base.ParseInternalKey("i.SET.301"),
-						Largest:  base.ParseInternalKey("k.SET.300"),
-					},
-					{
-						Smallest: base.ParseInternalKey("k.SET.201"),
-						Largest:  base.ParseInternalKey("m.SET.200"),
-					},
-					{
-						Smallest: base.ParseInternalKey("m.SET.101"),
-						Largest:  base.ParseInternalKey("m.SET.100"),
-					},
+					newFileMeta(
+						base.ParseInternalKey("i.SET.401"),
+						base.ParseInternalKey("i.SET.400"),
+					),
+					newFileMeta(
+						base.ParseInternalKey("i.SET.301"),
+						base.ParseInternalKey("k.SET.300"),
+					),
+					newFileMeta(
+						base.ParseInternalKey("k.SET.201"),
+						base.ParseInternalKey("m.SET.200"),
+					),
+					newFileMeta(
+						base.ParseInternalKey("m.SET.101"),
+						base.ParseInternalKey("m.SET.100"),
+					),
 				},
 			}),
 			wants: []want{
@@ -662,6 +677,12 @@ func TestElideTombstone(t *testing.T) {
 func TestElideRangeTombstone(t *testing.T) {
 	opts := (*Options)(nil).EnsureDefaults()
 
+	newFileMeta := func(smallest, largest base.InternalKey) *fileMetadata {
+		m := &fileMetadata{}
+		m.MaybeExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
+		return m
+	}
+
 	type want struct {
 		key      string
 		endKey   string
@@ -688,44 +709,44 @@ func TestElideRangeTombstone(t *testing.T) {
 			level: 1,
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				1: {
-					{
-						Smallest: base.ParseInternalKey("c.SET.801"),
-						Largest:  base.ParseInternalKey("g.SET.800"),
-					},
-					{
-						Smallest: base.ParseInternalKey("x.SET.701"),
-						Largest:  base.ParseInternalKey("y.SET.700"),
-					},
+					newFileMeta(
+						base.ParseInternalKey("c.SET.801"),
+						base.ParseInternalKey("g.SET.800"),
+					),
+					newFileMeta(
+						base.ParseInternalKey("x.SET.701"),
+						base.ParseInternalKey("y.SET.700"),
+					),
 				},
 				2: {
-					{
-						Smallest: base.ParseInternalKey("d.SET.601"),
-						Largest:  base.ParseInternalKey("h.SET.600"),
-					},
-					{
-						Smallest: base.ParseInternalKey("r.SET.501"),
-						Largest:  base.ParseInternalKey("t.SET.500"),
-					},
+					newFileMeta(
+						base.ParseInternalKey("d.SET.601"),
+						base.ParseInternalKey("h.SET.600"),
+					),
+					newFileMeta(
+						base.ParseInternalKey("r.SET.501"),
+						base.ParseInternalKey("t.SET.500"),
+					),
 				},
 				3: {
-					{
-						Smallest: base.ParseInternalKey("f.SET.401"),
-						Largest:  base.ParseInternalKey("g.SET.400"),
-					},
-					{
-						Smallest: base.ParseInternalKey("w.SET.301"),
-						Largest:  base.ParseInternalKey("x.SET.300"),
-					},
+					newFileMeta(
+						base.ParseInternalKey("f.SET.401"),
+						base.ParseInternalKey("g.SET.400"),
+					),
+					newFileMeta(
+						base.ParseInternalKey("w.SET.301"),
+						base.ParseInternalKey("x.SET.300"),
+					),
 				},
 				4: {
-					{
-						Smallest: base.ParseInternalKey("f.SET.201"),
-						Largest:  base.ParseInternalKey("m.SET.200"),
-					},
-					{
-						Smallest: base.ParseInternalKey("t.SET.101"),
-						Largest:  base.ParseInternalKey("t.SET.100"),
-					},
+					newFileMeta(
+						base.ParseInternalKey("f.SET.201"),
+						base.ParseInternalKey("m.SET.200"),
+					),
+					newFileMeta(
+						base.ParseInternalKey("t.SET.101"),
+						base.ParseInternalKey("t.SET.100"),
+					),
 				},
 			}),
 			wants: []want{
@@ -755,20 +776,20 @@ func TestElideRangeTombstone(t *testing.T) {
 			level: -1,
 			version: newVersion(opts, [numLevels][]*fileMetadata{
 				0: {
-					{
-						Smallest: base.ParseInternalKey("h.SET.901"),
-						Largest:  base.ParseInternalKey("j.SET.900"),
-					},
+					newFileMeta(
+						base.ParseInternalKey("h.SET.901"),
+						base.ParseInternalKey("j.SET.900"),
+					),
 				},
 				1: {
-					{
-						Smallest: base.ParseInternalKey("c.SET.801"),
-						Largest:  base.ParseInternalKey("g.SET.800"),
-					},
-					{
-						Smallest: base.ParseInternalKey("x.SET.701"),
-						Largest:  base.ParseInternalKey("y.SET.700"),
-					},
+					newFileMeta(
+						base.ParseInternalKey("c.SET.801"),
+						base.ParseInternalKey("g.SET.800"),
+					),
+					newFileMeta(
+						base.ParseInternalKey("x.SET.701"),
+						base.ParseInternalKey("y.SET.700"),
+					),
 				},
 			}),
 			wants: []want{
@@ -945,6 +966,13 @@ func TestValidateVersionEdit(t *testing.T) {
 		return nil
 	}
 
+	cmp := DefaultComparer.Compare
+	newFileMeta := func(smallest, largest base.InternalKey) *fileMetadata {
+		m := &fileMetadata{}
+		m.MaybeExtendPointKeyBounds(cmp, smallest, largest)
+		return m
+	}
+
 	testCases := []struct {
 		desc    string
 		ve      *versionEdit
@@ -956,10 +984,10 @@ func TestValidateVersionEdit(t *testing.T) {
 			ve: &versionEdit{
 				NewFiles: []manifest.NewFileEntry{
 					{
-						Meta: &fileMetadata{
-							Smallest: manifest.InternalKey{UserKey: []byte(badKey)},
-							Largest:  manifest.InternalKey{UserKey: []byte("z")},
-						},
+						Meta: newFileMeta(
+							manifest.InternalKey{UserKey: []byte(badKey)},
+							manifest.InternalKey{UserKey: []byte("z")},
+						),
 					},
 				},
 			},
@@ -971,10 +999,10 @@ func TestValidateVersionEdit(t *testing.T) {
 			ve: &versionEdit{
 				NewFiles: []manifest.NewFileEntry{
 					{
-						Meta: &fileMetadata{
-							Smallest: manifest.InternalKey{UserKey: []byte("a")},
-							Largest:  manifest.InternalKey{UserKey: []byte(badKey)},
-						},
+						Meta: newFileMeta(
+							manifest.InternalKey{UserKey: []byte("a")},
+							manifest.InternalKey{UserKey: []byte(badKey)},
+						),
 					},
 				},
 			},
@@ -986,16 +1014,16 @@ func TestValidateVersionEdit(t *testing.T) {
 			ve: &versionEdit{
 				NewFiles: []manifest.NewFileEntry{
 					{
-						Meta: &fileMetadata{
-							Smallest: manifest.InternalKey{UserKey: []byte("a")},
-							Largest:  manifest.InternalKey{UserKey: []byte("c")},
-						},
+						Meta: newFileMeta(
+							manifest.InternalKey{UserKey: []byte("a")},
+							manifest.InternalKey{UserKey: []byte("c")},
+						),
 					},
 					{
-						Meta: &fileMetadata{
-							Smallest: manifest.InternalKey{UserKey: []byte(badKey)},
-							Largest:  manifest.InternalKey{UserKey: []byte("z")},
-						},
+						Meta: newFileMeta(
+							manifest.InternalKey{UserKey: []byte(badKey)},
+							manifest.InternalKey{UserKey: []byte("z")},
+						),
 					},
 				},
 			},
@@ -1006,10 +1034,10 @@ func TestValidateVersionEdit(t *testing.T) {
 			desc: "single deleted file; start key",
 			ve: &versionEdit{
 				DeletedFiles: map[manifest.DeletedFileEntry]*manifest.FileMetadata{
-					deletedFileEntry{Level: 0, FileNum: 0}: {
-						Smallest: manifest.InternalKey{UserKey: []byte(badKey)},
-						Largest:  manifest.InternalKey{UserKey: []byte("z")},
-					},
+					deletedFileEntry{Level: 0, FileNum: 0}: newFileMeta(
+						manifest.InternalKey{UserKey: []byte(badKey)},
+						manifest.InternalKey{UserKey: []byte("z")},
+					),
 				},
 			},
 			vFunc:   validateFn,
@@ -1019,10 +1047,10 @@ func TestValidateVersionEdit(t *testing.T) {
 			desc: "single deleted file; end key",
 			ve: &versionEdit{
 				DeletedFiles: map[manifest.DeletedFileEntry]*manifest.FileMetadata{
-					deletedFileEntry{Level: 0, FileNum: 0}: {
-						Smallest: manifest.InternalKey{UserKey: []byte("a")},
-						Largest:  manifest.InternalKey{UserKey: []byte(badKey)},
-					},
+					deletedFileEntry{Level: 0, FileNum: 0}: newFileMeta(
+						manifest.InternalKey{UserKey: []byte("a")},
+						manifest.InternalKey{UserKey: []byte(badKey)},
+					),
 				},
 			},
 			vFunc:   validateFn,
@@ -1032,14 +1060,14 @@ func TestValidateVersionEdit(t *testing.T) {
 			desc: "multiple deleted files",
 			ve: &versionEdit{
 				DeletedFiles: map[manifest.DeletedFileEntry]*manifest.FileMetadata{
-					deletedFileEntry{Level: 0, FileNum: 0}: {
-						Smallest: manifest.InternalKey{UserKey: []byte("a")},
-						Largest:  manifest.InternalKey{UserKey: []byte("c")},
-					},
-					deletedFileEntry{Level: 0, FileNum: 1}: {
-						Smallest: manifest.InternalKey{UserKey: []byte(badKey)},
-						Largest:  manifest.InternalKey{UserKey: []byte("z")},
-					},
+					deletedFileEntry{Level: 0, FileNum: 0}: newFileMeta(
+						manifest.InternalKey{UserKey: []byte("a")},
+						manifest.InternalKey{UserKey: []byte("c")},
+					),
+					deletedFileEntry{Level: 0, FileNum: 1}: newFileMeta(
+						manifest.InternalKey{UserKey: []byte(badKey)},
+						manifest.InternalKey{UserKey: []byte("z")},
+					),
 				},
 			},
 			vFunc:   validateFn,
@@ -1051,28 +1079,28 @@ func TestValidateVersionEdit(t *testing.T) {
 				NewFiles: []manifest.NewFileEntry{
 					{
 						Level: 0,
-						Meta: &fileMetadata{
-							Smallest: manifest.InternalKey{UserKey: []byte("b")},
-							Largest:  manifest.InternalKey{UserKey: []byte("c")},
-						},
+						Meta: newFileMeta(
+							manifest.InternalKey{UserKey: []byte("b")},
+							manifest.InternalKey{UserKey: []byte("c")},
+						),
 					},
 					{
 						Level: 0,
-						Meta: &fileMetadata{
-							Smallest: manifest.InternalKey{UserKey: []byte("d")},
-							Largest:  manifest.InternalKey{UserKey: []byte("g")},
-						},
+						Meta: newFileMeta(
+							manifest.InternalKey{UserKey: []byte("d")},
+							manifest.InternalKey{UserKey: []byte("g")},
+						),
 					},
 				},
 				DeletedFiles: map[manifest.DeletedFileEntry]*manifest.FileMetadata{
-					deletedFileEntry{Level: 6, FileNum: 0}: {
-						Smallest: manifest.InternalKey{UserKey: []byte("a")},
-						Largest:  manifest.InternalKey{UserKey: []byte("d")},
-					},
-					deletedFileEntry{Level: 6, FileNum: 1}: {
-						Smallest: manifest.InternalKey{UserKey: []byte("x")},
-						Largest:  manifest.InternalKey{UserKey: []byte("z")},
-					},
+					deletedFileEntry{Level: 6, FileNum: 0}: newFileMeta(
+						manifest.InternalKey{UserKey: []byte("a")},
+						manifest.InternalKey{UserKey: []byte("d")},
+					),
+					deletedFileEntry{Level: 6, FileNum: 1}: newFileMeta(
+						manifest.InternalKey{UserKey: []byte("x")},
+						manifest.InternalKey{UserKey: []byte("z")},
+					),
 				},
 			},
 			vFunc: validateFn,
@@ -1357,11 +1385,13 @@ func TestCompactionFindGrandparentLimit(t *testing.T) {
 			t.Fatalf("malformed table spec: %s", s)
 		}
 		fileNum++
-		return &fileMetadata{
-			FileNum:  fileNum,
-			Smallest: InternalKey{UserKey: []byte(parts[0])},
-			Largest:  InternalKey{UserKey: []byte(parts[1])},
-		}
+		m := &fileMetadata{FileNum: fileNum}
+		m.MaybeExtendPointKeyBounds(
+			cmp,
+			InternalKey{UserKey: []byte(parts[0])},
+			InternalKey{UserKey: []byte(parts[1])},
+		)
+		return m
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_find_grandparent_limit",
@@ -1440,11 +1470,12 @@ func TestCompactionFindL0Limit(t *testing.T) {
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
-		m := &fileMetadata{
-			FileNum:  base.FileNum(fileNumCounter),
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		}
+		m := &fileMetadata{FileNum: base.FileNum(fileNumCounter)}
+		m.MaybeExtendPointKeyBounds(
+			cmp,
+			base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		)
 		fileNumCounter++
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
@@ -1586,10 +1617,13 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		return &fileMetadata{
-			Smallest: base.ParseInternalKey(parts[0]),
-			Largest:  base.ParseInternalKey(parts[1]),
-		}
+		m := &fileMetadata{}
+		m.MaybeExtendPointKeyBounds(
+			cmp,
+			base.ParseInternalKey(parts[0]),
+			base.ParseInternalKey(parts[1]),
+		)
+		return m
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_atomic_unit_bounds",
@@ -2184,15 +2218,18 @@ func TestCompactionReadTriggered(t *testing.T) {
 }
 
 func TestCompactionInuseKeyRanges(t *testing.T) {
+	cmp := DefaultComparer.Compare
 	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m := &fileMetadata{
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		}
+		m := &fileMetadata{}
+		m.MaybeExtendRangeKeyBounds(
+			cmp,
+			base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
 		return m
@@ -2299,11 +2336,8 @@ func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
 		}
 		makeFile := func(level, start, end int) *fileMetadata {
 			fileNum++
-			m := &fileMetadata{
-				FileNum:  fileNum,
-				Smallest: makeIK(level, start),
-				Largest:  makeIK(level, end),
-			}
+			m := &fileMetadata{FileNum: fileNum}
+			m.MaybeExtendPointKeyBounds(opts.Comparer.Compare, makeIK(level, start), makeIK(level, end))
 			m.SmallestSeqNum = m.Smallest.SeqNum()
 			m.LargestSeqNum = m.Largest.SeqNum()
 			return m
@@ -2396,11 +2430,12 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 			t.Fatalf("malformed table spec: %s: %s", s, err)
 		}
 		fileNum++
-		meta = &fileMetadata{
-			FileNum:  fileNum,
-			Smallest: InternalKey{UserKey: []byte(match[2])},
-			Largest:  InternalKey{UserKey: []byte(match[3])},
-		}
+		meta = &fileMetadata{FileNum: fileNum}
+		meta.MaybeExtendPointKeyBounds(
+			d.cmp,
+			InternalKey{UserKey: []byte(match[2])},
+			InternalKey{UserKey: []byte(match[3])},
+		)
 		return level, meta
 	}
 
@@ -2491,15 +2526,18 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 }
 
 func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
+	cmp := DefaultComparer.Compare
 	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m := &fileMetadata{
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		}
+		m := &fileMetadata{}
+		m.MaybeExtendPointKeyBounds(
+			cmp,
+			base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
 		return m
@@ -2615,15 +2653,18 @@ func TestCompactionErrorCleanup(t *testing.T) {
 }
 
 func TestCompactionCheckOrdering(t *testing.T) {
+	cmp := DefaultComparer.Compare
 	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m := &fileMetadata{
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		}
+		m := &fileMetadata{}
+		m.MaybeExtendPointKeyBounds(
+			cmp,
+			base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
 		return m
