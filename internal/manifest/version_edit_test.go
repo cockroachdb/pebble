@@ -40,6 +40,32 @@ func checkRoundTrip(e0 VersionEdit) error {
 }
 
 func TestVersionEditRoundTrip(t *testing.T) {
+	cmp := base.DefaultComparer.Compare
+	m1 := &FileMetadata{
+		FileNum:      805,
+		Size:         8050,
+		CreationTime: 805030,
+	}
+	m1.MaybeExtendPointKeyBounds(
+		cmp,
+		base.DecodeInternalKey([]byte("abc\x00\x01\x02\x03\x04\x05\x06\x07")),
+		base.DecodeInternalKey([]byte("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
+	)
+
+	m2 := &FileMetadata{
+		FileNum:             806,
+		Size:                8060,
+		CreationTime:        806040,
+		SmallestSeqNum:      3,
+		LargestSeqNum:       5,
+		markedForCompaction: true,
+	}
+	m2.MaybeExtendPointKeyBounds(
+		cmp,
+		base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
+		base.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
+	)
+
 	testCases := []VersionEdit{
 		// An empty version edit.
 		{},
@@ -63,26 +89,11 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			NewFiles: []NewFileEntry{
 				{
 					Level: 5,
-					Meta: &FileMetadata{
-						FileNum:      805,
-						Size:         8050,
-						CreationTime: 805030,
-						Smallest:     base.DecodeInternalKey([]byte("abc\x00\x01\x02\x03\x04\x05\x06\x07")),
-						Largest:      base.DecodeInternalKey([]byte("xyz\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
-					},
+					Meta:  m1,
 				},
 				{
 					Level: 6,
-					Meta: &FileMetadata{
-						FileNum:             806,
-						Size:                8060,
-						CreationTime:        806040,
-						Smallest:            base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
-						Largest:             base.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
-						SmallestSeqNum:      3,
-						LargestSeqNum:       5,
-						markedForCompaction: true,
-					},
+					Meta:  m2,
 				},
 			},
 		},
@@ -95,6 +106,19 @@ func TestVersionEditRoundTrip(t *testing.T) {
 }
 
 func TestVersionEditDecode(t *testing.T) {
+	cmp := base.DefaultComparer.Compare
+	m := &FileMetadata{
+		FileNum:        4,
+		Size:           986,
+		SmallestSeqNum: 3,
+		LargestSeqNum:  5,
+	}
+	m.MaybeExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("bar"), 5, base.InternalKeyKindDelete),
+		base.MakeInternalKey([]byte("foo"), 4, base.InternalKeyKindSet),
+	)
+
 	testCases := []struct {
 		filename     string
 		encodedEdits []string
@@ -135,14 +159,7 @@ func TestVersionEditDecode(t *testing.T) {
 					NewFiles: []NewFileEntry{
 						{
 							Level: 0,
-							Meta: &FileMetadata{
-								FileNum:        4,
-								Size:           986,
-								Smallest:       base.MakeInternalKey([]byte("bar"), 5, base.InternalKeyKindDelete),
-								Largest:        base.MakeInternalKey([]byte("foo"), 4, base.InternalKeyKindSet),
-								SmallestSeqNum: 3,
-								LargestSeqNum:  5,
-							},
+							Meta:  m,
 						},
 					},
 				},
@@ -255,6 +272,7 @@ func TestVersionEditEncodeLastSeqNum(t *testing.T) {
 }
 
 func TestVersionEditApply(t *testing.T) {
+	cmp := base.DefaultComparer.Compare
 	parseMeta := func(s string) (*FileMetadata, error) {
 		parts := strings.Split(s, ":")
 		if len(parts) != 2 {
@@ -265,10 +283,12 @@ func TestVersionEditApply(t *testing.T) {
 			return nil, err
 		}
 		parts = strings.Split(strings.TrimSpace(parts[1]), "-")
-		m := FileMetadata{
-			Smallest: base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		}
+		m := FileMetadata{}
+		m.MaybeExtendPointKeyBounds(
+			cmp,
+			base.ParseInternalKey(strings.TrimSpace(parts[0])),
+			base.ParseInternalKey(strings.TrimSpace(parts[1])),
+		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
 		if m.SmallestSeqNum > m.LargestSeqNum {

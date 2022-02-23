@@ -302,8 +302,12 @@ func rewriteDataBlocksToWriter(
 	w.props.NumEntries = r.Properties.NumEntries
 	w.props.RawKeySize = r.Properties.RawKeySize
 	w.props.RawValueSize = r.Properties.RawValueSize
-	w.meta.SmallestPoint = blocks[0].start
-	w.meta.LargestPoint = blocks[len(blocks)-1].end
+	// NB: we set the smallest / largest fields directly here, rather than via the
+	// Set* methods, as we know we only have point keys.
+	smallest, largest := blocks[0].start, blocks[len(blocks)-1].end
+	w.meta.SmallestPoint, w.meta.Smallest = smallest, smallest
+	w.meta.LargestPoint, w.meta.Largest = largest, largest
+	w.meta.HasPointKeys = true
 	return nil
 }
 

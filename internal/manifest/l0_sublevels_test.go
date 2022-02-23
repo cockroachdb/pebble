@@ -217,10 +217,12 @@ func TestL0Sublevels(t *testing.T) {
 		}
 		fields := strings.Fields(parts[1])
 		keyRange := strings.Split(strings.TrimSpace(fields[0]), "-")
-		m := FileMetadata{
-			Smallest: base.ParseInternalKey(strings.TrimSpace(keyRange[0])),
-			Largest:  base.ParseInternalKey(strings.TrimSpace(keyRange[1])),
-		}
+		m := FileMetadata{}
+		m.MaybeExtendPointKeyBounds(
+			base.DefaultComparer.Compare,
+			base.ParseInternalKey(strings.TrimSpace(keyRange[0])),
+			base.ParseInternalKey(strings.TrimSpace(keyRange[1])),
+		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
 		if m.Largest.IsExclusiveSentinel() {
@@ -584,11 +586,14 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 			meta := &FileMetadata{
 				FileNum:        base.FileNum(i*10 + j + 1),
 				Size:           rng.Uint64n(1 << 20),
-				Smallest:       base.MakeInternalKey(startKey, uint64(2*i+1), base.InternalKeyKindSet),
-				Largest:        base.MakeRangeDeleteSentinelKey(endKey),
 				SmallestSeqNum: uint64(2*i + 1),
 				LargestSeqNum:  uint64(2*i + 2),
 			}
+			meta.MaybeExtendPointKeyBounds(
+				base.DefaultComparer.Compare,
+				base.MakeInternalKey(startKey, uint64(2*i+1), base.InternalKeyKindSet),
+				base.MakeRangeDeleteSentinelKey(endKey),
+			)
 			fileMetas = append(fileMetas, meta)
 			filesToAdd = append(filesToAdd, meta)
 		}
