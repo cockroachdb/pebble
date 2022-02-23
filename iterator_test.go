@@ -1439,10 +1439,6 @@ func TestIteratorGuaranteedDurable(t *testing.T) {
 		failFunc(t, d.NewIndexedBatch())
 	})
 	t.Run("db", func(t *testing.T) {
-		cbCount := int32(0)
-		d.RegisterFlushCompletedCallback(func() {
-			atomic.AddInt32(&cbCount, 1)
-		})
 		d.Set([]byte("k"), []byte("v"), nil)
 		foundKV := func(o *IterOptions) bool {
 			iter := d.NewIter(o)
@@ -1452,24 +1448,7 @@ func TestIteratorGuaranteedDurable(t *testing.T) {
 		}
 		require.True(t, foundKV(nil))
 		require.False(t, foundKV(&iterOptions))
-		require.Equal(t, int32(0), atomic.LoadInt32(&cbCount))
 		require.NoError(t, d.Flush())
-		flushDone := func() bool {
-			return atomic.LoadInt32(&cbCount) >= 1
-		}
-		// Hand-rolled version of testutils.SucceedsSoon. We need this since
-		// Flush is actually async.
-		done := func(f func() bool) bool {
-			start := time.Now()
-			delay := time.Millisecond
-			done := f()
-			for ; !done && time.Since(start) < time.Second*5; delay *= 2 {
-				time.Sleep(delay)
-				done = f()
-			}
-			return done
-		}(flushDone)
-		require.True(t, done)
 		require.True(t, foundKV(nil))
 		require.True(t, foundKV(&iterOptions))
 	})
