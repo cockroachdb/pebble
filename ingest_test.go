@@ -1236,7 +1236,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 				case k == base.InternalKeyKindRangeDelete:
 					key.Trailer = base.InternalKeyRangeDeleteSentinel
 				case rangekey.IsRangeKey(k):
-					key.Trailer = base.InternalKeyBoundaryRangeKey
+					return base.MakeRangeKeySentinelKey(k, key.UserKey)
 				}
 				return key
 			}

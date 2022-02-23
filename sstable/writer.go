@@ -1470,7 +1470,7 @@ func (w *Writer) Close() (err error) {
 			w.err = errors.Newf("invalid end key: %s", w.rangeKeyBlock.curValue)
 			return w.err
 		}
-		w.meta.LargestRangeKey = base.MakeInternalKey(endKey, base.InternalKeySeqNumMax, key.Kind()).Clone()
+		w.meta.LargestRangeKey = base.MakeRangeKeySentinelKey(kind, endKey).Clone()
 		// TODO(travers): The lack of compression on the range key block matches the
 		// lack of compression on the range-del block. Revisit whether we want to
 		// enable compression on this block.
