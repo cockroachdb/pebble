@@ -64,7 +64,7 @@ func maxReadCompactionBytes(opts *Options, level int) uint64 {
 	return uint64(10 * opts.Level(level).TargetFileSize)
 }
 
-// noCloseIter wraps around an internal iterator, intercepting and eliding
+// noCloseIter wraps around a FragmentIterator, intercepting and eliding
 // calls to Close. It is used during compaction to ensure that rangeDelIters
 // are not closed prematurely.
 type noCloseIter struct {
@@ -362,6 +362,12 @@ type compaction struct {
 	// returned from `compactionIter` and fragments them for output to files.
 	// Referenced by `compactionIter` which uses it to check whether keys are deleted.
 	rangeDelFrag keyspan.Fragmenter
+	// The range deletion tombstone iterator, that merges and fragments
+	// tombstones across levels. This iterator is included within the compaction
+	// input iterator as a single level.
+	// TODO(jackson): Remove this when the refactor of FragmentIterator,
+	// InterleavingIterator, etc is complete.
+	rangeDelIter keyspan.InternalIteratorShim
 
 	// A list of objects to close when the compaction finishes. Used by input
 	// iteration to keep rangeDelIters open for the lifetime of the compaction,
@@ -890,23 +896,31 @@ func (c *compaction) elideRangeTombstone(start, end []byte) bool {
 
 // newInputIter returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, retErr error) {
+	var rangeDelIters []keyspan.FragmentIterator
+
 	if len(c.flushing) != 0 {
 		if len(c.flushing) == 1 {
 			f := c.flushing[0]
 			iter := f.newFlushIter(nil, &c.bytesIterated)
 			if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
-				return newMergingIter(c.logger, c.cmp, nil, iter, rangeDelIter), nil
+				c.rangeDelIter.Init(c.cmp, rangeDelIter)
+				return newMergingIter(c.logger, c.cmp, nil, iter, &c.rangeDelIter), nil
 			}
 			return iter, nil
 		}
-		iters := make([]internalIterator, 0, 2*len(c.flushing))
+		iters := make([]internalIterator, 0, len(c.flushing)+1)
+		rangeDelIters = make([]keyspan.FragmentIterator, 0, len(c.flushing))
 		for i := range c.flushing {
 			f := c.flushing[i]
 			iters = append(iters, f.newFlushIter(nil, &c.bytesIterated))
 			rangeDelIter := f.newRangeDelIter(nil)
 			if rangeDelIter != nil {
-				iters = append(iters, rangeDelIter)
+				rangeDelIters = append(rangeDelIters, rangeDelIter)
 			}
+		}
+		if len(rangeDelIters) > 0 {
+			c.rangeDelIter.Init(c.cmp, rangeDelIters...)
+			iters = append(iters, &c.rangeDelIter)
 		}
 		return newMergingIter(c.logger, c.cmp, nil, iters...), nil
 	}
@@ -934,19 +948,26 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 					iter.Close()
 				}
 			}
+			for _, rangeDelIter := range rangeDelIters {
+				rangeDelIter.Close()
+			}
 		}
 	}()
 
 	// In normal operation, levelIter iterates over the point operations in a
 	// level, and initializes a rangeDelIter pointer for the range deletions in
 	// each table. During compaction, we want to iterate over the merged view of
-	// point operations and range deletions. In order to do this we create two
-	// levelIters per level, one which iterates over the point operations, and
-	// one which iterates over the range deletions. These two iterators are
-	// combined with a mergingIter.
+	// point operations and range deletions. In order to do this we create one
+	// levelIter per level to iterate over the point operations, and collect up
+	// all the range deletion files.
+	//
+	// The range deletion levels are first combined with a keyspan.MergingIter
+	// (currently wrapped by a keyspan.InternalIteratorShim to satisfy the
+	// internal iterator interface). The resulting merged rangedel iterator is
+	// then included with the point levels in a single mergingIter.
 	newRangeDelIter := func(
 		f manifest.LevelFile, _ *IterOptions, bytesIterated *uint64,
-	) (internalIterator, internalIterator, error) {
+	) (keyspan.FragmentIterator, error) {
 		iter, rangeDelIter, err := newIters(f.FileMetadata, nil /* iter options */, &c.bytesIterated)
 		if err == nil {
 			// TODO(peter): It is mildly wasteful to open the point iterator only to
@@ -990,11 +1011,11 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		if rangeDelIter == nil {
 			rangeDelIter = emptyIter
 		}
-		return rangeDelIter, nil, err
+		return rangeDelIter, err
 	}
 
 	iterOpts := IterOptions{logger: c.logger}
-	addItersForLevel := func(iters []internalIterator, level *compactionLevel) ([]internalIterator, error) {
+	addItersForLevel := func(level *compactionLevel) error {
 		iters = append(iters, newLevelIter(iterOpts, c.cmp, nil /* split */, newIters,
 			level.files.Iter(), manifest.Level(level.level), &c.bytesIterated))
 		// Add the range deletion iterator for each file as an independent level
@@ -1029,20 +1050,19 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		// mergingIter.
 		iter := level.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			rangeDelIter, _, err := newRangeDelIter(iter.Take(), nil, &c.bytesIterated)
+			rangeDelIter, err := newRangeDelIter(iter.Take(), nil, &c.bytesIterated)
 			if err != nil {
-				return nil, errors.Wrapf(err, "pebble: could not open table %s", errors.Safe(f.FileNum))
+				return errors.Wrapf(err, "pebble: could not open table %s", errors.Safe(f.FileNum))
 			}
 			if rangeDelIter != emptyIter {
-				iters = append(iters, rangeDelIter)
+				rangeDelIters = append(rangeDelIters, rangeDelIter)
 			}
 		}
-		return iters, nil
+		return nil
 	}
 
 	if c.startLevel.level != 0 {
-		iters, err = addItersForLevel(iters, c.startLevel)
-		if err != nil {
+		if err = addItersForLevel(c.startLevel); err != nil {
 			return nil, err
 		}
 	} else {
@@ -1054,14 +1074,24 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			}
 			iters = append(iters, iter)
 			if rangeDelIter != nil {
-				iters = append(iters, rangeDelIter)
+				c.closers = append(c.closers, rangeDelIter)
+				rangeDelIters = append(rangeDelIters, noCloseIter{rangeDelIter})
 			}
 		}
 	}
 
-	iters, err = addItersForLevel(iters, c.outputLevel)
-	if err != nil {
+	if err = addItersForLevel(c.outputLevel); err != nil {
 		return nil, err
+	}
+
+	// Combine all the rangedel iterators using a keyspan.MergingIterator and a
+	// InternalIteratorShim so that the range deletions may be interleaved in
+	// the compaction input.
+	// TODO(jackson): Replace the InternalIteratorShim with an interleaving
+	// iterator.
+	if len(rangeDelIters) > 0 {
+		c.rangeDelIter.Init(c.cmp, rangeDelIters...)
+		iters = append(iters, &c.rangeDelIter)
 	}
 	return newMergingIter(c.logger, c.cmp, nil, iters...), nil
 }
@@ -2344,11 +2374,21 @@ func (d *DB) runCompaction(
 				}
 			}
 			if key.Kind() == InternalKeyKindRangeDelete {
-				// Range tombstones are handled specially. They are fragmented and
-				// written later during `finishOutput()`. We add them to the
-				// `Fragmenter` now to make them visible to `compactionIter` so covered
-				// keys in the same snapshot stripe can be elided.
-				c.rangeDelFrag.Add(keyspan.Span{Start: iter.cloneKey(*key), End: val})
+				// Range tombstones are handled specially. They are fragmented,
+				// and they're not written until later during `finishOutput()`.
+				// We add them to the `Fragmenter` now to make them visible to
+				// `compactionIter` so covered keys in the same snapshot stripe
+				// can be elided.
+
+				// The interleaved range deletion might only be one of many,
+				// because some fragmenting is performed ahead of time by
+				// keyspan.MergingIter.
+				frags := c.rangeDelIter.Fragments()
+				for j := 0; j < frags.Count(); j++ {
+					s := frags.At(j)
+					s.Start = iter.cloneKey(s.Start)
+					c.rangeDelFrag.Add(s)
+				}
 				continue
 			}
 			if tw == nil {
