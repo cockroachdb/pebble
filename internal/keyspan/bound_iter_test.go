@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangekey
+package keyspan
 
 import (
 	"bytes"
@@ -12,8 +12,6 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
-	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/stretchr/testify/require"
 )
 
 func TestFragmentBoundIterator(t *testing.T) {
@@ -32,19 +30,12 @@ func TestFragmentBoundIterator(t *testing.T) {
 	datadriven.RunTest(t, "testdata/fragment_bound_iterator", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
-			var spans []keyspan.Span
+			var spans []Span
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
-				startKey, value := Parse(line)
-				endKey, v, ok := DecodeEndKey(startKey.Kind(), value)
-				require.True(t, ok)
-				spans = append(spans, keyspan.Span{
-					Start: startKey,
-					End:   endKey,
-					Value: v,
-				})
+				spans = append(spans, parseSpanWithKind(t, line))
 			}
-			iter.init(keyspan.NewIter(cmp, spans))
+			iter.init(NewIter(cmp, spans))
 			return "OK"
 		case "iter":
 			buf.Reset()

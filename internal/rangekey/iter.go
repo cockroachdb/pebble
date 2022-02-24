@@ -57,8 +57,8 @@ type Iterator interface {
 // Iter handles 'coalescing' spans on-the-fly, including dropping key spans that
 // are no longer relevant.
 type Iter struct {
-	miter     MergingIter
-	iterFrags Fragments
+	miter     keyspan.MergingIter
+	iterFrags keyspan.Fragments
 	coalescer Coalescer
 	curr      CoalescedSpan
 	err       error
@@ -93,7 +93,7 @@ func (i *Iter) Clone() Iterator {
 	// Init the new Iter to ensure err is cleared.
 	newIter := &Iter{}
 	newIter.Init(i.coalescer.items.cmp, i.coalescer.formatKey, i.coalescer.visibleSeqNum,
-		i.miter.clonedIters()...)
+		i.miter.ClonedIters()...)
 	return newIter
 }
 

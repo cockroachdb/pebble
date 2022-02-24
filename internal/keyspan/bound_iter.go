@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangekey
+package keyspan
 
 import (
 	"bytes"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 type boundKind int8
@@ -38,7 +37,7 @@ type boundKey struct {
 	// Start keys have user keys equal to the boundKey's key field. If the
 	// boundKind is boundKindFragmentEnd, all fragments' End keys equal the
 	// boundKey's key field.
-	fragments []keyspan.Span
+	fragments []Span
 }
 
 func (k boundKey) valid() bool {
@@ -83,31 +82,31 @@ func (k boundKey) String() string {
 //
 // Along with the key and bound kind, fragmentBoundIterator surfaces the set of
 // all the fragments that share that bound. fragmentBoundIterator is used
-// internally by the range-key merging iterator.
+// internally by the span merging iterator.
 //
 // Note that fragmentBoundIterator's interface differs from FragmentIterator.
 // The fragmentBoundIterator iterates over individual bounds, including end
-// boundaries, whereas FragmentIterator returns whole keyspan.Spans ordered by
+// boundaries, whereas FragmentIterator returns whole Spans ordered by
 // Start key. The fragmentBoundIterator's interface is designed this way to
 // simplify the mergingIter implementation, which must include both start and
 // end boundaries in its heap.
 type fragmentBoundIterator struct {
 	// iter holds the underlying fragment iterator. iterSpan is always set to
 	// the span at iter's current position.
-	iter     keyspan.FragmentIterator
-	iterSpan keyspan.Span
+	iter     FragmentIterator
+	iterSpan Span
 	// start and end hold the user keys for the iterator's current fragment. One
 	// of either the start or the end is the current iterator position,
 	// indicated by boundKind. All of the underlying iterators fragments with
 	// the bounds [start, end) are contained within the fragments field.
 	start     []byte
 	end       []byte
-	fragments []keyspan.Span
+	fragments []Span
 	boundKind boundKind
 	dir       int8
 }
 
-func (i *fragmentBoundIterator) init(fragmentIter keyspan.FragmentIterator) {
+func (i *fragmentBoundIterator) init(fragmentIter FragmentIterator) {
 	*i = fragmentBoundIterator{iter: fragmentIter}
 }
 
@@ -291,8 +290,8 @@ func (i *fragmentBoundIterator) initBackwardSpan(cmp base.Compare) boundKey {
 
 func (i *fragmentBoundIterator) clearFragments() {
 	for j := range i.fragments {
-		// Clear any pointers into range key blocks to avoid retaining them.
-		i.fragments[j] = keyspan.Span{}
+		// Clear any pointers into blocks to avoid retaining them.
+		i.fragments[j] = Span{}
 	}
 	i.fragments = i.fragments[:0]
 }

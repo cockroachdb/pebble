@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangekey
+package keyspan
 
 import (
 	"bytes"
@@ -11,13 +11,34 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
+
+func parseSpanWithKind(t testing.TB, s string) Span {
+	// parseSpanWithKind expects a string like
+	//
+	//  a.RANGEKEYSET.10  : c <value>
+	//
+	// The value is optional.
+	fields := strings.FieldsFunc(s, func(r rune) bool { return r == ':' || unicode.IsSpace(r) })
+	if len(fields) < 2 {
+		t.Fatalf("key span string representation should have 2+ fields, found %d in %q", len(fields), s)
+	}
+	var value []byte
+	if len(fields[2:]) > 0 {
+		value = []byte(strings.Join(fields[2:], " "))
+	}
+	return Span{
+		Start: base.ParseInternalKey(fields[0]),
+		End:   []byte(fields[1]),
+		Value: value,
+	}
+}
 
 func TestMergingIter(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
@@ -39,27 +60,20 @@ func TestMergingIter(t *testing.T) {
 	datadriven.RunTest(t, "testdata/merging_iter", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
-			var iters []keyspan.FragmentIterator
-			var spans []keyspan.Span
+			var iters []FragmentIterator
+			var spans []Span
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
 				if line == "--" {
-					iters = append(iters, keyspan.NewIter(cmp, spans))
+					iters = append(iters, NewIter(cmp, spans))
 					spans = nil
 					continue
 				}
 
-				startKey, value := Parse(line)
-				endKey, v, ok := DecodeEndKey(startKey.Kind(), value)
-				require.True(t, ok)
-				spans = append(spans, keyspan.Span{
-					Start: startKey,
-					End:   endKey,
-					Value: v,
-				})
+				spans = append(spans, parseSpanWithKind(t, line))
 			}
 			if len(spans) > 0 {
-				iters = append(iters, keyspan.NewIter(cmp, spans))
+				iters = append(iters, NewIter(cmp, spans))
 			}
 			iter.Init(cmp, iters...)
 			return fmt.Sprintf("%d levels", len(iters))
@@ -114,7 +128,7 @@ func TestMergingIter(t *testing.T) {
 
 // TestMergingIter_FragmenterEquivalence tests for equivalence between the
 // fragmentation performed on-the-fly by the MergingIter and the fragmentation
-// performed by the keyspan.Fragmenter.
+// performed by the Fragmenter.
 //
 // It does this by producing 1-10 levels of well-formed fragments. Generated
 // fragments may overlap other levels arbitrarily, but within their level
@@ -122,8 +136,8 @@ func TestMergingIter(t *testing.T) {
 // key bounds.
 //
 // The test then feeds all the fragments, across all levels, into a Fragmenter
-// and produces a keyspan.Iter over those fragments. The test also constructs a
-// MergingIter with a separate keyspan.Iter for each level. It runs a random
+// and produces a Iter over those fragments. The test also constructs a
+// MergingIter with a separate Iter for each level. It runs a random
 // series of operations, applying each operation to both. It asserts that each
 // operation has identical results on both iterators.
 func TestMergingIter_FragmenterEquivalence(t *testing.T) {
@@ -150,9 +164,9 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 	ks := testkeys.Alpha(rng.Intn(3) + 1)
 
 	// Generate between 1 and 10 levels of fragment iterators.
-	levels := make([][]keyspan.Span, rng.Intn(10)+1)
-	iters := make([]keyspan.FragmentIterator, len(levels))
-	var allSpans []keyspan.Span
+	levels := make([][]Span, rng.Intn(10)+1)
+	iters := make([]FragmentIterator, len(levels))
+	var allSpans []Span
 	var buf bytes.Buffer
 	for l := 0; l < len(levels); l++ {
 		fmt.Fprintf(&buf, "level %d: ", l)
@@ -167,7 +181,7 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 				fragmentCount := uint64(rng.Intn(3) + 1)
 
 				for f := fragmentCount; f > 0; f-- {
-					s := keyspan.Span{
+					s := Span{
 						Start: base.MakeInternalKey(
 							startUserKey,
 							uint64((len(levels)-l)*3)+f,
@@ -187,20 +201,20 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 			}
 			keyspaceStartIdx = spanEndIdx
 		}
-		iters[l] = keyspan.NewIter(cmp, levels[l])
+		iters[l] = NewIter(cmp, levels[l])
 		fmt.Fprintln(&buf)
 	}
 
 	// Fragment the spans across the levels.
-	var allFragmented []keyspan.Span
-	f := keyspan.Fragmenter{
+	var allFragmented []Span
+	f := Fragmenter{
 		Cmp:    cmp,
 		Format: testkeys.Comparer.FormatKey,
-		Emit: func(spans []keyspan.Span) {
+		Emit: func(spans []Span) {
 			allFragmented = append(allFragmented, spans...)
 		},
 	}
-	keyspan.Sort(f.Cmp, allSpans)
+	Sort(f.Cmp, allSpans)
 	for _, s := range allSpans {
 		f.Add(s)
 	}
@@ -217,7 +231,7 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 	}
 	t.Logf("%d levels:\n%s\n", len(levels), buf.String())
 
-	fragmenterIter := keyspan.NewIter(f.Cmp, allFragmented)
+	fragmenterIter := NewIter(f.Cmp, allFragmented)
 	mergingIter := &mergingIterAdapter{MergingIter: &MergingIter{}}
 	mergingIter.MergingIter.Init(f.Cmp, iters...)
 
@@ -300,8 +314,8 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 }
 
 // mergingIterAdapter adapts MergingIter, which returns Fragments, to fulfill
-// the keyspan.FragmentIterator interface. It's used by
-// TestMergingIter_FragmenterEquivalence to compare a keyspan.Iter with a
+// the FragmentIterator interface. It's used by
+// TestMergingIter_FragmenterEquivalence to compare a Iter with a
 // MergingIter, despite their different interfaces.
 type mergingIterAdapter struct {
 	*MergingIter
@@ -310,9 +324,9 @@ type mergingIterAdapter struct {
 	frags Fragments
 }
 
-var _ keyspan.FragmentIterator = &mergingIterAdapter{}
+var _ FragmentIterator = &mergingIterAdapter{}
 
-func (i *mergingIterAdapter) Clone() keyspan.FragmentIterator {
+func (i *mergingIterAdapter) Clone() FragmentIterator {
 	panic("unimplemented")
 }
 
@@ -320,9 +334,9 @@ func (i *mergingIterAdapter) End() []byte {
 	return i.Current().End
 }
 
-func (i *mergingIterAdapter) Current() keyspan.Span {
+func (i *mergingIterAdapter) Current() Span {
 	if i.index < 0 || i.index >= i.frags.Count() {
-		return keyspan.Span{}
+		return Span{}
 	}
 	return i.frags.At(i.index)
 }

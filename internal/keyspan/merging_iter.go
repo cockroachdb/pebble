@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangekey
+package keyspan
 
 import (
 	"bytes"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // TODO(jackson): Document memory safety requirements. Once we're reading from
@@ -27,11 +26,6 @@ import (
 // seeks. It may not be worth it, because range keys are rare and cascading
 // seeks would require introducing key comparisons to switchTo{Min,Max}Heap
 // where there currently are none.
-
-// TODO(jackson): Consider moving this to the internal/keyspan package and
-// removing any explicit mention of range keys. The algorithm works for all key
-// span typees, and could be used to fragment RANGEDELs across levels during a
-// compaction.
 
 // Fragments holds a set of fragments all with the bounds [Start, End).
 // Individual, sorted fragments may be retrieved using the At method.
@@ -51,17 +45,17 @@ func (f *Fragments) Count() int {
 }
 
 // At retrieves the i-th span.
-func (f *Fragments) At(i int) keyspan.Span {
+func (f *Fragments) At(i int) Span {
 	// Construct the fragment with f.spans[i].Start's trailer, so it adopts its
 	// sequence number and kind, and with f.spans[i]'s Value.
-	return keyspan.Span{
+	return Span{
 		Start: base.InternalKey{UserKey: f.Start, Trailer: f.spans[i].Start.Trailer},
 		End:   f.End,
 		Value: f.spans[i].Value,
 	}
 }
 
-type bySeqKind []*keyspan.Span
+type bySeqKind []*Span
 
 func (s bySeqKind) Len() int      { return len(s) }
 func (s bySeqKind) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
@@ -76,9 +70,8 @@ func (s bySeqKind) Less(i, j int) bool {
 	}
 }
 
-// MergingIter merges range keys across levels of the LSM, exposing a fragment
-// iterator that yields range key spans fragmented at unique range key
-// boundaries.
+// MergingIter merges fragments across levels of the LSM, exposing a fragment
+// iterator that yields spans fragmented at unique user key boundaries.
 //
 // A MergingIter is initialized with an arbitrary number of child iterators over
 // fragmented spans. Each child iterator exposes fragmented key spans, such that
@@ -236,11 +229,11 @@ type MergingIter struct {
 	// Invariant: None of the levels' iterators contain spans with a bound
 	// between start and end. For all bounds b, b ≤ start || b ≥ end.
 	start, end []byte
-	// fragments holds all of the range key fragments across all levels that
-	// overlap the key span [start, end), sorted by sequence number and kind
-	// descending. The fragments are not truncated to start and end. This slice
-	// is reconstituted in synthesizeFragments from each mergiingIterLevel's
-	// fragments every time the [start, end) bounds change.
+	// fragments holds all of the fragments across all levels that overlap the
+	// key span [start, end), sorted by sequence number and kind descending. The
+	// fragments are not truncated to start and end. This slice is reconstituted
+	// in synthesizeFragments from each mergiingIterLevel's fragments every time
+	// the [start, end) bounds change.
 	//
 	// Each element points into a child iterator's memory, so the spans may not
 	// be directly modified.
@@ -258,7 +251,7 @@ type mergingIterLevel struct {
 }
 
 // Init initializes the merging iterator with the provided fragment iterators.
-func (m *MergingIter) Init(cmp base.Compare, iters ...keyspan.FragmentIterator) {
+func (m *MergingIter) Init(cmp base.Compare, iters ...FragmentIterator) {
 	levels, items := m.levels, m.heap.items
 
 	*m = MergingIter{
@@ -279,7 +272,7 @@ func (m *MergingIter) Init(cmp base.Compare, iters ...keyspan.FragmentIterator) 
 }
 
 // SeekGE implements base.InternalIterator.SeekGE. Like other implementations of
-// keyspan.FragmentIterator, MergingIter seeks based on the span's Start key,
+// FragmentIterator, MergingIter seeks based on the span's Start key,
 // returning the fragment with the smallest Start ≥ key.
 func (m *MergingIter) SeekGE(key []byte, trySeekUsingNext bool) Fragments {
 	m.invalidate() // clear state about current position
@@ -292,7 +285,7 @@ func (m *MergingIter) SeekGE(key []byte, trySeekUsingNext bool) Fragments {
 }
 
 // SeekLT implements base.InternalIterator.SeekLT. Like other implementations of
-// keyspan.FragmentIterator, MergingIter seeks based on fragements' Start keys,
+// FragmentIterator, MergingIter seeks based on fragements' Start keys,
 // returning the fragment with the largest Start that's < key.
 func (m *MergingIter) SeekLT(key []byte) Fragments {
 	// TODO(jackson): Evaluate whether there's an implementation of SeekLT
@@ -778,11 +771,11 @@ func (m *MergingIter) prevEntry() {
 	}
 }
 
-// clonedIters makes a clone of the merging iterator's underlying iterators and
+// ClonedIters makes a clone of the merging iterator's underlying iterators and
 // returns them.
-func (m *MergingIter) clonedIters() []keyspan.FragmentIterator {
+func (m *MergingIter) ClonedIters() []FragmentIterator {
 	// TODO(jackson): Remove when range-key state is included in readState.
-	var iters []keyspan.FragmentIterator
+	var iters []FragmentIterator
 	for l := range m.levels {
 		iters = append(iters, m.levels[l].iter.iter.Clone())
 	}
@@ -891,4 +884,13 @@ func (h *mergingIterHeap) down(i0, n int) bool {
 		i = j
 	}
 	return i > i0
+}
+
+// firstError returns the first non-nil error of err0 and err1, or nil if both
+// are nil.
+func firstError(err0, err1 error) error {
+	if err0 != nil {
+		return err0
+	}
+	return err1
 }
