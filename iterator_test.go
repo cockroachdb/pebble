@@ -219,14 +219,14 @@ func (f *fakeIter) SetBounds(lower, upper []byte) {
 // invalidatingIter tests unsafe key/value slice reuse by modifying the last
 // returned key/value to all 1s.
 type invalidatingIter struct {
-	iter        internalIterator
+	iter        internalIteratorWithStats
 	lastKey     *InternalKey
 	lastValue   []byte
 	ignoreKinds [base.InternalKeyKindMax + 1]bool
 }
 
 func newInvalidatingIter(iter internalIterator) *invalidatingIter {
-	return &invalidatingIter{iter: iter}
+	return &invalidatingIter{iter: base.WrapIterWithStats(iter)}
 }
 
 func (i *invalidatingIter) ignoreKind(kind base.InternalKeyKind) {
@@ -312,6 +312,14 @@ func (i *invalidatingIter) SetBounds(lower, upper []byte) {
 
 func (i *invalidatingIter) String() string {
 	return i.iter.String()
+}
+
+func (i *invalidatingIter) Stats() base.InternalIteratorStats {
+	return i.iter.Stats()
+}
+
+func (i *invalidatingIter) ResetStats() {
+	i.iter.ResetStats()
 }
 
 // testIterator tests creating a combined iterator from a number of sub-
@@ -1106,7 +1114,7 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 			equal: equal,
 			split: split,
 			merge: DefaultMerger.Merge,
-			iter:  &errorIter,
+			iter:  base.WrapIterWithStats(&errorIter),
 		}
 	}
 
@@ -1459,7 +1467,7 @@ func BenchmarkIteratorSeekGE(b *testing.B) {
 	iter := &Iterator{
 		cmp:   DefaultComparer.Compare,
 		equal: DefaultComparer.Equal,
-		iter:  m.newIter(nil),
+		iter:  base.WrapIterWithStats(m.newIter(nil)),
 	}
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
@@ -1475,7 +1483,7 @@ func BenchmarkIteratorNext(b *testing.B) {
 	iter := &Iterator{
 		cmp:   DefaultComparer.Compare,
 		equal: DefaultComparer.Equal,
-		iter:  m.newIter(nil),
+		iter:  base.WrapIterWithStats(m.newIter(nil)),
 	}
 
 	b.ResetTimer()
@@ -1492,7 +1500,7 @@ func BenchmarkIteratorPrev(b *testing.B) {
 	iter := &Iterator{
 		cmp:   DefaultComparer.Compare,
 		equal: DefaultComparer.Equal,
-		iter:  m.newIter(nil),
+		iter:  base.WrapIterWithStats(m.newIter(nil)),
 	}
 
 	b.ResetTimer()

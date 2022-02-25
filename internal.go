@@ -32,3 +32,5 @@ const (
 type InternalKey = base.InternalKey
 
 type internalIterator = base.InternalIterator
+
+type internalIteratorWithStats = base.InternalIteratorWithStats

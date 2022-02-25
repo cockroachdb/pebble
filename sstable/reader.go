@@ -124,6 +124,7 @@ type singleLevelIterator struct {
 	dataBH    BlockHandle
 	err       error
 	closeHook func(i Iterator) error
+	stats     base.InternalIteratorStats
 
 	// boundsCmp and positionedUsingLatestBounds are for optimizing iteration
 	// that uses multiple adjacent bounds. The seek after setting a new bound
@@ -378,7 +379,7 @@ func (i *singleLevelIterator) loadBlock() loadBlockResult {
 			return loadBlockIrrelevant
 		}
 	}
-	block, err := i.reader.readBlock(i.dataBH, nil /* transform */, &i.dataRS)
+	block, err := i.readBlockWithStats(i.dataBH, &i.dataRS)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -391,6 +392,20 @@ func (i *singleLevelIterator) loadBlock() loadBlockResult {
 	}
 	i.initBounds()
 	return loadBlockOK
+}
+
+func (i *singleLevelIterator) readBlockWithStats(
+	bh BlockHandle, raState *readaheadState,
+) (cache.Handle, error) {
+	block, cacheHit, err := i.reader.readBlock(bh, nil /* transform */, raState)
+	if err == nil {
+		n := bh.Length
+		i.stats.BlockBytes += n
+		if cacheHit {
+			i.stats.BlockBytesInCache += n
+		}
+	}
+	return block, err
 }
 
 func (i *singleLevelIterator) initBoundsForAlreadyLoadedBlock() {
@@ -1059,6 +1074,19 @@ func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
 	i.blockUpper = nil
 }
 
+var _ base.InternalIteratorWithStats = &singleLevelIterator{}
+var _ base.InternalIteratorWithStats = &twoLevelIterator{}
+
+// Stats implements InternalIteratorWithStats.
+func (i *singleLevelIterator) Stats() base.InternalIteratorStats {
+	return i.stats
+}
+
+// ResetStats implements InternalIteratorWithStats.
+func (i *singleLevelIterator) ResetStats() {
+	i.stats = base.InternalIteratorStats{}
+}
+
 // compactionIterator is similar to Iterator but it increments the number of
 // bytes that have been iterated through.
 type compactionIterator struct {
@@ -1182,8 +1210,7 @@ func (i *twoLevelIterator) loadIndex() loadBlockResult {
 			return loadBlockIrrelevant
 		}
 	}
-	indexBlock, err := i.reader.readBlock(
-		bhp.BlockHandle, nil /* transform */, nil /* readaheadState */)
+	indexBlock, err := i.readBlockWithStats(bhp.BlockHandle, nil /* readaheadState */)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -2200,19 +2227,27 @@ func (r *Reader) NewRawRangeKeyIter() (FragmentIterator, error) {
 }
 
 func (r *Reader) readIndex() (cache.Handle, error) {
-	return r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */)
+	h, _, err :=
+		r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */)
+	return h, err
 }
 
 func (r *Reader) readFilter() (cache.Handle, error) {
-	return r.readBlock(r.filterBH, nil /* transform */, nil /* readaheadState */)
+	h, _, err :=
+		r.readBlock(r.filterBH, nil /* transform */, nil /* readaheadState */)
+	return h, err
 }
 
 func (r *Reader) readRangeDel() (cache.Handle, error) {
-	return r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadState */)
+	h, _, err :=
+		r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadState */)
+	return h, err
 }
 
 func (r *Reader) readRangeKey() (cache.Handle, error) {
-	return r.readBlock(r.rangeKeyBH, nil /* transform */, nil /* readaheadState */)
+	h, _, err :=
+		r.readBlock(r.rangeKeyBH, nil /* transform */, nil /* readaheadState */)
+	return h, err
 }
 
 func checkChecksum(
@@ -2240,12 +2275,12 @@ func checkChecksum(
 // readBlock reads and decompresses a block from disk into memory.
 func (r *Reader) readBlock(
 	bh BlockHandle, transform blockTransform, raState *readaheadState,
-) (cache.Handle, error) {
+) (_ cache.Handle, cacheHit bool, _ error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		if raState != nil {
 			raState.recordCacheHit(int64(bh.Offset), int64(bh.Length+blockTrailerLen))
 		}
-		return h, nil
+		return h, true, nil
 	}
 	file := r.file
 
@@ -2290,12 +2325,12 @@ func (r *Reader) readBlock(
 	b := v.Buf()
 	if _, err := file.ReadAt(b, int64(bh.Offset)); err != nil {
 		r.opts.Cache.Free(v)
-		return cache.Handle{}, err
+		return cache.Handle{}, false, err
 	}
 
 	if err := checkChecksum(r.checksumType, b, bh, r.fileNum); err != nil {
 		r.opts.Cache.Free(v)
-		return cache.Handle{}, err
+		return cache.Handle{}, false, err
 	}
 
 	typ := blockType(b[bh.Length])
@@ -2309,7 +2344,7 @@ func (r *Reader) readBlock(
 		b = v.Buf()
 	} else if err != nil {
 		r.opts.Cache.Free(v)
-		return cache.Handle{}, err
+		return cache.Handle{}, false, err
 	}
 
 	if transform != nil {
@@ -2319,7 +2354,7 @@ func (r *Reader) readBlock(
 		b, err = transform(b)
 		if err != nil {
 			r.opts.Cache.Free(v)
-			return cache.Handle{}, err
+			return cache.Handle{}, false, err
 		}
 		newV := r.opts.Cache.Alloc(len(b))
 		copy(newV.Buf(), b)
@@ -2328,7 +2363,7 @@ func (r *Reader) readBlock(
 	}
 
 	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, v)
-	return h, nil
+	return h, false, nil
 }
 
 func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
@@ -2374,7 +2409,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 }
 
 func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
-	b, err := r.readBlock(metaindexBH, nil /* transform */, nil /* readaheadState */)
+	b, _, err := r.readBlock(metaindexBH, nil /* transform */, nil /* readaheadState */)
 	if err != nil {
 		return err
 	}
@@ -2404,7 +2439,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, err = r.readBlock(bh, nil /* transform */, nil /* readaheadState */)
+		b, _, err = r.readBlock(bh, nil /* transform */, nil /* readaheadState */)
 		if err != nil {
 			return err
 		}
@@ -2512,7 +2547,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 			l.Index = append(l.Index, indexBH.BlockHandle)
 
-			subIndex, err := r.readBlock(
+			subIndex, _, err := r.readBlock(
 				indexBH.BlockHandle, nil /* transform */, nil /* readaheadState */)
 			if err != nil {
 				return nil, err
@@ -2578,7 +2613,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 		}
 
 		// Read the block, which validates the checksum.
-		h, err := r.readBlock(bh, nil /* transform */, blockRS)
+		h, _, err := r.readBlock(bh, nil /* transform */, blockRS)
 		if err != nil {
 			return err
 		}
@@ -2635,7 +2670,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if err != nil {
 			return 0, errCorruptIndexEntry
 		}
-		startIdxBlock, err := r.readBlock(
+		startIdxBlock, _, err := r.readBlock(
 			startIdxBH.BlockHandle, nil /* transform */, nil /* readaheadState */)
 		if err != nil {
 			return 0, err
@@ -2656,7 +2691,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			if err != nil {
 				return 0, errCorruptIndexEntry
 			}
-			endIdxBlock, err := r.readBlock(
+			endIdxBlock, _, err := r.readBlock(
 				endIdxBH.BlockHandle, nil /* transform */, nil /* readaheadState */)
 			if err != nil {
 				return 0, err
@@ -2914,7 +2949,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadState */)
+		h, _, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadState */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue

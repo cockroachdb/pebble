@@ -94,7 +94,7 @@ import (
 type InterleavingIter struct {
 	cmp                    base.Compare
 	split                  base.Split
-	pointIter              base.InternalIterator
+	pointIter              base.InternalIteratorWithStats
 	rangeKeyIter           Iterator
 	maskingThresholdSuffix []byte
 	maskSuffix             []byte
@@ -164,7 +164,7 @@ var _ base.InternalIterator = &InterleavingIter{}
 func (i *InterleavingIter) Init(
 	cmp base.Compare,
 	split base.Split,
-	pointIter base.InternalIterator,
+	pointIter base.InternalIteratorWithStats,
 	rangeKeyIter Iterator,
 	maskingThresholdSuffix []byte,
 ) {
@@ -742,6 +742,18 @@ func (i *InterleavingIter) Close() error {
 // String implements (base.InternalIterator).String.
 func (i *InterleavingIter) String() string {
 	return fmt.Sprintf("range-key-interleaving(%q)", i.pointIter.String())
+}
+
+var _ base.InternalIteratorWithStats = &InterleavingIter{}
+
+// Stats implements InternalIteratorWithStats.
+func (i *InterleavingIter) Stats() base.InternalIteratorStats {
+	return i.pointIter.Stats()
+}
+
+// ResetStats implements InternalIteratorWithStats.
+func (i *InterleavingIter) ResetStats() {
+	i.pointIter.ResetStats()
 }
 
 func firstError(err0, err1 error) error {

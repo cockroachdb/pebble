@@ -28,7 +28,7 @@ iter
 seek-ge a
 ----
 a:4
-stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0))
+stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 1, key-bytes 1, value-bytes 1, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 0
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -36,7 +36,7 @@ iter
 seek-ge b
 ----
 b:1
-stats: (interface (dir, seek, step): (fwd, 2, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 2, 0), (rev, 0, 0))
+stats: (interface (dir, seek, step): (fwd, 2, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 2, 0), (rev, 0, 0)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 2, key-bytes 2, value-bytes 2, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 2
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -44,7 +44,7 @@ iter
 seek-ge c
 ----
 c:1
-stats: (interface (dir, seek, step): (fwd, 3, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 3, 0), (rev, 0, 0))
+stats: (interface (dir, seek, step): (fwd, 3, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 3, 0), (rev, 0, 0)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 3, key-bytes 3, value-bytes 3, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -54,7 +54,7 @@ iter
 seek-ge bb
 ----
 c:1
-stats: (interface (dir, seek, step): (fwd, 4, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 4, 0), (rev, 0, 0))
+stats: (interface (dir, seek, step): (fwd, 4, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 4, 0), (rev, 0, 0)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 4, key-bytes 4, value-bytes 4, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -65,7 +65,7 @@ iter
 seek-ge bbb
 ----
 c:1
-stats: (interface (dir, seek, step): (fwd, 5, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 4, 0), (rev, 0, 0))
+stats: (interface (dir, seek, step): (fwd, 5, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 4, 0), (rev, 0, 0)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 4, key-bytes 4, value-bytes 4, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -77,7 +77,7 @@ seek-ge e
 ----
 d:2
 e:1
-stats: (interface (dir, seek, step): (fwd, 6, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 5, 1), (rev, 0, 0))
+stats: (interface (dir, seek, step): (fwd, 6, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 5, 1), (rev, 0, 0)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 6, key-bytes 6, value-bytes 6, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -87,7 +87,7 @@ seek-ge b
 ----
 d:2
 b:1
-stats: (interface (dir, seek, step): (fwd, 7, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 6, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 7, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 6, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 10, key-bytes 10, value-bytes 10, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -97,7 +97,7 @@ iter
 seek-prefix-ge a
 ----
 a:4
-stats: (interface (dir, seek, step): (fwd, 8, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 7, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 8, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 7, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 11, key-bytes 11, value-bytes 11, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 0
 
@@ -105,7 +105,7 @@ iter
 seek-prefix-ge b
 ----
 b:1
-stats: (interface (dir, seek, step): (fwd, 9, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 8, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 9, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 8, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 12, key-bytes 12, value-bytes 12, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 2
 
@@ -113,7 +113,7 @@ iter
 seek-prefix-ge c
 ----
 c:1
-stats: (interface (dir, seek, step): (fwd, 10, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 9, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 10, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 9, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 13, key-bytes 13, value-bytes 13, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -123,7 +123,7 @@ iter
 seek-prefix-ge bb
 ----
 .
-stats: (interface (dir, seek, step): (fwd, 11, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 10, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 11, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 10, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 14, key-bytes 14, value-bytes 14, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -137,7 +137,7 @@ seek-ge a
 ----
 .
 a:4
-stats: (interface (dir, seek, step): (fwd, 12, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 11, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 12, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 11, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 15, key-bytes 15, value-bytes 15, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -147,7 +147,7 @@ seek-ge b
 ----
 .
 b:1
-stats: (interface (dir, seek, step): (fwd, 13, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 12, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 13, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 12, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 16, key-bytes 16, value-bytes 16, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 4
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -155,7 +155,7 @@ iter
 seek-ge bb
 ----
 .
-stats: (interface (dir, seek, step): (fwd, 14, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 13, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 14, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 13, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 16, key-bytes 16, value-bytes 16, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 5
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -165,7 +165,7 @@ seek-ge bbb
 ----
 .
 c:1
-stats: (interface (dir, seek, step): (fwd, 15, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 14, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 15, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 14, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 17, key-bytes 17, value-bytes 17, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 5
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -173,7 +173,7 @@ iter
 seek-ge cc
 ----
 .
-stats: (interface (dir, seek, step): (fwd, 16, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 15, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 16, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 15, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 17, key-bytes 17, value-bytes 17, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 6
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -187,7 +187,7 @@ seek-ge b
 ----
 .
 b:1
-stats: (interface (dir, seek, step): (fwd, 17, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 16, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 17, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 16, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 18, key-bytes 18, value-bytes 18, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 6
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -197,7 +197,7 @@ seek-ge c
 ----
 .
 c:1
-stats: (interface (dir, seek, step): (fwd, 18, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 17, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 18, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 17, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 19, key-bytes 19, value-bytes 19, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 6
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -207,7 +207,7 @@ seek-prefix-ge b
 ----
 .
 b:1
-stats: (interface (dir, seek, step): (fwd, 19, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 18, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 19, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 18, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 20, key-bytes 20, value-bytes 20, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 6
 SeekPrefixGEs with trySeekUsingNext: 4
 
@@ -217,6 +217,6 @@ seek-prefix-ge c
 ----
 .
 c:1
-stats: (interface (dir, seek, step): (fwd, 20, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 19, 1), (rev, 0, 3))
+stats: (interface (dir, seek, step): (fwd, 20, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 19, 1), (rev, 0, 3)), (internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 21, key-bytes 21, value-bytes 21, tombstoned: 0))
 SeekGEs with trySeekUsingNext: 6
 SeekPrefixGEs with trySeekUsingNext: 4
