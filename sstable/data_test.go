@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
@@ -55,7 +56,7 @@ func optsFromArgs(td *datadriven.TestData, writerOpts *WriterOptions) error {
 }
 
 func runBuildCmd(
-	td *datadriven.TestData, writerOpts *WriterOptions,
+	td *datadriven.TestData, writerOpts *WriterOptions, cacheSize int,
 ) (*WriterMetadata, *Reader, error) {
 
 	f0 := &memFile{}
@@ -154,6 +155,10 @@ func runBuildCmd(
 		readerOpts.Filters = map[string]FilterPolicy{
 			writerOpts.FilterPolicy.Name(): writerOpts.FilterPolicy,
 		}
+	}
+	if cacheSize > 0 {
+		readerOpts.Cache = cache.New(int64(cacheSize))
+		defer readerOpts.Cache.Unref()
 	}
 	r, err := NewMemReader(f0.Data(), readerOpts)
 	if err != nil {
@@ -319,6 +324,12 @@ func runIterCmd(td *datadriven.TestData, r *Reader) string {
 				}
 			}
 			iter.SetBounds(lower, upper)
+		case "stats":
+			fmt.Fprintf(&b, "%+v\n", iter.Stats())
+			continue
+		case "reset-stats":
+			iter.ResetStats()
+			continue
 		}
 		if iter.Valid() && checkValidPrefix(prefix, iter.Key().UserKey) {
 			fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())

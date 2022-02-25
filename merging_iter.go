@@ -16,7 +16,7 @@ import (
 )
 
 type mergingIterLevel struct {
-	iter internalIterator
+	iter internalIteratorWithStats
 	// rangeDelIter is set to the range-deletion iterator for the level. When
 	// configured with a levelIter, this pointer changes as sstable boundaries
 	// are crossed. See levelIter.initRangeDel and the Range Deletions comment
@@ -221,6 +221,7 @@ type mergingIter struct {
 	prefix   []byte
 	lower    []byte
 	upper    []byte
+	stats    InternalIteratorStats
 
 	// Elide range tombstones from being returned during iteration. Set to true
 	// when mergingIter is a child of Iterator and the mergingIter is processing
@@ -247,7 +248,7 @@ func newMergingIter(
 	m := &mergingIter{}
 	levels := make([]mergingIterLevel, len(iters))
 	for i := range levels {
-		levels[i].iter = iters[i]
+		levels[i].iter = base.WrapIterWithStats(iters[i])
 	}
 	m.init(&IterOptions{logger: logger}, cmp, split, levels...)
 	return m
@@ -626,7 +627,9 @@ func (m *mergingIter) findNextEntry() (*InternalKey, []byte) {
 		if m.levels[item.index].isSyntheticIterBoundsKey {
 			break
 		}
+		m.addItemStats(item)
 		if m.isNextEntryDeleted(item) {
+			m.stats.PointsCoveredByRangeTombstones++
 			// For prefix iteration, stop if we are past the prefix. We could
 			// amortize the cost of this comparison, by doing it only after we
 			// have iterated in this for loop a few times. But unless we find
@@ -784,7 +787,9 @@ func (m *mergingIter) findPrevEntry() (*InternalKey, []byte) {
 		if m.levels[item.index].isSyntheticIterBoundsKey {
 			break
 		}
+		m.addItemStats(item)
 		if m.isPrevEntryDeleted(item) {
+			m.stats.PointsCoveredByRangeTombstones++
 			continue
 		}
 		if item.key.Visible(m.snapshot) &&
@@ -1095,5 +1100,30 @@ func (m *mergingIter) ForEachLevelIter(fn func(li *levelIter) bool) {
 				break
 			}
 		}
+	}
+}
+
+func (m *mergingIter) addItemStats(item *mergingIterItem) {
+	m.stats.PointCount++
+	m.stats.KeyBytes += uint64(len(item.key.UserKey))
+	m.stats.ValueBytes += uint64(len(item.value))
+}
+
+var _ internalIteratorWithStats = &mergingIter{}
+
+// Stats implements InternalIteratorWithStats.
+func (m *mergingIter) Stats() base.InternalIteratorStats {
+	stats := m.stats
+	for i := range m.levels {
+		stats.Merge(m.levels[i].iter.Stats())
+	}
+	return stats
+}
+
+// ResetStats implements InternalIteratorWithStats.
+func (m *mergingIter) ResetStats() {
+	m.stats = InternalIteratorStats{}
+	for i := range m.levels {
+		m.levels[i].iter.ResetStats()
 	}
 }

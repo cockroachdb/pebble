@@ -154,6 +154,21 @@ func (i *iterAdapter) SetBounds(lower, upper []byte) {
 	i.key = nil
 }
 
+func (i *iterAdapter) Stats() base.InternalIteratorStats {
+	ii, ok := i.Iterator.(base.InternalIteratorWithStats)
+	if ok {
+		return ii.Stats()
+	}
+	return base.InternalIteratorStats{}
+}
+
+func (i *iterAdapter) ResetStats() {
+	ii, ok := i.Iterator.(base.InternalIteratorWithStats)
+	if ok {
+		ii.ResetStats()
+	}
+}
+
 func TestReader(t *testing.T) {
 	writerOpts := map[string]WriterOptions{
 		// No bloom filters.
@@ -204,7 +219,10 @@ func TestReader(t *testing.T) {
 					t.Run(
 						fmt.Sprintf("opts=%s,writerOpts=%s,blockSize=%s,indexSize=%s",
 							oName, lName, dName, iName),
-						func(t *testing.T) { runTestReader(t, tableOpt, testDirs[oName], nil /* Reader */) })
+						func(t *testing.T) {
+							runTestReader(
+								t, tableOpt, testDirs[oName], nil /* Reader */, 0)
+						})
 				}
 			}
 		}
@@ -231,9 +249,17 @@ func TestHamletReader(t *testing.T) {
 
 		t.Run(
 			fmt.Sprintf("sst=%s", prebuiltSST),
-			func(t *testing.T) { runTestReader(t, WriterOptions{}, "testdata/hamletreader", r) },
+			func(t *testing.T) { runTestReader(t, WriterOptions{}, "testdata/hamletreader", r, 0) },
 		)
 	}
+}
+
+func TestReaderStats(t *testing.T) {
+	tableOpt := WriterOptions{
+		BlockSize:      30,
+		IndexBlockSize: 30,
+	}
+	runTestReader(t, tableOpt, "testdata/readerstats", nil, 10000)
 }
 
 func TestInjectedErrors(t *testing.T) {
@@ -309,7 +335,7 @@ func TestInvalidReader(t *testing.T) {
 	}
 }
 
-func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader) {
+func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, cacheSize int) {
 	datadriven.Walk(t, dir, func(t *testing.T, path string) {
 		defer func() {
 			if r != nil {
@@ -326,7 +352,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader) {
 					r = nil
 				}
 				var err error
-				_, r, err = runBuildCmd(d, &o)
+				_, r, err = runBuildCmd(d, &o, cacheSize)
 				if err != nil {
 					return err.Error()
 				}

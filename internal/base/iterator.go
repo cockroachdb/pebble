@@ -213,3 +213,74 @@ type InternalIterator interface {
 
 	fmt.Stringer
 }
+
+// InternalIteratorWithStats extends InternalIterator to expose stats.
+type InternalIteratorWithStats interface {
+	InternalIterator
+	Stats() InternalIteratorStats
+	ResetStats()
+}
+
+// InternalIteratorStats contains miscellaneous stats produced by
+// InternalIterators that are part of the InternalIterator tree. Not every
+// field is relevant for an InternalIterator implementation. The field values
+// are aggregated as one goes up the InternalIterator tree.
+type InternalIteratorStats struct {
+	// Bytes in the loaded blocks. If the block was compressed, this is the
+	// compressed bytes. Currently, only the second-level index and data blocks
+	// containing points are included.
+	BlockBytes uint64
+	// Subset of BlockBytes that were in the block cache.
+	BlockBytesInCache uint64
+
+	// The following can repeatedly count the same points if they are iterated
+	// over multiple times. Additionally, they may count a point twice when
+	// switching directions. The latter could be improved if needed.
+
+	// Bytes in keys that were iterated over. Currently, only point keys are
+	// included.
+	KeyBytes uint64
+	// Bytes in values that were iterated over. Currently, only point values are
+	// included.
+	ValueBytes uint64
+	// The count of points iterated over.
+	PointCount uint64
+	// Points that were iterated over that were covered by range tombstones. It
+	// can be useful for discovering instances of
+	// https://github.com/cockroachdb/pebble/issues/1070.
+	PointsCoveredByRangeTombstones uint64
+}
+
+// Merge merges the stats in from into the given stats.
+func (s *InternalIteratorStats) Merge(from InternalIteratorStats) {
+	s.BlockBytes += from.BlockBytes
+	s.BlockBytesInCache += from.BlockBytesInCache
+	s.PointsCoveredByRangeTombstones += from.PointsCoveredByRangeTombstones
+}
+
+type internalIteratorWithEmptyStats struct {
+	InternalIterator
+}
+
+var _ InternalIteratorWithStats = internalIteratorWithEmptyStats{}
+
+// Stats implements InternalIteratorWithStats.
+func (i internalIteratorWithEmptyStats) Stats() InternalIteratorStats {
+	return InternalIteratorStats{}
+}
+
+// ResetStats implements InternalIteratorWithStats.
+func (i internalIteratorWithEmptyStats) ResetStats() {}
+
+// WrapIterWithStats ensures that either iter implements the stats methods or
+// wraps it, such that the return value implements InternalIteratorWithStats.
+func WrapIterWithStats(iter InternalIterator) InternalIteratorWithStats {
+	if iter == nil {
+		return nil
+	}
+	i, ok := iter.(InternalIteratorWithStats)
+	if ok {
+		return i
+	}
+	return internalIteratorWithEmptyStats{InternalIterator: iter}
+}
