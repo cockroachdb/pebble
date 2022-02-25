@@ -943,7 +943,7 @@ func TestBlockProperties(t *testing.T) {
 						err = errors.Errorf("%v", r)
 					}
 				}()
-				meta, r, err = runBuildCmd(td, &opts)
+				meta, r, err = runBuildCmd(td, &opts, 0)
 			}()
 			if err != nil {
 				return err.Error()

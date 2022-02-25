@@ -312,6 +312,18 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 			}
 			iter.SetBounds(lower, upper)
 			continue
+		case "stats":
+			ii, ok := iter.(internalIteratorWithStats)
+			if ok {
+				fmt.Fprintf(&b, "%+v\n", ii.Stats())
+			}
+			continue
+		case "reset-stats":
+			ii, ok := iter.(internalIteratorWithStats)
+			if ok {
+				ii.ResetStats()
+			}
+			continue
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}

@@ -1,0 +1,59 @@
+# Two keys in each data block.
+build
+a.SET.1:A
+b.SET.2:B
+c.SET.3:C
+d.SET.4:D
+----
+
+# The first iteration has cache misses for both blocks. The second iteration
+# hits the cache. Then reset stats.
+iter
+first
+stats
+next
+stats
+next
+stats
+next
+stats
+next
+stats
+first
+stats
+next
+stats
+next
+stats
+next
+stats
+next
+stats
+reset-stats
+stats
+first
+stats
+----
+<a:1>
+{BlockBytes:34 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+<b:2>
+{BlockBytes:34 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+<c:3>
+{BlockBytes:68 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+<d:4>
+{BlockBytes:68 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+.
+{BlockBytes:68 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+<a:1>
+{BlockBytes:102 BlockBytesInCache:34 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+<b:2>
+{BlockBytes:102 BlockBytesInCache:34 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+<c:3>
+{BlockBytes:136 BlockBytesInCache:68 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+<d:4>
+{BlockBytes:136 BlockBytesInCache:68 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+.
+{BlockBytes:136 BlockBytesInCache:68 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+<a:1>
+{BlockBytes:34 BlockBytesInCache:34 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}

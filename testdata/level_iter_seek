@@ -83,6 +83,48 @@ g/<empty>#4,1:g
 ./<empty>#0,0:
 h/<empty>#3,1:h
 
+# Test that when sequentially iterate through all 3 files, the stats
+# accumulate as we close a file and switch to the next one. Also, while in the
+# middle of the first file, a reset-stats propagates to the underlying
+# iterators, and when done iterating, a reset-stats does reset the local
+# state.
+iter
+seek-ge a
+stats
+reset-stats
+stats
+next
+stats
+next
+stats
+next
+stats
+next
+stats
+next
+stats
+next
+stats
+reset-stats
+stats
+----
+a/<empty>#9,1:a
+{BlockBytes:34 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+b#8,1:b
+{BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+c#7,1:c
+{BlockBytes:34 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+f#5,1:f
+{BlockBytes:34 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+g#4,1:g
+{BlockBytes:68 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+h#3,1:h
+{BlockBytes:68 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+.
+{BlockBytes:68 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+
 iter
 set-bounds lower=d
 seek-lt d
