@@ -397,6 +397,16 @@ type DB struct {
 			// readCompactions is a readCompactionQueue which keeps track of the
 			// compactions which we might have to perform.
 			readCompactions readCompactionQueue
+
+			// nonatomicFileCount records the current count of files that are
+			// not their own atomic compaction unit: That is the count of files
+			// that share a user key with a neighboring file in levels L1-L6.
+			// Such files are compacted in the background in a rewrite
+			// compaction if there are no other available compactions. This stat
+			// is updated by the compaction picker when it looks for one of
+			// these compactions, by the FormatSplitUserKeys format major
+			// version migration and by Open.
+			nonatomicFileCount int
 		}
 
 		cleaner struct {
@@ -1346,6 +1356,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Compact.EstimatedDebt = d.mu.versions.picker.estimatedCompactionDebt(0)
 	metrics.Compact.InProgressBytes = atomic.LoadInt64(&d.mu.versions.atomic.atomicInProgressBytes)
 	metrics.Compact.NumInProgress = int64(d.mu.compact.compactingCount)
+	metrics.Compact.NonatomicFiles = d.mu.compact.nonatomicFileCount
 	for _, m := range d.mu.mem.queue {
 		metrics.MemTable.Size += m.totalBytes()
 	}

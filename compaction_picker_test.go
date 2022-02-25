@@ -191,6 +191,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				var inProgress []compactionInfo
 				for {
 					env := compactionEnv{
+						nonatomicFileCount:      new(int),
 						earliestUnflushedSeqNum: InternalKeySeqNumMax,
 						inProgressCompactions:   inProgress,
 					}
@@ -268,6 +269,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 				}
 
 				pc := pickerByScore.pickAuto(compactionEnv{
+					nonatomicFileCount:      new(int),
 					earliestUnflushedSeqNum: InternalKeySeqNumMax,
 					inProgressCompactions:   inProgress,
 				})
@@ -610,6 +612,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			}
 
 			pc = picker.pickAuto(compactionEnv{
+				nonatomicFileCount:      new(int),
 				bytesCompacted:          new(uint64),
 				earliestUnflushedSeqNum: math.MaxUint64,
 				inProgressCompactions:   inProgressCompactions,
@@ -833,6 +836,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			}
 
 			pc := picker.pickAuto(compactionEnv{
+				nonatomicFileCount:      new(int),
 				bytesCompacted:          new(uint64),
 				earliestUnflushedSeqNum: math.MaxUint64,
 				inProgressCompactions:   inProgressCompactions,
@@ -982,6 +986,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 
 		case "pick-auto":
 			pc := picker.pickAuto(compactionEnv{
+				nonatomicFileCount:      new(int),
 				bytesCompacted:          new(uint64),
 				earliestUnflushedSeqNum: math.MaxUint64,
 				readCompactionEnv: readCompactionEnv{
@@ -1293,6 +1298,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 
 		case "pick-auto":
 			pc := picker.pickAuto(compactionEnv{
+				nonatomicFileCount:      new(int),
 				bytesCompacted:          new(uint64),
 				earliestUnflushedSeqNum: math.MaxUint64,
 				earliestSnapshotSeqNum:  math.MaxUint64,

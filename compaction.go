@@ -285,6 +285,7 @@ const (
 	compactionKindDeleteOnly
 	compactionKindElisionOnly
 	compactionKindRead
+	compactionKindRewrite
 )
 
 func (k compactionKind) String() string {
@@ -301,6 +302,8 @@ func (k compactionKind) String() string {
 		return "elision-only"
 	case compactionKindRead:
 		return "read"
+	case compactionKindRewrite:
+		return "rewrite"
 	}
 	return "?"
 }
@@ -320,9 +323,9 @@ type compaction struct {
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
 	startLevel *compactionLevel
-	// outputLevel is the level that files are being produced in. outputLevel is
-	// equal to startLevel+1 except when startLevel is 0 in which case it is
-	// equal to compactionPicker.baseLevel().
+	// outputLevel is the level that files are being produced in. For default
+	// compactions, outputLevel is equal to startLevel+1 except when startLevel
+	// is 0 in which case it is equal to compactionPicker.baseLevel().
 	outputLevel *compactionLevel
 
 	inputs []compactionLevel
@@ -448,15 +451,9 @@ func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) 
 	}
 	c.setupInuseKeyRanges()
 
-	switch {
-	case pc.readTriggered:
-		c.kind = compactionKindRead
-	case c.startLevel.level == numLevels-1:
-		// This compaction is an L6->L6 elision-only compaction to rewrite
-		// a sstable without unnecessary tombstones.
-		c.kind = compactionKindElisionOnly
-	case c.outputLevel.files.Empty() && c.startLevel.files.Len() == 1 &&
-		c.grandparents.SizeSum() <= c.maxOverlapBytes:
+	c.kind = pc.kind
+	if c.kind == compactionKindDefault && c.outputLevel.files.Empty() &&
+		c.startLevel.files.Len() == 1 && c.grandparents.SizeSum() <= c.maxOverlapBytes {
 		// This compaction can be converted into a trivial move from one level
 		// to the next. We avoid such a move if there is lots of overlapping
 		// grandparent data. Otherwise, the move could create a parent file
@@ -1548,6 +1545,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 	}
 
 	env := compactionEnv{
+		nonatomicFileCount:      &d.mu.compact.nonatomicFileCount,
 		bytesCompacted:          &d.atomic.bytesCompacted,
 		earliestSnapshotSeqNum:  d.mu.snapshots.earliest(),
 		earliestUnflushedSeqNum: d.getEarliestUnflushedSeqNumLocked(),

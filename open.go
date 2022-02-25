@@ -453,6 +453,15 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 	d.calculateDiskAvailableBytes()
 
+	// If the format major version is earlier than FormatSplitUserKeys, there
+	// might be files that do not form their own atomic compaction unit.
+	// Initialize the count of such files.
+	// TODO(jackson): Remove this after CockroachDB 22.2.
+	if d.mu.formatVers.vers < FormatSplitUserKeys {
+		count, _, _, _ := findSplitUserKey(d.opts, d.mu.versions.currentVersion())
+		d.mu.compact.nonatomicFileCount = count
+	}
+
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
 
