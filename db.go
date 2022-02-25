@@ -320,6 +320,11 @@ type DB struct {
 			// marker is moved in order to atomically record the new
 			// version.
 			marker *atomicfs.Marker
+			// ratcheting when set to true indicates that the database is
+			// currently in the process of ratcheting the format major version
+			// to vers + 1. As a part of ratcheting the format major version,
+			// migrations may drop and re-acquire the mutex.
+			ratcheting bool
 		}
 
 		// The ID of the next job. Job IDs are passed to event listener
@@ -1394,6 +1399,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Compact.EstimatedDebt = d.mu.versions.picker.estimatedCompactionDebt(0)
 	metrics.Compact.InProgressBytes = atomic.LoadInt64(&d.mu.versions.atomic.atomicInProgressBytes)
 	metrics.Compact.NumInProgress = int64(d.mu.compact.compactingCount)
+	metrics.Compact.MarkedFiles = d.mu.versions.currentVersion().Stats.MarkedForCompaction
 	for _, m := range d.mu.mem.queue {
 		metrics.MemTable.Size += m.totalBytes()
 	}

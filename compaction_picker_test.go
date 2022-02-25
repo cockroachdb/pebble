@@ -536,6 +536,22 @@ func TestCompactionPickerL0(t *testing.T) {
 				return "nil"
 			}
 			return result.String()
+		case "mark-for-compaction":
+			var fileNum uint64
+			td.ScanArgs(t, "file", &fileNum)
+			for l, lm := range picker.vers.Levels {
+				iter := lm.Iter()
+				for f := iter.First(); f != nil; f = iter.Next() {
+					if f.FileNum != base.FileNum(fileNum) {
+						continue
+					}
+					f.MarkedForCompaction = true
+					picker.vers.Stats.MarkedForCompaction++
+					picker.vers.Levels[l].InvalidateAnnotation(markedForCompactionAnnotator{})
+					return fmt.Sprintf("marked L%d.%s", l, f.FileNum)
+				}
+			}
+			return "not-found"
 		case "max-output-file-size":
 			if pc == nil {
 				return "no compaction"

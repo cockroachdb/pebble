@@ -575,6 +575,26 @@ func (n *node) rebalanceOrMerge(i int) {
 	}
 }
 
+func (n *node) invalidateAnnotation(a Annotator) {
+	// Find this annotator's annotation on this node.
+	var annot *annotation
+	for i := range n.annot {
+		if n.annot[i].annotator == a {
+			annot = &n.annot[i]
+		}
+	}
+
+	if annot != nil && annot.valid {
+		annot.valid = false
+		annot.v = a.Zero(annot.v)
+	}
+	if !n.leaf {
+		for i := int16(0); i <= n.count; i++ {
+			n.children[i].invalidateAnnotation(a)
+		}
+	}
+}
+
 func (n *node) annotation(a Annotator) (interface{}, bool) {
 	// Find this annotator's annotation on this node.
 	var annot *annotation
