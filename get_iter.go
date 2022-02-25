@@ -37,6 +37,9 @@ type getIter struct {
 	err          error
 }
 
+// TODO(sumeer): CockroachDB code doesn't use getIter, but, for completeness,
+// make this implement InternalIteratorWithStats.
+
 // getIter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*getIter)(nil)
 
