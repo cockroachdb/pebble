@@ -436,6 +436,33 @@ func TestExtendBounds(t *testing.T) {
 		}
 		return
 	}
+	format := func(m *FileMetadata) string {
+		var b bytes.Buffer
+		var smallest, largest string
+		switch m.boundTypeSmallest {
+		case boundTypePointKey:
+			smallest = "point"
+		case boundTypeRangeKey:
+			smallest = "range"
+		default:
+			return fmt.Sprintf("unknown bound type %d", m.boundTypeSmallest)
+		}
+		switch m.boundTypeLargest {
+		case boundTypePointKey:
+			largest = "point"
+		case boundTypeRangeKey:
+			largest = "range"
+		default:
+			return fmt.Sprintf("unknown bound type %d", m.boundTypeLargest)
+		}
+		bounds, err := m.boundsMarker()
+		if err != nil {
+			panic(err)
+		}
+		fmt.Fprintf(&b, "%s\n", m.DebugString(base.DefaultFormatter, true))
+		fmt.Fprintf(&b, "  bounds: (smallest=%s,largest=%s) (0x%08b)\n", smallest, largest, bounds)
+		return b.String()
+	}
 	m := &FileMetadata{}
 	datadriven.RunTest(t, "testdata/file_metadata_bounds", func(d *datadriven.TestData) string {
 		switch d.Cmd {
@@ -445,11 +472,11 @@ func TestExtendBounds(t *testing.T) {
 		case "extend-point-key-bounds":
 			u, l := parseBounds(d.Input)
 			m.ExtendPointKeyBounds(cmp, u, l)
-			return m.DebugString(base.DefaultFormatter, true)
+			return format(m)
 		case "extend-range-key-bounds":
 			u, l := parseBounds(d.Input)
 			m.ExtendRangeKeyBounds(cmp, u, l)
-			return m.DebugString(base.DefaultFormatter, true)
+			return format(m)
 		default:
 			return fmt.Sprintf("unknown command %s\n", d.Cmd)
 		}

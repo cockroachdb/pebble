@@ -64,6 +64,32 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		base.DecodeInternalKey([]byte("Z\x01\xff\xfe\xfd\xfc\xfb\xfa\xf9")),
 	)
 
+	m3 := (&FileMetadata{
+		FileNum:      807,
+		Size:         8070,
+		CreationTime: 807050,
+	}).ExtendRangeKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("aaa"), 0, base.InternalKeyKindRangeKeySet),
+		base.MakeRangeKeySentinelKey(base.InternalKeyKindRangeKeySet, []byte("zzz")),
+	)
+
+	m4 := (&FileMetadata{
+		FileNum:        809,
+		Size:           8090,
+		CreationTime:   809060,
+		SmallestSeqNum: 9,
+		LargestSeqNum:  11,
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("m"), 0, base.InternalKeyKindSet),
+	).ExtendRangeKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("l"), 0, base.InternalKeyKindRangeKeySet),
+		base.MakeRangeKeySentinelKey(base.InternalKeyKindRangeKeySet, []byte("z")),
+	)
+
 	testCases := []VersionEdit{
 		// An empty version edit.
 		{},
@@ -86,12 +112,20 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			},
 			NewFiles: []NewFileEntry{
 				{
-					Level: 5,
+					Level: 4,
 					Meta:  m1,
 				},
 				{
-					Level: 6,
+					Level: 5,
 					Meta:  m2,
+				},
+				{
+					Level: 6,
+					Meta:  m3,
+				},
+				{
+					Level: 6,
+					Meta:  m4,
 				},
 			},
 		},
