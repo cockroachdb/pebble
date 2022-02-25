@@ -31,12 +31,17 @@ next
 next
 next
 next
+stats
+reset-stats
+stats
 ----
 a#30,1:30
 c#27,1:27
 e#72057594037927935,15:
 e#10,1:10
 g#20,1:20
+{BlockBytes:72 BlockBytesInCache:0 KeyBytes:5 ValueBytes:8 PointCount:5 PointsCoveredByRangeTombstones:0}
+{BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 
 # seekGE() should not allow the rangedel to act on points in the lower sstable that are after it.
 iter
@@ -552,3 +557,36 @@ a#10,1:a10
 .
 d#10,1:d10
 .
+
+# Create a sstable which has a range tombstone that covers 4 points in the
+# same sstable. This tests the PointsCoveredByRangeTombstones and PointCount
+# stats.
+define
+L
+a.SET.30 g.RANGEDEL.72057594037927935
+a.SET.30:30 a.RANGEDEL.20:g b.SET.19:19 c.SET.18:18 d.SET.17:17 e.SET.16:16 f.SET.21:21
+----
+1:
+  000026:[a#30,SET-g#72057594037927935,RANGEDEL]
+
+iter
+first
+stats
+reset-stats
+stats
+next
+stats
+next
+stats
+next
+stats
+----
+a#30,1:30
+{BlockBytes:75 BlockBytesInCache:0 KeyBytes:1 ValueBytes:2 PointCount:1 PointsCoveredByRangeTombstones:0}
+{BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+f#21,1:21
+{BlockBytes:0 BlockBytesInCache:0 KeyBytes:5 ValueBytes:10 PointCount:5 PointsCoveredByRangeTombstones:4}
+g#72057594037927935,15:
+{BlockBytes:0 BlockBytesInCache:0 KeyBytes:6 ValueBytes:10 PointCount:6 PointsCoveredByRangeTombstones:4}
+.
+{BlockBytes:0 BlockBytesInCache:0 KeyBytes:6 ValueBytes:10 PointCount:6 PointsCoveredByRangeTombstones:4}

@@ -112,7 +112,7 @@ func NewExternalIter(
 				return nil, err
 			}
 			mlevels = append(mlevels, mergingIterLevel{
-				iter:         pointIter,
+				iter:         base.WrapIterWithStats(pointIter),
 				rangeDelIter: rangeDelIter,
 			})
 		}

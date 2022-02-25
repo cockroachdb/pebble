@@ -532,7 +532,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		getIterAlloc: buf,
 		cmp:          d.cmp,
 		equal:        d.equal,
-		iter:         get,
+		iter:         base.WrapIterWithStats(get),
 		merge:        d.merge,
 		split:        d.split,
 		readState:    readState,
@@ -986,7 +986,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		// Top-level is the batch, if any.
 		if batch != nil {
 			mlevels = append(mlevels, mergingIterLevel{
-				iter:         batch.newInternalIter(&dbi.opts),
+				iter:         base.WrapIterWithStats(batch.newInternalIter(&dbi.opts)),
 				rangeDelIter: batch.newRangeDelIter(&dbi.opts),
 			})
 		}
@@ -1000,7 +1000,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 				continue
 			}
 			mlevels = append(mlevels, mergingIterLevel{
-				iter:         mem.newIter(&dbi.opts),
+				iter:         base.WrapIterWithStats(mem.newIter(&dbi.opts)),
 				rangeDelIter: mem.newRangeDelIter(&dbi.opts),
 			})
 		}

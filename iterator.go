@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/fastrand"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekey"
@@ -114,9 +115,14 @@ type IteratorStats struct {
 	ForwardStepCount [NumStatsKind]int
 	// ReverseStepCount includes Prev.
 	ReverseStepCount [NumStatsKind]int
+	InternalStats    InternalIteratorStats
 }
 
 var _ redact.SafeFormatter = &IteratorStats{}
+
+// InternalIteratorStats contains miscellaneous stats produced by internal
+// iterators.
+type InternalIteratorStats = base.InternalIteratorStats
 
 // Iterator iterates over a DB's key/value pairs in key order.
 //
@@ -143,7 +149,7 @@ type Iterator struct {
 	equal     Equal
 	merge     Merge
 	split     Split
-	iter      internalIterator
+	iter      internalIteratorWithStats
 	readState *readState
 	rangeKey  *iteratorRangeKeyState
 	err       error
@@ -1604,11 +1610,14 @@ func (i *Iterator) Metrics() IteratorMetrics {
 // ResetStats resets the stats to 0.
 func (i *Iterator) ResetStats() {
 	i.stats = IteratorStats{}
+	i.iter.ResetStats()
 }
 
 // Stats returns the current stats.
 func (i *Iterator) Stats() IteratorStats {
-	return i.stats
+	stats := i.stats
+	stats.InternalStats = i.iter.Stats()
+	return stats
 }
 
 // Clone creates a new Iterator over the same underlying data, i.e., over the
@@ -1680,5 +1689,17 @@ func (stats *IteratorStats) SafeFormat(s redact.SafePrinter, verb rune) {
 		s.Printf("(fwd, %d, %d), (rev, %d, %d))",
 			redact.Safe(stats.ForwardSeekCount[i]), redact.Safe(stats.ForwardStepCount[i]),
 			redact.Safe(stats.ReverseSeekCount[i]), redact.Safe(stats.ReverseStepCount[i]))
+	}
+	if stats.InternalStats != (InternalIteratorStats{}) {
+		s.SafeString(",\n(internal-stats: ")
+		s.Printf("(block-bytes: (total %s, cached %s)), "+
+			"(points: (count %s, key-bytes %s, value-bytes %s, tombstoned: %s))",
+			humanize.IEC.Uint64(stats.InternalStats.BlockBytes),
+			humanize.IEC.Uint64(stats.InternalStats.BlockBytesInCache),
+			humanize.SI.Uint64(stats.InternalStats.PointCount),
+			humanize.SI.Uint64(stats.InternalStats.KeyBytes),
+			humanize.SI.Uint64(stats.InternalStats.ValueBytes),
+			humanize.SI.Uint64(stats.InternalStats.PointsCoveredByRangeTombstones),
+		)
 	}
 }
