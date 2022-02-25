@@ -14,14 +14,16 @@ import (
 // LevelMetadata contains metadata for all of the files within
 // a level of the LSM.
 type LevelMetadata struct {
-	tree btree
+	level int
+	tree  btree
 }
 
 // clone makes a copy of the level metadata, implicitly increasing the ref
 // count of every file contained within lm.
 func (lm *LevelMetadata) clone() LevelMetadata {
 	return LevelMetadata{
-		tree: lm.tree.clone(),
+		level: lm.level,
+		tree:  lm.tree.clone(),
 	}
 }
 
@@ -35,6 +37,7 @@ func makeLevelMetadata(cmp Compare, level int, files []*FileMetadata) LevelMetad
 		bcmp = btreeCmpSmallestKey(cmp)
 	}
 	var lm LevelMetadata
+	lm.level = level
 	lm.tree, _ = makeBTree(bcmp, files)
 	return lm
 }
@@ -68,13 +71,16 @@ func (lm *LevelMetadata) Slice() LevelSlice {
 	return LevelSlice{iter: lm.tree.iter(), length: lm.tree.length}
 }
 
-// Find finds the provided file in the level if it exists. The level must be
-// key-sorted (eg, non-L0).
+// Find finds the provided file in the level if it exists.
 func (lm *LevelMetadata) Find(cmp base.Compare, m *FileMetadata) *LevelFile {
-	// TODO(jackson): Add an assertion that lm is key-sorted.
-	o := overlaps(lm.Iter(), cmp, m.Smallest.UserKey,
-		m.Largest.UserKey, m.Largest.IsExclusiveSentinel())
-	iter := o.Iter()
+	iter := lm.Iter()
+	if lm.level != 0 {
+		// If lm holds files for levels >0, we can narrow our search by binary
+		// searching by bounds.
+		o := overlaps(iter, cmp, m.Smallest.UserKey,
+			m.Largest.UserKey, m.Largest.IsExclusiveSentinel())
+		iter = o.Iter()
+	}
 	for f := iter.First(); f != nil; f = iter.Next() {
 		if f == m {
 			lf := iter.Take()
@@ -95,6 +101,18 @@ func (lm *LevelMetadata) Annotation(annotator Annotator) interface{} {
 	}
 	v, _ := lm.tree.root.annotation(annotator)
 	return v
+}
+
+// InvalidateAnnotation clears any cached annotations defined by Annotator. The
+// Annotator is used as the key for pre-calculated values, so equal Annotators
+// must be used to clear the appropriate cached annotation. InvalidateAnnotation
+// must not be called concurrently, and in practice this is achieved by
+// requiring callers to hold DB.mu.
+func (lm *LevelMetadata) InvalidateAnnotation(annotator Annotator) {
+	if lm.Empty() {
+		return
+	}
+	lm.tree.root.invalidateAnnotation(annotator)
 }
 
 // LevelFile holds a file's metadata along with its position
