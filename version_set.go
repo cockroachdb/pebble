@@ -346,6 +346,7 @@ func (vs *versionSet) logAndApply(
 	jobID int,
 	ve *versionEdit,
 	metrics map[int]*LevelMetrics,
+	forceRotation bool,
 	inProgressCompactions func() []compactionInfo,
 ) error {
 	if !vs.writing {
@@ -394,7 +395,7 @@ func (vs *versionSet) logAndApply(
 	// is too large.
 	var newManifestFileNum FileNum
 	var prevManifestFileSize uint64
-	if vs.manifest == nil || vs.manifest.Size() >= vs.opts.MaxManifestFileSize {
+	if forceRotation || vs.manifest == nil || vs.manifest.Size() >= vs.opts.MaxManifestFileSize {
 		newManifestFileNum = vs.getNextFileNum()
 		prevManifestFileSize = uint64(vs.manifest.Size())
 	}
@@ -550,6 +551,10 @@ func (vs *versionSet) incrementCompactions(kind compactionKind) {
 	case compactionKindRead:
 		vs.metrics.Compact.Count++
 		vs.metrics.Compact.ReadCount++
+
+	case compactionKindRewrite:
+		vs.metrics.Compact.Count++
+		vs.metrics.Compact.RewriteCount++
 	}
 }
 

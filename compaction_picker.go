@@ -37,6 +37,7 @@ type compactionPicker interface {
 	pickAuto(env compactionEnv) (pc *pickedCompaction)
 	pickManual(env compactionEnv, manual *manualCompaction) (c *pickedCompaction, retryLater bool)
 	pickElisionOnlyCompaction(env compactionEnv) (pc *pickedCompaction)
+	pickRewriteCompaction(env compactionEnv) (pc *pickedCompaction)
 	pickReadTriggeredCompaction(env compactionEnv) (pc *pickedCompaction)
 	forceBaseLevel1()
 }
@@ -109,9 +110,9 @@ type pickedCompaction struct {
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
 	startLevel *compactionLevel
-	// outputLevel is the level that files are being produced in. outputLevel is
-	// equal to startLevel+1 except when startLevel is 0 in which case it is
-	// equal to compactionPicker.baseLevel().
+	// outputLevel is the level that files are being produced in. In default
+	// compactions, outputLevel is equal to startLevel+1 except when startLevel
+	// is 0 in which case it is equal to compactionPicker.baseLevel().
 	outputLevel *compactionLevel
 	// adjustedOutputLevel is the output level used for the purpose of
 	// determining the target output file size, overlap bytes, and expanded
@@ -1066,6 +1067,25 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		*env.readCompactionEnv.rescheduleReadCompaction = true
 	}
 
+	// At the lowest possible compaction-picking priority, look for files marked
+	// for compaction. Pebble will mark files for compaction if they have atomic
+	// compaction units that span multiple files. While current Pebble code does
+	// not construct such sstables, RocksDB and earlier versions of Pebble may
+	// have created them. These split user keys form sets of files that must be
+	// compacted together for correctness (referred to as "atomic compaction
+	// units" within the code). Rewrite them in-place.
+	//
+	// It's also possible that a file may have been marked for compaction by
+	// even earlier versions of Pebble code, since FileMetadata's
+	// MarkedForCompaction field is persisted in the manifest. That's okay. We
+	// previously would've ignored the designation, whereas now we'll re-compact
+	// the file in place.
+	if p.vers.Stats.MarkedForCompaction > 0 {
+		if pc := p.pickRewriteCompaction(env); pc != nil {
+			return pc
+		}
+	}
+
 	return nil
 }
 
@@ -1129,6 +1149,46 @@ func (a elisionOnlyAnnotator) Merge(v interface{}, accum interface{}) interface{
 	return accumV
 }
 
+// markedForCompactionAnnotator implements the manifest.Annotator interface,
+// annotating B-Tree nodes with the *fileMetadata of a file that is marked for
+// compaction within the subtree. If multiple files meet the criteria, it
+// chooses whichever file has the lowest LargestSeqNum.
+type markedForCompactionAnnotator struct{}
+
+var _ manifest.Annotator = markedForCompactionAnnotator{}
+
+func (a markedForCompactionAnnotator) Zero(interface{}) interface{} {
+	return nil
+}
+
+func (a markedForCompactionAnnotator) Accumulate(
+	f *fileMetadata, dst interface{},
+) (interface{}, bool) {
+	if !f.MarkedForCompaction {
+		// Not marked for compaction; return dst.
+		return dst, true
+	}
+	return markedMergeHelper(f, dst)
+}
+
+func (a markedForCompactionAnnotator) Merge(v interface{}, accum interface{}) interface{} {
+	if v == nil {
+		return accum
+	}
+	accum, _ = markedMergeHelper(v.(*fileMetadata), accum)
+	return accum
+}
+
+// REQUIRES: f is non-nil, and f.MarkedForCompaction=true.
+func markedMergeHelper(f *fileMetadata, dst interface{}) (interface{}, bool) {
+	if dst == nil {
+		return f, true
+	} else if dstV := dst.(*fileMetadata); dstV.LargestSeqNum > f.LargestSeqNum {
+		return f, true
+	}
+	return dst, true
+}
+
 // pickElisionOnlyCompaction looks for compactions of sstables in the
 // bottommost level containing obsolete records that may now be dropped.
 func (p *compactionPickerByScore) pickElisionOnlyCompaction(
@@ -1160,6 +1220,66 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 	// Fail-safe to protect against compacting the same sstable concurrently.
 	if !inputRangeAlreadyCompacting(env, pc) {
 		return pc
+	}
+	return nil
+}
+
+// pickRewriteCompaction attempts to construct a compaction that
+// rewrites a file marked for compaction. pickRewriteCompaction will
+// pull in adjacent files in the file's atomic compaction unit if
+// necessary. A rewrite compaction outputs files to the same level as
+// the input level.
+func (p *compactionPickerByScore) pickRewriteCompaction(env compactionEnv) (pc *pickedCompaction) {
+	for l := numLevels - 1; l >= 0; l-- {
+		v := p.vers.Levels[l].Annotation(markedForCompactionAnnotator{})
+		if v == nil {
+			// Try the next level.
+			continue
+		}
+		candidate := v.(*fileMetadata)
+		if candidate.Compacting {
+			// Try the next level.
+			continue
+		}
+		lf := p.vers.Levels[l].Find(p.opts.Comparer.Compare, candidate)
+		if lf == nil {
+			panic(fmt.Sprintf("file %s not found in level %d as expected", candidate.FileNum, numLevels-1))
+		}
+
+		inputs := lf.Slice()
+		// L0 files generated by a flush have never been split such that
+		// adjacent files can contain the same user key. So we do not need to
+		// rewrite an atomic compaction unit for L0. Note that there is nothing
+		// preventing two different flushes from producing files that are
+		// non-overlapping from an InternalKey perspective, but span the same
+		// user key. However, such files cannot be in the same L0 sublevel,
+		// since each sublevel requires non-overlapping user keys (unlike other
+		// levels).
+		if l > 0 {
+			// Find this file's atomic compaction unit. This is only relevant
+			// for levels L1+.
+			var isCompacting bool
+			inputs, isCompacting = expandToAtomicUnit(
+				p.opts.Comparer.Compare,
+				inputs,
+				false, /* disableIsCompacting */
+			)
+			if isCompacting {
+				// Try the next level.
+				continue
+			}
+		}
+
+		pc = newPickedCompaction(p.opts, p.vers, l, l, p.baseLevel)
+		pc.outputLevel.level = l
+		pc.kind = compactionKindRewrite
+		pc.startLevel.files = inputs
+		pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.Iter())
+
+		// Fail-safe to protect against compacting the same sstable concurrently.
+		if !inputRangeAlreadyCompacting(env, pc) {
+			return pc
+		}
 	}
 	return nil
 }

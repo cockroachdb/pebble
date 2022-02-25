@@ -1,0 +1,148 @@
+define
+L1
+d.SET.110:d e.SET.140:e
+----
+1:
+  000004:[d#110,SET-e#140,SET] points:[d#110,SET-e#140,SET]
+
+reopen
+----
+OK
+
+# The current public Pebble interface offers no way of constructing a multi-file
+# atomic compaction unit, so use the force-ingest command to force an ingestion
+# into L1.
+
+build ef
+set e e
+set f f
+----
+
+force-ingest paths=(ef) level=1
+----
+1:
+  000004:[d#110,SET-e#140,SET] points:[d#110,SET-e#140,SET]
+  000008:[e#1,SET-f#1,SET] points:[e#1,SET-f#1,SET]
+
+format-major-version
+----
+005
+
+marked-file-count
+----
+0 files marked for compaction
+
+ratchet-format-major-version 006
+----
+
+format-major-version
+----
+006
+
+# Upgrading to format major version 006 should've marked files for compaction.
+
+marked-file-count
+----
+2 files marked for compaction
+
+reopen
+----
+OK
+
+format-major-version
+----
+006
+
+# Ensure the files previously marked for compaction are still marked for
+# compaction.
+
+marked-file-count
+----
+2 files marked for compaction
+
+# Ratcheting to 007 should force compaction of any files still marked for
+# compaction.
+
+ratchet-format-major-version 007
+----
+[JOB 100] compacted(rewrite) L1 [000004 000008] (1.6 K) + L1 [] (0 B) -> L1 [000013] (786 B), in 1.0s (2.0s total), output rate 786 B/s
+
+format-major-version
+----
+007
+
+lsm
+----
+1:
+  000013:[d#0,SET-f#0,SET]
+
+# Reset to a new LSM.
+
+define
+L1
+b.SET.0:b c.SET.5:c
+L1
+m.SET.0:m l.SET.5:l
+L1
+x.SET.0:x y.SET.5:y
+----
+1:
+  000004:[b#0,SET-c#5,SET] points:[b#0,SET-c#5,SET]
+  000005:[l#5,SET-m#0,SET] points:[l#5,SET-m#0,SET]
+  000006:[x#0,SET-y#5,SET] points:[x#0,SET-y#5,SET]
+
+build ab
+set a a
+set b b
+----
+
+build cd
+set c c
+set d d
+----
+
+build wx
+set w w
+set x x
+----
+
+force-ingest paths=(ab, cd, wx) level=1
+----
+1:
+  000007:[a#1,SET-b#1,SET] points:[a#1,SET-b#1,SET]
+  000004:[b#0,SET-c#5,SET] points:[b#0,SET-c#5,SET]
+  000008:[c#2,SET-d#2,SET] points:[c#2,SET-d#2,SET]
+  000005:[l#5,SET-m#0,SET] points:[l#5,SET-m#0,SET]
+  000009:[w#3,SET-x#3,SET] points:[w#3,SET-x#3,SET]
+  000006:[x#0,SET-y#5,SET] points:[x#0,SET-y#5,SET]
+
+format-major-version
+----
+005
+
+ratchet-format-major-version 006
+----
+
+format-major-version
+----
+006
+
+marked-file-count
+----
+5 files marked for compaction
+
+ratchet-format-major-version 007
+----
+[JOB 100] compacted(rewrite) L1 [000007 000004 000008] (2.4 K) + L1 [] (0 B) -> L1 [000011] (794 B), in 1.0s (2.0s total), output rate 794 B/s
+[JOB 100] compacted(rewrite) L1 [000009 000006] (1.6 K) + L1 [] (0 B) -> L1 [000012] (786 B), in 1.0s (2.0s total), output rate 786 B/s
+
+lsm
+----
+1:
+  000011:[a#0,SET-d#0,SET]
+  000005:[l#5,SET-m#0,SET]
+  000012:[w#0,SET-y#0,SET]
+
+format-major-version
+----
+007

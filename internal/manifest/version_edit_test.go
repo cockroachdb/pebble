@@ -57,7 +57,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		CreationTime:        806040,
 		SmallestSeqNum:      3,
 		LargestSeqNum:       5,
-		markedForCompaction: true,
+		MarkedForCompaction: true,
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.DecodeInternalKey([]byte("A\x00\x01\x02\x03\x04\x05\x06\x07")),
