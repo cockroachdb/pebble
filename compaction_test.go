@@ -96,6 +96,12 @@ func (p *compactionPickerForTesting) pickElisionOnlyCompaction(
 	return nil
 }
 
+func (p *compactionPickerForTesting) pickRewriteCompaction(
+	env compactionEnv,
+) (pc *pickedCompaction) {
+	return nil
+}
+
 func (p *compactionPickerForTesting) pickManual(
 	env compactionEnv, manual *manualCompaction,
 ) (pc *pickedCompaction, retryLater bool) {

@@ -237,7 +237,6 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		if err := d.mu.versions.currentVersion().CheckConsistency(dirname, opts.FS); err != nil {
 			return nil, err
 		}
-
 	}
 
 	// If the Options specify a format major version higher than the
@@ -370,7 +369,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		// crash before the manifest is synced could leave two WALs with
 		// unclean tails.
 		d.mu.versions.logLock()
-		if err := d.mu.versions.logAndApply(jobID, &ve, newFileMetrics(ve.NewFiles), func() []compactionInfo {
+		if err := d.mu.versions.logAndApply(jobID, &ve, newFileMetrics(ve.NewFiles), false /* forceRotation */, func() []compactionInfo {
 			return nil
 		}); err != nil {
 			return nil, err

@@ -97,6 +97,18 @@ func (lm *LevelMetadata) Annotation(annotator Annotator) interface{} {
 	return v
 }
 
+// InvalidateAnnotation clears any cached annotations defined by Annotator. The
+// Annotator is used as the key for pre-calculated values, so equal Annotators
+// must be used to clear the appropriate cached annotation. InvalidateAnnotation
+// must not be called concurrently, and in practice this is achieved by
+// requiring callers to hold DB.mu.
+func (lm *LevelMetadata) InvalidateAnnotation(annotator Annotator) {
+	if lm.Empty() {
+		return
+	}
+	lm.tree.root.invalidateAnnotation(annotator)
+}
+
 // LevelFile holds a file's metadata along with its position
 // within a level of the LSM.
 type LevelFile struct {

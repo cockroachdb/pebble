@@ -74,7 +74,7 @@ func flushExternalTable(untypedDB interface{}, path string, originalMeta *fileMe
 			TablesIngested: 1,
 		},
 	}
-	err := d.mu.versions.logAndApply(jobID, ve, metrics, func() []compactionInfo {
+	err := d.mu.versions.logAndApply(jobID, ve, metrics, false /* forceRotation */, func() []compactionInfo {
 		return d.getInProgressCompactionInfoLocked(nil)
 	})
 	if err != nil {
