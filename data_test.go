@@ -812,6 +812,34 @@ func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	return nil
 }
 
+func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
+	var paths []string
+	var level int
+	for _, arg := range td.CmdArgs {
+		switch arg.Key {
+		case "paths":
+			paths = append(paths, arg.Vals...)
+		case "level":
+			var err error
+			level, err = strconv.Atoi(arg.Vals[0])
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return d.ingest(paths, func(
+		tableNewIters,
+		IterOptions,
+		Compare,
+		*version,
+		int,
+		map[*compaction]struct{},
+		*fileMetadata,
+	) (int, error) {
+		return level, nil
+	})
+}
+
 func runLSMCmd(td *datadriven.TestData, d *DB) string {
 	d.mu.Lock()
 	s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)

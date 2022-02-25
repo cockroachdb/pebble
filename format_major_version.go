@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
@@ -70,6 +71,11 @@ const (
 	// FormatBlockPropertyCollector is a format major version that introduces
 	// BlockPropertyCollectors.
 	FormatBlockPropertyCollector
+	// FormatSplitUserKeys is a format major version that guarantees that
+	// versions of a single user key is not split across multiple files within a
+	// level. Ratcheting to the FormatSplitUserKeys version will fail if that
+	// guarantee is not met.
+	FormatSplitUserKeys
 	// FormatRangeKeys is a format major version that introduces range keys.
 	FormatRangeKeys
 	// FormatNewest always contains the most recent format major version.
@@ -86,7 +92,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 	case FormatDefault, FormatMostCompatible, formatVersionedManifestMarker,
 		FormatVersioned, FormatSetWithDelete:
 		return sstable.TableFormatRocksDBv2
-	case FormatBlockPropertyCollector:
+	case FormatBlockPropertyCollector, FormatSplitUserKeys:
 		return sstable.TableFormatPebblev1
 	case FormatRangeKeys:
 		return sstable.TableFormatPebblev2
@@ -170,6 +176,14 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatBlockPropertyCollector: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatBlockPropertyCollector)
+	},
+	FormatSplitUserKeys: func(d *DB) error {
+		// Before finalizing the format major version, rewrite any sstables that
+		// form multi-file atomic compaction units.
+		if err := d.rewriteSplitUserKeysLocked(); err != nil {
+			return err
+		}
+		return d.finalizeFormatVersUpgrade(FormatSplitUserKeys)
 	},
 	FormatRangeKeys: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatRangeKeys)
@@ -273,4 +287,77 @@ func (d *DB) finalizeFormatVersUpgrade(formatVers FormatMajorVersion) error {
 	d.mu.formatVers.vers = formatVers
 	d.opts.EventListener.FormatUpgrade(formatVers)
 	return nil
+}
+
+// rewriteSplitUserKeysLocked performs a long-running migration that rewrites
+// adjacent sstables containing the same user key. While current Pebble code
+// does not construct such sstables, RocksDB and earlier versions of Pebble may
+// have created them. These split user keys form sets of files that must be
+// compacted together for correctness (referred to as "atomic compaction units"
+// within the code).
+//
+// rewriteSplitUserKeysLocked is run while ratcheting the database's format
+// major version to FormatSplitUserKeys.
+func (d *DB) rewriteSplitUserKeysLocked() error {
+	for {
+		// Look for any files that we must compact.
+		level, file, ok := findSplitUserKey(d.opts, d.mu.versions.currentVersion())
+		if !ok {
+			// There are no multi-file atomic compaction units in the database.
+			return nil
+		}
+
+		// Attempt to schedule a compaction to rewrite the split user key.
+		d.maybeScheduleCompactionPicker(func(picker compactionPicker, env compactionEnv) *pickedCompaction {
+			pc := picker.pickRewriteCompaction(env, level, file)
+			return pc
+		})
+
+		// The above attempt might succeed and schedule a rewrite compaction. Or
+		// there might not be available compaction concurrency to schedule the
+		// compaction.  Or compaction of the file might have already been in
+		// progress. In any scenario, wait until there's some change in the
+		// state of active compactions.
+
+		// Before waiting, check that the database hasn't been closed. Trying to
+		// schedule the compaction may have dropped d.mu while waiting for a
+		// manifest write to complete. In that dropped interim, the datbase may
+		// have been closed.
+		if err := d.closed.Load(); err != nil {
+			return err.(error)
+		}
+		d.mu.compact.cond.Wait()
+
+		// Some flush or compaction completed. Loop again to ensure that the
+		// database hasn't been closed while waiting on the condition variable
+		// and check again for files that must be compacted. The next iteration
+		// may find same file again, but that's okay. It'll eventually succeed
+		// in scheduling the compaction and eventually be woken by its
+		// completion.
+	}
+}
+
+// findSplitUserKey scans the LSM for adjacent files that contain the same user
+// key. Such arrangements of files were permitted in RocksDB and in Pebble up to
+// SHA a860bbad. If findSplitUserKey finds a user key split across files within
+// a level, it returns the level and one file within the set of files making up
+// the 'atomic compaction unit'.
+func findSplitUserKey(opts *Options, vers *version) (level int, file manifest.LevelFile, ok bool) {
+	equal := opts.equal()
+	for l := numLevels - 1; l > 0; l-- {
+		iter := vers.Levels[l].Iter()
+
+		var userKey []byte
+		for f := iter.First(); f != nil; f = iter.Next() {
+			if userKey != nil && equal(userKey, f.Smallest.UserKey) {
+				return l, iter.Take(), true
+			}
+			if f.Largest.IsExclusiveSentinel() {
+				userKey = nil
+			} else {
+				userKey = f.Largest.UserKey
+			}
+		}
+	}
+	return -1, file, false
 }
