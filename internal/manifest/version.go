@@ -65,6 +65,15 @@ type TableStats struct {
 	RangeDeletionsBytesEstimate uint64
 }
 
+// boundType represents the type of key (point or range) present as the smallest
+// and largest keys.
+type boundType uint8
+
+const (
+	boundTypePointKey boundType = iota + 1
+	boundTypeRangeKey
+)
+
 // FileMetadata holds the metadata for an on-disk table.
 type FileMetadata struct {
 	// Atomic contains fields which are accessed atomically. Go allocations
@@ -150,6 +159,10 @@ type FileMetadata struct {
 	HasRangeKeys bool
 	// smallestSet and largestSet track whether the overall bounds have been set.
 	boundsSet bool
+	// boundTypeSmallest and boundTypeLargest provide an indication as to which
+	// key type (point or range) corresponds to the smallest and largest overall
+	// table bounds.
+	boundTypeSmallest, boundTypeLargest boundType
 }
 
 // ExtendPointKeyBounds attempts to extend the lower and upper point key bounds
@@ -174,7 +187,7 @@ func (m *FileMetadata) ExtendPointKeyBounds(
 		}
 	}
 	// Update the overall bounds.
-	m.extendOverallBounds(cmp, m.SmallestPointKey, m.LargestPointKey)
+	m.extendOverallBounds(cmp, m.SmallestPointKey, m.LargestPointKey, boundTypePointKey)
 	return m
 }
 
@@ -200,25 +213,61 @@ func (m *FileMetadata) ExtendRangeKeyBounds(
 		}
 	}
 	// Update the overall bounds.
-	m.extendOverallBounds(cmp, m.SmallestRangeKey, m.LargestRangeKey)
+	m.extendOverallBounds(cmp, m.SmallestRangeKey, m.LargestRangeKey, boundTypeRangeKey)
 	return m
 }
 
 // extendOverallBounds attempts to extend the overall table lower and upper
 // bounds. The given bounds may not be used if a lower or upper bound already
-// exists that is smaller or larger than the given keys, respectively.
-func (m *FileMetadata) extendOverallBounds(cmp Compare, smallest, largest InternalKey) {
+// exists that is smaller or larger than the given keys, respectively. The given
+// boundType will be used if the bounds are updated.
+func (m *FileMetadata) extendOverallBounds(
+	cmp Compare, smallest, largest InternalKey, bTyp boundType,
+) {
 	if !m.boundsSet {
 		m.Smallest, m.Largest = smallest, largest
 		m.boundsSet = true
+		m.boundTypeSmallest, m.boundTypeLargest = bTyp, bTyp
 	} else {
 		if base.InternalCompare(cmp, smallest, m.Smallest) < 0 {
 			m.Smallest = smallest
+			m.boundTypeSmallest = bTyp
 		}
 		if base.InternalCompare(cmp, largest, m.Largest) > 0 {
 			m.Largest = largest
+			m.boundTypeLargest = bTyp
 		}
 	}
+}
+
+const (
+	maskSmallest = 0xf0
+	maskLargest  = 0x0f
+)
+
+// boundsMarker returns a marker byte whose bits encode as the following:
+// - high order four bits represent the smallest bound (all ones if the smallest
+//   bound is a point key, all zeros if it is a range key).
+// - low order four bits represent the largest bound (all ones if the largest
+//   bound is a point key, all zeros if it is a range key).
+func (m *FileMetadata) boundsMarker() (sentinel uint8, err error) {
+	switch m.boundTypeSmallest {
+	case boundTypePointKey:
+		sentinel |= maskSmallest
+	case boundTypeRangeKey:
+		// No op - leave high order four bits unset.
+	default:
+		return 0, base.CorruptionErrorf("file %s has neither point nor range key as smallest key", m.FileNum)
+	}
+	switch m.boundTypeLargest {
+	case boundTypePointKey:
+		sentinel |= maskLargest
+	case boundTypeRangeKey:
+		// No op - leave low order four bits unset.
+	default:
+		return 0, base.CorruptionErrorf("file %s has neither point nor range key as largest key", m.FileNum)
+	}
+	return
 }
 
 func (m *FileMetadata) String() string {
