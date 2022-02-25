@@ -42,6 +42,10 @@ create: db/marker.format-version.000005.006
 close: db/marker.format-version.000005.006
 sync: db
 upgraded to format version: 006
+create: db/marker.format-version.000006.007
+close: db/marker.format-version.000006.007
+sync: db
+upgraded to format version: 007
 create: db/MANIFEST-000003
 close: db/MANIFEST-000001
 sync: db/MANIFEST-000003
@@ -182,7 +186,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
   total         3   2.3 K       -   933 B   825 B       1     0 B       0   3.9 K       4   1.5 K       3     4.3
   flush         3
 compact         1   2.3 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype         1       0       0       0       0  (default, delete, elision, move, read)
+  ctype         1       0       0       0       0       0  (default, delete, elision, move, read, rewrite)
  memtbl         1   256 K
 zmemtbl         0     0 B
    ztbl         0     0 B
@@ -209,9 +213,9 @@ close:
 open-dir: checkpoint
 link: db/OPTIONS-000004 -> checkpoint/OPTIONS-000004
 open-dir: checkpoint
-create: checkpoint/marker.format-version.000001.006
-sync: checkpoint/marker.format-version.000001.006
-close: checkpoint/marker.format-version.000001.006
+create: checkpoint/marker.format-version.000001.007
+sync: checkpoint/marker.format-version.000001.007
+close: checkpoint/marker.format-version.000001.007
 sync: checkpoint
 close: checkpoint
 create: checkpoint/MANIFEST-000017
