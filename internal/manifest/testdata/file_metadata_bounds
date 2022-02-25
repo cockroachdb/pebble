@@ -5,6 +5,7 @@ a.SET.0 - z.DEL.42
 ----
 combined: [a#0,1-z#42,0]
   points: [a#0,1-z#42,0]
+  bounds: (smallest=point,largest=point) (0x07)
 
 # Rangedels only (single update).
 
@@ -16,6 +17,7 @@ a.RANGEDEL.0:z
 ----
 combined: [a#0,15-z#72057594037927935,15]
   points: [a#0,15-z#72057594037927935,15]
+  bounds: (smallest=point,largest=point) (0x07)
 
 # Range keys only (single update).
 
@@ -27,6 +29,7 @@ a.RANGEKEYSET.0:z
 ----
 combined: [a#0,21-z#72057594037927935,21]
   ranges: [a#0,21-z#72057594037927935,21]
+  bounds: (smallest=range,largest=range) (0x00)
 
 # Multiple updates with various key kinds.
 
@@ -38,6 +41,7 @@ m.SET.0 - n.SET.0
 ----
 combined: [m#0,1-n#0,1]
   points: [m#0,1-n#0,1]
+  bounds: (smallest=point,largest=point) (0x07)
 
 # Extend the lower point key bound.
 
@@ -46,6 +50,7 @@ j.SET.0 - k.SET.0
 ----
 combined: [j#0,1-n#0,1]
   points: [j#0,1-n#0,1]
+  bounds: (smallest=point,largest=point) (0x07)
 
 # Extend the upper point key bound with a rangedel.
 
@@ -54,6 +59,7 @@ k.RANGEDEL.0:o
 ----
 combined: [j#0,1-o#72057594037927935,15]
   points: [j#0,1-o#72057594037927935,15]
+  bounds: (smallest=point,largest=point) (0x07)
 
 # Extend the lower bounds bound with a range key.
 
@@ -63,6 +69,7 @@ a.RANGEKEYSET.42:m
 combined: [a#42,21-o#72057594037927935,15]
   points: [j#0,1-o#72057594037927935,15]
   ranges: [a#42,21-m#72057594037927935,21]
+  bounds: (smallest=range,largest=point) (0x05)
 
 # Extend again with a wide range key (equal keys tiebreak on seqnums descending,
 # so the overall lower bound is unchanged).
@@ -73,13 +80,14 @@ a.RANGEKEYSET.0:z
 combined: [a#42,21-z#72057594037927935,21]
   points: [j#0,1-o#72057594037927935,15]
   ranges: [a#42,21-z#72057594037927935,21]
+  bounds: (smallest=range,largest=range) (0x01)
 
-# Extend again with a wide rangedel over the same range (equal keys and sequnums
-# tiebreak on key kind descending, so the overall upper bound is updated).
+# Extend again with a wide rangedel over the same range.
 
 extend-point-key-bounds
-a.RANGEDEL.0:z
+A.RANGEDEL.0:y
 ----
-combined: [a#42,21-z#72057594037927935,15]
-  points: [a#0,15-z#72057594037927935,15]
+combined: [A#0,15-z#72057594037927935,21]
+  points: [A#0,15-y#72057594037927935,15]
   ranges: [a#42,21-z#72057594037927935,21]
+  bounds: (smallest=point,largest=range) (0x03)
