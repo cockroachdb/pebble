@@ -5,9 +5,14 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
+	"strconv"
 	"testing"
+	"time"
 
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
@@ -191,6 +196,8 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		FormatVersioned:               sstable.TableFormatRocksDBv2,
 		FormatSetWithDelete:           sstable.TableFormatRocksDBv2,
 		FormatBlockPropertyCollector:  sstable.TableFormatPebblev1,
+		FormatSplitUserKeysMarked:     sstable.TableFormatPebblev1,
+		FormatMarkedCompacted:         sstable.TableFormatPebblev1,
 		FormatRangeKeys:               sstable.TableFormatPebblev2,
 	}
 
@@ -203,4 +210,110 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 	// Invalid versions.
 	fmv := FormatNewest + 1
 	require.Panics(t, func() { _ = fmv.MaxTableFormat() })
+}
+
+func TestSplitUserKeyMigration(t *testing.T) {
+	var d *DB
+	var opts *Options
+	var fs vfs.FS
+	var buf bytes.Buffer
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	datadriven.RunTest(t, "testdata/split_user_key_migration",
+		func(td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "define":
+				if d != nil {
+					if err := d.Close(); err != nil {
+						return err.Error()
+					}
+					buf.Reset()
+				}
+				opts = &Options{
+					FormatMajorVersion: FormatBlockPropertyCollector,
+					EventListener: EventListener{
+						CompactionEnd: func(info CompactionInfo) {
+							// JobID's aren't deterministic, especially w/ table stats
+							// enabled. Use a fixed job ID for data-driven test output.
+							info.JobID = 100
+							fmt.Fprintln(&buf, info)
+						},
+					},
+				}
+				var err error
+				if d, err = runDBDefineCmd(td, opts); err != nil {
+					return err.Error()
+				}
+
+				// Mock time so that we get consistent log output written to
+				// buf.
+				t := time.Now()
+				d.timeNow = func() time.Time {
+					t = t.Add(time.Second)
+					return t
+				}
+				fs = d.opts.FS
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				return d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			case "reopen":
+				if d != nil {
+					if err := d.Close(); err != nil {
+						return err.Error()
+					}
+					buf.Reset()
+				}
+				opts.FS = fs
+				var err error
+				d, err = Open("", opts)
+				if err != nil {
+					return err.Error()
+				}
+				// Mock time so that we get consistent log output written to
+				// buf.
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				t := time.Now()
+				d.timeNow = func() time.Time {
+					t = t.Add(time.Second)
+					return t
+				}
+				return "OK"
+			case "build":
+				if err := runBuildCmd(td, d, fs); err != nil {
+					return err.Error()
+				}
+				return ""
+			case "force-ingest":
+				if err := runForceIngestCmd(td, d); err != nil {
+					return err.Error()
+				}
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				return d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			case "format-major-version":
+				return d.FormatMajorVersion().String()
+			case "ratchet-format-major-version":
+				v, err := strconv.Atoi(td.CmdArgs[0].String())
+				if err != nil {
+					return err.Error()
+				}
+				if err := d.RatchetFormatMajorVersion(FormatMajorVersion(v)); err != nil {
+					return err.Error()
+				}
+				return buf.String()
+			case "lsm":
+				return runLSMCmd(td, d)
+			case "marked-file-count":
+				m := d.Metrics()
+				return fmt.Sprintf("%d files marked for compaction", m.Compact.MarkedFiles)
+			default:
+				return fmt.Sprintf("unrecognized command %q", td.Cmd)
+			}
+
+		})
 }

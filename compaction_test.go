@@ -96,6 +96,12 @@ func (p *compactionPickerForTesting) pickElisionOnlyCompaction(
 	return nil
 }
 
+func (p *compactionPickerForTesting) pickRewriteCompaction(
+	env compactionEnv,
+) (pc *pickedCompaction) {
+	return nil
+}
+
 func (p *compactionPickerForTesting) pickManual(
 	env compactionEnv, manual *manualCompaction,
 ) (pc *pickedCompaction, retryLater bool) {
@@ -3347,4 +3353,105 @@ func Test_calculateInuseKeyRanges(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMarkedForCompaction(t *testing.T) {
+	var mem vfs.FS = vfs.NewMem()
+	var d *DB
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	var buf bytes.Buffer
+	opts := &Options{
+		FS:                          mem,
+		DebugCheck:                  DebugCheckLevels,
+		DisableAutomaticCompactions: true,
+		FormatMajorVersion:          FormatNewest,
+		EventListener: EventListener{
+			CompactionEnd: func(info CompactionInfo) {
+				info.JobID = 100 // Fix to avoid nondeterminism.
+				fmt.Fprintln(&buf, info)
+			},
+		},
+	}
+
+	reset := func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+		mem = vfs.NewMem()
+		require.NoError(t, mem.MkdirAll("ext", 0755))
+
+		var err error
+		d, err = Open("", opts)
+		require.NoError(t, err)
+	}
+	datadriven.RunTest(t, "testdata/marked_for_compaction", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "reset":
+			reset()
+			return ""
+
+		case "define":
+			if d != nil {
+				if err := d.Close(); err != nil {
+					return err.Error()
+				}
+			}
+			var err error
+			if d, err = runDBDefineCmd(td, opts); err != nil {
+				return err.Error()
+			}
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			t := time.Now()
+			d.timeNow = func() time.Time {
+				t = t.Add(time.Second)
+				return t
+			}
+			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			return s
+
+		case "mark-for-compaction":
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			vers := d.mu.versions.currentVersion()
+			var fileNum uint64
+			td.ScanArgs(t, "file", &fileNum)
+			for l, lm := range vers.Levels {
+				iter := lm.Iter()
+				for f := iter.First(); f != nil; f = iter.Next() {
+					if f.FileNum != base.FileNum(fileNum) {
+						continue
+					}
+					f.MarkedForCompaction = true
+					vers.Stats.MarkedForCompaction++
+					vers.Levels[l].InvalidateAnnotation(markedForCompactionAnnotator{})
+					return fmt.Sprintf("marked L%d.%s", l, f.FileNum)
+				}
+			}
+			return "not-found"
+
+		case "maybe-compact":
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			d.opts.DisableAutomaticCompactions = false
+			d.maybeScheduleCompaction()
+			for d.mu.compact.compactingCount > 0 {
+				d.mu.compact.cond.Wait()
+			}
+
+			fmt.Fprintln(&buf, d.mu.versions.currentVersion().DebugString(base.DefaultFormatter))
+			s := strings.TrimSpace(buf.String())
+			buf.Reset()
+			opts.DisableAutomaticCompactions = true
+			return s
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
 }

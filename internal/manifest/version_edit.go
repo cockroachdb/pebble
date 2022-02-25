@@ -257,24 +257,24 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			v.NewFiles = append(v.NewFiles, NewFileEntry{
 				Level: level,
 				Meta: &FileMetadata{
-					FileNum:             fileNum,
-					Size:                size,
-					CreationTime:        int64(creationTime),
-					SmallestPointKey:    smallestPointKey,
-					LargestPointKey:     largestPointKey,
-					HasPointKeys:        true,
-					SmallestSeqNum:      smallestSeqNum,
-					LargestSeqNum:       largestSeqNum,
-					markedForCompaction: markedForCompaction,
+					FileNum:          fileNum,
+					Size:             size,
+					CreationTime:     int64(creationTime),
+					SmallestPointKey: smallestPointKey,
+					LargestPointKey:  largestPointKey,
+					HasPointKeys:     true,
+					SmallestSeqNum:   smallestSeqNum,
+					LargestSeqNum:    largestSeqNum,
 					// TODO(travers): For now the smallest and largest keys are pinned to
 					// the smallest and largest point keys, as these are the only types of
 					// keys supported in the manifest. This will need to change when the
 					// manifest is updated to support range keys, which will most likely
 					// leverage a bitset to infer which key types (points or ranges) are
 					// used for the overall smallest and largest keys.
-					Smallest:  smallestPointKey,
-					Largest:   largestPointKey,
-					boundsSet: true,
+					Smallest:            smallestPointKey,
+					Largest:             largestPointKey,
+					boundsSet:           true,
+					MarkedForCompaction: markedForCompaction,
 				},
 			})
 
@@ -329,7 +329,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	}
 	for _, x := range v.NewFiles {
 		var customFields bool
-		if x.Meta.markedForCompaction || x.Meta.CreationTime != 0 {
+		if x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 {
 			customFields = true
 			e.writeUvarint(tagNewFile4)
 		} else {
@@ -349,7 +349,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				n := binary.PutUvarint(buf[:], uint64(x.Meta.CreationTime))
 				e.writeBytes(buf[:n])
 			}
-			if x.Meta.markedForCompaction {
+			if x.Meta.MarkedForCompaction {
 				e.writeUvarint(customTagNeedsCompaction)
 				e.writeBytes([]byte{1})
 			}
@@ -453,6 +453,10 @@ type BulkVersionEdit struct {
 	// uses AddedByFileNum to correctly populate the BulkVersionEdit's Deleted
 	// field with non-nil *FileMetadata.
 	AddedByFileNum map[base.FileNum]*FileMetadata
+
+	// MarkedForCompactionCountDiff holds the aggregated count of files
+	// marked for compaction added or removed.
+	MarkedForCompactionCountDiff int
 }
 
 // Accumulate adds the file addition and deletions in the specified version
@@ -475,6 +479,9 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", df.Level, df.FileNum)
 			}
 		}
+		if m.MarkedForCompaction {
+			b.MarkedForCompactionCountDiff--
+		}
 		dmap[df.FileNum] = m
 	}
 
@@ -489,6 +496,9 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		b.Added[nf.Level] = append(b.Added[nf.Level], nf.Meta)
 		if b.AddedByFileNum != nil {
 			b.AddedByFileNum[nf.Meta.FileNum] = nf.Meta
+		}
+		if nf.Meta.MarkedForCompaction {
+			b.MarkedForCompactionCountDiff++
 		}
 	}
 	return nil
@@ -525,6 +535,16 @@ func (b *BulkVersionEdit) Apply(
 	}
 
 	v := new(Version)
+
+	// Adjust the count of files marked for compaction.
+	if curr != nil {
+		v.Stats.MarkedForCompaction = curr.Stats.MarkedForCompaction
+	}
+	v.Stats.MarkedForCompaction += b.MarkedForCompactionCountDiff
+	if v.Stats.MarkedForCompaction < 0 {
+		return nil, nil, base.CorruptionErrorf("pebble: version marked for compaction count negative")
+	}
+
 	for level := range v.Levels {
 		if curr == nil || curr.Levels[level].tree.root == nil {
 			v.Levels[level] = makeLevelMetadata(cmp, level, nil /* files */)

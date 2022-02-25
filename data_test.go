@@ -729,7 +729,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		jobID := d.mu.nextJobID
 		d.mu.nextJobID++
 		d.mu.versions.logLock()
-		if err := d.mu.versions.logAndApply(jobID, ve, newFileMetrics(ve.NewFiles), func() []compactionInfo {
+		if err := d.mu.versions.logAndApply(jobID, ve, newFileMetrics(ve.NewFiles), false, func() []compactionInfo {
 			return nil
 		}); err != nil {
 			return nil, err
@@ -820,6 +820,34 @@ func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 		return err
 	}
 	return nil
+}
+
+func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
+	var paths []string
+	var level int
+	for _, arg := range td.CmdArgs {
+		switch arg.Key {
+		case "paths":
+			paths = append(paths, arg.Vals...)
+		case "level":
+			var err error
+			level, err = strconv.Atoi(arg.Vals[0])
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return d.ingest(paths, func(
+		tableNewIters,
+		IterOptions,
+		Compare,
+		*version,
+		int,
+		map[*compaction]struct{},
+		*fileMetadata,
+	) (int, error) {
+		return level, nil
+	})
 }
 
 func runLSMCmd(td *datadriven.TestData, d *DB) string {

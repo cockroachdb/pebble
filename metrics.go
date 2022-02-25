@@ -133,6 +133,7 @@ type Metrics struct {
 		ElisionOnlyCount int64
 		MoveCount        int64
 		ReadCount        int64
+		RewriteCount     int64
 		// An estimate of the number of bytes that need to be compacted for the LSM
 		// to reach a stable state.
 		EstimatedDebt uint64
@@ -142,6 +143,10 @@ type Metrics struct {
 		InProgressBytes int64
 		// Number of compactions that are in-progress.
 		NumInProgress int64
+		// MarkedFiles is a count of files that are marked for
+		// compaction. Such files are compacted in a rewrite compaction
+		// when no other compactions are picked.
+		MarkedFiles int
 	}
 
 	Flush struct {
@@ -375,12 +380,13 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		humanize.IEC.Int64(m.Compact.InProgressBytes),
 		redact.Safe(m.Compact.NumInProgress),
 		redact.SafeString(""))
-	w.Printf("  ctype %9d %7d %7d %7d %7d  (default, delete, elision, move, read)\n",
+	w.Printf("  ctype %9d %7d %7d %7d %7d %7d  (default, delete, elision, move, read, rewrite)\n",
 		redact.Safe(m.Compact.DefaultCount),
 		redact.Safe(m.Compact.DeleteOnlyCount),
 		redact.Safe(m.Compact.ElisionOnlyCount),
 		redact.Safe(m.Compact.MoveCount),
-		redact.Safe(m.Compact.ReadCount))
+		redact.Safe(m.Compact.ReadCount),
+		redact.Safe(m.Compact.RewriteCount))
 	w.Printf(" memtbl %9d %7s\n",
 		redact.Safe(m.MemTable.Count),
 		humanize.IEC.Uint64(m.MemTable.Size))
