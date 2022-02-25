@@ -285,6 +285,7 @@ const (
 	compactionKindDeleteOnly
 	compactionKindElisionOnly
 	compactionKindRead
+	compactionKindRewrite
 )
 
 func (k compactionKind) String() string {
@@ -301,6 +302,8 @@ func (k compactionKind) String() string {
 		return "elision-only"
 	case compactionKindRead:
 		return "read"
+	case compactionKindRewrite:
+		return "rewrite"
 	}
 	return "?"
 }
@@ -320,9 +323,9 @@ type compaction struct {
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
 	startLevel *compactionLevel
-	// outputLevel is the level that files are being produced in. outputLevel is
-	// equal to startLevel+1 except when startLevel is 0 in which case it is
-	// equal to compactionPicker.baseLevel().
+	// outputLevel is the level that files are being produced in. For default
+	// compactions, outputLevel is equal to startLevel+1 except when startLevel
+	// is 0 in which case it is equal to compactionPicker.baseLevel().
 	outputLevel *compactionLevel
 
 	inputs []compactionLevel
@@ -1433,7 +1436,7 @@ func (d *DB) flush1() error {
 		}
 
 		d.mu.versions.logLock()
-		err = d.mu.versions.logAndApply(jobID, ve, c.metrics,
+		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, false, /* forceRotation */
 			func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) })
 		if err != nil {
 			// TODO(peter): untested.
@@ -1857,7 +1860,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
 		d.mu.versions.logLock()
-		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, func() []compactionInfo {
+		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, false /* forceRotation */, func() []compactionInfo {
 			return d.getInProgressCompactionInfoLocked(c)
 		})
 		if err != nil {
