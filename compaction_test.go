@@ -92,6 +92,12 @@ func (p *compactionPickerForTesting) pickElisionOnlyCompaction(
 	return nil
 }
 
+func (p *compactionPickerForTesting) pickRewriteCompaction(
+	env compactionEnv, level int, file manifest.LevelFile,
+) (pc *pickedCompaction) {
+	return nil
+}
+
 func (p *compactionPickerForTesting) pickManual(
 	env compactionEnv, manual *manualCompaction,
 ) (pc *pickedCompaction, retryLater bool) {
@@ -1566,7 +1572,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 				var start, base int
 				d.ScanArgs(t, "start", &start)
 				d.ScanArgs(t, "base", &base)
-				pc := newPickedCompaction(opts, version, start, base)
+				pc := newPickedCompaction(opts, version, start, defaultOutputLevel(start, base), base)
 				c := newCompaction(pc, opts, new(uint64))
 				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
 					c.outputLevel.level, c.maxOutputFileSize)

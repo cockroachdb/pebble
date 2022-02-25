@@ -550,6 +550,10 @@ func (vs *versionSet) incrementCompactions(kind compactionKind) {
 	case compactionKindRead:
 		vs.metrics.Compact.Count++
 		vs.metrics.Compact.ReadCount++
+
+	case compactionKindRewrite:
+		vs.metrics.Compact.Count++
+		vs.metrics.Compact.RewriteCount++
 	}
 }
 
