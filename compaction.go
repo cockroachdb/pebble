@@ -1452,7 +1452,6 @@ func (d *DB) flush1() error {
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
 
 	info.TotalDuration = d.timeNow().Sub(startTime)
-	d.opts.EventListener.FlushEnd(info)
 
 	// Refresh bytes flushed count.
 	atomic.StoreUint64(&d.atomic.bytesFlushed, 0)
@@ -1468,6 +1467,10 @@ func (d *DB) flush1() error {
 		// TODO(jackson): Remove this when range keys are persisted to sstables.
 		err = d.applyFlushedRangeKeys(flushed)
 	}
+	// Signal FlushEnd after installing the new readState. This helps for unit
+	// tests that use the callback to trigger a read using an iterator with
+	// IterOptions.OnlyReadGuaranteedDurable.
+	d.opts.EventListener.FlushEnd(info)
 
 	d.deleteObsoleteFiles(jobID, false /* waitForOngoing */)
 
