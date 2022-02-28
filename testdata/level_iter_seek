@@ -341,3 +341,51 @@ a/c-e#4#1,1:a
 e/<empty>#4,1:e
 i/<empty>#6,1:i
 j/<empty>#7,1:j
+
+# Verify that we do not open files that do not have point keys.
+
+clear
+----
+
+build
+a.SET.9:a
+b.SET.8:b
+----
+0: a#9,1-b#8,1
+
+build
+c.SET.7:c
+d.RANGEDEL.6:e
+f.SET.5:f
+----
+0: a#9,1-b#8,1
+1: c#7,1-f#5,1
+
+build format=pebblev2
+g.RANGEKEYSET.6:h
+----
+0: a#9,1-b#8,1
+1: c#7,1-f#5,1
+2: g#0,21-h#72057594037927935,21
+
+build
+i.SET.4:i
+j.SET.3:j
+----
+0: a#9,1-b#8,1
+1: c#7,1-f#5,1
+2: g#0,21-h#72057594037927935,21
+3: i#4,1-j#3,1
+
+iter
+seek-ge f
+next
+----
+f/<empty>#5,1:f
+i#4,1:i
+
+# The below count should be 2, as we skip over the rangekey-only file.
+
+iters-created
+----
+2
