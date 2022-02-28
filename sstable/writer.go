@@ -318,9 +318,6 @@ type indexBlockBuf struct {
 	// block will only be accessed from the writeQueue goroutine.
 	block blockWriter
 
-	// sepScratch is reusable scratch space for computing separator keys.
-	sepScratch []byte
-
 	size struct {
 		useMutex bool
 		mu       sync.Mutex
@@ -510,6 +507,9 @@ type dataBlockBuf struct {
 	// dataBlockProps is set when Writer.finishDataBlockProps is called. The dataBlockProps slice is
 	// a shallow copy of the internal buffer of the dataBlockBuf.blockPropsEncoder.
 	dataBlockProps []byte
+
+	// sepScratch is reusable scratch space for computing separator keys.
+	sepScratch []byte
 }
 
 var dataBlockBufPool = sync.Pool{
@@ -1060,7 +1060,7 @@ func (w *Writer) flush(key InternalKey) error {
 
 	// Determine if the index block should be flushed.
 	prevKey := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
-	sep := w.indexEntrySep(prevKey, key, w.indexBlock)
+	sep := w.indexEntrySep(prevKey, key, w.dataBlockBuf)
 	// We determine that we should flush an index block from the Writer client goroutine, but
 	// we actually finish the index block from the writeQueue. When we determine that an index
 	// block should be flushed, we need to call BlockPropertyCollector.FinishIndexBlock. But
@@ -1161,17 +1161,17 @@ func (w *Writer) maybeAddBlockPropertiesToBlockHandle(
 	return BlockHandleWithProperties{BlockHandle: bh, Props: w.dataBlockBuf.dataBlockProps}, nil
 }
 
-func (w *Writer) indexEntrySep(prevKey, key InternalKey, indexBlockBuf *indexBlockBuf) InternalKey {
+func (w *Writer) indexEntrySep(prevKey, key InternalKey, dataBlockBuf *dataBlockBuf) InternalKey {
 	// Make a rough guess that we want key-sized scratch to compute the separator.
-	if cap(indexBlockBuf.sepScratch) < key.Size() {
-		indexBlockBuf.sepScratch = make([]byte, 0, key.Size()*2)
+	if cap(dataBlockBuf.sepScratch) < key.Size() {
+		dataBlockBuf.sepScratch = make([]byte, 0, key.Size()*2)
 	}
 
 	var sep InternalKey
 	if key.UserKey == nil && key.Trailer == 0 {
-		sep = prevKey.Successor(w.compare, w.successor, indexBlockBuf.sepScratch[:0])
+		sep = prevKey.Successor(w.compare, w.successor, dataBlockBuf.sepScratch[:0])
 	} else {
-		sep = prevKey.Separator(w.compare, w.separator, indexBlockBuf.sepScratch[:0], key)
+		sep = prevKey.Separator(w.compare, w.separator, dataBlockBuf.sepScratch[:0], key)
 	}
 	return sep
 }
@@ -1215,7 +1215,7 @@ func (w *Writer) addPrevDataBlockToIndexBlockProps() {
 // called synchronously once Writer.Close is called. addIndexEntrySync should only be called if we're sure that
 // index entries aren't being written asynchronously.
 func (w *Writer) addIndexEntrySync(prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte) error {
-	sep := w.indexEntrySep(prevKey, key, w.indexBlock)
+	sep := w.indexEntrySep(prevKey, key, w.dataBlockBuf)
 	shouldFlush := supportsTwoLevelIndex(
 		w.tableFormat) && w.indexBlock.shouldFlush(
 		sep, encodedBHPEstimatedSize, w.indexBlockSize, w.indexBlockSizeThreshold,
