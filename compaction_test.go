@@ -94,7 +94,7 @@ func (p *compactionPickerForTesting) pickElisionOnlyCompaction(
 }
 
 func (p *compactionPickerForTesting) pickManual(
-	env compactionEnv, manual *manualCompaction,
+	env compactionEnv, manual *manualCompaction, cmp Compare,
 ) (pc *pickedCompaction, retryLater bool) {
 	if p == nil {
 		return nil, false

@@ -687,7 +687,7 @@ manual compaction did not block for ongoing
 remove-ongoing-compaction
 ----
 
-add-ongoing-compaction startLevel=5 outputLevel=6 start=a end=b
+add-ongoing-compaction startLevel=4 outputLevel=5 start=a end=b
 ----
 
 async-compact a-b L4
