@@ -183,6 +183,10 @@ func standardOptions() []*testOptions {
 [TestOptions]
  use_disk=true
 `,
+		22: `
+[Options]
+  enable_writer_parallelism=true
+`,
 	}
 
 	opts := make([]*testOptions, len(stdOpts))
@@ -224,6 +228,10 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts.MemTableStopWritesThreshold = 2 + rng.Intn(5) // 2 - 5
 	if rng.Intn(2) == 0 {
 		opts.WALDir = "wal"
+	}
+	if rng.Intn(4) == 0 {
+		// Enable this for a quarter of the random options.
+		opts.Experimental.EnableWriterParallelism = true
 	}
 	var lopts pebble.LevelOptions
 	lopts.BlockRestartInterval = 1 + rng.Intn(64)  // 1 - 64
