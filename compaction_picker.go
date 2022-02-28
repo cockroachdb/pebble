@@ -1362,9 +1362,7 @@ func (p *compactionPickerByScore) pickManual(
 	// it, the compaction is dropped due to pc.setupInputs returning false since
 	// the input/output range is already being compacted, and the manual
 	// compaction ends with a non-compacted LSM.
-	// The check is skipped when a manual compaction has been split across a level
-	// because we allow parallel execution of compactions in a level.
-	if !manual.split && conflictsWithInProgress(manual.level, outputLevel, env.inProgressCompactions) {
+	if conflictsWithInProgress(manual, outputLevel, env.inProgressCompactions, p.opts.Comparer.Compare) {
 		return nil, true
 	}
 	pc = pickManualHelper(p.opts, manual, p.vers, p.baseLevel, p.diskAvailBytes)
@@ -1534,18 +1532,31 @@ func inputRangeAlreadyCompacting(env compactionEnv, pc *pickedCompaction) bool {
 	return false
 }
 
+// conflictsWithInProgress checks if there are any in-progress compactions with overlapping keyspace.
 func conflictsWithInProgress(
-	level int, outputLevel int, inProgressCompactions []compactionInfo,
+	manual *manualCompaction, outputLevel int, inProgressCompactions []compactionInfo, cmp Compare,
 ) bool {
 	for _, c := range inProgressCompactions {
+		if (c.outputLevel == manual.level || c.outputLevel == outputLevel) &&
+			isUserKeysOverlapping(manual.start, manual.end, c.smallest.UserKey, c.largest.UserKey, cmp) {
+			return true
+		}
 		for _, in := range c.inputs {
-			if in.level == level || in.level == outputLevel {
+			if in.files.Empty() {
+				continue
+			}
+			iter := in.files.Iter()
+			smallest := iter.First().Smallest.UserKey
+			largest := iter.Last().Largest.UserKey
+			if (in.level == manual.level || in.level == outputLevel) &&
+				isUserKeysOverlapping(manual.start, manual.end, smallest, largest, cmp) {
 				return true
 			}
 		}
-		if c.outputLevel == level || c.outputLevel == outputLevel {
-			return true
-		}
 	}
 	return false
+}
+
+func isUserKeysOverlapping(x1, x2, y1, y2 []byte, cmp Compare) bool {
+	return cmp(x1, y2) <= 0 && cmp(y1, x2) <= 0
 }
