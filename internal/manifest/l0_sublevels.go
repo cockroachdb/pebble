@@ -1404,7 +1404,7 @@ func (s *L0Sublevels) PickBaseCompaction(
 			// An interval starting at ImmediateSuccessor(key) can never be the
 			// first interval of a compaction since no file can start at that
 			// interval.
-			m := baseIter.SeekGE(s.cmp, s.orderedIntervals[c.minIntervalIndex].startKey.key)
+			m := baseIter.SeekGE(s.cmp, s.orderedIntervals[c.minIntervalIndex].startKey.key, SearchKeyCombined)
 
 			var baseCompacting bool
 			for ; m != nil && !baseCompacting; m = baseIter.Next() {

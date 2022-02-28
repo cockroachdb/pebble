@@ -742,7 +742,7 @@ func calculateInuseKeyRanges(
 }
 
 func seekGT(iter *manifest.LevelIterator, cmp base.Compare, key []byte) *manifest.FileMetadata {
-	f := iter.SeekGE(cmp, key)
+	f := iter.SeekGE(cmp, key, manifest.SearchKeyCombined)
 	for f != nil && cmp(f.Largest.UserKey, key) == 0 {
 		f = iter.Next()
 	}
@@ -762,7 +762,7 @@ func (c *compaction) findGrandparentLimit(start []byte) []byte {
 	iter := c.grandparents.Iter()
 	var overlappedBytes uint64
 	var greater bool
-	for f := iter.SeekGE(c.cmp, start); f != nil; f = iter.Next() {
+	for f := iter.SeekGE(c.cmp, start, manifest.SearchKeyCombined); f != nil; f = iter.Next() {
 		overlappedBytes += f.Size
 		// To ensure forward progress we always return a larger user
 		// key than where we started. See comments above clients of

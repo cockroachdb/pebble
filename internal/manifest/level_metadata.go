@@ -242,6 +242,23 @@ func (ls LevelSlice) Reslice(resliceFunc func(start, end *LevelIterator)) LevelS
 	return s
 }
 
+// SearchKey is used to specify the type of keys we're looking for in
+// LevelIterator.Seek{GE,LT}. Files not containing any keys of the desired type
+// are skipped.
+type SearchKey int
+
+const (
+	// SearchKeyCombined denotes a search key in the merged view of point and
+	// range keys. No files are skipped.
+	SearchKeyCombined SearchKey = iota
+	// SearchKeyPoint denotes a search key among the point keyspace. SSTables with
+	// no point keys will be skipped.
+	SearchKeyPoint
+	// SearchKeyRange denotes a search key among the range keyspace. SSTables with
+	// no range keys will be skipped.
+	SearchKeyRange
+)
+
 // LevelIterator iterates over a set of files' metadata. Its zero value is an
 // empty iterator.
 type LevelIterator struct {
@@ -382,21 +399,38 @@ func (i *LevelIterator) Prev() *FileMetadata {
 // user key greater than or equal to the provided user key. The iterator must
 // have been constructed from L1+, because it requires the underlying files to
 // be sorted by user keys and non-overlapping.
-func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
+func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte, searchKey SearchKey) *FileMetadata {
 	// TODO(jackson): Assert that i.iter.cmp == btreeCmpSmallestKey.
 	if i.empty() {
 		return nil
 	}
-	return i.seek(func(m *FileMetadata) bool {
+	meta := i.seek(func(m *FileMetadata) bool {
 		return cmp(m.Largest.UserKey, userKey) >= 0
 	})
+	switch searchKey {
+	case SearchKeyPoint:
+		for meta != nil && !meta.HasPointKeys {
+			meta = i.Next()
+		}
+		return meta
+	case SearchKeyRange:
+		// TODO(bilal): Range keys are expected to be rare and sparse. Add an
+		// optimization to annotate the tree and efficiently skip over files that
+		// do not contain range keys.
+		for meta != nil && !meta.HasRangeKeys {
+			meta = i.Next()
+		}
+		return meta
+	default:
+		return meta
+	}
 }
 
 // SeekLT seeks to the last file in the iterator's file set with a smallest
 // user key less than the provided user key. The iterator must have been
 // constructed from L1+, because it requires the underlying files to be sorted
 // by user keys and non-overlapping.
-func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
+func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte, searchKey SearchKey) *FileMetadata {
 	// TODO(jackson): Assert that i.iter.cmp == btreeCmpSmallestKey.
 	if i.empty() {
 		return nil
@@ -404,7 +438,24 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
 	i.seek(func(m *FileMetadata) bool {
 		return cmp(m.Smallest.UserKey, userKey) >= 0
 	})
-	return i.Prev()
+	meta := i.Prev()
+	switch searchKey {
+	case SearchKeyPoint:
+		for meta != nil && !meta.HasPointKeys {
+			meta = i.Prev()
+		}
+		return meta
+	case SearchKeyRange:
+		// TODO(bilal): Range keys are expected to be rare and sparse. Add an
+		// optimization to annotate the tree and efficiently skip over files that
+		// do not contain range keys.
+		for meta != nil && !meta.HasRangeKeys {
+			meta = i.Prev()
+		}
+		return meta
+	default:
+		return meta
+	}
 }
 
 func (i *LevelIterator) seek(fn func(*FileMetadata) bool) *FileMetadata {

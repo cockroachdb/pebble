@@ -230,9 +230,9 @@ func (l *levelIter) findFileGE(key []byte) *fileMetadata {
 	// possibly contain the target key and is required for correctness by mergingIter.SeekGE
 	// (see the comment in that function).
 
-	m := l.files.SeekGE(l.cmp, key)
-	for m != nil && m.Largest.IsExclusiveSentinel() &&
-		l.cmp(m.Largest.UserKey, key) == 0 {
+	m := l.files.SeekGE(l.cmp, key, manifest.SearchKeyPoint)
+	for m != nil && m.LargestPointKey.IsExclusiveSentinel() &&
+		l.cmp(m.LargestPointKey.UserKey, key) == 0 {
 		m = l.files.Next()
 	}
 	return m
@@ -240,7 +240,7 @@ func (l *levelIter) findFileGE(key []byte) *fileMetadata {
 
 func (l *levelIter) findFileLT(key []byte) *fileMetadata {
 	// Find the last file whose smallest key is < ikey.
-	return l.files.SeekLT(l.cmp, key)
+	return l.files.SeekLT(l.cmp, key, manifest.SearchKeyPoint)
 }
 
 // Init the iteration bounds for the current table. Returns -1 if the table

@@ -263,10 +263,10 @@ func (pc *pickedCompaction) setupInputs(opts *Options, diskAvailBytes uint64) bo
 		largestBaseKey := base.InvalidInternalKey
 		if pc.outputLevel.files.Empty() {
 			baseIter := pc.version.Levels[pc.outputLevel.level].Iter()
-			if sm := baseIter.SeekLT(pc.cmp, pc.smallest.UserKey); sm != nil {
+			if sm := baseIter.SeekLT(pc.cmp, pc.smallest.UserKey, manifest.SearchKeyCombined); sm != nil {
 				smallestBaseKey = sm.Largest
 			}
-			if la := baseIter.SeekGE(pc.cmp, pc.largest.UserKey); la != nil {
+			if la := baseIter.SeekGE(pc.cmp, pc.largest.UserKey, manifest.SearchKeyCombined); la != nil {
 				largestBaseKey = la.Smallest
 			}
 		} else {

@@ -508,6 +508,8 @@ func TestGetIter(t *testing.T) {
 						meta.LargestSeqNum = ikey.SeqNum()
 					}
 				}
+				meta.SmallestPointKey = meta.Smallest
+				meta.LargestPointKey = meta.Largest
 			}
 
 			files[tt.level] = append(files[tt.level], meta)

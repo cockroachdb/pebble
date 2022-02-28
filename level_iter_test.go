@@ -55,7 +55,7 @@ func TestLevelIter(t *testing.T) {
 
 				meta := (&fileMetadata{
 					FileNum: FileNum(len(metas)),
-				}).ExtendRangeKeyBounds(
+				}).ExtendPointKeyBounds(
 					DefaultComparer.Compare,
 					f.keys[0],
 					f.keys[len(f.keys)-1],

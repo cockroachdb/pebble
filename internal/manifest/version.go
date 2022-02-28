@@ -460,7 +460,7 @@ func SortBySmallest(files []*FileMetadata, cmp Compare) {
 
 func overlaps(iter LevelIterator, cmp Compare, start, end []byte, exclusiveEnd bool) LevelSlice {
 	startIter := iter.Clone()
-	startIter.SeekGE(cmp, start)
+	startIter.SeekGE(cmp, start, SearchKeyCombined)
 
 	// SeekGE compares user keys. The user key `start` may be equal to the
 	// f.Largest because f.Largest is a range deletion sentinel, indicating that
@@ -473,7 +473,7 @@ func overlaps(iter LevelIterator, cmp Compare, start, end []byte, exclusiveEnd b
 	}
 
 	endIter := iter.Clone()
-	endIter.SeekGE(cmp, end)
+	endIter.SeekGE(cmp, end, SearchKeyCombined)
 
 	if !exclusiveEnd {
 		// endIter is now pointing at the *first* file with a largest key >= end.
