@@ -79,9 +79,9 @@ func TestLevelIterator(t *testing.T) {
 					case "prev":
 						m = iter.Prev()
 					case "seek-ge":
-						m = iter.SeekGE(base.DefaultComparer.Compare, []byte(parts[1]))
+						m = iter.SeekGE(base.DefaultComparer.Compare, []byte(parts[1]), SearchKeyCombined)
 					case "seek-lt":
-						m = iter.SeekLT(base.DefaultComparer.Compare, []byte(parts[1]))
+						m = iter.SeekLT(base.DefaultComparer.Compare, []byte(parts[1]), SearchKeyCombined)
 					default:
 						return fmt.Sprintf("unknown command %q", parts[0])
 					}

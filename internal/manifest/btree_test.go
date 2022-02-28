@@ -322,7 +322,7 @@ func TestIterCmpRand(t *testing.T) {
 	for i := 0; i < iterCount; i++ {
 		k := rng.Intn(itemCount)
 		iter := LevelIterator{iter: tr.iter()}
-		iter.SeekGE(base.DefaultComparer.Compare, key(k).UserKey)
+		iter.SeekGE(base.DefaultComparer.Compare, key(k).UserKey, SearchKeyCombined)
 		iters1[i] = &iter
 		iters2[i] = &iter
 	}
@@ -352,7 +352,7 @@ func TestBTreeSeek(t *testing.T) {
 
 	it := LevelIterator{iter: tr.iter()}
 	for i := 0; i < 2*count-1; i++ {
-		it.SeekGE(base.DefaultComparer.Compare, key(i).UserKey)
+		it.SeekGE(base.DefaultComparer.Compare, key(i).UserKey, SearchKeyCombined)
 		if !it.iter.valid() {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
@@ -362,13 +362,13 @@ func TestBTreeSeek(t *testing.T) {
 			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
 		}
 	}
-	it.SeekGE(base.DefaultComparer.Compare, key(2*count-1).UserKey)
+	it.SeekGE(base.DefaultComparer.Compare, key(2*count-1).UserKey, SearchKeyCombined)
 	if it.iter.valid() {
 		t.Fatalf("expected invalid iterator")
 	}
 
 	for i := 1; i < 2*count; i++ {
-		it.SeekLT(base.DefaultComparer.Compare, key(i).UserKey)
+		it.SeekLT(base.DefaultComparer.Compare, key(i).UserKey, SearchKeyCombined)
 		if !it.iter.valid() {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
@@ -378,7 +378,7 @@ func TestBTreeSeek(t *testing.T) {
 			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
 		}
 	}
-	it.SeekLT(base.DefaultComparer.Compare, key(0).UserKey)
+	it.SeekLT(base.DefaultComparer.Compare, key(0).UserKey, SearchKeyCombined)
 	if it.iter.valid() {
 		t.Fatalf("expected invalid iterator")
 	}
@@ -503,14 +503,14 @@ func TestIterEndSentinel(t *testing.T) {
 	require.NoError(t, tr.insert(newItem(key(2))))
 	require.NoError(t, tr.insert(newItem(key(3))))
 	iter := LevelIterator{iter: tr.iter()}
-	iter.SeekGE(base.DefaultComparer.Compare, key(3).UserKey)
+	iter.SeekGE(base.DefaultComparer.Compare, key(3).UserKey, SearchKeyCombined)
 	require.True(t, iter.iter.valid())
 	iter.Next()
 	require.False(t, iter.iter.valid())
 
 	// If we seek into the end sentinel, prev should return us to a valid
 	// position.
-	iter.SeekGE(base.DefaultComparer.Compare, key(4).UserKey)
+	iter.SeekGE(base.DefaultComparer.Compare, key(4).UserKey, SearchKeyCombined)
 	require.False(t, iter.iter.valid())
 	iter.Prev()
 	require.True(t, iter.iter.valid())
@@ -773,7 +773,7 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			k := keys[rng.Intn(len(keys))]
 			it := LevelIterator{iter: tr.iter()}
-			it.SeekGE(base.DefaultComparer.Compare, k.UserKey)
+			it.SeekGE(base.DefaultComparer.Compare, k.UserKey, SearchKeyCombined)
 			if testing.Verbose() {
 				if !it.iter.valid() {
 					b.Fatal("expected to find key")
@@ -808,7 +808,7 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 			j := rng.Intn(len(keys))
 			k := keys[j]
 			it := LevelIterator{iter: tr.iter()}
-			it.SeekLT(base.DefaultComparer.Compare, k.UserKey)
+			it.SeekLT(base.DefaultComparer.Compare, k.UserKey, SearchKeyCombined)
 			if testing.Verbose() {
 				if j == 0 {
 					if it.iter.valid() {
