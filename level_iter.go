@@ -196,7 +196,7 @@ func (l *levelIter) init(
 	l.split = split
 	l.iterFile = nil
 	l.newIters = newIters
-	l.files = files
+	l.files = files.Filter(manifest.KeyTypePoint)
 	l.bytesIterated = bytesIterated
 }
 
@@ -231,8 +231,8 @@ func (l *levelIter) findFileGE(key []byte) *fileMetadata {
 	// (see the comment in that function).
 
 	m := l.files.SeekGE(l.cmp, key)
-	for m != nil && m.Largest.IsExclusiveSentinel() &&
-		l.cmp(m.Largest.UserKey, key) == 0 {
+	for m != nil && m.LargestPointKey.IsExclusiveSentinel() &&
+		l.cmp(m.LargestPointKey.UserKey, key) == 0 {
 		m = l.files.Next()
 	}
 	return m

@@ -55,7 +55,7 @@ func TestLevelIter(t *testing.T) {
 
 				meta := (&fileMetadata{
 					FileNum: FileNum(len(metas)),
-				}).ExtendRangeKeyBounds(
+				}).ExtendPointKeyBounds(
 					DefaultComparer.Compare,
 					f.keys[0],
 					f.keys[len(f.keys)-1],
@@ -138,10 +138,11 @@ func TestLevelIter(t *testing.T) {
 }
 
 type levelIterTest struct {
-	cmp     base.Comparer
-	mem     vfs.FS
-	readers []*sstable.Reader
-	metas   []*fileMetadata
+	cmp          base.Comparer
+	mem          vfs.FS
+	readers      []*sstable.Reader
+	metas        []*fileMetadata
+	itersCreated int
 }
 
 func newLevelIterTest() *levelIterTest {
@@ -156,6 +157,7 @@ func newLevelIterTest() *levelIterTest {
 func (lt *levelIterTest) newIters(
 	file *manifest.FileMetadata, opts *IterOptions, _ *uint64,
 ) (internalIterator, keyspan.FragmentIterator, error) {
+	lt.itersCreated++
 	iter, err := lt.readers[file.FileNum].NewIter(opts.LowerBound, opts.UpperBound)
 	if err != nil {
 		return nil, nil, err
@@ -174,6 +176,7 @@ func (lt *levelIterTest) runClear(d *datadriven.TestData) string {
 	}
 	lt.readers = nil
 	lt.metas = nil
+	lt.itersCreated = 0
 	return ""
 }
 
@@ -185,10 +188,22 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		return err.Error()
 	}
 
+	tableFormat := sstable.TableFormatRocksDBv2
+	for _, arg := range d.CmdArgs {
+		if arg.Key == "format" {
+			switch arg.Vals[0] {
+			case "rocksdbv2":
+				tableFormat = sstable.TableFormatRocksDBv2
+			case "pebblev2":
+				tableFormat = sstable.TableFormatPebblev2
+			}
+		}
+	}
 	fp := bloom.FilterPolicy(10)
 	w := sstable.NewWriter(f0, sstable.WriterOptions{
 		Comparer:     &lt.cmp,
 		FilterPolicy: fp,
+		TableFormat:  tableFormat,
 	})
 	var tombstones []keyspan.Span
 	f := keyspan.Fragmenter{
@@ -205,6 +220,8 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		switch ikey.Kind() {
 		case InternalKeyKindRangeDelete:
 			f.Add(keyspan.Span{Start: ikey, End: value})
+		case InternalKeyKindRangeKeySet:
+			w.RangeKeySet(ikey.UserKey, value, nil, nil)
 		default:
 			if err := w.Add(ikey, value); err != nil {
 				return err.Error()
@@ -244,7 +261,9 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	}
 	if meta.HasRangeDelKeys {
 		m.ExtendPointKeyBounds(lt.cmp.Compare, meta.SmallestRangeDel, meta.LargestRangeDel)
-
+	}
+	if meta.HasRangeKeys {
+		m.ExtendRangeKeyBounds(lt.cmp.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)
 	}
 	lt.metas = append(lt.metas, m)
 
@@ -394,6 +413,8 @@ func TestLevelIterSeek(t *testing.T) {
 			iter.initRangeDel(&iter.rangeDelIter)
 			return runInternalIterCmd(d, iter, iterCmdVerboseKey)
 
+		case "iters-created":
+			return fmt.Sprintf("%d", lt.itersCreated)
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
