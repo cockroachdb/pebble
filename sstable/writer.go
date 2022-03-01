@@ -189,11 +189,10 @@ type Writer struct {
 	indexSepAlloc []byte
 
 	// To allow potentially overlapping (i.e. un-fragmented) range keys spans to
-	// be added to the Writer, a keyspan.Fragmenter and rangekey.Coalescer are
-	// used to retain the keys and values, emitting fragmented, coalesced spans as
-	// appropriate. Range keys must be added in order of their start user-key.
+	// be added to the Writer, a keyspan.Fragmenter is used to retain the keys
+	// and values, emitting fragmented, coalesced spans as appropriate. Range
+	// keys must be added in order of their start user-key.
 	fragmenter keyspan.Fragmenter
-	coalescer  rangekey.Coalescer
 	rkBuf      []byte
 	// dataBlockBuf consists of the state which is currently owned by and used by
 	// the Writer client goroutine. This state can be handed off to other goroutines.
@@ -848,13 +847,12 @@ func (w *Writer) coalesceSpans(spans []keyspan.Span) {
 	// spans from the Fragmenter will contain all of the fragments this Writer
 	// will ever see. It is therefore safe to collect all of the received
 	// fragments and emit a rangekey.CoalescedSpan.
-	for _, span := range spans {
-		if err := w.coalescer.Add(span); err != nil {
-			w.err = errors.Newf("sstable: could not coalesce span: %s", err)
-			return
-		}
+	s, err := rangekey.Coalesce(w.compare, keyspan.MakeFragments(spans...))
+	if err != nil {
+		w.err = errors.Newf("sstable: could not coalesce span: %s", err)
+		return
 	}
-	w.coalescer.Finish()
+	w.addCoalescedSpan(s)
 }
 
 func (w *Writer) addCoalescedSpan(s rangekey.CoalescedSpan) {
@@ -1826,7 +1824,6 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 			Cmp:    o.Comparer.Compare,
 			Format: o.Comparer.FormatKey,
 		},
-		coalescer: rangekey.Coalescer{},
 	}
 
 	w.dataBlockBuf.init(w.restartInterval, w.checksumType)
@@ -1923,9 +1920,8 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		}
 	}
 
-	// Initialize the range key fragmenter and coalescer.
+	// Initialize the range key fragmenter.
 	w.fragmenter.Emit = w.coalesceSpans
-	w.coalescer.Init(w.compare, w.formatKey, base.InternalKeySeqNumMax, w.addCoalescedSpan)
 
 	// If f does not have a Flush method, do our own buffering.
 	if _, ok := f.(flusher); ok {

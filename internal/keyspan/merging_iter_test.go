@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -60,6 +61,18 @@ func TestMergingIter(t *testing.T) {
 	datadriven.RunTest(t, "testdata/merging_iter", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
+			snapshot := base.InternalKeySeqNumMax
+			for _, cmdArg := range td.CmdArgs {
+				switch cmdArg.Key {
+				case "snapshot":
+					var err error
+					snapshot, err = strconv.ParseUint(cmdArg.Vals[0], 10, 64)
+					require.NoError(t, err)
+				default:
+					return fmt.Sprintf("unrecognized arg %q", cmdArg.Key)
+				}
+			}
+
 			var iters []FragmentIterator
 			var spans []Span
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
@@ -75,7 +88,7 @@ func TestMergingIter(t *testing.T) {
 			if len(spans) > 0 {
 				iters = append(iters, NewIter(cmp, spans))
 			}
-			iter.Init(cmp, iters...)
+			iter.Init(cmp, VisibleTransform(snapshot), iters...)
 			return fmt.Sprintf("%d levels", len(iters))
 		case "iter":
 			buf.Reset()
@@ -233,7 +246,7 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 
 	fragmenterIter := NewIter(f.Cmp, allFragmented)
 	mergingIter := &mergingIterAdapter{MergingIter: &MergingIter{}}
-	mergingIter.MergingIter.Init(f.Cmp, iters...)
+	mergingIter.MergingIter.Init(f.Cmp, VisibleTransform(base.InternalKeySeqNumMax), iters...)
 
 	// Position both so that it's okay to perform relative positioning
 	// operations immediately.
