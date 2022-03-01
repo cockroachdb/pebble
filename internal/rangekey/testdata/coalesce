@@ -1,0 +1,124 @@
+# All disjoint RANGEKEYSETs.
+
+coalesce
+a.RANGEKEYSET.10: c [(@5=foo)]
+----
+●   [a, c)#10
+└── @5 : foo
+
+coalesce
+c.RANGEKEYSET.4: d [(@3=foo)]
+----
+●   [c, d)#4
+└── @3 : foo
+
+coalesce
+e.RANGEKEYSET.20: f [(@5=bar),(@3=foo)]
+----
+●   [e, f)#20
+├── @5 : bar
+└── @3 : foo
+
+# Merge overlapping RANGEKEYSETs.
+
+coalesce
+a.RANGEKEYSET.10: c [(@5=foo5)]
+a.RANGEKEYSET.4:  c [(@3=foo3)]
+a.RANGEKEYSET.4:  c [(@2=foo2)]
+----
+●   [a, c)#10
+├── @5 : foo5
+├── @3 : foo3
+└── @2 : foo2
+
+# RANGEKEYUNSETs.
+
+coalesce
+a.RANGEKEYUNSET.10: c [@5]
+----
+●   [a, c)#10
+└── @5 unset
+
+coalesce
+c.RANGEKEYUNSET.4:  d [@3]
+----
+●   [c, d)#4
+└── @3 unset
+
+coalesce
+e.RANGEKEYUNSET.20: f [@5,@3]
+----
+●   [e, f)#20
+├── @5 unset
+└── @3 unset
+
+# Merge overlapping RANGEKEYUNSETs.
+
+coalesce
+a.RANGEKEYUNSET.10: c [@5]
+a.RANGEKEYUNSET.4: c [@3]
+a.RANGEKEYUNSET.4: c [@2]
+----
+●   [a, c)#10
+├── @5 unset
+├── @3 unset
+└── @2 unset
+
+# Unsets may partially remove sets.
+
+coalesce
+a.RANGEKEYUNSET.10 : c [@100]
+a.RANGEKEYSET.9    : c [(@100=v100), (@50=v50)]
+----
+●   [a, c)#10
+├── @100 unset
+└── @50 : v50
+
+coalesce
+c.RANGEKEYSET.9    : d [(@100=v100), (@50=v50)]
+----
+●   [c, d)#9
+├── @100 : v100
+└── @50 : v50
+
+# Unsets may wholly remove sets.
+
+coalesce
+b.RANGEKEYUNSET.10 : c [@3,@2,@1]
+b.RANGEKEYSET.8    : c [(@3=v3),(@2=v2),(@1=v1)]
+----
+●   [b, c)#10
+├── @3 unset
+├── @2 unset
+└── @1 unset
+
+# Sets may shadow unsets.
+
+coalesce
+a.RANGEKEYSET.5   : c [(@5=v5)]
+a.RANGEKEYUNSET.4 : c [@5]
+----
+●   [a, c)#5
+└── @5 : v5
+
+# Deletes shadow Sets and Unsets, but not at the same sequence number.
+
+coalesce
+a.RANGEKEYSET.10  : c [(@5=foo5)]
+a.RANGEKEYDEL.10  : c
+a.RANGEKEYUNSET.8 : c [@1]
+a.RANGEKEYSET.4   : c [(@3=foo3)]
+a.RANGEKEYSET.4   : c [(@2=foo2)]
+----
+●   [a, c)#10 (DEL)
+└── @5 : foo5
+
+# Within a sequence number, none of the internal range keys affect one another.
+
+coalesce
+a.RANGEKEYSET.5   : c [(@5=foo)]
+a.RANGEKEYUNSET.5 : c [@5]
+a.RANGEKEYDEL.5   : c
+----
+●   [a, c)#5 (DEL)
+└── @5 : foo

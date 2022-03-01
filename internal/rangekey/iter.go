@@ -57,13 +57,15 @@ type Iterator interface {
 // Iter handles 'coalescing' spans on-the-fly, including dropping key spans that
 // are no longer relevant.
 type Iter struct {
-	miter     keyspan.MergingIter
-	iterFrags keyspan.Fragments
-	coalescer Coalescer
-	curr      CoalescedSpan
-	err       error
-	valid     bool
-	dir       int8
+	cmp           base.Compare
+	formatKey     base.FormatKey
+	visibleSeqNum uint64
+	miter         keyspan.MergingIter
+	iterFrags     keyspan.Fragments
+	curr          CoalescedSpan
+	err           error
+	valid         bool
+	dir           int8
 }
 
 // Assert that Iter implements the rangekey.Iterator interface.
@@ -76,12 +78,12 @@ func (i *Iter) Init(
 	visibleSeqNum uint64,
 	iters ...keyspan.FragmentIterator,
 ) {
-	*i = Iter{}
-	i.miter.Init(cmp, iters...)
-	i.coalescer.Init(cmp, formatKey, visibleSeqNum, func(span CoalescedSpan) {
-		i.curr = span
-		i.valid = true
-	})
+	*i = Iter{
+		cmp:           cmp,
+		formatKey:     formatKey,
+		visibleSeqNum: visibleSeqNum,
+	}
+	i.miter.Init(cmp, keyspan.VisibleTransform(visibleSeqNum), iters...)
 }
 
 // Clone clones the iterator, returning an independent iterator over the same
@@ -92,7 +94,7 @@ func (i *Iter) Clone() Iterator {
 	// in the readState.
 	// Init the new Iter to ensure err is cleared.
 	newIter := &Iter{}
-	newIter.Init(i.coalescer.items.cmp, i.coalescer.formatKey, i.coalescer.visibleSeqNum,
+	newIter.Init(i.cmp, i.formatKey, i.visibleSeqNum,
 		i.miter.ClonedIters()...)
 	return newIter
 }
@@ -109,39 +111,31 @@ func (i *Iter) Close() error {
 
 func (i *Iter) coalesceForward() *CoalescedSpan {
 	i.dir = +1
-	i.valid = false
-	i.curr = CoalescedSpan{}
-
-	for j := 0; j < i.iterFrags.Count(); j++ {
-		if err := i.coalescer.Add(i.iterFrags.At(j)); err != nil {
-			i.valid, i.err = false, err
-			return nil
-		}
-	}
-	// NB: Finish populates i.curr with the coalesced span.
-	i.coalescer.Finish()
-	if !i.valid {
+	if i.iterFrags.Empty() {
+		i.valid = false
 		return nil
 	}
+	i.curr, i.err = Coalesce(i.cmp, i.iterFrags)
+	if i.err != nil {
+		i.valid = false
+		return nil
+	}
+	i.valid = true
 	return &i.curr
 }
 
 func (i *Iter) coalesceBackward() *CoalescedSpan {
 	i.dir = -1
-	i.valid = false
-	i.curr = CoalescedSpan{}
-
-	for j := i.iterFrags.Count() - 1; j >= 0; j-- {
-		if err := i.coalescer.AddReverse(i.iterFrags.At(j)); err != nil {
-			i.valid, i.err = false, err
-			return nil
-		}
-	}
-	// NB: Finish populates i.curr with the coalesced span.
-	i.coalescer.Finish()
-	if !i.valid {
+	if i.iterFrags.Empty() {
+		i.valid = false
 		return nil
 	}
+	i.curr, i.err = Coalesce(i.cmp, i.iterFrags)
+	if i.err != nil {
+		i.valid = false
+		return nil
+	}
+	i.valid = true
 	return &i.curr
 }
 
@@ -149,7 +143,7 @@ func (i *Iter) coalesceBackward() *CoalescedSpan {
 // equal to key and returns it.
 func (i *Iter) SeekGE(key []byte) *CoalescedSpan {
 	i.iterFrags = i.miter.SeekLT(key)
-	if !i.iterFrags.Empty() && i.coalescer.items.cmp(key, i.iterFrags.End) < 0 {
+	if !i.iterFrags.Empty() && i.cmp(key, i.iterFrags.End) < 0 {
 		// We landed on a range key that begins before `key`, but extends beyond
 		// it. Since we performed a SeekLT, we're on the last fragment with
 		// those range key bounds and we need to coalesce backwards.

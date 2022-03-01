@@ -94,65 +94,32 @@ func TestSmallestSetSuffix(t *testing.T) {
 	}
 }
 
-func TestCoalescer(t *testing.T) {
-	var c Coalescer
+func TestCoalesce(t *testing.T) {
 	var buf bytes.Buffer
-	init := func(visibleSeqNum uint64) {
-		c.Init(testkeys.Comparer.Compare, testkeys.Comparer.FormatKey, visibleSeqNum,
-			func(rks CoalescedSpan) { formatRangeKeySpan(&buf, &rks) })
-	}
-	init(base.InternalKeySeqNumMax)
+	cmp := testkeys.Comparer.Compare
 
-	datadriven.RunTest(t, "testdata/coalescer", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/coalesce", func(td *datadriven.TestData) string {
 		switch td.Cmd {
-		case "set-visible-seqnum":
-			if len(td.CmdArgs) != 1 {
-				return "expected 1 command arg"
+		case "coalesce":
+			buf.Reset()
+			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
+			var spans []keyspan.Span
+			for _, line := range lines {
+				startKey, value := Parse(line)
+				endKey, splitValue, ok := DecodeEndKey(startKey.Kind(), value)
+				require.True(t, ok)
+				spans = append(spans, keyspan.Span{
+					Start: startKey,
+					End:   endKey,
+					Value: splitValue,
+				})
 			}
-			v, err := strconv.ParseUint(td.CmdArgs[0].String(), 10, 64)
+			s, err := Coalesce(cmp, keyspan.MakeFragments(spans...))
 			if err != nil {
 				return err.Error()
 			}
-			init(v)
-			return "OK"
-
-		case "add":
-			buf.Reset()
-
-			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
-			for _, line := range lines {
-				startKey, value := Parse(line)
-				endKey, splitValue, ok := DecodeEndKey(startKey.Kind(), value)
-				require.True(t, ok)
-				require.NoError(t, c.Add(keyspan.Span{
-					Start: startKey,
-					End:   endKey,
-					Value: splitValue,
-				}))
-			}
+			formatRangeKeySpan(&buf, &s)
 			return buf.String()
-
-		case "add-reverse":
-			buf.Reset()
-
-			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
-			for _, line := range lines {
-				startKey, value := Parse(line)
-				endKey, splitValue, ok := DecodeEndKey(startKey.Kind(), value)
-				require.True(t, ok)
-				require.NoError(t, c.AddReverse(keyspan.Span{
-					Start: startKey,
-					End:   endKey,
-					Value: splitValue,
-				}))
-			}
-			return buf.String()
-
-		case "finish":
-			buf.Reset()
-			c.Finish()
-			return buf.String()
-
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
