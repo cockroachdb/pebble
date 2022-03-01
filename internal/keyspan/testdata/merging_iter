@@ -42,6 +42,40 @@ q-z#14.RANGEKEYSET
 .
 -
 
+# Test snapshot filtering.
+
+define snapshot=12
+a.RANGEKEYSET.10  : c [(@5=apples)]
+a.RANGEKEYDEL.10  : c
+a.RANGEKEYUNSET.8 : c [@1]
+a.RANGEKEYSET.4   : c [(@3=bananas)]
+c.RANGEKEYSET.4   : d [(@3=coconut)]
+e.RANGEKEYSET.20  : f [(@5=pineapple),(@3=guava)]
+h.RANGEKEYDEL.22  : j
+h.RANGEKEYSET.21  : j [(@5=peaches),(@3=starfruit)]
+l.RANGEKEYUNSET.2 : m [@9,@5]
+q.RANGEKEYSET.14  : z [(@9=mangos)]
+----
+1 levels
+
+iter
+first
+next
+next
+next
+----
+a-c#10.RANGEKEYSET
+a-c#10.RANGEKEYDEL
+a-c#8.RANGEKEYUNSET
+a-c#4.RANGEKEYSET
+-
+c-d#4.RANGEKEYSET
+-
+l-m#2.RANGEKEYUNSET
+-
+.
+-
+
 define
 b.RANGEKEYSET.10  : d [(@1=apples)]
 e.RANGEKEYDEL.8   : h
