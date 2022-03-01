@@ -512,17 +512,9 @@ type dataBlockBuf struct {
 	sepScratch []byte
 }
 
-var dataBlockBufPool = sync.Pool{
-	New: func() interface{} {
-		return &dataBlockBuf{}
-	},
-}
-
-func newDataBlockBuf(restartInterval int, checksumType ChecksumType) *dataBlockBuf {
-	d := dataBlockBufPool.Get().(*dataBlockBuf)
+func (d *dataBlockBuf) init(restartInterval int, checksumType ChecksumType) {
 	d.dataBlock.restartInterval = restartInterval
 	d.checksummer.checksumType = checksumType
-	return d
 }
 
 func (d *dataBlockBuf) finish() {
@@ -1102,9 +1094,7 @@ func (w *Writer) flush(key InternalKey) error {
 	// The writeTask corresponds to an unwritten index entry.
 	w.indexBlock.addInflight(writeTask.indexInflightSize)
 
-	w.dataBlockBuf = nil
 	err = w.coordination.writeQueue.addSync(writeTask)
-	w.dataBlockBuf = newDataBlockBuf(w.restartInterval, w.checksumType)
 
 	return err
 }
@@ -1794,7 +1784,8 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		coalescer: rangekey.Coalescer{},
 	}
 
-	w.dataBlockBuf = newDataBlockBuf(w.restartInterval, w.checksumType)
+	w.dataBlockBuf = &dataBlockBuf{}
+	w.dataBlockBuf.init(w.restartInterval, w.checksumType)
 
 	w.blockBuf = blockBuf{
 		checksummer: checksummer{checksumType: o.Checksum},

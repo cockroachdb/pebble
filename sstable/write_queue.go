@@ -74,7 +74,6 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 }
 
 func (w *writeQueue) releaseBuffers(task *writeTask) {
-	dataBlockBufPool.Put(task.buf)
 	task.buf = nil
 
 	// This index block is no longer used by the Writer, so we can add it back to the pool.
