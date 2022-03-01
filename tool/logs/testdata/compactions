@@ -374,3 +374,47 @@ ______from________to___default______move_____elide____delete_____flush_____total
         L2        L3         1         0         0         0         0         1      13 M       10s
      total                   1         0         0         0         0         1      13 M        0s
      r-amp       1.0
+
+reset
+----
+
+log
+I220228 14:44:31.497272 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1366 ⋮ [n24,pebble,s24] 33267888  [JOB 10197855] flushing 1 memtable to L0
+I220228 14:44:31.497485 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267889  [JOB 10197855] flushing: sstable created 21731018
+I220228 14:44:31.527038 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267892  [JOB 10197855] flushing: sstable created 21731020
+I220228 14:44:31.542944 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267894  [JOB 10197855] flushing: sstable created 21731021
+I220228 14:44:31.553581 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267895  [JOB 10197855] flushing: sstable created 21731022
+I220228 14:44:31.554585 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267896  [JOB 10197855] flushing: sstable created 21731023
+I220228 14:44:31.569928 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267897  [JOB 10197855] flushing: sstable created 21731024
+I220228 14:44:31.624309 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267899  [JOB 10197855] flushing: sstable created 21731025
+I220228 14:44:31.685531 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267901  [JOB 10197855] flushing: sstable created 21731026
+I220228 14:44:31.686009 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267902  [JOB 10197855] flushing: sstable created 21731027
+I220228 14:44:31.686415 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267903  [JOB 10197855] flushing: sstable created 21731028
+I220228 14:44:31.780892 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267906  [JOB 10197855] flushing: sstable created 21731030
+I220228 14:44:31.790911 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267907  [JOB 10197855] flushing: sstable created 21731031
+I220228 14:44:31.904614 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267911  [JOB 10197855] flushing: sstable created 21731033
+I220228 14:44:31.905835 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267912  [JOB 10197855] flushing: sstable created 21731034
+I220228 14:44:31.906860 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267913  [JOB 10197855] flushing: sstable created 21731035
+I220228 14:44:31.907602 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267914  [JOB 10197855] flushing: sstable created 21731036
+I220228 14:44:32.019173 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267920  [JOB 10197855] flushing: sstable created 21731037
+I220228 14:44:32.019714 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267921  [JOB 10197855] flushing: sstable created 21731038
+I220228 14:44:32.020161 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267922  [JOB 10197855] flushing: sstable created 21731039
+I220228 14:44:32.100117 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267925  [JOB 10197855] flushing: sstable created 21731040
+I220228 14:44:32.100609 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267926  [JOB 10197855] flushing: sstable created 21731041
+I220228 14:44:32.101065 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267927  [JOB 10197855] flushing: sstable created 21731042
+I220228 14:44:32.101494 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267928  [JOB 10197855] flushing: sstable created 21731043
+I220228 14:44:32.102569 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267929  [JOB 10197855] flushing: sstable created 21731044
+I220228 14:44:32.106284 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1985 ⋮ [n24,pebble,s24] 33267930  [JOB 10197855] flushing: sstable created 21731045
+I220228 14:44:32.138686 18460916022 3@vendor/github.com/cockroachdb/pebble/compaction.go:1423 ⋮ [n24,pebble,s24] 33267931  [JOB 10197855] flushed 1 memtable to L0 [21731018 21731020 21731021 21731022 21731023 21731024 21731025 21731026 21731027 21731028 21731030 21731031 21731033 21731034 21731035 21731036 21731037 21731038 21731039 21731040 21731041 21731042 21731043 21731044 21731045] (19 M), in 0.6s, output rate 31 M/s
+----
+0.log
+
+summarize
+----
+node: 24, store: 24
+from: 220228 14:44
+  to: 220228 14:45
+______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
+       WAL        L0         0         0         0         0         1         1      19 M        0s
+     total                   0         0         0         0         1         1      19 M        0s
+     r-amp       NaN
