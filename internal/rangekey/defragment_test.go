@@ -225,10 +225,10 @@ func debugContext(
 ) string {
 	var buf bytes.Buffer
 	fmt.Fprintln(&buf, "Reference:")
-	printRangeKeys(&buf, cmp, formatKey, original)
+	printRangeKeys(&buf, cmp, original)
 	fmt.Fprintln(&buf)
 	fmt.Fprintln(&buf, "Fragmented:")
-	printRangeKeys(&buf, cmp, formatKey, fragmented)
+	printRangeKeys(&buf, cmp, fragmented)
 	fmt.Fprintln(&buf)
 	fmt.Fprintln(&buf, "\nOperations diff:")
 	diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
@@ -272,15 +272,21 @@ func runIterOp(w io.Writer, it *DefragmentingIter, op string) {
 	printRangeKey(w, s)
 }
 
-func printRangeKeys(w io.Writer, cmp base.Compare, formatKey base.FormatKey, spans []keyspan.Span) {
-	var c Coalescer
-	c.Init(cmp, formatKey, base.InternalKeySeqNumMax, func(s CoalescedSpan) {
-		printRangeKey(w, &s)
-	})
-	for _, s := range spans {
-		c.Add(s)
+func printRangeKeys(w io.Writer, cmp base.Compare, spans []keyspan.Span) {
+	var f keyspan.Fragmenter
+	f.Cmp = cmp
+	f.Emit = func(spans []keyspan.Span) {
+		frags := keyspan.MakeFragments(spans...)
+		cs, err := Coalesce(cmp, frags)
+		if err != nil {
+			panic(err)
+		}
+		printRangeKey(w, &cs)
 	}
-	c.Finish()
+	for _, s := range spans {
+		f.Add(s)
+	}
+	f.Finish()
 }
 
 func printRangeKey(w io.Writer, s *CoalescedSpan) {
