@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -38,11 +39,11 @@ var (
 	// Matches either a compaction or a memtable flush log line.
 	//
 	// A compaction start / end line resembles:
-	//   "compact(ed|ing)($TYPE) L($LEVEL)"
+	//   "[JOB X] compact(ed|ing)"
 	//
 	// A memtable flush start / end line resembles:
-	//   "flush(ed|ing) ($N) memtables to L($LEVEL)"
-	sentinelPattern          = regexp.MustCompile(`(?P<prefix>compact|flush)(?P<suffix>ed|ing)(?:\(.*\)\sL[0-9]|\s\d+\smemtables\sto\sL[0-9])`)
+	//   "[JOB X] flush(ed|ing)"
+	sentinelPattern          = regexp.MustCompile(`\[JOB.*(?P<prefix>compact|flush)(?P<suffix>ed|ing)[^:]`)
 	sentinelPatternPrefixIdx = sentinelPattern.SubexpIndex("prefix")
 	sentinelPatternSuffixIdx = sentinelPattern.SubexpIndex("suffix")
 
@@ -313,6 +314,12 @@ func (n nodeStoreJob) String() string {
 	return fmt.Sprintf("(node=%d,store=%d,job=%d)", n.node, n.store, n.job)
 }
 
+type errorEvent struct {
+	path string
+	line string
+	err  error
+}
+
 // logEventCollector keeps track of open compaction events and read-amp events
 // over the course of parsing log line events. Completed compaction events are
 // added to the collector once a matching start and end pair are encountered.
@@ -323,6 +330,7 @@ type logEventCollector struct {
 	m           map[nodeStoreJob]compactionStart
 	compactions []compaction
 	readAmps    []readAmp
+	errors      []errorEvent
 }
 
 // newEventCollector instantiates a new logEventCollector.
@@ -330,6 +338,11 @@ func newEventCollector() *logEventCollector {
 	return &logEventCollector{
 		m: make(map[nodeStoreJob]compactionStart),
 	}
+}
+
+// addError records an error encountered during log parsing.
+func (c *logEventCollector) addError(path, line string, err error) {
+	c.errors = append(c.errors, errorEvent{path: path, line: line, err: err})
 }
 
 // addCompactionStart adds a new compactionStart to the collector. The event is
@@ -568,9 +581,7 @@ type aggregator struct {
 
 // newAggregator returns a new aggregator.
 func newAggregator(
-	window, longRunningLimit time.Duration,
-	compactions []compaction,
-	readAmps []readAmp,
+	window, longRunningLimit time.Duration, compactions []compaction, readAmps []readAmp,
 ) *aggregator {
 	return &aggregator{
 		window:           window,
@@ -701,7 +712,10 @@ func (a *aggregator) aggregate() []windowSummary {
 }
 
 // parseLog parses the log file with the given path, using the given parse
-// function to collect events in the given logEventCollector.
+// function to collect events in the given logEventCollector. parseLog
+// returns a non-nil error if an I/O error was encountered while reading
+// the log file. Parsing errors are accumulated in the
+// logEventCollector.
 func parseLog(path string, b *logEventCollector) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -722,28 +736,28 @@ func parseLog(path string, b *logEventCollector) error {
 		matches := sentinelPattern.FindStringSubmatch(line)
 		if matches != nil {
 			// Determine which regexp to apply by testing the first letter of the prefix.
+			var err error
 			switch matches[sentinelPatternPrefixIdx][0] {
 			case 'c':
-				if err = parseCompaction(line, b); err != nil {
-					return err
-				}
+				err = parseCompaction(line, b)
 			case 'f':
-				if err = parseFlush(line, b); err != nil {
-					return err
-				}
+				err = parseFlush(line, b)
 			default:
-				return errors.Newf("unexpected line: neither compaction nor flush: %s", line)
+				err = errors.Newf("unexpected line: neither compaction nor flush: %s", line)
+			}
+			if err != nil {
+				b.addError(path, line, err)
 			}
 			continue
 		}
 
-		// Else check for an LSM debug line containing the read-amp value.
+		// Else check for an LSM debug line.
 		if err = parseReadAmp(line, b); err != nil {
-			return err
+			b.addError(path, line, err)
+			continue
 		}
 	}
-
-	return nil
+	return s.Err()
 }
 
 // parseLogContext extracts contextual information from the log line (e.g. the
@@ -876,6 +890,8 @@ func runCompactionLogs(cmd *cobra.Command, args []string) error {
 	b := newEventCollector()
 	for _, file := range files {
 		err := parseLog(file, b)
+		// parseLog returns an error only on I/O errors, which we
+		// immediately exit with.
 		if err != nil {
 			return err
 		}
@@ -902,6 +918,10 @@ func runCompactionLogs(cmd *cobra.Command, args []string) error {
 		fmt.Printf("%s\n", s)
 	}
 
+	// After the summaries, print accumulated parsing errors to stderr.
+	for _, e := range b.errors {
+		fmt.Fprintf(os.Stderr, "-\n%s: %s\nError: %s\n", filepath.Base(e.path), e.line, e.err)
+	}
 	return nil
 }
 
