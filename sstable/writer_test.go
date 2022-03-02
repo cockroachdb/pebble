@@ -8,9 +8,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
@@ -500,6 +504,59 @@ func TestWriter_TableFormatCompatibility(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Tests for race in https://github.com/cockroachdb/cockroach/issues/77194 which was fixed in
+// https://github.com/cockroachdb/pebble/pull/1547.
+func TestDataBlockBufferOwnership(t *testing.T) {
+	opts := WriterOptions{
+		BlockRestartInterval: 1,
+		BlockSize:            1,
+		Compression:          NoCompression,
+	}
+
+	s := time.Now()
+	var wg sync.WaitGroup
+	var failed int64 = 0
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			for {
+				f := &discardFile{}
+				w := NewWriter(f, opts)
+
+				// Two sets will cause a data block flush, which will cause the Writer to swap out
+				// its dataBlockBuf, if dataBlockBuffers are pooled.
+				prevBuf := &w.dataBlockBuf
+				w.Set([]byte{'a'}, []byte{'a'})
+				w.Set([]byte{'b'}, []byte{'b'})
+
+				// Test whether Writer holds a reference to anything in the previous dataBlockBuf buf.
+				// Note that if pooling is allowed, prevBuf could be equal to w.dataBlockBuf, but we
+				// don't expect the Writer to hold a reference to any buffers in the current dataBlockBuf
+				// either, in the case where pooling is allowed.
+				if prevBuf != &w.dataBlockBuf {
+					if reflect.ValueOf(w.meta.Largest.UserKey).Pointer() ==
+						reflect.ValueOf(prevBuf.dataBlock.curKey).Pointer() {
+						atomic.StoreInt64(&failed, 1)
+					}
+				}
+
+				w.Close()
+
+				if time.Since(s) > time.Second*5 {
+					break
+				}
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+
+	if failed == 1 {
+		t.Fatalf("Writer is storing a byte slice owned by the dataBlockBuf")
+	}
+
 }
 
 func BenchmarkWriter(b *testing.B) {
