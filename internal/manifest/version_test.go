@@ -286,56 +286,24 @@ func TestVersionUnref(t *testing.T) {
 func TestCheckOrdering(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	fmtKey := base.DefaultComparer.FormatKey
-	parseMeta := func(s string) *FileMetadata {
-		parts := strings.Split(s, "-")
-		if len(parts) != 2 {
-			t.Fatalf("malformed table spec: %s", s)
-		}
-		m := (&FileMetadata{}).ExtendPointKeyBounds(
-			cmp,
-			base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		)
-		m.SmallestSeqNum = m.Smallest.SeqNum()
-		m.LargestSeqNum = m.Largest.SeqNum()
-		return m
-	}
-
 	datadriven.RunTest(t, "testdata/version_check_ordering",
 		func(d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "check-ordering":
-				// TODO(sumeer): move this Version parsing code to utils, to
-				// avoid repeating it, and make it the inverse of
-				// Version.DebugString().
-				var filesByLevel [NumLevels][]*FileMetadata
-				var files *[]*FileMetadata
-				fileNum := base.FileNum(1)
-
-				for _, data := range strings.Split(d.Input, "\n") {
-					switch data {
-					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
-						level, err := strconv.Atoi(data[1:])
-						if err != nil {
-							return err.Error()
-						}
-						files = &filesByLevel[level]
-
-					default:
-						meta := parseMeta(data)
-						meta.FileNum = fileNum
-						fileNum++
-						*files = append(*files, meta)
-					}
-				}
-
-				result := "OK"
-				v := NewVersion(cmp, fmtKey, 10<<20, filesByLevel)
-				err := v.CheckOrdering(cmp, base.DefaultFormatter)
+				v, err := ParseVersionDebug(cmp, fmtKey, 10<<20, d.Input)
 				if err != nil {
-					result = fmt.Sprint(err)
+					return err.Error()
 				}
-				return result
+				// L0 files compare on sequence numbers. Use the seqnums from the
+				// smallest / largest bounds for the table.
+				v.Levels[0].Slice().Each(func(m *FileMetadata) {
+					m.SmallestSeqNum = m.Smallest.SeqNum()
+					m.LargestSeqNum = m.Largest.SeqNum()
+				})
+				if err = v.CheckOrdering(cmp, base.DefaultFormatter); err != nil {
+					return err.Error()
+				}
+				return "OK"
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
