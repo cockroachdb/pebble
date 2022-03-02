@@ -43,7 +43,7 @@ var (
 	//
 	// A memtable flush start / end line resembles:
 	//   "[JOB X] flush(ed|ing)"
-	sentinelPattern          = regexp.MustCompile(`\[JOB.*(?P<prefix>compact|flush)(?P<suffix>ed|ing)[^:]`)
+	sentinelPattern          = regexp.MustCompile(`\[JOB.*(?P<prefix>compact|flush|ingest)(?P<suffix>ed|ing)[^:]`)
 	sentinelPatternPrefixIdx = sentinelPattern.SubexpIndex("prefix")
 	sentinelPatternSuffixIdx = sentinelPattern.SubexpIndex("suffix")
 
@@ -87,6 +87,25 @@ var (
 	flushPatternJobIdx    = flushPattern.SubexpIndex("job")
 	flushPatternDigitIdx  = flushPattern.SubexpIndex("digit")
 	flushPatternUnitIdx   = flushPattern.SubexpIndex("unit")
+
+	// Example ingested log lines:
+	//
+	//   I220228 16:01:22.487906 18476248525 3@vendor/github.com/cockroachdb/pebble/ingest.go:637 ⋮ [n24,pebble,s24] 33430782  [JOB 10211226] ingested L0:21818678 (1.8 K), L0:21818683 (1.2 K), L0:21818679 (1.6 K), L0:21818680 (1.1 K), L0:21818681 (1.1 K), L0:21818682 (160 M)
+	//
+	ingestedPattern = regexp.MustCompile(
+		`^.*` +
+			/* Job ID           */ `\[JOB (?P<job>\d+)]\s` +
+			/* ingested */ `ingested\s`)
+	ingestedPatternJobIdx = ingestedPattern.SubexpIndex("job")
+	ingestedFilePattern   = regexp.MustCompile(
+		`L` +
+			/* Level */ `(?P<level>\d):` +
+			/* File number */ `(?P<file>\d+)\s` +
+			/* Bytes */ `\((?P<value>.*?)\s(?P<unit>.*?)\)`)
+	ingestedFilePatternLevelIdx = ingestedFilePattern.SubexpIndex("level")
+	ingestedFilePatternFileIdx  = ingestedFilePattern.SubexpIndex("file")
+	ingestedFilePatternValueIdx = ingestedFilePattern.SubexpIndex("value")
+	ingestedFilePatternUnitIdx  = ingestedFilePattern.SubexpIndex("unit")
 
 	// Example read-amp log line:
 	//
@@ -216,8 +235,11 @@ func parseCompactionStart(matches []string) (compactionStart, error) {
 
 // compactionEnd is a compaction end event.
 type compactionEnd struct {
-	jobID          int
-	compactedBytes uint64
+	jobID        int
+	writtenBytes uint64
+	// TODO(jackson): Parse and include the aggregate size of input
+	// sstables. It may be instructive, because compactions that drop
+	// keys write less data than they remove from the input level.
 }
 
 // parseCompactionEnd converts the given regular expression sub-matches for a
@@ -238,7 +260,7 @@ func parseCompactionEnd(matches []string) (compactionEnd, error) {
 		if e != nil {
 			return end, errors.Newf("could not parse compacted bytes digit: %s", e)
 		}
-		end.compactedBytes = unHumanize(d, matches[compactionPatternUnitIdx])
+		end.writtenBytes = unHumanize(d, matches[compactionPatternUnitIdx])
 	}
 
 	return end, nil
@@ -280,24 +302,42 @@ func parseFlushEnd(matches []string) (compactionEnd, error) {
 		if e != nil {
 			return end, errors.Newf("could not parse flushed bytes digit: %s", e)
 		}
-		end.compactedBytes = unHumanize(d, matches[flushPatternUnitIdx])
+		end.writtenBytes = unHumanize(d, matches[flushPatternUnitIdx])
 	}
 
 	return end, nil
 }
 
+// event describes an aggregated event (eg, start and end events
+// combined if necessary).
+type event struct {
+	nodeID     int
+	storeID    int
+	jobID      int
+	timeStart  time.Time
+	timeEnd    time.Time
+	compaction *compaction
+	ingest     *ingest
+}
+
 // compaction represents an aggregated compaction event (i.e. the combination of
 // a start and end event).
 type compaction struct {
-	nodeID         int
-	storeID        int
-	jobID          int
-	cType          compactionType
-	timeStart      time.Time
-	timeEnd        time.Time
-	fromLevel      int
-	toLevel        int
-	compactedBytes uint64
+	cType        compactionType
+	fromLevel    int
+	toLevel      int
+	writtenBytes uint64
+}
+
+// ingest describes the completion of an ingest.
+type ingest struct {
+	files []ingestedFile
+}
+
+type ingestedFile struct {
+	level     int
+	fileNum   int
+	sizeBytes uint64
 }
 
 // readAmp represents a read-amp event.
@@ -326,11 +366,11 @@ type errorEvent struct {
 // Read-amp events are added as they are encountered (the have no start / end
 // concept).
 type logEventCollector struct {
-	ctx         logContext
-	m           map[nodeStoreJob]compactionStart
-	compactions []compaction
-	readAmps    []readAmp
-	errors      []errorEvent
+	ctx      logContext
+	m        map[nodeStoreJob]compactionStart
+	events   []event
+	readAmps []readAmp
+	errors   []errorEvent
 }
 
 // newEventCollector instantiates a new logEventCollector.
@@ -372,16 +412,18 @@ func (c *logEventCollector) addCompactionEnd(end compactionEnd) {
 	// Remove the job from the collector once it has been matched.
 	delete(c.m, key)
 
-	c.compactions = append(c.compactions, compaction{
-		nodeID:         start.ctx.node,
-		storeID:        start.ctx.store,
-		jobID:          start.jobID,
-		cType:          start.cType,
-		timeStart:      start.ctx.timestamp,
-		timeEnd:        c.ctx.timestamp,
-		fromLevel:      start.fromLevel,
-		toLevel:        start.toLevel,
-		compactedBytes: end.compactedBytes,
+	c.events = append(c.events, event{
+		nodeID:    start.ctx.node,
+		storeID:   start.ctx.store,
+		jobID:     start.jobID,
+		timeStart: start.ctx.timestamp,
+		timeEnd:   c.ctx.timestamp,
+		compaction: &compaction{
+			cType:        start.cType,
+			fromLevel:    start.fromLevel,
+			toLevel:      start.toLevel,
+			writtenBytes: end.writtenBytes,
+		},
 	})
 }
 
@@ -424,16 +466,22 @@ type compactionTypeCount map[compactionType]int
 // windowSummary summarizes events in a window of time between a start and end
 // time. The window tracks:
 // - for each compaction type: counts, total bytes compacted, and total duration.
+// - total ingested bytes for each level
 // - read amp magnitudes
 type windowSummary struct {
 	nodeID, storeID  int
 	tStart, tEnd     time.Time
 	eventCount       int
+	flushedCount     int
+	flushedBytes     uint64
+	flushedTime      time.Duration
 	compactionCounts map[fromTo]compactionTypeCount
 	compactionBytes  map[fromTo]uint64
 	compactionTime   map[fromTo]time.Duration
+	ingestedCount    [7]int
+	ingestedBytes    [7]uint64
 	readAmps         []readAmp
-	longRunning      []compaction
+	longRunning      []event
 }
 
 // String implements fmt.Stringer, returning a formatted window summary.
@@ -471,80 +519,117 @@ func (s windowSummary) String() string {
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("node: %s, store: %s\n", nodeID, storeID))
-	sb.WriteString(fmt.Sprintf("from: %s\n", s.tStart.Format(timeFmtSlim)))
-	sb.WriteString(fmt.Sprintf("  to: %s\n", s.tEnd.Format(timeFmtSlim)))
-	sb.WriteString("______from________to___default______move_____elide____delete_____flush_____total_____bytes______time\n")
-
-	var totalDef, totalMove, totalElision, totalDel, totalFlush int
-	var totalBytes uint64
-	var totalTime time.Duration
-	for _, p := range pairs {
-		def := p.counts[compactionTypeDefault]
-		move := p.counts[compactionTypeMove]
-		elision := p.counts[compactionTypeElisionOnly]
-		del := p.counts[compactionTypeDeleteOnly]
-		flush := p.counts[compactionTypeFlush]
-		total := def + move + elision + del + flush
-
-		str := fmt.Sprintf("%10s %9s %9d %9d %9d %9d %9d %9d %9s %9s\n",
-			p.ft.from, p.ft.to, def, move, elision, del, flush, total,
-			humanize.Uint64(p.bytes), p.duration.Truncate(time.Second))
-		sb.WriteString(str)
-
-		totalDef += def
-		totalMove += move
-		totalElision += elision
-		totalDel += del
-		totalFlush += flush
-		totalBytes += p.bytes
-		totalTime += p.duration
-	}
-
+	sb.WriteString(fmt.Sprintf("   from: %s\n", s.tStart.Format(timeFmtSlim)))
+	sb.WriteString(fmt.Sprintf("     to: %s\n", s.tEnd.Format(timeFmtSlim)))
 	var count, sum int
 	for _, ra := range s.readAmps {
 		count++
 		sum += ra.readAmp
 	}
-	sb.WriteString(fmt.Sprintf("     total %19d %9d %9d %9d %9d %9d %9s %9s\n",
-		totalDef, totalMove, totalElision, totalDel, totalFlush, s.eventCount,
-		humanize.Uint64(totalBytes), totalTime.Truncate(time.Minute)))
-	sb.WriteString(fmt.Sprintf("     r-amp%10.1f\n", float64(sum)/float64(count)))
+	sb.WriteString(fmt.Sprintf("  r-amp: %.1f\n", float64(sum)/float64(count)))
 
-	// (Optional) Long running compactions.
+	// Print flush+ingest statistics.
+	{
+		var headerWritten bool
+		maybeWriteHeader := func() {
+			if !headerWritten {
+				sb.WriteString("_kind______from______to_____________________________________count___bytes______time\n")
+				headerWritten = true
+			}
+		}
+
+		if s.flushedCount > 0 {
+			maybeWriteHeader()
+			fmt.Fprintf(&sb, "%-7s         %7s                                   %7d %7s %9s\n",
+				"flush", "L0", s.flushedCount, humanize.Uint64(s.flushedBytes),
+				s.flushedTime.Truncate(time.Second))
+		}
+
+		sum := s.flushedBytes
+		for l := 0; l < len(s.ingestedBytes); l++ {
+			if s.ingestedCount[l] == 0 {
+				continue
+			}
+			maybeWriteHeader()
+			fmt.Fprintf(&sb, "%-7s         %7s                                   %7d %7s\n",
+				"ingest", fmt.Sprintf("L%d", l), s.ingestedCount[l], humanize.Uint64(s.ingestedBytes[l]))
+			sum += s.ingestedBytes[l]
+		}
+		if headerWritten {
+			fmt.Fprintf(&sb, "total                                                           %9s\n", humanize.Uint64(sum))
+		}
+	}
+
+	// Print compactions statistics.
+	if len(s.compactionCounts) > 0 {
+		sb.WriteString("_kind______from______to___default____move___elide__delete___total___bytes______time\n")
+		var totalDef, totalMove, totalElision, totalDel int
+		var totalBytes uint64
+		var totalTime time.Duration
+		for _, p := range pairs {
+			def := p.counts[compactionTypeDefault]
+			move := p.counts[compactionTypeMove]
+			elision := p.counts[compactionTypeElisionOnly]
+			del := p.counts[compactionTypeDeleteOnly]
+			total := def + move + elision + del
+
+			str := fmt.Sprintf("%-7s %7s %7s   %7d %7d %7d %7d %7d %7s %9s\n",
+				"compact", p.ft.from, p.ft.to, def, move, elision, del, total,
+				humanize.Uint64(p.bytes), p.duration.Truncate(time.Second))
+			sb.WriteString(str)
+
+			totalDef += def
+			totalMove += move
+			totalElision += elision
+			totalDel += del
+			totalBytes += p.bytes
+			totalTime += p.duration
+		}
+		sb.WriteString(fmt.Sprintf("total         %19d %7d %7d %7d %7d %7s %9s\n",
+			totalDef, totalMove, totalElision, totalDel, s.eventCount,
+			humanize.Uint64(totalBytes), totalTime.Truncate(time.Minute)))
+	}
+
+	// (Optional) Long running events.
 	if len(s.longRunning) > 0 {
-		sb.WriteString("long-running compactions (descending runtime):\n")
-		sb.WriteString("______from________to_______job______type_____start_______end____dur(s)_____bytes:\n")
+		sb.WriteString("long-running events (descending runtime):\n")
+		sb.WriteString("_kind________from________to_______job______type_____start_______end____dur(s)_____bytes:\n")
 		for _, e := range s.longRunning {
-			sb.WriteString(fmt.Sprintf("%10s %9s %9d %9s %9s %9s %9.0f %9s\n",
-				level(e.fromLevel), level(e.toLevel), e.jobID, e.cType,
+			c := e.compaction
+			kind := "compact"
+			if c.fromLevel == -1 {
+				kind = "flush"
+			}
+			sb.WriteString(fmt.Sprintf("%-7s %9s %9s %9d %9s %9s %9s %9.0f %9s\n",
+				kind, level(c.fromLevel), level(c.toLevel), e.jobID, c.cType,
 				e.timeStart.Format(timeFmtHrMinSec), e.timeEnd.Format(timeFmtHrMinSec),
-				e.timeEnd.Sub(e.timeStart).Seconds(), humanize.Uint64(e.compactedBytes)))
+				e.timeEnd.Sub(e.timeStart).Seconds(), humanize.Uint64(c.writtenBytes)))
 		}
 	}
 
 	return sb.String()
 }
 
-// compactionSlice is a slice of compaction events that sorts in order of node,
-// store, then compaction event start time.
-type compactionSlice []compaction
+// eventSlice is a slice of events that sorts in order of node, store,
+// then event start time.
+type eventSlice []event
 
-func (c compactionSlice) Len() int {
-	return len(c)
+func (s eventSlice) Len() int {
+	return len(s)
 }
 
-func (c compactionSlice) Less(i, j int) bool {
-	if c[i].nodeID != c[j].nodeID {
-		return c[i].nodeID < c[j].nodeID
+func (s eventSlice) Less(i, j int) bool {
+	if s[i].nodeID != s[j].nodeID {
+		return s[i].nodeID < s[j].nodeID
 	}
-	if c[i].storeID != c[j].storeID {
-		return c[i].storeID < c[j].storeID
+	if s[i].storeID != s[j].storeID {
+		return s[i].storeID < s[j].storeID
 	}
-	return c[i].timeStart.Before(c[j].timeStart)
+	return s[i].timeStart.Before(s[j].timeStart)
 }
 
-func (c compactionSlice) Swap(i, j int) {
-	c[i], c[j] = c[j], c[i]
+func (s eventSlice) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
 }
 
 // readAmpSlice is a slice of readAmp events that sorts in order of node, store,
@@ -574,18 +659,18 @@ func (r readAmpSlice) Swap(i, j int) {
 // duration and returns one aggregated windowSummary struct per window.
 type aggregator struct {
 	window           time.Duration
-	compactions      []compaction
+	events           []event
 	readAmps         []readAmp
 	longRunningLimit time.Duration
 }
 
 // newAggregator returns a new aggregator.
 func newAggregator(
-	window, longRunningLimit time.Duration, compactions []compaction, readAmps []readAmp,
+	window, longRunningLimit time.Duration, events []event, readAmps []readAmp,
 ) *aggregator {
 	return &aggregator{
 		window:           window,
-		compactions:      compactions,
+		events:           events,
 		readAmps:         readAmps,
 		longRunningLimit: longRunningLimit,
 	}
@@ -594,19 +679,19 @@ func newAggregator(
 // aggregate aggregates the events into windows, returning the windowSummary for
 // each interval.
 func (a *aggregator) aggregate() []windowSummary {
-	if len(a.compactions) == 0 {
+	if len(a.events) == 0 {
 		return nil
 	}
 
-	// Sort the compaction and read-amp slices by start time.
-	sort.Sort(compactionSlice(a.compactions))
+	// Sort the event and read-amp slices by start time.
+	sort.Sort(eventSlice(a.events))
 	sort.Sort(readAmpSlice(a.readAmps))
 
-	initWindow := func(c compaction) *windowSummary {
-		start := c.timeStart.Truncate(a.window)
+	initWindow := func(e event) *windowSummary {
+		start := e.timeStart.Truncate(a.window)
 		return &windowSummary{
-			nodeID:           c.nodeID,
-			storeID:          c.storeID,
+			nodeID:           e.nodeID,
+			storeID:          e.storeID,
 			tStart:           start,
 			tEnd:             start.Add(a.window),
 			compactionCounts: make(map[fromTo]compactionTypeCount),
@@ -659,52 +744,69 @@ func (a *aggregator) aggregate() []windowSummary {
 	// window. Windows have the same node and store, and a compaction start time
 	// within a given range.
 	i := 0
-	curWindow := initWindow(a.compactions[i])
+	curWindow := initWindow(a.events[i])
 	for ; ; i++ {
 		// No more windows. Complete the current window.
-		if i == len(a.compactions) {
+		if i == len(a.events) {
 			finishWindow(curWindow)
 			break
 		}
-		c := a.compactions[i]
+		e := a.events[i]
 
 		// If we're at the start of a new interval, finalize the current window and
 		// start a new one.
-		if curWindow.nodeID != c.nodeID ||
-			curWindow.storeID != c.storeID ||
-			c.timeStart.After(curWindow.tEnd) {
+		if curWindow.nodeID != e.nodeID ||
+			curWindow.storeID != e.storeID ||
+			e.timeStart.After(curWindow.tEnd) {
 			finishWindow(curWindow)
-			curWindow = initWindow(c)
+			curWindow = initWindow(e)
 		}
 
-		// Update compaction counts.
-		ft := fromTo{level(c.fromLevel), level(c.toLevel)}
-		m, ok := curWindow.compactionCounts[ft]
-		if !ok {
-			m = make(compactionTypeCount)
-			curWindow.compactionCounts[ft] = m
-		}
-		m[c.cType]++
-		curWindow.eventCount++
+		switch {
+		case e.ingest != nil:
+			// Update ingest stats.
+			for _, f := range e.ingest.files {
+				curWindow.ingestedCount[f.level]++
+				curWindow.ingestedBytes[f.level] += f.sizeBytes
+			}
+		case e.compaction != nil && e.compaction.cType == compactionTypeFlush:
+			// Update flush stats.
+			f := e.compaction
+			curWindow.flushedCount++
+			curWindow.flushedBytes += f.writtenBytes
+			curWindow.flushedTime += e.timeEnd.Sub(e.timeStart)
+		case e.compaction != nil:
+			// Update compaction stats.
+			c := e.compaction
+			// Update compaction counts.
+			ft := fromTo{level(c.fromLevel), level(c.toLevel)}
+			m, ok := curWindow.compactionCounts[ft]
+			if !ok {
+				m = make(compactionTypeCount)
+				curWindow.compactionCounts[ft] = m
+			}
+			m[c.cType]++
+			curWindow.eventCount++
 
-		// Update compacted bytes.
-		_, ok = curWindow.compactionBytes[ft]
-		if !ok {
-			curWindow.compactionBytes[ft] = 0
-		}
-		curWindow.compactionBytes[ft] += c.compactedBytes
+			// Update compacted bytes.
+			_, ok = curWindow.compactionBytes[ft]
+			if !ok {
+				curWindow.compactionBytes[ft] = 0
+			}
+			curWindow.compactionBytes[ft] += c.writtenBytes
 
-		// Update compaction time.
-		_, ok = curWindow.compactionTime[ft]
-		if !ok {
-			curWindow.compactionTime[ft] = 0
-		}
-		curWindow.compactionTime[ft] += c.timeEnd.Sub(c.timeStart)
+			// Update compaction time.
+			_, ok = curWindow.compactionTime[ft]
+			if !ok {
+				curWindow.compactionTime[ft] = 0
+			}
+			curWindow.compactionTime[ft] += e.timeEnd.Sub(e.timeStart)
 
-		// Add "long-running" compactions. Those that start in this window that have
-		// duration longer than the window interval.
-		if c.timeEnd.Sub(c.timeStart) > a.longRunningLimit {
-			curWindow.longRunning = append(curWindow.longRunning, c)
+		}
+		// Add "long-running" events. Those that start in this window
+		// that have duration longer than the window interval.
+		if e.timeEnd.Sub(e.timeStart) > a.longRunningLimit {
+			curWindow.longRunning = append(curWindow.longRunning, e)
 		}
 	}
 
@@ -742,6 +844,8 @@ func parseLog(path string, b *logEventCollector) error {
 				err = parseCompaction(line, b)
 			case 'f':
 				err = parseFlush(line, b)
+			case 'i':
+				err = parseIngest(line, b)
 			default:
 				err = errors.Newf("unexpected line: neither compaction nor flush: %s", line)
 			}
@@ -864,6 +968,52 @@ func parseFlush(line string, b *logEventCollector) error {
 	return nil
 }
 
+// parseIngest parses and collects Pebble ingest complete events.
+func parseIngest(line string, b *logEventCollector) error {
+	matches := ingestedPattern.FindStringSubmatch(line)
+	if matches == nil {
+		return nil
+	}
+	// Parse job ID.
+	jobID, err := strconv.Atoi(matches[ingestedPatternJobIdx])
+	if err != nil {
+		return errors.Newf("could not parse jobID: %s", err)
+	}
+	fileMatches := ingestedFilePattern.FindAllStringSubmatch(line, -1)
+	files := make([]ingestedFile, len(fileMatches))
+	for i := range fileMatches {
+		level, err := strconv.Atoi(fileMatches[i][ingestedFilePatternLevelIdx])
+		if err != nil {
+			return errors.Newf("could not parse level: %s", err)
+		}
+		fileNum, err := strconv.Atoi(fileMatches[i][ingestedFilePatternFileIdx])
+		if err != nil {
+			return errors.Newf("could not parse file number: %s", err)
+		}
+		v, err := strconv.ParseFloat(fileMatches[i][ingestedFilePatternValueIdx], 64)
+		if err != nil {
+			return errors.Newf("could not parse file size value: %s", err)
+		}
+		files = append(files, ingestedFile{
+			level:     level,
+			fileNum:   fileNum,
+			sizeBytes: unHumanize(v, fileMatches[i][ingestedFilePatternUnitIdx]),
+		})
+	}
+	b.events = append(b.events, event{
+		nodeID:    b.ctx.node,
+		storeID:   b.ctx.store,
+		jobID:     jobID,
+		timeStart: b.ctx.timestamp,
+		timeEnd:   b.ctx.timestamp,
+		ingest: &ingest{
+			files: files,
+		},
+	})
+
+	return nil
+}
+
 // parseReadAmp attempts to parse the current line as a read amp value
 func parseReadAmp(line string, b *logEventCollector) error {
 	matches := readAmpPattern.FindStringSubmatch(line)
@@ -912,7 +1062,7 @@ func runCompactionLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	// Aggregate the lines.
-	a := newAggregator(window, longRunningLimit, b.compactions, b.readAmps)
+	a := newAggregator(window, longRunningLimit, b.events, b.readAmps)
 	summaries := a.aggregate()
 	for _, s := range summaries {
 		fmt.Printf("%s\n", s)

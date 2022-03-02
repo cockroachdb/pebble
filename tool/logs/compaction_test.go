@@ -222,7 +222,7 @@ func TestCompactionLogs(t *testing.T) {
 				}
 			}
 
-			a := newAggregator(window, longRunning, c.compactions, c.readAmps)
+			a := newAggregator(window, longRunning, c.events, c.readAmps)
 			windows := a.aggregate()
 
 			var b bytes.Buffer

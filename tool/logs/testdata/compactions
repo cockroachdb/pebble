@@ -12,19 +12,19 @@ I211215 00:01:20.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:60
 summarize
 ----
 node: 1, store: 1
-from: 211215 00:00
-  to: 211215 00:01
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L2        L3         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       NaN
+   from: 211215 00:00
+     to: 211215 00:01
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L2      L3         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 node: 1, store: 1
-from: 211215 00:01
-  to: 211215 00:02
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-       WAL        L0         0         0         0         0         1         1     1.0 M       10s
-     total                   0         0         0         0         1         1     1.0 M        0s
-     r-amp       NaN
+   from: 211215 00:01
+     to: 211215 00:02
+  r-amp: NaN
+_kind______from______to_____________________________________count___bytes______time
+flush                L0                                         1   1.0 M       10s
+total                                                               1.0 M
 
 # Same as the previous case, except that the start and end events are are split
 # across multiple files (one log line per file).
@@ -55,19 +55,19 @@ I211215 00:01:20.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:60
 summarize
 ----
 node: 1, store: 1
-from: 211215 00:00
-  to: 211215 00:01
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L2        L3         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       NaN
+   from: 211215 00:00
+     to: 211215 00:01
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L2      L3         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 node: 1, store: 1
-from: 211215 00:01
-  to: 211215 00:02
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-       WAL        L0         0         0         0         0         1         1     1.0 M       10s
-     total                   0         0         0         0         1         1     1.0 M        0s
-     r-amp       NaN
+   from: 211215 00:01
+     to: 211215 00:02
+  r-amp: NaN
+_kind______from______to_____________________________________count___bytes______time
+flush                L0                                         1   1.0 M       10s
+total                                                               1.0 M
 
 # Read amplification from the Cockroach log, one within an existing window,
 # another outside of the existing window. The latter is not included.
@@ -110,12 +110,12 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
 summarize
 ----
 node: 1, store: 1
-from: 211215 00:00
-  to: 211215 00:01
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L2        L3         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       5.0
+   from: 211215 00:00
+     to: 211215 00:01
+  r-amp: 5.0
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L2      L3         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 
 # Long running compaction.
 
@@ -131,15 +131,15 @@ I211215 00:03:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 summarize long-running=1m
 ----
 node: 1, store: 1
-from: 211215 00:01
-  to: 211215 00:02
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L2        L3         1         0         0         0         0         1      13 M     2m10s
-     total                   1         0         0         0         0         1      13 M      2m0s
-     r-amp       NaN
-long-running compactions (descending runtime):
-______from________to_______job______type_____start_______end____dur(s)_____bytes:
-        L2        L3         1   default  00:01:10  00:03:20       130      13 M
+   from: 211215 00:01
+     to: 211215 00:02
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L2      L3         1       0       0       0       1    13 M     2m10s
+total                           1       0       0       0       1    13 M      2m0s
+long-running events (descending runtime):
+_kind________from________to_______job______type_____start_______end____dur(s)_____bytes:
+compact        L2        L3         1   default  00:01:10  00:03:20       130      13 M
 
 # Single node, multiple stores.
 
@@ -158,19 +158,19 @@ I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 summarize
 ----
 node: 1, store: 1
-from: 211215 00:01
-  to: 211215 00:02
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L2        L3         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       NaN
+   from: 211215 00:01
+     to: 211215 00:02
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L2      L3         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 node: 1, store: 2
-from: 211215 00:01
-  to: 211215 00:02
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L3        L4         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       NaN
+   from: 211215 00:01
+     to: 211215 00:02
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L3      L4         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 
 # Multiple nodes, single stores. Two separate pebble logs.
 
@@ -192,19 +192,19 @@ I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 summarize
 ----
 node: 1, store: 1
-from: 211215 00:01
-  to: 211215 00:02
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L2        L3         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       NaN
+   from: 211215 00:01
+     to: 211215 00:02
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L2      L3         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 node: 2, store: 1
-from: 211215 00:01
-  to: 211215 00:02
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L3        L4         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       NaN
+   from: 211215 00:01
+     to: 211215 00:02
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L3      L4         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 
 # Multiple nodes, multiple stores. Two separate pebble logs.
 
@@ -232,33 +232,33 @@ I211215 00:02:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 summarize
 ----
 node: 1, store: 1
-from: 211215 00:01
-  to: 211215 00:02
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L2        L3         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       NaN
+   from: 211215 00:01
+     to: 211215 00:02
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L2      L3         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 node: 1, store: 2
-from: 211215 00:03
-  to: 211215 00:04
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L1        L2         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       NaN
+   from: 211215 00:03
+     to: 211215 00:04
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L1      L2         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 node: 2, store: 1
-from: 211215 00:00
-  to: 211215 00:01
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L3        L4         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       NaN
+   from: 211215 00:00
+     to: 211215 00:01
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L3      L4         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 node: 2, store: 2
-from: 211215 00:02
-  to: 211215 00:03
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L4        L5         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       NaN
+   from: 211215 00:02
+     to: 211215 00:03
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L4      L5         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 
 # Log lines with an absent node / store are aggregated.
 
@@ -289,12 +289,12 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
 summarize
 ----
 node: ?, store: ?
-from: 211215 00:01
-  to: 211215 00:02
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L2        L3         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       5.0
+   from: 211215 00:01
+     to: 211215 00:02
+  r-amp: 5.0
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L2      L3         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 
 # The same Job ID interleaved for multiple nodes / stores.
 
@@ -312,19 +312,19 @@ I211215 00:02:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 summarize
 ----
 node: 1, store: 1
-from: 211215 00:01
-  to: 211215 00:02
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L2        L3         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       NaN
+   from: 211215 00:01
+     to: 211215 00:02
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L2      L3         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 node: 2, store: 2
-from: 211215 00:02
-  to: 211215 00:03
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L4        L5         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       NaN
+   from: 211215 00:02
+     to: 211215 00:03
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L4      L5         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 
 # Read amp matching should remain backwards compatible.
 
@@ -368,12 +368,12 @@ I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 + filter   
 summarize
 ----
 node: 1, store: 1
-from: 220301 00:00
-  to: 220301 00:01
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-        L2        L3         1         0         0         0         0         1      13 M       10s
-     total                   1         0         0         0         0         1      13 M        0s
-     r-amp       1.0
+   from: 220301 00:00
+     to: 220301 00:01
+  r-amp: 1.0
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L2      L3         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M        0s
 
 reset
 ----
@@ -412,9 +412,36 @@ I220228 14:44:32.138686 18460916022 3@vendor/github.com/cockroachdb/pebble/compa
 summarize
 ----
 node: 24, store: 24
-from: 220228 14:44
-  to: 220228 14:45
-______from________to___default______move_____elide____delete_____flush_____total_____bytes______time
-       WAL        L0         0         0         0         0         1         1      19 M        0s
-     total                   0         0         0         0         1         1      19 M        0s
-     r-amp       NaN
+   from: 220228 14:44
+     to: 220228 14:45
+  r-amp: NaN
+_kind______from______to_____________________________________count___bytes______time
+flush                L0                                         1    19 M        0s
+total                                                                19 M
+
+reset
+----
+
+log
+I220228 16:01:22.487906 18476248525 3@vendor/github.com/cockroachdb/pebble/ingest.go:637 ⋮ [n24,pebble,s24] 33430782  [JOB 10211226] ingested L0:21818678 (1.8 K), L0:21818683 (1.2 K), L0:21818679 (1.6 K), L0:21818680 (1.1 K), L0:21818681 (1.1 K), L0:21818682 (160 M)
+45127:I220228 15:58:45.538681 18475981755 3@vendor/github.com/cockroachdb/pebble/ingest.go:637 ⋮ [n24,pebble,s24] 33424719  [JOB 10210743] ingested L0:21814543 (1.4 K), L0:21814548 (1.2 K), L5:21814544 (1.4 K), L5:21814545 (1.1 K), L5:21814546 (1.1 K), L0:21814547 (140 M)
+----
+0.log
+
+summarize
+----
+node: 24, store: 24
+   from: 220228 15:58
+     to: 220228 15:59
+  r-amp: NaN
+_kind______from______to_____________________________________count___bytes______time
+ingest               L0                                         9   140 M
+ingest               L5                                         3   3.0 K
+total                                                               140 M
+node: 24, store: 24
+   from: 220228 16:01
+     to: 220228 16:02
+  r-amp: NaN
+_kind______from______to_____________________________________count___bytes______time
+ingest               L0                                        12   160 M
+total                                                               160 M
