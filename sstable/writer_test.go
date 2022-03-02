@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
@@ -500,6 +502,49 @@ func TestWriter_TableFormatCompatibility(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Tests for race in https://github.com/cockroachdb/cockroach/issues/77194 which was fixed in
+// https://github.com/cockroachdb/pebble/pull/1547.
+func TestDataBlockBufferOwnership(t *testing.T) {
+	opts := WriterOptions{
+		BlockRestartInterval: 1,
+		BlockSize:            1,
+		Compression:          NoCompression,
+	}
+
+	s := time.Now()
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			for {
+				f := &discardFile{}
+				w := NewWriter(f, opts)
+
+				// Two sets will cause a data block flush, which will cause the Writer to swap out
+				// its dataBlockBuf, if dataBlockBuffers are pooled.
+				w.Set([]byte{'a'}, []byte{'a'})
+				w.Set([]byte{'b'}, []byte{'b'})
+
+				// Test whether Writer holds a reference to a buffer in the previous dataBlockBuf.
+				for i := 0; i < len(w.meta.Largest.UserKey); i++ {
+					// Since the Writer was created in the current goroutine, and isn't being used by any other
+					// goroutine, this shouldn't trigger a race as no other goroutine should be accessing this
+					// Writer.
+					w.meta.Largest.UserKey[i] = 'c'
+				}
+
+				w.Close()
+
+				if time.Since(s) > time.Second*5 {
+					break
+				}
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
 }
 
 func BenchmarkWriter(b *testing.B) {
