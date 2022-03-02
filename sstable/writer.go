@@ -315,7 +315,7 @@ func (s *sizeEstimate) clear() {
 }
 
 type indexBlockBuf struct {
-	// block will only be accessed from the writeQueue goroutine.
+	// block will only be accessed from the writeQueue.
 	block blockWriter
 
 	size struct {
@@ -657,6 +657,11 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 
 	w.meta.updateSeqNum(key.SeqNum())
 	k := base.InternalKey{
+		// todo(bananabrick) : Once we pool dataBlockBufs, we can no longer store references to
+		// buffers owned by the dataBlockBuf in the Writer.Metadata. We could clone this, but
+		// allocating on every call to Writer.addPoint is prohibitively expensive. So, we need
+		// an alternate solution here.
+		//
 		// block.curKey contains the most recently added key to the block.
 		UserKey: w.dataBlockBuf.dataBlock.curKey[:len(w.dataBlockBuf.dataBlock.curKey)-8],
 		Trailer: key.Trailer,
@@ -1049,7 +1054,10 @@ func (w *Writer) flush(key InternalKey) error {
 
 	var err error
 
-	// We're finishing a data block.
+	// We're finishing a data block. The finished props get stored in dataBlockBuf.dataBlockProps. The
+	// props get encoded during an eventual call to addIndexEntry. Once we pool dataBlockBufs, the
+	// dataBlockBuf will only ever be released after the call to addIndexEntry. So, we guarantee that
+	// the dataBlockBuf.blockPropsEncoder is only reused once dataBlockBuf.dataBlockProps gets encoded.
 	err = w.finishDataBlockProps(w.dataBlockBuf)
 	if err != nil {
 		return err
@@ -1058,7 +1066,10 @@ func (w *Writer) flush(key InternalKey) error {
 	w.dataBlockBuf.finish()
 	w.dataBlockBuf.compressAndChecksum(w.compression)
 
-	// Determine if the index block should be flushed.
+	// Determine if the index block should be flushed. Since we're accessing the dataBlockBuf.dataBlock.curKey
+	// here, we have to make sure that once we start to pool the dataBlockBufs, the curKey isn't used by the
+	// Writer once the dataBlockBuf is added back to a sync.Pool. In this particular case, the byte slice which
+	// supports "sep" will eventually be copied when "sep" is added to the index block.
 	prevKey := base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey)
 	sep := w.indexEntrySep(prevKey, key, w.dataBlockBuf)
 	// We determine that we should flush an index block from the Writer client goroutine, but
@@ -1179,6 +1190,10 @@ func (w *Writer) indexEntrySep(prevKey, key InternalKey, dataBlockBuf *dataBlock
 // addIndexEntry adds an index entry for the specified key and block handle. addIndexEntry can be called from
 // both the Writer client goroutine, and the writeQueue goroutine. If the flushIndexBuf != nil, then the
 // indexProps, as they're used when the index block is finished.
+//
+// Invariants:
+// 1. addIndexEntry must not store references to the sep InternalKey, the tmp byte slice, bhp.Props. That is,
+//    these must be either deep copied or encoded.
 func (w *Writer) addIndexEntry(
 	sep InternalKey, bhp BlockHandleWithProperties, tmp []byte,
 	flushIndexBuf *indexBlockBuf, writeTo *indexBlockBuf, inflightSize int, indexProps []byte) error {
@@ -1214,6 +1229,10 @@ func (w *Writer) addPrevDataBlockToIndexBlockProps() {
 // addIndexEntrySync adds an index entry for the specified key and block handle. Writer.addIndexEntry is only
 // called synchronously once Writer.Close is called. addIndexEntrySync should only be called if we're sure that
 // index entries aren't being written asynchronously.
+//
+// // Invariants:
+// 1. addIndexEntry must not store references to the prevKey, key InternalKey's, the tmp byte slice. That is,
+//    these must be either deep copied or encoded.
 func (w *Writer) addIndexEntrySync(prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte) error {
 	sep := w.indexEntrySep(prevKey, key, w.dataBlockBuf)
 	shouldFlush := supportsTwoLevelIndex(
@@ -1228,6 +1247,7 @@ func (w *Writer) addIndexEntrySync(prevKey, key InternalKey, bhp BlockHandleWith
 		w.indexBlock = newIndexBlockBuf()
 
 		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to flush the index block.
+		// Note that props is a deep copy of the buffers in Writer.block
 		props, err = w.finishIndexBlockProps()
 		if err != nil {
 			return err
@@ -1282,6 +1302,10 @@ func cloneKeyWithBuf(k InternalKey, buf []byte) ([]byte, InternalKey) {
 	return buf[n:], InternalKey{UserKey: buf[:n:n], Trailer: k.Trailer}
 }
 
+// Invariant: The byte slice returned by finishIndexBlockProps is a copy and it is safe to:
+// 1. Reuse w.blockPropsEncoder without first encoding the byte slice returned.
+// 2. Store the byte slice in the Writer since it is a copy and not supported by an underlying
+// buffer.
 func (w *Writer) finishIndexBlockProps() ([]byte, error) {
 	w.blockPropsEncoder.resetProps()
 	for i := range w.blockPropCollectors {
@@ -1299,6 +1323,13 @@ func (w *Writer) finishIndexBlockProps() ([]byte, error) {
 
 // finishIndexBlock finishes the current index block and adds it to the top
 // level index block. This is only used when two level indexes are enabled.
+//
+// Invariants:
+// 1. The props slice passed into finishedIndexBlock must not be a
+//    owned by any other struct, since it will be stored in the Writer.indexPartitions
+//    slice.
+// 2. None of the buffers owned by indexBuf will be shallow copied and stored elsewhere.
+//    That is, it must be safe to reuse indexBuf after finishIndexBlock has been called.
 func (w *Writer) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) error {
 	part := indexBlockAndBlockProperties{
 		nEntries: indexBuf.block.nEntries, properties: props,

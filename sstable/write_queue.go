@@ -2,6 +2,8 @@ package sstable
 
 import (
 	"sync"
+
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 type writeTask struct {
@@ -21,6 +23,14 @@ type writeTask struct {
 	indexInflightSize int
 	// If the index block is finished, then we set the finishedIndexProps here.
 	finishedIndexProps []byte
+}
+
+func (w *writeTask) clear() {
+	w.buf = nil
+	w.flushableIndexBlock = nil
+	w.currIndexBlock = nil
+	w.indexEntrySep = base.InvalidInternalKey
+	w.finishedIndexProps = nil
 }
 
 // Note that only the Writer client goroutine will be adding tasks to the writeQueue.
@@ -73,17 +83,17 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 	return nil
 }
 
+// It is necessary to ensure that none of the buffers in the writeTask, dataBlockBuf, indexBlockBuf,
+// are pointed to by another struct.
 func (w *writeQueue) releaseBuffers(task *writeTask) {
 	dataBlockBufPool.Put(task.buf)
-	task.buf = nil
 
 	// This index block is no longer used by the Writer, so we can add it back to the pool.
 	if task.flushableIndexBlock != nil {
 		indexBlockBufPool.Put(task.flushableIndexBlock)
-		task.flushableIndexBlock = nil
 	}
-	task.currIndexBlock = nil
 
+	task.clear()
 	writeTaskPool.Put(task)
 }
 
