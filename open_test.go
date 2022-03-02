@@ -846,6 +846,11 @@ func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
 	// is greater than the sequence numbers contained in the
 	// `minUnflushedLogNum` log file
 	require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false))
+	d.mu.Lock()
+	for d.mu.compact.compactingCount > 0 {
+		d.mu.compact.cond.Wait()
+	}
+	d.mu.Unlock()
 
 	// While the MANIFEST is still in this state, copy all the files in the
 	// database to a new directory.
