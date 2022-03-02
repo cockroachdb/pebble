@@ -221,8 +221,26 @@ func (m *FileMetadata) extendOverallBounds(cmp Compare, smallest, largest Intern
 	}
 }
 
+// String implements fmt.Stringer, printing the file number and the overall
+// table bounds.
 func (m *FileMetadata) String() string {
 	return fmt.Sprintf("%s:%s-%s", m.FileNum, m.Smallest, m.Largest)
+}
+
+// DebugString returns a verbose representation of FileMetadata, typically for
+// use in tests and debugging, returning the file number and the point, range
+// and overall bounds for the table.
+func (m *FileMetadata) DebugString() string {
+	var b bytes.Buffer
+	b.WriteString(fmt.Sprintf("%s:\n", m.FileNum.String()))
+	b.WriteString(fmt.Sprintf("  combined: %s-%s", m.Smallest, m.Largest))
+	if m.HasPointKeys {
+		b.WriteString(fmt.Sprintf("\n    points: %s-%s", m.SmallestPointKey, m.LargestPointKey))
+	}
+	if m.HasRangeKeys {
+		b.WriteString(fmt.Sprintf("\n    ranges: %s-%s", m.SmallestRangeKey, m.LargestRangeKey))
+	}
+	return b.String()
 }
 
 // Validate validates the metadata for consistency with itself, returning an

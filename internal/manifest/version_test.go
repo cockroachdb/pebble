@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
+	"github.com/stretchr/testify/require"
 )
 
 func levelMetadata(level int, files ...*FileMetadata) LevelMetadata {
@@ -468,17 +469,6 @@ func TestExtendBounds(t *testing.T) {
 		}
 		return
 	}
-	format := func(m *FileMetadata) string {
-		var b bytes.Buffer
-		fmt.Fprintf(&b, "combined: [%s-%s]\n", m.Smallest, m.Largest)
-		if m.HasPointKeys {
-			fmt.Fprintf(&b, "  points: [%s-%s]\n", m.SmallestPointKey, m.LargestPointKey)
-		}
-		if m.HasRangeKeys {
-			fmt.Fprintf(&b, "  ranges: [%s-%s]\n", m.SmallestRangeKey, m.LargestRangeKey)
-		}
-		return b.String()
-	}
 	m := &FileMetadata{}
 	datadriven.RunTest(t, "testdata/file_metadata_bounds", func(d *datadriven.TestData) string {
 		switch d.Cmd {
@@ -488,13 +478,71 @@ func TestExtendBounds(t *testing.T) {
 		case "extend-point-key-bounds":
 			u, l := parseBounds(d.Input)
 			m.ExtendPointKeyBounds(cmp, u, l)
-			return format(m)
+			return m.DebugString()
 		case "extend-range-key-bounds":
 			u, l := parseBounds(d.Input)
 			m.ExtendRangeKeyBounds(cmp, u, l)
-			return format(m)
+			return m.DebugString()
 		default:
 			return fmt.Sprintf("unknown command %s\n", d.Cmd)
 		}
 	})
+}
+
+func TestDebugString(t *testing.T) {
+	const fileNum = base.FileNum(42)
+	cmp := base.DefaultComparer.Compare
+	testCases := []struct {
+		name    string
+		setupFn func(t *testing.T, m *FileMetadata)
+		want    string
+	}{
+		{
+			name: "point keys only",
+			setupFn: func(t *testing.T, m *FileMetadata) {
+				m.FileNum = fileNum
+				smallest := base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet)
+				largest := base.MakeRangeDeleteSentinelKey([]byte("z"))
+				m.ExtendPointKeyBounds(cmp, smallest, largest)
+			},
+			want: `000042:
+  combined: a#0,1-z#72057594037927935,15
+    points: a#0,1-z#72057594037927935,15`,
+		},
+		{
+			name: "range keys only",
+			setupFn: func(t *testing.T, m *FileMetadata) {
+				m.FileNum = fileNum
+				smallest := base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindRangeKeySet)
+				largest := base.MakeRangeKeySentinelKey(base.InternalKeyKindRangeKeyDelete, []byte("z"))
+				m.ExtendRangeKeyBounds(cmp, smallest, largest)
+			},
+			want: `000042:
+  combined: a#0,21-z#72057594037927935,19
+    ranges: a#0,21-z#72057594037927935,19`,
+		},
+		{
+			name: "point and range keys",
+			setupFn: func(t *testing.T, m *FileMetadata) {
+				m.FileNum = fileNum
+				smallestPoint := base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet)
+				largestPoint := base.MakeRangeDeleteSentinelKey([]byte("y"))
+				m.ExtendPointKeyBounds(cmp, smallestPoint, largestPoint)
+				smallestRange := base.MakeInternalKey([]byte("b"), 0, base.InternalKeyKindRangeKeySet)
+				largestRange := base.MakeRangeKeySentinelKey(base.InternalKeyKindRangeKeyDelete, []byte("z"))
+				m.ExtendRangeKeyBounds(cmp, smallestRange, largestRange)
+			},
+			want: `000042:
+  combined: a#0,1-z#72057594037927935,19
+    points: a#0,1-y#72057594037927935,15
+    ranges: b#0,21-z#72057594037927935,19`,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var m FileMetadata
+			tc.setupFn(t, &m)
+			require.Equal(t, tc.want, m.DebugString())
+		})
+	}
 }
