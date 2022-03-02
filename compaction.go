@@ -448,15 +448,9 @@ func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) 
 	}
 	c.setupInuseKeyRanges()
 
-	switch {
-	case pc.readTriggered:
-		c.kind = compactionKindRead
-	case c.startLevel.level == numLevels-1:
-		// This compaction is an L6->L6 elision-only compaction to rewrite
-		// a sstable without unnecessary tombstones.
-		c.kind = compactionKindElisionOnly
-	case c.outputLevel.files.Empty() && c.startLevel.files.Len() == 1 &&
-		c.grandparents.SizeSum() <= c.maxOverlapBytes:
+	c.kind = pc.kind
+	if c.kind == compactionKindDefault && c.outputLevel.files.Empty() &&
+		c.startLevel.files.Len() == 1 && c.grandparents.SizeSum() <= c.maxOverlapBytes {
 		// This compaction can be converted into a trivial move from one level
 		// to the next. We avoid such a move if there is lots of overlapping
 		// grandparent data. Otherwise, the move could create a parent file
