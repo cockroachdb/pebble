@@ -2,6 +2,8 @@ package sstable
 
 import (
 	"sync"
+
+	"github.com/cockroachdb/pebble/internal/base"
 )
 
 type writeTask struct {
@@ -73,16 +75,19 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 	return nil
 }
 
+// It is necessary to ensure that none of the buffers in the writeTask,
+// dataBlockBuf, indexBlockBuf, are pointed to by another struct.
 func (w *writeQueue) releaseBuffers(task *writeTask) {
-	task.buf = nil
-
-	// This index block is no longer used by the Writer, so we can add it back to the pool.
+	// This index block is no longer used by the Writer, so we can add it back
+	// to the pool.
 	if task.flushableIndexBlock != nil {
 		indexBlockBufPool.Put(task.flushableIndexBlock)
-		task.flushableIndexBlock = nil
 	}
-	task.currIndexBlock = nil
 
+	*task = writeTask{
+		indexEntrySep:   base.InvalidInternalKey,
+		compressionDone: task.compressionDone,
+	}
 	writeTaskPool.Put(task)
 }
 
