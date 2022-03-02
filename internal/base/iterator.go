@@ -255,6 +255,9 @@ type InternalIteratorStats struct {
 func (s *InternalIteratorStats) Merge(from InternalIteratorStats) {
 	s.BlockBytes += from.BlockBytes
 	s.BlockBytesInCache += from.BlockBytesInCache
+	s.KeyBytes += from.KeyBytes
+	s.ValueBytes += from.ValueBytes
+	s.PointCount += from.PointCount
 	s.PointsCoveredByRangeTombstones += from.PointsCoveredByRangeTombstones
 }
 
