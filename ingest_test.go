@@ -444,6 +444,60 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 	}
 }
 
+func BenchmarkIngestOverlappingMemtable(b *testing.B) {
+	for count := 1; count < 6; count++ {
+		b.Run(fmt.Sprintf("memtables=%d", count), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				d, err := func() (*DB, error) {
+					mem := vfs.NewMem()
+					d, err := Open("", &Options{
+						FS: mem,
+					})
+					if err != nil {
+						return nil, err
+					}
+
+					// Create memtables.
+					for {
+						if err := d.Set([]byte("a"), nil, nil); err != nil {
+							return nil, err
+						}
+						d.mu.Lock()
+						done := len(d.mu.mem.queue) == count
+						d.mu.Unlock()
+						if done {
+							break
+						}
+					}
+
+					// Create the overlapping sstable that will force a flush when ingested.
+					f, err := mem.Create("ext")
+					if err != nil {
+						return nil, err
+					}
+					w := sstable.NewWriter(f, sstable.WriterOptions{})
+					if err := w.Set([]byte("a"), nil); err != nil {
+						return nil, err
+					}
+					if err := w.Close(); err != nil {
+						return nil, err
+					}
+					return d, nil
+				}()
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				b.StartTimer()
+				if err := d.Ingest([]string{"ext"}); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func TestIngestTargetLevel(t *testing.T) {
 	var d *DB
 	defer func() {
@@ -524,6 +578,7 @@ func TestIngestTargetLevel(t *testing.T) {
 func TestIngest(t *testing.T) {
 	var mem vfs.FS
 	var d *DB
+	var flushed bool
 	defer func() {
 		require.NoError(t, d.Close())
 	}()
@@ -540,6 +595,9 @@ func TestIngest(t *testing.T) {
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
+			EventListener: EventListener{FlushEnd: func(info FlushInfo) {
+				flushed = true
+			}},
 		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -573,8 +631,18 @@ func TestIngest(t *testing.T) {
 			return ""
 
 		case "ingest":
+			flushed = false
 			if err := runIngestCmd(td, d, mem); err != nil {
 				return err.Error()
+			}
+			// Wait for a possible flush.
+			d.mu.Lock()
+			for d.mu.compact.flushing {
+				d.mu.compact.cond.Wait()
+			}
+			d.mu.Unlock()
+			if flushed {
+				return "memtable flushed"
 			}
 			return ""
 
