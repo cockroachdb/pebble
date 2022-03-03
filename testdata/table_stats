@@ -20,7 +20,7 @@ range-deletions-bytes-estimate: 0
 compact a-c
 ----
 6:
-  000005:[a-c]
+  000005:[a#1,SET-c#3,DEL]
 
 batch
 del-range a c
@@ -83,7 +83,7 @@ flush
 compact a-c
 ----
 6:
-  000012:[a-b]
+  000012:[a#5,SET-b#6,SET]
 
 enable
 ----
@@ -145,30 +145,30 @@ L6
   e.SET.5:v
 ----
 4:
-  000004:[a-f]
+  000004:[a#8,RANGEDEL-f#72057594037927935,RANGEDEL]
 5:
-  000005:[b-b]
+  000005:[b#7,SET-b#7,SET]
 6:
-  000006:[a-a]
-  000007:[b-b]
-  000008:[c-c]
-  000009:[d-d]
-  000010:[e-e]
+  000006:[a#1,SET-a#1,SET]
+  000007:[b#2,SET-b#2,SET]
+  000008:[c#3,SET-c#3,SET]
+  000009:[d#4,SET-d#4,SET]
+  000010:[e#5,SET-e#5,SET]
 
 compact a-b L4
 ----
 5:
-  000011:[a-b]
-  000012:[b-c]
-  000013:[c-d]
-  000014:[d-e]
-  000015:[e-f]
+  000011:[a#8,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000012:[b#8,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000013:[c#8,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000014:[d#8,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000015:[e#8,RANGEDEL-f#72057594037927935,RANGEDEL]
 6:
-  000006:[a-a]
-  000007:[b-b]
-  000008:[c-c]
-  000009:[d-d]
-  000010:[e-e]
+  000006:[a#1,SET-a#1,SET]
+  000007:[b#2,SET-b#2,SET]
+  000008:[c#3,SET-c#3,SET]
+  000009:[d#4,SET-d#4,SET]
+  000010:[e#5,SET-e#5,SET]
 
 wait-pending-table-stats
 000011
@@ -191,7 +191,7 @@ L6
   e.SET.5:5 a.RANGEDEL.15:z
 ----
 6:
-  000004:[a-z]
+  000004:[a#15,RANGEDEL-z#72057594037927935,RANGEDEL]
 
 wait-pending-table-stats
 000004
