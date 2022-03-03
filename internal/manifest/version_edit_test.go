@@ -269,28 +269,16 @@ func TestVersionEditEncodeLastSeqNum(t *testing.T) {
 }
 
 func TestVersionEditApply(t *testing.T) {
-	cmp := base.DefaultComparer.Compare
-	parseMeta := func(s string) (*FileMetadata, error) {
-		parts := strings.Split(s, ":")
-		if len(parts) != 2 {
-			t.Fatalf("malformed table spec: %s", s)
-		}
-		fileNum, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	parseMeta := func(s string) (FileMetadata, error) {
+		m, err := ParseFileMetadataDebug(s)
 		if err != nil {
-			return nil, err
+			return FileMetadata{}, err
 		}
-		parts = strings.Split(strings.TrimSpace(parts[1]), "-")
-		m := (&FileMetadata{}).ExtendPointKeyBounds(
-			cmp,
-			base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
 		if m.SmallestSeqNum > m.LargestSeqNum {
 			m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
 		}
-		m.FileNum = base.FileNum(fileNum)
 		return m, nil
 	}
 
@@ -337,11 +325,11 @@ func TestVersionEditApply(t *testing.T) {
 										v.Levels[l] = makeLevelMetadata(base.DefaultComparer.Compare, l, nil /* files */)
 									}
 								}
-								versionFiles[meta.FileNum] = meta
-								v.Levels[level].tree.insert(meta)
+								versionFiles[meta.FileNum] = &meta
+								v.Levels[level].tree.insert(&meta)
 							} else {
 								ve.NewFiles =
-									append(ve.NewFiles, NewFileEntry{Level: level, Meta: meta})
+									append(ve.NewFiles, NewFileEntry{Level: level, Meta: &meta})
 							}
 						} else {
 							fileNum, err := strconv.Atoi(data)
