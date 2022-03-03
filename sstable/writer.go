@@ -39,9 +39,6 @@ type WriterMetadata struct {
 	LargestRangeDel  InternalKey
 	SmallestRangeKey InternalKey
 	LargestRangeKey  InternalKey
-	HasPointKeys     bool
-	HasRangeDelKeys  bool
-	HasRangeKeys     bool
 	// NB: Smallest and Largest are the overall bounds for the writer and are set
 	// indirectly via calls to SetSmallest* and SetLargest*. These fields should
 	// be treated as read-only.
@@ -50,6 +47,11 @@ type WriterMetadata struct {
 	SmallestSeqNum uint64
 	LargestSeqNum  uint64
 	Properties     Properties
+
+	HasPointKeys            bool
+	HasRangeDelKeys         bool
+	HasRangeKeys            bool
+	smallestSet, largestSet bool
 }
 
 // SetSmallestPointKey sets the smallest point key to the given key. This may
@@ -115,18 +117,18 @@ func (m *WriterMetadata) SetLargestRangeKey(cmp Compare, k InternalKey) {
 // maybeUpdateSmallest updates the smallest key if no smallest key has been set
 // or if the given key is smaller than the existing smallest key.
 func (m *WriterMetadata) maybeUpdateSmallest(cmp Compare, k InternalKey) {
-	if !(m.HasPointKeys || m.HasRangeDelKeys || m.HasRangeKeys) ||
-		base.InternalCompare(cmp, k, m.Smallest) < 0 {
+	if !m.smallestSet || base.InternalCompare(cmp, k, m.Smallest) < 0 {
 		m.Smallest = k
+		m.smallestSet = true
 	}
 }
 
 // maybeUpdateLargest updates the largest key if no largest key has been set or
-// if the given key is smaller than the existing smallest key.
+// if the given key is larger than the existing largest key.
 func (m *WriterMetadata) maybeUpdateLargest(cmp Compare, k InternalKey) {
-	if !(m.HasPointKeys || m.HasRangeDelKeys || m.HasRangeKeys) ||
-		base.InternalCompare(cmp, k, m.Largest) > 0 {
+	if !m.largestSet || base.InternalCompare(cmp, k, m.Largest) > 0 {
 		m.Largest = k
+		m.largestSet = true
 	}
 }
 
