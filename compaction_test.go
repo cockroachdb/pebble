@@ -1252,7 +1252,7 @@ func TestManualCompaction(t *testing.T) {
 				}
 
 				d.mu.Lock()
-				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				s := d.mu.versions.currentVersion().String()
 				d.mu.Unlock()
 				return s
 
@@ -1283,7 +1283,7 @@ func TestManualCompaction(t *testing.T) {
 						return
 					}
 					d.mu.Lock()
-					s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+					s = d.mu.versions.currentVersion().String()
 					d.mu.Unlock()
 					close(ch)
 				}()
@@ -1579,7 +1579,7 @@ func TestCompactionFindL0Limit(t *testing.T) {
 				flushSplitKeys := vers.L0Sublevels.FlushSplitKeys()
 
 				var buf strings.Builder
-				buf.WriteString(vers.DebugString(base.DefaultFormatter))
+				buf.WriteString(vers.String())
 				buf.WriteString("flush split keys:\n")
 				for _, key := range flushSplitKeys {
 					fmt.Fprintf(&buf, "\t%s\n", base.DefaultFormatter(key))
@@ -1763,7 +1763,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					t = t.Add(time.Second)
 					return t
 				}
-				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				s := d.mu.versions.currentVersion().String()
 				d.mu.Unlock()
 				return s
 
@@ -1875,7 +1875,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				}
 				d.mu.Lock()
 				compactInfo = nil
-				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				s := d.mu.versions.currentVersion().String()
 				d.mu.Unlock()
 				return s
 
@@ -1994,7 +1994,7 @@ func TestCompactionTombstones(t *testing.T) {
 					t = t.Add(time.Second)
 					return t
 				}
-				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				s := d.mu.versions.currentVersion().String()
 				d.mu.Unlock()
 				return s
 
@@ -2037,7 +2037,7 @@ func TestCompactionTombstones(t *testing.T) {
 
 			case "version":
 				d.mu.Lock()
-				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				s := d.mu.versions.currentVersion().String()
 				d.mu.Unlock()
 				return s
 
@@ -2182,7 +2182,7 @@ func TestCompactionReadTriggered(t *testing.T) {
 					t = t.Add(time.Second)
 					return t
 				}
-				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				s := d.mu.versions.currentVersion().String()
 				d.mu.Unlock()
 				return s
 
@@ -2247,7 +2247,7 @@ func TestCompactionReadTriggered(t *testing.T) {
 
 			case "version":
 				d.mu.Lock()
-				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				s := d.mu.versions.currentVersion().String()
 				d.mu.Unlock()
 				return s
 
@@ -2308,7 +2308,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 				}
 			}
 			c.version = newVersion(opts, files)
-			return c.version.DebugString(c.formatKey)
+			return c.version.String()
 
 		case "inuse-key-ranges":
 			var buf bytes.Buffer

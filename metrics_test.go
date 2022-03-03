@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/vfs"
@@ -140,7 +139,7 @@ func TestMetrics(t *testing.T) {
 			}
 
 			d.mu.Lock()
-			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			return s
 
@@ -150,7 +149,7 @@ func TestMetrics(t *testing.T) {
 			}
 
 			d.mu.Lock()
-			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			return s
 

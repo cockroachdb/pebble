@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -76,7 +75,7 @@ func expectLSM(expected string, d *DB, t *testing.T) {
 	t.Helper()
 	expected = strings.TrimSpace(expected)
 	d.mu.Lock()
-	actual := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+	actual := d.mu.versions.currentVersion().String()
 	d.mu.Unlock()
 	actual = strings.TrimSpace(actual)
 	if expected != actual {

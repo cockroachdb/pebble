@@ -498,7 +498,7 @@ func TestIngestTargetLevel(t *testing.T) {
 			readState.unref()
 
 			d.mu.Lock()
-			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			return s
 
@@ -827,7 +827,7 @@ func TestConcurrentIngestCompact(t *testing.T) {
 
 			lsm := func() string {
 				d.mu.Lock()
-				s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				s := d.mu.versions.currentVersion().String()
 				d.mu.Unlock()
 				return s
 			}

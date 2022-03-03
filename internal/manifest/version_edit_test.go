@@ -369,8 +369,7 @@ func TestVersionEditApply(t *testing.T) {
 					return zombieFileNums[i] < zombieFileNums[j]
 				})
 
-				return newv.DebugString(base.DefaultFormatter) +
-					fmt.Sprintf("zombies %d\n", zombieFileNums)
+				return fmt.Sprintf("%szombies %d\n", newv, zombieFileNums)
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)

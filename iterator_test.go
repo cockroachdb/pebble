@@ -628,7 +628,7 @@ func TestReadSampling(t *testing.T) {
 			d.mu.Lock()
 			// Disable the "dynamic base level" code for this test.
 			// d.mu.versions.picker.forceBaseLevel1()
-			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			return s
 
@@ -790,7 +790,7 @@ func TestIteratorTableFilter(t *testing.T) {
 			d.mu.Lock()
 			// Disable the "dynamic base level" code for this test.
 			d.mu.versions.picker.forceBaseLevel1()
-			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			return s
 
@@ -970,7 +970,7 @@ func TestIteratorSeekOpt(t *testing.T) {
 			}
 
 			d.mu.Lock()
-			s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			oldNewIters := d.newIters
 			d.newIters = func(file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, keyspan.FragmentIterator, error) {

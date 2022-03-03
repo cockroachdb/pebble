@@ -824,7 +824,7 @@ func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 
 func runLSMCmd(td *datadriven.TestData, d *DB) string {
 	d.mu.Lock()
-	s := d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+	s := d.mu.versions.currentVersion().String()
 	d.mu.Unlock()
 	return s
 }
