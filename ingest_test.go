@@ -524,6 +524,7 @@ func TestIngestTargetLevel(t *testing.T) {
 func TestIngest(t *testing.T) {
 	var mem vfs.FS
 	var d *DB
+	var flushed bool
 	defer func() {
 		require.NoError(t, d.Close())
 	}()
@@ -540,6 +541,9 @@ func TestIngest(t *testing.T) {
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
+			EventListener: EventListener{FlushEnd: func(info FlushInfo) {
+				flushed = true
+			}},
 		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -573,8 +577,12 @@ func TestIngest(t *testing.T) {
 			return ""
 
 		case "ingest":
+			flushed = false
 			if err := runIngestCmd(td, d, mem); err != nil {
 				return err.Error()
+			}
+			if flushed {
+				return "memtable flushed"
 			}
 			return ""
 
