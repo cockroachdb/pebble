@@ -103,7 +103,7 @@ func TestOverlaps(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			return v.DebugString(fmtKey)
+			return v.String()
 		case "overlaps":
 			var level int
 			var start, end string
