@@ -222,7 +222,7 @@ func (m *FileMetadata) extendOverallBounds(cmp Compare, smallest, largest Intern
 }
 
 func (m *FileMetadata) String() string {
-	return fmt.Sprintf("%s:%s-%s", m.FileNum, m.Smallest, m.Largest)
+	return fmt.Sprintf("%s:[%s-%s]", m.FileNum, m.Smallest, m.Largest)
 }
 
 // Validate validates the metadata for consistency with itself, returning an
