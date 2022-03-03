@@ -557,7 +557,7 @@ func ingestTargetLevel(
 //
 // The steps for ingestion are:
 //
-//   1. Allocate file numbers for every sstable beign ingested.
+//   1. Allocate file numbers for every sstable being ingested.
 //   2. Load the metadata for all sstables being ingest.
 //   3. Sort the sstables by smallest key, verifying non overlap.
 //   4. Hard link (or copy) the sstables into the DB directory.
