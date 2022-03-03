@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"unicode"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -221,8 +222,79 @@ func (m *FileMetadata) extendOverallBounds(cmp Compare, smallest, largest Intern
 	}
 }
 
+// String implements fmt.Stringer, printing the file number and the overall
+// table bounds.
 func (m *FileMetadata) String() string {
 	return fmt.Sprintf("%s:[%s-%s]", m.FileNum, m.Smallest, m.Largest)
+}
+
+// DebugString returns a verbose representation of FileMetadata, typically for
+// use in tests and debugging, returning the file number and the point, range
+// and overall bounds for the table.
+func (m *FileMetadata) DebugString(format base.FormatKey, verbose bool) string {
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "%s:[%s-%s]",
+		m.FileNum, m.Smallest.Pretty(format), m.Largest.Pretty(format))
+	if !verbose {
+		return b.String()
+	}
+	if m.HasPointKeys {
+		fmt.Fprintf(&b, " points:[%s-%s]",
+			m.SmallestPointKey.Pretty(format), m.LargestPointKey.Pretty(format))
+	}
+	if m.HasRangeKeys {
+		fmt.Fprintf(&b, " ranges:[%s-%s]",
+			m.SmallestRangeKey.Pretty(format), m.LargestRangeKey.Pretty(format))
+	}
+	return b.String()
+}
+
+// ParseFileMetadataDebug parses a FileMetadata from its DebugString
+// representation.
+func ParseFileMetadataDebug(s string) (m FileMetadata, err error) {
+	// Split lines of the form:
+	//  000000:[a#0,SET-z#0,SET] points:[...] ranges:[...]
+	fields := strings.FieldsFunc(s, func(c rune) bool {
+		switch c {
+		case ':', '[', '-', ']':
+			return true
+		default:
+			return unicode.IsSpace(c) // NB: also trim whitespace padding.
+		}
+	})
+	if len(fields)%3 != 0 {
+		return m, errors.Newf("malformed input: %s", s)
+	}
+	for len(fields) > 0 {
+		prefix := fields[0]
+		smallest := base.ParsePrettyInternalKey(fields[1])
+		largest := base.ParsePrettyInternalKey(fields[2])
+		switch prefix {
+		case "points":
+			m.SmallestPointKey, m.LargestPointKey = smallest, largest
+			m.HasPointKeys = true
+		case "ranges":
+			m.SmallestRangeKey, m.LargestRangeKey = smallest, largest
+			m.HasRangeKeys = true
+		default:
+			fileNum, err := strconv.ParseUint(prefix, 10, 64)
+			if err != nil {
+				return m, errors.Newf("malformed input: %s: %s", s, err)
+			}
+			m.FileNum = base.FileNum(fileNum)
+			m.Smallest, m.Largest = smallest, largest
+			m.boundsSet = true
+		}
+		fields = fields[3:]
+	}
+	// By default, when the parser sees just the overall bounds, we set the point
+	// keys. This preserves backwards compatability with existing test cases that
+	// specify only the overall bounds.
+	if !m.HasPointKeys && !m.HasRangeKeys {
+		m.SmallestPointKey, m.LargestPointKey = m.Smallest, m.Largest
+		m.HasPointKeys = true
+	}
+	return
 }
 
 // Validate validates the metadata for consistency with itself, returning an
@@ -559,7 +631,6 @@ func (v *Version) DebugString(format base.FormatKey) string {
 }
 
 // ParseVersionDebug parses a Version from its DebugString output.
-// TODO(travers): Parse separate point and range bounds.
 func ParseVersionDebug(
 	cmp Compare, formatKey base.FormatKey, flushSplitBytes int64, s string,
 ) (*Version, error) {
@@ -576,20 +647,16 @@ func ParseVersionDebug(
 				return nil, err
 			}
 		default:
-			// Example format:
-			//   000971:[acutc@6#4227,SET-zzhra@12#72057594037927935,RANGEDEL]
-			delim := map[rune]bool{':': true, '[': true, '-': true, ']': true}
-			fields := strings.FieldsFunc(l, func(c rune) bool { return delim[c] })
-			fileNum, err := strconv.ParseUint(fields[0], 10, 64)
+			m, err := ParseFileMetadataDebug(l)
 			if err != nil {
 				return nil, err
 			}
-			smallest := base.ParsePrettyInternalKey(fields[1])
-			largest := base.ParsePrettyInternalKey(fields[2])
-			m := (&FileMetadata{
-				FileNum: base.FileNum(fileNum),
-			}).ExtendPointKeyBounds(cmp, smallest, largest)
-			files[level] = append(files[level], m)
+			// If we only parsed overall bounds, default to setting the point bounds.
+			if !m.HasPointKeys && !m.HasRangeKeys {
+				m.SmallestPointKey, m.LargestPointKey = m.Smallest, m.Largest
+				m.HasPointKeys = true
+			}
+			files[level] = append(files[level], &m)
 		}
 	}
 	// Reverse the order of L0 files. This ensures we construct the same

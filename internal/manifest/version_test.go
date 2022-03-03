@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
+	"github.com/stretchr/testify/require"
 )
 
 func levelMetadata(level int, files ...*FileMetadata) LevelMetadata {
@@ -113,8 +114,7 @@ func TestOverlaps(t *testing.T) {
 			d.ScanArgs(t, "exclusive-end", &exclusiveEnd)
 			var buf bytes.Buffer
 			v.Overlaps(level, testkeys.Comparer.Compare, []byte(start), []byte(end), exclusiveEnd).Each(func(f *FileMetadata) {
-				fmt.Fprintf(&buf, "%06d:[%s-%s]\n", f.FileNum,
-					f.Smallest.Pretty(fmtKey), f.Largest.Pretty(fmtKey))
+				fmt.Fprintf(&buf, "%s\n", f.DebugString(base.DefaultFormatter, false))
 			})
 			return buf.String()
 		default:
@@ -436,17 +436,6 @@ func TestExtendBounds(t *testing.T) {
 		}
 		return
 	}
-	format := func(m *FileMetadata) string {
-		var b bytes.Buffer
-		fmt.Fprintf(&b, "combined: [%s-%s]\n", m.Smallest, m.Largest)
-		if m.HasPointKeys {
-			fmt.Fprintf(&b, "  points: [%s-%s]\n", m.SmallestPointKey, m.LargestPointKey)
-		}
-		if m.HasRangeKeys {
-			fmt.Fprintf(&b, "  ranges: [%s-%s]\n", m.SmallestRangeKey, m.LargestRangeKey)
-		}
-		return b.String()
-	}
 	m := &FileMetadata{}
 	datadriven.RunTest(t, "testdata/file_metadata_bounds", func(d *datadriven.TestData) string {
 		switch d.Cmd {
@@ -456,13 +445,53 @@ func TestExtendBounds(t *testing.T) {
 		case "extend-point-key-bounds":
 			u, l := parseBounds(d.Input)
 			m.ExtendPointKeyBounds(cmp, u, l)
-			return format(m)
+			return m.DebugString(base.DefaultFormatter, true)
 		case "extend-range-key-bounds":
 			u, l := parseBounds(d.Input)
 			m.ExtendRangeKeyBounds(cmp, u, l)
-			return format(m)
+			return m.DebugString(base.DefaultFormatter, true)
 		default:
 			return fmt.Sprintf("unknown command %s\n", d.Cmd)
 		}
 	})
+}
+
+func TestFileMetadata_ParseRoundTrip(t *testing.T) {
+	testCases := []struct {
+		name   string
+		input  string
+		output string
+	}{
+		{
+			name:  "point keys only",
+			input: "000001:[a#0,SET-z#0,DEL] points:[a#0,SET-z#0,DEL]",
+		},
+		{
+			name:  "range keys only",
+			input: "000001:[a#0,RANGEKEYSET-z#0,RANGEKEYDEL] ranges:[a#0,RANGEKEYSET-z#0,RANGEKEYDEL]",
+		},
+		{
+			name:  "point and range keys",
+			input: "000001:[a#0,RANGEKEYSET-d#0,DEL] points:[b#0,SET-d#0,DEL] ranges:[a#0,RANGEKEYSET-c#0,RANGEKEYDEL]",
+		},
+		{
+			name:   "whitespace",
+			input:  " 000001 : [ a#0,SET - z#0,DEL] points : [ a#0,SET - z#0,DEL] ",
+			output: "000001:[a#0,SET-z#0,DEL] points:[a#0,SET-z#0,DEL]",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m, err := ParseFileMetadataDebug(tc.input)
+			require.NoError(t, err)
+			err = m.Validate(base.DefaultComparer.Compare, base.DefaultFormatter)
+			require.NoError(t, err)
+			got := m.DebugString(base.DefaultFormatter, true)
+			want := tc.input
+			if tc.output != "" {
+				want = tc.output
+			}
+			require.Equal(t, want, got)
+		})
+	}
 }
