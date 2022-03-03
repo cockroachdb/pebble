@@ -496,7 +496,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			picker.initLevelMaxBytes(inProgressCompactions)
 
 			var buf bytes.Buffer
-			fmt.Fprint(&buf, version.DebugString(base.DefaultFormatter))
+			fmt.Fprint(&buf, version.String())
 			if len(inProgressCompactions) > 0 {
 				fmt.Fprintln(&buf, "compactions")
 				for _, c := range inProgressCompactions {
@@ -711,7 +711,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			vs.picker = picker
 
 			var buf bytes.Buffer
-			fmt.Fprint(&buf, version.DebugString(base.DefaultFormatter))
+			fmt.Fprint(&buf, version.String())
 			if len(inProgressCompactions) > 0 {
 				fmt.Fprintln(&buf, "compactions")
 				for _, c := range inProgressCompactions {
@@ -852,7 +852,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 			vs.picker = picker
 
 			var buf bytes.Buffer
-			fmt.Fprint(&buf, vers.DebugString(base.DefaultFormatter))
+			fmt.Fprint(&buf, vers.String())
 			return buf.String()
 
 		case "add-read-compaction":
@@ -1206,7 +1206,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 			vs.picker = picker
 
 			var buf bytes.Buffer
-			fmt.Fprint(&buf, vers.DebugString(base.DefaultFormatter))
+			fmt.Fprint(&buf, vers.String())
 			return buf.String()
 
 		case "pick-auto":

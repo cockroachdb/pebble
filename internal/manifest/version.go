@@ -597,22 +597,25 @@ type Version struct {
 	prev, next *Version
 }
 
+// String implements fmt.Stringer, printing the FileMetadata for each level in
+// the Version.
 func (v *Version) String() string {
-	return v.DebugString(base.DefaultFormatter)
+	return v.string(base.DefaultFormatter, false)
 }
 
-// DebugString returns an alternative format to String() which includes
-// sequence number and kind information for the sstable boundaries.
-// TODO(travers): Print separate point and range bounds.
+// DebugString returns an alternative format to String() which includes sequence
+// number and kind information for the sstable boundaries.
 func (v *Version) DebugString(format base.FormatKey) string {
-	var buf bytes.Buffer
+	return v.string(format, true)
+}
 
+func (v *Version) string(format base.FormatKey, verbose bool) string {
+	var buf bytes.Buffer
 	if len(v.L0SublevelFiles) > 0 {
 		for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 			fmt.Fprintf(&buf, "0.%d:\n", sublevel)
 			v.L0SublevelFiles[sublevel].Each(func(f *FileMetadata) {
-				fmt.Fprintf(&buf, "  %s:[%s-%s]\n", f.FileNum,
-					f.Smallest.Pretty(format), f.Largest.Pretty(format))
+				fmt.Fprintf(&buf, "  %s\n", f.DebugString(format, verbose))
 			})
 		}
 	}
@@ -623,8 +626,7 @@ func (v *Version) DebugString(format base.FormatKey) string {
 		fmt.Fprintf(&buf, "%d:\n", level)
 		iter := v.Levels[level].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			fmt.Fprintf(&buf, "  %s:[%s-%s]\n", f.FileNum,
-				f.Smallest.Pretty(format), f.Largest.Pretty(format))
+			fmt.Fprintf(&buf, "  %s\n", f.DebugString(format, verbose))
 		}
 	}
 	return buf.String()
