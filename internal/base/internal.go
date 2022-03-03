@@ -208,9 +208,12 @@ func ParseInternalKey(s string) InternalKey {
 	return MakeInternalKey([]byte(ukey), seqNum, kind)
 }
 
+// InternalTrailerLen is the number of bytes used to encode InternalKey.Trailer.
+const InternalTrailerLen = 8
+
 // DecodeInternalKey decodes an encoded internal key. See InternalKey.Encode().
 func DecodeInternalKey(encodedKey []byte) InternalKey {
-	n := len(encodedKey) - 8
+	n := len(encodedKey) - InternalTrailerLen
 	var trailer uint64
 	if n >= 0 {
 		trailer = binary.LittleEndian.Uint64(encodedKey[n:])
