@@ -3,7 +3,7 @@ L0
   a.SET.1-b.SET.2
 ----
 L0
-  000001:a#1,1-b#2,1
+  000001:[a#1,1-b#2,1]
 
 setup-inputs c c
 L0
@@ -17,8 +17,8 @@ L1
   b.SET.1-c.SET.2
 ----
 L1
-  000001:a#1,1-b#2,1
-  000002:b#1,1-c#2,1
+  000001:[a#1,1-b#2,1]
+  000002:[b#1,1-c#2,1]
 
 # The range deletion sentinel acts as a clean cut boundary.
 setup-inputs a a
@@ -27,7 +27,7 @@ L1
   b.SET.1-c.SET.2
 ----
 L1
-  000001:a#1,1-b#72057594037927935,15
+  000001:[a#1,1-b#72057594037927935,15]
 
 # Verify we expand the output level inputs to a clean cut.
 setup-inputs a a
@@ -38,10 +38,10 @@ L2
   c.SET.3-d.SET.2
 ----
 L1
-  000001:a#5,1-b#6,1
+  000001:[a#5,1-b#6,1]
 L2
-  000002:a#3,1-c#4,1
-  000003:c#3,1-d#2,1
+  000002:[a#3,1-c#4,1]
+  000003:[c#3,1-d#2,1]
 
 # Verify we expand the output level inputs to a clean cut.
 setup-inputs a a
@@ -52,9 +52,9 @@ L2
   c.SET.3-d.SET.2
 ----
 L1
-  000001:a#5,1-b#6,1
+  000001:[a#5,1-b#6,1]
 L2
-  000002:a#3,1-c#72057594037927935,15
+  000002:[a#3,1-c#72057594037927935,15]
 
 # Verify we grow the start level inputs to include all sstables which
 # lie within the output level bounds.
@@ -66,10 +66,10 @@ L2
   a.SET.3-d.SET.4
 ----
 L1
-  000001:a#5,1-b#6,1
-  000002:c#4,1-e#3,1
+  000001:[a#5,1-b#6,1]
+  000002:[c#4,1-e#3,1]
 L2
-  000003:a#3,1-d#4,1
+  000003:[a#3,1-d#4,1]
 
 # Verify we limit the start level input expansion according to available
 # disk capacity.
@@ -81,9 +81,9 @@ L2
   a.SET.3-d.SET.4 size=3
 ----
 L1
-  000001:a#5,1-b#6,1
+  000001:[a#5,1-b#6,1]
 L2
-  000003:a#3,1-d#4,1
+  000003:[a#3,1-d#4,1]
 
 # Verify the available disk capacity limit doesn't affect the
 # output level clean-cut expansion.
@@ -96,10 +96,10 @@ L2
   d.SET.2-e.SET.2 size=5
 ----
 L1
-  000001:a#5,1-b#6,1
+  000001:[a#5,1-b#6,1]
 L2
-  000003:a#3,1-d#4,1
-  000004:d#2,1-e#2,1
+  000003:[a#3,1-d#4,1]
+  000004:[d#2,1-e#2,1]
 
 # We won't grow the start level inputs if doing so would grow the
 # output level inputs.
@@ -112,9 +112,9 @@ L2
   e.SET.2-f.SET.1
 ----
 L1
-  000001:a#5,1-b#6,1
+  000001:[a#5,1-b#6,1]
 L2
-  000003:a#3,1-d#4,1
+  000003:[a#3,1-d#4,1]
 
 # Verify setup inputs can identify compacting files in range
 setup-inputs a a
@@ -126,11 +126,11 @@ L2
   d.SET.3-e.SET.6
 ----
 L1
-  000001:a#5,1-b#6,1
+  000001:[a#5,1-b#6,1]
 L2
-  000002:a#3,1-c#4,1
-  000003:c#3,1-d#2,1
-  000004:d#3,1-e#6,1
+  000002:[a#3,1-c#4,1]
+  000003:[c#3,1-d#2,1]
+  000004:[d#3,1-e#6,1]
 is-compacting
 
 # Verify when there is one file in range and it is compacting
@@ -140,7 +140,7 @@ L2
   d.SET.3-e.SET.2
 ----
 L2
-  000001:a#3,1-c#4,1
+  000001:[a#3,1-c#4,1]
 is-compacting
 
 # Verify when there is one file in level and is compacting
@@ -149,5 +149,5 @@ L2
   a.SET.3-c.SET.4 compacting
 ----
 L2
-  000001:a#3,1-c#4,1
+  000001:[a#3,1-c#4,1]
 is-compacting
