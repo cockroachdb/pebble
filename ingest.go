@@ -86,7 +86,7 @@ func ingestLoad1(
 	meta.Size = uint64(stat.Size())
 	meta.CreationTime = time.Now().Unix()
 
-	// Avoid loading into into the table cache for collecting stats if we
+	// Avoid loading into the table cache for collecting stats if we
 	// don't need to. If there are no range deletions, we have all the
 	// information to compute the stats here.
 	//
@@ -557,7 +557,7 @@ func ingestTargetLevel(
 //
 // The steps for ingestion are:
 //
-//   1. Allocate file numbers for every sstable beign ingested.
+//   1. Allocate file numbers for every sstable being ingested.
 //   2. Load the metadata for all sstables being ingest.
 //   3. Sort the sstables by smallest key, verifying non overlap.
 //   4. Hard link (or copy) the sstables into the DB directory.
