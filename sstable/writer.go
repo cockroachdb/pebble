@@ -50,48 +50,60 @@ type WriterMetadata struct {
 // SetSmallestPointKey sets the smallest point key to the given key.
 // NB: this method set the "absolute" smallest point key. Any existing key is
 // overridden.
+// Invariant: SetSmallestPointKey will not hold a reference to the key which is
+// passed in to the function.
 func (m *WriterMetadata) SetSmallestPointKey(k InternalKey) {
-	m.SmallestPoint = k
+	m.SmallestPoint.UserKey, m.SmallestPoint = cloneKeyWithBuf(k, m.SmallestPoint.UserKey)
 	m.HasPointKeys = true
 }
 
 // SetSmallestRangeDelKey sets the smallest rangedel key to the given key.
 // NB: this method set the "absolute" smallest rangedel key. Any existing key is
 // overridden.
+// Invariant: SetSmallestPointKey will not hold a reference to the key which is
+// passed in to the function.
 func (m *WriterMetadata) SetSmallestRangeDelKey(k InternalKey) {
-	m.SmallestRangeDel = k
+	m.SmallestRangeDel.UserKey, m.SmallestRangeDel = cloneKeyWithBuf(k, m.SmallestRangeDel.UserKey)
 	m.HasRangeDelKeys = true
 }
 
 // SetSmallestRangeKey sets the smallest range key to the given key.
 // NB: this method set the "absolute" smallest range key. Any existing key is
 // overridden.
+// Invariant: SetSmallestRangeKey will not hold a reference to the key which is
+// passed in to the function.
 func (m *WriterMetadata) SetSmallestRangeKey(k InternalKey) {
-	m.SmallestRangeKey = k
+	m.SmallestRangeKey.UserKey, m.SmallestRangeKey = cloneKeyWithBuf(k, m.SmallestRangeKey.UserKey)
 	m.HasRangeKeys = true
 }
 
 // SetLargestPointKey sets the largest point key to the given key.
 // NB: this method set the "absolute" largest point key. Any existing key is
 // overridden.
+// Invariant: SetLargestPointKey will not hold a reference to the key which is
+// passed in to the function.
 func (m *WriterMetadata) SetLargestPointKey(k InternalKey) {
-	m.LargestPoint = k
+	m.LargestPoint.UserKey, m.LargestPoint = cloneKeyWithBuf(k, m.LargestPoint.UserKey)
 	m.HasPointKeys = true
 }
 
 // SetLargestRangeDelKey sets the largest rangedel key to the given key.
 // NB: this method set the "absolute" largest rangedel key. Any existing key is
 // overridden.
+// Invariant: SetLargestRangeDelKey will not hold a reference to the key which is
+// passed in to the function.
 func (m *WriterMetadata) SetLargestRangeDelKey(k InternalKey) {
-	m.LargestRangeDel = k
+	m.LargestRangeDel.UserKey, m.LargestRangeDel = cloneKeyWithBuf(k, m.LargestRangeDel.UserKey)
 	m.HasRangeDelKeys = true
 }
 
 // SetLargestRangeKey sets the largest range key to the given key.
 // NB: this method set the "absolute" largest range key. Any existing key is
 // overridden.
+// Invariant: SetLargestRangeKey will not hold a reference to the key which is
+// passed in to the function.
 func (m *WriterMetadata) SetLargestRangeKey(k InternalKey) {
-	m.LargestRangeKey = k
+	m.LargestRangeKey.UserKey, m.LargestRangeKey = cloneKeyWithBuf(k, m.LargestRangeKey.UserKey)
 	m.HasRangeKeys = true
 }
 
@@ -629,7 +641,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		// then hang on to, and would otherwise continue to alias that whole pool's
 		// slice if we did so. So since we'll need to allocate it its own slice at
 		// some point anyway, we may as well do so here.
-		w.meta.SetSmallestPointKey(w.meta.LargestPoint.Clone())
+		w.meta.SetSmallestPointKey(w.meta.LargestPoint)
 	}
 
 	w.props.NumEntries++
@@ -700,15 +712,15 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		//
 		// Note that writing the v1 format is only supported for tests.
 		if w.props.NumRangeDeletions == 0 {
-			w.meta.SetSmallestRangeDelKey(key.Clone())
-			w.meta.SetLargestRangeDelKey(base.MakeRangeDeleteSentinelKey(value).Clone())
+			w.meta.SetSmallestRangeDelKey(key)
+			w.meta.SetLargestRangeDelKey(base.MakeRangeDeleteSentinelKey(value))
 		} else {
 			if base.InternalCompare(w.compare, w.meta.SmallestRangeDel, key) > 0 {
-				w.meta.SetSmallestRangeDelKey(key.Clone())
+				w.meta.SetSmallestRangeDelKey(key)
 			}
 			end := base.MakeRangeDeleteSentinelKey(value)
 			if base.InternalCompare(w.compare, w.meta.LargestRangeDel, end) < 0 {
-				w.meta.SetLargestRangeDelKey(end.Clone())
+				w.meta.SetLargestRangeDelKey(end)
 			}
 		}
 
@@ -718,7 +730,7 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		// range tombstone key. The largest range tombstone key will be determined
 		// in Writer.Close() as the end key of the last range tombstone added.
 		if w.props.NumRangeDeletions == 0 {
-			w.meta.SetSmallestRangeDelKey(key.Clone())
+			w.meta.SetSmallestRangeDelKey(key)
 		}
 	}
 
@@ -943,7 +955,7 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 	// added will be the smallest. The largest range key is determined in
 	// Writer.Close() as the end key of the last range key added to the block.
 	if w.props.NumRangeKeys() == 0 {
-		w.meta.SetSmallestRangeKey(key.Clone())
+		w.meta.SetSmallestRangeKey(key)
 	}
 
 	// Update block properties.
@@ -1224,14 +1236,12 @@ func shouldFlush(
 	return newSize > targetBlockSize
 }
 
-const keyAllocSize = 256 << 10
-
 func cloneKeyWithBuf(k InternalKey, buf []byte) ([]byte, InternalKey) {
 	if len(k.UserKey) == 0 {
 		return buf, k
 	}
 	if len(buf) < len(k.UserKey) {
-		buf = make([]byte, len(k.UserKey)+keyAllocSize)
+		buf = make([]byte, len(k.UserKey)*2)
 	}
 	n := copy(buf, k.UserKey)
 	return buf[n:], InternalKey{UserKey: buf[:n:n], Trailer: k.Trailer}
@@ -1497,7 +1507,7 @@ func (w *Writer) Close() (err error) {
 			// slice passed into Write(). Also, w.meta will often outlive the
 			// blockWriter, and so cloning curValue allows the rangeDelBlock's
 			// internal buffer to get gc'd.
-			k := base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue).Clone()
+			k := base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue)
 			w.meta.SetLargestRangeDelKey(k)
 		}
 		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.finish(), NoCompression, &w.blockBuf)
@@ -1520,7 +1530,7 @@ func (w *Writer) Close() (err error) {
 			w.err = errors.Newf("invalid end key: %s", w.rangeKeyBlock.curValue)
 			return w.err
 		}
-		k := base.MakeRangeKeySentinelKey(kind, endKey).Clone()
+		k := base.MakeRangeKeySentinelKey(kind, endKey)
 		w.meta.SetLargestRangeKey(k)
 		// TODO(travers): The lack of compression on the range key block matches the
 		// lack of compression on the range-del block. Revisit whether we want to
