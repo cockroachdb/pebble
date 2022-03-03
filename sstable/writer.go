@@ -42,92 +42,57 @@ type WriterMetadata struct {
 	HasPointKeys     bool
 	HasRangeDelKeys  bool
 	HasRangeKeys     bool
-	// NB: Smallest and Largest are the overall bounds for the writer and are set
-	// indirectly via calls to SetSmallest* and SetLargest*. These fields should
-	// be treated as read-only.
-	Smallest       InternalKey
-	Largest        InternalKey
-	SmallestSeqNum uint64
-	LargestSeqNum  uint64
-	Properties     Properties
+	SmallestSeqNum   uint64
+	LargestSeqNum    uint64
+	Properties       Properties
 }
 
-// SetSmallestPointKey sets the smallest point key to the given key. This may
-// also update the overall lower bound in the metadata.
+// SetSmallestPointKey sets the smallest point key to the given key.
 // NB: this method set the "absolute" smallest point key. Any existing key is
 // overridden.
-func (m *WriterMetadata) SetSmallestPointKey(cmp Compare, k InternalKey) {
+func (m *WriterMetadata) SetSmallestPointKey(k InternalKey) {
 	m.SmallestPoint = k
-	m.maybeUpdateSmallest(cmp, k)
 	m.HasPointKeys = true
 }
 
-// SetSmallestRangeDelKey sets the smallest rangedel key to the given key. This
-// may also update the overall lower bound in the metadata.
+// SetSmallestRangeDelKey sets the smallest rangedel key to the given key.
 // NB: this method set the "absolute" smallest rangedel key. Any existing key is
 // overridden.
-func (m *WriterMetadata) SetSmallestRangeDelKey(cmp Compare, k InternalKey) {
+func (m *WriterMetadata) SetSmallestRangeDelKey(k InternalKey) {
 	m.SmallestRangeDel = k
-	m.maybeUpdateSmallest(cmp, k)
 	m.HasRangeDelKeys = true
 }
 
-// SetSmallestRangeKey sets the smallest range key to the given key. This may
-// also update the overall lower bound in the metadata.
+// SetSmallestRangeKey sets the smallest range key to the given key.
 // NB: this method set the "absolute" smallest range key. Any existing key is
 // overridden.
-func (m *WriterMetadata) SetSmallestRangeKey(cmp Compare, k InternalKey) {
+func (m *WriterMetadata) SetSmallestRangeKey(k InternalKey) {
 	m.SmallestRangeKey = k
-	m.maybeUpdateSmallest(cmp, k)
 	m.HasRangeKeys = true
 }
 
-// SetLargestPointKey sets the largest point key to the given key. This may also
-// update the overall upper bound in the metadata.
+// SetLargestPointKey sets the largest point key to the given key.
 // NB: this method set the "absolute" largest point key. Any existing key is
 // overridden.
-func (m *WriterMetadata) SetLargestPointKey(cmp Compare, k InternalKey) {
+func (m *WriterMetadata) SetLargestPointKey(k InternalKey) {
 	m.LargestPoint = k
-	m.maybeUpdateLargest(cmp, k)
 	m.HasPointKeys = true
 }
 
-// SetLargestRangeDelKey sets the largest rangedel key to the given key. This
-// may also update the overall upper bound in the metadata.
+// SetLargestRangeDelKey sets the largest rangedel key to the given key.
 // NB: this method set the "absolute" largest rangedel key. Any existing key is
 // overridden.
-func (m *WriterMetadata) SetLargestRangeDelKey(cmp Compare, k InternalKey) {
+func (m *WriterMetadata) SetLargestRangeDelKey(k InternalKey) {
 	m.LargestRangeDel = k
-	m.maybeUpdateLargest(cmp, k)
 	m.HasRangeDelKeys = true
 }
 
-// SetLargestRangeKey sets the largest range key to the given key. This may also
-// update the overall lower bound in the metadata.
+// SetLargestRangeKey sets the largest range key to the given key.
 // NB: this method set the "absolute" largest range key. Any existing key is
 // overridden.
-func (m *WriterMetadata) SetLargestRangeKey(cmp Compare, k InternalKey) {
+func (m *WriterMetadata) SetLargestRangeKey(k InternalKey) {
 	m.LargestRangeKey = k
-	m.maybeUpdateLargest(cmp, k)
 	m.HasRangeKeys = true
-}
-
-// maybeUpdateSmallest updates the smallest key if no smallest key has been set
-// or if the given key is smaller than the existing smallest key.
-func (m *WriterMetadata) maybeUpdateSmallest(cmp Compare, k InternalKey) {
-	if !(m.HasPointKeys || m.HasRangeDelKeys || m.HasRangeKeys) ||
-		base.InternalCompare(cmp, k, m.Smallest) < 0 {
-		m.Smallest = k
-	}
-}
-
-// maybeUpdateLargest updates the largest key if no largest key has been set or
-// if the given key is smaller than the existing smallest key.
-func (m *WriterMetadata) maybeUpdateLargest(cmp Compare, k InternalKey) {
-	if !(m.HasPointKeys || m.HasRangeDelKeys || m.HasRangeKeys) ||
-		base.InternalCompare(cmp, k, m.Largest) > 0 {
-		m.Largest = k
-	}
 }
 
 func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
@@ -653,7 +618,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		UserKey: w.dataBlockBuf.dataBlock.curKey[:len(w.dataBlockBuf.dataBlock.curKey)-8],
 		Trailer: key.Trailer,
 	}
-	w.meta.SetLargestPointKey(w.compare, k)
+	w.meta.SetLargestPointKey(k)
 	if w.meta.SmallestPoint.UserKey == nil {
 		// NB: we clone w.meta.LargestPoint rather than "key", even though they are
 		// semantically identical, because we need to ensure that SmallestPoint.UserKey
@@ -664,7 +629,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		// then hang on to, and would otherwise continue to alias that whole pool's
 		// slice if we did so. So since we'll need to allocate it its own slice at
 		// some point anyway, we may as well do so here.
-		w.meta.SetSmallestPointKey(w.compare, w.meta.LargestPoint.Clone())
+		w.meta.SetSmallestPointKey(w.meta.LargestPoint.Clone())
 	}
 
 	w.props.NumEntries++
@@ -735,15 +700,15 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		//
 		// Note that writing the v1 format is only supported for tests.
 		if w.props.NumRangeDeletions == 0 {
-			w.meta.SetSmallestRangeDelKey(w.compare, key.Clone())
-			w.meta.SetLargestRangeDelKey(w.compare, base.MakeRangeDeleteSentinelKey(value).Clone())
+			w.meta.SetSmallestRangeDelKey(key.Clone())
+			w.meta.SetLargestRangeDelKey(base.MakeRangeDeleteSentinelKey(value).Clone())
 		} else {
 			if base.InternalCompare(w.compare, w.meta.SmallestRangeDel, key) > 0 {
-				w.meta.SetSmallestRangeDelKey(w.compare, key.Clone())
+				w.meta.SetSmallestRangeDelKey(key.Clone())
 			}
 			end := base.MakeRangeDeleteSentinelKey(value)
 			if base.InternalCompare(w.compare, w.meta.LargestRangeDel, end) < 0 {
-				w.meta.SetLargestRangeDelKey(w.compare, end.Clone())
+				w.meta.SetLargestRangeDelKey(end.Clone())
 			}
 		}
 
@@ -753,7 +718,7 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 		// range tombstone key. The largest range tombstone key will be determined
 		// in Writer.Close() as the end key of the last range tombstone added.
 		if w.props.NumRangeDeletions == 0 {
-			w.meta.SetSmallestRangeDelKey(w.compare, key.Clone())
+			w.meta.SetSmallestRangeDelKey(key.Clone())
 		}
 	}
 
@@ -978,7 +943,7 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 	// added will be the smallest. The largest range key is determined in
 	// Writer.Close() as the end key of the last range key added to the block.
 	if w.props.NumRangeKeys() == 0 {
-		w.meta.SetSmallestRangeKey(w.compare, key.Clone())
+		w.meta.SetSmallestRangeKey(key.Clone())
 	}
 
 	// Update block properties.
@@ -1533,7 +1498,7 @@ func (w *Writer) Close() (err error) {
 			// blockWriter, and so cloning curValue allows the rangeDelBlock's
 			// internal buffer to get gc'd.
 			k := base.MakeRangeDeleteSentinelKey(w.rangeDelBlock.curValue).Clone()
-			w.meta.SetLargestRangeDelKey(w.compare, k)
+			w.meta.SetLargestRangeDelKey(k)
 		}
 		rangeDelBH, err = w.writeBlock(w.rangeDelBlock.finish(), NoCompression, &w.blockBuf)
 		if err != nil {
@@ -1556,7 +1521,7 @@ func (w *Writer) Close() (err error) {
 			return w.err
 		}
 		k := base.MakeRangeKeySentinelKey(kind, endKey).Clone()
-		w.meta.SetLargestRangeKey(w.compare, k)
+		w.meta.SetLargestRangeKey(k)
 		// TODO(travers): The lack of compression on the range key block matches the
 		// lack of compression on the range-del block. Revisit whether we want to
 		// enable compression on this block.
