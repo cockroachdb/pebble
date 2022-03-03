@@ -38,6 +38,21 @@ func runDataDriven(t *testing.T, file string) {
 		}
 	}()
 
+	format := func(m *WriterMetadata) string {
+		var b bytes.Buffer
+		if m.HasPointKeys {
+			fmt.Fprintf(&b, "point:    [%s-%s]\n", m.SmallestPoint, m.LargestPoint)
+		}
+		if m.HasRangeDelKeys {
+			fmt.Fprintf(&b, "rangedel: [%s-%s]\n", m.SmallestRangeDel, m.LargestRangeDel)
+		}
+		if m.HasRangeKeys {
+			fmt.Fprintf(&b, "rangekey: [%s-%s]\n", m.SmallestRangeKey, m.LargestRangeKey)
+		}
+		fmt.Fprintf(&b, "seqnums:  [%d-%d]\n", m.SmallestSeqNum, m.LargestSeqNum)
+		return b.String()
+	}
+
 	datadriven.RunTest(t, file, func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
@@ -53,11 +68,7 @@ func runDataDriven(t *testing.T, file string) {
 			if err != nil {
 				return err.Error()
 			}
-			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nrangekey: [%s,%s]\nseqnums:  [%d,%d]\n",
-				meta.SmallestPoint, meta.LargestPoint,
-				meta.SmallestRangeDel, meta.LargestRangeDel,
-				meta.SmallestRangeKey, meta.LargestRangeKey,
-				meta.SmallestSeqNum, meta.LargestSeqNum)
+			return format(meta)
 
 		case "build-raw":
 			if r != nil {
@@ -72,11 +83,7 @@ func runDataDriven(t *testing.T, file string) {
 			if err != nil {
 				return err.Error()
 			}
-			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nrangekey: [%s,%s]\nseqnums:  [%d,%d]\n",
-				meta.SmallestPoint, meta.LargestPoint,
-				meta.SmallestRangeDel, meta.LargestRangeDel,
-				meta.SmallestRangeKey, meta.LargestRangeKey,
-				meta.SmallestSeqNum, meta.LargestSeqNum)
+			return format(meta)
 
 		case "scan":
 			origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
@@ -163,11 +170,7 @@ func runDataDriven(t *testing.T, file string) {
 			if err != nil {
 				return err.Error()
 			}
-			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nrangekey: [%s,%s]\nseqnums:  [%d,%d]\n",
-				meta.SmallestPoint, meta.LargestPoint,
-				meta.SmallestRangeDel, meta.LargestRangeDel,
-				meta.SmallestRangeKey, meta.LargestRangeKey,
-				meta.SmallestSeqNum, meta.LargestSeqNum)
+			return format(meta)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
