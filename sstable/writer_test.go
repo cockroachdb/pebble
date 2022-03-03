@@ -537,6 +537,7 @@ func BenchmarkWriter(b *testing.B) {
 							for i := 0; i < b.N; i++ {
 								f.wrote = 0
 								w := NewWriter(f, opts)
+								w.disableKeyOrderChecks = true
 
 								for j := range keys {
 									if err := w.Set(keys[j], keys[j]); err != nil {
