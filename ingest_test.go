@@ -573,8 +573,39 @@ func TestIngest(t *testing.T) {
 			return ""
 
 		case "ingest":
-			if err := runIngestCmd(td, d, mem); err != nil {
-				return err.Error()
+			var (
+				err           error
+				done, flushed bool
+			)
+			ch := make(chan error, 1)
+			go func() {
+				if err := runIngestCmd(td, d, mem); err != nil {
+					ch <- err
+				}
+				close(ch)
+			}()
+
+			ingestDone := func() (bool, error) {
+				select {
+				case err := <-ch:
+					return true, err
+				default:
+					return false, nil
+				}
+			}
+
+			for !done {
+				done, err = ingestDone()
+				if err != nil {
+					return err.Error()
+				}
+				d.mu.Lock()
+				flushed = flushed || d.mu.compact.flushing
+				d.mu.Unlock()
+			}
+
+			if flushed {
+				return "memtable flushed"
 			}
 			return ""
 

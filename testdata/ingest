@@ -228,6 +228,7 @@ set k 11
 
 ingest ext5
 ----
+memtable flushed
 
 lsm
 ----
@@ -299,6 +300,7 @@ del-range x z
 
 ingest ext7
 ----
+memtable flushed
 
 lsm
 ----
@@ -500,6 +502,7 @@ set b 1
 
 ingest ext14
 ----
+memtable flushed
 
 lsm
 ----
