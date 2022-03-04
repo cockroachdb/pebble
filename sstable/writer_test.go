@@ -308,7 +308,10 @@ func TestWriterClearCache(t *testing.T) {
 	require.NoError(t, r.Close())
 }
 
-type discardFile struct{ wrote int64 }
+type discardFile struct {
+	wrote int64
+	tmp   []byte
+}
 
 func (f discardFile) Close() error {
 	return nil
@@ -316,6 +319,7 @@ func (f discardFile) Close() error {
 
 func (f *discardFile) Write(p []byte) (int, error) {
 	f.wrote += int64(len(p))
+	copy(f.tmp, p)
 	return len(p), nil
 }
 
@@ -534,6 +538,7 @@ func BenchmarkWriter(b *testing.B) {
 								opts.FilterPolicy = bloom.FilterPolicy(10)
 							}
 							f := &discardFile{}
+							f.tmp = make([]byte, 50<<10)
 							for i := 0; i < b.N; i++ {
 								f.wrote = 0
 								w := NewWriter(f, opts)
