@@ -936,9 +936,11 @@ func (b *Batch) init(cap int) {
 func (b *Batch) Reset() {
 	b.count = 0
 	b.countRangeDels = 0
+	b.countRangeKeys = 0
 	b.memTableSize = 0
 	b.deferredOp = DeferredBatchOp{}
 	b.tombstones = nil
+	b.rangeKeys = nil
 	b.flushable = nil
 	b.commit = sync.WaitGroup{}
 	b.commitErr = nil

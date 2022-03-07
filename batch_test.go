@@ -204,18 +204,21 @@ func TestBatchReset(t *testing.T) {
 	key := "test-key"
 	value := "test-value"
 	b := db.NewBatch()
-	b.Set([]byte(key), []byte(value), nil)
+	require.NoError(t, b.Set([]byte(key), []byte(value), nil))
 	dd := b.DeleteRangeDeferred(len(key), len(value))
 	copy(dd.Key, key)
 	copy(dd.Value, value)
 	dd.Finish()
 
+	require.NoError(t, b.Experimental().RangeKeySet([]byte(key), []byte(value), []byte(value), []byte(value), nil))
+
 	b.setSeqNum(100)
 	b.applied = 1
 	b.commitErr = errors.New("test-error")
 	b.commit.Add(1)
-	require.Equal(t, uint32(2), b.Count())
+	require.Equal(t, uint32(3), b.Count())
 	require.Equal(t, uint64(1), b.countRangeDels)
+	require.Equal(t, uint64(1), b.countRangeKeys)
 	require.True(t, len(b.data) > 0)
 	require.True(t, b.SeqNum() > 0)
 	require.True(t, b.memTableSize > 0)
@@ -227,6 +230,7 @@ func TestBatchReset(t *testing.T) {
 	require.Nil(t, b.commitErr)
 	require.Equal(t, uint32(0), b.Count())
 	require.Equal(t, uint64(0), b.countRangeDels)
+	require.Equal(t, uint64(0), b.countRangeKeys)
 	require.Equal(t, batchHeaderLen, len(b.data))
 	require.Equal(t, uint64(0), b.SeqNum())
 	require.Equal(t, uint64(0), b.memTableSize)
