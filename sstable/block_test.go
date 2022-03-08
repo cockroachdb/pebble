@@ -19,11 +19,11 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-func TestBlockWriter(t *testing.T) {
-	ikey := func(s string) InternalKey {
-		return InternalKey{UserKey: []byte(s)}
-	}
+func ikey(s string) InternalKey {
+	return InternalKey{UserKey: []byte(s)}
+}
 
+func TestBlockWriter(t *testing.T) {
 	w := &rawBlockWriter{
 		blockWriter: blockWriter{restartInterval: 16},
 	}
@@ -40,6 +40,39 @@ func TestBlockWriter(t *testing.T) {
 	if !bytes.Equal(expected, block) {
 		t.Fatalf("expected\n%q\nfound\n%q", expected, block)
 	}
+}
+
+func testBlockCleared(t *testing.T, w, b *blockWriter) {
+	require.Equal(t, w.restartInterval, b.restartInterval)
+	require.Equal(t, w.nEntries, b.nEntries)
+	require.Equal(t, w.nextRestart, b.nextRestart)
+	require.Equal(t, len(w.buf), len(b.buf))
+	require.Equal(t, len(w.restarts), len(b.restarts))
+	require.Equal(t, len(w.curKey), len(b.curKey))
+	require.Equal(t, len(w.prevKey), len(b.prevKey))
+	require.Equal(t, len(w.curValue), len(b.curValue))
+	require.Equal(t, w.tmp, b.tmp)
+
+	// Make sure that we didn't lose the allocated byte slices.
+	require.True(t, cap(w.buf) > 0 && cap(b.buf) == 0)
+	require.True(t, cap(w.restarts) > 0 && cap(b.restarts) == 0)
+	require.True(t, cap(w.curKey) > 0 && cap(b.curKey) == 0)
+	require.True(t, cap(w.prevKey) > 0 && cap(b.prevKey) == 0)
+	require.True(t, cap(w.curValue) > 0 && cap(b.curValue) == 0)
+}
+
+func TestBlockClear(t *testing.T) {
+	w := blockWriter{restartInterval: 16}
+	w.add(ikey("apple"), nil)
+	w.add(ikey("apricot"), nil)
+	w.add(ikey("banana"), nil)
+
+	w.clear()
+
+	// Once a block is cleared, we expect its fields to be cleared, but we expect
+	// it to keep its allocated byte slices.
+	b := blockWriter{}
+	testBlockCleared(t, &w, &b)
 }
 
 func TestInvalidInternalKeyDecoding(t *testing.T) {
