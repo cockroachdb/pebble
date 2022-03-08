@@ -78,6 +78,8 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 // It is necessary to ensure that none of the buffers in the writeTask,
 // dataBlockBuf, indexBlockBuf, are pointed to by another struct.
 func (w *writeQueue) releaseBuffers(task *writeTask) {
+	dataBlockBufPool.Put(task.buf)
+
 	// This index block is no longer used by the Writer, so we can add it back
 	// to the pool.
 	if task.flushableIndexBlock != nil {

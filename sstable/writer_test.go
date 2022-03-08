@@ -8,8 +8,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/cockroachdb/errors"
@@ -18,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -503,6 +506,61 @@ func TestWriter_TableFormatCompatibility(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Tests for races such as https://github.com/cockroachdb/cockroach/issues/77194
+// in the Writer.
+func TestWriterRace(t *testing.T) {
+	ks := testkeys.Alpha(5)
+	ks = ks.EveryN(ks.Count() / 1_000)
+	keys := make([][]byte, ks.Count())
+	for ki := 0; ki < len(keys); ki++ {
+		keys[ki] = testkeys.Key(ks, ki)
+	}
+	readerOpts := ReaderOptions{
+		Comparer: testkeys.Comparer,
+		Filters:  map[string]base.FilterPolicy{},
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			val := make([]byte, rand.Intn(1000))
+			opts := WriterOptions{
+				Comparer:    testkeys.Comparer,
+				BlockSize:   rand.Intn(1 << 10),
+				Compression: NoCompression,
+			}
+			defer wg.Done()
+			f := &memFile{}
+			w := NewWriter(f, opts)
+			for ki := 0; ki < len(keys); ki++ {
+				require.NoError(
+					t,
+					w.Add(base.MakeInternalKey(keys[ki], uint64(ki), InternalKeyKindSet), val),
+				)
+				require.Equal(
+					t, base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey).UserKey, keys[ki],
+				)
+			}
+			require.NoError(t, w.Close())
+			require.Equal(t, w.meta.LargestPoint.UserKey, keys[len(keys)-1])
+			r, err := NewMemReader(f.Bytes(), readerOpts)
+			require.NoError(t, err)
+			defer r.Close()
+			it, err := r.NewIter(nil, nil)
+			require.NoError(t, err)
+			defer it.Close()
+			ki := 0
+			for k, v := it.First(); k != nil; k, v = it.Next() {
+				require.Equal(t, k.UserKey, keys[ki])
+				require.Equal(t, v, val)
+				ki++
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func BenchmarkWriter(b *testing.B) {
