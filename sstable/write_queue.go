@@ -25,6 +25,15 @@ type writeTask struct {
 	finishedIndexProps []byte
 }
 
+// It is not the responsibility of the writeTask to clear the
+// task.flushableIndexBlock, and task.buf.
+func (task *writeTask) clear() {
+	*task = writeTask{
+		indexEntrySep:   base.InvalidInternalKey,
+		compressionDone: task.compressionDone,
+	}
+}
+
 // Note that only the Writer client goroutine will be adding tasks to the writeQueue.
 // Both the Writer client and the compression goroutines will be able to write to
 // writeTask.compressionDone to indicate that the compression job associated with
@@ -78,16 +87,17 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 // It is necessary to ensure that none of the buffers in the writeTask,
 // dataBlockBuf, indexBlockBuf, are pointed to by another struct.
 func (w *writeQueue) releaseBuffers(task *writeTask) {
+	task.buf.clear()
+	dataBlockBufPool.Put(task.buf)
+
 	// This index block is no longer used by the Writer, so we can add it back
 	// to the pool.
 	if task.flushableIndexBlock != nil {
+		task.flushableIndexBlock.clear()
 		indexBlockBufPool.Put(task.flushableIndexBlock)
 	}
 
-	*task = writeTask{
-		indexEntrySep:   base.InvalidInternalKey,
-		compressionDone: task.compressionDone,
-	}
+	task.clear()
 	writeTaskPool.Put(task)
 }
 

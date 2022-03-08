@@ -35,6 +35,16 @@ type blockWriter struct {
 	tmp             [4]byte
 }
 
+func (w *blockWriter) clear() {
+	*w = blockWriter{
+		buf:      w.buf[:0],
+		restarts: w.restarts[:0],
+		curKey:   w.curKey[:0],
+		curValue: w.curValue[:0],
+		prevKey:  w.prevKey[:0],
+	}
+}
+
 func (w *blockWriter) store(keySize int, value []byte) {
 	shared := 0
 	if w.nEntries == w.nextRestart {
