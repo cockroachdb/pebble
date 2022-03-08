@@ -8,8 +8,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/cockroachdb/errors"
@@ -18,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -176,6 +179,73 @@ func runDataDriven(t *testing.T, file string) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func testBlockBufClear(t *testing.T, b1, b2 *blockBuf) {
+	require.Equal(t, b1.tmp, b2.tmp)
+}
+
+func TestBlockBufClear(t *testing.T) {
+	b1 := &blockBuf{}
+	b1.tmp[0] = 1
+	b1.compressedBuf = make([]byte, 1)
+	b1.clear()
+	testBlockBufClear(t, b1, &blockBuf{})
+}
+
+func TestClearDataBlockBuf(t *testing.T) {
+	d := newDataBlockBuf(1, ChecksumTypeCRC32c)
+	d.blockBuf.compressedBuf = make([]byte, 1)
+	d.dataBlock.add(ikey("apple"), nil)
+	d.dataBlock.add(ikey("banana"), nil)
+
+	d.clear()
+	testBlockCleared(t, &d.dataBlock, &blockWriter{})
+	testBlockBufClear(t, &d.blockBuf, &blockBuf{})
+
+	dataBlockBufPool.Put(d)
+}
+
+func TestClearIndexBlockBuf(t *testing.T) {
+	i := newIndexBlockBuf()
+	i.block.add(ikey("apple"), nil)
+	i.block.add(ikey("banana"), nil)
+	i.clear()
+
+	testBlockCleared(t, &i.block, &blockWriter{})
+	require.Equal(
+		t, i.size.estimate, sizeEstimate{emptySize: i.size.estimate.emptySize},
+	)
+	indexBlockBufPool.Put(i)
+}
+
+func TestClearWriteTask(t *testing.T) {
+	w := writeTaskPool.Get().(*writeTask)
+	ch := make(chan bool, 1)
+	w.compressionDone = ch
+	w.buf = &dataBlockBuf{}
+	w.flushableIndexBlock = &indexBlockBuf{}
+	w.currIndexBlock = &indexBlockBuf{}
+	w.indexEntrySep = ikey("apple")
+	w.inflightSize = 1
+	w.indexInflightSize = 1
+	w.finishedIndexProps = []byte{'a', 'v'}
+
+	w.clear()
+
+	var nilDataBlockBuf *dataBlockBuf
+	var nilIndexBlockBuf *indexBlockBuf
+	// Channels should be the same(no new channel should be allocated)
+	require.Equal(t, w.compressionDone, ch)
+	require.Equal(t, w.buf, nilDataBlockBuf)
+	require.Equal(t, w.flushableIndexBlock, nilIndexBlockBuf)
+	require.Equal(t, w.currIndexBlock, nilIndexBlockBuf)
+	require.Equal(t, w.indexEntrySep, base.InvalidInternalKey)
+	require.Equal(t, w.inflightSize, 0)
+	require.Equal(t, w.indexInflightSize, 0)
+	require.Equal(t, w.finishedIndexProps, []byte(nil))
+
+	writeTaskPool.Put(w)
 }
 
 func TestSizeEstimate(t *testing.T) {
@@ -503,6 +573,61 @@ func TestWriter_TableFormatCompatibility(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Tests for races, such as https://github.com/cockroachdb/cockroach/issues/77194,
+// in the Writer.
+func TestWriterRace(t *testing.T) {
+	ks := testkeys.Alpha(5)
+	ks = ks.EveryN(ks.Count() / 1_000)
+	keys := make([][]byte, ks.Count())
+	for ki := 0; ki < len(keys); ki++ {
+		keys[ki] = testkeys.Key(ks, ki)
+	}
+	readerOpts := ReaderOptions{
+		Comparer: testkeys.Comparer,
+		Filters:  map[string]base.FilterPolicy{},
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			val := make([]byte, rand.Intn(1000))
+			opts := WriterOptions{
+				Comparer:    testkeys.Comparer,
+				BlockSize:   rand.Intn(1 << 10),
+				Compression: NoCompression,
+			}
+			defer wg.Done()
+			f := &memFile{}
+			w := NewWriter(f, opts)
+			for ki := 0; ki < len(keys); ki++ {
+				require.NoError(
+					t,
+					w.Add(base.MakeInternalKey(keys[ki], uint64(ki), InternalKeyKindSet), val),
+				)
+				require.Equal(
+					t, base.DecodeInternalKey(w.dataBlockBuf.dataBlock.curKey).UserKey, keys[ki],
+				)
+			}
+			require.NoError(t, w.Close())
+			require.Equal(t, w.meta.LargestPoint.UserKey, keys[len(keys)-1])
+			r, err := NewMemReader(f.Bytes(), readerOpts)
+			require.NoError(t, err)
+			defer r.Close()
+			it, err := r.NewIter(nil, nil)
+			require.NoError(t, err)
+			defer it.Close()
+			ki := 0
+			for k, v := it.First(); k != nil; k, v = it.Next() {
+				require.Equal(t, k.UserKey, keys[ki])
+				require.Equal(t, v, val)
+				ki++
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func BenchmarkWriter(b *testing.B) {
