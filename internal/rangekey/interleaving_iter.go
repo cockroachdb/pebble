@@ -256,7 +256,14 @@ func (i *InterleavingIter) Next() (*base.InternalKey, []byte) {
 		//   points:    x*            z
 		//   ranges:        ([y-?))
 		// direction. Either way, we must move to the next point key.
-		i.pointKey, i.pointVal = i.pointIter.Next()
+		switch {
+		case i.pointKey == nil && i.lower == nil:
+			i.pointKey, i.pointVal = i.pointIter.First()
+		case i.pointKey == nil && i.lower != nil:
+			i.pointKey, i.pointVal = i.pointIter.SeekGE(i.lower, false)
+		default:
+			i.pointKey, i.pointVal = i.pointIter.Next()
+		}
 		i.pointKeyInterleaved = false
 
 		if i.rangeKey == nil {
@@ -363,7 +370,14 @@ func (i *InterleavingIter) Prev() (*base.InternalKey, []byte) {
 		//   points:    x             z*
 		//   ranges:        ([y-?))
 		// direction. Either way, we must move the point iterator backwards.
-		i.pointKey, i.pointVal = i.pointIter.Prev()
+		switch {
+		case i.pointKey == nil && i.upper == nil:
+			i.pointKey, i.pointVal = i.pointIter.Last()
+		case i.pointKey == nil && i.upper != nil:
+			i.pointKey, i.pointVal = i.pointIter.SeekLT(i.upper)
+		default:
+			i.pointKey, i.pointVal = i.pointIter.Prev()
+		}
 		i.pointKeyInterleaved = false
 	}
 
