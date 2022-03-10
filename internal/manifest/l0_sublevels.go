@@ -343,7 +343,9 @@ func NewL0Sublevels(
 // of old fileIntervals, into result. Returns the new result and a slice of ints
 // mapping old interval indices to new ones. The added intervalKeys do not
 // need to be sorted; they get sorted and deduped in this function.
-func mergeIntervals(old, result []fileInterval, added []intervalKeyTemp, compare Compare) ([]fileInterval, []int) {
+func mergeIntervals(
+	old, result []fileInterval, added []intervalKeyTemp, compare Compare,
+) ([]fileInterval, []int) {
 	sorter := intervalKeySorter{keys: added, cmp: compare}
 	sort.Sort(sorter)
 
@@ -440,7 +442,9 @@ func mergeIntervals(old, result []fileInterval, added []intervalKeyTemp, compare
 // were to another flushed file that was split into a separate sstable during
 // flush. Any other non-nil error means L0Sublevels generation failed in the same
 // way as NewL0Sublevels would likely fail.
-func (s *L0Sublevels) AddL0Files(files []*FileMetadata, flushSplitMaxBytes int64, levelMetadata *LevelMetadata) (*L0Sublevels, error) {
+func (s *L0Sublevels) AddL0Files(
+	files []*FileMetadata, flushSplitMaxBytes int64, levelMetadata *LevelMetadata,
+) (*L0Sublevels, error) {
 	if invariants.Enabled && s.addL0FilesCalled {
 		panic("AddL0Files called twice on the same receiver")
 	}

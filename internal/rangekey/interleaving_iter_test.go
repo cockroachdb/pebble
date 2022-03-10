@@ -162,7 +162,9 @@ func (i *pointIterator) SeekGE(key []byte, trySeekUsingNext bool) (*base.Interna
 	return &i.keys[i.index], nil
 }
 
-func (i *pointIterator) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
+func (i *pointIterator) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
 	return i.SeekGE(key, trySeekUsingNext)
 }
 

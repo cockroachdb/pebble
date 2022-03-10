@@ -75,7 +75,9 @@ func decompressBlock(cache *cache.Cache, blockType blockType, b []byte) (*cache.
 }
 
 // compressBlock compresses an SST block, using compressBuf as the desired destination.
-func compressBlock(compression Compression, b []byte, compressedBuf []byte) (blockType blockType, compressed []byte) {
+func compressBlock(
+	compression Compression, b []byte, compressedBuf []byte,
+) (blockType blockType, compressed []byte) {
 	switch compression {
 	case SnappyCompression:
 		return snappyCompressionBlockType, snappy.Encode(compressedBuf, b)

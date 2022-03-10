@@ -245,8 +245,9 @@ func createBench(benchName string, benchDescription string) fsBenchmark {
 
 // This benchmark prepopulates a directory with some files of a given size. Then, it creates and deletes
 // a file of some size, while measuring only the performance of the delete.
-func deleteBench(benchName string, benchDescription string, preNumFiles int,
-	preFileSize int, fileSize int) fsBenchmark {
+func deleteBench(
+	benchName string, benchDescription string, preNumFiles int, preFileSize int, fileSize int,
+) fsBenchmark {
 
 	createBench := func(dirpath string) *fsBench {
 		bench := &fsBench{}
@@ -312,7 +313,9 @@ func deleteBench(benchName string, benchDescription string, preNumFiles int,
 // This benchmark creates some files in a directory, and then measures the performance
 // of the vfs.Remove function.
 // fileSize is in bytes.
-func deleteUniformBench(benchName string, benchDescription string, numFiles int, fileSize int) fsBenchmark {
+func deleteUniformBench(
+	benchName string, benchDescription string, numFiles int, fileSize int,
+) fsBenchmark {
 	createBench := func(dirpath string) *fsBench {
 		bench := &fsBench{}
 		mkDir(dirpath)
@@ -377,8 +380,9 @@ func deleteUniformBench(benchName string, benchDescription string, numFiles int,
 // Tests the performance of syncing data to disk.
 // Only measures the sync performance.
 // The writes will be synced after every writeSize bytes have been written.
-func writeSyncBench(benchName string, benchDescription string,
-	maxFileSize int, writeSize int) fsBenchmark {
+func writeSyncBench(
+	benchName string, benchDescription string, maxFileSize int, writeSize int,
+) fsBenchmark {
 
 	if writeSize > maxFileSize {
 		log.Fatalln("File write threshold is greater than max file size.")
@@ -449,8 +453,9 @@ func writeSyncBench(benchName string, benchDescription string,
 
 // Tests the peformance of calling the vfs.GetDiskUsage call on a directory,
 // as the number of files/total size of files in the directory grows.
-func diskUsageBench(benchName string, benchDescription string,
-	maxFileSize int, writeSize int) fsBenchmark {
+func diskUsageBench(
+	benchName string, benchDescription string, maxFileSize int, writeSize int,
+) fsBenchmark {
 
 	if writeSize > maxFileSize {
 		log.Fatalln("File write threshold is greater than max file size.")

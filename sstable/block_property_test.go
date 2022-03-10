@@ -1236,7 +1236,9 @@ func (p *intSuffixTablePropCollector) Finish(userProps map[string]string) error 
 
 func (p *intSuffixTablePropCollector) Name() string { return p.name }
 
-func (p *intSuffixTablePropCollector) UpdateKeySuffixes(oldProps map[string]string, from, to []byte) error {
+func (p *intSuffixTablePropCollector) UpdateKeySuffixes(
+	oldProps map[string]string, from, to []byte,
+) error {
 	return p.setFromSuffix(to)
 }
 

@@ -381,7 +381,9 @@ func (i *mergingIterAdapter) SeekGE(key []byte, trySeekUsingNext bool) (*base.In
 	return i.firstFrag()
 }
 
-func (i *mergingIterAdapter) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
+func (i *mergingIterAdapter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
 	panic("unimplemented")
 }
 

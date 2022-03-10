@@ -307,7 +307,8 @@ func (c *tableCacheShard) releaseLoop() {
 // for intersection with any available table and block-level properties. Returns
 // true for ok if this table should be read by this iterator.
 func (c *tableCacheShard) checkAndIntersectFilters(
-	v *tableCacheValue, tableFilter func(userProps map[string]string) bool,
+	v *tableCacheValue,
+	tableFilter func(userProps map[string]string) bool,
 	blockPropertyFilters []BlockPropertyFilter,
 ) (ok bool, filterer *sstable.BlockPropertiesFilterer, err error) {
 	if tableFilter != nil &&
