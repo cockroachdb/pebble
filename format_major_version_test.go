@@ -237,9 +237,10 @@ func TestSplitUserKeyMigration(t *testing.T) {
 					FormatMajorVersion: FormatBlockPropertyCollector,
 					EventListener: EventListener{
 						CompactionEnd: func(info CompactionInfo) {
-							// JobID's aren't deterministic, especially w/ table stats
-							// enabled. Use a fixed job ID for data-driven test output.
+							// Fix the job ID and durations for determinism.
 							info.JobID = 100
+							info.Duration = time.Second
+							info.TotalDuration = 2 * time.Second
 							fmt.Fprintln(&buf, info)
 						},
 					},
@@ -249,13 +250,6 @@ func TestSplitUserKeyMigration(t *testing.T) {
 					return err.Error()
 				}
 
-				// Mock time so that we get consistent log output written to
-				// buf.
-				t := time.Now()
-				d.timeNow = func() time.Time {
-					t = t.Add(time.Second)
-					return t
-				}
 				fs = d.opts.FS
 				d.mu.Lock()
 				defer d.mu.Unlock()
@@ -272,15 +266,6 @@ func TestSplitUserKeyMigration(t *testing.T) {
 				d, err = Open("", opts)
 				if err != nil {
 					return err.Error()
-				}
-				// Mock time so that we get consistent log output written to
-				// buf.
-				d.mu.Lock()
-				defer d.mu.Unlock()
-				t := time.Now()
-				d.timeNow = func() time.Time {
-					t = t.Add(time.Second)
-					return t
 				}
 				return "OK"
 			case "build":

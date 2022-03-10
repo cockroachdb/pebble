@@ -1764,11 +1764,6 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					return err.Error()
 				}
 				d.mu.Lock()
-				t := time.Now()
-				d.timeNow = func() time.Time {
-					t = t.Add(time.Second)
-					return t
-				}
 				s := d.mu.versions.currentVersion().String()
 				d.mu.Unlock()
 				return s
@@ -1866,9 +1861,10 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				fmt.Fprintf(&buf, "Compactions:\n")
 				s := "(none)"
 				if compactInfo != nil {
-					// JobID's aren't deterministic, especially w/ table stats
-					// enabled. Use a fixed job ID for data-driven test output.
+					// Fix the job ID and durations for determinism.
 					compactInfo.JobID = 100
+					compactInfo.Duration = time.Second
+					compactInfo.TotalDuration = 2 * time.Second
 					s = compactInfo.String()
 				}
 				fmt.Fprintf(&buf, "  %s", s)
@@ -1912,9 +1908,10 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 
 					s := "(none)"
 					if compactInfo != nil {
-						// JobID's aren't deterministic, especially w/ table stats
-						// enabled. Use a fixed job ID for data-driven test output.
+						// Fix the job ID and durations for determinism.
 						compactInfo.JobID = 100
+						compactInfo.Duration = time.Second
+						compactInfo.TotalDuration = 2 * time.Second
 						s = compactInfo.String()
 						compactInfo = nil
 					}
@@ -1961,9 +1958,10 @@ func TestCompactionTombstones(t *testing.T) {
 
 		s := "(none)"
 		if compactInfo != nil {
-			// JobID's aren't deterministic, especially w/ table stats
-			// enabled. Use a fixed job ID for data-driven test output.
+			// Fix the job ID and durations for determinism.
 			compactInfo.JobID = 100
+			compactInfo.Duration = time.Second
+			compactInfo.TotalDuration = 2 * time.Second
 			s = compactInfo.String()
 			compactInfo = nil
 		}
@@ -1995,11 +1993,6 @@ func TestCompactionTombstones(t *testing.T) {
 					return err.Error()
 				}
 				d.mu.Lock()
-				t := time.Now()
-				d.timeNow = func() time.Time {
-					t = t.Add(time.Second)
-					return t
-				}
 				s := d.mu.versions.currentVersion().String()
 				d.mu.Unlock()
 				return s
@@ -2149,9 +2142,10 @@ func TestCompactionReadTriggered(t *testing.T) {
 
 		s := "(none)"
 		if compactInfo != nil {
-			// JobID's aren't deterministic, especially w/ table stats
-			// enabled. Use a fixed job ID for data-driven test output.
+			// Fix the job ID and durations for determinism.
 			compactInfo.JobID = 100
+			compactInfo.Duration = time.Second
+			compactInfo.TotalDuration = 2 * time.Second
 			s = compactInfo.String()
 			compactInfo = nil
 		}
@@ -2183,11 +2177,6 @@ func TestCompactionReadTriggered(t *testing.T) {
 					return err.Error()
 				}
 				d.mu.Lock()
-				t := time.Now()
-				d.timeNow = func() time.Time {
-					t = t.Add(time.Second)
-					return t
-				}
 				s := d.mu.versions.currentVersion().String()
 				d.mu.Unlock()
 				return s
@@ -3372,7 +3361,10 @@ func TestMarkedForCompaction(t *testing.T) {
 		FormatMajorVersion:          FormatNewest,
 		EventListener: EventListener{
 			CompactionEnd: func(info CompactionInfo) {
-				info.JobID = 100 // Fix to avoid nondeterminism.
+				// Fix the job ID and durations for determinism.
+				info.JobID = 100
+				info.Duration = time.Second
+				info.TotalDuration = 2 * time.Second
 				fmt.Fprintln(&buf, info)
 			},
 		},
