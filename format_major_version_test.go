@@ -243,6 +243,7 @@ func TestSplitUserKeyMigration(t *testing.T) {
 							fmt.Fprintln(&buf, info)
 						},
 					},
+					DisableAutomaticCompactions: true,
 				}
 				var err error
 				if d, err = runDBDefineCmd(td, opts); err != nil {
@@ -268,6 +269,7 @@ func TestSplitUserKeyMigration(t *testing.T) {
 					buf.Reset()
 				}
 				opts.FS = fs
+				opts.DisableAutomaticCompactions = true
 				var err error
 				d, err = Open("", opts)
 				if err != nil {
@@ -311,6 +313,18 @@ func TestSplitUserKeyMigration(t *testing.T) {
 			case "marked-file-count":
 				m := d.Metrics()
 				return fmt.Sprintf("%d files marked for compaction", m.Compact.MarkedFiles)
+			case "disable-automatic-compactions":
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				switch v := td.CmdArgs[0].String(); v {
+				case "true":
+					d.opts.DisableAutomaticCompactions = true
+				case "false":
+					d.opts.DisableAutomaticCompactions = false
+				default:
+					return fmt.Sprintf("unknown value %q", v)
+				}
+				return ""
 			default:
 				return fmt.Sprintf("unrecognized command %q", td.Cmd)
 			}

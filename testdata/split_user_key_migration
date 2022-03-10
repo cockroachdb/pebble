@@ -60,6 +60,9 @@ marked-file-count
 ----
 2 files marked for compaction
 
+disable-automatic-compactions false
+----
+
 # Ratcheting to 007 should force compaction of any files still marked for
 # compaction.
 
@@ -130,6 +133,9 @@ format-major-version
 marked-file-count
 ----
 5 files marked for compaction
+
+disable-automatic-compactions false
+----
 
 ratchet-format-major-version 007
 ----
