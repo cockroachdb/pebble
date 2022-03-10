@@ -677,7 +677,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 					entry := d.newFlushableEntry(d.mu.mem.mutable, 0, 0)
 					entry.readerRefs++
 					d.mu.mem.queue = append(d.mu.mem.queue, entry)
-					d.updateReadStateLocked(nil)
+					d.updateReadStateLocked(nil, nil)
 				}
 				mem = d.mu.mem.mutable
 				fields = fields[1:]
@@ -734,7 +734,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		}); err != nil {
 			return nil, err
 		}
-		d.updateReadStateLocked(nil)
+		d.updateReadStateLocked(nil, nil)
 		d.updateTableStatsLocked(ve.NewFiles)
 	}
 

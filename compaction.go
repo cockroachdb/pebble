@@ -1457,12 +1457,12 @@ func (d *DB) flush1() error {
 	if err == nil {
 		flushed = d.mu.mem.queue[:n]
 		d.mu.mem.queue = d.mu.mem.queue[n:]
-		d.updateReadStateLocked(d.opts.DebugCheck)
+		d.updateReadStateLocked(d.opts.DebugCheck, func() {
+			// TODO(jackson): Remove this, plus this updateReadStateLocked
+			// parameter when range keys are persisted to sstables.
+			err = d.applyFlushedRangeKeys(flushed)
+		})
 		d.updateTableStatsLocked(ve.NewFiles)
-	}
-	if err == nil {
-		// TODO(jackson): Remove this when range keys are persisted to sstables.
-		err = d.applyFlushedRangeKeys(flushed)
 	}
 	// Signal FlushEnd after installing the new readState. This helps for unit
 	// tests that use the callback to trigger a read using an iterator with
@@ -1892,7 +1892,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	// there are no references obsolete tables will be added to the obsolete
 	// table list.
 	if err == nil {
-		d.updateReadStateLocked(d.opts.DebugCheck)
+		d.updateReadStateLocked(d.opts.DebugCheck, nil)
 		d.updateTableStatsLocked(ve.NewFiles)
 	}
 	d.deleteObsoleteFiles(jobID, true /* waitForOngoing */)

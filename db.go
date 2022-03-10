@@ -1880,7 +1880,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		var entry *flushableEntry
 		d.mu.mem.mutable, entry = d.newMemTable(newLogNum, logSeqNum)
 		d.mu.mem.queue = append(d.mu.mem.queue, entry)
-		d.updateReadStateLocked(nil)
+		d.updateReadStateLocked(nil, nil)
 		if immMem.writerUnref() {
 			d.maybeScheduleFlush()
 		}
