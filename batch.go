@@ -159,6 +159,7 @@ func (d DeferredBatchOp) Finish() error {
 //
 //   InternalKeyKindDelete         varstring
 //   InternalKeyKindLogData        varstring
+//   InternalKeyKindIngestSST      varstring
 //   InternalKeyKindSet            varstring varstring
 //   InternalKeyKindMerge          varstring varstring
 //   InternalKeyKindRangeDelete    varstring varstring
@@ -327,13 +328,17 @@ func (b *Batch) refreshMemTableSize() {
 		if !ok {
 			break
 		}
-		b.memTableSize += memTableEntrySize(len(key), len(value))
 		switch kind {
 		case InternalKeyKindRangeDelete:
 			b.countRangeDels++
 		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 			b.countRangeKeys++
+		case InternalKeyKindIngestSST:
+			// InternalKeyKindIngestSST does not contribute to the size of the
+			// memtable.
+			continue
 		}
+		b.memTableSize += memTableEntrySize(len(key), len(value))
 	}
 }
 
@@ -753,12 +758,22 @@ func (b *Batch) RangeKeyDeleteDeferred(startLen, endLen int) *DeferredBatchOp {
 //
 // It is safe to modify the contents of the argument after LogData returns.
 func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
+	return b.writeRecordToWALOnly(data, InternalKeyKindLogData)
+}
+
+// IngestSSTs adds the list of sstable paths to the batch. The data will only be
+// written to the WAL (not added to memtables or sstables).
+func (b *Batch) IngestSSTs(data []byte, _ *WriteOptions) error {
+	return b.writeRecordToWALOnly(data, InternalKeyKindIngestSST)
+}
+
+func (b *Batch) writeRecordToWALOnly(data []byte, kind InternalKeyKind) error {
 	origCount, origMemTableSize := b.count, b.memTableSize
-	b.prepareDeferredKeyRecord(len(data), InternalKeyKindLogData)
+	b.prepareDeferredKeyRecord(len(data), kind)
 	copy(b.deferredOp.Key, data)
-	// Since LogData only writes to the WAL and does not affect the memtable, we
-	// restore b.count and b.memTableSize to their origin values. Note that
-	// Batch.count only refers to records that are added to the memtable.
+	// Restore b.count and b.memTableSize to their origin values since this batch
+	// is not written to the memtable. Note that Batch.count only refers to
+	// records that are added to the memtable.
 	b.count, b.memTableSize = origCount, origMemTableSize
 	return nil
 }

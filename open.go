@@ -637,6 +637,13 @@ func (d *DB) replayWAL(
 		seqNum := b.SeqNum()
 		maxSeqNum = seqNum + uint64(b.Count())
 
+		br := b.Reader()
+		if kind, _, _, _ := br.Next(); kind == InternalKeyKindIngestSST {
+			// TODO(mufeez): construct flushable of sstables and add to queue
+			buf.Reset()
+			continue
+		}
+
 		if b.memTableSize >= uint64(d.largeBatchThreshold) {
 			flushMem()
 			// Make a copy of the data slice since it is currently owned by buf and will

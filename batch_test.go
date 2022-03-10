@@ -75,6 +75,7 @@ func TestBatch(t *testing.T) {
 		{InternalKeyKindLogData, "", ""},
 		{InternalKeyKindRangeKeyDelete, "grass", "green"},
 		{InternalKeyKindRangeKeyDelete, "", ""},
+		{InternalKeyKindIngestSST, "1.sst,2.sst", ""},
 	}
 	var b Batch
 	for _, tc := range testCases {
@@ -93,6 +94,8 @@ func TestBatch(t *testing.T) {
 			_ = b.LogData([]byte(tc.key), nil)
 		case InternalKeyKindRangeKeyDelete:
 			_ = b.Experimental().RangeKeyDelete([]byte(tc.key), []byte(tc.value), nil)
+		case InternalKeyKindIngestSST:
+			_ = b.IngestSSTs([]byte(tc.key), nil)
 		}
 	}
 	verifyTestCases(&b, testCases)
@@ -136,6 +139,8 @@ func TestBatch(t *testing.T) {
 			copy(d.Key, key)
 			copy(d.Value, value)
 			d.Finish()
+		case InternalKeyKindIngestSST:
+			_ = b.IngestSSTs([]byte(tc.key), nil)
 		}
 	}
 	verifyTestCases(&b, testCases)

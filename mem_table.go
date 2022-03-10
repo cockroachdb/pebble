@@ -213,8 +213,8 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 			err = m.rangeKeySkl.Add(ikey, value)
 			rangeKeyCount++
-		case InternalKeyKindLogData:
-			// Don't increment seqNum for LogData, since these are not applied
+		case InternalKeyKindLogData, InternalKeyKindIngestSST:
+			// Don't increment seqNum for LogData or IngestSST, since these are not applied
 			// to the memtable.
 			seqNum--
 		default:
