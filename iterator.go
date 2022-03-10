@@ -624,7 +624,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 		// the key space being iterated over in which there are no point keys.
 		// Since limits are best effort, ignoring the limit in this case is
 		// allowed by the contract of limit.
-		if firstLoopIter && limit != nil && i.cmp(limit, i.iterKey.UserKey) > 0 && !i.iterHasRangeKey() {
+		if firstLoopIter && limit != nil && i.cmp(limit, i.iterKey.UserKey) > 0 && !i.rangeKeyWithinLimit(limit) {
 			i.iterValidityState = IterAtLimit
 			i.pos = iterPosCurReversePaused
 			return
@@ -704,7 +704,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			// other than the firstLoopIter case above, where we could step
 			// to a different user key and start processing it for returning
 			// to the caller.
-			if limit != nil && i.iterKey != nil && i.cmp(limit, i.iterKey.UserKey) > 0 && !i.iterHasRangeKey() {
+			if limit != nil && i.iterKey != nil && i.cmp(limit, i.iterKey.UserKey) > 0 && !i.rangeKeyWithinLimit(limit) {
 				i.iterValidityState = IterAtLimit
 				i.pos = iterPosCurReversePaused
 				return
@@ -1338,10 +1338,23 @@ type RangeKeyData struct {
 	Value  []byte
 }
 
-// iterHasRangeKey returns whether or not the internalIterator has a range key
-// covering its current position.
-func (i *Iterator) iterHasRangeKey() bool {
-	return i.rangeKey != nil && i.rangeKey.iter.HasRangeKey()
+// rangeKeyWithinLimit is called during limited reverse iteration when
+// positioned over a key beyond the limit. If there exists a range key that lies
+// within the limit, we must not pause in order to ensure the user has an
+// opportunity to observe the range key within limit. This awkwardness exists
+// because range keys are interleaved at their inclusive start positions.
+func (i *Iterator) rangeKeyWithinLimit(limit []byte) bool {
+	if i.rangeKey == nil || !i.rangeKey.iter.HasRangeKey() {
+		// If there are no covering range keys, it is safe to to pause
+		// immediately.
+		return false
+	}
+	// If the range key ends beyond the limit, then the range key does not cover
+	// any portion of the keyspace within the limit and it is safe to pause.
+	if _, end := i.rangeKey.iter.RangeKeyBounds(); i.cmp(end, limit) <= 0 {
+		return false
+	}
+	return true
 }
 
 // setRangeKey sets the current range key to the underlying iterator's current
