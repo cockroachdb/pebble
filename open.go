@@ -401,7 +401,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
 		d.mu.versions.metrics.WAL.Files++
 	}
-	d.updateReadStateLocked(d.opts.DebugCheck)
+	d.updateReadStateLocked(d.opts.DebugCheck, nil)
 
 	if !d.opts.ReadOnly {
 		// Write the current options to disk.

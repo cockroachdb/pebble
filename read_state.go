@@ -77,9 +77,10 @@ func (d *DB) loadReadState() *readState {
 }
 
 // updateReadStateLocked creates a new readState from the current version and
-// list of memtables. Requires DB.mu is held. If checker is not nil, it is called after installing
-// the new readState
-func (d *DB) updateReadStateLocked(checker func(*DB) error) {
+// list of memtables. Requires DB.mu is held. If checker is not nil, it is
+// called after installing the new readState. If atomicFunc is not nil, it is
+// executed atomically with the transition to the new read state.
+func (d *DB) updateReadStateLocked(checker func(*DB) error, atomicFunc func()) {
 	s := &readState{
 		db:        d,
 		refcnt:    1,
@@ -94,6 +95,11 @@ func (d *DB) updateReadStateLocked(checker func(*DB) error) {
 	d.readState.Lock()
 	old := d.readState.val
 	d.readState.val = s
+	// TODO(jackson): Remove atomicFunc. It's temporary to allow us to copy
+	// range keys from flushed memtables into the global arena atomically.
+	if atomicFunc != nil {
+		atomicFunc()
+	}
 	d.readState.Unlock()
 	if checker != nil {
 		if err := checker(d); err != nil {
