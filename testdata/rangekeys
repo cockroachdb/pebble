@@ -596,3 +596,42 @@ b: (., [b-e) @1=foo)
 a: (a, .)
 c: (., [b-e) @1=foo)
 b: (., [b-e) @1=foo)
+
+# Test a case during limited reverse iteration where a range key covers a
+# portion of the keyspace within the limit. The iterator should NOT pause and
+# should surface the range key.
+
+reset
+----
+
+batch
+del b
+range-key-set a d @1 foo
+----
+wrote 2 keys
+
+combined-iter
+seek-ge z
+prev-limit c
+----
+.
+a: valid (., [a-d) @1=foo)
+
+# Test a case during limited reverse iteration where there exists a range key
+# but it ends before the limit. The iterator should pause.
+
+reset
+----
+
+batch
+del b
+range-key-set a c @1 foo
+----
+wrote 2 keys
+
+combined-iter
+seek-ge z
+prev-limit c
+----
+.
+. at-limit
