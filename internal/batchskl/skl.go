@@ -273,8 +273,10 @@ func (s *Skiplist) NewIter(lower, upper []byte) Iterator {
 	return Iterator{list: s, lower: lower, upper: upper}
 }
 
-func (s *Skiplist) newNode(height,
-	offset, keyStart, keyEnd uint32, abbreviatedKey uint64) (uint32, error) {
+func (s *Skiplist) newNode(
+	height,
+	offset, keyStart, keyEnd uint32, abbreviatedKey uint64,
+) (uint32, error) {
 	if height < 1 || height > maxHeight {
 		panic("height cannot be less than one or greater than the max height")
 	}

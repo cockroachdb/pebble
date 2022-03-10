@@ -167,7 +167,9 @@ func runBuildCmd(
 	return meta, r, nil
 }
 
-func runBuildRawCmd(td *datadriven.TestData, opts *WriterOptions) (*WriterMetadata, *Reader, error) {
+func runBuildRawCmd(
+	td *datadriven.TestData, opts *WriterOptions,
+) (*WriterMetadata, *Reader, error) {
 	mem := vfs.NewMem()
 	f0, err := mem.Create("test")
 	if err != nil {

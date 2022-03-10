@@ -4,9 +4,7 @@
 
 package sstable
 
-import (
-	"sync/atomic"
-)
+import "sync/atomic"
 
 // FilterMetrics holds metrics for the filter policy.
 type FilterMetrics struct {

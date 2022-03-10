@@ -11,7 +11,6 @@ import (
 	"strconv"
 
 	"github.com/cockroachdb/errors"
-
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/keyspan"

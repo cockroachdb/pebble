@@ -25,9 +25,9 @@ type DeletableValueMerger = base.DeletableValueMerger
 // DefaultMerger exports the base.DefaultMerger variable.
 var DefaultMerger = base.DefaultMerger
 
-func finishValueMerger(valueMerger ValueMerger, includesBase bool) (
-	value []byte, needDelete bool, closer io.Closer, err error,
-) {
+func finishValueMerger(
+	valueMerger ValueMerger, includesBase bool,
+) (value []byte, needDelete bool, closer io.Closer, err error) {
 	if valueMerger2, ok := valueMerger.(DeletableValueMerger); ok {
 		value, needDelete, closer, err = valueMerger2.DeletableFinish(includesBase)
 	} else {
