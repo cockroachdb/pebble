@@ -44,7 +44,7 @@ func flushExternalTable(untypedDB interface{}, path string, originalMeta *fileMe
 	}
 
 	// Hard link the sstable into the DB directory.
-	if err := ingestLink(jobID, d.opts, d.dirname, []string{path}, []*fileMetadata{m}); err != nil {
+	if _, err := ingestLink(jobID, d.opts, d.dirname, []string{path}, []*fileMetadata{m}); err != nil {
 		return err
 	}
 	if err := d.dataDir.Sync(); err != nil {

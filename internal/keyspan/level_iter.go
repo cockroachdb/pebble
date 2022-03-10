@@ -62,8 +62,8 @@ type LevelIter struct {
 // LevelIter implements the keyspan.FragmentIterator interface.
 var _ FragmentIterator = (*LevelIter)(nil)
 
-// newLevelIter returns a LevelIter.
-func newLevelIter(
+// NewLevelIter returns a LevelIter.
+func NewLevelIter(
 	opts RangeIterOptions,
 	cmp base.Compare,
 	newIter TableNewRangeKeyIter,

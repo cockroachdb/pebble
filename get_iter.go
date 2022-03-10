@@ -135,8 +135,16 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 		// Create iterators from memtables from newest to oldest.
 		if n := len(g.mem); n > 0 {
 			m := g.mem[n-1]
-			g.iter = m.newIter(nil)
-			g.rangeDelIter = m.newRangeDelIter(nil)
+			iter := m.newIter(nil)
+			var rangeDelIter keyspan.FragmentIterator
+			switch m.flushable.(type) {
+			case *ingestedSSTable:
+				iter.(*levelIter).initRangeDel(&rangeDelIter)
+			default:
+				rangeDelIter = m.newRangeDelIter(nil)
+			}
+			g.iter = iter
+			g.rangeDelIter = rangeDelIter
 			g.mem = g.mem[:n-1]
 			g.iterKey, g.iterValue = g.iter.SeekGE(g.key, false /* trySeekUsingNext */)
 			continue

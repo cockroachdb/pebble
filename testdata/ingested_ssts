@@ -1,0 +1,212 @@
+# We create multiple SSTs, one of which overlaps with the memtable (scheduling a flush).
+# Check that the SSTs get ingested to the lowest levels possible.
+
+batch
+set a 0
+----
+
+# The SST below overlaps with memtable and thus should be placed in L0 post-flush.
+
+build ext1
+set a 1
+----
+
+# The SST below overlaps with L0 and thus should be placed in L0 post-flush.
+
+build ext2
+set b 1
+----
+
+# The SST below doesn't overlap with any SSTs in the LSM and thus can be placed in L6 post-flush.
+
+build ext3
+set d 1
+----
+
+# We block the flush, so the SSTs should still be in the flushable queue.
+
+ingest ext1 ext2 ext3 block-flush
+----
+
+lsm
+----
+
+get
+a
+b
+----
+a:1
+b:1
+
+# Test WAL replay, ingested SSTs should be added back into the flushable queue.
+
+close
+----
+
+ls
+----
+000002.log
+000004.sst
+000005.sst
+000006.sst
+000007.log
+CURRENT
+LOCK
+MANIFEST-000001
+OPTIONS-000003
+ext
+marker.format-version.000008.009
+marker.manifest.000001.MANIFEST-000001
+
+open
+----
+
+ls
+----
+000002.log
+000004.sst
+000005.sst
+000006.sst
+000008.log
+000009.sst
+CURRENT
+LOCK
+MANIFEST-000001
+MANIFEST-000010
+OPTIONS-000011
+ext
+marker.format-version.000008.009
+marker.manifest.000002.MANIFEST-000010
+
+lsm
+----
+0.1:
+  000004:[a#2,SET-a#2,SET]
+0.0:
+  000009:[a#1,SET-a#1,SET]
+6:
+  000005:[b#3,SET-b#3,SET]
+  000006:[d#4,SET-d#4,SET]
+
+get
+a
+b
+----
+a:1
+b:1
+
+reset
+----
+
+# Repeat the steps above without closing Pebble. LSM should match.
+
+batch
+set a 0
+----
+
+build ext1
+set a 1
+----
+
+build ext2
+set b 1
+----
+
+build ext3
+set d 1
+----
+
+ingest ext1 ext2 ext3
+----
+
+lsm
+----
+0.1:
+  000004:[a#2,SET-a#2,SET]
+0.0:
+  000009:[a#1,SET-a#1,SET]
+6:
+  000005:[b#3,SET-b#3,SET]
+  000006:[d#4,SET-d#4,SET]
+
+reset
+----
+
+# Test multiple overlapping ingests interleaving batch sets, and then flushing.
+
+batch
+set a 0
+----
+
+build ext4
+set a 1
+----
+
+build ext5
+set a 2
+----
+
+# TODO: test non-overlapping ingest works normally.
+
+# Should get ingested into L6 as it's the first SST in the LSM.
+
+ingest ext4 block-flush
+----
+
+get
+a
+----
+a:1
+
+batch
+set b 1
+----
+
+get
+a
+b
+----
+a:1
+b:1
+
+# Should get ingested into L0 above the memtable flush.
+
+ingest ext5 block-flush
+----
+
+get
+a
+b
+----
+a:2
+b:1
+
+batch
+set c 1
+----
+
+flush
+----
+
+# TODO: not sure if below file nums are correct.
+
+lsm
+----
+0.2:
+  000007:[a#4,SET-a#4,SET]
+0.1:
+  000004:[a#2,SET-a#2,SET]
+0.0:
+  000010:[a#1,SET-a#1,SET]
+  000011:[b#3,SET-b#3,SET]
+
+# Value of a should be the second ingested SST.
+
+get
+a
+b
+c
+----
+a:2
+b:1
+c:1

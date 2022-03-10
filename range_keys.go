@@ -33,10 +33,10 @@ type RangeKeysArena struct {
 // only store as many range keys as fit in this arena.
 //
 // TODO(jackson): Remove applyFlushedRangeKeys when range keys are persisted.
-func (d *DB) applyFlushedRangeKeys(flushable []*flushableEntry) error {
+func (d *DB) applyFlushedRangeKeys(flushable flushableList) error {
 	var added uint32
-	for i := 0; i < len(flushable); i++ {
-		iter := flushable[i].newRangeKeyIter(nil)
+	for _, f := range flushable {
+		iter := f.newRangeKeyIter(nil)
 		if iter == nil {
 			continue
 		}
@@ -122,6 +122,7 @@ func (d *DB) newRangeKeyIter(
 		if logSeqNum := mem.logSeqNum; logSeqNum >= seqNum {
 			continue
 		}
+
 		if rki := mem.newRangeKeyIter(opts); rki != nil {
 			iters = append(iters, rki)
 		}

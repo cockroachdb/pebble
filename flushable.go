@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
 // flushable defines the interface for immutable memtables.
@@ -79,3 +80,76 @@ func (e *flushableEntry) readerUnref() {
 }
 
 type flushableList []*flushableEntry
+
+func (l flushableList) getMemtables() (filtered []*flushableEntry) {
+	for _, f := range l {
+		switch f.flushable.(type) {
+		case *ingestedSSTable:
+			continue
+		default:
+			filtered = append(filtered, f)
+		}
+	}
+	return
+}
+
+func (l flushableList) getIngestedSSTs() (filtered []*ingestedSSTable) {
+	for _, f := range l {
+		switch f.flushable.(type) {
+		case *ingestedSSTable:
+			filtered = append(filtered, f.flushable.(*ingestedSSTable))
+		}
+	}
+	return
+}
+
+type ingestedSSTable struct {
+	files                []*fileMetadata
+	cmp                  Compare
+	newIters             tableNewIters
+	tableNewRangeKeyIter keyspan.TableNewRangeKeyIter
+}
+
+// TODO(mufeez): test iterators
+func (s *ingestedSSTable) newIter(o *IterOptions) internalIterator {
+	var opts IterOptions
+	if o != nil {
+		opts = *o
+	}
+	levelSlice := manifest.NewLevelSliceKeySorted(s.cmp, s.files)
+	return newLevelIter(opts, s.cmp, nil, s.newIters, levelSlice.Iter(), 0, nil)
+}
+
+// newFlushIter returns nil because ingestedSSTable does not need to be
+// compacted during a flush.
+func (s *ingestedSSTable) newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator {
+	return nil
+}
+
+func (s *ingestedSSTable) newRangeDelIter(o *IterOptions) keyspan.FragmentIterator {
+	return nil
+}
+
+func (s *ingestedSSTable) newRangeKeyIter(o *IterOptions) keyspan.FragmentIterator {
+	var hasRangeKeys bool
+	for _, f := range s.files {
+		hasRangeKeys = hasRangeKeys || f.HasRangeKeys
+	}
+	if !hasRangeKeys {
+		return nil
+	}
+	levelSlice := manifest.NewLevelSliceKeySorted(s.cmp, s.files)
+	return keyspan.NewLevelIter(keyspan.RangeIterOptions{}, s.cmp, s.tableNewRangeKeyIter, levelSlice.Iter(), 0, nil)
+}
+
+func (s *ingestedSSTable) inuseBytes() uint64 {
+	return 0
+}
+
+func (s *ingestedSSTable) totalBytes() uint64 {
+	return 0
+}
+
+func (s *ingestedSSTable) readyForFlush() bool {
+	return true
+}

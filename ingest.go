@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -265,7 +266,8 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 
 func ingestLink(
 	jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata,
-) error {
+) ([]string, error) {
+	newPaths := make([]string, len(paths))
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
 	fs := syncingFS{
@@ -277,6 +279,7 @@ func ingestLink(
 
 	for i := range paths {
 		target := base.MakeFilepath(fs, dirname, fileTypeTable, meta[i].FileNum)
+		newPaths[i] = target
 		var err error
 		if _, ok := opts.FS.(*vfs.MemFS); ok && opts.DebugCheck != nil {
 			// The combination of MemFS+Ingest+DebugCheck produces awkwardness around
@@ -301,7 +304,7 @@ func ingestLink(
 			if err2 := ingestCleanup(fs, dirname, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
 			}
-			return err
+			return nil, err
 		}
 		if opts.EventListener.TableCreated != nil {
 			opts.EventListener.TableCreated(TableCreateInfo{
@@ -313,7 +316,7 @@ func ingestLink(
 		}
 	}
 
-	return nil
+	return newPaths, nil
 }
 
 func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bool {
@@ -612,7 +615,8 @@ func (d *DB) ingest(paths []string, targetLevelFunc ingestTargetLevelFunc) error
 	// (e.g. because the files reside on a different filesystem), ingestLink will
 	// fall back to copying, and if that fails we undo our work and return an
 	// error.
-	if err := ingestLink(jobID, d.opts, d.dirname, paths, meta); err != nil {
+	newPaths, err := ingestLink(jobID, d.opts, d.dirname, paths, meta)
+	if err != nil {
 		return err
 	}
 	// Fsync the directory we added the tables to. We need to do this at some
@@ -623,10 +627,11 @@ func (d *DB) ingest(paths []string, targetLevelFunc ingestTargetLevelFunc) error
 		return err
 	}
 
+	var ve *versionEdit
 	var mem *flushableEntry
-	prepare := func() {
+	var ingested bool
+	prepare := func(seqNum uint64) {
 		// Note that d.commit.mu is held by commitPipeline when calling prepare.
-
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
@@ -637,21 +642,30 @@ func (d *DB) ingest(paths []string, targetLevelFunc ingestTargetLevelFunc) error
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			m := d.mu.mem.queue[i]
 			if ingestMemtableOverlaps(d.cmp, m, meta) {
-				mem = m
-				if mem.flushable == d.mu.mem.mutable {
-					err = d.makeRoomForWrite(nil)
+				ingested = true
+				entry, nextSeqNum, err := d.addIngestedSSTsFlushable(newPaths, meta, seqNum)
+				if err != nil {
+					return
 				}
-				mem.flushForced = true
+				ve = &versionEdit{}
+				for _, f := range meta {
+					ve.NewFiles = append(ve.NewFiles, newFileEntry{
+						Meta:  f,
+						Level: -1,
+					})
+				}
+				d.rotateMemtable(d.mu.versions.getNextFileNum(), nextSeqNum, entry)
+				d.updateReadStateLocked(d.opts.DebugCheck, nil)
 				d.maybeScheduleFlush()
 				return
 			}
 		}
 	}
 
-	var ve *versionEdit
 	apply := func(seqNum uint64) {
-		if err != nil {
-			// An error occurred during prepare.
+		if err != nil || ingested {
+			// Skip applying if an error occurred or if we already ingested in
+			// prepare.
 			return
 		}
 
@@ -709,6 +723,91 @@ func (d *DB) ingest(paths []string, targetLevelFunc ingestTargetLevelFunc) error
 	d.opts.EventListener.TableIngested(info)
 
 	return err
+}
+
+func (d *DB) addIngestedSSTsFlushable(
+	paths []string, meta []*fileMetadata, seqNum uint64,
+) (*flushableEntry, uint64, error) {
+	b := d.NewBatch()
+	for _, path := range paths {
+		b.IngestSSTs([]byte(path), nil)
+	}
+	b.setSeqNum(seqNum)
+	b.skipMemtable = true
+
+	imm := d.mu.mem.queue[len(d.mu.mem.queue)-1]
+	logNum := imm.logNum
+
+	// TODO(mufeez): copied from replayWAL.
+	// TODO(mufeez): add details about why we want to create a new WAL, minUnflushedLogNum, replayWAL logAndApply version
+	if !d.opts.DisableWAL {
+		logNum = d.mu.versions.getNextFileNum()
+
+		newLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, logNum)
+		d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: logNum, fileSize: 0})
+		logFile, err := d.opts.FS.Create(newLogName)
+		if err != nil {
+			return nil, 0, err
+		}
+		if err := d.walDir.Sync(); err != nil {
+			return nil, 0, err
+		}
+		jobID := d.mu.nextJobID
+		d.mu.nextJobID++
+		d.opts.EventListener.WALCreated(WALCreateInfo{
+			JobID:   jobID,
+			Path:    newLogName,
+			FileNum: logNum,
+		})
+		// This isn't strictly necessary as we don't use the log number for
+		// memtables being flushed, only for the next unflushed memtable.
+		d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum = logNum
+
+		logFile = vfs.NewSyncingFile(logFile, vfs.SyncingFileOptions{
+			BytesPerSync:    d.opts.WALBytesPerSync,
+			PreallocateSize: d.walPreallocateSize(),
+		})
+		d.mu.log.LogWriter = record.NewLogWriter(logFile, logNum)
+		d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
+		d.mu.versions.metrics.WAL.Files++
+
+		d.mu.Unlock()
+		_, err = d.commit.env.write(b, nil, nil)
+		if err != nil {
+			return nil, 0, err
+		}
+		d.mu.Lock()
+	}
+
+	entry, err := d.createIngestedSSTsFlushable(meta, seqNum, logNum)
+	return entry, seqNum + b.count, err
+}
+
+func (d *DB) createIngestedSSTsFlushable(
+	meta []*fileMetadata, seqNum uint64, logNum FileNum,
+) (*flushableEntry, error) {
+
+	// Update the sequence number for all of the sstables in the
+	// metadata. Writing the metadata to the manifest when the
+	// version edit is applied is the mechanism that persists the
+	// sequence number. The sstables themselves are left unmodified.
+	if err := ingestUpdateSeqNum(
+		d.cmp, d.opts.Comparer.FormatKey, seqNum, meta,
+	); err != nil {
+		return nil, err
+	}
+
+	s := &ingestedSSTable{
+		files:                meta,
+		cmp:                  d.cmp,
+		newIters:             d.newIters,
+		tableNewRangeKeyIter: d.tableNewRangeKeyIter,
+	}
+
+	entry := d.newFlushableEntry(s, logNum, seqNum)
+	entry.flushForced = true
+	entry.releaseMemAccounting = func() {}
+	return entry, nil
 }
 
 type ingestTargetLevelFunc func(

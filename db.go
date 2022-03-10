@@ -342,7 +342,7 @@ type DB struct {
 		log struct {
 			// The queue of logs, containing both flushed and unflushed logs. The
 			// flushed logs will be a prefix, the unflushed logs a suffix. The
-			// delimeter between flushed and unflushed logs is
+			// delimiter between flushed and unflushed logs is
 			// versionSet.minUnflushedLogNum.
 			queue []fileInfo
 			// The number of input bytes to the log. This is the raw size of the
@@ -1046,9 +1046,18 @@ func constructPointIter(
 	// Next are the memtables.
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
+		var iter internalIteratorWithStats
+		var rangeDelIter keyspan.FragmentIterator
+		iter = base.WrapIterWithStats(mem.newIter(&dbi.opts))
+		switch mem.flushable.(type) {
+		case *ingestedSSTable:
+			iter.(*levelIter).initRangeDel(&rangeDelIter)
+		default:
+			rangeDelIter = mem.newRangeDelIter(&dbi.opts)
+		}
 		mlevels = append(mlevels, mergingIterLevel{
-			iter:         base.WrapIterWithStats(mem.newIter(&dbi.opts)),
-			rangeDelIter: mem.newRangeDelIter(&dbi.opts),
+			iter:         iter,
+			rangeDelIter: rangeDelIter,
 		})
 	}
 
@@ -1702,7 +1711,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			d.mu.mem.cond.Wait()
 			continue
 		}
-		if b != nil && b.flushable == nil {
+		if b != nil && b.flushable == nil && !b.skipMemtable {
 			err := d.mu.mem.mutable.prepare(b)
 			if err != arenaskl.ErrArenaFull {
 				if stalled {
@@ -1735,7 +1744,12 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				continue
 			}
 		}
-		l0ReadAmp := d.mu.versions.currentVersion().L0Sublevels.ReadAmplification()
+
+		var flushableSSTsSize int
+		for _, f := range d.mu.mem.queue.getIngestedSSTs() {
+			flushableSSTsSize += len(f.files)
+		}
+		l0ReadAmp := d.mu.versions.currentVersion().L0Sublevels.ReadAmplification() + flushableSSTsSize
 		if l0ReadAmp >= d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.
 			if !stalled {
@@ -1763,7 +1777,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			prevLogSize = uint64(d.mu.log.Size())
 
 			// The previous log may have grown past its original physical
-			// size. Update its file size in the queue so we have a proper
+			// size. Update its file size in the queue, so we have a proper
 			// accounting of its file size.
 			if d.mu.log.queue[len(d.mu.log.queue)-1].fileSize < prevLogSize {
 				d.mu.log.queue[len(d.mu.log.queue)-1].fileSize = prevLogSize
@@ -1907,28 +1921,38 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			logSeqNum = atomic.LoadUint64(&d.mu.versions.atomic.logSeqNum)
 		}
 
-		// Create a new memtable, scheduling the previous one for flushing. We do
-		// this even if the previous memtable was empty because the DB.Flush
-		// mechanism is dependent on being able to wait for the empty memtable to
-		// flush. We can't just mark the empty memtable as flushed here because we
-		// also have to wait for all previous immutable tables to
-		// flush. Additionally, the memtable is tied to particular WAL file and we
-		// want to go through the flush path in order to recycle that WAL file.
-		//
-		// NB: newLogNum corresponds to the WAL that contains mutations that are
-		// present in the new memtable. When immutable memtables are flushed to
-		// disk, a VersionEdit will be created telling the manifest the minimum
-		// unflushed log number (which will be the next one in d.mu.mem.mutable
-		// that was not flushed).
-		var entry *flushableEntry
-		d.mu.mem.mutable, entry = d.newMemTable(newLogNum, logSeqNum)
-		d.mu.mem.queue = append(d.mu.mem.queue, entry)
-		d.updateReadStateLocked(nil, nil)
-		if immMem.writerUnref() {
+		d.rotateMemtable(newLogNum, logSeqNum, nil)
+		if immMem.writerRefs == 0 {
 			d.maybeScheduleFlush()
 		}
 		force = false
 	}
+}
+
+func (d *DB) rotateMemtable(newLogNum FileNum, logSeqNum uint64, before *flushableEntry) {
+	// Create a new memtable, scheduling the previous one for flushing. We do
+	// this even if the previous memtable was empty because the DB.Flush
+	// mechanism is dependent on being able to wait for the empty memtable to
+	// flush. We can't just mark the empty memtable as flushed here because we
+	// also have to wait for all previous immutable tables to
+	// flush. Additionally, the memtable is tied to particular WAL file and we
+	// want to go through the flush path in order to recycle that WAL file.
+	//
+	// NB: newLogNum corresponds to the WAL that contains mutations that are
+	// present in the new memtable. When immutable memtables are flushed to
+	// disk, a VersionEdit will be created telling the manifest the minimum
+	// unflushed log number (which will be the next one in d.mu.mem.mutable
+	// that was not flushed).
+	immMem := d.mu.mem.mutable
+	if before != nil {
+		d.mu.mem.queue = append(d.mu.mem.queue, before)
+	}
+
+	var entry *flushableEntry
+	d.mu.mem.mutable, entry = d.newMemTable(newLogNum, logSeqNum)
+	d.mu.mem.queue = append(d.mu.mem.queue, entry)
+	d.updateReadStateLocked(nil, nil)
+	immMem.writerUnref()
 }
 
 func (d *DB) getEarliestUnflushedSeqNumLocked() uint64 {

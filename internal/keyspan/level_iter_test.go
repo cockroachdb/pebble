@@ -420,7 +420,7 @@ func TestLevelIter(t *testing.T) {
 				b.Added[6] = metas
 				v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
 				require.NoError(t, err)
-				iter = newLevelIter(RangeIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 6, &testLogger{t})
+				iter = NewLevelIter(RangeIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 6, &testLogger{t})
 				extraInfo = func() string {
 					return fmt.Sprintf("file = %s.sst", lastFileNum)
 				}

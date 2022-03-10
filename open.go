@@ -11,7 +11,10 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -340,25 +343,13 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		return logFiles[i].num < logFiles[j].num
 	})
 
-	var ve versionEdit
-	for i, lf := range logFiles {
-		lastWAL := i == len(logFiles)-1
-		maxSeqNum, err := d.replayWAL(jobID, &ve, opts.FS,
-			opts.FS.PathJoin(d.walDirname, lf.name), lf.num, strictWALTail && !lastWAL)
-		if err != nil {
-			return nil, err
-		}
-		d.mu.versions.markFileNumUsed(lf.num)
-		if d.mu.versions.atomic.logSeqNum < maxSeqNum {
-			d.mu.versions.atomic.logSeqNum = maxSeqNum
-		}
-	}
-	d.mu.versions.atomic.visibleSeqNum = d.mu.versions.atomic.logSeqNum
-
+	var newLogNum FileNum
 	if !d.opts.ReadOnly {
 		// Create an empty .log file.
-		newLogNum := d.mu.versions.getNextFileNum()
+		newLogNum = d.mu.versions.getNextFileNum()
+	}
 
+	applyVE := func(newLogNum FileNum, ve *versionEdit) error {
 		// This logic is slightly different than RocksDB's. Specifically, RocksDB
 		// sets MinUnflushedLogNum to max-recovered-log-num + 1. We set it to the
 		// newLogNum. There should be no difference in using either value.
@@ -369,12 +360,62 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		// crash before the manifest is synced could leave two WALs with
 		// unclean tails.
 		d.mu.versions.logLock()
-		if err := d.mu.versions.logAndApply(jobID, &ve, newFileMetrics(ve.NewFiles), false /* forceRotation */, func() []compactionInfo {
-			return nil
-		}); err != nil {
+		if err := d.mu.versions.logAndApply(jobID, ve, newFileMetrics(ve.NewFiles), false, /* forceRotation */
+			func() []compactionInfo { return nil }); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	for i, lf := range logFiles {
+		lastWAL := i == len(logFiles)-1
+		toFlush, maxSeqNum, err := d.replayWAL(jobID, opts.FS, opts.FS.PathJoin(d.walDirname, lf.name),
+			lf.num, strictWALTail && !lastWAL)
+		if err != nil {
 			return nil, err
 		}
 
+		d.mu.versions.markFileNumUsed(lf.num)
+		if d.mu.versions.atomic.logSeqNum < maxSeqNum {
+			d.mu.versions.atomic.logSeqNum = maxSeqNum
+		}
+
+		if !d.opts.ReadOnly {
+			for _, flush := range splitFlushables(toFlush) {
+				c := newFlush(d.opts, d.mu.versions.currentVersion(),
+					1 /* base level */, flush, &d.atomic.bytesFlushed)
+				ve, _, err := d.runCompaction(jobID, c, nilPacer)
+				if err != nil {
+					return nil, err
+				}
+
+				// TODO(jackson): Remove the below call to applyFlushedRangeKeys once
+				// flushes actually persist range keys to sstables.
+				err = d.applyFlushedRangeKeys(toFlush)
+				if err != nil {
+					return nil, err
+				}
+
+				err = applyVE(newLogNum, ve)
+				if err != nil {
+					return nil, err
+				}
+
+				for i := range flush {
+					flush[i].readerUnref()
+				}
+			}
+		}
+	}
+	d.mu.versions.atomic.visibleSeqNum = d.mu.versions.atomic.logSeqNum
+
+	if !d.opts.ReadOnly {
+		if logFiles == nil {
+			err = applyVE(newLogNum, &versionEdit{})
+			if err != nil {
+				return nil, err
+			}
+		}
 		newLogName := base.MakeFilepath(opts.FS, d.walDirname, fileTypeLog, newLogNum)
 		d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: 0})
 		logFile, err := opts.FS.Create(newLogName)
@@ -547,11 +588,11 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) replayWAL(
-	jobID int, ve *versionEdit, fs vfs.FS, filename string, logNum FileNum, strictWALTail bool,
-) (maxSeqNum uint64, err error) {
+	jobID int, fs vfs.FS, filename string, logNum FileNum, strictWALTail bool,
+) (toFlush flushableList, maxSeqNum uint64, err error) {
 	file, err := fs.Open(filename)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	defer file.Close()
 
@@ -560,7 +601,6 @@ func (d *DB) replayWAL(
 		buf             bytes.Buffer
 		mem             *memTable
 		entry           *flushableEntry
-		toFlush         flushableList
 		rr              = record.NewReader(file, logNum)
 		offset          int64 // byte offset in rr
 		lastFlushOffset int64
@@ -621,11 +661,11 @@ func (d *DB) replayWAL(
 			} else if record.IsInvalidRecord(err) && !strictWALTail {
 				break
 			}
-			return 0, errors.Wrap(err, "pebble: error when replaying WAL")
+			return nil, 0, errors.Wrap(err, "pebble: error when replaying WAL")
 		}
 
 		if buf.Len() < batchHeaderLen {
-			return 0, base.CorruptionErrorf("pebble: corrupt log file %q (num %s)",
+			return nil, 0, base.CorruptionErrorf("pebble: corrupt log file %q (num %s)",
 				filename, errors.Safe(logNum))
 		}
 
@@ -635,6 +675,57 @@ func (d *DB) replayWAL(
 		b.SetRepr(buf.Bytes())
 		seqNum := b.SeqNum()
 		maxSeqNum = seqNum + uint64(b.Count())
+
+		br := b.Reader()
+		if kind, key, _, _ := br.Next(); kind == InternalKeyKindIngestSST {
+			d.mu.Unlock()
+			fmv := d.FormatMajorVersion()
+			d.mu.Lock()
+			if fmv < FormatFlushableSSTs {
+				panic(fmt.Sprintf(
+					"pebble: flushable sstables require at least format major version %d (current: %d)",
+					FormatFlushableSSTs, fmv,
+				))
+			}
+
+			paths := make([]string, b.count)
+			pendingOutputs := make([]FileNum, b.count)
+			i := 0
+			addPath := func(path []byte) error {
+				paths[i] = string(path)
+				fileNum, err := strconv.Atoi(strings.TrimSuffix(filepath.Base(string(path)), filepath.Ext(string(path))))
+				if err != nil {
+					return err
+				}
+				pendingOutputs[i] = FileNum(fileNum)
+				i++
+				return nil
+			}
+			err := addPath(key)
+			if err != nil {
+				return nil, 0, err
+			}
+			for {
+				kind, key, _, ok := br.Next()
+				if !ok {
+					break
+				}
+				if kind != InternalKeyKindIngestSST {
+					panic("")
+				}
+				addPath(key)
+			}
+			meta, paths, err := ingestLoad(d.opts, fmv, paths, d.cacheID, pendingOutputs)
+			if err != nil {
+				return nil, 0, err
+			}
+
+			flushMem()
+			entry, _ = d.createIngestedSSTsFlushable(meta, seqNum, logNum)
+			toFlush = append(toFlush, entry)
+			buf.Reset()
+			continue
+		}
 
 		if b.memTableSize >= uint64(d.largeBatchThreshold) {
 			flushMem()
@@ -654,7 +745,7 @@ func (d *DB) replayWAL(
 		} else {
 			ensureMem(seqNum)
 			if err = mem.prepare(&b); err != nil && err != arenaskl.ErrArenaFull {
-				return 0, err
+				return nil, 0, err
 			}
 			// We loop since DB.newMemTable() slowly grows the size of allocated memtables, so the
 			// batch may not initially fit, but will eventually fit (since it is smaller than
@@ -664,37 +755,18 @@ func (d *DB) replayWAL(
 				ensureMem(seqNum)
 				err = mem.prepare(&b)
 				if err != nil && err != arenaskl.ErrArenaFull {
-					return 0, err
+					return nil, 0, err
 				}
 			}
 			if err = mem.apply(&b, seqNum); err != nil {
-				return 0, err
+				return nil, 0, err
 			}
 			mem.writerUnref()
 		}
 		buf.Reset()
 	}
 	flushMem()
-	// mem is nil here.
-	if !d.opts.ReadOnly {
-		c := newFlush(d.opts, d.mu.versions.currentVersion(),
-			1 /* base level */, toFlush, &d.atomic.bytesFlushed)
-		newVE, _, err := d.runCompaction(jobID, c, nilPacer)
-		if err != nil {
-			return 0, err
-		}
-		// TODO(jackson): Remove the below call to applyFlushedRangeKeys once
-		// flushes actually persist range keys to sstables.
-		err = d.applyFlushedRangeKeys(toFlush)
-		if err != nil {
-			return 0, err
-		}
-		ve.NewFiles = append(ve.NewFiles, newVE.NewFiles...)
-		for i := range toFlush {
-			toFlush[i].readerUnref()
-		}
-	}
-	return maxSeqNum, err
+	return toFlush, maxSeqNum, err
 }
 
 func checkOptions(opts *Options, path string) (strictWALTail bool, err error) {

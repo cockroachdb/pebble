@@ -82,11 +82,14 @@ func (d *DB) loadReadState() *readState {
 // executed atomically with the transition to the new read state.
 func (d *DB) updateReadStateLocked(checker func(*DB) error, atomicFunc func()) {
 	s := &readState{
-		db:        d,
-		refcnt:    1,
-		current:   d.mu.versions.currentVersion(),
-		memtables: d.mu.mem.queue,
+		db:      d,
+		refcnt:  1,
+		current: d.mu.versions.currentVersion(),
+		// Create a copy of the flushableList so that we can swap the elements in
+		// d.mu.mem.queue
+		memtables: append([]*flushableEntry(nil), d.mu.mem.queue...),
 	}
+
 	s.current.Ref()
 	for _, mem := range s.memtables {
 		mem.readerRef()

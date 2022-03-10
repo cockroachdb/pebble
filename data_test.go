@@ -862,8 +862,24 @@ func (d *DB) waitTableStats() {
 
 func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	paths := make([]string, 0, len(td.CmdArgs))
+	blockFlush := false
 	for _, arg := range td.CmdArgs {
+		if arg.Key == "block-flush" {
+			blockFlush = true
+			continue
+		}
 		paths = append(paths, arg.String())
+	}
+
+	if blockFlush {
+		d.mu.Lock()
+		d.mu.compact.flushing = true
+		d.mu.Unlock()
+		defer func() {
+			d.mu.Lock()
+			d.mu.compact.flushing = false
+			d.mu.Unlock()
+		}()
 	}
 
 	if err := d.Ingest(paths); err != nil {

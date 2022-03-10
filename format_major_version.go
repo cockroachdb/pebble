@@ -87,11 +87,14 @@ const (
 	FormatMarkedCompacted
 	// FormatRangeKeys is a format major version that introduces range keys.
 	FormatRangeKeys
+	// FormatFlushableSSTs is a format major version that introduces flushable
+	// ingested SSTables.
+	FormatFlushableSSTs
 	// FormatNewest always contains the most recent format major version.
 	// NB: When adding new versions, the MaxTableFormat method should also be
 	// updated to return the maximum allowable version for the new
 	// FormatMajorVersion.
-	FormatNewest FormatMajorVersion = FormatRangeKeys
+	FormatNewest FormatMajorVersion = FormatFlushableSSTs
 )
 
 // MaxTableFormat returns the maximum sstable.TableFormat that can be used at
@@ -103,7 +106,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatRocksDBv2
 	case FormatBlockPropertyCollector, FormatSplitUserKeysMarked, FormatMarkedCompacted:
 		return sstable.TableFormatPebblev1
-	case FormatRangeKeys:
+	case FormatRangeKeys, FormatFlushableSSTs:
 		return sstable.TableFormatPebblev2
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -205,6 +208,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatRangeKeys: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatRangeKeys)
+	},
+	FormatFlushableSSTs: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatFlushableSSTs)
 	},
 }
 

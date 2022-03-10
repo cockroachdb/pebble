@@ -507,6 +507,8 @@ func (o *ingestOp) collapseBatch(
 				err = collapsed.Merge(key.UserKey, value, nil)
 			case pebble.InternalKeyKindLogData:
 				err = collapsed.LogData(key.UserKey, nil)
+			case pebble.InternalKeyKindIngestSST:
+				err = collapsed.IngestSSTs(key.UserKey, nil)
 			default:
 				err = errors.Errorf("unknown batch record kind: %d", key.Kind())
 			}

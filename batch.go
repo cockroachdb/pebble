@@ -160,6 +160,7 @@ func (d DeferredBatchOp) Finish() error {
 //
 //   InternalKeyKindDelete         varstring
 //   InternalKeyKindLogData        varstring
+//   InternalKeyKindIngestSST      varstring
 //   InternalKeyKindSet            varstring varstring
 //   InternalKeyKindMerge          varstring varstring
 //   InternalKeyKindRangeDelete    varstring varstring
@@ -245,9 +246,10 @@ type Batch struct {
 	// memtable.
 	flushable *flushableBatch
 
-	commit    sync.WaitGroup
-	commitErr error
-	applied   uint32 // updated atomically
+	commit       sync.WaitGroup
+	commitErr    error
+	applied      uint32 // updated atomically
+	skipMemtable bool
 }
 
 var _ Reader = (*Batch)(nil)
@@ -328,13 +330,17 @@ func (b *Batch) refreshMemTableSize() {
 		if !ok {
 			break
 		}
-		b.memTableSize += memTableEntrySize(len(key), len(value))
 		switch kind {
 		case InternalKeyKindRangeDelete:
 			b.countRangeDels++
 		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 			b.countRangeKeys++
+		case InternalKeyKindIngestSST:
+			// InternalKeyKindIngestSST does not contribute to the size of the
+			// memtable.
+			continue
 		}
+		b.memTableSize += memTableEntrySize(len(key), len(value))
 	}
 }
 
@@ -754,13 +760,32 @@ func (b *Batch) RangeKeyDeleteDeferred(startLen, endLen int) *DeferredBatchOp {
 //
 // It is safe to modify the contents of the argument after LogData returns.
 func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
+	return b.writeRecordToWALOnly(data, InternalKeyKindLogData, true)
+}
+
+// IngestSSTs adds the list of sstable paths to the batch. The data will only be
+// written to the WAL (not added to memtables or sstables).
+func (b *Batch) IngestSSTs(data []byte, _ *WriteOptions) error {
+	return b.writeRecordToWALOnly(data, InternalKeyKindIngestSST, false)
+}
+
+// writeRecordToWALOnly writes a record to a batch that will not be applied to
+// the memtable. `keepCount` dictates whether we restore batch.Count.
+func (b *Batch) writeRecordToWALOnly(data []byte, kind InternalKeyKind, keepCount bool) error {
 	origCount, origMemTableSize := b.count, b.memTableSize
-	b.prepareDeferredKeyRecord(len(data), InternalKeyKindLogData)
+	defer func() {
+		b.memTableSize = origMemTableSize
+		if keepCount {
+			b.count = origCount
+		}
+	}()
+
+	b.prepareDeferredKeyRecord(len(data), kind)
 	copy(b.deferredOp.Key, data)
-	// Since LogData only writes to the WAL and does not affect the memtable, we
-	// restore b.count and b.memTableSize to their origin values. Note that
-	// Batch.count only refers to records that are added to the memtable.
-	b.count, b.memTableSize = origCount, origMemTableSize
+	// Restore b.count and b.memTableSize to their origin values since this batch
+	// is not written to the memtable. Note that Batch.count only refers to
+	// records that are added to the memtable.
+	b.memTableSize = origMemTableSize
 	return nil
 }
 

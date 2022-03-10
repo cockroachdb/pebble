@@ -280,7 +280,9 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 // sstable ingestion within the commit pipeline. The prepare callback is
 // invoked with commitPipeline.mu held, but note that DB.mu is not held and
 // must be locked if necessary.
-func (p *commitPipeline) AllocateSeqNum(count int, prepare func(), apply func(seqNum uint64)) {
+func (p *commitPipeline) AllocateSeqNum(
+	count int, prepare func(seqNum uint64), apply func(seqNum uint64),
+) {
 	// This method is similar to Commit and prepare. Be careful about trying to
 	// share additional code with those methods because Commit and prepare are
 	// performance critical code paths.
@@ -331,7 +333,7 @@ func (p *commitPipeline) AllocateSeqNum(count int, prepare func(), apply func(se
 	// Invoke the prepare callback. Note the lack of error reporting. Even if the
 	// callback internally fails, the sequence number needs to be published in
 	// order to allow the commit pipeline to proceed.
-	prepare()
+	prepare(seqNum)
 
 	p.mu.Unlock()
 

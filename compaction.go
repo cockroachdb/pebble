@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"reflect"
 	"runtime/pprof"
 	"sort"
 	"strings"
@@ -282,6 +283,7 @@ type compactionKind int
 const (
 	compactionKindDefault compactionKind = iota
 	compactionKindFlush
+	compactionKindFlushIngest
 	compactionKindMove
 	compactionKindDeleteOnly
 	compactionKindElisionOnly
@@ -295,6 +297,8 @@ func (k compactionKind) String() string {
 		return "default"
 	case compactionKindFlush:
 		return "flush"
+	case compactionKindFlushIngest:
+		return "ingest"
 	case compactionKindMove:
 		return "move"
 	case compactionKindDeleteOnly:
@@ -564,6 +568,39 @@ func adjustGrandparentOverlapBytesForFlush(c *compaction, flushingBytes uint64) 
 	}
 }
 
+// splitFlushables segments the flushableList into chunks with all flushables of
+// type ingested SSTs or none of type ingested SSTs.
+func splitFlushables(flushing flushableList) []flushableList {
+	shouldSplit := func(a, b *flushableEntry) bool {
+		// Split only if we're adding an ingestedSSTable and the last item isn't an ingestedSSTable
+		switch b.flushable.(type) {
+		case *ingestedSSTable:
+			return reflect.TypeOf(a.flushable) != reflect.TypeOf(b.flushable)
+		}
+		// b is not an ingestedSSTable.
+		switch a.flushable.(type) {
+		case *ingestedSSTable:
+			return true
+		}
+		return false
+	}
+
+	var flushes []flushableList
+	for i, f := range flushing {
+		if i == 0 || shouldSplit(flushing[i-1], f) {
+			flushes = append(flushes, flushableList{f})
+		} else {
+			flushes[len(flushes)-1] = append(flushes[len(flushes)-1], f)
+		}
+	}
+	// We want to maintain the behaviour that if d.mu.mem.queue is empty, a flush
+	// is still scheduled.
+	if flushes == nil {
+		flushes = append(flushes, flushableList{})
+	}
+	return flushes
+}
+
 func newFlush(
 	opts *Options, cur *version, baseLevel int, flushing flushableList, bytesFlushed *uint64,
 ) *compaction {
@@ -584,6 +621,13 @@ func newFlush(
 	c.outputLevel = &c.inputs[1]
 	if cur.L0Sublevels != nil {
 		c.l0Limits = cur.L0Sublevels.FlushSplitKeys()
+	}
+
+	if len(flushing.getIngestedSSTs()) == len(flushing) {
+		// We only have ingested SSTs to flush.
+		c.kind = compactionKindFlushIngest
+		// TODO(mufeez): can we return here?
+		return c
 	}
 
 	smallestSet, largestSet := false, false
@@ -622,8 +666,7 @@ func newFlush(
 	}
 
 	var flushingBytes uint64
-	for i := range flushing {
-		f := flushing[i]
+	for _, f := range flushing.getMemtables() {
 		updatePointBounds(f.newIter(nil))
 		if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
 			updateRangeBounds(rangeDelIter)
@@ -914,11 +957,11 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		}
 		iters := make([]internalIterator, 0, len(c.flushing)+1)
 		rangeDelIters = make([]keyspan.FragmentIterator, 0, len(c.flushing))
-		for i := range c.flushing {
-			f := c.flushing[i]
-			iters = append(iters, f.newFlushIter(nil, &c.bytesIterated))
-			rangeDelIter := f.newRangeDelIter(nil)
-			if rangeDelIter != nil {
+		for _, f := range c.flushing {
+			if flushIter := f.newFlushIter(nil, &c.bytesIterated); flushIter != nil {
+				iters = append(iters, flushIter)
+			}
+			if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
 				rangeDelIters = append(rangeDelIters, rangeDelIter)
 			}
 		}
@@ -1324,7 +1367,8 @@ func (d *DB) maybeScheduleFlush() {
 func (d *DB) passedFlushThreshold() bool {
 	var n int
 	var size uint64
-	for ; n < len(d.mu.mem.queue)-1; n++ {
+	flushables := len(d.mu.mem.queue) - 1
+	for ; n < flushables; n++ {
 		if !d.mu.mem.queue[n].readyForFlush() {
 			break
 		}
@@ -1444,9 +1488,52 @@ func (d *DB) flush1() error {
 		}
 	}
 
-	c := newFlush(d.opts, d.mu.versions.currentVersion(),
-		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n], &d.atomic.bytesFlushed)
-	d.addInProgressCompaction(c)
+	runFlush := func(jobID int, flushing flushableList) (*versionEdit, error) {
+		c := newFlush(d.opts, d.mu.versions.currentVersion(),
+			d.mu.versions.picker.getBaseLevel(), flushing, &d.atomic.bytesFlushed)
+		d.addInProgressCompaction(c)
+
+		flushPacer := (pacer)(nilPacer)
+		if d.opts.private.enablePacing {
+			// TODO(peter): Flush pacing is disabled until we figure out why it impacts
+			// throughput.
+			flushPacer = newFlushPacer(flushPacerEnv{
+				limiter:      d.flushLimiter,
+				memTableSize: uint64(d.opts.MemTableSize),
+				getInfo:      d.getFlushPacerInfo,
+			})
+		}
+		ve, pendingOutputs, err := d.runCompaction(jobID, c, flushPacer)
+
+		if err == nil {
+			// The flush succeeded or it produced an empty sstable. In either case we
+			// want to bump the minimum unflushed log number to the log number of the
+			// oldest unflushed memtable.
+			ve.MinUnflushedLogNum = minUnflushedLogNum
+			metrics := c.metrics[0]
+			for _, f := range flushing {
+				metrics.BytesIn += f.logSize
+			}
+
+			d.mu.versions.logLock()
+			err = d.mu.versions.logAndApply(jobID, ve, c.metrics, false, /* forceRotation */
+				func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) })
+			if err != nil {
+				// TODO(peter): untested.
+				d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
+				d.mu.versions.incrementObsoleteTablesLocked(pendingOutputs)
+			}
+		}
+
+		d.maybeUpdateDeleteCompactionHints(c)
+		d.removeInProgressCompaction(c)
+		d.mu.versions.incrementCompactions(c.kind)
+		d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
+		return ve, err
+	}
+
+	var err error
+	ve := versionEdit{}
 
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
@@ -1456,18 +1543,6 @@ func (d *DB) flush1() error {
 	})
 	startTime := d.timeNow()
 
-	flushPacer := (pacer)(nilPacer)
-	if d.opts.private.enablePacing {
-		// TODO(peter): Flush pacing is disabled until we figure out why it impacts
-		// throughput.
-		flushPacer = newFlushPacer(flushPacerEnv{
-			limiter:      d.flushLimiter,
-			memTableSize: uint64(d.opts.MemTableSize),
-			getInfo:      d.getFlushPacerInfo,
-		})
-	}
-	ve, pendingOutputs, err := d.runCompaction(jobID, c, flushPacer)
-
 	info := FlushInfo{
 		JobID:    jobID,
 		Input:    n,
@@ -1475,53 +1550,34 @@ func (d *DB) flush1() error {
 		Done:     true,
 		Err:      err,
 	}
-	if err == nil {
-		for i := range ve.NewFiles {
-			e := &ve.NewFiles[i]
-			info.Output = append(info.Output, e.Meta.TableInfo())
-		}
-		if len(ve.NewFiles) == 0 {
-			info.Err = errEmptyTable
-		}
-
-		// The flush succeeded or it produced an empty sstable. In either case we
-		// want to bump the minimum unflushed log number to the log number of the
-		// oldest unflushed memtable.
-		ve.MinUnflushedLogNum = minUnflushedLogNum
-		metrics := c.metrics[0]
-		for i := 0; i < n; i++ {
-			metrics.BytesIn += d.mu.mem.queue[i].logSize
-		}
-
-		d.mu.versions.logLock()
-		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, false, /* forceRotation */
-			func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) })
-		if err != nil {
-			// TODO(peter): untested.
-			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
-			d.mu.versions.incrementObsoleteTablesLocked(pendingOutputs)
-		}
-	}
-
-	d.maybeUpdateDeleteCompactionHints(c)
-	d.removeInProgressCompaction(c)
-	d.mu.versions.incrementCompactions(c.kind)
-	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
-
-	// Refresh bytes flushed count.
-	atomic.StoreUint64(&d.atomic.bytesFlushed, 0)
 
 	var flushed flushableList
-	if err == nil {
-		flushed = d.mu.mem.queue[:n]
-		d.mu.mem.queue = d.mu.mem.queue[n:]
+	for _, flush := range splitFlushables(d.mu.mem.queue[:n]) {
+		cve, err := runFlush(jobID, flush)
+		if err != nil {
+			break
+		}
+		flushed = append(flushed, d.mu.mem.queue[:len(flush)]...)
+		d.mu.mem.queue = d.mu.mem.queue[len(flush):]
 		d.updateReadStateLocked(d.opts.DebugCheck, func() {
 			// TODO(jackson): Remove this, plus this updateReadStateLocked
 			// parameter when range keys are persisted to sstables.
 			err = d.applyFlushedRangeKeys(flushed)
 		})
-		d.updateTableStatsLocked(ve.NewFiles)
+		d.updateTableStatsLocked(cve.NewFiles)
+		ve.NewFiles = append(ve.NewFiles, cve.NewFiles...)
 	}
+
+	// Refresh bytes flushed count.
+	atomic.StoreUint64(&d.atomic.bytesFlushed, 0)
+
+	for _, e := range ve.NewFiles {
+		info.Output = append(info.Output, e.Meta.TableInfo())
+	}
+	if len(ve.NewFiles) == 0 {
+		info.Err = errEmptyTable
+	}
+
 	// Signal FlushEnd after installing the new readState. This helps for unit
 	// tests that use the callback to trigger a read using an iterator with
 	// IterOptions.OnlyReadGuaranteedDurable.
@@ -2031,6 +2087,37 @@ func (d *DB) runCompaction(
 		return ve, nil, nil
 	}
 
+	if c.kind == compactionKindFlushIngest {
+		c.metrics = make(map[int]*LevelMetrics, numLevels)
+		baseLevel := d.mu.versions.picker.getBaseLevel()
+		iterOps := IterOptions{logger: d.opts.Logger}
+		ve := &versionEdit{}
+		for _, f := range c.flushing {
+			switch f.flushable.(type) {
+			case *ingestedSSTable:
+				for _, file := range f.flushable.(*ingestedSSTable).files {
+					level, err := ingestTargetLevel(d.newIters, iterOps, d.cmp, c.version, baseLevel, d.mu.compact.inProgress, file)
+					if err != nil {
+						return nil, nil, err
+					}
+					ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: file})
+					levelMetrics := c.metrics[level]
+					if levelMetrics == nil {
+						levelMetrics = &LevelMetrics{}
+						c.metrics[level] = levelMetrics
+					}
+					levelMetrics.NumFiles++
+					levelMetrics.Size += int64(file.Size)
+					levelMetrics.BytesIngested += file.Size
+					levelMetrics.TablesIngested++
+				}
+			default:
+				panic("") // TODO(mufeez): write message
+			}
+		}
+		return ve, nil, nil
+	}
+
 	defer func() {
 		if retErr != nil {
 			pendingOutputs = nil
@@ -2152,13 +2239,13 @@ func (d *DB) runCompaction(
 			Meta:  fileMeta,
 		})
 		return nil
-	}
+	} // newOutput
 
 	// splitL0Outputs is true during flushes and intra-L0 compactions with flush
 	// splits enabled.
 	splitL0Outputs := c.outputLevel.level == 0 && d.opts.FlushSplitBytes > 0
 
-	// finishOutput is called with the a user key up to which all tombstones
+	// finishOutput is called with a user key up to which all tombstones
 	// should be flushed. Typically, this is the first key of the next
 	// sstable or an empty key if this output is the final sstable.
 	finishOutput := func(splitKey []byte) error {
@@ -2336,7 +2423,7 @@ func (d *DB) runCompaction(
 			return err
 		}
 		return nil
-	}
+	} // finishOutput
 
 	// compactionOutputSplitters contain all logic to determine whether the
 	// compaction loop should stop writing to one output sstable and switch to
@@ -2528,6 +2615,12 @@ func (d *DB) scanObsoleteFiles(list []string) {
 
 	liveFileNums := make(map[FileNum]struct{})
 	d.mu.versions.addLiveFileNums(liveFileNums)
+	for _, f := range d.mu.mem.queue.getIngestedSSTs() {
+		for _, file := range f.files {
+			liveFileNums[file.FileNum] = struct{}{}
+		}
+	}
+
 	minUnflushedLogNum := d.mu.versions.minUnflushedLogNum
 	manifestFileNum := d.mu.versions.manifestFileNum
 
