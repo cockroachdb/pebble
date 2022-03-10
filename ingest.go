@@ -46,11 +46,7 @@ func ingestValidateKey(opts *Options, key *InternalKey) error {
 }
 
 func ingestLoad1(
-	opts *Options,
-	fmv FormatMajorVersion,
-	path string,
-	cacheID uint64,
-	fileNum FileNum,
+	opts *Options, fmv FormatMajorVersion, path string, cacheID uint64, fileNum FileNum,
 ) (*fileMetadata, error) {
 	stat, err := opts.FS.Stat(path)
 	if err != nil {
@@ -199,11 +195,7 @@ func ingestLoad1(
 }
 
 func ingestLoad(
-	opts *Options,
-	fmv FormatMajorVersion,
-	paths []string,
-	cacheID uint64,
-	pending []FileNum,
+	opts *Options, fmv FormatMajorVersion, paths []string, cacheID uint64, pending []FileNum,
 ) ([]*fileMetadata, []string, error) {
 	meta := make([]*fileMetadata, 0, len(paths))
 	newPaths := make([]string, 0, len(paths))
@@ -343,10 +335,7 @@ func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bo
 }
 
 func ingestUpdateSeqNum(
-	cmp Compare,
-	format base.FormatKey,
-	seqNum uint64,
-	meta []*fileMetadata,
+	cmp Compare, format base.FormatKey, seqNum uint64, meta []*fileMetadata,
 ) error {
 	setSeqFn := func(k base.InternalKey) base.InternalKey {
 		return base.MakeInternalKey(k.UserKey, seqNum, k.Kind())
@@ -732,7 +721,9 @@ type ingestTargetLevelFunc func(
 	meta *fileMetadata,
 ) (int, error)
 
-func (d *DB) ingestApply(jobID int, meta []*fileMetadata, findTargetLevel ingestTargetLevelFunc) (*versionEdit, error) {
+func (d *DB) ingestApply(
+	jobID int, meta []*fileMetadata, findTargetLevel ingestTargetLevelFunc,
+) (*versionEdit, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 

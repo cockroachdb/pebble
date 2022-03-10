@@ -268,11 +268,7 @@ func formatKeyRange(w io.Writer, fmtKey keyFormatter, start, end *base.InternalK
 }
 
 func formatKeyValue(
-	w io.Writer,
-	fmtKey keyFormatter,
-	fmtValue valueFormatter,
-	key *base.InternalKey,
-	value []byte,
+	w io.Writer, fmtKey keyFormatter, fmtValue valueFormatter, key *base.InternalKey, value []byte,
 ) {
 	if key.Kind() == base.InternalKeyKindRangeDelete {
 		if fmtKey.spec != "null" {

@@ -205,7 +205,9 @@ func (i *InterleavingIter) SeekGE(key []byte, trySeekUsingNext bool) (*base.Inte
 //
 // NB: In accordance with the base.InternalIterator contract:
 //   i.lower ≤ key
-func (i *InterleavingIter) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
+func (i *InterleavingIter) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*base.InternalKey, []byte) {
 	i.pointKey, i.pointVal = i.pointIter.SeekPrefixGE(prefix, key, trySeekUsingNext)
 	i.pointKeyInterleaved = false
 	i.nextRangeKey(i.rangeKeyIter.SeekGE(key))
@@ -594,7 +596,9 @@ func (i *InterleavingIter) yieldPointKey(covered bool) (*base.InternalKey, []byt
 	return i.verify(i.pointKey, i.pointVal)
 }
 
-func (i *InterleavingIter) yieldSyntheticRangeKeyMarker(lowerBound []byte) (*base.InternalKey, []byte) {
+func (i *InterleavingIter) yieldSyntheticRangeKeyMarker(
+	lowerBound []byte,
+) (*base.InternalKey, []byte) {
 	i.rangeKeyMarker.UserKey = i.rangeKey.Start
 	i.rangeKeyMarker.Trailer = base.InternalKeyBoundaryRangeKey
 	i.rangeKeyInterleaved = true

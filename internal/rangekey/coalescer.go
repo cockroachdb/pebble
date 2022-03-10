@@ -148,7 +148,9 @@ type Coalescer struct {
 }
 
 // Init initializes a coalescer.
-func (c *Coalescer) Init(cmp base.Compare, formatKey base.FormatKey, visibleSeqNum uint64, emit func(CoalescedSpan)) {
+func (c *Coalescer) Init(
+	cmp base.Compare, formatKey base.FormatKey, visibleSeqNum uint64, emit func(CoalescedSpan),
+) {
 	c.emit = emit
 	c.formatKey = formatKey
 	c.visibleSeqNum = visibleSeqNum

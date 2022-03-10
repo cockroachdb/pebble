@@ -16,15 +16,14 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
-
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/rand"
 )
 
 var testKeyValuePairs = []string{
@@ -469,7 +468,9 @@ func (m *deletableSumValueMerger) Finish(includesBase bool) ([]byte, io.Closer, 
 	return []byte(strconv.FormatInt(m.sum, 10)), nil, nil
 }
 
-func (m *deletableSumValueMerger) DeletableFinish(includesBase bool) ([]byte, bool, io.Closer, error) {
+func (m *deletableSumValueMerger) DeletableFinish(
+	includesBase bool,
+) ([]byte, bool, io.Closer, error) {
 	value, closer, err := m.Finish(includesBase)
 	return value, len(value) == 0, closer, err
 }
@@ -922,7 +923,9 @@ func (i *iterSeekOptWrapper) SeekGE(key []byte, trySeekUsingNext bool) (*Interna
 	return i.internalIterator.SeekGE(key, trySeekUsingNext)
 }
 
-func (i *iterSeekOptWrapper) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+func (i *iterSeekOptWrapper) SeekPrefixGE(
+	prefix, key []byte, trySeekUsingNext bool,
+) (*InternalKey, []byte) {
 	if trySeekUsingNext {
 		*i.seekPrefixGEUsingNext++
 	}

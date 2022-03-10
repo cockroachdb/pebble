@@ -6,6 +6,10 @@ package tool
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
+	"text/tabwriter"
+
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble"
@@ -16,9 +20,6 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/tool/logs"
 	"github.com/spf13/cobra"
-	"io"
-	"io/ioutil"
-	"text/tabwriter"
 )
 
 // dbT implements db-level tools, including both configuration state and the

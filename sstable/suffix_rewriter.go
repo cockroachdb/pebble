@@ -25,7 +25,12 @@ import (
 // Any block and table property collectors configured in the WriterOptions must
 // implement SuffixReplaceableTableCollector/SuffixReplaceableBlockCollector.
 func RewriteKeySuffixes(
-	sst []byte, rOpts ReaderOptions, out writeCloseSyncer, o WriterOptions, from, to []byte, concurrency int,
+	sst []byte,
+	rOpts ReaderOptions,
+	out writeCloseSyncer,
+	o WriterOptions,
+	from, to []byte,
+	concurrency int,
 ) (*WriterMetadata, error) {
 	r, err := NewMemReader(sst, rOpts)
 	if err != nil {
@@ -98,8 +103,12 @@ type blockWithSpan struct {
 }
 
 func rewriteBlocks(
-	r *Reader, restartInterval int, checksumType ChecksumType, compression Compression,
-	input []BlockHandleWithProperties, output []blockWithSpan,
+	r *Reader,
+	restartInterval int,
+	checksumType ChecksumType,
+	compression Compression,
+	input []BlockHandleWithProperties,
+	output []blockWithSpan,
 	totalWorkers, worker int,
 	from, to []byte,
 	split Split,
@@ -189,10 +198,12 @@ func rewriteBlocks(
 }
 
 func rewriteDataBlocksToWriter(
-	r *Reader, w *Writer,
+	r *Reader,
+	w *Writer,
 	data []BlockHandleWithProperties,
 	from, to []byte,
-	split Split, concurrency int,
+	split Split,
+	concurrency int,
 ) error {
 	blocks := make([]blockWithSpan, len(data))
 

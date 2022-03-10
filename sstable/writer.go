@@ -313,7 +313,9 @@ func newIndexBlockBuf() *indexBlockBuf {
 	return i
 }
 
-func (i *indexBlockBuf) shouldFlush(sep InternalKey, valueLen, targetBlockSize, sizeThreshold int) bool {
+func (i *indexBlockBuf) shouldFlush(
+	sep InternalKey, valueLen, targetBlockSize, sizeThreshold int,
+) bool {
 	if i.size.useMutex {
 		i.size.mu.Lock()
 		defer i.size.mu.Unlock()
@@ -378,7 +380,9 @@ type dataBlockEstimates struct {
 // newTotalSize is the new w.meta.Size. inflightSize is the uncompressed block size estimate which
 // was previously added to sizeEstimate.inflightSize. writtenSize is the compressed size of the block
 // which was written to disk.
-func (d *dataBlockEstimates) dataBlockWritten(newTotalSize uint64, inflightSize int, writtenSize int) {
+func (d *dataBlockEstimates) dataBlockWritten(
+	newTotalSize uint64, inflightSize int, writtenSize int,
+) {
 	if d.useMutex {
 		d.mu.Lock()
 		defer d.mu.Unlock()
@@ -493,7 +497,9 @@ func (d *dataBlockBuf) compressAndChecksum(c Compression) {
 	d.compressed = compressAndChecksum(d.uncompressed, c, &d.blockBuf)
 }
 
-func (d *dataBlockBuf) shouldFlush(key InternalKey, valueLen, targetBlockSize, sizeThreshold int) bool {
+func (d *dataBlockBuf) shouldFlush(
+	key InternalKey, valueLen, targetBlockSize, sizeThreshold int,
+) bool {
 	return shouldFlush(
 		key, valueLen, d.dataBlock.restartInterval, d.dataBlock.estimatedSize(),
 		d.dataBlock.nEntries, targetBlockSize, sizeThreshold)
@@ -1164,8 +1170,14 @@ func (w *Writer) indexEntrySep(prevKey, key InternalKey, dataBlockBuf *dataBlock
 //    byte slice, bhp.Props. That is, these must be either deep copied or
 //    encoded.
 func (w *Writer) addIndexEntry(
-	sep InternalKey, bhp BlockHandleWithProperties, tmp []byte,
-	flushIndexBuf *indexBlockBuf, writeTo *indexBlockBuf, inflightSize int, indexProps []byte) error {
+	sep InternalKey,
+	bhp BlockHandleWithProperties,
+	tmp []byte,
+	flushIndexBuf *indexBlockBuf,
+	writeTo *indexBlockBuf,
+	inflightSize int,
+	indexProps []byte,
+) error {
 	if bhp.Length == 0 {
 		// A valid blockHandle must be non-zero.
 		// In particular, it must have a non-zero length.
@@ -1204,7 +1216,8 @@ func (w *Writer) addPrevDataBlockToIndexBlockProps() {
 // 1. addIndexEntry must not store references to the prevKey, key InternalKey's,
 //    the tmp byte slice. That is, these must be either deep copied or encoded.
 func (w *Writer) addIndexEntrySync(
-	prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte) error {
+	prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte,
+) error {
 	sep := w.indexEntrySep(prevKey, key, &w.dataBlockBuf)
 	shouldFlush := supportsTwoLevelIndex(
 		w.tableFormat) && w.indexBlock.shouldFlush(
@@ -1230,8 +1243,9 @@ func (w *Writer) addIndexEntrySync(
 }
 
 func shouldFlush(
-	key InternalKey, valueLen int, restartInterval, estimatedBlockSize,
-	numEntries, targetBlockSize, sizeThreshold int,
+	key InternalKey,
+	valueLen int,
+	restartInterval, estimatedBlockSize, numEntries, targetBlockSize, sizeThreshold int,
 ) bool {
 	if numEntries == 0 {
 		return false
@@ -1380,9 +1394,7 @@ func compressAndChecksum(b []byte, compression Compression, blockBuf *blockBuf) 
 	return b
 }
 
-func (w *Writer) writeCompressedBlock(
-	block []byte, blockTrailerBuf []byte,
-) (BlockHandle, error) {
+func (w *Writer) writeCompressedBlock(block []byte, blockTrailerBuf []byte) (BlockHandle, error) {
 	bh := BlockHandle{Offset: w.meta.Size, Length: uint64(len(block))}
 
 	if w.cacheID != 0 && w.fileNum != 0 {
