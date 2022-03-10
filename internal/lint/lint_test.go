@@ -6,6 +6,7 @@ package lint
 
 import (
 	"bytes"
+	"fmt"
 	"go/build"
 	"os/exec"
 	"regexp"
@@ -204,6 +205,35 @@ func TestLint(t *testing.T) {
 			}
 		}); err != nil {
 			t.Error(err)
+		}
+	})
+
+	t.Run("TestCrlfmt", func(t *testing.T) {
+		t.Parallel()
+
+		name := "crlfmt"
+		args := []string{"-fast", "-tab", "2", "-ignore", "^vendor/", "."}
+		var buf bytes.Buffer
+		if err := stream.ForEach(
+			stream.Sequence(dirCmd(t, pkg.Dir, name, args...)),
+			func(s string) {
+				fmt.Fprintln(&buf, s)
+			}); err != nil {
+			t.Error(err)
+		}
+		errs := buf.String()
+		if len(errs) > 0 {
+			t.Errorf("\n%s", errs)
+		}
+
+		if t.Failed() {
+			reWriteCmd := []string{name, "-w"}
+			reWriteCmd = append(reWriteCmd, args...)
+			t.Logf("run the following to fix your formatting:\n"+
+				"\n%s\n\n"+
+				"Don't forget to add amend the result to the correct commits.",
+				strings.Join(reWriteCmd, " "),
+			)
 		}
 	})
 }
