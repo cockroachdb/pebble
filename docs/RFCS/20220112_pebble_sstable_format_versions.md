@@ -1,5 +1,5 @@
 - Feature Name: Pebble SSTable Format Versions
-- Status: in-progress
+- Status: completed
 - Start Date: 2022-01-12
 - Authors: Nick Travers
 - RFC PR: https://github.com/cockroachdb/pebble/pull/1450
@@ -31,15 +31,16 @@ While Pebble can use the format major version to infer how to load and
 interpret data in the LSM, the SSTables that make up the store itself have
 their own notion of a "version". This "SSTable version" (also referred to as a
 "table format") is written to the footer (or trailing section) of each SSTable
-file and determines how the file is to be interpreted by Pebble. Currently,
-Pebble supports two table formats - LevelDB's format, and RocksDB's v2 format.
-Pebble inherited the latter as the default table format as it was the version
-that RocksDB used at the time Pebble was being developed, and remained the
-default to allow for a simpler migration path from Cockroach clusters that were
-originally using RocksDB as the storage engine. The RocksDBv2 table format adds
-various features on top of the LevelDB format, including a two-level index,
-configurable checksum algorithms, and an explicit versioning scheme to allow
-for the introduction of changes, amongst other features.
+file and determines how the file is to be interpreted by Pebble. As of the time
+of writing, Pebble supports two table formats - LevelDB's format, and RocksDB's
+v2 format. Pebble inherited the latter as the default table format as it was
+the version that RocksDB used at the time Pebble was being developed, and
+remained the default to allow for a simpler migration path from Cockroach
+clusters that were originally using RocksDB as the storage engine. The
+RocksDBv2 table format adds various features on top of the LevelDB format,
+including a two-level index, configurable checksum algorithms, and an explicit
+versioning scheme to allow for the introduction of changes, amongst other
+features.
 
 While the RocksDBv2 SSTable format has been sufficient for Pebble's needs since
 inception, new Pebble features and potential backports from RocksDB itself
@@ -117,7 +118,7 @@ supported for tables containing the RocksDB magic number.
 The choice of switching to a Pebble versioning scheme starting `1` simplifies
 the implementation. Essentially all existing Pebble stores are managed via
 Cockroach, and were either previously using RocksDB and migrated to Pebble, or
-were created as Pebble stores. In both situations the table format used is
+were created with Pebble stores. In both situations the table format used is
 RocksDB v2.
 
 Given that Pebble has not needed (and likely will not need) to support other
@@ -125,11 +126,12 @@ RocksDB table formats, it is reasonable to introduce a new magic number for
 Pebble and reset the version counter to v1.
 
 The following initial versions will correspond to the following new Pebble
-features:
+features, that have yet to be introduced to Cockroach clusters as of the time
+of writing:
 
 - Version 1: block property collectors (block properties are encoded into the
   block index)
-- Version 2: range key (a new block is present in the table for range keys).
+- Version 2: range keys (a new block is present in the table for range keys).
 
 Subsequent alterations to the SSTable format should only increment the _Pebble
 version number_. It should be noted that backported RocksDB table format
@@ -183,17 +185,17 @@ in the sequence.
 
 ```go
 const (
-  TableFormatUnknown TableFormat = iota
+	TableFormatUnspecified TableFormat = iota
   TableFormatLevelDB    // The original LevelDB table format.
   TableFormatRocksDBv2  // The current default table format.
-  TableFormatPebbleDBv1 // Block properties.
-  TableFormatPebbleDBv2 // Range keys.
+	TableFormatPebblev1   // Block properties.
+	TableFormatPebblev2   // Range keys.
   ...
   TableFormatPebbleDBvN
 )
 ```
 
-The introduction of `TableFormatUknown` can be used to ensure that where a
+The introduction of `TableFormatUnspecified` can be used to ensure that where a
 `sstable.TableFormat` is _not_ specified, Pebble can select a suitable default
 for writing the table (most likely based on the format major version in use by
 the store; more in the next section).
@@ -221,12 +223,12 @@ For example:
 
 ```go
 // Existing verisons.
-FormatDefault.TableFormatVersionMax()                // sstable.TableFormatRocksDBv2
+FormatDefault.MaxTableFormat()                       // sstable.TableFormatRocksDBv2
 ...
-FormatSetWithDelete.TableFormatVersionMax()          // sstable.TableFormatRocksDBv2
+FormatSetWithDelete.MaxTableFormat()                 // sstable.TableFormatRocksDBv2
 // Proposed versions with Pebble version scheme.
-FormatBlockPropertyCollector.TableFormatVersionMax() // sstable.TableFormatPebbleDBv1
-FormatRangeKeys.TableFormatVersionMax()              // sstable.TableFormatPebbleDBv2
+FormatBlockPropertyCollector.MaxTableFormat()        // sstable.TableFormatPebbleDBv1
+FormatRangeKeys.MaxTableFormat()                     // sstable.TableFormatPebbleDBv2
 ```
 
 ## Usage in Cockroach
@@ -245,9 +247,7 @@ versions.
 
 At runtime, Pebble exposes a `(*DB).FormatMajorVersion()` method, which may be
 used to determine the current format major version of the store, and hence, the
-table format version. Pebble will also expose a `(*DB).TableFormat()` method
-that will allow the caller to introspect the current table format version of
-the store.
+associated table format version.
 
 In addition to the above, there are situations where SSTables are created for
 consumption at a later point in time, independent of any Pebble store -
@@ -259,3 +259,32 @@ and
 Both will need to be updated to take into account the cluster version to ensure
 that SSTables with newer versions are only written once the cluster version has
 been finalized.
+
+### Cluster version migration sequencing
+
+Cockroach uses cluster versions as a guarantee that all nodes in a cluster are
+running at a particular binary version, with a particular set of features
+enabled. The Pebble store is ratcheted as the cluster version passes certain
+versions that correspond to new Pebble functionality. Care must be taken to
+prevent subtle race conditions while the cluster version is being updated
+across all nodes in a cluster.
+
+Consider a cluster at cluster version `n-1` with corresponding Pebble format
+major version `A`. A new cluster version `n` introduces a new Pebble format
+major version `B` with new table level features. One by one, nodes will bump
+their format major versions from `A` to `B` as they are upgraded to cluster
+version `n`. There exists a period of time where nodes in a cluster are split
+between cluster versions `n-1` and `n`, and Pebble format major versions `A`
+and `B`. If version `B` introduces SSTable level features that nodes with
+stores at format major version `A` do not yet understand, there exists the risk
+for runtime incompatibilities.
+
+To guard against the window of incompatibility, _two_ cluster versions are
+employed when bumping Pebble format major versions that correspond to new
+SSTable level features. The first cluster verison is uesd to synchronize all
+stores at the same Pebble format major version (and therefore table format
+version). The second cluster version is used as a feature gate that enables
+Cockroach nodes to make use of the newer table format, relying on the guarantee
+that if a node is at version `n + 1`, then all other nodes in the cluster must
+all be at least at version `n`, and therefore have Pebble stores at format
+major version `B`.
