@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
 // TODO(jackson): Disentangle FragmentIterator from InternalIterator and return
@@ -40,6 +41,32 @@ type FragmentIterator interface {
 
 	// Clone returns an unpositioned iterator containing the same spans.
 	Clone() FragmentIterator
+}
+
+// TableNewRangeKeyIter creates a new range key iterator for the given file.
+type TableNewRangeKeyIter func(file *manifest.FileMetadata, iterOptions *RangeIterOptions) (FragmentIterator, error)
+
+// RangeIterOptions is a subset of IterOptions that are necessary to instantiate
+// per-sstable range key iterators.
+type RangeIterOptions struct {
+	// LowerBound specifies the smallest key (inclusive) that the iterator will
+	// return during iteration. If the iterator is seeked or iterated past this
+	// boundary the iterator will return Valid()==false. Setting LowerBound
+	// effectively truncates the key space visible to the iterator.
+	LowerBound []byte
+	// UpperBound specifies the largest key (exclusive) that the iterator will
+	// return during iteration. If the iterator is seeked or iterated past this
+	// boundary the iterator will return Valid()==false. Setting UpperBound
+	// effectively truncates the key space visible to the iterator.
+	UpperBound []byte
+	// TableFilter can be used to filter the tables that are scanned during
+	// iteration based on the user properties. Return true to scan the table and
+	// false to skip scanning. This function must be thread-safe since the same
+	// function can be used by multiple iterators, if the iterator is cloned.
+	TableFilter func(userProps map[string]string) bool
+	// RangeKeyFilters can be usefd to avoid scanning tables and blocks in tables
+	// when iterating over range keys.
+	RangeKeyFilters []base.BlockPropertyFilter
 }
 
 // Iter is an iterator over a set of fragmented spans.

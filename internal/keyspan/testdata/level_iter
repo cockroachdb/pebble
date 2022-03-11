@@ -1,0 +1,169 @@
+
+# Simple case.
+
+define
+file
+  a.RANGEKEYSET.2:b
+  a.RANGEKEYSET.1:b
+file
+  b.RANGEKEYSET.2:c
+  b.RANGEKEYSET.1:c
+  c.RANGEKEYSET.2:d
+  c.RANGEKEYSET.1:d
+----
+
+iter
+seek-ge a
+seek-ge b
+seek-ge c
+seek-ge d
+seek-lt a
+seek-lt b
+seek-lt c
+seek-lt d
+----
+a-b#2
+b-c#2
+c-d#2
+.
+.
+a-b#1
+b-c#1
+c-d#1
+
+iter
+first
+next
+next
+next
+next
+next
+next
+----
+a-b#2
+a-b#1
+b-c#2
+b-c#1
+c-d#2
+c-d#1
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+prev
+----
+c-d#1
+c-d#2
+b-c#1
+b-c#2
+a-b#1
+a-b#2
+.
+
+# Set some bounds
+
+iter
+set-bounds a d
+seek-ge a
+seek-ge b
+seek-ge c
+seek-ge d
+seek-lt a
+seek-lt b
+seek-lt c
+seek-lt d
+----
+.
+a-b#2
+b-c#2
+c-d#2
+.
+.
+a-b#1
+b-c#1
+c-d#1
+
+# Set a bound that excludes entire range keys but doesn't truncate any.
+
+iter
+set-bounds b c
+seek-ge b
+next
+prev
+next
+next
+seek-lt c
+prev
+prev
+next
+next
+----
+.
+b-c#2
+b-c#1
+b-c#2
+b-c#1
+.
+b-c#1
+b-c#2
+.
+.
+.
+
+# Test skipping over empty/point-key-only files in both directions.
+
+define
+file
+  a.RANGEKEYSET.2:b
+  a.RANGEKEYSET.1:b
+file
+  b.SET.1:foo
+file
+  c.RANGEKEYSET.2:d
+  c.RANGEKEYSET.1:d
+  d.RANGEKEYSET.2:e
+  d.RANGEKEYSET.1:e
+----
+
+num-files
+----
+3
+
+iter
+first
+next
+next
+next
+next
+next
+next
+----
+a-b#2
+a-b#1
+c-d#2
+c-d#1
+d-e#2
+d-e#1
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+prev
+----
+d-e#1
+d-e#2
+c-d#1
+c-d#2
+a-b#1
+a-b#2
+.
