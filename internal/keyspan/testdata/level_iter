@@ -1,0 +1,161 @@
+
+# Simple case.
+
+define
+file
+  a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+file
+  b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+  c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+----
+
+iter
+seek-ge a
+seek-ge b
+seek-ge c
+seek-ge d
+seek-lt a
+seek-lt b
+seek-lt c
+seek-lt d
+----
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+.
+.
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+
+iter
+first
+next
+next
+next
+----
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+.
+
+iter
+last
+prev
+prev
+prev
+----
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+.
+
+# Set some bounds
+
+iter
+set-bounds a d
+seek-ge a
+seek-ge b
+seek-ge c
+seek-ge d
+seek-lt a
+seek-lt b
+seek-lt c
+seek-lt d
+----
+.
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+.
+.
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+
+# Set a bound that excludes entire range keys.
+
+iter
+set-bounds b c
+seek-ge b
+next
+prev
+next
+seek-lt c
+prev
+next
+----
+.
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+.
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+.
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+.
+.
+
+# Set a bound that falls between ranges.
+
+iter
+set-bounds aa cc
+seek-ge aa
+prev
+next
+next
+next
+----
+.
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+.
+
+iter
+seek-lt cc
+prev
+prev
+prev
+----
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+.
+
+# Test skipping over empty/point-key-only files in both directions.
+
+define
+file
+  a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+file
+  point:b.SET.1:foo
+file
+  c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+  d-e:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+----
+
+num-files
+----
+3
+
+iter
+first
+next
+next
+next
+----
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+d-e:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+.
+
+iter
+last
+prev
+prev
+prev
+----
+d-e:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+.

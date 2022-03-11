@@ -110,13 +110,7 @@ type SuffixReplaceableBlockCollector interface {
 // BlockPropertyFilter is used in an Iterator to filter sstables and blocks
 // within the sstable. It should not maintain any per-sstable state, and must
 // be thread-safe.
-type BlockPropertyFilter interface {
-	// Name returns the name of the block property collector.
-	Name() string
-	// Intersects returns true if the set represented by prop intersects with
-	// the set in the filter.
-	Intersects(prop []byte) (bool, error)
-}
+type BlockPropertyFilter = base.BlockPropertyFilter
 
 // BlockIntervalCollector is a helper implementation of BlockPropertyCollector
 // for users who want to represent a set of the form [lower,upper) where both

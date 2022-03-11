@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
 // FragmentIterator defines an iterator interface over spans. The spans
@@ -69,6 +70,29 @@ type FragmentIterator interface {
 	// considered out of bounds only if they have no overlap with the bound span
 	// [lower, upper).
 	SetBounds(lower, upper []byte)
+}
+
+// TableNewRangeKeyIter creates a new range key iterator for the given file.
+type TableNewRangeKeyIter func(file *manifest.FileMetadata, iterOptions *RangeIterOptions) (FragmentIterator, error)
+
+// RangeIterOptions is a subset of IterOptions that are necessary to instantiate
+// per-sstable range key iterators.
+type RangeIterOptions struct {
+	// LowerBound specifies the smallest userkey (inclusive) that the iterator will
+	// return during iteration. If the iterator is seeked or iterated past this
+	// boundary the iterator will return Valid()==false. Setting LowerBound
+	// effectively truncates the key space visible to the iterator. Iterators are
+	// allowed to reuse this slice, so it should not be modified once passed in.
+	LowerBound []byte
+	// UpperBound specifies the largest key (exclusive) that the iterator will
+	// return during iteration. If the iterator is seeked or iterated past this
+	// boundary the iterator will return Valid()==false. Setting UpperBound
+	// effectively truncates the key space visible to the iterator. Iterators are
+	// allowed to reuse this slice, so it should not be modified once passed in.
+	UpperBound []byte
+	// Filters can be used to avoid scanning tables and blocks in tables
+	// when iterating over range keys.
+	Filters []base.BlockPropertyFilter
 }
 
 // Iter is an iterator over a set of fragmented spans.
