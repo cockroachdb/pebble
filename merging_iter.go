@@ -419,8 +419,16 @@ func (m *mergingIter) switchToMinHeap() {
 	}
 
 	// Special handling for the current iterator because we were using its key
-	// above.
-	cur.iterKey, cur.iterValue = cur.iter.Next()
+	// above. The iterator cur.iter may still be exhausted at a sstable boundary
+	// sentinel. Similar to the logic applied to the other levels, in these
+	// cases we seek the iterator to the first key in order to avoid violating
+	// levelIter's invariants. See the example in the for loop above.
+	if m.lower != nil && cur.isSyntheticIterBoundsKey && cur.iterKey.IsExclusiveSentinel() &&
+		m.heap.cmp(cur.iterKey.UserKey, m.lower) <= 0 {
+		cur.iterKey, cur.iterValue = cur.iter.SeekGE(m.lower, false /* trySeekUsingNext */)
+	} else {
+		cur.iterKey, cur.iterValue = cur.iter.Next()
+	}
 	m.initMinHeap()
 }
 
@@ -493,8 +501,17 @@ func (m *mergingIter) switchToMaxHeap() {
 	}
 
 	// Special handling for the current iterator because we were using its key
+	// above. The iterator cur.iter may still be exhausted at a sstable boundary
+	// sentinel. Similar to the logic applied to the other levels, in these
+	// cases we seek the iterator to  in order to avoid violating levelIter's
+	// invariants by Prev-ing through files.  See the example in the for loop
 	// above.
-	cur.iterKey, cur.iterValue = cur.iter.Prev()
+	if m.upper != nil && cur.isSyntheticIterBoundsKey && cur.iterKey.IsExclusiveSentinel() &&
+		m.heap.cmp(cur.iterKey.UserKey, m.upper) >= 0 {
+		cur.iterKey, cur.iterValue = cur.iter.SeekLT(m.upper)
+	} else {
+		cur.iterKey, cur.iterValue = cur.iter.Prev()
+	}
 	m.initMaxHeap()
 }
 
