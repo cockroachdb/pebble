@@ -895,7 +895,10 @@ func TestBlockProperties(t *testing.T) {
 				_ = r.Close()
 				r = nil
 			}
-			opts := WriterOptions{TableFormat: TableFormatPebblev2}
+			opts := WriterOptions{
+				TableFormat:    TableFormatPebblev2,
+				IndexBlockSize: math.MaxInt32, // Force a single level index for simplicity.
+			}
 			for _, cmd := range td.CmdArgs {
 				switch cmd.Key {
 				case "block-size":
