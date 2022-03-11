@@ -118,7 +118,7 @@ func (c *tableCacheContainer) newIters(
 }
 
 func (c *tableCacheContainer) newRangeKeyIter(
-	file *manifest.FileMetadata, opts *IterOptions,
+	file *manifest.FileMetadata, opts *keyspan.RangeIterOptions,
 ) (keyspan.FragmentIterator, error) {
 	return c.tableCache.getShard(file.FileNum).newRangeKeyIter(file, opts, &c.dbOpts)
 }
@@ -400,7 +400,7 @@ func (c *tableCacheShard) newIters(
 }
 
 func (c *tableCacheShard) newRangeKeyIter(
-	file *manifest.FileMetadata, opts *IterOptions, dbOpts *tableCacheOpts,
+	file *manifest.FileMetadata, opts *keyspan.RangeIterOptions, dbOpts *tableCacheOpts,
 ) (keyspan.FragmentIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount. If opening the underlying table resulted in error, then we
@@ -416,7 +416,7 @@ func (c *tableCacheShard) newRangeKeyIter(
 	ok := true
 	var err error
 	if opts != nil {
-		ok, _, err = c.checkAndIntersectFilters(v, opts.TableFilter, opts.RangeKeyFilters)
+		ok, _, err = c.checkAndIntersectFilters(v, opts.TableFilter, opts.Filters)
 	}
 	if err != nil {
 		c.unrefValue(v)

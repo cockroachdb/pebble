@@ -56,7 +56,7 @@ type TablePropertyCollector = sstable.TablePropertyCollector
 type BlockPropertyCollector = sstable.BlockPropertyCollector
 
 // BlockPropertyFilter exports the sstable.BlockPropertyFilter type.
-type BlockPropertyFilter = sstable.BlockPropertyFilter
+type BlockPropertyFilter = base.BlockPropertyFilter
 
 // IterKeyType configures which types of keys an iterator should surface.
 type IterKeyType int8
