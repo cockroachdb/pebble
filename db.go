@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/record"
@@ -261,7 +262,7 @@ type DB struct {
 
 	tableCache           *tableCacheContainer
 	newIters             tableNewIters
-	tableNewRangeKeyIter tableNewRangeKeyIter
+	tableNewRangeKeyIter keyspan.TableNewRangeKeyIter
 
 	commit *commitPipeline
 

@@ -623,7 +623,7 @@ func (m *MergingIter) heapRoot() *boundKey {
 func (m *MergingIter) synthesizeKeys(dir int8) {
 	if invariants.Enabled {
 		if m.cmp(m.start, m.end) >= 0 {
-			panic("pebble: invariant violation: span start ≥ end")
+			panic(fmt.Sprintf("pebble: invariant violation: span start ≥ end: %s >= %s", m.start, m.end))
 		}
 	}
 
