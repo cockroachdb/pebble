@@ -224,8 +224,12 @@ func TestSizeEstimate(t *testing.T) {
 				}
 				sizeEstimate.written(uint64(newSize), inflightSize, entrySize)
 				return fmt.Sprintf("%d", sizeEstimate.size())
+			case "num_written_entries":
+				return fmt.Sprintf("%d", sizeEstimate.numWrittenEntries)
+			case "num_inflight_entries":
+				return fmt.Sprintf("%d", sizeEstimate.numInflightEntries)
 			case "num_entries":
-				return fmt.Sprintf("%d", sizeEstimate.numEntries)
+				return fmt.Sprintf("%d", sizeEstimate.numWrittenEntries+sizeEstimate.numInflightEntries)
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
