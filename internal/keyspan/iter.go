@@ -13,7 +13,7 @@ import (
 // TODO(jackson): Disentangle FragmentIterator from InternalIterator and return
 // full Spans from the positioning methods.
 
-// FragmentIterator defines an interator interface over keyspan fragments. The
+// FragmentIterator defines an iterator interface over keyspan fragments. The
 // spans surfaced by a FragmentIterator must already be fragmented — that is if
 // two spans overlap, they must have identical start and end bounds. In forward
 // iteration, spans are returned ascending by their start keys:
