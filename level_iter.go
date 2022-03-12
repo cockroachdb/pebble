@@ -245,7 +245,7 @@ func (l *levelIter) findFileLT(key []byte) *fileMetadata {
 
 // Init the iteration bounds for the current table. Returns -1 if the table
 // lies fully before the lower bound, +1 if the table lies fully after the
-// upper bound, and 0 if the table overlaps the the iteration bounds.
+// upper bound, and 0 if the table overlaps the iteration bounds.
 func (l *levelIter) initTableBounds(f *fileMetadata) int {
 	l.tableOpts.LowerBound = l.lower
 	if l.tableOpts.LowerBound != nil {

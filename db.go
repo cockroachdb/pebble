@@ -366,7 +366,7 @@ type DB struct {
 			// index is set it is never modified making a fixed slice immutable and
 			// safe for concurrent reads.
 			queue flushableList
-			// True when the memtable is actively been switched. Both mem.mutable and
+			// True when the memtable is actively being switched. Both mem.mutable and
 			// log.LogWriter are invalid while switching is true.
 			switching bool
 			// nextSize is the size of the next memtable. The memtable size starts at

@@ -14,7 +14,7 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// FileNum is an internal DB indentifier for a file.
+// FileNum is an internal DB identifier for a file.
 type FileNum uint64
 
 // String returns a string representation of the file number.
