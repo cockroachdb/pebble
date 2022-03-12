@@ -202,7 +202,7 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts.Cache = cache.New(1 << uint(rng.Intn(30))) // 1B - 1GB
 	opts.DisableWAL = rng.Intn(2) == 0
 	opts.FlushSplitBytes = 1 << rng.Intn(20) // 1B - 1MB
-	// The metamorphic test exercise range keys, so so we cannot use an older
+	// The metamorphic test exercise range keys, so we cannot use an older
 	// FormatMajorVersion than pebble.FormatRangeKeys.
 	opts.FormatMajorVersion = pebble.FormatRangeKeys
 	n := int(pebble.FormatNewest - opts.FormatMajorVersion)
