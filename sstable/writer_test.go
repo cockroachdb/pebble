@@ -207,7 +207,7 @@ func TestClearDataBlockBuf(t *testing.T) {
 }
 
 func TestClearIndexBlockBuf(t *testing.T) {
-	i := newIndexBlockBuf()
+	i := newIndexBlockBuf(false)
 	i.block.add(ikey("apple"), nil)
 	i.block.add(ikey("banana"), nil)
 	i.clear()
