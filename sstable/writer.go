@@ -214,25 +214,34 @@ type Writer struct {
 }
 
 type sizeEstimate struct {
-	// emptySize is the size when there is no inflight data, and numEntries is 0. emptySize is constant once set.
+	// emptySize is the size when there is no inflight data, and numEntries is 0.
+	// emptySize is constant once set.
 	emptySize uint64
 
-	// inflightSize is the estimated size of some inflight data which hasn't been written yet.
+	// inflightSize is the estimated size of some inflight data which hasn't
+	// been written yet.
 	inflightSize uint64
 
 	// totalSize is the total size of the data which has already been written.
 	totalSize uint64
 
-	// numEntries is the total number of entries which have already been written.
-	numEntries uint64
+	// numWrittenEntries is the total number of entries which have already been
+	// written.
+	numWrittenEntries uint64
+	// numInflightEntries is the total number of entries which are inflight, and
+	// haven't been written.
+	numInflightEntries uint64
 
-	// maxEstimatedSize stores the maximum result returned from sizeEstimate.size. It ensures that values returned
-	// from subsequent calls to Writer.EstimatedSize never decrease.
+	// maxEstimatedSize stores the maximum result returned from sizeEstimate.size.
+	// It ensures that values returned from subsequent calls to Writer.EstimatedSize
+	// never decrease.
 	maxEstimatedSize uint64
 
-	// We assume that the entries added to the sizeEstimate can be compressed. For this reason, we keep track of a
-	// compressedSize and an uncompressedSize to compute a compression ratio for the inflight entries. If the entries
-	// aren't being compressed, then compressedSize and uncompressedSize must be equal.
+	// We assume that the entries added to the sizeEstimate can be compressed.
+	// For this reason, we keep track of a compressedSize and an uncompressedSize
+	// to compute a compression ratio for the inflight entries. If the entries
+	// aren't being compressed, then compressedSize and uncompressedSize must be
+	// equal.
 	compressedSize   uint64
 	uncompressedSize uint64
 }
@@ -262,12 +271,18 @@ func (s *sizeEstimate) size() uint64 {
 }
 
 func (s *sizeEstimate) addInflight(size int) {
+	s.numInflightEntries++
 	s.inflightSize += uint64(size)
 }
 
 func (s *sizeEstimate) written(newTotalSize uint64, inflightSize int, finalEntrySize int) {
 	s.inflightSize -= uint64(inflightSize)
-	s.numEntries++
+	if inflightSize > 0 {
+		// This entry was previously inflight, so we should decrement inflight
+		// entries.
+		s.numInflightEntries--
+	}
+	s.numWrittenEntries++
 	s.totalSize = newTotalSize
 
 	s.uncompressedSize += uint64(inflightSize)
@@ -327,9 +342,10 @@ func (i *indexBlockBuf) shouldFlush(
 		defer i.size.mu.Unlock()
 	}
 
+	nEntries := i.size.estimate.numWrittenEntries + i.size.estimate.numInflightEntries
 	return shouldFlush(
 		sep, valueLen, i.restartInterval, int(i.size.estimate.size()),
-		int(i.size.estimate.numEntries), targetBlockSize, sizeThreshold)
+		int(nEntries), targetBlockSize, sizeThreshold)
 }
 
 func (i *indexBlockBuf) add(key InternalKey, value []byte, inflightSize int) {
