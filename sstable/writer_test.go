@@ -26,14 +26,22 @@ import (
 )
 
 func TestWriter(t *testing.T) {
-	runDataDriven(t, "testdata/writer")
+	runDataDriven(t, "testdata/writer", false)
 }
 
 func TestRewriter(t *testing.T) {
-	runDataDriven(t, "testdata/rewriter")
+	runDataDriven(t, "testdata/rewriter", false)
 }
 
-func runDataDriven(t *testing.T, file string) {
+func TestWriterParallel(t *testing.T) {
+	runDataDriven(t, "testdata/writer", true)
+}
+
+func TestRewriterParallel(t *testing.T) {
+	runDataDriven(t, "testdata/rewriter", true)
+}
+
+func runDataDriven(t *testing.T, file string, parallelism bool) {
 	var r *Reader
 	defer func() {
 		if r != nil {
@@ -67,6 +75,7 @@ func runDataDriven(t *testing.T, file string) {
 			var err error
 			meta, r, err = runBuildCmd(td, &WriterOptions{
 				TableFormat: TableFormatMax,
+				Parallelism: parallelism,
 			}, 0)
 			if err != nil {
 				return err.Error()
@@ -207,7 +216,7 @@ func TestClearDataBlockBuf(t *testing.T) {
 }
 
 func TestClearIndexBlockBuf(t *testing.T) {
-	i := newIndexBlockBuf()
+	i := newIndexBlockBuf(false)
 	i.block.add(ikey("apple"), nil)
 	i.block.add(ikey("banana"), nil)
 	i.clear()
@@ -246,6 +255,41 @@ func TestClearWriteTask(t *testing.T) {
 	require.Equal(t, w.finishedIndexProps, []byte(nil))
 
 	writeTaskPool.Put(w)
+}
+
+func TestDoubleClose(t *testing.T) {
+	// There is code in Cockroach land which relies on Writer.Close being
+	// idempotent. We should test this in Pebble, so that we don't cause
+	// Cockroach test failures.
+	f := &discardFile{}
+	w := NewWriter(f, WriterOptions{
+		BlockSize:   1,
+		TableFormat: TableFormatPebblev1,
+	})
+	w.Set(ikey("a").UserKey, nil)
+	w.Set(ikey("b").UserKey, nil)
+	err := w.Close()
+	require.NoError(t, err)
+	err = w.Close()
+	require.Equal(t, err, errWriterClosed)
+}
+
+func TestParallelWriterErrorProp(t *testing.T) {
+	fs := vfs.NewMem()
+	f, err := fs.Create("test")
+	require.NoError(t, err)
+	opts := WriterOptions{
+		TableFormat: TableFormatPebblev1, BlockSize: 1, Parallelism: true,
+	}
+
+	w := NewWriter(f, opts)
+	// Directly testing this, because it's difficult to get the Writer to
+	// encounter an error, precisely when the writeQueue is doing block writes.
+	w.coordination.writeQueue.err = errors.New("write queue write error")
+	w.Set(ikey("a").UserKey, nil)
+	w.Set(ikey("b").UserKey, nil)
+	err = w.Close()
+	require.Equal(t, err.Error(), "write queue write error")
 }
 
 func TestSizeEstimate(t *testing.T) {
