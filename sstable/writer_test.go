@@ -261,7 +261,6 @@ func TestSizeEstimate(t *testing.T) {
 				if err != nil {
 					return "invalid empty size"
 				}
-
 				sizeEstimate.init(uint64(emptySize))
 				return "success"
 			case "clear":
@@ -297,14 +296,17 @@ func TestSizeEstimate(t *testing.T) {
 				}
 				sizeEstimate.written(uint64(newSize), inflightSize, entrySize)
 				return fmt.Sprintf("%d", sizeEstimate.size())
+			case "num_written_entries":
+				return fmt.Sprintf("%d", sizeEstimate.numWrittenEntries)
+			case "num_inflight_entries":
+				return fmt.Sprintf("%d", sizeEstimate.numInflightEntries)
 			case "num_entries":
-				return fmt.Sprintf("%d", sizeEstimate.numEntries)
+				return fmt.Sprintf("%d", sizeEstimate.numWrittenEntries+sizeEstimate.numInflightEntries)
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
 		})
 }
-
 func TestWriterClearCache(t *testing.T) {
 	// Verify that Writer clears the cache of blocks that it writes.
 	mem := vfs.NewMem()
