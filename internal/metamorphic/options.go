@@ -208,6 +208,10 @@ func standardOptions() []*testOptions {
 [TestOptions]
  use_disk=true
 `,
+		22: `
+[Options]
+  max_writer_concurrency=2
+`,
 	}
 
 	opts := make([]*testOptions, len(stdOpts))

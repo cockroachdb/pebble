@@ -483,6 +483,13 @@ type Options struct {
 		//
 		// By default, this value is false.
 		ValidateOnIngest bool
+
+		// MaxWriterConcurrency is used to indicate the maximum number of
+		// compression workers the compression queue is allowed to use. If
+		// MaxWriterConcurrency > 0, then the Writer will use parallelism, to
+		// compress and write blocks to disk. Otherwise, the writer will
+		// compress and write blocks to disk synchronously.
+		MaxWriterConcurrency int
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -934,6 +941,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
+	fmt.Fprintf(&buf, "  max_writer_concurrency=%d\n", o.Experimental.MaxWriterConcurrency)
 
 	for i := range o.Levels {
 		l := &o.Levels[i]
@@ -1152,6 +1160,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.WALDir = value
 			case "wal_bytes_per_sync":
 				o.WALBytesPerSync, err = strconv.Atoi(value)
+			case "max_writer_concurrency":
+				o.Experimental.MaxWriterConcurrency, err = strconv.Atoi(value)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil
@@ -1336,5 +1346,6 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.FilterPolicy = levelOpts.FilterPolicy
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
+	writerOpts.Parallelism = o.Experimental.MaxWriterConcurrency > 0
 	return writerOpts
 }
