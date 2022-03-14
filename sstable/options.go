@@ -216,6 +216,11 @@ type WriterOptions struct {
 
 	// Checksum specifies which checksum to use.
 	Checksum ChecksumType
+
+	// Parallelism is used to indicate that the sstable Writer is allowed to
+	// compress data blocks and write datablocks to disk in parallel with the
+	// Writer client goroutine.
+	Parallelism bool
 }
 
 func (o WriterOptions) ensureDefaults() WriterOptions {
