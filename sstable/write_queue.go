@@ -1,6 +1,7 @@
 package sstable
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -116,6 +117,7 @@ func (w *writeQueue) runWorker() {
 
 //lint:ignore U1000 - Will be used in a future pr.
 func (w *writeQueue) add(task *writeTask) {
+	fmt.Println("add is called")
 	w.tasks <- task
 }
 

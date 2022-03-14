@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 	"sync"
 
 	"github.com/cespare/xxhash/v2"
@@ -201,14 +202,30 @@ type Writer struct {
 	// goroutine.
 	blockBuf blockBuf
 
-	coordination struct {
-		// writeQueue is used to write data blocks to disk. The writeQueue is primarily
-		// used to maintain the order in which data blocks must be written to disk. For
-		// this reason, every single data block write must be done through the writeQueue.
-		writeQueue *writeQueue
+	coordination coordinationState
+}
 
-		sizeEstimate dataBlockEstimates
+type coordinationState struct {
+	parallelismEnabled bool
+
+	// writeQueue is used to write data blocks to disk. The writeQueue is primarily
+	// used to maintain the order in which data blocks must be written to disk. For
+	// this reason, every single data block write must be done through the writeQueue.
+	writeQueue *writeQueue
+
+	sizeEstimate dataBlockEstimates
+}
+
+func (c *coordinationState) init(parallelismEnabled bool, writer *Writer) {
+	c.parallelismEnabled = parallelismEnabled
+	c.sizeEstimate.useMutex = parallelismEnabled
+
+	// By default, we use a writeQueue size of 0, since we won't be doing any block writes in parallel.
+	var writeQueueSize int
+	if parallelismEnabled {
+		writeQueueSize = runtime.GOMAXPROCS(0)
 	}
+	c.writeQueue = newWriteQueue(writeQueueSize, writer)
 }
 
 type sizeEstimate struct {
@@ -324,8 +341,9 @@ var indexBlockBufPool = sync.Pool{
 
 const indexBlockRestartInterval = 1
 
-func newIndexBlockBuf() *indexBlockBuf {
+func newIndexBlockBuf(useMutex bool) *indexBlockBuf {
 	i := indexBlockBufPool.Get().(*indexBlockBuf)
+	i.size.useMutex = useMutex
 	i.restartInterval = indexBlockRestartInterval
 	i.block.restartInterval = indexBlockRestartInterval
 	i.size.estimate.init(emptyBlockSize)
@@ -1103,7 +1121,7 @@ func (w *Writer) flush(key InternalKey) error {
 	var flushableIndexBlock *indexBlockBuf
 	if shouldFlushIndexBlock {
 		flushableIndexBlock = w.indexBlock
-		w.indexBlock = newIndexBlockBuf()
+		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled)
 		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to
 		// flush the index block.
 		indexProps, err = w.finishIndexBlockProps()
@@ -1135,7 +1153,11 @@ func (w *Writer) flush(key InternalKey) error {
 	w.indexBlock.addInflight(writeTask.indexInflightSize)
 
 	w.dataBlockBuf = nil
-	err = w.coordination.writeQueue.addSync(writeTask)
+	if w.coordination.parallelismEnabled {
+		w.coordination.writeQueue.add(writeTask)
+	} else {
+		err = w.coordination.writeQueue.addSync(writeTask)
+	}
 	w.dataBlockBuf = newDataBlockBuf(w.restartInterval, w.checksumType)
 
 	return err
@@ -1278,7 +1300,7 @@ func (w *Writer) addIndexEntrySync(
 	var err error
 	if shouldFlush {
 		flushableIndexBlock = w.indexBlock
-		w.indexBlock = newIndexBlockBuf()
+		w.indexBlock = newIndexBlockBuf(w.coordination.parallelismEnabled)
 
 		// Call BlockPropertyCollector.FinishIndexBlock, since we've decided to
 		// flush the index block.
@@ -1855,6 +1877,7 @@ func (i internalTableOpt) writerApply(w *Writer) {
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
 func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *Writer {
+	o.Parallelism = true
 	o = o.ensureDefaults()
 	w := &Writer{
 		syncer: f,
@@ -1875,7 +1898,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		cache:                   o.Cache,
 		restartInterval:         o.BlockRestartInterval,
 		checksumType:            o.Checksum,
-		indexBlock:              newIndexBlockBuf(),
+		indexBlock:              newIndexBlockBuf(o.Parallelism),
 		rangeDelBlock: blockWriter{
 			restartInterval: 1,
 		},
@@ -1897,13 +1920,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		checksummer: checksummer{checksumType: o.Checksum},
 	}
 
-	// We only need to use a mutex when we decide to truly write blocks in parallel.
-	w.coordination.sizeEstimate.useMutex = false
-
-	// We're creating the writeQueue with a size of 0, because we won't be using
-	// the async queue until parallelism is enabled, and we do all block writes
-	// through writeQueue.addSync.
-	w.coordination.writeQueue = newWriteQueue(0, w)
+	w.coordination.init(o.Parallelism, w)
 
 	if f == nil {
 		w.err = errors.New("pebble: nil file")
