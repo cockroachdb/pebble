@@ -483,6 +483,11 @@ type Options struct {
 		//
 		// By default, this value is false.
 		ValidateOnIngest bool
+
+		// WriterParallelism is used to indicate that the sstable Writer is allowed to
+		// compress data blocks and write datablocks to disk in parallel with the Writer client
+		// goroutine.
+		WriterParallelism bool
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -936,6 +941,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
+	fmt.Fprintf(&buf, "  writer_parallelism=%t\n", o.Experimental.WriterParallelism)
 
 	for i := range o.Levels {
 		l := &o.Levels[i]
@@ -1154,6 +1160,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.WALDir = value
 			case "wal_bytes_per_sync":
 				o.WALBytesPerSync, err = strconv.Atoi(value)
+			case "writer_parallelism":
+				o.Experimental.WriterParallelism, err = strconv.ParseBool(value)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key) {
 					return nil
@@ -1338,5 +1346,6 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.FilterPolicy = levelOpts.FilterPolicy
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
+	writerOpts.Parallelism = o.Experimental.WriterParallelism
 	return writerOpts
 }
