@@ -100,6 +100,7 @@ func TestOptionsString(t *testing.T) {
   validate_on_ingest=false
   wal_dir=
   wal_bytes_per_sync=0
+  max_writer_concurrency=0
 
 [Level "0"]
   block_restart_interval=16
@@ -228,6 +229,7 @@ func TestOptionsParse(t *testing.T) {
 			opts.Experimental.ReadCompactionRate = 300
 			opts.Experimental.ReadSamplingMultiplier = 400
 			opts.Experimental.TableCacheShards = 500
+			opts.Experimental.MaxWriterConcurrency = 1
 			opts.EnsureDefaults()
 			str := opts.String()
 
