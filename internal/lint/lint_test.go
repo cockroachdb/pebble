@@ -74,6 +74,9 @@ func TestLint(t *testing.T) {
 	})
 
 	t.Run("TestStaticcheck", func(t *testing.T) {
+		if strings.HasPrefix(runtime.Version(), "go1.18") {
+			t.Skip("Go 1.18 not yet supported. See: https://github.com/dominikh/go-tools/issues/1166")
+		}
 		t.Parallel()
 
 		if err := stream.ForEach(
