@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         go:
-          - "1.15"
           - "1.16"
           - "1.17"
+          - "1.18"
     steps:
     - uses: actions/checkout@v2
 
@@ -31,13 +31,13 @@ jobs:
         go-version: ${{ matrix.go }}
 
     - name: install crlfmt
-      run: go get github.com/cockroachdb/crlfmt
+      run: go install github.com/cockroachdb/crlfmt@b3eff0b
 
     - name: install golint
-      run: go get golang.org/x/lint/golint
+      run: go install golang.org/x/lint/golint@6edffad
 
     - name: install staticcheck
-      run: go get honnef.co/go/tools/cmd/staticcheck@2021.1.1
+      run: go install honnef.co/go/tools/cmd/staticcheck@2021.1.1
 
     - run: make test generate
 
@@ -53,13 +53,13 @@ jobs:
         go-version: "1.17"
 
     - name: install crlfmt
-      run: go get github.com/cockroachdb/crlfmt
+      run: go install github.com/cockroachdb/crlfmt@b3eff0b
 
     - name: install golint
-      run: go get golang.org/x/lint/golint
+      run: go install golang.org/x/lint/golint@6edffad
 
     - name: install staticcheck
-      run: go get honnef.co/go/tools/cmd/staticcheck@2021.1.1
+      run: go install honnef.co/go/tools/cmd/staticcheck@2021.1.1
 
     - run: make testrace TAGS=
 
@@ -75,13 +75,13 @@ jobs:
         go-version: "1.17"
 
     - name: install crlfmt
-      run: go get github.com/cockroachdb/crlfmt
+      run: go install github.com/cockroachdb/crlfmt@b3eff0b
 
     - name: install golint
-      run: go get golang.org/x/lint/golint
+      run: go install golang.org/x/lint/golint@6edffad
 
     - name: install staticcheck
-      run: go get honnef.co/go/tools/cmd/staticcheck@2021.1.1
+      run: go install honnef.co/go/tools/cmd/staticcheck@2021.1.1
 
     - run: make test TAGS=
 
@@ -97,13 +97,13 @@ jobs:
         go-version: "1.17"
 
     - name: install crlfmt
-      run: go get github.com/cockroachdb/crlfmt
+      run: go install github.com/cockroachdb/crlfmt@b3eff0b
 
     - name: install golint
-      run: go get golang.org/x/lint/golint
+      run: go install golang.org/x/lint/golint@6edffad
 
     - name: install staticcheck
-      run: go get honnef.co/go/tools/cmd/staticcheck@2021.1.1
+      run: go install honnef.co/go/tools/cmd/staticcheck@2021.1.1
 
     - run: CGO_ENABLED=0 make test TAGS=
 
@@ -119,13 +119,13 @@ jobs:
         go-version: "1.17"
 
     - name: install crlfmt
-      run: go get github.com/cockroachdb/crlfmt
+      run: go install github.com/cockroachdb/crlfmt@b3eff0b
 
     - name: install golint
-      run: go get golang.org/x/lint/golint
+      run: go install golang.org/x/lint/golint@6edffad
 
     - name: install staticcheck
-      run: go get honnef.co/go/tools/cmd/staticcheck@2021.1.1
+      run: go install honnef.co/go/tools/cmd/staticcheck@2021.1.1
 
     - run: make test
 
