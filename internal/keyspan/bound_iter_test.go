@@ -33,7 +33,7 @@ func TestFragmentBoundIterator(t *testing.T) {
 			var spans []Span
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
-				spans = append(spans, parseSpanWithKind(t, line))
+				spans = append(spans, ParseSpan(line))
 			}
 			iter.init(NewIter(cmp, spans))
 			return "OK"
@@ -50,13 +50,13 @@ func TestFragmentBoundIterator(t *testing.T) {
 				}
 				switch iterCmd {
 				case "first":
-					formatKey(iter.first(cmp))
+					formatKey(iter.first())
 				case "last":
-					formatKey(iter.last(cmp))
+					formatKey(iter.last())
 				case "next":
-					formatKey(iter.next(cmp))
+					formatKey(iter.next())
 				case "prev":
-					formatKey(iter.prev(cmp))
+					formatKey(iter.prev())
 				case "seek-ge":
 					formatKey(iter.seekGE(cmp, []byte(strings.TrimSpace(line[i:]))))
 				case "seek-lt":

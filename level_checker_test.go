@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -165,8 +166,8 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				frag := keyspan.Fragmenter{
 					Cmp:    cmp,
 					Format: formatKey,
-					Emit: func(fragmented []keyspan.Span) {
-						tombstones = append(tombstones, fragmented...)
+					Emit: func(fragmented keyspan.Span) {
+						tombstones = append(tombstones, fragmented)
 					},
 				}
 				keyvalues := strings.Fields(line)
@@ -181,7 +182,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 							err = w.Add(ikey, value)
 							break
 						}
-						frag.Add(keyspan.Span{Start: ikey, End: value})
+						frag.Add(rangedel.Decode(ikey, value, nil))
 					default:
 						err = w.Add(ikey, value)
 					}
@@ -191,7 +192,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				}
 				frag.Finish()
 				for _, v := range tombstones {
-					if err := w.Add(v.Start, v.End); err != nil {
+					if err := rangedel.Encode(v, w.Add); err != nil {
 						return err.Error()
 					}
 				}

@@ -17,7 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
-	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -433,52 +433,47 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 		return err
 	}
 	w := sstable.NewWriter(f, writeOpts)
-	iters := []internalIterator{
-		b.newInternalIter(nil),
-		b.newRangeDelIter(nil),
-	}
-	for _, iter := range iters {
-		if iter == nil {
-			continue
+	iter := b.newInternalIter(nil)
+	for key, val := iter.First(); key != nil; key, val = iter.Next() {
+		tmp := *key
+		tmp.SetSeqNum(0)
+		if err := w.Add(tmp, val); err != nil {
+			return err
 		}
-		for key, val := iter.First(); key != nil; key, val = iter.Next() {
-			tmp := *key
-			tmp.SetSeqNum(0)
-			if err := w.Add(tmp, val); err != nil {
+	}
+	if err := iter.Close(); err != nil {
+		return err
+	}
+
+	if rdi := b.newRangeDelIter(nil); rdi != nil {
+		for s := rdi.First(); s.Valid(); s = rdi.Next() {
+			err := rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
+				k.SetSeqNum(0)
+				return w.Add(k, v)
+			})
+			if err != nil {
 				return err
 			}
-		}
-		if err := iter.Close(); err != nil {
-			return err
 		}
 	}
 
 	if rki := b.newRangeKeyIter(nil); rki != nil {
-		for key, _ := rki.First(); key != nil; key, _ = rki.Next() {
-			s := rki.Current()
-			s.Start.SetSeqNum(0)
-
-			var err error
-			switch s.Start.Kind() {
-			case base.InternalKeyKindRangeKeySet:
-				suffixValue, rest, ok := rangekey.DecodeSuffixValue(s.Value)
-				if !ok || len(rest) > 0 {
-					panic("expected single unset single suffix")
+		for s := rki.First(); s.Valid(); s = rki.Next() {
+			for _, k := range s.Keys {
+				var err error
+				switch k.Kind() {
+				case base.InternalKeyKindRangeKeySet:
+					err = w.RangeKeySet(s.Start, s.End, k.Suffix, k.Value)
+				case base.InternalKeyKindRangeKeyUnset:
+					err = w.RangeKeyUnset(s.Start, s.End, k.Suffix)
+				case base.InternalKeyKindRangeKeyDelete:
+					err = w.RangeKeyDelete(s.Start, s.End)
+				default:
+					panic("not a range key")
 				}
-				err = w.RangeKeySet(s.Start.UserKey, s.End, suffixValue.Suffix, suffixValue.Value)
-			case base.InternalKeyKindRangeKeyUnset:
-				suffix, rest, ok := rangekey.DecodeSuffix(s.Value)
-				if !ok || len(rest) > 0 {
-					panic("expected single unset single suffix")
+				if err != nil {
+					return err
 				}
-				err = w.RangeKeyUnset(s.Start.UserKey, s.End, suffix)
-			case base.InternalKeyKindRangeKeyDelete:
-				err = w.RangeKeyDelete(s.Start.UserKey, s.End)
-			default:
-				panic("not a range key")
-			}
-			if err != nil {
-				return err
 			}
 		}
 	}

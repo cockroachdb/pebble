@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
@@ -59,19 +60,22 @@ func TestIngestLoad(t *testing.T) {
 			}
 			w := sstable.NewWriter(f, writerOpts)
 			for _, data := range strings.Split(td.Input, "\n") {
+				if strings.HasPrefix(data, "rangekey: ") {
+					data = strings.TrimPrefix(data, "rangekey: ")
+					err := rangekey.Encode(keyspan.ParseSpan(data), w.AddRangeKey)
+					if err != nil {
+						return err.Error()
+					}
+					continue
+				}
+
 				j := strings.Index(data, ":")
 				if j < 0 {
 					return fmt.Sprintf("malformed input: %s\n", data)
 				}
 				key := base.ParseInternalKey(data[:j])
-				if k := key.Kind(); rangekey.IsRangeKey(k) {
-					value := rangekey.ParseValue(k, data[j+1:])
-					err = w.AddRangeKey(key, value)
-				} else {
-					value := []byte(data[j+1:])
-					err = w.Add(key, value)
-				}
-				if err != nil {
+				value := []byte(data[j+1:])
+				if err := w.Add(key, value); err != nil {
 					return err.Error()
 				}
 			}
@@ -1233,19 +1237,21 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 			TableFormat: sstable.TableFormatMax,
 		})
 		for _, data := range strings.Split(input, "\n") {
+			if strings.HasPrefix(data, "rangekey: ") {
+				data = strings.TrimPrefix(data, "rangekey: ")
+				err := rangekey.Encode(keyspan.ParseSpan(data), w.AddRangeKey)
+				if err != nil {
+					return nil, err
+				}
+				continue
+			}
 			j := strings.Index(data, ":")
 			if j < 0 {
 				return nil, errors.Newf("malformed input: %s\n", data)
 			}
 			key := base.ParseInternalKey(data[:j])
-			if k := key.Kind(); rangekey.IsRangeKey(k) {
-				value := rangekey.ParseValue(k, data[j+1:])
-				err = w.AddRangeKey(key, value)
-			} else {
-				value := []byte(data[j+1:])
-				err = w.Add(key, value)
-			}
-			if err != nil {
+			value := []byte(data[j+1:])
+			if err := w.Add(key, value); err != nil {
 				return nil, err
 			}
 		}
@@ -1293,7 +1299,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 				case k == base.InternalKeyKindRangeDelete:
 					key.Trailer = base.InternalKeyRangeDeleteSentinel
 				case rangekey.IsRangeKey(k):
-					return base.MakeRangeKeySentinelKey(k, key.UserKey)
+					return base.MakeExclusiveSentinelKey(k, key.UserKey)
 				}
 				return key
 			}

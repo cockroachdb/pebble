@@ -44,7 +44,7 @@ build
 2:   c-e
 1: a-c
 ----
-pebble: keys must be added in order: c#2,RANGEDEL > a#1,RANGEDEL
+pebble: keys must be added in order: c > a
 
 build
 3: a-a

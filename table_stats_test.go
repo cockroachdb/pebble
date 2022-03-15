@@ -122,9 +122,18 @@ func TestTableStats(t *testing.T) {
 }
 
 func TestForeachDefragmentedTombstone(t *testing.T) {
-	mktomb := func(start, end string, seqnum uint64) keyspan.Span {
-		s := base.MakeInternalKey([]byte(start), seqnum, base.InternalKeyKindRangeDelete)
-		return keyspan.Span{Start: s, End: []byte(end)}
+	mktomb := func(start, end string, seqnums ...uint64) keyspan.Span {
+		t := keyspan.Span{
+			Start: []byte(start),
+			End:   []byte(end),
+			Keys:  make([]keyspan.Key, len(seqnums)),
+		}
+		for i := range seqnums {
+			t.Keys[i] = keyspan.Key{
+				Trailer: base.MakeTrailer(seqnums[i], base.InternalKeyKindRangeDelete),
+			}
+		}
+		return t
 	}
 
 	testCases := []struct {
@@ -145,8 +154,7 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 		{
 			fragmented: []keyspan.Span{
 				mktomb("a", "c", 2),
-				mktomb("c", "f", 5),
-				mktomb("c", "f", 2),
+				mktomb("c", "f", 5, 2),
 				mktomb("f", "m", 5),
 			},
 			want:    [][2]string{{"a", "m"}},
@@ -154,10 +162,7 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 		},
 		{
 			fragmented: []keyspan.Span{
-				mktomb("a", "b", 10),
-				mktomb("a", "b", 8),
-				mktomb("a", "b", 7),
-				mktomb("a", "b", 2),
+				mktomb("a", "b", 10, 8, 7, 2),
 				mktomb("g", "k", 4),
 			},
 			want:    [][2]string{{"a", "b"}, {"g", "k"}},
@@ -166,11 +171,8 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 		{
 			fragmented: []keyspan.Span{
 				mktomb("a", "b", 10),
-				mktomb("b", "c", 10),
-				mktomb("b", "c", 7),
-				mktomb("b", "c", 6),
-				mktomb("c", "d", 10),
-				mktomb("c", "d", 6),
+				mktomb("b", "c", 10, 7, 6),
+				mktomb("c", "d", 10, 6),
 				mktomb("d", "e", 6),
 			},
 			want:    [][2]string{{"a", "e"}},
