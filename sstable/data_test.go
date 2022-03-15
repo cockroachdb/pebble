@@ -16,7 +16,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -69,19 +68,35 @@ func runBuildCmd(
 	rangeDelFrag := keyspan.Fragmenter{
 		Cmp:    DefaultComparer.Compare,
 		Format: DefaultComparer.FormatKey,
-		Emit: func(fragmented []keyspan.Span) {
-			rangeDels = append(rangeDels, fragmented...)
+		Emit: func(s keyspan.Span) {
+			rangeDels = append(rangeDels, s)
 		},
 	}
 	var rangeKeys []keyspan.Span
 	rangeKeyFrag := keyspan.Fragmenter{
 		Cmp:    DefaultComparer.Compare,
 		Format: DefaultComparer.FormatKey,
-		Emit: func(fragmented []keyspan.Span) {
-			rangeKeys = append(rangeKeys, fragmented...)
+		Emit: func(s keyspan.Span) {
+			rangeKeys = append(rangeKeys, s)
 		},
 	}
 	for _, data := range strings.Split(td.Input, "\n") {
+		if strings.HasPrefix(data, "rangekey:") {
+			var err error
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						err = errors.Errorf("%v", r)
+					}
+				}()
+				rangeKeyFrag.Add(keyspan.ParseSpan(strings.TrimPrefix(data, "rangekey:")))
+			}()
+			if err != nil {
+				return nil, nil, err
+			}
+			continue
+		}
+
 		j := strings.Index(data, ":")
 		key := base.ParseInternalKey(data[:j])
 		value := []byte(data[j+1:])
@@ -94,28 +109,11 @@ func runBuildCmd(
 						err = errors.Errorf("%v", r)
 					}
 				}()
-				rangeDelFrag.Add(keyspan.Span{Start: key, End: value})
-			}()
-			if err != nil {
-				return nil, nil, err
-			}
-		case base.InternalKeyKindRangeKeyDelete,
-			base.InternalKeyKindRangeKeyUnset,
-			base.InternalKeyKindRangeKeySet:
-			var err error
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						err = errors.Errorf("%v", r)
-					}
-				}()
-				key, value := rangekey.Parse(data)
-				endKey, value, ok := rangekey.DecodeEndKey(key.Kind(), value)
-				if !ok {
-					err = errors.New("could not decode end key")
-					return
-				}
-				rangeKeyFrag.Add(keyspan.Span{Start: key, End: endKey, Value: value})
+				rangeDelFrag.Add(keyspan.Span{
+					Start: key.UserKey,
+					End:   value,
+					Keys:  []keyspan.Key{{Trailer: key.Trailer}},
+				})
 			}()
 			if err != nil {
 				return nil, nil, err
@@ -128,17 +126,16 @@ func runBuildCmd(
 	}
 	rangeDelFrag.Finish()
 	for _, v := range rangeDels {
-		if err := w.Add(v.Start, v.End); err != nil {
-			return nil, nil, err
+		for _, k := range v.Keys {
+			ik := base.InternalKey{UserKey: v.Start, Trailer: k.Trailer}
+			if err := w.Add(ik, v.End); err != nil {
+				return nil, nil, err
+			}
 		}
 	}
 	rangeKeyFrag.Finish()
-	for _, v := range rangeKeys {
-		// Reconstitute the value from the end key and the user value.
-		n := rangekey.RecombinedValueLen(v.Start.Kind(), v.End, v.Value)
-		b := make([]byte, n)
-		_ = rangekey.RecombineValue(v.Start.Kind(), b, v.End, v.Value)
-		if err := w.AddRangeKey(v.Start, b); err != nil {
+	for _, s := range rangeKeys {
+		if err := w.addRangeKeySpan(s); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -186,21 +183,25 @@ func runBuildRawCmd(
 	}
 
 	for _, data := range strings.Split(td.Input, "\n") {
+		if strings.HasPrefix(data, "rangekey:") {
+			data = strings.TrimPrefix(data, "rangekey:")
+			if err := w.addRangeKeySpan(keyspan.ParseSpan(data)); err != nil {
+				return nil, nil, err
+			}
+			continue
+		}
+
 		j := strings.Index(data, ":")
 		key := base.ParseInternalKey(data[:j])
-
+		value := []byte(data[j+1:])
 		switch key.Kind() {
 		case base.InternalKeyKindRangeKeyDelete,
 			base.InternalKeyKindRangeKeyUnset,
 			base.InternalKeyKindRangeKeySet:
-			// Values for range keys must be converted into their "packed" form before
-			// being added to the Writer.
-			_, value := rangekey.Parse(data)
 			if err := w.AddRangeKey(key, value); err != nil {
 				return nil, nil, err
 			}
 		default:
-			value := []byte(data[j+1:])
 			if err := w.Add(key, value); err != nil {
 				return nil, nil, err
 			}

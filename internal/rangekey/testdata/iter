@@ -1,15 +1,10 @@
 define
-a.RANGEKEYSET.10  : c [(@5=apples)]
-a.RANGEKEYDEL.10  : c
-a.RANGEKEYUNSET.8 : c [@1]
-a.RANGEKEYSET.4   : c [(@3=bananas)]
-a.RANGEKEYSET.4   : c [(@2=oranges)]
-c.RANGEKEYSET.4   : d [(@3=coconut)]
-e.RANGEKEYSET.20  : f [(@5=pineapple),(@3=guava)]
-h.RANGEKEYDEL.22  : j
-h.RANGEKEYSET.21  : j [(@5=peaches),(@3=starfruit)]
-l.RANGEKEYUNSET.2 : m [@9,@5]
-q.RANGEKEYSET.14  : z [(@9=mangos)]
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+h-j:{(#22,RANGEKEYDEL) (#21,RANGEKEYSET,@5,peaches) (#21,RANGEKEYSET,@3,starfruit)}
+l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
 ----
 OK
 
@@ -238,13 +233,9 @@ prev
 └── @9 : mangos
 
 define visible-seq-num=10
-a.RANGEKEYSET.8  : c [(@5=apples)]
-a.RANGEKEYSET.7  : c [(@3=bananas)]
-a.RANGEKEYSET.4  : c [(@2=oranges)]
-c.RANGEKEYSET.12 : d [(@3=coconut)]
-c.RANGEKEYSET.5  : d [(@1=coconut)]
-d.RANGEKEYSET.5  : f [(@1=coconut)]
-d.RANGEKEYSET.15 : f [(@2=oranges)]
+a-c:{(#8,RANGEKEYSET,@5,apples) (#7,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
+c-d:{(#12,RANGEKEYSET,@3,coconut) (#5,RANGEKEYSET,@1,coconut)}
+d-f:{(#15,RANGEKEYSET,@2,oranges) (#5,RANGEKEYSET,@1,coconut)}
 ----
 OK
 

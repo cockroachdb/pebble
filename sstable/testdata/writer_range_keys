@@ -23,9 +23,9 @@ SET a-c @1=foo
 SET c-d @2=bar
 SET e-f @3=baz
 ----
-a.RANGEKEYSET.0: c [(@1=foo)]
-c.RANGEKEYSET.0: d [(@2=bar)]
-e.RANGEKEYSET.0: f [(@3=baz)]
+a-c:{(#0,RANGEKEYSET,@1,foo)}
+c-d:{(#0,RANGEKEYSET,@2,bar)}
+e-f:{(#0,RANGEKEYSET,@3,baz)}
 
 # Merge aligned RANGEKEYSETs.
 #
@@ -44,7 +44,7 @@ SET a-c @2=foo
 SET a-c @1=bar
 SET a-c @3=baz
 ----
-a.RANGEKEYSET.0: c [(@3=baz),(@2=foo),(@1=bar)]
+a-c:{(#0,RANGEKEYSET,@3,baz) (#0,RANGEKEYSET,@2,foo) (#0,RANGEKEYSET,@1,bar)}
 
 # Aligned spans, mixed range key kinds.
 #
@@ -80,14 +80,10 @@ SET f-i @8=v8
 SET f-i @9=v9
 DEL f-i
 ----
-a.RANGEKEYSET.0: c [(@1=v1)]
-a.RANGEKEYUNSET.0: c [@5]
-c.RANGEKEYSET.0: d [(@5=v5),(@2=v2)]
-d.RANGEKEYSET.0: e [(@9=v9)]
-d.RANGEKEYDEL.0: e
-f.RANGEKEYSET.0: i [(@9=v9),(@8=v8),(@7=v7),(@5=v5),(@4=v4)]
-f.RANGEKEYUNSET.0: i [@6]
-f.RANGEKEYDEL.0: i
+a-c:{(#0,RANGEKEYSET,@1,v1) (#0,RANGEKEYUNSET,@5)}
+c-d:{(#0,RANGEKEYSET,@5,v5) (#0,RANGEKEYSET,@2,v2)}
+d-e:{(#0,RANGEKEYSET,@9,v9) (#0,RANGEKEYDEL)}
+f-i:{(#0,RANGEKEYSET,@9,v9) (#0,RANGEKEYSET,@8,v8) (#0,RANGEKEYSET,@7,v7) (#0,RANGEKEYSET,@5,v5) (#0,RANGEKEYSET,@4,v4) (#0,RANGEKEYUNSET,@6) (#0,RANGEKEYDEL)}
 
 # Merge overlapping RANGEKEYSETs.
 #
@@ -103,10 +99,10 @@ SET a-c @1=foo
 SET b-f @2=bar
 SET c-d @3=baz
 ----
-a.RANGEKEYSET.0: b [(@1=foo)]
-b.RANGEKEYSET.0: c [(@2=bar),(@1=foo)]
-c.RANGEKEYSET.0: d [(@3=baz),(@2=bar)]
-d.RANGEKEYSET.0: f [(@2=bar)]
+a-b:{(#0,RANGEKEYSET,@1,foo)}
+b-c:{(#0,RANGEKEYSET,@2,bar) (#0,RANGEKEYSET,@1,foo)}
+c-d:{(#0,RANGEKEYSET,@3,baz) (#0,RANGEKEYSET,@2,bar)}
+d-f:{(#0,RANGEKEYSET,@2,bar)}
 
 # Overlapping spans, mixed range keys kinds.
 #
@@ -128,26 +124,21 @@ DEL c-d
 SET e-q @4=baz
 DEL l-o
 ----
-a.RANGEKEYSET.0: b [(@1=foo)]
-b.RANGEKEYSET.0: c [(@2=bar),(@1=foo)]
-c.RANGEKEYSET.0: d [(@1=foo)]
-c.RANGEKEYUNSET.0: d [@3]
-c.RANGEKEYDEL.0: d
-d.RANGEKEYSET.0: e [(@1=foo)]
-d.RANGEKEYUNSET.0: e [@3]
-e.RANGEKEYSET.0: h [(@4=baz),(@1=foo)]
-e.RANGEKEYUNSET.0: h [@3]
-h.RANGEKEYSET.0: i [(@4=baz),(@1=foo)]
-i.RANGEKEYSET.0: l [(@4=baz)]
-l.RANGEKEYSET.0: o [(@4=baz)]
-l.RANGEKEYDEL.0: o
-o.RANGEKEYSET.0: q [(@4=baz)]
+a-b:{(#0,RANGEKEYSET,@1,foo)}
+b-c:{(#0,RANGEKEYSET,@2,bar) (#0,RANGEKEYSET,@1,foo)}
+c-d:{(#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYUNSET,@3) (#0,RANGEKEYDEL)}
+d-e:{(#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYUNSET,@3)}
+e-h:{(#0,RANGEKEYSET,@4,baz) (#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYUNSET,@3)}
+h-i:{(#0,RANGEKEYSET,@4,baz) (#0,RANGEKEYSET,@1,foo)}
+i-l:{(#0,RANGEKEYSET,@4,baz)}
+l-o:{(#0,RANGEKEYSET,@4,baz) (#0,RANGEKEYDEL)}
+o-q:{(#0,RANGEKEYSET,@4,baz)}
 
 build
 UNSET a-b @1
 SET a-b @1=foo
 ----
-a.RANGEKEYSET.0: b [(@1=foo)]
+a-b:{(#0,RANGEKEYSET,@1,foo)}
 
 # Within the same fragmented span, key kinds do not affect one another. SETs and
 # DELs will have their own records. A SET will eliminate an UNSET as the former
@@ -168,9 +159,7 @@ UNSET b-d @1
 UNSET b-d @2
 SET c-e @2=bar
 ----
-a.RANGEKEYSET.0: b [(@1=foo)]
-b.RANGEKEYSET.0: c [(@1=foo)]
-b.RANGEKEYUNSET.0: c [@2]
-c.RANGEKEYSET.0: d [(@2=bar)]
-c.RANGEKEYUNSET.0: d [@1]
-d.RANGEKEYSET.0: e [(@2=bar)]
+a-b:{(#0,RANGEKEYSET,@1,foo)}
+b-c:{(#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYUNSET,@2)}
+c-d:{(#0,RANGEKEYSET,@2,bar) (#0,RANGEKEYUNSET,@1)}
+d-e:{(#0,RANGEKEYSET,@2,bar)}

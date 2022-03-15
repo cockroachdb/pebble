@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
@@ -20,43 +19,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func parseSpanWithKind(t testing.TB, s string) Span {
-	// parseSpanWithKind expects a string like
-	//
-	//  a.RANGEKEYSET.10  : c <value>
-	//
-	// The value is optional.
-	fields := strings.FieldsFunc(s, func(r rune) bool { return r == ':' || unicode.IsSpace(r) })
-	if len(fields) < 2 {
-		t.Fatalf("key span string representation should have 2+ fields, found %d in %q", len(fields), s)
-	}
-	var value []byte
-	if len(fields[2:]) > 0 {
-		value = []byte(strings.Join(fields[2:], " "))
-	}
-	return Span{
-		Start: base.ParseInternalKey(fields[0]),
-		End:   []byte(fields[1]),
-		Value: value,
-	}
-}
-
 func TestMergingIter(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	var buf bytes.Buffer
 	var iter MergingIter
 
-	formatFragments := func(frags Fragments) {
-		if frags.Empty() {
-			fmt.Fprint(&buf, ".\n-\n")
-			return
-		}
-		for i := 0; i < frags.Count(); i++ {
-			s := frags.At(i)
-			fmt.Fprintf(&buf, "%s.%s\n", s, s.Start.Kind())
-		}
-		fmt.Fprintln(&buf, "-")
-	}
+	formatSpan := func(s Span) { fmt.Fprintln(&buf, s) }
 
 	datadriven.RunTest(t, "testdata/merging_iter", func(td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -82,8 +50,7 @@ func TestMergingIter(t *testing.T) {
 					spans = nil
 					continue
 				}
-
-				spans = append(spans, parseSpanWithKind(t, line))
+				spans = append(spans, ParseSpan(line))
 			}
 			if len(spans) > 0 {
 				iters = append(iters, NewIter(cmp, spans))
@@ -102,17 +69,17 @@ func TestMergingIter(t *testing.T) {
 				}
 				switch iterCmd {
 				case "first":
-					formatFragments(iter.First())
+					formatSpan(iter.First())
 				case "last":
-					formatFragments(iter.Last())
+					formatSpan(iter.Last())
 				case "next":
-					formatFragments(iter.Next())
+					formatSpan(iter.Next())
 				case "prev":
-					formatFragments(iter.Prev())
+					formatSpan(iter.Prev())
 				case "seek-ge":
-					formatFragments(iter.SeekGE([]byte(strings.TrimSpace(line[i:])), false))
+					formatSpan(iter.SeekGE([]byte(strings.TrimSpace(line[i:]))))
 				case "seek-lt":
-					formatFragments(iter.SeekLT([]byte(strings.TrimSpace(line[i:]))))
+					formatSpan(iter.SeekLT([]byte(strings.TrimSpace(line[i:]))))
 				case "set-bounds":
 					bounds := strings.Fields(line[i:])
 					if len(bounds) != 2 {
@@ -189,28 +156,25 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 			spanEndIdx := spanStartIdx + rng.Intn(ks.Count()/3) + 1
 
 			if spanEndIdx < ks.Count() {
-				startUserKey := testkeys.Key(ks, spanStartIdx)
-				endUserKey := testkeys.Key(ks, spanEndIdx)
-				fragmentCount := uint64(rng.Intn(3) + 1)
-
-				for f := fragmentCount; f > 0; f-- {
-					s := Span{
-						Start: base.MakeInternalKey(
-							startUserKey,
-							uint64((len(levels)-l)*3)+f,
-							base.InternalKeyKindRangeKeySet,
-						),
-						End: endUserKey,
-					}
-
-					if len(levels[l]) > 0 {
-						fmt.Fprint(&buf, ", ")
-					}
-					fmt.Fprintf(&buf, "%s", s)
-
-					levels[l] = append(levels[l], s)
-					allSpans = append(allSpans, s)
+				keyCount := uint64(rng.Intn(3) + 1)
+				s := Span{
+					Start: testkeys.Key(ks, spanStartIdx),
+					End:   testkeys.Key(ks, spanEndIdx),
+					Keys:  make([]Key, 0, keyCount),
 				}
+				for k := keyCount; k > 0; k-- {
+					seqNum := uint64((len(levels)-l)*3) + k
+					s.Keys = append(s.Keys, Key{
+						Trailer: base.MakeTrailer(seqNum, base.InternalKeyKindRangeKeySet),
+					})
+				}
+				if len(levels[l]) > 0 {
+					fmt.Fprint(&buf, ", ")
+				}
+				fmt.Fprintf(&buf, "%s", s)
+
+				levels[l] = append(levels[l], s)
+				allSpans = append(allSpans, s)
 			}
 			keyspaceStartIdx = spanEndIdx
 		}
@@ -223,8 +187,8 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 	f := Fragmenter{
 		Cmp:    cmp,
 		Format: testkeys.Comparer.FormatKey,
-		Emit: func(spans []Span) {
-			allFragmented = append(allFragmented, spans...)
+		Emit: func(span Span) {
+			allFragmented = append(allFragmented, span)
 		},
 	}
 	Sort(f.Cmp, allSpans)
@@ -245,8 +209,8 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 	t.Logf("%d levels:\n%s\n", len(levels), buf.String())
 
 	fragmenterIter := NewIter(f.Cmp, allFragmented)
-	mergingIter := &mergingIterAdapter{MergingIter: &MergingIter{}}
-	mergingIter.MergingIter.Init(f.Cmp, VisibleTransform(base.InternalKeySeqNumMax), iters...)
+	mergingIter := &MergingIter{}
+	mergingIter.Init(f.Cmp, VisibleTransform(base.InternalKeySeqNumMax), iters...)
 
 	// Position both so that it's okay to perform relative positioning
 	// operations immediately.
@@ -255,40 +219,32 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 
 	type opKind struct {
 		weight int
-		fn     func() string
+		fn     func() (str string, f Span, m Span)
 	}
 	ops := []opKind{
-		{weight: 2, fn: func() string {
-			fragmenterIter.First()
-			mergingIter.First()
-			return "First()"
+		{weight: 2, fn: func() (string, Span, Span) {
+			return "First()", fragmenterIter.First(), mergingIter.First()
 		}},
-		{weight: 2, fn: func() string {
-			fragmenterIter.Last()
-			mergingIter.Last()
-			return "Last()"
+		{weight: 2, fn: func() (string, Span, Span) {
+			return "Last()", fragmenterIter.Last(), mergingIter.Last()
 		}},
-		{weight: 5, fn: func() string {
+		{weight: 5, fn: func() (string, Span, Span) {
 			k := testkeys.Key(ks, rng.Intn(ks.Count()))
-			fragmenterIter.SeekGE(k, false)
-			mergingIter.SeekGE(k, false)
-			return fmt.Sprintf("SeekGE(%q)", k)
+			return fmt.Sprintf("SeekGE(%q)", k),
+				fragmenterIter.SeekGE(k),
+				mergingIter.SeekGE(k)
 		}},
-		{weight: 5, fn: func() string {
+		{weight: 5, fn: func() (string, Span, Span) {
 			k := testkeys.Key(ks, rng.Intn(ks.Count()))
-			fragmenterIter.SeekLT(k)
-			mergingIter.SeekLT(k)
-			return fmt.Sprintf("SeekLT(%q)", k)
+			return fmt.Sprintf("SeekLT(%q)", k),
+				fragmenterIter.SeekLT(k),
+				mergingIter.SeekLT(k)
 		}},
-		{weight: 50, fn: func() string {
-			fragmenterIter.Next()
-			mergingIter.Next()
-			return "Next()"
+		{weight: 50, fn: func() (string, Span, Span) {
+			return "Next()", fragmenterIter.Next(), mergingIter.Next()
 		}},
-		{weight: 50, fn: func() string {
-			fragmenterIter.Prev()
-			mergingIter.Prev()
-			return "Prev()"
+		{weight: 50, fn: func() (string, Span, Span) {
+			return "Prev()", fragmenterIter.Prev(), mergingIter.Prev()
 		}},
 	}
 	var totalWeight int
@@ -310,9 +266,7 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 			p -= op.weight
 		}
 
-		opString := ops[opIndex].fn()
-		fs := fragmenterIter.Current()
-		ms := mergingIter.Current()
+		opString, fs, ms := ops[opIndex].fn()
 
 		fragmenterBuf.Reset()
 		mergingBuf.Reset()
@@ -324,122 +278,4 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 		}
 		t.Logf("op %d: %s = %s", i, opString, fragmenterBuf.String())
 	}
-}
-
-// mergingIterAdapter adapts MergingIter, which returns Fragments, to fulfill
-// the FragmentIterator interface. It's used by
-// TestMergingIter_FragmenterEquivalence to compare a Iter with a
-// MergingIter, despite their different interfaces.
-type mergingIterAdapter struct {
-	*MergingIter
-	index int
-	dir   int8
-	frags Fragments
-}
-
-var _ FragmentIterator = &mergingIterAdapter{}
-
-func (i *mergingIterAdapter) Clone() FragmentIterator {
-	panic("unimplemented")
-}
-
-func (i *mergingIterAdapter) End() []byte {
-	return i.Current().End
-}
-
-func (i *mergingIterAdapter) Current() Span {
-	if i.index < 0 || i.index >= i.frags.Count() {
-		return Span{}
-	}
-	return i.frags.At(i.index)
-}
-
-func (i *mergingIterAdapter) Valid() bool {
-	return i.index >= 0 && i.index < i.frags.Count()
-}
-
-func (i *mergingIterAdapter) firstFrag() (*base.InternalKey, []byte) {
-	if i.frags.Empty() {
-		return nil, nil
-	}
-	i.index = 0
-	f := i.frags.At(i.index)
-	return &f.Start, nil
-}
-
-func (i *mergingIterAdapter) lastFrag() (*base.InternalKey, []byte) {
-	if i.frags.Empty() {
-		return nil, nil
-	}
-	i.index = i.frags.Count() - 1
-	f := i.frags.At(i.index)
-	return &f.Start, nil
-}
-
-func (i *mergingIterAdapter) First() (*base.InternalKey, []byte) {
-	i.frags = i.MergingIter.First()
-	i.dir = +1
-	return i.firstFrag()
-}
-
-func (i *mergingIterAdapter) Last() (*base.InternalKey, []byte) {
-	i.frags = i.MergingIter.Last()
-	i.dir = -1
-	return i.lastFrag()
-}
-
-func (i *mergingIterAdapter) SeekGE(key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
-	i.frags = i.MergingIter.SeekGE(key, trySeekUsingNext)
-	i.dir = +1
-	return i.firstFrag()
-}
-
-func (i *mergingIterAdapter) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
-) (*base.InternalKey, []byte) {
-	panic("unimplemented")
-}
-
-func (i *mergingIterAdapter) SeekLT(key []byte) (*base.InternalKey, []byte) {
-	i.frags = i.MergingIter.SeekLT(key)
-	i.dir = -1
-	return i.lastFrag()
-}
-
-func (i *mergingIterAdapter) Next() (*base.InternalKey, []byte) {
-	if i.dir == +1 && i.frags.Empty() {
-		// Already exhausted in the forward direction.
-		return nil, nil
-	} else if i.dir == -1 && i.frags.Empty() {
-		i.dir = +1
-		i.frags = i.MergingIter.Next()
-		return i.firstFrag()
-	}
-	i.dir = +1
-	i.index++
-	if i.index >= i.frags.Count() {
-		i.frags = i.MergingIter.Next()
-		return i.firstFrag()
-	}
-	s := i.frags.At(i.index)
-	return &s.Start, nil
-}
-
-func (i *mergingIterAdapter) Prev() (*base.InternalKey, []byte) {
-	if i.dir == -1 && i.frags.Empty() {
-		// Already exhausted in the backward direction.
-		return nil, nil
-	} else if i.dir == +1 && i.frags.Empty() {
-		i.dir = -1
-		i.frags = i.MergingIter.Prev()
-		return i.lastFrag()
-	}
-	i.dir = -1
-	i.index--
-	if i.index < 0 {
-		i.frags = i.MergingIter.Prev()
-		return i.lastFrag()
-	}
-	s := i.frags.At(i.index)
-	return &s.Start, nil
 }

@@ -15,7 +15,7 @@ d#4,0:
 
 scan range-del
 ----
-a#3,15:c
+a-c:{(#3,RANGEDEL)}
 
 clear
 ----
@@ -29,12 +29,9 @@ del-range b d
 
 scan range-del
 ----
-a#2,15:b
-a#0,15:b
-b#3,15:c
-b#2,15:c
-b#1,15:c
-c#3,15:d
+a-b:{(#2,RANGEDEL) (#0,RANGEDEL)}
+b-c:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+c-d:{(#3,RANGEDEL)}
 
 clear
 ----
@@ -45,7 +42,7 @@ del-range a b
 
 scan range-del
 ----
-a#0,15:b
+a-b:{(#0,RANGEDEL)}
 
 define
 del-range b c
@@ -53,8 +50,8 @@ del-range b c
 
 scan range-del
 ----
-a#0,15:b
-b#1,15:c
+a-b:{(#0,RANGEDEL)}
+b-c:{(#1,RANGEDEL)}
 
 define
 del-range a c
@@ -62,10 +59,8 @@ del-range a c
 
 scan range-del
 ----
-a#2,15:b
-a#0,15:b
-b#2,15:c
-b#1,15:c
+a-b:{(#2,RANGEDEL) (#0,RANGEDEL)}
+b-c:{(#2,RANGEDEL) (#1,RANGEDEL)}
 
 define
 del-range b d
@@ -73,12 +68,9 @@ del-range b d
 
 scan range-del
 ----
-a#2,15:b
-a#0,15:b
-b#3,15:c
-b#2,15:c
-b#1,15:c
-c#3,15:d
+a-b:{(#2,RANGEDEL) (#0,RANGEDEL)}
+b-c:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+c-d:{(#3,RANGEDEL)}
 
 clear
 ----
@@ -94,4 +86,4 @@ scan
 
 scan range-del
 ----
-#1,15:d
+-d:{(#1,RANGEDEL)}

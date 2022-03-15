@@ -62,14 +62,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			var spans []keyspan.Span
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
-				startKey, value := Parse(line)
-				endKey, v, ok := DecodeEndKey(startKey.Kind(), value)
-				require.True(t, ok)
-				spans = append(spans, keyspan.Span{
-					Start: startKey,
-					End:   endKey,
-					Value: v,
-				})
+				spans = append(spans, keyspan.ParseSpan(line))
 			}
 			rangeKeyIter.Init(cmp, testkeys.Comparer.FormatKey, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, spans))
 			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &rangeKeyIter,

@@ -98,7 +98,7 @@ pebble: table with format (Pebble,v2) unsupported at DB format major version 7, 
 # Tables with range keys only.
 
 load
-a.RANGEKEYSET.0:z [(@1=foo)]
+rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
 1: a#0,21-z#72057594037927935,21
   points: #0,0-#0,0
@@ -110,9 +110,9 @@ load
 a.SET.0:
 b.SET.0:
 c.SET.0:
-w.RANGEKEYSET.0:x [(@1=foo)]
-x.RANGEKEYSET.0:y [(@2=bar)]
-y.RANGEKEYSET.0:z [(@3=baz)]
+rangekey: w-x:{(#0,RANGEKEYSET,@1,foo)}
+rangekey: x-y:{(#0,RANGEKEYSET,@2,bar)}
+rangekey: y-z:{(#0,RANGEKEYSET,@3,baz)}
 ----
 1: a#0,1-z#72057594037927935,21
   points: a#0,1-c#0,1
@@ -120,7 +120,7 @@ y.RANGEKEYSET.0:z [(@3=baz)]
 
 load
 c.SET.0:d
-a.RANGEKEYSET.0:z [(@1=foo)]
+rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
 1: a#0,21-z#72057594037927935,21
   points: c#0,1-c#0,1
@@ -128,7 +128,7 @@ a.RANGEKEYSET.0:z [(@1=foo)]
 
 load
 a.SET.0:z
-c.RANGEKEYSET.0:d [(@1=foo)]
+rangekey: c-d:{(#0,RANGEKEYSET,@1,foo)}
 ----
 1: a#0,1-d#72057594037927935,21
   points: a#0,1-a#0,1
@@ -138,7 +138,7 @@ c.RANGEKEYSET.0:d [(@1=foo)]
 
 load
 a.RANGEDEL.0:z
-a.RANGEKEYSET.0:z [(@1=foo)]
+rangekey: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
 1: a#0,21-z#72057594037927935,15
   points: a#0,15-z#72057594037927935,15

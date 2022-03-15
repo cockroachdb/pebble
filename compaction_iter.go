@@ -12,7 +12,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
@@ -199,9 +198,7 @@ type compactionIter struct {
 	// `compaction.rangeDelFrag`).
 	rangeDelFrag *keyspan.Fragmenter
 	// The fragmented tombstones.
-	tombstones []keyspan.Span
-	// Byte allocator for the tombstone keys.
-	alloc               bytealloc.A
+	tombstones          []keyspan.Span
 	allowZeroSeqNum     bool
 	elideTombstone      func(key []byte) bool
 	elideRangeTombstone func(start, end []byte) bool
@@ -728,11 +725,6 @@ func (i *compactionIter) saveKey() {
 	i.key.Trailer = i.iterKey.Trailer
 }
 
-func (i *compactionIter) cloneKey(key InternalKey) InternalKey {
-	i.alloc, key.UserKey = i.alloc.Copy(key.UserKey)
-	return key
-}
-
 func (i *compactionIter) Key() InternalKey {
 	return i.key
 }
@@ -783,27 +775,35 @@ func (i *compactionIter) Tombstones(key []byte) []keyspan.Span {
 	return tombstones
 }
 
-func (i *compactionIter) emitRangeDelChunk(fragmented []keyspan.Span) {
+func (i *compactionIter) emitRangeDelChunk(fragmented keyspan.Span) {
 	// Apply the snapshot stripe rules, keeping only the latest tombstone for
 	// each snapshot stripe.
 	currentIdx := -1
-	for _, v := range fragmented {
-		idx, _ := snapshotIndex(v.Start.SeqNum(), i.snapshots)
+	keys := fragmented.Keys[:0]
+	for _, k := range fragmented.Keys {
+		idx, _ := snapshotIndex(k.SeqNum(), i.snapshots)
 		if currentIdx == idx {
 			continue
 		}
-		if idx == 0 && i.elideRangeTombstone(v.Start.UserKey, v.End) {
-			// This is the last snapshot stripe and the range tombstone can be
-			// elided.
+		if idx == 0 && i.elideRangeTombstone(fragmented.Start, fragmented.End) {
+			// This is the last snapshot stripe and the range tombstone
+			// can be elided.
 			break
 		}
 
-		i.tombstones = append(i.tombstones, v)
+		keys = append(keys, k)
 		if idx == 0 {
 			// This is the last snapshot stripe.
 			break
 		}
 		currentIdx = idx
+	}
+	if len(keys) > 0 {
+		i.tombstones = append(i.tombstones, keyspan.Span{
+			Start: fragmented.Start,
+			End:   fragmented.End,
+			Keys:  keys,
+		})
 	}
 }
 

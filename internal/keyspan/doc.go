@@ -2,8 +2,8 @@
 // iterating over spans of user keys.
 //
 // A Span represents a range of user key space with an inclusive start
-// key and exclusive end key. A span's start key is an internal key,
-// meaning it contains both an internal key kind and a sequence number.
+// key and exclusive end key. A span may hold any number of Keys which are
+// applied over the entirety of the span's keyspace.
 //
 // Spans are used within Pebble as an in-memory representation of range
 // deletion tombstones, and range key sets, unsets and deletes. Spans
