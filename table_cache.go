@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"runtime/debug"
 	"runtime/pprof"
 	"sync"
@@ -25,6 +26,7 @@ import (
 )
 
 var emptyIter = &errorIter{err: nil}
+var emptyKeyspanIter = &errorKeyspanIter{err: nil}
 
 var tableCacheLabels = pprof.Labels("pebble", "table-cache")
 
@@ -267,7 +269,7 @@ type tableCacheShard struct {
 		sync.RWMutex
 		nodes map[tableCacheKey]*tableCacheNode
 		// The iters map is only created and populated in race builds.
-		iters map[base.InternalIterator][]byte
+		iters map[io.Closer][]byte
 
 		handHot  *tableCacheNode
 		handCold *tableCacheNode
@@ -291,7 +293,7 @@ func (c *tableCacheShard) init(size int) {
 	go c.releaseLoop()
 
 	if invariants.RaceEnabled {
-		c.mu.iters = make(map[base.InternalIterator][]byte)
+		c.mu.iters = make(map[io.Closer][]byte)
 	}
 }
 
@@ -426,7 +428,7 @@ func (c *tableCacheShard) newRangeKeyIter(
 		c.unrefValue(v)
 		// Return the empty iterator. This iterator has no mutable state, so
 		// using a singleton is fine.
-		return emptyIter, err
+		return emptyKeyspanIter, err
 	}
 
 	var iter sstable.FragmentIterator
@@ -601,7 +603,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 	}
 	// Cache the closure invoked when an iterator is closed. This avoids an
 	// allocation on every call to newIters.
-	v.closeHook = func(i base.InternalIterator) error {
+	v.closeHook = func(i io.Closer) error {
 		if invariants.RaceEnabled {
 			c.mu.Lock()
 			delete(c.mu.iters, i)
@@ -831,7 +833,7 @@ func (c *tableCacheShard) Close() error {
 }
 
 type tableCacheValue struct {
-	closeHook func(i base.InternalIterator) error
+	closeHook func(i io.Closer) error
 	reader    *sstable.Reader
 	filename  string
 	err       error

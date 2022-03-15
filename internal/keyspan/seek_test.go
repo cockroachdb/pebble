@@ -19,21 +19,24 @@ func TestSeek(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	fmtKey := base.DefaultComparer.FormatKey
 	var iter FragmentIterator
+	var buf bytes.Buffer
 
 	datadriven.RunTest(t, "testdata/seek", func(d *datadriven.TestData) string {
+		buf.Reset()
 		switch d.Cmd {
 		case "build":
-			tombstones := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
-			iter = NewIter(cmp, tombstones)
-			return formatSpans(tombstones)
-
+			spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
+			for _, s := range spans {
+				fmt.Fprintln(&buf, s)
+			}
+			iter = NewIter(cmp, spans)
+			return buf.String()
 		case "seek-ge", "seek-le":
 			seek := SeekGE
 			if d.Cmd == "seek-le" {
 				seek = SeekLE
 			}
 
-			var buf bytes.Buffer
 			for _, line := range strings.Split(d.Input, "\n") {
 				parts := strings.Fields(line)
 				if len(parts) != 2 {
@@ -43,12 +46,10 @@ func TestSeek(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				tombstone := seek(cmp, iter, []byte(parts[0]), seq)
-				fmt.Fprintf(&buf, "%s", strings.TrimSpace(formatSpans([]Span{tombstone})))
-				fmt.Fprintf(&buf, "\n")
+				span := seek(cmp, iter, []byte(parts[0]), seq)
+				fmt.Fprintln(&buf, span)
 			}
 			return buf.String()
-
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}

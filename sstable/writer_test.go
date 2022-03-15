@@ -125,8 +125,8 @@ func runDataDriven(t *testing.T, file string) {
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for key, val := iter.First(); key != nil; key, val = iter.Next() {
-				fmt.Fprintf(&buf, "%s:%s\n", key, val)
+			for s := iter.First(); s.Valid(); s = iter.Next() {
+				fmt.Fprintf(&buf, "%s\n", s)
 			}
 			return buf.String()
 
@@ -141,8 +141,8 @@ func runDataDriven(t *testing.T, file string) {
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for key, val := iter.First(); key != nil; key, val = iter.Next() {
-				fmt.Fprintf(&buf, "%s:%s\n", key, val)
+			for s := iter.First(); s.Valid(); s = iter.Next() {
+				fmt.Fprintf(&buf, "%s\n", s)
 			}
 			return buf.String()
 

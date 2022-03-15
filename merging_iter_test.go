@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -197,8 +198,8 @@ func TestMergingIterCornerCases(t *testing.T) {
 				frag := keyspan.Fragmenter{
 					Cmp:    cmp,
 					Format: fmtKey,
-					Emit: func(fragmented []keyspan.Span) {
-						tombstones = append(tombstones, fragmented...)
+					Emit: func(fragmented keyspan.Span) {
+						tombstones = append(tombstones, fragmented)
 					},
 				}
 				keyvalues := strings.Fields(line)
@@ -208,7 +209,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 					value := []byte(kv[j+1:])
 					switch ikey.Kind() {
 					case InternalKeyKindRangeDelete:
-						frag.Add(keyspan.Span{Start: ikey, End: value})
+						frag.Add(keyspan.Span{Start: ikey.UserKey, End: value, Keys: []keyspan.Key{{Trailer: ikey.Trailer}}})
 					default:
 						if err := w.Add(ikey, value); err != nil {
 							return err.Error()
@@ -217,7 +218,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				}
 				frag.Finish()
 				for _, v := range tombstones {
-					if err := w.Add(v.Start, v.End); err != nil {
+					if err := rangedel.Encode(v, w.Add); err != nil {
 						return err.Error()
 					}
 				}

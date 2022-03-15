@@ -1,10 +1,7 @@
 define
-a.RANGEKEYUNSET.3 : c [@5]
-a.RANGEKEYSET.2   : c [(@5=apples)]
-a.RANGEKEYSET.1   : c [(@3=bananas)]
-c.RANGEKEYSET.4   : d [(@3=bananas)]
-d.RANGEKEYSET.4   : e [(@3=bananas)]
-d.RANGEKEYSET.4   : e [(@1=pineapple)]
+a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+c-d:{(#4,RANGEKEYSET,@3,bananas)}
+d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
 ----
 
 # Iterating with logical defragmentation should combine [a,c) and [c,d)
@@ -48,12 +45,9 @@ prev      .
 # [c,d) should be merged.
 
 define
-a.RANGEKEYUNSET.3 : c [@5]
-a.RANGEKEYSET.2   : c [(@5=apples)]
-a.RANGEKEYSET.1   : c [(@3=bananas)]
-c.RANGEKEYUNSET.3 : d [@5]
-c.RANGEKEYSET.2   : d [(@3=bananas)]
-d.RANGEKEYSET.3   : e [(@3=bananas)]
+a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+c-d:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@3,bananas)}
+d-e:{(#3,RANGEKEYSET,@3,bananas)}
 ----
 
 iter method=internal
@@ -68,12 +62,10 @@ next      .
 # Test defragmenting in both directions at seek keys.
 
 define
-a.RANGEKEYUNSET.3 : f [@5]
-a.RANGEKEYSET.2   : f [(@5=apples)]
-a.RANGEKEYSET.1   : f [(@3=bananas)]
-f.RANGEKEYSET.3   : h [(@3=bananas)]
-h.RANGEKEYSET.3   : p [(@3=bananas)]
-p.RANGEKEYSET.3   : t [(@3=bananas)]
+a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+f-h:{(#3,RANGEKEYSET,@3,bananas)}
+h-p:{(#3,RANGEKEYSET,@3,bananas)}
+p-t:{(#3,RANGEKEYSET,@3,bananas)}
 ----
 
 iter method=logical
@@ -107,13 +99,11 @@ prev      [a, t): "@3" = "bananas"
 # Test next-ing and prev-ing around seek keys.
 
 define
-a.RANGEKEYUNSET.3 : f [@5]
-a.RANGEKEYSET.2   : f [(@5=apples)]
-a.RANGEKEYSET.1   : f [(@3=bananas)]
-f.RANGEKEYSET.3   : h [(@3=bananas)]
-h.RANGEKEYSET.3   : p [(@3=bananas)]
-p.RANGEKEYSET.3   : t [(@3=bananas)]
-t.RANGEKEYSET.4   : z [(@2=oranges)]
+a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+f-h:{(#3,RANGEKEYSET,@3,bananas)}
+h-p:{(#3,RANGEKEYSET,@3,bananas)}
+p-t:{(#3,RANGEKEYSET,@3,bananas)}
+t-z:{(#4,RANGEKEYSET,@2,oranges)}
 ----
 
 iter method=logical

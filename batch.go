@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/rawalloc"
 )
@@ -820,7 +821,7 @@ func (b *Batch) newInternalIter(o *IterOptions) internalIterator {
 
 func (b *Batch) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
 	if b.index == nil {
-		return newErrorIter(ErrNotIndexed)
+		return newErrorKeyspanIter(ErrNotIndexed)
 	}
 	if b.rangeDelIndex == nil {
 		return nil
@@ -833,8 +834,8 @@ func (b *Batch) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
 		frag := &keyspan.Fragmenter{
 			Cmp:    b.cmp,
 			Format: b.formatKey,
-			Emit: func(fragmented []keyspan.Span) {
-				b.tombstones = append(b.tombstones, fragmented...)
+			Emit: func(s keyspan.Span) {
+				b.tombstones = append(b.tombstones, s)
 			},
 		}
 		it := &batchIter{
@@ -842,24 +843,37 @@ func (b *Batch) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
 			batch: b,
 			iter:  b.rangeDelIndex.NewIter(nil, nil),
 		}
-		// The memory management here is a bit subtle. The keys and values returned
-		// by the iterator are slices in Batch.data. Thus the fragmented tombstones
-		// are slices within Batch.data. If additional entries are added to the
-		// Batch, Batch.data may be reallocated. The references in the fragmented
-		// tombstones will remain valid, pointing into the old Batch.data. GC for
-		// the win.
-		for key, val := it.First(); key != nil; key, val = it.Next() {
-			frag.Add(keyspan.Span{Start: *key, End: val})
-		}
-		frag.Finish()
+		fragmentRangeDels(frag, it, int(b.countRangeDels))
 	}
 
 	return keyspan.NewIter(b.cmp, b.tombstones)
 }
 
+func fragmentRangeDels(frag *keyspan.Fragmenter, it internalIterator, count int) {
+	// The memory management here is a bit subtle. The keys and values returned
+	// by the iterator are slices in Batch.data. Thus the fragmented tombstones
+	// are slices within Batch.data. If additional entries are added to the
+	// Batch, Batch.data may be reallocated. The references in the fragmented
+	// tombstones will remain valid, pointing into the old Batch.data. GC for
+	// the win.
+
+	// Use a single []keyspan.Key buffer to avoid allocating many
+	// individual []keyspan.Key slices with a single element each.
+	keyBuf := make([]keyspan.Key, 0, count)
+	for key, val := it.First(); key != nil; key, val = it.Next() {
+		s := rangedel.Decode(*key, val, keyBuf)
+		keyBuf = s.Keys[len(s.Keys):]
+
+		// Set a fixed capacity to avoid accidental overwriting.
+		s.Keys = s.Keys[:len(s.Keys):len(s.Keys)]
+		frag.Add(s)
+	}
+	frag.Finish()
+}
+
 func (b *Batch) newRangeKeyIter(_ *IterOptions) keyspan.FragmentIterator {
 	if b.index == nil {
-		return newErrorIter(ErrNotIndexed)
+		return newErrorKeyspanIter(ErrNotIndexed)
 	}
 	if b.rangeKeyIndex == nil {
 		return nil
@@ -872,8 +886,8 @@ func (b *Batch) newRangeKeyIter(_ *IterOptions) keyspan.FragmentIterator {
 		frag := &keyspan.Fragmenter{
 			Cmp:    b.cmp,
 			Format: b.formatKey,
-			Emit: func(fragmented []keyspan.Span) {
-				b.rangeKeys = append(b.rangeKeys, fragmented...)
+			Emit: func(s keyspan.Span) {
+				b.rangeKeys = append(b.rangeKeys, s)
 			},
 		}
 		it := &batchIter{
@@ -881,23 +895,36 @@ func (b *Batch) newRangeKeyIter(_ *IterOptions) keyspan.FragmentIterator {
 			batch: b,
 			iter:  b.rangeKeyIndex.NewIter(nil, nil),
 		}
-		// The memory management here is a bit subtle. The keys and values
-		// returned by the iterator are slices in Batch.data. Thus the
-		// fragmented key spans are slices within Batch.data. If additional
-		// entries are added to the Batch, Batch.data may be reallocated. The
-		// references in the fragmented keys will remain valid, pointing into
-		// the old Batch.data. GC for the win.
-		for key, val := it.First(); key != nil; key, val = it.Next() {
-			endKey, val, ok := rangekey.DecodeEndKey(key.Kind(), val)
-			if !ok {
-				panic(fmt.Sprintf("pebble: unable to split range key value %s", key.Pretty(b.formatKey)))
-			}
-			frag.Add(keyspan.Span{Start: *key, End: endKey, Value: val})
-		}
-		frag.Finish()
+		fragmentRangeKeys(frag, it, int(b.countRangeKeys))
 	}
 
 	return keyspan.NewIter(b.cmp, b.rangeKeys)
+}
+
+func fragmentRangeKeys(frag *keyspan.Fragmenter, it internalIterator, count int) error {
+	// The memory management here is a bit subtle. The keys and values
+	// returned by the iterator are slices in Batch.data. Thus the
+	// fragmented key spans are slices within Batch.data. If additional
+	// entries are added to the Batch, Batch.data may be reallocated. The
+	// references in the fragmented keys will remain valid, pointing into
+	// the old Batch.data. GC for the win.
+
+	// Use a single []keyspan.Key buffer to avoid allocating many
+	// individual []keyspan.Key slices with a single element each.
+	keyBuf := make([]keyspan.Key, 0, count)
+	for ik, val := it.First(); ik != nil; ik, val = it.Next() {
+		s, err := rangekey.Decode(*ik, val, keyBuf)
+		if err != nil {
+			return err
+		}
+		keyBuf = s.Keys[len(s.Keys):]
+
+		// Set a fixed capacity to avoid accidental overwriting.
+		s.Keys = s.Keys[:len(s.Keys):len(s.Keys)]
+		frag.Add(s)
+	}
+	frag.Finish()
+	return nil
 }
 
 // Commit applies the batch to its parent writer.
@@ -1329,8 +1356,8 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 		frag := &keyspan.Fragmenter{
 			Cmp:    b.cmp,
 			Format: b.formatKey,
-			Emit: func(fragmented []keyspan.Span) {
-				b.tombstones = append(b.tombstones, fragmented...)
+			Emit: func(s keyspan.Span) {
+				b.tombstones = append(b.tombstones, s)
 			},
 		}
 		it := &flushableBatchIter{
@@ -1340,17 +1367,14 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 			cmp:     b.cmp,
 			index:   -1,
 		}
-		for key, val := it.First(); key != nil; key, val = it.Next() {
-			frag.Add(keyspan.Span{Start: *key, End: val})
-		}
-		frag.Finish()
+		fragmentRangeDels(frag, it, len(rangeDelOffsets))
 	}
 	if len(rangeKeyOffsets) > 0 {
 		frag := &keyspan.Fragmenter{
 			Cmp:    b.cmp,
 			Format: b.formatKey,
-			Emit: func(fragmented []keyspan.Span) {
-				b.rangeKeys = append(b.rangeKeys, fragmented...)
+			Emit: func(s keyspan.Span) {
+				b.rangeKeys = append(b.rangeKeys, s)
 			},
 		}
 		it := &flushableBatchIter{
@@ -1360,15 +1384,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) *flushableBatch {
 			cmp:     b.cmp,
 			index:   -1,
 		}
-		for key, val := it.First(); key != nil; key, val = it.Next() {
-			endKey, rangeKeyVal, ok := rangekey.DecodeEndKey(key.Kind(), val)
-			if !ok {
-				panic(base.CorruptionErrorf("pebble: unable to decode range key value for key %s",
-					key.Pretty(b.formatKey)))
-			}
-			frag.Add(keyspan.Span{Start: *key, End: endKey, Value: rangeKeyVal})
-		}
-		frag.Finish()
+		fragmentRangeKeys(frag, it, len(rangeKeyOffsets))
 	}
 	return b
 }
@@ -1379,12 +1395,20 @@ func (b *flushableBatch) setSeqNum(seqNum uint64) {
 	}
 	b.seqNum = seqNum
 	for i := range b.tombstones {
-		start := &b.tombstones[i].Start
-		start.SetSeqNum(seqNum + start.SeqNum())
+		for j := range b.tombstones[i].Keys {
+			b.tombstones[i].Keys[j].Trailer = base.MakeTrailer(
+				b.tombstones[i].Keys[j].SeqNum()+seqNum,
+				b.tombstones[i].Keys[j].Kind(),
+			)
+		}
 	}
 	for i := range b.rangeKeys {
-		start := &b.rangeKeys[i].Start
-		start.SetSeqNum(seqNum + start.SeqNum())
+		for j := range b.rangeKeys[i].Keys {
+			b.rangeKeys[i].Keys[j].Trailer = base.MakeTrailer(
+				b.rangeKeys[i].Keys[j].SeqNum()+seqNum,
+				b.rangeKeys[i].Keys[j].Kind(),
+			)
+		}
 	}
 }
 

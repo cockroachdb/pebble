@@ -34,13 +34,13 @@ h.SET.3:h
 iter
 seek-ge d
 ----
-f/d-e#6#5,1:f
+f/d-e:{(#6,RANGEDEL)}#5,1:f
 
 iter
 set-bounds upper=d
 seek-ge d
 ----
-d/d-e#6#72057594037927935,15:
+d/d-e:{(#6,RANGEDEL)}#72057594037927935,15:
 
 iter
 set-bounds upper=d
@@ -50,7 +50,7 @@ prev
 next
 next
 ----
-c/d-e#6#7,1:c
+c/d-e:{(#6,RANGEDEL)}#7,1:c
 d#72057594037927935,15:
 c#7,1:c
 d#72057594037927935,15:
@@ -61,7 +61,7 @@ d#72057594037927935,15:
 iter
 seek-prefix-ge d
 ----
-f/d-e#6#5,15:
+f/d-e:{(#6,RANGEDEL)}#5,15:
 
 # Tests a sequence of SeekPrefixGE with monotonically increasing keys, some of
 # which are present and some not (so fail the bloom filter match). The seek to
@@ -75,13 +75,13 @@ seek-prefix-ge g
 seek-prefix-ge gg
 seek-prefix-ge h
 ----
-./<empty>#0,0:
-c/d-e#6#7,1:c
-f/d-e#6#5,15:
-f/<empty>#5,1:f
-g/<empty>#4,1:g
-./<empty>#0,0:
-h/<empty>#3,1:h
+./<invalid>#0,0:
+c/d-e:{(#6,RANGEDEL)}#7,1:c
+f/d-e:{(#6,RANGEDEL)}#5,15:
+f/<invalid>#5,1:f
+g/<invalid>#4,1:g
+./<invalid>#0,0:
+h/<invalid>#3,1:h
 
 # Test that when sequentially iterate through all 3 files, the stats
 # accumulate as we close a file and switch to the next one. Also, while in the
@@ -108,7 +108,7 @@ stats
 reset-stats
 stats
 ----
-a/<empty>#9,1:a
+a/<invalid>#9,1:a
 {BlockBytes:34 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 {BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 b#8,1:b
@@ -129,7 +129,7 @@ iter
 set-bounds lower=d
 seek-lt d
 ----
-d/d-e#6#72057594037927935,15:
+d/d-e:{(#6,RANGEDEL)}#72057594037927935,15:
 
 iter
 set-bounds lower=d
@@ -139,7 +139,7 @@ next
 prev
 prev
 ----
-f/d-e#6#5,1:f
+f/d-e:{(#6,RANGEDEL)}#5,1:f
 d#72057594037927935,15:
 f#5,1:f
 d#72057594037927935,15:
@@ -207,7 +207,7 @@ prev
 next
 next
 ----
-e/d-e#6#72057594037927935,15:
+e/d-e:{(#6,RANGEDEL)}#72057594037927935,15:
 c#7,1:c
 e#72057594037927935,15:
 f#8,1:f
@@ -218,7 +218,7 @@ next
 prev
 prev
 ----
-a/a-b#5#5,15:
+a/a-b:{(#5,RANGEDEL)}#5,15:
 c#7,1:c
 a#5,15:
 .
@@ -241,8 +241,8 @@ seek-lt c
 seek-ge d
 prev
 ----
-b/<empty>#1,1:b
-e/d-e#2#72057594037927935,15:
+b/<invalid>#1,1:b
+e/d-e:{(#2,RANGEDEL)}#72057594037927935,15:
 b#1,1:b
 
 # Verify that next when positioned at the smallest boundary returns
@@ -263,8 +263,8 @@ seek-ge d
 seek-lt d
 next
 ----
-d/<empty>#2,1:d
-a/a-b#1#1,15:
+d/<invalid>#2,1:d
+a/a-b:{(#1,RANGEDEL)}#1,15:
 d#2,1:d
 
 # Verify SeekPrefixGE correctness with trySeekUsingNext=true
@@ -318,17 +318,17 @@ seek-prefix-ge h true
 seek-prefix-ge i true
 seek-prefix-ge j true
 ----
-a/c-e#4#1,1:a
-a/c-e#4#1,1:a
-b/c-e#4#2,1:b
+a/c-e:{(#4,RANGEDEL)}#1,1:a
+a/c-e:{(#4,RANGEDEL)}#1,1:a
+b/c-e:{(#4,RANGEDEL)}#2,1:b
 e#72057594037927935,15:
-e/c-e#4#72057594037927935,15:
-e/c-e#4#72057594037927935,15:
-f/<empty>#5,7:
-g/<empty>#6,1:g
-h/<empty>#7,7:
-i/<empty>#6,1:i
-j/<empty>#7,1:j
+e/c-e:{(#4,RANGEDEL)}#72057594037927935,15:
+e/c-e:{(#4,RANGEDEL)}#72057594037927935,15:
+f/<invalid>#5,7:
+g/<invalid>#6,1:g
+h/<invalid>#7,7:
+i/<invalid>#6,1:i
+j/<invalid>#7,1:j
 
 # Seeks to keys that are in the next file, so cannot use Next.
 iter
@@ -337,10 +337,10 @@ seek-prefix-ge e true
 seek-prefix-ge i true
 seek-prefix-ge j true
 ----
-a/c-e#4#1,1:a
-e/<empty>#4,1:e
-i/<empty>#6,1:i
-j/<empty>#7,1:j
+a/c-e:{(#4,RANGEDEL)}#1,1:a
+e/<invalid>#4,1:e
+i/<invalid>#6,1:i
+j/<invalid>#7,1:j
 
 # Verify that we do not open files that do not have point keys.
 
@@ -362,11 +362,11 @@ f.SET.5:f
 1: c#7,1-f#5,1
 
 build format=pebblev2
-g.RANGEKEYSET.6:h
+g.RANGEKEYDEL.6:h
 ----
 0: a#9,1-b#8,1
 1: c#7,1-f#5,1
-2: g#0,21-h#72057594037927935,21
+2: g#6,19-h#72057594037927935,19
 
 build
 i.SET.4:i
@@ -374,14 +374,14 @@ j.SET.3:j
 ----
 0: a#9,1-b#8,1
 1: c#7,1-f#5,1
-2: g#0,21-h#72057594037927935,21
+2: g#6,19-h#72057594037927935,19
 3: i#4,1-j#3,1
 
 iter
 seek-ge f
 next
 ----
-f/<empty>#5,1:f
+f/<invalid>#5,1:f
 i#4,1:i
 
 # The below count should be 2, as we skip over the rangekey-only file.

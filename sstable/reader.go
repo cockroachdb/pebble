@@ -2378,8 +2378,9 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	var tombstones []keyspan.Span
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
 		t := keyspan.Span{
-			Start: *key,
+			Start: key.UserKey,
 			End:   value,
+			Keys:  []keyspan.Key{{Trailer: key.Trailer}},
 		}
 		tombstones = append(tombstones, t)
 	}
@@ -2392,10 +2393,10 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	frag := keyspan.Fragmenter{
 		Cmp:    r.Compare,
 		Format: r.FormatKey,
-		Emit: func(fragmented []keyspan.Span) {
-			for i := range fragmented {
-				t := &fragmented[i]
-				rangeDelBlock.add(t.Start, t.End)
+		Emit: func(s keyspan.Span) {
+			for _, k := range s.Keys {
+				startIK := InternalKey{UserKey: s.Start, Trailer: k.Trailer}
+				rangeDelBlock.add(startIK, s.End)
 			}
 		},
 	}

@@ -16,11 +16,11 @@ d#32,0:
 
 scan range-del
 ----
-a#27,15:c
+a-c:{(#27,RANGEDEL)}
 
 scan range-key
 ----
-b#35,21:c (span value: 0240340576616c7565)
+b-c:{(#35,RANGEKEYSET,@4,value)}
 
 clear
 ----
@@ -34,12 +34,9 @@ del-range b d
 
 scan range-del
 ----
-a#22,15:b
-a#12,15:b
-b#27,15:c
-b#22,15:c
-b#17,15:c
-c#27,15:d
+a-b:{(#22,RANGEDEL) (#12,RANGEDEL)}
+b-c:{(#27,RANGEDEL) (#22,RANGEDEL) (#17,RANGEDEL)}
+c-d:{(#27,RANGEDEL)}
 
 clear
 ----
@@ -53,12 +50,9 @@ range-key-del b d
 
 scan range-key
 ----
-a#22,19:b
-a#12,19:b
-b#27,19:c
-b#22,19:c
-b#17,19:c
-c#27,19:d
+a-b:{(#22,RANGEKEYDEL) (#12,RANGEKEYDEL)}
+b-c:{(#27,RANGEKEYDEL) (#22,RANGEKEYDEL) (#17,RANGEKEYDEL)}
+c-d:{(#27,RANGEKEYDEL)}
 
 clear
 ----
@@ -69,7 +63,7 @@ del-range a b
 
 scan range-del
 ----
-a#12,15:b
+a-b:{(#12,RANGEDEL)}
 
 define
 del-range b c
@@ -77,8 +71,8 @@ del-range b c
 
 scan range-del
 ----
-a#12,15:b
-b#17,15:c
+a-b:{(#12,RANGEDEL)}
+b-c:{(#17,RANGEDEL)}
 
 define
 del-range a c
@@ -86,10 +80,8 @@ del-range a c
 
 scan range-del
 ----
-a#22,15:b
-a#12,15:b
-b#22,15:c
-b#17,15:c
+a-b:{(#22,RANGEDEL) (#12,RANGEDEL)}
+b-c:{(#22,RANGEDEL) (#17,RANGEDEL)}
 
 define
 del-range b d
@@ -97,12 +89,9 @@ del-range b d
 
 scan range-del
 ----
-a#22,15:b
-a#12,15:b
-b#27,15:c
-b#22,15:c
-b#17,15:c
-c#27,15:d
+a-b:{(#22,RANGEDEL) (#12,RANGEDEL)}
+b-c:{(#27,RANGEDEL) (#22,RANGEDEL) (#17,RANGEDEL)}
+c-d:{(#27,RANGEDEL)}
 
 # Verify that adding a range tombstone via Batch.Apply invalidates the
 # cached fragmented tombstones.
@@ -116,7 +105,7 @@ del-range a b
 
 scan range-del
 ----
-a#12,15:b
+a-b:{(#12,RANGEDEL)}
 
 apply
 del-range c d
@@ -124,8 +113,8 @@ del-range c d
 
 scan range-del
 ----
-a#12,15:b
-c#17,15:d
+a-b:{(#12,RANGEDEL)}
+c-d:{(#17,RANGEDEL)}
 
 # Verify that adding a range key via Batch.Apply invalidates the
 # cached fragmented range keys.
@@ -139,7 +128,7 @@ range-key-set a c @2 v
 
 scan range-key
 ----
-a#12,21:c (span value: 0240320176)
+a-c:{(#12,RANGEKEYSET,@2,v)}
 
 apply
 range-key-unset a b @2
@@ -147,6 +136,5 @@ range-key-unset a b @2
 
 scan range-key
 ----
-a#23,20:b (span value: 024032)
-a#12,21:b (span value: 0240320176)
-b#12,21:c (span value: 0240320176)
+a-b:{(#23,RANGEKEYUNSET,@2) (#12,RANGEKEYSET,@2,v)}
+b-c:{(#12,RANGEKEYSET,@2,v)}

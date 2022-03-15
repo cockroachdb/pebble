@@ -694,6 +694,14 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	return nil
 }
 
+func (w *Writer) prettyTombstone(k InternalKey, value []byte) fmt.Formatter {
+	return keyspan.Span{
+		Start: k.UserKey,
+		End:   value,
+		Keys:  []keyspan.Key{{Trailer: k.Trailer}},
+	}.Pretty(w.formatKey)
+}
+
 func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 	if !w.disableKeyOrderChecks && !w.rangeDelV1Format && w.rangeDelBlock.nEntries > 0 {
 		// Check that tombstones are being added in fragmented order. If the two
@@ -708,8 +716,8 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, value) != 0 {
 				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
-					(keyspan.Span{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
-					(keyspan.Span{Start: key, End: value}).Pretty(w.formatKey))
+					w.prettyTombstone(prevKey, prevValue),
+					w.prettyTombstone(key, value))
 				return w.err
 			}
 			if prevKey.SeqNum() <= key.SeqNum() {
@@ -721,8 +729,8 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 			prevValue := w.rangeDelBlock.curValue
 			if w.compare(prevValue, key.UserKey) > 0 {
 				w.err = errors.Errorf("pebble: overlapping tombstones must be fragmented: %s vs %s",
-					(keyspan.Span{Start: prevKey, End: prevValue}).Pretty(w.formatKey),
-					(keyspan.Span{Start: key, End: value}).Pretty(w.formatKey))
+					w.prettyTombstone(prevKey, prevValue),
+					w.prettyTombstone(key, value))
 				return w.err
 			}
 		}
@@ -787,8 +795,17 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 // Keys must be added to the table in increasing order of start key. Spans are
 // not required to be fragmented.
 func (w *Writer) RangeKeySet(start, end, suffix, value []byte) error {
-	startKey := base.MakeInternalKey(start, 0, base.InternalKeyKindRangeKeySet)
-	return w.addRangeKeySpan(startKey, end, suffix, value)
+	return w.addRangeKeySpan(keyspan.Span{
+		Start: w.tempRangeKeyCopy(start),
+		End:   w.tempRangeKeyCopy(end),
+		Keys: []keyspan.Key{
+			{
+				Trailer: base.MakeTrailer(0, base.InternalKeyKindRangeKeySet),
+				Suffix:  w.tempRangeKeyCopy(suffix),
+				Value:   w.tempRangeKeyCopy(value),
+			},
+		},
+	})
 }
 
 // RangeKeyUnset un-sets a range between start (inclusive) and end (exclusive)
@@ -797,8 +814,16 @@ func (w *Writer) RangeKeySet(start, end, suffix, value []byte) error {
 // Keys must be added to the table in increasing order of start key. Spans are
 // not required to be fragmented.
 func (w *Writer) RangeKeyUnset(start, end, suffix []byte) error {
-	startKey := base.MakeInternalKey(start, 0, base.InternalKeyKindRangeKeyUnset)
-	return w.addRangeKeySpan(startKey, end, suffix, nil /* value */)
+	return w.addRangeKeySpan(keyspan.Span{
+		Start: w.tempRangeKeyCopy(start),
+		End:   w.tempRangeKeyCopy(end),
+		Keys: []keyspan.Key{
+			{
+				Trailer: base.MakeTrailer(0, base.InternalKeyKindRangeKeyUnset),
+				Suffix:  w.tempRangeKeyCopy(suffix),
+			},
+		},
+	})
 }
 
 // RangeKeyDelete deletes a range between start (inclusive) and end (exclusive).
@@ -806,8 +831,13 @@ func (w *Writer) RangeKeyUnset(start, end, suffix []byte) error {
 // Keys must be added to the table in increasing order of start key. Spans are
 // not required to be fragmented.
 func (w *Writer) RangeKeyDelete(start, end []byte) error {
-	startKey := base.MakeInternalKey(start, 0, base.InternalKeyKindRangeKeyDelete)
-	return w.addRangeKeySpan(startKey, end, nil /* suffix */, nil /* value */)
+	return w.addRangeKeySpan(keyspan.Span{
+		Start: w.tempRangeKeyCopy(start),
+		End:   w.tempRangeKeyCopy(end),
+		Keys: []keyspan.Key{
+			{Trailer: base.MakeTrailer(0, base.InternalKeyKindRangeKeyDelete)},
+		},
+	})
 }
 
 // AddRangeKey adds a range key set, unset, or delete key/value pair to the
@@ -826,55 +856,19 @@ func (w *Writer) AddRangeKey(key InternalKey, value []byte) error {
 	return w.addRangeKey(key, value)
 }
 
-func (w *Writer) addRangeKeySpan(start base.InternalKey, end, suffix, value []byte) error {
-	// NOTE: we take a copy of the range-key data and store in an internal buffer
-	// for the the lifetime of the Writer. This removes the requirement on the
-	// caller to avoid re-use of buffers until the Writer is closed.
-	startUserKeyCopy := w.tempRangeKeyBuf(len(start.UserKey))
-	copy(startUserKeyCopy, start.UserKey)
-	startCopy := base.InternalKey{
-		UserKey: startUserKeyCopy,
-		Trailer: start.Trailer,
-	}
-	endCopy := w.tempRangeKeyBuf(len(end))
-	copy(endCopy, end)
-
-	span := keyspan.Span{Start: startCopy, End: endCopy}
-	switch k := startCopy.Kind(); k {
-	case base.InternalKeyKindRangeKeySet:
-		svs := [1]rangekey.SuffixValue{{Suffix: suffix, Value: value}}
-		buf := w.tempRangeKeyBuf(rangekey.EncodedSetSuffixValuesLen(svs[:]))
-		rangekey.EncodeSetSuffixValues(buf, svs[:])
-		span.Value = buf
-	case base.InternalKeyKindRangeKeyUnset:
-		suffixes := [][]byte{suffix}
-		buf := w.tempRangeKeyBuf(rangekey.EncodedUnsetSuffixesLen(suffixes))
-		rangekey.EncodeUnsetSuffixes(buf, suffixes)
-		span.Value = buf
-	case base.InternalKeyKindRangeKeyDelete:
-		// No-op: delete spans are fully specified by a start and end key.
-	default:
-		panic(errors.Errorf("pebble: unexpected range key type: %s", k))
-	}
-
-	if w.fragmenter.Start() != nil && w.compare(w.fragmenter.Start(), span.Start.UserKey) > 0 {
+func (w *Writer) addRangeKeySpan(span keyspan.Span) error {
+	if w.fragmenter.Start() != nil && w.compare(w.fragmenter.Start(), span.Start) > 0 {
 		return errors.Errorf("pebble: spans must be added in order: %s > %s",
-			w.formatKey(w.fragmenter.Start()), w.formatKey(span.Start.UserKey))
+			w.formatKey(w.fragmenter.Start()), w.formatKey(span.Start))
 	}
-
 	// Add this span to the fragmenter.
 	w.fragmenter.Add(span)
-
 	return nil
 }
 
-func (w *Writer) coalesceSpans(spans []keyspan.Span) {
-	// This method is the emit function of the Fragmenter. As the Fragmenter is
-	// guaranteed to receive spans in order of start key, an emitted slice of
-	// spans from the Fragmenter will contain all of the fragments this Writer
-	// will ever see. It is therefore safe to collect all of the received
-	// fragments and emit a rangekey.CoalescedSpan.
-	s, err := rangekey.Coalesce(w.compare, keyspan.MakeFragments(spans...))
+func (w *Writer) coalesceSpans(span keyspan.Span) {
+	// This method is the emit function of the Fragmenter.
+	s, err := rangekey.Coalesce(w.compare, span)
 	if err != nil {
 		w.err = errors.Newf("sstable: could not coalesce span: %s", err)
 		return
@@ -938,32 +932,32 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 			// We panic here as we should have previously decoded and validated this
 			// key and value when it was first added to the range key block.
 			panic(errors.Errorf("pebble: invalid end key for span: %s",
-				(keyspan.Span{Start: prevStartKey, End: prevEndKey}).Pretty(w.formatKey)))
+				prevStartKey.Pretty(w.formatKey)))
 		}
 
 		curStartKey := key
 		curEndKey, _, ok := rangekey.DecodeEndKey(curStartKey.Kind(), value)
 		if !ok {
 			w.err = errors.Errorf("pebble: invalid end key for span: %s",
-				(keyspan.Span{Start: curStartKey, End: curEndKey}).Pretty(w.formatKey))
+				curStartKey.Pretty(w.formatKey))
 			return w.err
 		}
 
 		// Start keys must be strictly increasing.
 		if base.InternalCompare(w.compare, prevStartKey, curStartKey) >= 0 {
 			w.err = errors.Errorf(
-				"pebble: range keys starts must be added in strictly increasing order: %s, %s",
+				"pebble: range keys starts must be added in increasing order: %s, %s",
 				prevStartKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
 			return w.err
 		}
 
-		// Start keys are strictly increasing. If the start user keys are equal, the
+		// Start keys are increasing. If the start user keys are equal, the
 		// end keys must be equal (i.e. aligned spans).
 		if w.compare(prevStartKey.UserKey, curStartKey.UserKey) == 0 {
 			if w.compare(prevEndKey, curEndKey) != 0 {
 				w.err = errors.Errorf("pebble: overlapping range keys must be fragmented: %s, %s",
-					(keyspan.Span{Start: prevStartKey, End: prevEndKey}).Pretty(w.formatKey),
-					(keyspan.Span{Start: curStartKey, End: curEndKey}).Pretty(w.formatKey))
+					prevStartKey.Pretty(w.formatKey),
+					curStartKey.Pretty(w.formatKey))
 				return w.err
 			}
 		} else if w.compare(prevEndKey, curStartKey.UserKey) > 0 {
@@ -973,8 +967,8 @@ func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
 			// lower span be the same as the start key of the upper span, because
 			// the range end key is considered an exclusive bound.
 			w.err = errors.Errorf("pebble: overlapping range keys must be fragmented: %s, %s",
-				(keyspan.Span{Start: prevStartKey, End: prevEndKey}).Pretty(w.formatKey),
-				(keyspan.Span{Start: curStartKey, End: curEndKey}).Pretty(w.formatKey))
+				prevStartKey.Pretty(w.formatKey),
+				curStartKey.Pretty(w.formatKey))
 			return w.err
 		}
 	}
@@ -1036,6 +1030,17 @@ func (w *Writer) tempRangeKeyBuf(n int) []byte {
 	b := w.rkBuf[len(w.rkBuf) : len(w.rkBuf)+n]
 	w.rkBuf = w.rkBuf[:len(w.rkBuf)+n]
 	return b
+}
+
+// tempRangeKeyCopy returns a copy of the provided slice, stored in the Writer's
+// range key buffer.
+func (w *Writer) tempRangeKeyCopy(k []byte) []byte {
+	if len(k) == 0 {
+		return nil
+	}
+	buf := w.tempRangeKeyBuf(len(k))
+	copy(buf, k)
+	return buf
 }
 
 func (w *Writer) maybeAddToFilter(key []byte) {
@@ -1633,7 +1638,7 @@ func (w *Writer) Close() (err error) {
 			w.err = errors.Newf("invalid end key: %s", w.rangeKeyBlock.curValue)
 			return w.err
 		}
-		k := base.MakeRangeKeySentinelKey(kind, endKey).Clone()
+		k := base.MakeExclusiveSentinelKey(kind, endKey).Clone()
 		w.meta.SetLargestRangeKey(k)
 		// TODO(travers): The lack of compression on the range key block matches the
 		// lack of compression on the range-del block. Revisit whether we want to

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"strconv"
 	"strings"
@@ -618,40 +619,43 @@ func TestBatchRangeOps(t *testing.T) {
 			return ""
 
 		case "scan":
-			var iter internalIterAdapter
 			if len(td.CmdArgs) > 1 {
 				return fmt.Sprintf("%s expects at most 1 argument", td.Cmd)
 			}
 			var fragmentIter keyspan.FragmentIterator
+			var internalIter base.InternalIterator
 			if len(td.CmdArgs) == 1 {
 				switch td.CmdArgs[0].String() {
 				case "range-del":
-					iter.internalIterator = b.newRangeDelIter(nil)
+					fragmentIter = b.newRangeDelIter(nil)
+					defer fragmentIter.Close()
 				case "range-key":
 					fragmentIter = b.newRangeKeyIter(nil)
-					iter.internalIterator = fragmentIter
+					defer fragmentIter.Close()
 				default:
 					return fmt.Sprintf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
 				}
 			} else {
-				iter.internalIterator = b.newInternalIter(nil)
+				internalIter = b.newInternalIter(nil)
+				defer internalIter.Close()
 			}
-			defer iter.Close()
 
 			var buf bytes.Buffer
-			for valid := iter.First(); valid; valid = iter.Next() {
-				key := iter.Key()
-				key.SetSeqNum(key.SeqNum() &^ InternalKeySeqNumBatch)
-				var spanValue []byte
-				if fragmentIter != nil && fragmentIter.Valid() {
-					s := fragmentIter.Current()
-					spanValue = s.Value
+			if fragmentIter != nil {
+				for s := fragmentIter.First(); s.Valid(); s = fragmentIter.Next() {
+					for i := range s.Keys {
+						s.Keys[i].Trailer = base.MakeTrailer(
+							s.Keys[i].SeqNum()&^base.InternalKeySeqNumBatch,
+							s.Keys[i].Kind(),
+						)
+					}
+					fmt.Fprintln(&buf, s)
 				}
-				fmt.Fprintf(&buf, "%s:%s", key, iter.Value())
-				if len(spanValue) > 0 {
-					fmt.Fprintf(&buf, " (span value: %x)", spanValue)
+			} else {
+				for k, v := internalIter.First(); k != nil; k, v = internalIter.Next() {
+					k.SetSeqNum(k.SeqNum() &^ InternalKeySeqNumBatch)
+					fmt.Fprintf(&buf, "%s:%s\n", k, v)
 				}
-				fmt.Fprintln(&buf)
 			}
 			return buf.String()
 
@@ -770,21 +774,13 @@ func TestFlushableBatch(t *testing.T) {
 			iter.Close()
 
 			if rangeDelIter := b.newRangeDelIter(nil); rangeDelIter != nil {
-				iter := newInternalIterAdapter(rangeDelIter)
-				for valid := iter.First(); valid; valid = iter.Next() {
-					fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
-				}
-				iter.Close()
+				scanKeyspanIterator(&buf, rangeDelIter)
+				rangeDelIter.Close()
 			}
-
 			if rangeKeyIter := b.newRangeKeyIter(nil); rangeKeyIter != nil {
-				iter := newInternalIterAdapter(rangeKeyIter)
-				for valid := iter.First(); valid; valid = iter.Next() {
-					fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
-				}
-				iter.Close()
+				scanKeyspanIterator(&buf, rangeKeyIter)
+				rangeKeyIter.Close()
 			}
-
 			return buf.String()
 
 		default:
@@ -818,7 +814,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 			return ""
 
 		case "scan":
-			var iter internalIterAdapter
+			var buf bytes.Buffer
 			if len(td.CmdArgs) > 1 {
 				return fmt.Sprintf("%s expects at most 1 argument", td.Cmd)
 			}
@@ -826,15 +822,13 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 				if td.CmdArgs[0].String() != "range-del" {
 					return fmt.Sprintf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
 				}
-				iter.internalIterator = fb.newRangeDelIter(nil)
+				fi := fb.newRangeDelIter(nil)
+				defer fi.Close()
+				scanKeyspanIterator(&buf, fi)
 			} else {
-				iter.internalIterator = fb.newIter(nil)
-			}
-			defer iter.Close()
-
-			var buf bytes.Buffer
-			for valid := iter.First(); valid; valid = iter.Next() {
-				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
+				ii := fb.newIter(nil)
+				defer ii.Close()
+				scanInternalIterator(&buf, ii)
 			}
 			return buf.String()
 
@@ -842,6 +836,18 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func scanInternalIterator(w io.Writer, ii internalIterator) {
+	for k, v := ii.First(); k != nil; k, v = ii.Next() {
+		fmt.Fprintf(w, "%s:%s\n", k, v)
+	}
+}
+
+func scanKeyspanIterator(w io.Writer, ki keyspan.FragmentIterator) {
+	for s := ki.First(); s.Valid(); s = ki.Next() {
+		fmt.Fprintln(w, s)
+	}
 }
 
 func TestFlushableBatchBytesIterated(t *testing.T) {

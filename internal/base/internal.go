@@ -142,6 +142,12 @@ func MakeInternalKey(userKey []byte, seqNum uint64, kind InternalKeyKind) Intern
 	}
 }
 
+// MakeTrailer constructs an internal key trailer from the specified sequence
+// number and kind.
+func MakeTrailer(seqNum uint64, kind InternalKeyKind) uint64 {
+	return (seqNum << 8) | uint64(kind)
+}
+
 // MakeSearchKey constructs an internal key that is appropriate for searching
 // for a the specified user key. The search key contain the maximal sequence
 // number and kind ensuring that it sorts before any other internal keys for
@@ -163,10 +169,10 @@ func MakeRangeDeleteSentinelKey(userKey []byte) InternalKey {
 	}
 }
 
-// MakeRangeKeySentinelKey constructs an internal key that is a range key
-// sentinel key, used as the upper boundary for an sstable when a range key is
-// the largest key in an sstable.
-func MakeRangeKeySentinelKey(kind InternalKeyKind, userKey []byte) InternalKey {
+// MakeExclusiveSentinelKey constructs an internal key that is an
+// exclusive sentinel key, used as the upper boundary for an sstable
+// when a ranged key is the largest key in an sstable.
+func MakeExclusiveSentinelKey(kind InternalKeyKind, userKey []byte) InternalKey {
 	return InternalKey{
 		UserKey: userKey,
 		Trailer: (InternalKeySeqNumMax << 8) | uint64(kind),
@@ -206,6 +212,15 @@ func ParseInternalKey(s string) InternalKey {
 		seqNum |= InternalKeySeqNumBatch
 	}
 	return MakeInternalKey([]byte(ukey), seqNum, kind)
+}
+
+// ParseKind parses the string representation of an internal key kind.
+func ParseKind(s string) InternalKeyKind {
+	kind, ok := kindsMap[s]
+	if !ok {
+		panic(fmt.Sprintf("unknown kind: %q", s))
+	}
+	return kind
 }
 
 // InternalTrailerLen is the number of bytes used to encode InternalKey.Trailer.
@@ -315,7 +330,12 @@ func (k InternalKey) SeqNum() uint64 {
 // Visible returns true if the key is visible at the specified snapshot
 // sequence number.
 func (k InternalKey) Visible(snapshot uint64) bool {
-	seqNum := k.SeqNum()
+	return Visible(k.SeqNum(), snapshot)
+}
+
+// Visible returns true if a key with the provided sequence number is visible at
+// the specified snapshot sequence number.
+func Visible(seqNum uint64, snapshot uint64) bool {
 	return seqNum < snapshot || (seqNum&InternalKeySeqNumBatch) != 0
 }
 

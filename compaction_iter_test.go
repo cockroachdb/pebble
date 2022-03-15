@@ -193,8 +193,9 @@ func TestCompactionIter(t *testing.T) {
 							key = []byte(parts[1])
 						}
 						for _, v := range iter.Tombstones(key) {
-							fmt.Fprintf(&b, "%s-%s#%d\n",
-								v.Start.UserKey, v.End, v.Start.SeqNum())
+							for _, k := range v.Keys {
+								fmt.Fprintf(&b, "%s-%s#%d\n", v.Start, v.End, k.SeqNum())
+							}
 						}
 						fmt.Fprintf(&b, ".\n")
 						continue
@@ -205,8 +206,11 @@ func TestCompactionIter(t *testing.T) {
 						fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
 						if iter.Key().Kind() == InternalKeyKindRangeDelete {
 							iter.rangeDelFrag.Add(keyspan.Span{
-								Start: iter.cloneKey(iter.Key()),
-								End:   iter.Value(),
+								Start: append([]byte{}, iter.Key().UserKey...),
+								End:   append([]byte{}, iter.Value()...),
+								Keys: []keyspan.Key{
+									{Trailer: iter.Key().Trailer},
+								},
 							})
 						}
 					} else if err := iter.Error(); err != nil {

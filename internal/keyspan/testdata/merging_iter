@@ -1,16 +1,12 @@
 # Test a single level.
 
 define
-a.RANGEKEYSET.10  : c [(@5=apples)]
-a.RANGEKEYDEL.10  : c
-a.RANGEKEYUNSET.8 : c [@1]
-a.RANGEKEYSET.4   : c [(@3=bananas)]
-c.RANGEKEYSET.4   : d [(@3=coconut)]
-e.RANGEKEYSET.20  : f [(@5=pineapple),(@3=guava)]
-h.RANGEKEYDEL.22  : j
-h.RANGEKEYSET.21  : j [(@5=peaches),(@3=starfruit)]
-l.RANGEKEYUNSET.2 : m [@9,@5]
-q.RANGEKEYSET.14  : z [(@9=mangos)]
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+h-j:{(#22,RANGEKEYDEL) (#21,RANGEKEYSET,@5,peaches) (#21,RANGEKEYSET,@3,starfruit)}
+l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
 ----
 1 levels
 
@@ -23,38 +19,23 @@ next
 next
 next
 ----
-a-c#10.RANGEKEYSET
-a-c#10.RANGEKEYDEL
-a-c#8.RANGEKEYUNSET
-a-c#4.RANGEKEYSET
--
-c-d#4.RANGEKEYSET
--
-e-f#20.RANGEKEYSET
--
-h-j#22.RANGEKEYDEL
-h-j#21.RANGEKEYSET
--
-l-m#2.RANGEKEYUNSET
--
-q-z#14.RANGEKEYSET
--
-.
--
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+h-j:{(#22,RANGEKEYDEL) (#21,RANGEKEYSET,@5,peaches) (#21,RANGEKEYSET,@3,starfruit)}
+l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
+<invalid>
 
 # Test snapshot filtering.
 
 define snapshot=12
-a.RANGEKEYSET.10  : c [(@5=apples)]
-a.RANGEKEYDEL.10  : c
-a.RANGEKEYUNSET.8 : c [@1]
-a.RANGEKEYSET.4   : c [(@3=bananas)]
-c.RANGEKEYSET.4   : d [(@3=coconut)]
-e.RANGEKEYSET.20  : f [(@5=pineapple),(@3=guava)]
-h.RANGEKEYDEL.22  : j
-h.RANGEKEYSET.21  : j [(@5=peaches),(@3=starfruit)]
-l.RANGEKEYUNSET.2 : m [@9,@5]
-q.RANGEKEYSET.14  : z [(@9=mangos)]
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+h-j:{(#22,RANGEKEYDEL) (#21,RANGEKEYSET,@5,peaches) (#21,RANGEKEYSET,@3,starfruit)}
+l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
 ----
 1 levels
 
@@ -64,24 +45,17 @@ next
 next
 next
 ----
-a-c#10.RANGEKEYSET
-a-c#10.RANGEKEYDEL
-a-c#8.RANGEKEYUNSET
-a-c#4.RANGEKEYSET
--
-c-d#4.RANGEKEYSET
--
-l-m#2.RANGEKEYUNSET
--
-.
--
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
+<invalid>
 
 define
-b.RANGEKEYSET.10  : d [(@1=apples)]
-e.RANGEKEYDEL.8   : h
+b-d:{#10,RANGEKEYSET,@1,apples}
+e-h:{#8,RANGEKEYDEL}
 --
-a.RANGEKEYUNSET.3 : c [@1]
-h.RANGEKEYDEL.5   : k
+a-c:{#3,RANGEKEYUNSET,@1}
+h-k:{#5,RANGEKEYDEL}
 ----
 2 levels
 
@@ -93,19 +67,12 @@ next
 next
 next
 ----
-a-b#3.RANGEKEYUNSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
-c-d#10.RANGEKEYSET
--
-e-h#8.RANGEKEYDEL
--
-h-k#5.RANGEKEYDEL
--
-.
--
+a-b:{(#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+e-h:{(#8,RANGEKEYDEL)}
+h-k:{(#5,RANGEKEYDEL)}
+<invalid>
 
 iter
 last
@@ -115,19 +82,12 @@ prev
 prev
 prev
 ----
-h-k#5.RANGEKEYDEL
--
-e-h#8.RANGEKEYDEL
--
-c-d#10.RANGEKEYSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
-a-b#3.RANGEKEYUNSET
--
-.
--
+h-k:{(#5,RANGEKEYDEL)}
+e-h:{(#8,RANGEKEYDEL)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+a-b:{(#3,RANGEKEYUNSET,@1)}
+<invalid>
 
 # Test changing directions at each iterator position, reverse to forward.
 iter
@@ -137,16 +97,11 @@ last
 prev
 next
 ----
-h-k#5.RANGEKEYDEL
--
-.
--
-h-k#5.RANGEKEYDEL
--
-e-h#8.RANGEKEYDEL
--
-h-k#5.RANGEKEYDEL
--
+h-k:{(#5,RANGEKEYDEL)}
+<invalid>
+h-k:{(#5,RANGEKEYDEL)}
+e-h:{(#8,RANGEKEYDEL)}
+h-k:{(#5,RANGEKEYDEL)}
 
 iter
 last
@@ -154,14 +109,10 @@ prev
 prev
 next
 ----
-h-k#5.RANGEKEYDEL
--
-e-h#8.RANGEKEYDEL
--
-c-d#10.RANGEKEYSET
--
-e-h#8.RANGEKEYDEL
--
+h-k:{(#5,RANGEKEYDEL)}
+e-h:{(#8,RANGEKEYDEL)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+e-h:{(#8,RANGEKEYDEL)}
 
 iter
 last
@@ -170,17 +121,11 @@ prev
 prev
 next
 ----
-h-k#5.RANGEKEYDEL
--
-e-h#8.RANGEKEYDEL
--
-c-d#10.RANGEKEYSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
-c-d#10.RANGEKEYSET
--
+h-k:{(#5,RANGEKEYDEL)}
+e-h:{(#8,RANGEKEYDEL)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
 
 iter
 last
@@ -190,20 +135,12 @@ prev
 prev
 next
 ----
-h-k#5.RANGEKEYDEL
--
-e-h#8.RANGEKEYDEL
--
-c-d#10.RANGEKEYSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
-a-b#3.RANGEKEYUNSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
+h-k:{(#5,RANGEKEYDEL)}
+e-h:{(#8,RANGEKEYDEL)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+a-b:{(#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
 
 iter
 last
@@ -214,21 +151,13 @@ prev
 prev
 next
 ----
-h-k#5.RANGEKEYDEL
--
-e-h#8.RANGEKEYDEL
--
-c-d#10.RANGEKEYSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
-a-b#3.RANGEKEYUNSET
--
-.
--
-a-b#3.RANGEKEYUNSET
--
+h-k:{(#5,RANGEKEYDEL)}
+e-h:{(#8,RANGEKEYDEL)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+a-b:{(#3,RANGEKEYUNSET,@1)}
+<invalid>
+a-b:{(#3,RANGEKEYUNSET,@1)}
 
 # Test changing directions at each iterator position, forward to reverse.
 
@@ -239,17 +168,11 @@ first
 next
 prev
 ----
-a-b#3.RANGEKEYUNSET
--
-.
--
-a-b#3.RANGEKEYUNSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
-a-b#3.RANGEKEYUNSET
--
+a-b:{(#3,RANGEKEYUNSET,@1)}
+<invalid>
+a-b:{(#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+a-b:{(#3,RANGEKEYUNSET,@1)}
 
 iter
 first
@@ -257,16 +180,10 @@ next
 next
 prev
 ----
-a-b#3.RANGEKEYUNSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
-c-d#10.RANGEKEYSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
+a-b:{(#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
 
 iter
 first
@@ -275,17 +192,11 @@ next
 next
 prev
 ----
-a-b#3.RANGEKEYUNSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
-c-d#10.RANGEKEYSET
--
-e-h#8.RANGEKEYDEL
--
-c-d#10.RANGEKEYSET
--
+a-b:{(#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+e-h:{(#8,RANGEKEYDEL)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
 
 iter
 first
@@ -296,21 +207,13 @@ next
 next
 prev
 ----
-a-b#3.RANGEKEYUNSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
-c-d#10.RANGEKEYSET
--
-e-h#8.RANGEKEYDEL
--
-h-k#5.RANGEKEYDEL
--
-.
--
-h-k#5.RANGEKEYDEL
--
+a-b:{(#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+e-h:{(#8,RANGEKEYDEL)}
+h-k:{(#5,RANGEKEYDEL)}
+<invalid>
+h-k:{(#5,RANGEKEYDEL)}
 
 iter
 first
@@ -320,19 +223,12 @@ next
 next
 prev
 ----
-a-b#3.RANGEKEYUNSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
-c-d#10.RANGEKEYSET
--
-e-h#8.RANGEKEYDEL
--
-h-k#5.RANGEKEYDEL
--
-e-h#8.RANGEKEYDEL
--
+a-b:{(#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+e-h:{(#8,RANGEKEYDEL)}
+h-k:{(#5,RANGEKEYDEL)}
+e-h:{(#8,RANGEKEYDEL)}
 
 # Test SeekGE. Note that MergingIter's SeekGE implements the FragmentIterator's
 # SeekGE semantics. It returns the first fragment with a Start key ≥ the search
@@ -341,8 +237,7 @@ e-h#8.RANGEKEYDEL
 iter
 seek-ge cc
 ----
-e-h#8.RANGEKEYDEL
--
+e-h:{(#8,RANGEKEYDEL)}
 
 iter
 seek-ge 1
@@ -356,27 +251,16 @@ seek-ge f
 seek-ge h
 seek-ge i
 ----
-a-b#3.RANGEKEYUNSET
--
-a-b#3.RANGEKEYUNSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
-c-d#10.RANGEKEYSET
--
-c-d#10.RANGEKEYSET
--
-e-h#8.RANGEKEYDEL
--
-e-h#8.RANGEKEYDEL
--
-h-k#5.RANGEKEYDEL
--
-h-k#5.RANGEKEYDEL
--
-.
--
+a-b:{(#3,RANGEKEYUNSET,@1)}
+a-b:{(#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+e-h:{(#8,RANGEKEYDEL)}
+e-h:{(#8,RANGEKEYDEL)}
+h-k:{(#5,RANGEKEYDEL)}
+h-k:{(#5,RANGEKEYDEL)}
+<invalid>
 
 # Test SeekLT. Note that MergingIter's SeekLT implements the FragmentIterator's
 # SeekLT semantics. It returns the first fragment with a Start key < the search
@@ -388,8 +272,7 @@ h-k#5.RANGEKEYDEL
 iter
 seek-lt b
 ----
-a-b#3.RANGEKEYUNSET
--
+a-b:{(#3,RANGEKEYUNSET,@1)}
 
 iter
 seek-lt 1
@@ -408,44 +291,25 @@ seek-lt hh
 seek-lt k
 seek-lt z
 ----
-.
--
-.
--
-a-b#3.RANGEKEYUNSET
--
-a-b#3.RANGEKEYUNSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
-b-c#10.RANGEKEYSET
-b-c#3.RANGEKEYUNSET
--
-c-d#10.RANGEKEYSET
--
-c-d#10.RANGEKEYSET
--
-c-d#10.RANGEKEYSET
--
-c-d#10.RANGEKEYSET
--
-e-h#8.RANGEKEYDEL
--
-e-h#8.RANGEKEYDEL
--
-h-k#5.RANGEKEYDEL
--
-h-k#5.RANGEKEYDEL
--
-h-k#5.RANGEKEYDEL
--
+<invalid>
+<invalid>
+a-b:{(#3,RANGEKEYUNSET,@1)}
+a-b:{(#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+e-h:{(#8,RANGEKEYDEL)}
+e-h:{(#8,RANGEKEYDEL)}
+h-k:{(#5,RANGEKEYDEL)}
+h-k:{(#5,RANGEKEYDEL)}
+h-k:{(#5,RANGEKEYDEL)}
 
 define
-a.RANGEKEYDEL.5: f
-a.RANGEKEYDEL.4: f
-k.RANGEKEYDEL.5: s
-k.RANGEKEYDEL.4: s
+a-f:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL)}
+k-s:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL)}
 ----
 1 levels
 
@@ -454,36 +318,24 @@ first
 prev
 next
 ----
-a-f#5.RANGEKEYDEL
-a-f#4.RANGEKEYDEL
--
-.
--
-a-f#5.RANGEKEYDEL
-a-f#4.RANGEKEYDEL
--
+a-f:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL)}
+<invalid>
+a-f:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL)}
 
 iter
 last
 next
 prev
 ----
-k-s#5.RANGEKEYDEL
-k-s#4.RANGEKEYDEL
--
-.
--
-k-s#5.RANGEKEYDEL
-k-s#4.RANGEKEYDEL
--
+k-s:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL)}
+<invalid>
+k-s:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL)}
 
 define
-w.RANGEKEYDEL.5: x
-w.RANGEKEYDEL.3: x
-x.RANGEKEYDEL.5: z
+w-x:{(#5,RANGEKEYDEL) (#3,RANGEKEYDEL)}
+x-z:{(#5,RANGEKEYDEL)}
 --
-w.RANGEKEYDEL.4: y
-w.RANGEKEYDEL.1: y
+w-y:{(#4,RANGEKEYDEL) (#1,RANGEKEYDEL)}
 ----
 2 levels
 
@@ -495,24 +347,12 @@ first
 prev
 next
 ----
-y-z#5.RANGEKEYDEL
--
-.
--
-y-z#5.RANGEKEYDEL
--
-w-x#5.RANGEKEYDEL
-w-x#4.RANGEKEYDEL
-w-x#3.RANGEKEYDEL
-w-x#1.RANGEKEYDEL
--
-.
--
-w-x#5.RANGEKEYDEL
-w-x#4.RANGEKEYDEL
-w-x#3.RANGEKEYDEL
-w-x#1.RANGEKEYDEL
--
+y-z:{(#5,RANGEKEYDEL)}
+<invalid>
+y-z:{(#5,RANGEKEYDEL)}
+w-x:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL) (#3,RANGEKEYDEL) (#1,RANGEKEYDEL)}
+<invalid>
+w-x:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL) (#3,RANGEKEYDEL) (#1,RANGEKEYDEL)}
 
 iter
 seek-ge x
@@ -520,36 +360,21 @@ prev
 seek-ge xray
 prev
 ----
-x-y#5.RANGEKEYDEL
-x-y#4.RANGEKEYDEL
-x-y#1.RANGEKEYDEL
--
-w-x#5.RANGEKEYDEL
-w-x#4.RANGEKEYDEL
-w-x#3.RANGEKEYDEL
-w-x#1.RANGEKEYDEL
--
-y-z#5.RANGEKEYDEL
--
-x-y#5.RANGEKEYDEL
-x-y#4.RANGEKEYDEL
-x-y#1.RANGEKEYDEL
--
+x-y:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL) (#1,RANGEKEYDEL)}
+w-x:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL) (#3,RANGEKEYDEL) (#1,RANGEKEYDEL)}
+y-z:{(#5,RANGEKEYDEL)}
+x-y:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL) (#1,RANGEKEYDEL)}
 
 define
-il.RANGEKEYDEL.10: qb
-sn.RANGEKEYDEL.10: wn
+il-qb:{(#10,RANGEKEYDEL)}
+sn-wn:{(#10,RANGEKEYDEL)}
 --
-gt.RANGEKEYDEL.9: kh
-gt.RANGEKEYDEL.8: kh
-gt.RANGEKEYDEL.7: kh
-ky.RANGEKEYDEL.8: sv
-ky.RANGEKEYDEL.7: sv
+qt-kh:{(#9,RANGEKEYDEL) (#8,RANGEKEYDEL) (#7,RANGEKEYDEL)}
+ky-sv:{(#8,RANGEKEYDEL) (#7,RANGEKEYDEL)}
 --
-as.RANGEKEYDEL.5: fz
-as.RANGEKEYDEL.4: fz
-hh.RANGEKEYDEL.4: ir
-rf.RANGEKEYDEL.4: yx
+as-fz:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL)}
+hh-ir:{(#4,RANGEKEYDEL)}
+rf-yx:{(#4,RANGEKEYDEL)}
 ----
 3 levels
 
@@ -562,23 +387,10 @@ next
 seek-ge yz
 prev
 ----
-rf-sn#8.RANGEKEYDEL
-rf-sn#7.RANGEKEYDEL
-rf-sn#4.RANGEKEYDEL
--
-sn-sv#10.RANGEKEYDEL
-sn-sv#8.RANGEKEYDEL
-sn-sv#7.RANGEKEYDEL
-sn-sv#4.RANGEKEYDEL
--
-sv-wn#10.RANGEKEYDEL
-sv-wn#4.RANGEKEYDEL
--
-wn-yx#4.RANGEKEYDEL
--
-.
--
-.
--
-wn-yx#4.RANGEKEYDEL
--
+rf-sn:{(#8,RANGEKEYDEL) (#7,RANGEKEYDEL) (#4,RANGEKEYDEL)}
+sn-sv:{(#10,RANGEKEYDEL) (#8,RANGEKEYDEL) (#7,RANGEKEYDEL) (#4,RANGEKEYDEL)}
+sv-wn:{(#10,RANGEKEYDEL) (#4,RANGEKEYDEL)}
+wn-yx:{(#4,RANGEKEYDEL)}
+<invalid>
+<invalid>
+wn-yx:{(#4,RANGEKEYDEL)}

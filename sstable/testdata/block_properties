@@ -114,9 +114,9 @@ build collectors=(suffix)
 a@5.SET.1:foo
 b@10.SET.2:bar
 c@15.SET.3:baz
-d@10.RANGEKEYSET.4: e@15 [(@20=foo)]
-e@15.RANGEKEYUNSET.5: f@20 [@25]
-f@20.RANGEKEYDEL.6: z@25
+rangekey: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
+rangekey: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
+rangekey: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,1,c@15#3,1]
 rangedel: [#0,0,#0,0]
@@ -142,9 +142,9 @@ build collectors=(suffix-point-keys-only)
 a@5.SET.1:foo
 b@10.SET.2:bar
 c@15.SET.3:baz
-d@10.RANGEKEYSET.4: e@15 [(@20=foo)]
-e@15.RANGEKEYUNSET.5: f@20 [@25]
-f@20.RANGEKEYDEL.6: z@25
+rangekey: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
+rangekey: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
+rangekey: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,1,c@15#3,1]
 rangedel: [#0,0,#0,0]
@@ -170,9 +170,9 @@ build collectors=(suffix-range-keys-only)
 a@5.SET.1:foo
 b@10.SET.2:bar
 c@15.SET.3:baz
-d@10.RANGEKEYSET.4: e@15 [(@20=foo)]
-e@15.RANGEKEYUNSET.5: f@20 [@25]
-f@20.RANGEKEYDEL.6: z@25
+rangekey: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
+rangekey: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
+rangekey: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,1,c@15#3,1]
 rangedel: [#0,0,#0,0]
@@ -199,9 +199,9 @@ build block-size=1 collectors=(suffix-point-keys-only,suffix-range-keys-only)
 a@5.SET.1:foo
 b@10.SET.2:bar
 c@15.SET.3:baz
-d@10.RANGEKEYSET.4: e@15 [(@20=foo)]
-e@15.RANGEKEYUNSET.5: f@20 [@25]
-f@20.RANGEKEYDEL.6: z@25
+rangekey: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
+rangekey: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
+rangekey: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,1,c@15#3,1]
 rangedel: [#0,0,#0,0]

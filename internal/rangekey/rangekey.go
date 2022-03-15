@@ -51,13 +51,109 @@ package rangekey
 
 import (
 	"encoding/binary"
-	"fmt"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 )
+
+// Encode takes a Span containing only range keys. It invokes the provided
+// closure with the encoded internal keys that represent the Span's state. The
+// keys and values passed to emit are only valid until the closure returns.
+// If emit returns an error, Encode stops and returns the error.
+func Encode(s keyspan.Span, emit func(k base.InternalKey, v []byte) error) error {
+	// TODO(jackson): Presently, Encode doesn't combine keys with the same kind
+	// into a single internal key promoted to the highest sequence number.
+
+	var buf []byte
+	for _, k := range s.Keys {
+		ik := base.InternalKey{
+			UserKey: s.Start,
+			Trailer: k.Trailer,
+		}
+		var err error
+		switch k.Kind() {
+		case base.InternalKeyKindRangeKeySet:
+			sv := [1]SuffixValue{{Suffix: k.Suffix, Value: k.Value}}
+			l := EncodedSetValueLen(s.End, sv[:])
+			if l > cap(buf) {
+				buf = make([]byte, l)
+			}
+			EncodeSetValue(buf[:l], s.End, sv[:])
+			err = emit(ik, buf[:l])
+		case base.InternalKeyKindRangeKeyUnset:
+			suffixes := [1][]byte{k.Suffix}
+			l := EncodedUnsetValueLen(s.End, suffixes[:])
+			if l > cap(buf) {
+				buf = make([]byte, l)
+			}
+			EncodeUnsetValue(buf[:l], s.End, suffixes[:])
+			err = emit(ik, buf[:l])
+		case base.InternalKeyKindRangeKeyDelete:
+			// s.End is stored directly in the value for RangeKeyDeletes.
+			err = emit(ik, s.End)
+		default:
+			return base.CorruptionErrorf("pebble: %s key kind is not a range key", k.Kind())
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Decode takes an internal key pair encoding range key(s) and returns a decoded
+// keyspan containing the keys. If keysDst is provided, keys will be appended to
+// keysDst.
+func Decode(ik base.InternalKey, v []byte, keysDst []keyspan.Key) (keyspan.Span, error) {
+	var s keyspan.Span
+
+	// Hydrate the user key bounds.
+	s.Start = ik.UserKey
+	var ok bool
+	s.End, v, ok = DecodeEndKey(ik.Kind(), v)
+	if !ok {
+		return keyspan.Span{}, base.CorruptionErrorf("pebble: unable to decode range key end from %s", ik.Kind())
+	}
+	s.Keys = keysDst
+
+	// Hydrate the contents of the range key(s).
+	switch ik.Kind() {
+	case base.InternalKeyKindRangeKeySet:
+		for len(v) > 0 {
+			var sv SuffixValue
+			sv, v, ok = decodeSuffixValue(v)
+			if !ok {
+				return keyspan.Span{}, base.CorruptionErrorf("pebble: unable to decode range key suffix-value tuple")
+			}
+			s.Keys = append(s.Keys, keyspan.Key{
+				Trailer: ik.Trailer,
+				Suffix:  sv.Suffix,
+				Value:   sv.Value,
+			})
+		}
+	case base.InternalKeyKindRangeKeyUnset:
+		for len(v) > 0 {
+			var suffix []byte
+			suffix, v, ok = decodeSuffix(v)
+			if !ok {
+				return keyspan.Span{}, base.CorruptionErrorf("pebble: unable to decode range key unset suffix")
+			}
+			s.Keys = append(s.Keys, keyspan.Key{
+				Trailer: ik.Trailer,
+				Suffix:  suffix,
+			})
+		}
+	case base.InternalKeyKindRangeKeyDelete:
+		if len(v) > 0 {
+			return keyspan.Span{}, base.CorruptionErrorf("pebble: RANGEKEYDELs must not contain additional data")
+		}
+		s.Keys = append(s.Keys, keyspan.Key{Trailer: ik.Trailer})
+	default:
+		return keyspan.Span{}, base.CorruptionErrorf("pebble: %s is not a range key", ik.Kind())
+	}
+	return s, nil
+}
 
 // SuffixValue represents a tuple of a suffix and a corresponding value. A
 // physical RANGEKEYSET key may contain many logical RangeKeySets, each
@@ -67,10 +163,10 @@ type SuffixValue struct {
 	Value  []byte
 }
 
-// EncodedSetSuffixValuesLen precomputes the length of the given slice of
+// encodedSetSuffixValuesLen precomputes the length of the given slice of
 // SuffixValues, when encoded for a RangeKeySet. It may be used to construct a
 // buffer of the appropriate size before encoding.
-func EncodedSetSuffixValuesLen(suffixValues []SuffixValue) int {
+func encodedSetSuffixValuesLen(suffixValues []SuffixValue) int {
 	var n int
 	for i := 0; i < len(suffixValues); i++ {
 		n += lenVarint(len(suffixValues[i].Suffix))
@@ -81,12 +177,12 @@ func EncodedSetSuffixValuesLen(suffixValues []SuffixValue) int {
 	return n
 }
 
-// EncodeSetSuffixValues encodes a slice of SuffixValues for a RangeKeySet into
+// encodeSetSuffixValues encodes a slice of SuffixValues for a RangeKeySet into
 // dst. The length of dst must be greater than or equal to
-// EncodedSetSuffixValuesLen. EncodeSetSuffixValues returns the number of bytes
+// encodedSetSuffixValuesLen. encodeSetSuffixValues returns the number of bytes
 // written, which should always equal the EncodedSetValueLen with the same
 // arguments.
-func EncodeSetSuffixValues(dst []byte, suffixValues []SuffixValue) int {
+func encodeSetSuffixValues(dst []byte, suffixValues []SuffixValue) int {
 	// Encode the list of (suffix, value-len) tuples.
 	var n int
 	for i := 0; i < len(suffixValues); i++ {
@@ -111,7 +207,7 @@ func EncodeSetSuffixValues(dst []byte, suffixValues []SuffixValue) int {
 func EncodedSetValueLen(endKey []byte, suffixValues []SuffixValue) int {
 	n := lenVarint(len(endKey))
 	n += len(endKey)
-	n += EncodedSetSuffixValuesLen(suffixValues)
+	n += encodedSetSuffixValuesLen(suffixValues)
 	return n
 }
 
@@ -123,7 +219,7 @@ func EncodeSetValue(dst []byte, endKey []byte, suffixValues []SuffixValue) int {
 	// First encode the end key as a varstring.
 	n := binary.PutUvarint(dst, uint64(len(endKey)))
 	n += copy(dst[n:], endKey)
-	n += EncodeSetSuffixValues(dst[n:], suffixValues)
+	n += encodeSetSuffixValues(dst[n:], suffixValues)
 	return n
 }
 
@@ -148,10 +244,10 @@ func DecodeEndKey(kind base.InternalKeyKind, data []byte) (endKey, value []byte,
 	}
 }
 
-// DecodeSuffixValue decodes a single encoded SuffixValue from a RangeKeySet's
+// decodeSuffixValue decodes a single encoded SuffixValue from a RangeKeySet's
 // split value. The end key must have already been stripped from the
 // RangeKeySet's value (see DecodeEndKey).
-func DecodeSuffixValue(data []byte) (sv SuffixValue, rest []byte, ok bool) {
+func decodeSuffixValue(data []byte) (sv SuffixValue, rest []byte, ok bool) {
 	// Decode the suffix.
 	sv.Suffix, data, ok = decodeVarstring(data)
 	if !ok {
@@ -165,10 +261,10 @@ func DecodeSuffixValue(data []byte) (sv SuffixValue, rest []byte, ok bool) {
 	return sv, data, true
 }
 
-// EncodedUnsetSuffixesLen precomputes the length of the given slice of
+// encodedUnsetSuffixesLen precomputes the length of the given slice of
 // suffixes, when encoded for a RangeKeyUnset. It may be used to construct a
 // buffer of the appropriate size before encoding.
-func EncodedUnsetSuffixesLen(suffixes [][]byte) int {
+func encodedUnsetSuffixesLen(suffixes [][]byte) int {
 	var n int
 	for i := 0; i < len(suffixes); i++ {
 		n += lenVarint(len(suffixes[i]))
@@ -177,11 +273,11 @@ func EncodedUnsetSuffixesLen(suffixes [][]byte) int {
 	return n
 }
 
-// EncodeUnsetSuffixes encodes a slice of suffixes for a RangeKeyUnset into dst.
+// encodeUnsetSuffixes encodes a slice of suffixes for a RangeKeyUnset into dst.
 // The length of dst must be greater than or equal to EncodedUnsetSuffixesLen.
 // EncodeUnsetSuffixes returns the number of bytes written, which should always
 // equal the EncodedUnsetSuffixesLen with the same arguments.
-func EncodeUnsetSuffixes(dst []byte, suffixes [][]byte) int {
+func encodeUnsetSuffixes(dst []byte, suffixes [][]byte) int {
 	// Encode the list of (suffix, value-len) tuples.
 	var n int
 	for i := 0; i < len(suffixes); i++ {
@@ -200,7 +296,7 @@ func EncodeUnsetSuffixes(dst []byte, suffixes [][]byte) int {
 func EncodedUnsetValueLen(endKey []byte, suffixes [][]byte) int {
 	n := lenVarint(len(endKey))
 	n += len(endKey)
-	n += EncodedUnsetSuffixesLen(suffixes)
+	n += encodedUnsetSuffixesLen(suffixes)
 	return n
 }
 
@@ -212,14 +308,14 @@ func EncodeUnsetValue(dst []byte, endKey []byte, suffixes [][]byte) int {
 	// First encode the end key as a varstring.
 	n := binary.PutUvarint(dst, uint64(len(endKey)))
 	n += copy(dst[n:], endKey)
-	n += EncodeUnsetSuffixes(dst[n:], suffixes)
+	n += encodeUnsetSuffixes(dst[n:], suffixes)
 	return n
 }
 
-// DecodeSuffix decodes a single suffix from the beginning of data. If decoding
+// decodeSuffix decodes a single suffix from the beginning of data. If decoding
 // suffixes from a RangeKeyUnset's value, the end key must have already been
 // stripped from the RangeKeyUnset's value (see DecodeEndKey).
-func DecodeSuffix(data []byte) (suffix, rest []byte, ok bool) {
+func decodeSuffix(data []byte) (suffix, rest []byte, ok bool) {
 	return decodeVarstring(data)
 }
 
@@ -232,159 +328,6 @@ func decodeVarstring(data []byte) (v, rest []byte, ok bool) {
 
 	// Extract the string itself.
 	return data[n : n+int(l)], data[n+int(l):], true
-}
-
-// Format returns a formatter for the range key (either a RANGEKEYSET,
-// RANGEKEYUNSET or RANGEKEYDEL) represented by s. The formatting returned is
-// parseable with Parse.
-func Format(formatKey base.FormatKey, s keyspan.Span) fmt.Formatter {
-	return prettyRangeKeySpan{Span: s, formatKey: formatKey}
-}
-
-type prettyRangeKeySpan struct {
-	keyspan.Span
-	formatKey base.FormatKey
-}
-
-func (k prettyRangeKeySpan) Format(s fmt.State, c rune) {
-	fmt.Fprintf(s, "%s.%s.%d: %s",
-		k.formatKey(k.Start.UserKey),
-		k.Start.Kind(),
-		k.Start.SeqNum(),
-		k.End)
-	switch k.Start.Kind() {
-	case base.InternalKeyKindRangeKeySet:
-		fmt.Fprint(s, " [")
-		value := k.Value
-		for len(value) > 0 {
-			if len(value) < len(k.Value) {
-				fmt.Fprint(s, ",")
-			}
-			sv, rest, ok := DecodeSuffixValue(value)
-			if !ok {
-				panic(base.CorruptionErrorf("corrupt set value: unable to decode suffix-value tuple"))
-			}
-			value = rest
-			fmt.Fprintf(s, "(%s=%s)", k.formatKey(sv.Suffix), sv.Value)
-		}
-		fmt.Fprint(s, "]")
-	case base.InternalKeyKindRangeKeyUnset:
-		fmt.Fprint(s, " [")
-		value := k.Value
-		for len(value) > 0 {
-			if len(value) < len(k.Value) {
-				fmt.Fprint(s, ",")
-			}
-			suffix, rest, ok := DecodeSuffix(value)
-			if !ok {
-				panic(base.CorruptionErrorf("corrupt unset value: unable to decode suffix"))
-			}
-			value = rest
-			fmt.Fprint(s, k.formatKey(suffix))
-		}
-		fmt.Fprint(s, "]")
-	case base.InternalKeyKindRangeKeyDelete:
-		if len(k.Value) > 0 {
-			panic("unexpected value on a RANGEKEYDEL")
-		}
-		// No additional value to format.
-	default:
-		panic(fmt.Sprintf("%s keys are not range keys", k.Start.Kind()))
-	}
-}
-
-// Parse parses a string representation of a range key (eg, RANGEKEYSET,
-// RANGEKEYUNSET or RANGEKEYDEL). Parse is used in tests and debugging
-// facilities. It's exported for use in tests outside of the rangekey package.
-//
-// Parse expects the input string to be in one of the three formats:
-// - start.RANGEKEYSET.seqnum: end [(s1=v1), (s2=v2), (s3=v3)]
-// - start.RANGEKEYUNSET.seqnum: end [s1, s2, s3]
-// - start.RANGEKEYDEL.seqnum: end
-//
-// For example:
-// - a.RANGEKEYSET.5: c [(@t10=foo), (@t9=bar)]
-// - a.RANGEKEYUNSET.5: c [@t10, @t9]
-// - a.RANGEKEYDEL.5: c
-func Parse(s string) (key base.InternalKey, value []byte) {
-	sep := strings.IndexByte(s, ':')
-	if sep == -1 {
-		panic("range key string representation missing key-value separator :")
-	}
-	startKey := base.ParseInternalKey(strings.TrimSpace(s[:sep]))
-	return startKey, ParseValue(startKey.Kind(), s[sep+1:])
-}
-
-// ParseValue parses a string representation of a range key value into its
-// serialized form. See Parse for the input string format.
-func ParseValue(kind base.InternalKeyKind, s string) (value []byte) {
-	switch kind {
-	case base.InternalKeyKindRangeKeySet:
-		openBracket := strings.IndexByte(s[:], '[')
-		closeBracket := strings.IndexByte(s[:], ']')
-		endKey := strings.TrimSpace(s[:openBracket])
-		itemStrs := strings.Split(s[openBracket+1:closeBracket], ",")
-
-		var suffixValues []SuffixValue
-		for _, itemStr := range itemStrs {
-			itemStr = strings.Trim(itemStr, "() \n\t")
-			i := strings.IndexByte(itemStr, '=')
-			if i == -1 {
-				panic(fmt.Sprintf("range key string %q missing '=' key,value tuple delim", s))
-			}
-			suffixValues = append(suffixValues, SuffixValue{
-				Suffix: []byte(strings.TrimSpace(itemStr[:i])),
-				Value:  []byte(strings.TrimSpace(itemStr[i+1:])),
-			})
-		}
-		value = make([]byte, EncodedSetValueLen([]byte(endKey), suffixValues))
-		EncodeSetValue(value, []byte(endKey), suffixValues)
-		return value
-
-	case base.InternalKeyKindRangeKeyUnset:
-		openBracket := strings.IndexByte(s[:], '[')
-		closeBracket := strings.IndexByte(s[:], ']')
-		endKey := strings.TrimSpace(s[:openBracket])
-		itemStrs := strings.Split(s[openBracket+1:closeBracket], ",")
-
-		var suffixes [][]byte
-		for _, itemStr := range itemStrs {
-			suffixes = append(suffixes, []byte(strings.TrimSpace(itemStr)))
-		}
-		value = make([]byte, EncodedUnsetValueLen([]byte(endKey), suffixes))
-		EncodeUnsetValue(value, []byte(endKey), suffixes)
-		return value
-
-	case base.InternalKeyKindRangeKeyDelete:
-		return []byte(strings.TrimSpace(s))
-
-	default:
-		panic(fmt.Sprintf("key kind %q not a range key", kind))
-	}
-}
-
-// RecombinedValueLen returns the length of the byte slice that results from
-// re-encoding the end key and the user-value as a physical range key value.
-func RecombinedValueLen(kind base.InternalKeyKind, endKey, userValue []byte) int {
-	n := len(endKey)
-	if kind == base.InternalKeyKindRangeKeyDelete {
-		// RANGEKEYDELs are not varint encoded.
-		return n
-	}
-	return lenVarint(len(endKey)) + len(endKey) + len(userValue)
-}
-
-// RecombineValue re-encodes the end key and user-value as a physical range key
-// value into the destination byte slice.
-func RecombineValue(kind base.InternalKeyKind, dst, endKey, userValue []byte) int {
-	if kind == base.InternalKeyKindRangeKeyDelete {
-		// RANGEKEYDELs are not varint encoded.
-		return copy(dst, endKey)
-	}
-	n := binary.PutUvarint(dst, uint64(len(endKey)))
-	n += copy(dst[n:], endKey)
-	n += copy(dst[n:], userValue)
-	return n
 }
 
 // IsRangeKey returns true if the given key kind is one of the range key kinds.

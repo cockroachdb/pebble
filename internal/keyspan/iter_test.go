@@ -15,22 +15,18 @@ import (
 )
 
 func TestIter(t *testing.T) {
-	var tombstones []Span
+	var spans []Span
 	datadriven.RunTest(t, "testdata/iter", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
-			tombstones = nil
-			for _, key := range strings.Split(d.Input, "\n") {
-				j := strings.Index(key, ":")
-				tombstones = append(tombstones, Span{
-					Start: base.ParseInternalKey(key[:j]),
-					End:   []byte(key[j+1:]),
-				})
+			spans = nil
+			for _, line := range strings.Split(d.Input, "\n") {
+				spans = append(spans, ParseSpan(line))
 			}
 			return ""
 
 		case "iter":
-			iter := NewIter(base.DefaultComparer.Compare, tombstones)
+			iter := NewIter(base.DefaultComparer.Compare, spans)
 			defer iter.Close()
 
 			var b bytes.Buffer
@@ -39,26 +35,26 @@ func TestIter(t *testing.T) {
 				if len(parts) == 0 {
 					continue
 				}
-				var start *base.InternalKey
+				var span Span
 				switch parts[0] {
 				case "seek-ge":
 					if len(parts) != 2 {
 						return "seek-ge <key>\n"
 					}
-					start, _ = iter.SeekGE([]byte(strings.TrimSpace(parts[1])), false /* trySeekUsingNext */)
+					span = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
 				case "seek-lt":
 					if len(parts) != 2 {
 						return "seek-lt <key>\n"
 					}
-					start, _ = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+					span = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
 				case "first":
-					start, _ = iter.First()
+					span = iter.First()
 				case "last":
-					start, _ = iter.Last()
+					span = iter.Last()
 				case "next":
-					start, _ = iter.Next()
+					span = iter.Next()
 				case "prev":
-					start, _ = iter.Prev()
+					span = iter.Prev()
 				case "set-bounds":
 					if len(parts) != 3 {
 						return fmt.Sprintf("set-bounds expects 2 bounds, got %d", len(parts)-1)
@@ -76,8 +72,8 @@ func TestIter(t *testing.T) {
 				default:
 					return fmt.Sprintf("unknown op: %s", parts[0])
 				}
-				if iter.Valid() {
-					fmt.Fprintf(&b, "%s-%s#%d\n", start.UserKey, iter.End(), start.SeqNum())
+				if span.Valid() {
+					fmt.Fprintln(&b, span)
 				} else if err := iter.Error(); err != nil {
 					fmt.Fprintf(&b, "err=%v\n", err)
 				} else {

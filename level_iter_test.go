@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -209,8 +210,8 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	f := keyspan.Fragmenter{
 		Cmp:    lt.cmp.Compare,
 		Format: lt.cmp.FormatKey,
-		Emit: func(fragmented []keyspan.Span) {
-			tombstones = append(tombstones, fragmented...)
+		Emit: func(fragmented keyspan.Span) {
+			tombstones = append(tombstones, fragmented)
 		},
 	}
 	for _, key := range strings.Split(d.Input, "\n") {
@@ -219,9 +220,11 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		value := []byte(key[j+1:])
 		switch ikey.Kind() {
 		case InternalKeyKindRangeDelete:
-			f.Add(keyspan.Span{Start: ikey, End: value})
-		case InternalKeyKindRangeKeySet:
-			w.RangeKeySet(ikey.UserKey, value, nil, nil)
+			f.Add(rangedel.Decode(ikey, value, nil))
+		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+			if err := w.AddRangeKey(ikey, value); err != nil {
+				return err.Error()
+			}
 		default:
 			if err := w.Add(ikey, value); err != nil {
 				return err.Error()
@@ -230,7 +233,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	}
 	f.Finish()
 	for _, v := range tombstones {
-		if err := w.Add(v.Start, v.End); err != nil {
+		if err := rangedel.Encode(v, w.Add); err != nil {
 			return err.Error()
 		}
 	}
