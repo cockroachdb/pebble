@@ -1,10 +1,7 @@
 define
-a.SET.2:b
-a.SET.1:b
-b.SET.2:c
-b.SET.1:c
-c.SET.2:d
-c.SET.1:d
+a-b:{(#2,SET) (#1,SET)}
+b-c:{(#2,SET) (#1,SET)}
+c-d:{(#2,SET) (#1,SET)}
 ----
 
 iter
@@ -17,69 +14,43 @@ seek-lt b
 seek-lt c
 seek-lt d
 ----
-a-b#2
-b-c#2
-c-d#2
+a-b:{(#2,SET) (#1,SET)}
+b-c:{(#2,SET) (#1,SET)}
+c-d:{(#2,SET) (#1,SET)}
 .
 .
-a-b#1
-b-c#1
-c-d#1
+a-b:{(#2,SET) (#1,SET)}
+b-c:{(#2,SET) (#1,SET)}
+c-d:{(#2,SET) (#1,SET)}
 
 iter
 first
 next
-next
-prev
-prev
-prev
-next
-next
-next
-next
-next
-next
-prev
-prev
-next
 prev
 prev
 next
 next
+next
+prev
 next
 next
 prev
 ----
-a-b#2
-a-b#1
-b-c#2
-a-b#1
-a-b#2
+a-b:{(#2,SET) (#1,SET)}
+b-c:{(#2,SET) (#1,SET)}
+a-b:{(#2,SET) (#1,SET)}
 .
-a-b#2
-a-b#1
-b-c#2
-b-c#1
-c-d#2
-c-d#1
-c-d#2
-b-c#1
-c-d#2
-b-c#1
-b-c#2
-b-c#1
-c-d#2
-c-d#1
+a-b:{(#2,SET) (#1,SET)}
+b-c:{(#2,SET) (#1,SET)}
+c-d:{(#2,SET) (#1,SET)}
+b-c:{(#2,SET) (#1,SET)}
+c-d:{(#2,SET) (#1,SET)}
 .
-c-d#1
+c-d:{(#2,SET) (#1,SET)}
 
-
-# a.SET.2:b
-# a.SET.1:b
-# b.SET.2:c
-# b.SET.1:c
-# c.SET.2:d
-# c.SET.1:d
+# a-b:{(#2,SET) (#1,SET)}
+# b-c:{(#2,SET) (#1,SET)}
+# c-d:{(#2,SET) (#1,SET)}
 
 iter
 set-bounds x z
@@ -100,19 +71,15 @@ first
 last
 seek-ge c
 next
-next
 seek-lt cat
-prev
 prev
 ----
 .
-c-d#2
-c-d#1
-c-d#2
-c-d#1
+c-d:{(#2,SET) (#1,SET)}
+c-d:{(#2,SET) (#1,SET)}
+c-d:{(#2,SET) (#1,SET)}
 .
-c-d#1
-c-d#2
+c-d:{(#2,SET) (#1,SET)}
 .
 
 iter
@@ -121,17 +88,11 @@ first
 next
 next
 next
-next
-next
-next
 ----
 .
-a-b#2
-a-b#1
-b-c#2
-b-c#1
-c-d#2
-c-d#1
+a-b:{(#2,SET) (#1,SET)}
+b-c:{(#2,SET) (#1,SET)}
+c-d:{(#2,SET) (#1,SET)}
 .
 
 iter
@@ -139,14 +100,10 @@ set-bounds a c
 first
 next
 next
-next
-next
 ----
 .
-a-b#2
-a-b#1
-b-c#2
-b-c#1
+a-b:{(#2,SET) (#1,SET)}
+b-c:{(#2,SET) (#1,SET)}
 .
 
 iter
@@ -154,12 +111,8 @@ set-bounds b cc
 first
 next
 next
-next
-next
 ----
 .
-b-c#2
-b-c#1
-c-d#2
-c-d#1
+b-c:{(#2,SET) (#1,SET)}
+c-d:{(#2,SET) (#1,SET)}
 .

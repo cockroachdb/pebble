@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -497,7 +498,7 @@ func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
-			var iter internalIterator
+			var iter io.Closer
 			var err error
 			if rangeIter {
 				iter, err = c.newRangeKeyIter(
@@ -605,7 +606,7 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 	rng := rand.New(rand.NewSource(2))
 	for i := 0; i < N; i++ {
 		j := rng.Intn(tableCacheTestNumTables)
-		var iter internalIterator
+		var iter io.Closer
 		var err error
 		if rangeIter {
 			iter, err = c.newRangeKeyIter(

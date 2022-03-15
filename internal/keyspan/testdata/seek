@@ -1,7 +1,7 @@
 build
 1:  b-d
 ----
-1:  b-d
+b-d:{(#1,RANGEDEL)}
 
 seek-ge
 a 2
@@ -9,10 +9,10 @@ b 2
 b 1
 d 2
 ----
-1:  b-d
-1:  b-d
-<empty>
-<empty>
+b-d:{(#1,RANGEDEL)}
+b-d:{(#1,RANGEDEL)}
+<invalid>
+<invalid>
 
 seek-le
 a 2
@@ -20,19 +20,17 @@ b 2
 b 1
 d 2
 ----
-<empty>
-1:  b-d
-<empty>
-1:  b-d
+<invalid>
+b-d:{(#1,RANGEDEL)}
+<invalid>
+b-d:{(#1,RANGEDEL)}
 
 build
 3:  b-d
 2:  b-d
 1:  b-d
 ----
-3:  b-d
-2:  b-d
-1:  b-d
+b-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
 
 seek-ge
 a 4
@@ -42,12 +40,12 @@ b 2
 b 1
 d 4
 ----
-3:  b-d
-3:  b-d
-2:  b-d
-1:  b-d
-<empty>
-<empty>
+b-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+b-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+b-d:{(#2,RANGEDEL) (#1,RANGEDEL)}
+b-d:{(#1,RANGEDEL)}
+<invalid>
+<invalid>
 
 seek-le
 a 4
@@ -57,19 +55,19 @@ b 2
 b 1
 d 4
 ----
-<empty>
-3:  b-d
-2:  b-d
-1:  b-d
-<empty>
-3:  b-d
+<invalid>
+b-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+b-d:{(#2,RANGEDEL) (#1,RANGEDEL)}
+b-d:{(#1,RANGEDEL)}
+<invalid>
+b-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
 
 build
 1:  b-d
 2:    d-f
 ----
-1:  b-d
-2:    d-f
+b-d:{(#1,RANGEDEL)}
+d-f:{(#2,RANGEDEL)}
 
 seek-ge
 b 2
@@ -77,10 +75,10 @@ d 2
 d 3
 e 3
 ----
-1:  b-d
-<empty>
-2:    d-f
-2:    d-f
+b-d:{(#1,RANGEDEL)}
+<invalid>
+d-f:{(#2,RANGEDEL)}
+d-f:{(#2,RANGEDEL)}
 
 seek-le
 a 3
@@ -90,27 +88,23 @@ d 3
 e 3
 f 3
 ----
-<empty>
-1:  b-d
-1:  b-d
-2:    d-f
-2:    d-f
-2:    d-f
+<invalid>
+b-d:{(#1,RANGEDEL)}
+b-d:{(#1,RANGEDEL)}
+d-f:{(#2,RANGEDEL)}
+d-f:{(#2,RANGEDEL)}
+d-f:{(#2,RANGEDEL)}
 
 build
 3: a-----------m
 2:      f------------s
 1:          j---------------z
 ----
-3: a----f
-3:      f---j
-2:      f---j
-3:          j--m
-2:          j--m
-1:          j--m
-2:             m-----s
-1:             m-----s
-1:                   s------z
+a-f:{(#3,RANGEDEL)}
+f-j:{(#3,RANGEDEL) (#2,RANGEDEL)}
+j-m:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+m-s:{(#2,RANGEDEL) (#1,RANGEDEL)}
+s-z:{(#1,RANGEDEL)}
 
 seek-ge
 a 4
@@ -132,24 +126,24 @@ s 2
 s 1
 z 2
 ----
-3: a----f
-2:      f---j
-1:          j--m
-<empty>
-3:      f---j
-2:      f---j
-1:          j--m
-<empty>
-3:          j--m
-2:          j--m
-1:          j--m
-<empty>
-2:             m-----s
-1:             m-----s
-<empty>
-1:                   s------z
-<empty>
-<empty>
+a-f:{(#3,RANGEDEL)}
+f-j:{(#2,RANGEDEL)}
+j-m:{(#1,RANGEDEL)}
+<invalid>
+f-j:{(#3,RANGEDEL) (#2,RANGEDEL)}
+f-j:{(#2,RANGEDEL)}
+j-m:{(#1,RANGEDEL)}
+<invalid>
+j-m:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+j-m:{(#2,RANGEDEL) (#1,RANGEDEL)}
+j-m:{(#1,RANGEDEL)}
+<invalid>
+m-s:{(#2,RANGEDEL) (#1,RANGEDEL)}
+m-s:{(#1,RANGEDEL)}
+<invalid>
+s-z:{(#1,RANGEDEL)}
+<invalid>
+<invalid>
 
 seek-le
 a 4
@@ -171,39 +165,35 @@ s 2
 s 1
 z 2
 ----
-3: a----f
-<empty>
-<empty>
-<empty>
-3:      f---j
-2:      f---j
-<empty>
-<empty>
-3:          j--m
-2:          j--m
-1:          j--m
-<empty>
-2:             m-----s
-1:             m-----s
-<empty>
-1:                   s------z
-<empty>
-1:                   s------z
+a-f:{(#3,RANGEDEL)}
+<invalid>
+<invalid>
+<invalid>
+f-j:{(#3,RANGEDEL) (#2,RANGEDEL)}
+f-j:{(#2,RANGEDEL)}
+<invalid>
+<invalid>
+j-m:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+j-m:{(#2,RANGEDEL) (#1,RANGEDEL)}
+j-m:{(#1,RANGEDEL)}
+<invalid>
+m-s:{(#2,RANGEDEL) (#1,RANGEDEL)}
+m-s:{(#1,RANGEDEL)}
+<invalid>
+s-z:{(#1,RANGEDEL)}
+<invalid>
+s-z:{(#1,RANGEDEL)}
 
 build
 1: a-----------m
 2:      f------------s
 3:          j---------------z
 ----
-1: a----f
-2:      f---j
-1:      f---j
-3:          j--m
-2:          j--m
-1:          j--m
-3:             m-----s
-2:             m-----s
-3:                   s------z
+a-f:{(#1,RANGEDEL)}
+f-j:{(#2,RANGEDEL) (#1,RANGEDEL)}
+j-m:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+m-s:{(#3,RANGEDEL) (#2,RANGEDEL)}
+s-z:{(#3,RANGEDEL)}
 
 seek-ge
 a 2
@@ -225,24 +215,24 @@ s 2
 s 1
 z 4
 ----
-1: a----f
-<empty>
-2:      f---j
-1:      f---j
-<empty>
-3:          j--m
-2:          j--m
-1:          j--m
-<empty>
-3:             m-----s
-2:             m-----s
-<empty>
-<empty>
-3:                   s------z
-<empty>
-<empty>
-<empty>
-<empty>
+a-f:{(#1,RANGEDEL)}
+<invalid>
+f-j:{(#2,RANGEDEL) (#1,RANGEDEL)}
+f-j:{(#1,RANGEDEL)}
+<invalid>
+j-m:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+j-m:{(#2,RANGEDEL) (#1,RANGEDEL)}
+j-m:{(#1,RANGEDEL)}
+<invalid>
+m-s:{(#3,RANGEDEL) (#2,RANGEDEL)}
+m-s:{(#2,RANGEDEL)}
+<invalid>
+<invalid>
+s-z:{(#3,RANGEDEL)}
+<invalid>
+<invalid>
+<invalid>
+<invalid>
 
 seek-le
 a 2
@@ -266,26 +256,26 @@ z 4
 z 3
 z 2
 ----
-1: a----f
-<empty>
-2:      f---j
-1:      f---j
-<empty>
-3:          j--m
-2:          j--m
-1:          j--m
-<empty>
-3:             m-----s
-2:             m-----s
-1:          j--m
-<empty>
-3:                   s------z
-2:             m-----s
-1:          j--m
-<empty>
-3:                   s------z
-2:             m-----s
-1:          j--m
+a-f:{(#1,RANGEDEL)}
+<invalid>
+f-j:{(#2,RANGEDEL) (#1,RANGEDEL)}
+f-j:{(#1,RANGEDEL)}
+<invalid>
+j-m:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+j-m:{(#2,RANGEDEL) (#1,RANGEDEL)}
+j-m:{(#1,RANGEDEL)}
+<invalid>
+m-s:{(#3,RANGEDEL) (#2,RANGEDEL)}
+m-s:{(#2,RANGEDEL)}
+j-m:{(#1,RANGEDEL)}
+<invalid>
+s-z:{(#3,RANGEDEL)}
+m-s:{(#2,RANGEDEL)}
+j-m:{(#1,RANGEDEL)}
+<invalid>
+s-z:{(#3,RANGEDEL)}
+m-s:{(#2,RANGEDEL)}
+j-m:{(#1,RANGEDEL)}
 
 build
 1: a-c
@@ -293,10 +283,8 @@ build
 5: a-c
 5: c-e
 ----
-5: a-c
-3: a-c
-1: a-c
-5:   c-e
+a-c:{(#5,RANGEDEL) (#3,RANGEDEL) (#1,RANGEDEL)}
+c-e:{(#5,RANGEDEL)}
 
 # Regression test for a bug where seek-le was failing to find the most
 # recent version of a tombstone. The problematic case was "seek-le c
@@ -312,9 +300,9 @@ c 4
 c 5
 c 6
 ----
-<empty>
-1: a-c
-1: a-c
-3: a-c
-3: a-c
-5:   c-e
+<invalid>
+a-c:{(#1,RANGEDEL)}
+a-c:{(#1,RANGEDEL)}
+a-c:{(#3,RANGEDEL) (#1,RANGEDEL)}
+a-c:{(#3,RANGEDEL) (#1,RANGEDEL)}
+c-e:{(#5,RANGEDEL)}

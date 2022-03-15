@@ -15,11 +15,11 @@
 #
 
 define-rangekeys
-e.RANGEKEYSET.1 : f [(@9=foo)]
-f.RANGEKEYSET.1 : h [(@9=foo),(@3=bar)]
-h.RANGEKEYSET.1 : l [(@9=foo),(@6=bax),(@3=bar)]
-l.RANGEKEYSET.1 : m [(@9=foo),(@6=bax)]
-m.RANGEKEYSET.1 : q [(@6=bax)]
+e-f:{(#1,RANGEKEYSET,@9,foo)}
+f-h:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@3,bar)}
+h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
+l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
+m-q:{(#1,RANGEKEYSET,@6,bax)}
 ----
 OK
 
@@ -226,7 +226,7 @@ RangeKey: [m, q)
 -
 
 define-rangekeys
-a.RANGEKEYSET.1 : c [(@5=apples),(@2=bananas)]
+a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 ----
 OK
 
@@ -297,7 +297,7 @@ RangeKey: [a, c)
 # threshold (eg, higher MVCC timestamp). Nothing should be masked.
 
 define-rangekeys
-a.RANGEKEYSET.2 : c [(@20=apples)]
+a-c:{(#2,RANGEKEYSET,@20,apples)}
 ----
 OK
 
@@ -366,7 +366,7 @@ RangeKey: [a, c)
 # because there are none.
 
 define-rangekeys
-a.RANGEKEYUNSET.1 : c [@5,@2]
+a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 ----
 OK
 
@@ -416,8 +416,8 @@ RangeKey: .
 # turn requires nexting to the next range key as well.
 
 define-rangekeys
-a.RANGEKEYSET.1 : c [(@5=apples)]
-c.RANGEKEYSET.1 : z [(@10=bananas)]
+a-c:{(#1,RANGEKEYSET,@5,apples)}
+c-z:{(#1,RANGEKEYSET,@10,bananas)}
 ----
 OK
 

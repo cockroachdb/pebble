@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/pmezard/go-difflib/difflib"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDefragmentingIter(t *testing.T) {
@@ -34,14 +33,7 @@ func TestDefragmentingIter(t *testing.T) {
 			spans = spans[:0]
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
-				startKey, value := Parse(line)
-				endKey, v, ok := DecodeEndKey(startKey.Kind(), value)
-				require.True(t, ok)
-				spans = append(spans, keyspan.Span{
-					Start: startKey,
-					End:   endKey,
-					Value: v,
-				})
+				spans = append(spans, keyspan.ParseSpan(line))
 			}
 			return ""
 		case "iter":
@@ -107,31 +99,26 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 			startIdx, endIdx = endIdx, startIdx
 		}
 
-		var sv SuffixValue
+		key := keyspan.Key{
+			Trailer: base.MakeTrailer(uint64(i), base.InternalKeyKindRangeKeySet),
+			Value:   []byte(fmt.Sprintf("v%d", rng.Intn(3))),
+		}
 		// Generate suffixes 0, 1, 2, or 3 with 0 indicating none.
 		if suffix := rng.Intn(4); suffix > 0 {
-			sv.Suffix = testkeys.Suffix(suffix)
+			key.Suffix = testkeys.Suffix(suffix)
 		}
-		sv.Value = []byte(fmt.Sprintf("v%d", rng.Intn(3)))
-		encodedSuffixValue := make([]byte, EncodedSetSuffixValuesLen([]SuffixValue{sv}))
-		EncodeSetSuffixValues(encodedSuffixValue, []SuffixValue{sv})
-
-		start := testkeys.Key(ks, startIdx)
-		end := testkeys.Key(ks, endIdx)
 		original = append(original, keyspan.Span{
-			Start: base.MakeInternalKey(start, uint64(i), base.InternalKeyKindRangeKeySet),
-			End:   end,
-			Value: encodedSuffixValue,
+			Start: testkeys.Key(ks, startIdx),
+			End:   testkeys.Key(ks, endIdx),
+			Keys:  []keyspan.Key{key},
 		})
 
 		for startIdx < endIdx {
 			width := rng.Intn(endIdx-startIdx) + 1
-			start := testkeys.Key(ks, startIdx)
-			end := testkeys.Key(ks, startIdx+width)
 			fragmented = append(fragmented, keyspan.Span{
-				Start: base.MakeInternalKey(start, uint64(i), base.InternalKeyKindRangeKeySet),
-				End:   end,
-				Value: encodedSuffixValue,
+				Start: testkeys.Key(ks, startIdx),
+				End:   testkeys.Key(ks, startIdx+width),
+				Keys:  []keyspan.Key{key},
 			})
 			startIdx += width
 		}
@@ -206,8 +193,8 @@ func fragment(cmp base.Compare, formatKey base.FormatKey, spans []keyspan.Span) 
 	f := keyspan.Fragmenter{
 		Cmp:    cmp,
 		Format: formatKey,
-		Emit: func(emittedFrags []keyspan.Span) {
-			fragments = append(fragments, emittedFrags...)
+		Emit: func(f keyspan.Span) {
+			fragments = append(fragments, f)
 		},
 	}
 	for _, s := range spans {
@@ -275,9 +262,8 @@ func runIterOp(w io.Writer, it *DefragmentingIter, op string) {
 func printRangeKeys(w io.Writer, cmp base.Compare, spans []keyspan.Span) {
 	var f keyspan.Fragmenter
 	f.Cmp = cmp
-	f.Emit = func(spans []keyspan.Span) {
-		frags := keyspan.MakeFragments(spans...)
-		cs, err := Coalesce(cmp, frags)
+	f.Emit = func(s keyspan.Span) {
+		cs, err := Coalesce(cmp, s)
 		if err != nil {
 			panic(err)
 		}

@@ -13,7 +13,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -127,21 +126,23 @@ func ingestLoad1(
 	if iter != nil {
 		defer iter.Close()
 		var smallest InternalKey
-		if key, _ := iter.First(); key != nil {
-			if err := ingestValidateKey(opts, key); err != nil {
+		if s := iter.First(); s.Valid() {
+			key := s.SmallestKey()
+			if err := ingestValidateKey(opts, &key); err != nil {
 				return nil, err
 			}
-			smallest = (*key).Clone()
+			smallest = key.Clone()
 		}
 		if err := iter.Error(); err != nil {
 			return nil, err
 		}
-		if key, val := iter.Last(); key != nil {
-			if err := ingestValidateKey(opts, key); err != nil {
+		if s := iter.Last(); s.Valid() {
+			k := s.SmallestKey()
+			if err := ingestValidateKey(opts, &k); err != nil {
 				return nil, err
 			}
-			end := base.MakeRangeDeleteSentinelKey(val)
-			meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, end.Clone())
+			largest := s.LargestKey().Clone()
+			meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
 		}
 	}
 
@@ -154,27 +155,25 @@ func ingestLoad1(
 		if iter != nil {
 			defer iter.Close()
 			var smallest InternalKey
-			if key, _ := iter.First(); key != nil {
-				if err := ingestValidateKey(opts, key); err != nil {
+			if s := iter.First(); s.Valid() {
+				key := s.SmallestKey()
+				if err := ingestValidateKey(opts, &key); err != nil {
 					return nil, err
 				}
-				smallest = (*key).Clone()
+				smallest = key.Clone()
 			}
 			if err := iter.Error(); err != nil {
 				return nil, err
 			}
-			if key, value := iter.Last(); key != nil {
-				if err := ingestValidateKey(opts, key); err != nil {
+			if s := iter.Last(); s.Valid() {
+				k := s.SmallestKey()
+				if err := ingestValidateKey(opts, &k); err != nil {
 					return nil, err
 				}
 				// As range keys are fragmented, the end key of the last range key in
 				// the table provides the upper bound for the table.
-				end, _, ok := rangekey.DecodeEndKey(key.Kind(), value)
-				if !ok {
-					return nil, errors.Newf("pebble: could not decode range end key")
-				}
-				k := base.MakeRangeKeySentinelKey(key.Kind(), end).Clone()
-				meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallest, k.Clone())
+				largest := s.LargestKey().Clone()
+				meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallest, largest)
 			}
 			if err := iter.Error(); err != nil {
 				return nil, err
@@ -411,18 +410,19 @@ func overlapWithIterator(
 		return false
 	}
 	rangeDelItr := *rangeDelIter
-	key, val := rangeDelItr.SeekLT(meta.Smallest.UserKey)
-	if key == nil {
-		key, val = rangeDelItr.Next()
+	rangeDel := rangeDelItr.SeekLT(meta.Smallest.UserKey)
+	if !rangeDel.Valid() {
+		rangeDel = rangeDelItr.Next()
 	}
-	for ; key != nil; key, val = rangeDelItr.Next() {
-		c := sstableKeyCompare(cmp, *key, meta.Largest)
+	for ; rangeDel.Valid(); rangeDel = rangeDelItr.Next() {
+		key := rangeDel.SmallestKey()
+		c := sstableKeyCompare(cmp, key, meta.Largest)
 		if c > 0 {
 			// The start of the tombstone is after the largest key in the
 			// ingested table.
 			return false
 		}
-		if cmp(val, meta.Smallest.UserKey) > 0 {
+		if cmp(rangeDel.End, meta.Smallest.UserKey) > 0 {
 			// The end of the tombstone is greater than the smallest in the
 			// table. Note that the tombstone end key is exclusive, thus ">0"
 			// instead of ">=0".

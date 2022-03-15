@@ -61,7 +61,7 @@ type Iter struct {
 	formatKey     base.FormatKey
 	visibleSeqNum uint64
 	miter         keyspan.MergingIter
-	iterFrags     keyspan.Fragments
+	iterSpan      keyspan.Span
 	curr          CoalescedSpan
 	err           error
 	valid         bool
@@ -111,11 +111,11 @@ func (i *Iter) Close() error {
 
 func (i *Iter) coalesceForward() *CoalescedSpan {
 	i.dir = +1
-	if i.iterFrags.Empty() {
+	if !i.iterSpan.Valid() {
 		i.valid = false
 		return nil
 	}
-	i.curr, i.err = Coalesce(i.cmp, i.iterFrags)
+	i.curr, i.err = Coalesce(i.cmp, i.iterSpan)
 	if i.err != nil {
 		i.valid = false
 		return nil
@@ -126,11 +126,11 @@ func (i *Iter) coalesceForward() *CoalescedSpan {
 
 func (i *Iter) coalesceBackward() *CoalescedSpan {
 	i.dir = -1
-	if i.iterFrags.Empty() {
+	if !i.iterSpan.Valid() {
 		i.valid = false
 		return nil
 	}
-	i.curr, i.err = Coalesce(i.cmp, i.iterFrags)
+	i.curr, i.err = Coalesce(i.cmp, i.iterSpan)
 	if i.err != nil {
 		i.valid = false
 		return nil
@@ -142,8 +142,8 @@ func (i *Iter) coalesceBackward() *CoalescedSpan {
 // SeekGE seeks the iterator to the first span covering a key greater than or
 // equal to key and returns it.
 func (i *Iter) SeekGE(key []byte) *CoalescedSpan {
-	i.iterFrags = i.miter.SeekLT(key)
-	if !i.iterFrags.Empty() && i.cmp(key, i.iterFrags.End) < 0 {
+	i.iterSpan = i.miter.SeekLT(key)
+	if i.iterSpan.Valid() && i.cmp(key, i.iterSpan.End) < 0 {
 		// We landed on a range key that begins before `key`, but extends beyond
 		// it. Since we performed a SeekLT, we're on the last fragment with
 		// those range key bounds and we need to coalesce backwards.
@@ -153,14 +153,14 @@ func (i *Iter) SeekGE(key []byte) *CoalescedSpan {
 	// exactly equal to key. Move forward one. There's no point in checking
 	// whether the next fragment actually covers the search key, because if it
 	// doesn't it's still the first fragment covering a key ≥ the search key.
-	i.iterFrags = i.miter.Next()
+	i.iterSpan = i.miter.Next()
 	return i.coalesceForward()
 }
 
 // SeekLT seeks the iterator to the first span covering a key less than key and
 // returns it.
 func (i *Iter) SeekLT(key []byte) *CoalescedSpan {
-	i.iterFrags = i.miter.SeekLT(key)
+	i.iterSpan = i.miter.SeekLT(key)
 	// We landed on the range key with the greatest start key that still sorts
 	// before `key`.  Since we performed a SeekLT, we're on the last fragment
 	// with those range key bounds and we need to coalesce backwards.
@@ -170,20 +170,20 @@ func (i *Iter) SeekLT(key []byte) *CoalescedSpan {
 // First seeks the iterator to the first span and returns it.
 func (i *Iter) First() *CoalescedSpan {
 	i.dir = +1
-	i.iterFrags = i.miter.First()
+	i.iterSpan = i.miter.First()
 	return i.coalesceForward()
 }
 
 // Last seeks the iterator to the last span and returns it.
 func (i *Iter) Last() *CoalescedSpan {
 	i.dir = -1
-	i.iterFrags = i.miter.Last()
+	i.iterSpan = i.miter.Last()
 	return i.coalesceBackward()
 }
 
 // Next advances to the next span and returns it.
 func (i *Iter) Next() *CoalescedSpan {
-	if i.dir == +1 && i.iterFrags.Empty() {
+	if i.dir == +1 && !i.iterSpan.Valid() {
 		// If we were already going forward and the underlying iterator is
 		// invalid, there is no next item. Don't move the iterator, just
 		// invalidate the iterator's position.
@@ -191,8 +191,8 @@ func (i *Iter) Next() *CoalescedSpan {
 		return nil
 	}
 	i.dir = +1
-	i.iterFrags = i.miter.Next()
-	if i.iterFrags.Empty() {
+	i.iterSpan = i.miter.Next()
+	if !i.iterSpan.Valid() {
 		i.valid = false
 		return nil
 	}
@@ -201,7 +201,7 @@ func (i *Iter) Next() *CoalescedSpan {
 
 // Prev steps back to the previous span and returns it.
 func (i *Iter) Prev() *CoalescedSpan {
-	if i.dir == -1 && i.iterFrags.Empty() {
+	if i.dir == -1 && !i.iterSpan.Valid() {
 		// If we were already going backward and the underlying iterator is
 		// invalid, there is no previous item. Don't move the iterator, just
 		// invalidate the iterator's position.
@@ -209,8 +209,8 @@ func (i *Iter) Prev() *CoalescedSpan {
 		return nil
 	}
 	i.dir = -1
-	i.iterFrags = i.miter.Prev()
-	if i.iterFrags.Empty() {
+	i.iterSpan = i.miter.Prev()
+	if !i.iterSpan.Valid() {
 		i.valid = false
 		return nil
 	}

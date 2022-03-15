@@ -123,8 +123,13 @@ func TestTableStats(t *testing.T) {
 
 func TestForeachDefragmentedTombstone(t *testing.T) {
 	mktomb := func(start, end string, seqnum uint64) keyspan.Span {
-		s := base.MakeInternalKey([]byte(start), seqnum, base.InternalKeyKindRangeDelete)
-		return keyspan.Span{Start: s, End: []byte(end)}
+		return keyspan.Span{
+			Start: []byte(start),
+			End:   []byte(end),
+			Keys: []keyspan.Key{
+				{Trailer: base.MakeTrailer(seqnum, base.InternalKeyKindRangeDelete)},
+			},
+		}
 	}
 
 	testCases := []struct {

@@ -70,7 +70,10 @@ type SuffixItem struct {
 	Unset  bool
 }
 
-// Coalesce imposes range key semantics and coalesces fragments with the same
+// TODO(jackson): Refactor Coalesce to return a keyspan.Span rather than a
+// CoalescedSpan.
+
+// Coalesce imposes range key semantics and coalesces range keys with the same
 // bounds. Coalesce drops any keys shadowed by more recent sets, unsets or
 // deletes. Coalesce returns a CoalescedSpan describing the still extant logical
 // range keys, including the Set suffix-value pairs, the Unset suffixes and
@@ -104,73 +107,53 @@ type SuffixItem struct {
 // keys do not affect one another. Ingested sstables are expected to be
 // consistent with respect to the set/unset suffixes: A given suffix should be
 // set or unset but not both.
-func Coalesce(cmp base.Compare, fragments keyspan.Fragments) (CoalescedSpan, error) {
+func Coalesce(cmp base.Compare, span keyspan.Span) (CoalescedSpan, error) {
 	var cs CoalescedSpan
 	var items suffixItems
 	items.cmp = cmp
-	items.items = make([]SuffixItem, 0, fragments.Count())
+	items.items = make([]SuffixItem, 0, len(span.Keys))
 
-	cs.Start = fragments.Start
-	cs.End = fragments.End
-	for i := 0; i < fragments.Count() && !cs.Delete; i++ {
-		s := fragments.At(i)
+	cs.Start = span.Start
+	cs.End = span.End
+	for i := 0; i < len(span.Keys) && !cs.Delete; i++ {
+		k := span.Keys[i]
 		if i == 0 {
-			cs.LargestSeqNum = s.Start.SeqNum()
+			cs.LargestSeqNum = k.SeqNum()
 		}
-		if invariants.Enabled && s.Start.SeqNum() > cs.LargestSeqNum {
-			panic("pebble: invariant violation: fragments unordered")
+		if invariants.Enabled && k.SeqNum() > cs.LargestSeqNum {
+			panic("pebble: invariant violation: span keys unordered")
 		}
 
 		// NB: Within a given sequence number, keys are ordered as:
 		//   RangeKeySet > RangeKeyUnset > RangeKeyDelete
 		// This is significant, because this ensures that none of the range keys
 		// sharing a sequence number shadow each other.
-		switch s.Start.Kind() {
+		switch k.Kind() {
 		case base.InternalKeyKindRangeKeySet:
 			n := len(items.items)
 
-			// value represents a set of suffixes, guaranteed to not have
-			// duplicates.
-			value := s.Value
-			for len(value) > 0 {
-				sv, rest, ok := DecodeSuffixValue(value)
-				if !ok {
-					return CoalescedSpan{}, base.CorruptionErrorf("corrupt set value: unable to decode suffix-value tuple")
-				}
-				value = rest
-				if items.get(n, sv.Suffix) < n {
-					// This suffix is already set or unset at a higher sequence
-					// number. Skip.
-					continue
-				}
-				items.items = append(items.items, SuffixItem{
-					Suffix: sv.Suffix,
-					Value:  sv.Value,
-				})
+			if items.get(n, k.Suffix) < n {
+				// This suffix is already set or unset at a higher sequence
+				// number. Skip.
+				continue
 			}
+			items.items = append(items.items, SuffixItem{
+				Suffix: k.Suffix,
+				Value:  k.Value,
+			})
 			sort.Sort(items)
 		case base.InternalKeyKindRangeKeyUnset:
 			n := len(items.items)
 
-			// value represents a set of suffixes, guaranteed to not have
-			// duplicates.
-			value := s.Value
-			for len(value) > 0 {
-				suffix, rest, ok := DecodeSuffix(value)
-				if !ok {
-					return CoalescedSpan{}, base.CorruptionErrorf("corrupt unset value: unable to decode suffix")
-				}
-				value = rest
-				if items.get(n, suffix) < n {
-					// This suffix is already set or unset at a higher sequence
-					// number. Skip.
-					continue
-				}
-				items.items = append(items.items, SuffixItem{
-					Suffix: suffix,
-					Unset:  true,
-				})
+			if items.get(n, k.Suffix) < n {
+				// This suffix is already set or unset at a higher sequence
+				// number. Skip.
+				continue
 			}
+			items.items = append(items.items, SuffixItem{
+				Suffix: k.Suffix,
+				Unset:  true,
+			})
 			sort.Sort(items)
 		case base.InternalKeyKindRangeKeyDelete:
 			// Record that all range keys in this span have been deleted by this
@@ -179,7 +162,7 @@ func Coalesce(cmp base.Compare, fragments keyspan.Fragments) (CoalescedSpan, err
 			// will terminate as soon as cs.Delete is set.
 			cs.Delete = true
 		default:
-			return CoalescedSpan{}, errors.Newf("pebble: unexpected range key kind %s", s.Start.Kind())
+			return CoalescedSpan{}, errors.Newf("pebble: unexpected range key kind %s", k.Kind())
 		}
 	}
 	cs.Items = items.items
