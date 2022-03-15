@@ -16,7 +16,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 // keyspan.FragmentIterator with point keys.
 type InternalIteratorShim struct {
 	miter   MergingIter
-	frags   Fragments
+	span    Span
 	iterKey base.InternalKey
 }
 
@@ -26,13 +26,14 @@ var _ base.InternalIterator = &InternalIteratorShim{}
 // Init initializes the internal iterator shim to merge the provided fragment
 // iterators.
 func (i *InternalIteratorShim) Init(cmp base.Compare, iters ...FragmentIterator) {
-	noopTransform := func(*Fragments) {}
+	noopTransform := func(s Span) Span { return s }
 	i.miter.Init(cmp, noopTransform, iters...)
 }
 
-// Fragments returns the full set of fragments at the current iterator position.
-func (i *InternalIteratorShim) Fragments() Fragments {
-	return i.frags
+// Span returns the span containing the full set of keys over the key span at
+// the current iterator position.
+func (i *InternalIteratorShim) Span() Span {
+	return i.span
 }
 
 // SeekGE implements (base.InternalIterator).SeekGE.
@@ -56,13 +57,12 @@ func (i *InternalIteratorShim) SeekLT(key []byte) (*base.InternalKey, []byte) {
 
 // First implements (base.InternalIterator).First.
 func (i *InternalIteratorShim) First() (*base.InternalKey, []byte) {
-	i.frags = i.miter.First()
-	if i.frags.Empty() {
+	i.span = i.miter.First()
+	if i.span.Empty() {
 		return nil, nil
 	}
-	s := i.frags.At(0)
-	i.iterKey = s.Start
-	return &i.iterKey, s.End
+	i.iterKey = base.InternalKey{UserKey: i.span.Start, Trailer: i.span.Keys[0].Trailer}
+	return &i.iterKey, i.span.End
 }
 
 // Last implements (base.InternalIterator).Last.
@@ -72,13 +72,12 @@ func (i *InternalIteratorShim) Last() (*base.InternalKey, []byte) {
 
 // Next implements (base.InternalIterator).Next.
 func (i *InternalIteratorShim) Next() (*base.InternalKey, []byte) {
-	i.frags = i.miter.Next()
-	if i.frags.Empty() {
+	i.span = i.miter.Next()
+	if i.span.Empty() {
 		return nil, nil
 	}
-	s := i.frags.At(0)
-	i.iterKey = s.Start
-	return &i.iterKey, s.End
+	i.iterKey = base.InternalKey{UserKey: i.span.Start, Trailer: i.span.Keys[0].Trailer}
+	return &i.iterKey, i.span.End
 }
 
 // Prev implements (base.InternalIterator).Prev.

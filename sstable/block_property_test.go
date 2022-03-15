@@ -818,32 +818,14 @@ func (c *suffixIntervalCollector) Add(key InternalKey, value []byte) error {
 		if key.Kind() == base.InternalKeyKindRangeKeyDelete {
 			return nil
 		}
-		_, v, ok := rangekey.DecodeEndKey(key.Kind(), value)
-		if !ok {
-			return errors.New("could not decode end key")
+		s, err := rangekey.Decode(key, value, nil)
+		if err != nil {
+			return err
 		}
-
-		switch key.Kind() {
-		case base.InternalKeyKindRangeKeySet:
-			var sv rangekey.SuffixValue
-			for len(v) > 0 {
-				sv, v, ok = rangekey.DecodeSuffixValue(v)
-				if !ok {
-					return errors.New("could not decode suffix value")
-				}
-				bs = append(bs, sv.Suffix)
+		for _, k := range s.Keys {
+			if len(k.Suffix) > 0 {
+				bs = append(bs, k.Suffix)
 			}
-		case base.InternalKeyKindRangeKeyUnset:
-			var suffix []byte
-			for len(v) > 0 {
-				suffix, v, ok = rangekey.DecodeSuffix(v)
-				if !ok {
-					return errors.New("could not decode suffix")
-				}
-				bs = append(bs, suffix)
-			}
-		default:
-			return errors.Newf("unexpected range key kind: %s", key.Kind())
 		}
 	} else {
 		// All other keys have a single suffix encoded into the value.

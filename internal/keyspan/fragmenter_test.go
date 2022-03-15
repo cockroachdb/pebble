@@ -19,7 +19,7 @@ import (
 
 var spanRe = regexp.MustCompile(`(\d+):\s*(\w+)-*(\w+)\w*([^\n]*)`)
 
-func parseSpan(t *testing.T, s string, kind base.InternalKeyKind) Span {
+func parseSpanSingleKey(t *testing.T, s string, kind base.InternalKeyKind) Span {
 	m := spanRe.FindStringSubmatch(s)
 	if len(m) != 5 {
 		t.Fatalf("expected 5 components, but found %d: %s", len(m), s)
@@ -27,9 +27,14 @@ func parseSpan(t *testing.T, s string, kind base.InternalKeyKind) Span {
 	seqNum, err := strconv.Atoi(m[1])
 	require.NoError(t, err)
 	return Span{
-		Start: base.MakeInternalKey([]byte(m[2]), uint64(seqNum), kind),
+		Start: []byte(m[2]),
 		End:   []byte(m[3]),
-		Value: []byte(strings.TrimSpace(m[4])),
+		Keys: []Key{
+			{
+				Trailer: base.MakeTrailer(uint64(seqNum), kind),
+				Value:   []byte(strings.TrimSpace(m[4])),
+			},
+		},
 	}
 }
 
@@ -40,8 +45,8 @@ func buildSpans(
 	f := &Fragmenter{
 		Cmp:    cmp,
 		Format: formatKey,
-		Emit: func(fragmented []Span) {
-			spans = append(spans, fragmented...)
+		Emit: func(fragmented Span) {
+			spans = append(spans, fragmented)
 		},
 	}
 	for _, line := range strings.Split(s, "\n") {
@@ -54,13 +59,13 @@ func buildSpans(
 			continue
 		}
 
-		f.Add(parseSpan(t, line, kind))
+		f.Add(parseSpanSingleKey(t, line, kind))
 	}
 	f.Finish()
 	return spans
 }
 
-func formatSpans(spans []Span) string {
+func formatAlphabeticSpans(spans []Span) string {
 	isLetter := func(b []byte) bool {
 		if len(b) != 1 {
 			return false
@@ -71,23 +76,34 @@ func formatSpans(spans []Span) string {
 	var buf bytes.Buffer
 	for _, v := range spans {
 		switch {
+		case !v.Valid():
+			fmt.Fprintf(&buf, "<invalid>\n")
 		case v.Empty():
-			fmt.Fprintf(&buf, "<empty>")
-		case !isLetter(v.Start.UserKey) || !isLetter(v.End) || v.Start.UserKey[0] == v.End[0]:
-			fmt.Fprintf(&buf, "%d: %s-%s", v.Start.SeqNum(), v.Start.UserKey, v.End)
+			fmt.Fprintf(&buf, "<empty>\n")
+		case !isLetter(v.Start) || !isLetter(v.End) || v.Start[0] == v.End[0]:
+			for _, k := range v.Keys {
+				fmt.Fprintf(&buf, "%d: %s-%s", k.SeqNum(), v.Start, v.End)
+				if len(k.Value) > 0 {
+					buf.WriteString(strings.Repeat(" ", int('z'-v.End[0]+1)))
+					buf.WriteString(string(k.Value))
+				}
+				fmt.Fprintln(&buf)
+			}
 		default:
-			fmt.Fprintf(&buf, "%d: %s%s%s%s",
-				v.Start.SeqNum(),
-				strings.Repeat(" ", int(v.Start.UserKey[0]-'a')),
-				v.Start.UserKey,
-				strings.Repeat("-", int(v.End[0]-v.Start.UserKey[0]-1)),
-				v.End)
+			for _, k := range v.Keys {
+				fmt.Fprintf(&buf, "%d: %s%s%s%s",
+					k.SeqNum(),
+					strings.Repeat(" ", int(v.Start[0]-'a')),
+					v.Start,
+					strings.Repeat("-", int(v.End[0]-v.Start[0]-1)),
+					v.End)
+				if len(k.Value) > 0 {
+					buf.WriteString(strings.Repeat(" ", int('z'-v.End[0]+1)))
+					buf.WriteString(string(k.Value))
+				}
+				fmt.Fprintln(&buf)
+			}
 		}
-		if len(v.Value) > 0 {
-			buf.WriteString(strings.Repeat(" ", int('z'-v.End[0]+1)))
-			buf.WriteString(string(v.Value))
-		}
-		buf.WriteRune('\n')
 	}
 	return buf.String()
 }
@@ -108,7 +124,7 @@ func TestFragmenter(t *testing.T) {
 		return m[1], seq
 	}
 
-	var iter base.InternalIterator
+	var iter FragmentIterator
 
 	// Returns true if the specified <key,seq> pair is deleted at the specified
 	// read sequence number. Get ignores spans newer than the read sequence
@@ -131,7 +147,7 @@ func TestFragmenter(t *testing.T) {
 
 				spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
 				iter = NewIter(cmp, spans)
-				return formatSpans(spans)
+				return formatAlphabeticSpans(spans)
 			}()
 
 		case "get":
@@ -168,14 +184,14 @@ func TestFragmenterDeleted(t *testing.T) {
 			f := &Fragmenter{
 				Cmp:    base.DefaultComparer.Compare,
 				Format: base.DefaultComparer.FormatKey,
-				Emit: func(fragmented []Span) {
+				Emit: func(fragmented Span) {
 				},
 			}
 			var buf bytes.Buffer
 			for _, line := range strings.Split(d.Input, "\n") {
 				switch {
 				case strings.HasPrefix(line, "add "):
-					t := parseSpan(t, strings.TrimPrefix(line, "add "), base.InternalKeyKindRangeDelete)
+					t := parseSpanSingleKey(t, strings.TrimPrefix(line, "add "), base.InternalKeyKindRangeDelete)
 					f.Add(t)
 				case strings.HasPrefix(line, "deleted "):
 					key := base.ParseInternalKey(strings.TrimPrefix(line, "deleted "))
@@ -212,7 +228,7 @@ func TestFragmenterTruncateAndFlushTo(t *testing.T) {
 				}()
 
 				spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
-				return formatSpans(spans)
+				return formatAlphabeticSpans(spans)
 			}()
 
 		default:
@@ -236,7 +252,7 @@ func TestFragmenter_Values(t *testing.T) {
 				}()
 
 				spans := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeKeySet)
-				return formatSpans(spans)
+				return formatAlphabeticSpans(spans)
 			}()
 
 		default:
@@ -255,11 +271,19 @@ func TestFragmenter_EmitOrder(t *testing.T) {
 			f := Fragmenter{
 				Cmp:    base.DefaultComparer.Compare,
 				Format: base.DefaultComparer.FormatKey,
-				Emit: func(spans []Span) {
-					for _, s := range spans {
-						fmt.Fprintf(&buf, "%s %s\n", s.Start.Pretty(base.DefaultComparer.FormatKey), s.End)
+				Emit: func(span Span) {
+					fmt.Fprintf(&buf, "%s %s:",
+						base.DefaultComparer.FormatKey(span.Start),
+						base.DefaultComparer.FormatKey(span.End))
+					for i, k := range span.Keys {
+						if i == 0 {
+							fmt.Fprint(&buf, " ")
+						} else {
+							fmt.Fprint(&buf, ", ")
+						}
+						fmt.Fprintf(&buf, "#%d,%s", k.SeqNum(), k.Kind())
 					}
-					fmt.Fprintln(&buf, "-")
+					fmt.Fprintln(&buf, "\n-")
 				},
 			}
 			for _, line := range strings.Split(d.Input, "\n") {
@@ -267,9 +291,11 @@ func TestFragmenter_EmitOrder(t *testing.T) {
 				if len(fields) != 2 {
 					panic(fmt.Sprintf("datadriven test: expect 2 fields, found %d", len(fields)))
 				}
+				k := base.ParseInternalKey(fields[0])
 				f.Add(Span{
-					Start: base.ParseInternalKey(fields[0]),
+					Start: k.UserKey,
 					End:   []byte(fields[1]),
+					Keys:  []Key{{Trailer: k.Trailer}},
 				})
 			}
 

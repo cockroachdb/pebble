@@ -314,23 +314,21 @@ func TestMemTableDeleteRange(t *testing.T) {
 			return ""
 
 		case "scan":
-			var iter internalIterAdapter
 			if len(td.CmdArgs) > 1 {
 				return fmt.Sprintf("%s expects at most 1 argument", td.Cmd)
 			}
+			var buf bytes.Buffer
 			if len(td.CmdArgs) == 1 {
 				if td.CmdArgs[0].String() != "range-del" {
 					return fmt.Sprintf("%s unknown argument %s", td.Cmd, td.CmdArgs[0])
 				}
-				iter.internalIterator = mem.newRangeDelIter(nil)
+				iter := mem.newRangeDelIter(nil)
+				defer iter.Close()
+				scanKeyspanIterator(&buf, iter)
 			} else {
-				iter.internalIterator = mem.newIter(nil)
-			}
-			defer iter.Close()
-
-			var buf bytes.Buffer
-			for valid := iter.First(); valid; valid = iter.Next() {
-				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
+				iter := mem.newIter(nil)
+				defer iter.Close()
+				scanInternalIterator(&buf, iter)
 			}
 			return buf.String()
 
@@ -363,12 +361,12 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 				b.release()
 
 				var count int
-				it := newInternalIterAdapter(m.newRangeDelIter(nil))
-				for valid := it.SeekGE(start, false /* trySeekUsingNext */); valid; valid = it.Next() {
-					if m.cmp(it.Key().UserKey, end) >= 0 {
+				it := m.newRangeDelIter(nil)
+				for s := it.SeekGE(start); s.Valid(); s = it.Next() {
+					if m.cmp(s.Start, end) >= 0 {
 						break
 					}
-					count++
+					count += len(s.Keys)
 				}
 				if j+1 != count {
 					return errors.Errorf("%d: expected %d tombstones, but found %d", i, j+1, count)

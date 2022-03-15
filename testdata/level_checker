@@ -167,7 +167,7 @@ Level 2
 
 check
 ----
-tombstone b-g#10 in L2: fileNum=000017 deletes key c#8,SET in L1: fileNum=000016
+tombstone b-g:{(#10,RANGEDEL)} in L2: fileNum=000017 deletes key c#8,SET in L1: fileNum=000016
 
 define
 L
@@ -184,7 +184,7 @@ Level 2
 
 check
 ----
-encountered tombstone b-c#8 in L1: fileNum=000018 that has a lower seqnum than the same tombstone in L2: fileNum=000019
+encountered tombstone b-c:{(#8,RANGEDEL)} in L1: fileNum=000018 that has a lower seqnum than the same tombstone in L2: fileNum=000019
 
 # Check incorrect ordering of point keys in an sstable.
 define disable-key-order-checks
@@ -234,7 +234,7 @@ Level 1
 
 check
 ----
-unordered or unfragmented range delete tombstones f-g#3, a-b#4 in L1: fileNum=000024
+unordered or unfragmented range delete tombstones f-g:{(#3,RANGEDEL)}, a-b:{(#4,RANGEDEL)} in L1: fileNum=000024
 
 # Case 2: Ordered but not fragmented.
 define write-unfragmented disable-key-order-checks
@@ -247,7 +247,7 @@ Level 1
 
 check
 ----
-unordered or unfragmented range delete tombstones a-d#1, b-c#2 in L1: fileNum=000025
+unordered or unfragmented range delete tombstones a-d:{(#1,RANGEDEL)}, b-c:{(#2,RANGEDEL)} in L1: fileNum=000025
 
 # Case 3: Verify check is done before truncation.
 define write-unfragmented disable-key-order-checks
@@ -260,7 +260,7 @@ Level 1
 
 check
 ----
-unordered or unfragmented range delete tombstones a-z#1, d-e#2 in L1: fileNum=000026
+unordered or unfragmented range delete tombstones a-z:{(#1,RANGEDEL)}, d-e:{(#2,RANGEDEL)} in L1: fileNum=000026
 
 # Merge record processing.
 

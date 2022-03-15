@@ -303,9 +303,9 @@ type tombstonesByStartKeyAndSeqnum struct {
 
 func (v *tombstonesByStartKeyAndSeqnum) Len() int { return len(v.buf) }
 func (v *tombstonesByStartKeyAndSeqnum) Less(i, j int) bool {
-	less := v.cmp(v.buf[i].Start.UserKey, v.buf[j].Start.UserKey)
+	less := v.cmp(v.buf[i].Start, v.buf[j].Start)
 	if less == 0 {
-		return v.buf[i].Start.SeqNum() > v.buf[j].Start.SeqNum()
+		return v.buf[i].LargestSeqNum() > v.buf[j].LargestSeqNum()
 	}
 	return less < 0
 }
@@ -327,7 +327,7 @@ func iterateAndCheckTombstones(
 	// in non-decreasing level order.
 	lastTombstone := tombstoneWithLevel{}
 	for _, t := range tombstones {
-		if cmp(lastTombstone.Start.UserKey, t.Start.UserKey) == 0 && lastTombstone.level > t.level {
+		if cmp(lastTombstone.Start, t.Start) == 0 && lastTombstone.level > t.level {
 			return errors.Errorf("encountered tombstone %s in %s"+
 				" that has a lower seqnum than the same tombstone in %s",
 				t.Span.Pretty(formatKey), levelOrMemtable(t.lsmLevel, t.fileNum),
@@ -383,14 +383,15 @@ func checkRangeTombstones(c *checkConfig) error {
 			}
 			truncate := func(t keyspan.Span) keyspan.Span {
 				// Same checks as in keyspan.Truncate.
-				if c.cmp(t.Start.UserKey, lower.UserKey) < 0 {
-					t.Start.UserKey = lower.UserKey
+				if c.cmp(t.Start, lower.UserKey) < 0 {
+					t.Start = lower.UserKey
 				}
 				if c.cmp(t.End, upper.UserKey) > 0 {
 					t.End = upper.UserKey
 				}
-				if c.cmp(t.Start.UserKey, t.End) >= 0 {
-					t.Start.SetKind(InternalKeyKindInvalid)
+				if c.cmp(t.Start, t.End) >= 0 {
+					// Remove the keys.
+					t.Keys = t.Keys[:0]
 				}
 				return t
 			}
@@ -436,7 +437,7 @@ func levelOrMemtable(lsmLevel int, fileNum FileNum) string {
 }
 
 func addTombstonesFromIter(
-	iter base.InternalIterator,
+	iter keyspan.FragmentIterator,
 	level int,
 	lsmLevel int,
 	fileNum FileNum,
@@ -451,24 +452,20 @@ func addTombstonesFromIter(
 	}()
 
 	var prevTombstone keyspan.Span
-	for key, value := iter.First(); key != nil; key, value = iter.Next() {
-		if !key.Visible(seqNum) {
+	for t := iter.First(); t.Valid(); t = iter.Next() {
+		t = t.Visible(seqNum)
+		if t.Empty() {
 			continue
 		}
-		var t keyspan.Span
-		t.Start = key.Clone()
-		t.End = append(t.End[:0], value...)
+		t = t.DeepClone()
 		// This is mainly a test for rangeDelV2 formatted blocks which are expected to
 		// be ordered and fragmented on disk. But we anyways check for memtables,
 		// rangeDelV1 as well.
-		if prevTombstone.Overlaps(cmp, t) != -1 {
+		if cmp(prevTombstone.End, t.Start) > 0 {
 			return nil, errors.Errorf("unordered or unfragmented range delete tombstones %s, %s in %s",
 				prevTombstone.Pretty(formatKey), t.Pretty(formatKey), levelOrMemtable(lsmLevel, fileNum))
 		}
-		// No need to copy key.UserKey bytes since blockIter gives key stability for
-		// range delete keys.
-		prevTombstone.Start = *key
-		prevTombstone.End = value
+		prevTombstone = t
 
 		// Truncation of a tombstone must happen after checking its ordering,
 		// fragmentation wrt previous tombstone. Since it is possible that after
@@ -503,7 +500,7 @@ func (v *userKeysSort) Swap(i, j int) {
 func collectAllUserKeys(cmp Compare, tombstones []tombstoneWithLevel) [][]byte {
 	keys := make([][]byte, 0, len(tombstones)*2)
 	for _, t := range tombstones {
-		keys = append(keys, t.Start.UserKey)
+		keys = append(keys, t.Start)
 		keys = append(keys, t.End)
 	}
 	sorter := userKeysSort{
@@ -529,7 +526,7 @@ func fragmentUsingUserKeys(
 	for _, t := range tombstones {
 		// Find the first position with tombstone start < user key
 		i := sort.Search(len(userKeys), func(i int) bool {
-			return cmp(t.Start.UserKey, userKeys[i]) < 0
+			return cmp(t.Start, userKeys[i]) < 0
 		})
 		for ; i < len(userKeys); i++ {
 			if cmp(userKeys[i], t.End) >= 0 {
@@ -538,7 +535,7 @@ func fragmentUsingUserKeys(
 			tPartial := t
 			tPartial.End = userKeys[i]
 			buf = append(buf, tPartial)
-			t.Start.UserKey = userKeys[i]
+			t.Start = userKeys[i]
 		}
 		buf = append(buf, t)
 	}

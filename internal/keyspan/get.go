@@ -10,9 +10,8 @@ import "github.com/cockroachdb/pebble/internal/base"
 // contains the target key, an empty span is returned. The snapshot
 // parameter controls the visibility of spans (only spans older than the
 // snapshot sequence number are visible). The iterator must contain
-// fragmented spans: any overlapping spans must have the same start and
-// end key.
-func Get(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint64) Span {
+// fragmented spans: no span may overlap another.
+func Get(cmp base.Compare, iter FragmentIterator, key []byte, snapshot uint64) Span {
 	// NB: We use SeekLT in order to land on the proper span for a search
 	// key that resides in the middle of a span. Consider the scenario:
 	//
@@ -25,62 +24,30 @@ func Get(cmp base.Compare, iter base.InternalIterator, key []byte, snapshot uint
 	// [e,i) and we'd have to backtrack. The one complexity here is what
 	// happens for the search key `e`. In that case SeekLT will land us
 	// on the span [a,e) and we'll have to move forward.
-	iterKey, iterValue := iter.SeekLT(key)
-	if iterKey == nil {
-		iterKey, iterValue = iter.Next()
-		if iterKey == nil {
+	iterSpan := iter.SeekLT(key)
+	if !iterSpan.Valid() {
+		iterSpan = iter.Next()
+		if !iterSpan.Valid() {
 			// The iterator is empty.
 			return Span{}
 		}
-		if cmp(key, iterKey.UserKey) < 0 {
+		if cmp(key, iterSpan.Start) < 0 {
 			// The search key lies before the first span.
 			return Span{}
 		}
 	}
 
-	// Invariant: key >= iter.Key().UserKey
-
-	if cmp(key, iterValue) < 0 {
-		// The current span contains the search key, but SeekLT returns
-		// the oldest entry for a key, so backup until we hit the
-		// previous span or an entry which is not visible.
-		for {
-			iterKey, iterValue = iter.Prev()
-			if iterKey == nil || cmp(key, iterValue) >= 0 || !iterKey.Visible(snapshot) {
-				iterKey, iterValue = iter.Next()
-				break
-			}
-		}
-	} else {
+	// Invariant: key > iterSpan.Start
+	if cmp(key, iterSpan.End) >= 0 {
 		// The current span lies before the search key. Advance the iterator
-		// as long as the search key lies past the end of the span. See the
-		// comment at the start of this function about why this is necessary.
-		for {
-			iterKey, iterValue = iter.Next()
-			if iterKey == nil || cmp(key, iterKey.UserKey) < 0 {
-				// We've run out of spans or we've moved on to a span which
-				// starts after our search key.
-				return Span{}
-			}
-			if cmp(key, iterValue) < 0 {
-				break
-			}
-		}
-	}
-
-	for {
-		if start := iterKey; start.Visible(snapshot) {
-			// The span is visible at our read sequence number.
-			return Span{
-				Start: *start,
-				End:   iterValue,
-			}
-		}
-		iterKey, iterValue = iter.Next()
-		if iterKey == nil || cmp(key, iterKey.UserKey) < 0 {
+		// once to potentially land on a key with a start key exactly equal to
+		// key. (See the comment at the beginning of this function.)
+		iterSpan = iter.Next()
+		if !iterSpan.Valid() || cmp(key, iterSpan.Start) < 0 {
 			// We've run out of spans or we've moved on to a span which
 			// starts after our search key.
 			return Span{}
 		}
 	}
+	return iterSpan.Visible(snapshot)
 }

@@ -71,7 +71,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	}).ExtendRangeKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("aaa"), 0, base.InternalKeyKindRangeKeySet),
-		base.MakeRangeKeySentinelKey(base.InternalKeyKindRangeKeySet, []byte("zzz")),
+		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("zzz")),
 	)
 
 	m4 := (&FileMetadata{
@@ -87,7 +87,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	).ExtendRangeKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("l"), 0, base.InternalKeyKindRangeKeySet),
-		base.MakeRangeKeySentinelKey(base.InternalKeyKindRangeKeySet, []byte("z")),
+		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("z")),
 	)
 
 	testCases := []VersionEdit{

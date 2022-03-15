@@ -16,14 +16,14 @@ import (
 func TestTruncate(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	fmtKey := base.DefaultComparer.FormatKey
-	var iter base.InternalIterator
+	var iter FragmentIterator
 
 	datadriven.RunTest(t, "testdata/truncate", func(d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
 			tombstones := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)
 			iter = NewIter(cmp, tombstones)
-			return formatSpans(tombstones)
+			return formatAlphabeticSpans(tombstones)
 
 		case "truncate":
 			if len(d.Input) > 0 {
@@ -53,7 +53,7 @@ func TestTruncate(t *testing.T) {
 			upper := []byte(parts[1])
 
 			truncated := Truncate(cmp, iter, lower, upper, startKey, endKey)
-			return formatSpans(truncated.spans)
+			return formatAlphabeticSpans(truncated.spans)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)

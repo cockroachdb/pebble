@@ -57,7 +57,7 @@ reset
 ----
 
 load
-a.RANGEKEYSET.0:c [(@1=foo)]
+rangekey: a-c:{#0,RANGEKEYSET,@1,foo)}
 ----
 file 0
 
@@ -75,7 +75,7 @@ reset
 
 load
 a.SET.0:
-b.RANGEKEYSET.0:c [(@1=foo)]
+rangekey: b-c:{#0,RANGEKEYSET,@1,foo)}
 d.SET.0:
 ----
 file 0
@@ -94,7 +94,7 @@ reset
 
 load
 a.SET.0:
-b.RANGEKEYSET.0:c [(@1=foo)]
+rangekey: b-c:{(#0,RANGEKEYSET,@1,foo)}
 ----
 file 0
 
@@ -111,7 +111,7 @@ reset
 ----
 
 load
-a.RANGEKEYSET.0:c [(@1=foo)]
+rangekey: a-c:{#0,RANGEKEYSET,@1,foo)}
 d.SET.0:
 ----
 file 0
@@ -129,7 +129,7 @@ reset
 ----
 
 load
-a.RANGEKEYSET.0:d [(@1=foo)]
+rangekey: a-d:{#0,RANGEKEYSET,@1,foo)}
 c.SET.0:
 ----
 file 0

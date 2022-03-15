@@ -7,6 +7,7 @@ package tool
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"text/tabwriter"
@@ -16,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -388,7 +390,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		// We configured sstable.Reader to return raw tombstones which requires a
 		// bit more work here to put them in a form that can be iterated in
 		// parallel with the point records.
-		rangeDelIter, err := func() (base.InternalIterator, error) {
+		rangeDelIter, err := func() (keyspan.FragmentIterator, error) {
 			iter, err := r.NewRawRangeDelIter()
 			if err != nil {
 				return nil, err
@@ -399,12 +401,8 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			defer iter.Close()
 
 			var tombstones []keyspan.Span
-			for key, value := iter.First(); key != nil; key, value = iter.Next() {
-				t := keyspan.Span{
-					Start: *key,
-					End:   value,
-				}
-				if s.end != nil && r.Compare(s.end, t.Start.UserKey) <= 0 {
+			for t := iter.First(); t.Valid(); t = iter.Next() {
+				if s.end != nil && r.Compare(s.end, t.Start) <= 0 {
 					// The range tombstone lies after the scan range.
 					continue
 				}
@@ -412,11 +410,11 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 					// The range tombstone lies before the scan range.
 					continue
 				}
-				tombstones = append(tombstones, t)
+				tombstones = append(tombstones, t.ShallowClone())
 			}
 
 			sort.Slice(tombstones, func(i, j int) bool {
-				return r.Compare(tombstones[i].Start.UserKey, tombstones[j].Start.UserKey) < 0
+				return r.Compare(tombstones[i].Start, tombstones[j].Start) < 0
 			})
 			return keyspan.NewIter(r.Compare, tombstones), nil
 		}()
@@ -426,14 +424,12 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		}
 
 		defer rangeDelIter.Close()
-		rangeDelKey, rangeDelValue := rangeDelIter.First()
+		rangeDel := rangeDelIter.First()
 		count := s.count
 
 		var lastKey base.InternalKey
-		for key != nil || rangeDelKey != nil {
-			if key != nil &&
-				(rangeDelKey == nil ||
-					base.InternalCompare(r.Compare, *key, *rangeDelKey) < 0) {
+		for key != nil || rangeDel.Valid() {
+			if key != nil && (!rangeDel.Valid() || r.Compare(key.UserKey, rangeDel.Start) < 0) {
 				// The filter specifies a prefix of the key.
 				//
 				// TODO(peter): Is using prefix comparison like this kosher for all
@@ -455,13 +451,19 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 				// somewhat complex. Consider the tombstone [aaa,ccc). We want to
 				// output this tombstone if filter is "aa", and if it "bbb".
 				if s.filter == nil ||
-					((r.Compare(s.filter, rangeDelKey.UserKey) >= 0 ||
-						bytes.HasPrefix(rangeDelKey.UserKey, s.filter)) &&
-						r.Compare(s.filter, rangeDelValue) < 0) {
+					((r.Compare(s.filter, rangeDel.Start) >= 0 ||
+						bytes.HasPrefix(rangeDel.Start, s.filter)) &&
+						r.Compare(s.filter, rangeDel.End) < 0) {
 					fmt.Fprint(stdout, prefix)
-					formatKeyValue(stdout, s.fmtKey, s.fmtValue, rangeDelKey, rangeDelValue)
+					if err := rangedel.Encode(rangeDel, func(k base.InternalKey, v []byte) error {
+						formatKeyValue(stdout, s.fmtKey, s.fmtValue, &k, v)
+						return nil
+					}); err != nil {
+						fmt.Fprintf(stdout, "%s\n", err)
+						os.Exit(1)
+					}
 				}
-				rangeDelKey, rangeDelValue = rangeDelIter.Next()
+				rangeDel = rangeDelIter.Next()
 			}
 
 			if count > 0 {

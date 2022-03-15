@@ -423,39 +423,28 @@ func (d *DB) estimateSizeBeneath(
 }
 
 func foreachDefragmentedTombstone(
-	rangeDelIter base.InternalIterator,
+	rangeDelIter keyspan.FragmentIterator,
 	cmp base.Compare,
 	fn func([]byte, []byte, uint64, uint64) error,
 ) error {
+	// TODO(jackson): Use DefragmentingIter.
 	var startUserKey, endUserKey []byte
 	var smallestSeqNum, largestSeqNum uint64
 	var initialized bool
-	for start, end := rangeDelIter.First(); start != nil; start, end = rangeDelIter.Next() {
-
-		// Range tombstones are fragmented such that any two tombstones
-		// that share the same start key also share the same end key.
-		// Multiple tombstones may exist at different sequence numbers.
-		// If this tombstone starts or ends at the same point, it's a fragment
-		// of the previous one.
-		if cmp(startUserKey, start.UserKey) == 0 || cmp(endUserKey, end) == 0 {
-			if smallestSeqNum > start.SeqNum() {
-				smallestSeqNum = start.SeqNum()
-			}
-			if largestSeqNum < start.SeqNum() {
-				largestSeqNum = start.SeqNum()
-			}
+	for t := rangeDelIter.First(); t.Valid(); t = rangeDelIter.Next() {
+		if t.Empty() {
 			continue
 		}
 
 		// If this fragmented tombstone begins where the previous
 		// tombstone ended, merge it and continue.
-		if cmp(endUserKey, start.UserKey) == 0 {
-			endUserKey = append(endUserKey[:0], end...)
-			if smallestSeqNum > start.SeqNum() {
-				smallestSeqNum = start.SeqNum()
+		if cmp(endUserKey, t.Start) == 0 {
+			endUserKey = append(endUserKey[:0], t.End...)
+			if sm := t.SmallestSeqNum(); smallestSeqNum > sm {
+				smallestSeqNum = sm
 			}
-			if largestSeqNum < start.SeqNum() {
-				largestSeqNum = start.SeqNum()
+			if la := t.LargestSeqNum(); largestSeqNum < la {
+				largestSeqNum = la
 			}
 			continue
 		}
@@ -463,9 +452,9 @@ func foreachDefragmentedTombstone(
 		// If this is the first iteration, continue so we have an
 		// opportunity to merge subsequent abutting tombstones.
 		if !initialized {
-			startUserKey = append(startUserKey[:0], start.UserKey...)
-			endUserKey = append(endUserKey[:0], end...)
-			smallestSeqNum, largestSeqNum = start.SeqNum(), start.SeqNum()
+			startUserKey = append(startUserKey[:0], t.Start...)
+			endUserKey = append(endUserKey[:0], t.End...)
+			smallestSeqNum, largestSeqNum = t.SmallestSeqNum(), t.LargestSeqNum()
 			initialized = true
 			continue
 		}
@@ -473,9 +462,9 @@ func foreachDefragmentedTombstone(
 		if err := fn(startUserKey, endUserKey, smallestSeqNum, largestSeqNum); err != nil {
 			return err
 		}
-		startUserKey = append(startUserKey[:0], start.UserKey...)
-		endUserKey = append(endUserKey[:0], end...)
-		smallestSeqNum, largestSeqNum = start.SeqNum(), start.SeqNum()
+		startUserKey = append(startUserKey[:0], t.Start...)
+		endUserKey = append(endUserKey[:0], t.End...)
+		smallestSeqNum, largestSeqNum = t.SmallestSeqNum(), t.LargestSeqNum()
 	}
 	if initialized {
 		if err := fn(startUserKey, endUserKey, smallestSeqNum, largestSeqNum); err != nil {

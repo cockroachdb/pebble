@@ -16,9 +16,6 @@ type errorIter struct {
 // errorIter implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*errorIter)(nil)
 
-// errorIter implements the keyspan.FragmentIterator interface.
-var _ keyspan.FragmentIterator = (*errorIter)(nil)
-
 func newErrorIter(err error) *errorIter {
 	return &errorIter{err: err}
 }
@@ -53,22 +50,6 @@ func (c *errorIter) Prev() (*InternalKey, []byte) {
 	return nil, nil
 }
 
-func (c *errorIter) End() []byte {
-	return nil
-}
-
-func (c *errorIter) Clone() keyspan.FragmentIterator {
-	return &errorIter{err: c.err}
-}
-
-func (c *errorIter) Current() keyspan.Span {
-	return keyspan.Span{}
-}
-
-func (c *errorIter) Valid() bool {
-	return false
-}
-
 func (c *errorIter) Error() error {
 	return c.err
 }
@@ -82,3 +63,26 @@ func (c *errorIter) String() string {
 }
 
 func (c *errorIter) SetBounds(lower, upper []byte) {}
+
+type errorKeyspanIter struct {
+	err error
+}
+
+// errorKeyspanIter implements the keyspan.FragmentIterator interface.
+var _ keyspan.FragmentIterator = (*errorKeyspanIter)(nil)
+
+func newErrorKeyspanIter(err error) *errorKeyspanIter {
+	return &errorKeyspanIter{err: err}
+}
+
+func (*errorKeyspanIter) SeekGE(key []byte) keyspan.Span    { return keyspan.Span{} }
+func (*errorKeyspanIter) SeekLT(key []byte) keyspan.Span    { return keyspan.Span{} }
+func (*errorKeyspanIter) First() keyspan.Span               { return keyspan.Span{} }
+func (*errorKeyspanIter) Last() keyspan.Span                { return keyspan.Span{} }
+func (*errorKeyspanIter) Next() keyspan.Span                { return keyspan.Span{} }
+func (*errorKeyspanIter) Prev() keyspan.Span                { return keyspan.Span{} }
+func (i *errorKeyspanIter) Clone() keyspan.FragmentIterator { return &errorKeyspanIter{err: i.err} }
+func (i *errorKeyspanIter) Error() error                    { return i.err }
+func (i *errorKeyspanIter) Close() error                    { return i.err }
+func (*errorKeyspanIter) String() string                    { return "error" }
+func (*errorKeyspanIter) SetBounds(lower, upper []byte)     {}

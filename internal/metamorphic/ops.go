@@ -422,19 +422,10 @@ func (o *ingestOp) build(t *test, h *history, b *pebble.Batch, i int) (string, e
 
 	if rangeDelIter != nil {
 		// NB: The range tombstones have already been fragmented by the Batch.
-		var lastUserKey []byte
-		var lastValue []byte
-		for key, value := rangeDelIter.First(); key != nil; key, value = rangeDelIter.Next() {
-			// Ignore duplicate tombstones.
-			if equal(lastUserKey, key.UserKey) && equal(lastValue, value) {
-				continue
-			}
+		for t := rangeDelIter.First(); t.Valid(); t = rangeDelIter.Next() {
 			// NB: We don't have to copy the key or value since we're reading from a
 			// batch which doesn't do prefix compression.
-			lastUserKey = key.UserKey
-			lastValue = value
-
-			if err := w.DeleteRange(key.UserKey, value); err != nil {
+			if err := w.DeleteRange(t.Start, t.End); err != nil {
 				return "", err
 			}
 		}
@@ -480,19 +471,10 @@ func (o *ingestOp) collapseBatch(
 
 	if rangeDelIter != nil {
 		// NB: The range tombstones have already been fragmented by the Batch.
-		var lastUserKey []byte
-		var lastValue []byte
-		for key, value := rangeDelIter.First(); key != nil; key, value = rangeDelIter.Next() {
-			// Ignore duplicate tombstones.
-			if equal(lastUserKey, key.UserKey) && equal(lastValue, value) {
-				continue
-			}
+		for t := rangeDelIter.First(); t.Valid(); t = rangeDelIter.Next() {
 			// NB: We don't have to copy the key or value since we're reading from a
 			// batch which doesn't do prefix compression.
-			lastUserKey = key.UserKey
-			lastValue = value
-
-			if err := collapsed.DeleteRange(key.UserKey, value, nil); err != nil {
+			if err := collapsed.DeleteRange(t.Start, t.End, nil); err != nil {
 				return nil, err
 			}
 		}

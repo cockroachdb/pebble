@@ -1,13 +1,9 @@
 package rangekey
 
 import (
-	"fmt"
-	"strconv"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,19 +27,19 @@ func TestSetSuffixValues_RoundTrip(t *testing.T) {
 	var b []byte
 	for _, tc := range testCases {
 		// Encode.
-		l := EncodedSetSuffixValuesLen(tc)
+		l := encodedSetSuffixValuesLen(tc)
 		if l <= cap(b) {
 			b = b[:l]
 		} else {
 			b = make([]byte, l)
 		}
-		n := EncodeSetSuffixValues(b, tc)
+		n := encodeSetSuffixValues(b, tc)
 		require.Equal(t, l, n)
 
 		// Decode.
 		var suffixValues []SuffixValue
 		for len(b) > 0 {
-			sv, rest, ok := DecodeSuffixValue(b)
+			sv, rest, ok := decodeSuffixValue(b)
 			require.True(t, ok)
 			suffixValues = append(suffixValues, sv)
 			b = rest
@@ -103,7 +99,7 @@ func TestSetValue_Roundtrip(t *testing.T) {
 		for len(rest) > 0 {
 			var sv SuffixValue
 			var ok bool
-			sv, rest, ok = DecodeSuffixValue(rest)
+			sv, rest, ok = decodeSuffixValue(rest)
 			require.True(t, ok)
 			suffixValues = append(suffixValues, sv)
 		}
@@ -129,19 +125,19 @@ func TestUnsetSuffixes_RoundTrip(t *testing.T) {
 	var b []byte
 	for _, tc := range testCases {
 		// Encode.
-		l := EncodedUnsetSuffixesLen(tc)
+		l := encodedUnsetSuffixesLen(tc)
 		if l <= cap(b) {
 			b = b[:l]
 		} else {
 			b = make([]byte, l)
 		}
-		n := EncodeUnsetSuffixes(b, tc)
+		n := encodeUnsetSuffixes(b, tc)
 		require.Equal(t, l, n)
 
 		// Decode.
 		var ss suffixes
 		for len(b) > 0 {
-			s, rest, ok := DecodeSuffix(b)
+			s, rest, ok := decodeSuffix(b)
 			require.True(t, ok)
 			ss = append(ss, s)
 			b = rest
@@ -196,58 +192,12 @@ func TestUnsetValue_Roundtrip(t *testing.T) {
 		for len(rest) > 0 {
 			var ok bool
 			var suffix []byte
-			suffix, rest, ok = DecodeSuffix(rest)
+			suffix, rest, ok = decodeSuffix(rest)
 			require.True(t, ok)
 			suffixes = append(suffixes, suffix)
 		}
 		require.Equal(t, tc.endKey, endKey)
 		require.Equal(t, tc.suffixes, suffixes)
-	}
-}
-
-func TestParseFormatRoundtrip(t *testing.T) {
-	testCases := []string{
-		"a.RANGEKEYSET.100: c [(@t22=foo),(@t1=bar)]",
-		"apples.RANGEKEYSET.5: bananas [(@t1=bar)]",
-		"cat.RANGEKEYUNSET.5: catatonic [@t9,@t8,@t7,@t6,@t5]",
-		"a.RANGEKEYDEL.5: catatonic",
-	}
-	for _, in := range testCases {
-		k, v := Parse(in)
-		endKey, restValue, ok := DecodeEndKey(k.Kind(), v)
-		require.True(t, ok)
-		got := fmt.Sprintf("%s", Format(testkeys.Comparer.FormatKey, keyspan.Span{
-			Start: k,
-			End:   endKey,
-			Value: restValue,
-		}))
-		if got != in {
-			t.Errorf("Format(Parse(%q)) = %q, want %q", in, got, in)
-		}
-	}
-}
-
-func TestRecombinedValueLen_RoundTrip(t *testing.T) {
-	testCases := []string{
-		"a.RANGEKEYSET.1: [(@t22=foo),(@t1=bar)]",
-		"a.RANGEKEYSET.1: [(@t1=bar)]",
-		"a.RANGEKEYUNSET.1: [@t9,@t8,@t7,@t6,@t5]",
-		"a.RANGEKEYDEL.5: foo",
-	}
-	for i, in := range testCases {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			k, v := Parse(in)
-
-			// Split the value into an end key and a user-value.
-			endKey, restValue, ok := DecodeEndKey(k.Kind(), v)
-			require.True(t, ok)
-
-			// Re-encode the end key and user-value.
-			dst := make([]byte, RecombinedValueLen(k.Kind(), endKey, restValue))
-			RecombineValue(k.Kind(), dst, endKey, restValue)
-
-			require.Equal(t, v, dst)
-		})
 	}
 }
 

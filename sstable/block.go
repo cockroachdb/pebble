@@ -10,7 +10,9 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
@@ -958,76 +960,164 @@ func (i *blockIter) valid() bool {
 }
 
 // fragmentBlockIter wraps a blockIter, implementing the
-// keyspan.FragmentIterator interface.
+// keyspan.FragmentIterator interface. It's used for reading range deletion and
+// range key blocks.
+//
+// Range deletions and range keys are fragmented before they're persisted to the
+// block. Overlapping fragments have identical bounds.  The fragmentBlockIter
+// gathers all the fragments with identical bounds within a block and returns a
+// single keyspan.Span describing all the keys defined over the span.
+//
+// Memory lifetime
+//
+// A Span returned by fragmentBlockIter is only guaranteed to be stable until
+// the next fragmentBlockIter iteration positioning method. A Span's Keys slice
+// may be reused, so the user must not assume it's stable.
+//
+// Blocks holding range deletions and range keys are configured to use a restart
+// interval of 1. This provides key stability. The caller may treat the various
+// byte slices (start, end, suffix, value) as stable for the lifetime of the
+// iterator.
 type fragmentBlockIter struct {
 	blockIter blockIter
+	keyBuf    [2]keyspan.Key
 	span      keyspan.Span
 	err       error
+	dir       int8
 	closeHook func(i keyspan.FragmentIterator) error
 }
 
-func (i *fragmentBlockIter) decodeSpan(
-	k *InternalKey, internalValue []byte,
-) (*InternalKey, []byte) {
-	if k == nil {
-		i.span = keyspan.Span{}
-		i.err = nil
-		return nil, nil
-	}
+func (i *fragmentBlockIter) decodeSpanKeys(k *InternalKey, internalValue []byte) {
+	// TODO(jackson): The use of i.span.Keys to accumulate keys across multiple
+	// calls to Decode is too confusing and subtle. Refactor to make it
+	// explicit.
 
-	// decode the end key from a fragment's raw internal value. RANGEDELs store
-	// the end key directly as the value, whereas range keys require decoding to
-	// separate the end key from the rest of the range key state.
-	var endKey, decodedValue []byte
-	switch kind := k.Kind(); kind {
+	// decode the contents of the fragment's value. This always includes at
+	// least the end key: RANGEDELs store the end key directly as the value,
+	// whereas the various range key kinds store are more complicated.  The
+	// details of the range key internal value format are documented within the
+	// internal/rangekey package.
+	switch k.Kind() {
 	case base.InternalKeyKindRangeDelete:
-		endKey = internalValue
+		i.span = rangedel.Decode(*k, internalValue, i.span.Keys)
+		i.err = nil
 	case base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:
-		var ok bool
-		endKey, decodedValue, ok = rangekey.DecodeEndKey(kind, internalValue)
-		if !ok {
-			i.span = keyspan.Span{}
-			i.err = base.CorruptionErrorf("pebble: corrupt keyspan fragment of kind %d", kind)
-			return nil, nil
-		}
+		i.span, i.err = rangekey.Decode(*k, internalValue, i.span.Keys)
 	default:
 		i.span = keyspan.Span{}
-		i.err = base.CorruptionErrorf("pebble: corrupt keyspan fragment of kind %d", kind)
-		return nil, nil
+		i.err = base.CorruptionErrorf("pebble: corrupt keyspan fragment of kind %d", k.Kind())
+	}
+}
+
+// gatherForward gathers internal keys with identical bounds. Keys defined over
+// spans of the keyspace are fragmented such that any overlapping key spans have
+// identical bounds. When these spans are persisted to a range deletion or range
+// key block, they may be persisted as multiple internal keys in order to encode
+// multiple sequence numbers or key kinds.
+//
+// gatherForward iterates forward, re-combining the fragmented internal keys to
+// reconstruct a keyspan.Span that holds all the keys defined over the span.
+func (i *fragmentBlockIter) gatherForward(k *InternalKey, internalValue []byte) keyspan.Span {
+	i.span = keyspan.Span{}
+	if k == nil || !i.blockIter.valid() {
+		return i.span
 	}
 	i.err = nil
-	i.span = keyspan.Span{Start: *k, End: endKey, Value: decodedValue}
+	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
+	// when a span contains few keys.
+	i.span.Keys = i.keyBuf[:0]
 
-	// We have to return the internalValue, not the decodedValue,
-	// because there are still range-deletion usages that depend on it.
-	// TODO(jackson): Remove remaining dependencies on the internal
-	// value being propagated via positioning methods and refactor the
-	// FragmentIterator to be independent of base.InternalIterator.
-	return k, internalValue
+	// Decode the span's end key and individual keys from the value.
+	i.decodeSpanKeys(k, internalValue)
+	if i.err != nil {
+		return i.span
+	}
+	prevEnd := i.span.End
+
+	// There might exist additional internal keys with identical bounds encoded
+	// within the block. Iterate forward, accumulating all the keys with
+	// identical bounds to s.
+	k, internalValue = i.blockIter.Next()
+	for k != nil && i.blockIter.cmp(k.UserKey, i.span.Start) == 0 {
+		i.decodeSpanKeys(k, internalValue)
+		if i.err != nil {
+			return i.span
+		}
+
+		// Since k indicates an equal start key, the encoded end key must
+		// exactly equal the original end key from the first internal key.
+		// Overlapping fragments are required to have exactly equal start and
+		// end bounds.
+		if i.blockIter.cmp(prevEnd, i.span.End) != 0 {
+			i.err = base.CorruptionErrorf("pebble: corrupt keyspan fragmentation")
+			i.span = keyspan.Span{}
+			return i.span
+		}
+		k, internalValue = i.blockIter.Next()
+	}
+	// i.blockIter is positioned over the first internal key for the next span.
+	return i.span
+}
+
+// gatherBackward gathers internal keys with identical bounds. Keys defined over
+// spans of the keyspace are fragmented such that any overlapping key spans have
+// identical bounds. When these spans are persisted to a range deletion or range
+// key block, they may be persisted as multiple internal keys in order to encode
+// multiple sequence numbers or key kinds.
+//
+// gatherBackward iterates backwards, re-combining the fragmented internal keys
+// to reconstruct a keyspan.Span that holds all the keys defined over the span.
+func (i *fragmentBlockIter) gatherBackward(k *InternalKey, internalValue []byte) keyspan.Span {
+	i.span = keyspan.Span{}
+	if k == nil || !i.blockIter.valid() {
+		return i.span
+	}
+	i.err = nil
+	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
+	// when a span contains few keys.
+	i.span.Keys = i.keyBuf[:0]
+
+	// Decode the span's end key and individual keys from the value.
+	i.decodeSpanKeys(k, internalValue)
+	if i.err != nil {
+		return i.span
+	}
+	prevEnd := i.span.End
+
+	// There might exist additional internal keys with identical bounds encoded
+	// within the block. Iterate backward, accumulating all the keys with
+	// identical bounds to s.
+	k, internalValue = i.blockIter.Prev()
+	for k != nil && i.blockIter.cmp(k.UserKey, i.span.Start) == 0 {
+		i.decodeSpanKeys(k, internalValue)
+		if i.err != nil {
+			return i.span
+		}
+
+		// Since k indicates an equal start key, the encoded end key must
+		// exactly equal the original end key from the first internal key.
+		// Overlapping fragments are required to have exactly equal start and
+		// end bounds.
+		if i.blockIter.cmp(prevEnd, i.span.End) != 0 {
+			i.err = base.CorruptionErrorf("pebble: corrupt keyspan fragmentation")
+			i.span = keyspan.Span{}
+			return i.span
+		}
+		k, internalValue = i.blockIter.Prev()
+	}
+	// i.blockIter is positioned over the last internal key for the previous
+	// span.
+
+	// Backwards iteration encounters internal keys in the wrong order.
+	i.span = keyspan.SortKeys(i.span)
+
+	return i.span
 }
 
 // Error implements (base.InternalIterator).Error, as documented in the
 // internal/base package.
 func (i *fragmentBlockIter) Error() error {
 	return i.err
-}
-
-// Valid implements (keyspan.FragmentIterator).Valid, as documented in the
-// internal/keyspan package.
-func (i *fragmentBlockIter) Valid() bool {
-	return i.err == nil && i.blockIter.valid()
-}
-
-// End implements (keyspan.FragmentIterator).End, as documented in the
-// internal/keyspan package.
-func (i *fragmentBlockIter) End() []byte {
-	return i.span.End
-}
-
-// Current implements (keyspan.FragmentIterator).Current, as documented in the
-// internal/keyspan package.
-func (i *fragmentBlockIter) Current() keyspan.Span {
-	return i.span
 }
 
 // Clone implements (keyspan.FragmentIterator).Clone, as documented in the
@@ -1050,46 +1140,98 @@ func (i *fragmentBlockIter) Close() error {
 
 // First implements (base.InternalIterator).First, as documented in the
 // internal/base package.
-func (i *fragmentBlockIter) First() (*InternalKey, []byte) {
-	return i.decodeSpan(i.blockIter.First())
+func (i *fragmentBlockIter) First() keyspan.Span {
+	i.dir = +1
+	return i.gatherForward(i.blockIter.First())
 }
 
 // Last implements (base.InternalIterator).Last, as documented in the
 // internal/base package.
-func (i *fragmentBlockIter) Last() (*InternalKey, []byte) {
-	return i.decodeSpan(i.blockIter.Last())
+func (i *fragmentBlockIter) Last() keyspan.Span {
+	i.dir = -1
+	return i.gatherBackward(i.blockIter.Last())
 }
 
 // Next implements (base.InternalIterator).Next, as documented in the
 // internal/base package.
-func (i *fragmentBlockIter) Next() (*InternalKey, []byte) {
-	return i.decodeSpan(i.blockIter.Next())
+func (i *fragmentBlockIter) Next() keyspan.Span {
+	switch {
+	case i.dir == -1 && !i.span.Valid():
+		// Switching directions.
+		//
+		// i.blockIter is exhausted, before the first key. Move onto the first.
+		i.blockIter.First()
+		i.dir = +1
+	case i.dir == -1 && i.span.Valid():
+		// Switching directions.
+		//
+		// i.blockIter is currently positioned over the last internal key for
+		// the previous span. Next it once to move to the first internal key
+		// that makes up the current span, and gatherForwaad to land on the
+		// first internal key making up the next span.
+		//
+		// In the diagram below, if the last span returned to the user during
+		// reverse iteration was [b,c), i.blockIter is currently positioned at
+		// [a,b). The block iter must be positioned over [d,e) to gather the
+		// next span's fragments.
+		//
+		//    ... [a,b) [b,c) [b,c) [b,c) [d,e) ...
+		//          ^                       ^
+		//     i.blockIter                 want
+		if x := i.gatherForward(i.blockIter.Next()); invariants.Enabled && !x.Valid() {
+			panic("pebble: invariant violation: next entry unexpectedly invalid")
+		}
+		i.dir = +1
+	}
+	return i.gatherForward(&i.blockIter.ikey, i.blockIter.val)
 }
 
 // Prev implements (base.InternalIterator).Prev, as documented in the
 // internal/base package.
-func (i *fragmentBlockIter) Prev() (*InternalKey, []byte) {
-	return i.decodeSpan(i.blockIter.Prev())
+func (i *fragmentBlockIter) Prev() keyspan.Span {
+	switch {
+	case i.dir == +1 && !i.span.Valid():
+		// Switching directions.
+		//
+		// i.blockIter is exhausted, after the last key. Move onto the last.
+		i.blockIter.Last()
+		i.dir = -1
+	case i.dir == +1 && i.span.Valid():
+		// Switching directions.
+		//
+		// i.blockIter is currently positioned over the first internal key for
+		// the next span. Prev it once to move to the last internal key that
+		// makes up the current span, and gatherBackward to land on the last
+		// internal key making up the previous span.
+		//
+		// In the diagram below, if the last span returned to the user during
+		// forward iteration was [b,c), i.blockIter is currently positioned at
+		// [d,e). The block iter must be positioned over [a,b) to gather the
+		// previous span's fragments.
+		//
+		//    ... [a,b) [b,c) [b,c) [b,c) [d,e) ...
+		//          ^                       ^
+		//        want                  i.blockIter
+		if x := i.gatherBackward(i.blockIter.Prev()); invariants.Enabled && !x.Valid() {
+			panic("pebble: invariant violation: previous entry unexpectedly invalid")
+		}
+		i.dir = -1
+	}
+	return i.gatherBackward(&i.blockIter.ikey, i.blockIter.val)
 }
 
 // SeekGE implements (base.InternalIterator).SeekGE, as documented in the
 // internal/base package.
-func (i *fragmentBlockIter) SeekGE(k []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
-	return i.decodeSpan(i.blockIter.SeekGE(k, trySeekUsingNext))
-}
-
-// SeekPrefixGE implements (base.InternalIterator).SeekPrefixGE, as
-// documented in the internal/base package.
-func (i *fragmentBlockIter) SeekPrefixGE(
-	prefix, k []byte, trySeekUsingNext bool,
-) (*InternalKey, []byte) {
-	return i.decodeSpan(i.blockIter.SeekPrefixGE(prefix, k, trySeekUsingNext))
+func (i *fragmentBlockIter) SeekGE(k []byte) keyspan.Span {
+	i.dir = +1
+	return i.gatherForward(i.blockIter.SeekGE(k, false))
 }
 
 // SeekLT implements (base.InternalIterator).SeekLT, as documented in the
 // internal/base package.
-func (i *fragmentBlockIter) SeekLT(k []byte) (*InternalKey, []byte) {
-	return i.decodeSpan(i.blockIter.SeekLT(k))
+func (i *fragmentBlockIter) SeekLT(k []byte) keyspan.Span {
+	i.dir = -1
+	return i.gatherBackward(i.blockIter.SeekLT(k))
 }
 
 // SetBounds implements (base.InternalIterator).SetBounds, as documented
