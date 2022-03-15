@@ -102,19 +102,7 @@ func TestCoalesce(t *testing.T) {
 		switch td.Cmd {
 		case "coalesce":
 			buf.Reset()
-			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
-			var spans []keyspan.Span
-			for _, line := range lines {
-				startKey, value := Parse(line)
-				endKey, splitValue, ok := DecodeEndKey(startKey.Kind(), value)
-				require.True(t, ok)
-				spans = append(spans, keyspan.Span{
-					Start: startKey,
-					End:   endKey,
-					Value: splitValue,
-				})
-			}
-			s, err := Coalesce(cmp, keyspan.MakeFragments(spans...))
+			s, err := Coalesce(cmp, keyspan.ParseSpan(td.Input))
 			if err != nil {
 				return err.Error()
 			}
@@ -147,14 +135,7 @@ func TestIter(t *testing.T) {
 			var spans []keyspan.Span
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
-				startKey, value := Parse(line)
-				endKey, v, ok := DecodeEndKey(startKey.Kind(), value)
-				require.True(t, ok)
-				spans = append(spans, keyspan.Span{
-					Start: startKey,
-					End:   endKey,
-					Value: v,
-				})
+				spans = append(spans, keyspan.ParseSpan(line))
 			}
 			iter.Init(cmp, testkeys.Comparer.FormatKey, visibleSeqNum, keyspan.NewIter(cmp, spans))
 			return "OK"

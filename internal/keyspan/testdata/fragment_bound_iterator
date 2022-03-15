@@ -1,7 +1,6 @@
 define
-a.RANGEKEYSET.6   : c [@2=foo]
-a.RANGEKEYUNSET.3 : c [@1]
-h.RANGEKEYDEL.5   : k
+a-c:{(#6,RANGEKEYSET,@2,foo) (#3,RANGEKEYUNSET,@1)}
+h-k:{(#5,RANGEKEYDEL)}
 ----
 OK
 
@@ -12,10 +11,10 @@ next
 next
 next
 ----
-fragment-start a [a-c#6, a-c#3]
-fragment-end   c [a-c#6, a-c#3]
-fragment-start h [h-k#5]
-fragment-end   k [h-k#5]
+fragment-start a [a-c:{(#6,RANGEKEYSET,@2,foo) (#3,RANGEKEYUNSET,@1)}]
+fragment-end   c [a-c:{(#6,RANGEKEYSET,@2,foo) (#3,RANGEKEYUNSET,@1)}]
+fragment-start h [h-k:{(#5,RANGEKEYDEL)}]
+fragment-end   k [h-k:{(#5,RANGEKEYDEL)}]
 .
 
 iter
@@ -25,10 +24,10 @@ prev
 prev
 prev
 ----
-fragment-end   k [h-k#5]
-fragment-start h [h-k#5]
-fragment-end   c [a-c#3, a-c#6]
-fragment-start a [a-c#3, a-c#6]
+fragment-end   k [h-k:{(#5,RANGEKEYDEL)}]
+fragment-start h [h-k:{(#5,RANGEKEYDEL)}]
+fragment-end   c [a-c:{(#6,RANGEKEYSET,@2,foo) (#3,RANGEKEYUNSET,@1)}]
+fragment-start a [a-c:{(#6,RANGEKEYSET,@2,foo) (#3,RANGEKEYUNSET,@1)}]
 .
 
 iter
@@ -41,13 +40,13 @@ seek-ge i
 seek-ge k
 seek-ge o
 ----
-fragment-start a [a-c#6, a-c#3]
-fragment-end   c [a-c#3, a-c#6]
-fragment-end   c [a-c#3, a-c#6]
-fragment-start h [h-k#5]
-fragment-start h [h-k#5]
-fragment-end   k [h-k#5]
-fragment-end   k [h-k#5]
+fragment-start a [a-c:{(#6,RANGEKEYSET,@2,foo) (#3,RANGEKEYUNSET,@1)}]
+fragment-end   c [a-c:{(#6,RANGEKEYSET,@2,foo) (#3,RANGEKEYUNSET,@1)}]
+fragment-end   c [a-c:{(#6,RANGEKEYSET,@2,foo) (#3,RANGEKEYUNSET,@1)}]
+fragment-start h [h-k:{(#5,RANGEKEYDEL)}]
+fragment-start h [h-k:{(#5,RANGEKEYDEL)}]
+fragment-end   k [h-k:{(#5,RANGEKEYDEL)}]
+fragment-end   k [h-k:{(#5,RANGEKEYDEL)}]
 .
 
 iter
@@ -56,14 +55,14 @@ seek-lt k
 seek-lt d
 seek-lt c
 ----
-fragment-end   k [h-k#5]
-fragment-start h [h-k#5]
-fragment-end   c [a-c#3, a-c#6]
-fragment-start a [a-c#3, a-c#6]
+fragment-end   k [h-k:{(#5,RANGEKEYDEL)}]
+fragment-start h [h-k:{(#5,RANGEKEYDEL)}]
+fragment-end   c [a-c:{(#6,RANGEKEYSET,@2,foo) (#3,RANGEKEYUNSET,@1)}]
+fragment-start a [a-c:{(#6,RANGEKEYSET,@2,foo) (#3,RANGEKEYUNSET,@1)}]
 
 define
-a.RANGEKEYUNSET.3 : c [@1]
-h.RANGEKEYDEL.5   : k
+a-c:{(#3,RANGEKEYUNSET,@1)}
+h-k:{(#5,RANGEKEYDEL)}
 ----
 OK
 
@@ -74,11 +73,11 @@ prev
 prev
 next
 ----
-fragment-start h [h-k#5]
-fragment-end   c [a-c#3]
-fragment-start a [a-c#3]
+fragment-start h [h-k:{(#5,RANGEKEYDEL)}]
+fragment-end   c [a-c:{(#3,RANGEKEYUNSET,@1)}]
+fragment-start a [a-c:{(#3,RANGEKEYUNSET,@1)}]
 .
-fragment-start a [a-c#3]
+fragment-start a [a-c:{(#3,RANGEKEYUNSET,@1)}]
 
 iter
 seek-ge k
@@ -86,20 +85,15 @@ next
 prev
 prev
 ----
-fragment-end   k [h-k#5]
+fragment-end   k [h-k:{(#5,RANGEKEYDEL)}]
 .
-fragment-end   k [h-k#5]
-fragment-start h [h-k#5]
+fragment-end   k [h-k:{(#5,RANGEKEYDEL)}]
+fragment-start h [h-k:{(#5,RANGEKEYDEL)}]
 
 define
-b.RANGEKEYSET.8   : c [(@1=foo)]
-b.RANGEKEYUNSET.5 : c [@2]
-b.RANGEKEYDEL.3   : c
-d.RANGEKEYSET.5   : e [(@3=foo)]
-d.RANGEKEYSET.4   : e [(@2=bar)]
-e.RANGEKEYDEL.3   : f
-e.RANGEKEYDEL.2   : f
-e.RANGEKEYDEL.1   : f
+b-c:{(#8,RANGEKEYSET,@1,foo) (#5,RANGEKEYUNSET,@2) (#3,RANGEKEYDEL)}
+d-e:{(#5,RANGEKEYSET,@3,foo) (#4,RANGEKEYSET,@2,bar)}
+e-f:{(#3,RANGEKEYDEL) (#2,RANGEKEYDEL) (#1,RANGEKEYDEL)}
 ----
 OK
 
@@ -112,12 +106,12 @@ next
 next
 next
 ----
-fragment-start b [b-c#8, b-c#5, b-c#3]
-fragment-end   c [b-c#8, b-c#5, b-c#3]
-fragment-start d [d-e#5, d-e#4]
-fragment-end   e [d-e#5, d-e#4]
-fragment-start e [e-f#3, e-f#2, e-f#1]
-fragment-end   f [e-f#3, e-f#2, e-f#1]
+fragment-start b [b-c:{(#8,RANGEKEYSET,@1,foo) (#5,RANGEKEYUNSET,@2) (#3,RANGEKEYDEL)}]
+fragment-end   c [b-c:{(#8,RANGEKEYSET,@1,foo) (#5,RANGEKEYUNSET,@2) (#3,RANGEKEYDEL)}]
+fragment-start d [d-e:{(#5,RANGEKEYSET,@3,foo) (#4,RANGEKEYSET,@2,bar)}]
+fragment-end   e [d-e:{(#5,RANGEKEYSET,@3,foo) (#4,RANGEKEYSET,@2,bar)}]
+fragment-start e [e-f:{(#3,RANGEKEYDEL) (#2,RANGEKEYDEL) (#1,RANGEKEYDEL)}]
+fragment-end   f [e-f:{(#3,RANGEKEYDEL) (#2,RANGEKEYDEL) (#1,RANGEKEYDEL)}]
 .
 
 iter
@@ -129,12 +123,12 @@ prev
 prev
 prev
 ----
-fragment-end   f [e-f#1, e-f#2, e-f#3]
-fragment-start e [e-f#1, e-f#2, e-f#3]
-fragment-end   e [d-e#4, d-e#5]
-fragment-start d [d-e#4, d-e#5]
-fragment-end   c [b-c#3, b-c#5, b-c#8]
-fragment-start b [b-c#3, b-c#5, b-c#8]
+fragment-end   f [e-f:{(#3,RANGEKEYDEL) (#2,RANGEKEYDEL) (#1,RANGEKEYDEL)}]
+fragment-start e [e-f:{(#3,RANGEKEYDEL) (#2,RANGEKEYDEL) (#1,RANGEKEYDEL)}]
+fragment-end   e [d-e:{(#5,RANGEKEYSET,@3,foo) (#4,RANGEKEYSET,@2,bar)}]
+fragment-start d [d-e:{(#5,RANGEKEYSET,@3,foo) (#4,RANGEKEYSET,@2,bar)}]
+fragment-end   c [b-c:{(#8,RANGEKEYSET,@1,foo) (#5,RANGEKEYUNSET,@2) (#3,RANGEKEYDEL)}]
+fragment-start b [b-c:{(#8,RANGEKEYSET,@1,foo) (#5,RANGEKEYUNSET,@2) (#3,RANGEKEYDEL)}]
 .
 
 iter
@@ -143,7 +137,7 @@ prev
 seek-lt bat
 next
 ----
-fragment-end   c [b-c#3, b-c#5, b-c#8]
-fragment-start b [b-c#3, b-c#5, b-c#8]
-fragment-start b [b-c#3, b-c#5, b-c#8]
-fragment-end   c [b-c#3, b-c#5, b-c#8]
+fragment-end   c [b-c:{(#8,RANGEKEYSET,@1,foo) (#5,RANGEKEYUNSET,@2) (#3,RANGEKEYDEL)}]
+fragment-start b [b-c:{(#8,RANGEKEYSET,@1,foo) (#5,RANGEKEYUNSET,@2) (#3,RANGEKEYDEL)}]
+fragment-start b [b-c:{(#8,RANGEKEYSET,@1,foo) (#5,RANGEKEYUNSET,@2) (#3,RANGEKEYDEL)}]
+fragment-end   c [b-c:{(#8,RANGEKEYSET,@1,foo) (#5,RANGEKEYUNSET,@2) (#3,RANGEKEYDEL)}]

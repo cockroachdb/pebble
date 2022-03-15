@@ -1,19 +1,19 @@
 # All disjoint RANGEKEYSETs.
 
 coalesce
-a.RANGEKEYSET.10: c [(@5=foo)]
+a-c:{(#10,RANGEKEYSET,@5,foo)}
 ----
 ●   [a, c)#10
 └── @5 : foo
 
 coalesce
-c.RANGEKEYSET.4: d [(@3=foo)]
+c-d:{(#4,RANGEKEYSET,@3,foo)}
 ----
 ●   [c, d)#4
 └── @3 : foo
 
 coalesce
-e.RANGEKEYSET.20: f [(@5=bar),(@3=foo)]
+e-f:{(#20,RANGEKEYSET,@5,bar) (#20,RANGEKEYSET,@3,foo)}
 ----
 ●   [e, f)#20
 ├── @5 : bar
@@ -22,9 +22,7 @@ e.RANGEKEYSET.20: f [(@5=bar),(@3=foo)]
 # Merge overlapping RANGEKEYSETs.
 
 coalesce
-a.RANGEKEYSET.10: c [(@5=foo5)]
-a.RANGEKEYSET.4:  c [(@3=foo3)]
-a.RANGEKEYSET.4:  c [(@2=foo2)]
+a-c:{(#10,RANGEKEYSET,@5,foo5) (#4,RANGEKEYSET,@3,foo3) (#4,RANGEKEYSET,@2,foo2)}
 ----
 ●   [a, c)#10
 ├── @5 : foo5
@@ -34,19 +32,19 @@ a.RANGEKEYSET.4:  c [(@2=foo2)]
 # RANGEKEYUNSETs.
 
 coalesce
-a.RANGEKEYUNSET.10: c [@5]
+a-c:{(#10,RANGEKEYUNSET,@5)}
 ----
 ●   [a, c)#10
 └── @5 unset
 
 coalesce
-c.RANGEKEYUNSET.4:  d [@3]
+c-d:{(#4,RANGEKEYUNSET,@3)}
 ----
 ●   [c, d)#4
 └── @3 unset
 
 coalesce
-e.RANGEKEYUNSET.20: f [@5,@3]
+e-f:{(#20,RANGEKEYUNSET,@5) (#20,RANGEKEYUNSET,@3)}
 ----
 ●   [e, f)#20
 ├── @5 unset
@@ -55,9 +53,7 @@ e.RANGEKEYUNSET.20: f [@5,@3]
 # Merge overlapping RANGEKEYUNSETs.
 
 coalesce
-a.RANGEKEYUNSET.10: c [@5]
-a.RANGEKEYUNSET.4: c [@3]
-a.RANGEKEYUNSET.4: c [@2]
+a-c:{(#10,RANGEKEYUNSET,@5) (#4,RANGEKEYUNSET,@3) (#4,RANGEKEYUNSET,@2)}
 ----
 ●   [a, c)#10
 ├── @5 unset
@@ -67,15 +63,14 @@ a.RANGEKEYUNSET.4: c [@2]
 # Unsets may partially remove sets.
 
 coalesce
-a.RANGEKEYUNSET.10 : c [@100]
-a.RANGEKEYSET.9    : c [(@100=v100), (@50=v50)]
+a-c:{(#10,RANGEKEYUNSET,@100) (#9,RANGEKEYSET,@100,v100) (#9,RANGEKEYSET,@50,v50)}
 ----
 ●   [a, c)#10
 ├── @100 unset
 └── @50 : v50
 
 coalesce
-c.RANGEKEYSET.9    : d [(@100=v100), (@50=v50)]
+c-d:{(#9,RANGEKEYSET,@100,v100) (#9,RANGEKEYSET,@50,v50)}
 ----
 ●   [c, d)#9
 ├── @100 : v100
@@ -84,8 +79,7 @@ c.RANGEKEYSET.9    : d [(@100=v100), (@50=v50)]
 # Unsets may wholly remove sets.
 
 coalesce
-b.RANGEKEYUNSET.10 : c [@3,@2,@1]
-b.RANGEKEYSET.8    : c [(@3=v3),(@2=v2),(@1=v1)]
+b-c:{(#10,RANGEKEYUNSET,@3) (#10,RANGEKEYUNSET,@2) (#10,RANGEKEYUNSET,@1) (#8,RANGEKEYSET,@3,v3) (#8,RANGEKEYSET,@2,v2) (#8,RANGEKEYSET,@1,v1)}
 ----
 ●   [b, c)#10
 ├── @3 unset
@@ -95,8 +89,7 @@ b.RANGEKEYSET.8    : c [(@3=v3),(@2=v2),(@1=v1)]
 # Sets may shadow unsets.
 
 coalesce
-a.RANGEKEYSET.5   : c [(@5=v5)]
-a.RANGEKEYUNSET.4 : c [@5]
+a-c:{(#5,RANGEKEYSET,@5,v5) (#4,RANGEKEYUNSET,@5)}
 ----
 ●   [a, c)#5
 └── @5 : v5
@@ -104,11 +97,7 @@ a.RANGEKEYUNSET.4 : c [@5]
 # Deletes shadow Sets and Unsets, but not at the same sequence number.
 
 coalesce
-a.RANGEKEYSET.10  : c [(@5=foo5)]
-a.RANGEKEYDEL.10  : c
-a.RANGEKEYUNSET.8 : c [@1]
-a.RANGEKEYSET.4   : c [(@3=foo3)]
-a.RANGEKEYSET.4   : c [(@2=foo2)]
+a-c:{(#10,RANGEKEYSET,@5,foo5) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,foo3) (#4,RANGEKEYSET,@2,foo2)}
 ----
 ●   [a, c)#10 (DEL)
 └── @5 : foo5
@@ -116,9 +105,7 @@ a.RANGEKEYSET.4   : c [(@2=foo2)]
 # Within a sequence number, none of the internal range keys affect one another.
 
 coalesce
-a.RANGEKEYSET.5   : c [(@5=foo)]
-a.RANGEKEYUNSET.5 : c [@5]
-a.RANGEKEYDEL.5   : c
+a-c:{(#5,RANGEKEYSET,@5,foo) (#5,RANGEKEYUNSET,@5) (#5,RANGEKEYDEL)}
 ----
 ●   [a, c)#5 (DEL)
 └── @5 : foo

@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
@@ -122,24 +123,16 @@ func newMemTable(opts memTableOptions) *memTable {
 		logSeqNum:  opts.logSeqNum,
 	}
 	m.tombstones = keySpanCache{
-		cmp:        m.cmp,
-		formatKey:  m.formatKey,
-		skl:        &m.rangeDelSkl,
-		splitValue: rangeDelSplitValue,
+		cmp:           m.cmp,
+		formatKey:     m.formatKey,
+		skl:           &m.rangeDelSkl,
+		constructSpan: rangeDelConstructSpan,
 	}
 	m.rangeKeys = keySpanCache{
-		cmp:       m.cmp,
-		formatKey: m.formatKey,
-		skl:       &m.rangeKeySkl,
-		splitValue: func(kind base.InternalKeyKind, rawValue []byte) (endKey []byte, value []byte, err error) {
-			var ok bool
-			endKey, value, ok = rangekey.DecodeEndKey(kind, rawValue)
-			if !ok {
-				err = base.CorruptionErrorf("unable to decode end key for key of kind %s", kind)
-			}
-			// NB: This value encodes a series of (suffix,value) tuples.
-			return endKey, value, err
-		},
+		cmp:           m.cmp,
+		formatKey:     m.formatKey,
+		skl:           &m.rangeKeySkl,
+		constructSpan: rangekey.Decode,
 	}
 
 	if m.arenaBuf == nil {
@@ -309,15 +302,12 @@ type keySpanFrags struct {
 	spans []keyspan.Span
 }
 
-type splitValue func(kind base.InternalKeyKind, rawValue []byte) (endKey []byte, value []byte, err error)
+type constructSpan func(ik base.InternalKey, v []byte, keysDst []keyspan.Key) (keyspan.Span, error)
 
-func rangeDelSplitValue(
-	kind base.InternalKeyKind, rawValue []byte,
-) (endKey []byte, value []byte, err error) {
-	if kind != base.InternalKeyKindRangeDelete {
-		panic(fmt.Sprintf("pebble: rangeDelSplitValue called on %s key kind", kind))
-	}
-	return rawValue, nil, nil
+func rangeDelConstructSpan(
+	ik base.InternalKey, v []byte, keysDst []keyspan.Key,
+) (keyspan.Span, error) {
+	return rangedel.Decode(ik, v, keysDst), nil
 }
 
 // get retrieves the fragmented spans, populating them if necessary. Note that
@@ -329,23 +319,25 @@ func rangeDelSplitValue(
 // it even though is has been invalidated (i.e. replaced with a newer
 // keySpanFrags).
 func (f *keySpanFrags) get(
-	skl *arenaskl.Skiplist, cmp Compare, formatKey base.FormatKey, splitValue splitValue,
+	skl *arenaskl.Skiplist, cmp Compare, formatKey base.FormatKey, constructSpan constructSpan,
 ) []keyspan.Span {
 	f.once.Do(func() {
 		frag := &keyspan.Fragmenter{
 			Cmp:    cmp,
 			Format: formatKey,
-			Emit: func(fragmented []keyspan.Span) {
-				f.spans = append(f.spans, fragmented...)
+			Emit: func(fragmented keyspan.Span) {
+				f.spans = append(f.spans, fragmented)
 			},
 		}
 		it := skl.NewIter(nil, nil)
+		var keysDst []keyspan.Key
 		for key, val := it.First(); key != nil; key, val = it.Next() {
-			e, v, err := splitValue(key.Kind(), val)
+			s, err := constructSpan(*key, val, keysDst)
 			if err != nil {
 				panic(err)
 			}
-			frag.Add(keyspan.Span{Start: *key, End: e, Value: v})
+			frag.Add(s)
+			keysDst = s.Keys[len(s.Keys):]
 		}
 		frag.Finish()
 	})
@@ -356,12 +348,12 @@ func (f *keySpanFrags) get(
 // invalidated whenever a key of the same kind is added to a memTable, and
 // populated when empty when a span iterator of that key kind is created.
 type keySpanCache struct {
-	count      uint32
-	frags      unsafe.Pointer
-	cmp        Compare
-	formatKey  base.FormatKey
-	splitValue splitValue
-	skl        *arenaskl.Skiplist
+	count         uint32
+	frags         unsafe.Pointer
+	cmp           Compare
+	formatKey     base.FormatKey
+	constructSpan constructSpan
+	skl           *arenaskl.Skiplist
 }
 
 // Invalidate the current set of cached spans, indicating the number of
@@ -396,5 +388,5 @@ func (c *keySpanCache) get() []keyspan.Span {
 	if frags == nil {
 		return nil
 	}
-	return frags.get(c.skl, c.cmp, c.formatKey, c.splitValue)
+	return frags.get(c.skl, c.cmp, c.formatKey, c.constructSpan)
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -596,23 +597,19 @@ func newFlush(
 		}
 	}
 
-	updateRangeBounds := func(iter internalIterator) {
-		if key, _ := iter.First(); key != nil {
-			if !smallestSet ||
-				base.InternalCompare(c.cmp, c.smallest, *key) > 0 {
+	updateRangeBounds := func(iter keyspan.FragmentIterator) {
+		if s := iter.First(); s.Valid() {
+			if key := s.SmallestKey(); !smallestSet ||
+				base.InternalCompare(c.cmp, c.smallest, key) > 0 {
 				smallestSet = true
 				c.smallest = key.Clone()
 			}
 		}
-		if key, value := iter.Last(); key != nil {
-			tmp := base.InternalKey{
-				UserKey: value,
-				Trailer: key.Trailer,
-			}
-			if !largestSet ||
-				base.InternalCompare(c.cmp, c.largest, tmp) < 0 {
+		if s := iter.Last(); s.Valid() {
+			if key := s.LargestKey(); !largestSet ||
+				base.InternalCompare(c.cmp, c.largest, key) < 0 {
 				largestSet = true
-				c.largest = tmp.Clone()
+				c.largest = key.Clone()
 			}
 		}
 	}
@@ -1009,7 +1006,7 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 				c.cmp, rangeDelIter, lowerBound.UserKey, upperBound.UserKey, &f.Smallest, &f.Largest)
 		}
 		if rangeDelIter == nil {
-			rangeDelIter = emptyIter
+			rangeDelIter = emptyKeyspanIter
 		}
 		return rangeDelIter, err
 	}
@@ -1054,7 +1051,7 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			if err != nil {
 				return errors.Wrapf(err, "pebble: could not open table %s", errors.Safe(f.FileNum))
 			}
-			if rangeDelIter != emptyIter {
+			if rangeDelIter != emptyKeyspanIter {
 				rangeDelIters = append(rangeDelIters, rangeDelIter)
 			}
 		}
@@ -2149,7 +2146,7 @@ func (d *DB) runCompaction(
 		if tw == nil {
 			startKey := c.rangeDelFrag.Start()
 			if len(iter.tombstones) > 0 {
-				startKey = iter.tombstones[0].Start.UserKey
+				startKey = iter.tombstones[0].Start
 			}
 			if splitKey != nil && d.cmp(startKey, splitKey) == 0 {
 				return nil
@@ -2190,7 +2187,7 @@ func (d *DB) runCompaction(
 			// added to the writer, eliding out-of-file range tombstones based
 			// on sequence number at this stage is difficult, and necessitates
 			// read-time logic to ignore range tombstones outside file bounds.
-			if err := tw.Add(v.Start, v.End); err != nil {
+			if rangedel.Encode(v, tw.Add); err != nil {
 				return err
 			}
 		}
@@ -2380,14 +2377,19 @@ func (d *DB) runCompaction(
 				// `compactionIter` so covered keys in the same snapshot stripe
 				// can be elided.
 
-				// The interleaved range deletion might only be one of many,
-				// because some fragmenting is performed ahead of time by
+				// The interleaved range deletion might only be one of many with
+				// these bounds. Some fragmenting is performed ahead of time by
 				// keyspan.MergingIter.
-				frags := c.rangeDelIter.Fragments()
-				for j := 0; j < frags.Count(); j++ {
-					s := frags.At(j)
-					s.Start = iter.cloneKey(s.Start)
-					c.rangeDelFrag.Add(s)
+				if s := c.rangeDelIter.Span(); !s.Empty() {
+					// Clone the s.Keys slice. It's owned by the the range
+					// deletion iterator stack, and it may be overwritten when
+					// we advance.
+					//
+					// We only need to perform a shallow clone, because the user
+					// keys and values point directly into the range deletion
+					// block which does NOT use prefix compression. This
+					// provides key stability.
+					c.rangeDelFrag.Add(s.ShallowClone())
 				}
 				continue
 			}
