@@ -121,12 +121,19 @@ func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 	// during the iteration.
 	i := 0
 	j := 0
+	count := 0
+	max_count := 0
 	for i < len(keys) {
 		// loop invariant: j <= i
 		currKey := keys[i]
 		keys[j] = keys[i]
 
 		for {
+			if keys[i].isEndKey {
+				count--
+			} else {
+				count++
+			}
 			keys[i].setFileIntervalIndex(j)
 			i++
 			if i >= len(keys) || intervalKeyCompare(cmp, currKey.intervalKey, keys[i].intervalKey) != 0 {
@@ -134,7 +141,26 @@ func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 			}
 		}
 		j++
+		if count > max_count {
+			max_count = count
+		}
 	}
+	fmt.Println("max overlap height ordered intervals", max_count)
+	// intervals have been completely set.
+	max_file_width := 0
+	for i := 0; i < j; i++ {
+		width := keys[i].fileMeta.maxIntervalIndex - keys[i].fileMeta.minIntervalIndex
+		if width <= 0 {
+			panic("what")
+		}
+		if max_file_width < width {
+			max_file_width = width
+		}
+	}
+	fmt.Println(
+		"max file width over ordered intervals", len(keys),
+		max_file_width,
+	)
 	return keys[:j]
 }
 
@@ -335,6 +361,7 @@ func NewL0Sublevels(
 		tr.release()
 	}
 
+	// flushSPlitMaxBytes is 4MB.
 	s.calculateFlushSplitKeys(flushSplitMaxBytes)
 	return s, nil
 }
@@ -343,7 +370,9 @@ func NewL0Sublevels(
 // of old fileIntervals, into result. Returns the new result and a slice of ints
 // mapping old interval indices to new ones. The added intervalKeys do not
 // need to be sorted; they get sorted and deduped in this function.
-func mergeIntervals(old, result []fileInterval, added []intervalKeyTemp, compare Compare) ([]fileInterval, []int) {
+func mergeIntervals(
+	old, result []fileInterval, added []intervalKeyTemp, compare Compare,
+) ([]fileInterval, []int) {
 	sorter := intervalKeySorter{keys: added, cmp: compare}
 	sort.Sort(sorter)
 
@@ -440,7 +469,9 @@ func mergeIntervals(old, result []fileInterval, added []intervalKeyTemp, compare
 // were to another flushed file that was split into a separate sstable during
 // flush. Any other non-nil error means L0Sublevels generation failed in the same
 // way as NewL0Sublevels would likely fail.
-func (s *L0Sublevels) AddL0Files(files []*FileMetadata, flushSplitMaxBytes int64, levelMetadata *LevelMetadata) (*L0Sublevels, error) {
+func (s *L0Sublevels) AddL0Files(
+	files []*FileMetadata, flushSplitMaxBytes int64, levelMetadata *LevelMetadata,
+) (*L0Sublevels, error) {
 	if invariants.Enabled && s.addL0FilesCalled {
 		panic("AddL0Files called twice on the same receiver")
 	}
@@ -685,6 +716,9 @@ func (s *L0Sublevels) calculateFlushSplitKeys(flushSplitMaxBytes int64) {
 	// Multiply flushSplitMaxBytes by the number of sublevels. This prevents
 	// excessive flush splitting when the number of sublevels increases.
 	flushSplitMaxBytes *= int64(len(s.levelFiles))
+	// 4MB * number of sublevels gives us the flushSplitMaxBytes.
+	fmt.Println("calculating flush split keys", "flushSplitMaxBytes", flushSplitMaxBytes, "numIntervals", len(s.orderedIntervals))
+	fmt.Println("level files", len(s.levelFiles))
 	for i := 0; i < len(s.orderedIntervals); i++ {
 		interval := &s.orderedIntervals[i]
 		if flushSplitMaxBytes > 0 && cumulativeBytes > uint64(flushSplitMaxBytes) &&
@@ -695,6 +729,7 @@ func (s *L0Sublevels) calculateFlushSplitKeys(flushSplitMaxBytes int64) {
 		}
 		cumulativeBytes += s.orderedIntervals[i].estimatedBytes
 	}
+	fmt.Println("num flush splits", len(s.flushSplitUserKeys))
 }
 
 // InitCompactingFileInfo initializes internal flags relating to compacting
@@ -930,6 +965,7 @@ func (s *L0Sublevels) InUseKeyRanges(smallest, largest []byte) []UserKeyRange {
 		curr.End = s.orderedIntervals[i+1].startKey.key
 		i++
 	}
+	fmt.Println("in use L0 key ranges", len(keyRanges), len(s.orderedIntervals))
 	return keyRanges
 }
 
