@@ -151,7 +151,7 @@ func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 	for i := 0; i < j; i++ {
 		width := keys[i].fileMeta.maxIntervalIndex - keys[i].fileMeta.minIntervalIndex
 		if width < 0 {
-			panic("what")
+			panic(fmt.Sprintf("%d", width))
 		}
 		if max_file_width < width {
 			max_file_width = width
