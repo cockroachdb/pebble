@@ -630,6 +630,9 @@ func newFlush(
 		c.grandparents = c.version.Overlaps(baseLevel, c.cmp, c.smallest.UserKey,
 			c.largest.UserKey, c.largest.IsExclusiveSentinel())
 		adjustGrandparentOverlapBytesForFlush(c, flushingBytes)
+		fmt.Println("may split keys", "flush split keys", len(c.l0Limits))
+	} else {
+		fmt.Println("flushing one file")
 	}
 
 	c.setupInuseKeyRanges()
@@ -1412,6 +1415,8 @@ func (d *DB) flush1() error {
 		})
 	}
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, flushPacer)
+	fmt.Println("ran runCompaction during flush")
+	fmt.Println("num output files generated", ve)
 
 	info := FlushInfo{
 		JobID:    jobID,
@@ -2311,6 +2316,7 @@ func (d *DB) runCompaction(
 		&limitFuncSplitter{c: c, limitFunc: c.findGrandparentLimit},
 	}
 	if splitL0Outputs {
+		fmt.Println("will try and split L0 outputs using c.findL0Limit")
 		outputSplitters = append(outputSplitters, &limitFuncSplitter{c: c, limitFunc: c.findL0Limit})
 	}
 	splitter := &splitterGroup{cmp: c.cmp, splitters: outputSplitters}

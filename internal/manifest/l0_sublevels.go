@@ -148,6 +148,7 @@ func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 	fmt.Println("max overlap height ordered intervals", max_count)
 	// intervals have been completely set.
 	max_file_width := 0
+	avg_file_width := 0
 	for i := 0; i < j; i++ {
 		width := keys[i].fileMeta.maxIntervalIndex - keys[i].fileMeta.minIntervalIndex
 		if width < 0 {
@@ -156,11 +157,13 @@ func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 		if max_file_width < width {
 			max_file_width = width
 		}
+		avg_file_width = ((avg_file_width * i) + width) / (i + 1)
 	}
 	fmt.Println(
 		"max file width over ordered intervals", len(keys),
 		max_file_width,
 	)
+	fmt.Println("avg file width over ordered intervals", len(keys), avg_file_width)
 	return keys[:j]
 }
 
@@ -1199,6 +1202,7 @@ func (is intervalSorterByDecreasingScore) Swap(i, j int) {
 	is[i], is[j] = is[j], is[i]
 }
 
+// todo(bananabrick) : base compaction picking,
 // Compactions:
 //
 // The sub-levels and intervals can be visualized in 2 dimensions as the X
@@ -1365,6 +1369,7 @@ func (is intervalSorterByDecreasingScore) Swap(i, j int) {
 func (s *L0Sublevels) PickBaseCompaction(
 	minCompactionDepth int, baseFiles LevelSlice,
 ) (*L0CompactionFiles, error) {
+	fmt.Println("trying to pick base compaction out of L0")
 	// For LBase compactions, we consider intervals in a greedy manner in the
 	// following order:
 	// - Intervals that are unlikely to be blocked due
@@ -1414,7 +1419,9 @@ func (s *L0Sublevels) PickBaseCompaction(
 		// have seed files at lower sub-levels so could be
 		// viable for compaction.
 		if f == nil {
-			return nil, errors.New("no seed file found in sublevel intervals")
+			//fmt.Println
+			panic("no seed file found in sublevel intervals")
+			//return nil, errors.New("no seed file found in sublevel intervals")
 		}
 		consideredIntervals.markBits(f.minIntervalIndex, f.maxIntervalIndex+1)
 		if f.Compacting {
@@ -1428,11 +1435,15 @@ func (s *L0Sublevels) PickBaseCompaction(
 			// compacting. Usually means the score is not accurately
 			// accounting for files already compacting, or internal state is
 			// inconsistent.
-			return nil, errors.Errorf("file %s chosen as seed file for compaction should not be compacting", f.FileNum)
+			panic("picked interval range which is base compacting")
+			//fmt.Println
+			//return nil, errors.Errorf("file %s chosen as seed file for compaction should not be compacting", f.FileNum)
 		}
 
 		c := s.baseCompactionUsingSeed(f, interval.index, minCompactionDepth)
+		fmt.Println("checking if L0->Lbase compaction is usable by looking at base files")
 		if c != nil {
+			fmt.Println("trying to confirm that the picked L0->Lbase compaction works")
 			// Check if the chosen compaction overlaps with any files
 			// in Lbase that have Compacting = true. If that's the case,
 			// this compaction cannot be chosen.
@@ -1454,9 +1465,11 @@ func (s *L0Sublevels) PickBaseCompaction(
 			if baseCompacting {
 				continue
 			}
+			fmt.Println("successfully picked a base compaction using seed")
 			return c, nil
 		}
 	}
+	fmt.Println("couldn't pick a L0 -> Lbase compaction")
 	return nil, nil
 }
 
@@ -1472,6 +1485,7 @@ func (s *L0Sublevels) baseCompactionUsingSeed(
 		minIntervalIndex:     f.minIntervalIndex,
 		maxIntervalIndex:     f.maxIntervalIndex,
 	}
+	fmt.Println("picked seed file for L0->Lbase compaction", "sublevel", f.subLevel)
 	c.addFile(f)
 
 	// The first iteration of this loop builds the compaction at the seed file's
@@ -1536,11 +1550,16 @@ func (s *L0Sublevels) baseCompactionUsingSeed(
 		// still having a hard limit. Note that if this is the first compaction
 		// candidate to reach a stack depth reduction of minCompactionDepth or
 		// higher, this candidate will be chosen regardless.
+		if lastCandidate != nil {
+			fmt.Println("trying to add another file above the seed file in the interval to the compaction")
+		}
 		if lastCandidate == nil {
 			lastCandidate = &L0CompactionFiles{}
 		} else if lastCandidate.seedIntervalStackDepthReduction >= minCompactionDepth &&
 			c.fileBytes > 100<<20 &&
 			(float64(c.fileBytes)/float64(lastCandidate.fileBytes) > 1.5 || c.fileBytes > 500<<20) {
+			// todo(bananabrick) : try to remove this and see if read amps/overlap is lower.
+			fmt.Println("couldn't add another file above the seed file in the interval to the compaction")
 			break
 		}
 		*lastCandidate = *c
