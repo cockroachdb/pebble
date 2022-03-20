@@ -1553,7 +1553,9 @@ func (s *L0Sublevels) baseCompactionUsingSeed(
 		if lastCandidate != nil {
 			fmt.Println("trying to add another file above the seed file in the interval to the compaction")
 		}
+		var candidatenil bool
 		if lastCandidate == nil {
+			candidatenil = true
 			lastCandidate = &L0CompactionFiles{}
 		} else if lastCandidate.seedIntervalStackDepthReduction >= minCompactionDepth &&
 			c.fileBytes > 100<<20 &&
@@ -1561,6 +1563,9 @@ func (s *L0Sublevels) baseCompactionUsingSeed(
 			// todo(bananabrick) : try to remove this and see if read amps/overlap is lower.
 			fmt.Println("couldn't add another file above the seed file in the interval to the compaction")
 			break
+		}
+		if !candidatenil {
+			fmt.Println("could add another file above the seed file in the interval to the compaction")
 		}
 		*lastCandidate = *c
 	}
