@@ -1416,7 +1416,7 @@ func (d *DB) flush1() error {
 	}
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, flushPacer)
 	fmt.Println("ran runCompaction during flush")
-	fmt.Println("num output files generated", ve)
+	fmt.Println("num output files generated", len(ve.NewFiles))
 
 	info := FlushInfo{
 		JobID:    jobID,
