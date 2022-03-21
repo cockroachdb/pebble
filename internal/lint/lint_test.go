@@ -136,6 +136,7 @@ func TestLint(t *testing.T) {
 				dirCmd(t, pkg.Dir, "git", "grep", "runtime\\.SetFinalizer("),
 				stream.GrepNot(`^vendor/`), // ignore vendor
 				stream.GrepNot(`^internal/invariants/finalizer_on.go`),
+				stream.GrepNot(`^internal/cache/entry_normal.go`), // Contains a valid use case.
 			), func(s string) {
 				t.Errorf("\n%s <- please use the \"invariants.SetFinalizer\" equivalent instead", s)
 			}); err != nil {
