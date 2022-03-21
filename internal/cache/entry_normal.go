@@ -8,6 +8,7 @@
 package cache
 
 import (
+	"runtime"
 	"sync"
 	"unsafe"
 
@@ -54,9 +55,12 @@ type entryAllocCache struct {
 func newEntryAllocCache() *entryAllocCache {
 	c := &entryAllocCache{}
 	if !entriesGoAllocated {
-		// Note: this is a no-op if invariants and tracing are disabled or race is
-		// enabled.
-		invariants.SetFinalizer(c, freeEntryAllocCache)
+		// Note the use of a "real" finalizer here (as opposed to a build tag-gated
+		// no-op finalizer). Without the finalizer, objects released from the pool
+		// and subsequently GC'd by the Go runtime would fail to have their manually
+		// allocated memory freed, which results in a memory leak.
+		// lint:ignore SetFinalizer
+		runtime.SetFinalizer(c, freeEntryAllocCache)
 	}
 	return c
 }
