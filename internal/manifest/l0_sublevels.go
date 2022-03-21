@@ -175,9 +175,9 @@ func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 		max_file_width,
 	)
 	fmt.Println("avg file width over ordered intervals", len(keys), avg_file_width)
-	fmt.Println("printing file widths")
+	fmt.Println("printing file widths for *some* of the files")
 	for k, v := range widthHist {
-		fmt.Println(k, "->", v, "fileSizes", widthSizes[k])
+		fmt.Println(k, "->", v)
 	}
 	return keys[:j]
 }
@@ -366,6 +366,12 @@ func NewL0Sublevels(
 			return nil, err
 		}
 	}
+	fmt.Println("sublevel height distribution")
+	for i := range s.orderedIntervals {
+		inter := s.orderedIntervals[i]
+		fmt.Println(len(inter.files), " ")
+	}
+	fmt.Println()
 	// Sort each sublevel in increasing key order.
 	for i := range s.levelFiles {
 		sort.Sort(sublevelSorter(s.levelFiles[i]))
