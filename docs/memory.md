@@ -76,11 +76,17 @@ with very loose guarantees:
 > typically they are useful only for releasing non-memory resources
 > associated with an object during a long-running program
 
-This language is somewhat frightening, but in practice finalizers are
-run at the end of every GC period. Pebble does not use finalizers for
-correctness, but instead uses them for its leak detection facility. In
-the block cache, a finalizer is associated with the Go allocated
-`cache.Value` object. When the finalizer is run, it checks that the
-buffer backing the `cache.Value` has been freed. This leak detection
-facility is enabled by the `"invariants"` build tag which is enabled
-by the Pebble unit tests.
+This language is somewhat frightening, but in practice finalizers are run at the
+end of every GC period. Pebble primarily relies on finalizers for its leak
+detection facility. In the block cache, a finalizer is associated with the Go
+allocated `cache.Value` object. When the finalizer is run, it checks that the
+buffer backing the `cache.Value` has been freed. This leak detection facility is
+enabled by the `"invariants"` build tag which is enabled by the Pebble unit
+tests.
+
+There also exists a very specific memory reclamation use case in the block cache
+that ensures that structs with transitively reachable fields backed by manually
+allocated memory that are pooled in a `sync.Pool` are freed correctly when their
+parent struct is released from the pool and consequently garbage collected by
+the Go runtime (see `cache/entry_normal.go`). The loose guarantees provided by
+the runtime are reasonable to rely on in this case to prevent a memory leak.

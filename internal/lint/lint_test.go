@@ -137,7 +137,8 @@ func TestLint(t *testing.T) {
 
 		if err := stream.ForEach(
 			stream.Sequence(
-				dirCmd(t, pkg.Dir, "git", "grep", "runtime\\.SetFinalizer("),
+				dirCmd(t, pkg.Dir, "git", "grep", "-B1", "runtime\\.SetFinalizer("),
+				lintIgnore("lint:ignore SetFinalizer"),
 				stream.GrepNot(`^vendor/`), // ignore vendor
 				stream.GrepNot(`^internal/invariants/finalizer_on.go`),
 			), func(s string) {
@@ -239,4 +240,33 @@ func TestLint(t *testing.T) {
 			)
 		}
 	})
+}
+
+// lintIgnore is a stream.FilterFunc that filters out lines that are preceded by
+// the given ignore directive. The function assumes the input stream receives a
+// sequence of strings that are to be considered as pairs. If the first string
+// in the sequence matches the ignore directive, the following string is
+// dropped, else it is emitted.
+//
+// For example, given the sequence "foo", "bar", "baz", "bam", and an ignore
+// directive "foo", the sequence "baz", "bam" would be emitted. If the directive
+// was "baz", the sequence "foo", "bar" would be emitted.
+func lintIgnore(ignore string) stream.FilterFunc {
+	return func(arg stream.Arg) error {
+		var prev string
+		var i int
+		for s := range arg.In {
+			if i%2 == 0 {
+				// Fist string in the pair is used as the filter. Store it.
+				prev = s
+			} else {
+				// Second string is emitted only if it _does not_ match the directive.
+				if !strings.Contains(prev, ignore) {
+					arg.Out <- s
+				}
+			}
+			i++
+		}
+		return nil
+	}
 }
