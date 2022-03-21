@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -769,7 +770,11 @@ func (d *DB) ingestApply(
 	}); err != nil {
 		return nil, err
 	}
-	d.updateReadStateLocked(d.opts.DebugCheck, nil)
+	d.updateReadStateLocked(d.opts.DebugCheck, func() {
+		// TODO(jackson): Remove this and ingestCopyRangeKeys once we
+		// support reading persisted range keys.
+		d.ingestCopyRangeKeys(meta, d.tableNewRangeKeyIter)
+	})
 	d.updateTableStatsLocked(ve.NewFiles)
 	d.deleteObsoleteFiles(jobID, false /* waitForOngoing */)
 	// The ingestion may have pushed a level over the threshold for compaction,
@@ -777,6 +782,41 @@ func (d *DB) ingestApply(
 	d.maybeScheduleCompaction()
 	d.maybeValidateSSTablesLocked(ve.NewFiles)
 	return ve, nil
+}
+
+func (d *DB) ingestCopyRangeKeys(meta []*fileMetadata, newRangeKeyIter keyspan.TableNewRangeKeyIter) {
+	var added uint32
+	for i := range meta {
+		if !meta[i].HasRangeKeys {
+			continue
+		}
+		d.maybeInitializeRangeKeys()
+		err := func() error {
+			rangeKeysIter, err := newRangeKeyIter(meta[i], nil)
+			if err != nil {
+				return err
+			}
+			defer rangeKeysIter.Close()
+			for s := rangeKeysIter.First(); s.Valid(); s = rangeKeysIter.Next() {
+				// Encode each range key contained within the span, and
+				// add it to the global arena's skiplist.
+				if err := rangekey.Encode(s, d.rangeKeys.skl.Add); err != nil {
+					return err
+				}
+				added += uint32(len(s.Keys))
+			}
+			return rangeKeysIter.Error()
+		}()
+		if err != nil {
+			// This is unrecoverable because of where this lives within
+			// the ingest commit path. This entire function will be
+			// removed when range keys are persisted to stable storage.
+			d.opts.Logger.Fatalf("unable to copy ingested sstable %s's range keys: %w", meta[i].FileNum, err)
+		}
+	}
+	if added > 0 {
+		d.rangeKeys.fragCache.invalidate(added)
+	}
 }
 
 // maybeValidateSSTablesLocked adds the slice of newFileEntrys to the pending

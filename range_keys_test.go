@@ -19,6 +19,7 @@ import (
 func TestRangeKeys(t *testing.T) {
 	var d *DB
 	var b *Batch
+	var mem *vfs.MemFS
 	newIter := func(o *IterOptions) *Iterator {
 		if b != nil {
 			return b.NewIter(o)
@@ -36,8 +37,9 @@ func TestRangeKeys(t *testing.T) {
 			if d != nil {
 				require.NoError(t, d.Close())
 			}
+			mem = vfs.NewMem()
 			opts := &Options{
-				FS:                 vfs.NewMem(),
+				FS:                 mem,
 				Comparer:           testkeys.Comparer,
 				FormatMajorVersion: FormatRangeKeys,
 			}
@@ -82,6 +84,11 @@ func TestRangeKeys(t *testing.T) {
 			}
 			count := b.Count()
 			return fmt.Sprintf("wrote %d keys\n", count)
+		case "build":
+			if err := runBuildCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
 		case "flush":
 			err := d.Flush()
 			if err != nil {
@@ -93,6 +100,11 @@ func TestRangeKeys(t *testing.T) {
 			require.NoError(t, runBatchDefineCmd(td, b))
 			count := b.Count()
 			return fmt.Sprintf("created indexed batch with %d keys\n", count)
+		case "ingest":
+			if err := runIngestCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
 		case "commit-batch":
 			if b == nil {
 				return "no pending batch"

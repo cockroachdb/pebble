@@ -682,3 +682,25 @@ prev-limit c
 ----
 .
 . at-limit
+
+# Test ingestion of range keys.
+
+reset
+----
+
+build ext0
+range-key-set a b @1 foo
+range-key-set c d @2 bar
+----
+
+ingest ext0
+----
+
+combined-iter
+first
+next
+next
+----
+a: (., [a-b) @1=foo)
+c: (., [c-d) @2=bar)
+.
