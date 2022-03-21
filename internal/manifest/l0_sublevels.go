@@ -148,7 +148,7 @@ func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 	fmt.Println("max overlap height ordered intervals", max_count)
 	// intervals have been completely set.
 	max_file_width := 0
-	avg_file_width := 0
+	var avg_file_width float64
 	for i := 0; i < j; i++ {
 		width := keys[i].fileMeta.maxIntervalIndex - keys[i].fileMeta.minIntervalIndex
 		if width < 0 {
@@ -157,7 +157,7 @@ func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 		if max_file_width < width {
 			max_file_width = width
 		}
-		avg_file_width = ((avg_file_width * i) + width) / (i + 1)
+		avg_file_width = ((avg_file_width * float64(i)) + float64(width)) / float64(i+1)
 	}
 	fmt.Println(
 		"max file width over ordered intervals", len(keys),

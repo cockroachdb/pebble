@@ -1415,8 +1415,8 @@ func (d *DB) flush1() error {
 		})
 	}
 	ve, pendingOutputs, err := d.runCompaction(jobID, c, flushPacer)
-	fmt.Println("ran runCompaction during flush")
-	fmt.Println("num output files generated", len(ve.NewFiles))
+	fmt.Println(jobID, "ran runCompaction during flush")
+	fmt.Println(jobID, "num output files generated", len(ve.NewFiles))
 
 	info := FlushInfo{
 		JobID:    jobID,
@@ -2316,7 +2316,7 @@ func (d *DB) runCompaction(
 		&limitFuncSplitter{c: c, limitFunc: c.findGrandparentLimit},
 	}
 	if splitL0Outputs {
-		fmt.Println("will try and split L0 outputs using c.findL0Limit")
+		fmt.Println(jobID, "will try and split L0 outputs using c.findL0Limit")
 		outputSplitters = append(outputSplitters, &limitFuncSplitter{c: c, limitFunc: c.findL0Limit})
 	}
 	splitter := &splitterGroup{cmp: c.cmp, splitters: outputSplitters}
