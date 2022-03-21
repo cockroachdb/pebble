@@ -151,6 +151,7 @@ func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 	var avg_file_width float64
 	// Print the file width -> number of files at a given width.
 	widthHist := make(map[int]int)
+	widthSizes := make(map[int][]int)
 	for i := 0; i < j; i++ {
 		width := keys[i].fileMeta.maxIntervalIndex - keys[i].fileMeta.minIntervalIndex
 		if width < 0 {
@@ -161,10 +162,11 @@ func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 		}
 		v, ok := widthHist[width]
 		if !ok {
-			widthHist[width] = 1
-		} else {
-			widthHist[width] = v + 1
+			widthSizes[width] = make([]int, 0)
+			widthHist[width] = 0
 		}
+		widthHist[width] = v + 1
+		widthSizes[width] = append(widthSizes[width], int(keys[i].fileMeta.Size))
 
 		avg_file_width = ((avg_file_width * float64(i)) + float64(width)) / float64(i+1)
 	}
@@ -175,7 +177,7 @@ func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 	fmt.Println("avg file width over ordered intervals", len(keys), avg_file_width)
 	fmt.Println("printing file widths")
 	for k, v := range widthHist {
-		fmt.Println(k, v)
+		fmt.Println(k, "->", v, "fileSizes", widthSizes[k])
 	}
 	return keys[:j]
 }
