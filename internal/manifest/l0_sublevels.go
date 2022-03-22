@@ -743,9 +743,18 @@ func (s *L0Sublevels) calculateFlushSplitKeys(flushSplitMaxBytes int64) {
 	// Multiply flushSplitMaxBytes by the number of sublevels. This prevents
 	// excessive flush splitting when the number of sublevels increases.
 	// flushSplitMaxBytes *= int64(len(s.levelFiles))
+	// todo(bananabrick) : try and scale L0Sublevels by the avg number
 	// 4MB * number of sublevels gives us the flushSplitMaxBytes.
+	var avg float64
+	old := flushSplitMaxBytes
+	for i := 0; i < len(s.orderedIntervals); i++ {
+		avg = ((avg * float64(i)) + float64(len(s.orderedIntervals[i].files))) / float64(i+1)
+	}
 	fmt.Println("calculating flush split keys", "flushSplitMaxBytes", flushSplitMaxBytes, "numIntervals", len(s.orderedIntervals))
 	fmt.Println("level files", len(s.levelFiles))
+	fmt.Println("old vs new flush split max bytes", old*int64(len(s.levelFiles)), flushSplitMaxBytes)
+
+	flushSplitMaxBytes *= int64(avg)
 	for i := 0; i < len(s.orderedIntervals); i++ {
 		interval := &s.orderedIntervals[i]
 		if flushSplitMaxBytes > 0 && cumulativeBytes > uint64(flushSplitMaxBytes) &&
