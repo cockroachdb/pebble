@@ -47,6 +47,7 @@ type compactionPickerForTesting struct {
 	baseLevel int
 	opts      *Options
 	vers      *manifest.Version
+	maxLevelBytes [7]int64
 }
 
 var _ compactionPicker = &compactionPickerForTesting{}
@@ -87,7 +88,7 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedComp
 	if cInfo.level == 0 {
 		return pickL0(env, p.opts, p.vers, p.baseLevel, diskAvailBytesInf)
 	}
-	return pickAutoLPositive(env, p.opts, p.vers, cInfo, p.baseLevel, diskAvailBytesInf)
+	return pickAutoLPositive(env, p.opts, p.vers, cInfo, p.baseLevel, diskAvailBytesInf,p.maxLevelBytes)
 }
 
 func (p *compactionPickerForTesting) pickElisionOnlyCompaction(
@@ -108,7 +109,7 @@ func (p *compactionPickerForTesting) pickManual(
 	if p == nil {
 		return nil, false
 	}
-	return pickManualHelper(p.opts, manual, p.vers, p.baseLevel, diskAvailBytesInf), false
+	return pickManualHelper(p.opts, manual, p.vers, p.baseLevel, diskAvailBytesInf,p.maxLevelBytes), false
 }
 
 func (p *compactionPickerForTesting) pickReadTriggeredCompaction(
@@ -1409,6 +1410,11 @@ func TestManualCompaction(t *testing.T) {
 			testData:   "testdata/singledel_manual_compaction_set_with_del",
 			minVersion: FormatSetWithDelete,
 			maxVersion: FormatNewest,
+		},
+		{
+			testData:   "testdata/manual_compaction_multi_input",
+			minVersion: FormatMostCompatible,
+			maxVersion: FormatSetWithDelete - 1,
 		},
 	}
 

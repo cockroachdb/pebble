@@ -480,6 +480,11 @@ type Options struct {
 		//
 		// By default, this value is false.
 		ValidateOnIngest bool
+
+		// MultiLevelCompaction allows the compaction of SSTs from more than two
+		// levels iff a conventional two level compaction will quickly trigger a
+		// compaction in the output level
+		MultiLevelCompaction bool
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
