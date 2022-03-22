@@ -752,9 +752,8 @@ func (s *L0Sublevels) calculateFlushSplitKeys(flushSplitMaxBytes int64) {
 	}
 	fmt.Println("calculating flush split keys", "flushSplitMaxBytes", flushSplitMaxBytes, "numIntervals", len(s.orderedIntervals))
 	fmt.Println("level files", len(s.levelFiles))
-	fmt.Println("old vs new flush split max bytes", old*int64(len(s.levelFiles)), flushSplitMaxBytes)
-
 	flushSplitMaxBytes *= int64(avg)
+	fmt.Println("old vs new flush split max bytes", old*int64(len(s.levelFiles)), flushSplitMaxBytes)
 	for i := 0; i < len(s.orderedIntervals); i++ {
 		interval := &s.orderedIntervals[i]
 		if flushSplitMaxBytes > 0 && cumulativeBytes > uint64(flushSplitMaxBytes) &&
