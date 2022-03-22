@@ -324,10 +324,17 @@ type compaction struct {
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
 	startLevel *compactionLevel
-	// outputLevel is the level that files are being produced in. For default
-	// compactions, outputLevel is equal to startLevel+1 except when startLevel
-	// is 0 in which case it is equal to compactionPicker.baseLevel().
+
+	// outputLevel is the level that files are being produced in. outputLevel is
+	// equal to startLevel+1 except when:
+	//    - if startLevel is 0, the output level equals compactionPicker.baseLevel().
+	//    - in multilevel compaction, the output level is the lowest level involved in
+	//      the compaction
 	outputLevel *compactionLevel
+
+	// extraLevels point to additional levels in between the input and output
+	// levels that get compacted in multilevel compactions
+	extraLevels []*compactionLevel
 
 	inputs []compactionLevel
 
@@ -416,8 +423,10 @@ func (c *compaction) makeInfo(jobID int) CompactionInfo {
 	}
 	if c.outputLevel != nil {
 		info.Output.Level = c.outputLevel.level
+
 		// If there are no inputs from the output level (eg, a move
 		// compaction), add an empty LevelInfo to info.Input.
+		// why not check c.kind?
 		if len(c.inputs) > 0 && c.inputs[len(c.inputs)-1].level != c.outputLevel.level {
 			info.Input = append(info.Input, LevelInfo{Level: c.outputLevel.level})
 		}
@@ -447,9 +456,14 @@ func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) 
 		maxOverlapBytes:     pc.maxOverlapBytes,
 		atomicBytesIterated: bytesCompacted,
 	}
+
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
 
+	if len(pc.extraLevels) > 0 {
+		c.extraLevels = pc.extraLevels
+		c.outputLevel = &c.inputs[2]
+	}
 	// Compute the set of outputLevel+1 files that overlap this compaction (these
 	// are the grandparent sstables).
 	if c.outputLevel.level+1 < numLevels {
@@ -459,7 +473,7 @@ func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) 
 	c.setupInuseKeyRanges()
 
 	c.kind = pc.kind
-	if c.kind == compactionKindDefault && c.outputLevel.files.Empty() &&
+	if c.kind == compactionKindDefault && c.outputLevel.files.Empty() && !c.hasExtraLevelData() &&
 		c.startLevel.files.Len() == 1 && c.grandparents.SizeSum() <= c.maxOverlapBytes {
 		// This compaction can be converted into a trivial move from one level
 		// to the next. We avoid such a move if there is lots of overlapping
@@ -634,6 +648,15 @@ func newFlush(
 
 	c.setupInuseKeyRanges()
 	return c
+}
+
+func (c *compaction) hasExtraLevelData() bool {
+	if len(c.extraLevels) == 0 {
+		return false
+	} else if c.extraLevels[0].files.Empty() {
+		return false
+	}
+	return true
 }
 
 func (c *compaction) setupInuseKeyRanges() {
@@ -937,7 +960,18 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		return nil, err
 	}
 
-	iters := make([]internalIterator, 0, 2*c.startLevel.files.Len()+1)
+	if len(c.extraLevels) > 0 {
+		if len(c.extraLevels) > 1 {
+			return nil, errors.New("n>2 multi input level compaction not implemented yet")
+		}
+		interLevel := c.extraLevels[0]
+		err := manifest.CheckOrdering(c.cmp, c.formatKey,
+			manifest.Level(interLevel.level), interLevel.files.Iter())
+		if err != nil {
+			return nil, err
+		}
+	}
+	iters := make([]internalIterator, 0, len(c.inputs)*c.startLevel.files.Len()+1)
 	defer func() {
 		if retErr != nil {
 			for _, iter := range iters {
@@ -1076,7 +1110,11 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			}
 		}
 	}
-
+	if len(c.extraLevels) > 0 {
+		if err = addItersForLevel(c.extraLevels[0]); err != nil {
+			return nil, err
+		}
+	}
 	if err = addItersForLevel(c.outputLevel); err != nil {
 		return nil, err
 	}
@@ -1099,11 +1137,8 @@ func (c *compaction) String() string {
 	}
 
 	var buf bytes.Buffer
-	for i := range c.inputs {
-		level := c.startLevel.level
-		if i == 1 {
-			level = c.outputLevel.level
-		}
+	for level := c.startLevel.level; level <= c.outputLevel.level; level++ {
+		i := level - c.startLevel.level
 		fmt.Fprintf(&buf, "%d:", level)
 		iter := c.inputs[i].files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
@@ -2055,12 +2090,19 @@ func (d *DB) runCompaction(
 		BytesIn:   c.startLevel.files.SizeSum(),
 		BytesRead: c.outputLevel.files.SizeSum(),
 	}
+	if len(c.extraLevels) > 0 {
+		outputMetrics.BytesIn += c.extraLevels[0].files.SizeSum()
+	}
 	outputMetrics.BytesRead += outputMetrics.BytesIn
+
 	c.metrics = map[int]*LevelMetrics{
 		c.outputLevel.level: outputMetrics,
 	}
 	if len(c.flushing) == 0 && c.metrics[c.startLevel.level] == nil {
 		c.metrics[c.startLevel.level] = &LevelMetrics{}
+	}
+	if len(c.extraLevels) > 0 {
+		c.metrics[c.extraLevels[0].level] = &LevelMetrics{}
 	}
 
 	writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
