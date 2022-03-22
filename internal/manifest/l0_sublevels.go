@@ -366,7 +366,7 @@ func NewL0Sublevels(
 			return nil, err
 		}
 	}
-	fmt.Println("sublevel height distribution")
+	fmt.Println("sublevel height distribution", len(s.levelFiles))
 	for i := range s.orderedIntervals {
 		inter := s.orderedIntervals[i]
 		fmt.Printf("%d ", len(inter.files))
