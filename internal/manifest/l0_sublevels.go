@@ -367,12 +367,15 @@ func NewL0Sublevels(
 		}
 	}
 	fmt.Println("sublevel height distribution", len(s.levelFiles))
+	heights := make(map[int]int)
 	for i := range s.orderedIntervals {
 		inter := s.orderedIntervals[i]
-		fmt.Printf("%d ", len(inter.files))
+		heights[len(inter.files)] = heights[len(inter.files)] + 1
 	}
-	fmt.Println()
-	// Sort each sublevel in increasing key order.
+	for k, v := range heights {
+		fmt.Println(k, "->", v)
+	}
+	// Sort each sublevel in increasing key order./in u
 	for i := range s.levelFiles {
 		sort.Sort(sublevelSorter(s.levelFiles[i]))
 	}
