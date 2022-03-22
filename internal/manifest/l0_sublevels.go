@@ -742,7 +742,7 @@ func (s *L0Sublevels) calculateFlushSplitKeys(flushSplitMaxBytes int64) {
 	var cumulativeBytes uint64
 	// Multiply flushSplitMaxBytes by the number of sublevels. This prevents
 	// excessive flush splitting when the number of sublevels increases.
-	flushSplitMaxBytes *= int64(len(s.levelFiles))
+	// flushSplitMaxBytes *= int64(len(s.levelFiles))
 	// 4MB * number of sublevels gives us the flushSplitMaxBytes.
 	fmt.Println("calculating flush split keys", "flushSplitMaxBytes", flushSplitMaxBytes, "numIntervals", len(s.orderedIntervals))
 	fmt.Println("level files", len(s.levelFiles))
