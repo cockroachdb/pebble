@@ -294,11 +294,18 @@ a@9: (a@9, [a-d) @8=boop)
 
 # Perform the same thing but with a mask suffix below the range key's. All the
 # points should be visible again.
+#
+# Then use SetOptions to raise the mask. The masked points should disappear.
 
 combined-iter mask-suffix=@7
 seek-prefix-ge a
 next
 next
+next
+next
+next
+set-options key-types=both mask-suffix=@8
+seek-prefix-ge a
 next
 next
 next
@@ -308,6 +315,11 @@ a@10: (a@10, [a-d) @8=boop)
 a@9: (a@9, [a-d) @8=boop)
 a@3: (a#3, [a-d) @8=boop)
 a@2: (a@2, [a-d) @8=boop)
+.
+.
+a: (., [a-d) @8=boop)
+a@10: (a@10, [a-d) @8=boop)
+a@9: (a@9, [a-d) @8=boop)
 .
 
 reset
@@ -570,6 +582,41 @@ b: (b, [b-c) @5=bar)
 c: (c, .)
 cat: (., [cat-e) @3=bax)
 d: (d, [cat-e) @3=bax)
+.
+
+# Ensure bounds and key-types provided through SetOptions are respected.
+
+combined-iter lower=b upper=e
+first
+next
+next
+next
+next
+set-options lower=a upper=cat key-types=both
+first
+next
+next
+next
+set-options lower=a upper=cat key-types=point
+first
+next
+next
+next
+----
+b: (b, [b-c) @5=bar)
+c: (c, .)
+cat: (., [cat-e) @3=bax)
+d: (d, [cat-e) @3=bax)
+.
+.
+a: (a, [a-ap) @6=foo)
+ap: (., [ap-c) @5=bar)
+b: (b, [ap-c) @5=bar)
+c: (c, .)
+.
+a:a
+b:b
+c:c
 .
 
 # Test Prev-ing back over a synthetic range key marker. Synthetic range-key

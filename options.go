@@ -141,6 +141,9 @@ type IterOptions struct {
 	OnlyReadGuaranteedDurable bool
 	// Internal options.
 	logger Logger
+
+	// NB: If adding new Options, you must account for them in iterator
+	// construction and Iterator.SetOptions.
 }
 
 // GetLowerBound returns the LowerBound or nil if the receiver is nil.

@@ -66,16 +66,17 @@ type generator struct {
 
 func newGenerator(rng *rand.Rand, cfg config) *generator {
 	g := &generator{
-		cfg:         cfg,
-		rng:         rng,
-		init:        &initOp{},
-		keyManager:  newKeyManager(),
-		liveReaders: objIDSlice{makeObjID(dbTag, 0)},
-		liveWriters: objIDSlice{makeObjID(dbTag, 0)},
-		batches:     make(map[objID]objIDSet),
-		iters:       make(map[objID]objIDSet),
-		readers:     make(map[objID]objIDSet),
-		snapshots:   make(map[objID]objIDSet),
+		cfg:             cfg,
+		rng:             rng,
+		init:            &initOp{},
+		keyManager:      newKeyManager(),
+		liveReaders:     objIDSlice{makeObjID(dbTag, 0)},
+		liveWriters:     objIDSlice{makeObjID(dbTag, 0)},
+		batches:         make(map[objID]objIDSet),
+		iters:           make(map[objID]objIDSet),
+		readers:         make(map[objID]objIDSet),
+		snapshots:       make(map[objID]objIDSet),
+		itersLastBounds: make(map[objID]iterBounds),
 	}
 	// Note that the initOp fields are populated during generation.
 	g.ops = append(g.ops, g.init)
@@ -105,6 +106,7 @@ func generate(rng *rand.Rand, count uint64, cfg config) []op {
 		iterSeekLTWithLimit:  g.iterSeekLTWithLimit,
 		iterSeekPrefixGE:     g.iterSeekPrefixGE,
 		iterSetBounds:        g.iterSetBounds,
+		iterSetOptions:       g.iterSetOptions,
 		newBatch:             g.newBatch,
 		newIndexedBatch:      g.newIndexedBatch,
 		newIter:              g.newIter,
@@ -494,10 +496,19 @@ func (g *generator) newIter() {
 	if g.cmp(lower, upper) > 0 {
 		lower, upper = upper, lower
 	}
+	keyTypes, maskSuffix := g.randKeyTypesAndMask()
+	g.add(&newIterOp{
+		readerID:           readerID,
+		iterID:             iterID,
+		lower:              lower,
+		upper:              upper,
+		keyTypes:           keyTypes,
+		rangeKeyMaskSuffix: maskSuffix,
+	})
+}
 
+func (g *generator) randKeyTypesAndMask() (keyTypes uint32, maskSuffix []byte) {
 	// Iterate over different key types.
-	var keyTypes uint32
-	var maskSuffix []byte
 	p := g.rng.Float64()
 	switch {
 	case p < 0.2: // 20% probability
@@ -511,15 +522,7 @@ func (g *generator) newIter() {
 	default: // 20% probability
 		keyTypes = uint32(pebble.IterKeyTypeRangesOnly)
 	}
-
-	g.add(&newIterOp{
-		readerID:           readerID,
-		iterID:             iterID,
-		lower:              lower,
-		upper:              upper,
-		keyTypes:           keyTypes,
-		rangeKeyMaskSuffix: maskSuffix,
-	})
+	return keyTypes, maskSuffix
 }
 
 func (g *generator) newIterUsingClone() {
@@ -685,6 +688,50 @@ func (g *generator) iterSetBounds() {
 			})
 		}
 	}
+}
+
+func (g *generator) iterSetOptions() {
+	if len(g.liveIters) == 0 {
+		return
+	}
+	iterID := g.liveIters.rand(g.rng)
+
+	bounds := g.itersLastBounds[iterID]
+	// With 50% probability, update the bounds.
+	if g.rng.Intn(2) == 0 {
+		// Generate a new key with a .1% probability.
+		bounds.lower = g.randKeyToRead(0.001)
+		// Generate a new key with a .1% probability.
+		bounds.upper = g.randKeyToRead(0.001)
+		if g.cmp(bounds.lower, bounds.upper) > 0 {
+			bounds.lower, bounds.upper = bounds.upper, bounds.lower
+		}
+		g.itersLastBounds[iterID] = bounds
+	}
+
+	keyTypes, maskSuffix := g.randKeyTypesAndMask()
+	g.add(&iterSetOptionsOp{
+		iterID:             iterID,
+		lower:              bounds.lower,
+		upper:              bounds.upper,
+		keyTypes:           keyTypes,
+		rangeKeyMaskSuffix: maskSuffix,
+	})
+
+	// Additionally, perform a random absolute positioning operation. The
+	// SetOptions contract requires one before the next relative positioning
+	// operation. Ideally, we should not do this as part of generating a single
+	// op, but this is easier than trying to control future op generation via
+	// generator state.
+	g.pickOneUniform(
+		g.iterFirst,
+		g.iterLast,
+		g.iterSeekGE,
+		g.iterSeekGEWithLimit,
+		g.iterSeekPrefixGE,
+		g.iterSeekLT,
+		g.iterSeekLTWithLimit,
+	)()
 }
 
 func (g *generator) iterSeekGE() {
@@ -1089,6 +1136,11 @@ func (g *generator) tryRepositionBatchIters(writerID objID) {
 	for _, id := range iters.sorted() {
 		g.add(&iterFirstOp{iterID: id})
 	}
+}
+
+func (g *generator) pickOneUniform(options ...func()) func() {
+	i := g.rng.Intn(len(options))
+	return options[i]
 }
 
 func (g *generator) cmp(a, b []byte) int {

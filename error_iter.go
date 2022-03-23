@@ -14,7 +14,7 @@ type errorIter struct {
 }
 
 // errorIter implements the base.InternalIterator interface.
-var _ base.InternalIterator = (*errorIter)(nil)
+var _ internalIteratorWithStats = (*errorIter)(nil)
 
 func newErrorIter(err error) *errorIter {
 	return &errorIter{err: err}
@@ -63,6 +63,8 @@ func (c *errorIter) String() string {
 }
 
 func (c *errorIter) SetBounds(lower, upper []byte) {}
+func (c *errorIter) Stats() InternalIteratorStats  { return InternalIteratorStats{} }
+func (c *errorIter) ResetStats()                   {}
 
 type errorKeyspanIter struct {
 	err error

@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -534,11 +535,13 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	}
 
 	i := &buf.dbi
+	pointIter := base.WrapIterWithStats(get)
 	*i = Iterator{
 		getIterAlloc: buf,
 		cmp:          d.cmp,
 		equal:        d.equal,
-		iter:         base.WrapIterWithStats(get),
+		iter:         pointIter,
+		pointIter:    pointIter,
 		merge:        d.merge,
 		split:        d.split,
 		readState:    readState,
@@ -912,7 +915,6 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 		alloc:               buf,
 		cmp:                 d.cmp,
 		equal:               d.equal,
-		iter:                &buf.merging,
 		merge:               d.merge,
 		split:               d.split,
 		readState:           readState,
@@ -921,14 +923,11 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 		batch:               batch,
 		newIters:            d.newIters,
 		seqNum:              seqNum,
+		newRangeKeyIter: func() rangekey.Iterator {
+			return d.newRangeKeyIter(seqNum, batch, readState, &dbi.opts)
+		},
 	}
 
-	if o.rangeKeys() {
-		// TODO(jackson): Pool range-key iterator objects.
-		dbi.rangeKey = &iteratorRangeKeyState{
-			rangeKeyIter: d.newRangeKeyIter(seqNum, batch, readState, o),
-		}
-	}
 	if o != nil {
 		dbi.opts = *o
 	}
@@ -937,17 +936,18 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 }
 
 // finishInitializingIter is a helper for doing the non-trivial initialization
-// of an Iterator.
+// of an Iterator. It's invoked to perform the initial initialization of an
+// Iterator during NewIter or Clone, and to perform reinitialization due to a
+// change in IterOptions by a call to Iterator.SetOptions.
 func finishInitializingIter(buf *iterAlloc) *Iterator {
 	// Short-hand.
 	dbi := &buf.dbi
-	readState := dbi.readState
-	memtables := readState.memtables
+	memtables := dbi.readState.memtables
 	if dbi.opts.OnlyReadGuaranteedDurable {
 		memtables = nil
 	} else {
 		// We only need to read from memtables which contain sequence numbers older
-		// than seqNum. Trim off newer sstables.
+		// than seqNum. Trim off newer memtables.
 		for i := len(memtables) - 1; i >= 0; i-- {
 			if logSeqNum := memtables[i].logSeqNum; logSeqNum >= dbi.seqNum {
 				continue
@@ -957,19 +957,29 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		}
 	}
 
-	if dbi.opts.pointKeys() {
-		dbi.iter = constructPointIter(dbi, dbi.batch, memtables, buf)
-	} else {
-		// This is a merging iterator with no levels, that produces nothing.
-		buf.merging.init(&dbi.opts, dbi.cmp, dbi.split)
-		dbi.iter = &buf.merging
-	}
+	// Construct the point iterator. This function either returns a pointer to
+	// dbi.merging (if points are enabled) or an emptyIter. If this is called
+	// during a SetOptions call and this Iterator has already initialized
+	// dbi.merging, constructPointIter returns the existing, unmodified point
+	// iterator which is stored in dbi.pointIter.
+	dbi.iter = constructPointIter(dbi, dbi.batch, memtables, buf)
 
-	// For the in-memory prototype of range keys, wrap the merging iterator with
-	// an interleaving iterator. The dbi.rangeKeysIter is an iterator into
-	// fragmented range keys read from the global range key arena.
-	if dbi.rangeKey != nil {
-		dbi.rangeKey.iter.Init(dbi.cmp, dbi.split, &buf.merging, dbi.rangeKey.rangeKeyIter, dbi.opts.RangeKeyMasking.Suffix)
+	// If range keys are enabled, construct the range key iterator stack too.
+	if dbi.opts.rangeKeys() {
+		if dbi.rangeKey == nil {
+			// TODO(jackson): Pool iteratorRangeKeyState.
+			dbi.rangeKey = &iteratorRangeKeyState{}
+			dbi.rangeKey.rangeKeyIter = dbi.newRangeKeyIter()
+		}
+
+		// Wrap the point iterator (currently dbi.iter) with an interleaving
+		// iterator that interleaves range keys pulled from
+		// dbi.rangeKey.rangeKeyIter.
+		//
+		// NB: The interleaving iterator is always reinitialized, even if
+		// dbi already had an initialized range key iterator, in case the point
+		// iterator changed or the range key masking suffix changed.
+		dbi.rangeKey.iter.Init(dbi.cmp, dbi.split, dbi.iter, dbi.rangeKey.rangeKeyIter, dbi.opts.RangeKeyMasking.Suffix)
 		dbi.iter = &dbi.rangeKey.iter
 		dbi.iter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
 	}
@@ -979,6 +989,17 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 func constructPointIter(
 	dbi *Iterator, batch *Batch, memtables flushableList, buf *iterAlloc,
 ) internalIteratorWithStats {
+	if !dbi.opts.pointKeys() {
+		return emptyIter
+	}
+	if dbi.pointIter != nil {
+		// The point iterator has already been constructed. This may be the case
+		// when an Iterator is being re-initialized during a call to SetOptions.
+		// Set the current bounds.
+		dbi.pointIter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
+		return dbi.pointIter
+	}
+
 	// Merging levels and levels from iterAlloc.
 	mlevels := buf.mlevels[:0]
 	levels := buf.levels[:0]
@@ -1065,6 +1086,7 @@ func constructPointIter(
 	buf.merging.init(&dbi.opts, dbi.cmp, dbi.split, mlevels...)
 	buf.merging.snapshot = dbi.seqNum
 	buf.merging.elideRangeTombstones = true
+	dbi.pointIter = &buf.merging
 	return &buf.merging
 }
 
