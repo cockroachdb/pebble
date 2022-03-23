@@ -50,7 +50,6 @@ func NewExternalIter(
 		alloc:               buf,
 		cmp:                 o.Comparer.Compare,
 		equal:               o.equal(),
-		iter:                &buf.merging,
 		merge:               o.Merger.Merge,
 		split:               o.Comparer.Split,
 		readState:           nil,
@@ -120,6 +119,8 @@ func NewExternalIter(
 	buf.merging.init(&dbi.opts, dbi.cmp, dbi.split, mlevels...)
 	buf.merging.snapshot = base.InternalKeySeqNumMax
 	buf.merging.elideRangeTombstones = true
+	dbi.pointIter = &buf.merging
+	dbi.iter = dbi.pointIter
 
 	if dbi.opts.rangeKeys() {
 		for _, r := range readers {

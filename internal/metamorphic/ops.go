@@ -637,6 +637,36 @@ func (o *iterSetBoundsOp) String() string {
 	return fmt.Sprintf("%s.SetBounds(%q, %q)", o.iterID, o.lower, o.upper)
 }
 
+// iterSetOptionsOp models an Iterator.SetOptions operation.
+type iterSetOptionsOp struct {
+	iterID   objID
+	lower    []byte
+	upper    []byte
+	keyTypes uint32 // pebble.IterKeyType
+
+	// rangeKeyMaskSuffix may be set if keyTypes is IterKeyTypePointsAndRanges
+	// to configure IterOptions.RangeKeyMasking.Suffix.
+	rangeKeyMaskSuffix []byte
+}
+
+func (o *iterSetOptionsOp) run(t *test, h *history) {
+	i := t.getIter(o.iterID)
+	i.SetOptions(&pebble.IterOptions{
+		LowerBound: o.lower,
+		UpperBound: o.upper,
+		KeyTypes:   pebble.IterKeyType(o.keyTypes),
+		RangeKeyMasking: pebble.RangeKeyMasking{
+			Suffix: o.rangeKeyMaskSuffix,
+		},
+	})
+	h.Recordf("%s // %v", o, i.Error())
+}
+
+func (o *iterSetOptionsOp) String() string {
+	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %q /* masking suffix */)",
+		o.iterID, o.lower, o.upper, o.keyTypes, o.rangeKeyMaskSuffix)
+}
+
 // iterSeekGEOp models an Iterator.SeekGE[WithLimit] operation.
 type iterSeekGEOp struct {
 	iterID objID
