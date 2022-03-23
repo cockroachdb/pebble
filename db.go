@@ -941,14 +941,43 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	// Short-hand.
 	dbi := &buf.dbi
 	readState := dbi.readState
-	batch := dbi.batch
-	seqNum := dbi.seqNum
 	memtables := readState.memtables
 	if dbi.opts.OnlyReadGuaranteedDurable {
 		memtables = nil
+	} else {
+		// We only need to read from memtables which contain sequence numbers older
+		// than seqNum. Trim off newer sstables.
+		for i := len(memtables) - 1; i >= 0; i-- {
+			if logSeqNum := memtables[i].logSeqNum; logSeqNum >= dbi.seqNum {
+				continue
+			}
+			memtables = memtables[:i+1]
+			break
+		}
 	}
-	current := readState.current
 
+	if dbi.opts.pointKeys() {
+		dbi.iter = constructPointIter(dbi, dbi.batch, memtables, buf)
+	} else {
+		// This is a merging iterator with no levels, that produces nothing.
+		buf.merging.init(&dbi.opts, dbi.cmp, dbi.split)
+		dbi.iter = &buf.merging
+	}
+
+	// For the in-memory prototype of range keys, wrap the merging iterator with
+	// an interleaving iterator. The dbi.rangeKeysIter is an iterator into
+	// fragmented range keys read from the global range key arena.
+	if dbi.rangeKey != nil {
+		dbi.rangeKey.iter.Init(dbi.cmp, dbi.split, &buf.merging, dbi.rangeKey.rangeKeyIter, dbi.opts.RangeKeyMasking.Suffix)
+		dbi.iter = &dbi.rangeKey.iter
+		dbi.iter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
+	}
+	return dbi
+}
+
+func constructPointIter(
+	dbi *Iterator, batch *Batch, memtables flushableList, buf *iterAlloc,
+) internalIteratorWithStats {
 	// Merging levels and levels from iterAlloc.
 	mlevels := buf.mlevels[:0]
 	levels := buf.levels[:0]
@@ -961,15 +990,9 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	if batch != nil {
 		numMergingLevels++
 	}
-	for i := len(memtables) - 1; i >= 0; i-- {
-		mem := memtables[i]
-		// We only need to read from memtables which contain sequence numbers older
-		// than seqNum.
-		if logSeqNum := mem.logSeqNum; logSeqNum >= seqNum {
-			continue
-		}
-		numMergingLevels++
-	}
+	numMergingLevels += len(memtables)
+
+	current := dbi.readState.current
 	numMergingLevels += len(current.L0SublevelFiles)
 	numLevelIters += len(current.L0SublevelFiles)
 	for level := 1; level < len(current.Levels); level++ {
@@ -980,87 +1003,68 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		numLevelIters++
 	}
 
-	if dbi.opts.pointKeys() {
-		if numMergingLevels > cap(mlevels) {
-			mlevels = make([]mergingIterLevel, 0, numMergingLevels)
-		}
-		if numLevelIters > cap(levels) {
-			levels = make([]levelIter, 0, numLevelIters)
-		}
-
-		// Top-level is the batch, if any.
-		if batch != nil {
-			mlevels = append(mlevels, mergingIterLevel{
-				iter:         base.WrapIterWithStats(batch.newInternalIter(&dbi.opts)),
-				rangeDelIter: batch.newRangeDelIter(&dbi.opts),
-			})
-		}
-
-		// Next are the memtables.
-		for i := len(memtables) - 1; i >= 0; i-- {
-			mem := memtables[i]
-			// We only need to read from memtables which contain sequence numbers older
-			// than seqNum.
-			if logSeqNum := mem.logSeqNum; logSeqNum >= seqNum {
-				continue
-			}
-			mlevels = append(mlevels, mergingIterLevel{
-				iter:         base.WrapIterWithStats(mem.newIter(&dbi.opts)),
-				rangeDelIter: mem.newRangeDelIter(&dbi.opts),
-			})
-		}
-
-		// Next are the file levels: L0 sub-levels followed by lower levels.
-		mlevelsIndex := len(mlevels)
-		levelsIndex := len(levels)
-		mlevels = mlevels[:numMergingLevels]
-		levels = levels[:numLevelIters]
-
-		addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
-			li := &levels[levelsIndex]
-
-			li.init(dbi.opts, dbi.cmp, dbi.split, dbi.newIters, files, level, nil)
-			li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
-			li.initSmallestLargestUserKey(&mlevels[mlevelsIndex].smallestUserKey,
-				&mlevels[mlevelsIndex].largestUserKey,
-				&mlevels[mlevelsIndex].isLargestUserKeyRangeDelSentinel)
-			li.initIsSyntheticIterBoundsKey(&mlevels[mlevelsIndex].isSyntheticIterBoundsKey)
-			mlevels[mlevelsIndex].iter = li
-
-			levelsIndex++
-			mlevelsIndex++
-		}
-
-		// Add level iterators for the L0 sublevels, iterating from newest to
-		// oldest.
-		for i := len(current.L0SublevelFiles) - 1; i >= 0; i-- {
-			addLevelIterForFiles(current.L0SublevelFiles[i].Iter(), manifest.L0Sublevel(i))
-		}
-
-		// Add level iterators for the non-empty non-L0 levels.
-		for level := 1; level < len(current.Levels); level++ {
-			if current.Levels[level].Empty() {
-				continue
-			}
-			addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
-		}
-		buf.merging.init(&dbi.opts, dbi.cmp, dbi.split, mlevels...)
-		buf.merging.snapshot = seqNum
-		buf.merging.elideRangeTombstones = true
-	} else {
-		// This is a merging iterator with no levels, that produces nothing.
-		buf.merging.init(&dbi.opts, dbi.cmp, dbi.split)
+	if numMergingLevels > cap(mlevels) {
+		mlevels = make([]mergingIterLevel, 0, numMergingLevels)
+	}
+	if numLevelIters > cap(levels) {
+		levels = make([]levelIter, 0, numLevelIters)
 	}
 
-	// For the in-memory prototype of range keys, wrap the merging iterator with
-	// an interleaving iterator. The dbi.rangeKeysIter is an iterator into
-	// fragmented range keys read from the global range key arena.
-	if dbi.rangeKey != nil {
-		dbi.rangeKey.iter.Init(dbi.cmp, dbi.split, &buf.merging, dbi.rangeKey.rangeKeyIter, dbi.opts.RangeKeyMasking.Suffix)
-		dbi.iter = &dbi.rangeKey.iter
-		dbi.iter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
+	// Top-level is the batch, if any.
+	if batch != nil {
+		mlevels = append(mlevels, mergingIterLevel{
+			iter:         base.WrapIterWithStats(batch.newInternalIter(&dbi.opts)),
+			rangeDelIter: batch.newRangeDelIter(&dbi.opts),
+		})
 	}
-	return dbi
+
+	// Next are the memtables.
+	for i := len(memtables) - 1; i >= 0; i-- {
+		mem := memtables[i]
+		mlevels = append(mlevels, mergingIterLevel{
+			iter:         base.WrapIterWithStats(mem.newIter(&dbi.opts)),
+			rangeDelIter: mem.newRangeDelIter(&dbi.opts),
+		})
+	}
+
+	// Next are the file levels: L0 sub-levels followed by lower levels.
+	mlevelsIndex := len(mlevels)
+	levelsIndex := len(levels)
+	mlevels = mlevels[:numMergingLevels]
+	levels = levels[:numLevelIters]
+
+	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
+		li := &levels[levelsIndex]
+
+		li.init(dbi.opts, dbi.cmp, dbi.split, dbi.newIters, files, level, nil)
+		li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
+		li.initSmallestLargestUserKey(&mlevels[mlevelsIndex].smallestUserKey,
+			&mlevels[mlevelsIndex].largestUserKey,
+			&mlevels[mlevelsIndex].isLargestUserKeyRangeDelSentinel)
+		li.initIsSyntheticIterBoundsKey(&mlevels[mlevelsIndex].isSyntheticIterBoundsKey)
+		mlevels[mlevelsIndex].iter = li
+
+		levelsIndex++
+		mlevelsIndex++
+	}
+
+	// Add level iterators for the L0 sublevels, iterating from newest to
+	// oldest.
+	for i := len(current.L0SublevelFiles) - 1; i >= 0; i-- {
+		addLevelIterForFiles(current.L0SublevelFiles[i].Iter(), manifest.L0Sublevel(i))
+	}
+
+	// Add level iterators for the non-empty non-L0 levels.
+	for level := 1; level < len(current.Levels); level++ {
+		if current.Levels[level].Empty() {
+			continue
+		}
+		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
+	}
+	buf.merging.init(&dbi.opts, dbi.cmp, dbi.split, mlevels...)
+	buf.merging.snapshot = dbi.seqNum
+	buf.merging.elideRangeTombstones = true
+	return &buf.merging
 }
 
 // NewBatch returns a new empty write-only batch. Any reads on the batch will
