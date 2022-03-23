@@ -149,9 +149,16 @@ type Iterator struct {
 	merge     Merge
 	split     Split
 	iter      internalIteratorWithStats
+	pointIter internalIteratorWithStats
 	readState *readState
-	rangeKey  *iteratorRangeKeyState
-	err       error
+	// rangeKey holds iteration state specific to iteration over range keys.
+	// The range key field may be nil if the Iterator has never been configured
+	// to iterate over range keys. Its non-nilness cannot be used to determine
+	// if the Iterator is currently iterating over range keys: For that, consult
+	// the IterOptions using opts.rangeKeys(). If non-nil, its rangeKeyIter
+	// field is guaranteed to be non-nil too.
+	rangeKey *iteratorRangeKeyState
+	err      error
 	// When iterValidityState=IterValid, key represents the current key, which
 	// is backed by keyBuf.
 	key         []byte
@@ -170,11 +177,13 @@ type Iterator struct {
 	stats               IteratorStats
 	closeHook           func()
 
-	// Following fields are only used in Clone.
+	// Following fields are only used in Clone and SetOptions.
 	// Non-nil if this Iterator includes a Batch.
 	batch    *Batch
 	newIters tableNewIters
 	seqNum   uint64
+	// TODO(jackson): Remove when we no longer require the global arena.
+	newRangeKeyIter func() rangekey.Iterator
 
 	// Keeping the bools here after all the 8 byte aligned fields shrinks the
 	// sizeof this struct by 24 bytes.
@@ -223,7 +232,7 @@ type iteratorRangeKeyState struct {
 // The iterator position resulting from a SeekGE or SeekPrefixGE that lands on a
 // straddling range key without a coincident point key is such a position.
 func (i *Iterator) isEphemeralPosition() bool {
-	return i.rangeKey != nil && i.rangeKey.rangeKeyOnly && !i.equal(i.rangeKey.start, i.key)
+	return i.opts.rangeKeys() && i.rangeKey.rangeKeyOnly && !i.equal(i.rangeKey.start, i.key)
 }
 
 type lastPositioningOpKind int8
@@ -298,7 +307,7 @@ type readSampling struct {
 func (i *Iterator) findNextEntry(limit []byte) {
 	i.iterValidityState = IterExhausted
 	i.pos = iterPosCurForward
-	if i.rangeKey != nil {
+	if i.opts.rangeKeys() {
 		i.rangeKey.rangeKeyOnly = false
 	}
 
@@ -595,7 +604,7 @@ func (i *Iterator) sampleRead() {
 func (i *Iterator) findPrevEntry(limit []byte) {
 	i.iterValidityState = IterExhausted
 	i.pos = iterPosCurReverse
-	if i.rangeKey != nil {
+	if i.opts.rangeKeys() {
 		i.rangeKey.rangeKeyOnly = false
 	}
 
@@ -1389,7 +1398,7 @@ type RangeKeyData struct {
 // This awkwardness exists because range keys are interleaved at their inclusive
 // start positions. Note that limit is inclusive.
 func (i *Iterator) rangeKeyWithinLimit(limit []byte) bool {
-	if i.rangeKey == nil || !i.rangeKey.iter.HasRangeKey() {
+	if !i.opts.rangeKeys() || !i.rangeKey.iter.HasRangeKey() {
 		// If there are no covering range keys, it is safe to to pause
 		// immediately.
 		return false
@@ -1407,7 +1416,7 @@ func (i *Iterator) rangeKeyWithinLimit(limit []byte) bool {
 // buffers, so it must only be used if the underlying iterator's position
 // matches the top-level iterator (eg, i.pos = iterPosCur*).
 func (i *Iterator) setRangeKey() {
-	if i.rangeKey == nil {
+	if !i.opts.rangeKeys() {
 		return
 	}
 	i.rangeKey.hasRangeKey = i.rangeKey.iter.HasRangeKey()
@@ -1443,7 +1452,7 @@ func (i *Iterator) setRangeKey() {
 // circumstances the underlying iterator will be advanced to the next user key
 // before returning to the user.
 func (i *Iterator) saveRangeKey() {
-	if i.rangeKey == nil {
+	if !i.opts.rangeKeys() {
 		return
 	}
 	i.rangeKey.hasRangeKey = i.rangeKey.iter.HasRangeKey()
@@ -1483,7 +1492,7 @@ func (i *Iterator) HasPointAndRange() (hasPoint, hasRange bool) {
 	if i.iterValidityState != IterValid {
 		return false, false
 	}
-	if i.rangeKey == nil {
+	if !i.opts.rangeKeys() {
 		return true, false
 	}
 	return !i.rangeKey.rangeKeyOnly, i.rangeKey.hasRangeKey
@@ -1494,7 +1503,7 @@ func (i *Iterator) HasPointAndRange() (hasPoint, hasRange bool) {
 // bounds if there is no range key covering the current iterator position, or
 // the iterator is not configured to surface range keys.
 func (i *Iterator) RangeBounds() (start, end []byte) {
-	if i.rangeKey == nil || !i.rangeKey.hasRangeKey {
+	if !i.opts.rangeKeys() || !i.rangeKey.hasRangeKey {
 		return nil, nil
 	}
 	return i.rangeKey.start, i.rangeKey.end
@@ -1520,7 +1529,7 @@ func (i *Iterator) Value() []byte {
 // current iterator position. The range bounds may be retrieved separately
 // through Iterator.RangeBounds().
 func (i *Iterator) RangeKeys() []RangeKeyData {
-	if i.rangeKey == nil || !i.rangeKey.hasRangeKey {
+	if !i.opts.rangeKeys() || !i.rangeKey.hasRangeKey {
 		return nil
 	}
 	return i.rangeKey.keys
@@ -1552,6 +1561,22 @@ func (i *Iterator) Close() error {
 	// iterator.
 	if i.iter != nil {
 		i.err = firstError(i.err, i.iter.Close())
+
+		// Closing i.iter did not necessarily close the point and range key
+		// iterators. Calls to SetOptions may have 'disconnected' either one
+		// from i.iter if iteration key types were changed. Both point and range
+		// key iterators are preserved in case the iterator needs to switch key
+		// types again. We explicitly close both of these iterators here.
+		//
+		// NB: If the iterators were still connected to i.iter, they may be
+		// closed, but calling Close on a closed internal iterator or fragment
+		// iterator is allowed.
+		if i.pointIter != nil {
+			i.err = firstError(i.err, i.pointIter.Close())
+		}
+		if i.rangeKey != nil {
+			i.err = firstError(i.err, i.rangeKey.rangeKeyIter.Close())
+		}
 	}
 	err := i.err
 
@@ -1618,9 +1643,9 @@ func (i *Iterator) Close() error {
 
 // SetBounds sets the lower and upper bounds for the iterator. Note that:
 // - The slices provided in this SetBounds must not be changed by the caller
-//   until the iterator is closed, or a subsequent SetBounds has returned.
-//   This is because comparisons between the existing and new bounds are
-//   sometimes used to optimize seeking.
+//   until the iterator is closed, or a subsequent SetBounds or SetOptions has
+//   returned. This is because comparisons between the existing and new bounds
+//   are sometimes used to optimize seeking.
 // - If the bounds are not changing from the existing ones, it would be
 //   worthwhile for the caller to avoid calling SetBounds, since that allows
 //   for more seek optimizations. Note that the callee cannot itself look to
@@ -1655,6 +1680,52 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 	i.opts.LowerBound = lower
 	i.opts.UpperBound = upper
 	i.iter.SetBounds(lower, upper)
+}
+
+// SetOptions sets new iterator options for the iterator. Note that the lower
+// and upper bounds applied here will supersede any bounds set by previous calls
+// to SetBounds.
+//
+// Note that the slices provided in this SetOptions must not be changed by the
+// caller until the iterator is closed, or a subsequent SetBounds or SetOptions
+// has returned. This is because comparisons between the existing and new bounds
+// are sometimes used to optimize seeking. See the extended commentary on
+// SetBounds.
+//
+// The iterator will always be invalidated and must be repositioned with a call
+// to SeekGE, SeekPrefixGE, SeekLT, First, or Last.
+//
+// If only lower and upper bounds need to be modified, prefer SetBounds.
+func (i *Iterator) SetOptions(o *IterOptions) {
+	// Even though this is not a positioning operation, the alteration of the
+	// bounds means we cannot optimize Seeks by using Next.
+	i.lastPositioningOp = unknownLastPositionOp
+	i.hasPrefix = false
+	i.iterKey = nil
+	i.iterValue = nil
+	i.err = nil
+	// This switch statement isn't necessary for correctness since callers
+	// should call a repositioning method. We could have arbitrarily set i.pos
+	// to one of the values. But it results in more intuitive behavior in
+	// tests, which do not always reposition.
+	switch i.pos {
+	case iterPosCurForward, iterPosNext, iterPosCurForwardPaused:
+		i.pos = iterPosCurForward
+	case iterPosCurReverse, iterPosPrev, iterPosCurReversePaused:
+		i.pos = iterPosCurReverse
+	}
+	i.iterValidityState = IterExhausted
+
+	// If OnlyReadGuaranteedDurable changed, the iterator stacks are incorrect,
+	// improperly including or excluding memtables. Invalidate them so that
+	// finishInitializingIter will reconstruct them.
+	if i.opts.OnlyReadGuaranteedDurable != o.OnlyReadGuaranteedDurable {
+		i.pointIter = nil
+		i.rangeKey = nil
+	}
+
+	i.opts = *o
+	finishInitializingIter(i.alloc)
 }
 
 // Metrics returns per-iterator metrics.
@@ -1715,7 +1786,6 @@ func (i *Iterator) Clone() (*Iterator, error) {
 		alloc:               buf,
 		cmp:                 i.cmp,
 		equal:               i.equal,
-		iter:                &buf.merging,
 		merge:               i.merge,
 		split:               i.split,
 		readState:           readState,
@@ -1724,6 +1794,7 @@ func (i *Iterator) Clone() (*Iterator, error) {
 		batch:               i.batch,
 		newIters:            i.newIters,
 		seqNum:              i.seqNum,
+		newRangeKeyIter:     i.newRangeKeyIter,
 	}
 	if i.rangeKey != nil {
 		// TODO(jackson): Pool range-key iterator objects.

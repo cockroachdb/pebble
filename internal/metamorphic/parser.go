@@ -96,6 +96,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.writerID, nil, []interface{}{&t.key, &t.value}
 	case *iterSetBoundsOp:
 		return &t.iterID, nil, []interface{}{&t.lower, &t.upper}
+	case *iterSetOptionsOp:
+		return &t.iterID, nil, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.rangeKeyMaskSuffix}
 	case *singleDeleteOp:
 		return &t.writerID, nil, []interface{}{&t.key, &t.maybeReplaceDelete}
 	case *rangeKeyDeleteOp:
@@ -139,6 +141,7 @@ var methods = map[string]*methodInfo{
 	"SeekPrefixGE":    makeMethod(iterSeekPrefixGEOp{}, iterTag),
 	"Set":             makeMethod(setOp{}, dbTag, batchTag),
 	"SetBounds":       makeMethod(iterSetBoundsOp{}, iterTag),
+	"SetOptions":      makeMethod(iterSetOptionsOp{}, iterTag),
 	"SingleDelete":    makeMethod(singleDeleteOp{}, dbTag, batchTag),
 }
 
