@@ -145,6 +145,10 @@ func (i *retryableIter) SetBounds(lower, upper []byte) {
 	i.iter.SetBounds(lower, upper)
 }
 
+func (i *retryableIter) SetOptions(opts *pebble.IterOptions) {
+	i.iter.SetOptions(opts)
+}
+
 func (i *retryableIter) Valid() bool {
 	return i.iter.Valid()
 }

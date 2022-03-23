@@ -87,42 +87,42 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			if len(parts) != 2 {
 				return "seek-ge <key>\n"
 			}
-			valid = iter.SeekGE([]byte(strings.TrimSpace(parts[1])))
+			valid = iter.SeekGE([]byte(parts[1]))
 		case "seek-prefix-ge":
 			if len(parts) != 2 {
 				return "seek-prefix-ge <key>\n"
 			}
-			valid = iter.SeekPrefixGE([]byte(strings.TrimSpace(parts[1])))
+			valid = iter.SeekPrefixGE([]byte(parts[1]))
 		case "seek-lt":
 			if len(parts) != 2 {
 				return "seek-lt <key>\n"
 			}
-			valid = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+			valid = iter.SeekLT([]byte(parts[1]))
 		case "seek-ge-limit":
 			if len(parts) != 3 {
 				return "seek-ge-limit <key> <limit>\n"
 			}
 			validityState = iter.SeekGEWithLimit(
-				[]byte(strings.TrimSpace(parts[1])), []byte(strings.TrimSpace(parts[2])))
+				[]byte(parts[1]), []byte(parts[2]))
 			printValidityState = true
 		case "seek-lt-limit":
 			if len(parts) != 3 {
 				return "seek-lt-limit <key> <limit>\n"
 			}
 			validityState = iter.SeekLTWithLimit(
-				[]byte(strings.TrimSpace(parts[1])), []byte(strings.TrimSpace(parts[2])))
+				[]byte(parts[1]), []byte(parts[2]))
 			printValidityState = true
 		case "next-limit":
 			if len(parts) != 2 {
 				return "next-limit <limit>\n"
 			}
-			validityState = iter.NextWithLimit([]byte(strings.TrimSpace(parts[1])))
+			validityState = iter.NextWithLimit([]byte(parts[1]))
 			printValidityState = true
 		case "prev-limit":
 			if len(parts) != 2 {
 				return "prev-limit <limit>\n"
 			}
-			validityState = iter.PrevWithLimit([]byte(strings.TrimSpace(parts[1])))
+			validityState = iter.PrevWithLimit([]byte(parts[1]))
 			printValidityState = true
 		case "first":
 			valid = iter.First()
@@ -139,7 +139,7 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			var lower []byte
 			var upper []byte
 			for _, part := range parts[1:] {
-				arg := strings.Split(strings.TrimSpace(part), "=")
+				arg := strings.Split(part, "=")
 				switch arg[0] {
 				case "lower":
 					lower = []byte(arg[1])
@@ -150,6 +150,38 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 				}
 			}
 			iter.SetBounds(lower, upper)
+			valid = iter.Valid()
+		case "set-options":
+			const usageString = "set-options [lower=<lower>] [upper=<upper>] [key-types=point|range|both] [mask-suffix=<suffix>]\n"
+			var opts IterOptions
+			for _, part := range parts[1:] {
+				arg := strings.SplitN(part, "=", 2)
+				if len(arg) != 2 {
+					return usageString
+				}
+				switch arg[0] {
+				case "lower":
+					opts.LowerBound = []byte(arg[1])
+				case "upper":
+					opts.UpperBound = []byte(arg[1])
+				case "key-types":
+					switch arg[1] {
+					case "point":
+						opts.KeyTypes = IterKeyTypePointsOnly
+					case "range":
+						opts.KeyTypes = IterKeyTypeRangesOnly
+					case "both":
+						opts.KeyTypes = IterKeyTypePointsAndRanges
+					default:
+						return fmt.Sprintf("set-options unknown key-type %q:\n%s", arg[1], usageString)
+					}
+				case "mask-suffix":
+					opts.RangeKeyMasking.Suffix = []byte(arg[1])
+				default:
+					return fmt.Sprintf("set-options: unknown arg %q:\n%s", arg[0], usageString)
+				}
+			}
+			iter.SetOptions(&opts)
 			valid = iter.Valid()
 		case "clone":
 			clonedIter, err := iter.Clone()
