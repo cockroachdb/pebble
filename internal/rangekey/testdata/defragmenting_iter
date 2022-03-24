@@ -15,11 +15,11 @@ last
 prev
 prev
 ----
-first     [a, d): "@3" = "bananas"
-next      [d, e): "@3" = "bananas", "@1" = "pineapple"
+first     a-d:{(#1,RANGEKEYSET,@3,bananas)}
+next      d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
 next      .
-last      [d, e): "@3" = "bananas", "@1" = "pineapple"
-prev      [a, d): "@3" = "bananas"
+last      d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
+prev      a-d:{(#4,RANGEKEYSET,@3,bananas)}
 prev      .
 
 iter method=internal
@@ -32,13 +32,13 @@ prev
 prev
 prev
 ----
-first     [a, c): "@5" = <unset>, "@3" = "bananas"
-next      [c, d): "@3" = "bananas"
-next      [d, e): "@3" = "bananas", "@1" = "pineapple"
+first     a-c:{(#3,RANGEKEYUNSET,@5) (#1,RANGEKEYSET,@3,bananas)}
+next      c-d:{(#4,RANGEKEYSET,@3,bananas)}
+next      d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
 next      .
-last      [d, e): "@3" = "bananas", "@1" = "pineapple"
-prev      [c, d): "@3" = "bananas"
-prev      [a, c): "@5" = <unset>, "@3" = "bananas"
+last      d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
+prev      c-d:{(#4,RANGEKEYSET,@3,bananas)}
+prev      a-c:{(#3,RANGEKEYUNSET,@5) (#1,RANGEKEYSET,@3,bananas)}
 prev      .
 
 # Test a scenario that SHOULD result in internal defragmentation ([a,c) and
@@ -46,8 +46,8 @@ prev      .
 
 define
 a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-c-d:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@3,bananas)}
-d-e:{(#3,RANGEKEYSET,@3,bananas)}
+c-d:{(#3,RANGEKEYUNSET,@5) (#1,RANGEKEYSET,@3,bananas)}
+d-e:{(#1,RANGEKEYSET,@3,bananas)}
 ----
 
 iter method=internal
@@ -55,8 +55,8 @@ first
 next
 next
 ----
-first     [a, d): "@5" = <unset>, "@3" = "bananas"
-next      [d, e): "@3" = "bananas"
+first     a-d:{(#3,RANGEKEYUNSET,@5) (#1,RANGEKEYSET,@3,bananas)}
+next      d-e:{(#1,RANGEKEYSET,@3,bananas)}
 next      .
 
 # Test defragmenting in both directions at seek keys.
@@ -78,13 +78,13 @@ next
 seeklt d
 prev
 ----
-seekge b  [a, t): "@3" = "bananas"
-prev      .
-seekge b  [a, t): "@3" = "bananas"
+seekge b  .
+prev      a-t:{(#3,RANGEKEYSET,@3,bananas)}
+seekge b  .
 next      .
-seeklt d  [a, t): "@3" = "bananas"
+seeklt d  a-t:{(#3,RANGEKEYSET,@3,bananas)}
 next      .
-seeklt d  [a, t): "@3" = "bananas"
+seeklt d  a-t:{(#3,RANGEKEYSET,@3,bananas)}
 prev      .
 
 iter method=logical
@@ -92,9 +92,9 @@ seeklt d
 next
 prev
 ----
-seeklt d  [a, t): "@3" = "bananas"
+seeklt d  a-t:{(#3,RANGEKEYSET,@3,bananas)}
 next      .
-prev      [a, t): "@3" = "bananas"
+prev      a-t:{(#3,RANGEKEYSET,@3,bananas)}
 
 # Test next-ing and prev-ing around seek keys.
 
@@ -112,7 +112,7 @@ prev
 next
 next
 ----
-seekge r  [a, t): "@3" = "bananas"
-prev      .
-next      [a, t): "@3" = "bananas"
-next      [t, z): "@2" = "oranges"
+seekge r  t-z:{(#4,RANGEKEYSET,@2,oranges)}
+prev      a-t:{(#3,RANGEKEYSET,@3,bananas)}
+next      t-z:{(#4,RANGEKEYSET,@2,oranges)}
+next      .

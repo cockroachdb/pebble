@@ -223,12 +223,10 @@ func (s prettySpan) Format(fs fmt.State, c rune) {
 	fmt.Fprintf(fs, "}")
 }
 
-// SortKeys sorts the keys of a span.
-func SortKeys(s Span) Span {
-	sorted := keysBySeqNumKind(s.Keys)
+// SortKeys sorts a keys slice by trailer.
+func SortKeys(keys []Key) {
+	sorted := keysBySeqNumKind(keys)
 	sort.Sort(&sorted)
-	s.Keys = sorted
-	return s
 }
 
 // ParseSpan parses the string representation of a Span. It's intended for

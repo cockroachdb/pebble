@@ -192,8 +192,10 @@ type Writer struct {
 	// be added to the Writer, a keyspan.Fragmenter is used to retain the keys
 	// and values, emitting fragmented, coalesced spans as appropriate. Range
 	// keys must be added in order of their start user-key.
-	fragmenter keyspan.Fragmenter
-	rkBuf      []byte
+	fragmenter        keyspan.Fragmenter
+	rangeKeyEncoder   rangekey.Encoder
+	rangeKeyCoalesced keyspan.Span
+	rkBuf             []byte
 	// dataBlockBuf consists of the state which is currently owned by and used by
 	// the Writer client goroutine. This state can be handed off to other goroutines.
 	dataBlockBuf *dataBlockBuf
@@ -863,65 +865,21 @@ func (w *Writer) addRangeKeySpan(span keyspan.Span) error {
 	}
 	// Add this span to the fragmenter.
 	w.fragmenter.Add(span)
-	return nil
+	return w.err
 }
 
 func (w *Writer) coalesceSpans(span keyspan.Span) {
-	// This method is the emit function of the Fragmenter.
-	s, err := rangekey.Coalesce(w.compare, span)
+	// This method is the emit function of the Fragmenter, so span.Keys is only
+	// owned by this span and it's safe to mutate.
+	err := rangekey.Coalesce(w.compare, span, &w.rangeKeyCoalesced)
 	if err != nil {
 		w.err = errors.Newf("sstable: could not coalesce span: %s", err)
 		return
 	}
-	w.addCoalescedSpan(s)
-}
 
-func (w *Writer) addCoalescedSpan(s rangekey.CoalescedSpan) {
-	// This method is the emit function of the Coalescer. The incoming
-	// CoalescedSpan is guaranteed to contain all fragments for this span in this
-	// table. The fragments are collected by range key kind (i.e. RANGEKEYSET,
-	// UNSET and DEL) and up to three key-value pairs are written to the table (up
-	// to one pair for each of RANGEKEYSET, UNSET and DEL).
-	var sets []rangekey.SuffixValue
-	var unsets [][]byte
-	for _, item := range s.Items {
-		if item.Unset {
-			unsets = append(unsets, item.Suffix)
-		} else {
-			sets = append(sets, rangekey.SuffixValue{Suffix: item.Suffix, Value: item.Value})
-		}
-	}
-
-	// Write any RANGEKEYSETs.
-	if len(sets) > 0 {
-		key := base.MakeInternalKey(s.Start, s.LargestSeqNum, base.InternalKeyKindRangeKeySet)
-		value := w.tempRangeKeyBuf(rangekey.EncodedSetValueLen(s.End, sets))
-		rangekey.EncodeSetValue(value, s.End, sets)
-		if err := w.addRangeKey(key, value); err != nil {
-			w.err = errors.Newf("sstable: range key set: %s", err)
-			return
-		}
-	}
-
-	// Write any RANGEKEYUNSETs.
-	if len(unsets) > 0 {
-		key := base.MakeInternalKey(s.Start, s.LargestSeqNum, base.InternalKeyKindRangeKeyUnset)
-		value := w.tempRangeKeyBuf(rangekey.EncodedUnsetValueLen(s.End, unsets))
-		rangekey.EncodeUnsetValue(value, s.End, unsets)
-		if err := w.addRangeKey(key, value); err != nil {
-			w.err = errors.Newf("sstable: range key unset: %s", err)
-			return
-		}
-	}
-
-	// If the span contains a delete, add a RANGEKEYDEL.
-	if s.Delete {
-		k := base.MakeInternalKey(s.Start, s.LargestSeqNum, base.InternalKeyKindRangeKeyDelete)
-		if err := w.addRangeKey(k, s.End); err != nil {
-			w.err = errors.Newf("sstable: range key delete: %s", err)
-			return
-		}
-	}
+	// NB: The span only contains range keys and is internally consistent (eg,
+	// no duplicate suffixes, no additional keys after a RANGEKEYDEL).
+	w.err = firstError(w.err, w.rangeKeyEncoder.Encode(w.rangeKeyCoalesced))
 }
 
 func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
@@ -1774,6 +1732,9 @@ func (w *Writer) Close() (err error) {
 	w.indexBlock = nil
 
 	// Make any future calls to Set or Close return an error.
+	if w.err != nil {
+		return w.err
+	}
 	w.err = errWriterClosed
 	return nil
 }
@@ -1974,8 +1935,9 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		}
 	}
 
-	// Initialize the range key fragmenter.
+	// Initialize the range key fragmenter and encoder.
 	w.fragmenter.Emit = w.coalesceSpans
+	w.rangeKeyEncoder.Emit = w.addRangeKey
 
 	// If f does not have a Flush method, do our own buffering.
 	if _, ok := f.(flusher); ok {

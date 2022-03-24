@@ -22,7 +22,6 @@ import (
 
 func TestDefragmentingIter(t *testing.T) {
 	cmp := testkeys.Comparer.Compare
-	fmtKey := testkeys.Comparer.FormatKey
 
 	var buf bytes.Buffer
 	var spans []keyspan.Span
@@ -39,17 +38,23 @@ func TestDefragmentingIter(t *testing.T) {
 		case "iter":
 			var methodStr string
 			var method DefragmentMethod
+			var transform keyspan.Transform
 			td.ScanArgs(t, "method", &methodStr)
 			switch methodStr {
 			case "internal":
 				method = DefragmentInternal
+				transform = func(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
+					s = s.Visible(base.InternalKeySeqNumMax)
+					return Coalesce(cmp, s, dst)
+				}
 			case "logical":
-				method = DefragmentLogical
+				method = userIterationDefragmenter()
+				transform = userIterationTransform(base.InternalKeySeqNumMax)
 			default:
 				panic(fmt.Sprintf("unrecognized defragment method %q", methodStr))
 			}
-			var innerIter Iter
-			innerIter.Init(cmp, fmtKey, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, spans))
+			var innerIter keyspan.MergingIter
+			innerIter.Init(cmp, transform, keyspan.NewIter(cmp, spans))
 			var iter DefragmentingIter
 			iter.Init(cmp, &innerIter, method)
 			for _, line := range strings.Split(td.Input, "\n") {
@@ -70,7 +75,7 @@ func TestDefragmentingIter_Randomized(t *testing.T) {
 }
 
 func TestDefragmentingIter_RandomizedFixedSeed(t *testing.T) {
-	const seed = 1644617922104685000
+	const seed = 1648173101214881000
 	testDefragmentingIteRandomizedOnce(t, seed)
 }
 
@@ -129,14 +134,14 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	original = fragment(cmp, formatKey, original)
 	fragmented = fragment(cmp, formatKey, fragmented)
 
-	var originalInner Iter
-	originalInner.Init(cmp, formatKey, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, original))
-	var fragmentedInner Iter
-	fragmentedInner.Init(cmp, formatKey, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, fragmented))
+	var originalInner keyspan.MergingIter
+	originalInner.Init(cmp, userIterationTransform(base.InternalKeySeqNumMax), keyspan.NewIter(cmp, original))
+	var fragmentedInner keyspan.MergingIter
+	fragmentedInner.Init(cmp, userIterationTransform(base.InternalKeySeqNumMax), keyspan.NewIter(cmp, fragmented))
 
 	var referenceIter, fragmentedIter DefragmentingIter
-	referenceIter.Init(cmp, &originalInner, DefragmentLogical)
-	fragmentedIter.Init(cmp, &fragmentedInner, DefragmentLogical)
+	referenceIter.Init(cmp, &originalInner, userIterationDefragmenter())
+	fragmentedIter.Init(cmp, &fragmentedInner, userIterationDefragmenter())
 
 	// Generate 100 random operations and run them against both iterators.
 	const numIterOps = 100
@@ -212,10 +217,14 @@ func debugContext(
 ) string {
 	var buf bytes.Buffer
 	fmt.Fprintln(&buf, "Reference:")
-	printRangeKeys(&buf, cmp, original)
+	for _, s := range original {
+		fmt.Fprintln(&buf, s)
+	}
 	fmt.Fprintln(&buf)
 	fmt.Fprintln(&buf, "Fragmented:")
-	printRangeKeys(&buf, cmp, fragmented)
+	for _, s := range fragmented {
+		fmt.Fprintln(&buf, s)
+	}
 	fmt.Fprintln(&buf)
 	fmt.Fprintln(&buf, "\nOperations diff:")
 	diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
@@ -234,7 +243,7 @@ var iterDelim = map[rune]bool{',': true, ' ': true, '(': true, ')': true, '"': t
 
 func runIterOp(w io.Writer, it *DefragmentingIter, op string) {
 	fields := strings.FieldsFunc(op, func(r rune) bool { return iterDelim[r] })
-	var s *CoalescedSpan
+	var s keyspan.Span
 	switch strings.ToLower(fields[0]) {
 	case "first":
 		s = it.First()
@@ -252,43 +261,9 @@ func runIterOp(w io.Writer, it *DefragmentingIter, op string) {
 		panic(fmt.Sprintf("unrecognized iter op %q", fields[0]))
 	}
 	fmt.Fprintf(w, "%-10s", op)
-	if s == nil {
+	if !s.Valid() {
 		fmt.Fprintln(w, ".")
 		return
 	}
-	printRangeKey(w, s)
-}
-
-func printRangeKeys(w io.Writer, cmp base.Compare, spans []keyspan.Span) {
-	var f keyspan.Fragmenter
-	f.Cmp = cmp
-	f.Emit = func(s keyspan.Span) {
-		cs, err := Coalesce(cmp, s)
-		if err != nil {
-			panic(err)
-		}
-		printRangeKey(w, &cs)
-	}
-	for _, s := range spans {
-		f.Add(s)
-	}
-	f.Finish()
-}
-
-func printRangeKey(w io.Writer, s *CoalescedSpan) {
-	fmt.Fprintf(w, "[%s, %s): ", s.Start, s.End)
-	if s.Delete {
-		fmt.Fprintf(w, " DEL")
-	}
-	for j, item := range s.Items {
-		if j > 0 || s.Delete {
-			fmt.Fprint(w, ", ")
-		}
-		if item.Unset {
-			fmt.Fprintf(w, "%q = <unset>", item.Suffix)
-		} else {
-			fmt.Fprintf(w, "%q = %q", item.Suffix, item.Value)
-		}
-	}
-	fmt.Fprintln(w)
+	fmt.Fprintln(w, s)
 }

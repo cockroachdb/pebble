@@ -20,7 +20,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
-	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -923,11 +922,10 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 		batch:               batch,
 		newIters:            d.newIters,
 		seqNum:              seqNum,
-		newRangeKeyIter: func() rangekey.Iterator {
-			return d.newRangeKeyIter(seqNum, batch, readState, &dbi.opts)
+		newRangeKeyIter: func(it *iteratorRangeKeyState) keyspan.FragmentIterator {
+			return d.newRangeKeyIter(it, seqNum, batch, readState, &dbi.opts)
 		},
 	}
-
 	if o != nil {
 		dbi.opts = *o
 	}
@@ -969,7 +967,8 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		if dbi.rangeKey == nil {
 			// TODO(jackson): Pool iteratorRangeKeyState.
 			dbi.rangeKey = &iteratorRangeKeyState{}
-			dbi.rangeKey.rangeKeyIter = dbi.newRangeKeyIter()
+			dbi.rangeKey.keys.cmp = dbi.cmp
+			dbi.rangeKey.rangeKeyIter = dbi.newRangeKeyIter(dbi.rangeKey)
 		}
 
 		// Wrap the point iterator (currently dbi.iter) with an interleaving

@@ -17,20 +17,13 @@ next
 next
 next
 ----
-●   [a, c)#10 (DEL)
-└── @5 : apples
-●   [c, d)#4
-└── @3 : coconut
-●   [e, f)#20
-├── @5 : pineapple
-└── @3 : guava
-●   [h, j)#22 (DEL)
-●   [l, m)#2
-├── @9 unset
-└── @5 unset
-●   [q, z)#14
-└── @9 : mangos
-.
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+h-j:{(#22,RANGEKEYDEL)}
+l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
+<invalid>
 
 iter
 last
@@ -41,20 +34,13 @@ prev
 prev
 prev
 ----
-●   [q, z)#14
-└── @9 : mangos
-●   [l, m)#2
-├── @9 unset
-└── @5 unset
-●   [h, j)#22 (DEL)
-●   [e, f)#20
-├── @5 : pineapple
-└── @3 : guava
-●   [c, d)#4
-└── @3 : coconut
-●   [a, c)#10 (DEL)
-└── @5 : apples
-.
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
+l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
+h-j:{(#22,RANGEKEYDEL)}
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
+<invalid>
 
 iter
 seek-ge cat
@@ -63,16 +49,11 @@ next
 next
 next
 ----
-●   [c, d)#4
-└── @3 : coconut
-●   [a, c)#10 (DEL)
-└── @5 : apples
-●   [c, d)#4
-└── @3 : coconut
-●   [e, f)#20
-├── @5 : pineapple
-└── @3 : guava
-●   [h, j)#22 (DEL)
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+h-j:{(#22,RANGEKEYDEL)}
+l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
 
 iter
 seek-ge c
@@ -81,16 +62,11 @@ next
 next
 next
 ----
-●   [c, d)#4
-└── @3 : coconut
-●   [a, c)#10 (DEL)
-└── @5 : apples
-●   [c, d)#4
-└── @3 : coconut
-●   [e, f)#20
-├── @5 : pineapple
-└── @3 : guava
-●   [h, j)#22 (DEL)
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+h-j:{(#22,RANGEKEYDEL)}
 
 iter
 seek-ge cat
@@ -101,20 +77,13 @@ next
 next
 next
 ----
-●   [c, d)#4
-└── @3 : coconut
-●   [c, d)#4
-└── @3 : coconut
-●   [a, c)#10 (DEL)
-└── @5 : apples
-.
-●   [a, c)#10 (DEL)
-└── @5 : apples
-●   [c, d)#4
-└── @3 : coconut
-●   [e, f)#20
-├── @5 : pineapple
-└── @3 : guava
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
+<invalid>
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
 
 iter
 seek-ge dog
@@ -125,20 +94,13 @@ next
 next
 next
 ----
-●   [e, f)#20
-├── @5 : pineapple
-└── @3 : guava
-●   [h, j)#22 (DEL)
-●   [e, f)#20
-├── @5 : pineapple
-└── @3 : guava
-●   [h, j)#22 (DEL)
-●   [l, m)#2
-├── @9 unset
-└── @5 unset
-●   [q, z)#14
-└── @9 : mangos
-.
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+h-j:{(#22,RANGEKEYDEL)}
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+h-j:{(#22,RANGEKEYDEL)}
+l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
+<invalid>
 
 iter
 seek-ge a
@@ -146,23 +108,17 @@ seek-ge ace
 seek-ge bat
 seek-ge c
 ----
-●   [a, c)#10 (DEL)
-└── @5 : apples
-●   [a, c)#10 (DEL)
-└── @5 : apples
-●   [a, c)#10 (DEL)
-└── @5 : apples
-●   [c, d)#4
-└── @3 : coconut
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
 
 iter
 seek-ge 1
 seek-ge c1
 ----
-●   [a, c)#10 (DEL)
-└── @5 : apples
-●   [c, d)#4
-└── @3 : coconut
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
+e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
 
 iter
 seek-ge zoo
@@ -171,45 +127,36 @@ seek-ge z
 prev
 seek-ge yeti
 ----
-.
-●   [q, z)#14
-└── @9 : mangos
-.
-●   [q, z)#14
-└── @9 : mangos
-●   [q, z)#14
-└── @9 : mangos
+<invalid>
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
+<invalid>
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
+<invalid>
 
 iter
 seek-ge h
 seek-ge j
 ----
-●   [h, j)#22 (DEL)
-●   [l, m)#2
-├── @9 unset
-└── @5 unset
+h-j:{(#22,RANGEKEYDEL)}
+l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
 
 iter
 first
 prev
 next
 ----
-●   [a, c)#10 (DEL)
-└── @5 : apples
-.
-●   [a, c)#10 (DEL)
-└── @5 : apples
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
+<invalid>
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
 
 iter
 last
 next
 prev
 ----
-●   [q, z)#14
-└── @9 : mangos
-.
-●   [q, z)#14
-└── @9 : mangos
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
+<invalid>
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
 
 iter
 seek-lt a
@@ -220,17 +167,13 @@ seek-lt zoo
 next
 prev
 ----
-.
-.
-●   [a, c)#10 (DEL)
-└── @5 : apples
-●   [q, z)#14
-└── @9 : mangos
-●   [q, z)#14
-└── @9 : mangos
-.
-●   [q, z)#14
-└── @9 : mangos
+<invalid>
+<invalid>
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
+<invalid>
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
 
 define visible-seq-num=10
 a-c:{(#8,RANGEKEYSET,@5,apples) (#7,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
@@ -244,25 +187,15 @@ first
 next
 next
 ----
-●   [a, c)#8
-├── @5 : apples
-├── @3 : bananas
-└── @2 : oranges
-●   [c, d)#5
-└── @1 : coconut
-●   [d, f)#5
-└── @1 : coconut
+a-c:{(#8,RANGEKEYSET,@5,apples) (#7,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
+c-d:{(#5,RANGEKEYSET,@1,coconut)}
+d-f:{(#5,RANGEKEYSET,@1,coconut)}
 
 iter
 last
 prev
 prev
 ----
-●   [d, f)#5
-└── @1 : coconut
-●   [c, d)#5
-└── @1 : coconut
-●   [a, c)#8
-├── @5 : apples
-├── @3 : bananas
-└── @2 : oranges
+d-f:{(#5,RANGEKEYSET,@1,coconut)}
+c-d:{(#5,RANGEKEYSET,@1,coconut)}
+a-c:{(#8,RANGEKEYSET,@5,apples) (#7,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
