@@ -24,13 +24,27 @@ import (
 // seeks would require introducing key comparisons to switchTo{Min,Max}Heap
 // where there currently are none.
 
-// Transform defines a transform function to be applied to a Span.
-type Transform func(Span) Span
+// Transform defines a transform function to be applied to a Span. A Transform
+// takes a Span as input and writes the transformed Span to the provided output
+// *Span pointer. The output Span's Keys slice may be reused by Transform to
+// reduce allocations.
+type Transform func(cmp base.Compare, in Span, out *Span) error
 
-// VisibleTransform filters keys that are invisible at the provided snapshot
+func noopTransform(_ base.Compare, s Span, dst *Span) error {
+	dst.Start, dst.End = s.Start, s.End
+	dst.Keys = append(dst.Keys[:0], s.Keys...)
+	return nil
+}
+
+// visibleTransform filters keys that are invisible at the provided snapshot
 // sequence number.
-func VisibleTransform(snapshot uint64) Transform {
-	return func(s Span) Span { return s.Visible(snapshot) }
+func visibleTransform(snapshot uint64) Transform {
+	return func(_ base.Compare, s Span, dst *Span) error {
+		s = s.Visible(snapshot)
+		dst.Start, dst.End = s.Start, s.End
+		dst.Keys = append(dst.Keys[:0], s.Keys...)
+		return nil
+	}
 }
 
 // TODO(jackson): Currently MergingIter never returns empty spans. If a span
@@ -183,13 +197,19 @@ type MergingIter struct {
 	keys keysBySeqNumKind
 	// transform defines a function to be applied to a span before it's yielded
 	// to the user. A transform may filter individual keys contained within the
-	// span. For example, the VisibleTransform implementation filters out keys
-	// that are not visible at a particular sequence number.
+	// span.
 	transform Transform
+	// span holds the iterator's current span. This span is used as the
+	// destination for transforms. Every tranformed span overwrites the
+	// previous.
+	span Span
 
 	err error
 	dir int8
 }
+
+// MergingIter implements the FragmentIterator interface.
+var _ FragmentIterator = (*MergingIter)(nil)
 
 type mergingIterLevel struct {
 	iter fragmentBoundIterator
@@ -540,8 +560,7 @@ func (m *MergingIter) findNextFragmentSet() Span {
 		// defined over [m.start, m.end) if we're between the end of one span
 		// and the start of the next, OR if the configured transform filters any
 		// keys out.
-		m.synthesizeKeys(+1)
-		if s := m.span(); len(s.Keys) > 0 {
+		if s := m.synthesizeKeys(+1); len(s.Keys) > 0 {
 			return s
 		}
 	}
@@ -606,8 +625,7 @@ func (m *MergingIter) findPrevFragmentSet() Span {
 		// spanning [m.start, m.end) if we're between the end of one span and
 		// the start of the next, OR if the configured transform filters any
 		// keys out.
-		m.synthesizeKeys(-1)
-		if s := m.span(); len(s.Keys) > 0 {
+		if s := m.synthesizeKeys(-1); len(s.Keys) > 0 {
 			return s
 		}
 	}
@@ -620,7 +638,7 @@ func (m *MergingIter) heapRoot() *boundKey {
 	return m.heap.items[0].boundKey
 }
 
-func (m *MergingIter) synthesizeKeys(dir int8) {
+func (m *MergingIter) synthesizeKeys(dir int8) Span {
 	if invariants.Enabled {
 		if m.cmp(m.start, m.end) >= 0 {
 			panic(fmt.Sprintf("pebble: invariant violation: span start ≥ end: %s >= %s", m.start, m.end))
@@ -646,15 +664,18 @@ func (m *MergingIter) synthesizeKeys(dir int8) {
 		}
 	}
 	sort.Sort(&m.keys)
-}
 
-func (m *MergingIter) span() Span {
 	// Apply the configured transform. See VisibleTransform.
-	return m.transform(Span{
+	s := Span{
 		Start: m.start,
 		End:   m.end,
 		Keys:  m.keys,
-	})
+	}
+	if err := m.transform(m.cmp, s, &m.span); err != nil {
+		m.err = err
+		return Span{}
+	}
+	return m.span
 }
 
 func (m *MergingIter) invalidate() {
@@ -704,15 +725,16 @@ func (m *MergingIter) prevEntry() {
 	}
 }
 
-// ClonedIters makes a clone of the merging iterator's underlying iterators and
-// returns them.
-func (m *MergingIter) ClonedIters() []FragmentIterator {
+// Clone clones the merging iterator and its underlying iterators.
+func (m *MergingIter) Clone() FragmentIterator {
 	// TODO(jackson): Remove when range-key state is included in readState.
 	var iters []FragmentIterator
 	for l := range m.levels {
 		iters = append(iters, m.levels[l].iter.iter.Clone())
 	}
-	return iters
+	dup := &MergingIter{}
+	dup.Init(m.cmp, m.transform, iters...)
+	return dup
 }
 
 // DebugString returns a string representing the current internal state of the
@@ -817,13 +839,4 @@ func (h *mergingIterHeap) down(i0, n int) bool {
 		i = j
 	}
 	return i > i0
-}
-
-// firstError returns the first non-nil error of err0 and err1, or nil if both
-// are nil.
-func firstError(err0, err1 error) error {
-	if err0 != nil {
-		return err0
-	}
-	return err1
 }

@@ -34,49 +34,41 @@ next
 next
 ----
 PointKey: a#72057594037927935,21
-RangeKey: [a, c)
-└── @5 : apples
+RangeKey: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 -
 PointKey: artichoke#10,1
-RangeKey: [a, c)
-└── @5 : apples
+RangeKey: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 -
 PointKey: artichoke#8,1
-RangeKey: [a, c)
-└── @5 : apples
+RangeKey: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 -
 PointKey: c#72057594037927935,21
-RangeKey: [c, d)
-└── @3 : coconut
+RangeKey: c-d:{(#4,RANGEKEYSET,@3,coconut)}
 -
 PointKey: carrot#13,1
-RangeKey: [c, d)
-└── @3 : coconut
+RangeKey: c-d:{(#4,RANGEKEYSET,@3,coconut)}
 -
 PointKey: cauliflower#9,0
-RangeKey: [c, d)
-└── @3 : coconut
+RangeKey: c-d:{(#4,RANGEKEYSET,@3,coconut)}
 -
 PointKey: e#72057594037927935,21
-RangeKey: [e, f)
-├── @5 : pineapple
-└── @3 : guava
+RangeKey: e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+-
+PointKey: h#72057594037927935,21
+RangeKey: h-j:{(#22,RANGEKEYDEL) (#21,RANGEKEYSET,@5,peaches) (#21,RANGEKEYSET,@3,starfruit)}
+-
+PointKey: l#72057594037927935,21
+RangeKey: l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
 -
 PointKey: parsnip#3,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: q#72057594037927935,21
-RangeKey: [q, z)
-└── @9 : mangos
+RangeKey: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
 PointKey: tomato#2,1
-RangeKey: [q, z)
-└── @9 : mangos
+RangeKey: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
-PointKey: zucchini#12,2
-RangeKey: .
--
-.
 
 # Test set-bounds passes through to the underlying point iterator and truncates
 # a range key's end.
@@ -88,12 +80,10 @@ next
 next
 ----
 PointKey: b#72057594037927935,21
-RangeKey: [b, c)
-└── @5 : apples
+RangeKey: b-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 -
 PointKey: c#72057594037927935,21
-RangeKey: [c, carrot)
-└── @3 : coconut
+RangeKey: c-carrot:{(#4,RANGEKEYSET,@3,coconut)}
 -
 .
 
@@ -108,12 +98,10 @@ prev
 prev
 ----
 PointKey: c#72057594037927935,21
-RangeKey: [c, carrot)
-└── @3 : coconut
+RangeKey: c-carrot:{(#4,RANGEKEYSET,@3,coconut)}
 -
 PointKey: b#72057594037927935,21
-RangeKey: [b, c)
-└── @5 : apples
+RangeKey: b-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 -
 .
 
@@ -128,22 +116,19 @@ seek-ge yyy
 seek-ge z
 ----
 PointKey: a#72057594037927935,21
-RangeKey: [a, c)
-└── @5 : apples
+RangeKey: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 -
 PointKey: a#72057594037927935,21
-RangeKey: [a, c)
-└── @5 : apples
+RangeKey: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 -
 PointKey: parsnip#3,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: yyy#72057594037927935,21
-RangeKey: [q, z)
-└── @9 : mangos
+RangeKey: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
 PointKey: zucchini#12,2
-RangeKey: .
+RangeKey: <invalid>
 -
 
 iter
@@ -158,37 +143,31 @@ next
 next
 ----
 PointKey: zucchini#12,2
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: tomato#2,1
-RangeKey: [q, z)
-└── @9 : mangos
+RangeKey: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
 PointKey: q#72057594037927935,21
-RangeKey: [q, z)
-└── @9 : mangos
+RangeKey: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
 PointKey: parsnip#3,1
-RangeKey: .
+RangeKey: <invalid>
 -
-PointKey: e#72057594037927935,21
-RangeKey: [e, f)
-├── @5 : pineapple
-└── @3 : guava
+PointKey: l#72057594037927935,21
+RangeKey: l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
 -
 PointKey: parsnip#3,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: q#72057594037927935,21
-RangeKey: [q, z)
-└── @9 : mangos
+RangeKey: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
 PointKey: tomato#2,1
-RangeKey: [q, z)
-└── @9 : mangos
+RangeKey: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
 PointKey: zucchini#12,2
-RangeKey: .
+RangeKey: <invalid>
 -
 
 iter
@@ -199,23 +178,19 @@ seek-ge parsnip
 next
 ----
 PointKey: tomato#72057594037927935,21
-RangeKey: [q, z)
-└── @9 : mangos
+RangeKey: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
 PointKey: tomato#2,1
-RangeKey: [q, z)
-└── @9 : mangos
+RangeKey: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
 PointKey: q#72057594037927935,21
-RangeKey: [q, z)
-└── @9 : mangos
+RangeKey: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
 PointKey: parsnip#3,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: q#72057594037927935,21
-RangeKey: [q, z)
-└── @9 : mangos
+RangeKey: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
 
 iter
@@ -224,11 +199,10 @@ prev
 seek-lt a
 ----
 PointKey: q#72057594037927935,21
-RangeKey: [q, z)
-└── @9 : mangos
+RangeKey: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 -
 PointKey: parsnip#3,1
-RangeKey: .
+RangeKey: <invalid>
 -
 .
 
@@ -259,20 +233,16 @@ next
 next
 ----
 PointKey: a#72057594037927935,21
-RangeKey: [a, c)
-└── @5 : apples
+RangeKey: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 -
 PointKey: a#10,1
-RangeKey: [a, c)
-└── @5 : apples
+RangeKey: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 -
 PointKey: a#8,1
-RangeKey: [a, c)
-└── @5 : apples
+RangeKey: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 -
 PointKey: b#13,1
-RangeKey: [a, c)
-└── @5 : apples
+RangeKey: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 -
 
 iter
@@ -291,37 +261,28 @@ next
 next
 ----
 PointKey: ab#72057594037927935,21
-RangeKey: [a, c)
-└── @5 : apples
+RangeKey: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 -
 PointKey: b#13,1
-RangeKey: [a, c)
-└── @5 : apples
+RangeKey: a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@2,oranges)}
 -
 PointKey: c#72057594037927935,21
-RangeKey: [c, d)
-└── @3 : coconut
+RangeKey: c-d:{(#4,RANGEKEYSET,@3,coconut)}
 -
 PointKey: c#9,0
-RangeKey: [c, d)
-└── @3 : coconut
+RangeKey: c-d:{(#4,RANGEKEYSET,@3,coconut)}
 -
 PointKey: d#3,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: e#72057594037927935,21
-RangeKey: [e, f)
-├── @5 : pineapple
-└── @3 : guava
+RangeKey: e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
 -
 PointKey: e#2,1
-RangeKey: [e, f)
-├── @5 : pineapple
-└── @3 : guava
+RangeKey: e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
 -
-PointKey: q#72057594037927935,21
-RangeKey: [q, z)
-└── @9 : mangos
+PointKey: h#72057594037927935,21
+RangeKey: h-j:{(#22,RANGEKEYDEL) (#21,RANGEKEYSET,@5,peaches) (#21,RANGEKEYSET,@3,starfruit)}
 -
 
 define-rangekeys
@@ -348,28 +309,22 @@ next
 next
 ----
 PointKey: a#72057594037927935,21
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 PointKey: a#10,1
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 PointKey: a#8,1
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 PointKey: b#13,1
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 PointKey: c#9,0
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 PointKey: d#3,1
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 
 # Switch to reverse within a range key.
@@ -380,12 +335,10 @@ seek-ge b
 prev
 ----
 PointKey: b#72057594037927935,21
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 PointKey: a#8,1
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 
 # Switch to reverse after a seek-ge. Reverse iteration should not revisit the
@@ -400,24 +353,19 @@ prev
 prev
 ----
 PointKey: b#72057594037927935,21
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 PointKey: b#13,1
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 PointKey: a#8,1
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 PointKey: a#10,1
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 PointKey: a#72057594037927935,21
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 
 # Switch to forward iteration after a seek-lt.
@@ -427,12 +375,10 @@ seek-lt c
 next
 ----
 PointKey: b#13,1
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 PointKey: c#9,0
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 
 iter
@@ -441,16 +387,13 @@ prev
 next
 ----
 PointKey: b#13,1
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 PointKey: a#8,1
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 PointKey: b#13,1
-RangeKey: [a, z)
-└── @5 : apples
+RangeKey: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
 
 # Test sparse range keys.
@@ -483,26 +426,22 @@ next
 next
 ----
 PointKey: a#9,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: ace#72057594037927935,21
-RangeKey: [ace, bat)
-└── @5 : v5
+RangeKey: ace-bat:{(#5,RANGEKEYSET,@5,v5)}
 -
 PointKey: b#13,1
-RangeKey: [ace, bat)
-└── @5 : v5
+RangeKey: ace-bat:{(#5,RANGEKEYSET,@5,v5)}
 -
 PointKey: ace#72057594037927935,21
-RangeKey: [ace, bat)
-└── @5 : v5
+RangeKey: ace-bat:{(#5,RANGEKEYSET,@5,v5)}
 -
 PointKey: b#13,1
-RangeKey: [ace, bat)
-└── @5 : v5
+RangeKey: ace-bat:{(#5,RANGEKEYSET,@5,v5)}
 -
 PointKey: c#9,0
-RangeKey: .
+RangeKey: <invalid>
 -
 
 iter
@@ -510,10 +449,10 @@ seek-lt ace
 seek-lt zoo
 ----
 PointKey: a#9,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: z#3,1
-RangeKey: .
+RangeKey: <invalid>
 -
 
 iter
@@ -523,14 +462,13 @@ next
 next
 ----
 PointKey: z#3,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: y#3,1
-RangeKey: [x, z)
-└── @6 : v5
+RangeKey: x-z:{(#6,RANGEKEYSET,@6,v5)}
 -
 PointKey: z#3,1
-RangeKey: .
+RangeKey: <invalid>
 -
 .
 
@@ -541,16 +479,16 @@ seek-ge m
 prev
 ----
 PointKey: d#18,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: m#4,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: m#4,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: d#18,1
-RangeKey: .
+RangeKey: <invalid>
 -
 
 # First, Last, SeekLT and SeekGE elide spans without Sets.
@@ -572,17 +510,17 @@ last
 seek-ge a
 seek-lt d
 ----
-PointKey: c#8,1
-RangeKey: .
+PointKey: b#72057594037927935,21
+RangeKey: b-d:{(#5,RANGEKEYDEL)}
+-
+PointKey: f#72057594037927935,21
+RangeKey: f-g:{(#6,RANGEKEYDEL)}
+-
+PointKey: b#72057594037927935,21
+RangeKey: b-d:{(#5,RANGEKEYDEL)}
 -
 PointKey: c#8,1
-RangeKey: .
--
-PointKey: c#8,1
-RangeKey: .
--
-PointKey: c#8,1
-RangeKey: .
+RangeKey: b-d:{(#5,RANGEKEYDEL)}
 -
 
 # Test a scenario where Next is out of point keys, the current range key has
@@ -605,14 +543,14 @@ next
 next
 ----
 PointKey: w#72057594037927935,21
-RangeKey: [w, y)
-└── @1 : v1
+RangeKey: w-y:{(#5,RANGEKEYSET,@1,v1)}
 -
 PointKey: x#8,1
-RangeKey: [w, y)
-└── @1 : v1
+RangeKey: w-y:{(#5,RANGEKEYSET,@1,v1)}
 -
-.
+PointKey: y#72057594037927935,21
+RangeKey: y-z:{(#5,RANGEKEYDEL)}
+-
 
 # Test a scenario where we change direction on a synthetic range key boundary
 # key.
@@ -621,8 +559,7 @@ first
 prev
 ----
 PointKey: w#72057594037927935,21
-RangeKey: [w, y)
-└── @1 : v1
+RangeKey: w-y:{(#5,RANGEKEYSET,@1,v1)}
 -
 .
 
@@ -642,15 +579,13 @@ prev
 next
 ----
 PointKey: c#72057594037927935,21
-RangeKey: [a, z)
-└── @1 : v1
+RangeKey: a-z:{(#5,RANGEKEYSET,@1,v1)}
 -
 PointKey: a#72057594037927935,21
-RangeKey: [a, z)
-└── @1 : v1
+RangeKey: a-z:{(#5,RANGEKEYSET,@1,v1)}
 -
 PointKey: z#8,1
-RangeKey: .
+RangeKey: <invalid>
 -
 
 iter
@@ -662,15 +597,13 @@ prev
 prev
 ----
 PointKey: a#72057594037927935,21
-RangeKey: [a, c)
-└── @1 : v1
+RangeKey: a-c:{(#5,RANGEKEYSET,@1,v1)}
 -
 PointKey: z#8,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: c#72057594037927935,21
-RangeKey: [c, z)
-└── @1 : v1
+RangeKey: c-z:{(#5,RANGEKEYSET,@1,v1)}
 -
 .
 
@@ -701,27 +634,25 @@ prev
 next
 ----
 PointKey: z#1,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: v#1,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: v#2,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: s#1,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: j#72057594037927935,21
-RangeKey: [j, l)
-└── @1 : v0
+RangeKey: j-l:{(#3,RANGEKEYSET,@1,v0)}
 -
 PointKey: g#1,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: j#72057594037927935,21
-RangeKey: [j, l)
-└── @1 : v0
+RangeKey: j-l:{(#3,RANGEKEYSET,@1,v0)}
 -
 
 # Test switching directions after exhausting a range key iterator.
@@ -747,22 +678,19 @@ next
 prev
 ----
 PointKey: a#1,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: j#72057594037927935,21
-RangeKey: [j, l)
-└── @1 : v0
+RangeKey: j-l:{(#3,RANGEKEYSET,@1,v0)}
 -
 PointKey: k#1,1
-RangeKey: [j, l)
-└── @1 : v0
+RangeKey: j-l:{(#3,RANGEKEYSET,@1,v0)}
 -
 PointKey: m#1,1
-RangeKey: .
+RangeKey: <invalid>
 -
 PointKey: k#1,1
-RangeKey: [j, l)
-└── @1 : v0
+RangeKey: j-l:{(#3,RANGEKEYSET,@1,v0)}
 -
 
 # Test a seek that moves the lower bound beyond the upper bound.

@@ -135,13 +135,15 @@ func NewExternalIter(
 
 		// TODO(jackson): Pool range-key iterator objects.
 		dbi.rangeKey = &iteratorRangeKeyState{}
-		fragmentedIter := &rangekey.Iter{}
-		fragmentedIter.Init(o.Comparer.Compare, o.Comparer.FormatKey, base.InternalKeySeqNumMax, rangeKeyIters...)
-		iter := &rangekey.DefragmentingIter{}
-		iter.Init(o.Comparer.Compare, fragmentedIter, rangekey.DefragmentLogical)
-		dbi.rangeKey.rangeKeyIter = iter
+		dbi.rangeKey.rangeKeyIter = rangekey.InitUserIteration(
+			o.Comparer.Compare,
+			base.InternalKeySeqNumMax,
+			&dbi.rangeKey.alloc.merging,
+			&dbi.rangeKey.alloc.defraging,
+			rangeKeyIters...,
+		)
 
-		dbi.rangeKey.iter.Init(dbi.cmp, dbi.split, &buf.merging, iter, dbi.opts.RangeKeyMasking.Suffix)
+		dbi.rangeKey.iter.Init(dbi.cmp, dbi.split, &buf.merging, dbi.rangeKey.rangeKeyIter, dbi.opts.RangeKeyMasking.Suffix)
 		dbi.iter = &dbi.rangeKey.iter
 		dbi.iter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
 	}

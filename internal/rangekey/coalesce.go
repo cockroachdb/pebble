@@ -5,79 +5,129 @@
 package rangekey
 
 import (
+	"bytes"
 	"sort"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
-// CoalescedSpan describes the state of range keys within a user key span.
-type CoalescedSpan struct {
-	// LargestSeqNum holds the largest sequence number of any of the internal
-	// range keys coalesced into this span.
-	LargestSeqNum uint64
-	// Start and End hold the inclusive start user key and exclusive end user
-	// key.
-	Start, End []byte
-	// Items contains all of the span's Sets and Unsets, ordered by Suffix.
-	Items []SuffixItem
-	// Delete is true if a RANGEKEYDEL covering this user key span was coalesced
-	// into this span.
-	Delete bool
+// InitUserIteration initializes the range key iterator stack for user
+// iteration. The resulting fragment iterator applies range key semantics,
+// defragments spans according to their user-observable state and removes all
+// Keys other than RangeKeySets describing the current state of range keys.
+//
+// The snapshot sequence number parameter determines which keys are visible. Any
+// keys not visible at the provided snapshot are ignored.
+func InitUserIteration(
+	cmp base.Compare,
+	snapshot uint64,
+	miter *keyspan.MergingIter,
+	diter *keyspan.DefragmentingIter,
+	levelIters ...keyspan.FragmentIterator,
+) keyspan.FragmentIterator {
+	miter.Init(cmp, userIterationTransform(snapshot), levelIters...)
+	diter.Init(cmp, miter, userIterationDefragmenter())
+	return diter
 }
 
-// SmallestSetSuffix returns the smallest suffix of an actively set range key
-// (excluding suffixes that are unset or deleted), that's also greater than or
-// equal to (as defined by cmp) than the suffixThreshold argument.
-// SmallestSetSuffix returns nil if suffixThreshold is nil.
-func (s *CoalescedSpan) SmallestSetSuffix(cmp base.Compare, suffixThreshold []byte) []byte {
-	if suffixThreshold == nil {
+// userIterationTransform returns a keyspan.Transform for use with a
+// keyspan.MergingIter that transforms spans by resolving range keys at the
+// provided snapshot sequence number. Shadowing of keys is resolved (eg, removal
+// of unset keys, removal of keys overwritten by a set at the same suffix, etc)
+// and then non-RangeKeySet keys are removed. The resulting transformed spans
+// only contain RangeKeySets describing the state visible at the provided
+// sequence number.
+func userIterationTransform(snapshot uint64) keyspan.Transform {
+	return func(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
+		// Apply shadowing of keys.
+		if err := Coalesce(cmp, s.Visible(snapshot), dst); err != nil {
+			return err
+		}
+
+		// During user iteration over range keys, unsets and deletes don't
+		// matter. Remove them. This step helps logical defragmentation during
+		// iteration.
+		keys := dst.Keys
+		dst.Keys = dst.Keys[:0]
+		for i := range keys {
+			switch keys[i].Kind() {
+			case base.InternalKeyKindRangeKeySet:
+				dst.Keys = append(dst.Keys, keys[i])
+			case base.InternalKeyKindRangeKeyUnset:
+				// Skip.
+				continue
+			case base.InternalKeyKindRangeKeyDelete:
+				// Skip.
+				continue
+			default:
+				return base.CorruptionErrorf("pebble: unrecognized range key kind %s", keys[i].Kind())
+			}
+		}
 		return nil
 	}
-	// NB: s.Items is sorted in ascending order, so return the first matching
-	// suffix.
-	for i := range s.Items {
-		if invariants.Enabled && i > 0 && cmp(s.Items[i-1].Suffix, s.Items[i].Suffix) >= 0 {
-			panic("pebble: invariant violation: coalesced span's suffixes out-of-order")
+}
+
+// userIterationDefragmenter constructs a DefragmentMethod that configures a
+// DefragmentingIter to defragment spans of range keys if their user-visible
+// state is identical. This defragmenting method assumes the provided spans have
+// already been transformed through UserIterationTransform, so all RangeKeySets
+// are user-visible sets. This defragmenter checks for equality between set
+// suffixes and values (ignoring sequence numbers). It's intended for use during
+// user iteration, when the wrapped keyspan iterator is merging spans across all
+// levels of the LSM.
+//
+// The returned defragmenting method is stateful, and must not be used on
+// multiple DefragmentingIters concurrently.
+func userIterationDefragmenter() keyspan.DefragmentMethod {
+	var bufA keysBySuffix
+	var bufB keysBySuffix
+	return func(cmp base.Compare, a, b keyspan.Span) bool {
+		// UserIterationDefragmenter must only be used on spans that have
+		// transformed by UserIterationTransform. The transform applies
+		// shadowing and removes all keys besides the resulting Sets. Since
+		// shadowing has been applied, each Set must set a unique suffix. If the
+		// two spans are equivalent, they must have the same number of range key
+		// sets.
+		if len(a.Keys) != len(b.Keys) {
+			return false
 		}
-		if !s.Items[i].Unset && cmp(s.Items[i].Suffix, suffixThreshold) >= 0 {
-			return s.Items[i].Suffix
+
+		// The keys in both spans must be all sets. In order to be equivalent
+		// during user iteration, they must set identical suffix-value mappings.
+		// They do not need to have the same sequence number.
+		//
+		// Currently, the Keys are sorted by Trailer (as per the keyspan.Span
+		// and keyspan.FragmentIterator interfaces). Collect all the keys in
+		// both spans into buffers and sort them by suffix for comparison.
+		bufA.cmp = cmp
+		bufA.keys = append(bufA.keys[:0], a.Keys...)
+		sort.Sort(bufA)
+		bufB.cmp = cmp
+		bufB.keys = append(bufB.keys[:0], b.Keys...)
+		sort.Sort(bufB)
+
+		for i := range bufA.keys {
+			if bufA.keys[i].Kind() != base.InternalKeyKindRangeKeySet ||
+				bufB.keys[i].Kind() != base.InternalKeyKindRangeKeySet {
+				panic("pebble: unexpected non-RangeKeySet during defragmentation")
+			}
+			if cmp(bufA.keys[i].Suffix, bufB.keys[i].Suffix) != 0 {
+				return false
+			}
+			if !bytes.Equal(bufA.keys[i].Value, bufB.keys[i].Value) {
+				return false
+			}
 		}
+		return true
 	}
-	return nil
 }
-
-// HasSets returns true if the coalesced span contains any Sets. When several
-// internal range keys are coalesced, it's possible for the resulting span to
-// only contain unsets or deletes. If encountered during user iteration, these
-// range keys may be elided.
-func (s *CoalescedSpan) HasSets() bool {
-	for _, i := range s.Items {
-		if !i.Unset {
-			return true
-		}
-	}
-	return false
-}
-
-// SuffixItem describes either a set or unset of a value at a particular
-// suffix.
-type SuffixItem struct {
-	Suffix []byte
-	Value  []byte
-	Unset  bool
-}
-
-// TODO(jackson): Refactor Coalesce to return a keyspan.Span rather than a
-// CoalescedSpan.
 
 // Coalesce imposes range key semantics and coalesces range keys with the same
 // bounds. Coalesce drops any keys shadowed by more recent sets, unsets or
-// deletes. Coalesce returns a CoalescedSpan describing the still extant logical
-// range keys, including the Set suffix-value pairs, the Unset suffixes and
-// whether any lower-seqnumed spans should be Deleted.
+// deletes. Coalesce modifies the provided span's Keys slice, reslicing the
+// slice to remove dropped keys.
 //
 // Coalescence has subtle behavior with respect to sequence numbers. Coalesce
 // depends on a keyspan.Span's Keys being sorted in sequence number descending
@@ -107,20 +157,18 @@ type SuffixItem struct {
 // keys do not affect one another. Ingested sstables are expected to be
 // consistent with respect to the set/unset suffixes: A given suffix should be
 // set or unset but not both.
-func Coalesce(cmp base.Compare, span keyspan.Span) (CoalescedSpan, error) {
-	var cs CoalescedSpan
-	var items suffixItems
-	items.cmp = cmp
-	items.items = make([]SuffixItem, 0, len(span.Keys))
+func Coalesce(cmp base.Compare, span keyspan.Span, dst *keyspan.Span) error {
+	// TODO(jackson): Currently, Coalesce doesn't actually perform the sequence
+	// number promotion described in the comment above.
 
-	cs.Start = span.Start
-	cs.End = span.End
-	for i := 0; i < len(span.Keys) && !cs.Delete; i++ {
+	keysBySuffix := keysBySuffix{
+		cmp:  cmp,
+		keys: dst.Keys[:0],
+	}
+	var deleted bool
+	for i := 0; i < len(span.Keys) && !deleted; i++ {
 		k := span.Keys[i]
-		if i == 0 {
-			cs.LargestSeqNum = k.SeqNum()
-		}
-		if invariants.Enabled && k.SeqNum() > cs.LargestSeqNum {
+		if invariants.Enabled && i > 0 && k.Trailer > span.Keys[i-1].Trailer {
 			panic("pebble: invariant violation: span keys unordered")
 		}
 
@@ -130,69 +178,82 @@ func Coalesce(cmp base.Compare, span keyspan.Span) (CoalescedSpan, error) {
 		// sharing a sequence number shadow each other.
 		switch k.Kind() {
 		case base.InternalKeyKindRangeKeySet:
-			n := len(items.items)
+			n := len(keysBySuffix.keys)
 
-			if items.get(n, k.Suffix) < n {
+			if keysBySuffix.get(n, k.Suffix) < n {
 				// This suffix is already set or unset at a higher sequence
 				// number. Skip.
 				continue
 			}
-			items.items = append(items.items, SuffixItem{
-				Suffix: k.Suffix,
-				Value:  k.Value,
-			})
-			sort.Sort(items)
+			keysBySuffix.keys = append(keysBySuffix.keys, k)
+			sort.Sort(keysBySuffix)
 		case base.InternalKeyKindRangeKeyUnset:
-			n := len(items.items)
+			n := len(keysBySuffix.keys)
 
-			if items.get(n, k.Suffix) < n {
+			if keysBySuffix.get(n, k.Suffix) < n {
 				// This suffix is already set or unset at a higher sequence
 				// number. Skip.
 				continue
 			}
-			items.items = append(items.items, SuffixItem{
-				Suffix: k.Suffix,
-				Unset:  true,
-			})
-			sort.Sort(items)
+			keysBySuffix.keys = append(keysBySuffix.keys, k)
+			sort.Sort(keysBySuffix)
 		case base.InternalKeyKindRangeKeyDelete:
-			// Record that all range keys in this span have been deleted by this
+			// All remaining range keys in this span have been deleted by this
 			// RangeKeyDelete. There's no need to continue looping, because all
 			// the remaining keys are shadowed by this one. The for loop
-			// will terminate as soon as cs.Delete is set.
-			cs.Delete = true
+			// condition will terminate when it sees the last key is a
+			// range key deletion.
+			keysBySuffix.keys = append(keysBySuffix.keys, k)
+			deleted = true
 		default:
-			return CoalescedSpan{}, errors.Newf("pebble: unexpected range key kind %s", k.Kind())
+			return base.CorruptionErrorf("pebble: unexpected range key kind %s", k.Kind())
 		}
 	}
-	cs.Items = items.items
-	return cs, nil
+
+	// Update the span with the (potentially reduced) keys slice, and re-sort it
+	// by Trailer.
+	*dst = keyspan.Span{
+		Start: span.Start,
+		End:   span.End,
+		Keys:  keysBySuffix.keys,
+	}
+	keyspan.SortKeys(dst.Keys)
+	return nil
 }
 
-type suffixItems struct {
-	cmp   base.Compare
-	items []SuffixItem
+// SortBySuffix sorts the provided keys by suffix.
+func SortBySuffix(cmp base.Compare, keys []keyspan.Key) {
+	bySuffix := keysBySuffix{
+		cmp:  cmp,
+		keys: keys,
+	}
+	sort.Sort(bySuffix)
 }
 
-// get searches for suffix among the first n items in items. If the suffix is
+type keysBySuffix struct {
+	cmp  base.Compare
+	keys []keyspan.Key
+}
+
+// get searches for suffix among the first n keys in keys. If the suffix is
 // found, it returns the index of the item with the suffix. If the suffix is not
 // found, it returns n.
-func (si suffixItems) get(n int, suffix []byte) (i int) {
-	// Binary search for the suffix to see if there's an existing entry with the
-	// suffix. Only binary search among the first n items.  get is called while
-	// appending new items with suffixes that may sort before existing items.
-	// The n parameter indicates what portion of the items slice is sorted and
-	// may contain relevant items.
+func (s keysBySuffix) get(n int, suffix []byte) (i int) {
+	// Binary search for the suffix to see if there's an existing key with the
+	// suffix. Only binary search among the first n items. get is called while
+	// appending new keys with suffixes that may sort before existing keys.
+	// The n parameter indicates what portion of the keys slice is sorted and
+	// may contain relevant keys.
 
 	i = sort.Search(n, func(i int) bool {
-		return si.cmp(si.items[i].Suffix, suffix) >= 0
+		return s.cmp(s.keys[i].Suffix, suffix) >= 0
 	})
-	if i < n && si.cmp(si.items[i].Suffix, suffix) == 0 {
+	if i < n && s.cmp(s.keys[i].Suffix, suffix) == 0 {
 		return i
 	}
 	return n
 }
 
-func (si suffixItems) Len() int           { return len(si.items) }
-func (si suffixItems) Less(i, j int) bool { return si.cmp(si.items[i].Suffix, si.items[j].Suffix) < 0 }
-func (si suffixItems) Swap(i, j int)      { si.items[i], si.items[j] = si.items[j], si.items[i] }
+func (s keysBySuffix) Len() int           { return len(s.keys) }
+func (s keysBySuffix) Less(i, j int) bool { return s.cmp(s.keys[i].Suffix, s.keys[j].Suffix) < 0 }
+func (s keysBySuffix) Swap(i, j int)      { s.keys[i], s.keys[j] = s.keys[j], s.keys[i] }
