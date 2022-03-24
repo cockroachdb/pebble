@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangekey
+package keyspan
 
 import (
 	"bytes"
@@ -13,7 +13,6 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +27,7 @@ func TestInterleavingIter_Masking(t *testing.T) {
 
 func runInterleavingIterTest(t *testing.T, filename string) {
 	cmp := testkeys.Comparer.Compare
-	var rangeKeyIter Iter
+	var keyspanIter MergingIter
 	var pointIter pointIterator
 	var iter InterleavingIter
 	var buf bytes.Buffer
@@ -39,15 +38,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			fmt.Fprint(&buf, ".")
 			return
 		}
-		fmt.Fprintf(&buf, "PointKey: %s\nRangeKey: ", k.String())
-		if iter.HasRangeKey() {
-			start, end := iter.RangeKeyBounds()
-			fmt.Fprintf(&buf, "[%s, %s)", start, end)
-			formatRangeKeyItems(&buf, iter.RangeKeys())
-		} else {
-			fmt.Fprint(&buf, ".")
-		}
-		fmt.Fprint(&buf, "\n-")
+		fmt.Fprintf(&buf, "PointKey: %s\nRangeKey: %s\n-", k.String(), iter.Span())
 	}
 
 	datadriven.RunTest(t, filename, func(td *datadriven.TestData) string {
@@ -55,17 +46,17 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 		switch td.Cmd {
 		case "set-masking-threshold":
 			maskingThreshold = []byte(strings.TrimSpace(td.Input))
-			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &rangeKeyIter,
+			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &keyspanIter,
 				maskingThreshold)
 			return "OK"
 		case "define-rangekeys":
-			var spans []keyspan.Span
+			var spans []Span
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
-				spans = append(spans, keyspan.ParseSpan(line))
+				spans = append(spans, ParseSpan(line))
 			}
-			rangeKeyIter.Init(cmp, testkeys.Comparer.FormatKey, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, spans))
-			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &rangeKeyIter,
+			keyspanIter.Init(cmp, noopTransform, NewIter(cmp, spans))
+			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &keyspanIter,
 				maskingThreshold)
 			return "OK"
 		case "define-pointkeys":
@@ -75,7 +66,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 				points = append(points, base.ParseInternalKey(line))
 			}
 			pointIter = pointIterator{cmp: cmp, keys: points}
-			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &rangeKeyIter,
+			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &keyspanIter,
 				maskingThreshold)
 			return "OK"
 		case "iter":

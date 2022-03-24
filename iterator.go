@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"io"
+	"sort"
 	"sync/atomic"
 	"unsafe"
 
@@ -15,8 +16,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/fastrand"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/redact"
 )
 
@@ -183,7 +184,7 @@ type Iterator struct {
 	newIters tableNewIters
 	seqNum   uint64
 	// TODO(jackson): Remove when we no longer require the global arena.
-	newRangeKeyIter func() rangekey.Iterator
+	newRangeKeyIter func(*iteratorRangeKeyState) keyspan.FragmentIterator
 
 	// Keeping the bools here after all the 8 byte aligned fields shrinks the
 	// sizeof this struct by 24 bytes.
@@ -206,24 +207,43 @@ type Iterator struct {
 	forceEnableSeekOpt bool
 }
 
+// iteratorRangeKeyState holds an iterator's range key iteration state.
 type iteratorRangeKeyState struct {
 	// rangeKeyIter is temporarily an iterator into a single global in-memory
 	// range keys arena. This will need to be reworked when we have a merging
 	// range key iterator.
-	rangeKeyIter rangekey.Iterator
-	iter         rangekey.InterleavingIter
+	rangeKeyIter keyspan.FragmentIterator
+	iter         keyspan.InterleavingIter
 	// rangeKeyOnly is set to true if at the current iterator position there is
 	// no point key, only a range key start boundary.
 	rangeKeyOnly bool
 	hasRangeKey  bool
-	keys         []RangeKeyData
+	keys         bySuffix
 	// start and end are the [start, end) boundaries of the current range keys.
 	start []byte
 	end   []byte
 	// buf is used to save range-key data before moving the range-key iterator.
 	// Start and end boundaries, suffixes and values are all copied into buf.
 	buf []byte
+
+	// alloc holds fields that are used for the construction of the
+	// iterator stack, but do not need to be directly accessed during
+	// iteration. These fields are bundled within the
+	// iteratorRangeKeyState struct to reduce allocations.
+	alloc struct {
+		merging   keyspan.MergingIter
+		defraging keyspan.DefragmentingIter
+	}
 }
+
+type bySuffix struct {
+	cmp  base.Compare
+	data []RangeKeyData
+}
+
+func (s bySuffix) Len() int           { return len(s.data) }
+func (s bySuffix) Less(i, j int) bool { return s.cmp(s.data[i].Suffix, s.data[j].Suffix) < 0 }
+func (s bySuffix) Swap(i, j int)      { s.data[i], s.data[j] = s.data[j], s.data[i] }
 
 // isEphemeralPosition returns true iff the current iterator position is
 // ephemeral, and won't be visited during subsequent relative positioning
@@ -1398,14 +1418,18 @@ type RangeKeyData struct {
 // This awkwardness exists because range keys are interleaved at their inclusive
 // start positions. Note that limit is inclusive.
 func (i *Iterator) rangeKeyWithinLimit(limit []byte) bool {
-	if !i.opts.rangeKeys() || !i.rangeKey.iter.HasRangeKey() {
+	if !i.opts.rangeKeys() {
+		return false
+	}
+	s := i.rangeKey.iter.Span()
+	if s.Empty() {
 		// If there are no covering range keys, it is safe to to pause
 		// immediately.
 		return false
 	}
 	// If the range key ends beyond the limit, then the range key does not cover
 	// any portion of the keyspace within the limit and it is safe to pause.
-	if _, end := i.rangeKey.iter.RangeKeyBounds(); i.cmp(end, limit) <= 0 {
+	if i.cmp(s.End, limit) <= 0 {
 		return false
 	}
 	return true
@@ -1419,31 +1443,31 @@ func (i *Iterator) setRangeKey() {
 	if !i.opts.rangeKeys() {
 		return
 	}
-	i.rangeKey.hasRangeKey = i.rangeKey.iter.HasRangeKey()
+	s := i.rangeKey.iter.Span()
+	i.rangeKey.hasRangeKey = !s.Empty()
 	if !i.rangeKey.hasRangeKey {
 		// Clear out existing pointers, so that we don't unintentionally retain
 		// any old range key blocks.
 		i.rangeKey.start = nil
 		i.rangeKey.end = nil
-		for j := 0; j < len(i.rangeKey.keys); j++ {
-			i.rangeKey.keys[j].Suffix = nil
-			i.rangeKey.keys[j].Value = nil
+		for j := 0; j < i.rangeKey.keys.Len(); j++ {
+			i.rangeKey.keys.data[j].Suffix = nil
+			i.rangeKey.keys.data[j].Value = nil
 		}
-		i.rangeKey.keys = i.rangeKey.keys[:0]
+		i.rangeKey.keys.data = i.rangeKey.keys.data[:0]
 		return
 	}
-	i.rangeKey.start, i.rangeKey.end = i.rangeKey.iter.RangeKeyBounds()
-	i.rangeKey.keys = i.rangeKey.keys[:0]
-	keys := i.rangeKey.iter.RangeKeys()
-	for j := 0; j < len(keys); j++ {
-		if keys[j].Unset {
-			continue
+	i.rangeKey.start, i.rangeKey.end = s.Start, s.End
+	i.rangeKey.keys.data = i.rangeKey.keys.data[:0]
+	for j := 0; j < len(s.Keys); j++ {
+		if s.Keys[j].Kind() == base.InternalKeyKindRangeKeySet {
+			i.rangeKey.keys.data = append(i.rangeKey.keys.data, RangeKeyData{
+				Suffix: s.Keys[j].Suffix,
+				Value:  s.Keys[j].Value,
+			})
 		}
-		i.rangeKey.keys = append(i.rangeKey.keys, RangeKeyData{
-			Suffix: keys[j].Suffix,
-			Value:  keys[j].Value,
-		})
 	}
+	sort.Sort(i.rangeKey.keys)
 }
 
 // saveRangeKey sets the current range key to the underlying iterator's current
@@ -1455,7 +1479,8 @@ func (i *Iterator) saveRangeKey() {
 	if !i.opts.rangeKeys() {
 		return
 	}
-	i.rangeKey.hasRangeKey = i.rangeKey.iter.HasRangeKey()
+	s := i.rangeKey.iter.Span()
+	i.rangeKey.hasRangeKey = !s.Empty()
 	if !i.rangeKey.hasRangeKey {
 		return
 	}
@@ -1463,27 +1488,25 @@ func (i *Iterator) saveRangeKey() {
 	// time, we could copy only if it actually changed from the currently saved
 	// state, with some help from the InterleavingIter.
 
-	start, end := i.rangeKey.iter.RangeKeyBounds()
-	i.rangeKey.buf = append(i.rangeKey.buf[:0], start...)
+	i.rangeKey.buf = append(i.rangeKey.buf[:0], s.Start...)
 	i.rangeKey.start = i.rangeKey.buf
-	i.rangeKey.buf = append(i.rangeKey.buf, end...)
-	i.rangeKey.end = i.rangeKey.buf[len(i.rangeKey.buf)-len(end):]
+	i.rangeKey.buf = append(i.rangeKey.buf, s.End...)
+	i.rangeKey.end = i.rangeKey.buf[len(i.rangeKey.buf)-len(s.End):]
 
-	i.rangeKey.keys = i.rangeKey.keys[:0]
-	keys := i.rangeKey.iter.RangeKeys()
-	for j := 0; j < len(keys); j++ {
-		if keys[j].Unset {
-			continue
+	i.rangeKey.keys.data = i.rangeKey.keys.data[:0]
+	for j := 0; j < len(s.Keys); j++ {
+		if s.Keys[j].Kind() == base.InternalKeyKindRangeKeySet {
+			i.rangeKey.buf = append(i.rangeKey.buf, s.Keys[j].Suffix...)
+			suffix := i.rangeKey.buf[len(i.rangeKey.buf)-len(s.Keys[j].Suffix):]
+			i.rangeKey.buf = append(i.rangeKey.buf, s.Keys[j].Value...)
+			value := i.rangeKey.buf[len(i.rangeKey.buf)-len(s.Keys[j].Value):]
+			i.rangeKey.keys.data = append(i.rangeKey.keys.data, RangeKeyData{
+				Suffix: suffix,
+				Value:  value,
+			})
 		}
-		i.rangeKey.buf = append(i.rangeKey.buf, keys[j].Suffix...)
-		suffix := i.rangeKey.buf[len(i.rangeKey.buf)-len(keys[j].Suffix):]
-		i.rangeKey.buf = append(i.rangeKey.buf, keys[j].Value...)
-		value := i.rangeKey.buf[len(i.rangeKey.buf)-len(keys[j].Value):]
-		i.rangeKey.keys = append(i.rangeKey.keys, RangeKeyData{
-			Suffix: suffix,
-			Value:  value,
-		})
 	}
+	sort.Sort(i.rangeKey.keys)
 }
 
 // HasPointAndRange indicates whether there exists a point key, a range key or
@@ -1532,7 +1555,7 @@ func (i *Iterator) RangeKeys() []RangeKeyData {
 	if !i.opts.rangeKeys() || !i.rangeKey.hasRangeKey {
 		return nil
 	}
-	return i.rangeKey.keys
+	return i.rangeKey.keys.data
 }
 
 // Valid returns true if the iterator is positioned at a valid key/value pair
@@ -1800,6 +1823,7 @@ func (i *Iterator) Clone() (*Iterator, error) {
 		// TODO(jackson): Pool range-key iterator objects.
 		dbi.rangeKey = &iteratorRangeKeyState{
 			rangeKeyIter: i.rangeKey.rangeKeyIter.Clone(),
+			keys:         bySuffix{cmp: i.cmp},
 		}
 	}
 	return finishInitializingIter(buf), nil

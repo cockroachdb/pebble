@@ -62,40 +62,98 @@ import (
 // keys and values passed to emit are only valid until the closure returns.
 // If emit returns an error, Encode stops and returns the error.
 func Encode(s keyspan.Span, emit func(k base.InternalKey, v []byte) error) error {
-	// TODO(jackson): Presently, Encode doesn't combine keys with the same kind
-	// into a single internal key promoted to the highest sequence number.
+	enc := Encoder{Emit: emit}
+	return enc.Encode(s)
+}
 
-	var buf []byte
-	for _, k := range s.Keys {
-		ik := base.InternalKey{
-			UserKey: s.Start,
-			Trailer: k.Trailer,
+// An Encoder encodes range keys into their on-disk InternalKey format. An
+// Encoder holds internal buffers, reused between Emit calls.
+type Encoder struct {
+	Emit   func(base.InternalKey, []byte) error
+	buf    []byte
+	unsets [][]byte
+	sets   []SuffixValue
+}
+
+// Encode takes a Span containing only range keys. It invokes the Encoder's Emit
+// closure with the encoded internal keys that represent the Span's state. The
+// keys and values passed to emit are only valid until the closure returns.  If
+// Emit returns an error, Encode stops and returns the error.
+//
+// The encoded key-value pair passed to Emit is only valid until the closure
+// completes.
+func (e *Encoder) Encode(s keyspan.Span) error {
+	if s.Empty() {
+		return nil
+	}
+
+	// This for loop iterates through the span's keys, which are sorted by
+	// sequence number descending, grouping them into sequence numbers. All keys
+	// with identical sequence numbers are flushed together.
+	var del bool
+	var seqNum uint64
+	for i := range s.Keys {
+		if i == 0 || s.Keys[i].SeqNum() != seqNum {
+			if i > 0 {
+				// Flush all the existing internal keys that exist at seqNum.
+				if err := e.flush(s, seqNum, del); err != nil {
+					return err
+				}
+			}
+
+			// Reset sets, unsets, del.
+			seqNum = s.Keys[i].SeqNum()
+			del = false
+			e.sets = e.sets[:0]
+			e.unsets = e.unsets[:0]
 		}
-		var err error
-		switch k.Kind() {
+
+		switch s.Keys[i].Kind() {
 		case base.InternalKeyKindRangeKeySet:
-			sv := [1]SuffixValue{{Suffix: k.Suffix, Value: k.Value}}
-			l := EncodedSetValueLen(s.End, sv[:])
-			if l > cap(buf) {
-				buf = make([]byte, l)
-			}
-			EncodeSetValue(buf[:l], s.End, sv[:])
-			err = emit(ik, buf[:l])
+			e.sets = append(e.sets, SuffixValue{
+				Suffix: s.Keys[i].Suffix,
+				Value:  s.Keys[i].Value,
+			})
 		case base.InternalKeyKindRangeKeyUnset:
-			suffixes := [1][]byte{k.Suffix}
-			l := EncodedUnsetValueLen(s.End, suffixes[:])
-			if l > cap(buf) {
-				buf = make([]byte, l)
-			}
-			EncodeUnsetValue(buf[:l], s.End, suffixes[:])
-			err = emit(ik, buf[:l])
+			e.unsets = append(e.unsets, s.Keys[i].Suffix)
 		case base.InternalKeyKindRangeKeyDelete:
-			// s.End is stored directly in the value for RangeKeyDeletes.
-			err = emit(ik, s.End)
+			del = true
 		default:
-			return base.CorruptionErrorf("pebble: %s key kind is not a range key", k.Kind())
+			return base.CorruptionErrorf("pebble: %s key kind is not a range key", s.Keys[i].Kind())
 		}
-		if err != nil {
+	}
+	return e.flush(s, seqNum, del)
+}
+
+// flush constructs internal keys for accumulated key state, and emits the
+// internal keys.
+func (e *Encoder) flush(s keyspan.Span, seqNum uint64, del bool) error {
+	if len(e.sets) > 0 {
+		ik := base.MakeInternalKey(s.Start, seqNum, base.InternalKeyKindRangeKeySet)
+		l := EncodedSetValueLen(s.End, e.sets)
+		if l > cap(e.buf) {
+			e.buf = make([]byte, l)
+		}
+		EncodeSetValue(e.buf[:l], s.End, e.sets)
+		if err := e.Emit(ik, e.buf[:l]); err != nil {
+			return err
+		}
+	}
+	if len(e.unsets) > 0 {
+		ik := base.MakeInternalKey(s.Start, seqNum, base.InternalKeyKindRangeKeyUnset)
+		l := EncodedUnsetValueLen(s.End, e.unsets)
+		if l > cap(e.buf) {
+			e.buf = make([]byte, l)
+		}
+		EncodeUnsetValue(e.buf[:l], s.End, e.unsets)
+		if err := e.Emit(ik, e.buf[:l]); err != nil {
+			return err
+		}
+	}
+	if del {
+		ik := base.MakeInternalKey(s.Start, seqNum, base.InternalKeyKindRangeKeyDelete)
+		// s.End is stored directly in the value for RangeKeyDeletes.
+		if err := e.Emit(ik, s.End); err != nil {
 			return err
 		}
 	}

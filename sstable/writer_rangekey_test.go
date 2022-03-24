@@ -62,7 +62,6 @@ func TestWriter_RangeKeys(t *testing.T) {
 			default:
 				return nil, errors.Newf("unexpected key kind: %s", kind)
 			}
-
 			if err != nil {
 				return nil, err
 			}
