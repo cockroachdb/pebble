@@ -26,7 +26,6 @@ var _ base.InternalIterator = &InternalIteratorShim{}
 // Init initializes the internal iterator shim to merge the provided fragment
 // iterators.
 func (i *InternalIteratorShim) Init(cmp base.Compare, iters ...FragmentIterator) {
-	noopTransform := func(s Span) Span { return s }
 	i.miter.Init(cmp, noopTransform, iters...)
 }
 
