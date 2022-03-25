@@ -203,7 +203,7 @@ func newPickedCompactionFromL0(
 	// pick contiguous sequences of files in pc.version.Levels[0].
 	files := make([]*manifest.FileMetadata, 0, len(lcf.Files))
 	iter := vers.Levels[0].Iter()
-	for j, f := 0, iter.First(); f != nil; j, f = j+1, iter.Next() {
+	for f := iter.First(); f != nil; f = iter.Next() {
 		if lcf.FilesIncluded[f.L0Index] {
 			files = append(files, f)
 		}
