@@ -254,6 +254,16 @@ type L0Sublevels struct {
 	addL0FilesCalled bool
 }
 
+// NumFiles returns the number of files in all of L0.
+// todo(bananabrick) : make this a variable which is set once.
+func (s *L0Sublevels) NumFiles() int {
+	t := 0
+	for i := 0; i < len(s.levelFiles); i++ {
+		t += len(s.levelFiles[i])
+	}
+	return t
+}
+
 type sublevelSorter []*FileMetadata
 
 // Len implements sort.Interface.

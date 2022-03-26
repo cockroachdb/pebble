@@ -1062,6 +1062,15 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		if err = addItersForLevel(c.startLevel); err != nil {
 			return nil, err
 		}
+	} else if c.version != nil && c.version.L0Sublevels != nil && c.startLevel.files.Len() == c.version.L0Sublevels.NumFiles() {
+		// This condition should only get triggered during a non concurrent manual
+		// compaction of the entire L0.
+		fmt.Println("using level iters for manual compaction")
+		for _, s := range c.version.L0SublevelFiles {
+			if err = addItersForLevel(&compactionLevel{0, s}); err != nil {
+				return nil, err
+			}
+		}
 	} else {
 		iter := c.startLevel.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
