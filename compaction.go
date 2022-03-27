@@ -384,6 +384,11 @@ type compaction struct {
 	// L0Sublevels. If nil, flushes aren't split.
 	l0Limits [][]byte
 
+	// l0SublevelFiles is used for L0 manual compactions. Each level is treated
+	// as a level in the merging iter. It is crucial that this slice is non-nil
+	// iff we have picked a compaction which includes every single file in L0.
+	l0SublevelFiles []manifest.LevelSlice
+
 	// List of disjoint inuse key ranges the compaction overlaps with in
 	// grandparent and lower levels. See setupInuseKeyRanges() for the
 	// construction. Used by elideTombstone() and elideRangeTombstone() to
@@ -446,6 +451,7 @@ func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) 
 		maxOutputFileSize:   pc.maxOutputFileSize,
 		maxOverlapBytes:     pc.maxOverlapBytes,
 		atomicBytesIterated: bytesCompacted,
+		l0SublevelFiles:     pc.l0SublevelFiles,
 	}
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
@@ -1062,11 +1068,11 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		if err = addItersForLevel(c.startLevel); err != nil {
 			return nil, err
 		}
-	} else if c.version != nil && c.version.L0Sublevels != nil && c.startLevel.files.Len() == c.version.L0Sublevels.NumFiles() {
-		// This condition should only get triggered during a non concurrent manual
+	} else if c.l0SublevelFiles != nil {
+		// This condition should only get triggered during a non concurrent
 		// compaction of the entire L0.
 		fmt.Println("using level iters for manual compaction")
-		for _, s := range c.version.L0SublevelFiles {
+		for _, s := range c.l0SublevelFiles {
 			if err = addItersForLevel(&compactionLevel{0, s}); err != nil {
 				return nil, err
 			}
