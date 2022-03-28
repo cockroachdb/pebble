@@ -11,9 +11,10 @@
 To avoid a forced flush when ingesting SSTables that have an overlap with a
 memtable, we "lazily" add the SSTs to the LSM as a `*flushableEntry` to
 `d.mu.mem.queue`. In comparison to a regular ingest which adds the SSTs to the
-lowest possible level, the SSTs will get placed in the memtable before they are
-eventually flushed (to L0). This state is only persisted in memory until a flush occurs,
-thus we require a WAL entry to replay the ingestion in the event of a crash.
+lowest possible level, the SSTs will get placed in the memtable queue before
+they are eventually flushed (to the lowest level possible). This state is only
+persisted in memory until a flush occurs, thus we require a WAL entry to replay
+the ingestion in the event of a crash.
 
 ## Motivation
 
@@ -33,7 +34,7 @@ requirements are:
 1. Replayable WAL entry for the ingest.
 2. Implementation of the `flushable` interface for a new `ingestedSSTables` struct.
 3. Lazily adding the ingested SSTs to the LSM.
-4. Flushing logic to move SSTs into L0.
+4. Flushing logic to move SSTs into L0-L6.
 
 <br>
 
@@ -80,12 +81,6 @@ number of ingested SSTs, and each entry has the form:
 where `Kind` is `InternalKeyKindIngestSST`, and `Key` is a path to the
 ingested SST on disk.
 
-Since the batch is not applied to the memtable, and because
-`InternalKeyKindIngestSSTs` cannot appear within batches created outside of
-ingestion, we skip the call to `memtable.Apply()` in `d.commitApply()`. Note that
-`InternalKeyKindLogData` can appear amidst other entries that are applied to the
-memtable, making it different than `InternalKeyKindIngestSSTs`.
-
 When replaying the WAL, we check every batch's first entry and if `keykind ==
 InternalKeyKindIngestSSTs` then we continue reading the rest of the entries in
 the batch of SSTs and replay the ingestion steps - we construct a
@@ -99,7 +94,7 @@ maxSeqNum = seqNum + uint64(b.Count())
 br := b.Reader()
 if kind, _, _, _ := br.Next(); kind == InternalKeyKindIngestSST {
   // Continue reading the rest of the batch and construct flushable 
-	// of sstables with correct seqnum and add to queue.
+  // of sstables with correct seqnum and add to queue.
   buf.Reset()
   continue
 }
@@ -123,8 +118,8 @@ which implements the following functions from the `flushable` interface:
 
 #### 1. `newIter(o *IterOptions) internalIterator`
 
-We return a `levelIter` since we can treat the ingested SSTs to be on the
-same L0 sublevel.
+We return a `levelIter` since the ingested SSTables have no overlap, and we can
+treat them like a level in the LSM.
 
 ```go
 levelSlice := manifest.NewLevelSliceKeySorted(s.cmp, s.files)
@@ -157,10 +152,11 @@ mlevels = append(mlevels, mergingIterLevel{
 
 The above two methods would return `nil`. By doing so, in `c.newInputIter()`:
 ```go
-iters = append(iters, f.newFlushIter(nil, &c.bytesIterated))
-rangeDelIter := f.newRangeDelIter(nil)
-if rangeDelIter != nil {
-	iters = append(iters, rangeDelIter)
+if flushIter := f.newFlushIter(nil, &c.bytesIterated); flushIter != nil {
+    iters = append(iters, flushIter)
+}
+if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
+    iters = append(iters, rangeDelIter)
 }
 ```
 we ensure that no iterators on `ingestedSSTables` will be used while flushing in
@@ -226,7 +222,8 @@ In the call to `d.commit.AllocateSeqNum`, `b.count` sequence numbers are already
 allocated before the `prepare` step. When we identify a memtable overlap, we
 commit the batch to the WAL manually (through logic similar to
 `commitPipeline.prepare`). The `apply` step would be a no-op if we performed a
-WAL write in the `prepare` step.
+WAL write in the `prepare` step. We would also need to truncate the memtable/WAL
+after this step.
 
 5. Create `ingestedSSTables` flushable and `flushableEntry`.
 
@@ -264,7 +261,7 @@ call can be done asynchronously.
 
 We can then return to caller without waiting for the flush to finish.
 
-### 4. Flushing logic for ingested SSTs
+### 4. Flushing logic to move SSTs into L0-L6
 
 By returning `nil` for both `flushable.newFlushIter()` and
 `flushable.newRangeDelIter()`, the `ingestedSSTables` flushable will not be
