@@ -2,14 +2,13 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangekey
+package keyspan
 
 import (
 	"bytes"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // bufferReuseMaxCapacity is the maximum capacity of a DefragmentingIter buffer
@@ -19,7 +18,7 @@ const bufferReuseMaxCapacity = 10 << 10 // 10 KB
 
 // DefragmentMethod configures the defragmentation performed by the
 // DefragmentingIter.
-type DefragmentMethod func(base.Compare, keyspan.Span, keyspan.Span) bool
+type DefragmentMethod func(base.Compare, Span, Span) bool
 
 // DefragmentInternal configures a DefragmentingIter to defragment spans
 // only if they have identical keys.
@@ -27,7 +26,7 @@ type DefragmentMethod func(base.Compare, keyspan.Span, keyspan.Span) bool
 // This defragmenting method is intended for use in compactions that may see
 // internal range keys fragments that may now be joined, because the state that
 // required their fragmentation has been dropped.
-var DefragmentInternal DefragmentMethod = func(cmp base.Compare, a, b keyspan.Span) bool {
+var DefragmentInternal DefragmentMethod = func(cmp base.Compare, a, b Span) bool {
 	if len(a.Keys) != len(b.Keys) {
 		return false
 	}
@@ -79,46 +78,43 @@ const (
 // defragmented span.
 type DefragmentingIter struct {
 	cmp      base.Compare
-	iter     keyspan.FragmentIterator
-	iterSpan keyspan.Span
+	iter     FragmentIterator
+	iterSpan Span
 	iterPos  iterPos
 
 	// curr holds the span at the current iterator position. currBuf is a buffer
 	// for use when copying user keys for curr. keysBuf is a buffer for use when
-	// copying keyspan.Keys for curr. currBuf is cleared between positioning
-	// methods.
+	// copying Keys for curr. currBuf is cleared between positioning methods.
 	//
 	// keyBuf is a buffer specifically for the defragmented start key when
 	// defragmenting backwards or the defragmented end key when defragmenting
 	// forwards. These bounds are overwritten repeatedly during defragmentation,
 	// and the defragmentation routines overwrite keyBuf repeatedly to store
 	// these extended bounds.
-	curr    keyspan.Span
+	curr    Span
 	currBuf []byte
-	keysBuf []keyspan.Key
+	keysBuf []Key
 	keyBuf  []byte
 
 	// equal is a comparison function for two spans. equal is called when two
 	// spans are abutting to determine whether they may be defragmented.
 	// equal does not itself check for adjacency for the two spans.
-	equal func(base.Compare, keyspan.Span, keyspan.Span) bool
+	equal func(base.Compare, Span, Span) bool
 }
 
-// Assert that *DefragmentingIter implements the keyspan.FragmentIterator interface.
-var _ keyspan.FragmentIterator = (*DefragmentingIter)(nil)
+// Assert that *DefragmentingIter implements the FragmentIterator interface.
+var _ FragmentIterator = (*DefragmentingIter)(nil)
 
 // Init initializes the defragmenting iter using the provided defragment
 // method.
-func (i *DefragmentingIter) Init(
-	cmp base.Compare, iter keyspan.FragmentIterator, equal DefragmentMethod,
-) {
+func (i *DefragmentingIter) Init(cmp base.Compare, iter FragmentIterator, equal DefragmentMethod) {
 	*i = DefragmentingIter{cmp: cmp, iter: iter, equal: equal}
 }
 
 // Clone clones the iterator, returning an independent iterator over the same
 // state. This method is temporary and may be deleted once range keys' state is
 // properly reflected in readState.
-func (i *DefragmentingIter) Clone() keyspan.FragmentIterator {
+func (i *DefragmentingIter) Clone() FragmentIterator {
 	// TODO(jackson): Delete Clone() when range-key state is incorporated into
 	// readState.
 	c := &DefragmentingIter{}
@@ -138,7 +134,7 @@ func (i *DefragmentingIter) Close() error {
 
 // SeekGE seeks the iterator to the first span with a start key greater than or
 // equal to key and returns it.
-func (i *DefragmentingIter) SeekGE(key []byte) keyspan.Span {
+func (i *DefragmentingIter) SeekGE(key []byte) Span {
 	i.iterSpan = i.iter.SeekGE(key)
 	if !i.iterSpan.Valid() {
 		i.iterPos = iterPosCurr
@@ -168,7 +164,7 @@ func (i *DefragmentingIter) SeekGE(key []byte) keyspan.Span {
 
 // SeekLT seeks the iterator to the first span covering a key less than key and
 // returns it.
-func (i *DefragmentingIter) SeekLT(key []byte) keyspan.Span {
+func (i *DefragmentingIter) SeekLT(key []byte) Span {
 	i.iterSpan = i.iter.SeekLT(key)
 	// Defragment forward to find the end of the defragmented span.
 	i.defragmentForward()
@@ -179,19 +175,19 @@ func (i *DefragmentingIter) SeekLT(key []byte) keyspan.Span {
 }
 
 // First seeks the iterator to the first span and returns it.
-func (i *DefragmentingIter) First() keyspan.Span {
+func (i *DefragmentingIter) First() Span {
 	i.iterSpan = i.iter.First()
 	return i.defragmentForward()
 }
 
 // Last seeks the iterator to the last span and returns it.
-func (i *DefragmentingIter) Last() keyspan.Span {
+func (i *DefragmentingIter) Last() Span {
 	i.iterSpan = i.iter.Last()
 	return i.defragmentBackward()
 }
 
 // Next advances to the next span and returns it.
-func (i *DefragmentingIter) Next() keyspan.Span {
+func (i *DefragmentingIter) Next() Span {
 	switch i.iterPos {
 	case iterPosPrev:
 		// Switching directions; The iterator is currently positioned over the
@@ -236,7 +232,7 @@ func (i *DefragmentingIter) Next() keyspan.Span {
 }
 
 // Prev steps back to the previous span and returns it.
-func (i *DefragmentingIter) Prev() keyspan.Span {
+func (i *DefragmentingIter) Prev() Span {
 	switch i.iterPos {
 	case iterPosPrev:
 		// Already at the previous span.
@@ -280,14 +276,14 @@ func (i *DefragmentingIter) Prev() keyspan.Span {
 	}
 }
 
-// SetBounds implements keyspan.FragmentIterator.
+// SetBounds implements FragmentIterator.
 func (i *DefragmentingIter) SetBounds(lower, upper []byte) {
 	i.iter.SetBounds(lower, upper)
 }
 
 // defragmentForward defragments spans in the forward direction, starting from
 // i.iter's current position.
-func (i *DefragmentingIter) defragmentForward() keyspan.Span {
+func (i *DefragmentingIter) defragmentForward() Span {
 	if !i.iterSpan.Valid() {
 		i.iterPos = iterPosCurr
 		return i.iterSpan
@@ -314,7 +310,7 @@ func (i *DefragmentingIter) defragmentForward() keyspan.Span {
 
 // defragmentBackward defragments spans in the backward direction, starting from
 // i.iter's current position.
-func (i *DefragmentingIter) defragmentBackward() keyspan.Span {
+func (i *DefragmentingIter) defragmentBackward() Span {
 	if !i.iterSpan.Valid() {
 		i.iterPos = iterPosCurr
 		return i.iterSpan
@@ -339,7 +335,7 @@ func (i *DefragmentingIter) defragmentBackward() keyspan.Span {
 	return i.curr
 }
 
-func (i *DefragmentingIter) saveCurrent(span keyspan.Span) {
+func (i *DefragmentingIter) saveCurrent(span Span) {
 	i.currBuf = i.currBuf[:0]
 	i.keysBuf = i.keysBuf[:0]
 	i.keyBuf = i.keyBuf[:0]
@@ -349,12 +345,12 @@ func (i *DefragmentingIter) saveCurrent(span keyspan.Span) {
 	if cap(i.keyBuf) > bufferReuseMaxCapacity {
 		i.keyBuf = nil
 	}
-	i.curr = keyspan.Span{
+	i.curr = Span{
 		Start: i.saveBytes(span.Start),
 		End:   i.saveBytes(span.End),
 	}
 	for j := range span.Keys {
-		i.keysBuf = append(i.keysBuf, keyspan.Key{
+		i.keysBuf = append(i.keysBuf, Key{
 			Trailer: span.Keys[j].Trailer,
 			Suffix:  i.saveBytes(span.Keys[j].Suffix),
 			Value:   i.saveBytes(span.Keys[j].Value),

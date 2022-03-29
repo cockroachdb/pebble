@@ -24,7 +24,7 @@ func InitUserIteration(
 	cmp base.Compare,
 	snapshot uint64,
 	miter *keyspan.MergingIter,
-	diter *DefragmentingIter,
+	diter *keyspan.DefragmentingIter,
 	levelIters ...keyspan.FragmentIterator,
 ) keyspan.FragmentIterator {
 	miter.Init(cmp, userIterationTransform(snapshot), levelIters...)
@@ -80,7 +80,7 @@ func userIterationTransform(snapshot uint64) keyspan.Transform {
 //
 // The returned defragmenting method is stateful, and must not be used on
 // multiple DefragmentingIters concurrently.
-func userIterationDefragmenter() DefragmentMethod {
+func userIterationDefragmenter() keyspan.DefragmentMethod {
 	var bufA keysBySuffix
 	var bufB keysBySuffix
 	return func(cmp base.Compare, a, b keyspan.Span) bool {

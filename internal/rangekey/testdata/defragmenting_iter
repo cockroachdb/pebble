@@ -7,7 +7,7 @@ d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
 # Iterating with logical defragmentation should combine [a,c) and [c,d)
 # fragments.
 
-iter method=logical
+iter
 first
 next
 next
@@ -22,43 +22,6 @@ last      d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
 prev      a-d:{(#4,RANGEKEYSET,@3,bananas)}
 prev      .
 
-iter method=internal
-first
-next
-next
-next
-last
-prev
-prev
-prev
-----
-first     a-c:{(#3,RANGEKEYUNSET,@5) (#1,RANGEKEYSET,@3,bananas)}
-next      c-d:{(#4,RANGEKEYSET,@3,bananas)}
-next      d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
-next      .
-last      d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
-prev      c-d:{(#4,RANGEKEYSET,@3,bananas)}
-prev      a-c:{(#3,RANGEKEYUNSET,@5) (#1,RANGEKEYSET,@3,bananas)}
-prev      .
-
-# Test a scenario that SHOULD result in internal defragmentation ([a,c) and
-# [c,d) should be merged.
-
-define
-a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-c-d:{(#3,RANGEKEYUNSET,@5) (#1,RANGEKEYSET,@3,bananas)}
-d-e:{(#1,RANGEKEYSET,@3,bananas)}
-----
-
-iter method=internal
-first
-next
-next
-----
-first     a-d:{(#3,RANGEKEYUNSET,@5) (#1,RANGEKEYSET,@3,bananas)}
-next      d-e:{(#1,RANGEKEYSET,@3,bananas)}
-next      .
-
 # Test defragmenting in both directions at seek keys.
 
 define
@@ -68,7 +31,7 @@ h-p:{(#3,RANGEKEYSET,@3,bananas)}
 p-t:{(#3,RANGEKEYSET,@3,bananas)}
 ----
 
-iter method=logical
+iter
 seekge b
 prev
 seekge b
@@ -87,7 +50,7 @@ next      .
 seeklt d  a-t:{(#3,RANGEKEYSET,@3,bananas)}
 prev      .
 
-iter method=logical
+iter
 seeklt d
 next
 prev
@@ -106,7 +69,7 @@ p-t:{(#3,RANGEKEYSET,@3,bananas)}
 t-z:{(#4,RANGEKEYSET,@2,oranges)}
 ----
 
-iter method=logical
+iter
 seekge r
 prev
 next

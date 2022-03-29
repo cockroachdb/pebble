@@ -2,13 +2,12 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangekey
+package keyspan
 
 import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // TODO(jackson): The interleaving iterator has various invariants that it
@@ -96,7 +95,7 @@ type InterleavingIter struct {
 	cmp                    base.Compare
 	split                  base.Split
 	pointIter              base.InternalIteratorWithStats
-	keyspanIter            keyspan.FragmentIterator
+	keyspanIter            FragmentIterator
 	maskingThresholdSuffix []byte
 	maskSuffix             []byte
 
@@ -112,7 +111,7 @@ type InterleavingIter struct {
 	// span, spanStart and spanEnd describe the current span state.
 	// span{Start,End} are a function of the span and the Iterator's bounds.
 	// span{Start,End} will be nil iff span is !Valid().
-	span      keyspan.Span
+	span      Span
 	spanStart []byte
 	spanEnd   []byte
 	// spanMarker holds the synthetic key that is returned when the iterator
@@ -166,7 +165,7 @@ func (i *InterleavingIter) Init(
 	cmp base.Compare,
 	split base.Split,
 	pointIter base.InternalIteratorWithStats,
-	keyspanIter keyspan.FragmentIterator,
+	keyspanIter FragmentIterator,
 	maskingThresholdSuffix []byte,
 ) {
 	*i = InterleavingIter{
@@ -567,18 +566,18 @@ func (i *InterleavingIter) keyspanSeekLT(key []byte) {
 	i.checkBackwardBound(i.keyspanIter.SeekLT(key))
 }
 
-func (i *InterleavingIter) checkForwardBound(s keyspan.Span) {
+func (i *InterleavingIter) checkForwardBound(s Span) {
 	// Check the upper bound if we have one.
 	if s.Valid() && i.upper != nil && i.cmp(s.Start, i.upper) >= 0 {
-		s = keyspan.Span{}
+		s = Span{}
 	}
 	i.saveKeyspan(s)
 }
 
-func (i *InterleavingIter) checkBackwardBound(s keyspan.Span) {
+func (i *InterleavingIter) checkBackwardBound(s Span) {
 	// Check the lower bound if we have one.
 	if s.Valid() && i.lower != nil && i.cmp(s.End, i.lower) <= 0 {
-		s = keyspan.Span{}
+		s = Span{}
 	}
 	i.saveKeyspan(s)
 }
@@ -666,7 +665,7 @@ func (i *InterleavingIter) verify(k *base.InternalKey, v []byte) (*base.Internal
 	return k, v
 }
 
-func (i *InterleavingIter) saveKeyspan(s keyspan.Span) {
+func (i *InterleavingIter) saveKeyspan(s Span) {
 	i.keyspanInterleaved = false
 	i.spanMarkerTruncated = false
 	i.span = s
@@ -699,7 +698,7 @@ func (i *InterleavingIter) saveKeyspan(s keyspan.Span) {
 // Span, that's also greater than or equal to (as defined by cmp) than the
 // suffixThreshold argument. smallestSetSuffix returns nil if suffixThreshold is
 // nil.
-func smallestSetSuffix(cmp base.Compare, suffixThreshold []byte, s keyspan.Span) (smallest []byte) {
+func smallestSetSuffix(cmp base.Compare, suffixThreshold []byte, s Span) (smallest []byte) {
 	if suffixThreshold == nil || len(s.Keys) == 0 {
 		return nil
 	}
@@ -720,12 +719,12 @@ func smallestSetSuffix(cmp base.Compare, suffixThreshold []byte, s keyspan.Span)
 // Span returns the span covering the last key returned, if any. A span key is
 // considered to 'cover' a key if the key falls within the span's user key
 // bounds.
-func (i *InterleavingIter) Span() keyspan.Span {
+func (i *InterleavingIter) Span() Span {
 	if !i.spanCoversKey {
-		return keyspan.Span{}
+		return Span{}
 	}
 	// Return the span with truncated bounds.
-	return keyspan.Span{
+	return Span{
 		Start: i.spanStart,
 		End:   i.spanEnd,
 		Keys:  i.span.Keys,

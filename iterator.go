@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/redact"
 )
 
@@ -214,8 +213,8 @@ type iteratorRangeKeyState struct {
 	// range key iterator.
 	rangeKeyIter keyspan.FragmentIterator
 	merging      keyspan.MergingIter
-	defraging    rangekey.DefragmentingIter
-	iter         rangekey.InterleavingIter
+	defraging    keyspan.DefragmentingIter
+	iter         keyspan.InterleavingIter
 	// rangeKeyOnly is set to true if at the current iterator position there is
 	// no point key, only a range key start boundary.
 	rangeKeyOnly bool

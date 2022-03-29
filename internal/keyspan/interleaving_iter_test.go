@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package rangekey
+package keyspan
 
 import (
 	"bytes"
@@ -13,7 +13,6 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +27,7 @@ func TestInterleavingIter_Masking(t *testing.T) {
 
 func runInterleavingIterTest(t *testing.T, filename string) {
 	cmp := testkeys.Comparer.Compare
-	var keyspanIter keyspan.MergingIter
+	var keyspanIter MergingIter
 	var pointIter pointIterator
 	var iter InterleavingIter
 	var buf bytes.Buffer
@@ -51,12 +50,12 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 				maskingThreshold)
 			return "OK"
 		case "define-rangekeys":
-			var spans []keyspan.Span
+			var spans []Span
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
-				spans = append(spans, keyspan.ParseSpan(line))
+				spans = append(spans, ParseSpan(line))
 			}
-			keyspanIter.Init(cmp, Coalesce, keyspan.NewIter(cmp, spans))
+			keyspanIter.Init(cmp, noopTransform, NewIter(cmp, spans))
 			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &keyspanIter,
 				maskingThreshold)
 			return "OK"

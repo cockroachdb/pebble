@@ -840,12 +840,3 @@ func (h *mergingIterHeap) down(i0, n int) bool {
 	}
 	return i > i0
 }
-
-// firstError returns the first non-nil error of err0 and err1, or nil if both
-// are nil.
-func firstError(err0, err1 error) error {
-	if err0 != nil {
-		return err0
-	}
-	return err1
-}
