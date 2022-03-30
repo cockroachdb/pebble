@@ -162,8 +162,8 @@ func (i *DefragmentingIter) SeekGE(key []byte) Span {
 	return i.defragmentForward()
 }
 
-// SeekLT seeks the iterator to the first span covering a key less than key and
-// returns it.
+// SeekLT seeks the iterator to the last span with a start key less than
+// key and returns it.
 func (i *DefragmentingIter) SeekLT(key []byte) Span {
 	i.iterSpan = i.iter.SeekLT(key)
 	// Defragment forward to find the end of the defragmented span.
