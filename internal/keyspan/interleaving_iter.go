@@ -17,25 +17,33 @@ import (
 // aren't leaking into the keyspan package.
 
 // InterleavingIter combines an iterator over point keys with an iterator over
-// key spans. After any of the iterator's methods returns a key, a caller may
-// call Span to retrieve the key span covering the key, if any.
+// key spans.
 //
-// A span is considered to 'cover' a returned key if the span's [start, end)
-// bounds include the key's user key. Covering is determined independent of the
-// keys contained within the Span, so a Span with a lower sequence numbered Key
-// may cover a point key at a higher sequence number.
+// Throughout Pebble, some keys apply at single discrete points within the user
+// keyspace. Other keys apply over continuous spans of the user key space.
+// Internally, iterators over point keys adhere to the base.InternalIterator
+// interface, and iterators over spans adhere to the keyspan.FragmentIterator
+// interface. The InterleavingIterator a point iterator and span iterator,
+// providing access to all the elements of both iterators.
+//
+// The InterleavingIterator implements the point base.InternalIterator
+// interface. After any of the iterator's methods return a key, a caller may
+// call Span to retrieve the span covering the returned key, if any.  A span is
+// considered to 'cover' a returned key if the span's [start, end) bounds
+// include the key's user key.
 //
 // In addition to tracking the current covering span, InterleavingIter returns a
 // special InternalKey at span start boundaries. Start boundaries are surfaced
 // as a synthetic span marker: an InternalKey with the boundary as the user key,
-// the infinite sequence number and an arbitrary contained key's kind. These
-// synthetic keys have the infinite sequence number, so that they're interleaved
-// before any point keys with the same user key when iterating forward and after
-// when iterating backward.
+// the infinite sequence number and a key kind selected from an arbitrary key
+// from the Span. These synthetic keys have the infinite sequence number, so
+// that they're interleaved before any point keys with the same user key when
+// iterating forward and after when iterating backward.
 //
 // Interleaving the synthetic start key boundaries at the maximum sequence
-// number provides an opportunity for the higher-level, public Iterator to pause
-// at the start key, even if the point key at the same user key is deleted.
+// number provides an opportunity for the higher-level, public Iterator to
+// observe the Span, even if no live points keys exist within the boudns of the
+// Span.
 //
 // When returning a synthetic marker key for a start boundary, InterleavingIter
 // will truncate the span's start bound to the SeekGE or SeekPrefixGE search
@@ -44,10 +52,12 @@ import (
 //
 // If bounds have been applied to the iterator through SetBounds,
 // InterleavingIter will truncate the bounds of spans returned through Span to
-// the set bounds. The bounds returned through Span are not truncated
-// by a SeekGE or SeekPrefixGE search key (eg, in the earlier example after
-// returning the synthetic span marker `d#72057594037927935,21`,
-// Span would still return [a, z).
+// the set bounds. The bounds returned through Span are not truncated by a
+// SeekGE or SeekPrefixGE search key. Consider, for example SetBounds('c', 'e'),
+// with an iterator containing the Span [a,z):
+//
+//     First()     = `c#72057594037927935,21`        Span() = [c,e)
+//     SeekGE('d') = `d#72057594037927935,21`        Span() = [c,e)
 //
 // InterleavedIter does not interleave synthetic markers for spans that do not
 // contain any keys.

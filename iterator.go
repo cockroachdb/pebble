@@ -207,13 +207,12 @@ type Iterator struct {
 	forceEnableSeekOpt bool
 }
 
+// iteratorRangeKeyState holds an iterator's range key iteration state.
 type iteratorRangeKeyState struct {
 	// rangeKeyIter is temporarily an iterator into a single global in-memory
 	// range keys arena. This will need to be reworked when we have a merging
 	// range key iterator.
 	rangeKeyIter keyspan.FragmentIterator
-	merging      keyspan.MergingIter
-	defraging    keyspan.DefragmentingIter
 	iter         keyspan.InterleavingIter
 	// rangeKeyOnly is set to true if at the current iterator position there is
 	// no point key, only a range key start boundary.
@@ -226,6 +225,15 @@ type iteratorRangeKeyState struct {
 	// buf is used to save range-key data before moving the range-key iterator.
 	// Start and end boundaries, suffixes and values are all copied into buf.
 	buf []byte
+
+	// alloc holds fields that are used for the construction of the
+	// iterator stack, but do not need to be directly accessed during
+	// iteration. These fields are bundled within the
+	// iteratorRangeKeyState struct to reduce allocations.
+	alloc struct {
+		merging   keyspan.MergingIter
+		defraging keyspan.DefragmentingIter
+	}
 }
 
 type bySuffix struct {

@@ -56,12 +56,12 @@ const (
 	iterPosNext iterPos = +1
 )
 
-// DefragmentingIter wraps a range key iterator, defragmenting physical
+// DefragmentingIter wraps a key span iterator, defragmenting physical
 // fragmentation during iteration.
 //
-// During flushes and compactions, range keys may be split at sstable
-// boundaries. This fragmentation can produce internal range key bounds that do
-// not match any of the bounds ever supplied to a user range-key operation. This
+// During flushes and compactions, keys applied over a span may be split at
+// sstable boundaries. This fragmentation can produce internal key bounds that
+// do not match any of the bounds ever supplied to a user operation. This
 // physical fragmentation is necessary to avoid excessively wide sstables.
 //
 // The defragmenting iterator undoes this physical fragmentation, joining spans
@@ -162,8 +162,8 @@ func (i *DefragmentingIter) SeekGE(key []byte) Span {
 	return i.defragmentForward()
 }
 
-// SeekLT seeks the iterator to the first span covering a key less than key and
-// returns it.
+// SeekLT seeks the iterator to the last span with a start key less than
+// key and returns it.
 func (i *DefragmentingIter) SeekLT(key []byte) Span {
 	i.iterSpan = i.iter.SeekLT(key)
 	// Defragment forward to find the end of the defragmented span.

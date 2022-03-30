@@ -138,8 +138,8 @@ func NewExternalIter(
 		dbi.rangeKey.rangeKeyIter = rangekey.InitUserIteration(
 			o.Comparer.Compare,
 			base.InternalKeySeqNumMax,
-			&dbi.rangeKey.merging,
-			&dbi.rangeKey.defraging,
+			&dbi.rangeKey.alloc.merging,
+			&dbi.rangeKey.alloc.defraging,
 			rangeKeyIters...,
 		)
 
