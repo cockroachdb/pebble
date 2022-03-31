@@ -21,7 +21,7 @@ import (
 )
 
 func memTableEntrySize(keyBytes, valueBytes int) uint64 {
-	return uint64(arenaskl.MaxNodeSize(uint32(keyBytes)+8, uint32(valueBytes)))
+	return arenaskl.MaxNodeSize(uint32(keyBytes)+8, uint32(valueBytes))
 }
 
 // memTableEmptySize is the amount of allocated space in the arena when the
