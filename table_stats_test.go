@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -28,6 +29,9 @@ func TestTableStats(t *testing.T) {
 		},
 	}
 	opts.DisableAutomaticCompactions = true
+	opts.Comparer = testkeys.Comparer
+	opts.Experimental.RangeKeys = new(RangeKeysArena)
+	opts.FormatMajorVersion = FormatRangeKeys
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -87,6 +91,18 @@ func TestTableStats(t *testing.T) {
 				return err.Error()
 			}
 
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+
+		case "ingest":
+			if err = runBuildCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			if err = runIngestCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
 			d.mu.Lock()
 			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()

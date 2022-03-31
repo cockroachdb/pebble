@@ -796,6 +796,7 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 			var b bytes.Buffer
 			fmt.Fprintf(&b, "num-entries: %d\n", f.Stats.NumEntries)
 			fmt.Fprintf(&b, "num-deletions: %d\n", f.Stats.NumDeletions)
+			fmt.Fprintf(&b, "num-range-keys: %d\n", f.Stats.NumRangeKeys)
 			fmt.Fprintf(&b, "point-deletions-bytes-estimate: %d\n", f.Stats.PointDeletionsBytesEstimate)
 			fmt.Fprintf(&b, "range-deletions-bytes-estimate: %d\n", f.Stats.RangeDeletionsBytesEstimate)
 			return b.String()
