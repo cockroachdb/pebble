@@ -14,6 +14,7 @@ wait-pending-table-stats
 ----
 num-entries: 3
 num-deletions: 1
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
@@ -38,6 +39,7 @@ wait-pending-table-stats
 ----
 num-entries: 1
 num-deletions: 1
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 51
 
@@ -56,6 +58,7 @@ wait-pending-table-stats
 ----
 num-entries: 1
 num-deletions: 1
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 51
 
@@ -93,6 +96,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 0
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
@@ -175,16 +179,18 @@ wait-pending-table-stats
 ----
 num-entries: 1
 num-deletions: 1
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 771
+range-deletions-bytes-estimate: 769
 
 wait-pending-table-stats
 000012
 ----
 num-entries: 1
 num-deletions: 1
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 771
+range-deletions-bytes-estimate: 769
 
 define snapshots=(10)
 L6
@@ -198,5 +204,29 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 1
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 26
+
+# Ingest a table with range keys.
+# TODO(travers): Once range keys in batches are flushed to tables, this testcase
+# can be updated to use the batch / flush combination.
+
+ingest ext0
+range-key-set a b @1 foo
+range-key-unset a b @2
+range-key-del a b
+----
+5:
+  000005:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYDEL]
+6:
+  000004:[a#15,RANGEDEL-z#72057594037927935,RANGEDEL]
+
+wait-pending-table-stats
+000005
+----
+num-entries: 0
+num-deletions: 0
+num-range-keys: 3
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0

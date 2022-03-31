@@ -50,6 +50,8 @@ type TableStats struct {
 	NumEntries uint64
 	// The number of point and range deletion entries in the table.
 	NumDeletions uint64
+	// NumRangeKeys is the total number of range keys in the table.
+	NumRangeKeys uint64
 	// Estimate of the total disk space that may be dropped by this table's
 	// point deletions by compacting them.
 	PointDeletionsBytesEstimate uint64

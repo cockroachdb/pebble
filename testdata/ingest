@@ -74,6 +74,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 0
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
@@ -346,6 +347,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 2
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 1666
 

@@ -13,6 +13,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 2
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
@@ -34,6 +35,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 2
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
@@ -54,6 +56,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 1
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 26
 
@@ -76,6 +79,7 @@ wait-pending-table-stats
 ----
 num-entries: 2
 num-deletions: 1
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
@@ -114,6 +118,7 @@ wait-pending-table-stats
 ----
 num-entries: 6
 num-deletions: 2
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 76
 
@@ -146,6 +151,7 @@ wait-pending-table-stats
 ----
 num-entries: 11
 num-deletions: 1
+num-range-keys: 0
 point-deletions-bytes-estimate: 149
 range-deletions-bytes-estimate: 0
 
@@ -189,6 +195,7 @@ wait-pending-table-stats
 ----
 num-entries: 5
 num-deletions: 1
+num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 16488
 
@@ -225,6 +232,7 @@ wait-pending-table-stats
 ----
 num-entries: 3
 num-deletions: 3
+num-range-keys: 0
 point-deletions-bytes-estimate: 13167
 range-deletions-bytes-estimate: 0
 
