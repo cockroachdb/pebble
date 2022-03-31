@@ -26,8 +26,8 @@ import (
 
 // MaxNodeSize returns the maximum space needed for a node with the specified
 // key and value sizes.
-func MaxNodeSize(keySize, valueSize uint32) uint32 {
-	return uint32(maxNodeSize) + keySize + valueSize + align4
+func MaxNodeSize(keySize, valueSize uint32) uint64 {
+	return uint64(maxNodeSize) + uint64(keySize) + uint64(valueSize) + align4
 }
 
 type links struct {
@@ -70,6 +70,9 @@ func newNode(
 	valueSize := len(value)
 	if int64(len(value)) > math.MaxUint32 {
 		panic("value is too large")
+	}
+	if int64(len(value))+int64(keySize)+int64(maxNodeSize) > math.MaxUint32 {
+		panic("combined key and value size is too large")
 	}
 
 	nd, err = newRawNode(arena, height, uint32(keySize), uint32(valueSize))
