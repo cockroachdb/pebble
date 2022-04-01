@@ -214,6 +214,12 @@ type iteratorRangeKeyState struct {
 	// range key iterator.
 	rangeKeyIter keyspan.FragmentIterator
 	iter         keyspan.InterleavingIter
+	// activeMaskSuffix holds the suffix of a range key currently acting as a
+	// mask, hiding point keys with suffixes greater than it. activeMaskSuffix
+	// is only ever non-nil if IterOptions.RangeKeyMasking.Suffix is non-nil.
+	// activeMaskSuffix is updated whenever the iterator passes over a new range
+	// key. See Iterator.rangeKeySpanChanged.
+	activeMaskSuffix []byte
 	// rangeKeyOnly is set to true if at the current iterator position there is
 	// no point key, only a range key start boundary.
 	rangeKeyOnly bool
@@ -1433,6 +1439,84 @@ func (i *Iterator) rangeKeyWithinLimit(limit []byte) bool {
 		return false
 	}
 	return true
+}
+
+func (i *Iterator) rangeKeySpanChanged(s keyspan.Span) {
+	i.rangeKey.activeMaskSuffix = i.rangeKey.activeMaskSuffix[:0]
+
+	// Find the smallest suffix of a range key contained within the Span,
+	// excluding suffixes less than i.opts.RangeKeyMasking.Suffix.
+	if i.opts.RangeKeyMasking.Suffix == nil || s.Empty() {
+		return
+	}
+	for j := range s.Keys {
+		if s.Keys[j].Suffix == nil {
+			continue
+		}
+		if i.cmp(s.Keys[j].Suffix, i.opts.RangeKeyMasking.Suffix) < 0 {
+			continue
+		}
+		if len(i.rangeKey.activeMaskSuffix) == 0 || i.cmp(i.rangeKey.activeMaskSuffix, s.Keys[j].Suffix) > 0 {
+			i.rangeKey.activeMaskSuffix = append(i.rangeKey.activeMaskSuffix[:0], s.Keys[j].Suffix...)
+		}
+	}
+}
+
+// rangeKeySkipPoint is installed as a keyspan.InterleavingIter's SkipPoint
+// hook during range key iteration. Whenever a point key is covered by a
+// non-empty Span, the interleaving iterator invokes the SkipPoint hook. This
+// function is responsible for performing range key masking.
+//
+// If a non-nil IterOptions.RangeKeyMasking.Suffix is set, range key masking is
+// enabled. Masking hides point keys, transparently skipping over the keys.
+// Whether or not a point key is masked is determined by comparing the point
+// key's suffix, the overlapping span's keys' suffixes, and the user-configured
+// IterOption's RangeKeyMasking.Suffix. When configured with a masking threshold
+// _t_, and there exists a span with suffix _r_ covering a point key with suffix
+// _p_, and
+//
+//     _t_ ≤ _r_ < _p_
+//
+// then the point key is elided. Consider the following rendering, where
+// suffixes with higher integers sort before suffixes with lower integers:
+//
+//          ^
+//       @9 |        •―――――――――――――――○ [e,m)@9
+//     s  8 |                      • l@8
+//     u  7 |------------------------------------ @7 RangeKeyMasking.Suffix
+//     f  6 |      [h,q)@6 •―――――――――――――――――○            (threshold)
+//     f  5 |              • h@5
+//     f  4 |                          • n@4
+//     i  3 |          •―――――――――――○ [f,l)@3
+//     x  2 |  • b@2
+//        1 |
+//        0 |___________________________________
+//           a b c d e f g h i j k l m n o p q
+//
+// An iterator scanning the entire keyspace with the masking threshold set to @7
+// will observe point keys b@2 and l@8. The span keys [h,q)@6 and [f,l)@3 serve
+// as masks, because cmp(@6,@7) ≥ 0 and cmp(@3,@7) ≥ 0. The span key [e,m)@9
+// does not serve as a mask, because cmp(@9,@7) < 0.
+//
+// Although point l@8 falls within the user key bounds of [e,m)@9, [e,m)@9 is
+// non-masking due to its suffix. The point key l@8 also falls within the user
+// key bounds of [h,q)@6, but since cmp(@6,@8) ≥ 0, l@8 is unmasked.
+//
+// Invariant: userKey is within the user key bounds of i.rangeKey.iter.Span().
+func (i *Iterator) rangeKeySkipPoint(userKey []byte) bool {
+	if len(i.rangeKey.activeMaskSuffix) == 0 {
+		// No range key is currently acting as a mask, so don't skip.
+		return false
+	}
+	// Range key masking is enabled and the current span includes a range key
+	// that is being used as a mask. (NB: rangeKeySpanChanged already verified
+	// that the range key's suffix is ≥ RangeKeyMasking.Suffix).
+	//
+	// This point key falls within the bounds of the range key (guaranteed by
+	// the InterleavingIter). Skip the point key if the range key's suffix is
+	// greater than the point key's suffix.
+	pointSuffix := userKey[i.split(userKey):]
+	return len(pointSuffix) > 0 && i.cmp(i.rangeKey.activeMaskSuffix, pointSuffix) < 0
 }
 
 // setRangeKey sets the current range key to the underlying iterator's current
