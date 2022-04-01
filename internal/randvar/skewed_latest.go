@@ -60,6 +60,13 @@ func (z *SkewedLatest) IncMax(delta int) {
 	z.mu.Unlock()
 }
 
+// Max returns max.
+func (z *SkewedLatest) Max() uint64 {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	return z.mu.zipf.Max()
+}
+
 // Uint64 returns a random Uint64 between min and max, where keys near max are
 // most likely to be drawn.
 func (z *SkewedLatest) Uint64(rng *rand.Rand) uint64 {

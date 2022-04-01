@@ -19,4 +19,7 @@ type Dynamic interface {
 
 	// Increment the max value the variable will return.
 	IncMax(delta int)
+
+	// Read the current max value the variable will return.
+	Max() uint64
 }
