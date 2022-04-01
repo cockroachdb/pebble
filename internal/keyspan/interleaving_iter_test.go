@@ -25,29 +25,62 @@ func TestInterleavingIter_Masking(t *testing.T) {
 	runInterleavingIterTest(t, "testdata/interleaving_iter_masking")
 }
 
+type maskingHooks struct {
+	cmp        base.Compare
+	split      base.Split
+	threshold  []byte
+	maskSuffix []byte
+}
+
+func (m *maskingHooks) SpanChanged(s Span) {
+	// Find the smallest suffix of a key contained within the Span, excluding
+	// suffixes less than m.threshold.
+	m.maskSuffix = nil
+	if m.threshold == nil || len(s.Keys) == 0 {
+		return
+	}
+	for i := range s.Keys {
+		if s.Keys[i].Suffix == nil {
+			continue
+		}
+		if m.cmp(s.Keys[i].Suffix, m.threshold) < 0 {
+			continue
+		}
+		if m.maskSuffix == nil || m.cmp(m.maskSuffix, s.Keys[i].Suffix) > 0 {
+			m.maskSuffix = s.Keys[i].Suffix
+		}
+	}
+}
+
+func (m *maskingHooks) SkipPoint(userKey []byte) bool {
+	pointSuffix := userKey[m.split(userKey):]
+	return m.maskSuffix != nil && len(pointSuffix) > 0 && m.cmp(m.maskSuffix, pointSuffix) < 0
+}
+
 func runInterleavingIterTest(t *testing.T, filename string) {
 	cmp := testkeys.Comparer.Compare
 	var keyspanIter MergingIter
 	var pointIter pointIterator
 	var iter InterleavingIter
 	var buf bytes.Buffer
-	var maskingThreshold []byte
+	hooks := maskingHooks{
+		cmp:   testkeys.Comparer.Compare,
+		split: testkeys.Comparer.Split,
+	}
 
 	formatKey := func(k *base.InternalKey, v []byte) {
 		if k == nil {
 			fmt.Fprint(&buf, ".")
 			return
 		}
-		fmt.Fprintf(&buf, "PointKey: %s\nRangeKey: %s\n-", k.String(), iter.Span())
+		fmt.Fprintf(&buf, "PointKey: %s\nSpan: %s\n-", k.String(), iter.Span())
 	}
 
 	datadriven.RunTest(t, filename, func(td *datadriven.TestData) string {
 		buf.Reset()
 		switch td.Cmd {
 		case "set-masking-threshold":
-			maskingThreshold = []byte(strings.TrimSpace(td.Input))
-			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &keyspanIter,
-				maskingThreshold)
+			hooks.threshold = []byte(strings.TrimSpace(td.Input))
 			return "OK"
 		case "define-rangekeys":
 			var spans []Span
@@ -56,8 +89,11 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 				spans = append(spans, ParseSpan(line))
 			}
 			keyspanIter.Init(cmp, noopTransform, NewIter(cmp, spans))
-			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &keyspanIter,
-				maskingThreshold)
+			hooks.maskSuffix = nil
+			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &keyspanIter, Hooks{
+				SpanChanged: hooks.SpanChanged,
+				SkipPoint:   hooks.SkipPoint,
+			})
 			return "OK"
 		case "define-pointkeys":
 			var points []base.InternalKey
@@ -66,8 +102,11 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 				points = append(points, base.ParseInternalKey(line))
 			}
 			pointIter = pointIterator{cmp: cmp, keys: points}
-			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &keyspanIter,
-				maskingThreshold)
+			hooks.maskSuffix = nil
+			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &keyspanIter, Hooks{
+				SpanChanged: hooks.SpanChanged,
+				SkipPoint:   hooks.SkipPoint,
+			})
 			return "OK"
 		case "iter":
 			buf.Reset()

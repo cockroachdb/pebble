@@ -13,8 +13,19 @@ import (
 // TODO(jackson): The interleaving iterator has various invariants that it
 // asserts. We should eventually gate these behind `invariants.Enabled`.
 
-// TODO(jackson): Genercize 'masking' so the particulars of range-key masking
-// aren't leaking into the keyspan package.
+// Hooks configure the interleaving iterator's behavior.
+type Hooks struct {
+	// SpanChanged is invoked by interleaving iterator whenever the Span
+	// returned by InterleavaingIterator.Span changes. As the iterator passes
+	// into or out of a Span, it invokes SpanChanged, passing the new Span.
+	SpanChanged func(Span)
+	// SkipPoint is invoked by the interleaving iterator whenever the iterator
+	// encounters a point key covered by a Span. If SkipPoint returns true, the
+	// interleaving iterator skips the point key without returning it. This is
+	// used during range key iteration to skip over point keys 'masked' by range
+	// keys.
+	SkipPoint func(userKey []byte) bool
+}
 
 // InterleavingIter combines an iterator over point keys with an iterator over
 // key spans.
@@ -66,52 +77,18 @@ import (
 // InterleavedIter does not interleave synthetic markers for spans that do not
 // contain any keys.
 //
-// Masking
+// Hooks
 //
-// An InterleavingIter may be configured to treat some spans as masks. If a
-// non-nil maskingThresholdSuffix is passed to Init, masking is enabled. Masking
-// hides point keys, transparently skipping over the keys. Whether or not a
-// point key is masked is determined by comparing the point key's suffix, the
-// overlapping span's keys' suffixes, and the maskingTreshresholdSuffix. When
-// configured with a masking threshold _t_, and there exists a span
-// with suffix _r_ covering a point key with suffix _p_, and
+// InterelavingIter takes a Hooks parameter that may be used to configure the
+// behavior of the iterator. See the documentation on the Hooks type.
 //
-//     _t_ ≤ _r_ < _p_
-//
-// then the point key is elided. Consider the following rendering, where
-// suffixes with higher integers sort before suffixes with lower integers:
-//
-//          ^
-//       @9 |        •―――――――――――――――○ [e,m)@9
-//     s  8 |                      • l@8
-//     u  7 |------------------------------------ @7 masking
-//     f  6 |      [h,q)@6 •―――――――――――――――――○     threshold
-//     f  5 |              • h@5
-//     f  4 |                          • n@4
-//     i  3 |          •―――――――――――○ [f,l)@3
-//     x  2 |  • b@2
-//        1 |
-//        0 |___________________________________
-//           a b c d e f g h i j k l m n o p q
-//
-// An iterator scanning the entire keyspace with the masking threshold set to @7
-// will observe point keys b@2 and l@8. The span keys [h,q)@6 and [f,l)@3 serve
-// as masks, because cmp(@6,@7) ≥ 0 and cmp(@3,@7) ≥ 0. The span key [e,m)@9
-// does not serve as a mask, because cmp(@9,@7) < 0.
-//
-// Although point l@8 falls within the user key bounds of [e,m)@9, [e,m)@9 is
-// non-masking due to its suffix. The point key l@8 also falls within the user
-// key bounds of [h,q)@6, but since cmp(@6,@8) ≥ 0, l@8 is unmasked.
-//
-// All spans containing keys, including those acting as masks, are exposed
-// during iteration.
+// All spans containing keys are exposed during iteration.
 type InterleavingIter struct {
-	cmp                    base.Compare
-	split                  base.Split
-	pointIter              base.InternalIteratorWithStats
-	keyspanIter            FragmentIterator
-	maskingThresholdSuffix []byte
-	maskSuffix             []byte
+	cmp         base.Compare
+	split       base.Split
+	pointIter   base.InternalIteratorWithStats
+	keyspanIter FragmentIterator
+	hooks       Hooks
 
 	// lower and upper hold the iteration bounds set through SetBounds.
 	lower, upper []byte
@@ -170,24 +147,19 @@ var _ base.InternalIterator = &InterleavingIter{}
 
 // Init initializes the InterleavingIter to interleave point keys from pointIter
 // with key spans from keyspanIter.
-//
-// If maskingThresholdSuffix is non-nil, masking of point keys by span keys is
-// enabled. Any spans containing keys with a suffix > maskingThresholdSuffix
-// will act as a mask, hiding all point keys with suffixes > the span key's
-// suffix within their user key bounds.
 func (i *InterleavingIter) Init(
 	cmp base.Compare,
 	split base.Split,
 	pointIter base.InternalIteratorWithStats,
 	keyspanIter FragmentIterator,
-	maskingThresholdSuffix []byte,
+	hooks Hooks,
 ) {
 	*i = InterleavingIter{
-		cmp:                    cmp,
-		split:                  split,
-		pointIter:              pointIter,
-		keyspanIter:            keyspanIter,
-		maskingThresholdSuffix: maskingThresholdSuffix,
+		cmp:         cmp,
+		split:       split,
+		pointIter:   pointIter,
+		keyspanIter: keyspanIter,
+		hooks:       hooks,
 	}
 }
 
@@ -478,22 +450,17 @@ func (i *InterleavingIter) interleaveForward(lowerBound []byte) (*base.InternalK
 				// => then the point key must be less than the span's end, and
 				//    the point key must be covered by the current span.
 
-				// The span covers the point key. The point key might be masked
-				// too if masking is enabled.
-				if i.maskSuffix != nil {
-					pointSuffix := i.pointKey.UserKey[i.split(i.pointKey.UserKey):]
-					if len(pointSuffix) > 0 && i.cmp(i.maskSuffix, pointSuffix) < 0 {
-						// A key in the current span masks this point key. Skip
-						// the point key.
-						i.pointKey, i.pointVal = i.pointIter.Next()
-						// We may have just invalidated the invariant that
-						// ensures the span's End is > the point key, so
-						// reestablish it before the next iteration.
-						if i.pointKey != nil && i.cmp(i.pointKey.UserKey, i.span.End) >= 0 {
-							i.checkForwardBound(i.keyspanIter.Next())
-						}
-						continue
+				// The span covers the point key. If a SkipPoint hook is
+				// configured, ask it if we should skip this point key.
+				if i.hooks.SkipPoint != nil && i.hooks.SkipPoint(i.pointKey.UserKey) {
+					i.pointKey, i.pointVal = i.pointIter.Next()
+					// We may have just invalidated the invariant that
+					// ensures the span's End is > the point key, so
+					// reestablish it before the next iteration.
+					if i.pointKey != nil && i.cmp(i.pointKey.UserKey, i.span.End) >= 0 {
+						i.checkForwardBound(i.keyspanIter.Next())
 					}
+					continue
 				}
 
 				// Point key is unmasked but covered.
@@ -538,16 +505,11 @@ func (i *InterleavingIter) interleaveBackward() (*base.InternalKey, []byte) {
 				// The span covers the point key. The point key might be masked
 				// too if masking is enabled.
 
-				// Since this point key is covered by the span, it might be
-				// masked by the if masking is enabled.
-				if i.maskSuffix != nil {
-					pointSuffix := i.pointKey.UserKey[i.split(i.pointKey.UserKey):]
-					if len(pointSuffix) > 0 && i.cmp(i.maskSuffix, pointSuffix) < 0 {
-						// A key in the current span masks this point key. Skip
-						// the point key.
-						i.pointKey, i.pointVal = i.pointIter.Prev()
-						continue
-					}
+				// The span covers the point key. If a SkipPoint hook is
+				// configured, ask it if we should skip this point key.
+				if i.hooks.SkipPoint != nil && i.hooks.SkipPoint(i.pointKey.UserKey) {
+					i.pointKey, i.pointVal = i.pointIter.Prev()
+					continue
 				}
 
 				// Point key is unmasked but covered.
@@ -669,11 +631,9 @@ func (i *InterleavingIter) verify(k *base.InternalKey, v []byte) (*base.Internal
 		panic("pebble: invariant violation: key < lower bound")
 	case k != nil && i.upper != nil && i.cmp(k.UserKey, i.upper) >= 0:
 		panic("pebble: invariant violation: key ≥ upper bound")
-	case i.span.Valid() && k != nil && i.maskSuffix != nil && i.pointKeyInterleaved &&
-		i.split(k.UserKey) != len(k.UserKey) &&
-		i.cmp(i.maskSuffix, k.UserKey[i.split(k.UserKey):]) < 0 &&
-		i.cmp(k.UserKey, i.spanStart) >= 0 && i.cmp(k.UserKey, i.spanEnd) < 0:
-		panic("pebble: invariant violation: point key eligible for masking returned")
+	case i.span.Valid() && k != nil && i.hooks.SkipPoint != nil && i.pointKeyInterleaved &&
+		i.cmp(k.UserKey, i.spanStart) >= 0 && i.cmp(k.UserKey, i.spanEnd) < 0 && i.hooks.SkipPoint(k.UserKey):
+		panic("pebble: invariant violation: point key eligible for skipping returned")
 	}
 
 	return k, v
@@ -683,13 +643,14 @@ func (i *InterleavingIter) saveKeyspan(s Span) {
 	i.keyspanInterleaved = false
 	i.spanMarkerTruncated = false
 	i.span = s
-	i.maskSuffix = nil
 	if !s.Valid() {
 		i.spanStart = nil
 		i.spanEnd = nil
+		if i.hooks.SpanChanged != nil {
+			i.hooks.SpanChanged(s)
+		}
 		return
 	}
-	i.maskSuffix = smallestSetSuffix(i.cmp, i.maskingThresholdSuffix, s)
 	i.spanStart = s.Start
 	i.spanEnd = s.End
 	// TODO(jackson): The key comparisons below truncate bounds whenever the
@@ -706,28 +667,9 @@ func (i *InterleavingIter) saveKeyspan(s Span) {
 	if i.upper != nil && i.cmp(i.upper, i.spanEnd) < 0 {
 		i.spanEnd = i.upper
 	}
-}
-
-// smallestSetSuffix returns the smallest suffix of a key contained within a
-// Span, that's also greater than or equal to (as defined by cmp) than the
-// suffixThreshold argument. smallestSetSuffix returns nil if suffixThreshold is
-// nil.
-func smallestSetSuffix(cmp base.Compare, suffixThreshold []byte, s Span) (smallest []byte) {
-	if suffixThreshold == nil || len(s.Keys) == 0 {
-		return nil
+	if i.hooks.SpanChanged != nil {
+		i.hooks.SpanChanged(s)
 	}
-	for i := range s.Keys {
-		if s.Keys[i].Suffix == nil {
-			continue
-		}
-		if cmp(s.Keys[i].Suffix, suffixThreshold) < 0 {
-			continue
-		}
-		if smallest == nil || cmp(smallest, s.Keys[i].Suffix) > 0 {
-			smallest = s.Keys[i].Suffix
-		}
-	}
-	return smallest
 }
 
 // Span returns the span covering the last key returned, if any. A span key is
