@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/cockroachdb/pebble/internal/base"
 )
@@ -185,6 +186,11 @@ func SuffixLen(t int) int {
 		n++
 	}
 	return n
+}
+
+// ParseSuffix returns the integer representation of the encoded suffix.
+func ParseSuffix(s []byte) (int, error) {
+	return strconv.Atoi(strings.TrimPrefix(string(s), string(suffixDelim)))
 }
 
 // WriteSuffix writes the test keys suffix representation of timestamp t to dst,

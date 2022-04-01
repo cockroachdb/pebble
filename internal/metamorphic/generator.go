@@ -64,12 +64,12 @@ type generator struct {
 	snapshots map[objID]objIDSet
 }
 
-func newGenerator(rng *rand.Rand, cfg config) *generator {
+func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
 	g := &generator{
 		cfg:             cfg,
 		rng:             rng,
 		init:            &initOp{},
-		keyManager:      newKeyManager(),
+		keyManager:      km,
 		liveReaders:     objIDSlice{makeObjID(dbTag, 0)},
 		liveWriters:     objIDSlice{makeObjID(dbTag, 0)},
 		batches:         make(map[objID]objIDSet),
@@ -83,8 +83,8 @@ func newGenerator(rng *rand.Rand, cfg config) *generator {
 	return g
 }
 
-func generate(rng *rand.Rand, count uint64, cfg config) []op {
-	g := newGenerator(rng, cfg)
+func generate(rng *rand.Rand, count uint64, cfg config, km *keyManager) []op {
+	g := newGenerator(rng, cfg, km)
 
 	generators := []func(){
 		batchAbort:           g.batchAbort,
