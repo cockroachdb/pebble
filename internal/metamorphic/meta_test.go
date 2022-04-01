@@ -69,6 +69,22 @@ var (
 the result of the run from the first options file in the list. Example, -compare
 random-003,standard-000. The dir flag should have the directory containing these directories.
 Example, -dir _meta/200610-203012.077`)
+
+	// The following options may be used for split-version metamorphic testing.
+	// To perform split-version testing, the client runs the metamorphic tests
+	// on an earlier Pebble SHA passing the `--keep` flag. The client then
+	// switches to the later Pebble SHA, setting the below options to point to
+	// the `ops` file and one of the previous run's data directories.
+	previousOps = flag.String("previous-ops", "",
+		"path to an ops file, used to prepopulate the set of keys operations draw from")
+	initialStatePath = flag.String("initial-state", "",
+		"path to a database's data directory, used to prepopulate the test run's databases")
+	initialStateDesc = flag.String("initial-state-desc", "",
+		`a human-readable description of the initial database state.
+		If set this parameter is written to the OPTIONS to aid in
+		debugging. It's intended to describe the lineage of a
+		database's state, including sufficient information for
+		reproduction (eg, SHA, prng seed, etc).`)
 )
 
 func init() {
@@ -155,6 +171,16 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 			opts.FS = vfs.NewMem()
 		}
 	}
+
+	dir := opts.FS.PathJoin(runDir, "data")
+	// Set up the initial database state if configured to start from a non-empty
+	// database. By default tests start from an empty database, but split
+	// version testing may configure a previous metamorphic tests's database
+	// state as the initial state.
+	if testOpts.initialStatePath != "" {
+		require.NoError(t, setupInitialState(dir, testOpts))
+	}
+
 	// Wrap the filesystem with one that will inject errors into read
 	// operations with *errorRate probability.
 	opts.FS = errorfs.Wrap(opts.FS, errorfs.WithProbability(errorfs.OpKindRead, *errorRate))
@@ -166,15 +192,15 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 	historyFile, err := os.Create(historyPath)
 	require.NoError(t, err)
 	defer historyFile.Close()
-
 	writers := []io.Writer{historyFile}
+
 	if testing.Verbose() {
 		writers = append(writers, os.Stdout)
 	}
 	h := newHistory(*failRE, writers...)
 
 	m := newTest(ops)
-	require.NoError(t, m.init(h, opts.FS.PathJoin(runDir, "data"), testOpts))
+	require.NoError(t, m.init(h, dir, testOpts))
 	for m.step(h) {
 		if err := h.Error(); err != nil {
 			fmt.Fprintf(os.Stderr, "Seed: %d\n", seed)
@@ -265,7 +291,21 @@ func TestMeta(t *testing.T) {
 
 	// Generate a new set of random ops, writing them to <dir>/ops. These will be
 	// read by the child processes when performing a test run.
-	ops := generate(rng, opCount, defaultConfig())
+	km := newKeyManager()
+	cfg := defaultConfig()
+	if *previousOps != "" {
+		// During split-version testing, we load keys from an `ops` file
+		// produced by a metamorphic test run of an earlier Pebble version.
+		// Seeding the keys ensure we generate interesting operations, including
+		// ones with key shadowing, merging, etc.
+		opsPath := filepath.Join(filepath.Dir(filepath.Clean(*previousOps)), "ops")
+		opsData, err := ioutil.ReadFile(opsPath)
+		require.NoError(t, err)
+		ops, err := parse(opsData)
+		require.NoError(t, err)
+		loadPrecedingKeys(t, ops, &cfg, km)
+	}
+	ops := generate(rng, opCount, cfg, km)
 	opsPath := filepath.Join(metaDir, "ops")
 	formattedOps := formatOps(ops)
 	require.NoError(t, ioutil.WriteFile(opsPath, []byte(formattedOps), 0644))
@@ -325,28 +365,40 @@ func TestMeta(t *testing.T) {
 		}
 	}
 
-	// Perform runs with the standard options.
+	// Create the standard options.
 	var names []string
 	options := map[string]*testOptions{}
 	for i, opts := range standardOptions() {
 		name := fmt.Sprintf("standard-%03d", i)
 		names = append(names, name)
 		options[name] = opts
-		t.Run(name, func(t *testing.T) {
-			runOptions(t, opts)
-		})
 	}
 
-	// Perform runs with random options. We make an arbitrary choice to run with
-	// as many random options as we have standard options.
+	// Create random options. We make an arbitrary choice to run with as many
+	// random options as we have standard options.
 	nOpts := len(options)
 	for i := 0; i < nOpts; i++ {
 		name := fmt.Sprintf("random-%03d", i)
 		names = append(names, name)
 		opts := randomOptions(rng)
 		options[name] = opts
+	}
+
+	// If the user provided the path to an initial database state to use, update
+	// all the options to pull from it.
+	if *initialStatePath != "" {
+		for _, o := range options {
+			var err error
+			o.initialStatePath, err = filepath.Abs(*initialStatePath)
+			require.NoError(t, err)
+			o.initialStateDesc = *initialStateDesc
+		}
+	}
+
+	// Run the options.
+	for _, name := range names {
 		t.Run(name, func(t *testing.T) {
-			runOptions(t, opts)
+			runOptions(t, options[name])
 		})
 	}
 

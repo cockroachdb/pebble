@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/stretchr/testify/require"
 )
 
@@ -484,4 +485,34 @@ func TestKeyManager(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOpWrittenKeys(t *testing.T) {
+	for name, info := range methods {
+		t.Run(name, func(t *testing.T) {
+			// Any operations that exist in methods but are not handled in
+			// opWrittenKeys will result in a panic, failing the subtest.
+			opWrittenKeys(info.constructor())
+		})
+	}
+}
+
+func TestLoadPrecedingKeys(t *testing.T) {
+	rng := randvar.NewRand()
+	cfg := defaultConfig()
+	km := newKeyManager()
+	ops := generate(rng, 1000, cfg, km)
+
+	cfg2 := defaultConfig()
+	km2 := newKeyManager()
+	loadPrecedingKeys(t, ops, &cfg2, km2)
+
+	// NB: We can't assert equality, because the original run may not have
+	// ever used the max of the distribution.
+	require.Greater(t, cfg2.suffixDist.Max(), uint64(1))
+
+	// NB: We can't assert equality, because the original run may have generated
+	// keys that it didn't end up using in operations.
+	require.Subset(t, km.globalKeys, km2.globalKeys)
+	require.Subset(t, km.globalKeyPrefixes, km2.globalKeyPrefixes)
 }

@@ -5,6 +5,11 @@
 package metamorphic
 
 import (
+	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -22,7 +27,7 @@ func parseOptions(opts *testOptions, data string) error {
 			}
 			return bloom.FilterPolicy(10), nil
 		},
-		SkipUnknown: func(name string) bool {
+		SkipUnknown: func(name, value string) bool {
 			switch name {
 			case "TestOptions":
 				return true
@@ -38,6 +43,12 @@ func parseOptions(opts *testOptions, data string) error {
 			case "TestOptions.use_disk":
 				opts.useDisk = true
 				return true
+			case "TestOptions.initial_state_desc":
+				opts.initialStateDesc = value
+				return true
+			case "TestOptions.initial_state_path":
+				opts.initialStatePath = value
+				return true
 			default:
 				return false
 			}
@@ -48,23 +59,31 @@ func parseOptions(opts *testOptions, data string) error {
 }
 
 func optionsToString(opts *testOptions) string {
-	str := opts.opts.String()
-	if opts.strictFS || opts.ingestUsingApply || opts.replaceSingleDelete || opts.useDisk {
-		str += "\n[TestOptions]\n"
-	}
+	var buf bytes.Buffer
 	if opts.strictFS {
-		str += "  strictfs=true\n"
+		fmt.Fprint(&buf, "  strictfs=true\n")
 	}
 	if opts.ingestUsingApply {
-		str += "  ingest_using_apply=true\n"
+		fmt.Fprint(&buf, "  ingest_using_apply=true\n")
 	}
 	if opts.replaceSingleDelete {
-		str += "  replace_single_delete=true\n"
+		fmt.Fprint(&buf, "  replace_single_delete=true\n")
 	}
 	if opts.useDisk {
-		str += "  use_disk=true\n"
+		fmt.Fprint(&buf, "  use_disk=true\n")
 	}
-	return str
+	if opts.initialStatePath != "" {
+		fmt.Fprintf(&buf, "  initial_state_path=%s\n", opts.initialStatePath)
+	}
+	if opts.initialStateDesc != "" {
+		fmt.Fprintf(&buf, "  initial_state_desc=%s\n", opts.initialStateDesc)
+	}
+
+	s := opts.opts.String()
+	if buf.Len() == 0 {
+		return s
+	}
+	return s + "\n[TestOptions]\n" + buf.String()
 }
 
 func defaultOptions() *pebble.Options {
@@ -88,6 +107,12 @@ type testOptions struct {
 	ingestUsingApply bool
 	// Replace a SINGLEDEL with a DELETE.
 	replaceSingleDelete bool
+	// The path on the local filesystem where the initial state of the database
+	// exists.  Empty if the test run begins from an empty database state.
+	initialStatePath string
+	// A human-readable string describing the initial state of the database.
+	// Empty if the test run begins from an empty database state.
+	initialStateDesc string
 }
 
 func standardOptions() []*testOptions {
@@ -246,4 +271,60 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	testOpts.ingestUsingApply = rng.Intn(2) != 0
 	testOpts.replaceSingleDelete = rng.Intn(2) != 0
 	return testOpts
+}
+
+func setupInitialState(dir string, testOpts *testOptions) error {
+	// Copy (vfs.Default,<initialStatePath>) to (testOpts.opts.FS,<dir>).
+	ok, err := vfs.Clone(
+		vfs.Default,
+		testOpts.opts.FS,
+		testOpts.initialStatePath,
+		dir,
+		vfs.CloneSync,
+		vfs.CloneSkip(func(filename string) bool {
+			// Skip the archive of historical files, any checkpoints created by
+			// operations and files staged for ingest in tmp.
+			b := filepath.Base(filename)
+			return b == "archive" || b == "checkpoints" || b == "tmp"
+		}))
+	if err != nil {
+		return err
+	} else if !ok {
+		return os.ErrNotExist
+	}
+
+	// Tests with wal_dir set store their WALs in a `wal` directory. The source
+	// database (initialStatePath) could've had wal_dir set, or the current test
+	// options (testOpts) could have wal_dir set, or both.
+	fs := testOpts.opts.FS
+	walDir := fs.PathJoin(dir, "wal")
+	if err := fs.MkdirAll(walDir, os.ModePerm); err != nil {
+		return err
+	}
+
+	// Copy <dir>/wal/*.log -> <dir>.
+	src, dst := walDir, dir
+	if testOpts.opts.WALDir != "" {
+		// Copy <dir>/*.log -> <dir>/wal.
+		src, dst = dst, src
+	}
+	return moveLogs(fs, src, dst)
+}
+
+func moveLogs(fs vfs.FS, srcDir, dstDir string) error {
+	ls, err := fs.List(srcDir)
+	if err != nil {
+		return err
+	}
+	for _, f := range ls {
+		if filepath.Ext(f) != ".log" {
+			continue
+		}
+		src := fs.PathJoin(srcDir, f)
+		dst := fs.PathJoin(dstDir, f)
+		if err := fs.Rename(src, dst); err != nil {
+			return err
+		}
+	}
+	return nil
 }
