@@ -1009,7 +1009,7 @@ type ParseHooks struct {
 	NewComparer     func(name string) (*Comparer, error)
 	NewFilterPolicy func(name string) (FilterPolicy, error)
 	NewMerger       func(name string) (*Merger, error)
-	SkipUnknown     func(name string) bool
+	SkipUnknown     func(name, value string) bool
 }
 
 // Parse parses the options from the specified string. Note that certain
@@ -1027,7 +1027,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			switch key {
 			case "pebble_version":
 			default:
-				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key) {
+				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil
 				}
 				return errors.Errorf("pebble: unknown option: %s.%s",
@@ -1155,7 +1155,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "wal_bytes_per_sync":
 				o.WALBytesPerSync, err = strconv.Atoi(value)
 			default:
-				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key) {
+				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil
 				}
 				return errors.Errorf("pebble: unknown option: %s.%s",
@@ -1168,7 +1168,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			if n, err := fmt.Sscanf(section, `Level "%d"`, &index); err != nil {
 				return err
 			} else if n != 1 {
-				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section) {
+				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section, value) {
 					return nil
 				}
 				return errors.Errorf("pebble: unknown section: %q", errors.Safe(section))
@@ -1216,14 +1216,14 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "target_file_size":
 				l.TargetFileSize, err = strconv.ParseInt(value, 10, 64)
 			default:
-				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key) {
+				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil
 				}
 				return errors.Errorf("pebble: unknown option: %s.%s", errors.Safe(section), errors.Safe(key))
 			}
 			return err
 		}
-		if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key) {
+		if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 			return nil
 		}
 		return errors.Errorf("pebble: unknown section: %q", errors.Safe(section))

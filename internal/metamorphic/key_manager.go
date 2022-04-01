@@ -3,9 +3,11 @@ package metamorphic
 import (
 	"fmt"
 	"sort"
+	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/stretchr/testify/require"
 )
 
 // objKey is a tuple of (objID, key). This struct is used primarily as a map
@@ -445,4 +447,71 @@ func (k *keyManager) canTolerateApplyFailure(id objID) bool {
 		}
 	}
 	return true
+}
+
+func opWrittenKeys(untypedOp op) [][]byte {
+	switch t := untypedOp.(type) {
+	case *applyOp:
+	case *batchCommitOp:
+	case *checkpointOp:
+	case *closeOp:
+	case *compactOp:
+	case *dbRestartOp:
+	case *deleteOp:
+		return [][]byte{t.key}
+	case *deleteRangeOp:
+		return [][]byte{t.start, t.end}
+	case *flushOp:
+	case *getOp:
+	case *ingestOp:
+	case *initOp:
+	case *iterFirstOp:
+	case *iterLastOp:
+	case *iterNextOp:
+	case *iterPrevOp:
+	case *iterSeekGEOp:
+	case *iterSeekLTOp:
+	case *iterSeekPrefixGEOp:
+	case *iterSetBoundsOp:
+	case *iterSetOptionsOp:
+	case *mergeOp:
+		return [][]byte{t.key}
+	case *newBatchOp:
+	case *newIndexedBatchOp:
+	case *newIterOp:
+	case *newIterUsingCloneOp:
+	case *newSnapshotOp:
+	case *rangeKeyDeleteOp:
+	case *rangeKeySetOp:
+	case *rangeKeyUnsetOp:
+	case *setOp:
+		return [][]byte{t.key}
+	case *singleDeleteOp:
+		return [][]byte{t.key}
+	}
+	return nil
+}
+
+func loadPrecedingKeys(t testing.TB, ops []op, cfg *config, m *keyManager) {
+	for _, op := range ops {
+		// Pretend we're generating all the operation's keys as potential new
+		// key, so that we update the key manager's keys and prefix sets.
+		for _, k := range opWrittenKeys(op) {
+			m.addNewKey(k)
+
+			// If the key has a suffix, ratchet up the suffix distribution if
+			// necessary.
+			if s := m.comparer.Split(k); s < len(k) {
+				suffix, err := testkeys.ParseSuffix(k[s:])
+				require.NoError(t, err)
+				if uint64(suffix) > cfg.writeSuffixDist.Max() {
+					diff := int(uint64(suffix) - cfg.writeSuffixDist.Max())
+					cfg.writeSuffixDist.IncMax(diff)
+				}
+			}
+		}
+
+		// Update key tracking state.
+		m.update(op)
+	}
 }

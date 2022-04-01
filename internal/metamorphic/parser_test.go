@@ -31,7 +31,7 @@ func TestParser(t *testing.T) {
 }
 
 func TestParserRandom(t *testing.T) {
-	ops := generate(randvar.NewRand(), 10000, defaultConfig())
+	ops := generate(randvar.NewRand(), 10000, defaultConfig(), newKeyManager())
 	src := formatOps(ops)
 
 	parsedOps, err := parse([]byte(src))
