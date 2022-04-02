@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangekey"
@@ -361,6 +362,21 @@ func (i *indexBlockBuf) estimatedSize() uint64 {
 		i.size.mu.Lock()
 		defer i.size.mu.Unlock()
 	}
+
+	// Make sure that the size estimation works as expected when parallelism
+	// is disabled.
+	if invariants.Enabled && !i.size.useMutex {
+		if i.size.estimate.inflightSize != 0 {
+			panic("unexpected inflight entry in index block size estimation")
+		}
+
+		// NB: The i.block should only be accessed from the writeQueue goroutine,
+		// when parallelism is enabled. We break that invariant here, but that's
+		// okay since parallelism is disabled.
+		if i.size.estimate.size() != uint64(i.block.estimatedSize()) {
+			panic("index block size estimation sans parallelism is incorrect")
+		}
+	}
 	return i.size.estimate.size()
 }
 
@@ -396,6 +412,15 @@ func (d *dataBlockEstimates) size() uint64 {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 	}
+
+	// Use invariants to make sure that the size estimation works as expected
+	// when parallelism is disabled.
+	if invariants.Enabled && !d.useMutex {
+		if d.estimate.inflightSize != 0 {
+			panic("unexpected inflight entry in data block size estimation")
+		}
+	}
+
 	return d.estimate.size()
 }
 
@@ -1779,10 +1804,20 @@ func (w *Writer) Close() (err error) {
 }
 
 // EstimatedSize returns the estimated size of the sstable being written if a
-// called to Finish() was made without adding additional keys.
+// call to Finish() was made without adding additional keys.
 func (w *Writer) EstimatedSize() uint64 {
+	if invariants.Enabled {
+		// Assuming this is the parallelism disabled case. Need, #1581 to merge
+		// before we can make that check. The w.meta.Size should only be
+		// accessed from the writeQueue goroutine if parallelism is enabled,
+		// but since it isn't we break that invariant here.
+		if w.coordination.sizeEstimate.size() != w.meta.Size {
+			panic("sstable size estimation sans parallelism is incorrect")
+		}
+	}
 	return w.coordination.sizeEstimate.size() +
-		uint64(w.dataBlockBuf.dataBlock.estimatedSize()) + w.indexBlock.estimatedSize()
+		uint64(w.dataBlockBuf.dataBlock.estimatedSize()) +
+		w.indexBlock.estimatedSize()
 }
 
 // Metadata returns the metadata for the finished sstable. Only valid to call
