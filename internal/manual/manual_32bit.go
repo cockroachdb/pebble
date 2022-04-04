@@ -7,7 +7,10 @@
 
 package manual
 
+import "math"
+
 const (
 	// MaxArrayLen is a safe maximum length for slices on this architecture.
-	MaxArrayLen = 1<<31 - 1
+	// https://groups.google.com/g/golang-nuts/c/y5OpHR0VEdY/m/Mnq6biJbCwAJ
+	MaxArrayLen = math.MaxUint32 / 4
 )

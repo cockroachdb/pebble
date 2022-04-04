@@ -68,8 +68,8 @@ import (
 
 const (
 	maxHeight    = 20
-	maxNodeSize  = int(unsafe.Sizeof(node{}))
-	linksSize    = int(unsafe.Sizeof(links{}))
+	maxNodeSize  = uint32(unsafe.Sizeof(node{}))
+	linksSize    = uint32(unsafe.Sizeof(links{}))
 	maxNodesSize = math.MaxUint32
 )
 
@@ -281,7 +281,7 @@ func (s *Skiplist) newNode(
 		panic("height cannot be less than one or greater than the max height")
 	}
 
-	unusedSize := (maxHeight - int(height)) * linksSize
+	unusedSize := (maxHeight - height) * linksSize
 	nodeOffset, err := s.alloc(uint32(maxNodeSize - unusedSize))
 	if err != nil {
 		return 0, err
@@ -300,9 +300,9 @@ func (s *Skiplist) alloc(size uint32) (uint32, error) {
 
 	// We only have a need for memory up to offset + size, but we never want
 	// to allocate a node whose tail points into unallocated memory.
-	minAllocSize := offset + maxNodeSize
-	if cap(s.nodes) < minAllocSize {
-		allocSize := cap(s.nodes) * 2
+	minAllocSize := uint32(offset) + maxNodeSize
+	if uint32(cap(s.nodes)) < minAllocSize {
+		allocSize := uint32(cap(s.nodes) * 2)
 		if allocSize < minAllocSize {
 			allocSize = minAllocSize
 		}
