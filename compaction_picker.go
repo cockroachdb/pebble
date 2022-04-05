@@ -711,6 +711,8 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	p.estimatedMaxWAmp = float64(numLevels-p.baseLevel) * (smoothedLevelMultiplier + 1)
 
 	levelSize := float64(baseBytesMax)
+	// L0 also uses LBaseMaxBytes as its max size.
+	p.levelMaxBytes[0] = baseBytesMax
 	for level := p.baseLevel; level < numLevels; level++ {
 		if level > p.baseLevel && levelSize > 0 {
 			levelSize *= smoothedLevelMultiplier
@@ -764,14 +766,24 @@ func (p *compactionPickerByScore) calculateScores(
 		scores[i].level = i
 		scores[i].outputLevel = i + 1
 	}
-	scores[0] = p.calculateL0Score(inProgressCompactions)
-
 	sizeAdjust := calculateSizeAdjust(inProgressCompactions)
-	for level := 1; level < numLevels; level++ {
+	for level := 0; level < numLevels; level++ {
 		levelSize := int64(levelCompensatedSize(p.vers.Levels[level])) + sizeAdjust[level]
 		scores[level].score = float64(levelSize) / float64(p.levelMaxBytes[level])
 		scores[level].origScore = scores[level].score
 	}
+
+	// Calculate a L0 score based on the sublevel count. The base vs intra-L0
+	// compaction determination happens in pickAuto, not here. If the
+	// sublevel-based score is higher than the size-based score, use the
+	// sublevel-based score.
+	sublevelScore := float64(2*p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()) /
+		float64(p.opts.L0CompactionThreshold)
+	if sublevelScore > scores[0].score {
+		scores[0].score = sublevelScore
+		scores[0].origScore = sublevelScore
+	}
+	scores[0].outputLevel = p.baseLevel
 
 	// Adjust each level's score by the score of the next level. If the next
 	// level has a high score, and is thus a priority for compaction, this
@@ -811,20 +823,6 @@ func (p *compactionPickerByScore) calculateScores(
 
 	sort.Sort(sortCompactionLevelsDecreasingScore(scores[:]))
 	return scores
-}
-
-func (p *compactionPickerByScore) calculateL0Score(
-	inProgressCompactions []compactionInfo,
-) candidateLevelInfo {
-	var info candidateLevelInfo
-	info.outputLevel = p.baseLevel
-
-	// If L0Sublevels are present, we use the sublevel count as opposed to
-	// the L0 file count to score this level. The base vs intra-L0
-	// compaction determination happens in pickAuto, not here.
-	info.score = float64(2*p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()) /
-		float64(p.opts.L0CompactionThreshold)
-	return info
 }
 
 func (p *compactionPickerByScore) pickFile(

@@ -195,7 +195,7 @@ L4->L5: 7.7
 
 pick ongoing=(5,6)
 ----
-no compaction
+L0->L4: 1.0
 
 pick ongoing=(0,4)
 ----
@@ -224,11 +224,11 @@ base: 4
 
 queue
 ----
-L0->L4: 1000.0
+L0->L4: 2000.0
 
 pick
 ----
-L0->L4: 1000.0
+L0->L4: 2000.0
 
 pick ongoing=(0,4)
 ----
@@ -249,7 +249,7 @@ base: 4
 
 queue
 ----
-L0->L4: 1000.0
+L0->L4: 2000.0
 
 pick ongoing=(0,4,4,5)
 ----
@@ -257,7 +257,7 @@ no compaction
 
 pick ongoing=(4,5)
 ----
-L0->L4: 1000.0
+L0->L4: 2000.0
 
 # Verify we can start concurrent Ln->Ln+1 compactions given sufficient
 # priority.
