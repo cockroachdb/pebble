@@ -21,12 +21,47 @@ import (
 
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
+
+func TestOpenSharedTableCache(t *testing.T) {
+	c := cache.New(cacheDefaultSize)
+	tc := NewTableCache(c, 16, 100)
+	defer tc.Unref()
+	defer c.Unref()
+
+	d0, err := Open("", testingRandomized(&Options{
+		FS:         vfs.NewMem(),
+		Cache:      c,
+		TableCache: tc,
+	}))
+	if err != nil {
+		t.Errorf("d0 Open: %s", err.Error())
+	}
+	defer d0.Close()
+
+	d1, err := Open("", testingRandomized(&Options{
+		FS:         vfs.NewMem(),
+		Cache:      c,
+		TableCache: tc,
+	}))
+	if err != nil {
+		t.Errorf("d1 Open: %s", err.Error())
+	}
+	defer d1.Close()
+
+	// Make sure that the Open function is using the passed in table cache
+	// when the TableCache option is set.
+	require.Equalf(
+		t, d0.tableCache.tableCache, d1.tableCache.tableCache,
+		"expected tableCache for both d0 and d1 to be the same",
+	)
+}
 
 func TestErrorIfExists(t *testing.T) {
 	for _, b := range [...]bool{false, true} {
