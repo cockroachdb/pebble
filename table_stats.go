@@ -453,55 +453,21 @@ func foreachDefragmentedTombstone(
 	cmp base.Compare,
 	fn func([]byte, []byte, uint64, uint64) error,
 ) error {
-	// TODO(jackson): Use DefragmentingIter.
-	var startUserKey, endUserKey []byte
-	var smallestSeqNum, largestSeqNum uint64
-	var initialized bool
-	for t := rangeDelIter.First(); t.Valid(); t = rangeDelIter.Next() {
-		if t.Empty() {
-			continue
-		}
-
-		// If this fragmented tombstone begins where the previous
-		// tombstone ended, merge it and continue.
-		if cmp(endUserKey, t.Start) == 0 {
-			endUserKey = append(endUserKey[:0], t.End...)
-			if sm := t.SmallestSeqNum(); smallestSeqNum > sm {
-				smallestSeqNum = sm
-			}
-			if la := t.LargestSeqNum(); largestSeqNum < la {
-				largestSeqNum = la
-			}
-			continue
-		}
-
-		// If this is the first iteration, continue so we have an
-		// opportunity to merge subsequent abutting tombstones.
-		if !initialized {
-			startUserKey = append(startUserKey[:0], t.Start...)
-			endUserKey = append(endUserKey[:0], t.End...)
-			smallestSeqNum, largestSeqNum = t.SmallestSeqNum(), t.LargestSeqNum()
-			initialized = true
-			continue
-		}
-
-		if err := fn(startUserKey, endUserKey, smallestSeqNum, largestSeqNum); err != nil {
-			return err
-		}
-		startUserKey = append(startUserKey[:0], t.Start...)
-		endUserKey = append(endUserKey[:0], t.End...)
-		smallestSeqNum, largestSeqNum = t.SmallestSeqNum(), t.LargestSeqNum()
+	// Use an equals func that will always merge abutting spans.
+	equal := func(_ base.Compare, _, _ keyspan.Span) bool { return true }
+	// Reduce keys by appending the keys from each incoming span.
+	reducer := func(current, incoming []keyspan.Key) ([]keyspan.Key, bool) {
+		return append(current, incoming...), true /* modified */
 	}
-	if initialized {
-		if err := fn(startUserKey, endUserKey, smallestSeqNum, largestSeqNum); err != nil {
+	iter := keyspan.DefragmentingIter{}
+	iter.Init(cmp, rangeDelIter, equal, reducer)
+	for s := iter.First(); s.Valid(); s = iter.Next() {
+		if err := fn(s.Start, s.End, s.SmallestSeqNum(), s.LargestSeqNum()); err != nil {
+			_ = iter.Close()
 			return err
 		}
 	}
-	if err := rangeDelIter.Error(); err != nil {
-		_ = rangeDelIter.Close()
-		return err
-	}
-	return rangeDelIter.Close()
+	return iter.Close()
 }
 
 func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) bool {
