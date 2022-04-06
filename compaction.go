@@ -1398,13 +1398,22 @@ func (d *DB) maybeScheduleDelayedFlush(tbl *memTable) {
 
 func (d *DB) flush() {
 	pprof.Do(context.Background(), flushLabels, func(context.Context) {
+		flushingWorkStart := time.Now()
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		if err := d.flush1(); err != nil {
+		idleDuration := flushingWorkStart.Sub(d.mu.compact.noOngoingFlushStartTime)
+		var bytesFlushed uint64
+		var err error
+		if bytesFlushed, err = d.flush1(); err != nil {
 			// TODO(peter): count consecutive flush errors and backoff.
 			d.opts.EventListener.BackgroundError(err)
 		}
 		d.mu.compact.flushing = false
+		d.mu.compact.noOngoingFlushStartTime = time.Now()
+		workDuration := d.mu.compact.noOngoingFlushStartTime.Sub(flushingWorkStart)
+		d.mu.compact.flushWriteThroughput.Bytes += int64(bytesFlushed)
+		d.mu.compact.flushWriteThroughput.WorkDuration += workDuration
+		d.mu.compact.flushWriteThroughput.IdleDuration += idleDuration
 		// More flush work may have arrived while we were flushing, so schedule
 		// another flush if needed.
 		d.maybeScheduleFlush()
@@ -1420,7 +1429,7 @@ func (d *DB) flush() {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) flush1() error {
+func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	var n int
 	for ; n < len(d.mu.mem.queue)-1; n++ {
 		if !d.mu.mem.queue[n].readyForFlush() {
@@ -1429,7 +1438,7 @@ func (d *DB) flush1() error {
 	}
 	if n == 0 {
 		// None of the immutable memtables are ready for flushing.
-		return nil
+		return 0, nil
 	}
 
 	// Require that every memtable being flushed has a log number less than the
@@ -1439,7 +1448,7 @@ func (d *DB) flush1() error {
 		for i := 0; i < n; i++ {
 			logNum := d.mu.mem.queue[i].logNum
 			if logNum >= minUnflushedLogNum {
-				return errFlushInvariant
+				return 0, errFlushInvariant
 			}
 		}
 	}
@@ -1509,6 +1518,7 @@ func (d *DB) flush1() error {
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
 
 	// Refresh bytes flushed count.
+	bytesFlushed = atomic.LoadUint64(&d.atomic.bytesFlushed)
 	atomic.StoreUint64(&d.atomic.bytesFlushed, 0)
 
 	var flushed flushableList
@@ -1544,7 +1554,7 @@ func (d *DB) flush1() error {
 		flushed[i].readerUnref()
 		close(flushed[i].flushed)
 	}
-	return err
+	return bytesFlushed, err
 }
 
 // maybeScheduleCompactionAsync should be used when

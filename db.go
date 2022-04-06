@@ -354,6 +354,8 @@ type DB struct {
 			// commitPipeline.mu and DB.mu to be held when rotating the WAL/memtable
 			// (i.e. makeRoomForWrite).
 			*record.LogWriter
+			// Can be nil.
+			metrics *record.LogWriterMetrics
 		}
 
 		mem struct {
@@ -403,6 +405,12 @@ type DB struct {
 			// readCompactions is a readCompactionQueue which keeps track of the
 			// compactions which we might have to perform.
 			readCompactions readCompactionQueue
+
+			// Flush throughput metric.
+			flushWriteThroughput ThroughputMetric
+			// The idle start time for the flush "loop", i.e., when the flushing
+			// bool above transitions to false.
+			noOngoingFlushStartTime time.Time
 		}
 
 		cleaner struct {
@@ -1432,6 +1440,25 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 	return flushed, nil
 }
 
+// InternalIntervalMetrics returns the InternalIntervalMetrics and resets for
+// the next interval (which is until the next call to this method).
+func (d *DB) InternalIntervalMetrics() *InternalIntervalMetrics {
+	m := &InternalIntervalMetrics{}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.mu.log.metrics != nil {
+		m.LogWriter.WriteThroughput = d.mu.log.metrics.WriteThroughput
+		m.LogWriter.PendingBufferUtilization =
+			d.mu.log.metrics.PendingBufferLen.Mean() / record.CapAllocatedBlocks
+		m.LogWriter.SyncQueueUtilization = d.mu.log.metrics.SyncQueueLen.Mean() / record.SyncConcurrency
+		m.LogWriter.SyncLatencyMicros = d.mu.log.metrics.SyncLatencyMicros
+		d.mu.log.metrics = nil
+	}
+	m.Flush.WriteThroughput = d.mu.compact.flushWriteThroughput
+	d.mu.compact.flushWriteThroughput = ThroughputMetric{}
+	return m
+}
+
 // Metrics returns metrics about the database.
 func (d *DB) Metrics() *Metrics {
 	metrics := &Metrics{}
@@ -1775,7 +1802,17 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// close the previous log before linking the new log file,
 			// otherwise a crash could leave both logs with unclean tails, and
 			// Open will treat the previous log as corrupt.
-			err = d.mu.log.Close()
+			err = d.mu.log.LogWriter.Close()
+			metrics := d.mu.log.LogWriter.Metrics()
+			d.mu.Lock()
+			if d.mu.log.metrics == nil {
+				d.mu.log.metrics = metrics
+			} else {
+				if err := d.mu.log.metrics.Merge(metrics); err != nil {
+					d.opts.Logger.Infof("metrics error: %s", err)
+				}
+			}
+			d.mu.Unlock()
 
 			newLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
 
