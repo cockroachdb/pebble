@@ -253,6 +253,37 @@ d0704:d
 d0704:d
 .
 
+# Repeat the above test, but calling set-options before iteration to set the
+# same filter. The results should be identical.
+iter id_lower_upper=(3,4,5) id_lower_upper=(5,7,9)
+set-options point-filters=reuse
+first
+next
+prev
+prev
+----
+.
+d0704:d
+.
+d0704:d
+.
+
+# Repeat the above test, but calling set-options before iteration to remove the
+# filter.
+iter id_lower_upper=(3,4,5) id_lower_upper=(5,7,9)
+set-options point-filters=none
+first
+next
+prev
+prev
+----
+.
+a1001:a
+b0902:b
+a1001:a
+.
+
+
 # Iterate with filter id=3 and id=5, where the two admitted sets are
 # non-empty, but the intersection is empty.
 iter id_lower_upper=(3,4,5) id_lower_upper=(5,8,9)
