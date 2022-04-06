@@ -1739,11 +1739,34 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	}
 	i.iterValidityState = IterExhausted
 
+	var closePoint, closeRange bool
 	// If OnlyReadGuaranteedDurable changed, the iterator stacks are incorrect,
 	// improperly including or excluding memtables. Invalidate them so that
 	// finishInitializingIter will reconstruct them.
-	if i.opts.OnlyReadGuaranteedDurable != o.OnlyReadGuaranteedDurable {
+	closePoint = closePoint || i.opts.OnlyReadGuaranteedDurable != o.OnlyReadGuaranteedDurable
+	closeRange = closeRange || i.opts.OnlyReadGuaranteedDurable != o.OnlyReadGuaranteedDurable
+
+	// If either the original options or the new options specify a table filter,
+	// we need to reconstruct the iterator stacks. If they both supply a table
+	// filter, we can't be certain that it's the same filter since we have no
+	// mechanism to compare the filter closures.
+	closePoint = closePoint || i.opts.TableFilter != nil || o.TableFilter != nil
+	closeRange = closeRange || i.opts.TableFilter != nil || o.TableFilter != nil
+
+	// If either options specify block property filters for an iterator stack,
+	// reconstruct it.
+	// TODO(jackson): Expose a InternalIterator.SetOptions function and
+	// propagate changed filters to the existing iterator stack. There will
+	// likely be complications with determinism.
+	closePoint = closePoint || len(i.opts.PointKeyFilters) > 0 || len(o.PointKeyFilters) > 0
+	closeRange = closeRange || len(i.opts.RangeKeyFilters) > 0 || len(o.RangeKeyFilters) > 0
+
+	if closePoint && i.pointIter != nil {
+		i.err = firstError(i.err, i.pointIter.Close())
 		i.pointIter = nil
+	}
+	if closeRange && i.rangeKey != nil {
+		i.err = firstError(i.err, i.rangeKey.iter.Close())
 		i.rangeKey = nil
 	}
 
