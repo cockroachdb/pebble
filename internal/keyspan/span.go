@@ -188,7 +188,7 @@ func (s Span) Covers(seqNum uint64) bool {
 
 // String returns a string representation of the span.
 func (s Span) String() string {
-	return fmt.Sprintf("%s", prettySpan{Span: s, formatKey: base.DefaultFormatter})
+	return fmt.Sprint(prettySpan{Span: s, formatKey: base.DefaultFormatter})
 }
 
 // Pretty returns a formatter for the span.

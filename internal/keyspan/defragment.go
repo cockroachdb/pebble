@@ -6,6 +6,7 @@ package keyspan
 
 import (
 	"bytes"
+	"sort"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -42,6 +43,26 @@ var DefragmentInternal DefragmentMethod = func(cmp base.Compare, a, b Span) bool
 		}
 	}
 	return true
+}
+
+// DefragmentReducer merges the current and next Key slices, returning a new Key
+// slice, and a bool indicating whether `cur` was modified.
+//
+// Implementations should modify and return `cur` to save on allocations, or
+// consider allocating a new slice, as the `cur` slice may be retained by the
+// DefragmentingIter and mutated. The `next` slice must not be mutated.
+type DefragmentReducer func(cur, next []Key) (keys []Key, modified bool)
+
+// StaticDefragmentReducer is a no-op DefragmentReducer that simply returns the
+// current key slice, effectively retaining the first set of keys encountered
+// for a defragmented span.
+//
+// This reducer can be used, for example, when the set of Keys for each Span
+// being reduced is not expected to change, and therefore the keys from the
+// first span encountered can be used without considering keys in subsequent
+// spans.
+var StaticDefragmentReducer DefragmentReducer = func(cur, _ []Key) ([]Key, bool) {
+	return cur, false /* never modified */
 }
 
 // iterPos is an enum indicating the position of the defragmenting iter's
@@ -93,13 +114,17 @@ type DefragmentingIter struct {
 	// these extended bounds.
 	curr    Span
 	currBuf []byte
-	keysBuf []Key
+	keysBuf keysBySeqNumKind
 	keyBuf  []byte
 
 	// equal is a comparison function for two spans. equal is called when two
 	// spans are abutting to determine whether they may be defragmented.
 	// equal does not itself check for adjacency for the two spans.
-	equal func(base.Compare, Span, Span) bool
+	equal DefragmentMethod
+
+	// reduce is the reducer function used to collect Keys across all spans that
+	// constitute a defragmented span.
+	reduce DefragmentReducer
 }
 
 // Assert that *DefragmentingIter implements the FragmentIterator interface.
@@ -107,8 +132,15 @@ var _ FragmentIterator = (*DefragmentingIter)(nil)
 
 // Init initializes the defragmenting iter using the provided defragment
 // method.
-func (i *DefragmentingIter) Init(cmp base.Compare, iter FragmentIterator, equal DefragmentMethod) {
-	*i = DefragmentingIter{cmp: cmp, iter: iter, equal: equal}
+func (i *DefragmentingIter) Init(
+	cmp base.Compare, iter FragmentIterator, equal DefragmentMethod, reducer DefragmentReducer,
+) {
+	*i = DefragmentingIter{
+		cmp:    cmp,
+		iter:   iter,
+		equal:  equal,
+		reduce: reducer,
+	}
 }
 
 // Clone clones the iterator, returning an independent iterator over the same
@@ -118,7 +150,7 @@ func (i *DefragmentingIter) Clone() FragmentIterator {
 	// TODO(jackson): Delete Clone() when range-key state is incorporated into
 	// readState.
 	c := &DefragmentingIter{}
-	c.Init(i.cmp, i.iter.Clone(), i.equal)
+	c.Init(i.cmp, i.iter.Clone(), i.equal, i.reduce)
 	return c
 }
 
@@ -292,6 +324,7 @@ func (i *DefragmentingIter) defragmentForward() Span {
 
 	i.iterPos = iterPosNext
 	i.iterSpan = i.iter.Next()
+	var modified, keysBufModified bool
 	for i.iterSpan.Valid() {
 		if i.cmp(i.curr.End, i.iterSpan.Start) != 0 {
 			// Not a continuation.
@@ -303,8 +336,15 @@ func (i *DefragmentingIter) defragmentForward() Span {
 		}
 		i.keyBuf = append(i.keyBuf[:0], i.iterSpan.End...)
 		i.curr.End = i.keyBuf
+		i.keysBuf, modified = i.reduce(i.keysBuf, i.iterSpan.Keys)
+		keysBufModified = keysBufModified || modified
 		i.iterSpan = i.iter.Next()
 	}
+	if keysBufModified {
+		// Only sort if the keys were changed.
+		sort.Sort(&i.keysBuf)
+	}
+	i.curr.Keys = i.keysBuf
 	return i.curr
 }
 
@@ -319,6 +359,7 @@ func (i *DefragmentingIter) defragmentBackward() Span {
 
 	i.iterPos = iterPosPrev
 	i.iterSpan = i.iter.Prev()
+	var modified, keysBufModified bool
 	for i.iterSpan.Valid() {
 		if i.cmp(i.curr.Start, i.iterSpan.End) != 0 {
 			// Not a continuation.
@@ -330,8 +371,15 @@ func (i *DefragmentingIter) defragmentBackward() Span {
 		}
 		i.keyBuf = append(i.keyBuf[:0], i.iterSpan.Start...)
 		i.curr.Start = i.keyBuf
+		i.keysBuf, modified = i.reduce(i.keysBuf, i.iterSpan.Keys)
+		keysBufModified = keysBufModified || modified
 		i.iterSpan = i.iter.Prev()
 	}
+	if keysBufModified {
+		// Only sort if the keys were changed.
+		sort.Sort(&i.keysBuf)
+	}
+	i.curr.Keys = i.keysBuf
 	return i.curr
 }
 

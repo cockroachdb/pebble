@@ -21,6 +21,12 @@ import (
 
 func TestDefragmentingIter(t *testing.T) {
 	cmp := testkeys.Comparer.Compare
+	internalEqual := DefragmentInternal
+	alwaysEqual := func(_ base.Compare, _, _ Span) bool { return true }
+	staticReducer := StaticDefragmentReducer
+	collectReducer := func(cur, next []Key) ([]Key, bool) {
+		return append(cur, next...), true
+	}
 
 	var buf bytes.Buffer
 	var spans []Span
@@ -35,10 +41,42 @@ func TestDefragmentingIter(t *testing.T) {
 			}
 			return ""
 		case "iter":
+			equal := internalEqual
+			reducer := staticReducer
+			for _, cmdArg := range td.CmdArgs {
+				switch cmd := cmdArg.Key; cmd {
+				case "equal":
+					if len(cmdArg.Vals) != 1 {
+						return fmt.Sprintf("only one equal func expected; got %d", len(cmdArg.Vals))
+					}
+					switch val := cmdArg.Vals[0]; val {
+					case "internal":
+						equal = internalEqual
+					case "always":
+						equal = alwaysEqual
+					default:
+						return fmt.Sprintf("unknown reducer %s", val)
+					}
+				case "reducer":
+					if len(cmdArg.Vals) != 1 {
+						return fmt.Sprintf("only one reducer expected; got %d", len(cmdArg.Vals))
+					}
+					switch val := cmdArg.Vals[0]; val {
+					case "collect":
+						reducer = collectReducer
+					case "static":
+						reducer = staticReducer
+					default:
+						return fmt.Sprintf("unknown reducer %s", val)
+					}
+				default:
+					return fmt.Sprintf("unknown command: %s", cmd)
+				}
+			}
 			var innerIter MergingIter
 			innerIter.Init(cmp, noopTransform, NewIter(cmp, spans))
 			var iter DefragmentingIter
-			iter.Init(cmp, &innerIter, DefragmentInternal)
+			iter.Init(cmp, &innerIter, equal, reducer)
 			for _, line := range strings.Split(td.Input, "\n") {
 				runIterOp(&buf, &iter, line)
 			}
@@ -122,8 +160,8 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	fragmentedInner.Init(cmp, noopTransform, NewIter(cmp, fragmented))
 
 	var referenceIter, fragmentedIter DefragmentingIter
-	referenceIter.Init(cmp, &originalInner, DefragmentInternal)
-	fragmentedIter.Init(cmp, &fragmentedInner, DefragmentInternal)
+	referenceIter.Init(cmp, &originalInner, DefragmentInternal, StaticDefragmentReducer)
+	fragmentedIter.Init(cmp, &fragmentedInner, DefragmentInternal, StaticDefragmentReducer)
 
 	// Generate 100 random operations and run them against both iterators.
 	const numIterOps = 100
