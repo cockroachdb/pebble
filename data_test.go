@@ -152,7 +152,7 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			iter.SetBounds(lower, upper)
 			valid = iter.Valid()
 		case "set-options":
-			const usageString = "set-options [lower=<lower>] [upper=<upper>] [key-types=point|range|both] [mask-suffix=<suffix>]\n"
+			const usageString = "set-options [lower=<lower>] [upper=<upper>] [key-types=point|range|both] [mask-suffix=<suffix>] [only-durable=<bool>] [table-filter=reuse|none] [point-filters=reuse|none]\n"
 			var opts IterOptions
 			for _, part := range parts[1:] {
 				arg := strings.SplitN(part, "=", 2)
@@ -160,6 +160,14 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 					return usageString
 				}
 				switch arg[0] {
+				case "point-filters":
+					switch arg[1] {
+					case "reuse":
+						opts.PointKeyFilters = iter.opts.PointKeyFilters
+					case "none":
+					default:
+						return fmt.Sprintf("set-options: unknown arg point-filter=%q:\n%s", arg[1], usageString)
+					}
 				case "lower":
 					opts.LowerBound = []byte(arg[1])
 				case "upper":
@@ -177,6 +185,20 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 					}
 				case "mask-suffix":
 					opts.RangeKeyMasking.Suffix = []byte(arg[1])
+				case "table-filter":
+					switch arg[1] {
+					case "reuse":
+						opts.TableFilter = iter.opts.TableFilter
+					case "none":
+					default:
+						return fmt.Sprintf("set-options: unknown arg table-filter=%q:\n%s", arg[1], usageString)
+					}
+				case "only-durable":
+					var err error
+					opts.OnlyReadGuaranteedDurable, err = strconv.ParseBool(arg[1])
+					if err != nil {
+						return err.Error()
+					}
 				default:
 					return fmt.Sprintf("set-options: unknown arg %q:\n%s", arg[0], usageString)
 				}
