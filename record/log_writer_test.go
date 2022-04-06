@@ -37,7 +37,7 @@ func TestSyncQueue(t *testing.T) {
 			if atomic.LoadInt32(&closed) == 1 {
 				return
 			}
-			head, tail := q.load()
+			head, tail, _ := q.load()
 			q.pop(head, tail, nil)
 		}
 	}()
@@ -93,7 +93,7 @@ func TestFlusherCond(t *testing.T) {
 				c.Wait()
 			}
 
-			head, tail := q.load()
+			head, tail, _ := q.load()
 			q.pop(head, tail, nil)
 		}
 	}()
@@ -320,4 +320,74 @@ func TestMinSyncIntervalClose(t *testing.T) {
 	wg := syncRecord(1)
 	require.NoError(t, w.Close())
 	wg.Wait()
+}
+
+type syncFileWithWait struct {
+	f       syncFile
+	writeWG sync.WaitGroup
+	syncWG  sync.WaitGroup
+}
+
+func (f *syncFileWithWait) Write(buf []byte) (int, error) {
+	f.writeWG.Wait()
+	return f.f.Write(buf)
+}
+
+func (f *syncFileWithWait) Sync() error {
+	f.syncWG.Wait()
+	return f.f.Sync()
+}
+
+func TestMetricsWithoutSync(t *testing.T) {
+	f := &syncFileWithWait{}
+	f.writeWG.Add(1)
+	w := NewLogWriter(f, 0)
+	offset, err := w.SyncRecord([]byte("hello"), nil, nil)
+	require.NoError(t, err)
+	const recordSize = 16
+	require.EqualValues(t, recordSize, offset)
+	// We have 512KB of buffer capacity, and 5 bytes + overhead = 16 bytes for
+	// each record. Write 24 * 1024 records to fill it up ~75%. This constitutes
+	// ~12 blocks (each 32KB).
+	const numRecords = 24 << 10
+	for i := 0; i < numRecords; i++ {
+		_, err = w.SyncRecord([]byte("hello"), nil, nil)
+		require.NoError(t, err)
+	}
+	// Unblock the flush loop. It may have run once or twice. In either case,
+	// some run must have found a lot of blocks filled.
+	f.writeWG.Done()
+	w.Close()
+	m := w.Metrics()
+	// Mean is >= 5 filled blocks.
+	require.LessOrEqual(t, float64(5), m.PendingBufferLen.Mean())
+	// None of these writes asked to be synced.
+	require.EqualValues(t, 0, int(m.SyncQueueLen.Mean()))
+	require.Less(t, int64(numRecords*recordSize), m.WriteThroughput.Bytes)
+}
+
+func TestMetricsWithSync(t *testing.T) {
+	f := &syncFileWithWait{}
+	f.syncWG.Add(1)
+	w := NewLogWriter(f, 0)
+	var wg sync.WaitGroup
+	wg.Add(100)
+	for i := 0; i < 100; i++ {
+		var syncErr error
+		_, err := w.SyncRecord([]byte("hello"), &wg, &syncErr)
+		require.NoError(t, err)
+	}
+	// Unblock the flush loop. It may have run once or twice. In either case, we
+	// must have seen a total of 100 elements in the sync queue.
+	syncLatency := 10 * time.Millisecond
+	time.Sleep(syncLatency)
+	f.syncWG.Done()
+	w.Close()
+	m := w.Metrics()
+	require.LessOrEqual(t, float64(50), m.SyncQueueLen.Mean())
+	// Allow for some inaccuracy in sleep and for two syncs, one of which was
+	// fast.
+	require.LessOrEqual(t, int64(syncLatency/(2*time.Microsecond)),
+		m.SyncLatencyMicros.ValueAtQuantile(90))
+	require.LessOrEqual(t, int64(syncLatency/2), int64(m.WriteThroughput.WorkDuration))
 }
