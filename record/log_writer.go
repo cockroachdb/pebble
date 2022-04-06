@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/codahale/hdrhistogram"
 )
 
 var walSyncLabels = pprof.Labels("pebble", "wal-sync")
@@ -114,18 +115,22 @@ func (q *syncQueue) clearBlocked() {
 }
 
 func (q *syncQueue) empty() bool {
-	head, tail := q.load()
+	head, tail, _ := q.load()
 	return head == tail
 }
 
-func (q *syncQueue) load() (head, tail uint32) {
-	if atomic.LoadUint32(&q.blocked) == 1 {
-		return 0, 0
-	}
-
+// load returns the head, tail of the queue for what should be synced to the
+// caller. It can return a head, tail of zero if syncing is blocked due to
+// min-sync-interval. It additionally returns the real length of this queue,
+// regardless of whether syncing is blocked.
+func (q *syncQueue) load() (head, tail, realLength uint32) {
 	ptrs := atomic.LoadUint64(&q.headTail)
 	head, tail = q.unpack(ptrs)
-	return head, tail
+	realLength = head - tail
+	if atomic.LoadUint32(&q.blocked) == 1 {
+		return 0, 0, realLength
+	}
+	return head, tail, realLength
 }
 
 func (q *syncQueue) pop(head, tail uint32, err error) error {
@@ -278,6 +283,7 @@ type LogWriter struct {
 		minSyncInterval durationFunc
 		pending         []*block
 		syncQ           syncQueue
+		metrics         *LogWriterMetrics
 	}
 
 	// afterFunc is a hook to allow tests to mock out the timer functionality
@@ -285,6 +291,10 @@ type LogWriter struct {
 	// time.AfterFunc.
 	afterFunc func(d time.Duration, f func()) syncTimer
 }
+
+// CapAllocatedBlocks is the maximum number of blocks allocated by the
+// LogWriter.
+const CapAllocatedBlocks = 16
 
 // NewLogWriter returns a new LogWriter.
 func NewLogWriter(w io.Writer, logNum base.FileNum) *LogWriter {
@@ -304,12 +314,17 @@ func NewLogWriter(w io.Writer, logNum base.FileNum) *LogWriter {
 		},
 	}
 	r.free.cond.L = &r.free.Mutex
-	r.free.blocks = make([]*block, 0, 16)
+	r.free.blocks = make([]*block, 0, CapAllocatedBlocks)
 	r.free.allocated = 1
 	r.block = &block{}
 	r.flusher.ready.init(&r.flusher.Mutex, &r.flusher.syncQ)
 	r.flusher.closed = make(chan struct{})
 	r.flusher.pending = make([]*block, 0, cap(r.free.blocks))
+	r.flusher.metrics = &LogWriterMetrics{}
+	// Histogram with max value of 30s. We are not trying to detect anomalies
+	// with this, and normally latencies range from 0.5ms to 25ms.
+	r.flusher.metrics.SyncLatencyMicros = hdrhistogram.New(
+		0, (time.Second * 30).Microseconds(), 2)
 	go func() {
 		pprof.Do(context.Background(), walSyncLabels, r.flushLoop)
 	}()
@@ -329,8 +344,13 @@ func (w *LogWriter) flushLoop(context.Context) {
 	f := &w.flusher
 	f.Lock()
 
+	// Initialize idleStartTime to when the loop starts.
+	idleStartTime := time.Now()
 	var syncTimer syncTimer
 	defer func() {
+		// Capture the idle duration between the last piece of work and when the
+		// loop terminated.
+		f.metrics.WriteThroughput.IdleDuration += time.Since(idleStartTime)
 		if syncTimer != nil {
 			syncTimer.Stop()
 		}
@@ -374,7 +394,6 @@ func (w *LogWriter) flushLoop(context.Context) {
 	// f.pending on every loop iteration, though the number of elements is small
 	// (usually 1, max 16).
 	pending := make([]*block, 0, cap(f.pending))
-
 	for {
 		for {
 			// Grab the portion of the current block that requires flushing. Note that
@@ -396,15 +415,19 @@ func (w *LogWriter) flushLoop(context.Context) {
 			f.ready.Wait()
 			continue
 		}
-
+		// Found work to do, so no longer idle.
+		workStartTime := time.Now()
+		idleDuration := workStartTime.Sub(idleStartTime)
 		pending = pending[:len(f.pending)]
 		copy(pending, f.pending)
 		f.pending = f.pending[:0]
+		f.metrics.PendingBufferLen.AddSample(int64(len(pending)))
 
 		// Grab the list of sync waiters. Note that syncQueue.load() will return
 		// 0,0 while we're waiting for the min-sync-interval to expire. This
 		// allows flushing to proceed even if we're not ready to sync.
-		head, tail := f.syncQ.load()
+		head, tail, realSyncQLen := f.syncQ.load()
+		f.metrics.SyncQueueLen.AddSample(int64(realSyncQLen))
 
 		// Grab the portion of the current block that requires flushing. Note that
 		// the current block can be added to the pending blocks list after we
@@ -420,14 +443,25 @@ func (w *LogWriter) flushLoop(context.Context) {
 		// error we consume the pending list above to free blocks for writers.
 		if f.err != nil {
 			f.syncQ.pop(head, tail, f.err)
+			// Update the idleStartTime if work could not be done, so that we don't
+			// include the duration we tried to do work as idle. We don't bother
+			// with the rest of the accounting, which means we will undercount.
+			idleStartTime = time.Now()
 			continue
 		}
 		f.Unlock()
-		synced, err := w.flushPending(data, pending, head, tail)
+		synced, syncLatency, bytesWritten, err := w.flushPending(data, pending, head, tail)
 		f.Lock()
+		if synced {
+			f.metrics.SyncLatencyMicros.RecordValue(syncLatency.Microseconds())
+		}
 		f.err = err
 		if f.err != nil {
 			f.syncQ.clearBlocked()
+			// Update the idleStartTime if work could not be done, so that we don't
+			// include the duration we tried to do work as idle. We don't bother
+			// with the rest of the accounting, which means we will undercount.
+			idleStartTime = time.Now()
 			continue
 		}
 
@@ -446,12 +480,18 @@ func (w *LogWriter) flushLoop(context.Context) {
 				}
 			}
 		}
+		// Finished work, and started idling.
+		idleStartTime = time.Now()
+		workDuration := idleStartTime.Sub(workStartTime)
+		f.metrics.WriteThroughput.Bytes += bytesWritten
+		f.metrics.WriteThroughput.WorkDuration += workDuration
+		f.metrics.WriteThroughput.IdleDuration += idleDuration
 	}
 }
 
 func (w *LogWriter) flushPending(
 	data []byte, pending []*block, head, tail uint32,
-) (synced bool, err error) {
+) (synced bool, syncLatency time.Duration, bytesWritten int64, err error) {
 	defer func() {
 		// Translate panics into errors. The errors will cause flushLoop to shut
 		// down, but allows us to do so in a controlled way and avoid swallowing
@@ -463,26 +503,35 @@ func (w *LogWriter) flushPending(
 	}()
 
 	for _, b := range pending {
+		bytesWritten += blockSize - int64(b.flushed)
 		if err = w.flushBlock(b); err != nil {
 			break
 		}
 	}
-	if err == nil && len(data) > 0 {
+	if n := len(data); err == nil && n > 0 {
+		bytesWritten += int64(n)
 		_, err = w.w.Write(data)
 	}
 
 	synced = head != tail
 	if synced {
 		if err == nil && w.s != nil {
-			err = w.s.Sync()
+			syncLatency, err = w.syncWithLatency()
 		}
 		f := &w.flusher
 		if popErr := f.syncQ.pop(head, tail, err); popErr != nil {
-			return synced, popErr
+			return synced, syncLatency, bytesWritten, popErr
 		}
 	}
 
-	return synced, err
+	return synced, syncLatency, bytesWritten, err
+}
+
+func (w *LogWriter) syncWithLatency() (time.Duration, error) {
+	start := time.Now()
+	err := w.s.Sync()
+	syncLatency := time.Since(start)
+	return syncLatency, err
 }
 
 func (w *LogWriter) flushBlock(b *block) error {
@@ -553,9 +602,13 @@ func (w *LogWriter) Close() error {
 	// last buffered data only if it was requested via syncQ, so we need to sync
 	// here to ensure that all the data is synced.
 	err := w.flusher.err
+	var syncLatency time.Duration
 	if err == nil && w.s != nil {
-		err = w.s.Sync()
+		syncLatency, err = w.syncWithLatency()
 	}
+	f.Lock()
+	f.metrics.SyncLatencyMicros.RecordValue(syncLatency.Microseconds())
+	f.Unlock()
 
 	if w.c != nil {
 		cerr := w.c.Close()
@@ -667,4 +720,33 @@ func (w *LogWriter) emitFragment(n int, p []byte) []byte {
 		w.queueBlock()
 	}
 	return p[r:]
+}
+
+// Metrics must be called after Close. The callee will no longer modify the
+// returned LogWriterMetrics.
+func (w *LogWriter) Metrics() *LogWriterMetrics {
+	return w.flusher.metrics
+}
+
+// LogWriterMetrics contains misc metrics for the log writer.
+type LogWriterMetrics struct {
+	WriteThroughput   base.ThroughputMetric
+	PendingBufferLen  base.GaugeSampleMetric
+	SyncQueueLen      base.GaugeSampleMetric
+	SyncLatencyMicros *hdrhistogram.Histogram
+}
+
+// Merge merges metrics from x. Requires that x is non-nil.
+func (m *LogWriterMetrics) Merge(x *LogWriterMetrics) error {
+	m.WriteThroughput.Merge(x.WriteThroughput)
+	m.PendingBufferLen.Merge(x.PendingBufferLen)
+	m.SyncQueueLen.Merge(x.SyncQueueLen)
+	dropped := m.SyncLatencyMicros.Merge(x.SyncLatencyMicros)
+	if dropped > 0 {
+		// This should never happen since we use a consistent min, max when
+		// creating these histograms, and out-of-range is the only reason for the
+		// merge to drop samples.
+		return errors.Errorf("sync latency histogram merge dropped %d samples", dropped)
+	}
+	return nil
 }
