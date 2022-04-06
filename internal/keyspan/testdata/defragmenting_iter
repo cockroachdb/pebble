@@ -139,3 +139,29 @@ seeklt h  f-t:{(#3,RANGEKEYSET,@3,bananas)}
 seeklt p  f-t:{(#3,RANGEKEYSET,@3,bananas)}
 seeklt t  f-t:{(#3,RANGEKEYSET,@3,bananas)}
 seeklt z  t-z:{(#4,RANGEKEYSET,@2,oranges)}
+
+# Test iteration with a reducer that collects keys across all spans that
+# constitute a defragmented span. Abutting spans are always combined.
+
+define
+a-b:{(#3,RANGEDEL) (#2,RANGEDEL)}
+b-c:{(#4,RANGEDEL) (#1,RANGEDEL)}
+c-d:{(#5,RANGEDEL)}
+e-f:{(#1,RANGEDEL)}
+f-g:{(#2,RANGEDEL)}
+----
+
+iter equal=always reducer=collect
+first
+next
+next
+last
+prev
+prev
+----
+first     a-d:{(#5,RANGEDEL) (#4,RANGEDEL) (#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+next      e-g:{(#2,RANGEDEL) (#1,RANGEDEL)}
+next      .
+last      e-g:{(#2,RANGEDEL) (#1,RANGEDEL)}
+prev      a-d:{(#5,RANGEDEL) (#4,RANGEDEL) (#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+prev      .

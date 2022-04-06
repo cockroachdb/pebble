@@ -28,7 +28,7 @@ func InitUserIteration(
 	levelIters ...keyspan.FragmentIterator,
 ) keyspan.FragmentIterator {
 	miter.Init(cmp, userIterationTransform(snapshot), levelIters...)
-	diter.Init(cmp, miter, userIterationDefragmenter())
+	diter.Init(cmp, miter, userIterationDefragmenter(), keyspan.StaticDefragmentReducer)
 	return diter
 }
 
