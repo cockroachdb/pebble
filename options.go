@@ -524,6 +524,9 @@ type Options struct {
 	// The default value uses the underlying operating system's file system.
 	FS vfs.FS
 
+	// The count of L0 files necessary to trigger an L0 compaction.
+	L0CompactionFileThreshold int
+
 	// The amount of L0 read-amplification necessary to trigger an L0 compaction.
 	L0CompactionThreshold int
 
@@ -718,6 +721,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.L0CompactionThreshold <= 0 {
 		o.L0CompactionThreshold = 4
 	}
+	if o.L0CompactionFileThreshold <= 0 {
+		o.L0CompactionFileThreshold = 500
+	}
 	if o.L0StopWritesThreshold <= 0 {
 		o.L0StopWritesThreshold = 12
 	}
@@ -877,6 +883,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.FlushSplitBytes)
 	fmt.Fprintf(&buf, "  format_major_version=%d\n", o.FormatMajorVersion)
 	fmt.Fprintf(&buf, "  l0_compaction_concurrency=%d\n", o.Experimental.L0CompactionConcurrency)
+	fmt.Fprintf(&buf, "  l0_compaction_file_threshold=%d\n", o.L0CompactionFileThreshold)
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
 	fmt.Fprintf(&buf, "  lbase_max_bytes=%d\n", o.LBaseMaxBytes)
@@ -1064,6 +1071,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				}
 			case "l0_compaction_concurrency":
 				o.Experimental.L0CompactionConcurrency, err = strconv.Atoi(value)
+			case "l0_compaction_file_threshold":
+				o.L0CompactionFileThreshold, err = strconv.Atoi(value)
 			case "l0_compaction_threshold":
 				o.L0CompactionThreshold, err = strconv.Atoi(value)
 			case "l0_stop_writes_threshold":

@@ -1372,10 +1372,11 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 		fmt.Printf("seed: %d\n", seed)
 	}
 	rng := rand.New(rand.NewSource(seed))
-	opts.FlushSplitBytes = 1 << rng.Intn(8)       // 1B - 256B
-	opts.L0CompactionThreshold = 1 << rng.Intn(2) // 1-2
-	opts.LBaseMaxBytes = 1 << rng.Intn(10)        // 1B - 1KB
-	opts.MemTableSize = 2 << 10                   // 2KB
+	opts.FlushSplitBytes = 1 << rng.Intn(8)            // 1B - 256B
+	opts.L0CompactionThreshold = 1 << rng.Intn(2)      // 1-2
+	opts.L0CompactionFileThreshold = 1 << rng.Intn(11) // 1-1024
+	opts.LBaseMaxBytes = 1 << rng.Intn(11)             // 1B - 1KB
+	opts.MemTableSize = 2 << 10                        // 2KB
 	var lopts LevelOptions
 	lopts.BlockSize = 1 << rng.Intn(8)      // 1B - 256B
 	lopts.IndexBlockSize = 1 << rng.Intn(8) // 1B - 256B
