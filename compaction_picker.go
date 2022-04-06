@@ -797,11 +797,32 @@ func (p *compactionPickerByScore) calculateL0Score(
 	var info candidateLevelInfo
 	info.outputLevel = p.baseLevel
 
-	// If L0Sublevels are present, we use the sublevel count as opposed to
-	// the L0 file count to score this level. The base vs intra-L0
-	// compaction determination happens in pickAuto, not here.
+	// If L0Sublevels are present, use the sublevel count to calculate the
+	// score. The base vs intra-L0 compaction determination happens in pickAuto,
+	// not here.
 	info.score = float64(2*p.vers.L0Sublevels.MaxDepthAfterOngoingCompactions()) /
 		float64(p.opts.L0CompactionThreshold)
+
+	// Also calculate a score based on the file count but use it only if it
+	// produces a higher score than the sublevel-based one. This heuristic is
+	// designed to accommodate cases where L0 is accumulating non-overlapping
+	// files in L0. Letting too many non-overlapping files accumulate in few
+	// sublevels is undesirable, because:
+	// 1) we can produce a massive backlog to compact once files do overlap.
+	// 2) constructing L0 sublevels has a runtime that grows superlinearly with
+	//    the number of files in L0 and must be done while holding D.mu.
+	noncompactingFiles := p.vers.Levels[0].Len()
+	for _, c := range inProgressCompactions {
+		for _, cl := range c.inputs {
+			if cl.level == 0 {
+				noncompactingFiles -= cl.files.Len()
+			}
+		}
+	}
+	fileScore := float64(noncompactingFiles) / float64(p.opts.L0CompactionFileThreshold)
+	if info.score < fileScore {
+		info.score = fileScore
+	}
 	return info
 }
 

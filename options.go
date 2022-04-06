@@ -404,6 +404,9 @@ type Options struct {
 	// The default value uses the underlying operating system's file system.
 	FS vfs.FS
 
+	// The count of L0 files necessary to trigger an L0 compaction.
+	L0CompactionFileThreshold int
+
 	// The amount of L0 read-amplification necessary to trigger an L0 compaction.
 	L0CompactionThreshold int
 
@@ -581,6 +584,32 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.L0CompactionThreshold <= 0 {
 		o.L0CompactionThreshold = 4
 	}
+	if o.L0CompactionFileThreshold <= 0 {
+		// Some justification for the default of 500:
+		// Why not smaller?:
+		// - The default target file size for L0 is 2MB, so 500 files is <= 1GB
+		//   of data. At observed compaction speeds of > 20MB/s, L0 can be
+		//   cleared of all files in < 1min, so this backlog is not huge.
+		// - 500 files is low overhead for instantiating L0 sublevels from
+		//   scratch.
+		// - Lower values were observed to cause excessive and inefficient
+		//   compactions out of L0 in a TPCC import benchmark.
+		// Why not larger?:
+		// - More than 1min to compact everything out of L0.
+		// - CockroachDB's admission control system uses a threshold of 1000
+		//   files to start throttling writes to Pebble. Using 500 here gives
+		//   us headroom between when Pebble should start compacting L0 and
+		//   when the admission control threshold is reached.
+		//
+		// We can revisit this default in the future based on better
+		// experimental understanding.
+		//
+		// TODO(jackson): Experiment with slightly lower thresholds [or higher
+		// admission control thresholds] to see whether a higher L0 score at the
+		// threshold (currently 2.0) is necessary for some workloads to avoid
+		// starving L0 in favor of lower-level compactions.
+		o.L0CompactionFileThreshold = 500
+	}
 	if o.L0StopWritesThreshold <= 0 {
 		o.L0StopWritesThreshold = 12
 	}
@@ -733,6 +762,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.FlushSplitBytes)
 	fmt.Fprintf(&buf, "  format_major_version=%d\n", o.FormatMajorVersion)
 	fmt.Fprintf(&buf, "  l0_compaction_concurrency=%d\n", o.Experimental.L0CompactionConcurrency)
+	fmt.Fprintf(&buf, "  l0_compaction_file_threshold=%d\n", o.L0CompactionFileThreshold)
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
 	fmt.Fprintf(&buf, "  lbase_max_bytes=%d\n", o.LBaseMaxBytes)
@@ -919,6 +949,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				}
 			case "l0_compaction_concurrency":
 				o.Experimental.L0CompactionConcurrency, err = strconv.Atoi(value)
+			case "l0_compaction_file_threshold":
+				o.L0CompactionFileThreshold, err = strconv.Atoi(value)
 			case "l0_compaction_threshold":
 				o.L0CompactionThreshold, err = strconv.Atoi(value)
 			case "l0_stop_writes_threshold":
