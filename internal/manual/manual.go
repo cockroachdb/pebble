@@ -22,12 +22,6 @@ func throw(s string)
 // runtime page allocator and allocate large chunks of memory using mmap or
 // similar.
 
-var manualAllocSize int64
-
-func ManualAllocSize() uint64 {
-	return uint64(atomic.LoadInt64(&manualAllocSize))
-}
-
 // New allocates a slice of size n. The returned slice is from manually managed
 // memory and MUST be released by calling Free. Failure to do so will result in
 // a memory leak.
