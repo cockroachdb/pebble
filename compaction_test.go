@@ -2554,12 +2554,37 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				}
 				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 				var startFiles, outputFiles []*fileMetadata
+				var sublevels []manifest.LevelSlice
 				var files *[]*fileMetadata
+				var sublevel []*fileMetadata
+				var parsingSublevel bool
 				fileNum := FileNum(1)
 
+				switchSublevel := func() {
+					if sublevel != nil {
+						sublevels = append(
+							sublevels, manifest.NewLevelSliceSpecificOrder(sublevel),
+						)
+						sublevel = nil
+					}
+					parsingSublevel = false
+				}
+
 				for _, data := range strings.Split(d.Input, "\n") {
-					switch data {
-					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+					if data[0] == 'L' && len(data) == 4 {
+						// Format L0.{sublevel}.
+						switchSublevel()
+						level, err := strconv.Atoi(data[1:2])
+						if err != nil {
+							return err.Error()
+						}
+						if c.startLevel.level == -1 {
+							c.startLevel.level = level
+							files = &startFiles
+						}
+						parsingSublevel = true
+					} else if data[0] == 'L' {
+						switchSublevel()
 						level, err := strconv.Atoi(data[1:])
 						if err != nil {
 							return err.Error()
@@ -2576,17 +2601,21 @@ func TestCompactionCheckOrdering(t *testing.T) {
 						} else {
 							return "outputLevel already set\n"
 						}
-
-					default:
+					} else {
 						meta := parseMeta(data)
 						meta.FileNum = fileNum
 						fileNum++
 						*files = append(*files, meta)
+						if parsingSublevel {
+							sublevel = append(sublevel, meta)
+						}
 					}
 				}
 
+				switchSublevel()
 				c.startLevel.files = manifest.NewLevelSliceSpecificOrder(startFiles)
 				c.outputLevel.files = manifest.NewLevelSliceSpecificOrder(outputFiles)
+				c.l0ManualCompactionFiles = sublevels
 				if c.outputLevel.level == -1 {
 					c.outputLevel.level = 0
 				}
