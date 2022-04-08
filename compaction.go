@@ -931,6 +931,20 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 
 	// Check that the LSM ordering invariants are ok in order to prevent
 	// generating corrupted sstables due to a violation of those invariants.
+	if c.l0ManualCompactionFiles != nil {
+		// We may be using L0 sublevels for compaction.
+		//
+		// TODO(bananabrick): Get rid of this special casing when we switch
+		// to always using sublevels for compactions out of L0.
+		for i, s := range c.l0ManualCompactionFiles {
+			err := manifest.CheckOrdering(c.cmp, c.formatKey,
+				manifest.L0Sublevel(i), s.Iter())
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	if c.startLevel.level >= 0 {
 		err := manifest.CheckOrdering(c.cmp, c.formatKey,
 			manifest.Level(c.startLevel.level), c.startLevel.files.Iter())
