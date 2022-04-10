@@ -296,14 +296,33 @@ func (s *Skiplist) newNode(
 }
 
 func (s *Skiplist) alloc(size uint32) (uint32, error) {
-	offset := len(s.nodes)
+	offset := uint32(len(s.nodes))
 
 	// We only have a need for memory up to offset + size, but we never want
 	// to allocate a node whose tail points into unallocated memory.
-	minAllocSize := uint32(offset) + maxNodeSize
-	if uint32(cap(s.nodes)) < minAllocSize {
-		allocSize := uint32(cap(s.nodes) * 2)
-		if allocSize < minAllocSize {
+	minAllocSize := offset + maxNodeSize
+	// Check for overflow
+	if minAllocSize < offset {
+		minAllocSize = offset + size
+		if minAllocSize < offset {
+			return 0, errors.Wrapf(ErrTooManyRecords,
+				"alloc of new record (size=%d) would overflow uint32 (current size=%d)",
+				uint64(offset)+uint64(size), offset,
+			)
+		}
+	}
+	nodesCap := uint32(cap(s.nodes))
+	if nodesCap < minAllocSize {
+		if minAllocSize > maxNodesSize {
+			return 0, errors.Wrapf(ErrTooManyRecords,
+				"alloc of new record (size=%d) would exceed maximum number of nodes (%d, current size=%d)",
+				uint64(offset)+uint64(size), maxNodesSize, offset,
+			)
+		}
+		allocSize := nodesCap * 2
+		if allocSize < nodesCap || allocSize > maxNodesSize {
+			allocSize = maxNodesSize
+		} else if allocSize < minAllocSize {
 			allocSize = minAllocSize
 		}
 		// Cap the allocation at the max allowed size to avoid wasted capacity.
