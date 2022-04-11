@@ -1114,14 +1114,12 @@ func (i *fragmentBlockIter) gatherBackward(k *InternalKey, internalValue []byte)
 	return i.span
 }
 
-// Error implements (base.InternalIterator).Error, as documented in the
-// internal/base package.
+// Error implements (keyspan.FragmentIterator).Error.
 func (i *fragmentBlockIter) Error() error {
 	return i.err
 }
 
-// Close implements (base.InternalIterator).Close, as documented in the
-// internal/base package.
+// Close implements (keyspan.FragmentIterator).Close.
 func (i *fragmentBlockIter) Close() error {
 	var err error
 	if i.closeHook != nil {
@@ -1131,22 +1129,19 @@ func (i *fragmentBlockIter) Close() error {
 	return err
 }
 
-// First implements (base.InternalIterator).First, as documented in the
-// internal/base package.
+// First implements (keyspan.FragmentIterator).First
 func (i *fragmentBlockIter) First() keyspan.Span {
 	i.dir = +1
 	return i.gatherForward(i.blockIter.First())
 }
 
-// Last implements (base.InternalIterator).Last, as documented in the
-// internal/base package.
+// Last implements (keyspan.FragmentIterator).Last.
 func (i *fragmentBlockIter) Last() keyspan.Span {
 	i.dir = -1
 	return i.gatherBackward(i.blockIter.Last())
 }
 
-// Next implements (base.InternalIterator).Next, as documented in the
-// internal/base package.
+// Next implements (keyspan.FragmentIterator).Next.
 func (i *fragmentBlockIter) Next() keyspan.Span {
 	switch {
 	case i.dir == -1 && !i.span.Valid():
@@ -1179,8 +1174,7 @@ func (i *fragmentBlockIter) Next() keyspan.Span {
 	return i.gatherForward(&i.blockIter.ikey, i.blockIter.val)
 }
 
-// Prev implements (base.InternalIterator).Prev, as documented in the
-// internal/base package.
+// Prev implements (keyspan.FragmentIterator).Prev.
 func (i *fragmentBlockIter) Prev() keyspan.Span {
 	switch {
 	case i.dir == +1 && !i.span.Valid():
@@ -1213,15 +1207,13 @@ func (i *fragmentBlockIter) Prev() keyspan.Span {
 	return i.gatherBackward(&i.blockIter.ikey, i.blockIter.val)
 }
 
-// SeekGE implements (base.InternalIterator).SeekGE, as documented in the
-// internal/base package.
+// SeekGE implements (keyspan.FragmentIterator).SeekGE.
 func (i *fragmentBlockIter) SeekGE(k []byte) keyspan.Span {
 	i.dir = +1
 	return i.gatherForward(i.blockIter.SeekGE(k, false))
 }
 
-// SeekLT implements (base.InternalIterator).SeekLT, as documented in the
-// internal/base package.
+// SeekLT implements (keyspan.FragmentIterator).SeekLT.
 func (i *fragmentBlockIter) SeekLT(k []byte) keyspan.Span {
 	i.dir = -1
 	return i.gatherBackward(i.blockIter.SeekLT(k))

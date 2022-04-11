@@ -1,0 +1,347 @@
+# Set a key within the indexed batch.
+new-batch
+set foo foo
+----
+
+# Construct an iterator over the indexed batch.
+
+new-iter i0
+----
+
+# The key we set should be visible.
+
+iter iter=i0
+first
+next
+----
+foo: (foo, .)
+.
+
+# Set a new key, while the above iterator is still open.
+
+mutate
+set bar bar
+----
+
+# The new key should be invisible.
+
+iter iter=i0
+prev
+next
+----
+foo: (foo, .)
+.
+
+# A set-options operation should refresh the Iterator's view of the batch. The
+# bar key should now be visibile.
+
+iter iter=i0
+set-options
+first
+next
+next
+----
+.
+bar: (bar, .)
+foo: (foo, .)
+.
+
+# Delete foo with a range deletion.
+
+mutate
+del-range f g
+----
+
+# Both keys should still be visible.
+
+iter iter=i0
+prev
+prev
+----
+foo: (foo, .)
+bar: (bar, .)
+
+# After refreshing the iterator's view of the batch, foo should be deleted.
+
+iter iter=i0
+set-options
+seek-ge foo
+seek-lt foo
+----
+.
+.
+bar: (bar, .)
+
+# Write a range key set and a point key.
+
+mutate
+range-key-set a c @1 boop
+set b b
+----
+
+# The mutations should not be visible.
+
+iter iter=i0
+prev
+next
+----
+.
+bar: (bar, .)
+
+# But refreshing the batch through a call to SetOptions should surface them.
+
+iter iter=i0
+set-options
+first
+next
+next
+----
+.
+a: (., [a-c) @1=boop)
+b: (b, [a-c) @1=boop)
+bar: (bar, [a-c) @1=boop)
+
+# Remove part of the range key to fragment it.
+
+mutate
+range-key-del ace arc
+----
+
+iter iter=i0
+next
+prev
+prev
+prev
+prev
+----
+.
+bar: (bar, [a-c) @1=boop)
+b: (b, [a-c) @1=boop)
+a: (., [a-c) @1=boop)
+.
+
+iter iter=i0
+set-options
+first
+next
+next
+next
+----
+.
+a: (., [a-ace) @1=boop)
+arc: (., [arc-c) @1=boop)
+b: (b, [arc-c) @1=boop)
+bar: (bar, [arc-c) @1=boop)
+
+# Create a new indexed batch and a new iterator over it.
+
+new-batch
+set foo foo
+----
+
+new-iter i1
+----
+
+iter iter=i1
+first
+next
+----
+foo: (foo, .)
+.
+
+# Test interactions with cloned iterators.
+# First, apply mutations to the batch. They should remain invisible.
+
+mutate
+set bar bar
+range-key-set a z @1 boop
+del-range f g
+----
+
+iter iter=i1
+first
+next
+----
+foo: (foo, .)
+.
+
+# Clone i1 to create i2.
+
+clone from=i1 to=i2
+----
+
+# i1 unchanged.
+
+iter iter=i1
+first
+next
+----
+foo: (foo, .)
+.
+
+# i2 sees exactly the same stale state as i1 until SetOptions is called to
+# explicitly refresh the view of the underlying batch.
+
+iter iter=i2
+first
+next
+set-options
+first
+next
+next
+----
+foo: (foo, .)
+.
+.
+a: (., [a-z) @1=boop)
+bar: (bar, [a-z) @1=boop)
+.
+
+# i1 should still have the old, stale view of the batch.
+
+iter iter=i1
+first
+next
+----
+foo: (foo, .)
+.
+
+# Mutate the underlying batch again.
+
+mutate
+set foo foo
+range-key-set a z @2 bax
+del-range b c
+----
+
+# The new mutations should be invisible until SetOptions is called.
+
+iter iter=i1
+first
+next
+set-options
+first
+next
+next
+----
+foo: (foo, .)
+.
+.
+a: (., [a-z) @2=bax, @1=boop)
+foo: (foo, [a-z) @2=bax, @1=boop)
+.
+
+iter iter=i2
+first
+next
+next
+set-options
+first
+next
+next
+----
+a: (., [a-z) @1=boop)
+bar: (bar, [a-z) @1=boop)
+.
+.
+a: (., [a-z) @2=bax, @1=boop)
+foo: (foo, [a-z) @2=bax, @1=boop)
+.
+
+# Commit a separate batch to the underlying engine.
+batch
+range-key-set a z @5 poi
+set apple apple
+----
+
+# The writes to the underlying engine should be invisible.
+
+iter iter=i1
+first
+next
+next
+----
+a: (., [a-z) @2=bax, @1=boop)
+foo: (foo, [a-z) @2=bax, @1=boop)
+.
+
+# Clone i1 to create i3.
+
+clone from=i1 to=i3
+----
+
+iter iter=i3
+first
+next
+next
+----
+a: (., [a-z) @2=bax, @1=boop)
+foo: (foo, [a-z) @2=bax, @1=boop)
+.
+
+# Refresh i3's view of its batch. It should still not see the newly committed
+# writes.
+
+iter iter=i3
+set-options
+first
+next
+next
+----
+.
+a: (., [a-z) @2=bax, @1=boop)
+foo: (foo, [a-z) @2=bax, @1=boop)
+.
+
+# Create a new iterator i4 over the indexed batch [not a Clone]. It should see
+# all committed writes and uncommitted writes.
+
+new-iter i4
+----
+
+iter iter=i4
+first
+next
+next
+next
+----
+a: (., [a-z) @5=poi, @2=bax, @1=boop)
+apple: (apple, [a-z) @5=poi, @2=bax, @1=boop)
+foo: (foo, [a-z) @5=poi, @2=bax, @1=boop)
+.
+
+# Mutate all the open iterators' underlying batch.
+
+mutate
+range-key-set a z @6 yaya
+set c c
+----
+
+# The iterators should still not see the committed writes, even after refreshing
+# to observe more recent batch writes.
+
+iter iter=i1
+first
+next
+next
+----
+a: (., [a-z) @2=bax, @1=boop)
+foo: (foo, [a-z) @2=bax, @1=boop)
+.
+
+iter iter=i3
+first
+next
+next
+set-options
+first
+next
+next
+----
+a: (., [a-z) @2=bax, @1=boop)
+foo: (foo, [a-z) @2=bax, @1=boop)
+.
+.
+a: (., [a-z) @6=yaya, @2=bax, @1=boop)
+c: (c, [a-z) @6=yaya, @2=bax, @1=boop)
+foo: (foo, [a-z) @6=yaya, @2=bax, @1=boop)

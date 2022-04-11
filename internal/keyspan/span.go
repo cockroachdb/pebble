@@ -126,15 +126,77 @@ func (s Span) LargestSeqNum() uint64 {
 	return s.Keys[0].SeqNum()
 }
 
+// TODO(jackson): Replace most of the calls to Visible with more targeted calls
+// that avoid the need to construct a new Span.
+
 // Visible returns a span with the subset of keys visible at the provided
 // sequence number.
-func (s Span) Visible(seqNum uint64) Span {
+//
+// Visible may incur an allocation, so callers should prefer targeted,
+// non-allocating methods when possible.
+func (s Span) Visible(snapshot uint64) Span {
 	ret := Span{Start: s.Start, End: s.End}
+	if len(s.Keys) == 0 {
+		return ret
+	}
+
+	// Keys from indexed batches may force an allocation. The Keys slice is
+	// ordered by sequence number, so ordinarily we can return the trailing
+	// subslice containing keys with sequence numbers less than `seqNum`.
+	//
+	// However, batch keys are special. Only visible batch keys are included
+	// when an Iterator's batch spans are fragmented. They must always be
+	// visible.
+	//
+	// Batch keys can create a sandwich of visible batch keys at the beginning
+	// of the slice and visible committed keys at the end of the slice, forcing
+	// us to allocate a new slice and copy the contents.
+	//
+	// Care is taking to only incur an allocation only when batch keys and
+	// visible keys actually sandwich non-visible keys.
+
+	// lastBatchIdx and lastNonVisibleIdx are set to the last index of a batch
+	// key and a non-visible key respectively.
+	lastBatchIdx := -1
+	lastNonVisibleIdx := -1
 	for i := range s.Keys {
-		if base.Visible(s.Keys[i].SeqNum(), seqNum) {
-			ret.Keys = s.Keys[i:]
-			break
+		if seqNum := s.Keys[i].SeqNum(); seqNum&base.InternalKeySeqNumBatch != 0 {
+			// Batch key. Always visible.
+			lastBatchIdx = i
+		} else if seqNum >= snapshot {
+			// This key is not visible.
+			lastNonVisibleIdx = i
 		}
+	}
+
+	// In the following comments: b = batch, h = hidden, v = visible (committed).
+	switch {
+	case lastNonVisibleIdx == -1:
+		// All keys are visible.
+		//
+		// [b b b], [v v v] and [b b b v v v]
+		ret.Keys = s.Keys
+	case lastBatchIdx == -1:
+		// There are no batch keys, so we can return the continuous subslice
+		// starting after the last non-visible Key.
+		//
+		// h h h [v v v]
+		ret.Keys = s.Keys[lastNonVisibleIdx+1:]
+	case lastNonVisibleIdx == len(s.Keys)-1:
+		// While we have a batch key and non-visible keys, there are no
+		// committed visible keys. The 'sandwich' is missing the bottom layer,
+		// so we can return the continuous sublice at the beginning.
+		//
+		// [b b b] h h h
+		ret.Keys = s.Keys[0 : lastBatchIdx+1]
+	default:
+		// This is the problematic sandwich case. Allocate a new slice, copying
+		// the batch keys and the visible keys into it.
+		//
+		// [b b b] h h h [v v v]
+		ret.Keys = make([]Key, (lastBatchIdx+1)+(len(s.Keys)-lastNonVisibleIdx-1))
+		copy(ret.Keys, s.Keys[:lastBatchIdx+1])
+		copy(ret.Keys[lastBatchIdx+1:], s.Keys[lastNonVisibleIdx+1:])
 	}
 	return ret
 }

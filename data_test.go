@@ -153,7 +153,7 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			valid = iter.Valid()
 		case "set-options":
 			const usageString = "set-options [lower=<lower>] [upper=<upper>] [key-types=point|range|both] [mask-suffix=<suffix>] [only-durable=<bool>] [table-filter=reuse|none] [point-filters=reuse|none]\n"
-			var opts IterOptions
+			opts := iter.opts
 			for _, part := range parts[1:] {
 				arg := strings.SplitN(part, "=", 2)
 				if len(arg) != 2 {
@@ -165,6 +165,7 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 					case "reuse":
 						opts.PointKeyFilters = iter.opts.PointKeyFilters
 					case "none":
+						opts.PointKeyFilters = nil
 					default:
 						return fmt.Sprintf("set-options: unknown arg point-filter=%q:\n%s", arg[1], usageString)
 					}
@@ -190,6 +191,7 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 					case "reuse":
 						opts.TableFilter = iter.opts.TableFilter
 					case "none":
+						opts.TableFilter = nil
 					default:
 						return fmt.Sprintf("set-options: unknown arg table-filter=%q:\n%s", arg[1], usageString)
 					}
@@ -512,7 +514,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 		return err
 	}
 
-	if rdi := b.newRangeDelIter(nil); rdi != nil {
+	if rdi := b.newRangeDelIter(nil, math.MaxUint64); rdi != nil {
 		for s := rdi.First(); s.Valid(); s = rdi.Next() {
 			err := rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
 				k.SetSeqNum(0)
@@ -524,7 +526,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 		}
 	}
 
-	if rki := b.newRangeKeyIter(nil); rki != nil {
+	if rki := b.newRangeKeyIter(nil, math.MaxUint64); rki != nil {
 		for s := rki.First(); s.Valid(); s = rki.Next() {
 			for _, k := range s.Keys {
 				var err error
