@@ -6,7 +6,6 @@ package keyspan
 
 import (
 	"bytes"
-	"sort"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -46,12 +45,15 @@ var DefragmentInternal DefragmentMethod = func(cmp base.Compare, a, b Span) bool
 }
 
 // DefragmentReducer merges the current and next Key slices, returning a new Key
-// slice, and a bool indicating whether `cur` was modified.
+// slice.
 //
 // Implementations should modify and return `cur` to save on allocations, or
 // consider allocating a new slice, as the `cur` slice may be retained by the
 // DefragmentingIter and mutated. The `next` slice must not be mutated.
-type DefragmentReducer func(cur, next []Key) (keys []Key, modified bool)
+//
+// The incoming slices are sorted by (SeqNum, Kind) descending. The output slice
+// must also have this sort order.
+type DefragmentReducer func(cur, next []Key) []Key
 
 // StaticDefragmentReducer is a no-op DefragmentReducer that simply returns the
 // current key slice, effectively retaining the first set of keys encountered
@@ -61,8 +63,8 @@ type DefragmentReducer func(cur, next []Key) (keys []Key, modified bool)
 // being reduced is not expected to change, and therefore the keys from the
 // first span encountered can be used without considering keys in subsequent
 // spans.
-var StaticDefragmentReducer DefragmentReducer = func(cur, _ []Key) ([]Key, bool) {
-	return cur, false /* never modified */
+var StaticDefragmentReducer DefragmentReducer = func(cur, _ []Key) []Key {
+	return cur
 }
 
 // iterPos is an enum indicating the position of the defragmenting iter's
@@ -114,7 +116,7 @@ type DefragmentingIter struct {
 	// these extended bounds.
 	curr    Span
 	currBuf []byte
-	keysBuf keysBySeqNumKind
+	keysBuf []Key
 	keyBuf  []byte
 
 	// equal is a comparison function for two spans. equal is called when two
@@ -324,7 +326,6 @@ func (i *DefragmentingIter) defragmentForward() Span {
 
 	i.iterPos = iterPosNext
 	i.iterSpan = i.iter.Next()
-	var modified, keysBufModified bool
 	for i.iterSpan.Valid() {
 		if i.cmp(i.curr.End, i.iterSpan.Start) != 0 {
 			// Not a continuation.
@@ -336,13 +337,8 @@ func (i *DefragmentingIter) defragmentForward() Span {
 		}
 		i.keyBuf = append(i.keyBuf[:0], i.iterSpan.End...)
 		i.curr.End = i.keyBuf
-		i.keysBuf, modified = i.reduce(i.keysBuf, i.iterSpan.Keys)
-		keysBufModified = keysBufModified || modified
+		i.keysBuf = i.reduce(i.keysBuf, i.iterSpan.Keys)
 		i.iterSpan = i.iter.Next()
-	}
-	if keysBufModified {
-		// Only sort if the keys were changed.
-		sort.Sort(&i.keysBuf)
 	}
 	i.curr.Keys = i.keysBuf
 	return i.curr
@@ -359,7 +355,6 @@ func (i *DefragmentingIter) defragmentBackward() Span {
 
 	i.iterPos = iterPosPrev
 	i.iterSpan = i.iter.Prev()
-	var modified, keysBufModified bool
 	for i.iterSpan.Valid() {
 		if i.cmp(i.curr.Start, i.iterSpan.End) != 0 {
 			// Not a continuation.
@@ -371,13 +366,8 @@ func (i *DefragmentingIter) defragmentBackward() Span {
 		}
 		i.keyBuf = append(i.keyBuf[:0], i.iterSpan.Start...)
 		i.curr.Start = i.keyBuf
-		i.keysBuf, modified = i.reduce(i.keysBuf, i.iterSpan.Keys)
-		keysBufModified = keysBufModified || modified
+		i.keysBuf = i.reduce(i.keysBuf, i.iterSpan.Keys)
 		i.iterSpan = i.iter.Prev()
-	}
-	if keysBufModified {
-		// Only sort if the keys were changed.
-		sort.Sort(&i.keysBuf)
 	}
 	i.curr.Keys = i.keysBuf
 	return i.curr
