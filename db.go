@@ -960,6 +960,20 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		}
 	}
 
+	// If the iterator includes an indexed batch, the new iterator state will
+	// reflect the state of the batch only at this moment.
+	if dbi.batch != nil && dbi.batch.nextSeqNum() != dbi.batchSeqNum {
+		dbi.batchSeqNum = dbi.batch.nextSeqNum()
+		// These closures are only non-nil when reinitializing an existing
+		// Iterator, eg, during a call to SetOptions.
+		if dbi.batchRefreshPointKeys != nil {
+			dbi.batchRefreshPointKeys()
+		}
+		if dbi.batchRefreshRangeKeys != nil {
+			dbi.batchRefreshRangeKeys()
+		}
+	}
+
 	// Construct the point iterator. This function either returns a pointer to
 	// dbi.merging (if points are enabled) or an emptyIter. If this is called
 	// during a SetOptions call and this Iterator has already initialized
@@ -972,7 +986,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		if dbi.rangeKey == nil {
 			dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 			dbi.rangeKey.keys.cmp = dbi.cmp
-			dbi.rangeKey.rangeKeyIter = dbi.db.newRangeKeyIter(dbi.rangeKey, dbi.seqNum, dbi.batch, dbi.readState, &dbi.opts)
+			dbi.rangeKey.rangeKeyIter = dbi.db.newRangeKeyIter(dbi, dbi.seqNum, dbi.batch, dbi.readState)
 		}
 
 		// Wrap the point iterator (currently dbi.iter) with an interleaving
@@ -1041,10 +1055,16 @@ func constructPointIter(
 
 	// Top-level is the batch, if any.
 	if batch != nil {
+		pointIter, refreshPoints := batch.newInternalIter(&dbi.opts)
+		rangeDelIter, refreshRangeDels := batch.newRangeDelIter(&dbi.opts)
 		mlevels = append(mlevels, mergingIterLevel{
-			iter:         base.WrapIterWithStats(batch.newInternalIter(&dbi.opts)),
-			rangeDelIter: batch.newRangeDelIter(&dbi.opts),
+			iter:         base.WrapIterWithStats(pointIter),
+			rangeDelIter: rangeDelIter,
 		})
+		dbi.batchRefreshPointKeys = func() {
+			refreshPoints()
+			refreshRangeDels()
+		}
 	}
 
 	// Next are the memtables.

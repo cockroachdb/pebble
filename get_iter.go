@@ -119,8 +119,8 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 
 		// Create an iterator from the batch.
 		if g.batch != nil {
-			g.iter = g.batch.newInternalIter(nil)
-			g.rangeDelIter = g.batch.newRangeDelIter(nil)
+			g.iter, _ = g.batch.newInternalIter(nil)
+			g.rangeDelIter, _ = g.batch.newRangeDelIter(nil)
 			g.batch = nil
 			g.iterKey, g.iterValue = g.iter.SeekGE(g.key, false /* trySeekUsingNext */)
 			continue

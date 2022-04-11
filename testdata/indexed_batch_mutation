@@ -1,0 +1,223 @@
+# Set a key within the indexed batch.
+new-batch
+set foo foo
+----
+
+# Construct an iterator over the indexed batch.
+
+new-iter i0
+----
+
+# The key we set should be visible.
+
+iter iter=i0
+first
+next
+----
+foo: (foo, .)
+.
+
+# Set a new key, while the above iterator is still open.
+
+mutate
+set bar bar
+----
+
+# Using relative positioning methods should omit the new key.
+
+iter iter=i0
+prev
+next
+----
+foo: (foo, .)
+.
+
+# A refresh-batch operation should refresh the Iterator's view of the batch. The
+# bar key should now be visibile.
+
+iter iter=i0
+refresh-batch
+first
+next
+next
+----
+.
+bar: (bar, .)
+foo: (foo, .)
+.
+
+# Delete foo with a range deletion.
+
+mutate
+del-range f g
+----
+
+# Both keys should still be visible.
+
+iter iter=i0
+prev
+prev
+----
+foo: (foo, .)
+bar: (bar, .)
+
+# After refreshing the iterator's view of the batch, foo should be deleted.
+
+iter iter=i0
+refresh-batch
+seek-ge foo
+seek-lt foo
+----
+.
+.
+bar: (bar, .)
+
+# Write a range key set and a point key.
+
+mutate
+range-key-set a c @1 boop
+set b b
+----
+
+# The mutations should not be visible.
+
+iter iter=i0
+prev
+next
+----
+.
+bar: (bar, .)
+
+# But refreshing the batch should surface them.
+
+iter iter=i0
+refresh-batch
+first
+next
+next
+----
+.
+a: (., [a-c) @1=boop)
+b: (b, [a-c) @1=boop)
+bar: (bar, [a-c) @1=boop)
+
+# Remove part of the range key to fragment it.
+
+mutate
+range-key-del ace arc
+----
+
+iter iter=i0
+next
+prev
+prev
+prev
+prev
+----
+.
+bar: (bar, [a-c) @1=boop)
+b: (b, [a-c) @1=boop)
+a: (., [a-c) @1=boop)
+.
+
+iter iter=i0
+refresh-batch
+first
+next
+next
+next
+----
+.
+a: (., [a-ace) @1=boop)
+arc: (., [arc-c) @1=boop)
+b: (b, [arc-c) @1=boop)
+bar: (bar, [arc-c) @1=boop)
+
+# Create a new indexed batch and a new iterator over it.
+
+new-batch
+set foo foo
+----
+
+new-iter i1
+----
+
+iter iter=i1
+first
+next
+----
+foo: (foo, .)
+.
+
+# Test interactions with cloned iterators.
+# First, apply mutations to the batch. They should remain invisible.
+
+mutate
+set bar bar
+range-key-set a z @1 boop
+del-range f g
+----
+
+iter iter=i1
+first
+next
+----
+foo: (foo, .)
+.
+
+# Clone i1 to create i2.
+
+clone from=i1 to=i2
+----
+
+# i1 unchanged.
+
+iter iter=i1
+first
+next
+----
+foo: (foo, .)
+.
+
+iter iter=i2
+first
+next
+----
+a: (., [a-z) @1=boop)
+bar: (bar, [a-z) @1=boop)
+
+# Mutate the underlying batch again.
+
+mutate
+set foo foo
+range-key-set a z @2 bax
+del-range b c
+----
+
+# i1 still unchanged.
+
+iter iter=i1
+first
+next
+----
+foo: (foo, .)
+.
+
+# The new mutations should be invisible until refresh-batch is called.
+
+iter iter=i2
+first
+next
+next
+refresh-batch
+first
+next
+next
+----
+a: (., [a-z) @1=boop)
+bar: (bar, [a-z) @1=boop)
+.
+.
+a: (., [a-z) @1=boop, @2=bax)
+foo: (foo, [a-z) @1=boop, @2=bax)
+.

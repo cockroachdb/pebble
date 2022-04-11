@@ -179,7 +179,8 @@ type Iterator struct {
 	stats               IteratorStats
 	closeHook           func()
 
-	// Following fields are only used in Clone and SetOptions.
+	// Following fields used when constructing an iterator stack, eg, in Clone
+	// and SetOptions or when re-fragmenting a batch's range keys/range dels.
 	// Non-nil if this Iterator includes a Batch.
 	batch    *Batch
 	newIters tableNewIters
@@ -187,6 +188,16 @@ type Iterator struct {
 	// TODO(jackson): Remove db when we no longer require the global arena for
 	// range keys. This reference is only temporary.
 	db *DB
+	// batchSeqNum is used by Iterators over indexed batches to detect when the
+	// underlying batch has been mutated. The batch beneath an indexed batch may
+	// be mutated while the Iterator is open, but new keys are not surfaced
+	// until the next call to RefreshBatchSnapshot or SetOptions.
+	batchSeqNum uint64
+	// batchRefreshPointKeys and batchRefreshRangeKeys are closures that when
+	// invoked refresh the view of the current {point,rangedel} and {rangekey}
+	// batch iterators, respectively. See RefreshBatchSnapshot.
+	batchRefreshPointKeys func()
+	batchRefreshRangeKeys func()
 
 	// Keeping the bools here after all the 8 byte aligned fields shrinks the
 	// sizeof this struct by 24 bytes.
@@ -1817,6 +1828,9 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 // are sometimes used to optimize seeking. See the extended commentary on
 // SetBounds.
 //
+// If the iterator was created over an indexed mutable batch, the iterator's
+// view of the mutable batch is refreshed.
+//
 // The iterator will always be invalidated and must be repositioned with a call
 // to SeekGE, SeekPrefixGE, SeekLT, First, or Last.
 //
@@ -1868,12 +1882,27 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		i.pointIter = nil
 	}
 	if closeRange && i.rangeKey != nil {
-		i.err = firstError(i.err, i.rangeKey.iter.Close())
+		i.err = firstError(i.err, i.rangeKey.rangeKeyIter.Close())
 		i.rangeKey = nil
 	}
 
 	i.opts = *o
 	finishInitializingIter(i.alloc)
+}
+
+// RefreshBatchSnapshot refreshes the iterator's snapshot of a batch. This
+// method only has any effect if the Iterator was constructed to read through an
+// indexed batch (see Batch.NewIter).
+//
+// The iterator will always be invalidated and must be repositioned with a call
+// to SeekGE, SeekPrefixGE, SeekLT, First, or Last.
+func (i *Iterator) RefreshBatchSnapshot() {
+	if i.batch == nil || i.batch.nextSeqNum() == i.batchSeqNum {
+		return
+	}
+	i.batchRefreshPointKeys()
+	i.batchRefreshRangeKeys()
+	i.iterValidityState = IterExhausted
 }
 
 // Metrics returns per-iterator metrics.
