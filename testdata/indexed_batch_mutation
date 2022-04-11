@@ -1,0 +1,120 @@
+# Set a key within the indexed batch.
+
+mutate
+set foo foo
+----
+
+# Construct an iterator over the indexed batch.
+
+new-iter
+----
+
+# The key we set should be visible.
+
+iter
+first
+next
+----
+foo: (foo, .)
+.
+
+# Set a new key, while the above iterator is still open.
+
+mutate
+set bar bar
+----
+
+# Using relative positioning methods should error because the batch was
+# modified.
+
+iter
+prev
+next
+----
+foo: (foo, .)
+.
+
+# A seek operation like First refreshes the Iterator's view of the batch. The
+# bar key should now be visibile.
+
+iter
+first
+next
+next
+----
+bar: (bar, .)
+foo: (foo, .)
+.
+
+# Delete foo with a range deletion.
+
+mutate
+del-range f g
+----
+
+# Seeking should refresh the iterator's view of the batch, and foo should be
+# deleted.
+
+iter
+seek-ge foo
+seek-lt foo
+----
+.
+bar: (bar, .)
+
+# Write a range key del and a point key.
+
+mutate
+range-key-set a c @1 boop
+set b b
+----
+
+# Relative positioning of the existing iterator should error.
+
+iter
+prev
+next
+----
+.
+bar: (bar, .)
+
+# But seeking the iterator should surface them.
+
+iter
+first
+next
+next
+----
+a: (., [a-c) @1=boop)
+b: (b, [a-c) @1=boop)
+bar: (bar, [a-c) @1=boop)
+
+# Remove part of the range key to fragment it.
+
+mutate
+range-key-del ace arc
+----
+
+iter
+next
+prev
+prev
+prev
+prev
+----
+.
+bar: (bar, [a-c) @1=boop)
+b: (b, [a-c) @1=boop)
+a: (., [a-c) @1=boop)
+.
+
+iter
+first
+next
+next
+next
+----
+a: (., [a-ace) @1=boop)
+arc: (., [arc-c) @1=boop)
+b: (b, [arc-c) @1=boop)
+bar: (bar, [arc-c) @1=boop)

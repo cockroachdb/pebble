@@ -178,13 +178,19 @@ type Iterator struct {
 	stats               IteratorStats
 	closeHook           func()
 
-	// Following fields are only used in Clone and SetOptions.
+	// Following fields used when constructing an iterator stack, eg, in Clone
+	// and SetOptions or when re-fragmenting a batch's range keys/range dels.
 	// Non-nil if this Iterator includes a Batch.
 	batch    *Batch
 	newIters tableNewIters
 	seqNum   uint64
 	// TODO(jackson): Remove when we no longer require the global arena.
 	newRangeKeyIter func(*iteratorRangeKeyState) keyspan.FragmentIterator
+	// batchSeqNum is used by Iterators over indexed batches to detect when the
+	// underlying batch has been mutated. The batch beneath an indexed batch may
+	// be mutated while the Iterator is open, but new keys are not surfaced
+	// until the next seek operation.
+	batchSeqNum uint64
 
 	// Keeping the bools here after all the 8 byte aligned fields shrinks the
 	// sizeof this struct by 24 bytes.
@@ -920,6 +926,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 	i.err = nil // clear cached iteration error
 	i.hasPrefix = false
 	i.stats.ForwardSeekCount[InterfaceCall]++
+	i.maybeRefreshBatchIteratorBeforeSeek()
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
 		key = lowerBound
 	} else if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
@@ -1035,6 +1042,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	i.lastPositioningOp = unknownLastPositionOp
 	i.err = nil // clear cached iteration error
 	i.stats.ForwardSeekCount[InterfaceCall]++
+	i.maybeRefreshBatchIteratorBeforeSeek()
 
 	if i.split == nil {
 		panic("pebble: split must be provided for SeekPrefixGE")
@@ -1143,6 +1151,7 @@ func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 	i.err = nil // clear cached iteration error
 	i.hasPrefix = false
 	i.stats.ReverseSeekCount[InterfaceCall]++
+	i.maybeRefreshBatchIteratorBeforeSeek()
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
 		key = upperBound
 	} else if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
@@ -1198,6 +1207,7 @@ func (i *Iterator) First() bool {
 	i.hasPrefix = false
 	i.lastPositioningOp = unknownLastPositionOp
 	i.stats.ForwardSeekCount[InterfaceCall]++
+	i.maybeRefreshBatchIteratorBeforeSeek()
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, false /* trySeekUsingNext */)
 		i.stats.ForwardSeekCount[InternalIterCall]++
@@ -1217,6 +1227,7 @@ func (i *Iterator) Last() bool {
 	i.hasPrefix = false
 	i.lastPositioningOp = unknownLastPositionOp
 	i.stats.ReverseSeekCount[InterfaceCall]++
+	i.maybeRefreshBatchIteratorBeforeSeek()
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekLT(upperBound)
 		i.stats.ReverseSeekCount[InternalIterCall]++
@@ -1850,11 +1861,40 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		i.pointIter = nil
 	}
 	if closeRange && i.rangeKey != nil {
-		i.err = firstError(i.err, i.rangeKey.iter.Close())
+		i.err = firstError(i.err, i.rangeKey.rangeKeyIter.Close())
 		i.rangeKey = nil
 	}
 
 	i.opts = *o
+	finishInitializingIter(i.alloc)
+}
+
+// maybeRefreshBatchIteratorBeforeSeek is called before performing a seek
+// operation. If the iterator includes iteration over an indexed batch, the
+// batch's counts of range deletions and range keys are consulted to determine
+// if new range deletions or range keys were written to the batch since the last
+// seek. If so, the iterator is adjusted to pull in the new writes.
+func (i *Iterator) maybeRefreshBatchIteratorBeforeSeek() {
+	if i.batch == nil || i.batch.nextSeqNum() == i.batchSeqNum {
+		return
+	}
+
+	// TODO(jackson): Rather than rebuilding the whole point key iterator or the
+	// whole range key iterator, we could just replace or update the relevant
+	// internalIterator and keyspan.FragmentIterators. This might be too fragile
+	// to warrant the optimization.
+	i.lastPositioningOp = unknownLastPositionOp
+	i.hasPrefix = false
+	i.iterKey = nil
+	i.iterValue = nil
+	i.err = nil
+	switch i.pos {
+	case iterPosCurForward, iterPosNext, iterPosCurForwardPaused:
+		i.pos = iterPosCurForward
+	case iterPosCurReverse, iterPosPrev, iterPosCurReversePaused:
+		i.pos = iterPosCurReverse
+	}
+	i.iterValidityState = IterExhausted
 	finishInitializingIter(i.alloc)
 }
 
