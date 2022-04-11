@@ -92,7 +92,7 @@ b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
 .
 b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
 .
-.
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
 
 # Set a bound that falls between ranges.
 
@@ -145,9 +145,9 @@ next
 next
 ----
 a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+b-c:{} (file = 000001.sst)
 c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
 d-e:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
-.
 
 iter
 last
@@ -157,5 +157,222 @@ prev
 ----
 d-e:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
 c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+b-c:{} (file = 000003.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+
+# Test straddle keys between files.
+
+define
+file
+  a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+file
+  c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+file
+  e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+file
+  g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+----
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+----
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+b-c:{} (file = 000001.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+d-e:{} (file = 000002.sst)
+e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+f-g:{} (file = 000003.sst)
+g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000004.sst)
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+prev
+prev
+----
+g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000004.sst)
+f-g:{} (file = 000004.sst)
+e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+d-e:{} (file = 000003.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{} (file = 000002.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+.
+
+# The below case seeks into a file straddle, then iterates forward and back to
+# it, and confirms that changing iterator directions on a straddle does the
+# right thing.
+
+iter
+seek-ge bb
+next
+prev
+next
+prev
+prev
+----
+bb-c:{} (file = 000001.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{} (file = 000002.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+
+# The same case as above, but with inverted directions.
+
+iter
+seek-lt dd
+prev
+next
+prev
+next
+next
+----
+d-dd:{} (file = 000001.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+d-e:{} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+d-e:{} (file = 000002.sst)
+e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+
+# Above two cases, but with bounds at straddles
+
+iter
+set-bounds bb dd
+seek-ge bb
+next
+prev
+next
+prev
+prev
+----
+.
+bb-c:{} (file = 000003.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{} (file = 000002.sst)
+.
+
+iter
+seek-lt dd
+prev
+next
+prev
+next
+next
+----
+d-dd:{} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+d-e:{} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+d-e:{} (file = 000002.sst)
+.
+
+# Seeks right at the bound should return nothing.
+
+iter
+seek-lt bb
+----
+.
+
+iter
+seek-ge dd
+----
+.
+
+# Similar cases as above, but with iter bounds at file bounds instead of at
+# straddles.
+
+iter
+set-bounds b d
+seek-ge bb
+next
+prev
+next
+prev
+prev
+----
+.
+bb-c:{} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{} (file = 000002.sst)
+.
+
+iter
+seek-lt d
+prev
+next
+prev
+prev
+next
+next
+----
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{} (file = 000002.sst)
+.
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+.
+
+# A bunch of files with point keys only should not fragment straddles.
+
+define
+file
+  a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+file
+  point:c.SET.1:foo
+file
+  point:d.SET.1:foo
+file
+  e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+file
+  point:g.SET.1:foo
+file
+  h-i:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+----
+
+iter
+first
+next
+next
+next
+next
+next
+----
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+b-e:{} (file = 000001.sst)
+e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000004.sst)
+f-h:{} (file = 000004.sst)
+h-i:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000006.sst)
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+----
+h-i:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000006.sst)
+f-h:{} (file = 000006.sst)
+e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000004.sst)
+b-e:{} (file = 000004.sst)
 a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
 .

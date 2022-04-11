@@ -44,10 +44,16 @@ first
 next
 next
 next
+next
+next
+next
 ----
 a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL) (#8,RANGEKEYUNSET,@1) (#4,RANGEKEYSET,@3,bananas)}
 c-d:{(#4,RANGEKEYSET,@3,coconut)}
+e-f:{}
+h-j:{}
 l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
+q-z:{}
 <invalid>
 
 define
@@ -394,3 +400,53 @@ wn-yx:{(#4,RANGEKEYDEL)}
 <invalid>
 <invalid>
 wn-yx:{(#4,RANGEKEYDEL)}
+
+# Test that empty spans from child iterators are preserved
+define
+b-d:{#10,RANGEKEYSET,@1,apples}
+e-f:{}
+g-h:{#8,RANGEKEYDEL}
+--
+a-c:{#3,RANGEKEYUNSET,@1}
+h-k:{#5,RANGEKEYDEL}
+k-m:{}
+----
+2 levels
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+----
+a-b:{(#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+e-f:{}
+g-h:{(#8,RANGEKEYDEL)}
+h-k:{(#5,RANGEKEYDEL)}
+k-m:{}
+<invalid>
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+prev
+prev
+----
+k-m:{}
+h-k:{(#5,RANGEKEYDEL)}
+g-h:{(#8,RANGEKEYDEL)}
+e-f:{}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+a-b:{(#3,RANGEKEYUNSET,@1)}
+<invalid>

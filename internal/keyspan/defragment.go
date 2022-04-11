@@ -177,7 +177,7 @@ func (i *DefragmentingIter) SeekGE(key []byte) Span {
 	// Save the current span and peek backwards.
 	i.saveCurrent(i.iterSpan)
 	i.iterSpan = i.iter.Prev()
-	if i.cmp(i.curr.Start, i.iterSpan.End) == 0 && i.equal(i.cmp, i.iterSpan, i.curr) {
+	if i.cmp(i.curr.Start, i.iterSpan.End) == 0 && i.checkEqual(i.iterSpan, i.curr) {
 		// A continuation. The span we originally landed on and defragmented
 		// backwards has a true Start key < key. To obey the FragmentIterator
 		// contract, we must not return this defragmented span. Defragment
@@ -315,6 +315,13 @@ func (i *DefragmentingIter) SetBounds(lower, upper []byte) {
 	i.iter.SetBounds(lower, upper)
 }
 
+// checkEqual checks the two spans for logical equivalence. It uses the passed-in
+// DefragmentMethod and ensures both spans are NOT empty; not defragmenting empty
+// spans is an optimization that lets us load fewer sstable blocks.
+func (i *DefragmentingIter) checkEqual(left, right Span) bool {
+	return i.equal(i.cmp, i.iterSpan, i.curr) && !(left.Empty() && right.Empty())
+}
+
 // defragmentForward defragments spans in the forward direction, starting from
 // i.iter's current position.
 func (i *DefragmentingIter) defragmentForward() Span {
@@ -331,7 +338,7 @@ func (i *DefragmentingIter) defragmentForward() Span {
 			// Not a continuation.
 			break
 		}
-		if !i.equal(i.cmp, i.iterSpan, i.curr) {
+		if !i.checkEqual(i.iterSpan, i.curr) {
 			// Not a continuation.
 			break
 		}
@@ -360,7 +367,7 @@ func (i *DefragmentingIter) defragmentBackward() Span {
 			// Not a continuation.
 			break
 		}
-		if !i.equal(i.cmp, i.iterSpan, i.curr) {
+		if !i.checkEqual(i.iterSpan, i.curr) {
 			// Not a continuation.
 			break
 		}
