@@ -171,6 +171,15 @@ next
 c: (c, .)
 d: (d, [d-dog) @3=beep)
 
+combined-iter
+set-options
+seek-ge b
+next
+----
+.
+c: (c, .)
+d: (d, [d-dog) @3=beep)
+
 commit-batch
 ----
 wrote 1 keys

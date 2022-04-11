@@ -98,6 +98,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.iterID, nil, []interface{}{&t.lower, &t.upper}
 	case *iterSetOptionsOp:
 		return &t.iterID, nil, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.rangeKeyMaskSuffix}
+	case *iterRefreshBatchOp:
+		return &t.iterID, nil, nil
 	case *singleDeleteOp:
 		return &t.writerID, nil, []interface{}{&t.key, &t.maybeReplaceDelete}
 	case *rangeKeyDeleteOp:
@@ -111,38 +113,39 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 }
 
 var methods = map[string]*methodInfo{
-	"Apply":           makeMethod(applyOp{}, dbTag, batchTag),
-	"Checkpoint":      makeMethod(checkpointOp{}, dbTag),
-	"Clone":           makeMethod(newIterUsingCloneOp{}, iterTag),
-	"Close":           makeMethod(closeOp{}, dbTag, batchTag, iterTag, snapTag),
-	"Commit":          makeMethod(batchCommitOp{}, batchTag),
-	"Compact":         makeMethod(compactOp{}, dbTag),
-	"Delete":          makeMethod(deleteOp{}, dbTag, batchTag),
-	"DeleteRange":     makeMethod(deleteRangeOp{}, dbTag, batchTag),
-	"First":           makeMethod(iterFirstOp{}, iterTag),
-	"Flush":           makeMethod(flushOp{}, dbTag),
-	"Get":             makeMethod(getOp{}, dbTag, batchTag, snapTag),
-	"Ingest":          makeMethod(ingestOp{}, dbTag),
-	"Init":            makeMethod(initOp{}, dbTag),
-	"Last":            makeMethod(iterLastOp{}, iterTag),
-	"Merge":           makeMethod(mergeOp{}, dbTag, batchTag),
-	"NewBatch":        makeMethod(newBatchOp{}, dbTag),
-	"NewIndexedBatch": makeMethod(newIndexedBatchOp{}, dbTag),
-	"NewIter":         makeMethod(newIterOp{}, dbTag, batchTag, snapTag),
-	"NewSnapshot":     makeMethod(newSnapshotOp{}, dbTag),
-	"Next":            makeMethod(iterNextOp{}, iterTag),
-	"Prev":            makeMethod(iterPrevOp{}, iterTag),
-	"RangeKeyDelete":  makeMethod(rangeKeyDeleteOp{}, dbTag, batchTag),
-	"RangeKeySet":     makeMethod(rangeKeySetOp{}, dbTag, batchTag),
-	"RangeKeyUnset":   makeMethod(rangeKeyUnsetOp{}, dbTag, batchTag),
-	"Restart":         makeMethod(dbRestartOp{}, dbTag),
-	"SeekGE":          makeMethod(iterSeekGEOp{}, iterTag),
-	"SeekLT":          makeMethod(iterSeekLTOp{}, iterTag),
-	"SeekPrefixGE":    makeMethod(iterSeekPrefixGEOp{}, iterTag),
-	"Set":             makeMethod(setOp{}, dbTag, batchTag),
-	"SetBounds":       makeMethod(iterSetBoundsOp{}, iterTag),
-	"SetOptions":      makeMethod(iterSetOptionsOp{}, iterTag),
-	"SingleDelete":    makeMethod(singleDeleteOp{}, dbTag, batchTag),
+	"Apply":                makeMethod(applyOp{}, dbTag, batchTag),
+	"Checkpoint":           makeMethod(checkpointOp{}, dbTag),
+	"Clone":                makeMethod(newIterUsingCloneOp{}, iterTag),
+	"Close":                makeMethod(closeOp{}, dbTag, batchTag, iterTag, snapTag),
+	"Commit":               makeMethod(batchCommitOp{}, batchTag),
+	"Compact":              makeMethod(compactOp{}, dbTag),
+	"Delete":               makeMethod(deleteOp{}, dbTag, batchTag),
+	"DeleteRange":          makeMethod(deleteRangeOp{}, dbTag, batchTag),
+	"First":                makeMethod(iterFirstOp{}, iterTag),
+	"Flush":                makeMethod(flushOp{}, dbTag),
+	"Get":                  makeMethod(getOp{}, dbTag, batchTag, snapTag),
+	"Ingest":               makeMethod(ingestOp{}, dbTag),
+	"Init":                 makeMethod(initOp{}, dbTag),
+	"Last":                 makeMethod(iterLastOp{}, iterTag),
+	"Merge":                makeMethod(mergeOp{}, dbTag, batchTag),
+	"NewBatch":             makeMethod(newBatchOp{}, dbTag),
+	"NewIndexedBatch":      makeMethod(newIndexedBatchOp{}, dbTag),
+	"NewIter":              makeMethod(newIterOp{}, dbTag, batchTag, snapTag),
+	"NewSnapshot":          makeMethod(newSnapshotOp{}, dbTag),
+	"Next":                 makeMethod(iterNextOp{}, iterTag),
+	"Prev":                 makeMethod(iterPrevOp{}, iterTag),
+	"RangeKeyDelete":       makeMethod(rangeKeyDeleteOp{}, dbTag, batchTag),
+	"RangeKeySet":          makeMethod(rangeKeySetOp{}, dbTag, batchTag),
+	"RangeKeyUnset":        makeMethod(rangeKeyUnsetOp{}, dbTag, batchTag),
+	"Restart":              makeMethod(dbRestartOp{}, dbTag),
+	"SeekGE":               makeMethod(iterSeekGEOp{}, iterTag),
+	"SeekLT":               makeMethod(iterSeekLTOp{}, iterTag),
+	"SeekPrefixGE":         makeMethod(iterSeekPrefixGEOp{}, iterTag),
+	"Set":                  makeMethod(setOp{}, dbTag, batchTag),
+	"SetBounds":            makeMethod(iterSetBoundsOp{}, iterTag),
+	"SetOptions":           makeMethod(iterSetOptionsOp{}, iterTag),
+	"SingleDelete":         makeMethod(singleDeleteOp{}, dbTag, batchTag),
+	"RefreshBatchSnapshot": makeMethod(iterRefreshBatchOp{}, iterTag),
 }
 
 type parser struct {
