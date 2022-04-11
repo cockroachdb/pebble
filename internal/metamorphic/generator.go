@@ -107,6 +107,7 @@ func generate(rng *rand.Rand, count uint64, cfg config, km *keyManager) []op {
 		iterSeekPrefixGE:     g.iterSeekPrefixGE,
 		iterSetBounds:        g.iterSetBounds,
 		iterSetOptions:       g.iterSetOptions,
+		iterRefreshBatch:     g.iterRefreshBatch,
 		newBatch:             g.newBatch,
 		newIndexedBatch:      g.newIndexedBatch,
 		newIter:              g.newIter,
@@ -734,6 +735,30 @@ func (g *generator) iterSetOptions() {
 	)()
 }
 
+func (g *generator) iterRefreshBatch() {
+	if len(g.liveIters) == 0 {
+		return
+	}
+	g.add(&iterRefreshBatchOp{
+		iterID: g.liveIters.rand(g.rng),
+	})
+
+	// Additionally, perform a random absolute positioning operation. The
+	// RefreshBatchSnapshot contract requires one before the next relative
+	// positioning operation. Ideally, we should not do this as part of
+	// generating a single op, but this is easier than trying to control future
+	// op generation via generator state.
+	g.pickOneUniform(
+		g.iterFirst,
+		g.iterLast,
+		g.iterSeekGE,
+		g.iterSeekGEWithLimit,
+		g.iterSeekPrefixGE,
+		g.iterSeekLT,
+		g.iterSeekLTWithLimit,
+	)()
+}
+
 func (g *generator) iterSeekGE() {
 	if len(g.liveIters) == 0 {
 		return
@@ -944,7 +969,6 @@ func (g *generator) writerDelete() {
 		writerID: writerID,
 		key:      g.randKeyToWrite(0.001), // 0.1% new keys
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerDeleteRange() {
@@ -964,7 +988,6 @@ func (g *generator) writerDeleteRange() {
 		start:    start,
 		end:      end,
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerRangeKeyDelete() {
@@ -979,7 +1002,6 @@ func (g *generator) writerRangeKeyDelete() {
 		start:    start,
 		end:      end,
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerRangeKeySet() {
@@ -1003,7 +1025,6 @@ func (g *generator) writerRangeKeySet() {
 		suffix:   suffix,
 		value:    g.randValue(0, 20),
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerRangeKeyUnset() {
@@ -1029,7 +1050,6 @@ func (g *generator) writerRangeKeyUnset() {
 		end:      end,
 		suffix:   suffix,
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerIngest() {
@@ -1082,7 +1102,6 @@ func (g *generator) writerMerge() {
 		key:   g.randKeyToWrite(0.2),
 		value: g.randValue(0, 20),
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerSet() {
@@ -1097,7 +1116,6 @@ func (g *generator) writerSet() {
 		key:   g.randKeyToWrite(0.5),
 		value: g.randValue(0, 20),
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerSingleDelete() {
@@ -1120,22 +1138,6 @@ func (g *generator) writerSingleDelete() {
 		// set to true for the single delete to be replaced.
 		maybeReplaceDelete: g.rng.Float64() < 0.25,
 	})
-	g.tryRepositionBatchIters(writerID)
-}
-
-func (g *generator) tryRepositionBatchIters(writerID objID) {
-	if writerID.tag() != batchTag {
-		return
-	}
-	// Reposition all batch iterators to avoid https://github.com/cockroachdb/pebble/issues/943
-	iters, ok := g.batches[writerID]
-	if !ok {
-		// Not an indexed batch.
-		return
-	}
-	for _, id := range iters.sorted() {
-		g.add(&iterFirstOp{iterID: id})
-	}
 }
 
 func (g *generator) pickOneUniform(options ...func()) func() {

@@ -149,6 +149,10 @@ func (i *retryableIter) SetOptions(opts *pebble.IterOptions) {
 	i.iter.SetOptions(opts)
 }
 
+func (i *retryableIter) RefreshBatchSnapshot() {
+	i.iter.RefreshBatchSnapshot()
+}
+
 func (i *retryableIter) Valid() bool {
 	return i.iter.Valid()
 }

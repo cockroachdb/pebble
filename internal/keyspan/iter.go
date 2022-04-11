@@ -81,7 +81,14 @@ var _ FragmentIterator = (*Iter)(nil)
 
 // NewIter returns a new iterator over a set of fragmented spans.
 func NewIter(cmp base.Compare, spans []Span) *Iter {
-	return &Iter{
+	i := &Iter{}
+	i.Init(cmp, spans)
+	return i
+}
+
+// Init initializes an Iter with the provided spans.
+func (i *Iter) Init(cmp base.Compare, spans []Span) {
+	*i = Iter{
 		cmp:   cmp,
 		spans: spans,
 		index: -1,

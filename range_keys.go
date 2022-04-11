@@ -99,7 +99,7 @@ func (d *DB) maybeInitializeRangeKeys() {
 }
 
 func (d *DB) newRangeKeyIter(
-	it *iteratorRangeKeyState, seqNum uint64, batch *Batch, readState *readState, opts *IterOptions,
+	it *Iterator, seqNum uint64, batch *Batch, readState *readState,
 ) keyspan.FragmentIterator {
 	d.maybeInitializeRangeKeys()
 
@@ -109,9 +109,9 @@ func (d *DB) newRangeKeyIter(
 
 	// If there's an indexed batch with range keys, include it.
 	if batch != nil {
-		if rki := batch.newRangeKeyIter(opts); rki != nil {
-			iters = append(iters, rki)
-		}
+		rki, refresh := batch.newRangeKeyIter(&it.opts)
+		iters = append(iters, rki)
+		it.batchRefreshRangeKeys = refresh
 	}
 
 	// Next are the flushables: memtables and large batches.
@@ -122,7 +122,7 @@ func (d *DB) newRangeKeyIter(
 		if logSeqNum := mem.logSeqNum; logSeqNum >= seqNum {
 			continue
 		}
-		if rki := mem.newRangeKeyIter(opts); rki != nil {
+		if rki := mem.newRangeKeyIter(&it.opts); rki != nil {
 			iters = append(iters, rki)
 		}
 	}
@@ -133,8 +133,8 @@ func (d *DB) newRangeKeyIter(
 	if len(frags) > 0 {
 		iters = append(iters, keyspan.NewIter(d.cmp, frags))
 	}
-	it.rangeKeyIter = rangekey.InitUserIteration(
-		d.cmp, seqNum, &it.alloc.merging, &it.alloc.defraging, iters...,
+	it.rangeKey.rangeKeyIter = rangekey.InitUserIteration(
+		d.cmp, seqNum, &it.rangeKey.alloc.merging, &it.rangeKey.alloc.defraging, iters...,
 	)
-	return it.rangeKeyIter
+	return it.rangeKey.rangeKeyIter
 }
