@@ -62,6 +62,41 @@ d: (., [d-e) @3=bar)
 f: (f, .)
 .
 
+# Test including range keys with empty spans and a merge in between. At no point
+# should an empty span be returned.
+
+build 6
+merge bb ac
+----
+
+iter files=(6, 5, 4, 3, 2, 1)
+seek-lt c
+prev
+next
+next
+----
+bb: (ac, .)
+b: (b, .)
+bb: (ac, .)
+d: (., [d-e) @3=bar)
+
+iter files=(6, 5, 4, 3, 2, 1)
+seek-ge b
+next
+prev
+prev
+next
+next
+next
+----
+b: (b, .)
+bb: (ac, .)
+b: (b, .)
+a: (a, [a-b) @2=foo)
+b: (b, .)
+bb: (ac, .)
+d: (., [d-e) @3=bar)
+
 # Test range keys that overlap each other with identical state. These
 # should be defragmented and exposed as a single range key.
 
