@@ -939,6 +939,9 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 		dbi.saveBounds(o.LowerBound, o.UpperBound)
 	}
 	dbi.opts.logger = d.opts.Logger
+	if batch != nil {
+		dbi.batchSeqNum = dbi.batch.nextSeqNum()
+	}
 	return finishInitializingIter(buf)
 }
 
@@ -975,7 +978,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		if dbi.rangeKey == nil {
 			dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 			dbi.rangeKey.keys.cmp = dbi.cmp
-			dbi.rangeKey.rangeKeyIter = dbi.db.newRangeKeyIter(dbi.rangeKey, dbi.seqNum, dbi.batch, dbi.readState, &dbi.opts)
+			dbi.rangeKey.rangeKeyIter = dbi.db.newRangeKeyIter(dbi, dbi.seqNum, dbi.batchSeqNum, dbi.batch, dbi.readState)
 		}
 
 		// Wrap the point iterator (currently dbi.iter) with an interleaving
@@ -1038,10 +1041,21 @@ func constructPointIter(
 
 	// Top-level is the batch, if any.
 	if batch != nil {
-		mlevels = append(mlevels, mergingIterLevel{
-			iter:         base.WrapIterWithStats(batch.newInternalIter(&dbi.opts)),
-			rangeDelIter: batch.newRangeDelIter(&dbi.opts),
-		})
+		if batch.index == nil {
+			// This isn't an indexed batch. Include an error iterator so that
+			// the resulting iterator correctly surfaces ErrIndexed.
+			mlevels = append(mlevels, mergingIterLevel{
+				iter:         newErrorIter(ErrNotIndexed),
+				rangeDelIter: newErrorKeyspanIter(ErrNotIndexed),
+			})
+		} else {
+			batch.initInternalIter(&dbi.opts, &dbi.batchPointIter, dbi.batchSeqNum)
+			batch.initRangeDelIter(&dbi.opts, &dbi.batchRangeDelIter, dbi.batchSeqNum)
+			mlevels = append(mlevels, mergingIterLevel{
+				iter:         base.WrapIterWithStats(&dbi.batchPointIter),
+				rangeDelIter: &dbi.batchRangeDelIter,
+			})
+		}
 	}
 
 	// Next are the memtables.
