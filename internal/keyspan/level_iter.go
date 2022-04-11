@@ -36,9 +36,25 @@ type LevelIter struct {
 	upper []byte
 	// The LSM level this LevelIter is initialized for. Used in logging.
 	level manifest.Level
+	// The below fields are used to fill in gaps between adjacent files' range
+	// key spaces. This is an optimization to avoid unnecessarily loading files
+	// in cases where range keys are sparse and rare. dir is set by every
+	// positioning operation, straddleDir is set to dir whenever a straddling
+	// Span is synthesized, and straddle is Valid() whenever the last positioning
+	// operation returned a synthesized straddle span.
+	//
+	// Note that when a straddle span is initialized, iterFile is modified to
+	// point to the next file in the straddleDir direction. A change of direction
+	// on a straddle key therefore necessitates the value of iterFile to be
+	// reverted.
+	dir         int
+	straddle    Span
+	straddleDir int
 	// The iter for the current file. It is nil under any of the following conditions:
 	// - files.Current() == nil
 	// - err != nil
+	// - straddle.Valid(), in which case iterFile is not nil and points to the
+	//   next file (in the straddleDir direction).
 	// - some other constraint, like the bounds in opts, caused the file at index to not
 	//   be relevant to the iteration.
 	iter     FragmentIterator
@@ -287,10 +303,24 @@ func (l *LevelIter) checkUpperBound(span Span) Span {
 
 // SeekGE implements keyspan.FragmentIterator.
 func (l *LevelIter) SeekGE(key []byte) Span {
+	l.dir = +1
 	l.err = nil // clear cached iteration error
 	l.exhaustedBounds = false
 
-	loadFileIndicator := l.loadFile(l.findFileGE(key), +1)
+	f := l.findFileGE(key)
+	if f != nil && l.cmp(key, f.SmallestRangeKey.UserKey) < 0 {
+		// Return a straddling key instead of loading the file.
+		l.iterFile = f
+		l.iter = nil
+		l.straddleDir = +1
+		l.straddle = Span{
+			Start: key,
+			End:   f.SmallestRangeKey.UserKey,
+			Keys:  nil,
+		}
+		return l.verify(l.straddle)
+	}
+	loadFileIndicator := l.loadFile(f, +1)
 	if loadFileIndicator == noFileLoaded {
 		return Span{}
 	}
@@ -308,11 +338,26 @@ func (l *LevelIter) SeekGE(key []byte) Span {
 
 // SeekLT implements keyspan.FragmentIterator.
 func (l *LevelIter) SeekLT(key []byte) Span {
+	l.dir = -1
 	l.err = nil // clear cached iteration error
 	l.exhaustedBounds = false
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
+	f := l.findFileLT(key)
+	if f != nil && l.cmp(f.LargestRangeKey.UserKey, key) < 0 {
+		// Return a straddling key instead of loading the file.
+		l.iterFile = f
+		l.iter = nil
+		l.straddleDir = -1
+		l.straddle = Span{
+			Start: f.LargestRangeKey.UserKey,
+			End:   key,
+			Keys:  nil,
+		}
+		l.straddle = l.checkLowerBound(l.straddle)
+		return l.verify(l.straddle)
+	}
 	if l.loadFile(l.findFileLT(key), -1) == noFileLoaded {
 		return Span{}
 	}
@@ -330,6 +375,7 @@ func (l *LevelIter) SeekLT(key []byte) Span {
 
 // First implements keyspan.FragmentIterator.
 func (l *LevelIter) First() Span {
+	l.dir = +1
 	l.err = nil // clear cached iteration error
 	l.exhaustedBounds = false
 
@@ -349,6 +395,7 @@ func (l *LevelIter) First() Span {
 
 // Last implements keyspan.FragmentIterator.
 func (l *LevelIter) Last() Span {
+	l.dir = -1
 	l.err = nil // clear cached iteration error
 	l.exhaustedBounds = false
 
@@ -369,54 +416,89 @@ func (l *LevelIter) Last() Span {
 
 // Next implements keyspan.FragmentIterator.
 func (l *LevelIter) Next() Span {
-	if l.err != nil || l.iter == nil {
+	l.dir = +1
+	if l.err != nil || (l.iter == nil && l.iterFile == nil) {
 		return Span{}
 	}
 	l.exhaustedBounds = false
 
-	if span := l.iter.Next(); span.Valid() {
-		if l.tableOpts.LowerBound != nil {
-			span = l.checkLowerBound(span)
+	if l.iter != nil {
+		if span := l.iter.Next(); span.Valid() {
+			if l.tableOpts.LowerBound != nil {
+				span = l.checkLowerBound(span)
+			}
+			if l.tableOpts.UpperBound != nil {
+				span = l.checkUpperBound(span)
+			}
+			return l.verify(span)
 		}
-		if l.tableOpts.UpperBound != nil {
-			span = l.checkUpperBound(span)
-		}
-		return l.verify(span)
 	}
 	return l.verify(l.skipEmptyFileForward())
 }
 
 // Prev implements keyspan.FragmentIterator.
 func (l *LevelIter) Prev() Span {
-	if l.err != nil || l.iter == nil {
+	l.dir = -1
+	if l.err != nil || (l.iter == nil && l.iterFile == nil) {
 		return Span{}
 	}
 	l.exhaustedBounds = false
 
-	if span := l.iter.Prev(); span.Valid() {
-		if l.tableOpts.LowerBound != nil {
-			span = l.checkLowerBound(span)
+	if l.iter != nil {
+		if span := l.iter.Prev(); span.Valid() {
+			if l.tableOpts.LowerBound != nil {
+				span = l.checkLowerBound(span)
+			}
+			if l.tableOpts.UpperBound != nil {
+				span = l.checkUpperBound(span)
+			}
+			return l.verify(span)
 		}
-		if l.tableOpts.UpperBound != nil {
-			span = l.checkUpperBound(span)
-		}
-		return l.verify(span)
 	}
 	return l.verify(l.skipEmptyFileBackward())
 }
 
 func (l *LevelIter) skipEmptyFileForward() Span {
-	// TODO(bilal): Instead of skipping forward until the next file with a range
-	// key and returning the first span, return an empty span (i.e. a Span with
-	// start/end but no keys) until the next file that could return a range key
-	// without necessarily opening that file.
-	var span Span
-	for ; span.Empty(); span = l.iter.First() {
-		// Current file was exhausted. Move to the next file.
-		if l.loadFile(l.files.Next(), +1) == noFileLoaded {
+	if !l.straddle.Valid() && l.iterFile != nil && l.iter != nil {
+		// We were at a file that had range keys. Check if the next file that has
+		// range keys is not directly adjacent to the current file i.e. there is a
+		// gap in the range keyspace between the two files. In that case, synthesize
+		// a "straddle span" in l.straddle and return that.
+		if err := l.Close(); err != nil {
+			l.err = err
 			return Span{}
 		}
+		startKey := l.iterFile.LargestRangeKey.UserKey
+		l.iterFile = l.files.Next()
+		if l.iterFile == nil {
+			return Span{}
+		}
+		endKey := l.iterFile.SmallestRangeKey.UserKey
+		if l.cmp(startKey, endKey) < 0 {
+			// There is a gap between the two files. Synthesize a straddling span
+			// to avoid unnecessarily loading the next file.
+			l.straddle = Span{
+				Start: startKey,
+				End:   endKey,
+			}
+			l.straddleDir = l.dir
+			if l.tableOpts.UpperBound != nil {
+				l.straddle = l.checkUpperBound(l.straddle)
+			}
+			return l.straddle
+		}
+	} else if l.straddle.Valid() && l.straddleDir < 0 {
+		// We were at a straddle key, but are now changing directions. l.iterFile
+		// was already moved backward by skipEmptyFileBackward, so advance it
+		// forward and load the file.
+		l.iterFile = l.files.Next()
 	}
+	l.straddle = Span{}
+	var span Span
+	if l.loadFile(l.iterFile, +1) == noFileLoaded {
+		return Span{}
+	}
+	span = l.iter.First()
 	if l.tableOpts.UpperBound != nil {
 		span = l.checkUpperBound(span)
 	}
@@ -424,17 +506,46 @@ func (l *LevelIter) skipEmptyFileForward() Span {
 }
 
 func (l *LevelIter) skipEmptyFileBackward() Span {
-	// TODO(bilal): Instead of skipping backward until the previous file with a
-	// range key and returning the last span, return an empty span (i.e. a Span
-	// with start/end but no keys) until the prev file that could return a range
-	// key without necessarily opening that file.
-	var span Span
-	for ; span.Empty(); span = l.iter.Last() {
-		// Current file was exhausted. Move to the previous file.
-		if l.loadFile(l.files.Prev(), -1) == noFileLoaded {
+	// We were at a file that had range keys. Check if the previous file that has
+	// range keys is not directly adjacent to the current file i.e. there is a
+	// gap in the range keyspace between the two files. In that case, synthesize
+	// a "straddle span" in l.straddle and return that.
+	if !l.straddle.Valid() && l.iterFile != nil && l.iter != nil {
+		if err := l.Close(); err != nil {
+			l.err = err
 			return Span{}
 		}
+		endKey := l.iterFile.SmallestRangeKey.UserKey
+		l.iterFile = l.files.Prev()
+		if l.iterFile == nil {
+			return Span{}
+		}
+		startKey := l.iterFile.LargestRangeKey.UserKey
+		if l.cmp(startKey, endKey) < 0 {
+			// There is a gap between the two files. Synthesize a straddling span
+			// to avoid unnecessarily loading the next file.
+			l.straddle = Span{
+				Start: startKey,
+				End:   endKey,
+			}
+			l.straddleDir = l.dir
+			if l.tableOpts.LowerBound != nil {
+				l.straddle = l.checkLowerBound(l.straddle)
+			}
+			return l.straddle
+		}
+	} else if l.straddle.Valid() && l.straddleDir > 0 {
+		// We were at a straddle key, but are now changing directions. l.iterFile
+		// was already advanced forward by skipEmptyFileForward, so move it
+		// backward and load the file.
+		l.iterFile = l.files.Prev()
 	}
+	l.straddle = Span{}
+	var span Span
+	if l.loadFile(l.iterFile, -1) == noFileLoaded {
+		return Span{}
+	}
+	span = l.iter.Last()
 	if l.tableOpts.LowerBound != nil {
 		span = l.checkLowerBound(span)
 	}

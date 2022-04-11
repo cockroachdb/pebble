@@ -167,8 +167,12 @@ created indexed batch with 1 keys
 combined-iter
 seek-ge b
 next
+next
+next
 ----
+b: (., .)
 c: (c, .)
+cat: (., .)
 d: (d, [d-dog) @3=beep)
 
 commit-batch
@@ -181,9 +185,11 @@ wrote 1 keys
 combined-iter
 seek-ge b
 next
+next
 ----
+b: (., .)
 c: (c, .)
-d: (d, [d-dog) @3=beep)
+cat: (., .)
 
 # Reading through the database after flushing, we should still see the
 # beginning of the cat-dog range key now beginning at 'd'.
@@ -194,9 +200,11 @@ flush
 combined-iter
 seek-ge b
 next
+next
 ----
+b: (., .)
 c: (c, .)
-d: (d, [d-dog) @3=beep)
+cat: (., .)
 
 reset
 ----
@@ -358,7 +366,7 @@ b@100: (b@100, [b-c) @5=beep)
 b@10: (b@10, [b-c) @5=beep)
 bz@10: (bz@10, [b-c) @5=beep)
 bz@1: (bz@1, [b-c) @5=beep)
-c@100: (c@100, .)
+c: (., .)
 
 # Perform the same iteration with all range keys serving as masks. The bz@1
 # point key should be elided.
@@ -381,8 +389,8 @@ b: (., [b-c) @5=beep)
 b@100: (b@100, [b-c) @5=beep)
 b@10: (b@10, [b-c) @5=beep)
 bz@10: (bz@10, [b-c) @5=beep)
+c: (., .)
 c@100: (c@100, .)
-c@10: (c@10, .)
 
 # Ensure that a cloned iterator includes range keys.
 
@@ -408,15 +416,19 @@ wrote 4 keys
 
 scan-rangekeys
 ----
+----
 [b, bat)
  @5=beep, @1=bop
+[, )
+
 [bus, c)
  @5=beep, @1=bop
 [c, e)
  @1000=boop, @1=bop
 [e, z)
  @1000=boop
-
+----
+----
 combined-iter
 seek-prefix-ge ca
 next
