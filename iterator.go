@@ -178,13 +178,19 @@ type Iterator struct {
 	stats               IteratorStats
 	closeHook           func()
 
-	// Following fields are only used in Clone and SetOptions.
+	// Following fields used when constructing an iterator stack, eg, in Clone
+	// and SetOptions or when re-fragmenting a batch's range keys/range dels.
 	// Non-nil if this Iterator includes a Batch.
 	batch    *Batch
 	newIters tableNewIters
 	seqNum   uint64
 	// TODO(jackson): Remove when we no longer require the global arena.
 	newRangeKeyIter func(*iteratorRangeKeyState) keyspan.FragmentIterator
+	// batchSeqNum is used by Iterators over indexed batches to detect when the
+	// underlying batch has been mutated. The batch beneath an indexed batch may
+	// be mutated while the Iterator is open, but new keys are not surfaced
+	// until the next seek operation.
+	batchSeqNum uint64
 
 	// Keeping the bools here after all the 8 byte aligned fields shrinks the
 	// sizeof this struct by 24 bytes.
@@ -1799,6 +1805,9 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 // are sometimes used to optimize seeking. See the extended commentary on
 // SetBounds.
 //
+// If the iterator was created over an indexed mutable batch, the iterator's
+// view of the mutable batch is refreshed.
+//
 // The iterator will always be invalidated and must be repositioned with a call
 // to SeekGE, SeekPrefixGE, SeekLT, First, or Last.
 //
@@ -1850,7 +1859,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		i.pointIter = nil
 	}
 	if closeRange && i.rangeKey != nil {
-		i.err = firstError(i.err, i.rangeKey.iter.Close())
+		i.err = firstError(i.err, i.rangeKey.rangeKeyIter.Close())
 		i.rangeKey = nil
 	}
 

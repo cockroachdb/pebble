@@ -287,6 +287,16 @@ func newIndexedBatch(db *DB, comparer *Comparer) *Batch {
 	return &i.batch
 }
 
+// nextSeqNum returns the batch "sequence number" that will be given to the next
+// key written to the batch. During iteration keys within an indexed batch are
+// given a sequence number consisting of their offset within the batch combined
+// with the base.InternalKeySeqNumBatch bit. These sequence numbers are only
+// used during iteration, and the keys are assigned ordinary sequence numbers
+// when the batch is committed.
+func (b *Batch) nextSeqNum() uint64 {
+	return uint64(len(b.data)) | base.InternalKeySeqNumBatch
+}
+
 func (b *Batch) release() {
 	if b.db == nil {
 		// The batch was not created using newBatch or newIndexedBatch, or an error
@@ -799,6 +809,9 @@ func (b *Batch) SetRepr(data []byte) error {
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekPrefixGE, SeekLT, First or Last. Only indexed batches support iterators.
+//
+// The returned Iterator observes all of the Batch's existing mutations, but no
+// later mutations. Its view can be refreshed via SetOptions().
 func (b *Batch) NewIter(o *IterOptions) *Iterator {
 	if b.index == nil {
 		return &Iterator{err: ErrNotIndexed}
@@ -813,9 +826,10 @@ func (b *Batch) newInternalIter(o *IterOptions) internalIterator {
 		return newErrorIter(ErrNotIndexed)
 	}
 	return &batchIter{
-		cmp:   b.cmp,
-		batch: b,
-		iter:  b.index.NewIter(o.GetLowerBound(), o.GetUpperBound()),
+		cmp:      b.cmp,
+		batch:    b,
+		iter:     b.index.NewIter(o.GetLowerBound(), o.GetUpperBound()),
+		snapshot: b.nextSeqNum(),
 	}
 }
 
@@ -839,9 +853,10 @@ func (b *Batch) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
 			},
 		}
 		it := &batchIter{
-			cmp:   b.cmp,
-			batch: b,
-			iter:  b.rangeDelIndex.NewIter(nil, nil),
+			cmp:      b.cmp,
+			batch:    b,
+			iter:     b.rangeDelIndex.NewIter(nil, nil),
+			snapshot: b.nextSeqNum(),
 		}
 		fragmentRangeDels(frag, it, int(b.countRangeDels))
 	}
@@ -891,9 +906,10 @@ func (b *Batch) newRangeKeyIter(_ *IterOptions) keyspan.FragmentIterator {
 			},
 		}
 		it := &batchIter{
-			cmp:   b.cmp,
-			batch: b,
-			iter:  b.rangeKeyIndex.NewIter(nil, nil),
+			cmp:      b.cmp,
+			batch:    b,
+			iter:     b.rangeKeyIndex.NewIter(nil, nil),
+			snapshot: b.nextSeqNum(),
 		}
 		fragmentRangeKeys(frag, it, int(b.countRangeKeys))
 	}
@@ -1132,6 +1148,11 @@ type batchIter struct {
 	batch *Batch
 	iter  batchskl.Iterator
 	err   error
+	// snapshot holds a batch "sequence number" at which the batch is being
+	// read. This sequence number has the InternalKeySeqNumBatch bit set, so it
+	// encodes an offset within the batch. Only batch entries earlier than the
+	// offset are visible during iteration.
+	snapshot uint64
 }
 
 // batchIter implements the base.InternalIterator interface.
@@ -1146,6 +1167,9 @@ func (i *batchIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []b
 	// would be incorrect.
 	i.err = nil // clear cached iteration error
 	ikey := i.iter.SeekGE(key)
+	for ikey != nil && ikey.SeqNum() >= i.snapshot {
+		ikey = i.iter.Next()
+	}
 	if ikey == nil {
 		return nil, nil
 	}
@@ -1162,6 +1186,9 @@ func (i *batchIter) SeekPrefixGE(
 func (i *batchIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	i.err = nil // clear cached iteration error
 	ikey := i.iter.SeekLT(key)
+	for ikey != nil && ikey.SeqNum() >= i.snapshot {
+		ikey = i.iter.Prev()
+	}
 	if ikey == nil {
 		return nil, nil
 	}
@@ -1171,6 +1198,9 @@ func (i *batchIter) SeekLT(key []byte) (*InternalKey, []byte) {
 func (i *batchIter) First() (*InternalKey, []byte) {
 	i.err = nil // clear cached iteration error
 	ikey := i.iter.First()
+	for ikey != nil && ikey.SeqNum() >= i.snapshot {
+		ikey = i.iter.Next()
+	}
 	if ikey == nil {
 		return nil, nil
 	}
@@ -1180,6 +1210,9 @@ func (i *batchIter) First() (*InternalKey, []byte) {
 func (i *batchIter) Last() (*InternalKey, []byte) {
 	i.err = nil // clear cached iteration error
 	ikey := i.iter.Last()
+	for ikey != nil && ikey.SeqNum() >= i.snapshot {
+		ikey = i.iter.Prev()
+	}
 	if ikey == nil {
 		return nil, nil
 	}
@@ -1188,6 +1221,9 @@ func (i *batchIter) Last() (*InternalKey, []byte) {
 
 func (i *batchIter) Next() (*InternalKey, []byte) {
 	ikey := i.iter.Next()
+	for ikey != nil && ikey.SeqNum() >= i.snapshot {
+		ikey = i.iter.Next()
+	}
 	if ikey == nil {
 		return nil, nil
 	}
@@ -1196,6 +1232,9 @@ func (i *batchIter) Next() (*InternalKey, []byte) {
 
 func (i *batchIter) Prev() (*InternalKey, []byte) {
 	ikey := i.iter.Prev()
+	for ikey != nil && ikey.SeqNum() >= i.snapshot {
+		ikey = i.iter.Prev()
+	}
 	if ikey == nil {
 		return nil, nil
 	}

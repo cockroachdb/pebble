@@ -944,7 +944,6 @@ func (g *generator) writerDelete() {
 		writerID: writerID,
 		key:      g.randKeyToWrite(0.001), // 0.1% new keys
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerDeleteRange() {
@@ -964,7 +963,6 @@ func (g *generator) writerDeleteRange() {
 		start:    start,
 		end:      end,
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerRangeKeyDelete() {
@@ -979,7 +977,6 @@ func (g *generator) writerRangeKeyDelete() {
 		start:    start,
 		end:      end,
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerRangeKeySet() {
@@ -1003,7 +1000,6 @@ func (g *generator) writerRangeKeySet() {
 		suffix:   suffix,
 		value:    g.randValue(0, 20),
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerRangeKeyUnset() {
@@ -1029,7 +1025,6 @@ func (g *generator) writerRangeKeyUnset() {
 		end:      end,
 		suffix:   suffix,
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerIngest() {
@@ -1082,7 +1077,6 @@ func (g *generator) writerMerge() {
 		key:   g.randKeyToWrite(0.2),
 		value: g.randValue(0, 20),
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerSet() {
@@ -1097,7 +1091,6 @@ func (g *generator) writerSet() {
 		key:   g.randKeyToWrite(0.5),
 		value: g.randValue(0, 20),
 	})
-	g.tryRepositionBatchIters(writerID)
 }
 
 func (g *generator) writerSingleDelete() {
@@ -1120,22 +1113,6 @@ func (g *generator) writerSingleDelete() {
 		// set to true for the single delete to be replaced.
 		maybeReplaceDelete: g.rng.Float64() < 0.25,
 	})
-	g.tryRepositionBatchIters(writerID)
-}
-
-func (g *generator) tryRepositionBatchIters(writerID objID) {
-	if writerID.tag() != batchTag {
-		return
-	}
-	// Reposition all batch iterators to avoid https://github.com/cockroachdb/pebble/issues/943
-	iters, ok := g.batches[writerID]
-	if !ok {
-		// Not an indexed batch.
-		return
-	}
-	for _, id := range iters.sorted() {
-		g.add(&iterFirstOp{iterID: id})
-	}
 }
 
 func (g *generator) pickOneUniform(options ...func()) func() {

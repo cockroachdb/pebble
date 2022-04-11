@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/batchskl"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -333,6 +334,108 @@ func TestIndexedBatchReset(t *testing.T) {
 	require.Equal(t, 1, indexCount(b.rangeDelIndex))
 	require.Equal(t, 0, count(b))
 	require.False(t, contains(b, key, value))
+}
+
+// TestIndexedBatchMutation tests mutating an indexed batch with an open
+// iterator.
+func TestIndexedBatchMutation(t *testing.T) {
+	opts := &Options{FS: vfs.NewMem(), FormatMajorVersion: FormatNewest}
+	opts.Experimental.RangeKeys = new(RangeKeysArena)
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer d.Close()
+
+	b := newIndexedBatch(d, DefaultComparer)
+	var iter *Iterator
+	defer func() {
+		if iter != nil {
+			require.NoError(t, iter.Close())
+		}
+	}()
+
+	datadriven.RunTest(t, "testdata/indexed_batch_mutation", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "new-iter":
+			if iter != nil {
+				require.NoError(t, iter.Close())
+			}
+			iter = b.NewIter(&IterOptions{
+				KeyTypes: IterKeyTypePointsAndRanges,
+			})
+			return ""
+		case "iter":
+			return runIterCmd(td, iter, false /* closeIter */)
+		case "mutate":
+			mut := newBatch(d)
+			if err := runBatchDefineCmd(td, mut); err != nil {
+				return err.Error()
+			}
+			if err := b.Apply(mut, nil); err != nil {
+				return err.Error()
+			}
+			return ""
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
+}
+
+func TestIndexedBatch_GlobalVisibility(t *testing.T) {
+	opts := &Options{
+		FS:                 vfs.NewMem(),
+		FormatMajorVersion: FormatNewest,
+		Comparer:           testkeys.Comparer,
+	}
+	opts.Experimental.RangeKeys = new(RangeKeysArena)
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer d.Close()
+
+	require.NoError(t, d.Set([]byte("foo"), []byte("foo"), nil))
+
+	// Create an iterator over an empty indexed batch.
+	b := newIndexedBatch(d, DefaultComparer)
+	iterOpts := IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
+	iter := b.NewIter(&iterOpts)
+	defer iter.Close()
+
+	// Mutate the database's committed state.
+	mut := newBatch(d)
+	require.NoError(t, mut.Set([]byte("bar"), []byte("bar"), nil))
+	require.NoError(t, mut.DeleteRange([]byte("e"), []byte("g"), nil))
+	require.NoError(t, mut.Experimental().RangeKeySet([]byte("a"), []byte("c"), []byte("@1"), []byte("v"), nil))
+	require.NoError(t, mut.Commit(nil))
+
+	scanIter := func() string {
+		var buf bytes.Buffer
+		for valid := iter.First(); valid; valid = iter.Next() {
+			fmt.Fprintf(&buf, "%s: (", iter.Key())
+			hasPoint, hasRange := iter.HasPointAndRange()
+			if hasPoint {
+				fmt.Fprintf(&buf, "%s,", iter.Value())
+			} else {
+				fmt.Fprintf(&buf, ".,")
+			}
+			if hasRange {
+				start, end := iter.RangeBounds()
+				fmt.Fprintf(&buf, "[%s-%s)", start, end)
+				writeRangeKeys(&buf, iter)
+			} else {
+				fmt.Fprintf(&buf, ".")
+			}
+			fmt.Fprintln(&buf, ")")
+		}
+		return strings.TrimSpace(buf.String())
+	}
+	// Scanning the iterator should only see the point key written before the
+	// iterator was constructed.
+	require.Equal(t, `foo: (foo,.)`, scanIter())
+
+	// After calling SetOptions, the iterator should still only see the point
+	// key written before the iterator was constructed. SetOptions refreshes the
+	// iterator's view of its own indexed batch, but not committed state.
+	iter.SetOptions(&iterOpts)
+	require.Equal(t, `foo: (foo,.)`, scanIter())
 }
 
 func TestFlushableBatchReset(t *testing.T) {
