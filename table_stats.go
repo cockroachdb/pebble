@@ -455,9 +455,35 @@ func foreachDefragmentedTombstone(
 ) error {
 	// Use an equals func that will always merge abutting spans.
 	equal := func(_ base.Compare, _, _ keyspan.Span) bool { return true }
-	// Reduce keys by appending the keys from each incoming span.
-	reducer := func(current, incoming []keyspan.Key) ([]keyspan.Key, bool) {
-		return append(current, incoming...), true /* modified */
+	// Reduce keys by maintaining a slice of length two, corresponding to the
+	// largest and smallest keys in the defragmented span. This maintains the
+	// contract that the emitted slice is sorted by (SeqNum, Kind) descending.
+	reducer := func(current, incoming []keyspan.Key) []keyspan.Key {
+		if len(current) == 0 && len(incoming) == 0 {
+			// While this should never occur in practice, a defensive return is used
+			// here to preserve correctness.
+			return current
+		}
+		// Determine the smallest / largest keys across the two slices. As `current`
+		// and `incoming` are both sorted by (seqnum, kind) descending, only the
+		// first and last element of each slice need to be consulted.
+		var largest, smallest keyspan.Key
+		var largestSet, smallestSet bool
+		for _, keys := range [2][]keyspan.Key{current, incoming} {
+			if len(keys) == 0 {
+				continue
+			}
+			first, last := keys[0], keys[len(keys)-1]
+			// Update largest.
+			if !largestSet || first.Trailer > largest.Trailer {
+				largest, largestSet = first, true
+			}
+			// Update smallest.
+			if !smallestSet || last.Trailer < smallest.Trailer {
+				smallest, smallestSet = last, true
+			}
+		}
+		return append(current[:0], largest, smallest)
 	}
 	iter := keyspan.DefragmentingIter{}
 	iter.Init(cmp, rangeDelIter, equal, reducer)
