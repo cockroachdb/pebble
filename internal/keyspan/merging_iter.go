@@ -47,12 +47,6 @@ func visibleTransform(snapshot uint64) Transform {
 	}
 }
 
-// TODO(jackson): Currently MergingIter never returns empty spans. If a span
-// contains no keys, it skips over it, continuing in the direction of iteration
-// until it finds a span that contains keys. For range keys, it would be better
-// if we did NOT do this, avoiding unnecessarily loading range key blocks in
-// some situations.
-
 // MergingIter merges spans across levels of the LSM, exposing an iterator over
 // spans that yields sets of spans fragmented at unique user key boundaries.
 //
@@ -307,7 +301,7 @@ func (m *MergingIter) Next() Span {
 	if m.err != nil {
 		return Span{}
 	}
-	if m.dir == +1 && len(m.keys) == 0 {
+	if m.dir == +1 && (m.end == nil || m.start == nil) {
 		return Span{}
 	}
 	if m.dir != +1 {
@@ -321,7 +315,7 @@ func (m *MergingIter) Prev() Span {
 	if m.err != nil {
 		return Span{}
 	}
-	if m.dir == -1 && len(m.keys) == 0 {
+	if m.dir == -1 && (m.end == nil || m.start == nil) {
 		return Span{}
 	}
 	if m.dir != -1 {
@@ -559,8 +553,11 @@ func (m *MergingIter) findNextFragmentSet() Span {
 		// and sort them by kind, sequence number. There may not be any keys
 		// defined over [m.start, m.end) if we're between the end of one span
 		// and the start of the next, OR if the configured transform filters any
-		// keys out.
-		if s := m.synthesizeKeys(+1); len(s.Keys) > 0 {
+		// keys out. We allow empty spans that were emitted by child iterators, but
+		// we elide empty spans created by the mergingIter itself that don't overlap
+		// with any child iterator returned spans (i.e. empty spans that bridge two
+		// distinct child-iterator-defined spans).
+		if found, s := m.synthesizeKeys(+1); found && s.Valid() {
 			return s
 		}
 	}
@@ -624,8 +621,11 @@ func (m *MergingIter) findPrevFragmentSet() Span {
 		// and sort them by kind, sequence number. There may not be any keys
 		// spanning [m.start, m.end) if we're between the end of one span and
 		// the start of the next, OR if the configured transform filters any
-		// keys out.
-		if s := m.synthesizeKeys(-1); len(s.Keys) > 0 {
+		// keys out.  We allow empty spans that were emitted by child iterators, but
+		// we elide empty spans created by the mergingIter itself that don't overlap
+		// with any child iterator returned spans (i.e. empty spans that bridge two
+		// distinct child-iterator-defined spans).
+		if found, s := m.synthesizeKeys(-1); found && s.Valid() {
 			return s
 		}
 	}
@@ -638,29 +638,33 @@ func (m *MergingIter) heapRoot() *boundKey {
 	return m.heap.items[0].boundKey
 }
 
-func (m *MergingIter) synthesizeKeys(dir int8) Span {
+// synthesizeKeys is called by find{Next,Prev}FragmentSet to populate and
+// sort the set of keys overlapping [m.start, m.end).
+//
+// During forward iteration, if the current heap item is a fragment end,
+// then the fragment's start must be ≤ m.start and the fragment overlaps the
+// current iterator position of [m.start, m.end).
+//
+// During reverse iteration, if the current heap item is a fragment start,
+// then the fragment's end must be ≥ m.end and the fragment overlaps the
+// current iteration position of [m.start, m.end).
+//
+// The boolean return value, `found`, is true if the returned span overlaps
+// with a span returned by a child iterator.
+func (m *MergingIter) synthesizeKeys(dir int8) (bool, Span) {
 	if invariants.Enabled {
 		if m.cmp(m.start, m.end) >= 0 {
 			panic(fmt.Sprintf("pebble: invariant violation: span start ≥ end: %s >= %s", m.start, m.end))
 		}
 	}
 
-	// synthesizeKeys is called by find{Next,Prev}FragmentSet to populate and
-	// sort the set of keys overlapping [m.start, m.end).
-	//
-	// During forward iteration, if the current heap item is a fragment end,
-	// then the fragment's start must be ≤ m.start and the fragment overlaps the
-	// current iterator position of [m.start, m.end).
-	//
-	// During reverse iteration, if the current heap item is a fragment start,
-	// then the fragment's end must be ≥ m.end and the fragment overlaps the
-	// current iteration position of [m.start, m.end).
-
 	m.keys = m.keys[:0]
+	found := false
 	for i := range m.levels {
 		if dir == +1 && m.levels[i].heapKey.kind == boundKindFragmentEnd ||
 			dir == -1 && m.levels[i].heapKey.kind == boundKindFragmentStart {
 			m.keys = append(m.keys, m.levels[i].heapKey.span.Keys...)
+			found = true
 		}
 	}
 	sort.Sort(&m.keys)
@@ -673,9 +677,9 @@ func (m *MergingIter) synthesizeKeys(dir int8) Span {
 	}
 	if err := m.transform(m.cmp, s, &m.span); err != nil {
 		m.err = err
-		return Span{}
+		return false, Span{}
 	}
-	return m.span
+	return found, m.span
 }
 
 func (m *MergingIter) invalidate() {

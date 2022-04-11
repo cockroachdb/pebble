@@ -435,7 +435,14 @@ func (i *InterleavingIter) interleaveForward(lowerBound []byte) (*base.InternalK
 				// interleaved it, we should.
 				if !i.keyspanInterleaved {
 					if i.span.Empty() {
-						i.keyspanInterleaved = true
+						if i.pointKey != nil && i.cmp(i.pointKey.UserKey, i.span.End) >= 0 {
+							// Advance the keyspan iterator, as just flipping
+							// keyspanInterleaved would likely trip up the invariant check
+							// above.
+							i.checkForwardBound(i.keyspanIter.Next())
+						} else {
+							i.keyspanInterleaved = true
+						}
 						continue
 					}
 					return i.yieldSyntheticSpanMarker(lowerBound)
@@ -501,7 +508,7 @@ func (i *InterleavingIter) interleaveBackward() (*base.InternalKey, []byte) {
 		case i.pointKey == nil:
 			// If we're out of point keys, we need to return a span marker.
 			if i.span.Empty() {
-				i.keyspanInterleaved = true
+				i.checkBackwardBound(i.keyspanIter.Prev())
 				continue
 			}
 			return i.yieldSyntheticSpanMarker(i.lower)
@@ -510,7 +517,7 @@ func (i *InterleavingIter) interleaveBackward() (*base.InternalKey, []byte) {
 			// marker for the span.
 			if i.cmp(i.span.Start, i.pointKey.UserKey) > 0 {
 				if i.span.Empty() {
-					i.keyspanInterleaved = true
+					i.checkBackwardBound(i.keyspanIter.Prev())
 					continue
 				}
 				return i.yieldSyntheticSpanMarker(i.lower)

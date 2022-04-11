@@ -595,7 +595,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 		//
 		// For a tombstone at the same level as the key, the file bounds are trivially satisfied.
 		if (l.smallestUserKey == nil || m.heap.cmp(l.smallestUserKey, item.key.UserKey) <= 0) &&
-			l.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
+			l.tombstone.Contains(m.heap.cmp, item.key.UserKey) && !l.tombstone.Empty() {
 			if level < item.index {
 				// We could also do m.seekGE(..., level + 1). The levels from
 				// [level + 1, item.index) are already after item.key so seeking them may be
@@ -767,7 +767,7 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 			cmpResult := m.heap.cmp(l.largestUserKey, item.key.UserKey)
 			withinLargestSSTableBound = cmpResult > 0 || (cmpResult == 0 && !l.isLargestUserKeyRangeDelSentinel)
 		}
-		if withinLargestSSTableBound && l.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
+		if withinLargestSSTableBound && l.tombstone.Contains(m.heap.cmp, item.key.UserKey) && !l.tombstone.Empty() {
 			if level < item.index {
 				// We could also do m.seekLT(..., level + 1). The levels from
 				// [level + 1, item.index) are already before item.key so seeking them may be

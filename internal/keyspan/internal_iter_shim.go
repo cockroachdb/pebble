@@ -57,7 +57,10 @@ func (i *InternalIteratorShim) SeekLT(key []byte) (*base.InternalKey, []byte) {
 // First implements (base.InternalIterator).First.
 func (i *InternalIteratorShim) First() (*base.InternalKey, []byte) {
 	i.span = i.miter.First()
-	if i.span.Empty() {
+	for i.span.Valid() && i.span.Empty() {
+		i.span = i.miter.Next()
+	}
+	if !i.span.Valid() {
 		return nil, nil
 	}
 	i.iterKey = base.InternalKey{UserKey: i.span.Start, Trailer: i.span.Keys[0].Trailer}
@@ -72,7 +75,10 @@ func (i *InternalIteratorShim) Last() (*base.InternalKey, []byte) {
 // Next implements (base.InternalIterator).Next.
 func (i *InternalIteratorShim) Next() (*base.InternalKey, []byte) {
 	i.span = i.miter.Next()
-	if i.span.Empty() {
+	for i.span.Valid() && i.span.Empty() {
+		i.span = i.miter.Next()
+	}
+	if !i.span.Valid() {
 		return nil, nil
 	}
 	i.iterKey = base.InternalKey{UserKey: i.span.Start, Trailer: i.span.Keys[0].Trailer}
