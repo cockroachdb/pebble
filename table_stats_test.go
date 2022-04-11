@@ -160,6 +160,20 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 		{
 			fragmented: []keyspan.Span{
 				mktomb("a", "c", 2),
+			},
+			want:    [][2]string{{"a", "c"}},
+			wantSeq: [][2]uint64{{2, 2}},
+		},
+		{
+			fragmented: []keyspan.Span{
+				mktomb("a", "c", 2, 1),
+			},
+			want:    [][2]string{{"a", "c"}},
+			wantSeq: [][2]uint64{{1, 2}},
+		},
+		{
+			fragmented: []keyspan.Span{
+				mktomb("a", "c", 2),
 				mktomb("e", "g", 2),
 				mktomb("l", "m", 2),
 				mktomb("v", "z", 2),
@@ -175,6 +189,15 @@ func TestForeachDefragmentedTombstone(t *testing.T) {
 			},
 			want:    [][2]string{{"a", "m"}},
 			wantSeq: [][2]uint64{{2, 5}},
+		},
+		{
+			fragmented: []keyspan.Span{
+				mktomb("a", "c", 1),
+				mktomb("c", "f", 5, 2),
+				mktomb("f", "m", 5),
+			},
+			want:    [][2]string{{"a", "m"}},
+			wantSeq: [][2]uint64{{1, 5}},
 		},
 		{
 			fragmented: []keyspan.Span{
