@@ -379,6 +379,16 @@ func (i *Iterator) findNextEntry(limit []byte) {
 				i.iterValidityState = IterExhausted
 				return
 			}
+			if !pointKeyExists && !i.rangeKey.hasRangeKey {
+				// The current range key is empty, and there are no point keys.
+				// If nextPointCurrentUserKey did not advance us to the next user key,
+				// advance it.
+				if i.pos != iterPosNext {
+					i.nextUserKey()
+				}
+				i.pos = iterPosCurForward
+				continue
+			}
 			i.rangeKey.rangeKeyOnly = !pointKeyExists
 			i.iterValidityState = IterValid
 			return
@@ -721,8 +731,27 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			i.iterKey, i.iterValue = i.iter.Prev()
 
 			// Set rangeKeyBoundary so that on the next iteration, we know to
-			// return the key even if the MERGE point key is deleted.
-			rangeKeyBoundary = true
+			// return the key even if the MERGE point key is deleted, but only if
+			// the current span was non-empty.
+			rangeKeyBoundary = i.rangeKey.hasRangeKey
+			if !i.rangeKey.hasRangeKey && i.rangeKey.rangeKeyOnly {
+				// The current range key span is empty. Look for the previous non-empty
+				// span, or point key.
+				i.iterValidityState = IterExhausted
+				valueMerger = nil
+				i.value = nil
+				// Resetting this is important as we could encounter a point key in the
+				// next iteration of the loop.
+				i.rangeKey.rangeKeyOnly = false
+
+				if limit != nil && i.iterKey != nil && i.cmp(limit, i.iterKey.UserKey) > 0 && !i.rangeKeyWithinLimit(limit) {
+					i.iterValidityState = IterAtLimit
+					i.pos = iterPosCurReversePaused
+					return
+				}
+				i.key = nil
+				continue
+			}
 
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 			i.value = nil
