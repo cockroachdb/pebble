@@ -955,6 +955,22 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		}
 	}
 
+	// If the iterator includes an indexed batch, the new iterator state will
+	// reflect the state of the batch only at this moment. Record the current
+	// batch offset, so that if the batch is mutated future seeking operations
+	// know that they must refresh the batch state.
+	if dbi.batch != nil && len(dbi.batch.data) != dbi.batchOffset {
+		dbi.batchOffset = len(dbi.batch.data)
+		if dbi.pointIter != nil {
+			dbi.err = firstError(dbi.err, dbi.pointIter.Close())
+			dbi.pointIter = nil
+		}
+		if dbi.rangeKey != nil {
+			dbi.err = firstError(dbi.err, dbi.rangeKey.rangeKeyIter.Close())
+			dbi.rangeKey = nil
+		}
+	}
+
 	// Construct the point iterator. This function either returns a pointer to
 	// dbi.merging (if points are enabled) or an emptyIter. If this is called
 	// during a SetOptions call and this Iterator has already initialized

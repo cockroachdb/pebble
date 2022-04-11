@@ -799,6 +799,12 @@ func (b *Batch) SetRepr(data []byte) error {
 // NewIter returns an iterator that is unpositioned (Iterator.Valid() will
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekPrefixGE, SeekLT, First or Last. Only indexed batches support iterators.
+//
+// The returned Iterator observes all of the Batch's existing mutations.
+// Mutations applied to the batch invalidate the Iterator, requiring a seek to
+// continue iteration. Seeking the Iterator through First, Last,
+// SeekGE[WithLimit], SeekLT[WithLimit] or SeekGEPrefix refreshes the iterator
+// state, guaranteeing all mutations are visible.
 func (b *Batch) NewIter(o *IterOptions) *Iterator {
 	if b.index == nil {
 		return &Iterator{err: ErrNotIndexed}

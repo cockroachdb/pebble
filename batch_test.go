@@ -335,6 +335,50 @@ func TestIndexedBatchReset(t *testing.T) {
 	require.False(t, contains(b, key, value))
 }
 
+// TestIndexedBatchMutation tests mutating an indexed batch with an open
+// iterator.
+func TestIndexedBatchMutation(t *testing.T) {
+	opts := &Options{FS: vfs.NewMem(), FormatMajorVersion: FormatNewest}
+	opts.Experimental.RangeKeys = new(RangeKeysArena)
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer d.Close()
+
+	b := newIndexedBatch(d, DefaultComparer)
+	var iter *Iterator
+	defer func() {
+		if iter != nil {
+			require.NoError(t, iter.Close())
+		}
+	}()
+
+	datadriven.RunTest(t, "testdata/indexed_batch_mutation", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "new-iter":
+			if iter != nil {
+				require.NoError(t, iter.Close())
+			}
+			iter = b.NewIter(&IterOptions{
+				KeyTypes: IterKeyTypePointsAndRanges,
+			})
+			return ""
+		case "iter":
+			return runIterCmd(td, iter, false /* closeIter */)
+		case "mutate":
+			mut := newBatch(d)
+			if err := runBatchDefineCmd(td, mut); err != nil {
+				return err.Error()
+			}
+			if err := b.Apply(mut, nil); err != nil {
+				return err.Error()
+			}
+			return ""
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
+}
+
 func TestFlushableBatchReset(t *testing.T) {
 	var b Batch
 	b.flushable = newFlushableBatch(&b, DefaultComparer)
