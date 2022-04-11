@@ -177,7 +177,7 @@ func (i *DefragmentingIter) SeekGE(key []byte) Span {
 	// Save the current span and peek backwards.
 	i.saveCurrent(i.iterSpan)
 	i.iterSpan = i.iter.Prev()
-	if i.cmp(i.curr.Start, i.iterSpan.End) == 0 && i.equal(i.cmp, i.iterSpan, i.curr) {
+	if i.cmp(i.curr.Start, i.iterSpan.End) == 0 && i.checkEqual(i.iterSpan, i.curr) {
 		// A continuation. The span we originally landed on and defragmented
 		// backwards has a true Start key < key. To obey the FragmentIterator
 		// contract, we must not return this defragmented span. Defragment
@@ -202,8 +202,10 @@ func (i *DefragmentingIter) SeekLT(key []byte) Span {
 	i.iterSpan = i.iter.SeekLT(key)
 	// Defragment forward to find the end of the defragmented span.
 	i.defragmentForward()
-	// Prev once back onto the span.
-	i.iterSpan = i.iter.Prev()
+	if i.iterPos == iterPosNext {
+		// Prev once back onto the span.
+		i.iterSpan = i.iter.Prev()
+	}
 	// Defragment the full span from its end.
 	return i.defragmentBackward()
 }
@@ -250,8 +252,9 @@ func (i *DefragmentingIter) Next() Span {
 		// fragments, defragment forward.
 		return i.defragmentForward()
 	case iterPosCurr:
-		// iterPosCurr is only used when the iter is exhausted.
-		if invariants.Enabled && i.iterSpan.Valid() {
+		// iterPosCurr is only used when the iter is exhausted or when the iterator
+		// is at an empty span.
+		if invariants.Enabled && i.iterSpan.Valid() && !i.iterSpan.Empty() {
 			panic("pebble: invariant violation: iterPosCurr with valid iterSpan")
 		}
 
@@ -272,8 +275,9 @@ func (i *DefragmentingIter) Prev() Span {
 		// Already at the previous span.
 		return i.defragmentBackward()
 	case iterPosCurr:
-		// iterPosCurr is only used when the iter is exhausted.
-		if invariants.Enabled && i.iterSpan.Valid() {
+		// iterPosCurr is only used when the iter is exhausted or when the iterator
+		// is at an empty span.
+		if invariants.Enabled && i.iterSpan.Valid() && !i.iterSpan.Empty() {
 			panic("pebble: invariant violation: iterPosCurr with valid iterSpan")
 		}
 
@@ -315,10 +319,24 @@ func (i *DefragmentingIter) SetBounds(lower, upper []byte) {
 	i.iter.SetBounds(lower, upper)
 }
 
+// checkEqual checks the two spans for logical equivalence. It uses the passed-in
+// DefragmentMethod and ensures both spans are NOT empty; not defragmenting empty
+// spans is an optimization that lets us load fewer sstable blocks.
+func (i *DefragmentingIter) checkEqual(left, right Span) bool {
+	return i.equal(i.cmp, i.iterSpan, i.curr) && !(left.Empty() && right.Empty())
+}
+
 // defragmentForward defragments spans in the forward direction, starting from
 // i.iter's current position.
 func (i *DefragmentingIter) defragmentForward() Span {
 	if !i.iterSpan.Valid() {
+		i.iterPos = iterPosCurr
+		return i.iterSpan
+	}
+	if i.iterSpan.Empty() {
+		// An empty span will never be equal to another span; see checkEqual for
+		// why. To avoid loading non-empty range keys further ahead by calling Next,
+		// return early.
 		i.iterPos = iterPosCurr
 		return i.iterSpan
 	}
@@ -331,7 +349,7 @@ func (i *DefragmentingIter) defragmentForward() Span {
 			// Not a continuation.
 			break
 		}
-		if !i.equal(i.cmp, i.iterSpan, i.curr) {
+		if !i.checkEqual(i.iterSpan, i.curr) {
 			// Not a continuation.
 			break
 		}
@@ -351,6 +369,13 @@ func (i *DefragmentingIter) defragmentBackward() Span {
 		i.iterPos = iterPosCurr
 		return i.iterSpan
 	}
+	if i.iterSpan.Empty() {
+		// An empty span will never be equal to another span; see checkEqual for
+		// why. To avoid loading non-empty range keys further ahead by calling Next,
+		// return early.
+		i.iterPos = iterPosCurr
+		return i.iterSpan
+	}
 	i.saveCurrent(i.iterSpan)
 
 	i.iterPos = iterPosPrev
@@ -360,7 +385,7 @@ func (i *DefragmentingIter) defragmentBackward() Span {
 			// Not a continuation.
 			break
 		}
-		if !i.equal(i.cmp, i.iterSpan, i.curr) {
+		if !i.checkEqual(i.iterSpan, i.curr) {
 			// Not a continuation.
 			break
 		}
