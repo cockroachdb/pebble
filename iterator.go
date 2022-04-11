@@ -185,7 +185,8 @@ type Iterator struct {
 	stats               IteratorStats
 	closeHook           func()
 
-	// Following fields are only used in Clone and SetOptions.
+	// Following fields used when constructing an iterator stack, eg, in Clone
+	// and SetOptions or when re-fragmenting a batch's range keys/range dels.
 	// Non-nil if this Iterator includes a Batch.
 	batch    *Batch
 	newIters tableNewIters
@@ -193,6 +194,20 @@ type Iterator struct {
 	// TODO(jackson): Remove db when we no longer require the global arena for
 	// range keys. This reference is only temporary.
 	db *DB
+	// batchSeqNum is used by Iterators over indexed batches to detect when the
+	// underlying batch has been mutated. The batch beneath an indexed batch may
+	// be mutated while the Iterator is open, but new keys are not surfaced
+	// until the next call to SetOptions.
+	batchSeqNum uint64
+	// batch{PointIter,RangeDelIter,RangeKeyIter} are used when the Iterator is
+	// configured to read through an indexed batch. If a batch is set, these
+	// iterators will be included within the iterator stack regardless of
+	// whether the batch currently contains any keys of their kind. These
+	// pointers are used during a call to SetOptions to refresh the Iterator's
+	// view of its indexed batch.
+	batchPointIter    batchIter
+	batchRangeDelIter keyspan.Iter
+	batchRangeKeyIter keyspan.Iter
 
 	// Keeping the bools here after all the 8 byte aligned fields shrinks the
 	// sizeof this struct by 24 bytes.
@@ -1826,21 +1841,7 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 
 	// Even though this is not a positioning operation, the alteration of the
 	// bounds means we cannot optimize Seeks by using Next.
-	i.lastPositioningOp = unknownLastPositionOp
-	i.hasPrefix = false
-	i.iterKey = nil
-	i.iterValue = nil
-	// This switch statement isn't necessary for correctness since callers
-	// should call a repositioning method. We could have arbitrarily set i.pos
-	// to one of the values. But it results in more intuitive behavior in
-	// tests, which do not always reposition.
-	switch i.pos {
-	case iterPosCurForward, iterPosNext, iterPosCurForwardPaused:
-		i.pos = iterPosCurForward
-	case iterPosCurReverse, iterPosPrev, iterPosCurReversePaused:
-		i.pos = iterPosCurReverse
-	}
-	i.iterValidityState = IterExhausted
+	i.invalidate()
 }
 
 func (i *Iterator) saveBounds(lower, upper []byte) {
@@ -1874,6 +1875,9 @@ func (i *Iterator) saveBounds(lower, upper []byte) {
 // has returned. This is because comparisons between the existing and new bounds
 // are sometimes used to optimize seeking. See the extended commentary on
 // SetBounds.
+//
+// If the iterator was created over an indexed mutable batch, the iterator's
+// view of the mutable batch is refreshed.
 //
 // The iterator will always be invalidated and must be repositioned with a call
 // to SeekGE, SeekPrefixGE, SeekLT, First, or Last.
@@ -1915,6 +1919,24 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		i.rangeKey = nil
 	}
 
+	// If the iterator is backed by a batch that's been mutated, refresh it
+	// and invalidate the iterator to prevent seek-using-next optimizations.
+	if i.batch != nil {
+		nextBatchSeqNum := (uint64(len(i.batch.data)) | base.InternalKeySeqNumBatch)
+		if nextBatchSeqNum != i.batchSeqNum {
+			i.batchSeqNum = nextBatchSeqNum
+			if i.pointIter != nil {
+				i.batchPointIter.snapshot = nextBatchSeqNum
+				i.batch.initRangeDelIter(&i.opts, &i.batchRangeDelIter, nextBatchSeqNum)
+				i.invalidate()
+			}
+			if i.rangeKey != nil {
+				i.batch.initRangeKeyIter(&i.opts, &i.batchRangeKeyIter, nextBatchSeqNum)
+				i.invalidate()
+			}
+		}
+	}
+
 	boundsEqual := ((i.opts.LowerBound == nil) == (o.LowerBound == nil)) &&
 		((i.opts.UpperBound == nil) == (o.UpperBound == nil)) &&
 		i.equal(i.opts.LowerBound, o.LowerBound) &&
@@ -1926,7 +1948,8 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		i.equal(o.RangeKeyMasking.Suffix, i.opts.RangeKeyMasking.Suffix) &&
 		o.UseL6Filters == i.opts.UseL6Filters {
 		// Fast path. The options are identical. This preserves the
-		// Seek-using-Next optimizations.
+		// Seek-using-Next optimizations as long as the iterator wasn't
+		// already invalidated up above.
 		return
 	}
 
@@ -1952,6 +1975,11 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 
 	// Even though this is not a positioning operation, the invalidation of the
 	// iterator stack means we cannot optimize Seeks by using Next.
+	i.invalidate()
+	finishInitializingIter(i.alloc)
+}
+
+func (i *Iterator) invalidate() {
 	i.lastPositioningOp = unknownLastPositionOp
 	i.hasPrefix = false
 	i.iterKey = nil
@@ -1968,7 +1996,6 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		i.pos = iterPosCurReverse
 	}
 	i.iterValidityState = IterExhausted
-	finishInitializingIter(i.alloc)
 }
 
 // Metrics returns per-iterator metrics.
@@ -1999,6 +2026,10 @@ func (i *Iterator) Stats() IteratorStats {
 // same {batch, memtables, sstables}). It starts with the same IterOptions but
 // is not positioned.
 //
+// When called on an Iterator over an indexed batch, the clone inherits the
+// iterator's current (possibly stale) view of the batch. Callers may call
+// SetOptions to refresh the clone's view to include all batch mutations.
+//
 // Callers can use Clone if they need multiple iterators that need to see
 // exactly the same underlying state of the DB. This should not be used to
 // extend the lifetime of the data backing the original Iterator since that
@@ -2027,6 +2058,7 @@ func (i *Iterator) Clone() (*Iterator, error) {
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
 		boundsBuf:           buf.boundsBuf,
 		batch:               i.batch,
+		batchSeqNum:         i.batchSeqNum,
 		newIters:            i.newIters,
 		seqNum:              i.seqNum,
 		db:                  i.db,
