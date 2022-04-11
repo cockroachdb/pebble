@@ -637,6 +637,21 @@ func (o *iterSetBoundsOp) String() string {
 	return fmt.Sprintf("%s.SetBounds(%q, %q)", o.iterID, o.lower, o.upper)
 }
 
+// iterRefreshBatchOp models an Iterator.RefreshBatchSnapshot operation.
+type iterRefreshBatchOp struct {
+	iterID objID
+}
+
+func (o *iterRefreshBatchOp) run(t *test, h *history) {
+	i := t.getIter(o.iterID)
+	i.RefreshBatchSnapshot()
+	h.Recordf("%s // %v", o, i.Error())
+}
+
+func (o *iterRefreshBatchOp) String() string {
+	return fmt.Sprintf("%s.RefreshBatchSnapshot()", o.iterID)
+}
+
 // iterSetOptionsOp models an Iterator.SetOptions operation.
 type iterSetOptionsOp struct {
 	iterID   objID

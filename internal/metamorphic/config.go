@@ -30,6 +30,7 @@ const (
 	iterSeekPrefixGE
 	iterSetBounds
 	iterSetOptions
+	iterRefreshBatch
 	newBatch
 	newIndexedBatch
 	newIter
@@ -96,6 +97,7 @@ func defaultConfig() config {
 			iterSeekPrefixGE:     100,
 			iterSetBounds:        100,
 			iterSetOptions:       10,
+			iterRefreshBatch:     10,
 			newBatch:             5,
 			newIndexedBatch:      5,
 			newIter:              10,
