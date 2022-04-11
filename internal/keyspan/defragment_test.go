@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -24,8 +25,10 @@ func TestDefragmentingIter(t *testing.T) {
 	internalEqual := DefragmentInternal
 	alwaysEqual := func(_ base.Compare, _, _ Span) bool { return true }
 	staticReducer := StaticDefragmentReducer
-	collectReducer := func(cur, next []Key) ([]Key, bool) {
-		return append(cur, next...), true
+	collectReducer := func(cur, next []Key) []Key {
+		c := keysBySeqNumKind(append(cur, next...))
+		sort.Sort(&c)
+		return c
 	}
 
 	var buf bytes.Buffer

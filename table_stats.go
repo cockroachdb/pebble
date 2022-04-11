@@ -455,9 +455,45 @@ func foreachDefragmentedTombstone(
 ) error {
 	// Use an equals func that will always merge abutting spans.
 	equal := func(_ base.Compare, _, _ keyspan.Span) bool { return true }
-	// Reduce keys by appending the keys from each incoming span.
-	reducer := func(current, incoming []keyspan.Key) ([]keyspan.Key, bool) {
-		return append(current, incoming...), true /* modified */
+	// Reduce keys by maintaining a slice of length at most two, corresponding to
+	// the largest and smallest keys in the defragmented span. This maintains the
+	// contract that the emitted slice is sorted by (SeqNum, Kind) descending.
+	reducer := func(current, incoming []keyspan.Key) []keyspan.Key {
+		if len(incoming) == 0 {
+			return current
+		}
+		switch l := len(current); {
+		case l == 0:
+			c := []keyspan.Key{incoming[0]}
+			if last := incoming[len(incoming)-1]; len(incoming) > 1 && last.Trailer != c[0].Trailer {
+				c = append(c, last)
+			}
+			return c
+		case l > 1:
+			if first, last := current[0], current[len(current)-1]; first.Trailer != last.Trailer {
+				current[1], current = last, current[:2]
+			} else {
+				current = current[:1]
+			}
+		}
+		// INVARIANT: `current` is of length at least one and at most two.
+		first, last := incoming[0], incoming[len(incoming)-1]
+		curFirst := current[0]
+		if first.Trailer > curFirst.Trailer {
+			if len(current) == 1 {
+				current = append(current, curFirst)
+			}
+			current[0] = first
+		}
+		curLast := current[len(current)-1]
+		if last.Trailer < curLast.Trailer {
+			if len(current) == 1 {
+				current = append(current, last)
+			} else {
+				current[1] = last
+			}
+		}
+		return current
 	}
 	iter := keyspan.DefragmentingIter{}
 	iter.Init(cmp, rangeDelIter, equal, reducer)
