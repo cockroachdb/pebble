@@ -3,22 +3,23 @@
 # omitted from the visualization.
 #
 # 250
-#
-#       |-b...230:h-|
-# _____________________________________________________ snapshot #210
+#       +--------00004 (fragmented)------+
+#       V                                |
+#       |-b...230:h-|                    |
+# _______________________________________V_____________ snapshot #210
 # 200               |--h.RANGEDEL.200:r--|
 #
 # _____________________________________________________ snapshot #180
 #
 # 150                     +--------+
-#           +---------+   | 000003 |
-#           | 000002  |   |        |
+#           +---------+   | 000006 |
+#           | 000005  |   |        |
 #           +_________+   |        |
 # 100_____________________|________|___________________ snapshot #100
 #                         +--------+
 # _____________________________________________________ snapshot #70
 #                             +---------------+
-#  50                         | 000001        |
+#  50                         | 000007        |
 #                             |               |
 #                             +---------------+
 # ______________________________________________________________
@@ -169,6 +170,49 @@ Deletion hints:
   (none)
 Compactions:
   (none)
+
+# The same test case, without snapshots, with a table (000008) that exists
+# within the range del user key bounds, but above it in the LSM.
+
+define
+L1
+b.RANGEDEL.230:h h.RANGEDEL.200:r
+L2
+d.SET.110:d i.SET.140:i
+L3
+k.SET.90:k o.SET.150:o
+L4
+m.SET.30:m u.SET.60:u
+L0
+e.SET.240:e m.SET.260:m
+----
+0.0:
+  000008:[e#240,SET-m#260,SET]
+1:
+  000004:[b#230,RANGEDEL-r#72057594037927935,RANGEDEL]
+2:
+  000005:[d#110,SET-i#140,SET]
+3:
+  000006:[k#90,SET-o#150,SET]
+4:
+  000007:[m#30,SET-u#60,SET]
+
+set-hints
+L1.000004 b-r 90 200-230
+----
+L1.000004 b-r seqnums(tombstone=200-230, file-smallest=90)
+
+# Tables 000005 and 000006 can be deleted as their largest sequence numbers fall
+# below the smallest sequence number of the range del. Table 000007 falls
+# outside the user key bounds, and table 000008 exists at a sequence number
+# above the range del, so neither are deleted.
+
+maybe-compact
+----
+Deletion hints:
+  (none)
+Compactions:
+  [JOB 100] compacted(delete-only) L2 [000005] (784 B) + L3 [000006] (784 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
 
 # A deletion hint present on an sstable in a higher level should NOT result in a
 # deletion-only compaction incorrectly removing an sstable in L6 following an
