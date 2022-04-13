@@ -71,7 +71,7 @@ func defaultOptions() *pebble.Options {
 	opts := &pebble.Options{
 		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
-		FormatMajorVersion: pebble.FormatNewest,
+		FormatMajorVersion: pebble.FormatSplitUserKeysMarked,
 		Levels: []pebble.LevelOptions{{
 			FilterPolicy: bloom.FilterPolicy(10),
 		}},
@@ -205,7 +205,7 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	// The metamorphic test exercises the latest SingleDelete semantics, that
 	// require SetWithDelete so we cannot use an older FormatMajorVersion.
 	opts.FormatMajorVersion = pebble.FormatSetWithDelete
-	n := int(pebble.FormatNewest - pebble.FormatSetWithDelete)
+	n := int(pebble.FormatSplitUserKeysMarked - pebble.FormatSetWithDelete)
 	if n > 0 {
 		opts.FormatMajorVersion += pebble.FormatMajorVersion(rng.Intn(n))
 	}
