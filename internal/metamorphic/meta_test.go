@@ -114,24 +114,14 @@ func testCompareRun(t *testing.T, compare string) {
 		return
 	}
 
-	base := readHistory(t, historyPaths[0])
-	for i := 1; i < len(historyPaths); i++ {
-		lines := readHistory(t, historyPaths[i])
-		diff := difflib.UnifiedDiff{
-			A:       base,
-			B:       lines,
-			Context: 5,
-		}
-		text, err := difflib.GetUnifiedDiffString(diff)
-		require.NoError(t, err)
-		if text != "" {
-			fmt.Printf(`
+	i, diff := CompareHistories(t, historyPaths)
+	if i != 0 {
+		fmt.Printf(`
 ===== DIFF =====
 %s/{%s,%s}
 %s
-`, *dir, runDirs[0], runDirs[i], text)
-			os.Exit(1)
-		}
+`, *dir, runDirs[0], runDirs[i], diff)
+		os.Exit(1)
 	}
 }
 
@@ -217,21 +207,6 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 	if *keep && !testOpts.useDisk {
 		m.maybeSaveData()
 	}
-}
-
-// Read a history file, stripping out lines that begin with a comment.
-func readHistory(t *testing.T, historyPath string) []string {
-	data, err := ioutil.ReadFile(historyPath)
-	require.NoError(t, err)
-	lines := difflib.SplitLines(string(data))
-	newLines := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if strings.HasPrefix(line, "// ") {
-			continue
-		}
-		newLines = append(newLines, line)
-	}
-	return newLines
 }
 
 // TestMeta generates a random set of operations to run, then runs the test
