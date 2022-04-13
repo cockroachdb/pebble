@@ -7,12 +7,16 @@ package metamorphic
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"regexp"
 	"strings"
 	"sync/atomic"
+	"testing"
 
 	"github.com/cockroachdb/errors"
+	"github.com/pmezard/go-difflib/difflib"
+	"github.com/stretchr/testify/require"
 )
 
 // history records the results of running a series of operations.
@@ -88,4 +92,42 @@ func (h *history) Infof(format string, args ...interface{}) {
 func (h *history) Fatalf(format string, args ...interface{}) {
 	_ = h.log.Output(2, h.format("// FATAL: ", format, args...))
 	h.err.Store(errors.Errorf(format, args...))
+}
+
+// CompareHistories takes a slice of file paths containing history files. It
+// performs a diff comparing the first path to all other paths. CompareHistories
+// returns the index and diff for the first history that differs. If all the
+// histories are identical, CompareHistories returns a zero index and an empty
+// string.
+func CompareHistories(t *testing.T, paths []string) (i int, diff string) {
+	base := readHistory(t, paths[0])
+	for i := 1; i < len(paths); i++ {
+		lines := readHistory(t, paths[i])
+		diff := difflib.UnifiedDiff{
+			A:       base,
+			B:       lines,
+			Context: 5,
+		}
+		text, err := difflib.GetUnifiedDiffString(diff)
+		require.NoError(t, err)
+		if text != "" {
+			return i, text
+		}
+	}
+	return 0, ""
+}
+
+// Read a history file, stripping out lines that begin with a comment.
+func readHistory(t *testing.T, historyPath string) []string {
+	data, err := ioutil.ReadFile(historyPath)
+	require.NoError(t, err)
+	lines := difflib.SplitLines(string(data))
+	newLines := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.HasPrefix(line, "// ") {
+			continue
+		}
+		newLines = append(newLines, line)
+	}
+	return newLines
 }
