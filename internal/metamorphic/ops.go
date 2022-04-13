@@ -222,62 +222,6 @@ func (o *setOp) String() string {
 	return fmt.Sprintf("%s.Set(%q, %q)", o.writerID, o.key, o.value)
 }
 
-// rangeKeyDeleteOp models a Write.RangeKeyDelete operation.
-type rangeKeyDeleteOp struct {
-	writerID objID
-	start    []byte
-	end      []byte
-}
-
-func (o *rangeKeyDeleteOp) run(t *test, h *history) {
-	w := t.getWriter(o.writerID)
-	err := w.Experimental().RangeKeyDelete(o.start, o.end, t.writeOpts)
-	h.Recordf("%s // %v", o, err)
-}
-
-func (o *rangeKeyDeleteOp) String() string {
-	return fmt.Sprintf("%s.RangeKeyDelete(%q, %q)", o.writerID, o.start, o.end)
-}
-
-// rangeKeySetOp models a Write.RangeKeySet operation.
-type rangeKeySetOp struct {
-	writerID objID
-	start    []byte
-	end      []byte
-	suffix   []byte
-	value    []byte
-}
-
-func (o *rangeKeySetOp) run(t *test, h *history) {
-	w := t.getWriter(o.writerID)
-	err := w.Experimental().RangeKeySet(o.start, o.end, o.suffix, o.value, t.writeOpts)
-	h.Recordf("%s // %v", o, err)
-}
-
-func (o *rangeKeySetOp) String() string {
-	return fmt.Sprintf("%s.RangeKeySet(%q, %q, %q, %q)",
-		o.writerID, o.start, o.end, o.suffix, o.value)
-}
-
-// rangeKeyUnsetOp models a Write.RangeKeyUnset operation.
-type rangeKeyUnsetOp struct {
-	writerID objID
-	start    []byte
-	end      []byte
-	suffix   []byte
-}
-
-func (o *rangeKeyUnsetOp) run(t *test, h *history) {
-	w := t.getWriter(o.writerID)
-	err := w.Experimental().RangeKeyUnset(o.start, o.end, o.suffix, t.writeOpts)
-	h.Recordf("%s // %v", o, err)
-}
-
-func (o *rangeKeyUnsetOp) String() string {
-	return fmt.Sprintf("%s.RangeKeyUnset(%q, %q, %q)",
-		o.writerID, o.start, o.end, o.suffix)
-}
-
 // newBatchOp models a Write.NewBatch operation.
 type newBatchOp struct {
 	batchID objID

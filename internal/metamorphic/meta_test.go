@@ -142,10 +142,6 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 	// Use an archive cleaner to ease post-mortem debugging.
 	opts.Cleaner = base.ArchiveCleaner{}
 
-	// Enable experimental range keys support.
-	rangeKeysArena := &pebble.RangeKeysArena{}
-	opts.Experimental.RangeKeys = rangeKeysArena
-
 	// Set up the filesystem to use for the test. Note that by default we use an
 	// in-memory FS.
 	if testOpts.useDisk {
