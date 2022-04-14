@@ -298,3 +298,98 @@ e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000004.sst)
 b-e:{} (file = 000004.sst)
 a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
 .
+
+# Test files with range keys and rangedels
+
+define
+file
+  a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+  point:a.SET.1:foo
+  point:b.SET.1:foo
+file
+  c-e:{(#3,RANGEKEYSET,@3,baz) (#3,RANGEKEYSET,@1,bar)}
+  point:c.RANGEDEL.2:f
+  point:d.SET.1:foo
+file
+  g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+  i-j:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)}
+  point:f.RANGEDEL.2:g
+----
+
+iter rangedel
+first
+next
+next
+next
+----
+c-f:{(#2,RANGEDEL)} (file = 000002.sst)
+f-g:{(#2,RANGEDEL)} (file = 000003.sst)
+.
+.
+
+iter rangedel
+last
+prev
+prev
+prev
+----
+f-g:{(#2,RANGEDEL)} (file = 000003.sst)
+c-f:{(#2,RANGEDEL)} (file = 000002.sst)
+.
+.
+
+iter rangedel
+seek-ge c
+next
+next
+----
+c-f:{(#2,RANGEDEL)} (file = 000002.sst)
+f-g:{(#2,RANGEDEL)} (file = 000003.sst)
+.
+
+iter rangedel
+seek-lt ff
+prev
+next
+prev
+prev
+----
+f-g:{(#2,RANGEDEL)} (file = 000003.sst)
+c-f:{(#2,RANGEDEL)} (file = 000002.sst)
+f-g:{(#2,RANGEDEL)} (file = 000003.sst)
+c-f:{(#2,RANGEDEL)} (file = 000002.sst)
+.
+
+close-iter
+----
+ok
+
+# Test that a regular LevelIter ignores rangedels and emits straddle spans.
+
+iter
+first
+next
+next
+next
+next
+next
+----
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+b-c:{} (file = 000001.sst)
+c-e:{(#3,RANGEKEYSET,@3,baz) (#3,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+e-g:{} (file = 000002.sst)
+g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+i-j:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+
+iter
+seek-ge c
+next
+next
+next
+next
+----
+c-e:{(#3,RANGEKEYSET,@3,baz) (#3,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+e-g:{} (file = 000002.sst)
+g-h:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+i-j:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
+.

@@ -974,3 +974,43 @@ compact a-d parallel hide-file-num
   [b#0,SET-b#0,SET]
   [c#0,SET-c#0,SET]
   [d#0,SET-d#0,SET]
+
+# Create a contrived compaction that forces point key and rangedel iterators
+# to stay in sync to emit a correct view of visible and deleted keys. Note that
+# Pebble no longer produces range tombstones that go outside a file's bounds,
+# but past versions of pebble did, and we should still be able to handle those
+# well.
+
+define target-file-sizes=(1, 1, 1, 1, 1, 1) snapshots=(390)
+L3  start=tmgc.MERGE.391 end=tmgc.MERGE.391
+  tmgc.MERGE.391:foo
+	tmgc.RANGEDEL.331:udkatvs
+L3 start=tmgc.MERGE.384 end=tmgc.MERGE.384
+  tmgc.MERGE.384:bar
+  tmgc.RANGEDEL.383:tvsalezade
+  tmgc.RANGEDEL.331:tvsalezade
+L3 start=tmgc.RANGEDEL.383 end=tvsalezade.RANGEDEL.72057594037927935
+  tmgc.RANGEDEL.383:tvsalezade
+  tmgc.SET.375:baz
+  tmgc.RANGEDEL.356:tvsalezade
+----
+3:
+  000004:[tmgc#391,MERGE-tmgc#391,MERGE]
+  000005:[tmgc#384,MERGE-tmgc#384,MERGE]
+  000006:[tmgc#383,RANGEDEL-tvsalezade#72057594037927935,RANGEDEL]
+
+compact a-z L3
+----
+4:
+  000007:[tmgc#391,MERGE-tmgc#384,MERGE]
+
+# baz should NOT be visible in the value.
+
+iter
+first
+next
+next
+----
+tmgc:barfoo
+.
+.
