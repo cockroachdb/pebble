@@ -530,10 +530,8 @@ type Options struct {
 	// The amount of L0 read-amplification necessary to trigger an L0 compaction.
 	L0CompactionThreshold int
 
-	// Hard limit on L0 read-amplification. Writes are stopped when this
-	// threshold is reached. If Experimental.L0SublevelCompactions is enabled
-	// this threshold is measured against the number of L0 sublevels. Otherwise
-	// it is measured against the number of files in L0.
+	// Hard limit on L0 read-amplification, computed as the number of L0
+	// sublevels. Writes are stopped when this threshold is reached.
 	L0StopWritesThreshold int
 
 	// The maximum number of bytes for LBase. The base level is the level which
