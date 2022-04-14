@@ -34,6 +34,16 @@ type LevelIter struct {
 	// caller using SetBounds.
 	lower []byte
 	upper []byte
+	// Denotes if this level iter is in rangedel mode. No straddle keys are
+	// emitted in this mode, and point key bounds are used to find files instead
+	// of range key bounds.
+	//
+	// TODO(bilal): Straddle spans can safely be produced in rangedel mode once
+	// we can guarantee that we will never read sstables in a level that split
+	// user keys across them. This might be guaranteed in a future release, but
+	// as of CockroachDB 22.2 it is no guarantee, so to be safe disable it when
+	// rangedels = true.
+	rangedels bool
 	// The LSM level this LevelIter is initialized for. Used in logging.
 	level manifest.Level
 	// The below fields are used to fill in gaps between adjacent files' range
@@ -86,9 +96,10 @@ func newLevelIter(
 	files manifest.LevelIterator,
 	level manifest.Level,
 	logger Logger,
+	rangedels bool,
 ) *LevelIter {
 	l := &LevelIter{}
-	l.Init(opts, cmp, newIter, files, level, logger)
+	l.Init(opts, cmp, newIter, files, level, logger, rangedels)
 	return l
 }
 
@@ -100,6 +111,7 @@ func (l *LevelIter) Init(
 	files manifest.LevelIterator,
 	level manifest.Level,
 	logger Logger,
+	rangedels bool,
 ) {
 	l.err = nil
 	l.level = level
@@ -110,7 +122,12 @@ func (l *LevelIter) Init(
 	l.cmp = cmp
 	l.iterFile = nil
 	l.newIter = newIter
-	l.files = files.Filter(manifest.KeyTypeRange)
+	l.rangedels = rangedels
+	if rangedels {
+		l.files = files.Filter(manifest.KeyTypePoint)
+	} else {
+		l.files = files.Filter(manifest.KeyTypeRange)
+	}
 }
 
 func (l *LevelIter) findFileGE(key []byte) *manifest.FileMetadata {
@@ -124,8 +141,15 @@ func (l *LevelIter) findFileGE(key []byte) *manifest.FileMetadata {
 	// equal to key in it.
 
 	m := l.files.SeekGE(l.cmp, key)
-	for m != nil && m.LargestRangeKey.IsExclusiveSentinel() &&
-		l.cmp(m.LargestRangeKey.UserKey, key) == 0 {
+	var largestKey base.InternalKey
+	for m != nil {
+		largestKey = m.LargestRangeKey
+		if l.rangedels {
+			largestKey = m.LargestPointKey
+		}
+		if !largestKey.IsExclusiveSentinel() || l.cmp(largestKey.UserKey, key) != 0 {
+			break
+		}
 		m = l.files.Next()
 	}
 	return m
@@ -142,13 +166,19 @@ func (l *LevelIter) findFileLT(key []byte) *manifest.FileMetadata {
 func (l *LevelIter) initTableBounds(f *manifest.FileMetadata) int {
 	l.tableOpts.LowerBound = l.lower
 	l.tableOpts.UpperBound = l.upper
+	largestKey := f.LargestRangeKey
+	smallestKey := f.SmallestRangeKey
+	if l.rangedels {
+		largestKey = f.LargestPointKey
+		smallestKey = f.SmallestPointKey
+	}
 	if l.tableOpts.LowerBound != nil {
-		if cmp := l.cmp(f.LargestRangeKey.UserKey, l.tableOpts.LowerBound); cmp < 0 ||
-			(cmp == 0 && f.LargestRangeKey.IsExclusiveSentinel()) {
+		if cmp := l.cmp(largestKey.UserKey, l.tableOpts.LowerBound); cmp < 0 ||
+			(cmp == 0 && largestKey.IsExclusiveSentinel()) {
 			// The largest key in the sstable is smaller than the lower bound.
 			return -1
 		}
-		if l.cmp(l.tableOpts.LowerBound, f.SmallestRangeKey.UserKey) <= 0 {
+		if l.cmp(l.tableOpts.LowerBound, smallestKey.UserKey) <= 0 {
 			// The lower bound is smaller or equal to the smallest key in the
 			// table. Iteration within the table does not need to check the lower
 			// bound.
@@ -156,12 +186,12 @@ func (l *LevelIter) initTableBounds(f *manifest.FileMetadata) int {
 		}
 	}
 	if l.tableOpts.UpperBound != nil {
-		if l.cmp(f.SmallestRangeKey.UserKey, l.tableOpts.UpperBound) >= 0 {
+		if l.cmp(smallestKey.UserKey, l.tableOpts.UpperBound) >= 0 {
 			// The smallest key in the sstable is greater than or equal to the upper
 			// bound.
 			return 1
 		}
-		if l.cmp(l.tableOpts.UpperBound, f.LargestRangeKey.UserKey) > 0 {
+		if l.cmp(l.tableOpts.UpperBound, largestKey.UserKey) > 0 {
 			// The upper bound is greater than the largest key in the
 			// table. Iteration within the table does not need to check the upper
 			// bound. NB: tableOpts.UpperBound is exclusive and f.Largest is inclusive.
@@ -290,7 +320,7 @@ func (l *LevelIter) SeekGE(key []byte) Span {
 	l.exhaustedBounds = false
 
 	f := l.findFileGE(key)
-	if f != nil && l.cmp(key, f.SmallestRangeKey.UserKey) < 0 {
+	if f != nil && !l.rangedels && l.cmp(key, f.SmallestRangeKey.UserKey) < 0 {
 		// Return a straddling key instead of loading the file.
 		l.iterFile = f
 		l.iter = nil
@@ -343,7 +373,7 @@ func (l *LevelIter) SeekLT(key []byte) Span {
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
 	f := l.findFileLT(key)
-	if f != nil && l.cmp(f.LargestRangeKey.UserKey, key) < 0 {
+	if f != nil && !l.rangedels && l.cmp(f.LargestRangeKey.UserKey, key) < 0 {
 		// Return a straddling key instead of loading the file.
 		l.iterFile = f
 		l.iter = nil
@@ -472,16 +502,21 @@ func (l *LevelIter) Prev() Span {
 }
 
 func (l *LevelIter) skipEmptyFileForward() Span {
-	if !l.straddle.Valid() && l.iterFile != nil && l.iter != nil {
+	if !l.straddle.Valid() && !l.rangedels && l.iterFile != nil && l.iter != nil {
 		// We were at a file that had range keys. Check if the next file that has
 		// range keys is not directly adjacent to the current file i.e. there is a
 		// gap in the range keyspace between the two files. In that case, synthesize
 		// a "straddle span" in l.straddle and return that.
+		//
+		// Straddle spans are not created in rangedel mode.
 		if err := l.Close(); err != nil {
 			l.err = err
 			return Span{}
 		}
 		startKey := l.iterFile.LargestRangeKey.UserKey
+		// Resetting l.iterFile without loading the file into l.iter is okay and
+		// does not change the logic in loadFile() as long as l.iter is also nil;
+		// which it should be due to the Close() call above.
 		l.iterFile = l.files.Next()
 		if l.iterFile == nil {
 			return Span{}
@@ -508,10 +543,21 @@ func (l *LevelIter) skipEmptyFileForward() Span {
 	}
 	l.straddle = Span{}
 	var span Span
-	if l.loadFile(l.iterFile, +1) == noFileLoaded {
-		return Span{}
+	for span.Empty() {
+		fileToLoad := l.iterFile
+		if l.rangedels {
+			fileToLoad = l.files.Next()
+		}
+		if l.loadFile(fileToLoad, +1) == noFileLoaded {
+			return Span{}
+		}
+		span = l.iter.First()
+		// In rangedel mode, we can expect to get empty files that we'd need to
+		// skip over, but not in range key mode.
+		if !l.rangedels {
+			break
+		}
 	}
-	span = l.iter.First()
 	if l.tableOpts.UpperBound != nil {
 		span = l.checkUpperBound(span, l.tableOpts.UpperBound)
 	}
@@ -523,12 +569,17 @@ func (l *LevelIter) skipEmptyFileBackward() Span {
 	// range keys is not directly adjacent to the current file i.e. there is a
 	// gap in the range keyspace between the two files. In that case, synthesize
 	// a "straddle span" in l.straddle and return that.
-	if !l.straddle.Valid() && l.iterFile != nil && l.iter != nil {
+	//
+	// Straddle spans are not created in rangedel mode.
+	if !l.straddle.Valid() && !l.rangedels && l.iterFile != nil && l.iter != nil {
 		if err := l.Close(); err != nil {
 			l.err = err
 			return Span{}
 		}
 		endKey := l.iterFile.SmallestRangeKey.UserKey
+		// Resetting l.iterFile without loading the file into l.iter is okay and
+		// does not change the logic in loadFile() as long as l.iter is also nil;
+		// which it should be due to the Close() call above.
 		l.iterFile = l.files.Prev()
 		if l.iterFile == nil {
 			return Span{}
@@ -555,10 +606,22 @@ func (l *LevelIter) skipEmptyFileBackward() Span {
 	}
 	l.straddle = Span{}
 	var span Span
-	if l.loadFile(l.iterFile, -1) == noFileLoaded {
-		return Span{}
+	for span.Empty() {
+		fileToLoad := l.iterFile
+		if l.rangedels {
+			fileToLoad = l.files.Prev()
+		}
+		if l.loadFile(fileToLoad, -1) == noFileLoaded {
+			return Span{}
+		}
+		span = l.iter.Last()
+		// In rangedel mode, we can expect to get empty files that we'd need to
+		// skip over, but not in range key mode as the filter on the FileMetadata
+		// should guarantee we always get a non-empty file.
+		if !l.rangedels {
+			break
+		}
 	}
-	span = l.iter.Last()
 	if l.tableOpts.LowerBound != nil {
 		span = l.checkLowerBound(span, l.tableOpts.LowerBound)
 	}
