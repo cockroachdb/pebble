@@ -262,7 +262,7 @@ type DB struct {
 
 	tableCache           *tableCacheContainer
 	newIters             tableNewIters
-	tableNewRangeKeyIter keyspan.TableNewRangeKeyIter
+	tableNewRangeKeyIter keyspan.TableNewSpanIter
 
 	commit *commitPipeline
 

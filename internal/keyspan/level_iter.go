@@ -17,12 +17,23 @@ type Logger interface {
 	Fatalf(format string, args ...interface{})
 }
 
-// LevelIter provides a merged view of the range keys from sstables in a level.
-// It takes advantage of level invaraints to only have one sstable range
-// key block open at once time, opened using the newIter function passed in.
+// LevelIter provides a merged view of spans from sstables in a level.
+// It takes advantage of level invariants to only have one sstable span block
+// open at one time, opened using the newIter function passed in.
 type LevelIter struct {
 	logger Logger
 	cmp    base.Compare
+	// Denotes if this level iter should read point key spans (i.e. rangedels,
+	// or range keys. If key type is Point, no straddle spans are emitted between
+	// files, and point key bounds are used to find files instead of range key
+	// bounds.
+	//
+	// TODO(bilal): Straddle spans can safely be produced in rangedel mode once
+	// we can guarantee that we will never read sstables in a level that split
+	// user keys across them. This might be guaranteed in a future release, but
+	// as of CockroachDB 22.2 it is not guaranteed, so to be safe disable it when
+	// keyType == KeyTypePoint
+	keyType manifest.KeyType
 	// The LSM level this LevelIter is initialized for. Used in logging.
 	level manifest.Level
 	// The below fields are used to fill in gaps between adjacent files' range
@@ -48,12 +59,12 @@ type LevelIter struct {
 	//   be relevant to the iteration.
 	iter     FragmentIterator
 	iterFile *manifest.FileMetadata
-	newIter  TableNewRangeKeyIter
+	newIter  TableNewSpanIter
 	files    manifest.LevelIterator
 	err      error
 
 	// The options that were passed in.
-	tableOpts RangeIterOptions
+	tableOpts SpanIterOptions
 
 	// TODO(bilal): Add InternalIteratorStats.
 }
@@ -63,35 +74,43 @@ var _ FragmentIterator = (*LevelIter)(nil)
 
 // newLevelIter returns a LevelIter.
 func newLevelIter(
-	opts RangeIterOptions,
+	opts SpanIterOptions,
 	cmp base.Compare,
-	newIter TableNewRangeKeyIter,
+	newIter TableNewSpanIter,
 	files manifest.LevelIterator,
 	level manifest.Level,
 	logger Logger,
+	keyType manifest.KeyType,
 ) *LevelIter {
 	l := &LevelIter{}
-	l.Init(opts, cmp, newIter, files, level, logger)
+	l.Init(opts, cmp, newIter, files, level, logger, keyType)
 	return l
 }
 
 // Init initializes a LevelIter.
 func (l *LevelIter) Init(
-	opts RangeIterOptions,
+	opts SpanIterOptions,
 	cmp base.Compare,
-	newIter TableNewRangeKeyIter,
+	newIter TableNewSpanIter,
 	files manifest.LevelIterator,
 	level manifest.Level,
 	logger Logger,
+	keyType manifest.KeyType,
 ) {
 	l.err = nil
 	l.level = level
 	l.logger = logger
-	l.tableOpts.Filters = opts.Filters
+	l.tableOpts.RangeKeyFilters = opts.RangeKeyFilters
 	l.cmp = cmp
 	l.iterFile = nil
 	l.newIter = newIter
-	l.files = files.Filter(manifest.KeyTypeRange)
+	switch keyType {
+	case manifest.KeyTypePoint, manifest.KeyTypeRange:
+		l.keyType = keyType
+		l.files = files.Filter(keyType)
+	default:
+		panic(fmt.Sprintf("unsupported key type: %v", keyType))
+	}
 }
 
 func (l *LevelIter) findFileGE(key []byte) *manifest.FileMetadata {
@@ -105,8 +124,14 @@ func (l *LevelIter) findFileGE(key []byte) *manifest.FileMetadata {
 	// equal to key in it.
 
 	m := l.files.SeekGE(l.cmp, key)
-	for m != nil && m.LargestRangeKey.IsExclusiveSentinel() &&
-		l.cmp(m.LargestRangeKey.UserKey, key) == 0 {
+	for m != nil {
+		largestKey := m.LargestRangeKey
+		if l.keyType == manifest.KeyTypePoint {
+			largestKey = m.LargestPointKey
+		}
+		if !largestKey.IsExclusiveSentinel() || l.cmp(largestKey.UserKey, key) != 0 {
+			break
+		}
 		m = l.files.Next()
 	}
 	return m
@@ -168,7 +193,7 @@ func (l *LevelIter) SeekGE(key []byte) Span {
 	l.err = nil // clear cached iteration error
 
 	f := l.findFileGE(key)
-	if f != nil && l.cmp(key, f.SmallestRangeKey.UserKey) < 0 {
+	if f != nil && l.keyType == manifest.KeyTypeRange && l.cmp(key, f.SmallestRangeKey.UserKey) < 0 {
 		// Return a straddling key instead of loading the file.
 		l.iterFile = f
 		l.iter = nil
@@ -208,10 +233,8 @@ func (l *LevelIter) SeekLT(key []byte) Span {
 	l.dir = -1
 	l.err = nil // clear cached iteration error
 
-	// NB: the top-level Iterator has already adjusted key based on
-	// IterOptions.UpperBound.
 	f := l.findFileLT(key)
-	if f != nil && l.cmp(f.LargestRangeKey.UserKey, key) < 0 {
+	if f != nil && l.keyType == manifest.KeyTypeRange && l.cmp(f.LargestRangeKey.UserKey, key) < 0 {
 		// Return a straddling key instead of loading the file.
 		l.iterFile = f
 		l.iter = nil
@@ -304,16 +327,22 @@ func (l *LevelIter) Prev() Span {
 }
 
 func (l *LevelIter) skipEmptyFileForward() Span {
-	if !l.straddle.Valid() && l.iterFile != nil && l.iter != nil {
-		// We were at a file that had range keys. Check if the next file that has
-		// range keys is not directly adjacent to the current file i.e. there is a
-		// gap in the range keyspace between the two files. In that case, synthesize
+	if !l.straddle.Valid() && l.keyType == manifest.KeyTypeRange &&
+		l.iterFile != nil && l.iter != nil {
+		// We were at a file that had spans. Check if the next file that has
+		// spans is not directly adjacent to the current file i.e. there is a
+		// gap in the span keyspace between the two files. In that case, synthesize
 		// a "straddle span" in l.straddle and return that.
+		//
+		// Straddle spans are not created in rangedel mode.
 		if err := l.Close(); err != nil {
 			l.err = err
 			return Span{}
 		}
 		startKey := l.iterFile.LargestRangeKey.UserKey
+		// Resetting l.iterFile without loading the file into l.iter is okay and
+		// does not change the logic in loadFile() as long as l.iter is also nil;
+		// which it should be due to the Close() call above.
 		l.iterFile = l.files.Next()
 		if l.iterFile == nil {
 			return Span{}
@@ -336,23 +365,44 @@ func (l *LevelIter) skipEmptyFileForward() Span {
 		l.iterFile = l.files.Next()
 	}
 	l.straddle = Span{}
-	if l.loadFile(l.iterFile, +1) == noFileLoaded {
-		return Span{}
+	var span Span
+	for span.Empty() {
+		fileToLoad := l.iterFile
+		if l.keyType == manifest.KeyTypePoint {
+			// We haven't iterated to the next file yet if we're in point key
+			// (rangedel) mode.
+			fileToLoad = l.files.Next()
+		}
+		if l.loadFile(fileToLoad, +1) == noFileLoaded {
+			return Span{}
+		}
+		span = l.iter.First()
+		// In rangedel mode, we can expect to get empty files that we'd need to
+		// skip over, but not in range key mode.
+		if l.keyType == manifest.KeyTypeRange {
+			break
+		}
 	}
-	return l.iter.First()
+	return span
 }
 
 func (l *LevelIter) skipEmptyFileBackward() Span {
-	// We were at a file that had range keys. Check if the previous file that has
-	// range keys is not directly adjacent to the current file i.e. there is a
-	// gap in the range keyspace between the two files. In that case, synthesize
+	// We were at a file that had spans. Check if the previous file that has
+	// spans is not directly adjacent to the current file i.e. there is a
+	// gap in the span keyspace between the two files. In that case, synthesize
 	// a "straddle span" in l.straddle and return that.
-	if !l.straddle.Valid() && l.iterFile != nil && l.iter != nil {
+	//
+	// Straddle spans are not created in rangedel mode.
+	if !l.straddle.Valid() && l.keyType == manifest.KeyTypeRange &&
+		l.iterFile != nil && l.iter != nil {
 		if err := l.Close(); err != nil {
 			l.err = err
 			return Span{}
 		}
 		endKey := l.iterFile.SmallestRangeKey.UserKey
+		// Resetting l.iterFile without loading the file into l.iter is okay and
+		// does not change the logic in loadFile() as long as l.iter is also nil;
+		// which it should be due to the Close() call above.
 		l.iterFile = l.files.Prev()
 		if l.iterFile == nil {
 			return Span{}
@@ -375,10 +425,24 @@ func (l *LevelIter) skipEmptyFileBackward() Span {
 		l.iterFile = l.files.Prev()
 	}
 	l.straddle = Span{}
-	if l.loadFile(l.iterFile, -1) == noFileLoaded {
-		return Span{}
+	var span Span
+	for span.Empty() {
+		fileToLoad := l.iterFile
+		if l.keyType == manifest.KeyTypePoint {
+			fileToLoad = l.files.Prev()
+		}
+		if l.loadFile(fileToLoad, -1) == noFileLoaded {
+			return Span{}
+		}
+		span = l.iter.Last()
+		// In rangedel mode, we can expect to get empty files that we'd need to
+		// skip over, but not in range key mode as the filter on the FileMetadata
+		// should guarantee we always get a non-empty file.
+		if l.keyType == manifest.KeyTypeRange {
+			break
+		}
 	}
-	return l.iter.Last()
+	return span
 }
 
 // Error implements keyspan.FragmentIterator.
