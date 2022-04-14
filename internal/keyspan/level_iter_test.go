@@ -299,7 +299,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 				metas = append(metas, meta)
 			}
 
-			tableNewIters := func(file *manifest.FileMetadata, iterOptions *RangeIterOptions) (FragmentIterator, error) {
+			tableNewIters := func(file *manifest.FileMetadata, iterOptions *SpanIterOptions) (FragmentIterator, error) {
 				return NewIter(base.DefaultComparer.Compare, tc.levels[j][file.FileNum-1]), nil
 			}
 			// Add all the fileMetadatas to L6.
@@ -307,7 +307,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 			b.Added[6] = metas
 			v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
 			require.NoError(t, err)
-			levelIter.Init(RangeIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 0, nil)
+			levelIter.Init(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 0, nil, manifest.KeyTypeRange)
 			levelIters = append(levelIters, &levelIter)
 		}
 
@@ -352,8 +352,8 @@ func (t *testLogger) Fatalf(format string, args ...interface{}) {
 
 func TestLevelIter(t *testing.T) {
 	var level [][]Span
+	var rangedels [][]Span
 	var metas []*manifest.FileMetadata
-	var pointKey *base.InternalKey
 	var iter FragmentIterator
 	var extraInfo func() string
 
@@ -362,10 +362,13 @@ func TestLevelIter(t *testing.T) {
 		case "define":
 			level = level[:0]
 			metas = metas[:0]
+			rangedels = rangedels[:0]
 			if iter != nil {
 				iter.Close()
 				iter = nil
 			}
+			var pointKeys []base.InternalKey
+			var currentRangeDels []Span
 			var currentFile []Span
 			for _, key := range strings.Split(d.Input, "\n") {
 				if strings.HasPrefix(key, "file") {
@@ -379,13 +382,15 @@ func TestLevelIter(t *testing.T) {
 							largest := base.MakeExclusiveSentinelKey(currentFile[len(currentFile)-1].LargestKey().Kind(), currentFile[len(currentFile)-1].End)
 							meta.ExtendRangeKeyBounds(base.DefaultComparer.Compare, smallest, largest)
 						}
-						if pointKey != nil {
-							meta.ExtendPointKeyBounds(base.DefaultComparer.Compare, *pointKey, *pointKey)
+						if len(pointKeys) != 0 {
+							meta.ExtendPointKeyBounds(base.DefaultComparer.Compare, pointKeys[0], pointKeys[len(pointKeys)-1])
 						}
 						level = append(level, currentFile)
 						metas = append(metas, meta)
+						rangedels = append(rangedels, currentRangeDels)
+						currentRangeDels = nil
 						currentFile = nil
-						pointKey = nil
+						pointKeys = nil
 					}
 					continue
 				}
@@ -394,7 +399,11 @@ func TestLevelIter(t *testing.T) {
 					key = strings.TrimPrefix(key, "point:")
 					j := strings.Index(key, ":")
 					ikey := base.ParseInternalKey(key[:j])
-					pointKey = &ikey
+					pointKeys = append(pointKeys, ikey)
+					if ikey.Kind() == base.InternalKeyKindRangeDelete {
+						currentRangeDels = append(currentRangeDels, Span{
+							Start: ikey.UserKey, End: []byte(key[j+1:]), Keys: []Key{{Trailer: ikey.Trailer}}})
+					}
 					continue
 				}
 				span := ParseSpan(key)
@@ -404,23 +413,38 @@ func TestLevelIter(t *testing.T) {
 				FileNum: base.FileNum(len(level) + 1),
 			}
 			level = append(level, currentFile)
+			rangedels = append(rangedels, currentRangeDels)
 			if len(currentFile) > 0 {
 				smallest := base.MakeInternalKey(currentFile[0].Start, currentFile[0].SmallestKey().SeqNum(), currentFile[0].SmallestKey().Kind())
 				largest := base.MakeExclusiveSentinelKey(currentFile[len(currentFile)-1].LargestKey().Kind(), currentFile[len(currentFile)-1].End)
 				meta.ExtendRangeKeyBounds(base.DefaultComparer.Compare, smallest, largest)
 			}
-			if pointKey != nil {
-				meta.ExtendPointKeyBounds(base.DefaultComparer.Compare, *pointKey, *pointKey)
+			if len(pointKeys) != 0 {
+				meta.ExtendPointKeyBounds(base.DefaultComparer.Compare, pointKeys[0], pointKeys[len(pointKeys)-1])
 			}
 			metas = append(metas, meta)
 			return ""
 		case "num-files":
 			return fmt.Sprintf("%d", len(level))
+		case "close-iter":
+			_ = iter.Close()
+			iter = nil
+			return "ok"
 		case "iter":
+			keyType := manifest.KeyTypeRange
+			for _, arg := range d.CmdArgs {
+				if strings.Contains(arg.Key, "rangedel") {
+					keyType = manifest.KeyTypePoint
+				}
+			}
 			if iter == nil {
 				var lastFileNum base.FileNum
-				tableNewIters := func(file *manifest.FileMetadata, iterOptions *RangeIterOptions) (FragmentIterator, error) {
+				tableNewIters := func(file *manifest.FileMetadata, iterOptions *SpanIterOptions) (FragmentIterator, error) {
+					keyType := keyType
 					spans := level[file.FileNum-1]
+					if keyType == manifest.KeyTypePoint {
+						spans = rangedels[file.FileNum-1]
+					}
 					lastFileNum = file.FileNum
 					return NewIter(base.DefaultComparer.Compare, spans), nil
 				}
@@ -428,7 +452,7 @@ func TestLevelIter(t *testing.T) {
 				b.Added[6] = metas
 				v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
 				require.NoError(t, err)
-				iter = newLevelIter(RangeIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 6, &testLogger{t})
+				iter = newLevelIter(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 6, &testLogger{t}, keyType)
 				extraInfo = func() string {
 					return fmt.Sprintf("file = %s.sst", lastFileNum)
 				}

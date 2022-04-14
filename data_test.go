@@ -646,6 +646,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	defer d.mu.Unlock()
 
 	var mem *memTable
+	var start, end *base.InternalKey
 	ve := &versionEdit{}
 	level := -1
 
@@ -674,6 +675,14 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			return err
 		}
 		for _, f := range newVE.NewFiles {
+			if start != nil {
+				f.Meta.SmallestPointKey = *start
+				f.Meta.Smallest = *start
+			}
+			if end != nil {
+				f.Meta.LargestPointKey = *end
+				f.Meta.Largest = *end
+			}
 			ve.NewFiles = append(ve.NewFiles, newFileEntry{
 				Level: level,
 				Meta:  f.Meta,
@@ -729,6 +738,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 					d.updateReadStateLocked(nil, nil)
 				}
 				mem = d.mu.mem.mutable
+				start, end = nil, nil
 				fields = fields[1:]
 			case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
 				if err := maybeFlush(); err != nil {
@@ -739,6 +749,27 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 					return nil, err
 				}
 				fields = fields[1:]
+				start, end = nil, nil
+				boundFields := 0
+				for _, field := range fields {
+					toBreak := false
+					switch {
+					case strings.HasPrefix(field, "start="):
+						ikey := base.ParseInternalKey(strings.TrimPrefix(field, "start="))
+						start = &ikey
+						boundFields++
+					case strings.HasPrefix(field, "end="):
+						ikey := base.ParseInternalKey(strings.TrimPrefix(field, "end="))
+						end = &ikey
+						boundFields++
+					default:
+						toBreak = true
+					}
+					if toBreak {
+						break
+					}
+				}
+				fields = fields[boundFields:]
 				mem = newMemTable(memTableOptions{Options: d.opts})
 			}
 		}
