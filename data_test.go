@@ -887,7 +887,7 @@ func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
 			}
 		}
 	}
-	return d.ingest(paths, func(
+	_, err := d.ingest(paths, func(
 		tableNewIters,
 		IterOptions,
 		Compare,
@@ -898,6 +898,7 @@ func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
 	) (int, error) {
 		return level, nil
 	})
+	return err
 }
 
 func runLSMCmd(td *datadriven.TestData, d *DB) string {

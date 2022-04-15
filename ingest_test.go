@@ -998,11 +998,47 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
 		require.NoError(t, w.Close())
-		require.NoError(t, d.Ingest([]string{"ext"}))
+		stats, err := d.IngestWithStats([]string{"ext"})
+		require.NoError(t, err)
+		require.Equal(t, stats.ApproxIngestedIntoL0Bytes, stats.Bytes)
+		require.Less(t, uint64(0), stats.Bytes)
 	}
 
 	ingest("a")
 
+	require.NoError(t, d.Close())
+}
+
+func TestIngestStats(t *testing.T) {
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{
+		FS: mem,
+	})
+	require.NoError(t, err)
+
+	ingest := func(expectedLevel int, keys ...string) {
+		t.Helper()
+		f, err := mem.Create("ext")
+		require.NoError(t, err)
+
+		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		for _, k := range keys {
+			require.NoError(t, w.Set([]byte(k), nil))
+		}
+		require.NoError(t, w.Close())
+		stats, err := d.IngestWithStats([]string{"ext"})
+		require.NoError(t, err)
+		if expectedLevel == 0 {
+			require.Equal(t, stats.ApproxIngestedIntoL0Bytes, stats.Bytes)
+		} else {
+			require.EqualValues(t, 0, stats.ApproxIngestedIntoL0Bytes)
+		}
+		require.Less(t, uint64(0), stats.Bytes)
+	}
+	ingest(6, "a")
+	ingest(0, "a")
+	ingest(6, "b", "g")
+	ingest(0, "c")
 	require.NoError(t, d.Close())
 }
 
