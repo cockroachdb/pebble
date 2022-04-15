@@ -573,10 +573,38 @@ func (d *DB) Ingest(paths []string) error {
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
+	_, err := d.ingest(paths, ingestTargetLevel)
+	return err
+}
+
+// IngestOperationStats provides some information about where in the LSM the
+// bytes were ingested.
+type IngestOperationStats struct {
+	// Bytes is the total bytes in the ingested sstables.
+	Bytes uint64
+	// ApproxIngestedIntoL0Bytes is the approximate number of bytes ingested
+	// into L0.
+	// Currently, this value is completely accurate, but we are allowing this to
+	// be approximate once https://github.com/cockroachdb/pebble/issues/25 is
+	// implemented.
+	ApproxIngestedIntoL0Bytes uint64
+}
+
+// IngestWithStats does the same as Ingest, and additionally returns
+// IngestOperationStats.
+func (d *DB) IngestWithStats(paths []string) (IngestOperationStats, error) {
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+	if d.opts.ReadOnly {
+		return IngestOperationStats{}, ErrReadOnly
+	}
 	return d.ingest(paths, ingestTargetLevel)
 }
 
-func (d *DB) ingest(paths []string, targetLevelFunc ingestTargetLevelFunc) error {
+func (d *DB) ingest(
+	paths []string, targetLevelFunc ingestTargetLevelFunc,
+) (IngestOperationStats, error) {
 	// Allocate file numbers for all of the files being ingested and mark them as
 	// pending in order to prevent them from being deleted. Note that this causes
 	// the file number ordering to be out of alignment with sequence number
@@ -595,16 +623,16 @@ func (d *DB) ingest(paths []string, targetLevelFunc ingestTargetLevelFunc) error
 	// and elides empty sstables.
 	meta, paths, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, d.cacheID, pendingOutputs)
 	if err != nil {
-		return err
+		return IngestOperationStats{}, err
 	}
 	if len(meta) == 0 {
 		// All of the sstables to be ingested were empty. Nothing to do.
-		return nil
+		return IngestOperationStats{}, nil
 	}
 
 	// Verify the sstables do not overlap.
 	if err := ingestSortAndVerify(d.cmp, meta, paths); err != nil {
-		return err
+		return IngestOperationStats{}, err
 	}
 
 	// Hard link the sstables into the DB directory. Since the sstables aren't
@@ -613,14 +641,14 @@ func (d *DB) ingest(paths []string, targetLevelFunc ingestTargetLevelFunc) error
 	// fall back to copying, and if that fails we undo our work and return an
 	// error.
 	if err := ingestLink(jobID, d.opts, d.dirname, paths, meta); err != nil {
-		return err
+		return IngestOperationStats{}, err
 	}
 	// Fsync the directory we added the tables to. We need to do this at some
 	// point before we update the MANIFEST (via logAndApply), otherwise a crash
 	// can have the tables referenced in the MANIFEST, but not present in the
 	// directory.
 	if err := d.dataDir.Sync(); err != nil {
-		return err
+		return IngestOperationStats{}, err
 	}
 
 	var mem *flushableEntry
@@ -695,6 +723,7 @@ func (d *DB) ingest(paths []string, targetLevelFunc ingestTargetLevelFunc) error
 		GlobalSeqNum: meta[0].SmallestSeqNum,
 		Err:          err,
 	}
+	var stats IngestOperationStats
 	if ve != nil {
 		info.Tables = make([]struct {
 			TableInfo
@@ -704,11 +733,15 @@ func (d *DB) ingest(paths []string, targetLevelFunc ingestTargetLevelFunc) error
 			e := &ve.NewFiles[i]
 			info.Tables[i].Level = e.Level
 			info.Tables[i].TableInfo = e.Meta.TableInfo()
+			stats.Bytes += e.Meta.Size
+			if e.Level == 0 {
+				stats.ApproxIngestedIntoL0Bytes += e.Meta.Size
+			}
 		}
 	}
 	d.opts.EventListener.TableIngested(info)
 
-	return err
+	return stats, err
 }
 
 type ingestTargetLevelFunc func(
