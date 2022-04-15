@@ -47,8 +47,7 @@ m.SET.30:m u.SET.60:u
 # Test a hint that is blocked by open snapshots. No compaction should occur
 # and the hint should not be removed.
 
-set-hints
-L0.000004 b-r 90 200-230
+get-hints
 ----
 L0.000004 b-r seqnums(tombstone=200-230, file-smallest=90)
 
@@ -80,8 +79,7 @@ m.SET.30:m u.SET.60:u
 4:
   000007:[m#30,SET-u#60,SET]
 
-set-hints
-L0.000004 b-r 90 200-230
+get-hints
 ----
 L0.000004 b-r seqnums(tombstone=200-230, file-smallest=90)
 
@@ -119,9 +117,7 @@ m.SET.30:m u.SET.60:u
 4:
   000008:[m#30,SET-u#60,SET]
 
-set-hints
-L0.000004 a-k 110 300-300
-L1.000005 b-r 90 200-230
+get-hints
 ----
 L0.000004 a-k seqnums(tombstone=300-300, file-smallest=110)
 L1.000005 b-r seqnums(tombstone=200-230, file-smallest=90)
@@ -154,8 +150,7 @@ m.SET.30:m u.SET.60:u
 4:
   000007:[m#30,SET-u#60,SET]
 
-set-hints
-L0.000004 b-r 90 200-230
+get-hints
 ----
 L0.000004 b-r seqnums(tombstone=200-230, file-smallest=90)
 
@@ -197,8 +192,7 @@ e.SET.240:e m.SET.260:m
 4:
   000007:[m#30,SET-u#60,SET]
 
-set-hints
-L1.000004 b-r 90 200-230
+get-hints
 ----
 L1.000004 b-r seqnums(tombstone=200-230, file-smallest=90)
 
@@ -221,14 +215,19 @@ Compactions:
 # This is a regression test for pebble#1285.
 
 # Create an sstable at L6. We expect that the SET survives the following
-# sequence of compactions. Note that this test depends on stats being present on
-# the sstables, so we re-enable the off-by-default option.
-define snapshots=(10, 25) enable-table-stats=true
+# sequence of compactions.
+define snapshots=(10, 25)
 L6
 a.SET.20:b a.RANGEDEL.15:z
 ----
 6:
   000004:[a#20,SET-z#72057594037927935,RANGEDEL]
+
+# Note that this test depends on stats being present on the sstables, so we
+# collect hints here. We expect none, as the table is in L6.
+get-hints
+----
+(none)
 
 # Place a compaction hint on a non-existent table in a higher level in the LSM.
 #
@@ -238,7 +237,7 @@ a.SET.20:b a.RANGEDEL.15:z
 # stripes, which ensures the hint is not resolved and dropped. The deletion
 # range 5-27 is also chosen such that it covers the sequence number range from
 # the table, i.e. 15-20, which *appears* to make the keys eligible for deletion.
-set-hints force=true
+force-set-hints
 L0.000001 a-z 0 5-27
 ----
 L0.000001 a-z seqnums(tombstone=5-27, file-smallest=0)
@@ -260,9 +259,10 @@ get-hints
 ----
 L0.000001 a-z seqnums(tombstone=5-27, file-smallest=0)
 
-# Closing snapshot 10 triggers an elision-only compaction in L6, as the earliest
-# snapshot that remains open is 25, and this is greater than the largest
-# sequence number present in the L6 sstable (i.e. 20).
+# Closing snapshot 10 triggers an elision-only compaction in L6 rather than a
+# deletion-only compaction, as the earliest snapshot that remains open is 25,
+# preventing the delete compaction hint from being resolved as it does not exist
+# in the same snapshot stripe as the table in L6.
 close-snapshot
 10
 ----

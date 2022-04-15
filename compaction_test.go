@@ -1754,8 +1754,8 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					},
 				}
 
-				// Disable stats by default. This can be overridden with the
-				// 'enable-table-stats=true' option to the 'define' command.
+				// Collection of table stats can trigger compactions. As we want full
+				// control over when compactions are run, disable stats by default.
 				opts.private.disableTableStats = true
 
 				var err error
@@ -1768,21 +1768,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				d.mu.Unlock()
 				return s
 
-			// TODO(travers): Rather than setting hints manually, rely on the
-			// code itself to generate the hints, and instead assert in tests
-			// that the hints are as expected. However, this directive still
-			// needs to allow for hints to be forcibly added.
-			case "set-hints":
-				force := false
-				for _, arg := range td.CmdArgs {
-					switch arg.Key {
-					case "force":
-						force, _ = strconv.ParseBool(arg.Vals[0])
-					default:
-						return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
-					}
-				}
-
+			case "force-set-hints":
 				d.mu.Lock()
 				defer d.mu.Unlock()
 				d.mu.compact.deletionHints = d.mu.compact.deletionHints[:0]
@@ -1796,22 +1782,9 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					var tombstoneFile *fileMetadata
 					tombstoneLevel := int(parseUint64(parts[0][1:]))
 
-					if !force {
-						// Find the file in the current version.
-						v := d.mu.versions.currentVersion()
-						overlaps := v.Overlaps(tombstoneLevel, d.opts.Comparer.Compare, start,
-							end, true /* exclusiveEnd */)
-						iter := overlaps.Iter()
-						for m := iter.First(); m != nil; m = iter.Next() {
-							if m.FileNum.String() == parts[1] {
-								tombstoneFile = m
-							}
-						}
-					} else {
-						// Set file number to the value provided in the input.
-						tombstoneFile = &fileMetadata{
-							FileNum: base.FileNum(parseUint64(parts[1])),
-						}
+					// Set file number to the value provided in the input.
+					tombstoneFile = &fileMetadata{
+						FileNum: base.FileNum(parseUint64(parts[1])),
 					}
 
 					h := deleteCompactionHint{
@@ -1829,18 +1802,38 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				return buf.String()
 
 			case "get-hints":
-				var buf bytes.Buffer
 				d.mu.Lock()
 				defer d.mu.Unlock()
+
+				// Force collection of table stats. This requires re-enabling the
+				// collection flag. We also do not want compactions to run as part of
+				// the stats collection job, so we disable it temporarily.
+				d.opts.private.disableTableStats = false
+				d.opts.DisableAutomaticCompactions = true
+				defer func() {
+					d.opts.private.disableTableStats = true
+					d.opts.DisableAutomaticCompactions = false
+				}()
+
+				// NB: collectTableStats attempts to acquire the lock. Temporarily
+				// unlock here to avoid a deadlock.
+				d.mu.Unlock()
+				didRun := d.collectTableStats()
+				d.mu.Lock()
+
+				if !didRun {
+					// If a job was already running, wait for the results.
+					d.waitTableStats()
+				}
 
 				hints := d.mu.compact.deletionHints
 				if len(hints) == 0 {
 					return "(none)"
 				}
+				var buf bytes.Buffer
 				for _, h := range hints {
 					buf.WriteString(h.String() + "\n")
 				}
-
 				return buf.String()
 
 			case "maybe-compact":
