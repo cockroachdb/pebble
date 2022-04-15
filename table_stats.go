@@ -72,13 +72,16 @@ func (d *DB) shouldCollectTableStatsLocked() bool {
 		(len(d.mu.tableStats.pending) > 0 || !d.mu.tableStats.loadedInitial)
 }
 
-func (d *DB) collectTableStats() {
+// collectTableStats runs a table stats collection job, returning true if the
+// invocation did the collection work, false otherwise (e.g. if another job was
+// already running).
+func (d *DB) collectTableStats() bool {
 	const maxTableStatsPerScan = 50
 
 	d.mu.Lock()
 	if !d.shouldCollectTableStatsLocked() {
 		d.mu.Unlock()
-		return
+		return false
 	}
 
 	pending := d.mu.tableStats.pending
@@ -150,6 +153,7 @@ func (d *DB) collectTableStats() {
 	if maybeCompact {
 		d.maybeScheduleCompaction()
 	}
+	return true
 }
 
 type collectedStats struct {
