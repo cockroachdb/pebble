@@ -978,7 +978,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		// NB: The interleaving iterator is always reinitialized, even if
 		// dbi already had an initialized range key iterator, in case the point
 		// iterator changed or the range key masking suffix changed.
-		dbi.rangeKey.iter.Init(dbi.cmp, dbi.split, dbi.iter, dbi.rangeKey.rangeKeyIter, keyspan.Hooks{
+		dbi.rangeKey.iter.Init(dbi.cmp, dbi.iter, dbi.rangeKey.rangeKeyIter, keyspan.Hooks{
 			SpanChanged: dbi.rangeKeySpanChanged,
 			SkipPoint:   dbi.rangeKeySkipPoint,
 		})

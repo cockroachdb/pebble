@@ -90,7 +90,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			}
 			keyspanIter.Init(cmp, noopTransform, NewIter(cmp, spans))
 			hooks.maskSuffix = nil
-			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &keyspanIter, Hooks{
+			iter.Init(cmp, base.WrapIterWithStats(&pointIter), &keyspanIter, Hooks{
 				SpanChanged: hooks.SpanChanged,
 				SkipPoint:   hooks.SkipPoint,
 			})
@@ -103,7 +103,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			}
 			pointIter = pointIterator{cmp: cmp, keys: points}
 			hooks.maskSuffix = nil
-			iter.Init(cmp, testkeys.Comparer.Split, base.WrapIterWithStats(&pointIter), &keyspanIter, Hooks{
+			iter.Init(cmp, base.WrapIterWithStats(&pointIter), &keyspanIter, Hooks{
 				SpanChanged: hooks.SpanChanged,
 				SkipPoint:   hooks.SkipPoint,
 			})

@@ -307,7 +307,7 @@ next
 next
 next
 ----
-PointKey: a#72057594037927935,21
+PointKey: a#72057594037927935,20
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
 PointKey: a#1,1
@@ -332,7 +332,7 @@ Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 PointKey: a#1,1
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
-PointKey: a#72057594037927935,21
+PointKey: a#72057594037927935,20
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
 .

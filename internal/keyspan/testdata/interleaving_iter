@@ -54,10 +54,10 @@ Span: c-d:{(#4,RANGEKEYSET,@3,coconut)}
 PointKey: e#72057594037927935,21
 Span: e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
 -
-PointKey: h#72057594037927935,21
+PointKey: h#72057594037927935,19
 Span: h-j:{(#22,RANGEKEYDEL) (#21,RANGEKEYSET,@5,peaches) (#21,RANGEKEYSET,@3,starfruit)}
 -
-PointKey: l#72057594037927935,21
+PointKey: l#72057594037927935,20
 Span: l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
 -
 PointKey: parsnip#3,1
@@ -154,7 +154,7 @@ Span: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 PointKey: parsnip#3,1
 Span: <invalid>
 -
-PointKey: l#72057594037927935,21
+PointKey: l#72057594037927935,20
 Span: l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
 -
 PointKey: parsnip#3,1
@@ -281,7 +281,7 @@ Span: e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
 PointKey: e#2,1
 Span: e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
 -
-PointKey: h#72057594037927935,21
+PointKey: h#72057594037927935,19
 Span: h-j:{(#22,RANGEKEYDEL) (#21,RANGEKEYSET,@5,peaches) (#21,RANGEKEYSET,@3,starfruit)}
 -
 
@@ -510,13 +510,13 @@ last
 seek-ge a
 seek-lt d
 ----
-PointKey: b#72057594037927935,21
+PointKey: b#72057594037927935,19
 Span: b-d:{(#5,RANGEKEYDEL)}
 -
-PointKey: f#72057594037927935,21
+PointKey: f#72057594037927935,19
 Span: f-g:{(#6,RANGEKEYDEL)}
 -
-PointKey: b#72057594037927935,21
+PointKey: b#72057594037927935,19
 Span: b-d:{(#5,RANGEKEYDEL)}
 -
 PointKey: c#8,1
@@ -548,7 +548,7 @@ Span: w-y:{(#5,RANGEKEYSET,@1,v1)}
 PointKey: x#8,1
 Span: w-y:{(#5,RANGEKEYSET,@1,v1)}
 -
-PointKey: y#72057594037927935,21
+PointKey: y#72057594037927935,19
 Span: y-z:{(#5,RANGEKEYDEL)}
 -
 

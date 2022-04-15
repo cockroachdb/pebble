@@ -85,7 +85,6 @@ type Hooks struct {
 // All spans containing keys are exposed during iteration.
 type InterleavingIter struct {
 	cmp         base.Compare
-	split       base.Split
 	pointIter   base.InternalIteratorWithStats
 	keyspanIter FragmentIterator
 	hooks       Hooks
@@ -149,14 +148,12 @@ var _ base.InternalIterator = &InterleavingIter{}
 // with key spans from keyspanIter.
 func (i *InterleavingIter) Init(
 	cmp base.Compare,
-	split base.Split,
 	pointIter base.InternalIteratorWithStats,
 	keyspanIter FragmentIterator,
 	hooks Hooks,
 ) {
 	*i = InterleavingIter{
 		cmp:         cmp,
-		split:       split,
 		pointIter:   pointIter,
 		keyspanIter: keyspanIter,
 		hooks:       hooks,
@@ -381,10 +378,12 @@ func (i *InterleavingIter) Prev() (*base.InternalKey, []byte) {
 
 func (i *InterleavingIter) interleaveForward(lowerBound []byte) (*base.InternalKey, []byte) {
 	// This loop determines whether a point key or a span marker key should be
-	// interleaved on each iteration. If masking is disabled, this loop executes
-	// for exactly one iteration. If masking is enabled and a masked key is
-	// determined to be interleaved next, this loop continues until the
-	// interleaved key is unmasked.
+	// interleaved on each iteration. If masking is disabled and the span is
+	// nonempty, this loop executes for exactly one iteration. If masking is
+	// enabled and a masked key is determined to be interleaved next, this loop
+	// continues until the interleaved key is unmasked. If a span's start key
+	// should be interleaved next, but the span is empty, the loop continues to
+	// the next key.
 	for {
 		// Check invariants.
 		// INVARIANT: !pointKeyInterleaved
@@ -425,12 +424,20 @@ func (i *InterleavingIter) interleaveForward(lowerBound []byte) (*base.InternalK
 					return i.yieldNil()
 				}
 			}
+			if i.span.Empty() {
+				i.keyspanInterleaved = true
+				continue
+			}
 			return i.yieldSyntheticSpanMarker(lowerBound)
 		default:
 			if i.cmp(i.pointKey.UserKey, i.span.Start) >= 0 {
 				// The span start key lies before the point key. If we haven't
 				// interleaved it, we should.
 				if !i.keyspanInterleaved {
+					if i.span.Empty() {
+						i.keyspanInterleaved = true
+						continue
+					}
 					return i.yieldSyntheticSpanMarker(lowerBound)
 				}
 
@@ -473,10 +480,12 @@ func (i *InterleavingIter) interleaveForward(lowerBound []byte) (*base.InternalK
 
 func (i *InterleavingIter) interleaveBackward() (*base.InternalKey, []byte) {
 	// This loop determines whether a point key or a span's start key should be
-	// interleaved on each iteration. If masking is disabled, this loop executes
-	// for exactly one iteration. If masking is enabled and a masked key is
-	// determined to be interleaved next, this loop continues until the
-	// interleaved key is unmasked.
+	// interleaved on each iteration. If masking is disabled and the span is
+	// nonempty, this loop executes for exactly one iteration. If masking is
+	// enabled and a masked key is determined to be interleaved next, this loop
+	// continues until the interleaved key is unmasked. If a span's start key
+	// should be interleaved next, but the span is empty, the loop continues to
+	// the next key.
 	for {
 		// Check invariants.
 		// INVARIANT: !pointKeyInterleaved
@@ -491,11 +500,19 @@ func (i *InterleavingIter) interleaveBackward() (*base.InternalKey, []byte) {
 			return i.yieldPointKey(false /* covered */)
 		case i.pointKey == nil:
 			// If we're out of point keys, we need to return a span marker.
+			if i.span.Empty() {
+				i.keyspanInterleaved = true
+				continue
+			}
 			return i.yieldSyntheticSpanMarker(i.lower)
 		default:
 			// If the span's start key is greater than the point key, return a
 			// marker for the span.
 			if i.cmp(i.span.Start, i.pointKey.UserKey) > 0 {
+				if i.span.Empty() {
+					i.keyspanInterleaved = true
+					continue
+				}
 				return i.yieldSyntheticSpanMarker(i.lower)
 			}
 			// We have a span but it has not been interleaved and begins at a
@@ -570,9 +587,8 @@ func (i *InterleavingIter) yieldPointKey(covered bool) (*base.InternalKey, []byt
 }
 
 func (i *InterleavingIter) yieldSyntheticSpanMarker(lowerBound []byte) (*base.InternalKey, []byte) {
-	// TODO(jackson): Elide empty spans.
 	i.spanMarker.UserKey = i.span.Start
-	i.spanMarker.Trailer = base.InternalKeyBoundaryRangeKey
+	i.spanMarker.Trailer = base.MakeTrailer(base.InternalKeySeqNumMax, i.span.Keys[0].Kind())
 	i.keyspanInterleaved = true
 	i.spanCoversKey = true
 

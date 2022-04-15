@@ -143,7 +143,7 @@ func NewExternalIter(
 			rangeKeyIters...,
 		)
 
-		dbi.rangeKey.iter.Init(dbi.cmp, dbi.split, &buf.merging, dbi.rangeKey.rangeKeyIter, keyspan.Hooks{
+		dbi.rangeKey.iter.Init(dbi.cmp, &buf.merging, dbi.rangeKey.rangeKeyIter, keyspan.Hooks{
 			SpanChanged: dbi.rangeKeySpanChanged,
 			SkipPoint:   dbi.rangeKeySkipPoint,
 		})
