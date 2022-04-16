@@ -299,68 +299,63 @@ func (d *DB) loadTablePointKeyStats(
 	return nil
 }
 
-// loadTableRangeDelStats calculates the range deletion statistics for the given
-// table.
+// loadTableRangeDelStats calculates the range deletion and range key deletion
+// statistics for the given table.
 func (d *DB) loadTableRangeDelStats(
 	r *sstable.Reader, v *version, level int, meta *fileMetadata, stats *manifest.TableStats,
 ) ([]deleteCompactionHint, error) {
+	iter, err := newTableRangeDeletionIter(d.cmp, r, meta)
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
 	var compactionHints []deleteCompactionHint
 	// We iterate over the defragmented range tombstones, which ensures
 	// we don't double count ranges deleted at different sequence numbers.
 	// Also, merging abutting tombstones reduces the number of calls to
 	// estimateSizeBeneath which is costly, and improves the accuracy of
 	// our overall estimate.
-	rangeDelIter, err := r.NewRawRangeDelIter()
-	if err != nil {
-		return nil, err
-	}
-	defer rangeDelIter.Close()
-	// Truncate tombstones to the containing file's bounds if necessary.
-	// See docs/range_deletions.md for why this is necessary.
-	rangeDelIter = keyspan.Truncate(
-		d.cmp, rangeDelIter, meta.Smallest.UserKey, meta.Largest.UserKey, nil, nil)
-	err = foreachDefragmentedTombstone(rangeDelIter, d.cmp,
-		func(startUserKey, endUserKey []byte, smallestSeqNum, largestSeqNum uint64) error {
-			// If the file is in the last level of the LSM, there is no
-			// data beneath it. The fact that there is still a range
-			// tombstone in a bottommost file suggests that an open
-			// snapshot kept the tombstone around. Estimate disk usage
-			// within the file itself.
-			if level == numLevels-1 {
-				size, err := r.EstimateDiskUsage(startUserKey, endUserKey)
-				if err != nil {
-					return err
-				}
-				stats.RangeDeletionsBytesEstimate += size
-				return nil
-			}
-
-			estimate, hintSeqNum, err := d.estimateSizeBeneath(v, level, meta, startUserKey, endUserKey)
+	for s := iter.First(); s.Valid(); s = iter.Next() {
+		// If the file is in the last level of the LSM, there is no
+		// data beneath it. The fact that there is still a range
+		// tombstone in a bottommost file suggests that an open
+		// snapshot kept the tombstone around. Estimate disk usage
+		// within the file itself.
+		start, end := s.Start, s.End
+		if level == numLevels-1 {
+			size, err := r.EstimateDiskUsage(start, end)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			stats.RangeDeletionsBytesEstimate += estimate
+			stats.RangeDeletionsBytesEstimate += size
+			continue
+		}
 
-			// If any files were completely contained with the range,
-			// hintSeqNum is the smallest sequence number contained in any
-			// such file.
-			if hintSeqNum == math.MaxUint64 {
-				return nil
-			}
-			hint := deleteCompactionHint{
-				start:                   make([]byte, len(startUserKey)),
-				end:                     make([]byte, len(endUserKey)),
-				tombstoneFile:           meta,
-				tombstoneLevel:          level,
-				tombstoneLargestSeqNum:  largestSeqNum,
-				tombstoneSmallestSeqNum: smallestSeqNum,
-				fileSmallestSeqNum:      hintSeqNum,
-			}
-			copy(hint.start, startUserKey)
-			copy(hint.end, endUserKey)
-			compactionHints = append(compactionHints, hint)
-			return nil
-		})
+		estimate, hintSeqNum, err := d.estimateSizeBeneath(v, level, meta, start, end)
+		if err != nil {
+			return nil, err
+		}
+		stats.RangeDeletionsBytesEstimate += estimate
+
+		// If any files were completely contained with the range,
+		// hintSeqNum is the smallest sequence number contained in any
+		// such file.
+		if hintSeqNum == math.MaxUint64 {
+			continue
+		}
+		hint := deleteCompactionHint{
+			start:                   make([]byte, len(start)),
+			end:                     make([]byte, len(end)),
+			tombstoneFile:           meta,
+			tombstoneLevel:          level,
+			tombstoneLargestSeqNum:  s.LargestSeqNum(),
+			tombstoneSmallestSeqNum: s.SmallestSeqNum(),
+			fileSmallestSeqNum:      hintSeqNum,
+		}
+		copy(hint.start, start)
+		copy(hint.end, end)
+		compactionHints = append(compactionHints, hint)
+	}
 	return compactionHints, err
 }
 
@@ -582,4 +577,163 @@ func estimateEntrySizes(
 	avgKeySize = props.RawKeySize * fileSizePerEntry / uncompressedSum
 	avgValSize = props.RawValueSize * fileSizePerEntry / uncompressedSum
 	return avgKeySize, avgValSize
+}
+
+// tableRangedDeletionIter is a keyspan.FragmentIterator that returns "ranged
+// deletion" spans for a single table, providing a combined view of both range
+// deletion and range key deletion spans. The tableRangedDeletionIter is
+// intended for use in the specific case of computing the statistics and
+// deleteCompactionHints for a single table.
+//
+// As an example, consider the following set of spans from the range deletion
+// and range key blocks of a table:
+//
+//         |---------|     |---------|         |-------| RANGEKEYDELs
+//   |-----------|-------------|           |-----|       RANGEDELs
+// __________________________________________________________
+//   a b c d e f g h i j k l m n o p q r s t u v w x y z
+//
+// The tableRangedDeletionIter produces the following set of output spans, where
+// '1' indicates a span containing only range deletions, '2' is a span
+// containing only range key deletions, and '3' is a span containing a mixture
+// of both range deletions and range key deletions.
+//
+//      1       3       1    3    2          1  3   2
+//   |-----|---------|-----|---|-----|     |---|-|-----|
+// __________________________________________________________
+//   a b c d e f g h i j k l m n o p q r s t u v w x y z
+//
+// Algorithm.
+//
+// The iterator first defragments the range deletion and range key blocks
+// separately. During this defragmentation, the range key block is also filtered
+// so that keys other than range key deletes are ignored. The range delete and
+// range key delete keyspaces are then merged.
+//
+// Note that the only fragmentation introduced by merging is from where a range
+// del span overlaps with a range key del span. Within the bounds of any overlap
+// there is guaranteed to be no further fragmentation, as the constituent spans
+// have already been defragmented. To the left and right of any overlap, the
+// same reasoning applies. For example,
+//
+//            |--------|         |-------| RANGEKEYDEL
+//   |---------------------------|         RANGEDEL
+//   |----1---|----3---|----1----|---2---| Merged, fragmented spans.
+// __________________________________________________________
+//   a b c d e f g h i j k l m n o p q r s t u v w x y z
+//
+// Any fragmented abutting spans produced by the merging iter will be of
+// differing types (i.e. a transition from a span with homogenous key kinds to a
+// heterogeneous span, or a transition from a span with exclusively range dels
+// to a span with exclusively range key dels). Therefore, further
+// defragmentation is not required.
+//
+// Each span returned by the tableRangeDeletionIter will have at most four keys,
+// corresponding to the largest and smallest sequence numbers encountered across
+// the range deletes and range keys deletes that comprised the merged spans.
+type tableRangedDeletionIter struct {
+	keyspan.FragmentIterator
+}
+
+// newTableRangeDeletionIter returns a new tableRangedDeletionIter.
+func newTableRangeDeletionIter(
+	cmp base.Compare, r *sstable.Reader, m *fileMetadata,
+) (*tableRangedDeletionIter, error) {
+	// The range del iter and range key iter are each wrapped in their own
+	// defragmenting iter. For each iter, abutting spans can always be merged.
+	var equal = keyspan.DefragmentMethodFunc(func(_ base.Compare, a, b keyspan.Span) bool { return true })
+	// Reduce keys by maintaining a slice of at most length two, corresponding to
+	// the largest and smallest keys in the defragmented span. This maintains the
+	// contract that the emitted slice is sorted by (SeqNum, Kind) descending.
+	reducer := func(current, incoming []keyspan.Key) []keyspan.Key {
+		if len(current) == 0 && len(incoming) == 0 {
+			// While this should never occur in practice, a defensive return is used
+			// here to preserve correctness.
+			return current
+		}
+		var largest, smallest keyspan.Key
+		var set bool
+		for _, keys := range [2][]keyspan.Key{current, incoming} {
+			if len(keys) == 0 {
+				continue
+			}
+			first, last := keys[0], keys[len(keys)-1]
+			if !set {
+				largest, smallest = first, last
+				set = true
+				continue
+			}
+			if first.Trailer > largest.Trailer {
+				largest = first
+			}
+			if last.Trailer < smallest.Trailer {
+				smallest = last
+			}
+		}
+		if largest.Equal(cmp, smallest) {
+			current = append(current[:0], largest)
+		} else {
+			current = append(current[:0], largest, smallest)
+		}
+		return current
+	}
+
+	var iters []keyspan.FragmentIterator
+	iter, err := r.NewRawRangeDelIter()
+	if err != nil {
+		return nil, err
+	}
+	if iter != nil {
+		dIter := &keyspan.DefragmentingIter{}
+		dIter.Init(cmp, iter, equal, reducer)
+		iter = dIter
+		// Truncate tombstones to the containing file's bounds if necessary.
+		// See docs/range_deletions.md for why this is necessary.
+		iter = keyspan.Truncate(
+			cmp, iter, m.Smallest.UserKey, m.Largest.UserKey, nil, nil,
+		)
+		iters = append(iters, iter)
+	}
+
+	iter, err = r.NewRawRangeKeyIter()
+	if err != nil {
+		return nil, err
+	}
+	if iter != nil {
+		// Wrap the range key iterator in a filter that elides keys other than range
+		// key deletions.
+		iter = keyspan.Filter(iter, func(in keyspan.Span, out *keyspan.Span) (keep bool) {
+			out.Start, out.End = in.Start, in.End
+			out.Keys = out.Keys[:0]
+			for _, k := range in.Keys {
+				if k.Kind() != base.InternalKeyKindRangeKeyDelete {
+					continue
+				}
+				out.Keys = append(out.Keys, k)
+			}
+			return len(out.Keys) > 0
+		})
+		dIter := &keyspan.DefragmentingIter{}
+		dIter.Init(cmp, iter, equal, reducer)
+		iter = dIter
+		iters = append(iters, iter)
+	}
+
+	// The separate iters for the range dels and range keys are wrapped in a
+	// merging iter to join the keyspaces into a single keyspace.
+	mIter := &keyspan.MergingIter{}
+	var transform = keyspan.TransformerFunc(func(cmp base.Compare, in keyspan.Span, out *keyspan.Span) error {
+		out.Start, out.End = in.Start, in.End
+		out.Keys = append(out.Keys[:0], in.Keys...)
+		return nil
+	})
+	mIter.Init(cmp, transform, iters...)
+
+	delIter := &tableRangedDeletionIter{FragmentIterator: mIter}
+	return delIter, nil
+}
+
+// Close closes all child iterators of this tableRangedDeletionIter.
+func (d *tableRangedDeletionIter) Close() error {
+	return d.FragmentIterator.Close()
 }
