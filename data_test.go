@@ -649,6 +649,14 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				return nil, errors.Errorf("%s: could not parse %q as bool: %s", td.Cmd, arg.Vals[0], err)
 			}
 			opts.private.disableTableStats = !enable
+		case "block-size":
+			size, err := strconv.Atoi(arg.Vals[0])
+			if err != nil {
+				return nil, err
+			}
+			for _, levelOpts := range opts.Levels {
+				levelOpts.BlockSize = size
+			}
 		default:
 			return nil, errors.Errorf("%s: unknown arg: %s", td.Cmd, arg.Key)
 		}
