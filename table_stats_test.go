@@ -5,13 +5,17 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -136,100 +140,85 @@ func TestTableStats(t *testing.T) {
 	})
 }
 
-func TestForeachDefragmentedTombstone(t *testing.T) {
-	mktomb := func(start, end string, seqnums ...uint64) keyspan.Span {
-		t := keyspan.Span{
-			Start: []byte(start),
-			End:   []byte(end),
-			Keys:  make([]keyspan.Key, len(seqnums)),
-		}
-		for i := range seqnums {
-			t.Keys[i] = keyspan.Key{
-				Trailer: base.MakeTrailer(seqnums[i], base.InternalKeyKindRangeDelete),
+func TestTableRangeDeletionIter(t *testing.T) {
+	var m *fileMetadata
+	cmp := base.DefaultComparer.Compare
+	fs := vfs.NewMem()
+	datadriven.RunTest(t, "testdata/table_stats_deletion_iter", func(td *datadriven.TestData) string {
+		switch cmd := td.Cmd; cmd {
+		case "build":
+			f, err := fs.Create("tmp.sst")
+			if err != nil {
+				return err.Error()
 			}
-		}
-		return t
-	}
-
-	testCases := []struct {
-		fragmented []keyspan.Span
-		want       [][2]string
-		wantSeq    [][2]uint64
-	}{
-		{
-			fragmented: []keyspan.Span{
-				mktomb("a", "c", 2),
-			},
-			want:    [][2]string{{"a", "c"}},
-			wantSeq: [][2]uint64{{2, 2}},
-		},
-		{
-			fragmented: []keyspan.Span{
-				mktomb("a", "c", 2, 1),
-			},
-			want:    [][2]string{{"a", "c"}},
-			wantSeq: [][2]uint64{{1, 2}},
-		},
-		{
-			fragmented: []keyspan.Span{
-				mktomb("a", "c", 2),
-				mktomb("e", "g", 2),
-				mktomb("l", "m", 2),
-				mktomb("v", "z", 2),
-			},
-			want:    [][2]string{{"a", "c"}, {"e", "g"}, {"l", "m"}, {"v", "z"}},
-			wantSeq: [][2]uint64{{2, 2}, {2, 2}, {2, 2}, {2, 2}},
-		},
-		{
-			fragmented: []keyspan.Span{
-				mktomb("a", "c", 2),
-				mktomb("c", "f", 5, 2),
-				mktomb("f", "m", 5),
-			},
-			want:    [][2]string{{"a", "m"}},
-			wantSeq: [][2]uint64{{2, 5}},
-		},
-		{
-			fragmented: []keyspan.Span{
-				mktomb("a", "c", 1),
-				mktomb("c", "f", 5, 2),
-				mktomb("f", "m", 5),
-			},
-			want:    [][2]string{{"a", "m"}},
-			wantSeq: [][2]uint64{{1, 5}},
-		},
-		{
-			fragmented: []keyspan.Span{
-				mktomb("a", "b", 10, 8, 7, 2),
-				mktomb("g", "k", 4),
-			},
-			want:    [][2]string{{"a", "b"}, {"g", "k"}},
-			wantSeq: [][2]uint64{{2, 10}, {4, 4}},
-		},
-		{
-			fragmented: []keyspan.Span{
-				mktomb("a", "b", 10),
-				mktomb("b", "c", 10, 7, 6),
-				mktomb("c", "d", 10, 6),
-				mktomb("d", "e", 6),
-			},
-			want:    [][2]string{{"a", "e"}},
-			wantSeq: [][2]uint64{{6, 10}},
-		},
-	}
-
-	for _, tc := range testCases {
-		iter := keyspan.NewIter(DefaultComparer.Compare, tc.fragmented)
-		var got [][2]string
-		var gotSeq [][2]uint64
-		err := foreachDefragmentedTombstone(iter, DefaultComparer.Compare,
-			func(start, end []byte, smallest, largest uint64) error {
-				got = append(got, [2]string{string(start), string(end)})
-				gotSeq = append(gotSeq, [2]uint64{smallest, largest})
-				return nil
+			w := sstable.NewWriter(f, sstable.WriterOptions{
+				TableFormat: sstable.TableFormatMax,
 			})
-		require.NoError(t, err)
-		require.Equal(t, tc.want, got)
-		require.Equal(t, tc.wantSeq, gotSeq)
-	}
+			m = &fileMetadata{}
+			for _, line := range strings.Split(td.Input, "\n") {
+				s := keyspan.ParseSpan(line)
+				// Range dels can be written sequentially. Range keys must be collected.
+				rKeySpan := &keyspan.Span{Start: s.Start, End: s.End}
+				for _, k := range s.Keys {
+					if rangekey.IsRangeKey(k.Kind()) {
+						rKeySpan.Keys = append(rKeySpan.Keys, k)
+					} else {
+						k := base.InternalKey{UserKey: s.Start, Trailer: k.Trailer}
+						if err = w.Add(k, s.End); err != nil {
+							return err.Error()
+						}
+					}
+				}
+				err = rangekey.Encode(rKeySpan, func(k base.InternalKey, v []byte) error {
+					return w.AddRangeKey(k, v)
+				})
+				if err != nil {
+					return err.Error()
+				}
+			}
+			if err = w.Close(); err != nil {
+				return err.Error()
+			}
+			meta, err := w.Metadata()
+			if err != nil {
+				return err.Error()
+			}
+			if meta.HasPointKeys {
+				m.ExtendPointKeyBounds(cmp, meta.SmallestPoint, meta.LargestPoint)
+			}
+			if meta.HasRangeDelKeys {
+				m.ExtendPointKeyBounds(cmp, meta.SmallestRangeDel, meta.LargestRangeDel)
+			}
+			if meta.HasRangeKeys {
+				m.ExtendRangeKeyBounds(cmp, meta.SmallestRangeKey, meta.LargestRangeKey)
+			}
+			return m.DebugString(base.DefaultFormatter, false /* verbose */)
+		case "spans":
+			f, err := fs.Open("tmp.sst")
+			if err != nil {
+				return err.Error()
+			}
+			var r *sstable.Reader
+			r, err = sstable.NewReader(f, sstable.ReaderOptions{})
+			if err != nil {
+				return err.Error()
+			}
+			defer r.Close()
+			iter, err := newCombinedDeletionKeyspanIter(cmp, r, m)
+			if err != nil {
+				return err.Error()
+			}
+			defer iter.Close()
+			var buf bytes.Buffer
+			for s := iter.First(); s != nil; s = iter.Next() {
+				buf.WriteString(s.String() + "\n")
+			}
+			if buf.Len() == 0 {
+				return "(none)"
+			}
+			return buf.String()
+		default:
+			return fmt.Sprintf("unknown command: %s", cmd)
+		}
+	})
 }
