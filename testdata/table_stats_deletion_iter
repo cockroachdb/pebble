@@ -1,0 +1,81 @@
+# The example used in the documentation for tableRangedDeletionIter. An iterator
+# over the following table:
+#
+#
+#         |---------|     |---------|         |-------| RANGEKEYDELs
+#   |-----------|-------------|           |-----|       RANGEDELs
+# __________________________________________________________
+#   a b c d e f g h i j k l m n o p q r s t u v w x y z
+#
+# yields the following spans:
+#
+#      1       3       1    3    2          1  3   2
+#   |-----|---------|-----|---|-----|     |---|-|-----|
+# __________________________________________________________
+#   a b c d e f g h i j k l m n o p q r s t u v w x y z
+#
+# where:
+# - 1: span with range dels only
+# - 2: span with range key dels only
+# - 3: span with range dels and range key dels
+
+build
+del-range a g
+del-range g n
+del-range t w
+range-key-del d i
+range-key-del l q
+range-key-del v z
+----
+000000:[a#0,RANGEDEL-z#72057594037927935,RANGEKEYDEL]
+
+spans
+----
+a-d:{(#0,RANGEDEL)}
+d-i:{(#0,RANGEKEYDEL) (#0,RANGEDEL)}
+i-l:{(#0,RANGEDEL)}
+l-n:{(#0,RANGEKEYDEL) (#0,RANGEDEL)}
+n-q:{(#0,RANGEKEYDEL)}
+t-v:{(#0,RANGEDEL)}
+v-w:{(#0,RANGEKEYDEL) (#0,RANGEDEL)}
+w-z:{(#0,RANGEKEYDEL)}
+
+# The iterator elides anything other than range deletes and range key deletes.
+#
+#   |-RANGEKEYSET-|-RANGEKEYUNSET-|-RANGEKEYDEL--------|
+#   |--RANGEDEL-----------------------------|
+# __________________________________________________________
+#   a b c d e f g h i j k l m n o p q r s t u v w x y z
+#
+# Becomes:
+#
+#   |---------------1-------------|----3----|----2----|
+# __________________________________________________________
+#   a b c d e f g h i j k l m n o p q r s t u v w x y z
+
+build
+del-range a u
+range-key-set a h @1 foo
+range-key-unset h p @1
+range-key-del p z
+----
+000000:[a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYDEL]
+
+spans
+----
+a-p:{(#0,RANGEDEL) (#0,RANGEDEL)}
+p-u:{(#0,RANGEKEYDEL) (#0,RANGEDEL)}
+u-z:{(#0,RANGEKEYDEL)}
+
+# An iterator over a table with neither range dels or range key dels present
+# yields no spans.
+
+build
+range-key-set a m @1 foo
+range-key-unset m z @1
+----
+000000:[#0,DEL-z#72057594037927935,RANGEKEYUNSET]
+
+spans
+----
+(none)
