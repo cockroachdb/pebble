@@ -810,11 +810,8 @@ func (b *Batch) SetRepr(data []byte) error {
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekPrefixGE, SeekLT, First or Last. Only indexed batches support iterators.
 //
-// The returned Iterator observes all of the Batch's existing mutations.
-// Seeking the Iterator through First, Last, SeekGE[WithLimit],
-// SeekLT[WithLimit] or SeekGEPrefix refreshes the iterator state, guaranteeing
-// all mutations are visible. Mutations applied to the batch between seeks are
-// not visible.
+// The returned Iterator observes all of the Batch's existing mutations, but
+// no later mutations. Its view can be refreshed via RefreshBatchSnapshot().
 func (b *Batch) NewIter(o *IterOptions) *Iterator {
 	if b.index == nil {
 		return &Iterator{err: ErrNotIndexed}

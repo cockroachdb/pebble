@@ -926,7 +926,6 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 	i.err = nil // clear cached iteration error
 	i.hasPrefix = false
 	i.stats.ForwardSeekCount[InterfaceCall]++
-	i.maybeRefreshBatchIteratorBeforeSeek()
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
 		key = lowerBound
 	} else if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
@@ -1042,7 +1041,6 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	i.lastPositioningOp = unknownLastPositionOp
 	i.err = nil // clear cached iteration error
 	i.stats.ForwardSeekCount[InterfaceCall]++
-	i.maybeRefreshBatchIteratorBeforeSeek()
 
 	if i.split == nil {
 		panic("pebble: split must be provided for SeekPrefixGE")
@@ -1151,7 +1149,6 @@ func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 	i.err = nil // clear cached iteration error
 	i.hasPrefix = false
 	i.stats.ReverseSeekCount[InterfaceCall]++
-	i.maybeRefreshBatchIteratorBeforeSeek()
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
 		key = upperBound
 	} else if lowerBound := i.opts.GetLowerBound(); lowerBound != nil && i.cmp(key, lowerBound) < 0 {
@@ -1207,7 +1204,6 @@ func (i *Iterator) First() bool {
 	i.hasPrefix = false
 	i.lastPositioningOp = unknownLastPositionOp
 	i.stats.ForwardSeekCount[InterfaceCall]++
-	i.maybeRefreshBatchIteratorBeforeSeek()
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, false /* trySeekUsingNext */)
 		i.stats.ForwardSeekCount[InternalIterCall]++
@@ -1227,7 +1223,6 @@ func (i *Iterator) Last() bool {
 	i.hasPrefix = false
 	i.lastPositioningOp = unknownLastPositionOp
 	i.stats.ReverseSeekCount[InterfaceCall]++
-	i.maybeRefreshBatchIteratorBeforeSeek()
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekLT(upperBound)
 		i.stats.ReverseSeekCount[InternalIterCall]++
@@ -1869,12 +1864,9 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	finishInitializingIter(i.alloc)
 }
 
-// maybeRefreshBatchIteratorBeforeSeek is called before performing a seek
-// operation. If the iterator includes iteration over an indexed batch, the
-// batch's counts of range deletions and range keys are consulted to determine
-// if new range deletions or range keys were written to the batch since the last
-// seek. If so, the iterator is adjusted to pull in the new writes.
-func (i *Iterator) maybeRefreshBatchIteratorBeforeSeek() {
+// RefreshBatchSnapshot refreshes the iterator's batch snapshot, i.e. the view
+// of batch writes, to the most recent state.
+func (i *Iterator) RefreshBatchSnapshot() {
 	if i.batch == nil || i.batch.nextSeqNum() == i.batchSeqNum {
 		return
 	}
