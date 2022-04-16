@@ -344,6 +344,7 @@ func (d *DB) loadTableRangeDelStats(
 			continue
 		}
 		hint := deleteCompactionHint{
+			hintType:                compactionHintFromKeys(s.Keys),
 			start:                   make([]byte, len(start)),
 			end:                     make([]byte, len(end)),
 			tombstoneFile:           meta,
