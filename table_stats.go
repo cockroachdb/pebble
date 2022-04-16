@@ -261,7 +261,7 @@ func (d *DB) loadTableStats(
 				return
 			}
 		}
-		if r.Properties.NumRangeDeletions > 0 {
+		if r.Properties.NumRangeDeletions > 0 || r.Properties.NumRangeKeyDels > 0 {
 			if compactionHints, err = d.loadTableRangeDelStats(r, v, level, meta, &stats); err != nil {
 				return
 			}
@@ -316,26 +316,48 @@ func (d *DB) loadTableRangeDelStats(
 	// estimateSizeBeneath which is costly, and improves the accuracy of our
 	// overall estimate.
 	for s := iter.First(); s != nil; s = iter.Next() {
-		// If the file is in the last level of the LSM, there is no
-		// data beneath it. The fact that there is still a range
-		// tombstone in a bottommost file suggests that an open
-		// snapshot kept the tombstone around. Estimate disk usage
-		// within the file itself.
 		start, end := s.Start, s.End
-		if level == numLevels-1 {
+		// We only need to consider deletion size estimates for tables that contain
+		// point keys.
+		var hasPoints bool
+		for _, k := range s.Keys {
+			if k.Kind() == base.InternalKeyKindRangeDelete {
+				hasPoints = true
+				break
+			}
+		}
+
+		// If the file is in the last level of the LSM, there is no data beneath
+		// it. The fact that there is still a range tombstone in a bottommost file
+		// suggests that an open snapshot kept the tombstone around. Estimate disk
+		// usage within the file itself.
+		// NOTE: If the span `s` wholly contains a table containing range keys,
+		// the returned size estimate will be slightly inflated by the range key
+		// block. However, in practice, range keys are expected to be rare, and
+		// the size of the range key block relative to the overall size of the
+		// table is expected to be small.
+		if hasPoints && level == numLevels-1 {
 			size, err := r.EstimateDiskUsage(start, end)
 			if err != nil {
 				return nil, err
 			}
 			stats.RangeDeletionsBytesEstimate += size
+
+			// As the file is in the bottommost level, there is no need to collect a
+			// deletion hint.
 			continue
 		}
 
+		// While the size estimates for point keys should only be updated if this
+		// span contains a range del, the sequence numbers are required for the
+		// hint. Unconditionally descend, but conditionally update the estimates.
 		estimate, hintSeqNum, err := d.estimateSizeBeneath(v, level, meta, start, end)
 		if err != nil {
 			return nil, err
 		}
-		stats.RangeDeletionsBytesEstimate += estimate
+		if hasPoints {
+			stats.RangeDeletionsBytesEstimate += estimate
+		}
 
 		// If any files were completely contained with the range,
 		// hintSeqNum is the smallest sequence number contained in any
@@ -344,6 +366,7 @@ func (d *DB) loadTableRangeDelStats(
 			continue
 		}
 		hint := deleteCompactionHint{
+			hintType:                compactionHintFromKeys(s.Keys),
 			start:                   make([]byte, len(start)),
 			end:                     make([]byte, len(end)),
 			tombstoneFile:           meta,
@@ -448,11 +471,18 @@ func (d *DB) estimateSizeBeneath(
 }
 
 func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) bool {
-	// If a table has range deletions, we can't calculate the
-	// RangeDeletionsBytesEstimate statistic and can't populate table stats
-	// from just the properties. The table stats collector goroutine will
-	// populate the stats.
-	if props.NumRangeDeletions != 0 {
+	// If a table contains range deletions or range key deletions, we defer the
+	// stats collection. There are two main reasons for this:
+	//
+	//  1. Estimating the potential for reclaimed space due to a range deletion
+	//     tombstone requires scanning the LSM - a potentially expensive operation
+	//     that should be deferred.
+	//  2. Range deletions and / or range key deletions present an opportunity to
+	//     compute "deletion hints", which also requires a scan of the LSM to
+	//     compute tables that would be eligible for deletion.
+	//
+	// These two tasks are deferred to the table stats collector goroutine.
+	if props.NumRangeDeletions != 0 || props.NumRangeKeyDels != 0 {
 		return false
 	}
 
