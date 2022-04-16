@@ -192,9 +192,12 @@ num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 769
 
-define snapshots=(10)
+# A table in L6 with two point keys blocks, each covered by distinct range dels.
+# The deletion estimate takes into account the contribution from both deleted
+# blocks. Note that the snapshot is required to allow the hint to be computed.
+define block-size=1 snapshots=(10)
 L6
-  e.SET.5:5 a.RANGEDEL.15:z
+  e.SET.5:e a.RANGEDEL.15:f m.SET.5:m g.RANGEDEL.15:z
 ----
 6:
   000004:[a#15,RANGEDEL-z#72057594037927935,RANGEDEL]
@@ -202,28 +205,78 @@ L6
 wait-pending-table-stats
 000004
 ----
-num-entries: 2
+num-entries: 4
+num-deletions: 2
+num-range-keys: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 68
+
+# Hints that partially overlap tables in lower levels only count blocks that are
+# contained within the hint.
+#
+#  L0 |-|              000004: a.RANGEDEL:b
+#  L1        |---|     000005: d.RANGEDEL:f
+#  L2  x     x         000006: Two blocks [a, d]
+#  L2          x     x 000007: Two blocks [e, h]
+#  -------------------
+#      a b c d e f g h
+
+define block-size=1
+L0
+  a.RANGEDEL.2:b
+L1
+  d.RANGEDEL.1:f
+L2
+  a.SET.0:a d.SET.0:d
+L2
+  e.SET.0:e h.SET.0:h
+----
+0.0:
+  000004:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+1:
+  000005:[d#1,RANGEDEL-f#72057594037927935,RANGEDEL]
+2:
+  000006:[a#0,SET-d#0,SET]
+  000007:[e#0,SET-h#0,SET]
+
+# Table 000004 deletes the first block in table 000006.
+wait-pending-table-stats
+000004
+----
+num-entries: 1
 num-deletions: 1
 num-range-keys: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 26
+range-deletions-bytes-estimate: 33
+
+# Table 000005 deletes the second block in table 000006 (containing 'd') and the
+# first block in table 000007 (containing 'e').
+wait-pending-table-stats
+000005
+----
+num-entries: 1
+num-deletions: 1
+num-range-keys: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 66
 
 # Ingest a table with range keys.
 # TODO(travers): Once range keys in batches are flushed to tables, this testcase
 # can be updated to use the batch / flush combination.
+
+define
+----
 
 ingest ext0
 range-key-set a b @1 foo
 range-key-unset a b @2
 range-key-del a b
 ----
-5:
-  000005:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYDEL]
 6:
-  000004:[a#15,RANGEDEL-z#72057594037927935,RANGEDEL]
+  000004:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYDEL]
 
 wait-pending-table-stats
-000005
+000004
 ----
 num-entries: 0
 num-deletions: 0
