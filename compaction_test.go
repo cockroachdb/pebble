@@ -1848,32 +1848,67 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 	}()
 
 	var compactInfo *CompactionInfo // protected by d.mu
+	reset := func() (*Options, error) {
+		if d != nil {
+			compactInfo = nil
+			if err := d.Close(); err != nil {
+				return nil, err
+			}
+		}
+		opts := &Options{
+			FS:         vfs.NewMem(),
+			DebugCheck: DebugCheckLevels,
+			EventListener: EventListener{
+				CompactionEnd: func(info CompactionInfo) {
+					if compactInfo != nil {
+						return
+					}
+					compactInfo = &info
+				},
+			},
+			FormatMajorVersion: FormatNewest,
+		}
 
+		// Collection of table stats can trigger compactions. As we want full
+		// control over when compactions are run, disable stats by default.
+		opts.private.disableTableStats = true
+
+		// Disable automatic compactions to prevent the range key-only tables from
+		// being compacted away after they are created. Compactions do not yet
+		// understand that these tables need to remain in the LSM.
+		// TODO(travers): Revisit this once compactions support range keys.
+		opts.DisableAutomaticCompactions = true
+
+		return opts, nil
+	}
+
+	compactionString := func() string {
+		for d.mu.compact.compactingCount > 0 {
+			d.mu.compact.cond.Wait()
+		}
+
+		s := "(none)"
+		if compactInfo != nil {
+			// Fix the job ID and durations for determinism.
+			compactInfo.JobID = 100
+			compactInfo.Duration = time.Second
+			compactInfo.TotalDuration = 2 * time.Second
+			s = compactInfo.String()
+			compactInfo = nil
+		}
+		return s
+	}
+
+	var err error
+	var opts *Options
 	datadriven.RunTest(t, "testdata/compaction_delete_only_hints",
 		func(td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "define":
-				if d != nil {
-					compactInfo = nil
-					if err := d.Close(); err != nil {
-						return err.Error()
-					}
+				opts, err = reset()
+				if err != nil {
+					return err.Error()
 				}
-				opts := &Options{
-					FS:         vfs.NewMem(),
-					DebugCheck: DebugCheckLevels,
-					EventListener: EventListener{
-						CompactionEnd: func(info CompactionInfo) {
-							compactInfo = &info
-						},
-					},
-				}
-
-				// Collection of table stats can trigger compactions. As we want full
-				// control over when compactions are run, disable stats by default.
-				opts.private.disableTableStats = true
-
-				var err error
 				d, err = runDBDefineCmd(td, opts)
 				if err != nil {
 					return err.Error()
@@ -1902,7 +1937,20 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 						FileNum: base.FileNum(parseUint64(parts[1])),
 					}
 
+					var hintType deleteCompactionHintType
+					switch typ := parts[7]; typ {
+					case "point_key_only":
+						hintType = deleteCompactionHintTypePointKeyOnly
+					case "range_key_only":
+						hintType = deleteCompactionHintTypeRangeKeyOnly
+					case "point_and_range_key":
+						hintType = deleteCompactionHintTypePointAndRangeKey
+					default:
+						return fmt.Sprintf("unknown hint type: %s", typ)
+					}
+
 					h := deleteCompactionHint{
+						hintType:                hintType,
 						start:                   start,
 						end:                     end,
 						fileSmallestSeqNum:      parseUint64(parts[4]),
@@ -1954,9 +2002,6 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 			case "maybe-compact":
 				d.mu.Lock()
 				d.maybeScheduleCompaction()
-				for d.mu.compact.compactingCount > 0 {
-					d.mu.compact.cond.Wait()
-				}
 
 				var buf bytes.Buffer
 				fmt.Fprintf(&buf, "Deletion hints:\n")
@@ -1967,15 +2012,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					fmt.Fprintf(&buf, "  (none)\n")
 				}
 				fmt.Fprintf(&buf, "Compactions:\n")
-				s := "(none)"
-				if compactInfo != nil {
-					// Fix the job ID and durations for determinism.
-					compactInfo.JobID = 100
-					compactInfo.Duration = time.Second
-					compactInfo.TotalDuration = 2 * time.Second
-					s = compactInfo.String()
-				}
-				fmt.Fprintf(&buf, "  %s", s)
+				fmt.Fprintf(&buf, "  %s", compactionString())
 				d.mu.Unlock()
 				return buf.String()
 
@@ -2009,31 +2046,11 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					return err.Error()
 				}
 
-				compactionString := func() string {
-					for d.mu.compact.compactingCount > 0 {
-						d.mu.compact.cond.Wait()
-					}
-
-					s := "(none)"
-					if compactInfo != nil {
-						// Fix the job ID and durations for determinism.
-						compactInfo.JobID = 100
-						compactInfo.Duration = time.Second
-						compactInfo.TotalDuration = 2 * time.Second
-						s = compactInfo.String()
-						compactInfo = nil
-					}
-					return s
-				}
-
 				d.mu.Lock()
 				// Closing the snapshot may have triggered a compaction.
 				str := compactionString()
 				d.mu.Unlock()
 				return str
-
-			case "wait-pending-table-stats":
-				return runTableStatsCmd(td, d)
 
 			case "iter":
 				snap := Snapshot{
@@ -2042,6 +2059,36 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				}
 				iter := snap.NewIter(nil)
 				return runIterCmd(td, iter, true)
+
+			case "reset":
+				opts, err = reset()
+				if err != nil {
+					return err.Error()
+				}
+				d, err = Open("", opts)
+				if err != nil {
+					return err.Error()
+				}
+				return ""
+
+			case "ingest":
+				// Compactions / flushes do not yet fully support range keys. The
+				// "ingest" operation exists to allow tables containing range keys to be
+				// added to the LSM via ingest, rather than a flush.
+				// TODO(travers): Revisit this once compactions support range keys.
+				if err = runBuildCmd(td, d, d.opts.FS); err != nil {
+					return err.Error()
+				}
+				if err = runIngestCmd(td, d, d.opts.FS); err != nil {
+					return err.Error()
+				}
+				return "OK"
+
+			case "describe-lsm":
+				d.mu.Lock()
+				s := d.mu.versions.currentVersion().String()
+				d.mu.Unlock()
+				return s
 
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
