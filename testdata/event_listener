@@ -91,7 +91,7 @@ create: db/marker.manifest.000003.MANIFEST-000007
 close: db/marker.manifest.000003.MANIFEST-000007
 sync: db
 [JOB 4] MANIFEST created 000007
-[JOB 4] flushed 1 memtable to L0 [000006] (770 B), in 1.0s (2.0s total), output rate 770 B/s
+[JOB 4] flushed 1 memtable to L0 [000006] (770 B), in 1.0s (4.0s total), output rate 770 B/s
 [JOB 4] MANIFEST deleted 000001
 
 compact
@@ -115,7 +115,7 @@ create: db/marker.manifest.000004.MANIFEST-000010
 close: db/marker.manifest.000004.MANIFEST-000010
 sync: db
 [JOB 6] MANIFEST created 000010
-[JOB 6] flushed 1 memtable to L0 [000009] (770 B), in 1.0s (2.0s total), output rate 770 B/s
+[JOB 6] flushed 1 memtable to L0 [000009] (770 B), in 1.0s (4.0s total), output rate 770 B/s
 [JOB 6] MANIFEST deleted 000003
 [JOB 7] compacting(default) L0 [000006 000009] (1.5 K) + L6 [] (0 B)
 create: db/000011.sst
@@ -159,7 +159,7 @@ create: db/marker.manifest.000006.MANIFEST-000015
 close: db/marker.manifest.000006.MANIFEST-000015
 sync: db
 [JOB 9] MANIFEST created 000015
-[JOB 9] flushed 1 memtable to L0 [000014] (770 B), in 1.0s (2.0s total), output rate 770 B/s
+[JOB 9] flushed 1 memtable to L0 [000014] (770 B), in 1.0s (4.0s total), output rate 770 B/s
 
 enable-file-deletions
 ----
@@ -167,35 +167,62 @@ enable-file-deletions
 
 ingest
 ----
+sync: wal/000013.log
 link: ext/0 -> db/000016.sst
 [JOB 11] ingesting: sstable created 000016
 sync: db
-create: db/MANIFEST-000017
-close: db/MANIFEST-000015
-sync: db/MANIFEST-000017
-create: db/marker.manifest.000007.MANIFEST-000017
-close: db/marker.manifest.000007.MANIFEST-000017
+create: wal/000017.log
+sync: wal
+[JOB 12] WAL created 000017
+sync: wal/000017.log
+close: wal/000017.log
+reuseForWrite: wal/000008.log -> wal/000018.log
+sync: wal
+[JOB 13] WAL created 000018 (recycled 000008)
+[JOB 11] ingested L-1:000016 (825 B)
+[JOB 14] flushing 1 memtable to L0
+create: db/000019.sst
+[JOB 14] flushing: sstable created 000019
+sync: db/000019.sst
+close: db/000019.sst
 sync: db
-[JOB 11] MANIFEST created 000017
-[JOB 11] MANIFEST deleted 000012
-[JOB 11] ingested L0:000016 (825 B)
+create: db/MANIFEST-000020
+close: db/MANIFEST-000015
+sync: db/MANIFEST-000020
+create: db/marker.manifest.000007.MANIFEST-000020
+close: db/marker.manifest.000007.MANIFEST-000020
+sync: db
+[JOB 14] MANIFEST created 000020
+[JOB 14] flushed 1 memtable to L0 [000019] (770 B), in 1.0s (2.0s total), output rate 770 B/s
+[JOB 14] flushing 1 memtable
+create: db/MANIFEST-000021
+close: db/MANIFEST-000020
+sync: db/MANIFEST-000021
+create: db/marker.manifest.000008.MANIFEST-000021
+close: db/marker.manifest.000008.MANIFEST-000021
+sync: db
+[JOB 14] MANIFEST created 000021
+[JOB 14] flushed 1 memtable to L0 [000016] (825 B), in 1.0s (2.0s total), output rate 825 B/s
+[JOB 14] flushed 2/2 memtables in 7.0s
+[JOB 14] MANIFEST deleted 000012
+[JOB 14] MANIFEST deleted 000015
 
 metrics
 ----
 __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
-    WAL         1    27 B       -    48 B       -       -       -       -   108 B       -       -       -     2.2
-      0         2   1.6 K    0.40    81 B   825 B       1     0 B       0   2.3 K       3     0 B       2    28.5
+    WAL         1    38 B       -    91 B       -       -       -       -   119 B       -       -       -     1.3
+      0         3   2.3 K    0.60    81 B   825 B       1     0 B       0   3.0 K       4     0 B       3    38.0
       1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       6         1   770 B       -   1.5 K     0 B       0     0 B       0   770 B       1   1.5 K       1     0.5
-  total         3   2.3 K       -   933 B   825 B       1     0 B       0   3.9 K       4   1.5 K       3     4.3
-  flush         3
-compact         1   2.3 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  total         4   3.1 K       -   944 B   825 B       1     0 B       0   4.7 K       5   1.5 K       4     5.1
+  flush         4
+compact         1   3.1 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0  (default, delete, elision, move, read, rewrite)
- memtbl         1   256 K
+ memtbl         1   512 K
 zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         8   1.4 K   11.1%  (score == hit-rate)
@@ -208,6 +235,7 @@ sstables
 ----
 0:
   14:[a-a]
+  19:[a-a]
   16:[a-a]
 6:
   11:[a-a]
@@ -226,21 +254,22 @@ sync: checkpoint/marker.format-version.000001.009
 close: checkpoint/marker.format-version.000001.009
 sync: checkpoint
 close: checkpoint
-create: checkpoint/MANIFEST-000017
-sync: checkpoint/MANIFEST-000017
-close: checkpoint/MANIFEST-000017
+create: checkpoint/MANIFEST-000021
+sync: checkpoint/MANIFEST-000021
+close: checkpoint/MANIFEST-000021
 open-dir: checkpoint
-create: checkpoint/marker.manifest.000001.MANIFEST-000017
-sync: checkpoint/marker.manifest.000001.MANIFEST-000017
-close: checkpoint/marker.manifest.000001.MANIFEST-000017
+create: checkpoint/marker.manifest.000001.MANIFEST-000021
+sync: checkpoint/marker.manifest.000001.MANIFEST-000021
+close: checkpoint/marker.manifest.000001.MANIFEST-000021
 sync: checkpoint
 close: checkpoint
 link: db/000014.sst -> checkpoint/000014.sst
+link: db/000019.sst -> checkpoint/000019.sst
 link: db/000016.sst -> checkpoint/000016.sst
 link: db/000011.sst -> checkpoint/000011.sst
-create: checkpoint/000013.log
-sync: checkpoint/000013.log
-close: checkpoint/000013.log
+create: checkpoint/000018.log
+sync: checkpoint/000018.log
+close: checkpoint/000018.log
 sync: checkpoint
 close: checkpoint
 
@@ -251,9 +280,9 @@ pebble: file deletion disablement invariant violated
 close
 ----
 close: db
-sync: wal/000013.log
-close: wal/000013.log
-close: db/MANIFEST-000017
+sync: wal/000018.log
+close: wal/000018.log
+close: db/MANIFEST-000021
 close: db
 close: db
 close: wal

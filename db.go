@@ -1763,104 +1763,11 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		}
 
 		var newLogNum FileNum
-		var newLogFile vfs.File
-		var newLogSize uint64
 		var prevLogSize uint64
 		var err error
 
 		if !d.opts.DisableWAL {
-			jobID := d.mu.nextJobID
-			d.mu.nextJobID++
-			newLogNum = d.mu.versions.getNextFileNum()
-			d.mu.mem.switching = true
-
-			prevLogSize = uint64(d.mu.log.Size())
-
-			// The previous log may have grown past its original physical
-			// size. Update its file size in the queue, so we have a proper
-			// accounting of its file size.
-			if d.mu.log.queue[len(d.mu.log.queue)-1].fileSize < prevLogSize {
-				d.mu.log.queue[len(d.mu.log.queue)-1].fileSize = prevLogSize
-			}
-			d.mu.Unlock()
-
-			// Close the previous log first. This writes an EOF trailer
-			// signifying the end of the file and syncs it to disk. We must
-			// close the previous log before linking the new log file,
-			// otherwise a crash could leave both logs with unclean tails, and
-			// Open will treat the previous log as corrupt.
-			err = d.mu.log.Close()
-
-			newLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
-
-			// Try to use a recycled log file. Recycling log files is an important
-			// performance optimization as it is faster to sync a file that has
-			// already been written, than one which is being written for the first
-			// time. This is due to the need to sync file metadata when a file is
-			// being written for the first time. Note this is true even if file
-			// preallocation is performed (e.g. fallocate).
-			var recycleLog fileInfo
-			var recycleOK bool
-			if err == nil {
-				recycleLog, recycleOK = d.logRecycler.peek()
-				if recycleOK {
-					recycleLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, recycleLog.fileNum)
-					newLogFile, err = d.opts.FS.ReuseForWrite(recycleLogName, newLogName)
-					base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
-				} else {
-					newLogFile, err = d.opts.FS.Create(newLogName)
-					base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
-				}
-			}
-
-			if err == nil && recycleOK {
-				// Figure out the recycled WAL size. This Stat is necessary
-				// because ReuseForWrite's contract allows for removing the
-				// old file and creating a new one. We don't know whether the
-				// WAL was actually recycled.
-				// TODO(jackson): Adding a boolean to the ReuseForWrite return
-				// value indicating whether or not the file was actually
-				// reused would allow us to skip the stat and use
-				// recycleLog.fileSize.
-				var finfo os.FileInfo
-				finfo, err = newLogFile.Stat()
-				if err == nil {
-					newLogSize = uint64(finfo.Size())
-				}
-			}
-
-			if err == nil {
-				// TODO(peter): RocksDB delays sync of the parent directory until the
-				// first time the log is synced. Is that worthwhile?
-				err = d.walDir.Sync()
-			}
-
-			if err != nil && newLogFile != nil {
-				newLogFile.Close()
-			} else if err == nil {
-				newLogFile = vfs.NewSyncingFile(newLogFile, vfs.SyncingFileOptions{
-					BytesPerSync:    d.opts.WALBytesPerSync,
-					PreallocateSize: d.walPreallocateSize(),
-				})
-			}
-
-			if recycleOK {
-				err = firstError(err, d.logRecycler.pop(recycleLog.fileNum))
-			}
-
-			d.opts.EventListener.WALCreated(WALCreateInfo{
-				JobID:           jobID,
-				Path:            newLogName,
-				FileNum:         newLogNum,
-				RecycledFileNum: recycleLog.fileNum,
-				Err:             err,
-			})
-
-			d.mu.Lock()
-			d.mu.mem.switching = false
-			d.mu.mem.cond.Broadcast()
-
-			d.mu.versions.metrics.WAL.Files++
+			newLogNum, prevLogSize, err = d.createOrRecycleWAL()
 		}
 
 		if err != nil {
@@ -1870,12 +1777,6 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// What to do here? Stumbling on doesn't seem worthwhile. If we failed to
 			// close the previous log it is possible we lost a write.
 			panic(err)
-		}
-
-		if !d.opts.DisableWAL {
-			d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: newLogSize})
-			d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNum)
-			d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
 		}
 
 		immMem := d.mu.mem.mutable
@@ -1922,13 +1823,119 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		}
 
 		d.rotateMemtable(newLogNum, logSeqNum, nil)
-		if immMem.writerRefs == 0 {
-			d.maybeScheduleFlush()
-		}
 		force = false
 	}
 }
 
+// d.mu must be held when calling.
+func (d *DB) createOrRecycleWAL() (newLogNum FileNum, prevLogSize uint64, err error) {
+	jobID := d.mu.nextJobID
+	d.mu.nextJobID++
+	newLogNum = d.mu.versions.getNextFileNum()
+	d.mu.mem.switching = true
+
+	prevLogSize = uint64(d.mu.log.Size())
+
+	// The previous log may have grown past its original physical
+	// size. Update its file size in the queue, so we have a proper
+	// accounting of its file size.
+	if d.mu.log.queue[len(d.mu.log.queue)-1].fileSize < prevLogSize {
+		d.mu.log.queue[len(d.mu.log.queue)-1].fileSize = prevLogSize
+	}
+	d.mu.Unlock()
+
+	// Close the previous log first. This writes an EOF trailer
+	// signifying the end of the file and syncs it to disk. We must
+	// close the previous log before linking the new log file,
+	// otherwise a crash could leave both logs with unclean tails, and
+	// Open will treat the previous log as corrupt.
+	err = d.mu.log.Close()
+
+	newLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
+
+	// Try to use a recycled log file. Recycling log files is an important
+	// performance optimization as it is faster to sync a file that has
+	// already been written, than one which is being written for the first
+	// time. This is due to the need to sync file metadata when a file is
+	// being written for the first time. Note this is true even if file
+	// preallocation is performed (e.g. fallocate).
+	var recycleLog fileInfo
+	var recycleOK bool
+	var newLogFile vfs.File
+	if err == nil {
+		recycleLog, recycleOK = d.logRecycler.peek()
+		if recycleOK {
+			recycleLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, recycleLog.fileNum)
+			newLogFile, err = d.opts.FS.ReuseForWrite(recycleLogName, newLogName)
+			base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
+		} else {
+			newLogFile, err = d.opts.FS.Create(newLogName)
+			base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
+		}
+	}
+
+	var newLogSize uint64
+	if err == nil && recycleOK {
+		// Figure out the recycled WAL size. This Stat is necessary
+		// because ReuseForWrite's contract allows for removing the
+		// old file and creating a new one. We don't know whether the
+		// WAL was actually recycled.
+		// TODO(jackson): Adding a boolean to the ReuseForWrite return
+		// value indicating whether or not the file was actually
+		// reused would allow us to skip the stat and use
+		// recycleLog.fileSize.
+		var finfo os.FileInfo
+		finfo, err = newLogFile.Stat()
+		if err == nil {
+			newLogSize = uint64(finfo.Size())
+		}
+	}
+
+	if err == nil {
+		// TODO(peter): RocksDB delays sync of the parent directory until the
+		// first time the log is synced. Is that worthwhile?
+		err = d.walDir.Sync()
+	}
+
+	if err != nil && newLogFile != nil {
+		newLogFile.Close()
+	} else if err == nil {
+		newLogFile = vfs.NewSyncingFile(newLogFile, vfs.SyncingFileOptions{
+			BytesPerSync:    d.opts.WALBytesPerSync,
+			PreallocateSize: d.walPreallocateSize(),
+		})
+	}
+
+	if recycleOK {
+		err = firstError(err, d.logRecycler.pop(recycleLog.fileNum))
+	}
+
+	d.opts.EventListener.WALCreated(WALCreateInfo{
+		JobID:           jobID,
+		Path:            newLogName,
+		FileNum:         newLogNum,
+		RecycledFileNum: recycleLog.fileNum,
+		Err:             err,
+	})
+
+	d.mu.Lock()
+	d.mu.mem.switching = false
+	d.mu.mem.cond.Broadcast()
+
+	d.mu.versions.metrics.WAL.Files++
+
+	if err != nil {
+		return
+	}
+
+	d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: newLogSize})
+	d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNum)
+	d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
+
+	return
+}
+
+// d.mu must be held when calling.
 func (d *DB) rotateMemtable(newLogNum FileNum, logSeqNum uint64, before *flushableEntry) {
 	// Create a new memtable, scheduling the previous one for flushing. We do
 	// this even if the previous memtable was empty because the DB.Flush
@@ -1952,7 +1959,9 @@ func (d *DB) rotateMemtable(newLogNum FileNum, logSeqNum uint64, before *flushab
 	d.mu.mem.mutable, entry = d.newMemTable(newLogNum, logSeqNum)
 	d.mu.mem.queue = append(d.mu.mem.queue, entry)
 	d.updateReadStateLocked(nil, nil)
-	immMem.writerUnref()
+	if immMem.writerUnref() {
+		d.maybeScheduleFlush()
+	}
 }
 
 func (d *DB) getEarliestUnflushedSeqNumLocked() uint64 {

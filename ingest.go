@@ -13,7 +13,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -654,8 +653,12 @@ func (d *DB) ingest(paths []string, targetLevelFunc ingestTargetLevelFunc) error
 						Level: -1,
 					})
 				}
-				d.rotateMemtable(d.mu.versions.getNextFileNum(), nextSeqNum, entry)
-				d.updateReadStateLocked(d.opts.DebugCheck, nil)
+
+				newLogNum, _, err := d.createOrRecycleWAL()
+				if err != nil {
+					return
+				}
+				d.rotateMemtable(newLogNum, nextSeqNum, entry)
 				d.maybeScheduleFlush()
 				return
 			}
@@ -738,39 +741,13 @@ func (d *DB) addIngestedSSTsFlushable(
 	imm := d.mu.mem.queue[len(d.mu.mem.queue)-1]
 	logNum := imm.logNum
 
-	// TODO(mufeez): copied from replayWAL.
 	// TODO(mufeez): add details about why we want to create a new WAL, minUnflushedLogNum, replayWAL logAndApply version
 	if !d.opts.DisableWAL {
-		logNum = d.mu.versions.getNextFileNum()
-
-		newLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, logNum)
-		d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: logNum, fileSize: 0})
-		logFile, err := d.opts.FS.Create(newLogName)
+		var err error
+		logNum, _, err = d.createOrRecycleWAL()
 		if err != nil {
 			return nil, 0, err
 		}
-		if err := d.walDir.Sync(); err != nil {
-			return nil, 0, err
-		}
-		jobID := d.mu.nextJobID
-		d.mu.nextJobID++
-		d.opts.EventListener.WALCreated(WALCreateInfo{
-			JobID:   jobID,
-			Path:    newLogName,
-			FileNum: logNum,
-		})
-		// This isn't strictly necessary as we don't use the log number for
-		// memtables being flushed, only for the next unflushed memtable.
-		d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum = logNum
-
-		logFile = vfs.NewSyncingFile(logFile, vfs.SyncingFileOptions{
-			BytesPerSync:    d.opts.WALBytesPerSync,
-			PreallocateSize: d.walPreallocateSize(),
-		})
-		d.mu.log.LogWriter = record.NewLogWriter(logFile, logNum)
-		d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
-		d.mu.versions.metrics.WAL.Files++
-
 		d.mu.Unlock()
 		_, err = d.commit.env.write(b, nil, nil)
 		if err != nil {

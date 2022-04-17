@@ -50,6 +50,7 @@ ls
 000005.sst
 000006.sst
 000007.log
+000008.log
 CURRENT
 LOCK
 MANIFEST-000001
@@ -63,27 +64,26 @@ open
 
 ls
 ----
-000002.log
 000004.sst
 000005.sst
 000006.sst
-000008.log
-000009.sst
+000009.log
+000010.sst
 CURRENT
 LOCK
 MANIFEST-000001
-MANIFEST-000010
-OPTIONS-000011
+MANIFEST-000011
+OPTIONS-000012
 ext
 marker.format-version.000008.009
-marker.manifest.000002.MANIFEST-000010
+marker.manifest.000002.MANIFEST-000011
 
 lsm
 ----
 0.1:
   000004:[a#2,SET-a#2,SET]
 0.0:
-  000009:[a#1,SET-a#1,SET]
+  000010:[a#1,SET-a#1,SET]
 6:
   000005:[b#3,SET-b#3,SET]
   000006:[d#4,SET-d#4,SET]
@@ -187,8 +187,6 @@ set c 1
 
 flush
 ----
-
-# TODO: not sure if below file nums are correct.
 
 lsm
 ----

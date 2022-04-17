@@ -760,31 +760,32 @@ func (b *Batch) RangeKeyDeleteDeferred(startLen, endLen int) *DeferredBatchOp {
 //
 // It is safe to modify the contents of the argument after LogData returns.
 func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
-	return b.writeRecordToWALOnly(data, InternalKeyKindLogData, true)
+	return b.writeRecordToWALOnly(data, InternalKeyKindLogData, false)
 }
 
 // IngestSSTs adds the list of sstable paths to the batch. The data will only be
 // written to the WAL (not added to memtables or sstables).
 func (b *Batch) IngestSSTs(data []byte, _ *WriteOptions) error {
-	return b.writeRecordToWALOnly(data, InternalKeyKindIngestSST, false)
+	return b.writeRecordToWALOnly(data, InternalKeyKindIngestSST, true)
 }
 
 // writeRecordToWALOnly writes a record to a batch that will not be applied to
-// the memtable. `keepCount` dictates whether we restore batch.Count.
-func (b *Batch) writeRecordToWALOnly(data []byte, kind InternalKeyKind, keepCount bool) error {
+// the memtable. `updateCount` dictates whether or not we update batch.Count.
+func (b *Batch) writeRecordToWALOnly(data []byte, kind InternalKeyKind, updateCount bool) error {
 	origCount, origMemTableSize := b.count, b.memTableSize
 	defer func() {
+		// Restore b.memTableSize (and b.count when updateCount is true) to the
+		// original value(s) since this batch is not written to the memtable. Note
+		// that Batch.count only refers to records that are added to the memtable.
 		b.memTableSize = origMemTableSize
-		if keepCount {
+		if !updateCount {
 			b.count = origCount
 		}
 	}()
 
 	b.prepareDeferredKeyRecord(len(data), kind)
 	copy(b.deferredOp.Key, data)
-	// Restore b.count and b.memTableSize to their origin values since this batch
-	// is not written to the memtable. Note that Batch.count only refers to
-	// records that are added to the memtable.
+
 	b.memTableSize = origMemTableSize
 	return nil
 }
@@ -1065,7 +1066,9 @@ func (b *Batch) setCount(v uint32) {
 }
 
 // Count returns the count of memtable-modifying operations in this batch. All
-// operations with the except of LogData increment this count.
+// operations except for LogData increment this count. For IngestSSTs,
+// count is only used to indicate the number of SSTs ingested in the record, the
+// batch isn't applied to the memtable.
 func (b *Batch) Count() uint32 {
 	if b.count > math.MaxUint32 {
 		panic(ErrInvalidBatch)

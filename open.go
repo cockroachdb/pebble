@@ -676,11 +676,10 @@ func (d *DB) replayWAL(
 		seqNum := b.SeqNum()
 		maxSeqNum = seqNum + uint64(b.Count())
 
+		// TODO(mufeez): Clean up logic here.
 		br := b.Reader()
 		if kind, key, _, _ := br.Next(); kind == InternalKeyKindIngestSST {
-			d.mu.Unlock()
-			fmv := d.FormatMajorVersion()
-			d.mu.Lock()
+			fmv := d.mu.formatVers.vers
 			if fmv < FormatFlushableSSTs {
 				panic(fmt.Sprintf(
 					"pebble: flushable sstables require at least format major version %d (current: %d)",
@@ -688,8 +687,8 @@ func (d *DB) replayWAL(
 				))
 			}
 
-			paths := make([]string, b.count)
-			pendingOutputs := make([]FileNum, b.count)
+			paths := make([]string, b.Count())
+			pendingOutputs := make([]FileNum, b.Count())
 			i := 0
 			addPath := func(path []byte) error {
 				paths[i] = string(path)
