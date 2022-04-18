@@ -91,8 +91,8 @@ create: db/marker.manifest.000003.MANIFEST-000007
 close: db/marker.manifest.000003.MANIFEST-000007
 sync: db
 [JOB 4] MANIFEST created 000007
-[JOB 4] flushed 1 memtable to L0 [000006] (770 B), in 1.0s (4.0s total), output rate 770 B/s
 [JOB 4] MANIFEST deleted 000001
+[JOB 4] flushed 1 memtable to L0 [000006] (770 B), in 1.0s (4.0s total), output rate 770 B/s
 
 compact
 ----
@@ -115,8 +115,8 @@ create: db/marker.manifest.000004.MANIFEST-000010
 close: db/marker.manifest.000004.MANIFEST-000010
 sync: db
 [JOB 6] MANIFEST created 000010
-[JOB 6] flushed 1 memtable to L0 [000009] (770 B), in 1.0s (4.0s total), output rate 770 B/s
 [JOB 6] MANIFEST deleted 000003
+[JOB 6] flushed 1 memtable to L0 [000009] (770 B), in 1.0s (4.0s total), output rate 770 B/s
 [JOB 7] compacting(default) L0 [000006 000009] (1.5 K) + L6 [] (0 B)
 create: db/000011.sst
 [JOB 7] compacting: sstable created 000011
@@ -171,14 +171,16 @@ sync: wal/000013.log
 link: ext/0 -> db/000016.sst
 [JOB 11] ingesting: sstable created 000016
 sync: db
-create: wal/000017.log
+sync: wal/000013.log
+close: wal/000013.log
+reuseForWrite: wal/000008.log -> wal/000017.log
 sync: wal
-[JOB 12] WAL created 000017
+[JOB 12] WAL created 000017 (recycled 000008)
 sync: wal/000017.log
 close: wal/000017.log
-reuseForWrite: wal/000008.log -> wal/000018.log
+create: wal/000018.log
 sync: wal
-[JOB 13] WAL created 000018 (recycled 000008)
+[JOB 13] WAL created 000018
 [JOB 11] ingested L-1:000016 (825 B)
 [JOB 14] flushing 1 memtable to L0
 create: db/000019.sst
@@ -193,6 +195,7 @@ create: db/marker.manifest.000007.MANIFEST-000020
 close: db/marker.manifest.000007.MANIFEST-000020
 sync: db
 [JOB 14] MANIFEST created 000020
+[JOB 14] MANIFEST deleted 000012
 [JOB 14] flushed 1 memtable to L0 [000019] (770 B), in 1.0s (2.0s total), output rate 770 B/s
 [JOB 14] flushing 1 memtable
 create: db/MANIFEST-000021
@@ -202,10 +205,9 @@ create: db/marker.manifest.000008.MANIFEST-000021
 close: db/marker.manifest.000008.MANIFEST-000021
 sync: db
 [JOB 14] MANIFEST created 000021
+[JOB 14] MANIFEST deleted 000015
 [JOB 14] flushed 1 memtable to L0 [000016] (825 B), in 1.0s (2.0s total), output rate 825 B/s
 [JOB 14] flushed 2/2 memtables in 7.0s
-[JOB 14] MANIFEST deleted 000012
-[JOB 14] MANIFEST deleted 000015
 
 metrics
 ----

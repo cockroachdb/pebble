@@ -654,9 +654,12 @@ func (d *DB) ingest(paths []string, targetLevelFunc ingestTargetLevelFunc) error
 					})
 				}
 
-				newLogNum, _, err := d.createOrRecycleWAL()
-				if err != nil {
-					return
+				newLogNum := d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum
+				if !d.opts.DisableWAL {
+					newLogNum, _, err = d.createOrRecycleWAL()
+					if err != nil {
+						return
+					}
 				}
 				d.rotateMemtable(newLogNum, nextSeqNum, entry)
 				d.maybeScheduleFlush()
