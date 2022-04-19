@@ -5,6 +5,7 @@
 package keyspan // import "github.com/cockroachdb/pebble/internal/keyspan"
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"strconv"
@@ -63,6 +64,14 @@ func (k Key) SeqNum() uint64 {
 // Kind returns the kind component of the key.
 func (k Key) Kind() base.InternalKeyKind {
 	return base.InternalKeyKind(k.Trailer & 0xff)
+}
+
+// Equal returns true if this Key is equal to the given key. Two keys are said
+// to be equal if the two Keys have equal trailers, suffix and value.
+func (k Key) Equal(b Key) bool {
+	return k.Trailer == b.Trailer &&
+		bytes.Equal(k.Suffix, b.Suffix) &&
+		bytes.Equal(k.Value, b.Value)
 }
 
 // Valid returns true if the span is defined.

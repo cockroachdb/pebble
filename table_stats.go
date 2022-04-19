@@ -533,7 +533,7 @@ func estimateEntrySizes(
 
 // tableRangedDeletionIter is a keyspan.FragmentIterator that returns "ranged
 // deletion" spans for a single table, providing a combined view of both range
-// deletion and range key deletion spans. The tableRAngedDeletionIter is
+// deletion and range key deletion spans. The tableRangedDeletionIter is
 // intended for use in the specific case of computing the statistics and
 // deleteCompactionHints for a single table.
 //
@@ -564,6 +564,16 @@ func estimateEntrySizes(
 // __________________________________________________________
 //   a b c d e f g h i j k l m n o p q r s t u v w x y z
 //
+// Each span returned by the tableRangeDeletionIter will have at most two keys,
+// corresponding to the largest and smallest sequence numbers encountered across
+// all keys that comprised the merged and defragmented span. For spans with
+// heterogenous key kinds (i.e. a mix of range deletions and range key
+// deletions), the largest key in the emitted span will always be a range
+// deletion and the smallest will always be a range key deletion, irrespective
+// of the key kinds of the original smallest and largest keys for the span. This
+// is done purely as an optimization, reducing the size of key slices emitted
+// for each defragmented span, while also preserving information about whether
+// the keys kinds in the span are homogenous or heterogeneous.
 type tableRangedDeletionIter struct {
 	keyspan.FragmentIterator
 	closers []keyspan.FragmentIterator
@@ -593,21 +603,49 @@ func newTableRangeDeletionIter(
 		return nil, err
 	}
 	if iter != nil {
-		// FIXME(travers): Do we also need the truncation here too?
 		closers = append(closers, iter)
 		iters = append(iters, iter)
 	}
 
 	// Construct a merging iterator over the range dels and range keys that emits
 	// spans containing only range dels and range key dels (i.e. filtering out
-	// RANGEKEYSET and RANGEKEYUNSET keys in each span).
+	// RANGEKEYSET and RANGEKEYUNSET keys in each span). The keys for the span are
+	// also altered such as to only preserve the keys with the largest and
+	// smallest sequence numbers for the span.
+	//
+	// If a span contains mixed key kinds (i.e. range dels and range key dels),
+	// the first key is set to a range del, and the last to a range key del. This
+	// preserves information about the mixture of the key kinds, while also
+	// allowing the size of the emitted key slice to be of length at most two.
+	keyType := func(kind base.InternalKeyKind) uint8 {
+		if rangekey.IsRangeKey(kind) {
+			return 1 << 1 // Range keys.
+		}
+		return 1 << 0 // Point keys.
+	}
 	transform := func(cmp base.Compare, in keyspan.Span, out *keyspan.Span) error {
 		out.Start, out.End = in.Start, in.End
 		out.Keys = out.Keys[:0]
+		var last keyspan.Key
+		var spanType uint8
 		for _, k := range in.Keys {
-			if k.Kind() == base.InternalKeyKindRangeDelete ||
-				k.Kind() == base.InternalKeyKindRangeKeyDelete {
+			if !(k.Kind() == base.InternalKeyKindRangeDelete ||
+				k.Kind() == base.InternalKeyKindRangeKeyDelete) {
+				continue
+			}
+			if len(out.Keys) == 0 {
 				out.Keys = append(out.Keys, k)
+			}
+			last = k
+			spanType |= keyType(k.Kind())
+		}
+		if len(out.Keys) > 0 && !out.Keys[0].Equal(last) {
+			out.Keys = append(out.Keys, last)
+			// If this is a mixed span, update the keys such that the first is range
+			// del, and the last is a range key del.
+			if spanType == 0b11 {
+				out.Keys[0].Trailer = base.MakeTrailer(out.Keys[0].SeqNum(), base.InternalKeyKindRangeDelete)
+				out.Keys[1].Trailer = base.MakeTrailer(out.Keys[1].SeqNum(), base.InternalKeyKindRangeKeyDelete)
 			}
 		}
 		return nil
@@ -621,12 +659,6 @@ func newTableRangeDeletionIter(
 	// - Exclusively range dels.
 	// - Exclusively range key dels.
 	// - A mixture of range dels and range key dels.
-	keyType := func(kind base.InternalKeyKind) uint8 {
-		if rangekey.IsRangeKey(kind) {
-			return 1 << 1 // Range keys.
-		}
-		return 1 << 0 // Point keys.
-	}
 	equal := func(_ base.Compare, a, b keyspan.Span) bool {
 		var aType, bType uint8
 		for _, k := range a.Keys {
