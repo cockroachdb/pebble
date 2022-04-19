@@ -12,6 +12,8 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -155,23 +157,25 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			})
 			m = &fileMetadata{}
 			for _, line := range strings.Split(td.Input, "\n") {
-				parts := strings.Split(line, " ")
-				start, end := []byte(parts[1]), []byte(parts[2])
-				switch parts[0] {
-				case "del-range":
-					err = w.Add(base.MakeInternalKey(start, 0, base.InternalKeyKindRangeDelete), end)
-				case "range-key-set":
-					err = w.RangeKeySet(start, end, []byte(parts[3]), []byte(parts[4]))
-				case "range-key-unset":
-					err = w.RangeKeyUnset(start, end, []byte(parts[3]))
-				case "range-key-del":
-					err = w.RangeKeyDelete(start, end)
-				default:
-					return fmt.Sprintf("unknown kind: %s", parts[0])
+				s := keyspan.ParseSpan(line)
+				// Range dels can be written sequentially. Range keys must be collected.
+				rKeySpan := keyspan.Span{Start: s.Start, End: s.End}
+				for _, k := range s.Keys {
+					if rangekey.IsRangeKey(k.Kind()) {
+						rKeySpan.Keys = append(rKeySpan.Keys, k)
+					} else {
+						k := base.InternalKey{UserKey: s.Start, Trailer: k.Trailer}
+						if err = w.Add(k, s.End); err != nil {
+							return err.Error()
+						}
+					}
 				}
-			}
-			if err != nil {
-				return err.Error()
+				err = rangekey.Encode(rKeySpan, func(k base.InternalKey, v []byte) error {
+					return w.AddRangeKey(k, v)
+				})
+				if err != nil {
+					return err.Error()
+				}
 			}
 			if err = w.Close(); err != nil {
 				return err.Error()
@@ -183,8 +187,12 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			if meta.HasPointKeys {
 				m.ExtendPointKeyBounds(cmp, meta.SmallestPoint, meta.LargestPoint)
 			}
-			m.ExtendPointKeyBounds(cmp, meta.SmallestRangeDel, meta.LargestRangeDel)
-			m.ExtendRangeKeyBounds(cmp, meta.SmallestRangeKey, meta.LargestRangeKey)
+			if meta.HasRangeDelKeys {
+				m.ExtendPointKeyBounds(cmp, meta.SmallestRangeDel, meta.LargestRangeDel)
+			}
+			if meta.HasRangeKeys {
+				m.ExtendRangeKeyBounds(cmp, meta.SmallestRangeKey, meta.LargestRangeKey)
+			}
 			return m.DebugString(base.DefaultFormatter, false /* verbose */)
 		case "spans":
 			f, err := fs.Open("tmp.sst")

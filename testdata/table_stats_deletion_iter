@@ -15,29 +15,32 @@
 #   a b c d e f g h i j k l m n o p q r s t u v w x y z
 #
 # where:
-# - 1: span with range dels only
-# - 2: span with range key dels only
-# - 3: span with range dels and range key dels
+# - 1: homogenous span with range dels only
+# - 2: homogenous span with range key dels only
+# - 3: heterogeneous span with range dels and range key dels
+#
+# NOTE: when a span has heterogenous key types, the first key is a range del,
+# and the second key is a range key del.
 
 build
-del-range a g
-del-range g n
-del-range t w
-range-key-del d i
-range-key-del l q
-range-key-del v z
+a-g:{(#0,RANGEDEL)}
+g-n:{(#0,RANGEDEL)}
+t-w:{(#0,RANGEDEL)}
+d-i:{(#0,RANGEKEYDEL)}
+l-q:{(#0,RANGEKEYDEL)}
+v-z:{(#0,RANGEKEYDEL)}
 ----
 000000:[a#0,RANGEDEL-z#72057594037927935,RANGEKEYDEL]
 
 spans
 ----
 a-d:{(#0,RANGEDEL)}
-d-i:{(#0,RANGEKEYDEL) (#0,RANGEDEL)}
+d-i:{(#0,RANGEDEL) (#0,RANGEKEYDEL)}
 i-l:{(#0,RANGEDEL)}
-l-n:{(#0,RANGEKEYDEL) (#0,RANGEDEL)}
+l-n:{(#0,RANGEDEL) (#0,RANGEKEYDEL)}
 n-q:{(#0,RANGEKEYDEL)}
 t-v:{(#0,RANGEDEL)}
-v-w:{(#0,RANGEKEYDEL) (#0,RANGEDEL)}
+v-w:{(#0,RANGEDEL) (#0,RANGEKEYDEL)}
 w-z:{(#0,RANGEKEYDEL)}
 
 # The iterator elides anything other than range deletes and range key deletes.
@@ -54,28 +57,90 @@ w-z:{(#0,RANGEKEYDEL)}
 #   a b c d e f g h i j k l m n o p q r s t u v w x y z
 
 build
-del-range a u
-range-key-set a h @1 foo
-range-key-unset h p @1
-range-key-del p z
+a-u:{(#0,RANGEDEL)}
+a-h:{(#0,RANGEKEYSET,@1,foo)}
+h-p:{(#0,RANGEKEYUNSET,@1)}
+p-z:{(#0,RANGEKEYDEL)}
 ----
 000000:[a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYDEL]
 
 spans
 ----
 a-p:{(#0,RANGEDEL) (#0,RANGEDEL)}
-p-u:{(#0,RANGEKEYDEL) (#0,RANGEDEL)}
+p-u:{(#0,RANGEDEL) (#0,RANGEKEYDEL)}
 u-z:{(#0,RANGEKEYDEL)}
 
 # An iterator over a table with neither range dels or range key dels present
 # yields no spans.
 
 build
-range-key-set a m @1 foo
-range-key-unset m z @1
+a-m:{(#0,RANGEKEYSET,@1,foo)}
+m-z:{(#0,RANGEKEYUNSET,@1)}
 ----
-000000:[#0,DEL-z#72057594037927935,RANGEKEYUNSET]
+000000:[a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYUNSET]
 
 spans
 ----
 (none)
+
+# Abutting spans that are merged emit only the largest and smallest key.
+
+build
+a-c:{(#4,RANGEDEL) (#3,RANGEDEL) (#1,RANGEDEL)}
+c-d:{(#9,RANGEDEL) (#7,RANGEDEL) (#6,RANGEDEL) (#2,RANGEDEL)}
+----
+000000:[a#4,RANGEDEL-d#72057594037927935,RANGEDEL]
+
+spans
+----
+a-d:{(#9,RANGEDEL) (#1,RANGEDEL)}
+
+# The same as above, but for range key dels.
+
+build
+a-c:{(#4,RANGEKEYDEL) (#3,RANGEKEYDEL) (#1,RANGEKEYDEL)}
+c-d:{(#9,RANGEKEYDEL) (#7,RANGEKEYDEL) (#6,RANGEKEYDEL) (#2,RANGEKEYDEL)}
+----
+000000:[a#4,RANGEKEYDEL-d#72057594037927935,RANGEKEYDEL]
+
+spans
+----
+a-d:{(#9,RANGEKEYDEL) (#1,RANGEKEYDEL)}
+
+# The same as above, but for mixed key kinds. As the resulting defragmented span
+# is heterogenous, the first key is a range del and the last is a range key del,
+# irrespective of the key kinds of the original largest and smallest keys.
+
+build
+a-c:{(#4,RANGEKEYDEL) (#3,RANGEKEYDEL) (#1,RANGEDEL)}
+c-d:{(#9,RANGEKEYDEL) (#7,RANGEDEL) (#6,RANGEDEL) (#2,RANGEKEYDEL)}
+----
+000000:[a#4,RANGEKEYDEL-d#72057594037927935,RANGEDEL]
+
+spans
+----
+a-d:{(#9,RANGEDEL) (#1,RANGEKEYDEL)}
+
+# "Hetrogenous spans" (i.e. spans containing both range dels and range key dels)
+# are preserved when abutting spans are merged. This tests that the reducing
+# function does not "lose information" of the merged spans, effectively
+# resulting in the span switching types from a heterogeneous span to a
+# homogenous span.
+
+# 10 |-------|---|---| RANGEDELs
+# 5  |-------|---|     RANGEKEYDELs
+# 3  |-------|---|---| RANGEDELs
+# _____________________
+#    a   b   c   d   e
+
+build
+a-c:{(#10,RANGEDEL) (#5,RANGEKEYDEL) (#3,RANGEDEL)}
+c-d:{(#10,RANGEDEL) (#5,RANGEKEYDEL) (#3,RANGEDEL)}
+d-e:{(#10,RANGEDEL) (#3,RANGEDEL)}
+----
+000000:[a#10,RANGEDEL-e#72057594037927935,RANGEDEL]
+
+spans
+----
+a-d:{(#10,RANGEDEL) (#3,RANGEKEYDEL)}
+d-e:{(#10,RANGEDEL) (#3,RANGEDEL)}
