@@ -66,14 +66,6 @@ func (i *filteringIter) Prev() Span {
 	return i.filter(i.iter.Prev(), -1)
 }
 
-// Clone implements FragmentIterator.
-func (i *filteringIter) Clone() FragmentIterator {
-	return &filteringIter{
-		iter:     i.iter.Clone(),
-		filterFn: i.filterFn,
-	}
-}
-
 // Error implements FragmentIterator.
 func (i *filteringIter) Error() error {
 	return i.iter.Error()

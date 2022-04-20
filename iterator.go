@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"io"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"unsafe"
 
@@ -240,6 +241,12 @@ type iteratorRangeKeyState struct {
 		merging   keyspan.MergingIter
 		defraging keyspan.DefragmentingIter
 	}
+}
+
+var iterRangeKeyStateAllocPool = sync.Pool{
+	New: func() interface{} {
+		return &iteratorRangeKeyState{}
+	},
 }
 
 type bySuffix struct {
@@ -1721,6 +1728,16 @@ func (i *Iterator) Close() error {
 
 	const maxKeyBufCacheSize = 4 << 10 // 4 KB
 
+	if i.rangeKey != nil {
+		// Avoid caching the key buf if it is overly large. The constant is
+		// fairly arbitrary.
+		if cap(i.rangeKey.buf) >= maxKeyBufCacheSize {
+			i.rangeKey.buf = nil
+		}
+		*i.rangeKey = iteratorRangeKeyState{buf: i.rangeKey.buf}
+		iterRangeKeyStateAllocPool.Put(i.rangeKey)
+		i.rangeKey = nil
+	}
 	if alloc := i.alloc; alloc != nil {
 		// Avoid caching the key buf if it is overly large. The constant is fairly
 		// arbitrary.
@@ -1925,13 +1942,6 @@ func (i *Iterator) Clone() (*Iterator, error) {
 		newIters:            i.newIters,
 		seqNum:              i.seqNum,
 		newRangeKeyIter:     i.newRangeKeyIter,
-	}
-	if i.rangeKey != nil {
-		// TODO(jackson): Pool range-key iterator objects.
-		dbi.rangeKey = &iteratorRangeKeyState{
-			rangeKeyIter: i.rangeKey.rangeKeyIter.Clone(),
-			keys:         bySuffix{cmp: i.cmp},
-		}
 	}
 	return finishInitializingIter(buf), nil
 }
