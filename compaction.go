@@ -363,12 +363,11 @@ type compaction struct {
 	// returned from `compactionIter` and fragments them for output to files.
 	// Referenced by `compactionIter` which uses it to check whether keys are deleted.
 	rangeDelFrag keyspan.Fragmenter
-	// The range deletion tombstone iterator, that merges and fragments
-	// tombstones across levels. This iterator is included within the compaction
-	// input iterator as a single level.
-	// TODO(jackson): Remove this when the refactor of FragmentIterator,
-	// InterleavingIterator, etc is complete.
-	rangeDelIter keyspan.InternalIteratorShim
+	// The range deletion tombstone interleaving iterator that interleaves range
+	// tombstones in the compaction iterator. When a range tombstone is
+	// interleaved, the compaction loop may access the range deletions with the
+	// given start key by calling rangeDelInterleaving's Span method.
+	rangeDelInterleaving keyspan.InterleavingIter
 
 	// A list of objects to close when the compaction finishes. Used by input
 	// iteration to keep rangeDelIters open for the lifetime of the compaction,
@@ -907,8 +906,8 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 			f := c.flushing[0]
 			iter := f.newFlushIter(nil, &c.bytesIterated)
 			if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
-				c.rangeDelIter.Init(c.cmp, rangeDelIter)
-				return newMergingIter(c.logger, c.cmp, nil, iter, &c.rangeDelIter), nil
+				c.rangeDelInterleaving.Init(c.cmp, base.WrapIterWithStats(iter), rangeDelIter, keyspan.Hooks{})
+				return &c.rangeDelInterleaving, nil
 			}
 			return iter, nil
 		}
@@ -922,11 +921,15 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 				rangeDelIters = append(rangeDelIters, rangeDelIter)
 			}
 		}
-		if len(rangeDelIters) > 0 {
-			c.rangeDelIter.Init(c.cmp, rangeDelIters...)
-			iters = append(iters, &c.rangeDelIter)
+
+		miter := newMergingIter(c.logger, c.cmp, nil, iters...)
+		if len(rangeDelIters) == 0 {
+			return miter, nil
 		}
-		return newMergingIter(c.logger, c.cmp, nil, iters...), nil
+		rangeDel := new(keyspan.MergingIter)
+		rangeDel.Init(c.cmp, keyspan.NoopTransform, rangeDelIters...)
+		c.rangeDelInterleaving.Init(c.cmp, base.WrapIterWithStats(miter), rangeDel, keyspan.Hooks{})
+		return &c.rangeDelInterleaving, nil
 	}
 
 	// Check that the LSM ordering invariants are ok in order to prevent
@@ -1112,16 +1115,18 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		return nil, err
 	}
 
+	miter := newMergingIter(c.logger, c.cmp, nil, iters...)
+	if len(rangeDelIters) == 0 {
+		return miter, nil
+	}
+
 	// Combine all the rangedel iterators using a keyspan.MergingIterator and a
 	// InternalIteratorShim so that the range deletions may be interleaved in
 	// the compaction input.
-	// TODO(jackson): Replace the InternalIteratorShim with an interleaving
-	// iterator.
-	if len(rangeDelIters) > 0 {
-		c.rangeDelIter.Init(c.cmp, rangeDelIters...)
-		iters = append(iters, &c.rangeDelIter)
-	}
-	return newMergingIter(c.logger, c.cmp, nil, iters...), nil
+	rangeDelIter := new(keyspan.MergingIter)
+	rangeDelIter.Init(c.cmp, keyspan.NoopTransform, rangeDelIters...)
+	c.rangeDelInterleaving.Init(c.cmp, base.WrapIterWithStats(miter), rangeDelIter, keyspan.Hooks{})
+	return &c.rangeDelInterleaving, nil
 }
 
 func (c *compaction) String() string {
@@ -2054,7 +2059,7 @@ func (d *DB) runCompaction(
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum()
 	iter := newCompactionIter(c.cmp, c.equal, c.formatKey, d.merge, iiter, snapshots,
-		&c.rangeDelFrag, c.allowedZeroSeqNum, c.elideTombstone,
+		&c.rangeDelFrag, &c.rangeDelInterleaving, c.allowedZeroSeqNum, c.elideTombstone,
 		c.elideRangeTombstone, d.FormatMajorVersion())
 
 	var (
@@ -2411,17 +2416,15 @@ func (d *DB) runCompaction(
 				// The interleaved range deletion might only be one of many with
 				// these bounds. Some fragmenting is performed ahead of time by
 				// keyspan.MergingIter.
-				if s := c.rangeDelIter.Span(); !s.Empty() {
-					// Clone the s.Keys slice. It's owned by the the range
-					// deletion iterator stack, and it may be overwritten when
-					// we advance.
-					//
-					// We only need to perform a shallow clone, because the user
-					// keys and values point directly into the range deletion
-					// block which does NOT use prefix compression. This
-					// provides key stability.
-					c.rangeDelFrag.Add(s.ShallowClone())
-				}
+				//
+				// Clone the s.Keys slice. It's owned by the the range deletion
+				// iterator stack, and it may be overwritten when we advance.
+				//
+				// We only need to perform a shallow clone, because the user
+				// keys and values point directly into the range deletion block
+				// which does NOT use prefix compression. This provides key
+				// stability.
+				c.rangeDelFrag.Add(c.rangeDelInterleaving.Span().ShallowClone())
 				continue
 			}
 			if tw == nil {

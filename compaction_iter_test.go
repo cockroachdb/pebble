@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 )
 
 func TestSnapshotIndex(t *testing.T) {
@@ -76,6 +77,7 @@ func TestCompactionIter(t *testing.T) {
 	var merge Merge
 	var keys []InternalKey
 	var vals [][]byte
+	var rangeDels []keyspan.Span
 	var snapshots []uint64
 	var elideTombstones bool
 	var allowZeroSeqnum bool
@@ -90,12 +92,11 @@ func TestCompactionIter(t *testing.T) {
 	}
 
 	newIter := func(formatVersion FormatMajorVersion) *compactionIter {
-		// To adhere to the existing assumption that range deletion blocks in
-		// SSTables are not released while iterating, and therefore not
-		// susceptible to use-after-free bugs, we skip the zeroing of
-		// RangeDelete keys.
-		iter := newInvalidatingIter(&fakeIter{keys: keys, vals: vals})
-		iter.ignoreKind(InternalKeyKindRangeDelete)
+		var citer *compactionIter
+		pointIter := newInvalidatingIter(&fakeIter{keys: keys, vals: vals})
+		rangeDelIter := keyspan.NewIter(DefaultComparer.Compare, rangeDels)
+		iter := new(keyspan.InterleavingIter)
+		iter.Init(DefaultComparer.Compare, pointIter, rangeDelIter, keyspan.Hooks{})
 		if merge == nil {
 			merge = func(key, value []byte) (base.ValueMerger, error) {
 				m := &debugMerger{}
@@ -104,7 +105,7 @@ func TestCompactionIter(t *testing.T) {
 			}
 		}
 
-		return newCompactionIter(
+		citer = newCompactionIter(
 			DefaultComparer.Compare,
 			DefaultComparer.Equal,
 			DefaultComparer.FormatKey,
@@ -112,6 +113,7 @@ func TestCompactionIter(t *testing.T) {
 			iter,
 			snapshots,
 			&keyspan.Fragmenter{},
+			iter,
 			allowZeroSeqnum,
 			func([]byte) bool {
 				return elideTombstones
@@ -121,6 +123,7 @@ func TestCompactionIter(t *testing.T) {
 			},
 			formatVersion,
 		)
+		return citer
 	}
 
 	runTest := func(t *testing.T, formatVersion FormatMajorVersion) {
@@ -134,11 +137,24 @@ func TestCompactionIter(t *testing.T) {
 				}
 				keys = keys[:0]
 				vals = vals[:0]
+				rangeDels = rangeDels[:0]
+				fragmenter := keyspan.Fragmenter{
+					Cmp:    DefaultComparer.Compare,
+					Format: DefaultComparer.FormatKey,
+					Emit:   func(s keyspan.Span) { rangeDels = append(rangeDels, s) },
+				}
 				for _, key := range strings.Split(d.Input, "\n") {
 					j := strings.Index(key, ":")
-					keys = append(keys, base.ParseInternalKey(key[:j]))
-					vals = append(vals, []byte(key[j+1:]))
+					k := base.ParseInternalKey(key[:j])
+					v := []byte(key[j+1:])
+					if k.Kind() == base.InternalKeyKindRangeDelete {
+						fragmenter.Add(rangedel.Decode(k, v, nil))
+						continue
+					}
+					keys = append(keys, k)
+					vals = append(vals, v)
 				}
+				fragmenter.Finish()
 				return ""
 
 			case "iter":
@@ -203,16 +219,10 @@ func TestCompactionIter(t *testing.T) {
 						return fmt.Sprintf("unknown op: %s", parts[0])
 					}
 					if iter.Valid() {
-						fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
-						if iter.Key().Kind() == InternalKeyKindRangeDelete {
-							iter.rangeDelFrag.Add(keyspan.Span{
-								Start: append([]byte{}, iter.Key().UserKey...),
-								End:   append([]byte{}, iter.Value()...),
-								Keys: []keyspan.Key{
-									{Trailer: iter.Key().Trailer},
-								},
-							})
+						if iter.Key().Kind() == base.InternalKeyKindRangeDelete {
+							iter.rangeDelFrag.Add(iter.rangeDelInterleaving.Span())
 						}
+						fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
 					} else if err := iter.Error(); err != nil {
 						fmt.Fprintf(&b, "err=%v\n", err)
 					} else {

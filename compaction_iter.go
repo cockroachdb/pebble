@@ -5,7 +5,6 @@
 package pebble
 
 import (
-	"fmt"
 	"io"
 	"sort"
 	"strconv"
@@ -197,6 +196,9 @@ type compactionIter struct {
 	// Reference to the range deletion tombstone fragmenter (e.g.,
 	// `compaction.rangeDelFrag`).
 	rangeDelFrag *keyspan.Fragmenter
+	// Reference to the range deletion tombstone interleaving iter (e.g.,
+	// `compaction.rangeDelInterleaving`).
+	rangeDelInterleaving *keyspan.InterleavingIter
 	// The fragmented tombstones.
 	tombstones          []keyspan.Span
 	allowZeroSeqNum     bool
@@ -215,21 +217,23 @@ func newCompactionIter(
 	iter internalIterator,
 	snapshots []uint64,
 	rangeDelFrag *keyspan.Fragmenter,
+	rangeDelInterleaving *keyspan.InterleavingIter,
 	allowZeroSeqNum bool,
 	elideTombstone func(key []byte) bool,
 	elideRangeTombstone func(start, end []byte) bool,
 	formatVersion FormatMajorVersion,
 ) *compactionIter {
 	i := &compactionIter{
-		equal:               equal,
-		merge:               merge,
-		iter:                iter,
-		snapshots:           snapshots,
-		rangeDelFrag:        rangeDelFrag,
-		allowZeroSeqNum:     allowZeroSeqNum,
-		elideTombstone:      elideTombstone,
-		elideRangeTombstone: elideRangeTombstone,
-		formatVersion:       formatVersion,
+		equal:                equal,
+		merge:                merge,
+		iter:                 iter,
+		snapshots:            snapshots,
+		rangeDelFrag:         rangeDelFrag,
+		rangeDelInterleaving: rangeDelInterleaving,
+		allowZeroSeqNum:      allowZeroSeqNum,
+		elideTombstone:       elideTombstone,
+		elideRangeTombstone:  elideRangeTombstone,
+		formatVersion:        formatVersion,
 	}
 	i.rangeDelFrag.Cmp = cmp
 	i.rangeDelFrag.Format = formatKey
@@ -297,9 +301,9 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			// mediation could return the original iterKey and iterValue
 			// directly, as the backing memory is guaranteed to be stable until
 			// the compaction completes. The violation here is only minor in
-			// that the caller immediately clones the range deletion InternalKey
-			// when passing the key to the deletion fragmenter (see the
-			// call-site in compaction.go).
+			// that the caller ignores the returned user key, accessing the
+			// InterleavingIter's Span which is backed by the range key block
+			// (see the call-site in compaction.go).
 			// TODO(travers): address this violation by removing the call to
 			// saveKey and instead return the original iterKey and iterValue.
 			// This goes against the comment on i.key in the struct, and
@@ -310,7 +314,7 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			return &i.key, i.value
 		}
 
-		if i.rangeDelFrag.Covers(*i.iterKey, i.curSnapshotSeqNum) {
+		if i.rangeDelInterleaving.Span().Visible(i.curSnapshotSeqNum).Covers(i.iterKey.SeqNum()) {
 			i.saveKey()
 			i.skipInStripe()
 			continue
@@ -454,10 +458,6 @@ func (i *compactionIter) skipInStripe() {
 
 func (i *compactionIter) iterNext() bool {
 	i.iterKey, i.iterValue = i.iter.Next()
-	// We should never see an exclusive sentinel in the compaction input.
-	if i.iterKey != nil && i.iterKey.IsExclusiveSentinel() {
-		panic(fmt.Sprintf("pebble: unexpected exclusive sentinel in compaction input, trailer = %x", i.iterKey.Trailer))
-	}
 	return i.iterKey != nil
 }
 
@@ -492,13 +492,10 @@ func (i *compactionIter) nextInStripe() stripeChangeType {
 	i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
 	switch key.Kind() {
 	case InternalKeyKindRangeDelete:
-		// Range tombstones need to be exposed by the compactionIter to the upper level
-		// `compaction` object, so return them regardless of whether they are in the same
-		// snapshot stripe.
-		if i.curSnapshotIdx == origSnapshotIdx {
-			return sameStripeNonSkippable
-		}
-		return newStripe
+		// Range tombstones are always interleaved at the infinite sequence
+		// number. The above user key check will always return newStripe before
+		// falling into this codepath.
+		panic("unreachable")
 	case InternalKeyKindInvalid:
 		if i.curSnapshotIdx == origSnapshotIdx {
 			return sameStripeNonSkippable
@@ -559,17 +556,6 @@ func (i *compactionIter) setNext() {
 				// already done the work to transform the SET into a
 				// SETWITHDEL, and we will skip any additional iteration when
 				// this entry is encountered again in a subsequent compaction.
-				//
-				// Ideally, this codepath would be smart enough to handle the
-				// case of SET <- RANGEDEL <- ... <- DEL/SINGLEDEL <- ....
-				// This requires preserving any RANGEDEL entries we encounter
-				// along the way, then emitting the original (possibly
-				// transformed) key, followed by the RANGEDELs. This requires
-				// a sizable refactoring of the existing code, as nextInStripe
-				// currently returns a sameStripeNonSkippable when it
-				// encounters a RANGEDEL.
-				// TODO(travers): optimize to handle the RANGEDEL case if it
-				// turns out to be a performance problem.
 				i.key.SetKind(InternalKeyKindSetWithDelete)
 
 				// By setting i.skip=true, we are saying that after the
@@ -631,7 +617,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			return sameStripeSkippable
 
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
-			if i.rangeDelFrag.Covers(*key, i.curSnapshotSeqNum) {
+			if i.rangeDelInterleaving.Span().Visible(i.curSnapshotSeqNum).Covers(key.SeqNum()) {
 				// We change the kind of the result key to a Set so that it shadows
 				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
 				// strictly necessary, but provides consistency with the behavior of
@@ -655,7 +641,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			return sameStripeSkippable
 
 		case InternalKeyKindMerge:
-			if i.rangeDelFrag.Covers(*key, i.curSnapshotSeqNum) {
+			if i.rangeDelInterleaving.Span().Visible(i.curSnapshotSeqNum).Covers(key.SeqNum()) {
 				// We change the kind of the result key to a Set so that it shadows
 				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
 				// strictly necessary, but provides consistency with the behavior of

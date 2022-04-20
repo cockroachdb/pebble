@@ -77,7 +77,7 @@ func TestDefragmentingIter(t *testing.T) {
 				}
 			}
 			var innerIter MergingIter
-			innerIter.Init(cmp, noopTransform, NewIter(cmp, spans))
+			innerIter.Init(cmp, NoopTransform, NewIter(cmp, spans))
 			var iter DefragmentingIter
 			iter.Init(cmp, &innerIter, equal, reducer)
 			for _, line := range strings.Split(td.Input, "\n") {
@@ -158,9 +158,9 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	fragmented = fragment(cmp, formatKey, fragmented)
 
 	var originalInner MergingIter
-	originalInner.Init(cmp, noopTransform, NewIter(cmp, original))
+	originalInner.Init(cmp, NoopTransform, NewIter(cmp, original))
 	var fragmentedInner MergingIter
-	fragmentedInner.Init(cmp, noopTransform, NewIter(cmp, fragmented))
+	fragmentedInner.Init(cmp, NoopTransform, NewIter(cmp, fragmented))
 
 	var referenceIter, fragmentedIter DefragmentingIter
 	referenceIter.Init(cmp, &originalInner, DefragmentInternal, StaticDefragmentReducer)
