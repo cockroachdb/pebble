@@ -52,8 +52,13 @@ func TestTruncate(t *testing.T) {
 			lower := []byte(parts[0])
 			upper := []byte(parts[1])
 
-			truncated := Truncate(cmp, iter, lower, upper, startKey, endKey)
-			return formatAlphabeticSpans(truncated.spans)
+			tIter := Truncate(cmp, iter, lower, upper, startKey, endKey)
+			defer tIter.Close()
+			var truncated []Span
+			for s := tIter.First(); s.Valid(); s = tIter.Next() {
+				truncated = append(truncated, s.ShallowClone())
+			}
+			return formatAlphabeticSpans(truncated)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
