@@ -113,24 +113,6 @@ func (l *LevelIter) Init(
 	l.files = files.Filter(manifest.KeyTypeRange)
 }
 
-// Clone implements the keyspan.FragmentIterator interface
-func (l *LevelIter) Clone() FragmentIterator {
-	l2 := &LevelIter{
-		logger:    l.logger,
-		cmp:       l.cmp,
-		lower:     append([]byte(nil), l.lower...),
-		upper:     append([]byte(nil), l.upper...),
-		level:     l.level,
-		iter:      l.iter.Clone(),
-		iterFile:  l.iterFile,
-		newIter:   l.newIter,
-		files:     l.files.Clone(),
-		err:       l.err,
-		tableOpts: l.tableOpts,
-	}
-	return l2
-}
-
 func (l *LevelIter) findFileGE(key []byte) *manifest.FileMetadata {
 	// Find the earliest file whose largest key is >= key.
 	//

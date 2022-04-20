@@ -973,8 +973,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	// If range keys are enabled, construct the range key iterator stack too.
 	if dbi.opts.rangeKeys() {
 		if dbi.rangeKey == nil {
-			// TODO(jackson): Pool iteratorRangeKeyState.
-			dbi.rangeKey = &iteratorRangeKeyState{}
+			dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 			dbi.rangeKey.keys.cmp = dbi.cmp
 			dbi.rangeKey.rangeKeyIter = dbi.newRangeKeyIter(dbi.rangeKey)
 		}

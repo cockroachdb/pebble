@@ -133,8 +133,7 @@ func NewExternalIter(
 			}
 		}
 
-		// TODO(jackson): Pool range-key iterator objects.
-		dbi.rangeKey = &iteratorRangeKeyState{}
+		dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 		dbi.rangeKey.rangeKeyIter = rangekey.InitUserIteration(
 			o.Comparer.Compare,
 			base.InternalKeySeqNumMax,

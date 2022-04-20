@@ -145,17 +145,6 @@ func (i *DefragmentingIter) Init(
 	}
 }
 
-// Clone clones the iterator, returning an independent iterator over the same
-// state. This method is temporary and may be deleted once range keys' state is
-// properly reflected in readState.
-func (i *DefragmentingIter) Clone() FragmentIterator {
-	// TODO(jackson): Delete Clone() when range-key state is incorporated into
-	// readState.
-	c := &DefragmentingIter{}
-	c.Init(i.cmp, i.iter.Clone(), i.equal, i.reduce)
-	return c
-}
-
 // Error returns any accumulated error.
 func (i *DefragmentingIter) Error() error {
 	return i.iter.Error()

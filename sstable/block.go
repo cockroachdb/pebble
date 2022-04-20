@@ -1120,13 +1120,6 @@ func (i *fragmentBlockIter) Error() error {
 	return i.err
 }
 
-// Clone implements (keyspan.FragmentIterator).Clone, as documented in the
-// internal/keyspan package.
-func (i *fragmentBlockIter) Clone() keyspan.FragmentIterator {
-	// TODO(jackson): Remove keyspan.FragmentIterator.Clone.
-	panic("unimplemented")
-}
-
 // Close implements (base.InternalIterator).Close, as documented in the
 // internal/base package.
 func (i *fragmentBlockIter) Close() error {

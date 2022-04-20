@@ -729,18 +729,6 @@ func (m *MergingIter) prevEntry() {
 	}
 }
 
-// Clone clones the merging iterator and its underlying iterators.
-func (m *MergingIter) Clone() FragmentIterator {
-	// TODO(jackson): Remove when range-key state is included in readState.
-	var iters []FragmentIterator
-	for l := range m.levels {
-		iters = append(iters, m.levels[l].iter.iter.Clone())
-	}
-	dup := &MergingIter{}
-	dup.Init(m.cmp, m.transform, iters...)
-	return dup
-}
-
 // DebugString returns a string representing the current internal state of the
 // merging iterator and its heap for debugging purposes.
 func (m *MergingIter) DebugString() string {
