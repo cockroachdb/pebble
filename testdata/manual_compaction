@@ -1002,7 +1002,7 @@ L3 start=tmgc.RANGEDEL.383 end=tvsalezade.RANGEDEL.72057594037927935
 compact a-z L3
 ----
 4:
-  000007:[tmgc#391,MERGE-tmgc#384,MERGE]
+  000007:[tmgc#391,MERGE-tmgc#0,MERGE]
 
 # baz should NOT be visible in the value.
 

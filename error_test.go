@@ -185,21 +185,12 @@ func TestRequireReadError(t *testing.T) {
 		require.NoError(t, d.DeleteRange(key1, key2, nil))
 		require.NoError(t, d.Set(key1, value, nil))
 		require.NoError(t, d.Flush())
-		if formatVersion < FormatSetWithDelete {
-			expectLSM(`
+		expectLSM(`
 0.0:
   000007:[a1#4,SET-a2#72057594037927935,RANGEDEL]
 6:
   000005:[a1#1,SET-a2#2,SET]
 `, d, t)
-		} else {
-			expectLSM(`
-0.0:
-  000007:[a1#4,SETWITHDEL-a2#72057594037927935,RANGEDEL]
-6:
-  000005:[a1#1,SET-a2#2,SET]
-`, d, t)
-		}
 
 		// Now perform foreground ops with error injection enabled.
 		inj.SetIndex(index)
@@ -287,22 +278,12 @@ func TestCorruptReadError(t *testing.T) {
 		require.NoError(t, d.DeleteRange(key1, key2, nil))
 		require.NoError(t, d.Set(key1, value, nil))
 		require.NoError(t, d.Flush())
-		if formatVersion < FormatSetWithDelete {
-			expectLSM(`
+		expectLSM(`
 0.0:
   000007:[a1#4,SET-a2#72057594037927935,RANGEDEL]
 6:
   000005:[a1#1,SET-a2#2,SET]
 `, d, t)
-
-		} else {
-			expectLSM(`
-0.0:
-  000007:[a1#4,SETWITHDEL-a2#72057594037927935,RANGEDEL]
-6:
-  000005:[a1#1,SET-a2#2,SET]
-`, d, t)
-		}
 
 		// Now perform foreground ops with corruption injection enabled.
 		atomic.StoreInt32(&fs.index, index)

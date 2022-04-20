@@ -26,7 +26,8 @@ import (
 // reduce allocations.
 type Transform func(cmp base.Compare, in Span, out *Span) error
 
-func noopTransform(_ base.Compare, s Span, dst *Span) error {
+// NoopTransform implements Transform without modifying input spans.
+func NoopTransform(_ base.Compare, s Span, dst *Span) error {
 	dst.Start, dst.End = s.Start, s.End
 	dst.Keys = append(dst.Keys[:0], s.Keys...)
 	return nil
