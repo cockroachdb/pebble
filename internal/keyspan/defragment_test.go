@@ -264,7 +264,7 @@ func debugContext(
 
 var iterDelim = map[rune]bool{',': true, ' ': true, '(': true, ')': true, '"': true}
 
-func runIterOp(w io.Writer, it *DefragmentingIter, op string) {
+func runIterOp(w io.Writer, it FragmentIterator, op string) {
 	fields := strings.FieldsFunc(op, func(r rune) bool { return iterDelim[r] })
 	var s Span
 	switch strings.ToLower(fields[0]) {
