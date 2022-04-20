@@ -451,6 +451,83 @@ func writeSyncBench(
 	}
 }
 
+// syncAfter is the number of writes to sync after.
+func syncBench(
+	benchName string, benchDescription string, maxFileSize int, writeSize int, syncAfter int,
+) fsBenchmark {
+
+	if writeSize > maxFileSize {
+		log.Fatalln("File write threshold is greater than max file size.")
+	}
+
+	createBench := func(dirpath string) *fsBench {
+		bench := &fsBench{}
+		mkDir(dirpath)
+		fh := openDir(dirpath)
+
+		bench.dir = fh
+		bench.dirName = dirpath
+		bench.reg = newHistogramRegistry()
+		bench.numOps = 0
+		bench.name = benchName
+		bench.description = benchDescription
+
+		pref := "temp_"
+		var benchData struct {
+			done         int32
+			fh           vfs.File
+			fileNum      int
+			bytesWritten int
+		}
+		benchData.fh = createFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
+		var writeCount int
+
+		bench.run = func(hist *namedHistogram) bool {
+			if atomic.LoadInt32(&benchData.done) == 1 {
+				return false
+			}
+
+			if benchData.bytesWritten+writeSize > maxFileSize {
+				closeFile(benchData.fh)
+				benchData.fileNum++
+				benchData.bytesWritten = 0
+				benchData.fh = createFile(path.Join(dirpath, fmt.Sprintf("%s%d", pref, benchData.fileNum)))
+			}
+
+			benchData.bytesWritten += writeSize
+			writeToFile(benchData.fh, writeSize)
+
+			writeCount++
+			if writeCount == syncAfter {
+				start := time.Now()
+				syncFile(benchData.fh)
+				hist.Record(time.Since(start))
+				writeCount = 0
+			}
+
+			return true
+		}
+
+		bench.stop = func() {
+			atomic.StoreInt32(&benchData.done, 1)
+		}
+
+		bench.clean = func() {
+			closeFile(benchData.fh)
+			removeAllFiles(dirpath)
+			closeFile(bench.dir)
+		}
+
+		return bench
+	}
+
+	return fsBenchmark{
+		createBench,
+		benchName,
+		benchDescription,
+	}
+}
+
 // Tests the peformance of calling the vfs.GetDiskUsage call on a directory,
 // as the number of files/total size of files in the directory grows.
 func diskUsageBench(
@@ -549,6 +626,9 @@ var benchmarks = map[string]fsBenchmark{
 	"write_sync_1MiB": writeSyncBench(
 		"write_sync_1MiB", "Write 1MiB to a file, then sync, while timing the sync.", 2<<30, 1<<20,
 	),
+	"sync_512KB_2":   syncBench("sync_512KB_2", "na", 2<<30, 512<<10, 2),
+	"sync_512KB_20":  syncBench("sync_512KB_20", "na", 2<<30, 512<<10, 20),
+	"sync_512KB_200": syncBench("sync_512KB_200", "na", 2<<30, 512<<10, 200),
 	"write_sync_16MiB": writeSyncBench(
 		"write_sync_16MiB", "Write 16MiB to a file, then sync, while timing the sync.", 2<<30, 16<<20,
 	),
