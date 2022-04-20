@@ -88,7 +88,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			for _, line := range lines {
 				spans = append(spans, ParseSpan(line))
 			}
-			keyspanIter.Init(cmp, noopTransform, NewIter(cmp, spans))
+			keyspanIter.Init(cmp, NoopTransform, NewIter(cmp, spans))
 			hooks.maskSuffix = nil
 			iter.Init(cmp, base.WrapIterWithStats(&pointIter), &keyspanIter, Hooks{
 				SpanChanged: hooks.SpanChanged,

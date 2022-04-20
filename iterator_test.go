@@ -218,18 +218,13 @@ func (f *fakeIter) SetBounds(lower, upper []byte) {
 // invalidatingIter tests unsafe key/value slice reuse by modifying the last
 // returned key/value to all 1s.
 type invalidatingIter struct {
-	iter        internalIteratorWithStats
-	lastKey     *InternalKey
-	lastValue   []byte
-	ignoreKinds [base.InternalKeyKindMax + 1]bool
+	iter      internalIteratorWithStats
+	lastKey   *InternalKey
+	lastValue []byte
 }
 
 func newInvalidatingIter(iter internalIterator) *invalidatingIter {
 	return &invalidatingIter{iter: base.WrapIterWithStats(iter)}
-}
-
-func (i *invalidatingIter) ignoreKind(kind base.InternalKeyKind) {
-	i.ignoreKinds[kind] = true
 }
 
 func (i *invalidatingIter) update(key *InternalKey, value []byte) (*InternalKey, []byte) {
@@ -250,9 +245,6 @@ func (i *invalidatingIter) update(key *InternalKey, value []byte) (*InternalKey,
 
 func (i *invalidatingIter) zeroLast() {
 	if i.lastKey == nil {
-		return
-	}
-	if i.ignoreKinds[i.lastKey.Kind()] {
 		return
 	}
 
