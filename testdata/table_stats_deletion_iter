@@ -18,9 +18,6 @@
 # - 1: homogenous span with range dels only
 # - 2: homogenous span with range key dels only
 # - 3: heterogeneous span with range dels and range key dels
-#
-# NOTE: when a span has heterogenous key types, the first key is a range del,
-# and the second key is a range key del.
 
 build
 a-g:{(#0,RANGEDEL)}
@@ -35,16 +32,56 @@ v-z:{(#0,RANGEKEYDEL)}
 spans
 ----
 a-d:{(#0,RANGEDEL)}
-d-i:{(#0,RANGEDEL) (#0,RANGEKEYDEL)}
+d-i:{(#0,RANGEKEYDEL) (#0,RANGEDEL)}
 i-l:{(#0,RANGEDEL)}
-l-n:{(#0,RANGEDEL) (#0,RANGEKEYDEL)}
+l-n:{(#0,RANGEKEYDEL) (#0,RANGEDEL)}
 n-q:{(#0,RANGEKEYDEL)}
 t-v:{(#0,RANGEDEL)}
-v-w:{(#0,RANGEDEL) (#0,RANGEKEYDEL)}
+v-w:{(#0,RANGEKEYDEL) (#0,RANGEDEL)}
 w-z:{(#0,RANGEKEYDEL)}
 
 # The iterator elides anything other than range deletes and range key deletes.
+
+#   |---------------RANGEKEYUNSET----------------------|
+#   |---------------RANGEKEYSET------------------------|
+#   |---------------RANGEKEYDEL------------------------|
+# __________________________________________________________
+#   a b c d e f g h i j k l m n o p q r s t u v w x y z
 #
+# Becomes:
+#   |---------------RANGEKEYDEL------------------------|
+# __________________________________________________________
+#   a b c d e f g h i j k l m n o p q r s t u v w x y z
+
+build
+a-z:{(#0,RANGEKEYDEL) (#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYUNSET,@2)}
+----
+000000:[a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYDEL]
+
+spans
+----
+a-z:{(#0,RANGEKEYDEL)}
+
+#   |-RANGEKEYSET-|-RANGEKEYUNSET-|-RANGEKEYDEL--------|
+# __________________________________________________________
+#   a b c d e f g h i j k l m n o p q r s t u v w x y z
+#
+# Becomes:
+#                                 |-RANGEKEYDEL-------|
+# __________________________________________________________
+#   a b c d e f g h i j k l m n o p q r s t u v w x y z
+
+build
+a-h:{(#0,RANGEKEYSET,@1,foo)}
+h-p:{(#0,RANGEKEYUNSET,@1)}
+p-z:{(#0,RANGEKEYDEL)}
+----
+000000:[a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYDEL]
+
+spans
+----
+p-z:{(#0,RANGEKEYDEL)}
+
 #   |-RANGEKEYSET-|-RANGEKEYUNSET-|-RANGEKEYDEL--------|
 #   |--RANGEDEL-----------------------------|
 # __________________________________________________________
@@ -66,8 +103,8 @@ p-z:{(#0,RANGEKEYDEL)}
 
 spans
 ----
-a-p:{(#0,RANGEDEL) (#0,RANGEDEL)}
-p-u:{(#0,RANGEDEL) (#0,RANGEKEYDEL)}
+a-p:{(#0,RANGEDEL)}
+p-u:{(#0,RANGEKEYDEL) (#0,RANGEDEL)}
 u-z:{(#0,RANGEKEYDEL)}
 
 # An iterator over a table with neither range dels or range key dels present
@@ -107,19 +144,19 @@ spans
 ----
 a-d:{(#9,RANGEKEYDEL) (#1,RANGEKEYDEL)}
 
-# The same as above, but for mixed key kinds. As the resulting defragmented span
-# is heterogenous, the first key is a range del and the last is a range key del,
-# irrespective of the key kinds of the original largest and smallest keys.
+# The same as above, but for mixed key kinds. The resulting span has four keys,
+# given the respective largest / smallest keys from the range del and range key
+# del spans are interleaved.
 
 build
-a-c:{(#4,RANGEKEYDEL) (#3,RANGEKEYDEL) (#1,RANGEDEL)}
-c-d:{(#9,RANGEKEYDEL) (#7,RANGEDEL) (#6,RANGEDEL) (#2,RANGEKEYDEL)}
+a-c:{(#4,RANGEDEL) (#2,RANGEDEL)}
+a-c:{(#3,RANGEKEYDEL) (#1,RANGEKEYDEL)}
 ----
-000000:[a#4,RANGEKEYDEL-d#72057594037927935,RANGEDEL]
+000000:[a#4,RANGEDEL-c#72057594037927935,RANGEDEL]
 
 spans
 ----
-a-d:{(#9,RANGEDEL) (#1,RANGEKEYDEL)}
+a-c:{(#4,RANGEDEL) (#3,RANGEKEYDEL) (#2,RANGEDEL) (#1,RANGEKEYDEL)}
 
 # "Hetrogenous spans" (i.e. spans containing both range dels and range key dels)
 # are preserved when abutting spans are merged. This tests that the reducing
@@ -134,13 +171,15 @@ a-d:{(#9,RANGEDEL) (#1,RANGEKEYDEL)}
 #    a   b   c   d   e
 
 build
-a-c:{(#10,RANGEDEL) (#5,RANGEKEYDEL) (#3,RANGEDEL)}
-c-d:{(#10,RANGEDEL) (#5,RANGEKEYDEL) (#3,RANGEDEL)}
+a-c:{(#10,RANGEDEL) (#3,RANGEDEL)}
+c-d:{(#10,RANGEDEL) (#3,RANGEDEL)}
 d-e:{(#10,RANGEDEL) (#3,RANGEDEL)}
+a-c:{(#5,RANGEKEYDEL)}
+c-d:{(#5,RANGEKEYDEL)}
 ----
 000000:[a#10,RANGEDEL-e#72057594037927935,RANGEDEL]
 
 spans
 ----
-a-d:{(#10,RANGEDEL) (#3,RANGEKEYDEL)}
+a-d:{(#10,RANGEDEL) (#5,RANGEKEYDEL) (#3,RANGEDEL)}
 d-e:{(#10,RANGEDEL) (#3,RANGEDEL)}

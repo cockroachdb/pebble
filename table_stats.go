@@ -10,7 +10,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -537,15 +536,6 @@ func estimateEntrySizes(
 // intended for use in the specific case of computing the statistics and
 // deleteCompactionHints for a single table.
 //
-// The iterator first merges range deletion and range key spans into (possibly)
-// fragmented spans. All non-delete spans are ignored (i.e. range key sets and
-// unsets elided during iteration). The iterator defragments the merged spans,
-// with abutting spans re-combined under the following circumstances:
-// - All keys in both spans are exclusively range deletions.
-// - All keys in both spans are exclusively range key deletions.
-// - Keys in both spans are a mixture of range deletions and range key
-//   deletions.
-//
 // As an example, consider the following set of spans from the range deletion
 // and range key blocks of a table:
 //
@@ -564,34 +554,92 @@ func estimateEntrySizes(
 // __________________________________________________________
 //   a b c d e f g h i j k l m n o p q r s t u v w x y z
 //
-// Each span returned by the tableRangeDeletionIter will have at most two keys,
+// Algorithm.
+//
+// The iterator first defragments the range deletion and range key blocks
+// separately. During this defragmentation, the range key block is also filtered
+// so that keys other than range key deletes are ignored. The range delete and
+// range key delete keyspaces are then merged.
+//
+// Note that the only fragmentation introduced by merging is from where a range
+// del span overlaps with a range key del span. Within the bounds of any overlap
+// there is guaranteed to be no further fragmentation, as the constituent spans
+// have already been defragmented. To the left and right of any overlap, the
+// same reasoning applies. For example,
+//
+//            |--------|         |-------| RANGEKEYDEL
+//   |---------------------------|         RANGEDEL
+//   |----1---|----3---|----1----|---2---| Merged, fragmented spans.
+// __________________________________________________________
+//   a b c d e f g h i j k l m n o p q r s t u v w x y z
+//
+// Any fragmented abutting spans produced by the merging iter will be of
+// differing types (i.e. a transition from a span with homogenous key kinds to a
+// heterogeneous span, or a transition from a span with exclusively range dels
+// to a span with exclusively range key dels). Therefore, further
+// defragmentation is not required.
+//
+// Each span returned by the tableRangeDeletionIter will have at most four keys,
 // corresponding to the largest and smallest sequence numbers encountered across
-// all keys that comprised the merged and defragmented span. For spans with
-// heterogenous key kinds (i.e. a mix of range deletions and range key
-// deletions), the largest key in the emitted span will always be a range
-// deletion and the smallest will always be a range key deletion, irrespective
-// of the key kinds of the original smallest and largest keys for the span. This
-// is done purely as an optimization, reducing the size of key slices emitted
-// for each defragmented span, while also preserving information about whether
-// the keys kinds in the span are homogenous or heterogeneous.
+// the range deletes and range keys deletes that comprised the merged spans.
 type tableRangedDeletionIter struct {
 	keyspan.FragmentIterator
-	closers []keyspan.FragmentIterator
 }
 
 // newTableRangeDeletionIter returns a new tableRangedDeletionIter.
 func newTableRangeDeletionIter(
 	cmp base.Compare, r *sstable.Reader, m *fileMetadata,
 ) (*tableRangedDeletionIter, error) {
-	var iters, closers []keyspan.FragmentIterator
+	// The range del iter and range key iter are each wrapped in their own
+	// defragmenting iter. For each iter, abutting spans can always be merged.
+	equal := func(_ base.Compare, a, b keyspan.Span) bool { return true }
+	// Reduce keys by maintaining a slice of at most length two, corresponding to
+	// the largest and smallest keys in the defragmented span. This maintains the
+	// contract that the emitted slice is sorted by (SeqNum, Kind) descending.
+	reducer := func(current, incoming []keyspan.Key) []keyspan.Key {
+		if len(current) == 0 && len(incoming) == 0 {
+			// While this should never occur in practice, a defensive return is used
+			// here to preserve correctness.
+			return current
+		}
+		var largest, smallest keyspan.Key
+		var set bool
+		for _, keys := range [2][]keyspan.Key{current, incoming} {
+			if len(keys) == 0 {
+				continue
+			}
+			first, last := keys[0], keys[len(keys)-1]
+			if !set {
+				largest, smallest = first, last
+				set = true
+				continue
+			}
+			if first.Trailer > largest.Trailer {
+				largest = first
+			}
+			if last.Trailer < smallest.Trailer {
+				smallest = last
+			}
+		}
+		if largest.Equal(smallest) {
+			current = append(current[:0], largest)
+		} else {
+			current = append(current[:0], largest, smallest)
+		}
+		return current
+	}
+
+	var iters []keyspan.FragmentIterator
 	iter, err := r.NewRawRangeDelIter()
 	if err != nil {
 		return nil, err
 	}
 	if iter != nil {
+		dIter := &keyspan.DefragmentingIter{}
+		dIter.Init(cmp, iter, equal, reducer)
+		iter = dIter
 		// Truncate tombstones to the containing file's bounds if necessary.
 		// See docs/range_deletions.md for why this is necessary.
-		closers = append(closers, iter)
 		iter = keyspan.Truncate(
 			cmp, iter, m.Smallest.UserKey, m.Largest.UserKey, nil, nil,
 		)
@@ -603,117 +651,40 @@ func newTableRangeDeletionIter(
 		return nil, err
 	}
 	if iter != nil {
-		closers = append(closers, iter)
+		// Wrap the range key iterator in a filter that elides keys other than range
+		// key deletions.
+		iter = keyspan.Filter(iter, func(in keyspan.Span, out *keyspan.Span) (keep bool) {
+			out.Start, out.End = in.Start, in.End
+			out.Keys = out.Keys[:0]
+			for _, k := range in.Keys {
+				if k.Kind() != base.InternalKeyKindRangeKeyDelete {
+					continue
+				}
+				out.Keys = append(out.Keys, k)
+			}
+			return len(out.Keys) > 0
+		})
+		dIter := &keyspan.DefragmentingIter{}
+		dIter.Init(cmp, iter, equal, reducer)
+		iter = dIter
 		iters = append(iters, iter)
 	}
 
-	// Construct a merging iterator over the range dels and range keys that emits
-	// spans containing only range dels and range key dels (i.e. filtering out
-	// RANGEKEYSET and RANGEKEYUNSET keys in each span). The keys for the span are
-	// also altered such as to only preserve the keys with the largest and
-	// smallest sequence numbers for the span.
-	//
-	// If a span contains mixed key kinds (i.e. range dels and range key dels),
-	// the first key is set to a range del, and the last to a range key del. This
-	// preserves information about the mixture of the key kinds, while also
-	// allowing the size of the emitted key slice to be of length at most two.
-	keyType := func(kind base.InternalKeyKind) uint8 {
-		if rangekey.IsRangeKey(kind) {
-			return 1 << 1 // Range keys.
-		}
-		return 1 << 0 // Point keys.
-	}
+	// The separate iters for the range dels and range keys are wrapped in a
+	// merging iter to join the keyspaces into a single keyspace.
+	mIter := &keyspan.MergingIter{}
 	transform := func(cmp base.Compare, in keyspan.Span, out *keyspan.Span) error {
 		out.Start, out.End = in.Start, in.End
-		out.Keys = out.Keys[:0]
-		var last keyspan.Key
-		var spanType uint8
-		for _, k := range in.Keys {
-			if !(k.Kind() == base.InternalKeyKindRangeDelete ||
-				k.Kind() == base.InternalKeyKindRangeKeyDelete) {
-				continue
-			}
-			if len(out.Keys) == 0 {
-				out.Keys = append(out.Keys, k)
-			}
-			last = k
-			spanType |= keyType(k.Kind())
-		}
-		if len(out.Keys) > 0 && !out.Keys[0].Equal(last) {
-			out.Keys = append(out.Keys, last)
-			// If this is a mixed span, update the keys such that the first is range
-			// del, and the last is a range key del.
-			if spanType == 0b11 {
-				out.Keys[0].Trailer = base.MakeTrailer(out.Keys[0].SeqNum(), base.InternalKeyKindRangeDelete)
-				out.Keys[1].Trailer = base.MakeTrailer(out.Keys[1].SeqNum(), base.InternalKeyKindRangeKeyDelete)
-			}
-		}
+		out.Keys = append(out.Keys[:0], in.Keys...)
 		return nil
 	}
-	mIter := &keyspan.MergingIter{}
 	mIter.Init(cmp, transform, iters...)
-	closers = append(closers, mIter)
 
-	// Construct a defragmenting iter on top of the merging iter that will
-	// recombine abutting spans if *both* spans contain:
-	// - Exclusively range dels.
-	// - Exclusively range key dels.
-	// - A mixture of range dels and range key dels.
-	equal := func(_ base.Compare, a, b keyspan.Span) bool {
-		var aType, bType uint8
-		for _, k := range a.Keys {
-			aType |= keyType(k.Kind())
-		}
-		for _, k := range b.Keys {
-			bType |= keyType(k.Kind())
-		}
-		return aType == bType
-	}
-	// Reduce keys by maintaining a slice of length two, corresponding to the
-	// largest and smallest keys in the defragmented span. This maintains the
-	// contract that the emitted slice is sorted by (SeqNum, Kind) descending.
-	reducer := func(current, incoming []keyspan.Key) []keyspan.Key {
-		if len(current) == 0 && len(incoming) == 0 {
-			// While this should never occur in practice, a defensive return is used
-			// here to preserve correctness.
-			return current
-		}
-		// Determine the smallest / largest keys across the two slices. As `current`
-		// and `incoming` are both sorted by (seqnum, kind) descending, only the
-		// first and last element of each slice need to be consulted.
-		var largest, smallest keyspan.Key
-		var largestSet, smallestSet bool
-		for _, keys := range [2][]keyspan.Key{current, incoming} {
-			if len(keys) == 0 {
-				continue
-			}
-			first, last := keys[0], keys[len(keys)-1]
-			// Update largest.
-			if !largestSet || first.Trailer > largest.Trailer {
-				largest, largestSet = first, true
-			}
-			// Update smallest.
-			if !smallestSet || last.Trailer < smallest.Trailer {
-				smallest, smallestSet = last, true
-			}
-		}
-		return append(current[:0], largest, smallest)
-	}
-	dIter := &keyspan.DefragmentingIter{}
-	dIter.Init(cmp, mIter, equal, reducer)
-
-	delIter := &tableRangedDeletionIter{
-		FragmentIterator: dIter,
-		closers:          closers,
-	}
+	delIter := &tableRangedDeletionIter{FragmentIterator: mIter}
 	return delIter, nil
 }
 
 // Close closes all child iterators of this tableRangedDeletionIter.
 func (d *tableRangedDeletionIter) Close() error {
-	err := d.FragmentIterator.Close()
-	for _, iter := range d.closers {
-		err = firstError(err, iter.Close())
-	}
-	return err
+	return d.FragmentIterator.Close()
 }
