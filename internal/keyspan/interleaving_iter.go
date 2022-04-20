@@ -8,10 +8,8 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
-
-// TODO(jackson): The interleaving iterator has various invariants that it
-// asserts. We should eventually gate these behind `invariants.Enabled`.
 
 // Hooks configure the interleaving iterator's behavior.
 type Hooks struct {
@@ -386,22 +384,24 @@ func (i *InterleavingIter) interleaveForward(lowerBound []byte) (*base.InternalK
 	// the next key.
 	for {
 		// Check invariants.
-		// INVARIANT: !pointKeyInterleaved
-		if i.pointKeyInterleaved {
-			panic("pebble: invariant violation: point key interleaved")
-		}
-		switch {
-		case !i.span.Valid():
-		case i.pointKey == nil:
-		default:
-			// INVARIANT: !keyspanInterleaved || pointKey < span.End
-			// The caller is responsible for advancing this span if it's already
-			// been interleaved and the span ends before the point key.
-			// Absolute positioning methods will never have already interleaved
-			// the span's start key, so only Next needs to handle the case where
-			// pointKey >= span.End.
-			if i.keyspanInterleaved && i.cmp(i.pointKey.UserKey, i.span.End) >= 0 {
-				panic("pebble: invariant violation: span interleaved, but point key >= span end")
+		if invariants.Enabled {
+			// INVARIANT: !pointKeyInterleaved
+			if i.pointKeyInterleaved {
+				panic("pebble: invariant violation: point key interleaved")
+			}
+			switch {
+			case !i.span.Valid():
+			case i.pointKey == nil:
+			default:
+				// INVARIANT: !keyspanInterleaved || pointKey < span.End
+				// The caller is responsible for advancing this span if it's already
+				// been interleaved and the span ends before the point key.
+				// Absolute positioning methods will never have already interleaved
+				// the span's start key, so only Next needs to handle the case where
+				// pointKey >= span.End.
+				if i.keyspanInterleaved && i.cmp(i.pointKey.UserKey, i.span.End) >= 0 {
+					panic("pebble: invariant violation: span interleaved, but point key >= span end")
+				}
 			}
 		}
 
@@ -495,9 +495,11 @@ func (i *InterleavingIter) interleaveBackward() (*base.InternalKey, []byte) {
 	// the next key.
 	for {
 		// Check invariants.
-		// INVARIANT: !pointKeyInterleaved
-		if i.pointKeyInterleaved {
-			panic("pebble: invariant violation: point key interleaved")
+		if invariants.Enabled {
+			// INVARIANT: !pointKeyInterleaved
+			if i.pointKeyInterleaved {
+				panic("pebble: invariant violation: point key interleaved")
+			}
 		}
 
 		// Interleave.
@@ -631,34 +633,34 @@ func (i *InterleavingIter) yieldSyntheticSpanMarker(lowerBound []byte) (*base.In
 }
 
 func (i *InterleavingIter) verify(k *base.InternalKey, v []byte) (*base.InternalKey, []byte) {
-	// TODO(jackson): Wrap the entire body of this function in an
-	// invariants.Enabled conditional, so that in production builds this
-	// function is empty and may be inlined away.
-
-	switch {
-	case k != nil && !i.keyspanInterleaved && !i.pointKeyInterleaved:
-		panic("pebble: invariant violation: both keys marked as noninterleaved")
-	case i.dir == -1 && k != nil && i.keyspanInterleaved == i.pointKeyInterleaved:
-		// During reverse iteration, if we're returning a key, either the span's
-		// start key must have been interleaved OR the current point key value
-		// is being returned, not both.
-		//
-		// This invariant holds because in reverse iteration the start key of the
-		// span behaves like a point. Once the start key is interleaved, we move
-		// the keyspan iterator to the previous span.
-		panic(fmt.Sprintf("pebble: invariant violation: interleaving (point %t, span %t)",
-			i.pointKeyInterleaved, i.keyspanInterleaved))
-	case i.dir == -1 && i.spanMarkerTruncated:
-		panic("pebble: invariant violation: truncated span key in reverse iteration")
-	case k != nil && i.lower != nil && i.cmp(k.UserKey, i.lower) < 0:
-		panic("pebble: invariant violation: key < lower bound")
-	case k != nil && i.upper != nil && i.cmp(k.UserKey, i.upper) >= 0:
-		panic("pebble: invariant violation: key ≥ upper bound")
-	case i.span.Valid() && k != nil && i.hooks.SkipPoint != nil && i.pointKeyInterleaved &&
-		i.cmp(k.UserKey, i.spanStart) >= 0 && i.cmp(k.UserKey, i.spanEnd) < 0 && i.hooks.SkipPoint(k.UserKey):
-		panic("pebble: invariant violation: point key eligible for skipping returned")
+	// Wrap the entire body of this function in an invariants.Enabled
+	// conditional, so that in production builds this function is empty and may
+	// be inlined away.
+	if invariants.Enabled {
+		switch {
+		case k != nil && !i.keyspanInterleaved && !i.pointKeyInterleaved:
+			panic("pebble: invariant violation: both keys marked as noninterleaved")
+		case i.dir == -1 && k != nil && i.keyspanInterleaved == i.pointKeyInterleaved:
+			// During reverse iteration, if we're returning a key, either the span's
+			// start key must have been interleaved OR the current point key value
+			// is being returned, not both.
+			//
+			// This invariant holds because in reverse iteration the start key of the
+			// span behaves like a point. Once the start key is interleaved, we move
+			// the keyspan iterator to the previous span.
+			panic(fmt.Sprintf("pebble: invariant violation: interleaving (point %t, span %t)",
+				i.pointKeyInterleaved, i.keyspanInterleaved))
+		case i.dir == -1 && i.spanMarkerTruncated:
+			panic("pebble: invariant violation: truncated span key in reverse iteration")
+		case k != nil && i.lower != nil && i.cmp(k.UserKey, i.lower) < 0:
+			panic("pebble: invariant violation: key < lower bound")
+		case k != nil && i.upper != nil && i.cmp(k.UserKey, i.upper) >= 0:
+			panic("pebble: invariant violation: key ≥ upper bound")
+		case i.span.Valid() && k != nil && i.hooks.SkipPoint != nil && i.pointKeyInterleaved &&
+			i.cmp(k.UserKey, i.spanStart) >= 0 && i.cmp(k.UserKey, i.spanEnd) < 0 && i.hooks.SkipPoint(k.UserKey):
+			panic("pebble: invariant violation: point key eligible for skipping returned")
+		}
 	}
-
 	return k, v
 }
 
