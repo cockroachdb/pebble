@@ -26,7 +26,7 @@ var _ base.InternalIterator = &InternalIteratorShim{}
 // Init initializes the internal iterator shim to merge the provided fragment
 // iterators.
 func (i *InternalIteratorShim) Init(cmp base.Compare, iters ...FragmentIterator) {
-	i.miter.Init(cmp, noopTransform, iters...)
+	i.miter.Init(cmp, KeyStabilityInfinite, noopTransform, iters...)
 }
 
 // Span returns the span containing the full set of keys over the key span at

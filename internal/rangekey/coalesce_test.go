@@ -70,7 +70,7 @@ func TestIter(t *testing.T) {
 				s = s.Visible(visibleSeqNum)
 				return Coalesce(cmp, s, dst)
 			}
-			iter.Init(cmp, transform, keyspan.NewIter(cmp, spans))
+			iter.Init(cmp, keyspan.KeyStabilityNextOp, transform, keyspan.NewIter(cmp, spans))
 			return "OK"
 		case "iter":
 			buf.Reset()

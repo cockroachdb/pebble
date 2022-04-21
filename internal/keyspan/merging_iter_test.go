@@ -53,9 +53,9 @@ func TestMergingIter(t *testing.T) {
 				spans = append(spans, ParseSpan(line))
 			}
 			if len(spans) > 0 {
-				iters = append(iters, NewIter(cmp, spans))
+				iters = append(iters, &invalidatingIter{iter: NewIter(cmp, spans)})
 			}
-			iter.Init(cmp, visibleTransform(snapshot), iters...)
+			iter.Init(cmp, KeyStabilityNextOp, visibleTransform(snapshot), iters...)
 			return fmt.Sprintf("%d levels", len(iters))
 		case "iter":
 			buf.Reset()
@@ -178,7 +178,7 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 			}
 			keyspaceStartIdx = spanEndIdx
 		}
-		iters[l] = NewIter(cmp, levels[l])
+		iters[l] = &invalidatingIter{iter: NewIter(cmp, levels[l])}
 		fmt.Fprintln(&buf)
 	}
 
@@ -210,7 +210,7 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 
 	fragmenterIter := NewIter(f.Cmp, allFragmented)
 	mergingIter := &MergingIter{}
-	mergingIter.Init(f.Cmp, visibleTransform(base.InternalKeySeqNumMax), iters...)
+	mergingIter.Init(f.Cmp, KeyStabilityNextOp, visibleTransform(base.InternalKeySeqNumMax), iters...)
 
 	// Position both so that it's okay to perform relative positioning
 	// operations immediately.
