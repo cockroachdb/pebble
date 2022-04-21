@@ -2422,15 +2422,30 @@ func (d *DB) runCompaction(
 				// these bounds. Some fragmenting is performed ahead of time by
 				// keyspan.MergingIter.
 				if s := c.rangeDelIter.Span(); !s.Empty() {
-					// Clone the s.Keys slice. It's owned by the the range
-					// deletion iterator stack, and it may be overwritten when
-					// we advance.
+					// The memory management here is subtle. Range deletions
+					// blocks do NOT use prefix compression, which ensures that
+					// range deletion spans' memory is available as long we keep
+					// the iterator open. However, the keyspan.MergingIter that
+					// merges spans across levels only guarantees the lifetime
+					// of the [start, end) bounds until the next positioning
+					// method is called.
 					//
-					// We only need to perform a shallow clone, because the user
-					// keys and values point directly into the range deletion
-					// block which does NOT use prefix compression. This
-					// provides key stability.
-					c.rangeDelFrag.Add(s.ShallowClone())
+					// Additionally, the Span.Keys slice is owned by the the
+					// range deletion iterator stack, and it may be overwritten
+					// when we advance.
+					//
+					// Clone the Keys slice and the start and end keys.
+					//
+					// TODO(jackson): Avoid the clone by removing c.rangeDelFrag
+					// and performing explicit truncation of the pending
+					// rangedel span as necessary.
+					clone := keyspan.Span{
+						Start: iter.cloneKey(s.Start),
+						End:   iter.cloneKey(s.End),
+						Keys:  make([]keyspan.Key, len(s.Keys)),
+					}
+					copy(clone.Keys, s.Keys)
+					c.rangeDelFrag.Add(clone)
 				}
 				continue
 			}

@@ -79,3 +79,63 @@ func TestIter(t *testing.T) {
 		}
 	})
 }
+
+// invalidatingIter wraps a FragmentIterator and implements FragmentIterator
+// itself. Spans surfaced by the inner iterator are copied to buffers that are
+// zeroed by sbubsequent iterator positioning calls. This is intended to help
+// surface bugs in improper lifetime expectations of Spans.
+type invalidatingIter struct {
+	iter FragmentIterator
+	bufs [][]byte
+	keys []Key
+}
+
+// invalidatingIter implements FragmentIterator.
+var _ FragmentIterator = (*invalidatingIter)(nil)
+
+func (i *invalidatingIter) invalidate(s Span) Span {
+	// Zero the entirety of the byte bufs and the keys slice.
+	for j := range i.bufs {
+		for k := range i.bufs[j] {
+			i.bufs[j][k] = 0x00
+		}
+		i.bufs[j] = nil
+	}
+	for j := range i.keys {
+		i.keys[j] = Key{}
+	}
+
+	// Copy all of the span's slices into slices owned by the invalidating iter
+	// that we can invalidate on a subsequent positioning method.
+	i.bufs = i.bufs[:0]
+	i.keys = i.keys[:0]
+	s.Start = i.saveBytes(s.Start)
+	s.End = i.saveBytes(s.End)
+	for j := range s.Keys {
+		i.keys = append(i.keys, Key{
+			Trailer: s.Keys[j].Trailer,
+			Suffix:  i.saveBytes(s.Keys[j].Suffix),
+			Value:   i.saveBytes(s.Keys[j].Value),
+		})
+	}
+	s.Keys = i.keys
+	return s
+}
+
+func (i *invalidatingIter) saveBytes(b []byte) []byte {
+	if b == nil {
+		return nil
+	}
+	saved := append([]byte(nil), b...)
+	i.bufs = append(i.bufs, saved)
+	return saved
+}
+
+func (i *invalidatingIter) SeekGE(key []byte) Span { return i.invalidate(i.iter.SeekGE(key)) }
+func (i *invalidatingIter) SeekLT(key []byte) Span { return i.invalidate(i.iter.SeekLT(key)) }
+func (i *invalidatingIter) First() Span            { return i.invalidate(i.iter.First()) }
+func (i *invalidatingIter) Last() Span             { return i.invalidate(i.iter.Last()) }
+func (i *invalidatingIter) Next() Span             { return i.invalidate(i.iter.Next()) }
+func (i *invalidatingIter) Prev() Span             { return i.invalidate(i.iter.Prev()) }
+func (i *invalidatingIter) Close() error           { return i.iter.Close() }
+func (i *invalidatingIter) Error() error           { return i.iter.Error() }

@@ -13,10 +13,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
-// TODO(jackson): Document memory safety requirements. Once we're reading from
-// sstables, key spans may only be considered stable between the
-// Table{Start,End} bounds.
-
 // TODO(jackson): Consider implementing an optimization to seek lower levels
 // past higher levels' RANGEKEYDELs. This would be analaogous to the
 // optimization pebble.mergingIter performs for RANGEDELs during point key
@@ -70,31 +66,29 @@ func visibleTransform(snapshot uint64) Transform {
 //             (during forward iteration) or start keys (during reverse
 //             iteration), then all the spans with that bound overlap the
 //             candidate span.
-//         4b. Apply the configured transform, which may remove spans.
-//         4b. If after transformation no spans overlap, forget the smallest
-//             (forward iteration) or largest (reverse iteration) unique user
-//             key and advance the iterators to the next unique user key.
-//             Start again from 3.
+//         4b. Apply the configured transform, which may remove keys.
+//         4b. If no spans overlap, forget the smallest (forward iteration)
+//             or largest (reverse iteration) unique user key and advance
+//             the iterators to the next unique user key. Start again from 3.
 //
 // Detailed algorithm
 //
 // Each level (i0, i1, ...) has a user-provided input FragmentIterator. The
-// merging iterator wraps each of these input iterators with a
-// fragmentBoundIterator that returns each individual boundary of the underlying
-// fragments separately. If the underlying FragmentIterator has fragments
-// [a,b){#2,#1} [b,c){#1} the fragmentBoundIterator returns:
+// merging iterator steps through individual boundaries of the underlying
+// spans separately. If the underlying FragmentIterator has fragments
+// [a,b){#2,#1} [b,c){#1} the mergingIterLevel.{next,prev} step through:
 //
 //     (a, start), (b, end), (b, start), (c, end)
 //
-// Note that (a, start) and (b, end) are returned ONCE each, despite two keys
+// Note that (a, start) and (b, end) are observed ONCE each, despite two keys
 // sharing those bounds. Also note that (b, end) and (b, start) are two distinct
-// iterator positions.
+// iterator positions of a mergingIterLevel.
 //
 // The merging iterator maintains a heap (min during forward iteration, max
-// during reverse iteration) containing the boundKeys returned by a
-// fragmentBoundIterator. Each boundKey is a 3-tuple holding the bound user key,
-// whether the bound is a start or end key and the set of keys from that level
-// that have that bound. The heap orders based on the boundKey's user key only.
+// during reverse iteration) containing the boundKeys. Each boundKey is a
+// 3-tuple holding the bound user key, whether the bound is a start or end key
+// and the set of keys from that level that have that bound. The heap orders
+// based on the boundKey's user key only.
 //
 // The merging iterator is responsible for merging spans across levels to
 // determine which span is next, but it's also responsible for fragmenting
@@ -119,7 +113,7 @@ func visibleTransform(snapshot uint64) Transform {
 // other positioning methods.
 //
 // During a call to First, the heap is initialized by seeking every
-// fragmentBoundIterator to the first bound of the first fragment. In the above
+// mergingIterLevel to the first bound of the first fragment. In the above
 // example, this seeks the child iterators to:
 //
 //     i0: (b, boundKindFragmentStart, [ [b,d) ])
@@ -163,7 +157,7 @@ func visibleTransform(snapshot uint64) Transform {
 // preserving the underlying keys' sequence numbers, key kinds and values.
 //
 // A MergingIter is configured with a Transform that's applied to the span
-// before surfacing it to the iterator user. A Transform may remove spans
+// before surfacing it to the iterator user. A Transform may remove keys
 // arbitrarily, but it may not modify the values themselves.
 //
 // It may be the case that findNextFragmentSet finds no levels positioned at end
@@ -171,16 +165,33 @@ func visibleTransform(snapshot uint64) Transform {
 // in which case the span [m.start, m.end) overlaps with nothing. In this case
 // findNextFragmentSet loops, repeating the above process again until it finds a
 // span that does contain keys.
+//
+// Memory safety
+//
+// The FragmentIterator interface only guarantees stability of a Span and its
+// associated slices until the next positioning method is called. Adjacent Spans
+// may be contained in different sstables, requring the FragmentIterator
+// implementation to close one sstable, releasing its memory, before opening the
+// next. Most of the state used by the MergingIter is derived from spans at
+// current child iterator positions only, ensuring state is stable. The one
+// exception is the start bound during forward iteration and the end bound
+// during reverse iteration.
+//
+// If the heap root originates from an end boundary when findNextFragmentSet
+// begins, a Next on the heap root level may invalidate the end boundary. To
+// accommodate this, find{Next,Prev}FragmentSet copy the initial boundary if the
+// subsequent Next/Prev would move to the next span.
 type MergingIter struct {
 	levels []mergingIterLevel
 	heap   mergingIterHeap
-
 	// start and end hold the bounds for the span currently under the
 	// iterator position.
 	//
 	// Invariant: None of the levels' iterators contain spans with a bound
 	// between start and end. For all bounds b, b ≤ start || b ≥ end.
 	start, end []byte
+	// buf is a buffer used to save [start, end) boundary keys.
+	buf []byte
 	// keys holds all of the keys across all levels that overlap the key span
 	// [start, end), sorted by sequence number and kind descending. This slice
 	// is reconstituted in synthesizeKeys from each mergingIterLevel's keys
@@ -535,10 +546,9 @@ func (m *MergingIter) findNextFragmentSet() Span {
 		// root is the smallest bound key equal to the returned span's end key,
 		// so the heap is already positioned at the next merged span's start key.
 
-		// NB: m.heapRoot().key might be either an end boundary OR a start
-		// boundary of a level's span. Both end and start boundaries may still
-		// be a start key of a span in the set of fragmented spans returned by
-		// MergingIter.
+		// NB: m.heapRoot() might be either an end boundary OR a start boundary
+		// of a level's span. Both end and start boundaries may still be a start
+		// key of a span in the set of fragmented spans returned by MergingIter.
 		// Consider the scenario:
 		//       a----------l      #1
 		//         b-----------m   #2
@@ -552,7 +562,16 @@ func (m *MergingIter) findNextFragmentSet() Span {
 		//
 		// When advancing to l-m#2, we must set m.start to 'l', which originated
 		// from [a,l)#1's end boundary.
-		m.start = m.heapRoot().key
+		m.start = m.heap.items[0].boundKey.key
+
+		// Before calling nextEntry, consider whether it might invalidate our
+		// start boundary. If the start boundary key originated from an end
+		// boundary, then we need to copy the start key before advancing the
+		// underlying iterator to the next Span.
+		if m.heap.items[0].boundKey.kind == boundKindFragmentEnd {
+			m.buf = append(m.buf[:0], m.start...)
+			m.start = m.buf
+		}
 
 		// There may be many entries all with the same user key. Spans in other
 		// levels may also start or end at this same user key. For eg:
@@ -561,7 +580,7 @@ func (m *MergingIter) findNextFragmentSet() Span {
 		// If we're positioned at L1's end(c) end boundary, we want to advance
 		// to the first bound > c.
 		m.nextEntry()
-		for len(m.heap.items) > 0 && m.err == nil && m.cmp(m.heapRoot().key, m.start) == 0 {
+		for len(m.heap.items) > 0 && m.err == nil && m.cmp(m.heapRoot(), m.start) == 0 {
 			m.nextEntry()
 		}
 		if len(m.heap.items) == 0 || m.err != nil {
@@ -571,7 +590,7 @@ func (m *MergingIter) findNextFragmentSet() Span {
 		// The current entry at the top of the heap is the first key > m.start.
 		// It must become the end bound for the span we will return to the user.
 		// In the above example, the root of the heap is L1's end(d).
-		m.end = m.heapRoot().key
+		m.end = m.heap.items[0].boundKey.key
 
 		// Each level within m.levels may have a span that overlaps the
 		// fragmented key span [m.start, m.end). Update m.keys to point to them
@@ -604,10 +623,9 @@ func (m *MergingIter) findPrevFragmentSet() Span {
 		// root is the largest bound key equal to the returned span's start key,
 		// so the heap is already positioned at the next merged span's end key.
 
-		// NB: m.heapRoot().key might be either an end boundary OR a start
-		// boundary of a level's span. Both end and start boundaries may still
-		// be a start key of a span returned by MergingIter. Consider the
-		// scenario:
+		// NB: m.heapRoot() might be either an end boundary OR a start boundary
+		// of a level's span. Both end and start boundaries may still be a start
+		// key of a span returned by MergingIter. Consider the scenario:
 		//       a----------l      #2
 		//         b-----------m   #1
 		//
@@ -620,7 +638,16 @@ func (m *MergingIter) findPrevFragmentSet() Span {
 		//
 		// When Preving to a-b#2, we must set m.end to 'b', which originated
 		// from [b,m)#1's start boundary.
-		m.end = m.heapRoot().key
+		m.end = m.heap.items[0].boundKey.key
+
+		// Before calling prevEntry, consider whether it might invalidate our
+		// end boundary. If the end boundary key originated from a start
+		// boundary, then we need to copy the end key before advancing the
+		// underlying iterator to the previous Span.
+		if m.heap.items[0].boundKey.kind == boundKindFragmentStart {
+			m.buf = append(m.buf[:0], m.end...)
+			m.end = m.buf
+		}
 
 		// There may be many entries all with the same user key. Spans in other
 		// levels may also start or end at this same user key. For eg:
@@ -629,7 +656,7 @@ func (m *MergingIter) findPrevFragmentSet() Span {
 		// If we're positioned at L1's start(c) start boundary, we want to prev
 		// to move to the first bound < c.
 		m.prevEntry()
-		for len(m.heap.items) > 0 && m.err == nil && m.cmp(m.heapRoot().key, m.end) == 0 {
+		for len(m.heap.items) > 0 && m.err == nil && m.cmp(m.heapRoot(), m.end) == 0 {
 			m.prevEntry()
 		}
 		if len(m.heap.items) == 0 || m.err != nil {
@@ -639,7 +666,7 @@ func (m *MergingIter) findPrevFragmentSet() Span {
 		// The current entry at the top of the heap is the first key < m.end.
 		// It must become the start bound for the span we will return to the
 		// user. In the above example, the root of the heap is L1's start(a).
-		m.start = m.heapRoot().key
+		m.start = m.heap.items[0].boundKey.key
 
 		// Each level within m.levels may have a set of keys that overlap the
 		// fragmented key span [m.start, m.end). Update m.keys to point to them
@@ -659,8 +686,8 @@ func (m *MergingIter) findPrevFragmentSet() Span {
 	return Span{}
 }
 
-func (m *MergingIter) heapRoot() *boundKey {
-	return m.heap.items[0].boundKey
+func (m *MergingIter) heapRoot() []byte {
+	return m.heap.items[0].boundKey.key
 }
 
 // synthesizeKeys is called by find{Next,Prev}FragmentSet to populate and
