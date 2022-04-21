@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
@@ -198,7 +199,9 @@ type compactionIter struct {
 	// `compaction.rangeDelFrag`).
 	rangeDelFrag *keyspan.Fragmenter
 	// The fragmented tombstones.
-	tombstones          []keyspan.Span
+	tombstones []keyspan.Span
+	// Byte allocator for the tombstone keys.
+	alloc               bytealloc.A
 	allowZeroSeqNum     bool
 	elideTombstone      func(key []byte) bool
 	elideRangeTombstone func(start, end []byte) bool
@@ -723,6 +726,11 @@ func (i *compactionIter) saveKey() {
 	i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
 	i.key.UserKey = i.keyBuf
 	i.key.Trailer = i.iterKey.Trailer
+}
+
+func (i *compactionIter) cloneKey(key []byte) []byte {
+	i.alloc, key = i.alloc.Copy(key)
+	return key
 }
 
 func (i *compactionIter) Key() InternalKey {

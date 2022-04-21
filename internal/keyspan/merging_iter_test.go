@@ -53,7 +53,7 @@ func TestMergingIter(t *testing.T) {
 				spans = append(spans, ParseSpan(line))
 			}
 			if len(spans) > 0 {
-				iters = append(iters, NewIter(cmp, spans))
+				iters = append(iters, &invalidatingIter{iter: NewIter(cmp, spans)})
 			}
 			iter.Init(cmp, visibleTransform(snapshot), iters...)
 			return fmt.Sprintf("%d levels", len(iters))
@@ -165,7 +165,7 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 			}
 			keyspaceStartIdx = spanEndIdx
 		}
-		iters[l] = NewIter(cmp, levels[l])
+		iters[l] = &invalidatingIter{iter: NewIter(cmp, levels[l])}
 		fmt.Fprintln(&buf)
 	}
 
