@@ -717,3 +717,24 @@ set-bounds a c
 seek-lt a
 ----
 .
+
+# Test a SeekLT that searches a keyspace exclusive with the iterator's bounds.
+# Previously, there was a bug that would incorrectly surface the span with the
+# iterator's bounds, despite the fact the SeekLT search key is exclusive. See
+# the comment in keyspanSeekLT.
+
+define-rangekeys
+b-f:{(#1,RANGEKEYSET,@1,foo)}
+----
+OK
+
+define-pointkeys
+f.SET.3
+----
+OK
+
+iter
+set-bounds d e
+seek-lt d
+----
+.
