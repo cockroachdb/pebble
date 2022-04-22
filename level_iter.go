@@ -744,7 +744,7 @@ func (l *levelIter) Close() error {
 	return l.err
 }
 
-func (l *levelIter) SetBounds(lower, upper []byte) {
+func (l *levelIter) SetBounds(lower, upper []byte, equal bool) {
 	l.lower = lower
 	l.upper = upper
 
@@ -760,8 +760,7 @@ func (l *levelIter) SetBounds(lower, upper []byte) {
 		_ = l.Close()
 		return
 	}
-
-	l.iter.SetBounds(l.tableOpts.LowerBound, l.tableOpts.UpperBound)
+	l.iter.SetBounds(l.tableOpts.LowerBound, l.tableOpts.UpperBound, equal)
 }
 
 func (l *levelIter) String() string {
