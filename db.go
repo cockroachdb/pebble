@@ -988,9 +988,8 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		dbi.rangeKey.iter.Init(dbi.cmp, dbi.iter, dbi.rangeKey.rangeKeyIter, keyspan.Hooks{
 			SpanChanged: dbi.rangeKeySpanChanged,
 			SkipPoint:   dbi.rangeKeySkipPoint,
-		})
+		}, dbi.opts.LowerBound, dbi.opts.UpperBound)
 		dbi.iter = &dbi.rangeKey.iter
-		dbi.iter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
 		dbi.rangeKey.activeMaskSuffix = dbi.rangeKey.activeMaskSuffix[:0]
 	}
 	return dbi
@@ -1005,8 +1004,7 @@ func constructPointIter(
 	if dbi.pointIter != nil {
 		// The point iterator has already been constructed. This may be the case
 		// when an Iterator is being re-initialized during a call to SetOptions.
-		// Set the current bounds.
-		dbi.pointIter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
+		// SetOptions already set the appropriate bounds.
 		return dbi.pointIter
 	}
 

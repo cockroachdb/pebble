@@ -562,7 +562,7 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
 								pos := i % (keyCount - 1)
-								l.SetBounds(keys[pos], keys[pos+1])
+								l.SetBounds(keys[pos], keys[pos+1], false /* equal */)
 								// SeekGE will return keys[pos].
 								k, _ := l.SeekGE(keys[pos], false /* trySeekUsingNext */)
 								// Next() will get called once and return nil.

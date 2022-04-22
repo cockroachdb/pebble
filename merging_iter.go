@@ -1086,14 +1086,16 @@ func (m *mergingIter) Close() error {
 	return m.err
 }
 
-func (m *mergingIter) SetBounds(lower, upper []byte) {
-	m.prefix = nil
+func (m *mergingIter) SetBounds(lower, upper []byte, equal bool) {
 	m.lower = lower
 	m.upper = upper
 	for i := range m.levels {
-		m.levels[i].iter.SetBounds(lower, upper)
+		m.levels[i].iter.SetBounds(lower, upper, equal)
 	}
-	m.heap.clear()
+	if !equal {
+		m.prefix = nil
+		m.heap.clear()
+	}
 }
 
 func (m *mergingIter) DebugString() string {
