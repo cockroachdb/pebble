@@ -154,9 +154,9 @@ func (d *DB) Checkpoint(
 
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
-	fs := syncingFS{
+	fs := SyncingFS{
 		FS: d.opts.FS,
-		syncOpts: vfs.SyncingFileOptions{
+		SyncOpts: vfs.SyncingFileOptions{
 			BytesPerSync: d.opts.BytesPerSync,
 		},
 	}

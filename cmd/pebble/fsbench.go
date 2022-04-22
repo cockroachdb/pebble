@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
@@ -66,8 +67,12 @@ func init() {
 	// Add subcommand to list
 	fsBenchCmd.AddCommand(listFsBench)
 
-	// Just use the default vfs implementation for now.
-	fsConfig.fs = vfs.Default
+	fsConfig.fs = pebble.SyncingFS{
+		FS: vfs.Default,
+		SyncOpts: vfs.SyncingFileOptions{
+			BytesPerSync: 1 << 20,
+		},
+	}
 
 	fsConfig.precomputedWriteBatch = bytes.Repeat([]byte("a"), writeBatchSize)
 }
@@ -112,6 +117,7 @@ type fsBench struct {
 // createFile can be used to create an empty file.
 // Invariant: File shouldn't already exist.
 func createFile(filepath string) vfs.File {
+	// this call should be going through the syncing fs now.
 	fh, err := fsConfig.fs.Create(filepath)
 	if err != nil {
 		log.Fatalln(err)

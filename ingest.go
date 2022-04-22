@@ -268,9 +268,9 @@ func ingestLink(
 ) error {
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
-	fs := syncingFS{
+	fs := SyncingFS{
 		FS: opts.FS,
-		syncOpts: vfs.SyncingFileOptions{
+		SyncOpts: vfs.SyncingFileOptions{
 			BytesPerSync: opts.BytesPerSync,
 		},
 	}
