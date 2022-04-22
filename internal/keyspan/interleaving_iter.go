@@ -146,17 +146,23 @@ var _ base.InternalIterator = &InterleavingIter{}
 
 // Init initializes the InterleavingIter to interleave point keys from pointIter
 // with key spans from keyspanIter.
+//
+// Both pointIter and keyspanIter must already have the provided bounds. Init
+// does not propagate the bounds down the iterator stack.
 func (i *InterleavingIter) Init(
 	cmp base.Compare,
 	pointIter base.InternalIteratorWithStats,
 	keyspanIter FragmentIterator,
 	hooks Hooks,
+	lowerBound, upperBound []byte,
 ) {
 	*i = InterleavingIter{
 		cmp:         cmp,
 		pointIter:   pointIter,
 		keyspanIter: keyspanIter,
 		hooks:       hooks,
+		lower:       lowerBound,
+		upper:       upperBound,
 	}
 }
 
@@ -711,9 +717,9 @@ func (i *InterleavingIter) Span() Span {
 }
 
 // SetBounds implements (base.InternalIterator).SetBounds.
-func (i *InterleavingIter) SetBounds(lower, upper []byte) {
+func (i *InterleavingIter) SetBounds(lower, upper []byte, equal bool) {
 	i.lower, i.upper = lower, upper
-	i.pointIter.SetBounds(lower, upper)
+	i.pointIter.SetBounds(lower, upper, equal)
 }
 
 // Error implements (base.InternalIterator).Error.
