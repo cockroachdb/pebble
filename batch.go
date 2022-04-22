@@ -1240,8 +1240,8 @@ func (i *batchIter) Close() error {
 	return i.err
 }
 
-func (i *batchIter) SetBounds(lower, upper []byte) {
-	i.iter.SetBounds(lower, upper)
+func (i *batchIter) SetBounds(lower, upper []byte, equal bool) {
+	i.iter.SetBounds(lower, upper, equal)
 }
 
 type flushableBatchEntry struct {
@@ -1679,7 +1679,7 @@ func (i *flushableBatchIter) Close() error {
 	return i.err
 }
 
-func (i *flushableBatchIter) SetBounds(lower, upper []byte) {
+func (i *flushableBatchIter) SetBounds(lower, upper []byte, equal bool) {
 	i.lower = lower
 	i.upper = upper
 }

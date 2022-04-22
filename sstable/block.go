@@ -950,7 +950,7 @@ func (i *blockIter) Close() error {
 	return nil
 }
 
-func (i *blockIter) SetBounds(lower, upper []byte) {
+func (i *blockIter) SetBounds(lower, upper []byte, equal bool) {
 	// This should never be called as bounds are handled by sstable.Iterator.
 	panic("pebble: SetBounds unimplemented")
 }

@@ -206,10 +206,14 @@ type InternalIterator interface {
 	// called after the iterator has been closed.
 	Close() error
 
-	// SetBounds sets the lower and upper bounds for the iterator. Note that the
-	// result of Next and Prev will be undefined until the iterator has been
-	// repositioned with SeekGE, SeekPrefixGE, SeekLT, First, or Last.
-	SetBounds(lower, upper []byte)
+	// SetBounds sets the lower and upper bounds for the iterator. If equal is
+	// true, the provided bounds are logically equal to the previous bounds.
+	//
+	// The iterator replaces its internal bounds with the new bounds. If equal
+	// is false, the result of Next and Prev will be undefined until the
+	// iterator has been repositioned with SeekGE, SeekPrefixGE, SeekLT, First,
+	// or Last.
+	SetBounds(lower, upper []byte, equal bool)
 
 	fmt.Stringer
 }

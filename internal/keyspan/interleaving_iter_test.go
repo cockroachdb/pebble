@@ -93,7 +93,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			iter.Init(cmp, base.WrapIterWithStats(&pointIter), &keyspanIter, Hooks{
 				SpanChanged: hooks.SpanChanged,
 				SkipPoint:   hooks.SkipPoint,
-			})
+			}, nil, nil)
 			return "OK"
 		case "define-pointkeys":
 			var points []base.InternalKey
@@ -106,12 +106,12 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			iter.Init(cmp, base.WrapIterWithStats(&pointIter), &keyspanIter, Hooks{
 				SpanChanged: hooks.SpanChanged,
 				SkipPoint:   hooks.SkipPoint,
-			})
+			}, nil, nil)
 			return "OK"
 		case "iter":
 			buf.Reset()
 			// Clear any previous bounds.
-			iter.SetBounds(nil, nil)
+			iter.SetBounds(nil, nil, false /* equal */)
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {
 				bufLen := buf.Len()
@@ -146,7 +146,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 					if bounds[1] == "." {
 						u = nil
 					}
-					iter.SetBounds(l, u)
+					iter.SetBounds(l, u, false /* equal */)
 				default:
 					return fmt.Sprintf("unrecognized iter command %q", iterCmd)
 				}
@@ -252,6 +252,6 @@ func (i *pointIterator) Prev() (*base.InternalKey, []byte) {
 func (i *pointIterator) Close() error   { return nil }
 func (i *pointIterator) Error() error   { return nil }
 func (i *pointIterator) String() string { return "test-point-iterator" }
-func (i *pointIterator) SetBounds(lower, upper []byte) {
+func (i *pointIterator) SetBounds(lower, upper []byte, equal bool) {
 	i.lower, i.upper = lower, upper
 }

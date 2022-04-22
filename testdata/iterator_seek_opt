@@ -177,9 +177,10 @@ stats: (interface (dir, seek, step): (fwd, 16, 1), (rev, 0, 1)), (internal (dir,
 SeekGEs with trySeekUsingNext: 6
 SeekPrefixGEs with trySeekUsingNext: 4
 
-# Shifting bounds, with non-overlapping and monotonic bounds. We don't call
-# trySeekUsingNext=true at all here as the set-bounds sits in between every two
-# seeks, but the results are still correct and within bounds.
+# Shifting bounds, with non-overlapping and monotonic bounds. A set-bounds sits
+# between every two seeks. We don't call trySeekUsingNext=true when the bounds
+# are set to unequal bounds, but the results are still correct and within
+# bounds. We do call trySeekUsingNext=true when the set bounds are identical.
 
 iter
 set-bounds lower=a upper=c
@@ -201,14 +202,26 @@ stats: (interface (dir, seek, step): (fwd, 18, 1), (rev, 0, 1)), (internal (dir,
 SeekGEs with trySeekUsingNext: 6
 SeekPrefixGEs with trySeekUsingNext: 4
 
+# NB: Equal bounds.
+
+iter
+set-bounds lower=c upper=e
+seek-ge d
+----
+.
+d:2
+stats: (interface (dir, seek, step): (fwd, 19, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 18, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 8
+SeekPrefixGEs with trySeekUsingNext: 4
+
 iter
 set-bounds lower=a upper=c
 seek-prefix-ge b
 ----
 .
 b:1
-stats: (interface (dir, seek, step): (fwd, 19, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 18, 1), (rev, 0, 3))
-SeekGEs with trySeekUsingNext: 6
+stats: (interface (dir, seek, step): (fwd, 20, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 19, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 8
 SeekPrefixGEs with trySeekUsingNext: 4
 
 iter
@@ -217,6 +230,88 @@ seek-prefix-ge c
 ----
 .
 c:1
-stats: (interface (dir, seek, step): (fwd, 20, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 19, 1), (rev, 0, 3))
-SeekGEs with trySeekUsingNext: 6
+stats: (interface (dir, seek, step): (fwd, 21, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 20, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 8
 SeekPrefixGEs with trySeekUsingNext: 4
+
+# NB: Equal bounds.
+
+iter
+set-bounds lower=c upper=e
+seek-prefix-ge d
+----
+.
+d:2
+stats: (interface (dir, seek, step): (fwd, 22, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 21, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 8
+SeekPrefixGEs with trySeekUsingNext: 6
+
+# Shifting bounds, with non-overlapping and monotonic bounds, but using
+# SetOptions. A set-options sits between every two seeks. We don't call
+# trySeekUsingNext=true when the bounds are set to unequal bounds, but the
+# results are still correct and within bounds. We do call trySeekUsingNext=true
+# when the set bounds are identical.
+
+iter
+set-options lower=a upper=c
+seek-ge b
+----
+.
+b:1
+stats: (interface (dir, seek, step): (fwd, 23, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 22, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 8
+SeekPrefixGEs with trySeekUsingNext: 6
+
+iter
+set-options lower=c upper=e
+seek-ge c
+----
+.
+c:1
+stats: (interface (dir, seek, step): (fwd, 24, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 23, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 8
+SeekPrefixGEs with trySeekUsingNext: 6
+
+# NB: Equal bounds.
+
+iter
+set-options lower=c upper=e
+seek-ge d
+----
+.
+d:2
+stats: (interface (dir, seek, step): (fwd, 25, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 24, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 10
+SeekPrefixGEs with trySeekUsingNext: 6
+
+iter
+set-options lower=a upper=c
+seek-prefix-ge b
+----
+.
+b:1
+stats: (interface (dir, seek, step): (fwd, 26, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 25, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 10
+SeekPrefixGEs with trySeekUsingNext: 6
+
+iter
+set-options lower=c upper=e
+seek-prefix-ge c
+----
+.
+c:1
+stats: (interface (dir, seek, step): (fwd, 27, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 26, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 10
+SeekPrefixGEs with trySeekUsingNext: 6
+
+# NB: Equal bounds.
+
+iter
+set-options lower=c upper=e
+seek-prefix-ge d
+----
+.
+d:2
+stats: (interface (dir, seek, step): (fwd, 28, 1), (rev, 0, 1)), (internal (dir, seek, step): (fwd, 27, 1), (rev, 0, 3))
+SeekGEs with trySeekUsingNext: 10
+SeekPrefixGEs with trySeekUsingNext: 8

@@ -149,8 +149,8 @@ func (i *iterAdapter) Valid() bool {
 	return i.key != nil
 }
 
-func (i *iterAdapter) SetBounds(lower, upper []byte) {
-	i.Iterator.SetBounds(lower, upper)
+func (i *iterAdapter) SetBounds(lower, upper []byte, equal bool) {
+	i.Iterator.SetBounds(lower, upper, equal)
 	i.key = nil
 }
 

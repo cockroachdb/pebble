@@ -181,7 +181,7 @@ func (it *Iterator) String() string {
 // SetBounds sets the lower and upper bounds for the iterator. Note that the
 // result of Next and Prev will be undefined until the iterator has been
 // repositioned with SeekGE, SeekLT, First, or Last.
-func (it *Iterator) SetBounds(lower, upper []byte) {
+func (it *Iterator) SetBounds(lower, upper []byte, equal bool) {
 	it.lower = lower
 	it.upper = upper
 }

@@ -145,9 +145,9 @@ func NewExternalIter(
 		dbi.rangeKey.iter.Init(dbi.cmp, &buf.merging, dbi.rangeKey.rangeKeyIter, keyspan.Hooks{
 			SpanChanged: dbi.rangeKeySpanChanged,
 			SkipPoint:   dbi.rangeKeySkipPoint,
-		})
+		}, dbi.opts.LowerBound, dbi.opts.UpperBound)
 		dbi.iter = &dbi.rangeKey.iter
-		dbi.iter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
+		dbi.iter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound, false /* equal */)
 	}
 
 	// Close all the opened sstable.Readers when the Iterator is closed.

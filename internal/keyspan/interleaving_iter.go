@@ -98,12 +98,7 @@ type InterleavingIter struct {
 	keyBuf   []byte
 	pointKey *base.InternalKey
 	pointVal []byte
-	// span, spanStart and spanEnd describe the current span state.
-	// span{Start,End} are a function of the span and the Iterator's bounds.
-	// span{Start,End} will be nil iff span is !Valid().
-	span      Span
-	spanStart []byte
-	spanEnd   []byte
+	span     Span
 	// spanMarker holds the synthetic key that is returned when the iterator
 	// passes over a key span's start bound.
 	spanMarker base.InternalKey
@@ -146,17 +141,23 @@ var _ base.InternalIterator = &InterleavingIter{}
 
 // Init initializes the InterleavingIter to interleave point keys from pointIter
 // with key spans from keyspanIter.
+//
+// The point iterator must already have the provided bounds. Init does not
+// propagate the bounds down the iterator stack.
 func (i *InterleavingIter) Init(
 	cmp base.Compare,
 	pointIter base.InternalIteratorWithStats,
 	keyspanIter FragmentIterator,
 	hooks Hooks,
+	lowerBound, upperBound []byte,
 ) {
 	*i = InterleavingIter{
 		cmp:         cmp,
 		pointIter:   pointIter,
 		keyspanIter: keyspanIter,
 		hooks:       hooks,
+		lower:       lowerBound,
+		upper:       upperBound,
 	}
 }
 
@@ -664,19 +665,13 @@ func (i *InterleavingIter) yieldSyntheticSpanMarker(lowerBound []byte) (*base.In
 			return i.yieldNil()
 		}
 
-		// If the lowerBound argument is the lower bound set by SetBounds,
-		// Pebble owns the slice's memory and there's no need to make a copy of
-		// the lower bound.
-		//
-		// Otherwise, the lowerBound argument came from a SeekGE or SeekPrefixGE
-		// call, and it may be backed by a user-provided byte slice.
-		if len(lowerBound) > 0 && len(i.lower) > 0 && &lowerBound[0] == &i.lower[0] {
-			i.spanMarker.UserKey = lowerBound
-		} else {
-			i.keyBuf = append(i.keyBuf[:0], lowerBound...)
-			i.spanMarker.UserKey = i.keyBuf
-			i.spanMarkerTruncated = true
-		}
+		// The lowerBound argument may have come from a SeekGE or SeekPrefixGE
+		// call, and it may be backed by a user-provided byte slice. Even if
+		// it's owned by Pebble currently, a subsequent SetBounds may replace
+		// it. Copy it.
+		i.keyBuf = append(i.keyBuf[:0], lowerBound...)
+		i.spanMarker.UserKey = i.keyBuf
+		i.spanMarkerTruncated = true
 	}
 	return i.verify(&i.spanMarker, nil)
 }
@@ -706,7 +701,7 @@ func (i *InterleavingIter) verify(k *base.InternalKey, v []byte) (*base.Internal
 	case k != nil && i.upper != nil && i.cmp(k.UserKey, i.upper) >= 0:
 		panic("pebble: invariant violation: key ≥ upper bound")
 	case i.span.Valid() && k != nil && i.hooks.SkipPoint != nil && i.pointKeyInterleaved &&
-		i.cmp(k.UserKey, i.spanStart) >= 0 && i.cmp(k.UserKey, i.spanEnd) < 0 && i.hooks.SkipPoint(k.UserKey):
+		i.cmp(k.UserKey, i.span.Start) >= 0 && i.cmp(k.UserKey, i.span.End) < 0 && i.hooks.SkipPoint(k.UserKey):
 		panic("pebble: invariant violation: point key eligible for skipping returned")
 	}
 
@@ -718,15 +713,11 @@ func (i *InterleavingIter) saveKeyspan(s Span) {
 	i.spanMarkerTruncated = false
 	i.span = s
 	if !s.Valid() {
-		i.spanStart = nil
-		i.spanEnd = nil
 		if i.hooks.SpanChanged != nil {
 			i.hooks.SpanChanged(s)
 		}
 		return
 	}
-	i.spanStart = s.Start
-	i.spanEnd = s.End
 
 	if i.hooks.SpanChanged != nil {
 		i.hooks.SpanChanged(s)
@@ -740,18 +731,21 @@ func (i *InterleavingIter) Span() Span {
 	if !i.spanCoversKey {
 		return Span{}
 	}
-	// Return the span with truncated bounds.
-	return Span{
-		Start: i.spanStart,
-		End:   i.spanEnd,
-		Keys:  i.span.Keys,
-	}
+	return i.span
 }
 
 // SetBounds implements (base.InternalIterator).SetBounds.
-func (i *InterleavingIter) SetBounds(lower, upper []byte) {
+func (i *InterleavingIter) SetBounds(lower, upper []byte, equal bool) {
+	if i.span.Valid() {
+		if i.lower != nil && (&i.span.Start[0] == &i.lower[0]) {
+			i.span.Start = lower
+		}
+		if i.upper != nil && (&i.span.End[0] == &i.upper[0]) {
+			i.span.End = upper
+		}
+	}
 	i.lower, i.upper = lower, upper
-	i.pointIter.SetBounds(lower, upper)
+	i.pointIter.SetBounds(lower, upper, equal)
 }
 
 // Error implements (base.InternalIterator).Error.
