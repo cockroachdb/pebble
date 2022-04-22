@@ -206,6 +206,6 @@ func (g *getIter) Close() error {
 	return g.err
 }
 
-func (g *getIter) SetBounds(lower, upper []byte) {
+func (g *getIter) SetBounds(lower, upper []byte, equal bool) {
 	panic("pebble: SetBounds unimplemented")
 }

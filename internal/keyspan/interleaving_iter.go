@@ -146,17 +146,23 @@ var _ base.InternalIterator = &InterleavingIter{}
 
 // Init initializes the InterleavingIter to interleave point keys from pointIter
 // with key spans from keyspanIter.
+//
+// The point iterator must already have the provided bounds. Init does not
+// propagate the bounds down the iterator stack.
 func (i *InterleavingIter) Init(
 	cmp base.Compare,
 	pointIter base.InternalIteratorWithStats,
 	keyspanIter FragmentIterator,
 	hooks Hooks,
+	lowerBound, upperBound []byte,
 ) {
 	*i = InterleavingIter{
 		cmp:         cmp,
 		pointIter:   pointIter,
 		keyspanIter: keyspanIter,
 		hooks:       hooks,
+		lower:       lowerBound,
+		upper:       upperBound,
 	}
 }
 
@@ -664,19 +670,13 @@ func (i *InterleavingIter) yieldSyntheticSpanMarker(lowerBound []byte) (*base.In
 			return i.yieldNil()
 		}
 
-		// If the lowerBound argument is the lower bound set by SetBounds,
-		// Pebble owns the slice's memory and there's no need to make a copy of
-		// the lower bound.
-		//
-		// Otherwise, the lowerBound argument came from a SeekGE or SeekPrefixGE
-		// call, and it may be backed by a user-provided byte slice.
-		if len(lowerBound) > 0 && len(i.lower) > 0 && &lowerBound[0] == &i.lower[0] {
-			i.spanMarker.UserKey = lowerBound
-		} else {
-			i.keyBuf = append(i.keyBuf[:0], lowerBound...)
-			i.spanMarker.UserKey = i.keyBuf
-			i.spanMarkerTruncated = true
-		}
+		// The lowerBound argument may have come from a SeekGE or SeekPrefixGE
+		// call, and it may be backed by a user-provided byte slice. Even if
+		// it's owned by Pebble currently, a subsequent SetBounds may replace
+		// it. Copy it.
+		i.keyBuf = append(i.keyBuf[:0], lowerBound...)
+		i.spanMarker.UserKey = i.keyBuf
+		i.spanMarkerTruncated = true
 	}
 	return i.verify(&i.spanMarker, nil)
 }
@@ -749,9 +749,17 @@ func (i *InterleavingIter) Span() Span {
 }
 
 // SetBounds implements (base.InternalIterator).SetBounds.
-func (i *InterleavingIter) SetBounds(lower, upper []byte) {
+func (i *InterleavingIter) SetBounds(lower, upper []byte, equal bool) {
+	if i.span.Valid() {
+		if i.lower != nil && (&i.span.Start[0] == &i.lower[0]) {
+			i.span.Start = lower
+		}
+		if i.upper != nil && (&i.span.End[0] == &i.upper[0]) {
+			i.span.End = upper
+		}
+	}
 	i.lower, i.upper = lower, upper
-	i.pointIter.SetBounds(lower, upper)
+	i.pointIter.SetBounds(lower, upper, equal)
 }
 
 // Error implements (base.InternalIterator).Error.

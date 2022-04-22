@@ -224,10 +224,10 @@ func (it *Iterator) Tail() bool {
 	return it.nd == it.list.tail
 }
 
-// SetBounds sets the lower and upper bounds for the iterator. Note that the
-// result of Next and Prev will be undefined until the iterator has been
+// SetBounds sets the lower and upper bounds for the iterator. If equal is false,
+// the result of Next and Prev will be undefined until the iterator has been
 // repositioned with SeekGE, SeekPrefixGE, SeekLT, First, or Last.
-func (it *Iterator) SetBounds(lower, upper []byte) {
+func (it *Iterator) SetBounds(lower, upper []byte, equal bool) {
 	it.lower = lower
 	it.upper = upper
 }
