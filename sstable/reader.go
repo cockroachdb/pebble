@@ -1052,7 +1052,13 @@ func disableBoundsOpt(bound []byte, ptr uintptr) bool {
 
 // SetBounds implements internalIterator.SetBounds, as documented in the pebble
 // package.
-func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
+func (i *singleLevelIterator) SetBounds(lower, upper []byte, equal bool) {
+	i.lower = lower
+	i.upper = upper
+	if equal {
+		return
+	}
+
 	i.boundsCmp = 0
 	if i.positionedUsingLatestBounds {
 		if i.upper != nil && lower != nil && i.cmp(i.upper, lower) <= 0 {
@@ -1068,8 +1074,6 @@ func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
 		}
 		i.positionedUsingLatestBounds = false
 	}
-	i.lower = lower
-	i.upper = upper
 	i.blockLower = nil
 	i.blockUpper = nil
 }

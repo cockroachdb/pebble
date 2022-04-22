@@ -210,7 +210,7 @@ func (f *fakeIter) Close() error {
 	return f.closeErr
 }
 
-func (f *fakeIter) SetBounds(lower, upper []byte) {
+func (f *fakeIter) SetBounds(lower, upper []byte, equal bool) {
 	f.lower = lower
 	f.upper = upper
 }
@@ -305,8 +305,8 @@ func (i *invalidatingIter) Close() error {
 	return i.iter.Close()
 }
 
-func (i *invalidatingIter) SetBounds(lower, upper []byte) {
-	i.iter.SetBounds(lower, upper)
+func (i *invalidatingIter) SetBounds(lower, upper []byte, equal bool) {
+	i.iter.SetBounds(lower, upper, equal)
 }
 
 func (i *invalidatingIter) String() string {
