@@ -62,9 +62,9 @@ func (c *errorIter) String() string {
 	return "error"
 }
 
-func (c *errorIter) SetBounds(lower, upper []byte) {}
-func (c *errorIter) Stats() InternalIteratorStats  { return InternalIteratorStats{} }
-func (c *errorIter) ResetStats()                   {}
+func (c *errorIter) SetBounds(lower, upper []byte, equal bool) {}
+func (c *errorIter) Stats() InternalIteratorStats              { return InternalIteratorStats{} }
+func (c *errorIter) ResetStats()                               {}
 
 type errorKeyspanIter struct {
 	err error

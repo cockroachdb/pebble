@@ -326,7 +326,7 @@ func runIterCmd(td *datadriven.TestData, r *Reader) string {
 					return fmt.Sprintf("set-bounds: unknown arg: %s", arg)
 				}
 			}
-			iter.SetBounds(lower, upper)
+			iter.SetBounds(lower, upper, false /* equal */)
 		case "stats":
 			fmt.Fprintf(&b, "%+v\n", iter.Stats())
 			continue

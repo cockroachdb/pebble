@@ -153,7 +153,7 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			valid = iter.Valid()
 		case "set-options":
 			const usageString = "set-options [lower=<lower>] [upper=<upper>] [key-types=point|range|both] [mask-suffix=<suffix>] [only-durable=<bool>] [table-filter=reuse|none] [point-filters=reuse|none]\n"
-			var opts IterOptions
+			opts := iter.opts
 			for _, part := range parts[1:] {
 				arg := strings.SplitN(part, "=", 2)
 				if len(arg) != 2 {
@@ -165,6 +165,7 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 					case "reuse":
 						opts.PointKeyFilters = iter.opts.PointKeyFilters
 					case "none":
+						opts.PointKeyFilters = nil
 					default:
 						return fmt.Sprintf("set-options: unknown arg point-filter=%q:\n%s", arg[1], usageString)
 					}
@@ -190,6 +191,7 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 					case "reuse":
 						opts.TableFilter = iter.opts.TableFilter
 					case "none":
+						opts.TableFilter = nil
 					default:
 						return fmt.Sprintf("set-options: unknown arg table-filter=%q:\n%s", arg[1], usageString)
 					}
@@ -364,7 +366,7 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 					return fmt.Sprintf("set-bounds: unknown arg: %s", arg)
 				}
 			}
-			iter.SetBounds(lower, upper)
+			iter.SetBounds(lower, upper, false /* equal */)
 			continue
 		case "stats":
 			ii, ok := iter.(internalIteratorWithStats)
