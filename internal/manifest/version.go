@@ -134,7 +134,7 @@ type FileMetadata struct {
 	// Stats describe table statistics. Protected by DB.mu.
 	Stats TableStats
 
-	subLevel         int
+	SubLevel         int
 	L0Index          int
 	minIntervalIndex int
 	maxIntervalIndex int
