@@ -384,11 +384,9 @@ type compaction struct {
 	// L0Sublevels. If nil, flushes aren't split.
 	l0Limits [][]byte
 
-	// l0ManualCompactionFiles is used for L0 manual compactions. Each sublevel is
-	// treated as a level in the merging iter. It is crucial that this slice
-	// is non-nil iff we have picked a compaction which includes every single
-	// file in L0.
-	l0ManualCompactionFiles []manifest.LevelSlice
+	// L0 sublevel info is used for compactions out of L0. It is nil for all
+	// other compactions.
+	l0SublevelInfo []sublevelInfo
 
 	// List of disjoint inuse key ranges the compaction overlaps with in
 	// grandparent and lower levels. See setupInuseKeyRanges() for the
@@ -439,20 +437,20 @@ func (c *compaction) makeInfo(jobID int) CompactionInfo {
 
 func newCompaction(pc *pickedCompaction, opts *Options, bytesCompacted *uint64) *compaction {
 	c := &compaction{
-		kind:                    compactionKindDefault,
-		cmp:                     pc.cmp,
-		equal:                   opts.equal(),
-		formatKey:               opts.Comparer.FormatKey,
-		score:                   pc.score,
-		inputs:                  pc.inputs,
-		smallest:                pc.smallest,
-		largest:                 pc.largest,
-		logger:                  opts.Logger,
-		version:                 pc.version,
-		maxOutputFileSize:       pc.maxOutputFileSize,
-		maxOverlapBytes:         pc.maxOverlapBytes,
-		atomicBytesIterated:     bytesCompacted,
-		l0ManualCompactionFiles: pc.l0ManualCompactionFiles,
+		kind:                compactionKindDefault,
+		cmp:                 pc.cmp,
+		equal:               opts.equal(),
+		formatKey:           opts.Comparer.FormatKey,
+		score:               pc.score,
+		inputs:              pc.inputs,
+		smallest:            pc.smallest,
+		largest:             pc.largest,
+		logger:              opts.Logger,
+		version:             pc.version,
+		maxOutputFileSize:   pc.maxOutputFileSize,
+		maxOverlapBytes:     pc.maxOverlapBytes,
+		atomicBytesIterated: bytesCompacted,
+		l0SublevelInfo:      pc.l0SublevelInfo,
 	}
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
@@ -929,22 +927,6 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		return newMergingIter(c.logger, c.cmp, nil, iters...), nil
 	}
 
-	// Check that the LSM ordering invariants are ok in order to prevent
-	// generating corrupted sstables due to a violation of those invariants.
-	if c.l0ManualCompactionFiles != nil {
-		// We may be using L0 sublevels for compaction.
-		//
-		// TODO(bananabrick): Get rid of this special casing when we switch
-		// to always using sublevels for compactions out of L0.
-		for i, s := range c.l0ManualCompactionFiles {
-			err := manifest.CheckOrdering(c.cmp, c.formatKey,
-				manifest.L0Sublevel(i), s.Iter())
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
 	if c.startLevel.level >= 0 {
 		err := manifest.CheckOrdering(c.cmp, c.formatKey,
 			manifest.Level(c.startLevel.level), c.startLevel.files.Iter())
@@ -956,6 +938,20 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		manifest.Level(c.outputLevel.level), c.outputLevel.files.Iter())
 	if err != nil {
 		return nil, err
+	}
+
+	if c.startLevel.level == 0 {
+		if c.l0SublevelInfo == nil {
+			panic("l0SublevelInfo not created for compaction out of L0")
+		}
+
+		for _, info := range c.l0SublevelInfo {
+			err := manifest.CheckOrdering(c.cmp, c.formatKey,
+				info.sublevel, info.Iter())
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	iters := make([]internalIterator, 0, 2*c.startLevel.files.Len()+1)
@@ -1085,25 +1081,11 @@ func (c *compaction) newInputIter(newIters tableNewIters) (_ internalIterator, r
 		if err = addItersForLevel(c.startLevel, manifest.Level(c.startLevel.level)); err != nil {
 			return nil, err
 		}
-	} else if c.l0ManualCompactionFiles != nil {
-		// This condition should only get triggered during a non concurrent
-		// compaction of the entire L0.
-		for i, s := range c.l0ManualCompactionFiles {
-			if err = addItersForLevel(&compactionLevel{0, s}, manifest.L0Sublevel(i)); err != nil {
-				return nil, err
-			}
-		}
 	} else {
-		iter := c.startLevel.files.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
-			iter, rangeDelIter, err := newIters(iter.Current(), nil /* iter options */, &c.bytesIterated)
-			if err != nil {
-				return nil, errors.Wrapf(err, "pebble: could not open table %s", errors.Safe(f.FileNum))
-			}
-			iters = append(iters, iter)
-			if rangeDelIter != nil {
-				c.closers = append(c.closers, rangeDelIter)
-				rangeDelIters = append(rangeDelIters, noCloseIter{rangeDelIter})
+		for _, info := range c.l0SublevelInfo {
+			if err = addItersForLevel(
+				&compactionLevel{0, info.LevelSlice}, info.sublevel); err != nil {
+				return nil, err
 			}
 		}
 	}
