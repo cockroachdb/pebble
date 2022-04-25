@@ -1102,7 +1102,8 @@ func (s *L0Sublevels) UpdateStateForStartedCompaction(inputs []LevelSlice, isBas
 // between candidate compactions (eg. fileBytes and
 // seedIntervalStackDepthReduction).
 type L0CompactionFiles struct {
-	Files         []*FileMetadata
+	Files []*FileMetadata
+
 	FilesIncluded bitSet
 	// A "seed interval" is an interval with a high stack depth that was chosen
 	// to bootstrap this compaction candidate. seedIntervalStackDepthReduction
@@ -1426,6 +1427,39 @@ func (s *L0Sublevels) PickBaseCompaction(
 		}
 	}
 	return nil, nil
+}
+
+// SublevelInfo is used to tag a LevelSlice for an L0 sublevel with the
+// sublevel.
+type SublevelInfo struct {
+	LevelSlice
+	Sublevel Level
+}
+
+// GenerateSublevelInfo will generate the level slices for each of the sublevels
+// from the level slice for all of L0.
+func GenerateSublevelInfo(cmp base.Compare, levelFiles LevelSlice) []SublevelInfo {
+	sublevelMap := make(map[uint64][]*FileMetadata)
+	it := levelFiles.Iter()
+	for f := it.First(); f != nil; f = it.Next() {
+		sublevelMap[uint64(f.subLevel)] = append(sublevelMap[uint64(f.subLevel)], f)
+	}
+
+	var sublevels []int
+	for level := range sublevelMap {
+		sublevels = append(sublevels, int(level))
+	}
+	sort.Ints(sublevels)
+
+	var levelSlices []SublevelInfo
+	for _, sublevel := range sublevels {
+		metas := sublevelMap[uint64(sublevel)]
+		levelSlices = append(
+			levelSlices,
+			SublevelInfo{NewLevelSliceKeySorted(cmp, metas), L0Sublevel(sublevel)},
+		)
+	}
+	return levelSlices
 }
 
 // Helper function for building an L0 -> Lbase compaction using a seed interval
