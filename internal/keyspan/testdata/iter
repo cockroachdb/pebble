@@ -116,3 +116,35 @@ next
 b-c:{(#2,SET) (#1,SET)}
 c-d:{(#2,SET) (#1,SET)}
 .
+
+# Test behavior around bounds. Previously, there existed a bug where bounds
+# the iterator's index was not set during absolute positioning calls that return
+# zero elements. This allowed releative positioning methods to surface
+# out-of-bounds values because only the bound in the direction of iteration is
+# checked.
+
+iter
+last
+set-bounds a a
+first
+prev
+prev
+----
+c-d:{(#2,SET) (#1,SET)}
+.
+.
+.
+.
+
+iter
+first
+set-bounds d d
+last
+next
+next
+----
+a-b:{(#2,SET) (#1,SET)}
+.
+.
+.
+.

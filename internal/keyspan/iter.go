@@ -174,19 +174,19 @@ func (i *Iter) SeekLT(key []byte) Span {
 
 // First implements FragmentIterator.First.
 func (i *Iter) First() Span {
+	i.index = i.lower
 	if i.upper <= i.lower {
 		return Span{}
 	}
-	i.index = i.lower
 	return i.spans[i.index]
 }
 
 // Last implements FragmentIterator.Last.
 func (i *Iter) Last() Span {
+	i.index = i.upper - 1
 	if i.upper <= i.lower {
 		return Span{}
 	}
-	i.index = i.upper - 1
 	return i.spans[i.index]
 }
 
