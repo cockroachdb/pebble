@@ -596,7 +596,7 @@ func (s *L0Sublevels) AddL0Files(
 		if err := newVal.addFileToSublevels(f, true /* checkInvariant */); err != nil {
 			return nil, err
 		}
-		updatedSublevels = append(updatedSublevels, f.subLevel)
+		updatedSublevels = append(updatedSublevels, f.SubLevel)
 	}
 
 	// Sort and deduplicate updatedSublevels.
@@ -655,13 +655,13 @@ func (s *L0Sublevels) addFileToSublevels(f *FileMetadata, checkInvariant bool) e
 	for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
 		interval := &s.orderedIntervals[i]
 		if len(interval.files) > 0 &&
-			subLevel <= interval.files[len(interval.files)-1].subLevel {
+			subLevel <= interval.files[len(interval.files)-1].SubLevel {
 			if checkInvariant && interval.files[len(interval.files)-1].LargestSeqNum > f.LargestSeqNum {
 				// We are sliding this file "underneath" an existing file. Throw away
 				// and start over in NewL0Sublevels.
 				return errInvalidL0SublevelsOpt
 			}
-			subLevel = interval.files[len(interval.files)-1].subLevel + 1
+			subLevel = interval.files[len(interval.files)-1].SubLevel + 1
 		}
 		interval.estimatedBytes += interpolatedBytes
 		if f.minIntervalIndex < interval.filesMinIntervalIndex {
@@ -672,7 +672,7 @@ func (s *L0Sublevels) addFileToSublevels(f *FileMetadata, checkInvariant bool) e
 		}
 		interval.files = append(interval.files, f)
 	}
-	f.subLevel = subLevel
+	f.SubLevel = subLevel
 	if subLevel > len(s.levelFiles) {
 		return errors.Errorf("chose a sublevel beyond allowed range of sublevels: %d vs 0-%d", subLevel, len(s.levelFiles))
 	}
@@ -996,20 +996,20 @@ func (s *L0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 		}
 	}
 	for _, f := range c.Files {
-		if fileIntervalsByLevel[f.subLevel].min > f.minIntervalIndex {
-			fileIntervalsByLevel[f.subLevel].min = f.minIntervalIndex
+		if fileIntervalsByLevel[f.SubLevel].min > f.minIntervalIndex {
+			fileIntervalsByLevel[f.SubLevel].min = f.minIntervalIndex
 		}
-		if fileIntervalsByLevel[f.subLevel].max < f.maxIntervalIndex {
-			fileIntervalsByLevel[f.subLevel].max = f.maxIntervalIndex
+		if fileIntervalsByLevel[f.SubLevel].max < f.maxIntervalIndex {
+			fileIntervalsByLevel[f.SubLevel].max = f.maxIntervalIndex
 		}
 		includedFiles.markBit(f.L0Index)
 		if c.isIntraL0 {
-			if topLevel > f.subLevel {
-				topLevel = f.subLevel
+			if topLevel > f.SubLevel {
+				topLevel = f.SubLevel
 			}
 		} else {
-			if topLevel < f.subLevel {
-				topLevel = f.subLevel
+			if topLevel < f.SubLevel {
+				topLevel = f.SubLevel
 			}
 		}
 	}
@@ -1046,12 +1046,12 @@ func (s *L0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 				fmt.Fprintf(&buf, "files included:\n")
 				for _, f := range c.Files {
 					fmt.Fprintf(&buf, "filenum: %d, sl: %d, index: %d, [%d, %d]\n",
-						f.FileNum, f.subLevel, f.L0Index, f.minIntervalIndex, f.maxIntervalIndex)
+						f.FileNum, f.SubLevel, f.L0Index, f.minIntervalIndex, f.maxIntervalIndex)
 				}
 				fmt.Fprintf(&buf, "files added:\n")
 				for _, f := range c.filesAdded {
 					fmt.Fprintf(&buf, "filenum: %d, sl: %d, index: %d, [%d, %d]\n",
-						f.FileNum, f.subLevel, f.L0Index, f.minIntervalIndex, f.maxIntervalIndex)
+						f.FileNum, f.SubLevel, f.L0Index, f.minIntervalIndex, f.maxIntervalIndex)
 				}
 				return errors.New(buf.String())
 			}
@@ -1102,7 +1102,8 @@ func (s *L0Sublevels) UpdateStateForStartedCompaction(inputs []LevelSlice, isBas
 // between candidate compactions (eg. fileBytes and
 // seedIntervalStackDepthReduction).
 type L0CompactionFiles struct {
-	Files         []*FileMetadata
+	Files []*FileMetadata
+
 	FilesIncluded bitSet
 	// A "seed interval" is an interval with a high stack depth that was chosen
 	// to bootstrap this compaction candidate. seedIntervalStackDepthReduction
@@ -1452,7 +1453,7 @@ func (s *L0Sublevels) baseCompactionUsingSeed(
 
 	for i := 0; i < len(interval.files); i++ {
 		f2 := interval.files[i]
-		sl := f2.subLevel
+		sl := f2.SubLevel
 		c.seedIntervalStackDepthReduction++
 		c.seedIntervalMaxLevel = sl
 		c.addFile(f2)
@@ -1664,7 +1665,7 @@ func (s *L0Sublevels) intraL0CompactionUsingSeed(
 	// when fileBytes grows too large.
 	for ; slIndex >= 0; slIndex-- {
 		f2 := interval.files[slIndex]
-		sl := f2.subLevel
+		sl := f2.SubLevel
 		if f2.Compacting {
 			break
 		}

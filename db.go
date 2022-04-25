@@ -1316,20 +1316,8 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 	}
 
 	for level := 0; level < maxLevelWithFiles; {
-		par := parallelize
-		if level == 0 {
-			// TODO(bananabrick): Get rid of this special casing once
-			// we start to always add sublevels to the merging iter for
-			// L0 -> Lbase compactions.
-			//
-			// Avoid trying to parallelize l0 manual compactions because in
-			// practice it's difficult to split l0 into non-overlapping key
-			// ranges, and not splitting l0 allows us to add level iters
-			// instead of file iters into the merging iter, which results
-			// in a faster compaction.
-			par = false
-		}
-		if err := d.manualCompact(iStart.UserKey, iEnd.UserKey, level, par); err != nil {
+		if err := d.manualCompact(
+			iStart.UserKey, iEnd.UserKey, level, parallelize); err != nil {
 			return err
 		}
 		level++
