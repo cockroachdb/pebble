@@ -181,6 +181,11 @@ type FileMetadata struct {
 	boundTypeSmallest, boundTypeLargest boundType
 }
 
+// SetSublevel is only used for testing purposes.
+func (m *FileMetadata) SetSublevel(sublevel int) {
+	m.subLevel = sublevel
+}
+
 // ExtendPointKeyBounds attempts to extend the lower and upper point key bounds
 // and overall table bounds with the given smallest and largest keys. The
 // smallest and largest bounds may not be extended if the table already has a
