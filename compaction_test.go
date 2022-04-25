@@ -2716,6 +2716,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				var sublevels []manifest.LevelSlice
 				var files *[]*fileMetadata
 				var sublevel []*fileMetadata
+				var sublevelNum int
 				var parsingSublevel bool
 				fileNum := FileNum(1)
 
@@ -2734,6 +2735,10 @@ func TestCompactionCheckOrdering(t *testing.T) {
 						// Format L0.{sublevel}.
 						switchSublevel()
 						level, err := strconv.Atoi(data[1:2])
+						if err != nil {
+							return err.Error()
+						}
+						sublevelNum, err = strconv.Atoi(data[3:])
 						if err != nil {
 							return err.Error()
 						}
@@ -2766,6 +2771,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 						fileNum++
 						*files = append(*files, meta)
 						if parsingSublevel {
+							meta.SetSublevel(sublevelNum)
 							sublevel = append(sublevel, meta)
 						}
 					}
@@ -2774,7 +2780,6 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				switchSublevel()
 				c.startLevel.files = manifest.NewLevelSliceSpecificOrder(startFiles)
 				c.outputLevel.files = manifest.NewLevelSliceSpecificOrder(outputFiles)
-				c.l0ManualCompactionFiles = sublevels
 				if c.outputLevel.level == -1 {
 					c.outputLevel.level = 0
 				}
