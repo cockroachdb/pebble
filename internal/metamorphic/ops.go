@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math/rand"
 	"path/filepath"
 	"strings"
 
@@ -575,16 +576,24 @@ type newIterOp struct {
 
 func (o *newIterOp) run(t *test, h *history) {
 	r := t.getReader(o.readerID)
+	var lower, upper []byte
+	if o.lower != nil {
+		lower = append(lower, o.lower...)
+	}
+	if o.upper != nil {
+		upper = append(upper, o.upper...)
+	}
+	opts := &pebble.IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
+		KeyTypes:   pebble.IterKeyType(o.keyTypes),
+		RangeKeyMasking: pebble.RangeKeyMasking{
+			Suffix: o.rangeKeyMaskSuffix,
+		},
+	}
 	var i *pebble.Iterator
 	for {
-		i = r.NewIter(&pebble.IterOptions{
-			LowerBound: o.lower,
-			UpperBound: o.upper,
-			KeyTypes:   pebble.IterKeyType(o.keyTypes),
-			RangeKeyMasking: pebble.RangeKeyMasking{
-				Suffix: o.rangeKeyMaskSuffix,
-			},
-		})
+		i = r.NewIter(opts)
 		if err := i.Error(); !errors.Is(err, errorfs.ErrInjected) {
 			break
 		}
@@ -592,6 +601,12 @@ func (o *newIterOp) run(t *test, h *history) {
 		_ = i.Close()
 	}
 	t.setIter(o.iterID, i)
+
+	// Trash the bounds to ensure that Pebble doesn't rely on the stability of
+	// the user-provided bounds.
+	rand.Read(lower[:])
+	rand.Read(upper[:])
+
 	h.Recordf("%s // %v", o, i.Error())
 }
 
@@ -629,7 +644,20 @@ type iterSetBoundsOp struct {
 
 func (o *iterSetBoundsOp) run(t *test, h *history) {
 	i := t.getIter(o.iterID)
-	i.SetBounds(o.lower, o.upper)
+	var lower, upper []byte
+	if o.lower != nil {
+		lower = append(lower, o.lower...)
+	}
+	if o.upper != nil {
+		upper = append(upper, o.upper...)
+	}
+	i.SetBounds(lower, upper)
+
+	// Trash the bounds to ensure that Pebble doesn't rely on the stability of
+	// the user-provided bounds.
+	rand.Read(lower[:])
+	rand.Read(upper[:])
+
 	h.Recordf("%s // %v", o, i.Error())
 }
 
@@ -651,14 +679,30 @@ type iterSetOptionsOp struct {
 
 func (o *iterSetOptionsOp) run(t *test, h *history) {
 	i := t.getIter(o.iterID)
-	i.SetOptions(&pebble.IterOptions{
-		LowerBound: o.lower,
-		UpperBound: o.upper,
+
+	var lower, upper []byte
+	if o.lower != nil {
+		lower = append(lower, o.lower...)
+	}
+	if o.upper != nil {
+		upper = append(upper, o.upper...)
+	}
+	opts := &pebble.IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
 		KeyTypes:   pebble.IterKeyType(o.keyTypes),
 		RangeKeyMasking: pebble.RangeKeyMasking{
 			Suffix: o.rangeKeyMaskSuffix,
 		},
-	})
+	}
+
+	i.SetOptions(opts)
+
+	// Trash the bounds to ensure that Pebble doesn't rely on the stability of
+	// the user-provided bounds.
+	rand.Read(lower[:])
+	rand.Read(upper[:])
+
 	h.Recordf("%s // %v", o, i.Error())
 }
 
