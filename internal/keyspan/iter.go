@@ -5,8 +5,6 @@
 package keyspan
 
 import (
-	"sort"
-
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
@@ -58,15 +56,6 @@ type FragmentIterator interface {
 	// multiple times. Other methods should not be called after the iterator has
 	// been closed.
 	Close() error
-
-	// SetBounds sets the lower (inclusive) and upper (exclusive) bounds for the
-	// iterator. Note that the result of Next and Prev will be undefined until
-	// the iterator has been repositioned with SeekGE, SeekLT, First, or Last.
-	//
-	// Spans that extend beyond either bound will NOT be truncated. Spans are
-	// considered out of bounds only if they have no overlap with the bound span
-	// [lower, upper).
-	SetBounds(lower, upper []byte)
 }
 
 // TableNewRangeKeyIter creates a new range key iterator for the given file.
@@ -75,18 +64,6 @@ type TableNewRangeKeyIter func(file *manifest.FileMetadata, iterOptions *RangeIt
 // RangeIterOptions is a subset of IterOptions that are necessary to instantiate
 // per-sstable range key iterators.
 type RangeIterOptions struct {
-	// LowerBound specifies the smallest userkey (inclusive) that the iterator will
-	// return during iteration. If the iterator is seeked or iterated past this
-	// boundary the iterator will return Valid()==false. Setting LowerBound
-	// effectively truncates the key space visible to the iterator. Iterators are
-	// allowed to reuse this slice, so it should not be modified once passed in.
-	LowerBound []byte
-	// UpperBound specifies the largest key (exclusive) that the iterator will
-	// return during iteration. If the iterator is seeked or iterated past this
-	// boundary the iterator will return Valid()==false. Setting UpperBound
-	// effectively truncates the key space visible to the iterator. Iterators are
-	// allowed to reuse this slice, so it should not be modified once passed in.
-	UpperBound []byte
 	// Filters can be used to avoid scanning tables and blocks in tables
 	// when iterating over range keys.
 	Filters []base.BlockPropertyFilter
@@ -97,11 +74,6 @@ type Iter struct {
 	cmp   base.Compare
 	spans []Span
 	index int
-
-	// lower and upper are indexes into spans, indicating the spans within the
-	// current bounds set by SetBounds. lower is inclusive, upper exclusive.
-	lower int
-	upper int
 }
 
 // Iter implements the FragmentIterator interface.
@@ -113,8 +85,6 @@ func NewIter(cmp base.Compare, spans []Span) *Iter {
 		cmp:   cmp,
 		spans: spans,
 		index: -1,
-		lower: 0,
-		upper: len(spans),
 	}
 }
 
@@ -124,8 +94,8 @@ func (i *Iter) SeekGE(key []byte) Span {
 	//
 	// Define f(-1) == false and f(n) == true.
 	// Invariant: f(index-1) == false, f(upper) == true.
-	i.index = i.lower
-	upper := i.upper
+	i.index = 0
+	upper := len(i.spans)
 	for i.index < upper {
 		h := int(uint(i.index+upper) >> 1) // avoid overflow when computing h
 		// i.index ≤ h < upper
@@ -137,7 +107,7 @@ func (i *Iter) SeekGE(key []byte) Span {
 	}
 	// i.index == upper, f(i.index-1) == false, and f(upper) (= f(i.index)) ==
 	// true => answer is i.index.
-	if i.index >= i.upper {
+	if i.index >= len(i.spans) {
 		return Span{}
 	}
 	return i.spans[i.index]
@@ -149,8 +119,8 @@ func (i *Iter) SeekLT(key []byte) Span {
 	//
 	// Define f(-1) == false and f(n) == true.
 	// Invariant: f(index-1) == false, f(upper) == true.
-	i.index = i.lower
-	upper := i.upper
+	i.index = 0
+	upper := len(i.spans)
 	for i.index < upper {
 		h := int(uint(i.index+upper) >> 1) // avoid overflow when computing h
 		// i.index ≤ h < upper
@@ -166,7 +136,7 @@ func (i *Iter) SeekLT(key []byte) Span {
 	// Since keys are strictly increasing, if i.index > 0 then i.index-1 will be
 	// the largest whose key is < the key sought.
 	i.index--
-	if i.index < i.lower {
+	if i.index < 0 {
 		return Span{}
 	}
 	return i.spans[i.index]
@@ -174,29 +144,29 @@ func (i *Iter) SeekLT(key []byte) Span {
 
 // First implements FragmentIterator.First.
 func (i *Iter) First() Span {
-	if i.upper <= i.lower {
+	if len(i.spans) == 0 {
 		return Span{}
 	}
-	i.index = i.lower
+	i.index = 0
 	return i.spans[i.index]
 }
 
 // Last implements FragmentIterator.Last.
 func (i *Iter) Last() Span {
-	if i.upper <= i.lower {
+	if len(i.spans) == 0 {
 		return Span{}
 	}
-	i.index = i.upper - 1
+	i.index = len(i.spans) - 1
 	return i.spans[i.index]
 }
 
 // Next implements FragmentIterator.Next.
 func (i *Iter) Next() Span {
-	if i.index >= i.upper {
+	if i.index >= len(i.spans) {
 		return Span{}
 	}
 	i.index++
-	if i.index >= i.upper {
+	if i.index >= len(i.spans) {
 		return Span{}
 	}
 	return i.spans[i.index]
@@ -204,11 +174,11 @@ func (i *Iter) Next() Span {
 
 // Prev implements FragmentIterator.Prev.
 func (i *Iter) Prev() Span {
-	if i.index < i.lower {
+	if i.index < 0 {
 		return Span{}
 	}
 	i.index--
-	if i.index < i.lower {
+	if i.index < 0 {
 		return Span{}
 	}
 	return i.spans[i.index]
@@ -222,29 +192,6 @@ func (i *Iter) Error() error {
 // Close implements FragmentIterator.Close.
 func (i *Iter) Close() error {
 	return nil
-}
-
-// SetBounds implements FragmentIterator.SetBounds.
-//
-// Iter may still return spans that extend beyond the lower or upper bounds, as
-// long as some portion of the span overlaps [lower, upper).
-func (i *Iter) SetBounds(lower, upper []byte) {
-	// SetBounds is never called for range deletion iterators. It may be called
-	// for range key iterators.
-	if lower == nil {
-		i.lower = 0
-	} else {
-		i.lower = sort.Search(len(i.spans), func(j int) bool {
-			return i.cmp(i.spans[j].End, lower) > 0
-		})
-	}
-	if upper == nil {
-		i.upper = len(i.spans)
-	} else {
-		i.upper = sort.Search(len(i.spans), func(j int) bool {
-			return i.cmp(i.spans[j].Start, upper) >= 0
-		})
-	}
 }
 
 func (i *Iter) String() string {

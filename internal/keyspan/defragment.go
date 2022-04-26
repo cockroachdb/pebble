@@ -303,11 +303,6 @@ func (i *DefragmentingIter) Prev() Span {
 	}
 }
 
-// SetBounds implements FragmentIterator.
-func (i *DefragmentingIter) SetBounds(lower, upper []byte) {
-	i.iter.SetBounds(lower, upper)
-}
-
 // checkEqual checks the two spans for logical equivalence. It uses the passed-in
 // DefragmentMethod and ensures both spans are NOT empty; not defragmenting empty
 // spans is an optimization that lets us load fewer sstable blocks.

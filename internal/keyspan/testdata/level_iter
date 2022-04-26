@@ -53,7 +53,6 @@ a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
 # Set some bounds
 
 iter
-set-bounds a d
 seek-ge a
 seek-ge b
 seek-ge c
@@ -63,7 +62,6 @@ seek-lt b
 seek-lt c
 seek-lt d
 ----
-.
 a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
 b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
 c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
@@ -73,43 +71,6 @@ a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
 b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
 c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
 
-# Set a bound that excludes entire range keys.
-
-iter
-set-bounds b c
-seek-ge b
-next
-prev
-next
-seek-lt c
-prev
-next
-----
-.
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-.
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-.
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-.
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-
-# Set a bound that falls between ranges.
-
-iter
-set-bounds aa cc
-seek-ge aa
-prev
-next
-next
-next
-----
-.
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-.
 
 iter
 seek-lt cc
@@ -247,25 +208,6 @@ c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
 d-e:{} (file = 000002.sst)
 e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
 
-# Above two cases, but with bounds at straddles
-
-iter
-set-bounds bb dd
-seek-ge bb
-next
-prev
-next
-prev
-prev
-----
-.
-bb-c:{} (file = 000003.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{} (file = 000002.sst)
-.
-
 iter
 seek-lt dd
 prev
@@ -274,44 +216,24 @@ prev
 next
 next
 ----
-d-dd:{} (file = 000002.sst)
+d-dd:{} (file = 000003.sst)
 c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
 d-e:{} (file = 000002.sst)
 c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
 d-e:{} (file = 000002.sst)
-.
+e-f:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000003.sst)
 
 # Seeks right at the bound should return nothing.
 
 iter
 seek-lt bb
 ----
-.
+b-bb:{} (file = 000003.sst)
 
 iter
 seek-ge dd
 ----
-.
-
-# Similar cases as above, but with iter bounds at file bounds instead of at
-# straddles.
-
-iter
-set-bounds b d
-seek-ge bb
-next
-prev
-next
-prev
-prev
-----
-.
-bb-c:{} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{} (file = 000002.sst)
-.
+dd-e:{} (file = 000003.sst)
 
 iter
 seek-lt d
@@ -323,11 +245,11 @@ next
 next
 ----
 c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-b-c:{} (file = 000002.sst)
 c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
 b-c:{} (file = 000002.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
 .
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+.
 .
 
 # A bunch of files with point keys only should not fragment straddles.

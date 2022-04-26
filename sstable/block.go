@@ -1227,12 +1227,6 @@ func (i *fragmentBlockIter) SeekLT(k []byte) keyspan.Span {
 	return i.gatherBackward(i.blockIter.SeekLT(k))
 }
 
-// SetBounds implements (base.InternalIterator).SetBounds, as documented
-// in the internal/base package.
-func (i *fragmentBlockIter) SetBounds(lower, upper []byte) {
-	i.blockIter.SetBounds(lower, upper)
-}
-
 // String implements fmt.Stringer.
 func (i *fragmentBlockIter) String() string {
 	return "fragment-block-iter"
