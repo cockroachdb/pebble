@@ -38,6 +38,7 @@ type initOp struct {
 func (o *initOp) run(t *test, h *history) {
 	t.batches = make([]*pebble.Batch, o.batchSlots)
 	t.iters = make([]*retryableIter, o.iterSlots)
+	t.iterBounds = make([]*bounds, o.iterSlots)
 	t.snapshots = make([]*pebble.Snapshot, o.snapshotSlots)
 	h.Recordf("%s", o)
 }
@@ -575,16 +576,18 @@ type newIterOp struct {
 
 func (o *newIterOp) run(t *test, h *history) {
 	r := t.getReader(o.readerID)
+	bounds := newBounds(o.lower, o.upper)
+	opts := &pebble.IterOptions{
+		LowerBound: bounds.lower,
+		UpperBound: bounds.upper,
+		KeyTypes:   pebble.IterKeyType(o.keyTypes),
+		RangeKeyMasking: pebble.RangeKeyMasking{
+			Suffix: o.rangeKeyMaskSuffix,
+		},
+	}
 	var i *pebble.Iterator
 	for {
-		i = r.NewIter(&pebble.IterOptions{
-			LowerBound: o.lower,
-			UpperBound: o.upper,
-			KeyTypes:   pebble.IterKeyType(o.keyTypes),
-			RangeKeyMasking: pebble.RangeKeyMasking{
-				Suffix: o.rangeKeyMaskSuffix,
-			},
-		})
+		i = r.NewIter(opts)
 		if err := i.Error(); !errors.Is(err, errorfs.ErrInjected) {
 			break
 		}
@@ -592,6 +595,7 @@ func (o *newIterOp) run(t *test, h *history) {
 		_ = i.Close()
 	}
 	t.setIter(o.iterID, i)
+	t.setIterBounds(o.iterID, bounds)
 	h.Recordf("%s // %v", o, i.Error())
 }
 
@@ -613,6 +617,7 @@ func (o *newIterUsingCloneOp) run(t *test, h *history) {
 		panic(err)
 	}
 	t.setIter(o.iterID, i)
+	t.setIterBounds(o.iterID, t.getIterBounds(o.existingIterID))
 	h.Recordf("%s // %v", o, i.Error())
 }
 
@@ -629,7 +634,13 @@ type iterSetBoundsOp struct {
 
 func (o *iterSetBoundsOp) run(t *test, h *history) {
 	i := t.getIter(o.iterID)
-	i.SetBounds(o.lower, o.upper)
+	bounds := newBounds(o.lower, o.upper)
+	i.SetBounds(bounds.lower, bounds.upper)
+	// Record the change in bounds. setIterBounds will decrement the old bounds'
+	// reference count, potentially triggering a trashing of the old bounds if
+	// this iterator was the last actively using those key buffers.
+	t.setIterBounds(o.iterID, bounds)
+
 	h.Recordf("%s // %v", o, i.Error())
 }
 
@@ -651,14 +662,23 @@ type iterSetOptionsOp struct {
 
 func (o *iterSetOptionsOp) run(t *test, h *history) {
 	i := t.getIter(o.iterID)
-	i.SetOptions(&pebble.IterOptions{
-		LowerBound: o.lower,
-		UpperBound: o.upper,
+	bounds := newBounds(o.lower, o.upper)
+	opts := &pebble.IterOptions{
+		LowerBound: bounds.lower,
+		UpperBound: bounds.upper,
 		KeyTypes:   pebble.IterKeyType(o.keyTypes),
 		RangeKeyMasking: pebble.RangeKeyMasking{
 			Suffix: o.rangeKeyMaskSuffix,
 		},
-	})
+	}
+
+	i.SetOptions(opts)
+
+	// Record the change in bounds. setIterBounds will decrement the old bounds'
+	// reference count, potentially triggering a trashing of the old bounds if
+	// this iterator was the last actively using those key buffers.
+	t.setIterBounds(o.iterID, bounds)
+
 	h.Recordf("%s // %v", o, i.Error())
 }
 

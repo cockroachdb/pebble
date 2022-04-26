@@ -7,6 +7,7 @@ package metamorphic
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"strings"
 
@@ -30,9 +31,10 @@ type test struct {
 	tmpDir    string
 	// The slots for the batches, iterators, and snapshots. These are read and
 	// written by the ops to pass state from one op to another.
-	batches   []*pebble.Batch
-	iters     []*retryableIter
-	snapshots []*pebble.Snapshot
+	batches    []*pebble.Batch
+	iters      []*retryableIter
+	iterBounds []*bounds
+	snapshots  []*pebble.Snapshot
 }
 
 func newTest(ops []op) *test {
@@ -222,11 +224,56 @@ func (t *test) setIter(id objID, i *pebble.Iterator) {
 	t.iters[id.slot()] = &retryableIter{iter: i, lastKey: nil}
 }
 
+func (t *test) setIterBounds(id objID, bounds *bounds) {
+	if id.tag() != iterTag {
+		panic(fmt.Sprintf("invalid iter ID: %s", id))
+	}
+	if old := t.iterBounds[id.slot()]; old != nil {
+		old.decRefs()
+	}
+
+	bounds.incRefs()
+	t.iterBounds[id.slot()] = bounds
+}
+
 func (t *test) setSnapshot(id objID, s *pebble.Snapshot) {
 	if id.tag() != snapTag {
 		panic(fmt.Sprintf("invalid snapshot ID: %s", id))
 	}
 	t.snapshots[id.slot()] = s
+}
+
+func newBounds(lower, upper []byte) *bounds {
+	// Make copy of the bounds so that we don't modify the original operation
+	// when we trash the bounds.
+	if lower != nil {
+		lower = append([]byte(nil), lower...)
+	}
+	if upper != nil {
+		upper = append([]byte(nil), upper...)
+	}
+	return &bounds{lower: lower, upper: upper}
+}
+
+type bounds struct {
+	lower []byte
+	upper []byte
+	refs  int
+}
+
+func (b *bounds) incRefs() {
+	b.refs++
+}
+
+func (b *bounds) decRefs() {
+	b.refs--
+	// If the bounds are no longer actively being used by any iterator,
+	// overwrite them with garbage. This helps detect bugs that improperly
+	// depend on previous bounds buffers not changing.
+	if b.refs == 0 {
+		rand.Read(b.lower[:])
+		rand.Read(b.upper[:])
+	}
 }
 
 func (t *test) clearObj(id objID) {
@@ -237,6 +284,9 @@ func (t *test) clearObj(id objID) {
 		t.batches[id.slot()] = nil
 	case iterTag:
 		t.iters[id.slot()] = nil
+		bounds := t.iterBounds[id.slot()]
+		t.iterBounds[id.slot()] = nil
+		bounds.decRefs()
 	case snapTag:
 		t.snapshots[id.slot()] = nil
 	}
@@ -268,6 +318,13 @@ func (t *test) getIter(id objID) *retryableIter {
 		panic(fmt.Sprintf("invalid iter ID: %s", id))
 	}
 	return t.iters[id.slot()]
+}
+
+func (t *test) getIterBounds(id objID) *bounds {
+	if id.tag() != iterTag {
+		panic(fmt.Sprintf("invalid iter ID: %s", id))
+	}
+	return t.iterBounds[id.slot()]
 }
 
 func (t *test) getReader(id objID) pebble.Reader {
