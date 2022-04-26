@@ -76,11 +76,6 @@ func (i *filteringIter) Close() error {
 	return i.iter.Close()
 }
 
-// SetBounds implements FragmentIterator.
-func (i *filteringIter) SetBounds(lower, upper []byte) {
-	i.iter.SetBounds(lower, upper)
-}
-
 // filter uses the filterFn (if configured) to filter and possibly mutate the
 // given Span. If the current Span is to be skipped, the iterator continues
 // iterating in the given direction until it lands on a Span that should be

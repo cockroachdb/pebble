@@ -102,7 +102,6 @@ func (i *InternalIteratorShim) Close() error {
 
 // SetBounds implements (base.InternalIterator).SetBounds.
 func (i *InternalIteratorShim) SetBounds(lower, upper []byte) {
-	i.miter.SetBounds(lower, upper)
 }
 
 // String implements fmt.Stringer.

@@ -61,15 +61,13 @@ d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
 .
 
 iter filter=key-kind-set
-set-bounds b cc
 first
 next
 next
 ----
-.
 a-c:{(#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
 c-d:{(#4,RANGEKEYSET,@3,bananas)}
-.
+d-e:{(#4,RANGEKEYSET,@3,bananas) (#4,RANGEKEYSET,@1,pineapple)}
 
 iter filter=key-kind-unset
 first

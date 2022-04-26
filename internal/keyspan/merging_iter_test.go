@@ -80,19 +80,6 @@ func TestMergingIter(t *testing.T) {
 					formatSpan(iter.SeekGE([]byte(strings.TrimSpace(line[i:]))))
 				case "seek-lt":
 					formatSpan(iter.SeekLT([]byte(strings.TrimSpace(line[i:]))))
-				case "set-bounds":
-					bounds := strings.Fields(line[i:])
-					if len(bounds) != 2 {
-						return fmt.Sprintf("set-bounds expects 2 bounds, got %d", len(bounds))
-					}
-					l, u := []byte(bounds[0]), []byte(bounds[1])
-					if bounds[0] == "." {
-						l = nil
-					}
-					if bounds[1] == "." {
-						u = nil
-					}
-					iter.SetBounds(l, u)
 				default:
 					return fmt.Sprintf("unrecognized iter command %q", iterCmd)
 				}
