@@ -332,15 +332,6 @@ func (m *MergingIter) Error() error {
 	return m.levels[m.heap.items[0].index].iter.iter.Error()
 }
 
-// SetBounds sets the lower and upper bounds for the iterator. Note that the
-// result of Next and Prev will be undefined until the iterator has been
-// repositioned with SeekGE, SeekLT, First, or Last.
-func (m *MergingIter) SetBounds(lower, upper []byte) {
-	for i := range m.levels {
-		m.levels[i].iter.iter.SetBounds(lower, upper)
-	}
-}
-
 // Close closes the iterator, releasing all acquired resources.
 func (m *MergingIter) Close() error {
 	for i := range m.levels {

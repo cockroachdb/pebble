@@ -86,4 +86,3 @@ func (*errorKeyspanIter) Prev() keyspan.Span             { return keyspan.Span{}
 func (i *errorKeyspanIter) Error() error                 { return i.err }
 func (i *errorKeyspanIter) Close() error                 { return i.err }
 func (*errorKeyspanIter) String() string                 { return "error" }
-func (*errorKeyspanIter) SetBounds(lower, upper []byte)  {}
