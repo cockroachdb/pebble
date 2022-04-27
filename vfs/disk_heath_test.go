@@ -9,6 +9,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type mockFile struct {
@@ -114,23 +116,51 @@ func (m mockFS) GetDiskUsage(path string) (DiskUsage, error) {
 var _ FS = &mockFS{}
 
 func TestDiskHealthChecking(t *testing.T) {
-	diskSlow := make(chan time.Duration, 100)
-	slowThreshold := 1 * time.Second
-	mockFS := &mockFS{syncDuration: 3 * time.Second}
-	fs := WithDiskHealthChecks(mockFS, slowThreshold, func(s string, duration time.Duration) {
-		diskSlow <- duration
-	})
-	dhFile, _ := fs.Create("test")
-	defer dhFile.Close()
+	const (
+		slowThreshold = 1 * time.Second
+		syncDuration  = 3 * time.Second
+	)
+	testCases := []struct {
+		op OpType
+		fn func(f File)
+	}{
+		{
+			OpTypeWrite,
+			func(f File) { f.Write([]byte("uh oh")) },
+		},
+		{
+			OpTypeSync,
+			func(f File) { f.Sync() },
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.op.String(), func(t *testing.T) {
+			type info struct {
+				op       OpType
+				duration time.Duration
+			}
+			diskSlow := make(chan info, 1)
+			mockFS := &mockFS{syncDuration: syncDuration}
+			fs := WithDiskHealthChecks(mockFS, slowThreshold, func(s string, op OpType, duration time.Duration) {
+				diskSlow <- info{
+					op:       op,
+					duration: duration,
+				}
+			})
+			dhFile, _ := fs.Create("test")
+			defer dhFile.Close()
 
-	dhFile.Sync()
-
-	select {
-	case d := <-diskSlow:
-		if d.Seconds() < slowThreshold.Seconds() {
-			t.Fatalf("expected %0.1f to be greater than threshold %0.1f", d.Seconds(), slowThreshold.Seconds())
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("disk stall detector did not detect slow disk operation")
+			tc.fn(dhFile)
+			select {
+			case i := <-diskSlow:
+				d := i.duration
+				if d.Seconds() < slowThreshold.Seconds() {
+					t.Fatalf("expected %0.1f to be greater than threshold %0.1f", d.Seconds(), slowThreshold.Seconds())
+				}
+				require.Equal(t, tc.op, i.op)
+			case <-time.After(5 * time.Second):
+				t.Fatal("disk stall detector did not detect slow disk operation")
+			}
+		})
 	}
 }

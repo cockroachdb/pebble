@@ -806,9 +806,10 @@ func (o *Options) EnsureDefaults() *Options {
 
 	if o.FS == nil {
 		o.FS = vfs.WithDiskHealthChecks(vfs.Default, 5*time.Second,
-			func(name string, duration time.Duration) {
+			func(name string, op vfs.OpType, duration time.Duration) {
 				o.EventListener.DiskSlow(DiskSlowInfo{
 					Path:     name,
+					OpType:   op,
 					Duration: duration,
 				})
 			})
