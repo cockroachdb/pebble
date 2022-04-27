@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -1468,6 +1469,285 @@ func TestIteratorGuaranteedDurable(t *testing.T) {
 		require.True(t, foundKV(nil))
 		require.True(t, foundKV(&iterOptions))
 	})
+}
+
+func TestIteratorBoundsLifetimes(t *testing.T) {
+	d := newTestkeysDatabase(t, testkeys.Alpha(2))
+	defer func() { require.NoError(t, d.Close()) }()
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+
+	var buf bytes.Buffer
+	iterators := map[string]*Iterator{}
+	var labels []string
+	printIters := func(w io.Writer) {
+		labels = labels[:0]
+		for label := range iterators {
+			labels = append(labels, label)
+		}
+		sort.Strings(labels)
+		for _, label := range labels {
+			it := iterators[label]
+			fmt.Fprintf(&buf, "%s: (", label)
+			if it.opts.LowerBound == nil {
+				fmt.Fprint(&buf, "<nil>, ")
+			} else {
+				fmt.Fprintf(&buf, "%q, ", it.opts.LowerBound)
+			}
+			if it.opts.UpperBound == nil {
+				fmt.Fprint(&buf, "<nil>)")
+			} else {
+				fmt.Fprintf(&buf, "%q)", it.opts.UpperBound)
+			}
+			fmt.Fprintf(&buf, " boundsBufIdx=%d\n", it.boundsBufIdx)
+		}
+	}
+	parseBounds := func(td *datadriven.TestData) (lower, upper []byte) {
+		for _, arg := range td.CmdArgs {
+			if arg.Key == "lower" {
+				lower = []byte(arg.Vals[0])
+			} else if arg.Key == "upper" {
+				upper = []byte(arg.Vals[0])
+			}
+		}
+		return lower, upper
+	}
+	trashBounds := func(bounds ...[]byte) {
+		for _, bound := range bounds {
+			rng.Read(bound[:])
+		}
+	}
+
+	datadriven.RunTest(t, "testdata/iterator_bounds_lifetimes", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			var err error
+			if d, err = runDBDefineCmd(td, d.opts); err != nil {
+				return err.Error()
+			}
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+		case "new-iter":
+			var label string
+			td.ScanArgs(t, "label", &label)
+			lower, upper := parseBounds(td)
+			iterators[label] = d.NewIter(&IterOptions{
+				LowerBound: lower,
+				UpperBound: upper,
+			})
+			trashBounds(lower, upper)
+			buf.Reset()
+			printIters(&buf)
+			return buf.String()
+		case "clone":
+			var from, to string
+			td.ScanArgs(t, "from", &from)
+			td.ScanArgs(t, "to", &to)
+			var err error
+			iterators[to], err = iterators[from].Clone()
+			if err != nil {
+				return err.Error()
+			}
+			buf.Reset()
+			printIters(&buf)
+			return buf.String()
+		case "close":
+			var label string
+			td.ScanArgs(t, "label", &label)
+			iterators[label].Close()
+			delete(iterators, label)
+			buf.Reset()
+			printIters(&buf)
+			return buf.String()
+		case "iter":
+			var label string
+			td.ScanArgs(t, "label", &label)
+			return runIterCmd(td, iterators[label], false /* closeIter */)
+		case "set-bounds":
+			var label string
+			td.ScanArgs(t, "label", &label)
+			lower, upper := parseBounds(td)
+			iterators[label].SetBounds(lower, upper)
+			trashBounds(lower, upper)
+			buf.Reset()
+			printIters(&buf)
+			return buf.String()
+		case "set-options":
+			var label string
+			var tableFilter bool
+			td.ScanArgs(t, "label", &label)
+			opts := iterators[label].opts
+			for _, arg := range td.CmdArgs {
+				if arg.Key == "table-filter" {
+					tableFilter = true
+				}
+				if arg.Key == "key-types" {
+					switch arg.Vals[0] {
+					case "points-only":
+						opts.KeyTypes = IterKeyTypePointsOnly
+					case "ranges-only":
+						opts.KeyTypes = IterKeyTypeRangesOnly
+					case "both":
+						opts.KeyTypes = IterKeyTypePointsAndRanges
+					default:
+						panic(fmt.Sprintf("unrecognized key type %q", arg.Vals[0]))
+					}
+				}
+			}
+			opts.LowerBound, opts.UpperBound = parseBounds(td)
+			if tableFilter {
+				opts.TableFilter = func(userProps map[string]string) bool { return false }
+			}
+			iterators[label].SetOptions(&opts)
+			trashBounds(opts.LowerBound, opts.UpperBound)
+			buf.Reset()
+			printIters(&buf)
+			return buf.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
+}
+
+// TestSetOptionsEquivalence tests equivalence between SetOptions to mutate an
+// iterator and constructing a new iterator with NewIter. The long-lived
+// iterator and the new iterator should surface identical iterator states.
+func TestSetOptionsEquivalence(t *testing.T) {
+	seed := uint64(time.Now().UnixNano())
+	// Call a helper function with the seed so that the seed appears within
+	// stack traces if there's a panic.
+	testSetOptionsEquivalence(t, seed)
+}
+
+func testSetOptionsEquivalence(t *testing.T, seed uint64) {
+	ks := testkeys.Alpha(2)
+	d := newTestkeysDatabase(t, ks)
+	d.opts.Logger = panicLogger{}
+	defer func() { require.NoError(t, d.Close()) }()
+	rng := rand.New(rand.NewSource(seed))
+
+	var o IterOptions
+	generateNewOptions := func() {
+		// TODO(jackson): Include test coverage for block property filters, etc.
+		if rng.Intn(2) == 1 {
+			o.KeyTypes = IterKeyType(rng.Intn(3))
+		}
+		if rng.Intn(2) == 1 {
+			if rng.Intn(2) == 1 {
+				o.LowerBound = testkeys.KeyAt(ks, rng.Intn(ks.Count()), rng.Intn(ks.Count()))
+			}
+			if rng.Intn(2) == 1 {
+				o.UpperBound = testkeys.KeyAt(ks, rng.Intn(ks.Count()), rng.Intn(ks.Count()))
+			}
+			if testkeys.Comparer.Compare(o.LowerBound, o.UpperBound) > 0 {
+				o.LowerBound, o.UpperBound = o.UpperBound, o.LowerBound
+			}
+		}
+		o.RangeKeyMasking.Suffix = nil
+		if o.KeyTypes == IterKeyTypePointsAndRanges && rng.Intn(2) == 1 {
+			o.RangeKeyMasking.Suffix = testkeys.Suffix(rng.Intn(ks.Count()))
+		}
+		o.OnlyReadGuaranteedDurable = rng.Intn(10) == 0 // 10% probability
+	}
+
+	var longLivedIter, newIter *Iterator
+	var history, longLivedBuf, newIterBuf bytes.Buffer
+	defer func() {
+		if r := recover(); r != nil {
+			t.Log(history.String())
+			panic(r)
+		}
+	}()
+	defer func() {
+		if longLivedIter != nil {
+			longLivedIter.Close()
+		}
+		if newIter != nil {
+			newIter.Close()
+		}
+	}()
+	for i := 0; i < 1000; i++ {
+		// Generate new random options. The options in o will be mutated.
+		generateNewOptions()
+		fmt.Fprintf(&history, "new options: %s\n", iterOptionsString(&o))
+
+		if longLivedIter == nil {
+			longLivedIter = d.NewIter(&o)
+		} else {
+			longLivedIter.SetOptions(&o)
+		}
+
+		newIter = d.NewIter(&o)
+
+		// Seek both iterators to the same key. They should have identical
+		// state.
+		k := testkeys.Key(ks, rng.Intn(ks.Count()))
+
+		var newIterValidity, longLivedValidity IterValidityState
+		if newIter.SeekGE(k) {
+			newIterValidity = IterValid
+		}
+		if longLivedIter.SeekGE(k) {
+			longLivedValidity = IterValid
+		}
+		newIterBuf.Reset()
+		longLivedBuf.Reset()
+		printIterState(&newIterBuf, newIter, newIterValidity, true /* printValidityState */)
+		printIterState(&longLivedBuf, longLivedIter, longLivedValidity, true /* printValidityState */)
+		fmt.Fprintf(&history, "seek-ge(%q) = %s\n", k, newIterBuf.String())
+
+		if newIterBuf.String() != longLivedBuf.String() {
+			t.Logf("history:\n%s\n", history.String())
+			t.Fatalf("expected %q, got %q", newIterBuf.String(), longLivedBuf.String())
+		}
+		require.NoError(t, newIter.Close())
+
+		newIter = nil
+	}
+	t.Logf("history:\n%s\n", history.String())
+}
+
+func iterOptionsString(o *IterOptions) string {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "key-types=%s, lower=%q, upper=%q",
+		o.KeyTypes, o.LowerBound, o.UpperBound)
+	if o.TableFilter != nil {
+		fmt.Fprintf(&buf, ", table-filter")
+	}
+	if o.OnlyReadGuaranteedDurable {
+		fmt.Fprintf(&buf, ", only-durable")
+	}
+	if o.UseL6Filters {
+		fmt.Fprintf(&buf, ", use-L6-filters")
+	}
+	for i, pkf := range o.PointKeyFilters {
+		fmt.Fprintf(&buf, ", point-key-filter[%d]=%q", i, pkf.Name())
+	}
+	for i, rkf := range o.RangeKeyFilters {
+		fmt.Fprintf(&buf, ", range-key-filter[%d]=%q", i, rkf.Name())
+	}
+	return buf.String()
+}
+
+func newTestkeysDatabase(t *testing.T, ks testkeys.Keyspace) *DB {
+	dbOpts := &Options{
+		Comparer:           testkeys.Comparer,
+		FS:                 vfs.NewMem(),
+		FormatMajorVersion: FormatRangeKeys,
+	}
+	dbOpts.Experimental.RangeKeys = new(RangeKeysArena)
+	d, err := Open("", dbOpts)
+	require.NoError(t, err)
+
+	b := d.NewBatch()
+	keyBuf := make([]byte, ks.MaxLen()+testkeys.MaxSuffixLen)
+	for i := 0; i < ks.Count(); i++ {
+		n := testkeys.WriteKeyAt(keyBuf, ks, i, i)
+		b.Set(keyBuf[:n], keyBuf[:n], nil)
+	}
+	require.NoError(t, b.Commit(nil))
+	return d
 }
 
 func BenchmarkIteratorSeekGE(b *testing.B) {

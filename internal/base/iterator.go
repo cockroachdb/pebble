@@ -42,26 +42,32 @@ import "fmt"
 // support prefix iteration mode, and can implement SeekPrefixGE by forwarding
 // to SeekGE.
 //
-// Bounds, [lower, upper), can be set on iterators, either using the
-// SetBounds() function in the interface, or in implementation specific ways
-// during iterator creation. The forward positioning routines (SeekGE, First,
-// and Next) only check the upper bound. The reverse positioning routines
-// (SeekLT, Last, and Prev) only check the lower bound. It is up to the caller
-// to ensure that the forward positioning routines respect the lower bound and
-// the reverse positioning routines respect the upper bound (i.e. calling
-// SeekGE instead of First if there is a lower bound, and SeekLT instead of
-// Last if there is an upper bound). This imposition is done in order to
-// elevate that enforcement to the caller (generally pebble.Iterator or
-// pebble.mergingIter) rather than having it duplicated in every
-// InternalIterator implementation. Additionally, the caller needs to ensure
-// that SeekGE/SeekPrefixGE are not called with a key > the upper bound, and
-// SeekLT is not called with a key < the lower bound.
-// InternalIterator implementations are required to respect the iterator
-// bounds, never returning records outside of the bounds with one exception:
-// an iterator may generate synthetic RANGEDEL marker records. See
+// Bounds, [lower, upper), can be set on iterators, either using the SetBounds()
+// function in the interface, or in implementation specific ways during iterator
+// creation. The forward positioning routines (SeekGE, First, and Next) only
+// check the upper bound. The reverse positioning routines (SeekLT, Last, and
+// Prev) only check the lower bound. It is up to the caller to ensure that the
+// forward positioning routines respect the lower bound and the reverse
+// positioning routines respect the upper bound (i.e. calling SeekGE instead of
+// First if there is a lower bound, and SeekLT instead of Last if there is an
+// upper bound). This imposition is done in order to elevate that enforcement to
+// the caller (generally pebble.Iterator or pebble.mergingIter) rather than
+// having it duplicated in every InternalIterator implementation.
+//
+// Additionally, the caller needs to ensure that SeekGE/SeekPrefixGE are not
+// called with a key > the upper bound, and SeekLT is not called with a key <
+// the lower bound. InternalIterator implementations are required to respect
+// the iterator bounds, never returning records outside of the bounds with one
+// exception: an iterator may generate synthetic RANGEDEL marker records. See
 // levelIter.syntheticBoundary for the sole existing example of this behavior.
-// Specifically, levelIter can return synthetic keys whose user key is equal
-// to the lower/upper bound.
+// Specifically, levelIter can return synthetic keys whose user key is equal to
+// the lower/upper bound.
+//
+// The bounds provided to an internal iterator must remain valid until a
+// subsequent call to SetBounds has returned. This requirement exists so that
+// iterator implementations may compare old and new bounds to apply low-level
+// optimizations. The pebble.Iterator satisfies this requirement by maintaining
+// two bound buffers and switching between them.
 //
 // An iterator must be closed after use, but it is not necessary to read an
 // iterator until exhaustion.
@@ -209,6 +215,11 @@ type InternalIterator interface {
 	// SetBounds sets the lower and upper bounds for the iterator. Note that the
 	// result of Next and Prev will be undefined until the iterator has been
 	// repositioned with SeekGE, SeekPrefixGE, SeekLT, First, or Last.
+	//
+	// The bounds provided must remain valid until a subsequent call to
+	// SetBounds has returned. This requirement exists so that iterator
+	// implementations may compare old and new bounds to apply low-level
+	// optimizations.
 	SetBounds(lower, upper []byte)
 
 	fmt.Stringer

@@ -1175,7 +1175,7 @@ stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, 
 iter seq=2
 set-bounds lower=b
 seek-ge a
-set-bounds lower=b
+set-bounds lower=b upper=z
 seek-ge a
 ----
 .

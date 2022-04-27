@@ -55,6 +55,7 @@ func NewExternalIter(
 		readState:           nil,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
+		boundsBuf:           buf.boundsBuf,
 		batch:               nil,
 		newIters: func(f *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, keyspan.FragmentIterator, error) {
 			// NB: External iterators are currently constructed without any
@@ -69,8 +70,8 @@ func NewExternalIter(
 	}
 	if iterOpts != nil {
 		dbi.opts = *iterOpts
+		dbi.saveBounds(iterOpts.LowerBound, iterOpts.UpperBound)
 	}
-	dbi.opts.logger = o.Logger
 
 	// TODO(jackson): In some instances we could generate fewer levels by using
 	// L0Sublevels code to organize nonoverlapping files into the same level.
@@ -145,9 +146,8 @@ func NewExternalIter(
 		dbi.rangeKey.iter.Init(dbi.cmp, &buf.merging, dbi.rangeKey.rangeKeyIter, keyspan.Hooks{
 			SpanChanged: dbi.rangeKeySpanChanged,
 			SkipPoint:   dbi.rangeKeySkipPoint,
-		})
+		}, dbi.opts.LowerBound, dbi.opts.UpperBound)
 		dbi.iter = &dbi.rangeKey.iter
-		dbi.iter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
 	}
 
 	// Close all the opened sstable.Readers when the Iterator is closed.
