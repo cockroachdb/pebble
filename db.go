@@ -861,6 +861,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 type iterAlloc struct {
 	dbi                 Iterator
 	keyBuf              []byte
+	boundsBuf           [2][]byte
 	prefixOrFullSeekKey []byte
 	merging             mergingIter
 	mlevels             [3 + numLevels]mergingIterLevel
@@ -927,6 +928,7 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 		readState:           readState,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
+		boundsBuf:           buf.boundsBuf,
 		batch:               batch,
 		newIters:            d.newIters,
 		seqNum:              seqNum,
@@ -936,6 +938,7 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 	}
 	if o != nil {
 		dbi.opts = *o
+		dbi.saveBounds(o.LowerBound, o.UpperBound)
 	}
 	dbi.opts.logger = d.opts.Logger
 	return finishInitializingIter(buf)
@@ -988,10 +991,8 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		dbi.rangeKey.iter.Init(dbi.cmp, dbi.iter, dbi.rangeKey.rangeKeyIter, keyspan.Hooks{
 			SpanChanged: dbi.rangeKeySpanChanged,
 			SkipPoint:   dbi.rangeKeySkipPoint,
-		})
+		}, dbi.opts.LowerBound, dbi.opts.UpperBound)
 		dbi.iter = &dbi.rangeKey.iter
-		dbi.iter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
-		dbi.rangeKey.activeMaskSuffix = dbi.rangeKey.activeMaskSuffix[:0]
 	}
 	return dbi
 }
@@ -1003,10 +1004,6 @@ func constructPointIter(
 		return emptyIter
 	}
 	if dbi.pointIter != nil {
-		// The point iterator has already been constructed. This may be the case
-		// when an Iterator is being re-initialized during a call to SetOptions.
-		// Set the current bounds.
-		dbi.pointIter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
 		return dbi.pointIter
 	}
 
