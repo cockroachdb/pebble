@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 )
 
@@ -118,6 +119,8 @@ func (i levelInfos) SafeFormat(w redact.SafePrinter, _ rune) {
 type DiskSlowInfo struct {
 	// Path of file being written to.
 	Path string
+	// Operation being performed on the file.
+	OpType vfs.OpType
 	// Duration that has elapsed since this disk operation started.
 	Duration time.Duration
 }
@@ -128,8 +131,8 @@ func (i DiskSlowInfo) String() string {
 
 // SafeFormat implements redact.SafeFormatter.
 func (i DiskSlowInfo) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("disk slowness detected: write to file %s has been ongoing for %0.1fs",
-		i.Path, redact.Safe(i.Duration.Seconds()))
+	w.Printf("disk slowness detected: %s on file %s has been ongoing for %0.1fs",
+		redact.Safe(i.OpType.String()), i.Path, redact.Safe(i.Duration.Seconds()))
 }
 
 // FlushInfo contains the info for a flush event.
