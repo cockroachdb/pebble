@@ -168,6 +168,12 @@ type Iterator struct {
 	value       []byte
 	valueBuf    []byte
 	valueCloser io.Closer
+	// boundsBuf holds two buffers used to store the lower and upper bounds.
+	// Whenever the Iterator's bounds change, the new bounds are copied into
+	// boundsBuf[boundsBufIdx]. The two bounds share a slice to reduce
+	// allocations. opts.LowerBound and opts.UpperBound point into this slice.
+	boundsBuf    [2][]byte
+	boundsBufIdx int
 	// iterKey, iterValue reflect the latest position of iter, except when
 	// SetBounds is called. In that case, these are explicitly set to nil.
 	iterKey             *InternalKey
@@ -194,6 +200,12 @@ type Iterator struct {
 	// iterValidityState==IterAtLimit <=>
 	//  pos==iterPosCurForwardPaused || pos==iterPosCurReversePaused
 	iterValidityState IterValidityState
+	// Set to true by SetBounds, SetOptions. Causes the Iterator to appear
+	// exhausted externally, while preserving the correct iterValidityState for
+	// the iterator's internal state. Preserving the correct internal validity
+	// is used for SeekPrefixGE(..., trySeekUsingNext), and SeekGE/SeekLT
+	// optimizations after "no-op" calls to SetBounds and SetOptions.
+	requiresReposition bool
 	// The position of iter. When this is iterPos{Prev,Next} the iter has been
 	// moved past the current key-value, which can only happen if
 	// iterValidityState=IterValid, i.e., there is something to return to the
@@ -924,6 +936,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 	// the SeekGE following this should not make any assumption about iterator
 	// position.
 	i.lastPositioningOp = unknownLastPositionOp
+	i.requiresReposition = false
 	i.err = nil // clear cached iteration error
 	i.hasPrefix = false
 	i.stats.ForwardSeekCount[InterfaceCall]++
@@ -1040,6 +1053,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	// the SeekPrefixGE following this should not make any assumption about
 	// iterator position.
 	i.lastPositioningOp = unknownLastPositionOp
+	i.requiresReposition = false
 	i.err = nil // clear cached iteration error
 	i.stats.ForwardSeekCount[InterfaceCall]++
 
@@ -1147,6 +1161,7 @@ func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 	// the SeekLT following this should not make any assumption about iterator
 	// position.
 	i.lastPositioningOp = unknownLastPositionOp
+	i.requiresReposition = false
 	i.err = nil // clear cached iteration error
 	i.hasPrefix = false
 	i.stats.ReverseSeekCount[InterfaceCall]++
@@ -1204,6 +1219,7 @@ func (i *Iterator) First() bool {
 	i.err = nil // clear cached iteration error
 	i.hasPrefix = false
 	i.lastPositioningOp = unknownLastPositionOp
+	i.requiresReposition = false
 	i.stats.ForwardSeekCount[InterfaceCall]++
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, false /* trySeekUsingNext */)
@@ -1223,6 +1239,7 @@ func (i *Iterator) Last() bool {
 	i.err = nil // clear cached iteration error
 	i.hasPrefix = false
 	i.lastPositioningOp = unknownLastPositionOp
+	i.requiresReposition = false
 	i.stats.ReverseSeekCount[InterfaceCall]++
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
 		i.iterKey, i.iterValue = i.iter.SeekLT(upperBound)
@@ -1263,6 +1280,7 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 		return i.iterValidityState
 	}
 	i.lastPositioningOp = unknownLastPositionOp
+	i.requiresReposition = false
 	switch i.pos {
 	case iterPosCurForward:
 		i.nextUserKey()
@@ -1346,6 +1364,7 @@ func (i *Iterator) PrevWithLimit(limit []byte) IterValidityState {
 		return i.iterValidityState
 	}
 	i.lastPositioningOp = unknownLastPositionOp
+	i.requiresReposition = false
 	if i.hasPrefix {
 		i.err = errReversePrefixIteration
 		i.iterValidityState = IterExhausted
@@ -1652,7 +1671,7 @@ func (i *Iterator) RangeKeys() []RangeKeyData {
 // Valid returns true if the iterator is positioned at a valid key/value pair
 // and false otherwise.
 func (i *Iterator) Valid() bool {
-	return i.iterValidityState == IterValid
+	return i.iterValidityState == IterValid && !i.requiresReposition
 }
 
 // Error returns any accumulated error.
@@ -1751,6 +1770,13 @@ func (i *Iterator) Close() error {
 		} else {
 			alloc.prefixOrFullSeekKey = i.prefixOrFullSeekKey
 		}
+		for j := range i.boundsBuf {
+			if cap(i.boundsBuf[j]) >= maxKeyBufCacheSize {
+				alloc.boundsBuf[j] = nil
+			} else {
+				alloc.boundsBuf[j] = i.boundsBuf[j]
+			}
+		}
 		*i = Iterator{}
 		iterAllocPool.Put(alloc)
 	} else if alloc := i.getIterAlloc; alloc != nil {
@@ -1765,24 +1791,33 @@ func (i *Iterator) Close() error {
 	return err
 }
 
-// SetBounds sets the lower and upper bounds for the iterator. Note that:
-// - The slices provided in this SetBounds must not be changed by the caller
-//   until the iterator is closed, or a subsequent SetBounds or SetOptions has
-//   returned. This is because comparisons between the existing and new bounds
-//   are sometimes used to optimize seeking.
-// - If the bounds are not changing from the existing ones, it would be
-//   worthwhile for the caller to avoid calling SetBounds, since that allows
-//   for more seek optimizations. Note that the callee cannot itself look to
-//   see if the bounds are not changing and ignore the call, since the caller
-//   may then start mutating the underlying slices. Specifically, consider
-//   SetBounds(l1, u1), SetBounds(l2, u2) where l1=l2 and u1=u2. The callee
-//   cannot ignore the second call and keep using l1, u1, since the contract
-//   with the caller allows the caller to mutate l1, u1 after the second call
-//   returns, as mentioned in the previous bullet (ignoring in the callee
-//   resulted in a hard to find bug).
-// - The iterator will always be invalidated and must be repositioned with a
-//   call to SeekGE, SeekPrefixGE, SeekLT, First, or Last.
+// SetBounds sets the lower and upper bounds for the iterator. Once SetBounds
+// returns, the caller is free to mutate the provided slices.
+//
+// The iterator will always be invalidated and must be repositioned with a call
+// to SeekGE, SeekPrefixGE, SeekLT, First, or Last.
 func (i *Iterator) SetBounds(lower, upper []byte) {
+	// Ensure that the Iterator appears exhausted, regardless of whether we
+	// actually have to invalidate the internal iterator. Optimizations that
+	// avoid exhaustion are an internal implementation detail that shouldn't
+	// leak through the interface. The caller should still call an absolute
+	// positioning method to reposition the iterator.
+	i.requiresReposition = true
+
+	// Copy the user-provided bounds into an Iterator-owned buffer, and set them
+	// on i.opts.{Lower,Upper}Bound.
+	if i.saveBounds(lower, upper) {
+		// No-op.
+		return
+	}
+
+	i.iter.SetBounds(i.opts.LowerBound, i.opts.UpperBound)
+	// If the iterator has an open point iterator that's not currently being
+	// used, propagate the new bounds to it.
+	if i.pointIter != nil && !i.opts.pointKeys() {
+		i.pointIter.SetBounds(i.opts.LowerBound, i.opts.UpperBound)
+	}
+
 	// Even though this is not a positioning operation, the alteration of the
 	// bounds means we cannot optimize Seeks by using Next.
 	i.lastPositioningOp = unknownLastPositionOp
@@ -1800,10 +1835,49 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 		i.pos = iterPosCurReverse
 	}
 	i.iterValidityState = IterExhausted
+}
 
-	i.opts.LowerBound = lower
-	i.opts.UpperBound = upper
-	i.iter.SetBounds(lower, upper)
+func (i *Iterator) saveOptions(opts *IterOptions) (boundsEqual bool, prev IterOptions) {
+	prev = i.opts
+	i.opts.TableFilter = opts.TableFilter
+	i.opts.PointKeyFilters = opts.PointKeyFilters
+	i.opts.RangeKeyFilters = opts.RangeKeyFilters
+	i.opts.KeyTypes = opts.KeyTypes
+	i.opts.RangeKeyMasking = opts.RangeKeyMasking
+	i.opts.OnlyReadGuaranteedDurable = opts.OnlyReadGuaranteedDurable
+	return i.saveBounds(opts.LowerBound, opts.UpperBound), prev
+}
+
+func (i *Iterator) saveBounds(lower, upper []byte) (equal bool) {
+	// Check if the bounds changed. If the bounds are logically equivalent, we
+	// can avoid invalidating portions of the Iterator.
+	if ((i.opts.LowerBound == nil) == (lower == nil)) &&
+		((i.opts.UpperBound == nil) == (upper == nil)) &&
+		i.equal(i.opts.LowerBound, lower) &&
+		i.equal(i.opts.UpperBound, upper) {
+		return true /* equal */
+	}
+
+	// Copy the user-provided bounds into an Iterator-owned buffer. We can't
+	// overwrite the current bounds, because some internal iterators compare old
+	// and new bounds for optimizations.
+
+	buf := i.boundsBuf[i.boundsBufIdx][:0]
+	if lower != nil {
+		buf = append(buf, lower...)
+		i.opts.LowerBound = buf
+	} else {
+		i.opts.LowerBound = nil
+	}
+	if upper != nil {
+		buf = append(buf, upper...)
+		i.opts.UpperBound = buf[len(buf)-len(upper):]
+	} else {
+		i.opts.UpperBound = nil
+	}
+	i.boundsBuf[i.boundsBufIdx] = buf
+	i.boundsBufIdx = (i.boundsBufIdx + 1) % 2
+	return false /* bounds are unequal */
 }
 
 // SetOptions sets new iterator options for the iterator. Note that the lower
@@ -1821,8 +1895,70 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 //
 // If only lower and upper bounds need to be modified, prefer SetBounds.
 func (i *Iterator) SetOptions(o *IterOptions) {
-	// Even though this is not a positioning operation, the alteration of the
-	// bounds means we cannot optimize Seeks by using Next.
+	// Ensure that the Iterator appears exhausted, regardless of whether we
+	// actually have to invalidate the internal iterator. Optimizations that
+	// avoid exhaustion are an internal implementation detail that shouldn't
+	// leak through the interface. The caller should still call an absolute
+	// positioning method to reposition the iterator.
+	i.requiresReposition = true
+
+	// Set the options, saving the old ones locally for comparison.
+	boundsEqual, prevOpts := i.saveOptions(o)
+
+	// If the Iterator is in an error state, invalidate the existing iterators
+	// so that we reconstruct an iterator state from scratch.
+	closePoint := i.err != nil
+	closeRange := i.err != nil
+
+	// If OnlyReadGuaranteedDurable changed, the iterator stacks are incorrect,
+	// improperly including or excluding memtables. Invalidate them so that
+	// finishInitializingIter will reconstruct them.
+	closePoint = closePoint || prevOpts.OnlyReadGuaranteedDurable != i.opts.OnlyReadGuaranteedDurable
+	closeRange = closeRange || prevOpts.OnlyReadGuaranteedDurable != i.opts.OnlyReadGuaranteedDurable
+
+	// If either the original options or the new options specify a table filter,
+	// we need to reconstruct the iterator stacks. If they both supply a table
+	// filter, we can't be certain that it's the same filter since we have no
+	// mechanism to compare the filter closures.
+	closePoint = closePoint || prevOpts.TableFilter != nil || i.opts.TableFilter != nil
+	closeRange = closeRange || prevOpts.TableFilter != nil || i.opts.TableFilter != nil
+
+	// If either options specify block property filters for an iterator stack,
+	// reconstruct it.
+	// TODO(jackson): Expose a InternalIterator.SetOptions function and
+	// propagate changed filters to the existing iterator stack. There will
+	// likely be complications with determinism.
+	closePoint = closePoint || len(prevOpts.PointKeyFilters) > 0 || len(i.opts.PointKeyFilters) > 0
+	closeRange = closeRange || len(prevOpts.RangeKeyFilters) > 0 || len(i.opts.RangeKeyFilters) > 0
+
+	if closePoint && i.pointIter != nil {
+		i.err = firstError(i.err, i.pointIter.Close())
+		i.pointIter = nil
+	}
+	if closeRange && i.rangeKey != nil {
+		i.err = firstError(i.err, i.rangeKey.rangeKeyIter.Close())
+		i.rangeKey = nil
+	}
+
+	reconstructPoint := i.pointIter == nil && i.opts.pointKeys()
+	reconstructRange := i.rangeKey == nil && i.opts.rangeKeys()
+
+	if !reconstructPoint && !reconstructRange && boundsEqual &&
+		prevOpts.pointKeys() == i.opts.pointKeys() &&
+		prevOpts.rangeKeys() == i.opts.rangeKeys() &&
+		i.equal(prevOpts.RangeKeyMasking.Suffix, i.opts.RangeKeyMasking.Suffix) {
+		// Fast path. The options are identical. This preserves the
+		// Seek-using-Next optimizations.
+		return
+	}
+
+	// Propagate the changed bounds to the point iterator.
+	if !boundsEqual && i.pointIter != nil {
+		i.pointIter.SetBounds(i.opts.LowerBound, i.opts.UpperBound)
+	}
+
+	// Even though this is not a positioning operation, the invalidation of the
+	// iterator stack means we cannot optimize Seeks by using Next.
 	i.lastPositioningOp = unknownLastPositionOp
 	i.hasPrefix = false
 	i.iterKey = nil
@@ -1839,39 +1975,6 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		i.pos = iterPosCurReverse
 	}
 	i.iterValidityState = IterExhausted
-
-	var closePoint, closeRange bool
-	// If OnlyReadGuaranteedDurable changed, the iterator stacks are incorrect,
-	// improperly including or excluding memtables. Invalidate them so that
-	// finishInitializingIter will reconstruct them.
-	closePoint = closePoint || i.opts.OnlyReadGuaranteedDurable != o.OnlyReadGuaranteedDurable
-	closeRange = closeRange || i.opts.OnlyReadGuaranteedDurable != o.OnlyReadGuaranteedDurable
-
-	// If either the original options or the new options specify a table filter,
-	// we need to reconstruct the iterator stacks. If they both supply a table
-	// filter, we can't be certain that it's the same filter since we have no
-	// mechanism to compare the filter closures.
-	closePoint = closePoint || i.opts.TableFilter != nil || o.TableFilter != nil
-	closeRange = closeRange || i.opts.TableFilter != nil || o.TableFilter != nil
-
-	// If either options specify block property filters for an iterator stack,
-	// reconstruct it.
-	// TODO(jackson): Expose a InternalIterator.SetOptions function and
-	// propagate changed filters to the existing iterator stack. There will
-	// likely be complications with determinism.
-	closePoint = closePoint || len(i.opts.PointKeyFilters) > 0 || len(o.PointKeyFilters) > 0
-	closeRange = closeRange || len(i.opts.RangeKeyFilters) > 0 || len(o.RangeKeyFilters) > 0
-
-	if closePoint && i.pointIter != nil {
-		i.err = firstError(i.err, i.pointIter.Close())
-		i.pointIter = nil
-	}
-	if closeRange && i.rangeKey != nil {
-		i.err = firstError(i.err, i.rangeKey.iter.Close())
-		i.rangeKey = nil
-	}
-
-	i.opts = *o
 	finishInitializingIter(i.alloc)
 }
 
@@ -1901,16 +2004,7 @@ func (i *Iterator) Stats() IteratorStats {
 
 // Clone creates a new Iterator over the same underlying data, i.e., over the
 // same {batch, memtables, sstables}). It starts with the same IterOptions but
-// is not positioned. Note that IterOptions is not deep-copied, so the
-// LowerBound and UpperBound slices will share memory with the original
-// Iterator. Iterators assume that these bound slices are not mutated by the
-// callers, for the lifetime of use by an Iterator. The lifetime of use spans
-// from the Iterator creation/SetBounds call to the next SetBounds call. If
-// the caller is tracking this lifetime in order to reuse memory of these
-// slices, it must remember that now the lifetime of use is due to multiple
-// Iterators. The simplest behavior the caller can adopt to decouple lifetimes
-// is to call SetBounds on the new Iterator, immediately after Clone returns,
-// with different bounds slices.
+// is not positioned.
 //
 // Callers can use Clone if they need multiple iterators that need to see
 // exactly the same underlying state of the DB. This should not be used to
@@ -1929,7 +2023,6 @@ func (i *Iterator) Clone() (*Iterator, error) {
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
 	*dbi = Iterator{
-		opts:                i.opts,
 		alloc:               buf,
 		cmp:                 i.cmp,
 		equal:               i.equal,
@@ -1938,11 +2031,14 @@ func (i *Iterator) Clone() (*Iterator, error) {
 		readState:           readState,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
+		boundsBuf:           buf.boundsBuf,
 		batch:               i.batch,
 		newIters:            i.newIters,
 		seqNum:              i.seqNum,
 		newRangeKeyIter:     i.newRangeKeyIter,
 	}
+	dbi.saveOptions(&i.opts)
+	dbi.opts.logger = i.opts.logger
 	return finishInitializingIter(buf), nil
 }
 
