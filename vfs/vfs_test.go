@@ -313,3 +313,13 @@ func TestVFSRootDirName(t *testing.T) {
 		require.Equal(t, exp, fi.Name())
 	}
 }
+
+// TestOpType is intended to catch operations that have been added without an
+// associated string, which could result in a runtime panic.
+func TestOpType(t *testing.T) {
+	for i := 0; i <= int(opTypeMax); i++ {
+		require.NotPanics(t, func() {
+			_ = OpType(i).String()
+		})
+	}
+}
