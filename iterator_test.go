@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -1467,6 +1468,142 @@ func TestIteratorGuaranteedDurable(t *testing.T) {
 		require.NoError(t, d.Flush())
 		require.True(t, foundKV(nil))
 		require.True(t, foundKV(&iterOptions))
+	})
+}
+
+func TestIteratorBoundsLifetimes(t *testing.T) {
+	d, err := Open("", &Options{FS: vfs.NewMem()})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+
+	b := d.NewBatch()
+	ks := testkeys.Alpha(2)
+	keyBuf := make([]byte, 2+testkeys.MaxSuffixLen)
+	for i := 0; i < ks.Count(); i++ {
+		n := testkeys.WriteKeyAt(keyBuf, ks, i, i)
+		b.Set(keyBuf[:n], keyBuf[:n], nil)
+	}
+	require.NoError(t, b.Commit(nil))
+
+	var buf bytes.Buffer
+	iterators := map[string]*Iterator{}
+	var labels []string
+	printIters := func(w io.Writer) {
+		labels = labels[:0]
+		for label := range iterators {
+			labels = append(labels, label)
+		}
+		sort.Strings(labels)
+		for _, label := range labels {
+			it := iterators[label]
+			fmt.Fprintf(&buf, "%s: (", label)
+			if it.opts.LowerBound == nil {
+				fmt.Fprint(&buf, "<nil>, ")
+			} else {
+				fmt.Fprintf(&buf, "%q, ", it.opts.LowerBound)
+			}
+			if it.opts.UpperBound == nil {
+				fmt.Fprint(&buf, "<nil>)\n")
+			} else {
+				fmt.Fprintf(&buf, "%q)\n", it.opts.UpperBound)
+			}
+		}
+	}
+	parseBounds := func(td *datadriven.TestData) (lower, upper []byte) {
+		for _, arg := range td.CmdArgs {
+			if arg.Key == "lower" {
+				lower = []byte(arg.Vals[0])
+			} else if arg.Key == "upper" {
+				upper = []byte(arg.Vals[0])
+			}
+		}
+		return lower, upper
+	}
+	trashBounds := func(bounds ...[]byte) {
+		for _, bound := range bounds {
+			rng.Read(bound[:])
+		}
+	}
+
+	datadriven.RunTest(t, "testdata/iterator_bounds_lifetimes", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			var err error
+			if d, err = runDBDefineCmd(td, d.opts); err != nil {
+				return err.Error()
+			}
+			d.mu.Lock()
+			s := d.mu.versions.currentVersion().String()
+			d.mu.Unlock()
+			return s
+		case "new-iter":
+			var label string
+			td.ScanArgs(t, "label", &label)
+			lower, upper := parseBounds(td)
+			iterators[label] = d.NewIter(&IterOptions{
+				LowerBound: lower,
+				UpperBound: upper,
+			})
+			trashBounds(lower, upper)
+			buf.Reset()
+			printIters(&buf)
+			return buf.String()
+		case "clone":
+			var from, to string
+			td.ScanArgs(t, "from", &from)
+			td.ScanArgs(t, "to", &to)
+			var err error
+			iterators[to], err = iterators[from].Clone()
+			if err != nil {
+				return err.Error()
+			}
+			buf.Reset()
+			printIters(&buf)
+			return buf.String()
+		case "close":
+			var label string
+			td.ScanArgs(t, "label", &label)
+			iterators[label].Close()
+			delete(iterators, label)
+			buf.Reset()
+			printIters(&buf)
+			return buf.String()
+		case "iter":
+			var label string
+			td.ScanArgs(t, "label", &label)
+			return runIterCmd(td, iterators[label], false /* closeIter */)
+		case "set-bounds":
+			var label string
+			td.ScanArgs(t, "label", &label)
+			lower, upper := parseBounds(td)
+			iterators[label].SetBounds(lower, upper)
+			trashBounds(lower, upper)
+			buf.Reset()
+			printIters(&buf)
+			return buf.String()
+		case "set-options":
+			var label string
+			var tableFilter bool
+			td.ScanArgs(t, "label", &label)
+			for _, arg := range td.CmdArgs {
+				if arg.Key == "table-filter" {
+					tableFilter = true
+				}
+			}
+			opts := iterators[label].opts
+			opts.LowerBound, opts.UpperBound = parseBounds(td)
+			if tableFilter {
+				opts.TableFilter = func(userProps map[string]string) bool { return false }
+			}
+			iterators[label].SetOptions(&opts)
+			trashBounds(opts.LowerBound, opts.UpperBound)
+			buf.Reset()
+			printIters(&buf)
+			return buf.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
 	})
 }
 
