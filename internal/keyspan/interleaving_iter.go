@@ -146,17 +146,23 @@ var _ base.InternalIterator = &InterleavingIter{}
 
 // Init initializes the InterleavingIter to interleave point keys from pointIter
 // with key spans from keyspanIter.
+//
+// The point iterator must already have the provided bounds. Init does not
+// propagate the bounds down the iterator stack.
 func (i *InterleavingIter) Init(
 	cmp base.Compare,
 	pointIter base.InternalIteratorWithStats,
 	keyspanIter FragmentIterator,
 	hooks Hooks,
+	lowerBound, upperBound []byte,
 ) {
 	*i = InterleavingIter{
 		cmp:         cmp,
 		pointIter:   pointIter,
 		keyspanIter: keyspanIter,
 		hooks:       hooks,
+		lower:       lowerBound,
+		upper:       upperBound,
 	}
 }
 
@@ -664,19 +670,20 @@ func (i *InterleavingIter) yieldSyntheticSpanMarker(lowerBound []byte) (*base.In
 			return i.yieldNil()
 		}
 
-		// If the lowerBound argument is the lower bound set by SetBounds,
-		// Pebble owns the slice's memory and there's no need to make a copy of
-		// the lower bound.
+		// If the lowerBound argument came from a SeekGE or SeekPrefixGE
+		// call, and it may be backed by a user-provided byte slice that is not
+		// guaranteed to be stable.
 		//
-		// Otherwise, the lowerBound argument came from a SeekGE or SeekPrefixGE
-		// call, and it may be backed by a user-provided byte slice.
-		if len(lowerBound) > 0 && len(i.lower) > 0 && &lowerBound[0] == &i.lower[0] {
-			i.spanMarker.UserKey = lowerBound
-		} else {
-			i.keyBuf = append(i.keyBuf[:0], lowerBound...)
-			i.spanMarker.UserKey = i.keyBuf
-			i.spanMarkerTruncated = true
-		}
+		// If the lowerBound argument is the lower bound set by SetBounds,
+		// Pebble owns the slice's memory. However, consider two successive
+		// calls to SetBounds(). The second may overwrite the lower bound.
+		// Although the external contract requires a seek after a SetBounds,
+		// Pebble's tests don't always. For this reason and to simplify
+		// reasoning around lifetimes, always copy the bound into keyBuf when
+		// truncating.
+		i.keyBuf = append(i.keyBuf[:0], lowerBound...)
+		i.spanMarker.UserKey = i.keyBuf
+		i.spanMarkerTruncated = true
 	}
 	return i.verify(&i.spanMarker, nil)
 }
