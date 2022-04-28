@@ -1680,11 +1680,13 @@ func (d *DB) maybeScheduleCompactionPicker(
 }
 
 // deleteCompactionHintType indicates whether the deleteCompactionHint was
-// generated from a span containing a range del (point key only), a range delete
-// (range key only), or both a point and range key.
+// generated from a span containing a range del (point key only), a range key
+// delete (range key only), or both a point and range key.
 type deleteCompactionHintType uint8
 
 const (
+	// NOTE: While these are primarily used as enumeration types, they are also
+	// used for some bitwise operations. Care should be taken when updating.
 	deleteCompactionHintTypeUnknown deleteCompactionHintType = iota
 	deleteCompactionHintTypePointKeyOnly
 	deleteCompactionHintTypeRangeKeyOnly
@@ -1714,11 +1716,11 @@ func compactionHintFromKeys(keys []keyspan.Key) deleteCompactionHintType {
 	for _, k := range keys {
 		switch k.Kind() {
 		case base.InternalKeyKindRangeDelete:
-			hintType |= 1 << 0
+			hintType |= deleteCompactionHintTypePointKeyOnly
 		case base.InternalKeyKindRangeKeyDelete:
-			hintType |= 1 << 1
+			hintType |= deleteCompactionHintTypeRangeKeyOnly
 		default:
-			panic(fmt.Sprintf("unsupported hint hind: %s", k.Kind()))
+			panic(fmt.Sprintf("unsupported key kind: %s", k.Kind()))
 		}
 	}
 	return hintType
