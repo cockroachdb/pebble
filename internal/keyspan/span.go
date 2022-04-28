@@ -67,10 +67,11 @@ func (k Key) Kind() base.InternalKeyKind {
 }
 
 // Equal returns true if this Key is equal to the given key. Two keys are said
-// to be equal if the two Keys have equal trailers, suffix and value.
-func (k Key) Equal(b Key) bool {
+// to be equal if the two Keys have equal trailers, suffix and value. Suffix
+// comparison uses the provided base.Compare func. Value comparison is bytewise.
+func (k Key) Equal(cmp base.Compare, b Key) bool {
 	return k.Trailer == b.Trailer &&
-		bytes.Equal(k.Suffix, b.Suffix) &&
+		cmp(k.Suffix, b.Suffix) == 0 &&
 		bytes.Equal(k.Value, b.Value)
 }
 

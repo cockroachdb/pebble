@@ -621,7 +621,7 @@ func newTableRangeDeletionIter(
 				smallest = last
 			}
 		}
-		if largest.Equal(smallest) {
+		if largest.Equal(cmp, smallest) {
 			current = append(current[:0], largest)
 		} else {
 			current = append(current[:0], largest, smallest)
