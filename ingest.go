@@ -441,18 +441,63 @@ func ingestTargetLevel(
 	compactions map[*compaction]struct{},
 	meta *fileMetadata,
 ) (int, error) {
-	// Find the lowest level which does not have any files which overlap meta.
-	// We search from L0 to L6 looking for whether there are any files in the level
+	// Find the lowest level which does not have any files which overlap meta. We
+	// search from L0 to L6 looking for whether there are any files in the level
 	// which overlap meta. We want the "lowest" level (where lower means
 	// increasing level number) in order to reduce write amplification.
 	//
-	// There are 2 kinds of overlap we need to check for: file boundary overlap and data overlap.
-	// Data overlap implies file boundary overlap.
-	// We can always ingest to L0.
-	// Now, to place meta at level i where i > 0:
-	// - there must not be any data overlap with levels <= i,
-	//   since that will violate the sequence number invariant.
-	// - no file boundary overlap with level i.
+	// There are 2 kinds of overlap we need to check for: file boundary overlap
+	// and data overlap. Data overlap implies file boundary overlap. Note that it
+	// is always possible to ingest into L0.
+	//
+	// To place meta at level i where i > 0:
+	// - there must not be any data overlap with levels <= i, since that will
+	//   violate the sequence number invariant.
+	// - no file boundary overlap with level i, since that will violate the
+	//   invariant that files do not overlap in levels i > 0.
+	//
+	// The file boundary overlap check is simpler to conceptualize. Consider the
+	// following example, in which the ingested file lies completely before or
+	// after the file being considered.
+	//
+	//   |--|           |--|  ingested file: [a,b] or [f,g]
+	//         |-----|        existing file: [c,e]
+	//  _____________________
+	//   a  b  c  d  e  f  g
+	//
+	// In both cases the ingested file can move to considering the next level.
+	//
+	// File boundary overlap does not necessarily imply data overlap. The check
+	// for data overlap is a little more nuanced. Consider the following examples:
+	//
+	//  1. No data overlap:
+	//
+	//          |-|   |--|    ingested file: [cc-d] or [ee-ff]
+	//  |*--*--*----*------*| existing file: [a-g], points: [a, b, c, dd, g]
+	//  _____________________
+	//   a  b  c  d  e  f  g
+	//
+	// In this case the ingested files can "fall through" this level. The checks
+	// continue at the next level.
+	//
+	//  2. Data overlap:
+	//
+	//            |--|        ingested file: [d-e]
+	//  |*--*--*----*------*| existing file: [a-g], points: [a, b, c, dd, g]
+	//  _____________________
+	//   a  b  c  d  e  f  g
+	//
+	// In this case the file cannot be ingested into this level as the point 'dd'
+	// is in the way.
+	//
+	// It is worth noting that the check for data overlap is only approximate. In
+	// the previous example, the ingested table [d-e] could contain only the
+	// points 'd' and 'e', in which case the table would be eligible for
+	// considering lower levels. However, such a fine-grained check would need to
+	// be exhaustive (comparing points and ranges in both the ingested existing
+	// tables) and such a check is prohibitively expensive. Thus Pebble treats any
+	// existing point that falls within the ingested table bounds as being "data
+	// overlap".
 
 	targetLevel := 0
 
@@ -484,7 +529,8 @@ func ingestTargetLevel(
 		levelIter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
 			v.Levels[level].Iter(), manifest.Level(level), nil)
 		var rangeDelIter keyspan.FragmentIterator
-		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE sets it up for the target file.
+		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
+		// sets it up for the target file.
 		levelIter.initRangeDel(&rangeDelIter)
 		overlap := overlapWithIterator(levelIter, &rangeDelIter, meta, cmp)
 		levelIter.Close() // Closes range del iter as well.
@@ -501,10 +547,10 @@ func ingestTargetLevel(
 
 		// Check boundary overlap with any ongoing compactions.
 		//
-		// We cannot check for data overlap with the new SSTs compaction will produce
-		// since compaction hasn't been done yet.
-		// However, there's no need to check since all keys in them will either be from
-		// c.startLevel or c.outputLevel, both levels having their data overlap already tested
+		// We cannot check for data overlap with the new SSTs compaction will
+		// produce since compaction hasn't been done yet. However, there's no need
+		// to check since all keys in them will either be from c.startLevel or
+		// c.outputLevel, both levels having their data overlap already tested
 		// negative (else we'd have returned earlier).
 		overlaps := false
 		for c := range compactions {
