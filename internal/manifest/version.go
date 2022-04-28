@@ -290,6 +290,20 @@ func (m *FileMetadata) boundsMarker() (sentinel uint8, err error) {
 	return
 }
 
+// Ref increases the refs count on FileMetadata.
+func (m *FileMetadata) Ref() int32 {
+	return atomic.AddInt32(&m.refs, 1)
+}
+
+// Unref decreases the refs count on FileMetadata.
+func (m *FileMetadata) Unref() int32 {
+	v := atomic.AddInt32(&m.refs, -1)
+	if v < 0 {
+		panic("file refcount dropped below 0")
+	}
+	return v
+}
+
 // String implements fmt.Stringer, printing the file number and the overall
 // table bounds.
 func (m *FileMetadata) String() string {

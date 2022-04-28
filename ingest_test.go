@@ -450,6 +450,10 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 }
 
 func BenchmarkIngestOverlappingMemtable(b *testing.B) {
+	var d *DB
+	var err error
+	var mem *vfs.MemFS
+
 	assertNoError := func(err error) {
 		b.Helper()
 		if err != nil {
@@ -457,24 +461,47 @@ func BenchmarkIngestOverlappingMemtable(b *testing.B) {
 		}
 	}
 
-	for count := 1; count < 6; count++ {
+	for count := 1; count < 2; count++ {
 		b.Run(fmt.Sprintf("memtables=%d", count), func(b *testing.B) {
+			b.StopTimer()
+			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				mem := vfs.NewMem()
-				d, err := Open("", &Options{
-					FS: mem,
+				if i > 0 {
+					d.Close()
+					mem.RemoveAll(d.dirname)
+				}
+				mem = vfs.NewMem()
+				d, err = Open("", &Options{
+					FS:                          mem,
+					MemTableStopWritesThreshold: 4,
+					MemTableSize:                64 << 20,
 				})
 				assertNoError(err)
 
+				// Prevent flushes.
+				d.mu.Lock()
+				d.mu.mem.nextSize = d.opts.MemTableSize
+				d.mu.compact.flushing = true
+				d.mu.Unlock()
+
+				assertNoError(d.Set([]byte("a"), nil, nil))
+
 				// Create memtables.
-				for {
-					assertNoError(d.Set([]byte("a"), nil, nil))
+				for j := 1; j <= count+1; {
+					key := make([]byte, 20)
+					value := make([]byte, 100)
+					_, err := rand.Read(key)
+					assertNoError(err)
+					_, err = rand.Read(value)
+					assertNoError(err)
+
+					assertNoError(d.Set(key, value, nil))
+
 					d.mu.Lock()
-					done := len(d.mu.mem.queue) == count
+					memtables := len(d.mu.mem.queue)
 					d.mu.Unlock()
-					if done {
-						break
+					if j < memtables {
+						j = memtables
 					}
 				}
 
@@ -487,6 +514,7 @@ func BenchmarkIngestOverlappingMemtable(b *testing.B) {
 
 				b.StartTimer()
 				assertNoError(d.Ingest([]string{"ext"}))
+				b.StopTimer()
 			}
 		})
 	}

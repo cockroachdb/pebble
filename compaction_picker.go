@@ -1020,7 +1020,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 
 	// Check for a score-based compaction. "scores" has been sorted in order of
 	// decreasing score. For each level with a score >= 1, we attempt to find a
-	// compaction anchored at at that level.
+	// compaction anchored at that level.
 	for i := range scores {
 		info := &scores[i]
 		if info.score < 1 {

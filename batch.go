@@ -1514,6 +1514,10 @@ func (b *flushableBatch) readyForFlush() bool {
 	return true
 }
 
+func (b *flushableBatch) ref() {}
+
+func (b *flushableBatch) unref() {}
+
 // Note: flushableBatchIter mirrors the implementation of batchIter. Keep the
 // two in sync.
 type flushableBatchIter struct {

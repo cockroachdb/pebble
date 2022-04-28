@@ -28,6 +28,11 @@ type readState struct {
 // ref adds a reference to the readState.
 func (s *readState) ref() {
 	atomic.AddInt32(&s.refcnt, 1)
+	for _, mem := range s.memtables {
+		mem.flushable.ref()
+		//mem.readerRef()
+	}
+	//fmt.Printf("readstate %p cnt: %d\n", s, v)
 }
 
 // unref removes a reference to the readState. If this was the last reference,
@@ -35,7 +40,13 @@ func (s *readState) ref() {
 // is NOT held as version.unref() will acquire it. See unrefLocked() if DB.mu
 // is held by the caller.
 func (s *readState) unref() {
-	if atomic.AddInt32(&s.refcnt, -1) != 0 {
+	v := atomic.AddInt32(&s.refcnt, -1)
+	for _, mem := range s.memtables {
+		mem.flushable.unref()
+		//mem.readerRef()
+	}
+	//fmt.Printf("readstate %p cnt: %d\n", s, v)
+	if v != 0 {
 		return
 	}
 	s.current.Unref()
@@ -53,7 +64,13 @@ func (s *readState) unref() {
 // released. Requires DB.mu is held as version.unrefLocked() requires it. See
 // unref() if DB.mu is NOT held by the caller.
 func (s *readState) unrefLocked() {
-	if atomic.AddInt32(&s.refcnt, -1) != 0 {
+	v := atomic.AddInt32(&s.refcnt, -1)
+	for _, mem := range s.memtables {
+		mem.flushable.unref()
+		//mem.readerRef()
+	}
+	//fmt.Printf("readstate %p cnt: %d\n", s, v)
+	if v != 0 {
 		return
 	}
 	s.current.UnrefLocked()
@@ -90,6 +107,7 @@ func (d *DB) updateReadStateLocked(checker func(*DB) error, atomicFunc func()) {
 
 	s.current.Ref()
 	for _, mem := range s.memtables {
+		mem.flushable.ref()
 		mem.readerRef()
 	}
 

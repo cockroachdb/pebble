@@ -641,6 +641,17 @@ func (d *DB) ingest(paths []string, targetLevelFunc ingestTargetLevelFunc) error
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			m := d.mu.mem.queue[i]
 			if ingestMemtableOverlaps(d.cmp, m, meta) {
+				// Fall-back to blocking flush
+				if len(d.mu.mem.queue) > d.opts.MemTableStopWritesThreshold-1 {
+					mem = m
+					if mem.flushable == d.mu.mem.mutable {
+						err = d.makeRoomForWrite(nil)
+					}
+					mem.flushForced = true
+					d.maybeScheduleFlush()
+					return
+				}
+
 				ingested = true
 				entry, nextSeqNum, err := d.addIngestedSSTsFlushable(newPaths, meta, seqNum)
 				if err != nil {

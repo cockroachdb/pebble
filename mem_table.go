@@ -278,6 +278,10 @@ func (m *memTable) totalBytes() uint64 {
 	return uint64(m.skl.Arena().Capacity())
 }
 
+func (m *memTable) ref() {}
+
+func (m *memTable) unref() {}
+
 // empty returns whether the MemTable has no key/value pairs.
 func (m *memTable) empty() bool {
 	return m.skl.Size() == memTableEmptySize

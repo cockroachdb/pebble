@@ -1578,7 +1578,6 @@ func (d *DB) flush1() error {
 			JobID: jobID,
 			Input: len(flush),
 		}
-
 		// TODO(mufeez): match time measurement with master.
 		flushVE, err := runFlush(jobID, flush, &info)
 		if err != nil {

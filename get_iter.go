@@ -137,14 +137,14 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 			m := g.mem[n-1]
 			iter := m.newIter(nil)
 			var rangeDelIter keyspan.FragmentIterator
-			switch m.flushable.(type) {
-			case *ingestedSSTable:
-				iter.(*levelIter).initRangeDel(&rangeDelIter)
-			default:
-				rangeDelIter = m.newRangeDelIter(nil)
-			}
 			g.iter = iter
 			g.rangeDelIter = rangeDelIter
+			switch m.flushable.(type) {
+			case *ingestedSSTable:
+				iter.(*levelIter).initRangeDel(&g.rangeDelIter)
+			default:
+				g.rangeDelIter = m.newRangeDelIter(nil)
+			}
 			g.mem = g.mem[:n-1]
 			g.iterKey, g.iterValue = g.iter.SeekGE(g.key, false /* trySeekUsingNext */)
 			continue

@@ -191,7 +191,9 @@ func (n *node) decRef(recursive bool, obsolete *[]*FileMetadata) {
 	// Dereference the node's metadata and release child references.
 	if recursive {
 		for _, f := range n.items[:n.count] {
-			if atomic.AddInt32(&f.refs, -1) == 0 {
+			v := f.Unref()
+			fmt.Printf("refcount for file %d: %d\n", f.FileNum, v)
+			if v == 0 {
 				// There are two sources of node dereferences: tree mutations
 				// and Version dereferences. Files should only be made obsolete
 				// during Version dereferences, during which `obsolete` will be
@@ -224,7 +226,7 @@ func (n *node) clone() *node {
 	c.items = n.items
 	// Increase the refcount of each contained item.
 	for _, f := range n.items[:n.count] {
-		atomic.AddInt32(&f.refs, 1)
+		f.Ref()
 	}
 	if !c.leaf {
 		// Copy children and increase each refcount.
@@ -698,7 +700,7 @@ func (t *btree) delete(item *FileMetadata) (obsolete bool) {
 	}
 	if out := mut(&t.root).remove(t.cmp, item); out != nil {
 		t.length--
-		obsolete = atomic.AddInt32(&out.refs, -1) == 0
+		obsolete = out.Unref() == 0
 	}
 	if t.root.count == 0 {
 		old := t.root
@@ -712,7 +714,7 @@ func (t *btree) delete(item *FileMetadata) (obsolete bool) {
 	return obsolete
 }
 
-// insert adds the given item to the tree. If a item in the tree already
+// insert adds the given item to the tree. If an item in the tree already
 // equals the given one, insert panics.
 func (t *btree) insert(item *FileMetadata) error {
 	if t.root == nil {
@@ -726,7 +728,7 @@ func (t *btree) insert(item *FileMetadata) error {
 		newRoot.children[1] = splitNode
 		t.root = newRoot
 	}
-	atomic.AddInt32(&item.refs, 1)
+	item.Ref()
 	err := mut(&t.root).insert(t.cmp, item)
 	t.length++
 	return err

@@ -26,6 +26,9 @@ type flushable interface {
 	// memTable.readyForFlush for one implementation which needs to check whether
 	// there are any outstanding write references.
 	readyForFlush() bool
+
+	ref()
+	unref()
 }
 
 // flushableEntry wraps a flushable and adds additional metadata and
@@ -152,4 +155,16 @@ func (s *ingestedSSTable) totalBytes() uint64 {
 
 func (s *ingestedSSTable) readyForFlush() bool {
 	return true
+}
+
+func (s *ingestedSSTable) ref() {
+	for _, f := range s.files {
+		f.Ref()
+	}
+}
+
+func (s *ingestedSSTable) unref() {
+	for _, f := range s.files {
+		f.Unref()
+	}
 }

@@ -1049,16 +1049,17 @@ func constructPointIter(
 		var iter internalIteratorWithStats
 		var rangeDelIter keyspan.FragmentIterator
 		iter = base.WrapIterWithStats(mem.newIter(&dbi.opts))
-		switch mem.flushable.(type) {
-		case *ingestedSSTable:
-			iter.(*levelIter).initRangeDel(&rangeDelIter)
-		default:
-			rangeDelIter = mem.newRangeDelIter(&dbi.opts)
-		}
-		mlevels = append(mlevels, mergingIterLevel{
+		mergingIter := mergingIterLevel{
 			iter:         iter,
 			rangeDelIter: rangeDelIter,
-		})
+		}
+		switch mem.flushable.(type) {
+		case *ingestedSSTable:
+			iter.(*levelIter).initRangeDel(&mergingIter.rangeDelIter)
+		default:
+			mergingIter.rangeDelIter = mem.newRangeDelIter(&dbi.opts)
+		}
+		mlevels = append(mlevels, mergingIter)
 	}
 
 	// Next are the file levels: L0 sub-levels followed by lower levels.

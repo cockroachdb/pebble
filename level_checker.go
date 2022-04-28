@@ -604,16 +604,17 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		mem := memtables[i]
 		var rangeDelIter keyspan.FragmentIterator
 		iter := mem.newIter(nil)
-		switch mem.flushable.(type) {
-		case *ingestedSSTable:
-			iter.(*levelIter).initRangeDel(&rangeDelIter)
-		default:
-			rangeDelIter = mem.newRangeDelIter(nil)
-		}
-		mlevels = append(mlevels, simpleMergingIterLevel{
+		mIter := simpleMergingIterLevel{
 			iter:         iter,
 			rangeDelIter: rangeDelIter,
-		})
+		}
+		switch mem.flushable.(type) {
+		case *ingestedSSTable:
+			iter.(*levelIter).initRangeDel(&mIter.rangeDelIter)
+		default:
+			mIter.rangeDelIter = mem.newRangeDelIter(nil)
+		}
+		mlevels = append(mlevels, mIter)
 	}
 
 	current := c.readState.current
