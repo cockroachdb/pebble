@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"runtime"
 	"strconv"
 	"strings"
@@ -547,6 +548,16 @@ type Options struct {
 		// default is 1 MB/s. Currently disabled as this option has no effect while
 		// private.enablePacing is false.
 		minFlushRate int
+
+		// fsCloser holds a closer that should be invoked after a DB using these
+		// Options is closed. This is used to automatically stop the
+		// long-running goroutine associated with the disk-health-checking FS.
+		// See the initialization of FS in EnsureDefaults. Note that care has
+		// been taken to ensure that it is still safe to continue using the FS
+		// after this closer has been invoked. However, if write operations
+		// against the FS are made after the DB is closed, the FS may leak a
+		// goroutine indefinitely.
+		fsCloser io.Closer
 	}
 }
 
@@ -670,7 +681,7 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 
 	if o.FS == nil {
-		o.FS = vfs.WithDiskHealthChecks(vfs.Default, 5*time.Second,
+		o.FS, o.private.fsCloser = vfs.WithDiskHealthChecks(vfs.Default, 5*time.Second,
 			func(name string, duration time.Duration) {
 				o.EventListener.DiskSlow(DiskSlowInfo{
 					Path:     name,
