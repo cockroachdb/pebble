@@ -18,6 +18,9 @@ import (
 //
 // Typically, it will be an *os.File, but test code may choose to substitute
 // memory-backed implementations.
+//
+// Write-oriented operations (Write, Sync) must be called sequentially: At most
+// 1 call to Write or Sync may be executed at any given time.
 type File interface {
 	io.Closer
 	io.Reader
