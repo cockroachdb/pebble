@@ -5,6 +5,9 @@
 package vfs
 
 import (
+	"io"
+	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -13,6 +16,12 @@ const (
 	// defaultTickInterval is the default interval between two ticks of each
 	// diskHealthCheckingFile loop iteration.
 	defaultTickInterval = 2 * time.Second
+	// preallocatedSlotCount is the default number of slots available for
+	// concurrent filesystem operations. The slot count may be exceeded, but
+	// each additional slot will incur an additional allocation. We choose 8
+	// here with the expectation that it is significantly more than required in
+	// practice.
+	preallocatedSlotCount = 8
 )
 
 // diskHealthCheckingFile is a File wrapper to detect slow disk operations, and
@@ -124,29 +133,184 @@ func (d *diskHealthCheckingFile) timeDiskOp(op func()) {
 }
 
 type diskHealthCheckingFS struct {
-	FS
-
+	tickInterval      time.Duration
 	diskSlowThreshold time.Duration
 	onSlowDisk        func(string, time.Duration)
-}
-
-// WithDiskHealthChecks wraps an FS and ensures that all
-// write-oriented created with that FS are wrapped with disk health detection
-// checks. Disk operations that are observed to take longer than
-// diskSlowThreshold trigger an onSlowDisk call.
-func WithDiskHealthChecks(
-	fs FS, diskSlowThreshold time.Duration, onSlowDisk func(string, time.Duration),
-) FS {
-	return diskHealthCheckingFS{
-		FS:                fs,
-		diskSlowThreshold: diskSlowThreshold,
-		onSlowDisk:        onSlowDisk,
+	fs                FS
+	mu                struct {
+		sync.Mutex
+		tickerRunning bool
+		stopper       chan struct{}
+		inflight      []*slot
+	}
+	// prealloc preallocates the memory for mu.inflight slots. The contained
+	// fields are not accessed directly except by WithDiskHealthChecks when
+	// initializing mu.inflight.
+	prealloc struct {
+		slots        [preallocatedSlotCount]slot
+		slotPtrSlice [preallocatedSlotCount]*slot
 	}
 }
 
-// Create implements the vfs.FS interface.
-func (d diskHealthCheckingFS) Create(name string) (File, error) {
-	f, err := d.FS.Create(name)
+type slot struct {
+	name       string
+	startNanos int64
+}
+
+// diskHealthCheckingFS implements FS.
+var _ FS = (*diskHealthCheckingFS)(nil)
+
+// WithDiskHealthChecks wraps an FS and ensures that all write-oriented
+// operations on the FS are wrapped with disk health detection checks. Disk
+// operations that are observed to take longer than diskSlowThreshold trigger an
+// onSlowDisk call.
+func WithDiskHealthChecks(
+	innerFS FS, diskSlowThreshold time.Duration, onSlowDisk func(string, time.Duration),
+) (FS, io.Closer) {
+	if diskSlowThreshold == 0 {
+		return innerFS, noopCloser{}
+	}
+
+	fs := &diskHealthCheckingFS{
+		fs:                innerFS,
+		tickInterval:      defaultTickInterval,
+		diskSlowThreshold: diskSlowThreshold,
+		onSlowDisk:        onSlowDisk,
+	}
+	fs.mu.stopper = make(chan struct{})
+	// The fs holds preallocated slots and a preallocated array of slot pointers
+	// with equal length. Initialize the inflight slice to use a slice backed by
+	// the preallocated array with each slot initialized to a preallocated slot.
+	fs.mu.inflight = fs.prealloc.slotPtrSlice[:]
+	for i := range fs.mu.inflight {
+		fs.mu.inflight[i] = &fs.prealloc.slots[i]
+	}
+	return fs, fs
+}
+
+func (d *diskHealthCheckingFS) timeFilesystemOp(name string, op func()) {
+	if d == nil {
+		op()
+		return
+	}
+
+	// Record this operation's start time on the FS, so that the long-running
+	// goroutine can monitor the filesystem operation.
+	//
+	// The diskHealthCheckingFile implementation uses a single field that is
+	// atomically updated, taking advantage of the fact that writes to a single
+	// vfs.File handle are not performed in parallel. The vfs.FS however may
+	// receive write filesystem operations in parallel. To accommodate this
+	// parallelism, writing goroutines append their start time to a
+	// mutex-protected vector. On ticks, the long-running goroutine scans the
+	// vector searching for start times older than the slow-disk threshold. When
+	// a writing goroutine completes its operation, it atomically overwrites its
+	// slot to signal completion.
+	var s *slot
+	func() {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		// If there's no long-running goroutine to monitor this filesystem
+		// operation, start one.
+		if !d.mu.tickerRunning {
+			d.startTickerLocked()
+		}
+
+		startNanos := time.Now().UnixNano()
+		for i := 0; i < len(d.mu.inflight); i++ {
+			if atomic.LoadInt64(&d.mu.inflight[i].startNanos) == 0 {
+				// This slot is not in use. Claim it.
+				s = d.mu.inflight[i]
+				s.name = name
+				atomic.StoreInt64(&s.startNanos, startNanos)
+				break
+			}
+		}
+		// If we didn't find any unused slots, create a new slot and append it.
+		if s == nil {
+			s = &slot{
+				name:       name,
+				startNanos: startNanos,
+			}
+			d.mu.inflight = append(d.mu.inflight, s)
+		}
+	}()
+
+	op()
+
+	// Signal completion by zeroing the start time.
+	atomic.StoreInt64(&s.startNanos, 0)
+}
+
+// startTickerLocked starts a new goroutine with a ticker to monitor disk
+// filesystem operations. Requires d.mu and !d.mu.tickerRunning.
+func (d *diskHealthCheckingFS) startTickerLocked() {
+	d.mu.tickerRunning = true
+	stopper := d.mu.stopper
+	go func() {
+		ticker := time.NewTicker(d.tickInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				// Scan the inflight slots for any slots recording a start
+				// time older than the diskSlowThreshold.
+				d.mu.Lock()
+				now := time.Now()
+				for i := range d.mu.inflight {
+					nanos := atomic.LoadInt64(&d.mu.inflight[i].startNanos)
+					if nanos != 0 && time.Unix(0, nanos).Add(d.diskSlowThreshold).Before(now) {
+						// diskSlowThreshold was exceeded. Invoke the provided
+						// callback.
+						d.onSlowDisk(d.mu.inflight[i].name, now.Sub(time.Unix(0, nanos)))
+					}
+				}
+				d.mu.Unlock()
+			case <-stopper:
+				return
+			}
+		}
+	}()
+}
+
+// Close implements io.Closer. Close stops the long-running goroutine that
+// monitors for slow filesystem metadata operations. Close may be called
+// multiple times. If the filesystem is used after Close has been called, a new
+// long-running goroutine will be created.
+func (d *diskHealthCheckingFS) Close() error {
+	d.mu.Lock()
+	if !d.mu.tickerRunning {
+		// Nothing to stop.
+		d.mu.Unlock()
+		return nil
+	}
+
+	// Grab the stopper so we can request the long-running goroutine to stop.
+	// Replace the stopper in case this FS is reused. It's possible to Close and
+	// reuse a disk-health checking FS. This is to accommodate the on-by-default
+	// behavior in Pebble, and the possibility that users may continue to use
+	// the Pebble default FS beyond the lifetime of a single DB.
+	stopper := d.mu.stopper
+	d.mu.stopper = make(chan struct{})
+	d.mu.tickerRunning = false
+	d.mu.Unlock()
+
+	// Ask the long-running goroutine to stop. This is a synchronous channel
+	// send.
+	stopper <- struct{}{}
+	close(stopper)
+	return nil
+}
+
+// Create implements the FS interface.
+func (d *diskHealthCheckingFS) Create(name string) (File, error) {
+	var f File
+	var err error
+	d.timeFilesystemOp(name, func() {
+		f, err = d.fs.Create(name)
+	})
 	if err != nil {
 		return f, err
 	}
@@ -160,9 +324,108 @@ func (d diskHealthCheckingFS) Create(name string) (File, error) {
 	return WithFd(f, checkingFile), nil
 }
 
-// ReuseForWrite implements the vfs.FS interface.
-func (d diskHealthCheckingFS) ReuseForWrite(oldname, newname string) (File, error) {
-	f, err := d.FS.ReuseForWrite(oldname, newname)
+// GetDiskUsage implements the FS interface.
+func (d *diskHealthCheckingFS) GetDiskUsage(path string) (DiskUsage, error) {
+	return d.fs.GetDiskUsage(path)
+}
+
+// Link implements the FS interface.
+func (d *diskHealthCheckingFS) Link(oldname, newname string) error {
+	var err error
+	d.timeFilesystemOp(newname, func() {
+		err = d.fs.Link(oldname, newname)
+	})
+	return err
+}
+
+// List implements the FS interface.
+func (d *diskHealthCheckingFS) List(dir string) ([]string, error) {
+	return d.fs.List(dir)
+}
+
+// Lock implements the FS interface.
+func (d *diskHealthCheckingFS) Lock(name string) (io.Closer, error) {
+	return d.fs.Lock(name)
+}
+
+// MkdirAll implements the FS interface.
+func (d *diskHealthCheckingFS) MkdirAll(dir string, perm os.FileMode) error {
+	var err error
+	d.timeFilesystemOp(dir, func() {
+		err = d.fs.MkdirAll(dir, perm)
+	})
+	return err
+}
+
+// Open implements the FS interface.
+func (d *diskHealthCheckingFS) Open(name string, opts ...OpenOption) (File, error) {
+	return d.fs.Open(name, opts...)
+}
+
+// OpenDir implements the FS interface.
+func (d *diskHealthCheckingFS) OpenDir(name string) (File, error) {
+	f, err := d.fs.OpenDir(name)
+	if err != nil {
+		return f, err
+	}
+	// Directories opened with OpenDir must be opened with health checking,
+	// because they may be explicitly synced.
+	checkingFile := newDiskHealthCheckingFile(f, d.diskSlowThreshold, func(duration time.Duration) {
+		d.onSlowDisk(name, duration)
+	})
+	checkingFile.startTicker()
+	return WithFd(f, checkingFile), nil
+}
+
+// PathBase implements the FS interface.
+func (d *diskHealthCheckingFS) PathBase(path string) string {
+	return d.fs.PathBase(path)
+}
+
+// PathJoin implements the FS interface.
+func (d *diskHealthCheckingFS) PathJoin(elem ...string) string {
+	return d.fs.PathJoin(elem...)
+}
+
+// PathDir implements the FS interface.
+func (d *diskHealthCheckingFS) PathDir(path string) string {
+	return d.fs.PathDir(path)
+}
+
+// Remove implements the FS interface.
+func (d *diskHealthCheckingFS) Remove(name string) error {
+	var err error
+	d.timeFilesystemOp(name, func() {
+		err = d.fs.Remove(name)
+	})
+	return err
+}
+
+// RemoveAll implements the FS interface.
+func (d *diskHealthCheckingFS) RemoveAll(name string) error {
+	var err error
+	d.timeFilesystemOp(name, func() {
+		err = d.fs.RemoveAll(name)
+	})
+	return err
+}
+
+// Rename implements the FS interface.
+func (d *diskHealthCheckingFS) Rename(oldname, newname string) error {
+	var err error
+	d.timeFilesystemOp(newname, func() {
+		err = d.fs.Rename(oldname, newname)
+	})
+	return err
+}
+
+// ReuseForWrite implements the FS interface.
+func (d *diskHealthCheckingFS) ReuseForWrite(oldname, newname string) (File, error) {
+	var f File
+	var err error
+	d.timeFilesystemOp(newname, func() {
+		f, err = d.fs.ReuseForWrite(oldname, newname)
+	})
 	if err != nil {
 		return f, err
 	}
@@ -175,3 +438,12 @@ func (d diskHealthCheckingFS) ReuseForWrite(oldname, newname string) (File, erro
 	checkingFile.startTicker()
 	return WithFd(f, checkingFile), nil
 }
+
+// Stat implements the FS interface.
+func (d *diskHealthCheckingFS) Stat(name string) (os.FileInfo, error) {
+	return d.fs.Stat(name)
+}
+
+type noopCloser struct{}
+
+func (noopCloser) Close() error { return nil }
