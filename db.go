@@ -1207,6 +1207,11 @@ func (d *DB) Close() error {
 	d.deleters.Wait()
 	d.compactionSchedulers.Wait()
 	d.mu.Lock()
+
+	// If the options include a closer to 'close' the filesystem, close it.
+	if d.opts.private.fsCloser != nil {
+		d.opts.private.fsCloser.Close()
+	}
 	return err
 }
 
