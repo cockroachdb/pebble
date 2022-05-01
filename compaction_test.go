@@ -828,6 +828,45 @@ func TestElideRangeTombstone(t *testing.T) {
 	}
 }
 
+type cpuPermissionGranter struct {
+	granted int
+	used    bool
+}
+
+func (t *cpuPermissionGranter) TryGetProcs(count int) int {
+	t.granted += count
+	t.used = true
+	return count
+}
+
+func (t *cpuPermissionGranter) ReturnProcs(count int) {
+	t.granted -= count
+}
+
+// Simple test to check if compactions are using the granter, and if exactly the
+// used slots are being freed.
+func TestCompactionSlots(t *testing.T) {
+	mem := vfs.NewMem()
+	opts := &Options{
+		FS: mem,
+	}
+	g := &cpuPermissionGranter{}
+	opts.Experimental.CPUWorkPermissionGranter = g
+	d, err := Open("", opts)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer d.Close()
+
+	d.Set([]byte{'a'}, []byte{'a'}, nil)
+	err = d.Compact([]byte{'a'}, []byte{'b'}, true)
+	if err != nil {
+		t.Fatalf("Compact: %v", err)
+	}
+	require.True(t, g.used)
+	require.Equal(t, 0, g.granted)
+}
+
 func TestCompaction(t *testing.T) {
 	const memTableSize = 10000
 	// Tuned so that 2 values can reside in the memtable before a flush, but a

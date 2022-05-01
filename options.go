@@ -517,6 +517,11 @@ type Options struct {
 		// compress and write blocks to disk. Otherwise, the writer will
 		// compress and write blocks to disk synchronously.
 		MaxWriterConcurrency int
+
+		// CPUWorkPermissionGranter should be set if Pebble should be given the
+		// ability to optionally schedule additional CPU. See the documentation
+		// for CPUWorkPermissionGranter for more details.
+		CPUWorkPermissionGranter CPUWorkPermissionGranter
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
