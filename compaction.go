@@ -2072,6 +2072,12 @@ func (d *DB) runCompaction(
 	// must be careful, because the byte slice returned by UnsafeKey
 	// points directly into the Writer's block buffer.
 	var prevPointKey sstable.PreviousPointKeyOpt
+	var additionalCPUProcs int
+	defer func() {
+		if additionalCPUProcs > 0 {
+			d.opts.Experimental.CPUWorkPermissionGranter.ReturnProcs(additionalCPUProcs)
+		}
+	}()
 
 	newOutput := func() error {
 		fileMeta := &fileMetadata{}
@@ -2107,6 +2113,12 @@ func (d *DB) runCompaction(
 		filenames = append(filenames, filename)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
 		internalTableOpt := private.SSTableInternalTableOpt.(sstable.WriterOption)
+		if d.opts.Experimental.CPUWorkPermissionGranter != nil {
+			additionalCPUProcs = d.opts.Experimental.CPUWorkPermissionGranter.TryGetProcs(1)
+		}
+		writerOpts.Parallelism =
+			d.opts.Experimental.MaxWriterConcurrency > 0 &&
+				(additionalCPUProcs > 0 || d.opts.Experimental.ForceWriterParallelism)
 		tw = sstable.NewWriter(file, writerOpts, cacheOpts, internalTableOpt, &prevPointKey)
 
 		fileMeta.CreationTime = time.Now().Unix()
@@ -2193,6 +2205,10 @@ func (d *DB) runCompaction(
 		if err := tw.Close(); err != nil {
 			tw = nil
 			return err
+		}
+		if additionalCPUProcs > 0 {
+			d.opts.Experimental.CPUWorkPermissionGranter.ReturnProcs(additionalCPUProcs)
+			additionalCPUProcs = 0
 		}
 		writerMeta, err := tw.Metadata()
 		if err != nil {
