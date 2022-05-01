@@ -182,6 +182,18 @@ type ExperimentalWriter interface {
 	RangeKeyDelete(start, end []byte, opts *WriteOptions) error
 }
 
+// CPUWorkPermissionGranter is used to request permission to opportunistically
+// use additional CPUs to speed up internal background work. Each granted "proc"
+// can be used to spin up a CPU bound goroutine, i.e, if scheduled each such
+// goroutine can consume one P in the goroutine scheduler. The calls to
+// ReturnProcs can be a bit delayed, since Pebble interacts with this interface
+// in a coarse manner. So one should assume that the total number of granted
+// procs is a non tight upper bound on the CPU that will get consumed.
+type CPUWorkPermissionGranter interface {
+	TryGetProcs(count int) int
+	ReturnProcs(count int)
+}
+
 // DB provides a concurrent, persistent ordered key/value store.
 //
 // A DB's basic operations (Get, Set, Delete) should be self-explanatory. Get

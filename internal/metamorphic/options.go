@@ -211,6 +211,7 @@ func standardOptions() []*testOptions {
 		22: `
 [Options]
   max_writer_concurrency=2
+  force_writer_parallelism=true
 `,
 	}
 
@@ -260,6 +261,7 @@ func randomOptions(rng *rand.Rand) *testOptions {
 		// MaxWriterConcurrency to any value greater than or equal to 1 has the
 		// same effect currently.
 		opts.Experimental.MaxWriterConcurrency = 2
+		opts.Experimental.ForceWriterParallelism = true
 	}
 	var lopts pebble.LevelOptions
 	lopts.BlockRestartInterval = 1 + rng.Intn(64)  // 1 - 64

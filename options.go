@@ -517,6 +517,17 @@ type Options struct {
 		// compress and write blocks to disk. Otherwise, the writer will
 		// compress and write blocks to disk synchronously.
 		MaxWriterConcurrency int
+
+		// ForceWriterParallelism is used to force parallelism in the sstable
+		// Writer for the metamorphic tests. Even with the MaxWriterConcurrency
+		// option set, we only enable parallelism in the sstable Writer if there
+		// is enough CPU available, and this option bypasses that.
+		ForceWriterParallelism bool
+
+		// CPUWorkPermissionGranter should be set if Pebble should be given the
+		// ability to optionally schedule additional CPU. See the documentation
+		// for CPUWorkPermissionGranter for more details.
+		CPUWorkPermissionGranter CPUWorkPermissionGranter
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -979,6 +990,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
 	fmt.Fprintf(&buf, "  max_writer_concurrency=%d\n", o.Experimental.MaxWriterConcurrency)
+	fmt.Fprintf(&buf, "  force_writer_parallelism=%t\n", o.Experimental.ForceWriterParallelism)
 
 	for i := range o.Levels {
 		l := &o.Levels[i]
@@ -1199,6 +1211,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.WALBytesPerSync, err = strconv.Atoi(value)
 			case "max_writer_concurrency":
 				o.Experimental.MaxWriterConcurrency, err = strconv.Atoi(value)
+			case "force_writer_parallelism":
+				o.Experimental.ForceWriterParallelism, err = strconv.ParseBool(value)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil
@@ -1383,6 +1397,5 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.FilterPolicy = levelOpts.FilterPolicy
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
-	writerOpts.Parallelism = o.Experimental.MaxWriterConcurrency > 0
 	return writerOpts
 }
