@@ -2072,6 +2072,12 @@ func (d *DB) runCompaction(
 	// must be careful, because the byte slice returned by UnsafeKey
 	// points directly into the Writer's block buffer.
 	var prevPointKey sstable.PreviousPointKeyOpt
+	loadedGranter := d.slotGranter.Load()
+	var slotGranter SlotGranter
+	if loadedGranter != nil {
+		slotGranter = loadedGranter.(SlotGranter)
+	}
+	var gotSlot int
 
 	newOutput := func() error {
 		fileMeta := &fileMetadata{}
@@ -2107,8 +2113,13 @@ func (d *DB) runCompaction(
 		filenames = append(filenames, filename)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
 		internalTableOpt := private.SSTableInternalTableOpt.(sstable.WriterOption)
+		if slotGranter != nil {
+			gotSlot = slotGranter.TryGetSlots(1)
+			if gotSlot > 0 {
+				writerOpts.Parallelism = true
+			}
+		}
 		tw = sstable.NewWriter(file, writerOpts, cacheOpts, internalTableOpt, &prevPointKey)
-
 		fileMeta.CreationTime = time.Now().Unix()
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
 			Level: c.outputLevel.level,
@@ -2193,6 +2204,10 @@ func (d *DB) runCompaction(
 		if err := tw.Close(); err != nil {
 			tw = nil
 			return err
+		}
+		if gotSlot > 0 {
+			gotSlot = 0
+			slotGranter.ReturnSlots(1)
 		}
 		writerMeta, err := tw.Metadata()
 		if err != nil {

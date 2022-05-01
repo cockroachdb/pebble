@@ -182,6 +182,14 @@ type ExperimentalWriter interface {
 	RangeKeyDelete(start, end []byte, opts *WriteOptions) error
 }
 
+// SlotGranter can be used to give Pebble the ability to perform additional
+// CPU bound work. Primarily, the interface will be used by Cockroach so that
+// it can pass its soft slot granter to Pebble.
+type SlotGranter interface {
+	TryGetSlots(count int) int
+	ReturnSlots(count int)
+}
+
 // DB provides a concurrent, persistent ordered key/value store.
 //
 // A DB's basic operations (Get, Set, Delete) should be self-explanatory. Get
@@ -461,6 +469,8 @@ type DB struct {
 		}
 	}
 
+	slotGranter atomic.Value
+
 	// rangeKeys is a temporary field so that Pebble can provide a non-durable
 	// implementation of range keys in advance of the real implementation.
 	// TODO(jackson): Remove this.
@@ -468,6 +478,12 @@ type DB struct {
 
 	// Normally equal to time.Now() but may be overridden in tests.
 	timeNow func() time.Time
+}
+
+// SetSlotGranter can be used to set the SlotGranter in Pebble. It can be called
+// anytime after Pebble is opened.
+func (d *DB) SetSlotGranter(r SlotGranter) {
+	d.slotGranter.Store(r)
 }
 
 var _ Reader = (*DB)(nil)
