@@ -955,11 +955,10 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		// We only need to read from memtables which contain sequence numbers older
 		// than seqNum. Trim off newer memtables.
 		for i := len(memtables) - 1; i >= 0; i-- {
-			if logSeqNum := memtables[i].logSeqNum; logSeqNum >= dbi.seqNum {
-				continue
+			if logSeqNum := memtables[i].logSeqNum; logSeqNum < dbi.seqNum {
+				break
 			}
-			memtables = memtables[:i+1]
-			break
+			memtables = memtables[:i]
 		}
 	}
 
