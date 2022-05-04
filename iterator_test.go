@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -1760,5 +1761,66 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 				})
 			}
 		})
+	}
+}
+
+func BenchmarkIteratorScan(b *testing.B) {
+	const maxPrefixLen = 8
+	keyBuf := make([]byte, maxPrefixLen+testkeys.MaxSuffixLen)
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+
+	for _, keyCount := range []int{100, 1000, 10000} {
+		for _, readAmp := range []int{1, 3, 7, 10} {
+			func() {
+				opts := &Options{
+					FS:                 vfs.NewMem(),
+					FormatMajorVersion: FormatNewest,
+				}
+				opts.Experimental.RangeKeys = new(RangeKeysArena)
+				opts.DisableAutomaticCompactions = true
+				d, err := Open("", opts)
+				require.NoError(b, err)
+				defer func() { require.NoError(b, d.Close()) }()
+
+				// Take the very large keyspace consisting of alphabetic
+				// characters of lengths up to `maxPrefixLen` and reduce it down
+				// to `keyCount` keys by picking every 1 key every `keyCount` keys.
+				keys := testkeys.Alpha(maxPrefixLen)
+				keys = keys.EveryN(keys.Count() / keyCount)
+				if keys.Count() < keyCount {
+					b.Fatalf("expected %d keys, found %d", keyCount, keys.Count())
+				}
+
+				// Portion the keys into `readAmp` overlapping key sets.
+				for _, ks := range testkeys.Divvy(keys, readAmp) {
+					batch := d.NewBatch()
+					for i := 0; i < ks.Count(); i++ {
+						n := testkeys.WriteKeyAt(keyBuf[:], ks, i, int(rng.Uint64n(100)))
+						batch.Set(keyBuf[:n], keyBuf[:n], nil)
+					}
+					require.NoError(b, batch.Commit(nil))
+					require.NoError(b, d.Flush())
+				}
+				// Each level is a sublevel.
+				m := d.Metrics()
+				require.Equal(b, readAmp, m.ReadAmp())
+
+				for _, keyTypes := range []IterKeyType{IterKeyTypePointsOnly, IterKeyTypePointsAndRanges} {
+					iterOpts := IterOptions{KeyTypes: keyTypes}
+					b.Run(fmt.Sprintf("keys=%d,r-amp=%d,key-types=%s", keyCount, readAmp, keyTypes), func(b *testing.B) {
+						for i := 0; i < b.N; i++ {
+							b.StartTimer()
+							iter := d.NewIter(&iterOpts)
+							valid := iter.First()
+							for valid {
+								valid = iter.Next()
+							}
+							b.StopTimer()
+							require.NoError(b, iter.Close())
+						}
+					})
+				}
+			}()
+		}
 	}
 }
