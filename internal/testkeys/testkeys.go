@@ -144,6 +144,16 @@ type Keyspace interface {
 	key(buf []byte, i int) int
 }
 
+// Divvy divides the provided keyspace into N equal portions, containing
+// disjoint keys evenly distributed across the keyspace.
+func Divvy(ks Keyspace, n int) []Keyspace {
+	ret := make([]Keyspace, n)
+	for i := 0; i < n; i++ {
+		ret[i] = ks.Slice(i, ks.Count()).EveryN(n)
+	}
+	return ret
+}
+
 // Alpha constructs a keyspace consisting of all keys containing characters a-z,
 // with at most `maxLength` characters.
 func Alpha(maxLength int) Keyspace {
@@ -223,7 +233,12 @@ type alphabet struct {
 }
 
 func (a alphabet) Count() int {
-	return (keyCount(len(a.alphabet), a.maxLength) - a.headSkip - a.tailSkip) / a.increment
+	total := (keyCount(len(a.alphabet), a.maxLength) - a.headSkip - a.tailSkip)
+	count := total / a.increment
+	if total%a.increment > 0 {
+		count++
+	}
+	return count
 }
 
 func (a alphabet) MaxLen() int {
