@@ -930,9 +930,7 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 		batch:               batch,
 		newIters:            d.newIters,
 		seqNum:              seqNum,
-		newRangeKeyIter: func(it *iteratorRangeKeyState) keyspan.FragmentIterator {
-			return d.newRangeKeyIter(it, seqNum, batch, readState, &dbi.opts)
-		},
+		db:                  d,
 	}
 	if o != nil {
 		dbi.opts = *o
@@ -974,7 +972,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		if dbi.rangeKey == nil {
 			dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 			dbi.rangeKey.keys.cmp = dbi.cmp
-			dbi.rangeKey.rangeKeyIter = dbi.newRangeKeyIter(dbi.rangeKey)
+			dbi.rangeKey.rangeKeyIter = dbi.db.newRangeKeyIter(dbi.rangeKey, dbi.seqNum, dbi.batch, dbi.readState, &dbi.opts)
 		}
 
 		// Wrap the point iterator (currently dbi.iter) with an interleaving

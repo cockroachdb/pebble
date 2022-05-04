@@ -184,8 +184,9 @@ type Iterator struct {
 	batch    *Batch
 	newIters tableNewIters
 	seqNum   uint64
-	// TODO(jackson): Remove when we no longer require the global arena.
-	newRangeKeyIter func(*iteratorRangeKeyState) keyspan.FragmentIterator
+	// TODO(jackson): Remove db when we no longer require the global arena for
+	// range keys. This reference is only temporary.
+	db *DB
 
 	// Keeping the bools here after all the 8 byte aligned fields shrinks the
 	// sizeof this struct by 24 bytes.
@@ -1941,7 +1942,7 @@ func (i *Iterator) Clone() (*Iterator, error) {
 		batch:               i.batch,
 		newIters:            i.newIters,
 		seqNum:              i.seqNum,
-		newRangeKeyIter:     i.newRangeKeyIter,
+		db:                  i.db,
 	}
 	return finishInitializingIter(buf), nil
 }
