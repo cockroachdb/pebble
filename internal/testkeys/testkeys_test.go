@@ -6,8 +6,10 @@ package testkeys
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 
+	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/stretchr/testify/require"
 )
 
@@ -173,6 +175,27 @@ func TestSuffixLen(t *testing.T) {
 			t.Errorf("SuffixLen(%d) = %d, want %d", ts, got, want)
 		}
 	}
+}
+
+func TestDivvy(t *testing.T) {
+	var buf bytes.Buffer
+	datadriven.RunTest(t, "testdata/divvy", func(d *datadriven.TestData) string {
+		buf.Reset()
+		switch d.Cmd {
+		case "divvy":
+			var alphaLen, portions int
+			d.ScanArgs(t, "alpha", &alphaLen)
+			d.ScanArgs(t, "portions", &portions)
+
+			input := Alpha(alphaLen)
+			for _, ks := range Divvy(input, portions) {
+				fmt.Fprintln(&buf, keyspaceToString(ks))
+			}
+			return buf.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q", d.Cmd)
+		}
+	})
 }
 
 func keyspaceToString(ks Keyspace) string {

@@ -73,6 +73,20 @@ const (
 	IterKeyTypePointsAndRanges
 )
 
+// String implements fmt.Stringer.
+func (t IterKeyType) String() string {
+	switch t {
+	case IterKeyTypePointsOnly:
+		return "points-only"
+	case IterKeyTypeRangesOnly:
+		return "ranges-only"
+	case IterKeyTypePointsAndRanges:
+		return "points-and-ranges"
+	default:
+		panic(fmt.Sprintf("unknown key type %d", t))
+	}
+}
+
 // IterOptions hold the optional per-query parameters for NewIter.
 //
 // Like Options, a nil *IterOptions is valid and means to use the default
