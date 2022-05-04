@@ -1813,11 +1813,10 @@ func (w *Writer) Close() (err error) {
 // EstimatedSize returns the estimated size of the sstable being written if a
 // call to Finish() was made without adding additional keys.
 func (w *Writer) EstimatedSize() uint64 {
-	if invariants.Enabled {
-		// Assuming this is the parallelism disabled case. Need, #1581 to merge
-		// before we can make that check. The w.meta.Size should only be
-		// accessed from the writeQueue goroutine if parallelism is enabled,
-		// but since it isn't we break that invariant here.
+	if invariants.Enabled && !w.coordination.parallelismEnabled {
+		// The w.meta.Size should only be accessed from the writeQueue goroutine
+		// if parallelism is enabled, but since it isn't we break that invariant
+		// here.
 		if w.coordination.sizeEstimate.size() != w.meta.Size {
 			panic("sstable size estimation sans parallelism is incorrect")
 		}
