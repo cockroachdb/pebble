@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -140,8 +141,19 @@ type IterOptions struct {
 	// weight than creating an iterator, so we have opted to support this
 	// iterator option.
 	OnlyReadGuaranteedDurable bool
+	// UseL6Filters allows the caller to opt into reading filter blocks for L6
+	// sstables. Helpful if a lot of SeekPrefixGEs are expected in quick
+	// succession, that are also likely to not yield a single key. Filter blocks in
+	// L6 can be relatively large, often larger than data blocks, so the benefit of
+	// loading them in the cache is minimized if the probability of the key
+	// existing is not low or if we just expect a one-time Seek (where loading the
+	// data block directly is better).
+	UseL6Filters bool
 	// Internal options.
 	logger Logger
+	// level corresponding to this file. Only passed in if constructed by a
+	// levelIter.
+	level manifest.Level
 }
 
 // GetLowerBound returns the LowerBound or nil if the receiver is nil.

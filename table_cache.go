@@ -362,11 +362,15 @@ func (c *tableCacheShard) newIters(
 	}
 
 	var iter sstable.Iterator
+	useFilter := true
+	if opts != nil {
+		useFilter = manifest.LevelToInt(opts.level) != 6 || opts.UseL6Filters
+	}
 	if bytesIterated != nil {
 		iter, err = v.reader.NewCompactionIter(bytesIterated)
 	} else {
 		iter, err = v.reader.NewIterWithBlockPropertyFilters(
-			opts.GetLowerBound(), opts.GetUpperBound(), filterer)
+			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter)
 	}
 	if err != nil {
 		c.unrefValue(v)
