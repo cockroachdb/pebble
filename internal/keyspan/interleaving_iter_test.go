@@ -90,10 +90,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			}
 			keyspanIter.Init(cmp, noopTransform, NewIter(cmp, spans))
 			hooks.maskSuffix = nil
-			iter.Init(cmp, base.WrapIterWithStats(&pointIter), &keyspanIter, Hooks{
-				SpanChanged: hooks.SpanChanged,
-				SkipPoint:   hooks.SkipPoint,
-			}, nil, nil)
+			iter.Init(cmp, base.WrapIterWithStats(&pointIter), &keyspanIter, &hooks, nil, nil)
 			return "OK"
 		case "define-pointkeys":
 			var points []base.InternalKey
@@ -103,10 +100,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			}
 			pointIter = pointIterator{cmp: cmp, keys: points}
 			hooks.maskSuffix = nil
-			iter.Init(cmp, base.WrapIterWithStats(&pointIter), &keyspanIter, Hooks{
-				SpanChanged: hooks.SpanChanged,
-				SkipPoint:   hooks.SkipPoint,
-			}, nil, nil)
+			iter.Init(cmp, base.WrapIterWithStats(&pointIter), &keyspanIter, &hooks, nil, nil)
 			return "OK"
 		case "iter":
 			buf.Reset()

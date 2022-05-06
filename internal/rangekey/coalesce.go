@@ -13,115 +13,122 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
-// InitUserIteration initializes the range key iterator stack for user
-// iteration. The resulting fragment iterator applies range key semantics,
-// defragments spans according to their user-observable state and removes all
-// Keys other than RangeKeySets describing the current state of range keys.
+// UserIteratorConfig holds state for constructing the range key iterator stack
+// for user iteration.
+type UserIteratorConfig struct {
+	snapshot   uint64
+	miter      keyspan.MergingIter
+	diter      keyspan.DefragmentingIter
+	defragBufA keysBySuffix
+	defragBufB keysBySuffix
+	// defragBufAlloc defines two arrays used to preallocate defragBuf{A,B} keys
+	// slices to prevent additional allocations during iteration. Each array
+	// preallocates up to two keys.
+	defragBufAlloc [2][2]keyspan.Key
+}
+
+// Init initializes the range key iterator stack for user iteration. The
+// resulting fragment iterator applies range key semantics, defragments spans
+// according to their user-observable state and removes all Keys other than
+// RangeKeySets describing the current state of range keys.
 //
 // The snapshot sequence number parameter determines which keys are visible. Any
 // keys not visible at the provided snapshot are ignored.
-func InitUserIteration(
-	cmp base.Compare,
-	snapshot uint64,
-	miter *keyspan.MergingIter,
-	diter *keyspan.DefragmentingIter,
-	levelIters ...keyspan.FragmentIterator,
+func (ui *UserIteratorConfig) Init(
+	cmp base.Compare, snapshot uint64, levelIters ...keyspan.FragmentIterator,
 ) keyspan.FragmentIterator {
-	miter.Init(cmp, userIterationTransform(snapshot), levelIters...)
-	diter.Init(cmp, miter, userIterationDefragmenter(), keyspan.StaticDefragmentReducer)
-	return diter
+	ui.snapshot = snapshot
+	ui.defragBufA.keys = ui.defragBufAlloc[0][:0]
+	ui.defragBufB.keys = ui.defragBufAlloc[1][:0]
+	ui.miter.Init(cmp, ui.transform, levelIters...)
+	ui.diter.Init(cmp, &ui.miter, ui.defragmentMethod, keyspan.StaticDefragmentReducer)
+	return &ui.diter
 }
 
-// userIterationTransform returns a keyspan.Transform for use with a
-// keyspan.MergingIter that transforms spans by resolving range keys at the
+// transform implements the keyspan.Transform function signature for use with a
+// keyspan.MergingIter. It transforms spans by resolving range keys at the
 // provided snapshot sequence number. Shadowing of keys is resolved (eg, removal
 // of unset keys, removal of keys overwritten by a set at the same suffix, etc)
 // and then non-RangeKeySet keys are removed. The resulting transformed spans
 // only contain RangeKeySets describing the state visible at the provided
 // sequence number.
-func userIterationTransform(snapshot uint64) keyspan.Transform {
-	return func(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
-		// Apply shadowing of keys.
-		if err := Coalesce(cmp, s.Visible(snapshot), dst); err != nil {
-			return err
-		}
-
-		// During user iteration over range keys, unsets and deletes don't
-		// matter. Remove them. This step helps logical defragmentation during
-		// iteration.
-		keys := dst.Keys
-		dst.Keys = dst.Keys[:0]
-		for i := range keys {
-			switch keys[i].Kind() {
-			case base.InternalKeyKindRangeKeySet:
-				dst.Keys = append(dst.Keys, keys[i])
-			case base.InternalKeyKindRangeKeyUnset:
-				// Skip.
-				continue
-			case base.InternalKeyKindRangeKeyDelete:
-				// Skip.
-				continue
-			default:
-				return base.CorruptionErrorf("pebble: unrecognized range key kind %s", keys[i].Kind())
-			}
-		}
-		return nil
+func (ui *UserIteratorConfig) transform(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
+	// Apply shadowing of keys.
+	if err := Coalesce(cmp, s.Visible(ui.snapshot), dst); err != nil {
+		return err
 	}
+
+	// During user iteration over range keys, unsets and deletes don't
+	// matter. Remove them. This step helps logical defragmentation during
+	// iteration.
+	keys := dst.Keys
+	dst.Keys = dst.Keys[:0]
+	for i := range keys {
+		switch keys[i].Kind() {
+		case base.InternalKeyKindRangeKeySet:
+			dst.Keys = append(dst.Keys, keys[i])
+		case base.InternalKeyKindRangeKeyUnset:
+			// Skip.
+			continue
+		case base.InternalKeyKindRangeKeyDelete:
+			// Skip.
+			continue
+		default:
+			return base.CorruptionErrorf("pebble: unrecognized range key kind %s", keys[i].Kind())
+		}
+	}
+	return nil
 }
 
-// userIterationDefragmenter constructs a DefragmentMethod that configures a
-// DefragmentingIter to defragment spans of range keys if their user-visible
-// state is identical. This defragmenting method assumes the provided spans have
-// already been transformed through UserIterationTransform, so all RangeKeySets
-// are user-visible sets. This defragmenter checks for equality between set
-// suffixes and values (ignoring sequence numbers). It's intended for use during
-// user iteration, when the wrapped keyspan iterator is merging spans across all
-// levels of the LSM.
+// defragmentMethod implements the DefragmentMethod function signature and
+// configures a DefragmentingIter to defragment spans of range keys if their
+// user-visible state is identical. This defragmenting method assumes the
+// provided spans have already been transformed through
+// (UserIterationConfig).transform, so all RangeKeySets are user-visible sets.
+// This defragmenter checks for equality between set suffixes and values
+// (ignoring sequence numbers). It's intended for use during user iteration,
+// when the wrapped keyspan iterator is merging spans across all levels of the
+// LSM.
 //
 // The returned defragmenting method is stateful, and must not be used on
 // multiple DefragmentingIters concurrently.
-func userIterationDefragmenter() keyspan.DefragmentMethod {
-	var bufA keysBySuffix
-	var bufB keysBySuffix
-	return func(cmp base.Compare, a, b keyspan.Span) bool {
-		// UserIterationDefragmenter must only be used on spans that have
-		// transformed by UserIterationTransform. The transform applies
-		// shadowing and removes all keys besides the resulting Sets. Since
-		// shadowing has been applied, each Set must set a unique suffix. If the
-		// two spans are equivalent, they must have the same number of range key
-		// sets.
-		if len(a.Keys) != len(b.Keys) {
+func (ui *UserIteratorConfig) defragmentMethod(cmp base.Compare, a, b keyspan.Span) bool {
+	// UserIterationDefragmenter must only be used on spans that have
+	// transformed by ui.transform. The transform applies shadowing and removes
+	// all keys besides the resulting Sets. Since shadowing has been applied,
+	// each Set must set a unique suffix. If the two spans are equivalent, they
+	// must have the same number of range key sets.
+	if len(a.Keys) != len(b.Keys) || len(a.Keys) == 0 {
+		return false
+	}
+
+	// The keys in both spans must be all sets. In order to be equivalent
+	// during user iteration, they must set identical suffix-value mappings.
+	// They do not need to have the same sequence number.
+	//
+	// Currently, the Keys are sorted by Trailer (as per the keyspan.Span
+	// and keyspan.FragmentIterator interfaces). Collect all the keys in
+	// both spans into buffers and sort them by suffix for comparison.
+	ui.defragBufA.cmp = cmp
+	ui.defragBufA.keys = append(ui.defragBufA.keys[:0], a.Keys...)
+	sort.Sort(ui.defragBufA)
+	ui.defragBufB.cmp = cmp
+	ui.defragBufB.keys = append(ui.defragBufB.keys[:0], b.Keys...)
+	sort.Sort(ui.defragBufB)
+
+	for i := range ui.defragBufA.keys {
+		if ui.defragBufA.keys[i].Kind() != base.InternalKeyKindRangeKeySet ||
+			ui.defragBufB.keys[i].Kind() != base.InternalKeyKindRangeKeySet {
+			panic("pebble: unexpected non-RangeKeySet during defragmentation")
+		}
+		if cmp(ui.defragBufA.keys[i].Suffix, ui.defragBufB.keys[i].Suffix) != 0 {
 			return false
 		}
-
-		// The keys in both spans must be all sets. In order to be equivalent
-		// during user iteration, they must set identical suffix-value mappings.
-		// They do not need to have the same sequence number.
-		//
-		// Currently, the Keys are sorted by Trailer (as per the keyspan.Span
-		// and keyspan.FragmentIterator interfaces). Collect all the keys in
-		// both spans into buffers and sort them by suffix for comparison.
-		bufA.cmp = cmp
-		bufA.keys = append(bufA.keys[:0], a.Keys...)
-		sort.Sort(bufA)
-		bufB.cmp = cmp
-		bufB.keys = append(bufB.keys[:0], b.Keys...)
-		sort.Sort(bufB)
-
-		for i := range bufA.keys {
-			if bufA.keys[i].Kind() != base.InternalKeyKindRangeKeySet ||
-				bufB.keys[i].Kind() != base.InternalKeyKindRangeKeySet {
-				panic("pebble: unexpected non-RangeKeySet during defragmentation")
-			}
-			if cmp(bufA.keys[i].Suffix, bufB.keys[i].Suffix) != 0 {
-				return false
-			}
-			if !bytes.Equal(bufA.keys[i].Value, bufB.keys[i].Value) {
-				return false
-			}
+		if !bytes.Equal(ui.defragBufA.keys[i].Value, ui.defragBufB.keys[i].Value) {
+			return false
 		}
-		return true
 	}
+	return true
 }
 
 // Coalesce imposes range key semantics and coalesces range keys with the same
