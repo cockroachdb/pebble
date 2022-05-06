@@ -133,8 +133,6 @@ func (d *DB) newRangeKeyIter(
 	if len(frags) > 0 {
 		iters = append(iters, keyspan.NewIter(d.cmp, frags))
 	}
-	it.rangeKeyIter = rangekey.InitUserIteration(
-		d.cmp, seqNum, &it.alloc.merging, &it.alloc.defraging, iters...,
-	)
+	it.rangeKeyIter = it.alloc.Init(d.cmp, seqNum, iters...)
 	return it.rangeKeyIter
 }

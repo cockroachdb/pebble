@@ -128,11 +128,10 @@ func TestDefragmenting(t *testing.T) {
 			}
 			return ""
 		case "iter":
-			var miter keyspan.MergingIter
-			var diter keyspan.DefragmentingIter
-			InitUserIteration(cmp, base.InternalKeySeqNumMax, &miter, &diter, keyspan.NewIter(cmp, spans))
+			var userIterCfg UserIteratorConfig
+			iter := userIterCfg.Init(cmp, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, spans))
 			for _, line := range strings.Split(td.Input, "\n") {
-				runIterOp(&buf, &diter, line)
+				runIterOp(&buf, iter, line)
 			}
 			return strings.TrimSpace(buf.String())
 		default:
@@ -208,10 +207,9 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	original = fragment(cmp, formatKey, original)
 	fragmented = fragment(cmp, formatKey, fragmented)
 
-	var omiter, fmiter keyspan.MergingIter
-	var referenceIter, fragmentedIter keyspan.DefragmentingIter
-	InitUserIteration(cmp, base.InternalKeySeqNumMax, &omiter, &referenceIter, keyspan.NewIter(cmp, original))
-	InitUserIteration(cmp, base.InternalKeySeqNumMax, &fmiter, &fragmentedIter, keyspan.NewIter(cmp, fragmented))
+	var referenceCfg, fragmentedCfg UserIteratorConfig
+	referenceIter := referenceCfg.Init(cmp, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, original))
+	fragmentedIter := fragmentedCfg.Init(cmp, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, fragmented))
 
 	// Generate 100 random operations and run them against both iterators.
 	const numIterOps = 100
@@ -253,8 +251,8 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 			}
 		}
 		op := ops[opIndex].fn()
-		runIterOp(&referenceHistory, &referenceIter, op)
-		runIterOp(&fragmentedHistory, &fragmentedIter, op)
+		runIterOp(&referenceHistory, referenceIter, op)
+		runIterOp(&fragmentedHistory, fragmentedIter, op)
 		if !bytes.Equal(referenceHistory.Bytes(), fragmentedHistory.Bytes()) {
 			t.Fatal(debugContext(cmp, formatKey, original, fragmented,
 				referenceHistory.String(), fragmentedHistory.String()))
@@ -311,7 +309,7 @@ func debugContext(
 
 var iterDelim = map[rune]bool{',': true, ' ': true, '(': true, ')': true, '"': true}
 
-func runIterOp(w io.Writer, it *keyspan.DefragmentingIter, op string) {
+func runIterOp(w io.Writer, it keyspan.FragmentIterator, op string) {
 	fields := strings.FieldsFunc(op, func(r rune) bool { return iterDelim[r] })
 	var s keyspan.Span
 	switch strings.ToLower(fields[0]) {

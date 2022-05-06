@@ -971,7 +971,10 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	if dbi.opts.rangeKeys() {
 		if dbi.rangeKey == nil {
 			dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
+			dbi.rangeKey.cmp = dbi.cmp
 			dbi.rangeKey.keys.cmp = dbi.cmp
+			dbi.rangeKey.split = dbi.split
+			dbi.rangeKey.opts = &dbi.opts
 			dbi.rangeKey.rangeKeyIter = dbi.db.newRangeKeyIter(dbi.rangeKey, dbi.seqNum, dbi.batch, dbi.readState, &dbi.opts)
 		}
 
@@ -982,10 +985,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		// NB: The interleaving iterator is always reinitialized, even if
 		// dbi already had an initialized range key iterator, in case the point
 		// iterator changed or the range key masking suffix changed.
-		dbi.rangeKey.iter.Init(dbi.cmp, dbi.iter, dbi.rangeKey.rangeKeyIter, keyspan.Hooks{
-			SpanChanged: dbi.rangeKeySpanChanged,
-			SkipPoint:   dbi.rangeKeySkipPoint,
-		})
+		dbi.rangeKey.iter.Init(dbi.cmp, dbi.iter, dbi.rangeKey.rangeKeyIter, dbi.rangeKey)
 		dbi.iter = &dbi.rangeKey.iter
 		dbi.iter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
 		dbi.rangeKey.activeMaskSuffix = dbi.rangeKey.activeMaskSuffix[:0]

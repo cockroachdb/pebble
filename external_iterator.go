@@ -8,7 +8,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -134,18 +133,15 @@ func NewExternalIter(
 		}
 
 		dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
-		dbi.rangeKey.rangeKeyIter = rangekey.InitUserIteration(
+		dbi.rangeKey.cmp = o.Comparer.Compare
+		dbi.rangeKey.split = o.Comparer.Split
+		dbi.rangeKey.opts = &dbi.opts
+		dbi.rangeKey.rangeKeyIter = dbi.rangeKey.alloc.Init(
 			o.Comparer.Compare,
 			base.InternalKeySeqNumMax,
-			&dbi.rangeKey.alloc.merging,
-			&dbi.rangeKey.alloc.defraging,
 			rangeKeyIters...,
 		)
-
-		dbi.rangeKey.iter.Init(dbi.cmp, &buf.merging, dbi.rangeKey.rangeKeyIter, keyspan.Hooks{
-			SpanChanged: dbi.rangeKeySpanChanged,
-			SkipPoint:   dbi.rangeKeySkipPoint,
-		})
+		dbi.rangeKey.iter.Init(dbi.cmp, &buf.merging, dbi.rangeKey.rangeKeyIter, dbi.rangeKey)
 		dbi.iter = &dbi.rangeKey.iter
 		dbi.iter.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
 	}
