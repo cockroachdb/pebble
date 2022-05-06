@@ -13,18 +13,18 @@ import (
 // TODO(jackson): The interleaving iterator has various invariants that it
 // asserts. We should eventually gate these behind `invariants.Enabled`.
 
-// Hooks configure the interleaving iterator's behavior.
-type Hooks struct {
+// A Hooks configures the interleaving iterator's behavior.
+type Hooks interface {
 	// SpanChanged is invoked by interleaving iterator whenever the Span
 	// returned by InterleavaingIterator.Span changes. As the iterator passes
 	// into or out of a Span, it invokes SpanChanged, passing the new Span.
-	SpanChanged func(Span)
+	SpanChanged(Span)
 	// SkipPoint is invoked by the interleaving iterator whenever the iterator
 	// encounters a point key covered by a Span. If SkipPoint returns true, the
 	// interleaving iterator skips the point key without returning it. This is
 	// used during range key iteration to skip over point keys 'masked' by range
 	// keys.
-	SkipPoint func(userKey []byte) bool
+	SkipPoint(userKey []byte) bool
 }
 
 // InterleavingIter combines an iterator over point keys with an iterator over
@@ -472,7 +472,7 @@ func (i *InterleavingIter) interleaveForward(lowerBound []byte) (*base.InternalK
 
 				// The span covers the point key. If a SkipPoint hook is
 				// configured, ask it if we should skip this point key.
-				if i.hooks.SkipPoint != nil && i.hooks.SkipPoint(i.pointKey.UserKey) {
+				if i.hooks != nil && i.hooks.SkipPoint(i.pointKey.UserKey) {
 					i.pointKey, i.pointVal = i.pointIter.Next()
 					// We may have just invalidated the invariant that
 					// ensures the span's End is > the point key, so
@@ -537,7 +537,7 @@ func (i *InterleavingIter) interleaveBackward() (*base.InternalKey, []byte) {
 
 				// The span covers the point key. If a SkipPoint hook is
 				// configured, ask it if we should skip this point key.
-				if i.hooks.SkipPoint != nil && i.hooks.SkipPoint(i.pointKey.UserKey) {
+				if i.hooks != nil && i.hooks.SkipPoint(i.pointKey.UserKey) {
 					i.pointKey, i.pointVal = i.pointIter.Prev()
 					continue
 				}
@@ -712,7 +712,7 @@ func (i *InterleavingIter) verify(k *base.InternalKey, v []byte) (*base.Internal
 		panic("pebble: invariant violation: key < lower bound")
 	case k != nil && i.upper != nil && i.cmp(k.UserKey, i.upper) >= 0:
 		panic("pebble: invariant violation: key ≥ upper bound")
-	case i.span.Valid() && k != nil && i.hooks.SkipPoint != nil && i.pointKeyInterleaved &&
+	case i.span.Valid() && k != nil && i.hooks != nil && i.pointKeyInterleaved &&
 		i.cmp(k.UserKey, i.spanStart) >= 0 && i.cmp(k.UserKey, i.spanEnd) < 0 && i.hooks.SkipPoint(k.UserKey):
 		panic("pebble: invariant violation: point key eligible for skipping returned")
 	}
@@ -727,7 +727,7 @@ func (i *InterleavingIter) saveKeyspan(s Span) {
 	if !s.Valid() {
 		i.spanStart = nil
 		i.spanEnd = nil
-		if i.hooks.SpanChanged != nil {
+		if i.hooks != nil {
 			i.hooks.SpanChanged(s)
 		}
 		return
@@ -735,7 +735,7 @@ func (i *InterleavingIter) saveKeyspan(s Span) {
 	i.spanStart = s.Start
 	i.spanEnd = s.End
 
-	if i.hooks.SpanChanged != nil {
+	if i.hooks != nil {
 		i.hooks.SpanChanged(s)
 	}
 }

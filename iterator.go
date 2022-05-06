@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/redact"
 )
 
@@ -238,6 +239,9 @@ type Iterator struct {
 
 // iteratorRangeKeyState holds an iterator's range key iteration state.
 type iteratorRangeKeyState struct {
+	opts  *IterOptions
+	cmp   base.Compare
+	split base.Split
 	// rangeKeyIter is temporarily an iterator into a single global in-memory
 	// range keys arena. This will need to be reworked when we have a merging
 	// range key iterator.
@@ -265,10 +269,7 @@ type iteratorRangeKeyState struct {
 	// iterator stack, but do not need to be directly accessed during
 	// iteration. These fields are bundled within the
 	// iteratorRangeKeyState struct to reduce allocations.
-	alloc struct {
-		merging   keyspan.MergingIter
-		defraging keyspan.DefragmentingIter
-	}
+	alloc rangekey.UserIteratorConfig
 }
 
 var iterRangeKeyStateAllocPool = sync.Pool{
@@ -1483,8 +1484,8 @@ func (i *Iterator) rangeKeyWithinLimit(limit []byte) bool {
 	return true
 }
 
-func (i *Iterator) rangeKeySpanChanged(s keyspan.Span) {
-	i.rangeKey.activeMaskSuffix = i.rangeKey.activeMaskSuffix[:0]
+func (i *iteratorRangeKeyState) SpanChanged(s keyspan.Span) {
+	i.activeMaskSuffix = i.activeMaskSuffix[:0]
 
 	// Find the smallest suffix of a range key contained within the Span,
 	// excluding suffixes less than i.opts.RangeKeyMasking.Suffix.
@@ -1498,16 +1499,16 @@ func (i *Iterator) rangeKeySpanChanged(s keyspan.Span) {
 		if i.cmp(s.Keys[j].Suffix, i.opts.RangeKeyMasking.Suffix) < 0 {
 			continue
 		}
-		if len(i.rangeKey.activeMaskSuffix) == 0 || i.cmp(i.rangeKey.activeMaskSuffix, s.Keys[j].Suffix) > 0 {
-			i.rangeKey.activeMaskSuffix = append(i.rangeKey.activeMaskSuffix[:0], s.Keys[j].Suffix...)
+		if len(i.activeMaskSuffix) == 0 || i.cmp(i.activeMaskSuffix, s.Keys[j].Suffix) > 0 {
+			i.activeMaskSuffix = append(i.activeMaskSuffix[:0], s.Keys[j].Suffix...)
 		}
 	}
 }
 
-// rangeKeySkipPoint is installed as a keyspan.InterleavingIter's SkipPoint
-// hook during range key iteration. Whenever a point key is covered by a
-// non-empty Span, the interleaving iterator invokes the SkipPoint hook. This
-// function is responsible for performing range key masking.
+// SkipPoint is installed as a keyspan.InterleavingIter's SkipPoint hook during
+// range key iteration. Whenever a point key is covered by a non-empty Span, the
+// interleaving iterator invokes the SkipPoint hook. This function is
+// responsible for performing range key masking.
 //
 // If a non-nil IterOptions.RangeKeyMasking.Suffix is set, range key masking is
 // enabled. Masking hides point keys, transparently skipping over the keys.
@@ -1545,20 +1546,20 @@ func (i *Iterator) rangeKeySpanChanged(s keyspan.Span) {
 // key bounds of [h,q)@6, but since cmp(@6,@8) ≥ 0, l@8 is unmasked.
 //
 // Invariant: userKey is within the user key bounds of i.rangeKey.iter.Span().
-func (i *Iterator) rangeKeySkipPoint(userKey []byte) bool {
-	if len(i.rangeKey.activeMaskSuffix) == 0 {
+func (i *iteratorRangeKeyState) SkipPoint(userKey []byte) bool {
+	if len(i.activeMaskSuffix) == 0 {
 		// No range key is currently acting as a mask, so don't skip.
 		return false
 	}
 	// Range key masking is enabled and the current span includes a range key
-	// that is being used as a mask. (NB: rangeKeySpanChanged already verified
-	// that the range key's suffix is ≥ RangeKeyMasking.Suffix).
+	// that is being used as a mask. (NB: SpanChanged already verified that the
+	// range key's suffix is ≥ RangeKeyMasking.Suffix).
 	//
 	// This point key falls within the bounds of the range key (guaranteed by
 	// the InterleavingIter). Skip the point key if the range key's suffix is
 	// greater than the point key's suffix.
 	pointSuffix := userKey[i.split(userKey):]
-	return len(pointSuffix) > 0 && i.cmp(i.rangeKey.activeMaskSuffix, pointSuffix) < 0
+	return len(pointSuffix) > 0 && i.cmp(i.activeMaskSuffix, pointSuffix) < 0
 }
 
 // setRangeKey sets the current range key to the underlying iterator's current
