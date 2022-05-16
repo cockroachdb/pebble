@@ -309,3 +309,39 @@ a: (., [a-z) @5=poi, @2=bax, @1=boop)
 apple: (apple, [a-z) @5=poi, @2=bax, @1=boop)
 foo: (foo, [a-z) @5=poi, @2=bax, @1=boop)
 .
+
+# Mutate all the open iterators' underlying batch.
+
+mutate
+range-key-set a z @6 yaya
+set c c
+----
+
+# The iterators should still not see the committed writes, even after refreshing
+# to observe more recent batch writes.
+
+iter iter=i1
+first
+next
+next
+----
+a: (., [a-z) @2=bax, @1=boop)
+foo: (foo, [a-z) @2=bax, @1=boop)
+.
+
+iter iter=i3
+first
+next
+next
+set-options
+first
+next
+next
+----
+a: (., [a-z) @2=bax, @1=boop)
+foo: (foo, [a-z) @2=bax, @1=boop)
+.
+.
+a: (., [a-z) @6=yaya, @2=bax, @1=boop)
+c: (c, [a-z) @6=yaya, @2=bax, @1=boop)
+foo: (foo, [a-z) @6=yaya, @2=bax, @1=boop)
