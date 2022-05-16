@@ -161,6 +161,24 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 	}
 
+	// Ensure we close resources if we error out early. If the database is
+	// successfully opened, the named return value `db` will be set to `d`.
+	defer func() {
+		if db != nil {
+			// The database was successfully opened.
+			return
+		}
+		if d.dataDir != nil {
+			d.dataDir.Close()
+		}
+		if d.walDirname != d.dirname && d.walDir != nil {
+			d.walDir.Close()
+		}
+		if d.mu.formatVers.marker != nil {
+			d.mu.formatVers.marker.Close()
+		}
+	}()
+
 	// Open the database and WAL directories first in order to check for their
 	// existence.
 	var err error
@@ -220,6 +238,15 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	// Find the currently active manifest, if there is one.
 	manifestMarker, manifestFileNum, exists, err := findCurrentManifest(d.mu.formatVers.vers, opts.FS, dirname)
 	setCurrent := setCurrentFunc(d.mu.formatVers.vers, manifestMarker, opts.FS, dirname, d.dataDir)
+	defer func() {
+		// Ensure we close the manifest marker if we error out for any reason.
+		// If the database is successfully opened, the *versionSet will take
+		// ownership over the manifest marker, ensuring it's closed when the DB
+		// is closed.
+		if db == nil {
+			manifestMarker.Close()
+		}
+	}()
 	if err != nil {
 		return nil, errors.Wrapf(err, "pebble: database %q", dirname)
 	} else if !exists && !d.opts.ReadOnly && !d.opts.ErrorIfNotExists {
