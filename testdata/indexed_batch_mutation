@@ -345,3 +345,61 @@ foo: (foo, [a-z) @2=bax, @1=boop)
 a: (., [a-z) @6=yaya, @2=bax, @1=boop)
 c: (c, [a-z) @6=yaya, @2=bax, @1=boop)
 foo: (foo, [a-z) @6=yaya, @2=bax, @1=boop)
+
+# Test a scenario where constructing an Iterator should NOT use the cached
+# fragmented tombstones / range keys, because the new Iterator is a Clone which
+# must read at an earlier batch sequence number.
+
+# Reset and start a new batch.
+
+reset
+----
+
+new-batch
+set foo foo
+----
+
+new-iter i1
+----
+
+iter iter=i1
+first
+next
+----
+foo: (foo, .)
+.
+
+# Apply a range deletion and a range key.
+
+mutate
+del-range a z
+range-key-set a z @1 foo
+----
+
+# Create a new iterator which will see both the range deletion and the range
+# key, and cache both on the batch so that future iterators constructed over the
+# batch do not need to.
+
+new-iter i2
+----
+
+iter iter=i2
+first
+next
+----
+a: (., [a-z) @1=foo)
+.
+
+# Clone the original iterator from before the delete range and the range key
+# were created. It should not use the cached fragments of range deletions or
+# range keys, and should not see the effects of either.
+
+clone from=i1 to=i3
+----
+
+iter iter=i3
+first
+next
+----
+foo: (foo, .)
+.

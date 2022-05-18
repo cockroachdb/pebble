@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -347,7 +349,7 @@ func TestIndexedBatchMutation(t *testing.T) {
 	opts.Experimental.RangeKeys = new(RangeKeysArena)
 	d, err := Open("", opts)
 	require.NoError(t, err)
-	defer d.Close()
+	defer func() { d.Close() }()
 
 	b := newIndexedBatch(d, DefaultComparer)
 	iters := map[string]*Iterator{}
@@ -405,6 +407,22 @@ func TestIndexedBatchMutation(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
+			return ""
+		case "reset":
+			for key, iter := range iters {
+				if err := iter.Close(); err != nil {
+					return err.Error()
+				}
+				delete(iters, key)
+			}
+			if d != nil {
+				if err := d.Close(); err != nil {
+					return err.Error()
+				}
+			}
+			opts.FS = vfs.NewMem()
+			d, err = Open("", opts)
+			require.NoError(t, err)
 			return ""
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
@@ -1157,4 +1175,103 @@ func TestBatchMemTableSizeOverflow(t *testing.T) {
 	require.Greater(t, b.memTableSize, uint64(math.MaxUint32))
 	require.NoError(t, b.Close())
 	require.NoError(t, d.Close())
+}
+
+// TestBatchSpanCaching stress tests the caching of keyspan.Spans for range
+// tombstones and range keys.
+func TestBatchSpanCaching(t *testing.T) {
+	opts := &Options{
+		Comparer:           testkeys.Comparer,
+		FS:                 vfs.NewMem(),
+		FormatMajorVersion: FormatNewest,
+	}
+	opts.Experimental.RangeKeys = new(RangeKeysArena)
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer d.Close()
+
+	ks := testkeys.Alpha(1)
+	b := d.NewIndexedBatch()
+	for i := 0; i < ks.Count(); i++ {
+		k := testkeys.Key(ks, i)
+		require.NoError(t, b.Set(k, k, nil))
+	}
+
+	seed := int64(time.Now().UnixNano())
+	t.Logf("seed = %d", seed)
+	rng := rand.New(rand.NewSource(seed))
+	iters := make([][]*Iterator, ks.Count())
+	defer func() {
+		for _, keyIters := range iters {
+			for _, iter := range keyIters {
+				_ = iter.Close()
+			}
+		}
+	}()
+
+	// This test begins with one point key for every letter of the alphabet.
+	// Over the course of the test, point keys are 'replaced' with range keys
+	// with narrow bounds from left to right. Iterators are created at random,
+	// sometimes from the batch and sometimes by cloning existing iterators.
+
+	checkIter := func(iter *Iterator, nextKey int) {
+		var i int
+		for valid := iter.First(); valid; valid = iter.Next() {
+			hasPoint, hasRange := iter.HasPointAndRange()
+			require.Equal(t, testkeys.Key(ks, i), iter.Key())
+			if i < nextKey {
+				// This key should not exist as a point key, just a range key.
+				require.False(t, hasPoint)
+				require.True(t, hasRange)
+			} else {
+				require.True(t, hasPoint)
+				require.False(t, hasRange)
+			}
+			i++
+		}
+		require.Equal(t, ks.Count(), i)
+	}
+
+	// Each iteration of the below loop either reads or writes.
+	//
+	// A write iteration writes a new RANGEDEL and RANGEKEYSET into the batch,
+	// covering a single point key seeded above. Writing these two span keys
+	// together 'replaces' the point key with a range key. Each write iteration
+	// ratchets nextWriteKey so the next write iteration will write the next
+	// key.
+	//
+	// A read iteration creates a new iterator and ensures its state is
+	// expected: some prefix of only point keys, followed by a suffix of only
+	// range keys. Iterators created through Clone should observe the point keys
+	// that existed when the cloned iterator was created.
+	for nextWriteKey := 0; nextWriteKey < ks.Count(); {
+		p := rng.Float64()
+		switch {
+		case p < .10: /* 10 % */
+			// Write a new range deletion and range key.
+			start := testkeys.Key(ks, nextWriteKey)
+			end := append(start, 0x00)
+			require.NoError(t, b.DeleteRange(start, end, nil))
+			require.NoError(t, b.Experimental().RangeKeySet(start, end, nil, []byte("foo"), nil))
+			nextWriteKey++
+		case p < .55: /* 45 % */
+			// Create a new iterator directly from the batch and check that it
+			// observes the correct state.
+			iter := b.NewIter(&IterOptions{KeyTypes: IterKeyTypePointsAndRanges})
+			checkIter(iter, nextWriteKey)
+			iters[nextWriteKey] = append(iters[nextWriteKey], iter)
+		default: /* 45 % */
+			// Create a new iterator through cloning a random existing iterator
+			// and check that it observes the right state.
+			readKey := rng.Intn(nextWriteKey + 1)
+			itersForReadKey := iters[readKey]
+			if len(itersForReadKey) == 0 {
+				continue
+			}
+			iter, err := itersForReadKey[rng.Intn(len(itersForReadKey))].Clone()
+			require.NoError(t, err)
+			checkIter(iter, readKey)
+			iters[readKey] = append(iters[readKey], iter)
+		}
+	}
 }
