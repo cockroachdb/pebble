@@ -17,7 +17,7 @@ node: 1, store: 1
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
@@ -60,7 +60,7 @@ node: 1, store: 1
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
@@ -115,7 +115,7 @@ node: 1, store: 1
   r-amp: 5.0
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 
 # Long running compaction.
 
@@ -136,7 +136,7 @@ node: 1, store: 1
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M     2m10s
-total                           1       0       0       0       1    13 M      2m0s
+total                           1       0       0       0       1    13 M     2m10s
 long-running events (descending runtime):
 _kind________from________to_______job______type_____start_______end____dur(s)_____bytes:
 compact        L2        L3         1   default  00:01:10  00:03:20       130      13 M
@@ -163,14 +163,14 @@ node: 1, store: 1
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 node: 1, store: 2
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L3      L4         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 
 # Multiple nodes, single stores. Two separate pebble logs.
 
@@ -197,14 +197,14 @@ node: 1, store: 1
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 node: 2, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L3      L4         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 
 # Multiple nodes, multiple stores. Two separate pebble logs.
 
@@ -237,28 +237,28 @@ node: 1, store: 1
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 node: 1, store: 2
    from: 211215 00:03
      to: 211215 00:04
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L1      L2         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 node: 2, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L3      L4         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 node: 2, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L4      L5         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 
 # Log lines with an absent node / store are aggregated.
 
@@ -294,7 +294,7 @@ node: ?, store: ?
   r-amp: 5.0
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 
 # The same Job ID interleaved for multiple nodes / stores.
 
@@ -317,14 +317,14 @@ node: 1, store: 1
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 node: 2, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L4      L5         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 
 # Read amp matching should remain backwards compatible.
 
@@ -373,7 +373,7 @@ node: 1, store: 1
   r-amp: 1.0
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M        0s
+total                           1       0       0       0       1    13 M       10s
 
 reset
 ----
