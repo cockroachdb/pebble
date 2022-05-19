@@ -206,7 +206,8 @@ _kind______from______to___default____move___elide__delete___total___bytes______t
 compact      L3      L4         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 
-# Multiple nodes, multiple stores. Two separate pebble logs.
+# Multiple nodes, multiple stores. Two separate pebble logs. Output is sorted by
+# (time, node, store).
 
 reset
 ----
@@ -215,8 +216,8 @@ log
 I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M)
 I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s1] 1216554  [JOB 1] compacted(default) L2 [442555] (4.2 M) + L3 [445853] (8.4 M) -> L3 [445883 445887] (13 M), in 0.3s, output rate 42 M/s
 
-I211215 00:03:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s2] 1216510  [JOB 2] compacting(default) L1 [442555] (4.2 M) + L2 [445853] (8.4 M)
-I211215 00:03:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s2] 1216554  [JOB 2] compacted(default) L1 [442555] (4.2 M) + L2 [445853] (8.4 M) -> L2 [445883 445887] (13 M), in 0.3s, output rate 42 M/s
+I211215 00:02:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s2] 1216510  [JOB 2] compacting(default) L1 [442555] (4.2 M) + L2 [445853] (8.4 M)
+I211215 00:02:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,pebble,s2] 1216554  [JOB 2] compacted(default) L1 [442555] (4.2 M) + L2 [445853] (8.4 M) -> L2 [445883 445887] (13 M), in 0.3s, output rate 42 M/s
 ----
 0.log
 
@@ -231,6 +232,13 @@ I211215 00:02:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 
 summarize
 ----
+node: 2, store: 1
+   from: 211215 00:00
+     to: 211215 00:01
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___total___bytes______time
+compact      L3      L4         1       0       0       0       1    13 M       10s
+total                           1       0       0       0       1    13 M       10s
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
@@ -239,18 +247,11 @@ _kind______from______to___default____move___elide__delete___total___bytes______t
 compact      L2      L3         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 node: 1, store: 2
-   from: 211215 00:03
-     to: 211215 00:04
+   from: 211215 00:02
+     to: 211215 00:03
   r-amp: NaN
 _kind______from______to___default____move___elide__delete___total___bytes______time
 compact      L1      L2         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
-node: 2, store: 1
-   from: 211215 00:00
-     to: 211215 00:01
-  r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
-compact      L3      L4         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 node: 2, store: 2
    from: 211215 00:02
