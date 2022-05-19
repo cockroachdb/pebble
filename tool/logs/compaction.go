@@ -587,7 +587,7 @@ func (s windowSummary) String() string {
 		}
 		sb.WriteString(fmt.Sprintf("total         %19d %7d %7d %7d %7d %7s %9s\n",
 			totalDef, totalMove, totalElision, totalDel, s.eventCount,
-			humanize.Uint64(totalBytes), totalTime.Truncate(time.Minute)))
+			humanize.Uint64(totalBytes), totalTime.Truncate(time.Second)))
 	}
 
 	// (Optional) Long running events.
