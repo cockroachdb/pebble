@@ -66,7 +66,7 @@ func (k Key) Kind() base.InternalKeyKind {
 }
 
 // Valid returns true if the span is defined.
-func (s Span) Valid() bool {
+func (s *Span) Valid() bool {
 	return s.Start != nil && s.End != nil
 }
 
@@ -75,13 +75,13 @@ func (s Span) Valid() bool {
 //
 // An Empty span may be produced by Visible, or be produced by iterators in
 // order to surface the gaps between keys.
-func (s Span) Empty() bool {
+func (s *Span) Empty() bool {
 	return len(s.Keys) == 0
 }
 
 // SmallestKey returns the smallest internal key defined by the span's keys.
 // It panics if the span contains no keys.
-func (s Span) SmallestKey() base.InternalKey {
+func (s *Span) SmallestKey() base.InternalKey {
 	if len(s.Keys) == 0 {
 		panic("pebble: Span contains no keys")
 	}
@@ -99,7 +99,7 @@ func (s Span) SmallestKey() base.InternalKey {
 // user key sort after the sentinel key.
 //
 // It panics if the span contains no keys.
-func (s Span) LargestKey() base.InternalKey {
+func (s *Span) LargestKey() base.InternalKey {
 	if len(s.Keys) == 0 {
 		panic("pebble: Span contains no keys")
 	}
@@ -110,7 +110,7 @@ func (s Span) LargestKey() base.InternalKey {
 
 // SmallestSeqNum returns the smallest sequence number of a key contained within
 // the span. It panics if the span contains no keys.
-func (s Span) SmallestSeqNum() uint64 {
+func (s *Span) SmallestSeqNum() uint64 {
 	if len(s.Keys) == 0 {
 		panic("pebble: Span contains no keys")
 	}
@@ -119,7 +119,7 @@ func (s Span) SmallestSeqNum() uint64 {
 
 // LargestSeqNum returns the largest sequence number of a key contained within
 // the span. It panics if the span contains no keys.
-func (s Span) LargestSeqNum() uint64 {
+func (s *Span) LargestSeqNum() uint64 {
 	if len(s.Keys) == 0 {
 		panic("pebble: Span contains no keys")
 	}
@@ -203,7 +203,7 @@ func (s Span) Visible(snapshot uint64) Span {
 
 // ShallowClone returns the span with a Keys slice owned by the span itself.
 // None of the key byte slices are cloned (see Span.DeepClone).
-func (s Span) ShallowClone() Span {
+func (s *Span) ShallowClone() Span {
 	c := Span{
 		Start: s.Start,
 		End:   s.End,
@@ -216,7 +216,7 @@ func (s Span) ShallowClone() Span {
 // DeepClone clones the span, creating copies of all contained slices. DeepClone
 // is intended for non-production code paths like tests, the level checker, etc
 // because it is allocation heavy.
-func (s Span) DeepClone() Span {
+func (s *Span) DeepClone() Span {
 	c := Span{
 		Start: make([]byte, len(s.Start)),
 		End:   make([]byte, len(s.End)),
@@ -239,7 +239,7 @@ func (s Span) DeepClone() Span {
 }
 
 // Contains returns true if the specified key resides within the span's bounds.
-func (s Span) Contains(cmp base.Compare, key []byte) bool {
+func (s *Span) Contains(cmp base.Compare, key []byte) bool {
 	return cmp(s.Start, key) <= 0 && cmp(key, s.End) < 0
 }
 
