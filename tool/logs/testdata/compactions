@@ -15,7 +15,7 @@ node: 1, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 node: 1, store: 1
@@ -24,7 +24,7 @@ node: 1, store: 1
   r-amp: NaN
 _kind______from______to_____________________________________count___bytes______time
 flush                L0                                         1   1.0 M       10s
-total                                                               1.0 M
+total                                                           1   1.0 M       10s
 
 # Same as the previous case, except that the start and end events are are split
 # across multiple files (one log line per file).
@@ -58,7 +58,7 @@ node: 1, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 node: 1, store: 1
@@ -67,7 +67,7 @@ node: 1, store: 1
   r-amp: NaN
 _kind______from______to_____________________________________count___bytes______time
 flush                L0                                         1   1.0 M       10s
-total                                                               1.0 M
+total                                                           1   1.0 M       10s
 
 # Read amplification from the Cockroach log, one within an existing window,
 # another outside of the existing window. The latter is not included.
@@ -113,7 +113,7 @@ node: 1, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: 5.0
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 
@@ -134,7 +134,7 @@ node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M     2m10s
 total                           1       0       0       0       1    13 M     2m10s
 long-running events (descending runtime):
@@ -161,14 +161,14 @@ node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 node: 1, store: 2
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L3      L4         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 
@@ -195,14 +195,14 @@ node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 node: 2, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L3      L4         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 
@@ -236,28 +236,28 @@ node: 2, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L3      L4         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 node: 1, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L1      L2         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 node: 2, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L4      L5         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 
@@ -293,7 +293,7 @@ node: ?, store: ?
    from: 211215 00:01
      to: 211215 00:02
   r-amp: 5.0
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 
@@ -316,14 +316,14 @@ node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 node: 2, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L4      L5         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 
@@ -372,7 +372,7 @@ node: 1, store: 1
    from: 220301 00:00
      to: 220301 00:01
   r-amp: 1.0
-_kind______from______to___default____move___elide__delete___total___bytes______time
+_kind______from______to___default____move___elide__delete___count___bytes______time
 compact      L2      L3         1       0       0       0       1    13 M       10s
 total                           1       0       0       0       1    13 M       10s
 
@@ -418,7 +418,7 @@ node: 24, store: 24
   r-amp: NaN
 _kind______from______to_____________________________________count___bytes______time
 flush                L0                                         1    19 M        0s
-total                                                                19 M
+total                                                           1    19 M        0s
 
 reset
 ----
@@ -438,11 +438,11 @@ node: 24, store: 24
 _kind______from______to_____________________________________count___bytes______time
 ingest               L0                                         9   140 M
 ingest               L5                                         3   3.0 K
-total                                                               140 M
+total                                                          12   140 M        0s
 node: 24, store: 24
    from: 220228 16:01
      to: 220228 16:02
   r-amp: NaN
 _kind______from______to_____________________________________count___bytes______time
 ingest               L0                                        12   160 M
-total                                                               160 M
+total                                                          12   160 M        0s

@@ -545,7 +545,9 @@ func (s windowSummary) String() string {
 				s.flushedTime.Truncate(time.Second))
 		}
 
+		count := s.flushedCount
 		sum := s.flushedBytes
+		totalTime := s.flushedTime
 		for l := 0; l < len(s.ingestedBytes); l++ {
 			if s.ingestedCount[l] == 0 {
 				continue
@@ -553,16 +555,19 @@ func (s windowSummary) String() string {
 			maybeWriteHeader()
 			fmt.Fprintf(&sb, "%-7s         %7s                                   %7d %7s\n",
 				"ingest", fmt.Sprintf("L%d", l), s.ingestedCount[l], humanize.Uint64(s.ingestedBytes[l]))
+			count += s.ingestedCount[l]
 			sum += s.ingestedBytes[l]
 		}
 		if headerWritten {
-			fmt.Fprintf(&sb, "total                                                           %9s\n", humanize.Uint64(sum))
+			fmt.Fprintf(&sb, "total                                                     %7d %7s %9s\n",
+				count, humanize.Uint64(sum), totalTime.Truncate(time.Second),
+			)
 		}
 	}
 
 	// Print compactions statistics.
 	if len(s.compactionCounts) > 0 {
-		sb.WriteString("_kind______from______to___default____move___elide__delete___total___bytes______time\n")
+		sb.WriteString("_kind______from______to___default____move___elide__delete___count___bytes______time\n")
 		var totalDef, totalMove, totalElision, totalDel int
 		var totalBytes uint64
 		var totalTime time.Duration
