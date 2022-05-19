@@ -23,7 +23,7 @@ import (
 func TestDefragmentingIter(t *testing.T) {
 	cmp := testkeys.Comparer.Compare
 	internalEqual := DefragmentInternal
-	alwaysEqual := func(_ base.Compare, _, _ Span) bool { return true }
+	alwaysEqual := DefragmentMethodFunc(func(_ base.Compare, _, _ Span) bool { return true })
 	staticReducer := StaticDefragmentReducer
 	collectReducer := func(cur, next []Key) []Key {
 		c := keysBySeqNumKind(append(cur, next...))

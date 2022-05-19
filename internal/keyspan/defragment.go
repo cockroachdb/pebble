@@ -18,7 +18,21 @@ const bufferReuseMaxCapacity = 10 << 10 // 10 KB
 
 // DefragmentMethod configures the defragmentation performed by the
 // DefragmentingIter.
-type DefragmentMethod func(base.Compare, Span, Span) bool
+type DefragmentMethod interface {
+	// ShouldDefragment takes two abutting spans and returns whether the two
+	// spans should be combined into a single, defragmented Span.
+	ShouldDefragment(cmp base.Compare, left, right Span) bool
+}
+
+// The DefragmentMethodFunc type is an adapter to allow the use of ordinary
+// functions as DefragmentMethods. If f is a function with the appropriate
+// signature, DefragmentMethodFunc(f) is a DefragmentMethod that calls f.
+type DefragmentMethodFunc func(cmp base.Compare, left, right Span) bool
+
+// ShouldDefragment calls f(cmp, left, right).
+func (f DefragmentMethodFunc) ShouldDefragment(cmp base.Compare, left, right Span) bool {
+	return f(cmp, left, right)
+}
 
 // DefragmentInternal configures a DefragmentingIter to defragment spans
 // only if they have identical keys.
@@ -26,7 +40,7 @@ type DefragmentMethod func(base.Compare, Span, Span) bool
 // This defragmenting method is intended for use in compactions that may see
 // internal range keys fragments that may now be joined, because the state that
 // required their fragmentation has been dropped.
-var DefragmentInternal DefragmentMethod = func(cmp base.Compare, a, b Span) bool {
+var DefragmentInternal DefragmentMethod = DefragmentMethodFunc(func(cmp base.Compare, a, b Span) bool {
 	if len(a.Keys) != len(b.Keys) {
 		return false
 	}
@@ -42,7 +56,7 @@ var DefragmentInternal DefragmentMethod = func(cmp base.Compare, a, b Span) bool
 		}
 	}
 	return true
-}
+})
 
 // DefragmentReducer merges the current and next Key slices, returning a new Key
 // slice.
@@ -119,10 +133,10 @@ type DefragmentingIter struct {
 	keysBuf []Key
 	keyBuf  []byte
 
-	// equal is a comparison function for two spans. equal is called when two
+	// method is a comparison function for two spans. method is called when two
 	// spans are abutting to determine whether they may be defragmented.
-	// equal does not itself check for adjacency for the two spans.
-	equal DefragmentMethod
+	// method does not itself check for adjacency for the two spans.
+	method DefragmentMethod
 
 	// reduce is the reducer function used to collect Keys across all spans that
 	// constitute a defragmented span.
@@ -140,7 +154,7 @@ func (i *DefragmentingIter) Init(
 	*i = DefragmentingIter{
 		cmp:    cmp,
 		iter:   iter,
-		equal:  equal,
+		method: equal,
 		reduce: reducer,
 	}
 }
@@ -307,7 +321,7 @@ func (i *DefragmentingIter) Prev() Span {
 // DefragmentMethod and ensures both spans are NOT empty; not defragmenting empty
 // spans is an optimization that lets us load fewer sstable blocks.
 func (i *DefragmentingIter) checkEqual(left, right Span) bool {
-	return i.equal(i.cmp, i.iterSpan, i.curr) && !(left.Empty() && right.Empty())
+	return (!left.Empty() && !right.Empty()) && i.method.ShouldDefragment(i.cmp, i.iterSpan, i.curr)
 }
 
 // defragmentForward defragments spans in the forward direction, starting from

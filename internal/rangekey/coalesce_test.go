@@ -66,10 +66,10 @@ func TestIter(t *testing.T) {
 			for _, line := range lines {
 				spans = append(spans, keyspan.ParseSpan(line))
 			}
-			transform := func(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
+			transform := keyspan.TransformerFunc(func(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
 				s = s.Visible(visibleSeqNum)
 				return Coalesce(cmp, s, dst)
-			}
+			})
 			iter.Init(cmp, transform, keyspan.NewIter(cmp, spans))
 			return "OK"
 		case "iter":

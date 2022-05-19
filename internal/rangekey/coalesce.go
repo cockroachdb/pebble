@@ -40,19 +40,19 @@ func (ui *UserIteratorConfig) Init(
 	ui.snapshot = snapshot
 	ui.defragBufA.keys = ui.defragBufAlloc[0][:0]
 	ui.defragBufB.keys = ui.defragBufAlloc[1][:0]
-	ui.miter.Init(cmp, ui.transform, levelIters...)
-	ui.diter.Init(cmp, &ui.miter, ui.defragmentMethod, keyspan.StaticDefragmentReducer)
+	ui.miter.Init(cmp, ui, levelIters...)
+	ui.diter.Init(cmp, &ui.miter, ui, keyspan.StaticDefragmentReducer)
 	return &ui.diter
 }
 
-// transform implements the keyspan.Transform function signature for use with a
+// Transform implements the keyspan.Transformer interface for use with a
 // keyspan.MergingIter. It transforms spans by resolving range keys at the
 // provided snapshot sequence number. Shadowing of keys is resolved (eg, removal
 // of unset keys, removal of keys overwritten by a set at the same suffix, etc)
 // and then non-RangeKeySet keys are removed. The resulting transformed spans
 // only contain RangeKeySets describing the state visible at the provided
 // sequence number.
-func (ui *UserIteratorConfig) transform(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
+func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
 	// Apply shadowing of keys.
 	if err := Coalesce(cmp, s.Visible(ui.snapshot), dst); err != nil {
 		return err
@@ -80,24 +80,23 @@ func (ui *UserIteratorConfig) transform(cmp base.Compare, s keyspan.Span, dst *k
 	return nil
 }
 
-// defragmentMethod implements the DefragmentMethod function signature and
-// configures a DefragmentingIter to defragment spans of range keys if their
-// user-visible state is identical. This defragmenting method assumes the
-// provided spans have already been transformed through
-// (UserIterationConfig).transform, so all RangeKeySets are user-visible sets.
-// This defragmenter checks for equality between set suffixes and values
-// (ignoring sequence numbers). It's intended for use during user iteration,
-// when the wrapped keyspan iterator is merging spans across all levels of the
-// LSM.
+// ShouldDefragment implements the DefragmentMethod interface and configures a
+// DefragmentingIter to defragment spans of range keys if their user-visible
+// state is identical. This defragmenting method assumes the provided spans have
+// already been transformed through (UserIterationConfig).Transform, so all
+// RangeKeySets are user-visible sets.  This defragmenter checks for equality
+// between set suffixes and values (ignoring sequence numbers). It's intended
+// for use during user iteration, when the wrapped keyspan iterator is merging
+// spans across all levels of the LSM.
 //
-// The returned defragmenting method is stateful, and must not be used on
-// multiple DefragmentingIters concurrently.
-func (ui *UserIteratorConfig) defragmentMethod(cmp base.Compare, a, b keyspan.Span) bool {
-	// UserIterationDefragmenter must only be used on spans that have
-	// transformed by ui.transform. The transform applies shadowing and removes
-	// all keys besides the resulting Sets. Since shadowing has been applied,
-	// each Set must set a unique suffix. If the two spans are equivalent, they
-	// must have the same number of range key sets.
+// This implementation is stateful, and must not be used on multiple
+// DefragmentingIters concurrently.
+func (ui *UserIteratorConfig) ShouldDefragment(cmp base.Compare, a, b keyspan.Span) bool {
+	// This implementation must only be used on spans that have transformed by
+	// ui.Transform. The transform applies shadowing and removes all keys
+	// besides the resulting Sets. Since shadowing has been applied, each Set
+	// must set a unique suffix. If the two spans are equivalent, they must have
+	// the same number of range key sets.
 	if len(a.Keys) != len(b.Keys) || len(a.Keys) == 0 {
 		return false
 	}
