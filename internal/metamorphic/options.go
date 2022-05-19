@@ -255,6 +255,12 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	if rng.Intn(2) == 0 {
 		opts.WALDir = "data/wal"
 	}
+	if rng.Intn(4) == 0 {
+		// Enable Writer parallelism for 25% of the random options. Setting
+		// MaxWriterConcurrency to any value greater than or equal to 1 has the
+		// same effect currently.
+		opts.Experimental.MaxWriterConcurrency = 2
+	}
 	var lopts pebble.LevelOptions
 	lopts.BlockRestartInterval = 1 + rng.Intn(64)  // 1 - 64
 	lopts.BlockSize = 1 << uint(rng.Intn(24))      // 1 - 16MB
