@@ -610,6 +610,28 @@ func (s windowSummary) String() string {
 	return sb.String()
 }
 
+// windowSummarySlice is a slice of windowSummary that sorts in order of start
+// time, node, then store.
+type windowsSummarySlice []windowSummary
+
+func (s windowsSummarySlice) Len() int {
+	return len(s)
+}
+
+func (s windowsSummarySlice) Less(i, j int) bool {
+	if !s[i].tStart.Equal(s[j].tStart) {
+		return s[i].tStart.Before(s[j].tStart)
+	}
+	if s[i].nodeID != s[j].nodeID {
+		return s[i].nodeID < s[j].nodeID
+	}
+	return s[i].storeID < s[j].storeID
+}
+
+func (s windowsSummarySlice) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
 // eventSlice is a slice of events that sorts in order of node, store,
 // then event start time.
 type eventSlice []event
@@ -809,6 +831,10 @@ func (a *aggregator) aggregate() []windowSummary {
 			curWindow.longRunning = append(curWindow.longRunning, e)
 		}
 	}
+
+	// Windows are added in order of (node, store, time). Re-sort the windows by
+	// (time, node, store) for better presentation.
+	sort.Sort(windowsSummarySlice(windows))
 
 	return windows
 }
