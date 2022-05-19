@@ -20,27 +20,39 @@ import (
 // seeks would require introducing key comparisons to switchTo{Min,Max}Heap
 // where there currently are none.
 
-// Transform defines a transform function to be applied to a Span. A Transform
-// takes a Span as input and writes the transformed Span to the provided output
-// *Span pointer. The output Span's Keys slice may be reused by Transform to
-// reduce allocations.
-type Transform func(cmp base.Compare, in Span, out *Span) error
+// Transformer defines a transformation to be applied to a Span.
+type Transformer interface {
+	// Transform takes a Span as input and writes the transformed Span to the
+	// provided output *Span pointer. The output Span's Keys slice may be reused
+	// by Transform to reduce allocations.
+	Transform(cmp base.Compare, in Span, out *Span) error
+}
 
-func noopTransform(_ base.Compare, s Span, dst *Span) error {
+// The TransformerFunc type is an adapter to allow the use of ordinary functions
+// as Transformers. If f is a function with the appropriate signature,
+// TransformerFunc(f) is a Transformer that calls f.
+type TransformerFunc func(base.Compare, Span, *Span) error
+
+// Transform calls f(cmp, in, out).
+func (tf TransformerFunc) Transform(cmp base.Compare, in Span, out *Span) error {
+	return tf(cmp, in, out)
+}
+
+var noopTransform Transformer = TransformerFunc(func(_ base.Compare, s Span, dst *Span) error {
 	dst.Start, dst.End = s.Start, s.End
 	dst.Keys = append(dst.Keys[:0], s.Keys...)
 	return nil
-}
+})
 
 // visibleTransform filters keys that are invisible at the provided snapshot
 // sequence number.
-func visibleTransform(snapshot uint64) Transform {
-	return func(_ base.Compare, s Span, dst *Span) error {
+func visibleTransform(snapshot uint64) Transformer {
+	return TransformerFunc(func(_ base.Compare, s Span, dst *Span) error {
 		s = s.Visible(snapshot)
 		dst.Start, dst.End = s.Start, s.End
 		dst.Keys = append(dst.Keys[:0], s.Keys...)
 		return nil
-	}
+	})
 }
 
 // MergingIter merges spans across levels of the LSM, exposing an iterator over
@@ -200,10 +212,10 @@ type MergingIter struct {
 	// Each element points into a child iterator's memory, so the keys may not
 	// be directly modified.
 	keys keysBySeqNumKind
-	// transform defines a function to be applied to a span before it's yielded
-	// to the user. A transform may filter individual keys contained within the
-	// span.
-	transform Transform
+	// transformer defines a transformation to be applied to a span before it's
+	// yielded to the user. Transforming may filter individual keys contained
+	// within the span.
+	transformer Transformer
 	// span holds the iterator's current span. This span is used as the
 	// destination for transforms. Every tranformed span overwrites the
 	// previous.
@@ -240,12 +252,12 @@ func (l *mergingIterLevel) prev() {
 }
 
 // Init initializes the merging iterator with the provided fragment iterators.
-func (m *MergingIter) Init(cmp base.Compare, transform Transform, iters ...FragmentIterator) {
+func (m *MergingIter) Init(cmp base.Compare, transformer Transformer, iters ...FragmentIterator) {
 	levels, items := m.levels, m.heap.items
 
 	*m = MergingIter{
-		heap:      mergingIterHeap{cmp: cmp},
-		transform: transform,
+		heap:        mergingIterHeap{cmp: cmp},
+		transformer: transformer,
 	}
 	// Invariant: cap(levels) == cap(items)
 	if cap(levels) < len(iters) {
@@ -727,7 +739,7 @@ func (m *MergingIter) synthesizeKeys(dir int8) (bool, Span) {
 		End:   m.end,
 		Keys:  m.keys,
 	}
-	if err := m.transform(m.cmp, s, &m.span); err != nil {
+	if err := m.transformer.Transform(m.cmp, s, &m.span); err != nil {
 		m.err = err
 		return false, Span{}
 	}
