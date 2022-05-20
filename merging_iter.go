@@ -622,25 +622,33 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 
 // Starting from the current entry, finds the first (next) entry that can be returned.
 func (m *mergingIter) findNextEntry() (*InternalKey, []byte) {
+	var reseeked bool
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
 		if m.levels[item.index].isSyntheticIterBoundsKey {
 			break
 		}
-		if m.isNextEntryDeleted(item) {
-			// For prefix iteration, stop if we are past the prefix. We could
-			// amortize the cost of this comparison, by doing it only after we
-			// have iterated in this for loop a few times. But unless we find
-			// a performance benefit to that, we do the simple thing and
-			// compare each time. Note that isNextEntryDeleted already did at
-			// least 4 key comparisons in order to return true, and
-			// additionally at least one heap comparison to step to the next
-			// entry.
-			if m.prefix != nil {
-				if n := m.split(item.key.UserKey); !bytes.Equal(m.prefix, item.key.UserKey[:n]) {
-					return nil, nil
-				}
+		// For prefix iteration, stop if we already seeked the iterator due to a
+		// range tombstone and are now past the prefix. We could amortize the
+		// cost of this comparison, by doing it only after we have iterated in
+		// this for loop a few times. But unless we find a performance benefit
+		// to that, we do the simple thing and compare each time. Note that
+		// isNextEntryDeleted already did at least 4 key comparisons in order to
+		// return true, and additionally at least one heap comparison to step to
+		// the next entry.
+		//
+		// Note that we cannot move this comparison into the isNextEntryDeleted
+		// branch. Once isNextEntryDeleted determines a key is deleted and seeks
+		// the level's iterator, item.key's memory is potentially invalid. If
+		// the iterator is now exhausted, item.key may be garbage.
+		if m.prefix != nil && reseeked {
+			if n := m.split(item.key.UserKey); !bytes.Equal(m.prefix, item.key.UserKey[:n]) {
+				return nil, nil
 			}
+		}
+
+		if m.isNextEntryDeleted(item) {
+			reseeked = true
 			continue
 		}
 		if item.key.Visible(m.snapshot) &&
