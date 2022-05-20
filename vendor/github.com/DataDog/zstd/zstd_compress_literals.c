@@ -1,5 +1,6 @@
+#ifndef USE_EXTERNAL_ZSTD
 /*
- * Copyright (c) 2016-present, Yann Collet, Facebook, Inc.
+ * Copyright (c) Yann Collet, Facebook, Inc.
  * All rights reserved.
  *
  * This source code is licensed under both the BSD-style license (found in the
@@ -15,10 +16,10 @@
 
 size_t ZSTD_noCompressLiterals (void* dst, size_t dstCapacity, const void* src, size_t srcSize)
 {
-    BYTE* const ostart = (BYTE* const)dst;
+    BYTE* const ostart = (BYTE*)dst;
     U32   const flSize = 1 + (srcSize>31) + (srcSize>4095);
 
-    RETURN_ERROR_IF(srcSize + flSize > dstCapacity, dstSize_tooSmall);
+    RETURN_ERROR_IF(srcSize + flSize > dstCapacity, dstSize_tooSmall, "");
 
     switch(flSize)
     {
@@ -35,13 +36,14 @@ size_t ZSTD_noCompressLiterals (void* dst, size_t dstCapacity, const void* src, 
             assert(0);
     }
 
-    memcpy(ostart + flSize, src, srcSize);
+    ZSTD_memcpy(ostart + flSize, src, srcSize);
+    DEBUGLOG(5, "Raw literals: %u -> %u", (U32)srcSize, (U32)(srcSize + flSize));
     return srcSize + flSize;
 }
 
 size_t ZSTD_compressRleLiteralsBlock (void* dst, size_t dstCapacity, const void* src, size_t srcSize)
 {
-    BYTE* const ostart = (BYTE* const)dst;
+    BYTE* const ostart = (BYTE*)dst;
     U32   const flSize = 1 + (srcSize>31) + (srcSize>4095);
 
     (void)dstCapacity;  /* dstCapacity already guaranteed to be >=4, hence large enough */
@@ -62,6 +64,7 @@ size_t ZSTD_compressRleLiteralsBlock (void* dst, size_t dstCapacity, const void*
     }
 
     ostart[flSize] = *(const BYTE*)src;
+    DEBUGLOG(5, "RLE literals: %u -> %u", (U32)srcSize, (U32)flSize + 1);
     return flSize+1;
 }
 
@@ -71,7 +74,8 @@ size_t ZSTD_compressLiterals (ZSTD_hufCTables_t const* prevHuf,
                               void* dst, size_t dstCapacity,
                         const void* src, size_t srcSize,
                               void* entropyWorkspace, size_t entropyWorkspaceSize,
-                        const int bmi2)
+                        const int bmi2,
+                        unsigned suspectUncompressible)
 {
     size_t const minGain = ZSTD_minGain(srcSize, strategy);
     size_t const lhSize = 3 + (srcSize >= 1 KB) + (srcSize >= 16 KB);
@@ -80,11 +84,11 @@ size_t ZSTD_compressLiterals (ZSTD_hufCTables_t const* prevHuf,
     symbolEncodingType_e hType = set_compressed;
     size_t cLitSize;
 
-    DEBUGLOG(5,"ZSTD_compressLiterals (disableLiteralCompression=%i)",
-                disableLiteralCompression);
+    DEBUGLOG(5,"ZSTD_compressLiterals (disableLiteralCompression=%i srcSize=%u)",
+                disableLiteralCompression, (U32)srcSize);
 
     /* Prepare nextEntropy assuming reusing the existing table */
-    memcpy(nextHuf, prevHuf, sizeof(*prevHuf));
+    ZSTD_memcpy(nextHuf, prevHuf, sizeof(*prevHuf));
 
     if (disableLiteralCompression)
         return ZSTD_noCompressLiterals(dst, dstCapacity, src, srcSize);
@@ -102,24 +106,25 @@ size_t ZSTD_compressLiterals (ZSTD_hufCTables_t const* prevHuf,
         cLitSize = singleStream ?
             HUF_compress1X_repeat(
                 ostart+lhSize, dstCapacity-lhSize, src, srcSize,
-                255, 11, entropyWorkspace, entropyWorkspaceSize,
-                (HUF_CElt*)nextHuf->CTable, &repeat, preferRepeat, bmi2) :
+                HUF_SYMBOLVALUE_MAX, HUF_TABLELOG_DEFAULT, entropyWorkspace, entropyWorkspaceSize,
+                (HUF_CElt*)nextHuf->CTable, &repeat, preferRepeat, bmi2, suspectUncompressible) :
             HUF_compress4X_repeat(
                 ostart+lhSize, dstCapacity-lhSize, src, srcSize,
-                255, 11, entropyWorkspace, entropyWorkspaceSize,
-                (HUF_CElt*)nextHuf->CTable, &repeat, preferRepeat, bmi2);
+                HUF_SYMBOLVALUE_MAX, HUF_TABLELOG_DEFAULT, entropyWorkspace, entropyWorkspaceSize,
+                (HUF_CElt*)nextHuf->CTable, &repeat, preferRepeat, bmi2, suspectUncompressible);
         if (repeat != HUF_repeat_none) {
             /* reused the existing table */
+            DEBUGLOG(5, "Reusing previous huffman table");
             hType = set_repeat;
         }
     }
 
-    if ((cLitSize==0) | (cLitSize >= srcSize - minGain) | ERR_isError(cLitSize)) {
-        memcpy(nextHuf, prevHuf, sizeof(*prevHuf));
+    if ((cLitSize==0) || (cLitSize >= srcSize - minGain) || ERR_isError(cLitSize)) {
+        ZSTD_memcpy(nextHuf, prevHuf, sizeof(*prevHuf));
         return ZSTD_noCompressLiterals(dst, dstCapacity, src, srcSize);
     }
     if (cLitSize==1) {
-        memcpy(nextHuf, prevHuf, sizeof(*prevHuf));
+        ZSTD_memcpy(nextHuf, prevHuf, sizeof(*prevHuf));
         return ZSTD_compressRleLiteralsBlock(dst, dstCapacity, src, srcSize);
     }
 
@@ -150,5 +155,8 @@ size_t ZSTD_compressLiterals (ZSTD_hufCTables_t const* prevHuf,
     default:  /* not possible : lhSize is {3,4,5} */
         assert(0);
     }
+    DEBUGLOG(5, "Compressed literals: %u -> %u", (U32)srcSize, (U32)(lhSize+cLitSize));
     return lhSize+cLitSize;
 }
+
+#endif /* USE_EXTERNAL_ZSTD */

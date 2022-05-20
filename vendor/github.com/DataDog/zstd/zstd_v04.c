@@ -1,5 +1,6 @@
+#ifndef USE_EXTERNAL_ZSTD
 /*
- * Copyright (c) 2016-present, Yann Collet, Facebook, Inc.
+ * Copyright (c) Yann Collet, Facebook, Inc.
  * All rights reserved.
  *
  * This source code is licensed under both the BSD-style license (found in the
@@ -52,7 +53,11 @@ extern "C" {
 *  Basic Types
 *****************************************************************/
 #if defined (__cplusplus) || (defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) /* C99 */)
-# include <stdint.h>
+# if defined(_AIX)
+#  include <inttypes.h>
+# else
+#  include <stdint.h> /* intptr_t */
+# endif
   typedef  uint8_t BYTE;
   typedef uint16_t U16;
   typedef  int16_t S16;
@@ -97,10 +102,7 @@ extern "C" {
  * Prefer these methods in priority order (0 > 1 > 2)
  */
 #ifndef MEM_FORCE_MEMORY_ACCESS   /* can be defined externally, on command line for example */
-#  if defined(__GNUC__) && ( defined(__ARM_ARCH_6__) || defined(__ARM_ARCH_6J__) || defined(__ARM_ARCH_6K__) || defined(__ARM_ARCH_6Z__) || defined(__ARM_ARCH_6ZK__) || defined(__ARM_ARCH_6T2__) )
-#    define MEM_FORCE_MEMORY_ACCESS 2
-#  elif (defined(__INTEL_COMPILER) && !defined(WIN32)) || \
-  (defined(__GNUC__) && ( defined(__ARM_ARCH_7__) || defined(__ARM_ARCH_7A__) || defined(__ARM_ARCH_7R__) || defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_7S__) ))
+#  if defined(__INTEL_COMPILER) || defined(__GNUC__) || defined(__ICCARM__)
 #    define MEM_FORCE_MEMORY_ACCESS 1
 #  endif
 #endif
@@ -161,7 +163,7 @@ MEM_STATIC void MEM_write16(void* memPtr, U16 value)
     memcpy(memPtr, &value, sizeof(value));
 }
 
-#endif // MEM_FORCE_MEMORY_ACCESS
+#endif /* MEM_FORCE_MEMORY_ACCESS */
 
 
 MEM_STATIC U16 MEM_readLE16(const void* memPtr)
@@ -623,9 +625,8 @@ MEM_STATIC size_t BIT_readBitsFast(BIT_DStream_t* bitD, unsigned nbBits);
 MEM_STATIC unsigned BIT_highbit32 (U32 val)
 {
 #   if defined(_MSC_VER)   /* Visual */
-    unsigned long r=0;
-    _BitScanReverse ( &r, val );
-    return (unsigned) r;
+    unsigned long r;
+    return _BitScanReverse(&r, val) ? (unsigned)r : 0;
 #   elif defined(__GNUC__) && (__GNUC__ >= 3)   /* Use GCC Intrinsic */
     return __builtin_clz (val) ^ 31;
 #   else   /* Software version */
@@ -2603,7 +2604,9 @@ static size_t ZSTD_getcBlockSize(const void* src, size_t srcSize, blockPropertie
 static size_t ZSTD_copyRawBlock(void* dst, size_t maxDstSize, const void* src, size_t srcSize)
 {
     if (srcSize > maxDstSize) return ERROR(dstSize_tooSmall);
-    memcpy(dst, src, srcSize);
+    if (srcSize > 0) {
+        memcpy(dst, src, srcSize);
+    }
     return srcSize;
 }
 
@@ -3008,8 +3011,10 @@ static size_t ZSTD_decompressSequences(
             size_t lastLLSize = litEnd - litPtr;
             if (litPtr > litEnd) return ERROR(corruption_detected);
             if (op+lastLLSize > oend) return ERROR(dstSize_tooSmall);
-            if (op != litPtr) memcpy(op, litPtr, lastLLSize);
-            op += lastLLSize;
+            if (lastLLSize > 0) {
+                if (op != litPtr) memcpy(op, litPtr, lastLLSize);
+                op += lastLLSize;
+            }
         }
     }
 
@@ -3407,7 +3412,9 @@ static size_t ZBUFF_decompressWithDictionary(ZBUFF_DCtx* zbc, const void* src, s
 static size_t ZBUFF_limitCopy(void* dst, size_t maxDstSize, const void* src, size_t srcSize)
 {
     size_t length = MIN(maxDstSize, srcSize);
-    memcpy(dst, src, length);
+    if (length > 0) {
+        memcpy(dst, src, length);
+    }
     return length;
 }
 
@@ -3639,3 +3646,5 @@ size_t ZBUFFv04_decompressContinue(ZBUFFv04_DCtx* dctx, void* dst, size_t* maxDs
 
 ZSTD_DCtx* ZSTDv04_createDCtx(void) { return ZSTD_createDCtx(); }
 size_t ZSTDv04_freeDCtx(ZSTD_DCtx* dctx) { return ZSTD_freeDCtx(dctx); }
+
+#endif /* USE_EXTERNAL_ZSTD */

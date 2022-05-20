@@ -1,13 +1,15 @@
+#ifndef USE_EXTERNAL_ZSTD
 /**
  * Copyright (c) 2016 Tino Reichardt
  * All rights reserved.
  *
+ * You can contact the author at:
+ * - zstdmt source repository: https://github.com/mcmilk/zstdmt
+ *
  * This source code is licensed under both the BSD-style license (found in the
  * LICENSE file in the root directory of this source tree) and the GPLv2 (found
  * in the COPYING file in the root directory of this source tree).
- *
- * You can contact the author at:
- * - zstdmt source repository: https://github.com/mcmilk/zstdmt
+ * You may select, at your option, one of the above-listed licenses.
  */
 
 #ifndef THREADING_H_938743
@@ -152,3 +154,5 @@ typedef int ZSTD_pthread_cond_t;
 #endif
 
 #endif /* THREADING_H_938743 */
+
+#endif /* USE_EXTERNAL_ZSTD */

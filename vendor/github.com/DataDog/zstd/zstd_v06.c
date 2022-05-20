@@ -1,5 +1,6 @@
+#ifndef USE_EXTERNAL_ZSTD
 /*
- * Copyright (c) 2016-present, Yann Collet, Facebook, Inc.
+ * Copyright (c) Yann Collet, Facebook, Inc.
  * All rights reserved.
  *
  * This source code is licensed under both the BSD-style license (found in the
@@ -82,7 +83,11 @@ extern "C" {
 *  Basic Types
 *****************************************************************/
 #if  !defined (__VMS) && (defined (__cplusplus) || (defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) /* C99 */) )
-# include <stdint.h>
+# if defined(_AIX)
+#  include <inttypes.h>
+# else
+#  include <stdint.h> /* intptr_t */
+# endif
   typedef  uint8_t BYTE;
   typedef uint16_t U16;
   typedef  int16_t S16;
@@ -118,10 +123,7 @@ extern "C" {
  * Prefer these methods in priority order (0 > 1 > 2)
  */
 #ifndef MEM_FORCE_MEMORY_ACCESS   /* can be defined externally, on command line for example */
-#  if defined(__GNUC__) && ( defined(__ARM_ARCH_6__) || defined(__ARM_ARCH_6J__) || defined(__ARM_ARCH_6K__) || defined(__ARM_ARCH_6Z__) || defined(__ARM_ARCH_6ZK__) || defined(__ARM_ARCH_6T2__) )
-#    define MEM_FORCE_MEMORY_ACCESS 2
-#  elif (defined(__INTEL_COMPILER) && !defined(WIN32)) || \
-  (defined(__GNUC__) && ( defined(__ARM_ARCH_7__) || defined(__ARM_ARCH_7A__) || defined(__ARM_ARCH_7R__) || defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_7S__) ))
+#  if defined(__INTEL_COMPILER) || defined(__GNUC__) || defined(__ICCARM__)
 #    define MEM_FORCE_MEMORY_ACCESS 1
 #  endif
 #endif
@@ -856,9 +858,8 @@ MEM_STATIC size_t BITv06_readBitsFast(BITv06_DStream_t* bitD, unsigned nbBits);
 MEM_STATIC unsigned BITv06_highbit32 ( U32 val)
 {
 #   if defined(_MSC_VER)   /* Visual */
-    unsigned long r=0;
-    _BitScanReverse ( &r, val );
-    return (unsigned) r;
+    unsigned long r;
+    return _BitScanReverse(&r, val) ? (unsigned)r : 0;
 #   elif defined(__GNUC__) && (__GNUC__ >= 3)   /* Use GCC Intrinsic */
     return __builtin_clz (val) ^ 31;
 #   else   /* Software version */
@@ -1862,7 +1863,7 @@ MEM_STATIC size_t HUFv06_readStats(BYTE* huffWeight, size_t hwSize, U32* rankSta
 
     if (!srcSize) return ERROR(srcSize_wrong);
     iSize = ip[0];
-    //memset(huffWeight, 0, hwSize);   /* is not necessary, even though some analyzer complain ... */
+    /* memset(huffWeight, 0, hwSize); */   /* is not necessary, even though some analyzer complain ... */
 
     if (iSize >= 128)  { /* special header */
         if (iSize >= (242)) {  /* RLE */
@@ -2014,7 +2015,7 @@ size_t HUFv06_readDTableX2 (U16* DTable, const void* src, size_t srcSize)
     HUFv06_DEltX2* const dt = (HUFv06_DEltX2*)dtPtr;
 
     HUFv06_STATIC_ASSERT(sizeof(HUFv06_DEltX2) == sizeof(U16));   /* if compilation fails here, assertion is false */
-    //memset(huffWeight, 0, sizeof(huffWeight));   /* is not necessary, even though some analyzer complain ... */
+    /* memset(huffWeight, 0, sizeof(huffWeight)); */   /* is not necessary, even though some analyzer complain ... */
 
     iSize = HUFv06_readStats(huffWeight, HUFv06_MAX_SYMBOL_VALUE + 1, rankVal, &nbSymbols, &tableLog, src, srcSize);
     if (HUFv06_isError(iSize)) return iSize;
@@ -2340,7 +2341,7 @@ size_t HUFv06_readDTableX4 (U32* DTable, const void* src, size_t srcSize)
 
     HUFv06_STATIC_ASSERT(sizeof(HUFv06_DEltX4) == sizeof(U32));   /* if compilation fails here, assertion is false */
     if (memLog > HUFv06_ABSOLUTEMAX_TABLELOG) return ERROR(tableLog_tooLarge);
-    //memset(weightList, 0, sizeof(weightList));   /* is not necessary, even though some analyzer complain ... */
+    /* memset(weightList, 0, sizeof(weightList)); */   /* is not necessary, even though some analyzer complain ... */
 
     iSize = HUFv06_readStats(weightList, HUFv06_MAX_SYMBOL_VALUE + 1, rankStats, &nbSymbols, &tableLog, src, srcSize);
     if (HUFv06_isError(iSize)) return iSize;
@@ -2664,13 +2665,13 @@ size_t HUFv06_decompress (void* dst, size_t dstSize, const void* cSrc, size_t cS
 
     {   U32 algoNb = 0;
         if (Dtime[1] < Dtime[0]) algoNb = 1;
-        // if (Dtime[2] < Dtime[algoNb]) algoNb = 2;   /* current speed of HUFv06_decompress4X6 is not good */
+        /* if (Dtime[2] < Dtime[algoNb]) algoNb = 2; */   /* current speed of HUFv06_decompress4X6 is not good */
         return decompress[algoNb](dst, dstSize, cSrc, cSrcSize);
     }
 
-    //return HUFv06_decompress4X2(dst, dstSize, cSrc, cSrcSize);   /* multi-streams single-symbol decoding */
-    //return HUFv06_decompress4X4(dst, dstSize, cSrc, cSrcSize);   /* multi-streams double-symbols decoding */
-    //return HUFv06_decompress4X6(dst, dstSize, cSrc, cSrcSize);   /* multi-streams quad-symbols decoding */
+    /* return HUFv06_decompress4X2(dst, dstSize, cSrc, cSrcSize); */   /* multi-streams single-symbol decoding */
+    /* return HUFv06_decompress4X4(dst, dstSize, cSrc, cSrcSize); */   /* multi-streams double-symbols decoding */
+    /* return HUFv06_decompress4X6(dst, dstSize, cSrc, cSrcSize); */   /* multi-streams quad-symbols decoding */
 }
 /*
     Common functions of Zstd compression library
@@ -3025,7 +3026,7 @@ typedef struct
 *   Provides the size of compressed block from block header `src` */
 static size_t ZSTDv06_getcBlockSize(const void* src, size_t srcSize, blockProperties_t* bpPtr)
 {
-    const BYTE* const in = (const BYTE* const)src;
+    const BYTE* const in = (const BYTE*)src;
     U32 cSize;
 
     if (srcSize < ZSTDv06_blockHeaderSize) return ERROR(srcSize_wrong);
@@ -3219,7 +3220,7 @@ static size_t ZSTDv06_decodeSeqHeaders(int* nbSeqPtr,
                              FSEv06_DTable* DTableLL, FSEv06_DTable* DTableML, FSEv06_DTable* DTableOffb, U32 flagRepeatTable,
                              const void* src, size_t srcSize)
 {
-    const BYTE* const istart = (const BYTE* const)src;
+    const BYTE* const istart = (const BYTE*)src;
     const BYTE* const iend = istart + srcSize;
     const BYTE* ip = istart;
 
@@ -3441,7 +3442,7 @@ static size_t ZSTDv06_decompressSequences(
 {
     const BYTE* ip = (const BYTE*)seqStart;
     const BYTE* const iend = ip + seqSize;
-    BYTE* const ostart = (BYTE* const)dst;
+    BYTE* const ostart = (BYTE*)dst;
     BYTE* const oend = ostart + maxDstSize;
     BYTE* op = ostart;
     const BYTE* litPtr = dctx->litPtr;
@@ -3501,8 +3502,10 @@ static size_t ZSTDv06_decompressSequences(
     {   size_t const lastLLSize = litEnd - litPtr;
         if (litPtr > litEnd) return ERROR(corruption_detected);   /* too many literals already used */
         if (op+lastLLSize > oend) return ERROR(dstSize_tooSmall);
-        memcpy(op, litPtr, lastLLSize);
-        op += lastLLSize;
+        if (lastLLSize > 0) {
+            memcpy(op, litPtr, lastLLSize);
+            op += lastLLSize;
+        }
     }
 
     return op-ostart;
@@ -3555,7 +3558,7 @@ static size_t ZSTDv06_decompressFrame(ZSTDv06_DCtx* dctx,
 {
     const BYTE* ip = (const BYTE*)src;
     const BYTE* const iend = ip + srcSize;
-    BYTE* const ostart = (BYTE* const)dst;
+    BYTE* const ostart = (BYTE*)dst;
     BYTE* op = ostart;
     BYTE* const oend = ostart + dstCapacity;
     size_t remainingSize = srcSize;
@@ -4000,7 +4003,9 @@ size_t ZBUFFv06_decompressInit(ZBUFFv06_DCtx* zbd)
 MEM_STATIC size_t ZBUFFv06_limitCopy(void* dst, size_t dstCapacity, const void* src, size_t srcSize)
 {
     size_t length = MIN(dstCapacity, srcSize);
-    memcpy(dst, src, length);
+    if (length > 0) {
+        memcpy(dst, src, length);
+    }
     return length;
 }
 
@@ -4109,7 +4114,7 @@ size_t ZBUFFv06_decompressContinue(ZBUFFv06_DCtx* zbd,
                     if (!decodedSize) { zbd->stage = ZBUFFds_read; break; }   /* this was just a header */
                     zbd->outEnd = zbd->outStart +  decodedSize;
                     zbd->stage = ZBUFFds_flush;
-                    // break; /* ZBUFFds_flush follows */
+                    /* break; */ /* ZBUFFds_flush follows */
                 }
 	    }
 	    /* fall-through */
@@ -4148,3 +4153,5 @@ size_t ZBUFFv06_decompressContinue(ZBUFFv06_DCtx* zbd,
 ***************************************/
 size_t ZBUFFv06_recommendedDInSize(void)  { return ZSTDv06_BLOCKSIZE_MAX + ZSTDv06_blockHeaderSize /* block header size*/ ; }
 size_t ZBUFFv06_recommendedDOutSize(void) { return ZSTDv06_BLOCKSIZE_MAX; }
+
+#endif /* USE_EXTERNAL_ZSTD */

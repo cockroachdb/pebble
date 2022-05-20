@@ -1,5 +1,6 @@
+#ifndef USE_EXTERNAL_ZSTD
 /*
- * Copyright (c) 2016-present, Yann Collet, Facebook, Inc.
+ * Copyright (c) Yann Collet, Facebook, Inc.
  * All rights reserved.
  *
  * This source code is licensed under both the BSD-style license (found in the
@@ -73,3 +74,5 @@ size_t ZBUFF_decompressContinue(ZBUFF_DCtx* zbd,
 ***************************************/
 size_t ZBUFF_recommendedDInSize(void)  { return ZSTD_DStreamInSize(); }
 size_t ZBUFF_recommendedDOutSize(void) { return ZSTD_DStreamOutSize(); }
+
+#endif /* USE_EXTERNAL_ZSTD */
