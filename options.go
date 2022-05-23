@@ -640,6 +640,12 @@ type Options struct {
 	// externally when running a manual compaction, and internally for tests.
 	DisableAutomaticCompactions bool
 
+	// NoSyncOnClose decides whether the Pebble instance will enforce a
+	// close-time synchronization (e.g., fdatasync() or sync_file_range())
+	// on files it writes to. Setting this to true removes the guarantee for a
+	// sync on close. Some implementations can still issue a non-blocking sync.
+	NoSyncOnClose bool
+
 	// NumPrevManifest is the number of non-current or older manifests which
 	// we want to keep around for debugging purposes. By default, we're going
 	// to keep one older manifest.

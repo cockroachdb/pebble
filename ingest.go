@@ -271,7 +271,8 @@ func ingestLink(
 	fs := syncingFS{
 		FS: opts.FS,
 		syncOpts: vfs.SyncingFileOptions{
-			BytesPerSync: opts.BytesPerSync,
+			NoSyncOnClose: opts.NoSyncOnClose,
+			BytesPerSync:  opts.BytesPerSync,
 		},
 	}
 
