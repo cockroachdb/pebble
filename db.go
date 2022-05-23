@@ -1875,6 +1875,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				newLogFile.Close()
 			} else if err == nil {
 				newLogFile = vfs.NewSyncingFile(newLogFile, vfs.SyncingFileOptions{
+					NoSyncOnClose:   d.opts.NoSyncOnClose,
 					BytesPerSync:    d.opts.WALBytesPerSync,
 					PreallocateSize: d.walPreallocateSize(),
 				})

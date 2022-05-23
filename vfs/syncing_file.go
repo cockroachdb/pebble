@@ -12,6 +12,7 @@ import (
 
 // SyncingFileOptions holds the options for a syncingFile.
 type SyncingFileOptions struct {
+	NoSyncOnClose   bool
 	BytesPerSync    int
 	PreallocateSize int
 }
@@ -20,6 +21,8 @@ type syncingFile struct {
 	File
 	fd              uintptr
 	useSyncRange    bool
+	closing         bool
+	noSyncOnClose   bool
 	bytesPerSync    int64
 	preallocateSize int64
 	atomic          struct {
@@ -46,6 +49,7 @@ type syncingFile struct {
 func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	s := &syncingFile{
 		File:            f,
+		noSyncOnClose:   bool(opts.NoSyncOnClose),
 		bytesPerSync:    int64(opts.BytesPerSync),
 		preallocateSize: int64(opts.PreallocateSize),
 	}
@@ -172,12 +176,16 @@ func (f *syncingFile) maybeSync() error {
 }
 
 func (f *syncingFile) Close() error {
-	// Sync any data that has been written but not yet synced. Note that if
-	// SyncFileRange was used, atomic.syncOffset will be less than
+	// Sync any data that has been written but not yet synced unless the file
+	// has noSyncOnClose option explicitly set.
+	// Note that if SyncFileRange was used, atomic.syncOffset will be less than
 	// atomic.offset. See syncingFile.syncToRange.
-	if atomic.LoadInt64(&f.atomic.offset) > atomic.LoadInt64(&f.atomic.syncOffset) {
-		if err := f.Sync(); err != nil {
-			return errors.WithStack(err)
+	f.closing = true
+	if !f.noSyncOnClose || f.useSyncRange {
+		if atomic.LoadInt64(&f.atomic.offset) > atomic.LoadInt64(&f.atomic.syncOffset) {
+			if err := f.Sync(); err != nil {
+				return errors.WithStack(err)
+			}
 		}
 	}
 	return errors.WithStack(f.File.Close())
