@@ -517,6 +517,15 @@ type Options struct {
 		// compress and write blocks to disk. Otherwise, the writer will
 		// compress and write blocks to disk synchronously.
 		MaxWriterConcurrency int
+
+		// The NoSyncOnClose options decides whether the Pebble instance will
+		// enforce a synchronization (e.g., fdatasync() or sync_file_range())
+		// on ALL `syncingFile`s it writes to. Setting this option to true can
+		// make a syncingFile closing operation non-blocking.
+		// NOTE: if the underlying FS supports the sync_file_range() system
+		// call, the closing may still be blocked if there are too many dirty
+		// pages. However, this is not usually the case.
+		NoSyncOnClose bool
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for

@@ -157,7 +157,8 @@ func (d *DB) Checkpoint(
 	fs := syncingFS{
 		FS: d.opts.FS,
 		syncOpts: vfs.SyncingFileOptions{
-			BytesPerSync: d.opts.BytesPerSync,
+			NoSyncOnClose: d.opts.Experimental.NoSyncOnClose,
+			BytesPerSync:  d.opts.BytesPerSync,
 		},
 	}
 

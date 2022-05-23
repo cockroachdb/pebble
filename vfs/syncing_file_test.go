@@ -134,6 +134,53 @@ close: test [<nil>]
 	}
 }
 
+func TestSyncingFileNoSyncOnClose(t *testing.T) {
+	testCases := []struct {
+		useSyncRange bool
+		expectBefore int64
+		expectAfter  int64
+	}{
+		{false, 1 << 20, 1 << 20},
+		{true, 1 << 20, 2<<20 + 128},
+	}
+
+	for _, c := range testCases {
+		tmpf, err := ioutil.TempFile("", "pebble-db-syncing-file-")
+		require.NoError(t, err)
+
+		filename := tmpf.Name()
+		require.NoError(t, tmpf.Close())
+		defer os.Remove(filename)
+
+		f, err := Default.Create(filename)
+		require.NoError(t, err)
+
+		s := NewSyncingFile(f, SyncingFileOptions{NoSyncOnClose: true, BytesPerSync: 8 << 10})
+		sf := s.(*fdFileWrapper).File.(*syncingFile)
+
+		sf.useSyncRange = c.useSyncRange
+		t.Logf("sync_file_range=%t", sf.useSyncRange)
+
+		_, err = sf.Write(make([]byte, 1<<20))
+		require.NoError(t, err)
+
+		_, err = sf.Write(make([]byte, 1<<20))
+		require.NoError(t, err)
+
+		_, err = sf.Write(make([]byte, 128))
+		require.NoError(t, err)
+
+		syncToBefore := atomic.LoadInt64(&sf.atomic.syncOffset)
+		require.NoError(t, sf.Close())
+		syncToAfter := atomic.LoadInt64(&sf.atomic.syncOffset)
+
+		if syncToBefore != c.expectBefore || syncToAfter != c.expectAfter {
+			t.Fatalf("Expected syncTo before and after closing are %d %d but found %d %d",
+				c.expectBefore, c.expectAfter, syncToBefore, syncToAfter)
+		}
+	}
+}
+
 func BenchmarkSyncWrite(b *testing.B) {
 	const targetSize = 16 << 20
 
