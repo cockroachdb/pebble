@@ -76,6 +76,14 @@ func (f *syncingFile) syncToRange(offset int64) error {
 		// waitAfter = 0x4
 	)
 
+	// The flags for the sync_file_range system call. Unless the file has
+	// noSyncOnClose explicitly set and it is being closed, the waitBefore
+	// flag will be set which may block the call.
+	flags := write
+	if !f.noSyncOnClose || !f.closing {
+		flags |= waitBefore
+	}
+
 	// Note that syncToRange is only called with an offset that is guaranteed to
 	// be less than atomic.offset (i.e. the write offset). This implies the
 	// syncingFile.Close will Sync the rest of the data, as well as the file's
@@ -91,7 +99,7 @@ func (f *syncingFile) syncToRange(offset int64) error {
 	// data accumulates, impacting other I/O operations.
 	var err error
 	f.timeDiskOp(func() {
-		err = syscall.SyncFileRange(int(f.fd), 0, offset, write|waitBefore)
+		err = syscall.SyncFileRange(int(f.fd), 0, offset, flags)
 	})
 	return err
 }
