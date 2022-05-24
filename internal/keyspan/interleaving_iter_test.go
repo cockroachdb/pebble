@@ -73,7 +73,11 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			fmt.Fprint(&buf, ".")
 			return
 		}
-		fmt.Fprintf(&buf, "PointKey: %s\nSpan: %s\n-", k.String(), iter.Span())
+		var s Span
+		if s2 := iter.Span(); s2 != nil {
+			s = *s2
+		}
+		fmt.Fprintf(&buf, "PointKey: %s\nSpan: %s\n-", k.String(), s)
 	}
 
 	datadriven.RunTest(t, filename, func(td *datadriven.TestData) string {
