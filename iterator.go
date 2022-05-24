@@ -1471,7 +1471,7 @@ func (i *Iterator) rangeKeyWithinLimit(limit []byte) bool {
 		return false
 	}
 	s := i.rangeKey.iter.Span()
-	if s.Empty() {
+	if s == nil {
 		// If there are no covering range keys, it is safe to to pause
 		// immediately.
 		return false
@@ -1571,19 +1571,22 @@ func (i *Iterator) setRangeKey() {
 		return
 	}
 	s := i.rangeKey.iter.Span()
-	i.rangeKey.hasRangeKey = !s.Empty()
-	if !i.rangeKey.hasRangeKey {
-		// Clear out existing pointers, so that we don't unintentionally retain
-		// any old range key blocks.
-		i.rangeKey.start = nil
-		i.rangeKey.end = nil
-		for j := 0; j < i.rangeKey.keys.Len(); j++ {
-			i.rangeKey.keys.data[j].Suffix = nil
-			i.rangeKey.keys.data[j].Value = nil
+	if s == nil {
+		i.rangeKey.hasRangeKey = false
+		if i.rangeKey.start != nil {
+			// Clear out existing pointers, so that we don't unintentionally retain
+			// any old range key blocks.
+			i.rangeKey.start = nil
+			i.rangeKey.end = nil
+			for j := 0; j < i.rangeKey.keys.Len(); j++ {
+				i.rangeKey.keys.data[j].Suffix = nil
+				i.rangeKey.keys.data[j].Value = nil
+			}
+			i.rangeKey.keys.data = i.rangeKey.keys.data[:0]
 		}
-		i.rangeKey.keys.data = i.rangeKey.keys.data[:0]
 		return
 	}
+	i.rangeKey.hasRangeKey = true
 	i.rangeKey.start, i.rangeKey.end = s.Start, s.End
 	i.rangeKey.keys.data = i.rangeKey.keys.data[:0]
 	for j := 0; j < len(s.Keys); j++ {
@@ -1607,10 +1610,11 @@ func (i *Iterator) saveRangeKey() {
 		return
 	}
 	s := i.rangeKey.iter.Span()
-	i.rangeKey.hasRangeKey = !s.Empty()
-	if !i.rangeKey.hasRangeKey {
+	if s == nil {
+		i.rangeKey.hasRangeKey = false
 		return
 	}
+	i.rangeKey.hasRangeKey = true
 	// TODO(jackson): Rather than naively copying all the range key state every
 	// time, we could copy only if it actually changed from the currently saved
 	// state, with some help from the InterleavingIter.

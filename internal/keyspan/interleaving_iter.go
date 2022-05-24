@@ -96,12 +96,8 @@ type InterleavingIter struct {
 	keyBuf   []byte
 	pointKey *base.InternalKey
 	pointVal []byte
-	// span, spanStart and spanEnd describe the current span state.
-	// span{Start,End} are a function of the span and the Iterator's bounds.
-	// span{Start,End} will be nil iff span is !Valid().
-	span      Span
-	spanStart []byte
-	spanEnd   []byte
+	// span describes the current span state.
+	span Span
 	// spanMarker holds the synthetic key that is returned when the iterator
 	// passes over a key span's start bound.
 	spanMarker base.InternalKey
@@ -714,7 +710,7 @@ func (i *InterleavingIter) verify(k *base.InternalKey, v []byte) (*base.Internal
 		case k != nil && i.upper != nil && i.cmp(k.UserKey, i.upper) >= 0:
 			panic("pebble: invariant violation: key ≥ upper bound")
 		case i.span.Valid() && k != nil && i.hooks != nil && i.pointKeyInterleaved &&
-			i.cmp(k.UserKey, i.spanStart) >= 0 && i.cmp(k.UserKey, i.spanEnd) < 0 && i.hooks.SkipPoint(k.UserKey):
+			i.cmp(k.UserKey, i.span.Start) >= 0 && i.cmp(k.UserKey, i.span.End) < 0 && i.hooks.SkipPoint(k.UserKey):
 			panic("pebble: invariant violation: point key eligible for skipping returned")
 		}
 	}
@@ -726,16 +722,11 @@ func (i *InterleavingIter) saveKeyspan(s Span) {
 	i.spanMarkerTruncated = false
 	i.span = s
 	if !s.Valid() {
-		i.spanStart = nil
-		i.spanEnd = nil
 		if i.hooks != nil {
 			i.hooks.SpanChanged(s)
 		}
 		return
 	}
-	i.spanStart = s.Start
-	i.spanEnd = s.End
-
 	if i.hooks != nil {
 		i.hooks.SpanChanged(s)
 	}
@@ -743,17 +734,15 @@ func (i *InterleavingIter) saveKeyspan(s Span) {
 
 // Span returns the span covering the last key returned, if any. A span key is
 // considered to 'cover' a key if the key falls within the span's user key
-// bounds.
-func (i *InterleavingIter) Span() Span {
-	if !i.spanCoversKey {
-		return Span{}
+// bounds. The returned span is owned by the InterleavingIter. The caller is
+// responsible for copying if stability is required.
+//
+// Span will never return an invalid or empty span.
+func (i *InterleavingIter) Span() *Span {
+	if !i.spanCoversKey || i.span.Empty() {
+		return nil
 	}
-	// Return the span with truncated bounds.
-	return Span{
-		Start: i.spanStart,
-		End:   i.spanEnd,
-		Keys:  i.span.Keys,
-	}
+	return &i.span
 }
 
 // SetBounds implements (base.InternalIterator).SetBounds.
