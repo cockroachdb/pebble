@@ -17,8 +17,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/cockroachdb/pebble"
-	"github.com/codahale/hdrhistogram"
 )
 
 const (

@@ -7,12 +7,12 @@ package pebble
 import (
 	"fmt"
 
+	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/redact"
-	"github.com/codahale/hdrhistogram"
 )
 
 // CacheMetrics holds metrics for the block and table cache.
