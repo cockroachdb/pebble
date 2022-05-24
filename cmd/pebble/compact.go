@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -21,7 +22,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/replay"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/codahale/hdrhistogram"
 	"github.com/spf13/cobra"
 )
 

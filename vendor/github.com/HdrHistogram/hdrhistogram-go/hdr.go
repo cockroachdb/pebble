@@ -5,7 +5,10 @@ package hdrhistogram
 
 import (
 	"fmt"
+	"io"
 	"math"
+	"math/bits"
+	"sort"
 )
 
 // A Bracket is a part of a cumulative distribution.
@@ -27,7 +30,7 @@ type Snapshot struct {
 // non-normally distributed data (like latency) with a high degree of accuracy
 // and a bounded degree of precision.
 type Histogram struct {
-	lowestTrackableValue        int64
+	lowestDiscernibleValue      int64
 	highestTrackableValue       int64
 	unitMagnitude               int64
 	significantFigures          int64
@@ -39,25 +42,70 @@ type Histogram struct {
 	countsLen                   int32
 	totalCount                  int64
 	counts                      []int64
+	startTimeMs                 int64
+	endTimeMs                   int64
+	tag                         string
 }
 
-// New returns a new Histogram instance capable of tracking values in the given
-// range and with the given amount of precision.
-func New(minValue, maxValue int64, sigfigs int) *Histogram {
-	if sigfigs < 1 || 5 < sigfigs {
-		panic(fmt.Errorf("sigfigs must be [1,5] (was %d)", sigfigs))
+func (h *Histogram) Tag() string {
+	return h.tag
+}
+
+func (h *Histogram) SetTag(tag string) {
+	h.tag = tag
+}
+
+func (h *Histogram) EndTimeMs() int64 {
+	return h.endTimeMs
+}
+
+func (h *Histogram) SetEndTimeMs(endTimeMs int64) {
+	h.endTimeMs = endTimeMs
+}
+
+func (h *Histogram) StartTimeMs() int64 {
+	return h.startTimeMs
+}
+
+func (h *Histogram) SetStartTimeMs(startTimeMs int64) {
+	h.startTimeMs = startTimeMs
+}
+
+// Construct a Histogram given the Lowest and Highest values to be tracked and a number of significant decimal digits.
+//
+// Providing a lowestDiscernibleValue is useful in situations where the units used for the histogram's values are
+// much smaller that the minimal accuracy required.
+// E.g. when tracking time values stated in nanosecond units, where the minimal accuracy required is a microsecond,
+// the proper value for lowestDiscernibleValue would be 1000.
+//
+// Note: the numberOfSignificantValueDigits must be [1,5]. If lower than 1 the numberOfSignificantValueDigits will be
+// forced to 1, and if higher than 5 the numberOfSignificantValueDigits will be forced to 5.
+func New(lowestDiscernibleValue, highestTrackableValue int64, numberOfSignificantValueDigits int) *Histogram {
+	if numberOfSignificantValueDigits < 1 {
+		numberOfSignificantValueDigits = 1
+	} else if numberOfSignificantValueDigits > 5 {
+		numberOfSignificantValueDigits = 5
+	}
+	if lowestDiscernibleValue < 1 {
+		lowestDiscernibleValue = 1
 	}
 
-	largestValueWithSingleUnitResolution := 2 * math.Pow10(sigfigs)
-	subBucketCountMagnitude := int32(math.Ceil(math.Log2(float64(largestValueWithSingleUnitResolution))))
+	// Given a 3 decimal point accuracy, the expectation is obviously for "+/- 1 unit at 1000". It also means that
+	// it's "ok to be +/- 2 units at 2000". The "tricky" thing is that it is NOT ok to be +/- 2 units at 1999. Only
+	// starting at 2000. So internally, we need to maintain single unit resolution to 2x 10^decimalPoints.
+	largestValueWithSingleUnitResolution := 2 * math.Pow10(numberOfSignificantValueDigits)
 
+	// We need to maintain power-of-two subBucketCount (for clean direct indexing) that is large enough to
+	// provide unit resolution to at least largestValueWithSingleUnitResolution. So figure out
+	// largestValueWithSingleUnitResolution's nearest power-of-two (rounded up), and use that:
+	subBucketCountMagnitude := int32(math.Ceil(math.Log2(float64(largestValueWithSingleUnitResolution))))
 	subBucketHalfCountMagnitude := subBucketCountMagnitude
 	if subBucketHalfCountMagnitude < 1 {
 		subBucketHalfCountMagnitude = 1
 	}
 	subBucketHalfCountMagnitude--
 
-	unitMagnitude := int32(math.Floor(math.Log2(float64(minValue))))
+	unitMagnitude := int32(math.Floor(math.Log2(float64(lowestDiscernibleValue))))
 	if unitMagnitude < 0 {
 		unitMagnitude = 0
 	}
@@ -70,20 +118,16 @@ func New(minValue, maxValue int64, sigfigs int) *Histogram {
 	// determine exponent range needed to support the trackable value with no
 	// overflow:
 	smallestUntrackableValue := int64(subBucketCount) << uint(unitMagnitude)
-	bucketsNeeded := int32(1)
-	for smallestUntrackableValue < maxValue {
-		smallestUntrackableValue <<= 1
-		bucketsNeeded++
-	}
+	bucketsNeeded := getBucketsNeededToCoverValue(smallestUntrackableValue, highestTrackableValue)
 
 	bucketCount := bucketsNeeded
 	countsLen := (bucketCount + 1) * (subBucketCount / 2)
 
 	return &Histogram{
-		lowestTrackableValue:        minValue,
-		highestTrackableValue:       maxValue,
+		lowestDiscernibleValue:      lowestDiscernibleValue,
+		highestTrackableValue:       highestTrackableValue,
 		unitMagnitude:               int64(unitMagnitude),
-		significantFigures:          int64(sigfigs),
+		significantFigures:          int64(numberOfSignificantValueDigits),
 		subBucketHalfCountMagnitude: subBucketHalfCountMagnitude,
 		subBucketHalfCount:          subBucketHalfCount,
 		subBucketMask:               subBucketMask,
@@ -92,7 +136,25 @@ func New(minValue, maxValue int64, sigfigs int) *Histogram {
 		countsLen:                   countsLen,
 		totalCount:                  0,
 		counts:                      make([]int64, countsLen),
+		startTimeMs:                 0,
+		endTimeMs:                   0,
+		tag:                         "",
 	}
+}
+
+func getBucketsNeededToCoverValue(smallestUntrackableValue int64, maxValue int64) int32 {
+	// always have at least 1 bucket
+	bucketsNeeded := int32(1)
+	for smallestUntrackableValue < maxValue {
+		if smallestUntrackableValue > (math.MaxInt64 / 2) {
+			// next shift will overflow, meaning that bucket could represent values up to ones greater than
+			// math.MaxInt64, so it's the last bucket
+			return bucketsNeeded + 1
+		}
+		smallestUntrackableValue <<= 1
+		bucketsNeeded++
+	}
+	return bucketsNeeded
 }
 
 // ByteSize returns an estimate of the amount of memory allocated to the
@@ -102,6 +164,10 @@ func New(minValue, maxValue int64, sigfigs int) *Histogram {
 // small, constant, and specific to the compiler version.
 func (h *Histogram) ByteSize() int {
 	return 6*8 + 5*4 + len(h.counts)*8
+}
+
+func (h *Histogram) getNormalizingIndexOffset() int32 {
+	return 1
 }
 
 // Merge merges the data stored in the given histogram with the receiver,
@@ -232,30 +298,117 @@ func (h *Histogram) RecordValues(v, n int64) error {
 	if idx < 0 || int(h.countsLen) <= idx {
 		return fmt.Errorf("value %d is too large to be recorded", v)
 	}
-	h.counts[idx] += n
-	h.totalCount += n
+	h.setCountAtIndex(idx, n)
 
 	return nil
 }
 
-// ValueAtQuantile returns the recorded value at the given quantile (0..100).
+func (h *Histogram) setCountAtIndex(idx int, n int64) {
+	h.counts[idx] += n
+	h.totalCount += n
+}
+
+// ValueAtQuantile returns the largest value that (100% - percentile) of the overall recorded value entries
+// in the histogram are either larger than or equivalent to.
+//
+// The passed quantile must be a float64 value in [0.0 .. 100.0]
+// Note that two values are "equivalent" if `ValuesAreEquivalent(value1,value2)` would return true.
+//
+// Returns 0 if no recorded values exist.
 func (h *Histogram) ValueAtQuantile(q float64) int64 {
-	if q > 100 {
-		q = 100
+	return h.ValueAtPercentile(q)
+}
+
+// ValueAtPercentile returns the largest value that (100% - percentile) of the overall recorded value entries
+// in the histogram are either larger than or equivalent to.
+//
+// The passed percentile must be a float64 value in [0.0 .. 100.0]
+// Note that two values are "equivalent" if `ValuesAreEquivalent(value1,value2)` would return true.
+//
+// Returns 0 if no recorded values exist.
+func (h *Histogram) ValueAtPercentile(percentile float64) int64 {
+	if percentile > 100 {
+		percentile = 100
+	}
+
+	countAtPercentile := int64(((percentile / 100) * float64(h.totalCount)) + 0.5)
+	valueFromIdx := h.getValueFromIdxUpToCount(countAtPercentile)
+	if percentile == 0.0 {
+		return h.lowestEquivalentValue(valueFromIdx)
+	}
+	return h.highestEquivalentValue(valueFromIdx)
+}
+
+func (h *Histogram) getValueFromIdxUpToCount(countAtPercentile int64) int64 {
+	var countToIdx int64
+	var valueFromIdx int64
+	var subBucketIdx int32 = -1
+	var bucketIdx int32
+	bucketBaseIdx := h.getBucketBaseIdx(bucketIdx)
+
+	for {
+		if countToIdx >= countAtPercentile {
+			break
+		}
+		// increment bucket
+		subBucketIdx++
+		if subBucketIdx >= h.subBucketCount {
+			subBucketIdx = h.subBucketHalfCount
+			bucketIdx++
+			bucketBaseIdx = h.getBucketBaseIdx(bucketIdx)
+		}
+
+		countToIdx += h.getCountAtIndexGivenBucketBaseIdx(bucketBaseIdx, subBucketIdx)
+		valueFromIdx = int64(subBucketIdx) << uint(int64(bucketIdx)+h.unitMagnitude)
+	}
+	return valueFromIdx
+}
+
+// ValueAtPercentiles, given an slice of percentiles returns a map containing for each passed percentile,
+// the largest value that (100% - percentile) of the overall recorded value entries
+// in the histogram are either larger than or equivalent to.
+//
+// Each element in the given an slice of percentiles must be a float64 value in [0.0 .. 100.0]
+// Note that two values are "equivalent" if `ValuesAreEquivalent(value1,value2)` would return true.
+//
+// Returns a map of 0's if no recorded values exist.
+func (h *Histogram) ValueAtPercentiles(percentiles []float64) (values map[float64]int64) {
+	sort.Float64s(percentiles)
+	totalQuantilesToCalculate := len(percentiles)
+	values = make(map[float64]int64, totalQuantilesToCalculate)
+	countAtPercentiles := make([]int64, totalQuantilesToCalculate)
+	for i, percentile := range percentiles {
+		if percentile > 100 {
+			percentile = 100
+		}
+		values[percentile] = 0
+		countAtPercentiles[i] = int64(((percentile / 100) * float64(h.totalCount)) + 0.5)
 	}
 
 	total := int64(0)
-	countAtPercentile := int64(((q / 100) * float64(h.totalCount)) + 0.5)
-
+	currentQuantileSlicePos := 0
 	i := h.iterator()
-	for i.next() {
+	for currentQuantileSlicePos < totalQuantilesToCalculate && i.nextCountAtIdx(h.totalCount) {
 		total += i.countAtIdx
-		if total >= countAtPercentile {
-			return h.highestEquivalentValue(i.valueFromIdx)
+		for currentQuantileSlicePos < totalQuantilesToCalculate && total >= countAtPercentiles[currentQuantileSlicePos] {
+			currentPercentile := percentiles[currentQuantileSlicePos]
+			if currentPercentile == 0.0 {
+				values[currentPercentile] = h.lowestEquivalentValue(i.valueFromIdx)
+			} else {
+				values[currentPercentile] = h.highestEquivalentValue(i.valueFromIdx)
+			}
+			currentQuantileSlicePos++
 		}
 	}
+	return
+}
 
-	return 0
+// Determine if two values are equivalent with the histogram's resolution.
+// Where "equivalent" means that value samples recorded for any two
+// equivalent values are counted in a common total count.
+func (h *Histogram) ValuesAreEquivalent(value1, value2 int64) (result bool) {
+	result = h.lowestEquivalentValue(value1) == h.lowestEquivalentValue(value2)
+	return
 }
 
 // CumulativeDistribution returns an ordered list of brackets of the
@@ -284,7 +437,7 @@ func (h *Histogram) SignificantFigures() int64 {
 // LowestTrackableValue returns the lower bound on values that will be added
 // to the histogram
 func (h *Histogram) LowestTrackableValue() int64 {
-	return h.lowestTrackableValue
+	return h.lowestDiscernibleValue
 }
 
 // HighestTrackableValue returns the upper bound on values that will be added
@@ -322,7 +475,7 @@ func (h *Histogram) Distribution() (result []Bar) {
 func (h *Histogram) Equals(other *Histogram) bool {
 	switch {
 	case
-		h.lowestTrackableValue != other.lowestTrackableValue,
+		h.lowestDiscernibleValue != other.lowestDiscernibleValue,
 		h.highestTrackableValue != other.highestTrackableValue,
 		h.unitMagnitude != other.unitMagnitude,
 		h.significantFigures != other.significantFigures,
@@ -348,7 +501,7 @@ func (h *Histogram) Equals(other *Histogram) bool {
 // Import to construct a new Histogram with the same state.
 func (h *Histogram) Export() *Snapshot {
 	return &Snapshot{
-		LowestTrackableValue:  h.lowestTrackableValue,
+		LowestTrackableValue:  h.lowestDiscernibleValue,
 		HighestTrackableValue: h.highestTrackableValue,
 		SignificantFigures:    h.significantFigures,
 		Counts:                append([]int64(nil), h.counts...), // copy
@@ -399,6 +552,10 @@ func (h *Histogram) pIterator(ticksPerHalfDistance int32) *pIterator {
 
 func (h *Histogram) sizeOfEquivalentValueRange(v int64) int64 {
 	bucketIdx := h.getBucketIndex(v)
+	return h.sizeOfEquivalentValueRangeGivenBucketIdx(v, bucketIdx)
+}
+
+func (h *Histogram) sizeOfEquivalentValueRangeGivenBucketIdx(v int64, bucketIdx int32) int64 {
 	subBucketIdx := h.getSubBucketIdx(v, bucketIdx)
 	adjustedBucket := bucketIdx
 	if subBucketIdx >= h.subBucketCount {
@@ -413,12 +570,17 @@ func (h *Histogram) valueFromIndex(bucketIdx, subBucketIdx int32) int64 {
 
 func (h *Histogram) lowestEquivalentValue(v int64) int64 {
 	bucketIdx := h.getBucketIndex(v)
+	return h.lowestEquivalentValueGivenBucketIdx(v, bucketIdx)
+}
+
+func (h *Histogram) lowestEquivalentValueGivenBucketIdx(v int64, bucketIdx int32) int64 {
 	subBucketIdx := h.getSubBucketIdx(v, bucketIdx)
 	return h.valueFromIndex(bucketIdx, subBucketIdx)
 }
 
 func (h *Histogram) nextNonEquivalentValue(v int64) int64 {
-	return h.lowestEquivalentValue(v) + h.sizeOfEquivalentValueRange(v)
+	bucketIdx := h.getBucketIndex(v)
+	return h.lowestEquivalentValueGivenBucketIdx(v, bucketIdx) + h.sizeOfEquivalentValueRangeGivenBucketIdx(v, bucketIdx)
 }
 
 func (h *Histogram) highestEquivalentValue(v int64) int64 {
@@ -433,18 +595,33 @@ func (h *Histogram) getCountAtIndex(bucketIdx, subBucketIdx int32) int64 {
 	return h.counts[h.countsIndex(bucketIdx, subBucketIdx)]
 }
 
-func (h *Histogram) countsIndex(bucketIdx, subBucketIdx int32) int32 {
-	bucketBaseIdx := (bucketIdx + 1) << uint(h.subBucketHalfCountMagnitude)
-	offsetInBucket := subBucketIdx - h.subBucketHalfCount
-	return bucketBaseIdx + offsetInBucket
+func (h *Histogram) getCountAtIndexGivenBucketBaseIdx(bucketBaseIdx, subBucketIdx int32) int64 {
+	return h.counts[bucketBaseIdx+subBucketIdx-h.subBucketHalfCount]
 }
 
+func (h *Histogram) countsIndex(bucketIdx, subBucketIdx int32) int32 {
+	return h.getBucketBaseIdx(bucketIdx) + subBucketIdx - h.subBucketHalfCount
+}
+
+func (h *Histogram) getBucketBaseIdx(bucketIdx int32) int32 {
+	return (bucketIdx + 1) << uint(h.subBucketHalfCountMagnitude)
+}
+
+// return the lowest (and therefore highest precision) bucket index that can represent the value
+// Calculates the number of powers of two by which the value is greater than the biggest value that fits in
+// bucket 0. This is the bucket index since each successive bucket can hold a value 2x greater.
 func (h *Histogram) getBucketIndex(v int64) int32 {
-	pow2Ceiling := bitLen(v | h.subBucketMask)
+	var pow2Ceiling = int64(64 - bits.LeadingZeros64(uint64(v|h.subBucketMask)))
 	return int32(pow2Ceiling - int64(h.unitMagnitude) -
 		int64(h.subBucketHalfCountMagnitude+1))
 }
 
+// For bucketIndex 0, this is just value, so it may be anywhere in 0 to subBucketCount.
+// For other bucketIndex, this will always end up in the top half of subBucketCount: assume that for some bucket
+// k > 0, this calculation will yield a value in the bottom half of 0 to subBucketCount. Then, because of how
+// buckets overlap, it would have also been in the top half of bucket k-1, and therefore would have
+// returned k-1 in getBucketIndex(). Since we would then shift it one fewer bits here, it would be twice as big,
+// and therefore in the top half of subBucketCount.
 func (h *Histogram) getSubBucketIdx(v int64, idx int32) int32 {
 	return int32(v >> uint(int64(idx)+int64(h.unitMagnitude)))
 }
@@ -455,6 +632,10 @@ func (h *Histogram) countsIndexFor(v int64) int {
 	return int(h.countsIndex(bucketIdx, subBucketIdx))
 }
 
+func (h *Histogram) getIntegerToDoubleValueConversionRatio() float64 {
+	return 1.0
+}
+
 type iterator struct {
 	h                                    *Histogram
 	bucketIdx, subBucketIdx              int32
@@ -462,11 +643,11 @@ type iterator struct {
 	highestEquivalentValue               int64
 }
 
-func (i *iterator) next() bool {
-	if i.countToIdx >= i.h.totalCount {
+// nextCountAtIdx does not update the iterator highestEquivalentValue in order to optimize cpu usage.
+func (i *iterator) nextCountAtIdx(limit int64) bool {
+	if i.countToIdx >= limit {
 		return false
 	}
-
 	// increment bucket
 	i.subBucketIdx++
 	if i.subBucketIdx >= i.h.subBucketCount {
@@ -481,8 +662,15 @@ func (i *iterator) next() bool {
 	i.countAtIdx = i.h.getCountAtIndex(i.bucketIdx, i.subBucketIdx)
 	i.countToIdx += i.countAtIdx
 	i.valueFromIdx = i.h.valueFromIndex(i.bucketIdx, i.subBucketIdx)
-	i.highestEquivalentValue = i.h.highestEquivalentValue(i.valueFromIdx)
+	return true
+}
 
+// Returns the next element in the iteration.
+func (i *iterator) next() bool {
+	if !i.nextCountAtIdx(i.h.totalCount) {
+		return false
+	}
+	i.highestEquivalentValue = i.h.highestEquivalentValue(i.valueFromIdx)
 	return true
 }
 
@@ -541,24 +729,54 @@ func (p *pIterator) next() bool {
 	return true
 }
 
-func bitLen(x int64) (n int64) {
-	for ; x >= 0x8000; x >>= 16 {
-		n += 16
+// CumulativeDistribution returns an ordered list of brackets of the
+// distribution of recorded values.
+func (h *Histogram) CumulativeDistributionWithTicks(ticksPerHalfDistance int32) []Bracket {
+	var result []Bracket
+
+	i := h.pIterator(ticksPerHalfDistance)
+	for i.next() {
+		result = append(result, Bracket{
+			Quantile: i.percentile,
+			Count:    i.countToIdx,
+			ValueAt:  int64(i.highestEquivalentValue),
+		})
 	}
-	if x >= 0x80 {
-		x >>= 8
-		n += 8
+
+	return result
+}
+
+// Output the percentiles distribution in a text format
+func (h *Histogram) PercentilesPrint(writer io.Writer, ticksPerHalfDistance int32, valueScale float64) (outputWriter io.Writer, err error) {
+	outputWriter = writer
+	dist := h.CumulativeDistributionWithTicks(ticksPerHalfDistance)
+	_, err = outputWriter.Write([]byte(" Value\tPercentile\tTotalCount\t1/(1-Percentile)\n\n"))
+	if err != nil {
+		return
 	}
-	if x >= 0x8 {
-		x >>= 4
-		n += 4
+	for _, slice := range dist {
+		percentile := slice.Quantile / 100.0
+		inverted_percentile := 1.0 / (1.0 - percentile)
+		var inverted_percentile_string = fmt.Sprintf("%12.2f", inverted_percentile)
+		// Given that other language implementations display inf (instead of Go's +Inf)
+		// we want to be as close as possible to them
+		if math.IsInf(inverted_percentile, 1) {
+			inverted_percentile_string = fmt.Sprintf("%12s", "inf")
+		}
+		_, err = outputWriter.Write([]byte(fmt.Sprintf("%12.3f %12f %12d %s\n", float64(slice.ValueAt)/valueScale, percentile, slice.Count, inverted_percentile_string)))
+		if err != nil {
+			return
+		}
 	}
-	if x >= 0x2 {
-		x >>= 2
-		n += 2
-	}
-	if x >= 0x1 {
-		n++
-	}
+
+	footer := fmt.Sprintf("#[Mean    = %12.3f, StdDeviation   = %12.3f]\n#[Max     = %12.3f, Total count    = %12d]\n#[Buckets = %12d, SubBuckets     = %12d]\n",
+		h.Mean()/valueScale,
+		h.StdDev()/valueScale,
+		float64(h.Max())/valueScale,
+		h.TotalCount(),
+		h.bucketCount,
+		h.subBucketCount,
+	)
+	_, err = outputWriter.Write([]byte(footer))
 	return
 }
