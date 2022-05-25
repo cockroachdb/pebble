@@ -524,9 +524,10 @@ func (i *singleLevelIterator) SeekGE(key []byte, trySeekUsingNext bool) (*Intern
 
 	// SeekGE performs various step-instead-of-seeking optimizations: eg enabled
 	// by trySeekUsingNext, or by monotonically increasing bounds (i.boundsCmp).
-	// Care must be taken to ensure that when performing these optimizations,
-	// i.maybeFilteredKeys is set appropriately. Consider a previous SeekGE that
-	// filtered keys from k until the current iterator position.
+	// Care must be taken to ensure that when performing these optimizations and
+	// the iterator becomes exhausted, i.maybeFilteredKeys is set appropriately.
+	// Consider a previous SeekGE that filtered keys from k until the current
+	// iterator position.
 	//
 	// If the previous SeekGE exhausted the iterator, it's possible keys greater
 	// than or equal to the current search key were filtered. We must not reuse
@@ -549,6 +550,8 @@ func (i *singleLevelIterator) SeekGE(key []byte, trySeekUsingNext bool) (*Intern
 func (i *singleLevelIterator) seekGEHelper(
 	key []byte, boundsCmp int, trySeekUsingNext bool,
 ) (*InternalKey, []byte) {
+	// Invariant: trySeekUsingNext => !i.data.isDataInvalidated() && i.exhaustedBounds != +1
+
 	var dontSeekWithinBlock bool
 	if !i.data.isDataInvalidated() && !i.index.isDataInvalidated() && i.data.valid() && i.index.valid() &&
 		boundsCmp > 0 && i.cmp(key, i.index.Key().UserKey) <= 0 {
@@ -694,9 +697,9 @@ func (i *singleLevelIterator) seekPrefixGE(
 	// SeekPrefixGE performs various step-instead-of-seeking optimizations: eg
 	// enabled by trySeekUsingNext, or by monotonically increasing bounds
 	// (i.boundsCmp). Care must be taken to ensure that when performing these
-	// optimizations, i.maybeFilteredKeys is set appropriately. Consider a
-	// previous SeekPrefixGE that filtered keys from k until the current
-	// iterator position.
+	// optimizations and the iterator becomes exhausted, i.maybeFilteredKeys is
+	// set appropriately. Consider a previous SeekPrefixGE that filtered keys
+	// from k until the current iterator position.
 	//
 	// If the previous SeekPrefixGE exhausted the iterator, it's possible keys
 	// greater than or equal to the current search key were filtered. We must
@@ -725,9 +728,10 @@ func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 
 	// Seeking operations perform various step-instead-of-seeking optimizations:
 	// eg by considering monotonically increasing bounds (i.boundsCmp). Care
-	// must be taken to ensure that when performing these optimizations,
-	// i.maybeFilteredKeys is set appropriately. Consider a previous SeekLT that
-	// filtered keys from k until the current iterator position.
+	// must be taken to ensure that when performing these optimizations and the
+	// iterator becomes exhausted i.maybeFilteredKeys is set appropriately.
+	// Consider a previous SeekLT that filtered keys from k until the current
+	// iterator position.
 	//
 	// If the previous SeekLT did exhausted the iterator, it's possible keys
 	// less than the current search key were filtered. We must not reuse the
