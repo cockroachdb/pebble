@@ -54,6 +54,11 @@ type levelIterBoundaryContext struct {
 	// used to prevent the mergingIter from being stuck at such a synthetic key
 	// if it becomes the top element of the heap.
 	isSyntheticIterBoundsKey bool
+	// isIgnorableBoundaryKey is set to true iff the key returned by the level
+	// iterator is a file boundary key that should be ignored. This is used to
+	// keep a levelIter file's range deletion iterator open as long as other
+	// levels within the merging iterator require it.
+	isIgnorableBoundaryKey bool
 }
 
 // mergingIter provides a merged view of multiple iterators from different
@@ -686,6 +691,7 @@ func (m *mergingIter) findNextEntry() (*InternalKey, []byte) {
 			continue
 		}
 		if item.key.Visible(m.snapshot) &&
+			(!m.levels[item.index].isIgnorableBoundaryKey) &&
 			(item.key.Kind() != InternalKeyKindRangeDelete || !m.elideRangeTombstones) {
 			return &item.key, item.value
 		}
@@ -834,6 +840,7 @@ func (m *mergingIter) findPrevEntry() (*InternalKey, []byte) {
 			continue
 		}
 		if item.key.Visible(m.snapshot) &&
+			(!m.levels[item.index].isIgnorableBoundaryKey) &&
 			(item.key.Kind() != InternalKeyKindRangeDelete || !m.elideRangeTombstones) {
 			return &item.key, item.value
 		}

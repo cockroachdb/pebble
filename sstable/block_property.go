@@ -46,6 +46,31 @@ import (
 // identical behavior to table properties by returning the nil slice from
 // FinishDataBlock and FinishIndexBlock, and interpret them as the universal
 // set in BlockPropertyFilter, and return a non-universal set in FinishTable.
+//
+// Block property filtering is nondeterministic because the separation of keys
+// into blocks is nondeterministic. Block propery filtering may introduce two
+// kinds of errors:
+//   a) Point keys that match the filter may be surfaced. This may happen
+//      because of the particular division of point keys into blocks, or because
+//      of implementation specifics.
+//   b) Point keys that have been deleted may be surfaced. If the block property
+//      used for filtering is not a strict function of the user key, a block
+//      containing k.DEL may be filtered, while a block containing the deleted
+//      key k.SET may not be filtered.
+//
+// Clients that require determinism can remove these nondeterministic errors
+// with careful design of the block property and use:
+//   a) The false negatives may be removed by re-applying the filter again above
+//      the *pebble.Iterator, skipping keys that match the filter.
+//   b) Surfacing of deleted keys can be avoided by designing the block-property
+//      such that if k.SET is unfiltered, k.DEL is also unfiltered. The easiest
+//      way to ensure this is to restrict the block property filter to a
+//      function of the user key and perform no filtering on values.
+//
+// The combination of range deletions and filtering by table-level properties
+// add another opportunity for deleted point keys to be surfaced. The pebble
+// Iterator stack takes care to correctly apply filtered tables' range deletions
+// to lower tables, preventing this form of nondeterministic error.
 
 // BlockPropertyCollector is used when writing a sstable.
 // - All calls to Add are included in the next FinishDataBlock, after which

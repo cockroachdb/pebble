@@ -90,6 +90,11 @@ type block []byte
 type Iterator interface {
 	base.InternalIterator
 
+	// FilteredAnyKeys indicates whether the previous positioning method skipped
+	// any keys due to block-property filters. This is used by the Pebble
+	// levelIter to control when an iterator steps to the next sstable.
+	FilteredAnyKeys() bool
+
 	SetCloseHook(fn func(i Iterator) error)
 }
 
@@ -200,6 +205,11 @@ type singleLevelIterator struct {
 	// the upper bound, -1 when exhausted the lower bound, and 0 when
 	// neither. It is used for invariant checking.
 	exhaustedBounds int8
+
+	// filteredAnyKeys indicates whether the last iterator positioning operation
+	// skipped any keys due to block-property filters. It is exposed through
+	// FilteredAnyKeys and used by the level iterator.
+	filteredAnyKeys bool
 
 	// useFilter specifies whether the filter block in this sstable, if present,
 	// should be used for prefix seeks or not. In some cases it is beneficial
@@ -374,6 +384,7 @@ func (i *singleLevelIterator) loadBlock() loadBlockResult {
 			return loadBlockFailed
 		}
 		if !intersects {
+			i.filteredAnyKeys = true
 			return loadBlockIrrelevant
 		}
 	}
@@ -505,6 +516,7 @@ func (i *singleLevelIterator) SeekGE(key []byte, trySeekUsingNext bool) (*Intern
 		return nil, nil
 	}
 	i.exhaustedBounds = 0
+	i.filteredAnyKeys = false
 	i.err = nil // clear cached iteration error
 	boundsCmp := i.boundsCmp
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
@@ -658,6 +670,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 	// Bloom filter matches, or skipped, so this method will position the
 	// iterator.
 	i.exhaustedBounds = 0
+	i.filteredAnyKeys = false
 	boundsCmp := i.boundsCmp
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
@@ -671,6 +684,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 // caller to ensure that key is less than the upper bound.
 func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 	i.exhaustedBounds = 0
+	i.filteredAnyKeys = false
 	i.err = nil // clear cached iteration error
 	boundsCmp := i.boundsCmp
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
@@ -757,6 +771,7 @@ func (i *singleLevelIterator) First() (*InternalKey, []byte) {
 		panic("singleLevelIterator.First() used despite lower bound")
 	}
 	i.positionedUsingLatestBounds = true
+	i.filteredAnyKeys = false
 	return i.firstInternal()
 }
 
@@ -814,6 +829,7 @@ func (i *singleLevelIterator) Last() (*InternalKey, []byte) {
 		panic("singleLevelIterator.Last() used despite upper bound")
 	}
 	i.positionedUsingLatestBounds = true
+	i.filteredAnyKeys = false
 	return i.lastInternal()
 }
 
@@ -869,6 +885,7 @@ func (i *singleLevelIterator) Next() (*InternalKey, []byte) {
 		panic("Next called even though exhausted upper bound")
 	}
 	i.exhaustedBounds = 0
+	i.filteredAnyKeys = false
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
@@ -892,6 +909,7 @@ func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
 		panic("Prev called even though exhausted lower bound")
 	}
 	i.exhaustedBounds = 0
+	i.filteredAnyKeys = false
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
@@ -998,6 +1016,12 @@ func (i *singleLevelIterator) Error() error {
 		return err
 	}
 	return i.err
+}
+
+// FilteredAnyKeys indicates whether or not the iterator's last positioning
+// method skipped any keys due to block-property filters.
+func (i *singleLevelIterator) FilteredAnyKeys() bool {
+	return i.filteredAnyKeys
 }
 
 // SetCloseHook sets a function that will be called when the iterator is
@@ -1205,6 +1229,7 @@ func (i *twoLevelIterator) loadIndex() loadBlockResult {
 			return loadBlockFailed
 		}
 		if !intersects {
+			i.filteredAnyKeys = true
 			return loadBlockIrrelevant
 		}
 	}
@@ -1255,6 +1280,7 @@ func (i *twoLevelIterator) String() string {
 // caller to ensure that key is greater than or equal to the lower bound.
 func (i *twoLevelIterator) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
 	i.exhaustedBounds = 0
+	i.filteredAnyKeys = false
 	i.err = nil // clear cached iteration error
 
 	var dontSeekWithinSingleLevelIter bool
@@ -1351,6 +1377,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 
 	// Bloom filter matches.
 	i.exhaustedBounds = 0
+	i.filteredAnyKeys = false
 
 	var dontSeekWithinSingleLevelIter bool
 	if i.topLevelIndex.isDataInvalidated() || !i.topLevelIndex.valid() || i.boundsCmp <= 0 ||
@@ -1414,6 +1441,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 // caller to ensure that key is less than the upper bound.
 func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 	i.exhaustedBounds = 0
+	i.filteredAnyKeys = false
 	i.err = nil // clear cached iteration error
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
@@ -1482,6 +1510,7 @@ func (i *twoLevelIterator) First() (*InternalKey, []byte) {
 		panic("twoLevelIterator.First() used despite lower bound")
 	}
 	i.exhaustedBounds = 0
+	i.filteredAnyKeys = false
 	i.err = nil // clear cached iteration error
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
@@ -1524,6 +1553,7 @@ func (i *twoLevelIterator) Last() (*InternalKey, []byte) {
 		panic("twoLevelIterator.Last() used despite upper bound")
 	}
 	i.exhaustedBounds = 0
+	i.filteredAnyKeys = false
 	i.err = nil // clear cached iteration error
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
