@@ -559,6 +559,17 @@ type newIterOp struct {
 	upper    []byte
 	keyTypes uint32 // pebble.IterKeyType
 
+	// If filterMax is >0, this iterator will filter out any keys that have
+	// suffixes that don't fall within the range [filterMin,filterMax).
+	// Additionally, the iterator will be constructed with a block-property
+	// filter that filters out blocks accordingly. Not all OPTIONS hook up the
+	// corresponding block property collector, so block-filtering may still be
+	// effectively disabled in some runs. The iterator operations themselves
+	// however will always skip past any points that should be filtered to
+	// ensure determinism.
+	filterMin uint64
+	filterMax uint64
+
 	// rangeKeyMaskSuffix may be set if keyTypes is IterKeyTypePointsAndRanges
 	// to configure IterOptions.RangeKeyMasking.Suffix.
 	rangeKeyMaskSuffix []byte
@@ -581,6 +592,12 @@ func (o *newIterOp) run(t *test, h *history) {
 			Suffix: o.rangeKeyMaskSuffix,
 		},
 	}
+	if o.filterMax > 0 {
+		opts.PointKeyFilters = []pebble.BlockPropertyFilter{
+			newBlockPropertyFilter(o.filterMin, o.filterMax),
+		}
+	}
+
 	var i *pebble.Iterator
 	for {
 		i = r.NewIter(opts)
@@ -590,7 +607,7 @@ func (o *newIterOp) run(t *test, h *history) {
 		// close this iter and retry NewIter
 		_ = i.Close()
 	}
-	t.setIter(o.iterID, i)
+	t.setIter(o.iterID, i, o.filterMin, o.filterMax)
 
 	// Trash the bounds to ensure that Pebble doesn't rely on the stability of
 	// the user-provided bounds.
@@ -601,8 +618,8 @@ func (o *newIterOp) run(t *test, h *history) {
 }
 
 func (o *newIterOp) String() string {
-	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %q /* masking suffix */)",
-		o.iterID, o.readerID, o.lower, o.upper, o.keyTypes, o.rangeKeyMaskSuffix)
+	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %d, %d, %q /* masking suffix */)",
+		o.iterID, o.readerID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.rangeKeyMaskSuffix)
 }
 
 // newIterUsingCloneOp models a Iterator.Clone operation.
@@ -618,7 +635,7 @@ func (o *newIterUsingCloneOp) run(t *test, h *history) {
 	if err != nil {
 		panic(err)
 	}
-	t.setIter(o.iterID, i)
+	t.setIter(o.iterID, i, iter.filterMin, iter.filterMax)
 	h.Recordf("%s // %v", o, i.Error())
 }
 
@@ -663,6 +680,17 @@ type iterSetOptionsOp struct {
 	upper    []byte
 	keyTypes uint32 // pebble.IterKeyType
 
+	// If filterMax is >0, this iterator will filter out any keys that have
+	// suffixes that don't fall within the range [filterMin,filterMax).
+	// Additionally, the iterator will be constructed with a block-property
+	// filter that filters out blocks accordingly. Not all OPTIONS hook up the
+	// corresponding block property collector, so block-filtering may still be
+	// effectively disabled in some runs. The iterator operations themselves
+	// however will always skip past any points that should be filtered to
+	// ensure determinism.
+	filterMin uint64
+	filterMax uint64
+
 	// rangeKeyMaskSuffix may be set if keyTypes is IterKeyTypePointsAndRanges
 	// to configure IterOptions.RangeKeyMasking.Suffix.
 	rangeKeyMaskSuffix []byte
@@ -686,6 +714,11 @@ func (o *iterSetOptionsOp) run(t *test, h *history) {
 			Suffix: o.rangeKeyMaskSuffix,
 		},
 	}
+	if o.filterMax > 0 {
+		opts.PointKeyFilters = []pebble.BlockPropertyFilter{
+			newBlockPropertyFilter(o.filterMin, o.filterMax),
+		}
+	}
 
 	i.SetOptions(opts)
 
@@ -694,12 +727,15 @@ func (o *iterSetOptionsOp) run(t *test, h *history) {
 	rand.Read(lower[:])
 	rand.Read(upper[:])
 
+	// Adjust the iterator's filters.
+	i.filterMin, i.filterMax = o.filterMin, o.filterMax
+
 	h.Recordf("%s // %v", o, i.Error())
 }
 
 func (o *iterSetOptionsOp) String() string {
-	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %q /* masking suffix */)",
-		o.iterID, o.lower, o.upper, o.keyTypes, o.rangeKeyMaskSuffix)
+	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %d, %d, %q /* masking suffix */)",
+		o.iterID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.rangeKeyMaskSuffix)
 }
 
 // iterSeekGEOp models an Iterator.SeekGE[WithLimit] operation.
