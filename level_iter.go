@@ -702,10 +702,11 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 			//
 			// Since MaybeFilteredKeys cannot guarantee that keys were skipped,
 			// it's possible l.iterFile.Largest was already returned. Returning
-			// l.iterFile.Largest is a violation of the strict monotonicity
-			// normally provided. The mergingIter's heap can tolerate this
-			// repeat key and in this case will keep the level at the top of the
-			// heap and immediately skip the entry, advancing to the next file.
+			// l.iterFile.Largest again is a violation of the strict
+			// monotonicity normally provided. The mergingIter's heap can
+			// tolerate this repeat key and in this case will keep the level at
+			// the top of the heap and immediately skip the entry, advancing to
+			// the next file.
 			if *l.rangeDelIterPtr != nil && l.filteredIter != nil &&
 				l.filteredIter.MaybeFilteredKeys() {
 				l.largestBoundary = &l.iterFile.Largest
@@ -787,11 +788,12 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 			// actually skipped by the block's exclusion.
 			//
 			// Since MaybeFilteredKeys cannot guarantee that keys were skipped,
-			// it's possible l.iterFile.Largest was already returned. Returning
-			// l.iterFile.Largest is a violation of the strict monotonicity
-			// normally provided. The mergingIter's heap can tolerate this
-			// repeat key and in this case will keep the level at the top of the
-			// heap and immediately skip the entry, advancing to the next file.
+			// it's possible l.iterFile.Smallest was already returned. Returning
+			// l.iterFile.Smallest again is a violation of the strict
+			// monotonicity normally provided. The mergingIter's heap can
+			// tolerate this repeat key and in this case will keep the level at
+			// the top of the heap and immediately skip the entry, advancing to
+			// the next file.
 			if *l.rangeDelIterPtr != nil && l.filteredIter != nil && l.filteredIter.MaybeFilteredKeys() {
 				l.smallestBoundary = &l.iterFile.Smallest
 				l.boundaryContext.isIgnorableBoundaryKey = true

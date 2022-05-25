@@ -8,6 +8,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/errorfs"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 )
 
 // withRetries executes fn, retrying it whenever an errorfs.ErrInjected error
@@ -28,6 +29,27 @@ func withRetries(fn func() error) error {
 type retryableIter struct {
 	iter    *pebble.Iterator
 	lastKey []byte
+
+	// When filterMax is >0, this iterator filters out keys with suffixes
+	// outside of the range [filterMin, filterMax). Keys without suffixes are
+	// surfaced. This is used to ensure determinism regardless of whether
+	// block-property filters filter keys or not.
+	filterMin, filterMax uint64
+}
+
+func (i *retryableIter) shouldFilter() bool {
+	k := i.iter.Key()
+	n := testkeys.Comparer.Split(k)
+	if n == len(k) {
+		// No suffix, don't filter it.
+		return false
+	}
+	v, err := testkeys.ParseSuffix(k[n:])
+	if err != nil {
+		panic(err)
+	}
+	ts := uint64(v)
+	return ts < i.filterMin || ts >= i.filterMax
 }
 
 func (i *retryableIter) needRetry() bool {
@@ -61,7 +83,12 @@ func (i *retryableIter) Error() error {
 
 func (i *retryableIter) First() bool {
 	var valid bool
-	i.withRetry(func() { valid = i.iter.First() })
+	i.withRetry(func() {
+		valid = i.iter.First()
+	})
+	if valid && i.shouldFilter() {
+		valid = i.Next()
+	}
 	return valid
 }
 
@@ -84,60 +111,98 @@ func (i *retryableIter) RangeKeys() []pebble.RangeKeyData {
 func (i *retryableIter) Last() bool {
 	var valid bool
 	i.withRetry(func() { valid = i.iter.Last() })
+	if valid && i.shouldFilter() {
+		valid = i.Prev()
+	}
 	return valid
 }
 
 func (i *retryableIter) Next() bool {
 	var valid bool
-	i.withRetry(func() { valid = i.iter.Next() })
+	i.withRetry(func() {
+		valid = i.iter.Next()
+		for valid && i.shouldFilter() {
+			valid = i.iter.Next()
+		}
+	})
 	return valid
 }
 
 func (i *retryableIter) NextWithLimit(limit []byte) pebble.IterValidityState {
 	var validity pebble.IterValidityState
-	i.withRetry(func() { validity = i.iter.NextWithLimit(limit) })
+	i.withRetry(func() {
+		validity = i.iter.NextWithLimit(limit)
+		for validity == pebble.IterValid && i.shouldFilter() {
+			validity = i.iter.NextWithLimit(limit)
+		}
+	})
 	return validity
 }
 
 func (i *retryableIter) Prev() bool {
 	var valid bool
-	i.withRetry(func() { valid = i.iter.Prev() })
+	i.withRetry(func() {
+		valid = i.iter.Prev()
+		for valid && i.shouldFilter() {
+			valid = i.iter.Prev()
+		}
+	})
 	return valid
 }
 
 func (i *retryableIter) PrevWithLimit(limit []byte) pebble.IterValidityState {
 	var validity pebble.IterValidityState
-	i.withRetry(func() { validity = i.iter.PrevWithLimit(limit) })
+	i.withRetry(func() {
+		validity = i.iter.PrevWithLimit(limit)
+		for validity == pebble.IterValid && i.shouldFilter() {
+			validity = i.iter.PrevWithLimit(limit)
+		}
+	})
 	return validity
 }
 
 func (i *retryableIter) SeekGE(key []byte) bool {
 	var valid bool
 	i.withRetry(func() { valid = i.iter.SeekGE(key) })
+	if valid && i.shouldFilter() {
+		valid = i.Next()
+	}
 	return valid
 }
 
 func (i *retryableIter) SeekGEWithLimit(key []byte, limit []byte) pebble.IterValidityState {
 	var validity pebble.IterValidityState
 	i.withRetry(func() { validity = i.iter.SeekGEWithLimit(key, limit) })
+	if validity == pebble.IterValid && i.shouldFilter() {
+		validity = i.NextWithLimit(limit)
+	}
 	return validity
 }
 
 func (i *retryableIter) SeekLT(key []byte) bool {
 	var valid bool
 	i.withRetry(func() { valid = i.iter.SeekLT(key) })
+	if valid && i.shouldFilter() {
+		valid = i.Prev()
+	}
 	return valid
 }
 
 func (i *retryableIter) SeekLTWithLimit(key []byte, limit []byte) pebble.IterValidityState {
 	var validity pebble.IterValidityState
 	i.withRetry(func() { validity = i.iter.SeekLTWithLimit(key, limit) })
+	if validity == pebble.IterValid && i.shouldFilter() {
+		validity = i.PrevWithLimit(limit)
+	}
 	return validity
 }
 
 func (i *retryableIter) SeekPrefixGE(key []byte) bool {
 	var valid bool
 	i.withRetry(func() { valid = i.iter.SeekPrefixGE(key) })
+	if valid && i.shouldFilter() {
+		valid = i.Next()
+	}
 	return valid
 }
 

@@ -49,11 +49,11 @@ import (
 //
 // Block property filtering is nondeterministic because the separation of keys
 // into blocks is nondeterministic. Clients use block-property filters to
-// implement efficient application of a filter F that applies to key-value
-// pairs. Consider correctness defined as surfacing exactly the same key-value
-// pairs that would be surfaced if one applied the filter F above block-property
-// filtering With this correctness definition, block property filtering may
-// introduce two kinds of errors:
+// implement efficient application of a filter F that applies to key-value pairs
+// (abbreviated as kv-filter). Consider correctness defined as surfacing exactly
+// the same key-value pairs that would be surfaced if one applied the filter F
+// above normal iteration. With this correctness definition, block property
+// filtering may introduce two kinds of errors:
 //
 //   a) Block property filtering that uses a kv-filter may produce additional
 //      key-value pairs that don't satisfy the filter because of the separation
