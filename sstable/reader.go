@@ -532,6 +532,8 @@ func (i *singleLevelIterator) SeekGE(key []byte, trySeekUsingNext bool) (*Intern
 func (i *singleLevelIterator) seekGEHelper(
 	key []byte, boundsCmp int, trySeekUsingNext bool,
 ) (*InternalKey, []byte) {
+	// Invariant: trySeekUsingNext => !i.data.isDataInvalidated() && i.exhaustedBounds != +1
+
 	var dontSeekWithinBlock bool
 	if !i.data.isDataInvalidated() && !i.index.isDataInvalidated() && i.data.valid() && i.index.valid() &&
 		boundsCmp > 0 && i.cmp(key, i.index.Key().UserKey) <= 0 {

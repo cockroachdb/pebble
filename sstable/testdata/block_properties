@@ -496,3 +496,20 @@ seek-ge d
 . MaybeFilteredKeys()=false
 <c@15:3> MaybeFilteredKeys()=false
 <d@25:4> MaybeFilteredKeys()=false
+
+# [10,16) intersects {b@10, c@15}.
+
+iter point-key-filter=(suffix-point-keys-only,10,16)
+last
+prev
+prev
+seek-lt a
+seek-lt c
+seek-lt ca
+----
+<c@15:3> MaybeFilteredKeys()=true
+<b@10:2> MaybeFilteredKeys()=false
+. MaybeFilteredKeys()=true
+. MaybeFilteredKeys()=true
+<b@10:2> MaybeFilteredKeys()=false
+<c@15:3> MaybeFilteredKeys()=false
