@@ -391,8 +391,8 @@ iter lower=a point-key-filter=(suffix-point-keys-only,1,2)
 seek-lt h
 last
 ----
-<a@1:1>
-<a@1:1>
+<a@1:1> MaybeFilteredKeys()=true
+<a@1:1> MaybeFilteredKeys()=true
 
 # Same as above, but each index block holds 2 keys. This exercises a variant of
 # the above bug. Specifically, the bounds check performed /within/ skipBackward,
@@ -438,4 +438,234 @@ g#72057594037927935,17:
 iter lower=a upper=z point-key-filter=(suffix-point-keys-only,1,2)
 seek-lt h
 ----
-<a@1:1>
+<a@1:1> MaybeFilteredKeys()=true
+
+# Test MaybeFilteredKeys().
+
+# Use timestamp range [1,9), which matches a@1, e@3 and f@5 and filters
+# a continuous section of three keys b@10, c@15 and d@25.
+
+iter point-key-filter=(suffix-point-keys-only,1,9)
+first
+next
+next
+next
+seek-ge b
+seek-ge e@3
+----
+<a@1:1> MaybeFilteredKeys()=false
+<e@3:5> MaybeFilteredKeys()=true
+<f@5:3> MaybeFilteredKeys()=false
+. MaybeFilteredKeys()=false
+<e@3:5> MaybeFilteredKeys()=true
+<e@3:5> MaybeFilteredKeys()=false
+
+
+# NB: `seek-ge e` and `seek-ge dog` return MaybeFilteredKeys()=true, despite no
+# filtered keys existing within the range [e,e@3) or [dog,e@3). This is a
+# consequence of the index separator `e`. After seeking the index block, the
+# iterator only knows that the first block MAY contain keys ≤ e. However, it can
+# be skipped regardless, because block properties filters exclude it. In this
+# case, the iterator still returns MaybeFilteredKeys()=true, since keys MAY have
+# been excluded by the filter.
+
+iter point-key-filter=(suffix-point-keys-only,1,9)
+seek-ge e
+seek-ge dog
+----
+<e@3:5> MaybeFilteredKeys()=true
+<e@3:5> MaybeFilteredKeys()=true
+
+iter point-key-filter=(suffix-point-keys-only,1,100)
+first
+next
+next
+next
+next
+next
+next
+seek-lt d
+seek-ge d
+----
+<a@1:1> MaybeFilteredKeys()=false
+<b@10:2> MaybeFilteredKeys()=false
+<c@15:3> MaybeFilteredKeys()=false
+<d@25:4> MaybeFilteredKeys()=false
+<e@3:5> MaybeFilteredKeys()=false
+<f@5:3> MaybeFilteredKeys()=false
+. MaybeFilteredKeys()=false
+<c@15:3> MaybeFilteredKeys()=false
+<d@25:4> MaybeFilteredKeys()=false
+
+# [10,16) intersects {b@10, c@15}.
+
+iter point-key-filter=(suffix-point-keys-only,10,16)
+last
+prev
+prev
+seek-lt a
+seek-lt c
+seek-lt ca
+seek-lt f
+seek-lt e
+seek-lt d
+----
+<c@15:3> MaybeFilteredKeys()=true
+<b@10:2> MaybeFilteredKeys()=false
+. MaybeFilteredKeys()=true
+. MaybeFilteredKeys()=true
+<b@10:2> MaybeFilteredKeys()=false
+<c@15:3> MaybeFilteredKeys()=false
+<c@15:3> MaybeFilteredKeys()=true
+<c@15:3> MaybeFilteredKeys()=true
+<c@15:3> MaybeFilteredKeys()=false
+
+# Test monotonically increasing bounds optimization, with the first seek
+# filtering keys. The subsequent seek must not reuse the current iterator
+# position and improperly returning MaybeFilteredKeys=false when keys were
+# filtered.
+
+iter point-key-filter=(suffix-point-keys-only,10,16)
+set-bounds lower=b upper=ee
+seek-ge d
+set-bounds lower=ee upper=g
+seek-ge ee
+----
+. MaybeFilteredKeys()=false
+. MaybeFilteredKeys()=true
+. MaybeFilteredKeys()=true
+. MaybeFilteredKeys()=true
+
+iter point-key-filter=(suffix-point-keys-only,10,16)
+set-bounds lower=a upper=b
+seek-ge a
+set-bounds lower=b upper=e
+seek-ge b
+seek-ge bb
+----
+. MaybeFilteredKeys()=false
+. MaybeFilteredKeys()=true
+. MaybeFilteredKeys()=true
+<b@10:2> MaybeFilteredKeys()=true
+<c@15:3> MaybeFilteredKeys()=false
+
+# Test monotonically decreasing bounds optimization, with the first seek
+# filtering keys. The subsequent seek must not reuse the current iterator
+# position and improperly returning MaybeFilteredKeys=false when keys were
+# filtered.
+
+iter point-key-filter=(suffix-point-keys-only,10,16)
+set-bounds lower=e upper=f
+seek-lt f
+set-bounds lower=c upper=e
+seek-lt e
+set-bounds lower=a upper=c
+seek-lt c
+seek-lt b
+----
+. MaybeFilteredKeys()=false
+. MaybeFilteredKeys()=true
+. MaybeFilteredKeys()=true
+<c@15:3> MaybeFilteredKeys()=true
+. MaybeFilteredKeys()=true
+<b@10:2> MaybeFilteredKeys()=false
+. MaybeFilteredKeys()=true
+
+# The below case tests try-seek-using-next.
+#
+# The `seek-ge aa` does not reposition the iterator. This case should preserve
+# the existing MaybeFilteredKeys()=true value.
+#
+# The `seek-ge c@16` and seek-ge c@19` must also return MaybeFilteredKeys()=true.
+
+iter point-key-filter=(suffix-point-keys-only,10,16)
+seek-ge a
+seek-ge aa true
+seek-ge bb true
+seek-ge c@16 true
+seek-ge c@19 true
+----
+<b@10:2> MaybeFilteredKeys()=true
+<b@10:2> MaybeFilteredKeys()=true
+<c@15:3> MaybeFilteredKeys()=false
+. MaybeFilteredKeys()=true
+. MaybeFilteredKeys()=true
+
+# Test another case of monotonically increasing bounds optimization, with a
+# different index block structure. The first seek down below should filter keys,
+# and leave the top-level index positioned at the last index block. The
+# subsequent seek must return MaybeFilteredKeys=true when keys were filtered.
+
+build collectors=(suffix-point-keys-only) index-block-size=1 block-size=64
+a@1.SET.1:foo
+b@10.SET.2:bar
+c@15.SET.3:baz
+d@25.SET.4:bax
+e@3.SET.5:box
+f@5.SET.3:mop
+----
+point:    [a@1#1,1,f@5#3,1]
+rangedel: [#0,0,#0,0]
+rangekey: [#0,0,#0,0]
+seqnums:  [1,5]
+
+block-props
+----
+d#72057594037927935,17:
+  0: [1, 16)
+  d#72057594037927935,17:
+    0: [1, 16)
+g#72057594037927935,17:
+  0: [3, 26)
+  g#72057594037927935,17:
+    0: [3, 26)
+
+iter point-key-filter=(suffix-point-keys-only,1,2)
+set-bounds lower=b upper=e
+seek-ge d
+set-bounds lower=e upper=g
+seek-ge ee
+----
+. MaybeFilteredKeys()=false
+. MaybeFilteredKeys()=true
+. MaybeFilteredKeys()=true
+. MaybeFilteredKeys()=true
+
+# Test another case of monotonically increasing bounds optimization, with a new
+# index block structure: This one has only one level. The first seek down below
+# should filter keys, and leave the index positioned at the last index block.
+# The subsequent seek must return MaybeFilteredKeys=true when keys were
+# filtered.
+
+build collectors=(suffix-point-keys-only) block-size=32
+a@1.SET.1:foo
+b@10.SET.2:bar
+c@15.SET.3:baz
+d@25.SET.4:bax
+e@3.SET.5:box
+f@5.SET.3:mop
+----
+point:    [a@1#1,1,f@5#3,1]
+rangedel: [#0,0,#0,0]
+rangekey: [#0,0,#0,0]
+seqnums:  [1,5]
+
+block-props
+----
+c#72057594037927935,17:
+  0: [1, 11)
+e#72057594037927935,17:
+  0: [15, 26)
+g#72057594037927935,17:
+  0: [3, 6)
+
+iter point-key-filter=(suffix-point-keys-only,1,2)
+set-bounds lower=b upper=ee
+seek-ge d
+set-bounds lower=ee upper=g
+seek-ge ee
+----
+. MaybeFilteredKeys()=false
+. MaybeFilteredKeys()=true
+. MaybeFilteredKeys()=true
+. MaybeFilteredKeys()=true

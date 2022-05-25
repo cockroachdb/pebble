@@ -46,6 +46,34 @@ import (
 // identical behavior to table properties by returning the nil slice from
 // FinishDataBlock and FinishIndexBlock, and interpret them as the universal
 // set in BlockPropertyFilter, and return a non-universal set in FinishTable.
+//
+// Block property filtering is nondeterministic because the separation of keys
+// into blocks is nondeterministic. Clients use block-property filters to
+// implement efficient application of a filter F that applies to key-value pairs
+// (abbreviated as kv-filter). Consider correctness defined as surfacing exactly
+// the same key-value pairs that would be surfaced if one applied the filter F
+// above normal iteration. With this correctness definition, block property
+// filtering may introduce two kinds of errors:
+//
+//   a) Block property filtering that uses a kv-filter may produce additional
+//      key-value pairs that don't satisfy the filter because of the separation
+//      of keys into blocks. Clients may remove these extra key-value pairs by
+//      re-applying the kv filter while reading results back from Pebble.
+//
+//   b) Block property filtering may surface deleted key-value pairs if the
+//      the kv filter is not a strict function of the key's user key. A block
+//      containing k.DEL may be filtered, while a block containing the deleted
+//      key k.SET may not be filtered, if the kv filter applies to one but not
+//      the other.
+//
+//      This error may be avoided trivially by using a kv filter that is a pure
+//      function of the the user key. A filter that examines values or key kinds
+//      requires care to ensure F(k.SET, <value>) = F(k.DEL) = F(k.SINGLEDEL).
+//
+// The combination of range deletions and filtering by table-level properties
+// add another opportunity for deleted point keys to be surfaced. The pebble
+// Iterator stack takes care to correctly apply filtered tables' range deletions
+// to lower tables, preventing this form of nondeterministic error.
 
 // BlockPropertyCollector is used when writing a sstable.
 // - All calls to Add are included in the next FinishDataBlock, after which
