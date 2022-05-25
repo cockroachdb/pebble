@@ -497,12 +497,30 @@ func (g *generator) newIter() {
 		lower, upper = upper, lower
 	}
 	keyTypes, maskSuffix := g.randKeyTypesAndMask()
+
+	// With a low probability, enable automatic filtering of keys with suffixes
+	// not in the provided range. This filtering occurs both through
+	// block-property filtering and explicitly within the iterator operations to
+	// ensure determinism.
+	var filterMin, filterMax uint64
+	if g.rng.Intn(10) == 1 {
+		max := g.cfg.writeSuffixDist.Max()
+		filterMin, filterMax = g.rng.Uint64n(max)+1, g.rng.Uint64n(max)+1
+		if filterMin > filterMax {
+			filterMin, filterMax = filterMax, filterMin
+		} else if filterMin == filterMax {
+			filterMax = filterMin + 1
+		}
+	}
+
 	g.add(&newIterOp{
 		readerID:           readerID,
 		iterID:             iterID,
 		lower:              lower,
 		upper:              upper,
 		keyTypes:           keyTypes,
+		filterMin:          filterMin,
+		filterMax:          filterMax,
 		rangeKeyMaskSuffix: maskSuffix,
 	})
 }
