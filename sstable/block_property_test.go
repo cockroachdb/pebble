@@ -7,6 +7,7 @@ package sstable
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"sort"
@@ -1171,7 +1172,10 @@ func TestBlockProperties(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			return runIterCmd(td, iter)
+			return runIterCmd(td, iter, runIterCmdEveryOp(func(w io.Writer) {
+				// After every op, point the value of MaybeFilteredKeys.
+				fmt.Fprintf(w, " MaybeFilteredKeys()=%t", iter.MaybeFilteredKeys())
+			}))
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
