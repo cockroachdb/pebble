@@ -28,6 +28,25 @@ import (
 var emptyIter = &errorIter{err: nil}
 var emptyKeyspanIter = &errorKeyspanIter{err: nil}
 
+// filteredAll is a singleton internalIterator implementation used when an
+// sstable does contain point keys, but all the keys are filtered by the active
+// PointKeyFilters set in the iterator's IterOptions.
+//
+// filteredAll implements filteredIter, ensuring the level iterator recognizes
+// when it may need to return file boundaries to keep the rangeDelIter open
+// during mergingIter operation.
+var filteredAll = &filteredAllKeysIter{errorIter: errorIter{err: nil}}
+
+var _ filteredIter = filteredAll
+
+type filteredAllKeysIter struct {
+	errorIter
+}
+
+func (s *filteredAllKeysIter) MaybeFilteredKeys() bool {
+	return true
+}
+
 var tableCacheLabels = pprof.Labels("pebble", "table-cache")
 
 // tableCacheOpts contains the db specific fields
@@ -356,11 +375,29 @@ func (c *tableCacheShard) newIters(
 		c.unrefValue(v)
 		return nil, nil, err
 	}
+
+	// NB: range-del iterator does not maintain a reference to the table, nor
+	// does it need to read from it after creation.
+	rangeDelIter, err := v.reader.NewRawRangeDelIter()
+	if err != nil {
+		c.unrefValue(v)
+		return nil, nil, err
+	}
+
 	if !ok {
 		c.unrefValue(v)
-		// Return the empty iterator. This iterator has no mutable state, so
+		// Return an empty iterator. This iterator has no mutable state, so
 		// using a singleton is fine.
-		return emptyIter, nil, err
+		// NB: We still return the potentially non-empty rangeDelIter. This
+		// ensures the iterator observes the file's range deletions even if the
+		// block property filters exclude all the file's point keys. The range
+		// deletions may still delete keys lower in the LSM in files that DO
+		// match the active filters.
+		//
+		// The point iterator returned must implement the filteredIter
+		// interface, so that the level iterator surfaces file boundaries when
+		// range deletions are present.
+		return filteredAll, rangeDelIter, err
 	}
 
 	var iter sstable.Iterator
@@ -375,6 +412,9 @@ func (c *tableCacheShard) newIters(
 			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter)
 	}
 	if err != nil {
+		if rangeDelIter != nil {
+			_ = rangeDelIter.Close()
+		}
 		c.unrefValue(v)
 		return nil, nil, err
 	}
@@ -389,19 +429,7 @@ func (c *tableCacheShard) newIters(
 		c.mu.iters[iter] = debug.Stack()
 		c.mu.Unlock()
 	}
-
-	// NB: range-del iterator does not maintain a reference to the table, nor
-	// does it need to read from it after creation.
-	rangeDelIter, err := v.reader.NewRawRangeDelIter()
-	if err != nil {
-		_ = iter.Close()
-		return nil, nil, err
-	}
-	if rangeDelIter != nil {
-		return iter, rangeDelIter, nil
-	}
-	// NB: Translate a nil range-del iterator into a nil interface.
-	return iter, nil, nil
+	return iter, rangeDelIter, nil
 }
 
 func (c *tableCacheShard) newRangeKeyIter(
@@ -420,7 +448,12 @@ func (c *tableCacheShard) newRangeKeyIter(
 
 	ok := true
 	var err error
-	if opts != nil {
+	// Don't filter a table's range keys if the file contains RANGEKEYDELs.
+	// The RANGEKEYDELs may delete range keys in other levels. Skipping the
+	// file's range key blocks may surface deleted range keys below. This is
+	// done here, rather than deferring to the block-property collector in order
+	// to maintain parity with point keys and the treatment of RANGEDELs.
+	if opts != nil && v.reader.Properties.NumRangeKeyDels == 0 {
 		ok, _, err = c.checkAndIntersectFilters(v, nil, opts.RangeKeyFilters)
 	}
 	if err != nil {

@@ -391,8 +391,8 @@ iter lower=a point-key-filter=(suffix-point-keys-only,1,2)
 seek-lt h
 last
 ----
-<a@1:1>
-<a@1:1>
+<a@1:1> MaybeFilteredKeys()=true
+<a@1:1> MaybeFilteredKeys()=true
 
 # Same as above, but each index block holds 2 keys. This exercises a variant of
 # the above bug. Specifically, the bounds check performed /within/ skipBackward,
@@ -438,4 +438,61 @@ g#72057594037927935,17:
 iter lower=a upper=z point-key-filter=(suffix-point-keys-only,1,2)
 seek-lt h
 ----
-<a@1:1>
+<a@1:1> MaybeFilteredKeys()=true
+
+# Test MaybeFilteredKeys().
+
+# Use timestamp range [1,9), which matches a@1, e@3 and f@5 and filters
+# a continuous section of three keys b@10, c@15 and d@25.
+
+iter point-key-filter=(suffix-point-keys-only,1,9)
+first
+next
+next
+next
+seek-ge b
+seek-ge e@3
+----
+<a@1:1> MaybeFilteredKeys()=false
+<e@3:5> MaybeFilteredKeys()=true
+<f@5:3> MaybeFilteredKeys()=false
+. MaybeFilteredKeys()=false
+<e@3:5> MaybeFilteredKeys()=true
+<e@3:5> MaybeFilteredKeys()=false
+
+
+# NB: `seek-ge e` and `seek-ge dog` return MaybeFilteredKeys()=true, despite no
+# filtered keys existing within the range [e,e@3) or [dog,e@3). This is a
+# consequence of the index separator `e`. After seeking the index block, the
+# iterator only knows that the first block MAY contain keys ≤ e. However, it can
+# be skipped regardless, because block properties filters exclude it. In this
+# case, the iterator still returns MaybeFilteredKeys()=true, since keys MAY have
+# been excluded by the filter.
+
+iter point-key-filter=(suffix-point-keys-only,1,9)
+seek-ge e
+seek-ge dog
+----
+<e@3:5> MaybeFilteredKeys()=true
+<e@3:5> MaybeFilteredKeys()=true
+
+iter point-key-filter=(suffix-point-keys-only,1,100)
+first
+next
+next
+next
+next
+next
+next
+seek-lt d
+seek-ge d
+----
+<a@1:1> MaybeFilteredKeys()=false
+<b@10:2> MaybeFilteredKeys()=false
+<c@15:3> MaybeFilteredKeys()=false
+<d@25:4> MaybeFilteredKeys()=false
+<e@3:5> MaybeFilteredKeys()=false
+<f@5:3> MaybeFilteredKeys()=false
+. MaybeFilteredKeys()=false
+<c@15:3> MaybeFilteredKeys()=false
+<d@25:4> MaybeFilteredKeys()=false
