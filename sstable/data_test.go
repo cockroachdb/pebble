@@ -7,6 +7,7 @@ package sstable
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -243,7 +244,22 @@ func scanGlobalSeqNum(td *datadriven.TestData) (uint64, error) {
 	return 0, nil
 }
 
-func runIterCmd(td *datadriven.TestData, origIter Iterator) string {
+type runIterCmdOption func(*runIterCmdOptions)
+
+type runIterCmdOptions struct {
+	everyOp func(io.Writer)
+}
+
+func runIterCmdEveryOp(everyOp func(io.Writer)) runIterCmdOption {
+	return func(opts *runIterCmdOptions) { opts.everyOp = everyOp }
+}
+
+func runIterCmd(td *datadriven.TestData, origIter Iterator, opt ...runIterCmdOption) string {
+	var opts runIterCmdOptions
+	for _, o := range opt {
+		o(&opts)
+	}
+
 	iter := newIterAdapter(origIter)
 	defer iter.Close()
 
@@ -338,6 +354,9 @@ func runIterCmd(td *datadriven.TestData, origIter Iterator) string {
 			fmt.Fprintf(&b, "<err=%v>", err)
 		} else {
 			fmt.Fprintf(&b, ".")
+		}
+		if opts.everyOp != nil {
+			opts.everyOp(&b)
 		}
 		b.WriteString("\n")
 	}
