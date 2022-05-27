@@ -90,7 +90,7 @@ type levelIter struct {
 	// stats accumulates the stats of iters that have been closed.
 	stats InternalIteratorStats
 
-	// Pointer into this level's entry in `mergingIterLevel::smallestUserKey,largestUserKey`.
+	// Pointer into this level's entry into `mergingIterLevel::levelIterBoundaryContext`.
 	// We populate it with the corresponding bounds for the currently opened file. It is used for
 	// two purposes (described for forward iteration. The explanation for backward iteration is
 	// similar.)
@@ -136,14 +136,7 @@ type levelIter struct {
 	// - `*Boundary` is only populated when the iterator is positioned exactly on the sentinel key.
 	// - `*Boundary` can hold either the lower- or upper-bound, depending on the iterator direction.
 	// - `*Boundary` is not exposed to the next higher-level iterator, i.e., `mergingIter`.
-	smallestUserKey, largestUserKey  *[]byte
-	isLargestUserKeyRangeDelSentinel *bool
-
-	// Set to true iff the key returned by this iterator is a synthetic key
-	// derived from the iterator bounds. This is used to prevent the
-	// mergingIter from being stuck at such a synthetic key if it becomes the
-	// top element of the heap.
-	isSyntheticIterBoundsKey *bool
+	boundaryContext *levelIterBoundaryContext
 
 	// bytesIterated keeps track of the number of bytes iterated during compaction.
 	bytesIterated *uint64
@@ -203,16 +196,8 @@ func (l *levelIter) initRangeDel(rangeDelIter *keyspan.FragmentIterator) {
 	l.rangeDelIterPtr = rangeDelIter
 }
 
-func (l *levelIter) initSmallestLargestUserKey(
-	smallestUserKey, largestUserKey *[]byte, isLargestUserKeyRangeDelSentinel *bool,
-) {
-	l.smallestUserKey = smallestUserKey
-	l.largestUserKey = largestUserKey
-	l.isLargestUserKeyRangeDelSentinel = isLargestUserKeyRangeDelSentinel
-}
-
-func (l *levelIter) initIsSyntheticIterBoundsKey(isSyntheticIterBoundsKey *bool) {
-	l.isSyntheticIterBoundsKey = isSyntheticIterBoundsKey
+func (l *levelIter) initBoundaryContext(context *levelIterBoundaryContext) {
+	l.boundaryContext = context
 }
 
 func (l *levelIter) findFileGE(key []byte) *fileMetadata {
@@ -287,8 +272,8 @@ const (
 func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicator {
 	l.smallestBoundary = nil
 	l.largestBoundary = nil
-	if l.isSyntheticIterBoundsKey != nil {
-		*l.isSyntheticIterBoundsKey = false
+	if l.boundaryContext != nil {
+		l.boundaryContext.isSyntheticIterBoundsKey = false
 	}
 	if l.iterFile == file {
 		if l.err != nil {
@@ -353,14 +338,10 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 		} else if rangeDelIter != nil {
 			rangeDelIter.Close()
 		}
-		if l.smallestUserKey != nil {
-			*l.smallestUserKey = file.Smallest.UserKey
-		}
-		if l.largestUserKey != nil {
-			*l.largestUserKey = file.Largest.UserKey
-		}
-		if l.isLargestUserKeyRangeDelSentinel != nil {
-			*l.isLargestUserKeyRangeDelSentinel = file.Largest.IsExclusiveSentinel()
+		if l.boundaryContext != nil {
+			l.boundaryContext.smallestUserKey = file.Smallest.UserKey
+			l.boundaryContext.largestUserKey = file.Largest.UserKey
+			l.boundaryContext.isLargestUserKeyRangeDelSentinel = file.Largest.IsExclusiveSentinel()
 		}
 		return newFileLoaded
 	}
@@ -388,8 +369,8 @@ func (l *levelIter) verify(key *InternalKey, val []byte) (*InternalKey, []byte) 
 
 func (l *levelIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
-	if l.isSyntheticIterBoundsKey != nil {
-		*l.isSyntheticIterBoundsKey = false
+	if l.boundaryContext != nil {
+		l.boundaryContext.isSyntheticIterBoundsKey = false
 	}
 
 	// NB: the top-level Iterator has already adjusted key based on
@@ -413,8 +394,8 @@ func (l *levelIter) SeekPrefixGE(
 	prefix, key []byte, trySeekUsingNext bool,
 ) (*base.InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
-	if l.isSyntheticIterBoundsKey != nil {
-		*l.isSyntheticIterBoundsKey = false
+	if l.boundaryContext != nil {
+		l.boundaryContext.isSyntheticIterBoundsKey = false
 	}
 
 	// NB: the top-level Iterator has already adjusted key based on
@@ -442,16 +423,16 @@ func (l *levelIter) SeekPrefixGE(
 			l.syntheticBoundary.UserKey = l.tableOpts.UpperBound
 			l.syntheticBoundary.Trailer = InternalKeyRangeDeleteSentinel
 			l.largestBoundary = &l.syntheticBoundary
-			if l.isSyntheticIterBoundsKey != nil {
-				*l.isSyntheticIterBoundsKey = true
+			if l.boundaryContext != nil {
+				l.boundaryContext.isSyntheticIterBoundsKey = true
 			}
 			return l.verify(l.largestBoundary, nil)
 		}
 		l.syntheticBoundary = l.iterFile.Largest
 		l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
 		l.largestBoundary = &l.syntheticBoundary
-		if l.isSyntheticIterBoundsKey != nil {
-			*l.isSyntheticIterBoundsKey = false
+		if l.boundaryContext != nil {
+			l.boundaryContext.isSyntheticIterBoundsKey = false
 		}
 		return l.verify(l.largestBoundary, nil)
 	}
@@ -471,8 +452,8 @@ func (l *levelIter) SeekPrefixGE(
 
 func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
-	if l.isSyntheticIterBoundsKey != nil {
-		*l.isSyntheticIterBoundsKey = false
+	if l.boundaryContext != nil {
+		l.boundaryContext.isSyntheticIterBoundsKey = false
 	}
 
 	// NB: the top-level Iterator has already adjusted key based on
@@ -488,8 +469,8 @@ func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
 
 func (l *levelIter) First() (*InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
-	if l.isSyntheticIterBoundsKey != nil {
-		*l.isSyntheticIterBoundsKey = false
+	if l.boundaryContext != nil {
+		l.boundaryContext.isSyntheticIterBoundsKey = false
 	}
 
 	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
@@ -505,8 +486,8 @@ func (l *levelIter) First() (*InternalKey, []byte) {
 
 func (l *levelIter) Last() (*InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
-	if l.isSyntheticIterBoundsKey != nil {
-		*l.isSyntheticIterBoundsKey = false
+	if l.boundaryContext != nil {
+		l.boundaryContext.isSyntheticIterBoundsKey = false
 	}
 
 	// NB: the top-level Iterator will call SeekLT if IterOptions.UpperBound is
@@ -524,8 +505,8 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 	if l.err != nil || l.iter == nil {
 		return nil, nil
 	}
-	if l.isSyntheticIterBoundsKey != nil {
-		*l.isSyntheticIterBoundsKey = false
+	if l.boundaryContext != nil {
+		l.boundaryContext.isSyntheticIterBoundsKey = false
 	}
 
 	switch {
@@ -564,8 +545,8 @@ func (l *levelIter) Prev() (*InternalKey, []byte) {
 	if l.err != nil || l.iter == nil {
 		return nil, nil
 	}
-	if l.isSyntheticIterBoundsKey != nil {
-		*l.isSyntheticIterBoundsKey = false
+	if l.boundaryContext != nil {
+		l.boundaryContext.isSyntheticIterBoundsKey = false
 	}
 
 	switch {
@@ -636,8 +617,8 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 					l.syntheticBoundary.UserKey = l.tableOpts.UpperBound
 					l.syntheticBoundary.Trailer = InternalKeyRangeDeleteSentinel
 					l.largestBoundary = &l.syntheticBoundary
-					if l.isSyntheticIterBoundsKey != nil {
-						*l.isSyntheticIterBoundsKey = true
+					if l.boundaryContext != nil {
+						l.boundaryContext.isSyntheticIterBoundsKey = true
 					}
 					return l.largestBoundary, nil
 				}
@@ -697,8 +678,8 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 					l.syntheticBoundary.UserKey = l.tableOpts.LowerBound
 					l.syntheticBoundary.Trailer = InternalKeyRangeDeleteSentinel
 					l.smallestBoundary = &l.syntheticBoundary
-					if l.isSyntheticIterBoundsKey != nil {
-						*l.isSyntheticIterBoundsKey = true
+					if l.boundaryContext != nil {
+						l.boundaryContext.isSyntheticIterBoundsKey = true
 					}
 					return l.smallestBoundary, nil
 				}
