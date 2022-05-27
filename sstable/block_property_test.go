@@ -842,7 +842,7 @@ func (c *suffixIntervalCollector) Add(key InternalKey, value []byte) error {
 		if !c.initialized {
 			c.lower, c.upper = uts, uts+1
 			c.initialized = true
-			return nil
+			continue
 		}
 		if uts < c.lower {
 			c.lower = uts
