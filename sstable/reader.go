@@ -406,8 +406,10 @@ func (i *singleLevelIterator) readBlockWithStats(
 	block, cacheHit, err := i.reader.readBlock(bh, nil /* transform */, raState)
 	if err == nil {
 		n := bh.Length
+		i.stats.Blocks++
 		i.stats.BlockBytes += n
 		if cacheHit {
+			i.stats.BlocksInCache++
 			i.stats.BlockBytesInCache += n
 		}
 	}

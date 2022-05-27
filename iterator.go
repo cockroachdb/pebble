@@ -2087,13 +2087,15 @@ func (stats *IteratorStats) SafeFormat(s redact.SafePrinter, verb rune) {
 	}
 	if stats.InternalStats != (InternalIteratorStats{}) {
 		s.SafeString(",\n(internal-stats: ")
-		s.Printf("(block-bytes: (total %s, cached %s)), "+
+		s.Printf("(blocks: (count %s, cached-count %s, bytes %s, cached-bytes %s)), "+
 			"(points: (count %s, key-bytes %s, value-bytes %s, tombstoned: %s))",
+			humanize.SI.Uint64(stats.InternalStats.Blocks),
+			humanize.SI.Uint64(stats.InternalStats.BlocksInCache),
 			humanize.IEC.Uint64(stats.InternalStats.BlockBytes),
 			humanize.IEC.Uint64(stats.InternalStats.BlockBytesInCache),
 			humanize.SI.Uint64(stats.InternalStats.PointCount),
-			humanize.SI.Uint64(stats.InternalStats.KeyBytes),
-			humanize.SI.Uint64(stats.InternalStats.ValueBytes),
+			humanize.IEC.Uint64(stats.InternalStats.KeyBytes),
+			humanize.IEC.Uint64(stats.InternalStats.ValueBytes),
 			humanize.SI.Uint64(stats.InternalStats.PointsCoveredByRangeTombstones),
 		)
 	}

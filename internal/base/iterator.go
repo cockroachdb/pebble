@@ -237,12 +237,12 @@ type InternalIteratorWithStats interface {
 // field is relevant for an InternalIterator implementation. The field values
 // are aggregated as one goes up the InternalIterator tree.
 type InternalIteratorStats struct {
-	// Bytes in the loaded blocks. If the block was compressed, this is the
-	// compressed bytes. Currently, only the second-level index and data blocks
-	// containing points are included.
-	BlockBytes uint64
-	// Subset of BlockBytes that were in the block cache.
-	BlockBytesInCache uint64
+	// Loaded blocks and their total size. If the block was compressed, this is
+	// the compressed bytes. Currently, only the second-level index and data
+	// blocks containing points are included.
+	Blocks, BlockBytes uint64
+	// Subset of blocks that were in the block cache and their total size.
+	BlocksInCache, BlockBytesInCache uint64
 
 	// The following can repeatedly count the same points if they are iterated
 	// over multiple times. Additionally, they may count a point twice when
@@ -264,7 +264,9 @@ type InternalIteratorStats struct {
 
 // Merge merges the stats in from into the given stats.
 func (s *InternalIteratorStats) Merge(from InternalIteratorStats) {
+	s.Blocks += from.Blocks
 	s.BlockBytes += from.BlockBytes
+	s.BlocksInCache += from.BlocksInCache
 	s.BlockBytesInCache += from.BlockBytesInCache
 	s.KeyBytes += from.KeyBytes
 	s.ValueBytes += from.ValueBytes

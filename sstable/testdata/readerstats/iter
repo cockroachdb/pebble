@@ -35,25 +35,25 @@ first
 stats
 ----
 <a:1>
-{BlockBytes:34 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{Blocks:1 BlockBytes:34 BlocksInCache:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 <b:2>
-{BlockBytes:34 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{Blocks:1 BlockBytes:34 BlocksInCache:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 <c:3>
-{BlockBytes:68 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{Blocks:2 BlockBytes:68 BlocksInCache:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 <d:4>
-{BlockBytes:68 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{Blocks:2 BlockBytes:68 BlocksInCache:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 .
-{BlockBytes:68 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{Blocks:2 BlockBytes:68 BlocksInCache:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 <a:1>
-{BlockBytes:102 BlockBytesInCache:34 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{Blocks:3 BlockBytes:102 BlocksInCache:1 BlockBytesInCache:34 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 <b:2>
-{BlockBytes:102 BlockBytesInCache:34 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{Blocks:3 BlockBytes:102 BlocksInCache:1 BlockBytesInCache:34 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 <c:3>
-{BlockBytes:136 BlockBytesInCache:68 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{Blocks:4 BlockBytes:136 BlocksInCache:2 BlockBytesInCache:68 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 <d:4>
-{BlockBytes:136 BlockBytesInCache:68 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{Blocks:4 BlockBytes:136 BlocksInCache:2 BlockBytesInCache:68 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 .
-{BlockBytes:136 BlockBytesInCache:68 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
-{BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{Blocks:4 BlockBytes:136 BlocksInCache:2 BlockBytesInCache:68 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{Blocks:0 BlockBytes:0 BlocksInCache:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 <a:1>
-{BlockBytes:34 BlockBytesInCache:34 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
+{Blocks:1 BlockBytes:34 BlocksInCache:1 BlockBytesInCache:34 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
