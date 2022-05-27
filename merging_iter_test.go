@@ -251,9 +251,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				i := len(levelIters)
 				levelIters = append(levelIters, mergingIterLevel{iter: li})
 				li.initRangeDel(&levelIters[i].rangeDelIter)
-				li.initSmallestLargestUserKey(
-					&levelIters[i].smallestUserKey, &levelIters[i].largestUserKey, &levelIters[i].isLargestUserKeyRangeDelSentinel)
-				li.initIsSyntheticIterBoundsKey(&levelIters[i].isSyntheticIterBoundsKey)
+				li.initBoundaryContext(&levelIters[i].levelIterBoundaryContext)
 			}
 			miter := &mergingIter{}
 			miter.init(nil /* opts */, cmp, func(a []byte) int { return len(a) }, levelIters...)
@@ -585,10 +583,7 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 			func(a []byte) int { return len(a) }, newIters, levelSlices[i].Iter(),
 			manifest.Level(level), nil)
 		l.initRangeDel(&mils[level].rangeDelIter)
-		l.initSmallestLargestUserKey(
-			&mils[level].smallestUserKey, &mils[level].largestUserKey,
-			&mils[level].isLargestUserKeyRangeDelSentinel)
-		l.initIsSyntheticIterBoundsKey(&mils[level].isSyntheticIterBoundsKey)
+		l.initBoundaryContext(&mils[level].levelIterBoundaryContext)
 		mils[level].iter = l
 	}
 	m := &mergingIter{}

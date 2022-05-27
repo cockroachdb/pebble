@@ -26,12 +26,10 @@ type mergingIterLevel struct {
 	iterKey   *InternalKey
 	iterValue []byte
 
-	// smallestUserKey, largestUserKey, isLargestUserKeyRangeDelSentinel are set using the sstable
-	// boundary keys when using levelIter. See levelIter comment and the Range Deletions comment
-	// below.
-	smallestUserKey, largestUserKey  []byte
-	isLargestUserKeyRangeDelSentinel bool
-	isSyntheticIterBoundsKey         bool
+	// levelIterBoundaryContext's fields are set when using levelIter, in order
+	// to surface sstable boundary keys and file-level context. See levelIter
+	// comment and the Range Deletions comment below.
+	levelIterBoundaryContext
 
 	// tombstone caches the tombstone rangeDelIter is currently pointed at. If
 	// tombstone is nil, there are no further tombstones within the
@@ -40,6 +38,22 @@ type mergingIterLevel struct {
 	// positioning tombstones at lower levels which cannot possibly shadow the
 	// current key.
 	tombstone *keyspan.Span
+}
+
+type levelIterBoundaryContext struct {
+	// smallestUserKey and largestUserKey are populated with the smallest and
+	// largest boundaries of the current file.
+	smallestUserKey, largestUserKey []byte
+	// isLargestUserKeyRangeDelSentinel is set to true when a file's largest
+	// boundary is an exclusive range deletion sentinel. If true, the file does
+	// not contain any keys with the provided user key, and the largestUserKey
+	// bound is exclusive.
+	isLargestUserKeyRangeDelSentinel bool
+	// isSyntheticIterBoundsKey is set to true iff the key returned by the level
+	// iterator is a synthetic key derived from the iterator bounds. This is
+	// used to prevent the mergingIter from being stuck at such a synthetic key
+	// if it becomes the top element of the heap.
+	isSyntheticIterBoundsKey bool
 }
 
 // mergingIter provides a merged view of multiple iterators from different
