@@ -1078,10 +1078,7 @@ func constructPointIter(
 
 		li.init(dbi.opts, dbi.cmp, dbi.split, dbi.newIters, files, level, nil)
 		li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
-		li.initSmallestLargestUserKey(&mlevels[mlevelsIndex].smallestUserKey,
-			&mlevels[mlevelsIndex].largestUserKey,
-			&mlevels[mlevelsIndex].isLargestUserKeyRangeDelSentinel)
-		li.initIsSyntheticIterBoundsKey(&mlevels[mlevelsIndex].isSyntheticIterBoundsKey)
+		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		mlevels[mlevelsIndex].iter = li
 
 		levelsIndex++

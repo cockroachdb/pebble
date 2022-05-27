@@ -47,9 +47,9 @@ import (
 
 // The per-level structure used by simpleMergingIter.
 type simpleMergingIterLevel struct {
-	iter            internalIterator
-	rangeDelIter    keyspan.FragmentIterator
-	smallestUserKey []byte
+	iter         internalIterator
+	rangeDelIter keyspan.FragmentIterator
+	levelIterBoundaryContext
 
 	iterKey   *InternalKey
 	iterValue []byte
@@ -636,7 +636,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li.init(iterOpts, c.cmp, nil /* split */, c.newIters, manifestIter,
 			manifest.L0Sublevel(sublevel), nil)
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
-		li.initSmallestLargestUserKey(&mlevelAlloc[0].smallestUserKey, nil, nil)
+		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)
 		mlevelAlloc[0].iter = li
 		mlevelAlloc = mlevelAlloc[1:]
 	}
@@ -650,7 +650,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li.init(iterOpts, c.cmp, nil /* split */, c.newIters,
 			current.Levels[level].Iter(), manifest.Level(level), nil)
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
-		li.initSmallestLargestUserKey(&mlevelAlloc[0].smallestUserKey, nil, nil)
+		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)
 		mlevelAlloc[0].iter = li
 		mlevelAlloc = mlevelAlloc[1:]
 	}
