@@ -938,7 +938,9 @@ func (w *Writer) addRangeKeySpan(span keyspan.Span) error {
 func (w *Writer) coalesceSpans(span keyspan.Span) {
 	// This method is the emit function of the Fragmenter, so span.Keys is only
 	// owned by this span and it's safe to mutate.
-	err := rangekey.Coalesce(w.compare, span, &w.rangeKeyCoalesced)
+	w.rangeKeyCoalesced.Start = span.Start
+	w.rangeKeyCoalesced.End = span.End
+	err := rangekey.Coalesce(w.compare, span.Keys, &w.rangeKeyCoalesced.Keys)
 	if err != nil {
 		w.err = errors.Newf("sstable: could not coalesce span: %s", err)
 		return

@@ -5,7 +5,6 @@
 package pebble
 
 import (
-	"fmt"
 	"io"
 	"sort"
 	"strconv"
@@ -14,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
 // compactionIter provides a forward-only iterator that encapsulates the logic
@@ -198,8 +198,11 @@ type compactionIter struct {
 	// Reference to the range deletion tombstone fragmenter (e.g.,
 	// `compaction.rangeDelFrag`).
 	rangeDelFrag *keyspan.Fragmenter
+	rangeKeyFrag *keyspan.Fragmenter
 	// The fragmented tombstones.
 	tombstones []keyspan.Span
+	// The fragmented range keys.
+	rangeKeys []keyspan.Span
 	// Byte allocator for the tombstone keys.
 	alloc               bytealloc.A
 	allowZeroSeqNum     bool
@@ -218,6 +221,7 @@ func newCompactionIter(
 	iter internalIterator,
 	snapshots []uint64,
 	rangeDelFrag *keyspan.Fragmenter,
+	rangeKeyFrag *keyspan.Fragmenter,
 	allowZeroSeqNum bool,
 	elideTombstone func(key []byte) bool,
 	elideRangeTombstone func(start, end []byte) bool,
@@ -229,6 +233,7 @@ func newCompactionIter(
 		iter:                iter,
 		snapshots:           snapshots,
 		rangeDelFrag:        rangeDelFrag,
+		rangeKeyFrag:        rangeKeyFrag,
 		allowZeroSeqNum:     allowZeroSeqNum,
 		elideTombstone:      elideTombstone,
 		elideRangeTombstone: elideRangeTombstone,
@@ -237,6 +242,9 @@ func newCompactionIter(
 	i.rangeDelFrag.Cmp = cmp
 	i.rangeDelFrag.Format = formatKey
 	i.rangeDelFrag.Emit = i.emitRangeDelChunk
+	i.rangeKeyFrag.Cmp = cmp
+	i.rangeKeyFrag.Format = formatKey
+	i.rangeKeyFrag.Emit = i.emitRangeKeyChunk
 	return i
 }
 
@@ -282,13 +290,13 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 	i.pos = iterPosCurForward
 	i.valid = false
 	for i.iterKey != nil {
-		if i.iterKey.Kind() == InternalKeyKindRangeDelete {
-			// Return the range tombstone so the compaction can use it for
-			// file truncation and add it to the fragmenter. We do not set `skip`
-			// to true before returning as there may be a forthcoming point key
-			// with the same user key and sequence number. Such a point key must be
-			// visible (i.e., not skipped over) since we promise point keys are
-			// not deleted by range tombstones at the same sequence number.
+		if i.iterKey.Kind() == InternalKeyKindRangeDelete || rangekey.IsRangeKey(i.iterKey.Kind()) {
+			// Return the span so the compaction can use it for file truncation and add
+			// it to the relevant fragmenter. We do not set `skip` to true before
+			// returning as there may be a forthcoming point key with the same user key
+			// and sequence number. Such a point key must be visible (i.e., not skipped
+			// over) since we promise point keys are not deleted by range tombstones at
+			// the same sequence number.
 			//
 			// Although, note that `skip` may already be true before reaching here
 			// due to an earlier key in the stripe. Then it is fine to leave it set
@@ -457,10 +465,6 @@ func (i *compactionIter) skipInStripe() {
 
 func (i *compactionIter) iterNext() bool {
 	i.iterKey, i.iterValue = i.iter.Next()
-	// We should never see an exclusive sentinel in the compaction input.
-	if i.iterKey != nil && i.iterKey.IsExclusiveSentinel() {
-		panic(fmt.Sprintf("pebble: unexpected exclusive sentinel in compaction input, trailer = %x", i.iterKey.Trailer))
-	}
 	return i.iterKey != nil
 }
 
@@ -766,9 +770,6 @@ func (i *compactionIter) Close() error {
 
 // Tombstones returns a list of pending range tombstones in the fragmenter
 // up to the specified key, or all pending range tombstones if key = nil.
-// exclude specifies if the specified key is exclusive or inclusive.
-// When exclude = true, all returned range tombstones are truncated to the
-// specified key.
 func (i *compactionIter) Tombstones(key []byte) []keyspan.Span {
 	if key == nil {
 		i.rangeDelFrag.Finish()
@@ -781,6 +782,22 @@ func (i *compactionIter) Tombstones(key []byte) []keyspan.Span {
 	tombstones := i.tombstones
 	i.tombstones = nil
 	return tombstones
+}
+
+// RangeKeys returns a list of pending fragmented range keys up to the specified
+// key, or all pending range keys if key = nil.
+func (i *compactionIter) RangeKeys(key []byte) []keyspan.Span {
+	if key == nil {
+		i.rangeKeyFrag.Finish()
+	} else {
+		// The specified end key is exclusive; no versions of the specified
+		// user key (including range tombstones covering that key) should
+		// be flushed yet.
+		i.rangeKeyFrag.TruncateAndFlushTo(key)
+	}
+	rangeKeys := i.rangeKeys
+	i.rangeKeys = nil
+	return rangeKeys
 }
 
 func (i *compactionIter) emitRangeDelChunk(fragmented keyspan.Span) {
@@ -812,6 +829,14 @@ func (i *compactionIter) emitRangeDelChunk(fragmented keyspan.Span) {
 			End:   fragmented.End,
 			Keys:  keys,
 		})
+	}
+}
+
+func (i *compactionIter) emitRangeKeyChunk(fragmented keyspan.Span) {
+	// Elision of snapshot stripes happens in rangeKeyCompactionTransform, so no need to
+	// do that here.
+	if len(fragmented.Keys) > 0 {
+		i.rangeKeys = append(i.rangeKeys, fragmented)
 	}
 }
 
