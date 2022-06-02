@@ -189,20 +189,9 @@ func TestBlockIter2(t *testing.T) {
 						return err.Error()
 					}
 
-					for _, arg := range d.CmdArgs {
-						switch arg.Key {
-						case "globalSeqNum":
-							if len(arg.Vals) != 1 {
-								return fmt.Sprintf("%s: arg %s expects 1 value", d.Cmd, arg.Key)
-							}
-							v, err := strconv.Atoi(arg.Vals[0])
-							if err != nil {
-								return err.Error()
-							}
-							iter.globalSeqNum = uint64(v)
-						default:
-							return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
-						}
+					iter.globalSeqNum, err = scanGlobalSeqNum(d)
+					if err != nil {
+						return err.Error()
 					}
 
 					var b bytes.Buffer
