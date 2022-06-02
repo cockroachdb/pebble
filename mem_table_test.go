@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 	"golang.org/x/sync/errgroup"
@@ -51,6 +52,13 @@ func (m *memTable) set(key InternalKey, value []byte) error {
 			return err
 		}
 		m.tombstones.invalidate(1)
+		return nil
+	}
+	if rangekey.IsRangeKey(key.Kind()) {
+		if err := m.rangeKeySkl.Add(key, value); err != nil {
+			return err
+		}
+		m.rangeKeys.invalidate(1)
 		return nil
 	}
 	return m.skl.Add(key, value)

@@ -829,6 +829,62 @@ func TestElideRangeTombstone(t *testing.T) {
 	}
 }
 
+func TestCompactionTransform(t *testing.T) {
+	datadriven.RunTest(t, "testdata/compaction_transform", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "transform":
+			var snapshots []uint64
+			var keyRanges []manifest.UserKeyRange
+			disableElision := false
+			for i := range td.CmdArgs {
+				switch td.CmdArgs[i].Key {
+				case "snapshots":
+					for _, snapshot := range td.CmdArgs[i].Vals {
+						s, err := strconv.ParseUint(snapshot, 10, 64)
+						if err != nil {
+							return err.Error()
+						}
+						snapshots = append(snapshots, s)
+					}
+				case "in-use-key-ranges":
+					for _, keyRange := range td.CmdArgs[i].Vals {
+						parts := strings.SplitN(keyRange, "-", 2)
+						start := []byte(strings.TrimSpace(parts[0]))
+						end := []byte(strings.TrimSpace(parts[1]))
+						keyRanges = append(keyRanges, manifest.UserKeyRange{
+							Start: start,
+							End:   end,
+						})
+					}
+				case "disable-elision":
+					disableElision = true
+				}
+			}
+			span := keyspan.ParseSpan(td.Input)
+			for i := range span.Keys {
+				if i > 0 {
+					if span.Keys[i-1].Trailer < span.Keys[i].Trailer {
+						return "span keys not sorted"
+					}
+				}
+			}
+			var outSpan keyspan.Span
+			c := compaction{
+				cmp:                base.DefaultComparer.Compare,
+				disableSpanElision: disableElision,
+				inuseKeyRanges:     keyRanges,
+			}
+			transformer := rangeKeyCompactionTransform(snapshots, c.elideRangeTombstone)
+			if err := transformer.Transform(base.DefaultComparer.Compare, span, &outSpan); err != nil {
+				return fmt.Sprintf("error: %s", err)
+			}
+			return outSpan.String()
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
 type cpuPermissionGranter struct {
 	granted int
 	used    bool
@@ -1243,7 +1299,7 @@ func TestManualCompaction(t *testing.T) {
 		d.mu.compact.compactingCount--
 	}
 
-	runTest := func(t *testing.T, testData string, minVersion, maxVersion FormatMajorVersion) {
+	runTest := func(t *testing.T, testData string, minVersion, maxVersion FormatMajorVersion, verbose bool) {
 		reset(minVersion, maxVersion)
 		var ongoingCompaction *compaction
 		datadriven.RunTest(t, testData, func(td *datadriven.TestData) string {
@@ -1270,7 +1326,12 @@ func TestManualCompaction(t *testing.T) {
 				if err := runCompactCmd(td, d); err != nil {
 					return err.Error()
 				}
-				s := runLSMCmd(td, d)
+				d.mu.Lock()
+				s := d.mu.versions.currentVersion().String()
+				if verbose {
+					s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				}
+				d.mu.Unlock()
 				if td.HasArg("hide-file-num") {
 					re := regexp.MustCompile(`([0-9]*):\[`)
 					s = re.ReplaceAllString(s, "[")
@@ -1291,22 +1352,32 @@ func TestManualCompaction(t *testing.T) {
 					FormatMajorVersion: randVersion(minVersion, maxVersion),
 				}
 				opts.DisableAutomaticCompactions = true
+				if opts.FormatMajorVersion >= FormatRangeKeys {
+					opts.Experimental.RangeKeys = new(RangeKeysArena)
+				}
 
 				var err error
 				if d, err = runDBDefineCmd(td, opts); err != nil {
 					return err.Error()
 				}
 
-				d.mu.Lock()
 				s := d.mu.versions.currentVersion().String()
-				d.mu.Unlock()
+				if verbose {
+					s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				}
 				return s
 
 			case "ingest":
 				if err := runIngestCmd(td, d, mem); err != nil {
 					return err.Error()
 				}
-				return runLSMCmd(td, d)
+				d.mu.Lock()
+				s := d.mu.versions.currentVersion().String()
+				if verbose {
+					s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				}
+				d.mu.Unlock()
+				return s
 
 			case "iter":
 				// TODO(peter): runDBDefineCmd doesn't properly update the visible
@@ -1429,6 +1500,7 @@ func TestManualCompaction(t *testing.T) {
 		testData   string
 		minVersion FormatMajorVersion
 		maxVersion FormatMajorVersion // inclusive
+		verbose    bool
 	}{
 		{
 			testData:   "testdata/manual_compaction",
@@ -1450,11 +1522,17 @@ func TestManualCompaction(t *testing.T) {
 			minVersion: FormatSetWithDelete,
 			maxVersion: FormatNewest,
 		},
+		{
+			testData:   "testdata/manual_compaction_range_keys",
+			minVersion: FormatRangeKeys,
+			maxVersion: FormatNewest,
+			verbose:    true,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.testData, func(t *testing.T) {
-			runTest(t, tc.testData, tc.minVersion, tc.maxVersion)
+			runTest(t, tc.testData, tc.minVersion, tc.maxVersion, tc.verbose)
 		})
 	}
 }
@@ -2834,7 +2912,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					return &errorIter{}, nil, nil
 				}
 				result := "OK"
-				_, err := c.newInputIter(newIters)
+				_, err := c.newInputIter(newIters, nil, nil)
 				if err != nil {
 					result = fmt.Sprint(err)
 				}
