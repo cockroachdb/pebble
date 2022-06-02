@@ -31,8 +31,11 @@ func TestCoalesce(t *testing.T) {
 		case "coalesce":
 			buf.Reset()
 			span := keyspan.ParseSpan(td.Input)
-			var coalesced keyspan.Span
-			if err := Coalesce(cmp, span, &coalesced); err != nil {
+			coalesced := keyspan.Span{
+				Start: span.Start,
+				End:   span.End,
+			}
+			if err := Coalesce(cmp, span.Keys, &coalesced.Keys); err != nil {
 				return err.Error()
 			}
 			fmt.Fprintln(&buf, coalesced)
@@ -68,7 +71,9 @@ func TestIter(t *testing.T) {
 			}
 			transform := keyspan.TransformerFunc(func(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
 				s = s.Visible(visibleSeqNum)
-				return Coalesce(cmp, s, dst)
+				dst.Start = s.Start
+				dst.End = s.End
+				return Coalesce(cmp, s.Keys, &dst.Keys)
 			})
 			iter.Init(cmp, transform, keyspan.NewIter(cmp, spans))
 			return "OK"
