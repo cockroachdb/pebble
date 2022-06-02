@@ -226,26 +226,24 @@ func runBuildRawCmd(
 	return meta, r, nil
 }
 
-func runIterCmd(td *datadriven.TestData, r *Reader) string {
+func scanGlobalSeqNum(td *datadriven.TestData) (uint64, error) {
 	for _, arg := range td.CmdArgs {
 		switch arg.Key {
 		case "globalSeqNum":
 			if len(arg.Vals) != 1 {
-				return fmt.Sprintf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
+				return 0, errors.Errorf("%s: arg %s expects 1 value", td.Cmd, arg.Key)
 			}
 			v, err := strconv.Atoi(arg.Vals[0])
 			if err != nil {
-				return err.Error()
+				return 0, err
 			}
-			r.Properties.GlobalSeqNum = uint64(v)
-		default:
-			return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
+			return uint64(v), nil
 		}
 	}
-	origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
-	if err != nil {
-		return err.Error()
-	}
+	return 0, nil
+}
+
+func runIterCmd(td *datadriven.TestData, origIter Iterator) string {
 	iter := newIterAdapter(origIter)
 	defer iter.Close()
 

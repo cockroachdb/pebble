@@ -288,3 +288,106 @@ ranges: false
 build collectors=(nil-points-and-ranges)
 ----
 sstable: at least one interval collector must be provided
+
+# Test a small index-block-size and block-size, so every data block has one KV
+# and every index block points to one data block.
+
+build collectors=(suffix-point-keys-only) index-block-size=1 block-size=1
+a@1.SET.1:foo
+b@10.SET.2:bar
+c@15.SET.3:baz
+d@25.SET.4:bax
+e@3.SET.5:box
+f@5.SET.3:mop
+----
+point:    [a@1#1,1,f@5#3,1]
+rangedel: [#0,0,#0,0]
+rangekey: [#0,0,#0,0]
+seqnums:  [1,5]
+
+collectors
+----
+0: suffix-point-keys-only
+
+table-props
+----
+0: [1, 26)
+
+# Because of the tiny index block size, every index block should have the same
+# properties as the single data block contained in the table. Indentation shows
+# the hierarchy.
+
+block-props
+----
+b#72057594037927935,17:
+  0: [1, 2)
+  b#72057594037927935,17:
+    0: [1, 2)
+c#72057594037927935,17:
+  0: [10, 11)
+  c#72057594037927935,17:
+    0: [10, 11)
+d#72057594037927935,17:
+  0: [15, 16)
+  d#72057594037927935,17:
+    0: [15, 16)
+e#72057594037927935,17:
+  0: [25, 26)
+  e#72057594037927935,17:
+    0: [25, 26)
+f#72057594037927935,17:
+  0: [3, 4)
+  f#72057594037927935,17:
+    0: [3, 4)
+g#72057594037927935,17:
+  0: [5, 6)
+  g#72057594037927935,17:
+    0: [5, 6)
+
+# Test the same sstable, but with a larger index block size that fits multiple
+# (3) KV pairs. Each entry in the top-level index should hold the unioned ranges
+# of all the data blocks' properties.
+
+build collectors=(suffix-point-keys-only) index-block-size=64 block-size=1
+a@1.SET.1:foo
+b@10.SET.2:bar
+c@15.SET.3:baz
+d@25.SET.4:bax
+e@3.SET.5:box
+f@5.SET.3:mop
+----
+point:    [a@1#1,1,f@5#3,1]
+rangedel: [#0,0,#0,0]
+rangekey: [#0,0,#0,0]
+seqnums:  [1,5]
+
+collectors
+----
+0: suffix-point-keys-only
+
+block-props
+----
+d#72057594037927935,17:
+  0: [1, 16)
+  b#72057594037927935,17:
+    0: [1, 2)
+  c#72057594037927935,17:
+    0: [10, 11)
+  d#72057594037927935,17:
+    0: [15, 16)
+g#72057594037927935,17:
+  0: [3, 26)
+  e#72057594037927935,17:
+    0: [25, 26)
+  f#72057594037927935,17:
+    0: [3, 4)
+  g#72057594037927935,17:
+    0: [5, 6)
+
+# Regression test for a bug in boundary checking when skipping over irrelevant
+# index blocks in a two-level indexed sstable.
+
+iter lower=a upper=z point-key-filter=(suffix-point-keys-only,1,2)
+seek-lt h
+----
+<a@1:1>

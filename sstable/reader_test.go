@@ -359,7 +359,16 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, cacheSi
 				return ""
 
 			case "iter":
-				return runIterCmd(d, r)
+				seqNum, err := scanGlobalSeqNum(d)
+				if err != nil {
+					return err.Error()
+				}
+				r.Properties.GlobalSeqNum = seqNum
+				iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+				if err != nil {
+					return err.Error()
+				}
+				return runIterCmd(d, iter)
 
 			case "get":
 				var b bytes.Buffer
