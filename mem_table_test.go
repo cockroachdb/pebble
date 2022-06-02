@@ -53,6 +53,14 @@ func (m *memTable) set(key InternalKey, value []byte) error {
 		m.tombstones.invalidate(1)
 		return nil
 	}
+	if key.Kind() == InternalKeyKindRangeKeyDelete ||
+		key.Kind() == InternalKeyKindRangeKeySet || key.Kind() == InternalKeyKindRangeKeyUnset {
+		if err := m.rangeKeySkl.Add(key, value); err != nil {
+			return err
+		}
+		m.rangeKeys.invalidate(1)
+		return nil
+	}
 	return m.skl.Add(key, value)
 }
 
