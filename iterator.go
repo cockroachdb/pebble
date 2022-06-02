@@ -1728,7 +1728,7 @@ func (i *Iterator) Close() error {
 		if i.pointIter != nil {
 			i.err = firstError(i.err, i.pointIter.Close())
 		}
-		if i.rangeKey != nil {
+		if i.rangeKey != nil && i.rangeKey.rangeKeyIter != nil {
 			i.err = firstError(i.err, i.rangeKey.rangeKeyIter.Close())
 		}
 	}

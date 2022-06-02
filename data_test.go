@@ -17,7 +17,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -680,7 +682,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		}}
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			d.mu.versions.picker.getBaseLevel(), toFlush, &d.atomic.bytesFlushed)
-		c.disableRangeTombstoneElision = true
+		c.disableSpanElision = true
 		// NB: define allows the test to exactly specify which keys go
 		// into which sstables. If the test has a small target file
 		// size to test grandparent limits, etc, the maxOutputFileSize
@@ -802,6 +804,16 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 					return nil, err
 				}
 				d.mu.compact.inProgress[c] = struct{}{}
+				continue
+			}
+			if data[:i] == "rangekey" {
+				span := keyspan.ParseSpan(data[i:])
+				err := rangekey.Encode(&span, func(k base.InternalKey, v []byte) error {
+					return mem.set(k, v)
+				})
+				if err != nil {
+					return nil, err
+				}
 				continue
 			}
 			key := base.ParseInternalKey(data[:i])
