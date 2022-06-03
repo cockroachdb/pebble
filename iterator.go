@@ -1639,10 +1639,10 @@ func (i *Iterator) saveRangeKey() {
 // HasPointAndRange indicates whether there exists a point key, a range key or
 // both at the current iterator position.
 func (i *Iterator) HasPointAndRange() (hasPoint, hasRange bool) {
-	if i.iterValidityState != IterValid {
+	if i.iterValidityState != IterValid || i.requiresReposition {
 		return false, false
 	}
-	if !i.opts.rangeKeys() {
+	if i.opts.KeyTypes == IterKeyTypePointsOnly {
 		return true, false
 	}
 	return !i.rangeKey.rangeKeyOnly, i.rangeKey.hasRangeKey
