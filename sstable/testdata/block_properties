@@ -387,6 +387,54 @@ g#72057594037927935,17:
 # Regression test for a bug in boundary checking when skipping over irrelevant
 # index blocks in a two-level indexed sstable.
 
+iter lower=a point-key-filter=(suffix-point-keys-only,1,2)
+seek-lt h
+last
+----
+<a@1:1>
+<a@1:1>
+
+# Same as above, but each index block holds 2 keys. This exercises a variant of
+# the above bug. Specifically, the bounds check performed /within/ skipBackward,
+# instead of within SeekLT and Last.
+
+build collectors=(suffix-point-keys-only) index-block-size=48 block-size=1
+a@1.SET.1:foo
+b@10.SET.2:bar
+c@15.SET.3:baz
+d@25.SET.4:bax
+e@3.SET.5:box
+f@5.SET.3:mop
+----
+point:    [a@1#1,1,f@5#3,1]
+rangedel: [#0,0,#0,0]
+rangekey: [#0,0,#0,0]
+seqnums:  [1,5]
+
+block-props
+----
+c#72057594037927935,17:
+  0: [1, 11)
+  b#72057594037927935,17:
+    0: [1, 2)
+  c#72057594037927935,17:
+    0: [10, 11)
+e#72057594037927935,17:
+  0: [15, 26)
+  d#72057594037927935,17:
+    0: [15, 16)
+  e#72057594037927935,17:
+    0: [25, 26)
+g#72057594037927935,17:
+  0: [3, 6)
+  f#72057594037927935,17:
+    0: [3, 4)
+  g#72057594037927935,17:
+    0: [5, 6)
+
+# Regression test for a bug in boundary checking when skipping over irrelevant
+# index blocks in a two-level indexed sstable.
+
 iter lower=a upper=z point-key-filter=(suffix-point-keys-only,1,2)
 seek-lt h
 ----

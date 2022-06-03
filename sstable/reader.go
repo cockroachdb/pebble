@@ -1557,7 +1557,7 @@ func (i *twoLevelIterator) Last() (*InternalKey, []byte) {
 		// the previous entry starts with keys <= ikey.UserKey since even
 		// though this is the current block's separator, the same user key
 		// can span multiple index blocks.
-		if i.lower != nil && i.cmp(ikey.UserKey, i.upper) < 0 {
+		if i.lower != nil && i.cmp(ikey.UserKey, i.lower) < 0 {
 			i.exhaustedBounds = -1
 		}
 	}
@@ -1662,7 +1662,7 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, []byte) {
 			// the previous entry starts with keys <= ikey.UserKey since even
 			// though this is the current block's separator, the same user key
 			// can span multiple index blocks.
-			if i.lower != nil && i.cmp(ikey.UserKey, i.upper) < 0 {
+			if i.lower != nil && i.cmp(ikey.UserKey, i.lower) < 0 {
 				i.exhaustedBounds = -1
 				// Next iteration will return.
 			}
