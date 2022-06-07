@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
 // TODO(jackson): Consider implementing an optimization to seek lower levels
@@ -223,6 +224,17 @@ type MergingIter struct {
 
 	err error
 	dir int8
+
+	// alloc preallocates mergingIterLevel and mergingIterItems for use by the
+	// merging iterator. As long as the merging iterator is used with
+	// manifest.NumLevels+3 and fewer fragment iterators, the merging iterator
+	// will not need to allocate upon initialization. The value NumLevels+3
+	// mirrors the preallocated levels in iterAlloc used for point iterators.
+	// Invariant: cap(levels) == cap(items)
+	alloc struct {
+		levels [manifest.NumLevels + 3]mergingIterLevel
+		items  [manifest.NumLevels + 3]mergingIterItem
+	}
 }
 
 // MergingIter implements the FragmentIterator interface.
@@ -259,18 +271,31 @@ func (m *MergingIter) Init(cmp base.Compare, transformer Transformer, iters ...F
 		heap:        mergingIterHeap{cmp: cmp},
 		transformer: transformer,
 	}
-	// Invariant: cap(levels) == cap(items)
-	if cap(levels) < len(iters) {
-		m.levels = make([]mergingIterLevel, len(iters))
-		m.heap.items = make([]mergingIterItem, 0, len(iters))
-	} else {
+
+	// Invariant: cap(levels) >= cap(items)
+	// Invariant: cap(alloc.levels) == cap(alloc.items)
+	if len(iters) <= len(m.alloc.levels) {
+		// The slices allocated on the MergingIter struct are large enough.
+		m.levels = m.alloc.levels[:len(iters)]
+		m.heap.items = m.alloc.items[:0]
+	} else if len(iters) <= cap(levels) {
+		// The existing heap-allocated slices are large enough, so reuse them.
 		m.levels = levels[:len(iters)]
 		m.heap.items = items[:0]
+	} else {
+		// Heap allocate new slices.
+		m.levels = make([]mergingIterLevel, len(iters))
+		m.heap.items = make([]mergingIterItem, 0, len(iters))
 	}
 	for i := range m.levels {
-		m.levels[i] = mergingIterLevel{}
-		m.levels[i].iter = iters[i]
+		m.levels[i] = mergingIterLevel{iter: iters[i]}
 	}
+}
+
+// AddLevel adds a new level to the bottom of the merging iterator. AddLevel
+// must be called after Init and before any other method.
+func (m *MergingIter) AddLevel(iter FragmentIterator) {
+	m.levels = append(m.levels, mergingIterLevel{iter: iter})
 }
 
 // SeekGE moves the iterator to the first span with a start key greater than or
