@@ -137,7 +137,7 @@ func NewExternalIter(
 		dbi.rangeKey.cmp = o.Comparer.Compare
 		dbi.rangeKey.split = o.Comparer.Split
 		dbi.rangeKey.opts = &dbi.opts
-		dbi.rangeKey.rangeKeyIter = dbi.rangeKey.alloc.Init(
+		dbi.rangeKey.rangeKeyIter = dbi.rangeKey.iterConfig.Init(
 			o.Comparer.Compare,
 			base.InternalKeySeqNumMax,
 			rangeKeyIters...,
