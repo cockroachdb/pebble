@@ -244,7 +244,7 @@ func TestCompactionIter(t *testing.T) {
 						if iter.Key().Kind() == InternalKeyKindRangeKeySet ||
 							iter.Key().Kind() == InternalKeyKindRangeKeyUnset ||
 							iter.Key().Kind() == InternalKeyKindRangeKeyDelete {
-							iter.rangeKeyFrag.Add(interleavingIter.Span())
+							iter.rangeKeyFrag.Add(*interleavingIter.Span())
 						}
 					} else if err := iter.Error(); err != nil {
 						fmt.Fprintf(&b, "err=%v\n", err)

@@ -987,7 +987,7 @@ func (c *compaction) elideSpan(start, end []byte) bool {
 
 // newInputIter returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIter(
-	newIters tableNewIters, newSpanIter keyspan.TableNewSpanIter, snapshots []uint64,
+	newIters tableNewIters, newRangeKeyIter keyspan.TableNewSpanIter, snapshots []uint64,
 ) (_ internalIterator, retErr error) {
 	var rangeDelIters []keyspan.FragmentIterator
 	var rangeKeyIters []keyspan.FragmentIterator
@@ -1001,7 +1001,9 @@ func (c *compaction) newInputIter(
 				iter = newMergingIter(c.logger, c.cmp, nil, iter, &c.rangeDelIter)
 			}
 			if rangeKeyIter := f.newRangeKeyIter(nil); rangeKeyIter != nil {
-				c.rangeKeyInterleaving.Init(c.cmp, base.WrapIterWithStats(iter), rangeKeyIter, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
+				mi := &keyspan.MergingIter{}
+				mi.Init(c.cmp, compactionTransform(snapshots, c.elideSpan), rangeKeyIter)
+				c.rangeKeyInterleaving.Init(c.cmp, base.WrapIterWithStats(iter), mi, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
 				iter = &c.rangeKeyInterleaving
 			}
 			return iter, nil
@@ -1161,7 +1163,29 @@ func (c *compaction) newInputIter(
 		})
 		if hasRangeKeys {
 			li := &keyspan.LevelIter{}
-			li.Init(keyspan.SpanIterOptions{}, c.cmp, newSpanIter, level.files.Iter(), l, c.logger, manifest.KeyTypeRange)
+			newRangeKeyIterWrapper := func(file *manifest.FileMetadata, iterOptions *keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+				iter, err := newRangeKeyIter(file, iterOptions)
+				if iter != nil {
+					// Ensure that the range key iter is not closed until the compaction is
+					// finished. This is necessary because range key processing
+					// requires the range keys to be held in memory for up to the
+					// lifetime of the compaction.
+					c.closers = append(c.closers, iter)
+					iter = noCloseIter{iter}
+
+					// This truncation logic of range keys mimics that of range deletions
+					// above.
+					atomicUnit, _ := expandToAtomicUnit(c.cmp, level.files, true /* disableIsCompacting */)
+					lowerBound, upperBound := manifest.KeyRange(c.cmp, atomicUnit.Iter())
+					iter = keyspan.Truncate(
+						c.cmp, iter, lowerBound.UserKey, upperBound.UserKey, &file.Smallest, &file.Largest)
+				}
+				if iter == nil {
+					iter = emptyKeyspanIter
+				}
+				return iter, err
+			}
+			li.Init(keyspan.SpanIterOptions{}, c.cmp, newRangeKeyIterWrapper, level.files.Iter(), l, c.logger, manifest.KeyTypeRange)
 			rangeKeyIters = append(rangeKeyIters, li)
 		}
 		return nil
@@ -1607,11 +1631,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	if err == nil {
 		flushed = d.mu.mem.queue[:n]
 		d.mu.mem.queue = d.mu.mem.queue[n:]
-		d.updateReadStateLocked(d.opts.DebugCheck, func() {
-			// TODO(jackson): Remove this, plus this updateReadStateLocked
-			// parameter when range keys are persisted to sstables.
-			err = d.applyFlushedRangeKeys(flushed)
-		})
+		d.updateReadStateLocked(d.opts.DebugCheck)
 		d.updateTableStatsLocked(ve.NewFiles)
 	}
 	// Signal FlushEnd after installing the new readState. This helps for unit
@@ -1936,6 +1956,11 @@ func checkDeleteCompactionHints(
 				if m.Compacting || !h.canDelete(cmp, m, snapshots) || files[m] {
 					continue
 				}
+				if m.HasRangeKeys {
+					// TODO(bilal): Remove this conditional when deletion hints work well
+					// with sstables containing range keys.
+					continue
+				}
 
 				if files == nil {
 					// Construct files lazily, assuming most calls will not
@@ -2042,7 +2067,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	// there are no references obsolete tables will be added to the obsolete
 	// table list.
 	if err == nil {
-		d.updateReadStateLocked(d.opts.DebugCheck, nil)
+		d.updateReadStateLocked(d.opts.DebugCheck)
 		d.updateTableStatsLocked(ve.NewFiles)
 	}
 	d.deleteObsoleteFiles(jobID, true /* waitForOngoing */)
@@ -2283,6 +2308,12 @@ func (d *DB) runCompaction(
 			startKey := c.rangeDelFrag.Start()
 			if len(iter.tombstones) > 0 {
 				startKey = iter.tombstones[0].Start
+			}
+			if startKey == nil {
+				startKey = c.rangeKeyFrag.Start()
+				if len(iter.rangeKeys) > 0 {
+					startKey = iter.rangeKeys[0].Start
+				}
 			}
 			if splitKey != nil && d.cmp(startKey, splitKey) == 0 {
 				return nil
