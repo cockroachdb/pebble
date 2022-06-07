@@ -791,6 +791,11 @@ func (b *Batch) Empty() bool {
 	return len(b.data) <= batchHeaderLen
 }
 
+// Len returns the current size of the batch in bytes.
+func (b *Batch) Len() int {
+	return len(b.data)
+}
+
 // Repr returns the underlying batch representation. It is not safe to modify
 // the contents. Reset() will not change the contents of the returned value,
 // though any other mutation operation may do so.
