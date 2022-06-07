@@ -265,11 +265,11 @@ type iteratorRangeKeyState struct {
 	// Start and end boundaries, suffixes and values are all copied into buf.
 	buf []byte
 
-	// alloc holds fields that are used for the construction of the
-	// iterator stack, but do not need to be directly accessed during
-	// iteration. These fields are bundled within the
-	// iteratorRangeKeyState struct to reduce allocations.
-	alloc rangekey.UserIteratorConfig
+	// iterConfig holds fields that are used for the construction of the
+	// iterator stack, but do not need to be directly accessed during iteration.
+	// This struct is bundled within the iteratorRangeKeyState struct to reduce
+	// allocations.
+	iterConfig rangekey.UserIteratorConfig
 }
 
 var iterRangeKeyStateAllocPool = sync.Pool{

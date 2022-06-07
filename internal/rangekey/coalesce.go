@@ -45,6 +45,12 @@ func (ui *UserIteratorConfig) Init(
 	return &ui.diter
 }
 
+// AddLevel adds a new level to the bottom of the iterator stack. AddLevel
+// must be called after Init and before any other method on the iterator.
+func (ui *UserIteratorConfig) AddLevel(iter keyspan.FragmentIterator) {
+	ui.miter.AddLevel(iter)
+}
+
 // Transform implements the keyspan.Transformer interface for use with a
 // keyspan.MergingIter. It transforms spans by resolving range keys at the
 // provided snapshot sequence number. Shadowing of keys is resolved (eg, removal
