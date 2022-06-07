@@ -555,7 +555,9 @@ func (i *InterleavingIter) keyspanSeekGE(key []byte) {
 	// Seek using SeekLT to look for a span that starts before key, with an end
 	// boundary extending beyond key.
 	s := i.keyspanIter.SeekLT(key)
-	if !s.Valid() || i.cmp(s.End, key) <= 0 {
+	if !s.Valid() {
+		s = i.keyspanIter.SeekGE(key)
+	} else if i.cmp(s.End, key) <= 0 {
 		// The iterator is exhausted in the reverse direction, or the span we
 		// found ends before key. Next to the first key with a start ≥ key.
 		s = i.keyspanIter.Next()

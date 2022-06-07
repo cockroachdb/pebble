@@ -436,26 +436,13 @@ func (c *tableCacheShard) newRangeKeyIter(
 	}
 
 	var iter sstable.FragmentIterator
-	// TODO(bilal): We are currently passing through the raw blockIter for range
-	// keys. This iter does not support bounds (eg. SetBounds will panic).
-	// Any future users of the iter returned by this function need to make any
-	// bounds-specific optimizations themselves.
 	iter, err = v.reader.NewRawRangeKeyIter()
-	if err != nil || iter == nil {
-		c.unrefValue(v)
-		return nil, err
-	}
-	// NB: v.closeHook takes responsibility for calling unrefValue(v) here.
-	iter.SetCloseHook(func(i keyspan.FragmentIterator) error {
-		return v.closeHook(i)
-	})
+	// iter is a block iter that holds the entire value of the block in memory.
+	// No need to hold onto a ref of the cache value.
+	c.unrefValue(v)
 
-	atomic.AddInt32(&c.atomic.iterCount, 1)
-	atomic.AddInt32(dbOpts.atomic.iterCount, 1)
-	if invariants.RaceEnabled {
-		c.mu.Lock()
-		c.mu.iters[iter] = debug.Stack()
-		c.mu.Unlock()
+	if err != nil || iter == nil {
+		return nil, err
 	}
 
 	return iter, nil

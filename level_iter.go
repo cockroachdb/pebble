@@ -248,11 +248,11 @@ func (l *levelIter) findFileLT(key []byte) *fileMetadata {
 func (l *levelIter) initTableBounds(f *fileMetadata) int {
 	l.tableOpts.LowerBound = l.lower
 	if l.tableOpts.LowerBound != nil {
-		if l.cmp(f.Largest.UserKey, l.tableOpts.LowerBound) < 0 {
+		if l.cmp(f.LargestPointKey.UserKey, l.tableOpts.LowerBound) < 0 {
 			// The largest key in the sstable is smaller than the lower bound.
 			return -1
 		}
-		if l.cmp(l.tableOpts.LowerBound, f.Smallest.UserKey) <= 0 {
+		if l.cmp(l.tableOpts.LowerBound, f.SmallestPointKey.UserKey) <= 0 {
 			// The lower bound is smaller or equal to the smallest key in the
 			// table. Iteration within the table does not need to check the lower
 			// bound.
@@ -261,15 +261,16 @@ func (l *levelIter) initTableBounds(f *fileMetadata) int {
 	}
 	l.tableOpts.UpperBound = l.upper
 	if l.tableOpts.UpperBound != nil {
-		if l.cmp(f.Smallest.UserKey, l.tableOpts.UpperBound) >= 0 {
+		if l.cmp(f.SmallestPointKey.UserKey, l.tableOpts.UpperBound) >= 0 {
 			// The smallest key in the sstable is greater than or equal to the upper
 			// bound.
 			return 1
 		}
-		if l.cmp(l.tableOpts.UpperBound, f.Largest.UserKey) > 0 {
+		if l.cmp(l.tableOpts.UpperBound, f.LargestPointKey.UserKey) > 0 {
 			// The upper bound is greater than the largest key in the
 			// table. Iteration within the table does not need to check the upper
-			// bound. NB: tableOpts.UpperBound is exclusive and f.Largest is inclusive.
+			// bound. NB: tableOpts.UpperBound is exclusive and f.LargestPointKey is
+			// inclusive.
 			l.tableOpts.UpperBound = nil
 		}
 	}
@@ -354,13 +355,13 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			rangeDelIter.Close()
 		}
 		if l.smallestUserKey != nil {
-			*l.smallestUserKey = file.Smallest.UserKey
+			*l.smallestUserKey = file.SmallestPointKey.UserKey
 		}
 		if l.largestUserKey != nil {
-			*l.largestUserKey = file.Largest.UserKey
+			*l.largestUserKey = file.LargestPointKey.UserKey
 		}
 		if l.isLargestUserKeyRangeDelSentinel != nil {
-			*l.isLargestUserKeyRangeDelSentinel = file.Largest.IsExclusiveSentinel()
+			*l.isLargestUserKeyRangeDelSentinel = file.LargestPointKey.IsExclusiveSentinel()
 		}
 		return newFileLoaded
 	}
@@ -447,7 +448,7 @@ func (l *levelIter) SeekPrefixGE(
 			}
 			return l.verify(l.largestBoundary, nil)
 		}
-		l.syntheticBoundary = l.iterFile.Largest
+		l.syntheticBoundary = l.iterFile.LargestPointKey
 		l.syntheticBoundary.SetKind(InternalKeyKindRangeDelete)
 		l.largestBoundary = &l.syntheticBoundary
 		if l.isSyntheticIterBoundsKey != nil {
@@ -463,7 +464,7 @@ func (l *levelIter) SeekPrefixGE(
 	// next file will defeat the optimization for the next SeekPrefixGE that
 	// is called with trySeekUsingNext=true, since for sparse key spaces it is
 	// likely that the next key will also be contained in the current file.
-	if n := l.split(l.iterFile.Largest.UserKey); l.cmp(prefix, l.iterFile.Largest.UserKey[:n]) < 0 {
+	if n := l.split(l.iterFile.LargestPointKey.UserKey); l.cmp(prefix, l.iterFile.LargestPointKey.UserKey[:n]) < 0 {
 		return nil, nil
 	}
 	return l.verify(l.skipEmptyFileForward())
@@ -648,8 +649,8 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, []byte) {
 				return nil, nil
 			}
 			// If the boundary is a range deletion tombstone, return that key.
-			if l.iterFile.Largest.Kind() == InternalKeyKindRangeDelete {
-				l.largestBoundary = &l.iterFile.Largest
+			if l.iterFile.LargestPointKey.Kind() == InternalKeyKindRangeDelete {
+				l.largestBoundary = &l.iterFile.LargestPointKey
 				return l.largestBoundary, nil
 			}
 		}
@@ -709,8 +710,8 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, []byte) {
 				return nil, nil
 			}
 			// If the boundary is a range deletion tombstone, return that key.
-			if l.iterFile.Smallest.Kind() == InternalKeyKindRangeDelete {
-				l.smallestBoundary = &l.iterFile.Smallest
+			if l.iterFile.SmallestPointKey.Kind() == InternalKeyKindRangeDelete {
+				l.smallestBoundary = &l.iterFile.SmallestPointKey
 				return l.smallestBoundary, nil
 			}
 		}
