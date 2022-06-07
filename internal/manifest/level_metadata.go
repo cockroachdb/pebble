@@ -481,6 +481,21 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 	meta := i.seek(func(m *FileMetadata) bool {
 		return cmp(m.Largest.UserKey, userKey) >= 0
 	})
+	for meta != nil {
+		switch i.filter {
+		case KeyTypePointAndRange:
+			return meta
+		case KeyTypePoint:
+			if meta.HasPointKeys && cmp(meta.LargestPointKey.UserKey, userKey) >= 0 {
+				return meta
+			}
+		case KeyTypeRange:
+			if meta.HasRangeKeys && cmp(meta.LargestRangeKey.UserKey, userKey) >= 0 {
+				return meta
+			}
+		}
+		meta = i.Next()
+	}
 	return i.filteredNextFile(meta)
 }
 
@@ -497,6 +512,21 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
 		return cmp(m.Smallest.UserKey, userKey) >= 0
 	})
 	meta := i.Prev()
+	for meta != nil {
+		switch i.filter {
+		case KeyTypePointAndRange:
+			return meta
+		case KeyTypePoint:
+			if meta.HasPointKeys && cmp(meta.SmallestPointKey.UserKey, userKey) < 0 {
+				return meta
+			}
+		case KeyTypeRange:
+			if meta.HasRangeKeys && cmp(meta.SmallestRangeKey.UserKey, userKey) < 0 {
+				return meta
+			}
+		}
+		meta = i.Prev()
+	}
 	return i.filteredPrevFile(meta)
 }
 

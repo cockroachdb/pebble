@@ -7,10 +7,9 @@ package pebble
 import (
 	"sync"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
@@ -19,66 +18,14 @@ const rangeKeyArenaSize = 1 << 20
 // RangeKeysArena is an in-memory arena in which range keys are stored.
 //
 // This is a temporary type that will eventually be removed.
+//
+// TODO(bilal): This type should mostly be unused now. Clean up the last few
+// uses and remove it.
 type RangeKeysArena struct {
 	once      sync.Once
 	skl       arenaskl.Skiplist
 	arena     *arenaskl.Arena
 	fragCache keySpanCache
-}
-
-// applyFlushedRangeKeys is a temporary hack to support in-memory only range
-// keys.  We use much of the same code that we will use for the memtable, but we
-// use a separate arena that exists beyond the lifetime of any individual
-// memtable.  For as long as we're relying on this hack, a single *pebble.DB may
-// only store as many range keys as fit in this arena.
-//
-// TODO(jackson): Remove applyFlushedRangeKeys when range keys are persisted.
-func (d *DB) applyFlushedRangeKeys(flushable []*flushableEntry) error {
-	var added uint32
-	for i := 0; i < len(flushable); i++ {
-		iter := flushable[i].newRangeKeyIter(nil)
-		if iter == nil {
-			continue
-		}
-		d.maybeInitializeRangeKeys()
-
-		for s := iter.First(); s != nil; s = iter.Next() {
-			// flushable.newRangeKeyIter provides a FragmentIterator, which
-			// iterates over parsed keyspan.Spans.
-			//
-			// While we're faking a flush, we just want to write the original
-			// key into the global arena, so we need to re-encode the span's
-			// keys into internal key-value pairs.
-			//
-			// This awkward recombination will be removed when flushes implement
-			// range-key logic, coalescing range keys and constructing internal
-			// keys.
-			err := rangekey.Encode(s, func(k base.InternalKey, v []byte) error {
-				err := d.rangeKeys.skl.Add(k, v)
-				switch {
-				case err == nil:
-					added++
-					return nil
-				case errors.Is(err, arenaskl.ErrRecordExists):
-					// It's possible that we'll try to add a key to the arena twice
-					// during metamorphic tests that reset the synced state. Ignore.
-					// When range keys are actually flushed to stable storage, this
-					// will go away.
-					return nil
-				default:
-					// err != nil
-					return err
-				}
-			})
-			if err != nil {
-				return err
-			}
-		}
-	}
-	if added > 0 {
-		d.rangeKeys.fragCache.invalidate(added)
-	}
-	return nil
 }
 
 func (d *DB) maybeInitializeRangeKeys() {
@@ -127,12 +74,36 @@ func (d *DB) newRangeKeyIter(
 		}
 	}
 
-	// For now while range keys are not fully integrated into Pebble, all range
-	// keys ever written to the DB are persisted in the d.rangeKeys arena.
-	frags := d.rangeKeys.fragCache.get()
-	if len(frags) > 0 {
-		it.rangeKey.iterConfig.AddLevel(keyspan.NewIter(d.cmp, frags))
+	current := readState.current
+	// TODO(bilal): Roll the LevelIter allocation into it.rangeKey.iterConfig.
+	levelIters := make([]keyspan.LevelIter, 0)
+	// Next are the file levels: L0 sub-levels followed by lower levels.
+	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
+		rangeIter := files.Filter(manifest.KeyTypeRange)
+		if rangeIter.First() == nil {
+			// No files with range keys.
+			return
+		}
+		levelIters = append(levelIters, keyspan.LevelIter{})
+		li := &levelIters[len(levelIters)-1]
+		spanIterOpts := keyspan.SpanIterOptions{RangeKeyFilters: it.opts.RangeKeyFilters}
+
+		li.Init(spanIterOpts, it.cmp, d.tableNewRangeKeyIter, files, level, d.opts.Logger, manifest.KeyTypeRange)
+		it.rangeKey.iterConfig.AddLevel(li)
 	}
 
+	// Add level iterators for the L0 sublevels, iterating from newest to
+	// oldest.
+	for i := len(current.L0SublevelFiles) - 1; i >= 0; i-- {
+		addLevelIterForFiles(current.L0SublevelFiles[i].Iter(), manifest.L0Sublevel(i))
+	}
+
+	// Add level iterators for the non-empty non-L0 levels.
+	for level := 1; level < len(current.Levels); level++ {
+		if current.Levels[level].Empty() {
+			continue
+		}
+		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
+	}
 	return it.rangeKey.rangeKeyIter
 }
