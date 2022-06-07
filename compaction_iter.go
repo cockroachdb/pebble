@@ -506,6 +506,8 @@ func (i *compactionIter) nextInStripe() stripeChangeType {
 			return sameStripeNonSkippable
 		}
 		return newStripe
+	case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+		panic("unreachable")
 	case InternalKeyKindInvalid:
 		if i.curSnapshotIdx == origSnapshotIdx {
 			return sameStripeNonSkippable
