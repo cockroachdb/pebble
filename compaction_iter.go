@@ -506,6 +506,10 @@ func (i *compactionIter) nextInStripe() stripeChangeType {
 			return sameStripeNonSkippable
 		}
 		return newStripe
+	case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+		// Range keys are interleaved at the max sequence number for a given user
+		// key, so we should not see any more range keys in this stripe.
+		panic("unreachable")
 	case InternalKeyKindInvalid:
 		if i.curSnapshotIdx == origSnapshotIdx {
 			return sameStripeNonSkippable
