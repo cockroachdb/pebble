@@ -178,7 +178,7 @@ func (l *LevelIter) loadFile(file *manifest.FileMetadata, dir int) loadFileRetur
 		return noFileLoaded
 	}
 	if indicator != fileAlreadyLoaded {
-		l.iter, l.err = l.newIter(l.files.Current(), &l.tableOpts)
+		l.iter, l.err = l.newIter(file, &l.tableOpts)
 		indicator = newFileLoaded
 	}
 	if l.err != nil {
@@ -190,33 +190,42 @@ func (l *LevelIter) loadFile(file *manifest.FileMetadata, dir int) loadFileRetur
 // SeekGE implements keyspan.FragmentIterator.
 func (l *LevelIter) SeekGE(key []byte) *Span {
 	l.dir = +1
+	l.straddle = Span{}
+	l.straddleDir = 0
 	l.err = nil // clear cached iteration error
 
 	f := l.findFileGE(key)
 	if f != nil && l.keyType == manifest.KeyTypeRange && l.cmp(key, f.SmallestRangeKey.UserKey) < 0 {
-		// Return a straddling key instead of loading the file.
-		l.iterFile = f
-		l.iter = nil
-		l.straddleDir = +1
-		// The synthetic span that we are creating starts at the seeked key. This
-		// is an optimization as it prevents us from loading the adjacent file's
-		// bounds, at the expense of this iterator appearing "inconsistent" to its
-		// callers i.e.:
-		//
-		// SeekGE(bb) -> {bb-c, empty}
-		// Next()     -> {c-d, RANGEKEYSET}
-		// Prev()     -> {a-c, empty}
-		//
-		// Seeing as the inconsistency will only be around empty spans, which are
-		// expected to be elided by one of the higher-level iterators (either
-		// top-level Iterator or the defragmenting iter), the entire iterator should
-		// still appear consistent to the user.
-		l.straddle = Span{
-			Start: key,
-			End:   f.SmallestRangeKey.UserKey,
-			Keys:  nil,
+		prevFile := l.files.Prev()
+		if prevFile != nil {
+			// We could unconditionally return an empty span between the seek key and
+			// f.SmallestRangeKey, however if this span is to the left of all range
+			// keys on this level, it could lead to inconsistent behaviour in relative
+			// positioning operations. Consider this example, with a b-c range key:
+			//
+			// SeekGE(a) -> a-b:{}
+			// Next() -> b-c{(#5,RANGEKEYSET,@4,foo)}
+			// Prev() -> nil
+			//
+			// Iterators higher up in the iterator stack rely on this sort of relative
+			// positioning consistency.
+			//
+			// TODO(bilal): Investigate ways to be able to return straddle spans in
+			// cases similar to the above, while still retaining correctness.
+			l.files.Next()
+			// Return a straddling key instead of loading the file.
+			l.iterFile = f
+			if err := l.Close(); err != nil {
+				return nil
+			}
+			l.straddleDir = +1
+			l.straddle = Span{
+				Start: prevFile.LargestRangeKey.UserKey,
+				End:   f.SmallestRangeKey.UserKey,
+				Keys:  nil,
+			}
+			return &l.straddle
 		}
-		return &l.straddle
 	}
 	loadFileIndicator := l.loadFile(f, +1)
 	if loadFileIndicator == noFileLoaded {
@@ -231,33 +240,42 @@ func (l *LevelIter) SeekGE(key []byte) *Span {
 // SeekLT implements keyspan.FragmentIterator.
 func (l *LevelIter) SeekLT(key []byte) *Span {
 	l.dir = -1
+	l.straddle = Span{}
+	l.straddleDir = 0
 	l.err = nil // clear cached iteration error
 
 	f := l.findFileLT(key)
 	if f != nil && l.keyType == manifest.KeyTypeRange && l.cmp(f.LargestRangeKey.UserKey, key) < 0 {
-		// Return a straddling key instead of loading the file.
-		l.iterFile = f
-		l.iter = nil
-		l.straddleDir = -1
-		// The synthetic span that we are creating ends at the seeked key. This
-		// is an optimization as it prevents us from loading the adjacent file's
-		// bounds, at the expense of this iterator appearing "inconsistent" to its
-		// callers i.e.:
-		//
-		// SeekLT(dd) -> {d-dd, empty}
-		// Prev()     -> {c-d, RANGEKEYSET}
-		// Next()     -> {d-e, empty}
-		//
-		// Seeing as the inconsistency will only be around empty spans, which are
-		// expected to be elided by one of the higher-level iterators (either
-		// top-level Iterator or the defragmenting iter), the entire iterator should
-		// still appear consistent to the user.
-		l.straddle = Span{
-			Start: f.LargestRangeKey.UserKey,
-			End:   key,
-			Keys:  nil,
+		nextFile := l.files.Next()
+		if nextFile != nil {
+			// We could unconditionally return an empty span between f.LargestRangeKey
+			// and the seek key, however if this span is to the right of all range keys
+			// on this level, it could lead to inconsistent behaviour in relative
+			// positioning operations. Consider this example, with a b-c range key:
+			//
+			// SeekLT(d) -> c-d:{}
+			// Prev() -> b-c{(#5,RANGEKEYSET,@4,foo)}
+			// Next() -> nil
+			//
+			// Iterators higher up in the iterator stack rely on this sort of relative
+			// positioning consistency.
+			//
+			// TODO(bilal): Investigate ways to be able to return straddle spans in
+			// cases similar to the above, while still retaining correctness.
+			l.files.Prev()
+			// Return a straddling key instead of loading the file.
+			l.iterFile = f
+			if err := l.Close(); err != nil {
+				return nil
+			}
+			l.straddleDir = -1
+			l.straddle = Span{
+				Start: f.LargestRangeKey.UserKey,
+				End:   nextFile.SmallestRangeKey.UserKey,
+				Keys:  nil,
+			}
+			return &l.straddle
 		}
-		return &l.straddle
 	}
 	if l.loadFile(l.findFileLT(key), -1) == noFileLoaded {
 		return nil
@@ -271,6 +289,8 @@ func (l *LevelIter) SeekLT(key []byte) *Span {
 // First implements keyspan.FragmentIterator.
 func (l *LevelIter) First() *Span {
 	l.dir = +1
+	l.straddle = Span{}
+	l.straddleDir = 0
 	l.err = nil // clear cached iteration error
 
 	if l.loadFile(l.files.First(), +1) == noFileLoaded {
@@ -285,6 +305,8 @@ func (l *LevelIter) First() *Span {
 // Last implements keyspan.FragmentIterator.
 func (l *LevelIter) Last() *Span {
 	l.dir = -1
+	l.straddle = Span{}
+	l.straddleDir = 0
 	l.err = nil // clear cached iteration error
 
 	if l.loadFile(l.files.Last(), -1) == noFileLoaded {
@@ -298,10 +320,14 @@ func (l *LevelIter) Last() *Span {
 
 // Next implements keyspan.FragmentIterator.
 func (l *LevelIter) Next() *Span {
-	l.dir = +1
-	if l.err != nil || (l.iter == nil && l.iterFile == nil) {
+	if l.err != nil || (l.iter == nil && l.iterFile == nil && l.dir > 0) {
 		return nil
 	}
+	if l.iter == nil && l.iterFile == nil {
+		// l.dir <= 0
+		return l.First()
+	}
+	l.dir = +1
 
 	if l.iter != nil {
 		if span := l.iter.Next(); span != nil {
@@ -313,10 +339,14 @@ func (l *LevelIter) Next() *Span {
 
 // Prev implements keyspan.FragmentIterator.
 func (l *LevelIter) Prev() *Span {
-	l.dir = -1
-	if l.err != nil || (l.iter == nil && l.iterFile == nil) {
+	if l.err != nil || (l.iter == nil && l.iterFile == nil && l.dir < 0) {
 		return nil
 	}
+	if l.iter == nil && l.iterFile == nil {
+		// l.dir >= 0
+		return l.Last()
+	}
+	l.dir = -1
 
 	if l.iter != nil {
 		if span := l.iter.Prev(); span != nil {
@@ -355,7 +385,7 @@ func (l *LevelIter) skipEmptyFileForward() *Span {
 				Start: startKey,
 				End:   endKey,
 			}
-			l.straddleDir = l.dir
+			l.straddleDir = +1
 			return &l.straddle
 		}
 	} else if l.straddleDir < 0 {
@@ -416,7 +446,7 @@ func (l *LevelIter) skipEmptyFileBackward() *Span {
 				Start: startKey,
 				End:   endKey,
 			}
-			l.straddleDir = l.dir
+			l.straddleDir = -1
 			return &l.straddle
 		}
 	} else if l.straddleDir > 0 {

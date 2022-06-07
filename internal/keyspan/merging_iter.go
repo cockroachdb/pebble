@@ -811,7 +811,7 @@ func (m *MergingIter) synthesizeKeys(dir int8) (bool, *Span) {
 	}
 	sort.Sort(&m.keys)
 
-	// Apply the configured transform. See VisibleTransform.
+	// Apply the configured transform. See visibleTransform.
 	s := Span{
 		Start: m.start,
 		End:   m.end,

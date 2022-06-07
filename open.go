@@ -430,7 +430,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
 		d.mu.versions.metrics.WAL.Files++
 	}
-	d.updateReadStateLocked(d.opts.DebugCheck, nil)
+	d.updateReadStateLocked(d.opts.DebugCheck)
 
 	if !d.opts.ReadOnly {
 		// Write the current options to disk.
@@ -709,12 +709,6 @@ func (d *DB) replayWAL(
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			1 /* base level */, toFlush, &d.atomic.bytesFlushed)
 		newVE, _, err := d.runCompaction(jobID, c, nilPacer)
-		if err != nil {
-			return 0, err
-		}
-		// TODO(jackson): Remove the below call to applyFlushedRangeKeys once
-		// flushes actually persist range keys to sstables.
-		err = d.applyFlushedRangeKeys(toFlush)
 		if err != nil {
 			return 0, err
 		}
