@@ -341,26 +341,16 @@ func (o *ingestOp) run(t *test, h *history) {
 		id := o.batchIDs[0]
 		b := t.getBatch(id)
 		iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
-		// Ingests currently discard range keys. Using apply as an alternative
-		// to ingestion would create a divergence, since batch applications do
-		// commit range keys. Only allow the ingest to be applied as a batch if
-		// it doesn't contain any range keys.
-		// TODO(jackson): When range keys are properly persisted, allow
-		// tables containing range keys to be applied as batches.
-		if rangeKeyIter != nil {
-			closeIters(iter, rangeDelIter, rangeKeyIter)
-		} else {
-			c, err := o.collapseBatch(t, iter, rangeDelIter, rangeKeyIter)
-			if err == nil {
-				w := t.getWriter(makeObjID(dbTag, 0))
-				err = w.Apply(c, t.writeOpts)
-			}
-			_ = b.Close()
-			_ = c.Close()
-			t.clearObj(id)
-			h.Recordf("%s // %v", o, err)
-			return
+		c, err := o.collapseBatch(t, iter, rangeDelIter, rangeKeyIter)
+		if err == nil {
+			w := t.getWriter(makeObjID(dbTag, 0))
+			err = w.Apply(c, t.writeOpts)
 		}
+		_ = b.Close()
+		_ = c.Close()
+		t.clearObj(id)
+		h.Recordf("%s // %v", o, err)
+		return
 	}
 
 	var paths []string

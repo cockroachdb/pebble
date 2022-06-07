@@ -85,7 +85,7 @@ func flushExternalTable(untypedDB interface{}, path string, originalMeta *fileMe
 		}
 		return err
 	}
-	d.updateReadStateLocked(d.opts.DebugCheck, nil)
+	d.updateReadStateLocked(d.opts.DebugCheck)
 	d.updateTableStatsLocked(ve.NewFiles)
 	d.deleteObsoleteFiles(jobID, true /* waitForOngoing */)
 	d.maybeScheduleCompaction()

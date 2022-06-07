@@ -849,7 +849,7 @@ func (d *DB) ingestApply(
 	}); err != nil {
 		return nil, err
 	}
-	d.updateReadStateLocked(d.opts.DebugCheck, nil)
+	d.updateReadStateLocked(d.opts.DebugCheck)
 	d.updateTableStatsLocked(ve.NewFiles)
 	d.deleteObsoleteFiles(jobID, false /* waitForOngoing */)
 	// The ingestion may have pushed a level over the threshold for compaction,

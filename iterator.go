@@ -613,10 +613,10 @@ func (i *Iterator) sampleRead() {
 					var containsKey bool
 					if i.pos == iterPosNext || i.pos == iterPosCurForward ||
 						i.pos == iterPosCurForwardPaused {
-						containsKey = i.cmp(file.Smallest.UserKey, i.key) <= 0
+						containsKey = i.cmp(file.SmallestPointKey.UserKey, i.key) <= 0
 					} else if i.pos == iterPosPrev || i.pos == iterPosCurReverse ||
 						i.pos == iterPosCurReversePaused {
-						containsKey = i.cmp(file.Largest.UserKey, i.key) >= 0
+						containsKey = i.cmp(file.LargestPointKey.UserKey, i.key) >= 0
 					}
 					// Do nothing if the current key is not contained in file's
 					// bounds. We could seek the LevelIterator at this level
@@ -653,8 +653,8 @@ func (i *Iterator) sampleRead() {
 			atomic.AddInt64(&topFile.Atomic.AllowedSeeks, topFile.InitAllowedSeeks)
 
 			read := readCompaction{
-				start:   topFile.Smallest.UserKey,
-				end:     topFile.Largest.UserKey,
+				start:   topFile.SmallestPointKey.UserKey,
+				end:     topFile.LargestPointKey.UserKey,
 				level:   topLevel,
 				fileNum: topFile.FileNum,
 			}
