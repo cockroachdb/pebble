@@ -201,6 +201,26 @@ func (s Span) Visible(snapshot uint64) Span {
 	return ret
 }
 
+// VisibleAt returns true if the span contains a key visible at the provided
+// snapshot. Keys with sequence numbers with the batch bit set are treated as
+// always visible.
+func (s *Span) VisibleAt(snapshot uint64) bool {
+	if len(s.Keys) == 0 {
+		return false
+	} else if first := s.Keys[0].SeqNum(); first&base.InternalKeySeqNumBatch != 0 {
+		// Only visible batch keys are included when an Iterator's batch spans
+		// are fragmented. They must always be visible.
+		return true
+	} else {
+		// Otherwise we check the last key. Since keys are ordered decreasing in
+		// sequence number, the last key has the lowest sequence number of any
+		// of the span's keys. If any of the keys are visible, the last key must
+		// be visible. Or put differently: if the last key is not visible, then
+		// no key is visible.
+		return s.Keys[len(s.Keys)-1].SeqNum() < snapshot
+	}
+}
+
 // ShallowClone returns the span with a Keys slice owned by the span itself.
 // None of the key byte slices are cloned (see Span.DeepClone).
 func (s *Span) ShallowClone() Span {
@@ -246,6 +266,27 @@ func (s *Span) Contains(cmp base.Compare, key []byte) bool {
 // Covers returns true if the span covers keys at seqNum.
 func (s Span) Covers(seqNum uint64) bool {
 	return !s.Empty() && s.Keys[0].SeqNum() > seqNum
+}
+
+// CoversAt returns true if the span contains a key that is visible at the
+// provided snapshot sequence number, and that key's sequence number is higher
+// than seqNum.
+//
+// Keys with sequence numbers with the batch bit set are treated as always
+// visible.
+func (s Span) CoversAt(snapshot, seqNum uint64) bool {
+	// NB: A key is visible at `snapshot` if its sequence number is strictly
+	// less than `snapshot`. See base.Visible.
+	for i := range s.Keys {
+		if kseq := s.Keys[i].SeqNum(); kseq&base.InternalKeySeqNumBatch != 0 {
+			// Only visible batch keys are included when an Iterator's batch spans
+			// are fragmented. They must always be visible.
+			return kseq > seqNum
+		} else if kseq < snapshot {
+			return kseq > seqNum
+		}
+	}
+	return false
 }
 
 // String returns a string representation of the span.
