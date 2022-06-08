@@ -941,6 +941,8 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 func TestPickedCompactionSetupInputs(t *testing.T) {
 	opts := &Options{}
 	opts.EnsureDefaults()
+	var multiLevel bool
+
 	parseMeta := func(s string) *fileMetadata {
 		parts := strings.Split(strings.TrimSpace(s), " ")
 		var fileSize uint64
@@ -972,94 +974,128 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 		return m
 	}
 
-	datadriven.RunTest(t, "testdata/compaction_setup_inputs",
-		func(d *datadriven.TestData) string {
-			switch d.Cmd {
-			case "setup-inputs":
-				var availBytes uint64 = math.MaxUint64
-				args := d.CmdArgs
+	setupInputTest := func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "setup-inputs":
+			var availBytes uint64 = math.MaxUint64
+			var maxLevelBytes [7]int64
+			args := d.CmdArgs
 
-				if len(args) > 0 && args[0].Key == "avail-bytes" {
-					require.Equal(t, 1, len(args[0].Vals))
-					var err error
-					availBytes, err = strconv.ParseUint(args[0].Vals[0], 10, 64)
-					require.NoError(t, err)
-					args = args[1:]
-				}
+			if len(args) > 0 && args[0].Key == "avail-bytes" {
+				require.Equal(t, 1, len(args[0].Vals))
+				var err error
+				availBytes, err = strconv.ParseUint(args[0].Vals[0], 10, 64)
+				require.NoError(t, err)
+				args = args[1:]
+			}
 
-				if len(args) != 2 {
-					return "setup-inputs [avail-bytes=XXX] <start> <end>"
-				}
+			if len(args) != 2 {
+				return "setup-inputs [avail-bytes=XXX] <start> <end>"
+			}
 
-				pc := &pickedCompaction{
-					cmp:    DefaultComparer.Compare,
-					inputs: []compactionLevel{{level: -1}, {level: -1}},
-				}
-				pc.startLevel, pc.outputLevel = &pc.inputs[0], &pc.inputs[1]
-				var currentLevel int
-				var files [numLevels][]*fileMetadata
-				fileNum := FileNum(1)
+			pc := &pickedCompaction{
+				cmp:    DefaultComparer.Compare,
+				inputs: []compactionLevel{{level: -1}, {level: -1}},
+			}
+			pc.startLevel, pc.outputLevel = &pc.inputs[0], &pc.inputs[1]
+			var currentLevel int
+			var files [numLevels][]*fileMetadata
+			fileNum := FileNum(1)
 
-				for _, data := range strings.Split(d.Input, "\n") {
-					switch data {
-					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
-						level, err := strconv.Atoi(data[1:])
+			for _, data := range strings.Split(d.Input, "\n") {
+				switch data[:2] {
+				case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+					levelArgs := strings.Split(data, " ")
+					level, err := strconv.Atoi(levelArgs[0][1:])
+					if err != nil {
+						return err.Error()
+					}
+					currentLevel = level
+					if len(levelArgs) > 1 {
+						maxSizeArg := strings.Replace(levelArgs[1], "max-size=", "", 1)
+						maxSize, err := strconv.ParseInt(maxSizeArg, 10, 64)
 						if err != nil {
 							return err.Error()
 						}
-						if pc.startLevel.level == -1 {
-							pc.startLevel.level = level
-							currentLevel = level
-						} else if pc.outputLevel.level == -1 {
-							if pc.startLevel.level >= level {
-								return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", pc.startLevel.level, level)
-							}
-							pc.outputLevel.level = level
-							currentLevel = level
-						} else {
-							return "outputLevel already set\n"
-						}
-
-					default:
-						meta := parseMeta(data)
-						meta.FileNum = fileNum
-						fileNum++
-						files[currentLevel] = append(files[currentLevel], meta)
+						maxLevelBytes[level] = maxSize
+					} else {
+						maxLevelBytes[level] = math.MaxInt64
 					}
-				}
+					if pc.startLevel.level == -1 {
+						pc.startLevel.level = level
 
-				if pc.outputLevel.level == -1 {
-					pc.outputLevel.level = pc.startLevel.level + 1
-				}
-				pc.version = newVersion(opts, files)
-				pc.startLevel.files = pc.version.Overlaps(pc.startLevel.level, pc.cmp,
-					[]byte(args[0].String()), []byte(args[1].String()), false /* exclusiveEnd */)
+					} else if pc.outputLevel.level == -1 {
+						if pc.startLevel.level >= level {
+							return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", pc.startLevel.level, level)
+						}
+						pc.outputLevel.level = level
+					} else if !multiLevel {
+						return "outputLevel already set\n"
+					}
 
-				var isCompacting bool
-				if !pc.setupInputs(opts, availBytes) {
+				default:
+					meta := parseMeta(data)
+					meta.FileNum = fileNum
+					fileNum++
+					files[currentLevel] = append(files[currentLevel], meta)
+				}
+			}
+
+			if pc.outputLevel.level == -1 {
+				pc.outputLevel.level = pc.startLevel.level + 1
+			}
+			opts.Experimental.MultiLevelCompaction = multiLevel
+			pc.version = newVersion(opts, files)
+			pc.startLevel.files = pc.version.Overlaps(pc.startLevel.level, pc.cmp,
+				[]byte(args[0].String()), []byte(args[1].String()), false /* exclusiveEnd */)
+
+			var isCompacting bool
+			if !pc.setupInputs(opts, availBytes, pc.startLevel) {
+				isCompacting = true
+			}
+
+			var initMultiLevel bool
+			if opts.Experimental.MultiLevelCompaction && pc.startLevel.level > 0 &&
+				pc.initMultiLevelCompaction(opts, pc.version, maxLevelBytes, availBytes) {
+				initMultiLevel = true
+				if !pc.setupInputs(opts, availBytes, pc.extraLevels[len(pc.extraLevels)-1]) {
 					isCompacting = true
 				}
-
-				var buf bytes.Buffer
-				for _, cl := range pc.inputs {
-					if cl.files.Empty() {
-						continue
-					}
-
-					fmt.Fprintf(&buf, "L%d\n", cl.level)
-					cl.files.Each(func(f *fileMetadata) {
-						fmt.Fprintf(&buf, "  %s\n", f)
-					})
-				}
-				if isCompacting {
-					fmt.Fprintf(&buf, "is-compacting")
-				}
-				return buf.String()
-
-			default:
-				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
-		})
+
+			var buf bytes.Buffer
+			for _, cl := range pc.inputs {
+				if cl.files.Empty() {
+					continue
+				}
+
+				fmt.Fprintf(&buf, "L%d\n", cl.level)
+				cl.files.Each(func(f *fileMetadata) {
+					fmt.Fprintf(&buf, "  %s\n", f)
+				})
+			}
+			if isCompacting {
+				fmt.Fprintf(&buf, "is-compacting\n")
+			}
+			if initMultiLevel {
+				extraLevel := pc.extraLevels[0].level
+				fmt.Fprintf(&buf, "init-multi-level(%d,%d,%d)\n", pc.startLevel.level, extraLevel,
+					pc.outputLevel.level)
+			}
+			return buf.String()
+
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	}
+
+	datadriven.RunTest(t, "testdata/compaction_setup_inputs",
+		setupInputTest)
+
+	t.Logf("Turning multi level compaction on")
+	multiLevel = true
+	datadriven.RunTest(t, "testdata/compaction_setup_inputs_multi_level",
+		setupInputTest)
 }
 
 func TestPickedCompactionExpandInputs(t *testing.T) {

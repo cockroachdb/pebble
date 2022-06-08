@@ -1411,6 +1411,11 @@ func TestManualCompaction(t *testing.T) {
 			minVersion: FormatSetWithDelete,
 			maxVersion: FormatNewest,
 		},
+		{
+			testData:   "testdata/manual_compaction_multi_input",
+			minVersion: FormatMostCompatible,
+			maxVersion: FormatSetWithDelete - 1,
+		},
 	}
 
 	for _, tc := range testCases {

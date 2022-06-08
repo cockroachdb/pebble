@@ -435,10 +435,44 @@ func (pc *pickedCompaction) grow(
 }
 
 // initMultiLevelCompaction returns true if it initiated a multilevel input
-// compaction. This currently never inits a multiLevel compaction.
+// compaction. This occurs if either:
+// 1. The current compaction will likely cause the output level to require a new compaction
+//    immediately (i.e. the predicted output level size exceeds the level's max bytes)
+// 2. Over 50% of the original output level is included in the compaction.
 func (pc *pickedCompaction) initMultiLevelCompaction(
 	opts *Options, vers *version, levelMaxBytes [7]int64, diskAvailBytes uint64,
 ) bool {
+	// TODO (msbutler): consider a more intelligent heuristic for triggering a
+	// multilevel compaction. Ideally, the predictedOutputFileSize would estimate
+	// the number of tombstones in the compacting files.
+	// I could create a SizeSumMinusDeleteTombstones,
+	// which would prevent files with del ranges from hitting this.
+	// however this doesn't apply much to use cases (inverted LSM, manual compaction).
+	predOutputFileSize := uint64(math.Max(float64(pc.startLevel.files.SizeSum()),
+		float64(pc.outputLevel.files.SizeSum())))
+	curOutputLevelSize := levelCompensatedSize(vers.Levels[pc.outputLevel.level])
+	predOutputLevelSize := curOutputLevelSize + predOutputFileSize - pc.
+		outputLevel.files.SizeSum()
+	maxExpandedBytes := expandedCompactionByteSizeLimit(opts, pc.adjustedOutputLevel,
+		diskAvailBytes)
+	if maxExpandedBytes < predOutputFileSize {
+		return false
+	}
+	fullOutputSoon := uint64(levelMaxBytes[pc.outputLevel.level]) < predOutputLevelSize
+	highOutputInvolvement := (float64(pc.outputLevel.files.SizeSum()) / float64(curOutputLevelSize)) > 0.5
+	if pc.outputLevel.level < numLevels-1 && (fullOutputSoon || highOutputInvolvement) {
+		pc.inputs = append(pc.inputs, compactionLevel{level: pc.outputLevel.level + 1})
+
+		// Recalibrate startLevel and outputLevel:
+		//  - startLevel and outputLevel pointers may be obsolete after appending to pc.inputs.
+		//  - push outputLevel to extraLevels and move the new level to outputLevel
+		pc.startLevel = &pc.inputs[0]
+		pc.extraLevels = []*compactionLevel{&pc.inputs[1]}
+		pc.outputLevel = &pc.inputs[2]
+
+		pc.adjustedOutputLevel++
+		return true
+	}
 	return false
 }
 

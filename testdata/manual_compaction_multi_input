@@ -1,0 +1,114 @@
+# a vanilla multi-level compaction
+define level-max-bytes=(L2 : 5) auto-compactions=off multi-level
+L1
+  a.SET.1:v b.SET.2:v
+L2
+  a.SET.3:v c.SET.4:v
+L3
+  c.SET.3:v d.SET.2:v
+L4
+  c.SET.4:v d.SET.3:v
+----
+1:
+  000004:[a#1,SET-b#2,SET]
+2:
+  000005:[a#3,SET-c#4,SET]
+3:
+  000006:[c#3,SET-d#2,SET]
+4:
+  000007:[c#4,SET-d#3,SET]
+
+compact a-b L1
+----
+3:
+  000008:[a#3,SET-d#2,SET]
+4:
+  000007:[c#4,SET-d#3,SET]
+
+# multi-level compaction with no output level files
+define level-max-bytes=(L2 : 5) auto-compactions=off multi-level
+L1
+  a.SET.1:v b.SET.2:v
+L2
+  a.SET.3:v c.SET.4:v
+L4
+  c.SET.4:v d.SET.3:v
+----
+1:
+  000004:[a#1,SET-b#2,SET]
+2:
+  000005:[a#3,SET-c#4,SET]
+4:
+  000006:[c#4,SET-d#3,SET]
+
+compact a-b L1
+----
+3:
+  000007:[a#3,SET-c#4,SET]
+4:
+  000006:[c#4,SET-d#3,SET]
+
+# multi-level compaction without intermediate level
+define level-max-bytes=(L2 : 5) auto-compactions=off multi-level
+L1
+  a.SET.1:v c.SET.2:v
+L3
+  c.SET.3:v d.SET.2:v
+L4
+  c.SET.4:v d.SET.3:v
+----
+1:
+  000004:[a#1,SET-c#2,SET]
+3:
+  000005:[c#3,SET-d#2,SET]
+4:
+  000006:[c#4,SET-d#3,SET]
+
+compact a-b L1
+----
+3:
+  000007:[a#1,SET-d#2,SET]
+4:
+  000006:[c#4,SET-d#3,SET]
+
+# multi-level compaction without intermediate or output level, basically a move
+define level-max-bytes=(L2 : 5) auto-compactions=off multi-level
+L1
+  a.SET.1:v c.SET.2:v
+L4
+  c.SET.4:v d.SET.3:v
+----
+1:
+  000004:[a#1,SET-c#2,SET]
+4:
+  000005:[c#4,SET-d#3,SET]
+
+compact a-b L1
+----
+3:
+  000004:[a#1,SET-c#2,SET]
+4:
+  000005:[c#4,SET-d#3,SET]
+
+# no multi-level compaction on L0
+define level-max-bytes=(L1 : 5) auto-compactions=off multi-level
+L0
+  a.SET.1:v b.SET.2:v
+L1
+  a.SET.3:v c.SET.4:v
+L2
+  c.SET.3:v d.SET.2:v
+----
+0.0:
+  000004:[a#1,SET-b#2,SET]
+1:
+  000005:[a#3,SET-c#4,SET]
+2:
+  000006:[c#3,SET-d#2,SET]
+
+compact a-b L0
+----
+1:
+  000007:[a#3,SET-c#4,SET]
+2:
+  000006:[c#3,SET-d#2,SET]
