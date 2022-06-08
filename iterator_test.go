@@ -2104,3 +2104,47 @@ func BenchmarkIteratorScan(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkIteratorSeekNoRangeKeys(b *testing.B) {
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	ks := testkeys.Alpha(1)
+	opts := &Options{
+		FS:                 vfs.NewMem(),
+		FormatMajorVersion: FormatNewest,
+	}
+	opts.Experimental.RangeKeys = new(RangeKeysArena)
+	d, err := Open("", opts)
+	require.NoError(b, err)
+	defer func() { require.NoError(b, d.Close()) }()
+
+	keys := make([][]byte, ks.Count())
+	for i := 0; i < ks.Count(); i++ {
+		keys[i] = testkeys.Key(ks, i)
+		var val [40]byte
+		rng.Read(val[:])
+		require.NoError(b, d.Set(keys[i], val[:], nil))
+	}
+
+	batch := d.NewIndexedBatch()
+	defer batch.Close()
+
+	for _, useBatch := range []bool{false, true} {
+		b.Run(fmt.Sprintf("batch=%t", useBatch), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				iterOpts := IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
+				var it *Iterator
+				if useBatch {
+					it = batch.NewIter(&iterOpts)
+				} else {
+					it = d.NewIter(&iterOpts)
+				}
+				for j := 0; j < len(keys); j++ {
+					if !it.SeekGE(keys[j]) {
+						b.Errorf("key %q missing", keys[j])
+					}
+				}
+				require.NoError(b, it.Close())
+			}
+		})
+	}
+}
