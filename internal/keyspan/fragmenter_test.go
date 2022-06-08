@@ -131,8 +131,8 @@ func TestFragmenter(t *testing.T) {
 	// number. This is a simple version of what full processing of range
 	// tombstones looks like.
 	deleted := func(key []byte, seq, readSeq uint64) bool {
-		s := Get(cmp, iter, key, readSeq)
-		return s.Covers(seq)
+		s := Get(cmp, iter, key)
+		return s.CoversAt(readSeq, seq)
 	}
 
 	datadriven.RunTest(t, "testdata/fragmenter", func(d *datadriven.TestData) string {

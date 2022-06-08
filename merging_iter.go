@@ -318,9 +318,6 @@ func (m *mergingIter) initMinRangeDelIters(oldTopLevel int) {
 			continue
 		}
 		l.tombstone = keyspan.SeekGE(m.heap.cmp, l.rangeDelIter, item.key.UserKey)
-		if l.tombstone.Valid() {
-			l.tombstone = l.tombstone.Visible(m.snapshot)
-		}
 	}
 }
 
@@ -348,9 +345,6 @@ func (m *mergingIter) initMaxRangeDelIters(oldTopLevel int) {
 			continue
 		}
 		l.tombstone = keyspan.SeekLE(m.heap.cmp, l.rangeDelIter, item.key.UserKey)
-		if l.tombstone.Valid() {
-			l.tombstone = l.tombstone.Visible(m.snapshot)
-		}
 	}
 }
 
@@ -577,9 +571,6 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 			// will encounter parts of the range delete that should be ignored -- we handle that
 			// below.
 			l.tombstone = keyspan.SeekGE(m.heap.cmp, l.rangeDelIter, item.key.UserKey)
-			if l.tombstone.Valid() {
-				l.tombstone = l.tombstone.Visible(m.snapshot)
-			}
 		}
 		if !l.tombstone.Valid() {
 			continue
@@ -604,7 +595,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 		//
 		// For a tombstone at the same level as the key, the file bounds are trivially satisfied.
 		if (l.smallestUserKey == nil || m.heap.cmp(l.smallestUserKey, item.key.UserKey) <= 0) &&
-			l.tombstone.Contains(m.heap.cmp, item.key.UserKey) && !l.tombstone.Empty() {
+			l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
 			if level < item.index {
 				// We could also do m.seekGE(..., level + 1). The levels from
 				// [level + 1, item.index) are already after item.key so seeking them may be
@@ -638,7 +629,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 				m.seekGE(seekKey, item.index, false /* trySeekUsingNext */)
 				return true
 			}
-			if l.tombstone.Covers(item.key.SeqNum()) {
+			if l.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
 				m.nextEntry(item)
 				return true
 			}
@@ -746,9 +737,6 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 			// will encounter parts of the range delete that should be ignored -- we handle that
 			// below.
 			l.tombstone = keyspan.SeekLE(m.heap.cmp, l.rangeDelIter, item.key.UserKey)
-			if l.tombstone.Valid() {
-				l.tombstone = l.tombstone.Visible(m.snapshot)
-			}
 		}
 		if !l.tombstone.Valid() {
 			continue
@@ -787,7 +775,7 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 			cmpResult := m.heap.cmp(l.largestUserKey, item.key.UserKey)
 			withinLargestSSTableBound = cmpResult > 0 || (cmpResult == 0 && !l.isLargestUserKeyRangeDelSentinel)
 		}
-		if withinLargestSSTableBound && l.tombstone.Contains(m.heap.cmp, item.key.UserKey) && !l.tombstone.Empty() {
+		if withinLargestSSTableBound && l.tombstone.Contains(m.heap.cmp, item.key.UserKey) && l.tombstone.VisibleAt(m.snapshot) {
 			if level < item.index {
 				// We could also do m.seekLT(..., level + 1). The levels from
 				// [level + 1, item.index) are already before item.key so seeking them may be
@@ -810,7 +798,7 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 				m.seekLT(seekKey, item.index)
 				return true
 			}
-			if l.tombstone.Covers(item.key.SeqNum()) {
+			if l.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
 				m.prevEntry(item)
 				return true
 			}
@@ -892,10 +880,7 @@ func (m *mergingIter) seekGE(key []byte, level int, trySeekUsingNext bool) {
 			// tombstone is [b, k)#8 and the seek key is i: levelIter.SeekGE(i) will move past
 			// this sstable since it realizes the largest key is a InternalRangeDelSentinel.
 			l.tombstone = keyspan.SeekGE(m.heap.cmp, rangeDelIter, key)
-			if l.tombstone.Valid() {
-				l.tombstone = l.tombstone.Visible(m.snapshot)
-			}
-			if !l.tombstone.Empty() && l.tombstone.Contains(m.heap.cmp, key) &&
+			if l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, key) &&
 				(l.smallestUserKey == nil || m.heap.cmp(l.smallestUserKey, key) <= 0) {
 				// NB: Based on the comment above l.largestUserKey >= key, and based on the
 				// containment condition tombstone.End > key, so the assignment to key results
@@ -981,10 +966,7 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 			}
 
 			l.tombstone = keyspan.SeekLE(m.heap.cmp, rangeDelIter, key)
-			if l.tombstone.Valid() {
-				l.tombstone = l.tombstone.Visible(m.snapshot)
-			}
-			if !l.tombstone.Empty() && l.tombstone.Contains(m.heap.cmp, key) && withinLargestSSTableBound {
+			if l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, key) && withinLargestSSTableBound {
 				// NB: Based on the comment above l.smallestUserKey <= key, and based
 				// on the containment condition tombstone.Start.UserKey <= key, so the
 				// assignment to key results in a monotonically non-increasing key
