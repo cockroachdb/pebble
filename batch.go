@@ -793,7 +793,7 @@ func (b *Batch) Empty() bool {
 
 // Len returns the current size of the batch in bytes.
 func (b *Batch) Len() int {
-	return len(b.data)
+	return len(b.data) + batchHeaderLen
 }
 
 // Repr returns the underlying batch representation. It is not safe to modify
