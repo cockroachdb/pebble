@@ -18,7 +18,7 @@ func TestFilteringIter(t *testing.T) {
 	// makeFilter returns a FilterFunc that will filter out all keys in a Span
 	// that are not of the given kind. Empty spans are skipped.
 	makeFilter := func(kind base.InternalKeyKind) FilterFunc {
-		return func(in Span, out *Span) (keep bool) {
+		return func(in *Span, out *Span) (keep bool) {
 			out.Start, out.End = in.Start, in.End
 			out.Keys = out.Keys[:0]
 			for _, k := range in.Keys {

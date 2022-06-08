@@ -603,14 +603,14 @@ func newFlush(
 	}
 
 	updateRangeBounds := func(iter keyspan.FragmentIterator) {
-		if s := iter.First(); s.Valid() {
+		if s := iter.First(); s != nil {
 			if key := s.SmallestKey(); !smallestSet ||
 				base.InternalCompare(c.cmp, c.smallest, key) > 0 {
 				smallestSet = true
 				c.smallest = key.Clone()
 			}
 		}
-		if s := iter.Last(); s.Valid() {
+		if s := iter.Last(); s != nil {
 			if key := s.LargestKey(); !largestSet ||
 				base.InternalCompare(c.cmp, c.largest, key) < 0 {
 				largestSet = true
@@ -2194,7 +2194,7 @@ func (d *DB) runCompaction(
 			// added to the writer, eliding out-of-file range tombstones based
 			// on sequence number at this stage is difficult, and necessitates
 			// read-time logic to ignore range tombstones outside file bounds.
-			if rangedel.Encode(v, tw.Add); err != nil {
+			if rangedel.Encode(&v, tw.Add); err != nil {
 				return err
 			}
 		}

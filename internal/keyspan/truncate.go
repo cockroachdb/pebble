@@ -12,7 +12,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 func Truncate(
 	cmp base.Compare, iter FragmentIterator, lower, upper []byte, start, end *base.InternalKey,
 ) FragmentIterator {
-	return Filter(iter, func(in Span, out *Span) (keep bool) {
+	return Filter(iter, func(in *Span, out *Span) (keep bool) {
 		out.Start, out.End = in.Start, in.End
 		out.Keys = append(out.Keys[:0], in.Keys...)
 

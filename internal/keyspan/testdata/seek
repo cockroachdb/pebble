@@ -12,7 +12,7 @@ d 2
 b-d:{(#1,RANGEDEL)}
 b-d:{(#1,RANGEDEL)}
 b-d:{}
-<invalid>
+<nil>
 
 seek-le
 a 2
@@ -20,7 +20,7 @@ b 2
 b 1
 d 2
 ----
-<invalid>
+<nil>
 b-d:{(#1,RANGEDEL)}
 b-d:{}
 b-d:{(#1,RANGEDEL)}
@@ -45,7 +45,7 @@ b-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
 b-d:{(#2,RANGEDEL) (#1,RANGEDEL)}
 b-d:{(#1,RANGEDEL)}
 b-d:{}
-<invalid>
+<nil>
 
 seek-le
 a 4
@@ -55,7 +55,7 @@ b 2
 b 1
 d 4
 ----
-<invalid>
+<nil>
 b-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
 b-d:{(#2,RANGEDEL) (#1,RANGEDEL)}
 b-d:{(#1,RANGEDEL)}
@@ -88,7 +88,7 @@ d 3
 e 3
 f 3
 ----
-<invalid>
+<nil>
 b-d:{(#1,RANGEDEL)}
 d-f:{}
 d-f:{(#2,RANGEDEL)}
@@ -143,7 +143,7 @@ m-s:{(#1,RANGEDEL)}
 m-s:{}
 s-z:{(#1,RANGEDEL)}
 s-z:{}
-<invalid>
+<nil>
 
 seek-le
 a 4
@@ -232,7 +232,7 @@ s-z:{(#3,RANGEDEL)}
 s-z:{}
 s-z:{}
 s-z:{}
-<invalid>
+<nil>
 
 seek-le
 a 2

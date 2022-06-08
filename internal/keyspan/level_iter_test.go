@@ -319,18 +319,18 @@ func TestLevelIterEquivalence(t *testing.T) {
 		valid := true
 		for valid {
 			f1 := iter1.Next()
-			var f2 Span
+			var f2 *Span
 			for {
 				f2 = iter2.Next()
 				// The level iter could produce empty spans that straddle between
 				// files. Ignore those.
-				if !f2.Valid() || !f2.Empty() {
+				if f2 == nil || !f2.Empty() {
 					break
 				}
 			}
 
 			require.Equal(t, f1, f2, "failed on test case %q", tc.name)
-			valid = f1.Valid() && f2.Valid()
+			valid = f1 != nil && f2 != nil
 		}
 	}
 }

@@ -134,7 +134,7 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for s := iter.First(); s.Valid(); s = iter.Next() {
+			for s := iter.First(); s != nil; s = iter.Next() {
 				fmt.Fprintf(&buf, "%s\n", s)
 			}
 			return buf.String()
@@ -150,7 +150,7 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 			defer iter.Close()
 
 			var buf bytes.Buffer
-			for s := iter.First(); s.Valid(); s = iter.Next() {
+			for s := iter.First(); s != nil; s = iter.Next() {
 				fmt.Fprintf(&buf, "%s\n", s)
 			}
 			return buf.String()

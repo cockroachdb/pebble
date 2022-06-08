@@ -25,7 +25,7 @@ type getIter struct {
 	key          []byte
 	iter         internalIterator
 	rangeDelIter keyspan.FragmentIterator
-	tombstone    keyspan.Span
+	tombstone    *keyspan.Span
 	levelIter    levelIter
 	level        int
 	batch        *Batch
@@ -91,7 +91,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 
 			if g.iterKey != nil {
 				key := g.iterKey
-				if g.tombstone.CoversAt(g.snapshot, key.SeqNum()) {
+				if g.tombstone != nil && g.tombstone.CoversAt(g.snapshot, key.SeqNum()) {
 					// We have a range tombstone covering this key. Rather than return a
 					// point or range deletion here, we return false and close our
 					// internal iterator which will make Valid() return false,
@@ -133,7 +133,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 
 		// If we have a tombstone from a previous level it is guaranteed to delete
 		// keys in lower levels.
-		if g.tombstone.VisibleAt(g.snapshot) {
+		if g.tombstone != nil && g.tombstone.VisibleAt(g.snapshot) {
 			return nil, nil
 		}
 

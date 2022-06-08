@@ -458,7 +458,7 @@ func foreachDefragmentedTombstone(
 	fn func([]byte, []byte, uint64, uint64) error,
 ) error {
 	// Use an equals func that will always merge abutting spans.
-	equal := keyspan.DefragmentMethodFunc(func(_ base.Compare, _, _ keyspan.Span) bool {
+	equal := keyspan.DefragmentMethodFunc(func(_ base.Compare, _, _ *keyspan.Span) bool {
 		return true
 	})
 	// Reduce keys by maintaining a slice of length two, corresponding to the
@@ -493,7 +493,7 @@ func foreachDefragmentedTombstone(
 	}
 	iter := keyspan.DefragmentingIter{}
 	iter.Init(cmp, rangeDelIter, equal, reducer)
-	for s := iter.First(); s.Valid(); s = iter.Next() {
+	for s := iter.First(); s != nil; s = iter.Next() {
 		if err := fn(s.Start, s.End, s.SmallestSeqNum(), s.LargestSeqNum()); err != nil {
 			_ = iter.Close()
 			return err

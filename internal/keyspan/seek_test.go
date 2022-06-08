@@ -47,8 +47,9 @@ func TestSeek(t *testing.T) {
 					return err.Error()
 				}
 				span := seek(cmp, iter, []byte(parts[0]))
-				if span.Valid() {
-					span = span.Visible(seq)
+				if span != nil {
+					visible := span.Visible(seq)
+					span = &visible
 				}
 				fmt.Fprintln(&buf, span)
 			}
