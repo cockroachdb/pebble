@@ -48,9 +48,13 @@ var noopTransform Transformer = TransformerFunc(func(_ base.Compare, s Span, dst
 // sequence number.
 func visibleTransform(snapshot uint64) Transformer {
 	return TransformerFunc(func(_ base.Compare, s Span, dst *Span) error {
-		s = s.Visible(snapshot)
 		dst.Start, dst.End = s.Start, s.End
-		dst.Keys = append(dst.Keys[:0], s.Keys...)
+		dst.Keys = dst.Keys[:0]
+		for _, k := range s.Keys {
+			if base.Visible(k.SeqNum(), snapshot) {
+				dst.Keys = append(dst.Keys, k)
+			}
+		}
 		return nil
 	})
 }

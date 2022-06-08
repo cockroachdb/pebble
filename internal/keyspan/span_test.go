@@ -51,3 +51,48 @@ func TestSpan_Visible(t *testing.T) {
 		}
 	})
 }
+
+func TestSpan_VisibleAt(t *testing.T) {
+	var s Span
+	datadriven.RunTest(t, "testdata/visible_at", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "define":
+			s = ParseSpan(d.Input)
+			return fmt.Sprint(s)
+		case "visible-at":
+			var buf bytes.Buffer
+			for _, line := range strings.Split(d.Input, "\n") {
+				snapshot, err := strconv.ParseUint(line, 10, 64)
+				require.NoError(t, err)
+				fmt.Fprintf(&buf, "%-2d: %t\n", snapshot, s.VisibleAt(snapshot))
+			}
+			return buf.String()
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
+}
+
+func TestSpan_CoversAt(t *testing.T) {
+	var s Span
+	datadriven.RunTest(t, "testdata/covers_at", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "define":
+			s = ParseSpan(d.Input)
+			return fmt.Sprint(s)
+		case "covers-at":
+			var buf bytes.Buffer
+			for _, line := range strings.Split(d.Input, "\n") {
+				fields := strings.Fields(line)
+				snapshot, err := strconv.ParseUint(fields[0], 10, 64)
+				require.NoError(t, err)
+				seqNum, err := strconv.ParseUint(fields[1], 10, 64)
+				require.NoError(t, err)
+				fmt.Fprintf(&buf, "%d %d : %t\n", snapshot, seqNum, s.CoversAt(snapshot, seqNum))
+			}
+			return buf.String()
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
+}

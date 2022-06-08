@@ -11,7 +11,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 // parameter controls the visibility of spans (only spans older than the
 // snapshot sequence number are visible). The iterator must contain
 // fragmented spans: no span may overlap another.
-func Get(cmp base.Compare, iter FragmentIterator, key []byte, snapshot uint64) Span {
+func Get(cmp base.Compare, iter FragmentIterator, key []byte) Span {
 	// NB: We use SeekLT in order to land on the proper span for a search
 	// key that resides in the middle of a span. Consider the scenario:
 	//
@@ -49,5 +49,5 @@ func Get(cmp base.Compare, iter FragmentIterator, key []byte, snapshot uint64) S
 			return Span{}
 		}
 	}
-	return iterSpan.Visible(snapshot)
+	return iterSpan
 }

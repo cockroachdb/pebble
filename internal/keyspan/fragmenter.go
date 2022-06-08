@@ -248,7 +248,7 @@ func (f *Fragmenter) Covers(key base.InternalKey, snapshot uint64) bool {
 			// NB: A range deletion tombstone does not delete a point operation
 			// at the same sequence number, and broadly a span is not considered
 			// to cover a point operation at the same sequence number.
-			if s.Visible(snapshot).Covers(seqNum) {
+			if s.CoversAt(snapshot, seqNum) {
 				return true
 			}
 		}
