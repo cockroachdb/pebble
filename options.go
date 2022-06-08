@@ -511,6 +511,11 @@ type Options struct {
 		// By default, this value is false.
 		ValidateOnIngest bool
 
+		// MultiLevelCompaction allows the compaction of SSTs from more than two
+		// levels iff a conventional two level compaction will quickly trigger a
+		// compaction in the output level.
+		MultiLevelCompaction bool
+
 		// MaxWriterConcurrency is used to indicate the maximum number of
 		// compression workers the compression queue is allowed to use. If
 		// MaxWriterConcurrency > 0, then the Writer will use parallelism, to

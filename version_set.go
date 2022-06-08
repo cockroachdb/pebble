@@ -527,7 +527,7 @@ func (vs *versionSet) logAndApply(
 	return nil
 }
 
-func (vs *versionSet) incrementCompactions(kind compactionKind) {
+func (vs *versionSet) incrementCompactions(kind compactionKind, extraLevels []*compactionLevel) {
 	switch kind {
 	case compactionKindDefault:
 		vs.metrics.Compact.Count++
@@ -555,6 +555,9 @@ func (vs *versionSet) incrementCompactions(kind compactionKind) {
 	case compactionKindRewrite:
 		vs.metrics.Compact.Count++
 		vs.metrics.Compact.RewriteCount++
+	}
+	if len(extraLevels) > 0 {
+		vs.metrics.Compact.MultiLevelCount++
 	}
 }
 
