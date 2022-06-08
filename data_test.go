@@ -519,7 +519,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	}
 
 	if rdi := b.newRangeDelIter(nil, math.MaxUint64); rdi != nil {
-		for s := rdi.First(); s.Valid(); s = rdi.Next() {
+		for s := rdi.First(); s != nil; s = rdi.Next() {
 			err := rangedel.Encode(s, func(k base.InternalKey, v []byte) error {
 				k.SetSeqNum(0)
 				return w.Add(k, v)
@@ -531,7 +531,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	}
 
 	if rki := b.newRangeKeyIter(nil, math.MaxUint64); rki != nil {
-		for s := rki.First(); s.Valid(); s = rki.Next() {
+		for s := rki.First(); s != nil; s = rki.Next() {
 			for _, k := range s.Keys {
 				var err error
 				switch k.Kind() {

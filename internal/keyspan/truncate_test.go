@@ -55,7 +55,7 @@ func TestTruncate(t *testing.T) {
 			tIter := Truncate(cmp, iter, lower, upper, startKey, endKey)
 			defer tIter.Close()
 			var truncated []Span
-			for s := tIter.First(); s.Valid(); s = tIter.Next() {
+			for s := tIter.First(); s != nil; s = tIter.Next() {
 				truncated = append(truncated, s.ShallowClone())
 			}
 			return formatAlphabeticSpans(truncated)

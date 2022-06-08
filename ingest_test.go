@@ -62,7 +62,8 @@ func TestIngestLoad(t *testing.T) {
 			for _, data := range strings.Split(td.Input, "\n") {
 				if strings.HasPrefix(data, "rangekey: ") {
 					data = strings.TrimPrefix(data, "rangekey: ")
-					err := rangekey.Encode(keyspan.ParseSpan(data), w.AddRangeKey)
+					s := keyspan.ParseSpan(data)
+					err := rangekey.Encode(&s, w.AddRangeKey)
 					if err != nil {
 						return err.Error()
 					}
@@ -1275,7 +1276,8 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 		for _, data := range strings.Split(input, "\n") {
 			if strings.HasPrefix(data, "rangekey: ") {
 				data = strings.TrimPrefix(data, "rangekey: ")
-				err := rangekey.Encode(keyspan.ParseSpan(data), w.AddRangeKey)
+				s := keyspan.ParseSpan(data)
+				err := rangekey.Encode(&s, w.AddRangeKey)
 				if err != nil {
 					return nil, err
 				}

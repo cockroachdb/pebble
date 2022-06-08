@@ -82,7 +82,7 @@ func TestIter(t *testing.T) {
 				if i > 0 {
 					iterCmd = string(line[:i])
 				}
-				var s keyspan.Span
+				var s *keyspan.Span
 				switch iterCmd {
 				case "first":
 					s = iter.First()
@@ -311,7 +311,7 @@ var iterDelim = map[rune]bool{',': true, ' ': true, '(': true, ')': true, '"': t
 
 func runIterOp(w io.Writer, it keyspan.FragmentIterator, op string) {
 	fields := strings.FieldsFunc(op, func(r rune) bool { return iterDelim[r] })
-	var s keyspan.Span
+	var s *keyspan.Span
 	switch strings.ToLower(fields[0]) {
 	case "first":
 		s = it.First()
@@ -329,7 +329,7 @@ func runIterOp(w io.Writer, it keyspan.FragmentIterator, op string) {
 		panic(fmt.Sprintf("unrecognized iter op %q", fields[0]))
 	}
 	fmt.Fprintf(w, "%-10s", op)
-	if !s.Valid() {
+	if s == nil {
 		fmt.Fprintln(w, ".")
 		return
 	}

@@ -16,7 +16,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 // keyspan.FragmentIterator with point keys.
 type InternalIteratorShim struct {
 	miter   MergingIter
-	span    Span
+	span    *Span
 	iterKey base.InternalKey
 }
 
@@ -31,7 +31,7 @@ func (i *InternalIteratorShim) Init(cmp base.Compare, iters ...FragmentIterator)
 
 // Span returns the span containing the full set of keys over the key span at
 // the current iterator position.
-func (i *InternalIteratorShim) Span() Span {
+func (i *InternalIteratorShim) Span() *Span {
 	return i.span
 }
 
@@ -57,10 +57,10 @@ func (i *InternalIteratorShim) SeekLT(key []byte) (*base.InternalKey, []byte) {
 // First implements (base.InternalIterator).First.
 func (i *InternalIteratorShim) First() (*base.InternalKey, []byte) {
 	i.span = i.miter.First()
-	for i.span.Valid() && i.span.Empty() {
+	for i.span != nil && i.span.Empty() {
 		i.span = i.miter.Next()
 	}
-	if !i.span.Valid() {
+	if i.span == nil {
 		return nil, nil
 	}
 	i.iterKey = base.InternalKey{UserKey: i.span.Start, Trailer: i.span.Keys[0].Trailer}
@@ -75,10 +75,10 @@ func (i *InternalIteratorShim) Last() (*base.InternalKey, []byte) {
 // Next implements (base.InternalIterator).Next.
 func (i *InternalIteratorShim) Next() (*base.InternalKey, []byte) {
 	i.span = i.miter.Next()
-	for i.span.Valid() && i.span.Empty() {
+	for i.span != nil && i.span.Empty() {
 		i.span = i.miter.Next()
 	}
-	if !i.span.Valid() {
+	if i.span == nil {
 		return nil, nil
 	}
 	i.iterKey = base.InternalKey{UserKey: i.span.Start, Trailer: i.span.Keys[0].Trailer}

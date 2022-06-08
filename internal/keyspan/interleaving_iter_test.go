@@ -32,11 +32,11 @@ type maskingHooks struct {
 	maskSuffix []byte
 }
 
-func (m *maskingHooks) SpanChanged(s Span) {
+func (m *maskingHooks) SpanChanged(s *Span) {
 	// Find the smallest suffix of a key contained within the Span, excluding
 	// suffixes less than m.threshold.
 	m.maskSuffix = nil
-	if m.threshold == nil || len(s.Keys) == 0 {
+	if s == nil || m.threshold == nil || len(s.Keys) == 0 {
 		return
 	}
 	for i := range s.Keys {

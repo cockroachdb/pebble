@@ -362,7 +362,7 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 
 				var count int
 				it := m.newRangeDelIter(nil)
-				for s := it.SeekGE(start); s.Valid(); s = it.Next() {
+				for s := it.SeekGE(start); s != nil; s = it.Next() {
 					if m.cmp(s.Start, end) >= 0 {
 						break
 					}
