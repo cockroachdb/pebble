@@ -82,7 +82,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 			// key. Every call to levelIter.Next() potentially switches to a new
 			// table and thus reinitializes rangeDelIter.
 			if g.rangeDelIter != nil {
-				g.tombstone = keyspan.Get(g.cmp, g.rangeDelIter, g.key, g.snapshot)
+				g.tombstone = keyspan.Get(g.cmp, g.rangeDelIter, g.key)
 				if g.err = g.rangeDelIter.Close(); g.err != nil {
 					return nil, nil
 				}
@@ -91,7 +91,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 
 			if g.iterKey != nil {
 				key := g.iterKey
-				if g.tombstone.Covers(key.SeqNum()) {
+				if g.tombstone.CoversAt(g.snapshot, key.SeqNum()) {
 					// We have a range tombstone covering this key. Rather than return a
 					// point or range deletion here, we return false and close our
 					// internal iterator which will make Valid() return false,
@@ -133,7 +133,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 
 		// If we have a tombstone from a previous level it is guaranteed to delete
 		// keys in lower levels.
-		if !g.tombstone.Empty() {
+		if g.tombstone.VisibleAt(g.snapshot) {
 			return nil, nil
 		}
 
