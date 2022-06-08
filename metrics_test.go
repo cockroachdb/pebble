@@ -28,6 +28,7 @@ func TestMetricsFormat(t *testing.T) {
 	m.Compact.MoveCount = 30
 	m.Compact.ReadCount = 31
 	m.Compact.RewriteCount = 32
+	m.Compact.MultiLevelCount = 33
 	m.Compact.EstimatedDebt = 6
 	m.Compact.InProgressBytes = 7
 	m.Compact.NumInProgress = 2
@@ -85,7 +86,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
   total      2807   2.7 K       -   2.8 K   2.8 K   2.9 K   2.8 K   2.9 K   8.4 K   5.7 K   2.8 K      28     3.0
   flush         8
 compact         5     6 B     7 B       2          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype        27      28      29      30      31      32  (default, delete, elision, move, read, rewrite)
+  ctype        27      28      29      30      31      32      33  (default, delete, elision, move, read, rewrite, multiLevel)
  memtbl        12    11 B
 zmemtbl        14    13 B
    ztbl        16    15 B
@@ -228,7 +229,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
   total         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   flush         0
 compact         0     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-  ctype         0       0       0       0       0       0  (default, delete, elision, move, read, rewrite)
+  ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multiLevel)
  memtbl         0     0 B
 zmemtbl         0     0 B
    ztbl         0     0 B
