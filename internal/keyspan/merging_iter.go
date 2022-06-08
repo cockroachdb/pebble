@@ -260,7 +260,7 @@ func (l *mergingIterLevel) next() {
 		}
 		return
 	}
-	if s := l.iter.Next(); !s.Valid() {
+	if s := l.iter.Next(); s == nil {
 		l.heapKey = boundKey{kind: boundKindInvalid}
 	} else {
 		l.heapKey = boundKey{
@@ -280,7 +280,7 @@ func (l *mergingIterLevel) prev() {
 		}
 		return
 	}
-	if s := l.iter.Prev(); !s.Valid() {
+	if s := l.iter.Prev(); s == nil {
 		l.heapKey = boundKey{kind: boundKindInvalid}
 	} else {
 		l.heapKey = boundKey{
@@ -328,7 +328,7 @@ func (m *MergingIter) AddLevel(iter FragmentIterator) {
 
 // SeekGE moves the iterator to the first span with a start key greater than or
 // equal to key.
-func (m *MergingIter) SeekGE(key []byte) Span {
+func (m *MergingIter) SeekGE(key []byte) *Span {
 	m.invalidate() // clear state about current position
 	for i := range m.levels {
 		l := &m.levels[i]
@@ -342,7 +342,7 @@ func (m *MergingIter) SeekGE(key []byte) Span {
 		// Otherwise we use the start boundary of the next span which
 		// necessarily has a start ≥ key.
 		s := l.iter.SeekLT(key)
-		if s.Valid() && m.cmp(s.End, key) >= 0 {
+		if s != nil && m.cmp(s.End, key) >= 0 {
 			// s.End ≥ key
 			// We need to use this span's end bound.
 			l.heapKey = boundKey{
@@ -355,7 +355,7 @@ func (m *MergingIter) SeekGE(key []byte) Span {
 		// s.End < key
 		// The span `s` ends before key. Next to the first span with a Start ≥
 		// key, and use that.
-		if s = l.iter.Next(); !s.Valid() {
+		if s = l.iter.Next(); s == nil {
 			l.heapKey = boundKey{kind: boundKindInvalid}
 		} else {
 			l.heapKey = boundKey{
@@ -370,7 +370,7 @@ func (m *MergingIter) SeekGE(key []byte) Span {
 }
 
 // SeekLT moves the iterator to the last span with a start key less than key.
-func (m *MergingIter) SeekLT(key []byte) Span {
+func (m *MergingIter) SeekLT(key []byte) *Span {
 	// TODO(jackson): Evaluate whether there's an implementation of SeekLT
 	// independent of SeekGE that is more efficient. It's tricky, because the
 	// span we should return might straddle `key` itself.
@@ -390,18 +390,18 @@ func (m *MergingIter) SeekLT(key []byte) Span {
 	// Start user key < key: [b,l)#1. This requires examining bounds both < 'c'
 	// (the 'b' of [b,m)#1's start key) and bounds ≥ 'c' (the 'l' of ([a,l)#2's
 	// end key).
-	if s := m.SeekGE(key); !s.Valid() && m.err != nil {
-		return Span{}
+	if s := m.SeekGE(key); s == nil && m.err != nil {
+		return nil
 	}
 	// Prev to the previous span.
 	return m.Prev()
 }
 
 // First seeks the iterator to the first span.
-func (m *MergingIter) First() Span {
+func (m *MergingIter) First() *Span {
 	m.invalidate() // clear state about current position
 	for i := range m.levels {
-		if s := m.levels[i].iter.First(); !s.Valid() {
+		if s := m.levels[i].iter.First(); s == nil {
 			m.levels[i].heapKey = boundKey{kind: boundKindInvalid}
 		} else {
 			m.levels[i].heapKey = boundKey{
@@ -416,10 +416,10 @@ func (m *MergingIter) First() Span {
 }
 
 // Last seeks the iterator to the last span.
-func (m *MergingIter) Last() Span {
+func (m *MergingIter) Last() *Span {
 	m.invalidate() // clear state about current position
 	for i := range m.levels {
-		if s := m.levels[i].iter.Last(); !s.Valid() {
+		if s := m.levels[i].iter.Last(); s == nil {
 			m.levels[i].heapKey = boundKey{kind: boundKindInvalid}
 		} else {
 			m.levels[i].heapKey = boundKey{
@@ -434,12 +434,12 @@ func (m *MergingIter) Last() Span {
 }
 
 // Next advances the iterator to the next span.
-func (m *MergingIter) Next() Span {
+func (m *MergingIter) Next() *Span {
 	if m.err != nil {
-		return Span{}
+		return nil
 	}
 	if m.dir == +1 && (m.end == nil || m.start == nil) {
-		return Span{}
+		return nil
 	}
 	if m.dir != +1 {
 		m.switchToMinHeap()
@@ -448,12 +448,12 @@ func (m *MergingIter) Next() Span {
 }
 
 // Prev advances the iterator to the previous span.
-func (m *MergingIter) Prev() Span {
+func (m *MergingIter) Prev() *Span {
 	if m.err != nil {
-		return Span{}
+		return nil
 	}
 	if m.dir == -1 && (m.end == nil || m.start == nil) {
-		return Span{}
+		return nil
 	}
 	if m.dir != -1 {
 		m.switchToMaxHeap()
@@ -623,7 +623,7 @@ func (m *MergingIter) cmp(a, b []byte) int {
 	return m.heap.cmp(a, b)
 }
 
-func (m *MergingIter) findNextFragmentSet() Span {
+func (m *MergingIter) findNextFragmentSet() *Span {
 	// Each iteration of this loop considers a new merged span between unique
 	// user keys. An iteration may find that there exists no overlap for a given
 	// span, (eg, if the spans [a,b), [d, e) exist within level iterators, the
@@ -691,16 +691,16 @@ func (m *MergingIter) findNextFragmentSet() Span {
 		// we elide empty spans created by the mergingIter itself that don't overlap
 		// with any child iterator returned spans (i.e. empty spans that bridge two
 		// distinct child-iterator-defined spans).
-		if found, s := m.synthesizeKeys(+1); found && s.Valid() {
+		if found, s := m.synthesizeKeys(+1); found && s != nil {
 			return s
 		}
 	}
 	// Exhausted.
 	m.clear()
-	return Span{}
+	return nil
 }
 
-func (m *MergingIter) findPrevFragmentSet() Span {
+func (m *MergingIter) findPrevFragmentSet() *Span {
 	// Each iteration of this loop considers a new merged span between unique
 	// user keys. An iteration may find that there exists no overlap for a given
 	// span, (eg, if the spans [a,b), [d, e) exist within level iterators, the
@@ -767,13 +767,13 @@ func (m *MergingIter) findPrevFragmentSet() Span {
 		// we elide empty spans created by the mergingIter itself that don't overlap
 		// with any child iterator returned spans (i.e. empty spans that bridge two
 		// distinct child-iterator-defined spans).
-		if found, s := m.synthesizeKeys(-1); found && s.Valid() {
+		if found, s := m.synthesizeKeys(-1); found && s != nil {
 			return s
 		}
 	}
 	// Exhausted.
 	m.clear()
-	return Span{}
+	return nil
 }
 
 func (m *MergingIter) heapRoot() []byte {
@@ -793,7 +793,7 @@ func (m *MergingIter) heapRoot() []byte {
 //
 // The boolean return value, `found`, is true if the returned span overlaps
 // with a span returned by a child iterator.
-func (m *MergingIter) synthesizeKeys(dir int8) (bool, Span) {
+func (m *MergingIter) synthesizeKeys(dir int8) (bool, *Span) {
 	if invariants.Enabled {
 		if m.cmp(m.start, m.end) >= 0 {
 			panic(fmt.Sprintf("pebble: invariant violation: span start ≥ end: %s >= %s", m.start, m.end))
@@ -819,9 +819,9 @@ func (m *MergingIter) synthesizeKeys(dir int8) (bool, Span) {
 	}
 	if err := m.transformer.Transform(m.cmp, s, &m.span); err != nil {
 		m.err = err
-		return false, Span{}
+		return false, nil
 	}
-	return found, m.span
+	return found, &m.span
 }
 
 func (m *MergingIter) invalidate() {
@@ -990,7 +990,7 @@ type boundKey struct {
 	//
 	// If kind is boundKindFragmentStart, then key is span.Start. If kind is
 	// boundKindFragmentEnd, then key is span.End.
-	span Span
+	span *Span
 }
 
 func (k boundKey) valid() bool {

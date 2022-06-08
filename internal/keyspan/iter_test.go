@@ -21,7 +21,7 @@ func runFragmentIteratorCmd(iter FragmentIterator, input string, extraInfo func(
 		if len(parts) == 0 {
 			continue
 		}
-		var span Span
+		var span *Span
 		switch parts[0] {
 		case "seek-ge":
 			if len(parts) != 2 {
@@ -44,7 +44,7 @@ func runFragmentIteratorCmd(iter FragmentIterator, input string, extraInfo func(
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}
-		if span.Valid() {
+		if span != nil {
 			fmt.Fprintf(&b, "%s", span)
 			if extraInfo != nil {
 				fmt.Fprintf(&b, " (%s)", extraInfo())
@@ -88,12 +88,13 @@ type invalidatingIter struct {
 	iter FragmentIterator
 	bufs [][]byte
 	keys []Key
+	span Span
 }
 
 // invalidatingIter implements FragmentIterator.
 var _ FragmentIterator = (*invalidatingIter)(nil)
 
-func (i *invalidatingIter) invalidate(s Span) Span {
+func (i *invalidatingIter) invalidate(s *Span) *Span {
 	// Zero the entirety of the byte bufs and the keys slice.
 	for j := range i.bufs {
 		for k := range i.bufs[j] {
@@ -104,13 +105,18 @@ func (i *invalidatingIter) invalidate(s Span) Span {
 	for j := range i.keys {
 		i.keys[j] = Key{}
 	}
+	if s == nil {
+		return nil
+	}
 
 	// Copy all of the span's slices into slices owned by the invalidating iter
 	// that we can invalidate on a subsequent positioning method.
 	i.bufs = i.bufs[:0]
 	i.keys = i.keys[:0]
-	s.Start = i.saveBytes(s.Start)
-	s.End = i.saveBytes(s.End)
+	i.span = Span{
+		Start: i.saveBytes(s.Start),
+		End:   i.saveBytes(s.End),
+	}
 	for j := range s.Keys {
 		i.keys = append(i.keys, Key{
 			Trailer: s.Keys[j].Trailer,
@@ -118,8 +124,8 @@ func (i *invalidatingIter) invalidate(s Span) Span {
 			Value:   i.saveBytes(s.Keys[j].Value),
 		})
 	}
-	s.Keys = i.keys
-	return s
+	i.span.Keys = i.keys
+	return &i.span
 }
 
 func (i *invalidatingIter) saveBytes(b []byte) []byte {
@@ -131,11 +137,11 @@ func (i *invalidatingIter) saveBytes(b []byte) []byte {
 	return saved
 }
 
-func (i *invalidatingIter) SeekGE(key []byte) Span { return i.invalidate(i.iter.SeekGE(key)) }
-func (i *invalidatingIter) SeekLT(key []byte) Span { return i.invalidate(i.iter.SeekLT(key)) }
-func (i *invalidatingIter) First() Span            { return i.invalidate(i.iter.First()) }
-func (i *invalidatingIter) Last() Span             { return i.invalidate(i.iter.Last()) }
-func (i *invalidatingIter) Next() Span             { return i.invalidate(i.iter.Next()) }
-func (i *invalidatingIter) Prev() Span             { return i.invalidate(i.iter.Prev()) }
-func (i *invalidatingIter) Close() error           { return i.iter.Close() }
-func (i *invalidatingIter) Error() error           { return i.iter.Error() }
+func (i *invalidatingIter) SeekGE(key []byte) *Span { return i.invalidate(i.iter.SeekGE(key)) }
+func (i *invalidatingIter) SeekLT(key []byte) *Span { return i.invalidate(i.iter.SeekLT(key)) }
+func (i *invalidatingIter) First() *Span            { return i.invalidate(i.iter.First()) }
+func (i *invalidatingIter) Last() *Span             { return i.invalidate(i.iter.Last()) }
+func (i *invalidatingIter) Next() *Span             { return i.invalidate(i.iter.Next()) }
+func (i *invalidatingIter) Prev() *Span             { return i.invalidate(i.iter.Prev()) }
+func (i *invalidatingIter) Close() error            { return i.iter.Close() }
+func (i *invalidatingIter) Error() error            { return i.iter.Error() }

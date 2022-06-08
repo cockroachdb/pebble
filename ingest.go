@@ -126,7 +126,7 @@ func ingestLoad1(
 	if iter != nil {
 		defer iter.Close()
 		var smallest InternalKey
-		if s := iter.First(); s.Valid() {
+		if s := iter.First(); s != nil {
 			key := s.SmallestKey()
 			if err := ingestValidateKey(opts, &key); err != nil {
 				return nil, err
@@ -136,7 +136,7 @@ func ingestLoad1(
 		if err := iter.Error(); err != nil {
 			return nil, err
 		}
-		if s := iter.Last(); s.Valid() {
+		if s := iter.Last(); s != nil {
 			k := s.SmallestKey()
 			if err := ingestValidateKey(opts, &k); err != nil {
 				return nil, err
@@ -155,7 +155,7 @@ func ingestLoad1(
 		if iter != nil {
 			defer iter.Close()
 			var smallest InternalKey
-			if s := iter.First(); s.Valid() {
+			if s := iter.First(); s != nil {
 				key := s.SmallestKey()
 				if err := ingestValidateKey(opts, &key); err != nil {
 					return nil, err
@@ -165,7 +165,7 @@ func ingestLoad1(
 			if err := iter.Error(); err != nil {
 				return nil, err
 			}
-			if s := iter.Last(); s.Valid() {
+			if s := iter.Last(); s != nil {
 				k := s.SmallestKey()
 				if err := ingestValidateKey(opts, &k); err != nil {
 					return nil, err
@@ -412,10 +412,10 @@ func overlapWithIterator(
 	}
 	rangeDelItr := *rangeDelIter
 	rangeDel := rangeDelItr.SeekLT(meta.Smallest.UserKey)
-	if !rangeDel.Valid() {
+	if rangeDel == nil {
 		rangeDel = rangeDelItr.Next()
 	}
-	for ; rangeDel.Valid(); rangeDel = rangeDelItr.Next() {
+	for ; rangeDel != nil; rangeDel = rangeDelItr.Next() {
 		key := rangeDel.SmallestKey()
 		c := sstableKeyCompare(cmp, key, meta.Largest)
 		if c > 0 {

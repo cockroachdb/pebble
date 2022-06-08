@@ -423,7 +423,7 @@ func (o *ingestOp) build(t *test, h *history, b *pebble.Batch, i int) (string, e
 
 	if rangeDelIter != nil {
 		// NB: The range tombstones have already been fragmented by the Batch.
-		for t := rangeDelIter.First(); t.Valid(); t = rangeDelIter.Next() {
+		for t := rangeDelIter.First(); t != nil; t = rangeDelIter.Next() {
 			// NB: We don't have to copy the key or value since we're reading from a
 			// batch which doesn't do prefix compression.
 			if err := w.DeleteRange(t.Start, t.End); err != nil {
@@ -472,7 +472,7 @@ func (o *ingestOp) collapseBatch(
 
 	if rangeDelIter != nil {
 		// NB: The range tombstones have already been fragmented by the Batch.
-		for t := rangeDelIter.First(); t.Valid(); t = rangeDelIter.Next() {
+		for t := rangeDelIter.First(); t != nil; t = rangeDelIter.Next() {
 			// NB: We don't have to copy the key or value since we're reading from a
 			// batch which doesn't do prefix compression.
 			if err := collapsed.DeleteRange(t.Start, t.End, nil); err != nil {

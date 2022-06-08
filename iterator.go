@@ -1484,12 +1484,12 @@ func (i *Iterator) rangeKeyWithinLimit(limit []byte) bool {
 	return true
 }
 
-func (i *iteratorRangeKeyState) SpanChanged(s keyspan.Span) {
+func (i *iteratorRangeKeyState) SpanChanged(s *keyspan.Span) {
 	i.activeMaskSuffix = i.activeMaskSuffix[:0]
 
 	// Find the smallest suffix of a range key contained within the Span,
 	// excluding suffixes less than i.opts.RangeKeyMasking.Suffix.
-	if i.opts.RangeKeyMasking.Suffix == nil || s.Empty() {
+	if s == nil || i.opts.RangeKeyMasking.Suffix == nil || s.Empty() {
 		return
 	}
 	for j := range s.Keys {

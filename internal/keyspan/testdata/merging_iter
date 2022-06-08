@@ -25,7 +25,7 @@ e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
 h-j:{(#22,RANGEKEYDEL) (#21,RANGEKEYSET,@5,peaches) (#21,RANGEKEYSET,@3,starfruit)}
 l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
 q-z:{(#14,RANGEKEYSET,@9,mangos)}
-<invalid>
+<nil>
 
 # Test snapshot filtering.
 
@@ -54,7 +54,7 @@ e-f:{}
 h-j:{}
 l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
 q-z:{}
-<invalid>
+<nil>
 
 define
 b-d:{#10,RANGEKEYSET,@1,apples}
@@ -78,7 +78,7 @@ b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
 c-d:{(#10,RANGEKEYSET,@1,apples)}
 e-h:{(#8,RANGEKEYDEL)}
 h-k:{(#5,RANGEKEYDEL)}
-<invalid>
+<nil>
 
 iter
 last
@@ -93,7 +93,7 @@ e-h:{(#8,RANGEKEYDEL)}
 c-d:{(#10,RANGEKEYSET,@1,apples)}
 b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
 a-b:{(#3,RANGEKEYUNSET,@1)}
-<invalid>
+<nil>
 
 # Test changing directions at each iterator position, reverse to forward.
 iter
@@ -104,7 +104,7 @@ prev
 next
 ----
 h-k:{(#5,RANGEKEYDEL)}
-<invalid>
+<nil>
 h-k:{(#5,RANGEKEYDEL)}
 e-h:{(#8,RANGEKEYDEL)}
 h-k:{(#5,RANGEKEYDEL)}
@@ -162,7 +162,7 @@ e-h:{(#8,RANGEKEYDEL)}
 c-d:{(#10,RANGEKEYSET,@1,apples)}
 b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
 a-b:{(#3,RANGEKEYUNSET,@1)}
-<invalid>
+<nil>
 a-b:{(#3,RANGEKEYUNSET,@1)}
 
 # Test changing directions at each iterator position, forward to reverse.
@@ -175,7 +175,7 @@ next
 prev
 ----
 a-b:{(#3,RANGEKEYUNSET,@1)}
-<invalid>
+<nil>
 a-b:{(#3,RANGEKEYUNSET,@1)}
 b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
 a-b:{(#3,RANGEKEYUNSET,@1)}
@@ -218,7 +218,7 @@ b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
 c-d:{(#10,RANGEKEYSET,@1,apples)}
 e-h:{(#8,RANGEKEYDEL)}
 h-k:{(#5,RANGEKEYDEL)}
-<invalid>
+<nil>
 h-k:{(#5,RANGEKEYDEL)}
 
 iter
@@ -266,7 +266,7 @@ e-h:{(#8,RANGEKEYDEL)}
 e-h:{(#8,RANGEKEYDEL)}
 h-k:{(#5,RANGEKEYDEL)}
 h-k:{(#5,RANGEKEYDEL)}
-<invalid>
+<nil>
 
 # Test SeekLT. Note that MergingIter's SeekLT implements the FragmentIterator's
 # SeekLT semantics. It returns the first fragment with a Start key < the search
@@ -297,8 +297,8 @@ seek-lt hh
 seek-lt k
 seek-lt z
 ----
-<invalid>
-<invalid>
+<nil>
+<nil>
 a-b:{(#3,RANGEKEYUNSET,@1)}
 a-b:{(#3,RANGEKEYUNSET,@1)}
 b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
@@ -325,7 +325,7 @@ prev
 next
 ----
 a-f:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL)}
-<invalid>
+<nil>
 a-f:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL)}
 
 iter
@@ -334,7 +334,7 @@ next
 prev
 ----
 k-s:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL)}
-<invalid>
+<nil>
 k-s:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL)}
 
 define
@@ -354,10 +354,10 @@ prev
 next
 ----
 y-z:{(#5,RANGEKEYDEL)}
-<invalid>
+<nil>
 y-z:{(#5,RANGEKEYDEL)}
 w-x:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL) (#3,RANGEKEYDEL) (#1,RANGEKEYDEL)}
-<invalid>
+<nil>
 w-x:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL) (#3,RANGEKEYDEL) (#1,RANGEKEYDEL)}
 
 iter
@@ -397,8 +397,8 @@ rf-sn:{(#8,RANGEKEYDEL) (#7,RANGEKEYDEL) (#4,RANGEKEYDEL)}
 sn-sv:{(#10,RANGEKEYDEL) (#8,RANGEKEYDEL) (#7,RANGEKEYDEL) (#4,RANGEKEYDEL)}
 sv-wn:{(#10,RANGEKEYDEL) (#4,RANGEKEYDEL)}
 wn-yx:{(#4,RANGEKEYDEL)}
-<invalid>
-<invalid>
+<nil>
+<nil>
 wn-yx:{(#4,RANGEKEYDEL)}
 
 # Test that empty spans from child iterators are preserved
@@ -430,7 +430,7 @@ e-f:{}
 g-h:{(#8,RANGEKEYDEL)}
 h-k:{(#5,RANGEKEYDEL)}
 k-m:{}
-<invalid>
+<nil>
 
 iter
 last
@@ -449,4 +449,4 @@ e-f:{}
 c-d:{(#10,RANGEKEYSET,@1,apples)}
 b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
 a-b:{(#3,RANGEKEYUNSET,@1)}
-<invalid>
+<nil>

@@ -34,12 +34,12 @@ type mergingIterLevel struct {
 	isSyntheticIterBoundsKey         bool
 
 	// tombstone caches the tombstone rangeDelIter is currently pointed at. If
-	// tombstone.Valid() is false, there are no further tombstones within the
+	// tombstone is nil, there are no further tombstones within the
 	// current sstable in the current iterator direction. The cached tombstone is
 	// only valid for the levels in the range [0,heap[0].index]. This avoids
 	// positioning tombstones at lower levels which cannot possibly shadow the
 	// current key.
-	tombstone keyspan.Span
+	tombstone *keyspan.Span
 }
 
 // mergingIter provides a merged view of multiple iterators from different
@@ -555,8 +555,8 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 	// entry.
 	for level := 0; level <= item.index; level++ {
 		l := &m.levels[level]
-		if l.rangeDelIter == nil || !l.tombstone.Valid() {
-			// If l.tombstone.Valid() is false, there are no further tombstones
+		if l.rangeDelIter == nil || l.tombstone == nil {
+			// If l.tombstone is nil, there are no further tombstones
 			// in the current sstable in the current (forward) iteration
 			// direction.
 			continue
@@ -572,7 +572,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 			// below.
 			l.tombstone = keyspan.SeekGE(m.heap.cmp, l.rangeDelIter, item.key.UserKey)
 		}
-		if !l.tombstone.Valid() {
+		if l.tombstone == nil {
 			continue
 		}
 
@@ -721,8 +721,8 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 	// entry.
 	for level := 0; level <= item.index; level++ {
 		l := &m.levels[level]
-		if l.rangeDelIter == nil || !l.tombstone.Valid() {
-			// If l.tombstone.Valid() is false, there are no further tombstones
+		if l.rangeDelIter == nil || l.tombstone == nil {
+			// If l.tombstone is nil, there are no further tombstones
 			// in the current sstable in the current (reverse) iteration
 			// direction.
 			continue
@@ -738,7 +738,7 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 			// below.
 			l.tombstone = keyspan.SeekLE(m.heap.cmp, l.rangeDelIter, item.key.UserKey)
 		}
-		if !l.tombstone.Valid() {
+		if l.tombstone == nil {
 			continue
 		}
 
@@ -880,7 +880,7 @@ func (m *mergingIter) seekGE(key []byte, level int, trySeekUsingNext bool) {
 			// tombstone is [b, k)#8 and the seek key is i: levelIter.SeekGE(i) will move past
 			// this sstable since it realizes the largest key is a InternalRangeDelSentinel.
 			l.tombstone = keyspan.SeekGE(m.heap.cmp, rangeDelIter, key)
-			if l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, key) &&
+			if l.tombstone != nil && l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, key) &&
 				(l.smallestUserKey == nil || m.heap.cmp(l.smallestUserKey, key) <= 0) {
 				// NB: Based on the comment above l.largestUserKey >= key, and based on the
 				// containment condition tombstone.End > key, so the assignment to key results
@@ -966,7 +966,8 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 			}
 
 			l.tombstone = keyspan.SeekLE(m.heap.cmp, rangeDelIter, key)
-			if l.tombstone.VisibleAt(m.snapshot) && l.tombstone.Contains(m.heap.cmp, key) && withinLargestSSTableBound {
+			if l.tombstone != nil && l.tombstone.VisibleAt(m.snapshot) &&
+				l.tombstone.Contains(m.heap.cmp, key) && withinLargestSSTableBound {
 				// NB: Based on the comment above l.smallestUserKey <= key, and based
 				// on the containment condition tombstone.Start.UserKey <= key, so the
 				// assignment to key results in a monotonically non-increasing key

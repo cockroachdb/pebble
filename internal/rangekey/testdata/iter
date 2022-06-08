@@ -23,7 +23,7 @@ e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
 h-j:{(#22,RANGEKEYDEL)}
 l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
 q-z:{(#14,RANGEKEYSET,@9,mangos)}
-<invalid>
+<nil>
 
 iter
 last
@@ -40,7 +40,7 @@ h-j:{(#22,RANGEKEYDEL)}
 e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
 c-d:{(#4,RANGEKEYSET,@3,coconut)}
 a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
-<invalid>
+<nil>
 
 iter
 seek-ge cat
@@ -80,7 +80,7 @@ next
 e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
 c-d:{(#4,RANGEKEYSET,@3,coconut)}
 a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
-<invalid>
+<nil>
 a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
 c-d:{(#4,RANGEKEYSET,@3,coconut)}
 e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
@@ -100,7 +100,7 @@ e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
 h-j:{(#22,RANGEKEYDEL)}
 l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
 q-z:{(#14,RANGEKEYSET,@9,mangos)}
-<invalid>
+<nil>
 
 iter
 seek-ge a
@@ -127,11 +127,11 @@ seek-ge z
 prev
 seek-ge yeti
 ----
-<invalid>
+<nil>
 q-z:{(#14,RANGEKEYSET,@9,mangos)}
-<invalid>
+<nil>
 q-z:{(#14,RANGEKEYSET,@9,mangos)}
-<invalid>
+<nil>
 
 iter
 seek-ge h
@@ -146,7 +146,7 @@ prev
 next
 ----
 a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
-<invalid>
+<nil>
 a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
 
 iter
@@ -155,7 +155,7 @@ next
 prev
 ----
 q-z:{(#14,RANGEKEYSET,@9,mangos)}
-<invalid>
+<nil>
 q-z:{(#14,RANGEKEYSET,@9,mangos)}
 
 iter
@@ -167,12 +167,12 @@ seek-lt zoo
 next
 prev
 ----
-<invalid>
-<invalid>
+<nil>
+<nil>
 a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
 q-z:{(#14,RANGEKEYSET,@9,mangos)}
 q-z:{(#14,RANGEKEYSET,@9,mangos)}
-<invalid>
+<nil>
 q-z:{(#14,RANGEKEYSET,@9,mangos)}
 
 define visible-seq-num=10

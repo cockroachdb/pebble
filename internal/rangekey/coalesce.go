@@ -97,7 +97,7 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 //
 // This implementation is stateful, and must not be used on multiple
 // DefragmentingIters concurrently.
-func (ui *UserIteratorConfig) ShouldDefragment(cmp base.Compare, a, b keyspan.Span) bool {
+func (ui *UserIteratorConfig) ShouldDefragment(cmp base.Compare, a, b *keyspan.Span) bool {
 	// This implementation must only be used on spans that have transformed by
 	// ui.Transform. The transform applies shadowing and removes all keys
 	// besides the resulting Sets. Since shadowing has been applied, each Set

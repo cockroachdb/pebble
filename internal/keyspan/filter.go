@@ -10,7 +10,7 @@ package keyspan
 // the output Span, for example, to elice certain keys, or update the Span's
 // bounds if so desired. The output Span's Keys slice may be reused to reduce
 // allocations.
-type FilterFunc func(in Span, out *Span) (keep bool)
+type FilterFunc func(in *Span, out *Span) (keep bool)
 
 // filteringIter is a FragmentIterator that uses a FilterFunc to select which
 // Spans from the input iterator are returned in the output.
@@ -37,32 +37,32 @@ func Filter(iter FragmentIterator, filter FilterFunc) FragmentIterator {
 }
 
 // SeekGE implements FragmentIterator.
-func (i *filteringIter) SeekGE(key []byte) Span {
+func (i *filteringIter) SeekGE(key []byte) *Span {
 	return i.filter(i.iter.SeekGE(key), +1)
 }
 
 // SeekLT implements FragmentIterator.
-func (i *filteringIter) SeekLT(key []byte) Span {
+func (i *filteringIter) SeekLT(key []byte) *Span {
 	return i.filter(i.iter.SeekLT(key), -1)
 }
 
 // First implements FragmentIterator.
-func (i *filteringIter) First() Span {
+func (i *filteringIter) First() *Span {
 	return i.filter(i.iter.First(), +1)
 }
 
 // Last implements FragmentIterator.
-func (i *filteringIter) Last() Span {
+func (i *filteringIter) Last() *Span {
 	return i.filter(i.iter.Last(), -1)
 }
 
 // Next implements FragmentIterator.
-func (i *filteringIter) Next() Span {
+func (i *filteringIter) Next() *Span {
 	return i.filter(i.iter.Next(), +1)
 }
 
 // Prev implements FragmentIterator.
-func (i *filteringIter) Prev() Span {
+func (i *filteringIter) Prev() *Span {
 	return i.filter(i.iter.Prev(), -1)
 }
 
@@ -80,18 +80,18 @@ func (i *filteringIter) Close() error {
 // given Span. If the current Span is to be skipped, the iterator continues
 // iterating in the given direction until it lands on a Span that should be
 // returned, or the iterator becomes invalid.
-func (i *filteringIter) filter(span Span, dir int8) Span {
+func (i *filteringIter) filter(span *Span, dir int8) *Span {
 	if i.filterFn == nil {
 		return span
 	}
-	for i.Error() == nil && span.Valid() {
+	for i.Error() == nil && span != nil {
 		if keep := i.filterFn(span, &i.span); keep {
-			return i.span
+			return &i.span
 		}
 		if dir == +1 {
-			span = i.Next()
+			span = i.iter.Next()
 		} else {
-			span = i.Prev()
+			span = i.iter.Prev()
 		}
 	}
 	return span
