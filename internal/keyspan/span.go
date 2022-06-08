@@ -76,7 +76,7 @@ func (s *Span) Valid() bool {
 // An Empty span may be produced by Visible, or be produced by iterators in
 // order to surface the gaps between keys.
 func (s *Span) Empty() bool {
-	return len(s.Keys) == 0
+	return s == nil || len(s.Keys) == 0
 }
 
 // SmallestKey returns the smallest internal key defined by the span's keys.
@@ -268,7 +268,7 @@ func (s Span) Covers(seqNum uint64) bool {
 // CoversAt returns true if the span contains a key that is visible at the
 // provided snapshot sequence number, and that key's sequence number is higher
 // than seqNum.
-func (s Span) CoversAt(snapshot, seqNum uint64) bool {
+func (s *Span) CoversAt(snapshot, seqNum uint64) bool {
 	for i := range s.Keys {
 		if kseq := s.Keys[i].SeqNum(); kseq&base.InternalKeySeqNumBatch != 0 {
 			// Only visible batch keys are included when an Iterator's batch spans

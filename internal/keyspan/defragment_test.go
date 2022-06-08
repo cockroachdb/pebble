@@ -23,7 +23,7 @@ import (
 func TestDefragmentingIter(t *testing.T) {
 	cmp := testkeys.Comparer.Compare
 	internalEqual := DefragmentInternal
-	alwaysEqual := DefragmentMethodFunc(func(_ base.Compare, _, _ Span) bool { return true })
+	alwaysEqual := DefragmentMethodFunc(func(_ base.Compare, _, _ *Span) bool { return true })
 	staticReducer := StaticDefragmentReducer
 	collectReducer := func(cur, next []Key) []Key {
 		c := keysBySeqNumKind(append(cur, next...))
@@ -266,7 +266,7 @@ var iterDelim = map[rune]bool{',': true, ' ': true, '(': true, ')': true, '"': t
 
 func runIterOp(w io.Writer, it FragmentIterator, op string) {
 	fields := strings.FieldsFunc(op, func(r rune) bool { return iterDelim[r] })
-	var s Span
+	var s *Span
 	switch strings.ToLower(fields[0]) {
 	case "first":
 		s = it.First()
@@ -284,7 +284,7 @@ func runIterOp(w io.Writer, it FragmentIterator, op string) {
 		panic(fmt.Sprintf("unrecognized iter op %q", fields[0]))
 	}
 	fmt.Fprintf(w, "%-10s", op)
-	if !s.Valid() {
+	if s == nil {
 		fmt.Fprintln(w, ".")
 		return
 	}

@@ -40,8 +40,8 @@ type LevelIter struct {
 	// key spaces. This is an optimization to avoid unnecessarily loading files
 	// in cases where range keys are sparse and rare. dir is set by every
 	// positioning operation, straddleDir is set to dir whenever a straddling
-	// Span is synthesized, and straddle is Valid() whenever the last positioning
-	// operation returned a synthesized straddle span.
+	// Span is synthesized and the last positioning operation returned a
+	// synthesized straddle span.
 	//
 	// Note that when a straddle span is initialized, iterFile is modified to
 	// point to the next file in the straddleDir direction. A change of direction
@@ -53,7 +53,7 @@ type LevelIter struct {
 	// The iter for the current file. It is nil under any of the following conditions:
 	// - files.Current() == nil
 	// - err != nil
-	// - straddle.Valid(), in which case iterFile is not nil and points to the
+	// - straddleDir != 0, in which case iterFile is not nil and points to the
 	//   next file (in the straddleDir direction).
 	// - some other constraint, like the bounds in opts, caused the file at index to not
 	//   be relevant to the iteration.
@@ -188,7 +188,7 @@ func (l *LevelIter) loadFile(file *manifest.FileMetadata, dir int) loadFileRetur
 }
 
 // SeekGE implements keyspan.FragmentIterator.
-func (l *LevelIter) SeekGE(key []byte) Span {
+func (l *LevelIter) SeekGE(key []byte) *Span {
 	l.dir = +1
 	l.err = nil // clear cached iteration error
 
@@ -216,20 +216,20 @@ func (l *LevelIter) SeekGE(key []byte) Span {
 			End:   f.SmallestRangeKey.UserKey,
 			Keys:  nil,
 		}
-		return l.straddle
+		return &l.straddle
 	}
 	loadFileIndicator := l.loadFile(f, +1)
 	if loadFileIndicator == noFileLoaded {
-		return Span{}
+		return nil
 	}
-	if span := l.iter.SeekGE(key); span.Valid() {
+	if span := l.iter.SeekGE(key); span != nil {
 		return span
 	}
 	return l.skipEmptyFileForward()
 }
 
 // SeekLT implements keyspan.FragmentIterator.
-func (l *LevelIter) SeekLT(key []byte) Span {
+func (l *LevelIter) SeekLT(key []byte) *Span {
 	l.dir = -1
 	l.err = nil // clear cached iteration error
 
@@ -257,54 +257,54 @@ func (l *LevelIter) SeekLT(key []byte) Span {
 			End:   key,
 			Keys:  nil,
 		}
-		return l.straddle
+		return &l.straddle
 	}
 	if l.loadFile(l.findFileLT(key), -1) == noFileLoaded {
-		return Span{}
+		return nil
 	}
-	if span := l.iter.SeekLT(key); span.Valid() {
+	if span := l.iter.SeekLT(key); span != nil {
 		return span
 	}
 	return l.skipEmptyFileBackward()
 }
 
 // First implements keyspan.FragmentIterator.
-func (l *LevelIter) First() Span {
+func (l *LevelIter) First() *Span {
 	l.dir = +1
 	l.err = nil // clear cached iteration error
 
 	if l.loadFile(l.files.First(), +1) == noFileLoaded {
-		return Span{}
+		return nil
 	}
-	if span := l.iter.First(); span.Valid() {
+	if span := l.iter.First(); span != nil {
 		return span
 	}
 	return l.skipEmptyFileForward()
 }
 
 // Last implements keyspan.FragmentIterator.
-func (l *LevelIter) Last() Span {
+func (l *LevelIter) Last() *Span {
 	l.dir = -1
 	l.err = nil // clear cached iteration error
 
 	if l.loadFile(l.files.Last(), -1) == noFileLoaded {
-		return Span{}
+		return nil
 	}
-	if span := l.iter.Last(); span.Valid() {
+	if span := l.iter.Last(); span != nil {
 		return span
 	}
 	return l.skipEmptyFileBackward()
 }
 
 // Next implements keyspan.FragmentIterator.
-func (l *LevelIter) Next() Span {
+func (l *LevelIter) Next() *Span {
 	l.dir = +1
 	if l.err != nil || (l.iter == nil && l.iterFile == nil) {
-		return Span{}
+		return nil
 	}
 
 	if l.iter != nil {
-		if span := l.iter.Next(); span.Valid() {
+		if span := l.iter.Next(); span != nil {
 			return span
 		}
 	}
@@ -312,22 +312,22 @@ func (l *LevelIter) Next() Span {
 }
 
 // Prev implements keyspan.FragmentIterator.
-func (l *LevelIter) Prev() Span {
+func (l *LevelIter) Prev() *Span {
 	l.dir = -1
 	if l.err != nil || (l.iter == nil && l.iterFile == nil) {
-		return Span{}
+		return nil
 	}
 
 	if l.iter != nil {
-		if span := l.iter.Prev(); span.Valid() {
+		if span := l.iter.Prev(); span != nil {
 			return span
 		}
 	}
 	return l.skipEmptyFileBackward()
 }
 
-func (l *LevelIter) skipEmptyFileForward() Span {
-	if !l.straddle.Valid() && l.keyType == manifest.KeyTypeRange &&
+func (l *LevelIter) skipEmptyFileForward() *Span {
+	if l.straddleDir == 0 && l.keyType == manifest.KeyTypeRange &&
 		l.iterFile != nil && l.iter != nil {
 		// We were at a file that had spans. Check if the next file that has
 		// spans is not directly adjacent to the current file i.e. there is a
@@ -337,7 +337,7 @@ func (l *LevelIter) skipEmptyFileForward() Span {
 		// Straddle spans are not created in rangedel mode.
 		if err := l.Close(); err != nil {
 			l.err = err
-			return Span{}
+			return nil
 		}
 		startKey := l.iterFile.LargestRangeKey.UserKey
 		// Resetting l.iterFile without loading the file into l.iter is okay and
@@ -345,7 +345,7 @@ func (l *LevelIter) skipEmptyFileForward() Span {
 		// which it should be due to the Close() call above.
 		l.iterFile = l.files.Next()
 		if l.iterFile == nil {
-			return Span{}
+			return nil
 		}
 		endKey := l.iterFile.SmallestRangeKey.UserKey
 		if l.cmp(startKey, endKey) < 0 {
@@ -356,16 +356,17 @@ func (l *LevelIter) skipEmptyFileForward() Span {
 				End:   endKey,
 			}
 			l.straddleDir = l.dir
-			return l.straddle
+			return &l.straddle
 		}
-	} else if l.straddle.Valid() && l.straddleDir < 0 {
+	} else if l.straddleDir < 0 {
 		// We were at a straddle key, but are now changing directions. l.iterFile
 		// was already moved backward by skipEmptyFileBackward, so advance it
 		// forward.
 		l.iterFile = l.files.Next()
 	}
 	l.straddle = Span{}
-	var span Span
+	l.straddleDir = 0
+	var span *Span
 	for span.Empty() {
 		fileToLoad := l.iterFile
 		if l.keyType == manifest.KeyTypePoint {
@@ -374,7 +375,7 @@ func (l *LevelIter) skipEmptyFileForward() Span {
 			fileToLoad = l.files.Next()
 		}
 		if l.loadFile(fileToLoad, +1) == noFileLoaded {
-			return Span{}
+			return nil
 		}
 		span = l.iter.First()
 		// In rangedel mode, we can expect to get empty files that we'd need to
@@ -386,18 +387,18 @@ func (l *LevelIter) skipEmptyFileForward() Span {
 	return span
 }
 
-func (l *LevelIter) skipEmptyFileBackward() Span {
+func (l *LevelIter) skipEmptyFileBackward() *Span {
 	// We were at a file that had spans. Check if the previous file that has
 	// spans is not directly adjacent to the current file i.e. there is a
 	// gap in the span keyspace between the two files. In that case, synthesize
 	// a "straddle span" in l.straddle and return that.
 	//
 	// Straddle spans are not created in rangedel mode.
-	if !l.straddle.Valid() && l.keyType == manifest.KeyTypeRange &&
+	if l.straddleDir == 0 && l.keyType == manifest.KeyTypeRange &&
 		l.iterFile != nil && l.iter != nil {
 		if err := l.Close(); err != nil {
 			l.err = err
-			return Span{}
+			return nil
 		}
 		endKey := l.iterFile.SmallestRangeKey.UserKey
 		// Resetting l.iterFile without loading the file into l.iter is okay and
@@ -405,7 +406,7 @@ func (l *LevelIter) skipEmptyFileBackward() Span {
 		// which it should be due to the Close() call above.
 		l.iterFile = l.files.Prev()
 		if l.iterFile == nil {
-			return Span{}
+			return nil
 		}
 		startKey := l.iterFile.LargestRangeKey.UserKey
 		if l.cmp(startKey, endKey) < 0 {
@@ -416,23 +417,24 @@ func (l *LevelIter) skipEmptyFileBackward() Span {
 				End:   endKey,
 			}
 			l.straddleDir = l.dir
-			return l.straddle
+			return &l.straddle
 		}
-	} else if l.straddle.Valid() && l.straddleDir > 0 {
+	} else if l.straddleDir > 0 {
 		// We were at a straddle key, but are now changing directions. l.iterFile
 		// was already advanced forward by skipEmptyFileForward, so move it
 		// backward.
 		l.iterFile = l.files.Prev()
 	}
 	l.straddle = Span{}
-	var span Span
+	l.straddleDir = 0
+	var span *Span
 	for span.Empty() {
 		fileToLoad := l.iterFile
 		if l.keyType == manifest.KeyTypePoint {
 			fileToLoad = l.files.Prev()
 		}
 		if l.loadFile(fileToLoad, -1) == noFileLoaded {
-			return Span{}
+			return nil
 		}
 		span = l.iter.Last()
 		// In rangedel mode, we can expect to get empty files that we'd need to

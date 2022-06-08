@@ -11,7 +11,7 @@ import "github.com/cockroachdb/pebble/internal/base"
 // parameter controls the visibility of spans (only spans older than the
 // snapshot sequence number are visible). The iterator must contain
 // fragmented spans: no span may overlap another.
-func Get(cmp base.Compare, iter FragmentIterator, key []byte) Span {
+func Get(cmp base.Compare, iter FragmentIterator, key []byte) *Span {
 	// NB: We use SeekLT in order to land on the proper span for a search
 	// key that resides in the middle of a span. Consider the scenario:
 	//
@@ -25,15 +25,15 @@ func Get(cmp base.Compare, iter FragmentIterator, key []byte) Span {
 	// happens for the search key `e`. In that case SeekLT will land us
 	// on the span [a,e) and we'll have to move forward.
 	iterSpan := iter.SeekLT(key)
-	if !iterSpan.Valid() {
+	if iterSpan == nil {
 		iterSpan = iter.Next()
-		if !iterSpan.Valid() {
+		if iterSpan == nil {
 			// The iterator is empty.
-			return Span{}
+			return nil
 		}
 		if cmp(key, iterSpan.Start) < 0 {
 			// The search key lies before the first span.
-			return Span{}
+			return nil
 		}
 	}
 
@@ -43,10 +43,10 @@ func Get(cmp base.Compare, iter FragmentIterator, key []byte) Span {
 		// once to potentially land on a key with a start key exactly equal to
 		// key. (See the comment at the beginning of this function.)
 		iterSpan = iter.Next()
-		if !iterSpan.Valid() || cmp(key, iterSpan.Start) < 0 {
+		if iterSpan == nil || cmp(key, iterSpan.Start) < 0 {
 			// We've run out of spans or we've moved on to a span which
 			// starts after our search key.
-			return Span{}
+			return nil
 		}
 	}
 	return iterSpan

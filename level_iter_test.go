@@ -233,7 +233,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	}
 	f.Finish()
 	for _, v := range tombstones {
-		if err := rangedel.Encode(v, w.Add); err != nil {
+		if err := rangedel.Encode(&v, w.Add); err != nil {
 			return err.Error()
 		}
 	}
@@ -355,10 +355,14 @@ func (i *levelIterTestIter) rangeDelSeek(
 ) (*InternalKey, []byte) {
 	var tombstone keyspan.Span
 	if i.rangeDelIter != nil {
+		var t *keyspan.Span
 		if dir < 0 {
-			tombstone = keyspan.SeekLE(i.levelIter.cmp, i.rangeDelIter, key).Visible(1000)
+			t = keyspan.SeekLE(i.levelIter.cmp, i.rangeDelIter, key)
 		} else {
-			tombstone = keyspan.SeekGE(i.levelIter.cmp, i.rangeDelIter, key).Visible(1000)
+			t = keyspan.SeekGE(i.levelIter.cmp, i.rangeDelIter, key)
+		}
+		if t != nil {
+			tombstone = t.Visible(1000)
 		}
 	}
 	if ikey == nil {

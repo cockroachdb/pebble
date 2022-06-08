@@ -444,7 +444,7 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 				defer iter.Close()
 
 				var tombstones []keyspan.Span
-				for t := iter.First(); t.Valid(); t = iter.Next() {
+				for t := iter.First(); t != nil; t = iter.Next() {
 					if !t.Contains(r.Compare, searchKey) {
 						continue
 					}
@@ -464,9 +464,9 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 			rangeDel := rangeDelIter.First()
 
 			foundRef := false
-			for key != nil || rangeDel.Valid() {
+			for key != nil || rangeDel != nil {
 				if key != nil &&
-					(!rangeDel.Valid() || r.Compare(key.UserKey, rangeDel.Start) < 0) {
+					(rangeDel == nil || r.Compare(key.UserKey, rangeDel.Start) < 0) {
 					if r.Compare(searchKey, key.UserKey) != 0 {
 						key, value = nil, nil
 						continue
