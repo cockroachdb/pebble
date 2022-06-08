@@ -53,7 +53,7 @@ type simpleMergingIterLevel struct {
 
 	iterKey   *InternalKey
 	iterValue []byte
-	tombstone keyspan.Span
+	tombstone *keyspan.Span
 }
 
 type simpleMergingIter struct {
@@ -452,8 +452,8 @@ func addTombstonesFromIter(
 	}()
 
 	var prevTombstone keyspan.Span
-	for t := iter.First(); t.Valid(); t = iter.Next() {
-		t = t.Visible(seqNum)
+	for tomb := iter.First(); tomb != nil; tomb = iter.Next() {
+		t := tomb.Visible(seqNum)
 		if t.Empty() {
 			continue
 		}

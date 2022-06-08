@@ -946,7 +946,7 @@ func (w *Writer) coalesceSpans(span keyspan.Span) {
 
 	// NB: The span only contains range keys and is internally consistent (eg,
 	// no duplicate suffixes, no additional keys after a RANGEKEYDEL).
-	w.err = firstError(w.err, w.rangeKeyEncoder.Encode(w.rangeKeyCoalesced))
+	w.err = firstError(w.err, w.rangeKeyEncoder.Encode(&w.rangeKeyCoalesced))
 }
 
 func (w *Writer) addRangeKey(key InternalKey, value []byte) error {

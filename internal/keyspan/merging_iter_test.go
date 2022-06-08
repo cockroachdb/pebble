@@ -24,7 +24,7 @@ func TestMergingIter(t *testing.T) {
 	var buf bytes.Buffer
 	var iter MergingIter
 
-	formatSpan := func(s Span) { fmt.Fprintln(&buf, s) }
+	formatSpan := func(s *Span) { fmt.Fprintln(&buf, s) }
 
 	datadriven.RunTest(t, "testdata/merging_iter", func(td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -206,31 +206,31 @@ func testFragmenterEquivalenceOnce(t *testing.T, seed int64) {
 
 	type opKind struct {
 		weight int
-		fn     func() (str string, f Span, m Span)
+		fn     func() (str string, f *Span, m *Span)
 	}
 	ops := []opKind{
-		{weight: 2, fn: func() (string, Span, Span) {
+		{weight: 2, fn: func() (string, *Span, *Span) {
 			return "First()", fragmenterIter.First(), mergingIter.First()
 		}},
-		{weight: 2, fn: func() (string, Span, Span) {
+		{weight: 2, fn: func() (string, *Span, *Span) {
 			return "Last()", fragmenterIter.Last(), mergingIter.Last()
 		}},
-		{weight: 5, fn: func() (string, Span, Span) {
+		{weight: 5, fn: func() (string, *Span, *Span) {
 			k := testkeys.Key(ks, rng.Intn(ks.Count()))
 			return fmt.Sprintf("SeekGE(%q)", k),
 				fragmenterIter.SeekGE(k),
 				mergingIter.SeekGE(k)
 		}},
-		{weight: 5, fn: func() (string, Span, Span) {
+		{weight: 5, fn: func() (string, *Span, *Span) {
 			k := testkeys.Key(ks, rng.Intn(ks.Count()))
 			return fmt.Sprintf("SeekLT(%q)", k),
 				fragmenterIter.SeekLT(k),
 				mergingIter.SeekLT(k)
 		}},
-		{weight: 50, fn: func() (string, Span, Span) {
+		{weight: 50, fn: func() (string, *Span, *Span) {
 			return "Next()", fragmenterIter.Next(), mergingIter.Next()
 		}},
-		{weight: 50, fn: func() (string, Span, Span) {
+		{weight: 50, fn: func() (string, *Span, *Span) {
 			return "Prev()", fragmenterIter.Prev(), mergingIter.Prev()
 		}},
 	}

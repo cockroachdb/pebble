@@ -401,7 +401,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 			defer iter.Close()
 
 			var tombstones []keyspan.Span
-			for t := iter.First(); t.Valid(); t = iter.Next() {
+			for t := iter.First(); t != nil; t = iter.Next() {
 				if s.end != nil && r.Compare(s.end, t.Start) <= 0 {
 					// The range tombstone lies after the scan range.
 					continue
@@ -428,8 +428,8 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		count := s.count
 
 		var lastKey base.InternalKey
-		for key != nil || rangeDel.Valid() {
-			if key != nil && (!rangeDel.Valid() || r.Compare(key.UserKey, rangeDel.Start) < 0) {
+		for key != nil || rangeDel != nil {
+			if key != nil && (rangeDel == nil || r.Compare(key.UserKey, rangeDel.Start) < 0) {
 				// The filter specifies a prefix of the key.
 				//
 				// TODO(peter): Is using prefix comparison like this kosher for all

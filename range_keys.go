@@ -42,7 +42,7 @@ func (d *DB) applyFlushedRangeKeys(flushable []*flushableEntry) error {
 		}
 		d.maybeInitializeRangeKeys()
 
-		for s := iter.First(); s.Valid(); s = iter.Next() {
+		for s := iter.First(); s != nil; s = iter.Next() {
 			// flushable.newRangeKeyIter provides a FragmentIterator, which
 			// iterates over parsed keyspan.Spans.
 			//

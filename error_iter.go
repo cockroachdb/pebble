@@ -77,12 +77,12 @@ func newErrorKeyspanIter(err error) *errorKeyspanIter {
 	return &errorKeyspanIter{err: err}
 }
 
-func (*errorKeyspanIter) SeekGE(key []byte) keyspan.Span { return keyspan.Span{} }
-func (*errorKeyspanIter) SeekLT(key []byte) keyspan.Span { return keyspan.Span{} }
-func (*errorKeyspanIter) First() keyspan.Span            { return keyspan.Span{} }
-func (*errorKeyspanIter) Last() keyspan.Span             { return keyspan.Span{} }
-func (*errorKeyspanIter) Next() keyspan.Span             { return keyspan.Span{} }
-func (*errorKeyspanIter) Prev() keyspan.Span             { return keyspan.Span{} }
-func (i *errorKeyspanIter) Error() error                 { return i.err }
-func (i *errorKeyspanIter) Close() error                 { return i.err }
-func (*errorKeyspanIter) String() string                 { return "error" }
+func (*errorKeyspanIter) SeekGE(key []byte) *keyspan.Span { return nil }
+func (*errorKeyspanIter) SeekLT(key []byte) *keyspan.Span { return nil }
+func (*errorKeyspanIter) First() *keyspan.Span            { return nil }
+func (*errorKeyspanIter) Last() *keyspan.Span             { return nil }
+func (*errorKeyspanIter) Next() *keyspan.Span             { return nil }
+func (*errorKeyspanIter) Prev() *keyspan.Span             { return nil }
+func (i *errorKeyspanIter) Error() error                  { return i.err }
+func (i *errorKeyspanIter) Close() error                  { return i.err }
+func (*errorKeyspanIter) String() string                  { return "error" }
