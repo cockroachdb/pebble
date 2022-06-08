@@ -175,12 +175,12 @@ func (i *DefragmentingIter) SeekGE(key []byte) Span {
 	i.iterSpan = i.iter.SeekGE(key)
 	if !i.iterSpan.Valid() {
 		i.iterPos = iterPosCurr
-		return i.iterSpan
+		return Span{}
 	}
 	// Save the current span and peek backwards.
 	i.saveCurrent(i.iterSpan)
 	i.iterSpan = i.iter.Prev()
-	if i.cmp(i.curr.Start, i.iterSpan.End) == 0 && i.checkEqual(i.iterSpan, i.curr) {
+	if i.iterSpan.Valid() && i.cmp(i.curr.Start, i.iterSpan.End) == 0 && i.checkEqual(i.iterSpan, i.curr) {
 		// A continuation. The span we originally landed on and defragmented
 		// backwards has a true Start key < key. To obey the FragmentIterator
 		// contract, we must not return this defragmented span. Defragment
@@ -203,6 +203,10 @@ func (i *DefragmentingIter) SeekGE(key []byte) Span {
 // key and returns it.
 func (i *DefragmentingIter) SeekLT(key []byte) Span {
 	i.iterSpan = i.iter.SeekLT(key)
+	if !i.iterSpan.Valid() {
+		i.iterPos = iterPosCurr
+		return Span{}
+	}
 	// Defragment forward to find the end of the defragmented span.
 	i.defragmentForward()
 	if i.iterPos == iterPosNext {
@@ -216,12 +220,20 @@ func (i *DefragmentingIter) SeekLT(key []byte) Span {
 // First seeks the iterator to the first span and returns it.
 func (i *DefragmentingIter) First() Span {
 	i.iterSpan = i.iter.First()
+	if !i.iterSpan.Valid() {
+		i.iterPos = iterPosCurr
+		return Span{}
+	}
 	return i.defragmentForward()
 }
 
 // Last seeks the iterator to the last span and returns it.
 func (i *DefragmentingIter) Last() Span {
 	i.iterSpan = i.iter.Last()
+	if !i.iterSpan.Valid() {
+		i.iterPos = iterPosCurr
+		return Span{}
+	}
 	return i.defragmentBackward()
 }
 
@@ -242,7 +254,7 @@ func (i *DefragmentingIter) Next() Span {
 		// Next once to move onto y, defragment forward to land on the first z
 		// position.
 		i.iterSpan = i.iter.Next()
-		if !i.iterSpan.Valid() {
+		if invariants.Enabled && !i.iterSpan.Valid() {
 			panic("pebble: invariant violation: no next span while switching directions")
 		}
 		// We're now positioned on the first span that was defragmented into the
@@ -250,6 +262,10 @@ func (i *DefragmentingIter) Next() Span {
 		// position's constitutent fragments. In the above example, this would
 		// land on the first 'z'.
 		i.defragmentForward()
+		if !i.iterSpan.Valid() {
+			i.iterPos = iterPosCurr
+			return Span{}
+		}
 
 		// Now that we're positioned over the first of the next set of
 		// fragments, defragment forward.
@@ -262,9 +278,16 @@ func (i *DefragmentingIter) Next() Span {
 		}
 
 		i.iterSpan = i.iter.Next()
+		if !i.iterSpan.Valid() {
+			return Span{}
+		}
 		return i.defragmentForward()
 	case iterPosNext:
 		// Already at the next span.
+		if !i.iterSpan.Valid() {
+			i.iterPos = iterPosCurr
+			return Span{}
+		}
 		return i.defragmentForward()
 	default:
 		panic("unreachable")
@@ -276,6 +299,10 @@ func (i *DefragmentingIter) Prev() Span {
 	switch i.iterPos {
 	case iterPosPrev:
 		// Already at the previous span.
+		if !i.iterSpan.Valid() {
+			i.iterPos = iterPosCurr
+			return Span{}
+		}
 		return i.defragmentBackward()
 	case iterPosCurr:
 		// iterPosCurr is only used when the iter is exhausted or when the iterator
@@ -285,6 +312,9 @@ func (i *DefragmentingIter) Prev() Span {
 		}
 
 		i.iterSpan = i.iter.Prev()
+		if !i.iterSpan.Valid() {
+			return Span{}
+		}
 		return i.defragmentBackward()
 	case iterPosNext:
 		// Switching directions; The iterator is currently positioned over the
@@ -311,6 +341,10 @@ func (i *DefragmentingIter) Prev() Span {
 
 		// Now that we're positioned over the last of the prev set of
 		// fragments, defragment backward.
+		if !i.iterSpan.Valid() {
+			i.iterPos = iterPosCurr
+			return Span{}
+		}
 		return i.defragmentBackward()
 	default:
 		panic("unreachable")
@@ -325,12 +359,9 @@ func (i *DefragmentingIter) checkEqual(left, right Span) bool {
 }
 
 // defragmentForward defragments spans in the forward direction, starting from
-// i.iter's current position.
+// i.iter's current position. The span at the current position must be Valid(),
+// but may be Empty().
 func (i *DefragmentingIter) defragmentForward() Span {
-	if !i.iterSpan.Valid() {
-		i.iterPos = iterPosCurr
-		return i.iterSpan
-	}
 	if i.iterSpan.Empty() {
 		// An empty span will never be equal to another span; see checkEqual for
 		// why. To avoid loading non-empty range keys further ahead by calling Next,
@@ -361,12 +392,9 @@ func (i *DefragmentingIter) defragmentForward() Span {
 }
 
 // defragmentBackward defragments spans in the backward direction, starting from
-// i.iter's current position.
+// i.iter's current position. The span at the current position must be Valid(),
+// but may be Empty().
 func (i *DefragmentingIter) defragmentBackward() Span {
-	if !i.iterSpan.Valid() {
-		i.iterPos = iterPosCurr
-		return i.iterSpan
-	}
 	if i.iterSpan.Empty() {
 		// An empty span will never be equal to another span; see checkEqual for
 		// why. To avoid loading non-empty range keys further ahead by calling Next,
