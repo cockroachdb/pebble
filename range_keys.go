@@ -110,7 +110,13 @@ func (d *DB) newRangeKeyIter(
 			it.rangeKey.iterConfig.AddLevel(newErrorKeyspanIter(ErrNotIndexed))
 		} else {
 			batch.initRangeKeyIter(&it.opts, &it.batchRangeKeyIter, batchSeqNum)
-			it.rangeKey.iterConfig.AddLevel(&it.batchRangeKeyIter)
+			// Only include the batch's range key iterator if it has any keys.
+			// NB: This can force reconstruction of the rangekey iterator stack
+			// in SetOptions if subsequently range keys are added. See
+			// SetOptions.
+			if it.batchRangeKeyIter.Count() > 0 {
+				it.rangeKey.iterConfig.AddLevel(&it.batchRangeKeyIter)
+			}
 		}
 	}
 
