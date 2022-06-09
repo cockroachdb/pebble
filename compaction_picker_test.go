@@ -1036,7 +1036,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 					[]byte(args[0].String()), []byte(args[1].String()), false /* exclusiveEnd */)
 
 				var isCompacting bool
-				if !pc.setupInputs(opts, availBytes) {
+				if !pc.setupInputs(opts, availBytes, pc.startLevel) {
 					isCompacting = true
 				}
 
