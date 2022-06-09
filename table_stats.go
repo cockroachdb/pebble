@@ -328,7 +328,7 @@ func (d *DB) loadTableRangeDelStats(
 				return nil, err
 			}
 			stats.RangeDeletionsBytesEstimate += size
-			return nil, err
+			continue
 		}
 
 		estimate, hintSeqNum, err := d.estimateSizeBeneath(v, level, meta, start, end)
@@ -341,7 +341,7 @@ func (d *DB) loadTableRangeDelStats(
 		// hintSeqNum is the smallest sequence number contained in any
 		// such file.
 		if hintSeqNum == math.MaxUint64 {
-			return nil, err
+			continue
 		}
 		hint := deleteCompactionHint{
 			hintType:                compactionHintFromKeys(s.Keys),
