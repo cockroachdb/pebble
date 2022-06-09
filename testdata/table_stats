@@ -260,26 +260,64 @@ num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 66
 
-# Ingest a table with range keys.
-# TODO(travers): Once range keys in batches are flushed to tables, this testcase
-# can be updated to use the batch / flush combination.
+# Test the interaction between point and range key deletions.
 
 define
 ----
 
+# Start with a table that contains point and range keys, but no range dels or
+# range key dels.
+# TODO(travers): Once range keys in batches are flushed to tables, this testcase
+# can be updated to use the batch / flush combination.
 ingest ext0
+set a a
 range-key-set a b @1 foo
 range-key-unset a b @2
-range-key-del a b
 ----
 6:
-  000004:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYDEL]
+  000004:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYUNSET]
 
+# Add a table that contains a RANGEKEYDEL.
+ingest ext1
+range-key-del a b
+----
+0.0:
+  000005:[a#2,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
+6:
+  000004:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYUNSET]
+
+# Add one more table containing a RANGEDEL.
+batch
+del-range a c
+----
+
+flush
+----
+0.1:
+  000007:[a#3,RANGEDEL-c#72057594037927935,RANGEDEL]
+0.0:
+  000005:[a#2,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
+6:
+  000004:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYUNSET]
+
+# Compute stats on the table containing range key del. It should not show an
+# estimate for deleted point keys.
 wait-pending-table-stats
-000004
+000005
 ----
 num-entries: 0
 num-deletions: 0
-num-range-keys: 3
+num-range-keys: 1
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
+
+# Compute stats on the table containing the range del. It should show an
+# estimate for deleted point keys.
+wait-pending-table-stats
+000007
+----
+num-entries: 1
+num-deletions: 1
+num-range-keys: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 991
