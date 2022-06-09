@@ -86,6 +86,11 @@ func NewIter(cmp base.Compare, spans []Span) *Iter {
 	return i
 }
 
+// Count returns the number of spans contained by Iter.
+func (i *Iter) Count() int {
+	return len(i.spans)
+}
+
 // Init initializes an Iter with the provided spans.
 func (i *Iter) Init(cmp base.Compare, spans []Span) {
 	*i = Iter{

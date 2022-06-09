@@ -1931,13 +1931,48 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		if nextBatchSeqNum != i.batchSeqNum {
 			i.batchSeqNum = nextBatchSeqNum
 			if i.pointIter != nil {
-				i.batchPointIter.snapshot = nextBatchSeqNum
-				i.batch.initRangeDelIter(&i.opts, &i.batchRangeDelIter, nextBatchSeqNum)
-				i.invalidate()
+				// NB: batch.countRangeDels monotonically increases over the
+				// lifetime of the batch.
+				if prevCount := i.batchRangeDelIter.Count(); int(i.batch.countRangeDels) == prevCount {
+					// No new range deletions have been added. We only need to
+					// update the batchIter's snapshot.
+					i.batchPointIter.snapshot = nextBatchSeqNum
+					i.invalidate()
+				} else if prevCount == 0 {
+					// When we constructed this iterator, there were no
+					// rangedels in the batch. Iterator construction will have
+					// excluded the batch rangedel iterator from the point
+					// iterator stack. We need to reconstruct the point iterator
+					// to add i.batchRangeDelIter into the iterator stack.
+					i.err = firstError(i.err, i.pointIter.Close())
+					i.pointIter = nil
+				} else {
+					// New range deletions have been added, and we already have
+					// a batch rangedel iterator. We can update the batch
+					// rangedel iterator in place.
+					i.batchPointIter.snapshot = nextBatchSeqNum
+					i.batch.initRangeDelIter(&i.opts, &i.batchRangeDelIter, nextBatchSeqNum)
+					i.invalidate()
+				}
 			}
-			if i.rangeKey != nil {
-				i.batch.initRangeKeyIter(&i.opts, &i.batchRangeKeyIter, nextBatchSeqNum)
-				i.invalidate()
+			// NB: batch.countRangeKeys monotonically increases over the
+			// lifetime of the batch.
+			if i.rangeKey != nil && int(i.batch.countRangeKeys) != i.batchRangeKeyIter.Count() {
+				if i.batchRangeKeyIter.Count() == 0 {
+					// When we constructed this iterator, there were no range
+					// keys in the batch. Iterator construction will have
+					// excluded the batch rangekey iterator from the range key
+					// iterator stack. We need to reconstruct the range key
+					// iterator to add i.batchRangeKeyIter into the iterator
+					// stack.
+					i.err = firstError(i.err, i.rangeKey.rangeKeyIter.Close())
+					i.rangeKey = nil
+				} else {
+					// No new range keys have been added. We only need to update
+					// the batchIter's snapshot.
+					i.batch.initRangeKeyIter(&i.opts, &i.batchRangeKeyIter, nextBatchSeqNum)
+					i.invalidate()
+				}
 			}
 		}
 	}
