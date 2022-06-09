@@ -1064,9 +1064,18 @@ func constructPointIter(
 		} else {
 			batch.initInternalIter(&dbi.opts, &dbi.batchPointIter, dbi.batchSeqNum)
 			batch.initRangeDelIter(&dbi.opts, &dbi.batchRangeDelIter, dbi.batchSeqNum)
+			// Only include the batch's rangedel iterator if it's non-empty.
+			// This requires some subtle logic in the case a rangedel is later
+			// written to the batch and the view of the batch is refreshed
+			// during a call to SetOptions—in this case, we need to reconstruct
+			// the point iterator to add the batch rangedel iterator.
+			var rangeDelIter keyspan.FragmentIterator
+			if dbi.batchRangeDelIter.Count() > 0 {
+				rangeDelIter = &dbi.batchRangeDelIter
+			}
 			mlevels = append(mlevels, mergingIterLevel{
 				iter:         base.WrapIterWithStats(&dbi.batchPointIter),
-				rangeDelIter: &dbi.batchRangeDelIter,
+				rangeDelIter: rangeDelIter,
 			})
 		}
 	}
