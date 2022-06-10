@@ -1736,7 +1736,6 @@ func newTestkeysDatabase(t *testing.T, ks testkeys.Keyspace) *DB {
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: FormatRangeKeys,
 	}
-	dbOpts.Experimental.RangeKeys = new(RangeKeysArena)
 	d, err := Open("", dbOpts)
 	require.NoError(t, err)
 
@@ -2056,7 +2055,6 @@ func BenchmarkIteratorScan(b *testing.B) {
 					FS:                 vfs.NewMem(),
 					FormatMajorVersion: FormatNewest,
 				}
-				opts.Experimental.RangeKeys = new(RangeKeysArena)
 				opts.DisableAutomaticCompactions = true
 				d, err := Open("", opts)
 				require.NoError(b, err)
@@ -2112,7 +2110,6 @@ func BenchmarkIteratorSeekNoRangeKeys(b *testing.B) {
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: FormatNewest,
 	}
-	opts.Experimental.RangeKeys = new(RangeKeysArena)
 	d, err := Open("", opts)
 	require.NoError(b, err)
 	defer func() { require.NoError(b, d.Close()) }()

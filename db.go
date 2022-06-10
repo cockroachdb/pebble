@@ -473,11 +473,6 @@ type DB struct {
 		}
 	}
 
-	// rangeKeys is a temporary field so that Pebble can provide a non-durable
-	// implementation of range keys in advance of the real implementation.
-	// TODO(jackson): Remove this.
-	rangeKeys *RangeKeysArena
-
 	// Normally equal to time.Now() but may be overridden in tests.
 	timeNow func() time.Time
 }
@@ -747,9 +742,6 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 		if d.split == nil {
 			return errNoSplit
 		}
-		if d.opts.Experimental.RangeKeys == nil {
-			panic("pebble: range keys require the Experimental.RangeKeys option")
-		}
 		if d.FormatMajorVersion() < FormatRangeKeys {
 			panic(fmt.Sprintf(
 				"pebble: range keys require at least format major version %d (current: %d)",
@@ -893,9 +885,6 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 		panic(err)
 	}
 	if o.rangeKeys() {
-		if d.opts.Experimental.RangeKeys == nil {
-			panic("pebble: range keys require the Experimental.RangeKeys option")
-		}
 		if d.FormatMajorVersion() < FormatRangeKeys {
 			panic(fmt.Sprintf(
 				"pebble: range keys require at least format major version %d (current: %d)",

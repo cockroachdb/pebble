@@ -41,7 +41,6 @@ func TestRangeKeys(t *testing.T) {
 				Comparer:           testkeys.Comparer,
 				FormatMajorVersion: FormatRangeKeys,
 			}
-			opts.Experimental.RangeKeys = new(RangeKeysArena)
 
 			for _, cmdArgs := range td.CmdArgs {
 				if cmdArgs.Key != "format-major-version" {

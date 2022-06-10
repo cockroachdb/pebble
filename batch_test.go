@@ -346,7 +346,6 @@ func TestIndexedBatchMutation(t *testing.T) {
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: FormatNewest,
 	}
-	opts.Experimental.RangeKeys = new(RangeKeysArena)
 	d, err := Open("", opts)
 	require.NoError(t, err)
 	defer func() { d.Close() }()
@@ -436,7 +435,6 @@ func TestIndexedBatch_GlobalVisibility(t *testing.T) {
 		FormatMajorVersion: FormatNewest,
 		Comparer:           testkeys.Comparer,
 	}
-	opts.Experimental.RangeKeys = new(RangeKeysArena)
 	d, err := Open("", opts)
 	require.NoError(t, err)
 	defer d.Close()
@@ -1185,7 +1183,6 @@ func TestBatchSpanCaching(t *testing.T) {
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: FormatNewest,
 	}
-	opts.Experimental.RangeKeys = new(RangeKeysArena)
 	d, err := Open("", opts)
 	require.NoError(t, err)
 	defer d.Close()
