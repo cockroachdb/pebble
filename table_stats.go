@@ -304,7 +304,7 @@ func (d *DB) loadTablePointKeyStats(
 func (d *DB) loadTableRangeDelStats(
 	r *sstable.Reader, v *version, level int, meta *fileMetadata, stats *manifest.TableStats,
 ) ([]deleteCompactionHint, error) {
-	iter, err := newTableRangeDeletionIter(d.cmp, r, meta)
+	iter, err := newCombinedDeletionKeyspanIter(d.cmp, r, meta)
 	if err != nil {
 		return nil, err
 	}
@@ -530,11 +530,11 @@ func estimateEntrySizes(
 	return avgKeySize, avgValSize
 }
 
-// newTableRangeDeletionIter returns a keyspan.FragmentIterator that returns
-// "ranged deletion" spans for a single table, providing a combined view of both
-// range deletion and range key deletion spans. The tableRangedDeletionIter is
-// intended for use in the specific case of computing the statistics and
-// deleteCompactionHints for a single table.
+// newCombinedDeletionKeyspanIter returns a keyspan.FragmentIterator that
+// returns "ranged deletion" spans for a single table, providing a combined view
+// of both range deletion and range key deletion spans. The
+// tableRangedDeletionIter is intended for use in the specific case of computing
+// the statistics and deleteCompactionHints for a single table.
 //
 // As an example, consider the following set of spans from the range deletion
 // and range key blocks of a table:
@@ -582,7 +582,7 @@ func estimateEntrySizes(
 // Each span returned by the tableRangeDeletionIter will have at most four keys,
 // corresponding to the largest and smallest sequence numbers encountered across
 // the range deletes and range keys deletes that comprised the merged spans.
-func newTableRangeDeletionIter(
+func newCombinedDeletionKeyspanIter(
 	cmp base.Compare, r *sstable.Reader, m *fileMetadata,
 ) (keyspan.FragmentIterator, error) {
 	// The range del iter and range key iter are each wrapped in their own
