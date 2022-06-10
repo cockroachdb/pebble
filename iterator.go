@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/redact"
 )
 
@@ -184,7 +185,7 @@ type Iterator struct {
 	prefixOrFullSeekKey []byte
 	readSampling        readSampling
 	stats               IteratorStats
-	closeHook           func()
+	externalReaders     []*sstable.Reader
 
 	// Following fields used when constructing an iterator stack, eg, in Clone
 	// and SetOptions or when re-fragmenting a batch's range keys/range dels.
@@ -1763,8 +1764,8 @@ func (i *Iterator) Close() error {
 		i.readState = nil
 	}
 
-	if i.closeHook != nil {
-		i.closeHook()
+	for _, r := range i.externalReaders {
+		err = firstError(err, r.Close())
 	}
 
 	// Close the closer for the current value if one was open.
@@ -1896,6 +1897,12 @@ func (i *Iterator) saveBounds(lower, upper []byte) {
 //
 // If only lower and upper bounds need to be modified, prefer SetBounds.
 func (i *Iterator) SetOptions(o *IterOptions) {
+	if i.externalReaders != nil {
+		if err := validateExternalIterOpts(o); err != nil {
+			panic(err)
+		}
+	}
+
 	// Ensure that the Iterator appears exhausted, regardless of whether we
 	// actually have to invalidate the internal iterator. Optimizations that
 	// avoid exhaustion are an internal implementation detail that shouldn't
@@ -2023,6 +2030,13 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	// Even though this is not a positioning operation, the invalidation of the
 	// iterator stack means we cannot optimize Seeks by using Next.
 	i.invalidate()
+
+	// Iterators created through NewExternalIter have a different iterator
+	// initialization process.
+	if i.externalReaders != nil {
+		finishInitializingExternal(i)
+		return
+	}
 	finishInitializingIter(i.alloc)
 }
 
