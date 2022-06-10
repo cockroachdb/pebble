@@ -718,7 +718,6 @@ let version = {
             }
         }
 
-        // TODO(peter): display smallest/largest key.
         reason.text(
             "[" +
                 this.levelsInfo[i].levelString +
@@ -728,6 +727,11 @@ let version = {
                 humanize(data.Files[fileNum].Size) +
                 ")" +
                 overlapInfo +
+                " <" +
+                data.Keys[data.Files[fileNum].Smallest].Pretty +
+                ", " +
+                data.Keys[data.Files[fileNum].Largest].Pretty +
+                ">" +
                 "]"
         );
 
