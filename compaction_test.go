@@ -1347,13 +1347,10 @@ func TestManualCompaction(t *testing.T) {
 
 				mem = vfs.NewMem()
 				opts := &Options{
-					FS:                 mem,
-					DebugCheck:         DebugCheckLevels,
-					FormatMajorVersion: randVersion(minVersion, maxVersion),
-				}
-				opts.DisableAutomaticCompactions = true
-				if opts.FormatMajorVersion >= FormatRangeKeys {
-					opts.Experimental.RangeKeys = new(RangeKeysArena)
+					FS:                          mem,
+					DebugCheck:                  DebugCheckLevels,
+					FormatMajorVersion:          randVersion(minVersion, maxVersion),
+					DisableAutomaticCompactions: true,
 				}
 
 				var err error

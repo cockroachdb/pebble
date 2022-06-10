@@ -5,50 +5,13 @@
 package pebble
 
 import (
-	"sync"
-
-	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangekey"
 )
-
-const rangeKeyArenaSize = 1 << 20
-
-// RangeKeysArena is an in-memory arena in which range keys are stored.
-//
-// This is a temporary type that will eventually be removed.
-//
-// TODO(bilal): This type should mostly be unused now. Clean up the last few
-// uses and remove it.
-type RangeKeysArena struct {
-	once      sync.Once
-	skl       arenaskl.Skiplist
-	arena     *arenaskl.Arena
-	fragCache keySpanCache
-}
-
-func (d *DB) maybeInitializeRangeKeys() {
-	// Lazily construct the global range key arena, so that tests that
-	// don't use range keys don't need to allocate this long-lived
-	// buffer.
-	d.rangeKeys.once.Do(func() {
-		arenaBuf := make([]byte, rangeKeyArenaSize)
-		d.rangeKeys.arena = arenaskl.NewArena(arenaBuf)
-		d.rangeKeys.skl.Reset(d.rangeKeys.arena, d.cmp)
-		d.rangeKeys.fragCache = keySpanCache{
-			cmp:           d.cmp,
-			formatKey:     d.opts.Comparer.FormatKey,
-			skl:           &d.rangeKeys.skl,
-			constructSpan: rangekey.Decode,
-		}
-	})
-}
 
 func (d *DB) newRangeKeyIter(
 	it *Iterator, seqNum, batchSeqNum uint64, batch *Batch, readState *readState,
 ) keyspan.FragmentIterator {
-	d.maybeInitializeRangeKeys()
 	it.rangeKey.rangeKeyIter = it.rangeKey.iterConfig.Init(d.cmp, seqNum)
 
 	// If there's an indexed batch with range keys, include it.

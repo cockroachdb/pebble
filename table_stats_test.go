@@ -30,7 +30,6 @@ func TestTableStats(t *testing.T) {
 	}
 	opts.DisableAutomaticCompactions = true
 	opts.Comparer = testkeys.Comparer
-	opts.Experimental.RangeKeys = new(RangeKeysArena)
 	opts.FormatMajorVersion = FormatRangeKeys
 
 	d, err := Open("", opts)
