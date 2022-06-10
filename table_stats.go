@@ -315,7 +315,7 @@ func (d *DB) loadTableRangeDelStats(
 	// Also, merging abutting tombstones reduces the number of calls to
 	// estimateSizeBeneath which is costly, and improves the accuracy of
 	// our overall estimate.
-	for s := iter.First(); s.Valid(); s = iter.Next() {
+	for s := iter.First(); s != nil; s = iter.Next() {
 		// If the file is in the last level of the LSM, there is no
 		// data beneath it. The fact that there is still a range
 		// tombstone in a bottommost file suggests that an open
@@ -446,56 +446,6 @@ func (d *DB) estimateSizeBeneath(
 		}
 	}
 	return estimate, hintSeqNum, nil
-}
-
-func foreachDefragmentedTombstone(
-	rangeDelIter keyspan.FragmentIterator,
-	cmp base.Compare,
-	fn func([]byte, []byte, uint64, uint64) error,
-) error {
-	// Use an equals func that will always merge abutting spans.
-	equal := keyspan.DefragmentMethodFunc(func(_ base.Compare, _, _ *keyspan.Span) bool {
-		return true
-	})
-	// Reduce keys by maintaining a slice of length two, corresponding to the
-	// largest and smallest keys in the defragmented span. This maintains the
-	// contract that the emitted slice is sorted by (SeqNum, Kind) descending.
-	reducer := func(current, incoming []keyspan.Key) []keyspan.Key {
-		if len(current) == 0 && len(incoming) == 0 {
-			// While this should never occur in practice, a defensive return is used
-			// here to preserve correctness.
-			return current
-		}
-		// Determine the smallest / largest keys across the two slices. As `current`
-		// and `incoming` are both sorted by (seqnum, kind) descending, only the
-		// first and last element of each slice need to be consulted.
-		var largest, smallest keyspan.Key
-		var largestSet, smallestSet bool
-		for _, keys := range [2][]keyspan.Key{current, incoming} {
-			if len(keys) == 0 {
-				continue
-			}
-			first, last := keys[0], keys[len(keys)-1]
-			// Update largest.
-			if !largestSet || first.Trailer > largest.Trailer {
-				largest, largestSet = first, true
-			}
-			// Update smallest.
-			if !smallestSet || last.Trailer < smallest.Trailer {
-				smallest, smallestSet = last, true
-			}
-		}
-		return append(current[:0], largest, smallest)
-	}
-	iter := keyspan.DefragmentingIter{}
-	iter.Init(cmp, rangeDelIter, equal, reducer)
-	for s := iter.First(); s != nil; s = iter.Next() {
-		if err := fn(s.Start, s.End, s.SmallestSeqNum(), s.LargestSeqNum()); err != nil {
-			_ = iter.Close()
-			return err
-		}
-	}
-	return iter.Close()
 }
 
 func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) bool {
@@ -642,7 +592,7 @@ func newTableRangeDeletionIter(
 ) (*tableRangedDeletionIter, error) {
 	// The range del iter and range key iter are each wrapped in their own
 	// defragmenting iter. For each iter, abutting spans can always be merged.
-	var equal = keyspan.DefragmentMethodFunc(func(_ base.Compare, a, b keyspan.Span) bool { return true })
+	var equal = keyspan.DefragmentMethodFunc(func(_ base.Compare, a, b *keyspan.Span) bool { return true })
 	// Reduce keys by maintaining a slice of at most length two, corresponding to
 	// the largest and smallest keys in the defragmented span. This maintains the
 	// contract that the emitted slice is sorted by (SeqNum, Kind) descending.
@@ -703,7 +653,7 @@ func newTableRangeDeletionIter(
 	if iter != nil {
 		// Wrap the range key iterator in a filter that elides keys other than range
 		// key deletions.
-		iter = keyspan.Filter(iter, func(in keyspan.Span, out *keyspan.Span) (keep bool) {
+		iter = keyspan.Filter(iter, func(in *keyspan.Span, out *keyspan.Span) (keep bool) {
 			out.Start, out.End = in.Start, in.End
 			out.Keys = out.Keys[:0]
 			for _, k := range in.Keys {
