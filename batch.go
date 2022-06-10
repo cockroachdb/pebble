@@ -216,11 +216,11 @@ type Batch struct {
 
 	// The count of range deletions in the batch. Updated every time a range
 	// deletion is added.
-	countRangeDels uint64
+	countRangeDels uint32
 
 	// The count of range key sets, unsets and deletes in the batch. Updated
 	// every time a RANGEKEYSET, RANGEKEYUNSET or RANGEKEYDEL key is added.
-	countRangeKeys uint64
+	countRangeKeys uint32
 
 	// A deferredOp struct, stored in the Batch so that a pointer can be returned
 	// from the *Deferred() methods rather than a value.
