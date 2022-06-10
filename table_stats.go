@@ -310,11 +310,11 @@ func (d *DB) loadTableRangeDelStats(
 	}
 	defer iter.Close()
 	var compactionHints []deleteCompactionHint
-	// We iterate over the defragmented range tombstones, which ensures
-	// we don't double count ranges deleted at different sequence numbers.
-	// Also, merging abutting tombstones reduces the number of calls to
-	// estimateSizeBeneath which is costly, and improves the accuracy of
-	// our overall estimate.
+	// We iterate over the defragmented range tombstones and range key deletions,
+	// which ensures we don't double count ranges deleted at different sequence
+	// numbers. Also, merging abutting tombstones reduces the number of calls to
+	// estimateSizeBeneath which is costly, and improves the accuracy of our
+	// overall estimate.
 	for s := iter.First(); s != nil; s = iter.Next() {
 		// If the file is in the last level of the LSM, there is no
 		// data beneath it. The fact that there is still a range
