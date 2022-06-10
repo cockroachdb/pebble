@@ -403,3 +403,57 @@ next
 ----
 foo: (foo, .)
 .
+
+reset
+----
+
+new-batch
+range-key-set a c @1 poi
+range-key-set b d @2 yaya
+----
+
+new-iter i1
+----
+
+# The batch contains 2 range keys, but the skiplist of fragmented range keys
+# contains 3 elements (a-b, b-c, c-d).
+
+iter iter=i1
+first
+next
+next
+----
+a: (., [a-b) @1=poi)
+b: (., [b-c) @2=yaya, @1=poi)
+c: (., [c-d) @2=yaya)
+
+# Add a new range key to the batch. The batch contains 3 internal range keys,
+# and the skiplist of fragmented range keys contains 3 elements.
+
+mutate
+range-key-set e f @3 foo
+----
+
+# Refreshing the iterator's view of the batch through SetOptions should surface
+# the new range key. An earlier bug incorrectly compared the number of
+# fragmented range keys to the number of internal batch range keys in order to
+# determine when to refresh the iterator.
+
+iter iter=i1
+first
+next
+next
+set-options
+first
+next
+next
+next
+----
+a: (., [a-b) @1=poi)
+b: (., [b-c) @2=yaya, @1=poi)
+c: (., [c-d) @2=yaya)
+.
+a: (., [a-b) @1=poi)
+b: (., [b-c) @2=yaya, @1=poi)
+c: (., [c-d) @2=yaya)
+e: (., [e-f) @3=foo)
