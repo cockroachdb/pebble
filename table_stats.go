@@ -530,9 +530,9 @@ func estimateEntrySizes(
 	return avgKeySize, avgValSize
 }
 
-// tableRangedDeletionIter is a keyspan.FragmentIterator that returns "ranged
-// deletion" spans for a single table, providing a combined view of both range
-// deletion and range key deletion spans. The tableRangedDeletionIter is
+// newTableRangeDeletionIter returns a keyspan.FragmentIterator that returns
+// "ranged deletion" spans for a single table, providing a combined view of both
+// range deletion and range key deletion spans. The tableRangedDeletionIter is
 // intended for use in the specific case of computing the statistics and
 // deleteCompactionHints for a single table.
 //
@@ -582,14 +582,9 @@ func estimateEntrySizes(
 // Each span returned by the tableRangeDeletionIter will have at most four keys,
 // corresponding to the largest and smallest sequence numbers encountered across
 // the range deletes and range keys deletes that comprised the merged spans.
-type tableRangedDeletionIter struct {
-	keyspan.FragmentIterator
-}
-
-// newTableRangeDeletionIter returns a new tableRangedDeletionIter.
 func newTableRangeDeletionIter(
 	cmp base.Compare, r *sstable.Reader, m *fileMetadata,
-) (*tableRangedDeletionIter, error) {
+) (keyspan.FragmentIterator, error) {
 	// The range del iter and range key iter are each wrapped in their own
 	// defragmenting iter. For each iter, abutting spans can always be merged.
 	var equal = keyspan.DefragmentMethodFunc(func(_ base.Compare, a, b *keyspan.Span) bool { return true })
@@ -680,11 +675,5 @@ func newTableRangeDeletionIter(
 	})
 	mIter.Init(cmp, transform, iters...)
 
-	delIter := &tableRangedDeletionIter{FragmentIterator: mIter}
-	return delIter, nil
-}
-
-// Close closes all child iterators of this tableRangedDeletionIter.
-func (d *tableRangedDeletionIter) Close() error {
-	return d.FragmentIterator.Close()
+	return mIter, nil
 }
