@@ -624,7 +624,17 @@ func newCombinedDeletionKeyspanIter(
 		return current
 	}
 
-	var iters []keyspan.FragmentIterator
+	// The separate iters for the range dels and range keys are wrapped in a
+	// merging iter to join the keyspaces into a single keyspace. The separate
+	// iters are only added if the particular key kind is present.
+	mIter := &keyspan.MergingIter{}
+	var transform = keyspan.TransformerFunc(func(cmp base.Compare, in keyspan.Span, out *keyspan.Span) error {
+		out.Start, out.End = in.Start, in.End
+		out.Keys = append(out.Keys[:0], in.Keys...)
+		return nil
+	})
+	mIter.Init(cmp, transform)
+
 	iter, err := r.NewRawRangeDelIter()
 	if err != nil {
 		return nil, err
@@ -638,7 +648,7 @@ func newCombinedDeletionKeyspanIter(
 		iter = keyspan.Truncate(
 			cmp, iter, m.Smallest.UserKey, m.Largest.UserKey, nil, nil,
 		)
-		iters = append(iters, iter)
+		mIter.AddLevel(iter)
 	}
 
 	iter, err = r.NewRawRangeKeyIter()
@@ -662,18 +672,8 @@ func newCombinedDeletionKeyspanIter(
 		dIter := &keyspan.DefragmentingIter{}
 		dIter.Init(cmp, iter, equal, reducer)
 		iter = dIter
-		iters = append(iters, iter)
+		mIter.AddLevel(iter)
 	}
-
-	// The separate iters for the range dels and range keys are wrapped in a
-	// merging iter to join the keyspaces into a single keyspace.
-	mIter := &keyspan.MergingIter{}
-	var transform = keyspan.TransformerFunc(func(cmp base.Compare, in keyspan.Span, out *keyspan.Span) error {
-		out.Start, out.End = in.Start, in.End
-		out.Keys = append(out.Keys[:0], in.Keys...)
-		return nil
-	})
-	mIter.Init(cmp, transform, iters...)
 
 	return mIter, nil
 }
