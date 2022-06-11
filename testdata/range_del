@@ -1391,6 +1391,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
@@ -1400,6 +1401,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 836
 
@@ -1409,6 +1411,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 1672
 
@@ -1418,6 +1421,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 2
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 1672
 
@@ -1458,6 +1462,7 @@ wait-pending-table-stats
 num-entries: 4
 num-deletions: 0
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
@@ -1467,6 +1472,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 42
 
@@ -1476,6 +1482,7 @@ wait-pending-table-stats
 num-entries: 3
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 68
 
@@ -1485,6 +1492,7 @@ wait-pending-table-stats
 num-entries: 4
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 100
 
@@ -1521,6 +1529,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 782
 
@@ -1530,6 +1539,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 771
 
@@ -1539,5 +1549,6 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 2
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 1553

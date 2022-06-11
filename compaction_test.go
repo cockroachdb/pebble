@@ -2097,6 +2097,7 @@ func TestCompactionTombstones(t *testing.T) {
 							compactInfo = &info
 						},
 					},
+					FormatMajorVersion: FormatNewest,
 				}
 				var err error
 				d, err = runDBDefineCmd(td, opts)

@@ -14,6 +14,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 2
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
@@ -36,6 +37,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 2
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
@@ -57,6 +59,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 26
 
@@ -80,6 +83,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
@@ -119,6 +123,7 @@ wait-pending-table-stats
 num-entries: 6
 num-deletions: 2
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 76
 
@@ -152,6 +157,7 @@ wait-pending-table-stats
 num-entries: 11
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 149
 range-deletions-bytes-estimate: 0
 
@@ -196,6 +202,7 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 16488
 
@@ -233,6 +240,7 @@ wait-pending-table-stats
 num-entries: 3
 num-deletions: 3
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 13167
 range-deletions-bytes-estimate: 0
 
@@ -244,3 +252,130 @@ range-deletions-bytes-estimate: 0
 maybe-compact
 ----
 [JOB 100] compacted(default) L5 [000004] (794 B) + L6 [000006] (13 K) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
+
+# A table with range keys is only eligible for elision if it contains a
+# RANGEKEYDEL or RANGEKEYUNSET.
+
+define
+L6
+  rangekey:a-b:{(#1,RANGEKEYDEL)}
+----
+6:
+  000004:[a#1,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 0
+num-deletions: 0
+num-range-keys: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0
+
+maybe-compact
+----
+[JOB 100] compacted(elision-only) L6 [000004] (895 B) + L6 [] (0 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
+
+version
+----
+
+define
+L6
+  rangekey:a-b:{(#1,RANGEKEYUNSET,@1)}
+----
+6:
+  000004:[a#1,RANGEKEYUNSET-b#72057594037927935,RANGEKEYUNSET]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 0
+num-deletions: 0
+num-range-keys: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0
+
+maybe-compact
+----
+[JOB 100] compacted(elision-only) L6 [000004] (899 B) + L6 [] (0 B) -> L6 [] (0 B), in 1.0s (2.0s total), output rate 0 B/s
+
+version
+----
+
+define
+L6
+  rangekey:a-b:{(#1,RANGEKEYSET,@1)}
+----
+6:
+  000004:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 0
+num-deletions: 0
+num-range-keys: 1
+num-range-key-sets: 1
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0
+
+maybe-compact
+----
+(none)
+
+version
+----
+6:
+  000004:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
+
+# A slightly more complicated case than the one above. A table with three
+# separate range key spans, each corresponding to one of the range key types.
+# Snapshots initially prevent any elision.
+
+define snapshots=(25,75)
+L6
+  rangekey:a-b:{(#100,RANGEKEYDEL)}
+  rangekey:b-c:{(#50,RANGEKEYUNSET,@1)}
+  rangekey:c-d:{(#10,RANGEKEYSET,@1,foo)}
+----
+6:
+  000004:[a#100,RANGEKEYDEL-d#72057594037927935,RANGEKEYSET]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 0
+num-deletions: 0
+num-range-keys: 3
+num-range-key-sets: 1
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0
+
+# Snapshots prevent any elision-only compaction.
+maybe-compact
+----
+(none)
+
+# Closing the snapshot at 25, despite it being the earliest snapshot, does not
+# schedule an elision-only compaction, as there is still a snapshot open below
+# the highest seq num of the file (100).
+close-snapshot
+25
+----
+(none)
+
+# Closing the last remaining snapshot triggers an elision-only compaction, as
+# there is is nothing left keeping the RANGEKEYUNSET and RANGEKEYDEL around.
+close-snapshot
+75
+----
+[JOB 100] compacted(elision-only) L6 [000004] (941 B) + L6 [] (0 B) -> L6 [000005] (903 B), in 1.0s (2.0s total), output rate 903 B/s
+
+# The only span remaining in the table is the RANGEKEYSET. The RANGEKEYDEL and
+# RANGEKEYUNSET were elided.
+version
+----
+6:
+  000005:[c#10,RANGEKEYSET-d#72057594037927935,RANGEKEYSET]

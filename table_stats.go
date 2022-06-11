@@ -270,6 +270,7 @@ func (d *DB) loadTableStats(
 		// additional stats that may provide improved heuristics for compaction
 		// picking.
 		stats.NumRangeKeys = r.Properties.NumRangeKeys()
+		stats.NumRangeKeySets = r.Properties.NumRangeKeySets
 		return
 	})
 	if err != nil {
@@ -535,6 +536,7 @@ func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) 
 		NumEntries:                  props.NumEntries,
 		NumDeletions:                props.NumDeletions,
 		NumRangeKeys:                props.NumRangeKeys(),
+		NumRangeKeySets:             props.NumRangeKeySets,
 		PointDeletionsBytesEstimate: pointEstimate,
 		RangeDeletionsBytesEstimate: 0,
 	}

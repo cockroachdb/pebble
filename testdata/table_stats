@@ -15,6 +15,7 @@ wait-pending-table-stats
 num-entries: 3
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
@@ -40,6 +41,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 51
 
@@ -59,6 +61,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 51
 
@@ -97,6 +100,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 0
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
@@ -180,6 +184,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 769
 
@@ -189,6 +194,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 769
 
@@ -205,6 +211,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 1
 num-range-keys: 0
+num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 26
 
@@ -228,5 +235,6 @@ wait-pending-table-stats
 num-entries: 0
 num-deletions: 0
 num-range-keys: 3
+num-range-key-sets: 1
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0

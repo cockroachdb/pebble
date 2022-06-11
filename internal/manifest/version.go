@@ -52,6 +52,11 @@ type TableStats struct {
 	NumDeletions uint64
 	// NumRangeKeys is the total number of range keys in the table.
 	NumRangeKeys uint64
+	// NumRangeKeySets is the total number of range key sets in the table.
+	// NOTE: this field is currently used only for calculating the sum of range
+	// key DELs + UNSETs in the table, without the need for separate fields (i.e.
+	// it can be computed via subtraction).
+	NumRangeKeySets uint64
 	// Estimate of the total disk space that may be dropped by this table's
 	// point deletions by compacting them.
 	PointDeletionsBytesEstimate uint64

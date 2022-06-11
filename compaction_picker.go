@@ -1230,6 +1230,12 @@ func (a elisionOnlyAnnotator) Accumulate(f *fileMetadata, dst interface{}) (inte
 	if !f.Stats.Valid {
 		return dst, false
 	}
+	// Tables without range dels, range key dels or range key unsets are not
+	// eligible for consideration for elision. Note the number of range key DELs +
+	// UNSETs can be computed using the number of range key SETs.
+	if f.Stats.NumDeletions+(f.Stats.NumRangeKeys-f.Stats.NumRangeKeySets) == 0 {
+		return dst, true
+	}
 	// Bottommost files are large and not worthwhile to compact just
 	// to remove a few tombstones. Consider a file ineligible if its
 	// own range deletions delete less than 10% of its data and its
