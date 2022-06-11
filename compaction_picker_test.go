@@ -1176,6 +1176,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 				}
 				m.Stats.Valid = true
 				m.Stats.RangeDeletionsBytesEstimate = uint64(v)
+				m.Stats.NumDeletions = 1 // At least one range del responsible for the deletion bytes.
 			}
 		}
 		m.SmallestSeqNum = m.Smallest.SeqNum()
