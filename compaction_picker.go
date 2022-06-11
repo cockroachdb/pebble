@@ -1239,8 +1239,13 @@ func (a elisionOnlyAnnotator) Accumulate(f *fileMetadata, dst interface{}) (inte
 	// which may be collapsed. Ideally, we would have 'obsolete keys'
 	// statistics that would include tombstones, the keys that are
 	// dropped by tombstones and duplicated user keys. See #847.
+	//
+	// Note that tables that contain exclusively range keys (i.e. no point keys,
+	// `NumEntries` and `RangeDeletionsBytesEstimate` are both zero) are excluded
+	// from elision-only compactions.
+	// TODO(travers): Consider an alternative heuristic for elision of range-keys.
 	if f.Stats.RangeDeletionsBytesEstimate*10 < f.Size &&
-		f.Stats.NumDeletions*10 < f.Stats.NumEntries {
+		f.Stats.NumDeletions*10 <= f.Stats.NumEntries {
 		return dst, true
 	}
 	if dst == nil {
