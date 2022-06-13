@@ -272,6 +272,13 @@ type iteratorRangeKeyState struct {
 	iterConfig rangekey.UserIteratorConfig
 }
 
+func (i *iteratorRangeKeyState) init(cmp base.Compare, split base.Split, opts *IterOptions) {
+	i.cmp = cmp
+	i.keys.cmp = cmp
+	i.split = split
+	i.opts = opts
+}
+
 var iterRangeKeyStateAllocPool = sync.Pool{
 	New: func() interface{} {
 		return &iteratorRangeKeyState{}

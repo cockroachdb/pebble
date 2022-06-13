@@ -978,10 +978,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	if dbi.opts.rangeKeys() {
 		if dbi.rangeKey == nil {
 			dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
-			dbi.rangeKey.cmp = dbi.cmp
-			dbi.rangeKey.keys.cmp = dbi.cmp
-			dbi.rangeKey.split = dbi.split
-			dbi.rangeKey.opts = &dbi.opts
+			dbi.rangeKey.init(dbi.cmp, dbi.split, &dbi.opts)
 			dbi.rangeKey.rangeKeyIter = dbi.db.newRangeKeyIter(dbi, dbi.seqNum, dbi.batchSeqNum, dbi.batch, dbi.readState)
 		}
 
