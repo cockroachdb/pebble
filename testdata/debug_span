@@ -1,0 +1,167 @@
+#       a b c d e f g h i j k l m n o p q r s t u v w x y z
+# L0.1              x---------------------------x
+# L0.0    x-----x     x---------x         x---------x
+# L1
+# L2
+# L3                                      x---------x
+# L4
+# L5            x---------x         x-----------------x
+# L6    x-----------x x---------x x-------------x x-------x
+#       a b c d e f g h i j k l m n o p q r s t u v w x y z
+
+define
+L6
+  a.SET.1: g.SET.1:
+L6
+  h.SET.2: m.SET.2:
+L6
+  n.SET.3: u.SET.3:
+L6
+  v.SET.4: z.SET.4:
+L5
+  e.SET.5: j.SET.5:
+L5
+  o.SET.6: x.SET.6:
+L3
+  r.SET.7: w.SET.7:
+L0
+  b.SET.8: e.SET.8:
+L0
+  h.SET.9: m.SET.9:
+L0
+  r.SET.10: w.SET.10:
+L0
+  g.SET.11: u.SET.11:
+----
+0.1:
+  000014:[g#11,SET-u#11,SET]
+0.0:
+  000011:[b#8,SET-e#8,SET]
+  000012:[h#9,SET-m#9,SET]
+  000013:[r#10,SET-w#10,SET]
+3:
+  000010:[r#7,SET-w#7,SET]
+5:
+  000008:[e#5,SET-j#5,SET]
+  000009:[o#6,SET-x#6,SET]
+6:
+  000004:[a#1,SET-g#1,SET]
+  000005:[h#2,SET-m#2,SET]
+  000006:[n#3,SET-u#3,SET]
+  000007:[v#4,SET-z#4,SET]
+
+# Invalid inputs.
+
+debug-span start=a end=a
+----
+debug span: end must be > start
+
+debug-span start=b end=a
+----
+debug span: end must be > start
+
+# Valid inputs.
+
+debug-span
+----
+___level___files________size___r-amp
+     0.1       1       775 B       1
+     0.0       3       2.3 K       1
+       1       0         0 B       0
+       2       0         0 B       0
+       3       1       775 B       1
+       4       0         0 B       0
+       5       2       1.5 K       1
+       6       4       3.0 K       1
+   total      11       8.3 K       5
+
+# Print the metrics for the entire LSM here, for which the level information
+# should match.
+metrics
+----
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         1     0 B       -     0 B       -       -       -       -     0 B       -       -       -     0.0
+      0         4   3.0 K  100.00     0 B     0 B       0     0 B       0     0 B       0     0 B       2     0.0
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      3         1   775 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       1     0.0
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      5         2   1.5 K    0.01     0 B     0 B       0     0 B       0     0 B       0     0 B       1     0.0
+      6         4   3.0 K       -     0 B     0 B       0     0 B       0     0 B       0     0 B       1     0.0
+  total        11   8.3 K       -     0 B     0 B       0     0 B       0     0 B       0     0 B       5     0.0
+  flush         0
+compact         0     0 B   8.3 K       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+ bcache         0     0 B    0.0%  (score == hit-rate)
+ tcache         0     0 B    0.0%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+debug-span start=a end=b
+----
+___level___files________size___r-amp
+     0.1       0         0 B       0
+     0.0       0         0 B       0
+       1       0         0 B       0
+       2       0         0 B       0
+       3       0         0 B       0
+       4       0         0 B       0
+       5       0         0 B       0
+       6       1       775 B       1
+   total       1       775 B       1
+
+debug-span start=b end=f
+----
+___level___files________size___r-amp
+     0.1       0         0 B       0
+     0.0       1       775 B       1
+       1       0         0 B       0
+       2       0         0 B       0
+       3       0         0 B       0
+       4       0         0 B       0
+       5       1       775 B       1
+       6       1       775 B       1
+   total       3       2.3 K       4
+
+debug-span start=gg end=h
+----
+___level___files________size___r-amp
+     0.1       1       775 B       1
+     0.0       0         0 B       0
+       1       0         0 B       0
+       2       0         0 B       0
+       3       0         0 B       0
+       4       0         0 B       0
+       5       1       775 B       1
+       6       0         0 B       0
+   total       2       1.5 K       3
+
+debug-span start=i end=s
+----
+___level___files________size___r-amp
+     0.1       1       775 B       1
+     0.0       2       1.5 K       1
+       1       0         0 B       0
+       2       0         0 B       0
+       3       1       775 B       1
+       4       0         0 B       0
+       5       2       1.5 K       1
+       6       2       1.5 K       1
+   total       8       6.1 K       5
+
+debug-span start=s end=z
+----
+___level___files________size___r-amp
+     0.1       1       775 B       1
+     0.0       1       775 B       1
+       1       0         0 B       0
+       2       0         0 B       0
+       3       1       775 B       1
+       4       0         0 B       0
+       5       1       775 B       1
+       6       2       1.5 K       1
+   total       6       4.5 K       5
