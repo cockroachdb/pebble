@@ -93,14 +93,6 @@ type Iterator interface {
 	SetCloseHook(fn func(i Iterator) error)
 }
 
-// FragmentIterator is a version of Iterator that wraps keyspan.FragmentIterator
-// instead of InternalIterator, and adds SetCloseHook.
-type FragmentIterator interface {
-	keyspan.FragmentIterator
-
-	SetCloseHook(fn func(i keyspan.FragmentIterator) error)
-}
-
 // singleLevelIterator iterates over an entire table of data. To seek for a given
 // key, it first looks in the index for the block that contains that key, and then
 // looks inside that block.
@@ -2218,7 +2210,7 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 // NewRawRangeKeyIter returns an internal iterator for the contents of the
 // range-key block for the table. Returns nil if the table does not contain any
 // range keys.
-func (r *Reader) NewRawRangeKeyIter() (FragmentIterator, error) {
+func (r *Reader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 	if r.rangeKeyBH.Length == 0 {
 		return nil, nil
 	}
