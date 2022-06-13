@@ -134,9 +134,7 @@ func NewExternalIter(
 		}
 
 		dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
-		dbi.rangeKey.cmp = o.Comparer.Compare
-		dbi.rangeKey.split = o.Comparer.Split
-		dbi.rangeKey.opts = &dbi.opts
+		dbi.rangeKey.init(o.Comparer.Compare, o.Comparer.Split, &dbi.opts)
 		dbi.rangeKey.rangeKeyIter = dbi.rangeKey.iterConfig.Init(
 			o.Comparer.Compare,
 			base.InternalKeySeqNumMax,

@@ -145,3 +145,18 @@ e@5: (v, [a-k) @5=foo)
 k@3: (v, .)
 p@4: (v, .)
 .
+
+# Test that 'stacked' range keys (eg, multiple defined over the same keyspan at
+# varying suffixes) work  as expected.
+
+build stacked
+range-key-set a k @4 bar
+range-key-set a k @1 bax
+----
+
+iter files=(points, ag, ek, stacked)
+first
+next
+----
+a: (., [a-k) @5=foo, @4=bar, @1=bax)
+a@4: (v, [a-k) @5=foo, @4=bar, @1=bax)
