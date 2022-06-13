@@ -78,7 +78,9 @@ func (d DeferredBatchOp) Finish() error {
 // RangeKeyUnsets, and/or RangeKeyDeletes that are applied atomically. Batch
 // implements the Reader interface, but only an indexed batch supports reading
 // (without error) via Get or NewIter. A non-indexed batch will return
-// ErrNotIndexed when read from .
+// ErrNotIndexed when read from. A batch is not safe for concurrent use, and
+// consumers should use a batch per goroutine or provide their own
+// synchronization.
 //
 // Indexing
 //
