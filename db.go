@@ -912,8 +912,8 @@ func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterato
 		boundsBuf:           buf.boundsBuf,
 		batch:               batch,
 		newIters:            d.newIters,
+		newIterRangeKey:     d.tableNewRangeKeyIter,
 		seqNum:              seqNum,
-		db:                  d,
 	}
 	if o != nil {
 		dbi.opts = *o
@@ -947,43 +947,83 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		}
 	}
 
-	// Construct the point iterator. This function either returns a pointer to
-	// dbi.merging (if points are enabled) or an emptyIter. If this is called
-	// during a SetOptions call and this Iterator has already initialized
-	// dbi.merging, constructPointIter returns the existing, unmodified point
-	// iterator which is stored in dbi.pointIter.
-	dbi.iter = constructPointIter(dbi, dbi.batch, memtables, buf)
+	if dbi.opts.pointKeys() {
+		// Construct the point iterator, initializing dbi.pointIter to point to
+		// dbi.merging. If this is called during a SetOptions call and this
+		// Iterator has already initialized dbi.merging, constructPointIter is a
+		// noop and an initialized pointIter already exists in dbi.pointIter.
+		dbi.constructPointIter(memtables, buf)
+		dbi.iter = dbi.pointIter
+	} else {
+		dbi.iter = emptyIter
+	}
 
-	// If range keys are enabled, construct the range key iterator stack too.
 	if dbi.opts.rangeKeys() {
-		if dbi.rangeKey == nil {
-			dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
-			dbi.rangeKey.init(dbi.cmp, dbi.split, &dbi.opts)
-			dbi.rangeKey.rangeKeyIter = dbi.db.newRangeKeyIter(dbi, dbi.seqNum, dbi.batchSeqNum, dbi.batch, dbi.readState)
+		// When iterating over both point and range keys, don't create the
+		// range-key iterator stack immediately if we can avoid it. This
+		// optimization takes advantage of the expected sparseness of range
+		// keys, and configures the point-key iterator to dynamically switch to
+		// combined iteration when it observes a file containing range keys.
+		//
+		// Lazy combined iteration is not possible if a batch or a memtable
+		// contains any range keys.
+		useLazyCombinedIteration := dbi.rangeKey == nil &&
+			dbi.opts.KeyTypes == IterKeyTypePointsAndRanges &&
+			(dbi.batch == nil || dbi.batch.countRangeKeys == 0)
+		if useLazyCombinedIteration {
+			// The user requested combined iteration, and there's no indexed
+			// batch currently containing range keys that would prevent lazy
+			// combined iteration. Check the memtables to see if they contain
+			// any range keys.
+			for i := range memtables {
+				if memtables[i].containsRangeKeys() {
+					useLazyCombinedIteration = false
+					break
+				}
+			}
 		}
 
-		// Wrap the point iterator (currently dbi.iter) with an interleaving
-		// iterator that interleaves range keys pulled from
-		// dbi.rangeKey.rangeKeyIter.
+		if useLazyCombinedIteration {
+			dbi.lazyCombinedIter = lazyCombinedIter{
+				parent:    dbi,
+				pointIter: dbi.pointIter,
+				combinedIterState: combinedIterState{
+					initialized: false,
+				},
+			}
+			dbi.iter = &dbi.lazyCombinedIter
+		} else {
+			if dbi.rangeKey == nil {
+				dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
+				dbi.rangeKey.init(dbi.cmp, dbi.split, &dbi.opts)
+				dbi.constructRangeKeyIter()
+			}
+
+			// Wrap the point iterator (currently dbi.iter) with an interleaving
+			// iterator that interleaves range keys pulled from
+			// dbi.rangeKey.rangeKeyIter.
+			//
+			// NB: The interleaving iterator is always reinitialized, even if
+			// dbi already had an initialized range key iterator, in case the point
+			// iterator changed or the range key masking suffix changed.
+			dbi.rangeKey.iiter.Init(dbi.cmp, dbi.iter, dbi.rangeKey.rangeKeyIter, dbi.rangeKey,
+				dbi.opts.LowerBound, dbi.opts.UpperBound)
+			dbi.iter = &dbi.rangeKey.iiter
+		}
+	} else {
+		// !dbi.opts.rangeKeys()
 		//
-		// NB: The interleaving iterator is always reinitialized, even if
-		// dbi already had an initialized range key iterator, in case the point
-		// iterator changed or the range key masking suffix changed.
-		dbi.rangeKey.iter.Init(dbi.cmp, dbi.iter, dbi.rangeKey.rangeKeyIter, dbi.rangeKey,
-			dbi.opts.LowerBound, dbi.opts.UpperBound)
-		dbi.iter = &dbi.rangeKey.iter
+		// Reset the combined iterator state. The initialized=true ensures the
+		// iterator doesn't unnecessarily try to switch to combined iteration.
+		dbi.lazyCombinedIter.combinedIterState = combinedIterState{initialized: true}
 	}
 	return dbi
 }
 
-func constructPointIter(
-	dbi *Iterator, batch *Batch, memtables flushableList, buf *iterAlloc,
-) internalIteratorWithStats {
-	if !dbi.opts.pointKeys() {
-		return emptyIter
-	}
-	if dbi.pointIter != nil {
-		return dbi.pointIter
+func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
+	if i.pointIter != nil {
+		// Already have one.
+		return
 	}
 
 	// Merging levels and levels from iterAlloc.
@@ -995,12 +1035,12 @@ func constructPointIter(
 	// should improve the performance.
 	numMergingLevels := 0
 	numLevelIters := 0
-	if batch != nil {
+	if i.batch != nil {
 		numMergingLevels++
 	}
 	numMergingLevels += len(memtables)
 
-	current := dbi.readState.current
+	current := i.readState.current
 	numMergingLevels += len(current.L0SublevelFiles)
 	numLevelIters += len(current.L0SublevelFiles)
 	for level := 1; level < len(current.Levels); level++ {
@@ -1019,8 +1059,8 @@ func constructPointIter(
 	}
 
 	// Top-level is the batch, if any.
-	if batch != nil {
-		if batch.index == nil {
+	if i.batch != nil {
+		if i.batch.index == nil {
 			// This isn't an indexed batch. Include an error iterator so that
 			// the resulting iterator correctly surfaces ErrIndexed.
 			mlevels = append(mlevels, mergingIterLevel{
@@ -1028,30 +1068,30 @@ func constructPointIter(
 				rangeDelIter: newErrorKeyspanIter(ErrNotIndexed),
 			})
 		} else {
-			batch.initInternalIter(&dbi.opts, &dbi.batchPointIter, dbi.batchSeqNum)
-			batch.initRangeDelIter(&dbi.opts, &dbi.batchRangeDelIter, dbi.batchSeqNum)
+			i.batch.initInternalIter(&i.opts, &i.batchPointIter, i.batchSeqNum)
+			i.batch.initRangeDelIter(&i.opts, &i.batchRangeDelIter, i.batchSeqNum)
 			// Only include the batch's rangedel iterator if it's non-empty.
 			// This requires some subtle logic in the case a rangedel is later
 			// written to the batch and the view of the batch is refreshed
 			// during a call to SetOptions—in this case, we need to reconstruct
 			// the point iterator to add the batch rangedel iterator.
 			var rangeDelIter keyspan.FragmentIterator
-			if dbi.batchRangeDelIter.Count() > 0 {
-				rangeDelIter = &dbi.batchRangeDelIter
+			if i.batchRangeDelIter.Count() > 0 {
+				rangeDelIter = &i.batchRangeDelIter
 			}
 			mlevels = append(mlevels, mergingIterLevel{
-				iter:         base.WrapIterWithStats(&dbi.batchPointIter),
+				iter:         base.WrapIterWithStats(&i.batchPointIter),
 				rangeDelIter: rangeDelIter,
 			})
 		}
 	}
 
 	// Next are the memtables.
-	for i := len(memtables) - 1; i >= 0; i-- {
-		mem := memtables[i]
+	for j := len(memtables) - 1; j >= 0; j-- {
+		mem := memtables[j]
 		mlevels = append(mlevels, mergingIterLevel{
-			iter:         base.WrapIterWithStats(mem.newIter(&dbi.opts)),
-			rangeDelIter: mem.newRangeDelIter(&dbi.opts),
+			iter:         base.WrapIterWithStats(mem.newIter(&i.opts)),
+			rangeDelIter: mem.newRangeDelIter(&i.opts),
 		})
 	}
 
@@ -1064,9 +1104,10 @@ func constructPointIter(
 	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
 		li := &levels[levelsIndex]
 
-		li.init(dbi.opts, dbi.cmp, dbi.split, dbi.newIters, files, level, nil)
+		li.init(i.opts, i.cmp, i.split, i.newIters, files, level, nil)
 		li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
 		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
+		li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)
 		mlevels[mlevelsIndex].iter = li
 
 		levelsIndex++
@@ -1086,11 +1127,11 @@ func constructPointIter(
 		}
 		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
 	}
-	buf.merging.init(&dbi.opts, dbi.cmp, dbi.split, mlevels...)
-	buf.merging.snapshot = dbi.seqNum
+	buf.merging.init(&i.opts, i.cmp, i.split, mlevels...)
+	buf.merging.snapshot = i.seqNum
 	buf.merging.elideRangeTombstones = true
-	dbi.pointIter = &buf.merging
-	return &buf.merging
+	buf.merging.combinedIterState = &i.lazyCombinedIter.combinedIterState
+	i.pointIter = &buf.merging
 }
 
 // NewBatch returns a new empty write-only batch. Any reads on the batch will

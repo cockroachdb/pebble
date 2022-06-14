@@ -17,6 +17,7 @@ type flushable interface {
 	newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator
 	newRangeDelIter(o *IterOptions) keyspan.FragmentIterator
 	newRangeKeyIter(o *IterOptions) keyspan.FragmentIterator
+	containsRangeKeys() bool
 	// inuseBytes returns the number of inuse bytes by the flushable.
 	inuseBytes() uint64
 	// totalBytes returns the total number of bytes allocated by the flushable.

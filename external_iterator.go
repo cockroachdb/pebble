@@ -158,9 +158,9 @@ func finishInitializingExternal(it *Iterator) {
 				}
 			}
 		}
-		it.rangeKey.iter.Init(it.cmp, it.iter, it.rangeKey.rangeKeyIter, it.rangeKey,
+		it.rangeKey.iiter.Init(it.cmp, it.iter, it.rangeKey.rangeKeyIter, it.rangeKey,
 			it.opts.LowerBound, it.opts.UpperBound)
-		it.iter = &it.rangeKey.iter
+		it.iter = &it.rangeKey.iiter
 	}
 }
 

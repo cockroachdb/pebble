@@ -183,12 +183,13 @@ type InternalIterator interface {
 	fmt.Stringer
 }
 
-// SeekGEFlags holds flags that may configure the behavior of a seek. Not all
-// flags are relevant to all iterators.
+// SeekGEFlags holds flags that may configure the behavior of a forward seek.
+// Not all flags are relevant to all iterators.
 type SeekGEFlags uint8
 
 const (
 	seekGEFlagTrySeekUsingNext uint8 = iota
+	seekGEFlagRelativeSeek
 )
 
 // SeekGEFlagsNone is the default value of SeekGEFlags, with all flags disabled.
@@ -220,6 +221,19 @@ const SeekGEFlagsNone = SeekGEFlags(0)
 // improve that optimization, by making the root of the iterator stack do it).
 func (s SeekGEFlags) TrySeekUsingNext() bool { return (s & (1 << seekGEFlagTrySeekUsingNext)) != 0 }
 
+// RelativeSeek is set when in the course of a forward positioning operation, a
+// higher-level iterator seeks a lower-level iterator to a larger key than the
+// one at the current iterator position.
+//
+// Concretely, this occurs when the merging iterator observes a range deletion
+// covering the key at a level's current position, and the merging iterator
+// seeks the level to the range deletion's end key. During lazy-combined
+// iteration, this flag signals to the level iterator that the seek is NOT an
+// absolute-positioning operation from the perspective of the pebble.Iterator,
+// and the level iterator must look for range keys in tables between the current
+// iterator position and the new seeked position.
+func (s SeekGEFlags) RelativeSeek() bool { return (s & (1 << seekGEFlagRelativeSeek)) != 0 }
+
 // EnableTrySeekUsingNext returns the provided flags with the
 // try-seek-using-next optimization enabled. See TrySeekUsingNext for an
 // explanation of this optimization.
@@ -233,12 +247,53 @@ func (s SeekGEFlags) DisableTrySeekUsingNext() SeekGEFlags {
 	return s &^ (1 << seekGEFlagTrySeekUsingNext)
 }
 
-// SeekLTFlags holds flags that may configure the behavior of a seek. Not all
-// flags are relevant to all iterators.
+// EnableRelativeSeek returns the provided flags with the relative-seek flag
+// enabled. See RelativeSeek for an explanation of this flag's use.
+func (s SeekGEFlags) EnableRelativeSeek() SeekGEFlags {
+	return s | (1 << seekGEFlagRelativeSeek)
+}
+
+// DisableRelativeSeek returns the provided flags with the relative-seek flag
+// disabled.
+func (s SeekGEFlags) DisableRelativeSeek() SeekGEFlags {
+	return s &^ (1 << seekGEFlagRelativeSeek)
+}
+
+// SeekLTFlags holds flags that may configure the behavior of a reverse seek.
+// Not all flags are relevant to all iterators.
 type SeekLTFlags uint8
+
+const (
+	seekLTFlagRelativeSeek uint8 = iota
+)
 
 // SeekLTFlagsNone is the default value of SeekLTFlags, with all flags disabled.
 const SeekLTFlagsNone = SeekLTFlags(0)
+
+// RelativeSeek is set when in the course of a reverse positioning operation, a
+// higher-level iterator seeks a lower-level iterator to a smaller key than the
+// one at the current iterator position.
+//
+// Concretely, this occurs when the merging iterator observes a range deletion
+// covering the key at a level's current position, and the merging iterator
+// seeks the level to the range deletion's start key. During lazy-combined
+// iteration, this flag signals to the level iterator that the seek is NOT an
+// absolute-positioning operation from the perspective of the pebble.Iterator,
+// and the level iterator must look for range keys in tables between the current
+// iterator position and the new seeked position.
+func (s SeekLTFlags) RelativeSeek() bool { return s&(1<<seekLTFlagRelativeSeek) != 0 }
+
+// EnableRelativeSeek returns the provided flags with the relative-seek flag
+// enabled. See RelativeSeek for an explanation of this flag's use.
+func (s SeekLTFlags) EnableRelativeSeek() SeekLTFlags {
+	return s | (1 << seekLTFlagRelativeSeek)
+}
+
+// DisableRelativeSeek returns the provided flags with the relative-seek flag
+// disabled.
+func (s SeekLTFlags) DisableRelativeSeek() SeekLTFlags {
+	return s &^ (1 << seekLTFlagRelativeSeek)
+}
 
 // InternalIteratorWithStats extends InternalIterator to expose stats.
 type InternalIteratorWithStats interface {

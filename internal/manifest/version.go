@@ -169,9 +169,11 @@ type FileMetadata struct {
 	//
 	// Protected by DB.mu.
 	MarkedForCompaction bool
-	// HasPointKeys and HasRangeKeys track whether the table contains point and
-	// range keys, respectively.
+	// HasPointKeys tracks whether the table contains point keys (including
+	// RANGEDELs). If a table contains only range deletions, HasPointsKeys is
+	// still true.
 	HasPointKeys bool
+	// HasRangeKeys tracks whether the table contains any range keys.
 	HasRangeKeys bool
 	// smallestSet and largestSet track whether the overall bounds have been set.
 	boundsSet bool
