@@ -681,6 +681,10 @@ window.onload = function init() {
         d3.selectAll(".updated")
             .text("Last updated: " + d3.timeFormat("%b %e, %Y")(lastUpdate));
     })
+
+    // By default, display each panel with its local max, which makes spotting
+    // regressions simpler.
+    toggleLocalMax();
 };
 
 window.onpopstate = function() {
