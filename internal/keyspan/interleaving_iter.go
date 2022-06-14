@@ -169,6 +169,49 @@ func (i *InterleavingIter) Init(
 	}
 }
 
+// InitSeekGE may be called after Init but before any positioning method.
+// InitSeekGE initializes the current position of the point iterator and then
+// performs a SeekGE on the keyspan iterator using the provided key. InitSeekGE
+// returns whichever point or keyspan key is smaller. After InitSeekGE, the
+// iterator is positioned and may be repositioned using relative positioning
+// methods.
+//
+// This method is used specifically for lazily constructing combined iterators.
+// It allows for seeding the iterator with the current position of the point
+// iterator.
+func (i *InterleavingIter) InitSeekGE(
+	key []byte, pointKey *base.InternalKey, pointValue []byte,
+) (*base.InternalKey, []byte) {
+	i.dir = +1
+	i.pointKey, i.pointVal = pointKey, pointValue
+	i.pointKeyInterleaved = false
+	// NB: This keyspanSeekGE call will truncate the span to the seek key if
+	// necessary. This truncation is important for cases where a switch to
+	// combined iteration is made during a user-initiated SeekGE.
+	i.keyspanSeekGE(key)
+	return i.interleaveForward(key)
+}
+
+// InitSeekLT may be called after Init but before any positioning method.
+// InitSeekLT initializes the current position of the point iterator and then
+// performs a SeekLT on the keyspan iterator using the provided key. InitSeekLT
+// returns whichever point or keyspan key is larger. After InitSeekLT, the
+// iterator is positioned and may be repositioned using relative positioning
+// methods.
+//
+// This method is used specifically for lazily constructing combined iterators.
+// It allows for seeding the iterator with the current position of the point
+// iterator.
+func (i *InterleavingIter) InitSeekLT(
+	key []byte, pointKey *base.InternalKey, pointValue []byte,
+) (*base.InternalKey, []byte) {
+	i.dir = -1
+	i.pointKey, i.pointVal = pointKey, pointValue
+	i.pointKeyInterleaved = false
+	i.keyspanSeekLT(key)
+	return i.interleaveBackward()
+}
+
 // SeekGE implements (base.InternalIterator).SeekGE.
 //
 // If there exists a span with a start key ≤ the first matching point key,

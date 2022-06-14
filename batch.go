@@ -1586,6 +1586,8 @@ func (b *flushableBatch) newRangeKeyIter(o *IterOptions) keyspan.FragmentIterato
 	return keyspan.NewIter(b.cmp, b.rangeKeys)
 }
 
+func (b *flushableBatch) containsRangeKeys() bool { return len(b.rangeKeys) > 0 }
+
 func (b *flushableBatch) inuseBytes() uint64 {
 	return uint64(len(b.data) - batchHeaderLen)
 }
