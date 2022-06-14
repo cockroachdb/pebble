@@ -257,6 +257,10 @@ func (m *memTable) newRangeKeyIter(*IterOptions) keyspan.FragmentIterator {
 	return keyspan.NewIter(m.cmp, rangeKeys)
 }
 
+func (m *memTable) containsRangeKeys() bool {
+	return m.rangeKeys.count > 0
+}
+
 func (m *memTable) availBytes() uint32 {
 	a := m.skl.Arena()
 	if atomic.LoadInt32(&m.writerRefs) == 1 {
