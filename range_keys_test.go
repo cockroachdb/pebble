@@ -41,6 +41,7 @@ func TestRangeKeys(t *testing.T) {
 				Comparer:           testkeys.Comparer,
 				FormatMajorVersion: FormatRangeKeys,
 			}
+			opts.DisableAutomaticCompactions = true
 
 			for _, cmdArgs := range td.CmdArgs {
 				if cmdArgs.Key != "format-major-version" {
@@ -92,6 +93,8 @@ func TestRangeKeys(t *testing.T) {
 			require.NoError(t, runBatchDefineCmd(td, b))
 			count := b.Count()
 			return fmt.Sprintf("created indexed batch with %d keys\n", count)
+		case "lsm":
+			return runLSMCmd(td, d)
 		case "commit-batch":
 			if b == nil {
 				return "no pending batch"

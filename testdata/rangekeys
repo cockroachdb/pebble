@@ -339,6 +339,9 @@ range-key-del   d e
 ----
 wrote 3 keys
 
+flush
+----
+
 combined-iter
 seek-ge az
 next
@@ -405,6 +408,9 @@ range-key-set   c z @1000 boop
 range-key-del   bat bus
 ----
 wrote 4 keys
+
+flush
+----
 
 scan-rangekeys
 ----
@@ -668,6 +674,9 @@ range-key-set b e @1 foo
 ----
 wrote 2 keys
 
+flush
+----
+
 combined-iter
 seek-ge b
 prev
@@ -691,6 +700,9 @@ del b
 range-key-set a d @1 foo
 ----
 wrote 2 keys
+
+flush
+----
 
 combined-iter
 seek-ge z
@@ -717,3 +729,152 @@ prev-limit c
 ----
 .
 . at-limit
+
+# Test a lazy-combined iteration edge. Consider the LSM:
+#
+#   L5:  000003:[bar.DEL.3, foo.RANGEKEYSET.4]
+#   L6:  000001:[bar.SET.1] 000002:[bax.RANGEKEYSET.2]
+#
+# A call to First() seeks the levels to files L5.000003 and L6.000001.
+# The L5 levelIter observes that L5.000003 contains the range key with
+# start key `foo`, and triggers a switch to combined iteration, setting
+# `combinedIterState.key` = `foo`. While switching to combined iteration, the
+# iterator must recognize that `foo` > `bar`, and there may yet exist range keys
+# that begin before `foo` (in this case `bax`).
+
+reset
+----
+
+batch
+set bar bar
+----
+wrote 1 keys
+
+flush
+----
+
+batch
+range-key-set bax zoo @1 foo
+----
+wrote 1 keys
+
+flush
+----
+
+batch
+del bar
+range-key-set foo zoo @2 bar
+----
+wrote 2 keys
+
+flush
+----
+
+lsm
+----
+0.1:
+  000009:[bar#3,DEL-zoo#72057594037927935,RANGEKEYSET]
+0.0:
+  000005:[bar#1,SET-bar#1,SET]
+  000007:[bax#2,RANGEKEYSET-zoo#72057594037927935,RANGEKEYSET]
+
+# Assert that First correctly finds [bax,zoo), despite the discovery of
+# [foo,zoo) triggering the switch to combined iteration.
+
+combined-iter
+first
+next
+----
+bax: (., [bax-foo) @1=foo)
+foo: (., [foo-zoo) @2=bar, @1=foo)
+
+# Test seeking into the middle of a range key during lazy-combined iteration.
+# The iterator should surface Key() = the seek key.
+
+combined-iter
+seek-ge bop
+----
+bop: (., [bax-foo) @1=foo)
+
+combined-iter
+last
+----
+foo: (., [foo-zoo) @2=bar, @1=foo)
+
+
+# Test a lazy combined iterator that must next/prev through fileMetdata when
+# skipping through a RANGEDEL.
+#
+# L5
+#     b-----------------------y RANGEDEL
+# L6
+#  [a]   [[d,e)@1]  [[l,m)@1]   [z]
+#
+# A SeekGE(k) must surface [l,m)@1 and a SeekLT(k) must surface [d,e)@1.
+
+reset
+----
+
+batch
+set a a
+----
+wrote 1 keys
+
+flush
+----
+
+batch
+set z z
+----
+wrote 1 keys
+
+flush
+----
+
+batch
+range-key-set d e @1 foo
+----
+wrote 1 keys
+
+flush
+----
+
+batch
+range-key-set l m @1 foo
+----
+wrote 1 keys
+
+flush
+----
+
+batch
+del-range b y
+----
+wrote 1 keys
+
+flush
+----
+
+lsm
+----
+0.1:
+  000013:[b#5,RANGEDEL-y#72057594037927935,RANGEDEL]
+0.0:
+  000005:[a#1,SET-a#1,SET]
+  000009:[d#3,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+  000011:[l#4,RANGEKEYSET-m#72057594037927935,RANGEKEYSET]
+  000007:[z#2,SET-z#2,SET]
+
+combined-iter
+seek-ge k
+next
+----
+l: (., [l-m) @1=foo)
+z: (z, .)
+
+combined-iter
+seek-lt k
+prev
+----
+d: (., [d-e) @1=foo)
+a: (a, .)

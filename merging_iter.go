@@ -242,6 +242,8 @@ type mergingIter struct {
 	upper    []byte
 	stats    InternalIteratorStats
 
+	combinedIterState *combinedIterState
+
 	// Elide range tombstones from being returned during iteration. Set to true
 	// when mergingIter is a child of Iterator and the mergingIter is processing
 	// range tombstones.
@@ -644,8 +646,14 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 				}
 				// This seek is not directly due to a SeekGE call, so we don't
 				// know enough about the underlying iterator positions, and so
-				// we keep seek optiomizations disabled.
-				m.seekGE(seekKey, item.index, base.SeekGEFlagsNone)
+				// we keep the try-seek-using-next optimization disabled.
+				//
+				// Additionally, we set the relative-seek flag. This is
+				// important when iterating with lazy combined iteration. If
+				// there's a range key between this level's current file and the
+				// file the seek will land on, we need to detect it in order to
+				// trigger construction of the combined iterator.
+				m.seekGE(seekKey, item.index, base.SeekGEFlagsNone.EnableRelativeSeek())
 				return true
 			}
 			if l.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
@@ -815,7 +823,12 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 				if l.smallestUserKey != nil && m.heap.cmp(l.smallestUserKey, seekKey) > 0 {
 					seekKey = l.smallestUserKey
 				}
-				m.seekLT(seekKey, item.index, base.SeekLTFlagsNone)
+				// We set the relative-seek flag. This is important when
+				// iterating with lazy combined iteration. If there's a range
+				// key between this level's current file and the file the seek
+				// will land on, we need to detect it in order to trigger
+				// construction of the combined iterator.
+				m.seekLT(seekKey, item.index, base.SeekLTFlagsNone.EnableRelativeSeek())
 				return true
 			}
 			if l.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
@@ -884,7 +897,14 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) {
 			l.iterKey, l.iterValue = l.iter.SeekGE(key, flags)
 		}
 
-		if rangeDelIter := l.rangeDelIter; rangeDelIter != nil {
+		// If this level contains overlapping range tombstones, alter the seek
+		// key accordingly. Caveat: If we're performing lazy-combined iteration,
+		// we cannot alter the seek key: Range tombstones don't delete range
+		// keys, and there might exist live range keys within the range
+		// tombstone's span that need to be observed to trigger a switch to
+		// combined iteration.
+		if rangeDelIter := l.rangeDelIter; rangeDelIter != nil &&
+			(m.combinedIterState == nil || m.combinedIterState.initialized) {
 			// The level has a range-del iterator. Find the tombstone containing
 			// the search key.
 			//
@@ -965,7 +985,14 @@ func (m *mergingIter) seekLT(key []byte, level int, flags base.SeekLTFlags) {
 		l := &m.levels[level]
 		l.iterKey, l.iterValue = l.iter.SeekLT(key, flags)
 
-		if rangeDelIter := l.rangeDelIter; rangeDelIter != nil {
+		// If this level contains overlapping range tombstones, alter the seek
+		// key accordingly. Caveat: If we're performing lazy-combined iteration,
+		// we cannot alter the seek key: Range tombstones don't delete range
+		// keys, and there might exist live range keys within the range
+		// tombstone's span that need to be observed to trigger a switch to
+		// combined iteration.
+		if rangeDelIter := l.rangeDelIter; rangeDelIter != nil &&
+			(m.combinedIterState == nil || m.combinedIterState.initialized) {
 			// The level has a range-del iterator. Find the tombstone containing
 			// the search key.
 			//
