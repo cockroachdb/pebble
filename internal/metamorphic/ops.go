@@ -609,11 +609,12 @@ func (o *newIterOp) String() string {
 type newIterUsingCloneOp struct {
 	existingIterID objID
 	iterID         objID
+	refreshBatch   bool
 }
 
 func (o *newIterUsingCloneOp) run(t *test, h *history) {
 	iter := t.getIter(o.existingIterID)
-	i, err := iter.iter.Clone()
+	i, err := iter.iter.Clone(pebble.CloneOptions{})
 	if err != nil {
 		panic(err)
 	}
@@ -622,7 +623,7 @@ func (o *newIterUsingCloneOp) run(t *test, h *history) {
 }
 
 func (o *newIterUsingCloneOp) String() string {
-	return fmt.Sprintf("%s = %s.Clone()", o.iterID, o.existingIterID)
+	return fmt.Sprintf("%s = %s.Clone(%t)", o.iterID, o.existingIterID, o.refreshBatch)
 }
 
 // iterSetBoundsOp models an Iterator.SetBounds operation.

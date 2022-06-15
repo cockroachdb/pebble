@@ -542,9 +542,12 @@ func (g *generator) newIterUsingClone() {
 		// closes.
 	}
 
+	// TODO(jackson): Exercise changing iterator options as a part of Clone.
+
 	g.add(&newIterUsingCloneOp{
 		existingIterID: existingIterID,
 		iterID:         iterID,
+		refreshBatch:   g.rng.Intn(2) == 1,
 	})
 }
 

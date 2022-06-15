@@ -2091,20 +2091,43 @@ func (i *Iterator) Stats() IteratorStats {
 	return stats
 }
 
+// CloneOptions configures an iterator constructed through Iterator.Clone.
+type CloneOptions struct {
+	// IterOptions, if non-nil, define the iterator options to configure a
+	// cloned iterator. If nil, the clone adopts the same IterOptions as the
+	// iterator being cloned.
+	IterOptions *IterOptions
+	// RefreshBatchView may be set to true when cloning an Iterator over an
+	// indexed batch. When false, the clone adopts the same (possibly stale)
+	// view of the indexed batch as the cloned Iterator. When true, the clone is
+	// constructed with a refreshed view of the batch, observing all of the
+	// batch's mutations at the time of the Clone. If the cloned iterator was
+	// not constructed to read over an indexed batch, RefreshVatchView has no
+	// effect.
+	RefreshBatchView bool
+}
+
 // Clone creates a new Iterator over the same underlying data, i.e., over the
-// same {batch, memtables, sstables}). It starts with the same IterOptions but
-// is not positioned.
+// same {batch, memtables, sstables}). The resulting iterator is not positioned.
+// It starts with the same IterOptions, unless opts.IterOptions is set.
 //
-// When called on an Iterator over an indexed batch, the clone inherits the
-// iterator's current (possibly stale) view of the batch. Callers may call
-// SetOptions to refresh the clone's view to include all batch mutations.
+// When called on an Iterator over an indexed batch, the clone's visibility of
+// the indexed batch is determined by CloneOptions.RefreshBatchView. If false,
+// the clone inherits the iterator's current (possibly stale) view of the batch,
+// and callers may call SetOptions to subsequently refresh the clone's view to
+// include all batch mutations. If true, the clone is constructed with a
+// complete view of the indexed batch's mutations at the time of the Clone.
 //
 // Callers can use Clone if they need multiple iterators that need to see
 // exactly the same underlying state of the DB. This should not be used to
 // extend the lifetime of the data backing the original Iterator since that
 // will cause an increase in memory and disk usage (use NewSnapshot for that
 // purpose).
-func (i *Iterator) Clone() (*Iterator, error) {
+func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
+	if opts.IterOptions == nil {
+		opts.IterOptions = &i.opts
+	}
+
 	readState := i.readState
 	if readState == nil {
 		return nil, errors.Errorf("cannot Clone a closed Iterator")
@@ -2116,7 +2139,7 @@ func (i *Iterator) Clone() (*Iterator, error) {
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
 	*dbi = Iterator{
-		opts:                i.opts,
+		opts:                *opts.IterOptions,
 		alloc:               buf,
 		cmp:                 i.cmp,
 		equal:               i.equal,
@@ -2132,7 +2155,14 @@ func (i *Iterator) Clone() (*Iterator, error) {
 		seqNum:              i.seqNum,
 		db:                  i.db,
 	}
-	dbi.saveBounds(i.opts.LowerBound, i.opts.UpperBound)
+	dbi.saveBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
+
+	// If the caller requested the clone have a current view of the indexed
+	// batch, set the clone's batch sequence number appropriately.
+	if i.batch != nil && opts.RefreshBatchView {
+		dbi.batchSeqNum = (uint64(len(i.batch.data)) | base.InternalKeySeqNumBatch)
+	}
+
 	return finishInitializingIter(buf), nil
 }
 

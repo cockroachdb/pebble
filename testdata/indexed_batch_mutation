@@ -167,7 +167,7 @@ foo: (foo, .)
 
 # Clone i1 to create i2.
 
-clone from=i1 to=i2
+clone from=i1 to=i2 refresh-batch=false
 ----
 
 # i1 unchanged.
@@ -196,6 +196,18 @@ foo: (foo, .)
 a: (., [a-z) @1=boop)
 bar: (bar, [a-z) @1=boop)
 .
+
+# Clone i1 to create i3, this time passing RefreshBatchView: true. This clone
+# should view the updated view of the underlying batch.
+clone from=i1 to=i3 refresh-batch=true
+----
+
+iter iter=i3
+first
+next
+----
+a: (., [a-z) @1=boop)
+bar: (bar, [a-z) @1=boop)
 
 # i1 should still have the old, stale view of the batch.
 
@@ -265,12 +277,12 @@ a: (., [a-z) @2=bax, @1=boop)
 foo: (foo, [a-z) @2=bax, @1=boop)
 .
 
-# Clone i1 to create i3.
+# Clone i1 to create i4.
 
-clone from=i1 to=i3
+clone from=i1 to=i4 refresh-batch=false
 ----
 
-iter iter=i3
+iter iter=i4
 first
 next
 next
@@ -279,10 +291,10 @@ a: (., [a-z) @2=bax, @1=boop)
 foo: (foo, [a-z) @2=bax, @1=boop)
 .
 
-# Refresh i3's view of its batch. It should still not see the newly committed
+# Refresh i4's view of its batch. It should still not see the newly committed
 # writes.
 
-iter iter=i3
+iter iter=i4
 set-options
 first
 next
@@ -293,13 +305,13 @@ a: (., [a-z) @2=bax, @1=boop)
 foo: (foo, [a-z) @2=bax, @1=boop)
 .
 
-# Create a new iterator i4 over the indexed batch [not a Clone]. It should see
+# Create a new iterator i5 over the indexed batch [not a Clone]. It should see
 # all committed writes and uncommitted writes.
 
-new-iter i4
+new-iter i5
 ----
 
-iter iter=i4
+iter iter=i5
 first
 next
 next
@@ -329,7 +341,7 @@ a: (., [a-z) @2=bax, @1=boop)
 foo: (foo, [a-z) @2=bax, @1=boop)
 .
 
-iter iter=i3
+iter iter=i4
 first
 next
 next
@@ -394,7 +406,7 @@ a: (., [a-z) @1=foo)
 # were created. It should not use the cached fragments of range deletions or
 # range keys, and should not see the effects of either.
 
-clone from=i1 to=i3
+clone from=i1 to=i3 refresh-batch=false
 ----
 
 iter iter=i3
