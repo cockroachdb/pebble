@@ -2065,12 +2065,6 @@ func checkDeleteCompactionHints(
 				if m.Compacting || !h.canDelete(cmp, m, snapshots) || files[m] {
 					continue
 				}
-				if m.HasRangeKeys {
-					// TODO(bilal): Remove this conditional when deletion hints work well
-					// with sstables containing range keys.
-					continue
-				}
-
 				if files == nil {
 					// Construct files lazily, assuming most calls will not
 					// produce delete-only compactions.
