@@ -62,6 +62,20 @@ spans
 ----
 a-z:{(#0,RANGEKEYDEL)}
 
+# The same as the above, except that the RANGEKEYDEL is at a lower sequence
+# number than the SET and UNSET. The three keys exist at different sequence
+# numbers, with the DEL at the bottom to avoid the perceived affects of
+# shadowing.
+
+build
+a-z:{(#3,RANGEKEYSET,@1,foo) (#2,RANGEKEYUNSET,@2) (#1,RANGEKEYDEL)}
+----
+000000:[a#3,RANGEKEYSET-z#72057594037927935,RANGEKEYDEL]
+
+spans
+----
+a-z:{(#1,RANGEKEYDEL)}
+
 #   |-RANGEKEYSET-|-RANGEKEYUNSET-|-RANGEKEYDEL--------|
 # __________________________________________________________
 #   a b c d e f g h i j k l m n o p q r s t u v w x y z
