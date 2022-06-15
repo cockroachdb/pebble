@@ -114,7 +114,6 @@ func (w *writeQueue) runWorker() {
 	w.wg.Done()
 }
 
-//lint:ignore U1000 - Will be used in a future pr.
 func (w *writeQueue) add(task *writeTask) {
 	w.tasks <- task
 }
