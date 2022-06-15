@@ -584,6 +584,41 @@ cat: (., [cat-e) @3=bax)
 d: (d, [cat-e) @3=bax)
 .
 
+# Ensure bounds provided during clone are propagated to cloned iterators.
+
+combined-iter lower=b upper=e
+first
+next
+next
+next
+next
+clone lower=a upper=cat key-types=both
+first
+next
+next
+next
+clone lower=a upper=cat key-types=point
+first
+next
+next
+next
+----
+b: (b, [b-c) @5=bar)
+c: (c, .)
+cat: (., [cat-e) @3=bax)
+d: (d, [cat-e) @3=bax)
+.
+.
+a: (a, [a-ap) @6=foo)
+ap: (., [ap-c) @5=bar)
+b: (b, [ap-c) @5=bar)
+c: (c, .)
+.
+a:a
+b:b
+c:c
+.
+
 # Ensure bounds and key-types provided through SetOptions are respected.
 
 combined-iter lower=b upper=e

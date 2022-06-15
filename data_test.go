@@ -154,63 +154,32 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			iter.SetBounds(lower, upper)
 			valid = iter.Valid()
 		case "set-options":
-			const usageString = "set-options [lower=<lower>] [upper=<upper>] [key-types=point|range|both] [mask-suffix=<suffix>] [only-durable=<bool>] [table-filter=reuse|none] [point-filters=reuse|none]\n"
 			opts := iter.opts
-			for _, part := range parts[1:] {
-				arg := strings.SplitN(part, "=", 2)
-				if len(arg) != 2 {
-					return usageString
-				}
-				switch arg[0] {
-				case "point-filters":
-					switch arg[1] {
-					case "reuse":
-						opts.PointKeyFilters = iter.opts.PointKeyFilters
-					case "none":
-						opts.PointKeyFilters = nil
-					default:
-						return fmt.Sprintf("set-options: unknown arg point-filter=%q:\n%s", arg[1], usageString)
-					}
-				case "lower":
-					opts.LowerBound = []byte(arg[1])
-				case "upper":
-					opts.UpperBound = []byte(arg[1])
-				case "key-types":
-					switch arg[1] {
-					case "point":
-						opts.KeyTypes = IterKeyTypePointsOnly
-					case "range":
-						opts.KeyTypes = IterKeyTypeRangesOnly
-					case "both":
-						opts.KeyTypes = IterKeyTypePointsAndRanges
-					default:
-						return fmt.Sprintf("set-options unknown key-type %q:\n%s", arg[1], usageString)
-					}
-				case "mask-suffix":
-					opts.RangeKeyMasking.Suffix = []byte(arg[1])
-				case "table-filter":
-					switch arg[1] {
-					case "reuse":
-						opts.TableFilter = iter.opts.TableFilter
-					case "none":
-						opts.TableFilter = nil
-					default:
-						return fmt.Sprintf("set-options: unknown arg table-filter=%q:\n%s", arg[1], usageString)
-					}
-				case "only-durable":
-					var err error
-					opts.OnlyReadGuaranteedDurable, err = strconv.ParseBool(arg[1])
-					if err != nil {
-						return err.Error()
-					}
-				default:
-					return fmt.Sprintf("set-options: unknown arg %q:\n%s", arg[0], usageString)
-				}
+			if _, err := parseIterOptions(&opts, &iter.opts, parts[1:]); err != nil {
+				return fmt.Sprintf("set-options: %s", err.Error())
 			}
 			iter.SetOptions(&opts)
 			valid = iter.Valid()
 		case "clone":
-			clonedIter, err := iter.Clone()
+			var opts CloneOptions
+			if len(parts) > 1 {
+				var iterOpts IterOptions
+				if foundAny, err := parseIterOptions(&iterOpts, &iter.opts, parts[1:]); err != nil {
+					return fmt.Sprintf("clone: %s", err.Error())
+				} else if foundAny {
+					opts.IterOptions = &iterOpts
+				}
+				for _, part := range parts[1:] {
+					if arg := strings.Split(part, "="); len(arg) == 2 && arg[0] == "refresh-batch" {
+						var err error
+						opts.RefreshBatchView, err = strconv.ParseBool(arg[1])
+						if err != nil {
+							return fmt.Sprintf("clone: refresh-batch: %s", err.Error())
+						}
+					}
+				}
+			}
+			clonedIter, err := iter.Clone(opts)
 			if err != nil {
 				fmt.Fprintf(&b, "error in clone, skipping rest of input: err=%v\n", err)
 				return b.String()
@@ -239,6 +208,65 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 		printIterState(&b, iter, validityState, printValidityState)
 	}
 	return b.String()
+}
+
+func parseIterOptions(
+	opts *IterOptions, ref *IterOptions, parts []string,
+) (foundAny bool, err error) {
+	const usageString = "[lower=<lower>] [upper=<upper>] [key-types=point|range|both] [mask-suffix=<suffix>] [only-durable=<bool>] [table-filter=reuse|none] [point-filters=reuse|none]\n"
+	for _, part := range parts {
+		arg := strings.SplitN(part, "=", 2)
+		if len(arg) != 2 {
+			return false, errors.Newf(usageString)
+		}
+		switch arg[0] {
+		case "point-filters":
+			switch arg[1] {
+			case "reuse":
+				opts.PointKeyFilters = ref.PointKeyFilters
+			case "none":
+				opts.PointKeyFilters = nil
+			default:
+				return false, errors.Newf("unknown arg point-filter=%q:\n%s", arg[1], usageString)
+			}
+		case "lower":
+			opts.LowerBound = []byte(arg[1])
+		case "upper":
+			opts.UpperBound = []byte(arg[1])
+		case "key-types":
+			switch arg[1] {
+			case "point":
+				opts.KeyTypes = IterKeyTypePointsOnly
+			case "range":
+				opts.KeyTypes = IterKeyTypeRangesOnly
+			case "both":
+				opts.KeyTypes = IterKeyTypePointsAndRanges
+			default:
+				return false, errors.Newf("unknown key-type %q:\n%s", arg[1], usageString)
+			}
+		case "mask-suffix":
+			opts.RangeKeyMasking.Suffix = []byte(arg[1])
+		case "table-filter":
+			switch arg[1] {
+			case "reuse":
+				opts.TableFilter = ref.TableFilter
+			case "none":
+				opts.TableFilter = nil
+			default:
+				return false, errors.Newf("unknown arg table-filter=%q:\n%s", arg[1], usageString)
+			}
+		case "only-durable":
+			var err error
+			opts.OnlyReadGuaranteedDurable, err = strconv.ParseBool(arg[1])
+			if err != nil {
+				return false, errors.Newf("cannot parse only-durable=%q: %s", arg[1], err)
+			}
+		default:
+			continue
+		}
+		foundAny = true
+	}
+	return foundAny, nil
 }
 
 func printIterState(

@@ -1545,7 +1545,7 @@ func TestIteratorBoundsLifetimes(t *testing.T) {
 			td.ScanArgs(t, "from", &from)
 			td.ScanArgs(t, "to", &to)
 			var err error
-			iterators[to], err = iterators[from].Clone()
+			iterators[to], err = iterators[from].Clone(CloneOptions{})
 			if err != nil {
 				return err.Error()
 			}

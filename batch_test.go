@@ -190,10 +190,10 @@ func TestBatchEmpty(t *testing.T) {
 	ib := newIndexedBatch(d, DefaultComparer)
 	iter := ib.NewIter(nil)
 	require.False(t, iter.First())
-	iter2, err := iter.Clone()
+	iter2, err := iter.Clone(CloneOptions{})
 	require.NoError(t, err)
 	require.NoError(t, iter.Close())
-	_, err = iter.Clone()
+	_, err = iter.Clone(CloneOptions{})
 	require.True(t, err != nil)
 	require.False(t, iter2.First())
 	require.NoError(t, iter2.Close())
@@ -294,7 +294,7 @@ func TestIndexedBatchReset(t *testing.T) {
 	count := func(ib *Batch) int {
 		iter := ib.NewIter(nil)
 		defer iter.Close()
-		iter2, err := iter.Clone()
+		iter2, err := iter.Clone(CloneOptions{})
 		require.NoError(t, err)
 		defer iter2.Close()
 		var count [2]int
@@ -309,7 +309,7 @@ func TestIndexedBatchReset(t *testing.T) {
 	contains := func(ib *Batch, key, value string) bool {
 		iter := ib.NewIter(nil)
 		defer iter.Close()
-		iter2, err := iter.Clone()
+		iter2, err := iter.Clone(CloneOptions{})
 		require.NoError(t, err)
 		defer iter2.Close()
 		var found [2]bool
@@ -399,10 +399,12 @@ func TestIndexedBatchMutation(t *testing.T) {
 			return ""
 		case "clone":
 			var from, to string
+			var refreshBatchView bool
 			td.ScanArgs(t, "from", &from)
 			td.ScanArgs(t, "to", &to)
+			td.ScanArgs(t, "refresh-batch", &refreshBatchView)
 			var err error
-			iters[to], err = iters[from].Clone()
+			iters[to], err = iters[from].Clone(CloneOptions{RefreshBatchView: refreshBatchView})
 			if err != nil {
 				return err.Error()
 			}
@@ -1265,7 +1267,7 @@ func TestBatchSpanCaching(t *testing.T) {
 			if len(itersForReadKey) == 0 {
 				continue
 			}
-			iter, err := itersForReadKey[rng.Intn(len(itersForReadKey))].Clone()
+			iter, err := itersForReadKey[rng.Intn(len(itersForReadKey))].Clone(CloneOptions{})
 			require.NoError(t, err)
 			checkIter(iter, readKey)
 			iters[readKey] = append(iters[readKey], iter)

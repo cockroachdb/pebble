@@ -175,6 +175,23 @@ b:b
 b:b
 .
 
+# Test that a cloned iterator set with new bounds, respects the new bounds and
+# options.
+iter
+set-bounds lower=a upper=d
+first
+next
+clone lower=a upper=z key-types=both
+seek-ge a
+next
+----
+.
+b:b
+.
+.
+b: (b, .)
+e: (e, .)
+
 # Test that the cloned iterator respects the seq num.
 iter seq=2
 set-bounds lower=a upper=f
