@@ -2624,11 +2624,16 @@ func (r *Reader) ValidateBlockChecksums() error {
 }
 
 // EstimateDiskUsage returns the total size of data blocks overlapping the range
-// `[start, end]`. Even if a data block partially overlaps, or we cannot determine
-// overlap due to abbreviated index keys, the full data block size is included in
-// the estimation. This function does not account for any metablock space usage.
-// Assumes there is at least partial overlap, i.e., `[start, end]` falls neither
-// completely before nor completely after the file's range.
+// `[start, end]`. Even if a data block partially overlaps, or we cannot
+// determine overlap due to abbreviated index keys, the full data block size is
+// included in the estimation.
+//
+// This function does not account for any metablock space usage. Assumes there
+// is at least partial overlap, i.e., `[start, end]` falls neither completely
+// before nor completely after the file's range.
+//
+// Only blocks containing point keys are considered. Range deletion and range
+// key blocks are not considered.
 //
 // TODO(ajkr): account for metablock space usage. Perhaps look at the fraction of
 // data blocks overlapped and add that same fraction of the metadata blocks to the
