@@ -648,6 +648,11 @@ func (b *BulkVersionEdit) Apply(
 		} else {
 			v.Levels[level] = curr.Levels[level].clone()
 		}
+		if curr == nil || curr.RangeKeyLevels[level].tree.root == nil {
+			v.RangeKeyLevels[level] = makeLevelMetadata(cmp, level, nil /* files */)
+		} else {
+			v.RangeKeyLevels[level] = curr.RangeKeyLevels[level].clone()
+		}
 
 		if len(b.Added[level]) == 0 && len(b.Deleted[level]) == 0 {
 			// There are no edits on this level.
@@ -667,6 +672,7 @@ func (b *BulkVersionEdit) Apply(
 
 		// Some edits on this level.
 		lm := &v.Levels[level]
+		lmRange := &v.RangeKeyLevels[level]
 		addedFiles := b.Added[level]
 		deletedMap := b.Deleted[level]
 		if n := v.Levels[level].Len() + len(addedFiles); n == 0 {
@@ -687,6 +693,16 @@ func (b *BulkVersionEdit) Apply(
 				// file's reference count dropping to zero.
 				err := errors.Errorf("pebble: internal error: file L%d.%s obsolete during B-Tree removal", level, f.FileNum)
 				return nil, nil, err
+			}
+			if f.HasRangeKeys {
+				if obsolete := v.RangeKeyLevels[level].tree.delete(f); obsolete {
+					// Deleting a file from the B-Tree may decrement its
+					// reference count. However, because we cloned the
+					// previous level's B-Tree, this should never result in a
+					// file's reference count dropping to zero.
+					err := errors.Errorf("pebble: internal error: file L%d.%s obsolete during range-key B-Tree removal", level, f.FileNum)
+					return nil, nil, err
+				}
 			}
 		}
 
@@ -713,6 +729,12 @@ func (b *BulkVersionEdit) Apply(
 			err := lm.tree.insert(f)
 			if err != nil {
 				return nil, nil, errors.Wrap(err, "pebble")
+			}
+			if f.HasRangeKeys {
+				err = lmRange.tree.insert(f)
+				if err != nil {
+					return nil, nil, errors.Wrap(err, "pebble")
+				}
 			}
 			removeZombie(f.FileNum)
 			// Track the keys with the smallest and largest keys, so that we can

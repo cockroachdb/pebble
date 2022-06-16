@@ -654,6 +654,11 @@ type Version struct {
 
 	Levels [NumLevels]LevelMetadata
 
+	// RangeKeyLevels holds a subset of the same files as Levels that contain range
+	// keys (i.e. fileMeta.HasRangeKeys == true). The memory amplification of this
+	// duplication should be minimal, as range keys are expected to be rare.
+	RangeKeyLevels [NumLevels]LevelMetadata
+
 	// The callback to invoke when the last reference to a version is
 	// removed. Will be called with list.mu held.
 	Deleted func(obsolete []*FileMetadata)
