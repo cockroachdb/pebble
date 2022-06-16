@@ -230,3 +230,44 @@ num-deletions: 0
 num-range-keys: 3
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
+
+# A hint from a range del that covers a table with only range keys should not
+# contain an estimate for the range keys.
+
+define
+L4
+  a.RANGEDEL.4:c
+L5
+  a.RANGEDEL.2:e
+  b.SET.3:b
+L6
+  rangekey:c-d:{(#1,RANGEKEYSET,@1,foo)}
+----
+4:
+  000004:[a#4,RANGEDEL-c#72057594037927935,RANGEDEL]
+5:
+  000005:[a#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+6:
+  000006:[c#1,RANGEKEYSET-d#72057594037927935,RANGEKEYSET]
+
+# The table in L5 should not contain an estimate for the table below it, which
+# contains only range keys.
+wait-pending-table-stats
+000005
+----
+num-entries: 2
+num-deletions: 1
+num-range-keys: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0
+
+# The table in L4 can delete the table in L5, which contains point keys. The
+# estimate is only partial, as the range del does not fully overlap the table.
+wait-pending-table-stats
+000004
+----
+num-entries: 1
+num-deletions: 1
+num-range-keys: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 26

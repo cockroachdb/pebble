@@ -427,6 +427,13 @@ func (d *DB) estimateSizeBeneath(
 		overlaps := v.Overlaps(l, d.cmp, start, end, true /* exclusiveEnd */)
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
+			// A hint that originated from a range del on a table without any range
+			// keys should not estimate disk usage on a table containing only range
+			// keys. Similarly, for a hint that originated from a range key del.
+			if (meta.HasPointKeys && !meta.HasRangeKeys && !file.HasPointKeys) ||
+				(!meta.HasPointKeys && meta.HasRangeKeys && !file.HasRangeKeys) {
+				continue
+			}
 			startCmp := d.cmp(start, file.Smallest.UserKey)
 			endCmp := d.cmp(file.Largest.UserKey, end)
 			if startCmp <= 0 && (endCmp < 0 || endCmp == 0 && file.Largest.IsExclusiveSentinel()) {
