@@ -47,32 +47,35 @@ func (d *DB) newRangeKeyIter(
 	// TODO(bilal): Roll the LevelIter allocation into it.rangeKey.iterConfig.
 	levelIters := make([]keyspan.LevelIter, 0)
 	// Next are the file levels: L0 sub-levels followed by lower levels.
-	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
-		rangeIter := files.Filter(manifest.KeyTypeRange)
-		if rangeIter.First() == nil {
-			// No files with range keys.
-			return
+	//
+	// Add file-specific iterators for L0 files containing range keys. This is less
+	// efficient than using levelIters for sublevels of L0 files containing
+	// range keys, but range keys are expected to be sparse anyway, reducing the
+	// cost benefit of maintaining a separate L0Sublevels instance for range key
+	// files and then using it here.
+	iter := current.RangeKeyLevels[0].Iter()
+	for f := iter.First(); f != nil; f = iter.Next() {
+		spanIterOpts := &keyspan.SpanIterOptions{RangeKeyFilters: it.opts.RangeKeyFilters}
+		spanIter, err := d.tableNewRangeKeyIter(f, spanIterOpts)
+		if err != nil {
+			it.rangeKey.iterConfig.AddLevel(&errorKeyspanIter{err: err})
+			continue
+		}
+		it.rangeKey.iterConfig.AddLevel(spanIter)
+	}
+
+	// Add level iterators for the non-empty non-L0 levels.
+	for level := 1; level < len(current.RangeKeyLevels); level++ {
+		if current.RangeKeyLevels[level].Empty() {
+			continue
 		}
 		levelIters = append(levelIters, keyspan.LevelIter{})
 		li := &levelIters[len(levelIters)-1]
 		spanIterOpts := keyspan.SpanIterOptions{RangeKeyFilters: it.opts.RangeKeyFilters}
 
-		li.Init(spanIterOpts, it.cmp, d.tableNewRangeKeyIter, files, level, d.opts.Logger, manifest.KeyTypeRange)
+		li.Init(spanIterOpts, it.cmp, d.tableNewRangeKeyIter, current.RangeKeyLevels[level].Iter(),
+			manifest.Level(level), d.opts.Logger, manifest.KeyTypeRange)
 		it.rangeKey.iterConfig.AddLevel(li)
-	}
-
-	// Add level iterators for the L0 sublevels, iterating from newest to
-	// oldest.
-	for i := len(current.L0SublevelFiles) - 1; i >= 0; i-- {
-		addLevelIterForFiles(current.L0SublevelFiles[i].Iter(), manifest.L0Sublevel(i))
-	}
-
-	// Add level iterators for the non-empty non-L0 levels.
-	for level := 1; level < len(current.Levels); level++ {
-		if current.Levels[level].Empty() {
-			continue
-		}
-		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
 	}
 	return it.rangeKey.rangeKeyIter
 }
