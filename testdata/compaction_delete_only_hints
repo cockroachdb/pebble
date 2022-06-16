@@ -406,9 +406,9 @@ describe-lsm
 
 get-hints
 ----
-L0.000013 a-i seqnums(tombstone=10-10, file-smallest=1, type=point-key-only)
+L0.000013 a-i seqnums(tombstone=10-10, file-smallest=3, type=point-key-only)
 L0.000013 i-r seqnums(tombstone=10-10, file-smallest=4, type=point-and-range-key)
-L0.000013 r-z seqnums(tombstone=10-10, file-smallest=7, type=range-key-only)
+L0.000013 r-z seqnums(tombstone=10-10, file-smallest=8, type=range-key-only)
 
 maybe-compact
 ----

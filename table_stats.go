@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -313,8 +314,8 @@ func (d *DB) loadTableRangeDelStats(
 	// We iterate over the defragmented range tombstones and range key deletions,
 	// which ensures we don't double count ranges deleted at different sequence
 	// numbers. Also, merging abutting tombstones reduces the number of calls to
-	// estimateSizeBeneath which is costly, and improves the accuracy of our
-	// overall estimate.
+	// estimateReclaimedSizeBeneath which is costly, and improves the accuracy of
+	// our overall estimate.
 	for s := iter.First(); s != nil; s = iter.Next() {
 		start, end := s.Start, s.End
 		// We only need to consider deletion size estimates for tables that contain
@@ -351,13 +352,12 @@ func (d *DB) loadTableRangeDelStats(
 		// While the size estimates for point keys should only be updated if this
 		// span contains a range del, the sequence numbers are required for the
 		// hint. Unconditionally descend, but conditionally update the estimates.
-		estimate, hintSeqNum, err := d.estimateSizeBeneath(v, level, meta, start, end)
+		hintType := compactionHintFromKeys(s.Keys)
+		estimate, hintSeqNum, err := d.estimateReclaimedSizeBeneath(v, level, start, end, hintType)
 		if err != nil {
 			return nil, err
 		}
-		if hasPoints {
-			stats.RangeDeletionsBytesEstimate += estimate
-		}
+		stats.RangeDeletionsBytesEstimate += estimate
 
 		// If any files were completely contained with the range,
 		// hintSeqNum is the smallest sequence number contained in any
@@ -366,7 +366,7 @@ func (d *DB) loadTableRangeDelStats(
 			continue
 		}
 		hint := deleteCompactionHint{
-			hintType:                compactionHintFromKeys(s.Keys),
+			hintType:                hintType,
 			start:                   make([]byte, len(start)),
 			end:                     make([]byte, len(end)),
 			tombstoneFile:           meta,
@@ -428,8 +428,8 @@ func (d *DB) averageEntrySizeBeneath(
 	return avgKeySize, avgValueSize, err
 }
 
-func (d *DB) estimateSizeBeneath(
-	v *version, level int, meta *fileMetadata, start, end []byte,
+func (d *DB) estimateReclaimedSizeBeneath(
+	v *version, level int, start, end []byte, hintType deleteCompactionHintType,
 ) (estimate uint64, hintSeqNum uint64, err error) {
 	// Find all files in lower levels that overlap with the deleted range
 	// [start, end).
@@ -448,13 +448,42 @@ func (d *DB) estimateSizeBeneath(
 			startCmp := d.cmp(start, file.Smallest.UserKey)
 			endCmp := d.cmp(file.Largest.UserKey, end)
 			if startCmp <= 0 && (endCmp < 0 || endCmp == 0 && file.Largest.IsExclusiveSentinel()) {
-				// The range fully contains the file, so skip looking it up in
-				// table cache/looking at its indexes and add the full file size.
+				// The range fully contains the file, so skip looking it up in table
+				// cache/looking at its indexes and add the full file size. Whether the
+				// disk estimate and hint seqnums are updated depends on a) the type of
+				// hint that requested the estimate and b) the keys contained in this
+				// current file.
+				switch hintType {
+				case deleteCompactionHintTypePointKeyOnly:
+					// If this file contains range keys, it cannot be dropped, as the hint
+					// type is applicable to files that contain only point keys.
+					if file.HasRangeKeys {
+						continue
+					}
+				case deleteCompactionHintTypeRangeKeyOnly:
+					// If this file contains point keys, it cannot be dropped, as the hint
+					// type is applicable to files that contain only range keys.
+					if file.HasPointKeys {
+						continue
+					}
+				case deleteCompactionHintTypePointAndRangeKey:
+					// Always update the estimates and hints, as this hint type can drop a
+					// file, irrespective of the mixture of keys.
+				default:
+					panic(fmt.Sprintf("pebble: unknown hint type %s", hintType))
+				}
 				estimate += file.Size
 				if hintSeqNum > file.SmallestSeqNum {
 					hintSeqNum = file.SmallestSeqNum
 				}
 			} else if d.cmp(file.Smallest.UserKey, end) <= 0 && d.cmp(start, file.Largest.UserKey) <= 0 {
+				// Partial overlap.
+				if hintType == deleteCompactionHintTypeRangeKeyOnly {
+					// If the hint that generated this overlap contains only range keys,
+					// there is no need to calculate disk usage, as the reclaimable space
+					// is expected to be minimal relative to point keys.
+					continue
+				}
 				var size uint64
 				err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
 					size, err = r.EstimateDiskUsage(start, end)
