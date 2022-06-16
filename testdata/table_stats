@@ -277,14 +277,24 @@ range-key-unset a b @2
 6:
   000004:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYUNSET]
 
-# Add a table that contains a RANGEKEYDEL.
+# Add a table that contains only point keys, to the right of the existing table
+# in L6.
+ingest ext0
+set c c
+----
+6:
+  000004:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYUNSET]
+  000005:[c#2,SET-c#2,SET]
+
+# Add a table that contains a RANGEKEYDEL covering the first table in L6.
 ingest ext1
 range-key-del a b
 ----
 0.0:
-  000005:[a#2,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
+  000006:[a#3,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
 6:
   000004:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYUNSET]
+  000005:[c#2,SET-c#2,SET]
 
 # Add one more table containing a RANGEDEL.
 batch
@@ -294,16 +304,18 @@ del-range a c
 flush
 ----
 0.1:
-  000007:[a#3,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000008:[a#4,RANGEDEL-c#72057594037927935,RANGEDEL]
 0.0:
-  000005:[a#2,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
+  000006:[a#3,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
 6:
   000004:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYUNSET]
+  000005:[c#2,SET-c#2,SET]
 
 # Compute stats on the table containing range key del. It should not show an
-# estimate for deleted point keys.
+# estimate for deleted point keys as there are no tables below it that contain
+# only range keys.
 wait-pending-table-stats
-000005
+000006
 ----
 num-entries: 0
 num-deletions: 0
@@ -312,15 +324,42 @@ point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
 
 # Compute stats on the table containing the range del. It should show an
-# estimate for deleted point keys.
+# estimate for deleted point keys, as a table below it (000004) contains point
+# keys. Note that even though table 000004 contains range keys, the range del
+# estimates are non-zero, as this number is agnostic of range keys.
 wait-pending-table-stats
-000007
+000008
 ----
 num-entries: 1
 num-deletions: 1
 num-range-keys: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 991
+
+# Drop a range del and a range key del over the entire keyspace. This table can
+# delete everything underneath it.
+ingest ext1
+del-range a z
+range-key-del a z
+----
+0.2:
+  000009:[a#5,RANGEKEYDEL-z#72057594037927935,RANGEDEL]
+0.1:
+  000008:[a#4,RANGEDEL-c#72057594037927935,RANGEDEL]
+0.0:
+  000006:[a#3,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
+6:
+  000004:[a#1,RANGEKEYSET-b#72057594037927935,RANGEKEYUNSET]
+  000005:[c#2,SET-c#2,SET]
+
+wait-pending-table-stats
+000009
+----
+num-entries: 1
+num-deletions: 1
+num-range-keys: 1
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 1815
 
 # A hint for exclusively range key deletions that covers a table with point keys
 # should not contain an estimate for point keys.
@@ -371,3 +410,44 @@ num-deletions: 0
 num-range-keys: 1
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
+
+# A hint from a range del that covers a table with only range keys should not
+# contain an estimate for the range keys.
+
+define
+L4
+  a.RANGEDEL.4:c
+L5
+  a.RANGEDEL.2:e
+  b.SET.3:b
+L6
+  rangekey:c-d:{(#1,RANGEKEYSET,@1,foo)}
+----
+4:
+  000004:[a#4,RANGEDEL-c#72057594037927935,RANGEDEL]
+5:
+  000005:[a#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+6:
+  000006:[c#1,RANGEKEYSET-d#72057594037927935,RANGEKEYSET]
+
+# The table in L5 should not contain an estimate for the table below it, which
+# contains only range keys.
+wait-pending-table-stats
+000005
+----
+num-entries: 2
+num-deletions: 1
+num-range-keys: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0
+
+# The table in L4 can delete the table in L5, which contains point keys. The
+# estimate is only partial, as the range del does not fully overlap the table.
+wait-pending-table-stats
+000004
+----
+num-entries: 1
+num-deletions: 1
+num-range-keys: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 26
