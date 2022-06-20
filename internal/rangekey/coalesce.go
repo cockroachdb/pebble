@@ -19,6 +19,7 @@ type UserIteratorConfig struct {
 	snapshot   uint64
 	miter      keyspan.MergingIter
 	diter      keyspan.DefragmentingIter
+	liters     []keyspan.LevelIter
 	defragBufA keysBySuffix
 	defragBufB keysBySuffix
 	// defragBufAlloc defines two arrays used to preallocate defragBuf{A,B} keys
@@ -35,13 +36,14 @@ type UserIteratorConfig struct {
 // The snapshot sequence number parameter determines which keys are visible. Any
 // keys not visible at the provided snapshot are ignored.
 func (ui *UserIteratorConfig) Init(
-	cmp base.Compare, snapshot uint64, levelIters ...keyspan.FragmentIterator,
+	cmp base.Compare, snapshot uint64, iters ...keyspan.FragmentIterator,
 ) keyspan.FragmentIterator {
 	ui.snapshot = snapshot
 	ui.defragBufA.keys = ui.defragBufAlloc[0][:0]
 	ui.defragBufB.keys = ui.defragBufAlloc[1][:0]
-	ui.miter.Init(cmp, ui, levelIters...)
+	ui.miter.Init(cmp, ui, iters...)
 	ui.diter.Init(cmp, &ui.miter, ui, keyspan.StaticDefragmentReducer)
+	ui.liters = ui.liters[:0]
 	return &ui.diter
 }
 
@@ -49,6 +51,18 @@ func (ui *UserIteratorConfig) Init(
 // must be called after Init and before any other method on the iterator.
 func (ui *UserIteratorConfig) AddLevel(iter keyspan.FragmentIterator) {
 	ui.miter.AddLevel(iter)
+}
+
+// NewLevelIter returns a pointer to a newly allocated or reused
+// keyspan.LevelIter. The caller is responsible for calling Init() on this
+// instance.
+func (ui *UserIteratorConfig) NewLevelIter() *keyspan.LevelIter {
+	if len(ui.liters)+1 > cap(ui.liters) {
+		ui.liters = append(ui.liters, keyspan.LevelIter{})
+	} else {
+		ui.liters = ui.liters[:len(ui.liters)+1]
+	}
+	return &ui.liters[len(ui.liters)-1]
 }
 
 // Transform implements the keyspan.Transformer interface for use with a

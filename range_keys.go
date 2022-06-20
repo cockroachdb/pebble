@@ -44,8 +44,6 @@ func (d *DB) newRangeKeyIter(
 	}
 
 	current := readState.current
-	// TODO(bilal): Roll the LevelIter allocation into it.rangeKey.iterConfig.
-	levelIters := make([]keyspan.LevelIter, 0)
 	// Next are the file levels: L0 sub-levels followed by lower levels.
 	//
 	// Add file-specific iterators for L0 files containing range keys. This is less
@@ -69,8 +67,7 @@ func (d *DB) newRangeKeyIter(
 		if current.RangeKeyLevels[level].Empty() {
 			continue
 		}
-		levelIters = append(levelIters, keyspan.LevelIter{})
-		li := &levelIters[len(levelIters)-1]
+		li := it.rangeKey.iterConfig.NewLevelIter()
 		spanIterOpts := keyspan.SpanIterOptions{RangeKeyFilters: it.opts.RangeKeyFilters}
 
 		li.Init(spanIterOpts, it.cmp, d.tableNewRangeKeyIter, current.RangeKeyLevels[level].Iter(),
