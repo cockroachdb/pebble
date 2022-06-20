@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
 // UserIteratorConfig holds state for constructing the range key iterator stack
@@ -19,6 +20,8 @@ type UserIteratorConfig struct {
 	snapshot   uint64
 	miter      keyspan.MergingIter
 	diter      keyspan.DefragmentingIter
+	liters     [manifest.NumLevels]keyspan.LevelIter
+	litersUsed int
 	defragBufA keysBySuffix
 	defragBufB keysBySuffix
 	// defragBufAlloc defines two arrays used to preallocate defragBuf{A,B} keys
@@ -35,13 +38,14 @@ type UserIteratorConfig struct {
 // The snapshot sequence number parameter determines which keys are visible. Any
 // keys not visible at the provided snapshot are ignored.
 func (ui *UserIteratorConfig) Init(
-	cmp base.Compare, snapshot uint64, levelIters ...keyspan.FragmentIterator,
+	cmp base.Compare, snapshot uint64, iters ...keyspan.FragmentIterator,
 ) keyspan.FragmentIterator {
 	ui.snapshot = snapshot
 	ui.defragBufA.keys = ui.defragBufAlloc[0][:0]
 	ui.defragBufB.keys = ui.defragBufAlloc[1][:0]
-	ui.miter.Init(cmp, ui, levelIters...)
+	ui.miter.Init(cmp, ui, iters...)
 	ui.diter.Init(cmp, &ui.miter, ui, keyspan.StaticDefragmentReducer)
+	ui.litersUsed = 0
 	return &ui.diter
 }
 
@@ -49,6 +53,17 @@ func (ui *UserIteratorConfig) Init(
 // must be called after Init and before any other method on the iterator.
 func (ui *UserIteratorConfig) AddLevel(iter keyspan.FragmentIterator) {
 	ui.miter.AddLevel(iter)
+}
+
+// NewLevelIter returns a pointer to a newly allocated or reused
+// keyspan.LevelIter. The caller is responsible for calling Init() on this
+// instance.
+func (ui *UserIteratorConfig) NewLevelIter() *keyspan.LevelIter {
+	if ui.litersUsed >= len(ui.liters) {
+		return &keyspan.LevelIter{}
+	}
+	ui.litersUsed++
+	return &ui.liters[ui.litersUsed-1]
 }
 
 // Transform implements the keyspan.Transformer interface for use with a
