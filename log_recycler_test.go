@@ -27,32 +27,32 @@ func TestLogRecycler(t *testing.T) {
 	r := logRecycler{limit: 3, minRecycleLogNum: 4}
 
 	// Logs below the min-recycle number are not recycled.
-	require.False(t, r.add(fileInfo{1, 0}))
-	require.False(t, r.add(fileInfo{2, 0}))
-	require.False(t, r.add(fileInfo{3, 0}))
+	require.False(t, r.add(fileInfo{1, 0, false}))
+	require.False(t, r.add(fileInfo{2, 0, false}))
+	require.False(t, r.add(fileInfo{3, 0, false}))
 
 	// Logs are recycled up to the limit.
-	require.True(t, r.add(fileInfo{4, 0}))
+	require.True(t, r.add(fileInfo{4, 0, false}))
 	require.EqualValues(t, []FileNum{4}, r.logNums())
 	require.EqualValues(t, 4, r.maxLogNum())
 	fi, ok := r.peek()
 	require.True(t, ok)
 	require.EqualValues(t, 4, fi.fileNum)
-	require.True(t, r.add(fileInfo{5, 0}))
+	require.True(t, r.add(fileInfo{5, 0, false}))
 	require.EqualValues(t, []FileNum{4, 5}, r.logNums())
 	require.EqualValues(t, 5, r.maxLogNum())
-	require.True(t, r.add(fileInfo{6, 0}))
+	require.True(t, r.add(fileInfo{6, 0, false}))
 	require.EqualValues(t, []FileNum{4, 5, 6}, r.logNums())
 	require.EqualValues(t, 6, r.maxLogNum())
 
 	// Trying to add a file past the limit fails.
-	require.False(t, r.add(fileInfo{7, 0}))
+	require.False(t, r.add(fileInfo{7, 0, false}))
 	require.EqualValues(t, []FileNum{4, 5, 6}, r.logNums())
 	require.EqualValues(t, 7, r.maxLogNum())
 
 	// Trying to add a previously recycled file returns success, but the internal
 	// state is unchanged.
-	require.True(t, r.add(fileInfo{4, 0}))
+	require.True(t, r.add(fileInfo{4, 0, false}))
 	require.EqualValues(t, []FileNum{4, 5, 6}, r.logNums())
 	require.EqualValues(t, 7, r.maxLogNum())
 
@@ -63,10 +63,10 @@ func TestLogRecycler(t *testing.T) {
 	require.EqualValues(t, []FileNum{5, 6}, r.logNums())
 
 	// Log number 7 was already considered, so it won't be recycled.
-	require.True(t, r.add(fileInfo{7, 0}))
+	require.True(t, r.add(fileInfo{7, 0, false}))
 	require.EqualValues(t, []FileNum{5, 6}, r.logNums())
 
-	require.True(t, r.add(fileInfo{8, 0}))
+	require.True(t, r.add(fileInfo{8, 0, false}))
 	require.EqualValues(t, []FileNum{5, 6, 8}, r.logNums())
 	require.EqualValues(t, 8, r.maxLogNum())
 

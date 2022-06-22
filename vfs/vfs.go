@@ -33,6 +33,7 @@ type File interface {
 	Sync() error
 }
 
+// RandomWriteFile is a file that supports writing at designated offsets
 type RandomWriteFile interface {
 	File
 	io.WriterAt
@@ -133,6 +134,7 @@ type FS interface {
 	GetDiskUsage(path string) (DiskUsage, error)
 }
 
+// FSWithOpenForWrites wraps a FS that supports OpenForWrites
 type FSWithOpenForWrites interface {
 	FS
 

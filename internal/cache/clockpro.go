@@ -766,12 +766,13 @@ func (c *Cache) Unref() {
 	}
 }
 
+// AddSecondaryCache creates and add a secondary cache to a Cache
 func (c *Cache) AddSecondaryCache(dir string, fs vfs.FSWithOpenForWrites, capacity uint64) {
 	capacity = capacity / uint64(len(c.shards))
 	for i := range c.shards {
 		path := fs.PathJoin(dir, fmt.Sprintf("shard-%d", i+1))
 		fs.MkdirAll(path, 0755)
-		c.shards[i].setSecondaryCache(NewPersistentCache(path, fs, capacity))
+		c.shards[i].setSecondaryCache(newPersistentCache(path, fs, capacity))
 	}
 }
 

@@ -156,9 +156,8 @@ func (l *persistentCache) MaybeCache(meta *manifest.FileMetadata, amountRead int
 	newVal := atomic.AddInt64(&meta.Atomic.BytesBeforeLocalCache, -1*amountRead)
 	if newVal > 0 {
 		return
-	} else {
-		atomic.StoreInt64(&meta.Atomic.BytesBeforeLocalCache, meta.InitBytesBeforeLocalCache)
 	}
+	atomic.StoreInt64(&meta.Atomic.BytesBeforeLocalCache, meta.InitBytesBeforeLocalCache)
 
 	l.mu.Lock()
 	cached := l.mu.files[meta.FileNum]

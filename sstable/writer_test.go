@@ -407,7 +407,7 @@ func TestWriterClearCache(t *testing.T) {
 
 	// Poison the cache for each of the blocks.
 	poison := func(bh BlockHandle) {
-		opts.Cache.Set(cacheOpts.cacheID, cacheOpts.fileNum, bh.Offset, invalidData()).Release()
+		opts.Cache.Set(cacheOpts.cacheID, cacheOpts.fileNum, bh.Offset, invalidData(), false).Release()
 	}
 	foreachBH(layout, poison)
 
@@ -417,7 +417,7 @@ func TestWriterClearCache(t *testing.T) {
 
 	// Verify that the written blocks have been cleared from the cache.
 	check := func(bh BlockHandle) {
-		h := opts.Cache.Get(cacheOpts.cacheID, cacheOpts.fileNum, bh.Offset)
+		h := opts.Cache.Get(cacheOpts.cacheID, cacheOpts.fileNum, bh.Offset, false)
 		if h.Get() != nil {
 			t.Fatalf("%d: expected cache to be cleared, but found %q", bh.Offset, h.Get())
 		}

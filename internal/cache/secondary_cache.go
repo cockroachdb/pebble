@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+// SecondaryCache interface
 type SecondaryCache interface {
 	GetAndEvict(id uint64, fileNum base.FileNum, offset uint64) []byte
 	Set(id uint64, fileNum base.FileNum, offset uint64, block []byte)
@@ -214,7 +215,7 @@ type secondaryCache struct {
 	}
 
 	capacity uint64
-	wg       sync.WaitGroup
+	// wg       sync.WaitGroup
 	cacheDir string
 	fs       vfs.FSWithOpenForWrites
 }
@@ -258,7 +259,6 @@ func (f *secondaryCacheFile) writeBlock(
 		panic(err.Error())
 	}
 	f.writerMu.usedSize += uint64(n)
-	return
 }
 
 type secondaryCacheOrigFile struct {
@@ -320,7 +320,7 @@ func (s *secondaryCacheValue) Decode(src []byte) (rem []byte, block []byte, err 
 	return src[secondaryCacheHeaderSize+s.size+s.unused:], block, nil
 }
 
-func NewPersistentCache(dir string, fs vfs.FSWithOpenForWrites, capacity uint64) SecondaryCache {
+func newPersistentCache(dir string, fs vfs.FSWithOpenForWrites, capacity uint64) SecondaryCache {
 	psc := &secondaryCache{
 		capacity: capacity,
 		cacheDir: dir,

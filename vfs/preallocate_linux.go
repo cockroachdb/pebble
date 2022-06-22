@@ -27,6 +27,7 @@ func preallocExtend(fd uintptr, offset, length int64) error {
 	return syscall.Fallocate(int(fd), unix.FALLOC_FL_KEEP_SIZE, offset, length)
 }
 
+// Preallocate wraps the Fallocate syscall over a vfs.File
 func Preallocate(f File, offset, length int64) error {
 	if fdFile, ok := f.(fdGetter); ok {
 		return preallocExtend(fdFile.Fd(), offset, length)

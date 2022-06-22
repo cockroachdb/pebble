@@ -40,12 +40,14 @@ const (
 	maxReadaheadSize     = 256 << 10 /* 256KB */
 )
 
+// PersistentCacheValue is the value stored in a persistent cache
 type PersistentCacheValue interface {
 	File() vfs.File
 	Ref()
 	Unref()
 }
 
+// PersistentCache is a file-backed cache
 type PersistentCache interface {
 	Get(fileNum base.FileNum) PersistentCacheValue
 	MaybeCache(meta *manifest.FileMetadata, amountRead int64)
@@ -2338,13 +2340,14 @@ func (f FileReopenOpt) readerApply(r *Reader) {
 	}
 }
 
+// PersistentCacheOpt specifies the cache options
 type PersistentCacheOpt struct {
 	PsCache PersistentCache
 	Meta    *manifest.FileMetadata
 }
 
 func (p PersistentCacheOpt) readerApply(r *Reader) {
-	//r.psCache = p.PsCache
+	// r.psCache = p.PsCache
 	r.meta = p.Meta
 }
 

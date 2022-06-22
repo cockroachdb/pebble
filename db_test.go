@@ -804,7 +804,7 @@ func TestMemTableReservation(t *testing.T) {
 	helloWorld := []byte("hello world")
 	value := opts.Cache.Alloc(len(helloWorld))
 	copy(value.Buf(), helloWorld)
-	opts.Cache.Set(tmpID, 0, 0, value).Release()
+	opts.Cache.Set(tmpID, 0, 0, value, false).Release()
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -821,7 +821,7 @@ func TestMemTableReservation(t *testing.T) {
 		t.Fatalf("expected 2 refs, but found %d", refs)
 	}
 	// Verify the memtable reservation has caused our test block to be evicted.
-	if h := opts.Cache.Get(tmpID, 0, 0); h.Get() != nil {
+	if h := opts.Cache.Get(tmpID, 0, 0, false); h.Get() != nil {
 		t.Fatalf("expected failure, but found success: %s", h.Get())
 	}
 
