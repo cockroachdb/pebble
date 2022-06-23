@@ -29,7 +29,7 @@ type persistentCache struct {
 
 	localFS, sharedFS   vfs.FS
 	localDir, sharedDir string
-	uniqueID            uint16
+	uniqueID            uint32
 	wg                  sync.WaitGroup
 }
 
@@ -89,11 +89,11 @@ func (p *persistentCacheValue) Unref() {
 }
 
 func newPersistentCache(
-	localFS vfs.FS, localDir string, sharedFS vfs.FS, sharedDir string, uniqueID uint16,
+	localFS vfs.FS, localDir string, sharedFS vfs.FS, sharedDir string, uniqueID uint32, size uint64,
 ) *persistentCache {
 	psc := &persistentCache{
 		files:     make(chan *persistentCacheValue, 500),
-		capacity:  10 << 30, /* 10 GB */
+		capacity:  size,
 		localFS:   localFS,
 		sharedFS:  sharedFS,
 		localDir:  localDir,

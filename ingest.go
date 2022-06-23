@@ -299,7 +299,7 @@ func ingestLink(
 			err = vfs.LinkOrCopy(fs, paths[i], target)
 		}
 		if err == nil && opts.SharedFS != nil {
-			sharedTarget := base.MakeSharedSSTPath(opts.SharedFS, opts.SharedDir, opts.UniqueID, meta[i].FileNum)
+			sharedTarget := base.MakeSharedSSTPath(opts.SharedFS, opts.SharedDir, opts.UniqueID, meta[i].PhysicalFileNum)
 			err = vfs.CopyAcrossFS(fs, paths[i], opts.SharedFS, sharedTarget)
 		}
 		if err != nil {
@@ -838,8 +838,8 @@ func (d *DB) ingestApply(
 			d.mu.versions.logUnlock()
 			return nil, err
 		}
-		if f.Level >= 5 && d.opts.SharedFS != nil {
-			m.UsesSharedFS = true
+		if f.Level >= sharedLevel && d.opts.SharedFS != nil {
+			m.IsShared = true
 			obsoleteFiles = append(obsoleteFiles, obsoleteFile{
 				dir:         d.dirname,
 				fileNum:     m.FileNum,

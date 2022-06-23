@@ -64,7 +64,7 @@ func MakeFilepath(fs vfs.FS, dirname string, fileType FileType, fileNum FileNum)
 }
 
 // MakeSharedSSTPath builds a filepath for a shared SST.
-func MakeSharedSSTPath(fs vfs.FS, dirname string, uniqueID uint16, fileNum FileNum) string {
+func MakeSharedSSTPath(fs vfs.FS, dirname string, uniqueID uint32, fileNum FileNum) string {
 	const numBuckets = 10
 	bucket := (uint64(fileNum) * (uint64(uniqueID) + 1)) % numBuckets
 	return fs.PathJoin(dirname, fmt.Sprintf("%d/%d/%s", uniqueID, bucket, MakeFilename(FileTypeTable, fileNum)))

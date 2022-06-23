@@ -71,7 +71,7 @@ type tableCacheOpts struct {
 	fs            vfs.FS
 	sharedDir     string
 	sharedFS      vfs.FS
-	uniqueID      uint16
+	uniqueID      uint32
 	psCache       *persistentCache
 	opts          sstable.ReaderOptions
 	filterMetrics *FilterMetrics
@@ -423,7 +423,9 @@ func (c *tableCacheShard) newIters(
 
 	var iter sstable.Iterator
 	useFilter := true
+	level := -1
 	if opts != nil {
+		level = manifest.LevelToInt(opts.level)
 		useFilter = manifest.LevelToInt(opts.level) != 6 || opts.UseL6Filters
 	}
 	if internalOpts.bytesIterated != nil {
@@ -439,6 +441,9 @@ func (c *tableCacheShard) newIters(
 		c.unrefValue(v)
 		return nil, nil, err
 	}
+	// Set the level here for internal use by sstable package (now only for shared sst)
+	iter.SetLevel(level)
+
 	// NB: v.closeHook takes responsibility for calling unrefValue(v) here. Take
 	// care to avoid introduceingan allocation here by adding a closure.
 	iter.SetCloseHook(v.closeHook)
@@ -450,6 +455,16 @@ func (c *tableCacheShard) newIters(
 		c.mu.iters[iter] = debug.Stack()
 		c.mu.Unlock()
 	}
+
+	if rangeDelIter != nil {
+		sstRangeDelIter, ok := rangeDelIter.(*sstable.RangeDelIter)
+		if !ok {
+			panic("table_cache.go: rangeDelIter returned is not sstable.RangeDelIter")
+		}
+		// Set the level here for internal use by sstable package (now only for shared sst)
+		sstRangeDelIter.SetLevel(level)
+	}
+
 	return iter, rangeDelIter, nil
 }
 
@@ -892,10 +907,10 @@ func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *t
 	var f vfs.File
 	fs := dbOpts.fs
 	dirname := dbOpts.dirname
-	if meta.UsesSharedFS {
+	if meta.IsShared {
 		fs = dbOpts.sharedFS
 		dirname = dbOpts.sharedDir
-		v.filename = base.MakeSharedSSTPath(fs, dirname, dbOpts.uniqueID, meta.FileNum)
+		v.filename = base.MakeSharedSSTPath(fs, dirname, meta.CreatorUniqueID, meta.PhysicalFileNum)
 	} else {
 		v.filename = base.MakeFilepath(fs, dirname, fileTypeTable, meta.FileNum)
 	}
@@ -903,7 +918,7 @@ func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *t
 	if v.err == nil {
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, meta.FileNum).(sstable.ReaderOption)
 		extraOpts := []sstable.ReaderOption{cacheOpts, dbOpts.filterMetrics}
-		if !meta.UsesSharedFS {
+		if !meta.IsShared {
 			extraOpts = append(extraOpts, sstable.FileReopenOpt{FS: dbOpts.fs, Filename: v.filename})
 		} else {
 			extraOpts = append(extraOpts, sstable.PersistentCacheOpt{PsCache: dbOpts.psCache, Meta: meta})

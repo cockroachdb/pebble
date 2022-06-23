@@ -29,6 +29,8 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+const sharedLevel = 5
+
 var errEmptyTable = errors.New("pebble: empty table")
 var errFlushInvariant = errors.New("pebble: flush next log number is unset")
 
@@ -2183,6 +2185,10 @@ func moveFileToSharedFS(filepath string, fs vfs.FS, sharedPath string, sharedFS 
 	return nil
 }
 
+// this function just copies the overall boundaries of keys but
+// it can be injected by tests
+var setSharedSSTMetadata func(meta *manifest.FileMetadata, creatorID uint32)
+
 // runCompactions runs a compaction that produces new on-disk tables from
 // memtables or old on-disk tables.
 //
@@ -2569,14 +2575,22 @@ func (d *DB) runCompaction(
 			meta.ExtendRangeKeyBounds(d.cmp, writerMeta.SmallestRangeKey, writerMeta.LargestRangeKey)
 		}
 
-		if c.outputLevel.level >= 5 && d.opts.SharedFS != nil {
+		// If the output SSTable falls in lower levels than sharedLevel, it will be moved to the shared
+		// file system asynchronously
+		if d.opts.SharedFS != nil && c.outputLevel.level >= sharedLevel {
+			if writerMeta.HasRangeKeys {
+				panic("runCompaction: shared sst does not support range keys")
+			}
+
+			setSharedSSTMetadata(meta, d.opts.UniqueID)
+
 			oldFilename := base.MakeFilepath(d.opts.FS, d.dirname, fileTypeTable, meta.FileNum)
-			sharedFilename := base.MakeSharedSSTPath(d.opts.SharedFS, d.opts.SharedDir, d.opts.UniqueID, meta.FileNum)
+			sharedFilename := base.MakeSharedSSTPath(d.opts.SharedFS, d.opts.SharedDir, meta.CreatorUniqueID, meta.PhysicalFileNum)
 			movers.Add(1)
 			go func() {
 				defer movers.Done()
 				if err := moveFileToSharedFS(oldFilename, d.opts.FS, sharedFilename, d.opts.SharedFS); err == nil {
-					meta.UsesSharedFS = true
+					meta.IsShared = true
 				}
 			}()
 		}
@@ -2966,18 +2980,22 @@ func (d *DB) deleteObsoleteFiles(jobID int, waitForOngoing bool) {
 
 // obsoleteFile holds information about a file that needs to be deleted soon.
 type obsoleteFile struct {
-	dir          string
-	fileNum      base.FileNum
-	fileType     fileType
-	fileSize     uint64
-	usesSharedFS bool
-	skipMetrics  bool
+	dir             string
+	fileNum         base.FileNum
+	fileType        fileType
+	fileSize        uint64
+	skipMetrics     bool
+	isShared        bool
+	creatorUniqueID uint32
+	physicalFileNum base.FileNum
 }
 
 type fileInfo struct {
-	fileNum      FileNum
-	fileSize     uint64
-	usesSharedFS bool
+	fileNum         FileNum
+	fileSize        uint64
+	isShared        bool
+	creatorUniqueID uint32
+	physicalFileNum base.FileNum
 }
 
 // d.mu must be held when calling this, but the mutex may be dropped and
@@ -3006,10 +3024,21 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 	}
 
 	for _, table := range d.mu.versions.obsoleteTables {
+		// consider the file was created locally by default
+		physicalFileNum := table.FileNum
+		creatorUniqueID := d.opts.UniqueID
+		if table.IsShared {
+			// if the file is shared, then use its metadata regardless of it
+			// is local or foreign
+			physicalFileNum = table.PhysicalFileNum
+			creatorUniqueID = table.CreatorUniqueID
+		}
 		obsoleteTables = append(obsoleteTables, fileInfo{
-			fileNum:      table.FileNum,
-			fileSize:     table.Size,
-			usesSharedFS: table.UsesSharedFS,
+			fileNum:         table.FileNum,
+			fileSize:        table.Size,
+			isShared:        table.IsShared,
+			creatorUniqueID: creatorUniqueID,
+			physicalFileNum: physicalFileNum,
 		})
 	}
 	d.mu.versions.obsoleteTables = nil
@@ -3069,11 +3098,13 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 			}
 
 			filesToDelete = append(filesToDelete, obsoleteFile{
-				dir:          dir,
-				fileNum:      fi.fileNum,
-				fileType:     f.fileType,
-				fileSize:     fi.fileSize,
-				usesSharedFS: fi.usesSharedFS,
+				dir:             dir,
+				fileNum:         fi.fileNum,
+				fileType:        f.fileType,
+				fileSize:        fi.fileSize,
+				isShared:        fi.isShared,
+				creatorUniqueID: fi.creatorUniqueID,
+				physicalFileNum: fi.physicalFileNum,
 			})
 		}
 	}
@@ -3100,8 +3131,8 @@ func (d *DB) paceAndDeleteObsoleteFiles(jobID int, files []obsoleteFile) {
 	for _, of := range files {
 		path := base.MakeFilepath(d.opts.FS, of.dir, of.fileType, of.fileNum)
 		if of.fileType == fileTypeTable {
-			if of.usesSharedFS {
-				path = base.MakeSharedSSTPath(d.opts.SharedFS, d.opts.SharedDir, d.opts.UniqueID, of.fileNum)
+			if of.isShared {
+				path = base.MakeSharedSSTPath(d.opts.SharedFS, d.opts.SharedDir, of.creatorUniqueID, of.physicalFileNum)
 				if d.persistentCache != nil {
 					d.persistentCache.MarkDeleted(of.fileNum)
 				}
@@ -3114,7 +3145,7 @@ func (d *DB) paceAndDeleteObsoleteFiles(jobID int, files []obsoleteFile) {
 				d.mu.Unlock()
 			}
 		}
-		d.deleteObsoleteFile(of.fileType, jobID, path, of.fileNum, of.usesSharedFS)
+		d.deleteObsoleteFile(of.fileType, jobID, path, of.fileNum, of.isShared)
 	}
 }
 
@@ -3144,15 +3175,20 @@ func (d *DB) maybeScheduleObsoleteTableDeletion() {
 
 // deleteObsoleteFile deletes file that is no longer needed.
 func (d *DB) deleteObsoleteFile(
-	fileType fileType, jobID int, path string, fileNum FileNum, usesSharedFS bool,
+	fileType fileType, jobID int, path string, fileNum FileNum, isShared bool,
 ) {
 	// TODO(peter): need to handle this error, probably by re-adding the
 	// file that couldn't be deleted to one of the obsolete slices map.
 	fs := d.opts.FS
-	if usesSharedFS {
+	if isShared {
 		fs = d.opts.SharedFS
 	}
-	err := d.opts.Cleaner.Clean(fs, fileType, path)
+	var err error
+	err = nil
+	//TODO(chen): really delete obsolete files in shared fs after refcnt is implemented
+	if !isShared {
+		err = d.opts.Cleaner.Clean(fs, fileType, path)
+	}
 	if oserror.IsNotExist(err) {
 		return
 	}
@@ -3220,4 +3256,22 @@ func mergeFileMetas(a, b []*fileMetadata) []*fileMetadata {
 		}
 	}
 	return a[:n]
+}
+
+func init() {
+	// Inject the shared sst metadata setting function here.
+	// Since the result is created by the current Pebble instance,
+	// it can access all the data in the table
+	setSharedSSTMetadata = func(meta *manifest.FileMetadata, creatorUniqueID uint32) {
+		// The output sst is shared so update its boundaries
+		meta.FileSmallest, meta.FileLargest = meta.Smallest, meta.Largest
+
+		// assign virtual boundaries for all boundary properties
+		lb, ub := meta.Smallest, meta.Largest
+		meta.Smallest, meta.Largest = lb, ub
+		meta.SmallestPointKey, meta.LargestPointKey = lb, ub
+
+		meta.CreatorUniqueID = creatorUniqueID
+		meta.PhysicalFileNum = meta.FileNum
+	}
 }

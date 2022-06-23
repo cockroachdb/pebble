@@ -552,9 +552,9 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:
-					require.NotNil(t, i.dataRS.sequentialFile)
+					require.NotNil(t, i.Iterator.(*singleLevelIterator).dataRS.sequentialFile)
 				case *twoLevelCompactionIterator:
-					require.NotNil(t, i.dataRS.sequentialFile)
+					require.NotNil(t, i.Iterator.(*twoLevelIterator).dataRS.sequentialFile)
 				default:
 					require.Failf(t, fmt.Sprintf("unknown compaction iterator type: %T", citer), "")
 				}

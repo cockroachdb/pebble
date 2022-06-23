@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/record"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -344,7 +345,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 	// Validate the most-recent OPTIONS file, if there is one.
 	var strictWALTail bool
-	var uniqueID uint16
+	var uniqueID uint32
 	if previousOptionsFilename != "" {
 		path := opts.FS.PathJoin(dirname, previousOptionsFilename)
 		strictWALTail, uniqueID, err = checkOptions(opts, path)
@@ -357,10 +358,14 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		opts.UniqueID = uniqueID
 	}
 
-	//if opts.SharedFS != nil {
-	//	d.persistentCache = newPersistentCache(opts.FS, dirname, opts.SharedFS, opts.SharedDir, opts.UniqueID)
-	//	d.persistentCache.Start()
-	//}
+	// Inject UniqueID to sstable package
+	sstable.DBUniqueID = opts.UniqueID
+
+	if opts.SharedFS != nil && opts.PersistentCacheSize != 0 {
+		d.persistentCache = newPersistentCache(opts.FS, dirname, opts.SharedFS, opts.SharedDir, opts.UniqueID, opts.PersistentCacheSize)
+		d.persistentCache.Start()
+	}
+
 	tableCacheSize := TableCacheSize(opts.MaxOpenFiles)
 	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, dirname, opts.FS, opts.SharedDir, opts.SharedFS, d.persistentCache, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
@@ -722,7 +727,7 @@ func (d *DB) replayWAL(
 	return maxSeqNum, err
 }
 
-func checkOptions(opts *Options, path string) (strictWALTail bool, uniqueID uint16, err error) {
+func checkOptions(opts *Options, path string) (strictWALTail bool, uniqueID uint32, err error) {
 	f, err := opts.FS.Open(path)
 	if err != nil {
 		return false, 0, err

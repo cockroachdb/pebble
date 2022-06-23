@@ -26,6 +26,9 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+// DBUniqueID is injected by pebble during Open()
+var DBUniqueID uint32 = 0
+
 var errCorruptIndexEntry = base.CorruptionErrorf("pebble/table: corrupt index entry")
 var errReaderClosed = errors.New("pebble/table: reader is closed")
 
@@ -116,6 +119,9 @@ type Iterator interface {
 	MaybeFilteredKeys() bool
 
 	SetCloseHook(fn func(i Iterator) error)
+
+	SetLevel(level int)
+	GetLevel() int
 }
 
 // singleLevelIterator iterates over an entire table of data. To seek for a given
@@ -237,6 +243,9 @@ type singleLevelIterator struct {
 	// is high).
 	useFilter              bool
 	lastBloomFilterMatched bool
+
+	level    int
+	levelSet bool
 }
 
 // singleLevelIterator implements the base.InternalIterator interface.
@@ -1161,6 +1170,20 @@ func (i *singleLevelIterator) SetCloseHook(fn func(i Iterator) error) {
 	i.closeHook = fn
 }
 
+// SetLevel implementes Iterator.SetLevel()
+func (i *singleLevelIterator) SetLevel(level int) {
+	i.levelSet = true
+	i.level = level
+}
+
+// GetLevel implements Iterator.GetLevel()
+func (i *singleLevelIterator) GetLevel() int {
+	if !i.levelSet {
+		return -1
+	}
+	return i.level
+}
+
 func firstError(err0, err1 error) error {
 	if err0 != nil {
 		return err0
@@ -1243,7 +1266,7 @@ func (i *singleLevelIterator) ResetStats() {
 // compactionIterator is similar to Iterator but it increments the number of
 // bytes that have been iterated through.
 type compactionIterator struct {
-	*singleLevelIterator
+	*tableIterator
 	bytesIterated *uint64
 	prevOffset    uint64
 }
@@ -1252,7 +1275,7 @@ type compactionIterator struct {
 var _ base.InternalIterator = (*compactionIterator)(nil)
 
 func (i *compactionIterator) String() string {
-	return i.reader.fileNum.String()
+	return i.tableIterator.getReader().fileNum.String()
 }
 
 func (i *compactionIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
@@ -1270,8 +1293,13 @@ func (i *compactionIterator) SeekLT(key []byte, flags base.SeekLTFlags) (*Intern
 }
 
 func (i *compactionIterator) First() (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
-	return i.skipForward(i.singleLevelIterator.First())
+	i.Iterator.(*singleLevelIterator).err = nil // clear cached iteration error
+	// wrap for shared sst
+	k, v := i.tableIterator.First()
+	curOffset := i.Iterator.(*singleLevelIterator).recordOffset()
+	*i.bytesIterated += uint64(curOffset - i.prevOffset)
+	i.prevOffset = curOffset
+	return k, v
 }
 
 func (i *compactionIterator) Last() (*InternalKey, []byte) {
@@ -1281,50 +1309,19 @@ func (i *compactionIterator) Last() (*InternalKey, []byte) {
 // Note: compactionIterator.Next mirrors the implementation of Iterator.Next
 // due to performance. Keep the two in sync.
 func (i *compactionIterator) Next() (*InternalKey, []byte) {
-	if i.err != nil {
+	if i.Iterator.(*singleLevelIterator).err != nil {
 		return nil, nil
 	}
-	return i.skipForward(i.data.Next())
+	// wrap for shared sst
+	k, v := i.tableIterator.Next()
+	curOffset := i.Iterator.(*singleLevelIterator).recordOffset()
+	*i.bytesIterated += uint64(curOffset - i.prevOffset)
+	i.prevOffset = curOffset
+	return k, v
 }
 
 func (i *compactionIterator) Prev() (*InternalKey, []byte) {
 	panic("pebble: Prev unimplemented")
-}
-
-func (i *compactionIterator) skipForward(key *InternalKey, val []byte) (*InternalKey, []byte) {
-	if key == nil {
-		for {
-			if key, _ := i.index.Next(); key == nil {
-				break
-			}
-			result := i.loadBlock(+1)
-			if result != loadBlockOK {
-				if i.err != nil {
-					break
-				}
-				switch result {
-				case loadBlockFailed:
-					// We checked that i.index was at a valid entry, so
-					// loadBlockFailed could not have happened due to to i.index
-					// being exhausted, and must be due to an error.
-					panic("loadBlock should not have failed with no error")
-				case loadBlockIrrelevant:
-					panic("compactionIter should not be using block intervals for skipping")
-				default:
-					panic(fmt.Sprintf("unexpected case %d", result))
-				}
-			}
-			// result == loadBlockOK
-			if key, val = i.data.First(); key != nil {
-				break
-			}
-		}
-	}
-
-	curOffset := i.recordOffset()
-	*i.bytesIterated += uint64(curOffset - i.prevOffset)
-	i.prevOffset = curOffset
-	return key, val
 }
 
 type twoLevelIterator struct {
@@ -1970,7 +1967,7 @@ func (i *twoLevelIterator) Close() error {
 // Note: twoLevelCompactionIterator and compactionIterator are very similar but
 // were separated due to performance.
 type twoLevelCompactionIterator struct {
-	*twoLevelIterator
+	*tableIterator
 	bytesIterated *uint64
 	prevOffset    uint64
 }
@@ -1979,7 +1976,7 @@ type twoLevelCompactionIterator struct {
 var _ base.InternalIterator = (*twoLevelCompactionIterator)(nil)
 
 func (i *twoLevelCompactionIterator) Close() error {
-	return i.twoLevelIterator.Close()
+	return i.tableIterator.Close()
 }
 
 func (i *twoLevelCompactionIterator) SeekGE(
@@ -2001,8 +1998,13 @@ func (i *twoLevelCompactionIterator) SeekLT(
 }
 
 func (i *twoLevelCompactionIterator) First() (*InternalKey, []byte) {
-	i.err = nil // clear cached iteration error
-	return i.skipForward(i.twoLevelIterator.First())
+	i.Iterator.(*twoLevelIterator).err = nil // clear cached iteration error
+	// wrap for shared sst
+	k, v := i.tableIterator.First()
+	curOffset := i.Iterator.(*twoLevelIterator).recordOffset()
+	*i.bytesIterated += uint64(curOffset - i.prevOffset)
+	i.prevOffset = curOffset
+	return k, v
 }
 
 func (i *twoLevelCompactionIterator) Last() (*InternalKey, []byte) {
@@ -2012,10 +2014,15 @@ func (i *twoLevelCompactionIterator) Last() (*InternalKey, []byte) {
 // Note: twoLevelCompactionIterator.Next mirrors the implementation of
 // twoLevelIterator.Next due to performance. Keep the two in sync.
 func (i *twoLevelCompactionIterator) Next() (*InternalKey, []byte) {
-	if i.err != nil {
+	if i.Iterator.(*twoLevelIterator).err != nil {
 		return nil, nil
 	}
-	return i.skipForward(i.singleLevelIterator.Next())
+	// wrap for shared sst
+	k, v := i.tableIterator.Next()
+	curOffset := i.Iterator.(*twoLevelIterator).recordOffset()
+	*i.bytesIterated += uint64(curOffset - i.prevOffset)
+	i.prevOffset = curOffset
+	return k, v
 }
 
 func (i *twoLevelCompactionIterator) Prev() (*InternalKey, []byte) {
@@ -2023,45 +2030,7 @@ func (i *twoLevelCompactionIterator) Prev() (*InternalKey, []byte) {
 }
 
 func (i *twoLevelCompactionIterator) String() string {
-	return i.reader.fileNum.String()
-}
-
-func (i *twoLevelCompactionIterator) skipForward(
-	key *InternalKey, val []byte,
-) (*InternalKey, []byte) {
-	if key == nil {
-		for {
-			if key, _ := i.topLevelIndex.Next(); key == nil {
-				break
-			}
-			result := i.loadIndex(+1)
-			if result != loadBlockOK {
-				if i.err != nil {
-					break
-				}
-				switch result {
-				case loadBlockFailed:
-					// We checked that i.index was at a valid entry, so
-					// loadBlockFailed could not have happened due to to i.index
-					// being exhausted, and must be due to an error.
-					panic("loadBlock should not have failed with no error")
-				case loadBlockIrrelevant:
-					panic("compactionIter should not be using block intervals for skipping")
-				default:
-					panic(fmt.Sprintf("unexpected case %d", result))
-				}
-			}
-			// result == loadBlockOK
-			if key, val = i.singleLevelIterator.First(); key != nil {
-				break
-			}
-		}
-	}
-
-	curOffset := i.recordOffset()
-	*i.bytesIterated += uint64(curOffset - i.prevOffset)
-	i.prevOffset = curOffset
-	return key, val
+	return i.tableIterator.getReader().fileNum.String()
 }
 
 type blockTransform func([]byte) ([]byte, error)
@@ -2438,7 +2407,14 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 		if err != nil {
 			return nil, err
 		}
-		return i, nil
+		rangeDelIter, err := r.newInternalRangeDelIter()
+		if err != nil {
+			if i.Close() != nil {
+				panic("NewIter: cannot create rangeDelIter for tableIterator")
+			}
+			return nil, err
+		}
+		return &tableIterator{i, rangeDelIter}, nil
 	}
 
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
@@ -2446,7 +2422,14 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 	if err != nil {
 		return nil, err
 	}
-	return i, nil
+	rangeDelIter, err := r.newInternalRangeDelIter()
+	if err != nil {
+		if i.Close() != nil {
+			panic("NewIter: cannot create rangeDelIter for tableIterator")
+		}
+		return nil, err
+	}
+	return &tableIterator{i, rangeDelIter}, nil
 }
 
 // NewIter returns an iterator for the contents of the table. If an error
@@ -2466,9 +2449,16 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 			return nil, err
 		}
 		i.setupForCompaction()
+		rangeDelIter, err := r.newInternalRangeDelIter()
+		if err != nil {
+			if i.Close() != nil {
+				panic("NewIter: cannot create rangeDelIter for tableIterator")
+			}
+			return nil, err
+		}
 		return &twoLevelCompactionIterator{
-			twoLevelIterator: i,
-			bytesIterated:    bytesIterated,
+			tableIterator: &tableIterator{i, rangeDelIter},
+			bytesIterated: bytesIterated,
 		}, nil
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
@@ -2477,9 +2467,16 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 		return nil, err
 	}
 	i.setupForCompaction()
+	rangeDelIter, err := r.newInternalRangeDelIter()
+	if err != nil {
+		if i.Close() != nil {
+			panic("NewIter: cannot create rangeDelIter for tableIterator")
+		}
+		return nil, err
+	}
 	return &compactionIterator{
-		singleLevelIterator: i,
-		bytesIterated:       bytesIterated,
+		tableIterator: &tableIterator{i, rangeDelIter},
+		bytesIterated: bytesIterated,
 	}, nil
 }
 
@@ -2494,7 +2491,7 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 	if err != nil {
 		return nil, err
 	}
-	i := &fragmentBlockIter{}
+	i := &rangeDelIter{reader: r}
 	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum); err != nil {
 		return nil, err
 	}
@@ -2571,7 +2568,7 @@ func (r *Reader) readBlock(
 ) (_ cache.Handle, cacheHit bool, _ error) {
 	usesSharedFS := false
 	if r.meta != nil {
-		usesSharedFS = r.meta.UsesSharedFS
+		usesSharedFS = r.meta.IsShared
 	}
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset, usesSharedFS); h.Get() != nil {
 		if raState != nil {
