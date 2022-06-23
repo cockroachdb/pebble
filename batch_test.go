@@ -145,6 +145,30 @@ func TestBatch(t *testing.T) {
 	verifyTestCases(&b, testCases)
 }
 
+func TestBatchLen(t *testing.T) {
+	var b Batch
+
+	requireLenAndReprEq := func(size int) {
+		require.Equal(t, size, b.Len())
+		require.Equal(t, size, len(b.Repr()))
+	}
+
+	requireLenAndReprEq(batchHeaderLen)
+
+	key := "test-key"
+	value := "test-value"
+
+	err := b.Set([]byte(key), []byte(value), nil)
+	require.NoError(t, err)
+
+	requireLenAndReprEq(33)
+
+	err = b.Delete([]byte(key), nil)
+	require.NoError(t, err)
+
+	requireLenAndReprEq(43)
+}
+
 func TestBatchEmpty(t *testing.T) {
 	var b Batch
 	require.True(t, b.Empty())
