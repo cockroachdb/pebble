@@ -714,6 +714,16 @@ func (s *L0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 
 	iter := s.levelMetadata.Iter()
 	for f := iter.First(); f != nil; f = iter.Next() {
+		if invariants.Enabled {
+			if !bytes.Equal(s.orderedIntervals[f.minIntervalIndex].startKey.key, f.Smallest.UserKey) {
+				panic(fmt.Sprintf("f.minIntervalIndex in FileMetadata out of sync with intervals in L0Sublevels: %s != %s",
+					s.formatKey(s.orderedIntervals[f.minIntervalIndex].startKey.key), s.formatKey(f.Smallest.UserKey)))
+			}
+			if !bytes.Equal(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, f.Largest.UserKey) {
+				panic(fmt.Sprintf("f.maxIntervalIndex in FileMetadata out of sync with intervals in L0Sublevels: %s != %s",
+					s.formatKey(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key), s.formatKey(f.Smallest.UserKey)))
+			}
+		}
 		if !f.Compacting {
 			continue
 		}

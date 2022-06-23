@@ -1650,6 +1650,15 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 			// TODO(peter): untested.
 			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
 			d.mu.versions.incrementObsoleteTablesLocked(pendingOutputs)
+
+			// If logAndApply fails, there is a chance that we ran NewL0Sublevels
+			// successfully, or at least ran it for long enough to mutate
+			// f.{min,max}IntervalIndex on many files. Since that NewL0Sublevels was
+			// on a Version that was not installed, regenerate the current version's
+			// NewL0Sublevels to ensure that all interval indices on FileMetadatas
+			// are correct again. This is necessary to avoid future panics in
+			// InitCompactingFileInfo as well as to aid in correct compaction picking.
+			_ = d.mu.versions.currentVersion().InitL0Sublevels(c.cmp, c.formatKey, d.opts.FlushSplitBytes)
 		}
 	}
 
@@ -2145,6 +2154,10 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 			// TODO(peter): untested.
 			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
 			d.mu.versions.incrementObsoleteTablesLocked(pendingOutputs)
+
+			// See comment in the similar invocation of InitL0Sublevels in flush1()
+			// above, on why this is necessary.
+			_ = d.mu.versions.currentVersion().InitL0Sublevels(c.cmp, c.formatKey, d.opts.FlushSplitBytes)
 		}
 	}
 
