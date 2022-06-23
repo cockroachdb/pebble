@@ -9,13 +9,16 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
 // RewriteKeySuffixes copies the content of the passed SSTable bytes to a new
 // sstable, written to `out`, in which the suffix `from` has is replaced with
-// `to` in every key. The input sstable must consist of only Sets and every key
-// must have `from` as its suffix as determined by the Split function of the
-// Comparer in the passed WriterOptions.
+// `to` in every key. The input sstable must consist of only Sets or RangeKeySets
+// and every key must have `from` as its suffix as determined by the Split
+// function of the Comparer in the passed WriterOptions. Range deletes must not
+// exist in this sstable, as they will be ignored.
 //
 // Data blocks are rewritten in parallel by `concurrency` workers and then
 // assembled into a final SST. Filters are copied from the original SST without
@@ -71,6 +74,11 @@ func rewriteKeySuffixesInBlocks(
 
 	if err := rewriteDataBlocksToWriter(r, w, l.Data, from, to, w.split, concurrency); err != nil {
 		return nil, errors.Wrap(err, "rewriting data blocks")
+	}
+
+	// Copy over the range key block and replace suffixes in it if it exists.
+	if err := rewriteRangeKeyBlockToWriter(r, w, from, to); err != nil {
+		return nil, errors.Wrap(err, "rewriting range key blocks")
 	}
 
 	// Copy over the filter block if it exists (rewriteDataBlocksToWriter will
@@ -318,6 +326,45 @@ func rewriteDataBlocksToWriter(
 	return nil
 }
 
+func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
+	iter, err := r.NewRawRangeKeyIter()
+	if err != nil {
+		return err
+	}
+	if iter == nil {
+		// No range keys.
+		return nil
+	}
+	defer iter.Close()
+
+	for s := iter.First(); s != nil; s = iter.Next() {
+		if !s.Valid() {
+			break
+		}
+		for i := range s.Keys {
+			if s.Keys[i].Kind() != base.InternalKeyKindRangeKeySet {
+				return errBadKind
+			}
+			if !bytes.Equal(s.Keys[i].Suffix, from) {
+				return errors.Errorf("key has suffix %q, expected %q", s.Keys[i].Suffix, from)
+			}
+			s.Keys[i].Suffix = to
+		}
+
+		err := rangekey.Encode(s, func(k base.InternalKey, v []byte) error {
+			// Calling AddRangeKey instead of addRangeKeySpan bypasses the fragmenter.
+			// This is okay because the raw fragments off of `iter` are already
+			// fragmented, and suffix replacement should not affect fragmentation.
+			return w.AddRangeKey(k, v)
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 type copyFilterWriter struct {
 	origMetaName   string
 	origPolicyName string
@@ -366,6 +413,9 @@ func RewriteKeySuffixesViaWriter(
 			return nil, err
 		}
 		k, v = i.Next()
+	}
+	if err := rewriteRangeKeyBlockToWriter(r, w, from, to); err != nil {
+		return nil, err
 	}
 	if err := w.Close(); err != nil {
 		return nil, err

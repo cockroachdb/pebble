@@ -31,8 +31,9 @@ func TestRewriteSuffixProps(t *testing.T) {
 	}
 
 	const keyCount = 1e5
+	const rangeKeyCount = 100
 	// Setup our test SST.
-	sst := make4bSuffixTestSST(t, wOpts, []byte(from), keyCount)
+	sst := make4bSuffixTestSST(t, wOpts, []byte(from), keyCount, rangeKeyCount)
 
 	expectedProps := make(map[string]string)
 	expectedProps["ts2.min"] = "46"
@@ -43,7 +44,7 @@ func TestRewriteSuffixProps(t *testing.T) {
 	// Also expect to see the aggregated block properties with their updated value
 	// at the correct (new) shortIDs. Seeing the rolled up value here is almost an
 	// end-to-end test since we only fed them each block during rewrite.
-	expectedProps["count"] = string(append([]byte{1}, strconv.Itoa(keyCount)...))
+	expectedProps["count"] = string(append([]byte{1}, strconv.Itoa(keyCount+rangeKeyCount)...))
 	expectedProps["bp2"] = string(interval{46, 47}.encode([]byte{2}))
 	expectedProps["bp3"] = string(interval{646, 647}.encode([]byte{0}))
 
@@ -137,8 +138,11 @@ func (f *memFile) Flush() error {
 	return nil
 }
 
-func make4bSuffixTestSST(t testing.TB, writerOpts WriterOptions, suffix []byte, keys int) []byte {
+func make4bSuffixTestSST(
+	t testing.TB, writerOpts WriterOptions, suffix []byte, keys int, rangeKeys int,
+) []byte {
 	key := make([]byte, 28)
+	endKey := make([]byte, 24)
 	copy(key[24:], suffix)
 
 	f := &memFile{}
@@ -148,6 +152,17 @@ func make4bSuffixTestSST(t testing.TB, writerOpts WriterOptions, suffix []byte, 
 		binary.BigEndian.PutUint64(key[8:16], 456)
 		binary.BigEndian.PutUint64(key[16:], uint64(i))
 		if err := w.Set(key, key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < rangeKeys; i++ {
+		binary.BigEndian.PutUint64(key[:8], 123) // 16-byte shared prefix
+		binary.BigEndian.PutUint64(key[8:16], 456)
+		binary.BigEndian.PutUint64(key[16:], uint64(i))
+		binary.BigEndian.PutUint64(endKey[:8], 123) // 16-byte shared prefix
+		binary.BigEndian.PutUint64(endKey[8:16], 456)
+		binary.BigEndian.PutUint64(endKey[16:], uint64(i+1))
+		if err := w.RangeKeySet(key[:24], endKey[:24], suffix, key); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -176,7 +191,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 
 		for size := range sizes {
 			writerOpts.Compression = compressions[comp]
-			sst := make4bSuffixTestSST(b, writerOpts, from, sizes[size])
+			sst := make4bSuffixTestSST(b, writerOpts, from, sizes[size], 0 /* rangeKeys */)
 			r, err := NewMemReader(sst, ReaderOptions{
 				Comparer: test4bSuffixComparer,
 				Filters:  map[string]base.FilterPolicy{writerOpts.FilterPolicy.Name(): writerOpts.FilterPolicy},

@@ -1193,8 +1193,12 @@ func keyCountCollectorFn(name string) func() BlockPropertyCollector {
 
 func (p *keyCountCollector) Name() string { return p.name }
 
-func (p *keyCountCollector) Add(_ InternalKey, _ []byte) error {
-	p.block++
+func (p *keyCountCollector) Add(k InternalKey, _ []byte) error {
+	if rangekey.IsRangeKey(k.Kind()) {
+		p.table++
+	} else {
+		p.block++
+	}
 	return nil
 }
 
