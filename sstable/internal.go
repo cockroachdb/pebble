@@ -4,11 +4,7 @@
 
 package sstable
 
-import (
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/rangekey"
-)
+import "github.com/cockroachdb/pebble/internal/base"
 
 // InternalKeyKind exports the base.InternalKeyKind type.
 type InternalKeyKind = base.InternalKeyKind
@@ -29,16 +25,3 @@ const (
 
 // InternalKey exports the base.InternalKey type.
 type InternalKey = base.InternalKey
-
-// IsRangeKey returns if this InternalKey is a range key. Alias for
-// rangekey.IsRangeKey.
-func IsRangeKey(ik InternalKey) bool {
-	return rangekey.IsRangeKey(ik.Kind())
-}
-
-// DecodeRangeKey decodes an InternalKey into a keyspan.Span, if it is a range
-// key. If keysDst is provided, keys will be appended to keysDst to reduce
-// allocations.
-func DecodeRangeKey(ik InternalKey, val []byte, keysDst []keyspan.Key) (keyspan.Span, error) {
-	return rangekey.Decode(ik, val, keysDst)
-}
