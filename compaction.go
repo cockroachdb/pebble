@@ -1647,6 +1647,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, false, /* forceRotation */
 			func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) })
 		if err != nil {
+			info.Err = err
 			// TODO(peter): untested.
 			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
 			d.mu.versions.incrementObsoleteTablesLocked(pendingOutputs)
@@ -2151,6 +2152,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 			return d.getInProgressCompactionInfoLocked(c)
 		})
 		if err != nil {
+			info.Err = err
 			// TODO(peter): untested.
 			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
 			d.mu.versions.incrementObsoleteTablesLocked(pendingOutputs)
