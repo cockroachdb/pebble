@@ -9,6 +9,12 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
+// SpanKey exports the keyspan.Key type.
+type SpanKey = keyspan.Key
+
+// Span exports the keyspan.Span type.
+type Span = keyspan.Span
+
 func (d *DB) newRangeKeyIter(
 	it *Iterator, seqNum, batchSeqNum uint64, batch *Batch, readState *readState,
 ) keyspan.FragmentIterator {
