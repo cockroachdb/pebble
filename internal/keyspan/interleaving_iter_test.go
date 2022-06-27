@@ -129,7 +129,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 				case "prev":
 					formatKey(iter.Prev())
 				case "seek-ge":
-					formatKey(iter.SeekGE([]byte(strings.TrimSpace(line[i:])), false /* trySeekUsingNext */))
+					formatKey(iter.SeekGE([]byte(strings.TrimSpace(line[i:])), base.SeekGEFlagsNone))
 				case "seek-lt":
 					formatKey(iter.SeekLT([]byte(strings.TrimSpace(line[i:]))))
 				case "set-bounds":
@@ -170,7 +170,7 @@ type pointIterator struct {
 
 var _ base.InternalIterator = &pointIterator{}
 
-func (i *pointIterator) SeekGE(key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
+func (i *pointIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*base.InternalKey, []byte) {
 	i.index = sort.Search(len(i.keys), func(j int) bool {
 		return i.cmp(i.keys[j].UserKey, key) >= 0
 	})
@@ -184,9 +184,9 @@ func (i *pointIterator) SeekGE(key []byte, trySeekUsingNext bool) (*base.Interna
 }
 
 func (i *pointIterator) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
-	return i.SeekGE(key, trySeekUsingNext)
+	return i.SeekGE(key, flags)
 }
 
 func (i *pointIterator) SeekLT(key []byte) (*base.InternalKey, []byte) {

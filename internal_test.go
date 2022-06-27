@@ -4,6 +4,8 @@
 
 package pebble
 
+import "github.com/cockroachdb/pebble/internal/base"
+
 // internalIterAdapter adapts the new internalIterator interface which returns
 // the key and value from positioning methods (Seek*, First, Last, Next, Prev)
 // to the old interface which returned a boolean corresponding to Valid. Only
@@ -30,12 +32,12 @@ func (i *internalIterAdapter) String() string {
 	return "internal-iter-adapter"
 }
 
-func (i *internalIterAdapter) SeekGE(key []byte, trySeekUsingNext bool) bool {
-	return i.update(i.internalIterator.SeekGE(key, trySeekUsingNext))
+func (i *internalIterAdapter) SeekGE(key []byte, flags base.SeekGEFlags) bool {
+	return i.update(i.internalIterator.SeekGE(key, flags))
 }
 
-func (i *internalIterAdapter) SeekPrefixGE(prefix, key []byte, trySeekUsingNext bool) bool {
-	return i.update(i.internalIterator.SeekPrefixGE(prefix, key, trySeekUsingNext))
+func (i *internalIterAdapter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) bool {
+	return i.update(i.internalIterator.SeekPrefixGE(prefix, key, flags))
 }
 
 func (i *internalIterAdapter) SeekLT(key []byte) bool {

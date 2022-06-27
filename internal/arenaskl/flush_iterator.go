@@ -34,12 +34,12 @@ func (it *flushIterator) String() string {
 	return "memtable"
 }
 
-func (it *flushIterator) SeekGE(key []byte, tryNextUsingSeek bool) (*base.InternalKey, []byte) {
+func (it *flushIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*base.InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
 }
 
 func (it *flushIterator) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
 	panic("pebble: SeekPrefixGE unimplemented")
 }

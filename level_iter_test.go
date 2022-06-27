@@ -128,7 +128,7 @@ func TestLevelIter(t *testing.T) {
 			iter := newLevelIter(opts, DefaultComparer.Compare,
 				func(a []byte) int { return len(a) }, newIters2, files.Iter(),
 				manifest.Level(level), nil)
-			iter.SeekGE([]byte(key), false /* trySeekUsingNext */)
+			iter.SeekGE([]byte(key), base.SeekGEFlagsNone)
 			lower, upper := tableOpts.GetLowerBound(), tableOpts.GetUpperBound()
 			return fmt.Sprintf("[%s,%s]\n", lower, upper)
 
@@ -380,15 +380,15 @@ func (i *levelIterTestIter) String() string {
 	return "level-iter-test"
 }
 
-func (i *levelIterTestIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
-	ikey, val := i.levelIter.SeekGE(key, trySeekUsingNext)
+func (i *levelIterTestIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
+	ikey, val := i.levelIter.SeekGE(key, flags)
 	return i.rangeDelSeek(key, ikey, val, 1)
 }
 
 func (i *levelIterTestIter) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
-	ikey, val := i.levelIter.SeekPrefixGE(prefix, key, trySeekUsingNext)
+	ikey, val := i.levelIter.SeekPrefixGE(prefix, key, flags)
 	return i.rangeDelSeek(key, ikey, val, 1)
 }
 
@@ -521,7 +521,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								l.SeekGE(keys[rng.Intn(len(keys))], false /* trySeekUsingNext */)
+								l.SeekGE(keys[rng.Intn(len(keys))], base.SeekGEFlagsNone)
 							}
 							l.Close()
 						})
@@ -568,7 +568,7 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 								pos := i % (keyCount - 1)
 								l.SetBounds(keys[pos], keys[pos+1])
 								// SeekGE will return keys[pos].
-								k, _ := l.SeekGE(keys[pos], false /* trySeekUsingNext */)
+								k, _ := l.SeekGE(keys[pos], base.SeekGEFlagsNone)
 								// Next() will get called once and return nil.
 								for k != nil {
 									k, _ = l.Next()
@@ -613,17 +613,20 @@ func BenchmarkLevelIterSeqSeekPrefixGE(b *testing.B) {
 					l.initRangeDel(new(keyspan.FragmentIterator))
 					keyCount := len(keys)
 					pos := 0
-					l.SeekPrefixGE(keys[pos], keys[pos], false)
+					l.SeekPrefixGE(keys[pos], keys[pos], base.SeekGEFlagsNone)
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
 						pos += skip
-						trySeekUsingNext := useNext
+						var flags base.SeekGEFlags
+						if useNext {
+							flags = flags.EnableTrySeekUsingNext()
+						}
 						if pos >= keyCount {
 							pos = 0
-							trySeekUsingNext = false
+							flags = flags.DisableTrySeekUsingNext()
 						}
 						// SeekPrefixGE will return keys[pos].
-						l.SeekPrefixGE(keys[pos], keys[pos], trySeekUsingNext)
+						l.SeekPrefixGE(keys[pos], keys[pos], flags)
 					}
 					b.StopTimer()
 					l.Close()
