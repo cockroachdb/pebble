@@ -205,7 +205,7 @@ func TestBlockIter2(t *testing.T) {
 							if len(parts) != 2 {
 								return "seek-ge <key>\n"
 							}
-							iter.SeekGE([]byte(strings.TrimSpace(parts[1])), false /* trySeekUsingNext */)
+							iter.SeekGE([]byte(strings.TrimSpace(parts[1])), base.SeekGEFlagsNone)
 						case "seek-lt":
 							if len(parts) != 2 {
 								return "seek-lt <key>\n"
@@ -271,7 +271,7 @@ func TestBlockIterKeyStability(t *testing.T) {
 	// restart-interval of 1 so that prefix compression was not performed.
 	for j := range expected {
 		keys := [][]byte{}
-		for key, _ := i.SeekGE(expected[j], false /* trySeekUsingNext */); key != nil; key, _ = i.Next() {
+		for key, _ := i.SeekGE(expected[j], base.SeekGEFlagsNone); key != nil; key, _ = i.Next() {
 			check(key.UserKey)
 			keys = append(keys, key.UserKey)
 		}
@@ -360,7 +360,7 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					k := keys[rng.Intn(len(keys))]
-					it.SeekGE(k, false /* trySeekUsingNext */)
+					it.SeekGE(k, base.SeekGEFlagsNone)
 					if testing.Verbose() {
 						if !it.valid() {
 							b.Fatal("expected to find key")

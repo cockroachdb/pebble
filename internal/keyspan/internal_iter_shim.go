@@ -37,14 +37,14 @@ func (i *InternalIteratorShim) Span() *Span {
 
 // SeekGE implements (base.InternalIterator).SeekGE.
 func (i *InternalIteratorShim) SeekGE(
-	key []byte, trySeekUsingNext bool,
+	key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
 	panic("unimplemented")
 }
 
 // SeekPrefixGE implements (base.InternalIterator).SeekPrefixGE.
 func (i *InternalIteratorShim) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
 	panic("unimplemented")
 }

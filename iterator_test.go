@@ -80,7 +80,7 @@ func (f *fakeIter) String() string {
 	return "fake"
 }
 
-func (f *fakeIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+func (f *fakeIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
 	f.valid = false
 	for f.index = 0; f.index < len(f.keys); f.index++ {
 		if DefaultComparer.Compare(key, f.key().UserKey) <= 0 {
@@ -95,9 +95,9 @@ func (f *fakeIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []by
 }
 
 func (f *fakeIter) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
-	return f.SeekGE(key, trySeekUsingNext)
+	return f.SeekGE(key, flags)
 }
 
 func (f *fakeIter) SeekLT(key []byte) (*InternalKey, []byte) {
@@ -269,14 +269,14 @@ func (i *invalidatingIter) zeroLast() {
 	}
 }
 
-func (i *invalidatingIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
-	return i.update(i.iter.SeekGE(key, trySeekUsingNext))
+func (i *invalidatingIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
+	return i.update(i.iter.SeekGE(key, flags))
 }
 
 func (i *invalidatingIter) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
-	return i.update(i.iter.SeekPrefixGE(prefix, key, trySeekUsingNext))
+	return i.update(i.iter.SeekPrefixGE(prefix, key, flags))
 }
 
 func (i *invalidatingIter) SeekLT(key []byte) (*InternalKey, []byte) {
@@ -918,20 +918,20 @@ type iterSeekOptWrapper struct {
 	seekGEUsingNext, seekPrefixGEUsingNext *int
 }
 
-func (i *iterSeekOptWrapper) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
-	if trySeekUsingNext {
+func (i *iterSeekOptWrapper) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
+	if flags.TrySeekUsingNext() {
 		*i.seekGEUsingNext++
 	}
-	return i.internalIterator.SeekGE(key, trySeekUsingNext)
+	return i.internalIterator.SeekGE(key, flags)
 }
 
 func (i *iterSeekOptWrapper) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*InternalKey, []byte) {
-	if trySeekUsingNext {
+	if flags.TrySeekUsingNext() {
 		*i.seekPrefixGEUsingNext++
 	}
-	return i.internalIterator.SeekPrefixGE(prefix, key, trySeekUsingNext)
+	return i.internalIterator.SeekPrefixGE(prefix, key, flags)
 }
 
 func TestIteratorSeekOpt(t *testing.T) {
@@ -1028,24 +1028,24 @@ type errorSeekIter struct {
 	err                   error
 }
 
-func (i *errorSeekIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+func (i *errorSeekIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
 	if i.tryInjectError() {
 		return nil, nil
 	}
 	i.err = nil
 	i.seekCount++
-	return i.internalIterator.SeekGE(key, trySeekUsingNext)
+	return i.internalIterator.SeekGE(key, flags)
 }
 
 func (i *errorSeekIter) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*InternalKey, []byte) {
 	if i.tryInjectError() {
 		return nil, nil
 	}
 	i.err = nil
 	i.seekCount++
-	return i.internalIterator.SeekPrefixGE(prefix, key, trySeekUsingNext)
+	return i.internalIterator.SeekPrefixGE(prefix, key, flags)
 }
 
 func (i *errorSeekIter) SeekLT(key []byte) (*InternalKey, []byte) {
