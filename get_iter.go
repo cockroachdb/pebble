@@ -57,7 +57,7 @@ func (g *getIter) SeekPrefixGE(
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
-func (g *getIter) SeekLT(key []byte) (*InternalKey, []byte) {
+func (g *getIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	panic("pebble: SeekLT unimplemented")
 }
 

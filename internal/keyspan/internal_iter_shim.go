@@ -50,7 +50,9 @@ func (i *InternalIteratorShim) SeekPrefixGE(
 }
 
 // SeekLT implements (base.InternalIterator).SeekLT.
-func (i *InternalIteratorShim) SeekLT(key []byte) (*base.InternalKey, []byte) {
+func (i *InternalIteratorShim) SeekLT(
+	key []byte, flags base.SeekLTFlags,
+) (*base.InternalKey, []byte) {
 	panic("unimplemented")
 }
 

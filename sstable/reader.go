@@ -669,7 +669,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
-func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
+func (i *singleLevelIterator) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	i.exhaustedBounds = 0
 	i.err = nil // clear cached iteration error
 	boundsCmp := i.boundsCmp
@@ -726,7 +726,7 @@ func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 		}
 	}
 	if !dontSeekWithinBlock {
-		if ikey, val := i.data.SeekLT(key); ikey != nil {
+		if ikey, val := i.data.SeekLT(key, flags); ikey != nil {
 			if i.blockLower != nil && i.cmp(ikey.UserKey, i.blockLower) < 0 {
 				i.exhaustedBounds = -1
 				return nil, nil
@@ -1110,7 +1110,7 @@ func (i *compactionIterator) SeekPrefixGE(
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
-func (i *compactionIterator) SeekLT(key []byte) (*InternalKey, []byte) {
+func (i *compactionIterator) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	panic("pebble: SeekLT unimplemented")
 }
 
@@ -1412,7 +1412,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
-func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
+func (i *twoLevelIterator) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	i.exhaustedBounds = 0
 	i.err = nil // clear cached iteration error
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
@@ -1450,7 +1450,7 @@ func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 			return nil, nil
 		}
 		if result == loadBlockOK {
-			if ikey, val := i.singleLevelIterator.SeekLT(key); ikey != nil {
+			if ikey, val := i.singleLevelIterator.SeekLT(key, flags); ikey != nil {
 				return ikey, val
 			}
 			// Fall through to skipBackward since the singleLevelIterator did
@@ -1715,7 +1715,9 @@ func (i *twoLevelCompactionIterator) SeekPrefixGE(
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
-func (i *twoLevelCompactionIterator) SeekLT(key []byte) (*InternalKey, []byte) {
+func (i *twoLevelCompactionIterator) SeekLT(
+	key []byte, flags base.SeekLTFlags,
+) (*InternalKey, []byte) {
 	panic("pebble: SeekLT unimplemented")
 }
 

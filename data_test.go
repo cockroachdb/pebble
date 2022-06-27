@@ -357,7 +357,7 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 				return "seek-lt <key>\n"
 			}
 			prefix = nil
-			key, value = iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+			key, value = iter.SeekLT([]byte(strings.TrimSpace(parts[1])), base.SeekLTFlagsNone)
 		case "first":
 			prefix = nil
 			key, value = iter.First()

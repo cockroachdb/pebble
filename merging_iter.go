@@ -435,7 +435,7 @@ func (m *mergingIter) switchToMinHeap() {
 func (m *mergingIter) switchToMaxHeap() {
 	if m.heap.len() == 0 {
 		if m.upper != nil {
-			m.SeekLT(m.upper)
+			m.SeekLT(m.upper, base.SeekLTFlagsNone)
 		} else {
 			m.Last()
 		}
@@ -486,7 +486,7 @@ func (m *mergingIter) switchToMaxHeap() {
 		if l.iterKey == nil || (m.upper != nil && l.isSyntheticIterBoundsKey &&
 			l.iterKey.IsExclusiveSentinel() && m.heap.cmp(l.iterKey.UserKey, m.upper) >= 0) {
 			if m.upper != nil {
-				l.iterKey, l.iterValue = l.iter.SeekLT(m.upper)
+				l.iterKey, l.iterValue = l.iter.SeekLT(m.upper, base.SeekLTFlagsNone)
 			} else {
 				l.iterKey, l.iterValue = l.iter.Last()
 			}
@@ -508,7 +508,7 @@ func (m *mergingIter) switchToMaxHeap() {
 	// above.
 	if m.upper != nil && cur.isSyntheticIterBoundsKey && cur.iterKey.IsExclusiveSentinel() &&
 		m.heap.cmp(cur.iterKey.UserKey, m.upper) >= 0 {
-		cur.iterKey, cur.iterValue = cur.iter.SeekLT(m.upper)
+		cur.iterKey, cur.iterValue = cur.iter.SeekLT(m.upper, base.SeekLTFlagsNone)
 	} else {
 		cur.iterKey, cur.iterValue = cur.iter.Prev()
 	}
@@ -795,7 +795,7 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterItem) bool {
 				if l.smallestUserKey != nil && m.heap.cmp(l.smallestUserKey, seekKey) > 0 {
 					seekKey = l.smallestUserKey
 				}
-				m.seekLT(seekKey, item.index)
+				m.seekLT(seekKey, item.index, base.SeekLTFlagsNone)
 				return true
 			}
 			if l.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
@@ -932,7 +932,7 @@ func (m *mergingIter) SeekPrefixGE(
 }
 
 // Seeks levels >= level to < key. Additionally uses range tombstones to extend the seeks.
-func (m *mergingIter) seekLT(key []byte, level int) {
+func (m *mergingIter) seekLT(key []byte, level int, flags base.SeekLTFlags) {
 	// See the comment in seekGE regarding using tombstones to adjust the seek
 	// target per level.
 	m.prefix = nil
@@ -942,7 +942,7 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 		}
 
 		l := &m.levels[level]
-		l.iterKey, l.iterValue = l.iter.SeekLT(key)
+		l.iterKey, l.iterValue = l.iter.SeekLT(key, flags)
 
 		if rangeDelIter := l.rangeDelIter; rangeDelIter != nil {
 			// The level has a range-del iterator. Find the tombstone containing
@@ -995,10 +995,10 @@ func (m *mergingIter) seekLT(key []byte, level int) {
 // SeekLT implements base.InternalIterator.SeekLT. Note that SeekLT only checks
 // the lower bound. It is up to the caller to ensure that key is less than the
 // upper bound.
-func (m *mergingIter) SeekLT(key []byte) (*InternalKey, []byte) {
+func (m *mergingIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	m.err = nil // clear cached iteration error
 	m.prefix = nil
-	m.seekLT(key, 0 /* start level */)
+	m.seekLT(key, 0 /* start level */, flags)
 	return m.findPrevEntry()
 }
 

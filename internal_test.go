@@ -40,8 +40,8 @@ func (i *internalIterAdapter) SeekPrefixGE(prefix, key []byte, flags base.SeekGE
 	return i.update(i.internalIterator.SeekPrefixGE(prefix, key, flags))
 }
 
-func (i *internalIterAdapter) SeekLT(key []byte) bool {
-	return i.update(i.internalIterator.SeekLT(key))
+func (i *internalIterAdapter) SeekLT(key []byte, flags base.SeekLTFlags) bool {
+	return i.update(i.internalIterator.SeekLT(key, flags))
 }
 
 func (i *internalIterAdapter) First() bool {

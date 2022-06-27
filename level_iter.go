@@ -470,7 +470,7 @@ func (l *levelIter) SeekPrefixGE(
 	return l.verify(l.skipEmptyFileForward())
 }
 
-func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
+func (l *levelIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
 	if l.isSyntheticIterBoundsKey != nil {
 		*l.isSyntheticIterBoundsKey = false
@@ -481,7 +481,7 @@ func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
 	if l.loadFile(l.findFileLT(key), -1) == noFileLoaded {
 		return nil, nil
 	}
-	if key, val := l.iter.SeekLT(key); key != nil {
+	if key, val := l.iter.SeekLT(key, flags); key != nil {
 		return l.verify(key, val)
 	}
 	return l.verify(l.skipEmptyFileBackward())
