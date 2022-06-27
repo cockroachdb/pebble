@@ -1229,7 +1229,7 @@ func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 		}
 	}
 	if seekInternalIter {
-		i.iterKey, i.iterValue = i.iter.SeekLT(key)
+		i.iterKey, i.iterValue = i.iter.SeekLT(key, base.SeekLTFlagsNone)
 		i.stats.ReverseSeekCount[InternalIterCall]++
 	}
 	i.findPrevEntry(limit)
@@ -1271,7 +1271,7 @@ func (i *Iterator) Last() bool {
 	i.requiresReposition = false
 	i.stats.ReverseSeekCount[InterfaceCall]++
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
-		i.iterKey, i.iterValue = i.iter.SeekLT(upperBound)
+		i.iterKey, i.iterValue = i.iter.SeekLT(upperBound, base.SeekLTFlagsNone)
 		i.stats.ReverseSeekCount[InternalIterCall]++
 	} else {
 		i.iterKey, i.iterValue = i.iter.Last()
@@ -1441,7 +1441,7 @@ func (i *Iterator) PrevWithLimit(limit []byte) IterValidityState {
 			// We're positioned after the last key. Need to reposition to point to
 			// the last key.
 			if upperBound := i.opts.GetUpperBound(); upperBound != nil {
-				i.iterKey, i.iterValue = i.iter.SeekLT(upperBound)
+				i.iterKey, i.iterValue = i.iter.SeekLT(upperBound, base.SeekLTFlagsNone)
 				i.stats.ReverseSeekCount[InternalIterCall]++
 			} else {
 				i.iterKey, i.iterValue = i.iter.Last()
