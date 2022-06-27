@@ -971,7 +971,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 		key = upperBound
 	}
 	seekInternalIter := true
-	trySeekUsingNext := false
+	var flags base.SeekGEFlags
 	// The following noop optimization only applies when i.batch == nil, since
 	// an iterator over a batch is iterating over mutable data, that may have
 	// changed since the last seek.
@@ -1002,11 +1002,13 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 			// comment on iterValidityState, to exclude any cases where i.pos
 			// is iterPosCur{Forward,Reverse}Paused. This avoids the need to
 			// special-case those iterator positions and their interactions with
-			// trySeekUsingNext, as the main uses for trySeekUsingNext in CockroachDB
+			// TrySeekUsingNext, as the main uses for TrySeekUsingNext in CockroachDB
 			// do not use limited Seeks in the first place.
-			trySeekUsingNext = cmp < 0 && i.iterValidityState != IterAtLimit && limit == nil
-			if invariants.Enabled && trySeekUsingNext && !i.forceEnableSeekOpt && disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
-				trySeekUsingNext = false
+			if cmp < 0 && i.iterValidityState != IterAtLimit && limit == nil {
+				flags = flags.EnableTrySeekUsingNext()
+			}
+			if invariants.Enabled && flags.TrySeekUsingNext() && !i.forceEnableSeekOpt && disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
+				flags = flags.DisableTrySeekUsingNext()
 			}
 			if i.pos == iterPosCurForwardPaused && i.cmp(key, i.iterKey.UserKey) <= 0 {
 				// Have some work to do, but don't need to seek, and we can
@@ -1016,7 +1018,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 		}
 	}
 	if seekInternalIter {
-		i.iterKey, i.iterValue = i.iter.SeekGE(key, trySeekUsingNext)
+		i.iterKey, i.iterValue = i.iter.SeekGE(key, flags)
 		i.stats.ForwardSeekCount[InternalIterCall]++
 	}
 	i.findNextEntry(limit)
@@ -1088,7 +1090,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 
 	prefixLen := i.split(key)
 	keyPrefix := key[:prefixLen]
-	trySeekUsingNext := false
+	var flags base.SeekGEFlags
 	if lastPositioningOp == seekPrefixGELastPositioningOp {
 		if !i.hasPrefix {
 			panic("lastPositioningOpsIsSeekPrefixGE is true, but hasPrefix is false")
@@ -1112,9 +1114,11 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 		//   at the SET.
 		// In general some versions of i.prefix could have been consumed by
 		// the iterator, so we only optimize for cmp < 0.
-		trySeekUsingNext = cmp < 0
-		if invariants.Enabled && trySeekUsingNext && !i.forceEnableSeekOpt && disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
-			trySeekUsingNext = false
+		if cmp < 0 {
+			flags = flags.EnableTrySeekUsingNext()
+		}
+		if invariants.Enabled && flags.TrySeekUsingNext() && !i.forceEnableSeekOpt && disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
+			flags = flags.DisableTrySeekUsingNext()
 		}
 	}
 	// Make a copy of the prefix so that modifications to the key after
@@ -1143,7 +1147,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 		key = upperBound
 	}
 
-	i.iterKey, i.iterValue = i.iter.SeekPrefixGE(i.prefixOrFullSeekKey, key, trySeekUsingNext)
+	i.iterKey, i.iterValue = i.iter.SeekPrefixGE(i.prefixOrFullSeekKey, key, flags)
 	i.stats.ForwardSeekCount[InternalIterCall]++
 	i.findNextEntry(nil)
 	i.maybeSampleRead()
@@ -1247,7 +1251,7 @@ func (i *Iterator) First() bool {
 	i.requiresReposition = false
 	i.stats.ForwardSeekCount[InterfaceCall]++
 	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, false /* trySeekUsingNext */)
+		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
 		i.stats.ForwardSeekCount[InternalIterCall]++
 	} else {
 		i.iterKey, i.iterValue = i.iter.First()
@@ -1323,7 +1327,7 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 		// We're positioned before the first key. Need to reposition to point to
 		// the first key.
 		if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-			i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, false /* trySeekUsingNext */)
+			i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
 			i.stats.ForwardSeekCount[InternalIterCall]++
 		} else {
 			i.iterKey, i.iterValue = i.iter.First()
@@ -1349,7 +1353,7 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 			// We're positioned before the first key. Need to reposition to point to
 			// the first key.
 			if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-				i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, false /* trySeekUsingNext */)
+				i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
 				i.stats.ForwardSeekCount[InternalIterCall]++
 			} else {
 				i.iterKey, i.iterValue = i.iter.First()

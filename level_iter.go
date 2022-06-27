@@ -387,7 +387,7 @@ func (l *levelIter) verify(key *InternalKey, val []byte) (*InternalKey, []byte) 
 	return key, val
 }
 
-func (l *levelIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
 	if l.isSyntheticIterBoundsKey != nil {
 		*l.isSyntheticIterBoundsKey = false
@@ -402,16 +402,16 @@ func (l *levelIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []b
 	if loadFileIndicator == newFileLoaded {
 		// File changed, so l.iter has changed, and that iterator is not
 		// positioned appropriately.
-		trySeekUsingNext = false
+		flags = flags.DisableTrySeekUsingNext()
 	}
-	if ikey, val := l.iter.SeekGE(key, trySeekUsingNext); ikey != nil {
+	if ikey, val := l.iter.SeekGE(key, flags); ikey != nil {
 		return l.verify(ikey, val)
 	}
 	return l.verify(l.skipEmptyFileForward())
 }
 
 func (l *levelIter) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
 	l.err = nil // clear cached iteration error
 	if l.isSyntheticIterBoundsKey != nil {
@@ -427,9 +427,9 @@ func (l *levelIter) SeekPrefixGE(
 	if loadFileIndicator == newFileLoaded {
 		// File changed, so l.iter has changed, and that iterator is not
 		// positioned appropriately.
-		trySeekUsingNext = false
+		flags = flags.DisableTrySeekUsingNext()
 	}
-	if key, val := l.iter.SeekPrefixGE(prefix, key, trySeekUsingNext); key != nil {
+	if key, val := l.iter.SeekPrefixGE(prefix, key, flags); key != nil {
 		return l.verify(key, val)
 	}
 	// When SeekPrefixGE returns nil, we have not necessarily reached the end of
@@ -456,13 +456,13 @@ func (l *levelIter) SeekPrefixGE(
 		}
 		return l.verify(l.largestBoundary, nil)
 	}
-	// It is possible that we are here because bloom filter matching failed.
-	// In that case it is likely that all keys matching the prefix are wholly
+	// It is possible that we are here because bloom filter matching failed.  In
+	// that case it is likely that all keys matching the prefix are wholly
 	// within the current file and cannot be in the subsequent file. In that
 	// case we don't want to go to the next file, since loading and seeking in
 	// there has some cost. Additionally, for sparse key spaces, loading the
-	// next file will defeat the optimization for the next SeekPrefixGE that
-	// is called with trySeekUsingNext=true, since for sparse key spaces it is
+	// next file will defeat the optimization for the next SeekPrefixGE that is
+	// called with flags.TrySeekUsingNext(), since for sparse key spaces it is
 	// likely that the next key will also be contained in the current file.
 	if n := l.split(l.iterFile.LargestPointKey.UserKey); l.cmp(prefix, l.iterFile.LargestPointKey.UserKey[:n]) < 0 {
 		return nil, nil

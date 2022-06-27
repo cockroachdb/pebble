@@ -357,7 +357,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
-								m.SeekGE(keys[rng.Intn(len(keys))], false /* trySeekUsingNext */)
+								m.SeekGE(keys[rng.Intn(len(keys))], base.SeekGEFlagsNone)
 							}
 							m.Close()
 						})
@@ -620,7 +620,7 @@ func BenchmarkMergingIterSeqSeekGEWithBounds(b *testing.B) {
 					pos := i % (keyCount - 1)
 					m.SetBounds(keys[pos], keys[pos+1])
 					// SeekGE will return keys[pos].
-					k, _ := m.SeekGE(keys[pos], false /* trySeekUsingNext */)
+					k, _ := m.SeekGE(keys[pos], base.SeekGEFlagsNone)
 					for k != nil {
 						k, _ = m.Next()
 					}
@@ -650,17 +650,20 @@ func BenchmarkMergingIterSeqSeekPrefixGE(b *testing.B) {
 					keyCount := len(keys)
 					pos := 0
 
-					m.SeekPrefixGE(keys[pos], keys[pos], false)
+					m.SeekPrefixGE(keys[pos], keys[pos], base.SeekGEFlagsNone)
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
 						pos += skip
-						trySeekUsingNext := useNext
+						var flags base.SeekGEFlags
+						if useNext {
+							flags = flags.EnableTrySeekUsingNext()
+						}
 						if pos >= keyCount {
 							pos = 0
-							trySeekUsingNext = false
+							flags = flags.DisableTrySeekUsingNext()
 						}
 						// SeekPrefixGE will return keys[pos].
-						m.SeekPrefixGE(keys[pos], keys[pos], trySeekUsingNext)
+						m.SeekPrefixGE(keys[pos], keys[pos], flags)
 					}
 					b.StopTimer()
 					m.Close()

@@ -20,12 +20,12 @@ func newErrorIter(err error) *errorIter {
 	return &errorIter{err: err}
 }
 
-func (c *errorIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+func (c *errorIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
 	return nil, nil
 }
 
 func (c *errorIter) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
 	return nil, nil
 }
