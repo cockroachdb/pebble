@@ -513,11 +513,11 @@ func (i *singleLevelIterator) recordOffset() uint64 {
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.
-func (i *singleLevelIterator) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+func (i *singleLevelIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
 	// The i.exhaustedBounds comparison indicates that the upper bound was
 	// reached. The i.data.isDataInvalidated() indicates that the sstable was
 	// exhausted.
-	if trySeekUsingNext && (i.exhaustedBounds == +1 || i.data.isDataInvalidated()) {
+	if flags.TrySeekUsingNext() && (i.exhaustedBounds == +1 || i.data.isDataInvalidated()) {
 		// Already exhausted, so return nil.
 		return nil, nil
 	}
@@ -528,12 +528,12 @@ func (i *singleLevelIterator) SeekGE(key []byte, trySeekUsingNext bool) (*Intern
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 	i.positionedUsingLatestBounds = true
-	return i.seekGEHelper(key, boundsCmp, trySeekUsingNext)
+	return i.seekGEHelper(key, boundsCmp, flags)
 }
 
 // seekGEHelper contains the common functionality for SeekGE and SeekPrefixGE.
 func (i *singleLevelIterator) seekGEHelper(
-	key []byte, boundsCmp int, trySeekUsingNext bool,
+	key []byte, boundsCmp int, flags base.SeekGEFlags,
 ) (*InternalKey, []byte) {
 	// Invariant: trySeekUsingNext => !i.data.isDataInvalidated() && i.exhaustedBounds != +1
 
@@ -574,8 +574,8 @@ func (i *singleLevelIterator) seekGEHelper(
 	} else {
 		// Cannot use bounds monotonicity. But may be able to optimize if
 		// caller claimed externally known invariant represented by
-		// trySeekUsingNext=true.
-		if trySeekUsingNext {
+		// flags.TrySeekUsingNext().
+		if flags.TrySeekUsingNext() {
 			// seekPrefixGE or SeekGE has already ensured
 			// !i.data.isDataInvalidated() && i.exhaustedBounds != +1
 			currKey := i.data.Key()
@@ -609,7 +609,7 @@ func (i *singleLevelIterator) seekGEHelper(
 		i.maybeFilteredKeysSingleLevel = false
 
 		var ikey *InternalKey
-		if ikey, _ = i.index.SeekGE(key, false /* trySeekUsingNext */); ikey == nil {
+		if ikey, _ = i.index.SeekGE(key, flags.DisableTrySeekUsingNext()); ikey == nil {
 			// The target key is greater than any key in the index block.
 			// Invalidate the block iterator so that a subsequent call to Prev()
 			// will return the last key in the table.
@@ -635,7 +635,7 @@ func (i *singleLevelIterator) seekGEHelper(
 		}
 	}
 	if !dontSeekWithinBlock {
-		if ikey, val := i.data.SeekGE(key, false /* trySeekUsingNext */); ikey != nil {
+		if ikey, val := i.data.SeekGE(key, flags.DisableTrySeekUsingNext()); ikey != nil {
 			if i.blockUpper != nil && i.cmp(ikey.UserKey, i.blockUpper) >= 0 {
 				i.exhaustedBounds = +1
 				return nil, nil
@@ -650,21 +650,21 @@ func (i *singleLevelIterator) seekGEHelper(
 // pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
 // to the caller to ensure that key is greater than or equal to the lower bound.
 func (i *singleLevelIterator) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
-	k, v := i.seekPrefixGE(prefix, key, trySeekUsingNext, i.useFilter)
+	k, v := i.seekPrefixGE(prefix, key, flags, i.useFilter)
 	return k, v
 }
 
 func (i *singleLevelIterator) seekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool, checkFilter bool,
+	prefix, key []byte, flags base.SeekGEFlags, checkFilter bool,
 ) (k *InternalKey, value []byte) {
 	i.err = nil // clear cached iteration error
 
 	if checkFilter && i.reader.tableFilter != nil {
 		if !i.lastBloomFilterMatched {
 			// Iterator is not positioned based on last seek.
-			trySeekUsingNext = false
+			flags = flags.DisableTrySeekUsingNext()
 		}
 		i.lastBloomFilterMatched = false
 		// Check prefix bloom filter.
@@ -690,7 +690,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 	// The i.exhaustedBounds comparison indicates that the upper bound was
 	// reached. The i.data.isDataInvalidated() indicates that the sstable was
 	// exhausted.
-	if trySeekUsingNext && (i.exhaustedBounds == +1 || i.data.isDataInvalidated()) {
+	if flags.TrySeekUsingNext() && (i.exhaustedBounds == +1 || i.data.isDataInvalidated()) {
 		// Already exhausted, so return nil.
 		return nil, nil
 	}
@@ -701,7 +701,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 	i.positionedUsingLatestBounds = true
-	k, value = i.seekGEHelper(key, boundsCmp, trySeekUsingNext)
+	k, value = i.seekGEHelper(key, boundsCmp, flags)
 	return k, value
 }
 
@@ -754,7 +754,7 @@ func (i *singleLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 		// Slow-path.
 		i.maybeFilteredKeysSingleLevel = false
 		var ikey *InternalKey
-		if ikey, _ = i.index.SeekGE(key, false /* trySeekUsingNext */); ikey == nil {
+		if ikey, _ = i.index.SeekGE(key, base.SeekGEFlagsNone); ikey == nil {
 			ikey, _ = i.index.Last()
 			if ikey == nil {
 				return nil, nil
@@ -1165,12 +1165,12 @@ func (i *compactionIterator) String() string {
 	return i.reader.fileNum.String()
 }
 
-func (i *compactionIterator) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+func (i *compactionIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
 }
 
 func (i *compactionIterator) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
 	panic("pebble: SeekPrefixGE unimplemented")
 }
@@ -1338,7 +1338,7 @@ func (i *twoLevelIterator) MaybeFilteredKeys() bool {
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package. Note that SeekGE only checks the upper bound. It is up to the
 // caller to ensure that key is greater than or equal to the lower bound.
-func (i *twoLevelIterator) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+func (i *twoLevelIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
 	i.exhaustedBounds = 0
 	i.err = nil // clear cached iteration error
 
@@ -1357,12 +1357,12 @@ func (i *twoLevelIterator) SeekGE(key []byte, trySeekUsingNext bool) (*InternalK
 
 	var dontSeekWithinSingleLevelIter bool
 	if i.topLevelIndex.isDataInvalidated() || !i.topLevelIndex.valid() ||
-		(i.boundsCmp <= 0 && !trySeekUsingNext) || i.cmp(key, i.topLevelIndex.Key().UserKey) > 0 {
+		(i.boundsCmp <= 0 && !flags.TrySeekUsingNext()) || i.cmp(key, i.topLevelIndex.Key().UserKey) > 0 {
 		// Slow-path: need to position the topLevelIndex.
 		i.maybeFilteredKeysTwoLevel = false
-		trySeekUsingNext = false
+		flags = flags.DisableTrySeekUsingNext()
 		var ikey *InternalKey
-		if ikey, _ = i.topLevelIndex.SeekGE(key, false /* trySeekUsingNext */); ikey == nil {
+		if ikey, _ = i.topLevelIndex.SeekGE(key, flags); ikey == nil {
 			i.data.invalidate()
 			i.index.invalidate()
 			return nil, nil
@@ -1387,7 +1387,7 @@ func (i *twoLevelIterator) SeekGE(key []byte, trySeekUsingNext bool) (*InternalK
 		}
 	}
 	// Else fast-path: There are two possible cases, from
-	// (i.boundsCmp > 0 || trySeekUsingNext):
+	// (i.boundsCmp > 0 || flags.TrySeekUsingNext()):
 	//
 	// 1) The bounds have moved forward (i.boundsCmp > 0) and this SeekGE is
 	// respecting the lower bound (guaranteed by Iterator). We know that
@@ -1406,7 +1406,7 @@ func (i *twoLevelIterator) SeekGE(key []byte, trySeekUsingNext bool) (*InternalK
 	if !dontSeekWithinSingleLevelIter {
 		// Note that while trySeekUsingNext could be false here, singleLevelIterator
 		// could do its own boundsCmp-based optimization to seek using next.
-		if ikey, val := i.singleLevelIterator.SeekGE(key, trySeekUsingNext); ikey != nil {
+		if ikey, val := i.singleLevelIterator.SeekGE(key, flags); ikey != nil {
 			return ikey, val
 		}
 	}
@@ -1417,7 +1417,7 @@ func (i *twoLevelIterator) SeekGE(key []byte, trySeekUsingNext bool) (*InternalK
 // pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
 // to the caller to ensure that key is greater than or equal to the lower bound.
 func (i *twoLevelIterator) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
 	i.err = nil // clear cached iteration error
 
@@ -1425,7 +1425,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	if i.reader.tableFilter != nil && i.useFilter {
 		if !i.lastBloomFilterMatched {
 			// Iterator is not positioned based on last seek.
-			trySeekUsingNext = false
+			flags = flags.DisableTrySeekUsingNext()
 		}
 		i.lastBloomFilterMatched = false
 		var dataH cache.Handle
@@ -1471,16 +1471,16 @@ func (i *twoLevelIterator) SeekPrefixGE(
 		// Slow-path: need to position the topLevelIndex.
 		//
 		// TODO(sumeer): improve this slow-path to be able to use Next, when
-		// trySeekUsingNext is true, since the fast path never applies for
-		// practical uses of SeekPrefixGE in CockroachDB (they never set
+		// flags.TrySeekUsingNext() is true, since the fast path never applies
+		// for practical uses of SeekPrefixGE in CockroachDB (they never set
 		// monotonic bounds). To apply it here, we would need to confirm that
 		// the topLevelIndex can continue using the same second level index
 		// block, and in that case we don't need to invalidate and reload the
 		// singleLevelIterator state.
 		i.maybeFilteredKeysTwoLevel = false
-		trySeekUsingNext = false
+		flags = flags.DisableTrySeekUsingNext()
 		var ikey *InternalKey
-		if ikey, _ = i.topLevelIndex.SeekGE(key, false /* trySeekUsingNext */); ikey == nil {
+		if ikey, _ = i.topLevelIndex.SeekGE(key, flags); ikey == nil {
 			i.data.invalidate()
 			i.index.invalidate()
 			return nil, nil
@@ -1515,7 +1515,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 
 	if !dontSeekWithinSingleLevelIter {
 		if ikey, val := i.singleLevelIterator.seekPrefixGE(
-			prefix, key, trySeekUsingNext, false /* checkFilter */); ikey != nil {
+			prefix, key, flags, false /* checkFilter */); ikey != nil {
 			return ikey, val
 		}
 	}
@@ -1539,7 +1539,7 @@ func (i *twoLevelIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 	// be returned by doing i.topLevelIndex.SeekGE(). To know this we would
 	// need to know the index key preceding the current one.
 	i.maybeFilteredKeysTwoLevel = false
-	if ikey, _ = i.topLevelIndex.SeekGE(key, false /* trySeekUsingNext */); ikey == nil {
+	if ikey, _ = i.topLevelIndex.SeekGE(key, base.SeekGEFlagsNone); ikey == nil {
 		if ikey, _ = i.topLevelIndex.Last(); ikey == nil {
 			i.data.invalidate()
 			i.index.invalidate()
@@ -1823,13 +1823,13 @@ func (i *twoLevelCompactionIterator) Close() error {
 }
 
 func (i *twoLevelCompactionIterator) SeekGE(
-	key []byte, trySeekUsingNext bool,
+	key []byte, flags base.SeekGEFlags,
 ) (*InternalKey, []byte) {
 	panic("pebble: SeekGE unimplemented")
 }
 
 func (i *twoLevelCompactionIterator) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
 	panic("pebble: SeekPrefixGE unimplemented")
 }
@@ -2785,7 +2785,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			return 0, err
 		}
 
-		key, val := topIter.SeekGE(start, false /* trySeekUsingNext */)
+		key, val := topIter.SeekGE(start, base.SeekGEFlagsNone)
 		if key == nil {
 			// The range falls completely after this file, or an error occurred.
 			return 0, topIter.Error()
@@ -2805,7 +2805,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			return 0, err
 		}
 
-		key, val = topIter.SeekGE(end, false /* trySeekUsingNext */)
+		key, val = topIter.SeekGE(end, base.SeekGEFlagsNone)
 		if key == nil {
 			if err := topIter.Error(); err != nil {
 				return 0, err
@@ -2830,7 +2830,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	// startIdxIter should not be nil at this point, while endIdxIter can be if the
 	// range spans past the end of the file.
 
-	key, val := startIdxIter.SeekGE(start, false /* trySeekUsingNext */)
+	key, val := startIdxIter.SeekGE(start, base.SeekGEFlagsNone)
 	if key == nil {
 		// The range falls completely after this file, or an error occurred.
 		return 0, startIdxIter.Error()
@@ -2844,7 +2844,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		// The range spans beyond this file. Include data blocks through the last.
 		return r.Properties.DataSize - startBH.Offset, nil
 	}
-	key, val = endIdxIter.SeekGE(end, false /* trySeekUsingNext */)
+	key, val = endIdxIter.SeekGE(end, base.SeekGEFlagsNone)
 	if key == nil {
 		if err := endIdxIter.Error(); err != nil {
 			return 0, err

@@ -398,7 +398,7 @@ func overlapWithIterator(
 	//    means boundary < L and hence is similar to 1).
 	// 4) boundary == L and L is sentinel,
 	//    we'll always overlap since for any values of i,j ranges [i, k) and [j, k) always overlap.
-	key, _ := iter.SeekGE(meta.Smallest.UserKey, false /* trySeekUsingNext */)
+	key, _ := iter.SeekGE(meta.Smallest.UserKey, base.SeekGEFlagsNone)
 	if key != nil {
 		c := sstableKeyCompare(cmp, *key, meta.Largest)
 		if c <= 0 {

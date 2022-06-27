@@ -534,7 +534,7 @@ func (i *blockIter) cacheEntry() {
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
-func (i *blockIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
 	i.clearCache()
 
 	ikey := base.MakeSearchKey(key)
@@ -639,7 +639,7 @@ func (i *blockIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []b
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
 // pebble package.
 func (i *blockIter) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
 	// This should never be called as prefix iteration is handled by sstable.Iterator.
 	panic("pebble: SeekPrefixGE unimplemented")
@@ -1210,7 +1210,7 @@ func (i *fragmentBlockIter) Prev() *keyspan.Span {
 // SeekGE implements (keyspan.FragmentIterator).SeekGE.
 func (i *fragmentBlockIter) SeekGE(k []byte) *keyspan.Span {
 	i.dir = +1
-	return i.gatherForward(i.blockIter.SeekGE(k, false))
+	return i.gatherForward(i.blockIter.SeekGE(k, base.SeekGEFlags(0)))
 }
 
 // SeekLT implements (keyspan.FragmentIterator).SeekLT.

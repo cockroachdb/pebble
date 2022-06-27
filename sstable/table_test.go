@@ -147,7 +147,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 			return err
 		}
 		i := newIterAdapter(iter)
-		if !i.SeekGE([]byte(k), false /* trySeekUsingNext */) || string(i.Key().UserKey) != k {
+		if !i.SeekGE([]byte(k), base.SeekGEFlagsNone) || string(i.Key().UserKey) != k {
 			return errors.Errorf("Find %q: key was not in the table", k)
 		}
 		if k1 := i.Key().UserKey; len(k1) != cap(k1) {
@@ -197,7 +197,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 			return err
 		}
 		i := newIterAdapter(iter)
-		if i.SeekGE([]byte(s), false /* trySeekUsingNext */) && s == string(i.Key().UserKey) {
+		if i.SeekGE([]byte(s), base.SeekGEFlagsNone) && s == string(i.Key().UserKey) {
 			return errors.Errorf("Find %q: unexpectedly found key in the table", s)
 		}
 		if err := i.Close(); err != nil {
@@ -227,7 +227,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 			return err
 		}
 		n, i := 0, newIterAdapter(iter)
-		for valid := i.SeekGE([]byte(ct.start), false /* trySeekUsingNext */); valid; valid = i.Next() {
+		for valid := i.SeekGE([]byte(ct.start), base.SeekGEFlagsNone); valid; valid = i.Next() {
 			n++
 		}
 		if n != ct.count {
@@ -303,7 +303,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 
 		if lower != nil {
 			n := 0
-			for valid := i.SeekGE(lower, false /* trySeekUsingNext */); valid; valid = i.Next() {
+			for valid := i.SeekGE(lower, base.SeekGEFlagsNone); valid; valid = i.Next() {
 				n++
 			}
 			if expected := upperIdx - lowerIdx; expected != n {

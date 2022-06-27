@@ -78,8 +78,8 @@ func (it *Iterator) Error() error {
 // pointing at a valid entry, and (nil, nil) otherwise. Note that SeekGE only
 // checks the upper bound. It is up to the caller to ensure that key is greater
 // than or equal to the lower bound.
-func (it *Iterator) SeekGE(key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
-	if trySeekUsingNext {
+func (it *Iterator) SeekGE(key []byte, flags base.SeekGEFlags) (*base.InternalKey, []byte) {
+	if flags.TrySeekUsingNext() {
 		if it.nd == it.list.tail {
 			// Iterator is done.
 			return nil, nil
@@ -119,9 +119,9 @@ func (it *Iterator) SeekGE(key []byte, trySeekUsingNext bool) (*base.InternalKey
 // provided so that an arenaskl.Iterator implements the
 // internal/base.InternalIterator interface.
 func (it *Iterator) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
-	return it.SeekGE(key, trySeekUsingNext)
+	return it.SeekGE(key, flags)
 }
 
 // SeekLT moves the iterator to the last entry whose key is less than the given

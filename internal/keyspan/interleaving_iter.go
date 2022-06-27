@@ -179,8 +179,8 @@ func (i *InterleavingIter) Init(
 //
 // NB: In accordance with the base.InternalIterator contract:
 //   i.lower ≤ key
-func (i *InterleavingIter) SeekGE(key []byte, trySeekUsingNext bool) (*base.InternalKey, []byte) {
-	i.pointKey, i.pointVal = i.pointIter.SeekGE(key, trySeekUsingNext)
+func (i *InterleavingIter) SeekGE(key []byte, flags base.SeekGEFlags) (*base.InternalKey, []byte) {
+	i.pointKey, i.pointVal = i.pointIter.SeekGE(key, flags)
 	i.pointKeyInterleaved = false
 	i.keyspanSeekGE(key)
 	i.dir = +1
@@ -198,9 +198,9 @@ func (i *InterleavingIter) SeekGE(key []byte, trySeekUsingNext bool) (*base.Inte
 // NB: In accordance with the base.InternalIterator contract:
 //   i.lower ≤ key
 func (i *InterleavingIter) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
-	i.pointKey, i.pointVal = i.pointIter.SeekPrefixGE(prefix, key, trySeekUsingNext)
+	i.pointKey, i.pointVal = i.pointIter.SeekPrefixGE(prefix, key, flags)
 	i.pointKeyInterleaved = false
 	i.keyspanSeekGE(key)
 	i.dir = +1
@@ -256,7 +256,7 @@ func (i *InterleavingIter) Next() (*base.InternalKey, []byte) {
 		case i.pointKey == nil && i.lower == nil:
 			i.pointKey, i.pointVal = i.pointIter.First()
 		case i.pointKey == nil && i.lower != nil:
-			i.pointKey, i.pointVal = i.pointIter.SeekGE(i.lower, false)
+			i.pointKey, i.pointVal = i.pointIter.SeekGE(i.lower, base.SeekGEFlagsNone)
 		default:
 			i.pointKey, i.pointVal = i.pointIter.Next()
 		}
