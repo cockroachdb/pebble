@@ -321,8 +321,7 @@ a:b
 # - 000011: covered by range key hint [r, z), table contains only range keys.
 #
 
-# NOTE: as compactions do not yet fully support range keys, the LSM shown in the
-# example above is created bottom-up via ingestions.
+# NOTE: the LSM shown in the example above is created bottom-up via ingestions.
 
 reset
 ----

@@ -1873,12 +1873,6 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 		// control over when compactions are run, disable stats by default.
 		opts.private.disableTableStats = true
 
-		// Disable automatic compactions to prevent the range key-only tables from
-		// being compacted away after they are created. Compactions do not yet
-		// understand that these tables need to remain in the LSM.
-		// TODO(travers): Revisit this once compactions support range keys.
-		opts.DisableAutomaticCompactions = true
-
 		return opts, nil
 	}
 
@@ -2072,10 +2066,6 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				return ""
 
 			case "ingest":
-				// Compactions / flushes do not yet fully support range keys. The
-				// "ingest" operation exists to allow tables containing range keys to be
-				// added to the LSM via ingest, rather than a flush.
-				// TODO(travers): Revisit this once compactions support range keys.
 				if err = runBuildCmd(td, d, d.opts.FS); err != nil {
 					return err.Error()
 				}
