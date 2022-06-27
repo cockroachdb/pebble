@@ -100,7 +100,7 @@ func (f *fakeIter) SeekPrefixGE(
 	return f.SeekGE(key, flags)
 }
 
-func (f *fakeIter) SeekLT(key []byte) (*InternalKey, []byte) {
+func (f *fakeIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	f.valid = false
 	for f.index = len(f.keys) - 1; f.index >= 0; f.index-- {
 		if DefaultComparer.Compare(key, f.key().UserKey) > 0 {
@@ -279,8 +279,8 @@ func (i *invalidatingIter) SeekPrefixGE(
 	return i.update(i.iter.SeekPrefixGE(prefix, key, flags))
 }
 
-func (i *invalidatingIter) SeekLT(key []byte) (*InternalKey, []byte) {
-	return i.update(i.iter.SeekLT(key))
+func (i *invalidatingIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
+	return i.update(i.iter.SeekLT(key, flags))
 }
 
 func (i *invalidatingIter) First() (*InternalKey, []byte) {
@@ -1048,13 +1048,13 @@ func (i *errorSeekIter) SeekPrefixGE(
 	return i.internalIterator.SeekPrefixGE(prefix, key, flags)
 }
 
-func (i *errorSeekIter) SeekLT(key []byte) (*InternalKey, []byte) {
+func (i *errorSeekIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	if i.tryInjectError() {
 		return nil, nil
 	}
 	i.err = nil
 	i.seekCount++
-	return i.internalIterator.SeekLT(key)
+	return i.internalIterator.SeekLT(key, flags)
 }
 
 func (i *errorSeekIter) tryInjectError() bool {

@@ -647,7 +647,7 @@ func (i *blockIter) SeekPrefixGE(
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *blockIter) SeekLT(key []byte) (*InternalKey, []byte) {
+func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	i.clearCache()
 
 	ikey := base.MakeSearchKey(key)
@@ -1216,7 +1216,7 @@ func (i *fragmentBlockIter) SeekGE(k []byte) *keyspan.Span {
 // SeekLT implements (keyspan.FragmentIterator).SeekLT.
 func (i *fragmentBlockIter) SeekLT(k []byte) *keyspan.Span {
 	i.dir = -1
-	return i.gatherBackward(i.blockIter.SeekLT(k))
+	return i.gatherBackward(i.blockIter.SeekLT(k, base.SeekLTFlagsNone))
 }
 
 // String implements fmt.Stringer.

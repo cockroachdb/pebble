@@ -131,7 +131,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 				case "seek-ge":
 					formatKey(iter.SeekGE([]byte(strings.TrimSpace(line[i:])), base.SeekGEFlagsNone))
 				case "seek-lt":
-					formatKey(iter.SeekLT([]byte(strings.TrimSpace(line[i:]))))
+					formatKey(iter.SeekLT([]byte(strings.TrimSpace(line[i:])), base.SeekLTFlagsNone))
 				case "set-bounds":
 					bounds := strings.Fields(line[i:])
 					if len(bounds) != 2 {
@@ -189,7 +189,7 @@ func (i *pointIterator) SeekPrefixGE(
 	return i.SeekGE(key, flags)
 }
 
-func (i *pointIterator) SeekLT(key []byte) (*base.InternalKey, []byte) {
+func (i *pointIterator) SeekLT(key []byte, flags base.SeekLTFlags) (*base.InternalKey, []byte) {
 	i.index = sort.Search(len(i.keys), func(j int) bool {
 		return i.cmp(i.keys[j].UserKey, key) >= 0
 	})

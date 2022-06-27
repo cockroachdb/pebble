@@ -161,7 +161,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		}
 
 		// Check using SeekLT.
-		if !i.SeekLT([]byte(k)) {
+		if !i.SeekLT([]byte(k), base.SeekLTFlagsNone) {
 			i.First()
 		} else {
 			i.Next()
@@ -313,7 +313,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 
 		if upper != nil {
 			n := 0
-			for valid := i.SeekLT(upper); valid; valid = i.Prev() {
+			for valid := i.SeekLT(upper, base.SeekLTFlagsNone); valid; valid = i.Prev() {
 				n++
 			}
 			if expected := upperIdx - lowerIdx; expected != n {
