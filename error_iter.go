@@ -30,7 +30,7 @@ func (c *errorIter) SeekPrefixGE(
 	return nil, nil
 }
 
-func (c *errorIter) SeekLT(key []byte) (*InternalKey, []byte) {
+func (c *errorIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	return nil, nil
 }
 

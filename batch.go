@@ -1265,7 +1265,7 @@ func (i *batchIter) SeekPrefixGE(
 	return i.SeekGE(key, flags)
 }
 
-func (i *batchIter) SeekLT(key []byte) (*InternalKey, []byte) {
+func (i *batchIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	i.err = nil // clear cached iteration error
 	ikey := i.iter.SeekLT(key)
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
@@ -1667,7 +1667,7 @@ func (i *flushableBatchIter) SeekPrefixGE(
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *flushableBatchIter) SeekLT(key []byte) (*InternalKey, []byte) {
+func (i *flushableBatchIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	i.err = nil // clear cached iteration error
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
@@ -1831,7 +1831,9 @@ func (i *flushFlushableBatchIter) SeekPrefixGE(
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
-func (i *flushFlushableBatchIter) SeekLT(key []byte) (*InternalKey, []byte) {
+func (i *flushFlushableBatchIter) SeekLT(
+	key []byte, flags base.SeekLTFlags,
+) (*InternalKey, []byte) {
 	panic("pebble: SeekLT unimplemented")
 }
 

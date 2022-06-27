@@ -210,7 +210,7 @@ func TestBlockIter2(t *testing.T) {
 							if len(parts) != 2 {
 								return "seek-lt <key>\n"
 							}
-							iter.SeekLT([]byte(strings.TrimSpace(parts[1])))
+							iter.SeekLT([]byte(strings.TrimSpace(parts[1])), base.SeekLTFlagsNone)
 						case "first":
 							iter.First()
 						case "last":
@@ -280,7 +280,7 @@ func TestBlockIterKeyStability(t *testing.T) {
 
 	for j := range expected {
 		keys := [][]byte{}
-		for key, _ := i.SeekLT(expected[j]); key != nil; key, _ = i.Prev() {
+		for key, _ := i.SeekLT(expected[j], base.SeekLTFlagsNone); key != nil; key, _ = i.Prev() {
 			check(key.UserKey)
 			keys = append(keys, key.UserKey)
 		}
@@ -315,7 +315,7 @@ func TestBlockIterReverseDirections(t *testing.T) {
 			require.NoError(t, err)
 
 			pos := 3
-			if key, _ := i.SeekLT([]byte("carrot")); !bytes.Equal(keys[pos], key.UserKey) {
+			if key, _ := i.SeekLT([]byte("carrot"), base.SeekLTFlagsNone); !bytes.Equal(keys[pos], key.UserKey) {
 				t.Fatalf("expected %s, but found %s", keys[pos], key.UserKey)
 			}
 			for pos > targetPos {
@@ -402,7 +402,7 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					j := rng.Intn(len(keys))
-					it.SeekLT(keys[j])
+					it.SeekLT(keys[j], base.SeekLTFlagsNone)
 					if testing.Verbose() {
 						if j == 0 {
 							if it.valid() {

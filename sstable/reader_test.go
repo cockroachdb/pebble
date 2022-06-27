@@ -112,8 +112,8 @@ func (i *iterAdapter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) b
 	return i.update(i.Iterator.SeekPrefixGE(prefix, key, flags))
 }
 
-func (i *iterAdapter) SeekLT(key []byte) bool {
-	return i.update(i.Iterator.SeekLT(key))
+func (i *iterAdapter) SeekLT(key []byte, flags base.SeekLTFlags) bool {
+	return i.update(i.Iterator.SeekLT(key, flags))
 }
 
 func (i *iterAdapter) First() bool {
@@ -1060,7 +1060,7 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					it.SeekLT(keys[rng.Intn(len(keys))])
+					it.SeekLT(keys[rng.Intn(len(keys))], base.SeekLTFlagsNone)
 				}
 
 				b.StopTimer()

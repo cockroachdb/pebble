@@ -128,7 +128,7 @@ func (it *Iterator) SeekPrefixGE(
 // key. Returns the key and value if the iterator is pointing at a valid entry,
 // and (nil, nil) otherwise. Note that SeekLT only checks the lower bound. It
 // is up to the caller to ensure that key is less than the upper bound.
-func (it *Iterator) SeekLT(key []byte) (*base.InternalKey, []byte) {
+func (it *Iterator) SeekLT(key []byte, flags base.SeekLTFlags) (*base.InternalKey, []byte) {
 	// NB: the top-level Iterator has already adjusted key based on
 	// the upper-bound.
 	it.nd, _, _ = it.seekForBaseSplice(key)

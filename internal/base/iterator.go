@@ -123,7 +123,7 @@ type InternalIterator interface {
 	// at a valid entry, and (nil, nil) otherwise. Note that SeekLT only checks
 	// the lower bound. It is up to the caller to ensure that key is less than
 	// the upper bound.
-	SeekLT(key []byte) (*InternalKey, []byte)
+	SeekLT(key []byte, flags SeekLTFlags) (*InternalKey, []byte)
 
 	// First moves the iterator the the first key/value pair. Returns the key and
 	// value if the iterator is pointing at a valid entry, and (nil, nil)
@@ -232,6 +232,13 @@ func (s SeekGEFlags) EnableTrySeekUsingNext() SeekGEFlags {
 func (s SeekGEFlags) DisableTrySeekUsingNext() SeekGEFlags {
 	return s &^ (1 << seekGEFlagTrySeekUsingNext)
 }
+
+// SeekLTFlags holds flags that may configure the behavior of a seek. Not all
+// flags are relevant to all iterators.
+type SeekLTFlags uint8
+
+// SeekLTFlagsNone is the default value of SeekLTFlags, with all flags disabled.
+const SeekLTFlagsNone = SeekLTFlags(0)
 
 // InternalIteratorWithStats extends InternalIterator to expose stats.
 type InternalIteratorWithStats interface {

@@ -208,8 +208,8 @@ func (i *InterleavingIter) SeekPrefixGE(
 }
 
 // SeekLT implements (base.InternalIterator).SeekLT.
-func (i *InterleavingIter) SeekLT(key []byte) (*base.InternalKey, []byte) {
-	i.pointKey, i.pointVal = i.pointIter.SeekLT(key)
+func (i *InterleavingIter) SeekLT(key []byte, flags base.SeekLTFlags) (*base.InternalKey, []byte) {
+	i.pointKey, i.pointVal = i.pointIter.SeekLT(key, flags)
 	i.pointKeyInterleaved = false
 	i.keyspanSeekLT(key)
 	i.dir = -1
@@ -377,7 +377,7 @@ func (i *InterleavingIter) Prev() (*base.InternalKey, []byte) {
 		case i.pointKey == nil && i.upper == nil:
 			i.pointKey, i.pointVal = i.pointIter.Last()
 		case i.pointKey == nil && i.upper != nil:
-			i.pointKey, i.pointVal = i.pointIter.SeekLT(i.upper)
+			i.pointKey, i.pointVal = i.pointIter.SeekLT(i.upper, base.SeekLTFlagsNone)
 		default:
 			i.pointKey, i.pointVal = i.pointIter.Prev()
 		}
