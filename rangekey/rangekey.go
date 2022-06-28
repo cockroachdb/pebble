@@ -25,6 +25,6 @@ func IsRangeKey(ik sstable.InternalKey) bool {
 
 // Decode decodes an InternalKey into a keyspan.Span, if it is a range key. If
 // keysDst is provided, keys will be appended to keysDst to reduce allocations.
-func Decode(ik sstable.InternalKey, val []byte, keysDst []keyspan.Key) (keyspan.Span, error) {
+func Decode(ik sstable.InternalKey, val []byte, keysDst []keyspan.Key) (Span, error) {
 	return rangekey.Decode(ik, val, keysDst)
 }
