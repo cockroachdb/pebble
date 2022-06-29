@@ -3699,8 +3699,6 @@ var _ errorfs.Injector = &createManifestErrorInjector{}
 // flush may see an inconsistent state, which can result in erroneous compacting
 // picking or runtime panics.
 func TestCompaction_LogAndApplyFails(t *testing.T) {
-	var db *DB
-
 	// numSubLevelIntervals returns the number of L0 sublevel intervals.
 	numSubLevelIntervals := func(v *version) int {
 		// Find the max L0 interval index across all files in L0.
@@ -3715,92 +3713,148 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 		return max + 1
 	}
 
-	inj := &createManifestErrorInjector{}
-	type postApplyState struct {
-		numIntervals int
-		err          error
-	}
-	flushed := make(chan postApplyState)
-	opts := &Options{
-		FS: errorfs.Wrap(vfs.NewMem(), inj),
-		// Rotate the manifest after each write. This is required to trigger a file
-		// creation, into which errors can be injected.
-		MaxManifestFileSize: 1,
-		EventListener: EventListener{
-			BackgroundError: func(err error) {
-				// Swallow errors to reduce noise.
-			},
-			FlushEnd: func(info FlushInfo) {
-				// NB: db.mu is held when this is called.
-				flushed <- postApplyState{
-					numIntervals: numSubLevelIntervals(db.mu.versions.currentVersion()),
-					err:          info.Err,
-				}
-			},
-		},
-	}
-
-	var err error
-	db, err = Open("", opts)
-	require.NoError(t, err)
-	defer db.Close()
-
 	// flushKeys writes the given keys to the DB, flushing the resulting memtable.
-	flushKeys := func(keys ...byte) {
+	flushKeys := func(db *DB, keys ...byte) {
 		b := db.NewBatch()
 		for _, k := range keys {
-			err = b.Set([]byte{k}, nil, nil)
+			err := b.Set([]byte{k}, nil, nil)
 			require.NoError(t, err)
 		}
-		err = b.Commit(nil)
+		err := b.Commit(nil)
 		require.NoError(t, err)
 		go func() { _ = db.Flush() }()
 	}
 
-	// Flush a single file into L0, resulting in a single L0 interval:
-	//
-	// L0.0  |-----------|
-	//       a  b  c  d  e
-	flushKeys('a', 'e')
-	state := <-flushed
-	require.NoError(t, state.err)
-	require.Equal(t, 1, state.numIntervals)
-
-	// Flush a second memtable into L0 that would under normal circumstances
-	// increase the number of intervals in L0 from one to two. i.e. L0 would
-	// resemble the following, with two intervals, [a, c) and [c, e]:
-	//
-	// L0.1  |-----|-----|
-	// L0.0  |-----------|
-	//       a  b  c  d  e
-	//
-	// However, the flush does not succeed as the FS prevents applying the
-	// MANIFEST update in the commit pipeline.
-	inj.enable()
-	flushKeys('a', 'c')
-
-	// Wait for the flush to fail at least once.
-	state = <-flushed
-	require.True(t, errors.Is(state.err, errorfs.ErrInjected))
-
-	// The flush will continue to retry and fail in the background. Allow it to
-	// proceed by disabling the FS errors.
-	inj.disable()
-
-	// The flush was retried in the background and should have completed. As the
-	// flush was possibly retried multiple times, consume from the channel until
-	// we see a successful flush.
-	for state = range flushed {
-		if state.err == nil {
-			close(flushed)
-			break
+	ingestKeys := func(db *DB, keys ...byte) {
+		// Create an SST for ingestion.
+		const fName = "ext"
+		f, err := db.opts.FS.Create(fName)
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		for _, k := range keys {
+			require.NoError(t, w.Set([]byte{k}, nil))
 		}
-		// While the flushes are failing, the interval indices for each file in L0
-		// should NOT change (i.e. it should have "rolled back" after each flush
-		// failure). The interval count stays at one.
-		require.Equal(t, 1, state.numIntervals)
+		require.NoError(t, w.Close())
+		// Ingest the SST.
+		go func() { _ = db.Ingest([]string{fName}) }()
 	}
 
-	// The interval is two, only after the flush succeeds.
-	require.Equal(t, 2, state.numIntervals)
+	testCases := []struct {
+		name  string
+		addFn func(db *DB, key ...byte)
+		// retryOp determines whether addFn func be called again once the fault has
+		// cleared.
+		retryOp bool
+	}{
+		{
+			name:    "flush",
+			addFn:   flushKeys,
+			retryOp: false, // Flushes retry in the background.
+		},
+		{
+			name:    "ingest",
+			addFn:   ingestKeys,
+			retryOp: true,
+		},
+	}
+
+	runTest := func(addFn func(db *DB, k ...byte), retryOp bool) {
+		var db *DB
+		inj := &createManifestErrorInjector{}
+		type postApplyState struct {
+			numIntervals int
+			err          error
+		}
+		doneC := make(chan postApplyState)
+		opts := &Options{
+			FS: errorfs.Wrap(vfs.NewMem(), inj),
+			// Rotate the manifest after each write. This is required to trigger a
+			// file creation, into which errors can be injected.
+			MaxManifestFileSize: 1,
+			EventListener: EventListener{
+				BackgroundError: func(err error) {
+					// Swallow errors to reduce noise.
+				},
+				FlushEnd: func(info FlushInfo) {
+					// NB: db.mu is held when this is called.
+					doneC <- postApplyState{
+						numIntervals: numSubLevelIntervals(db.mu.versions.currentVersion()),
+						err:          info.Err,
+					}
+				},
+				TableIngested: func(info TableIngestInfo) {
+					// NB: db.mu is NOT held when this is called.
+					db.mu.Lock()
+					defer db.mu.Unlock()
+					doneC <- postApplyState{
+						numIntervals: numSubLevelIntervals(db.mu.versions.currentVersion()),
+						err:          info.Err,
+					}
+				},
+			},
+		}
+
+		db, err := Open("", opts)
+		require.NoError(t, err)
+		defer db.Close()
+
+		// Flush a single memtable into L0, resulting in a single L0 interval:
+		//
+		// L0.0  |-----------|
+		//       a  b  c  d  e
+		flushKeys(db, 'a', 'e')
+		state := <-doneC
+		require.NoError(t, state.err)
+		require.Equal(t, 1, state.numIntervals)
+
+		// Perform a second operation (a flush or an ingestion) that would place
+		// second file into L0 that would, under normal circumstances, increase the
+		// number of intervals in L0 from one to two. i.e. L0 would resemble the
+		// following, with two intervals, [a, c) and [c, e]:
+		//
+		// L0.1  |-----|-----|
+		// L0.0  |-----------|
+		//       a  b  c  d  e
+		//
+		// However, the operation does not succeed as the FS prevents applying the
+		// MANIFEST update in the commit pipeline.
+		inj.enable()
+		addFn(db, 'a', 'c')
+
+		// Wait for the operation to fail at least once.
+		state = <-doneC
+		require.True(t, errors.Is(state.err, errorfs.ErrInjected))
+
+		// The operation may continue to retry and fail in the background. Allow it
+		// to proceed by disabling the FS errors.
+		inj.disable()
+
+		// Certain operations retry in the background, while others need to be
+		// explicitly retried.
+		if retryOp {
+			addFn(db, 'a', 'c')
+		}
+
+		// The operation was retried in the background and should have completed. As
+		// the operation was possibly retried multiple times, consume from the
+		// channel until we see a successful operation.
+		for state = range doneC {
+			if state.err == nil {
+				close(doneC)
+				break
+			}
+			// While the operations are failing, the interval indices for each file in
+			// L0 should NOT change (i.e. it should have "rolled back" after each
+			// flush failure). The interval count stays at one.
+			require.Equal(t, 1, state.numIntervals)
+		}
+
+		// The interval is two, only after the operation succeeds.
+		require.Equal(t, 2, state.numIntervals)
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			runTest(tc.addFn, tc.retryOp)
+		})
+	}
 }

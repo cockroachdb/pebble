@@ -468,6 +468,19 @@ func (vs *versionSet) logAndApply(
 		}
 		return nil
 	}(); err != nil {
+		// If application of the version edit fails, there is a chance that we ran
+		// NewL0Sublevels successfully, or at least ran it for long enough to mutate
+		// sublevel metadata on one or more files. Since that NewL0Sublevels was on
+		// a Version that will not be installed, regenerate the current version's
+		// NewL0Sublevels to ensure that the metadata reflects the current manifest
+		// state again.
+		errRevert := currentVersion.InitL0Sublevels(vs.cmp, vs.opts.Comparer.FormatKey, vs.opts.FlushSplitBytes)
+		if errRevert != nil {
+			// Failure to revert the sublevels to their original state leaves the
+			// metadata in an inconsistent state, which could affect correctness. Such
+			// a state is unrecoverable.
+			panic(errors.Wrap(errRevert, "pebble: could not revert sublevel metadata"))
+		}
 		return err
 	}
 
