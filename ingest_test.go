@@ -1207,6 +1207,17 @@ func TestIngestCleanup(t *testing.T) {
 	}
 }
 
+// fatalCapturingLogger captures a fatal error instead of panicking.
+type fatalCapturingLogger struct {
+	defaultLogger
+	err error
+}
+
+// Fatalf implements the Logger.Fatalf interface.
+func (l *fatalCapturingLogger) Fatalf(_ string, args ...interface{}) {
+	l.err = args[0].(error)
+}
+
 // BenchmarkManySSTables measures the cost of various operations with various
 // counts of SSTables within the database.
 func BenchmarkManySSTables(b *testing.B) {
