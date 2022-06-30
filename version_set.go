@@ -418,7 +418,7 @@ func (vs *versionSet) logAndApply(
 		var err error
 		newVersion, zombies, err = bve.Apply(currentVersion, vs.cmp, vs.opts.Comparer.FormatKey, vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "MANIFEST apply failed")
 		}
 
 		if newManifestFileNum != 0 {
@@ -429,13 +429,13 @@ func (vs *versionSet) logAndApply(
 					FileNum: newManifestFileNum,
 					Err:     err,
 				})
-				return err
+				return errors.Wrap(err, "MANIFEST create failed")
 			}
 		}
 
 		w, err := vs.manifest.Next()
 		if err != nil {
-			return err
+			return errors.Wrap(err, "MANIFEST next record write failed")
 		}
 		// NB: Any error from this point on is considered fatal as we don't now if
 		// the MANIFEST write occurred or not. Trying to determine that is
@@ -443,22 +443,18 @@ func (vs *versionSet) logAndApply(
 		// database is open. In particular, that mechanism generates a new MANIFEST
 		// and ensures it is synced.
 		if err := ve.Encode(w); err != nil {
-			vs.opts.Logger.Fatalf("MANIFEST write failed: %v", err)
-			return err
+			return errors.Wrap(err, "MANIFEST write failed")
 		}
 		if err := vs.manifest.Flush(); err != nil {
-			vs.opts.Logger.Fatalf("MANIFEST flush failed: %v", err)
-			return err
+			return errors.Wrap(err, "MANIFEST flush failed")
 		}
 		if err := vs.manifestFile.Sync(); err != nil {
-			vs.opts.Logger.Fatalf("MANIFEST sync failed: %v", err)
-			return err
+			return errors.Wrap(err, "MANIFEST sync failed")
 		}
 		if newManifestFileNum != 0 {
 			// NB: setCurrent is responsible for syncing the data directory.
 			if err := vs.setCurrent(newManifestFileNum); err != nil {
-				vs.opts.Logger.Fatalf("MANIFEST set current failed: %v", err)
-				return err
+				return errors.Wrap(err, "MANIFEST set current failed")
 			}
 			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 				JobID:   jobID,
@@ -468,6 +464,13 @@ func (vs *versionSet) logAndApply(
 		}
 		return nil
 	}(); err != nil {
+		// Any error encountered during any of the operations in the previous
+		// closure are considered fatal. Treating such errors as fatal is preferred
+		// to attempting to unwind various file and b-tree reference counts, and
+		// re-generating L0 sublevel metadata. This may change in the future, if
+		// certain manifest / WAL operations become retryable. For more context, see
+		// #1159 and #1792.
+		vs.opts.Logger.Fatalf("%s", err)
 		return err
 	}
 
