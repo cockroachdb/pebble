@@ -1895,7 +1895,6 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 			return d.getInProgressCompactionInfoLocked(c)
 		})
 		if err != nil {
-			info.Err = err
 			// TODO(peter): untested.
 			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
 			d.mu.versions.incrementObsoleteTablesLocked(pendingOutputs)
