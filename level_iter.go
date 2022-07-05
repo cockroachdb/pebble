@@ -67,7 +67,7 @@ type levelIter struct {
 	// tombstones.
 	syntheticBoundary InternalKey
 	// The iter for the current file. It is nil under any of the following conditions:
-	// - files.Current() == nil
+	// - iterFile == nil
 	// - err != nil
 	// - some other constraint, like the bounds in opts, caused the file at index to not
 	//   be relevant to the iteration.
@@ -85,7 +85,7 @@ type levelIter struct {
 	// This copy is used to revive the *rangeDelIterPtr in the case of reuse.
 	rangeDelIterPtr  *keyspan.FragmentIterator
 	rangeDelIterCopy keyspan.FragmentIterator
-	files            manifest.LevelIterator
+	files            levelFilesIter
 	err              error
 	// stats accumulates the stats of iters that have been closed.
 	stats InternalIteratorStats
@@ -195,7 +195,7 @@ func (l *levelIter) init(
 	l.split = split
 	l.iterFile = nil
 	l.newIters = newIters
-	l.files = files.Filter(manifest.KeyTypePoint)
+	l.files.iter = files.Filter(manifest.KeyTypePoint)
 	l.bytesIterated = bytesIterated
 }
 
@@ -213,33 +213,6 @@ func (l *levelIter) initSmallestLargestUserKey(
 
 func (l *levelIter) initIsSyntheticIterBoundsKey(isSyntheticIterBoundsKey *bool) {
 	l.isSyntheticIterBoundsKey = isSyntheticIterBoundsKey
-}
-
-func (l *levelIter) findFileGE(key []byte) *fileMetadata {
-	// Find the earliest file whose largest key is >= ikey.
-	//
-	// If the earliest file has its largest key == ikey and that largest key is a
-	// range deletion sentinel, we know that we manufactured this sentinel to convert
-	// the exclusive range deletion end key into an inclusive key (reminder: [start, end)#seqnum
-	// is the form of a range deletion sentinel which can contribute a largest key = end#sentinel).
-	// In this case we don't return this as the earliest file since there is nothing actually
-	// equal to key in it.
-	//
-	// Additionally, this prevents loading untruncated range deletions from a table which can't
-	// possibly contain the target key and is required for correctness by mergingIter.SeekGE
-	// (see the comment in that function).
-
-	m := l.files.SeekGE(l.cmp, key)
-	for m != nil && m.LargestPointKey.IsExclusiveSentinel() &&
-		l.cmp(m.LargestPointKey.UserKey, key) == 0 {
-		m = l.files.Next()
-	}
-	return m
-}
-
-func (l *levelIter) findFileLT(key []byte) *fileMetadata {
-	// Find the last file whose smallest key is < ikey.
-	return l.files.SeekLT(l.cmp, key)
 }
 
 // Init the iteration bounds for the current table. Returns -1 if the table
@@ -343,7 +316,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 
 		var rangeDelIter keyspan.FragmentIterator
 		var iter internalIterator
-		iter, rangeDelIter, l.err = l.newIters(l.files.Current(), &l.tableOpts, l.bytesIterated)
+		iter, rangeDelIter, l.err = l.newIters(l.iterFile, &l.tableOpts, l.bytesIterated)
 		l.iter = base.WrapIterWithStats(iter)
 		if l.err != nil {
 			return noFileLoaded
@@ -395,7 +368,7 @@ func (l *levelIter) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []b
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
-	loadFileIndicator := l.loadFile(l.findFileGE(key), +1)
+	loadFileIndicator := l.loadFile(l.files.SeekGE(l.cmp, key, trySeekUsingNext), +1)
 	if loadFileIndicator == noFileLoaded {
 		return nil, nil
 	}
@@ -420,7 +393,7 @@ func (l *levelIter) SeekPrefixGE(
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
-	loadFileIndicator := l.loadFile(l.findFileGE(key), +1)
+	loadFileIndicator := l.loadFile(l.files.SeekGE(l.cmp, key, trySeekUsingNext), +1)
 	if loadFileIndicator == noFileLoaded {
 		return nil, nil
 	}
@@ -478,7 +451,7 @@ func (l *levelIter) SeekLT(key []byte) (*InternalKey, []byte) {
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
-	if l.loadFile(l.findFileLT(key), -1) == noFileLoaded {
+	if l.loadFile(l.files.SeekLT(l.cmp, key, false /* relativeSeek */), -1) == noFileLoaded {
 		return nil, nil
 	}
 	if key, val := l.iter.SeekLT(key); key != nil {
@@ -791,4 +764,116 @@ func (l *levelIter) ResetStats() {
 	if l.iter != nil {
 		l.iter.ResetStats()
 	}
+}
+
+// levelFilesIter wraps a manifest.LevelIterator.
+//
+// TODO(jackson): Trigger lazy combined iteration from the levelFilesIter.
+type levelFilesIter struct {
+	iter     manifest.LevelIterator
+	iterFile *fileMetadata
+	dir      int8
+}
+
+func (i *levelFilesIter) First() *fileMetadata {
+	i.iterFile = i.iter.First()
+	i.dir = +1
+	return i.iterFile
+}
+
+func (i *levelFilesIter) Last() *fileMetadata {
+	i.iterFile = i.iter.Last()
+	i.dir = -1
+	return i.iterFile
+}
+
+func (i *levelFilesIter) Next() *fileMetadata {
+	i.iterFile = i.iter.Next()
+	i.dir = +1
+	return i.iterFile
+}
+
+func (i *levelFilesIter) Prev() *fileMetadata {
+	i.iterFile = i.iter.Prev()
+	i.dir = -1
+	return i.iterFile
+}
+
+// SeekGE seeks to the first file containing a key ≥ key.
+//
+// The caller may set relativeSeek=true only if all files after the before
+// iterator position are known to not contain a key ≥ key. If relativeSeek=true,
+// If relativeSeek=true, SeekGE does not perform a full seek. Instead it Nexts
+// the underlying LevelIterator until it finds a file containing a key ≥ key.
+func (i *levelFilesIter) SeekGE(cmp base.Compare, key []byte, relativeSeek bool) *fileMetadata {
+	if !relativeSeek {
+		// Find the earliest file whose largest key is >= ikey.
+		i.iterFile = i.iter.SeekGE(cmp, key)
+		// If the earliest file has its largest key == ikey and that largest key
+		// is a range deletion sentinel, we know that we manufactured this
+		// sentinel to convert the exclusive range deletion end key into an
+		// inclusive key (reminder: [start, end)#seqnum is the form of a range
+		// deletion sentinel which can contribute a largest key = end#sentinel).
+		// In this case we don't return this as the earliest file since there is
+		// nothing actually equal to key in it.
+		//
+		// Additionally, this prevents loading untruncated range deletions from
+		// a table which can't possibly contain the target key and is required
+		// for correctness by mergingIter.SeekGE (see the comment in that
+		// function).
+		for i.iterFile != nil && i.iterFile.LargestPointKey.IsExclusiveSentinel() &&
+			cmp(i.iterFile.LargestPointKey.UserKey, key) == 0 {
+			i.iterFile = i.iter.Next()
+		}
+		i.dir = +1
+		return i.iterFile
+	}
+	// If exhausted at the beginning, next onto the first file.
+	if i.iterFile == nil {
+		if i.dir == +1 {
+			// Already exhausted.
+			return nil
+		}
+		// Exhausted at the beginning, next onto the first file.
+		i.iterFile = i.iter.Next()
+	}
+	for i.iterFile != nil {
+		if v := cmp(i.iterFile.LargestPointKey.UserKey, key); v < 0 {
+			i.iterFile = i.iter.Next()
+			continue
+		} else if i.iterFile.LargestPointKey.IsExclusiveSentinel() && v == 0 {
+			i.iterFile = i.iter.Next()
+			continue
+		}
+		break
+	}
+	i.dir = +1
+	return i.iterFile
+}
+
+// SeekLT seeks to the last file containing a key < key.
+//
+// The caller may set relativeSeek=true only if all files after the current
+// iterator position are known to not contain a key < key. If relativeSeek=true,
+// SeekLT does not perform a full seek. Instead it Prevs the underlying
+// LevelIterator until it finds a file containing a key < key.
+func (i *levelFilesIter) SeekLT(cmp base.Compare, key []byte, relativeSeek bool) *fileMetadata {
+	if !relativeSeek {
+		i.iterFile = i.iter.SeekLT(cmp, key)
+		i.dir = -1
+		return i.iterFile
+	}
+	if i.iterFile == nil {
+		if i.dir == -1 {
+			// Already exhausted.
+			return nil
+		}
+		// Exhausted at the end, prev onto the last file.
+		i.iterFile = i.iter.Prev()
+	}
+	for i.iterFile != nil && cmp(i.iterFile.SmallestPointKey.UserKey, key) >= 0 {
+		i.iterFile = i.iter.Prev()
+	}
+	i.dir = -1
+	return i.iterFile
 }

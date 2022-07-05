@@ -630,10 +630,10 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		if current.L0SublevelFiles[sublevel].Empty() {
 			continue
 		}
-		manifestIter := current.L0SublevelFiles[sublevel].Iter()
+		files := current.L0SublevelFiles[sublevel].Iter()
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, nil /* split */, c.newIters, manifestIter,
+		li.init(iterOpts, c.cmp, nil /* split */, c.newIters, files,
 			manifest.L0Sublevel(sublevel), nil)
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initSmallestLargestUserKey(&mlevelAlloc[0].smallestUserKey, nil, nil)

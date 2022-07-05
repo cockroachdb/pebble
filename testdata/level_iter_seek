@@ -306,7 +306,7 @@ j.SET.7:j
 
 # Seeks to immediately following keys.
 iter
-seek-prefix-ge a true
+seek-prefix-ge a false
 seek-prefix-ge a true
 seek-prefix-ge b true
 next
@@ -332,7 +332,7 @@ j/<invalid>#7,1:j
 
 # Seeks to keys that are in the next file, so cannot use Next.
 iter
-seek-prefix-ge a true
+seek-prefix-ge a false
 seek-prefix-ge e true
 seek-prefix-ge i true
 seek-prefix-ge j true

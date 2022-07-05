@@ -617,7 +617,7 @@ func (i *Iterator) sampleRead() {
 		if len(mi.levels) > 1 {
 			mi.ForEachLevelIter(func(li *levelIter) bool {
 				l := manifest.LevelToInt(li.level)
-				if file := li.files.Current(); file != nil {
+				if file := li.files.iterFile; file != nil {
 					var containsKey bool
 					if i.pos == iterPosNext || i.pos == iterPosCurForward ||
 						i.pos == iterPosCurForwardPaused {
