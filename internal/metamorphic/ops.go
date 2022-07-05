@@ -235,7 +235,7 @@ type rangeKeyDeleteOp struct {
 
 func (o *rangeKeyDeleteOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.Experimental().RangeKeyDelete(o.start, o.end, t.writeOpts)
+	err := w.RangeKeyDelete(o.start, o.end, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -254,7 +254,7 @@ type rangeKeySetOp struct {
 
 func (o *rangeKeySetOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.Experimental().RangeKeySet(o.start, o.end, o.suffix, o.value, t.writeOpts)
+	err := w.RangeKeySet(o.start, o.end, o.suffix, o.value, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }
 
@@ -273,7 +273,7 @@ type rangeKeyUnsetOp struct {
 
 func (o *rangeKeyUnsetOp) run(t *test, h *history) {
 	w := t.getWriter(o.writerID)
-	err := w.Experimental().RangeKeyUnset(o.start, o.end, o.suffix, t.writeOpts)
+	err := w.RangeKeyUnset(o.start, o.end, o.suffix, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }
 

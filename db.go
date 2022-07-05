@@ -140,22 +140,12 @@ type Writer interface {
 	// It is safe to modify the contents of the arguments after Set returns.
 	Set(key, value []byte, o *WriteOptions) error
 
-	// Experimental returns the experimental write API.
-	Experimental() ExperimentalWriter
-}
-
-// ExperimentalWriter provides access to experimental features of a Batch.
-type ExperimentalWriter interface {
-	Writer
-
 	// RangeKeySet sets a range key mapping the key range [start, end) at the MVCC
 	// timestamp suffix to value. The suffix is optional. If any portion of the key
 	// range [start, end) is already set by a range key with the same suffix value,
 	// RangeKeySet overrides it.
 	//
 	// It is safe to modify the contents of the arguments after RangeKeySet returns.
-	//
-	// WARNING: This is an experimental feature with limited functionality.
 	RangeKeySet(start, end, suffix, value []byte, opts *WriteOptions) error
 
 	// RangeKeyUnset removes a range key mapping the key range [start, end) at the
@@ -166,8 +156,6 @@ type ExperimentalWriter interface {
 	//
 	// It is safe to modify the contents of the arguments after RangeKeyUnset
 	// returns.
-	//
-	// WARNING: This is an experimental feature with limited functionality.
 	RangeKeyUnset(start, end, suffix []byte, opts *WriteOptions) error
 
 	// RangeKeyDelete deletes all of the range keys in the range [start,end)
@@ -177,8 +165,6 @@ type ExperimentalWriter interface {
 	//
 	// It is safe to modify the contents of the arguments after RangeKeyDelete
 	// returns.
-	//
-	// WARNING: This is an experimental feature with limited functionality.
 	RangeKeyDelete(start, end []byte, opts *WriteOptions) error
 }
 
@@ -665,21 +651,16 @@ func (d *DB) LogData(data []byte, opts *WriteOptions) error {
 	return nil
 }
 
-// Experimental returns the experimental write API.
-func (d *DB) Experimental() ExperimentalWriter {
-	return experimentalDB{d}
-}
-
-type experimentalDB struct {
-	*DB
-}
-
-// RangeKeySet implements the ExperimentalWriter interface.
-func (e experimentalDB) RangeKeySet(start, end, suffix, value []byte, opts *WriteOptions) error {
-	b := newBatch(e.DB)
-	eb := b.Experimental()
-	_ = eb.RangeKeySet(start, end, suffix, value, opts)
-	if err := e.Apply(b, opts); err != nil {
+// RangeKeySet sets a range key mapping the key range [start, end) at the MVCC
+// timestamp suffix to value. The suffix is optional. If any portion of the key
+// range [start, end) is already set by a range key with the same suffix value,
+// RangeKeySet overrides it.
+//
+// It is safe to modify the contents of the arguments after RangeKeySet returns.
+func (d *DB) RangeKeySet(start, end, suffix, value []byte, opts *WriteOptions) error {
+	b := newBatch(d)
+	_ = b.RangeKeySet(start, end, suffix, value, opts)
+	if err := d.Apply(b, opts); err != nil {
 		return err
 	}
 	// Only release the batch on success.
@@ -687,12 +668,18 @@ func (e experimentalDB) RangeKeySet(start, end, suffix, value []byte, opts *Writ
 	return nil
 }
 
-// RangeKeyUnset implements the ExperimentalWriter interface.
-func (e experimentalDB) RangeKeyUnset(start, end, suffix []byte, opts *WriteOptions) error {
-	b := newBatch(e.DB)
-	eb := b.Experimental()
-	_ = eb.RangeKeyUnset(start, end, suffix, opts)
-	if err := e.Apply(b, opts); err != nil {
+// RangeKeyUnset removes a range key mapping the key range [start, end) at the
+// MVCC timestamp suffix. The suffix may be omitted to remove an unsuffixed
+// range key. RangeKeyUnset only removes portions of range keys that fall within
+// the [start, end) key span, and only range keys with suffixes that exactly
+// match the unset suffix.
+//
+// It is safe to modify the contents of the arguments after RangeKeyUnset
+// returns.
+func (d *DB) RangeKeyUnset(start, end, suffix []byte, opts *WriteOptions) error {
+	b := newBatch(d)
+	_ = b.RangeKeyUnset(start, end, suffix, opts)
+	if err := d.Apply(b, opts); err != nil {
 		return err
 	}
 	// Only release the batch on success.
@@ -700,12 +687,17 @@ func (e experimentalDB) RangeKeyUnset(start, end, suffix []byte, opts *WriteOpti
 	return nil
 }
 
-// RangeKeyDelete implements the ExperimentalWriter interface.
-func (e experimentalDB) RangeKeyDelete(start, end []byte, opts *WriteOptions) error {
-	b := newBatch(e.DB)
-	eb := b.Experimental()
-	_ = eb.RangeKeyDelete(start, end, opts)
-	if err := e.Apply(b, opts); err != nil {
+// RangeKeyDelete deletes all of the range keys in the range [start,end)
+// (inclusive on start, exclusive on end). It does not delete point keys (for
+// that use DeleteRange). RangeKeyDelete removes all range keys within the
+// bounds, including those with or without suffixes.
+//
+// It is safe to modify the contents of the arguments after RangeKeyDelete
+// returns.
+func (d *DB) RangeKeyDelete(start, end []byte, opts *WriteOptions) error {
+	b := newBatch(d)
+	_ = b.RangeKeyDelete(start, end, opts)
+	if err := d.Apply(b, opts); err != nil {
 		return err
 	}
 	// Only release the batch on success.
