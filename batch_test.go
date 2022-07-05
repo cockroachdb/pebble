@@ -96,7 +96,7 @@ func TestBatch(t *testing.T) {
 		case InternalKeyKindLogData:
 			_ = b.LogData([]byte(tc.key), nil)
 		case InternalKeyKindRangeKeyDelete:
-			_ = b.Experimental().RangeKeyDelete([]byte(tc.key), []byte(tc.value), nil)
+			_ = b.RangeKeyDelete([]byte(tc.key), []byte(tc.value), nil)
 		}
 	}
 	verifyTestCases(&b, testCases)
@@ -136,7 +136,7 @@ func TestBatch(t *testing.T) {
 		case InternalKeyKindLogData:
 			_ = b.LogData([]byte(tc.key), nil)
 		case InternalKeyKindRangeKeyDelete:
-			d := b.Experimental().(experimentalBatch).RangeKeyDeleteDeferred(len(key), len(value))
+			d := b.RangeKeyDeleteDeferred(len(key), len(value))
 			copy(d.Key, key)
 			copy(d.Value, value)
 			d.Finish()
@@ -179,9 +179,9 @@ func TestBatchEmpty(t *testing.T) {
 		func(b *Batch) error { return b.Delete(nil, nil) },
 		func(b *Batch) error { return b.DeleteRange(nil, nil, nil) },
 		func(b *Batch) error { return b.LogData(nil, nil) },
-		func(b *Batch) error { return b.Experimental().RangeKeySet(nil, nil, nil, nil, nil) },
-		func(b *Batch) error { return b.Experimental().RangeKeyUnset(nil, nil, nil, nil) },
-		func(b *Batch) error { return b.Experimental().RangeKeyDelete(nil, nil, nil) },
+		func(b *Batch) error { return b.RangeKeySet(nil, nil, nil, nil, nil) },
+		func(b *Batch) error { return b.RangeKeyUnset(nil, nil, nil, nil) },
+		func(b *Batch) error { return b.RangeKeyDelete(nil, nil, nil) },
 	}
 
 	for _, op := range ops {
@@ -238,7 +238,7 @@ func TestBatchReset(t *testing.T) {
 	copy(dd.Value, value)
 	dd.Finish()
 
-	require.NoError(t, b.Experimental().RangeKeySet([]byte(key), []byte(value), []byte(value), []byte(value), nil))
+	require.NoError(t, b.RangeKeySet([]byte(key), []byte(value), []byte(value), []byte(value), nil))
 
 	b.setSeqNum(100)
 	b.applied = 1
@@ -300,7 +300,7 @@ func TestIndexedBatchReset(t *testing.T) {
 	value := "test-value"
 	b.DeleteRange([]byte(start), []byte(end), nil)
 	b.Set([]byte(key), []byte(value), nil)
-	require.NoError(t, b.Experimental().
+	require.NoError(t, b.
 		RangeKeySet([]byte(start), []byte(end), []byte("suffix"), []byte(value), nil))
 	require.NotNil(t, b.rangeKeyIndex)
 	require.NotNil(t, b.rangeDelIndex)
@@ -477,7 +477,7 @@ func TestIndexedBatch_GlobalVisibility(t *testing.T) {
 	mut := newBatch(d)
 	require.NoError(t, mut.Set([]byte("bar"), []byte("bar"), nil))
 	require.NoError(t, mut.DeleteRange([]byte("e"), []byte("g"), nil))
-	require.NoError(t, mut.Experimental().RangeKeySet([]byte("a"), []byte("c"), []byte("@1"), []byte("v"), nil))
+	require.NoError(t, mut.RangeKeySet([]byte("a"), []byte("c"), []byte("@1"), []byte("v"), nil))
 	require.NoError(t, mut.Commit(nil))
 
 	scanIter := func() string {
@@ -902,11 +902,11 @@ func TestFlushableBatch(t *testing.T) {
 				case InternalKeyKindRangeDelete:
 					require.NoError(t, batch.DeleteRange(ikey.UserKey, value, nil))
 				case InternalKeyKindRangeKeyDelete:
-					require.NoError(t, batch.Experimental().RangeKeyDelete(ikey.UserKey, value, nil))
+					require.NoError(t, batch.RangeKeyDelete(ikey.UserKey, value, nil))
 				case InternalKeyKindRangeKeySet:
-					require.NoError(t, batch.Experimental().RangeKeySet(ikey.UserKey, value, value, value, nil))
+					require.NoError(t, batch.RangeKeySet(ikey.UserKey, value, value, value, nil))
 				case InternalKeyKindRangeKeyUnset:
-					require.NoError(t, batch.Experimental().RangeKeyUnset(ikey.UserKey, value, value, nil))
+					require.NoError(t, batch.RangeKeyUnset(ikey.UserKey, value, value, nil))
 				}
 			}
 			b = newFlushableBatch(batch, DefaultComparer)
@@ -1275,7 +1275,7 @@ func TestBatchSpanCaching(t *testing.T) {
 			start := testkeys.Key(ks, nextWriteKey)
 			end := append(start, 0x00)
 			require.NoError(t, b.DeleteRange(start, end, nil))
-			require.NoError(t, b.Experimental().RangeKeySet(start, end, nil, []byte("foo"), nil))
+			require.NoError(t, b.RangeKeySet(start, end, nil, []byte("foo"), nil))
 			nextWriteKey++
 		case p < .55: /* 45 % */
 			// Create a new iterator directly from the batch and check that it

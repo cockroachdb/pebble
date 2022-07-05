@@ -485,7 +485,7 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 			if len(parts) != 5 {
 				return errors.Errorf("%s expects 4 arguments", parts[0])
 			}
-			err = b.Experimental().RangeKeySet(
+			err = b.RangeKeySet(
 				[]byte(parts[1]),
 				[]byte(parts[2]),
 				[]byte(parts[3]),
@@ -495,7 +495,7 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 			if len(parts) != 4 {
 				return errors.Errorf("%s expects 3 arguments", parts[0])
 			}
-			err = b.Experimental().RangeKeyUnset(
+			err = b.RangeKeyUnset(
 				[]byte(parts[1]),
 				[]byte(parts[2]),
 				[]byte(parts[3]),
@@ -504,7 +504,7 @@ func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
 			if len(parts) != 3 {
 				return errors.Errorf("%s expects 2 arguments", parts[0])
 			}
-			err = b.Experimental().RangeKeyDelete(
+			err = b.RangeKeyDelete(
 				[]byte(parts[1]),
 				[]byte(parts[2]),
 				nil)
