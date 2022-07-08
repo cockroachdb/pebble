@@ -16,7 +16,15 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/ghemawat/stream"
+	"github.com/hashicorp/go-version"
 	"github.com/stretchr/testify/require"
+)
+
+const (
+	cmdGo       = "go"
+	golint      = "golang.org/x/lint/golint@6edffad5e6160f5949cdefc81710b2706fbcd4f6"
+	staticcheck = "honnef.co/go/tools/cmd/staticcheck@2022.1.2"
+	crlfmt      = "github.com/cockroachdb/crlfmt@b3eff0b"
 )
 
 func dirCmd(t *testing.T, dir string, name string, args ...string) stream.Filter {
@@ -59,13 +67,23 @@ func TestLint(t *testing.T) {
 	}
 
 	t.Run("TestGolint", func(t *testing.T) {
+		// Go versions less than 1.17 do not support the `go run path@version`
+		// syntax.
+		// TODO(travers): This can be removed when support for go1.16 is dropped.
+		if goVersionMatches("< 1.17") {
+			t.Skip("go run path@version unsupported in versions < go1.17")
+		}
 		t.Parallel()
+
+		args := []string{"run", golint}
+		args = append(args, pkgs...)
 
 		// This is overkill right now, but provides a structure for filtering out
 		// lint errors we don't care about.
 		if err := stream.ForEach(
 			stream.Sequence(
-				dirCmd(t, pkg.Dir, "golint", pkgs...),
+				dirCmd(t, pkg.Dir, cmdGo, args...),
+				stream.GrepNot("go: downloading"),
 			), func(s string) {
 				t.Errorf("\n%s", s)
 			}); err != nil {
@@ -74,14 +92,21 @@ func TestLint(t *testing.T) {
 	})
 
 	t.Run("TestStaticcheck", func(t *testing.T) {
-		if strings.HasPrefix(runtime.Version(), "go1.18") {
-			t.Skip("Go 1.18 not yet supported. See: https://github.com/dominikh/go-tools/issues/1166")
+		// Go versions less than 1.17 do not support the `go run path@version`
+		// syntax.
+		// TODO(travers): This can be removed when support for go1.16 is dropped.
+		if goVersionMatches("< 1.17") {
+			t.Skip("go run path@version unsupported in versions < go1.17")
 		}
 		t.Parallel()
 
+		args := []string{"run", staticcheck}
+		args = append(args, pkgs...)
+
 		if err := stream.ForEach(
 			stream.Sequence(
-				dirCmd(t, pkg.Dir, "staticcheck", pkgs...),
+				dirCmd(t, pkg.Dir, cmdGo, args...),
+				stream.GrepNot("go: downloading"),
 			), func(s string) {
 				t.Errorf("\n%s", s)
 			}); err != nil {
@@ -213,13 +238,21 @@ func TestLint(t *testing.T) {
 	})
 
 	t.Run("TestCrlfmt", func(t *testing.T) {
+		// Go versions less than 1.17 do not support the `go run path@version`
+		// syntax.
+		// TODO(travers): This can be removed when support for go1.16 is dropped.
+		if goVersionMatches("< 1.17") {
+			t.Skip("go run path@version unsupported in versions < go1.17")
+		}
 		t.Parallel()
 
-		name := "crlfmt"
-		args := []string{"-fast", "-tab", "2", "-ignore", "^vendor/", "."}
+		args := []string{"run", crlfmt, "-fast", "-tab", "2", "-ignore", "^vendor/", "."}
 		var buf bytes.Buffer
 		if err := stream.ForEach(
-			stream.Sequence(dirCmd(t, pkg.Dir, name, args...)),
+			stream.Sequence(
+				dirCmd(t, pkg.Dir, cmdGo, args...),
+				stream.GrepNot("go: downloading"),
+			),
 			func(s string) {
 				fmt.Fprintln(&buf, s)
 			}); err != nil {
@@ -231,7 +264,7 @@ func TestLint(t *testing.T) {
 		}
 
 		if t.Failed() {
-			reWriteCmd := []string{name, "-w"}
+			reWriteCmd := []string{crlfmt, "-w"}
 			reWriteCmd = append(reWriteCmd, args...)
 			t.Logf("run the following to fix your formatting:\n"+
 				"\n%s\n\n"+
@@ -269,4 +302,17 @@ func lintIgnore(ignore string) stream.FilterFunc {
 		}
 		return nil
 	}
+}
+
+// goVersionMatches returns true if the Go runtime versions matches the given
+// semver constraint. If the runtime version does not contain a semver string
+// (i.e. it is a SHA), this function returns false.
+func goVersionMatches(constraint string) bool {
+	runtimeVersion := strings.TrimPrefix(runtime.Version(), "go")
+	goV, err := version.NewSemver(runtimeVersion)
+	if err != nil {
+		return false // Fail open.
+	}
+	c := version.MustConstraints(version.NewConstraint(constraint))
+	return c.Check(goV)
 }

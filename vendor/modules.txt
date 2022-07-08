@@ -41,6 +41,8 @@ github.com/gogo/protobuf/sortkeys
 github.com/gogo/protobuf/types
 # github.com/golang/snappy v0.0.3
 github.com/golang/snappy
+# github.com/hashicorp/go-version v1.6.0
+github.com/hashicorp/go-version
 # github.com/inconshreveable/mousetrap v1.0.0
 github.com/inconshreveable/mousetrap
 # github.com/klauspost/compress v1.11.7
