@@ -518,11 +518,11 @@ func TestPickCompaction(t *testing.T) {
 		tc.picker.opts = opts
 		tc.picker.vers = tc.version
 		vs.picker = &tc.picker
-		env := compactionEnv{bytesCompacted: new(uint64)}
+		env := compactionEnv{}
 
 		pc, got := vs.picker.pickAuto(env), ""
 		if pc != nil {
-			c := newCompaction(pc, opts, env.bytesCompacted)
+			c := newCompaction(pc, opts)
 			got0 := fileNums(c.startLevel.files)
 			got1 := fileNums(c.outputLevel.files)
 			got2 := fileNums(c.grandparents)
@@ -1760,7 +1760,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 				d.ScanArgs(t, "start", &start)
 				d.ScanArgs(t, "base", &base)
 				pc := newPickedCompaction(opts, version, start, defaultOutputLevel(start, base), base)
-				c := newCompaction(pc, opts, new(uint64))
+				c := newCompaction(pc, opts)
 				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
 					c.outputLevel.level, c.maxOutputFileSize)
 

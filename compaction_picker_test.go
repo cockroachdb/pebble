@@ -522,13 +522,12 @@ func TestCompactionPickerL0(t *testing.T) {
 			}
 
 			pc = picker.pickAuto(compactionEnv{
-				bytesCompacted:          new(uint64),
 				earliestUnflushedSeqNum: math.MaxUint64,
 				inProgressCompactions:   inProgressCompactions,
 			})
 			var result strings.Builder
 			if pc != nil {
-				c := newCompaction(pc, opts, new(uint64))
+				c := newCompaction(pc, opts)
 				fmt.Fprintf(&result, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
 				fmt.Fprintf(&result, "L%d: %s\n", pc.startLevel.level, fileNums(pc.startLevel.files))
 				if !pc.outputLevel.files.Empty() {
@@ -764,13 +763,12 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			}
 
 			pc := picker.pickAuto(compactionEnv{
-				bytesCompacted:          new(uint64),
 				earliestUnflushedSeqNum: math.MaxUint64,
 				inProgressCompactions:   inProgressCompactions,
 			})
 			var result strings.Builder
 			if pc != nil {
-				c := newCompaction(pc, opts, new(uint64))
+				c := newCompaction(pc, opts)
 				fmt.Fprintf(&result, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
 				fmt.Fprintf(&result, "L%d: %s\n", pc.startLevel.level, fileNums(pc.startLevel.files))
 				if !pc.outputLevel.files.Empty() {
@@ -915,7 +913,6 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 
 		case "pick-auto":
 			pc := picker.pickAuto(compactionEnv{
-				bytesCompacted:          new(uint64),
 				earliestUnflushedSeqNum: math.MaxUint64,
 				readCompactionEnv: readCompactionEnv{
 					readCompactions: &rcList,
@@ -1233,7 +1230,6 @@ func TestCompactionOutputFileSize(t *testing.T) {
 
 		case "pick-auto":
 			pc := picker.pickAuto(compactionEnv{
-				bytesCompacted:          new(uint64),
 				earliestUnflushedSeqNum: math.MaxUint64,
 				earliestSnapshotSeqNum:  math.MaxUint64,
 			})

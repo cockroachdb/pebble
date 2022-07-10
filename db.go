@@ -220,16 +220,6 @@ type DB struct {
 		memTableCount    int64
 		memTableReserved int64 // number of bytes reserved in the cache for memtables
 
-		// bytesFlushed is the number of bytes flushed in the current flush. This
-		// must be read/written atomically since it is accessed by both the flush
-		// and compaction routines.
-		bytesFlushed uint64
-
-		// bytesCompacted is the number of bytes compacted in the current compaction.
-		// This is used as a dummy variable to increment during compaction, and the
-		// value is not used anywhere.
-		bytesCompacted uint64
-
 		// The size of the current log file (i.e. db.mu.log.queue[len(queue)-1].
 		logSize uint64
 

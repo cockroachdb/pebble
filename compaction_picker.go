@@ -22,7 +22,6 @@ const minIntraL0Count = 4
 const levelMultiplier = 10
 
 type compactionEnv struct {
-	bytesCompacted          *uint64
 	earliestUnflushedSeqNum uint64
 	earliestSnapshotSeqNum  uint64
 	inProgressCompactions   []compactionInfo
