@@ -549,12 +549,14 @@ func newCompactionPicker(
 	inProgressCompactions []compactionInfo,
 	levelSizes [numLevels]int64,
 	diskAvailBytes func() uint64,
+	l0ScoreOverride float64,
 ) compactionPicker {
 	p := &compactionPickerByScore{
-		opts:           opts,
-		vers:           v,
-		levelSizes:     levelSizes,
-		diskAvailBytes: diskAvailBytes,
+		opts:            opts,
+		vers:            v,
+		levelSizes:      levelSizes,
+		diskAvailBytes:  diskAvailBytes,
+		l0ScoreOverride: l0ScoreOverride,
 	}
 	p.initLevelMaxBytes(inProgressCompactions)
 	return p
@@ -665,6 +667,11 @@ type compactionPickerByScore struct {
 	// Compactions and flushes are longer, slower operations and provide
 	// a much looser bound when available bytes is decreasing.
 	diskAvailBytes func() uint64
+
+	// A non-zero value for l0ScoreOverride implies that the value should be
+	// used as the final L00 score. This is useful when we want to forcefully
+	// prioritize compactions out of L0.
+	l0ScoreOverride float64
 }
 
 var _ compactionPicker = &compactionPickerByScore{}
@@ -905,6 +912,10 @@ func (p *compactionPickerByScore) calculateScores(
 			}
 		}
 		prevLevel = level
+	}
+
+	if p.l0ScoreOverride != 0 {
+		scores[0].score = p.l0ScoreOverride
 	}
 
 	sort.Sort(sortCompactionLevelsDecreasingScore(scores[:]))

@@ -78,6 +78,11 @@ type versionSet struct {
 	// Mutable fields.
 	versions versionList
 	picker   compactionPicker
+	// l0ScoreOverride is used to override the final L0 level score used for
+	// compaction picking. An override is useful when we want to prioritize
+	// compactions out of L0. l0ScoreOverride must only be read/modified with
+	// DB.mu held.
+	l0ScoreOverride float64
 
 	metrics Metrics
 
@@ -152,7 +157,9 @@ func (vs *versionSet) create(
 	vs.append(newVersion)
 	var err error
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes(), vs.diskAvailBytes)
+	vs.picker = newCompactionPicker(
+		newVersion, vs.opts, nil, vs.metrics.levelSizes(), vs.diskAvailBytes, 0,
+	)
 
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
@@ -289,7 +296,9 @@ func (vs *versionSet) load(
 		l.Size = int64(files.SizeSum())
 	}
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes(), vs.diskAvailBytes)
+	vs.picker = newCompactionPicker(
+		newVersion, vs.opts, nil, vs.metrics.levelSizes(), vs.diskAvailBytes, 0,
+	)
 	return nil
 }
 
@@ -342,6 +351,8 @@ func (vs *versionSet) logUnlock() {
 //
 // inProgressCompactions is called while DB.mu is held, to get the list of
 // in-progress compactions.
+//
+// This is where the new version is created and applied.
 func (vs *versionSet) logAndApply(
 	jobID int,
 	ve *versionEdit,
@@ -523,7 +534,9 @@ func (vs *versionSet) logAndApply(
 	}
 	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
 
-	vs.picker = newCompactionPicker(newVersion, vs.opts, inProgress, vs.metrics.levelSizes(), vs.diskAvailBytes)
+	vs.picker = newCompactionPicker(
+		newVersion, vs.opts, inProgress, vs.metrics.levelSizes(), vs.diskAvailBytes, vs.l0ScoreOverride,
+	)
 	if !vs.dynamicBaseLevel {
 		vs.picker.forceBaseLevel1()
 	}

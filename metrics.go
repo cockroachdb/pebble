@@ -68,6 +68,10 @@ type LevelMetrics struct {
 	// metrics for tables is TablesFlushed. This metric is always
 	// zero for all levels other than L0.
 	BytesFlushed uint64
+	// BytesRemoved is the total number of bytes removed from a level.
+	// BytesRemoved will also include the bytes which have been moved out of a
+	// level and the bytes which have been deleted from a level.
+	BytesRemoved uint64
 	// The number of sstables compacted to this level.
 	TablesCompacted uint64
 	// The number of sstables flushed to this level.
@@ -82,6 +86,7 @@ type LevelMetrics struct {
 func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.NumFiles += u.NumFiles
 	m.Size += u.Size
+	m.BytesRemoved += u.BytesRemoved
 	m.BytesIn += u.BytesIn
 	m.BytesIngested += u.BytesIngested
 	m.BytesMoved += u.BytesMoved

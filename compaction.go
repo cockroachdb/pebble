@@ -2212,6 +2212,7 @@ func (d *DB) runCompaction(
 			for f := iter.First(); f != nil; f = iter.Next() {
 				levelMetrics.NumFiles--
 				levelMetrics.Size -= int64(f.Size)
+				levelMetrics.BytesRemoved += f.Size
 				ve.DeletedFiles[deletedFileEntry{
 					Level:   cl.level,
 					FileNum: f.FileNum,
@@ -2231,8 +2232,9 @@ func (d *DB) runCompaction(
 		meta := iter.First()
 		c.metrics = map[int]*LevelMetrics{
 			c.startLevel.level: {
-				NumFiles: -1,
-				Size:     -int64(meta.Size),
+				NumFiles:     -1,
+				Size:         -int64(meta.Size),
+				BytesRemoved: meta.Size,
 			},
 			c.outputLevel.level: {
 				NumFiles:    1,
@@ -2761,6 +2763,8 @@ func (d *DB) runCompaction(
 		for f := iter.First(); f != nil; f = iter.Next() {
 			c.metrics[cl.level].NumFiles--
 			c.metrics[cl.level].Size -= int64(f.Size)
+			c.metrics[cl.level].BytesRemoved += f.Size
+			// Bytes removed from the level can be defined here.
 			ve.DeletedFiles[deletedFileEntry{
 				Level:   cl.level,
 				FileNum: f.FileNum,

@@ -1260,6 +1260,50 @@ func (d *DB) Close() error {
 	return err
 }
 
+// ClearL0 can be used to forcefully prioritize compactions out of L0. If L0
+// has X bytes as ClearL0 is called, then ClearL0 will return once X bytes
+// have been cleared out of L0.
+func (d *DB) ClearL0() error {
+	// TODO(bananabrick): Maybe the caller should be allowed to pass in the amount
+	// of bytes it wants cleared out of L0.
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+	if d.opts.ReadOnly {
+		return ErrReadOnly
+	}
+
+	metrics := d.Metrics()
+	initL0Size := metrics.levelSizes()[0]
+	initBytesRemovedFromL0 := metrics.Levels[0].BytesRemoved
+
+	d.mu.Lock()
+	// Set arbitrarily high to force compactions out of L0.
+	d.mu.versions.l0ScoreOverride = 10000
+	d.mu.Unlock()
+
+	for {
+		time.Sleep(10 * time.Second)
+
+		// Check if initL0Size bytes have been cleared out of L0.
+		newMetrics := d.Metrics()
+
+		bytesRemovedDelta := newMetrics.Levels[0].BytesRemoved - initBytesRemovedFromL0
+		fmt.Println("bytes removed from L0 so far", bytesRemovedDelta)
+		// if int64(bytesRemovedDelta) >= initL0Size {
+		// 	break
+		// }
+	}
+
+	// TODO(bananabrick): What if we never hit this point? Could happen if we're
+	// unable to pick compactions out of L0.
+	d.mu.Lock()
+	d.mu.versions.l0ScoreOverride = 0
+	d.mu.Unlock()
+
+	return nil
+}
+
 // Compact the specified range of keys in the database.
 func (d *DB) Compact(start, end []byte, parallelize bool) error {
 	if err := d.closed.Load(); err != nil {

@@ -353,6 +353,10 @@ func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 	for i := 0; i < concurrency; i++ {
 		go y.run(db, wg)
 	}
+
+	go func() {
+		db.ClearL0()
+	}()
 }
 
 func (y *ycsb) run(db DB, wg *sync.WaitGroup) {
