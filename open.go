@@ -706,7 +706,7 @@ func (d *DB) replayWAL(
 	// mem is nil here.
 	if !d.opts.ReadOnly {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
-			1 /* base level */, toFlush, &d.atomic.bytesFlushed)
+			1 /* base level */, toFlush)
 		newVE, _, err := d.runCompaction(jobID, c, nilPacer)
 		if err != nil {
 			return 0, err
