@@ -64,9 +64,7 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 				}
 
 				burst := uint64(1)
-				dirtyBytes := uint64(1)
 				var bytesIterated uint64
-				var currentTotal uint64
 				var slowdownThreshold uint64
 				var freeBytes, liveBytes, obsoleteBytes uint64
 				if len(d.Input) > 0 {
@@ -86,10 +84,6 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 							burst = varValue
 						case "bytesIterated":
 							bytesIterated = varValue
-						case "currentTotal":
-							currentTotal = varValue
-						case "dirtyBytes":
-							dirtyBytes = varValue
 						case "slowdownThreshold":
 							slowdownThreshold = varValue
 						case "freeBytes":
@@ -106,45 +100,6 @@ func TestCompactionPacerMaybeThrottle(t *testing.T) {
 
 				mockLimiter := mockPrintLimiter{burst: int(burst)}
 				switch d.CmdArgs[0].Key {
-				case "compaction":
-					getInfo := func() compactionPacerInfo {
-						return compactionPacerInfo{
-							slowdownThreshold:   slowdownThreshold,
-							totalCompactionDebt: currentTotal,
-							totalDirtyBytes:     dirtyBytes,
-						}
-					}
-					compactionPacer := newCompactionPacer(compactionPacerEnv{
-						limiter:      &mockLimiter,
-						memTableSize: 100,
-						getInfo:      getInfo,
-					})
-
-					err := compactionPacer.maybeThrottle(bytesIterated)
-					if err != nil {
-						return err.Error()
-					}
-
-					return mockLimiter.buf.String()
-				case "flush":
-					getInfo := func() flushPacerInfo {
-						return flushPacerInfo{
-							inuseBytes: currentTotal,
-						}
-					}
-					flushPacer := newFlushPacer(flushPacerEnv{
-						limiter:      &mockLimiter,
-						memTableSize: 100,
-						getInfo:      getInfo,
-					})
-					flushPacer.slowdownThreshold = slowdownThreshold
-
-					err := flushPacer.maybeThrottle(bytesIterated)
-					if err != nil {
-						return err.Error()
-					}
-
-					return mockLimiter.buf.String()
 				case "deletion":
 					getInfo := func() deletionPacerInfo {
 						return deletionPacerInfo{
