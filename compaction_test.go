@@ -936,7 +936,6 @@ func TestCompaction(t *testing.T) {
 		DebugCheck:            DebugCheckLevels,
 		L0CompactionThreshold: 8,
 	}
-	opts.private.enablePacing = true
 	opts.testingRandomized()
 	d, err := Open("", opts)
 	if err != nil {
