@@ -1378,35 +1378,6 @@ func (d *DB) removeInProgressCompaction(c *compaction) {
 	d.mu.versions.currentVersion().L0Sublevels.InitCompactingFileInfo(l0InProgress)
 }
 
-func (d *DB) getCompactionPacerInfo() compactionPacerInfo {
-	d.mu.Lock()
-
-	estimatedMaxWAmp := d.mu.versions.picker.getEstimatedMaxWAmp()
-	pacerInfo := compactionPacerInfo{
-		slowdownThreshold: uint64(estimatedMaxWAmp * float64(d.opts.MemTableSize)),
-		// TODO(jackson): bytesFlushed is no longer maintained. To re-enable
-		// pacing, we'll need to restructure the code to produce a current
-		// `bytesFlushed` total.
-		//totalCompactionDebt: d.mu.versions.picker.estimatedCompactionDebt(bytesFlushed),
-	}
-	for _, m := range d.mu.mem.queue {
-		pacerInfo.totalDirtyBytes += m.inuseBytes()
-	}
-	d.mu.Unlock()
-
-	return pacerInfo
-}
-
-func (d *DB) getFlushPacerInfo() flushPacerInfo {
-	var pacerInfo flushPacerInfo
-	d.mu.Lock()
-	for _, m := range d.mu.mem.queue {
-		pacerInfo.inuseBytes += m.inuseBytes()
-	}
-	d.mu.Unlock()
-	return pacerInfo
-}
-
 func (d *DB) calculateDiskAvailableBytes() uint64 {
 	if space, err := d.opts.FS.GetDiskUsage(d.dirname); err == nil {
 		atomic.StoreUint64(&d.atomic.diskAvailBytes, space.AvailBytes)
@@ -1598,17 +1569,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	})
 	startTime := d.timeNow()
 
-	flushPacer := (pacer)(nilPacer)
-	if d.opts.private.enablePacing {
-		// TODO(peter): Flush pacing is disabled until we figure out why it impacts
-		// throughput.
-		flushPacer = newFlushPacer(flushPacerEnv{
-			limiter:      d.flushLimiter,
-			memTableSize: uint64(d.opts.MemTableSize),
-			getInfo:      d.getFlushPacerInfo,
-		})
-	}
-	ve, pendingOutputs, err := d.runCompaction(jobID, c, flushPacer)
+	ve, pendingOutputs, err := d.runCompaction(jobID, c)
 
 	info := FlushInfo{
 		JobID:    jobID,
@@ -2112,17 +2073,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	d.opts.EventListener.CompactionBegin(info)
 	startTime := d.timeNow()
 
-	compactionPacer := (pacer)(nilPacer)
-	if d.opts.private.enablePacing {
-		// TODO(peter): Compaction pacing is disabled until we figure out why it
-		// impacts throughput.
-		compactionPacer = newCompactionPacer(compactionPacerEnv{
-			limiter:      d.compactionLimiter,
-			memTableSize: uint64(d.opts.MemTableSize),
-			getInfo:      d.getCompactionPacerInfo,
-		})
-	}
-	ve, pendingOutputs, err := d.runCompaction(jobID, c, compactionPacer)
+	ve, pendingOutputs, err := d.runCompaction(jobID, c)
 
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
@@ -2173,7 +2124,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
-	jobID int, c *compaction, pacer pacer,
+	jobID int, c *compaction,
 ) (ve *versionEdit, pendingOutputs []*fileMetadata, retErr error) {
 	// As a sanity check, confirm that the smallest / largest keys for new and
 	// deleted files in the new versionEdit pass a validation function before

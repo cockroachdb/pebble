@@ -88,9 +88,7 @@ func TestOptionsString(t *testing.T) {
   max_open_files=1000
   mem_table_size=4194304
   mem_table_stop_writes_threshold=2
-  min_compaction_rate=4194304
   min_deletion_rate=0
-  min_flush_rate=1048576
   merger=pebble.concatenate
   read_compaction_rate=16000
   read_sampling_multiplier=16
