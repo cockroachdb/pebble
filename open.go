@@ -124,12 +124,6 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		apply:         d.commitApply,
 		write:         d.commitWrite,
 	})
-	d.compactionLimiter = rate.NewLimiter(
-		rate.Limit(d.opts.private.minCompactionRate),
-		d.opts.private.minCompactionRate)
-	d.flushLimiter = rate.NewLimiter(
-		rate.Limit(d.opts.private.minFlushRate),
-		d.opts.private.minFlushRate)
 	d.deletionLimiter = rate.NewLimiter(
 		rate.Limit(d.opts.Experimental.MinDeletionRate),
 		d.opts.Experimental.MinDeletionRate)
@@ -707,7 +701,7 @@ func (d *DB) replayWAL(
 	if !d.opts.ReadOnly {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			1 /* base level */, toFlush)
-		newVE, _, err := d.runCompaction(jobID, c, nilPacer)
+		newVE, _, err := d.runCompaction(jobID, c)
 		if err != nil {
 			return 0, err
 		}
