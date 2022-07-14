@@ -717,7 +717,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			flushed:   make(chan struct{}),
 		}}
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
-			d.mu.versions.picker.getBaseLevel(), toFlush, &d.atomic.bytesFlushed)
+			d.mu.versions.picker.getBaseLevel(), toFlush)
 		c.disableSpanElision = true
 		// NB: define allows the test to exactly specify which keys go
 		// into which sstables. If the test has a small target file

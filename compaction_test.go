@@ -518,11 +518,9 @@ func TestPickCompaction(t *testing.T) {
 		tc.picker.opts = opts
 		tc.picker.vers = tc.version
 		vs.picker = &tc.picker
-		env := compactionEnv{bytesCompacted: new(uint64)}
-
-		pc, got := vs.picker.pickAuto(env), ""
+		pc, got := vs.picker.pickAuto(compactionEnv{}), ""
 		if pc != nil {
-			c := newCompaction(pc, opts, env.bytesCompacted)
+			c := newCompaction(pc, opts)
 			got0 := fileNums(c.startLevel.files)
 			got1 := fileNums(c.outputLevel.files)
 			got2 := fileNums(c.grandparents)
@@ -944,8 +942,6 @@ func TestCompaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	mockLimiter := mockCountLimiter{burst: int(math.MaxInt32)}
-	d.compactionLimiter = &mockLimiter
 
 	get1 := func(iter internalIterator) (ret string) {
 		b := &bytes.Buffer{}
@@ -1047,16 +1043,8 @@ func TestCompaction(t *testing.T) {
 			t.Errorf("%q: %v", tc.key, err)
 		}
 	}
-
 	if err := d.Close(); err != nil {
 		t.Fatalf("db Close: %v", err)
-	}
-
-	if mockLimiter.allowCount != 0 {
-		t.Errorf("limiter allow: got %d, want %d", mockLimiter.allowCount, 0)
-	}
-	if mockLimiter.waitCount == 0 {
-		t.Errorf("limiter wait: got %d, want >%d", mockLimiter.waitCount, 0)
 	}
 }
 
@@ -1760,7 +1748,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 				d.ScanArgs(t, "start", &start)
 				d.ScanArgs(t, "base", &base)
 				pc := newPickedCompaction(opts, version, start, defaultOutputLevel(start, base), base)
-				c := newCompaction(pc, opts, new(uint64))
+				c := newCompaction(pc, opts)
 				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
 					c.outputLevel.level, c.maxOutputFileSize)
 
