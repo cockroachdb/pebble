@@ -310,6 +310,8 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(tw, "  filter\t%s\n", humanize.Uint64(r.Properties.FilterSize))
 		fmt.Fprintf(tw, "  raw-key\t%s\n", humanize.Uint64(r.Properties.RawKeySize))
 		fmt.Fprintf(tw, "  raw-value\t%s\n", humanize.Uint64(r.Properties.RawValueSize))
+		fmt.Fprintf(tw, "  pinned-key\t%d\n", r.Properties.SnapshotPinnedKeySize)
+		fmt.Fprintf(tw, "  pinned-val\t%d\n", r.Properties.SnapshotPinnedValueSize)
 		fmt.Fprintf(tw, "records\t%d\n", r.Properties.NumEntries)
 		fmt.Fprintf(tw, "  set\t%d\n", r.Properties.NumEntries-
 			(r.Properties.NumDeletions+r.Properties.NumMergeOperands))
@@ -317,6 +319,7 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(tw, "  range-delete\t%d\n", r.Properties.NumRangeDeletions)
 		fmt.Fprintf(tw, "  merge\t%d\n", r.Properties.NumMergeOperands)
 		fmt.Fprintf(tw, "  global-seq-num\t%d\n", r.Properties.GlobalSeqNum)
+		fmt.Fprintf(tw, "  pinned\t%d\n", r.Properties.SnapshotPinnedKeys)
 		fmt.Fprintf(tw, "index\t\n")
 		fmt.Fprintf(tw, "  key\t")
 		if r.Properties.IndexKeyIsUserKey != 0 {

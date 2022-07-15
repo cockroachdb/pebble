@@ -183,6 +183,14 @@ type Metrics struct {
 		Count int
 		// The sequence number of the earliest, currently open snapshot.
 		EarliestSeqNum uint64
+		// A running tally of keys written to sstables during flushes or
+		// compactions that would've been elided if it weren't for open
+		// snapshots.
+		PinnedKeys uint64
+		// A running cumulative sum of the size of keys and values written to
+		// sstables during flushes or compactions that would've been elided if
+		// it weren't for open snapshots.
+		PinnedKeysSize uint64
 	}
 
 	Table struct {
@@ -318,14 +326,14 @@ func (m *Metrics) formatWAL(w redact.SafePrinter) {
 //         6         1   825 B    0.00   1.6 K     0 B       0     0 B       0   825 B       1   1.6 K     0.5
 //     total         3   2.4 K       -   933 B   825 B       1     0 B       0   4.1 K       4   1.6 K     4.5
 //     flush         3
-//   compact         1   1.6 K     0 B       1          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-//     ctype         0       0       0       0       0  (default, delete, elision, move, read)
+//     snaps         2   95621    90 K      12          (size = earliest-seq, score = pinned-size, in = pinned-count)
+//   compact         1   1.6 K     0 B       1          (size = estimated-debt, score = in-progress-bytes, in = num-in-progress)
+//     ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
 //    memtbl         1   4.0 M
 //   zmemtbl         0     0 B
 //      ztbl         0     0 B
 //    bcache         4   752 B    7.7%  (score == hit-rate)
 //    tcache         0     0 B    0.0%  (score == hit-rate)
-// snapshots         0               0  (score == earliest seq num)
 //    titers         0
 //    filter         -       -    0.0%  (score == utility)
 //
@@ -381,7 +389,12 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	total.format(w, notApplicable)
 
 	w.Printf("  flush %9d\n", redact.Safe(m.Flush.Count))
-	w.Printf("compact %9d %7s %7s %7d %7s  (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)\n",
+	w.Printf("  snaps %9d %7d %7s %7d          (size = earliest-seq, score = pinned-size, in = pinned-count)\n",
+		redact.Safe(m.Snapshots.Count),
+		redact.Safe(m.Snapshots.EarliestSeqNum),
+		humanize.IEC.Uint64(m.Snapshots.PinnedKeysSize),
+		redact.Safe(m.Snapshots.PinnedKeys))
+	w.Printf("compact %9d %7s %7s %7d %7s  (size = estimated-debt, score = in-progress-bytes, in = num-in-progress)\n",
 		redact.Safe(m.Compact.Count),
 		humanize.IEC.Uint64(m.Compact.EstimatedDebt),
 		humanize.IEC.Int64(m.Compact.InProgressBytes),
@@ -406,10 +419,6 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		humanize.IEC.Uint64(m.Table.ZombieSize))
 	formatCacheMetrics(w, &m.BlockCache, "bcache")
 	formatCacheMetrics(w, &m.TableCache, "tcache")
-	w.Printf("  snaps %9d %7s %7d  (score == earliest seq num)\n",
-		redact.Safe(m.Snapshots.Count),
-		notApplicable,
-		redact.Safe(m.Snapshots.EarliestSeqNum))
 	w.Printf(" titers %9d\n", redact.Safe(m.TableIters))
 	w.Printf(" filter %9s %7s %6.1f%%  (score == utility)\n",
 		notApplicable,

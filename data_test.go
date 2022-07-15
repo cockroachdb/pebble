@@ -727,7 +727,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		// to the user-defined boundaries.
 		c.maxOutputFileSize = math.MaxUint64
 
-		newVE, _, err := d.runCompaction(0, c)
+		newVE, _, _, err := d.runCompaction(0, c)
 		if err != nil {
 			return err
 		}
@@ -923,6 +923,32 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 		}
 	}
 	return "(not found)"
+}
+
+func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) string {
+	var file string
+	td.ScanArgs(t, "file", &file)
+	f, err := d.opts.FS.Open(file + ".sst")
+	if err != nil {
+		return err.Error()
+	}
+	r, err := sstable.NewReader(f, d.opts.MakeReaderOptions())
+	if err != nil {
+		return err.Error()
+	}
+	defer r.Close()
+
+	props := strings.Split(r.Properties.String(), "\n")
+	var buf bytes.Buffer
+	for _, requestedProp := range strings.Split(td.Input, "\n") {
+		fmt.Fprintf(&buf, "%s:\n", requestedProp)
+		for _, prop := range props {
+			if strings.Contains(prop, requestedProp) {
+				fmt.Fprintf(&buf, "  %s\n", prop)
+			}
+		}
+	}
+	return buf.String()
 }
 
 func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {

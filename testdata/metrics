@@ -28,14 +28,14 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   total         1   771 B       -    56 B     0 B       0     0 B       0   827 B       1     0 B       1    14.8
   flush         1
-compact         0     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  snaps         0       0     0 B       0          (size = earliest-seq, score = pinned-size, in = pinned-count)
+compact         0     0 B     0 B       0          (size = estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         0     0 B
  bcache         4   698 B    0.0%  (score == hit-rate)
- tcache         1   680 B    0.0%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
+ tcache         1   704 B    0.0%  (score == hit-rate)
  titers         1
  filter         -       -    0.0%  (score == utility)
 
@@ -76,14 +76,14 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
   total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
-compact         1     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  snaps         0       0     0 B       0          (size = earliest-seq, score = pinned-size, in = pinned-count)
+compact         1     0 B     0 B       0          (size = estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         2   512 K
    ztbl         2   1.5 K
  bcache         8   1.4 K   42.9%  (score == hit-rate)
- tcache         2   1.3 K   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
+ tcache         2   1.4 K   66.7%  (score == hit-rate)
  titers         2
  filter         -       -    0.0%  (score == utility)
 
@@ -109,14 +109,14 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
   total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
-compact         1     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  snaps         0       0     0 B       0          (size = earliest-seq, score = pinned-size, in = pinned-count)
+compact         1     0 B     0 B       0          (size = estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         2   1.5 K
  bcache         8   1.4 K   42.9%  (score == hit-rate)
- tcache         2   1.3 K   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
+ tcache         2   1.4 K   66.7%  (score == hit-rate)
  titers         2
  filter         -       -    0.0%  (score == utility)
 
@@ -139,14 +139,14 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
   total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
-compact         1     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  snaps         0       0     0 B       0          (size = earliest-seq, score = pinned-size, in = pinned-count)
+compact         1     0 B     0 B       0          (size = estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         1   771 B
  bcache         4   698 B   42.9%  (score == hit-rate)
- tcache         1   680 B   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
+ tcache         1   704 B   66.7%  (score == hit-rate)
  titers         1
  filter         -       -    0.0%  (score == utility)
 
@@ -172,14 +172,14 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
   total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
-compact         1     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  snaps         0       0     0 B       0          (size = earliest-seq, score = pinned-size, in = pinned-count)
+compact         1     0 B     0 B       0          (size = estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         0     0 B   42.9%  (score == hit-rate)
  tcache         0     0 B   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
 

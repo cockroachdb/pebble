@@ -24,8 +24,11 @@ size
   filter          0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
   raw-key         33 B    0 B    0 B    0 B    0 B    0 B    0 B    33 B
   raw-value       9 B     0 B    0 B    0 B    0 B    0 B    0 B    9 B
+  pinned-key      0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
+  pinned-value    0 B     0 B    0 B    0 B    0 B    0 B    0 B    0 B
 records                                                             
   set             2       0      0      0      0      0      0      2
   delete          1       0      0      0      0      0      0      1
   range-delete    0       0      0      0      0      0      0      0
   merge           0       0      0      0      0      0      0      0
+  pinned          0       0      0      0      0      0      0      0

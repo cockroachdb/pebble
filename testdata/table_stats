@@ -346,7 +346,7 @@ num-entries: 1
 num-deletions: 1
 num-range-keys: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 915
+range-deletions-bytes-estimate: 973
 
 # Drop a range del and a range key del over the entire keyspace. This table can
 # delete everything underneath it.
