@@ -14,8 +14,21 @@ import (
 // A Hooks configures the interleaving iterator's behavior.
 type Hooks interface {
 	// SpanChanged is invoked by interleaving iterator whenever the Span
-	// returned by InterleavaingIterator.Span changes. As the iterator passes
-	// into or out of a Span, it invokes SpanChanged, passing the new Span.
+	// returned by InterleavingIterator.Span changes. As the iterator passes
+	// into or out of a Span, it invokes SpanChanged, passing the new Span. When
+	// the iterator passes out of a span's boundaries and is no longer covered
+	// by any span, SpanChanged is invoked with a nil span.
+	//
+	// SpanChanged is invoked before SkipPoint, and callers may use SpanChanged
+	// to recalculate state used by SkipPoint for masking.
+	//
+	// SpanChanged is not invoked until the point iterator has been positioned
+	// to a key ≥ Span.Start during forward iteration or < Span.End during
+	// reverse iteration.
+	//
+	// SpanChanged may be invoked consecutively with identical spans under some
+	// circumstances, such as repeatedly absolutely positioning an iterator to
+	// positions covered by the same span, or while changing directions.
 	SpanChanged(*Span)
 	// SkipPoint is invoked by the interleaving iterator whenever the iterator
 	// encounters a point key covered by a Span. If SkipPoint returns true, the
@@ -24,6 +37,14 @@ type Hooks interface {
 	// keys.
 	SkipPoint(userKey []byte) bool
 }
+
+type emitState int8
+
+const (
+	unemitted emitState = iota
+	emittedNil
+	emittedKeyspan
+)
 
 // InterleavingIter combines an iterator over point keys with an iterator over
 // key spans.
@@ -140,6 +161,32 @@ type InterleavingIter struct {
 	// span's start bound marker to the search key. It's returned to false on
 	// the next repositioning of the keyspan iterator.
 	spanMarkerTruncated bool
+	// emitted holds a tri-state enum describing the state of the state machine
+	// managing invocations to i.hooks.SpanChanged. When i.span is updated,
+	// `emitted` is set to the starting state `unemitted` to reflect that the
+	// span has never been emitted. From `unemitted`, the state transitions to
+	// `emittedNil` if the next returned key does not fall within i.span's
+	// bounds. The state transitions to `emittedKeyspan` if the next returned
+	// key does fall within i.span's bounds.
+	//
+	//                                   return key outside [s,e)
+	//                                   keyspan.Iter.{Next,Prev}
+	//                            _________________________________
+	//                           \/                                |
+	//                     _____________                           |
+	//                    |  unemitted  |                          |
+	//                    |_____________|                          |
+	//     return key    /               \     return key          |
+	//   outside [s,e)  /                 \   within [s,e)         |
+	//                 \/                 \/                       |
+	//     ______________________    __________________________    |
+	//    |    SpanChanged(nil)  |  |    SpanChanged(i.span)   | __|
+	//    | emitted = emittedNil |  | emitted = emittedKeyspan |
+	//    |______________________|  |__________________________|
+	//              |__________________________^
+	//                return key within [s,e)
+	//
+	emitted emitState
 	// dir indicates the direction of iteration: forward (+1) or backward (-1)
 	dir int8
 }
@@ -494,6 +541,11 @@ func (i *InterleavingIter) interleaveForward(lowerBound []byte) (*base.InternalK
 
 				// The span covers the point key. If a SkipPoint hook is
 				// configured, ask it if we should skip this point key.
+
+				// We may have stepped outside of the last emitted span, so
+				// emit the current span if neceessary.
+				i.maybeEmitKeyspan(true /*covered */)
+
 				if i.hooks != nil && i.hooks.SkipPoint(i.pointKey.UserKey) {
 					i.pointKey, i.pointVal = i.pointIter.Next()
 					// We may have just invalidated the invariant that
@@ -564,6 +616,21 @@ func (i *InterleavingIter) interleaveBackward() (*base.InternalKey, []byte) {
 			if i.cmp(i.pointKey.UserKey, i.span.End) < 0 {
 				// The span covers the point key. The point key might be masked
 				// too if masking is enabled.
+
+				// The span may have changed since the last time we emitted the
+				// key span. Consider the following range-key masking scenario:
+				//
+				//     |--------------) [b,d)@5
+				//            . c@4          . e@9
+				//
+				// During reverse iteration when we step from e@9 to c@4, we
+				// enter the span [b,d)@5. Since end boundaries are not
+				// interleaved, the [b,d)@5 keyspan hasn't been emitted yet.  We
+				// must emit it before calling SkipPoint(c@4) to maintain the
+				// SpanChanged contract and give the user an opportunity to
+				// build the state necessary to be able to determine whether
+				// [b,d)@5 masks c@4.
+				i.maybeEmitKeyspan(true /* covered */)
 
 				// The span covers the point key. If a SkipPoint hook is
 				// configured, ask it if we should skip this point key.
@@ -695,12 +762,14 @@ func (i *InterleavingIter) checkBackwardBound() {
 
 func (i *InterleavingIter) yieldNil() (*base.InternalKey, []byte) {
 	i.spanCoversKey = false
+	i.maybeEmitKeyspan(false /* covered */)
 	return i.verify(nil, nil)
 }
 
 func (i *InterleavingIter) yieldPointKey(covered bool) (*base.InternalKey, []byte) {
 	i.pointKeyInterleaved = true
 	i.spanCoversKey = covered
+	i.maybeEmitKeyspan(covered)
 	return i.verify(i.pointKey, i.pointVal)
 }
 
@@ -739,6 +808,7 @@ func (i *InterleavingIter) yieldSyntheticSpanMarker(lowerBound []byte) (*base.In
 		i.spanMarker.UserKey = i.keyBuf
 		i.spanMarkerTruncated = true
 	}
+	i.maybeEmitKeyspan(true /* covered */)
 	return i.verify(&i.spanMarker, nil)
 }
 
@@ -776,8 +846,40 @@ func (i *InterleavingIter) verify(k *base.InternalKey, v []byte) (*base.Internal
 func (i *InterleavingIter) savedKeyspan() {
 	i.keyspanInterleaved = false
 	i.spanMarkerTruncated = false
-	if i.hooks != nil {
+	if i.emitted == emittedKeyspan {
+		// We last emitted a keyspan. If there's no keyspan or an empty keyspan,
+		// then we'll need to emit nil to inform the user that we've moved out
+		// of the previous keyspan. If there is a new keyspan, then we'll need
+		// to emit the span to inform the user that we've moved onto a new span.
+		//
+		// Either way, we need to reset emitted to `unemitted`.
+		i.emitted = unemitted
+	}
+}
+
+// maybeEmitKeyspan invokes the SpanChanged hook, if hooks are configured and
+// the current keyspan state hasn't yet been emitted.
+func (i *InterleavingIter) maybeEmitKeyspan(covered bool) {
+	if i.hooks == nil {
+		return
+	}
+
+	// Although covered=true, the covering span might be empty. Span() returns
+	// nil when this is the case, so we should mirror that here.
+	covered = covered && !i.span.Empty()
+
+	if covered && i.emitted != emittedKeyspan {
+		// We're currently positioned within the bounds of i.span, and we've
+		// never emitted i.span. Emit it now, and update the emitted enum to
+		// reflect it.
+		i.emitted = emittedKeyspan
 		i.hooks.SpanChanged(i.span)
+	} else if !covered && i.emitted == unemitted {
+		// We're not positioned beneath i.span, so we don't need to emit i.span.
+		// However, we've never notified the user that we left the previous
+		// span. Emit nil and update the enum so that we don't emit nil again.
+		i.emitted = emittedNil
+		i.hooks.SpanChanged(nil)
 	}
 }
 

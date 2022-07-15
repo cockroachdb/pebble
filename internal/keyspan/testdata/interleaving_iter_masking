@@ -46,10 +46,11 @@ next
 next
 next
 ----
--- SpanChanged(e-f:{(#1,RANGEKEYSET,@9,foo)})
+-- SpanChanged(nil)
 PointKey: b@2#1,1
 Span: <invalid>
 -
+-- SpanChanged(e-f:{(#1,RANGEKEYSET,@9,foo)})
 PointKey: e#72057594037927935,21
 Span: e-f:{(#1,RANGEKEYSET,@9,foo)}
 -
@@ -124,7 +125,6 @@ next
 seek-ge m
 seek-ge r
 ----
--- SpanChanged(e-f:{(#1,RANGEKEYSET,@9,foo)})
 PointKey: b@2#1,1
 Span: <invalid>
 -
@@ -429,4 +429,39 @@ Span: c-z:{(#1,RANGEKEYSET,@10,bananas)}
 -- SpanChanged(a-c:{(#1,RANGEKEYSET,@5,apples)})
 PointKey: a#72057594037927935,21
 Span: a-c:{(#1,RANGEKEYSET,@5,apples)}
+-
+
+# Test a scenario where a there's an empty range key, requiring the interleaving
+# iter to call SpanChanged(nil) which should clear the previous mask.
+
+define-rangekeys
+a-c:{(#1,RANGEKEYSET,@10,apples)}
+c-e:{}
+e-f:{(#1,RANGEKEYSET,@5,bananas)}
+----
+OK
+
+define-pointkeys
+a@2.SET.4
+b@9.SET.2
+d@9.SET.3
+----
+OK
+
+set-masking-threshold
+@20
+----
+OK
+
+iter
+seek-ge a
+next
+----
+-- SpanChanged(a-c:{(#1,RANGEKEYSET,@10,apples)})
+PointKey: a#72057594037927935,21
+Span: a-c:{(#1,RANGEKEYSET,@10,apples)}
+-
+-- SpanChanged(nil)
+PointKey: d@9#3,1
+Span: <invalid>
 -
