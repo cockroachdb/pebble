@@ -442,8 +442,15 @@ type DB struct {
 			disabled int
 		}
 
-		// The list of active snapshots.
-		snapshots snapshotList
+		snapshots struct {
+			// The list of active snapshots.
+			snapshotList
+
+			// The cumulative count and size of snapshot-pinned keys written to
+			// sstables.
+			cumulativePinnedCount uint64
+			cumulativePinnedSize  uint64
+		}
 
 		tableStats struct {
 			// Condition variable used to signal the completion of a
@@ -1722,6 +1729,8 @@ func (d *DB) Metrics() *Metrics {
 	if metrics.Snapshots.Count > 0 {
 		metrics.Snapshots.EarliestSeqNum = d.mu.snapshots.earliest()
 	}
+	metrics.Snapshots.PinnedKeys = d.mu.snapshots.cumulativePinnedCount
+	metrics.Snapshots.PinnedSize = d.mu.snapshots.cumulativePinnedSize
 	metrics.MemTable.Count = int64(len(d.mu.mem.queue))
 	metrics.MemTable.ZombieCount = atomic.LoadInt64(&d.atomic.memTableCount) - metrics.MemTable.Count
 	metrics.MemTable.ZombieSize = uint64(atomic.LoadInt64(&d.atomic.memTableReserved)) - metrics.MemTable.Size

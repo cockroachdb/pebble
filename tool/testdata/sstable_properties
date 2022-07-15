@@ -17,6 +17,8 @@ size
   filter            0 B
   raw-key           23 K
   raw-value         1.9 K
+  pinned-key        0
+  pinned-val        0
 records             1727
   set               1710
   delete            0
@@ -26,6 +28,7 @@ records             1727
   range-key-delete  0
   merge             0
   global-seq-num    0
+  pinned            0
 index               
   key               internal key
   value             raw encoded
@@ -55,6 +58,8 @@ size
   filter            0 B
   raw-key           23 K
   raw-value         1.9 K
+  pinned-key        0
+  pinned-val        0
 records             1727
   set               1710
   delete            0
@@ -64,6 +69,7 @@ records             1727
   range-key-delete  0
   merge             0
   global-seq-num    0
+  pinned            0
 index               
   key               internal key
   value             raw encoded
@@ -92,6 +98,8 @@ size
   filter            0 B
   raw-key           23 K
   raw-value         1.9 K
+  pinned-key        0
+  pinned-val        0
 records             1727
   set               1710
   delete            0
@@ -101,6 +109,7 @@ records             1727
   range-key-delete  0
   merge             0
   global-seq-num    0
+  pinned            0
 index               
   key               internal key
   value             raw encoded
@@ -208,6 +217,8 @@ size
   filter            0 B
   raw-key           286 B
   raw-value         0 B
+  pinned-key        0
+  pinned-val        0
 records             26
   set               26
   delete            0
@@ -217,6 +228,7 @@ records             26
   range-key-delete  1
   merge             0
   global-seq-num    0
+  pinned            0
 index               
   key               internal key
   value             raw encoded

@@ -829,12 +829,40 @@ L2
 2:
   000005:[c#0,SET-d#0,SET]
 
+sstable-properties file=000004
+snapshot-pinned-keys
+----
+snapshot-pinned-keys:
+  pebble.num.snapshot-pinned-keys: 2
+  pebble.raw.snapshot-pinned-keys.size: 18
+
 compact a-z L1
 ----
 2:
   000006:[a#15,RANGEDEL-c#inf,RANGEDEL]
   000007:[c#15,RANGEDEL-d#inf,RANGEDEL]
   000008:[d#15,RANGEDEL-z#inf,RANGEDEL]
+
+sstable-properties file=000006
+snapshot-pinned-keys
+----
+snapshot-pinned-keys:
+  pebble.num.snapshot-pinned-keys: 1
+  pebble.raw.snapshot-pinned-keys.size: 9
+
+sstable-properties file=000007
+snapshot-pinned-keys
+----
+snapshot-pinned-keys:
+  pebble.num.snapshot-pinned-keys: 1
+  pebble.raw.snapshot-pinned-keys.size: 9
+
+sstable-properties file=000008
+snapshot-pinned-keys
+----
+snapshot-pinned-keys:
+  pebble.num.snapshot-pinned-keys: 1
+  pebble.raw.snapshot-pinned-keys.size: 9
 
 # Test an interaction between a range deletion that will be elided with
 # output splitting. Ensure that the output is still split (previous versions
