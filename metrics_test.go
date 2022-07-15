@@ -39,8 +39,6 @@ func TestMetricsFormat(t *testing.T) {
 	m.MemTable.Count = 12
 	m.MemTable.ZombieSize = 13
 	m.MemTable.ZombieCount = 14
-	m.Snapshots.Count = 4
-	m.Snapshots.EarliestSeqNum = 1024
 	m.Table.ZombieSize = 15
 	m.Table.ZombieCount = 16
 	m.TableCache.Size = 17
@@ -53,6 +51,10 @@ func TestMetricsFormat(t *testing.T) {
 	m.WAL.Size = 24
 	m.WAL.BytesIn = 25
 	m.WAL.BytesWritten = 26
+	m.Snapshots.Count = 27
+	m.Snapshots.EarliestSeqNum = 128
+	m.Snapshots.PinnedKeys = 29
+	m.Snapshots.PinnedKeysSize = 30
 
 	for i := range m.Levels {
 		l := &m.Levels[i]
@@ -85,14 +87,14 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6       701   702 B       -   704 B   704 B     712   706 B     713   1.4 K   1.4 K   707 B       7     2.0
   total      2807   2.7 K       -   2.8 K   2.8 K   2.9 K   2.8 K   2.9 K   8.4 K   5.7 K   2.8 K      28     3.0
   flush         8
-compact         5     6 B     7 B       2          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  snaps        27     128    30 B      29          (size = earliest-seq, score = pinned-size, in = pinned-count)
+compact         5     6 B     7 B       2          (size = estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype        27      28      29      30      31      32      33  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl        12    11 B
 zmemtbl        14    13 B
    ztbl        16    15 B
  bcache         2     1 B   42.9%  (score == hit-rate)
  tcache        18    17 B   48.7%  (score == hit-rate)
-  snaps         4       -    1024  (score == earliest seq num)
  titers        21
  filter         -       -   47.4%  (score == utility)
 `
@@ -228,14 +230,14 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   total         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   flush         0
-compact         0     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  snaps         0       0     0 B       0          (size = earliest-seq, score = pinned-size, in = pinned-count)
+compact         0     0 B     0 B       0          (size = estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         0     0 B
 zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         0     0 B    0.0%  (score == hit-rate)
  tcache         0     0 B    0.0%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
 `

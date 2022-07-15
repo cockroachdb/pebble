@@ -1569,8 +1569,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	})
 	startTime := d.timeNow()
 
-	ve, pendingOutputs, err := d.runCompaction(jobID, c)
-
+	ve, pendingOutputs, stats, err := d.runCompaction(jobID, c)
 	info := FlushInfo{
 		JobID:    jobID,
 		Input:    n,
@@ -1608,6 +1607,9 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	}
 
 	bytesFlushed = c.bytesIterated
+	d.mu.snapshots.cumulativePinnedCount += stats.cumulativePinnedKeys
+	d.mu.snapshots.cumulativePinnedSize += stats.cumulativePinnedSize
+
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementCompactions(c.kind, c.extraLevels)
@@ -2073,7 +2075,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	d.opts.EventListener.CompactionBegin(info)
 	startTime := d.timeNow()
 
-	ve, pendingOutputs, err := d.runCompaction(jobID, c)
+	ve, pendingOutputs, stats, err := d.runCompaction(jobID, c)
 
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
@@ -2097,6 +2099,9 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		}
 	}
 
+	d.mu.snapshots.cumulativePinnedCount += stats.cumulativePinnedKeys
+	d.mu.snapshots.cumulativePinnedSize += stats.cumulativePinnedSize
+
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c)
 	d.mu.versions.incrementCompactions(c.kind, c.extraLevels)
@@ -2118,6 +2123,11 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	return err
 }
 
+type compactStats struct {
+	cumulativePinnedKeys uint64
+	cumulativePinnedSize uint64
+}
+
 // runCompactions runs a compaction that produces new on-disk tables from
 // memtables or old on-disk tables.
 //
@@ -2125,7 +2135,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
 	jobID int, c *compaction,
-) (ve *versionEdit, pendingOutputs []*fileMetadata, retErr error) {
+) (ve *versionEdit, pendingOutputs []*fileMetadata, stats compactStats, retErr error) {
 	// As a sanity check, confirm that the smallest / largest keys for new and
 	// deleted files in the new versionEdit pass a validation function before
 	// returning the edit.
@@ -2158,7 +2168,7 @@ func (d *DB) runCompaction(
 			}
 			c.metrics[cl.level] = levelMetrics
 		}
-		return ve, nil, nil
+		return ve, nil, stats, nil
 	}
 
 	// Check for a trivial move of one table from one level to the next. We avoid
@@ -2188,7 +2198,7 @@ func (d *DB) runCompaction(
 				{Level: c.outputLevel.level, Meta: meta},
 			},
 		}
-		return ve, nil, nil
+		return ve, nil, stats, nil
 	}
 
 	defer func() {
@@ -2210,7 +2220,7 @@ func (d *DB) runCompaction(
 
 	iiter, err := c.newInputIter(d.newIters, d.tableNewRangeKeyIter, snapshots)
 	if err != nil {
-		return nil, pendingOutputs, err
+		return nil, pendingOutputs, stats, err
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum()
 	iter := newCompactionIter(c.cmp, c.equal, c.formatKey, d.merge, iiter, snapshots,
@@ -2220,7 +2230,7 @@ func (d *DB) runCompaction(
 	var (
 		filenames   []string
 		tw          *sstable.Writer
-		pinnedBytes uint64
+		pinnedSize  uint64
 		pinnedCount uint64
 	)
 	defer func() {
@@ -2291,8 +2301,10 @@ func (d *DB) runCompaction(
 		// db-internal sstables; otherwise, it could apply a global sequence number.
 		p.ExternalFormatVersion = 0
 		// Set the snapshot pinned totals.
-		p.SnapshotPinnedKeys, p.SnapshotPinnedSize = pinnedCount, pinnedBytes
-		pinnedCount, pinnedBytes = 0, 0
+		p.SnapshotPinnedKeys, p.SnapshotPinnedSize = pinnedCount, pinnedSize
+		stats.cumulativePinnedKeys += pinnedCount
+		stats.cumulativePinnedSize += pinnedSize
+		pinnedCount, pinnedSize = 0, 0
 	})
 
 	newOutput := func() error {
@@ -2655,18 +2667,18 @@ func (d *DB) runCompaction(
 			}
 			if tw == nil {
 				if err := newOutput(); err != nil {
-					return nil, pendingOutputs, err
+					return nil, pendingOutputs, stats, err
 				}
 			}
 			if err := tw.Add(*key, val); err != nil {
-				return nil, pendingOutputs, err
+				return nil, pendingOutputs, stats, err
 			}
 			if iter.snapshotPinned {
 				// The kv pair we just added to the sstable was only surfaced by
 				// the compaction iterator because an open snapshot prevented
 				// its elision. Increment the stats.
 				pinnedCount++
-				pinnedBytes += uint64(len(key.UserKey)) + base.InternalTrailerLen + uint64(len(val))
+				pinnedSize += uint64(len(key.UserKey)) + base.InternalTrailerLen + uint64(len(val))
 			}
 		}
 
@@ -2694,7 +2706,7 @@ func (d *DB) runCompaction(
 			splitKey = key.UserKey
 		}
 		if err := finishOutput(splitKey); err != nil {
-			return nil, pendingOutputs, err
+			return nil, pendingOutputs, stats, err
 		}
 	}
 
@@ -2711,14 +2723,14 @@ func (d *DB) runCompaction(
 	}
 
 	if err := d.dataDir.Sync(); err != nil {
-		return nil, pendingOutputs, err
+		return nil, pendingOutputs, stats, err
 	}
 
 	// Refresh the disk available statistic whenever a compaction/flush
 	// completes, before re-acquiring the mutex.
 	_ = d.calculateDiskAvailableBytes()
 
-	return ve, pendingOutputs, nil
+	return ve, pendingOutputs, stats, nil
 }
 
 // validateVersionEdit validates that start and end keys across new and deleted

@@ -701,7 +701,7 @@ func (d *DB) replayWAL(
 	if !d.opts.ReadOnly {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			1 /* base level */, toFlush)
-		newVE, _, err := d.runCompaction(jobID, c)
+		newVE, _, _, err := d.runCompaction(jobID, c)
 		if err != nil {
 			return 0, err
 		}
