@@ -135,6 +135,7 @@ type Writer struct {
 	cache                   *cache.Cache
 	restartInterval         int
 	checksumType            ChecksumType
+	postApplyOptions        []WriterOption
 	// disableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
 	// of invalid sstables for testing. See tool/make_test_sstables.go.
@@ -1913,6 +1914,12 @@ func (w *Writer) Close() (err error) {
 		metaindex.add(InternalKey{UserKey: []byte(metaRangeKeyName)}, w.blockBuf.tmp[:n])
 	}
 
+	// WriterOptions with the postApply method are applied here, while closing
+	// the writer.
+	for i := range w.postApplyOptions {
+		w.postApplyOptions[i].writerApply(w)
+	}
+
 	{
 		userProps := make(map[string]string)
 		for i := range w.propCollectors {
@@ -2071,17 +2078,6 @@ func (o *PreviousPointKeyOpt) writerApply(w *Writer) {
 	o.w = w
 }
 
-// internalTableOpt is a WriterOption that sets properties for sstables being
-// created by the db itself (i.e. through flushes and compactions), as opposed
-// to those meant for ingestion.
-type internalTableOpt struct{}
-
-func (i internalTableOpt) writerApply(w *Writer) {
-	// Set the external sst version to 0. This is what RocksDB expects for
-	// db-internal sstables; otherwise, it could apply a global sequence number.
-	w.props.ExternalFormatVersion = 0
-}
-
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
 func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...WriterOption) *Writer {
@@ -2142,10 +2138,12 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 		return w
 	}
 
-	// Note that WriterOptions are applied in two places; the ones with a
-	// preApply() method are applied here, and the rest are applied after
-	// default properties are set.
+	// Note that WriterOptions are applied in three places; the ones with a
+	// preApply() method are applied here, the ones with a postApply() method
+	// are applied at Close, and the rest are applied down below after default
+	// properties are set.
 	type preApply interface{ preApply() }
+	type postApply interface{ postApply() }
 	for _, opt := range extraOpts {
 		if _, ok := opt.(preApply); ok {
 			opt.writerApply(w)
@@ -2212,9 +2210,17 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 
 	// Apply the remaining WriterOptions that do not have a preApply() method.
 	for _, opt := range extraOpts {
-		if _, ok := opt.(preApply); !ok {
-			opt.writerApply(w)
+		if _, ok := opt.(preApply); ok {
+			continue
 		}
+
+		// Apply this option during Close. The postApply interface is only a
+		// marker, indicating that writerApply should be invoked at Close.
+		if _, ok := opt.(postApply); ok {
+			w.postApplyOptions = append(w.postApplyOptions, opt)
+			continue
+		}
+		opt.writerApply(w)
 	}
 
 	// Initialize the range key fragmenter and encoder.
@@ -2223,10 +2229,18 @@ func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...Write
 	return w
 }
 
+// internalGetProperties is a private, internal-use-only function that takes a
+// Writer and returns a pointer to its Properties, allowing direct mutation.
+// It's used by internal Pebble flushes and compactions to set internal
+// properties. It gets installed in private.
+func internalGetProperties(w *Writer) *Properties {
+	return &w.props
+}
+
 func init() {
 	private.SSTableWriterDisableKeyOrderChecks = func(i interface{}) {
 		w := i.(*Writer)
 		w.disableKeyOrderChecks = true
 	}
-	private.SSTableInternalTableOpt = internalTableOpt{}
+	private.SSTableInternalProperties = internalGetProperties
 }

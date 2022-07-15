@@ -177,8 +177,8 @@ func TestFragmenter(t *testing.T) {
 	})
 }
 
-func TestFragmenterDeleted(t *testing.T) {
-	datadriven.RunTest(t, "testdata/fragmenter_deleted", func(t *testing.T, d *datadriven.TestData) string {
+func TestFragmenterCovers(t *testing.T) {
+	datadriven.RunTest(t, "testdata/fragmenter_covers", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
 			f := &Fragmenter{
@@ -194,14 +194,26 @@ func TestFragmenterDeleted(t *testing.T) {
 					t := parseSpanSingleKey(t, strings.TrimPrefix(line, "add "), base.InternalKeyKindRangeDelete)
 					f.Add(t)
 				case strings.HasPrefix(line, "deleted "):
-					key := base.ParseInternalKey(strings.TrimPrefix(line, "deleted "))
+					fields := strings.Fields(strings.TrimPrefix(line, "deleted "))
+					key := base.ParseInternalKey(fields[0])
+					snapshot, err := strconv.ParseUint(fields[1], 10, 64)
+					if err != nil {
+						return err.Error()
+					}
 					func() {
 						defer func() {
 							if r := recover(); r != nil {
 								fmt.Fprintf(&buf, "%s: %s\n", key, r)
 							}
 						}()
-						fmt.Fprintf(&buf, "%s: %t\n", key, f.Covers(key, base.InternalKeySeqNumMax))
+						switch f.Covers(key, snapshot) {
+						case NoCover:
+							fmt.Fprintf(&buf, "%s: none\n", key)
+						case CoversInvisibly:
+							fmt.Fprintf(&buf, "%s: invisibly\n", key)
+						case CoversVisibly:
+							fmt.Fprintf(&buf, "%s: visibly\n", key)
+						}
 					}()
 				}
 			}
