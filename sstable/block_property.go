@@ -140,6 +140,54 @@ type SuffixReplaceableBlockCollector interface {
 // be thread-safe.
 type BlockPropertyFilter = base.BlockPropertyFilter
 
+// BoundLimitedBlockPropertyFilter implements the block-property filter but
+// imposes an additional constraint on its usage, requiring that only blocks
+// containing exclusively keys between its lower and upper bounds may be
+// filtered. The bounds may be change during iteration, so the filter doesn't
+// expose the bounds, instead implementing KeyIsWithin[Lower,Upper]Bound methods
+// for performing bound comparisons.
+//
+// To be used, a BoundLimitedBlockPropertyFilter must be supplied directly
+// through NewBlockPropertiesFilterer's dedicated parameter. If supplied through
+// the ordinary slice of block property filters, this filter's bounds will be
+// ignored.
+//
+// The current [lower,upper) bounds of the filter are unknown, because they may
+// be changing. During forward iteration the lower bound is externally
+// guaranteed, meaning Intersects only returns false if the sstable iterator is
+// already known to be positioned at a key ≥ lower. The sstable iterator is then
+// only responsible for ensuring filtered blocks also meet the upper bound, and
+// should only allow a block to be filtered if all its keys are < upper. The
+// sstable iterator may invoke KeyIsWithinUpperBound(key) to perform this check,
+// where key is an inclusive upper bound on the block's keys.
+//
+// During backward iteration the upper bound is externally guaranteed, and
+// Intersects only returns false if the sstable iterator is already known to be
+// positioned at a key < upper. The sstable iterator is responsible for ensuring
+// filtered blocks also meet the lower bound, enforcing that a block is only
+// filtered if all its keys are ≥ lower. This check is made through passing the
+// block's inclusive lower bound to KeyIsWithinLowerBound.
+//
+// Usage of BoundLimitedBlockPropertyFilter is subtle, and Pebble consumers
+// should not implement this interface directly. This interface is an internal
+// detail in the implementation of block-property range-key masking.
+type BoundLimitedBlockPropertyFilter interface {
+	BlockPropertyFilter
+
+	// KeyIsWithinLowerBound tests whether the provided internal key falls
+	// within the current lower bound of the filter. A true return value
+	// indicates that the filter may be used to filter blocks that exclusively
+	// contain keys ≥ `key`, so long as the blocks' keys also satisfy the upper
+	// bound.
+	KeyIsWithinLowerBound(key *InternalKey) bool
+	// KeyIsWithinUpperBound tests whether the provided internal key falls
+	// within the current upper bound of the filter. A true return value
+	// indicates that the filter may be used to filter blocks that exclusively
+	// contain keys ≤ `key`, so long as the blocks' keys also satisfy the lower
+	// bound.
+	KeyIsWithinUpperBound(key *InternalKey) bool
+}
+
 // BlockIntervalCollector is a helper implementation of BlockPropertyCollector
 // for users who want to represent a set of the form [lower,upper) where both
 // lower and upper are uint64, and lower <= upper.
@@ -354,37 +402,47 @@ func (w *suffixReplacementBlockCollectorWrapper) UpdateKeySuffixes(
 	return w.BlockIntervalCollector.points.(SuffixReplaceableBlockCollector).UpdateKeySuffixes(oldProp, from, to)
 }
 
-// blockIntervalFilter is an implementation of BlockPropertyFilter when the
+// BlockIntervalFilter is an implementation of BlockPropertyFilter when the
 // corresponding collector is a BlockIntervalCollector. That is, the set is of
 // the form [lower, upper).
-type blockIntervalFilter struct {
+type BlockIntervalFilter struct {
 	name           string
 	filterInterval interval
 }
+
+var _ BlockPropertyFilter = (*BlockIntervalFilter)(nil)
 
 // NewBlockIntervalFilter constructs a BlockPropertyFilter that filters blocks
 // based on an interval property collected by BlockIntervalCollector and the
 // given [lower, upper) bounds. The given name specifies the
 // BlockIntervalCollector's properties to read.
-func NewBlockIntervalFilter(name string, lower uint64, upper uint64) BlockPropertyFilter {
-	return &blockIntervalFilter{
+func NewBlockIntervalFilter(name string, lower uint64, upper uint64) *BlockIntervalFilter {
+	return &BlockIntervalFilter{
 		name:           name,
 		filterInterval: interval{lower: lower, upper: upper},
 	}
 }
 
 // Name implements the BlockPropertyFilter interface.
-func (b *blockIntervalFilter) Name() string {
+func (b *BlockIntervalFilter) Name() string {
 	return b.name
 }
 
 // Intersects implements the BlockPropertyFilter interface.
-func (b *blockIntervalFilter) Intersects(prop []byte) (bool, error) {
+func (b *BlockIntervalFilter) Intersects(prop []byte) (bool, error) {
 	var i interval
 	if err := i.decode(prop); err != nil {
 		return false, err
 	}
 	return i.intersects(b.filterInterval), nil
+}
+
+// SetInterval adjusts the [lower, upper) bounds used by the filter. It is not
+// generally safe to alter the filter while it's in use, except as part of the
+// implementation of BlockPropertyFilterMask.SetSuffix used for range-key
+// masking.
+func (b *BlockIntervalFilter) SetInterval(lower, upper uint64) {
+	b.filterInterval = interval{lower: lower, upper: upper}
 }
 
 // When encoding block properties for each block, we cannot afford to encode
@@ -482,6 +540,25 @@ type BlockPropertiesFilterer struct {
 	// has two filters, corresponding to shortIDs 2, 0, this would be:
 	// len(shortIDToFiltersIndex)==3, 0=>1, 1=>-1, 2=>0.
 	shortIDToFiltersIndex []int
+
+	// boundLimitedFilter, if non-nil, holds a single block-property filter with
+	// additional constraints on its filtering. A boundLimitedFilter may only
+	// filter blocks that are wholly contained within its bounds. During forward
+	// iteration the lower bound (and during backward iteration the upper bound)
+	// must be externally guaranteed, with Intersects only returning false if
+	// that bound is met. The opposite bound is verified during iteration by the
+	// sstable iterator.
+	//
+	// boundLimitedFilter is permitted to be defined on a property (`Name()`)
+	// for which another filter exists in filters. In this case both filters
+	// will be consulted, and either filter may exclude block(s). Only a single
+	// bound-limited block-property filter may be set.
+	//
+	// The boundLimitedShortID field contains the shortID of the filter's
+	// property within the sstable. It's set to -1 if the property was not
+	// collected when the table was built.
+	boundLimitedFilter  BoundLimitedBlockPropertyFilter
+	boundLimitedShortID int
 }
 
 var blockPropertiesFiltererPool = sync.Pool{
@@ -492,9 +569,16 @@ var blockPropertiesFiltererPool = sync.Pool{
 
 // NewBlockPropertiesFilterer returns a partially initialized filterer. To complete
 // initialization, call IntersectsUserPropsAndFinishInit.
-func NewBlockPropertiesFilterer(filters []BlockPropertyFilter) *BlockPropertiesFilterer {
+func NewBlockPropertiesFilterer(
+	filters []BlockPropertyFilter, limited BoundLimitedBlockPropertyFilter,
+) *BlockPropertiesFilterer {
 	filterer := blockPropertiesFiltererPool.Get().(*BlockPropertiesFilterer)
-	*filterer = BlockPropertiesFilterer{filters: filters}
+	*filterer = BlockPropertiesFilterer{
+		filters:               filters,
+		shortIDToFiltersIndex: filterer.shortIDToFiltersIndex[:0],
+		boundLimitedFilter:    limited,
+		boundLimitedShortID:   -1,
+	}
 	return filterer
 }
 
@@ -546,12 +630,73 @@ func (f *BlockPropertiesFilterer) IntersectsUserPropsAndFinishInit(
 		}
 		f.shortIDToFiltersIndex[shortID] = i
 	}
+	if f.boundLimitedFilter == nil {
+		return true, nil
+	}
+
+	// There's a bound-limited filter. Find its shortID. It's possible that
+	// there's an existing filter in f.filters on the same property. That's
+	// okay. Both filters will be consulted whenever a relevant prop is decoded.
+	props, ok := userProperties[f.boundLimitedFilter.Name()]
+	if !ok {
+		// The collector was not used when writing this file, so it's
+		// intersecting. We leave f.boundLimitedShortID=-1, so the filter will
+		// be unused within this file.
+		return true, nil
+	}
+	byteProps := []byte(props)
+	if len(byteProps) < 1 {
+		return false, base.CorruptionErrorf(
+			"block properties for %s is corrupted", f.boundLimitedFilter.Name())
+	}
+	f.boundLimitedShortID = int(byteProps[0])
+
+	// We don't check for table-level intersection for the bound-limited filter.
+	// If a filter is bound-limited and only applicable to a limited span of
+	// keyspace, then it's treated as vacuously intersecting.
+	//
+	// TODO(jackson): We could filter at the table-level by threading the table
+	// smallest and largest bounds here.
+
+	// The bound-limited filter isn't included in shortIDToFiltersIndex.
+	//
+	// When determining intersection, we decode props only up to the shortID
+	// len(shortIDToFiltersIndex). If f.limitedShortID is greater than any of
+	// the existing filters' shortIDs, we need to grow shortIDToFiltersIndex.
+	// Growing the index with -1s ensures we're able to consult the index
+	// without length checks.
+	if n := len(f.shortIDToFiltersIndex); n <= f.boundLimitedShortID {
+		if cap(f.shortIDToFiltersIndex) <= f.boundLimitedShortID {
+			index := make([]int, f.boundLimitedShortID+1)
+			copy(index, f.shortIDToFiltersIndex)
+			f.shortIDToFiltersIndex = index
+		} else {
+			f.shortIDToFiltersIndex = f.shortIDToFiltersIndex[:f.boundLimitedShortID+1]
+		}
+		for j := n; j <= f.boundLimitedShortID; j++ {
+			f.shortIDToFiltersIndex[j] = -1
+		}
+	}
 	return true, nil
 }
 
-func (f *BlockPropertiesFilterer) intersects(props []byte) (bool, error) {
+type intersectsResult int8
+
+const (
+	blockIntersects intersectsResult = iota
+	blockExcluded
+	// blockMaybeExcluded is returned by BlockPropertiesFilterer.intersects when
+	// no filters unconditionally exclude the block, but the bound-limited block
+	// property filter will exclude it if the block's bounds fall within the
+	// filter's current bounds. See the reader's
+	// {single,two}LevelIterator.resolveMaybeExcluded methods.
+	blockMaybeExcluded
+)
+
+func (f *BlockPropertiesFilterer) intersects(props []byte) (ret intersectsResult, err error) {
 	i := 0
 	decoder := blockPropertiesDecoder{props: props}
+	ret = blockIntersects
 	for i < len(f.shortIDToFiltersIndex) {
 		var id int
 		var prop []byte
@@ -560,43 +705,68 @@ func (f *BlockPropertiesFilterer) intersects(props []byte) (bool, error) {
 			var err error
 			shortID, prop, err = decoder.next()
 			if err != nil {
-				return false, err
+				return ret, err
 			}
 			id = int(shortID)
 		} else {
 			id = math.MaxUint8 + 1
 		}
 		for i < len(f.shortIDToFiltersIndex) && id > i {
-			if f.shortIDToFiltersIndex[i] >= 0 {
-				// There is a filter for this id, but the property for this id
-				// is not encoded for this block.
-				intersects, err := f.filters[f.shortIDToFiltersIndex[i]].Intersects(nil)
-				if err != nil {
-					return false, err
-				}
-				if !intersects {
-					return false, nil
-				}
+			// The property for this id is not encoded for this block, but there
+			// may still be a filter for this id.
+			if intersects, err := f.intersectsFilter(i, nil); err != nil {
+				return ret, err
+			} else if intersects == blockExcluded {
+				return blockExcluded, nil
+			} else if intersects == blockMaybeExcluded {
+				ret = blockMaybeExcluded
 			}
 			i++
 		}
 		if i >= len(f.shortIDToFiltersIndex) {
-			return true, nil
+			return ret, nil
 		}
 		// INVARIANT: id <= i. And since i is always incremented by 1, id==i.
 		if id != i {
 			panic(fmt.Sprintf("%d != %d", id, i))
 		}
-		if f.shortIDToFiltersIndex[i] >= 0 {
-			intersects, err := f.filters[f.shortIDToFiltersIndex[i]].Intersects(prop)
-			if err != nil {
-				return false, err
-			}
-			if !intersects {
-				return false, nil
-			}
+		if intersects, err := f.intersectsFilter(i, prop); err != nil {
+			return ret, err
+		} else if intersects == blockExcluded {
+			return blockExcluded, nil
+		} else if intersects == blockMaybeExcluded {
+			ret = blockMaybeExcluded
 		}
 		i++
 	}
-	return true, nil
+	// ret == blockIntersects || ret == blockMaybeExcluded
+	return ret, nil
+}
+
+func (f *BlockPropertiesFilterer) intersectsFilter(i int, prop []byte) (intersectsResult, error) {
+	if f.shortIDToFiltersIndex[i] >= 0 {
+		intersects, err := f.filters[f.shortIDToFiltersIndex[i]].Intersects(prop)
+		if err != nil {
+			return blockIntersects, err
+		}
+		if !intersects {
+			return blockExcluded, nil
+		}
+	}
+	if i == f.boundLimitedShortID {
+		// The bound-limited filter uses this id.
+		//
+		// The bound-limited filter only applies within a keyspan interval. We
+		// expect the Intersects call to be cheaper than bounds checks. If
+		// Intersects determines that there is no intersection, we return
+		// `blockMaybeExcluded` if no other bpf unconditionally excludes the
+		// block.
+		intersects, err := f.boundLimitedFilter.Intersects(prop)
+		if err != nil {
+			return blockIntersects, err
+		} else if !intersects {
+			return blockMaybeExcluded, nil
+		}
+	}
+	return blockIntersects, nil
 }

@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -1050,8 +1052,8 @@ func TestIteratorSeekOpt(t *testing.T) {
 			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			oldNewIters := d.newIters
-			d.newIters = func(file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, keyspan.FragmentIterator, error) {
-				iter, rangeIter, err := oldNewIters(file, opts, bytesIterated)
+			d.newIters = func(file *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
+				iter, rangeIter, err := oldNewIters(file, opts, internalOpts)
 				iterWrapped := &iterSeekOptWrapper{
 					internalIterator:      iter,
 					seekGEUsingNext:       &seekGEUsingNext,
@@ -1411,13 +1413,17 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 
 var seed = flag.Uint64("seed", 0, "a pseudorandom number generator seed")
 
-func randValue(n int, rng *rand.Rand) []byte {
+func randStr(fill []byte, rng *rand.Rand) {
 	const letters = "abcdefghijklmnopqrstuvwxyz"
 	const lettersLen = len(letters)
-	buf := make([]byte, n)
-	for i := 0; i < len(buf); i++ {
-		buf[i] = letters[rng.Intn(lettersLen)]
+	for i := 0; i < len(fill); i++ {
+		fill[i] = letters[rng.Intn(lettersLen)]
 	}
+}
+
+func randValue(n int, rng *rand.Rand) []byte {
+	buf := make([]byte, n)
+	randStr(buf, rng)
 	return buf
 }
 
@@ -2113,6 +2119,124 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 			}
 		})
 	}
+}
+
+// BenchmarkIterator_RangeKeyMasking benchmarks a scan through a keyspace with
+// 10,000 random suffixed point keys, and three range keys covering most of the
+// keyspace. It varies the suffix of the range keys in subbenchmarks to exercise
+// varying amounts of masking. This benchmark does configure a block-property
+// filter, allowing for skipping blocks wholly contained within a range key and
+// consisting of points all with a suffix lower than the range key's.
+func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
+	const (
+		prefixLen    = 20
+		valueSize    = 1024
+		batches      = 200
+		keysPerBatch = 50
+	)
+	rng := rand.New(rand.NewSource(uint64(1658872515083979000)))
+	keyBuf := make([]byte, prefixLen+testkeys.MaxSuffixLen)
+	valBuf := make([]byte, valueSize)
+
+	mem := vfs.NewStrictMem()
+	opts := &Options{
+		FS:                       mem,
+		Comparer:                 testkeys.Comparer,
+		FormatMajorVersion:       FormatNewest,
+		MaxConcurrentCompactions: runtime.GOMAXPROCS(0)/2 + 1,
+		BlockPropertyCollectors: []func() BlockPropertyCollector{
+			blockprop.NewBlockPropertyCollector,
+		},
+	}
+	d, err := Open("", opts)
+	require.NoError(b, err)
+
+	for bi := 0; bi < batches; bi++ {
+		batch := d.NewBatch()
+		for k := 0; k < keysPerBatch; k++ {
+			randStr(keyBuf[:prefixLen], rng)
+			suffix := rng.Intn(100)
+			suffixLen := testkeys.WriteSuffix(keyBuf[prefixLen:], suffix)
+			randStr(valBuf[:], rng)
+			require.NoError(b, batch.Set(keyBuf[:prefixLen+suffixLen], valBuf[:], nil))
+		}
+		require.NoError(b, batch.Commit(nil))
+	}
+
+	// Wait for compactions to complete before starting benchmarks. We don't
+	// want to benchmark while compactions are running.
+	d.mu.Lock()
+	for d.mu.compact.compactingCount > 0 {
+		d.mu.compact.cond.Wait()
+	}
+	d.mu.Unlock()
+	b.Log(d.Metrics().String())
+	require.NoError(b, d.Close())
+	// Set ignore syncs to true so that each subbenchmark may mutate state and
+	// then revert back to the original state.
+	mem.SetIgnoreSyncs(true)
+	maskingFilter := blockprop.NewMaskingFilter()
+
+	// TODO(jackson): Benchmark lazy-combined iteration versus not.
+	// TODO(jackson): Benchmark seeks.
+	for _, rkSuffix := range []string{"@10", "@50", "@75", "@100"} {
+		b.Run(fmt.Sprintf("range-keys-suffixes=%s", rkSuffix), func(b *testing.B) {
+			d, err := Open("", opts)
+			require.NoError(b, err)
+			require.NoError(b, d.RangeKeySet([]byte("b"), []byte("e"), []byte(rkSuffix), nil, nil))
+			require.NoError(b, d.RangeKeySet([]byte("f"), []byte("p"), []byte(rkSuffix), nil, nil))
+			require.NoError(b, d.RangeKeySet([]byte("q"), []byte("z"), []byte(rkSuffix), nil, nil))
+			require.NoError(b, d.Flush())
+
+			// Populate 3 range keys, covering most of the keyspace, at the
+			// given suffix.
+
+			iterOpts := IterOptions{
+				KeyTypes: IterKeyTypePointsAndRanges,
+				RangeKeyMasking: RangeKeyMasking{
+					Suffix: []byte("@100"),
+					Filter: maskingFilter,
+				},
+			}
+			b.Run("forward", func(b *testing.B) {
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					iter := d.NewIter(&iterOpts)
+					count := 0
+					for valid := iter.First(); valid; valid = iter.Next() {
+						if hasPoint, _ := iter.HasPointAndRange(); hasPoint {
+							count++
+						}
+					}
+					if err := iter.Close(); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+			b.Run("backward", func(b *testing.B) {
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					iter := d.NewIter(&iterOpts)
+					count := 0
+					for valid := iter.Last(); valid; valid = iter.Prev() {
+						if hasPoint, _ := iter.HasPointAndRange(); hasPoint {
+							count++
+						}
+					}
+					if err := iter.Close(); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+
+			// Reset the benchmark state at the end of each run to remove the
+			// range keys we wrote.
+			b.StopTimer()
+			require.NoError(b, d.Close())
+			mem.ResetToSyncedState()
+		})
+	}
+
 }
 
 func BenchmarkIteratorScan(b *testing.B) {

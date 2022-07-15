@@ -471,7 +471,7 @@ func TestGetIter(t *testing.T) {
 		// m is a map from file numbers to DBs.
 		m := map[FileNum]*memTable{}
 		newIter := func(
-			file *manifest.FileMetadata, _ *IterOptions, _ *uint64,
+			file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
 		) (internalIterator, keyspan.FragmentIterator, error) {
 			d, ok := m[file.FileNum]
 			if !ok {

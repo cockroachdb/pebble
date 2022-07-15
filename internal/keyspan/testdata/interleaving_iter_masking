@@ -47,6 +47,7 @@ next
 next
 ----
 -- SpanChanged(nil)
+-- SpanChanged(nil)
 PointKey: b@2#1,1
 Span: <invalid>
 -
@@ -86,6 +87,7 @@ prev
 prev
 prev
 ----
+-- SpanChanged(nil)
 -- SpanChanged(m-q:{(#1,RANGEKEYSET,@6,bax)})
 PointKey: m#72057594037927935,21
 Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
@@ -113,6 +115,7 @@ Span: e-f:{(#1,RANGEKEYSET,@9,foo)}
 PointKey: b@2#1,1
 Span: <invalid>
 -
+-- SpanChanged(nil)
 .
 
 iter
@@ -125,9 +128,12 @@ next
 seek-ge m
 seek-ge r
 ----
+-- SpanChanged(nil)
+-- SpanChanged(nil)
 PointKey: b@2#1,1
 Span: <invalid>
 -
+-- SpanChanged(nil)
 -- SpanChanged(e-f:{(#1,RANGEKEYSET,@9,foo)})
 PointKey: e#72057594037927935,21
 Span: e-f:{(#1,RANGEKEYSET,@9,foo)}
@@ -156,6 +162,7 @@ PointKey: m#72057594037927935,21
 Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 -
 -- SpanChanged(nil)
+-- SpanChanged(nil)
 .
 
 # Setting the masking threshold to @9 should result in l@8 being masked by
@@ -173,6 +180,7 @@ seek-lt l
 seek-lt ll
 prev
 ----
+-- SpanChanged(nil)
 -- SpanChanged(l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)})
 PointKey: l#72057594037927935,21
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
@@ -258,6 +266,7 @@ prev
 prev
 prev
 ----
+-- SpanChanged(nil)
 -- SpanChanged(a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)})
 PointKey: a@12#1,1
 Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
@@ -315,6 +324,7 @@ prev
 prev
 prev
 ----
+-- SpanChanged(nil)
 -- SpanChanged(a-c:{(#2,RANGEKEYSET,@20,apples)})
 PointKey: b@2#1,1
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
@@ -363,6 +373,7 @@ Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
 -- SpanChanged(nil)
 .
+-- SpanChanged(nil)
 .
 
 iter
@@ -372,6 +383,7 @@ prev
 prev
 prev
 ----
+-- SpanChanged(nil)
 -- SpanChanged(a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)})
 PointKey: a@12#1,1
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
@@ -384,6 +396,7 @@ Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
 -- SpanChanged(nil)
 .
+-- SpanChanged(nil)
 .
 
 # Test a scenario where a point key is masked in the forward direction, which in
@@ -476,6 +489,7 @@ next
 PointKey: a#72057594037927935,21
 Span: a-c:{(#1,RANGEKEYSET,@10,apples)}
 -
+-- SpanChanged(nil)
 -- SpanChanged(nil)
 PointKey: d@9#3,1
 Span: <invalid>

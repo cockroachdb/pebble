@@ -247,11 +247,16 @@ func scanGlobalSeqNum(td *datadriven.TestData) (uint64, error) {
 type runIterCmdOption func(*runIterCmdOptions)
 
 type runIterCmdOptions struct {
-	everyOp func(io.Writer)
+	everyOp      func(io.Writer)
+	everyOpAfter func(io.Writer)
 }
 
 func runIterCmdEveryOp(everyOp func(io.Writer)) runIterCmdOption {
 	return func(opts *runIterCmdOptions) { opts.everyOp = everyOp }
+}
+
+func runIterCmdEveryOpAfter(everyOp func(io.Writer)) runIterCmdOption {
+	return func(opts *runIterCmdOptions) { opts.everyOpAfter = everyOp }
 }
 
 func runIterCmd(td *datadriven.TestData, origIter Iterator, opt ...runIterCmdOption) string {
@@ -348,6 +353,9 @@ func runIterCmd(td *datadriven.TestData, origIter Iterator, opt ...runIterCmdOpt
 			iter.ResetStats()
 			continue
 		}
+		if opts.everyOp != nil {
+			opts.everyOp(&b)
+		}
 		if iter.Valid() && checkValidPrefix(prefix, iter.Key().UserKey) {
 			fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
 		} else if err := iter.Error(); err != nil {
@@ -355,8 +363,8 @@ func runIterCmd(td *datadriven.TestData, origIter Iterator, opt ...runIterCmdOpt
 		} else {
 			fmt.Fprintf(&b, ".")
 		}
-		if opts.everyOp != nil {
-			opts.everyOp(&b)
+		if opts.everyOpAfter != nil {
+			opts.everyOpAfter(&b)
 		}
 		b.WriteString("\n")
 	}

@@ -12,14 +12,22 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 // tableNewIters creates a new point and range-del iterator for the given file
 // number. If bytesIterated is specified, it is incremented as the given file is
 // iterated through.
 type tableNewIters func(
-	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
+	file *manifest.FileMetadata,
+	opts *IterOptions,
+	internalOpts internalIterOpts,
 ) (internalIterator, keyspan.FragmentIterator, error)
+
+type internalIterOpts struct {
+	bytesIterated      *uint64
+	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter
+}
 
 // levelIter provides a merged view of the sstables in a level.
 //
@@ -158,8 +166,9 @@ type levelIter struct {
 	// - `*Boundary` is not exposed to the next higher-level iterator, i.e., `mergingIter`.
 	boundaryContext *levelIterBoundaryContext
 
-	// bytesIterated keeps track of the number of bytes iterated during compaction.
-	bytesIterated *uint64
+	// internalOpts holds the internal iterator options to pass to the table
+	// cache when constructing new table iterators.
+	internalOpts internalIterOpts
 
 	// Disable invariant checks even if they are otherwise enabled. Used by tests
 	// which construct "impossible" situations (e.g. seeking to a key before the
@@ -205,7 +214,7 @@ func newLevelIter(
 	bytesIterated *uint64,
 ) *levelIter {
 	l := &levelIter{}
-	l.init(opts, cmp, split, newIters, files, level, bytesIterated)
+	l.init(opts, cmp, split, newIters, files, level, internalIterOpts{bytesIterated: bytesIterated})
 	return l
 }
 
@@ -216,7 +225,7 @@ func (l *levelIter) init(
 	newIters tableNewIters,
 	files manifest.LevelIterator,
 	level manifest.Level,
-	bytesIterated *uint64,
+	internalOpts internalIterOpts,
 ) {
 	l.err = nil
 	l.level = level
@@ -232,7 +241,8 @@ func (l *levelIter) init(
 	l.iterFile = nil
 	l.newIters = newIters
 	l.files = files
-	l.bytesIterated = bytesIterated
+	l.internalOpts = internalOpts
+	l.stats = InternalIteratorStats{}
 }
 
 func (l *levelIter) initRangeDel(rangeDelIter *keyspan.FragmentIterator) {
@@ -563,7 +573,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 
 		var rangeDelIter keyspan.FragmentIterator
 		var iter internalIterator
-		iter, rangeDelIter, l.err = l.newIters(l.files.Current(), &l.tableOpts, l.bytesIterated)
+		iter, rangeDelIter, l.err = l.newIters(l.files.Current(), &l.tableOpts, l.internalOpts)
 		l.iter = base.WrapIterWithStats(iter)
 		if l.err != nil {
 			return noFileLoaded

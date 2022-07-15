@@ -154,7 +154,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 				g.l0 = g.l0[:n-1]
 				iterOpts := IterOptions{logger: g.logger}
 				g.levelIter.init(iterOpts, g.cmp, nil /* split */, g.newIters,
-					files, manifest.L0Sublevel(n), nil)
+					files, manifest.L0Sublevel(n), internalIterOpts{})
 				g.levelIter.initRangeDel(&g.rangeDelIter)
 				g.iter = &g.levelIter
 				g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
@@ -173,7 +173,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 
 		iterOpts := IterOptions{logger: g.logger}
 		g.levelIter.init(iterOpts, g.cmp, nil /* split */, g.newIters,
-			g.version.Levels[g.level].Iter(), manifest.Level(g.level), nil)
+			g.version.Levels[g.level].Iter(), manifest.Level(g.level), internalIterOpts{})
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++
 		g.iter = &g.levelIter
