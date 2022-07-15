@@ -229,6 +229,14 @@ type Metrics struct {
 		Count int
 		// The sequence number of the earliest, currently open snapshot.
 		EarliestSeqNum uint64
+		// A running tally of keys written to sstables during flushes or
+		// compactions that would've been elided if it weren't for open
+		// snapshots.
+		PinnedKeys uint64
+		// A running cumulative sum of the size of keys and values written to
+		// sstables during flushes or compactions that would've been elided if
+		// it weren't for open snapshots.
+		PinnedSize uint64
 	}
 
 	Table struct {

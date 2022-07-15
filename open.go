@@ -713,7 +713,7 @@ func (d *DB) replayWAL(
 		// instead of using 1.
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			1 /* base level */, toFlush)
-		newVE, _, err := d.runCompaction(jobID, c)
+		newVE, _, _, err := d.runCompaction(jobID, c)
 		if err != nil {
 			return errors.Wrapf(err, "running compaction during WAL replay")
 		}
