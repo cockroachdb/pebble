@@ -226,6 +226,14 @@ type Metrics struct {
 		Count int
 		// The sequence number of the earliest, currently open snapshot.
 		EarliestSeqNum uint64
+		// A running tally of keys written to sstables during flushes or
+		// compactions that would've been elided if it weren't for open
+		// snapshots.
+		PinnedKeys uint64
+		// A running cumulative sum of the size of keys and values written to
+		// sstables during flushes or compactions that would've been elided if
+		// it weren't for open snapshots.
+		PinnedKeysSize uint64
 	}
 
 	Table struct {
@@ -479,10 +487,6 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		humanize.IEC.Uint64(m.Table.ZombieSize))
 	formatCacheMetrics(w, &m.BlockCache, "bcache")
 	formatCacheMetrics(w, &m.TableCache, "tcache")
-	w.Printf("  snaps %9d %7s %7d  (score == earliest seq num)\n",
-		redact.Safe(m.Snapshots.Count),
-		notApplicable,
-		redact.Safe(m.Snapshots.EarliestSeqNum))
 	w.Printf(" titers %9d\n", redact.Safe(m.TableIters))
 	w.Printf(" filter %9s %7s %6.1f%%  (score == utility)\n",
 		notApplicable,

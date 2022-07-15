@@ -34,8 +34,7 @@ compact         0     0 B     0 B       0                          (size == esti
 zmemtbl         1   256 K
    ztbl         0     0 B
  bcache         4   697 B    0.0%  (score == hit-rate)
- tcache         1   696 B    0.0%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
+ tcache         1   720 B    0.0%  (score == hit-rate)
  titers         1
  filter         -       -    0.0%  (score == utility)
 
@@ -83,7 +82,6 @@ zmemtbl         2   512 K
    ztbl         2   1.5 K
  bcache         8   1.4 K   42.9%  (score == hit-rate)
  tcache         2   1.4 K   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
  titers         2
  filter         -       -    0.0%  (score == utility)
 
@@ -116,7 +114,6 @@ zmemtbl         1   256 K
    ztbl         2   1.5 K
  bcache         8   1.4 K   42.9%  (score == hit-rate)
  tcache         2   1.4 K   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
  titers         2
  filter         -       -    0.0%  (score == utility)
 
@@ -145,8 +142,7 @@ compact         1     0 B     0 B       0                          (size == esti
 zmemtbl         1   256 K
    ztbl         1   770 B
  bcache         4   697 B   42.9%  (score == hit-rate)
- tcache         1   696 B   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
+ tcache         1   720 B   66.7%  (score == hit-rate)
  titers         1
  filter         -       -    0.0%  (score == utility)
 
@@ -179,7 +175,6 @@ zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         0     0 B   42.9%  (score == hit-rate)
  tcache         0     0 B   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
 
@@ -238,7 +233,6 @@ zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         0     0 B   42.9%  (score == hit-rate)
  tcache         0     0 B   66.7%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
 
@@ -281,7 +275,6 @@ zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         0     0 B   27.3%  (score == hit-rate)
  tcache         0     0 B   58.3%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
 
@@ -369,7 +362,6 @@ compact         2   5.7 K     0 B       0                          (size == esti
 zmemtbl         0     0 B
    ztbl         0     0 B
  bcache        16   2.9 K   34.4%  (score == hit-rate)
- tcache         3   2.0 K   63.6%  (score == hit-rate)
-  snaps         0       -       0  (score == earliest seq num)
+ tcache         3   2.1 K   63.6%  (score == hit-rate)
  titers         0
  filter         -       -    0.0%  (score == utility)

@@ -175,9 +175,10 @@ type compactionIter struct {
 	// advanced.
 	valueBuf []byte
 	// Is the current entry valid?
-	valid     bool
-	iterKey   *InternalKey
-	iterValue []byte
+	valid            bool
+	iterKey          *InternalKey
+	iterValue        []byte
+	iterStripeChange stripeChangeType
 	// `skip` indicates whether the remaining skippable entries in the current
 	// snapshot stripe should be skipped or processed. An example of a non-
 	// skippable entry is a range tombstone as we need to return it from the
@@ -195,6 +196,11 @@ type compactionIter struct {
 	//   user key to ensure we've seen all mergeable operands.
 	// - `iterPosPrev`: this is invalid as compactionIter is forward-only.
 	pos iterPos
+	// `snapshotPinned` indicates whether the last point key returned by the
+	// compaction iterator was only returned because an open snapshot prevents
+	// its elision. This field only applies to point keys, and not to range
+	// deletions or range keys.
+	snapshotPinned bool
 	// The index of the snapshot for the current key within the snapshots slice.
 	curSnapshotIdx    int
 	curSnapshotSeqNum uint64
@@ -281,6 +287,7 @@ func (i *compactionIter) First() (*InternalKey, []byte) {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iterKey.SeqNum(), i.snapshots)
 	}
 	i.pos = iterPosNext
+	i.iterStripeChange = newStripeNewKey
 	return i.Next()
 }
 
@@ -307,13 +314,21 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 		if i.skip {
 			i.skipInStripe()
 		} else {
-			i.nextInStripe()
+			i.iterStripeChange = i.nextInStripe()
 		}
 	}
 
 	i.pos = iterPosCurForward
 	i.valid = false
 	for i.iterKey != nil {
+		// i.iterKey is the first of a new snapshot stripe. If this new snapshot
+		// stripe was NOT triggered because `iterKey` is the first key with its
+		// user key, then this key is 'obsolete' but not elided to preserve the
+		// history at a snapshot sequence number. Mark it as pinned so that the
+		// compaction loop can correctly populate output tables' pinned
+		// statistics.
+		i.snapshotPinned = i.iterStripeChange == newStripeSameKey
+
 		if i.iterKey.Kind() == InternalKeyKindRangeDelete || rangekey.IsRangeKey(i.iterKey.Kind()) {
 			// Return the span so the compaction can use it for file truncation and add
 			// it to the relevant fragmenter. We do not set `skip` to true before
@@ -340,25 +355,40 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			// This goes against the comment on i.key in the struct, and
 			// therefore warrants some investigation.
 			i.saveKey()
+			// TODO(jackson): Handle tracking pinned statistics for range keys
+			// and range deletions.
+			i.snapshotPinned = false
 			i.value = i.iterValue
 			i.valid = true
 			return &i.key, i.value
 		}
 
-		if i.rangeDelFrag.Covers(*i.iterKey, i.curSnapshotSeqNum) {
+		if cover := i.rangeDelFrag.Covers(*i.iterKey, i.curSnapshotSeqNum); cover == keyspan.CoversVisibly {
+			// A pending range deletion deletes this key. Skip it.
 			i.saveKey()
 			i.skipInStripe()
 			continue
+		} else if cover == keyspan.CoversInvisibly {
+			// i.iterKey would be deleted by a range deletion if there weren't
+			// any open snapshots. Mark it as pinned.
+			i.snapshotPinned = true
 		}
 
 		switch i.iterKey.Kind() {
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
-			// If we're at the last snapshot stripe and the tombstone can be elided
-			// skip skippable keys in the same stripe.
-			if i.curSnapshotIdx == 0 && i.elideTombstone(i.iterKey.UserKey) {
-				i.saveKey()
-				i.skipInStripe()
-				continue
+			if i.elideTombstone(i.iterKey.UserKey) {
+				if i.curSnapshotIdx == 0 {
+					// If we're at the last snapshot stripe and the tombstone
+					// can be elided skip skippable keys in the same stripe.
+					i.saveKey()
+					i.skipInStripe()
+					continue
+				} else {
+					// We're not at the last snapshot stripe, so the tombstone
+					// can NOT yet be elided. Mark it as pinned, so that it's
+					// included in table statistics appropriately.
+					i.snapshotPinned = true
+				}
 			}
 
 			switch i.iterKey.Kind() {
@@ -373,7 +403,6 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				if i.singleDeleteNext() {
 					return &i.key, i.value
 				}
-
 				continue
 			}
 
@@ -471,18 +500,14 @@ func snapshotIndex(seq uint64, snapshots []uint64) (int, uint64) {
 // skipInStripe skips over skippable keys in the same stripe and user key.
 func (i *compactionIter) skipInStripe() {
 	i.skip = true
-	var change stripeChangeType
-	for {
-		change = i.nextInStripe()
-		if change == sameStripeNonSkippable || change == newStripe {
-			break
-		}
+	for i.iterStripeChange = i.nextInStripe(); i.iterStripeChange == sameStripeSkippable; {
+		i.iterStripeChange = i.nextInStripe()
 	}
 	// Reset skip if we landed outside the original stripe. Otherwise, we landed
 	// in the same stripe on a non-skippable key. In that case we should preserve
 	// `i.skip == true` such that later keys in the stripe will continue to be
 	// skipped.
-	if change == newStripe {
+	if i.iterStripeChange == newStripeNewKey || i.iterStripeChange == newStripeSameKey {
 		i.skip = false
 	}
 }
@@ -499,10 +524,14 @@ func (i *compactionIter) iterNext() bool {
 
 // stripeChangeType indicates how the snapshot stripe changed relative to the previous
 // key. If no change, it also indicates whether the current entry is skippable.
+// If there snapshot changed, it also indicates whether the new stripe was
+// entered because the iterator progressed onto an entirely new key or entered a
+// new stripe within the same key.
 type stripeChangeType int
 
 const (
-	newStripe stripeChangeType = iota
+	newStripeNewKey stripeChangeType = iota
+	newStripeSameKey
 	sameStripeSkippable
 	sameStripeNonSkippable
 )
@@ -517,7 +546,7 @@ const (
 // to the caller of the exported function (i.e. the caller of Next, First, etc.)
 func (i *compactionIter) nextInStripe() stripeChangeType {
 	if !i.iterNext() {
-		return newStripe
+		return newStripeNewKey
 	}
 	key := i.iterKey
 
@@ -538,10 +567,10 @@ func (i *compactionIter) nextInStripe() stripeChangeType {
 			panic(fmt.Sprintf("pebble: invariant violation: %s and %s out of order", key, prevKey))
 		}
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
-		return newStripe
+		return newStripeNewKey
 	} else if !i.equal(i.key.UserKey, key.UserKey) {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
-		return newStripe
+		return newStripeNewKey
 	}
 	origSnapshotIdx := i.curSnapshotIdx
 	i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
@@ -553,7 +582,7 @@ func (i *compactionIter) nextInStripe() stripeChangeType {
 		if i.curSnapshotIdx == origSnapshotIdx {
 			return sameStripeNonSkippable
 		}
-		return newStripe
+		return newStripeSameKey
 	case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 		// Range keys are interleaved at the max sequence number for a given user
 		// key, so we should not see any more range keys in this stripe.
@@ -562,12 +591,12 @@ func (i *compactionIter) nextInStripe() stripeChangeType {
 		if i.curSnapshotIdx == origSnapshotIdx {
 			return sameStripeNonSkippable
 		}
-		return newStripe
+		return newStripeSameKey
 	}
 	if i.curSnapshotIdx == origSnapshotIdx {
 		return sameStripeSkippable
 	}
-	return newStripe
+	return newStripeSameKey
 }
 
 func (i *compactionIter) setNext() {
@@ -594,49 +623,50 @@ func (i *compactionIter) setNext() {
 	// Else, we continue to loop through entries in the stripe looking for a
 	// DEL. Note that we may stop *before* encountering a DEL, if one exists.
 	for {
-		switch t := i.nextInStripe(); t {
-		case newStripe, sameStripeNonSkippable:
+		switch i.iterStripeChange = i.nextInStripe(); i.iterStripeChange {
+		case newStripeNewKey, newStripeSameKey:
 			i.pos = iterPosNext
-			if t == sameStripeNonSkippable {
-				// We iterated onto a key that we cannot skip. We can
-				// conservatively transform the original SET into a SETWITHDEL
-				// as an indication that there *may* still be a DEL/SINGLEDEL
-				// under this SET, even if we did not actually encounter one.
-				//
-				// This is safe to do, as:
-				//
-				// - in the case that there *is not* actually a DEL/SINGLEDEL
-				// under this entry, any SINGLEDEL above this now-transformed
-				// SETWITHDEL will become a DEL when the two encounter in a
-				// compaction. The DEL will eventually be elided in a
-				// subsequent compaction. The cost for ensuring correctness is
-				// that this entry is kept around for an additional compaction
-				// cycle(s).
-				//
-				// - in the case there *is* indeed a DEL/SINGLEDEL under us
-				// (but in a different stripe or sstable), then we will have
-				// already done the work to transform the SET into a
-				// SETWITHDEL, and we will skip any additional iteration when
-				// this entry is encountered again in a subsequent compaction.
-				//
-				// Ideally, this codepath would be smart enough to handle the
-				// case of SET <- RANGEDEL <- ... <- DEL/SINGLEDEL <- ....
-				// This requires preserving any RANGEDEL entries we encounter
-				// along the way, then emitting the original (possibly
-				// transformed) key, followed by the RANGEDELs. This requires
-				// a sizable refactoring of the existing code, as nextInStripe
-				// currently returns a sameStripeNonSkippable when it
-				// encounters a RANGEDEL.
-				// TODO(travers): optimize to handle the RANGEDEL case if it
-				// turns out to be a performance problem.
-				i.key.SetKind(InternalKeyKindSetWithDelete)
+			return
+		case sameStripeNonSkippable:
+			i.pos = iterPosNext
+			// We iterated onto a key that we cannot skip. We can
+			// conservatively transform the original SET into a SETWITHDEL
+			// as an indication that there *may* still be a DEL/SINGLEDEL
+			// under this SET, even if we did not actually encounter one.
+			//
+			// This is safe to do, as:
+			//
+			// - in the case that there *is not* actually a DEL/SINGLEDEL
+			// under this entry, any SINGLEDEL above this now-transformed
+			// SETWITHDEL will become a DEL when the two encounter in a
+			// compaction. The DEL will eventually be elided in a
+			// subsequent compaction. The cost for ensuring correctness is
+			// that this entry is kept around for an additional compaction
+			// cycle(s).
+			//
+			// - in the case there *is* indeed a DEL/SINGLEDEL under us
+			// (but in a different stripe or sstable), then we will have
+			// already done the work to transform the SET into a
+			// SETWITHDEL, and we will skip any additional iteration when
+			// this entry is encountered again in a subsequent compaction.
+			//
+			// Ideally, this codepath would be smart enough to handle the
+			// case of SET <- RANGEDEL <- ... <- DEL/SINGLEDEL <- ....
+			// This requires preserving any RANGEDEL entries we encounter
+			// along the way, then emitting the original (possibly
+			// transformed) key, followed by the RANGEDELs. This requires
+			// a sizable refactoring of the existing code, as nextInStripe
+			// currently returns a sameStripeNonSkippable when it
+			// encounters a RANGEDEL.
+			// TODO(travers): optimize to handle the RANGEDEL case if it
+			// turns out to be a performance problem.
+			i.key.SetKind(InternalKeyKindSetWithDelete)
 
-				// By setting i.skip=true, we are saying that after the
-				// non-skippable key is emitted (which is likely a RANGEDEL),
-				// the remaining point keys that share the same user key as this
-				// saved key should be skipped.
-				i.skip = true
-			}
+			// By setting i.skip=true, we are saying that after the
+			// non-skippable key is emitted (which is likely a RANGEDEL),
+			// the remaining point keys that share the same user key as this
+			// saved key should be skipped.
+			i.skip = true
 			return
 		case sameStripeSkippable:
 			// We're still in the same stripe. If this is a DEL/SINGLEDEL, we
@@ -649,7 +679,7 @@ func (i *compactionIter) setNext() {
 				return
 			}
 		default:
-			panic("pebble: unexpected stripeChangeType: " + strconv.Itoa(int(t)))
+			panic("pebble: unexpected stripeChangeType: " + strconv.Itoa(int(i.iterStripeChange)))
 		}
 	}
 }
@@ -662,9 +692,9 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 	// Loop looking for older values in the current snapshot stripe and merge
 	// them.
 	for {
-		if change := i.nextInStripe(); change == sameStripeNonSkippable || change == newStripe {
+		if i.iterStripeChange = i.nextInStripe(); i.iterStripeChange != sameStripeSkippable {
 			i.pos = iterPosNext
-			return change
+			return i.iterStripeChange
 		}
 		key := i.iterKey
 		switch key.Kind() {
@@ -690,7 +720,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			return sameStripeSkippable
 
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
-			if i.rangeDelFrag.Covers(*key, i.curSnapshotSeqNum) {
+			if i.rangeDelFrag.Covers(*key, i.curSnapshotSeqNum) == keyspan.CoversVisibly {
 				// We change the kind of the result key to a Set so that it shadows
 				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
 				// strictly necessary, but provides consistency with the behavior of
@@ -714,7 +744,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			return sameStripeSkippable
 
 		case InternalKeyKindMerge:
-			if i.rangeDelFrag.Covers(*key, i.curSnapshotSeqNum) {
+			if i.rangeDelFrag.Covers(*key, i.curSnapshotSeqNum) == keyspan.CoversVisibly {
 				// We change the kind of the result key to a Set so that it shadows
 				// keys in lower levels. That is, MERGE+RANGEDEL -> SET. This isn't
 				// strictly necessary, but provides consistency with the behavior of
@@ -748,7 +778,7 @@ func (i *compactionIter) singleDeleteNext() bool {
 
 	// Loop until finds a key to be passed to the next level.
 	for {
-		if change := i.nextInStripe(); change == sameStripeNonSkippable || change == newStripe {
+		if i.iterStripeChange = i.nextInStripe(); i.iterStripeChange != sameStripeSkippable {
 			i.pos = iterPosNext
 			return true
 		}
@@ -763,7 +793,7 @@ func (i *compactionIter) singleDeleteNext() bool {
 			return true
 
 		case InternalKeyKindSet:
-			i.nextInStripe()
+			i.iterStripeChange = i.nextInStripe()
 			i.valid = false
 			return false
 
