@@ -142,6 +142,14 @@ type Properties struct {
 	RawRangeKeyValueSize uint64 `prop:"pebble.raw.range-key.value.size"`
 	// Total raw value size.
 	RawValueSize uint64 `prop:"rocksdb.raw.value.size"`
+	// The total number of keys in this table that were pinned by open snapshots.
+	SnapshotPinnedKeys uint64 `prop:"pebble.num.snapshot-pinned-keys"`
+	// The cumulative bytes of keys in this table that were pinned by
+	// open snapshots. This value is comparable to RawKeySize.
+	SnapshotPinnedKeySize uint64 `prop:"pebble.raw.snapshot-pinned-keys.size"`
+	// The cumulative bytes of values in this table that were pinned by
+	// open snapshots. This value is comparable to RawValueSize.
+	SnapshotPinnedValueSize uint64 `prop:"pebble.raw.snapshot-pinned-values.size"`
 	// Size of the top-level index if kTwoLevelIndexSearch is used.
 	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
 	// User collected properties.
@@ -359,6 +367,11 @@ func (p *Properties) save(w *rawBlockWriter) {
 	p.saveBool(m, unsafe.Offsetof(p.PrefixFiltering), p.PrefixFiltering)
 	if p.PropertyCollectorNames != "" {
 		p.saveString(m, unsafe.Offsetof(p.PropertyCollectorNames), p.PropertyCollectorNames)
+	}
+	if p.SnapshotPinnedKeys > 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.SnapshotPinnedKeys), p.SnapshotPinnedKeys)
+		p.saveUvarint(m, unsafe.Offsetof(p.SnapshotPinnedKeySize), p.SnapshotPinnedKeySize)
+		p.saveUvarint(m, unsafe.Offsetof(p.SnapshotPinnedValueSize), p.SnapshotPinnedValueSize)
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.RawKeySize), p.RawKeySize)
 	p.saveUvarint(m, unsafe.Offsetof(p.RawValueSize), p.RawValueSize)
