@@ -67,7 +67,7 @@ func NewExternalIter(
 		// Add the readers to the Iterator so that Close closes them, and
 		// SetOptions can re-construct iterators from them.
 		externalReaders: readers,
-		newIters: func(f *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64) (internalIterator, keyspan.FragmentIterator, error) {
+		newIters: func(f *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
 			// NB: External iterators are currently constructed without any
 			// `levelIters`. newIters should never be called. When we support
 			// organizing multiple non-overlapping files into a single level
@@ -143,6 +143,7 @@ func finishInitializingExternal(it *Iterator) {
 	it.iter = it.pointIter
 
 	if it.opts.rangeKeys() {
+		it.rangeKeyMasking.init(it.cmp, it.split, &it.opts)
 		if it.rangeKey == nil {
 			it.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 			it.rangeKey.init(it.cmp, it.split, &it.opts)
@@ -158,7 +159,7 @@ func finishInitializingExternal(it *Iterator) {
 				}
 			}
 		}
-		it.rangeKey.iiter.Init(it.cmp, it.iter, it.rangeKey.rangeKeyIter, it.rangeKey,
+		it.rangeKey.iiter.Init(it.cmp, it.iter, it.rangeKey.rangeKeyIter, &it.rangeKeyMasking,
 			it.opts.LowerBound, it.opts.UpperBound)
 		it.iter = &it.rangeKey.iiter
 	}

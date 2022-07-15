@@ -1114,7 +1114,8 @@ func (c *compaction) newInputIter(
 	newRangeDelIter := func(
 		f *manifest.FileMetadata, slice manifest.LevelSlice, _ *IterOptions, bytesIterated *uint64,
 	) (keyspan.FragmentIterator, error) {
-		iter, rangeDelIter, err := newIters(f, nil /* iter options */, &c.bytesIterated)
+		iter, rangeDelIter, err := newIters(f, nil, /* iter options */
+			internalIterOpts{bytesIterated: &c.bytesIterated})
 		if err == nil {
 			// TODO(peter): It is mildly wasteful to open the point iterator only to
 			// immediately close it. One way to solve this would be to add new

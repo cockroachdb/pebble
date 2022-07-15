@@ -959,6 +959,8 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	}
 
 	if dbi.opts.rangeKeys() {
+		dbi.rangeKeyMasking.init(dbi.cmp, dbi.split, &dbi.opts)
+
 		// When iterating over both point and range keys, don't create the
 		// range-key iterator stack immediately if we can avoid it. This
 		// optimization takes advantage of the expected sparseness of range
@@ -1006,7 +1008,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 			// NB: The interleaving iterator is always reinitialized, even if
 			// dbi already had an initialized range key iterator, in case the point
 			// iterator changed or the range key masking suffix changed.
-			dbi.rangeKey.iiter.Init(dbi.cmp, dbi.iter, dbi.rangeKey.rangeKeyIter, dbi.rangeKey,
+			dbi.rangeKey.iiter.Init(dbi.cmp, dbi.iter, dbi.rangeKey.rangeKeyIter, &dbi.rangeKeyMasking,
 				dbi.opts.LowerBound, dbi.opts.UpperBound)
 			dbi.iter = &dbi.rangeKey.iiter
 		}
@@ -1100,11 +1102,14 @@ func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
 	levelsIndex := len(levels)
 	mlevels = mlevels[:numMergingLevels]
 	levels = levels[:numLevelIters]
-
+	var internalOpts internalIterOpts
+	if i.opts.RangeKeyMasking.Filter != nil {
+		internalOpts.boundLimitedFilter = &i.rangeKeyMasking
+	}
 	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
 		li := &levels[levelsIndex]
 
-		li.init(i.opts, i.cmp, i.split, i.newIters, files, level, nil)
+		li.init(i.opts, i.cmp, i.split, i.newIters, files, level, internalOpts)
 		li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
 		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)

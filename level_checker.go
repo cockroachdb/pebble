@@ -373,7 +373,7 @@ func checkRangeTombstones(c *checkConfig) error {
 			lf := files.Take()
 			atomicUnit, _ := expandToAtomicUnit(c.cmp, lf.Slice(), true /* disableIsCompacting */)
 			lower, upper := manifest.KeyRange(c.cmp, atomicUnit.Iter())
-			iterToClose, iter, err := c.newIters(lf.FileMetadata, nil, nil)
+			iterToClose, iter, err := c.newIters(lf.FileMetadata, nil, internalIterOpts{})
 			if err != nil {
 				return err
 			}
@@ -634,7 +634,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
 		li.init(iterOpts, c.cmp, nil /* split */, c.newIters, manifestIter,
-			manifest.L0Sublevel(sublevel), nil)
+			manifest.L0Sublevel(sublevel), internalIterOpts{})
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)
 		mlevelAlloc[0].iter = li
@@ -648,7 +648,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
 		li.init(iterOpts, c.cmp, nil /* split */, c.newIters,
-			current.Levels[level].Iter(), manifest.Level(level), nil)
+			current.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)
 		mlevelAlloc[0].iter = li

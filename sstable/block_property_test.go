@@ -477,7 +477,7 @@ func TestBlockPropertiesFilterer_IntersectsUserPropsAndFinishInit(t *testing.T) 
 				filter := NewBlockIntervalFilter(f.name, f.i.lower, f.i.upper)
 				filters = append(filters, filter)
 			}
-			filterer := NewBlockPropertiesFilterer(filters)
+			filterer := NewBlockPropertiesFilterer(filters, nil)
 			intersects, err := filterer.IntersectsUserPropsAndFinishInit(tc.userProps)
 			require.NoError(t, err)
 			require.Equal(t, tc.intersects, intersects)
@@ -730,10 +730,11 @@ func TestBlockPropertiesFilterer_Intersects(t *testing.T) {
 				bpFilterer := BlockPropertiesFilterer{
 					filters:               filters,
 					shortIDToFiltersIndex: shortIDToFiltersIndex,
+					boundLimitedShortID:   -1,
 				}
 				intersects, err := bpFilterer.intersects(tc.props)
 				require.NoError(t, err)
-				require.Equal(t, tc.intersects, intersects)
+				require.Equal(t, tc.intersects, intersects == blockIntersects)
 			}
 			doFiltering()
 			if len(filters) > 1 {
@@ -871,20 +872,6 @@ func TestBlockProperties(t *testing.T) {
 		}
 	}()
 
-	parseIntervalFilter := func(cmd datadriven.CmdArg) (BlockPropertyFilter, error) {
-		name := cmd.Vals[0]
-		minS, maxS := cmd.Vals[1], cmd.Vals[2]
-		min, err := strconv.ParseUint(minS, 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		max, err := strconv.ParseUint(maxS, 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		return NewBlockIntervalFilter(name, min, max), nil
-	}
-
 	datadriven.RunTest(t, "testdata/block_properties", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
@@ -892,167 +879,18 @@ func TestBlockProperties(t *testing.T) {
 				_ = r.Close()
 				r = nil
 			}
-			opts := WriterOptions{
-				TableFormat:    TableFormatPebblev2,
-				IndexBlockSize: math.MaxInt32, // Default to a single level index for simplicity.
-			}
-			for _, cmd := range td.CmdArgs {
-				switch cmd.Key {
-				case "block-size":
-					if len(cmd.Vals) != 1 {
-						return fmt.Sprintf("%s: arg %s expects 1 value", td.Cmd, cmd.Key)
-					}
-					var err error
-					opts.BlockSize, err = strconv.Atoi(cmd.Vals[0])
-					if err != nil {
-						return err.Error()
-					}
-				case "collectors":
-					for _, c := range cmd.Vals {
-						var points, ranges DataBlockIntervalCollector
-						switch c {
-						case "value-first":
-							points = &valueCharBlockIntervalCollector{charIdx: 0}
-						case "value-last":
-							points = &valueCharBlockIntervalCollector{charIdx: -1}
-						case "suffix":
-							points, ranges = &suffixIntervalCollector{}, &suffixIntervalCollector{}
-						case "suffix-point-keys-only":
-							points = &suffixIntervalCollector{}
-						case "suffix-range-keys-only":
-							ranges = &suffixIntervalCollector{}
-						case "nil-points-and-ranges":
-							points, ranges = nil, nil
-						default:
-							return fmt.Sprintf("unknown collector: %s", c)
-						}
-						name := c
-						opts.BlockPropertyCollectors = append(
-							opts.BlockPropertyCollectors,
-							func() BlockPropertyCollector {
-								return NewBlockIntervalCollector(name, points, ranges)
-							})
-					}
-				case "index-block-size":
-					var err error
-					opts.IndexBlockSize, err = strconv.Atoi(cmd.Vals[0])
-					if err != nil {
-						return err.Error()
-					}
-				}
-			}
-			var meta *WriterMetadata
-			var err error
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						err = errors.Errorf("%v", r)
-					}
-				}()
-				meta, r, err = runBuildCmd(td, &opts, 0)
-			}()
-			if err != nil {
-				return err.Error()
-			}
-			return fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nrangekey: [%s,%s]\nseqnums:  [%d,%d]\n",
-				meta.SmallestPoint, meta.LargestPoint,
-				meta.SmallestRangeDel, meta.LargestRangeDel,
-				meta.SmallestRangeKey, meta.LargestRangeKey,
-				meta.SmallestSeqNum, meta.LargestSeqNum)
+			var output string
+			r, output = runBlockPropertiesBuildCmd(td)
+			return output
 
 		case "collectors":
-			var lines []string
-			for k, v := range r.Properties.UserProperties {
-				lines = append(lines, fmt.Sprintf("%d: %s", v[0], k))
-			}
-			linesSorted := sort.StringSlice(lines)
-			linesSorted.Sort()
-			return strings.Join(lines, "\n")
+			return runCollectorsCmd(r, td)
 
 		case "table-props":
-			var lines []string
-			for _, val := range r.Properties.UserProperties {
-				id := shortID(val[0])
-				var i interval
-				if err := i.decode([]byte(val[1:])); err != nil {
-					return err.Error()
-				}
-				lines = append(lines, fmt.Sprintf("%d: [%d, %d)", id, i.lower, i.upper))
-			}
-			linesSorted := sort.StringSlice(lines)
-			linesSorted.Sort()
-			return strings.Join(lines, "\n")
+			return runTablePropsCmd(r, td)
 
 		case "block-props":
-			bh, err := r.readIndex()
-			if err != nil {
-				return err.Error()
-			}
-			twoLevelIndex := r.Properties.IndexPartitions > 0
-			i, err := newBlockIter(r.Compare, bh.Get())
-			if err != nil {
-				return err.Error()
-			}
-			defer bh.Release()
-			var sb strings.Builder
-			decodeProps := func(props []byte, indent string) error {
-				d := blockPropertiesDecoder{props: props}
-				var lines []string
-				for !d.done() {
-					id, prop, err := d.next()
-					if err != nil {
-						return err
-					}
-					var i interval
-					if err := i.decode(prop); err != nil {
-						return err
-					}
-					lines = append(lines, fmt.Sprintf("%s%d: [%d, %d)\n", indent, id, i.lower, i.upper))
-				}
-				linesSorted := sort.StringSlice(lines)
-				linesSorted.Sort()
-				for _, line := range lines {
-					sb.WriteString(line)
-				}
-				return nil
-			}
-
-			for key, val := i.First(); key != nil; key, val = i.Next() {
-				sb.WriteString(fmt.Sprintf("%s:\n", key))
-				bhp, err := decodeBlockHandleWithProperties(val)
-				if err != nil {
-					return err.Error()
-				}
-				if err := decodeProps(bhp.Props, "  "); err != nil {
-					return err.Error()
-				}
-
-				// If the table has a two-level index, also decode the index
-				// block that bhp points to, along with its block properties.
-				if twoLevelIndex {
-					subiter := &blockIter{}
-					subIndex, _, err := r.readBlock(
-						bhp.BlockHandle, nil /* transform */, nil /* readaheadState */)
-					if err != nil {
-						return err.Error()
-					}
-					if err := subiter.init(r.Compare, subIndex.Get(), 0 /* globalSeqNum */); err != nil {
-						return err.Error()
-					}
-					for key, value := subiter.First(); key != nil; key, value = subiter.Next() {
-						sb.WriteString(fmt.Sprintf("  %s:\n", key))
-						dataBH, err := decodeBlockHandleWithProperties(value)
-						if err != nil {
-							return err.Error()
-						}
-						if err := decodeProps(dataBH.Props, "    "); err != nil {
-							return err.Error()
-						}
-					}
-					subIndex.Release()
-				}
-			}
-			return sb.String()
+			return runBlockPropsCmd(r, td)
 
 		case "filter":
 			var points, ranges []BlockPropertyFilter
@@ -1076,7 +914,7 @@ func TestBlockProperties(t *testing.T) {
 			var f *BlockPropertiesFilterer
 			buf.WriteString("points: ")
 			if len(points) > 0 {
-				f = NewBlockPropertiesFilterer(points)
+				f = NewBlockPropertiesFilterer(points, nil)
 				ok, err := f.IntersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 				if err != nil {
 					return err.Error()
@@ -1104,11 +942,11 @@ func TestBlockProperties(t *testing.T) {
 						if err != nil {
 							return err.Error()
 						}
-						ok, err := f.intersects(bh.Props)
+						intersects, err := f.intersects(bh.Props)
 						if err != nil {
 							return err.Error()
 						}
-						if ok {
+						if intersects == blockIntersects {
 							blocks = append(blocks, i)
 						}
 						i++
@@ -1130,7 +968,7 @@ func TestBlockProperties(t *testing.T) {
 			// Range key filter matches.
 			buf.WriteString("ranges: ")
 			if len(ranges) > 0 {
-				f := NewBlockPropertiesFilterer(ranges)
+				f := NewBlockPropertiesFilterer(ranges, nil)
 				ok, err := f.IntersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 				if err != nil {
 					return err.Error()
@@ -1161,7 +999,84 @@ func TestBlockProperties(t *testing.T) {
 					filters = append(filters, f)
 				}
 			}
-			filterer := NewBlockPropertiesFilterer(filters)
+			filterer := NewBlockPropertiesFilterer(filters, nil)
+			ok, err := filterer.IntersectsUserPropsAndFinishInit(r.Properties.UserProperties)
+			if err != nil {
+				return err.Error()
+			} else if !ok {
+				return "filter excludes entire table"
+			}
+			iter, err := r.NewIterWithBlockPropertyFilters(lower, upper, filterer, false /* use (bloom) filter */)
+			if err != nil {
+				return err.Error()
+			}
+			return runIterCmd(td, iter, runIterCmdEveryOpAfter(func(w io.Writer) {
+				// After every op, point the value of MaybeFilteredKeys.
+				fmt.Fprintf(w, " MaybeFilteredKeys()=%t", iter.MaybeFilteredKeys())
+			}))
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
+func TestBlockProperties_BoundLimited(t *testing.T) {
+	var r *Reader
+	defer func() {
+		if r != nil {
+			require.NoError(t, r.Close())
+		}
+	}()
+
+	datadriven.RunTest(t, "testdata/block_properties_boundlimited", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "build":
+			if r != nil {
+				_ = r.Close()
+				r = nil
+			}
+			var output string
+			r, output = runBlockPropertiesBuildCmd(td)
+			return output
+		case "collectors":
+			return runCollectorsCmd(r, td)
+		case "table-props":
+			return runTablePropsCmd(r, td)
+		case "block-props":
+			return runBlockPropsCmd(r, td)
+		case "iter":
+			var buf bytes.Buffer
+			var lower, upper []byte
+			filter := boundLimitedWrapper{
+				w:   &buf,
+				cmp: testkeys.Comparer.Compare,
+			}
+			for _, arg := range td.CmdArgs {
+				switch arg.Key {
+				case "lower":
+					lower = []byte(arg.Vals[0])
+				case "upper":
+					upper = []byte(arg.Vals[0])
+				case "filter":
+					f, err := parseIntervalFilter(arg)
+					if err != nil {
+						return err.Error()
+					}
+					filter.inner = f
+				case "filter-upper":
+					ik := base.MakeInternalKey([]byte(arg.Vals[0]), 0, base.InternalKeyKindSet)
+					filter.upper = &ik
+				case "filter-lower":
+					ik := base.MakeInternalKey([]byte(arg.Vals[0]), 0, base.InternalKeyKindSet)
+					filter.lower = &ik
+				}
+			}
+			if filter.inner == nil {
+				return "missing block property filter"
+			}
+
+			filterer := NewBlockPropertiesFilterer(nil, &filter)
 			ok, err := filterer.IntersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 			if err != nil {
 				return err.Error()
@@ -1173,14 +1088,249 @@ func TestBlockProperties(t *testing.T) {
 				return err.Error()
 			}
 			return runIterCmd(td, iter, runIterCmdEveryOp(func(w io.Writer) {
+				// Copy the bound-limited-wrapper's accumulated output to the
+				// iterator's writer. This interleaves its output with the
+				// iterator output.
+				io.Copy(w, &buf)
+				buf.Reset()
+			}), runIterCmdEveryOpAfter(func(w io.Writer) {
 				// After every op, point the value of MaybeFilteredKeys.
 				fmt.Fprintf(w, " MaybeFilteredKeys()=%t", iter.MaybeFilteredKeys())
 			}))
-
 		default:
-			return fmt.Sprintf("unknown command: %s", td.Cmd)
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
 	})
+}
+
+type boundLimitedWrapper struct {
+	w     io.Writer
+	cmp   base.Compare
+	inner BlockPropertyFilter
+	lower *InternalKey
+	upper *InternalKey
+}
+
+func (bl *boundLimitedWrapper) Name() string { return bl.inner.Name() }
+
+func (bl *boundLimitedWrapper) Intersects(prop []byte) (bool, error) {
+	propString := fmt.Sprintf("%x", prop)
+	var i interval
+	if err := i.decode(prop); err == nil {
+		// If it decodes as an interval, pretty print it as an interval.
+		propString = fmt.Sprintf("[%d, %d)", i.lower, i.upper)
+	}
+
+	v, err := bl.inner.Intersects(prop)
+	if bl.w != nil {
+		fmt.Fprintf(bl.w, "    filter.Intersects(%s) = (%t, %v)\n", propString, v, err)
+	}
+	return v, err
+}
+
+func (bl *boundLimitedWrapper) KeyIsWithinLowerBound(key *InternalKey) (ret bool) {
+	if bl.lower == nil {
+		ret = true
+	} else {
+		ret = base.InternalCompare(bl.cmp, *key, *bl.lower) >= 0
+	}
+	if bl.w != nil {
+		fmt.Fprintf(bl.w, "    filter.KeyIsWithinLowerBound(%s) = %t\n", key, ret)
+	}
+	return ret
+}
+
+func (bl *boundLimitedWrapper) KeyIsWithinUpperBound(key *InternalKey) (ret bool) {
+	if bl.upper == nil {
+		ret = true
+	} else {
+		ret = base.InternalCompare(bl.cmp, *key, *bl.upper) <= 0
+	}
+	if bl.w != nil {
+		fmt.Fprintf(bl.w, "    filter.KeyIsWithinUpperBound(%s) = %t\n", key, ret)
+	}
+	return ret
+}
+
+func parseIntervalFilter(cmd datadriven.CmdArg) (BlockPropertyFilter, error) {
+	name := cmd.Vals[0]
+	minS, maxS := cmd.Vals[1], cmd.Vals[2]
+	min, err := strconv.ParseUint(minS, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	max, err := strconv.ParseUint(maxS, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	return NewBlockIntervalFilter(name, min, max), nil
+}
+
+func runCollectorsCmd(r *Reader, td *datadriven.TestData) string {
+	var lines []string
+	for k, v := range r.Properties.UserProperties {
+		lines = append(lines, fmt.Sprintf("%d: %s", v[0], k))
+	}
+	linesSorted := sort.StringSlice(lines)
+	linesSorted.Sort()
+	return strings.Join(lines, "\n")
+}
+
+func runTablePropsCmd(r *Reader, td *datadriven.TestData) string {
+	var lines []string
+	for _, val := range r.Properties.UserProperties {
+		id := shortID(val[0])
+		var i interval
+		if err := i.decode([]byte(val[1:])); err != nil {
+			return err.Error()
+		}
+		lines = append(lines, fmt.Sprintf("%d: [%d, %d)", id, i.lower, i.upper))
+	}
+	linesSorted := sort.StringSlice(lines)
+	linesSorted.Sort()
+	return strings.Join(lines, "\n")
+}
+
+func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string) {
+	opts := WriterOptions{
+		TableFormat:    TableFormatPebblev2,
+		IndexBlockSize: math.MaxInt32, // Default to a single level index for simplicity.
+	}
+	for _, cmd := range td.CmdArgs {
+		switch cmd.Key {
+		case "block-size":
+			if len(cmd.Vals) != 1 {
+				return r, fmt.Sprintf("%s: arg %s expects 1 value", td.Cmd, cmd.Key)
+			}
+			var err error
+			opts.BlockSize, err = strconv.Atoi(cmd.Vals[0])
+			if err != nil {
+				return r, err.Error()
+			}
+		case "collectors":
+			for _, c := range cmd.Vals {
+				var points, ranges DataBlockIntervalCollector
+				switch c {
+				case "value-first":
+					points = &valueCharBlockIntervalCollector{charIdx: 0}
+				case "value-last":
+					points = &valueCharBlockIntervalCollector{charIdx: -1}
+				case "suffix":
+					points, ranges = &suffixIntervalCollector{}, &suffixIntervalCollector{}
+				case "suffix-point-keys-only":
+					points = &suffixIntervalCollector{}
+				case "suffix-range-keys-only":
+					ranges = &suffixIntervalCollector{}
+				case "nil-points-and-ranges":
+					points, ranges = nil, nil
+				default:
+					return r, fmt.Sprintf("unknown collector: %s", c)
+				}
+				name := c
+				opts.BlockPropertyCollectors = append(
+					opts.BlockPropertyCollectors,
+					func() BlockPropertyCollector {
+						return NewBlockIntervalCollector(name, points, ranges)
+					})
+			}
+		case "index-block-size":
+			var err error
+			opts.IndexBlockSize, err = strconv.Atoi(cmd.Vals[0])
+			if err != nil {
+				return r, err.Error()
+			}
+		}
+	}
+	var meta *WriterMetadata
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = errors.Errorf("%v", r)
+			}
+		}()
+		meta, r, err = runBuildCmd(td, &opts, 0)
+	}()
+	if err != nil {
+		return r, err.Error()
+	}
+	return r, fmt.Sprintf("point:    [%s,%s]\nrangedel: [%s,%s]\nrangekey: [%s,%s]\nseqnums:  [%d,%d]\n",
+		meta.SmallestPoint, meta.LargestPoint,
+		meta.SmallestRangeDel, meta.LargestRangeDel,
+		meta.SmallestRangeKey, meta.LargestRangeKey,
+		meta.SmallestSeqNum, meta.LargestSeqNum)
+}
+
+func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
+	bh, err := r.readIndex()
+	if err != nil {
+		return err.Error()
+	}
+	twoLevelIndex := r.Properties.IndexPartitions > 0
+	i, err := newBlockIter(r.Compare, bh.Get())
+	if err != nil {
+		return err.Error()
+	}
+	defer bh.Release()
+	var sb strings.Builder
+	decodeProps := func(props []byte, indent string) error {
+		d := blockPropertiesDecoder{props: props}
+		var lines []string
+		for !d.done() {
+			id, prop, err := d.next()
+			if err != nil {
+				return err
+			}
+			var i interval
+			if err := i.decode(prop); err != nil {
+				return err
+			}
+			lines = append(lines, fmt.Sprintf("%s%d: [%d, %d)\n", indent, id, i.lower, i.upper))
+		}
+		linesSorted := sort.StringSlice(lines)
+		linesSorted.Sort()
+		for _, line := range lines {
+			sb.WriteString(line)
+		}
+		return nil
+	}
+
+	for key, val := i.First(); key != nil; key, val = i.Next() {
+		sb.WriteString(fmt.Sprintf("%s:\n", key))
+		bhp, err := decodeBlockHandleWithProperties(val)
+		if err != nil {
+			return err.Error()
+		}
+		if err := decodeProps(bhp.Props, "  "); err != nil {
+			return err.Error()
+		}
+
+		// If the table has a two-level index, also decode the index
+		// block that bhp points to, along with its block properties.
+		if twoLevelIndex {
+			subiter := &blockIter{}
+			subIndex, _, err := r.readBlock(
+				bhp.BlockHandle, nil /* transform */, nil /* readaheadState */)
+			if err != nil {
+				return err.Error()
+			}
+			if err := subiter.init(r.Compare, subIndex.Get(), 0 /* globalSeqNum */); err != nil {
+				return err.Error()
+			}
+			for key, value := subiter.First(); key != nil; key, value = subiter.Next() {
+				sb.WriteString(fmt.Sprintf("  %s:\n", key))
+				dataBH, err := decodeBlockHandleWithProperties(value)
+				if err != nil {
+					return err.Error()
+				}
+				if err := decodeProps(dataBH.Props, "    "); err != nil {
+					return err.Error()
+				}
+			}
+			subIndex.Release()
+		}
+	}
+	return sb.String()
 }
 
 type keyCountCollector struct {
