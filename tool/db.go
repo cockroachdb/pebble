@@ -527,6 +527,8 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			propArgs(all, func(p *props) interface{} { return humanize.Uint64(p.RawKeySize) })...)
 		fmt.Fprintf(tw, "  raw-value\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			propArgs(all, func(p *props) interface{} { return humanize.Uint64(p.RawValueSize) })...)
+		fmt.Fprintf(tw, "  pinned\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			propArgs(all, func(p *props) interface{} { return humanize.Uint64(p.SnapshotPinnedSize) })...)
 
 		fmt.Fprintln(tw, "records\t\t\t\t\t\t\t\t")
 		fmt.Fprintf(tw, "  set\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
@@ -539,6 +541,8 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumRangeDeletions) })...)
 		fmt.Fprintf(tw, "  merge\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumMergeOperands) })...)
+		fmt.Fprintf(tw, "  pinned\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.SnapshotPinnedKeys) })...)
 
 		if err := tw.Flush(); err != nil {
 			return err
@@ -581,21 +585,23 @@ func propArgs(props []props, getProp func(*props) interface{}) []interface{} {
 }
 
 type props struct {
-	Count             uint64
-	SmallestSeqNum    uint64
-	LargestSeqNum     uint64
-	DataSize          uint64
-	FilterSize        uint64
-	IndexSize         uint64
-	NumDataBlocks     uint64
-	NumIndexBlocks    uint64
-	NumDeletions      uint64
-	NumEntries        uint64
-	NumMergeOperands  uint64
-	NumRangeDeletions uint64
-	RawKeySize        uint64
-	RawValueSize      uint64
-	TopLevelIndexSize uint64
+	Count              uint64
+	SmallestSeqNum     uint64
+	LargestSeqNum      uint64
+	DataSize           uint64
+	FilterSize         uint64
+	IndexSize          uint64
+	NumDataBlocks      uint64
+	NumIndexBlocks     uint64
+	NumDeletions       uint64
+	NumEntries         uint64
+	NumMergeOperands   uint64
+	NumRangeDeletions  uint64
+	RawKeySize         uint64
+	RawValueSize       uint64
+	SnapshotPinnedKeys uint64
+	SnapshotPinnedSize uint64
+	TopLevelIndexSize  uint64
 }
 
 func (p *props) update(o props) {
@@ -617,6 +623,8 @@ func (p *props) update(o props) {
 	p.NumRangeDeletions += o.NumRangeDeletions
 	p.RawKeySize += o.RawKeySize
 	p.RawValueSize += o.RawValueSize
+	p.SnapshotPinnedSize += o.SnapshotPinnedSize
+	p.SnapshotPinnedKeys += o.SnapshotPinnedKeys
 	p.TopLevelIndexSize += o.TopLevelIndexSize
 }
 
@@ -632,21 +640,23 @@ func (d *dbT) addProps(dir string, m *manifest.FileMetadata, p *props) error {
 		return err
 	}
 	p.update(props{
-		Count:             1,
-		SmallestSeqNum:    m.SmallestSeqNum,
-		LargestSeqNum:     m.LargestSeqNum,
-		DataSize:          r.Properties.DataSize,
-		FilterSize:        r.Properties.FilterSize,
-		IndexSize:         r.Properties.IndexSize,
-		NumDataBlocks:     r.Properties.NumDataBlocks,
-		NumIndexBlocks:    1 + r.Properties.IndexPartitions,
-		NumDeletions:      r.Properties.NumDeletions,
-		NumEntries:        r.Properties.NumEntries,
-		NumMergeOperands:  r.Properties.NumMergeOperands,
-		NumRangeDeletions: r.Properties.NumRangeDeletions,
-		RawKeySize:        r.Properties.RawKeySize,
-		RawValueSize:      r.Properties.RawValueSize,
-		TopLevelIndexSize: r.Properties.TopLevelIndexSize,
+		Count:              1,
+		SmallestSeqNum:     m.SmallestSeqNum,
+		LargestSeqNum:      m.LargestSeqNum,
+		DataSize:           r.Properties.DataSize,
+		FilterSize:         r.Properties.FilterSize,
+		IndexSize:          r.Properties.IndexSize,
+		NumDataBlocks:      r.Properties.NumDataBlocks,
+		NumIndexBlocks:     1 + r.Properties.IndexPartitions,
+		NumDeletions:       r.Properties.NumDeletions,
+		NumEntries:         r.Properties.NumEntries,
+		NumMergeOperands:   r.Properties.NumMergeOperands,
+		NumRangeDeletions:  r.Properties.NumRangeDeletions,
+		RawKeySize:         r.Properties.RawKeySize,
+		RawValueSize:       r.Properties.RawValueSize,
+		SnapshotPinnedSize: r.Properties.SnapshotPinnedSize,
+		SnapshotPinnedKeys: r.Properties.SnapshotPinnedKeys,
+		TopLevelIndexSize:  r.Properties.TopLevelIndexSize,
 	})
 	return r.Close()
 }

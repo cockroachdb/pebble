@@ -2218,8 +2218,10 @@ func (d *DB) runCompaction(
 		c.elideRangeTombstone, d.FormatMajorVersion())
 
 	var (
-		filenames []string
-		tw        *sstable.Writer
+		filenames   []string
+		tw          *sstable.Writer
+		pinnedBytes uint64
+		pinnedCount uint64
 	)
 	defer func() {
 		if iter != nil {
@@ -2283,6 +2285,16 @@ func (d *DB) runCompaction(
 		}
 	}()
 
+	internalTableOptConstructor := private.SSTableInternalTableOpt.(func(func(p *sstable.Properties)) sstable.WriterOption)
+	internalTableOpt := internalTableOptConstructor(func(p *sstable.Properties) {
+		// Set the external sst version to 0. This is what RocksDB expects for
+		// db-internal sstables; otherwise, it could apply a global sequence number.
+		p.ExternalFormatVersion = 0
+		// Set the snapshot pinned totals.
+		p.SnapshotPinnedKeys, p.SnapshotPinnedSize = pinnedCount, pinnedBytes
+		pinnedCount, pinnedBytes = 0, 0
+	})
+
 	newOutput := func() error {
 		fileMeta := &fileMetadata{}
 		d.mu.Lock()
@@ -2317,7 +2329,6 @@ func (d *DB) runCompaction(
 		}
 		filenames = append(filenames, filename)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
-		internalTableOpt := private.SSTableInternalTableOpt.(sstable.WriterOption)
 		if d.opts.Experimental.CPUWorkPermissionGranter != nil {
 			additionalCPUProcs = d.opts.Experimental.CPUWorkPermissionGranter.TryGetProcs(1)
 		}
@@ -2423,7 +2434,6 @@ func (d *DB) runCompaction(
 		if tw == nil {
 			return nil
 		}
-
 		if err := tw.Close(); err != nil {
 			tw = nil
 			return err
@@ -2650,6 +2660,13 @@ func (d *DB) runCompaction(
 			}
 			if err := tw.Add(*key, val); err != nil {
 				return nil, pendingOutputs, err
+			}
+			if iter.snapshotPinned {
+				// The kv pair we just added to the sstable was only surfaced by
+				// the compaction iterator because an open snapshot prevented
+				// its elision. Increment the stats.
+				pinnedCount++
+				pinnedBytes += uint64(len(key.UserKey)) + base.InternalTrailerLen + uint64(len(val))
 			}
 		}
 

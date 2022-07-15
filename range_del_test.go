@@ -317,8 +317,8 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 		Levels: []LevelOptions{
-			{TargetFileSize: 100},
-			{TargetFileSize: 100},
+			{TargetFileSize: 200},
+			{TargetFileSize: 200},
 			{TargetFileSize: 1},
 		},
 		DebugCheck: DebugCheckLevels,
@@ -377,8 +377,8 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 		Cleaner: ArchiveCleaner{},
 		FS:      vfs.NewMem(),
 		Levels: []LevelOptions{
-			{TargetFileSize: 100},
-			{TargetFileSize: 100},
+			{TargetFileSize: 200},
+			{TargetFileSize: 200},
 			{TargetFileSize: 1},
 		},
 		DebugCheck: DebugCheckLevels,
