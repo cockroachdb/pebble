@@ -2,11 +2,11 @@ define
 a.SET.1:b
 ----
 
-iter
+iter print-snapshot-pinned
 first
 next
 ----
-a#1,1:b
+a#1,1:b (not pinned)
 .
 
 define
@@ -14,18 +14,18 @@ a.SET.2:c
 a.SET.1:b
 ----
 
-iter
+iter print-snapshot-pinned
 first
 next
 ----
-a#2,1:c
+a#2,1:c (not pinned)
 .
 
-iter snapshots=0
+iter print-snapshot-pinned snapshots=0
 first
 next
 ----
-a#2,1:c
+a#2,1:c (not pinned)
 .
 
 iter snapshots=1
@@ -35,13 +35,13 @@ next
 a#2,1:c
 .
 
-iter snapshots=2
+iter print-snapshot-pinned snapshots=2
 first
 next
 next
 ----
-a#2,1:c
-a#1,1:b
+a#2,1:c (not pinned)
+a#1,1:b (pinned)
 .
 
 define
@@ -61,20 +61,20 @@ first
 ----
 .
 
-iter elide-tombstones=true snapshots=2
+iter print-snapshot-pinned elide-tombstones=true snapshots=2
 first
 next
 next
 ----
-a#2,0:
-a#1,1:b
+a#2,0: (pinned)
+a#1,1:b (pinned)
 .
 
-iter elide-tombstones=true snapshots=1
+iter print-snapshot-pinned elide-tombstones=true snapshots=1
 first
 next
 ----
-a#2,0:
+a#2,0: (pinned)
 .
 
 define
@@ -83,13 +83,13 @@ a.SET.1:b
 b.SET.3:c
 ----
 
-iter
+iter print-snapshot-pinned
 first
 next
 next
 ----
-a#2,0:
-b#3,1:c
+a#2,0: (not pinned)
+b#3,1:c (not pinned)
 .
 
 iter snapshots=1
@@ -146,15 +146,15 @@ a#3,1:bcd[base]
 b#2,2:ab
 .
 
-iter snapshots=3
+iter snapshots=3  print-snapshot-pinned
 first
 next
 next
 next
 ----
-a#3,2:d
-a#2,1:bc[base]
-b#2,2:ab
+a#3,2:d (not pinned)
+a#2,1:bc[base] (pinned)
+b#2,2:ab (not pinned)
 .
 
 define
@@ -215,7 +215,7 @@ next
 a#9,1:b
 .
 
-iter snapshots=(5,6,7,8,9)
+iter snapshots=(5,6,7,8,9) print-snapshot-pinned
 first
 next
 next
@@ -223,11 +223,11 @@ next
 next
 next
 ----
-a#9,1:b
-a#8,0:
-a#7,1:d
-a#6,0:
-a#5,1:f
+a#9,1:b (not pinned)
+a#8,0: (pinned)
+a#7,1:d (pinned)
+a#6,0: (pinned)
+a#5,1:f (pinned)
 .
 
 define
@@ -282,15 +282,15 @@ a.MERGE.1:c
 a.MERGE.0:d
 ----
 
-iter snapshots=(1,2)
+iter snapshots=(1,2) print-snapshot-pinned
 first
 next
 next
 next
 ----
-a#2,2:b
-a#1,2:c
-a#0,2:d
+a#2,2:b (not pinned)
+a#1,2:c (pinned)
+a#0,2:d (pinned)
 .
 
 define
@@ -301,51 +301,35 @@ b.SET.2:e
 c.SET.3:f
 ----
 
-iter
+# NB: Range deletions are always marked as 'not pinned' currently. Extending
+# snapshot-pinning statistics to range deletions and range keys is TODO.
+
+iter print-snapshot-pinned
 first
 next
 next
 next
 tombstones
 ----
-a#2,1:b
-a#1,15:c
-b#4,15:d
+a#2,1:b (not pinned)
+a#1,15:c (not pinned)
+b#4,15:d (not pinned)
 .
 a-b#1
 b-c#4
 c-d#4
 .
 
-iter snapshots=2
+iter snapshots=2 print-snapshot-pinned
 first
 next
 next
 next
 tombstones
 ----
-a#2,1:b
-a#1,15:c
-b#4,15:d
-.
-a-b#1
-b-c#4
-b-c#1
-c-d#4
-.
-
-iter snapshots=3
-first
-next
-next
-next
-next
-tombstones
-----
-a#2,1:b
-a#1,15:c
-b#4,15:d
-b#2,1:e
+a#2,1:b (not pinned)
+a#1,15:c (not pinned)
+b#4,15:d (not pinned)
 .
 a-b#1
 b-c#4
@@ -353,7 +337,26 @@ b-c#1
 c-d#4
 .
 
-iter snapshots=4
+iter snapshots=3 print-snapshot-pinned
+first
+next
+next
+next
+next
+tombstones
+----
+a#2,1:b (not pinned)
+a#1,15:c (not pinned)
+b#4,15:d (not pinned)
+b#2,1:e (pinned)
+.
+a-b#1
+b-c#4
+b-c#1
+c-d#4
+.
+
+iter snapshots=4 print-snapshot-pinned
 first
 next
 next
@@ -362,11 +365,11 @@ next
 next
 tombstones
 ----
-a#2,1:b
-a#1,15:c
-b#4,15:d
-b#2,1:e
-c#3,1:f
+a#2,1:b (not pinned)
+a#1,15:c (not pinned)
+b#4,15:d (not pinned)
+b#2,1:e (pinned)
+c#3,1:f (pinned)
 .
 a-b#1
 b-c#4

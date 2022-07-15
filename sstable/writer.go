@@ -145,6 +145,7 @@ type Writer struct {
 	cache                   *cache.Cache
 	restartInterval         int
 	checksumType            ChecksumType
+	postApplyOptions        []WriterOption
 	// disableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
 	// of invalid sstables for testing. See tool/make_test_sstables.go.
@@ -1690,6 +1691,12 @@ func (w *Writer) Close() (err error) {
 		metaindex.add(InternalKey{UserKey: []byte(metaRangeKeyName)}, w.blockBuf.tmp[:n])
 	}
 
+	// WriterOptions with the postApply method are applied here, while closing
+	// the writer.
+	for i := range w.postApplyOptions {
+		w.postApplyOptions[i].writerApply(w)
+	}
+
 	{
 		userProps := make(map[string]string)
 		for i := range w.propCollectors {
@@ -1876,13 +1883,14 @@ func (o *PreviousPointKeyOpt) writerApply(w *Writer) {
 // internalTableOpt is a WriterOption that sets properties for sstables being
 // created by the db itself (i.e. through flushes and compactions), as opposed
 // to those meant for ingestion.
-type internalTableOpt struct{}
+type internalTableOpt func(*Properties)
 
 func (i internalTableOpt) writerApply(w *Writer) {
-	// Set the external sst version to 0. This is what RocksDB expects for
-	// db-internal sstables; otherwise, it could apply a global sequence number.
-	w.props.ExternalFormatVersion = 0
+	i(&w.props)
 }
+
+// Apply this option during Close.
+func (i internalTableOpt) postApply() {}
 
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
@@ -1936,10 +1944,12 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 		return w
 	}
 
-	// Note that WriterOptions are applied in two places; the ones with a
-	// preApply() method are applied here, and the rest are applied after
-	// default properties are set.
+	// Note that WriterOptions are applied in three places; the ones with a
+	// preApply() method are applied here, the ones with a postApply() method
+	// are applied at Close, and the rest are applied down below after default
+	// properties are set.
 	type preApply interface{ preApply() }
+	type postApply interface{ postApply() }
 	for _, opt := range extraOpts {
 		if _, ok := opt.(preApply); ok {
 			opt.writerApply(w)
@@ -2006,9 +2016,14 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 
 	// Apply the remaining WriterOptions that do not have a preApply() method.
 	for _, opt := range extraOpts {
-		if _, ok := opt.(preApply); !ok {
-			opt.writerApply(w)
+		if _, ok := opt.(preApply); ok {
+			continue
 		}
+		if _, ok := opt.(postApply); ok {
+			w.postApplyOptions = append(w.postApplyOptions, opt)
+			continue
+		}
+		opt.writerApply(w)
 	}
 
 	// Initialize the range key fragmenter and encoder.
@@ -2030,5 +2045,7 @@ func init() {
 		w := i.(*Writer)
 		w.disableKeyOrderChecks = true
 	}
-	private.SSTableInternalTableOpt = internalTableOpt{}
+	private.SSTableInternalTableOpt = func(fn func(*Properties)) WriterOption {
+		return internalTableOpt(fn)
+	}
 }

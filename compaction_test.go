@@ -1470,6 +1470,9 @@ func TestManualCompaction(t *testing.T) {
 				td.ScanArgs(t, "num", &d.opts.MaxConcurrentCompactions)
 				return ""
 
+			case "sstable-properties":
+				return runSSTablePropertiesCmd(t, td, d)
+
 			case "wait-pending-table-stats":
 				return runTableStatsCmd(td, d)
 
