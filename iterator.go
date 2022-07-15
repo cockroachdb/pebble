@@ -162,7 +162,9 @@ type Iterator struct {
 	// the IterOptions using opts.rangeKeys(). If non-nil, its rangeKeyIter
 	// field is guaranteed to be non-nil too.
 	rangeKey *iteratorRangeKeyState
-	err      error
+	// rangeKeyMasking holds state for range-key masking of point keys.
+	rangeKeyMasking rangeKeyMasking
+	err             error
 	// When iterValidityState=IterValid, key represents the current key, which
 	// is backed by keyBuf.
 	key         []byte
@@ -246,12 +248,6 @@ type iteratorRangeKeyState struct {
 	// merged spans across the entirety of the LSM.
 	rangeKeyIter keyspan.FragmentIterator
 	iiter        keyspan.InterleavingIter
-	// activeMaskSuffix holds the suffix of a range key currently acting as a
-	// mask, hiding point keys with suffixes greater than it. activeMaskSuffix
-	// is only ever non-nil if IterOptions.RangeKeyMasking.Suffix is non-nil.
-	// activeMaskSuffix is updated whenever the iterator passes over a new range
-	// key. See Iterator.rangeKeySpanChanged.
-	activeMaskSuffix []byte
 	// rangeKeyOnly is set to true if at the current iterator position there is
 	// no point key, only a range key start boundary.
 	rangeKeyOnly bool
@@ -1494,87 +1490,6 @@ func (i *Iterator) rangeKeyWithinLimit(limit []byte) bool {
 	return true
 }
 
-// SpanChanged implements the keyspan.SpanMask interface, used during range key
-// iteration.
-func (i *iteratorRangeKeyState) SpanChanged(s *keyspan.Span) {
-	i.activeMaskSuffix = i.activeMaskSuffix[:0]
-
-	// Find the smallest suffix of a range key contained within the Span,
-	// excluding suffixes less than i.opts.RangeKeyMasking.Suffix.
-	if s == nil || i.opts.RangeKeyMasking.Suffix == nil || s.Empty() {
-		return
-	}
-	for j := range s.Keys {
-		if s.Keys[j].Suffix == nil {
-			continue
-		}
-		if i.cmp(s.Keys[j].Suffix, i.opts.RangeKeyMasking.Suffix) < 0 {
-			continue
-		}
-		if len(i.activeMaskSuffix) == 0 || i.cmp(i.activeMaskSuffix, s.Keys[j].Suffix) > 0 {
-			i.activeMaskSuffix = append(i.activeMaskSuffix[:0], s.Keys[j].Suffix...)
-		}
-	}
-}
-
-// SkipPoint implements the keyspan.SpanMask interface, used during range key
-// iteration. Whenever a point key is covered by a non-empty Span, the
-// interleaving iterator invokes SkipPoint. This function is responsible for
-// performing range key masking.
-//
-// If a non-nil IterOptions.RangeKeyMasking.Suffix is set, range key masking is
-// enabled. Masking hides point keys, transparently skipping over the keys.
-// Whether or not a point key is masked is determined by comparing the point
-// key's suffix, the overlapping span's keys' suffixes, and the user-configured
-// IterOption's RangeKeyMasking.Suffix. When configured with a masking threshold
-// _t_, and there exists a span with suffix _r_ covering a point key with suffix
-// _p_, and
-//
-//     _t_ ≤ _r_ < _p_
-//
-// then the point key is elided. Consider the following rendering, where
-// suffixes with higher integers sort before suffixes with lower integers:
-//
-//          ^
-//       @9 |        •―――――――――――――――○ [e,m)@9
-//     s  8 |                      • l@8
-//     u  7 |------------------------------------ @7 RangeKeyMasking.Suffix
-//     f  6 |      [h,q)@6 •―――――――――――――――――○            (threshold)
-//     f  5 |              • h@5
-//     f  4 |                          • n@4
-//     i  3 |          •―――――――――――○ [f,l)@3
-//     x  2 |  • b@2
-//        1 |
-//        0 |___________________________________
-//           a b c d e f g h i j k l m n o p q
-//
-// An iterator scanning the entire keyspace with the masking threshold set to @7
-// will observe point keys b@2 and l@8. The span keys [h,q)@6 and [f,l)@3 serve
-// as masks, because cmp(@6,@7) ≥ 0 and cmp(@3,@7) ≥ 0. The span key [e,m)@9
-// does not serve as a mask, because cmp(@9,@7) < 0.
-//
-// Although point l@8 falls within the user key bounds of [e,m)@9, [e,m)@9 is
-// non-masking due to its suffix. The point key l@8 also falls within the user
-// key bounds of [h,q)@6, but since cmp(@6,@8) ≥ 0, l@8 is unmasked.
-//
-// Invariant: The userKey is within the user key bounds of the span most
-// recently provided to `SpanChanged`.
-func (i *iteratorRangeKeyState) SkipPoint(userKey []byte) bool {
-	if len(i.activeMaskSuffix) == 0 {
-		// No range key is currently acting as a mask, so don't skip.
-		return false
-	}
-	// Range key masking is enabled and the current span includes a range key
-	// that is being used as a mask. (NB: SpanChanged already verified that the
-	// range key's suffix is ≥ RangeKeyMasking.Suffix).
-	//
-	// This point key falls within the bounds of the range key (guaranteed by
-	// the InterleavingIter). Skip the point key if the range key's suffix is
-	// greater than the point key's suffix.
-	pointSuffix := userKey[i.split(userKey):]
-	return len(pointSuffix) > 0 && i.cmp(i.activeMaskSuffix, pointSuffix) < 0
-}
-
 // setRangeKey sets the current range key to the underlying iterator's current
 // range key state. It does not make copies of any of the key, value or suffix
 // buffers, so it must only be used if the underlying iterator's position
@@ -1710,7 +1625,7 @@ func (i *Iterator) Valid() bool {
 
 // Error returns any accumulated error.
 func (i *Iterator) Error() error {
-	err := i.err
+	err := firstError(i.err, i.rangeKeyMasking.err)
 	if i.iter != nil {
 		err = firstError(i.err, i.iter.Error())
 	}
@@ -1722,6 +1637,7 @@ func (i *Iterator) Error() error {
 // It is not valid to call any method, including Close, after the iterator
 // has been closed.
 func (i *Iterator) Close() error {
+	i.err = firstError(i.err, i.rangeKeyMasking.err)
 	// Close the child iterator before releasing the readState because when the
 	// readState is released sstables referenced by the readState may be deleted
 	// which will fail on Windows if the sstables are still open by the child
@@ -1940,7 +1856,8 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 
 	// If either options specify block property filters for an iterator stack,
 	// reconstruct it.
-	if i.pointIter != nil && (closeBoth || len(o.PointKeyFilters) > 0 || len(i.opts.PointKeyFilters) > 0) {
+	if i.pointIter != nil && (closeBoth || len(o.PointKeyFilters) > 0 || len(i.opts.PointKeyFilters) > 0 ||
+		o.RangeKeyMasking.Filter != nil || i.opts.RangeKeyMasking.Filter != nil) {
 		i.err = firstError(i.err, i.pointIter.Close())
 		i.pointIter = nil
 	}

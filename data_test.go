@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -250,6 +251,8 @@ func parseIterOptions(
 			}
 		case "mask-suffix":
 			opts.RangeKeyMasking.Suffix = []byte(arg[1])
+		case "mask-filter":
+			opts.RangeKeyMasking.Filter = blockprop.NewMaskingFilter()
 		case "table-filter":
 			switch arg[1] {
 			case "reuse":

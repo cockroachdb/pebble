@@ -2929,7 +2929,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				}
 
 				newIters := func(
-					_ *manifest.FileMetadata, _ *IterOptions, _ *uint64,
+					_ *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
 				) (internalIterator, keyspan.FragmentIterator, error) {
 					return &errorIter{}, nil, nil
 				}

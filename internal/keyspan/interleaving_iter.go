@@ -35,14 +35,6 @@ type SpanMask interface {
 	SkipPoint(userKey []byte) bool
 }
 
-type maskState int8
-
-const (
-	maskStale maskState = iota
-	maskCleared
-	maskCurrent
-)
-
 // InterleavingIter combines an iterator over point keys with an iterator over
 // key spans.
 //
@@ -158,32 +150,9 @@ type InterleavingIter struct {
 	// span's start bound marker to the search key. It's returned to false on
 	// the next repositioning of the keyspan iterator.
 	spanMarkerTruncated bool
-	// maskState holds a tri-state enum describing the state of the state
-	// machine managing invocations to i.mask.SpanChanged. When i.span is
-	// updated, `maskState` is set to the starting state `maskStale` to reflect
-	// that the mask has not been informed of the new span. From `maskStale`,
-	// the state transitions to `maskCleared` if the next returned key does not
-	// fall within i.span's bounds. The state transitions to `maskCurrent` if
-	// the next returned key does fall within i.span's bounds.
-	//
-	//                                   return key outside [s,e)
-	//                                   keyspan.Iter.{Next,Prev}
-	//                            _________________________________
-	//                           \/                                |
-	//                     _____________                           |
-	//                    |  maskStale  |                          |
-	//                    |_____________|                          |
-	//     return key    /               \     return key          |
-	//   outside [s,e)  /                 \   within [s,e)         |
-	//                 \/                 \/                       |
-	//   ________________________    __________________________    |
-	//  |   SpanChanged(nil)     |  |    SpanChanged(i.span)   | __|
-	//  | maskState = maskCleared|  | maskState = maskCurrent  |
-	//  |________________________|  |__________________________|
-	//              |__________________________^
-	//                return key within [s,e)
-	//
-	maskState maskState
+	// maskSpanChangedCalled records whether or not the last call to
+	// SpanMask.SpanChanged provided the current span (i.span) or not.
+	maskSpanChangedCalled bool
 	// dir indicates the direction of iteration: forward (+1) or backward (-1)
 	dir int8
 }
@@ -227,6 +196,7 @@ func (i *InterleavingIter) InitSeekGE(
 	key []byte, pointKey *base.InternalKey, pointValue []byte,
 ) (*base.InternalKey, []byte) {
 	i.dir = +1
+	i.clearMask()
 	i.pointKey, i.pointVal = pointKey, pointValue
 	i.pointKeyInterleaved = false
 	// NB: This keyspanSeekGE call will truncate the span to the seek key if
@@ -250,6 +220,7 @@ func (i *InterleavingIter) InitSeekLT(
 	key []byte, pointKey *base.InternalKey, pointValue []byte,
 ) (*base.InternalKey, []byte) {
 	i.dir = -1
+	i.clearMask()
 	i.pointKey, i.pointVal = pointKey, pointValue
 	i.pointKeyInterleaved = false
 	i.keyspanSeekLT(key)
@@ -267,7 +238,7 @@ func (i *InterleavingIter) InitSeekLT(
 // NB: In accordance with the base.InternalIterator contract:
 //   i.lower ≤ key
 func (i *InterleavingIter) SeekGE(key []byte, flags base.SeekGEFlags) (*base.InternalKey, []byte) {
-	i.maybeUpdateMask(false /* covered */)
+	i.clearMask()
 	i.pointKey, i.pointVal = i.pointIter.SeekGE(key, flags)
 	i.pointKeyInterleaved = false
 	i.keyspanSeekGE(key)
@@ -288,7 +259,7 @@ func (i *InterleavingIter) SeekGE(key []byte, flags base.SeekGEFlags) (*base.Int
 func (i *InterleavingIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {
-	i.maybeUpdateMask(false /* covered */)
+	i.clearMask()
 	i.pointKey, i.pointVal = i.pointIter.SeekPrefixGE(prefix, key, flags)
 	i.pointKeyInterleaved = false
 	i.keyspanSeekGE(key)
@@ -298,7 +269,7 @@ func (i *InterleavingIter) SeekPrefixGE(
 
 // SeekLT implements (base.InternalIterator).SeekLT.
 func (i *InterleavingIter) SeekLT(key []byte, flags base.SeekLTFlags) (*base.InternalKey, []byte) {
-	i.maybeUpdateMask(false /* covered */)
+	i.clearMask()
 	i.pointKey, i.pointVal = i.pointIter.SeekLT(key, flags)
 	i.pointKeyInterleaved = false
 	i.keyspanSeekLT(key)
@@ -308,7 +279,7 @@ func (i *InterleavingIter) SeekLT(key []byte, flags base.SeekLTFlags) (*base.Int
 
 // First implements (base.InternalIterator).First.
 func (i *InterleavingIter) First() (*base.InternalKey, []byte) {
-	i.maybeUpdateMask(false /* covered */)
+	i.clearMask()
 	i.pointKey, i.pointVal = i.pointIter.First()
 	i.pointKeyInterleaved = false
 	i.span = i.keyspanIter.First()
@@ -320,7 +291,7 @@ func (i *InterleavingIter) First() (*base.InternalKey, []byte) {
 
 // Last implements (base.InternalIterator).Last.
 func (i *InterleavingIter) Last() (*base.InternalKey, []byte) {
-	i.maybeUpdateMask(false /* covered */)
+	i.clearMask()
 	i.pointKey, i.pointVal = i.pointIter.Last()
 	i.pointKeyInterleaved = false
 	i.span = i.keyspanIter.Last()
@@ -335,6 +306,13 @@ func (i *InterleavingIter) Next() (*base.InternalKey, []byte) {
 	if i.dir == -1 {
 		// Switching directions.
 		i.dir = +1
+
+		if i.mask != nil {
+			// Clear the mask while we reposition the point iterator. While
+			// switching directions, we may move the point iterator outside of
+			// i.span's bounds.
+			i.clearMask()
+		}
 
 		// The existing point key (denoted below with *) is either the last
 		// key we returned (the current iterator position):
@@ -407,6 +385,13 @@ func (i *InterleavingIter) Prev() (*base.InternalKey, []byte) {
 	if i.dir == +1 {
 		// Switching directions.
 		i.dir = -1
+
+		if i.mask != nil {
+			// Clear the mask while we reposition the point iterator. While
+			// switching directions, we may move the point iterator outside of
+			// i.span's bounds.
+			i.clearMask()
+		}
 
 		if i.keyspanInterleaved {
 			// The current span's start key has already been interleaved in the
@@ -809,7 +794,7 @@ func (i *InterleavingIter) checkBackwardBound() {
 
 func (i *InterleavingIter) yieldNil() (*base.InternalKey, []byte) {
 	i.spanCoversKey = false
-	i.maybeUpdateMask(false /* covered */)
+	i.clearMask()
 	return i.verify(nil, nil)
 }
 
@@ -893,38 +878,28 @@ func (i *InterleavingIter) verify(k *base.InternalKey, v []byte) (*base.Internal
 func (i *InterleavingIter) savedKeyspan() {
 	i.keyspanInterleaved = false
 	i.spanMarkerTruncated = false
-	if i.maskState == maskCurrent {
-		// There's a span set as current. If the keyspan iterator was
-		// exhausted or moved to an empty keyspan, the current mask will need to be
-		// cleared. If the keyspan iterator was moved to a new keyspan, then we'll need
-		// to set the new mask once we step into the new keyspan's bounds.
-		//
-		// Either way, we need to reset to  to `maskStale`.
-		i.maskState = maskStale
-	}
+	i.maskSpanChangedCalled = false
 }
 
 // maybeUpdateMask updates the current mask, if a mask is configured and
 // the mask hasn't been updated with the current keyspan yet.
 func (i *InterleavingIter) maybeUpdateMask(covered bool) {
-	if i.mask == nil {
-		return
+	if i.mask != nil {
+		if !covered || i.span.Empty() {
+			i.clearMask()
+		} else if !i.maskSpanChangedCalled {
+			i.mask.SpanChanged(i.span)
+			i.maskSpanChangedCalled = true
+		}
 	}
+}
 
-	// Although covered=true, the covering span might be empty. Empty span's
-	// don't mask.
-	covered = covered && !i.span.Empty()
-
-	if covered && i.maskState != maskCurrent {
-		// We're currently positioned within the bounds of i.span, and we
-		// haven't updated the mask to this span yet. Update it now.
-		i.mask.SpanChanged(i.span)
-		i.maskState = maskCurrent
-	} else if !covered && i.maskState != maskCleared {
-		// We're not positioned beneath i.span, so we shouldn't set the mask to
-		// i.span. However, we've never cleared the previous mask.
+// clearMask clears the current mask, if a mask is configured and no mask should
+// be active.
+func (i *InterleavingIter) clearMask() {
+	if i.mask != nil {
+		i.maskSpanChangedCalled = false
 		i.mask.SpanChanged(nil)
-		i.maskState = maskCleared
 	}
 }
 

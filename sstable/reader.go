@@ -354,7 +354,7 @@ const (
 // loadBlock loads the block at the current index position and leaves i.data
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.
-func (i *singleLevelIterator) loadBlock() loadBlockResult {
+func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 	if !i.index.valid() {
 		// Ensure the data block iterator is invalidated even if loading of the block
 		// fails.
@@ -389,10 +389,14 @@ func (i *singleLevelIterator) loadBlock() loadBlockResult {
 			i.err = errCorruptIndexEntry
 			return loadBlockFailed
 		}
-		if !intersects {
+		if intersects == blockMaybeExcluded {
+			intersects = i.resolveMaybeExcluded(dir)
+		}
+		if intersects == blockExcluded {
 			i.maybeFilteredKeysSingleLevel = true
 			return loadBlockIrrelevant
 		}
+		// blockIntersects
 	}
 	block, err := i.readBlockWithStats(i.dataBH, &i.dataRS)
 	if err != nil {
@@ -407,6 +411,73 @@ func (i *singleLevelIterator) loadBlock() loadBlockResult {
 	}
 	i.initBounds()
 	return loadBlockOK
+}
+
+// resolveMaybeExcluded is invoked when the block-property filterer has found
+// that a block is excluded according to its properties but only if its bounds
+// fall within the filter's current bounds.  This function consults the
+// apprioriate bound, depending on the iteration direction, and returns either
+// `blockIntersects` or `blockMaybeExcluded`.
+func (i *singleLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
+	// TODO(jackson): We could first try comparing to top-level index block's
+	// key, and if within bounds avoid per-data block key comparisons.
+
+	// This iterator is configured with a bound-limited block property
+	// filter. The bpf determined this block could be excluded from
+	// iteration based on the property encoded in the block handle.
+	// However, we still need to determine if the block is wholly
+	// contained within the filter's key bounds.
+	//
+	// External guarantees ensure all the block's keys are ≥ the
+	// filter's lower bound during forward iteration, and that all the
+	// block's keys are < the filter's upper bound during backward
+	// iteration. We only need to determine if the opposite bound is
+	// also met.
+	//
+	// The index separator in index.Key() provides an inclusive
+	// upper-bound for the data block's keys, guaranteeing that all its
+	// keys are ≤ index.Key(). For forward iteration, this is all we
+	// need.
+	if dir > 0 {
+		// Forward iteration.
+		if i.bpfs.boundLimitedFilter.KeyIsWithinUpperBound(i.index.Key()) {
+			return blockExcluded
+		}
+		return blockIntersects
+	}
+
+	// Reverse iteration.
+	//
+	// Because we're iterating in the reverse direction, we don't yet have
+	// enough context available to determine if the block is wholly contained
+	// within its bounds. This case arises only during backward iteration,
+	// because of the way the index is structured.
+	//
+	// Consider a bound-limited bpf limited to the bounds [b,d), loading the
+	// block with separator `c`. During reverse iteration, the guarantee that
+	// all the block's keys are < `d` is externally provided, but no guarantee
+	// is made on the bpf's lower bound. The separator `c` only provides an
+	// inclusive upper bound on the block's keys, indicating that the
+	// corresponding block handle points to a block containing only keys ≤ `c`.
+	//
+	// To establish a lower bound, we step the index backwards to read the
+	// previous block's separator, which provides an inclusive lower bound on
+	// the original block's keys. Afterwards, we step forward to restore our
+	// index position.
+	if peekKey, _ := i.index.Prev(); peekKey == nil {
+		// The original block points to the first block of this index block. If
+		// there's a two-level index, it could potentially provide a lower
+		// bound, but the code refactoring necessary to read it doesn't seem
+		// worth the payoff. We fall through to loading the block.
+	} else if i.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(peekKey) {
+		// The lower-bound on the original block falls within the filter's
+		// bounds, and we can skip the block (after restoring our current index
+		// position).
+		_, _ = i.index.Next()
+		return blockExcluded
+	}
+	_, _ = i.index.Next()
+	return blockIntersects
 }
 
 func (i *singleLevelIterator) readBlockWithStats(
@@ -616,7 +687,7 @@ func (i *singleLevelIterator) seekGEHelper(
 			i.data.invalidate()
 			return nil, nil
 		}
-		result := i.loadBlock()
+		result := i.loadBlock(+1)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -761,7 +832,7 @@ func (i *singleLevelIterator) SeekLT(key []byte, flags base.SeekLTFlags) (*Inter
 			}
 		}
 		// INVARIANT: ikey != nil.
-		result := i.loadBlock()
+		result := i.loadBlock(-1)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -830,7 +901,7 @@ func (i *singleLevelIterator) firstInternal() (*InternalKey, []byte) {
 		i.data.invalidate()
 		return nil, nil
 	}
-	result := i.loadBlock()
+	result := i.loadBlock(+1)
 	if result == loadBlockFailed {
 		return nil, nil
 	}
@@ -888,7 +959,7 @@ func (i *singleLevelIterator) lastInternal() (*InternalKey, []byte) {
 		i.data.invalidate()
 		return nil, nil
 	}
-	result := i.loadBlock()
+	result := i.loadBlock(-1)
 	if result == loadBlockFailed {
 		return nil, nil
 	}
@@ -973,7 +1044,7 @@ func (i *singleLevelIterator) skipForward() (*InternalKey, []byte) {
 			i.data.invalidate()
 			break
 		}
-		result := i.loadBlock()
+		result := i.loadBlock(+1)
 		if result != loadBlockOK {
 			if i.err != nil {
 				break
@@ -1014,7 +1085,7 @@ func (i *singleLevelIterator) skipBackward() (*InternalKey, []byte) {
 			i.data.invalidate()
 			break
 		}
-		result := i.loadBlock()
+		result := i.loadBlock(-1)
 		if result != loadBlockOK {
 			if i.err != nil {
 				break
@@ -1207,7 +1278,7 @@ func (i *compactionIterator) skipForward(key *InternalKey, val []byte) (*Interna
 			if key, _ := i.index.Next(); key == nil {
 				break
 			}
-			result := i.loadBlock()
+			result := i.loadBlock(+1)
 			if result != loadBlockOK {
 				if i.err != nil {
 					break
@@ -1253,7 +1324,7 @@ var _ base.InternalIterator = (*twoLevelIterator)(nil)
 // leaves i.index unpositioned. If unsuccessful, it gets i.err to any error
 // encountered, which may be nil if we have simply exhausted the entire table.
 // This is used for two level indexes.
-func (i *twoLevelIterator) loadIndex() loadBlockResult {
+func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 	// Ensure the data block iterator is invalidated even if loading of the
 	// index fails.
 	i.data.invalidate()
@@ -1273,10 +1344,14 @@ func (i *twoLevelIterator) loadIndex() loadBlockResult {
 			i.err = errCorruptIndexEntry
 			return loadBlockFailed
 		}
-		if !intersects {
+		if intersects == blockMaybeExcluded {
+			intersects = i.resolveMaybeExcluded(dir)
+		}
+		if intersects == blockExcluded {
 			i.maybeFilteredKeysTwoLevel = true
 			return loadBlockIrrelevant
 		}
+		// blockIntersects
 	}
 	indexBlock, err := i.readBlockWithStats(bhp.BlockHandle, nil /* readaheadState */)
 	if err != nil {
@@ -1288,6 +1363,69 @@ func (i *twoLevelIterator) loadIndex() loadBlockResult {
 		return loadBlockOK
 	}
 	return loadBlockFailed
+}
+
+// resolveMaybeExcluded is invoked when the block-property filterer has found
+// that an index block is excluded according to its properties but only if its
+// bounds fall within the filter's current bounds. This function consults the
+// apprioriate bound, depending on the iteration direction, and returns either
+// `blockIntersects` or
+// `blockMaybeExcluded`.
+func (i *twoLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
+	// This iterator is configured with a bound-limited block property filter.
+	// The bpf determined this entire index block could be excluded from
+	// iteration based on the property encoded in the block handle. However, we
+	// still need to determine if the index block is wholly contained within the
+	// filter's key bounds.
+	//
+	// External guarantees ensure all its data blocks' keys are ≥ the filter's
+	// lower bound during forward iteration, and that all its data blocks' keys
+	// are < the filter's upper bound during backward iteration. We only need to
+	// determine if the opposite bound is also met.
+	//
+	// The index separator in topLevelIndex.Key() provides an inclusive
+	// upper-bound for the index block's keys, guaranteeing that all its keys
+	// are ≤ topLevelIndex.Key(). For forward iteration, this is all we need.
+	if dir > 0 {
+		// Forward iteration.
+		if i.bpfs.boundLimitedFilter.KeyIsWithinUpperBound(i.topLevelIndex.Key()) {
+			return blockExcluded
+		}
+		return blockIntersects
+	}
+
+	// Reverse iteration.
+	//
+	// Because we're iterating in the reverse direction, we don't yet have
+	// enough context available to determine if the block is wholly contained
+	// within its bounds. This case arises only during backward iteration,
+	// because of the way the index is structured.
+	//
+	// Consider a bound-limited bpf limited to the bounds [b,d), loading the
+	// block with separator `c`. During reverse iteration, the guarantee that
+	// all the block's keys are < `d` is externally provided, but no guarantee
+	// is made on the bpf's lower bound. The separator `c` only provides an
+	// inclusive upper bound on the block's keys, indicating that the
+	// corresponding block handle points to a block containing only keys ≤ `c`.
+	//
+	// To establish a lower bound, we step the top-level index backwards to read
+	// the previous block's separator, which provides an inclusive lower bound
+	// on the original index block's keys. Afterwards, we step forward to
+	// restore our top-level index position.
+	if peekKey, _ := i.topLevelIndex.Prev(); peekKey == nil {
+		// The original block points to the first index block of this table. If
+		// we knew the lower bound for the entire table, it could provide a
+		// lower bound, but the code refactoring necessary to read it doesn't
+		// seem worth the payoff. We fall through to loading the block.
+	} else if i.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(peekKey) {
+		// The lower-bound on the original index block falls within the filter's
+		// bounds, and we can skip the block (after restoring our current
+		// top-level index position).
+		_, _ = i.topLevelIndex.Next()
+		return blockExcluded
+	}
+	_, _ = i.topLevelIndex.Next()
+	return blockIntersects
 }
 
 func (i *twoLevelIterator) init(
@@ -1368,7 +1506,7 @@ func (i *twoLevelIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*Internal
 			return nil, nil
 		}
 
-		result := i.loadIndex()
+		result := i.loadIndex(+1)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -1486,7 +1624,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 			return nil, nil
 		}
 
-		result := i.loadIndex()
+		result := i.loadIndex(+1)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -1546,7 +1684,7 @@ func (i *twoLevelIterator) SeekLT(key []byte, flags base.SeekLTFlags) (*Internal
 			return nil, nil
 		}
 
-		result = i.loadIndex()
+		result = i.loadIndex(-1)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -1560,7 +1698,7 @@ func (i *twoLevelIterator) SeekLT(key []byte, flags base.SeekLTFlags) (*Internal
 		}
 		// Else loadBlockIrrelevant, so fall through.
 	} else {
-		result = i.loadIndex()
+		result = i.loadIndex(-1)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -1607,7 +1745,7 @@ func (i *twoLevelIterator) First() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	result := i.loadIndex()
+	result := i.loadIndex(+1)
 	if result == loadBlockFailed {
 		return nil, nil
 	}
@@ -1650,7 +1788,7 @@ func (i *twoLevelIterator) Last() (*InternalKey, []byte) {
 		return nil, nil
 	}
 
-	result := i.loadIndex()
+	result := i.loadIndex(-1)
 	if result == loadBlockFailed {
 		return nil, nil
 	}
@@ -1718,7 +1856,7 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, []byte) {
 			i.index.invalidate()
 			return nil, nil
 		}
-		result := i.loadIndex()
+		result := i.loadIndex(+1)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -1756,7 +1894,7 @@ func (i *twoLevelIterator) skipBackward() (*InternalKey, []byte) {
 			i.index.invalidate()
 			return nil, nil
 		}
-		result := i.loadIndex()
+		result := i.loadIndex(-1)
 		if result == loadBlockFailed {
 			return nil, nil
 		}
@@ -1874,7 +2012,7 @@ func (i *twoLevelCompactionIterator) skipForward(
 			if key, _ := i.topLevelIndex.Next(); key == nil {
 				break
 			}
-			result := i.loadIndex()
+			result := i.loadIndex(+1)
 			if result != loadBlockOK {
 				if i.err != nil {
 					break
