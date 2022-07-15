@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -43,19 +44,34 @@ func TestRangeKeys(t *testing.T) {
 				FS:                 vfs.NewMem(),
 				Comparer:           testkeys.Comparer,
 				FormatMajorVersion: FormatRangeKeys,
+				BlockPropertyCollectors: []func() BlockPropertyCollector{
+					blockprop.NewBlockPropertyCollector,
+				},
 			}
 			opts.DisableAutomaticCompactions = true
+			opts.EnsureDefaults()
 
-			for _, cmdArgs := range td.CmdArgs {
-				if cmdArgs.Key != "format-major-version" {
-					return fmt.Sprintf("unknown command %s\n", cmdArgs.Key)
+			for _, cmdArg := range td.CmdArgs {
+				switch cmdArg.Key {
+				case "format-major-version":
+					v, err := strconv.Atoi(cmdArg.Vals[0])
+					if err != nil {
+						return err.Error()
+					}
+					// Override the DB version.
+					opts.FormatMajorVersion = FormatMajorVersion(v)
+				case "block-size":
+					v, err := strconv.Atoi(cmdArg.Vals[0])
+					if err != nil {
+						return err.Error()
+					}
+					for i := range opts.Levels {
+						opts.Levels[i].BlockSize = v
+					}
+				default:
+					return fmt.Sprintf("unknown command %s\n", cmdArg.Key)
 				}
-				v, err := strconv.Atoi(cmdArgs.Vals[0])
-				if err != nil {
-					return err.Error()
-				}
-				// Override the DB version.
-				opts.FormatMajorVersion = FormatMajorVersion(v)
+
 			}
 
 			var err error
@@ -112,6 +128,8 @@ func TestRangeKeys(t *testing.T) {
 				switch arg.Key {
 				case "mask-suffix":
 					o.RangeKeyMasking.Suffix = []byte(arg.Vals[0])
+				case "mask-filter":
+					o.RangeKeyMasking.Filter = blockprop.NewMaskingFilter()
 				case "lower":
 					o.LowerBound = []byte(arg.Vals[0])
 				case "upper":

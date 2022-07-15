@@ -7,16 +7,14 @@ package metamorphic
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
 	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
@@ -52,7 +50,7 @@ func parseOptions(opts *testOptions, data string) error {
 			case "TestOptions.initial_state_path":
 				opts.initialStatePath = value
 				return true
-			case "TestOptions.use_block_property_filter":
+			case "TestOptions.use_block_property_collector":
 				opts.useBlockPropertyCollector = true
 				opts.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
 				return true
@@ -86,7 +84,7 @@ func optionsToString(opts *testOptions) string {
 		fmt.Fprintf(&buf, "  initial_state_desc=%s\n", opts.initialStateDesc)
 	}
 	if opts.useBlockPropertyCollector {
-		fmt.Fprintf(&buf, "  use_block_property_filter=%t\n", opts.useBlockPropertyCollector)
+		fmt.Fprintf(&buf, "  use_block_property_collector=%t\n", opts.useBlockPropertyCollector)
 	}
 
 	s := opts.opts.String()
@@ -94,6 +92,13 @@ func optionsToString(opts *testOptions) string {
 		return s
 	}
 	return s + "\n[TestOptions]\n" + buf.String()
+}
+
+func defaultTestOptions() *testOptions {
+	return &testOptions{
+		opts:                      defaultOptions(),
+		useBlockPropertyCollector: true,
+	}
 }
 
 func defaultOptions() *pebble.Options {
@@ -228,13 +233,13 @@ func standardOptions() []*testOptions {
 `,
 		23: `
 [TestOptions]
-  use_block_property_filter=true
+  use_block_property_collector=false
 `,
 	}
 
 	opts := make([]*testOptions, len(stdOpts))
 	for i := range opts {
-		opts[i] = &testOptions{opts: defaultOptions()}
+		opts[i] = defaultTestOptions()
 		if err := parseOptions(opts[i], stdOpts[i]); err != nil {
 			panic(err)
 		}
@@ -362,75 +367,6 @@ func moveLogs(fs vfs.FS, srcDir, dstDir string) error {
 	return nil
 }
 
-const blockPropertyCollectorName = `pebble.internal.metamorphic.suffixes`
-
 var blockPropertyCollectorConstructors = []func() pebble.BlockPropertyCollector{
-	func() pebble.BlockPropertyCollector {
-		return sstable.NewBlockIntervalCollector(
-			blockPropertyCollectorName,
-			&suffixIntervalCollector{},
-			nil)
-	},
-}
-
-// newBlockPropertyFilter constructs a new block-property filter that ignores
-// blocks containing exclusively suffixed keys where all the suffixes fall
-// outside of the range [filterMin, filterMax).
-//
-// The filter only filters based on data derived from the key. The iteration
-// results of this block property filter are deterministic for unsuffixed keys
-// and keys with suffixes within the range [filterMin, filterMax). For keys with
-// suffixes outside the range, iteration is nondeterministic. To accommodate
-// this, the metamorphic test iterators automatically skip keys outside the
-// configured filter span.
-func newBlockPropertyFilter(filterMin, filterMax uint64) pebble.BlockPropertyFilter {
-	return sstable.NewBlockIntervalFilter(blockPropertyCollectorName, filterMin, filterMax)
-}
-
-var _ sstable.DataBlockIntervalCollector = (*suffixIntervalCollector)(nil)
-
-// suffixIntervalCollector maintains an interval over the timestamps in
-// MVCC-like suffixes for keys (e.g. foo@123).
-type suffixIntervalCollector struct {
-	initialized  bool
-	lower, upper uint64
-}
-
-// Add implements DataBlockIntervalCollector by adding the timestamp(s) in the
-// suffix(es) of this record to the current interval.
-//
-// Note that range sets and unsets may have multiple suffixes. Range key deletes
-// do not have a suffix. All other point keys have a single suffix.
-func (c *suffixIntervalCollector) Add(key base.InternalKey, value []byte) error {
-	i := testkeys.Comparer.Split(key.UserKey)
-	if i == len(key.UserKey) {
-		c.initialized = true
-		c.lower, c.upper = 0, math.MaxUint64
-		return nil
-	}
-	ts, err := testkeys.ParseSuffix(key.UserKey[i:])
-	if err != nil {
-		return err
-	}
-	uts := uint64(ts)
-	if !c.initialized {
-		c.lower, c.upper = uts, uts+1
-		c.initialized = true
-		return nil
-	}
-	if uts < c.lower {
-		c.lower = uts
-	}
-	if uts >= c.upper {
-		c.upper = uts + 1
-	}
-	return nil
-}
-
-// FinishDataBlock implements DataBlockIntervalCollector.
-func (c *suffixIntervalCollector) FinishDataBlock() (lower, upper uint64, err error) {
-	l, u := c.lower, c.upper
-	c.lower, c.upper = 0, 0
-	c.initialized = false
-	return l, u, nil
+	blockprop.NewBlockPropertyCollector,
 }

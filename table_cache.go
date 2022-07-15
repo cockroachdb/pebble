@@ -133,9 +133,9 @@ func (c *tableCacheContainer) close() error {
 }
 
 func (c *tableCacheContainer) newIters(
-	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64,
+	file *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
-	return c.tableCache.getShard(file.FileNum).newIters(file, opts, bytesIterated, &c.dbOpts)
+	return c.tableCache.getShard(file.FileNum).newIters(file, opts, internalOpts, &c.dbOpts)
 }
 
 func (c *tableCacheContainer) newRangeKeyIter(
@@ -331,14 +331,15 @@ func (c *tableCacheShard) checkAndIntersectFilters(
 	v *tableCacheValue,
 	tableFilter func(userProps map[string]string) bool,
 	blockPropertyFilters []BlockPropertyFilter,
+	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter,
 ) (ok bool, filterer *sstable.BlockPropertiesFilterer, err error) {
 	if tableFilter != nil &&
 		!tableFilter(v.reader.Properties.UserProperties) {
 		return false, nil, nil
 	}
 
-	if len(blockPropertyFilters) > 0 {
-		filterer = sstable.NewBlockPropertiesFilterer(blockPropertyFilters)
+	if boundLimitedFilter != nil || len(blockPropertyFilters) > 0 {
+		filterer = sstable.NewBlockPropertiesFilterer(blockPropertyFilters, boundLimitedFilter)
 		intersects, err :=
 			filterer.IntersectsUserPropsAndFinishInit(v.reader.Properties.UserProperties)
 		if err != nil {
@@ -352,7 +353,10 @@ func (c *tableCacheShard) checkAndIntersectFilters(
 }
 
 func (c *tableCacheShard) newIters(
-	file *manifest.FileMetadata, opts *IterOptions, bytesIterated *uint64, dbOpts *tableCacheOpts,
+	file *manifest.FileMetadata,
+	opts *IterOptions,
+	internalOpts internalIterOpts,
+	dbOpts *tableCacheOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount. If opening the underlying table resulted in error, then we
@@ -369,7 +373,8 @@ func (c *tableCacheShard) newIters(
 	var filterer *sstable.BlockPropertiesFilterer
 	var err error
 	if opts != nil {
-		ok, filterer, err = c.checkAndIntersectFilters(v, opts.TableFilter, opts.PointKeyFilters)
+		ok, filterer, err = c.checkAndIntersectFilters(v, opts.TableFilter,
+			opts.PointKeyFilters, internalOpts.boundLimitedFilter)
 	}
 	if err != nil {
 		c.unrefValue(v)
@@ -405,8 +410,8 @@ func (c *tableCacheShard) newIters(
 	if opts != nil {
 		useFilter = manifest.LevelToInt(opts.level) != 6 || opts.UseL6Filters
 	}
-	if bytesIterated != nil {
-		iter, err = v.reader.NewCompactionIter(bytesIterated)
+	if internalOpts.bytesIterated != nil {
+		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated)
 	} else {
 		iter, err = v.reader.NewIterWithBlockPropertyFilters(
 			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter)
@@ -454,7 +459,7 @@ func (c *tableCacheShard) newRangeKeyIter(
 	// done here, rather than deferring to the block-property collector in order
 	// to maintain parity with point keys and the treatment of RANGEDELs.
 	if opts != nil && v.reader.Properties.NumRangeKeyDels == 0 {
-		ok, _, err = c.checkAndIntersectFilters(v, nil, opts.RangeKeyFilters)
+		ok, _, err = c.checkAndIntersectFilters(v, nil, opts.RangeKeyFilters, nil)
 	}
 	if err != nil {
 		c.unrefValue(v)

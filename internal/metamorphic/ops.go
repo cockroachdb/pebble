@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -592,9 +593,12 @@ func (o *newIterOp) run(t *test, h *history) {
 			Suffix: o.rangeKeyMaskSuffix,
 		},
 	}
+	if opts.RangeKeyMasking.Suffix != nil {
+		opts.RangeKeyMasking.Filter = blockprop.NewMaskingFilter()
+	}
 	if o.filterMax > 0 {
 		opts.PointKeyFilters = []pebble.BlockPropertyFilter{
-			newBlockPropertyFilter(o.filterMin, o.filterMax),
+			blockprop.NewBlockPropertyFilter(o.filterMin, o.filterMax),
 		}
 	}
 
@@ -714,9 +718,12 @@ func (o *iterSetOptionsOp) run(t *test, h *history) {
 			Suffix: o.rangeKeyMaskSuffix,
 		},
 	}
+	if opts.RangeKeyMasking.Suffix != nil {
+		opts.RangeKeyMasking.Filter = blockprop.NewMaskingFilter()
+	}
 	if o.filterMax > 0 {
 		opts.PointKeyFilters = []pebble.BlockPropertyFilter{
-			newBlockPropertyFilter(o.filterMin, o.filterMax),
+			blockprop.NewBlockPropertyFilter(o.filterMin, o.filterMax),
 		}
 	}
 

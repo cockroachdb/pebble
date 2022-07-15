@@ -230,9 +230,53 @@ type RangeKeyMasking struct {
 	// that are defined at suffixes less than or equal to Suffix will mask point
 	// keys.
 	Suffix []byte
+	// Filter is an optional field that may be used to improve performance of
+	// range-key masking through a block-property filter defined over key
+	// suffixes. Filter allows Pebble to skip whole point-key blocks containing
+	// point keys with suffixes less than a covering range-key's suffix.
+	//
+	// To use this functionality, the caller must create and configure (through
+	// Options.BlockPropertyCollectors) a block-property collector that records
+	// the maxmimum suffix contained within a block. The caller then must write
+	// and provide a BlockPropertyFilterMask implementation on that same
+	// property. See the BlockPropertyFilterMask type for more information.
+	Filter BlockPropertyFilterMask
+}
 
-	// TODO(jackson): Add fields necessary for constructing and updating block
-	// property collectors.
+// BlockPropertyFilterMask extends the BlockPropertyFilter interface for use
+// with range-key masking. Unlike an ordinary block property filter, a
+// BlockPropertyFilterMask's filtering criteria is allowed to change when Pebble
+// invokes its SetSuffix method.
+//
+// When a Pebble iterator steps into a range key's bounds and the range key has
+// a suffix less than or equal to RangeKeyMasking.Suffix, the range key acts as
+// a mask. The masking range key hides all point keys that fall within the range
+// key's bounds and have suffixes < the range key's suffix. Without a filter
+// mask configured, Pebble performs this hiding by stepping through point keys
+// and comparing suffixes. If large numbers of point keys are masked, this
+// requires Pebble to load, iterate through and discard a large number of
+// sstable blocks containing masked point keys.
+//
+// If a block-property collector and a filter mask are configured, Pebble may
+// skip loading some point-key blocks altogether. If a block's keys are known to
+// all fall within the bounds of the masking range key and the block was
+// annotated by a block-property collector with the maximal suffix, Pebble can
+// ask the filter mask to compare the property to the current masking range
+// key's suffix. If the mask reports no intersection, the block may be skipped.
+//
+// If unsuffixed and suffixed keys are written to the database, care must be
+// taken to avoid unintentionally masking un-suffixed keys located in the same
+// block as suffixed keys. One solution is to interpret unsuffixed keys as
+// containing the maximal suffix value, ensuring that blocks containing
+// unsuffixed keys are always loaded.
+type BlockPropertyFilterMask interface {
+	BlockPropertyFilter
+
+	// SetSuffix configures the mask with the suffix of a range key. The filter
+	// should return false from Intersects whenever it's provided with a
+	// property encoding a block's maximum suffix that's less than the provided
+	// suffix.
+	SetSuffix(suffix []byte) error
 }
 
 // WriteOptions hold the optional per-query parameters for Set and Delete
