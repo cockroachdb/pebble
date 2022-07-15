@@ -36,6 +36,12 @@ var compactLabels = pprof.Labels("pebble", "compact")
 var flushLabels = pprof.Labels("pebble", "flush")
 var gcLabels = pprof.Labels("pebble", "gc")
 
+// getInternalWriterProperties accesses a private variable (in the
+// internal/private package) initialized by the sstable Writer. This indirection
+// is necessary to ensure non-Pebble users constructing sstables for ingestion
+// are unable to set internal-only properties.
+var getInternalWriterProperties = private.SSTableInternalProperties.(func(*sstable.Writer) *sstable.Properties)
+
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction
 // if it would make the total compaction cover more than this many bytes.
@@ -1959,6 +1965,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 
 	var ve *manifest.VersionEdit
 	var pendingOutputs []*manifest.FileMetadata
+	var stats compactStats
 	// To determine the target level of the files in the ingestedFlushable, we
 	// need to acquire the logLock, and not release it for that duration. Since,
 	// we need to acquire the logLock below to perform the logAndApply step
@@ -1966,7 +1973,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	// runCompaction. For all other flush cases, we construct the VersionEdit
 	// inside runCompaction.
 	if c.kind != compactionKindIngestedFlushable {
-		ve, pendingOutputs, err = d.runCompaction(jobID, c)
+		ve, pendingOutputs, stats, err = d.runCompaction(jobID, c)
 	}
 
 	// Acquire logLock. This will be released either on an error, by way of
@@ -2033,6 +2040,9 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	}
 
 	bytesFlushed = c.bytesIterated
+	d.mu.snapshots.cumulativePinnedCount += stats.cumulativePinnedKeys
+	d.mu.snapshots.cumulativePinnedSize += stats.cumulativePinnedSize
+
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c, err != nil)
 	d.mu.versions.incrementCompactions(c.kind, c.extraLevels)
@@ -2512,7 +2522,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	d.opts.EventListener.CompactionBegin(info)
 	startTime := d.timeNow()
 
-	ve, pendingOutputs, err := d.runCompaction(jobID, c)
+	ve, pendingOutputs, stats, err := d.runCompaction(jobID, c)
 
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
@@ -2536,6 +2546,9 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		}
 	}
 
+	d.mu.snapshots.cumulativePinnedCount += stats.cumulativePinnedKeys
+	d.mu.snapshots.cumulativePinnedSize += stats.cumulativePinnedSize
+
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c, err != nil)
 	d.mu.versions.incrementCompactions(c.kind, c.extraLevels)
@@ -2557,6 +2570,11 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	return err
 }
 
+type compactStats struct {
+	cumulativePinnedKeys uint64
+	cumulativePinnedSize uint64
+}
+
 // runCompactions runs a compaction that produces new on-disk tables from
 // memtables or old on-disk tables.
 //
@@ -2564,7 +2582,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
 	jobID int, c *compaction,
-) (ve *versionEdit, pendingOutputs []*fileMetadata, retErr error) {
+) (ve *versionEdit, pendingOutputs []*fileMetadata, stats compactStats, retErr error) {
 	// As a sanity check, confirm that the smallest / largest keys for new and
 	// deleted files in the new versionEdit pass a validation function before
 	// returning the edit.
@@ -2600,7 +2618,7 @@ func (d *DB) runCompaction(
 			}
 			c.metrics[cl.level] = levelMetrics
 		}
-		return ve, nil, nil
+		return ve, nil, stats, nil
 	}
 
 	if c.kind == compactionKindIngestedFlushable {
@@ -2634,7 +2652,7 @@ func (d *DB) runCompaction(
 				{Level: c.outputLevel.level, Meta: meta},
 			},
 		}
-		return ve, nil, nil
+		return ve, nil, stats, nil
 	}
 
 	defer func() {
@@ -2653,7 +2671,7 @@ func (d *DB) runCompaction(
 
 	iiter, err := c.newInputIter(d.newIters, d.tableNewRangeKeyIter, snapshots)
 	if err != nil {
-		return nil, pendingOutputs, err
+		return nil, pendingOutputs, stats, err
 	}
 	c.allowedZeroSeqNum = c.allowZeroSeqNum()
 	iter := newCompactionIter(c.cmp, c.equal, c.formatKey, d.merge, iiter, snapshots,
@@ -2661,8 +2679,11 @@ func (d *DB) runCompaction(
 		c.elideRangeTombstone, d.FormatMajorVersion())
 
 	var (
-		createdFiles []base.FileNum
-		tw           *sstable.Writer
+		createdFiles    []base.FileNum
+		tw              *sstable.Writer
+		pinnedKeySize   uint64
+		pinnedValueSize uint64
+		pinnedCount     uint64
 	)
 	defer func() {
 		if iter != nil {
@@ -2770,7 +2791,6 @@ func (d *DB) runCompaction(
 		}
 		createdFiles = append(createdFiles, fileNum)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
-		internalTableOpt := private.SSTableInternalTableOpt.(sstable.WriterOption)
 
 		const MaxFileWriteAdditionalCPUTime = time.Millisecond * 100
 		cpuWorkHandle = d.opts.Experimental.CPUWorkPermissionGranter.GetPermission(
@@ -2780,7 +2800,7 @@ func (d *DB) runCompaction(
 			d.opts.Experimental.MaxWriterConcurrency > 0 &&
 				(cpuWorkHandle.Permitted() || d.opts.Experimental.ForceWriterParallelism)
 
-		tw = sstable.NewWriter(writable, writerOpts, cacheOpts, internalTableOpt, &prevPointKey)
+		tw = sstable.NewWriter(writable, writerOpts, cacheOpts, &prevPointKey)
 
 		fileMeta.CreationTime = time.Now().Unix()
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{
@@ -2879,7 +2899,22 @@ func (d *DB) runCompaction(
 		if tw == nil {
 			return nil
 		}
-
+		{
+			// Set internal sstable properties.
+			p := getInternalWriterProperties(tw)
+			// Set the external sst version to 0. This is what RocksDB expects for
+			// db-internal sstables; otherwise, it could apply a global sequence number.
+			p.ExternalFormatVersion = 0
+			// Set the snapshot pinned totals.
+			p.SnapshotPinnedKeys = pinnedCount
+			p.SnapshotPinnedKeySize = pinnedKeySize
+			p.SnapshotPinnedValueSize = pinnedValueSize
+			stats.cumulativePinnedKeys += pinnedCount
+			stats.cumulativePinnedSize += pinnedKeySize + pinnedValueSize
+			pinnedCount = 0
+			pinnedKeySize = 0
+			pinnedValueSize = 0
+		}
 		if err := tw.Close(); err != nil {
 			tw = nil
 			return err
@@ -3124,11 +3159,19 @@ func (d *DB) runCompaction(
 			}
 			if tw == nil {
 				if err := newOutput(); err != nil {
-					return nil, pendingOutputs, err
+					return nil, pendingOutputs, stats, err
 				}
 			}
 			if err := tw.Add(*key, val); err != nil {
-				return nil, pendingOutputs, err
+				return nil, pendingOutputs, stats, err
+			}
+			if iter.snapshotPinned {
+				// The kv pair we just added to the sstable was only surfaced by
+				// the compaction iterator because an open snapshot prevented
+				// its elision. Increment the stats.
+				pinnedCount++
+				pinnedKeySize += uint64(len(key.UserKey)) + base.InternalTrailerLen
+				pinnedValueSize += uint64(len(val))
 			}
 		}
 
@@ -3156,7 +3199,7 @@ func (d *DB) runCompaction(
 			splitKey = key.UserKey
 		}
 		if err := finishOutput(splitKey); err != nil {
-			return nil, pendingOutputs, err
+			return nil, pendingOutputs, stats, err
 		}
 	}
 
@@ -3173,14 +3216,14 @@ func (d *DB) runCompaction(
 	}
 
 	if err := d.objProvider.Sync(); err != nil {
-		return nil, pendingOutputs, err
+		return nil, pendingOutputs, stats, err
 	}
 
 	// Refresh the disk available statistic whenever a compaction/flush
 	// completes, before re-acquiring the mutex.
 	_ = d.calculateDiskAvailableBytes()
 
-	return ve, pendingOutputs, nil
+	return ve, pendingOutputs, stats, nil
 }
 
 // validateVersionEdit validates that start and end keys across new and deleted

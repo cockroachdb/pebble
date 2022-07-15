@@ -165,6 +165,7 @@ func TestCompactionIter(t *testing.T) {
 				snapshots = snapshots[:0]
 				elideTombstones = false
 				allowZeroSeqnum = false
+				printSnapshotPinned := false
 				for _, arg := range d.CmdArgs {
 					switch arg.Key {
 					case "snapshots":
@@ -187,6 +188,8 @@ func TestCompactionIter(t *testing.T) {
 						if err != nil {
 							return err.Error()
 						}
+					case "print-snapshot-pinned":
+						printSnapshotPinned = true
 					default:
 						return fmt.Sprintf("%s: unknown arg: %s", d.Cmd, arg.Key)
 					}
@@ -233,7 +236,14 @@ func TestCompactionIter(t *testing.T) {
 						return fmt.Sprintf("unknown op: %s", parts[0])
 					}
 					if iter.Valid() {
-						fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
+						snapshotPinned := ""
+						if printSnapshotPinned {
+							snapshotPinned = " (not pinned)"
+							if iter.snapshotPinned {
+								snapshotPinned = " (pinned)"
+							}
+						}
+						fmt.Fprintf(&b, "%s:%s%s\n", iter.Key(), iter.Value(), snapshotPinned)
 						if iter.Key().Kind() == InternalKeyKindRangeDelete {
 							iter.rangeDelFrag.Add(keyspan.Span{
 								Start: append([]byte{}, iter.Key().UserKey...),
