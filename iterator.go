@@ -1494,6 +1494,8 @@ func (i *Iterator) rangeKeyWithinLimit(limit []byte) bool {
 	return true
 }
 
+// SpanChanged implements the keyspan.SpanMask interface, used during range key
+// iteration.
 func (i *iteratorRangeKeyState) SpanChanged(s *keyspan.Span) {
 	i.activeMaskSuffix = i.activeMaskSuffix[:0]
 
@@ -1515,10 +1517,10 @@ func (i *iteratorRangeKeyState) SpanChanged(s *keyspan.Span) {
 	}
 }
 
-// SkipPoint is installed as a keyspan.InterleavingIter's SkipPoint hook during
-// range key iteration. Whenever a point key is covered by a non-empty Span, the
-// interleaving iterator invokes the SkipPoint hook. This function is
-// responsible for performing range key masking.
+// SkipPoint implements the keyspan.SpanMask interface, used during range key
+// iteration. Whenever a point key is covered by a non-empty Span, the
+// interleaving iterator invokes SkipPoint. This function is responsible for
+// performing range key masking.
 //
 // If a non-nil IterOptions.RangeKeyMasking.Suffix is set, range key masking is
 // enabled. Masking hides point keys, transparently skipping over the keys.
@@ -1555,7 +1557,8 @@ func (i *iteratorRangeKeyState) SpanChanged(s *keyspan.Span) {
 // non-masking due to its suffix. The point key l@8 also falls within the user
 // key bounds of [h,q)@6, but since cmp(@6,@8) ≥ 0, l@8 is unmasked.
 //
-// Invariant: userKey is within the user key bounds of i.rangeKey.iter.Span().
+// Invariant: The userKey is within the user key bounds of the span most
+// recently provided to `SpanChanged`.
 func (i *iteratorRangeKeyState) SkipPoint(userKey []byte) bool {
 	if len(i.activeMaskSuffix) == 0 {
 		// No range key is currently acting as a mask, so don't skip.
