@@ -861,7 +861,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		// to the user-defined boundaries.
 		c.maxOutputFileSize = math.MaxUint64
 
-		newVE, _, err := d.runCompaction(0, c)
+		newVE, _, _, err := d.runCompaction(0, c)
 		if err != nil {
 			return err
 		}
@@ -1088,6 +1088,36 @@ func runTableFileSizesCmd(td *datadriven.TestData, d *DB) string {
 		iter := levelMetadata.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
 			fmt.Fprintf(&buf, "  %s: %d bytes (%s)\n", f, f.Size, humanize.IEC.Uint64(f.Size))
+		}
+	}
+	return buf.String()
+}
+
+func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) string {
+	var file string
+	td.ScanArgs(t, "file", &file)
+	f, err := d.opts.FS.Open(file + ".sst")
+	if err != nil {
+		return err.Error()
+	}
+	readable, err := sstable.NewSimpleReadable(f)
+	if err != nil {
+		return err.Error()
+	}
+	r, err := sstable.NewReader(readable, d.opts.MakeReaderOptions())
+	if err != nil {
+		return err.Error()
+	}
+	defer r.Close()
+
+	props := strings.Split(r.Properties.String(), "\n")
+	var buf bytes.Buffer
+	for _, requestedProp := range strings.Split(td.Input, "\n") {
+		fmt.Fprintf(&buf, "%s:\n", requestedProp)
+		for _, prop := range props {
+			if strings.Contains(prop, requestedProp) {
+				fmt.Fprintf(&buf, "  %s\n", prop)
+			}
 		}
 	}
 	return buf.String()
