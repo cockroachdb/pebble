@@ -1464,6 +1464,9 @@ func TestManualCompaction(t *testing.T) {
 				}
 				return ""
 
+			case "sstable-properties":
+				return runSSTablePropertiesCmd(t, td, d)
+
 			case "wait-pending-table-stats":
 				return runTableStatsCmd(td, d)
 

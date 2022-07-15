@@ -229,16 +229,35 @@ func (f *Fragmenter) Add(s Span) {
 	f.pending = append(f.pending, s)
 }
 
-// Covers returns true if the specified key is covered by one of the pending
-// spans. The key must be consistent with the ordering of the
-// spans. That is, it is invalid to specify a key here that is out of
-// order with the span start keys passed to Add.
-func (f *Fragmenter) Covers(key base.InternalKey, snapshot uint64) bool {
+// Cover is returned by Framenter.Covers and describes a span's relationship to
+// a key at a particular snapshot.
+type Cover int8
+
+const (
+	// NoCover indicates the tested key does not fall within the span's bounds,
+	// or the span contains no keys with sequence numbers higher than the key's.
+	NoCover Cover = iota
+	// CoversInvisibly indicates the tested key does fall within the span's
+	// bounds and the span contains at least one key with a higher sequence
+	// number, but none visible at the provided snapshot.
+	CoversInvisibly
+	// CoversVisibly indicates the tested key does fall within the span's
+	// bounds, and the span constains at least one key with a sequence number
+	// higher than the key's sequence number that is visible at the provided
+	// snapshot.
+	CoversVisibly
+)
+
+// Covers returns an enum indicating whether the specified key is covered by one
+// of the pending keys. The provided key must be consistent with the ordering of
+// the spans. That is, it is invalid to specify a key here that is out of order
+// with the span start keys passed to Add.
+func (f *Fragmenter) Covers(key base.InternalKey, snapshot uint64) Cover {
 	if f.finished {
 		panic("pebble: span fragmenter already finished")
 	}
 	if len(f.pending) == 0 {
-		return false
+		return NoCover
 	}
 
 	if f.Cmp(f.pending[0].Start, key.UserKey) > 0 {
@@ -246,18 +265,31 @@ func (f *Fragmenter) Covers(key base.InternalKey, snapshot uint64) bool {
 			f.Format(f.pending[0].Start), key.Pretty(f.Format)))
 	}
 
+	cover := NoCover
 	seqNum := key.SeqNum()
 	for _, s := range f.pending {
 		if f.Cmp(key.UserKey, s.End) < 0 {
 			// NB: A range deletion tombstone does not delete a point operation
 			// at the same sequence number, and broadly a span is not considered
 			// to cover a point operation at the same sequence number.
-			if s.CoversAt(snapshot, seqNum) {
-				return true
+
+			for i := range s.Keys {
+				if kseq := s.Keys[i].SeqNum(); kseq > seqNum {
+					// This key from the span has a higher sequence number than
+					// `key`. It covers `key`, although the span's key might not
+					// be visible if its snapshot is too high.
+					//
+					// Batch keys are always be visible.
+					if kseq < snapshot || kseq&base.InternalKeySeqNumBatch != 0 {
+						return CoversVisibly
+					}
+					// s.Keys[i] is not visible.
+					cover = CoversInvisibly
+				}
 			}
 		}
 	}
-	return false
+	return cover
 }
 
 // Empty returns true if all fragments added so far have finished flushing.
