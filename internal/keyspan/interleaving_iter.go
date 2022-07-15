@@ -336,6 +336,13 @@ func (i *InterleavingIter) Next() (*base.InternalKey, []byte) {
 		// Switching directions.
 		i.dir = +1
 
+		if i.mask != nil {
+			// Clear the mask while we reposition the point iterator. While
+			// switching directions, we may move the point iterator outside of
+			// i.span's bounds.
+			i.maybeUpdateMask(false /* covered */)
+		}
+
 		// The existing point key (denoted below with *) is either the last
 		// key we returned (the current iterator position):
 		//   points:    x     (y*)    z
@@ -407,6 +414,13 @@ func (i *InterleavingIter) Prev() (*base.InternalKey, []byte) {
 	if i.dir == +1 {
 		// Switching directions.
 		i.dir = -1
+
+		if i.mask != nil {
+			// Clear the mask while we reposition the point iterator. While
+			// switching directions, we may move the point iterator outside of
+			// i.span's bounds.
+			i.maybeUpdateMask(false /* covered */)
+		}
 
 		if i.keyspanInterleaved {
 			// The current span's start key has already been interleaved in the

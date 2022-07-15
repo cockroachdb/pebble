@@ -384,6 +384,7 @@ prev
 PointKey: b#72057594037927935,21
 Span: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
+-- SpanChanged(nil)
 -- SpanChanged(a-z:{(#5,RANGEKEYSET,@5,apples)})
 PointKey: a#8,1
 Span: a-z:{(#5,RANGEKEYSET,@5,apples)}
@@ -408,6 +409,7 @@ Span: a-z:{(#5,RANGEKEYSET,@5,apples)}
 PointKey: b#13,1
 Span: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
+-- SpanChanged(nil)
 -- SpanChanged(a-z:{(#5,RANGEKEYSET,@5,apples)})
 PointKey: a#8,1
 Span: a-z:{(#5,RANGEKEYSET,@5,apples)}
@@ -430,6 +432,8 @@ next
 PointKey: b#13,1
 Span: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
+-- SpanChanged(nil)
+-- SpanChanged(a-z:{(#5,RANGEKEYSET,@5,apples)})
 PointKey: c#9,0
 Span: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
@@ -447,6 +451,8 @@ Span: a-z:{(#5,RANGEKEYSET,@5,apples)}
 PointKey: a#8,1
 Span: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
+-- SpanChanged(nil)
+-- SpanChanged(a-z:{(#5,RANGEKEYSET,@5,apples)})
 PointKey: b#13,1
 Span: a-z:{(#5,RANGEKEYSET,@5,apples)}
 -
@@ -491,10 +497,13 @@ Span: ace-bat:{(#5,RANGEKEYSET,@5,v5)}
 PointKey: b#13,1
 Span: ace-bat:{(#5,RANGEKEYSET,@5,v5)}
 -
+-- SpanChanged(nil)
 -- SpanChanged(ace-bat:{(#5,RANGEKEYSET,@5,v5)})
 PointKey: ace#72057594037927935,21
 Span: ace-bat:{(#5,RANGEKEYSET,@5,v5)}
 -
+-- SpanChanged(nil)
+-- SpanChanged(ace-bat:{(#5,RANGEKEYSET,@5,v5)})
 PointKey: b#13,1
 Span: ace-bat:{(#5,RANGEKEYSET,@5,v5)}
 -
@@ -658,6 +667,7 @@ next
 PointKey: c#72057594037927935,21
 Span: a-z:{(#5,RANGEKEYSET,@1,v1)}
 -
+-- SpanChanged(nil)
 -- SpanChanged(a-z:{(#5,RANGEKEYSET,@1,v1)})
 PointKey: a#72057594037927935,21
 Span: a-z:{(#5,RANGEKEYSET,@1,v1)}

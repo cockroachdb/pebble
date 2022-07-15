@@ -445,7 +445,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			iter, _, err := c.newIters(
 				&fileMetadata{FileNum: FileNum(fileNum)},
 				nil, /* iter options */
-				nil /* bytes iterated */)
+				internalIterOpts{})
 			if err != nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
@@ -508,7 +508,7 @@ func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 				iter, _, err = c.newIters(
 					&fileMetadata{FileNum: FileNum(j)},
 					nil, /* iter options */
-					nil /* bytes iterated */)
+					internalIterOpts{})
 			}
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -555,14 +555,14 @@ func TestSharedTableCacheFrequentlyUsed(t *testing.T) {
 			iter1, _, err := c1.newIters(
 				&fileMetadata{FileNum: FileNum(j)},
 				nil, /* iter options */
-				nil /* bytes iterated */)
+				internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
 			iter2, _, err := c2.newIters(
 				&fileMetadata{FileNum: FileNum(j)},
 				nil, /* iter options */
-				nil /* bytes iterated */)
+				internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
@@ -616,7 +616,7 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 			iter, _, err = c.newIters(
 				&fileMetadata{FileNum: FileNum(j)},
 				nil, /* iter options */
-				nil /* bytes iterated */)
+				internalIterOpts{})
 		}
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -678,7 +678,7 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 		iter1, _, err := c1.newIters(
 			&fileMetadata{FileNum: FileNum(j)},
 			nil, /* iter options */
-			nil /* bytes iterated */)
+			internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
@@ -686,7 +686,7 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 		iter2, _, err := c2.newIters(
 			&fileMetadata{FileNum: FileNum(j)},
 			nil, /* iter options */
-			nil /* bytes iterated */)
+			internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
@@ -748,7 +748,7 @@ func TestTableCacheIterLeak(t *testing.T) {
 	iter, _, err := c.newIters(
 		&fileMetadata{FileNum: 0},
 		nil, /* iter options */
-		nil /* bytes iterated */)
+		internalIterOpts{})
 	require.NoError(t, err)
 
 	if err := c.close(); err == nil {
@@ -774,7 +774,7 @@ func TestSharedTableCacheIterLeak(t *testing.T) {
 	iter, _, err := c1.newIters(
 		&fileMetadata{FileNum: 0},
 		nil, /* iter options */
-		nil /* bytes iterated */)
+		internalIterOpts{})
 	require.NoError(t, err)
 
 	if err := c1.close(); err == nil {
@@ -811,7 +811,7 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	if _, _, err := c.newIters(
 		&fileMetadata{FileNum: 0},
 		nil, /* iter options */
-		nil /* bytes iterated */); err == nil {
+		internalIterOpts{}); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
 	fs.setOpenError(false /* enabled */)
@@ -819,7 +819,7 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	iter, _, err = c.newIters(
 		&fileMetadata{FileNum: 0},
 		nil, /* iter options */
-		nil /* bytes iterated */)
+		internalIterOpts{})
 	require.NoError(t, err)
 	require.NoError(t, iter.Close())
 	fs.validate(t, c, nil)

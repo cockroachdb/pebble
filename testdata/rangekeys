@@ -903,3 +903,129 @@ a@1: (a1, .)
 b@3: (b3, .)
 d: (., [d-e) @5=boop)
 .
+
+# Try a broad range key that masks all the point keys.
+
+reset block-size=20
+----
+
+batch
+range-key-set a z @5 boop
+set a@1 foo
+set b@3 foo
+set c@3 foo
+set d@1 foo
+set e@3 foo
+set f@3 foo
+set g@2 foo
+set h@2 foo
+set i@2 foo
+set j@2 foo
+set k@0 foo
+set l@2 foo
+set m@1 foo
+set n@3 foo
+set o@4 foo
+set p@2 foo
+set q@2 foo
+set r@1 foo
+set s@2 foo
+set t@3 foo
+set u@2 foo
+set v@0 foo
+set w@0 foo
+set x@2 foo
+set y@4 foo
+----
+wrote 26 keys
+
+flush
+----
+
+combined-iter mask-suffix=@9
+first
+next
+stats
+----
+a: (., [a-z) @5=boop)
+.
+stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
+(internal-stats: (block-bytes: (total 625 B, cached 0 B)), (points: (count 25, key-bytes 75, value-bytes 75, tombstoned: 0))
+
+# Repeat the above test, but with an iterator that uses a block-property filter
+# mask. The internal stats should reflect fewer bytes read and fewer points
+# visited by the internal iterators.
+
+combined-iter mask-suffix=@9 mask-filter
+first
+next
+stats
+----
+a: (., [a-z) @5=boop)
+.
+stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
+(internal-stats: (block-bytes: (total 50 B, cached 50 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
+
+# Perform a similar comparison in reverse.
+
+combined-iter mask-suffix=@9
+last
+prev
+stats
+----
+a: (., [a-z) @5=boop)
+.
+stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
+(internal-stats: (block-bytes: (total 625 B, cached 625 B)), (points: (count 25, key-bytes 75, value-bytes 75, tombstoned: 0))
+
+combined-iter mask-suffix=@9 mask-filter
+last
+prev
+stats
+----
+a: (., [a-z) @5=boop)
+.
+stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
+(internal-stats: (block-bytes: (total 50 B, cached 50 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
+
+# Perform similar comparisons with seeks.
+
+combined-iter mask-suffix=@9
+seek-ge m
+next
+stats
+----
+m: (., [a-z) @5=boop)
+.
+stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
+(internal-stats: (block-bytes: (total 325 B, cached 325 B)), (points: (count 13, key-bytes 39, value-bytes 39, tombstoned: 0))
+
+combined-iter mask-suffix=@9 mask-filter
+seek-ge m
+next
+stats
+----
+m: (., [a-z) @5=boop)
+.
+stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
+(internal-stats: (block-bytes: (total 50 B, cached 50 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
+
+combined-iter mask-suffix=@9
+seek-lt m
+prev
+stats
+----
+a: (., [a-z) @5=boop)
+.
+stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
+(internal-stats: (block-bytes: (total 325 B, cached 325 B)), (points: (count 12, key-bytes 36, value-bytes 36, tombstoned: 0))
+
+combined-iter mask-suffix=@9 mask-filter
+seek-lt m
+prev
+stats
+----
+a: (., [a-z) @5=boop)
+.
+stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
+(internal-stats: (block-bytes: (total 75 B, cached 75 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
