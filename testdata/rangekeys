@@ -878,3 +878,28 @@ prev
 ----
 d: (., [d-e) @1=foo)
 a: (a, .)
+
+# Test a range key masking case where the range key is not immediately
+# masking point keys, but masks point keys once positioned beneath it.
+
+reset
+----
+
+batch
+range-key-set d e @5 boop
+set a@1 a1
+set b@3 b3
+set d@3 d3
+----
+wrote 4 keys
+
+combined-iter mask-suffix=@9
+first
+next
+next
+next
+----
+a@1: (a1, .)
+b@3: (b3, .)
+d: (., [d-e) @5=boop)
+.
