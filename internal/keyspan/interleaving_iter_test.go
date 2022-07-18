@@ -7,6 +7,7 @@ package keyspan
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"testing"
@@ -26,6 +27,7 @@ func TestInterleavingIter_Masking(t *testing.T) {
 }
 
 type maskingHooks struct {
+	log        io.Writer
 	cmp        base.Compare
 	split      base.Split
 	threshold  []byte
@@ -33,6 +35,14 @@ type maskingHooks struct {
 }
 
 func (m *maskingHooks) SpanChanged(s *Span) {
+	if m.log != nil {
+		if s == nil {
+			fmt.Fprintln(m.log, "-- SpanChanged(nil)")
+		} else {
+			fmt.Fprintf(m.log, "-- SpanChanged(%s)\n", s)
+		}
+	}
+
 	// Find the smallest suffix of a key contained within the Span, excluding
 	// suffixes less than m.threshold.
 	m.maskSuffix = nil
@@ -64,6 +74,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 	var iter InterleavingIter
 	var buf bytes.Buffer
 	hooks := maskingHooks{
+		log:   &buf,
 		cmp:   testkeys.Comparer.Compare,
 		split: testkeys.Comparer.Split,
 	}

@@ -46,27 +46,33 @@ next
 next
 next
 ----
+-- SpanChanged(e-f:{(#1,RANGEKEYSET,@9,foo)})
 PointKey: b@2#1,1
 Span: <invalid>
 -
 PointKey: e#72057594037927935,21
 Span: e-f:{(#1,RANGEKEYSET,@9,foo)}
 -
+-- SpanChanged(f-h:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@3,bar)})
 PointKey: f#72057594037927935,21
 Span: f-h:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@3,bar)}
 -
+-- SpanChanged(h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)})
 PointKey: h#72057594037927935,21
 Span: h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
 -
+-- SpanChanged(l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)})
 PointKey: l#72057594037927935,21
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
 PointKey: l@8#1,1
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
+-- SpanChanged(m-q:{(#1,RANGEKEYSET,@6,bax)})
 PointKey: m#72057594037927935,21
 Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 -
+-- SpanChanged(nil)
 .
 
 iter
@@ -79,24 +85,30 @@ prev
 prev
 prev
 ----
+-- SpanChanged(m-q:{(#1,RANGEKEYSET,@6,bax)})
 PointKey: m#72057594037927935,21
 Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 -
+-- SpanChanged(l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)})
 PointKey: l@8#1,1
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
 PointKey: l#72057594037927935,21
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
+-- SpanChanged(h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)})
 PointKey: h#72057594037927935,21
 Span: h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
 -
+-- SpanChanged(f-h:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@3,bar)})
 PointKey: f#72057594037927935,21
 Span: f-h:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@3,bar)}
 -
+-- SpanChanged(e-f:{(#1,RANGEKEYSET,@9,foo)})
 PointKey: e#72057594037927935,21
 Span: e-f:{(#1,RANGEKEYSET,@9,foo)}
 -
+-- SpanChanged(nil)
 PointKey: b@2#1,1
 Span: <invalid>
 -
@@ -112,27 +124,34 @@ next
 seek-ge m
 seek-ge r
 ----
+-- SpanChanged(e-f:{(#1,RANGEKEYSET,@9,foo)})
 PointKey: b@2#1,1
 Span: <invalid>
 -
+-- SpanChanged(e-f:{(#1,RANGEKEYSET,@9,foo)})
 PointKey: e#72057594037927935,21
 Span: e-f:{(#1,RANGEKEYSET,@9,foo)}
 -
+-- SpanChanged(h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)})
 PointKey: h#72057594037927935,21
 Span: h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
 -
+-- SpanChanged(h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)})
 PointKey: i#72057594037927935,21
 Span: h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
 -
+-- SpanChanged(l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)})
 PointKey: l#72057594037927935,21
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
 PointKey: l@8#1,1
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
+-- SpanChanged(m-q:{(#1,RANGEKEYSET,@6,bax)})
 PointKey: m#72057594037927935,21
 Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 -
+-- SpanChanged(nil)
 .
 
 # Setting the masking threshold to @9 should result in l@8 being masked by
@@ -150,18 +169,23 @@ seek-lt l
 seek-lt ll
 prev
 ----
+-- SpanChanged(l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)})
 PointKey: l#72057594037927935,21
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
+-- SpanChanged(m-q:{(#1,RANGEKEYSET,@6,bax)})
 PointKey: m#72057594037927935,21
 Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 -
+-- SpanChanged(h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)})
 PointKey: h#72057594037927935,21
 Span: h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
 -
+-- SpanChanged(l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)})
 PointKey: l#72057594037927935,21
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
+-- SpanChanged(h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)})
 PointKey: h#72057594037927935,21
 Span: h-l:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax) (#1,RANGEKEYSET,@3,bar)}
 -
@@ -170,9 +194,11 @@ iter
 seek-ge l
 next
 ----
+-- SpanChanged(l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)})
 PointKey: l#72057594037927935,21
 Span: l-m:{(#1,RANGEKEYSET,@9,foo) (#1,RANGEKEYSET,@6,bax)}
 -
+-- SpanChanged(m-q:{(#1,RANGEKEYSET,@6,bax)})
 PointKey: m#72057594037927935,21
 Span: m-q:{(#1,RANGEKEYSET,@6,bax)}
 -
@@ -205,6 +231,7 @@ next
 next
 next
 ----
+-- SpanChanged(a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)})
 PointKey: a#72057594037927935,21
 Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 -
@@ -214,6 +241,7 @@ Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 PointKey: a@12#1,1
 Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 -
+-- SpanChanged(nil)
 .
 
 iter
@@ -222,6 +250,7 @@ prev
 prev
 prev
 ----
+-- SpanChanged(a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)})
 PointKey: a@12#1,1
 Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 -
@@ -231,6 +260,7 @@ Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 PointKey: a#72057594037927935,21
 Span: a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 -
+-- SpanChanged(nil)
 .
 
 # Try the same test, but with a range key that sorts before the masking
@@ -249,6 +279,7 @@ next
 next
 next
 ----
+-- SpanChanged(a-c:{(#2,RANGEKEYSET,@20,apples)})
 PointKey: a#72057594037927935,21
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
@@ -264,6 +295,7 @@ Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 PointKey: b@2#1,1
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
+-- SpanChanged(nil)
 .
 
 iter
@@ -274,6 +306,7 @@ prev
 prev
 prev
 ----
+-- SpanChanged(a-c:{(#2,RANGEKEYSET,@20,apples)})
 PointKey: b@2#1,1
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
@@ -289,6 +322,7 @@ Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 PointKey: a#72057594037927935,21
 Span: a-c:{(#2,RANGEKEYSET,@20,apples)}
 -
+-- SpanChanged(nil)
 .
 
 # Try the original test, but with an internal range key containing just an
@@ -307,6 +341,7 @@ next
 next
 next
 ----
+-- SpanChanged(a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)})
 PointKey: a#72057594037927935,20
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
@@ -316,6 +351,7 @@ Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 PointKey: a@12#1,1
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
+-- SpanChanged(nil)
 .
 .
 
@@ -326,6 +362,7 @@ prev
 prev
 prev
 ----
+-- SpanChanged(a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)})
 PointKey: a@12#1,1
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
@@ -335,6 +372,7 @@ Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 PointKey: a#72057594037927935,20
 Span: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 -
+-- SpanChanged(nil)
 .
 .
 
@@ -364,9 +402,11 @@ first
 next
 next
 ----
+-- SpanChanged(a-c:{(#1,RANGEKEYSET,@5,apples)})
 PointKey: a#72057594037927935,21
 Span: a-c:{(#1,RANGEKEYSET,@5,apples)}
 -
+-- SpanChanged(c-z:{(#1,RANGEKEYSET,@10,bananas)})
 PointKey: c#72057594037927935,21
 Span: c-z:{(#1,RANGEKEYSET,@10,bananas)}
 -
@@ -379,12 +419,14 @@ last
 prev
 prev
 ----
+-- SpanChanged(c-z:{(#1,RANGEKEYSET,@10,bananas)})
 PointKey: j@11#3,1
 Span: c-z:{(#1,RANGEKEYSET,@10,bananas)}
 -
 PointKey: c#72057594037927935,21
 Span: c-z:{(#1,RANGEKEYSET,@10,bananas)}
 -
+-- SpanChanged(a-c:{(#1,RANGEKEYSET,@5,apples)})
 PointKey: a#72057594037927935,21
 Span: a-c:{(#1,RANGEKEYSET,@5,apples)}
 -
