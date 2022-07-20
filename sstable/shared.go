@@ -10,6 +10,10 @@ import (
 )
 
 const (
+	// SeqNumStart is the first SeqNum used by a Pebble instance (originally 1)
+	SeqNumStart = 4
+	// SeqNumZero is the original 0
+	SeqNumZero       = 3
 	seqNumL5PointKey = 2
 	seqNumL5RangeDel = 1
 	seqNumL6All      = 0
@@ -91,7 +95,7 @@ func (i *tableIterator) isLocallyCreated() bool {
 	default:
 		panic("tableIterator: i.Iterator is not singleLevelIterator or twoLevelIterator")
 	}
-	return i.isShared() && r.meta.CreatorUniqueID == DBUniqueID
+	return i.isShared() && r.meta.CreatorUniqueID == r.dbUniqueID
 }
 
 func (i *tableIterator) setExhaustedBounds(e int8) {
@@ -147,7 +151,7 @@ func setKeySeqNum(key *InternalKey, level int) {
 }
 
 func (i *tableIterator) seekGEShared(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*InternalKey, []byte) {
 	r := i.getReader()
 	ib := i.cmpSharedBound(key)
@@ -162,9 +166,9 @@ func (i *tableIterator) seekGEShared(
 	var k *InternalKey
 	var v []byte
 	if prefix == nil {
-		k, v = i.Iterator.SeekGE(key, trySeekUsingNext)
+		k, v = i.Iterator.SeekGE(key, flags)
 	} else {
-		k, v = i.Iterator.SeekPrefixGE(prefix, key, trySeekUsingNext)
+		k, v = i.Iterator.SeekPrefixGE(prefix, key, flags)
 	}
 	if k == nil {
 		i.setExhaustedBounds(+1)
@@ -192,35 +196,38 @@ func (i *tableIterator) seekGEShared(
 	return k, v
 }
 
-func (i *tableIterator) SeekGE(key []byte, trySeekUsingNext bool) (*InternalKey, []byte) {
+func (i *tableIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
 	// shared path
 	if i.isShared() {
-		return i.seekGEShared(nil, key, trySeekUsingNext)
+		return i.seekGEShared(nil, key, flags)
 	}
 	// non-shared path
-	return i.Iterator.SeekGE(key, trySeekUsingNext)
+	return i.Iterator.SeekGE(key, flags)
 }
 
 func (i *tableIterator) SeekPrefixGE(
-	prefix, key []byte, trySeekUsingNext bool,
+	prefix, key []byte, flags base.SeekGEFlags,
 ) (*InternalKey, []byte) {
 	if i.isShared() {
-		return i.seekGEShared(prefix, key, trySeekUsingNext)
+		return i.seekGEShared(prefix, key, flags)
 	}
 	// non-shared path
-	return i.Iterator.SeekPrefixGE(prefix, key, trySeekUsingNext)
+	return i.Iterator.SeekPrefixGE(prefix, key, flags)
 }
 
-func (i *tableIterator) seekLTShared(key []byte) (*InternalKey, []byte) {
+func (i *tableIterator) seekLTShared(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	r, cmp := i.getReader(), i.getCmp()
 	ib := i.cmpSharedBound(key)
 	if ib < 0 {
 		i.setExhaustedBounds(-1)
 		return nil, nil
 	} else if ib > 0 {
+		// Here since ib > 0, we must specify a tightly larger key than Largest to make sure
+		// the upper bound is visible
 		key = r.meta.Largest.UserKey
+		key = append(key, byte(0))
 	}
-	k, v := i.Iterator.SeekLT(key)
+	k, v := i.Iterator.SeekLT(key, flags)
 	if k == nil {
 		i.setExhaustedBounds(-1)
 		return nil, nil
@@ -250,12 +257,12 @@ func (i *tableIterator) seekLTShared(key []byte) (*InternalKey, []byte) {
 	return k, v
 }
 
-func (i *tableIterator) SeekLT(key []byte) (*InternalKey, []byte) {
+func (i *tableIterator) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
 	// shared path
 	if i.isShared() {
-		return i.seekLTShared(key)
+		return i.seekLTShared(key, flags)
 	}
-	return i.Iterator.SeekLT(key)
+	return i.Iterator.SeekLT(key, flags)
 }
 
 // First() and Last() are just two synonyms of SeekGE and SeekLT
@@ -263,15 +270,18 @@ func (i *tableIterator) SeekLT(key []byte) (*InternalKey, []byte) {
 func (i *tableIterator) First() (*InternalKey, []byte) {
 	if i.isShared() {
 		// in this case the table must have a smallest key
-		return i.seekGEShared(nil, i.getReader().meta.Smallest.UserKey, false)
+		return i.seekGEShared(nil, i.getReader().meta.Smallest.UserKey, base.SeekGEFlagsNone)
 	}
 	return i.Iterator.First()
 }
 
 func (i *tableIterator) Last() (*InternalKey, []byte) {
 	if i.isShared() {
-		// in this case the table must have a smallest key
-		return i.seekLTShared(i.getReader().meta.Largest.UserKey)
+		// This case is also tricky.. we should pass in the key which is tightly larger
+		// than the table's largest key to reuse seekLT..
+		k := i.getReader().meta.Largest.UserKey
+		k = append(k, byte(0))
+		return i.seekLTShared(k, base.SeekLTFlagsNone)
 	}
 	return i.Iterator.Last()
 }
@@ -455,7 +465,7 @@ func (i *rangeDelIter) isShared() bool {
 
 func (i *rangeDelIter) isLocallyCreated() bool {
 	r := i.reader
-	return i.isShared() && r.meta.CreatorUniqueID == DBUniqueID
+	return i.isShared() && r.meta.CreatorUniqueID == r.dbUniqueID
 }
 
 func setSpanSeqNum(s *keyspan.Span, seqnum uint64) {

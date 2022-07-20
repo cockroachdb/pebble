@@ -50,6 +50,7 @@ func runGetCmd(td *datadriven.TestData, d *DB) string {
 			if err != nil {
 				return err.Error()
 			}
+			snap.seqNum += sstable.SeqNumZero
 		default:
 			return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
 		}
@@ -664,6 +665,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				if err != nil {
 					return nil, err
 				}
+				seqNum += sstable.SeqNumZero
 				snapshots[i] = seqNum
 				if i > 0 && snapshots[i] < snapshots[i-1] {
 					return nil, errors.New("Snapshots must be in ascending order")
@@ -834,11 +836,11 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 					toBreak := false
 					switch {
 					case strings.HasPrefix(field, "start="):
-						ikey := base.ParseInternalKey(strings.TrimPrefix(field, "start="))
+						ikey := base.ParseInternalKeyWithSeqNumOffset(strings.TrimPrefix(field, "start="), sstable.SeqNumZero)
 						start = &ikey
 						boundFields++
 					case strings.HasPrefix(field, "end="):
-						ikey := base.ParseInternalKey(strings.TrimPrefix(field, "end="))
+						ikey := base.ParseInternalKeyWithSeqNumOffset(strings.TrimPrefix(field, "end="), sstable.SeqNumZero)
 						end = &ikey
 						boundFields++
 					default:
@@ -865,7 +867,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				continue
 			}
 			if data[:i] == "rangekey" {
-				span := keyspan.ParseSpan(data[i:])
+				span := keyspan.ParseSpanWithSeqNumOffset(data[i:], sstable.SeqNumZero)
 				err := rangekey.Encode(&span, func(k base.InternalKey, v []byte) error {
 					return mem.set(k, v)
 				})
@@ -874,7 +876,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				}
 				continue
 			}
-			key := base.ParseInternalKey(data[:i])
+			key := base.ParseInternalKeyWithSeqNumOffset(data[:i], sstable.SeqNumZero)
 			valueStr := data[i+1:]
 			value := []byte(valueStr)
 			if valueStr == "<largeval>" {
@@ -986,7 +988,7 @@ func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 		paths = append(paths, arg.String())
 	}
 
-	if err := d.Ingest(paths); err != nil {
+	if err := d.Ingest(paths, nil); err != nil {
 		return err
 	}
 	return nil
@@ -1007,7 +1009,7 @@ func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
 			}
 		}
 	}
-	_, err := d.ingest(paths, func(
+	_, err := d.ingest(paths, nil, func(
 		tableNewIters,
 		IterOptions,
 		Compare,

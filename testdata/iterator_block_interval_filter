@@ -12,7 +12,7 @@ set e05 e
 set f06 f
 ----
 0.0:
-  000005:[a01#1,SET-f06#6,SET]
+  000005:[a01#4,SET-f06#9,SET]
 
 # Iterate without a filter.
 iter
@@ -191,7 +191,7 @@ set d0704 d
 set e0605 e
 ----
 0.0:
-  000005:[a1001#1,SET-e0605#5,SET]
+  000005:[a1001#4,SET-e0605#8,SET]
 
 # Iterate without a filter.
 iter

@@ -6,7 +6,7 @@ L6
 b.RANGEDEL.230:h h.RANGEDEL.200:r
 ----
 6:
-  000004:[b#230,RANGEDEL-r#72057594037927935,RANGEDEL]
+  000004:[b#233,RANGEDEL-r#72057594037927935,RANGEDEL]
 
 wait-pending-table-stats
 000004
@@ -28,7 +28,7 @@ L6
 b.RANGEDEL.230:h h.RANGEDEL.200:r
 ----
 6:
-  000004:[b#230,RANGEDEL-r#72057594037927935,RANGEDEL]
+  000004:[b#233,RANGEDEL-r#72057594037927935,RANGEDEL]
 
 wait-pending-table-stats
 000004
@@ -49,7 +49,7 @@ L6
 a.SET.55:a b.RANGEDEL.5:h
 ----
 6:
-  000004:[a#55,SET-h#72057594037927935,RANGEDEL]
+  000004:[a#58,SET-h#72057594037927935,RANGEDEL]
 
 wait-pending-table-stats
 000004
@@ -72,7 +72,7 @@ L6
 a.SET.55:a b.DEL.5:
 ----
 6:
-  000004:[a#55,SET-b#5,DEL]
+  000004:[a#58,SET-b#8,DEL]
 
 wait-pending-table-stats
 000004
@@ -90,7 +90,7 @@ maybe-compact
 version
 ----
 6:
-  000005:[a#0,SET-a#0,SET]
+  000005:[a#3,SET-a#3,SET]
 
 # Checking for a compaction again should not trigger a compaction, because
 # 000005 does not contain deletions.
@@ -111,7 +111,7 @@ L6
 a.DEL.60: a.SET.55:a b.SET.100:b c.SET.101:c d.SET.102:d b.RANGEDEL.103:z
 ----
 6:
-  000004:[a#60,DEL-z#72057594037927935,RANGEDEL]
+  000004:[a#63,DEL-z#72057594037927935,RANGEDEL]
 
 wait-pending-table-stats
 000004
@@ -144,7 +144,7 @@ L6
 a.DEL.20: a.SET.1:a b.SET.2:b c.SET.3:c d.SET.4:d e.SET.5:e f.SET.6:f g.SET.7:g h.SET.8:h i.SET.9:i j.SET.10:j
 ----
 6:
-  000004:[a#20,DEL-j#10,SET]
+  000004:[a#23,DEL-j#13,SET]
 
 wait-pending-table-stats
 000004
@@ -178,12 +178,12 @@ L6
 f.SET.30:<largeval> z.SET.31:<largeval>
 ----
 5:
-  000004:[b#200,SET-cc#204,SET]
-  000005:[d#302,SET-de#303,SET]
-  000006:[m#320,SET-o#340,SET]
+  000004:[b#203,SET-cc#207,SET]
+  000005:[d#305,SET-de#306,SET]
+  000006:[m#323,SET-o#343,SET]
 6:
-  000007:[a#103,RANGEDEL-e#72057594037927935,RANGEDEL]
-  000008:[f#30,SET-z#31,SET]
+  000007:[a#106,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000008:[f#33,SET-z#34,SET]
 
 close-snapshot
 103
@@ -221,11 +221,11 @@ L6
 f.SET.007:<largeval> x.SET.008:<largeval> z.SET.009:<largeval>
 ----
 5:
-  000004:[a#101,DEL-c#103,DEL]
-  000005:[m#107,SET-m#107,SET]
+  000004:[a#104,DEL-c#106,DEL]
+  000005:[m#110,SET-m#110,SET]
 6:
-  000006:[a#1,SET-c#3,SET]
-  000007:[f#7,SET-z#9,SET]
+  000006:[a#4,SET-c#6,SET]
+  000007:[f#10,SET-z#12,SET]
 
 wait-pending-table-stats
 000004
@@ -257,9 +257,9 @@ L6
   rangekey:c-d:{(#3,RANGEKEYSET,@1)}
 ----
 6:
-  000004:[a#1,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
-  000005:[b#2,RANGEKEYUNSET-c#72057594037927935,RANGEKEYUNSET]
-  000006:[c#3,RANGEKEYSET-d#72057594037927935,RANGEKEYSET]
+  000004:[a#4,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
+  000005:[b#5,RANGEKEYUNSET-c#72057594037927935,RANGEKEYUNSET]
+  000006:[c#6,RANGEKEYSET-d#72057594037927935,RANGEKEYSET]
 
 wait-pending-table-stats
 000004

@@ -17,15 +17,15 @@ L5
   a.SET.6:v1
 ----
 1:
-  000004:[a#10,SINGLEDEL-a#10,SINGLEDEL]
+  000004:[a#13,SINGLEDEL-a#13,SINGLEDEL]
 2:
-  000005:[a#9,SET-a#9,SET]
+  000005:[a#12,SET-a#12,SET]
 3:
-  000006:[a#8,DEL-a#8,DEL]
+  000006:[a#11,DEL-a#11,DEL]
 4:
-  000007:[a#7,SET-a#7,SET]
+  000007:[a#10,SET-a#10,SET]
 5:
-  000008:[a#6,SET-a#6,SET]
+  000008:[a#9,SET-a#9,SET]
 
 # No data.
 iter
@@ -37,13 +37,13 @@ first
 compact a-b L2
 ----
 1:
-  000004:[a#10,SINGLEDEL-a#10,SINGLEDEL]
+  000004:[a#13,SINGLEDEL-a#13,SINGLEDEL]
 3:
-  000009:[a#9,SET-a#9,SET]
+  000009:[a#12,SET-a#12,SET]
 4:
-  000007:[a#7,SET-a#7,SET]
+  000007:[a#10,SET-a#10,SET]
 5:
-  000008:[a#6,SET-a#6,SET]
+  000008:[a#9,SET-a#9,SET]
 
 # No data.
 iter
@@ -55,20 +55,20 @@ first
 compact a-b L1
 ----
 2:
-  000010:[a#10,SINGLEDEL-a#10,SINGLEDEL]
+  000010:[a#13,SINGLEDEL-a#13,SINGLEDEL]
 3:
-  000009:[a#9,SET-a#9,SET]
+  000009:[a#12,SET-a#12,SET]
 4:
-  000007:[a#7,SET-a#7,SET]
+  000007:[a#10,SET-a#10,SET]
 5:
-  000008:[a#6,SET-a#6,SET]
+  000008:[a#9,SET-a#9,SET]
 
 compact a-b L2
 ----
 4:
-  000007:[a#7,SET-a#7,SET]
+  000007:[a#10,SET-a#10,SET]
 5:
-  000008:[a#6,SET-a#6,SET]
+  000008:[a#9,SET-a#9,SET]
 
 # Deleted data reappears.
 iter

@@ -26,9 +26,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// DBUniqueID is injected by pebble during Open()
-var DBUniqueID uint32 = 0
-
 var errCorruptIndexEntry = base.CorruptionErrorf("pebble/table: corrupt index entry")
 var errReaderClosed = errors.New("pebble/table: reader is closed")
 
@@ -2312,12 +2309,22 @@ func (f FileReopenOpt) readerApply(r *Reader) {
 // PersistentCacheOpt specifies the cache options
 type PersistentCacheOpt struct {
 	PsCache PersistentCache
-	Meta    *manifest.FileMetadata
 }
 
 func (p PersistentCacheOpt) readerApply(r *Reader) {
 	// r.psCache = p.PsCache
-	r.meta = p.Meta
+	r.psCache = nil
+}
+
+// FileMetadataOpt specifies the reader's meta field
+type FileMetadataOpt struct {
+	Meta       *manifest.FileMetadata
+	DBUniqueID uint32
+}
+
+func (f FileMetadataOpt) readerApply(r *Reader) {
+	r.meta = f.Meta
+	r.dbUniqueID = f.DBUniqueID
 }
 
 // rawTombstonesOpt is a Reader open option for specifying that range
@@ -2367,6 +2374,7 @@ type Reader struct {
 	Properties        Properties
 	psCache           PersistentCache
 	meta              *manifest.FileMetadata
+	dbUniqueID        uint32
 }
 
 // Close implements DB.Close, as documented in the pebble package.

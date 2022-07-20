@@ -6,7 +6,7 @@ set c 2
 ingest ext1
 ----
 6:
-  000004:[a#1,MERGE-c#1,SET]
+  000004:[a#4,MERGE-c#4,SET]
 
 build ext2
 del-range b c
@@ -15,9 +15,9 @@ del-range b c
 ingest ext2
 ----
 0.0:
-  000005:[b#2,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000005:[b#5,RANGEDEL-c#72057594037927935,RANGEDEL]
 6:
-  000004:[a#1,MERGE-c#1,SET]
+  000004:[a#4,MERGE-c#4,SET]
 
 # Regression test for a bug where range tombstones were not properly
 # ignored by Iterator.prevUserKey when switching from forward to
@@ -57,7 +57,7 @@ merge z 2
 ingest ext1
 ----
 6:
-  000004:[t#1,SET-z#1,MERGE]
+  000004:[t#4,SET-z#4,MERGE]
 
 build ext2
 del-range x y
@@ -66,9 +66,9 @@ del-range x y
 ingest ext2
 ----
 0.0:
-  000005:[x#2,RANGEDEL-y#72057594037927935,RANGEDEL]
+  000005:[x#5,RANGEDEL-y#72057594037927935,RANGEDEL]
 6:
-  000004:[t#1,SET-z#1,MERGE]
+  000004:[t#4,SET-z#4,MERGE]
 
 # Regression test for a bug where range tombstones were not properly
 # ignored by Iterator.nextUserKey when switching from reverse to
@@ -111,7 +111,7 @@ set e e
 ingest ext1
 ----
 6:
-  000004:[e#1,SET-e#1,SET]
+  000004:[e#4,SET-e#4,SET]
 
 build ext2
 set b b
@@ -121,8 +121,8 @@ del-range c d
 ingest ext2
 ----
 6:
-  000005:[b#2,SET-d#72057594037927935,RANGEDEL]
-  000004:[e#1,SET-e#1,SET]
+  000005:[b#5,SET-d#72057594037927935,RANGEDEL]
+  000004:[e#4,SET-e#4,SET]
 
 # The scenario requires iteration at a snapshot. The "last" operation
 # will exhaust the mergingIter looking backwards for visible
@@ -222,7 +222,7 @@ merge a a
 ingest ext1
 ----
 6:
-  000004:[a#1,MERGE-a#1,MERGE]
+  000004:[a#4,MERGE-a#4,MERGE]
 
 build ext2
 set e e
@@ -232,8 +232,8 @@ del-range c d
 ingest ext2
 ----
 6:
-  000004:[a#1,MERGE-a#1,MERGE]
-  000005:[c#2,RANGEDEL-e#2,SET]
+  000004:[a#4,MERGE-a#4,MERGE]
+  000005:[c#5,RANGEDEL-e#5,SET]
 
 iter seq=2
 set-bounds lower=a upper=e
@@ -268,7 +268,7 @@ singledel b
 ingest ext1
 ----
 6:
-  000004:[a#1,SET-b#1,SET]
+  000004:[a#4,SET-b#4,SET]
 
 iter
 first

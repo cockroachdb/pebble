@@ -22,7 +22,7 @@ func writeAndIngest(t *testing.T, mem vfs.FS, d *DB, k InternalKey, v []byte, fi
 	w := sstable.NewWriter(f, sstable.WriterOptions{})
 	require.NoError(t, w.Add(k, v))
 	require.NoError(t, w.Close())
-	require.NoError(t, d.Ingest([]string{path}))
+	require.NoError(t, d.Ingest([]string{path}, nil))
 }
 
 func TestVersionSetCheckpoint(t *testing.T) {
@@ -87,7 +87,7 @@ func TestVersionSetSeqNums(t *testing.T) {
 	require.NotNil(t, manifest)
 	defer manifest.Close()
 	rr := record.NewReader(manifest, 0 /* logNum */)
-	lastSeqNum := uint64(0)
+	lastSeqNum := uint64(sstable.SeqNumZero)
 	for {
 		r, err := rr.Next()
 		if err == io.EOF {
@@ -102,7 +102,7 @@ func TestVersionSetSeqNums(t *testing.T) {
 		}
 	}
 	// 2 ingestions happened, so LastSeqNum should equal 2.
-	require.Equal(t, uint64(2), lastSeqNum)
+	require.Equal(t, uint64(sstable.SeqNumZero+2), lastSeqNum)
 	// logSeqNum is always one greater than the last assigned sequence number.
 	require.Equal(t, d.mu.versions.atomic.logSeqNum, lastSeqNum+1)
 }

@@ -1047,7 +1047,7 @@ tombstones
 ----
 a#2,2:v2
 a#1,15:b
-a#0,2:v1
+a#3,2:v1
 .
 a-b#1
 .
@@ -1071,7 +1071,7 @@ iter allow-zero-seqnum=true
 first
 next
 ----
-a#0,1:5[base]
+a#3,1:5[base]
 .
 
 iter elide-tombstones=true
@@ -1124,7 +1124,7 @@ next
 next
 ----
 a#3,15:c
-b#0,1:5[base]
+b#3,1:5[base]
 .
 
 iter snapshots=2

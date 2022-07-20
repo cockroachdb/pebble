@@ -5,7 +5,6 @@
 package sstable
 
 import (
-	"os"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -14,15 +13,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
-
-func TestMain(m *testing.M) {
-	// check DBUniqueID == 0, otherwise the testing will fail
-	if DBUniqueID != 0 {
-		panic("shared_test.go: DBUniqueID != 0. It might be injected by a db.Open()")
-	}
-	code := m.Run()
-	os.Exit(code)
-}
 
 func TestSharedSST(t *testing.T) {
 	t.Logf("Start TestSharedSST")
@@ -98,7 +88,7 @@ func TestSharedSST(t *testing.T) {
 		Largest:         InternalKey{UserKey: []byte("e"), Trailer: 0},
 	}
 	r.meta = meta
-	require.Equal(t, uint32(0), DBUniqueID)
+	require.Equal(t, uint32(0), r.dbUniqueID)
 
 	iter, err := r.NewIter(nil, nil)
 	require.NoError(t, err)

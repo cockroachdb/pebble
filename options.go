@@ -169,6 +169,12 @@ type IterOptions struct {
 	// levelIter (including regular reads and compaction inputs).
 	level manifest.Level
 
+	// SkipSharedFile determines whether the iterator will read shared sstables during
+	// its iteration. If the callback function is not nil, it will pass in the
+	// FileMetadata of the shared table for internal usage (e.g., constructing msg)
+	SkipSharedFile     bool
+	SharedFileCallback func(*manifest.FileMetadata)
+
 	// NB: If adding new Options, you must account for them in iterator
 	// construction and Iterator.SetOptions.
 }

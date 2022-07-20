@@ -73,7 +73,7 @@ func (d *DB) Ingest(tables []Table) error {
 	for i, tbl := range tables {
 		paths[i] = tbl.Path
 	}
-	return d.d.Ingest(paths)
+	return d.d.Ingest(paths, nil)
 }
 
 // FlushExternal simulates a flush of the table, linking it directly

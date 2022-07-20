@@ -414,3 +414,27 @@ func ParsePrettyInternalKey(s string) InternalKey {
 	seqNum, _ := strconv.ParseUint(x[1], 10, 64)
 	return MakeInternalKey([]byte(ukey), seqNum, kind)
 }
+
+// ParseInternalKeyWithSeqNumOffset adds a sstable.SeqNumZero to all keys in the test
+// (for shared sst compatibility)
+func ParseInternalKeyWithSeqNumOffset(s string, offset uint64) InternalKey {
+	x := strings.Split(s, ".")
+	ukey := x[0]
+	kind, ok := kindsMap[x[1]]
+	if !ok {
+		panic(fmt.Sprintf("unknown kind: %q", x[1]))
+	}
+	j := 0
+	if x[2][0] == 'b' {
+		j = 1
+	}
+	seqNum, _ := strconv.ParseUint(x[2][j:], 10, 64)
+	// If the key is not sential key for RANGEDEL
+	if seqNum != InternalKeySeqNumMax {
+		seqNum += offset
+	}
+	if x[2][0] == 'b' {
+		seqNum |= InternalKeySeqNumBatch
+	}
+	return MakeInternalKey([]byte(ukey), seqNum, kind)
+}

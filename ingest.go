@@ -32,12 +32,22 @@ func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
 	return 0
 }
 
-func ingestValidateKey(opts *Options, key *InternalKey) error {
+func ingestValidateKey(opts *Options, key *InternalKey, isShared bool) error {
 	if key.Kind() == InternalKeyKindInvalid {
 		return base.CorruptionErrorf("pebble: external sstable has corrupted key: %s",
 			key.Pretty(opts.Comparer.FormatKey))
 	}
-	if key.SeqNum() != 0 {
+	// Default case: current db has no shared fs
+	expectedSeqNum := uint64(0)
+	// If the current DB has shared fs
+	if opts.SharedFS != nil {
+		// Imported sst is local
+		if !isShared {
+			expectedSeqNum = sstable.SeqNumZero
+		}
+		// Note: if the imported sst is shared, we expect 0 which is sstable.seqNumL6All
+	}
+	if key.SeqNum() != expectedSeqNum {
 		return base.CorruptionErrorf("pebble: external sstable has non-zero seqnum: %s",
 			key.Pretty(opts.Comparer.FormatKey))
 	}
@@ -45,20 +55,37 @@ func ingestValidateKey(opts *Options, key *InternalKey) error {
 }
 
 func ingestLoad1(
-	opts *Options, fmv FormatMajorVersion, path string, cacheID uint64, fileNum FileNum,
+	opts *Options,
+	fmv FormatMajorVersion,
+	path string,
+	smeta SharedSSTMeta,
+	isShared bool,
+	cacheID uint64,
+	fileNum FileNum,
 ) (*fileMetadata, error) {
-	stat, err := opts.FS.Stat(path)
+	if isShared && opts.SharedFS == nil {
+		panic("ingestLoad1: function called with shared meta but DB does not have shared fs")
+	}
+
+	fs := opts.FS
+	if isShared {
+		fs = opts.SharedFS
+	}
+
+	stat, err := fs.Stat(path)
 	if err != nil {
 		return nil, err
 	}
 
-	f, err := opts.FS.Open(path)
+	f, err := fs.Open(path)
 	if err != nil {
 		return nil, err
 	}
 
 	cacheOpts := private.SSTableCacheOpts(cacheID, fileNum).(sstable.ReaderOption)
-	r, err := sstable.NewReader(f, opts.MakeReaderOptions(), cacheOpts)
+	// Create meta earlier and attach it to reader (does not affect non-shared sst)
+	meta := &fileMetadata{}
+	r, err := sstable.NewReader(f, opts.MakeReaderOptions(), cacheOpts, &sstable.FileMetadataOpt{Meta: meta, DBUniqueID: opts.UniqueID})
 	if err != nil {
 		return nil, err
 	}
@@ -76,10 +103,19 @@ func ingestLoad1(
 		)
 	}
 
-	meta := &fileMetadata{}
 	meta.FileNum = fileNum
 	meta.Size = uint64(stat.Size())
 	meta.CreationTime = time.Now().Unix()
+
+	if isShared {
+		meta.IsShared = true
+		meta.CreatorUniqueID = smeta.CreatorUniqueID
+		meta.PhysicalFileNum = smeta.PhysicalFileNum
+		meta.Smallest = smeta.Smallest
+		meta.Largest = smeta.Largest
+		meta.FileSmallest = smeta.FileSmallest
+		meta.FileLargest = smeta.FileLargest
+	}
 
 	// Avoid loading into the table cache for collecting stats if we
 	// don't need to. If there are no range deletions, we have all the
@@ -92,15 +128,21 @@ func ingestLoad1(
 	// calculating stats before we can remove the original link.
 	maybeSetStatsFromProperties(meta, &r.Properties)
 
+	// XXX(chen): I think the following logic also applies to shared ssts but
+	// we must first "mount" the meta to the reader.. (this has been done above)
 	{
 		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
 		if err != nil {
 			return nil, err
 		}
+		if isShared {
+			// This is tricky because L6 shared sst will expose SeqNum = 0
+			iter.SetLevel(6)
+		}
 		defer iter.Close()
 		var smallest InternalKey
 		if key, _ := iter.First(); key != nil {
-			if err := ingestValidateKey(opts, key); err != nil {
+			if err := ingestValidateKey(opts, key, isShared); err != nil {
 				return nil, err
 			}
 			smallest = (*key).Clone()
@@ -109,7 +151,7 @@ func ingestLoad1(
 			return nil, err
 		}
 		if key, _ := iter.Last(); key != nil {
-			if err := ingestValidateKey(opts, key); err != nil {
+			if err := ingestValidateKey(opts, key, isShared); err != nil {
 				return nil, err
 			}
 			meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, key.Clone())
@@ -124,11 +166,18 @@ func ingestLoad1(
 		return nil, err
 	}
 	if iter != nil {
+		if isShared {
+			sstRangeDelIter, ok := iter.(*sstable.RangeDelIter)
+			if !ok {
+				panic("ingestLoad1: rangeDelIter returned is not sstable.RangeDelIter")
+			}
+			sstRangeDelIter.SetLevel(6)
+		}
 		defer iter.Close()
 		var smallest InternalKey
 		if s := iter.First(); s != nil {
 			key := s.SmallestKey()
-			if err := ingestValidateKey(opts, &key); err != nil {
+			if err := ingestValidateKey(opts, &key, isShared); err != nil {
 				return nil, err
 			}
 			smallest = key.Clone()
@@ -138,7 +187,7 @@ func ingestLoad1(
 		}
 		if s := iter.Last(); s != nil {
 			k := s.SmallestKey()
-			if err := ingestValidateKey(opts, &k); err != nil {
+			if err := ingestValidateKey(opts, &k, isShared); err != nil {
 				return nil, err
 			}
 			largest := s.LargestKey().Clone()
@@ -147,7 +196,8 @@ func ingestLoad1(
 	}
 
 	// Update the range-key bounds for the table.
-	{
+	// XXX(chen): only for local ssts as shared sst does not support rangekeys
+	if !isShared {
 		iter, err := r.NewRawRangeKeyIter()
 		if err != nil {
 			return nil, err
@@ -157,7 +207,7 @@ func ingestLoad1(
 			var smallest InternalKey
 			if s := iter.First(); s != nil {
 				key := s.SmallestKey()
-				if err := ingestValidateKey(opts, &key); err != nil {
+				if err := ingestValidateKey(opts, &key, isShared); err != nil {
 					return nil, err
 				}
 				smallest = key.Clone()
@@ -167,7 +217,7 @@ func ingestLoad1(
 			}
 			if s := iter.Last(); s != nil {
 				k := s.SmallestKey()
-				if err := ingestValidateKey(opts, &k); err != nil {
+				if err := ingestValidateKey(opts, &k, isShared); err != nil {
 					return nil, err
 				}
 				// As range keys are fragmented, the end key of the last range key in
@@ -179,6 +229,10 @@ func ingestLoad1(
 				return nil, err
 			}
 		}
+	}
+
+	if isShared && meta.HasRangeKeys {
+		panic("ingestLoad1: shared sst should not have range keys")
 	}
 
 	if !meta.HasPointKeys && !meta.HasRangeKeys {
@@ -194,30 +248,61 @@ func ingestLoad1(
 }
 
 func ingestLoad(
-	opts *Options, fmv FormatMajorVersion, paths []string, cacheID uint64, pending []FileNum,
-) ([]*fileMetadata, []string, error) {
-	meta := make([]*fileMetadata, 0, len(paths))
-	newPaths := make([]string, 0, len(paths))
+	opts *Options,
+	fmv FormatMajorVersion,
+	paths []string,
+	smeta []SharedSSTMeta,
+	cacheID uint64,
+	pending []FileNum,
+) ([]*fileMetadata, []string, []bool, error) {
+	nTables := len(paths)
+	if opts.SharedFS != nil && smeta != nil {
+		nTables += len(smeta)
+	}
+	meta := make([]*fileMetadata, 0, nTables)
+	newPaths := make([]string, 0, nTables)
+	shared := make([]bool, 0, nTables)
 	for i := range paths {
-		m, err := ingestLoad1(opts, fmv, paths[i], cacheID, pending[i])
+		m, err := ingestLoad1(opts, fmv, paths[i], SharedSSTMeta{}, false, cacheID, pending[i])
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		if m != nil {
 			meta = append(meta, m)
 			newPaths = append(newPaths, paths[i])
+			shared = append(shared, false)
 		}
 	}
-	return meta, newPaths, nil
+	// Handle shared sstable for the len(paths)+1-th to the end of the slice
+	if opts.SharedFS != nil && smeta != nil {
+		for i := range smeta {
+			j := i + len(paths)
+			spath := base.MakeSharedSSTPath(opts.SharedFS, opts.SharedDir, smeta[i].CreatorUniqueID, smeta[i].PhysicalFileNum)
+			m, err := ingestLoad1(opts, fmv, spath, smeta[i], true, cacheID, pending[j])
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			if m == nil {
+				panic("ingestLoad: shared sst is empty which is not handled now")
+			}
+			if m != nil {
+				meta = append(meta, m)
+				newPaths = append(newPaths, spath)
+				shared = append(shared, true)
+			}
+		}
+	}
+	return meta, newPaths, shared, nil
 }
 
 // Struct for sorting metadatas by smallest user keys, while ensuring the
 // matching path also gets swapped to the same index. For use in
 // ingestSortAndVerify.
 type metaAndPaths struct {
-	meta  []*fileMetadata
-	paths []string
-	cmp   Compare
+	meta   []*fileMetadata
+	paths  []string
+	shared []bool
+	cmp    Compare
 }
 
 func (m metaAndPaths) Len() int {
@@ -231,17 +316,19 @@ func (m metaAndPaths) Less(i, j int) bool {
 func (m metaAndPaths) Swap(i, j int) {
 	m.meta[i], m.meta[j] = m.meta[j], m.meta[i]
 	m.paths[i], m.paths[j] = m.paths[j], m.paths[i]
+	m.shared[i], m.shared[j] = m.shared[j], m.shared[i]
 }
 
-func ingestSortAndVerify(cmp Compare, meta []*fileMetadata, paths []string) error {
+func ingestSortAndVerify(cmp Compare, meta []*fileMetadata, paths []string, shared []bool) error {
 	if len(meta) <= 1 {
 		return nil
 	}
 
 	sort.Sort(&metaAndPaths{
-		meta:  meta,
-		paths: paths,
-		cmp:   cmp,
+		meta:   meta,
+		paths:  paths,
+		shared: shared,
+		cmp:    cmp,
 	})
 
 	for i := 1; i < len(meta); i++ {
@@ -264,7 +351,7 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 }
 
 func ingestLink(
-	jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata,
+	jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata, shared []bool,
 ) error {
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
@@ -277,6 +364,10 @@ func ingestLink(
 	}
 
 	for i := range paths {
+		// Nothing to do for shared ssts
+		if shared[i] {
+			continue
+		}
 		target := base.MakeFilepath(fs, dirname, fileTypeTable, meta[i].FileNum)
 		var err error
 		if _, ok := opts.FS.(*vfs.MemFS); ok && opts.DebugCheck != nil {
@@ -525,11 +616,17 @@ func ingestTargetLevel(
 			rangeDelIter.Close()
 		}
 		if overlap {
+			if meta.IsShared {
+				panic("ingestTargetLevel: shared sst has overlaps with L0 which is not allowed")
+			}
 			return targetLevel, nil
 		}
 	}
 
 	level := baseLevel
+	if meta.IsShared {
+		level = 5
+	}
 	for ; level < numLevels; level++ {
 		levelIter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
 			v.Levels[level].Iter(), manifest.Level(level), nil)
@@ -575,6 +672,16 @@ func ingestTargetLevel(
 	return targetLevel, nil
 }
 
+// SharedSSTMeta records the necessary information when ingesting a shared sstable
+type SharedSSTMeta struct {
+	CreatorUniqueID uint32
+	PhysicalFileNum base.FileNum
+	Smallest        InternalKey
+	Largest         InternalKey
+	FileSmallest    InternalKey
+	FileLargest     InternalKey
+}
+
 // Ingest ingests a set of sstables into the DB. Ingestion of the files is
 // atomic and semantically equivalent to creating a single batch containing all
 // of the mutations in the sstables. Ingestion may require the memtable to be
@@ -617,14 +724,14 @@ func ingestTargetLevel(
 // can produce a noticeable hiccup in performance. See
 // https://github.com/cockroachdb/pebble/issues/25 for an idea for how to fix
 // this hiccup.
-func (d *DB) Ingest(paths []string) error {
+func (d *DB) Ingest(paths []string, smeta []SharedSSTMeta) error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
-	_, err := d.ingest(paths, ingestTargetLevel)
+	_, err := d.ingest(paths, smeta, ingestTargetLevel)
 	return err
 }
 
@@ -643,18 +750,18 @@ type IngestOperationStats struct {
 
 // IngestWithStats does the same as Ingest, and additionally returns
 // IngestOperationStats.
-func (d *DB) IngestWithStats(paths []string) (IngestOperationStats, error) {
+func (d *DB) IngestWithStats(paths []string, smeta []SharedSSTMeta) (IngestOperationStats, error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	return d.ingest(paths, ingestTargetLevel)
+	return d.ingest(paths, smeta, ingestTargetLevel)
 }
 
 func (d *DB) ingest(
-	paths []string, targetLevelFunc ingestTargetLevelFunc,
+	paths []string, smeta []SharedSSTMeta, targetLevelFunc ingestTargetLevelFunc,
 ) (IngestOperationStats, error) {
 	// Allocate file numbers for all of the files being ingested and mark them as
 	// pending in order to prevent them from being deleted. Note that this causes
@@ -662,8 +769,14 @@ func (d *DB) ingest(
 	// ordering. The sorting of L0 tables by sequence number avoids relying on
 	// that (busted) invariant.
 	d.mu.Lock()
-	pendingOutputs := make([]FileNum, len(paths))
-	for i := range paths {
+	// Reserve slots for both local and shared sstables
+	nTables := len(paths)
+	if d.opts.SharedFS != nil && smeta != nil {
+		nTables += len(smeta)
+	}
+	pendingOutputs := make([]FileNum, nTables)
+	// pending[0:len(paths)] are for local sstables and the remaining are for shared tables
+	for i := 0; i < nTables; i++ {
 		pendingOutputs[i] = d.mu.versions.getNextFileNum()
 	}
 	jobID := d.mu.nextJobID
@@ -672,7 +785,7 @@ func (d *DB) ingest(
 
 	// Load the metadata for all of the files being ingested. This step detects
 	// and elides empty sstables.
-	meta, paths, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, d.cacheID, pendingOutputs)
+	meta, paths, shared, err := ingestLoad(d.opts, d.FormatMajorVersion(), paths, smeta, d.cacheID, pendingOutputs)
 	if err != nil {
 		return IngestOperationStats{}, err
 	}
@@ -681,8 +794,13 @@ func (d *DB) ingest(
 		return IngestOperationStats{}, nil
 	}
 
+	// Just to make sure
+	if len(meta) != len(paths) || len(meta) != len(shared) {
+		panic("ingest: meta, paths and shared have different length")
+	}
+
 	// Verify the sstables do not overlap.
-	if err := ingestSortAndVerify(d.cmp, meta, paths); err != nil {
+	if err := ingestSortAndVerify(d.cmp, meta, paths, shared); err != nil {
 		return IngestOperationStats{}, err
 	}
 
@@ -691,7 +809,7 @@ func (d *DB) ingest(
 	// (e.g. because the files reside on a different filesystem), ingestLink will
 	// fall back to copying, and if that fails we undo our work and return an
 	// error.
-	if err := ingestLink(jobID, d.opts, d.dirname, paths, meta); err != nil {
+	if err := ingestLink(jobID, d.opts, d.dirname, paths, meta, shared); err != nil {
 		return IngestOperationStats{}, err
 	}
 	// Fsync the directory we added the tables to. We need to do this at some
@@ -762,7 +880,12 @@ func (d *DB) ingest(
 			d.opts.Logger.Infof("ingest cleanup failed: %v", err2)
 		}
 	} else {
-		for _, path := range paths {
+		for i, path := range paths {
+			// No removal for shared ssts
+			// Here the items in paths and meta are matched
+			if shared[i] {
+				continue
+			}
 			if err2 := d.opts.FS.Remove(path); err2 != nil {
 				d.opts.Logger.Infof("ingest failed to remove original file: %s", err2)
 			}

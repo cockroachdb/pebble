@@ -2016,6 +2016,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
+				seqNum += sstable.SeqNumZero
 				d.mu.Lock()
 				var s *Snapshot
 				l := &d.mu.snapshots
@@ -2150,6 +2151,7 @@ func TestCompactionTombstones(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
+				seqNum += sstable.SeqNumZero
 				d.mu.Lock()
 				var s *Snapshot
 				l := &d.mu.snapshots
@@ -2802,7 +2804,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
 		require.NoError(t, w.Close())
-		require.NoError(t, d.Ingest([]string{"ext"}))
+		require.NoError(t, d.Ingest([]string{"ext"}, nil))
 	}
 	ingest("a", "c")
 	ingest("b")
@@ -3713,7 +3715,7 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 		require.NoError(t, w.Set(key, nil))
 		require.NoError(t, w.Close())
 		// Ingest the SST.
-		return db.Ingest([]string{fName})
+		return db.Ingest([]string{fName}, nil)
 	}
 
 	testCases := []struct {

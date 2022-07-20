@@ -4,7 +4,6 @@ GOFLAGS :=
 STRESSFLAGS :=
 TAGS := invariants
 TESTS := .
-LATEST_RELEASE := $(shell git fetch origin && git branch -r --list '*/crl-release-*' | grep -o 'crl-release-.*$$' | sort | tail -1)
 
 .PHONY: all
 all:
@@ -24,7 +23,7 @@ test:
 	${GO} test -mod=vendor -tags '$(TAGS)' ${testflags} -run ${TESTS} ${PKG}
 
 .PHONY: testrace
-testrace: testflags += -race -timeout 20m
+testrace: testflags += -v -race -timeout 20m
 testrace: test
 
 .PHONY: stress stressrace
@@ -37,14 +36,6 @@ stressmeta: override PKG = ./internal/metamorphic
 stressmeta: override STRESSFLAGS += -p 1
 stressmeta: override TESTS = TestMeta$$
 stressmeta: stress
-
-.PHONY: crossversion-meta
-crossversion-meta:
-	git checkout ${LATEST_RELEASE}; \
-		${GO} test -c ./internal/metamorphic -o './internal/metamorphic/crossversion/${LATEST_RELEASE}.test'; \
-		git checkout -; \
-		${GO} test -c ./internal/metamorphic -o './internal/metamorphic/crossversion/head.test'; \
-		${GO} test -tags '$(TAGS)' ${testflags} -v -run 'TestMetaCrossVersion' ./internal/metamorphic/crossversion --version '${LATEST_RELEASE},${LATEST_RELEASE},${LATEST_RELEASE}.test' --version 'HEAD,HEAD,./head.test'
 
 .PHONY: generate
 generate:

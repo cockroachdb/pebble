@@ -13,13 +13,13 @@ L3
   e.SET.1:1
 ----
 0.0:
-  000004:[a#4,SET-a#4,SET]
+  000004:[a#7,SET-a#7,SET]
 1:
-  000005:[a#3,SET-a#3,SET]
+  000005:[a#6,SET-a#6,SET]
 2:
-  000006:[d#2,SET-d#2,SET]
+  000006:[d#5,SET-d#5,SET]
 3:
-  000007:[b#1,SET-e#1,SET]
+  000007:[b#4,SET-e#4,SET]
 
 # Simple case: three successive seeks, at increasing keys. Should use
 # trySeekUsingNext.

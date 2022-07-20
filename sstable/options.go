@@ -117,6 +117,9 @@ type ReaderOptions struct {
 	// written with {Batch,DB}.Merge. The MergerName is checked for consistency
 	// with the value stored in the sstable when it was written.
 	MergerName string
+
+	// DBUniqueID is the pebble instance's unique ID of this reader
+	DBUniqueID uint32
 }
 
 func (o ReaderOptions) ensureDefaults() ReaderOptions {

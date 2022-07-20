@@ -17,13 +17,13 @@ manifest summarize
 ----
 MANIFEST-000001
                      _______L0_______L1_______L2_______L3_______L4_______L5_______L6_____TOTAL
-2021-04-01T20:24:02Z
+2022-07-24T06:11:24Z
         Ingest+Flush      2.4 K        .        .        .        .        .    808 B    3.2 K
         Ingest+Flush    2.4 K/s        .        .        .        .        .  808 B/s  3.2 K/s
-       Compact (out)      2.4 K        .        .        .        .        .    898 B    3.3 K
-       Compact (out)    2.4 K/s        .        .        .        .        .  898 B/s  3.3 K/s
-2021-04-01T20:24:02Z
+       Compact (out)      2.4 K        .        .        .        .        .    900 B    3.3 K
+       Compact (out)    2.4 K/s        .        .        .        .        .  900 B/s  3.3 K/s
+2022-07-24T06:11:24Z
 ---
-Estimated start time: 2021-04-01T20:24:02Z
-Estimated end time:   2021-04-01T20:24:02Z
+Estimated start time: 2022-07-24T06:11:24Z
+Estimated end time:   2022-07-24T06:11:24Z
 Estimated duration:   0s

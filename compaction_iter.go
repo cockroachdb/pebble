@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 // compactionIter provides a forward-only iterator that encapsulates the logic
@@ -886,5 +887,6 @@ func (i *compactionIter) maybeZeroSeqnum(snapshotIdx int) {
 		// This is not the last snapshot
 		return
 	}
-	i.key.SetSeqNum(0)
+	// Not really zeroing out the SeqNum but set it to the smallest possible one
+	i.key.SetSeqNum(sstable.SeqNumZero)
 }

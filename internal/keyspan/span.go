@@ -443,3 +443,52 @@ func ParseSpan(input string) Span {
 	}
 	return s
 }
+
+// ParseSpanWithSeqNumOffset adds the adds a sstable.SeqNumZero to all keys in the test
+// (for shared sst compatibility)
+func ParseSpanWithSeqNumOffset(input string, offset uint64) Span {
+	var s Span
+	parts := strings.FieldsFunc(input, func(r rune) bool {
+		switch r {
+		case '-', ':', '{', '}':
+			return true
+		default:
+			return unicode.IsSpace(r)
+		}
+	})
+	s.Start, s.End = []byte(parts[0]), []byte(parts[1])
+
+	// Each of the remaining parts represents a single Key.
+	s.Keys = make([]Key, 0, len(parts)-2)
+	for _, p := range parts[2:] {
+		keyFields := strings.FieldsFunc(p, func(r rune) bool {
+			switch r {
+			case '#', ',', '(', ')':
+				return true
+			default:
+				return unicode.IsSpace(r)
+			}
+		})
+
+		var k Key
+		// Parse the sequence number.
+		seqNum, err := strconv.ParseUint(keyFields[0], 10, 64)
+		if err != nil {
+			panic(fmt.Sprintf("invalid sequence number: %q: %s", keyFields[0], err))
+		}
+		seqNum += offset
+		// Parse the key kind.
+		kind := base.ParseKind(keyFields[1])
+		k.Trailer = base.MakeTrailer(seqNum, kind)
+		// Parse the optional suffix.
+		if len(keyFields) >= 3 {
+			k.Suffix = []byte(keyFields[2])
+		}
+		// Parse the optional value.
+		if len(keyFields) >= 4 {
+			k.Value = []byte(keyFields[3])
+		}
+		s.Keys = append(s.Keys, k)
+	}
+	return s
+}

@@ -6,9 +6,9 @@ L6
 a.SET.54:a b.SET.4:b
 ----
 5:
-  000004:[a#55,SET-b#5,SET]
+  000004:[a#58,SET-b#8,SET]
 6:
-  000005:[a#54,SET-b#4,SET]
+  000005:[a#58,SET-b#8,SET]
 
 add-read-compaction
 5: a-b 000004
@@ -20,7 +20,7 @@ show-read-compactions
 
 maybe-compact
 ----
-[JOB 100] compacted(read) L5 [000004] (784 B) + L6 [000005] (784 B) -> L6 [000006] (778 B), in 1.0s (2.0s total), output rate 778 B/s
+[JOB 100] compacted(read) L5 [000004] (784 B) + L6 [000005] (784 B) -> L6 [000006] (779 B), in 1.0s (2.0s total), output rate 779 B/s
 
 show-read-compactions
 ----
@@ -29,7 +29,7 @@ show-read-compactions
 version
 ----
 6:
-  000006:[a#0,SET-b#0,SET]
+  000006:[a#3,SET-b#3,SET]
 
 # Check to make sure another compaction will not take place
 
@@ -45,9 +45,9 @@ L6
 a.SET.54:a b.SET.4:b
 ----
 5:
-  000004:[a#55,SET-b#5,SET]
+  000004:[a#58,SET-b#8,SET]
 6:
-  000005:[a#54,SET-b#4,SET]
+  000005:[a#58,SET-b#8,SET]
 
 add-read-compaction flushing=true
 5: a-b 000004
@@ -68,9 +68,9 @@ show-read-compactions
 version
 ----
 5:
-  000004:[a#55,SET-b#5,SET]
+  000004:[a#58,SET-b#8,SET]
 6:
-  000005:[a#54,SET-b#4,SET]
+  000005:[a#58,SET-b#8,SET]
 
 add-read-compaction flushing=false
 ----
@@ -81,7 +81,7 @@ show-read-compactions
 
 maybe-compact
 ----
-[JOB 100] compacted(read) L5 [000004] (784 B) + L6 [000005] (784 B) -> L6 [000006] (778 B), in 1.0s (2.0s total), output rate 778 B/s
+[JOB 100] compacted(read) L5 [000004] (784 B) + L6 [000005] (784 B) -> L6 [000006] (779 B), in 1.0s (2.0s total), output rate 779 B/s
 
 show-read-compactions
 ----
@@ -90,7 +90,7 @@ show-read-compactions
 version
 ----
 6:
-  000006:[a#0,SET-b#0,SET]
+  000006:[a#3,SET-b#3,SET]
 
 # Test case where there is mismatch in the level of chosen read compaction and current version.
 # In this case, we skip the compaction.
@@ -101,9 +101,9 @@ L6
 a.SET.55:a b.SET.5:b
 ----
 5:
-  000004:[a#55,SET-b#5,SET]
+  000004:[a#58,SET-b#8,SET]
 6:
-  000005:[a#55,SET-b#5,SET]
+  000005:[a#58,SET-b#8,SET]
 
 add-read-compaction
 4: a-b 000004
@@ -124,9 +124,9 @@ show-read-compactions
 version
 ----
 5:
-  000004:[a#55,SET-b#5,SET]
+  000004:[a#58,SET-b#8,SET]
 6:
-  000005:[a#55,SET-b#5,SET]
+  000005:[a#58,SET-b#8,SET]
 
 # The read compaction range overlaps with the appropriate level, but
 # the file number is different.
@@ -138,9 +138,9 @@ L6
 a.SET.55:a b.SET.5:b
 ----
 5:
-  000004:[a#55,SET-b#5,SET]
+  000004:[a#58,SET-b#8,SET]
 6:
-  000005:[a#55,SET-b#5,SET]
+  000005:[a#58,SET-b#8,SET]
 
 add-read-compaction
 5: a-b 000003
@@ -161,6 +161,6 @@ show-read-compactions
 version
 ----
 5:
-  000004:[a#55,SET-b#5,SET]
+  000004:[a#58,SET-b#8,SET]
 6:
-  000005:[a#55,SET-b#5,SET]
+  000005:[a#58,SET-b#8,SET]

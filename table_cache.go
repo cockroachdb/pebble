@@ -921,8 +921,10 @@ func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *t
 		if !meta.IsShared {
 			extraOpts = append(extraOpts, sstable.FileReopenOpt{FS: dbOpts.fs, Filename: v.filename})
 		} else {
-			extraOpts = append(extraOpts, sstable.PersistentCacheOpt{PsCache: dbOpts.psCache, Meta: meta})
+			extraOpts = append(extraOpts, sstable.PersistentCacheOpt{PsCache: dbOpts.psCache})
 		}
+		// No matter what file type it is, attach metadata and db's unique ID here
+		extraOpts = append(extraOpts, sstable.FileMetadataOpt{Meta: meta, DBUniqueID: dbOpts.uniqueID})
 		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, extraOpts...)
 	}
 	if v.err == nil {

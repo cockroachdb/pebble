@@ -7,7 +7,7 @@ set b 2
 flush
 ----
 0.0:
-  000005:[a#1,SET-b#2,SET]
+  000005:[a#4,SET-b#5,SET]
 
 reset
 ----
@@ -22,7 +22,7 @@ del b
 flush
 ----
 0.0:
-  000005:[a#3,DEL-b#4,DEL]
+  000005:[a#6,DEL-b#7,DEL]
 
 batch
 set a 3
@@ -32,9 +32,9 @@ set a 3
 flush
 ----
 0.1:
-  000007:[a#5,SET-a#5,SET]
+  000007:[a#8,SET-a#8,SET]
 0.0:
-  000005:[a#3,DEL-b#4,DEL]
+  000005:[a#6,DEL-b#7,DEL]
 
 batch
 set c 4
@@ -44,10 +44,10 @@ set c 4
 flush
 ----
 0.1:
-  000007:[a#5,SET-a#5,SET]
+  000007:[a#8,SET-a#8,SET]
 0.0:
-  000005:[a#3,DEL-b#4,DEL]
-  000009:[c#6,SET-c#6,SET]
+  000005:[a#6,DEL-b#7,DEL]
+  000009:[c#9,SET-c#9,SET]
 
 reset
 ----
@@ -61,7 +61,7 @@ del-range a c
 flush
 ----
 0.0:
-  000005:[a#3,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000005:[a#6,RANGEDEL-c#72057594037927935,RANGEDEL]
 
 reset
 ----
@@ -74,7 +74,7 @@ set b 2
 async-flush
 ----
 0.0:
-  000005:[a#1,SET-b#2,SET]
+  000005:[a#4,SET-b#5,SET]
 
 # Test that synchronous flushes can happen even when a cleaning turn is held.
 reset
@@ -91,7 +91,7 @@ set b 2
 flush
 ----
 0.0:
-  000005:[a#1,SET-b#2,SET]
+  000005:[a#4,SET-b#5,SET]
 
 release-cleaning-turn
 ----

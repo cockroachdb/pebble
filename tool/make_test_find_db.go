@@ -112,7 +112,7 @@ func (d *db) ingest(keyVals ...string) {
 		log.Fatal(err)
 	}
 
-	if err := d.db.Ingest([]string{path}); err != nil {
+	if err := d.db.Ingest([]string{path}, nil); err != nil {
 		log.Fatal(err)
 	}
 }

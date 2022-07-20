@@ -156,7 +156,7 @@ rocksdb.comparator: alt-comparer
 rocksdb.compression: Snappy
 rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 rocksdb.creation.time: 0
-rocksdb.data.size: 90
+rocksdb.data.size: 92
 rocksdb.filter.size: 0
 rocksdb.fixed.key.length: 0
 rocksdb.format.version: 0

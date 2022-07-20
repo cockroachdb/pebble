@@ -7,7 +7,7 @@ del c
 flush
 ----
 0.0:
-  000005:[a#1,SET-c#3,DEL]
+  000005:[a#4,SET-c#6,DEL]
 
 wait-pending-table-stats
 000005
@@ -21,7 +21,7 @@ range-deletions-bytes-estimate: 0
 compact a-c
 ----
 6:
-  000005:[a#1,SET-c#3,DEL]
+  000005:[a#4,SET-c#6,DEL]
 
 batch
 del-range a c
@@ -30,9 +30,9 @@ del-range a c
 flush
 ----
 0.0:
-  000007:[a#4,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000007:[a#7,RANGEDEL-c#72057594037927935,RANGEDEL]
 6:
-  000005:[a#1,SET-c#3,DEL]
+  000005:[a#4,SET-c#6,DEL]
 
 wait-pending-table-stats
 000007
@@ -81,12 +81,12 @@ set b 2
 flush
 ----
 0.0:
-  000012:[a#5,SET-b#6,SET]
+  000012:[a#8,SET-b#9,SET]
 
 compact a-c
 ----
 6:
-  000012:[a#5,SET-b#6,SET]
+  000012:[a#8,SET-b#9,SET]
 
 enable
 ----
@@ -113,9 +113,9 @@ del-range a c
 flush
 ----
 0.0:
-  000014:[a#7,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000014:[a#10,RANGEDEL-c#72057594037927935,RANGEDEL]
 6:
-  000012:[a#5,SET-b#6,SET]
+  000012:[a#8,SET-b#9,SET]
 
 compact a-c
 ----
@@ -149,30 +149,30 @@ L6
   e.SET.5:v
 ----
 4:
-  000004:[a#8,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000004:[a#11,RANGEDEL-f#72057594037927935,RANGEDEL]
 5:
-  000005:[b#7,SET-b#7,SET]
+  000005:[b#10,SET-b#10,SET]
 6:
-  000006:[a#1,SET-a#1,SET]
-  000007:[b#2,SET-b#2,SET]
-  000008:[c#3,SET-c#3,SET]
-  000009:[d#4,SET-d#4,SET]
-  000010:[e#5,SET-e#5,SET]
+  000006:[a#4,SET-a#4,SET]
+  000007:[b#5,SET-b#5,SET]
+  000008:[c#6,SET-c#6,SET]
+  000009:[d#7,SET-d#7,SET]
+  000010:[e#8,SET-e#8,SET]
 
 compact a-b L4
 ----
 5:
-  000011:[a#8,RANGEDEL-b#72057594037927935,RANGEDEL]
-  000012:[b#8,RANGEDEL-c#72057594037927935,RANGEDEL]
-  000013:[c#8,RANGEDEL-d#72057594037927935,RANGEDEL]
-  000014:[d#8,RANGEDEL-e#72057594037927935,RANGEDEL]
-  000015:[e#8,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000011:[a#11,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000012:[b#11,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000013:[c#11,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000014:[d#11,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000015:[e#11,RANGEDEL-f#72057594037927935,RANGEDEL]
 6:
-  000006:[a#1,SET-a#1,SET]
-  000007:[b#2,SET-b#2,SET]
-  000008:[c#3,SET-c#3,SET]
-  000009:[d#4,SET-d#4,SET]
-  000010:[e#5,SET-e#5,SET]
+  000006:[a#4,SET-a#4,SET]
+  000007:[b#5,SET-b#5,SET]
+  000008:[c#6,SET-c#6,SET]
+  000009:[d#7,SET-d#7,SET]
+  000010:[e#8,SET-e#8,SET]
 
 wait-pending-table-stats
 000011
@@ -200,7 +200,7 @@ L6
   e.SET.5:e a.RANGEDEL.15:f m.SET.5:m g.RANGEDEL.15:z
 ----
 6:
-  000004:[a#15,RANGEDEL-z#72057594037927935,RANGEDEL]
+  000004:[a#18,RANGEDEL-z#72057594037927935,RANGEDEL]
 
 wait-pending-table-stats
 000004
@@ -232,12 +232,12 @@ L2
   e.SET.0:e h.SET.0:h
 ----
 0.0:
-  000004:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
+  000004:[a#5,RANGEDEL-b#72057594037927935,RANGEDEL]
 1:
-  000005:[d#1,RANGEDEL-f#72057594037927935,RANGEDEL]
+  000005:[d#4,RANGEDEL-f#72057594037927935,RANGEDEL]
 2:
-  000006:[a#0,SET-d#0,SET]
-  000007:[e#0,SET-h#0,SET]
+  000006:[a#3,SET-d#3,SET]
+  000007:[e#3,SET-h#3,SET]
 
 # Table 000004 deletes the first block in table 000006.
 wait-pending-table-stats
@@ -247,7 +247,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 33
+range-deletions-bytes-estimate: 34
 
 # Table 000005 deletes the second block in table 000006 (containing 'd') and the
 # first block in table 000007 (containing 'e').
@@ -258,7 +258,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 66
+range-deletions-bytes-estimate: 68
 
 # Test the interaction between point and range key deletions.
 
@@ -276,7 +276,7 @@ range-key-unset a b @2
 flush
 ----
 0.0:
-  000005:[a#3,RANGEKEYUNSET-b#72057594037927935,RANGEKEYSET]
+  000005:[a#6,RANGEKEYUNSET-b#72057594037927935,RANGEKEYSET]
 
 # Add a table that contains only point keys, to the right of the existing table.
 batch
@@ -286,14 +286,14 @@ set c c
 flush
 ----
 0.0:
-  000005:[a#3,RANGEKEYUNSET-b#72057594037927935,RANGEKEYSET]
-  000007:[c#4,SET-c#4,SET]
+  000005:[a#6,RANGEKEYUNSET-b#72057594037927935,RANGEKEYSET]
+  000007:[c#7,SET-c#7,SET]
 
 compact a-c
 ----
 6:
-  000008:[a#2,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
-  000009:[c#0,SET-c#0,SET]
+  000008:[a#5,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
+  000009:[c#3,SET-c#3,SET]
 
 # Add a table that contains a RANGEKEYDEL covering the first table in L6.
 batch
@@ -303,10 +303,10 @@ range-key-del a b
 flush
 ----
 0.0:
-  000011:[a#5,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
+  000011:[a#8,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
 6:
-  000008:[a#2,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
-  000009:[c#0,SET-c#0,SET]
+  000008:[a#5,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
+  000009:[c#3,SET-c#3,SET]
 
 # Add one more table containing a RANGEDEL.
 batch
@@ -316,12 +316,12 @@ del-range a c
 flush
 ----
 0.1:
-  000013:[a#6,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000013:[a#9,RANGEDEL-c#72057594037927935,RANGEDEL]
 0.0:
-  000011:[a#5,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
+  000011:[a#8,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
 6:
-  000008:[a#2,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
-  000009:[c#0,SET-c#0,SET]
+  000008:[a#5,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
+  000009:[c#3,SET-c#3,SET]
 
 # Compute stats on the table containing range key del. It should not show an
 # estimate for deleted point keys as there are no tables below it that contain
@@ -355,14 +355,14 @@ del-range a z
 range-key-del a z
 ----
 0.2:
-  000014:[a#7,RANGEKEYDEL-z#72057594037927935,RANGEDEL]
+  000014:[a#10,RANGEKEYDEL-z#72057594037927935,RANGEDEL]
 0.1:
-  000013:[a#6,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000013:[a#9,RANGEDEL-c#72057594037927935,RANGEDEL]
 0.0:
-  000011:[a#5,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
+  000011:[a#8,RANGEKEYDEL-b#72057594037927935,RANGEKEYDEL]
 6:
-  000008:[a#2,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
-  000009:[c#0,SET-c#0,SET]
+  000008:[a#5,RANGEKEYSET-b#72057594037927935,RANGEKEYSET]
+  000009:[c#3,SET-c#3,SET]
 
 compact a-z
 ----
@@ -381,7 +381,7 @@ set b b
 flush
 ----
 0.0:
-  000005:[b#1,SET-b#1,SET]
+  000005:[b#4,SET-b#4,SET]
 
 # A table with a mixture of point and range keys.
 batch
@@ -392,14 +392,14 @@ range-key-set d d @1 foo
 flush
 ----
 0.0:
-  000005:[b#1,SET-b#1,SET]
-  000007:[c#2,SET-c#2,SET]
+  000005:[b#4,SET-b#4,SET]
+  000007:[c#5,SET-c#5,SET]
 
 compact a-z
 ----
 6:
-  000008:[b#0,SET-b#0,SET]
-  000009:[c#0,SET-c#0,SET]
+  000008:[b#3,SET-b#3,SET]
+  000009:[c#3,SET-c#3,SET]
 
 # The table with the range key del, that spans the previous two tables.
 batch
@@ -409,10 +409,10 @@ range-key-del a z
 flush
 ----
 0.0:
-  000011:[a#4,RANGEKEYDEL-z#72057594037927935,RANGEKEYDEL]
+  000011:[a#7,RANGEKEYDEL-z#72057594037927935,RANGEKEYDEL]
 6:
-  000008:[b#0,SET-b#0,SET]
-  000009:[c#0,SET-c#0,SET]
+  000008:[b#3,SET-b#3,SET]
+  000009:[c#3,SET-c#3,SET]
 
 # The hint on table 000011 does estimates zero size for range deleted point
 # keys.
@@ -438,11 +438,11 @@ L6
   rangekey:c-d:{(#1,RANGEKEYSET,@1,foo)}
 ----
 4:
-  000004:[a#4,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000004:[a#7,RANGEDEL-c#72057594037927935,RANGEDEL]
 5:
-  000005:[a#2,RANGEDEL-e#72057594037927935,RANGEDEL]
+  000005:[a#5,RANGEDEL-e#72057594037927935,RANGEDEL]
 6:
-  000006:[c#1,RANGEKEYSET-d#72057594037927935,RANGEKEYSET]
+  000006:[c#4,RANGEKEYSET-d#72057594037927935,RANGEKEYSET]
 
 # The table in L5 should not contain an estimate for the table below it, which
 # contains only range keys.

@@ -433,7 +433,7 @@ func TestOpenReadOnly(t *testing.T) {
 
 		require.EqualValues(t, ErrReadOnly, d.Delete(nil, nil))
 		require.EqualValues(t, ErrReadOnly, d.DeleteRange(nil, nil, nil))
-		require.EqualValues(t, ErrReadOnly, d.Ingest(nil))
+		require.EqualValues(t, ErrReadOnly, d.Ingest(nil, nil))
 		require.EqualValues(t, ErrReadOnly, d.LogData(nil, nil))
 		require.EqualValues(t, ErrReadOnly, d.Merge(nil, nil, nil))
 		require.EqualValues(t, ErrReadOnly, d.Set(nil, nil, nil))

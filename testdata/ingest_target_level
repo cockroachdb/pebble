@@ -13,7 +13,7 @@ L5
   c.SET.2:2
 ----
 5:
-  000004:[b#1,SET-c#2,SET]
+  000004:[b#4,SET-c#5,SET]
 
 # Overlapping cases.
 target
@@ -54,12 +54,12 @@ L3
   h.SET.2:2
 ----
 0.1:
-  000005:[d#5,SET-f#6,SET]
+  000005:[d#8,SET-f#9,SET]
 0.0:
-  000004:[b#3,SET-e#4,SET]
-  000006:[x#7,SET-y#8,SET]
+  000004:[b#6,SET-e#7,SET]
+  000006:[x#10,SET-y#11,SET]
 3:
-  000007:[g#1,SET-h#2,SET]
+  000007:[g#4,SET-h#5,SET]
 
 # Files overlap with L0. Files ingested into L0.
 target
@@ -94,11 +94,11 @@ L6
   c.SET.1:1
 ----
 5:
-  000004:[a#4,SET-a#4,SET]
-  000005:[c#3,SET-c#3,SET]
+  000004:[a#7,SET-a#7,SET]
+  000005:[c#6,SET-c#6,SET]
 6:
-  000006:[a#2,SET-a#2,SET]
-  000007:[c#1,SET-c#1,SET]
+  000006:[a#5,SET-a#5,SET]
+  000007:[c#4,SET-c#4,SET]
 
 # The ingested file slips through the gaps in both L5 and L6.
 target
@@ -118,11 +118,11 @@ L6
   compact:a-c
 ----
 5:
-  000004:[a#4,SET-a#4,SET]
-  000005:[c#3,SET-c#3,SET]
+  000004:[a#7,SET-a#7,SET]
+  000005:[c#6,SET-c#6,SET]
 6:
-  000006:[a#2,SET-a#2,SET]
-  000007:[c#1,SET-c#1,SET]
+  000006:[a#5,SET-a#5,SET]
+  000007:[c#4,SET-c#4,SET]
 
 # The ingested file cannot reach L6 as there is a compaction outputting a file
 # into the range [a,c].
@@ -140,9 +140,9 @@ L2
   a.RANGEDEL.1:g
 ----
 0.0:
-  000004:[c#4,SET-g#72057594037927935,RANGEDEL]
+  000004:[c#7,SET-g#72057594037927935,RANGEDEL]
 2:
-  000005:[a#1,RANGEDEL-g#72057594037927935,RANGEDEL]
+  000005:[a#4,RANGEDEL-g#72057594037927935,RANGEDEL]
 
 # Overlapping cases:
 # - The ingested file overlaps with with [c,c].
@@ -188,7 +188,7 @@ L1
   g.SET.0:g
 ----
 1:
-  000004:[a#0,SET-g#0,SET]
+  000004:[a#3,SET-g#3,SET]
 
 # Data overlap.
 target
