@@ -16,6 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TODO(jackson): Add a range keys test with concurrency: the logic to cache
+// fragmented spans is susceptible to races.
+
 func TestRangeKeys(t *testing.T) {
 	var d *DB
 	var b *Batch
