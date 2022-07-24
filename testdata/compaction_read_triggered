@@ -3,12 +3,12 @@ define
 L5
 a.SET.55:a b.SET.5:b
 L6
-a.SET.55:a b.SET.5:b
+a.SET.54:a b.SET.4:b
 ----
 5:
   000004:[a#55,SET-b#5,SET]
 6:
-  000005:[a#55,SET-b#5,SET]
+  000005:[a#54,SET-b#4,SET]
 
 add-read-compaction
 5: a-b 000004
@@ -42,12 +42,12 @@ define
 L5
 a.SET.55:a b.SET.5:b
 L6
-a.SET.55:a b.SET.5:b
+a.SET.54:a b.SET.4:b
 ----
 5:
   000004:[a#55,SET-b#5,SET]
 6:
-  000005:[a#55,SET-b#5,SET]
+  000005:[a#54,SET-b#4,SET]
 
 add-read-compaction flushing=true
 5: a-b 000004
@@ -70,7 +70,7 @@ version
 5:
   000004:[a#55,SET-b#5,SET]
 6:
-  000005:[a#55,SET-b#5,SET]
+  000005:[a#54,SET-b#4,SET]
 
 add-read-compaction flushing=false
 ----
