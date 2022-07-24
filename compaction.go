@@ -462,7 +462,11 @@ type compaction struct {
 	// grandparent and lower levels. See setupInuseKeyRanges() for the
 	// construction. Used by elideTombstone() and elideRangeTombstone() to
 	// determine if keys affected by a tombstone possibly exist at a lower level.
-	inuseKeyRanges      []manifest.UserKeyRange
+	inuseKeyRanges []manifest.UserKeyRange
+	// inuseEntireRange is set if the above inuse key ranges wholly contain the
+	// compaction's key range. This allows compactions in higher levels to often
+	// elide key comparisons.
+	inuseEntireRange    bool
 	elideTombstoneIndex int
 
 	// allowedZeroSeqNum is true if seqnums can be zeroed if there are no
@@ -736,9 +740,19 @@ func (c *compaction) setupInuseKeyRanges() {
 	if c.outputLevel.level == 0 {
 		level = 0
 	}
+	// calculateInuseKeyRanges will return a series of sorted spans. Overlapping
+	// or abutting spans have already been merged.
 	c.inuseKeyRanges = calculateInuseKeyRanges(
 		c.version, c.cmp, level, numLevels-1, c.smallest.UserKey, c.largest.UserKey,
 	)
+	// Check if there's a single in-use span that encompasses the entire key
+	// range of the compaction. This is an optimization to avoid key comparisons
+	// against inuseKeyRanges during the compaction when every key within the
+	// compaction overlaps with an in-use span.
+	if len(c.inuseKeyRanges) > 0 {
+		c.inuseEntireRange = c.cmp(c.inuseKeyRanges[0].Start, c.smallest.UserKey) <= 0 &&
+			c.cmp(c.inuseKeyRanges[0].End, c.largest.UserKey) >= 0
+	}
 }
 
 func calculateInuseKeyRanges(
@@ -935,7 +949,7 @@ func (c *compaction) allowZeroSeqNum() bool {
 // key. The keys in multiple invocations to elideTombstone must be supplied in
 // order.
 func (c *compaction) elideTombstone(key []byte) bool {
-	if len(c.flushing) != 0 {
+	if c.inuseEntireRange || len(c.flushing) != 0 {
 		return false
 	}
 
