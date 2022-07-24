@@ -161,7 +161,7 @@ type compactionIter struct {
 	key InternalKey
 	// keyTrailer is updated when `i.key` is updated and holds the key's
 	// original trailer (eg, before any sequence-number zeroing or changes to
-	// key kind.
+	// key kind).
 	keyTrailer  uint64
 	value       []byte
 	valueCloser io.Closer
