@@ -1163,10 +1163,10 @@ b#1,2:1
 
 # NB: Zero values are skipped by deletable merger.
 define merger=deletable
-a.MERGE.1:1
-a.MERGE.2:2
-a.MERGE.3:-1
 a.MERGE.4:-2
+a.MERGE.3:-1
+a.MERGE.2:2
+a.MERGE.1:1
 b.MERGE.4:-3
 b.MERGE.3:3
 b.MERGE.2:2

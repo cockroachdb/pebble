@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"fmt"
 	"io"
 	"sort"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
@@ -156,7 +158,11 @@ type compactionIter struct {
 	// Additionally, it is the internal state when the code is moving to the
 	// next key so it can determine whether the user key has changed from
 	// the previous key.
-	key         InternalKey
+	key InternalKey
+	// keyTrailer is updated when `i.key` is updated and holds the key's
+	// original trailer (eg, before any sequence-number zeroing or changes to
+	// key kind.
+	keyTrailer  uint64
 	value       []byte
 	valueCloser io.Closer
 	// Temporary buffer used for storing the previous user key in order to
@@ -491,7 +497,22 @@ func (i *compactionIter) nextInStripe() stripeChangeType {
 		return newStripe
 	}
 	key := i.iterKey
-	if !i.equal(i.key.UserKey, key.UserKey) {
+
+	// NB: The key.Trailer >= i.keyTrailer comparison is an optimization to
+	// avoid the user key comparison in many cases. Internal keys with the same
+	// user key are ordered in (strictly) descending order by trailer. If the
+	// new key has a greater or equal trailer, the new key must have a new user
+	// key. Sequence-number zeroing makes this case very common for compactions
+	// into L6.
+	if key.Trailer >= i.keyTrailer {
+		if invariants.Enabled && i.equal(i.key.UserKey, key.UserKey) {
+			prevKey := i.key
+			prevKey.Trailer = i.keyTrailer
+			panic(fmt.Sprintf("pebble: invariant violation: %s and %s out of order", key, prevKey))
+		}
+		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
+		return newStripe
+	} else if !i.equal(i.key.UserKey, key.UserKey) {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(key.SeqNum(), i.snapshots)
 		return newStripe
 	}
@@ -734,6 +755,7 @@ func (i *compactionIter) saveKey() {
 	i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
 	i.key.UserKey = i.keyBuf
 	i.key.Trailer = i.iterKey.Trailer
+	i.keyTrailer = i.iterKey.Trailer
 }
 
 func (i *compactionIter) cloneKey(key []byte) []byte {
