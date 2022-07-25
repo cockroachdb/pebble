@@ -2139,11 +2139,12 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 	valBuf := make([]byte, valueSize)
 
 	mem := vfs.NewStrictMem()
+	maxProcs := runtime.GOMAXPROCS(0)
 	opts := &Options{
 		FS:                       mem,
 		Comparer:                 testkeys.Comparer,
 		FormatMajorVersion:       FormatNewest,
-		MaxConcurrentCompactions: runtime.GOMAXPROCS(0)/2 + 1,
+		MaxConcurrentCompactions: func() int { return maxProcs/2 + 1 },
 		BlockPropertyCollectors: []func() BlockPropertyCollector{
 			blockprop.NewBlockPropertyCollector,
 		},

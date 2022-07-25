@@ -62,12 +62,14 @@ func newPebbleDB(dir string) DB {
 		L0StopWritesThreshold:       1000,
 		LBaseMaxBytes:               64 << 20, // 64 MB
 		Levels:                      make([]pebble.LevelOptions, 7),
-		MaxConcurrentCompactions:    3,
 		MaxOpenFiles:                16384,
 		MemTableSize:                64 << 20,
 		MemTableStopWritesThreshold: 4,
 		Merger: &pebble.Merger{
 			Name: "cockroach_merge_operator",
+		},
+		MaxConcurrentCompactions: func() int {
+			return 3
 		},
 	}
 

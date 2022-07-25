@@ -1062,10 +1062,13 @@ func TestDBConcurrentCompactClose(t *testing.T) {
 	// detects the close and finishes cleanly.
 	mem := vfs.NewMem()
 	for i := 0; i < 100; i++ {
-		d, err := Open("", testingRandomized(&Options{
-			FS:                       mem,
-			MaxConcurrentCompactions: 2,
-		}))
+		opts := &Options{
+			FS: mem,
+			MaxConcurrentCompactions: func() int {
+				return 2
+			},
+		}
+		d, err := Open("", testingRandomized(opts))
 		require.NoError(t, err)
 
 		// Ingest a series of files containing a single key each. As the outer
