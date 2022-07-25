@@ -912,6 +912,78 @@ func TestIteratorNextPrev(t *testing.T) {
 	})
 }
 
+func TestIteratorStats(t *testing.T) {
+	var mem vfs.FS
+	var d *DB
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+
+	reset := func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+
+		mem = vfs.NewMem()
+		require.NoError(t, mem.MkdirAll("ext", 0755))
+		opts := &Options{FS: mem}
+		// Automatic compactions may make some testcases non-deterministic.
+		opts.DisableAutomaticCompactions = true
+		var err error
+		d, err = Open("", opts)
+		require.NoError(t, err)
+	}
+	reset()
+
+	datadriven.RunTest(t, "testdata/iterator_stats", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "reset":
+			reset()
+			return ""
+
+		case "build":
+			if err := runBuildCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "ingest":
+			if err := runIngestCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+
+		case "iter":
+			seqNum := InternalKeySeqNumMax
+			for _, arg := range td.CmdArgs {
+				if len(arg.Vals) != 1 {
+					return fmt.Sprintf("%s: %s=<value>", td.Cmd, arg.Key)
+				}
+				switch arg.Key {
+				case "seq":
+					var err error
+					seqNum, err = strconv.ParseUint(arg.Vals[0], 10, 64)
+					if err != nil {
+						return err.Error()
+					}
+				default:
+					return fmt.Sprintf("%s: unknown arg: %s", td.Cmd, arg.Key)
+				}
+			}
+
+			snap := Snapshot{
+				db:     d,
+				seqNum: seqNum,
+			}
+			iter := snap.NewIter(nil)
+			return runIterCmd(td, iter, true)
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
 type iterSeekOptWrapper struct {
 	internalIterator
 

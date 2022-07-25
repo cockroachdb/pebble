@@ -1811,7 +1811,11 @@ func (i *Iterator) Close() error {
 				alloc.boundsBuf[j] = i.boundsBuf[j]
 			}
 		}
-		*i = Iterator{}
+		*alloc = iterAlloc{
+			keyBuf:              alloc.keyBuf,
+			boundsBuf:           alloc.boundsBuf,
+			prefixOrFullSeekKey: alloc.prefixOrFullSeekKey,
+		}
 		iterAllocPool.Put(alloc)
 	} else if alloc := i.getIterAlloc; alloc != nil {
 		if cap(i.keyBuf) >= maxKeyBufCacheSize {
@@ -1819,7 +1823,9 @@ func (i *Iterator) Close() error {
 		} else {
 			alloc.keyBuf = i.keyBuf
 		}
-		*i = Iterator{}
+		*alloc = getIterAlloc{
+			keyBuf: alloc.keyBuf,
+		}
 		getIterAllocPool.Put(alloc)
 	}
 	return err
