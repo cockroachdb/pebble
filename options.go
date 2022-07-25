@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -356,6 +357,17 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 // apply to the DB at large; per-query options are defined by the IterOptions
 // and WriteOptions types.
 type Options struct {
+	// Some options need to be mutable as they're modified by CockroachDB on the
+	// fly. We accomplish this by writing and reading these options atomically.
+	Atomic struct {
+		// MaxConcurrentCompactions specifies the maximum number of concurrent
+		// compactions. The default is 1. Concurrent compactions are performed
+		// - when L0 read-amplification passes the L0CompactionConcurrency threshold
+		// - for automatic background compactions
+		// - when a manual compaction for a level is split and parallelized
+		MaxConcurrentCompactions uint64
+	}
+
 	// Sync sstables periodically in order to smooth out writes to disk. This
 	// option does not provide any persistency guarantee, but is used to avoid
 	// latency spikes if the OS automatically decides to write out a large chunk
@@ -627,13 +639,6 @@ type Options struct {
 	// The default merger concatenates values.
 	Merger *Merger
 
-	// MaxConcurrentCompactions specifies the maximum number of concurrent
-	// compactions. The default is 1. Concurrent compactions are performed
-	// - when L0 read-amplification passes the L0CompactionConcurrency threshold
-	// - for automatic background compactions
-	// - when a manual compaction for a level is split and parallelized
-	MaxConcurrentCompactions int
-
 	// DisableAutomaticCompactions dictates whether automatic compactions are
 	// scheduled or not. The default is false (enabled). This option is only used
 	// externally when running a manual compaction, and internally for tests.
@@ -832,8 +837,8 @@ func (o *Options) EnsureDefaults() *Options {
 		o.Merger = DefaultMerger
 	}
 	o.private.strictWALTail = true
-	if o.MaxConcurrentCompactions <= 0 {
-		o.MaxConcurrentCompactions = 1
+	if atomic.LoadUint64(&o.Atomic.MaxConcurrentCompactions) <= 0 {
+		atomic.StoreUint64(&o.Atomic.MaxConcurrentCompactions, 1)
 	}
 	if o.NumPrevManifest <= 0 {
 		o.NumPrevManifest = 1
@@ -947,7 +952,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
 	fmt.Fprintf(&buf, "  lbase_max_bytes=%d\n", o.LBaseMaxBytes)
-	fmt.Fprintf(&buf, "  max_concurrent_compactions=%d\n", o.MaxConcurrentCompactions)
+	fmt.Fprintf(&buf, "  max_concurrent_compactions=%d\n", atomic.LoadUint64(&o.Atomic.MaxConcurrentCompactions))
 	fmt.Fprintf(&buf, "  max_manifest_file_size=%d\n", o.MaxManifestFileSize)
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
@@ -1142,7 +1147,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "lbase_max_bytes":
 				o.LBaseMaxBytes, err = strconv.ParseInt(value, 10, 64)
 			case "max_concurrent_compactions":
-				o.MaxConcurrentCompactions, err = strconv.Atoi(value)
+				var concurrentCompactions int
+				concurrentCompactions, err = strconv.Atoi(value)
+				atomic.StoreUint64(&o.Atomic.MaxConcurrentCompactions, uint64(concurrentCompactions))
 			case "max_manifest_file_size":
 				o.MaxManifestFileSize, err = strconv.ParseInt(value, 10, 64)
 			case "max_open_files":

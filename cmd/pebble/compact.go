@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime/trace"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
@@ -99,7 +100,6 @@ func open(dir string, listener pebble.EventListener) (*replay.DB, error) {
 		Comparer:                    mvccComparer,
 		MemTableSize:                64 << 20,
 		MemTableStopWritesThreshold: 4,
-		MaxConcurrentCompactions:    2,
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       400,
 		LBaseMaxBytes:               64 << 20, // 64 MB
@@ -108,6 +108,7 @@ func open(dir string, listener pebble.EventListener) (*replay.DB, error) {
 		}},
 		Merger: fauxMVCCMerger,
 	}
+	atomic.StoreUint64(&opts.Atomic.MaxConcurrentCompactions, 2)
 	opts.EnsureDefaults()
 
 	opts.EventListener = listener

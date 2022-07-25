@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
@@ -265,8 +266,10 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	if opts.L0StopWritesThreshold < opts.L0CompactionThreshold {
 		opts.L0StopWritesThreshold = opts.L0CompactionThreshold
 	}
-	opts.LBaseMaxBytes = 1 << uint(rng.Intn(30))       // 1B - 1GB
-	opts.MaxConcurrentCompactions = rng.Intn(4)        // 0-3
+	opts.LBaseMaxBytes = 1 << uint(rng.Intn(30)) // 1B - 1GB
+	atomic.StoreUint64(
+		&opts.Atomic.MaxConcurrentCompactions, uint64(rng.Intn(4)),
+	) // 0-3
 	opts.MaxManifestFileSize = 1 << uint(rng.Intn(30)) // 1B  - 1GB
 	opts.MemTableSize = 2 << (10 + uint(rng.Intn(16))) // 2KB - 256MB
 	opts.MemTableStopWritesThreshold = 2 + rng.Intn(5) // 2 - 5
