@@ -99,7 +99,6 @@ func open(dir string, listener pebble.EventListener) (*replay.DB, error) {
 		Comparer:                    mvccComparer,
 		MemTableSize:                64 << 20,
 		MemTableStopWritesThreshold: 4,
-		MaxConcurrentCompactions:    2,
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       400,
 		LBaseMaxBytes:               64 << 20, // 64 MB
@@ -107,6 +106,9 @@ func open(dir string, listener pebble.EventListener) (*replay.DB, error) {
 			BlockSize: 32 << 10,
 		}},
 		Merger: fauxMVCCMerger,
+		MaxConcurrentCompactions: func() int {
+			return 2
+		},
 	}
 	opts.EnsureDefaults()
 

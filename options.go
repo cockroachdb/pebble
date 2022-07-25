@@ -676,7 +676,8 @@ type Options struct {
 	// - when L0 read-amplification passes the L0CompactionConcurrency threshold
 	// - for automatic background compactions
 	// - when a manual compaction for a level is split and parallelized
-	MaxConcurrentCompactions int
+	// MaxConcurrentCompactions must be greater than 0.
+	MaxConcurrentCompactions func() int
 
 	// DisableAutomaticCompactions dictates whether automatic compactions are
 	// scheduled or not. The default is false (enabled). This option is only used
@@ -876,8 +877,8 @@ func (o *Options) EnsureDefaults() *Options {
 		o.Merger = DefaultMerger
 	}
 	o.private.strictWALTail = true
-	if o.MaxConcurrentCompactions <= 0 {
-		o.MaxConcurrentCompactions = 1
+	if o.MaxConcurrentCompactions == nil {
+		o.MaxConcurrentCompactions = func() int { return 1 }
 	}
 	if o.NumPrevManifest <= 0 {
 		o.NumPrevManifest = 1
@@ -991,7 +992,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
 	fmt.Fprintf(&buf, "  lbase_max_bytes=%d\n", o.LBaseMaxBytes)
-	fmt.Fprintf(&buf, "  max_concurrent_compactions=%d\n", o.MaxConcurrentCompactions)
+	fmt.Fprintf(&buf, "  max_concurrent_compactions=%d\n", o.MaxConcurrentCompactions())
 	fmt.Fprintf(&buf, "  max_manifest_file_size=%d\n", o.MaxManifestFileSize)
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
@@ -1186,7 +1187,13 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "lbase_max_bytes":
 				o.LBaseMaxBytes, err = strconv.ParseInt(value, 10, 64)
 			case "max_concurrent_compactions":
-				o.MaxConcurrentCompactions, err = strconv.Atoi(value)
+				var concurrentCompactions int
+				concurrentCompactions, err = strconv.Atoi(value)
+				if concurrentCompactions <= 0 {
+					err = errors.New("max_concurrent_compactions cannot be <= 0")
+				} else {
+					o.MaxConcurrentCompactions = func() int { return concurrentCompactions }
+				}
 			case "max_manifest_file_size":
 				o.MaxManifestFileSize, err = strconv.ParseInt(value, 10, 64)
 			case "max_open_files":
