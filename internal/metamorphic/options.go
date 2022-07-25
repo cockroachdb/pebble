@@ -265,8 +265,13 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	if opts.L0StopWritesThreshold < opts.L0CompactionThreshold {
 		opts.L0StopWritesThreshold = opts.L0CompactionThreshold
 	}
-	opts.LBaseMaxBytes = 1 << uint(rng.Intn(30))       // 1B - 1GB
-	opts.MaxConcurrentCompactions = rng.Intn(4)        // 0-3
+	opts.LBaseMaxBytes = 1 << uint(rng.Intn(30)) // 1B - 1GB
+	// maxConcurrentCompactions := rng.Intn(4)
+	opts.MaxConcurrentCompactions = func() int64 {
+		return 3
+		//return int64(maxConcurrentCompactions)
+
+	} // 0-3
 	opts.MaxManifestFileSize = 1 << uint(rng.Intn(30)) // 1B  - 1GB
 	opts.MemTableSize = 2 << (10 + uint(rng.Intn(16))) // 2KB - 256MB
 	opts.MemTableStopWritesThreshold = 2 + rng.Intn(5) // 2 - 5
