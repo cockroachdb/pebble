@@ -1454,7 +1454,11 @@ func TestManualCompaction(t *testing.T) {
 				return ""
 
 			case "set-concurrent-compactions":
-				td.ScanArgs(t, "num", &d.opts.MaxConcurrentCompactions)
+				var concurrentCompactions int
+				td.ScanArgs(t, "num", &concurrentCompactions)
+				d.opts.MaxConcurrentCompactions = func() uint64 {
+					return uint64(concurrentCompactions)
+				}
 				return ""
 
 			case "wait-pending-table-stats":
