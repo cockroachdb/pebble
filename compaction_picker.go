@@ -294,7 +294,9 @@ func (pc *pickedCompaction) setupInputs(
 	// maxExpandedBytes is the maximum size of an expanded compaction. If
 	// growing a compaction results in a larger size, the original compaction
 	// is used instead.
-	maxExpandedBytes := expandedCompactionByteSizeLimit(opts, pc.adjustedOutputLevel, diskAvailBytes)
+	maxExpandedBytes := expandedCompactionByteSizeLimit(
+		opts, pc.adjustedOutputLevel, diskAvailBytes,
+	)
 
 	// Expand the initial inputs to a clean cut.
 	var isCompacting bool
