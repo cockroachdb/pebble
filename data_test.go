@@ -160,6 +160,10 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			}
 			iter.SetOptions(&opts)
 			valid = iter.Valid()
+		case "stats":
+			stats := iter.Stats()
+			fmt.Fprintf(&b, "stats: %s\n", stats.String())
+			continue
 		case "clone":
 			var opts CloneOptions
 			if len(parts) > 1 {

@@ -1,0 +1,36 @@
+build ext1
+merge a 1
+set c 2
+----
+
+ingest ext1
+----
+6:
+  000004:[a#1,MERGE-c#1,SET]
+
+iter
+first
+next
+next
+stats
+----
+a:1
+c:2
+.
+stats: (interface (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)),
+(internal-stats: (block-bytes: (total 34 B, cached 34 B)), (points: (count 2, key-bytes 2, value-bytes 2, tombstoned: 0))
+
+# Perform the same operation again with a new iterator. It should yield
+# identical statistics.
+
+iter
+first
+next
+next
+stats
+----
+a:1
+c:2
+.
+stats: (interface (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)),
+(internal-stats: (block-bytes: (total 34 B, cached 34 B)), (points: (count 2, key-bytes 2, value-bytes 2, tombstoned: 0))
