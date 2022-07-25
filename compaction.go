@@ -47,7 +47,7 @@ func expandedCompactionByteSizeLimit(opts *Options, level int, availBytes uint64
 	// compactions to half of available disk space. Note that this will not
 	// prevent compaction picking from pursuing compactions that are larger
 	// than this threshold before expansion.
-	diskMax := (availBytes / 2) / uint64(opts.MaxConcurrentCompactions)
+	diskMax := (availBytes / 2) / uint64(opts.MaxConcurrentCompactions())
 	if v > diskMax {
 		v = diskMax
 	}
@@ -1683,7 +1683,8 @@ func (d *DB) maybeScheduleCompactionPicker(
 	if d.closed.Load() != nil || d.opts.ReadOnly {
 		return
 	}
-	if d.mu.compact.compactingCount >= d.opts.MaxConcurrentCompactions {
+	maxConcurrentCompactions := d.opts.MaxConcurrentCompactions()
+	if d.mu.compact.compactingCount >= int(maxConcurrentCompactions) {
 		if len(d.mu.compact.manual) > 0 {
 			// Inability to run head blocks later manual compactions.
 			d.mu.compact.manual[0].retries++
@@ -1712,7 +1713,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 	// Check for delete-only compactions first, because they're expected to be
 	// cheap and reduce future compaction work.
 	if len(d.mu.compact.deletionHints) > 0 &&
-		d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions &&
+		d.mu.compact.compactingCount < int(maxConcurrentCompactions) &&
 		!d.opts.DisableAutomaticCompactions {
 		v := d.mu.versions.currentVersion()
 		snapshots := d.mu.snapshots.toSlice()
@@ -1727,7 +1728,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 		}
 	}
 
-	for len(d.mu.compact.manual) > 0 && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
+	for len(d.mu.compact.manual) > 0 && d.mu.compact.compactingCount < int(maxConcurrentCompactions) {
 		manual := d.mu.compact.manual[0]
 		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
 		pc, retryLater := d.mu.versions.picker.pickManual(env, manual)
@@ -1748,7 +1749,7 @@ func (d *DB) maybeScheduleCompactionPicker(
 		}
 	}
 
-	for !d.opts.DisableAutomaticCompactions && d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions {
+	for !d.opts.DisableAutomaticCompactions && d.mu.compact.compactingCount < int(maxConcurrentCompactions) {
 		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
 		env.readCompactionEnv = readCompactionEnv{
 			readCompactions:          &d.mu.compact.readCompactions,
