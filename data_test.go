@@ -151,6 +151,10 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			}
 			iter.SetBounds(lower, upper)
 			valid = iter.Valid()
+		case "stats":
+			stats := iter.Stats()
+			fmt.Fprintf(&b, "stats: %s\n", stats.String())
+			continue
 		case "clone":
 			clonedIter, err := iter.Clone()
 			if err != nil {
