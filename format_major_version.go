@@ -87,11 +87,16 @@ const (
 	FormatMarkedCompacted
 	// FormatRangeKeys is a format major version that introduces range keys.
 	FormatRangeKeys
+	// FormatMinTableFormatPebblev1 is a format major version that guarantees that
+	// tables created by or ingested into the DB at or above this format major
+	// version will have a table format version of at least Pebblev1 (Block
+	// Properties).
+	FormatMinTableFormatPebblev1
 	// FormatNewest always contains the most recent format major version.
 	// NB: When adding new versions, the MaxTableFormat method should also be
 	// updated to return the maximum allowable version for the new
 	// FormatMajorVersion.
-	FormatNewest FormatMajorVersion = FormatRangeKeys
+	FormatNewest FormatMajorVersion = FormatMinTableFormatPebblev1
 )
 
 // MaxTableFormat returns the maximum sstable.TableFormat that can be used at
@@ -103,7 +108,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatRocksDBv2
 	case FormatBlockPropertyCollector, FormatSplitUserKeysMarked, FormatMarkedCompacted:
 		return sstable.TableFormatPebblev1
-	case FormatRangeKeys:
+	case FormatRangeKeys, FormatMinTableFormatPebblev1:
 		return sstable.TableFormatPebblev2
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -118,6 +123,8 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 		FormatVersioned, FormatSetWithDelete, FormatBlockPropertyCollector,
 		FormatSplitUserKeysMarked, FormatMarkedCompacted, FormatRangeKeys:
 		return sstable.TableFormatLevelDB
+	case FormatMinTableFormatPebblev1:
+		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
 	}
@@ -218,6 +225,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatRangeKeys: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatRangeKeys)
+	},
+	FormatMinTableFormatPebblev1: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatMinTableFormatPebblev1)
 	},
 }
 
