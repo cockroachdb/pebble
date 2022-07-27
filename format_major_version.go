@@ -110,6 +110,19 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 	}
 }
 
+// MinTableFormat returns the minimum sstable.TableFormat that can be used at
+// this FormatMajorVersion.
+func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
+	switch v {
+	case FormatDefault, FormatMostCompatible, formatVersionedManifestMarker,
+		FormatVersioned, FormatSetWithDelete, FormatBlockPropertyCollector,
+		FormatSplitUserKeysMarked, FormatMarkedCompacted, FormatRangeKeys:
+		return sstable.TableFormatLevelDB
+	default:
+		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
+	}
+}
+
 // formatMajorVersionMigrations defines the migrations from one format
 // major version to the next. Each migration is defined as a closure
 // which will be invoked on the database before the new format major

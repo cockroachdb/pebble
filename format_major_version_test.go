@@ -189,27 +189,29 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 	// sanity check that new versions have a corresponding mapping. The test
 	// fixture is intentionally verbose.
 
-	m := map[FormatMajorVersion]sstable.TableFormat{
-		FormatDefault:                 sstable.TableFormatRocksDBv2,
-		FormatMostCompatible:          sstable.TableFormatRocksDBv2,
-		formatVersionedManifestMarker: sstable.TableFormatRocksDBv2,
-		FormatVersioned:               sstable.TableFormatRocksDBv2,
-		FormatSetWithDelete:           sstable.TableFormatRocksDBv2,
-		FormatBlockPropertyCollector:  sstable.TableFormatPebblev1,
-		FormatSplitUserKeysMarked:     sstable.TableFormatPebblev1,
-		FormatMarkedCompacted:         sstable.TableFormatPebblev1,
-		FormatRangeKeys:               sstable.TableFormatPebblev2,
+	m := map[FormatMajorVersion][2]sstable.TableFormat{
+		FormatDefault:                 {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatMostCompatible:          {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		formatVersionedManifestMarker: {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatVersioned:               {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatSetWithDelete:           {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatBlockPropertyCollector:  {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
+		FormatSplitUserKeysMarked:     {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
+		FormatMarkedCompacted:         {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
+		FormatRangeKeys:               {sstable.TableFormatLevelDB, sstable.TableFormatPebblev2},
 	}
 
 	// Valid versions.
 	for fmv := FormatMostCompatible; fmv <= FormatNewest; fmv++ {
-		f := fmv.MaxTableFormat()
-		require.Equalf(t, m[fmv], f, "got %s; want %s", f, m[fmv])
+		got := [2]sstable.TableFormat{fmv.MinTableFormat(), fmv.MaxTableFormat()}
+		require.Equalf(t, m[fmv], got, "got %s; want %s", got, m[fmv])
+		require.True(t, got[0] <= got[1] /* min <= max */)
 	}
 
 	// Invalid versions.
 	fmv := FormatNewest + 1
 	require.Panics(t, func() { _ = fmv.MaxTableFormat() })
+	require.Panics(t, func() { _ = fmv.MinTableFormat() })
 }
 
 func TestSplitUserKeyMigration(t *testing.T) {

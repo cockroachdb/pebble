@@ -69,10 +69,10 @@ func ingestLoad1(
 	if err != nil {
 		return nil, err
 	}
-	if tf > fmv.MaxTableFormat() {
+	if tf < fmv.MinTableFormat() || tf > fmv.MaxTableFormat() {
 		return nil, errors.Newf(
-			"pebble: table with format %s unsupported at DB format major version %d, %s",
-			tf, fmv, fmv.MaxTableFormat(),
+			"pebble: table format %s is not within range supported at DB format major version %d, (%s,%s)",
+			tf, fmv, fmv.MinTableFormat(), fmv.MaxTableFormat(),
 		)
 	}
 
