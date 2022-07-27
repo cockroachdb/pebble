@@ -83,10 +83,7 @@ func rewriteKeySuffixesInBlocks(
 
 	// Copy over the filter block if it exists (rewriteDataBlocksToWriter will
 	// already have ensured this is valid if it exists).
-	if w.filter != nil {
-		if l.Filter.Length == 0 {
-			return nil, errors.New("input table has no filter")
-		}
+	if w.filter != nil && l.Filter.Length > 0 {
 		filterBlock, _, err := readBlockBuf(r, l.Filter, nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "reading filter")
@@ -213,6 +210,10 @@ func rewriteDataBlocksToWriter(
 	split Split,
 	concurrency int,
 ) error {
+	if r.Properties.NumEntries == 0 {
+		// No point keys.
+		return nil
+	}
 	blocks := make([]blockWithSpan, len(data))
 
 	if w.filter != nil {
@@ -321,8 +322,8 @@ func rewriteDataBlocksToWriter(
 	w.props.NumEntries = r.Properties.NumEntries
 	w.props.RawKeySize = r.Properties.RawKeySize
 	w.props.RawValueSize = r.Properties.RawValueSize
-	w.meta.SmallestPoint, w.meta.LargestPoint = blocks[0].start, blocks[len(blocks)-1].end
-	w.meta.HasPointKeys = true
+	w.meta.SetSmallestPointKey(blocks[0].start)
+	w.meta.SetLargestPointKey(blocks[len(blocks)-1].end)
 	return nil
 }
 

@@ -48,6 +48,7 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 			require.NoError(t, r.Close())
 		}
 	}()
+	formatVersion := TableFormatMax
 
 	format := func(m *WriterMetadata) string {
 		var b bytes.Buffer
@@ -74,7 +75,7 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 			var meta *WriterMetadata
 			var err error
 			meta, r, err = runBuildCmd(td, &WriterOptions{
-				TableFormat: TableFormatMax,
+				TableFormat: formatVersion,
 				Parallelism: parallelism,
 			}, 0)
 			if err != nil {
@@ -90,7 +91,7 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 			var meta *WriterMetadata
 			var err error
 			meta, r, err = runBuildRawCmd(td, &WriterOptions{
-				TableFormat: TableFormatMax,
+				TableFormat: formatVersion,
 			})
 			if err != nil {
 				return err.Error()
@@ -175,7 +176,9 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 		case "rewrite":
 			var meta *WriterMetadata
 			var err error
-			meta, r, err = runRewriteCmd(td, r, WriterOptions{})
+			meta, r, err = runRewriteCmd(td, r, WriterOptions{
+				TableFormat: formatVersion,
+			})
 			if err != nil {
 				return err.Error()
 			}

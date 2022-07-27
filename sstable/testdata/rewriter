@@ -208,3 +208,30 @@ c_123
 b
 get f_123: pebble: not found
 c
+
+# Rewrite a table that contain only range keys.
+
+build block-size=1 index-block-size=1 filter comparer-split-4b-suffix
+rangekey: a-b:{(#1,RANGEKEYSET,_xyz)}
+rangekey: b-c:{(#1,RANGEKEYSET,_xyz)}
+rangekey: c-d:{(#1,RANGEKEYSET,_xyz)}
+----
+rangekey: [a#1,21-d#72057594037927935,21]
+seqnums:  [1-1]
+
+scan-range-key
+----
+a-b:{(#1,RANGEKEYSET,_xyz)}
+b-c:{(#1,RANGEKEYSET,_xyz)}
+c-d:{(#1,RANGEKEYSET,_xyz)}
+
+rewrite from=_xyz to=_123 block-size=1 index-block-size=1 filter comparer-split-4b-suffix
+----
+rangekey: [a#1,21-d#72057594037927935,21]
+seqnums:  [1-1]
+
+scan-range-key
+----
+a-b:{(#1,RANGEKEYSET,_123)}
+b-c:{(#1,RANGEKEYSET,_123)}
+c-d:{(#1,RANGEKEYSET,_123)}
