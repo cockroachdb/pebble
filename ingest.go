@@ -37,17 +37,7 @@ func ingestValidateKey(opts *Options, key *InternalKey, isShared bool) error {
 		return base.CorruptionErrorf("pebble: external sstable has corrupted key: %s",
 			key.Pretty(opts.Comparer.FormatKey))
 	}
-	// Default case: current db has no shared fs
-	expectedSeqNum := uint64(0)
-	// If the current DB has shared fs
-	if opts.SharedFS != nil {
-		// Imported sst is local
-		if !isShared {
-			expectedSeqNum = sstable.SeqNumZero
-		}
-		// Note: if the imported sst is shared, we expect 0 which is sstable.seqNumL6All
-	}
-	if key.SeqNum() != expectedSeqNum {
+	if key.SeqNum() != 0 {
 		return base.CorruptionErrorf("pebble: external sstable has non-zero seqnum: %s",
 			key.Pretty(opts.Comparer.FormatKey))
 	}
@@ -529,6 +519,7 @@ func overlapWithIterator(
 }
 
 func ingestTargetLevel(
+	d *DB,
 	newIters tableNewIters,
 	iterOps IterOptions,
 	cmp Compare,
@@ -598,36 +589,44 @@ func ingestTargetLevel(
 	targetLevel := 0
 
 	// Do we overlap with keys in L0?
-	iter := v.Levels[0].Iter()
-	for meta0 := iter.First(); meta0 != nil; meta0 = iter.Next() {
-		c1 := sstableKeyCompare(cmp, meta.Smallest, meta0.Largest)
-		c2 := sstableKeyCompare(cmp, meta.Largest, meta0.Smallest)
-		if c1 > 0 || c2 < 0 {
-			continue
-		}
-
-		iter, rangeDelIter, err := newIters(iter.Current(), nil, internalIterOpts{})
-		if err != nil {
-			return 0, err
-		}
-		overlap := overlapWithIterator(iter, &rangeDelIter, meta, cmp)
-		iter.Close()
-		if rangeDelIter != nil {
-			rangeDelIter.Close()
-		}
-		if overlap {
-			if meta.IsShared {
-				panic("ingestTargetLevel: shared sst has overlaps with L0 which is not allowed")
+	// Note(chen): only non-shared ssts need to go through this path
+	if !meta.IsShared {
+		iter := v.Levels[0].Iter()
+		for meta0 := iter.First(); meta0 != nil; meta0 = iter.Next() {
+			c1 := sstableKeyCompare(cmp, meta.Smallest, meta0.Largest)
+			c2 := sstableKeyCompare(cmp, meta.Largest, meta0.Smallest)
+			if c1 > 0 || c2 < 0 {
+				continue
 			}
-			return targetLevel, nil
+
+			iter, rangeDelIter, err := newIters(iter.Current(), nil, internalIterOpts{})
+			if err != nil {
+				return 0, err
+			}
+			overlap := overlapWithIterator(iter, &rangeDelIter, meta, cmp)
+			iter.Close()
+			if rangeDelIter != nil {
+				rangeDelIter.Close()
+			}
+			if overlap {
+				return targetLevel, nil
+			}
 		}
 	}
 
 	level := baseLevel
-	if meta.IsShared {
-		level = 5
+	lowest := numLevels
+
+	if d.opts.SharedFS != nil {
+		// Shared SST only ingest into L5/L6
+		if meta.IsShared {
+			level = 5
+		} else {
+			lowest = sharedLevel
+		}
 	}
-	for ; level < numLevels; level++ {
+
+	for ; level < lowest; level++ {
 		levelIter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
 			v.Levels[level].Iter(), manifest.Level(level), nil)
 		var rangeDelIter keyspan.FragmentIterator
@@ -919,6 +918,7 @@ func (d *DB) ingest(
 }
 
 type ingestTargetLevelFunc func(
+	d *DB,
 	newIters tableNewIters,
 	iterOps IterOptions,
 	cmp Compare,
@@ -956,7 +956,7 @@ func (d *DB) ingestApply(
 		m := meta[i]
 		f := &ve.NewFiles[i]
 		var err error
-		f.Level, err = findTargetLevel(d.newIters, iterOps, d.cmp, current, baseLevel, d.mu.compact.inProgress, m)
+		f.Level, err = findTargetLevel(d, d.newIters, iterOps, d.cmp, current, baseLevel, d.mu.compact.inProgress, m)
 		if err != nil {
 			d.mu.versions.logUnlock()
 			return nil, err

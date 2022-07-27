@@ -113,9 +113,9 @@ func (i *tableIterator) getCurrUserKey() InternalKey {
 	var k InternalKey
 	switch i.Iterator.(type) {
 	case *twoLevelIterator:
-		k = i.Iterator.(*twoLevelIterator).data.ikey
+		k = i.Iterator.(*twoLevelIterator).data.ikey.Clone()
 	case *singleLevelIterator:
-		k = i.Iterator.(*singleLevelIterator).data.ikey
+		k = i.Iterator.(*singleLevelIterator).data.ikey.Clone()
 	default:
 		panic("tableIterator: i.Iterator is not singleLevelIterator or twoLevelIterator")
 	}

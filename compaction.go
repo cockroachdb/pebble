@@ -3264,10 +3264,10 @@ func init() {
 	// it can access all the data in the table
 	setSharedSSTMetadata = func(meta *manifest.FileMetadata, creatorUniqueID uint32) {
 		// The output sst is shared so update its boundaries
-		meta.FileSmallest, meta.FileLargest = meta.Smallest, meta.Largest
+		meta.FileSmallest, meta.FileLargest = meta.Smallest.Clone(), meta.Largest.Clone()
 
 		// assign virtual boundaries for all boundary properties
-		lb, ub := meta.Smallest, meta.Largest
+		lb, ub := meta.Smallest.Clone(), meta.Largest.Clone()
 		meta.Smallest, meta.Largest = lb, ub
 		meta.SmallestPointKey, meta.LargestPointKey = lb, ub
 

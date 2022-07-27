@@ -1010,6 +1010,7 @@ func runForceIngestCmd(td *datadriven.TestData, d *DB) error {
 		}
 	}
 	_, err := d.ingest(paths, nil, func(
+		*DB,
 		tableNewIters,
 		IterOptions,
 		Compare,

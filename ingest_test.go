@@ -559,7 +559,7 @@ func TestIngestTargetLevel(t *testing.T) {
 			var buf bytes.Buffer
 			for _, target := range strings.Split(td.Input, "\n") {
 				meta := parseMeta(target)
-				level, err := ingestTargetLevel(d.newIters, IterOptions{logger: d.opts.Logger},
+				level, err := ingestTargetLevel(d, d.newIters, IterOptions{logger: d.opts.Logger},
 					d.cmp, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, meta)
 				if err != nil {
 					return err.Error()

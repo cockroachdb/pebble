@@ -6,7 +6,7 @@ set c 2
 ingest ext1
 ----
 6:
-  000004:[a#1,MERGE-c#1,SET]
+  000004:[a#4,MERGE-c#4,SET]
 
 iter
 first
