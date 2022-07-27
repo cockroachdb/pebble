@@ -108,6 +108,7 @@ func TestIngestLoadRand(t *testing.T) {
 	mem := vfs.NewMem()
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	cmp := DefaultComparer.Compare
+	version := FormatNewest
 
 	randBytes := func(size int) []byte {
 		data := make([]byte, size)
@@ -147,7 +148,9 @@ func TestIngestLoadRand(t *testing.T) {
 
 			expected[i].ExtendPointKeyBounds(cmp, keys[0], keys[len(keys)-1])
 
-			w := sstable.NewWriter(f, sstable.WriterOptions{})
+			w := sstable.NewWriter(f, sstable.WriterOptions{
+				TableFormat: version.MaxTableFormat(),
+			})
 			var count uint64
 			for i := range keys {
 				if i > 0 && base.InternalCompare(cmp, keys[i-1], keys[i]) == 0 {
@@ -171,7 +174,7 @@ func TestIngestLoadRand(t *testing.T) {
 		Comparer: DefaultComparer,
 		FS:       mem,
 	}
-	meta, _, err := ingestLoad(opts, FormatNewest, paths, 0, pending)
+	meta, _, err := ingestLoad(opts, version, paths, 0, pending)
 	require.NoError(t, err)
 
 	for _, m := range meta {

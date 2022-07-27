@@ -228,7 +228,9 @@ func TestEventListener(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			w := sstable.NewWriter(f, sstable.WriterOptions{})
+			w := sstable.NewWriter(f, sstable.WriterOptions{
+				TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+			})
 			if err := w.Add(base.MakeInternalKey([]byte("a"), 0, InternalKeyKindSet), nil); err != nil {
 				return err.Error()
 			}

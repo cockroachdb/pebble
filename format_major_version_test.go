@@ -43,6 +43,8 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatBlockPropertyCollector, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatRangeKeys))
 	require.Equal(t, FormatRangeKeys, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatMinTableFormatPebblev1))
+	require.Equal(t, FormatMinTableFormatPebblev1, d.FormatMajorVersion())
 	require.NoError(t, d.Close())
 
 	// If we Open the database again, leaving the default format, the
@@ -199,6 +201,7 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		FormatSplitUserKeysMarked:     {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
 		FormatMarkedCompacted:         {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
 		FormatRangeKeys:               {sstable.TableFormatLevelDB, sstable.TableFormatPebblev2},
+		FormatMinTableFormatPebblev1:  {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
 	}
 
 	// Valid versions.

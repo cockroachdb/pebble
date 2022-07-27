@@ -1075,7 +1075,9 @@ func TestDBConcurrentCompactClose(t *testing.T) {
 			path := fmt.Sprintf("ext%d", j)
 			f, err := mem.Create(path)
 			require.NoError(t, err)
-			w := sstable.NewWriter(f, sstable.WriterOptions{})
+			w := sstable.NewWriter(f, sstable.WriterOptions{
+				TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+			})
 			require.NoError(t, w.Set([]byte(fmt.Sprint(j)), nil))
 			require.NoError(t, w.Close())
 			require.NoError(t, d.Ingest([]string{path}))
