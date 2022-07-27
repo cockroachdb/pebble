@@ -204,12 +204,15 @@ func (m *rangeKeyMasking) init(cmp base.Compare, split base.Split, opts *IterOpt
 // SpanChanged implements the keyspan.SpanMask interface, used during range key
 // iteration.
 func (m *rangeKeyMasking) SpanChanged(s *keyspan.Span) {
+	if s == nil && m.maskSpan == nil {
+		return
+	}
 	m.maskSpan = nil
 	m.maskActiveSuffix = m.maskActiveSuffix[:0]
 
 	// Find the smallest suffix of a range key contained within the Span,
 	// excluding suffixes less than m.opts.RangeKeyMasking.Suffix.
-	if s != nil && m.opts.RangeKeyMasking.Suffix != nil && !s.Empty() {
+	if s != nil && m.opts.RangeKeyMasking.Suffix != nil {
 		for j := range s.Keys {
 			if s.Keys[j].Suffix == nil {
 				continue
