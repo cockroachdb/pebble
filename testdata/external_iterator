@@ -56,10 +56,10 @@ next
 next
 next
 ----
-a: (a, [a-b) @2=foo)
-b: (b, .)
-d: (., [d-e) @3=bar)
-f: (f, .)
+a: (a, [a-b) @2=foo UPDATED)
+b: (b, . UPDATED)
+d: (., [d-e) @3=bar UPDATED)
+f: (f, . UPDATED)
 .
 
 # Test including range keys with empty spans and a merge in between. At no point
@@ -78,7 +78,7 @@ next
 bb: (ac, .)
 b: (b, .)
 bb: (ac, .)
-d: (., [d-e) @3=bar)
+d: (., [d-e) @3=bar UPDATED)
 
 iter files=(6, 5, 4, 3, 2, 1)
 seek-ge b
@@ -92,10 +92,10 @@ next
 b: (b, .)
 bb: (ac, .)
 b: (b, .)
-a: (a, [a-b) @2=foo)
-b: (b, .)
+a: (a, [a-b) @2=foo UPDATED)
+b: (b, . UPDATED)
 bb: (ac, .)
-d: (., [d-e) @3=bar)
+d: (., [d-e) @3=bar UPDATED)
 
 # Test range keys that overlap each other with identical state. These
 # should be defragmented and exposed as a single range key.
@@ -115,7 +115,7 @@ iter files=(ag, ek)
 first
 next
 ----
-a: (., [a-k) @5=foo)
+a: (., [a-k) @5=foo UPDATED)
 .
 
 # Test range-key masking by creating points, some with suffixes above
@@ -139,10 +139,10 @@ next
 next
 next
 ----
-a: (., [a-k) @5=foo)
+a: (., [a-k) @5=foo UPDATED)
 d@9: (v, [a-k) @5=foo)
 e@5: (v, [a-k) @5=foo)
-k@3: (v, .)
+k@3: (v, . UPDATED)
 p@4: (v, .)
 .
 
@@ -158,7 +158,7 @@ iter files=(points, ag, ek, stacked)
 first
 next
 ----
-a: (., [a-k) @5=foo, @4=bar, @1=bax)
+a: (., [a-k) @5=foo, @4=bar, @1=bax UPDATED)
 a@4: (v, [a-k) @5=foo, @4=bar, @1=bax)
 
 # Test mutating the external iterator's options through SetOptions.

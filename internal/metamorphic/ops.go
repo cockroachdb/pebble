@@ -774,6 +774,9 @@ func iteratorPos(i *retryableIter) string {
 	} else {
 		fmt.Fprint(&buf, ",<no range>")
 	}
+	if i.RangeKeyChanged() {
+		fmt.Fprint(&buf, "*")
+	}
 	return buf.String()
 }
 

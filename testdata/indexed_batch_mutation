@@ -97,7 +97,7 @@ next
 next
 ----
 .
-a: (., [a-c) @1=boop)
+a: (., [a-c) @1=boop UPDATED)
 b: (b, [a-c) @1=boop)
 bar: (bar, [a-c) @1=boop)
 
@@ -115,7 +115,7 @@ prev
 prev
 ----
 .
-bar: (bar, [a-c) @1=boop)
+bar: (bar, [a-c) @1=boop UPDATED)
 b: (b, [a-c) @1=boop)
 a: (., [a-c) @1=boop)
 .
@@ -128,8 +128,8 @@ next
 next
 ----
 .
-a: (., [a-ace) @1=boop)
-arc: (., [arc-c) @1=boop)
+a: (., [a-ace) @1=boop UPDATED)
+arc: (., [arc-c) @1=boop UPDATED)
 b: (b, [arc-c) @1=boop)
 bar: (bar, [arc-c) @1=boop)
 
@@ -193,7 +193,7 @@ next
 foo: (foo, .)
 .
 .
-a: (., [a-z) @1=boop)
+a: (., [a-z) @1=boop UPDATED)
 bar: (bar, [a-z) @1=boop)
 .
 
@@ -206,7 +206,7 @@ iter iter=i3
 first
 next
 ----
-a: (., [a-z) @1=boop)
+a: (., [a-z) @1=boop UPDATED)
 bar: (bar, [a-z) @1=boop)
 
 # i1 should still have the old, stale view of the batch.
@@ -239,7 +239,7 @@ next
 foo: (foo, .)
 .
 .
-a: (., [a-z) @2=bax, @1=boop)
+a: (., [a-z) @2=bax, @1=boop UPDATED)
 foo: (foo, [a-z) @2=bax, @1=boop)
 .
 
@@ -252,11 +252,11 @@ first
 next
 next
 ----
-a: (., [a-z) @1=boop)
+a: (., [a-z) @1=boop UPDATED)
 bar: (bar, [a-z) @1=boop)
 .
 .
-a: (., [a-z) @2=bax, @1=boop)
+a: (., [a-z) @2=bax, @1=boop UPDATED)
 foo: (foo, [a-z) @2=bax, @1=boop)
 .
 
@@ -273,7 +273,7 @@ first
 next
 next
 ----
-a: (., [a-z) @2=bax, @1=boop)
+a: (., [a-z) @2=bax, @1=boop UPDATED)
 foo: (foo, [a-z) @2=bax, @1=boop)
 .
 
@@ -287,7 +287,7 @@ first
 next
 next
 ----
-a: (., [a-z) @2=bax, @1=boop)
+a: (., [a-z) @2=bax, @1=boop UPDATED)
 foo: (foo, [a-z) @2=bax, @1=boop)
 .
 
@@ -301,7 +301,7 @@ next
 next
 ----
 .
-a: (., [a-z) @2=bax, @1=boop)
+a: (., [a-z) @2=bax, @1=boop UPDATED)
 foo: (foo, [a-z) @2=bax, @1=boop)
 .
 
@@ -317,7 +317,7 @@ next
 next
 next
 ----
-a: (., [a-z) @5=poi, @2=bax, @1=boop)
+a: (., [a-z) @5=poi, @2=bax, @1=boop UPDATED)
 apple: (apple, [a-z) @5=poi, @2=bax, @1=boop)
 foo: (foo, [a-z) @5=poi, @2=bax, @1=boop)
 .
@@ -337,7 +337,7 @@ first
 next
 next
 ----
-a: (., [a-z) @2=bax, @1=boop)
+a: (., [a-z) @2=bax, @1=boop UPDATED)
 foo: (foo, [a-z) @2=bax, @1=boop)
 .
 
@@ -350,11 +350,11 @@ first
 next
 next
 ----
-a: (., [a-z) @2=bax, @1=boop)
+a: (., [a-z) @2=bax, @1=boop UPDATED)
 foo: (foo, [a-z) @2=bax, @1=boop)
 .
 .
-a: (., [a-z) @6=yaya, @2=bax, @1=boop)
+a: (., [a-z) @6=yaya, @2=bax, @1=boop UPDATED)
 c: (c, [a-z) @6=yaya, @2=bax, @1=boop)
 foo: (foo, [a-z) @6=yaya, @2=bax, @1=boop)
 
@@ -399,7 +399,7 @@ iter iter=i2
 first
 next
 ----
-a: (., [a-z) @1=foo)
+a: (., [a-z) @1=foo UPDATED)
 .
 
 # Clone the original iterator from before the delete range and the range key
@@ -435,9 +435,9 @@ first
 next
 next
 ----
-a: (., [a-b) @1=poi)
-b: (., [b-c) @2=yaya, @1=poi)
-c: (., [c-d) @2=yaya)
+a: (., [a-b) @1=poi UPDATED)
+b: (., [b-c) @2=yaya, @1=poi UPDATED)
+c: (., [c-d) @2=yaya UPDATED)
 
 # Add a new range key to the batch. The batch contains 3 internal range keys,
 # and the skiplist of fragmented range keys contains 3 elements.
@@ -462,15 +462,15 @@ next
 next
 seek-ge bat
 ----
-a: (., [a-b) @1=poi)
-b: (., [b-c) @2=yaya, @1=poi)
-c: (., [c-d) @2=yaya)
+a: (., [a-b) @1=poi UPDATED)
+b: (., [b-c) @2=yaya, @1=poi UPDATED)
+c: (., [c-d) @2=yaya UPDATED)
 .
-a: (., [a-b) @1=poi)
-b: (., [b-c) @2=yaya, @1=poi)
-c: (., [c-d) @2=yaya)
-e: (., [e-f) @3=foo)
-bat: (., [b-c) @2=yaya, @1=poi)
+a: (., [a-b) @1=poi UPDATED)
+b: (., [b-c) @2=yaya, @1=poi UPDATED)
+c: (., [c-d) @2=yaya UPDATED)
+e: (., [e-f) @3=foo UPDATED)
+bat: (., [b-c) @2=yaya, @1=poi UPDATED)
 
 # Mutate the range key under the interleaving iterator's current position in the
 # indexed batch.
@@ -501,4 +501,4 @@ set-options
 seek-ge cat
 ----
 .
-e: (., [e-f) @3=foo)
+e: (., [e-f) @3=foo UPDATED)

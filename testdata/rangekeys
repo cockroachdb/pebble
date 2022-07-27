@@ -25,9 +25,9 @@ next
 next
 ----
 a: (a, .)
-b: (b, [b-c) @5=boop)
-c: (c, .)
-cat: (., [cat-dog) @3=beep)
+b: (b, [b-c) @5=boop UPDATED)
+c: (c, . UPDATED)
+cat: (., [cat-dog) @3=beep UPDATED)
 d: (d, [cat-dog) @3=beep)
 .
 
@@ -44,9 +44,9 @@ next
 next
 ----
 a: (a, .)
-b: (b, [b-c) @5=boop)
-c: (c, .)
-cat: (., [cat-dog) @3=beep)
+b: (b, [b-c) @5=boop UPDATED)
+c: (c, . UPDATED)
+cat: (., [cat-dog) @3=beep UPDATED)
 d: (d, [cat-dog) @3=beep)
 .
 
@@ -60,11 +60,11 @@ prev
 prev
 prev
 ----
-d: (d, [cat-dog) @3=beep)
+d: (d, [cat-dog) @3=beep UPDATED)
 cat: (., [cat-dog) @3=beep)
-c: (c, .)
-b: (b, [b-c) @5=boop)
-a: (a, .)
+c: (c, . UPDATED)
+b: (b, [b-c) @5=boop UPDATED)
+a: (a, . UPDATED)
 .
 
 combined-iter
@@ -77,10 +77,10 @@ seek-ge d
 seek-ge day
 seek-ge dog
 ----
+b: (b, [b-c) @5=boop UPDATED)
 b: (b, [b-c) @5=boop)
-b: (b, [b-c) @5=boop)
-c: (c, .)
-cat: (., [cat-dog) @3=beep)
+c: (c, . UPDATED)
+cat: (., [cat-dog) @3=beep UPDATED)
 cat: (., [cat-dog) @3=beep)
 d: (d, [cat-dog) @3=beep)
 day: (., [cat-dog) @3=beep)
@@ -101,10 +101,10 @@ seek-lt zebra
 .
 a: (a, .)
 a: (a, .)
-b: (b, [b-c) @5=boop)
+b: (b, [b-c) @5=boop UPDATED)
+c: (c, . UPDATED)
 c: (c, .)
-c: (c, .)
-cat: (., [cat-dog) @3=beep)
+cat: (., [cat-dog) @3=beep UPDATED)
 d: (d, [cat-dog) @3=beep)
 d: (d, [cat-dog) @3=beep)
 d: (d, [cat-dog) @3=beep)
@@ -118,18 +118,18 @@ first
 next
 next
 ----
-b [b-c) @5=boop
-cat [cat-dog) @3=beep
+b [b-c) @5=boop UPDATED
+cat [cat-dog) @3=beep UPDATED
 .
 .
-bat [bat-c) @5=boop
-cat [cat-catatonic) @3=beep
+bat [bat-c) @5=boop UPDATED
+cat [cat-catatonic) @3=beep UPDATED
 .
 
 rangekey-iter
 seek-ge bat
 ----
-bat [b-c) @5=boop
+bat [b-c) @5=boop UPDATED
 
 # Delete 'b': The Iterator should still stop at b because of the range key
 # with a start boundary at b.
@@ -143,14 +143,14 @@ combined-iter
 seek-ge b
 seek-ge ace
 ----
-b: (., [b-c) @5=boop)
+b: (., [b-c) @5=boop UPDATED)
 b: (., [b-c) @5=boop)
 
 rangekey-iter
 seek-ge b
 seek-ge ace
 ----
-b [b-c) @5=boop
+b [b-c) @5=boop UPDATED
 b [b-c) @5=boop
 
 # Delete the b-c range key and the beginning of the cat-dog range key,
@@ -169,7 +169,7 @@ seek-ge b
 next
 ----
 c: (c, .)
-d: (d, [d-dog) @3=beep)
+d: (d, [d-dog) @3=beep UPDATED)
 
 commit-batch
 ----
@@ -183,7 +183,7 @@ seek-ge b
 next
 ----
 c: (c, .)
-d: (d, [d-dog) @3=beep)
+d: (d, [d-dog) @3=beep UPDATED)
 
 # Reading through the database after flushing, we should still see the
 # beginning of the cat-dog range key now beginning at 'd'.
@@ -196,7 +196,7 @@ seek-ge b
 next
 ----
 c: (c, .)
-d: (d, [d-dog) @3=beep)
+d: (d, [d-dog) @3=beep UPDATED)
 
 reset
 ----
@@ -223,8 +223,8 @@ prev
 prev
 prev
 ----
-c: (c2, [c-d) @1=boop)
-b: (b2, [ace-c) @3=beep)
+c: (c2, [c-d) @1=boop UPDATED)
+b: (b2, [ace-c) @3=beep UPDATED)
 ace: (., [ace-c) @3=beep)
 .
 
@@ -237,16 +237,16 @@ next
 next
 next
 ----
-ace: (., [ace-c) @3=beep)
+ace: (., [ace-c) @3=beep UPDATED)
 b: (b2, [ace-c) @3=beep)
-c: (c2, [c-d) @1=boop)
+c: (c2, [c-d) @1=boop UPDATED)
 .
 
 combined-iter
 seek-prefix-ge b
 next
 ----
-b: (b2, [ace-c) @3=beep)
+b: (b2, [ace-c) @3=beep UPDATED)
 .
 
 reset
@@ -270,7 +270,7 @@ next
 next
 next
 ----
-a: (., [a-d) @8=boop)
+a: (., [a-d) @8=boop UPDATED)
 a@10: (a@10, [a-d) @8=boop)
 a@9: (a@9, [a-d) @8=boop)
 a@3: (a#3, [a-d) @8=boop)
@@ -287,7 +287,7 @@ next
 next
 next
 ----
-a: (., [a-d) @8=boop)
+a: (., [a-d) @8=boop UPDATED)
 a@10: (a@10, [a-d) @8=boop)
 a@9: (a@9, [a-d) @8=boop)
 .
@@ -310,14 +310,14 @@ next
 next
 next
 ----
-a: (., [a-d) @8=boop)
+a: (., [a-d) @8=boop UPDATED)
 a@10: (a@10, [a-d) @8=boop)
 a@9: (a@9, [a-d) @8=boop)
 a@3: (a#3, [a-d) @8=boop)
 a@2: (a@2, [a-d) @8=boop)
 .
 .
-a: (., [a-d) @8=boop)
+a: (., [a-d) @8=boop UPDATED)
 a@10: (a@10, [a-d) @8=boop)
 a@9: (a@9, [a-d) @8=boop)
 .
@@ -356,12 +356,12 @@ next
 az@100: (az@100, .)
 az@10: (az@10, .)
 az@1: (az@1, .)
-b: (., [b-c) @5=beep)
+b: (., [b-c) @5=beep UPDATED)
 b@100: (b@100, [b-c) @5=beep)
 b@10: (b@10, [b-c) @5=beep)
 bz@10: (bz@10, [b-c) @5=beep)
 bz@1: (bz@1, [b-c) @5=beep)
-c@100: (c@100, .)
+c@100: (c@100, . UPDATED)
 
 # Perform the same iteration with all range keys serving as masks. The bz@1
 # point key should be elided.
@@ -380,11 +380,11 @@ next
 az@100: (az@100, .)
 az@10: (az@10, .)
 az@1: (az@1, .)
-b: (., [b-c) @5=beep)
+b: (., [b-c) @5=beep UPDATED)
 b@100: (b@100, [b-c) @5=beep)
 b@10: (b@10, [b-c) @5=beep)
 bz@10: (bz@10, [b-c) @5=beep)
-c@100: (c@100, .)
+c@100: (c@100, . UPDATED)
 c@10: (c@10, .)
 
 # Ensure that a cloned iterator includes range keys.
@@ -394,9 +394,9 @@ seek-ge bz@10
 clone
 seek-ge bz@10
 ----
-bz@10: (bz@10, [b-c) @5=beep)
+bz@10: (bz@10, [b-c) @5=beep UPDATED)
 .
-bz@10: (bz@10, [b-c) @5=beep)
+bz@10: (bz@10, [b-c) @5=beep UPDATED)
 
 # Within a batch, later writes overwrite earlier writes. Here, the range-key-del
 # of [bat, bus) overwrites the earlier writes of [b,c) and [b,e).
@@ -428,7 +428,7 @@ seek-prefix-ge ca
 next
 seek-prefix-ge ca@100
 ----
-ca: (., [c-e) @1000=boop, @1=bop)
+ca: (., [c-e) @1000=boop, @1=bop UPDATED)
 ca@100: (ca@100, [c-e) @1000=boop, @1=bop)
 ca@100: (ca@100, [c-e) @1000=boop, @1=bop)
 
@@ -441,9 +441,9 @@ seek-prefix-ge ca
 next
 seek-prefix-ge ca@100
 ----
-ca: (., [c-e) @1000=boop, @1=bop)
+ca: (., [c-e) @1000=boop, @1=bop UPDATED)
 .
-ca@100: (., [c-e) @1000=boop, @1=bop)
+ca@100: (., [c-e) @1000=boop, @1=bop UPDATED)
 
 # Test masked, non-prefixed iteration. We should see the range keys, but all the
 # points should be masked except those beginning with z which were excluded by
@@ -457,9 +457,9 @@ next
 next
 next
 ----
-ca: (., [c-e) @1000=boop, @1=bop)
-e: (., [e-z) @1000=boop)
-z@100: (z@100, .)
+ca: (., [c-e) @1000=boop, @1=bop UPDATED)
+e: (., [e-z) @1000=boop UPDATED)
+z@100: (z@100, . UPDATED)
 z@10: (z@10, .)
 z@1: (z@1, .)
 za@100: (za@100, .)
@@ -477,9 +477,9 @@ last
 next
 prev
 ----
-x: (., [x-z) @5=boop)
+x: (., [x-z) @5=boop UPDATED)
 .
-x: (., [x-z) @5=boop)
+x: (., [x-z) @5=boop UPDATED)
 
 # Test limited reverse iteration. The seek-lt-limit z y must see the [x-z) range
 # key because it covers a key within the range [y, z). The range key start
@@ -490,9 +490,9 @@ seek-lt-limit z y
 next
 prev-limit y
 ----
-x: valid (., [x-z) @5=boop)
+x: valid (., [x-z) @5=boop UPDATED)
 .
-x: valid (., [x-z) @5=boop)
+x: valid (., [x-z) @5=boop UPDATED)
 
 # Test limited forward iteration. Since range keys are interleaved at the start
 # boundaries, the iterator is guaranteed to encounter covering range keys
@@ -503,9 +503,9 @@ seek-ge-limit w y
 prev
 next-limit y
 ----
-x: valid (., [x-z) @5=boop)
+x: valid (., [x-z) @5=boop UPDATED)
 .
-x: valid (., [x-z) @5=boop)
+x: valid (., [x-z) @5=boop UPDATED)
 
 # Test another limited backward iteration case where there exists a deleted
 # point key and the underlying internalIterator is Prev'd to a key beyond the
@@ -521,9 +521,9 @@ seek-lt-limit z y
 next
 prev-limit y
 ----
-x: valid (., [x-z) @5=boop)
+x: valid (., [x-z) @5=boop UPDATED)
 .
-x: valid (., [x-z) @5=boop)
+x: valid (., [x-z) @5=boop UPDATED)
 
 # Applying range keys to a DB running with a version that doesn't support them
 # results in an error. Range keys were added in version 7.
@@ -578,15 +578,15 @@ next
 next
 next
 ----
-b: (b, [b-c) @5=bar)
-c: (c, .)
-cat: (., [cat-e) @3=bax)
+b: (b, [b-c) @5=bar UPDATED)
+c: (c, . UPDATED)
+cat: (., [cat-e) @3=bax UPDATED)
 d: (d, [cat-e) @3=bax)
 .
 .
-b: (b, [b-c) @5=bar)
-c: (c, .)
-cat: (., [cat-e) @3=bax)
+b: (b, [b-c) @5=bar UPDATED)
+c: (c, . UPDATED)
+cat: (., [cat-e) @3=bax UPDATED)
 d: (d, [cat-e) @3=bax)
 .
 
@@ -609,16 +609,16 @@ next
 next
 next
 ----
-b: (b, [b-c) @5=bar)
-c: (c, .)
-cat: (., [cat-e) @3=bax)
+b: (b, [b-c) @5=bar UPDATED)
+c: (c, . UPDATED)
+cat: (., [cat-e) @3=bax UPDATED)
 d: (d, [cat-e) @3=bax)
 .
 .
-a: (a, [a-ap) @6=foo)
-ap: (., [ap-c) @5=bar)
+a: (a, [a-ap) @6=foo UPDATED)
+ap: (., [ap-c) @5=bar UPDATED)
 b: (b, [ap-c) @5=bar)
-c: (c, .)
+c: (c, . UPDATED)
 .
 a:a
 b:b
@@ -644,16 +644,16 @@ next
 next
 next
 ----
-b: (b, [b-c) @5=bar)
-c: (c, .)
-cat: (., [cat-e) @3=bax)
+b: (b, [b-c) @5=bar UPDATED)
+c: (c, . UPDATED)
+cat: (., [cat-e) @3=bax UPDATED)
 d: (d, [cat-e) @3=bax)
 .
 .
-a: (a, [a-ap) @6=foo)
-ap: (., [ap-c) @5=bar)
+a: (a, [a-ap) @6=foo UPDATED)
+ap: (., [ap-c) @5=bar UPDATED)
 b: (b, [ap-c) @5=bar)
-c: (c, .)
+c: (c, . UPDATED)
 .
 a:a
 b:b
@@ -683,9 +683,9 @@ prev
 seek-ge c
 prev
 ----
-b: (., [b-e) @1=foo)
-a: (a, .)
-c: (., [b-e) @1=foo)
+b: (., [b-e) @1=foo UPDATED)
+a: (a, . UPDATED)
+c: (., [b-e) @1=foo UPDATED)
 b: (., [b-e) @1=foo)
 
 # Test a case during limited reverse iteration where a range key covers a
@@ -709,7 +709,7 @@ seek-ge z
 prev-limit c
 ----
 .
-a: valid (., [a-d) @1=foo)
+a: valid (., [a-d) @1=foo UPDATED)
 
 # Test a case during limited reverse iteration where there exists a range key
 # but it ends before the limit. The iterator should pause.
@@ -785,8 +785,8 @@ combined-iter
 first
 next
 ----
-bax: (., [bax-foo) @1=foo)
-foo: (., [foo-zoo) @2=bar, @1=foo)
+bax: (., [bax-foo) @1=foo UPDATED)
+foo: (., [foo-zoo) @2=bar, @1=foo UPDATED)
 
 # Test seeking into the middle of a range key during lazy-combined iteration.
 # The iterator should surface Key() = the seek key.
@@ -794,12 +794,12 @@ foo: (., [foo-zoo) @2=bar, @1=foo)
 combined-iter
 seek-ge bop
 ----
-bop: (., [bax-foo) @1=foo)
+bop: (., [bax-foo) @1=foo UPDATED)
 
 combined-iter
 last
 ----
-foo: (., [foo-zoo) @2=bar, @1=foo)
+foo: (., [foo-zoo) @2=bar, @1=foo UPDATED)
 
 
 # Test a lazy combined iterator that must next/prev through fileMetdata when
@@ -869,15 +869,15 @@ combined-iter
 seek-ge k
 next
 ----
-l: (., [l-m) @1=foo)
-z: (z, .)
+l: (., [l-m) @1=foo UPDATED)
+z: (z, . UPDATED)
 
 combined-iter
 seek-lt k
 prev
 ----
-d: (., [d-e) @1=foo)
-a: (a, .)
+d: (., [d-e) @1=foo UPDATED)
+a: (a, . UPDATED)
 
 # Test a range key masking case where the range key is not immediately
 # masking point keys, but masks point keys once positioned beneath it.
@@ -901,7 +901,7 @@ next
 ----
 a@1: (a1, .)
 b@3: (b3, .)
-d: (., [d-e) @5=boop)
+d: (., [d-e) @5=boop UPDATED)
 .
 
 # Try a broad range key that masks all the point keys.
@@ -947,7 +947,7 @@ first
 next
 stats
 ----
-a: (., [a-z) @5=boop)
+a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
 (internal-stats: (block-bytes: (total 625 B, cached 0 B)), (points: (count 25, key-bytes 75, value-bytes 75, tombstoned: 0))
@@ -961,7 +961,7 @@ first
 next
 stats
 ----
-a: (., [a-z) @5=boop)
+a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
 (internal-stats: (block-bytes: (total 50 B, cached 50 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
@@ -973,7 +973,7 @@ last
 prev
 stats
 ----
-a: (., [a-z) @5=boop)
+a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
 (internal-stats: (block-bytes: (total 625 B, cached 625 B)), (points: (count 25, key-bytes 75, value-bytes 75, tombstoned: 0))
@@ -983,7 +983,7 @@ last
 prev
 stats
 ----
-a: (., [a-z) @5=boop)
+a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
 (internal-stats: (block-bytes: (total 50 B, cached 50 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
@@ -995,7 +995,7 @@ seek-ge m
 next
 stats
 ----
-m: (., [a-z) @5=boop)
+m: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
 (internal-stats: (block-bytes: (total 325 B, cached 325 B)), (points: (count 13, key-bytes 39, value-bytes 39, tombstoned: 0))
@@ -1005,7 +1005,7 @@ seek-ge m
 next
 stats
 ----
-m: (., [a-z) @5=boop)
+m: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
 (internal-stats: (block-bytes: (total 50 B, cached 50 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
@@ -1015,7 +1015,7 @@ seek-lt m
 prev
 stats
 ----
-a: (., [a-z) @5=boop)
+a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
 (internal-stats: (block-bytes: (total 325 B, cached 325 B)), (points: (count 12, key-bytes 36, value-bytes 36, tombstoned: 0))
@@ -1025,7 +1025,7 @@ seek-lt m
 prev
 stats
 ----
-a: (., [a-z) @5=boop)
+a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
 (internal-stats: (block-bytes: (total 75 B, cached 75 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
@@ -1046,7 +1046,7 @@ combined-iter
 seek-ge a
 seek-ge b
 ----
-a: (., [a-c) @5=boop)
+a: (., [a-c) @5=boop UPDATED)
 b: (., [a-c) @5=boop)
 
 # Test a few cases around when a combined iterator should be lazy or not.
@@ -1103,7 +1103,7 @@ is-using-combined
 using combined (non-lazy) iterator
 a: (a, .)
 using combined (non-lazy) iterator
-n: (., [m-z) @5=foo)
+n: (., [m-z) @5=foo UPDATED)
 using combined (non-lazy) iterator
 
 flush
@@ -1122,5 +1122,5 @@ is-using-combined
 using lazy iterator
 a: (a, .)
 using lazy iterator
-n: (., [m-z) @5=foo)
+n: (., [m-z) @5=foo UPDATED)
 using combined (non-lazy) iterator
