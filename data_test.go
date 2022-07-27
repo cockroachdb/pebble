@@ -318,6 +318,9 @@ func printIterState(
 			} else {
 				fmt.Fprint(b, ".")
 			}
+			if iter.RangeKeyChanged() {
+				fmt.Fprint(b, " UPDATED")
+			}
 			fmt.Fprint(b, ")")
 		case iter.opts.rangeKeys():
 			if iter.Valid() {
@@ -330,6 +333,9 @@ func printIterState(
 				writeRangeKeys(b, iter)
 			} else {
 				fmt.Fprint(b, ".")
+			}
+			if iter.RangeKeyChanged() {
+				fmt.Fprint(b, " UPDATED")
 			}
 		default:
 			fmt.Fprintf(b, "%s:%s%s", iter.Key(), iter.Value(), validityStateStr)
