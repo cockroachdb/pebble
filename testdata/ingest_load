@@ -93,7 +93,7 @@ a.RANGEDEL.0:b
 load writer-version=8 db-version=7
 a.SET.1:
 ----
-pebble: table with format (Pebble,v2) unsupported at DB format major version 7, (Pebble,v1)
+pebble: table format (Pebble,v2) is not within range supported at DB format major version 7, ((LevelDB),(Pebble,v1))
 
 # Tables with range keys only.
 
