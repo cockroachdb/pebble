@@ -143,7 +143,7 @@ func finishInitializingExternal(it *Iterator) {
 	it.iter = it.pointIter
 
 	if it.opts.rangeKeys() {
-		it.rangeKeyMasking.init(it.cmp, it.split, &it.opts)
+		it.rangeKeyMasking.init(it, it.cmp, it.split)
 		if it.rangeKey == nil {
 			it.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 			it.rangeKey.init(it.cmp, it.split, &it.opts)

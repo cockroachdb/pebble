@@ -96,6 +96,17 @@ func (i *retryableIter) Key() []byte {
 	return i.iter.Key()
 }
 
+func (i *retryableIter) RangeKeyChanged() bool {
+	// A single operation on the retryableIter may result in many operations on
+	// i.iter if we need to skip filtered keys. To provide determinism, we
+	// return RangeKeyChanged()=false for all iterators configured with filters.
+	//
+	// TODO(jackson): We should be able to provide more test coverage here by
+	// returning true if i.iter.RangeKeyChanged()=true after any of the
+	// individual repositioning methods.
+	return i.filterMax == 0 && i.iter.RangeKeyChanged()
+}
+
 func (i *retryableIter) HasPointAndRange() (bool, bool) {
 	return i.iter.HasPointAndRange()
 }

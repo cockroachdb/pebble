@@ -959,7 +959,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	}
 
 	if dbi.opts.rangeKeys() {
-		dbi.rangeKeyMasking.init(dbi.cmp, dbi.split, &dbi.opts)
+		dbi.rangeKeyMasking.init(dbi, dbi.cmp, dbi.split)
 
 		// When iterating over both point and range keys, don't create the
 		// range-key iterator stack immediately if we can avoid it. This
@@ -1008,8 +1008,8 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 			// NB: The interleaving iterator is always reinitialized, even if
 			// dbi already had an initialized range key iterator, in case the point
 			// iterator changed or the range key masking suffix changed.
-			dbi.rangeKey.iiter.Init(dbi.cmp, dbi.iter, dbi.rangeKey.rangeKeyIter, &dbi.rangeKeyMasking,
-				dbi.opts.LowerBound, dbi.opts.UpperBound)
+			dbi.rangeKey.iiter.Init(dbi.cmp, dbi.iter, dbi.rangeKey.rangeKeyIter,
+				&dbi.rangeKeyMasking, dbi.opts.LowerBound, dbi.opts.UpperBound)
 			dbi.iter = &dbi.rangeKey.iiter
 		}
 	} else {
