@@ -133,10 +133,10 @@ func (ui *UserIteratorConfig) ShouldDefragment(cmp base.Compare, a, b *keyspan.S
 	// both spans into buffers and sort them by suffix for comparison.
 	ui.defragBufA.cmp = cmp
 	ui.defragBufA.keys = append(ui.defragBufA.keys[:0], a.Keys...)
-	sort.Sort(ui.defragBufA)
+	sort.Sort(&ui.defragBufA)
 	ui.defragBufB.cmp = cmp
 	ui.defragBufB.keys = append(ui.defragBufB.keys[:0], b.Keys...)
-	sort.Sort(ui.defragBufB)
+	sort.Sort(&ui.defragBufB)
 
 	for i := range ui.defragBufA.keys {
 		if ui.defragBufA.keys[i].Kind() != base.InternalKeyKindRangeKeySet ||
@@ -215,7 +215,7 @@ func Coalesce(cmp base.Compare, keys []keyspan.Key, dst *[]keyspan.Key) error {
 				continue
 			}
 			keysBySuffix.keys = append(keysBySuffix.keys, k)
-			sort.Sort(keysBySuffix)
+			sort.Sort(&keysBySuffix)
 		case base.InternalKeyKindRangeKeyUnset:
 			n := len(keysBySuffix.keys)
 
@@ -225,7 +225,7 @@ func Coalesce(cmp base.Compare, keys []keyspan.Key, dst *[]keyspan.Key) error {
 				continue
 			}
 			keysBySuffix.keys = append(keysBySuffix.keys, k)
-			sort.Sort(keysBySuffix)
+			sort.Sort(&keysBySuffix)
 		case base.InternalKeyKindRangeKeyDelete:
 			// All remaining range keys in this span have been deleted by this
 			// RangeKeyDelete. There's no need to continue looping, because all
@@ -252,7 +252,7 @@ func SortBySuffix(cmp base.Compare, keys []keyspan.Key) {
 		cmp:  cmp,
 		keys: keys,
 	}
-	sort.Sort(bySuffix)
+	sort.Sort(&bySuffix)
 }
 
 type keysBySuffix struct {
@@ -263,7 +263,7 @@ type keysBySuffix struct {
 // get searches for suffix among the first n keys in keys. If the suffix is
 // found, it returns the index of the item with the suffix. If the suffix is not
 // found, it returns n.
-func (s keysBySuffix) get(n int, suffix []byte) (i int) {
+func (s *keysBySuffix) get(n int, suffix []byte) (i int) {
 	// Binary search for the suffix to see if there's an existing key with the
 	// suffix. Only binary search among the first n items. get is called while
 	// appending new keys with suffixes that may sort before existing keys.
@@ -279,6 +279,6 @@ func (s keysBySuffix) get(n int, suffix []byte) (i int) {
 	return n
 }
 
-func (s keysBySuffix) Len() int           { return len(s.keys) }
-func (s keysBySuffix) Less(i, j int) bool { return s.cmp(s.keys[i].Suffix, s.keys[j].Suffix) < 0 }
-func (s keysBySuffix) Swap(i, j int)      { s.keys[i], s.keys[j] = s.keys[j], s.keys[i] }
+func (s *keysBySuffix) Len() int           { return len(s.keys) }
+func (s *keysBySuffix) Less(i, j int) bool { return s.cmp(s.keys[i].Suffix, s.keys[j].Suffix) < 0 }
+func (s *keysBySuffix) Swap(i, j int)      { s.keys[i], s.keys[j] = s.keys[j], s.keys[i] }

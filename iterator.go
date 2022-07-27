@@ -289,9 +289,9 @@ type bySuffix struct {
 	data []RangeKeyData
 }
 
-func (s bySuffix) Len() int           { return len(s.data) }
-func (s bySuffix) Less(i, j int) bool { return s.cmp(s.data[i].Suffix, s.data[j].Suffix) < 0 }
-func (s bySuffix) Swap(i, j int)      { s.data[i], s.data[j] = s.data[j], s.data[i] }
+func (s *bySuffix) Len() int           { return len(s.data) }
+func (s *bySuffix) Less(i, j int) bool { return s.cmp(s.data[i].Suffix, s.data[j].Suffix) < 0 }
+func (s *bySuffix) Swap(i, j int)      { s.data[i], s.data[j] = s.data[j], s.data[i] }
 
 // isEphemeralPosition returns true iff the current iterator position is
 // ephemeral, and won't be visited during subsequent relative positioning
@@ -1610,7 +1610,7 @@ func (i *Iterator) setRangeKey() {
 			})
 		}
 	}
-	sort.Sort(i.rangeKey.keys)
+	sort.Sort(&i.rangeKey.keys)
 }
 
 // saveRangeKey sets the current range key to the underlying iterator's current
@@ -1650,7 +1650,7 @@ func (i *Iterator) saveRangeKey() {
 			})
 		}
 	}
-	sort.Sort(i.rangeKey.keys)
+	sort.Sort(&i.rangeKey.keys)
 }
 
 // HasPointAndRange indicates whether there exists a point key, a range key or
