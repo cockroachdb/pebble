@@ -242,7 +242,7 @@ func Coalesce(cmp base.Compare, keys []keyspan.Key, dst *[]keyspan.Key) error {
 	// Update the span with the (potentially reduced) keys slice, and re-sort it
 	// by Trailer.
 	*dst = keysBySuffix.keys
-	keyspan.SortKeys(*dst)
+	keyspan.SortKeys(dst)
 	return nil
 }
 
