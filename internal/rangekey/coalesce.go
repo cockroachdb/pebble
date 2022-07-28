@@ -22,18 +22,14 @@ type UserIteratorConfig struct {
 	diter      keyspan.DefragmentingIter
 	liters     [manifest.NumLevels]keyspan.LevelIter
 	litersUsed int
-	defragBufA keysBySuffix
-	defragBufB keysBySuffix
-	// defragBufAlloc defines two arrays used to preallocate defragBuf{A,B} keys
-	// slices to prevent additional allocations during iteration. Each array
-	// preallocates up to two keys.
-	defragBufAlloc [2][2]keyspan.Key
+	sortBuf    keysBySuffix
 }
 
 // Init initializes the range key iterator stack for user iteration. The
 // resulting fragment iterator applies range key semantics, defragments spans
 // according to their user-observable state and removes all Keys other than
-// RangeKeySets describing the current state of range keys.
+// RangeKeySets describing the current state of range keys. The resulting spans
+// contain Keys sorted by Suffix.
 //
 // The snapshot sequence number parameter determines which keys are visible. Any
 // keys not visible at the provided snapshot are ignored.
@@ -41,8 +37,6 @@ func (ui *UserIteratorConfig) Init(
 	cmp base.Compare, snapshot uint64, iters ...keyspan.FragmentIterator,
 ) keyspan.FragmentIterator {
 	ui.snapshot = snapshot
-	ui.defragBufA.keys = ui.defragBufAlloc[0][:0]
-	ui.defragBufB.keys = ui.defragBufAlloc[1][:0]
 	ui.miter.Init(cmp, ui, iters...)
 	ui.diter.Init(cmp, &ui.miter, ui, keyspan.StaticDefragmentReducer)
 	ui.litersUsed = 0
@@ -72,15 +66,18 @@ func (ui *UserIteratorConfig) NewLevelIter() *keyspan.LevelIter {
 // of unset keys, removal of keys overwritten by a set at the same suffix, etc)
 // and then non-RangeKeySet keys are removed. The resulting transformed spans
 // only contain RangeKeySets describing the state visible at the provided
-// sequence number.
+// sequence number, and hold their Keys sorted by Suffix.
 func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
 	// Apply shadowing of keys.
 	dst.Start = s.Start
 	dst.End = s.End
-	if err := Coalesce(cmp, s.Visible(ui.snapshot).Keys, &dst.Keys); err != nil {
+	ui.sortBuf = keysBySuffix{
+		cmp:  cmp,
+		keys: dst.Keys[:0],
+	}
+	if err := coalesce(&ui.sortBuf, s.Visible(ui.snapshot).Keys, &dst.Keys); err != nil {
 		return err
 	}
-
 	// During user iteration over range keys, unsets and deletes don't
 	// matter. Remove them. This step helps logical defragmentation during
 	// iteration.
@@ -89,8 +86,14 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 	for i := range keys {
 		switch keys[i].Kind() {
 		case base.InternalKeyKindRangeKeySet:
+			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
+				panic("pebble: keys unexpectedly not in ascending suffix order")
+			}
 			dst.Keys = append(dst.Keys, keys[i])
 		case base.InternalKeyKindRangeKeyUnset:
+			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
+				panic("pebble: keys unexpectedly not in ascending suffix order")
+			}
 			// Skip.
 			continue
 		case base.InternalKeyKindRangeKeyDelete:
@@ -100,6 +103,8 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 			return base.CorruptionErrorf("pebble: unrecognized range key kind %s", keys[i].Kind())
 		}
 	}
+	// coalesce results in dst.Keys being sorted by Suffix.
+	dst.KeysOrder = keyspan.BySuffixAsc
 	return nil
 }
 
@@ -107,50 +112,49 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 // DefragmentingIter to defragment spans of range keys if their user-visible
 // state is identical. This defragmenting method assumes the provided spans have
 // already been transformed through (UserIterationConfig).Transform, so all
-// RangeKeySets are user-visible sets.  This defragmenter checks for equality
-// between set suffixes and values (ignoring sequence numbers). It's intended
-// for use during user iteration, when the wrapped keyspan iterator is merging
-// spans across all levels of the LSM.
+// RangeKeySets are user-visible sets and are already in Suffix order. This
+// defragmenter checks for equality between set suffixes and values (ignoring
+// sequence numbers). It's intended for use during user iteration, when the
+// wrapped keyspan iterator is merging spans across all levels of the LSM.
 //
 // This implementation is stateful, and must not be used on multiple
 // DefragmentingIters concurrently.
 func (ui *UserIteratorConfig) ShouldDefragment(cmp base.Compare, a, b *keyspan.Span) bool {
 	// This implementation must only be used on spans that have transformed by
-	// ui.Transform. The transform applies shadowing and removes all keys
-	// besides the resulting Sets. Since shadowing has been applied, each Set
-	// must set a unique suffix. If the two spans are equivalent, they must have
-	// the same number of range key sets.
+	// ui.Transform. The transform applies shadowing, removes all keys besides
+	// the resulting Sets and sorts the keys by suffix. Since shadowing has been
+	// applied, each Set must set a unique suffix. If the two spans are
+	// equivalent, they must have the same number of range key sets.
 	if len(a.Keys) != len(b.Keys) || len(a.Keys) == 0 {
 		return false
 	}
+	if a.KeysOrder != keyspan.BySuffixAsc || b.KeysOrder != keyspan.BySuffixAsc {
+		panic("pebble: range key span's keys unexpectedly not in ascending suffix order")
+	}
 
-	// The keys in both spans must be all sets. In order to be equivalent
-	// during user iteration, they must set identical suffix-value mappings.
-	// They do not need to have the same sequence number.
-	//
-	// Currently, the Keys are sorted by Trailer (as per the keyspan.Span
-	// and keyspan.FragmentIterator interfaces). Collect all the keys in
-	// both spans into buffers and sort them by suffix for comparison.
-	ui.defragBufA.cmp = cmp
-	ui.defragBufA.keys = append(ui.defragBufA.keys[:0], a.Keys...)
-	sort.Sort(&ui.defragBufA)
-	ui.defragBufB.cmp = cmp
-	ui.defragBufB.keys = append(ui.defragBufB.keys[:0], b.Keys...)
-	sort.Sort(&ui.defragBufB)
-
-	for i := range ui.defragBufA.keys {
-		if ui.defragBufA.keys[i].Kind() != base.InternalKeyKindRangeKeySet ||
-			ui.defragBufB.keys[i].Kind() != base.InternalKeyKindRangeKeySet {
-			panic("pebble: unexpected non-RangeKeySet during defragmentation")
+	ret := true
+	for i := range a.Keys {
+		if invariants.Enabled {
+			if a.Keys[i].Kind() != base.InternalKeyKindRangeKeySet ||
+				b.Keys[i].Kind() != base.InternalKeyKindRangeKeySet {
+				panic("pebble: unexpected non-RangeKeySet during defragmentation")
+			}
+			if i > 0 && (cmp(a.Keys[i].Suffix, a.Keys[i-1].Suffix) < 0 ||
+				cmp(b.Keys[i].Suffix, b.Keys[i-1].Suffix) < 0) {
+				panic("pebble: range keys not ordered by suffix during defragmentation")
+			}
 		}
-		if cmp(ui.defragBufA.keys[i].Suffix, ui.defragBufB.keys[i].Suffix) != 0 {
-			return false
+		// TODO(jackson): Use base.Equal for the below comparison.
+		if cmp(a.Keys[i].Suffix, b.Keys[i].Suffix) != 0 {
+			ret = false
+			break
 		}
-		if !bytes.Equal(ui.defragBufA.keys[i].Value, ui.defragBufB.keys[i].Value) {
-			return false
+		if !bytes.Equal(a.Keys[i].Value, b.Keys[i].Value) {
+			ret = false
+			break
 		}
 	}
-	return true
+	return ret
 }
 
 // Coalesce imposes range key semantics and coalesces range keys with the same
@@ -186,14 +190,24 @@ func (ui *UserIteratorConfig) ShouldDefragment(cmp base.Compare, a, b *keyspan.S
 // keys do not affect one another. Ingested sstables are expected to be
 // consistent with respect to the set/unset suffixes: A given suffix should be
 // set or unset but not both.
+//
+// The resulting dst Keys slice is sorted by Trailer.
 func Coalesce(cmp base.Compare, keys []keyspan.Key, dst *[]keyspan.Key) error {
 	// TODO(jackson): Currently, Coalesce doesn't actually perform the sequence
 	// number promotion described in the comment above.
-
 	keysBySuffix := keysBySuffix{
 		cmp:  cmp,
 		keys: (*dst)[:0],
 	}
+	if err := coalesce(&keysBySuffix, keys, dst); err != nil {
+		return err
+	}
+	// coalesce left the keys in *dst sorted by suffix. Re-sort them by trailer.
+	keyspan.SortKeysByTrailer(dst)
+	return nil
+}
+
+func coalesce(keysBySuffix *keysBySuffix, keys []keyspan.Key, dst *[]keyspan.Key) error {
 	var deleted bool
 	for i := 0; i < len(keys) && !deleted; i++ {
 		k := keys[i]
@@ -215,7 +229,7 @@ func Coalesce(cmp base.Compare, keys []keyspan.Key, dst *[]keyspan.Key) error {
 				continue
 			}
 			keysBySuffix.keys = append(keysBySuffix.keys, k)
-			sort.Sort(&keysBySuffix)
+			sort.Sort(keysBySuffix)
 		case base.InternalKeyKindRangeKeyUnset:
 			n := len(keysBySuffix.keys)
 
@@ -225,7 +239,7 @@ func Coalesce(cmp base.Compare, keys []keyspan.Key, dst *[]keyspan.Key) error {
 				continue
 			}
 			keysBySuffix.keys = append(keysBySuffix.keys, k)
-			sort.Sort(&keysBySuffix)
+			sort.Sort(keysBySuffix)
 		case base.InternalKeyKindRangeKeyDelete:
 			// All remaining range keys in this span have been deleted by this
 			// RangeKeyDelete. There's no need to continue looping, because all
@@ -239,20 +253,11 @@ func Coalesce(cmp base.Compare, keys []keyspan.Key, dst *[]keyspan.Key) error {
 		}
 	}
 
-	// Update the span with the (potentially reduced) keys slice, and re-sort it
-	// by Trailer.
+	// Update the span with the (potentially reduced) keys slice.
+	// NB: We don't re-sort by Trailer. The exported Coalesce function however
+	// will.
 	*dst = keysBySuffix.keys
-	keyspan.SortKeys(dst)
 	return nil
-}
-
-// SortBySuffix sorts the provided keys by suffix.
-func SortBySuffix(cmp base.Compare, keys []keyspan.Key) {
-	bySuffix := keysBySuffix{
-		cmp:  cmp,
-		keys: keys,
-	}
-	sort.Sort(&bySuffix)
 }
 
 type keysBySuffix struct {

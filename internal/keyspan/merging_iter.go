@@ -68,6 +68,10 @@ func visibleTransform(snapshot uint64) Transformer {
 // overlapping keys are surfaced in a single Span. Key spans from one child
 // iterator may overlap key spans from another child iterator arbitrarily.
 //
+// The spans combined by MergingIter will return spans with keys sorted by
+// trailer descending. If the MergingIter is configured with a Transformer, it's
+// permitted to modify the ordering of the spans' keys returned by MergingIter.
+//
 // Algorithm
 //
 // The merging iterator wraps child iterators, merging and fragmenting spans
@@ -210,9 +214,9 @@ type MergingIter struct {
 	// buf is a buffer used to save [start, end) boundary keys.
 	buf []byte
 	// keys holds all of the keys across all levels that overlap the key span
-	// [start, end), sorted by sequence number and kind descending. This slice
-	// is reconstituted in synthesizeKeys from each mergingIterLevel's keys
-	// every time the [start, end) bounds change.
+	// [start, end), sorted by Trailer descending. This slice is reconstituted
+	// in synthesizeKeys from each mergingIterLevel's keys every time the
+	// [start, end) bounds change.
 	//
 	// Each element points into a child iterator's memory, so the keys may not
 	// be directly modified.
@@ -809,13 +813,18 @@ func (m *MergingIter) synthesizeKeys(dir int8) (bool, *Span) {
 			found = true
 		}
 	}
+	// TODO(jackson): We should be able to remove this sort and instead
+	// guarantee that we'll return keys in the order of the levels they're from.
+	// With careful iterator construction, this would  guarantee that they're
+	// sorted by trailer descending for the range key iteration use case.
 	sort.Sort(&m.keys)
 
 	// Apply the configured transform. See visibleTransform.
 	s := Span{
-		Start: m.start,
-		End:   m.end,
-		Keys:  m.keys,
+		Start:     m.start,
+		End:       m.end,
+		Keys:      m.keys,
+		KeysOrder: ByTrailerDesc,
 	}
 	if err := m.transformer.Transform(m.cmp, s, &m.span); err != nil {
 		m.err = err

@@ -31,15 +31,29 @@ type Span struct {
 	// non-nil, or both nil if representing an invalid Span.
 	Start, End []byte
 	// Keys holds the set of keys applied over the [Start, End) user key range.
-	// Keys is sorted by (SeqNum, Kind) descending. If SeqNum and Kind are
-	// equal, the order of Keys is undefined. Keys may be empty, even if Start
-	// and End are non-nil.
+	// Keys is sorted by (SeqNum, Kind) descending, unless otherwise specified
+	// by the context. If SeqNum and Kind are equal, the order of Keys is
+	// undefined. Keys may be empty, even if Start and End are non-nil.
 	//
 	// Keys are a decoded representation of the internal keys stored in batches
 	// or sstable blocks. A single internal key in a range key block may produce
 	// several decoded Keys.
-	Keys []Key
+	Keys      []Key
+	KeysOrder KeysOrder
 }
+
+// KeysOrder describes the ordering of Keys within a Span.
+type KeysOrder int8
+
+const (
+	// ByTrailerDesc indicates a Span's keys are sorted by Trailer descending.
+	// This is the default ordering, and the ordering used during physical
+	// storage.
+	ByTrailerDesc KeysOrder = iota
+	// BySuffixAsc indicates a Span's keys are sorted by Suffix ascending. This
+	// ordering is used during user iteration of range keys.
+	BySuffixAsc
+)
 
 // Key represents a single key applied over a span of user keys. A Key is
 // contained by a Span which specifies the span of user keys over which the Key
@@ -90,10 +104,13 @@ func (s *Span) Empty() bool {
 }
 
 // SmallestKey returns the smallest internal key defined by the span's keys.
-// It panics if the span contains no keys.
+// It requires the Span's keys be in ByTrailerDesc order. It panics if the span
+// contains no keys or its keys are sorted in a different order.
 func (s *Span) SmallestKey() base.InternalKey {
 	if len(s.Keys) == 0 {
 		panic("pebble: Span contains no keys")
+	} else if s.KeysOrder != ByTrailerDesc {
+		panic("pebble: span's keys unexpectedly not in trailer order")
 	}
 	// The first key has the highest (sequence number,kind) tuple.
 	return base.InternalKey{
@@ -108,10 +125,13 @@ func (s *Span) SmallestKey() base.InternalKey {
 // with the maximal sequence number, ensuring all InternalKeys with the same
 // user key sort after the sentinel key.
 //
-// It panics if the span contains no keys.
+// It requires the Span's keys be in ByTrailerDesc order. It panics if the span
+// contains no keys or its keys are sorted in a different order.
 func (s *Span) LargestKey() base.InternalKey {
 	if len(s.Keys) == 0 {
 		panic("pebble: Span contains no keys")
+	} else if s.KeysOrder != ByTrailerDesc {
+		panic("pebble: span's keys unexpectedly not in trailer order")
 	}
 	// The last key has the lowest (sequence number,kind) tuple.
 	kind := s.Keys[len(s.Keys)-1].Kind()
@@ -119,19 +139,26 @@ func (s *Span) LargestKey() base.InternalKey {
 }
 
 // SmallestSeqNum returns the smallest sequence number of a key contained within
-// the span. It panics if the span contains no keys.
+// the span. It requires the Span's keys be in ByTrailerDesc order. It panics if
+// the span contains no keys or its keys are sorted in a different order.
 func (s *Span) SmallestSeqNum() uint64 {
 	if len(s.Keys) == 0 {
 		panic("pebble: Span contains no keys")
+	} else if s.KeysOrder != ByTrailerDesc {
+		panic("pebble: span's keys unexpectedly not in trailer order")
 	}
+
 	return s.Keys[len(s.Keys)-1].SeqNum()
 }
 
 // LargestSeqNum returns the largest sequence number of a key contained within
-// the span. It panics if the span contains no keys.
+// the span. It requires the Span's keys be in ByTrailerDesc order. It panics if
+// the span contains no keys or its keys are sorted in a different order.
 func (s *Span) LargestSeqNum() uint64 {
 	if len(s.Keys) == 0 {
 		panic("pebble: Span contains no keys")
+	} else if s.KeysOrder != ByTrailerDesc {
+		panic("pebble: span's keys unexpectedly not in trailer order")
 	}
 	return s.Keys[0].SeqNum()
 }
@@ -140,11 +167,16 @@ func (s *Span) LargestSeqNum() uint64 {
 // that avoid the need to construct a new Span.
 
 // Visible returns a span with the subset of keys visible at the provided
-// sequence number.
+// sequence number. It requires the Span's keys be in ByTrailerDesc order. It
+// panics if the span's keys are sorted in a different order.
 //
 // Visible may incur an allocation, so callers should prefer targeted,
 // non-allocating methods when possible.
 func (s Span) Visible(snapshot uint64) Span {
+	if s.KeysOrder != ByTrailerDesc {
+		panic("pebble: span's keys unexpectedly not in trailer order")
+	}
+
 	ret := Span{Start: s.Start, End: s.End}
 	if len(s.Keys) == 0 {
 		return ret
@@ -214,7 +246,13 @@ func (s Span) Visible(snapshot uint64) Span {
 // VisibleAt returns true if the span contains a key visible at the provided
 // snapshot. Keys with sequence numbers with the batch bit set are treated as
 // always visible.
+//
+// VisibleAt requires the Span's keys be in ByTrailerDesc order. It panics if
+// the span's keys are sorted in a different order.
 func (s *Span) VisibleAt(snapshot uint64) bool {
+	if s.KeysOrder != ByTrailerDesc {
+		panic("pebble: span's keys unexpectedly not in trailer order")
+	}
 	if len(s.Keys) == 0 {
 		return false
 	} else if first := s.Keys[0].SeqNum(); first&base.InternalKeySeqNumBatch != 0 {
@@ -235,9 +273,10 @@ func (s *Span) VisibleAt(snapshot uint64) bool {
 // None of the key byte slices are cloned (see Span.DeepClone).
 func (s *Span) ShallowClone() Span {
 	c := Span{
-		Start: s.Start,
-		End:   s.End,
-		Keys:  make([]Key, len(s.Keys)),
+		Start:     s.Start,
+		End:       s.End,
+		Keys:      make([]Key, len(s.Keys)),
+		KeysOrder: s.KeysOrder,
 	}
 	copy(c.Keys, s.Keys)
 	return c
@@ -248,9 +287,10 @@ func (s *Span) ShallowClone() Span {
 // because it is allocation heavy.
 func (s *Span) DeepClone() Span {
 	c := Span{
-		Start: make([]byte, len(s.Start)),
-		End:   make([]byte, len(s.End)),
-		Keys:  make([]Key, len(s.Keys)),
+		Start:     make([]byte, len(s.Start)),
+		End:       make([]byte, len(s.End)),
+		Keys:      make([]Key, len(s.Keys)),
+		KeysOrder: s.KeysOrder,
 	}
 	copy(c.Start, s.Start)
 	copy(c.End, s.End)
@@ -274,7 +314,13 @@ func (s *Span) Contains(cmp base.Compare, key []byte) bool {
 }
 
 // Covers returns true if the span covers keys at seqNum.
+//
+// Covers requires the Span's keys be in ByTrailerDesc order. It panics if the
+// span's keys are sorted in a different order.
 func (s Span) Covers(seqNum uint64) bool {
+	if s.KeysOrder != ByTrailerDesc {
+		panic("pebble: span's keys unexpectedly not in trailer order")
+	}
 	return !s.Empty() && s.Keys[0].SeqNum() > seqNum
 }
 
@@ -284,7 +330,13 @@ func (s Span) Covers(seqNum uint64) bool {
 //
 // Keys with sequence numbers with the batch bit set are treated as always
 // visible.
+//
+// CoversAt requires the Span's keys be in ByTrailerDesc order. It panics if the
+// span's keys are sorted in a different order.
 func (s *Span) CoversAt(snapshot, seqNum uint64) bool {
+	if s.KeysOrder != ByTrailerDesc {
+		panic("pebble: span's keys unexpectedly not in trailer order")
+	}
 	// NB: A key is visible at `snapshot` if its sequence number is strictly
 	// less than `snapshot`. See base.Visible.
 	for i := range s.Keys {
@@ -336,8 +388,8 @@ func (s prettySpan) Format(fs fmt.State, c rune) {
 	fmt.Fprintf(fs, "}")
 }
 
-// SortKeys sorts a keys slice by trailer.
-func SortKeys(keys *[]Key) {
+// SortKeysByTrailer sorts a keys slice by trailer.
+func SortKeysByTrailer(keys *[]Key) {
 	// NB: keys is a pointer to a slice instead of a slice to avoid `sorted`
 	// escaping to the heap.
 	sorted := (*keysBySeqNumKind)(keys)
