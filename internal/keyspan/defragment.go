@@ -35,12 +35,16 @@ func (f DefragmentMethodFunc) ShouldDefragment(cmp base.Compare, left, right *Sp
 }
 
 // DefragmentInternal configures a DefragmentingIter to defragment spans
-// only if they have identical keys.
+// only if they have identical keys. It requires spans' keys to be sorted in
+// trailer descending order.
 //
 // This defragmenting method is intended for use in compactions that may see
 // internal range keys fragments that may now be joined, because the state that
 // required their fragmentation has been dropped.
 var DefragmentInternal DefragmentMethod = DefragmentMethodFunc(func(cmp base.Compare, a, b *Span) bool {
+	if a.KeysOrder != ByTrailerDesc || b.KeysOrder != ByTrailerDesc {
+		panic("pebble: span keys unexpectedly not in trailer descending order")
+	}
 	if len(a.Keys) != len(b.Keys) {
 		return false
 	}
@@ -444,8 +448,9 @@ func (i *DefragmentingIter) saveCurrent() {
 		return
 	}
 	i.curr = Span{
-		Start: i.saveBytes(i.iterSpan.Start),
-		End:   i.saveBytes(i.iterSpan.End),
+		Start:     i.saveBytes(i.iterSpan.Start),
+		End:       i.saveBytes(i.iterSpan.End),
+		KeysOrder: i.iterSpan.KeysOrder,
 	}
 	for j := range i.iterSpan.Keys {
 		i.keysBuf = append(i.keysBuf, Key{
