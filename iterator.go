@@ -7,7 +7,6 @@ package pebble
 import (
 	"bytes"
 	"io"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -256,7 +255,7 @@ type iteratorRangeKeyState struct {
 	// no point key, only a range key start boundary.
 	rangeKeyOnly bool
 	hasRangeKey  bool
-	keys         bySuffix
+	keys         []RangeKeyData
 	// start and end are the [start, end) boundaries of the current range keys.
 	start []byte
 	end   []byte
@@ -273,7 +272,6 @@ type iteratorRangeKeyState struct {
 
 func (i *iteratorRangeKeyState) init(cmp base.Compare, split base.Split, opts *IterOptions) {
 	i.cmp = cmp
-	i.keys.cmp = cmp
 	i.split = split
 	i.opts = opts
 }
@@ -283,15 +281,6 @@ var iterRangeKeyStateAllocPool = sync.Pool{
 		return &iteratorRangeKeyState{}
 	},
 }
-
-type bySuffix struct {
-	cmp  base.Compare
-	data []RangeKeyData
-}
-
-func (s *bySuffix) Len() int           { return len(s.data) }
-func (s *bySuffix) Less(i, j int) bool { return s.cmp(s.data[i].Suffix, s.data[j].Suffix) < 0 }
-func (s *bySuffix) Swap(i, j int)      { s.data[i], s.data[j] = s.data[j], s.data[i] }
 
 // isEphemeralPosition returns true iff the current iterator position is
 // ephemeral, and won't be visited during subsequent relative positioning
@@ -1591,26 +1580,30 @@ func (i *Iterator) setRangeKey() {
 			// any old range key blocks.
 			i.rangeKey.start = nil
 			i.rangeKey.end = nil
-			for j := 0; j < i.rangeKey.keys.Len(); j++ {
-				i.rangeKey.keys.data[j].Suffix = nil
-				i.rangeKey.keys.data[j].Value = nil
+			for j := 0; j < len(i.rangeKey.keys); j++ {
+				i.rangeKey.keys[j].Suffix = nil
+				i.rangeKey.keys[j].Value = nil
 			}
-			i.rangeKey.keys.data = i.rangeKey.keys.data[:0]
+			i.rangeKey.keys = i.rangeKey.keys[:0]
 		}
 		return
 	}
 	i.rangeKey.hasRangeKey = true
 	i.rangeKey.start, i.rangeKey.end = s.Start, s.End
-	i.rangeKey.keys.data = i.rangeKey.keys.data[:0]
+	i.rangeKey.keys = i.rangeKey.keys[:0]
 	for j := 0; j < len(s.Keys); j++ {
-		if s.Keys[j].Kind() == base.InternalKeyKindRangeKeySet {
-			i.rangeKey.keys.data = append(i.rangeKey.keys.data, RangeKeyData{
-				Suffix: s.Keys[j].Suffix,
-				Value:  s.Keys[j].Value,
-			})
+		if invariants.Enabled {
+			if s.Keys[j].Kind() != base.InternalKeyKindRangeKeySet {
+				panic("pebble: user iteration encountered non-RangeKeySet key kind")
+			} else if j > 0 && i.cmp(s.Keys[j].Suffix, s.Keys[j-1].Suffix) < 0 {
+				panic("pebble: user iteration encountered range keys not in suffix order")
+			}
 		}
+		i.rangeKey.keys = append(i.rangeKey.keys, RangeKeyData{
+			Suffix: s.Keys[j].Suffix,
+			Value:  s.Keys[j].Value,
+		})
 	}
-	sort.Sort(&i.rangeKey.keys)
 }
 
 // saveRangeKey sets the current range key to the underlying iterator's current
@@ -1637,20 +1630,24 @@ func (i *Iterator) saveRangeKey() {
 	i.rangeKey.buf = append(i.rangeKey.buf, s.End...)
 	i.rangeKey.end = i.rangeKey.buf[len(i.rangeKey.buf)-len(s.End):]
 
-	i.rangeKey.keys.data = i.rangeKey.keys.data[:0]
+	i.rangeKey.keys = i.rangeKey.keys[:0]
 	for j := 0; j < len(s.Keys); j++ {
-		if s.Keys[j].Kind() == base.InternalKeyKindRangeKeySet {
-			i.rangeKey.buf = append(i.rangeKey.buf, s.Keys[j].Suffix...)
-			suffix := i.rangeKey.buf[len(i.rangeKey.buf)-len(s.Keys[j].Suffix):]
-			i.rangeKey.buf = append(i.rangeKey.buf, s.Keys[j].Value...)
-			value := i.rangeKey.buf[len(i.rangeKey.buf)-len(s.Keys[j].Value):]
-			i.rangeKey.keys.data = append(i.rangeKey.keys.data, RangeKeyData{
-				Suffix: suffix,
-				Value:  value,
-			})
+		if invariants.Enabled {
+			if s.Keys[j].Kind() != base.InternalKeyKindRangeKeySet {
+				panic("pebble: user iteration encountered non-RangeKeySet key kind")
+			} else if j > 0 && i.cmp(s.Keys[j].Suffix, s.Keys[j-1].Suffix) < 0 {
+				panic("pebble: user iteration encountered range keys not in suffix order")
+			}
 		}
+		i.rangeKey.buf = append(i.rangeKey.buf, s.Keys[j].Suffix...)
+		suffix := i.rangeKey.buf[len(i.rangeKey.buf)-len(s.Keys[j].Suffix):]
+		i.rangeKey.buf = append(i.rangeKey.buf, s.Keys[j].Value...)
+		value := i.rangeKey.buf[len(i.rangeKey.buf)-len(s.Keys[j].Value):]
+		i.rangeKey.keys = append(i.rangeKey.keys, RangeKeyData{
+			Suffix: suffix,
+			Value:  value,
+		})
 	}
-	sort.Sort(&i.rangeKey.keys)
 }
 
 // HasPointAndRange indicates whether there exists a point key, a range key or
@@ -1699,7 +1696,7 @@ func (i *Iterator) RangeKeys() []RangeKeyData {
 	if i.rangeKey == nil || !i.opts.rangeKeys() || !i.rangeKey.hasRangeKey {
 		return nil
 	}
-	return i.rangeKey.keys.data
+	return i.rangeKey.keys
 }
 
 // Valid returns true if the iterator is positioned at a valid key/value pair
