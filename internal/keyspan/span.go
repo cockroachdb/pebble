@@ -31,9 +31,9 @@ type Span struct {
 	// non-nil, or both nil if representing an invalid Span.
 	Start, End []byte
 	// Keys holds the set of keys applied over the [Start, End) user key range.
-	// Keys is sorted by (SeqNum, Kind) descending. If SeqNum and Kind are
-	// equal, the order of Keys is undefined. Keys may be empty, even if Start
-	// and End are non-nil.
+	// Keys is sorted by (SeqNum, Kind) descending, unless otherwise specified
+	// by the context. If SeqNum and Kind are equal, the order of Keys is
+	// undefined. Keys may be empty, even if Start and End are non-nil.
 	//
 	// Keys are a decoded representation of the internal keys stored in batches
 	// or sstable blocks. A single internal key in a range key block may produce
