@@ -551,7 +551,20 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	}
 	path := td.CmdArgs[0].String()
 
-	writeOpts := d.opts.MakeWriterOptions(0 /* level */, d.opts.FormatMajorVersion.MaxTableFormat())
+	// Override table format, if provided.
+	tableFormat := d.opts.FormatMajorVersion.MaxTableFormat()
+	for _, cmdArg := range td.CmdArgs {
+		switch cmdArg.Key {
+		case "format":
+			v, err := strconv.Atoi(cmdArg.Vals[0])
+			if err != nil {
+				return err
+			}
+			tableFormat = sstable.TableFormat(v)
+		}
+	}
+
+	writeOpts := d.opts.MakeWriterOptions(0 /* level */, tableFormat)
 
 	f, err := fs.Create(path)
 	if err != nil {

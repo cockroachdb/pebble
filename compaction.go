@@ -2768,12 +2768,19 @@ func validateVersionEdit(
 // and adds those to the internal lists of obsolete files. Note that the files
 // are not actually deleted by this method. A subsequent call to
 // deleteObsoleteFiles must be performed. Must be not be called concurrently
-// with compactions and flushes. db.mu must be held when calling this function,
-// however as this function is expected to only be called during Open(), no
-// other operations should be contending on it just yet.
+// with compactions and flushes. db.mu must be held when calling this function.
 func (d *DB) scanObsoleteFiles(list []string) {
+	// Disable automatic compactions temporarily to avoid concurrent compactions /
+	// flushes from interfering. The original value is restored on completion.
+	disabledPrev := d.opts.DisableAutomaticCompactions
+	defer func() {
+		d.opts.DisableAutomaticCompactions = disabledPrev
+	}()
+	d.opts.DisableAutomaticCompactions = true
+
+	// Wait for any ongoing compaction to complete before continuing.
 	if d.mu.compact.compactingCount > 0 || d.mu.compact.flushing {
-		panic("pebble: cannot scan obsolete files concurrently with compaction/flushing")
+		d.mu.compact.cond.Wait()
 	}
 
 	liveFileNums := make(map[FileNum]struct{})
