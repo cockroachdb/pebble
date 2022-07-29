@@ -5,6 +5,7 @@
 package metamorphic
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -41,6 +42,37 @@ func newTest(ops []op) *test {
 	}
 }
 
+// writeLogicalState writes out the logical state (all visible KV pairs) of the
+// DB to a new file at the provided path.
+func (t *test) writeLogicalState(path string) error {
+	if t.db != nil {
+		return errors.Newf("metamorphic: expected DB to be closed; found DB")
+	}
+	opts := t.opts.Clone()
+	opts.ReadOnly = true
+	var err error
+	t.db, err = pebble.Open(t.dir, opts)
+	if err != nil {
+		return err
+	}
+	defer t.db.Close()
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	w := bufio.NewWriter(f)
+	defer w.Flush()
+
+	iter := t.db.NewIter(nil)
+	defer iter.Close()
+	for i, _ := 0, iter.First(); iter.Valid(); i, _ = i+1, iter.Next() {
+		_, _ = fmt.Fprintf(w, "%s -> %s #%d\n", iter.Key(), iter.Value(), i)
+	}
+	return nil
+}
+
 func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 	t.dir = dir
 	t.testOpts = testOpts
@@ -58,8 +90,6 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 			return pebble.DebugCheckLevels(db)
 		})
 	}
-
-	defer t.opts.Cache.Unref()
 
 	// If an error occurs and we were using an in-memory FS, attempt to clone to
 	// on-disk in order to allow post-mortem debugging. Note that always using

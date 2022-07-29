@@ -87,6 +87,8 @@ Example, -dir _meta/200610-203012.077`)
 		reproduction (eg, SHA, prng seed, etc).`)
 )
 
+const logicalStateFilename = "db-logical.log"
+
 func init() {
 	flag.Var(ops, "ops", "")
 }
@@ -191,13 +193,23 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 
 	m := newTest(ops)
 	require.NoError(t, m.init(h, dir, testOpts))
+
+	exit := func(err error) {
+		fmt.Fprintf(os.Stderr, "Seed: %d\n", seed)
+		fmt.Fprintln(os.Stderr, err)
+		m.maybeSaveData()
+		os.Exit(1)
+	}
 	for m.step(h) {
 		if err := h.Error(); err != nil {
-			fmt.Fprintf(os.Stderr, "Seed: %d\n", seed)
-			fmt.Fprintln(os.Stderr, err)
-			m.maybeSaveData()
-			os.Exit(1)
+			exit(err)
 		}
+	}
+
+	// Save the logical DB state to disk.
+	err = m.writeLogicalState(filepath.Join(runDir, logicalStateFilename))
+	if err != nil {
+		exit(err)
 	}
 
 	if *keep && !testOpts.useDisk {
@@ -384,10 +396,14 @@ func TestMeta(t *testing.T) {
 
 	getHistoryPath := func(name string) string {
 		return filepath.Join(metaDir, name, "history")
-
+	}
+	getLogicalStatePath := func(name string) string {
+		return filepath.Join(metaDir, name, logicalStateFilename)
 	}
 
 	base := readHistory(t, getHistoryPath(names[0]))
+	baseLogicalState := readLogicalState(t, getLogicalStatePath(names[0]))
+
 	for i := 1; i < len(names); i++ {
 		lines := readHistory(t, getHistoryPath(names[i]))
 		diff := difflib.UnifiedDiff{
@@ -395,9 +411,19 @@ func TestMeta(t *testing.T) {
 			B:       lines,
 			Context: 5,
 		}
-		text, err := difflib.GetUnifiedDiffString(diff)
+		historyDiff, err := difflib.GetUnifiedDiffString(diff)
 		require.NoError(t, err)
-		if text != "" {
+
+		lines = readLogicalState(t, getLogicalStatePath(names[i]))
+		diff = difflib.UnifiedDiff{
+			A:       baseLogicalState,
+			B:       lines,
+			Context: 5,
+		}
+		logicalStateDiff, err := difflib.GetUnifiedDiffString(diff)
+		require.NoError(t, err)
+
+		if historyDiff != "" || logicalStateDiff != "" {
 			// NB: We force an exit rather than using t.Fatal because the latter
 			// will run another instance of the test if -count is specified, while
 			// we're happy to exit on the first failure.
@@ -407,7 +433,10 @@ func TestMeta(t *testing.T) {
 			fmt.Printf(`
 ===== SEED =====
 %d
-===== DIFF =====
+===== DIFF (history) =====
+%s/{%s,%s}
+%s
+===== DIFF (logical state) =====
 %s/{%s,%s}
 %s
 ===== OPTIONS %s =====
@@ -416,7 +445,14 @@ func TestMeta(t *testing.T) {
 %s
 ===== OPS =====
 %s
-`, seed, metaDir, names[0], names[i], text, names[0], optionsStrA, names[1], optionsStrB, formattedOps)
+`,
+				seed,
+				metaDir, names[0], names[i], historyDiff,
+				metaDir, names[0], names[i], logicalStateDiff,
+				names[0], optionsStrA,
+				names[1], optionsStrB,
+				formattedOps,
+			)
 			os.Exit(1)
 		}
 	}

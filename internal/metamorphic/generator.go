@@ -415,6 +415,14 @@ func (g *generator) batchCommit() {
 }
 
 func (g *generator) dbClose() {
+	// Flush memtables. While this is not strictly required in practice (i.e. the
+	// WAL will preserve any un-flushed operations), in the case where a
+	// metamorphic test variant is running _without_ a WAL, un-flushed operations
+	// will not be preserved at the end of the test. Flushing ensures that the
+	// logical state of a DB running without a WAL matches that of a DB running
+	// with a WAL, given the same sequence of operations.
+	g.add(&flushOp{})
+
 	// Close any live iterators and snapshots, so that we can close the DB
 	// cleanly.
 	for len(g.liveIters) > 0 {
