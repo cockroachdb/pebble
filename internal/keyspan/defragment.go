@@ -176,6 +176,9 @@ func (i *DefragmentingIter) SeekGE(key []byte) *Span {
 	if i.iterSpan == nil {
 		i.iterPos = iterPosCurr
 		return nil
+	} else if i.iterSpan.Empty() {
+		i.iterPos = iterPosCurr
+		return i.iterSpan
 	}
 	// Save the current span and peek backwards.
 	i.saveCurrent()
@@ -206,6 +209,9 @@ func (i *DefragmentingIter) SeekLT(key []byte) *Span {
 	if i.iterSpan == nil {
 		i.iterPos = iterPosCurr
 		return nil
+	} else if i.iterSpan.Empty() {
+		i.iterPos = iterPosCurr
+		return i.iterSpan
 	}
 	// Defragment forward to find the end of the defragmented span.
 	i.defragmentForward()
