@@ -41,10 +41,18 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatSetWithDelete, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatBlockPropertyCollector))
 	require.Equal(t, FormatBlockPropertyCollector, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatSplitUserKeysMarked))
+	require.Equal(t, FormatSplitUserKeysMarked, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatSplitUserKeysMarkedCompacted))
+	require.Equal(t, FormatSplitUserKeysMarkedCompacted, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatRangeKeys))
 	require.Equal(t, FormatRangeKeys, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatMinTableFormatPebblev1))
 	require.Equal(t, FormatMinTableFormatPebblev1, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatPrePebblev1Marked))
+	require.Equal(t, FormatPrePebblev1Marked, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatPrePebblev1MarkedCompacted))
+	require.Equal(t, FormatPrePebblev1MarkedCompacted, d.FormatMajorVersion())
 	require.NoError(t, d.Close())
 
 	// If we Open the database again, leaving the default format, the
@@ -192,16 +200,18 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 	// fixture is intentionally verbose.
 
 	m := map[FormatMajorVersion][2]sstable.TableFormat{
-		FormatDefault:                 {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		FormatMostCompatible:          {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		formatVersionedManifestMarker: {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		FormatVersioned:               {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		FormatSetWithDelete:           {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
-		FormatBlockPropertyCollector:  {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
-		FormatSplitUserKeysMarked:     {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
-		FormatMarkedCompacted:         {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
-		FormatRangeKeys:               {sstable.TableFormatLevelDB, sstable.TableFormatPebblev2},
-		FormatMinTableFormatPebblev1:  {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
+		FormatDefault:                      {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatMostCompatible:               {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		formatVersionedManifestMarker:      {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatVersioned:                    {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatSetWithDelete:                {sstable.TableFormatLevelDB, sstable.TableFormatRocksDBv2},
+		FormatBlockPropertyCollector:       {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
+		FormatSplitUserKeysMarked:          {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
+		FormatSplitUserKeysMarkedCompacted: {sstable.TableFormatLevelDB, sstable.TableFormatPebblev1},
+		FormatRangeKeys:                    {sstable.TableFormatLevelDB, sstable.TableFormatPebblev2},
+		FormatMinTableFormatPebblev1:       {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
+		FormatPrePebblev1Marked:            {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
+		FormatPrePebblev1MarkedCompacted:   {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
 	}
 
 	// Valid versions.
@@ -228,7 +238,7 @@ func TestSplitUserKeyMigration(t *testing.T) {
 		}
 	}()
 
-	datadriven.RunTest(t, "testdata/split_user_key_migration",
+	datadriven.RunTest(t, "testdata/format_major_version_split_user_key_migration",
 		func(td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "define":
@@ -318,6 +328,138 @@ func TestSplitUserKeyMigration(t *testing.T) {
 			default:
 				return fmt.Sprintf("unrecognized command %q", td.Cmd)
 			}
-
 		})
+}
+
+func TestPebblev1Migration(t *testing.T) {
+	var d *DB
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	datadriven.RunTest(t, "testdata/format_major_version_pebblev1_migration",
+		func(td *datadriven.TestData) string {
+			switch cmd := td.Cmd; cmd {
+			case "open":
+				var version int
+				var err error
+				for _, cmdArg := range td.CmdArgs {
+					switch cmd := cmdArg.Key; cmd {
+					case "version":
+						version, err = strconv.Atoi(cmdArg.Vals[0])
+						if err != nil {
+							return err.Error()
+						}
+					default:
+						return fmt.Sprintf("unknown argument: %s", cmd)
+					}
+				}
+				opts := &Options{
+					FS:                 vfs.NewMem(),
+					FormatMajorVersion: FormatMajorVersion(version),
+				}
+				d, err = Open("", opts)
+				if err != nil {
+					return err.Error()
+				}
+				return ""
+
+			case "format-major-version":
+				return d.FormatMajorVersion().String()
+
+			case "min-table-format":
+				return d.FormatMajorVersion().MinTableFormat().String()
+
+			case "max-table-format":
+				return d.FormatMajorVersion().MaxTableFormat().String()
+
+			case "disable-automatic-compactions":
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				switch v := td.CmdArgs[0].String(); v {
+				case "true":
+					d.opts.DisableAutomaticCompactions = true
+				case "false":
+					d.opts.DisableAutomaticCompactions = false
+				default:
+					return fmt.Sprintf("unknown value %q", v)
+				}
+				return ""
+
+			case "batch":
+				b := d.NewIndexedBatch()
+				if err := runBatchDefineCmd(td, b); err != nil {
+					return err.Error()
+				}
+				if err := b.Commit(nil); err != nil {
+					return err.Error()
+				}
+				return ""
+
+			case "flush":
+				if err := d.Flush(); err != nil {
+					return err.Error()
+				}
+				return ""
+
+			case "ingest":
+				if err := runBuildCmd(td, d, d.opts.FS); err != nil {
+					return err.Error()
+				}
+				if err := runIngestCmd(td, d, d.opts.FS); err != nil {
+					return err.Error()
+				}
+				return ""
+
+			case "lsm":
+				return runLSMCmd(td, d)
+
+			case "tally-table-formats":
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				v := d.mu.versions.currentVersion()
+				tally := make([]int, sstable.TableFormatMax+1)
+				for _, l := range v.Levels {
+					iter := l.Iter()
+					for m := iter.First(); m != nil; m = iter.Next() {
+						err := d.tableCache.withReader(m, func(r *sstable.Reader) error {
+							f, err := r.TableFormat()
+							if err != nil {
+								return err
+							}
+							tally[f]++
+							return nil
+						})
+						if err != nil {
+							return err.Error()
+						}
+					}
+				}
+				var b bytes.Buffer
+				for i := 1; i <= int(sstable.TableFormatMax); i++ {
+					_, _ = fmt.Fprintf(&b, "%s: %d\n", sstable.TableFormat(i), tally[i])
+				}
+				return b.String()
+
+			case "ratchet-format-major-version":
+				v, err := strconv.Atoi(td.CmdArgs[0].String())
+				if err != nil {
+					return err.Error()
+				}
+				if err = d.RatchetFormatMajorVersion(FormatMajorVersion(v)); err != nil {
+					return err.Error()
+				}
+				return ""
+
+			case "marked-file-count":
+				m := d.Metrics()
+				return fmt.Sprintf("%d files marked for compaction", m.Compact.MarkedFiles)
+
+			default:
+				return fmt.Sprintf("unknown command: %s", cmd)
+			}
+		},
+	)
 }
