@@ -71,6 +71,10 @@ const (
 	// seqNum.
 	InternalKeyKindMax InternalKeyKind = 21
 
+	// InternalKeyZeroSeqnumMaxTrailer is the largest trailer with a
+	// zero sequence number.
+	InternalKeyZeroSeqnumMaxTrailer = uint64(InternalKeyKindInvalid)
+
 	// A marker for an invalid key.
 	InternalKeyKindInvalid InternalKeyKind = 255
 
