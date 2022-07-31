@@ -544,7 +544,8 @@ func (i *Iterator) nextUserKey() {
 	if i.iterKey == nil {
 		return
 	}
-	done := i.iterKey.SeqNum() == 0
+	trailer := i.iterKey.Trailer
+	done := i.iterKey.Trailer <= base.InternalKeyZeroSeqnumMaxTrailer
 	if i.iterValidityState != IterValid {
 		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
 		i.key = i.keyBuf
@@ -552,13 +553,23 @@ func (i *Iterator) nextUserKey() {
 	for {
 		i.iterKey, i.iterValue = i.iter.Next()
 		i.stats.ForwardStepCount[InternalIterCall]++
-		if done || i.iterKey == nil {
+		// NB: We're guaranteed to be on the next user key if the previous key
+		// had a zero sequence number (`done`), or the new key has a trailer
+		// greater or equal to the previous key's trailer. This is true because
+		// internal keys with the same user key are sorted by Trailer in
+		// strictly monotonically descending order. We expect the trailer
+		// optimization to trigger around 50% of the time with randomly
+		// distributed writes. We expect it to trigger very frequently when
+		// iterating through ingested sstables, which contain keys that all have
+		// the same sequence number.
+		if done || i.iterKey == nil || i.iterKey.Trailer >= trailer {
 			break
 		}
 		if !i.equal(i.key, i.iterKey.UserKey) {
 			break
 		}
-		done = i.iterKey.SeqNum() == 0
+		done = i.iterKey.Trailer <= base.InternalKeyZeroSeqnumMaxTrailer
+		trailer = i.iterKey.Trailer
 	}
 }
 
