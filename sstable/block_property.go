@@ -168,6 +168,9 @@ type BlockPropertyFilter = base.BlockPropertyFilter
 // filtered if all its keys are ≥ lower. This check is made through passing the
 // block's inclusive lower bound to KeyIsWithinLowerBound.
 //
+// Implementations may become active or inactive through implementing Intersects
+// to return true whenever the filter is disabled.
+//
 // Usage of BoundLimitedBlockPropertyFilter is subtle, and Pebble consumers
 // should not implement this interface directly. This interface is an internal
 // detail in the implementation of block-property range-key masking.
@@ -652,8 +655,10 @@ func (f *BlockPropertiesFilterer) IntersectsUserPropsAndFinishInit(
 	f.boundLimitedShortID = int(byteProps[0])
 
 	// We don't check for table-level intersection for the bound-limited filter.
-	// If a filter is bound-limited and only applicable to a limited span of
-	// keyspace, then it's treated as vacuously intersecting.
+	// The bound-limited filter is treated as vacuously intersecting.
+	//
+	// NB: If a block-property filter needs to be toggled inactive/active, it
+	// should be implemented within the Intersects implementation.
 	//
 	// TODO(jackson): We could filter at the table-level by threading the table
 	// smallest and largest bounds here.

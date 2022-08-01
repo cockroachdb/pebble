@@ -141,8 +141,8 @@ func (i *Iterator) constructRangeKeyIter() {
 // reconfigures the user-provided filter. It invokes a SetSuffix method,
 // providing the `maskActiveSuffix`, requesting that from now on the
 // block-property filter return Intersects()=false for any properties indicating
-// that a block contains exclusively keys with suffixes less than the provided
-// suffix.
+// that a block contains exclusively keys with suffixes greater than the
+// provided suffix.
 //
 // Note that unlike other block-property filters, the filter used for masking
 // must not apply across the entire keyspace. It must only filter blocks that
@@ -226,8 +226,8 @@ func (m *rangeKeyMasking) SpanChanged(s *keyspan.Span) {
 		}
 	}
 	if m.maskSpan != nil && m.opts.RangeKeyMasking.Filter != nil {
-		// Update the  block-property filter to filter point keys with suffixes
-		// less than m.maskActiveSuffix.
+		// Update the block-property filter to filter point keys with suffixes
+		// greater than m.maskActiveSuffix.
 		err := m.opts.RangeKeyMasking.Filter.SetSuffix(m.maskActiveSuffix)
 		if err != nil {
 			m.err = err

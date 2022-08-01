@@ -825,6 +825,11 @@ func (i *singleLevelIterator) SeekLT(key []byte, flags base.SeekLTFlags) (*Inter
 		// Slow-path.
 		i.maybeFilteredKeysSingleLevel = false
 		var ikey *InternalKey
+
+		// NB: If a bound-limited block property filter is configured, it's
+		// externally ensured that the filter is disabled (through returning
+		// Intersects=false irrespective of the block props provided) during
+		// seeks.
 		if ikey, _ = i.index.SeekGE(key, base.SeekGEFlagsNone); ikey == nil {
 			ikey, _ = i.index.Last()
 			if ikey == nil {
@@ -1676,6 +1681,9 @@ func (i *twoLevelIterator) SeekLT(key []byte, flags base.SeekLTFlags) (*Internal
 	// whether the topLevelIndex is positioned after the position that would
 	// be returned by doing i.topLevelIndex.SeekGE(). To know this we would
 	// need to know the index key preceding the current one.
+	// NB: If a bound-limited block property filter is configured, it's
+	// externally ensured that the filter is disabled (through returning
+	// Intersects=false irrespective of the block props provided) during seeks.
 	i.maybeFilteredKeysTwoLevel = false
 	if ikey, _ = i.topLevelIndex.SeekGE(key, base.SeekGEFlagsNone); ikey == nil {
 		if ikey, _ = i.topLevelIndex.Last(); ikey == nil {

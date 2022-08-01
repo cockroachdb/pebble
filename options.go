@@ -212,9 +212,9 @@ func (o *IterOptions) getLogger() Logger {
 
 // RangeKeyMasking configures automatic hiding of point keys by range keys. A
 // non-nil Suffix enables range-key masking. When enabled, range keys with
-// suffixes ≤ Suffix behave as masks. All point keys that are contained within a
-// masking range key's bounds and have suffixes less than the range key's suffix
-// are automatically skipped.
+// suffixes ≥ Suffix behave as masks. All point keys that are contained within a
+// masking range key's bounds and have suffixes greater than the range key's
+// suffix are automatically skipped.
 //
 // Specifically, when configured with a RangeKeyMasking.Suffix _s_, and there
 // exists a range key with suffix _r_ covering a point key with suffix _p_, and
@@ -227,13 +227,13 @@ func (o *IterOptions) getLogger() Logger {
 // range keys with IterKeyTypePointsAndRanges.
 type RangeKeyMasking struct {
 	// Suffix configures which range keys may mask point keys. Only range keys
-	// that are defined at suffixes less than or equal to Suffix will mask point
-	// keys.
+	// that are defined at suffixes greater than or equal to Suffix will mask
+	// point keys.
 	Suffix []byte
 	// Filter is an optional field that may be used to improve performance of
 	// range-key masking through a block-property filter defined over key
 	// suffixes. Filter allows Pebble to skip whole point-key blocks containing
-	// point keys with suffixes less than a covering range-key's suffix.
+	// point keys with suffixes greater than a covering range-key's suffix.
 	//
 	// To use this functionality, the caller must create and configure (through
 	// Options.BlockPropertyCollectors) a block-property collector that records
@@ -249,11 +249,11 @@ type RangeKeyMasking struct {
 // invokes its SetSuffix method.
 //
 // When a Pebble iterator steps into a range key's bounds and the range key has
-// a suffix less than or equal to RangeKeyMasking.Suffix, the range key acts as
-// a mask. The masking range key hides all point keys that fall within the range
-// key's bounds and have suffixes < the range key's suffix. Without a filter
-// mask configured, Pebble performs this hiding by stepping through point keys
-// and comparing suffixes. If large numbers of point keys are masked, this
+// a suffix greater than or equal to RangeKeyMasking.Suffix, the range key acts
+// as a mask. The masking range key hides all point keys that fall within the
+// range key's bounds and have suffixes > the range key's suffix. Without a
+// filter mask configured, Pebble performs this hiding by stepping through point
+// keys and comparing suffixes. If large numbers of point keys are masked, this
 // requires Pebble to load, iterate through and discard a large number of
 // sstable blocks containing masked point keys.
 //
@@ -274,8 +274,8 @@ type BlockPropertyFilterMask interface {
 
 	// SetSuffix configures the mask with the suffix of a range key. The filter
 	// should return false from Intersects whenever it's provided with a
-	// property encoding a block's maximum suffix that's less than the provided
-	// suffix.
+	// property encoding a block's minimum suffix that's greater (according to
+	// Compare) than the provided suffix.
 	SetSuffix(suffix []byte) error
 }
 
