@@ -1500,7 +1500,7 @@ func TestIngestValidation(t *testing.T) {
 	)
 	const (
 		nKeys     = 1_000
-		keySize   = 10
+		keySize   = 16
 		valSize   = 100
 		blockSize = 100
 
@@ -1651,11 +1651,11 @@ func TestIngestValidation(t *testing.T) {
 			// Construct a set of keys to ingest.
 			var keyVals []keyVal
 			for i := 0; i < nKeys; i++ {
-				key := make([]byte, 0, keySize)
+				key := make([]byte, keySize)
 				_, err = rng.Read(key)
 				require.NoError(t, err)
 
-				val := make([]byte, 0, valSize)
+				val := make([]byte, valSize)
 				_, err = rng.Read(val)
 				require.NoError(t, err)
 
