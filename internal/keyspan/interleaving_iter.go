@@ -241,7 +241,24 @@ func (i *InterleavingIter) SeekGE(key []byte, flags base.SeekGEFlags) (*base.Int
 	i.clearMask()
 	i.pointKey, i.pointVal = i.pointIter.SeekGE(key, flags)
 	i.pointKeyInterleaved = false
-	i.keyspanSeekGE(key)
+
+	// We need to seek the keyspan iterator too. If the keyspan iterator was
+	// already positioned at a span, we might be able to avoid the seek if the
+	// seek key falls within the existing span's bounds.
+	//
+	// If flags.TrySeekUsingNext()=true, it's externally known that we're
+	// seeking to a later key, so the start bound must be ≤ key. If possible, we
+	// use that fact to avoid the start-key comparison.
+	if i.span != nil && i.cmp(key, i.span.End) < 0 &&
+		(flags.TrySeekUsingNext() || i.cmp(key, i.span.Start) >= 0) {
+		// We're seeking within the existing span's bounds. We still might need
+		// truncate the span to the iterator's bounds.
+		i.checkForwardBound()
+		i.savedKeyspan()
+	} else {
+		i.keyspanSeekGE(key)
+	}
+
 	i.dir = +1
 	return i.interleaveForward(key)
 }
@@ -262,7 +279,24 @@ func (i *InterleavingIter) SeekPrefixGE(
 	i.clearMask()
 	i.pointKey, i.pointVal = i.pointIter.SeekPrefixGE(prefix, key, flags)
 	i.pointKeyInterleaved = false
-	i.keyspanSeekGE(key)
+
+	// We need to seek the keyspan iterator too. If the keyspan iterator was
+	// already positioned at a span, we might be able to avoid the seek if the
+	// seek key falls within the existing span's bounds.
+	//
+	// If flags.TrySeekUsingNext()=true, it's externally known that we're
+	// seeking to a later key, so the start bound must be ≤ key. If possible, we
+	// use that fact to avoid the start-key comparison.
+	if i.span != nil && i.cmp(key, i.span.End) < 0 &&
+		(flags.TrySeekUsingNext() || i.cmp(key, i.span.Start) >= 0) {
+		// We're seeking within the existing span's bounds. We still might need
+		// truncate the span to the iterator's bounds.
+		i.checkForwardBound()
+		i.savedKeyspan()
+	} else {
+		i.keyspanSeekGE(key)
+	}
+
 	i.dir = +1
 	return i.interleaveForward(key)
 }
@@ -272,7 +306,19 @@ func (i *InterleavingIter) SeekLT(key []byte, flags base.SeekLTFlags) (*base.Int
 	i.clearMask()
 	i.pointKey, i.pointVal = i.pointIter.SeekLT(key, flags)
 	i.pointKeyInterleaved = false
-	i.keyspanSeekLT(key)
+
+	// We need to seek the keyspan iterator too. If the keyspan iterator was
+	// already positioned at a span, we might be able to avoid the seek if the
+	// seek key falls within the existing span's bounds.
+	if i.span != nil && i.cmp(key, i.span.Start) > 0 && i.cmp(key, i.span.End) < 0 {
+		// We're seeking within the existing span's bounds. We still might need
+		// truncate the span to the iterator's bounds.
+		i.checkBackwardBound()
+		i.savedKeyspan()
+	} else {
+		i.keyspanSeekLT(key)
+	}
+
 	i.dir = -1
 	return i.interleaveBackward()
 }
