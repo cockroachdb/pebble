@@ -708,7 +708,7 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 			// 3.5% faster on BenchmarkWriter on go1.13. Remove if go1.14 or future
 			// versions show this to not be a performance win.
 			x := w.compare(largestPointKey.UserKey, key.UserKey)
-			if x > 0 || (x == 0 && largestPointKey.Trailer < key.Trailer) {
+			if x > 0 || (x == 0 && largestPointKey.Trailer <= key.Trailer) {
 				w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
 					largestPointKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
 				return w.err
