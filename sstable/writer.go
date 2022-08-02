@@ -609,9 +609,10 @@ type indexBlockAndBlockProperties struct {
 	block []byte
 }
 
-// Set sets the value for the given key. The sequence number is set to
-// 0. Intended for use to externally construct an sstable before ingestion into
-// a DB.
+// Set sets the value for the given key. The sequence number is set to 0.
+// Intended for use to externally construct an sstable before ingestion into a
+// DB. For a given Writer, the keys passed to Set must be in strictly increasing
+// order.
 //
 // TODO(peter): untested
 func (w *Writer) Set(key, value []byte) error {
@@ -708,8 +709,8 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 			// 3.5% faster on BenchmarkWriter on go1.13. Remove if go1.14 or future
 			// versions show this to not be a performance win.
 			x := w.compare(largestPointKey.UserKey, key.UserKey)
-			if x > 0 || (x == 0 && largestPointKey.Trailer < key.Trailer) {
-				w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
+			if x > 0 || (x == 0 && largestPointKey.Trailer <= key.Trailer) {
+				w.err = errors.Errorf("pebble: keys must be added in strictly increasing order: %s, %s",
 					largestPointKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
 				return w.err
 			}
@@ -790,7 +791,7 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 				return w.err
 			}
 			if prevKey.SeqNum() <= key.SeqNum() {
-				w.err = errors.Errorf("pebble: keys must be added in order: %s, %s",
+				w.err = errors.Errorf("pebble: keys must be added in strictly increasing order: %s, %s",
 					prevKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
 				return w.err
 			}
@@ -1840,7 +1841,7 @@ func (w *Writer) Metadata() (*WriterMetadata, error) {
 // WriterOption provide an interface to do work on Writer while it is being
 // opened.
 type WriterOption interface {
-	// writerAPply is called on the writer during opening in order to set
+	// writerApply is called on the writer during opening in order to set
 	// internal parameters.
 	writerApply(*Writer)
 }
