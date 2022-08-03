@@ -1029,3 +1029,22 @@ a: (., [a-z) @5=boop)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
 (internal-stats: (block-bytes: (total 75 B, cached 75 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
+
+# Test repeated seeks into the same range key, while TrySeekUsingNext=true.
+# Test for regression fixed in #1849.
+
+reset
+----
+
+batch
+range-key-set a c @5 boop
+range-key-set c e @5 beep
+----
+wrote 2 keys
+
+combined-iter
+seek-ge a
+seek-ge b
+----
+a: (., [a-c) @5=boop)
+b: (., [a-c) @5=boop)
