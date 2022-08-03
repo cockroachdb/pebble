@@ -245,12 +245,7 @@ func (i *InterleavingIter) SeekGE(key []byte, flags base.SeekGEFlags) (*base.Int
 	// We need to seek the keyspan iterator too. If the keyspan iterator was
 	// already positioned at a span, we might be able to avoid the seek if the
 	// seek key falls within the existing span's bounds.
-	//
-	// If flags.TrySeekUsingNext()=true, it's externally known that we're
-	// seeking to a later key, so the start bound must be ≤ key. If possible, we
-	// use that fact to avoid the start-key comparison.
-	if i.span != nil && i.cmp(key, i.span.End) < 0 &&
-		(flags.TrySeekUsingNext() || i.cmp(key, i.span.Start) >= 0) {
+	if i.span != nil && i.cmp(key, i.span.End) < 0 && i.cmp(key, i.span.Start) >= 0 {
 		// We're seeking within the existing span's bounds. We still might need
 		// truncate the span to the iterator's bounds.
 		i.checkForwardBound()
@@ -283,12 +278,7 @@ func (i *InterleavingIter) SeekPrefixGE(
 	// We need to seek the keyspan iterator too. If the keyspan iterator was
 	// already positioned at a span, we might be able to avoid the seek if the
 	// seek key falls within the existing span's bounds.
-	//
-	// If flags.TrySeekUsingNext()=true, it's externally known that we're
-	// seeking to a later key, so the start bound must be ≤ key. If possible, we
-	// use that fact to avoid the start-key comparison.
-	if i.span != nil && i.cmp(key, i.span.End) < 0 &&
-		(flags.TrySeekUsingNext() || i.cmp(key, i.span.Start) >= 0) {
+	if i.span != nil && i.cmp(key, i.span.End) < 0 && i.cmp(key, i.span.Start) >= 0 {
 		// We're seeking within the existing span's bounds. We still might need
 		// truncate the span to the iterator's bounds.
 		i.checkForwardBound()
