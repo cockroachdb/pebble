@@ -1109,7 +1109,7 @@ func (i *fragmentBlockIter) gatherBackward(k *InternalKey, internalValue []byte)
 	// span.
 
 	// Backwards iteration encounters internal keys in the wrong order.
-	keyspan.SortKeys(&i.span.Keys)
+	keyspan.SortKeysByTrailer(&i.span.Keys)
 
 	return &i.span
 }

@@ -251,7 +251,8 @@ type iteratorRangeKeyState struct {
 	// no point key, only a range key start boundary.
 	rangeKeyOnly bool
 	hasRangeKey  bool
-	keys         []RangeKeyData
+	// keys is sorted by Suffix ascending.
+	keys []RangeKeyData
 	// start and end are the [start, end) boundaries of the current range keys.
 	start []byte
 	end   []byte
@@ -1514,6 +1515,9 @@ func (i *Iterator) setRangeKey() {
 		}
 		return
 	}
+	if s.KeysOrder != keyspan.BySuffixAsc {
+		panic("pebble: range key span's keys unexpectedly not in ascending suffix order")
+	}
 	i.rangeKey.hasRangeKey = true
 	i.rangeKey.start, i.rangeKey.end = s.Start, s.End
 	i.rangeKey.keys = i.rangeKey.keys[:0]
@@ -1546,6 +1550,10 @@ func (i *Iterator) saveRangeKey() {
 		i.rangeKey.hasRangeKey = false
 		return
 	}
+	if s.KeysOrder != keyspan.BySuffixAsc {
+		panic("pebble: range key span's keys unexpectedly not in ascending suffix order")
+	}
+
 	i.rangeKey.hasRangeKey = true
 	// TODO(jackson): Rather than naively copying all the range key state every
 	// time, we could copy only if it actually changed from the currently saved

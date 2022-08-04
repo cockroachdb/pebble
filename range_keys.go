@@ -54,8 +54,13 @@ func (i *Iterator) constructRangeKeyIter() {
 	// range keys, but range keys are expected to be sparse anyway, reducing the
 	// cost benefit of maintaining a separate L0Sublevels instance for range key
 	// files and then using it here.
+	//
+	// NB: We iterate L0's files in reverse order. They're sorted by
+	// LargestSeqNum ascending, and we need to add them to the merging iterator
+	// in LargestSeqNum descending to preserve the merging iterator's invariants
+	// around Key Trailer order.
 	iter := current.RangeKeyLevels[0].Iter()
-	for f := iter.First(); f != nil; f = iter.Next() {
+	for f := iter.Last(); f != nil; f = iter.Prev() {
 		spanIterOpts := &keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters}
 		spanIter, err := i.newIterRangeKey(f, spanIterOpts)
 		if err != nil {

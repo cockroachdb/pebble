@@ -78,7 +78,6 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 	if err := coalesce(&ui.sortBuf, s.Visible(ui.snapshot).Keys, &dst.Keys); err != nil {
 		return err
 	}
-
 	// During user iteration over range keys, unsets and deletes don't
 	// matter. Remove them. This step helps logical defragmentation during
 	// iteration.
@@ -87,8 +86,14 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 	for i := range keys {
 		switch keys[i].Kind() {
 		case base.InternalKeyKindRangeKeySet:
+			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
+				panic("pebble: keys unexpectedly not in ascending suffix order")
+			}
 			dst.Keys = append(dst.Keys, keys[i])
 		case base.InternalKeyKindRangeKeyUnset:
+			if invariants.Enabled && len(dst.Keys) > 0 && cmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
+				panic("pebble: keys unexpectedly not in ascending suffix order")
+			}
 			// Skip.
 			continue
 		case base.InternalKeyKindRangeKeyDelete:
@@ -98,6 +103,8 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 			return base.CorruptionErrorf("pebble: unrecognized range key kind %s", keys[i].Kind())
 		}
 	}
+	// coalesce results in dst.Keys being sorted by Suffix.
+	dst.KeysOrder = keyspan.BySuffixAsc
 	return nil
 }
 
@@ -120,6 +127,9 @@ func (ui *UserIteratorConfig) ShouldDefragment(cmp base.Compare, a, b *keyspan.S
 	// equivalent, they must have the same number of range key sets.
 	if len(a.Keys) != len(b.Keys) || len(a.Keys) == 0 {
 		return false
+	}
+	if a.KeysOrder != keyspan.BySuffixAsc || b.KeysOrder != keyspan.BySuffixAsc {
+		panic("pebble: range key span's keys unexpectedly not in ascending suffix order")
 	}
 
 	ret := true
@@ -181,7 +191,7 @@ func (ui *UserIteratorConfig) ShouldDefragment(cmp base.Compare, a, b *keyspan.S
 // consistent with respect to the set/unset suffixes: A given suffix should be
 // set or unset but not both.
 //
-// The resulting span's Keys are sorted by Trailer.
+// The resulting dst Keys slice is sorted by Trailer.
 func Coalesce(cmp base.Compare, keys []keyspan.Key, dst *[]keyspan.Key) error {
 	// TODO(jackson): Currently, Coalesce doesn't actually perform the sequence
 	// number promotion described in the comment above.
@@ -193,7 +203,7 @@ func Coalesce(cmp base.Compare, keys []keyspan.Key, dst *[]keyspan.Key) error {
 		return err
 	}
 	// coalesce left the keys in *dst sorted by suffix. Re-sort them by trailer.
-	keyspan.SortKeys(dst)
+	keyspan.SortKeysByTrailer(dst)
 	return nil
 }
 
@@ -248,15 +258,6 @@ func coalesce(keysBySuffix *keysBySuffix, keys []keyspan.Key, dst *[]keyspan.Key
 	// will.
 	*dst = keysBySuffix.keys
 	return nil
-}
-
-// SortBySuffix sorts the provided keys by suffix.
-func SortBySuffix(cmp base.Compare, keys []keyspan.Key) {
-	bySuffix := keysBySuffix{
-		cmp:  cmp,
-		keys: keys,
-	}
-	sort.Sort(&bySuffix)
 }
 
 type keysBySuffix struct {
