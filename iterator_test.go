@@ -158,6 +158,10 @@ func (f *fakeIter) Next() (*InternalKey, []byte) {
 	return f.Key(), f.Value()
 }
 
+func (f *fakeIter) NextPrefix(succKey []byte) (*InternalKey, []byte) {
+	return f.SeekGE(succKey, base.SeekGEFlagsNone)
+}
+
 func (f *fakeIter) Prev() (*InternalKey, []byte) {
 	f.valid = false
 	if f.index < 0 {
@@ -295,6 +299,10 @@ func (i *invalidatingIter) Last() (*InternalKey, []byte) {
 
 func (i *invalidatingIter) Next() (*InternalKey, []byte) {
 	return i.update(i.iter.Next())
+}
+
+func (i *invalidatingIter) NextPrefix(succKey []byte) (*InternalKey, []byte) {
+	return i.update(i.iter.NextPrefix(succKey))
 }
 
 func (i *invalidatingIter) Prev() (*InternalKey, []byte) {
