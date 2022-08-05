@@ -687,7 +687,6 @@ func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 		l.boundaryContext.isSyntheticIterBoundsKey = false
 		l.boundaryContext.isIgnorableBoundaryKey = false
 	}
-
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
 	loadFileIndicator := l.loadFile(l.findFileGE(key, flags), +1)
@@ -862,6 +861,56 @@ func (l *levelIter) Next() (*InternalKey, base.LazyValue) {
 		}
 	}
 	return l.verify(l.skipEmptyFileForward())
+}
+
+func (l *levelIter) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+	if l.err != nil || l.iter == nil {
+		return nil, base.LazyValue{}
+	}
+	if l.boundaryContext != nil {
+		l.boundaryContext.isSyntheticIterBoundsKey = false
+		l.boundaryContext.isIgnorableBoundaryKey = false
+	}
+
+	switch {
+	case l.largestBoundary != nil:
+		if l.tableOpts.UpperBound != nil {
+			// The UpperBound was within this file, so don't load the next
+			// file. We leave the largestBoundary unchanged so that subsequent
+			// calls to Next() stay at this file. If a Seek/First/Last call is
+			// made and this file continues to be relevant, loadFile() will
+			// set the largestBoundary to nil.
+			if l.rangeDelIterPtr != nil {
+				*l.rangeDelIterPtr = nil
+			}
+			return nil, base.LazyValue{}
+		}
+		// We're stepping past the boundary key, so we need to load a later
+		// file.
+
+	default:
+		// Reset the smallest boundary since we're moving away from it.
+		l.smallestBoundary = nil
+
+		if key, val := l.iter.NextPrefix(succKey); key != nil {
+			return l.verify(key, val)
+		}
+		// Fall through to seeking.
+	}
+
+	// Seek the manifest level iterator using TrySeekUsingNext=true and
+	// RelativeSeek=true so that we take advantage of the knowledge that
+	// `succKey` can only be contained in later files.
+	metadataSeekFlags := base.SeekGEFlagsNone.EnableTrySeekUsingNext().EnableRelativeSeek()
+	if l.loadFile(l.findFileGE(succKey, metadataSeekFlags), +1) != noFileLoaded {
+		// NB: The SeekGE on the file's iterator must not set TrySeekUsingNext,
+		// because l.iter is unpositioned.
+		if key, val := l.iter.SeekGE(succKey, base.SeekGEFlagsNone); key != nil {
+			return l.verify(key, val)
+		}
+		return l.verify(l.skipEmptyFileForward())
+	}
+	return nil, base.LazyValue{}
 }
 
 func (l *levelIter) Prev() (*InternalKey, base.LazyValue) {
