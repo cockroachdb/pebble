@@ -249,6 +249,11 @@ type mergingIter struct {
 	upper         []byte
 	stats         *InternalIteratorStats
 
+	// levelsPositioned, if non-nil, is a slice of the same length as levels.
+	// It's used by NextPrefix to record which levels have already been
+	// repositioned. It's created lazily by the first call to NextPrefix.
+	levelsPositioned []bool
+
 	combinedIterState *combinedIterState
 
 	// Used in some tests to disable the random disabling of seek optimizations.
@@ -552,11 +557,18 @@ func (m *mergingIter) switchToMaxHeap() {
 }
 
 // Steps to the next entry. item is the current top item in the heap.
-func (m *mergingIter) nextEntry(item *mergingIterItem) {
+func (m *mergingIter) nextEntry(item *mergingIterItem, succKey []byte) {
 	l := &m.levels[item.index]
 	oldTopLevel := item.index
 	oldRangeDelIter := l.rangeDelIter
-	if l.iterKey, l.iterValue = l.iter.Next(); l.iterKey != nil {
+
+	if succKey == nil {
+		l.iterKey, l.iterValue = l.iter.Next()
+	} else {
+		l.iterKey, l.iterValue = l.iter.NextPrefix(succKey)
+	}
+
+	if l.iterKey != nil {
 		item.key, item.value = *l.iterKey, l.iterValue
 		if m.heap.len() > 1 {
 			m.heap.fix(0)
@@ -672,7 +684,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 				return true
 			}
 			if l.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
-				m.nextEntry(item)
+				m.nextEntry(item, nil /* succKey */)
 				return true
 			}
 		}
@@ -736,7 +748,7 @@ func (m *mergingIter) findNextEntry() (*InternalKey, base.LazyValue) {
 			(!m.levels[item.index].isIgnorableBoundaryKey) {
 			return &item.key, item.value
 		}
-		m.nextEntry(item)
+		m.nextEntry(item, nil /* succKey */)
 	}
 	return nil, base.LazyValue{}
 }
@@ -1156,7 +1168,35 @@ func (m *mergingIter) Next() (*InternalKey, base.LazyValue) {
 		return nil, base.LazyValue{}
 	}
 
-	m.nextEntry(&m.heap.items[0])
+	m.nextEntry(&m.heap.items[0], nil /* succKey */)
+	return m.findNextEntry()
+}
+
+func (m *mergingIter) NextPrefix(succKey []byte) (*InternalKey, LazyValue) {
+	if m.dir != 1 {
+		return m.SeekGE(succKey, base.SeekGEFlagsNone.EnableRelativeSeek())
+	}
+	if m.err != nil {
+		return nil, LazyValue{}
+	}
+	if m.levelsPositioned == nil {
+		m.levelsPositioned = make([]bool, len(m.levels))
+	} else {
+		for i := range m.levelsPositioned {
+			m.levelsPositioned[i] = false
+		}
+	}
+	for m.heap.len() > 0 {
+		item := &m.heap.items[0]
+		if m.levelsPositioned[item.index] {
+			// A level we've previously positioned is at the top of the heap, so
+			// there are no other levels positioned at keys < succKey. We've
+			// advanced as far as we need to.
+			break
+		}
+		m.nextEntry(item, succKey)
+		m.levelsPositioned[item.index] = true
+	}
 	return m.findNextEntry()
 }
 

@@ -1154,6 +1154,29 @@ func (i *singleLevelIterator) Next() (*InternalKey, base.LazyValue) {
 	return i.skipForward()
 }
 
+// NextPrefix implements (base.InternalIterator).NextPrefix.
+func (i *singleLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+	if i.exhaustedBounds == +1 {
+		panic("Next called even though exhausted upper bound")
+	}
+	i.exhaustedBounds = 0
+	i.maybeFilteredKeysSingleLevel = false
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.boundsCmp = 0
+	if i.err != nil {
+		return nil, base.LazyValue{}
+	}
+	key, val := i.data.NextPrefix(succKey)
+	if key != nil {
+		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
+			i.exhaustedBounds = +1
+			return nil, base.LazyValue{}
+		}
+		return key, val
+	}
+	return i.SeekGE(succKey, base.SeekGEFlagsNone)
+}
+
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
 func (i *singleLevelIterator) Prev() (*InternalKey, base.LazyValue) {
@@ -2090,6 +2113,20 @@ func (i *twoLevelIterator) Next() (*InternalKey, base.LazyValue) {
 		return key, val
 	}
 	return i.skipForward()
+}
+
+// NextPrefix implements (base.InternalIterator).NextPrefix.
+func (i *twoLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.boundsCmp = 0
+	i.maybeFilteredKeysTwoLevel = false
+	if i.err != nil {
+		return nil, base.LazyValue{}
+	}
+	if key, val := i.singleLevelIterator.NextPrefix(succKey); key != nil {
+		return key, val
+	}
+	return i.SeekGE(succKey, base.SeekGEFlagsNone)
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble

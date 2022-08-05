@@ -166,6 +166,8 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			valid = iter.Last()
 		case "next":
 			valid = iter.Next()
+		case "next-prefix":
+			valid = iter.NextPrefix()
 		case "prev":
 			valid = iter.Prev()
 		case "set-bounds":

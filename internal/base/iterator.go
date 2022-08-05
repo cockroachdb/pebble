@@ -152,6 +152,22 @@ type InternalIterator interface {
 	// SeekPrefixGE or Next returned (nil, nilv).
 	Next() (*InternalKey, LazyValue)
 
+	// NextPrefix moves the iterator to the next key/value pair with a different
+	// prefix than the key at the current iterator position. Returns the key and
+	// value if the iterator is pointing at a valid entry, and (nil, nil)
+	// otherwise. Note that NextPrefix only checks the upper bound. It is up to
+	// the caller to ensure that key is greater than or equal to the lower
+	// bound.
+	//
+	// NextPrefix is passed the immediate successor to the current prefix key. A
+	// valid implementation of NextPrefix is to call SeekGE with succKey.
+	//
+	// It is valid to call NextPrefix when the iterator is positioned before the
+	// first key/value pair due to either a prior call to SeekLT or Prev which
+	// returned (nil, nil). It is not allowed to call NextPrefix when the
+	// previous call to SeekGE, SeekPrefixGE or Next returned (nil, nil).
+	NextPrefix(succKey []byte) (*InternalKey, LazyValue)
+
 	// Prev moves the iterator to the previous key/value pair. Returns the key
 	// and value if the iterator is pointing at a valid entry, and (nil, nilv)
 	// otherwise. Note that Prev only checks the lower bound. It is up to the

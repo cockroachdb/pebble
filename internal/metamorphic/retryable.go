@@ -257,6 +257,17 @@ func (i *retryableIter) NextWithLimit(limit []byte) pebble.IterValidityState {
 
 }
 
+func (i *retryableIter) NextPrefix() bool {
+	var valid bool
+	i.withRetry(func() {
+		valid = i.iter.NextPrefix()
+		for valid && i.shouldFilter() {
+			valid = i.iter.Next()
+		}
+	})
+	return valid
+}
+
 func (i *retryableIter) Prev() bool {
 	var valid bool
 	i.withPosition(func() {

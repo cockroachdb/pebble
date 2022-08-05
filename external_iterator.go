@@ -473,6 +473,20 @@ func (s *simpleLevelIter) Next() (*base.InternalKey, base.LazyValue) {
 	return s.skipEmptyFileForward(nil /* seekKey */, base.SeekGEFlagsNone)
 }
 
+func (s *simpleLevelIter) NextPrefix(succKey []byte) (*base.InternalKey, base.LazyValue) {
+	if s.err != nil {
+		return nil, base.LazyValue{}
+	}
+	if s.currentIdx < 0 || s.currentIdx >= len(s.filtered) {
+		return nil, base.LazyValue{}
+	}
+	if iterKey, val := s.filtered[s.currentIdx].NextPrefix(succKey); iterKey != nil {
+		return iterKey, val
+	}
+	s.currentIdx++
+	return s.skipEmptyFileForward(succKey /* seekKey */, base.SeekGEFlagsNone)
+}
+
 func (s *simpleLevelIter) Prev() (*base.InternalKey, base.LazyValue) {
 	panic("unimplemented")
 }
