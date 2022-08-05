@@ -249,6 +249,11 @@ type mergingIter struct {
 	upper         []byte
 	stats         *InternalIteratorStats
 
+	// levelsPositioned, if non-nil, is a slice of the same length as levels.
+	// It's used by NextPrefix to record which levels have already been
+	// repositioned. It's created lazily by the first call to NextPrefix.
+	levelsPositioned []bool
+
 	combinedIterState *combinedIterState
 
 	// Used in some tests to disable the random disabling of seek optimizations.
@@ -552,11 +557,18 @@ func (m *mergingIter) switchToMaxHeap() {
 }
 
 // Steps to the next entry. item is the current top item in the heap.
-func (m *mergingIter) nextEntry(item *mergingIterItem) {
+func (m *mergingIter) nextEntry(item *mergingIterItem, succKey []byte) {
 	l := &m.levels[item.index]
 	oldTopLevel := item.index
 	oldRangeDelIter := l.rangeDelIter
-	if l.iterKey, l.iterValue = l.iter.Next(); l.iterKey != nil {
+
+	if succKey == nil {
+		l.iterKey, l.iterValue = l.iter.Next()
+	} else {
+		l.iterKey, l.iterValue = l.iter.NextPrefix(succKey)
+	}
+
+	if l.iterKey != nil {
 		item.key, item.value = *l.iterKey, l.iterValue
 		if m.heap.len() > 1 {
 			m.heap.fix(0)
@@ -672,7 +684,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 				return true
 			}
 			if l.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
-				m.nextEntry(item)
+				m.nextEntry(item, nil /* succKey */)
 				return true
 			}
 		}
@@ -736,7 +748,7 @@ func (m *mergingIter) findNextEntry() (*InternalKey, base.LazyValue) {
 			(!m.levels[item.index].isIgnorableBoundaryKey) {
 			return &item.key, item.value
 		}
-		m.nextEntry(item)
+		m.nextEntry(item, nil /* succKey */)
 	}
 	return nil, base.LazyValue{}
 }
@@ -1156,7 +1168,54 @@ func (m *mergingIter) Next() (*InternalKey, base.LazyValue) {
 		return nil, base.LazyValue{}
 	}
 
-	m.nextEntry(&m.heap.items[0])
+	m.nextEntry(&m.heap.items[0], nil /* succKey */)
+	return m.findNextEntry()
+}
+
+func (m *mergingIter) NextPrefix(succKey []byte) (*InternalKey, LazyValue) {
+	if m.dir != 1 {
+		return m.SeekGE(succKey, base.SeekGEFlagsNone.EnableRelativeSeek())
+	}
+	if m.err != nil || m.heap.len() == 0 {
+		return nil, LazyValue{}
+	}
+	if m.levelsPositioned == nil {
+		m.levelsPositioned = make([]bool, len(m.levels))
+	} else {
+		for i := range m.levelsPositioned {
+			m.levelsPositioned[i] = false
+		}
+	}
+
+	// The heap root necessarily must be positioned at a key < succKey, because
+	// NextPrefix was invoked.
+	root := &m.heap.items[0]
+	m.levelsPositioned[root.index] = true
+	if invariants.Enabled && m.heap.cmp(root.key.UserKey, succKey) >= 0 {
+		m.logger.Fatalf("pebble: invariant violation: NextPrefix(%q) called on merging iterator already positioned at %q",
+			succKey, root.key)
+	}
+	m.nextEntry(root, succKey)
+	// NB: root is a pointer to the heap root. nextEntry may have changed
+	// the heap root, so we must not expect root to still point to the same
+	// level (or to even be valid, if the heap is now exhaused).
+
+	for m.heap.len() > 0 {
+		if m.levelsPositioned[root.index] {
+			// A level we've previously positioned is at the top of the heap, so
+			// there are no other levels positioned at keys < succKey. We've
+			// advanced as far as we need to.
+			break
+		}
+		// Since this level was not the original heap root when NextPrefix was
+		// called, we don't know whether this level's current key has the
+		// previous prefix or a new one.
+		if m.heap.cmp(root.key.UserKey, succKey) >= 0 {
+			break
+		}
+		m.levelsPositioned[root.index] = true
+		m.nextEntry(root, succKey)
+	}
 	return m.findNextEntry()
 }
 

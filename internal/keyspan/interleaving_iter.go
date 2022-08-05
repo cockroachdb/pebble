@@ -29,9 +29,9 @@ type SpanMask interface {
 	SpanChanged(*Span)
 	// SkipPoint is invoked by the interleaving iterator whenever the iterator
 	// encounters a point key covered by a Span. If SkipPoint returns true, the
-	// interleaving iterator skips the point key without returning it. This is
-	// used during range key iteration to skip over point keys 'masked' by range
-	// keys.
+	// interleaving iterator skips the point key and all larger keys with the
+	// same prefix. This is used during range key iteration to skip over point
+	// keys 'masked' by range keys.
 	SkipPoint(userKey []byte) bool
 }
 
@@ -479,6 +479,34 @@ func (i *InterleavingIter) Next() (*base.InternalKey, base.LazyValue) {
 	return i.interleaveForward(i.lower, nil /* prefix */)
 }
 
+// NextPrefix implements (base.InternalIterator).NextPrefix.
+func (i *InterleavingIter) NextPrefix(succKey []byte) (*base.InternalKey, base.LazyValue) {
+	if i.dir == -1 {
+		// Next to reorient ourselves in the forward direction. If this Next
+		// arrives at key ≥ succKey, then we're done.
+		if k, v := i.Next(); k == nil || i.cmp(k.UserKey, succKey) >= 0 {
+			return k, v
+		}
+		// We're now oriented in the forward direction and can proceed.
+	}
+
+	// Refresh the point key if the current point key has already been
+	// interleaved.
+	if i.pointKeyInterleaved || (i.pointKey != nil && i.cmp(i.pointKey.UserKey, succKey) < 0) {
+		i.pointKey, i.pointVal = i.pointIter.NextPrefix(succKey)
+		i.pointKeyInterleaved = false
+	}
+	// If we already interleaved the current span start key, and the point key
+	// is ≥ the span's end key, move to the next span.
+	if i.keyspanInterleaved && i.pointKey != nil && i.span != nil &&
+		i.cmp(i.pointKey.UserKey, i.span.End) >= 0 {
+		i.span = i.keyspanIter.Next()
+		i.checkForwardBound(nil)
+		i.savedKeyspan()
+	}
+	return i.interleaveForward(i.lower, nil)
+}
+
 // Prev implements (base.InternalIterator).Prev.
 func (i *InterleavingIter) Prev() (*base.InternalKey, base.LazyValue) {
 	if i.dir == +1 {
@@ -677,9 +705,15 @@ func (i *InterleavingIter) interleaveForward(
 				// if we have stepped outside of the span last saved as a mask,
 				// so that the decision to skip is made with the correct
 				// knowledge of the covering span.
-				i.maybeUpdateMask(true /*covered */)
+				i.maybeUpdateMask(true /* covered */)
 
 				if i.mask != nil && i.mask.SkipPoint(i.pointKey.UserKey) {
+					// TODO(jackson): If we thread a base.Comparer through to
+					// InterleavingIter so that we have access to
+					// ImmediateSuccessor, we could use NextPrefix. We'd need to
+					// tweak the SpanMask interface slightly, but it's probably
+					// worthwhile.
+
 					i.pointKey, i.pointVal = i.pointIter.Next()
 					// We may have just invalidated the invariant that
 					// ensures the span's End is > the point key, so

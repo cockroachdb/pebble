@@ -190,6 +190,10 @@ func (g *getIter) Prev() (*InternalKey, base.LazyValue) {
 	panic("pebble: Prev unimplemented")
 }
 
+func (g *getIter) NextPrefix([]byte) (*InternalKey, base.LazyValue) {
+	panic("pebble: NextPrefix unimplemented")
+}
+
 func (g *getIter) Valid() bool {
 	return g.iterKey != nil && g.err == nil
 }
