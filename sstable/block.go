@@ -853,6 +853,19 @@ func (i *blockIter) Next() (*InternalKey, []byte) {
 	return &i.ikey, i.val
 }
 
+// NextPrefix implements (base.InternalIterator).NextPrefix
+func (i *blockIter) NextPrefix(succKey []byte) (*InternalKey, []byte) {
+	const nextsBeforeSeek = 3
+	k, v := i.Next()
+	for j := 1; k != nil && i.cmp(k.UserKey, succKey) < 0; j++ {
+		if j >= nextsBeforeSeek {
+			return i.SeekGE(succKey, base.SeekGEFlagsNone)
+		}
+		k, v = i.Next()
+	}
+	return k, v
+}
+
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
 func (i *blockIter) Prev() (*InternalKey, []byte) {

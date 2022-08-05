@@ -98,6 +98,7 @@ func generate(rng *rand.Rand, count uint64, cfg config, km *keyManager) []op {
 		iterLast:             g.iterLast,
 		iterNext:             g.iterNext,
 		iterNextWithLimit:    g.iterNextWithLimit,
+		iterNextPrefix:       g.iterNextPrefix,
 		iterPrev:             g.iterPrev,
 		iterPrevWithLimit:    g.iterPrevWithLimit,
 		iterSeekGE:           g.iterSeekGE,
@@ -858,6 +859,16 @@ func (g *generator) iterNextWithLimit() {
 	g.add(&iterNextOp{
 		iterID: g.liveIters.rand(g.rng),
 		limit:  g.randKeyToRead(0.001), // 0.1% new keys
+	})
+}
+
+func (g *generator) iterNextPrefix() {
+	if len(g.liveIters) == 0 {
+		return
+	}
+
+	g.add(&iterNextPrefixOp{
+		iterID: g.liveIters.rand(g.rng),
 	})
 }
 
