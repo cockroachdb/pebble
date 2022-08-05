@@ -556,24 +556,7 @@ func (o *getOp) String() string {
 type newIterOp struct {
 	readerID objID
 	iterID   objID
-	lower    []byte
-	upper    []byte
-	keyTypes uint32 // pebble.IterKeyType
-
-	// If filterMax is >0, this iterator will filter out any keys that have
-	// suffixes that don't fall within the range [filterMin,filterMax).
-	// Additionally, the iterator will be constructed with a block-property
-	// filter that filters out blocks accordingly. Not all OPTIONS hook up the
-	// corresponding block property collector, so block-filtering may still be
-	// effectively disabled in some runs. The iterator operations themselves
-	// however will always skip past any points that should be filtered to
-	// ensure determinism.
-	filterMin uint64
-	filterMax uint64
-
-	// rangeKeyMaskSuffix may be set if keyTypes is IterKeyTypePointsAndRanges
-	// to configure IterOptions.RangeKeyMasking.Suffix.
-	rangeKeyMaskSuffix []byte
+	iterOpts
 }
 
 func (o *newIterOp) run(t *test, h *history) {
@@ -590,7 +573,7 @@ func (o *newIterOp) run(t *test, h *history) {
 		UpperBound: upper,
 		KeyTypes:   pebble.IterKeyType(o.keyTypes),
 		RangeKeyMasking: pebble.RangeKeyMasking{
-			Suffix: o.rangeKeyMaskSuffix,
+			Suffix: o.maskSuffix,
 		},
 	}
 	if opts.RangeKeyMasking.Suffix != nil {
@@ -623,7 +606,7 @@ func (o *newIterOp) run(t *test, h *history) {
 
 func (o *newIterOp) String() string {
 	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %d, %d, %q /* masking suffix */)",
-		o.iterID, o.readerID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.rangeKeyMaskSuffix)
+		o.iterID, o.readerID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.maskSuffix)
 }
 
 // newIterUsingCloneOp models a Iterator.Clone operation.
@@ -679,25 +662,8 @@ func (o *iterSetBoundsOp) String() string {
 
 // iterSetOptionsOp models an Iterator.SetOptions operation.
 type iterSetOptionsOp struct {
-	iterID   objID
-	lower    []byte
-	upper    []byte
-	keyTypes uint32 // pebble.IterKeyType
-
-	// If filterMax is >0, this iterator will filter out any keys that have
-	// suffixes that don't fall within the range [filterMin,filterMax).
-	// Additionally, the iterator will be constructed with a block-property
-	// filter that filters out blocks accordingly. Not all OPTIONS hook up the
-	// corresponding block property collector, so block-filtering may still be
-	// effectively disabled in some runs. The iterator operations themselves
-	// however will always skip past any points that should be filtered to
-	// ensure determinism.
-	filterMin uint64
-	filterMax uint64
-
-	// rangeKeyMaskSuffix may be set if keyTypes is IterKeyTypePointsAndRanges
-	// to configure IterOptions.RangeKeyMasking.Suffix.
-	rangeKeyMaskSuffix []byte
+	iterID objID
+	iterOpts
 }
 
 func (o *iterSetOptionsOp) run(t *test, h *history) {
@@ -715,7 +681,7 @@ func (o *iterSetOptionsOp) run(t *test, h *history) {
 		UpperBound: upper,
 		KeyTypes:   pebble.IterKeyType(o.keyTypes),
 		RangeKeyMasking: pebble.RangeKeyMasking{
-			Suffix: o.rangeKeyMaskSuffix,
+			Suffix: o.maskSuffix,
 		},
 	}
 	if opts.RangeKeyMasking.Suffix != nil {
@@ -742,7 +708,7 @@ func (o *iterSetOptionsOp) run(t *test, h *history) {
 
 func (o *iterSetOptionsOp) String() string {
 	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %d, %d, %q /* masking suffix */)",
-		o.iterID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.rangeKeyMaskSuffix)
+		o.iterID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.maskSuffix)
 }
 
 // iterSeekGEOp models an Iterator.SeekGE[WithLimit] operation.

@@ -49,8 +49,7 @@ func TestParserNilBounds(t *testing.T) {
 		&newIterOp{
 			readerID: makeObjID(dbTag, 0),
 			iterID:   makeObjID(iterTag, 1),
-			lower:    nil,
-			upper:    nil,
+			iterOpts: iterOpts{},
 		},
 	})
 	parsedOps, err := parse([]byte(formatted))
