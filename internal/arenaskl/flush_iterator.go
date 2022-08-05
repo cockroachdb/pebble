@@ -79,6 +79,10 @@ func (it *flushIterator) Next() (*base.InternalKey, base.LazyValue) {
 	return &it.key, base.MakeInPlaceValue(it.value())
 }
 
+func (it *flushIterator) NextPrefix(succKey []byte) (*base.InternalKey, base.LazyValue) {
+	panic("pebble: NextPrefix unimplemented")
+}
+
 func (it *flushIterator) Prev() (*base.InternalKey, base.LazyValue) {
 	panic("pebble: Prev unimplemented")
 }

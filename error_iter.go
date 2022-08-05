@@ -50,6 +50,10 @@ func (c *errorIter) Prev() (*InternalKey, base.LazyValue) {
 	return nil, base.LazyValue{}
 }
 
+func (c *errorIter) NextPrefix([]byte) (*InternalKey, base.LazyValue) {
+	return nil, base.LazyValue{}
+}
+
 func (c *errorIter) Error() error {
 	return c.err
 }

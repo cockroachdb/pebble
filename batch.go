@@ -1336,6 +1336,19 @@ func (i *batchIter) Next() (*InternalKey, base.LazyValue) {
 	return ikey, base.MakeInPlaceValue(i.value())
 }
 
+func (i *batchIter) NextPrefix(succKey []byte) (*InternalKey, LazyValue) {
+	// Because NextPrefix was invoked `succKey` must be ≥ the key at i's current
+	// position. Seek the arena iterator using TrySeekUsingNext.
+	ikey := i.iter.SeekGE(succKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
+	for ikey != nil && ikey.SeqNum() >= i.snapshot {
+		ikey = i.iter.Next()
+	}
+	if ikey == nil {
+		return nil, base.LazyValue{}
+	}
+	return ikey, base.MakeInPlaceValue(i.value())
+}
+
 func (i *batchIter) Prev() (*InternalKey, base.LazyValue) {
 	ikey := i.iter.Prev()
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
@@ -1771,6 +1784,12 @@ func (i *flushableBatchIter) Prev() (*InternalKey, base.LazyValue) {
 		return nil, base.LazyValue{}
 	}
 	return &i.key, i.value()
+}
+
+// Note: flushFlushableBatchIter.Next mirrors the implementation of
+// flushableBatchIter.Next due to performance. Keep the two in sync.
+func (i *flushableBatchIter) NextPrefix(succKey []byte) (*InternalKey, LazyValue) {
+	return i.SeekGE(succKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
 }
 
 func (i *flushableBatchIter) getKey(index int) InternalKey {

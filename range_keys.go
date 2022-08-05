@@ -628,6 +628,17 @@ func (i *lazyCombinedIter) Next() (*InternalKey, base.LazyValue) {
 	return k, v
 }
 
+func (i *lazyCombinedIter) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+	if i.combinedIterState.initialized {
+		return i.parent.rangeKey.iiter.NextPrefix(succKey)
+	}
+	k, v := i.pointIter.NextPrefix(succKey)
+	if i.combinedIterState.triggered {
+		return i.initCombinedIteration(+1, k, v, nil)
+	}
+	return k, v
+}
+
 func (i *lazyCombinedIter) Prev() (*InternalKey, base.LazyValue) {
 	if i.combinedIterState.initialized {
 		return i.parent.rangeKey.iiter.Prev()

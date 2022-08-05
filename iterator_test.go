@@ -173,6 +173,10 @@ func (f *fakeIter) Prev() (*InternalKey, base.LazyValue) {
 	return f.Key(), f.Value()
 }
 
+func (f *fakeIter) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+	return f.SeekGE(succKey, base.SeekGEFlagsNone)
+}
+
 // key returns the current Key the iterator is positioned at regardless of the
 // value of f.valid.
 func (f *fakeIter) key() *InternalKey {
@@ -310,6 +314,10 @@ func (i *invalidatingIter) Next() (*InternalKey, base.LazyValue) {
 
 func (i *invalidatingIter) Prev() (*InternalKey, base.LazyValue) {
 	return i.update(i.iter.Prev())
+}
+
+func (i *invalidatingIter) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+	return i.update(i.iter.NextPrefix(succKey))
 }
 
 func (i *invalidatingIter) Error() error {
@@ -2744,6 +2752,79 @@ func BenchmarkIteratorScan(b *testing.B) {
 				}
 			}()
 		}
+	}
+}
+
+func BenchmarkIteratorScanNextPrefix(b *testing.B) {
+	const maxPrefixLen = 8
+	keyBuf := make([]byte, maxPrefixLen+testkeys.MaxSuffixLen)
+
+	setupBench := func(b *testing.B, keyCount, versCount, readAmp int) *DB {
+		opts := &Options{
+			FS:                 vfs.NewMem(),
+			Comparer:           testkeys.Comparer,
+			FormatMajorVersion: FormatNewest,
+		}
+		opts.DisableAutomaticCompactions = true
+		d, err := Open("", opts)
+		require.NoError(b, err)
+
+		// Take the very large keyspace consisting of alphabetic
+		// characters of lengths up to `maxPrefixLen` and reduce it down
+		// to `keyCount` keys by picking every 1 key every `keyCount` keys.
+		keys := testkeys.Alpha(maxPrefixLen)
+		keys = keys.EveryN(keys.Count() / keyCount)
+		if keys.Count() < keyCount {
+			b.Fatalf("expected %d keys, found %d", keyCount, keys.Count())
+		}
+
+		// Portion the keys into `readAmp` overlapping key sets.
+		for _, ks := range testkeys.Divvy(keys, readAmp) {
+			batch := d.NewBatch()
+			for i := 0; i < ks.Count(); i++ {
+				for v := 0; v < versCount; v++ {
+					n := testkeys.WriteKeyAt(keyBuf[:], ks, i, versCount-v+1)
+					batch.Set(keyBuf[:n], keyBuf[:n], nil)
+				}
+			}
+			require.NoError(b, batch.Commit(nil))
+			require.NoError(b, d.Flush())
+		}
+		// Each level is a sublevel.
+		m := d.Metrics()
+		require.Equal(b, readAmp, m.ReadAmp())
+		return d
+	}
+
+	for _, keyCount := range []int{100, 1000, 10000} {
+		b.Run(fmt.Sprintf("keys=%d", keyCount), func(b *testing.B) {
+			for _, versionCount := range []int{1, 2, 10, 100} {
+				b.Run(fmt.Sprintf("versions=%d", versionCount), func(b *testing.B) {
+					for _, readAmp := range []int{1, 3, 7, 10} {
+						b.Run(fmt.Sprintf("ramp=%d", readAmp), func(b *testing.B) {
+							d := setupBench(b, keyCount, versionCount, readAmp)
+							defer func() { require.NoError(b, d.Close()) }()
+							for _, keyTypes := range []IterKeyType{IterKeyTypePointsOnly, IterKeyTypePointsAndRanges} {
+								b.Run(fmt.Sprintf("key-types=%s", keyTypes), func(b *testing.B) {
+									b.ResetTimer()
+									iterOpts := IterOptions{KeyTypes: keyTypes}
+									for i := 0; i < b.N; i++ {
+										b.StartTimer()
+										iter := d.NewIter(&iterOpts)
+										valid := iter.First()
+										for valid {
+											valid = iter.NextPrefix()
+										}
+										b.StopTimer()
+										require.NoError(b, iter.Close())
+									}
+								})
+							}
+						})
+					}
+				})
+			}
+		})
 	}
 }
 
