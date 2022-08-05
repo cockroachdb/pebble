@@ -460,6 +460,7 @@ first
 next
 next
 next
+seek-ge bat
 ----
 a: (., [a-b) @1=poi)
 b: (., [b-c) @2=yaya, @1=poi)
@@ -468,4 +469,36 @@ c: (., [c-d) @2=yaya)
 a: (., [a-b) @1=poi)
 b: (., [b-c) @2=yaya, @1=poi)
 c: (., [c-d) @2=yaya)
+e: (., [e-f) @3=foo)
+bat: (., [b-c) @2=yaya, @1=poi)
+
+# Mutate the range key under the interleaving iterator's current position in the
+# indexed batch.
+#
+# The last `seek-ge` operation landed on the range key [b-c). The top-level
+# *pebble.Iterator needs to step the iterator again to see if there's a
+# coincident point key at (`bat`), which would've advanced the interleaving
+# iterator to the range key with bounds [c,d), so the underlying interleaving
+# iterator is positioned ahead at:
+#
+#     c: (., [c-d) @2=yaya)
+#
+# If we call set-options to refresh the iterator's view of the indexed batch,
+# the range-key-unset [c,d)@2 becomes visible, and the range key that the
+# underlying interleaving iterator is positioned over should not be visible.
+#
+# A bug previously allowed this range key to be visible when seeking into this
+# span's bounds (see the optimization in InterleavingIter.SeekGE). Now, the call
+# to SetOptions clears the interleaving iterator's positional state to avoid the
+# SeekGE optimization.
+
+mutate
+range-key-unset b d @2
+----
+
+iter iter=i1
+set-options
+seek-ge cat
+----
+.
 e: (., [e-f) @3=foo)

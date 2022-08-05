@@ -983,6 +983,15 @@ func (i *InterleavingIter) SetBounds(lower, upper []byte) {
 	i.pointIter.SetBounds(lower, upper)
 }
 
+// Invalidate invalidates the interleaving iterator's current position, clearing
+// its state. This prevents optimizations such as reusing the current span on
+// seek.
+func (i *InterleavingIter) Invalidate() {
+	i.span = nil
+	i.pointKey = nil
+	i.pointVal = nil
+}
+
 // Error implements (base.InternalIterator).Error.
 func (i *InterleavingIter) Error() error {
 	return firstError(i.pointIter.Error(), i.keyspanIter.Error())
