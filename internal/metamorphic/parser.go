@@ -77,7 +77,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *newIndexedBatchOp:
 		return nil, &t.batchID, nil
 	case *newIterOp:
-		return &t.readerID, &t.iterID, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMin, &t.filterMax, &t.rangeKeyMaskSuffix}
+		return &t.readerID, &t.iterID, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMin, &t.filterMax, &t.maskSuffix}
 	case *newIterUsingCloneOp:
 		return &t.existingIterID, &t.iterID, []interface{}{&t.refreshBatch}
 	case *newSnapshotOp:
@@ -97,7 +97,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *iterSetBoundsOp:
 		return &t.iterID, nil, []interface{}{&t.lower, &t.upper}
 	case *iterSetOptionsOp:
-		return &t.iterID, nil, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMin, &t.filterMax, &t.rangeKeyMaskSuffix}
+		return &t.iterID, nil, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMin, &t.filterMax, &t.maskSuffix}
 	case *singleDeleteOp:
 		return &t.writerID, nil, []interface{}{&t.key, &t.maybeReplaceDelete}
 	case *rangeKeyDeleteOp:
