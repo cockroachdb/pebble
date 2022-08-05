@@ -928,6 +928,26 @@ func (o *iterNextOp) String() string {
 	return fmt.Sprintf("%s.Next(%q)", o.iterID, o.limit)
 }
 
+// iterNextPrefixOp models an Iterator.NextPrefix operation.
+type iterNextPrefixOp struct {
+	iterID objID
+}
+
+func (o *iterNextPrefixOp) run(t *test, h *history) {
+	i := t.getIter(o.iterID)
+	valid := i.NextPrefix()
+	validStr := validBoolToStr(valid)
+	if valid {
+		h.Recordf("%s // [%s,%s] %v", o, validStr, iteratorPos(i), i.Error())
+	} else {
+		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
+	}
+}
+
+func (o *iterNextPrefixOp) String() string {
+	return fmt.Sprintf("%s.NextPrefix()", o.iterID)
+}
+
 // iterPrevOp models an Iterator.Prev[WithLimit] operation.
 type iterPrevOp struct {
 	iterID objID
