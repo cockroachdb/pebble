@@ -53,7 +53,7 @@ func (d *DB) maybeCollectTableStatsLocked() {
 func (d *DB) updateTableStatsLocked(newFiles []manifest.NewFileEntry) {
 	var needStats bool
 	for _, nf := range newFiles {
-		if !nf.Meta.Stats.Valid {
+		if !nf.Meta.StatsValidLocked() {
 			needStats = true
 			break
 		}
@@ -126,7 +126,8 @@ func (d *DB) collectTableStats() bool {
 	maybeCompact := false
 	for _, c := range collected {
 		c.fileMetadata.Stats = c.TableStats
-		maybeCompact = maybeCompact || c.fileMetadata.Stats.RangeDeletionsBytesEstimate > 0
+		maybeCompact = maybeCompact || c.TableStats.RangeDeletionsBytesEstimate > 0
+		c.fileMetadata.StatsMarkValid()
 	}
 	d.mu.tableStats.cond.Broadcast()
 	d.maybeCollectTableStatsLocked()
@@ -174,7 +175,7 @@ func (d *DB) loadNewFileStats(
 		// collectTableStats updates f.Stats for active files, and we
 		// ensure only one goroutine runs it at a time through
 		// d.mu.tableStats.loading.
-		if nf.Meta.Stats.Valid {
+		if nf.Meta.StatsValidLocked() {
 			continue
 		}
 
@@ -216,9 +217,9 @@ func (d *DB) scanReadStateTableStats(
 			// NB: We're not holding d.mu which protects f.Stats, but only the
 			// active stats collection job updates f.Stats for active files,
 			// and we ensure only one goroutine runs it at a time through
-			// d.mu.tableStats.loading. This makes it safe to read
-			// f.Stats.Valid despite not holding d.mu.
-			if f.Stats.Valid {
+			// d.mu.tableStats.loading. This makes it safe to read validity
+			// through f.Stats.ValidLocked despite not holding d.mu.
+			if f.StatsValidLocked() {
 				continue
 			}
 
@@ -270,13 +271,12 @@ func (d *DB) loadTableStats(
 		// TODO(travers): Once we have real-world data, consider collecting
 		// additional stats that may provide improved heuristics for compaction
 		// picking.
-		stats.NumRangeKeys = r.Properties.NumRangeKeys()
+		stats.NumRangeKeySets = r.Properties.NumRangeKeySets
 		return
 	})
 	if err != nil {
 		return stats, nil, err
 	}
-	stats.Valid = true
 	return stats, compactionHints, nil
 }
 
@@ -550,14 +550,12 @@ func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) 
 		pointEstimate = pointDeletionsBytesEstimate(props, avgKeySize, avgValSize)
 	}
 
-	meta.Stats = manifest.TableStats{
-		Valid:                       true,
-		NumEntries:                  props.NumEntries,
-		NumDeletions:                props.NumDeletions,
-		NumRangeKeys:                props.NumRangeKeys(),
-		PointDeletionsBytesEstimate: pointEstimate,
-		RangeDeletionsBytesEstimate: 0,
-	}
+	meta.Stats.NumEntries = props.NumEntries
+	meta.Stats.NumDeletions = props.NumDeletions
+	meta.Stats.NumRangeKeySets = props.NumRangeKeySets
+	meta.Stats.PointDeletionsBytesEstimate = pointEstimate
+	meta.Stats.RangeDeletionsBytesEstimate = 0
+	meta.StatsMarkValid()
 	return true
 }
 

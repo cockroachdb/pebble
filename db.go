@@ -995,6 +995,9 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 			}
 			dbi.iter = &dbi.lazyCombinedIter
 		} else {
+			dbi.lazyCombinedIter.combinedIterState = combinedIterState{
+				initialized: true,
+			}
 			if dbi.rangeKey == nil {
 				dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 				dbi.rangeKey.init(dbi.cmp, dbi.split, &dbi.opts)
