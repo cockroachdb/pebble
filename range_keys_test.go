@@ -164,6 +164,11 @@ func TestRangeKeys(t *testing.T) {
 				fmt.Fprintln(&buf)
 			}
 			return buf.String()
+		case "wait-table-stats":
+			d.mu.Lock()
+			d.waitTableStats()
+			d.mu.Unlock()
+			return ""
 		default:
 			return fmt.Sprintf("unknown command %q", td.Cmd)
 		}

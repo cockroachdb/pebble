@@ -1048,3 +1048,79 @@ seek-ge b
 ----
 a: (., [a-c) @5=boop)
 b: (., [a-c) @5=boop)
+
+# Test a few cases around when a combined iterator should be lazy or not.
+
+reset
+----
+
+batch
+set a a
+set b b
+set c c
+set e e
+range-key-del a f
+range-key-unset a f @5
+----
+wrote 6 keys
+
+flush
+----
+
+wait-table-stats
+----
+
+# The lazy iterator shouldn't switch to combined iteration when it encounters a
+# file that is known to only contain RANGEKEYDELs and RANGEKEYUNSETs.
+
+combined-iter
+is-using-combined
+seek-ge a
+seek-ge b
+is-using-combined
+----
+using lazy iterator
+a: (a, .)
+b: (b, .)
+using lazy iterator
+
+# Write a range key to the memtable. The combined iterator should be forced to
+# use non-lazy iteration.
+
+batch
+range-key-set m z @5 foo
+set s s
+----
+wrote 2 keys
+
+combined-iter
+is-using-combined
+seek-ge a
+is-using-combined
+seek-ge n
+is-using-combined
+----
+using combined (non-lazy) iterator
+a: (a, .)
+using combined (non-lazy) iterator
+n: (., [m-z) @5=foo)
+using combined (non-lazy) iterator
+
+flush
+----
+
+# Now that the range key is flushed, a switch to combined iteration should only
+# happen once the sstable containing the set is encountered.
+
+combined-iter
+is-using-combined
+seek-ge a
+is-using-combined
+seek-ge n
+is-using-combined
+----
+using lazy iterator
+a: (a, .)
+using lazy iterator
+n: (., [m-z) @5=foo)
+using combined (non-lazy) iterator
