@@ -2024,6 +2024,9 @@ func (i *Iterator) invalidate() {
 		i.pos = iterPosCurReverse
 	}
 	i.iterValidityState = IterExhausted
+	if i.rangeKey != nil {
+		i.rangeKey.iiter.Invalidate()
+	}
 }
 
 // Metrics returns per-iterator metrics.
