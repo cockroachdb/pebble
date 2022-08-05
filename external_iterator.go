@@ -249,6 +249,9 @@ func createExternalPointIter(it *Iterator) (internalIterator, error) {
 
 	it.alloc.merging.init(&it.opts, &it.stats.InternalStats, it.comparer.Compare, it.comparer.Split, mlevels...)
 	it.alloc.merging.snapshot = base.InternalKeySeqNumMax
+	if len(mlevels) <= cap(it.alloc.levelsPositioned) {
+		it.alloc.merging.levelsPositioned = it.alloc.levelsPositioned[:len(mlevels)]
+	}
 	return &it.alloc.merging, nil
 }
 
@@ -473,6 +476,20 @@ func (s *simpleLevelIter) Next() (*base.InternalKey, base.LazyValue) {
 	}
 	s.currentIdx++
 	return s.skipEmptyFileForward(nil /* seekKey */, base.SeekGEFlagsNone)
+}
+
+func (s *simpleLevelIter) NextPrefix(succKey []byte) (*base.InternalKey, base.LazyValue) {
+	if s.err != nil {
+		return nil, base.LazyValue{}
+	}
+	if s.currentIdx < 0 || s.currentIdx >= len(s.filtered) {
+		return nil, base.LazyValue{}
+	}
+	if iterKey, val := s.filtered[s.currentIdx].NextPrefix(succKey); iterKey != nil {
+		return iterKey, val
+	}
+	s.currentIdx++
+	return s.skipEmptyFileForward(succKey /* seekKey */, base.SeekGEFlagsNone)
 }
 
 func (s *simpleLevelIter) Prev() (*base.InternalKey, base.LazyValue) {

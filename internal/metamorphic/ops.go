@@ -1061,6 +1061,28 @@ func (o *iterNextOp) String() string       { return fmt.Sprintf("%s.Next(%q)", o
 func (o *iterNextOp) receiver() objID      { return o.iterID }
 func (o *iterNextOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
+// iterNextPrefixOp models an Iterator.NextPrefix operation.
+type iterNextPrefixOp struct {
+	iterID objID
+
+	derivedReaderID objID
+}
+
+func (o *iterNextPrefixOp) run(t *test, h historyRecorder) {
+	i := t.getIter(o.iterID)
+	valid := i.NextPrefix()
+	validStr := validBoolToStr(valid)
+	if valid {
+		h.Recordf("%s // [%s,%s] %v", o, validStr, iteratorPos(i), i.Error())
+	} else {
+		h.Recordf("%s // [%s] %v", o, validStr, i.Error())
+	}
+}
+
+func (o *iterNextPrefixOp) String() string       { return fmt.Sprintf("%s.NextPrefix()", o.iterID) }
+func (o *iterNextPrefixOp) receiver() objID      { return o.iterID }
+func (o *iterNextPrefixOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
+
 // iterPrevOp models an Iterator.Prev[WithLimit] operation.
 type iterPrevOp struct {
 	iterID objID

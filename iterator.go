@@ -1591,7 +1591,7 @@ func (i *Iterator) Last() bool {
 // Next moves the iterator to the next key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) Next() bool {
-	return i.NextWithLimit(nil) == IterValid
+	return i.nextWithLimit(nil) == IterValid
 }
 
 // NextWithLimit moves the iterator to the next key/value pair.
@@ -1605,6 +1605,151 @@ func (i *Iterator) Next() bool {
 // guarantees it will surface any range keys with bounds overlapping the
 // keyspace up to limit.
 func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
+	return i.nextWithLimit(limit)
+}
+
+// NextPrefix moves the iterator to the next key/value pair with a key
+// containing a different prefix than the current key. Prefixes are determined
+// by Comparer.Split. Errors if invoked while in prefix-iteration mode.
+//
+// It is not permitted to invoke NextPrefix while at a IterAtLimit position or
+// to switch directions. When called in these conditions, NextPrefix has
+// non-deterministic behavior.
+func (i *Iterator) NextPrefix() bool {
+	if i.hasPrefix {
+		i.err = errors.New("cannot use NextPrefix with prefix iteration")
+		i.iterValidityState = IterExhausted
+		return false
+	}
+	return i.nextPrefix() == IterValid
+}
+
+func (i *Iterator) nextPrefix() IterValidityState {
+	if i.rangeKey != nil {
+		// NB: Check Valid() before clearing requiresReposition.
+		i.rangeKey.prevPosHadRangeKey = i.rangeKey.hasRangeKey && i.Valid()
+		// If we have a range key but did not expose it at the previous iterator
+		// position (because the iterator was not at a valid position), updated
+		// must be true. This ensures that after an iterator op sequence like:
+		//   - Next()             → (IterValid, RangeBounds() = [a,b))
+		//   - NextWithLimit(...) → (IterAtLimit, RangeBounds() = -)
+		//   - NextWithLimit(...) → (IterValid, RangeBounds() = [a,b))
+		// the iterator returns RangeKeyChanged()=true.
+		//
+		// The remainder of this function will only update i.rangeKey.updated if
+		// the iterator moves into a new range key, or out of the current range
+		// key.
+		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid() && i.opts.rangeKeys()
+	}
+
+	// Although NextPrefix documents that behavior at IterAtLimit or
+	// backward-oriented positions is not permitted, this function handles these
+	// cases as a simple prefix-agnostic Next. This is done for deterministic
+	// behavior in the metamorphic tests.
+	//
+	// TODO(jackson): If the metamorphic test operation generator is adjusted to
+	// make generation of some operations conditional on the previous
+	// operations, then we can remove this behavior and explicitly error.
+
+	i.lastPositioningOp = unknownLastPositionOp
+	i.requiresReposition = false
+	switch i.pos {
+	case iterPosCurForward:
+		// Positioned on the current key. Advance to the next prefix.
+		currKeyPrefixLen := i.split(i.key)
+		i.internalNextPrefix(currKeyPrefixLen)
+	case iterPosCurForwardPaused:
+		// Already positioned where we need to be. Return the next key,
+		// regardless of prefix.
+	case iterPosCurReverse:
+		// Switching directions.
+		// Unless the iterator was exhausted, reverse iteration needs to
+		// position the iterator at iterPosPrev.
+		if i.iterKey != nil {
+			i.err = errors.New("switching from reverse to forward but iter is not at prev")
+			i.iterValidityState = IterExhausted
+			return i.iterValidityState
+		}
+		// We're positioned before the first key. Need to reposition to point to
+		// the first key.
+		if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
+			i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
+			i.stats.ForwardSeekCount[InternalIterCall]++
+		} else {
+			i.iterKey, i.iterValue = i.iter.First()
+			i.stats.ForwardSeekCount[InternalIterCall]++
+		}
+	case iterPosCurReversePaused:
+		// Switching directions.
+		// The iterator must not be exhausted since it paused.
+		if i.iterKey == nil {
+			i.err = errors.New("switching paused from reverse to forward but iter is exhausted")
+			i.iterValidityState = IterExhausted
+			return i.iterValidityState
+		}
+		i.nextUserKey()
+	case iterPosPrev:
+		// The underlying iterator is pointed to the previous key (this can
+		// only happen when switching iteration directions). We set
+		// i.iterValidityState to IterExhausted here to force the calls to
+		// nextUserKey to save the current key i.iter is pointing at in order
+		// to determine when the next user-key is reached.
+		i.iterValidityState = IterExhausted
+		if i.iterKey == nil {
+			// We're positioned before the first key. Need to reposition to point to
+			// the first key.
+			if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
+				i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
+				i.stats.ForwardSeekCount[InternalIterCall]++
+			} else {
+				i.iterKey, i.iterValue = i.iter.First()
+				i.stats.ForwardSeekCount[InternalIterCall]++
+			}
+		} else {
+			i.nextUserKey()
+		}
+		i.nextUserKey()
+	case iterPosNext:
+		// Already positioned on the next key. Only call nextPrefixKey if the
+		// next key shares the same prefix.
+		if i.iterKey != nil {
+			currKeyPrefixLen := i.split(i.key)
+			iterKeyPrefixLen := i.split(i.iterKey.UserKey)
+			if bytes.Equal(i.iterKey.UserKey[:iterKeyPrefixLen], i.key[:currKeyPrefixLen]) {
+				i.internalNextPrefix(currKeyPrefixLen)
+			}
+		}
+	}
+
+	i.stats.ForwardStepCount[InterfaceCall]++
+	i.findNextEntry(nil /* limit */)
+	i.maybeSampleRead()
+	return i.iterValidityState
+}
+
+func (i *Iterator) internalNextPrefix(currKeyPrefixLen int) {
+	if i.iterKey == nil {
+		return
+	}
+	i.stats.ForwardStepCount[InternalIterCall]++
+	if i.iterKey, i.iterValue = i.iter.Next(); i.iterKey == nil {
+		return
+	}
+	iterKeyPrefixLen := i.split(i.iterKey.UserKey)
+	if !bytes.Equal(i.iterKey.UserKey[:iterKeyPrefixLen], i.key[:currKeyPrefixLen]) {
+		return
+	}
+	i.stats.ForwardStepCount[InternalIterCall]++
+	i.prefixOrFullSeekKey = i.comparer.ImmediateSuccessor(i.prefixOrFullSeekKey[:0], i.key[:currKeyPrefixLen])
+	i.iterKey, i.iterValue = i.iter.NextPrefix(i.prefixOrFullSeekKey)
+	if invariants.Enabled && i.iterKey != nil {
+		if iterKeyPrefixLen := i.split(i.iterKey.UserKey); i.cmp(i.iterKey.UserKey[:iterKeyPrefixLen], i.prefixOrFullSeekKey) < 0 {
+			panic("pebble: nextPrefixKey did not advance beyond the current prefix")
+		}
+	}
+}
+
+func (i *Iterator) nextWithLimit(limit []byte) IterValidityState {
 	i.stats.ForwardStepCount[InterfaceCall]++
 	if i.hasPrefix {
 		if limit != nil {
