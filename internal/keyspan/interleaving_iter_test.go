@@ -253,6 +253,10 @@ func (i *pointIterator) Next() (*base.InternalKey, []byte) {
 	return &i.keys[i.index], nil
 }
 
+func (i *pointIterator) NextPrefix(succKey []byte) (*base.InternalKey, []byte) {
+	return i.SeekGE(succKey, base.SeekGEFlagsNone)
+}
+
 func (i *pointIterator) Prev() (*base.InternalKey, []byte) {
 	i.index--
 	if i.index < 0 || i.index >= len(i.keys) {
