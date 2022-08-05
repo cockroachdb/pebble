@@ -812,6 +812,27 @@ func (l *levelIter) Next() (*InternalKey, []byte) {
 	return l.verify(l.skipEmptyFileForward())
 }
 
+func (l *levelIter) NextPrefix(succKey []byte) (*InternalKey, []byte) {
+	if l.err != nil || l.iter == nil {
+		return nil, nil
+	}
+	if l.boundaryContext != nil {
+		l.boundaryContext.isSyntheticIterBoundsKey = false
+		l.boundaryContext.isIgnorableBoundaryKey = false
+	}
+
+	if l.largestBoundary == nil {
+		// Reset the smallest boundary since we're moving away from it.
+		l.smallestBoundary = nil
+		if key, val := l.iter.NextPrefix(succKey); key != nil {
+			return l.verify(key, val)
+		}
+	}
+	return l.SeekGE(succKey, base.SeekGEFlagsNone.
+		EnableTrySeekUsingNext().
+		EnableRelativeSeek())
+}
+
 func (l *levelIter) Prev() (*InternalKey, []byte) {
 	if l.err != nil || l.iter == nil {
 		return nil, nil

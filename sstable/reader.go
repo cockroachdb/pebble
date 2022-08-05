@@ -714,7 +714,7 @@ func (i *singleLevelIterator) seekGEHelper(
 			return ikey, val
 		}
 	}
-	return i.skipForward()
+	return i.skipForward(nil /* lower bound */)
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -933,7 +933,7 @@ func (i *singleLevelIterator) firstInternal() (*InternalKey, []byte) {
 		// Else fall through to skipForward.
 	}
 
-	return i.skipForward()
+	return i.skipForward(nil /* lower bound */)
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -1015,7 +1015,30 @@ func (i *singleLevelIterator) Next() (*InternalKey, []byte) {
 		}
 		return key, val
 	}
-	return i.skipForward()
+	return i.skipForward(nil /* lower bound */)
+}
+
+// NextPrefix implements (base.InternalIterator).NextPrefix.
+func (i *singleLevelIterator) NextPrefix(succKey []byte) (*InternalKey, []byte) {
+	if i.exhaustedBounds == +1 {
+		panic("Next called even though exhausted upper bound")
+	}
+	i.exhaustedBounds = 0
+	i.maybeFilteredKeysSingleLevel = false
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.boundsCmp = 0
+	if i.err != nil {
+		return nil, nil
+	}
+	key, val := i.data.NextPrefix(succKey)
+	if key != nil {
+		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
+			i.exhaustedBounds = +1
+			return nil, nil
+		}
+		return key, val
+	}
+	return i.skipForward(succKey)
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -1042,12 +1065,22 @@ func (i *singleLevelIterator) Prev() (*InternalKey, []byte) {
 	return i.skipBackward()
 }
 
-func (i *singleLevelIterator) skipForward() (*InternalKey, []byte) {
-	for {
+func (i *singleLevelIterator) skipForward(lowerBound []byte) (*InternalKey, []byte) {
+	const nextsBeforeSeek = 3
+	for j := 1; ; j++ {
 		var key *InternalKey
 		if key, _ = i.index.Next(); key == nil {
 			i.data.invalidate()
 			break
+		}
+		if lowerBound != nil && i.cmp(key.UserKey, lowerBound) < 0 {
+			if j < nextsBeforeSeek {
+				continue
+			} else if key, _ = i.index.SeekGE(lowerBound, base.SeekGEFlagsNone); key == nil {
+				i.data.invalidate()
+				break
+			}
+			// Fall through to loading the block.
 		}
 		result := i.loadBlock(+1)
 		if result != loadBlockOK {
@@ -1553,7 +1586,7 @@ func (i *twoLevelIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*Internal
 			return ikey, val
 		}
 	}
-	return i.skipForward()
+	return i.skipForward(nil /* lower bound */)
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -1663,7 +1696,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 		}
 	}
 	// NB: skipForward checks whether exhaustedBounds is already +1.
-	return i.skipForward()
+	return i.skipForward(nil /* lower bound */)
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
@@ -1774,7 +1807,7 @@ func (i *twoLevelIterator) First() (*InternalKey, []byte) {
 		}
 	}
 	// NB: skipForward checks whether exhaustedBounds is already +1.
-	return i.skipForward()
+	return i.skipForward(nil /* lower bound */)
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -1834,7 +1867,21 @@ func (i *twoLevelIterator) Next() (*InternalKey, []byte) {
 	if key, val := i.singleLevelIterator.Next(); key != nil {
 		return key, val
 	}
-	return i.skipForward()
+	return i.skipForward(nil /* lower bound */)
+}
+
+// NextPrefix implements (base.InternalIterator).NextPrefix.
+func (i *twoLevelIterator) NextPrefix(succKey []byte) (*InternalKey, []byte) {
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.boundsCmp = 0
+	i.maybeFilteredKeysTwoLevel = false
+	if i.err != nil {
+		return nil, nil
+	}
+	if key, val := i.singleLevelIterator.NextPrefix(succKey); key != nil {
+		return key, val
+	}
+	return i.skipForward(succKey)
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -1852,7 +1899,7 @@ func (i *twoLevelIterator) Prev() (*InternalKey, []byte) {
 	return i.skipBackward()
 }
 
-func (i *twoLevelIterator) skipForward() (*InternalKey, []byte) {
+func (i *twoLevelIterator) skipForward(lowerBound []byte) (*InternalKey, []byte) {
 	for {
 		if i.err != nil || i.exhaustedBounds > 0 {
 			return nil, nil
@@ -1863,6 +1910,9 @@ func (i *twoLevelIterator) skipForward() (*InternalKey, []byte) {
 			i.data.invalidate()
 			i.index.invalidate()
 			return nil, nil
+		}
+		if lowerBound != nil && i.cmp(ikey.UserKey, lowerBound) < 0 {
+			continue
 		}
 		result := i.loadIndex(+1)
 		if result == loadBlockFailed {
