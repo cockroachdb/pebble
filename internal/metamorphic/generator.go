@@ -14,9 +14,24 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-type iterBounds struct {
-	lower []byte
-	upper []byte
+type iterOpts struct {
+	lower    []byte
+	upper    []byte
+	keyTypes uint32 // pebble.IterKeyType
+	// maskSuffix may be set if keyTypes is IterKeyTypePointsAndRanges to
+	// configure IterOptions.RangeKeyMasking.Suffix.
+	maskSuffix []byte
+
+	// If filterMax is >0, this iterator will filter out any keys that have
+	// suffixes that don't fall within the range [filterMin,filterMax).
+	// Additionally, the iterator will be constructed with a block-property
+	// filter that filters out blocks accordingly. Not all OPTIONS hook up the
+	// corresponding block property collector, so block-filtering may still be
+	// effectively disabled in some runs. The iterator operations themselves
+	// however will always skip past any points that should be filtered to
+	// ensure determinism.
+	filterMin uint64
+	filterMax uint64
 }
 
 type generator struct {
@@ -35,8 +50,8 @@ type generator struct {
 	// liveBatches contains the live indexed and write-only batches.
 	liveBatches objIDSlice
 	// liveIters contains the live iterators.
-	liveIters       objIDSlice
-	itersLastBounds map[objID]iterBounds
+	liveIters     objIDSlice
+	itersLastOpts map[objID]iterOpts
 	// liveReaders contains the DB, and any live indexed batches and snapshots. The DB is always
 	// at index 0.
 	liveReaders objIDSlice
@@ -66,17 +81,17 @@ type generator struct {
 
 func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
 	g := &generator{
-		cfg:             cfg,
-		rng:             rng,
-		init:            &initOp{},
-		keyManager:      km,
-		liveReaders:     objIDSlice{makeObjID(dbTag, 0)},
-		liveWriters:     objIDSlice{makeObjID(dbTag, 0)},
-		batches:         make(map[objID]objIDSet),
-		iters:           make(map[objID]objIDSet),
-		readers:         make(map[objID]objIDSet),
-		snapshots:       make(map[objID]objIDSet),
-		itersLastBounds: make(map[objID]iterBounds),
+		cfg:           cfg,
+		rng:           rng,
+		init:          &initOp{},
+		keyManager:    km,
+		liveReaders:   objIDSlice{makeObjID(dbTag, 0)},
+		liveWriters:   objIDSlice{makeObjID(dbTag, 0)},
+		batches:       make(map[objID]objIDSet),
+		iters:         make(map[objID]objIDSet),
+		readers:       make(map[objID]objIDSet),
+		snapshots:     make(map[objID]objIDSet),
+		itersLastOpts: make(map[objID]iterOpts),
 	}
 	// Note that the initOp fields are populated during generation.
 	g.ops = append(g.ops, g.init)
@@ -483,49 +498,40 @@ func (g *generator) newIter() {
 		// closes.
 	}
 
+	var opts iterOpts
 	// Generate lower/upper bounds with a 10% probability.
-	var lower, upper []byte
 	if g.rng.Float64() <= 0.1 {
 		// Generate a new key with a .1% probability.
-		lower = g.randKeyToRead(0.001)
+		opts.lower = g.randKeyToRead(0.001)
 	}
 	if g.rng.Float64() <= 0.1 {
 		// Generate a new key with a .1% probability.
-		upper = g.randKeyToRead(0.001)
+		opts.upper = g.randKeyToRead(0.001)
 	}
-	if g.cmp(lower, upper) > 0 {
-		lower, upper = upper, lower
+	if g.cmp(opts.lower, opts.upper) > 0 {
+		opts.lower, opts.upper = opts.upper, opts.lower
 	}
-	g.itersLastBounds[iterID] = iterBounds{
-		lower: lower,
-		upper: upper,
-	}
-	keyTypes, maskSuffix := g.randKeyTypesAndMask()
+	opts.keyTypes, opts.maskSuffix = g.randKeyTypesAndMask()
 
 	// With a low probability, enable automatic filtering of keys with suffixes
 	// not in the provided range. This filtering occurs both through
 	// block-property filtering and explicitly within the iterator operations to
 	// ensure determinism.
-	var filterMin, filterMax uint64
 	if g.rng.Intn(10) == 1 {
 		max := g.cfg.writeSuffixDist.Max()
-		filterMin, filterMax = g.rng.Uint64n(max)+1, g.rng.Uint64n(max)+1
-		if filterMin > filterMax {
-			filterMin, filterMax = filterMax, filterMin
-		} else if filterMin == filterMax {
-			filterMax = filterMin + 1
+		opts.filterMin, opts.filterMax = g.rng.Uint64n(max)+1, g.rng.Uint64n(max)+1
+		if opts.filterMin > opts.filterMax {
+			opts.filterMin, opts.filterMax = opts.filterMax, opts.filterMin
+		} else if opts.filterMin == opts.filterMax {
+			opts.filterMax = opts.filterMin + 1
 		}
 	}
 
+	g.itersLastOpts[iterID] = opts
 	g.add(&newIterOp{
-		readerID:           readerID,
-		iterID:             iterID,
-		lower:              lower,
-		upper:              upper,
-		keyTypes:           keyTypes,
-		filterMin:          filterMin,
-		filterMax:          filterMax,
-		rangeKeyMaskSuffix: maskSuffix,
+		readerID: readerID,
+		iterID:   iterID,
+		iterOpts: opts,
 	})
 }
 
@@ -566,7 +572,7 @@ func (g *generator) newIterUsingClone() {
 
 	// TODO(jackson): Exercise changing iterator options as a part of Clone.
 
-	g.itersLastBounds[iterID] = g.itersLastBounds[existingIterID]
+	g.itersLastOpts[iterID] = g.itersLastOpts[existingIterID]
 	g.add(&newIterUsingCloneOp{
 		existingIterID: existingIterID,
 		iterID:         iterID,
@@ -599,20 +605,17 @@ func (g *generator) iterSetBounds() {
 	}
 
 	iterID := g.liveIters.rand(g.rng)
-	if g.itersLastBounds == nil {
-		g.itersLastBounds = make(map[objID]iterBounds)
-	}
-	iterLastBounds := g.itersLastBounds[iterID]
+	iterLastOpts := g.itersLastOpts[iterID]
 	var lower, upper []byte
 	genLower := g.rng.Float64() <= 0.9
 	genUpper := g.rng.Float64() <= 0.9
 	// When one of ensureLowerGE, ensureUpperLE is true, the new bounds
 	// don't overlap with the previous bounds.
 	var ensureLowerGE, ensureUpperLE bool
-	if genLower && iterLastBounds.upper != nil && g.rng.Float64() <= 0.9 {
+	if genLower && iterLastOpts.upper != nil && g.rng.Float64() <= 0.9 {
 		ensureLowerGE = true
 	}
-	if (!ensureLowerGE || g.rng.Float64() < 0.5) && genUpper && iterLastBounds.lower != nil {
+	if (!ensureLowerGE || g.rng.Float64() < 0.5) && genUpper && iterLastOpts.lower != nil {
 		ensureUpperLE = true
 		ensureLowerGE = false
 	}
@@ -630,28 +633,28 @@ func (g *generator) iterSetBounds() {
 		if g.cmp(lower, upper) > 0 {
 			lower, upper = upper, lower
 		}
-		if ensureLowerGE && g.cmp(iterLastBounds.upper, lower) > 0 {
+		if ensureLowerGE && g.cmp(iterLastOpts.upper, lower) > 0 {
 			if attempts < 25 {
 				continue
 			}
-			lower = iterLastBounds.upper
+			lower = iterLastOpts.upper
 			upper = lower
 			break
 		}
-		if ensureUpperLE && g.cmp(upper, iterLastBounds.lower) > 0 {
+		if ensureUpperLE && g.cmp(upper, iterLastOpts.lower) > 0 {
 			if attempts < 25 {
 				continue
 			}
-			upper = iterLastBounds.lower
+			upper = iterLastOpts.lower
 			lower = upper
 			break
 		}
 		break
 	}
-	g.itersLastBounds[iterID] = iterBounds{
-		lower: lower,
-		upper: upper,
-	}
+	newOpts := iterLastOpts
+	newOpts.lower = lower
+	newOpts.upper = upper
+	g.itersLastOpts[iterID] = newOpts
 	g.add(&iterSetBoundsOp{
 		iterID: iterID,
 		lower:  lower,
@@ -722,26 +725,57 @@ func (g *generator) iterSetOptions() {
 	}
 	iterID := g.liveIters.rand(g.rng)
 
-	bounds := g.itersLastBounds[iterID]
-	// With 50% probability, update the bounds.
-	if g.rng.Intn(2) == 0 {
-		// Generate a new key with a .1% probability.
-		bounds.lower = g.randKeyToRead(0.001)
-		// Generate a new key with a .1% probability.
-		bounds.upper = g.randKeyToRead(0.001)
-		if g.cmp(bounds.lower, bounds.upper) > 0 {
-			bounds.lower, bounds.upper = bounds.upper, bounds.lower
+	opts := g.itersLastOpts[iterID]
+
+	// With 95% probability, allow changes to any options at all. This ensures
+	// that in 5% of cases there are no changes, and SetOptions hits its fast
+	// path.
+	if g.rng.Intn(100) >= 5 {
+		// With 1/3 probability, clear existing bounds.
+		if opts.lower != nil && g.rng.Intn(3) == 0 {
+			opts.lower = nil
 		}
-		g.itersLastBounds[iterID] = bounds
+		if opts.upper != nil && g.rng.Intn(3) == 0 {
+			opts.upper = nil
+		}
+		// With 1/3 probability, update the bounds.
+		if g.rng.Intn(3) == 0 {
+			// Generate a new key with a .1% probability.
+			opts.lower = g.randKeyToRead(0.001)
+		}
+		if g.rng.Intn(3) == 0 {
+			// Generate a new key with a .1% probability.
+			opts.upper = g.randKeyToRead(0.001)
+		}
+		if g.cmp(opts.lower, opts.upper) > 0 {
+			opts.lower, opts.upper = opts.upper, opts.lower
+		}
+
+		// With 1/3 probability, update the key-types/mask.
+		if g.rng.Intn(3) == 0 {
+			opts.keyTypes, opts.maskSuffix = g.randKeyTypesAndMask()
+		}
+
+		// With 1/3 probability, clear existing filter.
+		if opts.filterMax > 0 && g.rng.Intn(3) == 0 {
+			opts.filterMax, opts.filterMin = 0, 0
+		}
+		// With 10% probability, set a filter range.
+		if g.rng.Intn(10) == 1 {
+			max := g.cfg.writeSuffixDist.Max()
+			opts.filterMin, opts.filterMax = g.rng.Uint64n(max)+1, g.rng.Uint64n(max)+1
+			if opts.filterMin > opts.filterMax {
+				opts.filterMin, opts.filterMax = opts.filterMax, opts.filterMin
+			} else if opts.filterMin == opts.filterMax {
+				opts.filterMax = opts.filterMin + 1
+			}
+		}
 	}
 
-	keyTypes, maskSuffix := g.randKeyTypesAndMask()
+	g.itersLastOpts[iterID] = opts
 	g.add(&iterSetOptionsOp{
-		iterID:             iterID,
-		lower:              bounds.lower,
-		upper:              bounds.upper,
-		keyTypes:           keyTypes,
-		rangeKeyMaskSuffix: maskSuffix,
+		iterID:   iterID,
+		iterOpts: opts,
 	})
 
 	// Additionally, perform a random absolute positioning operation. The

@@ -38,6 +38,9 @@ type retryableIter struct {
 }
 
 func (i *retryableIter) shouldFilter() bool {
+	if i.filterMax == 0 {
+		return false
+	}
 	k := i.iter.Key()
 	n := testkeys.Comparer.Split(k)
 	if n == len(k) {
