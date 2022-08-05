@@ -883,6 +883,7 @@ type iterAlloc struct {
 	merging             mergingIter
 	mlevels             [3 + numLevels]mergingIterLevel
 	levels              [3 + numLevels]levelIter
+	levelsPositioned    [3 + numLevels]bool
 }
 
 var iterAllocPool = sync.Pool{
@@ -1173,6 +1174,9 @@ func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
 		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
 	}
 	buf.merging.init(&i.opts, &i.stats.InternalStats, i.comparer.Compare, i.comparer.Split, mlevels...)
+	if len(mlevels) <= cap(buf.levelsPositioned) {
+		buf.merging.levelsPositioned = buf.levelsPositioned[:len(mlevels)]
+	}
 	buf.merging.snapshot = i.seqNum
 	buf.merging.batchSnapshot = i.batchSeqNum
 	buf.merging.combinedIterState = &i.lazyCombinedIter.combinedIterState

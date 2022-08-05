@@ -194,6 +194,13 @@ func (it *Iterator) Next() (*base.InternalKey, base.LazyValue) {
 	return &it.key, base.MakeInPlaceValue(it.value())
 }
 
+// NextPrefix advances to the next position with a new prefix. Returns the key
+// and value if the iterator is pointing at a valid entry, and (nil, nil)
+// otherwise.
+func (it *Iterator) NextPrefix(succKey []byte) (*base.InternalKey, base.LazyValue) {
+	return it.SeekGE(succKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
+}
+
 // Prev moves to the previous position. Returns the key and value if the
 // iterator is pointing at a valid entry, and (nil, nil) otherwise.
 func (it *Iterator) Prev() (*base.InternalKey, base.LazyValue) {
