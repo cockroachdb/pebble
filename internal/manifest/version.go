@@ -43,15 +43,12 @@ type TableInfo struct {
 
 // TableStats contains statistics on a table used for compaction heuristics.
 type TableStats struct {
-	// Valid true if stats have been loaded for the table. The rest of the
-	// structure is populated only if true.
-	Valid bool
 	// The total number of entries in the table.
 	NumEntries uint64
 	// The number of point and range deletion entries in the table.
 	NumDeletions uint64
-	// NumRangeKeys is the total number of range keys in the table.
-	NumRangeKeys uint64
+	// NumRangeKeySets is the total number of range key sets in the table.
+	NumRangeKeySets uint64
 	// Estimate of the total disk space that may be dropped by this table's
 	// point deletions by compacting them.
 	PointDeletionsBytesEstimate uint64
@@ -90,6 +87,10 @@ type FileMetadata struct {
 		// in pebble.Iterator after every after every positioning operation
 		// that returns a user key (eg. Next, Prev, SeekGE, SeekLT, etc).
 		AllowedSeeks int64
+
+		// statsValid is 1 if stats have been loaded for the table. The
+		// TableStats structure is populated only if valid is 1.
+		statsValid uint32
 	}
 
 	// InitAllowedSeeks is the inital value of allowed seeks. This is used
@@ -181,6 +182,28 @@ type FileMetadata struct {
 	// key type (point or range) corresponds to the smallest and largest overall
 	// table bounds.
 	boundTypeSmallest, boundTypeLargest boundType
+}
+
+// StatsValid returns true if the table stats have been populated. If StatValid
+// returns true, the Stats field may be read (with or without holding the
+// database mutex).
+func (m *FileMetadata) StatsValid() bool {
+	return atomic.LoadUint32(&m.Atomic.statsValid) == 1
+}
+
+// StatsValidLocked returns true if the table stats have been populated.
+// StatsValidLocked requires DB.mu is held when it's invoked, and it avoids the
+// overhead of an atomic load. This is possible because table stats validity is
+// only set while DB.mu is held.
+func (m *FileMetadata) StatsValidLocked() bool {
+	return m.Atomic.statsValid == 1
+}
+
+// StatsMarkValid marks the TableStats as valid. The caller must hold DB.mu
+// while populating TableStats and calling StatsMarkValud. Once stats are
+// populated, they must not be mutated.
+func (m *FileMetadata) StatsMarkValid() {
+	atomic.StoreUint32(&m.Atomic.statsValid, 1)
 }
 
 // ExtendPointKeyBounds attempts to extend the lower and upper point key bounds

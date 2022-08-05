@@ -270,9 +270,16 @@ func (l *levelIter) maybeTriggerCombinedIteration(file *fileMetadata, dir int) {
 	// configured to observe range keys. Either way, there's nothing to do.
 	// If false, trigger the switch to combined iteration, using the the
 	// file's bounds to seek the range-key iterator appropriately.
+	//
+	// We only need to trigger combined iteration if the file contains
+	// RangeKeySets: if there are only Unsets and Dels, the user will observe no
+	// range keys regardless. If this file has table stats available, they'll
+	// tell us whether the file has any RangeKeySets. Otherwise, we must
+	// fallback to assuming it does if HasRangeKeys=true.
 	if file != nil && file.HasRangeKeys && l.combinedIterState != nil && !l.combinedIterState.initialized &&
 		(l.upper == nil || l.cmp(file.SmallestRangeKey.UserKey, l.upper) < 0) &&
-		(l.lower == nil || l.cmp(file.LargestRangeKey.UserKey, l.lower) > 0) {
+		(l.lower == nil || l.cmp(file.LargestRangeKey.UserKey, l.lower) > 0) &&
+		(!file.StatsValid() || file.Stats.NumRangeKeySets > 0) {
 		// The file contains range keys, and we're not using combined iteration yet.
 		// Trigger a switch to combined iteration. It's possible that a switch has
 		// already been triggered if multiple levels encounter files containing

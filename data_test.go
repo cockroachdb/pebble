@@ -193,6 +193,15 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 				fmt.Fprintf(&b, "err=%v\n", err)
 			}
 			iter = clonedIter
+		case "is-using-combined":
+			if iter.opts.KeyTypes != IterKeyTypePointsAndRanges {
+				fmt.Fprintln(&b, "not configured for combined iteration")
+			} else if iter.lazyCombinedIter.combinedIterState.initialized {
+				fmt.Fprintln(&b, "using combined (non-lazy) iterator")
+			} else {
+				fmt.Fprintln(&b, "using lazy iterator")
+			}
+			continue
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}
@@ -916,14 +925,14 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 				continue
 			}
 
-			if !f.Stats.Valid {
+			if !f.StatsValidLocked() {
 				d.waitTableStats()
 			}
 
 			var b bytes.Buffer
 			fmt.Fprintf(&b, "num-entries: %d\n", f.Stats.NumEntries)
 			fmt.Fprintf(&b, "num-deletions: %d\n", f.Stats.NumDeletions)
-			fmt.Fprintf(&b, "num-range-keys: %d\n", f.Stats.NumRangeKeys)
+			fmt.Fprintf(&b, "num-range-key-sets: %d\n", f.Stats.NumRangeKeySets)
 			fmt.Fprintf(&b, "point-deletions-bytes-estimate: %d\n", f.Stats.PointDeletionsBytesEstimate)
 			fmt.Fprintf(&b, "range-deletions-bytes-estimate: %d\n", f.Stats.RangeDeletionsBytesEstimate)
 			return b.String()
