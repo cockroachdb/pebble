@@ -59,6 +59,7 @@ func NewExternalIter(
 		equal:               o.equal(),
 		merge:               o.Merger.Merge,
 		split:               o.Comparer.Split,
+		comparer:            o.Comparer,
 		readState:           nil,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
