@@ -1828,6 +1828,14 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 	if i.pointIter != nil && !i.opts.pointKeys() {
 		i.pointIter.SetBounds(i.opts.LowerBound, i.opts.UpperBound)
 	}
+	// If the iterator has a range key iterator, propagate bounds to it. The
+	// top-level SetBounds on the interleaving iterator (i.iter) won't propagate
+	// bounds to the range key iterator stack, because the FragmentIterator
+	// interface doesn't define a SetBounds method. We need to directly inform
+	// the iterConfig stack.
+	if i.rangeKey != nil {
+		i.rangeKey.iterConfig.SetBounds(i.opts.LowerBound, i.opts.UpperBound)
+	}
 
 	// Even though this is not a positioning operation, the alteration of the
 	// bounds means we cannot optimize Seeks by using Next.
@@ -2030,6 +2038,9 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		// because i.opts now point to buffers owned by Pebble.
 		if i.pointIter != nil {
 			i.pointIter.SetBounds(i.opts.LowerBound, i.opts.UpperBound)
+		}
+		if i.rangeKey != nil {
+			i.rangeKey.iterConfig.SetBounds(i.opts.LowerBound, i.opts.UpperBound)
 		}
 	}
 

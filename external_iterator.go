@@ -150,6 +150,7 @@ func finishInitializingExternal(it *Iterator) {
 			it.rangeKey.rangeKeyIter = it.rangeKey.iterConfig.Init(
 				it.cmp,
 				base.InternalKeySeqNumMax,
+				it.opts.LowerBound, it.opts.UpperBound,
 			)
 			for _, r := range it.externalReaders {
 				if rki, err := r.NewRawRangeKeyIter(); err != nil {

@@ -134,7 +134,8 @@ func TestDefragmenting(t *testing.T) {
 			return ""
 		case "iter":
 			var userIterCfg UserIteratorConfig
-			iter := userIterCfg.Init(cmp, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, spans))
+			iter := userIterCfg.Init(cmp, base.InternalKeySeqNumMax,
+				nil /* lower */, nil /* upper */, keyspan.NewIter(cmp, spans))
 			for _, line := range strings.Split(td.Input, "\n") {
 				runIterOp(&buf, iter, line)
 			}
@@ -213,8 +214,10 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	fragmented = fragment(cmp, formatKey, fragmented)
 
 	var referenceCfg, fragmentedCfg UserIteratorConfig
-	referenceIter := referenceCfg.Init(cmp, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, original))
-	fragmentedIter := fragmentedCfg.Init(cmp, base.InternalKeySeqNumMax, keyspan.NewIter(cmp, fragmented))
+	referenceIter := referenceCfg.Init(cmp, base.InternalKeySeqNumMax,
+		nil /* lower */, nil /* upper */, keyspan.NewIter(cmp, original))
+	fragmentedIter := fragmentedCfg.Init(cmp, base.InternalKeySeqNumMax,
+		nil /* lower */, nil /* upper */, keyspan.NewIter(cmp, fragmented))
 
 	// Generate 100 random operations and run them against both iterators.
 	const numIterOps = 100
