@@ -1002,6 +1002,8 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 				dbi.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 				dbi.rangeKey.init(dbi.cmp, dbi.split, &dbi.opts)
 				dbi.constructRangeKeyIter()
+			} else {
+				dbi.rangeKey.iterConfig.SetBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
 			}
 
 			// Wrap the point iterator (currently dbi.iter) with an interleaving

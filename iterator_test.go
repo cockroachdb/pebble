@@ -2350,3 +2350,66 @@ func BenchmarkCombinedIteratorSeek(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkCombinedIteratorSeek_Bounded benchmarks a bounded iterator that
+// performs repeated seeks over 5% of the middle of a keyspace covered by a
+// range key that's fragmented across hundreds of files. The iterator bounds
+// should prevent defragmenting beyond the iterator's bounds.
+func BenchmarkCombinedIteratorSeek_Bounded(b *testing.B) {
+	rng := rand.New(rand.NewSource(uint64(1658872515083979000)))
+	ks := testkeys.Alpha(2)
+	opts := &Options{
+		FS:                        vfs.NewMem(),
+		Comparer:                  testkeys.Comparer,
+		FormatMajorVersion:        FormatNewest,
+		L0CompactionFileThreshold: 1,
+	}
+	opts.EnsureDefaults()
+	for l := 0; l < len(opts.Levels); l++ {
+		opts.Levels[l].TargetFileSize = 1
+	}
+	d, err := Open("", opts)
+	require.NoError(b, err)
+	defer func() { require.NoError(b, d.Close()) }()
+
+	keys := make([][]byte, ks.Count())
+	for i := 0; i < ks.Count(); i++ {
+		keys[i] = testkeys.Key(ks, i)
+	}
+	for i := 0; i < len(keys); i++ {
+		var val [40]byte
+		rng.Read(val[:])
+		require.NoError(b, d.Set(keys[i], val[:], nil))
+		if i < len(keys)-1 {
+			require.NoError(b, d.RangeKeySet(keys[i], keys[i+1], []byte("@5"), nil, nil))
+		}
+		require.NoError(b, d.Flush())
+	}
+
+	d.mu.Lock()
+	for d.mu.compact.compactingCount > 0 {
+		d.mu.compact.cond.Wait()
+	}
+	v := d.mu.versions.currentVersion()
+	d.mu.Unlock()
+	require.GreaterOrEqualf(b, v.Levels[numLevels-1].Len(),
+		700, "expect many (≥700) L6 files but found %d", v.Levels[numLevels-1].Len())
+
+	var lower = ks.Count() / 2
+	var upper = ks.Count()/2 + ks.Count()/20 // 5%
+	iterOpts := IterOptions{
+		KeyTypes:   IterKeyTypePointsAndRanges,
+		LowerBound: keys[lower],
+		UpperBound: keys[upper],
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		it := d.NewIter(&iterOpts)
+		for j := lower; j < upper; j++ {
+			if !it.SeekGE(keys[j]) {
+				b.Errorf("key %q missing", keys[j])
+			}
+		}
+		require.NoError(b, it.Close())
+	}
+}

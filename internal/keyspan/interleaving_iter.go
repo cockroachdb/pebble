@@ -981,6 +981,7 @@ func (i *InterleavingIter) Span() *Span {
 func (i *InterleavingIter) SetBounds(lower, upper []byte) {
 	i.lower, i.upper = lower, upper
 	i.pointIter.SetBounds(lower, upper)
+	i.Invalidate()
 }
 
 // Invalidate invalidates the interleaving iterator's current position, clearing

@@ -19,6 +19,7 @@ import (
 type UserIteratorConfig struct {
 	snapshot   uint64
 	miter      keyspan.MergingIter
+	biter      keyspan.BoundedIter
 	diter      keyspan.DefragmentingIter
 	liters     [manifest.NumLevels]keyspan.LevelIter
 	litersUsed int
@@ -34,11 +35,12 @@ type UserIteratorConfig struct {
 // The snapshot sequence number parameter determines which keys are visible. Any
 // keys not visible at the provided snapshot are ignored.
 func (ui *UserIteratorConfig) Init(
-	cmp base.Compare, snapshot uint64, iters ...keyspan.FragmentIterator,
+	cmp base.Compare, snapshot uint64, lower, upper []byte, iters ...keyspan.FragmentIterator,
 ) keyspan.FragmentIterator {
 	ui.snapshot = snapshot
 	ui.miter.Init(cmp, ui, iters...)
-	ui.diter.Init(cmp, &ui.miter, ui, keyspan.StaticDefragmentReducer)
+	ui.biter.Init(cmp, &ui.miter, lower, upper)
+	ui.diter.Init(cmp, &ui.biter, ui, keyspan.StaticDefragmentReducer)
 	ui.litersUsed = 0
 	return &ui.diter
 }
@@ -58,6 +60,13 @@ func (ui *UserIteratorConfig) NewLevelIter() *keyspan.LevelIter {
 	}
 	ui.litersUsed++
 	return &ui.liters[ui.litersUsed-1]
+}
+
+// SetBounds propagates bounds to the iterator stack. The fragment iterator
+// interface ordinarily doesn't enforce bounds, so this is exposed as an
+// explicit method on the user iterator config.
+func (ui *UserIteratorConfig) SetBounds(lower, upper []byte) {
+	ui.biter.SetBounds(lower, upper)
 }
 
 // Transform implements the keyspan.Transformer interface for use with a

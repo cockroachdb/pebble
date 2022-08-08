@@ -15,7 +15,7 @@ import (
 // constructRangeKeyIter constructs the range-key iterator stack, populating
 // i.rangeKey.rangeKeyIter with the resulting iterator.
 func (i *Iterator) constructRangeKeyIter() {
-	i.rangeKey.rangeKeyIter = i.rangeKey.iterConfig.Init(i.cmp, i.seqNum)
+	i.rangeKey.rangeKeyIter = i.rangeKey.iterConfig.Init(i.cmp, i.seqNum, i.opts.LowerBound, i.opts.UpperBound)
 
 	// If there's an indexed batch with range keys, include it.
 	if i.batch != nil {
