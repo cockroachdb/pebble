@@ -194,6 +194,14 @@ func (it *Iterator) Next() (*base.InternalKey, []byte) {
 	return &it.key, it.value()
 }
 
+// NextPrefix advances to the next position with a new prefix. Returns the key
+// and value if the iterator is pointing at a valid entry, and (nil, nil)
+// otherwise.  Note: flushIterator.Next mirrors the implementation of
+// Iterator.Next due to performance. Keep the two in sync.
+func (it *Iterator) NextPrefix(succKey []byte) (*base.InternalKey, []byte) {
+	return it.SeekGE(succKey, base.SeekGEFlagsNone)
+}
+
 // Prev moves to the previous position. Returns the key and value if the
 // iterator is pointing at a valid entry, and (nil, nil) otherwise.
 func (it *Iterator) Prev() (*base.InternalKey, []byte) {

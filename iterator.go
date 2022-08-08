@@ -151,6 +151,7 @@ type Iterator struct {
 	equal     Equal
 	merge     Merge
 	split     Split
+	comparer  *Comparer
 	iter      internalIteratorWithStats
 	pointIter internalIteratorWithStats
 	readState *readState
@@ -596,9 +597,8 @@ func (i *Iterator) nextPrefixKey() {
 	if i.iterKey == nil {
 		return
 	}
-	if i.iterValidityState != IterValid {
-		i.keyBuf = append(i.keyBuf[:0], i.iterKey.UserKey...)
-		i.key = i.keyBuf
+	if invariants.Enabled && i.iterValidityState != IterValid {
+		panic("pebble: invariant violation: nextPrefixKey called from an invalid position")
 	}
 	currentPrefixLen := i.split(i.key)
 
@@ -611,29 +611,34 @@ func (i *Iterator) nextPrefixKey() {
 		}
 	}
 
-	// nextPrefixKey should only be called when i.pos is in non-limited,
-	// forward-iteration state. If Iterator.NextPrefix is called after a
-	// reverse-iteration method, NextPrefix behaves as a simple Next and
-	// nextPrefixKey is not invoked. Similarly, if Iterator.NextPrefix is called
-	// after a limited forward-iteration method returns IterAtLimit, it behaves
-	// as a simple Next and nextPrefixKey is not invoked.
+	// NB: If Iterator.NextPrefix is called after a reverse-iteration method,
+	// NextPrefix behaves as a simple Next and this function is not invoked.
+	// Similarly, if Iterator.NextPrefix is called after a limited
+	// forward-iteration method returns IterAtLimit, it behaves as a simple Next
+	// and this function is not invoked.
+	//
+	// Assert that we're not being called in either of the above cases, which
+	// both should be handled externally.
 	if invariants.Enabled && i.pos != iterPosCurForward && i.pos != iterPosNext {
 		panic("pebble: nextPrefixKey called from a limited or reverse position state")
 	}
 
-	for {
+	const numNextsBeforeSeek = 3
+	for j := 0; j < numNextsBeforeSeek; j++ {
 		trailer := i.iterKey.Trailer
 		i.iterKey, i.iterValue = i.iter.Next()
 		i.stats.ForwardStepCount[InternalIterCall]++
 		if i.iterKey == nil {
-			break
+			return
 		}
 		split := i.split(i.iterKey.UserKey)
 
 		// Keys are sorted ascending by prefix, and among equal prefixes
 		// ascending by suffix, and among equal suffixes descending by trailer.
-		// The below example shows the ordering of a few keys, annotated with
-		// the tie breaker in each comparison.
+		// The empty suffix sorts before all other suffixes. The below example
+		// shows the ordering of a few keys, annotated with the tie breaker in
+		// each comparison (NB: suffixes illustrated using MVCC timestamps, with
+		// higher timestamps sorting before lower timerstamps).
 		//
 		//    prefix   seq  suffix   suffix   seq    suffix   prefix
 		//       |      |     |        |       |       |         |
@@ -657,23 +662,37 @@ func (i *Iterator) nextPrefixKey() {
 		//       key: Trailers are strictly descending within a user key, so
 		//       a ≥ trailer must be a new user key.
 		//
-		//   3. i.iterKey's user key ≠ the previous key's user key AND
-		//      suffix(i.iterKey) ≤ suffix(prev key) together imply unequal
-		//      prefixes: Within equal user keys suffixes are strictly
-		//      ascending, if i.iterKey's suffix is less than or equal to the
-		//      prev key's suffix and we already know the two keys are different
-		//      user keys, i.iterKey necessarily must have a different prefix.
+		//   3. suffix(i.iterKey) < suffix(prev key) < 0 implies unequal
+		//      prefixes. Within equal user keys suffixes are strictly
+		//      ascending, if i.iterKey's suffix is less than the prev key's
+		//      suffix i.iterKey necessarily must have a different prefix.
 		//
-		// We combine 1, 2 & 3 to avoid a prefix comparison when possible.
-		if (trailer <= base.InternalKeyZeroSeqnumMaxTrailer || i.iterKey.Trailer >= trailer) &&
-			(split == len(i.iterKey.UserKey) || i.cmp(i.iterKey.UserKey[split:], i.key[currentPrefixLen:]) <= 0) {
-			break
+		//   4. i.iterKey's user key ≠ the previous key's user key AND
+		//      suffix(i.iterKey) = suffix(prev key) together imply unequal
+		//      prefixes.
+		//
+		// We can use these to avoid a prefix comparison in some cases. We
+		// check 3 first. If it doesn't apply, we check 1, 2 & 4 to see if they
+		// together guarantee i.iterKey is a new prefix.
+		if v := i.cmp(i.iterKey.UserKey[split:], i.key[currentPrefixLen:]); v < 0 {
+			return
+		} else if v == 0 && (trailer <= base.InternalKeyZeroSeqnumMaxTrailer || i.iterKey.Trailer >= trailer) {
+			return
 		}
 		// Fall back to ordinary prefix comparison.
 		if !i.equal(i.key[:currentPrefixLen], i.iterKey.UserKey[:split]) {
-			break
+			return
 		}
 	}
+
+	// After nexting a few times, we still haven't found the next prefix. Use
+	// the slightly more expensive NextPrefix, which may seek in some levels of
+	// the iterator stack.
+	//
+	// TODO(jackson): NextPrefix might be performant enough that we can call it
+	// unconditionally.
+	i.prefixOrFullSeekKey = i.comparer.ImmediateSuccessor(i.prefixOrFullSeekKey[:0], i.key[:currentPrefixLen])
+	i.iterKey, i.iterValue = i.iter.NextPrefix(i.prefixOrFullSeekKey)
 }
 
 func (i *Iterator) maybeSampleRead() {
@@ -1442,6 +1461,11 @@ func (i *Iterator) nextWithLimit(limit []byte, skipPrefix bool) IterValidityStat
 	i.stats.ForwardStepCount[InterfaceCall]++
 	if limit != nil && i.hasPrefix {
 		i.err = errors.New("cannot use limit with prefix iteration")
+		i.iterValidityState = IterExhausted
+		return i.iterValidityState
+	}
+	if skipPrefix && i.hasPrefix {
+		i.err = errors.New("cannot use NextPrefix with prefix iteration")
 		i.iterValidityState = IterExhausted
 		return i.iterValidityState
 	}
@@ -2251,6 +2275,7 @@ func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
 		equal:               i.equal,
 		merge:               i.merge,
 		split:               i.split,
+		comparer:            i.comparer,
 		readState:           readState,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
