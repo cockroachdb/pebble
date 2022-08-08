@@ -1312,6 +1312,17 @@ func (i *batchIter) Next() (*InternalKey, []byte) {
 	return ikey, i.Value()
 }
 
+func (i *batchIter) NextPrefix(succKey []byte) (*InternalKey, []byte) {
+	ikey := i.iter.Next()
+	for ikey != nil && (ikey.SeqNum() >= i.snapshot || i.cmp(ikey.UserKey, succKey) < 0) {
+		ikey = i.iter.Next()
+	}
+	if ikey == nil {
+		return nil, nil
+	}
+	return ikey, i.Value()
+}
+
 func (i *batchIter) Prev() (*InternalKey, []byte) {
 	ikey := i.iter.Prev()
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
@@ -1735,6 +1746,12 @@ func (i *flushableBatchIter) Next() (*InternalKey, []byte) {
 		return nil, nil
 	}
 	return &i.key, i.Value()
+}
+
+// Note: flushFlushableBatchIter.Next mirrors the implementation of
+// flushableBatchIter.Next due to performance. Keep the two in sync.
+func (i *flushableBatchIter) NextPrefix(succKey []byte) (*InternalKey, []byte) {
+	return i.SeekGE(succKey, base.SeekGEFlagsNone)
 }
 
 func (i *flushableBatchIter) Prev() (*InternalKey, []byte) {

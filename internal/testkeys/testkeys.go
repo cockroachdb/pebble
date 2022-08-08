@@ -76,6 +76,17 @@ var Comparer *base.Comparer = &base.Comparer{
 		// The successor is > a[:ai], so we only need to add the sentinel.
 		return append(dst, 0)
 	},
+	ImmediateSuccessor: func(dst, a []byte) []byte {
+		ai := split(a)
+		if ai == len(a) {
+			return append(append(dst, a...), 0x00)
+		}
+		v, err := parseUintBytes(bytes.TrimPrefix(a[ai:], []byte{suffixDelim}), 10, 64)
+		if err != nil {
+			panic(fmt.Sprintf("invalid test mvcc timestamp %q", a))
+		}
+		return append(append(dst, a[:ai]...), Suffix(int(v+1))...)
+	},
 	Split: split,
 	Name:  "pebble.internal.testkeys",
 }

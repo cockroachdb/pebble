@@ -152,6 +152,7 @@ type Iterator struct {
 	equal     Equal
 	merge     Merge
 	split     Split
+	comparer  *Comparer
 	iter      internalIteratorWithStats
 	pointIter internalIteratorWithStats
 	readState *readState
@@ -602,19 +603,22 @@ func (i *Iterator) nextPrefixKey() {
 		panic("pebble: nextPrefixKey called from a limited or reverse position state")
 	}
 
-	for {
+	const numNextsBeforeSeek = 3
+	for j := 0; j < numNextsBeforeSeek; j++ {
 		trailer := i.iterKey.Trailer
 		i.iterKey, i.iterValue = i.iter.Next()
 		i.stats.ForwardStepCount[InternalIterCall]++
 		if i.iterKey == nil {
-			break
+			return
 		}
 		split := i.split(i.iterKey.UserKey)
 
 		// Keys are sorted ascending by prefix, and among equal prefixes
 		// ascending by suffix, and among equal suffixes descending by trailer.
-		// The below example shows the ordering of a few keys, annotated with
-		// the tie breaker in each comparison.
+		// The empty suffix sorts before all other suffixes. The below example
+		// shows the ordering of a few keys, annotated with the tie breaker in
+		// each comparison (NB: suffixes illustrated using MVCC timestamps, with
+		// higher timestamps sorting before lower timerstamps).
 		//
 		//    prefix   seq  suffix   suffix   seq    suffix   prefix
 		//       |      |     |        |       |       |         |
@@ -648,13 +652,19 @@ func (i *Iterator) nextPrefixKey() {
 		// We combine 1, 2 & 3 to avoid a prefix comparison when possible.
 		if (trailer <= base.InternalKeyZeroSeqnumMaxTrailer || i.iterKey.Trailer >= trailer) &&
 			(split == len(i.iterKey.UserKey) || i.cmp(i.iterKey.UserKey[split:], i.key[currentPrefixLen:]) <= 0) {
-			break
+			return
 		}
 		// Fall back to ordinary prefix comparison.
 		if !i.equal(i.key[:currentPrefixLen], i.iterKey.UserKey[:split]) {
-			break
+			return
 		}
 	}
+
+	// After nexting a few times, we still haven't found the next prefix. Seek
+	// to the next prefix, by constructing a key representing the immediate
+	// successor to the current prefix.
+	i.prefixOrFullSeekKey = i.comparer.ImmediateSuccessor(i.prefixOrFullSeekKey[:0], i.key[:currentPrefixLen])
+	i.iterKey, i.iterValue = i.iter.NextPrefix(i.prefixOrFullSeekKey)
 }
 
 func (i *Iterator) maybeSampleRead() {
@@ -2209,6 +2219,7 @@ func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
 		equal:               i.equal,
 		merge:               i.merge,
 		split:               i.split,
+		comparer:            i.comparer,
 		readState:           readState,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
