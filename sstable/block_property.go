@@ -420,7 +420,17 @@ var _ BlockPropertyFilter = (*BlockIntervalFilter)(nil)
 // given [lower, upper) bounds. The given name specifies the
 // BlockIntervalCollector's properties to read.
 func NewBlockIntervalFilter(name string, lower uint64, upper uint64) *BlockIntervalFilter {
-	return &BlockIntervalFilter{
+	b := new(BlockIntervalFilter)
+	b.Init(name, lower, upper)
+	return b
+}
+
+// Init initializes (or re-initializes, clearing previous state) an existing
+// BLockPropertyFilter to filter blocks based on an interval property collected
+// by BlockIntervalCollector and the given [lower, upper) bounds. The given name
+// specifies the BlockIntervalCollector's properties to read.
+func (b *BlockIntervalFilter) Init(name string, lower, upper uint64) {
+	*b = BlockIntervalFilter{
 		name:           name,
 		filterInterval: interval{lower: lower, upper: upper},
 	}
