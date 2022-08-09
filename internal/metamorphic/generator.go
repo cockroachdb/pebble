@@ -165,7 +165,7 @@ func (g *generator) prefixKeyRange() ([]byte, []byte) {
 
 // randPrefixToWrite returns a prefix key (a key with no suffix) for a range key
 // write operation.
-func (g generator) randPrefixToWrite(newPrefix float64) []byte {
+func (g *generator) randPrefixToWrite(newPrefix float64) []byte {
 	prefixes := g.keyManager.prefixes()
 	if len(prefixes) > 0 && g.rng.Float64() > newPrefix {
 		// Use an existing prefix.
