@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -73,6 +74,48 @@ const (
 	boundTypePointKey boundType = iota + 1
 	boundTypeRangeKey
 )
+
+// CompactionState is the compaction state of a file.
+//
+// The following shows the valid state transitions:
+//
+//    NotCompacting --> Compacting --> Compacted
+//          ^               |
+//          |               |
+//          +-------<-------+
+//
+// Input files to a compaction transition to Compacting when a compaction is
+// picked. A file that has finished compacting typically transitions into the
+// Compacted state, at which point it is effectively obsolete ("zombied") and
+// will eventually be removed from the LSM. A file that has been move-compacted
+// will transition from Compacting back into the NotCompacting state, signaling
+// that the file may be selected for a subsequent compaction. A failed
+// compaction will result in all input tables transitioning from Compacting to
+// NotCompacting.
+//
+// This state is in-memory only. It is not persisted to the manifest.
+type CompactionState uint8
+
+// CompactionStates.
+const (
+	CompactionStateNotCompacting CompactionState = iota
+	CompactionStateCompacting
+	CompactionStateCompacted
+)
+
+// String implements fmt.Stringer.
+func (s CompactionState) String() string {
+	switch s {
+	case CompactionStateNotCompacting:
+		return "NotCompacting"
+	case CompactionStateCompacting:
+		return "Compacting"
+	case CompactionStateCompacted:
+		return "Compacted"
+	default:
+		panic(fmt.Sprintf("pebble: unknown compaction state %d", s))
+	}
+}
 
 // FileMetadata holds the metadata for an on-disk table.
 type FileMetadata struct {
@@ -147,12 +190,11 @@ type FileMetadata struct {
 	// pick L0 compactions. Only accurate for the most recent Version.
 	//
 	// IsIntraL0Compacting is set to True if this file is part of an intra-L0
-	// compaction. When it's true, Compacting must also be true. If Compacting
-	// is true and IsIntraL0Compacting is false for an L0 file, the file must
-	// be part of a compaction to Lbase.
+	// compaction. When it's true, IsCompacting must also return true. If
+	// Compacting is true and IsIntraL0Compacting is false for an L0 file, the
+	// file must be part of a compaction to Lbase.
 	IsIntraL0Compacting bool
-	// True if the file is actively being compacted. Protected by DB.mu.
-	Compacting bool
+	CompactionState     CompactionState
 	// True if compaction of this file has been explicitly requested.
 	// Previously, RocksDB and earlier versions of Pebble allowed this
 	// flag to be set by a user table property collector. Some earlier
@@ -182,6 +224,37 @@ type FileMetadata struct {
 	// key type (point or range) corresponds to the smallest and largest overall
 	// table bounds.
 	boundTypeSmallest, boundTypeLargest boundType
+}
+
+// SetCompactionState transitions this file's compaction state to the given
+// state. Protected by DB.mu.
+func (m *FileMetadata) SetCompactionState(to CompactionState) {
+	if invariants.Enabled {
+		transitionErr := func() error {
+			return errors.Newf("pebble: invalid compaction state transition: %s -> %s", m.CompactionState, to)
+		}
+		switch m.CompactionState {
+		case CompactionStateNotCompacting:
+			if to != CompactionStateCompacting {
+				panic(transitionErr())
+			}
+		case CompactionStateCompacting:
+			if to != CompactionStateCompacted && to != CompactionStateNotCompacting {
+				panic(transitionErr())
+			}
+		case CompactionStateCompacted:
+			panic(transitionErr())
+		default:
+			panic(fmt.Sprintf("pebble: unknown compaction state: %d", m.CompactionState))
+		}
+	}
+	m.CompactionState = to
+}
+
+// IsCompacting returns true if this file's compaction state is
+// CompactionStateCompacting. Protected by DB.mu.
+func (m *FileMetadata) IsCompacting() bool {
+	return m.CompactionState == CompactionStateCompacting
 }
 
 // StatsValid returns true if the table stats have been populated. If StatValid

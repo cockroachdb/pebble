@@ -79,7 +79,7 @@ func TestL0Sublevels_LargeImportL0(t *testing.T) {
 		var files []*FileMetadata
 		for i := range c.Files {
 			if c.FilesIncluded[i] {
-				c.Files[i].Compacting = true
+				c.Files[i].CompactionState = CompactionStateCompacting
 				files = append(files, c.Files[i])
 			}
 		}
@@ -98,7 +98,7 @@ func TestL0Sublevels_LargeImportL0(t *testing.T) {
 		var files []*FileMetadata
 		for i := range c.Files {
 			if c.FilesIncluded[i] {
-				c.Files[i].Compacting = true
+				c.Files[i].CompactionState = CompactionStateCompacting
 				c.Files[i].IsIntraL0Compacting = true
 				files = append(files, c.Files[i])
 			}
@@ -132,14 +132,14 @@ func visualizeSublevels(
 			if isL0 {
 				if compactionFiles[f.L0Index] {
 					middleChar = '+'
-				} else if f.Compacting {
+				} else if f.IsCompacting() {
 					if f.IsIntraL0Compacting {
 						middleChar = '^'
 					} else {
 						middleChar = 'v'
 					}
 				}
-			} else if f.Compacting {
+			} else if f.IsCompacting() {
 				middleChar = '='
 			}
 			if largestChar < f.Largest.UserKey[0] {
@@ -236,12 +236,12 @@ func TestL0Sublevels(t *testing.T) {
 				switch parts[0] {
 				case "base_compacting":
 					m.IsIntraL0Compacting = false
-					m.Compacting = true
+					m.CompactionState = CompactionStateCompacting
 				case "intra_l0_compacting":
 					m.IsIntraL0Compacting = true
-					m.Compacting = true
+					m.CompactionState = CompactionStateCompacting
 				case "compacting":
-					m.Compacting = true
+					m.CompactionState = CompactionStateCompacting
 				case "size":
 					sizeInt, err := strconv.Atoi(parts[1])
 					if err != nil {
@@ -522,7 +522,7 @@ func TestL0Sublevels(t *testing.T) {
 			for _, num := range fileNums {
 				for _, f := range fileMetas[0] {
 					if f.FileNum == num {
-						f.Compacting = true
+						f.CompactionState = CompactionStateCompacting
 						files = append(files, f)
 						break
 					}
