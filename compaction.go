@@ -1372,30 +1372,12 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 	}
 }
 
-// Removes compaction markers from files in a compaction.
+// Removes the in progress compaction.
 //
 // DB.mu must be held when calling this method. All writes to the manifest
 // for this compaction should have completed by this point.
 func (d *DB) removeInProgressCompaction(c *compaction) {
-	for _, cl := range c.inputs {
-		iter := cl.files.Iter()
-		for f := iter.First(); f != nil; f = iter.Next() {
-			if !f.IsCompacting() {
-				d.opts.Logger.Fatalf("L%d->L%d: %s not being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
-			}
-			// All compactions other than move-compactions transition the file into
-			// the Compacted state. Move-compacted files become eligible for
-			// compaction again.
-			if c.kind == compactionKindMove {
-				f.SetCompactionState(manifest.CompactionStateNotCompacting)
-			} else {
-				f.SetCompactionState(manifest.CompactionStateCompacted)
-			}
-			f.IsIntraL0Compacting = false
-		}
-	}
 	delete(d.mu.compact.inProgress, c)
-
 	l0InProgress := inProgressL0Compactions(d.getInProgressCompactionInfoLocked(c))
 	d.mu.versions.currentVersion().L0Sublevels.InitCompactingFileInfo(l0InProgress)
 }

@@ -609,26 +609,38 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 // On success, a map of zombie files containing the file numbers and sizes of
 // deleted files is returned. These files are considered zombies because they
 // are no longer referenced by the returned Version, but cannot be deleted from
-// disk as they are still in use by the incoming Version.
+// disk as they are still in use by the incoming Version. A second map of
+// move-compacted tables is also returned. These tables are "resurrected" and
+// remain live in the LSM.
 func (b *BulkVersionEdit) Apply(
 	curr *Version,
 	cmp Compare,
 	formatKey base.FormatKey,
 	flushSplitBytes int64,
 	readCompactionRate int64,
-) (_ *Version, zombies map[base.FileNum]uint64, _ error) {
-	addZombie := func(fileNum base.FileNum, size uint64) {
+) (_ *Version, zombies, moved map[base.FileNum]*FileMetadata, _ error) {
+	addZombie := func(f *FileMetadata) {
 		if zombies == nil {
-			zombies = make(map[base.FileNum]uint64)
+			zombies = make(map[base.FileNum]*FileMetadata)
 		}
-		zombies[fileNum] = size
+		zombies[f.FileNum] = f
 	}
 	// The remove zombie function is used to handle tables that are moved from
 	// one level to another during a version edit (i.e. a "move" compaction).
-	removeZombie := func(fileNum base.FileNum) {
-		if zombies != nil {
-			delete(zombies, fileNum)
+	removeZombie := func(f *FileMetadata) {
+		if zombies == nil {
+			return
 		}
+		_, ok := zombies[f.FileNum]
+		if !ok {
+			// Not a moved file.
+			return
+		}
+		delete(zombies, f.FileNum)
+		if moved == nil {
+			moved = make(map[base.FileNum]*FileMetadata)
+		}
+		moved[f.FileNum] = f
 	}
 
 	v := new(Version)
@@ -639,7 +651,7 @@ func (b *BulkVersionEdit) Apply(
 	}
 	v.Stats.MarkedForCompaction += b.MarkedForCompactionCountDiff
 	if v.Stats.MarkedForCompaction < 0 {
-		return nil, nil, base.CorruptionErrorf("pebble: version marked for compaction count negative")
+		return nil, nil, nil, base.CorruptionErrorf("pebble: version marked for compaction count negative")
 	}
 
 	for level := range v.Levels {
@@ -660,7 +672,7 @@ func (b *BulkVersionEdit) Apply(
 				// Initialize L0Sublevels.
 				if curr == nil || curr.L0Sublevels == nil {
 					if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
-						return nil, nil, errors.Wrap(err, "pebble: internal error")
+						return nil, nil, nil, errors.Wrap(err, "pebble: internal error")
 					}
 				} else {
 					v.L0Sublevels = curr.L0Sublevels
@@ -676,7 +688,7 @@ func (b *BulkVersionEdit) Apply(
 		addedFiles := b.Added[level]
 		deletedMap := b.Deleted[level]
 		if n := v.Levels[level].Len() + len(addedFiles); n == 0 {
-			return nil, nil, base.CorruptionErrorf(
+			return nil, nil, nil, base.CorruptionErrorf(
 				"pebble: internal error: No current or added files but have deleted files: %d",
 				errors.Safe(len(deletedMap)))
 		}
@@ -685,14 +697,14 @@ func (b *BulkVersionEdit) Apply(
 		// internally consistent: it does not reflect deletions in deletedMap.
 
 		for _, f := range deletedMap {
-			addZombie(f.FileNum, f.Size)
+			addZombie(f)
 			if obsolete := v.Levels[level].tree.delete(f); obsolete {
 				// Deleting a file from the B-Tree may decrement its
 				// reference count. However, because we cloned the
 				// previous level's B-Tree, this should never result in a
 				// file's reference count dropping to zero.
 				err := errors.Errorf("pebble: internal error: file L%d.%s obsolete during B-Tree removal", level, f.FileNum)
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			if f.HasRangeKeys {
 				if obsolete := v.RangeKeyLevels[level].tree.delete(f); obsolete {
@@ -701,7 +713,7 @@ func (b *BulkVersionEdit) Apply(
 					// previous level's B-Tree, this should never result in a
 					// file's reference count dropping to zero.
 					err := errors.Errorf("pebble: internal error: file L%d.%s obsolete during range-key B-Tree removal", level, f.FileNum)
-					return nil, nil, err
+					return nil, nil, nil, err
 				}
 			}
 		}
@@ -728,15 +740,15 @@ func (b *BulkVersionEdit) Apply(
 
 			err := lm.tree.insert(f)
 			if err != nil {
-				return nil, nil, errors.Wrap(err, "pebble")
+				return nil, nil, nil, errors.Wrap(err, "pebble")
 			}
 			if f.HasRangeKeys {
 				err = lmRange.tree.insert(f)
 				if err != nil {
-					return nil, nil, errors.Wrap(err, "pebble")
+					return nil, nil, nil, errors.Wrap(err, "pebble")
 				}
 			}
-			removeZombie(f.FileNum)
+			removeZombie(f)
 			// Track the keys with the smallest and largest keys, so that we can
 			// check consistency of the modified span.
 			if sm == nil || base.InternalCompare(cmp, sm.Smallest, f.Smallest) > 0 {
@@ -761,14 +773,14 @@ func (b *BulkVersionEdit) Apply(
 					err = v.InitL0Sublevels(cmp, formatKey, flushSplitBytes)
 				}
 				if err != nil {
-					return nil, nil, errors.Wrap(err, "pebble: internal error")
+					return nil, nil, nil, errors.Wrap(err, "pebble: internal error")
 				}
 				v.L0SublevelFiles = v.L0Sublevels.Levels
 			} else if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
-				return nil, nil, errors.Wrap(err, "pebble: internal error")
+				return nil, nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
 			if err := CheckOrdering(cmp, formatKey, Level(0), v.Levels[level].Iter()); err != nil {
-				return nil, nil, errors.Wrap(err, "pebble: internal error")
+				return nil, nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
 			continue
 		}
@@ -789,9 +801,9 @@ func (b *BulkVersionEdit) Apply(
 				}
 			})
 			if err := CheckOrdering(cmp, formatKey, Level(level), check.Iter()); err != nil {
-				return nil, nil, errors.Wrap(err, "pebble: internal error")
+				return nil, nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
 		}
 	}
-	return v, zombies, nil
+	return v, zombies, moved, nil
 }

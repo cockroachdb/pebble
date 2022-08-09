@@ -305,7 +305,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 			// Add all the fileMetadatas to L6.
 			b := &manifest.BulkVersionEdit{}
 			b.Added[6] = metas
-			v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
+			v, _, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
 			require.NoError(t, err)
 			levelIter.Init(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 0, nil, manifest.KeyTypeRange)
 			levelIters = append(levelIters, &levelIter)
@@ -450,7 +450,7 @@ func TestLevelIter(t *testing.T) {
 				}
 				b := &manifest.BulkVersionEdit{}
 				b.Added[6] = metas
-				v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
+				v, _, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
 				require.NoError(t, err)
 				iter = newLevelIter(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 6, &testLogger{t}, keyType)
 				extraInfo = func() string {

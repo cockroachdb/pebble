@@ -390,20 +390,27 @@ func TestVersionEditApply(t *testing.T) {
 				if err := bve.Accumulate(ve); err != nil {
 					return err.Error()
 				}
-				newv, zombies, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000)
+				newv, zombies, moved, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000)
 				if err != nil {
 					return err.Error()
 				}
 
-				zombieFileNums := make([]base.FileNum, 0, len(zombies))
-				for fileNum := range zombies {
-					zombieFileNums = append(zombieFileNums, fileNum)
+				// makeFileNumSlice returns a slice of sorted file nums from the given
+				// map.
+				makeFileNumSlice := func(m map[base.FileNum]*FileMetadata) []base.FileNum {
+					out := make([]base.FileNum, 0, len(m))
+					for fileNum := range m {
+						out = append(out, fileNum)
+					}
+					sort.Slice(out, func(i, j int) bool {
+						return out[i] < out[j]
+					})
+					return out
 				}
-				sort.Slice(zombieFileNums, func(i, j int) bool {
-					return zombieFileNums[i] < zombieFileNums[j]
-				})
+				zombieFileNums := makeFileNumSlice(zombies)
+				movedFileNums := makeFileNumSlice(moved)
 
-				return fmt.Sprintf("%szombies %d\n", newv, zombieFileNums)
+				return fmt.Sprintf("%szombies %d\nmoved %s", newv, zombieFileNums, movedFileNums)
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)

@@ -275,7 +275,10 @@ func (vs *versionSet) load(
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
 
-	newVersion, _, err := bve.Apply(nil, vs.cmp, opts.Comparer.FormatKey, opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate)
+	newVersion, _, _, err := bve.Apply(
+		nil, vs.cmp, opts.Comparer.FormatKey, opts.FlushSplitBytes,
+		opts.Experimental.ReadCompactionRate,
+	)
 	if err != nil {
 		return err
 	}
@@ -405,7 +408,7 @@ func (vs *versionSet) logAndApply(
 	minUnflushedLogNum := vs.minUnflushedLogNum
 	nextFileNum := vs.nextFileNum
 
-	var zombies map[FileNum]uint64
+	var zombies, moved map[base.FileNum]*fileMetadata
 	if err := func() error {
 		vs.mu.Unlock()
 		defer vs.mu.Lock()
@@ -416,7 +419,10 @@ func (vs *versionSet) logAndApply(
 		}
 
 		var err error
-		newVersion, zombies, err = bve.Apply(currentVersion, vs.cmp, vs.opts.Comparer.FormatKey, vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate)
+		newVersion, zombies, moved, err = bve.Apply(
+			currentVersion, vs.cmp, vs.opts.Comparer.FormatKey,
+			vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
+		)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")
 		}
@@ -483,8 +489,14 @@ func (vs *versionSet) logAndApply(
 	// Update the zombie tables set first, as installation of the new version
 	// will unref the previous version which could result in addObsoleteLocked
 	// being called.
-	for fileNum, size := range zombies {
-		vs.zombieTables[fileNum] = size
+	for fileNum, f := range zombies {
+		vs.zombieTables[fileNum] = f.Size
+		f.SetCompactionState(manifest.CompactionStateCompacted)
+	}
+	// Update the compaction state of the moved files back into NotCompacting.
+	for _, f := range moved {
+		f.IsIntraL0Compacting = false
+		f.SetCompactionState(manifest.CompactionStateNotCompacting)
 	}
 
 	// Install the new version.
