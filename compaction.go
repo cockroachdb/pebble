@@ -1321,10 +1321,10 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 	for _, cl := range c.inputs {
 		iter := cl.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			if f.Compacting {
+			if f.IsCompacting() {
 				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
-			f.Compacting = true
+			f.SetCompactionState(manifest.CompactionStateCompacting)
 			if c.startLevel != nil && c.outputLevel != nil && c.startLevel.level == 0 {
 				if c.outputLevel.level == 0 {
 					f.IsIntraL0Compacting = true
@@ -1372,18 +1372,33 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 	}
 }
 
-// Removes compaction markers from files in a compaction.
+// Removes compaction markers from files in a compaction. The rollback parameter
+// indicates whether the compaction state should be rolled back to its original
+// state in the case of an unsuccessful compaction.
 //
-// DB.mu must be held when calling this method. All writes to the manifest
-// for this compaction should have completed by this point.
-func (d *DB) removeInProgressCompaction(c *compaction) {
+// DB.mu must be held when calling this method. All writes to the manifest for
+// this compaction should have completed by this point.
+func (d *DB) removeInProgressCompaction(c *compaction, rollback bool) {
 	for _, cl := range c.inputs {
 		iter := cl.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			if !f.Compacting {
+			if !f.IsCompacting() {
 				d.opts.Logger.Fatalf("L%d->L%d: %s not being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
-			f.Compacting = false
+			if !rollback {
+				// On success all compactions other than move-compactions transition the
+				// file into the Compacted state. Move-compacted files become eligible
+				// for compaction again and transition back to NotCompacting.
+				if c.kind != compactionKindMove {
+					f.SetCompactionState(manifest.CompactionStateCompacted)
+				} else {
+					f.SetCompactionState(manifest.CompactionStateNotCompacting)
+				}
+			} else {
+				// Else, on rollback, all input files unconditionally transition back to
+				// NotCompacting.
+				f.SetCompactionState(manifest.CompactionStateNotCompacting)
+			}
 			f.IsIntraL0Compacting = false
 		}
 	}
@@ -1624,7 +1639,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 
 	bytesFlushed = c.bytesIterated
 	d.maybeUpdateDeleteCompactionHints(c)
-	d.removeInProgressCompaction(c)
+	d.removeInProgressCompaction(c, err != nil)
 	d.mu.versions.incrementCompactions(c.kind, c.extraLevels)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
 
@@ -2028,7 +2043,7 @@ func checkDeleteCompactionHints(
 			overlaps := v.Overlaps(l, cmp, h.start, h.end, true /* exclusiveEnd */)
 			iter := overlaps.Iter()
 			for m := iter.First(); m != nil; m = iter.Next() {
-				if m.Compacting || !h.canDelete(cmp, m, snapshots) || files[m] {
+				if m.IsCompacting() || !h.canDelete(cmp, m, snapshots) || files[m] {
 					continue
 				}
 				if files == nil {
@@ -2114,7 +2129,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 	}
 
 	d.maybeUpdateDeleteCompactionHints(c)
-	d.removeInProgressCompaction(c)
+	d.removeInProgressCompaction(c, err != nil)
 	d.mu.versions.incrementCompactions(c.kind, c.extraLevels)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
 
