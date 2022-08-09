@@ -158,6 +158,22 @@ func (f *fakeIter) Next() (*InternalKey, []byte) {
 	return f.Key(), f.Value()
 }
 
+func (f *fakeIter) NextPrefix(succKey []byte) (*InternalKey, []byte) {
+	f.valid = false
+	if f.index == len(f.keys) {
+		return nil, nil
+	}
+	f.index++
+	if f.index == len(f.keys) {
+		return nil, nil
+	}
+	if f.upper != nil && DefaultComparer.Compare(f.upper, f.key().UserKey) <= 0 {
+		return nil, nil
+	}
+	f.valid = true
+	return f.Key(), f.Value()
+}
+
 func (f *fakeIter) Prev() (*InternalKey, []byte) {
 	f.valid = false
 	if f.index < 0 {
@@ -295,6 +311,10 @@ func (i *invalidatingIter) Last() (*InternalKey, []byte) {
 
 func (i *invalidatingIter) Next() (*InternalKey, []byte) {
 	return i.update(i.iter.Next())
+}
+
+func (i *invalidatingIter) NextPrefix(succKey []byte) (*InternalKey, []byte) {
+	return i.update(i.iter.NextPrefix(succKey))
 }
 
 func (i *invalidatingIter) Prev() (*InternalKey, []byte) {

@@ -665,8 +665,7 @@ func (i *Iterator) nextPrefixKey() {
 	// We set the TrySeekUsingNext to allow level iterators alreadys positioned
 	// greater than or equal to the new seek key to avoid re-seeking.
 	i.prefixOrFullSeekKey = i.comparer.ImmediateSuccessor(i.prefixOrFullSeekKey[:0], i.key[:currentPrefixLen])
-	i.iterKey, i.iterValue = i.iter.SeekGE(i.prefixOrFullSeekKey,
-		base.SeekGEFlagsNone.EnableTrySeekUsingNext())
+	i.iterKey, i.iterValue = i.iter.NextPrefix(i.prefixOrFullSeekKey)
 }
 
 func (i *Iterator) maybeSampleRead() {

@@ -431,6 +431,34 @@ func (i *InterleavingIter) Next() (*base.InternalKey, []byte) {
 	return i.interleaveForward(i.lower)
 }
 
+// NextPrefix implements (base.InternalIterator).NextPrefix.
+func (i *InterleavingIter) NextPrefix(succKey []byte) (*base.InternalKey, []byte) {
+	if i.dir == -1 {
+		if i.pointKeyInterleaved {
+			i.pointKey, i.pointVal = i.pointIter.NextPrefix(succKey)
+		} else {
+			i.pointKey, i.pointVal = i.pointIter.SeekGE(succKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
+		}
+		i.pointKeyInterleaved = false
+		i.dir = +1
+	}
+
+	// We may need to reposition the keyspan iterator too. If the keyspan
+	// iterator was already positioned at a span, we might be able to avoid the
+	// seek if the seek key falls within the existing span's bounds.
+	if i.span != nil && i.cmp(succKey, i.span.End) < 0 && i.cmp(succKey, i.span.Start) >= 0 {
+		// We're seeking within the existing span's bounds. We still might need
+		// truncate the span to the iterator's bounds.
+		i.checkForwardBound()
+		i.savedKeyspan()
+	} else {
+		i.span = i.keyspanIter.Next()
+		i.checkForwardBound()
+		i.savedKeyspan()
+	}
+	return i.interleaveForward(i.lower)
+}
+
 // Prev implements (base.InternalIterator).Prev.
 func (i *InterleavingIter) Prev() (*base.InternalKey, []byte) {
 	if i.dir == +1 {

@@ -87,6 +87,11 @@ func (i *InternalIteratorShim) Next() (*base.InternalKey, []byte) {
 	return &i.iterKey, i.span.End
 }
 
+// Next implements (base.InternalIterator).NextPrefix.
+func (i *InternalIteratorShim) NextPrefix([]byte) (*base.InternalKey, []byte) {
+	panic("unimplemented")
+}
+
 // Prev implements (base.InternalIterator).Prev.
 func (i *InternalIteratorShim) Prev() (*base.InternalKey, []byte) {
 	panic("unimplemented")
