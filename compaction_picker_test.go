@@ -148,7 +148,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 	resetCompacting := func() {
 		for _, files := range vers.Levels {
 			files.Slice().Each(func(f *fileMetadata) {
-				f.Compacting = false
+				f.CompactionState = manifest.CompactionStateNotCompacting
 			})
 		}
 	}
@@ -208,7 +208,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					}
 					for _, cl := range pc.inputs {
 						cl.files.Each(func(f *fileMetadata) {
-							f.Compacting = true
+							f.CompactionState = manifest.CompactionStateCompacting
 						})
 					}
 				}
@@ -236,8 +236,8 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					c := &inProgress[i]
 					iter := vers.Levels[c.inputs[0].level].Iter()
 					for f := iter.First(); f != nil; f = iter.Next() {
-						if !f.Compacting {
-							f.Compacting = true
+						if !f.IsCompacting() {
+							f.CompactionState = manifest.CompactionStateCompacting
 							c.inputs[0].files = iter.Take().Slice()
 							break
 						}
@@ -249,15 +249,15 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 						c.inputs[1].files = vers.Levels[c.outputLevel].Slice()
 						for _, in := range c.inputs {
 							in.files.Each(func(f *fileMetadata) {
-								f.Compacting = true
+								f.CompactionState = manifest.CompactionStateCompacting
 							})
 						}
 					case c.inputs[0].level != c.outputLevel:
 						// Ln->Ln+1: mark 1 file in Ln+1 as compacting.
 						iter := vers.Levels[c.outputLevel].Iter()
 						for f := iter.First(); f != nil; f = iter.Next() {
-							if !f.Compacting {
-								f.Compacting = true
+							if !f.IsCompacting() {
+								f.CompactionState = manifest.CompactionStateCompacting
 								c.inputs[1].files = iter.Take().Slice()
 								break
 							}
@@ -447,7 +447,7 @@ func TestCompactionPickerL0(t *testing.T) {
 						if compactFile == nil {
 							return fmt.Sprintf("cannot find compaction file %s", FileNum(fileNum))
 						}
-						compactFile.Compacting = true
+						compactFile.CompactionState = manifest.CompactionStateCompacting
 						if first || base.InternalCompare(DefaultComparer.Compare, info.largest, compactFile.Largest) < 0 {
 							info.largest = compactFile.Largest
 						}
@@ -683,7 +683,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 						if compactFile == nil {
 							return fmt.Sprintf("cannot find compaction file %s", FileNum(fileNum))
 						}
-						compactFile.Compacting = true
+						compactFile.CompactionState = manifest.CompactionStateCompacting
 						if first || base.InternalCompare(DefaultComparer.Compare, info.largest, compactFile.Largest) < 0 {
 							info.largest = compactFile.Largest
 						}
@@ -956,9 +956,13 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 		if len(tableParts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
+		state := manifest.CompactionStateNotCompacting
+		if compacting {
+			state = manifest.CompactionStateCompacting
+		}
 		m := (&fileMetadata{
-			Compacting: compacting,
-			Size:       fileSize,
+			CompactionState: state,
+			Size:            fileSize,
 		}).ExtendPointKeyBounds(
 			opts.Comparer.Compare,
 			base.ParseInternalKey(strings.TrimSpace(tableParts[0])),

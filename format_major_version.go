@@ -434,25 +434,15 @@ func (d *DB) markFilesWithSplitUserKeysLocked() error {
 		if len(filesToMark) == 0 {
 			continue
 		}
-
 		for _, f := range filesToMark {
-			if f.MarkedForCompaction {
+			// Ignore files to be marked that have already been compacted or marked.
+			if f.CompactionState == manifest.CompactionStateCompacted ||
+				f.MarkedForCompaction {
 				continue
 			}
-
-			// We need to determine if the file still exists in the current
-			// version of the LSM. Note that we're making the assumption that if
-			// f still exists within the LSM, it's within the same level. That's
-			// okay, because only move compactions may move files between levels
-			// and move compactions only apply to compactions with a single file
-			// in the start level, but we already know these files have
-			// multi-file atomic compaction units.
-			if m := vers.Levels[l].Find(d.cmp, f); m != nil {
-				// It's still there. Mark it for compaction and update the
-				// version's stats.
-				f.MarkedForCompaction = true
-				vers.Stats.MarkedForCompaction++
-			}
+			// Else, mark the file for compaction in this version.
+			vers.Stats.MarkedForCompaction++
+			f.MarkedForCompaction = true
 		}
 		// The compaction picker uses the markedForCompactionAnnotator to
 		// quickly find files marked for compaction, or to quickly determine

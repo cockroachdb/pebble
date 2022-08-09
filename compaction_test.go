@@ -1266,7 +1266,7 @@ func TestManualCompaction(t *testing.T) {
 		for _, cl := range ongoingCompaction.inputs {
 			iter := cl.files.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
-				f.Compacting = true
+				f.CompactionState = manifest.CompactionStateCompacting
 			}
 		}
 		d.mu.compact.inProgress[ongoingCompaction] = struct{}{}
@@ -1279,7 +1279,7 @@ func TestManualCompaction(t *testing.T) {
 		for _, cl := range ongoingCompaction.inputs {
 			iter := cl.files.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
-				f.Compacting = false
+				f.CompactionState = manifest.CompactionStateNotCompacting
 			}
 		}
 		delete(d.mu.compact.inProgress, ongoingCompaction)

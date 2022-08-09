@@ -724,7 +724,7 @@ func (s *L0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 					s.formatKey(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key), s.formatKey(f.Smallest.UserKey)))
 			}
 		}
-		if !f.Compacting {
+		if !f.IsCompacting() {
 			continue
 		}
 		for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
@@ -805,7 +805,7 @@ func (s *L0Sublevels) describe(verbose bool) string {
 			}
 			sumIntervals += intervals
 			totalBytes += f.Size
-			if f.Compacting {
+			if f.IsCompacting() {
 				numCompactingFiles++
 			}
 		}
@@ -1052,7 +1052,7 @@ func (s *L0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 				fmt.Fprintf(&buf, "bug %t, seed interval: %d: level %d, sl index %d, f.index %d, min %d, max %d, pre-min %d, pre-max %d, f.min %d, f.max %d, filenum: %d, isCompacting: %t\n%s\n",
 					c.isIntraL0, c.seedInterval, level, index, f.L0Index, min, max, c.preExtensionMinInterval, c.preExtensionMaxInterval,
 					f.minIntervalIndex, f.maxIntervalIndex,
-					f.FileNum, f.Compacting, s)
+					f.FileNum, f.IsCompacting(), s)
 				fmt.Fprintf(&buf, "files included:\n")
 				for _, f := range c.Files {
 					fmt.Fprintf(&buf, "filenum: %d, sl: %d, index: %d, [%d, %d]\n",
@@ -1396,7 +1396,7 @@ func (s *L0Sublevels) PickBaseCompaction(
 			return nil, errors.New("no seed file found in sublevel intervals")
 		}
 		consideredIntervals.markBits(f.minIntervalIndex, f.maxIntervalIndex+1)
-		if f.Compacting {
+		if f.IsCompacting() {
 			if f.IsIntraL0Compacting {
 				// If we're picking a base compaction and we came across a
 				// seed file candidate that's being intra-L0 compacted, skip
@@ -1428,7 +1428,7 @@ func (s *L0Sublevels) PickBaseCompaction(
 				if cmp > 0 || (cmp == 0 && !s.orderedIntervals[c.maxIntervalIndex+1].startKey.isLargest) {
 					break
 				}
-				baseCompacting = baseCompacting || m.Compacting
+				baseCompacting = baseCompacting || m.IsCompacting()
 			}
 			if baseCompacting {
 				continue
@@ -1549,7 +1549,7 @@ func (s *L0Sublevels) extendFiles(
 		if f.minIntervalIndex > cFiles.maxIntervalIndex {
 			break
 		}
-		if f.Compacting {
+		if f.IsCompacting() {
 			return false
 		}
 		// Skip over files that are newer than earliestUnflushedSeqNum. This is
@@ -1600,7 +1600,7 @@ func (s *L0Sublevels) PickIntraL0Compaction(
 		stackDepthReduction := scoredInterval.score
 		for i := len(interval.files) - 1; i >= 0; i-- {
 			f = interval.files[i]
-			if f.Compacting {
+			if f.IsCompacting() {
 				break
 			}
 			consideredIntervals.markBits(f.minIntervalIndex, f.maxIntervalIndex+1)
@@ -1624,7 +1624,7 @@ func (s *L0Sublevels) PickIntraL0Compaction(
 		if f == nil {
 			return nil, errors.New("no seed file found in sublevel intervals")
 		}
-		if f.Compacting {
+		if f.IsCompacting() {
 			// This file could be in a concurrent intra-L0 or base compaction.
 			// Try another interval.
 			continue
@@ -1676,7 +1676,7 @@ func (s *L0Sublevels) intraL0CompactionUsingSeed(
 	for ; slIndex >= 0; slIndex-- {
 		f2 := interval.files[slIndex]
 		sl := f2.SubLevel
-		if f2.Compacting {
+		if f2.IsCompacting() {
 			break
 		}
 		c.seedIntervalStackDepthReduction++
@@ -1946,7 +1946,7 @@ func (s *L0Sublevels) extendCandidateToRectangle(
 		candidateHasAlreadyPickedFiles := false
 		for index = firstIndex; index <= lastIndex; index++ {
 			f := files[index]
-			if f.Compacting {
+			if f.IsCompacting() {
 				if nonCompactingFirst != -1 {
 					last := index - 1
 					// Prioritize runs of consecutive non-compacting files that
@@ -1998,7 +1998,7 @@ func (s *L0Sublevels) extendCandidateToRectangle(
 		}
 		for index := candidateNonCompactingFirst; index <= candidateNonCompactingLast; index++ {
 			f := files[index]
-			if f.Compacting {
+			if f.IsCompacting() {
 				// TODO(bilal): Do a logger.Fatalf instead of a panic, for
 				// cleaner unwinding and error messages.
 				panic(fmt.Sprintf("expected %s to not be compacting", f.FileNum))
