@@ -506,7 +506,7 @@ func expandToAtomicUnit(
 		iter := start.Clone()
 		iter.Prev()
 		for cur, prev := start.Current(), iter.Current(); prev != nil; cur, prev = start.Prev(), iter.Prev() {
-			if cur.Compacting {
+			if cur.IsCompacting() {
 				isCompacting = true
 			}
 			if cmp(prev.Largest.UserKey, cur.Smallest.UserKey) < 0 {
@@ -524,7 +524,7 @@ func expandToAtomicUnit(
 		iter = end.Clone()
 		iter.Next()
 		for cur, next := end.Current(), iter.Current(); next != nil; cur, next = end.Next(), iter.Next() {
-			if cur.Compacting {
+			if cur.IsCompacting() {
 				isCompacting = true
 			}
 			if cmp(cur.Largest.UserKey, next.Smallest.UserKey) < 0 {
@@ -540,7 +540,8 @@ func expandToAtomicUnit(
 		}
 	})
 	inputIter := inputs.Iter()
-	isCompacting = !disableIsCompacting && (isCompacting || inputIter.First().Compacting || inputIter.Last().Compacting)
+	isCompacting = !disableIsCompacting &&
+		(isCompacting || inputIter.First().IsCompacting() || inputIter.Last().IsCompacting())
 	return inputs, isCompacting
 }
 
@@ -989,10 +990,10 @@ func (p *compactionPickerByScore) pickFile(
 			outputFile = outputIter.Next()
 		}
 
-		compacting := f.Compacting
+		compacting := f.IsCompacting()
 		for outputFile != nil && base.InternalCompare(cmp, outputFile.Smallest, f.Largest) < 0 {
 			overlappingBytes += outputFile.Size
-			compacting = compacting || outputFile.Compacting
+			compacting = compacting || outputFile.IsCompacting()
 
 			// For files in the bottommost level of the LSM, the
 			// Stats.RangeDeletionsBytesEstimate field is set to the estimate
@@ -1023,7 +1024,7 @@ func (p *compactionPickerByScore) pickFile(
 		}
 
 		scaledRatio := overlappingBytes * 1024 / compensatedSize(f)
-		if scaledRatio < smallestRatio && !f.Compacting {
+		if scaledRatio < smallestRatio && !f.IsCompacting() {
 			smallestRatio = scaledRatio
 			file = startIter.Take()
 		}
@@ -1225,7 +1226,7 @@ func (a elisionOnlyAnnotator) Zero(interface{}) interface{} {
 }
 
 func (a elisionOnlyAnnotator) Accumulate(f *fileMetadata, dst interface{}) (interface{}, bool) {
-	if f.Compacting {
+	if f.IsCompacting() {
 		return dst, true
 	}
 	if !f.StatsValidLocked() {
@@ -1324,7 +1325,7 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 		return nil
 	}
 	candidate := v.(*fileMetadata)
-	if candidate.Compacting || candidate.LargestSeqNum >= env.earliestSnapshotSeqNum {
+	if candidate.IsCompacting() || candidate.LargestSeqNum >= env.earliestSnapshotSeqNum {
 		return nil
 	}
 	lf := p.vers.Levels[numLevels-1].Find(p.opts.Comparer.Compare, candidate)
@@ -1362,7 +1363,7 @@ func (p *compactionPickerByScore) pickRewriteCompaction(env compactionEnv) (pc *
 			continue
 		}
 		candidate := v.(*fileMetadata)
-		if candidate.Compacting {
+		if candidate.IsCompacting() {
 			// Try the next level.
 			continue
 		}
@@ -1664,7 +1665,7 @@ func inputRangeAlreadyCompacting(env compactionEnv, pc *pickedCompaction) bool {
 	for _, cl := range pc.inputs {
 		iter := cl.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			if f.Compacting {
+			if f.IsCompacting() {
 				return true
 			}
 		}

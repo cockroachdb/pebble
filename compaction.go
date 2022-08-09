@@ -1321,10 +1321,10 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 	for _, cl := range c.inputs {
 		iter := cl.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			if f.Compacting {
+			if f.IsCompacting() {
 				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
-			f.Compacting = true
+			f.SetCompactionState(manifest.CompactionStateCompacting)
 			if c.startLevel != nil && c.outputLevel != nil && c.startLevel.level == 0 {
 				if c.outputLevel.level == 0 {
 					f.IsIntraL0Compacting = true
@@ -1380,10 +1380,17 @@ func (d *DB) removeInProgressCompaction(c *compaction) {
 	for _, cl := range c.inputs {
 		iter := cl.files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			if !f.Compacting {
+			if !f.IsCompacting() {
 				d.opts.Logger.Fatalf("L%d->L%d: %s not being compacted", c.startLevel.level, c.outputLevel.level, f.FileNum)
 			}
-			f.Compacting = false
+			// All compactions other than move-compactions transition the file into
+			// the Compacted state. Move-compacted files become eligible for
+			// compaction again.
+			if c.kind == compactionKindMove {
+				f.SetCompactionState(manifest.CompactionStateNotCompacting)
+			} else {
+				f.SetCompactionState(manifest.CompactionStateCompacted)
+			}
 			f.IsIntraL0Compacting = false
 		}
 	}
@@ -2028,7 +2035,7 @@ func checkDeleteCompactionHints(
 			overlaps := v.Overlaps(l, cmp, h.start, h.end, true /* exclusiveEnd */)
 			iter := overlaps.Iter()
 			for m := iter.First(); m != nil; m = iter.Next() {
-				if m.Compacting || !h.canDelete(cmp, m, snapshots) || files[m] {
+				if m.IsCompacting() || !h.canDelete(cmp, m, snapshots) || files[m] {
 					continue
 				}
 				if files == nil {
