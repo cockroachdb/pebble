@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -98,14 +99,19 @@ func TestRangeDel(t *testing.T) {
 	})
 }
 
-func TestDeleteRangeFlushDelay(t *testing.T) {
-	opts := &Options{FS: vfs.NewMem()}
-	opts.Experimental.DeleteRangeFlushDelay = 10 * time.Millisecond
+func TestFlushDelay(t *testing.T) {
+	opts := &Options{
+		FS:                    vfs.NewMem(),
+		Comparer:              testkeys.Comparer,
+		FlushDelayDeleteRange: 10 * time.Millisecond,
+		FlushDelayRangeKey:    10 * time.Millisecond,
+		FormatMajorVersion:    FormatNewest,
+	}
 	d, err := Open("", opts)
 	require.NoError(t, err)
 
-	// Ensure that all the various means of deleting a range trigger the flush
-	// delay.
+	// Ensure that all the various means of writing a rangedel or range key
+	// trigger their respective flush delays.
 	cases := []func(){
 		func() {
 			require.NoError(t, d.DeleteRange([]byte("a"), []byte("z"), nil))
@@ -135,6 +141,46 @@ func TestDeleteRangeFlushDelay(t *testing.T) {
 			b := d.NewBatch()
 			b2 := d.NewBatch()
 			require.NoError(t, b.DeleteRange([]byte("a"), []byte("z"), nil))
+			require.NoError(t, b2.Apply(b, nil))
+			require.NoError(t, b2.Commit(nil))
+			require.NoError(t, b.Close())
+		},
+		func() {
+			require.NoError(t, d.RangeKeySet([]byte("a"), []byte("z"), nil, nil, nil))
+		},
+		func() {
+			require.NoError(t, d.RangeKeyUnset([]byte("a"), []byte("z"), nil, nil))
+		},
+		func() {
+			require.NoError(t, d.RangeKeyDelete([]byte("a"), []byte("z"), nil))
+		},
+		func() {
+			b := d.NewBatch()
+			require.NoError(t, b.RangeKeySet([]byte("a"), []byte("z"), nil, nil, nil))
+			require.NoError(t, b.Commit(nil))
+		},
+		func() {
+			b := d.NewBatch()
+			require.NoError(t, b.RangeKeyUnset([]byte("a"), []byte("z"), nil, nil))
+			require.NoError(t, b.Commit(nil))
+		},
+		func() {
+			b := d.NewBatch()
+			require.NoError(t, b.RangeKeyDelete([]byte("a"), []byte("z"), nil))
+			require.NoError(t, b.Commit(nil))
+		},
+		func() {
+			b := d.NewBatch()
+			b2 := d.NewBatch()
+			require.NoError(t, b.RangeKeySet([]byte("a"), []byte("z"), nil, nil, nil))
+			require.NoError(t, b2.SetRepr(b.Repr()))
+			require.NoError(t, b2.Commit(nil))
+			require.NoError(t, b.Close())
+		},
+		func() {
+			b := d.NewBatch()
+			b2 := d.NewBatch()
+			require.NoError(t, b.RangeKeySet([]byte("a"), []byte("z"), nil, nil, nil))
 			require.NoError(t, b2.Apply(b, nil))
 			require.NoError(t, b2.Commit(nil))
 			require.NoError(t, b.Close())

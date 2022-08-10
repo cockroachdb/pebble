@@ -769,9 +769,18 @@ func (d *DB) commitApply(b *Batch, mem *memTable) error {
 	// If the batch contains range tombstones and the database is configured
 	// to flush range deletions, schedule a delayed flush so that disk space
 	// may be reclaimed without additional writes or an explicit flush.
-	if b.countRangeDels > 0 && d.opts.Experimental.DeleteRangeFlushDelay > 0 {
+	if b.countRangeDels > 0 && d.opts.FlushDelayDeleteRange > 0 {
 		d.mu.Lock()
-		d.maybeScheduleDelayedFlush(mem)
+		d.maybeScheduleDelayedFlush(mem, d.opts.FlushDelayDeleteRange)
+		d.mu.Unlock()
+	}
+
+	// If the batch contains range keys and the database is configured to flush
+	// range keys, schedule a delayed flush so that the range keys are cleared
+	// from the memtable.
+	if b.countRangeKeys > 0 && d.opts.FlushDelayRangeKey > 0 {
+		d.mu.Lock()
+		d.maybeScheduleDelayedFlush(mem, d.opts.FlushDelayRangeKey)
 		d.mu.Unlock()
 	}
 
