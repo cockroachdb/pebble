@@ -473,12 +473,6 @@ type Options struct {
 		// concurrency slots as determined by the two options is chosen.
 		CompactionDebtConcurrency int
 
-		// DeleteRangeFlushDelay configures how long the database should wait
-		// before forcing a flush of a memtable that contains a range
-		// deletion. Disk space cannot be reclaimed until the range deletion
-		// is flushed. No automatic flush occurs if zero.
-		DeleteRangeFlushDelay time.Duration
-
 		// MinDeletionRate is the minimum number of bytes per second that would
 		// be deleted. Deletion pacing is used to slow down deletions when
 		// compactions finish up or readers close, and newly-obsolete files need
@@ -578,6 +572,18 @@ type Options struct {
 	// different filter policies. It is not necessary to populate this filters
 	// map during normal usage of a DB.
 	Filters map[string]FilterPolicy
+
+	// FlushDelayDeleteRange configures how long the database should wait before
+	// forcing a flush of a memtable that contains a range deletion. Disk space
+	// cannot be reclaimed until the range deletion is flushed. No automatic
+	// flush occurs if zero.
+	FlushDelayDeleteRange time.Duration
+
+	// FlushDelayRangeKey configures how long the database should wait before
+	// forcing a flush of a memtable that contains a range key. Range keys in
+	// the memtable prevent lazy combined iteration, so it's desirable to flush
+	// range keys promptly. No automatic flush occurs if zero.
+	FlushDelayRangeKey time.Duration
 
 	// FlushSplitBytes denotes the target number of bytes per sublevel in
 	// each flush split interval (i.e. range between two flush split keys)
@@ -983,8 +989,9 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  cleaner=%s\n", o.Cleaner)
 	fmt.Fprintf(&buf, "  compaction_debt_concurrency=%d\n", o.Experimental.CompactionDebtConcurrency)
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
-	fmt.Fprintf(&buf, "  delete_range_flush_delay=%s\n", o.Experimental.DeleteRangeFlushDelay)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
+	fmt.Fprintf(&buf, "  flush_delay_delete_range=%s\n", o.FlushDelayDeleteRange)
+	fmt.Fprintf(&buf, "  flush_delay_range_key=%s\n", o.FlushDelayRangeKey)
 	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.FlushSplitBytes)
 	fmt.Fprintf(&buf, "  format_major_version=%d\n", o.FormatMajorVersion)
 	fmt.Fprintf(&buf, "  l0_compaction_concurrency=%d\n", o.Experimental.L0CompactionConcurrency)
@@ -1156,9 +1163,15 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "compaction_debt_concurrency":
 				o.Experimental.CompactionDebtConcurrency, err = strconv.Atoi(value)
 			case "delete_range_flush_delay":
-				o.Experimental.DeleteRangeFlushDelay, err = time.ParseDuration(value)
+				// NB: This is a deprecated serialization of the
+				// `flush_delay_delete_range`.
+				o.FlushDelayDeleteRange, err = time.ParseDuration(value)
 			case "disable_wal":
 				o.DisableWAL, err = strconv.ParseBool(value)
+			case "flush_delay_delete_range":
+				o.FlushDelayDeleteRange, err = time.ParseDuration(value)
+			case "flush_delay_range_key":
+				o.FlushDelayRangeKey, err = time.ParseDuration(value)
 			case "flush_split_bytes":
 				o.FlushSplitBytes, err = strconv.ParseInt(value, 10, 64)
 			case "format_major_version":

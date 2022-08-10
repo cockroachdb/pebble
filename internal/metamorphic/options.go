@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
@@ -253,7 +254,9 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts.BytesPerSync = 1 << uint(rng.Intn(28))     // 1B - 256MB
 	opts.Cache = cache.New(1 << uint(rng.Intn(30))) // 1B - 1GB
 	opts.DisableWAL = rng.Intn(2) == 0
-	opts.FlushSplitBytes = 1 << rng.Intn(20) // 1B - 1MB
+	opts.FlushDelayDeleteRange = time.Millisecond * time.Duration(5*rng.Intn(245)) // 5-250ms
+	opts.FlushDelayRangeKey = time.Millisecond * time.Duration(5*rng.Intn(245))    // 5-250ms
+	opts.FlushSplitBytes = 1 << rng.Intn(20)                                       // 1B - 1MB
 	// The metamorphic test exercise range keys, so we cannot use an older
 	// FormatMajorVersion than pebble.FormatRangeKeys.
 	opts.FormatMajorVersion = pebble.FormatRangeKeys
