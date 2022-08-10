@@ -74,8 +74,9 @@ func TestOptionsString(t *testing.T) {
   cleaner=delete
   compaction_debt_concurrency=1073741824
   comparer=leveldb.BytewiseComparator
-  delete_range_flush_delay=0s
   disable_wal=false
+  flush_delay_delete_range=0s
+  flush_delay_range_key=0s
   flush_split_bytes=4194304
   format_major_version=1
   l0_compaction_concurrency=10
@@ -223,7 +224,8 @@ func TestOptionsParse(t *testing.T) {
 			opts.Levels[1].BlockSize = 2048
 			opts.Levels[2].BlockSize = 4096
 			opts.Experimental.CompactionDebtConcurrency = 100
-			opts.Experimental.DeleteRangeFlushDelay = 10 * time.Second
+			opts.FlushDelayDeleteRange = 10 * time.Second
+			opts.FlushDelayRangeKey = 11 * time.Second
 			opts.Experimental.MinDeletionRate = 200
 			opts.Experimental.ReadCompactionRate = 300
 			opts.Experimental.ReadSamplingMultiplier = 400

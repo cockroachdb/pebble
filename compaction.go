@@ -1487,7 +1487,7 @@ func (d *DB) passedFlushThreshold() bool {
 	return size >= minFlushSize
 }
 
-func (d *DB) maybeScheduleDelayedFlush(tbl *memTable) {
+func (d *DB) maybeScheduleDelayedFlush(tbl *memTable, dur time.Duration) {
 	var mem *flushableEntry
 	for _, m := range d.mu.mem.queue {
 		if m.flushable == tbl {
@@ -1495,12 +1495,17 @@ func (d *DB) maybeScheduleDelayedFlush(tbl *memTable) {
 			break
 		}
 	}
-	if mem == nil || mem.flushForced || mem.delayedFlushForced {
+	if mem == nil || mem.flushForced {
 		return
 	}
-	mem.delayedFlushForced = true
+	deadline := d.timeNow().Add(dur)
+	if !mem.delayedFlushForcedAt.IsZero() && deadline.After(mem.delayedFlushForcedAt) {
+		// Already scheduled to flush sooner than within `dur`.
+		return
+	}
+	mem.delayedFlushForcedAt = deadline
 	go func() {
-		timer := time.NewTimer(d.opts.Experimental.DeleteRangeFlushDelay)
+		timer := time.NewTimer(dur)
 		defer timer.Stop()
 
 		select {
