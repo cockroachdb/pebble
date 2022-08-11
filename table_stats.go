@@ -759,3 +759,50 @@ func newCombinedDeletionKeyspanIter(
 
 	return mIter, nil
 }
+
+// rangeKeySetsAnnotator implements manifest.Annotator, annotating B-Tree nodes
+// with the sum of the files' counts of range key fragments. Its annotation type
+// is a *uint64. The count of range key sets may change once a table's stats are
+// loaded asynchronously, so its values are marked as cacheable only if a file's
+// stats have been loaded.
+type rangeKeySetsAnnotator struct{}
+
+var _ manifest.Annotator = rangeKeySetsAnnotator{}
+
+func (a rangeKeySetsAnnotator) Zero(dst interface{}) interface{} {
+	if dst == nil {
+		return new(uint64)
+	}
+	v := dst.(*uint64)
+	*v = 0
+	return v
+}
+
+func (a rangeKeySetsAnnotator) Accumulate(
+	f *fileMetadata, dst interface{},
+) (v interface{}, cacheOK bool) {
+	vptr := dst.(*uint64)
+	*vptr = *vptr + f.Stats.NumRangeKeySets
+	return vptr, f.StatsValidLocked()
+}
+
+func (a rangeKeySetsAnnotator) Merge(src interface{}, dst interface{}) interface{} {
+	srcV := src.(*uint64)
+	dstV := dst.(*uint64)
+	*dstV = *dstV + *srcV
+	return dstV
+}
+
+// countRangeKeySetFragments counts the number of RANGEKEYSET keys across all
+// files of the LSM. It only counts keys in files for which table stats have
+// been loaded. It uses a b-tree annotator to cache intermediate values between
+// calculations when possible.
+func countRangeKeySetFragments(v *version) (count uint64) {
+	for l := 0; l < numLevels; l++ {
+		if v.RangeKeyLevels[l].Empty() {
+			continue
+		}
+		count += *v.RangeKeyLevels[l].Annotation(rangeKeySetsAnnotator{}).(*uint64)
+	}
+	return count
+}

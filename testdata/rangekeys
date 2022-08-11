@@ -342,6 +342,10 @@ wrote 3 keys
 flush
 ----
 
+metrics
+----
+Metrics.Keys.RangeKeySetsCount = 1
+
 combined-iter
 seek-ge az
 next
@@ -412,6 +416,13 @@ wrote 4 keys
 flush
 ----
 
+lsm
+----
+0.1:
+  000008:[b#2111,RANGEKEYSET-z#72057594037927935,RANGEKEYSET]
+0.0:
+  000006:[a@100#3,SET-zz@1#2104,SET]
+
 scan-rangekeys
 ----
 [b, bat)
@@ -422,6 +433,15 @@ scan-rangekeys
  @1000=boop, @1=bop
 [e, z)
  @1000=boop
+
+# NB: There are now 8 range key sets in the database. See the 7 range keys in
+# the above scan-rangekeys. Additionally, the sstable flushed earlier up above
+# included a rangekeyset [b,c) @5=beep.
+
+metrics
+----
+Metrics.Keys.RangeKeySetsCount = 8
+
 
 combined-iter
 seek-prefix-ge ca
@@ -659,6 +679,13 @@ a:a
 b:b
 c:c
 .
+
+flush
+----
+
+metrics
+----
+Metrics.Keys.RangeKeySetsCount = 3
 
 # Test Prev-ing back over a synthetic range key marker. Synthetic range-key
 # markers (the keys interleaved at 'c' during a SeekGE(c) when there's a
