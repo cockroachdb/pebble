@@ -6,6 +6,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -25,6 +27,12 @@ import (
 
 func TestIterHistories(t *testing.T) {
 	datadriven.Walk(t, "testdata/iter_histories", func(t *testing.T, path string) {
+		filename := filepath.Base(path)
+		switch {
+		case invariants.Enabled && strings.Contains(filename, "no_invariants"):
+			t.Skip("disabled when run with -tags invariants due to nondeterminism")
+		}
+
 		var d *DB
 		iters := map[string]*Iterator{}
 		batches := map[string]*Batch{}
