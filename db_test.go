@@ -891,7 +891,7 @@ func TestCacheEvict(t *testing.T) {
 		require.NoError(t, d.Delete(key, nil))
 	}
 
-	require.NoError(t, d.Compact([]byte("0"), []byte("1"), false))
+	require.NoError(t, d.Compact([]byte("0"), []byte("1"), false, 7 /* maxLevel */))
 
 	require.NoError(t, d.Close())
 
@@ -1004,7 +1004,7 @@ func TestDBClosed(t *testing.T) {
 
 	require.True(t, errors.Is(catch(func() { _ = d.Close() }), ErrClosed))
 
-	require.True(t, errors.Is(catch(func() { _ = d.Compact(nil, nil, false) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.Compact(nil, nil, false, 7 /* maxLevel */) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _ = d.Flush() }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _, _ = d.AsyncFlush() }), ErrClosed))
 
@@ -1043,7 +1043,7 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 			var err error
 			switch i % 3 {
 			case 0:
-				err = d.Compact(nil, []byte("\xff"), false)
+				err = d.Compact(nil, []byte("\xff"), false, 7 /* maxLevel */)
 			case 1:
 				err = d.Flush()
 			case 2:
@@ -1147,7 +1147,7 @@ func TestCloseCleanerRace(t *testing.T) {
 		it := db.NewIter(nil)
 		require.NotNil(t, it)
 		require.NoError(t, db.DeleteRange([]byte("a"), []byte("b"), Sync))
-		require.NoError(t, db.Compact([]byte("a"), []byte("b"), false))
+		require.NoError(t, db.Compact([]byte("a"), []byte("b"), false, 7 /* maxLevel */))
 		// Only the iterator is keeping the sstables alive.
 		files, err := mem.List("/")
 		require.NoError(t, err)

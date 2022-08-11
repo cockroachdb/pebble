@@ -628,7 +628,7 @@ func runCompactCmd(td *datadriven.TestData, d *DB) error {
 		}
 		return d.manualCompact(iStart.UserKey, iEnd.UserKey, level, parallelize)
 	}
-	return d.Compact([]byte(parts[0]), []byte(parts[1]), parallelize)
+	return d.Compact([]byte(parts[0]), []byte(parts[1]), parallelize, 7 /* maxLevel */)
 }
 
 func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {

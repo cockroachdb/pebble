@@ -111,7 +111,7 @@ type compactOp struct {
 
 func (o *compactOp) run(t *test, h *history) {
 	err := withRetries(func() error {
-		return t.db.Compact(o.start, o.end, o.parallelize)
+		return t.db.Compact(o.start, o.end, o.parallelize, 7 /* maxLevel */)
 	})
 	h.Recordf("%s // %v", o, err)
 }

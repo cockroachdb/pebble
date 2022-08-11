@@ -2094,7 +2094,7 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 			}
 			require.NoError(b, batch.Commit(nil))
 			require.NoError(b, d.Flush())
-			require.NoError(b, d.Compact(nil, []byte{0xFF}, false))
+			require.NoError(b, d.Compact(nil, []byte{0xFF}, false, 7 /* maxLevel */))
 
 			for _, filter := range []bool{false, true} {
 				b.Run(fmt.Sprintf("filter=%t", filter), func(b *testing.B) {

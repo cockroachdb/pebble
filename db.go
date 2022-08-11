@@ -1296,8 +1296,10 @@ func (d *DB) Close() error {
 	return err
 }
 
-// Compact the specified range of keys in the database.
-func (d *DB) Compact(start, end []byte, parallelize bool) error {
+// Compact the specified range of keys in the database. maxLevel is an exclusive
+// paramter. If maxLevel is 4, then compactions may be performed from
+// L3 -> L4, but not L4 -> L5.
+func (d *DB) Compact(start, end []byte, parallelize bool, maxLevel int) error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1364,7 +1366,10 @@ func (d *DB) Compact(start, end []byte, parallelize bool) error {
 		<-mem.flushed
 	}
 
-	for level := 0; level < maxLevelWithFiles; {
+	if maxLevel > maxLevelWithFiles {
+		maxLevel = maxLevelWithFiles
+	}
+	for level := 0; level < maxLevel; {
 		if err := d.manualCompact(
 			iStart.UserKey, iEnd.UserKey, level, parallelize); err != nil {
 			return err

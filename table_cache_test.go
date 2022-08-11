@@ -327,7 +327,7 @@ func TestSharedTableCacheUseAfterOneFree(t *testing.T) {
 	require.NoError(t, db2.Set(start, nil, nil))
 	require.NoError(t, db2.Flush())
 	require.NoError(t, db2.DeleteRange(start, end, nil))
-	require.NoError(t, db2.Compact(start, end, false))
+	require.NoError(t, db2.Compact(start, end, false, 7 /* maxLevel */))
 }
 
 // A basic test which makes sure that a shared table cache is usable
@@ -365,7 +365,7 @@ func TestSharedTableCacheUsable(t *testing.T) {
 	require.NoError(t, db1.Set(start, nil, nil))
 	require.NoError(t, db1.Flush())
 	require.NoError(t, db1.DeleteRange(start, end, nil))
-	require.NoError(t, db1.Compact(start, end, false))
+	require.NoError(t, db1.Compact(start, end, false, 7 /* maxLevel */))
 
 	start = []byte("x")
 	end = []byte("y")
@@ -374,7 +374,7 @@ func TestSharedTableCacheUsable(t *testing.T) {
 	require.NoError(t, db2.Set(start, []byte{'a'}, nil))
 	require.NoError(t, db2.Flush())
 	require.NoError(t, db2.DeleteRange(start, end, nil))
-	require.NoError(t, db2.Compact(start, end, false))
+	require.NoError(t, db2.Compact(start, end, false, 7 /* maxLevel */))
 }
 
 func TestSharedTableConcurrent(t *testing.T) {
@@ -417,7 +417,7 @@ func TestSharedTableConcurrent(t *testing.T) {
 			require.NoError(t, db.Set(start, nil, nil))
 			require.NoError(t, db.Flush())
 			require.NoError(t, db.DeleteRange(start, end, nil))
-			require.NoError(t, db.Compact(start, end, false))
+			require.NoError(t, db.Compact(start, end, false, 7 /* maxLevel */))
 		}
 		wg.Done()
 	}
@@ -843,7 +843,7 @@ func TestTableCacheEvictClose(t *testing.T) {
 	require.NoError(t, db.Set(start, nil, nil))
 	require.NoError(t, db.Flush())
 	require.NoError(t, db.DeleteRange(start, end, nil))
-	require.NoError(t, db.Compact(start, end, false))
+	require.NoError(t, db.Compact(start, end, false, 7 /* maxLevel */))
 	require.NoError(t, db.Close())
 	close(errs)
 
