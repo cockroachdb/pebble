@@ -3109,6 +3109,10 @@ func TestFlushInvariant(t *testing.T) {
 }
 
 func TestCompactFlushQueuedMemTableAndFlushMetrics(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test is flaky on windows")
+	}
+
 	// Verify that manual compaction forces a flush of a queued memtable.
 
 	mem := vfs.NewMem()
