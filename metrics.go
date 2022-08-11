@@ -178,6 +178,11 @@ type Metrics struct {
 		ZombieCount int64
 	}
 
+	Keys struct {
+		// The approximate count of internal range key set keys in the database.
+		RangeKeySetsCount uint64
+	}
+
 	Snapshots struct {
 		// The number of currently open snapshots.
 		Count int
