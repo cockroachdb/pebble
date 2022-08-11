@@ -205,7 +205,6 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 				if err != nil {
 					t.Fatalf("sfe=%t, length=%d: Open #0: %v",
 						startFromEmpty, length, err)
-					continue
 				}
 				if length >= 0 {
 					err = d0.Set([]byte("key"), []byte(xxx), nil)
