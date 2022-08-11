@@ -49,7 +49,7 @@ func TestCleaner(t *testing.T) {
 				return "compact <db>"
 			}
 			d := dbs[td.CmdArgs[0].String()]
-			if err := d.Compact(nil, []byte("\xff"), false); err != nil {
+			if err := d.Compact(nil, []byte("\xff"), false, 7 /* maxLevel */); err != nil {
 				return err.Error()
 			}
 			return memLog.String()

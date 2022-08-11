@@ -315,7 +315,7 @@ func TestMetricsWAmpDisableWAL(t *testing.T) {
 			require.NoError(t, d.Set(testkeys.Key(ks, j), v, &wo))
 		}
 		require.NoError(t, d.Flush())
-		require.NoError(t, d.Compact([]byte("a"), []byte("z"), false /* parallelize */))
+		require.NoError(t, d.Compact([]byte("a"), []byte("z"), false /* parallelize */, 7 /* maxLevel */))
 	}
 	m := d.Metrics()
 	tot := m.Total()

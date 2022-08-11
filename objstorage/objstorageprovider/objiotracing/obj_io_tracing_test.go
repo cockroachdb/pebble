@@ -34,12 +34,12 @@ func TestTracing(t *testing.T) {
 	require.NoError(t, d.Flush())
 	require.NoError(t, d.Set([]byte("c"), []byte("ccc"), nil))
 	require.NoError(t, d.Flush())
-	require.NoError(t, d.Compact([]byte("a"), []byte("z"), false /* parallelize */))
+	require.NoError(t, d.Compact([]byte("a"), []byte("z"), false /* parallelize */, 7 /* maxLevel */))
 	require.NoError(t, d.Set([]byte("b"), []byte("bbb2"), nil))
 	require.NoError(t, d.Set([]byte("c"), []byte("ccc2"), nil))
 	require.NoError(t, d.Set([]byte("d"), []byte("ddd"), nil))
 	require.NoError(t, d.Flush())
-	require.NoError(t, d.Compact([]byte("a"), []byte("z"), false /* parallelize */))
+	require.NoError(t, d.Compact([]byte("a"), []byte("z"), false /* parallelize */, 7 /* maxLevel */))
 	require.NoError(t, d.Close())
 
 	collectEvents := func() []Event {

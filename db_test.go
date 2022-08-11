@@ -897,7 +897,7 @@ func TestCacheEvict(t *testing.T) {
 		require.NoError(t, d.Delete(key, nil))
 	}
 
-	require.NoError(t, d.Compact([]byte("0"), []byte("1"), false))
+	require.NoError(t, d.Compact([]byte("0"), []byte("1"), false, 7 /* maxLevel */))
 
 	require.NoError(t, d.Close())
 
@@ -1051,7 +1051,7 @@ func TestRollManifest(t *testing.T) {
 	// adds 9 files in edits. We still need 6 more files in edits based on the
 	// last snapshot. But the current version has only 9 L0 files and 1 L6 file,
 	// for a total of 10 files. So 1 flush should push us over that threshold.
-	d.Compact([]byte("c"), []byte("d"), false)
+	d.Compact([]byte("c"), []byte("d"), false, 7 /* maxLevel */)
 	lastSnapshotCount, editsSinceSnapshotCount = sizeRolloverState()
 	require.EqualValues(t, 16, lastSnapshotCount)
 	require.EqualValues(t, 10, editsSinceSnapshotCount)
@@ -1085,7 +1085,7 @@ func TestDBClosed(t *testing.T) {
 
 	require.True(t, errors.Is(catch(func() { _ = d.Close() }), ErrClosed))
 
-	require.True(t, errors.Is(catch(func() { _ = d.Compact(nil, nil, false) }), ErrClosed))
+	require.True(t, errors.Is(catch(func() { _ = d.Compact(nil, nil, false, 7 /* maxLevel */) }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _ = d.Flush() }), ErrClosed))
 	require.True(t, errors.Is(catch(func() { _, _ = d.AsyncFlush() }), ErrClosed))
 
@@ -1124,7 +1124,7 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 			var err error
 			switch i % 3 {
 			case 0:
-				err = d.Compact(nil, []byte("\xff"), false)
+				err = d.Compact(nil, []byte("\xff"), false, 7 /* maxLevel */)
 			case 1:
 				err = d.Flush()
 			case 2:
@@ -1228,7 +1228,7 @@ func TestCloseCleanerRace(t *testing.T) {
 		it := db.NewIter(nil)
 		require.NotNil(t, it)
 		require.NoError(t, db.DeleteRange([]byte("a"), []byte("b"), Sync))
-		require.NoError(t, db.Compact([]byte("a"), []byte("b"), false))
+		require.NoError(t, db.Compact([]byte("a"), []byte("b"), false, 7 /* maxLevel */))
 		// Only the iterator is keeping the sstables alive.
 		files, err := mem.List("/")
 		require.NoError(t, err)
