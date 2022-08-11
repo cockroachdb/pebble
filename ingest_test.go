@@ -884,7 +884,7 @@ func TestConcurrentIngestCompact(t *testing.T) {
 
 			compact := func(start, end string) {
 				t.Helper()
-				require.NoError(t, d.Compact([]byte(start), []byte(end), false))
+				require.NoError(t, d.Compact([]byte(start), []byte(end), false, 7 /* maxLevel */))
 			}
 
 			lsm := func() string {
