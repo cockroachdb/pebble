@@ -1503,11 +1503,12 @@ func (d *DB) Metrics() *Metrics {
 	recycledLogsCount, recycledLogSize := d.logRecycler.stats()
 
 	d.mu.Lock()
+	vers := d.mu.versions.currentVersion()
 	*metrics = d.mu.versions.metrics
 	metrics.Compact.EstimatedDebt = d.mu.versions.picker.estimatedCompactionDebt(0)
 	metrics.Compact.InProgressBytes = atomic.LoadInt64(&d.mu.versions.atomic.atomicInProgressBytes)
 	metrics.Compact.NumInProgress = int64(d.mu.compact.compactingCount)
-	metrics.Compact.MarkedFiles = d.mu.versions.currentVersion().Stats.MarkedForCompaction
+	metrics.Compact.MarkedFiles = vers.Stats.MarkedForCompaction
 	for _, m := range d.mu.mem.queue {
 		metrics.MemTable.Size += m.totalBytes()
 	}
@@ -1550,6 +1551,8 @@ func (d *DB) Metrics() *Metrics {
 		metrics.Table.ZombieSize += size
 	}
 	metrics.private.optionsFileSize = d.optionsFileSize
+
+	metrics.Keys.RangeKeySetsCount = countRangeKeySetFragments(vers)
 
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())

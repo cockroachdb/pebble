@@ -114,6 +114,12 @@ func TestRangeKeys(t *testing.T) {
 			return fmt.Sprintf("created indexed batch with %d keys\n", count)
 		case "lsm":
 			return runLSMCmd(td, d)
+		case "metrics":
+			d.mu.Lock()
+			d.waitTableStats()
+			d.mu.Unlock()
+			m := d.Metrics()
+			return fmt.Sprintf("Metrics.Keys.RangeKeySetsCount = %d\n", m.Keys.RangeKeySetsCount)
 		case "commit-batch":
 			if b == nil {
 				return "no pending batch"
