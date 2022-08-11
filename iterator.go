@@ -119,6 +119,7 @@ type IteratorStats struct {
 	// ReverseStepCount includes Prev.
 	ReverseStepCount [NumStatsKind]int
 	InternalStats    InternalIteratorStats
+	RangeKeyStats    RangeKeyIteratorStats
 }
 
 var _ redact.SafeFormatter = &IteratorStats{}
@@ -126,6 +127,32 @@ var _ redact.SafeFormatter = &IteratorStats{}
 // InternalIteratorStats contains miscellaneous stats produced by internal
 // iterators.
 type InternalIteratorStats = base.InternalIteratorStats
+
+// RangeKeyIteratorStats contains miscellaneous stats about range keys
+// encountered by the iterator.
+type RangeKeyIteratorStats struct {
+	// Count records the number of range keys encountered during
+	// iteration. Range keys may be counted multiple times if the iterator
+	// leaves a range key's bounds and then returns.
+	Count int
+	// ContainedPoints records the number of point keys encountered within the
+	// bounds of a range key. Note that this includes point keys with suffixes
+	// that sort both above and below the covering range key's suffix.
+	ContainedPoints int
+	// SkippedPoints records the count of the subset of ContainedPoints point
+	// keys that were skipped during iteration due to range-key masking. It does
+	// not include point keys that were never loaded because a
+	// RangeKeyMasking.Filter excluded the entire containing block.
+	SkippedPoints int
+}
+
+// Merge adds all of the argument's statistics to the receiver. It may be used
+// to accumulate stats across multiple iterators.
+func (s *RangeKeyIteratorStats) Merge(o RangeKeyIteratorStats) {
+	s.Count += o.Count
+	s.ContainedPoints += o.ContainedPoints
+	s.SkippedPoints += o.SkippedPoints
+}
 
 // LazyValue is a lazy value. See the long comment in base.LazyValue.
 type LazyValue = base.LazyValue
@@ -1851,6 +1878,7 @@ func (i *Iterator) saveRangeKey() {
 		i.rangeKey.hasRangeKey = true
 		return
 	}
+	i.stats.RangeKeyStats.Count += len(s.Keys)
 	i.rangeKey.buf.Reset()
 	i.rangeKey.hasRangeKey = true
 	i.rangeKey.updated = true
@@ -2488,6 +2516,7 @@ func (stats *IteratorStats) Merge(o IteratorStats) {
 		stats.ReverseStepCount[i] += o.ReverseStepCount[i]
 	}
 	stats.InternalStats.Merge(o.InternalStats)
+	stats.RangeKeyStats.Merge(o.RangeKeyStats)
 }
 
 func (stats *IteratorStats) String() string {
@@ -2518,5 +2547,12 @@ func (stats *IteratorStats) SafeFormat(s redact.SafePrinter, verb rune) {
 			humanize.SI.Uint64(stats.InternalStats.ValueBytes),
 			humanize.SI.Uint64(stats.InternalStats.PointsCoveredByRangeTombstones),
 		)
+	}
+	if stats.RangeKeyStats != (RangeKeyIteratorStats{}) {
+		s.SafeString(",\n(range-key-stats: ")
+		s.Printf("(count %d), (contained points: (count %d, skipped %d)))",
+			stats.RangeKeyStats.Count,
+			stats.RangeKeyStats.ContainedPoints,
+			stats.RangeKeyStats.SkippedPoints)
 	}
 }

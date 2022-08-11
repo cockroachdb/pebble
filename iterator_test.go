@@ -1702,6 +1702,11 @@ func TestIteratorStatsMerge(t *testing.T) {
 			PointCount:                     13,
 			PointsCoveredByRangeTombstones: 14,
 		},
+		RangeKeyStats: RangeKeyIteratorStats{
+			Count:           15,
+			ContainedPoints: 16,
+			SkippedPoints:   17,
+		},
 	}
 	s.Merge(IteratorStats{
 		ForwardSeekCount: [NumStatsKind]int{1, 2},
@@ -1716,6 +1721,11 @@ func TestIteratorStatsMerge(t *testing.T) {
 			PointCount:                     13,
 			PointsCoveredByRangeTombstones: 14,
 		},
+		RangeKeyStats: RangeKeyIteratorStats{
+			Count:           15,
+			ContainedPoints: 16,
+			SkippedPoints:   17,
+		},
 	})
 	require.Equal(t, IteratorStats{
 		ForwardSeekCount: [NumStatsKind]int{2, 4},
@@ -1729,6 +1739,11 @@ func TestIteratorStatsMerge(t *testing.T) {
 			ValueBytes:                     24,
 			PointCount:                     26,
 			PointsCoveredByRangeTombstones: 28,
+		},
+		RangeKeyStats: RangeKeyIteratorStats{
+			Count:           30,
+			ContainedPoints: 32,
+			SkippedPoints:   34,
 		},
 	}, s)
 }
