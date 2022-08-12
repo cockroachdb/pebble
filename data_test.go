@@ -313,7 +313,7 @@ func printIterState(
 			}
 			if hasRange {
 				start, end := iter.RangeBounds()
-				fmt.Fprintf(b, "[%s-%s)", start, end)
+				fmt.Fprintf(b, "[%s-%s)", formatASCIIKey(start), formatASCIIKey(end))
 				writeRangeKeys(b, iter)
 			} else {
 				fmt.Fprint(b, ".")
@@ -329,7 +329,7 @@ func printIterState(
 					panic(fmt.Sprintf("pebble: unexpected HasPointAndRange (%t, %t)", hasPoint, hasRange))
 				}
 				start, end := iter.RangeBounds()
-				fmt.Fprintf(b, "%s [%s-%s)", iter.Key(), start, end)
+				fmt.Fprintf(b, "%s [%s-%s)", iter.Key(), formatASCIIKey(start), formatASCIIKey(end))
 				writeRangeKeys(b, iter)
 			} else {
 				fmt.Fprint(b, ".")
@@ -344,6 +344,14 @@ func printIterState(
 	} else {
 		fmt.Fprintf(b, ".%s\n", validityStateStr)
 	}
+}
+
+func formatASCIIKey(b []byte) string {
+	if bytes.IndexFunc(b, func(r rune) bool { return r < 'A' || r > 'z' }) != -1 {
+		// This key is not just ASCII letters. Quote it.
+		return fmt.Sprintf("%q", b)
+	}
+	return string(b)
 }
 
 func writeRangeKeys(b io.Writer, iter *Iterator) {

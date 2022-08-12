@@ -59,6 +59,7 @@ func NewExternalIter(
 		equal:               o.equal(),
 		merge:               o.Merger.Merge,
 		split:               o.Comparer.Split,
+		comparer:            o.Comparer,
 		readState:           nil,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
@@ -148,9 +149,10 @@ func finishInitializingExternal(it *Iterator) {
 			it.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 			it.rangeKey.init(it.cmp, it.split, &it.opts)
 			it.rangeKey.rangeKeyIter = it.rangeKey.iterConfig.Init(
-				it.cmp,
+				it.comparer,
 				base.InternalKeySeqNumMax,
 				it.opts.LowerBound, it.opts.UpperBound,
+				&it.hasPrefix, &it.prefixOrFullSeekKey,
 			)
 			for _, r := range it.externalReaders {
 				if rki, err := r.NewRawRangeKeyIter(); err != nil {
@@ -160,7 +162,7 @@ func finishInitializingExternal(it *Iterator) {
 				}
 			}
 		}
-		it.rangeKey.iiter.Init(it.cmp, it.iter, it.rangeKey.rangeKeyIter, &it.rangeKeyMasking,
+		it.rangeKey.iiter.Init(it.comparer, it.iter, it.rangeKey.rangeKeyIter, &it.rangeKeyMasking,
 			it.opts.LowerBound, it.opts.UpperBound)
 		it.iter = &it.rangeKey.iiter
 	}

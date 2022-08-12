@@ -35,12 +35,17 @@ type UserIteratorConfig struct {
 // The snapshot sequence number parameter determines which keys are visible. Any
 // keys not visible at the provided snapshot are ignored.
 func (ui *UserIteratorConfig) Init(
-	cmp base.Compare, snapshot uint64, lower, upper []byte, iters ...keyspan.FragmentIterator,
+	comparer *base.Comparer,
+	snapshot uint64,
+	lower, upper []byte,
+	hasPrefix *bool,
+	prefix *[]byte,
+	iters ...keyspan.FragmentIterator,
 ) keyspan.FragmentIterator {
 	ui.snapshot = snapshot
-	ui.miter.Init(cmp, ui, iters...)
-	ui.biter.Init(cmp, &ui.miter, lower, upper)
-	ui.diter.Init(cmp, &ui.biter, ui, keyspan.StaticDefragmentReducer)
+	ui.miter.Init(comparer.Compare, ui, iters...)
+	ui.biter.Init(comparer.Compare, comparer.Split, &ui.miter, lower, upper, hasPrefix, prefix)
+	ui.diter.Init(comparer.Compare, &ui.biter, ui, keyspan.StaticDefragmentReducer)
 	ui.litersUsed = 0
 	return &ui.diter
 }

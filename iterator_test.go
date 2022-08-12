@@ -2034,11 +2034,12 @@ func BenchmarkIteratorSeekGENoop(b *testing.B) {
 		b.Run(fmt.Sprintf("withLimit=%t", withLimit), func(b *testing.B) {
 			m := buildMergingIter(readers, levelSlices)
 			iter := Iterator{
-				cmp:   DefaultComparer.Compare,
-				equal: DefaultComparer.Equal,
-				split: DefaultComparer.Split,
-				merge: DefaultMerger.Merge,
-				iter:  m,
+				cmp:      DefaultComparer.Compare,
+				equal:    DefaultComparer.Equal,
+				split:    DefaultComparer.Split,
+				comparer: DefaultComparer,
+				merge:    DefaultMerger.Merge,
+				iter:     m,
 			}
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {

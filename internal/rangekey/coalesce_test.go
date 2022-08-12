@@ -122,6 +122,8 @@ func TestDefragmenting(t *testing.T) {
 
 	var buf bytes.Buffer
 	var spans []keyspan.Span
+	var hasPrefix bool
+	var prefix []byte
 	datadriven.RunTest(t, "testdata/defragmenting_iter", func(td *datadriven.TestData) string {
 		buf.Reset()
 		switch td.Cmd {
@@ -134,8 +136,10 @@ func TestDefragmenting(t *testing.T) {
 			return ""
 		case "iter":
 			var userIterCfg UserIteratorConfig
-			iter := userIterCfg.Init(cmp, base.InternalKeySeqNumMax,
-				nil /* lower */, nil /* upper */, keyspan.NewIter(cmp, spans))
+			iter := userIterCfg.Init(testkeys.Comparer, base.InternalKeySeqNumMax,
+				nil /* lower */, nil, /* upper */
+				&hasPrefix, &prefix,
+				keyspan.NewIter(cmp, spans))
 			for _, line := range strings.Split(td.Input, "\n") {
 				runIterOp(&buf, iter, line)
 			}
@@ -214,10 +218,14 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	fragmented = fragment(cmp, formatKey, fragmented)
 
 	var referenceCfg, fragmentedCfg UserIteratorConfig
-	referenceIter := referenceCfg.Init(cmp, base.InternalKeySeqNumMax,
-		nil /* lower */, nil /* upper */, keyspan.NewIter(cmp, original))
-	fragmentedIter := fragmentedCfg.Init(cmp, base.InternalKeySeqNumMax,
-		nil /* lower */, nil /* upper */, keyspan.NewIter(cmp, fragmented))
+	referenceIter := referenceCfg.Init(testkeys.Comparer, base.InternalKeySeqNumMax,
+		nil /* lower */, nil, /* upper */
+		new(bool), new([]byte),
+		keyspan.NewIter(cmp, original))
+	fragmentedIter := fragmentedCfg.Init(testkeys.Comparer, base.InternalKeySeqNumMax,
+		nil /* lower */, nil, /* upper */
+		new(bool), new([]byte),
+		keyspan.NewIter(cmp, fragmented))
 
 	// Generate 100 random operations and run them against both iterators.
 	const numIterOps = 100

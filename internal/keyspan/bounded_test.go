@@ -35,8 +35,11 @@ func TestBoundedIter(t *testing.T) {
 	}
 
 	cmp := testkeys.Comparer.Compare
+	split := testkeys.Comparer.Split
 	var buf bytes.Buffer
 	var iter BoundedIter
+	var hasPrefix bool
+	var prefix []byte
 	datadriven.RunTest(t, "testdata/bounded_iter", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
@@ -47,7 +50,7 @@ func TestBoundedIter(t *testing.T) {
 			}
 			inner := &invalidatingIter{iter: NewIter(cmp, spans)}
 			lower, upper, _ := getBounds(td)
-			iter.Init(cmp, inner, lower, upper)
+			iter.Init(cmp, split, inner, lower, upper, &hasPrefix, &prefix)
 			return ""
 		case "iter":
 			buf.Reset()
