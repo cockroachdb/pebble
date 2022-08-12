@@ -509,12 +509,13 @@ func TestIterator(t *testing.T) {
 			return merge(key, value)
 		}
 		return &Iterator{
-			opts:  opts,
-			cmp:   cmp,
-			equal: equal,
-			split: split,
-			merge: wrappedMerge,
-			iter:  newInvalidatingIter(iter),
+			opts:     opts,
+			cmp:      cmp,
+			comparer: DefaultComparer,
+			equal:    equal,
+			split:    split,
+			merge:    wrappedMerge,
+			iter:     newInvalidatingIter(iter),
 		}
 	}
 
@@ -1191,12 +1192,13 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 		// NB: This Iterator cannot be cloned since it is not constructed
 		// with a readState. It suffices for this test.
 		return &Iterator{
-			opts:  opts,
-			cmp:   cmp,
-			equal: equal,
-			split: split,
-			merge: DefaultMerger.Merge,
-			iter:  base.WrapIterWithStats(&errorIter),
+			opts:     opts,
+			cmp:      cmp,
+			comparer: DefaultComparer,
+			equal:    equal,
+			split:    split,
+			merge:    DefaultMerger.Merge,
+			iter:     base.WrapIterWithStats(&errorIter),
 		}
 	}
 
@@ -2034,11 +2036,12 @@ func BenchmarkIteratorSeekGENoop(b *testing.B) {
 		b.Run(fmt.Sprintf("withLimit=%t", withLimit), func(b *testing.B) {
 			m := buildMergingIter(readers, levelSlices)
 			iter := Iterator{
-				cmp:   DefaultComparer.Compare,
-				equal: DefaultComparer.Equal,
-				split: DefaultComparer.Split,
-				merge: DefaultMerger.Merge,
-				iter:  m,
+				cmp:      DefaultComparer.Compare,
+				equal:    DefaultComparer.Equal,
+				split:    DefaultComparer.Split,
+				comparer: DefaultComparer,
+				merge:    DefaultMerger.Merge,
+				iter:     m,
 			}
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
@@ -2356,7 +2359,53 @@ func BenchmarkCombinedIteratorSeek(b *testing.B) {
 // range key that's fragmented across hundreds of files. The iterator bounds
 // should prevent defragmenting beyond the iterator's bounds.
 func BenchmarkCombinedIteratorSeek_Bounded(b *testing.B) {
-	rng := rand.New(rand.NewSource(uint64(1658872515083979000)))
+	d, keys := buildFragmentedRangeKey(b, uint64(1658872515083979000))
+
+	var lower = len(keys) / 2
+	var upper = len(keys)/2 + len(keys)/20 // 5%
+	iterOpts := IterOptions{
+		KeyTypes:   IterKeyTypePointsAndRanges,
+		LowerBound: keys[lower],
+		UpperBound: keys[upper],
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		it := d.NewIter(&iterOpts)
+		for j := lower; j < upper; j++ {
+			if !it.SeekGE(keys[j]) {
+				b.Errorf("key %q missing", keys[j])
+			}
+		}
+		require.NoError(b, it.Close())
+	}
+}
+
+// BenchmarkCombinedIteratorSeekPrefix benchmarks an iterator that
+// performs repeated prefix seeks over 5% of the middle of a keyspace covered by a
+// range key that's fragmented across hundreds of files. The seek prefix should
+// avoid defragmenting beyond the seek prefixes.
+func BenchmarkCombinedIteratorSeekPrefix(b *testing.B) {
+	d, keys := buildFragmentedRangeKey(b, uint64(1658872515083979000))
+
+	var lower = len(keys) / 2
+	var upper = len(keys)/2 + len(keys)/20 // 5%
+	iterOpts := IterOptions{
+		KeyTypes: IterKeyTypePointsAndRanges,
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		it := d.NewIter(&iterOpts)
+		for j := lower; j < upper; j++ {
+			if !it.SeekPrefixGE(keys[j]) {
+				b.Errorf("key %q missing", keys[j])
+			}
+		}
+		require.NoError(b, it.Close())
+	}
+}
+
+func buildFragmentedRangeKey(b testing.TB, seed uint64) (d *DB, keys [][]byte) {
+	rng := rand.New(rand.NewSource(seed))
 	ks := testkeys.Alpha(2)
 	opts := &Options{
 		FS:                        vfs.NewMem(),
@@ -2368,11 +2417,11 @@ func BenchmarkCombinedIteratorSeek_Bounded(b *testing.B) {
 	for l := 0; l < len(opts.Levels); l++ {
 		opts.Levels[l].TargetFileSize = 1
 	}
-	d, err := Open("", opts)
+	var err error
+	d, err = Open("", opts)
 	require.NoError(b, err)
-	defer func() { require.NoError(b, d.Close()) }()
 
-	keys := make([][]byte, ks.Count())
+	keys = make([][]byte, ks.Count())
 	for i := 0; i < ks.Count(); i++ {
 		keys[i] = testkeys.Key(ks, i)
 	}
@@ -2394,22 +2443,5 @@ func BenchmarkCombinedIteratorSeek_Bounded(b *testing.B) {
 	d.mu.Unlock()
 	require.GreaterOrEqualf(b, v.Levels[numLevels-1].Len(),
 		700, "expect many (≥700) L6 files but found %d", v.Levels[numLevels-1].Len())
-
-	var lower = ks.Count() / 2
-	var upper = ks.Count()/2 + ks.Count()/20 // 5%
-	iterOpts := IterOptions{
-		KeyTypes:   IterKeyTypePointsAndRanges,
-		LowerBound: keys[lower],
-		UpperBound: keys[upper],
-	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		it := d.NewIter(&iterOpts)
-		for j := lower; j < upper; j++ {
-			if !it.SeekGE(keys[j]) {
-				b.Errorf("key %q missing", keys[j])
-			}
-		}
-		require.NoError(b, it.Close())
-	}
+	return d, keys
 }

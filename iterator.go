@@ -151,6 +151,7 @@ type Iterator struct {
 	equal     Equal
 	merge     Merge
 	split     Split
+	comparer  *base.Comparer
 	iter      internalIteratorWithStats
 	pointIter internalIteratorWithStats
 	readState *readState
@@ -1099,6 +1100,12 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 //  }
 //
 // See ExampleIterator_SeekPrefixGE for a working example.
+//
+// When iterating with range keys enabled, all range keys encountered are
+// truncated to the seek key's prefix's bounds. The truncation of the upper
+// bound requires that the database's Comparer is configured with a
+// ImmediateSuccessor method. For example, a SeekPrefixGE("a@9") call with the
+// prefix "a" will truncate range key bounds to [a,ImmediateSuccessor(a)].
 func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	lastPositioningOp := i.lastPositioningOp
 	// Set it to unknown, since this operation may not succeed, in which case
@@ -1115,7 +1122,9 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	if i.split == nil {
 		panic("pebble: split must be provided for SeekPrefixGE")
 	}
-
+	if i.comparer.ImmediateSuccessor == nil && i.opts.KeyTypes != IterKeyTypePointsOnly {
+		panic("pebble: ImmediateSuccessor must be provided for SeekPrefixGE with range keys")
+	}
 	prefixLen := i.split(key)
 	keyPrefix := key[:prefixLen]
 	var flags base.SeekGEFlags
@@ -1220,7 +1229,6 @@ func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 	i.lastPositioningOp = unknownLastPositionOp
 	i.requiresReposition = false
 	i.err = nil // clear cached iteration error
-	i.hasPrefix = false
 	i.stats.ReverseSeekCount[InterfaceCall]++
 	if upperBound := i.opts.GetUpperBound(); upperBound != nil && i.cmp(key, upperBound) > 0 {
 		key = upperBound
@@ -1231,6 +1239,7 @@ func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 		i.rangeKey.updated = false
 		i.rangeKey.prevPosHadRangeKey = i.rangeKey.hasRangeKey && i.Valid()
 	}
+	i.hasPrefix = false
 	seekInternalIter := true
 	// The following noop optimization only applies when i.batch == nil, since
 	// an iterator over a batch is iterating over mutable data, that may have
@@ -1567,13 +1576,13 @@ func (i *Iterator) saveRangeKey() {
 	// key and the new one has an identical start key, then it must be the same
 	// range key and we can avoid copying and keep `i.rangeKey.updated=false`.
 	//
-	// TODO(jackson): This key comparison could be avoidable during relative
+	// TODO(jackson): These key comparisons could be avoidable during relative
 	// positioning operations continuing in the same direction, because these
 	// ops will never encounter the previous position's range key while
 	// stale=true. However, threading whether the current op is a seek or step
 	// maybe isn't worth it. This key comparison is only necessary once when we
 	// step onto a new range key, which should be relatively rare.
-	if i.rangeKey.prevPosHadRangeKey && i.equal(i.rangeKey.start, s.Start) {
+	if i.rangeKey.prevPosHadRangeKey && i.equal(i.rangeKey.start, s.Start) && i.equal(i.rangeKey.end, s.End) {
 		i.rangeKey.updated = false
 		i.rangeKey.stale = false
 		i.rangeKey.hasRangeKey = true
@@ -2157,6 +2166,7 @@ func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
 		equal:               i.equal,
 		merge:               i.merge,
 		split:               i.split,
+		comparer:            i.comparer,
 		readState:           readState,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,

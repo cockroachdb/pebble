@@ -666,6 +666,7 @@ func TestElideTombstone(t *testing.T) {
 	for _, tc := range testCases {
 		c := compaction{
 			cmp:      DefaultComparer.Compare,
+			comparer: DefaultComparer,
 			version:  tc.version,
 			inputs:   []compactionLevel{{level: tc.level}, {level: tc.level + 1}},
 			smallest: base.ParseInternalKey("a.SET.0"),
@@ -811,6 +812,7 @@ func TestElideRangeTombstone(t *testing.T) {
 	for _, tc := range testCases {
 		c := compaction{
 			cmp:      DefaultComparer.Compare,
+			comparer: DefaultComparer,
 			version:  tc.version,
 			inputs:   []compactionLevel{{level: tc.level}, {level: tc.level + 1}},
 			smallest: base.ParseInternalKey("a.SET.0"),
@@ -869,6 +871,7 @@ func TestCompactionTransform(t *testing.T) {
 			var outSpan keyspan.Span
 			c := compaction{
 				cmp:                base.DefaultComparer.Compare,
+				comparer:           base.DefaultComparer,
 				disableSpanElision: disableElision,
 				inuseKeyRanges:     keyRanges,
 			}
@@ -1574,6 +1577,7 @@ func TestCompactionFindGrandparentLimit(t *testing.T) {
 				c := &compaction{
 					cmp:          cmp,
 					equal:        DefaultComparer.Equal,
+					comparer:     DefaultComparer,
 					grandparents: manifest.NewLevelSliceKeySorted(cmp, grandparents),
 				}
 				if len(d.CmdArgs) != 1 {
@@ -1703,6 +1707,7 @@ func TestCompactionFindL0Limit(t *testing.T) {
 				c := &compaction{
 					cmp:      cmp,
 					equal:    DefaultComparer.Equal,
+					comparer: DefaultComparer,
 					version:  vers,
 					l0Limits: vers.L0Sublevels.FlushSplitKeys(),
 					inputs:   []compactionLevel{{level: -1}, {level: 0}},
@@ -1797,9 +1802,10 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 
 			case "atomic-unit-bounds":
 				c := &compaction{
-					cmp:    cmp,
-					equal:  DefaultComparer.Equal,
-					inputs: []compactionLevel{{files: files}, {}},
+					cmp:      cmp,
+					equal:    DefaultComparer.Equal,
+					comparer: DefaultComparer,
+					inputs:   []compactionLevel{{files: files}, {}},
 				}
 				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 				if len(d.CmdArgs) != 1 {
@@ -2415,6 +2421,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 			c = &compaction{
 				cmp:       DefaultComparer.Compare,
 				equal:     DefaultComparer.Equal,
+				comparer:  DefaultComparer,
 				formatKey: DefaultComparer.FormatKey,
 				inputs:    []compactionLevel{{}, {}},
 			}
@@ -2639,9 +2646,10 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 			case "allow-zero-seqnum":
 				d.mu.Lock()
 				c := &compaction{
-					cmp:     d.cmp,
-					version: d.mu.versions.currentVersion(),
-					inputs:  []compactionLevel{{}, {}},
+					cmp:      d.cmp,
+					comparer: d.opts.Comparer,
+					version:  d.mu.versions.currentVersion(),
+					inputs:   []compactionLevel{{}, {}},
 				}
 				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 				d.mu.Unlock()
@@ -2725,6 +2733,7 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 			case "error-on-user-key-overlap":
 				c := &compaction{
 					cmp:       DefaultComparer.Compare,
+					comparer:  DefaultComparer,
 					formatKey: DefaultComparer.FormatKey,
 				}
 				var files []manifest.NewFileEntry
@@ -2853,6 +2862,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 			case "check-ordering":
 				c := &compaction{
 					cmp:       DefaultComparer.Compare,
+					comparer:  DefaultComparer,
 					formatKey: DefaultComparer.FormatKey,
 					logger:    panicLogger{},
 					inputs:    []compactionLevel{{level: -1}, {level: -1}},

@@ -100,7 +100,7 @@ func TestCompactionIter(t *testing.T) {
 		fi := &fakeIter{keys: keys, vals: vals}
 		interleavingIter = &keyspan.InterleavingIter{}
 		interleavingIter.Init(
-			base.DefaultComparer.Compare,
+			base.DefaultComparer,
 			base.WrapIterWithStats(fi),
 			keyspan.NewIter(base.DefaultComparer.Compare, rangeKeys),
 			nil, nil, nil)

@@ -379,6 +379,7 @@ type compaction struct {
 	kind      compactionKind
 	cmp       Compare
 	equal     Equal
+	comparer  *base.Comparer
 	formatKey base.FormatKey
 	logger    Logger
 	version   *version
@@ -515,6 +516,7 @@ func newCompaction(pc *pickedCompaction, opts *Options) *compaction {
 		kind:              compactionKindDefault,
 		cmp:               pc.cmp,
 		equal:             opts.equal(),
+		comparer:          opts.Comparer,
 		formatKey:         opts.Comparer.FormatKey,
 		score:             pc.score,
 		inputs:            pc.inputs,
@@ -558,6 +560,7 @@ func newDeleteOnlyCompaction(opts *Options, cur *version, inputs []compactionLev
 		kind:      compactionKindDeleteOnly,
 		cmp:       opts.Comparer.Compare,
 		equal:     opts.equal(),
+		comparer:  opts.Comparer,
 		formatKey: opts.Comparer.FormatKey,
 		logger:    opts.Logger,
 		version:   cur,
@@ -645,6 +648,7 @@ func newFlush(opts *Options, cur *version, baseLevel int, flushing flushableList
 		kind:              compactionKindFlush,
 		cmp:               opts.Comparer.Compare,
 		equal:             opts.equal(),
+		comparer:          opts.Comparer,
 		formatKey:         opts.Comparer.FormatKey,
 		logger:            opts.Logger,
 		version:           cur,
@@ -1029,7 +1033,7 @@ func (c *compaction) newInputIter(
 			if rangeKeyIter := f.newRangeKeyIter(nil); rangeKeyIter != nil {
 				mi := &keyspan.MergingIter{}
 				mi.Init(c.cmp, rangeKeyCompactionTransform(snapshots, c.elideRangeKey), rangeKeyIter)
-				c.rangeKeyInterleaving.Init(c.cmp, base.WrapIterWithStats(iter), mi, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
+				c.rangeKeyInterleaving.Init(c.comparer, base.WrapIterWithStats(iter), mi, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
 				iter = &c.rangeKeyInterleaving
 			}
 			return iter, nil
@@ -1056,7 +1060,7 @@ func (c *compaction) newInputIter(
 		if len(rangeKeyIters) > 0 {
 			mi := &keyspan.MergingIter{}
 			mi.Init(c.cmp, rangeKeyCompactionTransform(snapshots, c.elideRangeKey), rangeKeyIters...)
-			c.rangeKeyInterleaving.Init(c.cmp, base.WrapIterWithStats(iter), mi, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
+			c.rangeKeyInterleaving.Init(c.comparer, base.WrapIterWithStats(iter), mi, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
 			iter = &c.rangeKeyInterleaving
 		}
 		return iter, nil
@@ -1266,7 +1270,7 @@ func (c *compaction) newInputIter(
 		mi.Init(c.cmp, rangeKeyCompactionTransform(snapshots, c.elideRangeKey), rangeKeyIters...)
 		di := &keyspan.DefragmentingIter{}
 		di.Init(c.cmp, mi, keyspan.DefragmentInternal, keyspan.StaticDefragmentReducer)
-		c.rangeKeyInterleaving.Init(c.cmp, pointKeyIter, di, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
+		c.rangeKeyInterleaving.Init(c.comparer, pointKeyIter, di, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
 		return &c.rangeKeyInterleaving, nil
 	}
 

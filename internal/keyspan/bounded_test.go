@@ -16,27 +16,28 @@ import (
 )
 
 func TestBoundedIter(t *testing.T) {
-	getBounds := func(td *datadriven.TestData) (lower, upper []byte, ok bool) {
+	getBounds := func(td *datadriven.TestData) (lower, upper []byte) {
 		for _, cmdArg := range td.CmdArgs {
 			switch cmdArg.Key {
 			case "lower":
 				if len(cmdArg.Vals[0]) > 0 {
 					lower = []byte(cmdArg.Vals[0])
 				}
-				ok = true
 			case "upper":
 				if len(cmdArg.Vals[0]) > 0 {
 					upper = []byte(cmdArg.Vals[0])
 				}
-				ok = true
 			}
 		}
-		return lower, upper, ok
+		return lower, upper
 	}
 
 	cmp := testkeys.Comparer.Compare
+	split := testkeys.Comparer.Split
 	var buf bytes.Buffer
 	var iter BoundedIter
+	var hasPrefix bool
+	var prefix []byte
 	datadriven.RunTest(t, "testdata/bounded_iter", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
@@ -46,14 +47,20 @@ func TestBoundedIter(t *testing.T) {
 				spans = append(spans, ParseSpan(line))
 			}
 			inner := &invalidatingIter{iter: NewIter(cmp, spans)}
-			lower, upper, _ := getBounds(td)
-			iter.Init(cmp, inner, lower, upper)
+			lower, upper := getBounds(td)
+			iter.Init(cmp, split, inner, lower, upper, &hasPrefix, &prefix)
 			return ""
+		case "set-prefix":
+			hasPrefix = len(td.CmdArgs) > 0
+			if hasPrefix {
+				prefix = []byte(td.CmdArgs[0].String())
+				return fmt.Sprintf("set prefix to %q\n", prefix)
+			}
+			return "cleared prefix"
 		case "iter":
 			buf.Reset()
-			if lower, upper, ok := getBounds(td); ok {
-				iter.SetBounds(lower, upper)
-			}
+			lower, upper := getBounds(td)
+			iter.SetBounds(lower, upper)
 
 			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
 			for _, line := range lines {

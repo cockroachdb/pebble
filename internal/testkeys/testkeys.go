@@ -76,6 +76,15 @@ var Comparer *base.Comparer = &base.Comparer{
 		// The successor is > a[:ai], so we only need to add the sentinel.
 		return append(dst, 0)
 	},
+	ImmediateSuccessor: func(dst, a []byte) []byte {
+		// TODO(jackson): Consider changing this Comparer to only support
+		// representable prefix keys containing characters a-z.
+		ai := split(a)
+		if ai != len(a) {
+			panic("pebble: ImmediateSuccessor invoked with a non-prefix key")
+		}
+		return append(append(dst, a...), 0x00)
+	},
 	Split: split,
 	Name:  "pebble.internal.testkeys",
 }

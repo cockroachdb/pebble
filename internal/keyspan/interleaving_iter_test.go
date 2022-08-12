@@ -107,7 +107,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			}
 			keyspanIter.Init(cmp, noopTransform, NewIter(cmp, spans))
 			hooks.maskSuffix = nil
-			iter.Init(cmp, base.WrapIterWithStats(&pointIter), &keyspanIter, &hooks, nil, nil)
+			iter.Init(testkeys.Comparer, base.WrapIterWithStats(&pointIter), &keyspanIter, &hooks, nil, nil)
 			return "OK"
 		case "define-pointkeys":
 			var points []base.InternalKey
@@ -117,7 +117,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			}
 			pointIter = pointIterator{cmp: cmp, keys: points}
 			hooks.maskSuffix = nil
-			iter.Init(cmp, base.WrapIterWithStats(&pointIter), &keyspanIter, &hooks, nil, nil)
+			iter.Init(testkeys.Comparer, base.WrapIterWithStats(&pointIter), &keyspanIter, &hooks, nil, nil)
 			return "OK"
 		case "iter":
 			buf.Reset()
@@ -143,6 +143,10 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 					formatKey(iter.Prev())
 				case "seek-ge":
 					formatKey(iter.SeekGE([]byte(strings.TrimSpace(line[i:])), base.SeekGEFlagsNone))
+				case "seek-prefix-ge":
+					key := []byte(strings.TrimSpace(line[i:]))
+					prefix := key[:testkeys.Comparer.Split(key)]
+					formatKey(iter.SeekPrefixGE(prefix, key, base.SeekGEFlagsNone))
 				case "seek-lt":
 					formatKey(iter.SeekLT([]byte(strings.TrimSpace(line[i:])), base.SeekLTFlagsNone))
 				case "set-bounds":
