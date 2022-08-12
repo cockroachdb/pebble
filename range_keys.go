@@ -15,7 +15,9 @@ import (
 // constructRangeKeyIter constructs the range-key iterator stack, populating
 // i.rangeKey.rangeKeyIter with the resulting iterator.
 func (i *Iterator) constructRangeKeyIter() {
-	i.rangeKey.rangeKeyIter = i.rangeKey.iterConfig.Init(i.cmp, i.seqNum, i.opts.LowerBound, i.opts.UpperBound)
+	i.rangeKey.rangeKeyIter = i.rangeKey.iterConfig.Init(
+		i.comparer, i.seqNum, i.opts.LowerBound, i.opts.UpperBound,
+		&i.hasPrefix, &i.prefixOrFullSeekKey)
 
 	// If there's an indexed batch with range keys, include it.
 	if i.batch != nil {
@@ -455,7 +457,7 @@ func (i *lazyCombinedIter) initCombinedIteration(
 
 	// Initialize the Iterator's interleaving iterator.
 	i.parent.rangeKey.iiter.Init(
-		i.parent.cmp, i.parent.pointIter, i.parent.rangeKey.rangeKeyIter,
+		i.parent.comparer, i.parent.pointIter, i.parent.rangeKey.rangeKeyIter,
 		&i.parent.rangeKeyMasking, i.parent.opts.LowerBound, i.parent.opts.UpperBound)
 
 	// We need to determine the key to seek the range key iterator to. If
@@ -523,7 +525,11 @@ func (i *lazyCombinedIter) initCombinedIteration(
 	// which case the range key will be interleaved next instead of the point
 	// key.
 	if dir == +1 {
-		return i.parent.rangeKey.iiter.InitSeekGE(seekKey, pointKey, pointValue)
+		var prefix []byte
+		if i.parent.hasPrefix {
+			prefix = i.parent.prefixOrFullSeekKey
+		}
+		return i.parent.rangeKey.iiter.InitSeekGE(prefix, seekKey, pointKey, pointValue)
 	}
 	return i.parent.rangeKey.iiter.InitSeekLT(seekKey, pointKey, pointValue)
 }

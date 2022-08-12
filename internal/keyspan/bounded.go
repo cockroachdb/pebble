@@ -33,21 +33,39 @@ const (
 
 // BoundedIter implements FragmentIterator and enforces bounds.
 type BoundedIter struct {
-	iter     FragmentIterator
-	iterSpan *Span
-	cmp      base.Compare
-	lower    []byte
-	upper    []byte
-	pos      boundedIterPos
+	iter      FragmentIterator
+	iterSpan  *Span
+	cmp       base.Compare
+	split     base.Split
+	lower     []byte
+	upper     []byte
+	hasPrefix *bool
+	prefix    *[]byte
+	pos       boundedIterPos
 }
 
 // Init initializes the bounded iterator.
-func (i *BoundedIter) Init(cmp base.Compare, iter FragmentIterator, lower, upper []byte) {
+//
+// In addition to the iterator bounds, Init takes pointers to a boolean
+// indicating whether the iterator is in prefix iteration mode and the prefix
+// key if it is. This is used to exclude spans that are outside the iteration
+// prefix.
+func (i *BoundedIter) Init(
+	cmp base.Compare,
+	split base.Split,
+	iter FragmentIterator,
+	lower, upper []byte,
+	hasPrefix *bool,
+	prefix *[]byte,
+) {
 	*i = BoundedIter{
-		iter:  iter,
-		cmp:   cmp,
-		lower: lower,
-		upper: upper,
+		iter:      iter,
+		cmp:       cmp,
+		split:     split,
+		lower:     lower,
+		upper:     upper,
+		hasPrefix: hasPrefix,
+		prefix:    prefix,
 	}
 }
 
@@ -91,6 +109,15 @@ func (i *BoundedIter) Next() *Span {
 			i.pos = posAtUpperLimit
 			return nil
 		}
+		// Similarly, if the span extends to the next prefix and we're in prefix
+		// iteration mode, we can avoid advancing.
+		if i.iterSpan != nil && *i.hasPrefix {
+			ei := i.split(i.iterSpan.End)
+			if i.cmp(i.iterSpan.End[:ei], *i.prefix) > 0 {
+				i.pos = posAtUpperLimit
+				return nil
+			}
+		}
 		return i.checkForwardBound(i.iter.Next())
 	case posAtUpperLimit:
 		// Already exhausted.
@@ -113,6 +140,15 @@ func (i *BoundedIter) Prev() *Span {
 		if i.iterSpan != nil && i.lower != nil && i.cmp(i.iterSpan.Start, i.lower) <= 0 {
 			i.pos = posAtLowerLimit
 			return nil
+		}
+		// Similarly, if the span extends to or beyond the current prefix and
+		// we're in prefix iteration mode, we can avoid advancing.
+		if i.iterSpan != nil && *i.hasPrefix {
+			si := i.split(i.iterSpan.Start)
+			if i.cmp(i.iterSpan.Start[:si], *i.prefix) < 0 {
+				i.pos = posAtLowerLimit
+				return nil
+			}
 		}
 		return i.checkBackwardBound(i.iter.Prev())
 	case posAtUpperLimit:
@@ -146,6 +182,17 @@ func (i *BoundedIter) SetBounds(lower, upper []byte) {
 // span is wholly outside the upper bound. It also updates i.pos and i.iterSpan
 // to reflect the new iterator position.
 func (i *BoundedIter) checkForwardBound(span *Span) *Span {
+	// Compare to the prefix's bounds, if in prefix iteration mode.
+	if span != nil && *i.hasPrefix {
+		si := i.split(span.Start)
+		if i.cmp(span.Start[:si], *i.prefix) > 0 {
+			// This span starts at a whole prefix that sorts after our current
+			// prefix.
+			span = nil
+		}
+	}
+
+	// Compare to the upper bound.
 	if span != nil && i.upper != nil && i.cmp(span.Start, i.upper) >= 0 {
 		span = nil
 	}
@@ -160,6 +207,13 @@ func (i *BoundedIter) checkForwardBound(span *Span) *Span {
 // wholly outside the lower bound.  It also updates i.pos and i.iterSpan to
 // reflect the new iterator position.
 func (i *BoundedIter) checkBackwardBound(span *Span) *Span {
+	// Compare to the prefix's bounds, if in prefix iteration mode.
+	if span != nil && *i.hasPrefix && i.cmp(span.End, *i.prefix) <= 0 {
+		// This span ends before the current prefix.
+		span = nil
+	}
+
+	// Compare to the lower bound.
 	if span != nil && i.lower != nil && i.cmp(span.End, i.lower) <= 0 {
 		span = nil
 	}
