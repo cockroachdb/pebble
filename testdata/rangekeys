@@ -1167,3 +1167,56 @@ a: (a, .)
 using lazy iterator
 n: (., [m-z) @5=foo UPDATED)
 using combined (non-lazy) iterator
+
+# Regression test for a bug discovered in #1878.
+# A lazy-combined iterator triggers combined iteration during an initial
+# seek-prefix-ge call. The initial seek-prefix-ge call avoids defragmenting
+# fragments beyond the initial fragment [c,f). A subsequent seek-ge that seeks
+# within the bounds of the initial fragment [c,f) must not fall into the
+# optimization that reuses the span without reseeking the keypsan iterator,
+# because the span is not defragmented.
+#
+# In the bug surfaced by #1878, the initial seek-prefix-ge that switched to
+# combined iteration failed to record that the iterator was now in prefix mode,
+# allowing the subsequent seek-ge to incorrectly reuse the existing span.
+
+reset
+----
+
+batch
+range-key-set a c @5 foo
+----
+wrote 1 keys
+
+flush
+----
+
+batch
+range-key-set c f @5 foo
+----
+wrote 1 keys
+
+flush
+----
+
+batch
+range-key-set f m @5 foo
+----
+wrote 1 keys
+
+flush
+----
+
+lsm
+----
+0.0:
+  000005:[a#1,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
+  000007:[c#2,RANGEKEYSET-f#72057594037927935,RANGEKEYSET]
+  000009:[f#3,RANGEKEYSET-m#72057594037927935,RANGEKEYSET]
+
+combined-iter
+seek-prefix-ge d@5
+seek-ge d
+----
+d@5: (., [d-"d\x00") @5=foo UPDATED)
+d: (., [a-m) @5=foo UPDATED)
