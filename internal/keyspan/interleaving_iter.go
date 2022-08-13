@@ -209,6 +209,7 @@ func (i *InterleavingIter) InitSeekGE(
 ) (*base.InternalKey, []byte) {
 	i.dir = +1
 	i.clearMask()
+	i.prefix = prefix != nil
 	i.pointKey, i.pointVal = pointKey, pointValue
 	i.pointKeyInterleaved = false
 	// NB: This keyspanSeekGE call will truncate the span to the seek key if
