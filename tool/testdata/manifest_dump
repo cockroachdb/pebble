@@ -246,3 +246,33 @@ EOF
 --- L4 ---
 --- L5 ---
 --- L6 ---
+
+manifest check
+./testdata/mixed/MANIFEST-000001
+----
+OK
+
+manifest dump
+./testdata/mixed/MANIFEST-000001
+----
+MANIFEST-000001
+0/0
+  comparer:     pebble.internal.testkeys
+  next-file-num: 2
+37/1
+  log-num:       2
+  next-file-num: 3
+48/2
+  log-num:       4
+  next-file-num: 6
+  last-seq-num:  29
+  added:         L0 000005:1166<#1-#29>[a#29,RANGEKEYDEL-z@1#26,SET] (2022-08-12T23:21:28Z)
+EOF
+--- L0.0 ---
+  000005:1166<#1-#29>[a#29,RANGEKEYDEL-z@1#26,SET]
+--- L1 ---
+--- L2 ---
+--- L3 ---
+--- L4 ---
+--- L5 ---
+--- L6 ---

@@ -3880,3 +3880,15 @@ out-of-order.sst
        821    version: 2
        825    magic number: 0xf7cff485b741e288
        833  EOF
+
+sstable layout
+./testdata/mixed/000005.sst
+----
+000005.sst
+         0  data (231)
+       236  index (24)
+       265  range-key (64)
+       334  properties (710)
+      1049  meta-index (59)
+      1113  footer (53)
+      1166  EOF

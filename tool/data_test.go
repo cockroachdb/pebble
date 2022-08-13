@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
@@ -110,7 +111,12 @@ func runTests(t *testing.T, path string) {
 					return &m
 				}()
 
-				tool := New(DefaultComparer(comparer), Comparers(altComparer), Mergers(merger), FS(fs))
+				tool := New(
+					DefaultComparer(comparer),
+					Comparers(altComparer, testkeys.Comparer),
+					Mergers(merger),
+					FS(fs),
+				)
 
 				c := &cobra.Command{}
 				c.AddCommand(tool.Commands...)

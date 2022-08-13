@@ -52,3 +52,8 @@ testdata/bad-magic.sst
 ----
 bad-magic.sst
 pebble/table: invalid table (bad magic number)
+
+sstable check
+./testdata/mixed/000005.sst
+----
+000005.sst
