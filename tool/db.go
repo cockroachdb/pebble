@@ -537,6 +537,12 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumDeletions) })...)
 		fmt.Fprintf(tw, "  range-delete\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumRangeDeletions) })...)
+		fmt.Fprintf(tw, "  range-key-sets\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumRangeKeySets) })...)
+		fmt.Fprintf(tw, "  range-key-unsets\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumRangeKeyUnSets) })...)
+		fmt.Fprintf(tw, "  range-key-deletes\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumRangeKeyDeletes) })...)
 		fmt.Fprintf(tw, "  merge\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			propArgs(all, func(p *props) interface{} { return humanize.SI.Uint64(p.NumMergeOperands) })...)
 
@@ -581,21 +587,24 @@ func propArgs(props []props, getProp func(*props) interface{}) []interface{} {
 }
 
 type props struct {
-	Count             uint64
-	SmallestSeqNum    uint64
-	LargestSeqNum     uint64
-	DataSize          uint64
-	FilterSize        uint64
-	IndexSize         uint64
-	NumDataBlocks     uint64
-	NumIndexBlocks    uint64
-	NumDeletions      uint64
-	NumEntries        uint64
-	NumMergeOperands  uint64
-	NumRangeDeletions uint64
-	RawKeySize        uint64
-	RawValueSize      uint64
-	TopLevelIndexSize uint64
+	Count              uint64
+	SmallestSeqNum     uint64
+	LargestSeqNum      uint64
+	DataSize           uint64
+	FilterSize         uint64
+	IndexSize          uint64
+	NumDataBlocks      uint64
+	NumIndexBlocks     uint64
+	NumDeletions       uint64
+	NumEntries         uint64
+	NumMergeOperands   uint64
+	NumRangeDeletions  uint64
+	NumRangeKeySets    uint64
+	NumRangeKeyUnSets  uint64
+	NumRangeKeyDeletes uint64
+	RawKeySize         uint64
+	RawValueSize       uint64
+	TopLevelIndexSize  uint64
 }
 
 func (p *props) update(o props) {
@@ -615,6 +624,9 @@ func (p *props) update(o props) {
 	p.NumEntries += o.NumEntries
 	p.NumMergeOperands += o.NumMergeOperands
 	p.NumRangeDeletions += o.NumRangeDeletions
+	p.NumRangeKeySets += o.NumRangeKeySets
+	p.NumRangeKeyUnSets += o.NumRangeKeyUnSets
+	p.NumRangeKeyDeletes += o.NumRangeKeyDeletes
 	p.RawKeySize += o.RawKeySize
 	p.RawValueSize += o.RawValueSize
 	p.TopLevelIndexSize += o.TopLevelIndexSize
@@ -632,21 +644,24 @@ func (d *dbT) addProps(dir string, m *manifest.FileMetadata, p *props) error {
 		return err
 	}
 	p.update(props{
-		Count:             1,
-		SmallestSeqNum:    m.SmallestSeqNum,
-		LargestSeqNum:     m.LargestSeqNum,
-		DataSize:          r.Properties.DataSize,
-		FilterSize:        r.Properties.FilterSize,
-		IndexSize:         r.Properties.IndexSize,
-		NumDataBlocks:     r.Properties.NumDataBlocks,
-		NumIndexBlocks:    1 + r.Properties.IndexPartitions,
-		NumDeletions:      r.Properties.NumDeletions,
-		NumEntries:        r.Properties.NumEntries,
-		NumMergeOperands:  r.Properties.NumMergeOperands,
-		NumRangeDeletions: r.Properties.NumRangeDeletions,
-		RawKeySize:        r.Properties.RawKeySize,
-		RawValueSize:      r.Properties.RawValueSize,
-		TopLevelIndexSize: r.Properties.TopLevelIndexSize,
+		Count:              1,
+		SmallestSeqNum:     m.SmallestSeqNum,
+		LargestSeqNum:      m.LargestSeqNum,
+		DataSize:           r.Properties.DataSize,
+		FilterSize:         r.Properties.FilterSize,
+		IndexSize:          r.Properties.IndexSize,
+		NumDataBlocks:      r.Properties.NumDataBlocks,
+		NumIndexBlocks:     1 + r.Properties.IndexPartitions,
+		NumDeletions:       r.Properties.NumDeletions,
+		NumEntries:         r.Properties.NumEntries,
+		NumMergeOperands:   r.Properties.NumMergeOperands,
+		NumRangeDeletions:  r.Properties.NumRangeDeletions,
+		NumRangeKeySets:    r.Properties.NumRangeKeySets,
+		NumRangeKeyUnSets:  r.Properties.NumRangeKeyUnsets,
+		NumRangeKeyDeletes: r.Properties.NumRangeKeyDels,
+		RawKeySize:         r.Properties.RawKeySize,
+		RawValueSize:       r.Properties.RawValueSize,
+		TopLevelIndexSize:  r.Properties.TopLevelIndexSize,
 	})
 	return r.Close()
 }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -286,6 +287,22 @@ func formatKeyValue(
 		}
 	}
 	w.Write([]byte{'\n'})
+}
+
+func formatSpan(w io.Writer, fmtKey keyFormatter, fmtValue valueFormatter, s *keyspan.Span) {
+	if fmtKey.spec != "null" {
+		fmt.Fprintf(w, "[%s-%s):\n", fmtKey.fn(s.Start), fmtKey.fn(s.End))
+		for _, k := range s.Keys {
+			fmt.Fprintf(w, "  #%d,%s", k.SeqNum(), k.Kind())
+			switch k.Kind() {
+			case base.InternalKeyKindRangeKeySet:
+				fmt.Fprintf(w, ": %s %s", k.Suffix, fmtValue.fn(s.Start, k.Value))
+			case base.InternalKeyKindRangeKeyUnset:
+				fmt.Fprintf(w, ": %s", k.Suffix)
+			}
+			w.Write([]byte{'\n'})
+		}
+	}
 }
 
 func walk(fs vfs.FS, dir string, fn func(path string)) {

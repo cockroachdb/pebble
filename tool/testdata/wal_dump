@@ -105,3 +105,14 @@ wal dump
 58(17) seq=8 count=1
     DEL(baz)
 EOF
+
+wal dump
+./testdata/mixed/000004.log
+----
+000004.log
+0(42) seq=30 count=4
+    SET(test formatter: a@2,test value formatter: )
+    RANGEKEYSET()
+    RANGEKEYUNSET()
+    RANGEKEYDEL()
+EOF

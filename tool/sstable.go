@@ -315,6 +315,9 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 			(r.Properties.NumDeletions+r.Properties.NumMergeOperands))
 		fmt.Fprintf(tw, "  delete\t%d\n", r.Properties.NumPointDeletions())
 		fmt.Fprintf(tw, "  range-delete\t%d\n", r.Properties.NumRangeDeletions)
+		fmt.Fprintf(tw, "  range-key-set\t%d\n", r.Properties.NumRangeKeySets)
+		fmt.Fprintf(tw, "  range-key-unset\t%d\n", r.Properties.NumRangeKeyUnsets)
+		fmt.Fprintf(tw, "  range-key-delete\t%d\n", r.Properties.NumRangeKeyDels)
 		fmt.Fprintf(tw, "  merge\t%d\n", r.Properties.NumMergeOperands)
 		fmt.Fprintf(tw, "  global-seq-num\t%d\n", r.Properties.GlobalSeqNum)
 		fmt.Fprintf(tw, "index\t\n")
@@ -470,6 +473,34 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 				count--
 				if count == 0 {
 					break
+				}
+			}
+		}
+
+		// Handle range keys.
+		rkIter, err := r.NewRawRangeKeyIter()
+		if err != nil {
+			fmt.Fprintf(stdout, "%s\n", err)
+			os.Exit(1)
+		}
+		if rkIter != nil {
+			defer rkIter.Close()
+			for span := rkIter.SeekGE(s.start); span != nil; span = rkIter.Next() {
+				// By default, emit the key, unless there is a filter.
+				emit := s.filter == nil
+				// Skip spans that start after the end key (if provided). End keys are
+				// exclusive, e.g. [a, b), so we consider the interval [b, +inf).
+				if s.end != nil && r.Compare(span.Start, s.end) >= 0 {
+					emit = false
+				}
+				// Filters override the provided start / end bounds, if provided.
+				if s.filter != nil && bytes.HasPrefix(span.Start, s.filter) {
+					// In filter mode, each line is prefixed with the filename.
+					fmt.Fprint(stdout, prefix)
+					emit = true
+				}
+				if emit {
+					formatSpan(stdout, s.fmtKey, s.fmtValue, span)
 				}
 			}
 		}
