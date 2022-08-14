@@ -1351,10 +1351,20 @@ func (i *Iterator) Next() bool {
 // keyspace up to limit.
 func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 	i.stats.ForwardStepCount[InterfaceCall]++
-	if limit != nil && i.hasPrefix {
-		i.err = errors.New("cannot use limit with prefix iteration")
-		i.iterValidityState = IterExhausted
-		return i.iterValidityState
+	if i.hasPrefix {
+		if limit != nil {
+			i.err = errors.New("cannot use limit with prefix iteration")
+			i.iterValidityState = IterExhausted
+			return i.iterValidityState
+		} else if i.iterValidityState == IterExhausted {
+			// No-op, already exhasuted. We avoid executing the Next because it
+			// can break invariants: Specifically, a file that fails the bloom
+			// filter test may result in its level being removed from the
+			// merging iterator. The level's removal can cause a lazy combined
+			// iterator to miss range keys and trigger a switch to combined
+			// iteration at a larger key, breaking keyspan invariants.
+			return i.iterValidityState
+		}
 	}
 	if i.err != nil {
 		return i.iterValidityState
