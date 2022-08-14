@@ -8,7 +8,7 @@ a.SET.54:a b.SET.4:b
 5:
   000004:[a#58,SET-b#8,SET]
 6:
-  000005:[a#58,SET-b#8,SET]
+  000005:[a#57,SET-b#7,SET]
 
 add-read-compaction
 5: a-b 000004
@@ -47,7 +47,7 @@ a.SET.54:a b.SET.4:b
 5:
   000004:[a#58,SET-b#8,SET]
 6:
-  000005:[a#58,SET-b#8,SET]
+  000005:[a#57,SET-b#7,SET]
 
 add-read-compaction flushing=true
 5: a-b 000004
@@ -70,7 +70,7 @@ version
 5:
   000004:[a#58,SET-b#8,SET]
 6:
-  000005:[a#58,SET-b#8,SET]
+  000005:[a#57,SET-b#7,SET]
 
 add-read-compaction flushing=false
 ----
