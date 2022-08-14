@@ -987,6 +987,10 @@ type fragmentBlockIter struct {
 	closeHook func(i keyspan.FragmentIterator) error
 }
 
+func (i *fragmentBlockIter) resetForReuse() fragmentBlockIter {
+	return fragmentBlockIter{blockIter: i.blockIter.resetForReuse()}
+}
+
 func (i *fragmentBlockIter) decodeSpanKeys(k *InternalKey, internalValue []byte) {
 	// TODO(jackson): The use of i.span.Keys to accumulate keys across multiple
 	// calls to Decode is too confusing and subtle. Refactor to make it

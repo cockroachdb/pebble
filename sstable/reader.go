@@ -246,6 +246,19 @@ var twoLevelIterPool = sync.Pool{
 	},
 }
 
+// TODO(jackson): rangedel fragmentBlockIters can't be pooled because of some
+// code paths that double Close the iters. Fix the double close and pool the
+// *fragmentBlockIter type directly.
+
+var rangeKeyFragmentBlockIterPool = sync.Pool{
+	New: func() interface{} {
+		i := &rangeKeyFragmentBlockIter{}
+		// Note: this is a no-op if invariants are disabled or race is enabled.
+		invariants.SetFinalizer(i, checkRangeKeyFragmentBlockIterator)
+		return i
+	},
+}
+
 func checkSingleLevelIterator(obj interface{}) {
 	i := obj.(*singleLevelIterator)
 	if p := i.data.cacheHandle.Get(); p != nil {
@@ -266,6 +279,14 @@ func checkTwoLevelIterator(obj interface{}) {
 	}
 	if p := i.index.cacheHandle.Get(); p != nil {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.cacheHandle is not nil: %p\n", p)
+		os.Exit(1)
+	}
+}
+
+func checkRangeKeyFragmentBlockIterator(obj interface{}) {
+	i := obj.(*rangeKeyFragmentBlockIter)
+	if p := i.blockIter.cacheHandle.Get(); p != nil {
+		fmt.Fprintf(os.Stderr, "fragmentBlockIter.blockIter.cacheHandle is not nil: %p\n", p)
 		os.Exit(1)
 	}
 }
@@ -2485,11 +2506,22 @@ func (r *Reader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 	if err != nil {
 		return nil, err
 	}
-	i := &fragmentBlockIter{}
+	i := rangeKeyFragmentBlockIterPool.Get().(*rangeKeyFragmentBlockIter)
 	if err := i.blockIter.initHandle(r.Compare, h, r.Properties.GlobalSeqNum); err != nil {
 		return nil, err
 	}
 	return i, nil
+}
+
+type rangeKeyFragmentBlockIter struct {
+	fragmentBlockIter
+}
+
+func (i *rangeKeyFragmentBlockIter) Close() error {
+	err := i.fragmentBlockIter.Close()
+	i.fragmentBlockIter = i.fragmentBlockIter.resetForReuse()
+	rangeKeyFragmentBlockIterPool.Put(i)
+	return err
 }
 
 func (r *Reader) readIndex() (cache.Handle, error) {
