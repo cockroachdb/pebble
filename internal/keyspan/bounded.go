@@ -32,6 +32,22 @@ const (
 )
 
 // BoundedIter implements FragmentIterator and enforces bounds.
+//
+// Like the point InternalIterator interface, the bounded iterator's forward
+// positioning routines (SeekGE, First, and Next) only check the upper bound.
+// The reverse positioning routines (SeekLT, Last, and Prev) only check the
+// lower bound. It is up to the caller to ensure that the forward positioning
+// routines respect the lower bound and the reverse positioning routines respect
+// the upper bound (i.e. calling SeekGE instead of First if there is a lower
+// bound, and SeekLT instead of Last if there is an upper bound).
+//
+// When the hasPrefix parameter indicates that the iterator is in prefix
+// iteration mode, BoundedIter elides any spans that do not overlap with the
+// prefix's keyspace. In prefix iteration mode, reverse iteration is disallowed,
+// except for an initial SeekLT with a seek key greater than or equal to the
+// prefix. In prefix iteration mode, the first seek must position the iterator
+// at or immediately before the first fragment covering a key greater than or
+// equal to the prefix.
 type BoundedIter struct {
 	iter      FragmentIterator
 	iterSpan  *Span
