@@ -393,9 +393,15 @@ func TestIndexedBatchMutation(t *testing.T) {
 				return err.Error()
 			}
 			return ""
-		case "new-iter":
+		case "new-batch-iter":
 			name := td.CmdArgs[0].String()
 			iters[name] = b.NewIter(&IterOptions{
+				KeyTypes: IterKeyTypePointsAndRanges,
+			})
+			return ""
+		case "new-db-iter":
+			name := td.CmdArgs[0].String()
+			iters[name] = d.NewIter(&IterOptions{
 				KeyTypes: IterKeyTypePointsAndRanges,
 			})
 			return ""
@@ -407,6 +413,9 @@ func TestIndexedBatchMutation(t *testing.T) {
 			if err := runBatchDefineCmd(td, b); err != nil {
 				return err.Error()
 			}
+			return ""
+		case "flush":
+			require.NoError(t, d.Flush())
 			return ""
 		case "iter":
 			var iter string
