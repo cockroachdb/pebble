@@ -1220,3 +1220,17 @@ seek-ge d
 ----
 d@5: (., [d-"d\x00") @5=foo UPDATED)
 d: (., [a-m) @5=foo UPDATED)
+
+# Test that repeated SeekPrefixGEs correctly return truncated spans with
+# RangeKeyChanged() -> UPDATED.
+
+combined-iter
+seek-prefix-ge c@5
+seek-prefix-ge d@5
+seek-ge d@7
+seek-prefix-ge d@7
+----
+c@5: (., [c-"c\x00") @5=foo UPDATED)
+d@5: (., [d-"d\x00") @5=foo UPDATED)
+d@7: (., [a-m) @5=foo UPDATED)
+d@7: (., [d-"d\x00") @5=foo UPDATED)

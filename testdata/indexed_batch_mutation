@@ -5,7 +5,7 @@ set foo foo
 
 # Construct an iterator over the indexed batch.
 
-new-iter i0
+new-batch-iter i0
 ----
 
 # The key we set should be visible.
@@ -139,7 +139,7 @@ new-batch
 set foo foo
 ----
 
-new-iter i1
+new-batch-iter i1
 ----
 
 iter iter=i1
@@ -308,7 +308,7 @@ foo: (foo, [a-z) @2=bax, @1=boop)
 # Create a new iterator i5 over the indexed batch [not a Clone]. It should see
 # all committed writes and uncommitted writes.
 
-new-iter i5
+new-batch-iter i5
 ----
 
 iter iter=i5
@@ -371,7 +371,7 @@ new-batch
 set foo foo
 ----
 
-new-iter i1
+new-batch-iter i1
 ----
 
 iter iter=i1
@@ -392,7 +392,7 @@ range-key-set a z @1 foo
 # key, and cache both on the batch so that future iterators constructed over the
 # batch do not need to.
 
-new-iter i2
+new-batch-iter i2
 ----
 
 iter iter=i2
@@ -424,7 +424,7 @@ range-key-set a c @1 poi
 range-key-set b d @2 yaya
 ----
 
-new-iter i1
+new-batch-iter i1
 ----
 
 # The batch contains 2 range keys, but the skiplist of fragmented range keys
@@ -502,3 +502,77 @@ seek-ge cat
 ----
 .
 e: (., [e-f) @3=foo UPDATED)
+
+reset
+----
+
+batch
+range-key-set a e @1 foo
+----
+
+flush
+----
+
+new-batch
+----
+
+new-batch-iter batchiter
+----
+
+new-db-iter dbiter
+----
+
+# Test RangeKeyChanged() semantics.
+# Seeking to the same prefix returns RangeKeyChanged()=false.
+# Seeking to a new prefix returns RangeKeyChanged()=true.
+# Seeking to the same prefix with a SetOptions call in between returns
+# RangeKeyChanged()=true.
+
+iter iter=dbiter
+seek-prefix-ge b@3
+seek-prefix-ge b@4
+seek-prefix-ge c@3
+seek-prefix-ge d@3
+set-options
+seek-prefix-ge d@1
+----
+b@3: (., [b-"b\x00") @1=foo UPDATED)
+b@4: (., [b-"b\x00") @1=foo)
+c@3: (., [c-"c\x00") @1=foo UPDATED)
+d@3: (., [d-"d\x00") @1=foo UPDATED)
+.
+d@1: (., [d-"d\x00") @1=foo UPDATED)
+
+# Test the same semantics on a batch iterator.
+
+iter iter=batchiter
+seek-prefix-ge b@3
+seek-prefix-ge b@4
+seek-prefix-ge c@3
+seek-prefix-ge d@3
+set-options
+seek-prefix-ge d@1
+----
+b@3: (., [b-"b\x00") @1=foo UPDATED)
+b@4: (., [b-"b\x00") @1=foo)
+c@3: (., [c-"c\x00") @1=foo UPDATED)
+d@3: (., [d-"d\x00") @1=foo UPDATED)
+.
+d@1: (., [d-"d\x00") @1=foo UPDATED)
+
+# Test mutating the indexed batch's range keys, overlapping the existing seek
+# position. It should not see the new mutations, but after a call to SetOptions
+# it should AND it should return RangeKeyChanged()=true.
+
+mutate
+range-key-set d e @2 foo
+----
+
+iter iter=batchiter
+seek-prefix-ge d@2
+set-options
+seek-prefix-ge d@2
+----
+d@2: (., [d-"d\x00") @1=foo)
+.
+d@2: (., [d-"d\x00") @2=foo, @1=foo UPDATED)
