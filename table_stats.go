@@ -717,7 +717,7 @@ func newCombinedDeletionKeyspanIter(
 	})
 	mIter.Init(cmp, transform)
 
-	iter, err := r.NewRawRangeDelIter()
+	iter, err := r.NewRawRangeDelIter(false /* doNotFillCache */)
 	if err != nil {
 		return nil, err
 	}
@@ -733,7 +733,7 @@ func newCombinedDeletionKeyspanIter(
 		mIter.AddLevel(iter)
 	}
 
-	iter, err = r.NewRawRangeKeyIter()
+	iter, err = r.NewRawRangeKeyIter(false /* doNotFillCache */)
 	if err != nil {
 		return nil, err
 	}

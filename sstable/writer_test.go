@@ -99,7 +99,7 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 			return format(meta)
 
 		case "scan":
-			origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			origIter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 			if err != nil {
 				return err.Error()
 			}
@@ -125,7 +125,7 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 			return buf.String()
 
 		case "scan-range-del":
-			iter, err := r.NewRawRangeDelIter()
+			iter, err := r.NewRawRangeDelIter(false /* doNotFillCache */)
 			if err != nil {
 				return err.Error()
 			}
@@ -141,7 +141,7 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 			return buf.String()
 
 		case "scan-range-key":
-			iter, err := r.NewRawRangeKeyIter()
+			iter, err := r.NewRawRangeKeyIter(false /* doNotFillCache */)
 			if err != nil {
 				return err.Error()
 			}
@@ -665,7 +665,7 @@ func TestWriterRace(t *testing.T) {
 			r, err := NewMemReader(f.Bytes(), readerOpts)
 			require.NoError(t, err)
 			defer r.Close()
-			it, err := r.NewIter(nil, nil)
+			it, err := r.NewIter(nil, nil, false /* doNotFillCache */)
 			require.NoError(t, err)
 			defer it.Close()
 			ki := 0

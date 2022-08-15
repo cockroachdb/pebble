@@ -93,7 +93,7 @@ func ingestLoad1(
 	maybeSetStatsFromProperties(meta, &r.Properties)
 
 	{
-		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 		if err != nil {
 			return nil, err
 		}
@@ -119,7 +119,7 @@ func ingestLoad1(
 		}
 	}
 
-	iter, err := r.NewRawRangeDelIter()
+	iter, err := r.NewRawRangeDelIter(false)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func ingestLoad1(
 
 	// Update the range-key bounds for the table.
 	{
-		iter, err := r.NewRawRangeKeyIter()
+		iter, err := r.NewRawRangeKeyIter(false /* doNotFillCache */)
 		if err != nil {
 			return nil, err
 		}

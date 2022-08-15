@@ -423,7 +423,7 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 				r.Properties.GlobalSeqNum = m.LargestSeqNum
 			}
 
-			iter, err := r.NewIter(nil, nil)
+			iter, err := r.NewIter(nil, nil, true /* doNotFillCache */)
 			if err != nil {
 				return err
 			}
@@ -434,7 +434,7 @@ func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
 			// bit more work here to put them in a form that can be iterated in
 			// parallel with the point records.
 			rangeDelIter, err := func() (keyspan.FragmentIterator, error) {
-				iter, err := r.NewRawRangeDelIter()
+				iter, err := r.NewRawRangeDelIter(true /* doNotFillCache */)
 				if err != nil {
 					return nil, err
 				}

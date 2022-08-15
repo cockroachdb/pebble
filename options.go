@@ -127,6 +127,8 @@ type IterOptions struct {
 	// and point key iteration mode (IterKeyTypePointsAndRanges).
 	RangeKeyMasking RangeKeyMasking
 
+	// DoNotFillCache does not put the missing blocks into the internal cache.
+	DoNotFillCache bool
 	// OnlyReadGuaranteedDurable is an advanced option that is only supported by
 	// the Reader implemented by DB. When set to true, only the guaranteed to be
 	// durable state is visible in the iterator.
@@ -187,6 +189,13 @@ func (o *IterOptions) GetUpperBound() []byte {
 		return nil
 	}
 	return o.UpperBound
+}
+
+func (o *IterOptions) doNotFillCache() bool {
+	if o == nil {
+		return false
+	}
+	return o.DoNotFillCache
 }
 
 func (o *IterOptions) pointKeys() bool {

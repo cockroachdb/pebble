@@ -96,11 +96,11 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 	newIters :=
 		func(file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
 			r := readers[file.FileNum]
-			rangeDelIter, err := r.NewRawRangeDelIter()
+			rangeDelIter, err := r.NewRawRangeDelIter(false /* doNotFillCache */)
 			if err != nil {
 				return nil, nil, err
 			}
-			iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 			if err != nil {
 				return nil, nil, err
 			}

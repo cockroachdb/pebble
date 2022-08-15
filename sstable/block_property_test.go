@@ -926,7 +926,7 @@ func TestBlockProperties(t *testing.T) {
 
 				// Enumerate point key data blocks encoded into the index.
 				if f != nil {
-					indexH, err := r.readIndex()
+					indexH, err := r.readIndex(false /* doNotFillCache */)
 					if err != nil {
 						return err.Error()
 					}
@@ -1006,7 +1006,7 @@ func TestBlockProperties(t *testing.T) {
 			} else if !ok {
 				return "filter excludes entire table"
 			}
-			iter, err := r.NewIterWithBlockPropertyFilters(lower, upper, filterer, false /* use (bloom) filter */)
+			iter, err := r.NewIterWithBlockPropertyFilters(lower, upper, filterer, false /* use (bloom) filter */, false /* doNotFillCache */)
 			if err != nil {
 				return err.Error()
 			}
@@ -1083,7 +1083,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 			} else if !ok {
 				return "filter excludes entire table"
 			}
-			iter, err := r.NewIterWithBlockPropertyFilters(lower, upper, filterer, false /* use (bloom) filter */)
+			iter, err := r.NewIterWithBlockPropertyFilters(lower, upper, filterer, false /* use (bloom) filter */, false /* doNotFillCache */)
 			if err != nil {
 				return err.Error()
 			}
@@ -1262,7 +1262,7 @@ func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string)
 }
 
 func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
-	bh, err := r.readIndex()
+	bh, err := r.readIndex(false /* doNotFillCache */)
 	if err != nil {
 		return err.Error()
 	}
@@ -1310,7 +1310,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		if twoLevelIndex {
 			subiter := &blockIter{}
 			subIndex, _, err := r.readBlock(
-				bhp.BlockHandle, nil /* transform */, nil /* readaheadState */)
+				bhp.BlockHandle, nil /* transform */, nil /* readaheadState */, false /* doNotFillCache */)
 			if err != nil {
 				return err.Error()
 			}

@@ -193,9 +193,9 @@ func finishInitializingExternal(it *Iterator) {
 					pointIter    internalIterator
 					err          error
 				)
-				pointIter, err = r.NewIter(it.opts.LowerBound, it.opts.UpperBound)
+				pointIter, err = r.NewIter(it.opts.LowerBound, it.opts.UpperBound, it.opts.doNotFillCache())
 				if err == nil {
-					rangeDelIter, err = r.NewRawRangeDelIter()
+					rangeDelIter, err = r.NewRawRangeDelIter(it.opts.doNotFillCache())
 				}
 				if err != nil {
 					pointIter = &errorIter{err: err}
@@ -255,7 +255,7 @@ func finishInitializingExternal(it *Iterator) {
 			// this optimization.
 			for _, readers := range it.externalReaders {
 				for _, r := range readers {
-					if rki, err := r.NewRawRangeKeyIter(); err != nil {
+					if rki, err := r.NewRawRangeKeyIter(it.opts.doNotFillCache()); err != nil {
 						it.rangeKey.iterConfig.AddLevel(&errorKeyspanIter{err: err})
 					} else if rki != nil {
 						it.rangeKey.iterConfig.AddLevel(rki)

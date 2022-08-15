@@ -383,7 +383,7 @@ func (c *tableCacheShard) newIters(
 
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	rangeDelIter, err := v.reader.NewRawRangeDelIter()
+	rangeDelIter, err := v.reader.NewRawRangeDelIter(opts.doNotFillCache())
 	if err != nil {
 		c.unrefValue(v)
 		return nil, nil, err
@@ -411,10 +411,10 @@ func (c *tableCacheShard) newIters(
 		useFilter = manifest.LevelToInt(opts.level) != 6 || opts.UseL6Filters
 	}
 	if internalOpts.bytesIterated != nil {
-		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated)
+		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated, opts.doNotFillCache())
 	} else {
 		iter, err = v.reader.NewIterWithBlockPropertyFilters(
-			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter)
+			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, opts.doNotFillCache())
 	}
 	if err != nil {
 		if rangeDelIter != nil {
@@ -473,7 +473,7 @@ func (c *tableCacheShard) newRangeKeyIter(
 	}
 
 	var iter keyspan.FragmentIterator
-	iter, err = v.reader.NewRawRangeKeyIter()
+	iter, err = v.reader.NewRawRangeKeyIter(false /* doNotFillCache */) // FIXME
 	// iter is a block iter that holds the entire value of the block in memory.
 	// No need to hold onto a ref of the cache value.
 	c.unrefValue(v)

@@ -150,11 +150,11 @@ func TestMergingIterCornerCases(t *testing.T) {
 	newIters :=
 		func(file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
 			r := readers[file.FileNum]
-			rangeDelIter, err := r.NewRawRangeDelIter()
+			rangeDelIter, err := r.NewRawRangeDelIter(false /* doNotFillCache */)
 			if err != nil {
 				return nil, nil, err
 			}
-			iter, err := r.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
+			iter, err := r.NewIter(opts.GetLowerBound(), opts.GetUpperBound(), false /* doNotFillCache */)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -346,7 +346,7 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
-								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 								require.NoError(b, err)
 							}
 							m := newMergingIter(nil /* logger */, DefaultComparer.Compare,
@@ -378,7 +378,7 @@ func BenchmarkMergingIterNext(b *testing.B) {
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
-								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 								require.NoError(b, err)
 							}
 							m := newMergingIter(nil /* logger */, DefaultComparer.Compare,
@@ -413,7 +413,7 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 							iters := make([]internalIterator, len(readers))
 							for i := range readers {
 								var err error
-								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
+								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 								require.NoError(b, err)
 							}
 							m := newMergingIter(nil /* logger */, DefaultComparer.Compare,
@@ -543,7 +543,7 @@ func buildLevelsForMergingIterSeqSeek(
 	for i := range readers {
 		meta := make([]*fileMetadata, len(readers[i]))
 		for j := range readers[i] {
-			iter, err := readers[i][j].NewIter(nil /* lower */, nil /* upper */)
+			iter, err := readers[i][j].NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 			require.NoError(b, err)
 			smallest, _ := iter.First()
 			meta[j] = &fileMetadata{}
@@ -568,11 +568,11 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 			file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
 		) (internalIterator, keyspan.FragmentIterator, error) {
 			iter, err := readers[levelIndex][file.FileNum].NewIter(
-				opts.LowerBound, opts.UpperBound)
+				opts.LowerBound, opts.UpperBound, false /* doNotFillCache */)
 			if err != nil {
 				return nil, nil, err
 			}
-			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter()
+			rdIter, err := readers[levelIndex][file.FileNum].NewRawRangeDelIter(false /* doNotFillCache */)
 			if err != nil {
 				iter.Close()
 				return nil, nil, err
