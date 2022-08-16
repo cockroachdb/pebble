@@ -496,6 +496,10 @@ func (g *generator) newIter() {
 	if g.cmp(lower, upper) > 0 {
 		lower, upper = upper, lower
 	}
+	g.itersLastBounds[iterID] = iterBounds{
+		lower: lower,
+		upper: upper,
+	}
 	keyTypes, maskSuffix := g.randKeyTypesAndMask()
 
 	// With a low probability, enable automatic filtering of keys with suffixes
@@ -562,6 +566,10 @@ func (g *generator) newIterUsingClone() {
 
 	// TODO(jackson): Exercise changing iterator options as a part of Clone.
 
+	g.itersLastBounds[iterID] = iterBounds{
+		g.itersLastBounds[existingIterID].lower,
+		g.itersLastBounds[existingIterID].upper,
+	}
 	g.add(&newIterUsingCloneOp{
 		existingIterID: existingIterID,
 		iterID:         iterID,
