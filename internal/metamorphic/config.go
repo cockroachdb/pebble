@@ -85,7 +85,7 @@ func defaultConfig() config {
 			iterClose:            5,
 			iterFirst:            100,
 			iterLast:             100,
-			iterNext:             100,
+			iterNext:             300,
 			iterNextWithLimit:    20,
 			iterPrev:             100,
 			iterPrevWithLimit:    20,

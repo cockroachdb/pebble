@@ -62,6 +62,12 @@ type generator struct {
 	// snapshotID -> snapshot iters: used to keep track of the open iterators on
 	// a snapshot. The iter set value will also be indexed by the readers map.
 	snapshots map[objID]objIDSet
+	// iterBounds keeps track of the lower and upper bounds of an iterator.
+	// These bounds are used to make sure that SeekPrefixGE operations are
+	// likely to be within the iterator bounds.
+	iterBounds map[objID][][]byte
+	// iterReaderID is a map from an iterID to a readerID.
+	iterReaderID map[objID]objID
 }
 
 func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
@@ -77,6 +83,8 @@ func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
 		readers:         make(map[objID]objIDSet),
 		snapshots:       make(map[objID]objIDSet),
 		itersLastBounds: make(map[objID]iterBounds),
+		iterBounds:      make(map[objID][][]byte),
+		iterReaderID:    make(map[objID]objID),
 	}
 	// Note that the initOp fields are populated during generation.
 	g.ops = append(g.ops, g.init)
@@ -386,6 +394,7 @@ func (g *generator) batchClose(batchID objID) {
 	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
 		delete(g.iters, id)
+		delete(g.iterBounds, id)
 		g.add(&closeOp{objID: id})
 	}
 }
@@ -513,6 +522,12 @@ func (g *generator) newIter() {
 		}
 	}
 
+	g.iterBounds[iterID] = make([][]byte, 2)
+	g.iterBounds[iterID][0] = lower
+	g.iterBounds[iterID][1] = upper
+
+	g.iterReaderID[iterID] = readerID
+
 	g.add(&newIterOp{
 		readerID:           readerID,
 		iterID:             iterID,
@@ -562,6 +577,11 @@ func (g *generator) newIterUsingClone() {
 
 	// TODO(jackson): Exercise changing iterator options as a part of Clone.
 
+	g.iterBounds[iterID] = make([][]byte, 2)
+	g.iterBounds[iterID][0] = g.iterBounds[existingIterID][0]
+	g.iterBounds[iterID][1] = g.iterBounds[existingIterID][1]
+
+	g.iterReaderID[iterID] = g.iterReaderID[existingIterID]
 	g.add(&newIterUsingCloneOp{
 		existingIterID: existingIterID,
 		iterID:         iterID,
@@ -578,6 +598,7 @@ func (g *generator) iterClose() {
 	g.liveIters.remove(iterID)
 	if readerIters, ok := g.iters[iterID]; ok {
 		delete(g.iters, iterID)
+		delete(g.iterBounds, iterID)
 		delete(readerIters, iterID)
 		//lint:ignore SA9003 - readability
 	} else {
@@ -647,6 +668,10 @@ func (g *generator) iterSetBounds() {
 		lower: lower,
 		upper: upper,
 	}
+
+	g.iterBounds[iterID][0] = lower
+	g.iterBounds[iterID][1] = upper
+
 	g.add(&iterSetBoundsOp{
 		iterID: iterID,
 		lower:  lower,
@@ -787,9 +812,44 @@ func (g *generator) iterSeekPrefixGE() {
 		return
 	}
 
+	var key []byte
+	iterID := g.liveIters.rand(g.rng)
+
+	possibleKeys := make([][]byte, 0, 100)
+	lowerBound := g.iterBounds[iterID][0]
+	upperBound := g.iterBounds[iterID][1]
+
+	// Pull all keys in the db, or the writer the iterator was created on
+	// which are in range of the lower/upper bound.
+	for _, keyMeta := range g.keyManager.byObj[dbObjID] {
+		posKey := keyMeta.key
+		if (keyMeta.merges >= 1 || keyMeta.sets >= 1) && !keyMeta.del {
+			if g.cmp(posKey, lowerBound) >= 0 && g.cmp(posKey, upperBound) <= 0 {
+				possibleKeys = append(possibleKeys, posKey)
+			}
+		}
+	}
+
+	for _, keyMeta := range g.keyManager.byObj[g.iterReaderID[iterID]] {
+		posKey := keyMeta.key
+		if (keyMeta.merges >= 1 || keyMeta.sets >= 1) && !keyMeta.del {
+			if g.cmp(posKey, lowerBound) >= 0 && g.cmp(posKey, upperBound) <= 0 {
+				possibleKeys = append(possibleKeys, posKey)
+			}
+		}
+	}
+
+	if len(possibleKeys) > 0 {
+		key = []byte(possibleKeys[g.rng.Int31n(int32(len(possibleKeys)))])
+		fmt.Println("found key in range", "lower:", string(lowerBound), "upper:", string(upperBound), "found key:", string(key), len(possibleKeys))
+	} else {
+		key = g.randKeyToRead(0) // 0% new keys
+		fmt.Println("no key in range", string(key))
+	}
+
 	g.add(&iterSeekPrefixGEOp{
-		iterID: g.liveIters.rand(g.rng),
-		key:    g.randKeyToRead(0), // 0% new keys
+		iterID: iterID,
+		key:    key,
 	})
 }
 
@@ -923,6 +983,7 @@ func (g *generator) snapshotClose() {
 	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
 		delete(g.iters, id)
+		delete(g.iterBounds, id)
 		g.add(&closeOp{objID: id})
 	}
 
