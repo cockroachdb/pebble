@@ -292,13 +292,37 @@ func (i *InterleavingIter) SeekPrefixGE(
 
 	// We need to seek the keyspan iterator too. If the keyspan iterator was
 	// already positioned at a span, we might be able to avoid the seek if the
-	// seek key falls within the existing span's bounds.
-	if i.span != nil && i.cmp(key, i.span.End) < 0 && i.cmp(key, i.span.Start) >= 0 {
-		// We're seeking within the existing span's bounds. We still might need
-		// truncate the span to the iterator's bounds.
-		i.checkForwardBound(prefix)
-		i.savedKeyspan()
-	} else {
+	// entire seek prefix key falls within the existing span's bounds.
+	//
+	// During a SeekPrefixGE, Pebble defragments range keys within the bounds of
+	// the prefix. For example, a SeekPrefixGE('c', 'c@8') must defragment the
+	// any overlapping range keys within the bounds of [c,c\00).
+	//
+	// If range keys are fragmented within a prefix (eg, because a version
+	// within a prefix was chosen as an sstable boundary), then it's possible
+	// the seek key falls into the current i.span, but the current i.span does
+	// not wholly cover the seek prefix.
+	//
+	// For example, a SeekPrefixGE('d@5') may only defragment a range key to
+	// the bounds of [c@2,e). A subsequent SeekPrefixGE('c@0') must re-seek the
+	// keyspan iterator, because although 'c@0' is contained within [c@2,e), the
+	// full span of the prefix is not.
+	//
+	// Similarly, a SeekPrefixGE('a@3') may only defragment a range key to the
+	// bounds [a,c@8). A subsequent SeekPrefixGE('c@10') must re-seek the
+	// keyspan iterator, because although 'c@10' is contained within [a,c@8),
+	// the full span of the prefix is not.
+	seekKeyspanIter := true
+	if i.span != nil && i.cmp(prefix, i.span.Start) >= 0 {
+		if ei := i.comparer.Split(i.span.End); i.cmp(prefix, i.span.End[:ei]) < 0 {
+			// We're seeking within the existing span's bounds. We still might need
+			// truncate the span to the iterator's bounds.
+			i.checkForwardBound(prefix)
+			i.savedKeyspan()
+			seekKeyspanIter = false
+		}
+	}
+	if seekKeyspanIter {
 		i.keyspanSeekGE(key, prefix)
 	}
 

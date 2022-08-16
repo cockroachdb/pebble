@@ -752,7 +752,6 @@ func (i *singleLevelIterator) seekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags, checkFilter bool,
 ) (k *InternalKey, value []byte) {
 	i.err = nil // clear cached iteration error
-
 	if checkFilter && i.reader.tableFilter != nil {
 		if !i.lastBloomFilterMatched {
 			// Iterator is not positioned based on last seek.
