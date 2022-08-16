@@ -1353,3 +1353,42 @@ seek-prefix-ge c@10
 y@1: (., [y-"y\x00") @1=foo UPDATED)
 a@1: (., [a-"a\x00") @1=bar UPDATED)
 c@10: (., [c-"c\x00") @1=bar UPDATED)
+
+# Ensure that no-op optimizations do not reuse range key iterator state across
+# SetOptions calls. No-op optimizations have the potential to fail to update
+# RangeKeyChanged().
+
+reset
+----
+
+batch
+range-key-set p s @1 foo
+----
+wrote 1 keys
+
+combined-iter lower=n@9 upper=x@5
+seek-lt y@3
+set-options lower=n@9 upper=x@5
+seek-lt-limit t o
+----
+p: (., [p-s) @1=foo UPDATED)
+.
+p: valid (., [p-s) @1=foo UPDATED)
+
+combined-iter lower=n@9 upper=x@5
+seek-ge o
+set-options lower=n@9 upper=x@5
+seek-ge oat
+----
+p: (., [p-s) @1=foo UPDATED)
+.
+p: (., [p-s) @1=foo UPDATED)
+
+combined-iter lower=n@9 upper=x@5
+seek-prefix-ge p@5
+set-options lower=n@9 upper=x@5
+seek-prefix-ge p
+----
+p@5: (., [p-"p\x00") @1=foo UPDATED)
+.
+p: (., [p-"p\x00") @1=foo UPDATED)
