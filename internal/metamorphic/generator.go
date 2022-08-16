@@ -62,6 +62,10 @@ type generator struct {
 	// snapshotID -> snapshot iters: used to keep track of the open iterators on
 	// a snapshot. The iter set value will also be indexed by the readers map.
 	snapshots map[objID]objIDSet
+	// iterBounds keeps track of the lower and upper bounds of an iterator.
+	// These bounds are used to make sure that SeekPrefixGE operations are
+	// likely to be within the iterator bounds.
+	iterBounds map[objID][][]byte
 }
 
 func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
@@ -77,6 +81,7 @@ func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
 		readers:         make(map[objID]objIDSet),
 		snapshots:       make(map[objID]objIDSet),
 		itersLastBounds: make(map[objID]iterBounds),
+		iterBounds:      make(map[objID][][]byte),
 	}
 	// Note that the initOp fields are populated during generation.
 	g.ops = append(g.ops, g.init)
@@ -386,6 +391,7 @@ func (g *generator) batchClose(batchID objID) {
 	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
 		delete(g.iters, id)
+		delete(g.iterBounds, id)
 		g.add(&closeOp{objID: id})
 	}
 }
@@ -513,6 +519,10 @@ func (g *generator) newIter() {
 		}
 	}
 
+	g.iterBounds[iterID] = make([][]byte, 2)
+	g.iterBounds[iterID][0] = lower
+	g.iterBounds[iterID][1] = upper
+
 	g.add(&newIterOp{
 		readerID:           readerID,
 		iterID:             iterID,
@@ -562,6 +572,10 @@ func (g *generator) newIterUsingClone() {
 
 	// TODO(jackson): Exercise changing iterator options as a part of Clone.
 
+	g.iterBounds[iterID] = make([][]byte, 2)
+	g.iterBounds[iterID][0] = g.iterBounds[existingIterID][0]
+	g.iterBounds[iterID][1] = g.iterBounds[existingIterID][1]
+
 	g.add(&newIterUsingCloneOp{
 		existingIterID: existingIterID,
 		iterID:         iterID,
@@ -578,6 +592,7 @@ func (g *generator) iterClose() {
 	g.liveIters.remove(iterID)
 	if readerIters, ok := g.iters[iterID]; ok {
 		delete(g.iters, iterID)
+		delete(g.iterBounds, iterID)
 		delete(readerIters, iterID)
 		//lint:ignore SA9003 - readability
 	} else {
@@ -647,6 +662,10 @@ func (g *generator) iterSetBounds() {
 		lower: lower,
 		upper: upper,
 	}
+
+	g.iterBounds[iterID][0] = lower
+	g.iterBounds[iterID][1] = upper
+
 	g.add(&iterSetBoundsOp{
 		iterID: iterID,
 		lower:  lower,
@@ -787,9 +806,38 @@ func (g *generator) iterSeekPrefixGE() {
 		return
 	}
 
+	// Pick a random key with some probability, otherwise, pick a key
+	// within the iter bounds which might have been written to.
+	var key []byte
+	iterID := g.liveIters.rand(g.rng)
+
+	if g.rng.Float32() <= 0.8 {
+		lowerBound := g.iterBounds[iterID][0]
+		upperBound := g.iterBounds[iterID][1]
+
+		possibleKeys := make([]string, 0, 100)
+		// Pull all keys in range.
+		for posKey, keyMeta := range g.keyManager.globalKeysMap {
+			posKeyByte := []byte(posKey)
+			if posKeyByte != nil && keyMeta.merges >= 1 || keyMeta.sets >= 1 {
+				if g.cmp(posKeyByte, lowerBound) >= 0 && g.cmp(posKeyByte, upperBound) <= 0 {
+					possibleKeys = append(possibleKeys, posKey)
+				}
+			}
+		}
+
+		if len(possibleKeys) > 0 {
+			key = []byte(possibleKeys[g.rng.Int31n(int32(len(possibleKeys)))])
+		}
+	}
+
+	if key == nil {
+		key = g.randKeyToRead(0) // 0% new keys
+	}
+
 	g.add(&iterSeekPrefixGEOp{
-		iterID: g.liveIters.rand(g.rng),
-		key:    g.randKeyToRead(0), // 0% new keys
+		iterID: iterID,
+		key:    key,
 	})
 }
 
@@ -923,6 +971,7 @@ func (g *generator) snapshotClose() {
 	for _, id := range iters.sorted() {
 		g.liveIters.remove(id)
 		delete(g.iters, id)
+		delete(g.iterBounds, id)
 		g.add(&closeOp{objID: id})
 	}
 
