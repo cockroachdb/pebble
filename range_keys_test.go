@@ -68,6 +68,14 @@ func TestRangeKeys(t *testing.T) {
 					for i := range opts.Levels {
 						opts.Levels[i].BlockSize = v
 					}
+				case "target-file-size":
+					v, err := strconv.Atoi(cmdArg.Vals[0])
+					if err != nil {
+						return err.Error()
+					}
+					for i := range opts.Levels {
+						opts.Levels[i].TargetFileSize = int64(v)
+					}
 				default:
 					return fmt.Sprintf("unknown command %s\n", cmdArg.Key)
 				}
@@ -112,6 +120,14 @@ func TestRangeKeys(t *testing.T) {
 			require.NoError(t, runBatchDefineCmd(td, b))
 			count := b.Count()
 			return fmt.Sprintf("created indexed batch with %d keys\n", count)
+		case "ingest":
+			if err := runBuildCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			if err := runIngestCmd(td, d, d.opts.FS); err != nil {
+				return err.Error()
+			}
+			return ""
 		case "lsm":
 			return runLSMCmd(td, d)
 		case "metrics":

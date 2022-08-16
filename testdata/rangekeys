@@ -1234,3 +1234,122 @@ c@5: (., [c-"c\x00") @5=foo UPDATED)
 d@5: (., [d-"d\x00") @5=foo UPDATED)
 d@7: (., [a-m) @5=foo UPDATED)
 d@7: (., [d-"d\x00") @5=foo UPDATED)
+
+# Test a LSM with range keys fragmented within a prefix.
+# This is a regression test for cockroachdb/cockroach#86102.
+
+reset target-file-size=1
+----
+
+batch
+range-key-set a c @1 bar
+range-key-set c e @1 foo
+set c@9 c@9
+set c@8 c@8
+set c@7 c@7
+set c@6 c@6
+set c@5 c@5
+set c@4 c@4
+set c@3 c@3
+set c@2 c@2
+set d@0 d@0
+range-key-set y z @1 foo
+set z z
+----
+wrote 13 keys
+
+flush
+----
+
+lsm
+----
+0.0:
+  000005:[a#1,RANGEKEYSET-c@8#72057594037927935,RANGEKEYSET]
+  000006:[c@8#4,SET-c@7#72057594037927935,RANGEKEYSET]
+  000007:[c@7#5,SET-c@6#72057594037927935,RANGEKEYSET]
+  000008:[c@6#6,SET-c@5#72057594037927935,RANGEKEYSET]
+  000009:[c@5#7,SET-c@4#72057594037927935,RANGEKEYSET]
+  000010:[c@4#8,SET-c@3#72057594037927935,RANGEKEYSET]
+  000011:[c@3#9,SET-c@2#72057594037927935,RANGEKEYSET]
+  000012:[c@2#10,SET-d@0#72057594037927935,RANGEKEYSET]
+  000013:[d@0#11,SET-e#72057594037927935,RANGEKEYSET]
+  000014:[y#12,RANGEKEYSET-z#13,SET]
+
+# The first seek-prefix-ge y@1 converts the iterator from lazy combined iterator
+# to combined iteration.
+#
+# The second seek-prefix-ge d@1 does not fully defragment the range key. The
+# underlying range key is defragmented to [c@2,e). This incomplete
+# defragmentation is still hidden from the user at this point, since the range
+# key is truncated to [d,d\x00).
+#
+# The third seek-prefix-ge c@0 seeks to a key that falls within the
+# range key currently defragmented on interleaving iterator. A previous bug
+# would use this span without defragmenting the span to include the full
+# span of the prefix [c,c\x00).
+
+combined-iter
+seek-prefix-ge y@1
+seek-prefix-ge d@1
+seek-prefix-ge c@0
+----
+y@1: (., [y-"y\x00") @1=foo UPDATED)
+d@1: (., [d-"d\x00") @1=foo UPDATED)
+c@0: (., [c-"c\x00") @1=foo UPDATED)
+
+# Test a LSM with range keys fragmented within a prefix.
+# This is a regression test for cockroachdb/cockroach#86102.
+
+reset
+----
+
+ingest ext1
+range-key-set a c@8 @1 bar
+set c@9 c@9
+----
+
+ingest ext2
+range-key-set c@8 e @1 bar
+set c@8 c@8
+set c@7 c@7
+set c@6 c@6
+set c@5 c@5
+set c@4 c@4
+set c@3 c@3
+set c@2 c@2
+----
+
+ingest ext2
+range-key-set y z @1 foo
+set z z
+----
+
+lsm
+----
+6:
+  000004:[a#1,RANGEKEYSET-c@8#72057594037927935,RANGEKEYSET]
+  000005:[c@8#2,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+  000006:[y#3,RANGEKEYSET-z#3,SET]
+
+
+# The first seek-prefix-ge y@1 converts the iterator from lazy combined iterator
+# to combined iteration.
+#
+# The second seek-prefix-ge d@1 does not fully defragment the range key. The
+# underlying range key is defragmented to [a,c@8). This incomplete
+# defragmentation is still hidden from the user at this point, since the range
+# key is truncated to [a,a\x00).
+#
+# The third seek-prefix-ge c@10 seeks to a key that falls within the
+# range key currently defragmented on interleaving iterator. A previous bug
+# would use this span without defragmenting the span to include the full
+# span of the prefix [c,c\x00).
+
+combined-iter
+seek-prefix-ge y@1
+seek-prefix-ge a@1
+seek-prefix-ge c@10
+----
+y@1: (., [y-"y\x00") @1=foo UPDATED)
+a@1: (., [a-"a\x00") @1=bar UPDATED)
+c@10: (., [c-"c\x00") @1=bar UPDATED)
