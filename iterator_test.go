@@ -1552,9 +1552,9 @@ func TestIteratorGuaranteedDurable(t *testing.T) {
 }
 
 func TestIteratorBoundsLifetimes(t *testing.T) {
-	d := newTestkeysDatabase(t, testkeys.Alpha(2))
-	defer func() { require.NoError(t, d.Close()) }()
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	d := newPointTestkeysDatabase(t, testkeys.Alpha(2))
+	defer func() { require.NoError(t, d.Close()) }()
 
 	var buf bytes.Buffer
 	iterators := map[string]*Iterator{}
@@ -1701,11 +1701,11 @@ func TestSetOptionsEquivalence(t *testing.T) {
 }
 
 func testSetOptionsEquivalence(t *testing.T, seed uint64) {
+	rng := rand.New(rand.NewSource(seed))
 	ks := testkeys.Alpha(2)
-	d := newTestkeysDatabase(t, ks)
+	d := newTestkeysDatabase(t, ks, rng)
 	d.opts.Logger = panicLogger{}
 	defer func() { require.NoError(t, d.Close()) }()
-	rng := rand.New(rand.NewSource(seed))
 
 	var o IterOptions
 	generateNewOptions := func() {
@@ -1715,10 +1715,16 @@ func testSetOptionsEquivalence(t *testing.T, seed uint64) {
 		}
 		if rng.Intn(2) == 1 {
 			if rng.Intn(2) == 1 {
-				o.LowerBound = testkeys.KeyAt(ks, rng.Intn(ks.Count()), rng.Intn(ks.Count()))
+				o.LowerBound = nil
+				if rng.Intn(2) == 1 {
+					o.LowerBound = testkeys.KeyAt(ks, rng.Intn(ks.Count()), rng.Intn(ks.Count()))
+				}
 			}
 			if rng.Intn(2) == 1 {
-				o.UpperBound = testkeys.KeyAt(ks, rng.Intn(ks.Count()), rng.Intn(ks.Count()))
+				o.UpperBound = nil
+				if rng.Intn(2) == 1 {
+					o.UpperBound = testkeys.KeyAt(ks, rng.Intn(ks.Count()), rng.Intn(ks.Count()))
+				}
 			}
 			if testkeys.Comparer.Compare(o.LowerBound, o.UpperBound) > 0 {
 				o.LowerBound, o.UpperBound = o.UpperBound, o.LowerBound
@@ -1728,7 +1734,6 @@ func testSetOptionsEquivalence(t *testing.T, seed uint64) {
 		if o.KeyTypes == IterKeyTypePointsAndRanges && rng.Intn(2) == 1 {
 			o.RangeKeyMasking.Suffix = testkeys.Suffix(rng.Intn(ks.Count()))
 		}
-		o.OnlyReadGuaranteedDurable = rng.Intn(10) == 0 // 10% probability
 	}
 
 	var longLivedIter, newIter *Iterator
@@ -1747,41 +1752,76 @@ func testSetOptionsEquivalence(t *testing.T, seed uint64) {
 			newIter.Close()
 		}
 	}()
-	for i := 0; i < 1000; i++ {
+
+	type positioningOp struct {
+		desc string
+		run  func(*Iterator) IterValidityState
+	}
+	positioningOps := []func() positioningOp{
+		// SeekGE
+		func() positioningOp {
+			k := testkeys.Key(ks, rng.Intn(ks.Count()))
+			return positioningOp{
+				desc: fmt.Sprintf("SeekGE(%q)", k),
+				run: func(it *Iterator) IterValidityState {
+					return it.SeekGEWithLimit(k, nil)
+				},
+			}
+		},
+		// SeekLT
+		func() positioningOp {
+			k := testkeys.Key(ks, rng.Intn(ks.Count()))
+			return positioningOp{
+				desc: fmt.Sprintf("SeekLT(%q)", k),
+				run: func(it *Iterator) IterValidityState {
+					return it.SeekLTWithLimit(k, nil)
+				},
+			}
+		},
+		// SeekPrefixGE
+		func() positioningOp {
+			k := testkeys.Key(ks, rng.Intn(ks.Count()))
+			return positioningOp{
+				desc: fmt.Sprintf("SeekPrefixGE(%q)", k),
+				run: func(it *Iterator) IterValidityState {
+					if it.SeekPrefixGE(k) {
+						return IterValid
+					}
+					return IterExhausted
+				},
+			}
+		},
+	}
+
+	for i := 0; i < 10_000; i++ {
 		// Generate new random options. The options in o will be mutated.
 		generateNewOptions()
 		fmt.Fprintf(&history, "new options: %s\n", iterOptionsString(&o))
 
+		newIter = d.NewIter(&o)
 		if longLivedIter == nil {
 			longLivedIter = d.NewIter(&o)
 		} else {
 			longLivedIter.SetOptions(&o)
 		}
 
-		newIter = d.NewIter(&o)
+		// Apply the same operation to both keys.
+		iterOp := positioningOps[rng.Intn(len(positioningOps))]()
+		newIterValidity := iterOp.run(newIter)
+		longLivedValidity := iterOp.run(longLivedIter)
 
-		// Seek both iterators to the same key. They should have identical
-		// state.
-		k := testkeys.Key(ks, rng.Intn(ks.Count()))
-
-		var newIterValidity, longLivedValidity IterValidityState
-		if newIter.SeekGE(k) {
-			newIterValidity = IterValid
-		}
-		if longLivedIter.SeekGE(k) {
-			longLivedValidity = IterValid
-		}
 		newIterBuf.Reset()
 		longLivedBuf.Reset()
 		printIterState(&newIterBuf, newIter, newIterValidity, true /* printValidityState */)
 		printIterState(&longLivedBuf, longLivedIter, longLivedValidity, true /* printValidityState */)
-		fmt.Fprintf(&history, "seek-ge(%q) = %s\n", k, newIterBuf.String())
+		fmt.Fprintf(&history, "%s = %s\n", iterOp.desc, newIterBuf.String())
 
 		if newIterBuf.String() != longLivedBuf.String() {
 			t.Logf("history:\n%s\n", history.String())
+			t.Logf("seed: %d\n", seed)
 			t.Fatalf("expected %q, got %q", newIterBuf.String(), longLivedBuf.String())
 		}
-		require.NoError(t, newIter.Close())
+		_ = newIter.Close()
 
 		newIter = nil
 	}
@@ -1810,7 +1850,57 @@ func iterOptionsString(o *IterOptions) string {
 	return buf.String()
 }
 
-func newTestkeysDatabase(t *testing.T, ks testkeys.Keyspace) *DB {
+func newTestkeysDatabase(t *testing.T, ks testkeys.Keyspace, rng *rand.Rand) *DB {
+	dbOpts := &Options{
+		Comparer:           testkeys.Comparer,
+		FS:                 vfs.NewMem(),
+		FormatMajorVersion: FormatRangeKeys,
+	}
+	d, err := Open("", dbOpts)
+	require.NoError(t, err)
+
+	// Randomize the order in which we write keys.
+	order := rng.Perm(ks.Count())
+	b := d.NewBatch()
+	keyBuf := make([]byte, ks.MaxLen()+testkeys.MaxSuffixLen)
+	keyBuf2 := make([]byte, ks.MaxLen()+testkeys.MaxSuffixLen)
+	for i := 0; i < len(order); i++ {
+		const maxVersionsPerKey = 10
+		keyIndex := order[i]
+		for versions := rng.Intn(maxVersionsPerKey); versions > 0; versions-- {
+			n := testkeys.WriteKeyAt(keyBuf, ks, keyIndex, rng.Intn(maxVersionsPerKey))
+			b.Set(keyBuf[:n], keyBuf[:n], nil)
+		}
+
+		// Sometimes add a range key too.
+		if rng.Intn(100) == 1 {
+			startIdx := rng.Intn(ks.Count())
+			endIdx := rng.Intn(ks.Count())
+			startLen := testkeys.WriteKey(keyBuf, ks, startIdx)
+			endLen := testkeys.WriteKey(keyBuf2, ks, endIdx)
+			suffixInt := rng.Intn(maxVersionsPerKey)
+			require.NoError(t, b.RangeKeySet(
+				keyBuf[:startLen],
+				keyBuf2[:endLen],
+				testkeys.Suffix(suffixInt),
+				nil,
+				nil))
+		}
+
+		// Randomize the flush points.
+		if !b.Empty() && rng.Intn(10) == 1 {
+			require.NoError(t, b.Commit(nil))
+			require.NoError(t, d.Flush())
+			b = d.NewBatch()
+		}
+	}
+	if !b.Empty() {
+		require.NoError(t, b.Commit(nil))
+	}
+	return d
+}
+
+func newPointTestkeysDatabase(t *testing.T, ks testkeys.Keyspace) *DB {
 	dbOpts := &Options{
 		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
