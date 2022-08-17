@@ -7,8 +7,10 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/rand"
 )
 
 func TestRangeDel(t *testing.T) {
@@ -195,6 +198,59 @@ func TestFlushDelay(t *testing.T) {
 		<-flushed
 	}
 	require.NoError(t, d.Close())
+}
+
+func TestFlushDelayStress(t *testing.T) {
+	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+	opts := &Options{
+		FS:                    vfs.NewMem(),
+		Comparer:              testkeys.Comparer,
+		FlushDelayDeleteRange: time.Duration(rng.Intn(10)+1) * time.Millisecond,
+		FlushDelayRangeKey:    time.Duration(rng.Intn(10)+1) * time.Millisecond,
+		FormatMajorVersion:    FormatNewest,
+		MemTableSize:          8192,
+	}
+
+	const runs = 100
+	for run := 0; run < runs; run++ {
+		d, err := Open("", opts)
+		require.NoError(t, err)
+
+		now := time.Now().UnixNano()
+		writers := runtime.GOMAXPROCS(0)
+		var wg sync.WaitGroup
+		wg.Add(writers)
+		for i := 0; i < writers; i++ {
+			rng := rand.New(rand.NewSource(uint64(now) + uint64(i)))
+			go func() {
+				const ops = 100
+				defer wg.Done()
+
+				var k1, k2 [32]byte
+				for j := 0; j < ops; j++ {
+					switch rng.Intn(3) {
+					case 0:
+						randStr(k1[:], rng)
+						randStr(k2[:], rng)
+						require.NoError(t, d.DeleteRange(k1[:], k2[:], nil))
+					case 1:
+						randStr(k1[:], rng)
+						randStr(k2[:], rng)
+						require.NoError(t, d.RangeKeySet(k1[:], k2[:], []byte("@2"), nil, nil))
+					case 2:
+						randStr(k1[:], rng)
+						randStr(k2[:], rng)
+						require.NoError(t, d.Set(k1[:], k2[:], nil))
+					default:
+						panic("unreachable")
+					}
+				}
+			}()
+		}
+		wg.Wait()
+		time.Sleep(time.Duration(rng.Intn(10)+1) * time.Millisecond)
+		require.NoError(t, d.Close())
+	}
 }
 
 // Verify that range tombstones at higher levels do not unintentionally delete
