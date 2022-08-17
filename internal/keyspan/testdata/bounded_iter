@@ -232,3 +232,20 @@ next
 c@7-c@6:{(#1,RANGEKEYSET,@1)}
 c@6-c@5:{(#1,RANGEKEYSET,@1)}
 <nil>
+
+define
+a@7-a@5:{(#1,RANGEKEYSET,@1)}
+b-boo:{(#1,RANGEKEYSET,@1)}
+c@9-c@8:{(#1,RANGEKEYSET,@1)}
+----
+
+set-prefix b
+----
+set prefix to "b"
+
+iter
+seek-lt c@8
+seek-ge a@9
+----
+<nil>
+<nil>
