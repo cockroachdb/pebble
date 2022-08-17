@@ -1520,11 +1520,11 @@ func (d *DB) maybeScheduleDelayedFlush(tbl *memTable, dur time.Duration) {
 			defer d.mu.Unlock()
 
 			// NB: The timer may fire concurrently with a call to Close.  If a
-			// Close call beat us to acquiring d.mu, d.closed is 1, and it's
-			// too late to flush anything. Otherwise, the Close call will
-			// block on locking d.mu until we've finished scheduling the flush
-			// and set `d.mu.compact.flushing` to true. Close will wait for
-			// the current flush to complete.
+			// Close call beat us to acquiring d.mu, d.closed holds ErrClosed,
+			// and it's too late to flush anything. Otherwise, the Close call
+			// will block on locking d.mu until we've finished scheduling the
+			// flush and set `d.mu.compact.flushing` to true. Close will wait
+			// for the current flush to complete.
 			if d.closed.Load() != nil {
 				return
 			}
