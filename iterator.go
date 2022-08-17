@@ -186,7 +186,7 @@ type Iterator struct {
 	prefixOrFullSeekKey []byte
 	readSampling        readSampling
 	stats               IteratorStats
-	externalReaders     []*sstable.Reader
+	externalReaders     [][]*sstable.Reader
 
 	// Following fields used when constructing an iterator stack, eg, in Clone
 	// and SetOptions or when re-fragmenting a batch's range keys/range dels.
@@ -1735,8 +1735,10 @@ func (i *Iterator) Close() error {
 		i.readState = nil
 	}
 
-	for _, r := range i.externalReaders {
-		err = firstError(err, r.Close())
+	for _, readers := range i.externalReaders {
+		for _, r := range readers {
+			err = firstError(err, r.Close())
+		}
 	}
 
 	// Close the closer for the current value if one was open.

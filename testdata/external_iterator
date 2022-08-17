@@ -70,30 +70,11 @@ merge bb ac
 ----
 
 iter files=(6, 5, 4, 3, 2, 1)
-seek-lt c
-prev
-next
-next
-----
-bb: (ac, .)
-b: (b, .)
-bb: (ac, .)
-d: (., [d-e) @3=bar UPDATED)
-
-iter files=(6, 5, 4, 3, 2, 1)
 seek-ge b
 next
-prev
-prev
-next
-next
 next
 ----
 b: (b, .)
-bb: (ac, .)
-b: (b, .)
-a: (a, [a-b) @2=foo UPDATED)
-b: (b, . UPDATED)
 bb: (ac, .)
 d: (., [d-e) @3=bar UPDATED)
 
