@@ -39,7 +39,7 @@ func TestExternalIterator(t *testing.T) {
 			return ""
 		case "iter":
 			opts := IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
-			var files []sstable.ReadableFile
+			var files [][]sstable.ReadableFile
 			for _, arg := range td.CmdArgs {
 				switch arg.Key {
 				case "mask-suffix":
@@ -52,13 +52,72 @@ func TestExternalIterator(t *testing.T) {
 					for _, v := range arg.Vals {
 						f, err := mem.Open(v)
 						require.NoError(t, err)
-						files = append(files, f)
+						files = append(files, []sstable.ReadableFile{f})
 					}
 				}
 			}
 			it, err := NewExternalIter(o, &opts, files)
 			require.NoError(t, err)
 			return runIterCmd(td, it, true /* close iter */)
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
+func TestSimpleLevelIter(t *testing.T) {
+	mem := vfs.NewMem()
+	o := &Options{
+		FS:                 mem,
+		Comparer:           testkeys.Comparer,
+		FormatMajorVersion: FormatRangeKeys,
+	}
+	o.EnsureDefaults()
+	d, err := Open("", o)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	datadriven.RunTest(t, "testdata/simple_level_iter", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "reset":
+			mem = vfs.NewMem()
+			return ""
+		case "build":
+			if err := runBuildCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
+		case "iter":
+			var files []sstable.ReadableFile
+			for _, arg := range td.CmdArgs {
+				switch arg.Key {
+				case "files":
+					for _, v := range arg.Vals {
+						f, err := mem.Open(v)
+						require.NoError(t, err)
+						files = append(files, f)
+					}
+				}
+			}
+			readers, err := openExternalTables(o, files, 0, o.MakeReaderOptions())
+			require.NoError(t, err)
+			defer func() {
+				for i := range readers {
+					_ = readers[i].Close()
+				}
+			}()
+			var internalIters []internalIterator
+			for i := range readers {
+				iter, err := readers[i].NewIter(nil, nil)
+				require.NoError(t, err)
+				internalIters = append(internalIters, iter)
+			}
+			it := &simpleLevelIter{cmp: o.Comparer.Compare, iters: internalIters}
+			it.init(IterOptions{})
+
+			response := runInternalIterCmd(td, it)
+			require.NoError(t, it.Close())
+			return response
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
