@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
@@ -39,6 +40,7 @@ func TestRangeKeys(t *testing.T) {
 			}
 			if d != nil {
 				require.NoError(t, d.Close())
+				d = nil
 			}
 			opts := &Options{
 				FS:                 vfs.NewMem(),
@@ -75,6 +77,16 @@ func TestRangeKeys(t *testing.T) {
 					}
 					for i := range opts.Levels {
 						opts.Levels[i].TargetFileSize = int64(v)
+					}
+				case "bloom-bits-per-key":
+					v, err := strconv.Atoi(cmdArg.Vals[0])
+					if err != nil {
+						return err.Error()
+					}
+					fp := bloom.FilterPolicy(v)
+					opts.Filters = map[string]FilterPolicy{fp.Name(): fp}
+					for i := range opts.Levels {
+						opts.Levels[i].FilterPolicy = fp
 					}
 				default:
 					return fmt.Sprintf("unknown command %s\n", cmdArg.Key)
