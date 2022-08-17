@@ -10,7 +10,7 @@ del-range c z
 # Test that a delete range in a more recent file shadows keys in an
 # earlier file.
 
-iter files=(2, 1)
+iter files=(2, 1) fwd-only
 first
 next
 ----
@@ -26,7 +26,7 @@ set f f
 # the rangedel. Since the point keys are assigned a higher sequence
 # number, they should NOT be shadowed by the rangedel.
 
-iter files=(3, 2, 1)
+iter files=(3, 2, 1) fwd-only
 first
 next
 next
@@ -49,7 +49,7 @@ build 5
 range-key-del b d
 ----
 
-iter files=(5, 4, 3, 2, 1)
+iter files=(5, 4, 3, 2, 1) fwd-only
 first
 next
 next
@@ -111,7 +111,7 @@ build ek
 range-key-set e k @5 foo
 ----
 
-iter files=(ag, ek)
+iter files=(ag, ek) fwd-only
 first
 next
 ----
@@ -131,7 +131,7 @@ set k@3 v
 set p@4 v
 ----
 
-iter files=(points, ag, ek) mask-suffix=@7
+iter files=(points, ag, ek) mask-suffix=@7 fwd-only
 first
 next
 next
@@ -154,7 +154,7 @@ range-key-set a k @4 bar
 range-key-set a k @1 bax
 ----
 
-iter files=(points, ag, ek, stacked)
+iter files=(points, ag, ek, stacked) fwd-only
 first
 next
 ----
@@ -163,7 +163,7 @@ a@4: (v, [a-k) @5=foo, @4=bar, @1=bax)
 
 # Test mutating the external iterator's options through SetOptions.
 
-iter files=(points, ag, ek)
+iter files=(points, ag, ek) fwd-only
 set-options key-types=point
 first
 next

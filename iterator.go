@@ -187,7 +187,7 @@ type Iterator struct {
 	prefixOrFullSeekKey []byte
 	readSampling        readSampling
 	stats               IteratorStats
-	externalReaders     []*sstable.Reader
+	externalReaders     [][]*sstable.Reader
 
 	// Following fields used when constructing an iterator stack, eg, in Clone
 	// and SetOptions or when re-fragmenting a batch's range keys/range dels.
@@ -235,6 +235,9 @@ type Iterator struct {
 	// Used for deriving the value of SeekPrefixGE(..., trySeekUsingNext),
 	// and SeekGE/SeekLT optimizations
 	lastPositioningOp lastPositioningOpKind
+	// Used for an optimization in external iterators to reduce the number of
+	// merging levels.
+	forwardOnly bool
 	// Used in some tests to disable the random disabling of seek optimizations.
 	forceEnableSeekOpt bool
 }
@@ -1753,8 +1756,10 @@ func (i *Iterator) Close() error {
 		i.readState = nil
 	}
 
-	for _, r := range i.externalReaders {
-		err = firstError(err, r.Close())
+	for _, readers := range i.externalReaders {
+		for _, r := range readers {
+			err = firstError(err, r.Close())
+		}
 	}
 
 	// Close the closer for the current value if one was open.
