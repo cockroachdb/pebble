@@ -577,7 +577,9 @@ func (o *newIterOp) run(t *test, h *history) {
 		},
 	}
 	if opts.RangeKeyMasking.Suffix != nil {
-		opts.RangeKeyMasking.Filter = blockprop.NewMaskingFilter()
+		opts.RangeKeyMasking.Filter = func() pebble.BlockPropertyFilterMask {
+			return blockprop.NewMaskingFilter()
+		}
 	}
 	if o.filterMax > 0 {
 		opts.PointKeyFilters = []pebble.BlockPropertyFilter{
@@ -685,7 +687,9 @@ func (o *iterSetOptionsOp) run(t *test, h *history) {
 		},
 	}
 	if opts.RangeKeyMasking.Suffix != nil {
-		opts.RangeKeyMasking.Filter = blockprop.NewMaskingFilter()
+		opts.RangeKeyMasking.Filter = func() pebble.BlockPropertyFilterMask {
+			return blockprop.NewMaskingFilter()
+		}
 	}
 	if o.filterMax > 0 {
 		opts.PointKeyFilters = []pebble.BlockPropertyFilter{
