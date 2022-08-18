@@ -183,8 +183,9 @@ func (i *Iterator) constructRangeKeyIter() {
 // result is ignored, and the block is read.
 
 type rangeKeyMasking struct {
-	cmp   base.Compare
-	split base.Split
+	cmp    base.Compare
+	split  base.Split
+	filter BlockPropertyFilterMask
 	// maskActiveSuffix holds the suffix of a range key currently acting as a
 	// mask, hiding point keys with suffixes greater than it. maskActiveSuffix
 	// is only ever non-nil if IterOptions.RangeKeyMasking.Suffix is non-nil.
@@ -203,6 +204,9 @@ type rangeKeyMasking struct {
 func (m *rangeKeyMasking) init(parent *Iterator, cmp base.Compare, split base.Split) {
 	m.cmp = cmp
 	m.split = split
+	if parent.opts.RangeKeyMasking.Filter != nil {
+		m.filter = parent.opts.RangeKeyMasking.Filter()
+	}
 	m.parent = parent
 }
 
@@ -238,7 +242,7 @@ func (m *rangeKeyMasking) SpanChanged(s *keyspan.Span) {
 	if m.maskSpan != nil && m.parent.opts.RangeKeyMasking.Filter != nil {
 		// Update the  block-property filter to filter point keys with suffixes
 		// greater than m.maskActiveSuffix.
-		err := m.parent.opts.RangeKeyMasking.Filter.SetSuffix(m.maskActiveSuffix)
+		err := m.filter.SetSuffix(m.maskActiveSuffix)
 		if err != nil {
 			m.parent.err = err
 		}
@@ -339,7 +343,7 @@ var _ sstable.BoundLimitedBlockPropertyFilter = (*rangeKeyMasking)(nil)
 // Name implements the limitedBlockPropertyFilter interface defined in the
 // sstable package by passing through to the user-defined block property filter.
 func (m *rangeKeyMasking) Name() string {
-	return m.parent.opts.RangeKeyMasking.Filter.Name()
+	return m.filter.Name()
 }
 
 // Intersects implements the limitedBlockPropertyFilter interface defined in the
@@ -351,7 +355,7 @@ func (m *rangeKeyMasking) Intersects(prop []byte) (bool, error) {
 		// No span is actively masking.
 		return true, nil
 	}
-	return m.parent.opts.RangeKeyMasking.Filter.Intersects(prop)
+	return m.filter.Intersects(prop)
 }
 
 // KeyIsWithinLowerBound implements the limitedBlockPropertyFilter interface

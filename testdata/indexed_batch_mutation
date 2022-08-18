@@ -576,3 +576,53 @@ seek-prefix-ge d@2
 d@2: (., [d-"d\x00") @1=foo)
 .
 d@2: (., [d-"d\x00") @2=foo, @1=foo UPDATED)
+
+# Test cloning an iterator with a range-key mask block property filter
+# configured. If the cloned and the clonee iterators have different suffixes
+# configured, their suffixes should be respected. Previously, the
+# RangeKeyMasking.Filter option was a footgun, because it was a single mutable
+# instance. Cloning the iterator without supplying new iterator options would
+# result in two iterators using the same filter.
+
+reset
+----
+
+batch
+range-key-set a e @5 foo
+set b@4 b@4
+----
+
+new-db-iter iter-a
+----
+
+iter iter=iter-a
+set-options mask-suffix=@3 mask-filter=true
+seek-ge a
+next
+next
+----
+.
+a: (., [a-e) @5=foo UPDATED)
+b@4: (b@4, [a-e) @5=foo)
+.
+
+clone from=iter-a to=iter-b refresh-batch=false
+----
+
+iter iter=iter-b
+set-options mask-suffix=@6
+seek-ge a
+next
+----
+.
+a: (., [a-e) @5=foo UPDATED)
+.
+
+iter iter=iter-a
+seek-ge a
+next
+next
+----
+a: (., [a-e) @5=foo UPDATED)
+b@4: (b@4, [a-e) @5=foo)
+.

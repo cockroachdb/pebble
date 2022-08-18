@@ -163,7 +163,9 @@ func TestRangeKeys(t *testing.T) {
 				case "mask-suffix":
 					o.RangeKeyMasking.Suffix = []byte(arg.Vals[0])
 				case "mask-filter":
-					o.RangeKeyMasking.Filter = blockprop.NewMaskingFilter()
+					o.RangeKeyMasking.Filter = func() BlockPropertyFilterMask {
+						return blockprop.NewMaskingFilter()
+					}
 				case "lower":
 					o.LowerBound = []byte(arg.Vals[0])
 				case "upper":

@@ -2269,7 +2269,6 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 	// Set ignore syncs to true so that each subbenchmark may mutate state and
 	// then revert back to the original state.
 	mem.SetIgnoreSyncs(true)
-	maskingFilter := blockprop.NewMaskingFilter()
 
 	// TODO(jackson): Benchmark lazy-combined iteration versus not.
 	// TODO(jackson): Benchmark seeks.
@@ -2289,7 +2288,9 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 				KeyTypes: IterKeyTypePointsAndRanges,
 				RangeKeyMasking: RangeKeyMasking{
 					Suffix: []byte("@100"),
-					Filter: maskingFilter,
+					Filter: func() BlockPropertyFilterMask {
+						return blockprop.NewMaskingFilter()
+					},
 				},
 			}
 			b.Run("forward", func(b *testing.B) {
