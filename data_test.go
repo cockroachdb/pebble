@@ -227,7 +227,7 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 func parseIterOptions(
 	opts *IterOptions, ref *IterOptions, parts []string,
 ) (foundAny bool, err error) {
-	const usageString = "[lower=<lower>] [upper=<upper>] [key-types=point|range|both] [mask-suffix=<suffix>] [only-durable=<bool>] [table-filter=reuse|none] [point-filters=reuse|none]\n"
+	const usageString = "[lower=<lower>] [upper=<upper>] [key-types=point|range|both] [mask-suffix=<suffix>] [mask-filter=<bool>] [only-durable=<bool>] [table-filter=reuse|none] [point-filters=reuse|none]\n"
 	for _, part := range parts {
 		arg := strings.SplitN(part, "=", 2)
 		if len(arg) != 2 {
@@ -261,7 +261,9 @@ func parseIterOptions(
 		case "mask-suffix":
 			opts.RangeKeyMasking.Suffix = []byte(arg[1])
 		case "mask-filter":
-			opts.RangeKeyMasking.Filter = blockprop.NewMaskingFilter()
+			opts.RangeKeyMasking.Filter = func() BlockPropertyFilterMask {
+				return blockprop.NewMaskingFilter()
+			}
 		case "table-filter":
 			switch arg[1] {
 			case "reuse":

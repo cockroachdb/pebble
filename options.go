@@ -232,15 +232,17 @@ type RangeKeyMasking struct {
 	Suffix []byte
 	// Filter is an optional field that may be used to improve performance of
 	// range-key masking through a block-property filter defined over key
-	// suffixes. Filter allows Pebble to skip whole point-key blocks containing
-	// point keys with suffixes greater than a covering range-key's suffix.
+	// suffixes. If non-nil, Filter is called by Pebble to construct a
+	// block-property filter mask at iterator creation. The filter is used to
+	// skip whole point-key blocks containing point keys with suffixes greater
+	// than a covering range-key's suffix.
 	//
 	// To use this functionality, the caller must create and configure (through
 	// Options.BlockPropertyCollectors) a block-property collector that records
 	// the maxmimum suffix contained within a block. The caller then must write
 	// and provide a BlockPropertyFilterMask implementation on that same
 	// property. See the BlockPropertyFilterMask type for more information.
-	Filter BlockPropertyFilterMask
+	Filter func() BlockPropertyFilterMask
 }
 
 // BlockPropertyFilterMask extends the BlockPropertyFilter interface for use
