@@ -1269,7 +1269,7 @@ func (c *compaction) newInputIter(
 		mi := &keyspan.MergingIter{}
 		mi.Init(c.cmp, rangeKeyCompactionTransform(snapshots, c.elideRangeKey), rangeKeyIters...)
 		di := &keyspan.DefragmentingIter{}
-		di.Init(c.cmp, mi, keyspan.DefragmentInternal, keyspan.StaticDefragmentReducer)
+		di.Init(c.comparer, mi, keyspan.DefragmentInternal, keyspan.StaticDefragmentReducer)
 		c.rangeKeyInterleaving.Init(c.comparer, pointKeyIter, di, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
 		return &c.rangeKeyInterleaving, nil
 	}

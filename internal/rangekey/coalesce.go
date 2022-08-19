@@ -18,6 +18,7 @@ import (
 // for user iteration.
 type UserIteratorConfig struct {
 	snapshot   uint64
+	comparer   *base.Comparer
 	miter      keyspan.MergingIter
 	biter      keyspan.BoundedIter
 	diter      keyspan.DefragmentingIter
@@ -43,9 +44,10 @@ func (ui *UserIteratorConfig) Init(
 	iters ...keyspan.FragmentIterator,
 ) keyspan.FragmentIterator {
 	ui.snapshot = snapshot
+	ui.comparer = comparer
 	ui.miter.Init(comparer.Compare, ui, iters...)
 	ui.biter.Init(comparer.Compare, comparer.Split, &ui.miter, lower, upper, hasPrefix, prefix)
-	ui.diter.Init(comparer.Compare, &ui.biter, ui, keyspan.StaticDefragmentReducer)
+	ui.diter.Init(comparer, &ui.biter, ui, keyspan.StaticDefragmentReducer)
 	ui.litersUsed = 0
 	return &ui.diter
 }
@@ -130,10 +132,7 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 // defragmenter checks for equality between set suffixes and values (ignoring
 // sequence numbers). It's intended for use during user iteration, when the
 // wrapped keyspan iterator is merging spans across all levels of the LSM.
-//
-// This implementation is stateful, and must not be used on multiple
-// DefragmentingIters concurrently.
-func (ui *UserIteratorConfig) ShouldDefragment(cmp base.Compare, a, b *keyspan.Span) bool {
+func (ui *UserIteratorConfig) ShouldDefragment(equal base.Equal, a, b *keyspan.Span) bool {
 	// This implementation must only be used on spans that have transformed by
 	// ui.Transform. The transform applies shadowing, removes all keys besides
 	// the resulting Sets and sorts the keys by suffix. Since shadowing has been
@@ -153,13 +152,12 @@ func (ui *UserIteratorConfig) ShouldDefragment(cmp base.Compare, a, b *keyspan.S
 				b.Keys[i].Kind() != base.InternalKeyKindRangeKeySet {
 				panic("pebble: unexpected non-RangeKeySet during defragmentation")
 			}
-			if i > 0 && (cmp(a.Keys[i].Suffix, a.Keys[i-1].Suffix) < 0 ||
-				cmp(b.Keys[i].Suffix, b.Keys[i-1].Suffix) < 0) {
+			if i > 0 && (ui.comparer.Compare(a.Keys[i].Suffix, a.Keys[i-1].Suffix) < 0 ||
+				ui.comparer.Compare(b.Keys[i].Suffix, b.Keys[i-1].Suffix) < 0) {
 				panic("pebble: range keys not ordered by suffix during defragmentation")
 			}
 		}
-		// TODO(jackson): Use base.Equal for the below comparison.
-		if cmp(a.Keys[i].Suffix, b.Keys[i].Suffix) != 0 {
+		if !equal(a.Keys[i].Suffix, b.Keys[i].Suffix) {
 			ret = false
 			break
 		}
