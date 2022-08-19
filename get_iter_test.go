@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 )
 
 func TestGetIter(t *testing.T) {
@@ -463,8 +464,8 @@ func TestGetIter(t *testing.T) {
 		},
 	}
 
-	cmp := DefaultComparer.Compare
-	equal := DefaultComparer.Equal
+	cmp := testkeys.Comparer.Compare
+	equal := testkeys.Comparer.Equal
 	for _, tc := range testCases {
 		desc := tc.description[:strings.Index(tc.description, ":")]
 
@@ -538,8 +539,7 @@ func TestGetIter(t *testing.T) {
 			get.snapshot = ikey.SeqNum() + 1
 
 			i := &buf.dbi
-			i.cmp = cmp
-			i.equal = equal
+			i.comparer = *testkeys.Comparer
 			i.merge = DefaultMerger.Merge
 			i.iter = base.WrapIterWithStats(get)
 

@@ -861,7 +861,7 @@ func (i *InterleavingIter) checkForwardBound(prefix []byte) {
 		}
 	}
 
-	if i.truncated && i.cmp(i.truncatedSpan.Start, i.truncatedSpan.End) == 0 {
+	if i.truncated && i.comparer.Equal(i.truncatedSpan.Start, i.truncatedSpan.End) {
 		i.span = nil
 	}
 }
@@ -898,7 +898,7 @@ func (i *InterleavingIter) checkBackwardBound() {
 		}
 		i.truncatedSpan.End = i.upper
 	}
-	if i.truncated && i.cmp(i.truncatedSpan.Start, i.truncatedSpan.End) == 0 {
+	if i.truncated && i.comparer.Equal(i.truncatedSpan.Start, i.truncatedSpan.End) {
 		i.span = nil
 	}
 }
@@ -932,7 +932,7 @@ func (i *InterleavingIter) yieldSyntheticSpanMarker(lowerBound []byte) (*base.In
 		// bound for truncating a span. The span a-z will be truncated to [k,
 		// z). If i.upper == k, we'd mistakenly try to return a span [k, k), an
 		// invariant violation.
-		if i.cmp(lowerBound, i.upper) == 0 {
+		if i.comparer.Equal(lowerBound, i.upper) {
 			return i.yieldNil()
 		}
 

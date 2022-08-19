@@ -120,11 +120,8 @@ func NewExternalIter(
 	dbi := &buf.dbi
 	*dbi = Iterator{
 		alloc:               buf,
-		cmp:                 o.Comparer.Compare,
-		equal:               o.equal(),
 		merge:               o.Merger.Merge,
-		split:               o.Comparer.Split,
-		comparer:            o.Comparer,
+		comparer:            *o.Comparer,
 		readState:           nil,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
@@ -226,7 +223,7 @@ func finishInitializingExternal(it *Iterator) {
 				})
 			}
 		}
-		it.alloc.merging.init(&it.opts, it.cmp, it.split, mlevels...)
+		it.alloc.merging.init(&it.opts, it.comparer.Compare, it.comparer.Split, mlevels...)
 		it.alloc.merging.snapshot = base.InternalKeySeqNumMax
 		it.alloc.merging.elideRangeTombstones = true
 		it.pointIter = &it.alloc.merging
@@ -234,12 +231,12 @@ func finishInitializingExternal(it *Iterator) {
 	it.iter = it.pointIter
 
 	if it.opts.rangeKeys() {
-		it.rangeKeyMasking.init(it, it.cmp, it.split)
+		it.rangeKeyMasking.init(it, it.comparer.Compare, it.comparer.Split)
 		if it.rangeKey == nil {
 			it.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
-			it.rangeKey.init(it.cmp, it.split, &it.opts)
+			it.rangeKey.init(it.comparer.Compare, it.comparer.Split, &it.opts)
 			it.rangeKey.rangeKeyIter = it.rangeKey.iterConfig.Init(
-				it.comparer,
+				&it.comparer,
 				base.InternalKeySeqNumMax,
 				it.opts.LowerBound, it.opts.UpperBound,
 				&it.hasPrefix, &it.prefixOrFullSeekKey,
@@ -263,7 +260,7 @@ func finishInitializingExternal(it *Iterator) {
 				}
 			}
 		}
-		it.rangeKey.iiter.Init(it.comparer, it.iter, it.rangeKey.rangeKeyIter, &it.rangeKeyMasking,
+		it.rangeKey.iiter.Init(&it.comparer, it.iter, it.rangeKey.rangeKeyIter, &it.rangeKeyMasking,
 			it.opts.LowerBound, it.opts.UpperBound)
 		it.iter = &it.rangeKey.iiter
 	}
