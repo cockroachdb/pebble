@@ -52,9 +52,9 @@ func TestGenerator(t *testing.T) {
 	require.EqualValues(t, 0, len(g.snapshots))
 	require.EqualValues(t, 1, len(g.liveWriters))
 
-	g.iterClose()
-	g.iterClose()
-	g.iterClose()
+	g.randIter(g.iterClose)()
+	g.randIter(g.iterClose)()
+	g.randIter(g.iterClose)()
 	require.EqualValues(t, 0, len(g.liveIters))
 
 	if testing.Verbose() {
@@ -85,9 +85,9 @@ func TestGenerator(t *testing.T) {
 	require.EqualValues(t, 0, len(g.snapshots))
 	require.EqualValues(t, 1, len(g.liveWriters))
 
-	g.iterClose()
-	g.iterClose()
-	g.iterClose()
+	g.randIter(g.iterClose)()
+	g.randIter(g.iterClose)()
+	g.randIter(g.iterClose)()
 	require.EqualValues(t, 0, len(g.liveIters))
 
 	if testing.Verbose() {
@@ -105,9 +105,9 @@ func TestGenerator(t *testing.T) {
 	g.writerApply()
 	g.writerApply()
 	g.writerApply()
-	g.iterClose()
-	g.iterClose()
-	g.iterClose()
+	g.randIter(g.iterClose)()
+	g.randIter(g.iterClose)()
+	g.randIter(g.iterClose)()
 
 	require.EqualValues(t, 0, len(g.liveBatches))
 	require.EqualValues(t, 0, len(g.batches))
