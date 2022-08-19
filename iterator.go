@@ -147,11 +147,8 @@ type InternalIteratorStats = base.InternalIteratorStats
 // error.
 type Iterator struct {
 	opts      IterOptions
-	cmp       Compare
-	equal     Equal
 	merge     Merge
-	split     Split
-	comparer  *base.Comparer
+	comparer  base.Comparer
 	iter      internalIteratorWithStats
 	pointIter internalIteratorWithStats
 	readState *readState
@@ -242,6 +239,21 @@ type Iterator struct {
 	forceEnableSeekOpt bool
 }
 
+// cmp is a convenience shorthand for the i.comparer.Compare function.
+func (i *Iterator) cmp(a, b []byte) int {
+	return i.comparer.Compare(a, b)
+}
+
+// split is a convenience shorthand for the i.comparer.Split function.
+func (i *Iterator) split(a []byte) int {
+	return i.comparer.Split(a)
+}
+
+// equal is a convenience shorthand for the i.comparer.Equal function.
+func (i *Iterator) equal(a, b []byte) bool {
+	return i.comparer.Equal(a, b)
+}
+
 // iteratorRangeKeyState holds an iterator's range key iteration state.
 type iteratorRangeKeyState struct {
 	opts  *IterOptions
@@ -319,7 +331,8 @@ var iterRangeKeyStateAllocPool = sync.Pool{
 // The iterator position resulting from a SeekGE or SeekPrefixGE that lands on a
 // straddling range key without a coincident point key is such a position.
 func (i *Iterator) isEphemeralPosition() bool {
-	return i.opts.rangeKeys() && i.rangeKey != nil && i.rangeKey.rangeKeyOnly && !i.equal(i.rangeKey.start, i.key)
+	return i.opts.rangeKeys() && i.rangeKey != nil && i.rangeKey.rangeKeyOnly &&
+		!i.equal(i.rangeKey.start, i.key)
 }
 
 type lastPositioningOpKind int8
@@ -407,7 +420,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 		key := *i.iterKey
 
 		if i.hasPrefix {
-			if n := i.split(key.UserKey); !bytes.Equal(i.prefixOrFullSeekKey, key.UserKey[:n]) {
+			if n := i.split(key.UserKey); !i.equal(i.prefixOrFullSeekKey, key.UserKey[:n]) {
 				return
 			}
 		}
@@ -1122,7 +1135,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 		i.rangeKey.updated = false
 		i.rangeKey.prevPosHadRangeKey = i.rangeKey.hasRangeKey && i.Valid()
 	}
-	if i.split == nil {
+	if i.comparer.Split == nil {
 		panic("pebble: split must be provided for SeekPrefixGE")
 	}
 	if i.comparer.ImmediateSuccessor == nil && i.opts.KeyTypes != IterKeyTypePointsOnly {
@@ -1594,7 +1607,8 @@ func (i *Iterator) saveRangeKey() {
 	// stale=true. However, threading whether the current op is a seek or step
 	// maybe isn't worth it. This key comparison is only necessary once when we
 	// step onto a new range key, which should be relatively rare.
-	if i.rangeKey.prevPosHadRangeKey && i.equal(i.rangeKey.start, s.Start) && i.equal(i.rangeKey.end, s.End) {
+	if i.rangeKey.prevPosHadRangeKey && i.equal(i.rangeKey.start, s.Start) &&
+		i.equal(i.rangeKey.end, s.End) {
 		i.rangeKey.updated = false
 		i.rangeKey.stale = false
 		i.rangeKey.hasRangeKey = true
@@ -2184,10 +2198,7 @@ func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
 	*dbi = Iterator{
 		opts:                *opts.IterOptions,
 		alloc:               buf,
-		cmp:                 i.cmp,
-		equal:               i.equal,
 		merge:               i.merge,
-		split:               i.split,
 		comparer:            i.comparer,
 		readState:           readState,
 		keyBuf:              buf.keyBuf,

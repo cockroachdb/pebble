@@ -16,7 +16,7 @@ import (
 // i.rangeKey.rangeKeyIter with the resulting iterator.
 func (i *Iterator) constructRangeKeyIter() {
 	i.rangeKey.rangeKeyIter = i.rangeKey.iterConfig.Init(
-		i.comparer, i.seqNum, i.opts.LowerBound, i.opts.UpperBound,
+		&i.comparer, i.seqNum, i.opts.LowerBound, i.opts.UpperBound,
 		&i.hasPrefix, &i.prefixOrFullSeekKey)
 
 	// If there's an indexed batch with range keys, include it.
@@ -497,7 +497,7 @@ func (i *lazyCombinedIter) initCombinedIteration(
 	}
 
 	if i.parent.hasPrefix {
-		si := i.parent.split(seekKey)
+		si := i.parent.comparer.Split(seekKey)
 		if i.parent.cmp(seekKey[:si], i.parent.prefixOrFullSeekKey) > 0 {
 			// The earliest possible range key has a start key with a prefix
 			// greater than the current iteration prefix. There's no need to
@@ -519,12 +519,12 @@ func (i *lazyCombinedIter) initCombinedIteration(
 	// the range key iterator stack. It must not exist, otherwise we'd already
 	// be performing combined iteration.
 	i.parent.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
-	i.parent.rangeKey.init(i.parent.cmp, i.parent.split, &i.parent.opts)
+	i.parent.rangeKey.init(i.parent.comparer.Compare, i.parent.comparer.Split, &i.parent.opts)
 	i.parent.constructRangeKeyIter()
 
 	// Initialize the Iterator's interleaving iterator.
 	i.parent.rangeKey.iiter.Init(
-		i.parent.comparer, i.parent.pointIter, i.parent.rangeKey.rangeKeyIter,
+		&i.parent.comparer, i.parent.pointIter, i.parent.rangeKey.rangeKeyIter,
 		&i.parent.rangeKeyMasking, i.parent.opts.LowerBound, i.parent.opts.UpperBound)
 
 	// Set the parent's primary iterator to point to the combined, interleaving

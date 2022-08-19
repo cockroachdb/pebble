@@ -305,7 +305,7 @@ func (d *DB) loadTablePointKeyStats(
 func (d *DB) loadTableRangeDelStats(
 	r *sstable.Reader, v *version, level int, meta *fileMetadata, stats *manifest.TableStats,
 ) ([]deleteCompactionHint, error) {
-	iter, err := newCombinedDeletionKeyspanIter(d.cmp, r, meta)
+	iter, err := newCombinedDeletionKeyspanIter(d.opts.Comparer, r, meta)
 	if err != nil {
 		return nil, err
 	}
@@ -655,11 +655,11 @@ func estimateEntrySizes(
 // corresponding to the largest and smallest sequence numbers encountered across
 // the range deletes and range keys deletes that comprised the merged spans.
 func newCombinedDeletionKeyspanIter(
-	cmp base.Compare, r *sstable.Reader, m *fileMetadata,
+	comparer *base.Comparer, r *sstable.Reader, m *fileMetadata,
 ) (keyspan.FragmentIterator, error) {
 	// The range del iter and range key iter are each wrapped in their own
 	// defragmenting iter. For each iter, abutting spans can always be merged.
-	var equal = keyspan.DefragmentMethodFunc(func(_ base.Compare, a, b *keyspan.Span) bool { return true })
+	var equal = keyspan.DefragmentMethodFunc(func(_ base.Equal, a, b *keyspan.Span) bool { return true })
 	// Reduce keys by maintaining a slice of at most length two, corresponding to
 	// the largest and smallest keys in the defragmented span. This maintains the
 	// contract that the emitted slice is sorted by (SeqNum, Kind) descending.
@@ -688,7 +688,7 @@ func newCombinedDeletionKeyspanIter(
 				smallest = last
 			}
 		}
-		if largest.Equal(cmp, smallest) {
+		if largest.Equal(comparer.Equal, smallest) {
 			current = append(current[:0], largest)
 		} else {
 			current = append(current[:0], largest, smallest)
@@ -715,7 +715,7 @@ func newCombinedDeletionKeyspanIter(
 		keyspan.SortKeysByTrailer(&out.Keys)
 		return nil
 	})
-	mIter.Init(cmp, transform)
+	mIter.Init(comparer.Compare, transform)
 
 	iter, err := r.NewRawRangeDelIter()
 	if err != nil {
@@ -723,12 +723,12 @@ func newCombinedDeletionKeyspanIter(
 	}
 	if iter != nil {
 		dIter := &keyspan.DefragmentingIter{}
-		dIter.Init(cmp, iter, equal, reducer)
+		dIter.Init(comparer, iter, equal, reducer)
 		iter = dIter
 		// Truncate tombstones to the containing file's bounds if necessary.
 		// See docs/range_deletions.md for why this is necessary.
 		iter = keyspan.Truncate(
-			cmp, iter, m.Smallest.UserKey, m.Largest.UserKey, nil, nil,
+			comparer.Compare, iter, m.Smallest.UserKey, m.Largest.UserKey, nil, nil,
 		)
 		mIter.AddLevel(iter)
 	}
@@ -752,7 +752,7 @@ func newCombinedDeletionKeyspanIter(
 			return len(out.Keys) > 0
 		})
 		dIter := &keyspan.DefragmentingIter{}
-		dIter.Init(cmp, iter, equal, reducer)
+		dIter.Init(comparer, iter, equal, reducer)
 		iter = dIter
 		mIter.AddLevel(iter)
 	}

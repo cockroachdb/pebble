@@ -21,9 +21,10 @@ import (
 )
 
 func TestDefragmentingIter(t *testing.T) {
-	cmp := testkeys.Comparer.Compare
+	comparer := testkeys.Comparer
+	cmp := comparer.Compare
 	internalEqual := DefragmentInternal
-	alwaysEqual := DefragmentMethodFunc(func(_ base.Compare, _, _ *Span) bool { return true })
+	alwaysEqual := DefragmentMethodFunc(func(_ base.Equal, _, _ *Span) bool { return true })
 	staticReducer := StaticDefragmentReducer
 	collectReducer := func(cur, next []Key) []Key {
 		c := keysBySeqNumKind(append(cur, next...))
@@ -79,7 +80,7 @@ func TestDefragmentingIter(t *testing.T) {
 			var innerIter MergingIter
 			innerIter.Init(cmp, noopTransform, NewIter(cmp, spans))
 			var iter DefragmentingIter
-			iter.Init(cmp, &innerIter, equal, reducer)
+			iter.Init(comparer, &innerIter, equal, reducer)
 			for _, line := range strings.Split(td.Input, "\n") {
 				runIterOp(&buf, &iter, line)
 			}
@@ -103,8 +104,9 @@ func TestDefragmentingIter_RandomizedFixedSeed(t *testing.T) {
 }
 
 func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
-	cmp := testkeys.Comparer.Compare
-	formatKey := testkeys.Comparer.FormatKey
+	comparer := testkeys.Comparer
+	cmp := comparer.Compare
+	formatKey := comparer.FormatKey
 
 	rng := rand.New(rand.NewSource(seed))
 	t.Logf("seed = %d", seed)
@@ -163,8 +165,8 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	fragmentedInner.Init(cmp, noopTransform, NewIter(cmp, fragmented))
 
 	var referenceIter, fragmentedIter DefragmentingIter
-	referenceIter.Init(cmp, &originalInner, DefragmentInternal, StaticDefragmentReducer)
-	fragmentedIter.Init(cmp, &fragmentedInner, DefragmentInternal, StaticDefragmentReducer)
+	referenceIter.Init(comparer, &originalInner, DefragmentInternal, StaticDefragmentReducer)
+	fragmentedIter.Init(comparer, &fragmentedInner, DefragmentInternal, StaticDefragmentReducer)
 
 	// Generate 100 random operations and run them against both iterators.
 	const numIterOps = 100
