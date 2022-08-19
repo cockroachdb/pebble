@@ -108,20 +108,20 @@ func generate(rng *rand.Rand, count uint64, cfg config, km *keyManager) []op {
 		dbCompact:            g.dbCompact,
 		dbFlush:              g.dbFlush,
 		dbRestart:            g.dbRestart,
-		iterClose:            g.iterClose,
-		iterFirst:            g.iterFirst,
-		iterLast:             g.iterLast,
-		iterNext:             g.iterNext,
-		iterNextWithLimit:    g.iterNextWithLimit,
-		iterPrev:             g.iterPrev,
-		iterPrevWithLimit:    g.iterPrevWithLimit,
-		iterSeekGE:           g.iterSeekGE,
-		iterSeekGEWithLimit:  g.iterSeekGEWithLimit,
-		iterSeekLT:           g.iterSeekLT,
-		iterSeekLTWithLimit:  g.iterSeekLTWithLimit,
-		iterSeekPrefixGE:     g.iterSeekPrefixGE,
-		iterSetBounds:        g.iterSetBounds,
-		iterSetOptions:       g.iterSetOptions,
+		iterClose:            g.randIter(g.iterClose),
+		iterFirst:            g.randIter(g.iterFirst),
+		iterLast:             g.randIter(g.iterLast),
+		iterNext:             g.randIter(g.iterNext),
+		iterNextWithLimit:    g.randIter(g.iterNextWithLimit),
+		iterPrev:             g.randIter(g.iterPrev),
+		iterPrevWithLimit:    g.randIter(g.iterPrevWithLimit),
+		iterSeekGE:           g.randIter(g.iterSeekGE),
+		iterSeekGEWithLimit:  g.randIter(g.iterSeekGEWithLimit),
+		iterSeekLT:           g.randIter(g.iterSeekLT),
+		iterSeekLTWithLimit:  g.randIter(g.iterSeekLTWithLimit),
+		iterSeekPrefixGE:     g.randIter(g.iterSeekPrefixGE),
+		iterSetBounds:        g.randIter(g.iterSetBounds),
+		iterSetOptions:       g.randIter(g.iterSetOptions),
 		newBatch:             g.newBatch,
 		newIndexedBatch:      g.newIndexedBatch,
 		newIter:              g.newIter,
@@ -433,7 +433,7 @@ func (g *generator) dbClose() {
 	// Close any live iterators and snapshots, so that we can close the DB
 	// cleanly.
 	for len(g.liveIters) > 0 {
-		g.iterClose()
+		g.randIter(g.iterClose)()
 	}
 	for len(g.liveSnapshots) > 0 {
 		g.snapshotClose()
@@ -467,7 +467,7 @@ func (g *generator) dbRestart() {
 	// Close any live iterators and snapshots, so that we can close the DB
 	// cleanly.
 	for len(g.liveIters) > 0 {
-		g.iterClose()
+		g.randIter(g.iterClose)()
 	}
 	for len(g.liveSnapshots) > 0 {
 		g.snapshotClose()
@@ -580,12 +580,7 @@ func (g *generator) newIterUsingClone() {
 	})
 }
 
-func (g *generator) iterClose() {
-	if len(g.liveIters) == 0 {
-		return
-	}
-
-	iterID := g.liveIters.rand(g.rng)
+func (g *generator) iterClose(iterID objID) {
 	g.liveIters.remove(iterID)
 	if readerIters, ok := g.iters[iterID]; ok {
 		delete(g.iters, iterID)
@@ -599,12 +594,7 @@ func (g *generator) iterClose() {
 	g.add(&closeOp{objID: iterID})
 }
 
-func (g *generator) iterSetBounds() {
-	if len(g.liveIters) == 0 {
-		return
-	}
-
-	iterID := g.liveIters.rand(g.rng)
+func (g *generator) iterSetBounds(iterID objID) {
 	iterLastOpts := g.itersLastOpts[iterID]
 	var lower, upper []byte
 	genLower := g.rng.Float64() <= 0.9
@@ -682,19 +672,13 @@ func (g *generator) iterSetBounds() {
 			key:    upper,
 		})
 		if g.rng.Float64() < 0.5 {
-			g.add(&iterNextOp{
-				iterID: iterID,
-			})
+			g.iterNext(iterID)
 		}
 		if g.rng.Float64() < 0.5 {
-			g.add(&iterNextOp{
-				iterID: iterID,
-			})
+			g.iterNext(iterID)
 		}
 		if g.rng.Float64() < 0.5 {
-			g.add(&iterPrevOp{
-				iterID: iterID,
-			})
+			g.iterPrev(iterID)
 		}
 	} else if doSeekGE {
 		g.add(&iterSeekGEOp{
@@ -702,29 +686,18 @@ func (g *generator) iterSetBounds() {
 			key:    lower,
 		})
 		if g.rng.Float64() < 0.5 {
-			g.add(&iterPrevOp{
-				iterID: iterID,
-			})
+			g.iterPrev(iterID)
 		}
 		if g.rng.Float64() < 0.5 {
-			g.add(&iterPrevOp{
-				iterID: iterID,
-			})
+			g.iterPrev(iterID)
 		}
 		if g.rng.Float64() < 0.5 {
-			g.add(&iterNextOp{
-				iterID: iterID,
-			})
+			g.iterNext(iterID)
 		}
 	}
 }
 
-func (g *generator) iterSetOptions() {
-	if len(g.liveIters) == 0 {
-		return
-	}
-	iterID := g.liveIters.rand(g.rng)
-
+func (g *generator) iterSetOptions(iterID objID) {
 	opts := g.itersLastOpts[iterID]
 
 	// With 95% probability, allow changes to any options at all. This ensures
@@ -791,62 +764,44 @@ func (g *generator) iterSetOptions() {
 		g.iterSeekPrefixGE,
 		g.iterSeekLT,
 		g.iterSeekLTWithLimit,
-	)()
+	)(iterID)
 }
 
-func (g *generator) iterSeekGE() {
-	if len(g.liveIters) == 0 {
-		return
-	}
-
+func (g *generator) iterSeekGE(iterID objID) {
 	g.add(&iterSeekGEOp{
-		iterID: g.liveIters.rand(g.rng),
+		iterID: iterID,
 		key:    g.randKeyToRead(0.001), // 0.1% new keys
 	})
 }
 
-func (g *generator) iterSeekGEWithLimit() {
-	if len(g.liveIters) == 0 {
-		return
-	}
+func (g *generator) iterSeekGEWithLimit(iterID objID) {
 	// 0.1% new keys
 	key, limit := g.randKeyToRead(0.001), g.randKeyToRead(0.001)
 	if g.cmp(key, limit) > 0 {
 		key, limit = limit, key
 	}
 	g.add(&iterSeekGEOp{
-		iterID: g.liveIters.rand(g.rng),
+		iterID: iterID,
 		key:    key,
 		limit:  limit,
 	})
 }
 
-func (g *generator) iterSeekPrefixGE() {
-	if len(g.liveIters) == 0 {
-		return
-	}
-
+func (g *generator) iterSeekPrefixGE(iterID objID) {
 	g.add(&iterSeekPrefixGEOp{
-		iterID: g.liveIters.rand(g.rng),
+		iterID: iterID,
 		key:    g.randKeyToRead(0), // 0% new keys
 	})
 }
 
-func (g *generator) iterSeekLT() {
-	if len(g.liveIters) == 0 {
-		return
-	}
-
+func (g *generator) iterSeekLT(iterID objID) {
 	g.add(&iterSeekLTOp{
-		iterID: g.liveIters.rand(g.rng),
+		iterID: iterID,
 		key:    g.randKeyToRead(0.001), // 0.1% new keys
 	})
 }
 
-func (g *generator) iterSeekLTWithLimit() {
-	if len(g.liveIters) == 0 {
-		return
-	}
+func (g *generator) iterSeekLTWithLimit(iterID objID) {
 	// 0.1% new keys
 	key, limit := g.randKeyToRead(0.001), g.randKeyToRead(0.001)
 	if g.cmp(limit, key) > 0 {
@@ -859,64 +814,32 @@ func (g *generator) iterSeekLTWithLimit() {
 	})
 }
 
-func (g *generator) iterFirst() {
-	if len(g.liveIters) == 0 {
-		return
+// randIter performs partial func application ("currying"), returning a new
+// function that supplies the given func with a random iterator.
+func (g *generator) randIter(gen func(objID)) func() {
+	return func() {
+		if len(g.liveIters) == 0 {
+			return
+		}
+		gen(g.liveIters.rand(g.rng))
 	}
-
-	g.add(&iterFirstOp{
-		iterID: g.liveIters.rand(g.rng),
-	})
 }
 
-func (g *generator) iterLast() {
-	if len(g.liveIters) == 0 {
-		return
-	}
+func (g *generator) iterFirst(iterID objID) { g.add(&iterFirstOp{iterID: iterID}) }
+func (g *generator) iterLast(iterID objID)  { g.add(&iterLastOp{iterID: iterID}) }
+func (g *generator) iterNext(iterID objID)  { g.add(&iterNextOp{iterID: iterID}) }
+func (g *generator) iterPrev(iterID objID)  { g.add(&iterPrevOp{iterID: iterID}) }
 
-	g.add(&iterLastOp{
-		iterID: g.liveIters.rand(g.rng),
-	})
-}
-
-func (g *generator) iterNext() {
-	if len(g.liveIters) == 0 {
-		return
-	}
-
+func (g *generator) iterNextWithLimit(iterID objID) {
 	g.add(&iterNextOp{
-		iterID: g.liveIters.rand(g.rng),
-	})
-}
-
-func (g *generator) iterNextWithLimit() {
-	if len(g.liveIters) == 0 {
-		return
-	}
-
-	g.add(&iterNextOp{
-		iterID: g.liveIters.rand(g.rng),
+		iterID: iterID,
 		limit:  g.randKeyToRead(0.001), // 0.1% new keys
 	})
 }
 
-func (g *generator) iterPrev() {
-	if len(g.liveIters) == 0 {
-		return
-	}
-
+func (g *generator) iterPrevWithLimit(iterID objID) {
 	g.add(&iterPrevOp{
-		iterID: g.liveIters.rand(g.rng),
-	})
-}
-
-func (g *generator) iterPrevWithLimit() {
-	if len(g.liveIters) == 0 {
-		return
-	}
-
-	g.add(&iterPrevOp{
-		iterID: g.liveIters.rand(g.rng),
+		iterID: iterID,
 		limit:  g.randKeyToRead(0.001), // 0.1% new keys
 	})
 }
@@ -1175,7 +1098,7 @@ func (g *generator) writerSingleDelete() {
 	})
 }
 
-func (g *generator) pickOneUniform(options ...func()) func() {
+func (g *generator) pickOneUniform(options ...func(objID)) func(objID) {
 	i := g.rng.Intn(len(options))
 	return options[i]
 }
