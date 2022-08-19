@@ -149,8 +149,8 @@ type Iterator struct {
 	opts      IterOptions
 	merge     Merge
 	comparer  base.Comparer
-	iter      internalIteratorWithStats
-	pointIter internalIteratorWithStats
+	iter      internalIterator
+	pointIter internalIterator
 	readState *readState
 	// rangeKey holds iteration state specific to iteration over range keys.
 	// The range key field may be nil if the Iterator has never been configured
@@ -2138,14 +2138,11 @@ func (i *Iterator) Metrics() IteratorMetrics {
 // ResetStats resets the stats to 0.
 func (i *Iterator) ResetStats() {
 	i.stats = IteratorStats{}
-	i.iter.ResetStats()
 }
 
 // Stats returns the current stats.
 func (i *Iterator) Stats() IteratorStats {
-	stats := i.stats
-	stats.InternalStats = i.iter.Stats()
-	return stats
+	return i.stats
 }
 
 // CloneOptions configures an iterator constructed through Iterator.Clone.

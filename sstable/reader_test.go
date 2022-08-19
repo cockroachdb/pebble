@@ -154,21 +154,6 @@ func (i *iterAdapter) SetBounds(lower, upper []byte) {
 	i.key = nil
 }
 
-func (i *iterAdapter) Stats() base.InternalIteratorStats {
-	ii, ok := i.Iterator.(base.InternalIteratorWithStats)
-	if ok {
-		return ii.Stats()
-	}
-	return base.InternalIteratorStats{}
-}
-
-func (i *iterAdapter) ResetStats() {
-	ii, ok := i.Iterator.(base.InternalIteratorWithStats)
-	if ok {
-		ii.ResetStats()
-	}
-}
-
 func TestReader(t *testing.T) {
 	writerOpts := map[string]WriterOptions{
 		// No bloom filters.
@@ -363,12 +348,19 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, cacheSi
 				if err != nil {
 					return err.Error()
 				}
+				var stats base.InternalIteratorStats
 				r.Properties.GlobalSeqNum = seqNum
-				iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+				iter, err := r.NewIterWithBlockPropertyFilters(
+					nil,  /* lower */
+					nil,  /* upper */
+					nil,  /* filterer */
+					true, /* use filter block */
+					&stats,
+				)
 				if err != nil {
 					return err.Error()
 				}
-				return runIterCmd(d, iter)
+				return runIterCmd(d, iter, runIterCmdStats(&stats))
 
 			case "get":
 				var b bytes.Buffer

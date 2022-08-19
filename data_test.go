@@ -27,11 +27,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type iterCmdOpt int
+type iterCmdOpts struct {
+	verboseKey bool
+	stats      *base.InternalIteratorStats
+}
 
-const (
-	iterCmdVerboseKey iterCmdOpt = iota
-)
+type iterCmdOpt func(*iterCmdOpts)
+
+func iterCmdVerboseKey(opts *iterCmdOpts) { opts.verboseKey = true }
+
+func iterCmdStats(stats *base.InternalIteratorStats) iterCmdOpt {
+	return func(opts *iterCmdOpts) {
+		opts.stats = stats
+	}
+}
 
 func runGetCmd(td *datadriven.TestData, d *DB) string {
 	snap := Snapshot{
@@ -367,11 +376,9 @@ func writeRangeKeys(b io.Writer, iter *Iterator) {
 }
 
 func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...iterCmdOpt) string {
-	var verboseKey bool
+	var o iterCmdOpts
 	for _, opt := range opts {
-		if opt == iterCmdVerboseKey {
-			verboseKey = true
-		}
+		opt(&o)
 	}
 
 	var b bytes.Buffer
@@ -448,22 +455,20 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 			iter.SetBounds(lower, upper)
 			continue
 		case "stats":
-			ii, ok := iter.(internalIteratorWithStats)
-			if ok {
-				fmt.Fprintf(&b, "%+v\n", ii.Stats())
+			if o.stats != nil {
+				fmt.Fprintf(&b, "%+v\n", *o.stats)
 			}
 			continue
 		case "reset-stats":
-			ii, ok := iter.(internalIteratorWithStats)
-			if ok {
-				ii.ResetStats()
+			if o.stats != nil {
+				*o.stats = base.InternalIteratorStats{}
 			}
 			continue
 		default:
 			return fmt.Sprintf("unknown op: %s", parts[0])
 		}
 		if key != nil {
-			if verboseKey {
+			if o.verboseKey {
 				fmt.Fprintf(&b, "%s:%s\n", key, value)
 			} else {
 				fmt.Fprintf(&b, "%s:%s\n", key.UserKey, value)

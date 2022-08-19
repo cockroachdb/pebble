@@ -295,13 +295,6 @@ func (s SeekLTFlags) DisableRelativeSeek() SeekLTFlags {
 	return s &^ (1 << seekLTFlagRelativeSeek)
 }
 
-// InternalIteratorWithStats extends InternalIterator to expose stats.
-type InternalIteratorWithStats interface {
-	InternalIterator
-	Stats() InternalIteratorStats
-	ResetStats()
-}
-
 // InternalIteratorStats contains miscellaneous stats produced by
 // InternalIterators that are part of the InternalIterator tree. Not every
 // field is relevant for an InternalIterator implementation. The field values
@@ -340,31 +333,4 @@ func (s *InternalIteratorStats) Merge(from InternalIteratorStats) {
 	s.ValueBytes += from.ValueBytes
 	s.PointCount += from.PointCount
 	s.PointsCoveredByRangeTombstones += from.PointsCoveredByRangeTombstones
-}
-
-type internalIteratorWithEmptyStats struct {
-	InternalIterator
-}
-
-var _ InternalIteratorWithStats = internalIteratorWithEmptyStats{}
-
-// Stats implements InternalIteratorWithStats.
-func (i internalIteratorWithEmptyStats) Stats() InternalIteratorStats {
-	return InternalIteratorStats{}
-}
-
-// ResetStats implements InternalIteratorWithStats.
-func (i internalIteratorWithEmptyStats) ResetStats() {}
-
-// WrapIterWithStats ensures that either iter implements the stats methods or
-// wraps it, such that the return value implements InternalIteratorWithStats.
-func WrapIterWithStats(iter InternalIterator) InternalIteratorWithStats {
-	if iter == nil {
-		return nil
-	}
-	i, ok := iter.(InternalIteratorWithStats)
-	if ok {
-		return i
-	}
-	return internalIteratorWithEmptyStats{InternalIterator: iter}
 }

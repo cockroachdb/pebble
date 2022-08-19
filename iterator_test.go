@@ -222,14 +222,14 @@ func (f *fakeIter) SetBounds(lower, upper []byte) {
 // invalidatingIter tests unsafe key/value slice reuse by modifying the last
 // returned key/value to all 1s.
 type invalidatingIter struct {
-	iter        internalIteratorWithStats
+	iter        internalIterator
 	lastKey     *InternalKey
 	lastValue   []byte
 	ignoreKinds [base.InternalKeyKindMax + 1]bool
 }
 
 func newInvalidatingIter(iter internalIterator) *invalidatingIter {
-	return &invalidatingIter{iter: base.WrapIterWithStats(iter)}
+	return &invalidatingIter{iter: iter}
 }
 
 func (i *invalidatingIter) ignoreKind(kind base.InternalKeyKind) {
@@ -315,14 +315,6 @@ func (i *invalidatingIter) SetBounds(lower, upper []byte) {
 
 func (i *invalidatingIter) String() string {
 	return i.iter.String()
-}
-
-func (i *invalidatingIter) Stats() base.InternalIteratorStats {
-	return i.iter.Stats()
-}
-
-func (i *invalidatingIter) ResetStats() {
-	i.iter.ResetStats()
 }
 
 // testIterator tests creating a combined iterator from a number of sub-
@@ -485,19 +477,6 @@ func TestIterator(t *testing.T) {
 	var vals [][]byte
 
 	newIter := func(seqNum uint64, opts IterOptions) *Iterator {
-		cmp := testkeys.Comparer.Compare
-		split := testkeys.Comparer.Split
-		// NB: Use a mergingIter to filter entries newer than seqNum.
-		iter := newMergingIter(nil /* logger */, cmp, split, &fakeIter{
-			lower: opts.GetLowerBound(),
-			upper: opts.GetUpperBound(),
-			keys:  keys,
-			vals:  vals,
-		})
-		iter.snapshot = seqNum
-		iter.elideRangeTombstones = true
-		// NB: This Iterator cannot be cloned since it is not constructed
-		// with a readState. It suffices for this test.
 		if merge == nil {
 			merge = DefaultMerger.Merge
 		}
@@ -507,12 +486,24 @@ func TestIterator(t *testing.T) {
 			}
 			return merge(key, value)
 		}
-		return &Iterator{
+		it := &Iterator{
 			opts:     opts,
 			comparer: *testkeys.Comparer,
 			merge:    wrappedMerge,
-			iter:     newInvalidatingIter(iter),
 		}
+		// NB: Use a mergingIter to filter entries newer than seqNum.
+		iter := newMergingIter(nil /* logger */, &it.stats.InternalStats, it.cmp, it.split, &fakeIter{
+			lower: opts.GetLowerBound(),
+			upper: opts.GetUpperBound(),
+			keys:  keys,
+			vals:  vals,
+		})
+		iter.snapshot = seqNum
+		iter.elideRangeTombstones = true
+		// NB: This Iterator cannot be cloned since it is not constructed
+		// with a readState. It suffices for this test.
+		it.iter = newInvalidatingIter(iter)
+		return it
 	}
 
 	datadriven.RunTest(t, "testdata/iterator", func(d *datadriven.TestData) string {
@@ -1188,7 +1179,7 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 			opts:     opts,
 			comparer: *testkeys.Comparer,
 			merge:    DefaultMerger.Merge,
-			iter:     base.WrapIterWithStats(&errorIter),
+			iter:     &errorIter,
 		}
 	}
 
@@ -1913,7 +1904,7 @@ func BenchmarkIteratorSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &Iterator{
 		comparer: *DefaultComparer,
-		iter:     base.WrapIterWithStats(m.newIter(nil)),
+		iter:     m.newIter(nil),
 	}
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
@@ -1928,7 +1919,7 @@ func BenchmarkIteratorNext(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &Iterator{
 		comparer: *DefaultComparer,
-		iter:     base.WrapIterWithStats(m.newIter(nil)),
+		iter:     m.newIter(nil),
 	}
 
 	b.ResetTimer()
@@ -1944,7 +1935,7 @@ func BenchmarkIteratorPrev(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &Iterator{
 		comparer: *DefaultComparer,
-		iter:     base.WrapIterWithStats(m.newIter(nil)),
+		iter:     m.newIter(nil),
 	}
 
 	b.ResetTimer()
