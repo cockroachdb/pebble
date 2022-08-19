@@ -391,7 +391,7 @@ type lazyCombinedIter struct {
 	// iterator. It's used to mutate the internalIterator in use when switching
 	// to combined iteration.
 	parent            *Iterator
-	pointIter         internalIteratorWithStats
+	pointIter         internalIterator
 	combinedIterState combinedIterState
 }
 
@@ -662,12 +662,4 @@ func (i *lazyCombinedIter) String() string {
 		return i.parent.rangeKey.iiter.String()
 	}
 	return i.pointIter.String()
-}
-
-func (i *lazyCombinedIter) Stats() InternalIteratorStats {
-	return i.pointIter.Stats()
-}
-
-func (i *lazyCombinedIter) ResetStats() {
-	i.pointIter.ResetStats()
 }

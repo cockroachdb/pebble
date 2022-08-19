@@ -26,6 +26,7 @@ type tableNewIters func(
 
 type internalIterOpts struct {
 	bytesIterated      *uint64
+	stats              *base.InternalIteratorStats
 	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter
 }
 
@@ -89,7 +90,7 @@ type levelIter struct {
 	// - err != nil
 	// - some other constraint, like the bounds in opts, caused the file at index to not
 	//   be relevant to the iteration.
-	iter     internalIteratorWithStats
+	iter     internalIterator
 	iterFile *fileMetadata
 	// filteredIter is an optional interface that may be implemented by internal
 	// iterators that perform filtering of keys. When a new file's iterator is
@@ -115,8 +116,6 @@ type levelIter struct {
 	rangeDelIterCopy keyspan.FragmentIterator
 	files            manifest.LevelIterator
 	err              error
-	// stats accumulates the stats of iters that have been closed.
-	stats InternalIteratorStats
 
 	// Pointer into this level's entry in `mergingIterLevel::levelIterBoundaryContext`.
 	// We populate it with the corresponding bounds for the currently opened file. It is used for
@@ -242,7 +241,6 @@ func (l *levelIter) init(
 	l.newIters = newIters
 	l.files = files
 	l.internalOpts = internalOpts
-	l.stats = InternalIteratorStats{}
 }
 
 func (l *levelIter) initRangeDel(rangeDelIter *keyspan.FragmentIterator) {
@@ -581,7 +579,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 		var rangeDelIter keyspan.FragmentIterator
 		var iter internalIterator
 		iter, rangeDelIter, l.err = l.newIters(l.files.Current(), &l.tableOpts, l.internalOpts)
-		l.iter = base.WrapIterWithStats(iter)
+		l.iter = iter
 		if l.err != nil {
 			return noFileLoaded
 		}
@@ -1036,7 +1034,6 @@ func (l *levelIter) Error() error {
 
 func (l *levelIter) Close() error {
 	if l.iter != nil {
-		l.stats.Merge(l.iter.Stats())
 		l.err = l.iter.Close()
 		l.iter = nil
 	}
@@ -1077,21 +1074,4 @@ func (l *levelIter) String() string {
 	return fmt.Sprintf("%s: fileNum=<nil>", l.level)
 }
 
-var _ internalIteratorWithStats = &levelIter{}
-
-// Stats implements InternalIteratorWithStats.
-func (l *levelIter) Stats() base.InternalIteratorStats {
-	stats := l.stats
-	if l.iter != nil {
-		stats.Merge(l.iter.Stats())
-	}
-	return stats
-}
-
-// ResetStats implements InternalIteratorWithStats.
-func (l *levelIter) ResetStats() {
-	l.stats = base.InternalIteratorStats{}
-	if l.iter != nil {
-		l.iter.ResetStats()
-	}
-}
+var _ internalIterator = &levelIter{}

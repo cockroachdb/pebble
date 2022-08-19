@@ -414,7 +414,7 @@ func (c *tableCacheShard) newIters(
 		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated)
 	} else {
 		iter, err = v.reader.NewIterWithBlockPropertyFilters(
-			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter)
+			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, internalOpts.stats)
 	}
 	if err != nil {
 		if rangeDelIter != nil {

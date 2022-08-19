@@ -16,7 +16,7 @@ import (
 )
 
 type mergingIterLevel struct {
-	iter internalIteratorWithStats
+	iter internalIterator
 	// rangeDelIter is set to the range-deletion iterator for the level. When
 	// configured with a levelIter, this pointer changes as sstable boundaries
 	// are crossed. See levelIter.initRangeDel and the Range Deletions comment
@@ -240,7 +240,7 @@ type mergingIter struct {
 	prefix   []byte
 	lower    []byte
 	upper    []byte
-	stats    InternalIteratorStats
+	stats    *InternalIteratorStats
 
 	combinedIterState *combinedIterState
 
@@ -264,19 +264,27 @@ var _ base.InternalIterator = (*mergingIter)(nil)
 //
 // None of the iters may be nil.
 func newMergingIter(
-	logger Logger, cmp Compare, split Split, iters ...internalIterator,
+	logger Logger,
+	stats *base.InternalIteratorStats,
+	cmp Compare,
+	split Split,
+	iters ...internalIterator,
 ) *mergingIter {
 	m := &mergingIter{}
 	levels := make([]mergingIterLevel, len(iters))
 	for i := range levels {
-		levels[i].iter = base.WrapIterWithStats(iters[i])
+		levels[i].iter = iters[i]
 	}
-	m.init(&IterOptions{logger: logger}, cmp, split, levels...)
+	m.init(&IterOptions{logger: logger}, stats, cmp, split, levels...)
 	return m
 }
 
 func (m *mergingIter) init(
-	opts *IterOptions, cmp Compare, split Split, levels ...mergingIterLevel,
+	opts *IterOptions,
+	stats *base.InternalIteratorStats,
+	cmp Compare,
+	split Split,
+	levels ...mergingIterLevel,
 ) {
 	m.err = nil // clear cached iteration error
 	m.logger = opts.getLogger()
@@ -288,6 +296,7 @@ func (m *mergingIter) init(
 	m.levels = levels
 	m.heap.cmp = cmp
 	m.split = split
+	m.stats = stats
 	if cap(m.heap.items) < len(levels) {
 		m.heap.items = make([]mergingIterItem, 0, len(levels))
 	} else {
@@ -1185,21 +1194,4 @@ func (m *mergingIter) addItemStats(item *mergingIterItem) {
 	m.stats.ValueBytes += uint64(len(item.value))
 }
 
-var _ internalIteratorWithStats = &mergingIter{}
-
-// Stats implements InternalIteratorWithStats.
-func (m *mergingIter) Stats() base.InternalIteratorStats {
-	stats := m.stats
-	for i := range m.levels {
-		stats.Merge(m.levels[i].iter.Stats())
-	}
-	return stats
-}
-
-// ResetStats implements InternalIteratorWithStats.
-func (m *mergingIter) ResetStats() {
-	m.stats = InternalIteratorStats{}
-	for i := range m.levels {
-		m.levels[i].iter.ResetStats()
-	}
-}
+var _ internalIterator = &mergingIter{}

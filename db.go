@@ -523,7 +523,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	}
 
 	i := &buf.dbi
-	pointIter := base.WrapIterWithStats(get)
+	pointIter := get
 	*i = Iterator{
 		getIterAlloc: buf,
 		cmp:          d.cmp,
@@ -1043,6 +1043,10 @@ func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
 		// Already have one.
 		return
 	}
+	internalOpts := internalIterOpts{stats: &i.stats.InternalStats}
+	if i.opts.RangeKeyMasking.Filter != nil {
+		internalOpts.boundLimitedFilter = &i.rangeKeyMasking
+	}
 
 	// Merging levels and levels from iterAlloc.
 	mlevels := buf.mlevels[:0]
@@ -1098,7 +1102,7 @@ func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
 				rangeDelIter = &i.batchRangeDelIter
 			}
 			mlevels = append(mlevels, mergingIterLevel{
-				iter:         base.WrapIterWithStats(&i.batchPointIter),
+				iter:         &i.batchPointIter,
 				rangeDelIter: rangeDelIter,
 			})
 		}
@@ -1108,7 +1112,7 @@ func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
 	for j := len(memtables) - 1; j >= 0; j-- {
 		mem := memtables[j]
 		mlevels = append(mlevels, mergingIterLevel{
-			iter:         base.WrapIterWithStats(mem.newIter(&i.opts)),
+			iter:         mem.newIter(&i.opts),
 			rangeDelIter: mem.newRangeDelIter(&i.opts),
 		})
 	}
@@ -1118,10 +1122,6 @@ func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
 	levelsIndex := len(levels)
 	mlevels = mlevels[:numMergingLevels]
 	levels = levels[:numLevelIters]
-	var internalOpts internalIterOpts
-	if i.opts.RangeKeyMasking.Filter != nil {
-		internalOpts.boundLimitedFilter = &i.rangeKeyMasking
-	}
 	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
 		li := &levels[levelsIndex]
 
@@ -1148,7 +1148,7 @@ func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
 		}
 		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
 	}
-	buf.merging.init(&i.opts, i.cmp, i.split, mlevels...)
+	buf.merging.init(&i.opts, &i.stats.InternalStats, i.cmp, i.split, mlevels...)
 	buf.merging.snapshot = i.seqNum
 	buf.merging.elideRangeTombstones = true
 	buf.merging.combinedIterState = &i.lazyCombinedIter.combinedIterState

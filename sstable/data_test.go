@@ -249,6 +249,7 @@ type runIterCmdOption func(*runIterCmdOptions)
 type runIterCmdOptions struct {
 	everyOp      func(io.Writer)
 	everyOpAfter func(io.Writer)
+	stats        *base.InternalIteratorStats
 }
 
 func runIterCmdEveryOp(everyOp func(io.Writer)) runIterCmdOption {
@@ -257,6 +258,10 @@ func runIterCmdEveryOp(everyOp func(io.Writer)) runIterCmdOption {
 
 func runIterCmdEveryOpAfter(everyOp func(io.Writer)) runIterCmdOption {
 	return func(opts *runIterCmdOptions) { opts.everyOpAfter = everyOp }
+}
+
+func runIterCmdStats(stats *base.InternalIteratorStats) runIterCmdOption {
+	return func(opts *runIterCmdOptions) { opts.stats = stats }
 }
 
 func runIterCmd(td *datadriven.TestData, origIter Iterator, opt ...runIterCmdOption) string {
@@ -347,10 +352,10 @@ func runIterCmd(td *datadriven.TestData, origIter Iterator, opt ...runIterCmdOpt
 			}
 			iter.SetBounds(lower, upper)
 		case "stats":
-			fmt.Fprintf(&b, "%+v\n", iter.Stats())
+			fmt.Fprintf(&b, "%+v\n", *opts.stats)
 			continue
 		case "reset-stats":
-			iter.ResetStats()
+			*opts.stats = base.InternalIteratorStats{}
 			continue
 		}
 		if opts.everyOp != nil {

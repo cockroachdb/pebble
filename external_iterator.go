@@ -210,7 +210,7 @@ func finishInitializingExternal(it *Iterator) {
 					continue
 				}
 				mlevels = append(mlevels, mergingIterLevel{
-					iter:         base.WrapIterWithStats(pointIter),
+					iter:         pointIter,
 					rangeDelIter: rangeDelIter,
 				})
 			}
@@ -221,12 +221,12 @@ func finishInitializingExternal(it *Iterator) {
 				}
 				sli.init(it.opts)
 				mlevels = append(mlevels, mergingIterLevel{
-					iter:         base.WrapIterWithStats(sli),
+					iter:         sli,
 					rangeDelIter: nil,
 				})
 			}
 		}
-		it.alloc.merging.init(&it.opts, it.cmp, it.split, mlevels...)
+		it.alloc.merging.init(&it.opts, &it.stats.InternalStats, it.cmp, it.split, mlevels...)
 		it.alloc.merging.snapshot = base.InternalKeySeqNumMax
 		it.alloc.merging.elideRangeTombstones = true
 		it.pointIter = &it.alloc.merging
