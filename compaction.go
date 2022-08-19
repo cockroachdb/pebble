@@ -383,6 +383,7 @@ type compaction struct {
 	formatKey base.FormatKey
 	logger    Logger
 	version   *version
+	stats     base.InternalIteratorStats
 
 	score float64
 
@@ -1028,12 +1029,12 @@ func (c *compaction) newInputIter(
 			iter := f.newFlushIter(nil, &c.bytesIterated)
 			if rangeDelIter := f.newRangeDelIter(nil); rangeDelIter != nil {
 				c.rangeDelIter.Init(c.cmp, rangeDelIter)
-				iter = newMergingIter(c.logger, c.cmp, nil, iter, &c.rangeDelIter)
+				iter = newMergingIter(c.logger, &c.stats, c.cmp, nil, iter, &c.rangeDelIter)
 			}
 			if rangeKeyIter := f.newRangeKeyIter(nil); rangeKeyIter != nil {
 				mi := &keyspan.MergingIter{}
 				mi.Init(c.cmp, rangeKeyCompactionTransform(snapshots, c.elideRangeKey), rangeKeyIter)
-				c.rangeKeyInterleaving.Init(c.comparer, base.WrapIterWithStats(iter), mi, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
+				c.rangeKeyInterleaving.Init(c.comparer, iter, mi, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
 				iter = &c.rangeKeyInterleaving
 			}
 			return iter, nil
@@ -1056,11 +1057,11 @@ func (c *compaction) newInputIter(
 			c.rangeDelIter.Init(c.cmp, rangeDelIters...)
 			iters = append(iters, &c.rangeDelIter)
 		}
-		var iter base.InternalIteratorWithStats = newMergingIter(c.logger, c.cmp, nil, iters...)
+		var iter internalIterator = newMergingIter(c.logger, &c.stats, c.cmp, nil, iters...)
 		if len(rangeKeyIters) > 0 {
 			mi := &keyspan.MergingIter{}
 			mi.Init(c.cmp, rangeKeyCompactionTransform(snapshots, c.elideRangeKey), rangeKeyIters...)
-			c.rangeKeyInterleaving.Init(c.comparer, base.WrapIterWithStats(iter), mi, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
+			c.rangeKeyInterleaving.Init(c.comparer, iter, mi, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
 			iter = &c.rangeKeyInterleaving
 		}
 		return iter, nil
@@ -1264,7 +1265,7 @@ func (c *compaction) newInputIter(
 		c.rangeDelIter.Init(c.cmp, rangeDelIters...)
 		iters = append(iters, &c.rangeDelIter)
 	}
-	pointKeyIter := newMergingIter(c.logger, c.cmp, nil, iters...)
+	pointKeyIter := newMergingIter(c.logger, &c.stats, c.cmp, nil, iters...)
 	if len(rangeKeyIters) > 0 {
 		mi := &keyspan.MergingIter{}
 		mi.Init(c.cmp, rangeKeyCompactionTransform(snapshots, c.elideRangeKey), rangeKeyIters...)

@@ -541,7 +541,7 @@ func TestGetIter(t *testing.T) {
 			i := &buf.dbi
 			i.comparer = *testkeys.Comparer
 			i.merge = DefaultMerger.Merge
-			i.iter = base.WrapIterWithStats(get)
+			i.iter = get
 
 			defer i.Close()
 			if !i.First() {

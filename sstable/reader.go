@@ -127,7 +127,7 @@ type singleLevelIterator struct {
 	dataBH    BlockHandle
 	err       error
 	closeHook func(i Iterator) error
-	stats     base.InternalIteratorStats
+	stats     *base.InternalIteratorStats
 
 	// boundsCmp and positionedUsingLatestBounds are for optimizing iteration
 	// that uses multiple adjacent bounds. The seek after setting a new bound
@@ -295,7 +295,11 @@ func checkRangeKeyFragmentBlockIterator(obj interface{}) {
 // synonmous with Reader.NewIter, but allows for reusing of the iterator
 // between different Readers.
 func (i *singleLevelIterator) init(
-	r *Reader, lower, upper []byte, filterer *BlockPropertiesFilterer, useFilter bool,
+	r *Reader,
+	lower, upper []byte,
+	filterer *BlockPropertiesFilterer,
+	useFilter bool,
+	stats *base.InternalIteratorStats,
 ) error {
 	if r.err != nil {
 		return r.err
@@ -311,6 +315,7 @@ func (i *singleLevelIterator) init(
 	i.useFilter = useFilter
 	i.reader = r
 	i.cmp = r.Compare
+	i.stats = stats
 	err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum)
 	if err != nil {
 		// blockIter.Close releases indexH and always returns a nil error
@@ -505,7 +510,7 @@ func (i *singleLevelIterator) readBlockWithStats(
 	bh BlockHandle, raState *readaheadState,
 ) (cache.Handle, error) {
 	block, cacheHit, err := i.reader.readBlock(bh, nil /* transform */, raState)
-	if err == nil {
+	if err == nil && i.stats != nil {
 		n := bh.Length
 		i.stats.BlockBytes += n
 		if cacheHit {
@@ -1233,18 +1238,8 @@ func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
 	i.blockUpper = nil
 }
 
-var _ base.InternalIteratorWithStats = &singleLevelIterator{}
-var _ base.InternalIteratorWithStats = &twoLevelIterator{}
-
-// Stats implements InternalIteratorWithStats.
-func (i *singleLevelIterator) Stats() base.InternalIteratorStats {
-	return i.stats
-}
-
-// ResetStats implements InternalIteratorWithStats.
-func (i *singleLevelIterator) ResetStats() {
-	i.stats = base.InternalIteratorStats{}
-}
+var _ base.InternalIterator = &singleLevelIterator{}
+var _ base.InternalIterator = &twoLevelIterator{}
 
 // compactionIterator is similar to Iterator but it increments the number of
 // bytes that have been iterated through.
@@ -1454,7 +1449,11 @@ func (i *twoLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 }
 
 func (i *twoLevelIterator) init(
-	r *Reader, lower, upper []byte, filterer *BlockPropertiesFilterer, useFilter bool,
+	r *Reader,
+	lower, upper []byte,
+	filterer *BlockPropertiesFilterer,
+	useFilter bool,
+	stats *base.InternalIteratorStats,
 ) error {
 	if r.err != nil {
 		return r.err
@@ -1470,6 +1469,7 @@ func (i *twoLevelIterator) init(
 	i.useFilter = useFilter
 	i.reader = r
 	i.cmp = r.Compare
+	i.stats = stats
 	err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum)
 	if err != nil {
 		// blockIter.Close releases topLevelIndexH and always returns a nil error
@@ -2420,14 +2420,17 @@ func (r *Reader) Close() error {
 // table. If an error occurs, NewIterWithBlockPropertyFilters cleans up after
 // itself and returns a nil iterator.
 func (r *Reader) NewIterWithBlockPropertyFilters(
-	lower, upper []byte, filterer *BlockPropertiesFilterer, useFilterBlock bool,
+	lower, upper []byte,
+	filterer *BlockPropertiesFilterer,
+	useFilterBlock bool,
+	stats *base.InternalIteratorStats,
 ) (Iterator, error) {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(r, lower, upper, filterer, useFilterBlock)
+		err := i.init(r, lower, upper, filterer, useFilterBlock, stats)
 		if err != nil {
 			return nil, err
 		}
@@ -2435,7 +2438,7 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 	}
 
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(r, lower, upper, filterer, useFilterBlock)
+	err := i.init(r, lower, upper, filterer, useFilterBlock, stats)
 	if err != nil {
 		return nil, err
 	}
@@ -2445,7 +2448,7 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 // NewIter returns an iterator for the contents of the table. If an error
 // occurs, NewIter cleans up after itself and returns a nil iterator.
 func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
-	return r.NewIterWithBlockPropertyFilters(lower, upper, nil, true /* useFilterBlock */)
+	return r.NewIterWithBlockPropertyFilters(lower, upper, nil, true /* useFilterBlock */, nil /* stats */)
 }
 
 // NewCompactionIter returns an iterator similar to NewIter but it also increments
@@ -2454,7 +2457,7 @@ func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
 func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(r, nil /* lower */, nil /* upper */, nil, false /* useFilter */)
+		err := i.init(r, nil /* lower */, nil /* upper */, nil, false /* useFilter */, nil /* stats */)
 		if err != nil {
 			return nil, err
 		}
@@ -2465,7 +2468,7 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64) (Iterator, error) {
 		}, nil
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(r, nil /* lower */, nil /* upper */, nil, false /* useFilter */)
+	err := i.init(r, nil /* lower */, nil /* upper */, nil, false /* useFilter */, nil /* stats */)
 	if err != nil {
 		return nil, err
 	}

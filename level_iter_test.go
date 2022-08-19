@@ -156,10 +156,10 @@ func newLevelIterTest() *levelIterTest {
 }
 
 func (lt *levelIterTest) newIters(
-	file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
+	file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
 	lt.itersCreated++
-	iter, err := lt.readers[file.FileNum].NewIter(opts.LowerBound, opts.UpperBound)
+	iter, err := lt.readers[file.FileNum].NewIterWithBlockPropertyFilters(opts.LowerBound, opts.UpperBound, nil, true, iio.stats)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -410,15 +410,15 @@ func TestLevelIterSeek(t *testing.T) {
 			return lt.runBuild(d)
 
 		case "iter":
+			var stats base.InternalIteratorStats
 			slice := manifest.NewLevelSliceKeySorted(lt.cmp.Compare, lt.metas)
-			iter := &levelIterTestIter{
-				levelIter: newLevelIter(IterOptions{}, DefaultComparer.Compare,
-					func(a []byte) int { return len(a) }, lt.newIters, slice.Iter(),
-					manifest.Level(level), nil),
-			}
+			iter := &levelIterTestIter{levelIter: &levelIter{}}
+			iter.init(IterOptions{}, DefaultComparer.Compare,
+				func(a []byte) int { return len(a) }, lt.newIters, slice.Iter(),
+				manifest.Level(level), internalIterOpts{stats: &stats})
 			defer iter.Close()
 			iter.initRangeDel(&iter.rangeDelIter)
-			return runInternalIterCmd(d, iter, iterCmdVerboseKey)
+			return runInternalIterCmd(d, iter, iterCmdVerboseKey, iterCmdStats(&stats))
 
 		case "iters-created":
 			return fmt.Sprintf("%d", lt.itersCreated)

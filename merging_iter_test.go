@@ -23,8 +23,9 @@ import (
 )
 
 func TestMergingIter(t *testing.T) {
+	var stats base.InternalIteratorStats
 	newFunc := func(iters ...internalIterator) internalIterator {
-		return newMergingIter(nil /* logger */, DefaultComparer.Compare,
+		return newMergingIter(nil /* logger */, &stats, DefaultComparer.Compare,
 			func(a []byte) int { return len(a) }, iters...)
 	}
 	testIterator(t, newFunc, func(r *rand.Rand) [][]string {
@@ -60,7 +61,8 @@ func TestMergingIterSeek(t *testing.T) {
 				iters = append(iters, f)
 			}
 
-			iter := newMergingIter(nil /* logger */, DefaultComparer.Compare,
+			var stats base.InternalIteratorStats
+			iter := newMergingIter(nil /* logger */, &stats, DefaultComparer.Compare,
 				func(a []byte) int { return len(a) }, iters...)
 			defer iter.Close()
 			return runInternalIterCmd(d, iter)
@@ -118,7 +120,8 @@ func TestMergingIterNextPrev(t *testing.T) {
 						}
 					}
 
-					iter := newMergingIter(nil /* logger */, DefaultComparer.Compare,
+					var stats base.InternalIteratorStats
+					iter := newMergingIter(nil /* logger */, &stats, DefaultComparer.Compare,
 						func(a []byte) int { return len(a) }, iters...)
 					defer iter.Close()
 					return runInternalIterCmd(d, iter)
@@ -148,13 +151,13 @@ func TestMergingIterCornerCases(t *testing.T) {
 
 	var fileNum base.FileNum
 	newIters :=
-		func(file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
+		func(file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
 			r := readers[file.FileNum]
 			rangeDelIter, err := r.NewRawRangeDelIter()
 			if err != nil {
 				return nil, nil, err
 			}
-			iter, err := r.NewIter(opts.GetLowerBound(), opts.GetUpperBound())
+			iter, err := r.NewIterWithBlockPropertyFilters(opts.GetLowerBound(), opts.GetUpperBound(), nil, true /* useFilterBlock */, iio.stats)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -240,6 +243,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 			return v.String()
 		case "iter":
 			levelIters := make([]mergingIterLevel, 0, len(v.Levels))
+			var stats base.InternalIteratorStats
 			for i, l := range v.Levels {
 				slice := l.Slice()
 				if slice.Empty() {
@@ -247,16 +251,16 @@ func TestMergingIterCornerCases(t *testing.T) {
 				}
 				li := &levelIter{}
 				li.init(IterOptions{}, cmp, func(a []byte) int { return len(a) }, newIters,
-					slice.Iter(), manifest.Level(i), internalIterOpts{})
+					slice.Iter(), manifest.Level(i), internalIterOpts{stats: &stats})
 				i := len(levelIters)
 				levelIters = append(levelIters, mergingIterLevel{iter: li})
 				li.initRangeDel(&levelIters[i].rangeDelIter)
 				li.initBoundaryContext(&levelIters[i].levelIterBoundaryContext)
 			}
 			miter := &mergingIter{}
-			miter.init(nil /* opts */, cmp, func(a []byte) int { return len(a) }, levelIters...)
+			miter.init(nil /* opts */, &stats, cmp, func(a []byte) int { return len(a) }, levelIters...)
 			defer miter.Close()
-			return runInternalIterCmd(d, miter, iterCmdVerboseKey)
+			return runInternalIterCmd(d, miter, iterCmdVerboseKey, iterCmdStats(&stats))
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
@@ -349,7 +353,8 @@ func BenchmarkMergingIterSeekGE(b *testing.B) {
 								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
 								require.NoError(b, err)
 							}
-							m := newMergingIter(nil /* logger */, DefaultComparer.Compare,
+							var stats base.InternalIteratorStats
+							m := newMergingIter(nil /* logger */, &stats, DefaultComparer.Compare,
 								func(a []byte) int { return len(a) }, iters...)
 							rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
@@ -381,7 +386,8 @@ func BenchmarkMergingIterNext(b *testing.B) {
 								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
 								require.NoError(b, err)
 							}
-							m := newMergingIter(nil /* logger */, DefaultComparer.Compare,
+							var stats base.InternalIteratorStats
+							m := newMergingIter(nil /* logger */, &stats, DefaultComparer.Compare,
 								func(a []byte) int { return len(a) }, iters...)
 
 							b.ResetTimer()
@@ -416,7 +422,8 @@ func BenchmarkMergingIterPrev(b *testing.B) {
 								iters[i], err = readers[i].NewIter(nil /* lower */, nil /* upper */)
 								require.NoError(b, err)
 							}
-							m := newMergingIter(nil /* logger */, DefaultComparer.Compare,
+							var stats base.InternalIteratorStats
+							m := newMergingIter(nil /* logger */, &stats, DefaultComparer.Compare,
 								func(a []byte) int { return len(a) }, iters...)
 
 							b.ResetTimer()
@@ -586,8 +593,9 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 		l.initBoundaryContext(&mils[level].levelIterBoundaryContext)
 		mils[level].iter = l
 	}
+	var stats base.InternalIteratorStats
 	m := &mergingIter{}
-	m.init(nil /* logger */, DefaultComparer.Compare,
+	m.init(nil /* logger */, &stats, DefaultComparer.Compare,
 		func(a []byte) int { return len(a) }, mils...)
 	return m
 }

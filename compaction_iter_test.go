@@ -101,7 +101,7 @@ func TestCompactionIter(t *testing.T) {
 		interleavingIter = &keyspan.InterleavingIter{}
 		interleavingIter.Init(
 			base.DefaultComparer,
-			base.WrapIterWithStats(fi),
+			fi,
 			keyspan.NewIter(base.DefaultComparer.Compare, rangeKeys),
 			nil, nil, nil)
 		iter := newInvalidatingIter(interleavingIter)

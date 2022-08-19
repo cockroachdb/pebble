@@ -872,6 +872,7 @@ func TestBlockProperties(t *testing.T) {
 		}
 	}()
 
+	var stats base.InternalIteratorStats
 	datadriven.RunTest(t, "testdata/block_properties", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
@@ -1006,7 +1007,7 @@ func TestBlockProperties(t *testing.T) {
 			} else if !ok {
 				return "filter excludes entire table"
 			}
-			iter, err := r.NewIterWithBlockPropertyFilters(lower, upper, filterer, false /* use (bloom) filter */)
+			iter, err := r.NewIterWithBlockPropertyFilters(lower, upper, filterer, false /* use (bloom) filter */, &stats)
 			if err != nil {
 				return err.Error()
 			}
@@ -1029,6 +1030,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 		}
 	}()
 
+	var stats base.InternalIteratorStats
 	datadriven.RunTest(t, "testdata/block_properties_boundlimited", func(td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
@@ -1083,7 +1085,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 			} else if !ok {
 				return "filter excludes entire table"
 			}
-			iter, err := r.NewIterWithBlockPropertyFilters(lower, upper, filterer, false /* use (bloom) filter */)
+			iter, err := r.NewIterWithBlockPropertyFilters(lower, upper, filterer, false /* use (bloom) filter */, &stats)
 			if err != nil {
 				return err.Error()
 			}
