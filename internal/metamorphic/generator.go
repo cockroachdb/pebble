@@ -808,7 +808,7 @@ func (g *generator) iterSeekLTWithLimit(iterID objID) {
 		key, limit = limit, key
 	}
 	g.add(&iterSeekLTOp{
-		iterID: g.liveIters.rand(g.rng),
+		iterID: iterID,
 		key:    key,
 		limit:  limit,
 	})
