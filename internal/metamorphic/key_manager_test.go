@@ -112,6 +112,9 @@ func TestKeyMeta_MergeInto(t *testing.T) {
 				sets:      1,
 				merges:    0,
 				singleDel: true,
+				updateOps: []keyUpdate{
+					{deleted: true},
+				},
 			},
 		},
 		{
@@ -131,6 +134,9 @@ func TestKeyMeta_MergeInto(t *testing.T) {
 				merges: 3,
 				dels:   15,
 				del:    true,
+				updateOps: []keyUpdate{
+					{deleted: true},
+				},
 			},
 		},
 		{
@@ -151,6 +157,9 @@ func TestKeyMeta_MergeInto(t *testing.T) {
 				merges: 1,
 				dels:   15,
 				del:    false,
+				updateOps: []keyUpdate{
+					{deleted: false},
+				},
 			},
 		},
 	}
@@ -158,6 +167,9 @@ func TestKeyMeta_MergeInto(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run("", func(t *testing.T) {
 			tc.toMerge.mergeInto(&tc.existing)
+			// Copy over the metaTimestamp, since its precise value doesn't
+			// matter to this test.
+			tc.expected.updateOps[0].metaTimestamp = tc.existing.updateOps[0].metaTimestamp
 			require.Equal(t, tc.expected, tc.existing)
 		})
 	}
