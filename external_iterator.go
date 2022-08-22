@@ -304,6 +304,7 @@ func openExternalTables(
 // sense to build this pausing functionality in.
 type simpleLevelIter struct {
 	cmp          Compare
+	err          error
 	lowerBound   []byte
 	iters        []internalIterator
 	filtered     []internalIterator
@@ -323,6 +324,7 @@ func (s *simpleLevelIter) resetFilteredIters() {
 	s.filtered = s.filtered[:0]
 	s.firstKeys = s.firstKeys[:0]
 	s.firstKeysBuf = s.firstKeysBuf[:0]
+	s.err = nil
 	for i := range s.iters {
 		var iterKey *base.InternalKey
 		if s.lowerBound != nil {
@@ -335,11 +337,16 @@ func (s *simpleLevelIter) resetFilteredIters() {
 			bufStart := len(s.firstKeysBuf)
 			s.firstKeysBuf = append(s.firstKeysBuf, iterKey.UserKey...)
 			s.firstKeys = append(s.firstKeys, s.firstKeysBuf[bufStart:bufStart+len(iterKey.UserKey)])
+		} else if err := s.iters[i].Error(); err != nil {
+			s.err = err
 		}
 	}
 }
 
 func (s *simpleLevelIter) SeekGE(key []byte, flags base.SeekGEFlags) (*base.InternalKey, []byte) {
+	if s.err != nil {
+		return nil, nil
+	}
 	// Find the first file that is entirely >= key. The file before that could
 	// contain the key we're looking for.
 	n := sort.Search(len(s.firstKeys), func(i int) bool {
@@ -354,6 +361,9 @@ func (s *simpleLevelIter) SeekGE(key []byte, flags base.SeekGEFlags) (*base.Inte
 		if iterKey, val := s.filtered[s.currentIdx].SeekGE(key, flags); iterKey != nil {
 			return iterKey, val
 		}
+		if err := s.filtered[s.currentIdx].Error(); err != nil {
+			s.err = err
+		}
 		s.currentIdx++
 	}
 	return s.skipEmptyFileForward(key, flags)
@@ -364,7 +374,7 @@ func (s *simpleLevelIter) skipEmptyFileForward(
 ) (*base.InternalKey, []byte) {
 	var iterKey *base.InternalKey
 	var val []byte
-	for s.currentIdx >= 0 && s.currentIdx < len(s.filtered) {
+	for s.currentIdx >= 0 && s.currentIdx < len(s.filtered) && s.err == nil {
 		if seekKey != nil {
 			iterKey, val = s.filtered[s.currentIdx].SeekGE(seekKey, flags)
 		} else if s.lowerBound != nil {
@@ -374,6 +384,9 @@ func (s *simpleLevelIter) skipEmptyFileForward(
 		}
 		if iterKey != nil {
 			return iterKey, val
+		}
+		if err := s.filtered[s.currentIdx].Error(); err != nil {
+			s.err = err
 		}
 		s.currentIdx++
 	}
@@ -391,6 +404,9 @@ func (s *simpleLevelIter) SeekLT(key []byte, flags base.SeekLTFlags) (*base.Inte
 }
 
 func (s *simpleLevelIter) First() (*base.InternalKey, []byte) {
+	if s.err != nil {
+		return nil, nil
+	}
 	s.currentIdx = 0
 	return s.skipEmptyFileForward(nil /* seekKey */, base.SeekGEFlagsNone)
 }
@@ -400,6 +416,9 @@ func (s *simpleLevelIter) Last() (*base.InternalKey, []byte) {
 }
 
 func (s *simpleLevelIter) Next() (*base.InternalKey, []byte) {
+	if s.err != nil {
+		return nil, nil
+	}
 	if s.currentIdx < 0 || s.currentIdx >= len(s.filtered) {
 		return nil, nil
 	}
@@ -415,7 +434,10 @@ func (s *simpleLevelIter) Prev() (*base.InternalKey, []byte) {
 }
 
 func (s *simpleLevelIter) Error() error {
-	return nil
+	if s.currentIdx >= 0 && s.currentIdx < len(s.filtered) {
+		s.err = firstError(s.err, s.filtered[s.currentIdx].Error())
+	}
+	return s.err
 }
 
 func (s *simpleLevelIter) Close() error {
