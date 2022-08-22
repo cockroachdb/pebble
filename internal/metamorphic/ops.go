@@ -561,31 +561,7 @@ type newIterOp struct {
 
 func (o *newIterOp) run(t *test, h *history) {
 	r := t.getReader(o.readerID)
-	var lower, upper []byte
-	if o.lower != nil {
-		lower = append(lower, o.lower...)
-	}
-	if o.upper != nil {
-		upper = append(upper, o.upper...)
-	}
-	opts := &pebble.IterOptions{
-		LowerBound: lower,
-		UpperBound: upper,
-		KeyTypes:   pebble.IterKeyType(o.keyTypes),
-		RangeKeyMasking: pebble.RangeKeyMasking{
-			Suffix: o.maskSuffix,
-		},
-	}
-	if opts.RangeKeyMasking.Suffix != nil {
-		opts.RangeKeyMasking.Filter = func() pebble.BlockPropertyFilterMask {
-			return blockprop.NewMaskingFilter()
-		}
-	}
-	if o.filterMax > 0 {
-		opts.PointKeyFilters = []pebble.BlockPropertyFilter{
-			blockprop.NewBlockPropertyFilter(o.filterMin, o.filterMax),
-		}
-	}
+	opts := iterOptions(o.iterOpts)
 
 	var i *pebble.Iterator
 	for {
@@ -600,9 +576,10 @@ func (o *newIterOp) run(t *test, h *history) {
 
 	// Trash the bounds to ensure that Pebble doesn't rely on the stability of
 	// the user-provided bounds.
-	rand.Read(lower[:])
-	rand.Read(upper[:])
-
+	if opts != nil {
+		rand.Read(opts.LowerBound[:])
+		rand.Read(opts.UpperBound[:])
+	}
 	h.Recordf("%s // %v", o, i.Error())
 }
 
@@ -616,20 +593,33 @@ type newIterUsingCloneOp struct {
 	existingIterID objID
 	iterID         objID
 	refreshBatch   bool
+	iterOpts
 }
 
 func (o *newIterUsingCloneOp) run(t *test, h *history) {
 	iter := t.getIter(o.existingIterID)
-	i, err := iter.iter.Clone(pebble.CloneOptions{})
+	cloneOpts := pebble.CloneOptions{
+		IterOptions:      iterOptions(o.iterOpts),
+		RefreshBatchView: o.refreshBatch,
+	}
+	i, err := iter.iter.Clone(cloneOpts)
 	if err != nil {
 		panic(err)
 	}
-	t.setIter(o.iterID, i, iter.filterMin, iter.filterMax)
+	filterMin, filterMax := o.filterMin, o.filterMax
+	if cloneOpts.IterOptions == nil {
+		// We're adopting the same block property filters as iter, so we need to
+		// adopt the same run-time filters to ensure determinism.
+		filterMin, filterMax = iter.filterMin, iter.filterMax
+	}
+	t.setIter(o.iterID, i, filterMin, filterMax)
 	h.Recordf("%s // %v", o, i.Error())
 }
 
 func (o *newIterUsingCloneOp) String() string {
-	return fmt.Sprintf("%s = %s.Clone(%t)", o.iterID, o.existingIterID, o.refreshBatch)
+	return fmt.Sprintf("%s = %s.Clone(%t, %q, %q, %d /* key types */, %d, %d, %q /* masking suffix */)",
+		o.iterID, o.existingIterID, o.refreshBatch, o.lower, o.upper,
+		o.keyTypes, o.filterMin, o.filterMax, o.maskSuffix)
 }
 
 // iterSetBoundsOp models an Iterator.SetBounds operation.
@@ -671,6 +661,32 @@ type iterSetOptionsOp struct {
 func (o *iterSetOptionsOp) run(t *test, h *history) {
 	i := t.getIter(o.iterID)
 
+	opts := iterOptions(o.iterOpts)
+	if opts == nil {
+		opts = &pebble.IterOptions{}
+	}
+	i.SetOptions(opts)
+
+	// Trash the bounds to ensure that Pebble doesn't rely on the stability of
+	// the user-provided bounds.
+	rand.Read(opts.LowerBound[:])
+	rand.Read(opts.UpperBound[:])
+
+	// Adjust the iterator's filters.
+	i.filterMin, i.filterMax = o.filterMin, o.filterMax
+
+	h.Recordf("%s // %v", o, i.Error())
+}
+
+func (o *iterSetOptionsOp) String() string {
+	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %d, %d, %q /* masking suffix */)",
+		o.iterID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.maskSuffix)
+}
+
+func iterOptions(o iterOpts) *pebble.IterOptions {
+	if o.IsZero() {
+		return nil
+	}
 	var lower, upper []byte
 	if o.lower != nil {
 		lower = append(lower, o.lower...)
@@ -696,23 +712,7 @@ func (o *iterSetOptionsOp) run(t *test, h *history) {
 			blockprop.NewBlockPropertyFilter(o.filterMin, o.filterMax),
 		}
 	}
-
-	i.SetOptions(opts)
-
-	// Trash the bounds to ensure that Pebble doesn't rely on the stability of
-	// the user-provided bounds.
-	rand.Read(lower[:])
-	rand.Read(upper[:])
-
-	// Adjust the iterator's filters.
-	i.filterMin, i.filterMax = o.filterMin, o.filterMax
-
-	h.Recordf("%s // %v", o, i.Error())
-}
-
-func (o *iterSetOptionsOp) String() string {
-	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %d, %d, %q /* masking suffix */)",
-		o.iterID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.maskSuffix)
+	return opts
 }
 
 // iterSeekGEOp models an Iterator.SeekGE[WithLimit] operation.
