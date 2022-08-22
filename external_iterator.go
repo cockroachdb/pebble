@@ -168,79 +168,91 @@ func validateExternalIterOpts(iterOpts *IterOptions) error {
 	return nil
 }
 
-func finishInitializingExternal(it *Iterator) {
+func createExternalPointIter(it *Iterator) (internalIterator, error) {
 	// TODO(jackson): In some instances we could generate fewer levels by using
 	// L0Sublevels code to organize nonoverlapping files into the same level.
 	// This would allow us to use levelIters and keep a smaller set of data and
 	// files in-memory. However, it would also require us to identify the bounds
 	// of all the files upfront.
 
-	mlevels := it.alloc.mlevels[:0]
 	if !it.opts.pointKeys() {
-		it.pointIter = emptyIter
-	} else if it.pointIter == nil {
-		if len(it.externalReaders) > cap(mlevels) {
-			mlevels = make([]mergingIterLevel, 0, len(it.externalReaders))
-		}
-		for _, readers := range it.externalReaders {
-			var combinedIters []internalIterator
-			for _, r := range readers {
-				var (
-					rangeDelIter keyspan.FragmentIterator
-					pointIter    internalIterator
-					err          error
-				)
-				pointIter, err = r.NewIter(it.opts.LowerBound, it.opts.UpperBound)
-				if err == nil {
-					rangeDelIter, err = r.NewRawRangeDelIter()
-				}
-				if err != nil {
-					pointIter = &errorIter{err: err}
-					rangeDelIter = &errorKeyspanIter{err: err}
-				}
-				if err == nil && rangeDelIter == nil && pointIter != nil && it.forwardOnly {
-					// TODO(bilal): Consider implementing range key pausing in
-					// simpleLevelIter so we can reduce mergingIterLevels even more by
-					// sending all sstable iterators to combinedIters, not just those
-					// corresponding to sstables without range deletes.
-					combinedIters = append(combinedIters, pointIter)
-					continue
-				}
-				mlevels = append(mlevels, mergingIterLevel{
-					iter:         pointIter,
-					rangeDelIter: rangeDelIter,
-				})
+		return emptyIter, nil
+	} else if it.pointIter != nil {
+		return it.pointIter, nil
+	}
+	mlevels := it.alloc.mlevels[:0]
+
+	if len(it.externalReaders) > cap(mlevels) {
+		mlevels = make([]mergingIterLevel, 0, len(it.externalReaders))
+	}
+	for _, readers := range it.externalReaders {
+		var combinedIters []internalIterator
+		for _, r := range readers {
+			var (
+				rangeDelIter keyspan.FragmentIterator
+				pointIter    internalIterator
+				err          error
+			)
+			pointIter, err = r.NewIter(it.opts.LowerBound, it.opts.UpperBound)
+			if err != nil {
+				return nil, err
 			}
-			if len(combinedIters) > 0 {
-				sli := &simpleLevelIter{
-					cmp:   it.cmp,
-					iters: combinedIters,
-				}
-				sli.init(it.opts)
-				mlevels = append(mlevels, mergingIterLevel{
-					iter:         sli,
-					rangeDelIter: nil,
-				})
+			rangeDelIter, err = r.NewRawRangeDelIter()
+			if err != nil {
+				return nil, err
 			}
+			if rangeDelIter == nil && pointIter != nil && it.forwardOnly {
+				// TODO(bilal): Consider implementing range key pausing in
+				// simpleLevelIter so we can reduce mergingIterLevels even more by
+				// sending all sstable iterators to combinedIters, not just those
+				// corresponding to sstables without range deletes.
+				combinedIters = append(combinedIters, pointIter)
+				continue
+			}
+			mlevels = append(mlevels, mergingIterLevel{
+				iter:         pointIter,
+				rangeDelIter: rangeDelIter,
+			})
 		}
-		it.alloc.merging.init(&it.opts, &it.stats.InternalStats, it.comparer.Compare, it.comparer.Split, mlevels...)
-		it.alloc.merging.snapshot = base.InternalKeySeqNumMax
-		it.alloc.merging.elideRangeTombstones = true
-		it.pointIter = &it.alloc.merging
+		if len(combinedIters) == 1 {
+			mlevels = append(mlevels, mergingIterLevel{
+				iter: combinedIters[0],
+			})
+		} else if len(combinedIters) > 1 {
+			sli := &simpleLevelIter{
+				cmp:   it.cmp,
+				iters: combinedIters,
+			}
+			sli.init(it.opts)
+			mlevels = append(mlevels, mergingIterLevel{
+				iter:         sli,
+				rangeDelIter: nil,
+			})
+		}
+	}
+	if len(mlevels) == 1 && mlevels[0].rangeDelIter == nil {
+		return mlevels[0].iter, nil
+	}
+
+	it.alloc.merging.init(&it.opts, &it.stats.InternalStats, it.comparer.Compare, it.comparer.Split, mlevels...)
+	it.alloc.merging.snapshot = base.InternalKeySeqNumMax
+	it.alloc.merging.elideRangeTombstones = true
+	return &it.alloc.merging, nil
+}
+
+func finishInitializingExternal(it *Iterator) {
+	pointIter, err := createExternalPointIter(it)
+	if err != nil {
+		it.pointIter = &errorIter{err: err}
+	} else {
+		it.pointIter = pointIter
 	}
 	it.iter = it.pointIter
 
 	if it.opts.rangeKeys() {
 		it.rangeKeyMasking.init(it, it.comparer.Compare, it.comparer.Split)
+		var rangeKeyIters []keyspan.FragmentIterator
 		if it.rangeKey == nil {
-			it.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
-			it.rangeKey.init(it.comparer.Compare, it.comparer.Split, &it.opts)
-			it.rangeKey.rangeKeyIter = it.rangeKey.iterConfig.Init(
-				&it.comparer,
-				base.InternalKeySeqNumMax,
-				it.opts.LowerBound, it.opts.UpperBound,
-				&it.hasPrefix, &it.prefixOrFullSeekKey,
-			)
 			// We could take advantage of the lack of overlaps in range keys within
 			// each slice in it.externalReaders, and generate keyspan.LevelIters
 			// out of those. However, since range keys are expected to be sparse to
@@ -253,16 +265,31 @@ func finishInitializingExternal(it *Iterator) {
 			for _, readers := range it.externalReaders {
 				for _, r := range readers {
 					if rki, err := r.NewRawRangeKeyIter(); err != nil {
-						it.rangeKey.iterConfig.AddLevel(&errorKeyspanIter{err: err})
+						rangeKeyIters = append(rangeKeyIters, &errorKeyspanIter{err: err})
 					} else if rki != nil {
-						it.rangeKey.iterConfig.AddLevel(rki)
+						rangeKeyIters = append(rangeKeyIters, rki)
 					}
 				}
 			}
+			if len(rangeKeyIters) > 0 {
+				it.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
+				it.rangeKey.init(it.comparer.Compare, it.comparer.Split, &it.opts)
+				it.rangeKey.rangeKeyIter = it.rangeKey.iterConfig.Init(
+					&it.comparer,
+					base.InternalKeySeqNumMax,
+					it.opts.LowerBound, it.opts.UpperBound,
+					&it.hasPrefix, &it.prefixOrFullSeekKey,
+				)
+				for i := range rangeKeyIters {
+					it.rangeKey.iterConfig.AddLevel(rangeKeyIters[i])
+				}
+			}
 		}
-		it.rangeKey.iiter.Init(&it.comparer, it.iter, it.rangeKey.rangeKeyIter, &it.rangeKeyMasking,
-			it.opts.LowerBound, it.opts.UpperBound)
-		it.iter = &it.rangeKey.iiter
+		if it.rangeKey != nil {
+			it.rangeKey.iiter.Init(&it.comparer, it.iter, it.rangeKey.rangeKeyIter, &it.rangeKeyMasking,
+				it.opts.LowerBound, it.opts.UpperBound)
+			it.iter = &it.rangeKey.iiter
+		}
 	}
 }
 
