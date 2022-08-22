@@ -416,7 +416,7 @@ func TestMeta(t *testing.T) {
 %s
 ===== OPS =====
 %s
-`, seed, metaDir, names[0], names[i], text, names[0], optionsStrA, names[1], optionsStrB, formattedOps)
+`, seed, metaDir, names[0], names[i], text, names[0], optionsStrA, names[i], optionsStrB, formattedOps)
 			os.Exit(1)
 		}
 	}
