@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
@@ -125,4 +126,14 @@ func TestSimpleLevelIter(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestSimpleIterError(t *testing.T) {
+	s := simpleLevelIter{cmp: DefaultComparer.Compare, iters: []internalIterator{&errorIter{err: errors.New("injected")}}}
+	s.init(IterOptions{})
+	defer s.Close()
+
+	iterKey, _ := s.First()
+	require.Nil(t, iterKey)
+	require.Error(t, s.Error())
 }
