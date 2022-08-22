@@ -35,6 +35,12 @@ type retryableIter struct {
 	// surfaced. This is used to ensure determinism regardless of whether
 	// block-property filters filter keys or not.
 	filterMin, filterMax uint64
+
+	// A single operation on the retryableIter may result in many operations on
+	// i.iter if we need to skip filtered keys. We set rangeKeyChanged to true
+	// if the iter.RangeKeyChanged returns true for any of the positioning
+	// operations.
+	rangeKeyChanged bool
 }
 
 func (i *retryableIter) shouldFilter() bool {
@@ -89,9 +95,12 @@ func (i *retryableIter) First() bool {
 	i.withRetry(func() {
 		valid = i.iter.First()
 	})
+	rangeKeyChanged := i.iter.RangeKeyChanged()
 	if valid && i.shouldFilter() {
 		valid = i.Next()
+		rangeKeyChanged = rangeKeyChanged || i.iter.RangeKeyChanged()
 	}
+	i.rangeKeyChanged = rangeKeyChanged
 	return valid
 }
 
@@ -100,14 +109,7 @@ func (i *retryableIter) Key() []byte {
 }
 
 func (i *retryableIter) RangeKeyChanged() bool {
-	// A single operation on the retryableIter may result in many operations on
-	// i.iter if we need to skip filtered keys. To provide determinism, we
-	// return RangeKeyChanged()=false for all iterators configured with filters.
-	//
-	// TODO(jackson): We should be able to provide more test coverage here by
-	// returning true if i.iter.RangeKeyChanged()=true after any of the
-	// individual repositioning methods.
-	return i.filterMax == 0 && i.iter.RangeKeyChanged()
+	return i.rangeKeyChanged
 }
 
 func (i *retryableIter) HasPointAndRange() (bool, bool) {
@@ -125,98 +127,144 @@ func (i *retryableIter) RangeKeys() []pebble.RangeKeyData {
 func (i *retryableIter) Last() bool {
 	var valid bool
 	i.withRetry(func() { valid = i.iter.Last() })
+	rangeKeyChanged := i.iter.RangeKeyChanged()
 	if valid && i.shouldFilter() {
 		valid = i.Prev()
+		rangeKeyChanged = rangeKeyChanged || i.iter.RangeKeyChanged()
 	}
+	i.rangeKeyChanged = rangeKeyChanged
 	return valid
 }
 
 func (i *retryableIter) Next() bool {
 	var valid bool
+	var rangeKeyChanged bool
 	i.withRetry(func() {
+		// If the function gets retried, then get rid of the previous value
+		// of rangeKeyChanged.
+		rangeKeyChanged = false
 		valid = i.iter.Next()
+		rangeKeyChanged = i.iter.RangeKeyChanged()
 		for valid && i.shouldFilter() {
 			valid = i.iter.Next()
+			rangeKeyChanged = rangeKeyChanged || i.iter.RangeKeyChanged()
 		}
 	})
+	i.rangeKeyChanged = rangeKeyChanged
 	return valid
 }
 
 func (i *retryableIter) NextWithLimit(limit []byte) pebble.IterValidityState {
 	var validity pebble.IterValidityState
+	var rangeKeyChanged bool
 	i.withRetry(func() {
+		// If the function gets retried, then get rid of the previous value
+		// of rangeKeyChanged.
+		rangeKeyChanged = false
 		validity = i.iter.NextWithLimit(limit)
+		rangeKeyChanged = i.iter.RangeKeyChanged()
 		for validity == pebble.IterValid && i.shouldFilter() {
 			validity = i.iter.NextWithLimit(limit)
+			rangeKeyChanged = rangeKeyChanged || i.iter.RangeKeyChanged()
 		}
 	})
+	i.rangeKeyChanged = rangeKeyChanged
 	return validity
 }
 
 func (i *retryableIter) Prev() bool {
 	var valid bool
+	var rangeKeyChanged bool
 	i.withRetry(func() {
+		// If the function gets retried, then get rid of the previous value
+		// of rangeKeyChanged.
+		rangeKeyChanged = false
 		valid = i.iter.Prev()
+		rangeKeyChanged = i.iter.RangeKeyChanged()
 		for valid && i.shouldFilter() {
 			valid = i.iter.Prev()
+			rangeKeyChanged = rangeKeyChanged || i.iter.RangeKeyChanged()
 		}
 	})
+	i.rangeKeyChanged = rangeKeyChanged
 	return valid
 }
 
 func (i *retryableIter) PrevWithLimit(limit []byte) pebble.IterValidityState {
 	var validity pebble.IterValidityState
+	var rangeKeyChanged bool
 	i.withRetry(func() {
+		// If the function gets retried, then get rid of the previous value
+		// of rangeKeyChanged.
+		rangeKeyChanged = false
 		validity = i.iter.PrevWithLimit(limit)
+		rangeKeyChanged = i.iter.RangeKeyChanged()
 		for validity == pebble.IterValid && i.shouldFilter() {
 			validity = i.iter.PrevWithLimit(limit)
+			rangeKeyChanged = rangeKeyChanged || i.iter.RangeKeyChanged()
 		}
 	})
+	i.rangeKeyChanged = rangeKeyChanged
 	return validity
 }
 
 func (i *retryableIter) SeekGE(key []byte) bool {
 	var valid bool
 	i.withRetry(func() { valid = i.iter.SeekGE(key) })
+	rangeKeyChanged := i.iter.RangeKeyChanged()
 	if valid && i.shouldFilter() {
 		valid = i.Next()
+		rangeKeyChanged = rangeKeyChanged || i.iter.RangeKeyChanged()
 	}
+	i.rangeKeyChanged = rangeKeyChanged
 	return valid
 }
 
 func (i *retryableIter) SeekGEWithLimit(key []byte, limit []byte) pebble.IterValidityState {
 	var validity pebble.IterValidityState
 	i.withRetry(func() { validity = i.iter.SeekGEWithLimit(key, limit) })
+	rangeKeyChanged := i.iter.RangeKeyChanged()
 	if validity == pebble.IterValid && i.shouldFilter() {
 		validity = i.NextWithLimit(limit)
+		rangeKeyChanged = rangeKeyChanged || i.iter.RangeKeyChanged()
 	}
+	i.rangeKeyChanged = rangeKeyChanged
 	return validity
 }
 
 func (i *retryableIter) SeekLT(key []byte) bool {
 	var valid bool
 	i.withRetry(func() { valid = i.iter.SeekLT(key) })
+	rangeKeyChanged := i.iter.RangeKeyChanged()
 	if valid && i.shouldFilter() {
 		valid = i.Prev()
+		rangeKeyChanged = rangeKeyChanged || i.iter.RangeKeyChanged()
 	}
+	i.rangeKeyChanged = rangeKeyChanged
 	return valid
 }
 
 func (i *retryableIter) SeekLTWithLimit(key []byte, limit []byte) pebble.IterValidityState {
 	var validity pebble.IterValidityState
 	i.withRetry(func() { validity = i.iter.SeekLTWithLimit(key, limit) })
+	rangeKeyChanged := i.iter.RangeKeyChanged()
 	if validity == pebble.IterValid && i.shouldFilter() {
 		validity = i.PrevWithLimit(limit)
+		rangeKeyChanged = rangeKeyChanged || i.iter.RangeKeyChanged()
 	}
+	i.rangeKeyChanged = rangeKeyChanged
 	return validity
 }
 
 func (i *retryableIter) SeekPrefixGE(key []byte) bool {
 	var valid bool
 	i.withRetry(func() { valid = i.iter.SeekPrefixGE(key) })
+	rangeKeyChanged := i.iter.RangeKeyChanged()
 	if valid && i.shouldFilter() {
 		valid = i.Next()
+		rangeKeyChanged = rangeKeyChanged || i.iter.RangeKeyChanged()
 	}
+	i.rangeKeyChanged = rangeKeyChanged
 	return valid
 }
 
