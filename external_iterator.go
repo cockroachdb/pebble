@@ -58,6 +58,21 @@ func (e ExternalIterForwardOnly) readerOptions() []sstable.ReaderOption {
 	return nil
 }
 
+// ExternalIterAllowDuplicates is an ExternalIterOption that specifies that
+// this iterator is not expected to deduplicate different versions of the same
+// user key. Can be passed in as a performance optimization when the SSTs being
+// read are guaranteed to only contain up to one version of a given user key.
+// Behaviour when more than one version of a user key is present is undefined.
+type ExternalIterAllowDuplicates struct{}
+
+func (e ExternalIterAllowDuplicates) iterApply(iter *Iterator) {
+	iter.allowDuplicates = true
+}
+
+func (e ExternalIterAllowDuplicates) readerOptions() []sstable.ReaderOption {
+	return nil
+}
+
 // NewExternalIter takes an input 2d array of sstable files which may overlap
 // across subarrays but not within a subarray (at least as far as points are
 // concerned; range keys are allowed to overlap arbitrarily even within a
@@ -212,21 +227,32 @@ func finishInitializingExternal(it *Iterator) {
 				})
 			}
 			if len(combinedIters) > 0 {
-				sli := &simpleLevelIter{
-					cmp:   it.cmp,
-					iters: combinedIters,
+				if len(combinedIters) > 1 {
+					sli := &simpleLevelIter{
+						cmp:   it.cmp,
+						iters: combinedIters,
+					}
+					sli.init(it.opts)
+					mlevels = append(mlevels, mergingIterLevel{
+						iter:         base.WrapIterWithStats(sli),
+						rangeDelIter: nil,
+					})
+				} else {
+					// len(combinedIters) == 1.
+					mlevels = append(mlevels, mergingIterLevel{
+						iter: base.WrapIterWithStats(combinedIters[0]),
+					})
 				}
-				sli.init(it.opts)
-				mlevels = append(mlevels, mergingIterLevel{
-					iter:         base.WrapIterWithStats(sli),
-					rangeDelIter: nil,
-				})
 			}
 		}
-		it.alloc.merging.init(&it.opts, it.comparer.Compare, it.comparer.Split, mlevels...)
-		it.alloc.merging.snapshot = base.InternalKeySeqNumMax
-		it.alloc.merging.elideRangeTombstones = true
-		it.pointIter = &it.alloc.merging
+		if len(mlevels) == 1 && mlevels[0].rangeDelIter == nil {
+			it.pointIter = mlevels[0].iter
+		} else {
+			it.alloc.merging.init(&it.opts, it.comparer.Compare, it.comparer.Split, mlevels...)
+			it.alloc.merging.snapshot = base.InternalKeySeqNumMax
+			it.alloc.merging.elideRangeTombstones = true
+			it.pointIter = &it.alloc.merging
+		}
 	}
 	it.iter = it.pointIter
 

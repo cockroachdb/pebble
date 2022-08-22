@@ -235,6 +235,9 @@ type Iterator struct {
 	// Used for an optimization in external iterators to reduce the number of
 	// merging levels.
 	forwardOnly bool
+	// Used for an optimization in external iterators to speed up positioning
+	// operations.
+	allowDuplicates bool
 	// Used in some tests to disable the random disabling of seek optimizations.
 	forceEnableSeekOpt bool
 }
@@ -599,6 +602,11 @@ func (i *Iterator) nextUserKey() {
 		// iterating through ingested sstables, which contain keys that all have
 		// the same sequence number.
 		if done || i.iterKey == nil || i.iterKey.Trailer >= trailer {
+			break
+		}
+		// If the allow-duplicates optimization is enabled, we likely have already
+		// arrived at the next user key. Avoid a comparison.
+		if i.allowDuplicates {
 			break
 		}
 		if !i.equal(i.key, i.iterKey.UserKey) {
