@@ -84,21 +84,27 @@ type generator struct {
 	// snapshotID -> snapshot iters: used to keep track of the open iterators on
 	// a snapshot. The iter set value will also be indexed by the readers map.
 	snapshots map[objID]objIDSet
+	// iterSequenceNumber is the metaTimestamp at which the iter was created.
+	iterCreationTimestamp map[objID]int
+	// iterReaderID is a map from an iterID to a readerID.
+	iterReaderID map[objID]objID
 }
 
 func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
 	g := &generator{
-		cfg:           cfg,
-		rng:           rng,
-		init:          &initOp{},
-		keyManager:    km,
-		liveReaders:   objIDSlice{makeObjID(dbTag, 0)},
-		liveWriters:   objIDSlice{makeObjID(dbTag, 0)},
-		batches:       make(map[objID]objIDSet),
-		iters:         make(map[objID]objIDSet),
-		readers:       make(map[objID]objIDSet),
-		snapshots:     make(map[objID]objIDSet),
-		itersLastOpts: make(map[objID]iterOpts),
+		cfg:                   cfg,
+		rng:                   rng,
+		init:                  &initOp{},
+		keyManager:            km,
+		liveReaders:           objIDSlice{makeObjID(dbTag, 0)},
+		liveWriters:           objIDSlice{makeObjID(dbTag, 0)},
+		batches:               make(map[objID]objIDSet),
+		iters:                 make(map[objID]objIDSet),
+		readers:               make(map[objID]objIDSet),
+		snapshots:             make(map[objID]objIDSet),
+		itersLastOpts:         make(map[objID]iterOpts),
+		iterCreationTimestamp: make(map[objID]int),
+		iterReaderID:          make(map[objID]objID),
 	}
 	// Note that the initOp fields are populated during generation.
 	g.ops = append(g.ops, g.init)
@@ -535,6 +541,8 @@ func (g *generator) newIter() {
 	}
 
 	g.itersLastOpts[iterID] = opts
+	g.iterCreationTimestamp[iterID] = g.keyManager.nextMetaTimestamp()
+	g.iterReaderID[iterID] = readerID
 	g.add(&newIterOp{
 		readerID: readerID,
 		iterID:   iterID,
@@ -585,6 +593,8 @@ func (g *generator) newIterUsingClone() {
 		g.itersLastOpts[iterID] = g.itersLastOpts[existingIterID]
 	}
 
+	g.iterCreationTimestamp[iterID] = g.keyManager.nextMetaTimestamp()
+	g.iterReaderID[iterID] = g.iterReaderID[existingIterID]
 	g.add(&newIterUsingCloneOp{
 		existingIterID: existingIterID,
 		iterID:         iterID,
@@ -755,10 +765,69 @@ func (g *generator) iterSeekGEWithLimit(iterID objID) {
 	})
 }
 
+func (g *generator) randKeyToReadWithinBounds(lower, upper []byte, readerID objID) []*keyMeta {
+	var inRangeKeys []*keyMeta
+	for _, keyMeta := range g.keyManager.byObj[readerID] {
+		posKey := keyMeta.key
+		if g.cmp(posKey, lower) < 0 || g.cmp(posKey, upper) >= 0 {
+			continue
+		}
+		inRangeKeys = append(inRangeKeys, keyMeta)
+	}
+	return inRangeKeys
+}
+
 func (g *generator) iterSeekPrefixGE(iterID objID) {
+	lower := g.itersLastOpts[iterID].lower
+	upper := g.itersLastOpts[iterID].upper
+	iterCreationTimestamp := g.iterCreationTimestamp[iterID]
+	var key []byte
+
+	// We try to make sure that the SeekPrefixGE key is within the iter bounds,
+	// and that the iter can read the key. If the key was created on a batch
+	// which deleted the key, then the key will still be considered visible
+	// by the current logic. We're also not accounting for keys written to
+	// batches which haven't been presisted to the DB. But we're only picking
+	// keys in a best effort manner, and the logic is better than picking a
+	// random key.
+	if g.rng.Intn(10) >= 1 {
+		possibleKeys := make([][]byte, 0, 100)
+		inRangeKeys := g.randKeyToReadWithinBounds(lower, upper, dbObjID)
+		for _, keyMeta := range inRangeKeys {
+			posKey := keyMeta.key
+			var foundWriteWithoutDelete bool
+			for _, update := range keyMeta.updateOps {
+				if update.metaTimestamp > iterCreationTimestamp {
+					break
+				}
+
+				if update.deleted {
+					foundWriteWithoutDelete = false
+				} else {
+					foundWriteWithoutDelete = true
+				}
+			}
+			if foundWriteWithoutDelete {
+				possibleKeys = append(possibleKeys, posKey)
+			}
+		}
+
+		if len(possibleKeys) > 0 {
+			key = []byte(possibleKeys[g.rng.Int31n(int32(len(possibleKeys)))])
+		}
+	}
+
+	if key == nil {
+		// TODO(bananabrick): We should try and use keys within the bounds,
+		// even if we couldn't find any keys visible to the iterator. However,
+		// doing this in experiments didn't really increase the valid
+		// SeekPrefixGE calls by much.
+		key = g.randKeyToRead(0) // 0% new keys
+	}
+
 	g.add(&iterSeekPrefixGEOp{
 		iterID: iterID,
-		key:    g.randKeyToRead(0), // 0% new keys
+		key:    key,
 	})
 }
 
