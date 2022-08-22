@@ -32,6 +32,13 @@ type iterOpts struct {
 	// ensure determinism.
 	filterMin uint64
 	filterMax uint64
+
+	// NB: If adding or removing fields, ensure IsZero is in sync.
+}
+
+func (o iterOpts) IsZero() bool {
+	return o.lower == nil && o.upper == nil && o.keyTypes == 0 &&
+		o.maskSuffix == nil && o.filterMin == 0 && o.filterMax == 0
 }
 
 type generator struct {
@@ -570,13 +577,19 @@ func (g *generator) newIterUsingClone() {
 		// closes.
 	}
 
-	// TODO(jackson): Exercise changing iterator options as a part of Clone.
+	var opts iterOpts
+	if g.rng.Intn(2) == 1 {
+		g.maybeMutateOptions(&opts)
+		g.itersLastOpts[iterID] = opts
+	} else {
+		g.itersLastOpts[iterID] = g.itersLastOpts[existingIterID]
+	}
 
-	g.itersLastOpts[iterID] = g.itersLastOpts[existingIterID]
 	g.add(&newIterUsingCloneOp{
 		existingIterID: existingIterID,
 		iterID:         iterID,
 		refreshBatch:   g.rng.Intn(2) == 1,
+		iterOpts:       opts,
 	})
 }
 
@@ -699,52 +712,7 @@ func (g *generator) iterSetBounds(iterID objID) {
 
 func (g *generator) iterSetOptions(iterID objID) {
 	opts := g.itersLastOpts[iterID]
-
-	// With 95% probability, allow changes to any options at all. This ensures
-	// that in 5% of cases there are no changes, and SetOptions hits its fast
-	// path.
-	if g.rng.Intn(100) >= 5 {
-		// With 1/3 probability, clear existing bounds.
-		if opts.lower != nil && g.rng.Intn(3) == 0 {
-			opts.lower = nil
-		}
-		if opts.upper != nil && g.rng.Intn(3) == 0 {
-			opts.upper = nil
-		}
-		// With 1/3 probability, update the bounds.
-		if g.rng.Intn(3) == 0 {
-			// Generate a new key with a .1% probability.
-			opts.lower = g.randKeyToRead(0.001)
-		}
-		if g.rng.Intn(3) == 0 {
-			// Generate a new key with a .1% probability.
-			opts.upper = g.randKeyToRead(0.001)
-		}
-		if g.cmp(opts.lower, opts.upper) > 0 {
-			opts.lower, opts.upper = opts.upper, opts.lower
-		}
-
-		// With 1/3 probability, update the key-types/mask.
-		if g.rng.Intn(3) == 0 {
-			opts.keyTypes, opts.maskSuffix = g.randKeyTypesAndMask()
-		}
-
-		// With 1/3 probability, clear existing filter.
-		if opts.filterMax > 0 && g.rng.Intn(3) == 0 {
-			opts.filterMax, opts.filterMin = 0, 0
-		}
-		// With 10% probability, set a filter range.
-		if g.rng.Intn(10) == 1 {
-			max := g.cfg.writeSuffixDist.Max()
-			opts.filterMin, opts.filterMax = g.rng.Uint64n(max)+1, g.rng.Uint64n(max)+1
-			if opts.filterMin > opts.filterMax {
-				opts.filterMin, opts.filterMax = opts.filterMax, opts.filterMin
-			} else if opts.filterMin == opts.filterMax {
-				opts.filterMax = opts.filterMin + 1
-			}
-		}
-	}
-
+	g.maybeMutateOptions(&opts)
 	g.itersLastOpts[iterID] = opts
 	g.add(&iterSetOptionsOp{
 		iterID:   iterID,
@@ -1096,6 +1064,53 @@ func (g *generator) writerSingleDelete() {
 		// set to true for the single delete to be replaced.
 		maybeReplaceDelete: g.rng.Float64() < 0.25,
 	})
+}
+
+func (g *generator) maybeMutateOptions(opts *iterOpts) {
+	// With 95% probability, allow changes to any options at all. This ensures
+	// that in 5% of cases there are no changes, and SetOptions hits its fast
+	// path.
+	if g.rng.Intn(100) >= 5 {
+		// With 1/3 probability, clear existing bounds.
+		if opts.lower != nil && g.rng.Intn(3) == 0 {
+			opts.lower = nil
+		}
+		if opts.upper != nil && g.rng.Intn(3) == 0 {
+			opts.upper = nil
+		}
+		// With 1/3 probability, update the bounds.
+		if g.rng.Intn(3) == 0 {
+			// Generate a new key with a .1% probability.
+			opts.lower = g.randKeyToRead(0.001)
+		}
+		if g.rng.Intn(3) == 0 {
+			// Generate a new key with a .1% probability.
+			opts.upper = g.randKeyToRead(0.001)
+		}
+		if g.cmp(opts.lower, opts.upper) > 0 {
+			opts.lower, opts.upper = opts.upper, opts.lower
+		}
+
+		// With 1/3 probability, update the key-types/mask.
+		if g.rng.Intn(3) == 0 {
+			opts.keyTypes, opts.maskSuffix = g.randKeyTypesAndMask()
+		}
+
+		// With 1/3 probability, clear existing filter.
+		if opts.filterMax > 0 && g.rng.Intn(3) == 0 {
+			opts.filterMax, opts.filterMin = 0, 0
+		}
+		// With 10% probability, set a filter range.
+		if g.rng.Intn(10) == 1 {
+			max := g.cfg.writeSuffixDist.Max()
+			opts.filterMin, opts.filterMax = g.rng.Uint64n(max)+1, g.rng.Uint64n(max)+1
+			if opts.filterMin > opts.filterMax {
+				opts.filterMin, opts.filterMax = opts.filterMax, opts.filterMin
+			} else if opts.filterMin == opts.filterMax {
+				opts.filterMax = opts.filterMin + 1
+			}
+		}
+	}
 }
 
 func (g *generator) pickOneUniform(options ...func(objID)) func(objID) {
