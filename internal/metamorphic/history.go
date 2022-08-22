@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"os"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -130,4 +131,10 @@ func readHistory(t *testing.T, historyPath string) []string {
 		newLines = append(newLines, line)
 	}
 	return newLines
+}
+
+func readLogicalState(t *testing.T, path string) []string {
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	return difflib.SplitLines(string(data))
 }
