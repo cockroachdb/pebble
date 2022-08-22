@@ -83,6 +83,9 @@ const (
 // https://github.com/cockroachdb/pebble/issues/29#issuecomment-494477985
 const readBytesPeriod uint64 = 1 << 16
 
+// Arbitrary max buffer size for range key buffer.
+const maxKeyBufCacheSize = 4 << 10 // 4 KB
+
 var errReversePrefixIteration = errors.New("pebble: unsupported reverse prefix iteration")
 
 // IteratorMetrics holds per-iterator metrics. These do not change over the
@@ -1781,8 +1784,6 @@ func (i *Iterator) Close() error {
 		err = firstError(err, i.valueCloser.Close())
 		i.valueCloser = nil
 	}
-
-	const maxKeyBufCacheSize = 4 << 10 // 4 KB
 
 	if i.rangeKey != nil {
 		// Avoid caching the key buf if it is overly large. The constant is
