@@ -172,7 +172,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
-		iter, err := r.NewIter(nil, nil)
+		iter, err := r.NewIter(nil, nil, true /* doNotFillCache */)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
@@ -183,7 +183,7 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 		var prefixIter sstable.Iterator
 		if r.Split != nil {
 			var err error
-			prefixIter, err = r.NewIter(nil, nil)
+			prefixIter, err = r.NewIter(nil, nil, true /* doNotFillCache */)
 			if err != nil {
 				fmt.Fprintf(stderr, "%s\n", err)
 				return
@@ -382,7 +382,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		s.fmtKey.setForComparer(r.Properties.ComparerName, s.comparers)
 		s.fmtValue.setForComparer(r.Properties.ComparerName, s.comparers)
 
-		iter, err := r.NewIter(nil, s.end)
+		iter, err := r.NewIter(nil, s.end, true /* doNotFillCache */)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s%s\n", prefix, err)
 			return
@@ -394,7 +394,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		// bit more work here to put them in a form that can be iterated in
 		// parallel with the point records.
 		rangeDelIter, err := func() (keyspan.FragmentIterator, error) {
-			iter, err := r.NewRawRangeDelIter()
+			iter, err := r.NewRawRangeDelIter(false /* doNotFillCache */)
 			if err != nil {
 				return nil, err
 			}
@@ -478,7 +478,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		}
 
 		// Handle range keys.
-		rkIter, err := r.NewRawRangeKeyIter()
+		rkIter, err := r.NewRawRangeKeyIter(false)
 		if err != nil {
 			fmt.Fprintf(stdout, "%s\n", err)
 			os.Exit(1)

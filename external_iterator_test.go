@@ -112,7 +112,7 @@ func TestSimpleLevelIter(t *testing.T) {
 			}()
 			var internalIters []internalIterator
 			for i := range readers {
-				iter, err := readers[i].NewIter(nil, nil)
+				iter, err := readers[i].NewIter(nil, nil, false)
 				require.NoError(t, err)
 				internalIters = append(internalIters, iter)
 			}

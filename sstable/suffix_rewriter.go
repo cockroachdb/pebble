@@ -328,7 +328,7 @@ func rewriteDataBlocksToWriter(
 }
 
 func rewriteRangeKeyBlockToWriter(r *Reader, w *Writer, from, to []byte) error {
-	iter, err := r.NewRawRangeKeyIter()
+	iter, err := r.NewRawRangeKeyIter(false /* doNotFillCache */)
 	if err != nil {
 		return err
 	}
@@ -390,7 +390,7 @@ func RewriteKeySuffixesViaWriter(
 	}
 
 	w := NewWriter(out, o)
-	i, err := r.NewIter(nil, nil)
+	i, err := r.NewIter(nil, nil, false)
 	if err != nil {
 		return nil, err
 	}

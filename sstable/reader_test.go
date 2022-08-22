@@ -38,7 +38,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 
 	if r.tableFilter != nil {
-		dataH, err := r.readFilter()
+		dataH, err := r.readFilter(false /* doNotFillCache */)
 		if err != nil {
 			return nil, err
 		}
@@ -55,7 +55,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 		}
 	}
 
-	i, err := r.NewIter(nil /* lower */, nil /* upper */)
+	i, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +288,7 @@ func TestInjectedErrors(t *testing.T) {
 				return err
 			}
 
-			iter, err := r.NewIter(nil, nil)
+			iter, err := r.NewIter(nil, nil, false /* doNotFillCache */)
 			if err != nil {
 				return err
 			}
@@ -364,7 +364,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, cacheSi
 					return err.Error()
 				}
 				r.Properties.GlobalSeqNum = seqNum
-				iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+				iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 				if err != nil {
 					return err.Error()
 				}
@@ -498,7 +498,7 @@ func testBytesIteratedWithCompression(
 			for _, numEntries := range []uint64{0, 1, maxNumEntries[i]} {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, compression)
 				var bytesIterated, prevIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated)
+				citer, err := r.NewCompactionIter(&bytesIterated, false /* doNotFillCache */)
 				require.NoError(t, err)
 
 				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
@@ -548,7 +548,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, DefaultCompression)
 				var bytesIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated)
+				citer, err := r.NewCompactionIter(&bytesIterated, false /* doNotFillCache */)
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:
@@ -678,14 +678,14 @@ func TestReaderChecksumErrors(t *testing.T) {
 						r, err := NewReader(corrupted, ReaderOptions{})
 						require.NoError(t, err)
 
-						iter, err := r.NewIter(nil, nil)
+						iter, err := r.NewIter(nil, nil, false /* doNotFillCache */)
 						require.NoError(t, err)
 						for k, _ := iter.First(); k != nil; k, _ = iter.Next() {
 						}
 						require.Regexp(t, `checksum mismatch`, iter.Error())
 						require.Regexp(t, `checksum mismatch`, iter.Close())
 
-						iter, err = r.NewIter(nil, nil)
+						iter, err = r.NewIter(nil, nil, false /* doNotFillCache */)
 						require.NoError(t, err)
 						for k, _ := iter.Last(); k != nil; k, _ = iter.Prev() {
 						}
@@ -1033,7 +1033,7 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 		b.Run(bm.name,
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, bm.options)
-				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
@@ -1054,7 +1054,7 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 		b.Run(bm.name,
 			func(b *testing.B) {
 				r, keys := buildBenchmarkTable(b, bm.options)
-				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
@@ -1075,7 +1075,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 		b.Run(bm.name,
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, bm.options)
-				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 				require.NoError(b, err)
 
 				b.ResetTimer()
@@ -1104,7 +1104,7 @@ func BenchmarkTableIterPrev(b *testing.B) {
 		b.Run(bm.name,
 			func(b *testing.B) {
 				r, _ := buildBenchmarkTable(b, bm.options)
-				it, err := r.NewIter(nil /* lower */, nil /* upper */)
+				it, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 				require.NoError(b, err)
 
 				b.ResetTimer()

@@ -142,7 +142,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		}
 
 		// Check using SeekGE.
-		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 		if err != nil {
 			return err
 		}
@@ -192,7 +192,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		}
 
 		// Check using Find.
-		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 		if err != nil {
 			return err
 		}
@@ -222,7 +222,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		{0, "~"},
 	}
 	for _, ct := range countTests {
-		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+		iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 		if err != nil {
 			return err
 		}
@@ -275,7 +275,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 			upper = []byte(words[upperIdx])
 		}
 
-		iter, err := r.NewIter(lower, upper)
+		iter, err := r.NewIter(lower, upper, false /* doNotFillCache */)
 		if err != nil {
 			return err
 		}
@@ -637,7 +637,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 					if err != nil {
 						t.Errorf("nk=%d, vLen=%d: reader open: %v", nk, vLen, err)
 					}
-					iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+					iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 					require.NoError(t, err)
 					i := newIterAdapter(iter)
 					for valid := i.First(); valid; valid = i.Next() {
@@ -672,7 +672,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 	const globalSeqNum = 42
 	r.Properties.GlobalSeqNum = globalSeqNum
 
-	iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+	iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 	require.NoError(t, err)
 	i := newIterAdapter(iter)
 	for valid := i.First(); valid; valid = i.Next() {
@@ -692,7 +692,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 	r, err := NewReader(f, ReaderOptions{})
 	require.NoError(t, err)
 
-	b, _, err := r.readBlock(r.metaIndexBH, nil /* transform */, nil /* attrs */)
+	b, _, err := r.readBlock(r.metaIndexBH, nil /* transform */, nil /* attrs */, false /* doNotFillCache */)
 	require.NoError(t, err)
 	defer b.Release()
 

@@ -976,7 +976,7 @@ func TestCompaction(t *testing.T) {
 					return "", "", errors.WithStack(err)
 				}
 				defer r.Close()
-				iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+				iter, err := r.NewIter(nil /* lower */, nil /* upper */, false /* doNotFillCache */)
 				if err != nil {
 					return "", "", errors.WithStack(err)
 				}

@@ -59,6 +59,11 @@ type Handle struct {
 	value *Value
 }
 
+// HandleFrom creates a handle from value.
+func HandleFrom(value *Value) Handle {
+	return Handle{value: value}
+}
+
 // Get returns the value stored in handle.
 func (h Handle) Get() []byte {
 	if h.value != nil {
