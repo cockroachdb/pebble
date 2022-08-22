@@ -323,7 +323,7 @@ func TestMeta(t *testing.T) {
 
 		cmd := exec.Command(os.Args[0], args...)
 		out, err := cmd.CombinedOutput()
-		if err != nil {
+		if err != nil || err == nil {
 			t.Fatalf(`
 ===== SEED =====
 %d

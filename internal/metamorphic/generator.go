@@ -34,6 +34,17 @@ type iterOpts struct {
 	filterMax uint64
 }
 
+// metaTimestamp is used to provide a ordering over certain operations like
+// iter creation, updates to keys. Keeping track of the timestamp allows us to
+// make determinations such as whether a key will be visible to an iterator.
+var metaTimestamp = 0
+
+func nextMetaTimestamp() int {
+	ret := metaTimestamp
+	metaTimestamp++
+	return ret
+}
+
 type generator struct {
 	cfg config
 	rng *rand.Rand
@@ -77,21 +88,27 @@ type generator struct {
 	// snapshotID -> snapshot iters: used to keep track of the open iterators on
 	// a snapshot. The iter set value will also be indexed by the readers map.
 	snapshots map[objID]objIDSet
+	// iterSequenceNumber is the metaTimestamp at which the iter was created.
+	iterCreationTimestamp map[objID]int
+	// iterReaderID is a map from an iterID to a readerID.
+	iterReaderID map[objID]objID
 }
 
 func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
 	g := &generator{
-		cfg:           cfg,
-		rng:           rng,
-		init:          &initOp{},
-		keyManager:    km,
-		liveReaders:   objIDSlice{makeObjID(dbTag, 0)},
-		liveWriters:   objIDSlice{makeObjID(dbTag, 0)},
-		batches:       make(map[objID]objIDSet),
-		iters:         make(map[objID]objIDSet),
-		readers:       make(map[objID]objIDSet),
-		snapshots:     make(map[objID]objIDSet),
-		itersLastOpts: make(map[objID]iterOpts),
+		cfg:                   cfg,
+		rng:                   rng,
+		init:                  &initOp{},
+		keyManager:            km,
+		liveReaders:           objIDSlice{makeObjID(dbTag, 0)},
+		liveWriters:           objIDSlice{makeObjID(dbTag, 0)},
+		batches:               make(map[objID]objIDSet),
+		iters:                 make(map[objID]objIDSet),
+		readers:               make(map[objID]objIDSet),
+		snapshots:             make(map[objID]objIDSet),
+		itersLastOpts:         make(map[objID]iterOpts),
+		iterCreationTimestamp: make(map[objID]int),
+		iterReaderID:          make(map[objID]objID),
 	}
 	// Note that the initOp fields are populated during generation.
 	g.ops = append(g.ops, g.init)
@@ -528,6 +545,8 @@ func (g *generator) newIter() {
 	}
 
 	g.itersLastOpts[iterID] = opts
+	g.iterCreationTimestamp[iterID] = nextMetaTimestamp()
+	g.iterReaderID[iterID] = readerID
 	g.add(&newIterOp{
 		readerID: readerID,
 		iterID:   iterID,
@@ -573,6 +592,8 @@ func (g *generator) newIterUsingClone() {
 	// TODO(jackson): Exercise changing iterator options as a part of Clone.
 
 	g.itersLastOpts[iterID] = g.itersLastOpts[existingIterID]
+	g.iterCreationTimestamp[iterID] = nextMetaTimestamp()
+	g.iterReaderID[iterID] = g.iterReaderID[existingIterID]
 	g.add(&newIterUsingCloneOp{
 		existingIterID: existingIterID,
 		iterID:         iterID,
@@ -826,9 +847,47 @@ func (g *generator) iterSeekPrefixGE() {
 		return
 	}
 
+	iterID := g.liveIters.rand(g.rng)
+	lower := g.itersLastOpts[iterID].lower
+	upper := g.itersLastOpts[iterID].upper
+	iterCreationTimestamp := g.iterCreationTimestamp[iterID]
+	possibleKeys := make([][]byte, 0, 100)
+
+	// If the iter was created on the db, then we try to make sure that the
+	// SeekPrefixGE key is within the iter bounds, and that the iter can read
+	// the key.
+	if g.iterReaderID[iterID] == dbObjID {
+		for _, keyMeta := range g.keyManager.byObj[dbObjID] {
+			posKey := keyMeta.key
+
+			var foundWriteWithoutDelete bool
+			for _, update := range keyMeta.updateOps {
+				if update.metaTimestamp > iterCreationTimestamp {
+					break
+				}
+
+				if update.deleted {
+					foundWriteWithoutDelete = false
+				} else {
+					foundWriteWithoutDelete = true
+				}
+			}
+			if foundWriteWithoutDelete && g.cmp(posKey, lower) >= 0 && g.cmp(posKey, upper) <= 0 {
+				possibleKeys = append(possibleKeys, posKey)
+			}
+		}
+	}
+
+	var key []byte
+	if len(possibleKeys) > 0 {
+		key = []byte(possibleKeys[g.rng.Int31n(int32(len(possibleKeys)))])
+	} else {
+		key = g.randKeyToRead(0) // 0% new keys
+	}
+
 	g.add(&iterSeekPrefixGEOp{
-		iterID: g.liveIters.rand(g.rng),
-		key:    g.randKeyToRead(0), // 0% new keys
+		iterID: iterID,
+		key:    key,
 	})
 }
 
