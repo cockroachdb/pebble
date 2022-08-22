@@ -32,6 +32,12 @@ func (o objKey) String() string {
 	return fmt.Sprintf("%s:%s", o.id, o.key)
 }
 
+type keyUpdate struct {
+	deleted bool
+	// metaTimestamp at which the write or delete op occurred.
+	metaTimestamp int
+}
+
 // keyMeta is metadata associated with an (objID, key) pair, where objID is
 // a writer containing the key.
 type keyMeta struct {
@@ -49,6 +55,12 @@ type keyMeta struct {
 	// del can be true only if a Delete was added to this writer after the
 	// Sets and Merges counted above.
 	del bool
+
+	// updateOps should always be ordered by non-decreasing metaTimestamp.
+	// updateOps will not be updated if the key is range deleted. Therefore, it
+	// is a best effort sequence of updates to the key. updateOps is used to
+	// determine if an iterator created on the DB can read a certain key.
+	updateOps []keyUpdate
 }
 
 func (m *keyMeta) clear() {
@@ -57,10 +69,11 @@ func (m *keyMeta) clear() {
 	m.singleDel = false
 	m.del = false
 	m.dels = 0
+	m.updateOps = nil
 }
 
 // mergeInto merges this metadata this into the metadata for other.
-func (m *keyMeta) mergeInto(other *keyMeta) {
+func (m *keyMeta) mergeInto(keyManager *keyManager, other *keyMeta) {
 	if other.del && !m.del {
 		// m's Sets and Merges are later.
 		if m.sets > 0 || m.merges > 0 {
@@ -78,13 +91,28 @@ func (m *keyMeta) mergeInto(other *keyMeta) {
 	// maintaining a global invariant that SingleDelete will only be added for
 	// a key that has no inflight Sets or Merges (Sets have made their way to
 	// the DB), and no subsequent Sets or Merges will happen until the
-	// SingleDelete makes its way to th DB.
+	// SingleDelete makes its way to the DB.
 	other.singleDel = other.singleDel || m.singleDel
 	if other.singleDel {
 		if other.sets > 1 || other.merges > 0 || other.dels > 0 {
 			panic(fmt.Sprintf("invalid sets %d or merges %d or dels %d",
 				other.sets, other.merges, other.dels))
 		}
+	}
+
+	// Determine if the key is visible or not after the keyMetas are merged.
+	// TODO(bananabrick): We currently only care about key updates which make it
+	// to the DB, since we only use key updates to determine if an iterator
+	// can read a key in the DB. We could extend the timestamp system to add
+	// support for iterators created on batches.
+	if other.del || other.singleDel {
+		other.updateOps = append(
+			other.updateOps, keyUpdate{true, keyManager.nextMetaTimestamp()},
+		)
+	} else {
+		other.updateOps = append(
+			other.updateOps, keyUpdate{false, keyManager.nextMetaTimestamp()},
+		)
 	}
 }
 
@@ -101,6 +129,12 @@ func (m *keyMeta) mergeInto(other *keyMeta) {
 // written to because the Set was lost is harmless).
 type keyManager struct {
 	comparer *base.Comparer
+
+	// metaTimestamp is used to provide a ordering over certain operations like
+	// iter creation, updates to keys. Keeping track of the timestamp allows us
+	// to make determinations such as whether a key will be visible to an
+	// iterator.
+	metaTimestamp int
 
 	// byObjKey tracks the state for each (writer, key) pair. It refers to the
 	// same *keyMeta as in the byObj slices. Using a map allows for fast state
@@ -164,6 +198,12 @@ type keyManager struct {
 	//   global and db entries since one can behave as if this key was never
 	//   written in this system. This enables the above sequence, among
 	//   others.
+}
+
+func (k *keyManager) nextMetaTimestamp() int {
+	ret := k.metaTimestamp
+	k.metaTimestamp++
+	return ret
 }
 
 var dbObjID objID = makeObjID(dbTag, 0)
@@ -265,7 +305,7 @@ func (k *keyManager) mergeKeysInto(from, to objID) {
 			k.byObjKey[mTo.String()] = mTo
 		}
 
-		m.mergeInto(mTo)
+		m.mergeInto(k, mTo)
 		msNew = append(msNew, mTo)
 
 		delete(k.byObjKey, m.String()) // Unlink "from".
@@ -322,6 +362,7 @@ func (k *keyManager) update(o op) {
 		meta.sets++ // Update the set count on this specific (id, key) pair.
 		meta.del = false
 		globalMeta.sets++
+		meta.updateOps = append(meta.updateOps, keyUpdate{false, k.nextMetaTimestamp()})
 		if meta.singleDel || globalMeta.singleDel {
 			panic("setting a key that has in-flight SingleDelete")
 		}
@@ -331,6 +372,7 @@ func (k *keyManager) update(o op) {
 		meta.merges++
 		meta.del = false
 		globalMeta.merges++
+		meta.updateOps = append(meta.updateOps, keyUpdate{false, k.nextMetaTimestamp()})
 		if meta.singleDel || globalMeta.singleDel {
 			panic("merging a key that has in-flight SingleDelete")
 		}
@@ -341,6 +383,7 @@ func (k *keyManager) update(o op) {
 		globalMeta.del = true
 		meta.dels++
 		globalMeta.dels++
+		meta.updateOps = append(meta.updateOps, keyUpdate{true, k.nextMetaTimestamp()})
 		if s.writerID == dbObjID {
 			k.checkForDelOrSingleDelTransition(meta, globalMeta)
 		}
@@ -352,6 +395,7 @@ func (k *keyManager) update(o op) {
 		globalMeta := k.globalKeysMap[string(s.key)]
 		meta.singleDel = true
 		globalMeta.singleDel = true
+		meta.updateOps = append(meta.updateOps, keyUpdate{true, k.nextMetaTimestamp()})
 		if s.writerID == dbObjID {
 			k.checkForDelOrSingleDelTransition(meta, globalMeta)
 		}

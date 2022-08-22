@@ -112,6 +112,9 @@ func TestKeyMeta_MergeInto(t *testing.T) {
 				sets:      1,
 				merges:    0,
 				singleDel: true,
+				updateOps: []keyUpdate{
+					{deleted: true, metaTimestamp: 0},
+				},
 			},
 		},
 		{
@@ -131,6 +134,9 @@ func TestKeyMeta_MergeInto(t *testing.T) {
 				merges: 3,
 				dels:   15,
 				del:    true,
+				updateOps: []keyUpdate{
+					{deleted: true, metaTimestamp: 1},
+				},
 			},
 		},
 		{
@@ -151,13 +157,17 @@ func TestKeyMeta_MergeInto(t *testing.T) {
 				merges: 1,
 				dels:   15,
 				del:    false,
+				updateOps: []keyUpdate{
+					{deleted: false, metaTimestamp: 2},
+				},
 			},
 		},
 	}
 
+	keyManager := newKeyManager()
 	for _, tc := range testCases {
 		t.Run("", func(t *testing.T) {
-			tc.toMerge.mergeInto(&tc.existing)
+			tc.toMerge.mergeInto(keyManager, &tc.existing)
 			require.Equal(t, tc.expected, tc.existing)
 		})
 	}
