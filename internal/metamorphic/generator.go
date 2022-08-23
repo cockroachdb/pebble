@@ -77,6 +77,8 @@ type generator struct {
 	// iterators. The iter set value will also be indexed by either the batches
 	// or snapshots maps.
 	iters map[objID]objIDSet
+	// iterID -> reader: used to find the readerID of an existing iterator.
+	itersReaders map[objID]objID
 	// readerID -> reader iters: used to keep track of the open iterators on a
 	// reader. The iter set value will also be indexed by either the batches or
 	// snapshots maps. This map is the union of batches and snapshots maps.
@@ -96,6 +98,7 @@ func newGenerator(rng *rand.Rand, cfg config, km *keyManager) *generator {
 		liveWriters:   objIDSlice{makeObjID(dbTag, 0)},
 		batches:       make(map[objID]objIDSet),
 		iters:         make(map[objID]objIDSet),
+		itersReaders:  make(map[objID]objID),
 		readers:       make(map[objID]objIDSet),
 		snapshots:     make(map[objID]objIDSet),
 		itersLastOpts: make(map[objID]iterOpts),
@@ -504,6 +507,7 @@ func (g *generator) newIter() {
 		// NB: the DB object does not track its open iterators because it never
 		// closes.
 	}
+	g.itersReaders[iterID] = readerID
 
 	var opts iterOpts
 	// Generate lower/upper bounds with a 10% probability.
@@ -576,6 +580,13 @@ func (g *generator) newIterUsingClone() {
 		// NB: the DB object does not track its open iterators because it never
 		// closes.
 	}
+	readerID := g.itersReaders[existingIterID]
+	g.itersReaders[iterID] = readerID
+
+	var refreshBatch bool
+	if readerID.tag() == batchTag {
+		refreshBatch = g.rng.Intn(2) == 1
+	}
 
 	var opts iterOpts
 	if g.rng.Intn(2) == 1 {
@@ -586,10 +597,11 @@ func (g *generator) newIterUsingClone() {
 	}
 
 	g.add(&newIterUsingCloneOp{
-		existingIterID: existingIterID,
-		iterID:         iterID,
-		refreshBatch:   g.rng.Intn(2) == 1,
-		iterOpts:       opts,
+		existingIterID:  existingIterID,
+		iterID:          iterID,
+		refreshBatch:    refreshBatch,
+		iterOpts:        opts,
+		derivedReaderID: readerID,
 	})
 }
 
@@ -715,8 +727,9 @@ func (g *generator) iterSetOptions(iterID objID) {
 	g.maybeMutateOptions(&opts)
 	g.itersLastOpts[iterID] = opts
 	g.add(&iterSetOptionsOp{
-		iterID:   iterID,
-		iterOpts: opts,
+		iterID:          iterID,
+		iterOpts:        opts,
+		derivedReaderID: g.itersReaders[iterID],
 	})
 
 	// Additionally, perform a random absolute positioning operation. The

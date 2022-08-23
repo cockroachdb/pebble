@@ -10,9 +10,12 @@ import (
 	"io/ioutil"
 	"log"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"unicode"
 
 	"github.com/cockroachdb/errors"
 	"github.com/pmezard/go-difflib/difflib"
@@ -94,6 +97,42 @@ func (h *history) Fatalf(format string, args ...interface{}) {
 	h.err.Store(errors.Errorf(format, args...))
 }
 
+func (h *history) recorder(thread int, op int) historyRecorder {
+	return historyRecorder{
+		history: h,
+		thread:  thread,
+		op:      op,
+	}
+}
+
+type historyRecorder struct {
+	history *history
+	op      int
+	thread  int
+}
+
+// Recordf records the results of a single operation.
+func (h historyRecorder) Recordf(format string, args ...interface{}) {
+	// We suffix every line with "#<op>" in order to provide a marker to locate
+	// the line using the diff output. This is necessary because the diff of two
+	// histories is done after stripping comment lines (`// ...`) from the
+	// history output, which ruins the line number information in the diff
+	// output.
+	m := fmt.Sprintf(format, args...) + fmt.Sprintf(" #%d", h.op)
+	h.history.log.Print(m)
+
+	if h.history.failRE != nil && h.history.failRE.MatchString(m) {
+		err := errors.Errorf("failure regexp %q matched output: %s", h.history.failRE, m)
+		h.history.err.Store(err)
+	}
+}
+
+// Error returns an error if the test has failed from log output, either a
+// failure regexp match or a call to Fatalf.
+func (h historyRecorder) Error() error {
+	return h.history.Error()
+}
+
 // CompareHistories takes a slice of file paths containing history files. It
 // performs a diff comparing the first path to all other paths. CompareHistories
 // returns the index and diff for the first history that differs. If all the
@@ -101,8 +140,11 @@ func (h *history) Fatalf(format string, args ...interface{}) {
 // string.
 func CompareHistories(t *testing.T, paths []string) (i int, diff string) {
 	base := readHistory(t, paths[0])
+	ReorderHistory(base)
+
 	for i := 1; i < len(paths); i++ {
 		lines := readHistory(t, paths[i])
+		ReorderHistory(lines)
 		diff := difflib.UnifiedDiff{
 			A:       base,
 			B:       lines,
@@ -115,6 +157,54 @@ func CompareHistories(t *testing.T, paths []string) (i int, diff string) {
 		}
 	}
 	return 0, ""
+}
+
+// ReorderHistory takes lines from a history file and reorders the operation
+// results to be in the order of the operation index numbers. Runs with more
+// than 1 thread may produce out-of-order histories. Comment lines are left
+// where they are.
+func ReorderHistory(lines []string) {
+	// Find the indexes of all lines that are not comments and therefore record
+	// an operation's result.
+	ops := make([]int, 0, len(lines))
+	for i, l := range lines {
+		l = strings.TrimSpace(l)
+		if strings.HasPrefix(l, "// ") || l == "" {
+			continue
+		}
+		ops = append(ops, i)
+	}
+	sorter := historySorter{
+		lines: lines,
+		ops:   ops,
+	}
+	sort.Sort(&sorter)
+}
+
+type historySorter struct {
+	lines []string
+	ops   []int
+}
+
+func (hs *historySorter) Len() int { return len(hs.ops) }
+func (hs *historySorter) Swap(i, j int) {
+	hs.lines[hs.ops[i]], hs.lines[hs.ops[j]] = hs.lines[hs.ops[j]], hs.lines[hs.ops[i]]
+}
+func (hs *historySorter) Less(i, j int) bool {
+	return extractOp(hs.lines[hs.ops[i]]) < extractOp(hs.lines[hs.ops[j]])
+}
+
+func extractOp(line string) int {
+	i := strings.LastIndexByte(line, '#')
+	j := strings.IndexFunc(line[i+1:], unicode.IsSpace)
+	if j == -1 {
+		j = len(line[i+1:])
+	}
+	v, err := strconv.Atoi(line[i+1 : i+1+j])
+	if err != nil {
+		panic(fmt.Sprintf("unable to parse line %q: %s", line, err))
+	}
+	return v
 }
 
 // Read a history file, stripping out lines that begin with a comment.
