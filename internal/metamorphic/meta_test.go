@@ -5,10 +5,12 @@
 package metamorphic
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"os/exec"
 	"path"
@@ -26,6 +28,7 @@ import (
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
+	"golang.org/x/sync/errgroup"
 )
 
 // TODO(peter):
@@ -61,7 +64,9 @@ var (
 		"keep the DB directory even on successful runs")
 	seed = flag.Uint64("seed", 0,
 		"a pseudorandom number generator seed")
-	ops    = randvar.NewFlag("uniform:5000-10000")
+	ops        = randvar.NewFlag("uniform:5000-10000")
+	maxThreads = flag.Int("max-threads", math.MaxInt,
+		"limit execution to the provided number of threads; must be ≥ 1")
 	runDir = flag.String("run-dir", "",
 		"the specific configuration to (re-)run (used for post-mortem debugging)")
 	compare = flag.String("compare", "",
@@ -161,6 +166,10 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 			opts.FS = vfs.NewMem()
 		}
 	}
+	threads := testOpts.threads
+	if *maxThreads < threads {
+		threads = *maxThreads
+	}
 
 	dir := opts.FS.PathJoin(runDir, "data")
 	// Set up the initial database state if configured to start from a non-empty
@@ -191,8 +200,60 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 
 	m := newTest(ops)
 	require.NoError(t, m.init(h, dir, testOpts))
-	for m.step(h) {
-		if err := h.Error(); err != nil {
+
+	if threads <= 1 {
+		for m.step(h) {
+			if err := h.Error(); err != nil {
+				fmt.Fprintf(os.Stderr, "Seed: %d\n", seed)
+				fmt.Fprintln(os.Stderr, err)
+				m.maybeSaveData()
+				os.Exit(1)
+			}
+		}
+	} else {
+		eg, ctx := errgroup.WithContext(context.Background())
+		for t := 0; t < threads; t++ {
+			t := t // bind loop var to scope
+			eg.Go(func() error {
+				for idx := 0; idx < len(m.ops); idx++ {
+					// Skip any operations whose receiver object hashes to a
+					// different thread. All operations with the same receiver
+					// are performed from the same thread. This goroutine is
+					// only responsible for executing operations that hash to
+					// `t`.
+					if hashThread(m.ops[idx].receiver(), threads) != t {
+						continue
+					}
+
+					// Some operations have additional synchronization
+					// dependencies. If this operation has any, wait for its
+					// dependencies to complete before executing.
+					for _, waitOnIdx := range m.opsWaitOn[idx] {
+						select {
+						case <-ctx.Done():
+							// Exit if some other thread already errored out.
+							return ctx.Err()
+						case <-m.opsDone[waitOnIdx]:
+						}
+					}
+
+					m.ops[idx].run(m, h.recorder(t, idx))
+
+					// If this operation has a done channel, close it so that
+					// other operations that synchronize on this operation know
+					// that it's been completed.
+					if ch := m.opsDone[idx]; ch != nil {
+						close(ch)
+					}
+
+					if err := h.Error(); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+		}
+		if err := eg.Wait(); err != nil {
 			fmt.Fprintf(os.Stderr, "Seed: %d\n", seed)
 			fmt.Fprintln(os.Stderr, err)
 			m.maybeSaveData()
@@ -203,6 +264,11 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 	if *keep && !testOpts.useDisk {
 		m.maybeSaveData()
 	}
+}
+
+func hashThread(objID objID, numThreads int) int {
+	// Fibonacci hash https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
+	return int((11400714819323198485 * uint64(objID)) % uint64(numThreads))
 }
 
 // TestMeta generates a random set of operations to run, then runs the test
@@ -388,8 +454,10 @@ func TestMeta(t *testing.T) {
 	}
 
 	base := readHistory(t, getHistoryPath(names[0]))
+	base = reorderHistory(base)
 	for i := 1; i < len(names); i++ {
 		lines := readHistory(t, getHistoryPath(names[i]))
+		lines = reorderHistory(lines)
 		diff := difflib.UnifiedDiff{
 			A:       base,
 			B:       lines,

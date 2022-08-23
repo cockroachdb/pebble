@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -19,8 +20,10 @@ import (
 type test struct {
 	// The list of ops to execute. The ops refer to slots in the batches, iters,
 	// and snapshots slices.
-	ops []op
-	idx int
+	ops       []op
+	opsWaitOn [][]int         // op index -> op indexes
+	opsDone   []chan struct{} // op index -> done channel
+	idx       int
 	// The DB the test is run on.
 	dir       string
 	db        *pebble.DB
@@ -58,6 +61,8 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 			return pebble.DebugCheckLevels(db)
 		})
 	}
+
+	t.opsWaitOn, t.opsDone = computeSynchronizationPoints(t.ops)
 
 	defer t.opts.Cache.Unref()
 
@@ -124,7 +129,7 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 	if err != nil {
 		return err
 	}
-	h.Recordf("db.Open() // %v", err)
+	h.log.Printf("// db.Open() %v", err)
 
 	t.tmpDir = t.opts.FS.PathJoin(dir, "tmp")
 	if err = t.opts.FS.MkdirAll(t.tmpDir, 0755); err != nil {
@@ -203,7 +208,7 @@ func (t *test) step(h *history) bool {
 	if t.idx >= len(t.ops) {
 		return false
 	}
-	t.ops[t.idx].run(t, h)
+	t.ops[t.idx].run(t, h.recorder(-1 /* thread */, t.idx))
 	t.idx++
 	return true
 }
@@ -295,4 +300,68 @@ func (t *test) getWriter(id objID) pebble.Writer {
 		return t.batches[id.slot()]
 	}
 	panic(fmt.Sprintf("invalid writer ID: %s", id))
+}
+
+// Compute the synchronization points between operations. When operating
+// with more than 1 thread, operations must synchronize access to shared
+// objects. Compute two slices the same length as ops.
+//
+// opsWaitOn: the value v at index i indicates that operation i must wait
+// for the operation at index v to finish before it may run. NB: v < i
+//
+// opsDone: the channel at index i must be closed when the operation at index i
+// completes. This slice is sparse. Operations that are never used as
+// synchronization points may have a nil channel.
+func computeSynchronizationPoints(ops []op) (opsWaitOn [][]int, opsDone []chan struct{}) {
+	opsDone = make([]chan struct{}, len(ops)) // operation index -> done channel
+	opsWaitOn = make([][]int, len(ops))       // operation index -> operation index
+	lastOpReference := make(map[objID]int)    // objID -> operation index
+	for i, o := range ops {
+		// Find the last operation that involved the same receiver object. We at
+		// least need to wait on that operation.
+		receiver := o.receiver()
+		waitIndex, ok := lastOpReference[receiver]
+		lastOpReference[receiver] = i
+		if !ok {
+			// Only valid for i=0. For all other operations, the receiver should
+			// have been referenced by some other operation before it's used as
+			// a receiver.
+			if i != 0 {
+				panic(fmt.Sprintf("op %d on receiver %s; first reference of %s", i, receiver, receiver))
+			}
+			continue
+		}
+
+		// The last operation that referenced `receiver` is the one at index
+		// `waitIndex`. All operations with the same receiver are performed on
+		// the same thread. We only need to synchronize on the operation at
+		// `waitIndex` if `receiver` isn't also the receiver on that operation
+		// too.
+		if ops[waitIndex].receiver() != receiver {
+			opsWaitOn[i] = append(opsWaitOn[i], waitIndex)
+		}
+
+		// In additional to synchronizing on the operation's receiver operation,
+		// we may need to synchronize on additional objects. For example,
+		// batch0.Commit() must synchronize its receiver, batch0, but also on
+		// dbObjID since it mutates database state.
+		for _, syncObjID := range o.syncObjs() {
+			if vi, vok := lastOpReference[syncObjID]; vok {
+				opsWaitOn[i] = append(opsWaitOn[i], vi)
+			}
+			lastOpReference[syncObjID] = i
+		}
+
+		waitIndexes := opsWaitOn[i]
+		sort.Ints(waitIndexes)
+		for _, waitIndex := range waitIndexes {
+			// If this is the first operation that must wait on the operation at
+			// `waitIndex`, then there will be no channel for the operation yet.
+			// Create one.
+			if opsDone[waitIndex] == nil {
+				opsDone[waitIndex] = make(chan struct{})
+			}
+		}
+	}
+	return opsWaitOn, opsDone
 }

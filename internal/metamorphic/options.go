@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/cockroachdb/pebble"
@@ -51,6 +53,13 @@ func parseOptions(opts *testOptions, data string) error {
 			case "TestOptions.initial_state_path":
 				opts.initialStatePath = value
 				return true
+			case "TestOptions.threads":
+				v, err := strconv.Atoi(value)
+				if err != nil {
+					panic(err)
+				}
+				opts.threads = v
+				return true
 			case "TestOptions.use_block_property_collector":
 				opts.useBlockPropertyCollector = true
 				opts.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
@@ -84,6 +93,9 @@ func optionsToString(opts *testOptions) string {
 	if opts.initialStateDesc != "" {
 		fmt.Fprintf(&buf, "  initial_state_desc=%s\n", opts.initialStateDesc)
 	}
+	if opts.threads != 0 {
+		fmt.Fprintf(&buf, "  threads=%d\n", opts.threads)
+	}
 	if opts.useBlockPropertyCollector {
 		fmt.Fprintf(&buf, "  use_block_property_collector=%t\n", opts.useBlockPropertyCollector)
 	}
@@ -99,6 +111,7 @@ func defaultTestOptions() *testOptions {
 	return &testOptions{
 		opts:                      defaultOptions(),
 		useBlockPropertyCollector: true,
+		threads:                   16,
 	}
 }
 
@@ -119,6 +132,7 @@ type testOptions struct {
 	opts     *pebble.Options
 	useDisk  bool
 	strictFS bool
+	threads  int
 	// Use Batch.Apply rather than DB.Ingest.
 	ingestUsingApply bool
 	// Replace a SINGLEDEL with a DELETE.
@@ -236,6 +250,10 @@ func standardOptions() []*testOptions {
 [TestOptions]
   use_block_property_collector=false
 `,
+		24: `
+[TestOptions]
+  threads=1
+`,
 	}
 
 	opts := make([]*testOptions, len(stdOpts))
@@ -305,6 +323,7 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	// sufficient.
 	testOpts.useDisk = false
 	testOpts.strictFS = rng.Intn(2) != 0 // Only relevant for MemFS.
+	testOpts.threads = rng.Intn(runtime.GOMAXPROCS(0)) + 1
 	if testOpts.strictFS {
 		opts.DisableWAL = false
 	}

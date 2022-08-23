@@ -10,9 +10,11 @@ import (
 	"io/ioutil"
 	"log"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"unicode"
 
 	"github.com/cockroachdb/errors"
 	"github.com/pmezard/go-difflib/difflib"
@@ -27,7 +29,6 @@ type history struct {
 	err    atomic.Value
 	failRE *regexp.Regexp
 	log    *log.Logger
-	seq    int
 }
 
 func newHistory(failRE string, writers ...io.Writer) *history {
@@ -40,19 +41,18 @@ func newHistory(failRE string, writers ...io.Writer) *history {
 }
 
 // Recordf records the results of a single operation.
-func (h *history) Recordf(format string, args ...interface{}) {
+func (h *history) Recordf(op int, format string, args ...interface{}) {
 	if strings.Contains(format, "\n") {
 		// We could remove this restriction but suffixing every line with "#<seq>".
 		panic(fmt.Sprintf("format string must not contain \\n: %q", format))
 	}
 
-	// We suffix every line with #<seq> in order to provide a marker to locate
+	// We suffix every line with #<op> in order to provide a marker to locate
 	// the line using the diff output. This is necessary because the diff of two
 	// histories is done after stripping comment lines (`// ...`) from the
 	// history output, which ruins the line number information in the diff
 	// output.
-	h.seq++
-	m := fmt.Sprintf(format, args...) + fmt.Sprintf(" #%d", h.seq)
+	m := fmt.Sprintf(format, args...) + fmt.Sprintf(" #%d", op)
 	h.log.Print(m)
 
 	if h.failRE != nil && h.failRE.MatchString(m) {
@@ -94,6 +94,31 @@ func (h *history) Fatalf(format string, args ...interface{}) {
 	h.err.Store(errors.Errorf(format, args...))
 }
 
+func (h *history) recorder(thread int, op int) historyRecorder {
+	return historyRecorder{
+		history: h,
+		op:      op,
+	}
+}
+
+// historyRecorder pairs a history with an operation, annotating all lines
+// recorded through it with the operation number.
+type historyRecorder struct {
+	history *history
+	op      int
+}
+
+// Recordf records the results of a single operation.
+func (h historyRecorder) Recordf(format string, args ...interface{}) {
+	h.history.Recordf(h.op, format, args...)
+}
+
+// Error returns an error if the test has failed from log output, either a
+// failure regexp match or a call to Fatalf.
+func (h historyRecorder) Error() error {
+	return h.history.Error()
+}
+
 // CompareHistories takes a slice of file paths containing history files. It
 // performs a diff comparing the first path to all other paths. CompareHistories
 // returns the index and diff for the first history that differs. If all the
@@ -101,8 +126,11 @@ func (h *history) Fatalf(format string, args ...interface{}) {
 // string.
 func CompareHistories(t *testing.T, paths []string) (i int, diff string) {
 	base := readHistory(t, paths[0])
+	base = reorderHistory(base)
+
 	for i := 1; i < len(paths); i++ {
 		lines := readHistory(t, paths[i])
+		lines = reorderHistory(lines)
 		diff := difflib.UnifiedDiff{
 			A:       base,
 			B:       lines,
@@ -115,6 +143,36 @@ func CompareHistories(t *testing.T, paths []string) (i int, diff string) {
 		}
 	}
 	return 0, ""
+}
+
+// reorderHistory takes lines from a history file and reorders the operation
+// results to be in the order of the operation index numbers. Runs with more
+// than 1 thread may produce out-of-order histories. Comment lines must've
+// already been filtered out.
+func reorderHistory(lines []string) []string {
+	reordered := make([]string, len(lines))
+	for _, l := range lines {
+		if cleaned := strings.TrimSpace(l); cleaned == "" {
+			continue
+		}
+		reordered[extractOp(l)] = l
+	}
+	return reordered
+}
+
+// extractOp parses out an operation's index from the trailing comment. Every
+// line of history output is suffixed with a comment containing `#<op>`
+func extractOp(line string) int {
+	i := strings.LastIndexByte(line, '#')
+	j := strings.IndexFunc(line[i+1:], unicode.IsSpace)
+	if j == -1 {
+		j = len(line[i+1:])
+	}
+	v, err := strconv.Atoi(line[i+1 : i+1+j])
+	if err != nil {
+		panic(fmt.Sprintf("unable to parse line %q: %s", line, err))
+	}
+	return v
 }
 
 // Read a history file, stripping out lines that begin with a comment.

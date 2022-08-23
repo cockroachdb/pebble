@@ -510,6 +510,7 @@ func (g *generator) newIter() {
 		// NB: the DB object does not track its open iterators because it never
 		// closes.
 	}
+	g.iterReaderID[iterID] = readerID
 
 	var opts iterOpts
 	// Generate lower/upper bounds with a 10% probability.
@@ -584,6 +585,13 @@ func (g *generator) newIterUsingClone() {
 		// NB: the DB object does not track its open iterators because it never
 		// closes.
 	}
+	readerID := g.iterReaderID[existingIterID]
+	g.iterReaderID[iterID] = readerID
+
+	var refreshBatch bool
+	if readerID.tag() == batchTag {
+		refreshBatch = g.rng.Intn(2) == 1
+	}
 
 	var opts iterOpts
 	if g.rng.Intn(2) == 1 {
@@ -596,10 +604,11 @@ func (g *generator) newIterUsingClone() {
 	g.iterCreationTimestamp[iterID] = g.keyManager.nextMetaTimestamp()
 	g.iterReaderID[iterID] = g.iterReaderID[existingIterID]
 	g.add(&newIterUsingCloneOp{
-		existingIterID: existingIterID,
-		iterID:         iterID,
-		refreshBatch:   g.rng.Intn(2) == 1,
-		iterOpts:       opts,
+		existingIterID:  existingIterID,
+		iterID:          iterID,
+		refreshBatch:    refreshBatch,
+		iterOpts:        opts,
+		derivedReaderID: readerID,
 	})
 }
 
@@ -725,8 +734,9 @@ func (g *generator) iterSetOptions(iterID objID) {
 	g.maybeMutateOptions(&opts)
 	g.itersLastOpts[iterID] = opts
 	g.add(&iterSetOptionsOp{
-		iterID:   iterID,
-		iterOpts: opts,
+		iterID:          iterID,
+		iterOpts:        opts,
+		derivedReaderID: g.iterReaderID[iterID],
 	})
 
 	// Additionally, perform a random absolute positioning operation. The
