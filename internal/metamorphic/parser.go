@@ -179,6 +179,7 @@ func (p *parser) parse() (_ []op, err error) {
 	for {
 		op := p.parseOp()
 		if op == nil {
+			computeDerivedFields(ops)
 			return ops, nil
 		}
 		ops = append(ops, op)
@@ -389,4 +390,22 @@ func (p *parser) tokenf(tok token.Token, lit string) string {
 
 func (p *parser) errorf(pos token.Pos, format string, args ...interface{}) error {
 	return errors.New(p.fset.Position(pos).String() + ": " + fmt.Sprintf(format, args...))
+}
+
+// computeDerivedFields makes one pass through the provided operations, filling
+// any derived fields. This pass must happen before execution because concurrent
+// execution depends on these fields.
+func computeDerivedFields(ops []op) {
+	iterToReader := make(map[objID]objID)
+	for i := range ops {
+		switch v := ops[i].(type) {
+		case *newIterOp:
+			iterToReader[v.iterID] = v.readerID
+		case *newIterUsingCloneOp:
+			v.derivedReaderID = iterToReader[v.existingIterID]
+			iterToReader[v.iterID] = v.derivedReaderID
+		case *iterSetOptionsOp:
+			v.derivedReaderID = iterToReader[v.iterID]
+		}
+	}
 }
