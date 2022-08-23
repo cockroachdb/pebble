@@ -26,8 +26,20 @@ import (
 // op defines the interface for a single operation, such as creating a batch,
 // or advancing an iterator.
 type op interface {
-	run(t *test, h *history)
 	String() string
+	run(t *test, h historyRecorder)
+
+	// receiver returns the object ID of the object the operation is performed
+	// on. Every operation has a receiver (eg, batch0.Set(...) has `batch0` as
+	// its receiver). Receivers are used for synchronization when running with
+	// concurrency.
+	receiver() objID
+
+	// syncObjs returns an additional set of object IDs—excluding the
+	// receiver—that the operation must synchronize with. At execution time,
+	// the operation will run serially with respect to all other operations
+	// that return these objects from their own syncObjs or receiver methods.
+	syncObjs() objIDSlice
 }
 
 // initOp performs test initialization
@@ -37,7 +49,7 @@ type initOp struct {
 	snapshotSlots uint32
 }
 
-func (o *initOp) run(t *test, h *history) {
+func (o *initOp) run(t *test, h historyRecorder) {
 	t.batches = make([]*pebble.Batch, o.batchSlots)
 	t.iters = make([]*retryableIter, o.iterSlots)
 	t.snapshots = make([]*pebble.Snapshot, o.snapshotSlots)
@@ -49,13 +61,16 @@ func (o *initOp) String() string {
 		o.batchSlots, o.iterSlots, o.snapshotSlots)
 }
 
+func (o *initOp) receiver() objID      { return dbObjID }
+func (o *initOp) syncObjs() objIDSlice { return nil }
+
 // applyOp models a Writer.Apply operation.
 type applyOp struct {
 	writerID objID
 	batchID  objID
 }
 
-func (o *applyOp) run(t *test, h *history) {
+func (o *applyOp) run(t *test, h historyRecorder) {
 	b := t.getBatch(o.batchID)
 	w := t.getWriter(o.writerID)
 	err := w.Apply(b, t.writeOpts)
@@ -64,16 +79,20 @@ func (o *applyOp) run(t *test, h *history) {
 	t.clearObj(o.batchID)
 }
 
-func (o *applyOp) String() string {
-	return fmt.Sprintf("%s.Apply(%s)", o.writerID, o.batchID)
+func (o *applyOp) String() string  { return fmt.Sprintf("%s.Apply(%s)", o.writerID, o.batchID) }
+func (o *applyOp) receiver() objID { return o.writerID }
+func (o *applyOp) syncObjs() objIDSlice {
+	// Apply should not be concurrent with operations that are mutating the
+	// batch.
+	return []objID{o.batchID}
 }
 
 // checkpointOp models a DB.Checkpoint operation.
 type checkpointOp struct{}
 
-func (o *checkpointOp) run(t *test, h *history) {
+func (o *checkpointOp) run(t *test, h historyRecorder) {
 	err := withRetries(func() error {
-		return t.db.Checkpoint(o.dir(t.dir, t.idx))
+		return t.db.Checkpoint(o.dir(t.dir, h.op))
 	})
 	h.Recordf("%s // %v", o, err)
 }
@@ -82,24 +101,33 @@ func (o *checkpointOp) dir(dataDir string, idx int) string {
 	return filepath.Join(dataDir, "checkpoints", fmt.Sprintf("op-%06d", idx))
 }
 
-func (o *checkpointOp) String() string {
-	return "db.Checkpoint()"
-}
+func (o *checkpointOp) String() string       { return "db.Checkpoint()" }
+func (o *checkpointOp) receiver() objID      { return dbObjID }
+func (o *checkpointOp) syncObjs() objIDSlice { return nil }
 
 // closeOp models a {Batch,Iterator,Snapshot}.Close operation.
 type closeOp struct {
 	objID objID
 }
 
-func (o *closeOp) run(t *test, h *history) {
+func (o *closeOp) run(t *test, h historyRecorder) {
 	c := t.getCloser(o.objID)
 	t.clearObj(o.objID)
 	err := c.Close()
 	h.Recordf("%s // %v", o, err)
 }
 
-func (o *closeOp) String() string {
-	return fmt.Sprintf("%s.Close()", o.objID)
+func (o *closeOp) String() string  { return fmt.Sprintf("%s.Close()", o.objID) }
+func (o *closeOp) receiver() objID { return o.objID }
+func (o *closeOp) syncObjs() objIDSlice {
+	// Synchronize on the database so that we don't close the database before
+	// all its iterators, snapshots and batches are closed.
+	// TODO(jackson): It would be nice to relax this so that Close calls can
+	// execute in parallel.
+	if o.objID == dbObjID {
+		return nil
+	}
+	return []objID{dbObjID}
 }
 
 // compactOp models a DB.Compact operation.
@@ -109,7 +137,7 @@ type compactOp struct {
 	parallelize bool
 }
 
-func (o *compactOp) run(t *test, h *history) {
+func (o *compactOp) run(t *test, h historyRecorder) {
 	err := withRetries(func() error {
 		return t.db.Compact(o.start, o.end, o.parallelize)
 	})
@@ -120,21 +148,24 @@ func (o *compactOp) String() string {
 	return fmt.Sprintf("db.Compact(%q, %q, %t /* parallelize */)", o.start, o.end, o.parallelize)
 }
 
+func (o *compactOp) receiver() objID      { return dbObjID }
+func (o *compactOp) syncObjs() objIDSlice { return nil }
+
 // deleteOp models a Write.Delete operation.
 type deleteOp struct {
 	writerID objID
 	key      []byte
 }
 
-func (o *deleteOp) run(t *test, h *history) {
+func (o *deleteOp) run(t *test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.Delete(o.key, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }
 
-func (o *deleteOp) String() string {
-	return fmt.Sprintf("%s.Delete(%q)", o.writerID, o.key)
-}
+func (o *deleteOp) String() string       { return fmt.Sprintf("%s.Delete(%q)", o.writerID, o.key) }
+func (o *deleteOp) receiver() objID      { return o.writerID }
+func (o *deleteOp) syncObjs() objIDSlice { return nil }
 
 // singleDeleteOp models a Write.SingleDelete operation.
 type singleDeleteOp struct {
@@ -143,7 +174,7 @@ type singleDeleteOp struct {
 	maybeReplaceDelete bool
 }
 
-func (o *singleDeleteOp) run(t *test, h *history) {
+func (o *singleDeleteOp) run(t *test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	var err error
 	if t.testOpts.replaceSingleDelete && o.maybeReplaceDelete {
@@ -163,6 +194,9 @@ func (o *singleDeleteOp) String() string {
 	return fmt.Sprintf("%s.SingleDelete(%q, %v /* maybeReplaceDelete */)", o.writerID, o.key, o.maybeReplaceDelete)
 }
 
+func (o *singleDeleteOp) receiver() objID      { return o.writerID }
+func (o *singleDeleteOp) syncObjs() objIDSlice { return nil }
+
 // deleteRangeOp models a Write.DeleteRange operation.
 type deleteRangeOp struct {
 	writerID objID
@@ -170,7 +204,7 @@ type deleteRangeOp struct {
 	end      []byte
 }
 
-func (o *deleteRangeOp) run(t *test, h *history) {
+func (o *deleteRangeOp) run(t *test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.DeleteRange(o.start, o.end, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
@@ -180,18 +214,21 @@ func (o *deleteRangeOp) String() string {
 	return fmt.Sprintf("%s.DeleteRange(%q, %q)", o.writerID, o.start, o.end)
 }
 
+func (o *deleteRangeOp) receiver() objID      { return o.writerID }
+func (o *deleteRangeOp) syncObjs() objIDSlice { return nil }
+
 // flushOp models a DB.Flush operation.
 type flushOp struct {
 }
 
-func (o *flushOp) run(t *test, h *history) {
+func (o *flushOp) run(t *test, h historyRecorder) {
 	err := t.db.Flush()
 	h.Recordf("%s // %v", o, err)
 }
 
-func (o *flushOp) String() string {
-	return "db.Flush()"
-}
+func (o *flushOp) String() string       { return "db.Flush()" }
+func (o *flushOp) receiver() objID      { return dbObjID }
+func (o *flushOp) syncObjs() objIDSlice { return nil }
 
 // mergeOp models a Write.Merge operation.
 type mergeOp struct {
@@ -200,15 +237,15 @@ type mergeOp struct {
 	value    []byte
 }
 
-func (o *mergeOp) run(t *test, h *history) {
+func (o *mergeOp) run(t *test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.Merge(o.key, o.value, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }
 
-func (o *mergeOp) String() string {
-	return fmt.Sprintf("%s.Merge(%q, %q)", o.writerID, o.key, o.value)
-}
+func (o *mergeOp) String() string       { return fmt.Sprintf("%s.Merge(%q, %q)", o.writerID, o.key, o.value) }
+func (o *mergeOp) receiver() objID      { return o.writerID }
+func (o *mergeOp) syncObjs() objIDSlice { return nil }
 
 // setOp models a Write.Set operation.
 type setOp struct {
@@ -217,15 +254,15 @@ type setOp struct {
 	value    []byte
 }
 
-func (o *setOp) run(t *test, h *history) {
+func (o *setOp) run(t *test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.Set(o.key, o.value, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }
 
-func (o *setOp) String() string {
-	return fmt.Sprintf("%s.Set(%q, %q)", o.writerID, o.key, o.value)
-}
+func (o *setOp) String() string       { return fmt.Sprintf("%s.Set(%q, %q)", o.writerID, o.key, o.value) }
+func (o *setOp) receiver() objID      { return o.writerID }
+func (o *setOp) syncObjs() objIDSlice { return nil }
 
 // rangeKeyDeleteOp models a Write.RangeKeyDelete operation.
 type rangeKeyDeleteOp struct {
@@ -234,7 +271,7 @@ type rangeKeyDeleteOp struct {
 	end      []byte
 }
 
-func (o *rangeKeyDeleteOp) run(t *test, h *history) {
+func (o *rangeKeyDeleteOp) run(t *test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.RangeKeyDelete(o.start, o.end, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
@@ -243,6 +280,9 @@ func (o *rangeKeyDeleteOp) run(t *test, h *history) {
 func (o *rangeKeyDeleteOp) String() string {
 	return fmt.Sprintf("%s.RangeKeyDelete(%q, %q)", o.writerID, o.start, o.end)
 }
+
+func (o *rangeKeyDeleteOp) receiver() objID      { return o.writerID }
+func (o *rangeKeyDeleteOp) syncObjs() objIDSlice { return nil }
 
 // rangeKeySetOp models a Write.RangeKeySet operation.
 type rangeKeySetOp struct {
@@ -253,7 +293,7 @@ type rangeKeySetOp struct {
 	value    []byte
 }
 
-func (o *rangeKeySetOp) run(t *test, h *history) {
+func (o *rangeKeySetOp) run(t *test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.RangeKeySet(o.start, o.end, o.suffix, o.value, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
@@ -264,6 +304,9 @@ func (o *rangeKeySetOp) String() string {
 		o.writerID, o.start, o.end, o.suffix, o.value)
 }
 
+func (o *rangeKeySetOp) receiver() objID      { return o.writerID }
+func (o *rangeKeySetOp) syncObjs() objIDSlice { return nil }
+
 // rangeKeyUnsetOp models a Write.RangeKeyUnset operation.
 type rangeKeyUnsetOp struct {
 	writerID objID
@@ -272,7 +315,7 @@ type rangeKeyUnsetOp struct {
 	suffix   []byte
 }
 
-func (o *rangeKeyUnsetOp) run(t *test, h *history) {
+func (o *rangeKeyUnsetOp) run(t *test, h historyRecorder) {
 	w := t.getWriter(o.writerID)
 	err := w.RangeKeyUnset(o.start, o.end, o.suffix, t.writeOpts)
 	h.Recordf("%s // %v", o, err)
@@ -283,19 +326,26 @@ func (o *rangeKeyUnsetOp) String() string {
 		o.writerID, o.start, o.end, o.suffix)
 }
 
+func (o *rangeKeyUnsetOp) receiver() objID      { return o.writerID }
+func (o *rangeKeyUnsetOp) syncObjs() objIDSlice { return nil }
+
 // newBatchOp models a Write.NewBatch operation.
 type newBatchOp struct {
 	batchID objID
 }
 
-func (o *newBatchOp) run(t *test, h *history) {
+func (o *newBatchOp) run(t *test, h historyRecorder) {
 	b := t.db.NewBatch()
 	t.setBatch(o.batchID, b)
 	h.Recordf("%s", o)
 }
 
-func (o *newBatchOp) String() string {
-	return fmt.Sprintf("%s = db.NewBatch()", o.batchID)
+func (o *newBatchOp) String() string  { return fmt.Sprintf("%s = db.NewBatch()", o.batchID) }
+func (o *newBatchOp) receiver() objID { return dbObjID }
+func (o *newBatchOp) syncObjs() objIDSlice {
+	// NewBatch should not be concurrent with operations that interact with that
+	// same batch.
+	return []objID{o.batchID}
 }
 
 // newIndexedBatchOp models a Write.NewIndexedBatch operation.
@@ -303,7 +353,7 @@ type newIndexedBatchOp struct {
 	batchID objID
 }
 
-func (o *newIndexedBatchOp) run(t *test, h *history) {
+func (o *newIndexedBatchOp) run(t *test, h historyRecorder) {
 	b := t.db.NewIndexedBatch()
 	t.setBatch(o.batchID, b)
 	h.Recordf("%s", o)
@@ -312,21 +362,30 @@ func (o *newIndexedBatchOp) run(t *test, h *history) {
 func (o *newIndexedBatchOp) String() string {
 	return fmt.Sprintf("%s = db.NewIndexedBatch()", o.batchID)
 }
+func (o *newIndexedBatchOp) receiver() objID { return dbObjID }
+func (o *newIndexedBatchOp) syncObjs() objIDSlice {
+	// NewIndexedBatch should not be concurrent with operations that interact
+	// with that same batch.
+	return []objID{o.batchID}
+}
 
 // batchCommitOp models a Batch.Commit operation.
 type batchCommitOp struct {
 	batchID objID
 }
 
-func (o *batchCommitOp) run(t *test, h *history) {
+func (o *batchCommitOp) run(t *test, h historyRecorder) {
 	b := t.getBatch(o.batchID)
 	t.clearObj(o.batchID)
 	err := b.Commit(t.writeOpts)
 	h.Recordf("%s // %v", o, err)
 }
 
-func (o *batchCommitOp) String() string {
-	return fmt.Sprintf("%s.Commit()", o.batchID)
+func (o *batchCommitOp) String() string  { return fmt.Sprintf("%s.Commit()", o.batchID) }
+func (o *batchCommitOp) receiver() objID { return o.batchID }
+func (o *batchCommitOp) syncObjs() objIDSlice {
+	// Synchronize on the database so that NewIters wait for the commit.
+	return []objID{dbObjID}
 }
 
 // ingestOp models a DB.Ingest operation.
@@ -334,7 +393,7 @@ type ingestOp struct {
 	batchIDs []objID
 }
 
-func (o *ingestOp) run(t *test, h *history) {
+func (o *ingestOp) run(t *test, h historyRecorder) {
 	// We can only use apply as an alternative for ingestion if we are ingesting
 	// a single batch. If we are ingesting multiple batches, the batches may
 	// overlap which would cause ingestion to fail but apply would succeed.
@@ -377,7 +436,7 @@ func (o *ingestOp) run(t *test, h *history) {
 	h.Recordf("%s // %v", o, err)
 }
 
-func (o *ingestOp) build(t *test, h *history, b *pebble.Batch, i int) (string, error) {
+func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (string, error) {
 	rootFS := vfs.Root(t.opts.FS)
 	path := rootFS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d", i))
 	f, err := rootFS.Create(path)
@@ -431,6 +490,13 @@ func (o *ingestOp) build(t *test, h *history, b *pebble.Batch, i int) (string, e
 		return "", err
 	}
 	return path, nil
+}
+
+func (o *ingestOp) receiver() objID { return dbObjID }
+func (o *ingestOp) syncObjs() objIDSlice {
+	// Ingest should not be concurrent with mutating the batches that will be
+	// ingested as sstables.
+	return o.batchIDs
 }
 
 func closeIters(
@@ -534,7 +600,7 @@ type getOp struct {
 	key      []byte
 }
 
-func (o *getOp) run(t *test, h *history) {
+func (o *getOp) run(t *test, h historyRecorder) {
 	r := t.getReader(o.readerID)
 	var val []byte
 	var closer io.Closer
@@ -548,8 +614,14 @@ func (o *getOp) run(t *test, h *history) {
 	}
 }
 
-func (o *getOp) String() string {
-	return fmt.Sprintf("%s.Get(%q)", o.readerID, o.key)
+func (o *getOp) String() string  { return fmt.Sprintf("%s.Get(%q)", o.readerID, o.key) }
+func (o *getOp) receiver() objID { return o.readerID }
+func (o *getOp) syncObjs() objIDSlice {
+	if o.readerID == dbObjID {
+		return nil
+	}
+	// batch.Get reads through to the current database state.
+	return []objID{dbObjID}
 }
 
 // newIterOp models a Reader.NewIter operation.
@@ -559,7 +631,7 @@ type newIterOp struct {
 	iterOpts
 }
 
-func (o *newIterOp) run(t *test, h *history) {
+func (o *newIterOp) run(t *test, h historyRecorder) {
 	r := t.getReader(o.readerID)
 	opts := iterOptions(o.iterOpts)
 
@@ -588,15 +660,33 @@ func (o *newIterOp) String() string {
 		o.iterID, o.readerID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.maskSuffix)
 }
 
+func (o *newIterOp) receiver() objID { return o.readerID }
+func (o *newIterOp) syncObjs() objIDSlice {
+	// Prevent o.iterID ops from running before it exists.
+	objs := []objID{o.iterID}
+	// If reading through a batch, the new iterator will also observe database
+	// state, and we must synchronize on the database state for a consistent
+	// view.
+	if o.readerID.tag() == batchTag {
+		objs = append(objs, dbObjID)
+	}
+	return objs
+}
+
 // newIterUsingCloneOp models a Iterator.Clone operation.
 type newIterUsingCloneOp struct {
 	existingIterID objID
 	iterID         objID
 	refreshBatch   bool
 	iterOpts
+
+	// derivedReaderID is the ID of the underlying reader that backs both the
+	// existing iterator and the new iterator. The derivedReaderID is NOT
+	// serialized by String and is derived from other operations during parse.
+	derivedReaderID objID
 }
 
-func (o *newIterUsingCloneOp) run(t *test, h *history) {
+func (o *newIterUsingCloneOp) run(t *test, h historyRecorder) {
 	iter := t.getIter(o.existingIterID)
 	cloneOpts := pebble.CloneOptions{
 		IterOptions:      iterOptions(o.iterOpts),
@@ -622,6 +712,19 @@ func (o *newIterUsingCloneOp) String() string {
 		o.keyTypes, o.filterMin, o.filterMax, o.maskSuffix)
 }
 
+func (o *newIterUsingCloneOp) receiver() objID { return o.existingIterID }
+
+func (o *newIterUsingCloneOp) syncObjs() objIDSlice {
+	objIDs := []objID{o.iterID}
+	// If the underlying reader is a batch and the refreshBatch flag is set, we
+	// must synchronize with the batch, so that we observe all the mutations up
+	// until this op and no more.
+	if o.derivedReaderID.tag() == batchTag && o.refreshBatch {
+		objIDs = append(objIDs, o.derivedReaderID)
+	}
+	return objIDs
+}
+
 // iterSetBoundsOp models an Iterator.SetBounds operation.
 type iterSetBoundsOp struct {
 	iterID objID
@@ -629,7 +732,7 @@ type iterSetBoundsOp struct {
 	upper  []byte
 }
 
-func (o *iterSetBoundsOp) run(t *test, h *history) {
+func (o *iterSetBoundsOp) run(t *test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	var lower, upper []byte
 	if o.lower != nil {
@@ -652,13 +755,21 @@ func (o *iterSetBoundsOp) String() string {
 	return fmt.Sprintf("%s.SetBounds(%q, %q)", o.iterID, o.lower, o.upper)
 }
 
+func (o *iterSetBoundsOp) receiver() objID      { return o.iterID }
+func (o *iterSetBoundsOp) syncObjs() objIDSlice { return nil }
+
 // iterSetOptionsOp models an Iterator.SetOptions operation.
 type iterSetOptionsOp struct {
 	iterID objID
 	iterOpts
+
+	// derivedReaderID is the ID of the underlying reader that backs the
+	// iterator. The derivedReaderID is NOT serialized by String and is derived
+	// from other operations during parse.
+	derivedReaderID objID
 }
 
-func (o *iterSetOptionsOp) run(t *test, h *history) {
+func (o *iterSetOptionsOp) run(t *test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 
 	opts := iterOptions(o.iterOpts)
@@ -715,6 +826,18 @@ func iterOptions(o iterOpts) *pebble.IterOptions {
 	return opts
 }
 
+func (o *iterSetOptionsOp) receiver() objID { return o.iterID }
+
+func (o *iterSetOptionsOp) syncObjs() objIDSlice {
+	if o.derivedReaderID.tag() == batchTag {
+		// If the underlying reader is a batch, we must synchronize with the
+		// batch so that we observe all the mutations up until this operation
+		// and no more.
+		return []objID{o.derivedReaderID}
+	}
+	return nil
+}
+
 // iterSeekGEOp models an Iterator.SeekGE[WithLimit] operation.
 type iterSeekGEOp struct {
 	iterID objID
@@ -767,7 +890,7 @@ func validityStateToStr(validity pebble.IterValidityState) (bool, string) {
 	}
 }
 
-func (o *iterSeekGEOp) run(t *test, h *history) {
+func (o *iterSeekGEOp) run(t *test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	var valid bool
 	var validStr string
@@ -787,6 +910,8 @@ func (o *iterSeekGEOp) run(t *test, h *history) {
 func (o *iterSeekGEOp) String() string {
 	return fmt.Sprintf("%s.SeekGE(%q, %q)", o.iterID, o.key, o.limit)
 }
+func (o *iterSeekGEOp) receiver() objID      { return o.iterID }
+func (o *iterSeekGEOp) syncObjs() objIDSlice { return nil }
 
 // iterSeekPrefixGEOp models an Iterator.SeekPrefixGE operation.
 type iterSeekPrefixGEOp struct {
@@ -794,7 +919,7 @@ type iterSeekPrefixGEOp struct {
 	key    []byte
 }
 
-func (o *iterSeekPrefixGEOp) run(t *test, h *history) {
+func (o *iterSeekPrefixGEOp) run(t *test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	valid := i.SeekPrefixGE(o.key)
 	if valid {
@@ -807,6 +932,8 @@ func (o *iterSeekPrefixGEOp) run(t *test, h *history) {
 func (o *iterSeekPrefixGEOp) String() string {
 	return fmt.Sprintf("%s.SeekPrefixGE(%q)", o.iterID, o.key)
 }
+func (o *iterSeekPrefixGEOp) receiver() objID      { return o.iterID }
+func (o *iterSeekPrefixGEOp) syncObjs() objIDSlice { return nil }
 
 // iterSeekLTOp models an Iterator.SeekLT[WithLimit] operation.
 type iterSeekLTOp struct {
@@ -815,7 +942,7 @@ type iterSeekLTOp struct {
 	limit  []byte
 }
 
-func (o *iterSeekLTOp) run(t *test, h *history) {
+func (o *iterSeekLTOp) run(t *test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	var valid bool
 	var validStr string
@@ -836,12 +963,15 @@ func (o *iterSeekLTOp) String() string {
 	return fmt.Sprintf("%s.SeekLT(%q, %q)", o.iterID, o.key, o.limit)
 }
 
+func (o *iterSeekLTOp) receiver() objID      { return o.iterID }
+func (o *iterSeekLTOp) syncObjs() objIDSlice { return nil }
+
 // iterFirstOp models an Iterator.First operation.
 type iterFirstOp struct {
 	iterID objID
 }
 
-func (o *iterFirstOp) run(t *test, h *history) {
+func (o *iterFirstOp) run(t *test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	valid := i.First()
 	if valid {
@@ -851,16 +981,16 @@ func (o *iterFirstOp) run(t *test, h *history) {
 	}
 }
 
-func (o *iterFirstOp) String() string {
-	return fmt.Sprintf("%s.First()", o.iterID)
-}
+func (o *iterFirstOp) String() string       { return fmt.Sprintf("%s.First()", o.iterID) }
+func (o *iterFirstOp) receiver() objID      { return o.iterID }
+func (o *iterFirstOp) syncObjs() objIDSlice { return nil }
 
 // iterLastOp models an Iterator.Last operation.
 type iterLastOp struct {
 	iterID objID
 }
 
-func (o *iterLastOp) run(t *test, h *history) {
+func (o *iterLastOp) run(t *test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	valid := i.Last()
 	if valid {
@@ -870,9 +1000,9 @@ func (o *iterLastOp) run(t *test, h *history) {
 	}
 }
 
-func (o *iterLastOp) String() string {
-	return fmt.Sprintf("%s.Last()", o.iterID)
-}
+func (o *iterLastOp) String() string       { return fmt.Sprintf("%s.Last()", o.iterID) }
+func (o *iterLastOp) receiver() objID      { return o.iterID }
+func (o *iterLastOp) syncObjs() objIDSlice { return nil }
 
 // iterNextOp models an Iterator.Next[WithLimit] operation.
 type iterNextOp struct {
@@ -880,7 +1010,7 @@ type iterNextOp struct {
 	limit  []byte
 }
 
-func (o *iterNextOp) run(t *test, h *history) {
+func (o *iterNextOp) run(t *test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	var valid bool
 	var validStr string
@@ -897,9 +1027,9 @@ func (o *iterNextOp) run(t *test, h *history) {
 	}
 }
 
-func (o *iterNextOp) String() string {
-	return fmt.Sprintf("%s.Next(%q)", o.iterID, o.limit)
-}
+func (o *iterNextOp) String() string       { return fmt.Sprintf("%s.Next(%q)", o.iterID, o.limit) }
+func (o *iterNextOp) receiver() objID      { return o.iterID }
+func (o *iterNextOp) syncObjs() objIDSlice { return nil }
 
 // iterPrevOp models an Iterator.Prev[WithLimit] operation.
 type iterPrevOp struct {
@@ -907,7 +1037,7 @@ type iterPrevOp struct {
 	limit  []byte
 }
 
-func (o *iterPrevOp) run(t *test, h *history) {
+func (o *iterPrevOp) run(t *test, h historyRecorder) {
 	i := t.getIter(o.iterID)
 	var valid bool
 	var validStr string
@@ -924,40 +1054,39 @@ func (o *iterPrevOp) run(t *test, h *history) {
 	}
 }
 
-func (o *iterPrevOp) String() string {
-	return fmt.Sprintf("%s.Prev(%q)", o.iterID, o.limit)
-}
+func (o *iterPrevOp) String() string       { return fmt.Sprintf("%s.Prev(%q)", o.iterID, o.limit) }
+func (o *iterPrevOp) receiver() objID      { return o.iterID }
+func (o *iterPrevOp) syncObjs() objIDSlice { return nil }
 
 // newSnapshotOp models a DB.NewSnapshot operation.
 type newSnapshotOp struct {
 	snapID objID
 }
 
-func (o *newSnapshotOp) run(t *test, h *history) {
+func (o *newSnapshotOp) run(t *test, h historyRecorder) {
 	s := t.db.NewSnapshot()
 	t.setSnapshot(o.snapID, s)
 	h.Recordf("%s", o)
 }
 
-func (o *newSnapshotOp) String() string {
-	return fmt.Sprintf("%s = db.NewSnapshot()", o.snapID)
-}
+func (o *newSnapshotOp) String() string       { return fmt.Sprintf("%s = db.NewSnapshot()", o.snapID) }
+func (o *newSnapshotOp) receiver() objID      { return dbObjID }
+func (o *newSnapshotOp) syncObjs() objIDSlice { return []objID{o.snapID} }
 
-type dbRestartOp struct {
-}
+type dbRestartOp struct{}
 
-func (o *dbRestartOp) run(t *test, h *history) {
+func (o *dbRestartOp) run(t *test, h historyRecorder) {
 	if err := t.restartDB(); err != nil {
 		h.Recordf("%s // %v", o, err)
-		h.err.Store(errors.Wrap(err, "dbRestartOp"))
+		h.history.err.Store(errors.Wrap(err, "dbRestartOp"))
 	} else {
 		h.Recordf("%s", o)
 	}
 }
 
-func (o *dbRestartOp) String() string {
-	return "db.Restart()"
-}
+func (o *dbRestartOp) String() string       { return "db.Restart()" }
+func (o *dbRestartOp) receiver() objID      { return dbObjID }
+func (o *dbRestartOp) syncObjs() objIDSlice { return nil }
 
 func formatOps(ops []op) string {
 	var buf strings.Builder

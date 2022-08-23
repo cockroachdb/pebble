@@ -6,8 +6,12 @@ package metamorphic
 
 import (
 	"bytes"
+	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,8 +35,21 @@ func TestHistoryLogger(t *testing.T) {
 func TestHistoryFail(t *testing.T) {
 	var buf bytes.Buffer
 	h := newHistory("foo", &buf)
-	h.Recordf("bar")
+	h.Recordf(1, "bar")
 	require.NoError(t, h.Error())
-	h.Recordf("foo bar")
+	h.Recordf(2, "foo bar")
 	require.EqualError(t, h.Error(), `failure regexp "foo" matched output: foo bar #2`)
+}
+
+func TestReorderHistory(t *testing.T) {
+	datadriven.RunTest(t, "testdata/reorder_history", func(d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "reorder":
+			lines := difflib.SplitLines(string(d.Input))
+			lines = reorderHistory(lines)
+			return strings.Join(lines, "")
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
 }
