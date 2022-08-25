@@ -269,6 +269,18 @@ func standardOptions() []*testOptions {
 func randomOptions(rng *rand.Rand) *testOptions {
 	var testOpts = &testOptions{}
 	opts := defaultOptions()
+	testOpts.opts = opts
+
+	if rng.Intn(5) == 0 /* 20% */ {
+		// The `disable_lazy_combined_iteration` option is private, and there's
+		// no way to set it through the public interface. The only method is
+		// through Parse.
+		parseOptions(testOpts, `
+[Options]
+  disable_lazy_combined_iteration=true
+`)
+	}
+
 	opts.BytesPerSync = 1 << uint(rng.Intn(28))     // 1B - 256MB
 	opts.Cache = cache.New(1 << uint(rng.Intn(30))) // 1B - 1GB
 	opts.DisableWAL = rng.Intn(2) == 0
@@ -317,7 +329,6 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	lopts.TargetFileSize = 1 << uint(rng.Intn(28)) // 1 - 256MB
 	opts.Levels = []pebble.LevelOptions{lopts}
 
-	testOpts.opts = opts
 	// Explicitly disable disk-backed FS's for the random configurations. The
 	// single standard test configuration that uses a disk-backed FS is
 	// sufficient.
