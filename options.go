@@ -163,11 +163,15 @@ type IterOptions struct {
 	// existing is not low or if we just expect a one-time Seek (where loading the
 	// data block directly is better).
 	UseL6Filters bool
+
 	// Internal options.
+
 	logger Logger
 	// Level corresponding to this file. Only passed in if constructed by a
 	// levelIter.
 	level manifest.Level
+	// disableLazyCombinedIteration is an internal testing option.
+	disableLazyCombinedIteration bool
 
 	// NB: If adding new Options, you must account for them in iterator
 	// construction and Iterator.SetOptions.
@@ -780,6 +784,13 @@ type Options struct {
 		// against the FS are made after the DB is closed, the FS may leak a
 		// goroutine indefinitely.
 		fsCloser io.Closer
+
+		// disableLazyCombinedIteration is a private option used by the
+		// metamorphic tests to test equivalence between lazy-combined iteration
+		// and constructing the range-key iterator upfront. It's a private
+		// option to avoid littering the public interface with options that we
+		// do not want to allow users to actually configure.
+		disableLazyCombinedIteration bool
 	}
 }
 
@@ -1028,6 +1039,15 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  max_writer_concurrency=%d\n", o.Experimental.MaxWriterConcurrency)
 	fmt.Fprintf(&buf, "  force_writer_parallelism=%t\n", o.Experimental.ForceWriterParallelism)
 
+	// Private options.
+	if o.private.disableLazyCombinedIteration {
+		// This option is only encoded if true, because we do not want it to
+		// appear in production serialized Options files, since it's a
+		// testing-only option. It's only serialized when true, which still
+		// ensures that the metamorphic tests may propagate it to subprocesses.
+		fmt.Fprintln(&buf, "  disable_lazy_combined_iteration=true")
+	}
+
 	for i := range o.Levels {
 		l := &o.Levels[i]
 		fmt.Fprintf(&buf, "\n")
@@ -1170,6 +1190,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.FlushDelayDeleteRange, err = time.ParseDuration(value)
 			case "disable_wal":
 				o.DisableWAL, err = strconv.ParseBool(value)
+			case "disable_lazy_combined_iteration":
+				o.private.disableLazyCombinedIteration, err = strconv.ParseBool(value)
 			case "flush_delay_delete_range":
 				o.FlushDelayDeleteRange, err = time.ParseDuration(value)
 			case "flush_delay_range_key":
