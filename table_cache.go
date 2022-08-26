@@ -299,8 +299,9 @@ type tableCacheShard struct {
 		sizeCold   int
 		sizeTest   int
 	}
-	releasing   sync.WaitGroup
-	releasingCh chan *tableCacheValue
+	releasing       sync.WaitGroup
+	releasingCh     chan *tableCacheValue
+	releaseLoopExit sync.WaitGroup
 }
 
 func (c *tableCacheShard) init(size int) {
@@ -309,6 +310,7 @@ func (c *tableCacheShard) init(size int) {
 	c.mu.nodes = make(map[tableCacheKey]*tableCacheNode)
 	c.mu.coldTarget = size
 	c.releasingCh = make(chan *tableCacheValue, 100)
+	c.releaseLoopExit.Add(1)
 	go c.releaseLoop()
 
 	if invariants.RaceEnabled {
@@ -318,6 +320,7 @@ func (c *tableCacheShard) init(size int) {
 
 func (c *tableCacheShard) releaseLoop() {
 	pprof.Do(context.Background(), tableCacheLabels, func(context.Context) {
+		defer c.releaseLoopExit.Done()
 		for v := range c.releasingCh {
 			v.release(c)
 		}
@@ -853,10 +856,14 @@ func (c *tableCacheShard) Close() error {
 	// complete. This behavior is used by iterator leak tests. Leaking the
 	// goroutine for these tests is less bad not closing the iterator which
 	// triggers other warnings about block cache handles not being released.
-	if err == nil {
-		close(c.releasingCh)
+	if err != nil {
+		c.releasing.Wait()
+		return err
 	}
+
+	close(c.releasingCh)
 	c.releasing.Wait()
+	c.releaseLoopExit.Wait()
 	return err
 }
 
