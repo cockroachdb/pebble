@@ -10,6 +10,22 @@ del-range c z
 # Test that a delete range in a more recent file shadows keys in an
 # earlier file.
 
+iter files=(1)
+first
+next
+next
+----
+b: (b, .)
+c: (c, .)
+.
+
+iter files=(1)
+seek-ge bb
+next
+----
+c: (c, .)
+.
+
 iter files=(2, 1) fwd-only
 first
 next

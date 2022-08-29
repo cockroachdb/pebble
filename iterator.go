@@ -235,6 +235,12 @@ type Iterator struct {
 	// Used for an optimization in external iterators to reduce the number of
 	// merging levels.
 	forwardOnly bool
+	// closePointIterOnce is set to true if this point iter can only be Close()d
+	// once, _and_ closing i.iter and then i.pointIter would close i.pointIter
+	// twice. This is necessary to track if the point iter is an internal iterator
+	// that could release its resources to a pool on Close(), making it harder for
+	// that iterator to make its own closes idempotent.
+	closePointIterOnce bool
 	// Used in some tests to disable the random disabling of seek optimizations.
 	forceEnableSeekOpt bool
 }
@@ -1739,7 +1745,7 @@ func (i *Iterator) Close() error {
 		// NB: If the iterators were still connected to i.iter, they may be
 		// closed, but calling Close on a closed internal iterator or fragment
 		// iterator is allowed.
-		if i.pointIter != nil {
+		if i.pointIter != nil && !i.closePointIterOnce {
 			i.err = firstError(i.err, i.pointIter.Close())
 		}
 		if i.rangeKey != nil && i.rangeKey.rangeKeyIter != nil {
