@@ -843,6 +843,8 @@ type iterSeekGEOp struct {
 	iterID objID
 	key    []byte
 	limit  []byte
+
+	derivedReaderID objID
 }
 
 func iteratorPos(i *retryableIter) string {
@@ -911,12 +913,24 @@ func (o *iterSeekGEOp) String() string {
 	return fmt.Sprintf("%s.SeekGE(%q, %q)", o.iterID, o.key, o.limit)
 }
 func (o *iterSeekGEOp) receiver() objID      { return o.iterID }
-func (o *iterSeekGEOp) syncObjs() objIDSlice { return nil }
+func (o *iterSeekGEOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
+
+func onlyBatchIDs(ids ...objID) objIDSlice {
+	var ret objIDSlice
+	for _, id := range ids {
+		if id.tag() == batchTag {
+			ret = append(ret, id)
+		}
+	}
+	return ret
+}
 
 // iterSeekPrefixGEOp models an Iterator.SeekPrefixGE operation.
 type iterSeekPrefixGEOp struct {
 	iterID objID
 	key    []byte
+
+	derivedReaderID objID
 }
 
 func (o *iterSeekPrefixGEOp) run(t *test, h historyRecorder) {
@@ -933,13 +947,15 @@ func (o *iterSeekPrefixGEOp) String() string {
 	return fmt.Sprintf("%s.SeekPrefixGE(%q)", o.iterID, o.key)
 }
 func (o *iterSeekPrefixGEOp) receiver() objID      { return o.iterID }
-func (o *iterSeekPrefixGEOp) syncObjs() objIDSlice { return nil }
+func (o *iterSeekPrefixGEOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
 // iterSeekLTOp models an Iterator.SeekLT[WithLimit] operation.
 type iterSeekLTOp struct {
 	iterID objID
 	key    []byte
 	limit  []byte
+
+	derivedReaderID objID
 }
 
 func (o *iterSeekLTOp) run(t *test, h historyRecorder) {
@@ -964,11 +980,13 @@ func (o *iterSeekLTOp) String() string {
 }
 
 func (o *iterSeekLTOp) receiver() objID      { return o.iterID }
-func (o *iterSeekLTOp) syncObjs() objIDSlice { return nil }
+func (o *iterSeekLTOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
 // iterFirstOp models an Iterator.First operation.
 type iterFirstOp struct {
 	iterID objID
+
+	derivedReaderID objID
 }
 
 func (o *iterFirstOp) run(t *test, h historyRecorder) {
@@ -983,11 +1001,13 @@ func (o *iterFirstOp) run(t *test, h historyRecorder) {
 
 func (o *iterFirstOp) String() string       { return fmt.Sprintf("%s.First()", o.iterID) }
 func (o *iterFirstOp) receiver() objID      { return o.iterID }
-func (o *iterFirstOp) syncObjs() objIDSlice { return nil }
+func (o *iterFirstOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
 // iterLastOp models an Iterator.Last operation.
 type iterLastOp struct {
 	iterID objID
+
+	derivedReaderID objID
 }
 
 func (o *iterLastOp) run(t *test, h historyRecorder) {
@@ -1002,12 +1022,14 @@ func (o *iterLastOp) run(t *test, h historyRecorder) {
 
 func (o *iterLastOp) String() string       { return fmt.Sprintf("%s.Last()", o.iterID) }
 func (o *iterLastOp) receiver() objID      { return o.iterID }
-func (o *iterLastOp) syncObjs() objIDSlice { return nil }
+func (o *iterLastOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
 // iterNextOp models an Iterator.Next[WithLimit] operation.
 type iterNextOp struct {
 	iterID objID
 	limit  []byte
+
+	derivedReaderID objID
 }
 
 func (o *iterNextOp) run(t *test, h historyRecorder) {
@@ -1029,12 +1051,14 @@ func (o *iterNextOp) run(t *test, h historyRecorder) {
 
 func (o *iterNextOp) String() string       { return fmt.Sprintf("%s.Next(%q)", o.iterID, o.limit) }
 func (o *iterNextOp) receiver() objID      { return o.iterID }
-func (o *iterNextOp) syncObjs() objIDSlice { return nil }
+func (o *iterNextOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
 // iterPrevOp models an Iterator.Prev[WithLimit] operation.
 type iterPrevOp struct {
 	iterID objID
 	limit  []byte
+
+	derivedReaderID objID
 }
 
 func (o *iterPrevOp) run(t *test, h historyRecorder) {
@@ -1056,7 +1080,7 @@ func (o *iterPrevOp) run(t *test, h historyRecorder) {
 
 func (o *iterPrevOp) String() string       { return fmt.Sprintf("%s.Prev(%q)", o.iterID, o.limit) }
 func (o *iterPrevOp) receiver() objID      { return o.iterID }
-func (o *iterPrevOp) syncObjs() objIDSlice { return nil }
+func (o *iterPrevOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
 // newSnapshotOp models a DB.NewSnapshot operation.
 type newSnapshotOp struct {

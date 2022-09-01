@@ -406,6 +406,20 @@ func computeDerivedFields(ops []op) {
 			iterToReader[v.iterID] = v.derivedReaderID
 		case *iterSetOptionsOp:
 			v.derivedReaderID = iterToReader[v.iterID]
+		case *iterFirstOp:
+			v.derivedReaderID = iterToReader[v.iterID]
+		case *iterLastOp:
+			v.derivedReaderID = iterToReader[v.iterID]
+		case *iterSeekGEOp:
+			v.derivedReaderID = iterToReader[v.iterID]
+		case *iterSeekPrefixGEOp:
+			v.derivedReaderID = iterToReader[v.iterID]
+		case *iterSeekLTOp:
+			v.derivedReaderID = iterToReader[v.iterID]
+		case *iterNextOp:
+			v.derivedReaderID = iterToReader[v.iterID]
+		case *iterPrevOp:
+			v.derivedReaderID = iterToReader[v.iterID]
 		}
 	}
 }

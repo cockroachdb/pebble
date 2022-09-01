@@ -700,8 +700,9 @@ func (g *generator) iterSetBounds(iterID objID) {
 	}
 	if doSeekLT {
 		g.add(&iterSeekLTOp{
-			iterID: iterID,
-			key:    upper,
+			iterID:          iterID,
+			key:             upper,
+			derivedReaderID: g.iterReaderID[iterID],
 		})
 		if g.rng.Float64() < 0.5 {
 			g.iterNext(iterID)
@@ -714,8 +715,9 @@ func (g *generator) iterSetBounds(iterID objID) {
 		}
 	} else if doSeekGE {
 		g.add(&iterSeekGEOp{
-			iterID: iterID,
-			key:    lower,
+			iterID:          iterID,
+			key:             lower,
+			derivedReaderID: g.iterReaderID[iterID],
 		})
 		if g.rng.Float64() < 0.5 {
 			g.iterPrev(iterID)
@@ -757,8 +759,9 @@ func (g *generator) iterSetOptions(iterID objID) {
 
 func (g *generator) iterSeekGE(iterID objID) {
 	g.add(&iterSeekGEOp{
-		iterID: iterID,
-		key:    g.randKeyToRead(0.001), // 0.1% new keys
+		iterID:          iterID,
+		key:             g.randKeyToRead(0.001), // 0.1% new keys
+		derivedReaderID: g.iterReaderID[iterID],
 	})
 }
 
@@ -769,9 +772,10 @@ func (g *generator) iterSeekGEWithLimit(iterID objID) {
 		key, limit = limit, key
 	}
 	g.add(&iterSeekGEOp{
-		iterID: iterID,
-		key:    key,
-		limit:  limit,
+		iterID:          iterID,
+		key:             key,
+		limit:           limit,
+		derivedReaderID: g.iterReaderID[iterID],
 	})
 }
 
@@ -836,15 +840,17 @@ func (g *generator) iterSeekPrefixGE(iterID objID) {
 	}
 
 	g.add(&iterSeekPrefixGEOp{
-		iterID: iterID,
-		key:    key,
+		iterID:          iterID,
+		key:             key,
+		derivedReaderID: g.iterReaderID[iterID],
 	})
 }
 
 func (g *generator) iterSeekLT(iterID objID) {
 	g.add(&iterSeekLTOp{
-		iterID: iterID,
-		key:    g.randKeyToRead(0.001), // 0.1% new keys
+		iterID:          iterID,
+		key:             g.randKeyToRead(0.001), // 0.1% new keys
+		derivedReaderID: g.iterReaderID[iterID],
 	})
 }
 
@@ -855,9 +861,10 @@ func (g *generator) iterSeekLTWithLimit(iterID objID) {
 		key, limit = limit, key
 	}
 	g.add(&iterSeekLTOp{
-		iterID: iterID,
-		key:    key,
-		limit:  limit,
+		iterID:          iterID,
+		key:             key,
+		limit:           limit,
+		derivedReaderID: g.iterReaderID[iterID],
 	})
 }
 
@@ -872,22 +879,47 @@ func (g *generator) randIter(gen func(objID)) func() {
 	}
 }
 
-func (g *generator) iterFirst(iterID objID) { g.add(&iterFirstOp{iterID: iterID}) }
-func (g *generator) iterLast(iterID objID)  { g.add(&iterLastOp{iterID: iterID}) }
-func (g *generator) iterNext(iterID objID)  { g.add(&iterNextOp{iterID: iterID}) }
-func (g *generator) iterPrev(iterID objID)  { g.add(&iterPrevOp{iterID: iterID}) }
+func (g *generator) iterFirst(iterID objID) {
+	g.add(&iterFirstOp{
+		iterID:          iterID,
+		derivedReaderID: g.iterReaderID[iterID],
+	})
+}
+
+func (g *generator) iterLast(iterID objID) {
+	g.add(&iterLastOp{
+		iterID:          iterID,
+		derivedReaderID: g.iterReaderID[iterID],
+	})
+}
+
+func (g *generator) iterNext(iterID objID) {
+	g.add(&iterNextOp{
+		iterID:          iterID,
+		derivedReaderID: g.iterReaderID[iterID],
+	})
+}
+
+func (g *generator) iterPrev(iterID objID) {
+	g.add(&iterPrevOp{
+		iterID:          iterID,
+		derivedReaderID: g.iterReaderID[iterID],
+	})
+}
 
 func (g *generator) iterNextWithLimit(iterID objID) {
 	g.add(&iterNextOp{
-		iterID: iterID,
-		limit:  g.randKeyToRead(0.001), // 0.1% new keys
+		iterID:          iterID,
+		limit:           g.randKeyToRead(0.001), // 0.1% new keys
+		derivedReaderID: g.iterReaderID[iterID],
 	})
 }
 
 func (g *generator) iterPrevWithLimit(iterID objID) {
 	g.add(&iterPrevOp{
-		iterID: iterID,
-		limit:  g.randKeyToRead(0.001), // 0.1% new keys
+		iterID:          iterID,
+		limit:           g.randKeyToRead(0.001), // 0.1% new keys
+		derivedReaderID: g.iterReaderID[iterID],
 	})
 }
 
