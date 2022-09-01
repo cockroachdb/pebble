@@ -2185,6 +2185,227 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 	}
 }
 
+func TestRangeKeyMaskingRandomized(t *testing.T) {
+	seed := *seed
+	if seed == 0 {
+		seed = uint64(time.Now().UnixNano())
+		fmt.Printf("seed: %d\n", seed)
+	}
+	rng := rand.New(rand.NewSource(seed))
+
+	// Generate keyspace with point keys, and range keys which will
+	// mask the point keys.
+	var timestamps []int
+	for i := 0; i <= 100; i++ {
+		timestamps = append(timestamps, rng.Intn(1000))
+	}
+
+	ks := testkeys.Alpha(5)
+	numKeys := 1000 + rng.Intn(9000)
+	keys := make([][]byte, numKeys)
+	keyTimeStamps := make([]int, numKeys) // ts associated with the keys.
+	for i := 0; i < numKeys; i++ {
+		keys[i] = make([]byte, 5+testkeys.MaxSuffixLen)
+		keyTimeStamps[i] = timestamps[rng.Intn(len(timestamps))]
+		n := testkeys.WriteKeyAt(keys[i], ks, rng.Intn(ks.Count()), keyTimeStamps[i])
+		keys[i] = keys[i][:n]
+	}
+
+	numRangeKeys := rng.Intn(20)
+	type rkey struct {
+		start  []byte
+		end    []byte
+		suffix []byte
+	}
+	rkeys := make([]rkey, numRangeKeys)
+	pointKeyHidden := make([]bool, numKeys)
+	for i := 0; i < numRangeKeys; i++ {
+		rkeys[i].start = make([]byte, 5)
+		rkeys[i].end = make([]byte, 5)
+
+		testkeys.WriteKey(rkeys[i].start[:5], ks, rng.Intn(ks.Count()))
+		testkeys.WriteKey(rkeys[i].end[:5], ks, rng.Intn(ks.Count()))
+
+		for bytes.Equal(rkeys[i].start[:5], rkeys[i].end[:5]) {
+			testkeys.WriteKey(rkeys[i].end[:5], ks, rng.Intn(ks.Count()))
+		}
+
+		if bytes.Compare(rkeys[i].start[:5], rkeys[i].end[:5]) > 0 {
+			rkeys[i].start, rkeys[i].end = rkeys[i].end, rkeys[i].start
+		}
+
+		rkeyTimestamp := timestamps[rng.Intn(len(timestamps))]
+		rkeys[i].suffix = []byte("@" + strconv.Itoa(rkeyTimestamp))
+
+		// Each time we create a range key, check if the range key masks any
+		// point keys.
+		for j, pkey := range keys {
+			if pointKeyHidden[j] {
+				continue
+			}
+
+			if keyTimeStamps[j] >= rkeyTimestamp {
+				continue
+			}
+
+			if bytes.Compare(pkey, rkeys[i].start) > 0 && bytes.Compare(pkey, rkeys[i].end) < 0 {
+				pointKeyHidden[j] = true
+			}
+		}
+	}
+
+	// Define a simple base testOpts, and a randomized testOpts. The results
+	// of iteration will be compared.
+	type testOpts struct {
+		levelOpts []LevelOptions
+		filter    func() BlockPropertyFilterMask
+	}
+
+	baseOpts := testOpts{
+		levelOpts: make([]LevelOptions, 7),
+	}
+	for i := 0; i < len(baseOpts.levelOpts); i++ {
+		baseOpts.levelOpts[i].TargetFileSize = 1
+		baseOpts.levelOpts[i].BlockSize = 1
+	}
+
+	randomOpts := testOpts{
+		levelOpts: []LevelOptions{
+			{
+				TargetFileSize: int64(1 + rng.Intn(2<<20)), // Vary the L0 file size.
+				BlockSize:      1 + rng.Intn(32<<10),
+			},
+		},
+	}
+	if rng.Intn(2) == 0 {
+		randomOpts.filter = func() BlockPropertyFilterMask {
+			return blockprop.NewMaskingFilter()
+		}
+	}
+
+	maxProcs := runtime.GOMAXPROCS(0)
+
+	opts1 := &Options{
+		FS:                       vfs.NewStrictMem(),
+		Comparer:                 testkeys.Comparer,
+		FormatMajorVersion:       FormatNewest,
+		MaxConcurrentCompactions: func() int { return maxProcs/2 + 1 },
+		BlockPropertyCollectors: []func() BlockPropertyCollector{
+			blockprop.NewBlockPropertyCollector,
+		},
+	}
+	opts1.Levels = baseOpts.levelOpts
+	d1, err := Open("", opts1)
+	require.NoError(t, err)
+
+	opts2 := &Options{
+		FS:                       vfs.NewStrictMem(),
+		Comparer:                 testkeys.Comparer,
+		FormatMajorVersion:       FormatNewest,
+		MaxConcurrentCompactions: func() int { return maxProcs/2 + 1 },
+		BlockPropertyCollectors: []func() BlockPropertyCollector{
+			blockprop.NewBlockPropertyCollector,
+		},
+	}
+	opts2.Levels = randomOpts.levelOpts
+	d2, err := Open("", opts2)
+	require.NoError(t, err)
+
+	defer func() {
+		if err := d1.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := d2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Run test
+	var batch1 *Batch
+	var batch2 *Batch
+	const keysPerBatch = 50
+	for i := 0; i < numKeys; i++ {
+		if i%keysPerBatch == 0 {
+			if batch1 != nil {
+				require.NoError(t, batch1.Commit(nil))
+				require.NoError(t, batch2.Commit(nil))
+			}
+			batch1 = d1.NewBatch()
+			batch2 = d2.NewBatch()
+		}
+		require.NoError(t, batch1.Set(keys[i], []byte{1}, nil))
+		require.NoError(t, batch2.Set(keys[i], []byte{1}, nil))
+	}
+
+	for _, rkey := range rkeys {
+		require.NoError(t, d1.RangeKeySet(rkey.start, rkey.end, rkey.suffix, nil, nil))
+		require.NoError(t, d2.RangeKeySet(rkey.start, rkey.end, rkey.suffix, nil, nil))
+	}
+
+	// Scan the keyspace
+	iter1Opts := IterOptions{
+		KeyTypes: IterKeyTypePointsAndRanges,
+		RangeKeyMasking: RangeKeyMasking{
+			Suffix: []byte("@1000"),
+			Filter: baseOpts.filter,
+		},
+	}
+
+	iter2Opts := IterOptions{
+		KeyTypes: IterKeyTypePointsAndRanges,
+		RangeKeyMasking: RangeKeyMasking{
+			Suffix: []byte("@1000"),
+			Filter: randomOpts.filter,
+		},
+	}
+
+	iter1 := d1.NewIter(&iter1Opts)
+	iter2 := d2.NewIter(&iter2Opts)
+	defer func() {
+		if err := iter1.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := iter2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	for valid1, valid2 := iter1.First(), iter2.First(); valid1 || valid2; valid1, valid2 = iter1.Next(), iter2.Next() {
+		if valid1 != valid2 {
+			t.Fatalf("iteration didn't produce identical results")
+		}
+
+		// Confirm exposed range key state is identical.
+		hasP1, hasR1 := iter1.HasPointAndRange()
+		hasP2, hasR2 := iter2.HasPointAndRange()
+		if hasP1 != hasP2 || hasR1 != hasR2 {
+			t.Fatalf("iteration didn't produce identical results")
+		}
+		if hasP1 && !bytes.Equal(iter1.Key(), iter2.Key()) {
+			t.Fatalf(fmt.Sprintf("iteration didn't produce identical point keys: %s, %s", iter1.Key(), iter2.Key()))
+		}
+		if hasR1 {
+			// Confirm that the range key is the same.
+			b1, e1 := iter1.RangeBounds()
+			b2, e2 := iter2.RangeBounds()
+			if !bytes.Equal(b1, b2) || !bytes.Equal(e1, e2) {
+				t.Fatalf(fmt.Sprintf(
+					"iteration didn't produce identical range keys: [%s, %s], [%s, %s]",
+					b1, e1, b2, e2,
+				))
+			}
+
+		}
+
+		// Confirm that the returned point key wasn't hidden.
+		for j, pkey := range keys {
+			if bytes.Equal(iter1.Key(), pkey) && pointKeyHidden[j] {
+				t.Fatalf(fmt.Sprintf("hidden point key was exposed %s %d", pkey, keyTimeStamps[j]))
+			}
+		}
+	}
+}
+
 // BenchmarkIterator_RangeKeyMasking benchmarks a scan through a keyspace with
 // 10,000 random suffixed point keys, and three range keys covering most of the
 // keyspace. It varies the suffix of the range keys in subbenchmarks to exercise
