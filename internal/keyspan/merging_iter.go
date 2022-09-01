@@ -826,7 +826,9 @@ func (m *MergingIter) synthesizeKeys(dir int8) (bool, *Span) {
 		Keys:      m.keys,
 		KeysOrder: ByTrailerDesc,
 	}
-	if err := m.transformer.Transform(m.cmp, s, &m.span); err != nil {
+	// NB: m.heap.cmp is a base.Compare, whereas m.cmp is a method on
+	// MergingIter.
+	if err := m.transformer.Transform(m.heap.cmp, s, &m.span); err != nil {
 		m.err = err
 		return false, nil
 	}
