@@ -70,6 +70,9 @@ const (
 	maxHeight   = 20
 	maxNodeSize = uint32(unsafe.Sizeof(node{}))
 	linksSize   = uint32(unsafe.Sizeof(links{}))
+	// Same as manual.MaxArrayLen on 32bit arches. Using that on 64bit too, as
+	// we are constrained to uint32 here anyway.
+	maxNodesSize = uint32(math.MaxInt32) / 2
 )
 
 var (
@@ -83,20 +86,7 @@ var (
 	// 1 << 32 - 1 (int32), which corresponds to ~117 M skiplist entries.
 	// On 32bit it's limited by the max size of a byte array (>1.4M)
 	ErrTooManyRecords = errors.New("too many records")
-
-	maxNodesSize uint32
 )
-
-func init() {
-	// Slice size is limited by arch dependendent maximum of int and size of
-	// array element (byte). Cannot use math.MaxInt as that's notassignable to
-	// uint32 on 64bit archs.
-	if intBits := unsafe.Sizeof(int(0)) * 8; intBits > 32 {
-		maxNodesSize = math.MaxUint32
-	} else {
-		maxNodesSize = 1 << (intBits - 1) / 2
-	}
-}
 
 type links struct {
 	next uint32
