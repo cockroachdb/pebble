@@ -342,7 +342,7 @@ func rangeKeyCompactionTransform(
 		usedLen := 0
 		for i >= 0 {
 			start := j
-			for j < len(s.Keys) && !base.Visible(s.Keys[j].SeqNum(), snapshots[i]) {
+			for j < len(s.Keys) && !base.Visible(s.Keys[j].SeqNum(), snapshots[i], base.InternalKeySeqNumMax) {
 				// Include j in current partition.
 				j++
 			}

@@ -101,7 +101,7 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 					return nil, nil
 				}
 				if g.equal(g.key, key.UserKey) {
-					if !key.Visible(g.snapshot) {
+					if !key.Visible(g.snapshot, base.InternalKeySeqNumMax) {
 						g.iterKey, g.iterValue = g.iter.Next()
 						continue
 					}
@@ -125,7 +125,12 @@ func (g *getIter) Next() (*InternalKey, []byte) {
 				return nil, nil
 			}
 			g.iter = g.batch.newInternalIter(nil)
-			g.rangeDelIter = g.batch.newRangeDelIter(nil, g.batch.nextSeqNum())
+			g.rangeDelIter = g.batch.newRangeDelIter(
+				nil,
+				// Get always reads the entirety of the batch's history, so no
+				// batch keys should be filtered.
+				base.InternalKeySeqNumMax,
+			)
 			g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
 			g.batch = nil
 			continue

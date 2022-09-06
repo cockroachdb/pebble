@@ -208,6 +208,11 @@ type Iterator struct {
 	batchPointIter    batchIter
 	batchRangeDelIter keyspan.Iter
 	batchRangeKeyIter keyspan.Iter
+	// merging is a pointer to this iterator's point merging iterator. It
+	// appears here because key visibility is handled by the merging iterator.
+	// During SetOptions on an iterator over an indexed batch, this field is
+	// used to update the merging iterator's batch snapshot.
+	merging *mergingIter
 
 	// Keeping the bools here after all the 8 byte aligned fields shrinks the
 	// sizeof this struct by 24 bytes.
@@ -1988,11 +1993,13 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		nextBatchSeqNum := (uint64(len(i.batch.data)) | base.InternalKeySeqNumBatch)
 		if nextBatchSeqNum != i.batchSeqNum {
 			i.batchSeqNum = nextBatchSeqNum
+			if i.merging != nil {
+				i.merging.batchSnapshot = nextBatchSeqNum
+			}
 			if i.pointIter != nil {
 				if i.batch.countRangeDels == 0 {
 					// No range deletions exist in the batch. We only need to
 					// update the batchIter's snapshot.
-					i.batchPointIter.snapshot = nextBatchSeqNum
 					i.invalidate()
 				} else if i.batchRangeDelIter.Count() == 0 {
 					// When we constructed this iterator, there were no
@@ -2012,7 +2019,6 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 					// count of fragmented range deletions, NOT the number of
 					// range deletions written to the batch
 					// [i.batch.countRangeDels].
-					i.batchPointIter.snapshot = nextBatchSeqNum
 					i.batch.initRangeDelIter(&i.opts, &i.batchRangeDelIter, nextBatchSeqNum)
 					i.invalidate()
 				}

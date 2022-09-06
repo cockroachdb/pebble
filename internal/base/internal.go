@@ -333,14 +333,28 @@ func (k InternalKey) SeqNum() uint64 {
 
 // Visible returns true if the key is visible at the specified snapshot
 // sequence number.
-func (k InternalKey) Visible(snapshot uint64) bool {
-	return Visible(k.SeqNum(), snapshot)
+func (k InternalKey) Visible(snapshot, batchSnapshot uint64) bool {
+	return Visible(k.SeqNum(), snapshot, batchSnapshot)
 }
 
 // Visible returns true if a key with the provided sequence number is visible at
-// the specified snapshot sequence number.
-func Visible(seqNum uint64, snapshot uint64) bool {
-	return seqNum < snapshot || (seqNum&InternalKeySeqNumBatch) != 0
+// the specified snapshot sequence numbers.
+func Visible(seqNum uint64, snapshot, batchSnapshot uint64) bool {
+	// There are two snapshot sequence numbers, one for committed keys and one
+	// for batch keys. If a seqNum is less than `snapshot`, then seqNum
+	// corresponds to a committed key that is visible. If seqNum has its batch
+	// bit set, then seqNum corresponds to an uncommitted batch key. Its
+	// visible if its snapshot is less than batchSnapshot.
+	//
+	// There's one complication. The maximal sequence number
+	// (`InternalKeySeqNumMax`) is used across Pebble for exclusive sentinel
+	// keys and other purposes. The maximal sequence number has its batch bit
+	// set, but it can never be < `batchSnapshot`, since there is no expressible
+	// larger snapshot. We dictate that the maximal sequence number is always
+	// visible.
+	return seqNum < snapshot ||
+		((seqNum&InternalKeySeqNumBatch) != 0 && seqNum < batchSnapshot) ||
+		seqNum == InternalKeySeqNumMax
 }
 
 // SetKind sets the kind component of the key.
