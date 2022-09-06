@@ -855,16 +855,37 @@ func (b *Batch) NewIter(o *IterOptions) *Iterator {
 // contents of the batch.
 func (b *Batch) newInternalIter(o *IterOptions) *batchIter {
 	iter := &batchIter{}
-	b.initInternalIter(o, iter, b.nextSeqNum())
+	b.initInternalIter(o, iter)
 	return iter
 }
 
-func (b *Batch) initInternalIter(o *IterOptions, iter *batchIter, batchSnapshot uint64) {
+func (b *Batch) initInternalIter(o *IterOptions, iter *batchIter) {
 	*iter = batchIter{
-		cmp:      b.cmp,
-		batch:    b,
-		iter:     b.index.NewIter(o.GetLowerBound(), o.GetUpperBound()),
-		snapshot: batchSnapshot,
+		cmp:   b.cmp,
+		batch: b,
+		iter:  b.index.NewIter(o.GetLowerBound(), o.GetUpperBound()),
+		// NB: We explicitly do not propagate the batch snapshot to the point
+		// key iterator. Filtering point keys within the batch iterator can
+		// cause pathological behavior where a batch iterator advances
+		// significantly farther than necessary filtering many batch keys that
+		// are not visible at the batch sequence number. Instead, the merging
+		// iterator enforces bounds.
+		//
+		// For example, consider an engine that contains the committed keys
+		// 'bar' and 'bax', with no keys between them. Consider a batch
+		// containing keys 1,000 keys within the range [a,z]. All of the
+		// batch keys were added to the batch after the iterator was
+		// constructed, so they are not visible to the iterator. A call to
+		// SeekGE('bax') would seek the LSM iterators and discover the key
+		// 'bax'. It would also seek the batch iterator, landing on the key
+		// 'baz' but discover it that it's not visible. The batch iterator would
+		// next through the rest of the batch's keys, only to discover there are
+		// no visible keys greater than or equal to 'bax'.
+		//
+		// Filtering these batch points within the merging iterator ensures that
+		// the batch iterator never needs to iterate beyond 'baz', because it
+		// already found a smaller, visible key 'bax'.
+		snapshot: base.InternalKeySeqNumMax,
 	}
 }
 
