@@ -230,17 +230,18 @@ type levelIterBoundaryContext struct {
 // scenarios and have each step display the current state (i.e. the current
 // heap and range-del iterator positioning).
 type mergingIter struct {
-	logger   Logger
-	split    Split
-	dir      int
-	snapshot uint64
-	levels   []mergingIterLevel
-	heap     mergingIterHeap
-	err      error
-	prefix   []byte
-	lower    []byte
-	upper    []byte
-	stats    *InternalIteratorStats
+	logger        Logger
+	split         Split
+	dir           int
+	snapshot      uint64
+	batchSnapshot uint64
+	levels        []mergingIterLevel
+	heap          mergingIterHeap
+	err           error
+	prefix        []byte
+	lower         []byte
+	upper         []byte
+	stats         *InternalIteratorStats
 
 	combinedIterState *combinedIterState
 
@@ -293,6 +294,7 @@ func (m *mergingIter) init(
 		m.upper = opts.UpperBound
 	}
 	m.snapshot = InternalKeySeqNumMax
+	m.batchSnapshot = InternalKeySeqNumMax
 	m.levels = levels
 	m.heap.cmp = cmp
 	m.split = split
@@ -707,7 +709,7 @@ func (m *mergingIter) findNextEntry() (*InternalKey, []byte) {
 			reseeked = true
 			continue
 		}
-		if item.key.Visible(m.snapshot) &&
+		if item.key.Visible(m.snapshot, m.batchSnapshot) &&
 			(!m.levels[item.index].isIgnorableBoundaryKey) &&
 			(item.key.Kind() != InternalKeyKindRangeDelete || !m.elideRangeTombstones) {
 			return &item.key, item.value
@@ -861,7 +863,7 @@ func (m *mergingIter) findPrevEntry() (*InternalKey, []byte) {
 			m.stats.PointsCoveredByRangeTombstones++
 			continue
 		}
-		if item.key.Visible(m.snapshot) &&
+		if item.key.Visible(m.snapshot, m.batchSnapshot) &&
 			(!m.levels[item.index].isIgnorableBoundaryKey) &&
 			(item.key.Kind() != InternalKeyKindRangeDelete || !m.elideRangeTombstones) {
 			return &item.key, item.value

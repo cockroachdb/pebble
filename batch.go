@@ -855,16 +855,22 @@ func (b *Batch) NewIter(o *IterOptions) *Iterator {
 // contents of the batch.
 func (b *Batch) newInternalIter(o *IterOptions) *batchIter {
 	iter := &batchIter{}
-	b.initInternalIter(o, iter, b.nextSeqNum())
+	b.initInternalIter(o, iter)
 	return iter
 }
 
-func (b *Batch) initInternalIter(o *IterOptions, iter *batchIter, batchSnapshot uint64) {
+func (b *Batch) initInternalIter(o *IterOptions, iter *batchIter) {
 	*iter = batchIter{
-		cmp:      b.cmp,
-		batch:    b,
-		iter:     b.index.NewIter(o.GetLowerBound(), o.GetUpperBound()),
-		snapshot: batchSnapshot,
+		cmp:   b.cmp,
+		batch: b,
+		iter:  b.index.NewIter(o.GetLowerBound(), o.GetUpperBound()),
+		// NB: We explicitly do not propagate the batch snapshot to the point
+		// key iterator. Filtering point keys within the batch iterator can
+		// cause pathological behavior where a batch iterator advances
+		// significantly farther than necessary filtering many batch keys that
+		// are not visible at the batch sequence number. Instead, the merging
+		// iterator enforces bounds.
+		snapshot: base.InternalKeySeqNumMax,
 	}
 }
 

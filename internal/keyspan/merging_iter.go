@@ -52,7 +52,9 @@ func visibleTransform(snapshot uint64) Transformer {
 		dst.Start, dst.End = s.Start, s.End
 		dst.Keys = dst.Keys[:0]
 		for _, k := range s.Keys {
-			if base.Visible(k.SeqNum(), snapshot) {
+			// NB: The batch snapshot is to InternalKeySeqNumMax because a
+			// batch's visible span keys are filtered when they're fragmented.
+			if base.Visible(k.SeqNum(), snapshot, base.InternalKeySeqNumMax) {
 				dst.Keys = append(dst.Keys, k)
 			}
 		}
