@@ -306,3 +306,73 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkExternalIter_NonOverlapping_SeekNextScan(b *testing.B) {
+	ks := testkeys.Alpha(6)
+	opts := (&Options{}).EnsureDefaults()
+	iterOpts := &IterOptions{
+		KeyTypes: IterKeyTypePointsAndRanges,
+	}
+	writeOpts := opts.MakeWriterOptions(6, sstable.TableFormatPebblev2)
+
+	for _, keyCount := range []int{100, 10_000, 100_000} {
+		b.Run(fmt.Sprintf("keys=%d", keyCount), func(b *testing.B) {
+			for _, fileCount := range []int{1, 10, 100} {
+				b.Run(fmt.Sprintf("files=%d", fileCount), func(b *testing.B) {
+					var fs vfs.FS = vfs.NewMem()
+					filenames := make([]string, fileCount)
+					var keys [][]byte
+					for i := 0; i < fileCount; i++ {
+						filename := fmt.Sprintf("%03d.sst", i)
+						wf, err := fs.Create(filename)
+						require.NoError(b, err)
+						w := sstable.NewWriter(wf, writeOpts)
+						for j := 0; j < keyCount/fileCount; j++ {
+							key := testkeys.Key(ks, len(keys))
+							keys = append(keys, key)
+							require.NoError(b, w.Set(key, key))
+						}
+						require.NoError(b, w.Close())
+						filenames[i] = filename
+					}
+
+					for _, forwardOnly := range []bool{false, true} {
+						b.Run(fmt.Sprintf("forward-only=%t", forwardOnly), func(b *testing.B) {
+							var externalIterOpts []ExternalIterOption
+							if forwardOnly {
+								externalIterOpts = append(externalIterOpts, ExternalIterForwardOnly{})
+							}
+
+							for i := 0; i < b.N; i++ {
+								func() {
+									files := make([][]sstable.ReadableFile, fileCount)
+									for i := 0; i < fileCount; i++ {
+										f, err := fs.Open(filenames[i])
+										require.NoError(b, err)
+										files[i] = []sstable.ReadableFile{f}
+									}
+
+									it, err := NewExternalIter(opts, iterOpts, files, externalIterOpts...)
+									require.NoError(b, err)
+									defer it.Close()
+
+									for k := 0; k+1 < len(keys); k += 2 {
+										if !it.SeekGE(keys[k]) {
+											b.Fatalf("key %q not found", keys[k])
+										}
+										if !it.Next() {
+											b.Fatalf("key %q not found", keys[k+1])
+										}
+										if !bytes.Equal(it.Key(), keys[k+1]) {
+											b.Fatalf("expected key %q, found %q", keys[k+1], it.Key())
+										}
+									}
+								}()
+							}
+						})
+					}
+				})
+			}
+		})
+	}
+}
