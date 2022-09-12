@@ -1685,7 +1685,6 @@ func testSetOptionsEquivalence(t *testing.T, seed uint64) {
 	rng := rand.New(rand.NewSource(seed))
 	ks := testkeys.Alpha(2)
 	d := newTestkeysDatabase(t, ks, rng)
-	d.opts.Logger = panicLogger{}
 	defer func() { require.NoError(t, d.Close()) }()
 
 	var o IterOptions
@@ -1836,6 +1835,7 @@ func newTestkeysDatabase(t *testing.T, ks testkeys.Keyspace, rng *rand.Rand) *DB
 		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: FormatRangeKeys,
+		Logger:             panicLogger{},
 	}
 	d, err := Open("", dbOpts)
 	require.NoError(t, err)
