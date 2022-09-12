@@ -1505,3 +1505,45 @@ next
 ----
 b@4: (b@4, .)
 .
+
+# Regression test for #1947 — Test a no-op call to SetBounds. Even if the
+# underlying iterator doesn't need to be invalidated because the bounds didn't
+# change, a subsequent Seek that finds the same range key must still report
+# RangeKeyChanged() -> true.
+
+reset
+----
+
+batch
+range-key-set a d @1 foo
+----
+wrote 1 keys
+
+combined-iter lower=a upper=z
+last
+set-bounds lower=a upper=z
+last
+set-bounds lower=a upper=z
+first
+set-bounds lower=a upper=z
+seek-ge a
+set-bounds lower=a upper=z
+seek-lt z
+set-bounds lower=a upper=z
+seek-prefix-ge a
+set-bounds lower=a upper=z
+seek-prefix-ge a
+----
+a: (., [a-d) @1=foo UPDATED)
+.
+a: (., [a-d) @1=foo UPDATED)
+.
+a: (., [a-d) @1=foo UPDATED)
+.
+a: (., [a-d) @1=foo UPDATED)
+.
+a: (., [a-d) @1=foo UPDATED)
+.
+a: (., [a-"a\x00") @1=foo UPDATED)
+.
+a: (., [a-"a\x00") @1=foo UPDATED)
