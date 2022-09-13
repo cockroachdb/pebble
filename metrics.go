@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/redact"
 )
@@ -158,7 +159,8 @@ type Metrics struct {
 
 	Flush struct {
 		// The total number of flushes.
-		Count int64
+		Count           int64
+		WriteThroughput ThroughputMetric
 	}
 
 	Filter FilterMetrics
@@ -227,10 +229,30 @@ type Metrics struct {
 		BytesWritten uint64
 	}
 
+	LogWriter record.LogWriterMetrics
+
 	private struct {
 		optionsFileSize  uint64
 		manifestFileSize uint64
 	}
+}
+
+// LogWriterMetrics stores the metrics related to the WAL LogWriter
+type LogWriterMetrics struct {
+	// WriteThroughput is the WAL throughput.
+	WriteThroughput ThroughputMetric
+	// PendingBufferUtilization is the utilization of the WAL writer's
+	// finite-sized pending blocks buffer. It provides an additional signal
+	// regarding how close to "full" the WAL writer is. The value is in the
+	// interval [0,1].
+	PendingBufferUtilization float64
+	// SyncQueueUtilization is the utilization of the WAL writer's
+	// finite-sized queue of work that is waiting to sync. The value is in the
+	// interval [0,1].
+	SyncQueueUtilization float64
+	// SyncLatencyMicros is a distribution of the fsync latency observed by
+	// the WAL writer. It can be nil if there were no fsyncs.
+	SyncLatencyMicros *hdrhistogram.Histogram
 }
 
 // DiskSpaceUsage returns the total disk space used by the database in bytes,
@@ -312,27 +334,29 @@ func (m *Metrics) formatWAL(w redact.SafePrinter) {
 // String pretty-prints the metrics, showing a line for the WAL, a line per-level, and
 // a total:
 //
-//   __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
-//       WAL         1    27 B       -    48 B       -       -       -       -   108 B       -       -     2.2
-//         0         2   1.6 K    0.50    81 B   825 B       1     0 B       0   2.4 K       3     0 B    30.6
-//         1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//         2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//         3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//         4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//         5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//         6         1   825 B    0.00   1.6 K     0 B       0     0 B       0   825 B       1   1.6 K     0.5
-//     total         3   2.4 K       -   933 B   825 B       1     0 B       0   4.1 K       4   1.6 K     4.5
-//     flush         3
-//   compact         1   1.6 K     0 B       1          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-//     ctype         0       0       0       0       0  (default, delete, elision, move, read)
-//    memtbl         1   4.0 M
-//   zmemtbl         0     0 B
-//      ztbl         0     0 B
-//    bcache         4   752 B    7.7%  (score == hit-rate)
-//    tcache         0     0 B    0.0%  (score == hit-rate)
+//	__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
+//	    WAL         1    27 B       -    48 B       -       -       -       -   108 B       -       -     2.2
+//	      0         2   1.6 K    0.50    81 B   825 B       1     0 B       0   2.4 K       3     0 B    30.6
+//	      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
+//	      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
+//	      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
+//	      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
+//	      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
+//	      6         1   825 B    0.00   1.6 K     0 B       0     0 B       0   825 B       1   1.6 K     0.5
+//	  total         3   2.4 K       -   933 B   825 B       1     0 B       0   4.1 K       4   1.6 K     4.5
+//	  flush         3
+//	compact         1   1.6 K     0 B       1          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+//	  ctype         0       0       0       0       0  (default, delete, elision, move, read)
+//	 memtbl         1   4.0 M
+//	zmemtbl         0     0 B
+//	   ztbl         0     0 B
+//	 bcache         4   752 B    7.7%  (score == hit-rate)
+//	 tcache         0     0 B    0.0%  (score == hit-rate)
+//
 // snapshots         0               0  (score == earliest seq num)
-//    titers         0
-//    filter         -       -    0.0%  (score == utility)
+//
+//	titers         0
+//	filter         -       -    0.0%  (score == utility)
 //
 // The WAL "in" metric is the size of the batches written to the WAL. The WAL
 // "write" metric is the size of the physical data written to the WAL which
@@ -443,22 +467,7 @@ func hitRate(hits, misses int64) float64 {
 // retrieval.
 type InternalIntervalMetrics struct {
 	// LogWriter metrics.
-	LogWriter struct {
-		// WriteThroughput is the WAL throughput.
-		WriteThroughput ThroughputMetric
-		// PendingBufferUtilization is the utilization of the WAL writer's
-		// finite-sized pending blocks buffer. It provides an additional signal
-		// regarding how close to "full" the WAL writer is. The value is in the
-		// interval [0,1].
-		PendingBufferUtilization float64
-		// SyncQueueUtilization is the utilization of the WAL writer's
-		// finite-sized queue of work that is waiting to sync. The value is in the
-		// interval [0,1].
-		SyncQueueUtilization float64
-		// SyncLatencyMicros is a distribution of the fsync latency observed by
-		// the WAL writer. It can be nil if there were no fsyncs.
-		SyncLatencyMicros *hdrhistogram.Histogram
-	}
+	LogWriter LogWriterMetrics
 	// Flush loop metrics.
 	Flush struct {
 		// WriteThroughput is the flushing throughput.
