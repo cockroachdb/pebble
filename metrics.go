@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/redact"
 )
@@ -158,7 +159,8 @@ type Metrics struct {
 
 	Flush struct {
 		// The total number of flushes.
-		Count int64
+		Count           int64
+		WriteThroughput ThroughputMetric
 	}
 
 	Filter FilterMetrics
@@ -226,6 +228,8 @@ type Metrics struct {
 		// Number of bytes written to the WAL.
 		BytesWritten uint64
 	}
+
+	LogWriter record.LogWriterMetrics
 
 	private struct {
 		optionsFileSize  uint64
