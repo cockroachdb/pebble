@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -392,4 +394,88 @@ func TestMetricsWithSync(t *testing.T) {
 	require.LessOrEqual(t, int64(syncLatency/(2*time.Microsecond)),
 		m.SyncLatencyMicros.ValueAtQuantile(90))
 	require.LessOrEqual(t, int64(syncLatency/2), int64(m.WriteThroughput.WorkDuration))
+}
+
+func TestLogWriterMetricsMergeWithNilSyncLatency(t *testing.T) {
+	lm1 := LogWriterMetrics{}
+	lm2 := LogWriterMetrics{
+		SyncLatencyMicros: hdrhistogram.New(1, 1, 1),
+	}
+	err := lm1.Merge(&lm2)
+	if err != nil {
+		require.Errorf(t, err, "Unexpected error when merging two LogWriterMetrics")
+	}
+	require.Equal(t, lm2.SyncLatencyMicros, lm1.SyncLatencyMicros)
+}
+
+const significantValueDigits = 3
+const lowestDiscernibleValue = 1
+const highestTrackableValue = 1000
+
+func TestSubtractToZeroCounts(t *testing.T) {
+	h1 := hdrhistogram.New(lowestDiscernibleValue, highestTrackableValue, significantValueDigits)
+	for i := 0; i < 100; i++ {
+		handleRecordValue(t, h1, i)
+	}
+
+	h1 = subtract(h1, h1)
+
+	if v, want := h1.ValueAtQuantile(50), int64(0); v != want {
+		t.Errorf("Median was %v, but expected %v", v, want)
+	}
+}
+
+func TestSubtractAfterAdd(t *testing.T) {
+	h1 := hdrhistogram.New(lowestDiscernibleValue, 5, significantValueDigits)
+	handleRecordValues(t, h1, 1, 1)
+	handleRecordValues(t, h1, 2, 2)
+	handleRecordValues(t, h1, 3, 3)
+	handleRecordValues(t, h1, 4, 2)
+	handleRecordValues(t, h1, 5, 1)
+
+	h2 := hdrhistogram.New(lowestDiscernibleValue, 10, significantValueDigits)
+	handleRecordValues(t, h2, 5, 1)
+	handleRecordValues(t, h2, 6, 2)
+	handleRecordValues(t, h2, 7, 3)
+	handleRecordValues(t, h2, 8, 10)
+	handleRecordValues(t, h2, 9, 1)
+
+	h1Original := hdrhistogram.Import(h1.Export())
+	h1.Merge(h2)
+
+	if v, want := h1.ValueAtQuantile(50), int64(7); v != want {
+		t.Errorf("Median was %v, but expected %v", v, want)
+	}
+
+	h3 := subtract(h1, h2)
+	if !h1Original.Equals(h3) {
+		t.Errorf("Expected Histograms to be equal")
+	}
+}
+
+func TestLogWriterSubtractInvalidHistograms(t *testing.T) {
+	lwm := LogWriterMetrics{
+		WriteThroughput: base.ThroughputMetric{
+			Bytes:        0,
+			WorkDuration: 0,
+			IdleDuration: 0,
+		},
+		PendingBufferLen:  base.GaugeSampleMetric{},
+		SyncQueueLen:      base.GaugeSampleMetric{},
+		SyncLatencyMicros: nil,
+	}
+	lwm.Subtract(&lwm)
+	require.Nil(t, lwm.SyncLatencyMicros)
+
+}
+
+func handleRecordValues(t *testing.T, h *hdrhistogram.Histogram, valueToRecord int, n int) {
+	err := h.RecordValues(int64(valueToRecord), int64(n))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func handleRecordValue(t *testing.T, h *hdrhistogram.Histogram, valueToRecord int) {
+	handleRecordValues(t, h, valueToRecord, 1)
 }
