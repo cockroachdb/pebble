@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 var walSyncLabels = pprof.Labels("pebble", "wal-sync")
@@ -741,12 +742,39 @@ func (m *LogWriterMetrics) Merge(x *LogWriterMetrics) error {
 	m.WriteThroughput.Merge(x.WriteThroughput)
 	m.PendingBufferLen.Merge(x.PendingBufferLen)
 	m.SyncQueueLen.Merge(x.SyncQueueLen)
-	dropped := m.SyncLatencyMicros.Merge(x.SyncLatencyMicros)
-	if dropped > 0 {
-		// This should never happen since we use a consistent min, max when
-		// creating these histograms, and out-of-range is the only reason for the
-		// merge to drop samples.
-		return errors.Errorf("sync latency histogram merge dropped %d samples", dropped)
+	if m.SyncLatencyMicros == nil {
+		m.SyncLatencyMicros = x.SyncLatencyMicros
+	} else {
+		dropped := m.SyncLatencyMicros.Merge(x.SyncLatencyMicros)
+		if dropped > 0 {
+			// This should never happen since we use a consistent min, max when
+			// creating these histograms, and out-of-range is the only reason for the
+			// merge to drop samples.
+			return errors.Errorf("sync latency histogram merge dropped %d samples", dropped)
+		}
 	}
 	return nil
+}
+
+// Subtract merges metrics from x. Requires that x is non-nil.
+func (m *LogWriterMetrics) Subtract(x *LogWriterMetrics) {
+	m.WriteThroughput.Subtract(x.WriteThroughput)
+	m.PendingBufferLen.Subtract(x.PendingBufferLen)
+	m.SyncQueueLen.Subtract(x.SyncQueueLen)
+	Subtract(m.SyncLatencyMicros, x.SyncLatencyMicros)
+}
+
+// Subtract returns a hdrhistogram.Histogram produce from subtracting two histograms
+// During subtraction values are clamped to zero in each bucket
+func Subtract(h *hdrhistogram.Histogram, g *hdrhistogram.Histogram) *hdrhistogram.Histogram {
+	snapg, snaph := g.Export(), h.Export()
+	for i := range snapg.Counts {
+		difference := snaph.Counts[i] - snapg.Counts[i]
+		if invariants.Enabled && difference < 0 {
+			// FIXME: More descriptive panic
+			panic("Error")
+		}
+		snaph.Counts[i] = difference
+	}
+	return hdrhistogram.Import(snaph)
 }
