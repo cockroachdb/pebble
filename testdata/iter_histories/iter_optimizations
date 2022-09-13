@@ -1,0 +1,57 @@
+# Test repeated seeks into the same range key, while TrySeekUsingNext=true.
+# Test for regression fixed in #1849.
+
+reset
+----
+
+batch commit
+range-key-set a c @5 boop
+range-key-set c e @5 beep
+----
+committed 2 keys
+
+combined-iter
+seek-ge a
+seek-ge b
+----
+a: (., [a-c) @5=boop UPDATED)
+b: (., [a-c) @5=boop)
+
+# Ensure that no-op optimizations do not reuse range key iterator state across
+# SetOptions calls. No-op optimizations have the potential to fail to update
+# RangeKeyChanged().
+
+reset
+----
+
+batch commit
+range-key-set p s @1 foo
+----
+committed 1 keys
+
+combined-iter lower=n@9 upper=x@5
+seek-lt y@3
+set-options lower=n@9 upper=x@5
+seek-lt-limit t o
+----
+p: (., [p-s) @1=foo UPDATED)
+.
+p: valid (., [p-s) @1=foo UPDATED)
+
+combined-iter lower=n@9 upper=x@5
+seek-ge o
+set-options lower=n@9 upper=x@5
+seek-ge oat
+----
+p: (., [p-s) @1=foo UPDATED)
+.
+p: (., [p-s) @1=foo UPDATED)
+
+combined-iter lower=n@9 upper=x@5
+seek-prefix-ge p@5
+set-options lower=n@9 upper=x@5
+seek-prefix-ge p
+----
+p@5: (., [p-"p\x00") @1=foo UPDATED)
+.
+p: (., [p-"p\x00") @1=foo UPDATED)
