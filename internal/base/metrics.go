@@ -29,6 +29,13 @@ func (tm *ThroughputMetric) Merge(x ThroughputMetric) {
 	tm.IdleDuration += x.IdleDuration
 }
 
+// Subtract subtracts the information from another ThroughputMetric
+func (tm *ThroughputMetric) Subtract(x ThroughputMetric) {
+	tm.Bytes -= x.Bytes
+	tm.WorkDuration -= x.WorkDuration
+	tm.IdleDuration -= x.IdleDuration
+}
+
 // PeakRate returns the approximate peak rate if there was no idling.
 func (tm *ThroughputMetric) PeakRate() int64 {
 	if tm.Bytes == 0 {

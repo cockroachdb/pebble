@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/vfs"
@@ -243,5 +244,43 @@ zmemtbl         0     0 B
 	got := redact.Sprintf("%s", &Metrics{}).Redact()
 	if s := "\n" + got; expected != s {
 		t.Fatalf("expected%s\nbut found%s", expected, s)
+	}
+}
+
+func TestLogWriterSubtractToZero(t *testing.T) {
+	writer := LogWriterMetrics{
+		SyncLatencyMicros:        hdrhistogram.New(0, 10, 1),
+		SyncQueueUtilization:     300.0,
+		PendingBufferUtilization: 300.0,
+		WriteThroughput:          ThroughputMetric{},
+	}
+	writer.Subtract(writer)
+	if writer.PendingBufferUtilization != 0 {
+		t.Fatalf("expected PendingBufferUtilization to be 0 but got %v", writer.PendingBufferUtilization)
+	} else if writer.SyncQueueUtilization != 0 {
+		t.Fatalf("expected SyncQueueUtilization to be 0 but got %v", writer.SyncQueueUtilization)
+	}
+}
+
+func TestLogWriterSubtract(t *testing.T) {
+	const utilization = 300.0
+	writer := LogWriterMetrics{
+		SyncLatencyMicros:        hdrhistogram.New(0, 10, 1),
+		SyncQueueUtilization:     utilization,
+		PendingBufferUtilization: utilization,
+		WriteThroughput:          ThroughputMetric{},
+	}
+
+	writer2 := LogWriterMetrics{
+		SyncLatencyMicros:        hdrhistogram.New(0, 10, 1),
+		SyncQueueUtilization:     2 * utilization,
+		PendingBufferUtilization: 2 * utilization,
+		WriteThroughput:          ThroughputMetric{},
+	}
+	writer2.Subtract(writer)
+	if writer2.PendingBufferUtilization != utilization {
+		t.Fatalf("expected PendingBufferUtilization to be 0 but got %v", writer.PendingBufferUtilization)
+	} else if writer2.SyncQueueUtilization != utilization {
+		t.Fatalf("expected SyncQueueUtilization to be 0 but got %v", writer.SyncQueueUtilization)
 	}
 }

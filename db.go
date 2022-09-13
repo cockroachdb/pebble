@@ -414,6 +414,8 @@ type DB struct {
 			disabled int
 		}
 
+		lastIntervalMetrics *InternalIntervalMetrics
+
 		// The list of active snapshots.
 		snapshots snapshotList
 
@@ -1499,28 +1501,40 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 	return flushed, nil
 }
 
+func (d *DB) setLogWriterMetrics(logWriterMetrics *LogWriterMetrics) {
+	logWriterMetrics.WriteThroughput = d.mu.log.metrics.WriteThroughput
+	logWriterMetrics.PendingBufferUtilization =
+		d.mu.log.metrics.PendingBufferLen.Mean() / record.CapAllocatedBlocks
+	logWriterMetrics.SyncQueueUtilization = d.mu.log.metrics.SyncQueueLen.Mean() / record.SyncConcurrency
+	logWriterMetrics.SyncLatencyMicros = d.mu.log.metrics.SyncLatencyMicros
+}
+
 // InternalIntervalMetrics returns the InternalIntervalMetrics and resets for
 // the next interval (which is until the next call to this method).
+// Deprecated: Use Metrics.Flush and Metrics.LogWriter instead
 func (d *DB) InternalIntervalMetrics() *InternalIntervalMetrics {
-	m := &InternalIntervalMetrics{}
+	m := d.Metrics()
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.mu.log.metrics != nil {
-		m.LogWriter.WriteThroughput = d.mu.log.metrics.WriteThroughput
-		m.LogWriter.PendingBufferUtilization =
-			d.mu.log.metrics.PendingBufferLen.Mean() / record.CapAllocatedBlocks
-		m.LogWriter.SyncQueueUtilization = d.mu.log.metrics.SyncQueueLen.Mean() / record.SyncConcurrency
-		m.LogWriter.SyncLatencyMicros = d.mu.log.metrics.SyncLatencyMicros
-		d.mu.log.metrics = nil
+	delta := &InternalIntervalMetrics{}
+
+	if d.mu.lastIntervalMetrics == nil {
+		d.mu.lastIntervalMetrics = delta
 	}
-	m.Flush.WriteThroughput = d.mu.compact.flushWriteThroughput
-	d.mu.compact.flushWriteThroughput = ThroughputMetric{}
-	return m
+
+	m.LogWriter.Subtract(d.mu.lastIntervalMetrics.LogWriter)
+	m.Flush.WriteThroughput.Subtract(d.mu.lastIntervalMetrics.Flush.WriteThroughput)
+
+	delta.LogWriter = m.LogWriter
+	delta.Flush.WriteThroughput = m.Flush.WriteThroughput
+	d.mu.lastIntervalMetrics = delta
+	return delta
 }
 
 // Metrics returns metrics about the database.
 func (d *DB) Metrics() *Metrics {
 	metrics := &Metrics{}
+	metrics.LogWriter = LogWriterMetrics{}
 	recycledLogsCount, recycledLogSize := d.logRecycler.stats()
 
 	d.mu.Lock()
@@ -1578,6 +1592,12 @@ func (d *DB) Metrics() *Metrics {
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())
 	d.mu.versions.logUnlock()
+
+	if d.mu.log.metrics != nil {
+		d.setLogWriterMetrics(&metrics.LogWriter)
+	}
+	metrics.Flush.WriteThroughput = d.mu.compact.flushWriteThroughput
+
 	d.mu.Unlock()
 
 	metrics.BlockCache = d.opts.Cache.Metrics()
@@ -1662,14 +1682,14 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 // EstimateDiskUsage returns the estimated filesystem space used in bytes for
 // storing the range `[start, end]`. The estimation is computed as follows:
 //
-// - For sstables fully contained in the range the whole file size is included.
-// - For sstables partially contained in the range the overlapping data block sizes
-//   are included. Even if a data block partially overlaps, or we cannot determine
-//   overlap due to abbreviated index keys, the full data block size is included in
-//   the estimation. Note that unlike fully contained sstables, none of the
-//   meta-block space is counted for partially overlapped files.
-// - There may also exist WAL entries for unflushed keys in this range. This
-//   estimation currently excludes space used for the range in the WAL.
+//   - For sstables fully contained in the range the whole file size is included.
+//   - For sstables partially contained in the range the overlapping data block sizes
+//     are included. Even if a data block partially overlaps, or we cannot determine
+//     overlap due to abbreviated index keys, the full data block size is included in
+//     the estimation. Note that unlike fully contained sstables, none of the
+//     meta-block space is counted for partially overlapped files.
+//   - There may also exist WAL entries for unflushed keys in this range. This
+//     estimation currently excludes space used for the range in the WAL.
 func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
