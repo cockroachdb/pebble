@@ -1,0 +1,78 @@
+# Regression test for #1947 — Test a no-op call to SetBounds. Even if the
+# underlying iterator doesn't need to be invalidated because the bounds didn't
+# change, a subsequent Seek that finds the same range key must still report
+# RangeKeyChanged() -> true.
+
+reset
+----
+
+batch commit
+range-key-set a d @1 foo
+----
+committed 1 keys
+
+combined-iter lower=a upper=z
+last
+set-bounds lower=a upper=z
+last
+set-bounds lower=a upper=z
+first
+set-bounds lower=a upper=z
+seek-ge a
+set-bounds lower=a upper=z
+seek-lt z
+set-bounds lower=a upper=z
+seek-prefix-ge a
+set-bounds lower=a upper=z
+seek-prefix-ge a
+----
+a: (., [a-d) @1=foo UPDATED)
+.
+a: (., [a-d) @1=foo UPDATED)
+.
+a: (., [a-d) @1=foo UPDATED)
+.
+a: (., [a-d) @1=foo UPDATED)
+.
+a: (., [a-d) @1=foo UPDATED)
+.
+a: (., [a-"a\x00") @1=foo UPDATED)
+.
+a: (., [a-"a\x00") @1=foo UPDATED)
+
+# Regression test for #1950 — Test a no-op call to SeekGE/SeekLT after a
+# SetBounds/SetOptions noop. The SetBounds/SetOptions noop made the iterator
+# appear to be invalidated, but the internal iterator state was preserved.
+# However, if the previous iterator state had a range key, this range key must
+# be considered changed for the purpose of calculating RangeKeyChanged().
+
+combined-iter lower=a upper=z
+seek-lt z
+set-bounds lower=a upper=z
+seek-lt y
+seek-ge 1
+set-bounds lower=a upper=z
+seek-ge a
+----
+a: (., [a-d) @1=foo UPDATED)
+.
+a: (., [a-d) @1=foo UPDATED)
+a: (., [a-d) @1=foo)
+.
+a: (., [a-d) @1=foo UPDATED)
+
+# Similar to the above regression, test that a no-op correctly returns
+# RangeKeyChanged()=false if there's no intervening SetOptions/SetBounds call.
+
+combined-iter lower=a upper=z
+seek-lt z
+seek-lt y
+set-bounds lower=a upper=z
+seek-ge 1
+seek-ge a
+----
+a: (., [a-d) @1=foo UPDATED)
+a: (., [a-d) @1=foo)
+.
+a: (., [a-d) @1=foo UPDATED)
+a: (., [a-d) @1=foo)
