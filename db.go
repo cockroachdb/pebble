@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -341,7 +342,7 @@ type DB struct {
 			// (i.e. makeRoomForWrite).
 			*record.LogWriter
 			// Can be nil.
-			metrics *record.LogWriterMetrics
+			metrics record.LogWriterMetrics
 		}
 
 		mem struct {
@@ -413,6 +414,10 @@ type DB struct {
 			// DB.{disable,Enable}FileDeletions().
 			disabled int
 		}
+
+		// Stores the Metrics for the previous call to InternalIntervalMetrics() in
+		// order to compute the current intervals metrics
+		lastMetrics *Metrics
 
 		// The list of active snapshots.
 		snapshots snapshotList
@@ -1501,21 +1506,38 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 
 // InternalIntervalMetrics returns the InternalIntervalMetrics and resets for
 // the next interval (which is until the next call to this method).
+// Deprecated: Use Metrics.Flush and Metrics.LogWriter instead
 func (d *DB) InternalIntervalMetrics() *InternalIntervalMetrics {
-	m := &InternalIntervalMetrics{}
+	m := d.Metrics()
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.mu.log.metrics != nil {
-		m.LogWriter.WriteThroughput = d.mu.log.metrics.WriteThroughput
-		m.LogWriter.PendingBufferUtilization =
-			d.mu.log.metrics.PendingBufferLen.Mean() / record.CapAllocatedBlocks
-		m.LogWriter.SyncQueueUtilization = d.mu.log.metrics.SyncQueueLen.Mean() / record.SyncConcurrency
-		m.LogWriter.SyncLatencyMicros = d.mu.log.metrics.SyncLatencyMicros
-		d.mu.log.metrics = nil
+
+	// Copy the relevant metrics, ensuring to perform a deep clone of the histogram
+	// to avoid mutating it.
+	logDelta := m.LogWriter
+	if m.LogWriter.SyncLatencyMicros != nil {
+		logDelta.SyncLatencyMicros = hdrhistogram.Import(m.LogWriter.SyncLatencyMicros.Export())
 	}
-	m.Flush.WriteThroughput = d.mu.compact.flushWriteThroughput
-	d.mu.compact.flushWriteThroughput = ThroughputMetric{}
-	return m
+	flushDelta := m.Flush.WriteThroughput
+
+	// Subtract the cumulative metrics at the time of the last InternalIntervalMetrics call,
+	// if any, in order to compute the delta.
+	if d.mu.lastMetrics != nil {
+		logDelta.Subtract(&d.mu.lastMetrics.LogWriter)
+		flushDelta.Subtract(d.mu.lastMetrics.Flush.WriteThroughput)
+	}
+
+	// Save the *Metrics we used so that a subsequent call to InternalIntervalMetrics
+	// can compute the delta relative to it.
+	d.mu.lastMetrics = m
+
+	iim := &InternalIntervalMetrics{}
+	iim.LogWriter.PendingBufferUtilization = logDelta.PendingBufferLen.Mean() / record.CapAllocatedBlocks
+	iim.LogWriter.SyncQueueUtilization = logDelta.SyncQueueLen.Mean() / record.SyncConcurrency
+	iim.LogWriter.SyncLatencyMicros = logDelta.SyncLatencyMicros
+	iim.LogWriter.WriteThroughput = logDelta.WriteThroughput
+	iim.Flush.WriteThroughput = flushDelta
+	return iim
 }
 
 // Metrics returns metrics about the database.
@@ -1578,6 +1600,12 @@ func (d *DB) Metrics() *Metrics {
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())
 	d.mu.versions.logUnlock()
+
+	if err := metrics.LogWriter.Merge(&d.mu.log.metrics); err != nil {
+		d.opts.Logger.Infof("metrics error: %s", err)
+	}
+	metrics.Flush.WriteThroughput = d.mu.compact.flushWriteThroughput
+
 	d.mu.Unlock()
 
 	metrics.BlockCache = d.opts.Cache.Metrics()
@@ -1867,12 +1895,8 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			err = d.mu.log.LogWriter.Close()
 			metrics := d.mu.log.LogWriter.Metrics()
 			d.mu.Lock()
-			if d.mu.log.metrics == nil {
-				d.mu.log.metrics = metrics
-			} else {
-				if err := d.mu.log.metrics.Merge(metrics); err != nil {
-					d.opts.Logger.Infof("metrics error: %s", err)
-				}
+			if err := d.mu.log.metrics.Merge(metrics); err != nil {
+				d.opts.Logger.Infof("metrics error: %s", err)
 			}
 			d.mu.Unlock()
 
