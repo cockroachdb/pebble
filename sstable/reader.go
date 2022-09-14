@@ -304,7 +304,7 @@ func (i *singleLevelIterator) init(
 	if r.err != nil {
 		return r.err
 	}
-	indexH, err := r.readIndex()
+	indexH, err := r.readIndex(stats)
 	if err != nil {
 		return err
 	}
@@ -509,15 +509,7 @@ func (i *singleLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 func (i *singleLevelIterator) readBlockWithStats(
 	bh BlockHandle, raState *readaheadState,
 ) (cache.Handle, error) {
-	block, cacheHit, err := i.reader.readBlock(bh, nil /* transform */, raState)
-	if err == nil && i.stats != nil {
-		n := bh.Length
-		i.stats.BlockBytes += n
-		if cacheHit {
-			i.stats.BlockBytesInCache += n
-		}
-	}
-	return block, err
+	return i.reader.readBlock(bh, nil /* transform */, raState, i.stats)
 }
 
 func (i *singleLevelIterator) initBoundsForAlreadyLoadedBlock() {
@@ -765,7 +757,7 @@ func (i *singleLevelIterator) seekPrefixGE(
 		i.lastBloomFilterMatched = false
 		// Check prefix bloom filter.
 		var dataH cache.Handle
-		dataH, i.err = i.reader.readFilter()
+		dataH, i.err = i.reader.readFilter(i.stats)
 		if i.err != nil {
 			i.data.invalidate()
 			return nil, nil
@@ -1458,7 +1450,7 @@ func (i *twoLevelIterator) init(
 	if r.err != nil {
 		return r.err
 	}
-	topLevelIndexH, err := r.readIndex()
+	topLevelIndexH, err := r.readIndex(stats)
 	if err != nil {
 		return err
 	}
@@ -1592,7 +1584,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 		}
 		i.lastBloomFilterMatched = false
 		var dataH cache.Handle
-		dataH, i.err = i.reader.readFilter()
+		dataH, i.err = i.reader.readFilter(i.stats)
 		if i.err != nil {
 			i.data.invalidate()
 			return nil, nil
@@ -2486,7 +2478,7 @@ func (r *Reader) NewRawRangeDelIter() (keyspan.FragmentIterator, error) {
 	if r.rangeDelBH.Length == 0 {
 		return nil, nil
 	}
-	h, err := r.readRangeDel()
+	h, err := r.readRangeDel(nil /* stats */)
 	if err != nil {
 		return nil, err
 	}
@@ -2504,7 +2496,7 @@ func (r *Reader) NewRawRangeKeyIter() (keyspan.FragmentIterator, error) {
 	if r.rangeKeyBH.Length == 0 {
 		return nil, nil
 	}
-	h, err := r.readRangeKey()
+	h, err := r.readRangeKey(nil /* stats */)
 	if err != nil {
 		return nil, err
 	}
@@ -2526,28 +2518,20 @@ func (i *rangeKeyFragmentBlockIter) Close() error {
 	return err
 }
 
-func (r *Reader) readIndex() (cache.Handle, error) {
-	h, _, err :=
-		r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */)
-	return h, err
+func (r *Reader) readIndex(stats *base.InternalIteratorStats) (cache.Handle, error) {
+	return r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */, stats)
 }
 
-func (r *Reader) readFilter() (cache.Handle, error) {
-	h, _, err :=
-		r.readBlock(r.filterBH, nil /* transform */, nil /* readaheadState */)
-	return h, err
+func (r *Reader) readFilter(stats *base.InternalIteratorStats) (cache.Handle, error) {
+	return r.readBlock(r.filterBH, nil /* transform */, nil /* readaheadState */, stats)
 }
 
-func (r *Reader) readRangeDel() (cache.Handle, error) {
-	h, _, err :=
-		r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadState */)
-	return h, err
+func (r *Reader) readRangeDel(stats *base.InternalIteratorStats) (cache.Handle, error) {
+	return r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadState */, stats)
 }
 
-func (r *Reader) readRangeKey() (cache.Handle, error) {
-	h, _, err :=
-		r.readBlock(r.rangeKeyBH, nil /* transform */, nil /* readaheadState */)
-	return h, err
+func (r *Reader) readRangeKey(stats *base.InternalIteratorStats) (cache.Handle, error) {
+	return r.readBlock(r.rangeKeyBH, nil /* transform */, nil /* readaheadState */, stats)
 }
 
 func checkChecksum(
@@ -2574,13 +2558,20 @@ func checkChecksum(
 
 // readBlock reads and decompresses a block from disk into memory.
 func (r *Reader) readBlock(
-	bh BlockHandle, transform blockTransform, raState *readaheadState,
-) (_ cache.Handle, cacheHit bool, _ error) {
+	bh BlockHandle,
+	transform blockTransform,
+	raState *readaheadState,
+	stats *base.InternalIteratorStats,
+) (_ cache.Handle, _ error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		if raState != nil {
 			raState.recordCacheHit(int64(bh.Offset), int64(bh.Length+blockTrailerLen))
 		}
-		return h, true, nil
+		if stats != nil {
+			stats.BlockBytes += bh.Length
+			stats.BlockBytesInCache += bh.Length
+		}
+		return h, nil
 	}
 	file := r.file
 
@@ -2625,12 +2616,12 @@ func (r *Reader) readBlock(
 	b := v.Buf()
 	if _, err := file.ReadAt(b, int64(bh.Offset)); err != nil {
 		r.opts.Cache.Free(v)
-		return cache.Handle{}, false, err
+		return cache.Handle{}, err
 	}
 
 	if err := checkChecksum(r.checksumType, b, bh, r.fileNum); err != nil {
 		r.opts.Cache.Free(v)
-		return cache.Handle{}, false, err
+		return cache.Handle{}, err
 	}
 
 	typ := blockType(b[bh.Length])
@@ -2644,7 +2635,7 @@ func (r *Reader) readBlock(
 		b = v.Buf()
 	} else if err != nil {
 		r.opts.Cache.Free(v)
-		return cache.Handle{}, false, err
+		return cache.Handle{}, err
 	}
 
 	if transform != nil {
@@ -2654,7 +2645,7 @@ func (r *Reader) readBlock(
 		b, err = transform(b)
 		if err != nil {
 			r.opts.Cache.Free(v)
-			return cache.Handle{}, false, err
+			return cache.Handle{}, err
 		}
 		newV := r.opts.Cache.Alloc(len(b))
 		copy(newV.Buf(), b)
@@ -2662,8 +2653,12 @@ func (r *Reader) readBlock(
 		v = newV
 	}
 
+	if stats != nil {
+		stats.BlockBytes += bh.Length
+	}
+
 	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, v)
-	return h, false, nil
+	return h, nil
 }
 
 func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
@@ -2710,7 +2705,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 }
 
 func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
-	b, _, err := r.readBlock(metaindexBH, nil /* transform */, nil /* readaheadState */)
+	b, err := r.readBlock(metaindexBH, nil /* transform */, nil /* readaheadState */, nil /* stats */)
 	if err != nil {
 		return err
 	}
@@ -2740,7 +2735,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, _, err = r.readBlock(bh, nil /* transform */, nil /* readaheadState */)
+		b, err = r.readBlock(bh, nil /* transform */, nil /* readaheadState */, nil /* stats */)
 		if err != nil {
 			return err
 		}
@@ -2811,7 +2806,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		Footer:     r.footerBH,
 	}
 
-	indexH, err := r.readIndex()
+	indexH, err := r.readIndex(nil /* stats */)
 	if err != nil {
 		return nil, err
 	}
@@ -2848,8 +2843,8 @@ func (r *Reader) Layout() (*Layout, error) {
 			}
 			l.Index = append(l.Index, indexBH.BlockHandle)
 
-			subIndex, _, err := r.readBlock(
-				indexBH.BlockHandle, nil /* transform */, nil /* readaheadState */)
+			subIndex, err := r.readBlock(
+				indexBH.BlockHandle, nil /* transform */, nil /* readaheadState */, nil /* stats */)
 			if err != nil {
 				return nil, err
 			}
@@ -2914,7 +2909,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 		}
 
 		// Read the block, which validates the checksum.
-		h, _, err := r.readBlock(bh, nil /* transform */, blockRS)
+		h, err := r.readBlock(bh, nil /* transform */, blockRS, nil /* stats */)
 		if err != nil {
 			return err
 		}
@@ -2944,7 +2939,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		return 0, r.err
 	}
 
-	indexH, err := r.readIndex()
+	indexH, err := r.readIndex(nil /* stats */)
 	if err != nil {
 		return 0, err
 	}
@@ -2976,8 +2971,8 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		if err != nil {
 			return 0, errCorruptIndexEntry
 		}
-		startIdxBlock, _, err := r.readBlock(
-			startIdxBH.BlockHandle, nil /* transform */, nil /* readaheadState */)
+		startIdxBlock, err := r.readBlock(
+			startIdxBH.BlockHandle, nil /* transform */, nil /* readaheadState */, nil /* stats */)
 		if err != nil {
 			return 0, err
 		}
@@ -2997,8 +2992,8 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			if err != nil {
 				return 0, errCorruptIndexEntry
 			}
-			endIdxBlock, _, err := r.readBlock(
-				endIdxBH.BlockHandle, nil /* transform */, nil /* readaheadState */)
+			endIdxBlock, err := r.readBlock(
+				endIdxBH.BlockHandle, nil /* transform */, nil /* readaheadState */, nil /* stats */)
 			if err != nil {
 				return 0, err
 			}
@@ -3255,7 +3250,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, _, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadState */)
+		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadState */, nil /* stats */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue

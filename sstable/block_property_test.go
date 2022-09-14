@@ -927,7 +927,7 @@ func TestBlockProperties(t *testing.T) {
 
 				// Enumerate point key data blocks encoded into the index.
 				if f != nil {
-					indexH, err := r.readIndex()
+					indexH, err := r.readIndex(nil /* stats */)
 					if err != nil {
 						return err.Error()
 					}
@@ -1264,7 +1264,7 @@ func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string)
 }
 
 func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
-	bh, err := r.readIndex()
+	bh, err := r.readIndex(nil /* stats */)
 	if err != nil {
 		return err.Error()
 	}
@@ -1311,8 +1311,8 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		// block that bhp points to, along with its block properties.
 		if twoLevelIndex {
 			subiter := &blockIter{}
-			subIndex, _, err := r.readBlock(
-				bhp.BlockHandle, nil /* transform */, nil /* readaheadState */)
+			subIndex, err := r.readBlock(
+				bhp.BlockHandle, nil /* transform */, nil /* readaheadState */, nil /* stats */)
 			if err != nil {
 				return err.Error()
 			}
