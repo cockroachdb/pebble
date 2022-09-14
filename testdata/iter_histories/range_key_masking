@@ -154,7 +154,7 @@ stats
 a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 625 B, cached 0 B)), (points: (count 25, key-bytes 75, value-bytes 75, tombstoned: 0))
+(internal-stats: (block-bytes: (total 1.1 K, cached 0 B)), (points: (count 25, key-bytes 75, value-bytes 75, tombstoned: 0))
 
 # Repeat the above test, but with an iterator that uses a block-property filter
 # mask. The internal stats should reflect fewer bytes read and fewer points
@@ -168,7 +168,7 @@ stats
 a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 50 B, cached 50 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
+(internal-stats: (block-bytes: (total 515 B, cached 515 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
 
 # Perform a similar comparison in reverse.
 
@@ -180,7 +180,7 @@ stats
 a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
-(internal-stats: (block-bytes: (total 625 B, cached 625 B)), (points: (count 25, key-bytes 75, value-bytes 75, tombstoned: 0))
+(internal-stats: (block-bytes: (total 1.1 K, cached 1.1 K)), (points: (count 25, key-bytes 75, value-bytes 75, tombstoned: 0))
 
 combined-iter mask-suffix=@9 mask-filter
 last
@@ -190,7 +190,7 @@ stats
 a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
-(internal-stats: (block-bytes: (total 50 B, cached 50 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
+(internal-stats: (block-bytes: (total 515 B, cached 515 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
 
 # Perform similar comparisons with seeks.
 
@@ -202,7 +202,7 @@ stats
 m: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 325 B, cached 325 B)), (points: (count 13, key-bytes 39, value-bytes 39, tombstoned: 0))
+(internal-stats: (block-bytes: (total 790 B, cached 790 B)), (points: (count 13, key-bytes 39, value-bytes 39, tombstoned: 0))
 
 combined-iter mask-suffix=@9 mask-filter
 seek-ge m
@@ -212,7 +212,7 @@ stats
 m: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 50 B, cached 50 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
+(internal-stats: (block-bytes: (total 515 B, cached 515 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
 
 combined-iter mask-suffix=@9
 seek-lt m
@@ -222,7 +222,7 @@ stats
 a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
-(internal-stats: (block-bytes: (total 325 B, cached 325 B)), (points: (count 12, key-bytes 36, value-bytes 36, tombstoned: 0))
+(internal-stats: (block-bytes: (total 790 B, cached 790 B)), (points: (count 12, key-bytes 36, value-bytes 36, tombstoned: 0))
 
 combined-iter mask-suffix=@9 mask-filter
 seek-lt m
@@ -232,4 +232,4 @@ stats
 a: (., [a-z) @5=boop UPDATED)
 .
 stats: (interface (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)), (internal (dir, seek, step): (fwd, 0, 0), (rev, 1, 1)),
-(internal-stats: (block-bytes: (total 75 B, cached 75 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
+(internal-stats: (block-bytes: (total 540 B, cached 540 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
