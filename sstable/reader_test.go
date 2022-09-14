@@ -38,7 +38,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 
 	if r.tableFilter != nil {
-		dataH, err := r.readFilter()
+		dataH, err := r.readFilter(nil /* stats */)
 		if err != nil {
 			return nil, err
 		}

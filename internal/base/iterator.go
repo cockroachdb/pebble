@@ -301,8 +301,8 @@ func (s SeekLTFlags) DisableRelativeSeek() SeekLTFlags {
 // are aggregated as one goes up the InternalIterator tree.
 type InternalIteratorStats struct {
 	// Bytes in the loaded blocks. If the block was compressed, this is the
-	// compressed bytes. Currently, only the second-level index and data blocks
-	// containing points are included.
+	// compressed bytes. Currently, only the index blocks, data blocks
+	// containing points, and filter blocks are included.
 	BlockBytes uint64
 	// Subset of BlockBytes that were in the block cache.
 	BlockBytesInCache uint64
