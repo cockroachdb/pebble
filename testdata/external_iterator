@@ -193,3 +193,94 @@ c@2:v
 .
 e@5:v
 k@3:v
+
+# Test the TrySeekUsingNext optimization that's enabled only for fwd-only
+# external iterators. Seed the database with keys like 'a', 'aa', 'aaa', etc so
+# that the index block uses a final separator that's beyond all the other live
+# keys.
+
+reset
+----
+
+build a
+set a@3 a@3
+set a@1 a@1
+----
+
+build aa
+set aa@3 aa@3
+set aa@1 aa@1
+----
+
+build aaa
+set aaa@3 aaa@3
+set aaa@1 aaa@1
+----
+
+build aaaa
+set aaaa@3 aaaa@3
+set aaaa@1 aaaa@1
+----
+
+build aaaaa
+set aaaaa@3 aaaaa@3
+set aaaaa@1 aaaaa@1
+----
+
+# Note the absence of fwd-only. This iterator will not use the TrySeekUsingNext
+# optimization.
+
+iter files=(a, aa, aaa, aaaa, aaaaa)
+seek-ge a
+next
+seek-ge aa
+next
+seek-ge aaa
+next
+seek-ge aaaa
+next
+seek-ge aaaaa
+next
+stats
+----
+a@3: (a@3, .)
+a@1: (a@1, .)
+aa@3: (aa@3, .)
+aa@1: (aa@1, .)
+aaa@3: (aaa@3, .)
+aaa@1: (aaa@1, .)
+aaaa@3: (aaaa@3, .)
+aaaa@1: (aaaa@1, .)
+aaaaa@3: (aaaaa@3, .)
+aaaaa@1: (aaaaa@1, .)
+stats: (interface (dir, seek, step): (fwd, 5, 5), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 5, 5), (rev, 0, 0)),
+(internal-stats: (block-bytes: (total 480 B, cached 0 B)), (points: (count 10, key-bytes 50, value-bytes 50, tombstoned: 0))
+
+# Note the inclusion of fwd-only. This iterator will use the TrySeekUsingNext
+# optimization and loads ~half the block-bytes as a result.
+
+iter files=(a, aa, aaa, aaaa, aaaaa) fwd-only
+seek-ge a
+next
+seek-ge aa
+next
+seek-ge aaa
+next
+seek-ge aaaa
+next
+seek-ge aaaaa
+next
+stats
+----
+a@3: (a@3, .)
+a@1: (a@1, .)
+aa@3: (aa@3, .)
+aa@1: (aa@1, .)
+aaa@3: (aaa@3, .)
+aaa@1: (aaa@1, .)
+aaaa@3: (aaaa@3, .)
+aaaa@1: (aaaa@1, .)
+aaaaa@3: (aaaaa@3, .)
+aaaaa@1: (aaaaa@1, .)
+stats: (interface (dir, seek, step): (fwd, 5, 5), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 5, 5), (rev, 0, 0)),
+(internal-stats: (block-bytes: (total 286 B, cached 0 B)), (points: (count 10, key-bytes 50, value-bytes 50, tombstoned: 0))
