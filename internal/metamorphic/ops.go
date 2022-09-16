@@ -716,10 +716,13 @@ func (o *newIterUsingCloneOp) receiver() objID { return o.existingIterID }
 
 func (o *newIterUsingCloneOp) syncObjs() objIDSlice {
 	objIDs := []objID{o.iterID}
-	// If the underlying reader is a batch and the refreshBatch flag is set, we
-	// must synchronize with the batch, so that we observe all the mutations up
-	// until this op and no more.
-	if o.derivedReaderID.tag() == batchTag && o.refreshBatch {
+	// If the underlying reader is a batch, we must synchronize with the batch.
+	// If refreshBatch=true, synchronizing is necessary to observe all the
+	// mutations up to until this op and no more. Even when refreshBatch=false,
+	// we must synchronize because iterator construction may access state cached
+	// on the indexed batch to avoid refragmenting range tombstones or range
+	// keys.
+	if o.derivedReaderID.tag() == batchTag {
 		objIDs = append(objIDs, o.derivedReaderID)
 	}
 	return objIDs
