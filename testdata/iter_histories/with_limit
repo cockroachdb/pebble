@@ -100,3 +100,86 @@ prev-limit c
 ----
 .
 . at-limit
+
+# Test at-limit interactions with RangeKeyChanged().
+# Regression test for #1963.
+
+reset
+----
+
+# Construct a range key and points such that there are deleted keys that a
+# -WithLimit iterator operation may pause at both at the beginning and end of
+# the range key's bounds.
+#
+#                    * b.DEL             * cat.SET         * dog.DEL
+#   |-------------------------------------------------------------------) [a,e)@1→foo
+#   a                b                c                d                e
+
+batch commit
+del b
+set cat cat
+del dog
+range-key-set a e @1 foo
+----
+committed 4 keys
+
+combined-iter
+seek-ge-limit a bat
+seek-ge-limit a bat
+seek-ge-limit apple bat
+seek-ge-limit cow zoo
+----
+a: valid (., [a-e) @1=foo UPDATED)
+a: valid (., [a-e) @1=foo)
+apple: valid (., [a-e) @1=foo)
+cow: valid (., [a-e) @1=foo)
+
+combined-iter
+seek-ge a
+next-limit bat
+next-limit dog
+next-limit zoo
+----
+a: (., [a-e) @1=foo UPDATED)
+. at-limit
+cat: valid (cat, [a-e) @1=foo UPDATED)
+. exhausted
+
+combined-iter
+seek-lt-limit f e
+seek-lt-limit e d
+seek-lt-limit e d
+seek-lt-limit f e
+seek-lt-limit e d
+----
+. at-limit
+cat: valid (cat, [a-e) @1=foo UPDATED)
+cat: valid (cat, [a-e) @1=foo)
+. at-limit
+cat: valid (cat, [a-e) @1=foo UPDATED)
+
+# Add a new dz.SET key.
+#
+#                    * b.DEL             * cat.SET         * dog.DEL  * dz.SET
+#   |-------------------------------------------------------------------) [a,e)@1→foo
+#   a                b                c                d                e
+
+batch commit
+set dz dz
+----
+committed 1 keys
+
+combined-iter
+seek-ge dz
+prev-limit e
+prev-limit dy
+prev-limit c
+prev
+next
+----
+dz: (dz, [a-e) @1=foo UPDATED)
+. at-limit
+cat: valid (cat, [a-e) @1=foo UPDATED)
+a: valid (., [a-e) @1=foo)
+.
+a: (., [a-e) @1=foo UPDATED)
