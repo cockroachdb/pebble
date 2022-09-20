@@ -1,0 +1,337 @@
+// Copyright 2022 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// of this source code is governed by a BSD-style license that can be found in
+// the LICENSE file.
+package pebble
+
+import (
+	"bytes"
+	"fmt"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
+	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
+	"github.com/stretchr/testify/require"
+)
+
+// TODO(jackson): Add a range keys test with concurrency: the logic to cache
+// fragmented spans is susceptible to races.
+
+func TestIterHistories(t *testing.T) {
+	datadriven.Walk(t, "testdata/iter_histories", func(t *testing.T, path string) {
+		var d *DB
+		iters := map[string]*Iterator{}
+		batches := map[string]*Batch{}
+		newIter := func(name string, reader Reader, o *IterOptions) *Iterator {
+			it := reader.NewIter(o)
+			iters[name] = it
+			return it
+		}
+		cleanup := func() (err error) {
+			for key, batch := range batches {
+				err = firstError(err, batch.Close())
+				delete(batches, key)
+			}
+			for key, iter := range iters {
+				err = firstError(err, iter.Close())
+				delete(iters, key)
+			}
+			if d != nil {
+				err = firstError(err, d.Close())
+				d = nil
+			}
+			return err
+		}
+		defer cleanup()
+
+		datadriven.RunTest(t, path, func(td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "reset":
+				if err := cleanup(); err != nil {
+					return err.Error()
+				}
+				opts := &Options{
+					FS:                 vfs.NewMem(),
+					Comparer:           testkeys.Comparer,
+					FormatMajorVersion: FormatRangeKeys,
+					BlockPropertyCollectors: []func() BlockPropertyCollector{
+						blockprop.NewBlockPropertyCollector,
+					},
+				}
+				opts.Experimental.RangeKeys = new(RangeKeysArena)
+				opts.DisableAutomaticCompactions = true
+				opts.EnsureDefaults()
+
+				for _, cmdArg := range td.CmdArgs {
+					switch cmdArg.Key {
+					case "format-major-version":
+						v, err := strconv.Atoi(cmdArg.Vals[0])
+						if err != nil {
+							return err.Error()
+						}
+						// Override the DB version.
+						opts.FormatMajorVersion = FormatMajorVersion(v)
+					case "block-size":
+						v, err := strconv.Atoi(cmdArg.Vals[0])
+						if err != nil {
+							return err.Error()
+						}
+						for i := range opts.Levels {
+							opts.Levels[i].BlockSize = v
+						}
+					case "index-block-size":
+						v, err := strconv.Atoi(cmdArg.Vals[0])
+						if err != nil {
+							return err.Error()
+						}
+						for i := range opts.Levels {
+							opts.Levels[i].IndexBlockSize = v
+						}
+					case "target-file-size":
+						v, err := strconv.Atoi(cmdArg.Vals[0])
+						if err != nil {
+							return err.Error()
+						}
+						for i := range opts.Levels {
+							opts.Levels[i].TargetFileSize = int64(v)
+						}
+					case "bloom-bits-per-key":
+						v, err := strconv.Atoi(cmdArg.Vals[0])
+						if err != nil {
+							return err.Error()
+						}
+						fp := bloom.FilterPolicy(v)
+						opts.Filters = map[string]FilterPolicy{fp.Name(): fp}
+						for i := range opts.Levels {
+							opts.Levels[i].FilterPolicy = fp
+						}
+					case "merger":
+						switch cmdArg.Vals[0] {
+						case "appender":
+							opts.Merger = base.DefaultMerger
+						default:
+							return fmt.Sprintf("unrecognized Merger %q\n", cmdArg.Vals[0])
+						}
+					default:
+						return fmt.Sprintf("unknown command %s\n", cmdArg.Key)
+					}
+
+				}
+
+				var err error
+				d, err = Open("", opts)
+				require.NoError(t, err)
+				return ""
+			case "populate":
+				b := d.NewBatch()
+				runPopulateCmd(t, td, b)
+				count := b.Count()
+				require.NoError(t, b.Commit(nil))
+				return fmt.Sprintf("wrote %d keys\n", count)
+			case "batch":
+				var commit bool
+				var name string
+				for _, arg := range td.CmdArgs {
+					switch arg.Key {
+					case "name":
+						name = arg.Vals[0]
+					case "commit":
+						commit = true
+					default:
+						return fmt.Sprintf("unrecognized command argument %q\n", arg.Key)
+					}
+				}
+				b := d.NewIndexedBatch()
+				require.NoError(t, runBatchDefineCmd(td, b))
+				var err error
+				if commit {
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								err = errors.New(r.(string))
+							}
+						}()
+						err = b.Commit(nil)
+					}()
+				} else if name != "" {
+					batches[name] = b
+				}
+				if err != nil {
+					return err.Error()
+				}
+				count := b.Count()
+				if commit {
+					return fmt.Sprintf("committed %d keys\n", count)
+				}
+				return fmt.Sprintf("wrote %d keys to batch %q\n", count, name)
+			case "flush":
+				err := d.Flush()
+				if err != nil {
+					return err.Error()
+				}
+				return ""
+			case "get":
+				var reader Reader = d
+				for _, cmd := range td.CmdArgs {
+					switch cmd.Key {
+					case "reader":
+						var ok bool
+						reader, ok = batches[cmd.Vals[0]]
+						if !ok {
+							return fmt.Sprintf("unknown reader %q", cmd.Vals[0])
+						}
+					default:
+						return fmt.Sprintf("unrecognized command %q", cmd.Key)
+					}
+				}
+				var buf bytes.Buffer
+				for _, l := range strings.Split(td.Input, "\n") {
+					v, closer, err := reader.Get([]byte(l))
+					if err != nil {
+						fmt.Fprintf(&buf, "%s: error: %s\n", l, err)
+					} else {
+						fmt.Fprintf(&buf, "%s: %s\n", l, v)
+					}
+					if err := closer.Close(); err != nil {
+						fmt.Fprintf(&buf, "close err: %s\n", err)
+					}
+				}
+				return buf.String()
+			case "ingest":
+				if err := runBuildCmd(td, d, d.opts.FS); err != nil {
+					return err.Error()
+				}
+				if err := runIngestCmd(td, d, d.opts.FS); err != nil {
+					return err.Error()
+				}
+				return ""
+			case "lsm":
+				return runLSMCmd(td, d)
+			case "mutate":
+				var batchName string
+				td.ScanArgs(t, "batch", &batchName)
+				mut := newBatch(d)
+				if err := runBatchDefineCmd(td, mut); err != nil {
+					return err.Error()
+				}
+				if err := batches[batchName].Apply(mut, nil); err != nil {
+					return err.Error()
+				}
+				return ""
+			case "commit":
+				name := pluckStringCmdArg(td, "batch")
+				b := batches[name]
+				defer b.Close()
+				count := b.Count()
+				require.NoError(t, d.Apply(b, nil))
+				delete(batches, name)
+				return fmt.Sprintf("committed %d keys\n", count)
+			case "combined-iter":
+				o := &IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
+				var reader Reader = d
+				var name string
+				for _, arg := range td.CmdArgs {
+					switch arg.Key {
+					case "mask-suffix":
+						o.RangeKeyMasking.Suffix = []byte(arg.Vals[0])
+					case "lower":
+						o.LowerBound = []byte(arg.Vals[0])
+					case "upper":
+						o.UpperBound = []byte(arg.Vals[0])
+					case "name":
+						name = arg.Vals[0]
+					case "reader":
+						reader = batches[arg.Vals[0]]
+						if reader == nil {
+							return fmt.Sprintf("unknown reader %q", arg.Vals[0])
+						}
+					case "point-key-filter":
+						if len(arg.Vals) != 2 {
+							return fmt.Sprintf("blockprop-filter expects 2 arguments, received %d", len(arg.Vals))
+						}
+						min, err := strconv.ParseUint(arg.Vals[0], 10, 64)
+						if err != nil {
+							return err.Error()
+						}
+						max, err := strconv.ParseUint(arg.Vals[1], 10, 64)
+						if err != nil {
+							return err.Error()
+						}
+						o.PointKeyFilters = []sstable.BlockPropertyFilter{
+							blockprop.NewBlockPropertyFilter(min, max),
+						}
+					}
+				}
+				var iter *Iterator
+				var err error
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							switch v := r.(type) {
+							case string:
+								err = errors.New(v)
+							case error:
+								err = v
+							default:
+								panic(r)
+							}
+						}
+					}()
+					iter = newIter(name, reader, o)
+				}()
+				if err != nil {
+					return err.Error()
+				}
+				return runIterCmd(td, iter, name == "" /* close iter */)
+			case "rangekey-iter":
+				name := pluckStringCmdArg(td, "name")
+				iter := newIter(name, d, &IterOptions{KeyTypes: IterKeyTypeRangesOnly})
+				return runIterCmd(td, iter, name == "" /* close iter */)
+			case "scan-rangekeys":
+				var buf bytes.Buffer
+				iter := newIter(
+					pluckStringCmdArg(td, "name"),
+					d,
+					&IterOptions{KeyTypes: IterKeyTypeRangesOnly},
+				)
+				func() {
+					defer iter.Close()
+					for iter.First(); iter.Valid(); iter.Next() {
+						start, end := iter.RangeBounds()
+						fmt.Fprintf(&buf, "[%s, %s)\n", start, end)
+						writeRangeKeys(&buf, iter)
+						fmt.Fprintln(&buf)
+					}
+				}()
+				return buf.String()
+			case "iter":
+				var name string
+				td.ScanArgs(t, "iter", &name)
+				return runIterCmd(td, iters[name], false /* close iter */)
+			case "wait-table-stats":
+				d.mu.Lock()
+				d.waitTableStats()
+				d.mu.Unlock()
+				return ""
+			default:
+				return fmt.Sprintf("unknown command %q", td.Cmd)
+			}
+		})
+	})
+}
+
+func pluckStringCmdArg(td *datadriven.TestData, key string) string {
+	for i := range td.CmdArgs {
+		if td.CmdArgs[i].Key == key {
+			return td.CmdArgs[i].Vals[0]
+		}
+	}
+	return ""
+}
