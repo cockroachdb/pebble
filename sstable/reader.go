@@ -1345,8 +1345,8 @@ var _ base.InternalIterator = (*twoLevelIterator)(nil)
 // encountered, which may be nil if we have simply exhausted the entire table.
 // This is used for two level indexes.
 func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
-	// Ensure the data block iterator is invalidated even if loading of the
-	// index fails.
+	// Ensure the index data block iterators are invalidated even if loading of
+	// the index fails.
 	i.data.invalidate()
 	if !i.topLevelIndex.valid() {
 		i.index.offset = 0
@@ -1533,6 +1533,7 @@ func (i *twoLevelIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*Internal
 
 		result := i.loadIndex(+1)
 		if result == loadBlockFailed {
+			i.boundsCmp = 0
 			return nil, nil
 		}
 		if result == loadBlockIrrelevant {
@@ -1547,6 +1548,12 @@ func (i *twoLevelIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*Internal
 			}
 			// Fall through to skipForward.
 			dontSeekWithinSingleLevelIter = true
+			// Clear boundsCmp. Normally, singleLevelIterator.SeekGE will clear
+			// it, but if we're skipping this index block altogether, it's
+			// possible we'll return without ever seeking within the
+			// single-level iterator, in whcih case boundsCmp may be improperly
+			// left == 0.
+			i.boundsCmp = 0
 		}
 	}
 	// Else fast-path: There are two possible cases, from
@@ -1651,6 +1658,7 @@ func (i *twoLevelIterator) SeekPrefixGE(
 
 		result := i.loadIndex(+1)
 		if result == loadBlockFailed {
+			i.boundsCmp = 0
 			return nil, nil
 		}
 		if result == loadBlockIrrelevant {
@@ -1665,6 +1673,12 @@ func (i *twoLevelIterator) SeekPrefixGE(
 			}
 			// Fall through to skipForward.
 			dontSeekWithinSingleLevelIter = true
+			// Clear boundsCmp. Normally, singleLevelIterator.SeekGE will clear
+			// it, but if we're skipping this index block altogether, it's
+			// possible we'll return without ever seeking within the
+			// single-level iterator, in whcih case boundsCmp may be improperly
+			// left == 0.
+			i.boundsCmp = 0
 		}
 	}
 	// Else fast-path: The bounds have moved forward and this SeekGE is
