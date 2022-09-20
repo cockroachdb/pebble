@@ -1,0 +1,74 @@
+# Regression test for #1963 / cockroachdb/cockroach#88296.
+#
+# The iterators in this test move their bounds monotonically forward
+# [a,b)→[b,e). This enables the sstable iterator optimization for monotonically
+# moving bounds (see boundsCmp in sstable/reader.go). With this optimization,
+# the first seek after the SetBounds may use the fact that the bounds moved
+# forward monotonically to avoid re-seeking within the index.
+#
+# The test cases below exercise a seek to a key, followed by a seek to a smaller
+# key. The second seek should not make use of the bounds optimization because
+# doing so may incorrectly skip all keys between the lower bound and the first
+# seek key. Previously, the code paths that handled block-property filtering on
+# a two-level iterator could leave the iterator in a state such that the second
+# seek would improperly also exercise the monotonic bounds optimization. In the
+# test cases below, this would result in the key 'b' not being found. Each test
+# case exercises a different combination of seek-ge and seek-prefix-ge.
+
+reset block-size=1 index-block-size=1
+----
+
+batch commit
+set a a
+set b b
+set b@4 b@4
+set z@6 z@6
+----
+committed 4 keys
+
+flush
+----
+
+combined-iter lower=a upper=b point-key-filter=(1,4)
+seek-ge a
+set-bounds lower=b upper=e
+seek-prefix-ge d@5
+seek-prefix-ge b
+----
+a: (a, .)
+.
+.
+b: (b, .)
+
+combined-iter lower=a upper=b point-key-filter=(1,4)
+seek-ge a
+set-bounds lower=b upper=e
+seek-ge d@5
+seek-prefix-ge b
+----
+a: (a, .)
+.
+.
+b: (b, .)
+
+combined-iter lower=a upper=b point-key-filter=(1,4)
+seek-ge a
+set-bounds lower=b upper=e
+seek-ge d@5
+seek-ge b
+----
+a: (a, .)
+.
+.
+b: (b, .)
+
+combined-iter lower=a upper=b point-key-filter=(1,4)
+seek-ge a
+set-bounds lower=b upper=e
+seek-prefix-ge d@5
+seek-ge b
+----
+a: (a, .)
+.
+.
+b: (b, .)
