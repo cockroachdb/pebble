@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -83,6 +84,14 @@ func TestIterHistories(t *testing.T) {
 						}
 						for i := range opts.Levels {
 							opts.Levels[i].BlockSize = v
+						}
+					case "index-block-size":
+						v, err := strconv.Atoi(cmdArg.Vals[0])
+						if err != nil {
+							return err.Error()
+						}
+						for i := range opts.Levels {
+							opts.Levels[i].IndexBlockSize = v
 						}
 					case "target-file-size":
 						v, err := strconv.Atoi(cmdArg.Vals[0])
@@ -270,6 +279,21 @@ func TestIterHistories(t *testing.T) {
 						reader = batches[arg.Vals[0]]
 						if reader == nil {
 							return fmt.Sprintf("unknown reader %q", arg.Vals[0])
+						}
+					case "point-key-filter":
+						if len(arg.Vals) != 2 {
+							return fmt.Sprintf("blockprop-filter expects 2 arguments, received %d", len(arg.Vals))
+						}
+						min, err := strconv.ParseUint(arg.Vals[0], 10, 64)
+						if err != nil {
+							return err.Error()
+						}
+						max, err := strconv.ParseUint(arg.Vals[1], 10, 64)
+						if err != nil {
+							return err.Error()
+						}
+						o.PointKeyFilters = []sstable.BlockPropertyFilter{
+							blockprop.NewBlockPropertyFilter(min, max),
 						}
 					}
 				}
