@@ -7,7 +7,6 @@ package main
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,11 +19,11 @@ import (
 
 // filesEqual returns the diff between contents of a and b.
 func filesEqual(a, b string) error {
-	aBytes, err := ioutil.ReadFile(a)
+	aBytes, err := os.ReadFile(a)
 	if err != nil {
 		return err
 	}
-	bBytes, err := ioutil.ReadFile(b)
+	bBytes, err := os.ReadFile(b)
 	if err != nil {
 		return err
 	}

@@ -6,7 +6,6 @@ package vfs
 
 import (
 	"io"
-	"io/ioutil"
 	"os"
 	"sort"
 	"strconv"
@@ -276,7 +275,7 @@ func TestList(t *testing.T) {
 func TestMemFile(t *testing.T) {
 	want := "foo"
 	f := NewMemFile([]byte(want))
-	buf, err := ioutil.ReadAll(f)
+	buf, err := io.ReadAll(f)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}

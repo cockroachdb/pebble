@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"os/exec"
@@ -132,7 +131,7 @@ func testCompareRun(t *testing.T, compare string) {
 
 func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 	opsPath := filepath.Join(filepath.Dir(filepath.Clean(runDir)), "ops")
-	opsData, err := ioutil.ReadFile(opsPath)
+	opsData, err := os.ReadFile(opsPath)
 	require.NoError(t, err)
 
 	ops, err := parse(opsData)
@@ -140,7 +139,7 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 	_ = ops
 
 	optionsPath := filepath.Join(runDir, "OPTIONS")
-	optionsData, err := ioutil.ReadFile(optionsPath)
+	optionsData, err := os.ReadFile(optionsPath)
 	require.NoError(t, err)
 
 	opts := &pebble.Options{}
@@ -340,7 +339,7 @@ func TestMeta(t *testing.T) {
 		// Seeding the keys ensure we generate interesting operations, including
 		// ones with key shadowing, merging, etc.
 		opsPath := filepath.Join(filepath.Dir(filepath.Clean(*previousOps)), "ops")
-		opsData, err := ioutil.ReadFile(opsPath)
+		opsData, err := os.ReadFile(opsPath)
 		require.NoError(t, err)
 		ops, err := parse(opsData)
 		require.NoError(t, err)
@@ -349,7 +348,7 @@ func TestMeta(t *testing.T) {
 	ops := generate(rng, opCount, cfg, km)
 	opsPath := filepath.Join(metaDir, "ops")
 	formattedOps := formatOps(ops)
-	require.NoError(t, ioutil.WriteFile(opsPath, []byte(formattedOps), 0644))
+	require.NoError(t, os.WriteFile(opsPath, []byte(formattedOps), 0644))
 
 	// Perform a particular test run with the specified options. The options are
 	// written to <run-dir>/OPTIONS and a child process is created to actually
@@ -376,7 +375,7 @@ func TestMeta(t *testing.T) {
 
 		optionsPath := filepath.Join(runDir, "OPTIONS")
 		optionsStr := optionsToString(opts)
-		require.NoError(t, ioutil.WriteFile(optionsPath, []byte(optionsStr), 0644))
+		require.NoError(t, os.WriteFile(optionsPath, []byte(optionsStr), 0644))
 
 		args := []string{
 			"-keep=" + fmt.Sprint(*keep),
@@ -491,7 +490,7 @@ func TestMeta(t *testing.T) {
 }
 
 func readFile(path string) string {
-	history, err := ioutil.ReadFile(path)
+	history, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Sprintf("err: %v", err)
 	}

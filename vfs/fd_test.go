@@ -5,7 +5,6 @@
 package vfs
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -16,7 +15,7 @@ import (
 func TestFileWrappersHaveFd(t *testing.T) {
 	// Use the real filesystem so that we can test vfs.Default, which returns
 	// files with Fd().
-	tmpf, err := ioutil.TempFile("", "pebble-db-fd-file")
+	tmpf, err := os.CreateTemp("", "pebble-db-fd-file")
 	require.NoError(t, err)
 	filename := tmpf.Name()
 	defer os.Remove(filename)

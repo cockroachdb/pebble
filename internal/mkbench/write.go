@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -342,7 +341,7 @@ func newWriteLoader(dataDir, summaryDir string) *writeLoader {
 
 // loadCooked loads previously summarized write throughput benchmark data.
 func (l *writeLoader) loadCooked() error {
-	b, err := ioutil.ReadFile(filepath.Join(l.summaryDir, summaryFilename))
+	b, err := os.ReadFile(filepath.Join(l.summaryDir, summaryFilename))
 	if err != nil {
 		// The first ever run will not find the summary file. Return early in
 		// this case, and we'll start afresh.
@@ -526,7 +525,7 @@ func (l *writeLoader) cookSummary() error {
 	b = append(b, '\n')
 
 	outputPath := filepath.Join(l.summaryDir, summaryFilename)
-	err := ioutil.WriteFile(outputPath, b, 0644)
+	err := os.WriteFile(outputPath, b, 0644)
 	if err != nil {
 		return err
 	}

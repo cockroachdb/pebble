@@ -32,7 +32,7 @@
 //				r.Recover()
 //				continue
 //			}
-//			s, err := ioutil.ReadAll(rec)
+//			s, err := io.ReadAll(rec)
 //			if err != nil {
 //				log.Printf("recovering from %v", err)
 //				r.Recover()

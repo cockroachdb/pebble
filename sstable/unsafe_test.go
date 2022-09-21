@@ -7,7 +7,7 @@ package sstable
 import (
 	"encoding/binary"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"testing"
 	"time"
 	"unsafe"
@@ -68,6 +68,6 @@ func BenchmarkDecodeVarint(b *testing.B) {
 		}
 	}
 	if testing.Verbose() {
-		fmt.Fprint(ioutil.Discard, ptr)
+		fmt.Fprint(io.Discard, ptr)
 	}
 }

@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"runtime"
 	"sort"
@@ -231,7 +230,7 @@ func TestVFS(t *testing.T) {
 	})
 	if runtime.GOOS != "windows" {
 		t.Run("disk", func(t *testing.T) {
-			dir, err := ioutil.TempDir("", "test-vfs")
+			dir, err := os.MkdirTemp("", "test-vfs")
 			require.NoError(t, err)
 			defer func() {
 				_ = os.RemoveAll(dir)
@@ -242,7 +241,7 @@ func TestVFS(t *testing.T) {
 }
 
 func TestVFSGetDiskUsage(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test-free-space")
+	dir, err := os.MkdirTemp("", "test-free-space")
 	require.NoError(t, err)
 	defer func() {
 		_ = os.RemoveAll(dir)
@@ -252,7 +251,7 @@ func TestVFSGetDiskUsage(t *testing.T) {
 }
 
 func TestVFSCreateLinkSemantics(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test-create-link")
+	dir, err := os.MkdirTemp("", "test-create-link")
 	require.NoError(t, err)
 	defer func() { _ = os.RemoveAll(dir) }()
 
@@ -270,7 +269,7 @@ func TestVFSCreateLinkSemantics(t *testing.T) {
 				path = fs.PathJoin(dir, path)
 				f, err := fs.Open(path)
 				require.NoError(t, err)
-				b, err := ioutil.ReadAll(f)
+				b, err := io.ReadAll(f)
 				require.NoError(t, err)
 				require.NoError(t, f.Close())
 				return string(b)

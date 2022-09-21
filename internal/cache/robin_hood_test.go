@@ -6,7 +6,7 @@ package cache
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"runtime"
 	"testing"
 	"time"
@@ -155,7 +155,7 @@ func BenchmarkGoMapLookupHit(b *testing.B) {
 	}
 
 	if testing.Verbose() {
-		fmt.Fprintln(ioutil.Discard, p)
+		fmt.Fprintln(io.Discard, p)
 	}
 }
 
@@ -180,7 +180,7 @@ func BenchmarkRobinHoodLookupHit(b *testing.B) {
 	}
 
 	if testing.Verbose() {
-		fmt.Fprintln(ioutil.Discard, p)
+		fmt.Fprintln(io.Discard, p)
 	}
 	runtime.KeepAlive(e)
 }
@@ -208,7 +208,7 @@ func BenchmarkGoMapLookupMiss(b *testing.B) {
 	}
 
 	if testing.Verbose() {
-		fmt.Fprintln(ioutil.Discard, p)
+		fmt.Fprintln(io.Discard, p)
 	}
 }
 
@@ -235,7 +235,7 @@ func BenchmarkRobinHoodLookupMiss(b *testing.B) {
 	}
 
 	if testing.Verbose() {
-		fmt.Fprintln(ioutil.Discard, p)
+		fmt.Fprintln(io.Discard, p)
 	}
 	runtime.KeepAlive(e)
 }

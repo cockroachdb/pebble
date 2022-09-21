@@ -7,7 +7,6 @@ package tool
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"text/tabwriter"
 
 	"github.com/cockroachdb/errors"
@@ -224,7 +223,7 @@ func (d *dbT) loadOptions(dir string) error {
 				}
 				defer f.Close()
 
-				data, err := ioutil.ReadAll(f)
+				data, err := io.ReadAll(f)
 				if err != nil {
 					return err
 				}

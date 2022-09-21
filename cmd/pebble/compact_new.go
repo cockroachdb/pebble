@@ -6,7 +6,6 @@ package main
 
 import (
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -101,7 +100,7 @@ func replayManifests(srcPath string) ([]string, []logItem, error) {
 	// If there's an archive directory in srcPath, look in the archive for
 	// deleted manifests.
 	archivePath := filepath.Join(srcPath, "archive")
-	infos, err := ioutil.ReadDir(archivePath)
+	infos, err := os.ReadDir(archivePath)
 	if err != nil && !oserror.IsNotExist(err) {
 		return nil, nil, err
 	}
@@ -120,7 +119,7 @@ func replayManifests(srcPath string) ([]string, []logItem, error) {
 	}
 
 	// Next look directly in srcPath.
-	infos, err = ioutil.ReadDir(srcPath)
+	infos, err = os.ReadDir(srcPath)
 	if err != nil {
 		return nil, nil, err
 	}

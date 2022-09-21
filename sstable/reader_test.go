@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"path"
@@ -649,7 +648,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 						// block.
 						orig, err := mem.Open("test")
 						require.NoError(t, err)
-						data, err := ioutil.ReadAll(orig)
+						data, err := io.ReadAll(orig)
 						require.NoError(t, err)
 						require.NoError(t, orig.Close())
 
@@ -1081,7 +1080,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 					key, _ = it.Next()
 				}
 				if testing.Verbose() {
-					fmt.Fprint(ioutil.Discard, sum)
+					fmt.Fprint(io.Discard, sum)
 				}
 
 				b.StopTimer()
@@ -1110,7 +1109,7 @@ func BenchmarkTableIterPrev(b *testing.B) {
 					key, _ = it.Prev()
 				}
 				if testing.Verbose() {
-					fmt.Fprint(ioutil.Discard, sum)
+					fmt.Fprint(io.Discard, sum)
 				}
 
 				b.StopTimer()
