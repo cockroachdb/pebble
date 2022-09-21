@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"sort"
@@ -218,7 +217,7 @@ func TestVersionEditDecode(t *testing.T) {
 					t.Fatalf("filename=%q i=%d: too many version edits", tc.filename, i+1)
 				}
 
-				encodedEdit, err := ioutil.ReadAll(rr)
+				encodedEdit, err := io.ReadAll(rr)
 				if err != nil {
 					t.Fatalf("filename=%q i=%d: read error: %v", tc.filename, i, err)
 				}

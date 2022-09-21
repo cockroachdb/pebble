@@ -7,7 +7,6 @@ package vfs_test
 import (
 	"bytes"
 	"flag"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"testing"
@@ -33,7 +32,7 @@ func TestLock(t *testing.T) {
 	if child {
 		filename = *lockFilename
 	} else {
-		f, err := ioutil.TempFile("", "golang-pebble-db-testlock-")
+		f, err := os.CreateTemp("", "golang-pebble-db-testlock-")
 		require.NoError(t, err)
 
 		filename = f.Name()
@@ -83,7 +82,7 @@ func TestLock(t *testing.T) {
 }
 
 func TestLockSameProcess(t *testing.T) {
-	f, err := ioutil.TempFile("", "pebble-testlocksameprocess-")
+	f, err := os.CreateTemp("", "pebble-testlocksameprocess-")
 	require.NoError(t, err)
 	filename := f.Name()
 

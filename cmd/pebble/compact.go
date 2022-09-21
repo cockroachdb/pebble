@@ -6,7 +6,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -128,7 +127,7 @@ func open(dir string, listener pebble.EventListener) (*replay.DB, error) {
 // path.  Making a hardlink of all the sstables ensures that we can run the
 // same workload multiple times.
 func hardLinkWorkload(src, dst string) error {
-	ls, err := ioutil.ReadDir(src)
+	ls, err := os.ReadDir(src)
 	if err != nil {
 		return err
 	}
@@ -177,7 +176,7 @@ func startSamplingRAmp(d *replay.DB) func() *hdrhistogram.Histogram {
 func runReplay(cmd *cobra.Command, args []string) error {
 	// Make hard links of all the files in the workload so ingestion doesn't
 	// delete our original copy of a workload.
-	workloadDir, err := ioutil.TempDir(args[0], "pebble-bench-workload")
+	workloadDir, err := os.MkdirTemp(args[0], "pebble-bench-workload")
 	if err != nil {
 		return err
 	}
@@ -206,7 +205,7 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		return errors.New("empty workload")
 	}
 
-	dir, err := ioutil.TempDir(args[0], "pebble-bench-data")
+	dir, err := os.MkdirTemp(args[0], "pebble-bench-data")
 	if err != nil {
 		return err
 	}

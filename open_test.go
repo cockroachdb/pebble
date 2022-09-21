@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -280,7 +279,7 @@ func TestOpenCloseOpenClose(t *testing.T) {
 			switch fstype {
 			case "disk":
 				var err error
-				dir, err = ioutil.TempDir("", "open-close")
+				dir, err = os.MkdirTemp("", "open-close")
 				require.NoError(t, err)
 				defer func() {
 					_ = os.RemoveAll(dir)
@@ -629,7 +628,7 @@ func TestOpenWALReplay2(t *testing.T) {
 func TestTwoWALReplayCorrupt(t *testing.T) {
 	// Use the real filesystem so that we can seek and overwrite WAL data
 	// easily.
-	dir, err := ioutil.TempDir("", "wal-replay")
+	dir, err := os.MkdirTemp("", "wal-replay")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -685,7 +684,7 @@ func TestTwoWALReplayCorrupt(t *testing.T) {
 func TestTwoWALReplayPermissive(t *testing.T) {
 	// Use the real filesystem so that we can seek and overwrite WAL data
 	// easily.
-	dir, err := ioutil.TempDir("", "wal-replay")
+	dir, err := os.MkdirTemp("", "wal-replay")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -793,7 +792,7 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 	{
 		f, err := fs.Open(logs[0])
 		require.NoError(t, err)
-		b, err := ioutil.ReadAll(f)
+		b, err := io.ReadAll(f)
 		require.NoError(t, err)
 		require.NoError(t, f.Close())
 		f, err = fs.Create(logs[0])

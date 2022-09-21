@@ -7,7 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -320,7 +320,7 @@ func TestIngestLink(t *testing.T) {
 					f, err := mem.Open(mem.PathJoin(dir, files[j]))
 					require.NoError(t, err)
 
-					data, err := ioutil.ReadAll(f)
+					data, err := io.ReadAll(f)
 					require.NoError(t, err)
 					require.NoError(t, f.Close())
 					if !bytes.Equal(contents[j], data) {
@@ -351,7 +351,7 @@ func TestIngestLinkFallback(t *testing.T) {
 	// We should be able to write bytes to src, and not have them show up in
 	// dest.
 	_, _ = src.Write([]byte("test"))
-	data, err := ioutil.ReadAll(dest)
+	data, err := io.ReadAll(dest)
 	require.NoError(t, err)
 	if len(data) != 0 {
 		t.Fatalf("expected copy, but files appear to be hard linked: [%s] unexpectedly found", data)
@@ -735,7 +735,7 @@ func TestIngestError(t *testing.T) {
 func TestIngestIdempotence(t *testing.T) {
 	// Use an on-disk filesystem, because Ingest with a MemFS will copy, not
 	// link the ingested file.
-	dir, err := ioutil.TempDir("", "ingest-idempotence")
+	dir, err := os.MkdirTemp("", "ingest-idempotence")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 	fs := vfs.Default
@@ -1187,7 +1187,7 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 	const count = 10
 	// Use an on-disk filesystem, because Ingest with a MemFS will copy, not
 	// link the ingested file.
-	dir, err := ioutil.TempDir("", "ingest-filenum-reuse")
+	dir, err := os.MkdirTemp("", "ingest-filenum-reuse")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 	fs := vfs.Default
@@ -1195,7 +1195,7 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 	readFile := func(s string) []byte {
 		f, err := fs.Open(fs.PathJoin(dir, s))
 		require.NoError(t, err)
-		b, err := ioutil.ReadAll(f)
+		b, err := io.ReadAll(f)
 		require.NoError(t, err)
 		require.NoError(t, f.Close())
 		return b

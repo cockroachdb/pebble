@@ -17,8 +17,8 @@ package sstable
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"math"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -143,7 +143,7 @@ func runTestFixtureOutput(opts fixtureOpts) error {
 
 	// Check that a freshly made table is byte-for-byte equal to a pre-made
 	// table.
-	want, err := ioutil.ReadFile(filepath.FromSlash(fixture.filename))
+	want, err := os.ReadFile(filepath.FromSlash(fixture.filename))
 	if err != nil {
 		return err
 	}
@@ -166,7 +166,7 @@ func runTestFixtureOutput(opts fixtureOpts) error {
 		i := 0
 		for ; i < len(got) && i < len(want) && got[i] == want[i]; i++ {
 		}
-		ioutil.WriteFile("fail.txt", got, 0644)
+		os.WriteFile("fail.txt", got, 0644)
 		return errors.Errorf("built table %s does not match pre-made table. From byte %d onwards,\ngot:\n% x\nwant:\n% x",
 			fixture.filename, i, got[i:], want[i:])
 	}

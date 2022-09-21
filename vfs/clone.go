@@ -5,7 +5,7 @@
 package vfs
 
 import (
-	"io/ioutil"
+	"io"
 	"sort"
 
 	"github.com/cockroachdb/errors/oserror"
@@ -94,7 +94,7 @@ func Clone(srcFS, dstFS FS, srcPath, dstPath string, opts ...CloneOption) (bool,
 		return true, nil
 	}
 
-	data, err := ioutil.ReadAll(srcFile)
+	data, err := io.ReadAll(srcFile)
 	if err != nil {
 		return false, err
 	}

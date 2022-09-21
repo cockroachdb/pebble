@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"strings"
@@ -69,7 +68,7 @@ func testGeneratorWriter(
 		if err != nil {
 			t.Fatalf("reader.Next: %v", err)
 		}
-		x, err := ioutil.ReadAll(rr)
+		x, err := io.ReadAll(rr)
 		if err != nil {
 			t.Fatalf("ReadAll: %v", err)
 		}
@@ -217,7 +216,7 @@ func TestFlush(t *testing.T) {
 	wants := []int64{1, 2, 10000, 40000}
 	for i, want := range wants {
 		rr, _ := r.Next()
-		n, err := io.Copy(ioutil.Discard, rr)
+		n, err := io.Copy(io.Discard, rr)
 		if err != nil {
 			t.Fatalf("read #%d: %v", i, err)
 		}
@@ -404,7 +403,7 @@ func TestBasicRecover(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Next: %v", err)
 	}
-	r0Data, err := ioutil.ReadAll(r0)
+	r0Data, err := io.ReadAll(r0)
 	if err != nil {
 		t.Fatalf("ReadAll: %v", err)
 	}
@@ -436,7 +435,7 @@ func TestBasicRecover(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Next: %v", err)
 	}
-	r2Data, err := ioutil.ReadAll(r2)
+	r2Data, err := io.ReadAll(r2)
 	if err != nil {
 		t.Fatalf("ReadAll: %v", err)
 	}
@@ -470,7 +469,7 @@ func TestRecoverSingleBlock(t *testing.T) {
 	}
 
 	// Reading deeper should yield a checksum mismatch.
-	_, err = ioutil.ReadAll(r0)
+	_, err = io.ReadAll(r0)
 	if err == nil {
 		t.Fatal("Expected a checksum mismatch error, got nil")
 	}
@@ -490,7 +489,7 @@ func TestRecoverSingleBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Next: %v", err)
 	}
-	r2Data, _ := ioutil.ReadAll(r2)
+	r2Data, _ := io.ReadAll(r2)
 	if !bytes.Equal(r2Data, recs.records[2]) {
 		t.Fatal("Unexpected output in r2's data")
 	}
@@ -528,7 +527,7 @@ func TestRecoverMultipleBlocks(t *testing.T) {
 	}
 
 	// Reading deeper should yield a checksum mismatch.
-	_, err = ioutil.ReadAll(r0)
+	_, err = io.ReadAll(r0)
 	if err == nil {
 		t.Fatal("Exptected a checksum mismatch error, got nil")
 	}
@@ -548,7 +547,7 @@ func TestRecoverMultipleBlocks(t *testing.T) {
 		t.Fatalf("Next: %v", err)
 	}
 
-	r4Data, _ := ioutil.ReadAll(r4)
+	r4Data, _ := io.ReadAll(r4)
 	if !bytes.Equal(r4Data, recs.records[4]) {
 		t.Fatal("Unexpected output in r4's data")
 	}
@@ -650,7 +649,7 @@ func TestReaderOffset(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Next: %v", err)
 		}
-		if _, err = ioutil.ReadAll(rec); err != nil {
+		if _, err = io.ReadAll(rec); err != nil {
 			t.Fatalf("ReadAll: %v", err)
 		}
 	}
@@ -684,7 +683,7 @@ func TestSeekRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Next: %v", err)
 	}
-	rData, _ := ioutil.ReadAll(rec)
+	rData, _ := io.ReadAll(rec)
 	if !bytes.Equal(rData, recs.records[1]) {
 		t.Fatalf("Unexpected output in record 1's data, got %v want %v", rData, recs.records[1])
 	}
@@ -713,7 +712,7 @@ func TestSeekRecord(t *testing.T) {
 				t.Fatalf("Next: %v", err)
 			}
 
-			rData, _ := ioutil.ReadAll(rec)
+			rData, _ := io.ReadAll(rec)
 			if !bytes.Equal(rData, recs.records[i]) {
 				t.Fatalf("Unexpected output in record #%d's data, got %v want %v", i, rData, recs.records[i])
 			}
@@ -812,7 +811,7 @@ func TestInvalidLogNum(t *testing.T) {
 			rr, err := r.Next()
 			require.NoError(t, err)
 
-			x, err := ioutil.ReadAll(rr)
+			x, err := io.ReadAll(rr)
 			require.NoError(t, err)
 
 			s := fmt.Sprintf("%04d\n", i)
@@ -915,7 +914,7 @@ func TestRecycleLog(t *testing.T) {
 				}
 				t.Fatalf("%d/%d: %v", i, j, err)
 			}
-			x, err := ioutil.ReadAll(rr)
+			x, err := io.ReadAll(rr)
 			if err != nil {
 				// If we limited output then an EOF, zeroed, or invalid chunk is expected.
 				if limitedBuf.limit < 0 && (err == io.EOF || err == ErrZeroedChunk || err == ErrInvalidChunk) {
@@ -944,7 +943,7 @@ func TestTruncatedLog(t *testing.T) {
 	r := NewReader(bytes.NewReader(backing[:blockSize]), base.FileNum(1))
 	rr, err := r.Next()
 	require.NoError(t, err)
-	_, err = ioutil.ReadAll(rr)
+	_, err = io.ReadAll(rr)
 	require.EqualValues(t, err, io.ErrUnexpectedEOF)
 }
 
@@ -1030,14 +1029,14 @@ func TestRecycleLogWithPartialRecord(t *testing.T) {
 	rr, err := r.Next()
 	require.NoError(t, err)
 
-	_, err = ioutil.ReadAll(rr)
+	_, err = io.ReadAll(rr)
 	require.Equal(t, err, ErrInvalidChunk)
 }
 
 func BenchmarkRecordWrite(b *testing.B) {
 	for _, size := range []int{8, 16, 32, 64, 256, 1028, 4096, 65_536} {
 		b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {
-			w := NewLogWriter(ioutil.Discard, 0 /* logNum */)
+			w := NewLogWriter(io.Discard, 0 /* logNum */)
 			defer w.Close()
 			buf := make([]byte, size)
 

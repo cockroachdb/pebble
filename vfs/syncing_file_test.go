@@ -7,7 +7,6 @@ package vfs
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -18,7 +17,7 @@ import (
 func TestSyncingFile(t *testing.T) {
 	const mb = 1 << 20
 
-	tmpf, err := ioutil.TempFile("", "pebble-db-syncing-file-")
+	tmpf, err := os.CreateTemp("", "pebble-db-syncing-file-")
 	require.NoError(t, err)
 
 	filename := tmpf.Name()
@@ -86,7 +85,7 @@ close: test [<nil>]
 	}
 	for _, c := range testCases {
 		t.Run("", func(t *testing.T) {
-			tmpf, err := ioutil.TempFile("", "pebble-db-syncing-file-")
+			tmpf, err := os.CreateTemp("", "pebble-db-syncing-file-")
 			require.NoError(t, err)
 
 			filename := tmpf.Name()
@@ -146,7 +145,7 @@ func TestSyncingFileNoSyncOnClose(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(fmt.Sprintf("useSyncRange=%v", c.useSyncRange), func(t *testing.T) {
-			tmpf, err := ioutil.TempFile("", "pebble-db-syncing-file-")
+			tmpf, err := os.CreateTemp("", "pebble-db-syncing-file-")
 			require.NoError(t, err)
 
 			filename := tmpf.Name()
@@ -196,7 +195,7 @@ func BenchmarkSyncWrite(b *testing.B) {
 	}
 
 	run := func(b *testing.B, wsize int, newFile func(string) File) {
-		tmpf, err := ioutil.TempFile("", "pebble-db-syncing-file-")
+		tmpf, err := os.CreateTemp("", "pebble-db-syncing-file-")
 		if err != nil {
 			b.Fatal(err)
 		}

@@ -7,8 +7,8 @@ package metamorphic
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -177,7 +177,7 @@ func extractOp(line string) int {
 
 // Read a history file, stripping out lines that begin with a comment.
 func readHistory(t *testing.T, historyPath string) []string {
-	data, err := ioutil.ReadFile(historyPath)
+	data, err := os.ReadFile(historyPath)
 	require.NoError(t, err)
 	lines := difflib.SplitLines(string(data))
 	newLines := make([]string, 0, len(lines))

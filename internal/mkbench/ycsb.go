@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math"
 	"os"
@@ -100,7 +99,7 @@ func (l *ycsbLoader) addRun(name, day string, r ycsbRun) {
 }
 
 func (l *ycsbLoader) loadCooked(path string) {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if oserror.IsNotExist(err) {
 		return
 	}
@@ -221,7 +220,7 @@ func (l *ycsbLoader) cook(path string) {
 	out := []byte("data = ")
 	out = append(out, prettyJSON(m)...)
 	out = append(out, []byte(";\n")...)
-	if err := ioutil.WriteFile(path, out, 0644); err != nil {
+	if err := os.WriteFile(path, out, 0644); err != nil {
 		log.Fatal(err)
 	}
 }

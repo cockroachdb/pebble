@@ -7,7 +7,7 @@ package pebble
 import (
 	"encoding/binary"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -235,7 +235,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 		b.Run(fmt.Sprintf("parallel=%d", parallelism), func(b *testing.B) {
 			b.SetParallelism(parallelism)
 			mem := newMemTable(memTableOptions{})
-			wal := record.NewLogWriter(ioutil.Discard, 0 /* logNum */)
+			wal := record.NewLogWriter(io.Discard, 0 /* logNum */)
 
 			nullCommitEnv := commitEnv{
 				logSeqNum:     new(uint64),
