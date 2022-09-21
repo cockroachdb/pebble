@@ -2248,7 +2248,8 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 				continue
 			}
 
-			if bytes.Compare(pkey, rkeys[i].start) > 0 && bytes.Compare(pkey, rkeys[i].end) < 0 {
+			if testkeys.Comparer.Compare(pkey, rkeys[i].start) >= 0 &&
+				testkeys.Comparer.Compare(pkey, rkeys[i].end) < 0 {
 				pointKeyHidden[j] = true
 			}
 		}
