@@ -368,7 +368,6 @@ func (i *indexBlockBuf) shouldFlush(
 		defer i.size.mu.Unlock()
 	}
 
-	// nEntries := i.size.estimate.numWrittenEntries + i.size.estimate.numInflightEntries
 	nEntries := i.size.estimate.numTotalEntries()
 	return shouldFlush(
 		sep, valueLen, i.restartInterval, int(i.size.estimate.size()),
