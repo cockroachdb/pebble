@@ -2378,6 +2378,18 @@ func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
 	return finishInitializingIter(buf), nil
 }
 
+// Merge adds all of the argument's statistics to the receiver. It may be used
+// to accumulate stats across multiple iterators.
+func (stats *IteratorStats) Merge(o IteratorStats) {
+	for i := InterfaceCall; i < NumStatsKind; i++ {
+		stats.ForwardSeekCount[i] += o.ForwardSeekCount[i]
+		stats.ReverseSeekCount[i] += o.ReverseSeekCount[i]
+		stats.ForwardStepCount[i] += o.ForwardStepCount[i]
+		stats.ReverseStepCount[i] += o.ReverseStepCount[i]
+	}
+	stats.InternalStats.Merge(o.InternalStats)
+}
+
 func (stats *IteratorStats) String() string {
 	return redact.StringWithoutMarkers(stats)
 }

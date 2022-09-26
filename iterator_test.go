@@ -1671,6 +1671,51 @@ func TestIteratorBoundsLifetimes(t *testing.T) {
 	})
 }
 
+func TestIteratorStatsMerge(t *testing.T) {
+	s := IteratorStats{
+		ForwardSeekCount: [NumStatsKind]int{1, 2},
+		ReverseSeekCount: [NumStatsKind]int{3, 4},
+		ForwardStepCount: [NumStatsKind]int{5, 6},
+		ReverseStepCount: [NumStatsKind]int{7, 8},
+		InternalStats: InternalIteratorStats{
+			BlockBytes:                     9,
+			BlockBytesInCache:              10,
+			KeyBytes:                       11,
+			ValueBytes:                     12,
+			PointCount:                     13,
+			PointsCoveredByRangeTombstones: 14,
+		},
+	}
+	s.Merge(IteratorStats{
+		ForwardSeekCount: [NumStatsKind]int{1, 2},
+		ReverseSeekCount: [NumStatsKind]int{3, 4},
+		ForwardStepCount: [NumStatsKind]int{5, 6},
+		ReverseStepCount: [NumStatsKind]int{7, 8},
+		InternalStats: InternalIteratorStats{
+			BlockBytes:                     9,
+			BlockBytesInCache:              10,
+			KeyBytes:                       11,
+			ValueBytes:                     12,
+			PointCount:                     13,
+			PointsCoveredByRangeTombstones: 14,
+		},
+	})
+	require.Equal(t, IteratorStats{
+		ForwardSeekCount: [NumStatsKind]int{2, 4},
+		ReverseSeekCount: [NumStatsKind]int{6, 8},
+		ForwardStepCount: [NumStatsKind]int{10, 12},
+		ReverseStepCount: [NumStatsKind]int{14, 16},
+		InternalStats: InternalIteratorStats{
+			BlockBytes:                     18,
+			BlockBytesInCache:              20,
+			KeyBytes:                       22,
+			ValueBytes:                     24,
+			PointCount:                     26,
+			PointsCoveredByRangeTombstones: 28,
+		},
+	}, s)
+}
+
 // TestSetOptionsEquivalence tests equivalence between SetOptions to mutate an
 // iterator and constructing a new iterator with NewIter. The long-lived
 // iterator and the new iterator should surface identical iterator states.
