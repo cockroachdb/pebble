@@ -188,11 +188,11 @@ first
 next
 ----
 .
-a@4:v
-c@2:v
+a@4: (v, .)
+c@2: (v, .)
 .
-e@5:v
-k@3:v
+e@5: (v, .)
+k@3: (v, .)
 
 # Test the TrySeekUsingNext optimization that's enabled only for fwd-only
 # external iterators. Seed the database with keys like 'a', 'aa', 'aaa', etc so

@@ -74,4 +74,4 @@ compact a-b L2
 iter
 first
 ----
-a:v2
+a: (v2, .)

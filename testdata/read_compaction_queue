@@ -275,7 +275,7 @@ L5: n-w 4
 add-compaction
 L5: x-z 5
 ----
- 
+
 print-size
 ----
 5

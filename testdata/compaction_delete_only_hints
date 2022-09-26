@@ -267,7 +267,7 @@ iter
 first
 next
 ----
-a:b
+a: (b, .)
 .
 
 # Closing the next snapshot should NOT trigger another compaction, as the
@@ -282,7 +282,7 @@ iter
 first
 next
 ----
-a:b
+a: (b, .)
 .
 
 # Construct a scenario with tables containing a mixture of range dels and range
