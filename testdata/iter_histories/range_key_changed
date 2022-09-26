@@ -208,3 +208,68 @@ a: (., [a-d) @1=foo)
 .
 a: (., [a-d) @1=foo UPDATED)
 a: (., [a-d) @1=foo)
+
+# Regression test for #1980. An iterator with RangeKeyChanged()=true that is
+# then reconfigured to iterate over point keys should always return
+# RangeKeyChanged()=false.
+
+reset
+----
+
+batch commit
+range-key-set a b @1 foo
+set c c
+----
+committed 2 keys
+
+combined-iter
+seek-ge a
+set-options key-types=point
+seek-ge c
+----
+a: (., [a-b) @1=foo UPDATED)
+.
+c: (c, .)
+
+combined-iter
+seek-ge a
+set-options key-types=point
+seek-prefix-ge c
+----
+a: (., [a-b) @1=foo UPDATED)
+.
+c: (c, .)
+
+combined-iter
+seek-ge a
+set-options key-types=point
+seek-lt cat
+----
+a: (., [a-b) @1=foo UPDATED)
+.
+c: (c, .)
+
+combined-iter
+seek-ge a
+set-options key-types=point
+last
+----
+a: (., [a-b) @1=foo UPDATED)
+.
+c: (c, .)
+
+batch commit
+range-key-del a b
+range-key-set d e @1 foo
+----
+committed 2 keys
+
+combined-iter
+seek-ge d
+set-options key-types=point
+first
+----
+d: (., [d-e) @1=foo UPDATED)
+.
+c: (c, .)
+
