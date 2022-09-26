@@ -73,9 +73,9 @@ ap: (., [ap-c) @5=bar UPDATED)
 b: (b, [ap-c) @5=bar)
 c: (c, . UPDATED)
 .
-a:a
-b:b
-c:c
+a: (a, .)
+b: (b, .)
+c: (c, .)
 .
 
 # Test cloning an iterator that reads through an indexed batch.

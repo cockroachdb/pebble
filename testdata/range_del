@@ -88,22 +88,22 @@ seek-lt b
 seek-lt c
 seek-lt d
 ----
-a:d
-b:bcd
-c:d
+a: (d, .)
+b: (bcd, .)
+c: (d, .)
 .
-a:d
-b:bcd
-c:d
+a: (d, .)
+b: (bcd, .)
+c: (d, .)
 .
-c:d
-b:bcd
-a:d
+c: (d, .)
+b: (bcd, .)
+a: (d, .)
 .
 .
-a:d
-b:bcd
-c:d
+a: (d, .)
+b: (bcd, .)
+c: (d, .)
 
 iter seq=7
 first
@@ -121,20 +121,20 @@ seek-lt b
 seek-lt c
 seek-lt d
 ----
-a:d
-c:d
+a: (d, .)
+c: (d, .)
 .
-a:d
-c:d
-c:d
+a: (d, .)
+c: (d, .)
+c: (d, .)
 .
-c:d
-a:d
+c: (d, .)
+a: (d, .)
 .
 .
-a:d
-a:d
-c:d
+a: (d, .)
+a: (d, .)
+c: (d, .)
 
 # Multiple memtables.
 
@@ -230,22 +230,22 @@ seek-lt b
 seek-lt c
 seek-lt d
 ----
-a:d
-b:bcd
-c:d
+a: (d, .)
+b: (bcd, .)
+c: (d, .)
 .
-a:d
-b:bcd
-c:d
+a: (d, .)
+b: (bcd, .)
+c: (d, .)
 .
-c:d
-b:bcd
-a:d
+c: (d, .)
+b: (bcd, .)
+a: (d, .)
 .
 .
-a:d
-b:bcd
-c:d
+a: (d, .)
+b: (bcd, .)
+c: (d, .)
 
 iter seq=7
 first
@@ -263,20 +263,20 @@ seek-lt b
 seek-lt c
 seek-lt d
 ----
-a:d
-c:d
+a: (d, .)
+c: (d, .)
 .
-a:d
-c:d
-c:d
+a: (d, .)
+c: (d, .)
+c: (d, .)
 .
-c:d
-a:d
+c: (d, .)
+a: (d, .)
 .
 .
-a:d
-a:d
-c:d
+a: (d, .)
+a: (d, .)
+c: (d, .)
 
 # Overlapping range deletions in the same memtable.
 
@@ -374,15 +374,15 @@ prev
 prev
 prev
 ----
-a:1
-b:1
-c:1
-d:1
+a: (1, .)
+b: (1, .)
+c: (1, .)
+d: (1, .)
 .
-d:1
-c:1
-b:1
-a:1
+d: (1, .)
+c: (1, .)
+b: (1, .)
+a: (1, .)
 .
 
 iter seq=3
@@ -391,9 +391,9 @@ next
 last
 prev
 ----
-d:1
+d: (1, .)
 .
-d:1
+d: (1, .)
 .
 
 iter seq=5
@@ -404,11 +404,11 @@ last
 prev
 prev
 ----
-a:2
-d:2
+a: (2, .)
+d: (2, .)
 .
-d:2
-a:2
+d: (2, .)
+a: (2, .)
 .
 
 iter seq=7
@@ -421,13 +421,13 @@ prev
 prev
 prev
 ----
-a:3
-b:3
-d:3
+a: (3, .)
+b: (3, .)
+d: (3, .)
 .
-d:3
-b:3
-a:3
+d: (3, .)
+b: (3, .)
+a: (3, .)
 .
 
 iter seq=9
@@ -442,15 +442,15 @@ prev
 prev
 prev
 ----
-a:4
-b:4
-c:4
-d:4
+a: (4, .)
+b: (4, .)
+c: (4, .)
+d: (4, .)
 .
-d:4
-c:4
-b:4
-a:4
+d: (4, .)
+c: (4, .)
+b: (4, .)
+a: (4, .)
 .
 
 # Overlapping range deletions in different memtables. Note that the
@@ -550,15 +550,15 @@ prev
 prev
 prev
 ----
-a:1
-b:1
-c:1
-d:1
+a: (1, .)
+b: (1, .)
+c: (1, .)
+d: (1, .)
 .
-d:1
-c:1
-b:1
-a:1
+d: (1, .)
+c: (1, .)
+b: (1, .)
+a: (1, .)
 .
 
 iter seq=3
@@ -567,9 +567,9 @@ next
 last
 prev
 ----
-d:1
+d: (1, .)
 .
-d:1
+d: (1, .)
 .
 
 iter seq=5
@@ -580,11 +580,11 @@ last
 prev
 prev
 ----
-a:2
-d:2
+a: (2, .)
+d: (2, .)
 .
-d:2
-a:2
+d: (2, .)
+a: (2, .)
 .
 
 iter seq=7
@@ -597,13 +597,13 @@ prev
 prev
 prev
 ----
-a:3
-b:3
-d:3
+a: (3, .)
+b: (3, .)
+d: (3, .)
 .
-d:3
-b:3
-a:3
+d: (3, .)
+b: (3, .)
+a: (3, .)
 .
 
 iter seq=9
@@ -618,15 +618,15 @@ prev
 prev
 prev
 ----
-a:4
-b:4
-c:4
-d:4
+a: (4, .)
+b: (4, .)
+c: (4, .)
+d: (4, .)
 .
-d:4
-c:4
-b:4
-a:4
+d: (4, .)
+c: (4, .)
+b: (4, .)
+a: (4, .)
 .
 
 # User-key that spans tables in a level.
@@ -673,12 +673,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:1
-a:1
+a: (1, .)
+a: (1, .)
 .
-a:1
+a: (1, .)
 .
-a:1
+a: (1, .)
 
 iter seq=3
 first
@@ -688,12 +688,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:2
-a:2
+a: (2, .)
+a: (2, .)
 .
-a:2
+a: (2, .)
 .
-a:2
+a: (2, .)
 
 iter seq=4
 first
@@ -703,12 +703,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:3
-a:3
+a: (3, .)
+a: (3, .)
 .
-a:3
+a: (3, .)
 .
-a:3
+a: (3, .)
 
 define
 L1
@@ -752,12 +752,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:1
-a:1
+a: (1, .)
+a: (1, .)
 .
-a:1
+a: (1, .)
 .
-a:1
+a: (1, .)
 
 iter seq=3
 first
@@ -767,12 +767,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:12
-a:12
+a: (12, .)
+a: (12, .)
 .
-a:12
+a: (12, .)
 .
-a:12
+a: (12, .)
 
 iter seq=4
 first
@@ -782,12 +782,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:123
-a:123
+a: (123, .)
+a: (123, .)
 .
-a:123
+a: (123, .)
 .
-a:123
+a: (123, .)
 
 # User-key spread across multiple levels.
 
@@ -842,12 +842,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:1
-a:1
+a: (1, .)
+a: (1, .)
 .
-a:1
+a: (1, .)
 .
-a:1
+a: (1, .)
 
 iter seq=3
 first
@@ -857,12 +857,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:12
-a:12
+a: (12, .)
+a: (12, .)
 .
-a:12
+a: (12, .)
 .
-a:12
+a: (12, .)
 
 iter seq=4
 first
@@ -872,12 +872,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:123
-a:123
+a: (123, .)
+a: (123, .)
 .
-a:123
+a: (123, .)
 .
-a:123
+a: (123, .)
 
 iter seq=5
 first
@@ -887,12 +887,12 @@ last
 seek-lt a
 seek-lt b
 ----
-a:1234
-a:1234
+a: (1234, .)
+a: (1234, .)
 .
-a:1234
+a: (1234, .)
 .
-a:1234
+a: (1234, .)
 
 # Range deletions on multiple levels.
 define
@@ -978,21 +978,21 @@ prev
 prev
 prev
 ----
-a:1
-b:1
-c:1
-d:1
-d:1
-c:1
-b:1
-a:1
+a: (1, .)
+b: (1, .)
+c: (1, .)
+d: (1, .)
+d: (1, .)
+c: (1, .)
+b: (1, .)
+a: (1, .)
 
 iter seq=3
 first
 last
 ----
-d:2
-d:2
+d: (2, .)
+d: (2, .)
 
 iter seq=4
 first
@@ -1000,10 +1000,10 @@ next
 last
 prev
 ----
-a:3
-d:3
-d:3
-a:3
+a: (3, .)
+d: (3, .)
+d: (3, .)
+a: (3, .)
 
 iter seq=5
 first
@@ -1013,12 +1013,12 @@ last
 prev
 prev
 ----
-a:4
-b:4
-d:4
-d:4
-b:4
-a:4
+a: (4, .)
+b: (4, .)
+d: (4, .)
+d: (4, .)
+b: (4, .)
+a: (4, .)
 
 # Range deletions spanning tables within a level.
 
@@ -1091,21 +1091,21 @@ prev
 prev
 prev
 ----
-a:1
-b:1
-c:1
-d:1
-d:1
-c:1
-b:1
-a:1
+a: (1, .)
+b: (1, .)
+c: (1, .)
+d: (1, .)
+d: (1, .)
+c: (1, .)
+b: (1, .)
+a: (1, .)
 
 iter seq=3
 first
 last
 ----
-d:1
-d:1
+d: (1, .)
+d: (1, .)
 
 iter seq=4
 first
@@ -1117,14 +1117,14 @@ prev
 prev
 prev
 ----
-a:3
-b:3
-c:3
-d:3
-d:3
-c:3
-b:3
-a:3
+a: (3, .)
+b: (3, .)
+c: (3, .)
+d: (3, .)
+d: (3, .)
+c: (3, .)
+b: (3, .)
+a: (3, .)
 
 # Invalid LSM structure (range deletion at newer level covers newer
 # write at an older level). This LSM structure is not generated
@@ -1185,7 +1185,7 @@ iter seq=4
 seek-ge b
 next
 ----
-c:v
+c: (v, .)
 .
 
 # Reverse the above test: compact the left file containing the split range
@@ -1224,8 +1224,8 @@ seek-lt d
 prev
 prev
 ----
-c:v
-a:v
+c: (v, .)
+a: (v, .)
 .
 
 # A range tombstone straddles two sstables. One is compacted two

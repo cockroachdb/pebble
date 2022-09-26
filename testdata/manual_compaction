@@ -338,9 +338,9 @@ next
 next
 next
 ----
-a:2
-b:2
-z:1
+a: (2, .)
+b: (2, .)
+z: (1, .)
 .
 
 compact a-z
@@ -354,9 +354,9 @@ next
 next
 next
 ----
-a:2
-b:2
-z:1
+a: (2, .)
+b: (2, .)
+z: (1, .)
 .
 
 # Regresion test for a bug in sstable smallest boundary generation
@@ -402,8 +402,8 @@ first
 next
 next
 ----
-a:3
-c:4
+a: (3, .)
+c: (4, .)
 .
 
 # The bug allowed seeing b:1 during reverse iteration.
@@ -413,8 +413,8 @@ last
 prev
 prev
 ----
-c:4
-a:3
+c: (4, .)
+a: (3, .)
 .
 
 # This is a similar scenario to the one above. In older versions of Pebble this
@@ -454,9 +454,9 @@ next
 last
 prev
 ----
-a:4
+a: (4, .)
 .
-a:4
+a: (4, .)
 .
 
 # Similar to the preceding scenario, except the range tombstone has
@@ -493,11 +493,11 @@ last
 prev
 prev
 ----
-a:4
-b:3
+a: (4, .)
+b: (3, .)
 .
-b:3
-a:4
+b: (3, .)
+a: (4, .)
 .
 
 # Similar to the preceding scenario, except the range tombstone has
@@ -534,11 +534,11 @@ last
 prev
 prev
 ----
-a:4
-b:4
+a: (4, .)
+b: (4, .)
 .
-b:4
-a:4
+b: (4, .)
+a: (4, .)
 .
 
 # Test a scenario where the last point key in an sstable has a seqnum
@@ -565,7 +565,7 @@ iter
 last
 prev
 ----
-a:3
+a: (3, .)
 .
 
 compact a-e L1
@@ -581,7 +581,7 @@ iter
 last
 prev
 ----
-a:3
+a: (3, .)
 .
 
 # Test a scenario where the last point key in an sstable before the
@@ -1011,6 +1011,6 @@ first
 next
 next
 ----
-tmgc:barfoo
+tmgc: (barfoo, .)
 .
 .

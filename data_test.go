@@ -314,7 +314,7 @@ func printIterState(
 		fmt.Fprintf(b, "err=%v\n", err)
 	} else if validity == IterValid {
 		switch {
-		case iter.opts.rangeKeys() && iter.opts.pointKeys():
+		case iter.opts.pointKeys():
 			hasPoint, hasRange := iter.HasPointAndRange()
 			fmt.Fprintf(b, "%s:%s (", iter.Key(), validityStateStr)
 			if hasPoint {
@@ -333,7 +333,7 @@ func printIterState(
 				fmt.Fprint(b, " UPDATED")
 			}
 			fmt.Fprint(b, ")")
-		case iter.opts.rangeKeys():
+		default:
 			if iter.Valid() {
 				hasPoint, hasRange := iter.HasPointAndRange()
 				if hasPoint || !hasRange {
@@ -348,8 +348,6 @@ func printIterState(
 			if iter.RangeKeyChanged() {
 				fmt.Fprint(b, " UPDATED")
 			}
-		default:
-			fmt.Fprintf(b, "%s:%s%s", iter.Key(), iter.Value(), validityStateStr)
 		}
 		fmt.Fprintln(b)
 	} else {
