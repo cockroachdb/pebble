@@ -6,8 +6,8 @@ iter label=first
 first
 next
 ----
-bb@29:bb@29
-bc@30:bc@30
+bb@29: (bb@29, .)
+bc@30: (bc@30, .)
 
 # Clone an iterator from the original iterator. The clone should have its own
 # copy of the bounds.
@@ -21,8 +21,8 @@ iter label=second
 last
 prev
 ----
-fo@150:fo@150
-fn@149:fn@149
+fo@150: (fo@150, .)
+fn@149: (fn@149, .)
 
 # Changing the bounds on the original should leave the clone's bounds unchanged.
 
@@ -34,12 +34,12 @@ second: ("bar", "foo") boundsBufIdx=1
 iter label=first
 seek-ge goop
 ----
-gp@178:gp@178
+gp@178: (gp@178, .)
 
 iter label=second
 prev
 ----
-fm@148:fm@148
+fm@148: (fm@148, .)
 
 set-bounds label=first lower=boop upper=bop
 ----

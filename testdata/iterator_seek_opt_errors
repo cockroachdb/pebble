@@ -14,11 +14,11 @@ seek-ge aaa
 seek-ge b
 seek-ge bb
 ----
-b:b
-b:b
-b:b
-b:b
-c:c
+b: (b, .)
+b: (b, .)
+b: (b, .)
+b: (b, .)
+c: (c, .)
 
 iter
 seek-lt ddd
@@ -27,11 +27,11 @@ seek-lt dd
 seek-lt d
 seek-lt c
 ----
-d:d
-d:d
-d:d
-c:c
-b:b
+d: (d, .)
+d: (d, .)
+d: (d, .)
+c: (c, .)
+b: (b, .)
 
 # Exercise errors which should prevent seek optimizations.
 
@@ -43,8 +43,8 @@ seek-ge d
 ----
 err=injecting error
 err=injecting error
-c:c
-d:d
+c: (c, .)
+d: (d, .)
 
 iter seek-error=(1)
 seek-ge d
@@ -52,10 +52,10 @@ seek-ge a
 seek-ge b
 seek-ge b
 ----
-d:d
+d: (d, .)
 err=injecting error
-b:b
-b:b
+b: (b, .)
+b: (b, .)
 
 iter seek-error=(0,1)
 seek-lt e
@@ -65,23 +65,23 @@ seek-lt b
 ----
 err=injecting error
 err=injecting error
-b:b
-a:a
+b: (b, .)
+a: (a, .)
 
 iter seek-error=(1)
 seek-lt b
 seek-lt e
 seek-lt e
 ----
-a:a
+a: (a, .)
 err=injecting error
-d:d
+d: (d, .)
 
 iter seek-error=(1)
 seek-prefix-ge d
 seek-prefix-ge a
 seek-prefix-ge b
 ----
-d:d
+d: (d, .)
 err=injecting error
-b:b
+b: (b, .)

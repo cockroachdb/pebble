@@ -58,8 +58,8 @@ seek-ge a
 next
 next
 ----
-a:1
-b:2
+a: (1, .)
+b: (2, .)
 .
 
 get
@@ -97,7 +97,7 @@ iter
 seek-ge a
 next
 ----
-a:3
+a: (3, .)
 .
 
 get
@@ -130,9 +130,9 @@ seek-ge a
 next
 next
 ----
-a:4
-b:5
-c:6
+a: (4, .)
+b: (5, .)
+c: (6, .)
 
 get
 a
@@ -167,8 +167,8 @@ seek-ge a
 next
 next
 ----
-a:4
-b:55
+a: (4, .)
+b: (55, .)
 .
 
 get
@@ -205,9 +205,9 @@ seek-lt y
 prev
 prev
 ----
-x:7
-b:55
-a:4
+x: (7, .)
+b: (55, .)
+a: (4, .)
 
 get
 x
@@ -249,8 +249,8 @@ iter
 seek-ge j
 next
 ----
-j:9
-k:11
+j: (9, .)
+k: (11, .)
 
 get
 j

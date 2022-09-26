@@ -24,12 +24,12 @@ next
 next
 next
 ----
-a01:a
-b02:b
-c03:c
-d04:d
-e05:e
-f06:f
+a01: (a, .)
+b02: (b, .)
+c03: (c, .)
+d04: (d, .)
+e05: (e, .)
+f06: (f, .)
 .
 
 # Iterate with a filter interval [1,2) that selects a key at the beginning of
@@ -47,17 +47,17 @@ seek-ge a
 seek-ge b
 prev
 ----
-a01:a
+a01: (a, .)
 .
-a01:a
+a01: (a, .)
 .
-a01:a
+a01: (a, .)
 .
-a01:a
-a01:a
-a01:a
+a01: (a, .)
+a01: (a, .)
+a01: (a, .)
 .
-a01:a
+a01: (a, .)
 
 # Iterate with a filter interval [3,5) that selects keys in the middle of the
 # file.
@@ -81,23 +81,23 @@ prev
 prev
 prev
 ----
-c03:c
-d04:d
+c03: (c, .)
+d04: (d, .)
 .
-d04:d
-c03:c
+d04: (d, .)
+c03: (c, .)
 .
-d04:d
-c03:c
-d04:d
-c03:c
+d04: (d, .)
+c03: (c, .)
+d04: (d, .)
+c03: (c, .)
 .
-d04:d
-c03:c
-d04:d
+d04: (d, .)
+c03: (c, .)
+d04: (d, .)
 .
-d04:d
-c03:c
+d04: (d, .)
+c03: (c, .)
 .
 
 # Iterate with a filter interval [6,8) that selects a key at the end of the
@@ -113,15 +113,15 @@ prev
 seek-lt g
 seek-ge b
 ----
-f06:f
+f06: (f, .)
 .
-f06:f
+f06: (f, .)
 .
-f06:f
-f06:f
+f06: (f, .)
+f06: (f, .)
 .
-f06:f
-f06:f
+f06: (f, .)
+f06: (f, .)
 
 iter id_lower_upper=(2,2,2)
 first
@@ -170,12 +170,12 @@ next
 next
 next
 ----
-a01:a
-b02:b
-c03:c
-d04:d
-e05:e
-f06:f
+a01: (a, .)
+b02: (b, .)
+c03: (c, .)
+d04: (d, .)
+e05: (e, .)
+f06: (f, .)
 .
 
 # Build a table with two interval collectors:
@@ -202,11 +202,11 @@ next
 next
 next
 ----
-a1001:a
-b0902:b
-c0803:c
-d0704:d
-e0605:e
+a1001: (a, .)
+b0902: (b, .)
+c0803: (c, .)
+d0704: (d, .)
+e0605: (e, .)
 .
 
 # Iterate with filter id=5, interval [7,9).
@@ -217,11 +217,11 @@ next
 prev
 prev
 ----
-c0803:c
-d0704:d
+c0803: (c, .)
+d0704: (d, .)
 .
-d0704:d
-c0803:c
+d0704: (d, .)
+c0803: (c, .)
 
 # Iterate with filter id=5, interval [7,9), and an unknown filter id. The
 # result should only be affected by the filter id=5.
@@ -232,11 +232,11 @@ next
 prev
 prev
 ----
-c0803:c
-d0704:d
+c0803: (c, .)
+d0704: (d, .)
 .
-d0704:d
-c0803:c
+d0704: (d, .)
+c0803: (c, .)
 
 # Iterate with filter id=3, interval [4,5) and filter id=5, interval [7,9).
 # The set of blocks admitted by these two filters are intersecting, but not
@@ -248,9 +248,9 @@ next
 prev
 prev
 ----
-d0704:d
+d0704: (d, .)
 .
-d0704:d
+d0704: (d, .)
 .
 
 # Repeat the above test, but calling set-options before iteration to set the
@@ -263,9 +263,9 @@ prev
 prev
 ----
 .
-d0704:d
+d0704: (d, .)
 .
-d0704:d
+d0704: (d, .)
 .
 
 # Repeat the above test, but calling set-options before iteration to remove the
@@ -278,9 +278,9 @@ prev
 prev
 ----
 .
-a1001:a
-b0902:b
-a1001:a
+a1001: (a, .)
+b0902: (b, .)
+a1001: (a, .)
 .
 
 

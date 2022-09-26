@@ -14,8 +14,8 @@ next
 next
 stats
 ----
-a:1
-c:2
+a: (1, .)
+c: (2, .)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)),
 (internal-stats: (block-bytes: (total 56 B, cached 56 B)), (points: (count 2, key-bytes 2, value-bytes 2, tombstoned: 0))
@@ -29,8 +29,8 @@ next
 next
 stats
 ----
-a:1
-c:2
+a: (1, .)
+c: (2, .)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)),
 (internal-stats: (block-bytes: (total 56 B, cached 56 B)), (points: (count 2, key-bytes 2, value-bytes 2, tombstoned: 0))
