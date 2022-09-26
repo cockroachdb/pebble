@@ -43,7 +43,7 @@ iter
 first
 prev
 ----
-a:1
+a: (1, .)
 .
 
 reset
@@ -94,7 +94,7 @@ iter
 last
 next
 ----
-z:2
+z: (2, .)
 .
 
 # Verify that switching from reverse iteration to forward iteration
@@ -136,7 +136,7 @@ last
 next
 ----
 .
-e:e
+e: (e, .)
 .
 
 # Test that the cloned iterator sees all the keys.
@@ -151,12 +151,12 @@ next
 next
 ----
 .
-b:b
-e:e
+b: (b, .)
+e: (e, .)
 .
 .
-b:b
-e:e
+b: (b, .)
+e: (e, .)
 .
 
 # Test that the cloned iterator respects the original bounds.
@@ -169,10 +169,10 @@ seek-ge a
 next
 ----
 .
-b:b
+b: (b, .)
 .
 .
-b:b
+b: (b, .)
 .
 
 # Test that a cloned iterator set with new bounds, respects the new bounds and
@@ -186,7 +186,7 @@ seek-ge a
 next
 ----
 .
-b:b
+b: (b, .)
 .
 .
 b: (b, .)
@@ -202,10 +202,10 @@ last
 prev
 ----
 .
-e:e
+e: (e, .)
 .
 .
-e:e
+e: (e, .)
 .
 
 # Verify that switching from forward iteration to reverse iteration
@@ -241,7 +241,7 @@ first
 prev
 ----
 .
-a:a
+a: (a, .)
 .
 
 reset
@@ -274,5 +274,5 @@ iter
 first
 next
 ----
-a:1
+a: (1, .)
 .

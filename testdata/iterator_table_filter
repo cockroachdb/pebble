@@ -20,29 +20,29 @@ L3
 iter
 first
 ----
-a:4
+a: (4, .)
 
 # Only scan tables with min-seq-num < filter.
 
 iter filter=5
 first
 ----
-a:4
+a: (4, .)
 
 iter filter=4
 first
 ----
-a:3
+a: (3, .)
 
 iter filter=3
 first
 ----
-a:2
+a: (2, .)
 
 iter filter=2
 first
 ----
-a:1
+a: (1, .)
 
 iter filter=1
 first
@@ -59,8 +59,8 @@ first
 set-options table-filter=none
 first
 ----
-a:3
+a: (3, .)
 .
-a:3
+a: (3, .)
 .
-a:4
+a: (4, .)
