@@ -296,6 +296,9 @@ type iteratorRangeKeyState struct {
 	// `RangeKeyChanged` method. It's set to true during an Iterator positioning
 	// operation that changes the state of the current range key. Each Iterator
 	// positioning operation sets it back to false before executing.
+	//
+	// TODO(jackson): The lifecycle of {stale,updated,prevPosHadRangeKey} is
+	// intricate and confusing. Try to refactor to reduce complexity.
 	updated bool
 	// prevPosHadRangeKey records whether the previous Iterator position had a
 	// range key (HasPointAndRage() = (_, true)). It's updated at the beginning
@@ -1023,7 +1026,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 		// The remainder of this function will only update i.rangeKey.updated if
 		// the iterator moves into a new range key, or out of the current range
 		// key.
-		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid()
+		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid() && i.opts.rangeKeys()
 	}
 	lastPositioningOp := i.lastPositioningOp
 	hasPrefix := i.hasPrefix
@@ -1183,7 +1186,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 		// The remainder of this function will only update i.rangeKey.updated if
 		// the iterator moves into a new range key, or out of the current range
 		// key.
-		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid()
+		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid() && i.opts.rangeKeys()
 	}
 	lastPositioningOp := i.lastPositioningOp
 	// Set it to unknown, since this operation may not succeed, in which case
@@ -1309,7 +1312,7 @@ func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 		// The remainder of this function will only update i.rangeKey.updated if
 		// the iterator moves into a new range key, or out of the current range
 		// key.
-		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid()
+		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid() && i.opts.rangeKeys()
 	}
 	lastPositioningOp := i.lastPositioningOp
 	// Set it to unknown, since this operation may not succeed, in which case
@@ -1385,7 +1388,7 @@ func (i *Iterator) First() bool {
 		// The remainder of this function will only update i.rangeKey.updated if
 		// the iterator moves into a new range key, or out of the current range
 		// key.
-		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid()
+		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid() && i.opts.rangeKeys()
 	}
 	i.err = nil // clear cached iteration error
 	i.hasPrefix = false
@@ -1422,7 +1425,7 @@ func (i *Iterator) Last() bool {
 		// The remainder of this function will only update i.rangeKey.updated if
 		// the iterator moves into a new range key, or out of the current range
 		// key.
-		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid()
+		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid() && i.opts.rangeKeys()
 	}
 	i.err = nil // clear cached iteration error
 	i.hasPrefix = false
@@ -1492,7 +1495,7 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 		// The remainder of this function will only update i.rangeKey.updated if
 		// the iterator moves into a new range key, or out of the current range
 		// key.
-		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid()
+		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid() && i.opts.rangeKeys()
 	}
 	i.lastPositioningOp = unknownLastPositionOp
 	i.requiresReposition = false
@@ -1592,7 +1595,7 @@ func (i *Iterator) PrevWithLimit(limit []byte) IterValidityState {
 		// The remainder of this function will only update i.rangeKey.updated if
 		// the iterator moves into a new range key, or out of the current range
 		// key.
-		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid()
+		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid() && i.opts.rangeKeys()
 	}
 	i.lastPositioningOp = unknownLastPositionOp
 	i.requiresReposition = false
