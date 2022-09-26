@@ -1540,11 +1540,14 @@ func (i *twoLevelIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*Internal
 			}
 			// Fall through to skipForward.
 			dontSeekWithinSingleLevelIter = true
-			// Clear boundsCmp. Normally, singleLevelIterator.SeekGE will clear
-			// it, but if we're skipping an index block altogether, it's
-			// possible we'll return without ever seeking within the
-			// single-level iterator, in which case boundsCmp may be improperly
-			// left == 0.
+			// Clear boundsCmp.
+			//
+			// In the typical cases where dontSeekWithinSingleLevelIter=false,
+			// the singleLevelIterator.SeekGE call will clear boundsCmp.
+			// However, in this case where dontSeekWithinSingleLevelIter=true,
+			// we never seek on the single-level iterator. This call will fall
+			// through to skipForward, which may improperly leave boundsCmp=+1
+			// unless we clear it here.
 			i.boundsCmp = 0
 		}
 	}
@@ -1665,11 +1668,14 @@ func (i *twoLevelIterator) SeekPrefixGE(
 			}
 			// Fall through to skipForward.
 			dontSeekWithinSingleLevelIter = true
-			// Clear boundsCmp. Normally, singleLevelIterator.SeekPrefixGE will
-			// clear it, but if we're skipping this index block altogether, it's
-			// possible we'll return without ever seeking within the
-			// single-level iterator, in which case boundsCmp may be improperly
-			// left == 0.
+			// Clear boundsCmp.
+			//
+			// In the typical cases where dontSeekWithinSingleLevelIter=false,
+			// the singleLevelIterator.SeekPrefixGE call will clear boundsCmp.
+			// However, in this case where dontSeekWithinSingleLevelIter=true,
+			// we never seek on the single-level iterator. This call will fall
+			// through to skipForward, which may improperly leave boundsCmp=+1
+			// unless we clear it here.
 			i.boundsCmp = 0
 		}
 	}
