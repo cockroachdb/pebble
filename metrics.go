@@ -227,6 +227,9 @@ type Metrics struct {
 		BytesWritten uint64
 	}
 
+	// The current number of manually-allocated bytes
+	ManualAllocSize uint64
+
 	private struct {
 		optionsFileSize  uint64
 		manifestFileSize uint64
