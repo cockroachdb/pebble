@@ -887,22 +887,27 @@ func TestCompactionTransform(t *testing.T) {
 }
 
 type cpuPermissionGranter struct {
-	granted int
-	used    bool
+	granted  time.Duration
+	returned time.Duration
+	used     bool
 }
 
-func (t *cpuPermissionGranter) TryGetProcs(count int) int {
-	t.granted += count
+type cpuWorkHandle struct {
+	dur time.Duration
+}
+
+func (t *cpuPermissionGranter) TryGetHandle(dur time.Duration) CPUWorkHandle {
+	t.granted += dur
 	t.used = true
-	return count
+	return cpuWorkHandle{dur}
 }
 
-func (t *cpuPermissionGranter) ReturnProcs(count int) {
-	t.granted -= count
+func (t *cpuPermissionGranter) ReturnHandle(h CPUWorkHandle) {
+	t.returned += h.(cpuWorkHandle).dur
 }
 
-// Simple test to check if compactions are using the granter, and if exactly the
-// used slots are being freed.
+// Simple test to check if compactions are using the granter, and if exactly
+// the acquired handles are returned.
 func TestCompactionSlots(t *testing.T) {
 	mem := vfs.NewMem()
 	opts := &Options{
@@ -922,7 +927,7 @@ func TestCompactionSlots(t *testing.T) {
 		t.Fatalf("Compact: %v", err)
 	}
 	require.True(t, g.used)
-	require.Equal(t, 0, g.granted)
+	require.Equal(t, g.returned, g.granted)
 }
 
 func TestCompaction(t *testing.T) {
