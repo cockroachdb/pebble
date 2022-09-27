@@ -2113,7 +2113,6 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 				if i.batch.countRangeDels == 0 {
 					// No range deletions exist in the batch. We only need to
 					// update the batchIter's snapshot.
-					i.invalidate()
 				} else if i.batchRangeDelIter.Count() == 0 {
 					// When we constructed this iterator, there were no
 					// rangedels in the batch. Iterator construction will have
