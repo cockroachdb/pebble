@@ -237,6 +237,26 @@ type Iterator struct {
 	// Used for deriving the value of SeekPrefixGE(..., trySeekUsingNext),
 	// and SeekGE/SeekLT optimizations
 	lastPositioningOp lastPositioningOpKind
+	// Used for determining when it's safe to perform SeekGE optimizations that
+	// reuse the iterator state to avoid the cost of a full seek if the iterator
+	// is already positioned in the correct place. If the iterator's view of its
+	// indexed batch was just refreshed, some optimizations cannot be applied on
+	// the first seek after the refresh:
+	// - SeekGE has a no-op optimization that does not seek on the internal
+	//   iterator at all if the iterator is already in the correct place.
+	//   This optimization cannot be performed if the internal iterator was
+	//   last positioned when the iterator had a different view of an
+	//   underlying batch.
+	// - Seek[Prefix]GE set flags.TrySeekUsingNext()=true when the seek key is
+	//   greater than the previous operation's seek key, under the expectation
+	//   that the various internal iterators can use their current position to
+	//   avoid a full expensive re-seek. This applies to the batchIter as well.
+	//   However, if the view of the batch was just refreshed, the batchIter's
+	//   position is not useful because it may already be beyond new keys less
+	//   than the seek key. To prevent the use of this optimization in
+	//   batchIter, Seek[Prefix]GE set flags.BatchJustRefreshed()=true if this
+	//   bit is enabled.
+	batchJustRefreshed bool
 	// Used for an optimization in external iterators to reduce the number of
 	// merging levels.
 	forwardOnly bool
@@ -1044,20 +1064,23 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 		key = upperBound
 	}
 	seekInternalIter := true
+
 	var flags base.SeekGEFlags
-	// The following noop optimization only applies when i.batch == nil, since
-	// an iterator over a batch is iterating over mutable data, that may have
-	// changed since the last seek.
-	if lastPositioningOp == seekGELastPositioningOp && i.batch == nil {
+	if i.batchJustRefreshed {
+		i.batchJustRefreshed = false
+		flags = flags.EnableBatchJustRefreshed()
+	}
+	if lastPositioningOp == seekGELastPositioningOp {
 		cmp := i.cmp(i.prefixOrFullSeekKey, key)
 		// If this seek is to the same or later key, and the iterator is
 		// already positioned there, this is a noop. This can be helpful for
 		// sparse key spaces that have many deleted keys, where one can avoid
 		// the overhead of iterating past them again and again.
 		if cmp <= 0 {
-			if i.iterValidityState == IterExhausted ||
-				(i.iterValidityState == IterValid && i.cmp(key, i.key) <= 0 &&
-					(limit == nil || i.cmp(i.key, limit) < 0)) {
+			if !flags.BatchJustRefreshed() &&
+				(i.iterValidityState == IterExhausted ||
+					(i.iterValidityState == IterValid && i.cmp(key, i.key) <= 0 &&
+						(limit == nil || i.cmp(i.key, limit) < 0))) {
 				// Noop
 				if !invariants.Enabled || !disableSeekOpt(key, uintptr(unsafe.Pointer(i))) || i.forceEnableSeekOpt {
 					i.lastPositioningOp = seekGELastPositioningOp
@@ -1083,7 +1106,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 			if invariants.Enabled && flags.TrySeekUsingNext() && !i.forceEnableSeekOpt && disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
 				flags = flags.DisableTrySeekUsingNext()
 			}
-			if i.pos == iterPosCurForwardPaused && i.cmp(key, i.iterKey.UserKey) <= 0 {
+			if !flags.BatchJustRefreshed() && i.pos == iterPosCurForwardPaused && i.cmp(key, i.iterKey.UserKey) <= 0 {
 				// Have some work to do, but don't need to seek, and we can
 				// start doing findNextEntry from i.iterKey.
 				seekInternalIter = false
@@ -1114,7 +1137,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 	}
 	i.findNextEntry(limit)
 	i.maybeSampleRead()
-	if i.Error() == nil && i.batch == nil {
+	if i.Error() == nil {
 		// Prepare state for a future noop optimization.
 		i.prefixOrFullSeekKey = append(i.prefixOrFullSeekKey[:0], key...)
 		i.lastPositioningOp = seekGELastPositioningOp
@@ -1193,6 +1216,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	// the SeekPrefixGE following this should not make any assumption about
 	// iterator position.
 	i.lastPositioningOp = unknownLastPositionOp
+	i.batchJustRefreshed = false
 	i.requiresReposition = false
 	i.err = nil // clear cached iteration error
 	i.stats.ForwardSeekCount[InterfaceCall]++
@@ -1319,6 +1343,7 @@ func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 	// the SeekLT following this should not make any assumption about iterator
 	// position.
 	i.lastPositioningOp = unknownLastPositionOp
+	i.batchJustRefreshed = false
 	i.requiresReposition = false
 	i.err = nil // clear cached iteration error
 	i.stats.ReverseSeekCount[InterfaceCall]++
@@ -1392,6 +1417,7 @@ func (i *Iterator) First() bool {
 	}
 	i.err = nil // clear cached iteration error
 	i.hasPrefix = false
+	i.batchJustRefreshed = false
 	i.lastPositioningOp = unknownLastPositionOp
 	i.requiresReposition = false
 	i.stats.ForwardSeekCount[InterfaceCall]++
@@ -1429,6 +1455,7 @@ func (i *Iterator) Last() bool {
 	}
 	i.err = nil // clear cached iteration error
 	i.hasPrefix = false
+	i.batchJustRefreshed = false
 	i.lastPositioningOp = unknownLastPositionOp
 	i.requiresReposition = false
 	i.stats.ReverseSeekCount[InterfaceCall]++
@@ -2109,31 +2136,31 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 			if i.merging != nil {
 				i.merging.batchSnapshot = nextBatchSeqNum
 			}
-			if i.pointIter != nil {
-				if i.batch.countRangeDels == 0 {
-					// No range deletions exist in the batch. We only need to
-					// update the batchIter's snapshot.
-					i.invalidate()
-				} else if i.batchRangeDelIter.Count() == 0 {
+			// Prevent a no-op seek optimization on the next seek. We won't be
+			// able to reuse the top-level Iterator state, because it may be
+			// incorrect after the inclusion of new batch mutations.
+			i.batchJustRefreshed = true
+			if i.pointIter != nil && i.batch.countRangeDels > 0 {
+				if i.batchRangeDelIter.Count() == 0 {
 					// When we constructed this iterator, there were no
-					// rangedels in the batch. Iterator construction will have
-					// excluded the batch rangedel iterator from the point
-					// iterator stack. We need to reconstruct the point iterator
-					// to add i.batchRangeDelIter into the iterator stack.
+					// rangedels in the batch. Iterator construction will
+					// have excluded the batch rangedel iterator from the
+					// point iterator stack. We need to reconstruct the
+					// point iterator to add i.batchRangeDelIter into the
+					// iterator stack.
 					i.err = firstError(i.err, i.pointIter.Close())
 					i.pointIter = nil
 				} else {
 					// There are range deletions in the batch and we already
-					// have a batch rangedel iterator. We can update the batch
-					// rangedel iterator in place.
+					// have a batch rangedel iterator. We can update the
+					// batch rangedel iterator in place.
 					//
-					// NB: There may or may not be new range deletions. We can't
-					// tell based on i.batchRangeDelIter.Count(), which is the
-					// count of fragmented range deletions, NOT the number of
-					// range deletions written to the batch
+					// NB: There may or may not be new range deletions. We
+					// can't tell based on i.batchRangeDelIter.Count(),
+					// which is the count of fragmented range deletions, NOT
+					// the number of range deletions written to the batch
 					// [i.batch.countRangeDels].
 					i.batch.initRangeDelIter(&i.opts, &i.batchRangeDelIter, nextBatchSeqNum)
-					i.invalidate()
 				}
 			}
 			if i.rangeKey != nil && i.batch.countRangeKeys > 0 {
