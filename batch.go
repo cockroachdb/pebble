@@ -1266,10 +1266,13 @@ func (i *batchIter) String() string {
 }
 
 func (i *batchIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
-	// Ignore trySeekUsingNext since the batch may have changed, so using Next
-	// would be incorrect.
+	// Ignore TrySeekUsingNext if the view of the batch changed.
+	if flags.TrySeekUsingNext() && flags.BatchJustRefreshed() {
+		flags = flags.DisableTrySeekUsingNext()
+	}
+
 	i.err = nil // clear cached iteration error
-	ikey := i.iter.SeekGE(key)
+	ikey := i.iter.SeekGE(key, flags)
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Next()
 	}

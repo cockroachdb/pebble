@@ -47,7 +47,31 @@ func (it *Iterator) Close() error {
 // entry and false otherwise. Note that SeekGE only checks the upper bound. It
 // is up to the caller to ensure that key is greater than or equal to the lower
 // bound.
-func (it *Iterator) SeekGE(key []byte) *base.InternalKey {
+func (it *Iterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKey {
+	if flags.TrySeekUsingNext() {
+		if it.nd == it.list.tail {
+			// Iterator is done.
+			return nil
+		}
+		less := it.list.cmp(it.key.UserKey, key) < 0
+		// Arbitrary constant. By measuring the seek cost as a function of the
+		// number of elements in the skip list, and fitting to a model, we
+		// could adjust the number of nexts based on the current size of the
+		// skip list.
+		const numNexts = 5
+		for i := 0; less && i < numNexts; i++ {
+			k := it.Next()
+			if k == nil {
+				// Iterator is done.
+				return nil
+			}
+			less = it.list.cmp(k.UserKey, key) < 0
+		}
+		if !less {
+			return &it.key
+		}
+	}
+
 	_, it.nd = it.seekForBaseSplice(key, it.list.abbreviatedKey(key))
 	if it.nd == it.list.tail {
 		return nil

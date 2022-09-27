@@ -190,6 +190,7 @@ type SeekGEFlags uint8
 const (
 	seekGEFlagTrySeekUsingNext uint8 = iota
 	seekGEFlagRelativeSeek
+	seekGEFlagBatchJustRefreshed
 )
 
 // SeekGEFlagsNone is the default value of SeekGEFlags, with all flags disabled.
@@ -234,6 +235,13 @@ func (s SeekGEFlags) TrySeekUsingNext() bool { return (s & (1 << seekGEFlagTrySe
 // iterator position and the new seeked position.
 func (s SeekGEFlags) RelativeSeek() bool { return (s & (1 << seekGEFlagRelativeSeek)) != 0 }
 
+// BatchJustRefreshed is set by Seek[Prefix]GE when an iterator's view of an
+// indexed batch was just refreshed. It serves as a signal to the batch iterator
+// to ignore the TrySeekUsingNext optimization, because the external knowledge
+// imparted by the TrySeekUsingNext flag does not apply to the batch iterator's
+// position. See (pebble.Iterator).batchJustRefreshed.
+func (s SeekGEFlags) BatchJustRefreshed() bool { return (s & (1 << seekGEFlagBatchJustRefreshed)) != 0 }
+
 // EnableTrySeekUsingNext returns the provided flags with the
 // try-seek-using-next optimization enabled. See TrySeekUsingNext for an
 // explanation of this optimization.
@@ -257,6 +265,19 @@ func (s SeekGEFlags) EnableRelativeSeek() SeekGEFlags {
 // disabled.
 func (s SeekGEFlags) DisableRelativeSeek() SeekGEFlags {
 	return s &^ (1 << seekGEFlagRelativeSeek)
+}
+
+// EnableBatchJustRefreshed returns the provided flags with the
+// batch-just-refreshed bit set. See BatchJustRefreshed for an explanation of
+// this flag.
+func (s SeekGEFlags) EnableBatchJustRefreshed() SeekGEFlags {
+	return s | (1 << seekGEFlagBatchJustRefreshed)
+}
+
+// DisableBatchJustRefreshed returns the provided flags with the
+// batch-just-refreshed bit unset.
+func (s SeekGEFlags) DisableBatchJustRefreshed() SeekGEFlags {
+	return s &^ (1 << seekGEFlagBatchJustRefreshed)
 }
 
 // SeekLTFlags holds flags that may configure the behavior of a reverse seek.

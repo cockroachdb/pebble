@@ -51,7 +51,7 @@ func (i *iterAdapter) verify(key *base.InternalKey) bool {
 }
 
 func (i *iterAdapter) SeekGE(key []byte) bool {
-	return i.verify(i.Iterator.SeekGE(key))
+	return i.verify(i.Iterator.SeekGE(key, base.SeekGEFlagsNone))
 }
 
 func (i *iterAdapter) SeekLT(key []byte) bool {
@@ -462,7 +462,7 @@ func BenchmarkReadWrite(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				key := randomKey(rng, buf[:])
 				if rng.Float32() < readFrac {
-					_ = it.SeekGE(key)
+					_ = it.SeekGE(key, base.SeekGEFlagsNone)
 				} else {
 					offset := d.addBytes(buf[:])
 					_ = l.Add(offset)

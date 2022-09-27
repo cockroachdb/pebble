@@ -124,6 +124,29 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			validityState = iter.SeekLTWithLimit(
 				[]byte(parts[1]), []byte(parts[2]))
 			printValidityState = true
+		case "inspect":
+			if len(parts) != 2 {
+				return "inspect <field>\n"
+			}
+			field := parts[1]
+			switch field {
+			case "lastPositioningOp":
+				op := "?"
+				switch iter.lastPositioningOp {
+				case unknownLastPositionOp:
+					op = "unknown"
+				case seekPrefixGELastPositioningOp:
+					op = "seekprefixge"
+				case seekGELastPositioningOp:
+					op = "seekge"
+				case seekLTLastPositioningOp:
+					op = "seeklt"
+				}
+				fmt.Fprintf(&b, "%s=%q\n", field, op)
+			default:
+				return fmt.Sprintf("unrecognized inspect field %q\n", field)
+			}
+			continue
 		case "next-limit":
 			if len(parts) != 2 {
 				return "next-limit <limit>\n"
