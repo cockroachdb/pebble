@@ -25,6 +25,12 @@ func TestFlags(t *testing.T) {
 				func() { f = f.EnableRelativeSeek() },
 				func() { f = f.DisableRelativeSeek() },
 			},
+			{
+				"BatchJustRefreshed",
+				func() bool { return f.BatchJustRefreshed() },
+				func() { f = f.EnableBatchJustRefreshed() },
+				func() { f = f.DisableBatchJustRefreshed() },
+			},
 		}
 		ref := make([]bool, len(flags))
 		checkCombination(t, 0, flags, ref)
