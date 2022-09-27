@@ -69,11 +69,6 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 		return err
 	}
 
-	// Update the size estimates after writing the data block to disk.
-	w.writer.coordination.sizeEstimate.dataBlockWritten(
-		w.writer.meta.Size, task.inflightSize, int(bh.Length),
-	)
-
 	bhp = BlockHandleWithProperties{BlockHandle: bh, Props: task.buf.dataBlockProps}
 	if err = w.writer.addIndexEntry(
 		task.indexEntrySep, bhp, task.buf.tmp[:], task.flushableIndexBlock, task.currIndexBlock,
