@@ -159,3 +159,186 @@ a: (a, [a-b) @9=v UPDATED)
 .
 d@5: (., [d-"d\x00") @9=v UPDATED)
 b: (b, [b-e) @9=v UPDATED)
+
+# Test TrySeekUsingNext across no-op SetOptions when reading through an indexed
+# batch with modifications. The seek-prefix-ges after the first should make use
+# of the TrySeekUsingNext optimization.
+#
+# TODO(jackson): The iterator stats don't signal the use of try-seek-using-next,
+# so we inspect lastPositioningOp as a proxy since that's the
+# try-seek-using-next prerequisite that previously regressed. Is there a way to
+# adapt to this test so that the absence of the try-seek-using-next optimization
+# is visible in the iterator statistics?
+#
+# Regression test for cockroachdb/cockroach#88819.
+
+reset
+----
+
+batch commit
+set b@5 b@5
+set c@3 c@3
+set d@9 d@9
+set e@8 e@8
+set f@8 f@8
+----
+committed 5 keys
+
+flush
+----
+
+batch name=foo
+set g@4 g@4
+----
+wrote 1 keys to batch "foo"
+
+combined-iter reader=foo name=fooiter
+inspect lastPositioningOp
+seek-prefix-ge b@10
+stats
+----
+lastPositioningOp="unknown"
+b@5: (b@5, .)
+stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)),
+(internal-stats: (block-bytes: (total 120 B, cached 0 B)), (points: (count 1, key-bytes 3, value-bytes 3, tombstoned: 0))
+
+mutate batch=foo
+set h@2 h@2
+----
+
+iter iter=fooiter
+set-options
+inspect lastPositioningOp
+seek-prefix-ge c@10
+stats
+----
+.
+lastPositioningOp="seekprefixge"
+c@3: (c@3, .)
+stats: (interface (dir, seek, step): (fwd, 2, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 2, 0), (rev, 0, 0)),
+(internal-stats: (block-bytes: (total 120 B, cached 0 B)), (points: (count 2, key-bytes 6, value-bytes 6, tombstoned: 0))
+
+mutate batch=foo
+set i@1 i@1
+----
+
+iter iter=fooiter
+set-options
+inspect lastPositioningOp
+seek-prefix-ge d@10
+stats
+----
+.
+lastPositioningOp="seekprefixge"
+d@9: (d@9, .)
+stats: (interface (dir, seek, step): (fwd, 3, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 3, 0), (rev, 0, 0)),
+(internal-stats: (block-bytes: (total 120 B, cached 0 B)), (points: (count 3, key-bytes 9, value-bytes 9, tombstoned: 0))
+
+mutate batch=foo
+set j@6 j@6
+----
+
+iter iter=fooiter
+set-options
+inspect lastPositioningOp
+seek-prefix-ge e@10
+stats
+----
+.
+lastPositioningOp="seekprefixge"
+e@8: (e@8, .)
+stats: (interface (dir, seek, step): (fwd, 4, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 4, 0), (rev, 0, 0)),
+(internal-stats: (block-bytes: (total 120 B, cached 0 B)), (points: (count 4, key-bytes 12, value-bytes 12, tombstoned: 0))
+
+# Ensure that a case eligible for TrySeekUsingNext across a SetOptions correctly
+# sees new batch mutations. The batch iterator should ignore the
+# TrySeekUsingNext designation.
+
+reset
+----
+
+batch commit
+set b@3 b@3
+set c@3 c@3
+----
+committed 2 keys
+
+batch name=b1
+----
+wrote 0 keys to batch "b1"
+
+combined-iter name=i1 reader=b1
+seek-prefix-ge b@6
+----
+b@3: (b@3, .)
+
+mutate batch=b1
+set b@4 b@4
+----
+
+iter iter=i1
+set-options
+inspect lastPositioningOp
+seek-prefix-ge b@5
+----
+.
+lastPositioningOp="seekprefixge"
+b@4: (b@4, .)
+
+# Similar case with SeekGE.
+
+iter iter=i1
+seek-ge b@2
+----
+c@3: (c@3, .)
+
+mutate batch=b1
+set c@9 c@9
+----
+
+iter iter=i1
+set-options
+inspect lastPositioningOp
+seek-ge b@1
+----
+.
+lastPositioningOp="seekge"
+c@9: (c@9, .)
+
+# Test a case similar to the above, but with an intermediate switch to
+# range-key-only iteration, so that the batchIter is not re-seeked.
+
+reset
+----
+
+batch commit
+set b@5 b@5
+set c@3 c@3
+----
+committed 2 keys
+
+batch name=b1
+----
+wrote 0 keys to batch "b1"
+
+combined-iter name=i1 reader=b1
+seek-ge b@9
+----
+b@5: (b@5, .)
+
+mutate batch=b1
+set b@6 b@6
+----
+
+iter iter=i1
+set-options key-types=range
+seek-ge b@8
+set-options key-types=both
+inspect lastPositioningOp
+seek-ge b@7
+----
+.
+.
+.
+lastPositioningOp="unknown"
+b@6: (b@6, .)
