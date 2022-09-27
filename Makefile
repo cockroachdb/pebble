@@ -90,4 +90,5 @@ ifneq ($(git_dirty),)
 	$(error format-check must be invoked on a clean repository)
 endif
 	$(MAKE) format
+	git diff
 	$(MAKE) git-clean-check
