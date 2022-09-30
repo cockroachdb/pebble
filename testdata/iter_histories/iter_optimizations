@@ -342,3 +342,34 @@ seek-ge b@7
 .
 lastPositioningOp="unknown"
 b@6: (b@6, .)
+
+reset
+----
+
+batch commit
+set b@2 b@2
+set c@3 c@3
+----
+committed 2 keys
+
+batch name=b1
+----
+wrote 0 keys to batch "b1"
+
+combined-iter name=i1 reader=b1
+seek-prefix-ge b@1
+----
+.
+
+mutate batch=b1
+set c@4 c@4
+----
+
+iter iter=i1
+set-options
+inspect lastPositioningOp
+seek-prefix-ge c@8
+----
+.
+lastPositioningOp="seekprefixge"
+c@4: (c@4, .)
