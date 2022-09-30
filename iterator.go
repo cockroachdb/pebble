@@ -1216,7 +1216,6 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	// the SeekPrefixGE following this should not make any assumption about
 	// iterator position.
 	i.lastPositioningOp = unknownLastPositionOp
-	i.batchJustRefreshed = false
 	i.requiresReposition = false
 	i.err = nil // clear cached iteration error
 	i.stats.ForwardSeekCount[InterfaceCall]++
@@ -1229,6 +1228,10 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	prefixLen := i.split(key)
 	keyPrefix := key[:prefixLen]
 	var flags base.SeekGEFlags
+	if i.batchJustRefreshed {
+		flags = flags.EnableBatchJustRefreshed()
+		i.batchJustRefreshed = false
+	}
 	if lastPositioningOp == seekPrefixGELastPositioningOp {
 		if !i.hasPrefix {
 			panic("lastPositioningOpsIsSeekPrefixGE is true, but hasPrefix is false")
