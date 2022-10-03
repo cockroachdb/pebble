@@ -27,6 +27,7 @@ func TestRangeDel(t *testing.T) {
 	var d *DB
 	defer func() {
 		if d != nil {
+			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
 		}
 	}()
@@ -37,6 +38,9 @@ func TestRangeDel(t *testing.T) {
 		switch td.Cmd {
 		case "define":
 			if d != nil {
+				if err := closeAllSnapshots(d); err != nil {
+					return err.Error()
+				}
 				if err := d.Close(); err != nil {
 					return err.Error()
 				}
