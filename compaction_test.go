@@ -1222,6 +1222,7 @@ func TestManualCompaction(t *testing.T) {
 	var d *DB
 	defer func() {
 		if d != nil {
+			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
 		}
 	}()
@@ -1236,6 +1237,7 @@ func TestManualCompaction(t *testing.T) {
 
 	reset := func(minVersion, maxVersion FormatMajorVersion) {
 		if d != nil {
+			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
 		}
 		mem = vfs.NewMem()
@@ -1330,6 +1332,9 @@ func TestManualCompaction(t *testing.T) {
 
 			case "define":
 				if d != nil {
+					if err := closeAllSnapshots(d); err != nil {
+						return err.Error()
+					}
 					if err := d.Close(); err != nil {
 						return err.Error()
 					}
@@ -1840,6 +1845,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 	var d *DB
 	defer func() {
 		if d != nil {
+			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
 		}
 	}()
@@ -1848,6 +1854,9 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 	reset := func() (*Options, error) {
 		if d != nil {
 			compactInfo = nil
+			if err := closeAllSnapshots(d); err != nil {
+				return nil, err
+			}
 			if err := d.Close(); err != nil {
 				return nil, err
 			}
@@ -2087,6 +2096,7 @@ func TestCompactionTombstones(t *testing.T) {
 	var d *DB
 	defer func() {
 		if d != nil {
+			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
 		}
 	}()
@@ -2116,6 +2126,7 @@ func TestCompactionTombstones(t *testing.T) {
 			case "define":
 				if d != nil {
 					compactInfo = nil
+					require.NoError(t, closeAllSnapshots(d))
 					if err := d.Close(); err != nil {
 						return err.Error()
 					}
@@ -2187,6 +2198,22 @@ func TestCompactionTombstones(t *testing.T) {
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
 		})
+}
+
+func closeAllSnapshots(d *DB) error {
+	d.mu.Lock()
+	var ss []*Snapshot
+	l := &d.mu.snapshots
+	for i := l.root.next; i != &l.root; i = i.next {
+		ss = append(ss, i)
+	}
+	d.mu.Unlock()
+	for i := range ss {
+		if err := ss[i].Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func TestCompactionReadTriggeredQueue(t *testing.T) {
@@ -2597,6 +2624,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 	var d *DB
 	defer func() {
 		if d != nil {
+			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
 		}
 	}()
@@ -2628,6 +2656,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 			switch td.Cmd {
 			case "define":
 				if d != nil {
+					require.NoError(t, closeAllSnapshots(d))
 					if err := d.Close(); err != nil {
 						return err.Error()
 					}

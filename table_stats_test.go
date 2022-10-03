@@ -40,6 +40,7 @@ func TestTableStats(t *testing.T) {
 	require.NoError(t, err)
 	defer func() {
 		if d != nil {
+			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
 		}
 	}()
@@ -60,6 +61,7 @@ func TestTableStats(t *testing.T) {
 			return ""
 
 		case "define":
+			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
 			loadedInfo = nil
 

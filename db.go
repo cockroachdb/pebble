@@ -1321,6 +1321,12 @@ func (d *DB) Close() error {
 	if d.opts.private.fsCloser != nil {
 		d.opts.private.fsCloser.Close()
 	}
+
+	// Return an error if the user failed to close all open snapshots.
+	if v := d.mu.snapshots.count(); v > 0 {
+		err = firstError(err, errors.Errorf("leaked snapshots: %d open snapshots on DB %p", v, d))
+	}
+
 	return err
 }
 

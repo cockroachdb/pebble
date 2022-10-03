@@ -661,6 +661,7 @@ func TestUnremovableSingleDelete(t *testing.T) {
 
 	require.NoError(t, d.Set(key, valFirst, nil))
 	ss := d.NewSnapshot()
+	defer ss.Close()
 	require.NoError(t, d.SingleDelete(key, nil))
 	require.NoError(t, d.Set(key, valSecond, nil))
 	require.NoError(t, d.Flush())
