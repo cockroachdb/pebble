@@ -21,7 +21,7 @@ all:
 override testflags :=
 .PHONY: test
 test:
-	${GO} test -mod=vendor -tags '$(TAGS)' ${testflags} -run ${TESTS} ${PKG}
+	${GO} test -tags '$(TAGS)' ${testflags} -run ${TESTS} ${PKG}
 
 .PHONY: testrace
 testrace: testflags += -race -timeout 20m
@@ -48,12 +48,11 @@ crossversion-meta:
 
 .PHONY: generate
 generate:
-	${GO} generate -mod=vendor ${PKG}
+	${GO} generate ${PKG}
 
 mod-update:
 	${GO} get -u
 	${GO} mod tidy
-	${GO} mod vendor
 
 .PHONY: clean
 clean:
@@ -80,7 +79,7 @@ endif
 
 .PHONY: format
 format:
-	for _file in $$(gofmt -s -l . | grep -vE '^vendor/'); do \
+	for _file in $$(gofmt -s -l .); do \
 		gofmt -s -w $$_file ; \
 	done
 

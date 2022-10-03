@@ -133,10 +133,8 @@ func TestLint(t *testing.T) {
 		t.Parallel()
 
 		if err := stream.ForEach(
-			stream.Sequence(
-				dirCmd(t, pkg.Dir, "git", "grep", "fmt\\.Errorf("),
-				stream.GrepNot(`^vendor/`), // ignore vendor
-			), func(s string) {
+			dirCmd(t, pkg.Dir, "git", "grep", "fmt\\.Errorf("),
+			func(s string) {
 				t.Errorf("\n%s <- please use \"errors.Errorf\" instead", s)
 			}); err != nil {
 			t.Error(err)
@@ -147,10 +145,8 @@ func TestLint(t *testing.T) {
 		t.Parallel()
 
 		if err := stream.ForEach(
-			stream.Sequence(
-				dirCmd(t, pkg.Dir, "git", "grep", "os\\.Is"),
-				stream.GrepNot(`^vendor/`), // ignore vendor
-			), func(s string) {
+			dirCmd(t, pkg.Dir, "git", "grep", "os\\.Is"),
+			func(s string) {
 				t.Errorf("\n%s <- please use the \"oserror\" equivalent instead", s)
 			}); err != nil {
 			t.Error(err)
@@ -164,7 +160,6 @@ func TestLint(t *testing.T) {
 			stream.Sequence(
 				dirCmd(t, pkg.Dir, "git", "grep", "-B1", "runtime\\.SetFinalizer("),
 				lintIgnore("lint:ignore SetFinalizer"),
-				stream.GrepNot(`^vendor/`), // ignore vendor
 				stream.GrepNot(`^internal/invariants/finalizer_on.go`),
 			), func(s string) {
 				t.Errorf("\n%s <- please use the \"invariants.SetFinalizer\" equivalent instead", s)
@@ -246,7 +241,7 @@ func TestLint(t *testing.T) {
 		}
 		t.Parallel()
 
-		args := []string{"run", crlfmt, "-fast", "-tab", "2", "-ignore", "^vendor/", "."}
+		args := []string{"run", crlfmt, "-fast", "-tab", "2", "."}
 		var buf bytes.Buffer
 		if err := stream.ForEach(
 			stream.Sequence(
