@@ -16,7 +16,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/ghemawat/stream"
-	"github.com/hashicorp/go-version"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,12 +66,6 @@ func TestLint(t *testing.T) {
 	}
 
 	t.Run("TestGolint", func(t *testing.T) {
-		// Go versions less than 1.17 do not support the `go run path@version`
-		// syntax.
-		// TODO(travers): This can be removed when support for go1.16 is dropped.
-		if goVersionMatches("< 1.17") {
-			t.Skip("go run path@version unsupported in versions < go1.17")
-		}
 		t.Parallel()
 
 		args := []string{"run", golint}
@@ -92,12 +85,6 @@ func TestLint(t *testing.T) {
 	})
 
 	t.Run("TestStaticcheck", func(t *testing.T) {
-		// Go versions less than 1.17 do not support the `go run path@version`
-		// syntax.
-		// TODO(travers): This can be removed when support for go1.16 is dropped.
-		if goVersionMatches("< 1.17") {
-			t.Skip("go run path@version unsupported in versions < go1.17")
-		}
 		t.Parallel()
 
 		args := []string{"run", staticcheck}
@@ -233,12 +220,6 @@ func TestLint(t *testing.T) {
 	})
 
 	t.Run("TestCrlfmt", func(t *testing.T) {
-		// Go versions less than 1.17 do not support the `go run path@version`
-		// syntax.
-		// TODO(travers): This can be removed when support for go1.16 is dropped.
-		if goVersionMatches("< 1.17") {
-			t.Skip("go run path@version unsupported in versions < go1.17")
-		}
 		t.Parallel()
 
 		args := []string{"run", crlfmt, "-fast", "-tab", "2", "."}
@@ -297,17 +278,4 @@ func lintIgnore(ignore string) stream.FilterFunc {
 		}
 		return nil
 	}
-}
-
-// goVersionMatches returns true if the Go runtime versions matches the given
-// semver constraint. If the runtime version does not contain a semver string
-// (i.e. it is a SHA), this function returns false.
-func goVersionMatches(constraint string) bool {
-	runtimeVersion := strings.TrimPrefix(runtime.Version(), "go")
-	goV, err := version.NewSemver(runtimeVersion)
-	if err != nil {
-		return false // Fail open.
-	}
-	c := version.MustConstraints(version.NewConstraint(constraint))
-	return c.Check(goV)
 }
