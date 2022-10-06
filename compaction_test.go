@@ -3190,7 +3190,7 @@ func TestCompactFlushQueuedMemTableAndFlushMetrics(t *testing.T) {
 	func() {
 		begin := time.Now()
 		for {
-			metrics := d.InternalIntervalMetrics()
+			metrics := d.Metrics()
 			require.NotNil(t, metrics)
 			if int64(50<<10) < metrics.Flush.WriteThroughput.Bytes {
 				// The writes (during which the flush is idle) and the flush work

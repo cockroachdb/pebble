@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -1313,84 +1312,4 @@ func verifyGetNotFound(t *testing.T, r Reader, key []byte) {
 	if err != base.ErrNotFound {
 		t.Fatalf("expected nil, but got %s", val)
 	}
-}
-
-func TestFlushIntervalMetrics(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("test is flaky on windows")
-	}
-	sumIntervalMetrics := InternalIntervalMetrics{}
-	mem := vfs.NewMem()
-	d, err := Open("", testingRandomized(&Options{
-		FS: mem,
-	}))
-	require.NoError(t, err)
-	// Flush metrics are updated after and non-atomically with the memtable
-	// being removed from the queue.
-	waitAndAccumlateIntervalMetrics := func() {
-		begin := time.Now()
-		for {
-			metrics := d.InternalIntervalMetrics()
-			sumIntervalMetrics.Flush.WriteThroughput.Merge(metrics.Flush.WriteThroughput)
-			sumIntervalMetrics.LogWriter.WriteThroughput.Merge(metrics.LogWriter.WriteThroughput)
-			if sumIntervalMetrics.LogWriter.SyncLatencyMicros == nil {
-				sumIntervalMetrics.LogWriter.SyncLatencyMicros = metrics.LogWriter.SyncLatencyMicros
-			} else {
-				sumIntervalMetrics.LogWriter.SyncLatencyMicros.Merge(metrics.LogWriter.SyncLatencyMicros)
-			}
-
-			require.NotNil(t, metrics)
-			if int64(50<<10) < metrics.Flush.WriteThroughput.Bytes {
-				// The writes (during which the flush is idle) and the flush work
-				// should not be so fast as to be unrealistic. If these turn out to be
-				// flaky we could instead inject a clock.
-				tinyInterval := int64(50 * time.Microsecond)
-				require.Less(t, tinyInterval, int64(metrics.Flush.WriteThroughput.WorkDuration))
-				require.Less(t, tinyInterval, int64(metrics.Flush.WriteThroughput.IdleDuration))
-				return
-			}
-			if time.Since(begin) > 2*time.Second {
-				t.Fatal()
-			}
-			time.Sleep(time.Millisecond)
-		}
-	}
-
-	writeAndFlush := func() {
-		// Add the key "a" to the memtable, then fill up the memtable with the key
-		// prefix "b". The compaction will only overlap with the queued memtable,
-		// not the mutable memtable.
-		// NB: The initial memtable size is 256KB, which is filled up with random
-		// values which typically don't compress well. The test also appends the
-		// random value to the "b" key to limit overwriting of the same key, which
-		// would get collapsed at flush time since there are no open snapshots.
-		value := make([]byte, 50)
-		rand.Read(value)
-		require.NoError(t, d.Set([]byte("a"), value, nil))
-		for {
-			rand.Read(value)
-			require.NoError(t, d.Set(append([]byte("b"), value...), value, nil))
-			d.mu.Lock()
-			done := len(d.mu.mem.queue) == 2
-			d.mu.Unlock()
-			if done {
-				break
-			}
-		}
-
-		require.NoError(t, d.Compact([]byte("a"), []byte("a\x00"), false))
-		d.mu.Lock()
-		require.Equal(t, 1, len(d.mu.mem.queue))
-		d.mu.Unlock()
-	}
-
-	writeAndFlush()
-	waitAndAccumlateIntervalMetrics()
-	writeAndFlush()
-	waitAndAccumlateIntervalMetrics()
-
-	require.NoError(t, d.Close())
-	dbMetrics := d.Metrics()
-	require.Equal(t, dbMetrics.Flush.WriteThroughput.Bytes, sumIntervalMetrics.Flush.WriteThroughput.Bytes)
-	require.Equal(t, dbMetrics.LogWriter.SyncLatencyMicros.Export(), sumIntervalMetrics.LogWriter.SyncLatencyMicros.Export())
 }
