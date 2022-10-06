@@ -98,17 +98,18 @@ provenance of the sstables (flushed, ingested, compacted).
 }
 
 func (f *findT) run(cmd *cobra.Command, args []string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
 	var key key
 	if err := key.Set(args[1]); err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
 		return
 	}
 
-	if err := f.findFiles(args[0]); err != nil {
+	if err := f.findFiles(stdout, stderr, args[0]); err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
 		return
 	}
-	f.readManifests()
+	f.readManifests(stdout)
 
 	f.opts.Comparer = f.comparers[f.comparerName]
 	if f.opts.Comparer == nil {
@@ -118,7 +119,7 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 	f.fmtKey.setForComparer(f.opts.Comparer.Name, f.comparers)
 	f.fmtValue.setForComparer(f.opts.Comparer.Name, f.comparers)
 
-	refs := f.search(key)
+	refs := f.search(stdout, key)
 	var lastFileNum base.FileNum
 	for i := range refs {
 		r := &refs[i]
@@ -140,7 +141,7 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 }
 
 // Find all of the manifests, logs, and tables in the specified directory.
-func (f *findT) findFiles(dir string) error {
+func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 	f.files = make(map[base.FileNum]string)
 	f.editRefs = make(map[base.FileNum][]int)
 	f.logs = nil
@@ -152,7 +153,7 @@ func (f *findT) findFiles(dir string) error {
 		return err
 	}
 
-	walk(f.opts.FS, dir, func(path string) {
+	walk(stderr, f.opts.FS, dir, func(path string) {
 		ft, fileNum, ok := base.ParseFilename(f.opts.FS, path)
 		if !ok {
 			return
@@ -191,7 +192,7 @@ func (f *findT) findFiles(dir string) error {
 
 // Read the manifests and populate the editRefs map which is used to determine
 // the provenance and metadata of tables.
-func (f *findT) readManifests() {
+func (f *findT) readManifests(stdout io.Writer) {
 	for _, fileNum := range f.manifests {
 		func() {
 			path := f.files[fileNum]
@@ -255,9 +256,9 @@ func (f *findT) readManifests() {
 }
 
 // Search the logs and sstables for references to the specified key.
-func (f *findT) search(key []byte) []findRef {
-	refs := f.searchLogs(key, nil)
-	refs = f.searchTables(key, refs)
+func (f *findT) search(stdout io.Writer, key []byte) []findRef {
+	refs := f.searchLogs(stdout, key, nil)
+	refs = f.searchTables(stdout, key, refs)
 
 	// For a given file (log or table) the references are already in the correct
 	// order. We simply want to order the references by fileNum using a stable
@@ -280,7 +281,7 @@ func (f *findT) search(key []byte) []findRef {
 }
 
 // Search the logs for references to the specified key.
-func (f *findT) searchLogs(searchKey []byte, refs []findRef) []findRef {
+func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) []findRef {
 	cmp := f.opts.Comparer.Compare
 	for _, fileNum := range f.logs {
 		_ = func() (err error) {
@@ -374,7 +375,7 @@ func (f *findT) searchLogs(searchKey []byte, refs []findRef) []findRef {
 }
 
 // Search the tables for references to the specified key.
-func (f *findT) searchTables(searchKey []byte, refs []findRef) []findRef {
+func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef) []findRef {
 	cache := pebble.NewCache(128 << 20 /* 128 MB */)
 	defer cache.Unref()
 
