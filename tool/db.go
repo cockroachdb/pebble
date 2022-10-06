@@ -278,19 +278,20 @@ func (d *dbT) openDB(dir string, openOptions ...openOption) (*pebble.DB, error) 
 	return pebble.Open(dir, &opts)
 }
 
-func (d *dbT) closeDB(db *pebble.DB) {
+func (d *dbT) closeDB(stdout io.Writer, db *pebble.DB) {
 	if err := db.Close(); err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
 	}
 }
 
 func (d *dbT) runCheck(cmd *cobra.Command, args []string) {
+	stdout := cmd.OutOrStdout()
 	db, err := d.openDB(args[0])
 	if err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
 		return
 	}
-	defer d.closeDB(db)
+	defer d.closeDB(stdout, db)
 
 	var stats pebble.CheckLevelsStats
 	if err := db.CheckLevels(&stats); err != nil {
@@ -310,12 +311,13 @@ func (n nonReadOnly) apply(opts *pebble.Options) {
 }
 
 func (d *dbT) runCheckpoint(cmd *cobra.Command, args []string) {
+	stdout := cmd.OutOrStdout()
 	db, err := d.openDB(args[0], nonReadOnly{})
 	if err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
 		return
 	}
-	defer d.closeDB(db)
+	defer d.closeDB(stdout, db)
 	destDir := args[1]
 
 	if err := db.Checkpoint(destDir); err != nil {
@@ -324,12 +326,13 @@ func (d *dbT) runCheckpoint(cmd *cobra.Command, args []string) {
 }
 
 func (d *dbT) runGet(cmd *cobra.Command, args []string) {
+	stdout := cmd.OutOrStdout()
 	db, err := d.openDB(args[0])
 	if err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
 		return
 	}
-	defer d.closeDB(db)
+	defer d.closeDB(stdout, db)
 	var k key
 	if err := k.Set(args[1]); err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
@@ -352,23 +355,25 @@ func (d *dbT) runGet(cmd *cobra.Command, args []string) {
 }
 
 func (d *dbT) runLSM(cmd *cobra.Command, args []string) {
+	stdout := cmd.OutOrStdout()
 	db, err := d.openDB(args[0])
 	if err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
 		return
 	}
-	defer d.closeDB(db)
+	defer d.closeDB(stdout, db)
 
 	fmt.Fprintf(stdout, "%s", db.Metrics())
 }
 
 func (d *dbT) runScan(cmd *cobra.Command, args []string) {
+	stdout := cmd.OutOrStdout()
 	db, err := d.openDB(args[0])
 	if err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
 		return
 	}
-	defer d.closeDB(db)
+	defer d.closeDB(stdout, db)
 
 	// Update the internal formatter if this comparator has one specified.
 	if d.opts.Comparer != nil {
@@ -417,12 +422,13 @@ func (d *dbT) runScan(cmd *cobra.Command, args []string) {
 }
 
 func (d *dbT) runSpace(cmd *cobra.Command, args []string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
 	db, err := d.openDB(args[0])
 	if err != nil {
 		fmt.Fprintf(stderr, "%s\n", err)
 		return
 	}
-	defer d.closeDB(db)
+	defer d.closeDB(stdout, db)
 
 	bytes, err := db.EstimateDiskUsage(d.start, d.end)
 	if err != nil {
@@ -433,6 +439,7 @@ func (d *dbT) runSpace(cmd *cobra.Command, args []string) {
 }
 
 func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
 	dirname := args[0]
 	err := func() error {
 		desc, err := pebble.Peek(dirname, d.opts.FS)
@@ -557,12 +564,13 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 }
 
 func (d *dbT) runSet(cmd *cobra.Command, args []string) {
+	stdout := cmd.OutOrStdout()
 	db, err := d.openDB(args[0], nonReadOnly{})
 	if err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
 		return
 	}
-	defer d.closeDB(db)
+	defer d.closeDB(stdout, db)
 	var k, v key
 	if err := k.Set(args[1]); err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)

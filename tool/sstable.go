@@ -7,6 +7,7 @@ package tool
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -151,7 +152,8 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 }
 
 func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
-	s.foreachSstable(args, func(arg string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
+	s.foreachSstable(stderr, args, func(arg string) {
 		f, err := s.opts.FS.Open(arg)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
@@ -227,7 +229,8 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 }
 
 func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
-	s.foreachSstable(args, func(arg string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
+	s.foreachSstable(stderr, args, func(arg string) {
 		f, err := s.opts.FS.Open(arg)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
@@ -263,7 +266,8 @@ func (s *sstableT) runLayout(cmd *cobra.Command, args []string) {
 }
 
 func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
-	s.foreachSstable(args, func(arg string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
+	s.foreachSstable(stderr, args, func(arg string) {
 		f, err := s.opts.FS.Open(arg)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
@@ -355,7 +359,8 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 }
 
 func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
-	s.foreachSstable(args, func(arg string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
+	s.foreachSstable(stderr, args, func(arg string) {
 		f, err := s.opts.FS.Open(arg)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
@@ -512,7 +517,8 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 }
 
 func (s *sstableT) runSpace(cmd *cobra.Command, args []string) {
-	s.foreachSstable(args, func(arg string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
+	s.foreachSstable(stderr, args, func(arg string) {
 		f, err := s.opts.FS.Open(arg)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
@@ -534,7 +540,7 @@ func (s *sstableT) runSpace(cmd *cobra.Command, args []string) {
 	})
 }
 
-func (s *sstableT) foreachSstable(args []string, fn func(arg string)) {
+func (s *sstableT) foreachSstable(stderr io.Writer, args []string, fn func(arg string)) {
 	// Loop over args, invoking fn for each file. Each directory is recursively
 	// listed and fn is invoked on any file with an .sst or .ldb suffix.
 	for _, arg := range args {
@@ -543,7 +549,7 @@ func (s *sstableT) foreachSstable(args []string, fn func(arg string)) {
 			fn(arg)
 			continue
 		}
-		walk(s.opts.FS, arg, func(path string) {
+		walk(stderr, s.opts.FS, arg, func(path string) {
 			switch filepath.Ext(path) {
 			case ".sst", ".ldb":
 				fn(path)
