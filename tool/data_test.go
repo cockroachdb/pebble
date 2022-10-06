@@ -69,15 +69,10 @@ func runTests(t *testing.T, path string) {
 				}
 
 				var buf bytes.Buffer
-				stdout = &buf
-				stderr = &buf
-
 				var secs int64
 				timeNow = func() time.Time { secs++; return time.Unix(secs, 0) }
 
 				defer func() {
-					stdout = os.Stdout
-					stderr = os.Stderr
 					timeNow = time.Now
 				}()
 
@@ -121,7 +116,8 @@ func runTests(t *testing.T, path string) {
 				c := &cobra.Command{}
 				c.AddCommand(tool.Commands...)
 				c.SetArgs(args)
-				c.SetOutput(&buf)
+				c.SetOut(&buf)
+				c.SetErr(&buf)
 				if err := c.Execute(); err != nil {
 					return err.Error()
 				}

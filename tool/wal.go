@@ -65,6 +65,7 @@ Print the contents of the WAL files.
 }
 
 func (w *walT) runDump(cmd *cobra.Command, args []string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
 	w.fmtKey.setForComparer(w.defaultComparer, w.comparers)
 	w.fmtValue.setForComparer(w.defaultComparer, w.comparers)
 

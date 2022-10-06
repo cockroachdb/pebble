@@ -96,7 +96,7 @@ Check the contents of the MANIFEST files.
 	return m
 }
 
-func (m *manifestT) printLevels(v *manifest.Version) {
+func (m *manifestT) printLevels(stdout io.Writer, v *manifest.Version) {
 	for level := range v.Levels {
 		if level == 0 && len(v.L0SublevelFiles) > 0 && !v.Levels[level].Empty() {
 			for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
@@ -122,6 +122,7 @@ func (m *manifestT) printLevels(v *manifest.Version) {
 }
 
 func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
 	for _, arg := range args {
 		func() {
 			f, err := m.opts.FS.Open(arg)
@@ -226,7 +227,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "%s\n", err)
 					return
 				}
-				m.printLevels(v)
+				m.printLevels(stdout, v)
 			}
 		}()
 	}
@@ -234,14 +235,14 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 
 func (m *manifestT) runSummarize(cmd *cobra.Command, args []string) {
 	for _, arg := range args {
-		err := m.runSummarizeOne(arg)
+		err := m.runSummarizeOne(cmd.OutOrStdout(), arg)
 		if err != nil {
-			fmt.Fprintf(stderr, "%s\n", err)
+			fmt.Fprintf(cmd.OutOrStderr(), "%s\n", err)
 		}
 	}
 }
 
-func (m *manifestT) runSummarizeOne(arg string) error {
+func (m *manifestT) runSummarizeOne(stdout io.Writer, arg string) error {
 	f, err := m.opts.FS.Open(arg)
 	if err != nil {
 		return err
@@ -428,6 +429,7 @@ func (m *manifestT) runSummarizeOne(arg string) error {
 }
 
 func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
+	stdout, stderr := cmd.OutOrStdout(), cmd.OutOrStderr()
 	ok := true
 	for _, arg := range args {
 		func() {
@@ -498,7 +500,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "%s: offset: %d err: %s\n",
 						arg, offset, err)
 					fmt.Fprintf(stdout, "Version state before failed Apply\n")
-					m.printLevels(v)
+					m.printLevels(stdout, v)
 					fmt.Fprintf(stdout, "Version edit that failed\n")
 					for df := range ve.DeletedFiles {
 						fmt.Fprintf(stdout, "  deleted: L%d %s\n", df.Level, df.FileNum)

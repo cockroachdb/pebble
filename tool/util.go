@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -20,8 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-var stdout = io.Writer(os.Stdout)
-var stderr = io.Writer(os.Stderr)
 var timeNow = time.Now
 
 type key []byte
@@ -305,7 +302,7 @@ func formatSpan(w io.Writer, fmtKey keyFormatter, fmtValue valueFormatter, s *ke
 	}
 }
 
-func walk(fs vfs.FS, dir string, fn func(path string)) {
+func walk(stderr io.Writer, fs vfs.FS, dir string, fn func(path string)) {
 	paths, err := fs.List(dir)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", dir, err)
@@ -320,7 +317,7 @@ func walk(fs vfs.FS, dir string, fn func(path string)) {
 			continue
 		}
 		if info.IsDir() {
-			walk(fs, path, fn)
+			walk(stderr, fs, path, fn)
 		} else {
 			fn(path)
 		}
