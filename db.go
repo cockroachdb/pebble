@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -414,10 +413,6 @@ type DB struct {
 			// DB.{disable,Enable}FileDeletions().
 			disabled int
 		}
-
-		// Stores the Metrics for the previous call to InternalIntervalMetrics() in
-		// order to compute the current intervals metrics
-		lastMetrics *Metrics
 
 		// The list of active snapshots.
 		snapshots snapshotList
@@ -1508,42 +1503,6 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 		return nil, err
 	}
 	return flushed, nil
-}
-
-// InternalIntervalMetrics returns the InternalIntervalMetrics and resets for
-// the next interval (which is until the next call to this method).
-// Deprecated: Use Metrics.Flush and Metrics.LogWriter instead
-func (d *DB) InternalIntervalMetrics() *InternalIntervalMetrics {
-	m := d.Metrics()
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	// Copy the relevant metrics, ensuring to perform a deep clone of the histogram
-	// to avoid mutating it.
-	logDelta := m.LogWriter
-	if m.LogWriter.SyncLatencyMicros != nil {
-		logDelta.SyncLatencyMicros = hdrhistogram.Import(m.LogWriter.SyncLatencyMicros.Export())
-	}
-	flushDelta := m.Flush.WriteThroughput
-
-	// Subtract the cumulative metrics at the time of the last InternalIntervalMetrics call,
-	// if any, in order to compute the delta.
-	if d.mu.lastMetrics != nil {
-		logDelta.Subtract(&d.mu.lastMetrics.LogWriter)
-		flushDelta.Subtract(d.mu.lastMetrics.Flush.WriteThroughput)
-	}
-
-	// Save the *Metrics we used so that a subsequent call to InternalIntervalMetrics
-	// can compute the delta relative to it.
-	d.mu.lastMetrics = m
-
-	iim := &InternalIntervalMetrics{}
-	iim.LogWriter.PendingBufferUtilization = logDelta.PendingBufferLen.Mean() / record.CapAllocatedBlocks
-	iim.LogWriter.SyncQueueUtilization = logDelta.SyncQueueLen.Mean() / record.SyncConcurrency
-	iim.LogWriter.SyncLatencyMicros = logDelta.SyncLatencyMicros
-	iim.LogWriter.WriteThroughput = logDelta.WriteThroughput
-	iim.Flush.WriteThroughput = flushDelta
-	return iim
 }
 
 // Metrics returns metrics about the database.
