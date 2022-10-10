@@ -759,6 +759,8 @@ type Options struct {
 	// changing options dynamically?
 	WALMinSyncInterval func() time.Duration
 
+	OnMetrics MetricCallbacks
+
 	// private options are only used by internal tests or are used internally
 	// for facilitating upgrade paths of unconfigurable functionality.
 	private struct {
@@ -792,6 +794,12 @@ type Options struct {
 		// do not want to allow users to actually configure.
 		disableLazyCombinedIteration bool
 	}
+}
+
+// MetricCallbacks is a struct that contains the callbacks that pebble will call
+// in order to update clients.
+type MetricCallbacks struct {
+	LogWriterFsyncLatency func(duration int64)
 }
 
 // DebugCheckLevels calls CheckLevels on the provided database.
