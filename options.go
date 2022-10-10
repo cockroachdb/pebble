@@ -683,6 +683,10 @@ type Options struct {
 	// The default merger concatenates values.
 	Merger *Merger
 
+	// MetricEventListener contains a set of callbacks that will be invoked when
+	// various metric related events occur.
+	MetricEventListener MetricEventListener
+
 	// MaxConcurrentCompactions specifies the maximum number of concurrent
 	// compactions. The default is 1. Concurrent compactions are performed
 	// - when L0 read-amplification passes the L0CompactionConcurrency threshold
@@ -759,6 +763,7 @@ type Options struct {
 	// changing options dynamically?
 	WALMinSyncInterval func() time.Duration
 
+
 	// private options are only used by internal tests or are used internally
 	// for facilitating upgrade paths of unconfigurable functionality.
 	private struct {
@@ -792,6 +797,14 @@ type Options struct {
 		// do not want to allow users to actually configure.
 		disableLazyCombinedIteration bool
 	}
+}
+
+// MetricEventListener is a struct that contains the callbacks that pebble will
+// call when metric related events occur
+type MetricEventListener struct {
+	// WALFysncLatency is invoked after each WAL Fsync. As a result, this function
+	// should not run for an excessive amount of time.
+	WALFsyncLatency func(duration time.Duration)
 }
 
 // DebugCheckLevels calls CheckLevels on the provided database.

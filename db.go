@@ -1949,8 +1949,10 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 
 		if !d.opts.DisableWAL {
 			d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: newLogSize})
-			d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNum)
-			d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
+			d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNum, record.LogWriterConfig{
+				OnFsync:            d.opts.MetricEventListener.WALFsyncLatency,
+				WALMinSyncInterval: d.opts.WALMinSyncInterval,
+			})
 		}
 
 		immMem := d.mu.mem.mutable
