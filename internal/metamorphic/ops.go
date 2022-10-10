@@ -462,7 +462,7 @@ func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (st
 		lastUserKey = key.UserKey
 
 		key.SetSeqNum(0)
-		if err := w.Add(*key, value); err != nil {
+		if err := w.Add(*key, value.InPlaceValue()); err != nil {
 			return "", err
 		}
 	}
@@ -560,9 +560,9 @@ func (o *ingestOp) collapseBatch(
 			case pebble.InternalKeyKindSingleDelete:
 				err = collapsed.SingleDelete(key.UserKey, nil)
 			case pebble.InternalKeyKindSet:
-				err = collapsed.Set(key.UserKey, value, nil)
+				err = collapsed.Set(key.UserKey, value.InPlaceValue(), nil)
 			case pebble.InternalKeyKindMerge:
-				err = collapsed.Merge(key.UserKey, value, nil)
+				err = collapsed.Merge(key.UserKey, value.InPlaceValue(), nil)
 			case pebble.InternalKeyKindLogData:
 				err = collapsed.LogData(key.UserKey, nil)
 			default:

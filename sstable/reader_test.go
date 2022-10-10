@@ -58,7 +58,12 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
-	ikey, value := i.SeekGE(key, base.SeekGEFlagsNone)
+	var v base.LazyValue
+	ikey, v := i.SeekGE(key, base.SeekGEFlagsNone)
+	value, _, err = v.Value(nil)
+	if err != nil {
+		return nil, err
+	}
 
 	if ikey == nil || r.Compare(key, ikey.UserKey) != 0 {
 		err := i.Close()
@@ -93,9 +98,14 @@ func newIterAdapter(iter Iterator) *iterAdapter {
 	}
 }
 
-func (i *iterAdapter) update(key *InternalKey, val []byte) bool {
+func (i *iterAdapter) update(key *InternalKey, val base.LazyValue) bool {
 	i.key = key
-	i.val = val
+	if v, _, err := val.Value(nil); err != nil {
+		i.key = nil
+		i.val = nil
+	} else {
+		i.val = v
+	}
 	return i.key != nil
 }
 
@@ -129,7 +139,7 @@ func (i *iterAdapter) Next() bool {
 
 func (i *iterAdapter) NextIgnoreResult() {
 	i.Iterator.Next()
-	i.update(nil, nil)
+	i.update(nil, base.LazyValue{})
 }
 
 func (i *iterAdapter) Prev() bool {
@@ -277,7 +287,14 @@ func TestInjectedErrors(t *testing.T) {
 				return err
 			}
 			defer func() { reterr = firstError(reterr, iter.Close()) }()
-			for k, v := iter.First(); k != nil && v != nil; k, v = iter.Next() {
+			for k, v := iter.First(); k != nil; k, v = iter.Next() {
+				val, _, err := v.Value(nil)
+				if err != nil {
+					return err
+				}
+				if val == nil {
+					break
+				}
 			}
 			if err = iter.Error(); err != nil {
 				return err
