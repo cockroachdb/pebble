@@ -79,7 +79,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 		split: testkeys.Comparer.Split,
 	}
 
-	formatKey := func(k *base.InternalKey, v []byte) {
+	formatKey := func(k *base.InternalKey, _ base.LazyValue) {
 		if k == nil {
 			fmt.Fprint(&buf, ".")
 			return
@@ -187,81 +187,85 @@ type pointIterator struct {
 
 var _ base.InternalIterator = &pointIterator{}
 
-func (i *pointIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*base.InternalKey, []byte) {
+func (i *pointIterator) SeekGE(
+	key []byte, flags base.SeekGEFlags,
+) (*base.InternalKey, base.LazyValue) {
 	i.index = sort.Search(len(i.keys), func(j int) bool {
 		return i.cmp(i.keys[j].UserKey, key) >= 0
 	})
 	if i.index < 0 || i.index >= len(i.keys) {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	if i.upper != nil && i.cmp(i.keys[i.index].UserKey, i.upper) >= 0 {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return &i.keys[i.index], nil
+	return &i.keys[i.index], base.LazyValue{}
 }
 
 func (i *pointIterator) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, []byte) {
+) (*base.InternalKey, base.LazyValue) {
 	return i.SeekGE(key, flags)
 }
 
-func (i *pointIterator) SeekLT(key []byte, flags base.SeekLTFlags) (*base.InternalKey, []byte) {
+func (i *pointIterator) SeekLT(
+	key []byte, flags base.SeekLTFlags,
+) (*base.InternalKey, base.LazyValue) {
 	i.index = sort.Search(len(i.keys), func(j int) bool {
 		return i.cmp(i.keys[j].UserKey, key) >= 0
 	})
 	i.index--
 	if i.index < 0 || i.index >= len(i.keys) {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	if i.lower != nil && i.cmp(i.keys[i.index].UserKey, i.lower) < 0 {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return &i.keys[i.index], nil
+	return &i.keys[i.index], base.LazyValue{}
 }
 
-func (i *pointIterator) First() (*base.InternalKey, []byte) {
+func (i *pointIterator) First() (*base.InternalKey, base.LazyValue) {
 	i.index = 0
 	if i.index < 0 || i.index >= len(i.keys) {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	if i.upper != nil && i.cmp(i.keys[i.index].UserKey, i.upper) >= 0 {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return &i.keys[i.index], nil
+	return &i.keys[i.index], base.LazyValue{}
 }
 
-func (i *pointIterator) Last() (*base.InternalKey, []byte) {
+func (i *pointIterator) Last() (*base.InternalKey, base.LazyValue) {
 	i.index = len(i.keys) - 1
 	if i.index < 0 || i.index >= len(i.keys) {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	if i.lower != nil && i.cmp(i.keys[i.index].UserKey, i.lower) < 0 {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return &i.keys[i.index], nil
+	return &i.keys[i.index], base.LazyValue{}
 }
 
-func (i *pointIterator) Next() (*base.InternalKey, []byte) {
+func (i *pointIterator) Next() (*base.InternalKey, base.LazyValue) {
 	i.index++
 	if i.index < 0 || i.index >= len(i.keys) {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	if i.upper != nil && i.cmp(i.keys[i.index].UserKey, i.upper) >= 0 {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return &i.keys[i.index], nil
+	return &i.keys[i.index], base.LazyValue{}
 }
 
-func (i *pointIterator) Prev() (*base.InternalKey, []byte) {
+func (i *pointIterator) Prev() (*base.InternalKey, base.LazyValue) {
 	i.index--
 	if i.index < 0 || i.index >= len(i.keys) {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	if i.lower != nil && i.cmp(i.keys[i.index].UserKey, i.lower) < 0 {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return &i.keys[i.index], nil
+	return &i.keys[i.index], base.LazyValue{}
 }
 
 func (i *pointIterator) Close() error   { return nil }

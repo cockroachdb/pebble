@@ -85,17 +85,19 @@ import "fmt"
 // them through the Error method. All of the absolute positioning methods
 // reset any accumulated error before positioning. Relative positioning
 // methods return without advancing if the iterator has accumulated an error.
+//
+// nilv == shorthand for LazyValue{}, which represents a nil value.
 type InternalIterator interface {
 	// SeekGE moves the iterator to the first key/value pair whose key is greater
 	// than or equal to the given key. Returns the key and value if the iterator
-	// is pointing at a valid entry, and (nil, nil) otherwise. Note that SeekGE
+	// is pointing at a valid entry, and (nil, nilv) otherwise. Note that SeekGE
 	// only checks the upper bound. It is up to the caller to ensure that key
 	// is greater than or equal to the lower bound.
-	SeekGE(key []byte, flags SeekGEFlags) (*InternalKey, []byte)
+	SeekGE(key []byte, flags SeekGEFlags) (*InternalKey, LazyValue)
 
 	// SeekPrefixGE moves the iterator to the first key/value pair whose key is
 	// greater than or equal to the given key. Returns the key and value if the
-	// iterator is pointing at a valid entry, and (nil, nil) otherwise. Note that
+	// iterator is pointing at a valid entry, and (nil, nilv) otherwise. Note that
 	// SeekPrefixGE only checks the upper bound. It is up to the caller to ensure
 	// that key is greater than or equal to the lower bound.
 	//
@@ -104,7 +106,7 @@ type InternalIterator interface {
 	// function must be supplied to the Comparer for the DB. The supplied prefix
 	// will be the prefix of the given key returned by that Split function. If
 	// the iterator is able to determine that no key with the prefix exists, it
-	// can return (nil,nil). Unlike SeekGE, this is not an indication that
+	// can return (nil,nilv). Unlike SeekGE, this is not an indication that
 	// iteration is exhausted.
 	//
 	// Note that the iterator may return keys not matching the prefix. It is up
@@ -116,52 +118,53 @@ type InternalIterator interface {
 	// not supporting reverse iteration in prefix iteration mode until a
 	// different positioning routine (SeekGE, SeekLT, First or Last) switches the
 	// iterator out of prefix iteration.
-	SeekPrefixGE(prefix, key []byte, flags SeekGEFlags) (*InternalKey, []byte)
+	SeekPrefixGE(prefix, key []byte, flags SeekGEFlags) (*InternalKey, LazyValue)
 
 	// SeekLT moves the iterator to the last key/value pair whose key is less
 	// than the given key. Returns the key and value if the iterator is pointing
-	// at a valid entry, and (nil, nil) otherwise. Note that SeekLT only checks
+	// at a valid entry, and (nil, nilv) otherwise. Note that SeekLT only checks
 	// the lower bound. It is up to the caller to ensure that key is less than
 	// the upper bound.
-	SeekLT(key []byte, flags SeekLTFlags) (*InternalKey, []byte)
+	SeekLT(key []byte, flags SeekLTFlags) (*InternalKey, LazyValue)
 
 	// First moves the iterator the the first key/value pair. Returns the key and
-	// value if the iterator is pointing at a valid entry, and (nil, nil)
+	// value if the iterator is pointing at a valid entry, and (nil, nilv)
 	// otherwise. Note that First only checks the upper bound. It is up to the
 	// caller to ensure that First() is not called when there is a lower bound,
 	// and instead call SeekGE(lower).
-	First() (*InternalKey, []byte)
+	First() (*InternalKey, LazyValue)
 
 	// Last moves the iterator the the last key/value pair. Returns the key and
-	// value if the iterator is pointing at a valid entry, and (nil, nil)
+	// value if the iterator is pointing at a valid entry, and (nil, nilv)
 	// otherwise. Note that Last only checks the lower bound. It is up to the
 	// caller to ensure that Last() is not called when there is an upper bound,
 	// and instead call SeekLT(upper).
-	Last() (*InternalKey, []byte)
+	Last() (*InternalKey, LazyValue)
 
 	// Next moves the iterator to the next key/value pair. Returns the key and
-	// value if the iterator is pointing at a valid entry, and (nil, nil)
+	// value if the iterator is pointing at a valid entry, and (nil, nilv)
 	// otherwise. Note that Next only checks the upper bound. It is up to the
 	// caller to ensure that key is greater than or equal to the lower bound.
 	//
 	// It is valid to call Next when the iterator is positioned before the first
 	// key/value pair due to either a prior call to SeekLT or Prev which returned
-	// (nil, nil). It is not allowed to call Next when the previous call to SeekGE,
-	// SeekPrefixGE or Next returned (nil, nil).
-	Next() (*InternalKey, []byte)
+	// (nil, nilv). It is not allowed to call Next when the previous call to SeekGE,
+	// SeekPrefixGE or Next returned (nil, nilv).
+	Next() (*InternalKey, LazyValue)
 
 	// Prev moves the iterator to the previous key/value pair. Returns the key
-	// and value if the iterator is pointing at a valid entry, and (nil, nil)
+	// and value if the iterator is pointing at a valid entry, and (nil, nilv)
 	// otherwise. Note that Prev only checks the lower bound. It is up to the
 	// caller to ensure that key is less than the upper bound.
 	//
 	// It is valid to call Prev when the iterator is positioned after the last
 	// key/value pair due to either a prior call to SeekGE or Next which returned
-	// (nil, nil). It is not allowed to call Prev when the previous call to SeekLT
-	// or Prev returned (nil, nil).
-	Prev() (*InternalKey, []byte)
+	// (nil, nilv). It is not allowed to call Prev when the previous call to SeekLT
+	// or Prev returned (nil, nilv).
+	Prev() (*InternalKey, LazyValue)
 
-	// Error returns any accumulated error.
+	// Error returns any accumulated error. It may not include errors returned
+	// to the client when calling LazyValue.Value().
 	Error() error
 
 	// Close closes the iterator and returns any accumulated error. Exhausting
