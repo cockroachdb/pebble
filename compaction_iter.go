@@ -258,7 +258,12 @@ func (i *compactionIter) First() (*InternalKey, []byte) {
 	if i.err != nil {
 		return nil, nil
 	}
-	i.iterKey, i.iterValue = i.iter.First()
+	var iterValue LazyValue
+	i.iterKey, iterValue = i.iter.First()
+	i.iterValue, _, i.err = iterValue.Value(nil)
+	if i.err != nil {
+		return nil, nil
+	}
 	if i.iterKey != nil {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iterKey.SeqNum(), i.snapshots)
 	}
@@ -470,7 +475,12 @@ func (i *compactionIter) skipInStripe() {
 }
 
 func (i *compactionIter) iterNext() bool {
-	i.iterKey, i.iterValue = i.iter.Next()
+	var iterValue LazyValue
+	i.iterKey, iterValue = i.iter.Next()
+	i.iterValue, _, i.err = iterValue.Value(nil)
+	if i.err != nil {
+		i.iterKey = nil
+	}
 	return i.iterKey != nil
 }
 

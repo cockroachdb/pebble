@@ -178,7 +178,8 @@ func rewriteBlocks(
 			copy(scratch.UserKey, key.UserKey[:si])
 			copy(scratch.UserKey[si:], to)
 
-			bw.add(scratch, val)
+			v := val.InPlaceValue()
+			bw.add(scratch, v)
 			if output[i].start.UserKey == nil {
 				keyAlloc, output[i].start = cloneKeyWithBuf(scratch, keyAlloc)
 			}
@@ -410,7 +411,11 @@ func RewriteKeySuffixesViaWriter(
 		scratch.UserKey = append(scratch.UserKey, to...)
 		scratch.Trailer = k.Trailer
 
-		if w.addPoint(scratch, v); err != nil {
+		val, _, err := v.Value(nil)
+		if err != nil {
+			return nil, err
+		}
+		if w.addPoint(scratch, val); err != nil {
 			return nil, err
 		}
 		k, v = i.Next()

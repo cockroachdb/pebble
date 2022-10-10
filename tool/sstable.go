@@ -445,7 +445,13 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 				// Pebble default and CockroachDB's comparer.
 				if s.filter == nil || bytes.HasPrefix(key.UserKey, s.filter) {
 					fmt.Fprint(stdout, prefix)
-					formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, value)
+					v, _, err := value.Value(nil)
+					if err != nil {
+						fmt.Fprintf(stdout, "%s%s\n", prefix, err)
+						return
+					}
+					formatKeyValue(stdout, s.fmtKey, s.fmtValue, key, v)
+
 				}
 				if base.InternalCompare(r.Compare, lastKey, *key) >= 0 {
 					fmt.Fprintf(stdout, "%s    WARNING: OUT OF ORDER KEYS!\n", prefix)

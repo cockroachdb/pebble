@@ -939,7 +939,7 @@ func TestBlockProperties(t *testing.T) {
 					var i int
 					iter, _ := newBlockIter(r.Compare, indexH.Get())
 					for key, value := iter.First(); key != nil; key, value = iter.Next() {
-						bh, err := decodeBlockHandleWithProperties(value)
+						bh, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 						if err != nil {
 							return err.Error()
 						}
@@ -1299,7 +1299,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 
 	for key, val := i.First(); key != nil; key, val = i.Next() {
 		sb.WriteString(fmt.Sprintf("%s:\n", key))
-		bhp, err := decodeBlockHandleWithProperties(val)
+		bhp, err := decodeBlockHandleWithProperties(val.InPlaceValue())
 		if err != nil {
 			return err.Error()
 		}
@@ -1321,7 +1321,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 			}
 			for key, value := subiter.First(); key != nil; key, value = subiter.Next() {
 				sb.WriteString(fmt.Sprintf("  %s:\n", key))
-				dataBH, err := decodeBlockHandleWithProperties(value)
+				dataBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 				if err != nil {
 					return err.Error()
 				}

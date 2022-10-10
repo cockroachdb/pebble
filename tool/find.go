@@ -469,13 +469,16 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				if key != nil &&
 					(rangeDel == nil || r.Compare(key.UserKey, rangeDel.Start) < 0) {
 					if r.Compare(searchKey, key.UserKey) != 0 {
-						key, value = nil, nil
+						key, value = nil, base.LazyValue{}
 						continue
 					}
-
+					v, _, err := value.Value(nil)
+					if err != nil {
+						return err
+					}
 					refs = append(refs, findRef{
 						key:     key.Clone(),
-						value:   append([]byte(nil), value...),
+						value:   append([]byte(nil), v...),
 						fileNum: fileNum,
 					})
 					key, value = iter.Next()

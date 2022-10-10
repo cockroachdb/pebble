@@ -125,7 +125,7 @@ func TestSimpleLevelIter(t *testing.T) {
 			it := &simpleLevelIter{cmp: o.Comparer.Compare, iters: internalIters}
 			it.init(IterOptions{})
 
-			response := runInternalIterCmd(td, it)
+			response := runInternalIterCmd(t, td, it)
 			require.NoError(t, it.Close())
 			return response
 		default:

@@ -14,6 +14,7 @@ type internalIterAdapter struct {
 	internalIterator
 	key *InternalKey
 	val []byte
+	err error
 }
 
 func newInternalIterAdapter(iter internalIterator) *internalIterAdapter {
@@ -22,9 +23,15 @@ func newInternalIterAdapter(iter internalIterator) *internalIterAdapter {
 	}
 }
 
-func (i *internalIterAdapter) update(key *InternalKey, val []byte) bool {
+func (i *internalIterAdapter) update(key *InternalKey, val LazyValue) bool {
 	i.key = key
-	i.val = val
+	if v, _, err := val.Value(nil); err != nil {
+		i.key = nil
+		i.val = nil
+		i.err = err
+	} else {
+		i.val = v
+	}
 	return i.key != nil
 }
 
@@ -70,4 +77,12 @@ func (i *internalIterAdapter) Value() []byte {
 
 func (i *internalIterAdapter) Valid() bool {
 	return i.key != nil
+}
+
+func (i *internalIterAdapter) Error() error {
+	err := i.internalIterator.Error()
+	if err != nil {
+		return err
+	}
+	return i.err
 }

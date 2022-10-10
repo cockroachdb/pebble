@@ -39,7 +39,7 @@ func (m *memTable) get(key []byte) (value []byte, err error) {
 	case InternalKeyKindDelete, InternalKeyKindSingleDelete:
 		return nil, ErrNotFound
 	default:
-		return val, nil
+		return val.InPlaceValue(), nil
 	}
 }
 
@@ -287,7 +287,7 @@ func TestMemTableIter(t *testing.T) {
 				}
 				iter := mem.newIter(&options)
 				defer iter.Close()
-				return runInternalIterCmd(d, iter)
+				return runInternalIterCmd(t, d, iter)
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)

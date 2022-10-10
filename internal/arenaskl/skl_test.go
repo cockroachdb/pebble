@@ -49,9 +49,9 @@ func newIterAdapter(iter *Iterator) *iterAdapter {
 	}
 }
 
-func (i *iterAdapter) update(key *base.InternalKey, val []byte) bool {
+func (i *iterAdapter) update(key *base.InternalKey, val base.LazyValue) bool {
 	i.key = key
-	i.val = val
+	i.val = val.InPlaceValue()
 	return i.key != nil
 }
 

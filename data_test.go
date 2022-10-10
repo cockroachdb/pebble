@@ -397,12 +397,19 @@ func writeRangeKeys(b io.Writer, iter *Iterator) {
 	}
 }
 
-func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...iterCmdOpt) string {
+func runInternalIterCmd(
+	t *testing.T, d *datadriven.TestData, iter internalIterator, opts ...iterCmdOpt,
+) string {
 	var o iterCmdOpts
 	for _, opt := range opts {
 		opt(&o)
 	}
 
+	getKV := func(key *InternalKey, val LazyValue) (*InternalKey, []byte) {
+		v, _, err := val.Value(nil)
+		require.NoError(t, err)
+		return key, v
+	}
 	var b bytes.Buffer
 	var prefix []byte
 	for _, line := range strings.Split(d.Input, "\n") {
@@ -426,7 +433,7 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 					flags = flags.EnableTrySeekUsingNext()
 				}
 			}
-			key, value = iter.SeekGE([]byte(strings.TrimSpace(parts[1])), flags)
+			key, value = getKV(iter.SeekGE([]byte(strings.TrimSpace(parts[1])), flags))
 		case "seek-prefix-ge":
 			if len(parts) != 2 && len(parts) != 3 {
 				return "seek-prefix-ge <key> [<try-seek-using-next>]\n"
@@ -440,23 +447,23 @@ func runInternalIterCmd(d *datadriven.TestData, iter internalIterator, opts ...i
 					flags = flags.EnableTrySeekUsingNext()
 				}
 			}
-			key, value = iter.SeekPrefixGE(prefix, prefix /* key */, flags)
+			key, value = getKV(iter.SeekPrefixGE(prefix, prefix /* key */, flags))
 		case "seek-lt":
 			if len(parts) != 2 {
 				return "seek-lt <key>\n"
 			}
 			prefix = nil
-			key, value = iter.SeekLT([]byte(strings.TrimSpace(parts[1])), base.SeekLTFlagsNone)
+			key, value = getKV(iter.SeekLT([]byte(strings.TrimSpace(parts[1])), base.SeekLTFlagsNone))
 		case "first":
 			prefix = nil
-			key, value = iter.First()
+			key, value = getKV(iter.First())
 		case "last":
 			prefix = nil
-			key, value = iter.Last()
+			key, value = getKV(iter.Last())
 		case "next":
-			key, value = iter.Next()
+			key, value = getKV(iter.Next())
 		case "prev":
-			key, value = iter.Prev()
+			key, value = getKV(iter.Prev())
 		case "set-bounds":
 			if len(parts) <= 1 || len(parts) > 3 {
 				return "set-bounds lower=<lower> upper=<upper>\n"
@@ -612,7 +619,7 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 	for key, val := iter.First(); key != nil; key, val = iter.Next() {
 		tmp := *key
 		tmp.SetSeqNum(0)
-		if err := w.Add(tmp, val); err != nil {
+		if err := w.Add(tmp, val.InPlaceValue()); err != nil {
 			return err
 		}
 	}

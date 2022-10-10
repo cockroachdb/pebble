@@ -762,7 +762,7 @@ func TestBatchIter(t *testing.T) {
 						}
 						iter := b.newInternalIter(&options)
 						defer iter.Close()
-						return runInternalIterCmd(d, iter)
+						return runInternalIterCmd(t, d, iter)
 
 					default:
 						return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -840,7 +840,7 @@ func TestBatchRangeOps(t *testing.T) {
 			} else {
 				for k, v := internalIter.First(); k != nil; k, v = internalIter.Next() {
 					k.SetSeqNum(k.SeqNum() &^ InternalKeySeqNumBatch)
-					fmt.Fprintf(&buf, "%s:%s\n", k, v)
+					fmt.Fprintf(&buf, "%s:%s\n", k, v.InPlaceValue())
 				}
 			}
 			return buf.String()
@@ -883,7 +883,7 @@ func TestFlushableBatchIter(t *testing.T) {
 		case "iter":
 			iter := b.newIter(nil)
 			defer iter.Close()
-			return runInternalIterCmd(d, iter)
+			return runInternalIterCmd(t, d, iter)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -939,7 +939,7 @@ func TestFlushableBatch(t *testing.T) {
 
 			iter := b.newIter(&opts)
 			defer iter.Close()
-			return runInternalIterCmd(d, iter)
+			return runInternalIterCmd(t, d, iter)
 
 		case "dump":
 			if len(d.CmdArgs) != 1 || len(d.CmdArgs[0].Vals) != 1 || d.CmdArgs[0].Key != "seq" {
@@ -1026,7 +1026,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 
 func scanInternalIterator(w io.Writer, ii internalIterator) {
 	for k, v := ii.First(); k != nil; k, v = ii.Next() {
-		fmt.Fprintf(w, "%s:%s\n", k, v)
+		fmt.Fprintf(w, "%s:%s\n", k, v.InPlaceValue())
 	}
 }
 

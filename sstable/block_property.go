@@ -61,19 +61,25 @@ import (
 //      re-applying the kv filter while reading results back from Pebble.
 //
 //   b) Block property filtering may surface deleted key-value pairs if the
-//      the kv filter is not a strict function of the key's user key. A block
+//      kv filter is not a strict function of the key's user key. A block
 //      containing k.DEL may be filtered, while a block containing the deleted
 //      key k.SET may not be filtered, if the kv filter applies to one but not
 //      the other.
 //
 //      This error may be avoided trivially by using a kv filter that is a pure
-//      function of the the user key. A filter that examines values or key kinds
+//      function of the user key. A filter that examines values or key kinds
 //      requires care to ensure F(k.SET, <value>) = F(k.DEL) = F(k.SINGLEDEL).
 //
 // The combination of range deletions and filtering by table-level properties
 // add another opportunity for deleted point keys to be surfaced. The pebble
 // Iterator stack takes care to correctly apply filtered tables' range deletions
 // to lower tables, preventing this form of nondeterministic error.
+//
+// In addition to the non-determinism discussed in (b), which limits the use
+// of properties over values, we now have support for values that are not
+// stored together with the key, and may not even be retrieved during
+// compactions. If Pebble is configured with such value separation, block
+// properties must only apply to the key, and will be provided a nil value.
 
 // BlockPropertyCollector is used when writing a sstable.
 // - All calls to Add are included in the next FinishDataBlock, after which
