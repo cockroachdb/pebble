@@ -33,7 +33,8 @@ func (w *rawBlockWriter) add(key InternalKey, value []byte) {
 // keys are stored in "raw" format (i.e. not as internal keys). Note that there
 // is significant similarity between this code and the code in blockIter. Yet
 // reducing duplication is difficult due to the blockIter being performance
-// critical.
+// critical. rawBlockIter must only be used for blocks where the value is
+// stored together with the key.
 type rawBlockIter struct {
 	cmp         Compare
 	offset      int32
@@ -146,19 +147,6 @@ func (i *rawBlockIter) SeekGE(key []byte) bool {
 		}
 	}
 	return i.Valid()
-}
-
-// SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
-// pebble package.
-func (i *rawBlockIter) SeekPrefixGE(key []byte) bool {
-	// This should never be called as prefix iteration is never used with raw blocks.
-	panic("pebble: SeekPrefixGE unimplemented")
-}
-
-// SeekLT implements internalIterator.SeekLT, as documented in the pebble
-// package.
-func (i *rawBlockIter) SeekLT(key []byte) bool {
-	panic("pebble/table: SeekLT unimplemented")
 }
 
 // First implements internalIterator.First, as documented in the pebble

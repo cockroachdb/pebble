@@ -65,7 +65,7 @@ func TestMergingIterSeek(t *testing.T) {
 			iter := newMergingIter(nil /* logger */, &stats, DefaultComparer.Compare,
 				func(a []byte) int { return len(a) }, iters...)
 			defer iter.Close()
-			return runInternalIterCmd(d, iter)
+			return runInternalIterCmd(t, d, iter)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -124,7 +124,7 @@ func TestMergingIterNextPrev(t *testing.T) {
 					iter := newMergingIter(nil /* logger */, &stats, DefaultComparer.Compare,
 						func(a []byte) int { return len(a) }, iters...)
 					defer iter.Close()
-					return runInternalIterCmd(d, iter)
+					return runInternalIterCmd(t, d, iter)
 
 				default:
 					return fmt.Sprintf("unknown command: %s", d.Cmd)
@@ -260,7 +260,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 			miter := &mergingIter{}
 			miter.init(nil /* opts */, &stats, cmp, func(a []byte) int { return len(a) }, levelIters...)
 			defer miter.Close()
-			return runInternalIterCmd(d, miter, iterCmdVerboseKey, iterCmdStats(&stats))
+			return runInternalIterCmd(t, d, miter, iterCmdVerboseKey, iterCmdStats(&stats))
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
@@ -525,7 +525,7 @@ func buildLevelsForMergingIterSeqSeek(
 		}
 	}
 
-	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20)}
+	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20), Comparer: DefaultComparer}
 	if writeBloomFilters {
 		opts.Filters = make(map[string]FilterPolicy)
 		opts.Filters[filterPolicy.Name()] = filterPolicy

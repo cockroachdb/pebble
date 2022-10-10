@@ -126,6 +126,9 @@ var _ redact.SafeFormatter = &IteratorStats{}
 // iterators.
 type InternalIteratorStats = base.InternalIteratorStats
 
+// LazyValue is a lazy value. See the long comment in base.LazyValue.
+type LazyValue = base.LazyValue
+
 // Iterator iterates over a DB's key/value pairs in key order.
 //
 // An iterator must be closed after use, but it is not necessary to read an
@@ -164,11 +167,14 @@ type Iterator struct {
 	err             error
 	// When iterValidityState=IterValid, key represents the current key, which
 	// is backed by keyBuf.
-	key         []byte
-	keyBuf      []byte
-	value       []byte
-	valueBuf    []byte
-	valueCloser io.Closer
+	key    []byte
+	keyBuf []byte
+	value  LazyValue
+	// For use in LazyValue.Clone.
+	valueBuf []byte
+	// For use in LazyValue.Value.
+	lazyValueBuf []byte
+	valueCloser  io.Closer
 	// boundsBuf holds two buffers used to store the lower and upper bounds.
 	// Whenever the Iterator's bounds change, the new bounds are copied into
 	// boundsBuf[boundsBufIdx]. The two bounds share a slice to reduce
@@ -178,7 +184,7 @@ type Iterator struct {
 	// iterKey, iterValue reflect the latest position of iter, except when
 	// SetBounds is called. In that case, these are explicitly set to nil.
 	iterKey             *InternalKey
-	iterValue           []byte
+	iterValue           LazyValue
 	alloc               *iterAlloc
 	getIterAlloc        *getIterAlloc
 	prefixOrFullSeekKey []byte
@@ -488,7 +494,7 @@ func (i *Iterator) findNextEntry(limit []byte) {
 			// Save the current key.
 			i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 			i.key = i.keyBuf
-			i.value = nil
+			i.value = LazyValue{}
 			// There may also be a live point key at this userkey that we have
 			// not yet read. We need to find the next entry with this user key
 			// to find it. Save the range key so we don't lose it when we Next
@@ -590,8 +596,13 @@ func (i *Iterator) nextPointCurrentUserKey() bool {
 //
 // mergeForward does not update iterValidityState.
 func (i *Iterator) mergeForward(key base.InternalKey) (valid bool) {
+	var iterValue []byte
+	iterValue, _, i.err = i.iterValue.Value(nil)
+	if i.err != nil {
+		return false
+	}
 	var valueMerger ValueMerger
-	valueMerger, i.err = i.merge(key.UserKey, i.iterValue)
+	valueMerger, i.err = i.merge(key.UserKey, iterValue)
 	if i.err != nil {
 		return false
 	}
@@ -602,8 +613,10 @@ func (i *Iterator) mergeForward(key base.InternalKey) (valid bool) {
 	}
 
 	var needDelete bool
-	i.value, needDelete, i.valueCloser, i.err = finishValueMerger(
+	var value []byte
+	value, needDelete, i.valueCloser, i.err = finishValueMerger(
 		valueMerger, true /* includesBase */)
+	i.value = base.MakeInPlaceValue(value)
 	if i.err != nil {
 		return false
 	}
@@ -679,7 +692,7 @@ func (i *Iterator) maybeSampleRead() {
 	if samplingPeriod <= 0 {
 		return
 	}
-	bytesRead := uint64(len(i.key) + len(i.value))
+	bytesRead := uint64(len(i.key) + i.value.Len())
 	for i.readSampling.bytesUntilReadSampling < bytesRead {
 		i.readSampling.bytesUntilReadSampling += uint64(fastrand.Uint32n(2 * uint32(samplingPeriod)))
 		// The block below tries to adjust for the case where this is the
@@ -803,13 +816,15 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 				i.pos = iterPosPrev
 				if valueMerger != nil {
 					var needDelete bool
-					i.value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, true /* includesBase */)
+					var value []byte
+					value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, true /* includesBase */)
+					i.value = base.MakeInPlaceValue(value)
 					if i.err == nil && needDelete {
 						// The point key at this key is deleted. If we also have
 						// a range key boundary at this key, we still want to
 						// return. Otherwise, we need to continue looking for
 						// a live key.
-						i.value = nil
+						i.value = LazyValue{}
 						if rangeKeyBoundary {
 							i.rangeKey.rangeKeyOnly = true
 						} else {
@@ -856,7 +871,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			rangeKeyBoundary = true
 
 		case InternalKeyKindDelete, InternalKeyKindSingleDelete:
-			i.value = nil
+			i.value = LazyValue{}
 			i.iterValidityState = IterExhausted
 			valueMerger = nil
 			i.iterKey, i.iterValue = i.iter.Prev()
@@ -884,8 +899,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			// call, so use valueBuf instead. Note that valueBuf is only used
 			// in this one instance; everywhere else (eg. in findNextEntry),
 			// we just point i.value to the unsafe i.iter-owned value buffer.
-			i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
-			i.value = i.valueBuf
+			i.value, i.valueBuf = i.iterValue.Clone(i.valueBuf[:0])
 			i.saveRangeKey()
 			i.iterValidityState = IterValid
 			i.iterKey, i.iterValue = i.iter.Prev()
@@ -898,22 +912,49 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 				i.keyBuf = append(i.keyBuf[:0], key.UserKey...)
 				i.key = i.keyBuf
 				i.saveRangeKey()
-				valueMerger, i.err = i.merge(i.key, i.iterValue)
+				var iterValue []byte
+				iterValue, _, i.err = i.iterValue.Value(nil)
+				if i.err != nil {
+					return
+				}
+				valueMerger, i.err = i.merge(i.key, iterValue)
 				if i.err != nil {
 					return
 				}
 				i.iterValidityState = IterValid
 			} else if valueMerger == nil {
-				valueMerger, i.err = i.merge(i.key, i.value)
+				// Extract value before iterValue since we use value before iterValue
+				// and the underlying iterator is not required to provide backing
+				// memory for both simultaneously.
+				var value []byte
+				var callerOwned bool
+				value, callerOwned, i.err = i.value.Value(i.lazyValueBuf)
+				if callerOwned {
+					i.lazyValueBuf = value[:0]
+				}
+				if i.err != nil {
+					return
+				}
+				valueMerger, i.err = i.merge(i.key, value)
+				var iterValue []byte
+				iterValue, _, i.err = i.iterValue.Value(nil)
+				if i.err != nil {
+					return
+				}
 				if i.err == nil {
-					i.err = valueMerger.MergeNewer(i.iterValue)
+					i.err = valueMerger.MergeNewer(iterValue)
 				}
 				if i.err != nil {
 					i.iterValidityState = IterExhausted
 					return
 				}
 			} else {
-				i.err = valueMerger.MergeNewer(i.iterValue)
+				var iterValue []byte
+				iterValue, _, i.err = i.iterValue.Value(nil)
+				if i.err != nil {
+					return
+				}
+				i.err = valueMerger.MergeNewer(iterValue)
 				if i.err != nil {
 					i.iterValidityState = IterExhausted
 					return
@@ -935,10 +976,12 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 		i.pos = iterPosPrev
 		if valueMerger != nil {
 			var needDelete bool
-			i.value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, true /* includesBase */)
+			var value []byte
+			value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, true /* includesBase */)
+			i.value = base.MakeInPlaceValue(value)
 			if i.err == nil && needDelete {
 				i.key = nil
-				i.value = nil
+				i.value = LazyValue{}
 				i.iterValidityState = IterExhausted
 			}
 		}
@@ -997,13 +1040,23 @@ func (i *Iterator) mergeNext(key InternalKey, valueMerger ValueMerger) {
 
 		case InternalKeyKindSet, InternalKeyKindSetWithDelete:
 			// We've hit a Set value. Merge with the existing value and return.
-			i.err = valueMerger.MergeOlder(i.iterValue)
+			var iterValue []byte
+			iterValue, _, i.err = i.iterValue.Value(nil)
+			if i.err != nil {
+				return
+			}
+			i.err = valueMerger.MergeOlder(iterValue)
 			return
 
 		case InternalKeyKindMerge:
 			// We've hit another Merge value. Merge with the existing value and
 			// continue looping.
-			i.err = valueMerger.MergeOlder(i.iterValue)
+			var iterValue []byte
+			iterValue, _, i.err = i.iterValue.Value(nil)
+			if i.err != nil {
+				return
+			}
+			i.err = valueMerger.MergeOlder(iterValue)
 			if i.err != nil {
 				return
 			}
@@ -1857,7 +1910,28 @@ func (i *Iterator) Key() []byte {
 // contents may change on the next call to Next.
 //
 // Only valid if HasPointAndRange() returns true for hasPoint.
+// Deprecated: use ValueAndErr instead.
 func (i *Iterator) Value() []byte {
+	val, _ := i.ValueAndErr()
+	return val
+}
+
+// ValueAndErr returns the value, and any error encountered in extracting the value.
+// REQUIRES: i.Error()==nil and HasPointAndRange() returns true for hasPoint.
+func (i *Iterator) ValueAndErr() ([]byte, error) {
+	val, callerOwned, err := i.value.Value(i.lazyValueBuf)
+	if err != nil {
+		i.err = err
+	}
+	if callerOwned {
+		i.lazyValueBuf = val[:0]
+	}
+	return val, err
+}
+
+// LazyValue returns the LazyValue. Only for advanced use cases.
+// REQUIRES: i.Error()==nil and HasPointAndRange() returns true for hasPoint.
+func (i *Iterator) LazyValue() LazyValue {
 	return i.value
 }
 
@@ -2274,7 +2348,7 @@ func (i *Iterator) invalidate() {
 	i.lastPositioningOp = invalidatedLastPositionOp
 	i.hasPrefix = false
 	i.iterKey = nil
-	i.iterValue = nil
+	i.iterValue = LazyValue{}
 	i.err = nil
 	// This switch statement isn't necessary for correctness since callers
 	// should call a repositioning method. We could have arbitrarily set i.pos

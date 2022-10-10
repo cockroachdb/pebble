@@ -90,7 +90,7 @@ func TestLevelIter(t *testing.T) {
 			// Fake up the range deletion initialization.
 			iter.initRangeDel(new(keyspan.FragmentIterator))
 			iter.disableInvariants = true
-			return runInternalIterCmd(d, iter, iterCmdVerboseKey)
+			return runInternalIterCmd(t, d, iter, iterCmdVerboseKey)
 
 		case "load":
 			// The "load" command allows testing the iterator options passed to load
@@ -325,7 +325,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 					iter = nil
 				}()
 			}
-			return runInternalIterCmd(d, iter, iterCmdVerboseKey)
+			return runInternalIterCmd(t, d, iter, iterCmdVerboseKey)
 
 		case "file-pos":
 			// Returns the FileNum at which the iterator is positioned.
@@ -351,8 +351,8 @@ type levelIterTestIter struct {
 }
 
 func (i *levelIterTestIter) rangeDelSeek(
-	key []byte, ikey *InternalKey, val []byte, dir int,
-) (*InternalKey, []byte) {
+	key []byte, ikey *InternalKey, val base.LazyValue, dir int,
+) (*InternalKey, base.LazyValue) {
 	var tombstone keyspan.Span
 	if i.rangeDelIter != nil {
 		var t *keyspan.Span
@@ -368,7 +368,7 @@ func (i *levelIterTestIter) rangeDelSeek(
 	if ikey == nil {
 		return &InternalKey{
 			UserKey: []byte(fmt.Sprintf("./%s", tombstone)),
-		}, nil
+		}, base.LazyValue{}
 	}
 	return &InternalKey{
 		UserKey: []byte(fmt.Sprintf("%s/%s", ikey.UserKey, tombstone)),
@@ -380,19 +380,23 @@ func (i *levelIterTestIter) String() string {
 	return "level-iter-test"
 }
 
-func (i *levelIterTestIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
+func (i *levelIterTestIter) SeekGE(
+	key []byte, flags base.SeekGEFlags,
+) (*InternalKey, base.LazyValue) {
 	ikey, val := i.levelIter.SeekGE(key, flags)
 	return i.rangeDelSeek(key, ikey, val, 1)
 }
 
 func (i *levelIterTestIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, []byte) {
+) (*base.InternalKey, base.LazyValue) {
 	ikey, val := i.levelIter.SeekPrefixGE(prefix, key, flags)
 	return i.rangeDelSeek(key, ikey, val, 1)
 }
 
-func (i *levelIterTestIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
+func (i *levelIterTestIter) SeekLT(
+	key []byte, flags base.SeekLTFlags,
+) (*InternalKey, base.LazyValue) {
 	ikey, val := i.levelIter.SeekLT(key, flags)
 	return i.rangeDelSeek(key, ikey, val, -1)
 }
@@ -418,7 +422,7 @@ func TestLevelIterSeek(t *testing.T) {
 				manifest.Level(level), internalIterOpts{stats: &stats})
 			defer iter.Close()
 			iter.initRangeDel(&iter.rangeDelIter)
-			return runInternalIterCmd(d, iter, iterCmdVerboseKey, iterCmdStats(&stats))
+			return runInternalIterCmd(t, d, iter, iterCmdVerboseKey, iterCmdStats(&stats))
 
 		case "iters-created":
 			return fmt.Sprintf("%d", lt.itersCreated)
@@ -465,7 +469,7 @@ func buildLevelIterTables(
 		}
 	}
 
-	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20)}
+	opts := sstable.ReaderOptions{Cache: NewCache(128 << 20), Comparer: DefaultComparer}
 	defer opts.Cache.Unref()
 	readers := make([]*sstable.Reader, len(files))
 	for i := range files {

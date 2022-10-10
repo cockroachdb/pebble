@@ -665,7 +665,9 @@ func TestWriterRace(t *testing.T) {
 			ki := 0
 			for k, v := it.First(); k != nil; k, v = it.Next() {
 				require.Equal(t, k.UserKey, keys[ki])
-				require.Equal(t, v, val)
+				vBytes, _, err := v.Value(nil)
+				require.NoError(t, err)
+				require.Equal(t, vBytes, val)
 				ki++
 			}
 		}()

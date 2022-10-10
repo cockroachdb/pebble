@@ -955,7 +955,7 @@ func fragmentRangeDels(frag *keyspan.Fragmenter, it internalIterator, count int)
 	// individual []keyspan.Key slices with a single element each.
 	keyBuf := make([]keyspan.Key, 0, count)
 	for key, val := it.First(); key != nil; key, val = it.Next() {
-		s := rangedel.Decode(*key, val, keyBuf)
+		s := rangedel.Decode(*key, val.InPlaceValue(), keyBuf)
 		keyBuf = s.Keys[len(s.Keys):]
 
 		// Set a fixed capacity to avoid accidental overwriting.
@@ -1030,7 +1030,7 @@ func fragmentRangeKeys(frag *keyspan.Fragmenter, it internalIterator, count int)
 	// individual []keyspan.Key slices with a single element each.
 	keyBuf := make([]keyspan.Key, 0, count)
 	for ik, val := it.First(); ik != nil; ik, val = it.Next() {
-		s, err := rangekey.Decode(*ik, val, keyBuf)
+		s, err := rangekey.Decode(*ik, val.InPlaceValue(), keyBuf)
 		if err != nil {
 			return err
 		}
@@ -1265,7 +1265,7 @@ func (i *batchIter) String() string {
 	return "batch"
 }
 
-func (i *batchIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
+func (i *batchIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, base.LazyValue) {
 	// Ignore TrySeekUsingNext if the view of the batch changed.
 	if flags.TrySeekUsingNext() && flags.BatchJustRefreshed() {
 		flags = flags.DisableTrySeekUsingNext()
@@ -1277,81 +1277,77 @@ func (i *batchIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []
 		ikey = i.iter.Next()
 	}
 	if ikey == nil {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return ikey, i.Value()
+	return ikey, base.MakeInPlaceValue(i.value())
 }
 
 func (i *batchIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, []byte) {
+) (*base.InternalKey, base.LazyValue) {
 	i.err = nil // clear cached iteration error
 	return i.SeekGE(key, flags)
 }
 
-func (i *batchIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
+func (i *batchIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, base.LazyValue) {
 	i.err = nil // clear cached iteration error
 	ikey := i.iter.SeekLT(key)
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Prev()
 	}
 	if ikey == nil {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return ikey, i.Value()
+	return ikey, base.MakeInPlaceValue(i.value())
 }
 
-func (i *batchIter) First() (*InternalKey, []byte) {
+func (i *batchIter) First() (*InternalKey, base.LazyValue) {
 	i.err = nil // clear cached iteration error
 	ikey := i.iter.First()
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Next()
 	}
 	if ikey == nil {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return ikey, i.Value()
+	return ikey, base.MakeInPlaceValue(i.value())
 }
 
-func (i *batchIter) Last() (*InternalKey, []byte) {
+func (i *batchIter) Last() (*InternalKey, base.LazyValue) {
 	i.err = nil // clear cached iteration error
 	ikey := i.iter.Last()
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Prev()
 	}
 	if ikey == nil {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return ikey, i.Value()
+	return ikey, base.MakeInPlaceValue(i.value())
 }
 
-func (i *batchIter) Next() (*InternalKey, []byte) {
+func (i *batchIter) Next() (*InternalKey, base.LazyValue) {
 	ikey := i.iter.Next()
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Next()
 	}
 	if ikey == nil {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return ikey, i.Value()
+	return ikey, base.MakeInPlaceValue(i.value())
 }
 
-func (i *batchIter) Prev() (*InternalKey, []byte) {
+func (i *batchIter) Prev() (*InternalKey, base.LazyValue) {
 	ikey := i.iter.Prev()
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Prev()
 	}
 	if ikey == nil {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return ikey, i.Value()
+	return ikey, base.MakeInPlaceValue(i.value())
 }
 
-func (i *batchIter) Key() *InternalKey {
-	return i.iter.Key()
-}
-
-func (i *batchIter) Value() []byte {
+func (i *batchIter) value() []byte {
 	offset, _, keyEnd := i.iter.KeyInfo()
 	data := i.batch.data
 	if len(data[offset:]) == 0 {
@@ -1370,10 +1366,6 @@ func (i *batchIter) Value() []byte {
 	default:
 		return nil
 	}
-}
-
-func (i *batchIter) Valid() bool {
-	return i.iter.Valid()
 }
 
 func (i *batchIter) Error() error {
@@ -1666,34 +1658,38 @@ func (i *flushableBatchIter) String() string {
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package. Ignore flags.TrySeekUsingNext() since we don't expect this
 // optimization to provide much benefit here at the moment.
-func (i *flushableBatchIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []byte) {
+func (i *flushableBatchIter) SeekGE(
+	key []byte, flags base.SeekGEFlags,
+) (*InternalKey, base.LazyValue) {
 	i.err = nil // clear cached iteration error
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
 	})
 	if i.index >= len(i.offsets) {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	i.key = i.getKey(i.index)
 	if i.upper != nil && i.cmp(i.key.UserKey, i.upper) >= 0 {
 		i.index = len(i.offsets)
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return &i.key, i.Value()
+	return &i.key, i.value()
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
 // pebble package.
 func (i *flushableBatchIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, []byte) {
+) (*base.InternalKey, base.LazyValue) {
 	return i.SeekGE(key, flags)
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package.
-func (i *flushableBatchIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []byte) {
+func (i *flushableBatchIter) SeekLT(
+	key []byte, flags base.SeekLTFlags,
+) (*InternalKey, base.LazyValue) {
 	i.err = nil // clear cached iteration error
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
@@ -1701,80 +1697,80 @@ func (i *flushableBatchIter) SeekLT(key []byte, flags base.SeekLTFlags) (*Intern
 	})
 	i.index--
 	if i.index < 0 {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	i.key = i.getKey(i.index)
 	if i.lower != nil && i.cmp(i.key.UserKey, i.lower) < 0 {
 		i.index = -1
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return &i.key, i.Value()
+	return &i.key, i.value()
 }
 
 // First implements internalIterator.First, as documented in the pebble
 // package.
-func (i *flushableBatchIter) First() (*InternalKey, []byte) {
+func (i *flushableBatchIter) First() (*InternalKey, base.LazyValue) {
 	i.err = nil // clear cached iteration error
 	if len(i.offsets) == 0 {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	i.index = 0
 	i.key = i.getKey(i.index)
 	if i.upper != nil && i.cmp(i.key.UserKey, i.upper) >= 0 {
 		i.index = len(i.offsets)
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return &i.key, i.Value()
+	return &i.key, i.value()
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
 // package.
-func (i *flushableBatchIter) Last() (*InternalKey, []byte) {
+func (i *flushableBatchIter) Last() (*InternalKey, base.LazyValue) {
 	i.err = nil // clear cached iteration error
 	if len(i.offsets) == 0 {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	i.index = len(i.offsets) - 1
 	i.key = i.getKey(i.index)
 	if i.lower != nil && i.cmp(i.key.UserKey, i.lower) < 0 {
 		i.index = -1
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return &i.key, i.Value()
+	return &i.key, i.value()
 }
 
 // Note: flushFlushableBatchIter.Next mirrors the implementation of
 // flushableBatchIter.Next due to performance. Keep the two in sync.
-func (i *flushableBatchIter) Next() (*InternalKey, []byte) {
+func (i *flushableBatchIter) Next() (*InternalKey, base.LazyValue) {
 	if i.index == len(i.offsets) {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	i.index++
 	if i.index == len(i.offsets) {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	i.key = i.getKey(i.index)
 	if i.upper != nil && i.cmp(i.key.UserKey, i.upper) >= 0 {
 		i.index = len(i.offsets)
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return &i.key, i.Value()
+	return &i.key, i.value()
 }
 
-func (i *flushableBatchIter) Prev() (*InternalKey, []byte) {
+func (i *flushableBatchIter) Prev() (*InternalKey, base.LazyValue) {
 	if i.index < 0 {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	i.index--
 	if i.index < 0 {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	i.key = i.getKey(i.index)
 	if i.lower != nil && i.cmp(i.key.UserKey, i.lower) < 0 {
 		i.index = -1
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
-	return &i.key, i.Value()
+	return &i.key, i.value()
 }
 
 func (i *flushableBatchIter) getKey(index int) InternalKey {
@@ -1784,20 +1780,16 @@ func (i *flushableBatchIter) getKey(index int) InternalKey {
 	return base.MakeInternalKey(key, i.batch.seqNum+uint64(e.index), kind)
 }
 
-func (i *flushableBatchIter) Key() *InternalKey {
-	return &i.key
-}
-
-func (i *flushableBatchIter) Value() []byte {
+func (i *flushableBatchIter) value() base.LazyValue {
 	p := i.data[i.offsets[i.index].offset:]
 	if len(p) == 0 {
 		i.err = base.CorruptionErrorf("corrupted batch")
-		return nil
+		return base.LazyValue{}
 	}
 	kind := InternalKeyKind(p[0])
 	if kind > InternalKeyKindMax {
 		i.err = base.CorruptionErrorf("corrupted batch")
-		return nil
+		return base.LazyValue{}
 	}
 	var value []byte
 	var ok bool
@@ -1808,10 +1800,10 @@ func (i *flushableBatchIter) Value() []byte {
 		_, value, ok = batchDecodeStr(i.data[keyEnd:])
 		if !ok {
 			i.err = base.CorruptionErrorf("corrupted batch")
-			return nil
+			return base.LazyValue{}
 		}
 	}
-	return value
+	return base.MakeInPlaceValue(value)
 }
 
 func (i *flushableBatchIter) Valid() bool {
@@ -1847,27 +1839,27 @@ func (i *flushFlushableBatchIter) String() string {
 
 func (i *flushFlushableBatchIter) SeekGE(
 	key []byte, flags base.SeekGEFlags,
-) (*InternalKey, []byte) {
+) (*InternalKey, base.LazyValue) {
 	panic("pebble: SeekGE unimplemented")
 }
 
 func (i *flushFlushableBatchIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) (*base.InternalKey, []byte) {
+) (*base.InternalKey, base.LazyValue) {
 	panic("pebble: SeekPrefixGE unimplemented")
 }
 
 func (i *flushFlushableBatchIter) SeekLT(
 	key []byte, flags base.SeekLTFlags,
-) (*InternalKey, []byte) {
+) (*InternalKey, base.LazyValue) {
 	panic("pebble: SeekLT unimplemented")
 }
 
-func (i *flushFlushableBatchIter) First() (*InternalKey, []byte) {
+func (i *flushFlushableBatchIter) First() (*InternalKey, base.LazyValue) {
 	i.err = nil // clear cached iteration error
 	key, val := i.flushableBatchIter.First()
 	if key == nil {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	entryBytes := i.offsets[i.index].keyEnd - i.offsets[i.index].offset
 	*i.bytesIterated += uint64(entryBytes) + i.valueSize()
@@ -1876,21 +1868,21 @@ func (i *flushFlushableBatchIter) First() (*InternalKey, []byte) {
 
 // Note: flushFlushableBatchIter.Next mirrors the implementation of
 // flushableBatchIter.Next due to performance. Keep the two in sync.
-func (i *flushFlushableBatchIter) Next() (*InternalKey, []byte) {
+func (i *flushFlushableBatchIter) Next() (*InternalKey, base.LazyValue) {
 	if i.index == len(i.offsets) {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	i.index++
 	if i.index == len(i.offsets) {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	i.key = i.getKey(i.index)
 	entryBytes := i.offsets[i.index].keyEnd - i.offsets[i.index].offset
 	*i.bytesIterated += uint64(entryBytes) + i.valueSize()
-	return &i.key, i.Value()
+	return &i.key, i.value()
 }
 
-func (i flushFlushableBatchIter) Prev() (*InternalKey, []byte) {
+func (i flushFlushableBatchIter) Prev() (*InternalKey, base.LazyValue) {
 	panic("pebble: Prev unimplemented")
 }
 
