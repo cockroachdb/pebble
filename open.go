@@ -418,8 +418,11 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			BytesPerSync:    d.opts.WALBytesPerSync,
 			PreallocateSize: d.walPreallocateSize(),
 		})
-		d.mu.log.LogWriter = record.NewLogWriter(logFile, newLogNum)
-		d.mu.log.LogWriter.SetMinSyncInterval(d.opts.WALMinSyncInterval)
+		logWriterConfig := record.LogWriterConfig{
+			WALMinSyncInterval: d.opts.WALMinSyncInterval,
+			OnFsync:            d.opts.MetricEventListener.WALFsyncLatency,
+		}
+		d.mu.log.LogWriter = record.NewLogWriter(logFile, newLogNum, logWriterConfig)
 		d.mu.versions.metrics.WAL.Files++
 	}
 	d.updateReadStateLocked(d.opts.DebugCheck)
