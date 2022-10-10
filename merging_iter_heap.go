@@ -4,10 +4,12 @@
 
 package pebble
 
+import "github.com/cockroachdb/pebble/internal/base"
+
 type mergingIterItem struct {
 	index int
 	key   InternalKey
-	value []byte
+	value base.LazyValue
 }
 
 type mergingIterHeap struct {

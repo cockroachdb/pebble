@@ -458,7 +458,11 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 				errc <- errors.Errorf("i=%d, fileNum=%d: valid.0: got false, want true", i, fileNum)
 				return
 			}
-			if got := len(value); got != fileNum {
+			v, _, err := value.Value(nil)
+			if err != nil {
+				errc <- errors.Errorf("i=%d, fileNum=%d: err extracting value: %v", err)
+			}
+			if got := len(v); got != fileNum {
 				errc <- errors.Errorf("i=%d, fileNum=%d: value: got %d bytes, want %d", i, fileNum, got, fileNum)
 				return
 			}
