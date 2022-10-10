@@ -13,11 +13,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
-	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 var walSyncLabels = pprof.Labels("pebble", "wal-sync")
@@ -229,6 +227,7 @@ func (c *flusherCond) Unlock() {
 }
 
 type durationFunc func() time.Duration
+type recordValueFunc func(value time.Duration)
 
 // syncTimer is an interface for timers, modeled on the closure callback mode
 // of time.Timer. See time.AfterFunc and LogWriter.afterFunc. syncTimer is used
@@ -281,10 +280,11 @@ type LogWriter struct {
 		// Accumulated flush error.
 		err error
 		// minSyncInterval is the minimum duration between syncs.
-		minSyncInterval durationFunc
-		pending         []*block
-		syncQ           syncQueue
-		metrics         *LogWriterMetrics
+		minSyncInterval      durationFunc
+		onFsyncLatencyMetric recordValueFunc
+		pending              []*block
+		syncQ                syncQueue
+		metrics              *LogWriterMetrics
 	}
 
 	// afterFunc is a hook to allow tests to mock out the timer functionality
@@ -293,12 +293,18 @@ type LogWriter struct {
 	afterFunc func(d time.Duration, f func()) syncTimer
 }
 
+// LogWriterConfig is a struct used for configuring new LogWriters
+type LogWriterConfig struct {
+	WALMinSyncInterval durationFunc
+	OnFsync            recordValueFunc
+}
+
 // CapAllocatedBlocks is the maximum number of blocks allocated by the
 // LogWriter.
 const CapAllocatedBlocks = 16
 
 // NewLogWriter returns a new LogWriter.
-func NewLogWriter(w io.Writer, logNum base.FileNum) *LogWriter {
+func NewLogWriter(w io.Writer, logNum base.FileNum, logWriterConfig LogWriterConfig) *LogWriter {
 	c, _ := w.(io.Closer)
 	s, _ := w.(syncer)
 	r := &LogWriter{
@@ -322,23 +328,15 @@ func NewLogWriter(w io.Writer, logNum base.FileNum) *LogWriter {
 	r.flusher.closed = make(chan struct{})
 	r.flusher.pending = make([]*block, 0, cap(r.free.blocks))
 	r.flusher.metrics = &LogWriterMetrics{}
-	// Histogram with max value of 30s. We are not trying to detect anomalies
-	// with this, and normally latencies range from 0.5ms to 25ms.
-	r.flusher.metrics.SyncLatencyMicros = hdrhistogram.New(
-		0, (time.Second * 30).Microseconds(), 2)
+
+	f := &r.flusher
+	f.minSyncInterval = logWriterConfig.WALMinSyncInterval
+	f.onFsyncLatencyMetric = logWriterConfig.OnFsync
+
 	go func() {
 		pprof.Do(context.Background(), walSyncLabels, r.flushLoop)
 	}()
 	return r
-}
-
-// SetMinSyncInterval sets the closure to invoke for retrieving the minimum
-// sync duration between syncs.
-func (w *LogWriter) SetMinSyncInterval(minSyncInterval durationFunc) {
-	f := &w.flusher
-	f.Lock()
-	f.minSyncInterval = minSyncInterval
-	f.Unlock()
 }
 
 func (w *LogWriter) flushLoop(context.Context) {
@@ -453,8 +451,8 @@ func (w *LogWriter) flushLoop(context.Context) {
 		f.Unlock()
 		synced, syncLatency, bytesWritten, err := w.flushPending(data, pending, head, tail)
 		f.Lock()
-		if synced {
-			f.metrics.SyncLatencyMicros.RecordValue(syncLatency.Microseconds())
+		if synced && f.onFsyncLatencyMetric != nil {
+			f.onFsyncLatencyMetric(syncLatency)
 		}
 		f.err = err
 		if f.err != nil {
@@ -608,7 +606,9 @@ func (w *LogWriter) Close() error {
 		syncLatency, err = w.syncWithLatency()
 	}
 	f.Lock()
-	f.metrics.SyncLatencyMicros.RecordValue(syncLatency.Microseconds())
+	if f.onFsyncLatencyMetric != nil {
+		f.onFsyncLatencyMetric(syncLatency)
+	}
 	f.Unlock()
 
 	if w.c != nil {
@@ -731,10 +731,9 @@ func (w *LogWriter) Metrics() *LogWriterMetrics {
 
 // LogWriterMetrics contains misc metrics for the log writer.
 type LogWriterMetrics struct {
-	WriteThroughput   base.ThroughputMetric
-	PendingBufferLen  base.GaugeSampleMetric
-	SyncQueueLen      base.GaugeSampleMetric
-	SyncLatencyMicros *hdrhistogram.Histogram
+	WriteThroughput  base.ThroughputMetric
+	PendingBufferLen base.GaugeSampleMetric
+	SyncQueueLen     base.GaugeSampleMetric
 }
 
 // Merge merges metrics from x. Requires that x is non-nil.
@@ -742,41 +741,5 @@ func (m *LogWriterMetrics) Merge(x *LogWriterMetrics) error {
 	m.WriteThroughput.Merge(x.WriteThroughput)
 	m.PendingBufferLen.Merge(x.PendingBufferLen)
 	m.SyncQueueLen.Merge(x.SyncQueueLen)
-	if x.SyncLatencyMicros == nil {
-		return nil
-	} else if m.SyncLatencyMicros == nil {
-		m.SyncLatencyMicros = hdrhistogram.Import(x.SyncLatencyMicros.Export())
-	} else {
-		dropped := m.SyncLatencyMicros.Merge(x.SyncLatencyMicros)
-		if dropped > 0 {
-			// This should never happen since we use a consistent min, max when
-			// creating these histograms, and out-of-range is the only reason for the
-			// merge to drop samples.
-			return errors.Errorf("sync latency histogram merge dropped %d samples", dropped)
-		}
-	}
 	return nil
-}
-
-// Subtract merges metrics from x. Requires that x is non-nil.
-func (m *LogWriterMetrics) Subtract(x *LogWriterMetrics) {
-	m.WriteThroughput.Subtract(x.WriteThroughput)
-	m.PendingBufferLen.Subtract(x.PendingBufferLen)
-	m.SyncQueueLen.Subtract(x.SyncQueueLen)
-	if x.SyncLatencyMicros != nil {
-		m.SyncLatencyMicros = subtract(m.SyncLatencyMicros, x.SyncLatencyMicros)
-	}
-}
-
-// subtract returns a hdrhistogram.Histogram produce from subtracting two histograms
-func subtract(h *hdrhistogram.Histogram, g *hdrhistogram.Histogram) *hdrhistogram.Histogram {
-	snapg, snaph := g.Export(), h.Export()
-	for i := range snapg.Counts {
-		difference := snaph.Counts[i] - snapg.Counts[i]
-		if invariants.Enabled && difference < 0 {
-			panic("histogram subtraction lead to unexpected negative counts in buckets")
-		}
-		snaph.Counts[i] = difference
-	}
-	return hdrhistogram.Import(snaph)
 }
