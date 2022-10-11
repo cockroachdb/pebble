@@ -25,6 +25,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/metamorphic"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -153,7 +154,7 @@ func runCrossVersion(
 			if err := os.MkdirAll(r.dir, os.ModePerm); err != nil {
 				return err
 			}
-			if err := os.Link(versions[i].TestBinaryPath, filepath.Join(r.dir, r.testBinaryName)); err != nil {
+			if err := vfs.LinkOrCopy(vfs.Default, versions[i].TestBinaryPath, filepath.Join(r.dir, r.testBinaryName)); err != nil {
 				return err
 			}
 			err := r.run(ctx, &buf)
