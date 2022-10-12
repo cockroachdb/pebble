@@ -254,6 +254,8 @@ type DB struct {
 
 	commit *commitPipeline
 
+	smoother Smoother
+
 	// readState provides access to the state needed for reading without needing
 	// to acquire DB.mu.
 	readState struct {

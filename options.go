@@ -223,7 +223,7 @@ func (o *IterOptions) getLogger() Logger {
 // Specifically, when configured with a RangeKeyMasking.Suffix _s_, and there
 // exists a range key with suffix _r_ covering a point key with suffix _p_, and
 //
-//     _s_ ≤ _r_ < _p_
+//	_s_ ≤ _r_ < _p_
 //
 // then the point key is elided.
 //
@@ -571,6 +571,10 @@ type Options struct {
 		// ability to optionally schedule additional CPU. See the documentation
 		// for CPUWorkPermissionGranter for more details.
 		CPUWorkPermissionGranter CPUWorkPermissionGranter
+
+		// SmoothWriteIO will attempt to write to disk at a constant rate from
+		// compaction and flushing rather than as fast as it can.
+		SmoothWriteIO bool
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -1051,6 +1055,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
 	fmt.Fprintf(&buf, "  max_writer_concurrency=%d\n", o.Experimental.MaxWriterConcurrency)
 	fmt.Fprintf(&buf, "  force_writer_parallelism=%t\n", o.Experimental.ForceWriterParallelism)
+	fmt.Fprintf(&buf, "  smooth_write_io=%t\n", o.Experimental.SmoothWriteIO)
 
 	// Private options.
 	if o.private.disableLazyCombinedIteration {
@@ -1145,6 +1150,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 		// causes a key previously written to the OPTIONS file to be considered unknown,
 		// a backwards incompatible change. Instead, leave in support for parsing the
 		// key but simply don't parse the value.
+
+		// TODO: Remove this line
+		o.Experimental.SmoothWriteIO = true
 
 		switch {
 		case section == "Version":
@@ -1279,6 +1287,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.Experimental.ReadSamplingMultiplier, err = strconv.ParseInt(value, 10, 64)
 			case "table_cache_shards":
 				o.Experimental.TableCacheShards, err = strconv.Atoi(value)
+			case "enable_flush_smoothing":
+				o.Experimental.SmoothWriteIO = true
 			case "table_format":
 				switch value {
 				case "leveldb":
@@ -1298,6 +1308,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.Experimental.MaxWriterConcurrency, err = strconv.Atoi(value)
 			case "force_writer_parallelism":
 				o.Experimental.ForceWriterParallelism, err = strconv.ParseBool(value)
+			case "smooth_write_io":
+				o.Experimental.SmoothWriteIO, err = strconv.ParseBool(value)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil
