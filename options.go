@@ -606,6 +606,10 @@ type Options struct {
 		// for CPUWorkPermissionGranter for more details.
 		CPUWorkPermissionGranter CPUWorkPermissionGranter
 
+		// EnableFlushSmoothing will attempt to write to disk at a constant rate from
+		// compaction and flushing rather than as fast as it can.
+		EnableFlushSmoothing bool
+
 		// PointTombstoneWeight is a float in the range [0, +inf) used to weight the
 		// point tombstone heuristics during compaction picking.
 		//
@@ -1175,6 +1179,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
 	fmt.Fprintf(&buf, "  max_writer_concurrency=%d\n", o.Experimental.MaxWriterConcurrency)
 	fmt.Fprintf(&buf, "  force_writer_parallelism=%t\n", o.Experimental.ForceWriterParallelism)
+	fmt.Fprintf(&buf, "  enable_flush_smoothing=%t\n", o.Experimental.EnableFlushSmoothing)
 
 	// Private options.
 	//
@@ -1425,6 +1430,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.Experimental.ReadSamplingMultiplier, err = strconv.ParseInt(value, 10, 64)
 			case "table_cache_shards":
 				o.Experimental.TableCacheShards, err = strconv.Atoi(value)
+			case "enable_flush_smoothing":
+				o.Experimental.EnableFlushSmoothing, err = strconv.ParseBool(value)
 			case "table_format":
 				switch value {
 				case "leveldb":

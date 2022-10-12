@@ -102,6 +102,7 @@ func TestOptionsString(t *testing.T) {
   wal_bytes_per_sync=0
   max_writer_concurrency=0
   force_writer_parallelism=false
+  enable_flush_smoothing=false
 
 [Level "0"]
   block_restart_interval=16
@@ -235,6 +236,7 @@ func TestOptionsParse(t *testing.T) {
 			opts.Experimental.TableCacheShards = 500
 			opts.Experimental.MaxWriterConcurrency = 1
 			opts.Experimental.ForceWriterParallelism = true
+			opts.Experimental.EnableFlushSmoothing = true
 			opts.EnsureDefaults()
 			str := opts.String()
 

@@ -274,6 +274,8 @@ type DB struct {
 
 	commit *commitPipeline
 
+	smoother Smoother
+
 	// readState provides access to the state needed for reading without needing
 	// to acquire DB.mu.
 	readState struct {
@@ -1501,6 +1503,8 @@ func (d *DB) Close() error {
 	if reserved := d.memTableReserved.Load(); reserved != 0 {
 		err = firstError(err, errors.Errorf("leaked memtable reservation: %d", errors.Safe(reserved)))
 	}
+
+	d.smoother.stop()
 
 	// No more cleaning can start. Wait for any async cleaning to complete.
 	for d.mu.cleaner.cleaning {
