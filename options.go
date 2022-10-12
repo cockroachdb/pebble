@@ -223,7 +223,7 @@ func (o *IterOptions) getLogger() Logger {
 // Specifically, when configured with a RangeKeyMasking.Suffix _s_, and there
 // exists a range key with suffix _r_ covering a point key with suffix _p_, and
 //
-//     _s_ ≤ _r_ < _p_
+//	_s_ ≤ _r_ < _p_
 //
 // then the point key is elided.
 //
@@ -571,6 +571,10 @@ type Options struct {
 		// ability to optionally schedule additional CPU. See the documentation
 		// for CPUWorkPermissionGranter for more details.
 		CPUWorkPermissionGranter CPUWorkPermissionGranter
+
+		// SmoothWriteIO will attempt to write to disk at a constant rate from
+		// compaction and flushing rather than as fast as it can.
+		SmoothWriteIO bool
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for

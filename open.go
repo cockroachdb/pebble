@@ -78,6 +78,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
 		closed:              new(atomic.Value),
 		closedCh:            make(chan struct{}),
+		smoother:            Smoother{enabled: opts.Experimental.SmoothWriteIO},
 	}
 	d.mu.versions = &versionSet{}
 	d.atomic.diskAvailBytes = math.MaxUint64

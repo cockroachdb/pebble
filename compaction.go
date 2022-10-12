@@ -2612,6 +2612,8 @@ func (d *DB) runCompaction(
 	}
 	splitter := &splitterGroup{cmp: c.cmp, splitters: outputSplitters}
 
+	ratePacer := d.smoother.before(time.Now())
+	defer d.smoother.after(ratePacer, time.Now())
 	// Each outer loop iteration produces one output file. An iteration that
 	// produces a file containing point keys (and optionally range tombstones)
 	// guarantees that the input iterator advanced. An iteration that produces
@@ -2622,6 +2624,8 @@ func (d *DB) runCompaction(
 	// exhausted and the range tombstone fragments will all be flushed.
 	for key, val := iter.First(); key != nil || !c.rangeDelFrag.Empty() || !c.rangeKeyFrag.Empty(); {
 		splitterSuggestion := splitter.onNewOutput(key)
+
+		ratePacer.runIter(time.Now())
 
 		// Each inner loop iteration processes one key from the input iterator.
 		for ; key != nil; key, val = iter.Next() {
