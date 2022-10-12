@@ -223,7 +223,7 @@ func (o *IterOptions) getLogger() Logger {
 // Specifically, when configured with a RangeKeyMasking.Suffix _s_, and there
 // exists a range key with suffix _r_ covering a point key with suffix _p_, and
 //
-//     _s_ ≤ _r_ < _p_
+//	_s_ ≤ _r_ < _p_
 //
 // then the point key is elided.
 //
@@ -571,6 +571,10 @@ type Options struct {
 		// ability to optionally schedule additional CPU. See the documentation
 		// for CPUWorkPermissionGranter for more details.
 		CPUWorkPermissionGranter CPUWorkPermissionGranter
+
+		// SmoothWriteIO will attempt to write to disk at a constant rate from
+		// compaction and flushing rather than as fast as it can.
+		SmoothWriteIO bool
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -1146,6 +1150,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 		// a backwards incompatible change. Instead, leave in support for parsing the
 		// key but simply don't parse the value.
 
+		// TODO: Remove this line
+		o.Experimental.SmoothWriteIO = true
+
 		switch {
 		case section == "Version":
 			switch key {
@@ -1279,6 +1286,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.Experimental.ReadSamplingMultiplier, err = strconv.ParseInt(value, 10, 64)
 			case "table_cache_shards":
 				o.Experimental.TableCacheShards, err = strconv.Atoi(value)
+			case "enable_flush_smoothing":
+				o.Experimental.SmoothWriteIO = true
 			case "table_format":
 				switch value {
 				case "leveldb":

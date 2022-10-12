@@ -2623,6 +2623,9 @@ func (d *DB) runCompaction(
 	for key, val := iter.First(); key != nil || !c.rangeDelFrag.Empty() || !c.rangeKeyFrag.Empty(); {
 		splitterSuggestion := splitter.onNewOutput(key)
 
+		startTime := time.Now()
+		d.smoother.startWork()
+
 		// Each inner loop iteration processes one key from the input iterator.
 		for ; key != nil; key, val = iter.Next() {
 			if split := splitter.shouldSplitBefore(key, tw); split == splitNow {
@@ -2686,10 +2689,12 @@ func (d *DB) runCompaction(
 			}
 			if tw == nil {
 				if err := newOutput(); err != nil {
+					d.smoother.finishWork(time.Since(startTime), false)
 					return nil, pendingOutputs, err
 				}
 			}
 			if err := tw.Add(*key, val); err != nil {
+				d.smoother.finishWork(time.Since(startTime), false)
 				return nil, pendingOutputs, err
 			}
 		}
@@ -2718,8 +2723,10 @@ func (d *DB) runCompaction(
 			splitKey = key.UserKey
 		}
 		if err := finishOutput(splitKey); err != nil {
+			d.smoother.finishWork(time.Since(startTime), false)
 			return nil, pendingOutputs, err
 		}
+		d.smoother.finishWork(time.Since(startTime), true)
 	}
 
 	for _, cl := range c.inputs {
