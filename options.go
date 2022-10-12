@@ -596,6 +596,10 @@ type Options struct {
 		// for CPUWorkPermissionGranter for more details.
 		CPUWorkPermissionGranter CPUWorkPermissionGranter
 
+		// SmoothWriteIO will attempt to write to disk at a constant rate from
+		// compaction and flushing rather than as fast as it can.
+		SmoothWriteIO bool
+
 		// PointTombstoneWeight is a float in the range [0, +inf) used to weight the
 		// point tombstone heuristics during compaction picking.
 		//
@@ -1165,6 +1169,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
 	fmt.Fprintf(&buf, "  max_writer_concurrency=%d\n", o.Experimental.MaxWriterConcurrency)
 	fmt.Fprintf(&buf, "  force_writer_parallelism=%t\n", o.Experimental.ForceWriterParallelism)
+	fmt.Fprintf(&buf, "  smooth_write_io=%t\n", o.Experimental.SmoothWriteIO)
 
 	// Private options.
 	//
@@ -1268,6 +1273,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 		// a backwards incompatible change. Instead, leave in support for parsing the
 		// key but simply don't parse the value.
 
+		// TODO: Remove this line
+		o.Experimental.SmoothWriteIO = true
 		switch {
 		case section == "Version":
 			switch key {
@@ -1415,6 +1422,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.Experimental.ReadSamplingMultiplier, err = strconv.ParseInt(value, 10, 64)
 			case "table_cache_shards":
 				o.Experimental.TableCacheShards, err = strconv.Atoi(value)
+			case "enable_flush_smoothing":
+				o.Experimental.SmoothWriteIO, err = strconv.ParseBool(value)
 			case "table_format":
 				switch value {
 				case "leveldb":

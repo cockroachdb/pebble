@@ -153,10 +153,12 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
 		closed:              new(atomic.Value),
 		closedCh:            make(chan struct{}),
+		smoother:            Smoother{enabled: opts.Experimental.SmoothWriteIO},
 	}
 	d.mu.versions = &versionSet{}
 	d.diskAvailBytes.Store(math.MaxUint64)
 	d.mu.versions.diskAvailBytes = d.getDiskAvailableBytesCached
+	d.smoother.start()
 
 	defer func() {
 		// If an error or panic occurs during open, attempt to release the manually

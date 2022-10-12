@@ -3136,8 +3136,20 @@ func (d *DB) runCompaction(
 		}
 		splitterSuggestion := splitter.onNewOutput(firstKey)
 
+		startTime := time.Now()
+		estimatedSize := uint64(0)
+		d.smoother.startWork()
+
 		// Each inner loop iteration processes one key from the input iterator.
 		for ; key != nil; key, val = iter.Next() {
+			// Every 4MB of writing, smooth out the writes.
+			if tw != nil && tw.EstimatedSize()-estimatedSize > 4*1024*1024 {
+				d.smoother.finishWork(time.Since(startTime), true)
+				d.smoother.startWork()
+				startTime = time.Now()
+				estimatedSize = tw.EstimatedSize()
+			}
+
 			if split := splitter.shouldSplitBefore(key, tw); split == splitNow {
 				break
 			}
@@ -3199,10 +3211,12 @@ func (d *DB) runCompaction(
 			}
 			if tw == nil {
 				if err := newOutput(); err != nil {
+					d.smoother.finishWork(time.Since(startTime), false)
 					return nil, pendingOutputs, stats, err
 				}
 			}
 			if err := tw.Add(*key, val); err != nil {
+				d.smoother.finishWork(time.Since(startTime), false)
 				return nil, pendingOutputs, stats, err
 			}
 			if iter.snapshotPinned {
@@ -3239,8 +3253,10 @@ func (d *DB) runCompaction(
 			splitKey = key.UserKey
 		}
 		if err := finishOutput(splitKey); err != nil {
+			d.smoother.finishWork(time.Since(startTime), false)
 			return nil, pendingOutputs, stats, err
 		}
+		d.smoother.finishWork(time.Since(startTime), true)
 	}
 
 	for _, cl := range c.inputs {
