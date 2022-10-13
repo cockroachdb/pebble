@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -13,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/redact"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // CacheMetrics holds metrics for the block and table cache.
@@ -228,13 +230,25 @@ type Metrics struct {
 		BytesWritten uint64
 	}
 
-	LogWriter record.LogWriterMetrics
+	LogWriter struct {
+		FsyncLatency prometheus.Histogram
+		record.LogWriterMetrics
+	}
 
 	private struct {
 		optionsFileSize  uint64
 		manifestFileSize uint64
 	}
 }
+
+var (
+	// FsyncLatencyBuckets are prometheus histogram buckets suitable for a histogram
+	// that records latencies for fsyncs.
+	FsyncLatencyBuckets = append(
+		prometheus.LinearBuckets(0.0, float64(time.Microsecond*100), 50),
+		prometheus.ExponentialBucketsRange(float64(time.Millisecond*5), float64(10*time.Second), 50)...,
+	)
+)
 
 // DiskSpaceUsage returns the total disk space used by the database in bytes,
 // including live and obsolete files.

@@ -6,14 +6,17 @@ package record
 
 import (
 	"bytes"
+	"math"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/prometheus/client_golang/prometheus"
+	prometheusgo "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -137,7 +140,9 @@ func TestSyncError(t *testing.T) {
 	require.NoError(t, err)
 
 	injectedErr := errors.New("injected error")
-	w := NewLogWriter(syncErrorFile{f, injectedErr}, 0, LogWriterConfig{})
+	w := NewLogWriter(syncErrorFile{f, injectedErr}, 0, LogWriterConfig{
+		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+	})
 
 	syncRecord := func() {
 		var syncErr error
@@ -175,7 +180,7 @@ func (f *syncFile) Sync() error {
 
 func TestSyncRecord(t *testing.T) {
 	f := &syncFile{}
-	w := NewLogWriter(f, 0, LogWriterConfig{})
+	w := NewLogWriter(f, 0, LogWriterConfig{WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
 
 	var syncErr error
 	for i := 0; i < 100000; i++ {
@@ -225,6 +230,7 @@ func TestMinSyncInterval(t *testing.T) {
 		WALMinSyncInterval: func() time.Duration {
 			return minSyncInterval
 		},
+		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 	})
 
 	var timer fakeTimer
@@ -295,6 +301,7 @@ func TestMinSyncIntervalClose(t *testing.T) {
 		WALMinSyncInterval: func() time.Duration {
 			return minSyncInterval
 		},
+		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 	})
 
 	var timer fakeTimer
@@ -344,7 +351,7 @@ func (f *syncFileWithWait) Sync() error {
 func TestMetricsWithoutSync(t *testing.T) {
 	f := &syncFileWithWait{}
 	f.writeWG.Add(1)
-	w := NewLogWriter(f, 0, LogWriterConfig{})
+	w := NewLogWriter(f, 0, LogWriterConfig{WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
 	offset, err := w.SyncRecord([]byte("hello"), nil, nil)
 	require.NoError(t, err)
 	const recordSize = 16
@@ -373,13 +380,25 @@ func TestMetricsWithoutSync(t *testing.T) {
 func TestMetricsWithSync(t *testing.T) {
 	f := &syncFileWithWait{}
 	f.syncWG.Add(1)
-	syncLatencyMicros := hdrhistogram.New(0, (time.Second * 30).Microseconds(), 2)
-	w := NewLogWriter(f, 0, LogWriterConfig{
-		OnFsync: func(duration time.Duration) {
-			err := syncLatencyMicros.RecordValue(duration.Microseconds())
-			require.NoError(t, err)
-		},
+	writeTo := &prometheusgo.Metric{}
+	syncLatencyMicros := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Buckets: []float64{0,
+			float64(time.Millisecond),
+			float64(2 * time.Millisecond),
+			float64(3 * time.Millisecond),
+			float64(4 * time.Millisecond),
+			float64(5 * time.Millisecond),
+			float64(6 * time.Millisecond),
+			float64(7 * time.Millisecond),
+			float64(8 * time.Millisecond),
+			float64(9 * time.Millisecond),
+			float64(10 * time.Millisecond)},
 	})
+
+	w := NewLogWriter(f, 0, LogWriterConfig{
+		WALFsyncLatency: syncLatencyMicros,
+	},
+	)
 	var wg sync.WaitGroup
 	wg.Add(100)
 	for i := 0; i < 100; i++ {
@@ -396,9 +415,67 @@ func TestMetricsWithSync(t *testing.T) {
 	w.Close()
 	m := w.Metrics()
 	require.LessOrEqual(t, float64(30), m.SyncQueueLen.Mean())
+	syncLatencyMicros.Write(writeTo)
 	// Allow for some inaccuracy in sleep and for two syncs, one of which was
 	// fast.
-	require.LessOrEqual(t, int64(syncLatency/(2*time.Microsecond)),
-		syncLatencyMicros.ValueAtQuantile(90))
+	require.LessOrEqual(t, float64(syncLatency/(2*time.Microsecond)),
+		valueAtQuantileWindowed(writeTo.Histogram, 90))
 	require.LessOrEqual(t, int64(syncLatency/2), int64(m.WriteThroughput.WorkDuration))
+}
+
+func valueAtQuantileWindowed(histogram *prometheusgo.Histogram, q float64) float64 {
+	buckets := histogram.Bucket
+	n := float64(*histogram.SampleCount)
+	if n == 0 {
+		return 0
+	}
+
+	// NB: The 0.5 is added for rounding purposes; it helps in cases where
+	// SampleCount is small.
+	rank := uint64(((q / 100) * n) + 0.5)
+
+	// Since we are missing the +Inf bucket, CumulativeCounts may never exceed
+	// rank. By omitting the highest bucket we have from the search, the failed
+	// search will land on that last bucket and we don't have to do any special
+	// checks regarding landing on a non-existent bucket.
+	b := sort.Search(len(buckets)-1, func(i int) bool { return *buckets[i].CumulativeCount >= rank })
+
+	var (
+		bucketStart float64 // defaults to 0, which we assume is the lower bound of the smallest bucket
+		bucketEnd   = *buckets[b].UpperBound
+		count       = *buckets[b].CumulativeCount
+	)
+
+	// Calculate the linearly interpolated value within the bucket.
+	if b > 0 {
+		bucketStart = *buckets[b-1].UpperBound
+		count -= *buckets[b-1].CumulativeCount
+		rank -= *buckets[b-1].CumulativeCount
+	}
+	val := bucketStart + (bucketEnd-bucketStart)*(float64(rank)/float64(count))
+	if math.IsNaN(val) || math.IsInf(val, -1) {
+		return 0
+	}
+
+	// Should not extrapolate past the upper bound of the largest bucket.
+	//
+	// NB: SampleCount includes the implicit +Inf bucket but the
+	// buckets[len(buckets)-1].UpperBound refers to the largest bucket defined
+	// by us -- the client library doesn't give us access to the +Inf bucket
+	// which Prometheus uses under the hood. With a high enough quantile, the
+	// val computed further below surpasses the upper bound of the largest
+	// bucket. Using that interpolated value feels wrong since we'd be
+	// extrapolating. Also, for specific metrics if we see our q99 values to be
+	// hitting the top-most bucket boundary, that's an indication for us to
+	// choose better buckets for more accuracy. It's also worth noting that the
+	// prometheus client library does the same thing when the resulting value is
+	// in the +Inf bucket, whereby they return the upper bound of the second
+	// last bucket -- see [1].
+	//
+	// [1]: https://github.com/prometheus/prometheus/blob/d9162189/promql/quantile.go#L103.
+	if val > *buckets[len(buckets)-1].UpperBound {
+		return *buckets[len(buckets)-1].UpperBound
+	}
+
+	return val
 }
