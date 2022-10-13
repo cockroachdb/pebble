@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -418,9 +419,13 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			BytesPerSync:    d.opts.WALBytesPerSync,
 			PreallocateSize: d.walPreallocateSize(),
 		})
+		d.mu.log.metrics.fsyncLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: FsyncLatencyBuckets,
+		})
+
 		logWriterConfig := record.LogWriterConfig{
 			WALMinSyncInterval: d.opts.WALMinSyncInterval,
-			OnFsync:            d.opts.MetricEventListener.WALFsyncLatency,
+			WALFsyncLatency:    d.mu.log.metrics.fsyncLatency,
 		}
 		d.mu.log.LogWriter = record.NewLogWriter(logFile, newLogNum, logWriterConfig)
 		d.mu.versions.metrics.WAL.Files++

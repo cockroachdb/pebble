@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -341,7 +342,10 @@ type DB struct {
 			// (i.e. makeRoomForWrite).
 			*record.LogWriter
 			// Can be nil.
-			metrics record.LogWriterMetrics
+			metrics struct {
+				fsyncLatency prometheus.Histogram
+				record.LogWriterMetrics
+			}
 		}
 
 		mem struct {
@@ -1566,7 +1570,8 @@ func (d *DB) Metrics() *Metrics {
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())
 	d.mu.versions.logUnlock()
 
-	if err := metrics.LogWriter.Merge(&d.mu.log.metrics); err != nil {
+	metrics.LogWriter.FsyncLatency = d.mu.log.metrics.fsyncLatency
+	if err := metrics.LogWriter.Merge(&d.mu.log.metrics.LogWriterMetrics); err != nil {
 		d.opts.Logger.Infof("metrics error: %s", err)
 	}
 	metrics.Flush.WriteThroughput = d.mu.compact.flushWriteThroughput
@@ -1950,7 +1955,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		if !d.opts.DisableWAL {
 			d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: newLogSize})
 			d.mu.log.LogWriter = record.NewLogWriter(newLogFile, newLogNum, record.LogWriterConfig{
-				OnFsync:            d.opts.MetricEventListener.WALFsyncLatency,
+				WALFsyncLatency:    d.mu.log.metrics.fsyncLatency,
 				WALMinSyncInterval: d.opts.WALMinSyncInterval,
 			})
 		}
