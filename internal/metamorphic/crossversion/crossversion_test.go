@@ -154,11 +154,20 @@ func runCrossVersion(
 			if err := os.MkdirAll(r.dir, os.ModePerm); err != nil {
 				return err
 			}
-			if err := vfs.LinkOrCopy(vfs.Default, versions[i].TestBinaryPath, filepath.Join(r.dir, r.testBinaryName)); err != nil {
+			fi, err := os.Stat(versions[i].TestBinaryPath)
+			if err != nil {
 				return err
 			}
-			err := r.run(ctx, &buf)
-			if err != nil {
+			binaryPath := filepath.Join(r.dir, r.testBinaryName)
+			if err := vfs.LinkOrCopy(vfs.Default, versions[i].TestBinaryPath, binaryPath); err != nil {
+				return err
+			}
+			// Preserve the original file's mode if we needed to copy the binary.
+			if err := os.Chmod(binaryPath, fi.Mode()); err != nil {
+				return err
+			}
+
+			if err := r.run(ctx, &buf); err != nil {
 				t.Fatalf("Metamorphic test failed: %s\nOutput:%s\n", err, buf.String())
 			}
 
