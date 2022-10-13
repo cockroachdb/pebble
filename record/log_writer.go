@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var walSyncLabels = pprof.Labels("pebble", "wal-sync")
@@ -227,7 +228,6 @@ func (c *flusherCond) Unlock() {
 }
 
 type durationFunc func() time.Duration
-type recordValueFunc func(value time.Duration)
 
 // syncTimer is an interface for timers, modeled on the closure callback mode
 // of time.Timer. See time.AfterFunc and LogWriter.afterFunc. syncTimer is used
@@ -280,11 +280,11 @@ type LogWriter struct {
 		// Accumulated flush error.
 		err error
 		// minSyncInterval is the minimum duration between syncs.
-		minSyncInterval      durationFunc
-		onFsyncLatencyMetric recordValueFunc
-		pending              []*block
-		syncQ                syncQueue
-		metrics              *LogWriterMetrics
+		minSyncInterval durationFunc
+		fsyncLatency    prometheus.Histogram
+		pending         []*block
+		syncQ           syncQueue
+		metrics         *LogWriterMetrics
 	}
 
 	// afterFunc is a hook to allow tests to mock out the timer functionality
@@ -296,7 +296,7 @@ type LogWriter struct {
 // LogWriterConfig is a struct used for configuring new LogWriters
 type LogWriterConfig struct {
 	WALMinSyncInterval durationFunc
-	OnFsync            recordValueFunc
+	WALFsyncLatency    prometheus.Histogram
 }
 
 // CapAllocatedBlocks is the maximum number of blocks allocated by the
@@ -331,7 +331,7 @@ func NewLogWriter(w io.Writer, logNum base.FileNum, logWriterConfig LogWriterCon
 
 	f := &r.flusher
 	f.minSyncInterval = logWriterConfig.WALMinSyncInterval
-	f.onFsyncLatencyMetric = logWriterConfig.OnFsync
+	f.fsyncLatency = logWriterConfig.WALFsyncLatency
 
 	go func() {
 		pprof.Do(context.Background(), walSyncLabels, r.flushLoop)
@@ -451,8 +451,8 @@ func (w *LogWriter) flushLoop(context.Context) {
 		f.Unlock()
 		synced, syncLatency, bytesWritten, err := w.flushPending(data, pending, head, tail)
 		f.Lock()
-		if synced && f.onFsyncLatencyMetric != nil {
-			f.onFsyncLatencyMetric(syncLatency)
+		if synced && f.fsyncLatency != nil {
+			f.fsyncLatency.Observe(float64(syncLatency))
 		}
 		f.err = err
 		if f.err != nil {
@@ -606,8 +606,8 @@ func (w *LogWriter) Close() error {
 		syncLatency, err = w.syncWithLatency()
 	}
 	f.Lock()
-	if f.onFsyncLatencyMetric != nil {
-		f.onFsyncLatencyMetric(syncLatency)
+	if f.fsyncLatency != nil {
+		f.fsyncLatency.Observe(float64(syncLatency))
 	}
 	f.Unlock()
 

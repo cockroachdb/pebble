@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -184,7 +185,9 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	}
 
 	// A basic commitEnv which writes to a WAL.
-	wal := record.NewLogWriter(sf, 0 /* logNum */, record.LogWriterConfig{})
+	wal := record.NewLogWriter(sf, 0 /* logNum */, record.LogWriterConfig{
+		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+	})
 	var walDone sync.WaitGroup
 	testEnv := commitEnv{
 		logSeqNum:     new(uint64),
@@ -235,7 +238,9 @@ func BenchmarkCommitPipeline(b *testing.B) {
 		b.Run(fmt.Sprintf("parallel=%d", parallelism), func(b *testing.B) {
 			b.SetParallelism(parallelism)
 			mem := newMemTable(memTableOptions{})
-			wal := record.NewLogWriter(io.Discard, 0 /* logNum */, record.LogWriterConfig{})
+			wal := record.NewLogWriter(io.Discard, 0 /* logNum */, record.LogWriterConfig{
+				WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+			})
 
 			nullCommitEnv := commitEnv{
 				logSeqNum:     new(uint64),
