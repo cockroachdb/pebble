@@ -169,6 +169,9 @@ func runCrossVersion(
 			if err != nil {
 				fatalf(t, rootDir, "Metamorphic test failed: %s\nOutput:%s\n", err, buf.String())
 			}
+			if testing.Verbose() {
+				t.Log(buf.String())
+			}
 
 			// dir is a directory containing the ops file and subdirectories for
 			// each run with a particular set of OPTIONS. For example:
