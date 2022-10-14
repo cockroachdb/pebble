@@ -25,7 +25,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/metamorphic"
-	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -81,10 +80,16 @@ func TestMetaCrossVersion(t *testing.T) {
 			// Use shortened SHAs for readability.
 			versions[i].SHA = versions[i].SHA[:8]
 		}
-		if _, err := os.Stat(v.TestBinaryPath); err != nil {
+		absPath, err := filepath.Abs(v.TestBinaryPath)
+		if err != nil {
 			t.Fatal(err)
 		}
-		t.Logf("%d: %s", i, v.String())
+		fi, err := os.Stat(absPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		versions[i].TestBinaryPath = absPath
+		t.Logf("%d: %s (Mode = %s)", i, v.String(), fi.Mode())
 	}
 
 	// All randomness should be derived from `seed`. This makes reproducing a
@@ -112,7 +117,12 @@ func (s initialState) String() string {
 }
 
 func runCrossVersion(
-	ctx context.Context, t *testing.T, tempDir string, versions pebbleVersions, seed int64, factor int,
+	ctx context.Context,
+	t *testing.T,
+	tempDir string,
+	versions pebbleVersions,
+	seed int64,
+	factor int,
 ) error {
 	prng := rand.New(rand.NewSource(seed))
 	// Use prng to derive deterministic seeds to provide to the child
@@ -150,12 +160,9 @@ func runCrossVersion(
 				dir:            filepath.Join(rootDir, runID),
 				vers:           versions[i],
 				initialState:   s,
-				testBinaryName: filepath.Base(versions[i].TestBinaryPath),
+				testBinaryPath: versions[i].TestBinaryPath,
 			}
 			if err := os.MkdirAll(r.dir, os.ModePerm); err != nil {
-				return err
-			}
-			if err := vfs.LinkOrCopy(vfs.Default, versions[i].TestBinaryPath, filepath.Join(r.dir, r.testBinaryName)); err != nil {
 				return err
 			}
 			err := r.run(ctx, &buf)
@@ -228,7 +235,7 @@ type metamorphicTestRun struct {
 	dir            string
 	vers           pebbleVersion
 	initialState   initialState
-	testBinaryName string
+	testBinaryPath string
 }
 
 func (r *metamorphicTestRun) run(ctx context.Context, output io.Writer) error {
@@ -242,7 +249,7 @@ func (r *metamorphicTestRun) run(ctx context.Context, output io.Writer) error {
 			"--initial-state", r.initialState.path,
 			"--initial-state-desc", r.initialState.desc)
 	}
-	cmd := exec.CommandContext(ctx, filepath.Join(r.dir, r.testBinaryName), args...)
+	cmd := exec.CommandContext(ctx, r.testBinaryPath, args...)
 	cmd.Dir = r.dir
 	cmd.Stderr = output
 	cmd.Stdout = output
