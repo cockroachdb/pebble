@@ -70,7 +70,8 @@ func TestMetaCrossVersion(t *testing.T) {
 	if seed == 0 {
 		seed = time.Now().UnixNano()
 	}
-	t.Logf("Test directory: %s\n", t.TempDir())
+	tempDir := t.TempDir()
+	t.Logf("Test directory: %s\n", tempDir)
 	t.Logf("Reproduction:\n  %s\n", reproductionCommand())
 
 	// Print all the versions supplied and ensure all the test binaries
@@ -89,7 +90,7 @@ func TestMetaCrossVersion(t *testing.T) {
 	// All randomness should be derived from `seed`. This makes reproducing a
 	// failure locally easier.
 	ctx := context.Background()
-	require.NoError(t, runCrossVersion(ctx, t, versions, seed, factor))
+	require.NoError(t, runCrossVersion(ctx, t, tempDir, versions, seed, factor))
 }
 
 type pebbleVersion struct {
@@ -111,7 +112,7 @@ func (s initialState) String() string {
 }
 
 func runCrossVersion(
-	ctx context.Context, t *testing.T, versions pebbleVersions, seed int64, factor int,
+	ctx context.Context, t *testing.T, tempDir string, versions pebbleVersions, seed int64, factor int,
 ) error {
 	prng := rand.New(rand.NewSource(seed))
 	// Use prng to derive deterministic seeds to provide to the child
@@ -122,7 +123,7 @@ func runCrossVersion(
 		versionSeeds[i] = prng.Uint64()
 	}
 
-	rootDir := filepath.Join(t.TempDir(), strconv.FormatInt(seed, 10))
+	rootDir := filepath.Join(tempDir, strconv.FormatInt(seed, 10))
 	if err := os.MkdirAll(rootDir, os.ModePerm); err != nil {
 		return err
 	}
@@ -159,7 +160,7 @@ func runCrossVersion(
 			}
 			err := r.run(ctx, &buf)
 			if err != nil {
-				t.Fatalf("Metamorphic test failed: %s\nOutput:%s\n", err, buf.String())
+				fatalf(t, rootDir, "Metamorphic test failed: %s\nOutput:%s\n", err, buf.String())
 			}
 
 			// dir is a directory containing the ops file and subdirectories for
@@ -192,7 +193,7 @@ func runCrossVersion(
 		// version's metamorphic runs used the same seed, so all of the
 		// resulting histories should be identical.
 		if h, diff := metamorphic.CompareHistories(t, histories); h > 0 {
-			t.Fatalf("Metamorphic test divergence between %q and %q:\nDiff:\n%s",
+			fatalf(t, rootDir, "Metamorphic test divergence between %q and %q:\nDiff:\n%s",
 				nextInitialStates[0].desc, nextInitialStates[h].desc, diff)
 		}
 
@@ -211,6 +212,15 @@ func runCrossVersion(
 		initialStates = nextInitialStates
 	}
 	return nil
+}
+
+func fatalf(t testing.TB, dir string, msg string, args ...interface{}) {
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	dst := filepath.Join(wd, filepath.Base(dir))
+	t.Logf("Moving test dir %q to %q.", dir, dst)
+	require.NoError(t, os.Rename(dir, dst))
+	t.Fatalf(msg, args...)
 }
 
 type metamorphicTestRun struct {
