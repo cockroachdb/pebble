@@ -2,3 +2,5 @@
 cpu.*.prof
 heap.prof
 mutex.prof
+# Testing artifacts
+meta.*.test
