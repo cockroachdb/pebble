@@ -32,6 +32,9 @@ type manifestT struct {
 	fmtKey    keyFormatter
 	verbose   bool
 
+	filterStart key
+	filterEnd   key
+
 	summarizeDur time.Duration
 }
 
@@ -58,12 +61,11 @@ Print the contents of the MANIFEST files.
 		Args: cobra.MinimumNArgs(1),
 		Run:  m.runDump,
 	}
-
+	m.Dump.Flags().Var(&m.fmtKey, "key", "key formatter")
+	m.Dump.Flags().Var(&m.filterStart, "filter-start", "start key filters out all version edits that only reference sstables containing keys strictly before the given key")
+	m.Dump.Flags().Var(&m.filterEnd, "filter-end", "end key filters out all version edits that only reference sstables containing keys at or strictly after the given key")
 	m.Root.AddCommand(m.Dump)
 	m.Root.PersistentFlags().BoolVarP(&m.verbose, "verbose", "v", false, "verbose output")
-
-	m.Dump.Flags().Var(
-		&m.fmtKey, "key", "key formatter")
 
 	// Add summarize command
 	m.Summarize = &cobra.Command{
@@ -96,12 +98,15 @@ Check the contents of the MANIFEST files.
 	return m
 }
 
-func (m *manifestT) printLevels(stdout io.Writer, v *manifest.Version) {
+func (m *manifestT) printLevels(cmp base.Compare, stdout io.Writer, v *manifest.Version) {
 	for level := range v.Levels {
 		if level == 0 && len(v.L0SublevelFiles) > 0 && !v.Levels[level].Empty() {
 			for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 				fmt.Fprintf(stdout, "--- L0.%d ---\n", sublevel)
 				v.L0SublevelFiles[sublevel].Each(func(f *manifest.FileMetadata) {
+					if !anyOverlapFile(cmp, f, m.filterStart, m.filterEnd) {
+						return
+					}
 					fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
 					formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
 					formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
@@ -113,6 +118,9 @@ func (m *manifestT) printLevels(stdout io.Writer, v *manifest.Version) {
 		fmt.Fprintf(stdout, "--- L%d ---\n", level)
 		iter := v.Levels[level].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
+			if !anyOverlapFile(cmp, f, m.filterStart, m.filterEnd) {
+				continue
+			}
 			fmt.Fprintf(stdout, "  %s:%d", f.FileNum, f.Size)
 			formatSeqNumRange(stdout, f.SmallestSeqNum, f.LargestSeqNum)
 			formatKeyRange(stdout, m.fmtKey, &f.Smallest, &f.Largest)
@@ -156,6 +164,10 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 				if err := bve.Accumulate(&ve); err != nil {
 					fmt.Fprintf(stdout, "%s\n", err)
 					break
+				}
+
+				if cmp != nil && !anyOverlap(cmp.Compare, &ve, m.filterStart, m.filterEnd) {
+					continue
 				}
 
 				empty := true
@@ -227,10 +239,44 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "%s\n", err)
 					return
 				}
-				m.printLevels(stdout, v)
+				m.printLevels(cmp.Compare, stdout, v)
 			}
 		}()
 	}
+}
+
+func anyOverlap(cmp base.Compare, ve *manifest.VersionEdit, start, end key) bool {
+	if start == nil && end == nil {
+		return true
+	}
+	for _, df := range ve.DeletedFiles {
+		if anyOverlapFile(cmp, df, start, end) {
+			return true
+		}
+	}
+	for _, nf := range ve.NewFiles {
+		if anyOverlapFile(cmp, nf.Meta, start, end) {
+			return true
+		}
+	}
+	return false
+}
+
+func anyOverlapFile(cmp base.Compare, f *manifest.FileMetadata, start, end key) bool {
+	if f == nil {
+		return true
+	}
+	if start != nil {
+		if v := cmp(f.Largest.UserKey, start); v < 0 {
+			return false
+		} else if f.Largest.IsExclusiveSentinel() && v == 0 {
+			return false
+		}
+	}
+	if end != nil && cmp(f.Smallest.UserKey, end) >= 0 {
+		return false
+	}
+	return true
 }
 
 func (m *manifestT) runSummarize(cmd *cobra.Command, args []string) {
@@ -500,7 +546,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					fmt.Fprintf(stdout, "%s: offset: %d err: %s\n",
 						arg, offset, err)
 					fmt.Fprintf(stdout, "Version state before failed Apply\n")
-					m.printLevels(stdout, v)
+					m.printLevels(cmp.Compare, stdout, v)
 					fmt.Fprintf(stdout, "Version edit that failed\n")
 					for df := range ve.DeletedFiles {
 						fmt.Fprintf(stdout, "  deleted: L%d %s\n", df.Level, df.FileNum)
