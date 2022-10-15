@@ -6,6 +6,7 @@ package logs
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"math"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -56,15 +58,16 @@ var (
 	// than the Pebble log output.
 	compactionPattern = regexp.MustCompile(
 		`^.*` +
-			/* Job ID           */ `\[JOB (?P<job>\d+)]\s` +
-			/* Start / end      */ `compact(?P<suffix>ed|ing)` +
-			/* Compaction type  */ `\((?P<type>.*?)\)\s` +
-			/* Start /end level */ `L(?P<from>\d)(?:.*(?:\+|->)\sL(?P<to>\d))?` +
-			/* Bytes            */ `(?:.*?\((?P<digit>.*?)\s(?P<unit>.*?)\))?`,
+			/* Job ID            */ `\[JOB (?P<job>\d+)]\s` +
+			/* Start / end       */ `compact(?P<suffix>ed|ing)` +
+			/* Compaction type   */ `\((?P<type>.*?)\)\s` +
+			/* Start / end level */ `(?P<levels>L(?P<from>\d)(?:.*(?:\+|->)\sL(?P<to>\d))?` +
+			/* Bytes             */ `(?:.*?\((?P<digit>.*?)\s(?P<unit>.*?)\))?)`,
 	)
 	compactionPatternJobIdx    = compactionPattern.SubexpIndex("job")
 	compactionPatternSuffixIdx = compactionPattern.SubexpIndex("suffix")
 	compactionPatternTypeIdx   = compactionPattern.SubexpIndex("type")
+	compactionPatternLevels    = compactionPattern.SubexpIndex("levels")
 	compactionPatternFromIdx   = compactionPattern.SubexpIndex("from")
 	compactionPatternToIdx     = compactionPattern.SubexpIndex("to")
 	compactionPatternDigitIdx  = compactionPattern.SubexpIndex("digit")
@@ -184,11 +187,12 @@ func parseCompactionType(s string) (t compactionType, err error) {
 
 // compactionStart is a compaction start event.
 type compactionStart struct {
-	ctx       logContext
-	jobID     int
-	cType     compactionType
-	fromLevel int
-	toLevel   int
+	ctx        logContext
+	jobID      int
+	cType      compactionType
+	fromLevel  int
+	toLevel    int
+	inputBytes uint64
 }
 
 // parseCompactionStart converts the given regular expression sub-matches for a
@@ -208,6 +212,12 @@ func parseCompactionStart(matches []string) (compactionStart, error) {
 		return start, err
 	}
 
+	// Parse input bytes.
+	inputBytes, err := sumInputBytes(matches[compactionPatternLevels])
+	if err != nil {
+		return start, errors.Newf("could not sum input bytes: %s", err)
+	}
+
 	// Parse from-level.
 	from, err := strconv.Atoi(matches[compactionPatternFromIdx])
 	if err != nil {
@@ -224,10 +234,11 @@ func parseCompactionStart(matches []string) (compactionStart, error) {
 	}
 
 	start = compactionStart{
-		jobID:     jobID,
-		cType:     cType,
-		fromLevel: from,
-		toLevel:   to,
+		jobID:      jobID,
+		cType:      cType,
+		fromLevel:  from,
+		toLevel:    to,
+		inputBytes: inputBytes,
 	}
 
 	return start, nil
@@ -323,10 +334,11 @@ type event struct {
 // compaction represents an aggregated compaction event (i.e. the combination of
 // a start and end event).
 type compaction struct {
-	cType        compactionType
-	fromLevel    int
-	toLevel      int
-	writtenBytes uint64
+	cType       compactionType
+	fromLevel   int
+	toLevel     int
+	inputBytes  uint64
+	outputBytes uint64
 }
 
 // ingest describes the completion of an ingest.
@@ -419,10 +431,11 @@ func (c *logEventCollector) addCompactionEnd(end compactionEnd) {
 		timeStart: start.ctx.timestamp,
 		timeEnd:   c.ctx.timestamp,
 		compaction: &compaction{
-			cType:        start.cType,
-			fromLevel:    start.fromLevel,
-			toLevel:      start.toLevel,
-			writtenBytes: end.writtenBytes,
+			cType:       start.cType,
+			fromLevel:   start.fromLevel,
+			toLevel:     start.toLevel,
+			inputBytes:  start.inputBytes,
+			outputBytes: end.writtenBytes,
 		},
 	})
 }
@@ -469,36 +482,45 @@ type compactionTypeCount map[compactionType]int
 // - total ingested bytes for each level
 // - read amp magnitudes
 type windowSummary struct {
-	nodeID, storeID  int
-	tStart, tEnd     time.Time
-	eventCount       int
-	flushedCount     int
-	flushedBytes     uint64
-	flushedTime      time.Duration
-	compactionCounts map[fromTo]compactionTypeCount
-	compactionBytes  map[fromTo]uint64
-	compactionTime   map[fromTo]time.Duration
-	ingestedCount    [7]int
-	ingestedBytes    [7]uint64
-	readAmps         []readAmp
-	longRunning      []event
+	nodeID, storeID      int
+	tStart, tEnd         time.Time
+	eventCount           int
+	flushedCount         int
+	flushedBytes         uint64
+	flushedTime          time.Duration
+	compactionCounts     map[fromTo]compactionTypeCount
+	compactionBytesIn    map[fromTo]uint64
+	compactionBytesOut   map[fromTo]uint64
+	compactionBytesMoved map[fromTo]uint64
+	compactionBytesDel   map[fromTo]uint64
+	compactionTime       map[fromTo]time.Duration
+	ingestedCount        [7]int
+	ingestedBytes        [7]uint64
+	readAmps             []readAmp
+	longRunning          []event
 }
 
 // String implements fmt.Stringer, returning a formatted window summary.
 func (s windowSummary) String() string {
 	type fromToCount struct {
-		ft       fromTo
-		counts   compactionTypeCount
-		bytes    uint64
-		duration time.Duration
+		ft         fromTo
+		counts     compactionTypeCount
+		bytesIn    uint64
+		bytesOut   uint64
+		bytesMoved uint64
+		bytesDel   uint64
+		duration   time.Duration
 	}
 	var pairs []fromToCount
 	for k, v := range s.compactionCounts {
 		pairs = append(pairs, fromToCount{
-			ft:       k,
-			counts:   v,
-			bytes:    s.compactionBytes[k],
-			duration: s.compactionTime[k],
+			ft:         k,
+			counts:     v,
+			bytesIn:    s.compactionBytesIn[k],
+			bytesOut:   s.compactionBytesOut[k],
+			bytesMoved: s.compactionBytesMoved[k],
+			bytesDel:   s.compactionBytesDel[k],
+			duration:   s.compactionTime[k],
 		})
 	}
 	sort.Slice(pairs, func(i, j int) bool {
@@ -567,9 +589,9 @@ func (s windowSummary) String() string {
 
 	// Print compactions statistics.
 	if len(s.compactionCounts) > 0 {
-		sb.WriteString("_kind______from______to___default____move___elide__delete___count___bytes______time\n")
+		sb.WriteString("_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time\n")
 		var totalDef, totalMove, totalElision, totalDel int
-		var totalBytes uint64
+		var totalBytesIn, totalBytesOut, totalBytesMoved, totalBytesDel uint64
 		var totalTime time.Duration
 		for _, p := range pairs {
 			def := p.counts[compactionTypeDefault]
@@ -578,21 +600,28 @@ func (s windowSummary) String() string {
 			del := p.counts[compactionTypeDeleteOnly]
 			total := def + move + elision + del
 
-			str := fmt.Sprintf("%-7s %7s %7s   %7d %7d %7d %7d %7d %7s %9s\n",
+			str := fmt.Sprintf("%-7s %7s %7s   %7d %7d %7d %7d %7d %7s %7s %7s %7s %9s\n",
 				"compact", p.ft.from, p.ft.to, def, move, elision, del, total,
-				humanize.Uint64(p.bytes), p.duration.Truncate(time.Second))
+				humanize.Uint64(p.bytesIn), humanize.Uint64(p.bytesOut),
+				humanize.Uint64(p.bytesMoved), humanize.Uint64(p.bytesDel),
+				p.duration.Truncate(time.Second))
 			sb.WriteString(str)
 
 			totalDef += def
 			totalMove += move
 			totalElision += elision
 			totalDel += del
-			totalBytes += p.bytes
+			totalBytesIn += p.bytesIn
+			totalBytesOut += p.bytesOut
+			totalBytesMoved += p.bytesMoved
+			totalBytesDel += p.bytesDel
 			totalTime += p.duration
 		}
-		sb.WriteString(fmt.Sprintf("total         %19d %7d %7d %7d %7d %7s %9s\n",
+		sb.WriteString(fmt.Sprintf("total         %19d %7d %7d %7d %7d %7s %7s %7s %7s %9s\n",
 			totalDef, totalMove, totalElision, totalDel, s.eventCount,
-			humanize.Uint64(totalBytes), totalTime.Truncate(time.Second)))
+			humanize.Uint64(totalBytesIn), humanize.Uint64(totalBytesOut),
+			humanize.Uint64(totalBytesMoved), humanize.Uint64(totalBytesDel),
+			totalTime.Truncate(time.Second)))
 	}
 
 	// (Optional) Long running events.
@@ -608,7 +637,7 @@ func (s windowSummary) String() string {
 			sb.WriteString(fmt.Sprintf("%-7s %9s %9s %9d %9s %9s %9s %9.0f %9s\n",
 				kind, level(c.fromLevel), level(c.toLevel), e.jobID, c.cType,
 				e.timeStart.Format(timeFmtHrMinSec), e.timeEnd.Format(timeFmtHrMinSec),
-				e.timeEnd.Sub(e.timeStart).Seconds(), humanize.Uint64(c.writtenBytes)))
+				e.timeEnd.Sub(e.timeStart).Seconds(), humanize.Uint64(c.outputBytes)))
 		}
 	}
 
@@ -717,13 +746,16 @@ func (a *aggregator) aggregate() []windowSummary {
 	initWindow := func(e event) *windowSummary {
 		start := e.timeStart.Truncate(a.window)
 		return &windowSummary{
-			nodeID:           e.nodeID,
-			storeID:          e.storeID,
-			tStart:           start,
-			tEnd:             start.Add(a.window),
-			compactionCounts: make(map[fromTo]compactionTypeCount),
-			compactionBytes:  make(map[fromTo]uint64),
-			compactionTime:   make(map[fromTo]time.Duration),
+			nodeID:               e.nodeID,
+			storeID:              e.storeID,
+			tStart:               start,
+			tEnd:                 start.Add(a.window),
+			compactionCounts:     make(map[fromTo]compactionTypeCount),
+			compactionBytesIn:    make(map[fromTo]uint64),
+			compactionBytesOut:   make(map[fromTo]uint64),
+			compactionBytesMoved: make(map[fromTo]uint64),
+			compactionBytesDel:   make(map[fromTo]uint64),
+			compactionTime:       make(map[fromTo]time.Duration),
 		}
 	}
 
@@ -800,7 +832,7 @@ func (a *aggregator) aggregate() []windowSummary {
 			// Update flush stats.
 			f := e.compaction
 			curWindow.flushedCount++
-			curWindow.flushedBytes += f.writtenBytes
+			curWindow.flushedBytes += f.outputBytes
 			curWindow.flushedTime += e.timeEnd.Sub(e.timeStart)
 		case e.compaction != nil:
 			// Update compaction stats.
@@ -815,12 +847,16 @@ func (a *aggregator) aggregate() []windowSummary {
 			m[c.cType]++
 			curWindow.eventCount++
 
-			// Update compacted bytes.
-			_, ok = curWindow.compactionBytes[ft]
-			if !ok {
-				curWindow.compactionBytes[ft] = 0
+			// Update compacted bytes in / out / moved / deleted.
+			switch c.cType {
+			case compactionTypeMove:
+				curWindow.compactionBytesMoved[ft] += c.inputBytes
+			case compactionTypeDeleteOnly:
+				curWindow.compactionBytesDel[ft] += c.inputBytes
+			default:
+				curWindow.compactionBytesIn[ft] += c.inputBytes
+				curWindow.compactionBytesOut[ft] += c.outputBytes
 			}
-			curWindow.compactionBytes[ft] += c.writtenBytes
 
 			// Update compaction time.
 			_, ok = curWindow.compactionTime[ft]
@@ -941,12 +977,6 @@ func parseCompaction(line string, b *logEventCollector) error {
 		return nil
 	}
 
-	if len(matches) != 8 {
-		return errors.Newf(
-			"could not parse compaction start / end line; found %d matches: %s",
-			len(matches), line)
-	}
-
 	// "compacting": implies start line.
 	if matches[compactionPatternSuffixIdx] == "ing" {
 		start, err := parseCompactionStart(matches)
@@ -974,12 +1004,6 @@ func parseFlush(line string, b *logEventCollector) error {
 	matches := flushPattern.FindStringSubmatch(line)
 	if matches == nil {
 		return nil
-	}
-
-	if len(matches) != 5 {
-		return errors.Newf(
-			"could not parse flush start / end line; found %d matches: %s",
-			len(matches), line)
 	}
 
 	if matches[flushPatternSuffixIdx] == "ing" {
@@ -1134,4 +1158,37 @@ func unHumanize(d float64, u string) uint64 {
 	}
 
 	return uint64(d) * multiplier
+}
+
+// sumInputBytes takes a string as input and returns the sum of the
+// human-readable sizes, as an integer number of bytes.
+func sumInputBytes(s string) (total uint64, _ error) {
+	var (
+		open bool
+		b    bytes.Buffer
+		prev rune
+	)
+	for _, c := range s {
+		switch c {
+		case '(':
+			open = true
+		case ')':
+			val, err := strconv.ParseFloat(b.String(), 64)
+			if err != nil {
+				return 0, err
+			}
+			total += unHumanize(val, string(prev))
+			b.Reset()
+			open = false
+		default:
+			if !open {
+				break
+			}
+			if unicode.IsDigit(c) || c == '.' {
+				b.WriteRune(c)
+			}
+			prev = c
+		}
+	}
+	return
 }

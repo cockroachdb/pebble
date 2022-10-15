@@ -85,6 +85,7 @@ func TestCompactionLogs_Regex(t *testing.T) {
 				compactionPatternToIdx:     "3",
 				compactionPatternDigitIdx:  "8.4",
 				compactionPatternUnitIdx:   "M",
+				compactionPatternLevels:    "L2 [442555] (4.2 M) + L3 [445853] (8.4 M)",
 			},
 		},
 		{
@@ -240,4 +241,35 @@ func TestCompactionLogs(t *testing.T) {
 			return fmt.Sprintf("unknown command %q", td.Cmd)
 		}
 	})
+}
+
+func TestParseInputBytes(t *testing.T) {
+	testCases := []struct {
+		s    string
+		want uint64
+	}{
+		{
+			"(10 M)",
+			10 << 20,
+		},
+		{
+			"(10 M) + (20 M)",
+			30 << 20,
+		},
+		{
+			"(10 M) + (20 M) + (30 M)",
+			60 << 20,
+		},
+		{
+			"foo",
+			0,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.s, func(t *testing.T) {
+			got, err := sumInputBytes(tc.s)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
 }

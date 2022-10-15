@@ -15,9 +15,9 @@ node: 1, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
@@ -58,9 +58,9 @@ node: 1, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
@@ -113,9 +113,9 @@ node: 1, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: 5.0
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 
 # Long running compaction.
 
@@ -134,9 +134,9 @@ node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L2      L3         1       0       0       0       1    13 M     2m10s
-total                           1       0       0       0       1    13 M     2m10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B     2m10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B     2m10s
 long-running events (descending runtime):
 _kind________from________to_______job______type_____start_______end____dur(s)_____bytes:
 compact        L2        L3         1   default  00:01:10  00:03:20       130      13 M
@@ -161,16 +161,16 @@ node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 node: 1, store: 2
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L3      L4         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L3      L4         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 
 # Multiple nodes, single stores. Two separate pebble logs.
 
@@ -195,16 +195,16 @@ node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 node: 2, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L3      L4         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L3      L4         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 
 # Multiple nodes, multiple stores. Two separate pebble logs. Output is sorted by
 # (time, node, store).
@@ -236,30 +236,30 @@ node: 2, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L3      L4         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L3      L4         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 node: 1, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L1      L2         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L1      L2         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 node: 2, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L4      L5         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L4      L5         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 
 # Log lines with an absent node / store are aggregated.
 
@@ -293,9 +293,9 @@ node: ?, store: ?
    from: 211215 00:01
      to: 211215 00:02
   r-amp: 5.0
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 
 # The same Job ID interleaved for multiple nodes / stores.
 
@@ -316,16 +316,16 @@ node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 node: 2, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L4      L5         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L4      L5         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 
 # Read amp matching should remain backwards compatible.
 
@@ -372,9 +372,9 @@ node: 1, store: 1
    from: 220301 00:00
      to: 220301 00:01
   r-amp: 1.0
-_kind______from______to___default____move___elide__delete___count___bytes______time
-compact      L2      L3         1       0       0       0       1    13 M       10s
-total                           1       0       0       0       1    13 M       10s
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L2      L3         1       0       0       0       1    12 M    13 M     0 B     0 B       10s
+total                           1       0       0       0       1    12 M    13 M     0 B     0 B       10s
 
 reset
 ----
@@ -446,3 +446,29 @@ node: 24, store: 24
 _kind______from______to_____________________________________count___bytes______time
 ingest               L0                                        12   160 M
 total                                                          12   160 M        0s
+
+reset
+----
+
+log
+I220907 00:27:21.579807 15082709999 3@vendor/github.com/cockroachdb/pebble/event.go:587 ⋮ [n15,pebble,s15] 2736197  [JOB 743692] compacting(delete-only) L6 [18323385] (11 M)
+I220907 00:27:21.580169 15082709999 3@vendor/github.com/cockroachdb/pebble/event.go:591 ⋮ [n15,pebble,s15] 2736198  [JOB 743692] compacted(delete-only) L6 [18323385] (11 M) -> L6 [] (0 B), in 0.0s, output rate 0 B/s
+
+I220907 00:27:21.631145 15082710355 3@vendor/github.com/cockroachdb/pebble/event.go:587 ⋮ [n15,pebble,s15] 2736201  [JOB 743694] compacting(default) L5 [18323582] (1.8 K) + L6 [17770912] (128 M)
+I220907 00:27:22.729839 15082710355 3@vendor/github.com/cockroachdb/pebble/event.go:591 ⋮ [n15,pebble,s15] 2736208  [JOB 743694] compacted(default) L5 [18323582] (1.8 K) + L6 [17770912] (128 M) -> L6 [18323586] (3.6 M), in 1.1s, output rate 3.3 M/s
+
+I220907 00:27:21.630546 15082710354 3@vendor/github.com/cockroachdb/pebble/event.go:587 ⋮ [n15,pebble,s15] 2736199  [JOB 743693] compacting(move) L5 [18323585] (4.0 M) + L6 [] (0 B)
+I220907 00:27:21.631002 15082710354 3@vendor/github.com/cockroachdb/pebble/event.go:591 ⋮ [n15,pebble,s15] 2736200  [JOB 743693] compacted(move) L5 [18323585] (4.0 M) + L6 [] (0 B) -> L6 [18323585] (4.0 M), in 0.0s, output rate 50 G/s
+----
+0.log
+
+summarize
+----
+node: 15, store: 15
+   from: 220907 00:27
+     to: 220907 00:28
+  r-amp: NaN
+_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time
+compact      L5      L6         1       1       0       0       2   128 M   3.0 M   4.0 M     0 B        1s
+compact      L6      L6         0       0       0       1       1     0 B     0 B     0 B    11 M        0s
+total                           1       1       0       1       3   128 M   3.0 M   4.0 M    11 M        1s
