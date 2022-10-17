@@ -1014,3 +1014,194 @@ next
 tmgc: (barfoo, .)
 .
 .
+
+# Test split user keys containing RANGEDELs.
+
+define
+L4
+  b.SET.10:b10
+L5 start=b.SET.9 end=b.SET.8
+  b.SET.9:b9
+  b.SET.8:b8
+  b.RANGEDEL.1:z
+L5 start=b.SET.7 end=b.SET.6
+  b.SET.7:b7
+  b.SET.6:b6
+  b.RANGEDEL.1:z
+L5 start=b.SET.5 end=z.RANGEDEL.72057594037927935
+  b.SET.5:b5
+  b.SET.4:b4
+  b.RANGEDEL.1:z
+L6
+  b.SET.0:b0
+  bat.SET.0:bat
+  cat.SET.0:cat
+----
+4:
+  000004:[b#10,SET-b#10,SET]
+5:
+  000005:[b#9,SET-b#8,SET]
+  000006:[b#7,SET-b#6,SET]
+  000007:[b#5,SET-z#72057594037927935,RANGEDEL]
+6:
+  000008:[b#0,SET-cat#0,SET]
+
+compact a-z
+----
+6:
+  000010:[b#0,SET-b#0,SET]
+
+iter
+first
+next
+----
+b: (b10, .)
+.
+
+# Ensure an untruncated range tombstone (eg, written by an earlier version of
+# Pebble, Cockroach v21.2 or earlier) cannot delete newer keys outside the
+# containing file's bounds.
+#
+# Regression test for cockroachdb/cockroach#89777.
+
+define target-file-sizes=(1)
+L5 start=g.RANGEDEL.1 end=z.RANGEDEL.72057594037927935
+  a.RANGEDEL.1:z
+  m.SET.1:bar
+L6
+  m.SET.0:bax
+L6 start=a.SET.1 end=g.RANGEDEL.72057594037927935
+  a.SET.1:foo
+  a.RANGEDEL.1:z
+----
+5:
+  000004:[g#1,RANGEDEL-z#72057594037927935,RANGEDEL]
+6:
+  000006:[a#1,SET-g#72057594037927935,RANGEDEL]
+  000005:[m#0,SET-m#0,SET]
+
+# Compacting g-z should result in the elision of the range tombstone in the g-z
+# span.
+
+compact g-z
+----
+6:
+  000006:[a#1,SET-g#72057594037927935,RANGEDEL]
+  000007:[m#0,SET-m#0,SET]
+
+# Write a bunch of keys within the keyspace [g,z), and flush them.
+
+batch
+set b b
+set h h
+set i i
+set j j
+set k k
+set m m
+set q q
+set y y
+----
+
+flush
+----
+0.0:
+  000009:[b#1,SET-b#1,SET]
+  000010:[h#2,SET-h#2,SET]
+  000011:[i#3,SET-i#3,SET]
+  000012:[j#4,SET-j#4,SET]
+  000013:[k#5,SET-k#5,SET]
+  000014:[m#6,SET-m#6,SET]
+  000015:[q#7,SET-q#7,SET]
+  000016:[y#8,SET-y#8,SET]
+6:
+  000006:[a#1,SET-g#72057594037927935,RANGEDEL]
+  000007:[m#0,SET-m#0,SET]
+
+# Compact g-z to zero the sequence numbers of the newer keys.
+
+compact g-z
+----
+0.0:
+  000009:[b#1,SET-b#1,SET]
+6:
+  000006:[a#1,SET-g#72057594037927935,RANGEDEL]
+  000049:[h#0,SET-k#0,SET]
+  000050:[m#0,SET-y#0,SET]
+
+batch
+set t t
+----
+
+flush
+----
+0.0:
+  000009:[b#1,SET-b#1,SET]
+  000052:[t#9,SET-t#9,SET]
+6:
+  000006:[a#1,SET-g#72057594037927935,RANGEDEL]
+  000049:[h#0,SET-k#0,SET]
+  000050:[m#0,SET-y#0,SET]
+
+# Compact everything. The batch-committed keys with zeroed sequence numbers (eg,
+# h, i, j, k, m, q, y) should all still exist because the a-z tombstone in
+# 000006 should be limited in how far it expands.
+
+compact a-z
+----
+6:
+  000063:[a#0,SET-i#0,SET]
+  000064:[j#0,SET-q#0,SET]
+  000065:[t#0,SET-y#0,SET]
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a: (foo, .)
+b: (b, .)
+h: (h, .)
+i: (i, .)
+j: (j, .)
+k: (k, .)
+m: (m, .)
+q: (q, .)
+t: (t, .)
+y: (y, .)
+
+# Ensure an untruncated range tombstone (eg, written by an earlier version of
+# Pebble, Cockroach v21.2 or earlier) cannot expand beyond its previous
+# truncated bounds.
+#
+# Regression test for cockroachdb/cockroach#89777.
+
+define snapshots=(2)
+L5 start=g.RANGEDEL.3 end=n.RANGEDEL.72057594037927935
+  a.RANGEDEL.3:z
+  m.SET.1:bar
+L5
+  s.SET.0:bax
+L6
+  q.SET.0:foo
+----
+5:
+  000004:[g#3,RANGEDEL-n#72057594037927935,RANGEDEL]
+  000005:[s#0,SET-s#0,SET]
+6:
+  000006:[q#0,SET-q#0,SET]
+
+# Compacting all the files in a single expansion should not expand the
+# untruncated range tombstone to the larger untruncated bounds. The rangedel
+# should remain bounded as [a,n).
+
+compact a-z
+----
+6:
+  000007:[g#3,RANGEDEL-s#0,SET]
