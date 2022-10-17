@@ -1359,6 +1359,18 @@ func TestManualCompaction(t *testing.T) {
 				}
 				return s
 
+			case "flush":
+				if err := d.Flush(); err != nil {
+					return err.Error()
+				}
+				d.mu.Lock()
+				s := d.mu.versions.currentVersion().String()
+				if verbose {
+					s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
+				}
+				d.mu.Unlock()
+				return s
+
 			case "ingest":
 				if err := runIngestCmd(td, d, mem); err != nil {
 					return err.Error()
