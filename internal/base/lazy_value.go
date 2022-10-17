@@ -16,12 +16,8 @@ import "github.com/cockroachdb/pebble/internal/invariants"
 // it can call the ShortAttributeExtractor to extract the attribute and store
 // it together with the key. This allows for cheap retrieval of
 // AttributeAndLen on the read-path, without doing a more expensive retrieval
-// of the value.
-//
-// In general, the extraction code may want to also look at the key to decide
-// how to treat the value. Our current needs can be satisfied by configuring a
-// keyspan for which the ShortAttributeExtractor should be used, so we do not
-// expose the key to the extractor.
+// of the value. In general, the extraction code may want to also look at the
+// key to decide how to treat the value, hence the key* parameters.
 //
 // Write path performance: The ShortAttributeExtractor func cannot be inlined,
 // so we will pay the cost of this function call. However, we will only pay
@@ -38,7 +34,8 @@ const MaxShortAttribute = 7
 
 // ShortAttributeExtractor is an extractor that given the value, will return
 // the ShortAttribute.
-type ShortAttributeExtractor func(value []byte) (ShortAttribute, error)
+type ShortAttributeExtractor func(
+	key []byte, keyPrefixLen int, value []byte) (ShortAttribute, error)
 
 // AttributeAndLen represents the pair of value length and the short
 // attribute.
