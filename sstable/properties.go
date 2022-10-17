@@ -120,6 +120,10 @@ type Properties struct {
 	NumRangeKeySets uint64 `prop:"pebble.num.range-key-sets"`
 	// The number of RANGEKEYUNSETs in this table.
 	NumRangeKeyUnsets uint64 `prop:"pebble.num.range-key-unsets"`
+	// The number of value blocks in this table. Only serialized if > 0.
+	NumValueBlocks uint64 `prop:"pebble.num.value-blocks"`
+	// The number of values stored in value blocks. Only serialized if > 0.
+	NumValuesInValueBlocks uint64 `prop:"pebble.num.values.in.value-blocks"`
 	// Timestamp of the earliest key. 0 if unknown.
 	OldestKeyTime uint64 `prop:"rocksdb.oldest.key.time"`
 	// The name of the prefix extractor used in this table. Empty if no prefix
@@ -142,6 +146,8 @@ type Properties struct {
 	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
 	// User collected properties.
 	UserProperties map[string]string
+	// Total size of value blocks and value index block. Only serialized if > 0.
+	ValueBlocksSize uint64 `prop:"pebble.value-blocks.size"`
 	// If filtering is enabled, was the filter created on the whole key.
 	WholeKeyFiltering bool `prop:"rocksdb.block.based.table.whole.key.filtering"`
 
@@ -340,6 +346,12 @@ func (p *Properties) save(w *rawBlockWriter) {
 		p.saveUvarint(m, unsafe.Offsetof(p.RawRangeKeyKeySize), p.RawRangeKeyKeySize)
 		p.saveUvarint(m, unsafe.Offsetof(p.RawRangeKeyValueSize), p.RawRangeKeyValueSize)
 	}
+	if p.NumValueBlocks > 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.NumValueBlocks), p.NumValueBlocks)
+	}
+	if p.NumValuesInValueBlocks > 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.NumValuesInValueBlocks), p.NumValuesInValueBlocks)
+	}
 	p.saveUvarint(m, unsafe.Offsetof(p.OldestKeyTime), p.OldestKeyTime)
 	if p.PrefixExtractorName != "" {
 		p.saveString(m, unsafe.Offsetof(p.PrefixExtractorName), p.PrefixExtractorName)
@@ -350,6 +362,9 @@ func (p *Properties) save(w *rawBlockWriter) {
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.RawKeySize), p.RawKeySize)
 	p.saveUvarint(m, unsafe.Offsetof(p.RawValueSize), p.RawValueSize)
+	if p.ValueBlocksSize > 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.ValueBlocksSize), p.ValueBlocksSize)
+	}
 	p.saveBool(m, unsafe.Offsetof(p.WholeKeyFiltering), p.WholeKeyFiltering)
 
 	keys := make([]string, 0, len(m))

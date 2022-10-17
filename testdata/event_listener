@@ -62,6 +62,10 @@ create: db/marker.format-version.000010.011
 close: db/marker.format-version.000010.011
 sync: db
 upgraded to format version: 011
+create: db/marker.format-version.000011.012
+close: db/marker.format-version.000011.012
+sync: db
+upgraded to format version: 012
 sync: db/MANIFEST-000001
 create: wal/000002.log
 sync: wal
@@ -200,7 +204,7 @@ compact         1   2.3 K     0 B       0          (size == estimated-debt, scor
 zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         8   1.4 K   11.1%  (score == hit-rate)
- tcache         1   680 B   50.0%  (score == hit-rate)
+ tcache         1   704 B   50.0%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
@@ -222,9 +226,9 @@ close:
 open-dir: checkpoint
 link: db/OPTIONS-000003 -> checkpoint/OPTIONS-000003
 open-dir: checkpoint
-create: checkpoint/marker.format-version.000001.011
-sync: checkpoint/marker.format-version.000001.011
-close: checkpoint/marker.format-version.000001.011
+create: checkpoint/marker.format-version.000001.012
+sync: checkpoint/marker.format-version.000001.012
+close: checkpoint/marker.format-version.000001.012
 sync: checkpoint
 close: checkpoint
 create: checkpoint/MANIFEST-000016

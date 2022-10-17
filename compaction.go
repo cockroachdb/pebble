@@ -2303,9 +2303,6 @@ func (d *DB) runCompaction(
 
 	snapshots := d.mu.snapshots.toSlice()
 	formatVers := d.mu.formatVers.vers
-	// The table is written at the maximum allowable format implied by the current
-	// format major version of the DB.
-	tableFormat := formatVers.MaxTableFormat()
 
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
@@ -2365,6 +2362,19 @@ func (d *DB) runCompaction(
 		c.metrics[c.extraLevels[0].level] = &LevelMetrics{}
 	}
 
+	// The table is typically written at the maximum allowable format implied by
+	// the current format major version of the DB.
+	tableFormat := formatVers.MaxTableFormat()
+	if tableFormat > sstable.TableFormatPebblev3 {
+		// Since TableFormatPebblev3 does not currently subsume
+		// TableFormatPebblev2, this panic ensures that we have carefully thought
+		// through what we are doing before we introduce a format beyond
+		// TableFormatPebblev3.
+		panic("cannot handle table format beyond TableFormatPebblev3")
+	}
+	if tableFormat == sstable.TableFormatPebblev3 && !d.opts.Experimental.EnableValueBlocks {
+		tableFormat = sstable.TableFormatPebblev2
+	}
 	writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
 	if formatVers < FormatBlockPropertyCollector {
 		// Cannot yet write block properties.

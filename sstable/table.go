@@ -87,6 +87,9 @@ The table file format looks like:
 [index block] (for single level index)
 [meta rangedel block] (optional)
 [meta range key block] (optional)
+[value block 0] (optional)
+[value block M-1] (optional)
+[meta value index block] (optional)
 [meta properties block]
 [metaindex block]
 [footer]
@@ -110,8 +113,9 @@ byte of the trailer (i.e. the block type), and is serialized as little-endian.
 The block type gives the per-block compression used; each block is compressed
 independently. The checksum algorithm is described in the pebble/crc package.
 
-Most blocks, other than the meta filter block, contain key/value pairs. The
-remainder of this comment refers to the decompressed block, which has its 5 byte
+Most blocks, other than the meta filter block, value blocks and meta value
+index block, contain key/value pairs. The remainder of this comment refers to
+the decompressed block, containing key/value pairs, which has its 5 byte
 trailer stripped. The decompressed block data consists of a sequence of such
 key/value entries followed by a block suffix. Each key is encoded as a shared
 prefix length and a remainder string. For example, if two adjacent keys are
@@ -154,6 +158,9 @@ lower-level index blocks.
 The metaindex block also contains block handles as values, with keys being
 the names of the meta blocks.
 
+For a description of value blocks and the meta value index block, see
+value_block.go
+
 */
 
 const (
@@ -183,6 +190,7 @@ const (
 	rocksDBFormatVersion2 = 2
 
 	metaRangeKeyName   = "pebble.range_key"
+	metaValueIndexName = "pebble.value_index"
 	metaPropertiesName = "rocksdb.properties"
 	metaRangeDelName   = "rocksdb.range_del"
 	metaRangeDelV2Name = "rocksdb.range_del2"
@@ -420,7 +428,7 @@ func supportsTwoLevelIndex(format TableFormat) bool {
 	switch format {
 	case TableFormatLevelDB:
 		return false
-	case TableFormatRocksDBv2, TableFormatPebblev1, TableFormatPebblev2:
+	case TableFormatRocksDBv2, TableFormatPebblev1, TableFormatPebblev2, TableFormatPebblev3:
 		return true
 	default:
 		panic("sstable: unspecified table format version")

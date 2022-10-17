@@ -69,6 +69,7 @@ tally-table-formats
 (RocksDB,v2): 1
 (Pebble,v1): 1
 (Pebble,v2): 2
+(Pebble,v3): 0
 
 # Upgrade the DB to FormatMinTableFormatPebblev1.
 
@@ -164,3 +165,4 @@ tally-table-formats
 (RocksDB,v2): 0
 (Pebble,v1): 1
 (Pebble,v2): 4
+(Pebble,v3): 0

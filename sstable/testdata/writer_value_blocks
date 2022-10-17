@@ -1,0 +1,85 @@
+# Size of value index is 3 bytes plus 5 + 5 = 10 bytes of trailer of the value
+# block and value index block. So size 18 - 13 = 5 size of the value in the
+# value block.
+build
+a@2.SET.1:a2
+b@5.SET.7:b5
+b@4.DEL.3:
+b@3.SET.2:bat3
+b@2.SET.1:vbat2
+----
+value-blocks: num-values 1, num-blocks: 1, size: 18
+
+scan-raw
+----
+a@2#1,1:in-place a2, same-pre false
+b@5#7,1:in-place b5, same-pre false
+b@4#3,0:
+b@3#2,1:in-place bat3, same-pre false
+b@2#1,1:value-handle len 5 block 0 offset 0, att 5, same-pre true
+
+# Size of value index is 3 bytes plus 5 + 5 = 10 bytes of trailer of the value
+# block and value index block. So size 33 - 13 = 20 is the total size of the
+# values in the value block.
+build
+blue@10.SET.20:blue10
+blue@8.SET.18:blue8
+blue@8.SET.16:blue8s
+blue@6.DEL.14:
+blue@4.SET.12:blue4
+blue@3.SET.10:blue3
+red@9.SET.18:red9
+red@7.SET.8:red7
+----
+value-blocks: num-values 4, num-blocks: 1, size: 33
+
+scan-raw
+----
+blue@10#20,1:in-place blue10, same-pre false
+blue@8#18,1:value-handle len 5 block 0 offset 0, att 5, same-pre true
+blue@8#16,1:value-handle len 6 block 0 offset 5, att 6, same-pre true
+blue@6#14,0:
+blue@4#12,1:in-place blue4, same-pre false
+blue@3#10,1:value-handle len 5 block 0 offset 11, att 5, same-pre true
+red@9#18,1:in-place red9, same-pre false
+red@7#8,1:value-handle len 4 block 0 offset 16, att 4, same-pre true
+
+# Multiple value blocks. Trailers of 5+5+5 for the two value blocks and the
+# value index block, totals to 15. The values are 5+6+11=22. The value index
+# block has to encode two tuples, each of 4 bytes (blockNumByteLength=1,
+# blockOffsetByteLength=2, blockLengthByteLength=1), so 2*4=8. The total is
+# 15+22+8=45 bytes, which corresponds to "size: 45" below.
+build block-size=8
+blue@10.SET.20:blue10
+blue@8.SET.18:blue8
+blue@8.SET.16:blue8s
+blue@6.SET.16:blue6islong
+----
+value-blocks: num-values 3, num-blocks: 2, size: 45
+
+scan-raw
+----
+blue@10#20,1:in-place blue10, same-pre false
+blue@8#18,1:value-handle len 5 block 0 offset 0, att 5, same-pre true
+blue@8#16,1:value-handle len 6 block 0 offset 5, att 6, same-pre true
+blue@6#16,1:value-handle len 11 block 1 offset 0, att 3, same-pre true
+
+# Require that [c,e) must be in-place.
+build in-place-bound=(c,e)
+blue@10.SET.20:blue10
+blue@8.SET.18:blue8
+c@10.SET.16:c10
+c@8.SET.14:c8
+e@20.SET.25:eat20
+e@18.SET.23:eat18
+----
+value-blocks: num-values 2, num-blocks: 1, size: 23
+
+scan-raw
+----
+blue@10#20,1:in-place blue10, same-pre false
+blue@8#18,1:value-handle len 5 block 0 offset 0, att 5, same-pre true
+c@10#16,1:in-place c10, same-pre false
+c@8#14,1:in-place c8, same-pre false
+e@20#25,1:in-place eat20, same-pre false
+e@18#23,1:value-handle len 5 block 0 offset 5, att 5, same-pre true
