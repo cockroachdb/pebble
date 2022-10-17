@@ -42,6 +42,57 @@ func TestBlockWriter(t *testing.T) {
 	}
 }
 
+func TestBlockWriterWithPrefix(t *testing.T) {
+	w := &rawBlockWriter{
+		blockWriter: blockWriter{restartInterval: 2},
+	}
+	curKey := func() string {
+		return string(base.DecodeInternalKey(w.curKey).UserKey)
+	}
+	w.addWithOptionalValuePrefix(
+		ikey("apple"), []byte("red"), false, 0, true)
+	require.Equal(t, "apple", curKey())
+	require.Equal(t, "red", string(w.curValue))
+	w.addWithOptionalValuePrefix(
+		ikey("apricot"), []byte("orange"), true, '\xff', false)
+	require.Equal(t, "apricot", curKey())
+	require.Equal(t, "orange", string(w.curValue))
+	// Even though this call has setHasSameKeyPrefix=true, the previous call,
+	// which was after the last restart set it to false. So the restart encoded
+	// with banana has this cumulative bit set to false.
+	w.addWithOptionalValuePrefix(
+		ikey("banana"), []byte("yellow"), true, '\x00', true)
+	require.Equal(t, "banana", curKey())
+	require.Equal(t, "yellow", string(w.curValue))
+	w.addWithOptionalValuePrefix(
+		ikey("cherry"), []byte("red"), false, 0, true)
+	require.Equal(t, "cherry", curKey())
+	require.Equal(t, "red", string(w.curValue))
+	// All intervening calls has setHasSameKeyPrefix=true, so the cumulative bit
+	// will be set to true in this restart.
+	w.addWithOptionalValuePrefix(
+		ikey("mango"), []byte("juicy"), false, 0, true)
+	require.Equal(t, "mango", curKey())
+	require.Equal(t, "juicy", string(w.curValue))
+
+	block := w.finish()
+
+	expected := []byte(
+		"\x00\x0d\x03apple\x00\x00\x00\x00\x00\x00\x00\x00red" +
+			"\x02\x0d\x07ricot\x00\x00\x00\x00\x00\x00\x00\x00\xfforange" +
+			"\x00\x0e\x07banana\x00\x00\x00\x00\x00\x00\x00\x00\x00yellow" +
+			"\x00\x0e\x03cherry\x00\x00\x00\x00\x00\x00\x00\x00red" +
+			"\x00\x0d\x05mango\x00\x00\x00\x00\x00\x00\x00\x00juicy" +
+			// Restarts are:
+			// 00000000 (restart at apple), 2a000000 (restart at banana), 56000080 (restart at mango)
+			// 03000000 (number of restart, i.e., 3). The restart at mango has 1 in the most significant
+			// bit of the uint32, so the last byte in the little endian encoding is \x80.
+			"\x00\x00\x00\x00\x2a\x00\x00\x00\x56\x00\x00\x80\x03\x00\x00\x00")
+	if !bytes.Equal(expected, block) {
+		t.Fatalf("expected\n%x\nfound\n%x", expected, block)
+	}
+}
+
 func testBlockCleared(t *testing.T, w, b *blockWriter) {
 	require.Equal(t, w.restartInterval, b.restartInterval)
 	require.Equal(t, w.nEntries, b.nEntries)

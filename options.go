@@ -60,6 +60,12 @@ type BlockPropertyCollector = sstable.BlockPropertyCollector
 // BlockPropertyFilter exports the sstable.BlockPropertyFilter type.
 type BlockPropertyFilter = base.BlockPropertyFilter
 
+// ShortAttributeExtractor exports the base.ShortAttributeExtractor type.
+type ShortAttributeExtractor = base.ShortAttributeExtractor
+
+// UserKeyPrefixBound exports the sstable.UserKeyPrefixBound type.
+type UserKeyPrefixBound = sstable.UserKeyPrefixBound
+
 // IterKeyType configures which types of keys an iterator should surface.
 type IterKeyType int8
 
@@ -571,6 +577,34 @@ type Options struct {
 		// ability to optionally schedule additional CPU. See the documentation
 		// for CPUWorkPermissionGranter for more details.
 		CPUWorkPermissionGranter CPUWorkPermissionGranter
+
+		// EnableValueBlocks enables writing FormatSSTableValueBlocks sstables.
+		// WARNING: do not set this to true yet, since support for
+		// TableFormatPebblev3 is incomplete and not production ready.
+		//
+		// TODO(sumeer): we will need to support changing this in a running Pebble
+		// instance.
+		EnableValueBlocks bool
+
+		// ShortAttributesExtractor is used if EnableValueBlocks is set to true
+		// (else ignored). If non-nil, a ShortAttribute can be extracted from the
+		// value and stored with the key, when the value is stored elsewhere.
+		ShortAttributeExtractor ShortAttributeExtractor
+
+		// RequiredInPlaceValueBound specifies an optional span of user key
+		// prefixes for which the values must be stored with the key. This is
+		// useful for statically known exclusions to value separation. In
+		// CockroachDB, this will be used for the lock table key space that has
+		// non-empty suffixes, but those locks don't represent actual MVCC
+		// versions (the suffix ordering is arbitrary). We will also need to add
+		// support for dynamically configured exclusions (we want the default to
+		// be to allow Pebble to decide whether to separate the value or not,
+		// hence this is structured as exclusions), for example, for users of
+		// CockroachDB to dynamically exclude certain tables.
+		//
+		// Any change in exclusion behavior takes effect only on future written
+		// sstables, and does not start rewriting existing sstables.
+		RequiredInPlaceValueBound UserKeyPrefixBound
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -1463,6 +1497,11 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 		}
 		writerOpts.TablePropertyCollectors = o.TablePropertyCollectors
 		writerOpts.BlockPropertyCollectors = o.BlockPropertyCollectors
+	}
+	if format >= sstable.TableFormatPebblev3 {
+		writerOpts.EnableValueBlocks = o.Experimental.EnableValueBlocks
+		writerOpts.ShortAttributeExtractor = o.Experimental.ShortAttributeExtractor
+		writerOpts.RequiredInPlaceValueBound = o.Experimental.RequiredInPlaceValueBound
 	}
 	levelOpts := o.Level(level)
 	writerOpts.BlockRestartInterval = levelOpts.BlockRestartInterval

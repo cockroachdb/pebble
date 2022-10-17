@@ -39,6 +39,14 @@ func RewriteKeySuffixes(
 	if err != nil {
 		return nil, err
 	}
+	// TODO(sumeer): Add support for value blocks. The valueHandles do not need
+	// to change. We need to (a) copy the value blocks, (b) rewrite the meta
+	// value index block as the block offsets can change, (c) update the entry
+	// in the metaindex block entry for the meta value index block. Also handle
+	// the set-has-same-prefix bit in restarts.
+	if r.tableFormat > TableFormatPebblev2 {
+		return nil, errors.Errorf("efficient key suffix rewriting is unsupported with value blocks")
+	}
 	defer r.Close()
 	return rewriteKeySuffixesInBlocks(r, out, o, from, to, concurrency)
 }

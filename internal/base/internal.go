@@ -362,9 +362,14 @@ func (k *InternalKey) SetKind(kind InternalKeyKind) {
 	k.Trailer = (k.Trailer &^ 0xff) | uint64(kind)
 }
 
-// Kind returns the kind compoment of the key.
+// Kind returns the kind component of the key.
 func (k InternalKey) Kind() InternalKeyKind {
-	return InternalKeyKind(k.Trailer & 0xff)
+	return TrailerKind(k.Trailer)
+}
+
+// TrailerKind returns the key kind of the key trailer.
+func TrailerKind(trailer uint64) InternalKeyKind {
+	return InternalKeyKind(trailer & 0xff)
 }
 
 // Valid returns true if the key has a valid kind.
