@@ -88,18 +88,21 @@ func TestPropertiesSave(t *testing.T) {
 		NumRangeKeyDels:          19,
 		NumRangeKeySets:          20,
 		NumRangeKeyUnsets:        21,
-		OldestKeyTime:            22,
+		NumValueBlocks:           22,
+		NumValuesInValueBlocks:   23,
+		OldestKeyTime:            24,
 		PrefixExtractorName:      "prefix extractor name",
 		PrefixFiltering:          true,
 		PropertyCollectorNames:   "prefix collector names",
-		RawKeySize:               23,
-		RawValueSize:             24,
-		TopLevelIndexSize:        25,
+		RawKeySize:               25,
+		RawValueSize:             26,
+		TopLevelIndexSize:        27,
 		WholeKeyFiltering:        true,
 		UserProperties: map[string]string{
 			"user-prop-a": "1",
 			"user-prop-b": "2",
 		},
+		ValueBlocksSize: 28,
 	}
 
 	check1 := func(expected *Properties) {

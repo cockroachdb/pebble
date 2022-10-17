@@ -49,6 +49,10 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 		}
 	}()
 	formatVersion := TableFormatMax
+	if rand.Intn(2) == 0 {
+		formatVersion = TableFormatPebblev2
+	}
+	t.Logf("table format %s", formatVersion.String())
 
 	format := func(m *WriterMetadata) string {
 		var b bytes.Buffer
@@ -186,6 +190,108 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 				return err.Error()
 			}
 			return format(meta)
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
+// TODO(sumeer):
+// - test layout after Reader.Layout is implemented.
+// - test rewriteKeySuffixesInBlocks.
+func TestWriterWithValueBlocks(t *testing.T) {
+	var r *Reader
+	defer func() {
+		if r != nil {
+			require.NoError(t, r.Close())
+		}
+	}()
+	formatVersion := TableFormatMax
+	formatMeta := func(m *WriterMetadata) string {
+		return fmt.Sprintf("value-blocks: num-values %d, num-blocks: %d, size: %d",
+			m.Properties.NumValuesInValueBlocks, m.Properties.NumValueBlocks,
+			m.Properties.ValueBlocksSize)
+	}
+
+	parallelism := false
+	if rand.Intn(2) == 0 {
+		parallelism = true
+	}
+	t.Logf("writer parallelism %t", parallelism)
+	attributeExtractor := func(
+		key []byte, keyPrefixLen int, value []byte) (base.ShortAttribute, error) {
+		require.NotNil(t, key)
+		require.Less(t, 0, keyPrefixLen)
+		attribute := base.ShortAttribute(len(value) & '\x07')
+		return attribute, nil
+	}
+
+	datadriven.RunTest(t, "testdata/writer_value_blocks", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "build":
+			if r != nil {
+				_ = r.Close()
+				r = nil
+			}
+			var meta *WriterMetadata
+			var err error
+			var blockSize int
+			if td.HasArg("block-size") {
+				td.ScanArgs(t, "block-size", &blockSize)
+			}
+			var inPlaceValueBound UserKeyPrefixBound
+			if td.HasArg("in-place-bound") {
+				var l, u string
+				td.ScanArgs(t, "in-place-bound", &l, &u)
+				inPlaceValueBound.Lower = []byte(l)
+				inPlaceValueBound.Upper = []byte(u)
+			}
+			meta, r, err = runBuildCmd(td, &WriterOptions{
+				BlockSize:                 blockSize,
+				Comparer:                  testkeys.Comparer,
+				TableFormat:               formatVersion,
+				Parallelism:               parallelism,
+				EnableValueBlocks:         true,
+				RequiredInPlaceValueBound: inPlaceValueBound,
+				ShortAttributeExtractor:   attributeExtractor,
+			}, 0)
+			if err != nil {
+				return err.Error()
+			}
+			return formatMeta(meta)
+
+		case "scan-raw":
+			// Raw scan does not fetch from value blocks, since we have not written
+			// the read path yet.
+			// TODO(sumeer): add a real scan.
+			origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			if err != nil {
+				return err.Error()
+			}
+			iter := newIterAdapter(origIter)
+			defer iter.Close()
+
+			var buf bytes.Buffer
+			for valid := iter.First(); valid; valid = iter.Next() {
+				v := iter.Value()
+				if iter.Key().Kind() == InternalKeyKindSet {
+					prefix := valuePrefix(v[0])
+					setWithSamePrefix := setHasSamePrefix(prefix)
+					if isValueHandle(prefix) {
+						attribute := getShortAttribute(prefix)
+						vh, err := decodeValueHandle(v[1:])
+						require.NoError(t, err)
+						fmt.Fprintf(&buf, "%s:value-handle len %d block %d offset %d, att %d, same-pre %t\n",
+							iter.Key(), vh.valueLen, vh.blockNum, vh.offsetInBlock, attribute, setWithSamePrefix)
+					} else {
+						fmt.Fprintf(&buf, "%s:in-place %s, same-pre %t\n", iter.Key(), v[1:], setWithSamePrefix)
+					}
+				} else {
+					fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), v)
+				}
+			}
+			return buf.String()
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
@@ -348,6 +454,9 @@ func TestSizeEstimate(t *testing.T) {
 			}
 		})
 }
+
+// TODO(sumeer): update to test value blocks after read path (including Layout
+// changes) is implemented.
 func TestWriterClearCache(t *testing.T) {
 	// Verify that Writer clears the cache of blocks that it writes.
 	mem := vfs.NewMem()
@@ -686,9 +795,27 @@ func BenchmarkWriter(b *testing.B) {
 		binary.BigEndian.PutUint64(key[16:], uint64(i))
 		keys[i] = key
 	}
+	runWriterBench(b, keys, nil, TableFormatPebblev2)
+}
 
-	b.ResetTimer()
+func BenchmarkWriterWithVersions(b *testing.B) {
+	keys := make([][]byte, 1e6)
+	const keyLen = 26
+	keySlab := make([]byte, keyLen*len(keys))
+	for i := range keys {
+		key := keySlab[i*keyLen : i*keyLen+keyLen]
+		binary.BigEndian.PutUint64(key[:8], 123) // 16-byte shared prefix
+		binary.BigEndian.PutUint64(key[8:16], 456)
+		binary.BigEndian.PutUint64(key[16:], uint64(i/2))
+		key[24] = '@'
+		// Ascii representation of single digit integer 2-(i%2).
+		key[25] = byte(48 + 2 - (i % 2))
+		keys[i] = key
+	}
+	runWriterBench(b, keys, testkeys.Comparer, TableFormatPebblev2)
+}
 
+func runWriterBench(b *testing.B, keys [][]byte, comparer *base.Comparer, format TableFormat) {
 	for _, bs := range []int{base.DefaultBlockSize, 32 << 10} {
 		b.Run(fmt.Sprintf("block=%s", humanize.IEC.Int64(int64(bs))), func(b *testing.B) {
 			for _, filter := range []bool{true, false} {
@@ -698,12 +825,15 @@ func BenchmarkWriter(b *testing.B) {
 							opts := WriterOptions{
 								BlockRestartInterval: 16,
 								BlockSize:            bs,
+								Comparer:             comparer,
 								Compression:          comp,
+								TableFormat:          format,
 							}
 							if filter {
 								opts.FilterPolicy = bloom.FilterPolicy(10)
 							}
 							f := &discardFile{}
+							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
 								f.wrote = 0
 								w := NewWriter(f, opts)

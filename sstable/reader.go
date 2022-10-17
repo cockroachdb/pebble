@@ -3260,9 +3260,23 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 		return 0, errCorruptIndexEntry
 	}
 
+	includeInterpolatedValueBlocksSize := func(dataBlockSize uint64) uint64 {
+		// INVARIANT: r.Properties.DataSize > 0 since startIdxIter is not nil.
+		// Linearly interpolate what is stored in value blocks.
+		//
+		// TODO(sumeer): if we need more accuracy, without loading any data blocks
+		// (which contain the value handles, and which may also be insufficient if
+		// the values are in separate files), we will need to accumulate the
+		// logical size of the key-value pairs and store the cumulative value for
+		// each data block in the index block entry. This increases the size of
+		// the BlockHandle, so wait until this becomes necessary.
+		return dataBlockSize +
+			uint64((float64(dataBlockSize)/float64(r.Properties.DataSize))*
+				float64(r.Properties.ValueBlocksSize))
+	}
 	if endIdxIter == nil {
 		// The range spans beyond this file. Include data blocks through the last.
-		return r.Properties.DataSize - startBH.Offset, nil
+		return includeInterpolatedValueBlocksSize(r.Properties.DataSize - startBH.Offset), nil
 	}
 	key, val = endIdxIter.SeekGE(end, base.SeekGEFlagsNone)
 	if key == nil {
@@ -3270,13 +3284,14 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			return 0, err
 		}
 		// The range spans beyond this file. Include data blocks through the last.
-		return r.Properties.DataSize - startBH.Offset, nil
+		return includeInterpolatedValueBlocksSize(r.Properties.DataSize - startBH.Offset), nil
 	}
 	endBH, err := decodeBlockHandleWithProperties(val.InPlaceValue())
 	if err != nil {
 		return 0, errCorruptIndexEntry
 	}
-	return endBH.Offset + endBH.Length + blockTrailerLen - startBH.Offset, nil
+	return includeInterpolatedValueBlocksSize(
+		endBH.Offset + endBH.Length + blockTrailerLen - startBH.Offset), nil
 }
 
 // TableFormat returns the format version for the table.
@@ -3500,7 +3515,7 @@ func (l *Layout) Describe(
 		}
 
 		getRestart := func(data []byte, restarts, i int32) int32 {
-			return int32(binary.LittleEndian.Uint32(data[restarts+4*i:]))
+			return decodeRestart(data[restarts+4*i:])
 		}
 
 		formatIsRestart := func(data []byte, restarts, numRestarts, offset int32) {

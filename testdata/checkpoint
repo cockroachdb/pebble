@@ -49,6 +49,9 @@ sync: db
 create: db/marker.format-version.000010.011
 close: db/marker.format-version.000010.011
 sync: db
+create: db/marker.format-version.000011.012
+close: db/marker.format-version.000011.012
+sync: db
 sync: db/MANIFEST-000001
 create: db/000002.log
 sync: db
@@ -114,9 +117,9 @@ close:
 open-dir: checkpoints/checkpoint1
 link: db/OPTIONS-000003 -> checkpoints/checkpoint1/OPTIONS-000003
 open-dir: checkpoints/checkpoint1
-create: checkpoints/checkpoint1/marker.format-version.000001.011
-sync: checkpoints/checkpoint1/marker.format-version.000001.011
-close: checkpoints/checkpoint1/marker.format-version.000001.011
+create: checkpoints/checkpoint1/marker.format-version.000001.012
+sync: checkpoints/checkpoint1/marker.format-version.000001.012
+close: checkpoints/checkpoint1/marker.format-version.000001.012
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/MANIFEST-000001
@@ -171,7 +174,7 @@ CURRENT
 LOCK
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000010.011
+marker.format-version.000011.012
 marker.manifest.000001.MANIFEST-000001
 
 list checkpoints/checkpoint1
@@ -181,7 +184,7 @@ list checkpoints/checkpoint1
 000007.sst
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000001.011
+marker.format-version.000001.012
 marker.manifest.000001.MANIFEST-000001
 
 open checkpoints/checkpoint1 readonly

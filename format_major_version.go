@@ -117,11 +117,25 @@ const (
 	// for compaction are complete.
 	FormatPrePebblev1MarkedCompacted
 
+	// FormatSSTableValueBlocks is a format major version that adds support for
+	// storing values in value blocks in the sstable. Value block support is not
+	// necessarily enabled when writing sstables, when running with this format
+	// major version.
+	//
+	// WARNING: In development, so no production code should upgrade to this
+	// format, since a DB with this format major version will not actually
+	// interoperate correctly with another DB with the same format major
+	// version. This format major version is introduced so that tests can start
+	// being executed up to this version. Note that these tests succeed despite
+	// the incomplete support since they do not enable value blocks and use
+	// TableFormatPebblev2.
+	FormatSSTableValueBlocks
+
 	// FormatNewest always contains the most recent format major version.
 	// NB: When adding new versions, the MaxTableFormat method should also be
 	// updated to return the maximum allowable version for the new
 	// FormatMajorVersion.
-	FormatNewest FormatMajorVersion = FormatPrePebblev1MarkedCompacted
+	FormatNewest FormatMajorVersion = FormatSSTableValueBlocks
 )
 
 // MaxTableFormat returns the maximum sstable.TableFormat that can be used at
@@ -137,6 +151,8 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 	case FormatRangeKeys, FormatMinTableFormatPebblev1, FormatPrePebblev1Marked,
 		FormatPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev2
+	case FormatSSTableValueBlocks:
+		return sstable.TableFormatPebblev3
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
 	}
@@ -152,7 +168,7 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 		FormatRangeKeys:
 		return sstable.TableFormatLevelDB
 	case FormatMinTableFormatPebblev1, FormatPrePebblev1Marked,
-		FormatPrePebblev1MarkedCompacted:
+		FormatPrePebblev1MarkedCompacted, FormatSSTableValueBlocks:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -274,6 +290,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 			return err
 		}
 		return d.finalizeFormatVersUpgrade(FormatPrePebblev1MarkedCompacted)
+	},
+	FormatSSTableValueBlocks: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatSSTableValueBlocks)
 	},
 }
 

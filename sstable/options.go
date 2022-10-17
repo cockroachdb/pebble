@@ -221,6 +221,18 @@ type WriterOptions struct {
 	// compress data blocks and write datablocks to disk in parallel with the
 	// Writer client goroutine.
 	Parallelism bool
+
+	// EnableValueBlocks mirrors Options.Experimental.EnableValueBlocks. Must
+	// be false if the TableFormat is < TableFormatPebblev3.
+	EnableValueBlocks bool
+
+	// ShortAttributeExtractor mirrors
+	// Options.Experimental.ShortAttributeExtractor.
+	ShortAttributeExtractor base.ShortAttributeExtractor
+
+	// RequiredInPlaceValueBound mirrors
+	// Options.Experimental.RequiredInPlaceValueBound.
+	RequiredInPlaceValueBound UserKeyPrefixBound
 }
 
 func (o WriterOptions) ensureDefaults() WriterOptions {

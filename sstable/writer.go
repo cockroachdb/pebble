@@ -206,6 +206,24 @@ type Writer struct {
 	blockBuf blockBuf
 
 	coordination coordinationState
+
+	// Information (other than the byte slice) about the last point key, to
+	// avoid extracting it again.
+	lastPointKeyInfo pointKeyInfo
+
+	// For value blocks.
+	shortAttributeExtractor   base.ShortAttributeExtractor
+	requiredInPlaceValueBound UserKeyPrefixBound
+	valueBlockWriter          *valueBlockWriter
+}
+
+type pointKeyInfo struct {
+	trailer uint64
+	// Only computed when w.valueBlockWriter is not nil.
+	userKeyLen int
+	// prefixLen uses w.split, if not nil. Only computed when w.valueBlockWriter
+	// is not nil.
+	prefixLen int
 }
 
 type coordinationState struct {
@@ -727,40 +745,143 @@ func (w *Writer) Add(key InternalKey, value []byte) error {
 	return w.addPoint(key, value)
 }
 
-func (w *Writer) addPoint(key InternalKey, value []byte) error {
-	if !w.disableKeyOrderChecks && w.dataBlockBuf.dataBlock.nEntries >= 1 {
-		// curKey is guaranteed to be the last point key which was added to the Writer.
-		// Inlining base.DecodeInternalKey has a 2-3% improve in the BenchmarkWriter
-		// benchmark.
-		encodedKey := w.dataBlockBuf.dataBlock.curKey
-		n := len(encodedKey) - base.InternalTrailerLen
-		var trailer uint64
-		if n >= 0 {
-			trailer = binary.LittleEndian.Uint64(encodedKey[n:])
-			encodedKey = encodedKey[:n:n]
-		} else {
-			trailer = uint64(InternalKeyKindInvalid)
-			encodedKey = nil
+func (w *Writer) makeAddPointDecisionV2(key InternalKey) error {
+	prevTrailer := w.lastPointKeyInfo.trailer
+	w.lastPointKeyInfo.trailer = key.Trailer
+	if w.dataBlockBuf.dataBlock.nEntries == 0 {
+		return nil
+	}
+	if !w.disableKeyOrderChecks {
+		prevPointUserKey := w.dataBlockBuf.dataBlock.curKey
+		n := len(prevPointUserKey) - base.InternalTrailerLen
+		if n < 0 {
+			panic("corrupt key in blockWriter buffer")
 		}
-		largestPointKey := InternalKey{
-			UserKey: encodedKey,
-			Trailer: trailer,
-		}
-
-		if largestPointKey.UserKey != nil {
-			// TODO(peter): Manually inlined version of base.InternalCompare(). This is
-			// 3.5% faster on BenchmarkWriter on go1.13. Remove if go1.14 or future
-			// versions show this to not be a performance win.
-			x := w.compare(largestPointKey.UserKey, key.UserKey)
-			if x > 0 || (x == 0 && largestPointKey.Trailer <= key.Trailer) {
-				w.err = errors.Errorf("pebble: keys must be added in strictly increasing order: %s, %s",
-					largestPointKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
-				return w.err
-			}
+		prevPointUserKey = prevPointUserKey[:n:n]
+		cmpUser := w.compare(prevPointUserKey, key.UserKey)
+		if cmpUser > 0 || (cmpUser == 0 && prevTrailer <= key.Trailer) {
+			return errors.Errorf(
+				"pebble: keys must be added in strictly increasing order: %s, %s",
+				InternalKey{UserKey: prevPointUserKey, Trailer: prevTrailer}.Pretty(w.formatKey),
+				key.Pretty(w.formatKey))
 		}
 	}
+	return nil
+}
 
-	if err := w.maybeFlush(key, value); err != nil {
+func (w *Writer) makeAddPointDecisionV3(
+	key InternalKey,
+) (setHasSamePrefix bool, writeToValueBlock bool, err error) {
+	prevPointKeyInfo := w.lastPointKeyInfo
+	w.lastPointKeyInfo.userKeyLen = len(key.UserKey)
+	w.lastPointKeyInfo.prefixLen = w.lastPointKeyInfo.userKeyLen
+	if w.split != nil {
+		w.lastPointKeyInfo.prefixLen = w.split(key.UserKey)
+	}
+	w.lastPointKeyInfo.trailer = key.Trailer
+	if w.dataBlockBuf.dataBlock.nEntries == 0 {
+		return false, false, nil
+	}
+	prevPointUserKey := w.dataBlockBuf.dataBlock.curKey
+	n := len(prevPointUserKey) - base.InternalTrailerLen
+	if n < 0 {
+		panic("corrupt key in blockWriter buffer")
+	}
+	prevPointUserKey = prevPointUserKey[:n:n]
+	prevPointKey := InternalKey{UserKey: prevPointUserKey, Trailer: prevPointKeyInfo.trailer}
+	considerWriteToValueBlock := base.TrailerKind(prevPointKeyInfo.trailer) == InternalKeyKindSet &&
+		base.TrailerKind(key.Trailer) == InternalKeyKindSet
+	if considerWriteToValueBlock && !w.requiredInPlaceValueBound.IsEmpty() {
+		keyPrefix := key.UserKey[:w.lastPointKeyInfo.prefixLen]
+		cmpUpper := w.compare(
+			w.requiredInPlaceValueBound.Upper, keyPrefix)
+		if cmpUpper <= 0 {
+			// Common case for CockroachDB. Make it empty since all future keys in
+			// this sstable will also have cmpUpper <= 0.
+			w.requiredInPlaceValueBound = UserKeyPrefixBound{}
+		} else if w.compare(keyPrefix, w.requiredInPlaceValueBound.Lower) >= 0 {
+			considerWriteToValueBlock = false
+		}
+	}
+	// cmpPrefix is initialized iff considerWriteToValueBlock.
+	var cmpPrefix int
+	var cmpUser int
+	if considerWriteToValueBlock {
+		// Compare the prefixes.
+		cmpPrefix = w.compare(prevPointUserKey[:prevPointKeyInfo.prefixLen],
+			key.UserKey[:w.lastPointKeyInfo.prefixLen])
+		cmpUser = cmpPrefix
+		if cmpPrefix == 0 {
+			// Need to compare suffixes to compute cmpUser.
+			cmpUser = w.compare(prevPointUserKey[prevPointKeyInfo.prefixLen:],
+				key.UserKey[w.lastPointKeyInfo.prefixLen:])
+		}
+	} else {
+		cmpUser = w.compare(prevPointUserKey, key.UserKey)
+	}
+	if !w.disableKeyOrderChecks &&
+		(cmpUser > 0 || (cmpUser == 0 && prevPointKeyInfo.trailer <= key.Trailer)) {
+		return false, false, errors.Errorf(
+			"pebble: keys must be added in strictly increasing order: %s, %s",
+			prevPointKey.Pretty(w.formatKey), key.Pretty(w.formatKey))
+	}
+	if !considerWriteToValueBlock {
+		return false, false, nil
+	}
+	// NB: it is possible that cmpUser == 0, i.e., these two SETs have identical
+	// user keys (because of an open snapshot). This should be the rare case.
+	setHasSamePrefix = cmpPrefix == 0
+	// Currently we write to the value block exactly when consecutive sets have
+	// the same prefix. We may expand the cases we write to the value block in
+	// the future.
+	return setHasSamePrefix, setHasSamePrefix, nil
+}
+
+func (w *Writer) addPoint(key InternalKey, value []byte) error {
+	var err error
+	var setHasSameKeyPrefix, writeToValueBlock, addPrefixToValueStoredWithKey bool
+	if w.valueBlockWriter != nil {
+		setHasSameKeyPrefix, writeToValueBlock, err = w.makeAddPointDecisionV3(key)
+		addPrefixToValueStoredWithKey = base.TrailerKind(key.Trailer) == InternalKeyKindSet
+	} else {
+		err = w.makeAddPointDecisionV2(key)
+	}
+	if err != nil {
+		return err
+	}
+	var valueStoredWithKey []byte
+	var prefix valuePrefix
+	var valueStoredWithKeyLen int
+	if writeToValueBlock {
+		vh, err := w.valueBlockWriter.addValue(value)
+		if err != nil {
+			return err
+		}
+		n := encodeValueHandle(w.blockBuf.tmp[:], vh)
+		valueStoredWithKey = w.blockBuf.tmp[:n]
+		valueStoredWithKeyLen = len(valueStoredWithKey) + 1
+		var attribute base.ShortAttribute
+		if w.shortAttributeExtractor != nil {
+			// TODO(sumeer): for compactions, it is possible that the input sstable
+			// already has this value in the value section and so we have already
+			// extracted the ShortAttribute. Avoid extracting it again. This will
+			// require changing the Writer.Add interface.
+			if attribute, err = w.shortAttributeExtractor(
+				key.UserKey, w.lastPointKeyInfo.prefixLen, value); err != nil {
+				return err
+			}
+		}
+		prefix = makePrefixForValueHandle(setHasSameKeyPrefix, attribute)
+	} else {
+		valueStoredWithKey = value
+		valueStoredWithKeyLen = len(value)
+		if addPrefixToValueStoredWithKey {
+			valueStoredWithKeyLen++
+		}
+		prefix = makePrefixForInPlaceValue(setHasSameKeyPrefix)
+	}
+
+	if err := w.maybeFlush(key, valueStoredWithKeyLen); err != nil {
 		return err
 	}
 
@@ -771,14 +892,22 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		}
 	}
 	for i := range w.blockPropCollectors {
-		if err := w.blockPropCollectors[i].Add(key, value); err != nil {
+		v := value
+		if addPrefixToValueStoredWithKey {
+			// Values for SET are not required to be in-place, and in the future may
+			// not even be read by the compaction, so pass nil values. Block
+			// property collectors in such Pebble DB's must not look at the value.
+			v = nil
+		}
+		if err := w.blockPropCollectors[i].Add(key, v); err != nil {
 			w.err = err
 			return err
 		}
 	}
 
 	w.maybeAddToFilter(key.UserKey)
-	w.dataBlockBuf.dataBlock.add(key, value)
+	w.dataBlockBuf.dataBlock.addWithOptionalValuePrefix(
+		key, valueStoredWithKey, addPrefixToValueStoredWithKey, prefix, setHasSameKeyPrefix)
 
 	w.meta.updateSeqNum(key.SeqNum())
 
@@ -1206,8 +1335,8 @@ func (w *Writer) flush(key InternalKey) error {
 	return err
 }
 
-func (w *Writer) maybeFlush(key InternalKey, value []byte) error {
-	if !w.dataBlockBuf.shouldFlush(key, len(value), w.blockSize, w.blockSizeThreshold) {
+func (w *Writer) maybeFlush(key InternalKey, valueLen int) error {
+	if !w.dataBlockBuf.shouldFlush(key, valueLen, w.blockSize, w.blockSizeThreshold) {
 		return nil
 	}
 
@@ -1541,6 +1670,23 @@ func (w *Writer) writeCompressedBlock(block []byte, blockTrailerBuf []byte) (Blo
 	return bh, nil
 }
 
+// Write implements io.Writer. This is analogous to writeCompressedBlock for
+// blocks that already incorporate the trailer, and don't need the callee to
+// return a BlockHandle.
+func (w *Writer) Write(blockWithTrailer []byte) (n int, err error) {
+	offset := w.meta.Size
+	if w.cacheID != 0 && w.fileNum != 0 {
+		// Remove the block being written from the cache. This provides defense in
+		// depth against bugs which cause cache collisions.
+		//
+		// TODO(peter): Alternatively, we could add the uncompressed value to the
+		// cache.
+		w.cache.Delete(w.cacheID, w.fileNum, offset)
+	}
+	w.meta.Size += uint64(len(blockWithTrailer))
+	return w.writer.Write(blockWithTrailer)
+}
+
 func (w *Writer) writeBlock(
 	b []byte, compression Compression, blockBuf *blockBuf,
 ) (BlockHandle, error) {
@@ -1567,6 +1713,12 @@ func (w *Writer) assertFormatCompatibility() error {
 		)
 	}
 
+	if (w.props.NumValueBlocks > 0 || w.props.NumValuesInValueBlocks > 0 ||
+		w.props.ValueBlocksSize > 0) && w.tableFormat < TableFormatPebblev3 {
+		return errors.Newf(
+			"table format version %s is less than the minimum required version %s for value blocks",
+			w.tableFormat, TableFormatPebblev3)
+	}
 	return nil
 }
 
@@ -1574,6 +1726,9 @@ func (w *Writer) assertFormatCompatibility() error {
 // table was written to.
 func (w *Writer) Close() (err error) {
 	defer func() {
+		if w.valueBlockWriter != nil {
+			releaseValueBlockWriter(w.valueBlockWriter)
+		}
 		if w.syncer == nil {
 			return
 		}
@@ -1723,6 +1878,20 @@ func (w *Writer) Close() (err error) {
 		if err != nil {
 			w.err = err
 			return w.err
+		}
+	}
+
+	if w.valueBlockWriter != nil {
+		vbiHandle, vbStats, err := w.valueBlockWriter.finish(w, w.meta.Size)
+		if err != nil {
+			return err
+		}
+		w.props.NumValueBlocks = vbStats.numValueBlocks
+		w.props.NumValuesInValueBlocks = vbStats.numValuesInValueBlocks
+		w.props.ValueBlocksSize = vbStats.valueBlocksAndIndexSize
+		if vbStats.numValueBlocks > 0 {
+			n := encodeValueBlocksIndexHandle(w.blockBuf.tmp[:], vbiHandle)
+			metaindex.add(InternalKey{UserKey: []byte(metaValueIndexName)}, w.blockBuf.tmp[:n])
 		}
 	}
 
@@ -1958,6 +2127,18 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 			Cmp:    o.Comparer.Compare,
 			Format: o.Comparer.FormatKey,
 		},
+	}
+	if o.EnableValueBlocks {
+		if w.tableFormat < TableFormatPebblev3 {
+			w.err = errors.New("value blocks not supported at this table format version")
+			return w
+		}
+		w.shortAttributeExtractor = o.ShortAttributeExtractor
+		w.requiredInPlaceValueBound = o.RequiredInPlaceValueBound
+		w.valueBlockWriter = newValueBlockWriter(
+			w.blockSize, w.blockSizeThreshold, w.compression, w.checksumType, func(compressedSize int) {
+				w.coordination.sizeEstimate.dataBlockCompressed(compressedSize, 0)
+			})
 	}
 
 	w.dataBlockBuf = newDataBlockBuf(w.restartInterval, w.checksumType)

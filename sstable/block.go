@@ -30,11 +30,26 @@ type blockWriter struct {
 	nEntries        int
 	nextRestart     int
 	buf             []byte
-	restarts        []uint32
-	curKey          []byte
-	curValue        []byte
-	prevKey         []byte
-	tmp             [4]byte
+	// For datablocks in TableFormatPebblev3, we steal the most significant bit
+	// in restarts for encoding setHasSameKeyPrefix. This leaves us with 31
+	// bits, which is more than enough (no one needs > 2GB blocks). Typically,
+	// restarts occur every 16 keys, and by storing this bit with the restart,
+	// we can optimize for the case where a user wants to skip to the next
+	// prefix which happens to be in the same data block, but is > 16 keys away.
+	// We have seen production situations with 100+ versions per MVCC key (which
+	// share the same prefix).
+	restarts []uint32
+	curKey   []byte
+	// curValue excludes the optional prefix provided to
+	// storeWithOptionalValuePrefix.
+	curValue []byte
+	prevKey  []byte
+	tmp      [4]byte
+	// We don't know the state of the sets that were at the end of the previous
+	// block, so this is initially 0. It may be true for the second and later
+	// restarts in a block. Not having inter-block information is fine since we
+	// will optimize by stepping through restarts only within the same block.
+	setHasSameKeyPrefixSinceLastRestart bool
 }
 
 func (w *blockWriter) clear() {
@@ -47,11 +62,29 @@ func (w *blockWriter) clear() {
 	}
 }
 
-func (w *blockWriter) store(keySize int, value []byte) {
+// MaximumBlockSize is an extremely generous maximum block size of 256MiB. We
+// explicitly place this limit to reserve a few bits in the restart for
+// internal use.
+const MaximumBlockSize = 1 << 28
+const setHasSameKeyPrefixRestartMask uint32 = 1 << 31
+const restartMaskLittleEndianHighByteWithoutSetHasSamePrefix byte = 0b01111111
+
+// If !addValuePrefix, the valuePrefix is ignored.
+func (w *blockWriter) storeWithOptionalValuePrefix(
+	keySize int, value []byte, addValuePrefix bool, valuePrefix valuePrefix, setHasSameKeyPrefix bool,
+) {
 	shared := 0
+	if !setHasSameKeyPrefix {
+		w.setHasSameKeyPrefixSinceLastRestart = false
+	}
 	if w.nEntries == w.nextRestart {
 		w.nextRestart = w.nEntries + w.restartInterval
-		w.restarts = append(w.restarts, uint32(len(w.buf)))
+		restart := uint32(len(w.buf))
+		if w.setHasSameKeyPrefixSinceLastRestart {
+			restart = restart | setHasSameKeyPrefixRestartMask
+		}
+		w.setHasSameKeyPrefixSinceLastRestart = true
+		w.restarts = append(w.restarts, restart)
 	} else {
 		// TODO(peter): Manually inlined version of base.SharedPrefixLen(). This
 		// is 3% faster on BenchmarkWriter on go1.16. Remove if future versions
@@ -72,7 +105,11 @@ func (w *blockWriter) store(keySize int, value []byte) {
 		}
 	}
 
-	needed := 3*binary.MaxVarintLen32 + len(w.curKey[shared:]) + len(value)
+	lenValuePlusOptionalPrefix := len(value)
+	if addValuePrefix {
+		lenValuePlusOptionalPrefix++
+	}
+	needed := 3*binary.MaxVarintLen32 + len(w.curKey[shared:]) + lenValuePlusOptionalPrefix
 	n := len(w.buf)
 	if cap(w.buf) < n+needed {
 		newCap := 2 * cap(w.buf)
@@ -114,7 +151,7 @@ func (w *blockWriter) store(keySize int, value []byte) {
 	}
 
 	{
-		x := uint32(len(value))
+		x := uint32(lenValuePlusOptionalPrefix)
 		for x >= 0x80 {
 			w.buf[n] = byte(x) | 0x80
 			x >>= 7
@@ -125,6 +162,10 @@ func (w *blockWriter) store(keySize int, value []byte) {
 	}
 
 	n += copy(w.buf[n:], w.curKey[shared:])
+	if addValuePrefix {
+		w.buf[n : n+1][0] = byte(valuePrefix)
+		n++
+	}
 	n += copy(w.buf[n:], value)
 	w.buf = w.buf[:n]
 
@@ -134,6 +175,17 @@ func (w *blockWriter) store(keySize int, value []byte) {
 }
 
 func (w *blockWriter) add(key InternalKey, value []byte) {
+	w.addWithOptionalValuePrefix(key, value, false, 0, false)
+}
+
+// Callers that always set addValuePrefix to false should use add() instead.
+func (w *blockWriter) addWithOptionalValuePrefix(
+	key InternalKey,
+	value []byte,
+	addValuePrefix bool,
+	valuePrefix valuePrefix,
+	setHasSameKeyPrefix bool,
+) {
 	w.curKey, w.prevKey = w.prevKey, w.curKey
 
 	size := key.Size()
@@ -143,7 +195,7 @@ func (w *blockWriter) add(key InternalKey, value []byte) {
 	w.curKey = w.curKey[:size]
 	key.Encode(w.curKey)
 
-	w.store(size, value)
+	w.storeWithOptionalValuePrefix(size, value, addValuePrefix, valuePrefix, setHasSameKeyPrefix)
 }
 
 func (w *blockWriter) finish() []byte {
@@ -553,7 +605,7 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 		for index < upper {
 			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
 			// index ≤ h < upper
-			offset := int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
+			offset := decodeRestart(i.data[i.restarts+4*h:])
 			// For a restart point, there are 0 bytes shared with the previous key.
 			// The varint encoding of 0 occupies 1 byte.
 			ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
@@ -621,7 +673,7 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 	// 0, then all keys in this block are larger than the key sought, and offset
 	// remains at zero.
 	if index > 0 {
-		i.offset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
+		i.offset = decodeRestart(i.data[i.restarts+4*(index-1):])
 	}
 	i.readEntry()
 	i.decodeInternalKey(i.key)
@@ -666,7 +718,7 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 		for index < upper {
 			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
 			// index ≤ h < upper
-			offset := int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
+			offset := decodeRestart(i.data[i.restarts+4*h:])
 			// For a restart point, there are 0 bytes shared with the previous key.
 			// The varint encoding of 0 occupies 1 byte.
 			ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(offset+1))
@@ -733,9 +785,9 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 	// index-1 will be the largest whose key is < the key sought.
 	targetOffset := i.restarts
 	if index > 0 {
-		i.offset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
+		i.offset = decodeRestart(i.data[i.restarts+4*(index-1):])
 		if index < i.numRestarts {
-			targetOffset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index):]))
+			targetOffset = decodeRestart(i.data[i.restarts+4*(index):])
 		}
 	} else if index == 0 {
 		// If index == 0 then all keys in this block are larger than the key
@@ -795,10 +847,16 @@ func (i *blockIter) First() (*InternalKey, base.LazyValue) {
 	return &i.ikey, base.MakeInPlaceValue(i.val)
 }
 
+func decodeRestart(b []byte) int32 {
+	_ = b[3] // bounds check hint to compiler; see golang.org/issue/14808
+	return int32(uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 |
+		uint32(b[3]&restartMaskLittleEndianHighByteWithoutSetHasSamePrefix)<<24)
+}
+
 // Last implements internalIterator.Last, as documented in the pebble package.
 func (i *blockIter) Last() (*InternalKey, base.LazyValue) {
 	// Seek forward from the last restart point.
-	i.offset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(i.numRestarts-1):]))
+	i.offset = decodeRestart(i.data[i.restarts+4*(i.numRestarts-1):])
 	if !i.valid() {
 		return nil, base.LazyValue{}
 	}
@@ -896,7 +954,7 @@ func (i *blockIter) Prev() (*InternalKey, base.LazyValue) {
 		for index < upper {
 			h := int32(uint(index+upper) >> 1) // avoid overflow when computing h
 			// index ≤ h < upper
-			offset := int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*h:]))
+			offset := decodeRestart(i.data[i.restarts+4*h:])
 			if offset < targetOffset {
 				index = h + 1 // preserves f(i-1) == false
 			} else {
@@ -909,7 +967,7 @@ func (i *blockIter) Prev() (*InternalKey, base.LazyValue) {
 
 	i.offset = 0
 	if index > 0 {
-		i.offset = int32(binary.LittleEndian.Uint32(i.data[i.restarts+4*(index-1):]))
+		i.offset = decodeRestart(i.data[i.restarts+4*(index-1):])
 	}
 
 	i.readEntry()
