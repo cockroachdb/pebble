@@ -17,8 +17,6 @@ type writeTask struct {
 	// currIndexBlock is the index block on which indexBlock.add must be called.
 	currIndexBlock *indexBlockBuf
 	indexEntrySep  InternalKey
-	// inflightSize is used to decrement Writer.coordination.sizeEstimate.inflightSize.
-	inflightSize int
 	// inflightIndexEntrySize is used to decrement Writer.indexBlock.sizeEstimate.inflightSize.
 	indexInflightSize int
 	// If the index block is finished, then we set the finishedIndexProps here.
@@ -68,11 +66,6 @@ func (w *writeQueue) performWrite(task *writeTask) error {
 	if bh, err = w.writer.writeCompressedBlock(task.buf.compressed, task.buf.tmp[:]); err != nil {
 		return err
 	}
-
-	// Update the size estimates after writing the data block to disk.
-	w.writer.coordination.sizeEstimate.dataBlockWritten(
-		w.writer.meta.Size, task.inflightSize, int(bh.Length),
-	)
 
 	bhp = BlockHandleWithProperties{BlockHandle: bh, Props: task.buf.dataBlockProps}
 	if err = w.writer.addIndexEntry(

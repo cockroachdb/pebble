@@ -22,9 +22,16 @@ num_entries
 ----
 1
 
-# After compression, entry only had a size of 3. The total size is the 3, but the
-# max estimated size yet is 4.
-entry_written 3 4 3
+# Compression ratio defaults to 1, so the size of the inflight entry fully
+# counts towards size.
+size
+----
+4
+
+# After compression, entry only had a size of 3. The total size is therefore
+# 3, since this is the first entry. The max estimated size is 4 since we
+# ensure that it is monotonically non decreasing.
+entry_written 3 4
 ----
 4
 
@@ -38,7 +45,7 @@ num_inflight_entries
 0
 
 # Compression ratio is 0.75 at this point. The total size is 3, and the inflight
-# size is 4, so that returned size is uint64(6.75).
+# size is 5, so that returned size is uint64(3 + 0.75*5) = uint64(6.75).
 add_inflight 5
 ----
 6
@@ -71,7 +78,7 @@ num_inflight_entries
 
 # First inflight entry written. The entry didn't get compressed. The total size
 # now is less than 9, but the max estimated size should still be 9.
-entry_written 4 4 4
+entry_written 4 4
 ----
 9
 
@@ -94,16 +101,16 @@ num_written_entries
 ----
 1
 
-# The inflight entry had a size of 5, but the entry added had a size of 3 because
-# of compression/size estimation. The compression ratio is 0.77 at this point.
-# The inflightSize is 8. The true size is 13.16, but the maxEstimatedSize is
-# returned.
-entry_written 7 5 3 
+# The inflight entry had a size of 5, but the entry added had a size of 3
+# because of compression/size estimation. The compression ratio is (4+3)/(4+5)
+# = 0.77 at this point. The inflightSize is 8. The true size is 7+8*0.77 =
+# 13.22, but the maxEstimatedSize is returned.
+entry_written 7 5
 ----
 17
 
 # The inflight size is 0, and the total size is 11.
-entry_written 11 8 4
+entry_written 11 8
 ----
 17
 
@@ -111,8 +118,8 @@ num_written_entries
 ----
 3
 
-# The compression ratio is 0.64, and the inflight size is 20, 20*0.64 = 12.8,
-# so the total size is uint64(12.8 + 11)
+# The compression ratio is (4+3+4)/(4+5+8)=0.647, and the inflight size is 20,
+# 20*0.64 = 12.94, so the total size is uint64(12.94 + 11)
 add_inflight 20
 ----
 23
@@ -121,13 +128,17 @@ num_inflight_entries
 ----
 1
 
-# We can write an entry, but it might not have an inflightSize, because it
-# was never inflight. In such a case, the numInflightEntries, shouldn't be
-# decreased.
-entry_written 11 0 4
+# We can write an entry, which increases the written size from 11 to 19, but
+# it might not have an inflightSize, because it was never inflight. In such a
+# case, the numInflightEntries, shouldn't be decreased.
+entry_written 19 0
 ----
-28
+31
 
 num_inflight_entries
 ----
 1
+
+num_written_entries
+----
+4

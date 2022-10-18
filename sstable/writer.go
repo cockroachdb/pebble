@@ -221,7 +221,9 @@ type coordinationState struct {
 
 func (c *coordinationState) init(parallelismEnabled bool, writer *Writer) {
 	c.parallelismEnabled = parallelismEnabled
-	c.sizeEstimate.useMutex = parallelismEnabled
+	// useMutex is false regardless of parallelismEnabled, because we do not do
+	// parallel compression yet.
+	c.sizeEstimate.useMutex = false
 
 	// writeQueueSize determines the size of the write queue, or the number
 	// of items which can be added to the queue without blocking. By default, we
@@ -234,6 +236,47 @@ func (c *coordinationState) init(parallelismEnabled bool, writer *Writer) {
 	c.writeQueue = newWriteQueue(writeQueueSize, writer)
 }
 
+// sizeEstimate is a general purpose helper for estimating two kinds of sizes:
+// A. The compressed sstable size, which is useful for deciding when to start
+//    a new sstable during flushes or compactions. In practice, we use this in
+//    estimating the data size (excluding the index).
+// B. The size of index blocks to decide when to start a new index block.
+//
+// There are some terminology peculiarities which are due to the origin of
+// sizeEstimate for use case A with parallel compression enabled (for which
+// the code has not been merged). Specifically this relates to the terms
+// "written" and "compressed".
+// - The notion of "written" for case A is sufficiently defined by saying that
+//   the data block is compressed. Waiting for the actual data block write to
+//   happen can result in unnecessary estimation, when we already know how big
+//   it will be in compressed form. Additionally, with the forthcoming value
+//   blocks containing older MVCC values, these compressed block will be held
+//   in-memory until late in the sstable writing, and we do want to accurately
+//   account for them without waiting for the actual write.
+//   For case B, "written" means that the index entry has been fully
+//   generated, and has been added to the uncompressed block buffer for that
+//   index block. It does not include actually writing a potentially
+//   compressed index block.
+// - The notion of "compressed" is to differentiate between a "inflight" size
+//   and the actual size, and is handled via computing a compression ratio
+//   observed so far (defaults to 1).
+//   For case A, this is actual data block compression, so the "inflight" size
+//   is uncompressed blocks (that are no longer being written to) and the
+//   "compressed" size is after they have been compressed.
+//   For case B the inflight size is for a key-value pair in the index for
+//   which the value size (the encoded size of the BlockHandleWithProperties)
+//   is not accurately known, while the compressed size is the size of that
+//   entry when it has been added to the (in-progress) index ssblock.
+//
+// Usage: To update state, one can optionally provide an inflight write value
+// using addInflight (used for case B). When something is "written" the state
+// can be updated using either writtenWithDelta or writtenWithTotal, which
+// provide the actual delta size or the total size (latter must be
+// monotonically non-decreasing). If there were no calls to addInflight, there
+// isn't any real estimation happening here. So case A does not do any real
+// estimation. However, when we introduce parallel compression, there will be
+// estimation in that the client goroutine will call addInFlight and the
+// compression goroutines will call writtenWithDelta.
 type sizeEstimate struct {
 	// emptySize is the size when there is no inflight data, and numEntries is 0.
 	// emptySize is constant once set.
@@ -300,18 +343,22 @@ func (s *sizeEstimate) addInflight(size int) {
 	s.inflightSize += uint64(size)
 }
 
-func (s *sizeEstimate) written(newTotalSize uint64, inflightSize int, finalEntrySize int) {
-	s.inflightSize -= uint64(inflightSize)
+func (s *sizeEstimate) writtenWithTotal(newTotalSize uint64, inflightSize int) {
+	finalEntrySize := int(newTotalSize - s.totalSize)
+	s.writtenWithDelta(finalEntrySize, inflightSize)
+}
+
+func (s *sizeEstimate) writtenWithDelta(finalEntrySize int, inflightSize int) {
 	if inflightSize > 0 {
 		// This entry was previously inflight, so we should decrement inflight
-		// entries.
+		// entries and update the "compression" stats for future estimation.
 		s.numInflightEntries--
+		s.inflightSize -= uint64(inflightSize)
+		s.uncompressedSize += uint64(inflightSize)
+		s.compressedSize += uint64(finalEntrySize)
 	}
 	s.numWrittenEntries++
-	s.totalSize = newTotalSize
-
-	s.uncompressedSize += uint64(inflightSize)
-	s.compressedSize += uint64(finalEntrySize)
+	s.totalSize += uint64(finalEntrySize)
 }
 
 func (s *sizeEstimate) clear() {
@@ -381,10 +428,7 @@ func (i *indexBlockBuf) add(key InternalKey, value []byte, inflightSize int) {
 		i.size.mu.Lock()
 		defer i.size.mu.Unlock()
 	}
-	// Since, we're not compressing index entries when adding them to index blocks,
-	// we assume that the size of entry written to the index block is equal to the
-	// size of the inflight entry, giving us a compression ratio of 1.
-	i.size.estimate.written(uint64(size), inflightSize, inflightSize)
+	i.size.estimate.writtenWithTotal(uint64(size), inflightSize)
 }
 
 func (i *indexBlockBuf) finish() []byte {
@@ -423,11 +467,12 @@ func (i *indexBlockBuf) estimatedSize() uint64 {
 	return i.size.estimate.size()
 }
 
-// sizeEstimate is used for sstable size estimation. sizeEstimate can be accessed by
-// the Writer client, writeQueue, compressionQueue goroutines. Fields should only be
-// read/updated through the functions defined on the *sizeEstimate type.
+// sizeEstimate is used for sstable size estimation. sizeEstimate can be
+// accessed by the Writer client and compressionQueue goroutines. Fields
+// should only be read/updated through the functions defined on the
+// *sizeEstimate type.
 type dataBlockEstimates struct {
-	// If we don't do block compression, block writes in parallel, then we don't need to take
+	// If we don't do block compression in parallel, then we don't need to take
 	// the performance hit of synchronizing using this mutex.
 	useMutex bool
 	mu       sync.Mutex
@@ -435,18 +480,16 @@ type dataBlockEstimates struct {
 	estimate sizeEstimate
 }
 
-// newTotalSize is the new w.meta.Size. inflightSize is the uncompressed block size estimate which
-// was previously added to sizeEstimate.inflightSize. writtenSize is the compressed size of the block
-// which was written to disk.
-func (d *dataBlockEstimates) dataBlockWritten(
-	newTotalSize uint64, inflightSize int, writtenSize int,
-) {
+// inflightSize is the uncompressed block size estimate which has been
+// previously provided to addInflightDataBlock(). If addInflightDataBlock()
+// has not been called, this must be set to 0. compressedSize is the
+// compressed size of the block.
+func (d *dataBlockEstimates) dataBlockCompressed(compressedSize int, inflightSize int) {
 	if d.useMutex {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 	}
-
-	d.estimate.written(newTotalSize, inflightSize, writtenSize)
+	d.estimate.writtenWithDelta(compressedSize+blockTrailerLen, inflightSize)
 }
 
 // size is an estimated size of datablock data which has been written to disk.
@@ -455,18 +498,19 @@ func (d *dataBlockEstimates) size() uint64 {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 	}
-
-	// Use invariants to make sure that the size estimation works as expected
-	// when parallelism is disabled.
+	// If there is no parallel compression, there should not be any inflight bytes.
 	if invariants.Enabled && !d.useMutex {
 		if d.estimate.inflightSize != 0 {
 			panic("unexpected inflight entry in data block size estimation")
 		}
 	}
-
 	return d.estimate.size()
 }
 
+// Avoid linter unused error.
+var _ = (&dataBlockEstimates{}).addInflightDataBlock
+
+// NB: unused since no parallel compression.
 func (d *dataBlockEstimates) addInflightDataBlock(size int) {
 	if d.useMutex {
 		d.mu.Lock()
@@ -1082,19 +1126,16 @@ func (w *Writer) maybeAddToFilter(key []byte) {
 }
 
 func (w *Writer) flush(key InternalKey) error {
-	estimatedUncompressedSize := w.dataBlockBuf.dataBlock.estimatedSize()
-	w.coordination.sizeEstimate.addInflightDataBlock(estimatedUncompressedSize)
-
-	var err error
-
 	// We're finishing a data block.
-	err = w.finishDataBlockProps(w.dataBlockBuf)
+	err := w.finishDataBlockProps(w.dataBlockBuf)
 	if err != nil {
 		return err
 	}
-
 	w.dataBlockBuf.finish()
 	w.dataBlockBuf.compressAndChecksum(w.compression)
+	// Since dataBlockEstimates.addInflightDataBlock was never called, the
+	// inflightSize is set to 0.
+	w.coordination.sizeEstimate.dataBlockCompressed(len(w.dataBlockBuf.compressed), 0)
 
 	// Determine if the index block should be flushed. Since we're accessing the
 	// dataBlockBuf.dataBlock.curKey here, we have to make sure that once we start
@@ -1141,7 +1182,6 @@ func (w *Writer) flush(key InternalKey) error {
 	writeTask.compressionDone <- true
 	writeTask.buf = w.dataBlockBuf
 	writeTask.indexEntrySep = sep
-	writeTask.inflightSize = estimatedUncompressedSize
 	writeTask.currIndexBlock = w.indexBlock
 	writeTask.indexInflightSize = sep.Size() + encodedBHPEstimatedSize
 	writeTask.finishedIndexProps = indexProps
@@ -1815,14 +1855,6 @@ func (w *Writer) Close() (err error) {
 // EstimatedSize returns the estimated size of the sstable being written if a
 // call to Finish() was made without adding additional keys.
 func (w *Writer) EstimatedSize() uint64 {
-	if invariants.Enabled && !w.coordination.parallelismEnabled {
-		// The w.meta.Size should only be accessed from the writeQueue goroutine
-		// if parallelism is enabled, but since it isn't we break that invariant
-		// here.
-		if w.coordination.sizeEstimate.size() != w.meta.Size {
-			panic("sstable size estimation sans parallelism is incorrect")
-		}
-	}
 	return w.coordination.sizeEstimate.size() +
 		uint64(w.dataBlockBuf.dataBlock.estimatedSize()) +
 		w.indexBlock.estimatedSize()
