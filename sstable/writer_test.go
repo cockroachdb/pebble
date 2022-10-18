@@ -226,7 +226,7 @@ func TestClearIndexBlockBuf(t *testing.T) {
 
 	testBlockCleared(t, &i.block, &blockWriter{})
 	require.Equal(
-		t, i.size.estimate, sizeEstimate{emptySize: i.size.estimate.emptySize},
+		t, i.size.estimate, sizeEstimate{emptySize: emptyBlockSize},
 	)
 	indexBlockBufPool.Put(i)
 }
@@ -326,10 +326,10 @@ func TestSizeEstimate(t *testing.T) {
 				sizeEstimate.addInflight(inflightSize)
 				return fmt.Sprintf("%d", sizeEstimate.size())
 			case "entry_written":
-				if len(td.CmdArgs) != 3 {
-					return "entry_written <new_size> <prev_inflight_size> <entry_size>"
+				if len(td.CmdArgs) != 2 {
+					return "entry_written <new_total_size> <prev_inflight_size>"
 				}
-				newSize, err := strconv.Atoi(td.CmdArgs[0].String())
+				newTotalSize, err := strconv.Atoi(td.CmdArgs[0].String())
 				if err != nil {
 					return "invalid inflight size"
 				}
@@ -337,11 +337,7 @@ func TestSizeEstimate(t *testing.T) {
 				if err != nil {
 					return "invalid inflight size"
 				}
-				entrySize, err := strconv.Atoi(td.CmdArgs[2].String())
-				if err != nil {
-					return "invalid inflight size"
-				}
-				sizeEstimate.written(uint64(newSize), inflightSize, entrySize)
+				sizeEstimate.writtenWithTotal(uint64(newTotalSize), inflightSize)
 				return fmt.Sprintf("%d", sizeEstimate.size())
 			case "num_written_entries":
 				return fmt.Sprintf("%d", sizeEstimate.numWrittenEntries)
