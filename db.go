@@ -169,17 +169,39 @@ type Writer interface {
 	RangeKeyDelete(start, end []byte, opts *WriteOptions) error
 }
 
-// CPUWorkPermissionGranter is used to request permission to opportunistically
-// use additional CPUs to speed up internal background work. Each granted "proc"
-// can be used to spin up a CPU bound goroutine, i.e, if scheduled each such
-// goroutine can consume one P in the goroutine scheduler. The calls to
-// ReturnProcs can be a bit delayed, since Pebble interacts with this interface
-// in a coarse manner. So one should assume that the total number of granted
-// procs is a non tight upper bound on the CPU that will get consumed.
-type CPUWorkPermissionGranter interface {
-	TryGetProcs(count int) int
-	ReturnProcs(count int)
+// CPUWorkHandle represents a handle used by the CPUWorkPermissionGranter API.
+type CPUWorkHandle interface {
+	// Permitted indicates whether Pebble can use additional CPU resources.
+	Permitted() bool
 }
+
+// CPUWorkPermissionGranter is used to request permission to opportunistically
+// use additional CPUs to speed up internal background work.
+type CPUWorkPermissionGranter interface {
+	// GetPermission returns a handle regardless of whether permission is granted
+	// or not. In the latter case, the handle is only useful for recording
+	// the CPU time actually spent on this calling goroutine.
+	GetPermission(time.Duration) CPUWorkHandle
+	// CPUWorkDone must be called regardless of whether CPUWorkHandle.Permitted
+	// returns true or false.
+	CPUWorkDone(CPUWorkHandle)
+}
+
+// Use a default implementation for the CPU work granter to avoid excessive nil
+// checks in the code.
+type defaultCPUWorkHandle struct{}
+
+func (d defaultCPUWorkHandle) Permitted() bool {
+	return false
+}
+
+type defaultCPUWorkGranter struct{}
+
+func (d defaultCPUWorkGranter) GetPermission(_ time.Duration) CPUWorkHandle {
+	return defaultCPUWorkHandle{}
+}
+
+func (d defaultCPUWorkGranter) CPUWorkDone(_ CPUWorkHandle) {}
 
 // DB provides a concurrent, persistent ordered key/value store.
 //
