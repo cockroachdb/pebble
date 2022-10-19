@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -108,4 +109,37 @@ func TestArchiveCleaner(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestWorkloadCaptureCleanerNotReadyToClean(t *testing.T) {
+	imfs := vfs.NewMem()
+	filePath := base.MakeFilepath(imfs, "./", fileTypeTable, 1)
+	_, err := imfs.Create(filePath)
+	require.NoError(t, err)
+
+	captureFileHandler := DefaultWorkloadCaptureFileHandler{}
+	cleaner := NewWorkloadCaptureCleaner(imfs, "./", captureFileHandler)
+	err = cleaner.Clean(imfs, fileTypeTable, filePath)
+	require.NoError(t, err)
+	_, err = imfs.Stat(filePath)
+	require.NoError(t, err)
+}
+
+func TestWorkloadCaptureCleanerMarkForClean(t *testing.T) {
+	imfs := vfs.NewMem()
+	filePath := base.MakeFilepath(imfs, "./", fileTypeTable, 1)
+	f, err := imfs.Create(filePath)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	captureFileHandler := DefaultWorkloadCaptureFileHandler{}
+	cleaner := NewWorkloadCaptureCleaner(imfs, "./", captureFileHandler)
+	cleaner.OnFlushEnd(FlushInfo{Output: []TableInfo{{
+		FileNum: 1,
+		Size:    10,
+	}}})
+	err = cleaner.Clean(imfs, fileTypeTable, filePath)
+	require.NoError(t, err)
+	_, err = imfs.Stat(filePath)
+	require.Errorf(t, err, "stat 000001.sst: file does not exist")
 }
