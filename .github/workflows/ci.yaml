@@ -33,6 +33,7 @@ jobs:
     - run: make test generate
 
   linux-crossversion:
+    if: ${{ false }} # disabled in PR 2018 until further investigation
     name: go-linux-crossversion
     runs-on: ubuntu-latest
     steps:
