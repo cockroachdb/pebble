@@ -273,13 +273,13 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	return testOpts
 }
 
-func setupInitialState(dir string, testOpts *testOptions) error {
-	// Copy (vfs.Default,<initialStatePath>) to (testOpts.opts.FS,<dir>).
+func setupInitialState(dataDir string, testOpts *testOptions) error {
+	// Copy (vfs.Default,<initialStatePath>/data) to (testOpts.opts.FS,<dataDir>).
 	ok, err := vfs.Clone(
 		vfs.Default,
 		testOpts.opts.FS,
-		testOpts.initialStatePath,
-		dir,
+		vfs.Default.PathJoin(testOpts.initialStatePath, "data"),
+		dataDir,
 		vfs.CloneSync,
 		vfs.CloneSkip(func(filename string) bool {
 			// Skip the archive of historical files, any checkpoints created by
@@ -297,15 +297,15 @@ func setupInitialState(dir string, testOpts *testOptions) error {
 	// database (initialStatePath) could've had wal_dir set, or the current test
 	// options (testOpts) could have wal_dir set, or both.
 	fs := testOpts.opts.FS
-	walDir := fs.PathJoin(dir, "wal")
+	walDir := fs.PathJoin(dataDir, "wal")
 	if err := fs.MkdirAll(walDir, os.ModePerm); err != nil {
 		return err
 	}
 
-	// Copy <dir>/wal/*.log -> <dir>.
-	src, dst := walDir, dir
+	// Copy <dataDir>/wal/*.log -> <dataDir>.
+	src, dst := walDir, dataDir
 	if testOpts.opts.WALDir != "" {
-		// Copy <dir>/*.log -> <dir>/wal.
+		// Copy <dataDir>/*.log -> <dataDir>/wal.
 		src, dst = dst, src
 	}
 	return moveLogs(fs, src, dst)
