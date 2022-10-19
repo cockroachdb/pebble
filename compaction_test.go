@@ -887,28 +887,39 @@ func TestCompactionTransform(t *testing.T) {
 }
 
 type cpuPermissionGranter struct {
-	granted int
-	used    bool
+	// requestCount is used to confirm that every GetPermission function call
+	// has a corresponding CPUWorkDone function call.
+	requestCount int
+	used         bool
+	permit       bool
 }
 
-func (t *cpuPermissionGranter) TryGetProcs(count int) int {
-	t.granted += count
+type cpuWorkHandle struct {
+	permit bool
+}
+
+func (c cpuWorkHandle) Permitted() bool {
+	return c.permit
+}
+
+func (t *cpuPermissionGranter) GetPermission(dur time.Duration) CPUWorkHandle {
+	t.requestCount++
 	t.used = true
-	return count
+	return cpuWorkHandle{t.permit}
 }
 
-func (t *cpuPermissionGranter) ReturnProcs(count int) {
-	t.granted -= count
+func (t *cpuPermissionGranter) CPUWorkDone(_ CPUWorkHandle) {
+	t.requestCount--
 }
 
-// Simple test to check if compactions are using the granter, and if exactly the
-// used slots are being freed.
-func TestCompactionSlots(t *testing.T) {
+// Simple test to check if compactions are using the granter, and if exactly
+// the acquired handles are returned.
+func TestCompactionCPUGranter(t *testing.T) {
 	mem := vfs.NewMem()
 	opts := &Options{
 		FS: mem,
 	}
-	g := &cpuPermissionGranter{}
+	g := &cpuPermissionGranter{permit: true}
 	opts.Experimental.CPUWorkPermissionGranter = g
 	d, err := Open("", opts)
 	if err != nil {
@@ -922,7 +933,26 @@ func TestCompactionSlots(t *testing.T) {
 		t.Fatalf("Compact: %v", err)
 	}
 	require.True(t, g.used)
-	require.Equal(t, 0, g.granted)
+	require.Equal(t, g.requestCount, 0)
+}
+
+// Tests that there's no errors or panics when the default CPU granter is used.
+func TestCompactionCPUGranterDefault(t *testing.T) {
+	mem := vfs.NewMem()
+	opts := &Options{
+		FS: mem,
+	}
+	d, err := Open("", opts)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer d.Close()
+
+	d.Set([]byte{'a'}, []byte{'a'}, nil)
+	err = d.Compact([]byte{'a'}, []byte{'b'}, true)
+	if err != nil {
+		t.Fatalf("Compact: %v", err)
+	}
 }
 
 func TestCompaction(t *testing.T) {
