@@ -5,8 +5,6 @@
 package metamorphic
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/cockroachdb/pebble"
@@ -18,8 +16,9 @@ import (
 func TestSetupInitialState(t *testing.T) {
 	// Construct a small database in the test's TempDir.
 	initialStatePath := t.TempDir()
+	initialDataPath := vfs.Default.PathJoin(initialStatePath, "data")
 	{
-		d, err := pebble.Open(initialStatePath, &pebble.Options{})
+		d, err := pebble.Open(initialDataPath, &pebble.Options{})
 		require.NoError(t, err)
 		const maxKeyLen = 2
 		ks := testkeys.Alpha(maxKeyLen)
@@ -33,7 +32,6 @@ func TestSetupInitialState(t *testing.T) {
 		}
 		require.NoError(t, d.Close())
 	}
-	require.NoError(t, vfs.Default.MkdirAll(filepath.Join(initialStatePath, "wal"), os.ModePerm))
 	ls, err := vfs.Default.List(initialStatePath)
 	require.NoError(t, err)
 
@@ -44,7 +42,7 @@ func TestSetupInitialState(t *testing.T) {
 		initialStatePath: initialStatePath,
 		initialStateDesc: "test",
 	}
-	require.NoError(t, setupInitialState("", opts))
+	require.NoError(t, setupInitialState("data", opts))
 	copied, err := opts.opts.FS.List("")
 	require.NoError(t, err)
 	require.ElementsMatch(t, ls, copied)
