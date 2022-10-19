@@ -928,6 +928,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.TableCacheShards <= 0 {
 		o.Experimental.TableCacheShards = runtime.GOMAXPROCS(0)
 	}
+	if o.Experimental.CPUWorkPermissionGranter == nil {
+		o.Experimental.CPUWorkPermissionGranter = defaultCPUWorkGranter{}
+	}
 
 	o.initMaps()
 	return o
