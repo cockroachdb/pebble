@@ -22,7 +22,7 @@ done
 git checkout master
 
 if [[ -z "${STRESS}" ]]; then
-    go test ./internal/metamorphic/crossversion -test.v -test.run 'TestMetaCrossVersion$' $(echo $VERSIONS)
+    go test ./internal/metamorphic/crossversion -test.v -test.timeout "${TIMEOUT:-30m}" -test.run 'TestMetaCrossVersion$' $(echo $VERSIONS)
 else
     stress -p 1 go test ./internal/metamorphic/crossversion -test.v -test.timeout "${TIMEOUT:-30m}" -test.run 'TestMetaCrossVersion$' $(echo $VERSIONS)
 fi
