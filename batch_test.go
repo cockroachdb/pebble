@@ -652,7 +652,7 @@ func TestBatchGet(t *testing.T) {
 		t.Run(fmt.Sprintf("%s,mem=%d", c.method, c.memTableSize), func(t *testing.T) {
 			d, err := Open("", &Options{
 				FS:           vfs.NewMem(),
-				MemTableSize: c.memTableSize,
+				MemTableSize: uint64(c.memTableSize),
 			})
 			if err != nil {
 				t.Fatalf("Open: %v", err)

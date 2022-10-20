@@ -1121,7 +1121,7 @@ func TestIngestFlushQueuedLargeBatch(t *testing.T) {
 	// size in order to more easily create a situation where a large batch is
 	// queued but not automatically flushed.
 	d.mu.Lock()
-	d.largeBatchThreshold = d.opts.MemTableSize / 8
+	d.largeBatchThreshold = int(d.opts.MemTableSize) / 8
 	d.mu.Unlock()
 
 	// Set a record with a large value. This will be transformed into a large

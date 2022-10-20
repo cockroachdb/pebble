@@ -487,7 +487,7 @@ type Options struct {
 		// concurrent compaction is added. This works "on top" of
 		// L0CompactionConcurrency, so the higher of the count of compaction
 		// concurrency slots as determined by the two options is chosen.
-		CompactionDebtConcurrency int
+		CompactionDebtConcurrency int64
 
 		// MinDeletionRate is the minimum number of bytes per second that would
 		// be deleted. Deletion pacing is used to slow down deletions when
@@ -1261,7 +1261,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					}
 				}
 			case "compaction_debt_concurrency":
-				o.Experimental.CompactionDebtConcurrency, err = strconv.Atoi(value)
+				var val int
+				val, err = strconv.Atoi(value)
+				o.Experimental.CompactionDebtConcurrency = int64(val)
 			case "delete_range_flush_delay":
 				// NB: This is a deprecated serialization of the
 				// `flush_delay_delete_range`.
@@ -1325,7 +1327,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				if uVal > math.MaxInt {
 					err = errors.New("value out of range")
 				} else {
-					o.MemTableSize = int(uVal)
+					o.MemTableSize = uint64(uVal)
 				}
 			case "mem_table_stop_writes_threshold":
 				o.MemTableStopWritesThreshold, err = strconv.Atoi(value)
