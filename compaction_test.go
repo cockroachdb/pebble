@@ -2189,6 +2189,13 @@ func TestCompactionTombstones(t *testing.T) {
 				d.mu.Unlock()
 				return str
 
+			case "close":
+				if err := d.Close(); err != nil {
+					return err.Error()
+				}
+				d = nil
+				return ""
+
 			case "version":
 				d.mu.Lock()
 				s := d.mu.versions.currentVersion().String()
