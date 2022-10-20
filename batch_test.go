@@ -860,7 +860,10 @@ func TestBatchTooLarge(t *testing.T) {
 				result = r
 			}
 		}()
-		b.grow(maxBatchSize)
+		b.grow(uint64(maxBatchSize))
+		//b.grow(math.MaxInt32)
+		//b.grow(math.MaxInt32)
+		//b.grow(math.MaxInt32)
 	}()
 	require.EqualValues(t, ErrBatchTooLarge, result)
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"math"
 )
 
 const (
@@ -716,7 +717,7 @@ type Options struct {
 	// writing the contents of the old one in the
 	// background. MemTableStopWritesThreshold places a hard limit on the size of
 	// the queued MemTables.
-	MemTableSize int
+	MemTableSize uint64
 
 	// Hard limit on the size of queued of MemTables. Writes are stopped when the
 	// sum of the queued memtable sizes exceeds
@@ -1319,7 +1320,13 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "max_open_files":
 				o.MaxOpenFiles, err = strconv.Atoi(value)
 			case "mem_table_size":
-				o.MemTableSize, err = strconv.Atoi(value)
+				var uVal uint64
+				uVal, err = strconv.ParseUint(value, 10, 64)
+				if uVal > math.MaxInt {
+					err = errors.New("value out of range")
+				} else {
+					o.MemTableSize = int(uVal)
+				}
 			case "mem_table_stop_writes_threshold":
 				o.MemTableStopWritesThreshold, err = strconv.Atoi(value)
 			case "min_compaction_rate":

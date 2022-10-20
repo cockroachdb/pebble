@@ -446,7 +446,7 @@ func (b *Batch) prepareDeferredKeyValueRecord(keyLen, valueLen int, kind Interna
 
 	pos := len(b.data)
 	b.deferredOp.offset = uint32(pos)
-	b.grow(1 + 2*maxVarintLen32 + keyLen + valueLen)
+	b.grow(uint64(1 + 2*maxVarintLen32 + keyLen + valueLen))
 	b.data[pos] = byte(kind)
 	pos++
 
@@ -495,7 +495,7 @@ func (b *Batch) prepareDeferredKeyRecord(keyLen int, kind InternalKeyKind) {
 
 	pos := len(b.data)
 	b.deferredOp.offset = uint32(pos)
-	b.grow(1 + maxVarintLen32 + keyLen)
+	b.grow(uint64(1 + maxVarintLen32 + keyLen))
 	b.data[pos] = byte(kind)
 	pos++
 
@@ -1123,11 +1123,11 @@ func (b *Batch) countData() []byte {
 	return b.data[8:12]
 }
 
-func (b *Batch) grow(n int) {
-	newSize := len(b.data) + n
-	if uint64(newSize) >= maxBatchSize {
+func (b *Batch) grow(n uint64) {
+	if uint64(len(b.data))+n >= maxBatchSize {
 		panic(ErrBatchTooLarge)
 	}
+	newSize := len(b.data) + int(n)
 	if newSize > cap(b.data) {
 		newCap := 2 * cap(b.data)
 		for newCap < newSize {
