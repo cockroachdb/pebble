@@ -8,11 +8,13 @@ import (
 	"bytes"
 	"fmt"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
@@ -462,4 +464,59 @@ func TestPebblev1Migration(t *testing.T) {
 			}
 		},
 	)
+}
+
+// TestPebblev1MigrationRace exercises the race between a PrePebbleV1Marked
+// format major version upgrade that needs to open sstables to read their table
+// format, and concurrent compactions that may delete the same files from the
+// LSM.
+//
+// Regression test for #2019.
+func TestPebblev1MigrationRace(t *testing.T) {
+	// Use a smaller table cache size to slow down the PrePebbleV1Marked
+	// migration, ensuring each table read needs to re-open the file.
+	cache := NewCache(4 << 20)
+	defer cache.Unref()
+	tableCache := NewTableCache(cache, 1, 5)
+	defer tableCache.Unref()
+	d, err := Open("", &Options{
+		Cache:              cache,
+		FS:                 vfs.NewMem(),
+		FormatMajorVersion: FormatMajorVersion(FormatPrePebblev1Marked - 1),
+		TableCache:         tableCache,
+		Levels:             []LevelOptions{{TargetFileSize: 1}},
+	})
+	require.NoError(t, err)
+	defer d.Close()
+
+	ks := testkeys.Alpha(3).EveryN(10)
+	var key [3]byte
+	for i := 0; i < ks.Count(); i++ {
+		n := testkeys.WriteKey(key[:], ks, i)
+		require.NoError(t, d.Set(key[:n], key[:n], nil))
+		require.NoError(t, d.Flush())
+	}
+
+	// Asynchronously write and flush range deletes that will cause compactions
+	// to delete the existing sstables. These deletes will race with the format
+	// major version upgrade's migration will attempt to delete the files.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := ks.Count() - 1; i > 0; i -= 50 {
+			endKey := testkeys.Key(ks, i)
+			startIndex := i - 50
+			if startIndex < 0 {
+				startIndex = 0
+			}
+			startKey := testkeys.Key(ks, startIndex)
+
+			require.NoError(t, d.DeleteRange(startKey, endKey, nil))
+			_, err := d.AsyncFlush()
+			require.NoError(t, err)
+		}
+	}()
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatPrePebblev1Marked))
+	wg.Wait()
 }
