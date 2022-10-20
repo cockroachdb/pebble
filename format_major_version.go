@@ -501,6 +501,18 @@ func (d *DB) markFilesLocked(findFn findFilesFunc) error {
 		err   error
 	)
 	func() {
+		// Disable file deletions. Some migrations that mark files may need to
+		// read the files themselves. The LSM may be changing while the
+		// migration is determining which files to mark. That's ok, because
+		// after re-acquiring the mutex and acquiring the manifest lock, we'll
+		// discard any sstables that have been removed from the LSM. However, we
+		// also need to make sure that the files we try to open during the scan
+		// are not removed before we read them. This is preferable over
+		// gracefully handling nonexistent files because some environments (eg,
+		// Windows) error if you attempt to remove an open file.
+		d.disableFileDeletions()
+		defer d.enableFileDeletions()
+
 		// Note the unusual locking: unlock, defer Lock(). The scan of the files in
 		// the version does not need to block other operations that require the
 		// DB.mu. Drop it for the scan, before re-acquiring it.
