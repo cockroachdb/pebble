@@ -144,7 +144,7 @@ func standardOptions() []*testOptions {
 `,
 		10: `
 [Options]
-  wal_dir=wal
+  wal_dir=data/wal
 `,
 		11: `
 [Level "0"]
@@ -233,7 +233,7 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts.MemTableSize = 1 << (10 + uint(rng.Intn(17))) // 1KB - 256MB
 	opts.MemTableStopWritesThreshold = 2 + rng.Intn(5) // 2 - 5
 	if rng.Intn(2) == 0 {
-		opts.WALDir = "wal"
+		opts.WALDir = "data/wal"
 	}
 	var lopts pebble.LevelOptions
 	lopts.BlockRestartInterval = 1 + rng.Intn(64)  // 1 - 64
