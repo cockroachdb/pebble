@@ -2200,6 +2200,9 @@ func TestCompactionTombstones(t *testing.T) {
 				d.mu.Unlock()
 				return str
 
+			case "metrics":
+				return d.Metrics().String()
+
 			case "version":
 				d.mu.Lock()
 				s := d.mu.versions.currentVersion().String()

@@ -890,6 +890,9 @@ func (v *Version) unrefFiles() []*FileMetadata {
 	for _, lm := range v.Levels {
 		obsolete = append(obsolete, lm.release()...)
 	}
+	for _, lm := range v.RangeKeyLevels {
+		obsolete = append(obsolete, lm.release()...)
+	}
 	return obsolete
 }
 

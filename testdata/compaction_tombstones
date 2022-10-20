@@ -291,3 +291,62 @@ range-deletions-bytes-estimate: 0
 maybe-compact
 ----
 (none)
+
+# Regression test for cockroachdb/cockroach#90149, exercising reference counting
+# on tables that contain a mixture of point, range dels and range keys.
+#
+# Place a table in L6 that contains a RANGEKEYDEL. Because this table is in the
+# bottom of the LSM, and there are no range keys below it, the RANGEKEYDEL is
+# eligible for elision (the RANGEDEL too). After the elision, the input table
+# should be deleted. In #90149, the table still had a reference count, and
+# therefore could not be deleted from the filesystem.
+
+define
+L6
+  rangekey:a-b:{(#1,RANGEKEYDEL)}
+  a.SET.2:a
+  b.SET.3:b
+  c.SET.4:c
+  c.RANGEDEL.5:z
+----
+6:
+  000004:[a#2,SET-z#72057594037927935,RANGEDEL]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 3
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 39
+
+maybe-compact
+----
+[JOB 100] compacted(elision-only) L6 [000004] (1001 B) + L6 [] (0 B) -> L6 [000005] (778 B), in 1.0s (2.0s total), output rate 778 B/s
+
+# Ensure the table is deleted (i.e. zero ztbls, table removed from tcache, and
+# blocks removed from bcache).
+metrics
+----
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         1     0 B       -     0 B       -       -       -       -     0 B       -       -       -     0.0
+      0         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      6         1   778 B       -  1001 B     0 B       0     0 B       0   778 B       1  1001 B       1     0.8
+  total         1   778 B       -     0 B     0 B       0     0 B       0   778 B       1  1001 B       1     0.0
+  flush         0
+compact         1     0 B  1001 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         0       0       1       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+ bcache         4   711 B   37.5%  (score == hit-rate)
+ tcache         1   680 B   66.7%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
