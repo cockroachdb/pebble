@@ -2,6 +2,8 @@
 
 set -ex
 
+BRANCH=$(git symbolic-ref --short HEAD)
+
 VERSIONS=""
 for branch in "$@"
 do
@@ -18,8 +20,8 @@ do
     VERSIONS="$VERSIONS -version $version,$sha,$PWD/meta.$version.test"
 done
 
-# Always use master's crossversion package.
-git checkout master
+# Return to whence we came.
+git checkout $BRANCH
 
 if [[ -z "${STRESS}" ]]; then
     go test ./internal/metamorphic/crossversion -test.v -test.timeout "${TIMEOUT:-30m}" -test.run 'TestMetaCrossVersion$' $(echo $VERSIONS)
