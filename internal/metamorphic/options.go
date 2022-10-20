@@ -18,6 +18,8 @@ var comparer = func() pebble.Comparer {
 	c.Split = func(a []byte) int {
 		return len(a)
 	}
+	// Use the comparer name used by later release branch's comparer.
+	c.Name = "pebble.internal.testkeys"
 	return c
 }()
 
