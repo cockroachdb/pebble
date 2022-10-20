@@ -1312,6 +1312,12 @@ func (d *DB) Close() error {
 	d.compactionSchedulers.Wait()
 	d.mu.Lock()
 
+	// As a sanity check, ensure that there are no zombie tables. A non-zero count
+	// hints at a reference count leak.
+	if ztbls := len(d.mu.versions.zombieTables); ztbls > 0 {
+		err = firstError(err, errors.Errorf("non-zero zombie file count: %d", ztbls))
+	}
+
 	// If the options include a closer to 'close' the filesystem, close it.
 	if d.opts.private.fsCloser != nil {
 		d.opts.private.fsCloser.Close()
