@@ -88,6 +88,12 @@ type closeOp struct {
 
 func (o *closeOp) run(t *test, h *history) {
 	c := t.getCloser(o.objID)
+	if o.objID.tag() == dbTag && t.opts.DisableWAL {
+		// Special case: If WAL is disabled, do a flush right before DB Close. This
+		// allows us to reuse this run's data directory as initial state for
+		// future runs without losing any mutations.
+		_ = t.db.Flush()
+	}
 	t.clearObj(o.objID)
 	err := c.Close()
 	h.Recordf("%s // %v", o, err)
