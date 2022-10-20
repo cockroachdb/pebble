@@ -291,3 +291,40 @@ range-deletions-bytes-estimate: 0
 maybe-compact
 ----
 (none)
+
+# Regression test for cockroachdb/cockroach#90149, exercising reference counting
+# on tables that contain a mixture of point, range dels and range keys.
+#
+# Place a table in L6 that contains a RANGEKEYDEL. Because this table is in the
+# bottom of the LSM, and there are no range keys below it, the RANGEKEYDEL is
+# eligible for elision (the RANGEDEL too). After the elision, the input table
+# should be deleted. In #90149, the table still had a reference count, and
+# therefore could not be deleted from the filesystem.
+
+define
+L6
+  rangekey:a-b:{(#1,RANGEKEYDEL)}
+  a.SET.2:a
+  b.SET.3:b
+  c.SET.4:c
+  c.RANGEDEL.5:z
+----
+6:
+  000004:[a#2,SET-z#72057594037927935,RANGEDEL]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 3
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 39
+
+maybe-compact
+----
+[JOB 100] compacted(elision-only) L6 [000004] (1001 B) + L6 [] (0 B) -> L6 [000005] (778 B), in 1.0s (2.0s total), output rate 778 B/s
+
+# Close the DB, asserting that the reference counts balance.
+close
+----
