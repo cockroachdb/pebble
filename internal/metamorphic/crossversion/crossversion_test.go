@@ -165,7 +165,7 @@ func runCrossVersion(
 				initialState:   s,
 				testBinaryPath: versions[i].TestBinaryPath,
 			}
-			if err := os.MkdirAll(r.dir, os.ModePerm); err != nil {
+			if err := os.MkdirAll(filepath.Join(r.dir, "_meta"), os.ModePerm); err != nil {
 				return err
 			}
 
@@ -254,7 +254,7 @@ func (r *metamorphicTestRun) run(ctx context.Context, output io.Writer) error {
 	args := []string{
 		"-test.run", "TestMeta$",
 		"-seed", strconv.FormatUint(r.seed, 10),
-		"-keep",
+		"-keep", "-test.v"
 	}
 	// Propagate the verbose flag, if necessary.
 	if testing.Verbose() {
