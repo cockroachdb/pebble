@@ -29,9 +29,10 @@ import (
 )
 
 var (
-	factor   int
-	seed     int64
-	versions pebbleVersions
+	factor       int
+	seed         int64
+	versions     pebbleVersions
+	artifactsDir string
 )
 
 func init() {
@@ -57,6 +58,9 @@ the set of versions to test. The order of the versions
 is significant and database states generated from earlier
 versions will be used to initialize runs of subsequent
 versions.`)
+	flag.StringVar(&artifactsDir, "artifacts", "",
+		`the path to a directory where test artifacts should be
+moved on failure. Defaults to the current working directory.`)
 }
 
 func reproductionCommand() string {
@@ -227,9 +231,12 @@ func runCrossVersion(
 }
 
 func fatalf(t testing.TB, dir string, msg string, args ...interface{}) {
-	wd, err := os.Getwd()
-	require.NoError(t, err)
-	dst := filepath.Join(wd, filepath.Base(dir))
+	if artifactsDir == "" {
+		var err error
+		artifactsDir, err = os.Getwd()
+		require.NoError(t, err)
+	}
+	dst := filepath.Join(artifactsDir, filepath.Base(dir))
 	t.Logf("Moving test dir %q to %q.", dir, dst)
 	require.NoError(t, os.Rename(dir, dst))
 	t.Fatalf(msg, args...)
