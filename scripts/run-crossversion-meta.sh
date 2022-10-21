@@ -4,6 +4,8 @@ set -ex
 
 BRANCH=$(git symbolic-ref --short HEAD)
 
+TEMPDIR=(`mktemp -d -t crossversion-$(date +%Y-%m-%d-%H-%M-%S)-XXXXXXXXXX`)
+
 VERSIONS=""
 for branch in "$@"
 do
@@ -16,8 +18,8 @@ do
     version=`cut -d- -f3 <<< "$branch"`
 
     echo "Building $version ($sha)"
-    go test -c -o "meta.$version.test" ./internal/metamorphic
-    VERSIONS="$VERSIONS -version $version,$sha,$PWD/meta.$version.test"
+    go test -c -o "$TEMPDIR/meta.$version.test" ./internal/metamorphic
+    VERSIONS="$VERSIONS -version $version,$sha,$TEMPDIR/meta.$version.test"
 done
 
 # Return to whence we came.
@@ -28,3 +30,5 @@ if [[ -z "${STRESS}" ]]; then
 else
     stress -p 1 go test ./internal/metamorphic/crossversion -test.v -test.timeout "${TIMEOUT:-30m}" -test.run 'TestMetaCrossVersion$' $(echo $VERSIONS)
 fi
+
+rm -rf $TEMPDIR
