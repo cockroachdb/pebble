@@ -154,7 +154,6 @@ func runCrossVersion(
 		for j, s := range initialStates {
 			runID := fmt.Sprintf("%s_%d_%03d", versions[i].SHA, seed, j)
 
-			t.Logf("  Running test with version %s with initial state %s.", versions[i].SHA, s)
 			r := metamorphicTestRun{
 				seed:           versionSeeds[i],
 				dir:            filepath.Join(rootDir, runID),
@@ -165,8 +164,14 @@ func runCrossVersion(
 			if err := os.MkdirAll(r.dir, os.ModePerm); err != nil {
 				return err
 			}
-			err := r.run(ctx, &buf)
-			if err != nil {
+
+			var out io.Writer = &buf
+			if testing.Verbose() {
+				out = io.MultiWriter(out, os.Stderr)
+			}
+			t.Logf("  Running test with version %s with initial state %s.",
+				versions[i].SHA, s)
+			if err := r.run(ctx, out); err != nil {
 				fatalf(t, rootDir, "Metamorphic test failed: %s\nOutput:%s\n", err, buf.String())
 			}
 
@@ -244,6 +249,10 @@ func (r *metamorphicTestRun) run(ctx context.Context, output io.Writer) error {
 		"-seed", strconv.FormatUint(r.seed, 10),
 		"-keep",
 	}
+	// Propagate the verbose flag, if necessary.
+	if testing.Verbose() {
+		args = append(args, "-test.v")
+	}
 	if r.initialState.path != "" {
 		args = append(args,
 			"--initial-state", r.initialState.path,
@@ -253,6 +262,12 @@ func (r *metamorphicTestRun) run(ctx context.Context, output io.Writer) error {
 	cmd.Dir = r.dir
 	cmd.Stderr = output
 	cmd.Stdout = output
+
+	// Print the command itself before executing it.
+	if testing.Verbose() {
+		fmt.Fprintln(output, cmd)
+	}
+
 	return cmd.Run()
 }
 
