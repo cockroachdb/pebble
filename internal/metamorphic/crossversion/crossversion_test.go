@@ -165,7 +165,7 @@ func runCrossVersion(
 				initialState:   s,
 				testBinaryPath: versions[i].TestBinaryPath,
 			}
-			if err := os.MkdirAll(r.dir, os.ModePerm); err != nil {
+			if err := os.MkdirAll(filepath.Join(r.dir, "_meta"), os.ModePerm); err != nil {
 				return err
 			}
 
