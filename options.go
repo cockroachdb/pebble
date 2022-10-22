@@ -493,6 +493,12 @@ type Options struct {
 		//
 		// By default, this value is false.
 		ValidateOnIngest bool
+
+		// PointTombstoneWeight is a float in the range [0, +inf) used to weight the
+		// point tombstone heuristics during compaction picking.
+		//
+		// The default value is 1, which results in no scaling of point tombstones.
+		PointTombstoneWeight float64
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -847,6 +853,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.TableCacheShards <= 0 {
 		o.Experimental.TableCacheShards = runtime.GOMAXPROCS(0)
 	}
+	if o.Experimental.PointTombstoneWeight == 0 {
+		o.Experimental.PointTombstoneWeight = 1
+	}
 
 	o.initMaps()
 	return o
@@ -938,6 +947,12 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  min_compaction_rate=%d\n", o.private.minCompactionRate)
 	fmt.Fprintf(&buf, "  min_deletion_rate=%d\n", o.Experimental.MinDeletionRate)
 	fmt.Fprintf(&buf, "  min_flush_rate=%d\n", o.private.minFlushRate)
+	// The following is explicitly NOT persisted in the OPTIONS file, for the
+	// purposes of the un-released patched version. Persisting the value would
+	// result in backwards incompatible changes, assuming that this patch is never
+	// publicly released (in its current form). Keeping this here, for
+	// completeness.
+	//fmt.Fprintf(&buf, "  point_tombtsone_weight=%f\n", o.Experimental.PointTombstoneWeight)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
 	fmt.Fprintf(&buf, "  read_compaction_rate=%d\n", o.Experimental.ReadCompactionRate)
 	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
@@ -1153,6 +1168,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 						o.Merger, err = hooks.NewMerger(value)
 					}
 				}
+			case "point_tombstone_weight":
+				o.Experimental.PointTombstoneWeight, err = strconv.ParseFloat(value, 64)
 			case "read_compaction_rate":
 				o.Experimental.ReadCompactionRate, err = strconv.ParseInt(value, 10, 64)
 			case "read_sampling_multiplier":
