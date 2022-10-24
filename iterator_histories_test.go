@@ -15,7 +15,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -62,7 +61,7 @@ func TestIterHistories(t *testing.T) {
 					Comparer:           testkeys.Comparer,
 					FormatMajorVersion: FormatRangeKeys,
 					BlockPropertyCollectors: []func() BlockPropertyCollector{
-						blockprop.NewBlockPropertyCollector,
+						sstable.NewTestKeysBlockPropertyCollector,
 					},
 				}
 				opts.DisableAutomaticCompactions = true
@@ -267,7 +266,7 @@ func TestIterHistories(t *testing.T) {
 						o.RangeKeyMasking.Suffix = []byte(arg.Vals[0])
 					case "mask-filter":
 						o.RangeKeyMasking.Filter = func() BlockPropertyFilterMask {
-							return blockprop.NewMaskingFilter()
+							return sstable.NewTestKeysMaskingFilter()
 						}
 					case "lower":
 						o.LowerBound = []byte(arg.Vals[0])
@@ -293,7 +292,7 @@ func TestIterHistories(t *testing.T) {
 							return err.Error()
 						}
 						o.PointKeyFilters = []sstable.BlockPropertyFilter{
-							blockprop.NewBlockPropertyFilter(min, max),
+							sstable.NewTestKeysBlockPropertyFilter(min, max),
 						}
 					}
 				}
