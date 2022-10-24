@@ -16,7 +16,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -193,7 +192,7 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 				TableFormat:    sstable.TableFormatPebblev2,
 				BlockPropertyCollectors: []func() BlockPropertyCollector{
 					func() BlockPropertyCollector {
-						return blockprop.NewBlockPropertyCollector()
+						return sstable.NewTestKeysBlockPropertyCollector()
 					},
 				},
 			})
@@ -235,7 +234,7 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 			require.NoError(t, err)
 			defer r.Close()
 
-			filter := blockprop.NewBlockPropertyFilter(uint64(tsSeparator), math.MaxUint64)
+			filter := sstable.NewTestKeysBlockPropertyFilter(uint64(tsSeparator), math.MaxUint64)
 			filterer := sstable.NewBlockPropertiesFilterer([]BlockPropertyFilter{filter}, nil)
 			ok, err := filterer.IntersectsUserPropsAndFinishInit(r.Properties.UserProperties)
 			require.True(t, ok)
