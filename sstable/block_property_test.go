@@ -801,7 +801,7 @@ func (c *valueCharBlockIntervalCollector) FinishDataBlock() (lower, upper uint64
 	return l, u, nil
 }
 
-// suffixIntervalCollector maintains an interval over the timestamps in
+// testKeysSuffixIntervalCollector maintains an interval over the timestamps in
 // MVCC-like suffixes for keys (e.g. foo@123).
 type suffixIntervalCollector struct {
 	initialized  bool

@@ -1,0 +1,27 @@
+build
+a@10.SET.10:aAT10
+a@7.SET.9:aAT7
+b@15.SET.8:bAT15
+----
+index entries:
+ a@10: size 29
+   a@10: size 28
+ a@7: size 28
+   a@7: size 26
+ c: size 26
+   c: size 28
+
+iter
+first
+next
+next
+next
+----
+<a@10:10>
+<a@7:9>
+<b@15:8>
+.
+
+iter block-property-filter=(0,100)
+----
+table does not intersect BlockPropertyFilter
