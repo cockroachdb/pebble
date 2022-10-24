@@ -380,6 +380,14 @@ const (
 	seekPrefixGELastPositioningOp
 	seekGELastPositioningOp
 	seekLTLastPositioningOp
+	// invalidatedLastPositionOp is similar to unknownLastPositionOp and the
+	// only reason to distinguish this is for the wider set of SeekGE
+	// optimizations we permit for the external iterator Iterator.forwardOnly
+	// case. Most code predicates should be doing equality comparisons with one
+	// of the seek* enum values, so this duplication should not result in code
+	// of the form:
+	//  if unknownLastPositionOp || invalidLastPositionOp
+	invalidatedLastPositionOp
 )
 
 // Limited iteration mode. Not for use with prefix iteration.
@@ -1124,8 +1132,9 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 	//
 	// TODO(jackson): This optimization should be obsolete once we introduce and
 	// use the NextPrefix iterator positioning operation.
-	if seekInternalIter && i.forwardOnly && i.pos == iterPosCurForward && !hasPrefix &&
-		i.iterValidityState == IterValid && i.cmp(key, i.iterKey.UserKey) > 0 {
+	if seekInternalIter && i.forwardOnly && lastPositioningOp != invalidatedLastPositionOp &&
+		i.pos == iterPosCurForward && !hasPrefix && i.iterValidityState == IterValid &&
+		i.cmp(key, i.iterKey.UserKey) > 0 {
 		flags = flags.EnableTrySeekUsingNext()
 		if invariants.Enabled && flags.TrySeekUsingNext() && !i.forceEnableSeekOpt && disableSeekOpt(key, uintptr(unsafe.Pointer(i))) {
 			flags = flags.DisableTrySeekUsingNext()
@@ -2255,7 +2264,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 }
 
 func (i *Iterator) invalidate() {
-	i.lastPositioningOp = unknownLastPositionOp
+	i.lastPositioningOp = invalidatedLastPositionOp
 	i.hasPrefix = false
 	i.iterKey = nil
 	i.iterValue = nil

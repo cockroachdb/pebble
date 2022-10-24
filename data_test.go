@@ -21,7 +21,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -141,6 +140,8 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 					op = "seekge"
 				case seekLTLastPositioningOp:
 					op = "seeklt"
+				case invalidatedLastPositionOp:
+					op = "invalidate"
 				}
 				fmt.Fprintf(&b, "%s=%q\n", field, op)
 			default:
@@ -294,7 +295,7 @@ func parseIterOptions(
 			opts.RangeKeyMasking.Suffix = []byte(arg[1])
 		case "mask-filter":
 			opts.RangeKeyMasking.Filter = func() BlockPropertyFilterMask {
-				return blockprop.NewMaskingFilter()
+				return sstable.NewTestKeysMaskingFilter()
 			}
 		case "table-filter":
 			switch arg[1] {
