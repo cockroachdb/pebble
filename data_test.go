@@ -141,6 +141,8 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 					op = "seekge"
 				case seekLTLastPositioningOp:
 					op = "seeklt"
+				case invalidatedLastPositionOp:
+					op = "invalidate"
 				}
 				fmt.Fprintf(&b, "%s=%q\n", field, op)
 			default:
