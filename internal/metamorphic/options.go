@@ -17,7 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"golang.org/x/exp/rand"
 )
@@ -404,5 +404,5 @@ func moveLogs(fs vfs.FS, srcDir, dstDir string) error {
 }
 
 var blockPropertyCollectorConstructors = []func() pebble.BlockPropertyCollector{
-	blockprop.NewBlockPropertyCollector,
+	sstable.NewTestKeysBlockPropertyCollector,
 }

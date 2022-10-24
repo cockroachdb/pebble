@@ -23,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -2325,7 +2324,7 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 	}
 	if rng.Intn(2) == 0 {
 		randomOpts.filter = func() BlockPropertyFilterMask {
-			return blockprop.NewMaskingFilter()
+			return sstable.NewTestKeysMaskingFilter()
 		}
 	}
 
@@ -2337,7 +2336,7 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 		FormatMajorVersion:       FormatNewest,
 		MaxConcurrentCompactions: func() int { return maxProcs/2 + 1 },
 		BlockPropertyCollectors: []func() BlockPropertyCollector{
-			blockprop.NewBlockPropertyCollector,
+			sstable.NewTestKeysBlockPropertyCollector,
 		},
 	}
 	opts1.Levels = baseOpts.levelOpts
@@ -2350,7 +2349,7 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 		FormatMajorVersion:       FormatNewest,
 		MaxConcurrentCompactions: func() int { return maxProcs/2 + 1 },
 		BlockPropertyCollectors: []func() BlockPropertyCollector{
-			blockprop.NewBlockPropertyCollector,
+			sstable.NewTestKeysBlockPropertyCollector,
 		},
 	}
 	opts2.Levels = randomOpts.levelOpts
@@ -2477,7 +2476,7 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 		FormatMajorVersion:       FormatNewest,
 		MaxConcurrentCompactions: func() int { return maxProcs/2 + 1 },
 		BlockPropertyCollectors: []func() BlockPropertyCollector{
-			blockprop.NewBlockPropertyCollector,
+			sstable.NewTestKeysBlockPropertyCollector,
 		},
 	}
 	d, err := Open("", opts)
@@ -2527,7 +2526,7 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 				RangeKeyMasking: RangeKeyMasking{
 					Suffix: []byte("@100"),
 					Filter: func() BlockPropertyFilterMask {
-						return blockprop.NewMaskingFilter()
+						return sstable.NewTestKeysMaskingFilter()
 					},
 				},
 			}
