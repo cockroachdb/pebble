@@ -328,3 +328,92 @@ maybe-compact
 # Close the DB, asserting that the reference counts balance.
 close
 ----
+
+# Demonstration of point tombstone weighting.
+#
+# Construct an LSM with two tables in L6, with a table above each in L5. The
+# layout of the tables is such that the range deletion bytes estimate for table
+# 000005 is greater than the point deletion bytes estimate for table 000004.
+# Without weighting, table 000005 will be selected.
+
+define auto-compactions=off level-max-bytes=(L5 : 1000)
+L5
+a.DEL.101: b.SET.102:
+L5
+e.RANGEDEL.107:f f.SET.108:
+L6
+a.SET.001:<largeval> b.SET.002:<largeval> c.SET.003:<largeval>
+L6
+e.SET.007:<largeval> f.SET.008:<largeval> g.SET.009:<largeval>
+----
+5:
+  000004:[a#101,DEL-b#102,SET]
+  000005:[e#107,RANGEDEL-f#108,SET]
+6:
+  000006:[a#1,SET-c#3,SET]
+  000007:[e#7,SET-g#9,SET]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 2
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 4389
+range-deletions-bytes-estimate: 0
+
+wait-pending-table-stats
+000005
+----
+num-entries: 2
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 8244
+
+maybe-compact
+----
+[JOB 100] compacted(default) L5 [000005] (849 B) + L6 [000007] (13 K) -> L6 [000008] (4.8 K), in 1.0s (2.0s total), output rate 4.8 K/s
+
+# The same LSM as above. However, this time, with point tombstone weighting at
+# 2x, the table with the point tombstone (000004) will be selected as the
+# compaction input.
+
+define auto-compactions=off level-max-bytes=(L5 : 1000) point-tombstone-weight=2
+L5
+a.DEL.101: b.SET.102:
+L5
+e.RANGEDEL.107:f f.SET.108:
+L6
+a.SET.001:<largeval> b.SET.002:<largeval> c.SET.003:<largeval>
+L6
+e.SET.007:<largeval> f.SET.008:<largeval> g.SET.009:<largeval>
+----
+5:
+  000004:[a#101,DEL-b#102,SET]
+  000005:[e#107,RANGEDEL-f#108,SET]
+6:
+  000006:[a#1,SET-c#3,SET]
+  000007:[e#7,SET-g#9,SET]
+
+wait-pending-table-stats
+000004
+----
+num-entries: 2
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 4389
+range-deletions-bytes-estimate: 0
+
+wait-pending-table-stats
+000005
+----
+num-entries: 2
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 8244
+
+maybe-compact
+----
+[JOB 100] compacted(default) L5 [000004] (782 B) + L6 [000006] (13 K) -> L6 [000008] (4.8 K), in 1.0s (2.0s total), output rate 4.8 K/s
