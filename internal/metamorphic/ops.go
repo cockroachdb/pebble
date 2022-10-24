@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/internal/testkeys/blockprop"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -821,12 +820,12 @@ func iterOptions(o iterOpts) *pebble.IterOptions {
 	}
 	if opts.RangeKeyMasking.Suffix != nil {
 		opts.RangeKeyMasking.Filter = func() pebble.BlockPropertyFilterMask {
-			return blockprop.NewMaskingFilter()
+			return sstable.NewTestKeysMaskingFilter()
 		}
 	}
 	if o.filterMax > 0 {
 		opts.PointKeyFilters = []pebble.BlockPropertyFilter{
-			blockprop.NewBlockPropertyFilter(o.filterMin, o.filterMax),
+			sstable.NewTestKeysBlockPropertyFilter(o.filterMin, o.filterMax),
 		}
 	}
 	return opts
