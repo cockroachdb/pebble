@@ -58,8 +58,8 @@ var Comparer *base.Comparer = &base.Comparer{
 		if bytes.Equal(a[:ai], buf) {
 			return append(dst[:n], a...)
 		}
-		// The separator is > a[:ai], so we only need to add the sentinel.
-		return append(dst, 0)
+		// The separator is > a[:ai], so return it
+		return dst
 	},
 	Successor: func(dst, a []byte) []byte {
 		ai := split(a)
@@ -73,8 +73,8 @@ var Comparer *base.Comparer = &base.Comparer{
 		if bytes.Equal(a[:ai], buf) {
 			return append(dst[:n], a...)
 		}
-		// The successor is > a[:ai], so we only need to add the sentinel.
-		return append(dst, 0)
+		// The successor is > a[:ai], so return it.
+		return dst
 	},
 	ImmediateSuccessor: func(dst, a []byte) []byte {
 		// TODO(jackson): Consider changing this Comparer to only support
