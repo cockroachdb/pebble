@@ -309,22 +309,52 @@ func (l *levelIter) maybeTriggerCombinedIteration(file *fileMetadata, dir int) {
 	}
 }
 
-func (l *levelIter) findFileGE(key []byte, isRelativeSeek bool) *fileMetadata {
-	// Find the earliest file whose largest key is >= ikey.
+func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *fileMetadata {
+	// Find the earliest file whose largest key is >= key.
 
-	// Ordinarily we seek the LevelIterator using SeekGE.
+	// Ordinarily we seek the LevelIterator using SeekGE. In some instances, we
+	// Next instead. In other instances, we try Next-ing first, falling back to
+	// seek:
+	//   a) flags.TrySeekUsingNext(): The top-level Iterator knows we're seeking
+	//      to a key later than the current iterator position. We don't know how
+	//      much later the seek key is, so it's possible there are many sstables
+	//      between the current position and the seek key. However in most real-
+	//      world use cases, the seek key is likely to be nearby. Rather than
+	//      performing a log(N) seek through the file metadata, we next a few
+	//      times from from our existing location. If we don't find a file whose
+	//      largest is >= key within a few nexts, we fall back to seeking.
 	//
-	// When lazy combined iteration is enabled, there's a complication. The
-	// level iterator is responsible for watching for files containing range
-	// keys and triggering the switch to combined iteration when such a file is
-	// observed. If a range deletion was observed in a higher level causing the
-	// merging iterator to seek the level to the range deletion's end key, we
-	// need to check whether all of the files between the old position and the
-	// new position contain any range keys.
+	//   b) flags.RelativeSeek(): The merging iterator decided to re-seek this
+	//      level according to a range tombstone. When lazy combined iteration
+	//      is enabled, the level iterator is responsible for watching for
+	//      files containing range keys and triggering the switch to combined
+	//      iteration when such a file is observed. If a range deletion was
+	//      observed in a higher level causing the merging iterator to seek the
+	//      level to the range deletion's end key, we need to check whether all
+	//      of the files between the old position and the new position contain
+	//      any range keys.
 	//
-	// In this scenario, we don't seek the LevelIterator and instead we Next it,
-	// one file at a time, checking each for range keys.
-	nextInsteadOfSeek := isRelativeSeek && l.combinedIterState != nil && !l.combinedIterState.initialized
+	//      In this scenario, we don't seek the LevelIterator and instead we
+	//      Next it, one file at a time, checking each for range keys. The
+	//      merging iterator sets this flag to inform us that we're moving
+	//      forward relative to the existing position and that we must examine
+	//      each intermediate sstable's metadata for lazy-combined iteration.
+	//      In this case, we only Next and never Seek. We set nextsUntilSeek=-1
+	//      to signal this intention.
+	//
+	// NB: At most one of flags.RelativeSeek() and flags.TrySeekUsingNext() may
+	// be set, because the merging iterator re-seeks relative seeks with
+	// explicitly only the RelativeSeek flag set.
+	var nextsUntilSeek int
+	var nextInsteadOfSeek bool
+	if flags.TrySeekUsingNext() {
+		nextInsteadOfSeek = true
+		nextsUntilSeek = 4 // arbitrary
+	}
+	if flags.RelativeSeek() && l.combinedIterState != nil && !l.combinedIterState.initialized {
+		nextInsteadOfSeek = true
+		nextsUntilSeek = -1
+	}
 
 	var m *fileMetadata
 	if nextInsteadOfSeek {
@@ -364,11 +394,22 @@ func (l *levelIter) findFileGE(key []byte, isRelativeSeek bool) *fileMetadata {
 		// If the file does not contain point keys ≥ `key`, next to continue
 		// looking for a file that does.
 		if (m.HasRangeKeys || nextInsteadOfSeek) && l.cmp(m.LargestPointKey.UserKey, key) < 0 {
+			// If nextInsteadOfSeek is set and nextsUntilSeek is non-negative,
+			// the iterator has been nexting hoping to discover the relevant
+			// file without seeking. It's exhausted the allotted nextsUntilSeek
+			// and should seek to the sought key.
+			if nextInsteadOfSeek && nextsUntilSeek == 0 {
+				nextInsteadOfSeek = false
+				m = l.files.SeekGE(l.cmp, key)
+				continue
+			} else if nextsUntilSeek > 0 {
+				nextsUntilSeek--
+			}
 			m = l.files.Next()
 			continue
 		}
 
-		// This file has point key bound ≥ `key`. But the largest point key
+		// This file has a point key bound ≥ `key`. But the largest point key
 		// bound may still be a range deletion sentinel, which is exclusive.  In
 		// this case, the file doesn't actually contain any point keys equal to
 		// `key`. We next to keep searching for a file that actually contains
@@ -389,7 +430,7 @@ func (l *levelIter) findFileGE(key []byte, isRelativeSeek bool) *fileMetadata {
 	return m
 }
 
-func (l *levelIter) findFileLT(key []byte, isRelativeSeek bool) *fileMetadata {
+func (l *levelIter) findFileLT(key []byte, flags base.SeekLTFlags) *fileMetadata {
 	// Find the last file whose smallest key is < ikey.
 
 	// Ordinarily we seek the LevelIterator using SeekLT.
@@ -404,7 +445,7 @@ func (l *levelIter) findFileLT(key []byte, isRelativeSeek bool) *fileMetadata {
 	//
 	// In this scenario, we don't seek the LevelIterator and instead we Prev it,
 	// one file at a time, checking each for range keys.
-	prevInsteadOfSeek := isRelativeSeek && l.combinedIterState != nil && !l.combinedIterState.initialized
+	prevInsteadOfSeek := flags.RelativeSeek() && l.combinedIterState != nil && !l.combinedIterState.initialized
 
 	var m *fileMetadata
 	if prevInsteadOfSeek {
@@ -636,7 +677,7 @@ func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, []
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
-	loadFileIndicator := l.loadFile(l.findFileGE(key, flags.RelativeSeek()), +1)
+	loadFileIndicator := l.loadFile(l.findFileGE(key, flags), +1)
 	if loadFileIndicator == noFileLoaded {
 		return nil, nil
 	}
@@ -662,7 +703,7 @@ func (l *levelIter) SeekPrefixGE(
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.LowerBound.
-	loadFileIndicator := l.loadFile(l.findFileGE(key, flags.RelativeSeek()), +1)
+	loadFileIndicator := l.loadFile(l.findFileGE(key, flags), +1)
 	if loadFileIndicator == noFileLoaded {
 		return nil, nil
 	}
@@ -724,7 +765,7 @@ func (l *levelIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, []
 
 	// NB: the top-level Iterator has already adjusted key based on
 	// IterOptions.UpperBound.
-	if l.loadFile(l.findFileLT(key, flags.RelativeSeek()), -1) == noFileLoaded {
+	if l.loadFile(l.findFileLT(key, flags), -1) == noFileLoaded {
 		return nil, nil
 	}
 	if key, val := l.iter.SeekLT(key, flags); key != nil {
