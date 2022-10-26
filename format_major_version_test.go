@@ -520,3 +520,40 @@ func TestPebblev1MigrationRace(t *testing.T) {
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatPrePebblev1Marked))
 	wg.Wait()
 }
+
+// Regression test for #2044, where multiple concurrent compactions can lead
+// to an indefinite wait on the compaction goroutine in compactMarkedFilesLocked.
+func TestPebblev1MigrationConcurrencyRace(t *testing.T) {
+	cache := NewCache(64 << 20)
+	defer cache.Unref()
+	opts := &Options{
+		Cache:              cache,
+		FS:                 vfs.NewMem(),
+		FormatMajorVersion: FormatSplitUserKeysMarked,
+		Levels:             []LevelOptions{{TargetFileSize: 1}},
+		MaxConcurrentCompactions: func() int {
+			return 4
+		},
+	}
+	func() {
+		d, err := Open("", opts)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, d.Close())
+		}()
+
+		ks := testkeys.Alpha(3).EveryN(10)
+		var key [3]byte
+		for i := 0; i < ks.Count(); i++ {
+			n := testkeys.WriteKey(key[:], ks, i)
+			require.NoError(t, d.Set(key[:n], key[:n], nil))
+		}
+		require.NoError(t, d.Flush())
+	}()
+
+	opts.FormatMajorVersion = FormatPrePebblev1MarkedCompacted
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatPrePebblev1MarkedCompacted))
+	require.NoError(t, d.Close())
+}
