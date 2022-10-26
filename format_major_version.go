@@ -395,8 +395,11 @@ func (d *DB) compactMarkedFilesLocked() error {
 	for curr.Stats.MarkedForCompaction > 0 {
 		// Attempt to schedule a compaction to rewrite a file marked for
 		// compaction.
+		compactionPicked := false
 		d.maybeScheduleCompactionPicker(func(picker compactionPicker, env compactionEnv) *pickedCompaction {
-			return picker.pickRewriteCompaction(env)
+			pc := picker.pickRewriteCompaction(env)
+			compactionPicked = compactionPicked || pc != nil
+			return pc
 		})
 
 		// The above attempt might succeed and schedule a rewrite compaction. Or
@@ -412,8 +415,14 @@ func (d *DB) compactMarkedFilesLocked() error {
 		if err := d.closed.Load(); err != nil {
 			return err.(error)
 		}
+		// Only wait on compactions if we picked one.
 		// NB: Waiting on this condition variable drops d.mu while blocked.
-		d.mu.compact.cond.Wait()
+		if compactionPicked {
+			if d.mu.compact.compactingCount == 0 {
+				panic("expected a compaction of marked files in progress")
+			}
+			d.mu.compact.cond.Wait()
+		}
 
 		// Some flush or compaction was scheduled or completed. Loop again to
 		// check again for files that must be compacted. The next iteration may
