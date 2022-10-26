@@ -917,6 +917,7 @@ func TestRollManifest(t *testing.T) {
 	opts := &Options{
 		MaxManifestFileSize:   1,
 		L0CompactionThreshold: 10,
+		L0StopWritesThreshold: 1000,
 		FS:                    vfs.NewMem(),
 		NumPrevManifest:       int(toPreserve),
 	}
@@ -930,6 +931,11 @@ func TestRollManifest(t *testing.T) {
 		defer d.mu.Unlock()
 		return d.mu.versions.manifestFileNum
 	}
+	sizeRolloverState := func() (int64, int64) {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.mu.versions.lastSnapshotFileCount, d.mu.versions.editsSinceLastSnapshotFileCount
+	}
 
 	current := func() string {
 		desc, err := Peek(d.dirname, d.opts.FS)
@@ -940,11 +946,46 @@ func TestRollManifest(t *testing.T) {
 	lastManifestNum := manifestFileNumber()
 	manifestNums := []base.FileNum{lastManifestNum}
 	for i := 0; i < 5; i++ {
-		require.NoError(t, d.Set([]byte("a"), nil, nil))
-		require.NoError(t, d.Flush())
+		// MaxManifestFileSize is 1, but the rollover logic also counts edits
+		// since the last snapshot to decide on rollover, so do as many flushes as
+		// it demands.
+		lastSnapshotCount, editsSinceSnapshotCount := sizeRolloverState()
+		var expectedLastSnapshotCount, expectedEditsSinceSnapshotCount int64
+		switch i {
+		case 0:
+			// DB is empty.
+			expectedLastSnapshotCount, expectedEditsSinceSnapshotCount = 0, 0
+		case 1:
+			// First edit that caused rollover is not in the snapshot.
+			expectedLastSnapshotCount, expectedEditsSinceSnapshotCount = 0, 1
+		case 2:
+			// One flush is in the snapshot. One flush in the edit.
+			expectedLastSnapshotCount, expectedEditsSinceSnapshotCount = 1, 1
+		case 3:
+			// Two flushes in the snapshot. One flush in the edit. Will need to do
+			// two more flushes, the first of which will be in the next snapshot.
+			expectedLastSnapshotCount, expectedEditsSinceSnapshotCount = 2, 1
+		case 4:
+			// Four flushes in the snapshot. One flush in the edit. Will need to do
+			// four more flushes, three of which will be in the snapshot.
+			expectedLastSnapshotCount, expectedEditsSinceSnapshotCount = 4, 1
+		}
+		require.Equal(t, expectedLastSnapshotCount, lastSnapshotCount)
+		require.Equal(t, expectedEditsSinceSnapshotCount, editsSinceSnapshotCount)
+		// Number of flushes to do to trigger the rollover.
+		steps := int(lastSnapshotCount - editsSinceSnapshotCount + 1)
+		// Steps can be <= 0, but we need to do at least one edit to trigger the
+		// rollover logic.
+		if steps <= 0 {
+			steps = 1
+		}
+		for j := 0; j < steps; j++ {
+			require.NoError(t, d.Set([]byte("a"), nil, nil))
+			require.NoError(t, d.Flush())
+		}
 		num := manifestFileNumber()
 		if lastManifestNum == num {
-			t.Fatalf("manifest failed to roll: %d == %d", lastManifestNum, num)
+			t.Fatalf("manifest failed to roll %d: %d == %d", i, lastManifestNum, num)
 		}
 
 		manifestNums = append(manifestNums, num)
@@ -955,6 +996,9 @@ func TestRollManifest(t *testing.T) {
 			t.Fatalf("expected %s, but found %s", expectedCurrent, v)
 		}
 	}
+	lastSnapshotCount, editsSinceSnapshotCount := sizeRolloverState()
+	require.EqualValues(t, 8, lastSnapshotCount)
+	require.EqualValues(t, 1, editsSinceSnapshotCount)
 
 	files, err := d.opts.FS.List("")
 	require.NoError(t, err)
@@ -982,6 +1026,37 @@ func TestRollManifest(t *testing.T) {
 		)
 	}
 	require.EqualValues(t, expected, manifests)
+
+	// Test the logic that uses the future snapshot size to rollover.
+	// Reminder: we have a snapshot with 8 files and the manifest has 1 edit
+	// (flush) with 1 file.
+	// Add 8 more files with a different key.
+	lastManifestNum = manifestFileNumber()
+	for j := 0; j < 8; j++ {
+		require.NoError(t, d.Set([]byte("c"), nil, nil))
+		require.NoError(t, d.Flush())
+	}
+	lastSnapshotCount, editsSinceSnapshotCount = sizeRolloverState()
+	// Need 16 more files in edits to trigger a rollover.
+	require.EqualValues(t, 16, lastSnapshotCount)
+	require.EqualValues(t, 1, editsSinceSnapshotCount)
+	require.NotEqual(t, manifestFileNumber(), lastManifestNum)
+	lastManifestNum = manifestFileNumber()
+	// Do a compaction that moves 8 of the files from L0 to 1 file in L6. This
+	// adds 9 files in edits. We still need 6 more files in edits based on the
+	// last snapshot. But the current version has only 9 L0 files and 1 L6 file,
+	// for a total of 10 files. So 1 flush should push us over that threshold.
+	d.Compact([]byte("c"), []byte("d"), false)
+	lastSnapshotCount, editsSinceSnapshotCount = sizeRolloverState()
+	require.EqualValues(t, 16, lastSnapshotCount)
+	require.EqualValues(t, 10, editsSinceSnapshotCount)
+	require.Equal(t, manifestFileNumber(), lastManifestNum)
+	require.NoError(t, d.Set([]byte("c"), nil, nil))
+	require.NoError(t, d.Flush())
+	lastSnapshotCount, editsSinceSnapshotCount = sizeRolloverState()
+	require.EqualValues(t, 10, lastSnapshotCount)
+	require.EqualValues(t, 1, editsSinceSnapshotCount)
+	require.NotEqual(t, manifestFileNumber(), lastManifestNum)
 
 	require.NoError(t, d.Close())
 }
