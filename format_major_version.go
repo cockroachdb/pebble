@@ -412,14 +412,22 @@ func (d *DB) compactMarkedFilesLocked() error {
 		if err := d.closed.Load(); err != nil {
 			return err.(error)
 		}
-		// NB: Waiting on this condition variable drops d.mu while blocked.
-		d.mu.compact.cond.Wait()
 
-		// Some flush or compaction was scheduled or completed. Loop again to
-		// check again for files that must be compacted. The next iteration may
-		// find same file again, but that's okay. It'll eventually succeed in
-		// scheduling the compaction and eventually be woken by its completion.
+		// Some flush or compaction may have scheduled or completed while we waited
+		// for the manifest lock in maybeScheduleCompactionPicker. Get the latest
+		// Version before waiting on a compaction.
 		curr = d.mu.versions.currentVersion()
+
+		// Only wait on compactions if there are files still marked for compaction.
+		// NB: Waiting on this condition variable drops d.mu while blocked.
+		if curr.Stats.MarkedForCompaction > 0 {
+			if d.mu.compact.compactingCount == 0 {
+				panic("expected a compaction of marked files in progress")
+			}
+			d.mu.compact.cond.Wait()
+			// Refresh the current version again.
+			curr = d.mu.versions.currentVersion()
+		}
 	}
 	return nil
 }
