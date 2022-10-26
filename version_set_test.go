@@ -38,7 +38,10 @@ func TestVersionSetCheckpoint(t *testing.T) {
 
 	// Multiple manifest files are created such that the latest one must have a correct snapshot
 	// of the preceding state for the DB to be opened correctly and see the written data.
+	// Snapshot has no files, so first edit will cause manifest rotation.
 	writeAndIngest(t, mem, d, base.MakeInternalKey([]byte("a"), 0, InternalKeyKindSet), []byte("b"), "a")
+	// Snapshot has no files, and manifest has an edit from the previous ingest,
+	// so this second ingest will cause manifest rotation.
 	writeAndIngest(t, mem, d, base.MakeInternalKey([]byte("c"), 0, InternalKeyKindSet), []byte("d"), "c")
 	require.NoError(t, d.Close())
 	d, err = Open("", opts)
@@ -65,7 +68,10 @@ func TestVersionSetSeqNums(t *testing.T) {
 	d, err := Open("", opts)
 	require.NoError(t, err)
 
+	// Snapshot has no files, so first edit will cause manifest rotation.
 	writeAndIngest(t, mem, d, base.MakeInternalKey([]byte("a"), 0, InternalKeyKindSet), []byte("b"), "a")
+	// Snapshot has no files, and manifest has an edit from the previous ingest,
+	// so this second ingest will cause manifest rotation.
 	writeAndIngest(t, mem, d, base.MakeInternalKey([]byte("c"), 0, InternalKeyKindSet), []byte("d"), "c")
 	require.NoError(t, d.Close())
 	d, err = Open("", opts)
