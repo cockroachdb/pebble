@@ -480,6 +480,29 @@ type EventListener struct {
 	WriteStallEnd func()
 }
 
+// IsConfigured determines if an event listener has been configured by checking
+// to see that at least one of the handler functions has been defined
+func (l *EventListener) IsConfigured() bool {
+	return l.BackgroundError != nil ||
+		l.CompactionBegin != nil ||
+		l.CompactionEnd != nil ||
+		l.DiskSlow != nil ||
+		l.FlushBegin != nil ||
+		l.FlushEnd != nil ||
+		l.FormatUpgrade != nil ||
+		l.ManifestCreated != nil ||
+		l.ManifestDeleted != nil ||
+		l.TableCreated != nil ||
+		l.TableDeleted != nil ||
+		l.TableIngested != nil ||
+		l.TableStatsLoaded != nil ||
+		l.TableValidated != nil ||
+		l.WALCreated != nil ||
+		l.WALDeleted != nil ||
+		l.WriteStallBegin != nil ||
+		l.WriteStallEnd != nil
+}
+
 // EnsureDefaults ensures that background error events are logged to the
 // specified logger if a handler for those events hasn't been otherwise
 // specified. Ensure all handlers are non-nil so that we don't have to check
