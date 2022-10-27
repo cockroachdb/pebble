@@ -1432,6 +1432,7 @@ func TestIngestCleanup(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run("", func(t *testing.T) {
 			mem := vfs.NewMem()
+			mem.UseWindowsSemantics(true)
 
 			// Create the files in the VFS.
 			metaMap := make(map[base.FileNum]vfs.File)
