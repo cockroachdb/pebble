@@ -79,9 +79,22 @@ type MemFS struct {
 
 	strict      bool
 	ignoreSyncs bool
+	// Windows has peculiar semantics with respect to hard links and deleting
+	// open files. In tests meant to exercise this behavior, this flag can be
+	// set to error if removing an open file.
+	windowsSemantics bool
 }
 
 var _ FS = &MemFS{}
+
+// UseWindowsSemantics configures whether the MemFS implements Windows-style
+// semantics, in particular with respect to whether any of an open file's links
+// may be removed. Windows semantics default to off.
+func (y *MemFS) UseWindowsSemantics(windowsSemantics bool) {
+	y.mu.Lock()
+	defer y.mu.Unlock()
+	y.windowsSemantics = windowsSemantics
+}
 
 // String dumps the contents of the MemFS.
 func (y *MemFS) String() string {
@@ -305,11 +318,14 @@ func (y *MemFS) Remove(fullname string) error {
 			if !ok {
 				return oserror.ErrNotExist
 			}
-			// Disallow removal of open files/directories which implements Windows
-			// semantics. This ensures that we don't regress in the ordering of
-			// operations and try to remove a file while it is still open.
-			if n := atomic.LoadInt32(&child.refs); n > 0 {
-				return oserror.ErrInvalid
+			if y.windowsSemantics {
+				// Disallow removal of open files/directories which implements
+				// Windows semantics. This ensures that we don't regress in the
+				// ordering of operations and try to remove a file while it is
+				// still open.
+				if n := atomic.LoadInt32(&child.refs); n > 0 {
+					return oserror.ErrInvalid
+				}
 			}
 			if len(child.children) > 0 {
 				return errNotEmpty
