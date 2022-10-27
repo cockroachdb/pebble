@@ -260,6 +260,11 @@ func (r *metamorphicTestRun) run(ctx context.Context, output io.Writer) error {
 		// database. This helps exercise state from version n that survives to
 		// versions ≥ n+2.
 		"-ops", "uniform:1-10000",
+		// Explicitly specify the location of the _meta directory. In Cockroach
+		// CI when built using bazel, the subprocesses may be given a different
+		// current working directory than the one provided below. To ensure we
+		// can find this run's artifacts, explicitly pass the intended dir.
+		"-dir", filepath.Join(r.dir, "_meta"),
 	}
 	// Propagate the verbose flag, if necessary.
 	if testing.Verbose() {
