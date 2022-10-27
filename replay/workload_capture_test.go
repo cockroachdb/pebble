@@ -48,5 +48,5 @@ func TestWorkloadCaptureCleanerMarkForClean(t *testing.T) {
 	err = cleaner.Clean(imfs, base.FileTypeTable, filePath)
 	require.NoError(t, err)
 	_, err = imfs.Stat(filePath)
-	require.Errorf(t, err, "stat 000001.sst: file does not exist")
+	require.Errorf(t, err, "stat 000001.sst: sourceFile does not exist")
 }

@@ -19,9 +19,11 @@ const (
 func (wcs workloadCaptureState) is(flag workloadCaptureState) bool { return wcs&flag != 0 }
 
 // WorkloadCollectorFileHandler is an interface that allows anyone to write their
-// own file handler to perform the workload capturing.
+// own sourceFile handler to perform the workload capturing.
 type WorkloadCollectorFileHandler interface {
-	HandleFile(fs vfs.FS, path string) error
+	HandleTableFile(fs vfs.FS, path string) error
+	HandleManifestFileMutated(fs vfs.FS, details workloadCollectorManifestDetails) error
+	OutputDirectory() string
 }
 
 // DefaultWorkloadCollectorFileHandler is a default workload capture tool that
@@ -30,14 +32,57 @@ type DefaultWorkloadCollectorFileHandler struct {
 	DestinationDirectory string
 }
 
-// HandleFile is similar to the ArchiveCleaner's Clean except that it copies
+// HandleTableFile is similar to the ArchiveCleaner's Clean except that it copies
 // files over to the archive directory instead of moving them.
-func (wcc DefaultWorkloadCollectorFileHandler) HandleFile(fs vfs.FS, path string) error {
+func (wcc DefaultWorkloadCollectorFileHandler) HandleTableFile(fs vfs.FS, path string) error {
 	if err := fs.MkdirAll(wcc.DestinationDirectory, 0755); err != nil {
 		return err
 	}
 	destPath := fs.PathJoin(wcc.DestinationDirectory, fs.PathBase(path))
 	return vfs.Copy(fs, path, destPath)
+}
+
+func (wcc DefaultWorkloadCollectorFileHandler) OutputDirectory() string {
+	return wcc.DestinationDirectory
+}
+
+func (wcc DefaultWorkloadCollectorFileHandler) HandleManifestFileMutated(
+	_ vfs.FS, manifestDetails workloadCollectorManifestDetails,
+) error {
+	if manifestDetails.sourceFile == nil {
+		return nil
+	}
+	s, err := manifestDetails.sourceFile.Stat()
+	if err != nil {
+		return err
+	}
+	buffer := make([]byte, s.Size()-manifestDetails.byteOffset)
+	_, err = manifestDetails.sourceFile.ReadAt(buffer, manifestDetails.byteOffset)
+	if err != nil {
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	_, err = manifestDetails.destFile.Write(buffer)
+	if err != nil {
+		return err
+	}
+	err = manifestDetails.destFile.Sync()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+type workloadCollectorManifestDetails struct {
+	byteOffset int64
+
+	sourceFilepath string
+	sourceFile     vfs.File
+
+	destFilepath string
+	destFile     vfs.File
 }
 
 // WorkloadCollector is a cleaner that is designed to capture a workload by
@@ -52,6 +97,8 @@ type WorkloadCollector struct {
 
 	fileState      map[string]workloadCaptureState
 	filesToProcess []string
+
+	manifest workloadCollectorManifestDetails
 
 	configuration struct {
 		fileHandler WorkloadCollectorFileHandler
@@ -78,7 +125,7 @@ func NewWorkloadCaptureCleaner(
 	return wc
 }
 
-// setFileAsReadyForProcessing calls the handler for the file and marks it as processed.
+// setFileAsReadyForProcessing calls the handler for the sourceFile and marks it as processed.
 // Must be called while holding a write lock.
 func (w *WorkloadCollector) setFileAsReadyForProcessing(fileNum base.FileNum) {
 	filepath := base.MakeFilepath(w.configuration.fs, w.configuration.storageDir, base.FileTypeTable, fileNum)
@@ -89,7 +136,9 @@ func (w *WorkloadCollector) setFileAsReadyForProcessing(fileNum base.FileNum) {
 func (w *WorkloadCollector) deleteFile(path string) error {
 	err := w.configuration.fs.Remove(path)
 	if err == nil {
+		w.Lock()
 		delete(w.fileState, path)
+		w.Unlock()
 	}
 	return err
 }
@@ -97,13 +146,14 @@ func (w *WorkloadCollector) deleteFile(path string) error {
 // Clean deletes files only after they have been processed.
 func (w *WorkloadCollector) Clean(_ vfs.FS, _ base.FileType, path string) error {
 	w.Lock()
-	defer w.Unlock()
-
 	fileState := w.fileState[path]
 	if fileState.is(capturedSuccessfully) {
 		fileState |= obsolete
+		w.Unlock()
 		err := w.deleteFile(path)
 		return err
+	} else {
+		w.Unlock()
 	}
 	return nil
 }
@@ -132,44 +182,92 @@ func (w *WorkloadCollector) OnFlushEnd(info pebble.FlushInfo) {
 	w.fileListener.Signal()
 }
 
-// waitAndProcessFile is a function that performs the workload capture. It
-// waits on a condition variable (notifier) to let it know when new files are
-// available to be collected at which point it runs the fileHandler on each file
-// that is marked as ready for processing (readyForProcessing). After processing, if
-// the file has already been marked as obsolete, the file will be deleted.
-func (w *WorkloadCollector) waitAndProcessFile() bool {
+func (w *WorkloadCollector) OnManifestCreated(info pebble.ManifestCreateInfo) {
 	w.Lock()
-	if len(w.filesToProcess) == 0 {
-		w.fileListener.Wait()
+	defer w.Unlock()
+	w.manifest.sourceFilepath = info.Path
+	w.manifest.byteOffset = 0
+	sourceFile, err := w.configuration.fs.Open(info.Path)
+	if err != nil {
+		panic(err)
 	}
-	if w.fileListener.stopFileListener {
-		return false
-	}
-	for _, filepath := range w.filesToProcess {
-		err := w.configuration.fileHandler.HandleFile(w.configuration.fs, filepath)
-		if err != nil {
-			// TODO(leon): How should this error be handled?
-			return false
-		}
-		if w.fileState[filepath].is(obsolete) {
-			err := w.deleteFile(filepath)
-			if err != nil {
-				// TODO(leon): How should this error be handled?
-				return false
-			}
-		} else {
-			w.fileState[filepath] |= capturedSuccessfully
-		}
-	}
-	w.filesToProcess = w.filesToProcess[:0]
-	w.Unlock()
-	return true
+	w.manifest.sourceFile = sourceFile
 }
 
-// filesToProcessWatcher is wrapper over waitAndProcessFile that runs indefinitely
+// filesToProcessWatcher is wrapper over processFiles that runs indefinitely
 func (w *WorkloadCollector) filesToProcessWatcher() {
-	for w.waitAndProcessFile() {
+	w.Lock()
+	for !w.fileListener.stopFileListener {
+		// The following performs the workload capture. It waits on a condition
+		// variable (fileListener) to let it know when new files are available to be
+		// collected at which point it runs the fileHandler on each file that is
+		// marked as ready for processing (readyForProcessing). After processing, if
+		// the sourceFile has already been marked as obsolete, the sourceFile will
+		// be deleted. The manifests are also processed in this section by calling
+		// the manifest fileHandler
+		if len(w.filesToProcess) == 0 {
+			w.fileListener.Wait()
+		}
+		filesToProcess := w.filesToProcess[:]
+		w.filesToProcess = w.filesToProcess[:0]
+		w.Unlock()
+
+		// Handle Tables
+		for _, filepath := range filesToProcess {
+			err := w.configuration.fileHandler.HandleTableFile(w.configuration.fs, filepath)
+			if err != nil {
+				panic(err)
+			}
+			w.Lock()
+			if w.fileState[filepath].is(obsolete) {
+				w.Unlock()
+				err := w.deleteFile(filepath)
+				if err != nil {
+					panic(err)
+				}
+			} else {
+				w.fileState[filepath] |= capturedSuccessfully
+				w.Unlock()
+			}
+		}
+
+		// Handle the manifest file
+		w.Lock()
+		destFilepath := w.configuration.fs.PathJoin(w.configuration.fileHandler.OutputDirectory(), w.configuration.fs.PathBase(w.manifest.sourceFilepath))
+		destFile := w.manifest.destFile
+		w.Unlock()
+
+		if destFile == nil {
+			// DestFile does not exist so create it
+			var err error
+			destFile, err = w.configuration.fs.Create(destFilepath)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		w.Lock()
+		// Make copy of the manifest details
+		w.manifest.destFilepath = destFilepath
+		w.manifest.destFile = destFile
+		manifestDetails := workloadCollectorManifestDetails{
+			byteOffset:     w.manifest.byteOffset,
+			sourceFilepath: w.manifest.sourceFilepath,
+			sourceFile:     w.manifest.sourceFile,
+			destFilepath:   destFilepath,
+			destFile:       destFile,
+		}
+		w.Unlock()
+
+		err := w.configuration.fileHandler.HandleManifestFileMutated(w.configuration.fs, manifestDetails)
+		if err != nil {
+			panic(err)
+		}
+
+		// reset lock for loop
+		w.Lock()
 	}
+	w.Unlock() // unlock for end of loop
 }
 
 // StartCollectorFileListener starts a go routine that listens for new files that
