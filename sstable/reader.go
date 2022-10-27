@@ -104,7 +104,6 @@ type Iterator interface {
 	SetCloseHook(fn func(i Iterator) error)
 }
 
-
 // Iterator positioning optimizations and singleLevelIterator and
 // twoLevelIterator:
 //
