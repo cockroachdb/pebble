@@ -35,7 +35,7 @@ func (defaultFS) GetDiskUsage(path string) (DiskUsage, error) {
 	// [2] https://man7.org/linux/man-pages/man3/statvfs.3.html
 	freeBytes := uint64(stat.Frsize) * uint64(stat.Bfree)
 	availBytes := uint64(stat.Frsize) * uint64(stat.Bavail)
-	totalBytes := uint64(stat.Bsize) * uint64(stat.Blocks)
+	totalBytes := uint64(stat.Frsize) * uint64(stat.Blocks)
 	return DiskUsage{
 		AvailBytes: availBytes,
 		TotalBytes: totalBytes,
