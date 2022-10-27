@@ -251,14 +251,14 @@ func TestReaderStats(t *testing.T) {
 
 func TestReaderWithBlockPropertyFilter(t *testing.T) {
 	writerOpt := WriterOptions{
-		BlockSize: 1,
-		IndexBlockSize: 40,
-		Comparer: testkeys.Comparer,
-		TableFormat: TableFormatMax,
+		BlockSize:               1,
+		IndexBlockSize:          40,
+		Comparer:                testkeys.Comparer,
+		TableFormat:             TableFormatMax,
 		BlockPropertyCollectors: []func() BlockPropertyCollector{NewTestKeysBlockPropertyCollector},
 	}
 	runTestReader(
-		t, writerOpt, "testdata/reader_bpf", nil /* Reader */,0, true)
+		t, writerOpt, "testdata/reader_bpf", nil /* Reader */, 0, true)
 }
 
 func TestInjectedErrors(t *testing.T) {
@@ -420,8 +420,8 @@ func runTestReader(
 					}
 				}
 				iter, err := r.NewIterWithBlockPropertyFilters(
-					nil,  /* lower */
-					nil,  /* upper */
+					nil, /* lower */
+					nil, /* upper */
 					filterer,
 					true, /* use filter block */
 					&stats,
