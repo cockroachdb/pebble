@@ -255,6 +255,11 @@ func (r *metamorphicTestRun) run(ctx context.Context, output io.Writer) error {
 		"-test.run", "TestMeta$",
 		"-seed", strconv.FormatUint(r.seed, 10),
 		"-keep",
+		// Use an op-count distribution that includes a low lower bound, so that
+		// some intermediary versions do very little work besides opening the
+		// database. This helps exercise state from version n that survives to
+		// versions ≥ n+2.
+		"-ops", "uniform:1-10000",
 	}
 	// Propagate the verbose flag, if necessary.
 	if testing.Verbose() {
