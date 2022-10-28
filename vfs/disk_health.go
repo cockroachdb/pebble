@@ -156,18 +156,18 @@ func (d *diskHealthCheckingFile) timeDiskOp(op func()) {
 // maximum concurrent filesystem operations. This is expected to be very few
 // for these reasons:
 //  1. Pebble has limited write concurrency. Flushes, compactions and WAL
-//  rotations are the primary sources of filesystem metadata operations. With
-//  the default max-compaction concurrency, these operations require at most 5
-//  concurrent slots if all 5 perform a filesystem metadata operation
-//  simultaneously.
+//     rotations are the primary sources of filesystem metadata operations. With
+//     the default max-compaction concurrency, these operations require at most 5
+//     concurrent slots if all 5 perform a filesystem metadata operation
+//     simultaneously.
 //  2. Pebble's limited concurrent I/O writers spend most of their time
-//  performing file I/O, not performing the filesystem metadata operations that
-//  require recording a slot on the diskHealthCheckingFS.
+//     performing file I/O, not performing the filesystem metadata operations that
+//     require recording a slot on the diskHealthCheckingFS.
 //  3. In CockroachDB, each additional store/Pebble instance has its own vfs.FS
-//  which provides a separate goroutine and set of slots.
+//     which provides a separate goroutine and set of slots.
 //  4. In CockroachDB, many of the additional sources of filesystem metadata
-//  operations (like encryption-at-rest) are sequential with respect to Pebble's
-//  threads.
+//     operations (like encryption-at-rest) are sequential with respect to Pebble's
+//     threads.
 type diskHealthCheckingFS struct {
 	tickInterval      time.Duration
 	diskSlowThreshold time.Duration

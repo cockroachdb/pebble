@@ -340,21 +340,21 @@ func (n *node) find(cmp btreeCmp, item *FileMetadata) (index int, found bool) {
 //
 // Before:
 //
-//          +-----------+
-//          |   x y z   |
-//          +--/-/-\-\--+
+//	+-----------+
+//	|   x y z   |
+//	+--/-/-\-\--+
 //
 // After:
 //
-//          +-----------+
-//          |     y     |
-//          +----/-\----+
-//              /   \
-//             v     v
+//	+-----------+
+//	|     y     |
+//	+----/-\----+
+//	    /   \
+//	   v     v
+//
 // +-----------+     +-----------+
 // |         x |     | z         |
 // +-----------+     +-----------+
-//
 func (n *node) split(i int) (*FileMetadata, *node) {
 	out := n.items[i]
 	var next *node

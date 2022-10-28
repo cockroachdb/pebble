@@ -79,13 +79,13 @@ type SpanMask interface {
 // SeekGE or SeekPrefixGE search key. Consider, for example SetBounds('c', 'e'),
 // with an iterator containing the Span [a,z):
 //
-//     First()     = `c#72057594037927935,21`        Span() = [c,e)
-//     SeekGE('d') = `d#72057594037927935,21`        Span() = [c,e)
+//	First()     = `c#72057594037927935,21`        Span() = [c,e)
+//	SeekGE('d') = `d#72057594037927935,21`        Span() = [c,e)
 //
 // InterleavedIter does not interleave synthetic markers for spans that do not
 // contain any keys.
 //
-// SpanMask
+// # SpanMask
 //
 // InterelavingIter takes a SpanMask parameter that may be used to configure the
 // behavior of the iterator. See the documentation on the SpanMask type.
@@ -249,7 +249,8 @@ func (i *InterleavingIter) InitSeekLT(
 // the span returned by Span.
 //
 // NB: In accordance with the base.InternalIterator contract:
-//   i.lower ≤ key
+//
+//	i.lower ≤ key
 func (i *InterleavingIter) SeekGE(key []byte, flags base.SeekGEFlags) (*base.InternalKey, []byte) {
 	i.clearMask()
 	i.disablePrefixMode()
@@ -281,7 +282,8 @@ func (i *InterleavingIter) SeekGE(key []byte, flags base.SeekGEFlags) (*base.Int
 // to the span returned by Span.
 //
 // NB: In accordance with the base.InternalIterator contract:
-//   i.lower ≤ key
+//
+//	i.lower ≤ key
 func (i *InterleavingIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKey, []byte) {

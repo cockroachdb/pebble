@@ -6,16 +6,16 @@
 // - A single SSTable (000005.sst), containing:
 //   - 26 point keys, a@1 through z@1.
 //   - Three range keys:
-//     - RANGEKEYSET [a, z)@1
-//     - RANGEKEYUNSET [a, z)@2
-//     - RANGEKEYDEL [a, b)
+//   - RANGEKEYSET [a, z)@1
+//   - RANGEKEYUNSET [a, z)@2
+//   - RANGEKEYDEL [a, b)
 //
 // - A WAL for an unflushed memtable containing:
 //   - A single point key a@2.
 //   - Three range keys:
-//     - RANGEKEYSET [a, z)@3
-//     - RANGEKEYUNSET [a, z)@4
-//     - RANGEKEYDEL [a, b)
+//   - RANGEKEYSET [a, z)@3
+//   - RANGEKEYUNSET [a, z)@4
+//   - RANGEKEYDEL [a, b)
 package main
 
 import (

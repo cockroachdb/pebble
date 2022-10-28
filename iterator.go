@@ -34,9 +34,9 @@ import (
 // always a single internalIterator position corresponding to the position
 // returned to the user. Consider the example:
 //
-//    a.MERGE.9 a.MERGE.8 a.MERGE.7 a.SET.6 b.DELETE.9 b.DELETE.5 b.SET.4
-//    \                                   /
-//      \       Iterator.Key() = 'a'    /
+//	a.MERGE.9 a.MERGE.8 a.MERGE.7 a.SET.6 b.DELETE.9 b.DELETE.5 b.SET.4
+//	\                                   /
+//	  \       Iterator.Key() = 'a'    /
 //
 // The Iterator exposes one valid position at user key 'a' and the two exhausted
 // positions at the beginning and end of iteration. The underlying
@@ -1173,7 +1173,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 // An example Split function may separate a timestamp suffix from the prefix of
 // the key.
 //
-//   Split(<key>@<timestamp>) -> <key>
+//	Split(<key>@<timestamp>) -> <key>
 //
 // Consider the keys "a@1", "a@2", "aa@3", "aa@4". The prefixes for these keys
 // are "a", and "aa". Note that despite "a" and "aa" sharing a prefix by the
@@ -1181,20 +1181,20 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 // function. To see how this works, consider the following set of calls on this
 // data set:
 //
-//   SeekPrefixGE("a@0") -> "a@1"
-//   Next()              -> "a@2"
-//   Next()              -> EOF
+//	SeekPrefixGE("a@0") -> "a@1"
+//	Next()              -> "a@2"
+//	Next()              -> EOF
 //
 // If you're just looking to iterate over keys with a shared prefix, as
 // defined by the configured comparer, set iterator bounds instead:
 //
-//  iter := db.NewIter(&pebble.IterOptions{
-//    LowerBound: []byte("prefix"),
-//    UpperBound: []byte("prefiy"),
-//  })
-//  for iter.First(); iter.Valid(); iter.Next() {
-//    // Only keys beginning with "prefix" will be visited.
-//  }
+//	iter := db.NewIter(&pebble.IterOptions{
+//	  LowerBound: []byte("prefix"),
+//	  UpperBound: []byte("prefiy"),
+//	})
+//	for iter.First(); iter.Valid(); iter.Next() {
+//	  // Only keys beginning with "prefix" will be visited.
+//	}
 //
 // See ExampleIterator_SeekPrefixGE for a working example.
 //

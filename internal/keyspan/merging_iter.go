@@ -76,34 +76,34 @@ func visibleTransform(snapshot uint64) Transformer {
 // trailer descending. If the MergingIter is configured with a Transformer, it's
 // permitted to modify the ordering of the spans' keys returned by MergingIter.
 //
-// Algorithm
+// # Algorithm
 //
 // The merging iterator wraps child iterators, merging and fragmenting spans
 // across levels. The high-level algorithm is:
 //
-//     1. Initialize the heap with bound keys from child iterators' spans.
-//     2. Find the next [or previous] two unique user keys' from bounds.
-//     3. Consider the span formed between the two unique user keys a candidate
-//        span.
-//     4. Determine if any of the child iterators' spans overlap the candidate
-//        span.
-//         4a. If any of the child iterator's current bounds are end keys
-//             (during forward iteration) or start keys (during reverse
-//             iteration), then all the spans with that bound overlap the
-//             candidate span.
-//         4b. Apply the configured transform, which may remove keys.
-//         4b. If no spans overlap, forget the smallest (forward iteration)
-//             or largest (reverse iteration) unique user key and advance
-//             the iterators to the next unique user key. Start again from 3.
+//  1. Initialize the heap with bound keys from child iterators' spans.
+//  2. Find the next [or previous] two unique user keys' from bounds.
+//  3. Consider the span formed between the two unique user keys a candidate
+//     span.
+//  4. Determine if any of the child iterators' spans overlap the candidate
+//     span.
+//     4a. If any of the child iterator's current bounds are end keys
+//     (during forward iteration) or start keys (during reverse
+//     iteration), then all the spans with that bound overlap the
+//     candidate span.
+//     4b. Apply the configured transform, which may remove keys.
+//     4b. If no spans overlap, forget the smallest (forward iteration)
+//     or largest (reverse iteration) unique user key and advance
+//     the iterators to the next unique user key. Start again from 3.
 //
-// Detailed algorithm
+// # Detailed algorithm
 //
 // Each level (i0, i1, ...) has a user-provided input FragmentIterator. The
 // merging iterator steps through individual boundaries of the underlying
 // spans separately. If the underlying FragmentIterator has fragments
 // [a,b){#2,#1} [b,c){#1} the mergingIterLevel.{next,prev} step through:
 //
-//     (a, start), (b, end), (b, start), (c, end)
+//	(a, start), (b, end), (b, start), (c, end)
 //
 // Note that (a, start) and (b, end) are observed ONCE each, despite two keys
 // sharing those bounds. Also note that (b, end) and (b, start) are two distinct
@@ -119,18 +119,18 @@ func visibleTransform(snapshot uint64) Transformer {
 // determine which span is next, but it's also responsible for fragmenting
 // overlapping spans. Consider the example:
 //
-//            i0:     b---d e-----h
-//            i1:   a---c         h-----k
-//            i2:   a------------------------------p
+//	       i0:     b---d e-----h
+//	       i1:   a---c         h-----k
+//	       i2:   a------------------------------p
 //
-//     fragments:   a-b-c-d-e-----h-----k----------p
+//	fragments:   a-b-c-d-e-----h-----k----------p
 //
 // None of the individual child iterators contain a span with the exact bounds
 // [c,d), but the merging iterator must produce a span [c,d). To accomplish
 // this, the merging iterator visits every span between unique boundary user
 // keys. In the above example, this is:
 //
-//     [a,b), [b,c), [c,d), [d,e), [e, h), [h, k), [k, p)
+//	[a,b), [b,c), [c,d), [d,e), [e, h), [h, k), [k, p)
 //
 // The merging iterator first initializes the heap to prepare for iteration.
 // The description below discusses the mechanics of forward iteration after a
@@ -141,9 +141,9 @@ func visibleTransform(snapshot uint64) Transformer {
 // mergingIterLevel to the first bound of the first fragment. In the above
 // example, this seeks the child iterators to:
 //
-//     i0: (b, boundKindFragmentStart, [ [b,d) ])
-//     i1: (a, boundKindFragmentStart, [ [a,c) ])
-//     i2: (a, boundKindFragmentStart, [ [a,p) ])
+//	i0: (b, boundKindFragmentStart, [ [b,d) ])
+//	i1: (a, boundKindFragmentStart, [ [a,c) ])
+//	i2: (a, boundKindFragmentStart, [ [a,p) ])
 //
 // After fixing up the heap, the root of the heap is a boundKey with the
 // smallest user key ('a' in the example). Once the heap is setup for iteration
@@ -160,9 +160,9 @@ func visibleTransform(snapshot uint64) Transformer {
 // In the above example, this results in m.start = 'a', m.end = 'b' and child
 // iterators in the following positions:
 //
-//     i0: (b, boundKindFragmentStart, [ [b,d) ])
-//     i1: (c, boundKindFragmentEnd,   [ [a,c) ])
-//     i2: (p, boundKindFragmentEnd,   [ [a,p) ])
+//	i0: (b, boundKindFragmentStart, [ [b,d) ])
+//	i1: (c, boundKindFragmentEnd,   [ [a,c) ])
+//	i2: (p, boundKindFragmentEnd,   [ [a,p) ])
 //
 // With the user key bounds of the next merged span established,
 // findNextFragmentSet must determine which, if any, fragments overlap the span.
@@ -191,7 +191,7 @@ func visibleTransform(snapshot uint64) Transformer {
 // findNextFragmentSet loops, repeating the above process again until it finds a
 // span that does contain keys.
 //
-// Memory safety
+// # Memory safety
 //
 // The FragmentIterator interface only guarantees stability of a Span and its
 // associated slices until the next positioning method is called. Adjacent Spans

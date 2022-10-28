@@ -183,10 +183,10 @@ var splitDirectivesRE = regexp.MustCompile(`^ *[a-zA-Z0-9_\/,-\.]+(|=[-a-zA-Z0-9
 
 // splits a directive line into tokens, where each token is
 // either:
-//  - a,list,of,things
-//  - argument
-//  - argument=value
-//  - argument=(values, ...)
+//   - a,list,of,things
+//   - argument
+//   - argument=value
+//   - argument=(values, ...)
 func splitDirectives(t *testing.T, line string) []string {
 	var res []string
 

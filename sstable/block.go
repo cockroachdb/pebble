@@ -968,7 +968,7 @@ func (i *blockIter) valid() bool {
 // gathers all the fragments with identical bounds within a block and returns a
 // single keyspan.Span describing all the keys defined over the span.
 //
-// Memory lifetime
+// # Memory lifetime
 //
 // A Span returned by fragmentBlockIter is only guaranteed to be stable until
 // the next fragmentBlockIter iteration positioning method. A Span's Keys slice

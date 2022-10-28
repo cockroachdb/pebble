@@ -11,12 +11,14 @@ const increment = 50 // ops/sec
 //
 // The following gives a visual representation of the problem:
 //
-//                        Optimal partition (=550) -----> |
+//	Optimal partition (=550) -----> |
+//
 // Passes:   o          o        o              o o o oo  |
 // Fails:                         x             x         |x    x  x     x x        x
 // |---------|---------|---------|---------|---------|----|----|---------|---------|---------|---> x
 // 0        100       200       300       400       500   |   600       700       800       900
-//	                                                      |
+//
+//	|
 //
 // The algorithm works by computing the error (i.e. mis-classifications) at
 // various points along the x-axis, starting from the origin and increasing by

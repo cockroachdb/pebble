@@ -42,24 +42,24 @@ var (
 // testing framework. By convention, test files are typically located in a
 // sub-directory called "testdata". Each test file has the following format:
 //
-//   <command>[,<command>...] [arg | arg=val | arg=(val1, val2, ...)]...
-//   <input to the command>
-//   ----
-//   <expected results>
+//	<command>[,<command>...] [arg | arg=val | arg=(val1, val2, ...)]...
+//	<input to the command>
+//	----
+//	<expected results>
 //
 // The command input can contain blank lines. However, by default, the expected
 // results cannot contain blank lines. This alternate syntax allows the use of
 // blank lines:
 //
-//   <command>[,<command>...] [arg | arg=val | arg=(val1, val2, ...)]...
-//   <input to the command>
-//   ----
-//   ----
-//   <expected results>
+//	<command>[,<command>...] [arg | arg=val | arg=(val1, val2, ...)]...
+//	<input to the command>
+//	----
+//	----
+//	<expected results>
 //
-//   <more expected results>
-//   ----
-//   ----
+//	<more expected results>
+//	----
+//	----
 //
 // To execute data-driven tests, pass the path of the test file as well as a
 // function which can interpret and execute whatever commands are present in
@@ -157,27 +157,26 @@ func runTestInternal(
 //
 // This can be used in conjunction with RunTest. For example:
 //
-//    datadriven.Walk(t, path, func (t *testing.T, path string) {
-//      // initialize per-test state
-//      datadriven.RunTest(t, path, func (d *datadriven.TestData) {
-//       // ...
-//      }
-//    }
+//	 datadriven.Walk(t, path, func (t *testing.T, path string) {
+//	   // initialize per-test state
+//	   datadriven.RunTest(t, path, func (d *datadriven.TestData) {
+//	    // ...
+//	   }
+//	 }
 //
-//   Files:
-//     testdata/typing
-//     testdata/logprops/scan
-//     testdata/logprops/select
+//	Files:
+//	  testdata/typing
+//	  testdata/logprops/scan
+//	  testdata/logprops/select
 //
-//   If path is "testdata/typing", the function is called once and no subtests
-//   care created.
+//	If path is "testdata/typing", the function is called once and no subtests
+//	care created.
 //
-//   If path is "testdata/logprops", the function is called two times, in
-//   separate subtests /scan, /select.
+//	If path is "testdata/logprops", the function is called two times, in
+//	separate subtests /scan, /select.
 //
-//   If path is "testdata", the function is called three times, in subtest
-//   hierarchy /typing, /logprops/scan, /logprops/select.
-//
+//	If path is "testdata", the function is called three times, in subtest
+//	hierarchy /typing, /logprops/scan, /logprops/select.
 func Walk(t *testing.T, path string, f func(t *testing.T, path string)) {
 	finfo, err := os.Stat(path)
 	if err != nil {
@@ -217,7 +216,7 @@ type TestData struct {
 // destinations does not match that of the arguments, or a destination can not
 // be populated from its matching value, a fatal error results.
 //
-// For example, for a TestData originating from
+// # For example, for a TestData originating from
 //
 // cmd arg1=50 arg2=yoruba arg3=(50, 50, 50)
 //
@@ -256,9 +255,9 @@ func (td *TestData) findArg(key string) *CmdArg {
 
 // CmdArg contains information about an argument on the directive line. An
 // argument is specified in one of the following forms:
-//  - argument
-//  - argument=value
-//  - argument=(values, ...)
+//   - argument
+//   - argument=value
+//   - argument=(values, ...)
 type CmdArg struct {
 	Key  string
 	Vals []string

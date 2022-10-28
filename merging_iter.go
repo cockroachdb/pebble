@@ -73,7 +73,7 @@ type levelIterBoundaryContext struct {
 // property. When one of the child iterators is exhausted during Next/Prev
 // iteration, it is removed from the heap.
 //
-// Range Deletions
+// # Range Deletions
 //
 // A mergingIter can optionally be configured with a slice of range deletion
 // iterators. The range deletion iterator slice must exactly parallel the point
@@ -143,11 +143,11 @@ type levelIterBoundaryContext struct {
 // to skip processing entries in that shadow. For example, consider the
 // scenario:
 //
-//   r0: a---e
-//   r1:    d---h
-//   r2:       g---k
-//   r3:          j---n
-//   r4:             m---q
+//	r0: a---e
+//	r1:    d---h
+//	r2:       g---k
+//	r3:          j---n
+//	r4:             m---q
 //
 // This is showing 5 levels of range deletions. Consider what happens upon
 // SeekGE("b"). We first seek the point iterator for level 0 (the point values
@@ -189,17 +189,17 @@ type levelIterBoundaryContext struct {
 //
 // For a full example, consider the following setup:
 //
-//   p0:               o
-//   r0:             m---q
+//	p0:               o
+//	r0:             m---q
 //
-//   p1:              n p
-//   r1:       g---k
+//	p1:              n p
+//	r1:       g---k
 //
-//   p2:  b d    i
-//   r2: a---e           q----v
+//	p2:  b d    i
+//	r2: a---e           q----v
 //
-//   p3:     e
-//   r3:
+//	p3:     e
+//	r3:
 //
 // If we start iterating from the beginning, the first key we encounter is "b"
 // in p2. When the mergingIter is pointing at a valid entry, the range deletion

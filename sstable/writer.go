@@ -238,35 +238,37 @@ func (c *coordinationState) init(parallelismEnabled bool, writer *Writer) {
 
 // sizeEstimate is a general purpose helper for estimating two kinds of sizes:
 // A. The compressed sstable size, which is useful for deciding when to start
-//    a new sstable during flushes or compactions. In practice, we use this in
-//    estimating the data size (excluding the index).
+//
+//	a new sstable during flushes or compactions. In practice, we use this in
+//	estimating the data size (excluding the index).
+//
 // B. The size of index blocks to decide when to start a new index block.
 //
 // There are some terminology peculiarities which are due to the origin of
 // sizeEstimate for use case A with parallel compression enabled (for which
 // the code has not been merged). Specifically this relates to the terms
 // "written" and "compressed".
-// - The notion of "written" for case A is sufficiently defined by saying that
-//   the data block is compressed. Waiting for the actual data block write to
-//   happen can result in unnecessary estimation, when we already know how big
-//   it will be in compressed form. Additionally, with the forthcoming value
-//   blocks containing older MVCC values, these compressed block will be held
-//   in-memory until late in the sstable writing, and we do want to accurately
-//   account for them without waiting for the actual write.
-//   For case B, "written" means that the index entry has been fully
-//   generated, and has been added to the uncompressed block buffer for that
-//   index block. It does not include actually writing a potentially
-//   compressed index block.
-// - The notion of "compressed" is to differentiate between a "inflight" size
-//   and the actual size, and is handled via computing a compression ratio
-//   observed so far (defaults to 1).
-//   For case A, this is actual data block compression, so the "inflight" size
-//   is uncompressed blocks (that are no longer being written to) and the
-//   "compressed" size is after they have been compressed.
-//   For case B the inflight size is for a key-value pair in the index for
-//   which the value size (the encoded size of the BlockHandleWithProperties)
-//   is not accurately known, while the compressed size is the size of that
-//   entry when it has been added to the (in-progress) index ssblock.
+//   - The notion of "written" for case A is sufficiently defined by saying that
+//     the data block is compressed. Waiting for the actual data block write to
+//     happen can result in unnecessary estimation, when we already know how big
+//     it will be in compressed form. Additionally, with the forthcoming value
+//     blocks containing older MVCC values, these compressed block will be held
+//     in-memory until late in the sstable writing, and we do want to accurately
+//     account for them without waiting for the actual write.
+//     For case B, "written" means that the index entry has been fully
+//     generated, and has been added to the uncompressed block buffer for that
+//     index block. It does not include actually writing a potentially
+//     compressed index block.
+//   - The notion of "compressed" is to differentiate between a "inflight" size
+//     and the actual size, and is handled via computing a compression ratio
+//     observed so far (defaults to 1).
+//     For case A, this is actual data block compression, so the "inflight" size
+//     is uncompressed blocks (that are no longer being written to) and the
+//     "compressed" size is after they have been compressed.
+//     For case B the inflight size is for a key-value pair in the index for
+//     which the value size (the encoded size of the BlockHandleWithProperties)
+//     is not accurately known, while the compressed size is the size of that
+//     entry when it has been added to the (in-progress) index ssblock.
 //
 // Usage: To update state, one can optionally provide an inflight write value
 // using addInflight (used for case B). When something is "written" the state
@@ -1274,11 +1276,11 @@ func (w *Writer) indexEntrySep(prevKey, key InternalKey, dataBlockBuf *dataBlock
 // they're used when the index block is finished.
 //
 // Invariant:
-// 1. addIndexEntry must not store references to the sep InternalKey, the tmp
-//    byte slice, bhp.Props. That is, these must be either deep copied or
-//    encoded.
-// 2. addIndexEntry must not hold references to the flushIndexBuf, and the writeTo
-//    indexBlockBufs.
+//  1. addIndexEntry must not store references to the sep InternalKey, the tmp
+//     byte slice, bhp.Props. That is, these must be either deep copied or
+//     encoded.
+//  2. addIndexEntry must not hold references to the flushIndexBuf, and the writeTo
+//     indexBlockBufs.
 func (w *Writer) addIndexEntry(
 	sep InternalKey,
 	bhp BlockHandleWithProperties,
@@ -1323,8 +1325,8 @@ func (w *Writer) addPrevDataBlockToIndexBlockProps() {
 // aren't being written asynchronously.
 //
 // Invariant:
-// 1. addIndexEntrySync must not store references to the prevKey, key InternalKey's,
-//    the tmp byte slice. That is, these must be either deep copied or encoded.
+//  1. addIndexEntrySync must not store references to the prevKey, key InternalKey's,
+//     the tmp byte slice. That is, these must be either deep copied or encoded.
 func (w *Writer) addIndexEntrySync(
 	prevKey, key InternalKey, bhp BlockHandleWithProperties, tmp []byte,
 ) error {
@@ -1402,11 +1404,13 @@ func cloneKeyWithBuf(k InternalKey, buf []byte) ([]byte, InternalKey) {
 }
 
 // Invariants: The byte slice returned by finishIndexBlockProps is heap-allocated
-//  and has its own lifetime, independent of the Writer and the blockPropsEncoder,
+//
+//	and has its own lifetime, independent of the Writer and the blockPropsEncoder,
+//
 // and it is safe to:
-// 1. Reuse w.blockPropsEncoder without first encoding the byte slice returned.
-// 2. Store the byte slice in the Writer since it is a copy and not supported by
-//    an underlying buffer.
+//  1. Reuse w.blockPropsEncoder without first encoding the byte slice returned.
+//  2. Store the byte slice in the Writer since it is a copy and not supported by
+//     an underlying buffer.
 func (w *Writer) finishIndexBlockProps() ([]byte, error) {
 	w.blockPropsEncoder.resetProps()
 	for i := range w.blockPropCollectors {
@@ -1426,11 +1430,11 @@ func (w *Writer) finishIndexBlockProps() ([]byte, error) {
 // level index block. This is only used when two level indexes are enabled.
 //
 // Invariants:
-// 1. The props slice passed into finishedIndexBlock must not be a
-//    owned by any other struct, since it will be stored in the Writer.indexPartitions
-//    slice.
-// 2. None of the buffers owned by indexBuf will be shallow copied and stored elsewhere.
-//    That is, it must be safe to reuse indexBuf after finishIndexBlock has been called.
+//  1. The props slice passed into finishedIndexBlock must not be a
+//     owned by any other struct, since it will be stored in the Writer.indexPartitions
+//     slice.
+//  2. None of the buffers owned by indexBuf will be shallow copied and stored elsewhere.
+//     That is, it must be safe to reuse indexBuf after finishIndexBlock has been called.
 func (w *Writer) finishIndexBlock(indexBuf *indexBlockBuf, props []byte) error {
 	part := indexBlockAndBlockProperties{
 		nEntries: indexBuf.block.nEntries, properties: props,

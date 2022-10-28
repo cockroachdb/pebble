@@ -850,10 +850,11 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 }
 
 // TestOpenWALReplayReadOnlySeqNums tests opening a database:
-// * in read-only mode
-// * with multiple unflushed log files that must replayed
-// * a MANIFEST that sets the last sequence number to a number greater than
-//   the unflushed log files
+//   - in read-only mode
+//   - with multiple unflushed log files that must replayed
+//   - a MANIFEST that sets the last sequence number to a number greater than
+//     the unflushed log files
+//
 // See cockroachdb/cockroach#48660.
 func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
 	const root = ""
@@ -1062,9 +1063,9 @@ func TestOpen_ErrorIfUnknownFormatVersion(t *testing.T) {
 //
 // This function is intended to be used in tests with defer.
 //
-//     opts := &Options{FS: vfs.NewMem()}
-//     defer ensureFilesClosed(t, opts)()
-//     /* test code */
+//	opts := &Options{FS: vfs.NewMem()}
+//	defer ensureFilesClosed(t, opts)()
+//	/* test code */
 func ensureFilesClosed(t *testing.T, o *Options) func() {
 	fs := &closeTrackingFS{
 		FS:    o.FS,
