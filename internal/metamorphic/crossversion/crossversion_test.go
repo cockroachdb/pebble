@@ -17,8 +17,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode"
@@ -26,10 +28,12 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/metamorphic"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
 	factor       int
+	parallelism  int
 	seed         int64
 	versions     pebbleVersions
 	artifactsDir string
@@ -43,6 +47,8 @@ func init() {
 	flag.IntVar(&factor, "factor", 10,
 		`the number of data directories to carry forward
 from one version's run to the subsequent version's runs.`)
+	flag.IntVar(&parallelism, "parallelism", runtime.GOMAXPROCS(0)/2,
+		`the maximum number of parallel metamorphic runs to execute`)
 	flag.Var(&versions, "version",
 		`a comma-separated 3-tuple defining a Pebble version to test.
 The expected format is <label>,<SHA>,<test-binary-path>.
@@ -149,60 +155,12 @@ func runCrossVersion(
 	//
 	// The number of states that are carried forward from one version to the
 	// next is fixed by `factor`.
-	var buf bytes.Buffer
 	initialStates := []initialState{{}}
 	for i := range versions {
 		t.Logf("Running tests with version %s with %d initial state(s).", versions[i].SHA, len(initialStates))
-		var nextInitialStates []initialState
-		var histories []string
-		for j, s := range initialStates {
-			runID := fmt.Sprintf("%s_%d_%03d", versions[i].SHA, seed, j)
-
-			r := metamorphicTestRun{
-				seed:           versionSeeds[i],
-				dir:            filepath.Join(rootDir, runID),
-				vers:           versions[i],
-				initialState:   s,
-				testBinaryPath: versions[i].TestBinaryPath,
-			}
-			if err := os.MkdirAll(r.dir, os.ModePerm); err != nil {
-				return err
-			}
-
-			var out io.Writer = &buf
-			if testing.Verbose() {
-				out = io.MultiWriter(out, os.Stderr)
-			}
-			t.Logf("  Running test with version %s with initial state %s.",
-				versions[i].SHA, s)
-			if err := r.run(ctx, out); err != nil {
-				fatalf(t, rootDir, "Metamorphic test failed: %s\nOutput:%s\n", err, buf.String())
-			}
-
-			// dir is a directory containing the ops file and subdirectories for
-			// each run with a particular set of OPTIONS. For example:
-			//
-			// dir/
-			//   ops
-			//   random-000/
-			//   random-001/
-			//   ...
-			//   standard-000/
-			//   standard-001/
-			//   ...
-			dir := getRunDir(t, r.dir)
-			// subrunDirs contains the names of all dir's subdirectories.
-			subrunDirs := getDirs(t, dir)
-			for _, subrunDir := range subrunDirs {
-				// Record the subrun as an initial state for the next version.
-				nextInitialStates = append(nextInitialStates, initialState{
-					path: filepath.Join(dir, subrunDir),
-					desc: fmt.Sprintf("sha=%s-seed=%d-opts=%s(%s)", versions[i].SHA, versionSeeds[i], subrunDir, s.String()),
-				})
-				histories = append(histories, filepath.Join(dir, subrunDir, "history"))
-			}
-
-			buf.Reset()
+		histories, nextInitialStates, err := runVersion(ctx, t, rootDir, versions[i], versionSeeds[i], initialStates, parallelism)
+		if err != nil {
+			return err
 		}
 
 		// All the initial states described the same state and all of this
@@ -228,6 +186,79 @@ func runCrossVersion(
 		initialStates = nextInitialStates
 	}
 	return nil
+}
+
+func runVersion(
+	ctx context.Context,
+	t testing.TB,
+	rootDir string,
+	vers pebbleVersion,
+	seed uint64,
+	initialStates []initialState,
+	maxParallelism int,
+) (histories []string, nextInitialStates []initialState, err error) {
+	var mu sync.Mutex
+	sem := make(chan struct{}, maxParallelism)
+	grp, ctx := errgroup.WithContext(ctx)
+	for j, s := range initialStates {
+		sem <- struct{}{}
+		j, s := j, s // re-bind loop vars to scope
+
+		runID := fmt.Sprintf("%s_%d_%03d", vers.SHA, seed, j)
+		r := metamorphicTestRun{
+			seed:           seed,
+			dir:            filepath.Join(rootDir, runID),
+			vers:           vers,
+			initialState:   s,
+			testBinaryPath: vers.TestBinaryPath,
+		}
+		grp.Go(func() error {
+			defer func() { <-sem }()
+			if err := os.MkdirAll(r.dir, os.ModePerm); err != nil {
+				return err
+			}
+
+			var buf bytes.Buffer
+			var out io.Writer = &buf
+			if testing.Verbose() {
+				out = io.MultiWriter(out, os.Stderr)
+			}
+			t.Logf("  Running test with version %s with initial state %s.",
+				vers.SHA, s)
+			if err := r.run(ctx, out); err != nil {
+				fatalf(t, rootDir, "Metamorphic test failed: %s\nOutput:%s\n", err, buf.String())
+			}
+
+			// dir is a directory containing the ops file and subdirectories for
+			// each run with a particular set of OPTIONS. For example:
+			//
+			// dir/
+			//   ops
+			//   random-000/
+			//   random-001/
+			//   ...
+			//   standard-000/
+			//   standard-001/
+			//   ...
+			dir := getRunDir(t, r.dir)
+			// subrunDirs contains the names of all dir's subdirectories.
+			subrunDirs := getDirs(t, dir)
+
+			mu.Lock()
+			defer mu.Unlock()
+			for _, subrunDir := range subrunDirs {
+				// Record the subrun as an initial state for the next version.
+				nextInitialStates = append(nextInitialStates, initialState{
+					path: filepath.Join(dir, subrunDir),
+					desc: fmt.Sprintf("sha=%s-seed=%d-opts=%s(%s)", vers.SHA, seed, subrunDir, s.String()),
+				})
+				histories = append(histories, filepath.Join(dir, subrunDir, "history"))
+			}
+			return nil
+		})
+	}
+	err = grp.Wait()
+	return histories, nextInitialStates, err
 }
 
 func fatalf(t testing.TB, dir string, msg string, args ...interface{}) {
