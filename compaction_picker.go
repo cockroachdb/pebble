@@ -670,11 +670,11 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 
 	const levelMultiplier = 10
 	dbSize += p.levelSizes[0]
-	bottomLevelSize := dbSize - dbSize/levelMultiplier
+	bottomLevelSize := dbSize - dbSize/int64(p.opts.Experimental.LevelMultiplier)
 
 	curLevelSize := bottomLevelSize
 	for level := numLevels - 2; level >= firstNonEmptyLevel; level-- {
-		curLevelSize = int64(float64(curLevelSize) / levelMultiplier)
+		curLevelSize = int64(float64(curLevelSize) / float64(p.opts.Experimental.LevelMultiplier))
 	}
 
 	// Compute base level (where L0 data is compacted to).
@@ -682,7 +682,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	p.baseLevel = firstNonEmptyLevel
 	for p.baseLevel > 1 && curLevelSize > baseBytesMax {
 		p.baseLevel--
-		curLevelSize = int64(float64(curLevelSize) / levelMultiplier)
+		curLevelSize = int64(float64(curLevelSize) / float64(p.opts.Experimental.LevelMultiplier))
 	}
 
 	smoothedLevelMultiplier := 1.0

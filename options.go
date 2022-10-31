@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	cacheDefaultSize = 8 << 20 // 8 MB
+	cacheDefaultSize       = 8 << 20 // 8 MB
+	defaultLevelMultiplier = 10
 )
 
 // Compression exports the base.Compression type.
@@ -364,6 +365,10 @@ type Options struct {
 		//
 		// NOTE: callers should take care to not mutate the key being validated.
 		KeyValidationFunc func(userKey []byte) error
+
+		// LevelMultiplier configures the size multiplier used to determine the
+		// desired size of each level of the LSM. Defaults to 10.
+		LevelMultiplier int
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -692,6 +697,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.FlushSplitBytes <= 0 {
 		o.FlushSplitBytes = 2 * o.Levels[0].TargetFileSize
 	}
+	if o.Experimental.LevelMultiplier <= 0 {
+		o.Experimental.LevelMultiplier = defaultLevelMultiplier
+	}
 	if o.Experimental.ReadCompactionRate == 0 {
 		o.Experimental.ReadCompactionRate = 16000
 	}
@@ -778,6 +786,9 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
 	fmt.Fprintf(&buf, "  lbase_max_bytes=%d\n", o.LBaseMaxBytes)
 	fmt.Fprintf(&buf, "  max_concurrent_compactions=%d\n", o.MaxConcurrentCompactions)
+	if o.Experimental.LevelMultiplier != defaultLevelMultiplier {
+		fmt.Fprintf(&buf, "  level_multiplier=%d\n", o.Experimental.LevelMultiplier)
+	}
 	fmt.Fprintf(&buf, "  max_manifest_file_size=%d\n", o.MaxManifestFileSize)
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
@@ -970,6 +981,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				// Do nothing; option existed in older versions of pebble.
 			case "lbase_max_bytes":
 				o.LBaseMaxBytes, err = strconv.ParseInt(value, 10, 64)
+			case "level_multiplier":
+				o.Experimental.LevelMultiplier, err = strconv.Atoi(value)
 			case "max_concurrent_compactions":
 				o.MaxConcurrentCompactions, err = strconv.Atoi(value)
 			case "max_manifest_file_size":
