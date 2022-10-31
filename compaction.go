@@ -1291,7 +1291,7 @@ func (c *compaction) newInputIter(
 				}
 				return iter, err
 			}
-			li.Init(keyspan.SpanIterOptions{}, c.cmp, newRangeKeyIterWrapper, level.files.Iter(), l, c.logger, manifest.KeyTypeRange)
+			li.Init(keyspan.SpanIterOptions{}, c.cmp, newRangeKeyIterWrapper, level.files.Iter(), l, manifest.KeyTypeRange)
 			rangeKeyIters = append(rangeKeyIters, li)
 		}
 		return nil

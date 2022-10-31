@@ -503,15 +503,29 @@ func TestIngestTargetLevel(t *testing.T) {
 	}()
 
 	parseMeta := func(s string) *fileMetadata {
+		var rkey bool
+		if len(s) >= 4 && s[0:4] == "rkey" {
+			rkey = true
+			s = s[5:]
+		}
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m := (&fileMetadata{}).ExtendPointKeyBounds(
-			d.cmp,
-			InternalKey{UserKey: []byte(parts[0])},
-			InternalKey{UserKey: []byte(parts[1])},
-		)
+		var m *fileMetadata
+		if rkey {
+			m = (&fileMetadata{}).ExtendRangeKeyBounds(
+				d.cmp,
+				InternalKey{UserKey: []byte(parts[0])},
+				InternalKey{UserKey: []byte(parts[1])},
+			)
+		} else {
+			m = (&fileMetadata{}).ExtendPointKeyBounds(
+				d.cmp,
+				InternalKey{UserKey: []byte(parts[0])},
+				InternalKey{UserKey: []byte(parts[1])},
+			)
+		}
 		return m
 	}
 
@@ -525,7 +539,10 @@ func TestIngestTargetLevel(t *testing.T) {
 			}
 
 			var err error
-			if d, err = runDBDefineCmd(td, nil); err != nil {
+			opts := Options{
+				FormatMajorVersion: FormatNewest,
+			}
+			if d, err = runDBDefineCmd(td, &opts); err != nil {
 				return err.Error()
 			}
 
@@ -554,8 +571,10 @@ func TestIngestTargetLevel(t *testing.T) {
 			var buf bytes.Buffer
 			for _, target := range strings.Split(td.Input, "\n") {
 				meta := parseMeta(target)
-				level, err := ingestTargetLevel(d.newIters, IterOptions{logger: d.opts.Logger},
-					d.cmp, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, meta)
+				level, err := ingestTargetLevel(
+					d.newIters, d.tableNewRangeKeyIter, IterOptions{logger: d.opts.Logger},
+					d.cmp, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, meta,
+				)
 				if err != nil {
 					return err.Error()
 				}
@@ -1080,6 +1099,117 @@ func TestIngestFlushQueuedLargeBatch(t *testing.T) {
 
 	ingest("a")
 
+	require.NoError(t, d.Close())
+}
+
+var testComparer = &base.Comparer{
+	Compare:   base.DefaultComparer.Compare,
+	Equal:     base.DefaultComparer.Equal,
+	Separator: base.DefaultComparer.Separator,
+	Successor: base.DefaultComparer.Successor,
+	Split: func(key []byte) int {
+		return len(key)
+	},
+	Name: "simple-test-comparer",
+}
+
+func TestRangeKeyIngestOverlap(t *testing.T) {
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{
+		FS:                 mem,
+		FormatMajorVersion: FormatNewest,
+		Comparer:           testComparer,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, d.RangeKeySet([]byte("d"), []byte("g"), nil, []byte("value1"), nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact([]byte("a"), []byte("z"), false))
+
+	// We have a file with bounds d-g in L6 at this point. This file contains
+	// the range key d-g with value of "value1".
+
+	{
+		f, err := mem.Create("ext")
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{
+			TableFormat: sstable.TableFormatMax,
+			Comparer:    testComparer,
+		})
+		require.NoError(t, w.RangeKeySet([]byte("b"), []byte("e"), nil, []byte("value2")))
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{"ext"}))
+	}
+
+	// We have d-g in L6, and a file with bounds b-e in L0 at this point. The
+	// file with bounds b-e is in L0 because of file boundary overlap with the
+	// d-g file in L6. At this point the range b-e has a value of "value2" and
+	// the range e-g has a value of value 1.
+
+	{
+		f, err := mem.Create("ext")
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{
+			TableFormat: sstable.TableFormatMax,
+			Comparer:    testComparer,
+		})
+		require.NoError(t, w.RangeKeyDelete([]byte("a"), []byte("c")))
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{"ext"}))
+	}
+
+	// The a-c file must be placed in L0. Prior to the bug fix in #2082, this
+	// file would get placed in L6 despite the data overlap with L0.
+	// At this point, the a-c range should have no value associated with it,
+	// the c-e range should have the value "value2" and the e-g range should
+	// have the value "value1".
+
+	{
+		f, err := mem.Create("ext")
+		require.NoError(t, err)
+		w := sstable.NewWriter(f, sstable.WriterOptions{
+			TableFormat: sstable.TableFormatMax,
+			Comparer:    testComparer,
+		})
+		require.NoError(t, w.Set([]byte("a"), []byte("a")))
+		require.NoError(t, w.Close())
+		require.NoError(t, d.Ingest([]string{"ext"}))
+	}
+
+	// The a-a file is placed in L0 at this point. This is because the a-a
+	// file has file boundary overlap with the a-c file in L6.
+
+	// Schedule a compaction. This moves the a-a file in L6, while leaving the
+	// b-e file in L0. If the file with bounds a-c were incorrectly placed in L6,
+	// it would get elided at this point.
+	d.Compact([]byte("a"), []byte("aa"), false)
+
+	iter := d.NewIter(&IterOptions{
+		KeyTypes: IterKeyTypePointsAndRanges,
+	})
+
+	// The iterator shouldn't have any range key value for the b-c range because
+	// the a-c range key must delete it. Without the bug fix in #2082, we would
+	// see a value for the deleted range a-c, because the a-c range key would've
+	// been elided.
+	for valid := iter.First(); valid; valid = iter.Next() {
+		if _, hasRange := iter.HasPointAndRange(); hasRange {
+			f, l := iter.RangeBounds()
+			if string(f) == "b" {
+				t.Fatal("There should be no range key starting with the key b")
+			}
+
+			if string(f) == "c" && string(l) == "e" {
+				require.Equal(t, string(iter.RangeKeys()[0].Value), "value2")
+			}
+
+			if string(f) == "e" && string(l) == "g" {
+				require.Equal(t, string(iter.RangeKeys()[0].Value), "value1")
+			}
+			fmt.Println(string(f), string(l), string(iter.RangeKeys()[0].Value))
+		}
+	}
+	require.NoError(t, iter.Close())
 	require.NoError(t, d.Close())
 }
 
