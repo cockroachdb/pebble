@@ -3,6 +3,7 @@ package replay
 import (
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -79,6 +80,7 @@ type WorkloadCollector struct {
 
 		fileState         map[string]workloadCaptureState
 		sstablesToProcess []string
+		enabled           atomic.Bool
 
 		manifests     []manifestDetails
 		manifestIndex int
@@ -175,6 +177,9 @@ func (w *WorkloadCollector) Clean(_ vfs.FS, fileType base.FileType, path string)
 // by EventListener.TableIngested calls. It runs through the tables and processes
 // them by calling setFileAsReadyForProcessing.
 func (w *WorkloadCollector) OnTableIngest(info pebble.TableIngestInfo) {
+	if !w.mu.enabled.Load() {
+		return
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, table := range info.Tables {
@@ -187,6 +192,9 @@ func (w *WorkloadCollector) OnTableIngest(info pebble.TableIngestInfo) {
 // by EventListener.FlushEnd calls. It runs through the tables and processes
 // them by calling setFileAsReadyForProcessing.
 func (w *WorkloadCollector) OnFlushEnd(info pebble.FlushInfo) {
+	if !w.mu.enabled.Load() {
+		return
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, table := range info.Output {
@@ -200,6 +208,9 @@ func (w *WorkloadCollector) OnFlushEnd(info pebble.FlushInfo) {
 // newly created manifests file and appends it to a list of manifests files to
 // process.
 func (w *WorkloadCollector) OnManifestCreated(info pebble.ManifestCreateInfo) {
+	if !w.mu.enabled.Load() {
+		return
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.mu.fileState[info.Path] |= readyForProcessing
@@ -299,12 +310,20 @@ func (w *WorkloadCollector) filesToProcessWatcher() {
 // StartCollectorFileListener starts a go routine that listens for new files that
 // need to be collected.
 func (w *WorkloadCollector) StartCollectorFileListener() {
+	if w.mu.enabled.Load() {
+		return
+	}
+	w.mu.enabled.Store(true)
 	go w.filesToProcessWatcher()
 }
 
 // StopCollectorFileListener stops the go routine that listens for new files
 // that need to be collected
 func (w *WorkloadCollector) StopCollectorFileListener() {
+	if !w.mu.enabled.Load() {
+		return
+	}
+	w.mu.enabled.Store(false)
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.fileListener.stopFileListener = true
