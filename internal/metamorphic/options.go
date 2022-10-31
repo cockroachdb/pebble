@@ -295,6 +295,7 @@ func randomOptions(rng *rand.Rand) *testOptions {
 		opts.FormatMajorVersion += pebble.FormatMajorVersion(rng.Intn(n))
 	}
 	opts.Experimental.L0CompactionConcurrency = 1 + rng.Intn(4)    // 1-4
+	opts.Experimental.LevelMultiplier = 5 << rng.Intn(7)           // 5 - 320
 	opts.Experimental.MinDeletionRate = 1 << uint(20+rng.Intn(10)) // 1MB - 1GB
 	opts.Experimental.ValidateOnIngest = rng.Intn(2) != 0
 	opts.L0CompactionThreshold = 1 + rng.Intn(100)     // 1 - 100
