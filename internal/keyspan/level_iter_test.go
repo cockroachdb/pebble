@@ -6,7 +6,6 @@ package keyspan
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"testing"
 
@@ -307,7 +306,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 			b.Added[6] = metas
 			v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
 			require.NoError(t, err)
-			levelIter.Init(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 0, nil, manifest.KeyTypeRange)
+			levelIter.Init(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 0, manifest.KeyTypeRange)
 			levelIters = append(levelIters, &levelIter)
 		}
 
@@ -333,21 +332,6 @@ func TestLevelIterEquivalence(t *testing.T) {
 			valid = f1 != nil && f2 != nil
 		}
 	}
-}
-
-type testLogger struct {
-	t *testing.T
-}
-
-// Infof implements the Logger.Infof interface.
-func (t *testLogger) Infof(format string, args ...interface{}) {
-	_ = log.Output(2, fmt.Sprintf(format, args...))
-}
-
-// Fatalf implements the Logger.Fatalf interface.
-func (t *testLogger) Fatalf(format string, args ...interface{}) {
-	_ = log.Output(2, fmt.Sprintf(format, args...))
-	t.t.Fail()
 }
 
 func TestLevelIter(t *testing.T) {
@@ -452,7 +436,7 @@ func TestLevelIter(t *testing.T) {
 				b.Added[6] = metas
 				v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
 				require.NoError(t, err)
-				iter = newLevelIter(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 6, &testLogger{t}, keyType)
+				iter = newLevelIter(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 6, keyType)
 				extraInfo = func() string {
 					return fmt.Sprintf("file = %s.sst", lastFileNum)
 				}
