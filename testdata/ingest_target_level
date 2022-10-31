@@ -203,3 +203,46 @@ ee-ff
 ----
 6
 6
+
+# Range key-point key data overlap will always correctly identify overlap because
+# we seek using the combined point and range key bounds of the ingested file
+# to determine overlap and don't check the data within the ingested file.
+define
+L5
+  a.SET.0:a
+  b.SET.0:b
+  c.SET.0:c
+----
+5:
+  000004:[a#0,SET-c#0,SET]
+
+target
+rkey:a-c
+----
+4
+
+# Point key-range key overlap
+define
+L5
+  rangekey:a-c:{(#1,RANGEKEYSET,@t10,foo)}
+----
+5:
+  000004:[a#1,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
+
+target
+a-c
+----
+4
+
+# Range key-range key overlap.
+define
+L5
+  rangekey:a-c:{(#1,RANGEKEYSET,@t10,foo)}
+----
+5:
+  000004:[a#1,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
+
+target
+rkey:a-c
+----
+4

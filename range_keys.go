@@ -80,7 +80,7 @@ func (i *Iterator) constructRangeKeyIter() {
 		li := i.rangeKey.iterConfig.NewLevelIter()
 		spanIterOpts := keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters}
 		li.Init(spanIterOpts, i.cmp, i.newIterRangeKey, current.RangeKeyLevels[level].Iter(),
-			manifest.Level(level), i.opts.logger, manifest.KeyTypeRange)
+			manifest.Level(level), manifest.KeyTypeRange)
 		i.rangeKey.iterConfig.AddLevel(li)
 	}
 }
