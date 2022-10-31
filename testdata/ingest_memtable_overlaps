@@ -138,3 +138,38 @@ overlaps
 a.RANGEDEL.2-b.RANGEDEL.72057594037927935
 ----
 false
+
+define default
+del-range a f
+del-range b c
+----
+
+overlaps
+d.RANGEDEL.2-e.RANGEDEL.72057594037927935
+----
+true
+
+define default
+range-key-set a f 1 val1
+range-key-set b c 2 val2
+----
+
+overlaps
+d-e
+----
+true
+
+define default
+range-key-set a c 1 val1
+----
+
+overlaps
+a-c
+b-c
+a.RANGEDEL.2-b.RANGEDEL.72057594037927935
+d-e
+----
+true
+true
+true
+false
