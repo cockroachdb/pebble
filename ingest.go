@@ -320,17 +320,26 @@ func ingestLink(
 func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bool {
 	iter := mem.newIter(nil)
 	rangeDelIter := mem.newRangeDelIter(nil)
-	defer iter.Close()
-
-	if rangeDelIter != nil {
-		defer rangeDelIter.Close()
-	}
+	rkeyIter := mem.newRangeKeyIter(nil)
 
 	for _, m := range meta {
-		if overlapWithIterator(iter, &rangeDelIter, m, cmp) {
+		if overlapWithIterator(iter, &rangeDelIter, rkeyIter, m, cmp) {
 			return true
 		}
 	}
+
+	err := iter.Close()
+	if rangeDelIter != nil {
+		err = firstError(err, rangeDelIter.Close())
+	}
+	if rkeyIter != nil {
+		err = firstError(err, rkeyIter.Close())
+	}
+	if err != nil {
+		// Assume overlap if any iterator errored out.
+		return true
+	}
+
 	return false
 }
 
@@ -377,7 +386,11 @@ func ingestUpdateSeqNum(
 }
 
 func overlapWithIterator(
-	iter internalIterator, rangeDelIter *keyspan.FragmentIterator, meta *fileMetadata, cmp Compare,
+	iter internalIterator,
+	rangeDelIter *keyspan.FragmentIterator,
+	rkeyIter keyspan.FragmentIterator,
+	meta *fileMetadata,
+	cmp Compare,
 ) bool {
 	// Check overlap with point operations.
 	//
@@ -406,35 +419,51 @@ func overlapWithIterator(
 		}
 	}
 
+	computeOverlapWithSpans := func(rIter keyspan.FragmentIterator) bool {
+		// NB: The spans surfaced by the fragment iterator are non-overlapping.
+		span := rIter.SeekLT(meta.Smallest.UserKey)
+		if span == nil {
+			span = rIter.Next()
+		}
+		for ; span != nil; span = rIter.Next() {
+			if span.Empty() {
+				continue
+			}
+			key := span.SmallestKey()
+			c := sstableKeyCompare(cmp, key, meta.Largest)
+			if c > 0 {
+				// The start of the span is after the largest key in the
+				// ingested table.
+				return false
+			}
+			if cmp(span.End, meta.Smallest.UserKey) > 0 {
+				// The end of the span is greater than the smallest in the
+				// table. Note that the span end key is exclusive, thus ">0"
+				// instead of ">=0".
+				return true
+			}
+		}
+		return false
+	}
+
+	// rkeyIter is either a range key level iter, or a range key iterator
+	// over a single file.
+	if rkeyIter != nil {
+		if computeOverlapWithSpans(rkeyIter) {
+			return true
+		}
+	}
+
 	// Check overlap with range deletions.
 	if rangeDelIter == nil || *rangeDelIter == nil {
 		return false
 	}
-	rangeDelItr := *rangeDelIter
-	rangeDel := rangeDelItr.SeekLT(meta.Smallest.UserKey)
-	if rangeDel == nil {
-		rangeDel = rangeDelItr.Next()
-	}
-	for ; rangeDel != nil; rangeDel = rangeDelItr.Next() {
-		key := rangeDel.SmallestKey()
-		c := sstableKeyCompare(cmp, key, meta.Largest)
-		if c > 0 {
-			// The start of the tombstone is after the largest key in the
-			// ingested table.
-			return false
-		}
-		if cmp(rangeDel.End, meta.Smallest.UserKey) > 0 {
-			// The end of the tombstone is greater than the smallest in the
-			// table. Note that the tombstone end key is exclusive, thus ">0"
-			// instead of ">=0".
-			return true
-		}
-	}
-	return false
+	return computeOverlapWithSpans(*rangeDelIter)
 }
 
 func ingestTargetLevel(
 	newIters tableNewIters,
+	newRangeKeyIter keyspan.TableNewSpanIter,
 	iterOps IterOptions,
 	cmp Compare,
 	v *version,
@@ -503,6 +532,7 @@ func ingestTargetLevel(
 	targetLevel := 0
 
 	// Do we overlap with keys in L0?
+	// TODO(bananabrick): Use sublevels to compute overlap.
 	iter := v.Levels[0].Iter()
 	for meta0 := iter.First(); meta0 != nil; meta0 = iter.Next() {
 		c1 := sstableKeyCompare(cmp, meta.Smallest, meta0.Largest)
@@ -515,10 +545,20 @@ func ingestTargetLevel(
 		if err != nil {
 			return 0, err
 		}
-		overlap := overlapWithIterator(iter, &rangeDelIter, meta, cmp)
-		iter.Close()
+		rkeyIter, err := newRangeKeyIter(meta0, nil)
+		if err != nil {
+			return 0, err
+		}
+		overlap := overlapWithIterator(iter, &rangeDelIter, rkeyIter, meta, cmp)
+		err = firstError(err, iter.Close())
 		if rangeDelIter != nil {
-			rangeDelIter.Close()
+			err = firstError(err, rangeDelIter.Close())
+		}
+		if rkeyIter != nil {
+			err = firstError(err, rkeyIter.Close())
+		}
+		if err != nil {
+			return 0, err
 		}
 		if overlap {
 			return targetLevel, nil
@@ -533,8 +573,19 @@ func ingestTargetLevel(
 		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
 		// sets it up for the target file.
 		levelIter.initRangeDel(&rangeDelIter)
-		overlap := overlapWithIterator(levelIter, &rangeDelIter, meta, cmp)
-		levelIter.Close() // Closes range del iter as well.
+
+		rkeyLevelIter := &keyspan.LevelIter{}
+		rkeyLevelIter.Init(
+			keyspan.SpanIterOptions{}, cmp, newRangeKeyIter,
+			v.Levels[level].Iter(), manifest.Level(level), manifest.KeyTypeRange,
+		)
+
+		overlap := overlapWithIterator(levelIter, &rangeDelIter, rkeyLevelIter, meta, cmp)
+		err := levelIter.Close() // Closes range del iter as well.
+		err = firstError(err, rkeyLevelIter.Close())
+		if err != nil {
+			return 0, err
+		}
 		if overlap {
 			return targetLevel, nil
 		}
@@ -793,6 +844,7 @@ func (d *DB) ingest(
 
 type ingestTargetLevelFunc func(
 	newIters tableNewIters,
+	newRangeKeyIter keyspan.TableNewSpanIter,
 	iterOps IterOptions,
 	cmp Compare,
 	v *version,
@@ -828,7 +880,7 @@ func (d *DB) ingestApply(
 		m := meta[i]
 		f := &ve.NewFiles[i]
 		var err error
-		f.Level, err = findTargetLevel(d.newIters, iterOps, d.cmp, current, baseLevel, d.mu.compact.inProgress, m)
+		f.Level, err = findTargetLevel(d.newIters, d.tableNewRangeKeyIter, iterOps, d.cmp, current, baseLevel, d.mu.compact.inProgress, m)
 		if err != nil {
 			d.mu.versions.logUnlock()
 			return nil, err
