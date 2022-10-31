@@ -226,6 +226,7 @@ func TestOptionsParse(t *testing.T) {
 			opts.Experimental.CompactionDebtConcurrency = 100
 			opts.FlushDelayDeleteRange = 10 * time.Second
 			opts.FlushDelayRangeKey = 11 * time.Second
+			opts.Experimental.LevelMultiplier = 5
 			opts.Experimental.MinDeletionRate = 200
 			opts.Experimental.ReadCompactionRate = 300
 			opts.Experimental.ReadSamplingMultiplier = 400
