@@ -11,18 +11,11 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
-// Logger defines an interface for writing log messages.
-type Logger interface {
-	Infof(format string, args ...interface{})
-	Fatalf(format string, args ...interface{})
-}
-
 // LevelIter provides a merged view of spans from sstables in a level.
 // It takes advantage of level invariants to only have one sstable span block
 // open at one time, opened using the newIter function passed in.
 type LevelIter struct {
-	logger Logger
-	cmp    base.Compare
+	cmp base.Compare
 	// Denotes if this level iter should read point key spans (i.e. rangedels,
 	// or range keys. If key type is Point, no straddle spans are emitted between
 	// files, and point key bounds are used to find files instead of range key
@@ -79,11 +72,10 @@ func newLevelIter(
 	newIter TableNewSpanIter,
 	files manifest.LevelIterator,
 	level manifest.Level,
-	logger Logger,
 	keyType manifest.KeyType,
 ) *LevelIter {
 	l := &LevelIter{}
-	l.Init(opts, cmp, newIter, files, level, logger, keyType)
+	l.Init(opts, cmp, newIter, files, level, keyType)
 	return l
 }
 
@@ -94,12 +86,10 @@ func (l *LevelIter) Init(
 	newIter TableNewSpanIter,
 	files manifest.LevelIterator,
 	level manifest.Level,
-	logger Logger,
 	keyType manifest.KeyType,
 ) {
 	l.err = nil
 	l.level = level
-	l.logger = logger
 	l.tableOpts.RangeKeyFilters = opts.RangeKeyFilters
 	l.cmp = cmp
 	l.iterFile = nil

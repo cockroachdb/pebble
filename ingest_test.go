@@ -533,15 +533,29 @@ func TestIngestTargetLevel(t *testing.T) {
 	}()
 
 	parseMeta := func(s string) *fileMetadata {
+		var rkey bool
+		if len(s) >= 4 && s[0:4] == "rkey" {
+			rkey = true
+			s = s[5:]
+		}
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			t.Fatalf("malformed table spec: %s", s)
 		}
-		m := (&fileMetadata{}).ExtendPointKeyBounds(
-			d.cmp,
-			InternalKey{UserKey: []byte(parts[0])},
-			InternalKey{UserKey: []byte(parts[1])},
-		)
+		var m *fileMetadata
+		if rkey {
+			m = (&fileMetadata{}).ExtendRangeKeyBounds(
+				d.cmp,
+				InternalKey{UserKey: []byte(parts[0])},
+				InternalKey{UserKey: []byte(parts[1])},
+			)
+		} else {
+			m = (&fileMetadata{}).ExtendPointKeyBounds(
+				d.cmp,
+				InternalKey{UserKey: []byte(parts[0])},
+				InternalKey{UserKey: []byte(parts[1])},
+			)
+		}
 		return m
 	}
 
@@ -555,7 +569,10 @@ func TestIngestTargetLevel(t *testing.T) {
 			}
 
 			var err error
-			if d, err = runDBDefineCmd(td, nil); err != nil {
+			opts := Options{
+				FormatMajorVersion: FormatNewest,
+			}
+			if d, err = runDBDefineCmd(td, &opts); err != nil {
 				return err.Error()
 			}
 
@@ -584,8 +601,10 @@ func TestIngestTargetLevel(t *testing.T) {
 			var buf bytes.Buffer
 			for _, target := range strings.Split(td.Input, "\n") {
 				meta := parseMeta(target)
-				level, err := ingestTargetLevel(d.newIters, IterOptions{logger: d.opts.Logger},
-					d.cmp, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, meta)
+				level, err := ingestTargetLevel(
+					d.newIters, d.tableNewRangeKeyIter, IterOptions{logger: d.opts.Logger},
+					d.cmp, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, meta,
+				)
 				if err != nil {
 					return err.Error()
 				}
@@ -622,6 +641,7 @@ func TestIngest(t *testing.T) {
 			EventListener: EventListener{FlushEnd: func(info FlushInfo) {
 				flushed = true
 			}},
+			FormatMajorVersion: FormatNewest,
 		}
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
@@ -674,7 +694,9 @@ func TestIngest(t *testing.T) {
 			return runGetCmd(td, d)
 
 		case "iter":
-			iter := d.NewIter(nil)
+			iter := d.NewIter(&IterOptions{
+				KeyTypes: IterKeyTypePointsAndRanges,
+			})
 			return runIterCmd(td, iter, true)
 
 		case "lsm":
@@ -692,6 +714,17 @@ func TestIngest(t *testing.T) {
 		case "wait-pending-table-stats":
 			return runTableStatsCmd(td, d)
 
+		case "compact":
+			if len(td.CmdArgs) != 2 {
+				panic("insufficient args for compact command")
+			}
+			l := td.CmdArgs[0].Key
+			r := td.CmdArgs[1].Key
+			err := d.Compact([]byte(l), []byte(r), false)
+			if err != nil {
+				return err.Error()
+			}
+			return ""
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
