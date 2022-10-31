@@ -2,6 +2,7 @@ package replay
 
 import (
 	"math/rand"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,6 +31,7 @@ func TestWorkloadCaptureCleanerNotReadyToClean(t *testing.T) {
 
 	captureFileHandler := FilesystemWorkloadStorage(imfs, "captured")
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
+	atomic.StoreUint32(&collector.mu.enabled, 1)
 	collector.OnFlushEnd(pebble.FlushInfo{Output: []pebble.TableInfo{{
 		FileNum: 1,
 		Size:    10,
@@ -50,6 +52,7 @@ func TestWorkloadCaptureCleanerMarkForClean(t *testing.T) {
 	captureFileHandler := FilesystemWorkloadStorage(imfs, "captured")
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
 
+	atomic.StoreUint32(&collector.mu.enabled, 1)
 	ch := make(chan struct{})
 	go func() {
 		collector.filesToProcessWatcher()
@@ -89,6 +92,7 @@ func TestWorkloadCaptureWatcherDeleteWhenObsolete(t *testing.T) {
 	err = collector.Clean(imfs, base.FileTypeTable, filePath)
 	require.NoError(t, err)
 
+	atomic.StoreUint32(&collector.mu.enabled, 1)
 	ch := make(chan struct{})
 	go func() {
 		collector.filesToProcessWatcher()
@@ -135,6 +139,7 @@ func TestManifestCollection(t *testing.T) {
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
 
 	ch := make(chan struct{})
+	atomic.StoreUint32(&collector.mu.enabled, 1)
 	go func() {
 		collector.filesToProcessWatcher()
 		ch <- struct{}{}
@@ -193,6 +198,7 @@ func TestManifestCopyingWithChunks(t *testing.T) {
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
 
 	ch := make(chan struct{})
+	atomic.StoreUint32(&collector.mu.enabled, 1)
 	go func() {
 		collector.filesToProcessWatcher()
 		ch <- struct{}{}
@@ -266,6 +272,7 @@ func TestManifestCopyingWithRotation(t *testing.T) {
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
 
 	ch := make(chan struct{})
+	atomic.StoreUint32(&collector.mu.enabled, 1)
 	go func() {
 		collector.filesToProcessWatcher()
 		ch <- struct{}{}
@@ -360,6 +367,7 @@ func TestManifestNotCleanedBeforeOpen(t *testing.T) {
 
 	captureFileHandler := FilesystemWorkloadStorage(imfs, "captured")
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
+	atomic.StoreUint32(&collector.mu.enabled, 1)
 	collector.OnManifestCreated(pebble.ManifestCreateInfo{
 		Path:    filePath,
 		FileNum: 1,
@@ -400,6 +408,7 @@ func TestAttachCollectorToPebble(t *testing.T) {
 
 	tel := &testEventListener{}
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, tel)
+	atomic.StoreUint32(&collector.mu.enabled, 1)
 	ch := make(chan struct{})
 
 	opts := &pebble.Options{FS: imfs}
@@ -437,4 +446,49 @@ func TestAttachCollectorToPebble(t *testing.T) {
 
 	require.Equal(t, 1, tel.copySSTableCount)
 	require.Equal(t, 1, tel.createManifestCount)
+}
+
+func TestEnableDisable(t *testing.T) {
+	imfs := vfs.NewMem()
+	captureFileHandler := FilesystemWorkloadStorage(imfs, "captured")
+	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
+	type testCase struct{ onFlushEndLength, onTableIngestLength, onManifestLength int }
+	testCases := []testCase{
+		{
+			onFlushEndLength:    0,
+			onTableIngestLength: 0,
+			onManifestLength:    0,
+		},
+		{
+			onFlushEndLength:    1,
+			onTableIngestLength: 2,
+			onManifestLength:    1,
+		},
+	}
+	for _, currentTestCase := range testCases {
+		collector.OnFlushEnd(pebble.FlushInfo{Output: []pebble.TableInfo{{
+			FileNum: 1,
+			Size:    10,
+		}}})
+		require.Len(t, collector.mu.sstablesToProcess, currentTestCase.onFlushEndLength)
+		collector.OnTableIngest(pebble.TableIngestInfo{
+			Tables: []struct {
+				pebble.TableInfo
+				Level int
+			}{
+				{TableInfo: pebble.TableInfo{
+					FileNum: 1,
+					Size:    10,
+				}, Level: 0},
+			},
+		})
+		require.Len(t, collector.mu.sstablesToProcess, currentTestCase.onTableIngestLength)
+		collector.OnManifestCreated(pebble.ManifestCreateInfo{
+			FileNum: 1,
+		})
+		require.Len(t, collector.mu.manifests, currentTestCase.onManifestLength)
+
+		// Enable the WorkloadCollector for the second iteration
+		atomic.StoreUint32(&collector.mu.enabled, 1)
+	}
 }
