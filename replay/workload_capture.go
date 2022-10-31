@@ -3,6 +3,7 @@ package replay
 import (
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -89,6 +90,7 @@ type WorkloadCollector struct {
 
 	fileState      map[string]workloadCaptureState
 	filesToProcess []string
+	enabled        atomic.Bool
 
 	manifest      []workloadCollectorManifestDetails
 	manifestIndex int
@@ -155,6 +157,9 @@ func (w *WorkloadCollector) Clean(_ vfs.FS, _ base.FileType, path string) error 
 // by EventListener.TableIngested calls. It runs through the tables and processes
 // them by calling setFileAsReadyForProcessing.
 func (w *WorkloadCollector) OnTableIngest(info pebble.TableIngestInfo) {
+	if !w.enabled.Load() {
+		return
+	}
 	w.Lock()
 	defer w.Unlock()
 	for _, table := range info.Tables {
@@ -167,6 +172,9 @@ func (w *WorkloadCollector) OnTableIngest(info pebble.TableIngestInfo) {
 // by EventListener.FlushEnd calls. It runs through the tables and processes
 // them by calling setFileAsReadyForProcessing.
 func (w *WorkloadCollector) OnFlushEnd(info pebble.FlushInfo) {
+	if !w.enabled.Load() {
+		return
+	}
 	w.Lock()
 	defer w.Unlock()
 	for _, table := range info.Output {
@@ -179,6 +187,9 @@ func (w *WorkloadCollector) OnFlushEnd(info pebble.FlushInfo) {
 // triggered by EventListener.ManifestCreated calls. It opens the newly created
 // manifest file and appends it to a list of manifest files to process.
 func (w *WorkloadCollector) OnManifestCreated(info pebble.ManifestCreateInfo) {
+	if !w.enabled.Load() {
+		return
+	}
 	w.Lock()
 	defer w.Unlock()
 	manifest := workloadCollectorManifestDetails{
@@ -287,12 +298,14 @@ func (w *WorkloadCollector) filesToProcessWatcher() {
 // StartCollectorFileListener starts a go routine that listens for new files that
 // need to be collected.
 func (w *WorkloadCollector) StartCollectorFileListener() {
+	w.enabled.Store(true)
 	go w.filesToProcessWatcher()
 }
 
 // StopCollectorFileListener stops the go routine that listens for new files
 // that need to be collected
 func (w *WorkloadCollector) StopCollectorFileListener() {
+	w.enabled.Store(false)
 	w.Lock()
 	defer w.Unlock()
 	w.fileListener.stopFileListener = true

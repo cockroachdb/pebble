@@ -36,6 +36,7 @@ func TestWorkloadCaptureCleanerMarkForClean(t *testing.T) {
 	captureFileHandler := NewDefaultWorkloadCollectorFileHandler("captured")
 	cleaner := NewWorkloadCaptureCleaner(imfs, "", captureFileHandler)
 
+	cleaner.enabled.Store(true)
 	ch := make(chan struct{})
 	go func() {
 		cleaner.filesToProcessWatcher()
@@ -74,6 +75,7 @@ func TestWorkloadCaptureWatcherDeleteWhenObsolete(t *testing.T) {
 	err = cleaner.Clean(imfs, base.FileTypeTable, filePath)
 	require.NoError(t, err)
 
+	cleaner.enabled.Store(true)
 	ch := make(chan struct{})
 	go func() {
 		cleaner.filesToProcessWatcher()
@@ -120,6 +122,7 @@ func TestManifestCollection(t *testing.T) {
 	cleaner := NewWorkloadCaptureCleaner(imfs, "", captureFileHandler)
 
 	ch := make(chan struct{})
+	cleaner.enabled.Store(true)
 	go func() {
 		cleaner.filesToProcessWatcher()
 		ch <- struct{}{}
@@ -177,6 +180,7 @@ func TestManifestCopyingWithChunks(t *testing.T) {
 	cleaner := NewWorkloadCaptureCleaner(imfs, "", captureFileHandler)
 
 	ch := make(chan struct{})
+	cleaner.enabled.Store(true)
 	go func() {
 		cleaner.filesToProcessWatcher()
 		ch <- struct{}{}
@@ -249,6 +253,7 @@ func TestManifestCopyingWithRotation(t *testing.T) {
 	cleaner := NewWorkloadCaptureCleaner(imfs, "", captureFileHandler)
 
 	ch := make(chan struct{})
+	cleaner.enabled.Store(true)
 	go func() {
 		cleaner.filesToProcessWatcher()
 		ch <- struct{}{}
@@ -330,5 +335,50 @@ func TestManifestCopyingWithRotation(t *testing.T) {
 			manifest.destFilepath,
 			manifest.sourceFilepath,
 		)
+	}
+}
+
+func TestEnableDisable(t *testing.T) {
+	imfs := vfs.NewMem()
+	captureFileHandler := NewDefaultWorkloadCollectorFileHandler("captured")
+	cleaner := NewWorkloadCaptureCleaner(imfs, "", captureFileHandler)
+	type testCase struct{ onFlushEndLength, onTableIngestLength, onManifestLength int }
+	testCases := []testCase{
+		{
+			onFlushEndLength:    0,
+			onTableIngestLength: 0,
+			onManifestLength:    0,
+		},
+		{
+			onFlushEndLength:    1,
+			onTableIngestLength: 2,
+			onManifestLength:    1,
+		},
+	}
+	for _, currentTestCase := range testCases {
+		cleaner.OnFlushEnd(pebble.FlushInfo{Output: []pebble.TableInfo{{
+			FileNum: 1,
+			Size:    10,
+		}}})
+		require.Len(t, cleaner.filesToProcess, currentTestCase.onFlushEndLength)
+		cleaner.OnTableIngest(pebble.TableIngestInfo{
+			Tables: []struct {
+				pebble.TableInfo
+				Level int
+			}{
+				{TableInfo: pebble.TableInfo{
+					FileNum: 1,
+					Size:    10,
+				}, Level: 0},
+			},
+		})
+		require.Len(t, cleaner.filesToProcess, currentTestCase.onTableIngestLength)
+		cleaner.OnManifestCreated(pebble.ManifestCreateInfo{
+			FileNum: 1,
+		})
+		require.Len(t, cleaner.manifest, currentTestCase.onManifestLength)
+
+		// Enable the WorkloadCollector for the second iteration
+		cleaner.enabled.Store(true)
 	}
 }
