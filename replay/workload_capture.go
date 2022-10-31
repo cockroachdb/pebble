@@ -3,6 +3,7 @@ package replay
 import (
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -24,6 +25,7 @@ func (wcs workloadCaptureState) is(flag workloadCaptureState) bool { return wcs&
 type WorkloadStorage interface {
 	CopySSTable(fs vfs.FS, path string) error
 	CreateManifestFile(name string) (vfs.File, error)
+	Checkpoint(db *pebble.DB) error
 }
 
 // filesystemWorkloadStorage is a default workload capture tool that
@@ -32,6 +34,10 @@ type filesystemWorkloadStorage struct {
 	destDir string
 	buffer  []byte
 	fs      vfs.FS
+}
+
+func (wcc filesystemWorkloadStorage) Checkpoint(db *pebble.DB) error {
+	return db.Checkpoint(wcc.destDir)
 }
 
 func (wcc filesystemWorkloadStorage) CreateManifestFile(name string) (vfs.File, error) {
@@ -79,6 +85,7 @@ type WorkloadCollector struct {
 
 		fileState         map[string]workloadCaptureState
 		sstablesToProcess []string
+		enabled           uint32
 
 		manifests     []manifestDetails
 		manifestIndex int
@@ -169,6 +176,9 @@ func (w *WorkloadCollector) Clean(_ vfs.FS, fileType base.FileType, path string)
 // by EventListener.TableIngested calls. It runs through the tables and processes
 // them by calling setFileAsReadyForProcessing.
 func (w *WorkloadCollector) OnTableIngest(info pebble.TableIngestInfo) {
+	if atomic.LoadUint32(&w.mu.enabled) == 0 {
+		return
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, table := range info.Tables {
@@ -181,6 +191,9 @@ func (w *WorkloadCollector) OnTableIngest(info pebble.TableIngestInfo) {
 // by EventListener.FlushEnd calls. It runs through the tables and processes
 // them by calling setFileAsReadyForProcessing.
 func (w *WorkloadCollector) OnFlushEnd(info pebble.FlushInfo) {
+	if atomic.LoadUint32(&w.mu.enabled) == 0 {
+		return
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, table := range info.Output {
@@ -194,6 +207,9 @@ func (w *WorkloadCollector) OnFlushEnd(info pebble.FlushInfo) {
 // newly created manifests file and appends it to a list of manifests files to
 // process.
 func (w *WorkloadCollector) OnManifestCreated(info pebble.ManifestCreateInfo) {
+	if atomic.LoadUint32(&w.mu.enabled) == 0 {
+		return
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.mu.fileState[info.Path] |= readyForProcessing
@@ -296,12 +312,22 @@ func (w *WorkloadCollector) filesToProcessWatcher() {
 // StartCollectorFileListener starts a go routine that listens for new files that
 // need to be collected.
 func (w *WorkloadCollector) StartCollectorFileListener() {
+	// If the collector not is running hence w.mu.enabled == 0 swap it to 1 and
+	// continue else it is not running return
+	if !atomic.CompareAndSwapUint32(&w.mu.enabled, 0, 1) {
+		return
+	}
 	go w.filesToProcessWatcher()
 }
 
 // StopCollectorFileListener stops the go routine that listens for new files
 // that need to be collected
 func (w *WorkloadCollector) StopCollectorFileListener() {
+	// If the collector is running hence w.mu.enabled == 1 swap it to 0 and
+	// continue else it is not running return
+	if !atomic.CompareAndSwapUint32(&w.mu.enabled, 1, 0) {
+		return
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.fileListener.stopFileListener = true
