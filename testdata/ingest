@@ -695,3 +695,210 @@ lsm
   000005:[a#2,RANGEDEL-b#72057594037927935,RANGEDEL]
 6:
   000004:[a#1,RANGEDEL-b#72057594037927935,RANGEDEL]
+
+# Check for range key ingestion bug fix in
+# https://github.com/cockroachdb/pebble/pull/2082. Without the fix, we expect
+# the range key associated with the table ext3 to get elided. This test checks
+# that the elision does not happen.
+reset
+----
+
+build ext1
+range-key-set d g 1 val1
+----
+
+ingest ext1
+----
+
+lsm
+----
+6:
+  000004:[d#1,RANGEKEYSET-g#72057594037927935,RANGEKEYSET]
+
+build ext2
+range-key-set b e 1 val2
+----
+
+ingest ext2
+----
+
+lsm
+----
+0.0:
+  000005:[b#2,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+6:
+  000004:[d#1,RANGEKEYSET-g#72057594037927935,RANGEKEYSET]
+
+build ext3
+range-key-del a c
+----
+
+ingest ext3
+----
+
+# Without the fix in #2082 we would expect ext3 file to be ingested into L6.
+lsm
+----
+0.1:
+  000006:[a#3,RANGEKEYDEL-c#72057594037927935,RANGEKEYDEL]
+0.0:
+  000005:[b#2,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+6:
+  000004:[d#1,RANGEKEYSET-g#72057594037927935,RANGEKEYSET]
+
+build ext4
+set a a
+----
+
+ingest ext4
+----
+
+lsm
+----
+0.2:
+  000007:[a#4,SET-a#4,SET]
+0.1:
+  000006:[a#3,RANGEKEYDEL-c#72057594037927935,RANGEKEYDEL]
+0.0:
+  000005:[b#2,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+6:
+  000004:[d#1,RANGEKEYSET-g#72057594037927935,RANGEKEYSET]
+
+compact a aa
+----
+
+# Without the fix in #2082, we would expect the range key delete a-c to
+# get elided as it would be in L6 beneath the b-e range key in L0.
+lsm
+----
+6:
+  000008:[a#0,SET-g#72057594037927935,RANGEKEYSET]
+
+# Shouldn't show results for the b-c range as it must be deleted.
+iter
+first
+next
+next
+next
+----
+a: (a, .)
+c: (., [c-e) 1=val2 UPDATED)
+e: (., [e-g) 1=val1 UPDATED)
+.
+
+# Keys can have exclusive sentinels. Check that files boundaries which contain
+# such keys are ingested ingested into the lowest level possible.
+reset
+----
+
+build ext1
+set c c
+set e e
+----
+
+ingest ext1
+----
+
+lsm
+----
+6:
+  000004:[c#1,SET-e#1,SET]
+
+
+build ext2
+range-key-set a c 1 val1
+----
+
+ingest ext2
+----
+
+lsm
+----
+6:
+  000005:[a#2,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
+  000004:[c#1,SET-e#1,SET]
+
+# The following test cases will test that files where the end bound is an
+# exclusive sentinel due to range keys are ingested into the correct levels.
+build ext3
+set f f
+set h h
+----
+
+ingest ext3
+----
+
+lsm
+----
+6:
+  000005:[a#2,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
+  000004:[c#1,SET-e#1,SET]
+  000006:[f#3,SET-h#3,SET]
+
+
+build ext4
+range-key-unset eee f 1
+----
+
+ingest ext4
+----
+
+lsm
+----
+6:
+  000005:[a#2,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
+  000004:[c#1,SET-e#1,SET]
+  000007:[eee#4,RANGEKEYUNSET-f#72057594037927935,RANGEKEYUNSET]
+  000006:[f#3,SET-h#3,SET]
+
+build ext5
+range-key-set ee eee 1 val3
+----
+
+ingest ext5
+----
+
+lsm
+----
+6:
+  000005:[a#2,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
+  000004:[c#1,SET-e#1,SET]
+  000008:[ee#5,RANGEKEYSET-eee#72057594037927935,RANGEKEYSET]
+  000007:[eee#4,RANGEKEYUNSET-f#72057594037927935,RANGEKEYUNSET]
+  000006:[f#3,SET-h#3,SET]
+
+build ext6
+set x x
+set y y
+----
+
+ingest ext6
+----
+
+lsm
+----
+6:
+  000005:[a#2,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
+  000004:[c#1,SET-e#1,SET]
+  000008:[ee#5,RANGEKEYSET-eee#72057594037927935,RANGEKEYSET]
+  000007:[eee#4,RANGEKEYUNSET-f#72057594037927935,RANGEKEYUNSET]
+  000006:[f#3,SET-h#3,SET]
+  000009:[x#6,SET-y#6,SET]
+
+build ext7
+range-key-del s x
+----
+
+ingest ext7
+----
+
+lsm
+----
+6:
+  000005:[a#2,RANGEKEYSET-c#72057594037927935,RANGEKEYSET]
+  000004:[c#1,SET-e#1,SET]
+  000008:[ee#5,RANGEKEYSET-eee#72057594037927935,RANGEKEYSET]
+  000007:[eee#4,RANGEKEYUNSET-f#72057594037927935,RANGEKEYUNSET]
+  000006:[f#3,SET-h#3,SET]
+  000010:[s#7,RANGEKEYDEL-x#72057594037927935,RANGEKEYDEL]
+  000009:[x#6,SET-y#6,SET]
