@@ -7,6 +7,7 @@ package pebble
 import (
 	"fmt"
 	"runtime/debug"
+	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -312,6 +313,10 @@ func (l *levelIter) maybeTriggerCombinedIteration(file *fileMetadata, dir int) {
 func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *fileMetadata {
 	// Find the earliest file whose largest key is >= key.
 
+	if invariants.Enabled && flags.TrySeekUsingNext() && disableSeekOpt(key, uintptr(unsafe.Pointer(l))) {
+		flags = flags.DisableTrySeekUsingNext()
+	}
+
 	// Ordinarily we seek the LevelIterator using SeekGE. In some instances, we
 	// Next instead. In other instances, we try Next-ing first, falling back to
 	// seek:
@@ -323,6 +328,14 @@ func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *fileMetadata
 	//      performing a log(N) seek through the file metadata, we next a few
 	//      times from from our existing location. If we don't find a file whose
 	//      largest is >= key within a few nexts, we fall back to seeking.
+	//
+	//      Note that in this case, the file returned by findFileGE may be
+	//      different than the file returned by a raw binary search (eg, when
+	//      TrySeekUsingNext=false). This is possible because the most recent
+	//      positioning operation may have already determined that previous
+	//      files' keys that are ≥ key are all deleted. This information is
+	//      encoded within the iterator's current iterator position and is
+	//      unavailable to a fresh binary search.
 	//
 	//   b) flags.RelativeSeek(): The merging iterator decided to re-seek this
 	//      level according to a range tombstone. When lazy combined iteration

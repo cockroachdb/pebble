@@ -1359,9 +1359,9 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	return i.iterValidityState == IterValid
 }
 
-// Deterministic disabling of the seek optimization. It uses the iterator
-// pointer, since we want diversity in iterator behavior for the same key.
-// Used for tests.
+// Deterministic disabling of the seek optimizations. It uses the iterator
+// pointer, since we want diversity in iterator behavior for the same key.  Used
+// for tests.
 func disableSeekOpt(key []byte, ptr uintptr) bool {
 	// Fibonacci hash https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
 	simpleHash := (11400714819323198485 * uint64(ptr)) >> 63
