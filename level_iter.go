@@ -7,6 +7,7 @@ package pebble
 import (
 	"fmt"
 	"runtime/debug"
+	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -311,6 +312,10 @@ func (l *levelIter) maybeTriggerCombinedIteration(file *fileMetadata, dir int) {
 
 func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *fileMetadata {
 	// Find the earliest file whose largest key is >= key.
+
+	if invariants.Enabled && flags.TrySeekUsingNext() && disableSeekOpt(key, uintptr(unsafe.Pointer(l))) {
+		flags = flags.DisableTrySeekUsingNext()
+	}
 
 	// Ordinarily we seek the LevelIterator using SeekGE. In some instances, we
 	// Next instead. In other instances, we try Next-ing first, falling back to

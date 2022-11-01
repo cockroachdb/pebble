@@ -373,3 +373,93 @@ seek-prefix-ge c@8
 .
 lastPositioningOp="seekprefixge"
 c@4: (c@4, .)
+
+# Regression test for #2084.
+#
+# The optimization added in #2058 began using an enabled TrySeekUsingNext flag
+# to avoid re-seeking within a level's file metadata. This optimization was
+# dependent on the invariant that the iterator remained positioned at the
+# previous seek key, so that a subsequent seek to a larger key does not need to
+# backtrack.
+#
+# This invariant wasn't strictly preserved by the levelIter during SeekPrefixGE
+# calls. During a SeekPrefixGE, the sstable iterator may return nil despite the
+# existence of sstable keys greater than the seek key if the sstable's bloom
+# filter excludes the seek prefix. If the sstable DOES NOT contain any range
+# tombstones, the levelIter does not advance to the next file if the file's
+# largest bound has a prefix larger than the seek prefix, returning nil, else it
+# does advance since the next file could contain the seek prefix.
+#
+# However, if the file DOES contain range tombstones, the levelIter returns a
+# synthetic largest boundary key so that the file remains open until the merging
+# iterator passes beyond its bounds. This ensures the file's range deletions'
+# effects on other keys are observed. If another level returned a key greater
+# than this largest boundary key (eg, because the other level doesn't restrict
+# results to the seek prefix), the merging iterator could step beyond the
+# level's synthetic boundary key.  This step could advance the levelIter to the
+# next file, despite its irrelevance to the current prefix. This step would also
+# break the invariant that the level iterator remained positioned at the seek
+# key.
+#
+# The bug was fixed by comparing the synthetic boundary key to the seek prefix,
+# avoiding ever Next-ing the level iterator beyond the seek prefix.
+
+# Set 100 bloom-filter bits per key to ensure the bloom-filter exclusivity
+# checks successfully exclude prefixes that aren't present.
+reset bloom-bits-per-key=100
+----
+
+# [a           -d)
+#    b@3          d@1
+batch commit
+del-range a d
+set b@3 b@3
+set d@1 d@1
+----
+committed 3 keys
+
+flush
+----
+
+# c@0 e@0
+batch commit
+del c@0
+set e@0 e@0
+----
+committed 2 keys
+
+flush
+----
+
+lsm
+----
+0.1:
+  000007:[c@0#4,DEL-e@0#5,SET]
+0.0:
+  000005:[a#1,RANGEDEL-d@1#3,SET]
+
+# The first SeekPrefixGE(b@3) positions each level iterator over their
+# respective files and correctly finds b@3.
+#
+# The second SeekPrefixGE(c@5) seeks in both files. The 0.0 level iterator finds
+# that its file does not contain the prefix 'c', so it returns nil. Since the file
+# contains a range deletion, it returns a synthetic boundary key with user key
+# d@1 to ensure the file stays open until the iterator has moved beyond the
+# file's bounds. The seek in level 0.1 finds a key with the prefix 'c': a point
+# tombstone c@0#4,DEL. This gets bubbled up to the Iterator, which skips it
+# because it's a point tombstone, nexting within 000007 to e@0#5.
+#
+# Previously, in the bug highlighted by #2084, the merging iterator would then
+# see that level 0.0's synthetic boundary key at d@1 was at the top of the heap
+# and move to the next file in 0.0. The subsequent call to SeekPrefixGE(d@1,
+# TrySeekUsingNext=true) would incorrectly use the current position within the
+# 0.0 file metadata (nil), and miss the d@1 key.
+
+combined-iter
+seek-prefix-ge b@3
+seek-prefix-ge c@5
+seek-prefix-ge d@1
+----
+b@3: (b@3, .)
+.
+d@1: (d@1, .)

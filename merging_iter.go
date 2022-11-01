@@ -684,20 +684,39 @@ func (m *mergingIter) findNextEntry() (*InternalKey, base.LazyValue) {
 		if m.levels[item.index].isSyntheticIterBoundsKey {
 			break
 		}
-		// For prefix iteration, stop if we already seeked the iterator due to a
-		// range tombstone and are now past the prefix. We could amortize the
-		// cost of this comparison, by doing it only after we have iterated in
-		// this for loop a few times. But unless we find a performance benefit
-		// to that, we do the simple thing and compare each time. Note that
-		// isNextEntryDeleted already did at least 4 key comparisons in order to
-		// return true, and additionally at least one heap comparison to step to
-		// the next entry.
+		// For prefix iteration, stop if we've already exceeded the iterator's
+		// current prefix. There are two cases where we perform this check.
 		//
-		// Note that we cannot move this comparison into the isNextEntryDeleted
-		// branch. Once isNextEntryDeleted determines a key is deleted and seeks
-		// the level's iterator, item.key's memory is potentially invalid. If
-		// the iterator is now exhausted, item.key may be garbage.
-		if m.prefix != nil && reseeked {
+		// 1. We already re-seeked the iterator due to a range tombstone. We
+		//    could amortize the cost of this comparison, by doing it only after
+		//    we have iterated in this for loop a few times. But unless we find
+		//    a performance benefit to that, we do the simple thing and compare
+		//    each time. Note that isNextEntryDeleted already did at least 4 key
+		//    comparisons in order to return true, and additionally at least one
+		//    heap comparison to step to the next entry.
+		//
+		//    Note that we cannot move this comparison into the
+		//    isNextEntryDeleted branch. Once isNextEntryDeleted determines a
+		//    key is deleted and seeks the level's iterator, item.key's memory
+		//    is potentially invalid. If the iterator is now exhausted, item.key
+		//    may be garbage.
+		//
+		// 2. If the heap root is an ignorable boundary key, Next-ing the
+		//    iterator will close the associated file and open the next file in
+		//    the level. We don't want to do this unnecessarily because the
+		//    'exhausted' file may only appear exhausted because it failed a
+		//    bloom filter check. Avoiding Next-ing the file has a performance
+		//    benefit of unnecessarily advancing to the next file, but it's also
+		//    necessary for correctness of some TrySeekUsingNext optimizations
+		//    deeper in the iterator stack:
+		//
+		//    There may exist valid keys between our current prefix (m.prefix)
+		//    and the ignorable boundary key (item.key) that were not returned
+		//    due to the bloom filter test. A subsequent SeekPrefixGE call with
+		//    a seek key in the range (m.prefix - item.key) will have the
+		//    TrySeekUsingNext flag enabled. The levelIter relies on having not
+		//    skipped these keys in order to avoid more expensive full seeks.
+		if m.prefix != nil && (reseeked || m.levels[item.index].isIgnorableBoundaryKey) {
 			if n := m.split(item.key.UserKey); !bytes.Equal(m.prefix, item.key.UserKey[:n]) {
 				return nil, base.LazyValue{}
 			}
