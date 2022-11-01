@@ -1027,7 +1027,9 @@ func buildTestTable(
 	return r
 }
 
-func buildBenchmarkTable(b *testing.B, options WriterOptions) (*Reader, [][]byte) {
+func buildBenchmarkTable(
+	b *testing.B, options WriterOptions, confirmTwoLevelIndex bool, offset int,
+) (*Reader, [][]byte) {
 	mem := vfs.NewMem()
 	f0, err := mem.Create("bench")
 	if err != nil {
@@ -1040,7 +1042,7 @@ func buildBenchmarkTable(b *testing.B, options WriterOptions) (*Reader, [][]byte
 	var ikey InternalKey
 	for i := uint64(0); i < 1e6; i++ {
 		key := make([]byte, 8)
-		binary.BigEndian.PutUint64(key, i)
+		binary.BigEndian.PutUint64(key, i+uint64(offset))
 		keys = append(keys, key)
 		ikey.UserKey = key
 		w.Add(ikey, nil)
@@ -1062,6 +1064,9 @@ func buildBenchmarkTable(b *testing.B, options WriterOptions) (*Reader, [][]byte
 	})
 	if err != nil {
 		b.Fatal(err)
+	}
+	if confirmTwoLevelIndex && r.Properties.IndexPartitions == 0 {
+		b.Fatalf("should have constructed two level index")
 	}
 	return r, keys
 }
@@ -1094,7 +1099,7 @@ func BenchmarkTableIterSeekGE(b *testing.B) {
 	for _, bm := range basicBenchmarks {
 		b.Run(bm.name,
 			func(b *testing.B) {
-				r, keys := buildBenchmarkTable(b, bm.options)
+				r, keys := buildBenchmarkTable(b, bm.options, false, 0)
 				it, err := r.NewIter(nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
@@ -1115,7 +1120,7 @@ func BenchmarkTableIterSeekLT(b *testing.B) {
 	for _, bm := range basicBenchmarks {
 		b.Run(bm.name,
 			func(b *testing.B) {
-				r, keys := buildBenchmarkTable(b, bm.options)
+				r, keys := buildBenchmarkTable(b, bm.options, false, 0)
 				it, err := r.NewIter(nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
@@ -1136,7 +1141,7 @@ func BenchmarkTableIterNext(b *testing.B) {
 	for _, bm := range basicBenchmarks {
 		b.Run(bm.name,
 			func(b *testing.B) {
-				r, _ := buildBenchmarkTable(b, bm.options)
+				r, _ := buildBenchmarkTable(b, bm.options, false, 0)
 				it, err := r.NewIter(nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 
@@ -1165,7 +1170,7 @@ func BenchmarkTableIterPrev(b *testing.B) {
 	for _, bm := range basicBenchmarks {
 		b.Run(bm.name,
 			func(b *testing.B) {
-				r, _ := buildBenchmarkTable(b, bm.options)
+				r, _ := buildBenchmarkTable(b, bm.options, false, 0)
 				it, err := r.NewIter(nil /* lower */, nil /* upper */)
 				require.NoError(b, err)
 
@@ -1191,11 +1196,93 @@ func BenchmarkTableIterPrev(b *testing.B) {
 }
 
 func BenchmarkLayout(b *testing.B) {
-	r, _ := buildBenchmarkTable(b, WriterOptions{})
+	r, _ := buildBenchmarkTable(b, WriterOptions{}, false, 0)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		r.Layout()
 	}
 	b.StopTimer()
 	r.Close()
+}
+
+func BenchmarkSeqSeekGEExhausted(b *testing.B) {
+	// Snappy with no bloom filter.
+	options := basicBenchmarks[0].options
+
+	for _, twoLevelIndex := range []bool{false, true} {
+		switch twoLevelIndex {
+		case false:
+			options.IndexBlockSize = 0
+		case true:
+			options.IndexBlockSize = 512
+		}
+		const offsetCount = 5000
+		reader, keys := buildBenchmarkTable(b, options, twoLevelIndex, offsetCount)
+		var preKeys [][]byte
+		for i := 0; i < offsetCount; i++ {
+			key := make([]byte, 8)
+			binary.BigEndian.PutUint64(key, uint64(i))
+			preKeys = append(preKeys, key)
+		}
+		var postKeys [][]byte
+		for i := 0; i < offsetCount; i++ {
+			key := make([]byte, 8)
+			binary.BigEndian.PutUint64(key, uint64(i+offsetCount+len(keys)))
+			postKeys = append(postKeys, key)
+		}
+		for _, exhaustedBounds := range []bool{false, true} {
+			for _, prefixSeek := range []bool{false, true} {
+				exhausted := "file"
+				if exhaustedBounds {
+					exhausted = "bounds"
+				}
+				seekKind := "ge"
+				if prefixSeek {
+					seekKind = "prefix-ge"
+				}
+				b.Run(fmt.Sprintf(
+					"two-level=%t/exhausted=%s/seek=%s", twoLevelIndex, exhausted, seekKind),
+					func(b *testing.B) {
+						var upper []byte
+						var seekKeys [][]byte
+						if exhaustedBounds {
+							seekKeys = preKeys
+							upper = keys[0]
+						} else {
+							seekKeys = postKeys
+						}
+						it, err := reader.NewIter(nil /* lower */, upper)
+						require.NoError(b, err)
+						b.ResetTimer()
+						pos := 0
+						var seekGEFlags SeekGEFlags
+						for i := 0; i < b.N; i++ {
+							seekKey := seekKeys[0]
+							var k *InternalKey
+							if prefixSeek {
+								k, _ = it.SeekPrefixGE(seekKey, seekKey, seekGEFlags)
+							} else {
+								k, _ = it.SeekGE(seekKey, seekGEFlags)
+							}
+							if k != nil {
+								b.Fatal("found a key")
+							}
+							if it.Error() != nil {
+								b.Fatalf("%s", it.Error().Error())
+							}
+							pos++
+							if pos == len(seekKeys) {
+								pos = 0
+								seekGEFlags = seekGEFlags.DisableTrySeekUsingNext()
+							} else {
+								seekGEFlags = seekGEFlags.EnableTrySeekUsingNext()
+							}
+						}
+						b.StopTimer()
+						it.Close()
+					})
+			}
+		}
+		reader.Close()
+	}
 }

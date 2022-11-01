@@ -151,8 +151,10 @@ type Iterator interface {
 //   bound is exhausted (due to block property filters filtering out index and
 //   data blocks and going past the bound on the top level index block). Note
 //   that if we tried to separate out the BPF case from others we could
-//   develop more knowledge here. - !PLDE or !PGDE of course imply that
-//   data-exhausted is not true.
+//   develop more knowledge here.
+// - PGDE is true for twoLevelIterator. PLDE is true if it is a standalone
+//   singleLevelIterator. !PLDE or !PGDE of course imply that data-exhausted
+//   is not true.
 //
 // An implication of the above is that if we are going to somehow utilize
 // knowledge of data-exhausted in an optimization, we must not forget the
@@ -171,6 +173,21 @@ type Iterator interface {
 //   comments if trying to optimize this in the future.
 // - TrySeekUsingNext optimizations: these work regardless of exhaustion
 //   state.
+//
+// Implementation detail: In the code PLDE only checks that
+// i.data.isDataInvalidated(). This narrower check is safe, since this is a
+// subset of the set expressed by the OR expression. Also, it is not a
+// de-optimization since whenever we exhaust the iterator we explicitly call
+// i.data.invalidate(). PGDE checks i.index.isDataInvalidated() &&
+// i.data.isDataInvalidated(). Again, this narrower check is safe, and not a
+// de-optimization since whenever we exhaust the iterator we explicitly call
+// i.index.invalidate() and i.data.invalidate(). The && is questionable -- for
+// now this is a bit of defensive code. We should seriously consider removing
+// it, since defensive code suggests we are not confident about our invariants
+// (and if we are not confident, we need more invariant assertions, not
+// defensive code).
+//
+// TODO(sumeer): remove the aforementioned defensive code.
 
 // singleLevelIterator iterates over an entire table of data. To seek for a given
 // key, it first looks in the index for the block that contains that key, and then
@@ -1595,14 +1612,15 @@ func (i *twoLevelIterator) SeekGE(key []byte, flags base.SeekGEFlags) (*Internal
 	err := i.err
 	i.err = nil // clear cached iteration error
 
-	// TODO(sumeer): we are not fully optimizing in the flags.TrySeekUsingNext()
-	// case when the twoLevelIterator is already exhausted. We will take the
-	// slow-path below, even though we could return now. We could do:
-	// if flags.TrySeekUsingNext() && (i.exhaustedBounds == +1 || (i.data.isDataInvalidated() &&
-	//	i.index.isDataInvalidated())) && i.err == nil {
-	//	// Already exhausted, so return nil.
-	//	return nil, nil
-	// }
+	// The twoLevelIterator could be already exhausted. Utilize that when
+	// trySeekUsingNext is true. See the comment about data-exhausted, PGDE, and
+	// bounds-exhausted near the top of the file.
+	if flags.TrySeekUsingNext() &&
+		(i.exhaustedBounds == +1 || (i.data.isDataInvalidated() && i.index.isDataInvalidated())) &&
+		err == nil {
+		// Already exhausted, so return nil.
+		return nil, nil
+	}
 
 	// SeekGE performs various step-instead-of-seeking optimizations: eg enabled
 	// by trySeekUsingNext, or by monotonically increasing bounds (i.boundsCmp).
@@ -1733,16 +1751,17 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	err := i.err
 	i.err = nil // clear cached iteration error
 
-	// TODO(sumeer): we are not fully optimizing in the flags.TrySeekUsingNext()
-	// case when the twoLevelIterator is already exhausted. We will take the
-	// slow-path below, even though we could return now. We could do:
-	// filterUsedAndDidNotMatch :=
-	//	i.reader.tableFilter != nil && i.useFilter && !i.lastBloomFilterMatched
-	// if flags.TrySeekUsingNext() && (i.exhaustedBounds == +1 || (i.data.isDataInvalidated() &&
-	//  i.index.isDataInvalidated())) && i.err == nil {
-	//	// Already exhausted, so return nil.
-	//	return nil, nil
-	//}
+	// The twoLevelIterator could be already exhausted. Utilize that when
+	// trySeekUsingNext is true. See the comment about data-exhausted, PGDE, and
+	// bounds-exhausted near the top of the file.
+	filterUsedAndDidNotMatch :=
+		i.reader.tableFilter != nil && i.useFilter && !i.lastBloomFilterMatched
+	if flags.TrySeekUsingNext() && !filterUsedAndDidNotMatch &&
+		(i.exhaustedBounds == +1 || (i.data.isDataInvalidated() && i.index.isDataInvalidated())) &&
+		err == nil {
+		// Already exhausted, so return nil.
+		return nil, nil
+	}
 
 	// Check prefix bloom filter.
 	if i.reader.tableFilter != nil && i.useFilter {
