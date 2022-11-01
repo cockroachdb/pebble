@@ -2790,3 +2790,53 @@ func buildFragmentedRangeKey(b testing.TB, seed uint64) (d *DB, keys [][]byte) {
 		700, "expect many (≥700) L6 files but found %d", v.Levels[numLevels-1].Len())
 	return d, keys
 }
+
+// BenchmarkSeekPrefixTombstones benchmarks a SeekPrefixGE into the beginning of
+// a series of sstables containing exclusively range tombstones. Previously,
+// such a seek would next through all the tombstone files until it arrived at a
+// point key or exhausted the level's files. The SeekPrefixGE should not next
+// beyond the files that contain the prefix.
+//
+// See cockroachdb/cockroach#89327.
+func BenchmarkSeekPrefixTombstones(b *testing.B) {
+	o := (&Options{
+		FS:                 vfs.NewMem(),
+		Comparer:           testkeys.Comparer,
+		FormatMajorVersion: FormatNewest,
+	}).EnsureDefaults()
+	wOpts := o.MakeWriterOptions(numLevels-1, FormatNewest.MaxTableFormat())
+	d, err := Open("", o)
+	require.NoError(b, err)
+	defer func() { require.NoError(b, d.Close()) }()
+
+	// Keep a snapshot open for the duration of the test to prevent elision-only
+	// compactions from removing the ingested files containing exclusively
+	// elidable tombstones.
+	defer d.NewSnapshot().Close()
+
+	ks := testkeys.Alpha(2)
+	for i := 0; i < ks.Count()-1; i++ {
+		func() {
+			filename := fmt.Sprintf("ext%2d", i)
+			f, err := o.FS.Create(filename)
+			require.NoError(b, err)
+			w := sstable.NewWriter(f, wOpts)
+			require.NoError(b, w.DeleteRange(testkeys.Key(ks, i), testkeys.Key(ks, i+1)))
+			require.NoError(b, w.Close())
+			require.NoError(b, d.Ingest([]string{filename}))
+		}()
+	}
+
+	d.mu.Lock()
+	require.Equal(b, int64(ks.Count()-1), d.mu.versions.metrics.Levels[numLevels-1].NumFiles)
+	d.mu.Unlock()
+
+	seekKey := testkeys.Key(ks, 1)
+	iter := d.NewIter(nil)
+	defer iter.Close()
+	b.ResetTimer()
+	defer b.StopTimer()
+	for i := 0; i < b.N; i++ {
+		iter.SeekPrefixGE(seekKey)
+	}
+}
