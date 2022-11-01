@@ -268,13 +268,19 @@ func (sequentialReadsOption) Apply(f File) {
 // Copy copies the contents of oldname to newname. If newname exists, it will
 // be overwritten.
 func Copy(fs FS, oldname, newname string) error {
-	src, err := fs.Open(oldname)
+	return CopyAcrossFS(fs, oldname, fs, newname)
+}
+
+// CopyAcrossFS copies the contents of oldname on srcFS to newname dstFS. If
+// newname exists, it will be overwritten.
+func CopyAcrossFS(srcFS FS, oldname string, dstFS FS, newname string) error {
+	src, err := srcFS.Open(oldname)
 	if err != nil {
 		return err
 	}
 	defer src.Close()
 
-	dst, err := fs.Create(newname)
+	dst, err := dstFS.Create(newname)
 	if err != nil {
 		return err
 	}
