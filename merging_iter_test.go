@@ -457,7 +457,8 @@ func buildLevelsForMergingIterSeqSeek(
 	keyOffset int,
 	writeRangeTombstoneToLowestLevel bool,
 	writeBloomFilters bool,
-) ([][]*sstable.Reader, []manifest.LevelSlice, [][]byte) {
+	forceTwoLevelIndex bool,
+) (readers [][]*sstable.Reader, levelSlices []manifest.LevelSlice, keys [][]byte) {
 	mem := vfs.NewMem()
 	if writeRangeTombstoneToLowestLevel && levelCount != 1 {
 		panic("expect to write only 1 level")
@@ -473,6 +474,7 @@ func buildLevelsForMergingIterSeqSeek(
 		}
 	}
 
+	const targetL6FirstFileSize = 2 << 20
 	writers := make([][]*sstable.Writer, levelCount)
 	// A policy unlikely to have false positives.
 	filterPolicy := bloom.FilterPolicy(100)
@@ -487,15 +489,29 @@ func buildLevelsForMergingIterSeqSeek(
 				writerOptions.FilterPolicy = filterPolicy
 				writerOptions.FilterType = base.TableFilter
 			}
+			if forceTwoLevelIndex {
+				if i == 0 && j == 0 {
+					// Ignoring compression, approximate number of blocks
+					numDataBlocks := targetL6FirstFileSize / blockSize
+					if numDataBlocks < 4 {
+						b.Fatalf("cannot produce two level index")
+					}
+					// Produce ~2 lower-level index blocks.
+					writerOptions.IndexBlockSize = (numDataBlocks / 2) * 8
+				} else if j == 0 {
+					// Only 2 keys in these files, so to produce two level indexes we
+					// set the block sizes to 1.
+					writerOptions.BlockSize = 1
+					writerOptions.IndexBlockSize = 1
+				}
+			}
 			writers[i] = append(writers[i], sstable.NewWriter(files[i][j], writerOptions))
 		}
 	}
 
-	var keys [][]byte
 	i := keyOffset
-	const targetSize = 2 << 20
 	w := writers[0][0]
-	for ; w.EstimatedSize() < targetSize; i++ {
+	for ; w.EstimatedSize() < targetL6FirstFileSize; i++ {
 		key := []byte(fmt.Sprintf("%08d", i))
 		keys = append(keys, key)
 		ikey := base.MakeInternalKey(key, 0, InternalKeyKindSet)
@@ -518,9 +534,14 @@ func buildLevelsForMergingIterSeqSeek(
 		writers[j][1].Add(lastIKey, nil)
 	}
 	for _, levelWriters := range writers {
-		for _, w := range levelWriters {
+		for j, w := range levelWriters {
 			if err := w.Close(); err != nil {
 				b.Fatal(err)
+			}
+			meta, err := w.Metadata()
+			require.NoError(b, err)
+			if forceTwoLevelIndex && j == 0 && meta.Properties.IndexType != 2 {
+				b.Fatalf("did not produce two level index")
 			}
 		}
 	}
@@ -532,7 +553,7 @@ func buildLevelsForMergingIterSeqSeek(
 	}
 	defer opts.Cache.Unref()
 
-	readers := make([][]*sstable.Reader, levelCount)
+	readers = make([][]*sstable.Reader, levelCount)
 	for i := range files {
 		for j := range files[i] {
 			f, err := mem.Open(fmt.Sprintf("bench%d_%d", i, j))
@@ -546,7 +567,7 @@ func buildLevelsForMergingIterSeqSeek(
 			readers[i] = append(readers[i], r)
 		}
 	}
-	levelSlices := make([]manifest.LevelSlice, levelCount)
+	levelSlices = make([]manifest.LevelSlice, levelCount)
 	for i := range readers {
 		meta := make([]*fileMetadata, len(readers[i]))
 		for j := range readers[i] {
@@ -615,7 +636,7 @@ func BenchmarkMergingIterSeqSeekGEWithBounds(b *testing.B) {
 		b.Run(fmt.Sprintf("levelCount=%d", levelCount),
 			func(b *testing.B) {
 				readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
-					b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false)
+					b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false, false)
 				m := buildMergingIter(readers, levelSlices)
 				keyCount := len(keys)
 				b.ResetTimer()
@@ -643,7 +664,7 @@ func BenchmarkMergingIterSeqSeekPrefixGE(b *testing.B) {
 	const restartInterval = 16
 	const levelCount = 5
 	readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
-		b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false)
+		b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false, false)
 
 	for _, skip := range []int{1, 2, 4, 8, 16} {
 		for _, useNext := range []bool{false, true} {

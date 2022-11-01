@@ -2008,6 +2008,51 @@ func BenchmarkIteratorPrev(b *testing.B) {
 	}
 }
 
+type twoLevelBloomTombstoneState struct {
+	keys        [][]byte
+	readers     [8][][]*sstable.Reader
+	levelSlices [8][]manifest.LevelSlice
+	indexFunc   func(twoLevelIndex bool, bloom bool, withTombstone bool) int
+}
+
+func setupForTwoLevelBloomTombstone(b *testing.B, keyOffset int) twoLevelBloomTombstoneState {
+	const blockSize = 32 << 10
+	const restartInterval = 16
+	const levelCount = 5
+
+	var readers [8][][]*sstable.Reader
+	var levelSlices [8][]manifest.LevelSlice
+	var keys [][]byte
+	indexFunc := func(twoLevelIndex bool, bloom bool, withTombstone bool) int {
+		index := 0
+		if twoLevelIndex {
+			index = 4
+		}
+		if bloom {
+			index += 2
+		}
+		if withTombstone {
+			index++
+		}
+		return index
+	}
+	for _, twoLevelIndex := range []bool{false, true} {
+		for _, bloom := range []bool{false, true} {
+			for _, withTombstone := range []bool{false, true} {
+				index := indexFunc(twoLevelIndex, bloom, withTombstone)
+				levels := levelCount
+				if withTombstone {
+					levels = 1
+				}
+				readers[index], levelSlices[index], keys = buildLevelsForMergingIterSeqSeek(
+					b, blockSize, restartInterval, levels, keyOffset, withTombstone, bloom, twoLevelIndex)
+			}
+		}
+	}
+	return twoLevelBloomTombstoneState{
+		keys: keys, readers: readers, levelSlices: levelSlices, indexFunc: indexFunc}
+}
+
 // BenchmarkIteratorSeqSeekPrefixGENotFound exercises the case of SeekPrefixGE
 // specifying monotonic keys all of which precede actual keys present in L6 of
 // the DB. Moreover, with-tombstone=true exercises the sub-case where those
@@ -2017,35 +2062,12 @@ func BenchmarkIteratorPrev(b *testing.B) {
 // over all those deleted keys, including repeated iteration, (b) using the
 // next optimization, since the seeks are monotonic.
 func BenchmarkIteratorSeqSeekPrefixGENotFound(b *testing.B) {
-	const blockSize = 32 << 10
-	const restartInterval = 16
-	const levelCount = 5
 	const keyOffset = 100000
+	state := setupForTwoLevelBloomTombstone(b, keyOffset)
+	readers := state.readers
+	levelSlices := state.levelSlices
+	indexFunc := state.indexFunc
 
-	var readers [4][][]*sstable.Reader
-	var levelSlices [4][]manifest.LevelSlice
-	indexFunc := func(bloom bool, withTombstone bool) int {
-		index := 0
-		if bloom {
-			index = 2
-		}
-		if withTombstone {
-			index++
-		}
-		return index
-	}
-	for _, bloom := range []bool{false, true} {
-		for _, withTombstone := range []bool{false, true} {
-			index := indexFunc(bloom, withTombstone)
-			levels := levelCount
-			if withTombstone {
-				levels = 1
-			}
-			readers[index], levelSlices[index], _ = buildLevelsForMergingIterSeqSeek(
-				b, blockSize, restartInterval, levels, keyOffset, withTombstone, bloom)
-
-		}
-	}
 	// We will not be seeking to the keys that were written but instead to
 	// keys before the written keys. This is to validate that the optimization
 	// to use Next still functions when mergingIter checks for the prefix
@@ -2057,46 +2079,117 @@ func BenchmarkIteratorSeqSeekPrefixGENotFound(b *testing.B) {
 		keys = append(keys, []byte(fmt.Sprintf("%08d", i)))
 	}
 	for _, skip := range []int{1, 2, 4} {
-		for _, bloom := range []bool{false, true} {
-			for _, withTombstone := range []bool{false, true} {
-				b.Run(fmt.Sprintf("skip=%d/bloom=%t/with-tombstone=%t", skip, bloom, withTombstone),
-					func(b *testing.B) {
-						index := indexFunc(bloom, withTombstone)
-						readers := readers[index]
-						levelSlices := levelSlices[index]
-						m := buildMergingIter(readers, levelSlices)
-						iter := Iterator{
-							comparer: *testkeys.Comparer,
-							merge:    DefaultMerger.Merge,
-							iter:     m,
-						}
-						pos := 0
-						b.ResetTimer()
-						for i := 0; i < b.N; i++ {
-							// When withTombstone=true, and prior to the
-							// optimization to stop early due to a range
-							// tombstone, the iteration would continue into the
-							// next file, and not be able to use Next at the lower
-							// level in the next SeekPrefixGE call. So we would
-							// incur the cost of iterating over all the deleted
-							// keys for every seek. Note that it is not possible
-							// to do a noop optimization in Iterator for the
-							// prefix case, unlike SeekGE/SeekLT, since we don't
-							// know if the iterators inside mergingIter are all
-							// appropriately positioned -- some may not be due to
-							// bloom filters not matching.
-							valid := iter.SeekPrefixGE(keys[pos])
-							if valid {
-								b.Fatalf("key should not be found")
+		for _, twoLevelIndex := range []bool{false, true} {
+			for _, bloom := range []bool{false, true} {
+				for _, withTombstone := range []bool{false, true} {
+					b.Run(fmt.Sprintf("skip=%d/two-level=%t/bloom=%t/with-tombstone=%t",
+						skip, twoLevelIndex, bloom, withTombstone),
+						func(b *testing.B) {
+							index := indexFunc(twoLevelIndex, bloom, withTombstone)
+							readers := readers[index]
+							levelSlices := levelSlices[index]
+							m := buildMergingIter(readers, levelSlices)
+							iter := Iterator{
+								comparer: *testkeys.Comparer,
+								merge:    DefaultMerger.Merge,
+								iter:     m,
 							}
-							pos += skip
-							if pos >= keyOffset {
-								pos = 0
+							pos := 0
+							b.ResetTimer()
+							for i := 0; i < b.N; i++ {
+								// When withTombstone=true, and prior to the
+								// optimization to stop early due to a range
+								// tombstone, the iteration would continue into the
+								// next file, and not be able to use Next at the lower
+								// level in the next SeekPrefixGE call. So we would
+								// incur the cost of iterating over all the deleted
+								// keys for every seek. Note that it is not possible
+								// to do a noop optimization in Iterator for the
+								// prefix case, unlike SeekGE/SeekLT, since we don't
+								// know if the iterators inside mergingIter are all
+								// appropriately positioned -- some may not be due to
+								// bloom filters not matching.
+								valid := iter.SeekPrefixGE(keys[pos])
+								if valid {
+									b.Fatalf("key should not be found")
+								}
+								pos += skip
+								if pos >= keyOffset {
+									pos = 0
+								}
 							}
-						}
-						b.StopTimer()
-						iter.Close()
-					})
+							b.StopTimer()
+							iter.Close()
+						})
+				}
+			}
+		}
+	}
+	for _, r := range readers {
+		for i := range r {
+			for j := range r[i] {
+				r[i][j].Close()
+			}
+		}
+	}
+}
+
+// BenchmarkIteratorSeqSeekPrefixGEFound exercises the case of SeekPrefixGE
+// specifying monotonic keys that are present in L6 of the DB. Moreover,
+// with-tombstone=true exercises the sub-case where those actual keys are
+// deleted using a range tombstone that has not physically deleted those keys
+// due to the presence of a snapshot that needs to see those keys. This
+// sub-case needs to be efficient in (a) avoiding iteration over all those
+// deleted keys, including repeated iteration, (b) using the next
+// optimization, since the seeks are monotonic.
+func BenchmarkIteratorSeqSeekPrefixGEFound(b *testing.B) {
+	state := setupForTwoLevelBloomTombstone(b, 0)
+	keys := state.keys
+	readers := state.readers
+	levelSlices := state.levelSlices
+	indexFunc := state.indexFunc
+
+	for _, skip := range []int{1, 2, 4} {
+		for _, twoLevelIndex := range []bool{false, true} {
+			for _, bloom := range []bool{false, true} {
+				for _, withTombstone := range []bool{false, true} {
+					b.Run(fmt.Sprintf("skip=%d/two-level=%t/bloom=%t/with-tombstone=%t",
+						skip, twoLevelIndex, bloom, withTombstone),
+						func(b *testing.B) {
+							index := indexFunc(twoLevelIndex, bloom, withTombstone)
+							readers := readers[index]
+							levelSlices := levelSlices[index]
+							m := buildMergingIter(readers, levelSlices)
+							iter := Iterator{
+								comparer: *testkeys.Comparer,
+								merge:    DefaultMerger.Merge,
+								iter:     m,
+							}
+							pos := 0
+							b.ResetTimer()
+							for i := 0; i < b.N; i++ {
+								// When withTombstone=true, and prior to the
+								// optimization to stop early due to a range
+								// tombstone, the iteration would continue into the
+								// next file, and not be able to use Next at the lower
+								// level in the next SeekPrefixGE call. So we would
+								// incur the cost of iterating over all the deleted
+								// keys for every seek. Note that it is not possible
+								// to do a noop optimization in Iterator for the
+								// prefix case, unlike SeekGE/SeekLT, since we don't
+								// know if the iterators inside mergingIter are all
+								// appropriately positioned -- some may not be due to
+								// bloom filters not matching.
+								_ = iter.SeekPrefixGE(keys[pos])
+								pos += skip
+								if pos >= len(keys) {
+									pos = 0
+								}
+							}
+							b.StopTimer()
+							iter.Close()
+						})
+				}
 			}
 		}
 	}
@@ -2116,33 +2209,39 @@ func BenchmarkIteratorSeqSeekGEWithBounds(b *testing.B) {
 	const blockSize = 32 << 10
 	const restartInterval = 16
 	const levelCount = 5
-	readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
-		b, blockSize, restartInterval, levelCount, 0 /* keyOffset */, false, false)
-	m := buildMergingIter(readers, levelSlices)
-	iter := Iterator{
-		comparer: *testkeys.Comparer,
-		merge:    DefaultMerger.Merge,
-		iter:     m,
-	}
-	keyCount := len(keys)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		pos := i % (keyCount - 1)
-		iter.SetBounds(keys[pos], keys[pos+1])
-		// SeekGE will return keys[pos].
-		valid := iter.SeekGE(keys[pos])
-		for valid {
-			valid = iter.Next()
-		}
-		if iter.Error() != nil {
-			b.Fatalf(iter.Error().Error())
-		}
-	}
-	iter.Close()
-	for i := range readers {
-		for j := range readers[i] {
-			readers[i][j].Close()
-		}
+	for _, twoLevelIndex := range []bool{false, true} {
+		b.Run(fmt.Sprintf("two-level=%t", twoLevelIndex),
+			func(b *testing.B) {
+				readers, levelSlices, keys := buildLevelsForMergingIterSeqSeek(
+					b, blockSize, restartInterval, levelCount, 0, /* keyOffset */
+					false, false, twoLevelIndex)
+				m := buildMergingIter(readers, levelSlices)
+				iter := Iterator{
+					comparer: *testkeys.Comparer,
+					merge:    DefaultMerger.Merge,
+					iter:     m,
+				}
+				keyCount := len(keys)
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					pos := i % (keyCount - 1)
+					iter.SetBounds(keys[pos], keys[pos+1])
+					// SeekGE will return keys[pos].
+					valid := iter.SeekGE(keys[pos])
+					for valid {
+						valid = iter.Next()
+					}
+					if iter.Error() != nil {
+						b.Fatalf(iter.Error().Error())
+					}
+				}
+				iter.Close()
+				for i := range readers {
+					for j := range readers[i] {
+						readers[i][j].Close()
+					}
+				}
+			})
 	}
 }
 
@@ -2152,7 +2251,7 @@ func BenchmarkIteratorSeekGENoop(b *testing.B) {
 	const levelCount = 5
 	const keyOffset = 10000
 	readers, levelSlices, _ := buildLevelsForMergingIterSeqSeek(
-		b, blockSize, restartInterval, levelCount, keyOffset, false, false)
+		b, blockSize, restartInterval, levelCount, keyOffset, false, false, false)
 	var keys [][]byte
 	for i := 0; i < keyOffset; i++ {
 		keys = append(keys, []byte(fmt.Sprintf("%08d", i)))

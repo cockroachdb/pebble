@@ -1805,22 +1805,12 @@ func (i *twoLevelIterator) SeekPrefixGE(
 
 	var dontSeekWithinSingleLevelIter bool
 	if i.topLevelIndex.isDataInvalidated() || !i.topLevelIndex.valid() || err != nil ||
-		i.boundsCmp <= 0 || i.cmp(key, i.topLevelIndex.Key().UserKey) > 0 {
+		(i.boundsCmp <= 0 && !flags.TrySeekUsingNext()) || i.cmp(key, i.topLevelIndex.Key().UserKey) > 0 {
 		// Slow-path: need to position the topLevelIndex.
-		//
-		// TODO(sumeer): improve this slow-path to be able to use Next, when
-		// flags.TrySeekUsingNext() is true, since the fast path never applies
-		// for practical uses of SeekPrefixGE in CockroachDB (they never set
-		// monotonic bounds). To apply it here, we would need to confirm that
-		// the topLevelIndex can continue using the same second level index
-		// block, and in that case we don't need to invalidate and reload the
-		// singleLevelIterator state. Do this after release blocker bug is fixed
-		// since don't want to backport this optimization.
 
 		// The previous exhausted state of singleLevelIterator is no longer
 		// relevant, since we may be moving to a different index block.
 		i.exhaustedBounds = 0
-
 		i.maybeFilteredKeysTwoLevel = false
 		flags = flags.DisableTrySeekUsingNext()
 		var ikey *InternalKey
@@ -1860,32 +1850,44 @@ func (i *twoLevelIterator) SeekPrefixGE(
 	} else {
 		// INVARIANT: err == nil.
 		//
-		// Else fast-path: The bounds have moved forward and this SeekGE is
-		// respecting the lower bound (guaranteed by Iterator). We know that
-		// the iterator must already be positioned within or just outside the
-		// previous bounds. Therefore the topLevelIndex iter cannot be
-		// positioned at an entry ahead of the seek position (though it can be
-		// positioned behind). The !i.cmp(key, i.topLevelIndex.Key().UserKey) > 0
-		// confirms that it is not behind. Since it is not ahead and not behind
-		// it must be at the right position.
+		// Else fast-path: There are two possible cases, from
+		// (i.boundsCmp > 0 || flags.TrySeekUsingNext()):
 		//
+		// 1) The bounds have moved forward (i.boundsCmp > 0) and this
+		// SeekPrefixGE is respecting the lower bound (guaranteed by Iterator). We
+		// know that the iterator must already be positioned within or just
+		// outside the previous bounds. Therefore, the topLevelIndex iter cannot
+		// be positioned at an entry ahead of the seek position (though it can be
+		// positioned behind). The !i.cmp(key, i.topLevelIndex.Key().UserKey) > 0
+		// confirms that it is not behind. Since it is not ahead and not behind it
+		// must be at the right position.
+		//
+		// 2) This SeekPrefixGE will land on a key that is greater than the key we
+		// are currently at (guaranteed by trySeekUsingNext), but since i.cmp(key,
+		// i.topLevelIndex.Key().UserKey) <= 0, we are at the correct lower level
+		// index block. No need to reset the state of singleLevelIterator.
+		//
+		// Note that cases 1 and 2 never overlap, and one of them must be true.
 		// This invariant checking is important enough that we do not gate it
 		// behind invariants.Enabled.
-		if i.boundsCmp <= 0 {
-			panic(fmt.Sprintf("boundsCmp %d is invalid for optimization", i.boundsCmp))
-		}
-		if flags.TrySeekUsingNext() {
-			panic("TrySeekUsingNext must not be true")
+		if i.boundsCmp > 0 == flags.TrySeekUsingNext() {
+			panic(fmt.Sprintf("inconsistency in optimization case 1 %t and case 2 %t",
+				i.boundsCmp > 0, flags.TrySeekUsingNext()))
 		}
 
-		// Bounds have changed so the previous exhausted bounds state is
-		// irrelevant.
-		// WARNING-data-exhausted: this is safe to do only because the monotonic
-		// bounds optimizations only work when !data-exhausted. If they also
-		// worked with data-exhausted, we have made it unclear whether
-		// data-exhausted is actually true. See the comment at the top of the
-		// file.
-		i.exhaustedBounds = 0
+		if !flags.TrySeekUsingNext() {
+			// Case 1. Bounds have changed so the previous exhausted bounds state is
+			// irrelevant.
+			// WARNING-data-exhausted: this is safe to do only because the monotonic
+			// bounds optimizations only work when !data-exhausted. If they also
+			// worked with data-exhausted, we have made it unclear whether
+			// data-exhausted is actually true. See the comment at the top of the
+			// file.
+			i.exhaustedBounds = 0
+		}
+		// Else flags.TrySeekUsingNext(). The i.exhaustedBounds is important to
+		// preserve for singleLevelIterator, and twoLevelIterator.skipForward. See
+		// bug https://github.com/cockroachdb/pebble/issues/2036.
 	}
 
 	if !dontSeekWithinSingleLevelIter {
