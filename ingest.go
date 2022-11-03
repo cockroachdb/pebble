@@ -22,12 +22,12 @@ func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
 	if c != 0 {
 		return c
 	}
-	if a.Trailer == InternalKeyRangeDeleteSentinel {
-		if b.Trailer != InternalKeyRangeDeleteSentinel {
+	if a.IsExclusiveSentinel() {
+		if !b.IsExclusiveSentinel() {
 			return -1
 		}
-	} else if b.Trailer == InternalKeyRangeDeleteSentinel {
-		return 1
+	} else if b.IsExclusiveSentinel() {
+		return +1
 	}
 	return 0
 }
