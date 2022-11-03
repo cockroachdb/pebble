@@ -23,12 +23,42 @@ import (
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
+
+func TestSSTableKeyCompare(t *testing.T) {
+	var buf bytes.Buffer
+	datadriven.RunTest(t, "testdata/sstable_key_compare", func(td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "cmp":
+			buf.Reset()
+			for _, line := range strings.Split(td.Input, "\n") {
+				fields := strings.Fields(line)
+				a := base.ParseInternalKey(fields[0])
+				b := base.ParseInternalKey(fields[1])
+				got := sstableKeyCompare(testkeys.Comparer.Compare, a, b)
+				fmt.Fprintf(&buf, "%38s", fmt.Sprint(a.Pretty(base.DefaultFormatter)))
+				switch got {
+				case -1:
+					fmt.Fprint(&buf, " < ")
+				case +1:
+					fmt.Fprint(&buf, " > ")
+				case 0:
+					fmt.Fprint(&buf, " = ")
+				}
+				fmt.Fprintf(&buf, "%s\n", fmt.Sprint(b.Pretty(base.DefaultFormatter)))
+			}
+			return buf.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
+}
 
 func TestIngestLoad(t *testing.T) {
 	mem := vfs.NewMem()
