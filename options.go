@@ -783,6 +783,23 @@ type Options struct {
 		// RocksDB 6.2.1.
 		strictWALTail bool
 
+		// disableDeleteOnlyCompactions prevents the scheduling of delete-only
+		// compactions that drop sstables wholy covered by range tombstones or
+		// range key tombstones.
+		disableDeleteOnlyCompactions bool
+
+		// disableElisionOnlyCompactions prevents the scheduling of elision-only
+		// compactions that rewrite sstables in place in order to elide obsolete
+		// keys.
+		disableElisionOnlyCompactions bool
+
+		// disableLazyCombinedIteration is a private option used by the
+		// metamorphic tests to test equivalence between lazy-combined iteration
+		// and constructing the range-key iterator upfront. It's a private
+		// option to avoid littering the public interface with options that we
+		// do not want to allow users to actually configure.
+		disableLazyCombinedIteration bool
+
 		// A private option to disable stats collection.
 		disableTableStats bool
 
@@ -795,13 +812,6 @@ type Options struct {
 		// against the FS are made after the DB is closed, the FS may leak a
 		// goroutine indefinitely.
 		fsCloser io.Closer
-
-		// disableLazyCombinedIteration is a private option used by the
-		// metamorphic tests to test equivalence between lazy-combined iteration
-		// and constructing the range-key iterator upfront. It's a private
-		// option to avoid littering the public interface with options that we
-		// do not want to allow users to actually configure.
-		disableLazyCombinedIteration bool
 	}
 }
 
@@ -1064,11 +1074,18 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  force_writer_parallelism=%t\n", o.Experimental.ForceWriterParallelism)
 
 	// Private options.
+	//
+	// These options are only encoded if true, because we do not want them to
+	// appear in production serialized Options files, since they're testing-only
+	// options. They're only serialized when true, which still ensures that the
+	// metamorphic tests may propagate them to subprocesses.
+	if o.private.disableDeleteOnlyCompactions {
+		fmt.Fprintln(&buf, "  disable_delete_only_compactions=true")
+	}
+	if o.private.disableElisionOnlyCompactions {
+		fmt.Fprintln(&buf, "  disable_elision_only_compactions=true")
+	}
 	if o.private.disableLazyCombinedIteration {
-		// This option is only encoded if true, because we do not want it to
-		// appear in production serialized Options files, since it's a
-		// testing-only option. It's only serialized when true, which still
-		// ensures that the metamorphic tests may propagate it to subprocesses.
 		fmt.Fprintln(&buf, "  disable_lazy_combined_iteration=true")
 	}
 
@@ -1212,10 +1229,14 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				// NB: This is a deprecated serialization of the
 				// `flush_delay_delete_range`.
 				o.FlushDelayDeleteRange, err = time.ParseDuration(value)
-			case "disable_wal":
-				o.DisableWAL, err = strconv.ParseBool(value)
+			case "disable_delete_only_compactions":
+				o.private.disableDeleteOnlyCompactions, err = strconv.ParseBool(value)
+			case "disable_elision_only_compactions":
+				o.private.disableElisionOnlyCompactions, err = strconv.ParseBool(value)
 			case "disable_lazy_combined_iteration":
 				o.private.disableLazyCombinedIteration, err = strconv.ParseBool(value)
+			case "disable_wal":
+				o.DisableWAL, err = strconv.ParseBool(value)
 			case "flush_delay_delete_range":
 				o.FlushDelayDeleteRange, err = time.ParseDuration(value)
 			case "flush_delay_range_key":
