@@ -65,8 +65,10 @@ moved on failure. Defaults to the current working directory.`)
 }
 
 func reproductionCommand() string {
-	return fmt.Sprintf("go test -v -run 'TestMetaCrossVersion' --seed %d --factor %d %s\n",
-		seed, factor, versions.String())
+	return fmt.Sprintf(
+		"SEED=%d FACTOR=%d ./scripts/run-crossversion-meta.sh %s\n",
+		seed, factor, versions.String(),
+	)
 }
 
 // TestMetaCrossVersion performs cross-version metamorphic testing.
@@ -325,7 +327,7 @@ func (f *pebbleVersions) String() string {
 		if i > 0 {
 			fmt.Fprint(&buf, " ")
 		}
-		fmt.Fprintf(&buf, "--version %s", v.String())
+		fmt.Fprintf(&buf, v.SHA)
 	}
 	return buf.String()
 }
