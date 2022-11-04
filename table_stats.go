@@ -131,7 +131,7 @@ func (d *DB) collectTableStats() bool {
 	}
 	d.mu.tableStats.cond.Broadcast()
 	d.maybeCollectTableStatsLocked()
-	if len(hints) > 0 {
+	if len(hints) > 0 && !d.opts.private.disableDeleteOnlyCompactions {
 		// Verify that all of the hint tombstones' files still exist in the
 		// current version. Otherwise, the tombstone itself may have been
 		// compacted into L6 and more recent keys may have had their sequence
