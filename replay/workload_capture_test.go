@@ -15,11 +15,18 @@ import (
 func newWorkloadCollectorForTest(
 	fs vfs.FS, srcDir string, cleaner base.Cleaner, fileHandler WorkloadStorage,
 ) *WorkloadCollector {
-	collector := NewWorkloadCollector(srcDir, fileHandler)
+	collector := NewWorkloadCollector(srcDir)
 	collector.configuration.fs = fs
 	collector.configuration.cleaner = cleaner
+	collector.configuration.fileHandler = fileHandler
 
 	return collector
+}
+
+func createCaptureDir(fs vfs.FS, destDir string) {
+	if err := fs.MkdirAll(destDir, 0755); err != nil {
+		panic(err)
+	}
 }
 
 func TestWorkloadCaptureCleanerNotReadyToClean(t *testing.T) {
@@ -29,7 +36,8 @@ func TestWorkloadCaptureCleanerNotReadyToClean(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	captureFileHandler := FilesystemWorkloadStorage(imfs, "captured")
+	createCaptureDir(imfs, "captured")
+	captureFileHandler := FilesystemWorkloadStorage("captured")
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
 	atomic.StoreUint32(&collector.mu.enabled, 1)
 	collector.OnFlushEnd(pebble.FlushInfo{Output: []pebble.TableInfo{{
@@ -49,7 +57,8 @@ func TestWorkloadCaptureCleanerMarkForClean(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	captureFileHandler := FilesystemWorkloadStorage(imfs, "captured")
+	createCaptureDir(imfs, "captured")
+	captureFileHandler := FilesystemWorkloadStorage("captured")
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
 
 	atomic.StoreUint32(&collector.mu.enabled, 1)
@@ -85,7 +94,8 @@ func TestWorkloadCaptureWatcherDeleteWhenObsolete(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	captureFileHandler := FilesystemWorkloadStorage(imfs, "captured")
+	createCaptureDir(imfs, "captured")
+	captureFileHandler := FilesystemWorkloadStorage("captured")
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
 
 	collector.mu.fileState[filePath] |= readyForProcessing
@@ -135,7 +145,8 @@ func TestManifestCollection(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, tableFile.Close())
 
-	captureFileHandler := FilesystemWorkloadStorage(imfs, "captured")
+	createCaptureDir(imfs, "captured")
+	captureFileHandler := FilesystemWorkloadStorage("captured")
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
 
 	ch := make(chan struct{})
@@ -194,7 +205,8 @@ func TestManifestCopyingWithChunks(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, tableFile.Close())
 
-	captureFileHandler := FilesystemWorkloadStorage(imfs, "captured")
+	createCaptureDir(imfs, "captured")
+	captureFileHandler := FilesystemWorkloadStorage("captured")
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
 
 	ch := make(chan struct{})
@@ -268,7 +280,8 @@ func TestManifestCopyingWithRotation(t *testing.T) {
 	require.NoError(t, tableFile.Close())
 
 	// Create the collector and file handler
-	captureFileHandler := FilesystemWorkloadStorage(imfs, "captured")
+	createCaptureDir(imfs, "captured")
+	captureFileHandler := FilesystemWorkloadStorage("captured")
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
 
 	ch := make(chan struct{})
@@ -365,7 +378,8 @@ func TestManifestNotCleanedBeforeOpen(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	captureFileHandler := FilesystemWorkloadStorage(imfs, "captured")
+	createCaptureDir(imfs, "captured")
+	captureFileHandler := FilesystemWorkloadStorage("captured")
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
 	atomic.StoreUint32(&collector.mu.enabled, 1)
 	collector.OnManifestCreated(pebble.ManifestCreateInfo{
@@ -388,9 +402,13 @@ func (tel *testEventListener) CopySSTable(fs vfs.FS, path string) error {
 	return nil
 }
 
-func (tel *testEventListener) CreateManifestFile(name string) (vfs.File, error) {
+func (tel *testEventListener) CreateManifestFile(fs vfs.FS, name string) (vfs.File, error) {
 	tel.createManifestCount++
 	return nil, nil
+}
+
+func (tel *testEventListener) OnStart(fs vfs.FS) error {
+	return nil
 }
 
 func TestAttachCollectorToPebble(t *testing.T) {
@@ -450,7 +468,8 @@ func TestAttachCollectorToPebble(t *testing.T) {
 
 func TestEnableDisable(t *testing.T) {
 	imfs := vfs.NewMem()
-	captureFileHandler := FilesystemWorkloadStorage(imfs, "captured")
+	createCaptureDir(imfs, "captured")
+	captureFileHandler := FilesystemWorkloadStorage("captured")
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{}, captureFileHandler)
 	type testCase struct{ onFlushEndLength, onTableIngestLength, onManifestLength int }
 	testCases := []testCase{
@@ -491,4 +510,14 @@ func TestEnableDisable(t *testing.T) {
 		// Enable the WorkloadCollector for the second iteration
 		atomic.StoreUint32(&collector.mu.enabled, 1)
 	}
+}
+
+func TestAtomicStartStop(t *testing.T) {
+	captureFileHandler := FilesystemWorkloadStorage("captured")
+	collector := NewWorkloadCollector("")
+	collector.StopCollectorFileListener()
+	require.Equal(t, collector.fileListener.stopFileListener, false)
+	atomic.StoreUint32(&collector.mu.enabled, 1)
+	collector.StartCollectorFileListener(captureFileHandler)
+	require.NotEqual(t, captureFileHandler, collector.configuration.fileHandler)
 }
