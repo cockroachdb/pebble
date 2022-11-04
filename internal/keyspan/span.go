@@ -70,6 +70,20 @@ type Key struct {
 	Value []byte
 }
 
+// String returns a string representation of the key.
+func (k Key) String() string {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "(#%d,%s", k.SeqNum(), k.Kind())
+	if k.Suffix != nil || k.Value != nil {
+		fmt.Fprintf(&buf, ",%q", k.Suffix)
+	}
+	if k.Value != nil {
+		fmt.Fprintf(&buf, ",%q", k.Value)
+	}
+	fmt.Fprint(&buf, ")")
+	return buf.String()
+}
+
 // SeqNum returns the sequence number component of the key.
 func (k Key) SeqNum() uint64 {
 	return k.Trailer >> 8
@@ -394,6 +408,14 @@ func SortKeysByTrailer(keys *[]Key) {
 	// escaping to the heap.
 	sorted := (*keysBySeqNumKind)(keys)
 	sort.Sort(sorted)
+}
+
+// AreKeysSortedByTrailer returns a boolean indicating whether or not the Key
+// slice at the given pointer is already sorted by trailer.
+func AreKeysSortedByTrailer(keys *[]Key) bool {
+	// NB: keys is a pointer to a slice instead of a slice to avoid `sorted`
+	// escaping to the heap.
+	return sort.IsSorted((*keysBySeqNumKind)(keys))
 }
 
 // ParseSpan parses the string representation of a Span. It's intended for
