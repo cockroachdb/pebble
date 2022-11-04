@@ -5,6 +5,9 @@
 package metamorphic
 
 import (
+	"bytes"
+	"fmt"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -208,6 +211,25 @@ func standardOptions() []*testOptions {
 func randomOptions(rng *rand.Rand) *testOptions {
 	var testOpts = &testOptions{}
 	opts := defaultOptions()
+	testOpts.opts = opts
+
+	// There are some private options, which we don't want users to fiddle with.
+	// There's no way to set it through the public interface. The only method is
+	// through Parse.
+	{
+		var privateOpts bytes.Buffer
+		fmt.Fprintln(&privateOpts, `[Options]`)
+		if rng.Intn(3) == 0 /* 33% */ {
+			fmt.Fprintln(&privateOpts, `  disable_delete_only_compactions=true`)
+		}
+		if rng.Intn(3) == 0 /* 33% */ {
+			fmt.Fprintln(&privateOpts, `  disable_elision_only_compactions=true`)
+		}
+		if privateOptsStr := privateOpts.String(); privateOptsStr != `[Options]\n` {
+			parseOptions(testOpts, privateOptsStr)
+		}
+	}
+
 	opts.BytesPerSync = 1 << uint(rng.Intn(28))     // 1B - 256MB
 	opts.Cache = cache.New(1 << uint(rng.Intn(30))) // 1B - 1GB
 	opts.DisableWAL = rng.Intn(2) == 0
@@ -244,11 +266,11 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	lopts.TargetFileSize = 1 << uint(rng.Intn(28)) // 1 - 256MB
 	opts.Levels = []pebble.LevelOptions{lopts}
 
-	testOpts.opts = opts
 	testOpts.useDisk = randvar.NewWeighted(rng, 0.9, 0.1).Int() == 1 // Use disk 10% of the time.
 	if !testOpts.useDisk {
 		testOpts.strictFS = rng.Intn(2) != 0 // Only relevant for MemFS.
 	}
+
 	if testOpts.strictFS {
 		opts.DisableWAL = false
 	}
