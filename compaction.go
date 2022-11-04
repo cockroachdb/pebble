@@ -1587,7 +1587,8 @@ func (d *DB) maybeScheduleCompactionPicker(
 
 	// Check for delete-only compactions first, because they're expected to be
 	// cheap and reduce future compaction work.
-	if len(d.mu.compact.deletionHints) > 0 &&
+	if !d.opts.private.disableDeleteOnlyCompactions &&
+		len(d.mu.compact.deletionHints) > 0 &&
 		d.mu.compact.compactingCount < d.opts.MaxConcurrentCompactions &&
 		!d.opts.DisableAutomaticCompactions {
 		v := d.mu.versions.currentVersion()

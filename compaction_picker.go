@@ -1219,6 +1219,9 @@ func markedMergeHelper(f *fileMetadata, dst interface{}) (interface{}, bool) {
 func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 	env compactionEnv,
 ) (pc *pickedCompaction) {
+	if p.opts.private.disableElisionOnlyCompactions {
+		return nil
+	}
 	v := p.vers.Levels[numLevels-1].Annotation(elisionOnlyAnnotator{})
 	if v == nil {
 		return nil

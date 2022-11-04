@@ -687,6 +687,16 @@ type Options struct {
 		// throughput.
 		enablePacing bool
 
+		// disableDeleteOnlyCompactions prevents the scheduling of delete-only
+		// compactions that drop sstables wholy covered by range tombstones or
+		// range key tombstones.
+		disableDeleteOnlyCompactions bool
+
+		// disableElisionOnlyCompactions prevents the scheduling of elision-only
+		// compactions that rewrite sstables in place in order to elide obsolete
+		// keys.
+		disableElisionOnlyCompactions bool
+
 		// A private option to disable stats collection.
 		disableTableStats bool
 
@@ -968,6 +978,19 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
 
+	// Private options.
+	//
+	// These options are only encoded if true, because we do not want them to
+	// appear in production serialized Options files, since they're testing-only
+	// options. They're only serialized when true, which still ensures that the
+	// metamorphic tests may propagate them to subprocesses.
+	if o.private.disableDeleteOnlyCompactions {
+		fmt.Fprintln(&buf, "  disable_delete_only_compactions=true")
+	}
+	if o.private.disableElisionOnlyCompactions {
+		fmt.Fprintln(&buf, "  disable_elision_only_compactions=true")
+	}
+
 	for i := range o.Levels {
 		l := &o.Levels[i]
 		fmt.Fprintf(&buf, "\n")
@@ -1106,6 +1129,10 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.Experimental.CompactionDebtConcurrency, err = strconv.Atoi(value)
 			case "delete_range_flush_delay":
 				o.Experimental.DeleteRangeFlushDelay, err = time.ParseDuration(value)
+			case "disable_delete_only_compactions":
+				o.private.disableDeleteOnlyCompactions, err = strconv.ParseBool(value)
+			case "disable_elision_only_compactions":
+				o.private.disableElisionOnlyCompactions, err = strconv.ParseBool(value)
 			case "disable_wal":
 				o.DisableWAL, err = strconv.ParseBool(value)
 			case "flush_split_bytes":
