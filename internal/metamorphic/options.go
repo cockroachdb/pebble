@@ -271,14 +271,24 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts := defaultOptions()
 	testOpts.opts = opts
 
-	if rng.Intn(5) == 0 /* 20% */ {
-		// The `disable_lazy_combined_iteration` option is private, and there's
-		// no way to set it through the public interface. The only method is
-		// through Parse.
-		parseOptions(testOpts, `
-[Options]
-  disable_lazy_combined_iteration=true
-`)
+	// There are some private options, which we don't want users to fiddle with.
+	// There's no way to set it through the public interface. The only method is
+	// through Parse.
+	{
+		var privateOpts bytes.Buffer
+		fmt.Fprintln(&privateOpts, `[Options]`)
+		if rng.Intn(3) == 0 /* 33% */ {
+			fmt.Fprintln(&privateOpts, `  disable_delete_only_compactions=true`)
+		}
+		if rng.Intn(3) == 0 /* 33% */ {
+			fmt.Fprintln(&privateOpts, `  disable_elision_only_compactions=true`)
+		}
+		if rng.Intn(5) == 0 /* 20% */ {
+			fmt.Fprintln(&privateOpts, `  disable_lazy_combined_iteration=true`)
+		}
+		if privateOptsStr := privateOpts.String(); privateOptsStr != `[Options]\n` {
+			parseOptions(testOpts, privateOptsStr)
+		}
 	}
 
 	opts.BytesPerSync = 1 << uint(rng.Intn(28))     // 1B - 256MB
