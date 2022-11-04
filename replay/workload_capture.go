@@ -24,8 +24,8 @@ func (wcs workloadCaptureState) is(flag workloadCaptureState) bool { return wcs&
 // own file handler to perform the workload capturing.
 type WorkloadStorage interface {
 	CopySSTable(fs vfs.FS, path string) error
-	CreateManifestFile(name string) (vfs.File, error)
-	Checkpoint(db *pebble.DB) error
+	CreateManifestFile(fs vfs.FS, name string) (vfs.File, error)
+	OnStart(fs vfs.FS) error
 }
 
 // filesystemWorkloadStorage is a default workload capture tool that
@@ -33,35 +33,30 @@ type WorkloadStorage interface {
 type filesystemWorkloadStorage struct {
 	destDir string
 	buffer  []byte
-	fs      vfs.FS
-}
-
-func (wcc filesystemWorkloadStorage) Checkpoint(db *pebble.DB) error {
-	return db.Checkpoint(wcc.destDir)
-}
-
-func (wcc filesystemWorkloadStorage) CreateManifestFile(name string) (vfs.File, error) {
-	return wcc.fs.Create(wcc.fs.PathJoin(wcc.destDir, name))
 }
 
 // FilesystemWorkloadStorage creates a filesystemWorkloadStorage
-func FilesystemWorkloadStorage(fs vfs.FS, destDir string) WorkloadStorage {
+func FilesystemWorkloadStorage(destDir string) WorkloadStorage {
 	fws := filesystemWorkloadStorage{
 		destDir: destDir,
 		buffer:  make([]byte, 1024 /* 1KB */),
-		fs:      fs,
-	}
-	if err := fws.fs.MkdirAll(fws.destDir, 0755); err != nil {
-		panic(err)
 	}
 	return fws
 }
 
+func (fsws filesystemWorkloadStorage) CreateManifestFile(fs vfs.FS, name string) (vfs.File, error) {
+	return fs.Create(fs.PathJoin(fsws.destDir, name))
+}
+
 // CopySSTable is similar to the ArchiveCleaner's Clean except that it copies
 // files over to the archive directory instead of moving them.
-func (wcc filesystemWorkloadStorage) CopySSTable(fs vfs.FS, path string) error {
-	destPath := fs.PathJoin(wcc.destDir, fs.PathBase(path))
+func (fsws filesystemWorkloadStorage) CopySSTable(fs vfs.FS, path string) error {
+	destPath := fs.PathJoin(fsws.destDir, fs.PathBase(path))
 	return vfs.Copy(fs, path, destPath)
+}
+
+func (fsws filesystemWorkloadStorage) OnStart(fs vfs.FS) error {
+	return fs.MkdirAll(fsws.destDir, 0755)
 }
 
 type manifestDetails struct {
@@ -106,11 +101,10 @@ type WorkloadCollector struct {
 }
 
 // NewWorkloadCollector is used externally to create a New WorkloadCollector.
-func NewWorkloadCollector(srcDir string, fileHandler WorkloadStorage) *WorkloadCollector {
+func NewWorkloadCollector(srcDir string) *WorkloadCollector {
 	wc := &WorkloadCollector{}
 	wc.buffer = make([]byte, 1<<10 /* 1KB */)
 
-	wc.configuration.fileHandler = fileHandler
 	wc.configuration.storageDir = srcDir
 
 	wc.mu.fileState = make(map[string]workloadCaptureState)
@@ -267,7 +261,7 @@ func (w *WorkloadCollector) filesToProcessWatcher() {
 
 			if manifest.destFile == nil && manifest.sourceFile == nil {
 				var err error
-				manifest.destFile, err = w.configuration.fileHandler.CreateManifestFile(w.configuration.fs.PathBase(manifest.sourceFilepath))
+				manifest.destFile, err = w.configuration.fileHandler.CreateManifestFile(w.configuration.fs, w.configuration.fs.PathBase(manifest.sourceFilepath))
 				if err != nil {
 					panic(err)
 				}
@@ -311,12 +305,17 @@ func (w *WorkloadCollector) filesToProcessWatcher() {
 
 // StartCollectorFileListener starts a go routine that listens for new files that
 // need to be collected.
-func (w *WorkloadCollector) StartCollectorFileListener() {
+func (w *WorkloadCollector) StartCollectorFileListener(fileHandler WorkloadStorage) {
 	// If the collector not is running hence w.mu.enabled == 0 swap it to 1 and
 	// continue else it is not running return
 	if !atomic.CompareAndSwapUint32(&w.mu.enabled, 0, 1) {
 		return
 	}
+	w.configuration.fileHandler = fileHandler
+	if err := fileHandler.OnStart(w.configuration.fs); err != nil {
+		panic(err)
+	}
+	atomic.StoreUint32(&w.mu.enabled, 1)
 	go w.filesToProcessWatcher()
 }
 
@@ -332,4 +331,9 @@ func (w *WorkloadCollector) StopCollectorFileListener() {
 	defer w.mu.Unlock()
 	w.fileListener.stopFileListener = true
 	w.fileListener.Signal()
+}
+
+// IsRunning returns whether the WorkloadCollector is currently running
+func (w *WorkloadCollector) IsRunning() bool {
+	return atomic.LoadUint32(&w.mu.enabled) == 1
 }
