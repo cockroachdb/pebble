@@ -274,8 +274,6 @@ func TestMeta(t *testing.T) {
 		seed = uint64(time.Now().UnixNano())
 	}
 
-	rootName := t.Name()
-
 	// Cleanup any previous state.
 	metaDir := filepath.Join(*dir, time.Now().Format("060102-150405.000"))
 	require.NoError(t, os.RemoveAll(metaDir))
@@ -310,9 +308,9 @@ func TestMeta(t *testing.T) {
 	formattedOps := formatOps(ops)
 	require.NoError(t, ioutil.WriteFile(opsPath, []byte(formattedOps), 0644))
 
-	// Perform a particular test run with the specified options. The options are
-	// written to <run-dir>/OPTIONS and a child process is created to actually
-	// execute the test.
+	// runOptions performs a particular test run with the specified options. The
+	// options are written to <run-dir>/OPTIONS and a child process is created to
+	// actually execute the test.
 	runOptions := func(t *testing.T, opts *testOptions) {
 		if opts.opts.Cache != nil {
 			defer opts.opts.Cache.Unref()
@@ -340,7 +338,7 @@ func TestMeta(t *testing.T) {
 		args := []string{
 			"-keep=" + fmt.Sprint(*keep),
 			"-run-dir=" + runDir,
-			"-test.run=" + rootName + "$",
+			"-test.run=" + t.Name() + "$",
 		}
 		if *traceFile != "" {
 			args = append(args, "-test.trace="+filepath.Join(runDir, *traceFile))
@@ -396,55 +394,66 @@ func TestMeta(t *testing.T) {
 	}
 
 	// Run the options.
-	for _, name := range names {
-		t.Run(name, func(t *testing.T) {
-			runOptions(t, options[name])
-		})
-	}
+	t.Run("execution", func(t *testing.T) {
+		for _, name := range names {
+			name := name
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				runOptions(t, options[name])
+			})
+		}
+	})
+	// NB: The above 'execution' subtest will not complete until all of the
+	// individual execution/ subtests have completed. The grouping within the
+	// `execution` subtest ensures all the histories are available when we
+	// proceed to comparing against the base history.
 
 	// Don't bother comparing output if we've already failed.
 	if t.Failed() {
 		return
 	}
 
-	getHistoryPath := func(name string) string {
-		return filepath.Join(metaDir, name, "history")
-
-	}
-
-	base := readHistory(t, getHistoryPath(names[0]))
-	for i := 1; i < len(names); i++ {
-		lines := readHistory(t, getHistoryPath(names[i]))
-		diff := difflib.UnifiedDiff{
-			A:       base,
-			B:       lines,
-			Context: 5,
+	t.Run("compare", func(t *testing.T) {
+		getHistoryPath := func(name string) string {
+			return filepath.Join(metaDir, name, "history")
 		}
-		text, err := difflib.GetUnifiedDiffString(diff)
-		require.NoError(t, err)
-		if text != "" {
-			// NB: We force an exit rather than using t.Fatal because the latter
-			// will run another instance of the test if -count is specified, while
-			// we're happy to exit on the first failure.
-			optionsStrA := optionsToString(options[names[0]])
-			optionsStrB := optionsToString(options[names[i]])
 
-			fmt.Printf(`
-===== SEED =====
-%d
-===== DIFF =====
-%s/{%s,%s}
-%s
-===== OPTIONS %s =====
-%s
-===== OPTIONS %s =====
-%s
-===== OPS =====
-%s
-`, seed, metaDir, names[0], names[i], text, names[0], optionsStrA, names[1], optionsStrB, formattedOps)
-			os.Exit(1)
+		base := readHistory(t, getHistoryPath(names[0]))
+		for i := 1; i < len(names); i++ {
+			t.Run(names[i], func(t *testing.T) {
+				lines := readHistory(t, getHistoryPath(names[i]))
+				diff := difflib.UnifiedDiff{
+					A:       base,
+					B:       lines,
+					Context: 5,
+				}
+				text, err := difflib.GetUnifiedDiffString(diff)
+				require.NoError(t, err)
+				if text != "" {
+					// NB: We force an exit rather than using t.Fatal because the latter
+					// will run another instance of the test if -count is specified, while
+					// we're happy to exit on the first failure.
+					optionsStrA := optionsToString(options[names[0]])
+					optionsStrB := optionsToString(options[names[i]])
+
+					fmt.Printf(`
+		===== SEED =====
+		%d
+		===== DIFF =====
+		%s/{%s,%s}
+		%s
+		===== OPTIONS %s =====
+		%s
+		===== OPTIONS %s =====
+		%s
+		===== OPS =====
+		%s
+		`, seed, metaDir, names[0], names[i], text, names[0], optionsStrA, names[i], optionsStrB, formattedOps)
+					os.Exit(1)
+				}
+			})
 		}
-	}
+	})
 }
 
 func readFile(path string) string {
