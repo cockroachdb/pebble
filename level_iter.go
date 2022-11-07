@@ -655,7 +655,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 		if l.boundaryContext != nil {
 			l.boundaryContext.smallestUserKey = file.Smallest.UserKey
 			l.boundaryContext.largestUserKey = file.Largest.UserKey
-			l.boundaryContext.isLargestUserKeyRangeDelSentinel = file.Largest.IsExclusiveSentinel()
+			l.boundaryContext.isLargestUserKeyExclusive = file.Largest.IsExclusiveSentinel()
 		}
 		return newFileLoaded
 	}
