@@ -970,6 +970,11 @@ func (w *Writer) AddRangeKey(key InternalKey, value []byte) error {
 }
 
 func (w *Writer) addRangeKeySpan(span keyspan.Span) error {
+	if w.compare(span.Start, span.End) >= 0 {
+		return errors.Errorf(
+			"pebble: start key must be strictly less than end key",
+		)
+	}
 	if w.fragmenter.Start() != nil && w.compare(w.fragmenter.Start(), span.Start) > 0 {
 		return errors.Errorf("pebble: spans must be added in order: %s > %s",
 			w.formatKey(w.fragmenter.Start()), w.formatKey(span.Start))
