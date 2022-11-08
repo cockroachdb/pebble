@@ -1080,6 +1080,7 @@ func TestIteratorSeekOpt(t *testing.T) {
 				iter.readSampling.forceReadSampling = true
 				iter.comparer.Split = func(a []byte) int { return len(a) }
 				iter.forceEnableSeekOpt = true
+				iter.merging.forceEnableSeekOpt = true
 			}
 			iterOutput := runIterCmd(td, iter, false)
 			stats := iter.Stats()
