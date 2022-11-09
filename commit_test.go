@@ -31,6 +31,7 @@ type testCommitEnv struct {
 		sync.Mutex
 		buf []uint64
 	}
+	queueSemChan chan struct{}
 }
 
 func (e *testCommitEnv) env() commitEnv {
@@ -49,10 +50,14 @@ func (e *testCommitEnv) apply(b *Batch, mem *memTable) error {
 	return nil
 }
 
-func (e *testCommitEnv) write(b *Batch, _ *sync.WaitGroup, _ *error) (*memTable, error) {
+func (e *testCommitEnv) write(b *Batch, wg *sync.WaitGroup, _ *error) (*memTable, error) {
 	n := int64(len(b.data))
 	atomic.AddInt64(&e.writePos, n)
 	atomic.AddUint64(&e.writeCount, 1)
+	if wg != nil {
+		wg.Done()
+		<-e.queueSemChan
+	}
 	return nil, nil
 }
 
@@ -100,7 +105,7 @@ func TestCommitPipeline(t *testing.T) {
 			defer wg.Done()
 			var b Batch
 			_ = b.Set([]byte(fmt.Sprint(i)), nil, nil)
-			_ = p.Commit(&b, false)
+			_ = p.Commit(&b, false, false)
 		}(i)
 	}
 	wg.Wait()
@@ -117,6 +122,37 @@ func TestCommitPipeline(t *testing.T) {
 	}
 	if s := atomic.LoadUint64(&e.visibleSeqNum); uint64(n) != s {
 		t.Fatalf("expected %d, but found %d", n, s)
+	}
+}
+
+func TestCommitPipelineSync(t *testing.T) {
+	var e testCommitEnv
+	p := newCommitPipeline(e.env())
+	e.queueSemChan = p.logSyncQSem
+
+	n := 10000
+	if invariants.RaceEnabled {
+		// Under race builds we have to limit the concurrency or we hit the
+		// following error:
+		//
+		//   race: limit on 8128 simultaneously alive goroutines is exceeded, dying
+		n = 1000
+	}
+
+	for _, noSyncWait := range []bool{false, true} {
+		t.Run(fmt.Sprintf("no-sync-wait=%t", noSyncWait), func(t *testing.T) {
+			var wg sync.WaitGroup
+			wg.Add(n)
+			for i := 0; i < n; i++ {
+				go func(i int) {
+					defer wg.Done()
+					var b Batch
+					_ = b.Set([]byte(fmt.Sprint(i)), nil, nil)
+					_ = p.Commit(&b, true, noSyncWait)
+				}(i)
+			}
+			wg.Wait()
+		})
 	}
 }
 
@@ -203,11 +239,12 @@ func TestCommitPipelineWALClose(t *testing.T) {
 		},
 	}
 	p := newCommitPipeline(testEnv)
+	wal.QueueSemChan = p.logSyncQSem
 
 	// Launch N (commitConcurrency) goroutines which each create a batch and
 	// commit it with sync==true. Because of the syncDelayFile, none of these
 	// operations can complete until syncDelayFile.done is closed.
-	errCh := make(chan error, cap(p.sem))
+	errCh := make(chan error, cap(p.commitQueueSem))
 	walDone.Add(cap(errCh))
 	for i := 0; i < cap(errCh); i++ {
 		go func(i int) {
@@ -216,7 +253,7 @@ func TestCommitPipelineWALClose(t *testing.T) {
 				errCh <- err
 				return
 			}
-			errCh <- p.Commit(b, true /* sync */)
+			errCh <- p.Commit(b, true /* sync */, false)
 		}(i)
 	}
 
@@ -284,7 +321,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					batch := newBatch(nil)
 					binary.BigEndian.PutUint64(buf, rng.Uint64())
 					batch.Set(buf, buf, nil)
-					if err := p.Commit(batch, true /* sync */); err != nil {
+					if err := p.Commit(batch, true /* sync */, false); err != nil {
 						b.Fatal(err)
 					}
 					batch.release()

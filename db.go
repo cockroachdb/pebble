@@ -724,6 +724,27 @@ func (d *DB) RangeKeyDelete(start, end []byte, opts *WriteOptions) error {
 //
 // It is safe to modify the contents of the arguments after Apply returns.
 func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
+	return d.applyInternal(batch, opts, false)
+}
+
+// ApplyNoSyncWait must only be used when opts.Sync is true and the caller
+// does not want to wait for the WAL fsync to happen. The method will return
+// once the mutation is applied to the memtable and is visible (note that a
+// mutation is visible before the WAL sync even in the wait case, so we have
+// not weakened the durability semantics). The caller must call Batch.SyncWait
+// to wait for the WAL fsync. The caller must not Close the batch without
+// first calling Batch.SyncWait.
+// RECOMMENDATION: Prefer using Apply unless you really understand why you
+// need ApplyNoSyncWait.
+func (d *DB) ApplyNoSyncWait(batch *Batch, opts *WriteOptions) error {
+	if !opts.Sync {
+		return errors.Errorf("cannot request asynchonous apply when WriteOptions.Sync is false")
+	}
+	return d.applyInternal(batch, opts, true)
+}
+
+// REQUIRES: noSyncWait => opts.Sync
+func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -762,7 +783,7 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 	if int(batch.memTableSize) >= d.largeBatchThreshold {
 		batch.flushable = newFlushableBatch(batch, d.opts.Comparer)
 	}
-	if err := d.commit.Commit(batch, sync); err != nil {
+	if err := d.commit.Commit(batch, sync, noSyncWait); err != nil {
 		// There isn't much we can do on an error here. The commit pipeline will be
 		// horked at this point.
 		d.opts.Logger.Fatalf("%v", err)
@@ -1986,6 +2007,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 				WALFsyncLatency:    d.mu.log.metrics.fsyncLatency,
 				WALMinSyncInterval: d.opts.WALMinSyncInterval,
 			})
+			d.mu.log.LogWriter.QueueSemChan = d.commit.logSyncQSem
 		}
 
 		immMem := d.mu.mem.mutable
