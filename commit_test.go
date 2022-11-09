@@ -31,6 +31,7 @@ type testCommitEnv struct {
 		sync.Mutex
 		buf []uint64
 	}
+	queueSemChan chan struct{}
 }
 
 func (e *testCommitEnv) env() commitEnv {
@@ -49,10 +50,14 @@ func (e *testCommitEnv) apply(b *Batch, mem *memTable) error {
 	return nil
 }
 
-func (e *testCommitEnv) write(b *Batch, _ *sync.WaitGroup, _ *error) (*memTable, error) {
+func (e *testCommitEnv) write(b *Batch, wg *sync.WaitGroup, _ *error) (*memTable, error) {
 	n := int64(len(b.data))
 	atomic.AddInt64(&e.writePos, n)
 	atomic.AddUint64(&e.writeCount, 1)
+	if wg != nil {
+		wg.Done()
+		<-e.queueSemChan
+	}
 	return nil, nil
 }
 
@@ -100,7 +105,7 @@ func TestCommitPipeline(t *testing.T) {
 			defer wg.Done()
 			var b Batch
 			_ = b.Set([]byte(fmt.Sprint(i)), nil, nil)
-			_ = p.Commit(&b, false)
+			_ = p.Commit(&b, false, false)
 		}(i)
 	}
 	wg.Wait()
@@ -117,6 +122,53 @@ func TestCommitPipeline(t *testing.T) {
 	}
 	if s := atomic.LoadUint64(&e.visibleSeqNum); uint64(n) != s {
 		t.Fatalf("expected %d, but found %d", n, s)
+	}
+}
+
+func TestCommitPipelineSync(t *testing.T) {
+	n := 10000
+	if invariants.RaceEnabled {
+		// Under race builds we have to limit the concurrency or we hit the
+		// following error:
+		//
+		//   race: limit on 8128 simultaneously alive goroutines is exceeded, dying
+		n = 1000
+	}
+
+	for _, noSyncWait := range []bool{false, true} {
+		t.Run(fmt.Sprintf("no-sync-wait=%t", noSyncWait), func(t *testing.T) {
+			var e testCommitEnv
+			p := newCommitPipeline(e.env())
+			e.queueSemChan = p.logSyncQSem
+
+			var wg sync.WaitGroup
+			wg.Add(n)
+			for i := 0; i < n; i++ {
+				go func(i int) {
+					defer wg.Done()
+					var b Batch
+					require.NoError(t, b.Set([]byte(fmt.Sprint(i)), nil, nil))
+					require.NoError(t, p.Commit(&b, true, noSyncWait))
+					if noSyncWait {
+						require.NoError(t, b.SyncWait())
+					}
+				}(i)
+			}
+			wg.Wait()
+			if s := atomic.LoadUint64(&e.writeCount); uint64(n) != s {
+				t.Fatalf("expected %d written batches, but found %d", n, s)
+			}
+			if n != len(e.applyBuf.buf) {
+				t.Fatalf("expected %d written batches, but found %d",
+					n, len(e.applyBuf.buf))
+			}
+			if s := atomic.LoadUint64(&e.logSeqNum); uint64(n) != s {
+				t.Fatalf("expected %d, but found %d", n, s)
+			}
+			if s := atomic.LoadUint64(&e.visibleSeqNum); uint64(n) != s {
+				t.Fatalf("expected %d, but found %d", n, s)
+			}
+		})
 	}
 }
 
@@ -185,9 +237,7 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	}
 
 	// A basic commitEnv which writes to a WAL.
-	wal := record.NewLogWriter(sf, 0 /* logNum */, record.LogWriterConfig{
-		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
-	})
+	var wal *record.LogWriter
 	var walDone sync.WaitGroup
 	testEnv := commitEnv{
 		logSeqNum:     new(uint64),
@@ -203,11 +253,15 @@ func TestCommitPipelineWALClose(t *testing.T) {
 		},
 	}
 	p := newCommitPipeline(testEnv)
+	wal = record.NewLogWriter(sf, 0 /* logNum */, record.LogWriterConfig{
+		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		QueueSemChan:    p.logSyncQSem,
+	})
 
 	// Launch N (commitConcurrency) goroutines which each create a batch and
 	// commit it with sync==true. Because of the syncDelayFile, none of these
 	// operations can complete until syncDelayFile.done is closed.
-	errCh := make(chan error, cap(p.sem))
+	errCh := make(chan error, cap(p.commitQueueSem))
 	walDone.Add(cap(errCh))
 	for i := 0; i < cap(errCh); i++ {
 		go func(i int) {
@@ -216,7 +270,7 @@ func TestCommitPipelineWALClose(t *testing.T) {
 				errCh <- err
 				return
 			}
-			errCh <- p.Commit(b, true /* sync */)
+			errCh <- p.Commit(b, true /* sync */, false)
 		}(i)
 	}
 
@@ -234,62 +288,71 @@ func TestCommitPipelineWALClose(t *testing.T) {
 }
 
 func BenchmarkCommitPipeline(b *testing.B) {
-	for _, parallelism := range []int{1, 2, 4, 8, 16, 32, 64, 128} {
-		b.Run(fmt.Sprintf("parallel=%d", parallelism), func(b *testing.B) {
-			b.SetParallelism(parallelism)
-			mem := newMemTable(memTableOptions{})
-			wal := record.NewLogWriter(io.Discard, 0 /* logNum */, record.LogWriterConfig{
-				WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
-			})
+	for _, noSyncWait := range []bool{false, true} {
+		for _, parallelism := range []int{1, 2, 4, 8, 16, 32, 64, 128} {
+			b.Run(fmt.Sprintf("no-sync-wait=%t/parallel=%d", noSyncWait, parallelism),
+				func(b *testing.B) {
+					b.SetParallelism(parallelism)
+					mem := newMemTable(memTableOptions{})
+					var wal *record.LogWriter
+					nullCommitEnv := commitEnv{
+						logSeqNum:     new(uint64),
+						visibleSeqNum: new(uint64),
+						apply: func(b *Batch, mem *memTable) error {
+							err := mem.apply(b, b.SeqNum())
+							if err != nil {
+								return err
+							}
+							mem.writerUnref()
+							return nil
+						},
+						write: func(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
+							for {
+								err := mem.prepare(b)
+								if err == arenaskl.ErrArenaFull {
+									mem = newMemTable(memTableOptions{})
+									continue
+								}
+								if err != nil {
+									return nil, err
+								}
+								break
+							}
 
-			nullCommitEnv := commitEnv{
-				logSeqNum:     new(uint64),
-				visibleSeqNum: new(uint64),
-				apply: func(b *Batch, mem *memTable) error {
-					err := mem.apply(b, b.SeqNum())
-					if err != nil {
-						return err
+							_, err := wal.SyncRecord(b.data, syncWG, syncErr)
+							return mem, err
+						},
 					}
-					mem.writerUnref()
-					return nil
-				},
-				write: func(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
-					for {
-						err := mem.prepare(b)
-						if err == arenaskl.ErrArenaFull {
-							mem = newMemTable(memTableOptions{})
-							continue
+					p := newCommitPipeline(nullCommitEnv)
+					wal = record.NewLogWriter(io.Discard, 0, /* logNum */
+						record.LogWriterConfig{
+							WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+							QueueSemChan:    p.logSyncQSem,
+						})
+					const keySize = 8
+					b.SetBytes(2 * keySize)
+					b.ResetTimer()
+
+					b.RunParallel(func(pb *testing.PB) {
+						rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+						buf := make([]byte, keySize)
+
+						for pb.Next() {
+							batch := newBatch(nil)
+							binary.BigEndian.PutUint64(buf, rng.Uint64())
+							batch.Set(buf, buf, nil)
+							if err := p.Commit(batch, true /* sync */, noSyncWait); err != nil {
+								b.Fatal(err)
+							}
+							if noSyncWait {
+								if err := batch.SyncWait(); err != nil {
+									b.Fatal(err)
+								}
+							}
+							batch.release()
 						}
-						if err != nil {
-							return nil, err
-						}
-						break
-					}
-
-					_, err := wal.SyncRecord(b.data, syncWG, syncErr)
-					return mem, err
-				},
-			}
-			p := newCommitPipeline(nullCommitEnv)
-
-			const keySize = 8
-			b.SetBytes(2 * keySize)
-			b.ResetTimer()
-
-			b.RunParallel(func(pb *testing.PB) {
-				rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
-				buf := make([]byte, keySize)
-
-				for pb.Next() {
-					batch := newBatch(nil)
-					binary.BigEndian.PutUint64(buf, rng.Uint64())
-					batch.Set(buf, buf, nil)
-					if err := p.Commit(batch, true /* sync */); err != nil {
-						b.Fatal(err)
-					}
-					batch.release()
-				}
-			})
-		})
+					})
+				})
+		}
 	}
 }

@@ -72,7 +72,15 @@ type applyOp struct {
 func (o *applyOp) run(t *test, h historyRecorder) {
 	b := t.getBatch(o.batchID)
 	w := t.getWriter(o.writerID)
-	err := w.Apply(b, t.writeOpts)
+	var err error
+	if o.writerID.tag() == dbTag && t.testOpts.asyncApplyToDB && t.writeOpts.Sync {
+		err = w.(*pebble.DB).ApplyNoSyncWait(b, t.writeOpts)
+		if err == nil {
+			err = b.SyncWait()
+		}
+	} else {
+		err = w.Apply(b, t.writeOpts)
+	}
 	h.Recordf("%s // %v", o, err)
 	_ = b.Close()
 	t.clearObj(o.batchID)

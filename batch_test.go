@@ -223,6 +223,32 @@ func TestBatchEmpty(t *testing.T) {
 	require.NoError(t, iter2.Close())
 }
 
+func TestBatchApplyNoSyncWait(t *testing.T) {
+	db, err := Open("", &Options{
+		FS: vfs.NewMem(),
+	})
+	require.NoError(t, err)
+	defer db.Close()
+	var batches []*Batch
+	options := &WriteOptions{Sync: true}
+	for i := 0; i < 10000; i++ {
+		b := db.NewBatch()
+		str := fmt.Sprintf("a%d", i)
+		require.NoError(t, b.Set([]byte(str), []byte(str), nil))
+		require.NoError(t, db.ApplyNoSyncWait(b, options))
+		// k-v pair is visible even if not yet synced.
+		val, closer, err := db.Get([]byte(str))
+		require.NoError(t, err)
+		require.Equal(t, str, string(val))
+		closer.Close()
+		batches = append(batches, b)
+	}
+	for _, b := range batches {
+		require.NoError(t, b.SyncWait())
+		b.Close()
+	}
+}
+
 func TestBatchReset(t *testing.T) {
 	db, err := Open("", &Options{
 		FS: vfs.NewMem(),
@@ -244,6 +270,7 @@ func TestBatchReset(t *testing.T) {
 	b.applied = 1
 	b.commitErr = errors.New("test-error")
 	b.commit.Add(1)
+	b.fsyncWait.Add(1)
 	require.Equal(t, uint32(3), b.Count())
 	require.Equal(t, uint64(1), b.countRangeDels)
 	require.Equal(t, uint64(1), b.countRangeKeys)
