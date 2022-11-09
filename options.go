@@ -498,6 +498,12 @@ type Options struct {
 		// LevelMultiplier configures the size multiplier used to determine the
 		// desired size of each level of the LSM. Defaults to 10.
 		LevelMultiplier int
+
+		// PointTombstoneWeight is a float in the range [0, +inf) used to weight the
+		// point tombstone heuristics during compaction picking.
+		//
+		// The default value is 1, which results in no scaling of point tombstones.
+		PointTombstoneWeight float64
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -865,6 +871,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.TableCacheShards <= 0 {
 		o.Experimental.TableCacheShards = runtime.GOMAXPROCS(0)
 	}
+	if o.Experimental.PointTombstoneWeight == 0 {
+		o.Experimental.PointTombstoneWeight = 1
+	}
 
 	o.initMaps()
 	return o
@@ -960,6 +969,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  min_deletion_rate=%d\n", o.Experimental.MinDeletionRate)
 	fmt.Fprintf(&buf, "  min_flush_rate=%d\n", o.private.minFlushRate)
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
+	fmt.Fprintf(&buf, "  point_tombstone_weight=%f\n", o.Experimental.PointTombstoneWeight)
 	fmt.Fprintf(&buf, "  read_compaction_rate=%d\n", o.Experimental.ReadCompactionRate)
 	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
 	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", o.private.strictWALTail)
@@ -1180,6 +1190,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.Experimental.MinDeletionRate, err = strconv.Atoi(value)
 			case "min_flush_rate":
 				o.private.minFlushRate, err = strconv.Atoi(value)
+			case "point_tombstone_weight":
+				o.Experimental.PointTombstoneWeight, err = strconv.ParseFloat(value, 64)
 			case "strict_wal_tail":
 				o.private.strictWALTail, err = strconv.ParseBool(value)
 			case "merger":
