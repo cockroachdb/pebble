@@ -1252,6 +1252,62 @@ func TestCompactionOutputFileSize(t *testing.T) {
 	})
 }
 
+func TestCompactionPickerCompensatedSize(t *testing.T) {
+	testCases := []struct {
+		size                  uint64
+		pointDelEstimateBytes uint64
+		rangeDelEstimateBytes uint64
+		pointTombstoneWeight  float64
+		wantBytes             uint64
+	}{
+		{
+			size:                  100,
+			pointDelEstimateBytes: 0,
+			rangeDelEstimateBytes: 0,
+			pointTombstoneWeight:  1,
+			wantBytes:             100,
+		},
+		{
+			size:                  100,
+			pointDelEstimateBytes: 10,
+			rangeDelEstimateBytes: 0,
+			pointTombstoneWeight:  1,
+			wantBytes:             100 + 10,
+		},
+		{
+			size:                  100,
+			pointDelEstimateBytes: 10,
+			rangeDelEstimateBytes: 5,
+			pointTombstoneWeight:  1,
+			wantBytes:             100 + 10 + 5,
+		},
+		{
+			size:                  100,
+			pointDelEstimateBytes: 10,
+			rangeDelEstimateBytes: 5,
+			pointTombstoneWeight:  2,
+			wantBytes:             100 + 20 + 5,
+		},
+		{
+			size:                  100,
+			pointDelEstimateBytes: 10,
+			rangeDelEstimateBytes: 5,
+			pointTombstoneWeight:  0.5,
+			wantBytes:             100 + 5 + 5,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run("", func(t *testing.T) {
+			f := &fileMetadata{Size: tc.size}
+			f.Stats.PointDeletionsBytesEstimate = tc.pointDelEstimateBytes
+			f.Stats.RangeDeletionsBytesEstimate = tc.rangeDelEstimateBytes
+			gotBytes := compensatedSize(f, tc.pointTombstoneWeight)
+			require.Equal(t, tc.wantBytes, gotBytes)
+		})
+	}
+}
+
 func fileNums(files manifest.LevelSlice) string {
 	var ss []string
 	files.Each(func(f *fileMetadata) {
