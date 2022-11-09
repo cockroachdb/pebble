@@ -1,3 +1,7 @@
+// Copyright 2022 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// of this source code is governed by a BSD-style license that can be found in
+// the LICENSE file.
+
 package replay
 
 import (
@@ -20,45 +24,6 @@ const (
 
 func (wcs workloadCaptureState) is(flag workloadCaptureState) bool { return wcs&flag != 0 }
 
-// WorkloadStorage is an interface that allows anyone to write their
-// own file handler to perform the workload capturing.
-type WorkloadStorage interface {
-	CopySSTable(fs vfs.FS, path string) error
-	CreateManifestFile(fs vfs.FS, name string) (vfs.File, error)
-	OnStart(fs vfs.FS) error
-}
-
-// filesystemWorkloadStorage is a default workload capture tool that
-// copies files over to the archive directory.
-type filesystemWorkloadStorage struct {
-	destDir string
-	buffer  []byte
-}
-
-// FilesystemWorkloadStorage creates a filesystemWorkloadStorage
-func FilesystemWorkloadStorage(destDir string) WorkloadStorage {
-	fws := filesystemWorkloadStorage{
-		destDir: destDir,
-		buffer:  make([]byte, 1024 /* 1KB */),
-	}
-	return fws
-}
-
-func (fsws filesystemWorkloadStorage) CreateManifestFile(fs vfs.FS, name string) (vfs.File, error) {
-	return fs.Create(fs.PathJoin(fsws.destDir, name))
-}
-
-// CopySSTable is similar to the ArchiveCleaner's Clean except that it copies
-// files over to the archive directory instead of moving them.
-func (fsws filesystemWorkloadStorage) CopySSTable(fs vfs.FS, path string) error {
-	destPath := fs.PathJoin(fsws.destDir, fs.PathBase(path))
-	return vfs.Copy(fs, path, destPath)
-}
-
-func (fsws filesystemWorkloadStorage) OnStart(fs vfs.FS) error {
-	return fs.MkdirAll(fsws.destDir, 0755)
-}
-
 type manifestDetails struct {
 	sourceFilepath string
 	sourceFile     vfs.File
@@ -66,32 +31,48 @@ type manifestDetails struct {
 	destFile vfs.File
 }
 
-// WorkloadCollector is a cleaner that is designed to capture a workload by
-// handling flushed and ingested SSTs. The cleaner only deletes obsolete files
-// after they have been processed by the fileHandler.
+// WorkloadCollector is designed to capture workloads by handling manifest
+// files, flushed SSTs and ingested SSTs. The collector hooks into the
+// pebble.EventListener and pebble.Cleaner in order keep track of file states.
 type WorkloadCollector struct {
-	// The fileHandler performs the actual work of capturing the workload. The
-	// fileHandler is run in the OnFlushEnd and OnTableIngested which are supposed
-	// to be hooked up to the respective EventListener events for TableIngested
-	// and FlushEnded.
-
 	mu struct {
 		sync.Mutex
 
 		fileState         map[string]workloadCaptureState
 		sstablesToProcess []string
-		enabled           uint32
 
-		manifests     []manifestDetails
 		manifestIndex int
+
+		// appending to manifests requires holding mu however reading data does not.
+		manifests []*manifestDetails
 	}
+
+	// Stores the current manifest that is being used by the database. Updated
+	// atomically.
+	curManifest uint64
+
+	// A boolean represented as an atomic uint32 that stores whether the workload
+	// collector is enabled.
+	enabled uint32
+
 	buffer []byte
 
+	// configuration contains information that is only set on the creation of the
+	// WorkloadCollector.
 	configuration struct {
-		fileHandler WorkloadStorage
-		fs          vfs.FS
-		storageDir  string
-		cleaner     base.Cleaner
+		// srcFS and srcDir represent the location from which the workload collector
+		// collects the files from.
+		srcFS  vfs.FS
+		srcDir string
+
+		// destFS and destDir represent the location to which the workload collector
+		// sends the files to.
+		destFS  vfs.FS
+		destDir string
+
+		// cleaner stores the cleaner to use when files become obsolete and need to
+		// be cleaned.
+		cleaner base.Cleaner
 	}
 
 	fileListener struct {
@@ -105,45 +86,49 @@ func NewWorkloadCollector(srcDir string) *WorkloadCollector {
 	wc := &WorkloadCollector{}
 	wc.buffer = make([]byte, 1<<10 /* 1KB */)
 
-	wc.configuration.storageDir = srcDir
+	wc.configuration.srcDir = srcDir
 
 	wc.mu.fileState = make(map[string]workloadCaptureState)
 	wc.fileListener.Cond.L = &wc.mu.Mutex
 	return wc
 }
 
-// Attach is used to setup the WorkloadCollector by attaching itself to
-// pebble.Options EventListener and Cleaner
+// Attach is used to set up the WorkloadCollector by attaching itself to
+// pebble.Options EventListener and Cleaner.
 func (w *WorkloadCollector) Attach(opts *pebble.Options) {
-	opts.EnsureDefaults()
-	// Replace the original Cleaner with the workload collector's implementation,
-	// which will invoke the original Cleaner, but only once the collector's copied
-	// what it needs.
-	w.configuration.cleaner, opts.Cleaner = opts.Cleaner, w
-
 	l := pebble.EventListener{
 		FlushEnd:        w.OnFlushEnd,
 		ManifestCreated: w.OnManifestCreated,
 		TableIngested:   w.OnTableIngest,
 	}
 
-	opts.EventListener = pebble.TeeEventListener(opts.EventListener, l)
+	if !opts.EventListener.IsConfigured() {
+		opts.EventListener = l
+	} else {
+		opts.EventListener = pebble.TeeEventListener(opts.EventListener, l)
+	}
 
-	w.configuration.fs = opts.FS
+	opts.EnsureDefaults()
+	// Replace the original Cleaner with the workload collector's implementation,
+	// which will invoke the original Cleaner, but only once the collector's copied
+	// what it needs.
+	w.configuration.cleaner, opts.Cleaner = opts.Cleaner, w
+	w.configuration.srcFS = opts.FS
 }
 
-// setFileAsReadyForProcessing calls the handler for the file and marks it as processed.
-// Must be called while holding a write lock.
-func (w *WorkloadCollector) setFileAsReadyForProcessing(fileNum base.FileNum) {
-	filepath := base.MakeFilepath(w.configuration.fs, w.configuration.storageDir, base.FileTypeTable, fileNum)
+// setSSTableAsReadyForProcessing marks a SST as ready for processing and adds
+// it to the list of files to process. Must be called while holding a write
+// lock.
+func (w *WorkloadCollector) setSSTableAsReadyForProcessing(fileNum base.FileNum) {
+	filepath := base.MakeFilepath(w.configuration.srcFS, w.configuration.srcDir, base.FileTypeTable, fileNum)
 	w.mu.fileState[filepath] |= readyForProcessing
 	w.mu.sstablesToProcess = append(w.mu.sstablesToProcess, filepath)
 }
 
 // cleanFile calls the cleaner on the specified path and removes the path from
-// the fileState map
+// the fileState map.
 func (w *WorkloadCollector) cleanFile(fileType base.FileType, path string) error {
-	err := w.configuration.cleaner.Clean(w.configuration.fs, fileType, path)
+	err := w.configuration.cleaner.Clean(w.configuration.srcFS, fileType, path)
 	if err == nil {
 		w.mu.Lock()
 		delete(w.mu.fileState, path)
@@ -152,12 +137,13 @@ func (w *WorkloadCollector) cleanFile(fileType base.FileType, path string) error
 	return err
 }
 
-// Clean deletes files only after they have been processed.
+// Clean deletes files only after they have been processed or are not required
+// for the workload collection.
 func (w *WorkloadCollector) Clean(_ vfs.FS, fileType base.FileType, path string) error {
 	w.mu.Lock()
 	if fileState, ok := w.mu.fileState[path]; !ok || fileState.is(capturedSuccessfully) {
 		// Delete the file if it has been captured or the file is not important to
-		// capture which means it can be deleted
+		// capture which means it can be deleted.
 		w.mu.Unlock()
 		return w.cleanFile(fileType, path)
 	}
@@ -166,165 +152,212 @@ func (w *WorkloadCollector) Clean(_ vfs.FS, fileType base.FileType, path string)
 	return nil
 }
 
-// OnTableIngest is a handler that is to be setup on a EventListener and triggered
-// by EventListener.TableIngested calls. It runs through the tables and processes
-// them by calling setFileAsReadyForProcessing.
+// OnTableIngest is a handler that is to be setup on an EventListener and
+// triggered by EventListener.TableIngested calls. It runs through the tables
+// and processes them by calling setSSTableAsReadyForProcessing.
 func (w *WorkloadCollector) OnTableIngest(info pebble.TableIngestInfo) {
-	if atomic.LoadUint32(&w.mu.enabled) == 0 {
+	if atomic.LoadUint32(&w.enabled) == 0 {
 		return
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, table := range info.Tables {
-		w.setFileAsReadyForProcessing(table.FileNum)
+		w.setSSTableAsReadyForProcessing(table.FileNum)
 	}
 	w.fileListener.Signal()
 }
 
-// OnFlushEnd is a handler that is to be setup on a EventListener and triggered
+// OnFlushEnd is a handler that is to be setup on an EventListener and triggered
 // by EventListener.FlushEnd calls. It runs through the tables and processes
-// them by calling setFileAsReadyForProcessing.
+// them by calling setSSTableAsReadyForProcessing.
 func (w *WorkloadCollector) OnFlushEnd(info pebble.FlushInfo) {
-	if atomic.LoadUint32(&w.mu.enabled) == 0 {
+	if atomic.LoadUint32(&w.enabled) == 0 {
 		return
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, table := range info.Output {
-		w.setFileAsReadyForProcessing(table.FileNum)
+		w.setSSTableAsReadyForProcessing(table.FileNum)
 	}
 	w.fileListener.Signal()
 }
 
-// OnManifestCreated is a handler that is to be setup on a EventListener and
+// OnManifestCreated is a handler that is to be setup on an EventListener and
 // triggered by EventListener.ManifestCreated calls. It sets the state of the
 // newly created manifests file and appends it to a list of manifests files to
 // process.
 func (w *WorkloadCollector) OnManifestCreated(info pebble.ManifestCreateInfo) {
-	if atomic.LoadUint32(&w.mu.enabled) == 0 {
+	atomic.StoreUint64(&w.curManifest, uint64(info.FileNum))
+	if atomic.LoadUint32(&w.enabled) == 0 {
 		return
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	// mark the manifest file as ready for processing to prevent it from being
+	// cleaned before we process it.
 	w.mu.fileState[info.Path] |= readyForProcessing
-	w.mu.manifests = append(w.mu.manifests, manifestDetails{
+	w.mu.manifests = append(w.mu.manifests, &manifestDetails{
 		sourceFilepath: info.Path,
 	})
 }
 
-// filesToProcessWatcher is wrapper over processFiles that runs indefinitely
+// filesToProcessWatcher runs and performs the collection of the files of
+// interest.
 func (w *WorkloadCollector) filesToProcessWatcher() {
-	w.mu.Lock()
+	w.mu.Lock() // lock [1]
 	for !w.fileListener.stopFileListener {
 		// The following performs the workload capture. It waits on a condition
 		// variable (fileListener) to let it know when new files are available to be
-		// collected at which point it runs the fileHandler on each file that is
-		// marked as ready for processing (readyForProcessing). After processing, if
-		// the file has already been marked as obsolete, the file will
-		// be deleted. The manifests are also processed in this section by calling
-		// the manifests fileHandler
+		// collected.
 		if len(w.mu.sstablesToProcess) == 0 {
 			w.fileListener.Wait()
 		}
-		filesToProcess := w.mu.sstablesToProcess[:]
-		w.mu.sstablesToProcess = w.mu.sstablesToProcess[:0]
-		w.mu.Unlock()
+		// Copied details for SSTs
+		sstablesToProcess := w.mu.sstablesToProcess
+		w.mu.sstablesToProcess = nil
 
-		// Handle Tables
-		for _, filepath := range filesToProcess {
-			err := w.configuration.fileHandler.CopySSTable(w.configuration.fs, filepath)
-			if err != nil {
-				panic(err)
-			}
-			w.mu.Lock()
-			if w.mu.fileState[filepath].is(obsolete) {
-				w.mu.Unlock()
-				err := w.cleanFile(base.FileTypeTable, filepath)
-				if err != nil {
-					panic(err)
-				}
-			} else {
-				w.mu.fileState[filepath] |= capturedSuccessfully
-				w.mu.Unlock()
-			}
-		}
-
-		// Handle the manifests file
-		w.mu.Lock()
-		totalManifests := len(w.mu.manifests)
+		// Copied details for manifests
 		index := w.mu.manifestIndex
-		w.mu.Unlock()
-		for ; index < totalManifests; index++ {
-			w.mu.Lock()
-			manifest := w.mu.manifests[index]
-			w.mu.Unlock()
+		manifestsToProcess := w.mu.manifests[index:]
+		w.mu.Unlock() // lock [1]
 
-			if manifest.destFile == nil && manifest.sourceFile == nil {
-				var err error
-				manifest.destFile, err = w.configuration.fileHandler.CreateManifestFile(w.configuration.fs, w.configuration.fs.PathBase(manifest.sourceFilepath))
-				if err != nil {
-					panic(err)
-				}
-				manifest.sourceFile, err = w.configuration.fs.Open(manifest.sourceFilepath)
-				if err != nil {
-					panic(err)
-				}
+		// Process the SSTables provided in sstablesToProcess. sstablesToProcess
+		// will be rewritten and cannot be used following this call.
+		w.processSSTables(sstablesToProcess)
 
-				w.mu.Lock()
-				w.mu.manifests[index].sourceFile = manifest.sourceFile
-				w.mu.manifests[index].destFile = manifest.destFile
-				w.mu.Unlock()
-			}
+		// Process the manifests files.
+		w.processManifests(index, manifestsToProcess)
 
-			numBytesRead, err := io.CopyBuffer(manifest.destFile, manifest.sourceFile, w.buffer)
+		w.mu.Lock() // reset lock for loop [1]
+	}
+	w.mu.Unlock() // unlock for end of loop [1]
+}
+
+// processManifests iterates over the manifests and copies data that has been
+// added to the source.
+func (w *WorkloadCollector) processManifests(startAtIndex int, manifests []*manifestDetails) {
+	destFS := w.configuration.destFS
+	totalManifests := len(manifests)
+
+	for index, manifest := range manifests {
+		if manifest.destFile == nil && manifest.sourceFile == nil {
+			// srcFile and destFile are not opened / created as this is the first time
+			// this manifest is being processed. This method will be updating the
+			// source and destination files as a result it is safe to do so without
+			// holding a lock.
+			var err error
+			manifest.destFile, err = destFS.Create(
+				destFS.PathJoin(w.configuration.destDir,
+					destFS.PathBase(manifest.sourceFilepath)))
+
 			if err != nil {
 				panic(err)
 			}
-
-			w.mu.Lock()
-			if numBytesRead == 0 && index != totalManifests-1 {
-				// Rotating the manifests so we can close the files
-				err := w.mu.manifests[w.mu.manifestIndex].sourceFile.Close()
-				if err != nil {
-					panic(err)
-				}
-				err = w.mu.manifests[w.mu.manifestIndex].destFile.Close()
-				if err != nil {
-					panic(err)
-				}
-				w.mu.manifestIndex++
+			manifest.sourceFile, err = w.configuration.srcFS.Open(manifest.sourceFilepath)
+			if err != nil {
+				panic(err)
 			}
-			w.mu.Unlock()
 		}
 
-		// reset lock for loop
-		w.mu.Lock()
+		numBytesRead, err := io.CopyBuffer(manifest.destFile, manifest.sourceFile, w.buffer)
+		if err != nil {
+			panic(err)
+		}
+
+		// Read 0 bytes from the current manifest and this is not the latest/newest
+		// manifest which means we have read all the data no new data will be
+		// written to it since it's not the latest one. Close the current source and
+		// destination files and move the manifest to start at the next index in
+		// w.mu.manifests.
+		if numBytesRead == 0 && index != totalManifests-1 {
+			// Rotating the manifests so we can close the files
+			err := w.mu.manifests[index].sourceFile.Close()
+			if err != nil {
+				panic(err)
+			}
+			err = w.mu.manifests[index].destFile.Close()
+			if err != nil {
+				panic(err)
+			}
+			w.mu.Lock()
+			w.mu.manifestIndex = startAtIndex + index + 1
+			w.mu.Unlock()
+		}
 	}
-	w.mu.Unlock() // unlock for end of loop
+}
+
+// processSSTables goes through the sstablesToProcess and copies them between
+// srcFS and the destFS. Additionally, each table has its file state updated. If
+// a file has already been marked as obsolete, then file will be cleaned by the
+// w.configuration.cleaner. The sstablesToProcess will be rewritten and should
+// not be used following the call to this function.
+func (w *WorkloadCollector) processSSTables(sstablesToProcess []string) {
+	for _, filepath := range sstablesToProcess {
+		err := vfs.CopyAcrossFS(w.configuration.srcFS,
+			filepath,
+			w.configuration.destFS,
+			w.configuration.destFS.PathJoin(w.configuration.destDir, w.configuration.srcFS.PathBase(filepath)))
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	// reuse the slice
+	filesToDelete := sstablesToProcess[:0]
+	w.mu.Lock()
+	for _, filepath := range sstablesToProcess {
+		if w.mu.fileState[filepath].is(obsolete) {
+			filesToDelete = append(filesToDelete, filepath)
+
+		} else {
+			w.mu.fileState[filepath] |= capturedSuccessfully
+		}
+	}
+	w.mu.Unlock()
+
+	for _, filepath := range filesToDelete {
+		err := w.cleanFile(base.FileTypeTable, filepath)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 // StartCollectorFileListener starts a go routine that listens for new files that
 // need to be collected.
-func (w *WorkloadCollector) StartCollectorFileListener(fileHandler WorkloadStorage) {
-	// If the collector not is running hence w.mu.enabled == 0 swap it to 1 and
-	// continue else it is not running return
-	if !atomic.CompareAndSwapUint32(&w.mu.enabled, 0, 1) {
+func (w *WorkloadCollector) StartCollectorFileListener(destFS vfs.FS, destPath string) {
+	// If the collector not is running then that means w.enabled == 0 so swap it
+	// to 1 and continue else return since it is not running.
+	if !atomic.CompareAndSwapUint32(&w.enabled, 0, 1) {
 		return
 	}
-	w.configuration.fileHandler = fileHandler
-	if err := fileHandler.OnStart(w.configuration.fs); err != nil {
-		panic(err)
-	}
-	atomic.StoreUint32(&w.mu.enabled, 1)
+	w.configuration.destFS = destFS
+	w.configuration.destDir = destPath
+
+	// Take the current manifest and append it to the current slice (empty) of
+	// manifests since it needs to be collected but was created before collection
+	// started.
+	fileNum := atomic.LoadUint64(&w.curManifest)
+	filePath := base.MakeFilepath(w.configuration.srcFS,
+		w.configuration.srcDir,
+		base.FileTypeManifest,
+		base.FileNum(fileNum))
+	w.mu.manifests = append(w.mu.manifests,
+		&manifestDetails{
+			sourceFilepath: filePath,
+		})
+	w.mu.fileState[filePath] |= readyForProcessing
+
 	go w.filesToProcessWatcher()
 }
 
 // StopCollectorFileListener stops the go routine that listens for new files
-// that need to be collected
+// that need to be collected.
 func (w *WorkloadCollector) StopCollectorFileListener() {
-	// If the collector is running hence w.mu.enabled == 1 swap it to 0 and
-	// continue else it is not running return
-	if !atomic.CompareAndSwapUint32(&w.mu.enabled, 1, 0) {
+	// If the collector is running then that means w.enabled == 1 so swap it to 0
+	// and continue else return since it is not running.
+	if !atomic.CompareAndSwapUint32(&w.enabled, 1, 0) {
 		return
 	}
 	w.mu.Lock()
@@ -333,7 +366,7 @@ func (w *WorkloadCollector) StopCollectorFileListener() {
 	w.fileListener.Signal()
 }
 
-// IsRunning returns whether the WorkloadCollector is currently running
+// IsRunning returns whether the WorkloadCollector is currently running.
 func (w *WorkloadCollector) IsRunning() bool {
-	return atomic.LoadUint32(&w.mu.enabled) == 1
+	return atomic.LoadUint32(&w.enabled) == 1
 }
