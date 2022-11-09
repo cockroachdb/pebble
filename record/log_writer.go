@@ -133,7 +133,8 @@ func (q *syncQueue) load() (head, tail, realLength uint32) {
 	return head, tail, realLength
 }
 
-func (q *syncQueue) pop(head, tail uint32, err error) error {
+// REQUIRES: queueSemChan is non-nil.
+func (q *syncQueue) pop(head, tail uint32, err error, queueSemChan chan struct{}) error {
 	if tail == head {
 		// Queue is empty.
 		return nil
@@ -153,6 +154,10 @@ func (q *syncQueue) pop(head, tail uint32, err error) error {
 		// will try to enqueue before we've "freed" space in the queue.
 		atomic.AddUint64(&q.headTail, 1)
 		wg.Done()
+		// Is always non-nil in production.
+		if queueSemChan != nil {
+			<-queueSemChan
+		}
 	}
 
 	return nil
@@ -291,12 +296,20 @@ type LogWriter struct {
 	// used for min-sync-interval. In normal operation this points to
 	// time.AfterFunc.
 	afterFunc func(d time.Duration, f func()) syncTimer
+
+	// See the comment for LogWriterConfig.QueueSemChan.
+	queueSemChan chan struct{}
 }
 
 // LogWriterConfig is a struct used for configuring new LogWriters
 type LogWriterConfig struct {
 	WALMinSyncInterval durationFunc
 	WALFsyncLatency    prometheus.Histogram
+	// QueueSemChan is an optional channel to pop from when popping from
+	// LogWriter.flusher.syncQueue. It functions as a semaphore that prevents
+	// the syncQueue from overflowing (which will cause a panic). All production
+	// code ensures this is non-nil.
+	QueueSemChan chan struct{}
 }
 
 // CapAllocatedBlocks is the maximum number of blocks allocated by the
@@ -319,6 +332,7 @@ func NewLogWriter(w io.Writer, logNum base.FileNum, logWriterConfig LogWriterCon
 		afterFunc: func(d time.Duration, f func()) syncTimer {
 			return time.AfterFunc(d, f)
 		},
+		queueSemChan: logWriterConfig.QueueSemChan,
 	}
 	r.free.cond.L = &r.free.Mutex
 	r.free.blocks = make([]*block, 0, CapAllocatedBlocks)
@@ -441,7 +455,7 @@ func (w *LogWriter) flushLoop(context.Context) {
 		// If flusher has an error, we propagate it to waiters. Note in spite of
 		// error we consume the pending list above to free blocks for writers.
 		if f.err != nil {
-			f.syncQ.pop(head, tail, f.err)
+			f.syncQ.pop(head, tail, f.err, w.queueSemChan)
 			// Update the idleStartTime if work could not be done, so that we don't
 			// include the duration we tried to do work as idle. We don't bother
 			// with the rest of the accounting, which means we will undercount.
@@ -518,7 +532,7 @@ func (w *LogWriter) flushPending(
 			syncLatency, err = w.syncWithLatency()
 		}
 		f := &w.flusher
-		if popErr := f.syncQ.pop(head, tail, err); popErr != nil {
+		if popErr := f.syncQ.pop(head, tail, err, w.queueSemChan); popErr != nil {
 			return synced, syncLatency, bytesWritten, popErr
 		}
 	}
