@@ -79,6 +79,7 @@ type WorkloadCollector struct {
 		sync.Cond
 		stopFileListener bool
 	}
+	done chan struct{}
 }
 
 // NewWorkloadCollector is used externally to create a New WorkloadCollector.
@@ -90,6 +91,7 @@ func NewWorkloadCollector(srcDir string) *WorkloadCollector {
 
 	wc.mu.fileState = make(map[string]workloadCaptureState)
 	wc.fileListener.Cond.L = &wc.mu.Mutex
+	wc.done = make(chan struct{})
 	return wc
 }
 
@@ -209,6 +211,7 @@ func (w *WorkloadCollector) onManifestCreated(info pebble.ManifestCreateInfo) {
 // filesToProcessWatcher runs and performs the collection of the files of
 // interest.
 func (w *WorkloadCollector) filesToProcessWatcher() {
+	defer func() { close(w.done) }()
 	w.mu.Lock() // lock [1]
 	for !w.fileListener.stopFileListener {
 		// The following performs the workload capture. It waits on a condition
