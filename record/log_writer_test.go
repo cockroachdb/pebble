@@ -42,7 +42,7 @@ func TestSyncQueue(t *testing.T) {
 				return
 			}
 			head, tail, _ := q.load()
-			q.pop(head, tail, nil)
+			q.pop(head, tail, nil, nil)
 		}
 	}()
 
@@ -98,7 +98,7 @@ func TestFlusherCond(t *testing.T) {
 			}
 
 			head, tail, _ := q.load()
-			q.pop(head, tail, nil)
+			q.pop(head, tail, nil, nil)
 		}
 	}()
 
@@ -196,6 +196,27 @@ func TestSyncRecord(t *testing.T) {
 		if v := atomic.LoadInt64(&f.syncPos); offset != v {
 			t.Fatalf("expected sync pos %d, but found %d", offset, v)
 		}
+	}
+}
+
+func TestSyncRecordWithSignalChan(t *testing.T) {
+	f := &syncFile{}
+	w := NewLogWriter(f, 0, LogWriterConfig{WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{})})
+	semChan := make(chan struct{}, 5)
+	for i := 0; i < cap(semChan); i++ {
+		semChan <- struct{}{}
+	}
+	w.QueueSemChan = semChan
+	require.Equal(t, cap(semChan), len(semChan))
+	var syncErr error
+	for i := 0; i < 5; i++ {
+		var syncWG sync.WaitGroup
+		syncWG.Add(1)
+		_, err := w.SyncRecord([]byte("hello"), &syncWG, &syncErr)
+		require.NoError(t, err)
+		syncWG.Wait()
+		require.NoError(t, syncErr)
+		require.Equal(t, cap(semChan)-(i+1), len(semChan))
 	}
 }
 

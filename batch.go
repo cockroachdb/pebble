@@ -255,7 +255,14 @@ type Batch struct {
 	// memtable.
 	flushable *flushableBatch
 
+	// Synchronous Apply uses the commit WaitGroup for both publishing the
+	// seqnum and waiting for the WAL fsync (if needed). Asynchronous
+	// ApplyNoSyncWait, which implies WriteOptions.Sync is true, uses the commit
+	// WaitGroup for publishing the seqnum and the fsyncWait WaitGroup for
+	// waiting for the WAL fsync.
 	commit    sync.WaitGroup
+	fsyncWait sync.WaitGroup
+
 	commitErr error
 	applied   uint32 // updated atomically
 }
@@ -1203,6 +1210,15 @@ func batchDecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
 		return nil, nil, false
 	}
 	return data[v:], data[:v], true
+}
+
+// SyncWait is to be used in conjunction with DB.ApplyNoSyncWait.
+func (b *Batch) SyncWait() error {
+	b.fsyncWait.Wait()
+	if b.commitErr != nil {
+		b.db = nil // prevent batch reuse on error
+	}
+	return b.commitErr
 }
 
 // BatchReader iterates over the entries contained in a batch.

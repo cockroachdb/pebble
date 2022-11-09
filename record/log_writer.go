@@ -37,6 +37,8 @@ type syncer interface {
 	Sync() error
 }
 
+// TODO(sumeer): increase this if the ApplyNoSyncWait API results in this
+// becoming the bottleneck.
 const (
 	syncConcurrencyBits = 9
 
@@ -133,7 +135,7 @@ func (q *syncQueue) load() (head, tail, realLength uint32) {
 	return head, tail, realLength
 }
 
-func (q *syncQueue) pop(head, tail uint32, err error) error {
+func (q *syncQueue) pop(head, tail uint32, err error, queueSemChan chan struct{}) error {
 	if tail == head {
 		// Queue is empty.
 		return nil
@@ -153,6 +155,10 @@ func (q *syncQueue) pop(head, tail uint32, err error) error {
 		// will try to enqueue before we've "freed" space in the queue.
 		atomic.AddUint64(&q.headTail, 1)
 		wg.Done()
+		// Is always non-nil in production.
+		if queueSemChan != nil {
+			<-queueSemChan
+		}
 	}
 
 	return nil
@@ -291,6 +297,10 @@ type LogWriter struct {
 	// used for min-sync-interval. In normal operation this points to
 	// time.AfterFunc.
 	afterFunc func(d time.Duration, f func()) syncTimer
+
+	// QueueSemChan is an optional channel to signal when popping from syncQueue.
+	// TODO(sumeer): pass this as a parameter to NewLogWriter.
+	QueueSemChan chan struct{}
 }
 
 // LogWriterConfig is a struct used for configuring new LogWriters
@@ -441,7 +451,7 @@ func (w *LogWriter) flushLoop(context.Context) {
 		// If flusher has an error, we propagate it to waiters. Note in spite of
 		// error we consume the pending list above to free blocks for writers.
 		if f.err != nil {
-			f.syncQ.pop(head, tail, f.err)
+			f.syncQ.pop(head, tail, f.err, w.QueueSemChan)
 			// Update the idleStartTime if work could not be done, so that we don't
 			// include the duration we tried to do work as idle. We don't bother
 			// with the rest of the accounting, which means we will undercount.
@@ -518,7 +528,7 @@ func (w *LogWriter) flushPending(
 			syncLatency, err = w.syncWithLatency()
 		}
 		f := &w.flusher
-		if popErr := f.syncQ.pop(head, tail, err); popErr != nil {
+		if popErr := f.syncQ.pop(head, tail, err, w.QueueSemChan); popErr != nil {
 			return synced, syncLatency, bytesWritten, popErr
 		}
 	}

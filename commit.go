@@ -60,7 +60,7 @@ func (q *commitQueue) enqueue(b *Batch) {
 	ptrs := atomic.LoadUint64(&q.headTail)
 	head, tail := q.unpack(ptrs)
 	if (tail+uint32(len(q.slots)))&(1<<dequeueBits-1) == head {
-		// Queue is full. This should never be reached because commitPipeline.sem
+		// Queue is full. This should never be reached because commitPipeline.commitQueueSem
 		// limits the number of concurrent operations.
 		panic("pebble: not reached")
 	}
@@ -217,7 +217,27 @@ type commitPipeline struct {
 	// Queue of pending batches to commit.
 	pending commitQueue
 	env     commitEnv
-	sem     chan struct{}
+	// The commit path has two queues:
+	// - commitPipeline.pending contains batches whose seqnums have not yet been
+	//   published. It is a lock-free single producer multi consumer queue.
+	// - LogWriter.flusher.syncQ contains state for batches that have asked for
+	//   a sync. It is a lock-free single producer single consumer queue.
+	// These lock-free queues have a fixed capacity. And since they are
+	// lock-free, we cannot do blocking waits when pushing onto these queues,
+	// when case they are full. Additionally, adding to these queues happens
+	// while holding commitPipeline.mu, and we don't want to block while holding
+	// that mutex since it is also needed by other code.
+	//
+	// Popping from these queues is independent and for a particular batch can
+	// occur in either order, though it is more common that popping from the
+	// commitPipeline.pending will happen first.
+	//
+	// Due to these constraints, we reserve a unit of space in each queue before
+	// acquiring commitPipeline.mu, which also ensures that the push operation
+	// is guaranteed to have space in the queue. The commitQueueSem and
+	// logSyncQSem are used for this reservation.
+	commitQueueSem chan struct{}
+	logSyncQSem    chan struct{}
 	// The mutex to use for synchronizing access to logSeqNum and serializing
 	// calls to commitEnv.write().
 	mu sync.Mutex
@@ -226,10 +246,18 @@ type commitPipeline struct {
 func newCommitPipeline(env commitEnv) *commitPipeline {
 	p := &commitPipeline{
 		env: env,
+		// TODO(sumeer): stale comment. Now that we have two semaphores, the
+		// capacity of these queues can be different. Say half of the batches
+		// asked to be synced, but syncing took 5x the latency of adding to the
+		// memtable and publishing. Then the LogWriter.flusher.syncQ could be
+		// sized as 0.5*5 of the commitPipeling.pending queue. So we could size
+		// these based on typical experimental results.
+		//
 		// NB: the commit concurrency is one less than SyncConcurrency because we
 		// have to allow one "slot" for a concurrent WAL rotation which will close
 		// and sync the WAL.
-		sem: make(chan struct{}, record.SyncConcurrency-1),
+		commitQueueSem: make(chan struct{}, record.SyncConcurrency-1),
+		logSyncQSem:    make(chan struct{}, record.SyncConcurrency-1),
 	}
 	return p
 }
@@ -237,12 +265,18 @@ func newCommitPipeline(env commitEnv) *commitPipeline {
 // Commit the specified batch, writing it to the WAL, optionally syncing the
 // WAL, and applying the batch to the memtable. Upon successful return the
 // batch's mutations will be visible for reading.
-func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
+// REQUIRES: noSyncWait => syncWAL
+func (p *commitPipeline) Commit(b *Batch, syncWAL bool, noSyncWait bool) error {
 	if b.Empty() {
 		return nil
 	}
 
-	p.sem <- struct{}{}
+	// TODO(sumeer): will block here if SyncConcurrency is insufficient. Monitor
+	// and increase if needed.
+	p.commitQueueSem <- struct{}{}
+	if syncWAL {
+		p.logSyncQSem <- struct{}{}
+	}
 
 	// Prepare the batch for committing: enqueuing the batch in the pending
 	// queue, determining the batch sequence number and writing the data to the
@@ -250,9 +284,11 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	//
 	// NB: We set Batch.commitErr on error so that the batch won't be a candidate
 	// for reuse. See Batch.release().
-	mem, err := p.prepare(b, syncWAL)
+	mem, err := p.prepare(b, syncWAL, noSyncWait)
 	if err != nil {
 		b.db = nil // prevent batch reuse on error
+		// NB: we are not doing <-p.commitQueueSem since the batch is still
+		// sitting in the pending queue. Should we fix this?
 		return err
 	}
 
@@ -265,7 +301,7 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 	// Publish the batch sequence number.
 	p.publish(b)
 
-	<-p.sem
+	<-p.commitQueueSem
 
 	if b.commitErr != nil {
 		b.db = nil // prevent batch reuse on error
@@ -294,7 +330,7 @@ func (p *commitPipeline) AllocateSeqNum(count int, prepare func(), apply func(se
 	b.setCount(uint32(count))
 	b.commit.Add(1)
 
-	p.sem <- struct{}{}
+	p.commitQueueSem <- struct{}{}
 
 	p.mu.Lock()
 
@@ -341,27 +377,30 @@ func (p *commitPipeline) AllocateSeqNum(count int, prepare func(), apply func(se
 	// Publish the sequence number.
 	p.publish(b)
 
-	<-p.sem
+	<-p.commitQueueSem
 }
 
-func (p *commitPipeline) prepare(b *Batch, syncWAL bool) (*memTable, error) {
+func (p *commitPipeline) prepare(b *Batch, syncWAL bool, noSyncWait bool) (*memTable, error) {
 	n := uint64(b.Count())
 	if n == invalidBatchCount {
 		return nil, ErrInvalidBatch
 	}
-	count := 1
-	if syncWAL {
-		count++
-	}
-	// count represents the waiting needed for publish, and optionally the
-	// waiting needed for the WAL sync.
-	b.commit.Add(count)
-
 	var syncWG *sync.WaitGroup
 	var syncErr *error
+	commitCount := 1
 	if syncWAL {
-		syncWG, syncErr = &b.commit, &b.commitErr
+		syncErr = &b.commitErr
+		if noSyncWait {
+			syncWG = &b.fsyncWait
+			b.fsyncWait.Add(1)
+		} else {
+			syncWG = &b.commit
+			commitCount++
+		}
 	}
+	// commitCount represents the waiting needed for publish, and optionally the
+	// waiting needed for the WAL sync.
+	b.commit.Add(commitCount)
 
 	p.mu.Lock()
 
