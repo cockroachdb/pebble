@@ -428,6 +428,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			WALFsyncLatency:    d.mu.log.metrics.fsyncLatency,
 		}
 		d.mu.log.LogWriter = record.NewLogWriter(logFile, newLogNum, logWriterConfig)
+		d.mu.log.LogWriter.QueueSemChan = d.commit.logSyncQSem
 		d.mu.versions.metrics.WAL.Files++
 	}
 	d.updateReadStateLocked(d.opts.DebugCheck)
