@@ -63,6 +63,9 @@ func parseOptions(opts *testOptions, data string) error {
 			case "TestOptions.enable_value_blocks":
 				opts.opts.Experimental.EnableValueBlocks = func() bool { return true }
 				return true
+			case "TestOptions.async_apply_to_db":
+				opts.asyncApplyToDB = true
+				return true
 			default:
 				return false
 			}
@@ -98,6 +101,10 @@ func optionsToString(opts *testOptions) string {
 	if opts.useBlockPropertyCollector {
 		fmt.Fprintf(&buf, "  use_block_property_collector=%t\n", opts.useBlockPropertyCollector)
 	}
+	if opts.asyncApplyToDB {
+		fmt.Fprint(&buf, "  async_apply_to_db=true\n")
+	}
+
 
 	s := opts.opts.String()
 	if buf.Len() == 0 {
@@ -145,6 +152,8 @@ type testOptions struct {
 	// Use a block property collector, which may be used by block property
 	// filters.
 	useBlockPropertyCollector bool
+	// Use DB.ApplyNoSyncWait for applies that want to sync the WAL.
+	asyncApplyToDB bool
 }
 
 func standardOptions() []*testOptions {
@@ -368,6 +377,7 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	if testOpts.useBlockPropertyCollector {
 		testOpts.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
 	}
+	testOpts.asyncApplyToDB = rng.Intn(2) != 0
 	return testOpts
 }
 
