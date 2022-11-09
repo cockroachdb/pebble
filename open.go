@@ -426,6 +426,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		logWriterConfig := record.LogWriterConfig{
 			WALMinSyncInterval: d.opts.WALMinSyncInterval,
 			WALFsyncLatency:    d.mu.log.metrics.fsyncLatency,
+			QueueSemChan:       d.commit.logSyncQSem,
 		}
 		d.mu.log.LogWriter = record.NewLogWriter(logFile, newLogNum, logWriterConfig)
 		d.mu.versions.metrics.WAL.Files++
