@@ -1906,7 +1906,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 		opts := &Options{
 			FS:         vfs.NewMem(),
 			DebugCheck: DebugCheckLevels,
-			EventListener: EventListener{
+			EventListener: &EventListener{
 				CompactionEnd: func(info CompactionInfo) {
 					if compactInfo != nil {
 						return
@@ -2176,7 +2176,7 @@ func TestCompactionTombstones(t *testing.T) {
 				opts := &Options{
 					FS:         vfs.NewMem(),
 					DebugCheck: DebugCheckLevels,
-					EventListener: EventListener{
+					EventListener: &EventListener{
 						CompactionEnd: func(info CompactionInfo) {
 							compactInfo = &info
 						},
@@ -2384,7 +2384,7 @@ func TestCompactionReadTriggered(t *testing.T) {
 				opts := &Options{
 					FS:         vfs.NewMem(),
 					DebugCheck: DebugCheckLevels,
-					EventListener: EventListener{
+					EventListener: &EventListener{
 						CompactionEnd: func(info CompactionInfo) {
 							compactInfo = &info
 						},
@@ -2854,7 +2854,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 	opts := &Options{
 		FS:     errorfs.Wrap(mem, ii),
 		Levels: make([]LevelOptions, numLevels),
-		EventListener: EventListener{
+		EventListener: &EventListener{
 			TableCreated: func(info TableCreateInfo) {
 				t.Log(info)
 
@@ -3146,7 +3146,7 @@ func TestFlushInvariant(t *testing.T) {
 					d, err := Open("", testingRandomized(&Options{
 						DisableWAL: disableWAL,
 						FS:         vfs.NewMem(),
-						EventListener: EventListener{
+						EventListener: &EventListener{
 							BackgroundError: func(err error) {
 								select {
 								case errCh <- err:
@@ -3352,7 +3352,7 @@ func TestFlushError(t *testing.T) {
 	}))
 	d, err := Open("", testingRandomized(&Options{
 		FS: fs,
-		EventListener: EventListener{
+		EventListener: &EventListener{
 			BackgroundError: func(err error) {
 				t.Log(err)
 			},
@@ -3657,7 +3657,7 @@ func TestMarkedForCompaction(t *testing.T) {
 		DebugCheck:                  DebugCheckLevels,
 		DisableAutomaticCompactions: true,
 		FormatMajorVersion:          FormatNewest,
-		EventListener: EventListener{
+		EventListener: &EventListener{
 			CompactionEnd: func(info CompactionInfo) {
 				// Fix the job ID and durations for determinism.
 				info.JobID = 100
@@ -3840,7 +3840,7 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 			// file creation, into which errors can be injected.
 			MaxManifestFileSize: 1,
 			Logger:              logger,
-			EventListener: EventListener{
+			EventListener: &EventListener{
 				BackgroundError: func(err error) {
 					if bgFn != nil {
 						bgFn(db, err)

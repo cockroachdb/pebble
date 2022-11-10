@@ -257,7 +257,7 @@ func TestSplitUserKeyMigration(t *testing.T) {
 				}
 				opts = &Options{
 					FormatMajorVersion: FormatBlockPropertyCollector,
-					EventListener: EventListener{
+					EventListener: &EventListener{
 						CompactionEnd: func(info CompactionInfo) {
 							// Fix the job ID and durations for determinism.
 							info.JobID = 100
