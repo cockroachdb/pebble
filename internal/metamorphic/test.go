@@ -53,7 +53,8 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 	}
 	t.opts = testOpts.opts.EnsureDefaults()
 	t.opts.Logger = h
-	t.opts.EventListener = pebble.MakeLoggingEventListener(t.opts.Logger)
+	lel := pebble.MakeLoggingEventListener(t.opts.Logger)
+	t.opts.EventListener = &lel
 	t.opts.DebugCheck = func(db *pebble.DB) error {
 		// Wrap the ordinary DebugCheckLevels with retrying
 		// of injected errors.
