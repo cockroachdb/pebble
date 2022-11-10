@@ -251,6 +251,21 @@ func TestBatchReset(t *testing.T) {
 	require.True(t, b.SeqNum() > 0)
 	require.True(t, b.memTableSize > 0)
 	require.NotEqual(t, b.deferredOp, DeferredBatchOp{})
+	// At this point b.data has not been modified since the db.NewBatch() and is
+	// either nil or contains a byte slice of length batchHeaderLen, with a 0
+	// seqnum encoded in data[0:8] and an arbitrary count encoded in data[8:12].
+	// The following commented code will often fail.
+	// 	count := binary.LittleEndian.Uint32(b.countData())
+	//  if count != 0 && count != 3 {
+	//  	t.Fatalf("count: %d", count)
+	//  }
+	// If we simply called b.Reset now and later used b.data to initialize
+	// expected, the count in expected will also be arbitrary. So we fix the
+	// count in b.data now by calling b.Repr(). This call isn't essential, since
+	// we will call b.Repr() again, and just shows that it fixes the count in
+	// b.data.
+	_ = b.Repr()
+	require.Equal(t, uint32(3), binary.LittleEndian.Uint32(b.countData()))
 
 	b.Reset()
 	require.Equal(t, db, b.db)
@@ -263,9 +278,10 @@ func TestBatchReset(t *testing.T) {
 	require.Equal(t, uint64(0), b.SeqNum())
 	require.Equal(t, uint64(0), b.memTableSize)
 	require.Equal(t, b.deferredOp, DeferredBatchOp{})
+	_ = b.Repr()
 
 	var expected Batch
-	expected.SetRepr(b.data)
+	require.NoError(t, expected.SetRepr(b.data))
 	expected.db = db
 	require.Equal(t, &expected, b)
 
