@@ -638,7 +638,7 @@ func TestIngest(t *testing.T) {
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
-			EventListener: EventListener{FlushEnd: func(info FlushInfo) {
+			EventListener: &EventListener{FlushEnd: func(info FlushInfo) {
 				flushed = true
 			}},
 			FormatMajorVersion: FormatNewest,
@@ -826,8 +826,9 @@ func TestIngestIdempotence(t *testing.T) {
 func TestIngestCompact(t *testing.T) {
 	var buf syncedBuffer
 	mem := vfs.NewMem()
+	lel := MakeLoggingEventListener(&buf)
 	d, err := Open("", &Options{
-		EventListener:         MakeLoggingEventListener(&buf),
+		EventListener:         &lel,
 		FS:                    mem,
 		L0CompactionThreshold: 1,
 		L0StopWritesThreshold: 1,
@@ -921,7 +922,7 @@ func TestConcurrentIngestCompact(t *testing.T) {
 			compactionBegin := make(chan struct{})
 			d, err := Open("", &Options{
 				FS: mem,
-				EventListener: EventListener{
+				EventListener: &EventListener{
 					TableCreated: func(info TableCreateInfo) {
 						if info.Reason == "compacting" {
 							close(compactionReady)
@@ -1609,7 +1610,7 @@ func TestIngestValidation(t *testing.T) {
 			opts := &Options{
 				FS:     fs,
 				Logger: logger,
-				EventListener: EventListener{
+				EventListener: &EventListener{
 					TableValidated: func(i TableValidatedInfo) {
 						wg.Done()
 					},

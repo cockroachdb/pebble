@@ -26,7 +26,7 @@ func TestTableStats(t *testing.T) {
 	var loadedInfo *TableStatsInfo
 	opts := &Options{
 		FS: fs,
-		EventListener: EventListener{
+		EventListener: &EventListener{
 			TableStatsLoaded: func(info TableStatsInfo) {
 				loadedInfo = &info
 			},
