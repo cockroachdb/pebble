@@ -102,10 +102,11 @@ func (w *WorkloadCollector) Attach(opts *pebble.Options) {
 		TableIngested:   w.onTableIngest,
 	}
 
-	if !opts.EventListener.IsConfigured() {
-		opts.EventListener = l
+	if opts.EventListener == nil {
+		opts.EventListener = &l
 	} else {
-		opts.EventListener = pebble.TeeEventListener(opts.EventListener, l)
+		t := pebble.TeeEventListener(*opts.EventListener, l)
+		opts.EventListener = &t
 	}
 
 	opts.EnsureDefaults()

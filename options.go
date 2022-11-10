@@ -467,7 +467,7 @@ type Options struct {
 
 	// EventListener provides hooks to listening to significant DB events such as
 	// flushes, compactions, and table deletion.
-	EventListener EventListener
+	EventListener *EventListener
 
 	// Experimental contains experimental options which are off by default.
 	// These options are temporary and will eventually either be deleted, moved
@@ -935,6 +935,9 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.Logger == nil {
 		o.Logger = DefaultLogger
+	}
+	if o.EventListener == nil {
+		o.EventListener = &EventListener{}
 	}
 	o.EventListener.EnsureDefaults(o.Logger)
 	if o.MaxManifestFileSize == 0 {
