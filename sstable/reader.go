@@ -2623,11 +2623,11 @@ type Reader struct {
 	tableFilter       *tableFilterReader
 	// Keep types that are not multiples of 8 bytes at the end and with
 	// decreasing size.
-	Properties        Properties
-	tableFormat       TableFormat
-	rawTombstones     bool
-	mergerOK          bool
-	checksumType      ChecksumType
+	Properties    Properties
+	tableFormat   TableFormat
+	rawTombstones bool
+	mergerOK      bool
+	checksumType  ChecksumType
 }
 
 // Close implements DB.Close, as documented in the pebble package.
