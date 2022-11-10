@@ -111,12 +111,13 @@ func open(dir string, listener pebble.EventListener) (*replay.DB, error) {
 	}
 	opts.EnsureDefaults()
 
-	opts.EventListener = listener
+	opts.EventListener = &listener
 	if verbose {
-		opts.EventListener = pebble.TeeEventListener(
-			opts.EventListener,
+		lel := pebble.TeeEventListener(
+			listener,
 			pebble.MakeLoggingEventListener(nil),
 		)
+		opts.EventListener = &lel
 	}
 	rd, err := replay.Open(dir, opts)
 	return rd, err

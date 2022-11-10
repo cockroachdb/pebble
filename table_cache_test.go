@@ -834,7 +834,7 @@ func TestTableCacheEvictClose(t *testing.T) {
 	db, err := Open("test",
 		&Options{
 			FS: vfs.NewMem(),
-			EventListener: EventListener{
+			EventListener: &EventListener{
 				TableDeleted: func(info TableDeleteInfo) {
 					errs <- info.Err
 				},

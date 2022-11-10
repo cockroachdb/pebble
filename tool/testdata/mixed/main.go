@@ -43,12 +43,13 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	lel := pebble.MakeLoggingEventListener(pebble.DefaultLogger)
 
 	opts := &pebble.Options{
 		FS:                          vfs.Default,
 		Comparer:                    testkeys.Comparer,
 		FormatMajorVersion:          pebble.FormatNewest,
-		EventListener:               pebble.MakeLoggingEventListener(pebble.DefaultLogger),
+		EventListener:               &lel,
 		DisableAutomaticCompactions: true,
 	}
 	db, err := pebble.Open(outDir, opts)

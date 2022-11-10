@@ -142,10 +142,11 @@ func TestEventListener(t *testing.T) {
 		switch td.Cmd {
 		case "open":
 			buf.Reset()
+			lel := MakeLoggingEventListener(&buf)
 			opts := &Options{
 				FS:                    loggingFS{mem, &buf},
 				FormatMajorVersion:    FormatNewest,
-				EventListener:         MakeLoggingEventListener(&buf),
+				EventListener:         &lel,
 				MaxManifestFileSize:   1,
 				L0CompactionThreshold: 10,
 				WALDir:                "wal",
@@ -290,7 +291,7 @@ func TestWriteStallEvents(t *testing.T) {
 			createReleased := make(chan struct{}, flushCount)
 			var buf syncedBuffer
 			var delayOnce sync.Once
-			listener := EventListener{
+			listener := &EventListener{
 				TableCreated: func(info TableCreateInfo) {
 					if c.delayFlush == (info.Reason == "flushing") {
 						delayOnce.Do(func() {
