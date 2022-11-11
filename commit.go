@@ -426,18 +426,3 @@ func (p *commitPipeline) publish(b *Batch) {
 		t.commit.Done()
 	}
 }
-
-// ratchetSeqNum allocates and marks visible all sequence numbers less than
-// but excluding `nextSeqNum`.
-func (p *commitPipeline) ratchetSeqNum(nextSeqNum uint64) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	logSeqNum := atomic.LoadUint64(p.env.logSeqNum)
-	if logSeqNum >= nextSeqNum {
-		return
-	}
-	count := nextSeqNum - logSeqNum
-	_ = atomic.AddUint64(p.env.logSeqNum, uint64(count)) - uint64(count)
-	atomic.StoreUint64(p.env.visibleSeqNum, nextSeqNum)
-}
