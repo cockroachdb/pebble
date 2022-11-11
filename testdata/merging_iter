@@ -37,9 +37,9 @@ stats
 ----
 a#30,1:30
 c#27,1:27
-e#72057594037927935,15:
 e#10,1:10
 g#20,1:20
+.
 {BlockBytes:116 BlockBytesInCache:0 KeyBytes:5 ValueBytes:8 PointCount:5 PointsCoveredByRangeTombstones:0}
 {BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 
@@ -49,9 +49,9 @@ seek-ge d
 next
 next
 ----
-e#72057594037927935,15:
 e#10,1:10
 g#20,1:20
+.
 
 # isPrevEntryDeleted() should not allow the rangedel to act on the points in the lower sstable
 # that are after it.
@@ -273,9 +273,9 @@ next
 ----
 a#30,1:30
 c#27,1:27
-e#72057594037927935,15:
 e#10,1:10
 g#20,1:20
+.
 
 # Verify that switching directions respects lower/upper bound.
 
@@ -425,10 +425,10 @@ next
 a#2,1:2
 a#0,1:1
 b#0,1:1
-e#72057594037927935,15:
 e#0,1:1
 f#3,1:3
 f#0,1:1
+.
 .
 
 iter
@@ -586,7 +586,7 @@ a#30,1:30
 {BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0}
 f#21,1:21
 {BlockBytes:0 BlockBytesInCache:0 KeyBytes:5 ValueBytes:10 PointCount:5 PointsCoveredByRangeTombstones:4}
-g#72057594037927935,15:
+.
 {BlockBytes:0 BlockBytesInCache:0 KeyBytes:6 ValueBytes:10 PointCount:6 PointsCoveredByRangeTombstones:4}
 .
 {BlockBytes:0 BlockBytesInCache:0 KeyBytes:6 ValueBytes:10 PointCount:6 PointsCoveredByRangeTombstones:4}
