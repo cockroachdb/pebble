@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"os"
 	"path"
 	"sync"
 	"sync/atomic"
@@ -690,4 +691,17 @@ func (bench *fsBench) done(wg *sync.WaitGroup, elapsed time.Duration) {
 		resultHist.TotalCount(),
 		float64(resultHist.TotalCount())/elapsed.Seconds(),
 	)
+}
+
+func verbosef(fmtstr string, args ...interface{}) {
+	if verbose {
+		fmt.Printf(fmtstr, args...)
+	}
+}
+
+func removeAll(dir string) {
+	verbosef("Removing %q.\n", dir)
+	if err := os.RemoveAll(dir); err != nil {
+		log.Fatal(err)
+	}
 }

@@ -34,12 +34,7 @@ func main() {
 		Use:   "bench",
 		Short: "benchmarks",
 	}
-	compactCmd.AddCommand(
-		compactNewCmd,
-		compactRunCmd,
-	)
 	benchCmd.AddCommand(
-		compactCmd,
 		scanCmd,
 		syncCmd,
 		tombstoneCmd,
@@ -57,11 +52,11 @@ func main() {
 	t := tool.New(tool.Comparers(mvccComparer, testkeys.Comparer), tool.Mergers(fauxMVCCMerger))
 	rootCmd.AddCommand(t.Commands...)
 
-	for _, cmd := range []*cobra.Command{compactNewCmd, compactRunCmd, scanCmd, syncCmd, tombstoneCmd, writeBenchCmd, ycsbCmd} {
+	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, writeBenchCmd, ycsbCmd} {
 		cmd.Flags().BoolVarP(
 			&verbose, "verbose", "v", false, "enable verbose event logging")
 	}
-	for _, cmd := range []*cobra.Command{compactRunCmd, scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
+	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
 		cmd.Flags().Int64Var(
 			&cacheSize, "cache", 1<<30, "cache size")
 	}
