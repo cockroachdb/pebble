@@ -535,3 +535,71 @@ seek-ge b
 ----
 e: (e, .)
 e: (e, .)
+
+# Regression test for #2118, where a MERGE pushes child iterators to the next
+# key, and possibly past a file that contained a range tombstone that we
+# should have paused at, affecting future TrySeekUsingNexts.
+
+reset bloom-bits-per-key=10
+----
+
+batch commit
+set c@2 foo
+range-key-set c e @5 bar
+----
+committed 2 keys
+
+flush
+----
+
+compact a-z
+----
+6:
+  000005:[c#2,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+
+batch commit
+set j k
+----
+committed 1 keys
+
+flush
+----
+
+compact a-z
+----
+6:
+  000005:[c#2,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+  000007:[j#3,SET-j#3,SET]
+
+batch commit
+del-range c@2 d
+merge b@2 g
+----
+committed 2 keys
+
+flush
+----
+
+batch commit
+del m
+----
+committed 1 keys
+
+flush
+----
+
+lsm
+----
+0.0:
+  000009:[b@2#5,MERGE-d#72057594037927935,RANGEDEL]
+  000011:[m#6,DEL-m#6,DEL]
+6:
+  000005:[c#2,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+  000007:[j#3,SET-j#3,SET]
+
+combined-iter upper=z@3 mask-suffix=@3 mask-filter
+seek-prefix-ge b@2
+seek-prefix-ge c@2
+----
+b@2: (g, .)
+c@2: (., [c-"c\x00") @5=bar UPDATED)

@@ -1294,7 +1294,14 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 		flags = flags.EnableBatchJustRefreshed()
 		i.batchJustRefreshed = false
 	}
-	if lastPositioningOp == seekPrefixGELastPositioningOp {
+	if lastPositioningOp == seekPrefixGELastPositioningOp && i.pos != iterPosNext {
+		// iterPosNext is unsafe to optimize for TrySeekUsingNext. This is because
+		// the last SeekPrefixGE could have landed on a merge, and we could have
+		// Next'd out of that sstable in the levelIter when trying to merge it with
+		// the next key. The levelIter relies on pausing within an sstable to be
+		// able to surface any relevant range deletions, and if we SeekPrefixGE
+		// again over a range deletion that existed in that now-passed sstable, we
+		// could resurface a deleted key.
 		if !i.hasPrefix {
 			panic("lastPositioningOpsIsSeekPrefixGE is true, but hasPrefix is false")
 		}
@@ -1309,7 +1316,6 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 		// specifically benefits CockroachDB.
 		cmp := i.cmp(i.prefixOrFullSeekKey, keyPrefix)
 		// cmp == 0 is not safe to optimize since
-		// - i.pos could be at iterPosNext, due to a merge.
 		// - Even if i.pos were at iterPosCurForward, we could have a DELETE,
 		//   SET pair for a key, and the iterator would have moved past DELETE
 		//   but stayed at iterPosCurForward. A similar situation occurs for a
