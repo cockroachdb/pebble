@@ -169,6 +169,11 @@ func TestIterHistories(t *testing.T) {
 					return fmt.Sprintf("committed %d keys\n", count)
 				}
 				return fmt.Sprintf("wrote %d keys to batch %q\n", count, name)
+			case "compact":
+				if err := runCompactCmd(td, d); err != nil {
+					return err.Error()
+				}
+				return runLSMCmd(td, d)
 			case "flush":
 				err := d.Flush()
 				if err != nil {
@@ -294,6 +299,8 @@ func TestIterHistories(t *testing.T) {
 						o.PointKeyFilters = []sstable.BlockPropertyFilter{
 							sstable.NewTestKeysBlockPropertyFilter(min, max),
 						}
+					case "use-l6-filter":
+						o.UseL6Filters = true
 					}
 				}
 				var iter *Iterator

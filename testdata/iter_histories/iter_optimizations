@@ -373,3 +373,93 @@ seek-prefix-ge c@8
 .
 lastPositioningOp="seekprefixge"
 c@4: (c@4, .)
+
+# Regression test for #2118, where a MERGE pushes child iterators to the next
+# key, and possibly past a file that contained a range tombstone that we
+# should have paused at in a SeekPrefixGE, affecting future TrySeekUsingNexts.
+# This test constructs this example (suffixes ignored), where square brackets
+# consist of one SST:
+#
+# L0: [(b, MERGE)  (c-d, RANGEDEL)] [(m, DEL)]
+# L6: [(c, SET) (c-e, RANGEKEYSET)] [(j, SET)]
+#
+# We create an iterator with L6 filters enabled and create relatively large
+# bloom filter blocks to reduce the false positive rate. Then we SeekPrefixGE(b)
+# and end up with the L0 levelIter landing on the (b, MERGE), and the L6 iterator
+# is exhausted as no SST filter blocks match the prefix. The top-level iterator
+# then Next()s to find the next internal key at b if there is any, we land
+# on the pause key at (d, RANGEDELSENTINEL). Crucially since there are no
+# more items in the mergingIter heap and the merging iter is set to elide
+# range tombstones, we Next() the level iter again as part of the same top-level
+# iterator Next(), and land on (m, DEL). The type of the key here doesn't really
+# matter.
+#
+# We then do a SeekPrefixGE(c), and since c > b, in the buggy scenario we
+# TrySeekUsingNext. The bottom levelIter correctly finds the sstable containing
+# the set, but the upper levelIter is already past the sstable containing the
+# rangedel, so it just returns (m, DEL) again, and we surface the (c, SET) that
+# should have been deleted.
+
+reset bloom-bits-per-key=100
+----
+
+batch commit
+set c@2 foo
+range-key-set c e @5 bar
+----
+committed 2 keys
+
+flush
+----
+
+compact a-z
+----
+6:
+  000005:[c#2,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+
+batch commit
+set j k
+----
+committed 1 keys
+
+flush
+----
+
+compact a-z
+----
+6:
+  000005:[c#2,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+  000007:[j#3,SET-j#3,SET]
+
+batch commit
+del-range c@2 d
+merge b@2 g
+----
+committed 2 keys
+
+flush
+----
+
+batch commit
+del m
+----
+committed 1 keys
+
+flush
+----
+
+lsm
+----
+0.0:
+  000009:[b@2#5,MERGE-d#72057594037927935,RANGEDEL]
+  000011:[m#6,DEL-m#6,DEL]
+6:
+  000005:[c#2,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+  000007:[j#3,SET-j#3,SET]
+
+combined-iter upper=z@3 mask-suffix=@3 mask-filter use-l6-filter
+seek-prefix-ge b@2
+seek-prefix-ge c@2
+----
+b@2: (g, .)
+c@2: (., [c-"c\x00") @5=bar UPDATED)
