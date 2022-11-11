@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -619,6 +620,10 @@ func TestIngestTargetLevel(t *testing.T) {
 }
 
 func TestIngest(t *testing.T) {
+	if unsafe.Sizeof("") != 16 {
+		t.Skipf("Test fails on 32-bit platforms, due difference in size of tcache struct")
+	}
+
 	var mem vfs.FS
 	var d *DB
 	var flushed bool

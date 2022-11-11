@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -133,6 +134,9 @@ func (f loggingFile) Sync() error {
 
 // Verify event listener actions, as well as expected filesystem operations.
 func TestEventListener(t *testing.T) {
+	if unsafe.Sizeof("") != 16 {
+		t.Skipf("Test fails on 32-bit platforms, due difference in size of tcache struct")
+	}
 	var d *DB
 	var buf syncedBuffer
 	mem := vfs.NewMem()

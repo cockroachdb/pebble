@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"runtime"
 	"strconv"
 	"strings"
@@ -20,7 +21,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
-	"math"
 )
 
 const (
@@ -1324,7 +1324,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "mem_table_size":
 				var uVal uint64
 				uVal, err = strconv.ParseUint(value, 10, 64)
-				if uVal > math.MaxInt {
+				if uVal > math.MaxInt64 {
 					err = errors.New("value out of range")
 				} else {
 					o.MemTableSize = uint64(uVal)

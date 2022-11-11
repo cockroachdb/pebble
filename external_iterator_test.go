@@ -198,7 +198,7 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 			})
 			buf := make([]byte, alpha.MaxLen()+testkeys.MaxSuffixLen)
 			valBuf := make([]byte, 20)
-			keyIdx := 0
+			keyIdx := uint64(0)
 			for i := 0; i < numParts; i++ {
 				// The first two parts of the keyspace are special. The first one has
 				// all keys with timestamps greater than tsSeparator, while the second
@@ -214,7 +214,8 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 					} else {
 						ts = rng.Intn(tsSeparator + 5000)
 					}
-					n := testkeys.WriteKeyAt(buf, alpha, keyIdx*alpha.Count()/numKeys, ts)
+					i := (keyIdx * uint64(alpha.Count())) / uint64(numKeys)
+					n := testkeys.WriteKeyAt(buf, alpha, int(i), ts)
 					keys = append(keys, append([]byte(nil), buf[:n]...))
 					randStr(valBuf, rng)
 					require.NoError(t, w.Set(buf[:n], valBuf))
