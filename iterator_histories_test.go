@@ -299,6 +299,8 @@ func TestIterHistories(t *testing.T) {
 						o.PointKeyFilters = []sstable.BlockPropertyFilter{
 							sstable.NewTestKeysBlockPropertyFilter(min, max),
 						}
+					case "use-l6-filter":
+						o.UseL6Filters = true
 					}
 				}
 				var iter *Iterator

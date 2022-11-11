@@ -955,6 +955,9 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, base.LazyValue) {
 			// If the boundary is a range deletion tombstone, return that key.
 			if l.iterFile.LargestPointKey.Kind() == InternalKeyKindRangeDelete {
 				l.largestBoundary = &l.iterFile.LargestPointKey
+				if l.boundaryContext != nil {
+					l.boundaryContext.isIgnorableBoundaryKey = true
+				}
 				return l.largestBoundary, base.LazyValue{}
 			}
 			// If the last point iterator positioning op might've skipped keys,
