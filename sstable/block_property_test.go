@@ -1007,11 +1007,13 @@ func TestBlockProperties(t *testing.T) {
 			} else if !ok {
 				return "filter excludes entire table"
 			}
-			iter, err := r.NewIterWithBlockPropertyFilters(lower, upper, filterer, false /* use (bloom) filter */, &stats)
+			iter, err := r.NewIterWithBlockPropertyFilters(
+				lower, upper, filterer, false /* use (bloom) filter */, &stats,
+				TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
 			}
-			return runIterCmd(td, iter, runIterCmdEveryOpAfter(func(w io.Writer) {
+			return runIterCmd(td, iter, false, runIterCmdEveryOpAfter(func(w io.Writer) {
 				// After every op, point the value of MaybeFilteredKeys.
 				fmt.Fprintf(w, " MaybeFilteredKeys()=%t", iter.MaybeFilteredKeys())
 			}))
@@ -1085,11 +1087,13 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 			} else if !ok {
 				return "filter excludes entire table"
 			}
-			iter, err := r.NewIterWithBlockPropertyFilters(lower, upper, filterer, false /* use (bloom) filter */, &stats)
+			iter, err := r.NewIterWithBlockPropertyFilters(
+				lower, upper, filterer, false /* use (bloom) filter */, &stats,
+				TrivialReaderProvider{Reader: r})
 			if err != nil {
 				return err.Error()
 			}
-			return runIterCmd(td, iter, runIterCmdEveryOp(func(w io.Writer) {
+			return runIterCmd(td, iter, false, runIterCmdEveryOp(func(w io.Writer) {
 				// Copy the bound-limited-wrapper's accumulated output to the
 				// iterator's writer. This interleaves its output with the
 				// iterator output.

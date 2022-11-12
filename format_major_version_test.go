@@ -415,6 +415,8 @@ func TestPebblev1Migration(t *testing.T) {
 				if err := runBuildCmd(td, d, d.opts.FS); err != nil {
 					return err.Error()
 				}
+				// Only the first arg is a filename.
+				td.CmdArgs = td.CmdArgs[:1]
 				if err := runIngestCmd(td, d, d.opts.FS); err != nil {
 					return err.Error()
 				}

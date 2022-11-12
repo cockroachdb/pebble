@@ -7,6 +7,7 @@ package sstable
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -22,8 +23,7 @@ func TestValueHandleEncodeDecode(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%+v", tc), func(t *testing.T) {
 			n := encodeValueHandle(buf[:], tc)
-			vh, err := decodeValueHandle(buf[:n])
-			require.NoError(t, err)
+			vh := decodeValueHandle(buf[:n])
 			require.Equal(t, tc, vh)
 		})
 	}
@@ -91,6 +91,21 @@ func TestValueBlocksIndexHandleEncodeDecode(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, n, n2)
 			require.Equal(t, tc, vbih)
+		})
+	}
+}
+
+func TestLittleEndianGetPut(t *testing.T) {
+	testCases := []uint64{
+		0, (1 << 10) - 1, (1 << 25) + 1, math.MaxUint32, math.MaxUint64, uint64(rand.Int63())}
+	var buf [8]byte
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("%d", tc), func(t *testing.T) {
+			length := lenLittleEndian(tc)
+			b := buf[:length:length]
+			littleEndianPut(tc, b, length)
+			v := littleEndianGet(b, length)
+			require.Equal(t, tc, v)
 		})
 	}
 }

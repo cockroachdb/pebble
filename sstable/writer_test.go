@@ -25,34 +25,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func testWriterParallelism(t *testing.T, parallelism bool) {
+	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
+		tdFile := "testdata/writer"
+		if format == TableFormatPebblev3 {
+			tdFile = "testdata/writer_v3"
+		}
+		t.Run(format.String(), func(t *testing.T) { runDataDriven(t, tdFile, format, parallelism) })
+	}
+}
 func TestWriter(t *testing.T) {
-	runDataDriven(t, "testdata/writer", false)
+	testWriterParallelism(t, false)
+}
+
+func testRewriterParallelism(t *testing.T, parallelism bool) {
+	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
+		tdFile := "testdata/rewriter"
+		if format == TableFormatPebblev3 {
+			tdFile = "testdata/rewriter_v3"
+		}
+		t.Run(format.String(), func(t *testing.T) { runDataDriven(t, tdFile, format, parallelism) })
+	}
 }
 
 func TestRewriter(t *testing.T) {
-	runDataDriven(t, "testdata/rewriter", false)
+	testRewriterParallelism(t, false)
 }
 
 func TestWriterParallel(t *testing.T) {
-	runDataDriven(t, "testdata/writer", true)
+	testWriterParallelism(t, true)
 }
 
 func TestRewriterParallel(t *testing.T) {
-	runDataDriven(t, "testdata/rewriter", true)
+	testRewriterParallelism(t, true)
 }
 
-func runDataDriven(t *testing.T, file string, parallelism bool) {
+func runDataDriven(t *testing.T, file string, tableFormat TableFormat, parallelism bool) {
 	var r *Reader
 	defer func() {
 		if r != nil {
 			require.NoError(t, r.Close())
 		}
 	}()
-	formatVersion := TableFormatMax
-	if rand.Intn(2) == 0 {
-		formatVersion = TableFormatPebblev2
-	}
-	t.Logf("table format %s", formatVersion.String())
 
 	format := func(m *WriterMetadata) string {
 		var b bytes.Buffer
@@ -79,7 +93,7 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 			var meta *WriterMetadata
 			var err error
 			meta, r, err = runBuildCmd(td, &WriterOptions{
-				TableFormat: formatVersion,
+				TableFormat: tableFormat,
 				Parallelism: parallelism,
 			}, 0)
 			if err != nil {
@@ -95,7 +109,7 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 			var meta *WriterMetadata
 			var err error
 			meta, r, err = runBuildRawCmd(td, &WriterOptions{
-				TableFormat: formatVersion,
+				TableFormat: tableFormat,
 			})
 			if err != nil {
 				return err.Error()
@@ -181,7 +195,7 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 			var meta *WriterMetadata
 			var err error
 			meta, r, err = runRewriteCmd(td, r, WriterOptions{
-				TableFormat: formatVersion,
+				TableFormat: tableFormat,
 			})
 			if err != nil {
 				return err.Error()
@@ -197,9 +211,6 @@ func runDataDriven(t *testing.T, file string, parallelism bool) {
 	})
 }
 
-// TODO(sumeer):
-// - test layout after Reader.Layout is implemented.
-// - test rewriteKeySuffixesInBlocks.
 func TestWriterWithValueBlocks(t *testing.T) {
 	var r *Reader
 	defer func() {
@@ -252,7 +263,6 @@ func TestWriterWithValueBlocks(t *testing.T) {
 				Comparer:                  testkeys.Comparer,
 				TableFormat:               formatVersion,
 				Parallelism:               parallelism,
-				EnableValueBlocks:         true,
 				RequiredInPlaceValueBound: inPlaceValueBound,
 				ShortAttributeExtractor:   attributeExtractor,
 			}, 0)
@@ -261,13 +271,33 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			}
 			return formatMeta(meta)
 
+		case "layout":
+			l, err := r.Layout()
+			if err != nil {
+				return err.Error()
+			}
+			var buf bytes.Buffer
+			l.Describe(&buf, true, r, func(key *base.InternalKey, value []byte) {
+				fmt.Fprintf(&buf, "%s:%s", key.String(), string(value))
+			})
+			return buf.String()
+
 		case "scan-raw":
-			// Raw scan does not fetch from value blocks, since we have not written
-			// the read path yet.
-			// TODO(sumeer): add a real scan.
+			// Raw scan does not fetch from value blocks.
 			origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
 			if err != nil {
 				return err.Error()
+			}
+			forceIgnoreValueBlocks := func(i *singleLevelIterator) {
+				i.vbReader = nil
+				i.data.lazyValueHandling.vbr = nil
+				i.data.lazyValueHandling.hasValuePrefix = false
+			}
+			switch i := origIter.(type) {
+			case *twoLevelIterator:
+				forceIgnoreValueBlocks(&i.singleLevelIterator)
+			case *singleLevelIterator:
+				forceIgnoreValueBlocks(i)
 			}
 			iter := newIterAdapter(origIter)
 			defer iter.Close()
@@ -280,8 +310,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 					setWithSamePrefix := setHasSamePrefix(prefix)
 					if isValueHandle(prefix) {
 						attribute := getShortAttribute(prefix)
-						vh, err := decodeValueHandle(v[1:])
-						require.NoError(t, err)
+						vh := decodeValueHandle(v[1:])
 						fmt.Fprintf(&buf, "%s:value-handle len %d block %d offset %d, att %d, same-pre %t\n",
 							iter.Key(), vh.valueLen, vh.blockNum, vh.offsetInBlock, attribute, setWithSamePrefix)
 					} else {
@@ -289,6 +318,62 @@ func TestWriterWithValueBlocks(t *testing.T) {
 					}
 				} else {
 					fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), v)
+				}
+			}
+			return buf.String()
+
+		case "scan":
+			origIter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			if err != nil {
+				return err.Error()
+			}
+			iter := newIterAdapter(origIter)
+			defer iter.Close()
+			var buf bytes.Buffer
+			for valid := iter.First(); valid; valid = iter.Next() {
+				fmt.Fprintf(&buf, "%s:%s\n", iter.Key(), iter.Value())
+			}
+			return buf.String()
+
+		case "scan-cloned-lazy-values":
+			iter, err := r.NewIter(nil /* lower */, nil /* upper */)
+			if err != nil {
+				return err.Error()
+			}
+			var fetchers [100]base.LazyFetcher
+			var values []base.LazyValue
+			n := 0
+			var b []byte
+			for k, lv := iter.First(); k != nil; k, lv = iter.Next() {
+				var lvClone base.LazyValue
+				lvClone, b = lv.Clone(b, &fetchers[n])
+				if lv.Fetcher != nil {
+					_, callerOwned, err := lv.Value(nil)
+					require.False(t, callerOwned)
+					require.NoError(t, err)
+				}
+				n++
+				values = append(values, lvClone)
+			}
+			require.NoError(t, iter.Error())
+			iter.Close()
+			var buf bytes.Buffer
+			for i := range values {
+				fmt.Fprintf(&buf, "%d", i)
+				v, callerOwned, err := values[i].Value(nil)
+				require.NoError(t, err)
+				if values[i].Fetcher != nil {
+					require.True(t, callerOwned)
+					fmt.Fprintf(&buf, "(lazy: len %d, attr: %d): %s\n",
+						values[i].Len(), values[i].Fetcher.Attribute.ShortAttribute, string(v))
+					v2, callerOwned, err := values[i].Value(nil)
+					require.NoError(t, err)
+					require.True(t, callerOwned)
+					require.Equal(t, &v[0], &v2[0])
+
+				} else {
+					require.False(t, callerOwned)
+					fmt.Fprintf(&buf, "(in-place: len %d): %s\n", values[i].Len(), string(v))
 				}
 			}
 			return buf.String()
@@ -455,15 +540,20 @@ func TestSizeEstimate(t *testing.T) {
 		})
 }
 
-// TODO(sumeer): update to test value blocks after read path (including Layout
-// changes) is implemented.
 func TestWriterClearCache(t *testing.T) {
 	// Verify that Writer clears the cache of blocks that it writes.
 	mem := vfs.NewMem()
-	opts := ReaderOptions{Cache: cache.New(64 << 20)}
+	opts := ReaderOptions{
+		Cache:    cache.New(64 << 20),
+		Comparer: testkeys.Comparer,
+	}
 	defer opts.Cache.Unref()
 
-	writerOpts := WriterOptions{Cache: opts.Cache}
+	writerOpts := WriterOptions{
+		Cache:       opts.Cache,
+		Comparer:    testkeys.Comparer,
+		TableFormat: TableFormatPebblev3,
+	}
 	cacheOpts := &cacheOpts{cacheID: 1, fileNum: 1}
 	invalidData := func() *cache.Value {
 		invalid := []byte("invalid data")
@@ -478,6 +568,8 @@ func TestWriterClearCache(t *testing.T) {
 
 		w := NewWriter(f, writerOpts, cacheOpts)
 		require.NoError(t, w.Set([]byte("hello"), []byte("world")))
+		require.NoError(t, w.Set([]byte("hello@42"), []byte("world@42")))
+		require.NoError(t, w.Set([]byte("hello@5"), []byte("world@5")))
 		require.NoError(t, w.Close())
 	}
 
@@ -504,6 +596,12 @@ func TestWriterClearCache(t *testing.T) {
 		f(layout.TopIndex)
 		f(layout.Filter)
 		f(layout.RangeDel)
+		for _, bh := range layout.ValueBlock {
+			f(bh)
+		}
+		if layout.ValueIndex.Length != 0 {
+			f(layout.ValueIndex)
+		}
 		f(layout.Properties)
 		f(layout.MetaIndex)
 	}
