@@ -23,7 +23,7 @@ func TestLazyValue(t *testing.T) {
 	require.Equal(t, 3, fooLV1.Len())
 	_, hasAttr := fooLV1.TryGetShortAttribute()
 	require.False(t, hasAttr)
-	fooLV2, fooBytes2 := fooLV1.Clone(nil)
+	fooLV2, fooBytes2 := fooLV1.Clone(nil, &LazyFetcher{})
 	require.Equal(t, 3, fooLV2.Len())
 	_, hasAttr = fooLV2.TryGetShortAttribute()
 	require.False(t, hasAttr)
@@ -43,9 +43,10 @@ func TestLazyValue(t *testing.T) {
 		fooLV3 := LazyValue{
 			ValueOrHandle: []byte("foo-handle"),
 			Fetcher: &LazyFetcher{
-				ValueFetcher: func(handle []byte, buf []byte) ([]byte, bool, error) {
+				ValueFetcher: func(handle []byte, valLen int32, buf []byte) ([]byte, bool, error) {
 					numCalls++
 					require.Equal(t, []byte("foo-handle"), handle)
+					require.Equal(t, int32(3), valLen)
 					return fooBytes1, callerOwned, nil
 				},
 				Attribute: AttributeAndLen{ValueLen: 3, ShortAttribute: 7},

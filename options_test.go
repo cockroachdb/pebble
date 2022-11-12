@@ -234,6 +234,7 @@ func TestOptionsParse(t *testing.T) {
 			opts.Experimental.TableCacheShards = 500
 			opts.Experimental.MaxWriterConcurrency = 1
 			opts.Experimental.ForceWriterParallelism = true
+			opts.Experimental.EnableValueBlocks = true
 			opts.EnsureDefaults()
 			str := opts.String()
 

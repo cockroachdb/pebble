@@ -254,6 +254,10 @@ func standardOptions() []*testOptions {
 [TestOptions]
   threads=1
 `,
+		25: `
+[Options]
+  enable_value_blocks=true
+`,
 	}
 
 	opts := make([]*testOptions, len(stdOpts))

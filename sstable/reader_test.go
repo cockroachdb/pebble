@@ -194,7 +194,7 @@ func TestReader(t *testing.T) {
 	}
 
 	opts := map[string]*Comparer{
-		"default":      nil,
+		"default":      testkeys.Comparer,
 		"prefixFilter": fixtureComparer,
 	}
 
@@ -203,21 +203,24 @@ func TestReader(t *testing.T) {
 		"prefixFilter": "testdata/prefixreader",
 	}
 
-	for dName, blockSize := range blockSizes {
-		for iName, indexBlockSize := range blockSizes {
-			for lName, tableOpt := range writerOpts {
-				for oName, cmp := range opts {
-					tableOpt.BlockSize = blockSize
-					tableOpt.Comparer = cmp
-					tableOpt.IndexBlockSize = indexBlockSize
+	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
+		for dName, blockSize := range blockSizes {
+			for iName, indexBlockSize := range blockSizes {
+				for lName, tableOpt := range writerOpts {
+					for oName, cmp := range opts {
+						tableOpt.BlockSize = blockSize
+						tableOpt.Comparer = cmp
+						tableOpt.IndexBlockSize = indexBlockSize
+						tableOpt.TableFormat = format
 
-					t.Run(
-						fmt.Sprintf("opts=%s,writerOpts=%s,blockSize=%s,indexSize=%s",
-							oName, lName, dName, iName),
-						func(t *testing.T) {
-							runTestReader(
-								t, tableOpt, testDirs[oName], nil /* Reader */, 0, false)
-						})
+						t.Run(
+							fmt.Sprintf("format=%d,opts=%s,writerOpts=%s,blockSize=%s,indexSize=%s",
+								format, oName, lName, dName, iName),
+							func(t *testing.T) {
+								runTestReader(
+									t, tableOpt, testDirs[oName], nil /* Reader */, 0, false, true)
+							})
+					}
 				}
 			}
 		}
@@ -245,7 +248,7 @@ func TestHamletReader(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("sst=%s", prebuiltSST),
 			func(t *testing.T) {
-				runTestReader(t, WriterOptions{}, "testdata/hamletreader", r, 0, false)
+				runTestReader(t, WriterOptions{}, "testdata/hamletreader", r, 0, false, false)
 			},
 		)
 	}
@@ -256,19 +259,24 @@ func TestReaderStats(t *testing.T) {
 		BlockSize:      30,
 		IndexBlockSize: 30,
 	}
-	runTestReader(t, tableOpt, "testdata/readerstats", nil, 10000, false)
+	runTestReader(t, tableOpt, "testdata/readerstats", nil, 10000, false, false)
 }
 
 func TestReaderWithBlockPropertyFilter(t *testing.T) {
-	writerOpt := WriterOptions{
-		BlockSize:               1,
-		IndexBlockSize:          40,
-		Comparer:                testkeys.Comparer,
-		TableFormat:             TableFormatMax,
-		BlockPropertyCollectors: []func() BlockPropertyCollector{NewTestKeysBlockPropertyCollector},
+	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
+		writerOpt := WriterOptions{
+			BlockSize:               1,
+			IndexBlockSize:          40,
+			Comparer:                testkeys.Comparer,
+			TableFormat:             format,
+			BlockPropertyCollectors: []func() BlockPropertyCollector{NewTestKeysBlockPropertyCollector},
+		}
+		tdFile := "testdata/reader_bpf"
+		if format == TableFormatPebblev3 {
+			tdFile = "testdata/reader_bpf_v3"
+		}
+		runTestReader(t, writerOpt, tdFile, nil /* Reader */, 0, true, false)
 	}
-	runTestReader(
-		t, writerOpt, "testdata/reader_bpf", nil /* Reader */, 0, true)
 }
 
 func TestInjectedErrors(t *testing.T) {
@@ -387,7 +395,13 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 }
 
 func runTestReader(
-	t *testing.T, o WriterOptions, dir string, r *Reader, cacheSize int, printLayout bool,
+	t *testing.T,
+	o WriterOptions,
+	dir string,
+	r *Reader,
+	cacheSize int,
+	printLayout bool,
+	printValue bool,
 ) {
 	datadriven.Walk(t, dir, func(t *testing.T, path string) {
 		defer func() {
@@ -442,11 +456,12 @@ func runTestReader(
 					filterer,
 					true, /* use filter block */
 					&stats,
+					TrivialReaderProvider{Reader: r},
 				)
 				if err != nil {
 					return err.Error()
 				}
-				return runIterCmd(d, iter, runIterCmdStats(&stats))
+				return runIterCmd(d, iter, printValue, runIterCmdStats(&stats))
 
 			case "get":
 				var b bytes.Buffer
@@ -576,7 +591,7 @@ func testBytesIteratedWithCompression(
 			for _, numEntries := range []uint64{0, 1, maxNumEntries[i]} {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, compression)
 				var bytesIterated, prevIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated)
+				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r})
 				require.NoError(t, err)
 
 				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
@@ -626,7 +641,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, DefaultCompression)
 				var bytesIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated)
+				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r})
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:
@@ -1098,6 +1113,7 @@ var basicBenchmarks = []struct {
 			BlockRestartInterval: 16,
 			FilterPolicy:         nil,
 			Compression:          SnappyCompression,
+			TableFormat:          TableFormatPebblev2,
 		},
 	},
 	{
@@ -1107,6 +1123,7 @@ var basicBenchmarks = []struct {
 			BlockRestartInterval: 16,
 			FilterPolicy:         nil,
 			Compression:          ZstdCompression,
+			TableFormat:          TableFormatPebblev2,
 		},
 	},
 }

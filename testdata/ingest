@@ -16,7 +16,7 @@ ingest ext0
 lsm
 ----
 
-build ext0
+build ext0 format=pebblev2
 set a 1
 set b 2
 ----
@@ -48,7 +48,7 @@ compact         0     0 B     0 B       0          (size == estimated-debt, scor
 zmemtbl         0     0 B
    ztbl         0     0 B
  bcache         8   1.5 K   42.9%  (score == hit-rate)
- tcache         1   688 B   50.0%  (score == hit-rate)
+ tcache         1   712 B   50.0%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)
@@ -107,7 +107,7 @@ b
 a:3
 b: pebble: not found
 
-build ext2
+build ext2 format=pebblev2
 set a 4
 set b 5
 set c 6
@@ -294,7 +294,7 @@ n
 m:12
 n:13
 
-build ext7
+build ext7 format=pebblev2
 del-range a c
 del-range x z
 ----

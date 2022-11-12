@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"testing"
 
@@ -15,6 +16,11 @@ import (
 func TestRewriteSuffixProps(t *testing.T) {
 	from, to := []byte("_212"), []byte("_646")
 
+	format := TableFormatPebblev2
+	if rand.Intn(2) != 0 {
+		format = TableFormatPebblev3
+	}
+	t.Logf("table format: %s\n", format.String())
 	wOpts := WriterOptions{
 		FilterPolicy: bloom.FilterPolicy(10),
 		Comparer:     test4bSuffixComparer,
@@ -27,7 +33,7 @@ func TestRewriteSuffixProps(t *testing.T) {
 			intSuffixIntervalCollectorFn("bp2", 2),
 			intSuffixIntervalCollectorFn("bp1", 1),
 		},
-		TableFormat: TableFormatPebblev2,
+		TableFormat: format,
 	}
 
 	const keyCount = 1e5

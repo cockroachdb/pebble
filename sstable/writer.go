@@ -770,7 +770,7 @@ func (w *Writer) makeAddPointDecisionV2(key InternalKey) error {
 }
 
 func (w *Writer) makeAddPointDecisionV3(
-	key InternalKey,
+	key InternalKey, valueLen int,
 ) (setHasSamePrefix bool, writeToValueBlock bool, err error) {
 	prevPointKeyInfo := w.lastPointKeyInfo
 	w.lastPointKeyInfo.userKeyLen = len(key.UserKey)
@@ -831,17 +831,22 @@ func (w *Writer) makeAddPointDecisionV3(
 	// NB: it is possible that cmpUser == 0, i.e., these two SETs have identical
 	// user keys (because of an open snapshot). This should be the rare case.
 	setHasSamePrefix = cmpPrefix == 0
-	// Currently we write to the value block exactly when consecutive sets have
-	// the same prefix. We may expand the cases we write to the value block in
-	// the future.
-	return setHasSamePrefix, setHasSamePrefix, nil
+	considerWriteToValueBlock = setHasSamePrefix
+	// Use of 0 here is somewhat arbitrary. Given the minimum 3 byte encoding of
+	// valueHandle, this should be > 3. But tiny values are common in test and
+	// unlikely in production, so we use 0 here for better test coverage.
+	const tinyValueThreshold = 0
+	if considerWriteToValueBlock && valueLen <= tinyValueThreshold {
+		considerWriteToValueBlock = false
+	}
+	return setHasSamePrefix, considerWriteToValueBlock, nil
 }
 
 func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	var err error
 	var setHasSameKeyPrefix, writeToValueBlock, addPrefixToValueStoredWithKey bool
 	if w.valueBlockWriter != nil {
-		setHasSameKeyPrefix, writeToValueBlock, err = w.makeAddPointDecisionV3(key)
+		setHasSameKeyPrefix, writeToValueBlock, err = w.makeAddPointDecisionV3(key, len(value))
 		addPrefixToValueStoredWithKey = base.TrailerKind(key.Trailer) == InternalKeyKindSet
 	} else {
 		err = w.makeAddPointDecisionV2(key)
@@ -2128,11 +2133,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 			Format: o.Comparer.FormatKey,
 		},
 	}
-	if o.EnableValueBlocks {
-		if w.tableFormat < TableFormatPebblev3 {
-			w.err = errors.New("value blocks not supported at this table format version")
-			return w
-		}
+	if w.tableFormat == TableFormatPebblev3 {
 		w.shortAttributeExtractor = o.ShortAttributeExtractor
 		w.requiredInPlaceValueBound = o.RequiredInPlaceValueBound
 		w.valueBlockWriter = newValueBlockWriter(
