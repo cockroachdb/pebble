@@ -173,6 +173,7 @@ type Iterator struct {
 	value  LazyValue
 	// For use in LazyValue.Clone.
 	valueBuf []byte
+	fetcher  base.LazyFetcher
 	// For use in LazyValue.Value.
 	lazyValueBuf []byte
 	valueCloser  io.Closer
@@ -922,7 +923,7 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 			// call, so use valueBuf instead. Note that valueBuf is only used
 			// in this one instance; everywhere else (eg. in findNextEntry),
 			// we just point i.value to the unsafe i.iter-owned value buffer.
-			i.value, i.valueBuf = i.iterValue.Clone(i.valueBuf[:0])
+			i.value, i.valueBuf = i.iterValue.Clone(i.valueBuf[:0], &i.fetcher)
 			i.saveRangeKey()
 			i.iterValidityState = IterValid
 			i.iterKey, i.iterValue = i.iter.Prev()

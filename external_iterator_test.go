@@ -241,7 +241,9 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 			require.NoError(t, err)
 
 			var iter sstable.Iterator
-			iter, err = r.NewIterWithBlockPropertyFilters(nil, nil, filterer, false /* useFilterBlock */, nil /* stats */)
+			iter, err = r.NewIterWithBlockPropertyFilters(
+				nil, nil, filterer, false /* useFilterBlock */, nil, /* stats */
+				sstable.TrivialReaderProvider{Reader: r})
 			require.NoError(t, err)
 			defer iter.Close()
 			var lastSeekKey, lowerBound, upperBound []byte
