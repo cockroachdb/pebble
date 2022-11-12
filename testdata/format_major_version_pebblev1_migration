@@ -34,22 +34,22 @@ flush
 # Ingest an external table written at the max table format for the current
 # version (i.e. Pebblev2).
 
-ingest format=4
+ingest a format=pebblev2
 set pebblev2 pebblev2
 ----
 
 # Ingest some external table written at earlier versions (i.e. Pebblev1,
 # RocksDBv2, LevelDB).
 
-ingest format=3
+ingest b format=pebblev1
 set pebblev1 pebblev1
 ----
 
-ingest format=2
+ingest c format=rocksdbv2
 set rocksdbv2 rockdbv2
 ----
 
-ingest format=1
+ingest d format=leveldb
 set leveldb leveldb
 ----
 
@@ -92,7 +92,7 @@ max-table-format
 
 # Ingesting a table with a format prior to this version fails.
 
-ingest format=2
+ingest e format=rocksdbv2
 set rocksdbv2 rockdbv2
 ----
 pebble: table format (RocksDB,v2) is not within range supported at DB format major version 9, ((Pebble,v1),(Pebble,v2))

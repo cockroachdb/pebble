@@ -199,6 +199,7 @@ func createExternalPointIter(it *Iterator) (internalIterator, error) {
 				nil,   /* BlockPropertiesFilterer */
 				false, /* useFilterBlock */
 				&it.stats.InternalStats,
+				sstable.TrivialReaderProvider{Reader: r},
 			)
 			if err != nil {
 				return nil, err
