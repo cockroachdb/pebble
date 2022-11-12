@@ -413,11 +413,19 @@ func (c *tableCacheShard) newIters(
 	if opts != nil {
 		useFilter = manifest.LevelToInt(opts.level) != 6 || opts.UseL6Filters
 	}
+	tableFormat, err := v.reader.TableFormat()
+	if err != nil {
+		return nil, nil, err
+	}
+	var rp sstable.ReaderProvider
+	if tableFormat == sstable.TableFormatPebblev3 && v.reader.Properties.NumValueBlocks > 0 {
+		rp = tableCacheShardReaderProvider{c: c, file: file, dbOpts: dbOpts}
+	}
 	if internalOpts.bytesIterated != nil {
-		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated)
+		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated, rp)
 	} else {
 		iter, err = v.reader.NewIterWithBlockPropertyFilters(
-			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, internalOpts.stats)
+			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, internalOpts.stats, rp)
 	}
 	if err != nil {
 		if rangeDelIter != nil {
@@ -427,7 +435,7 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, err
 	}
 	// NB: v.closeHook takes responsibility for calling unrefValue(v) here. Take
-	// care to avoid introduceingan allocation here by adding a closure.
+	// care to avoid introducing an allocation here by adding a closure.
 	iter.SetCloseHook(v.closeHook)
 
 	atomic.AddInt32(&c.atomic.iterCount, 1)
@@ -486,6 +494,34 @@ func (c *tableCacheShard) newRangeKeyIter(
 	}
 
 	return iter, nil
+}
+
+type tableCacheShardReaderProvider struct {
+	c      *tableCacheShard
+	file   *manifest.FileMetadata
+	dbOpts *tableCacheOpts
+}
+
+var _ sstable.ReaderProvider = tableCacheShardReaderProvider{}
+
+// GetReader implements sstable.ReaderProvider. The caller must call
+// Close.
+func (rp tableCacheShardReaderProvider) GetReader() (*sstable.Reader, interface{}, error) {
+	// Calling findNode gives us the responsibility of decrementing v's
+	// refCount.
+	v := rp.c.findNode(rp.file, rp.dbOpts)
+	if v.err != nil {
+		defer rp.c.unrefValue(v)
+		base.MustExist(rp.dbOpts.fs, v.filename, rp.dbOpts.logger, v.err)
+		return nil, nil, v.err
+	}
+	return v.reader, v, nil
+}
+
+// Close implements sstable.ReaderProvider.
+func (rp tableCacheShardReaderProvider) Close(handle interface{}) {
+	v := handle.(*tableCacheValue)
+	rp.c.unrefValue(v)
 }
 
 // getTableProperties return sst table properties for target file

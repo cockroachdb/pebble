@@ -12,10 +12,10 @@ next
 next
 next
 ----
-<a:1>
-<b:2>
-<c:3>
-<d:4>
+<a:1>:A
+<b:2>:B
+<c:3>:C
+<d:4>:D
 .
 
 iter
@@ -25,10 +25,10 @@ next
 next
 next
 ----
-<a:1>
-<b:2>
-<c:3>
-<d:4>
+<a:1>:A
+<b:2>:B
+<c:3>:C
+<d:4>:D
 .
 
 iter
@@ -37,9 +37,9 @@ next
 next
 next
 ----
-<b:2>
-<c:3>
-<d:4>
+<b:2>:B
+<c:3>:C
+<d:4>:D
 .
 
 iter
@@ -47,15 +47,15 @@ seek-ge c
 next
 next
 ----
-<c:3>
-<d:4>
+<c:3>:C
+<d:4>:D
 .
 
 iter
 seek-ge d
 next
 ----
-<d:4>
+<d:4>:D
 .
 
 iter
@@ -67,7 +67,7 @@ iter
 seek-ge d
 seek-ge z
 ----
-<d:4>
+<d:4>:D
 .
 
 iter
@@ -76,9 +76,9 @@ seek-ge c
 seek-ge d
 seek-ge e
 ----
-<b:2>
-<c:3>
-<d:4>
+<b:2>:B
+<c:3>:C
+<d:4>:D
 .
 
 iter
@@ -88,10 +88,10 @@ prev
 prev
 prev
 ----
-<d:4>
-<c:3>
-<b:2>
-<a:1>
+<d:4>:D
+<c:3>:C
+<b:2>:B
+<a:1>:A
 .
 
 iter
@@ -101,10 +101,10 @@ prev
 prev
 prev
 ----
-<d:4>
-<c:3>
-<b:2>
-<a:1>
+<d:4>:D
+<c:3>:C
+<b:2>:B
+<a:1>:A
 .
 
 iter
@@ -113,9 +113,9 @@ prev
 prev
 prev
 ----
-<c:3>
-<b:2>
-<a:1>
+<c:3>:C
+<b:2>:B
+<a:1>:A
 .
 
 iter
@@ -123,15 +123,15 @@ seek-lt c
 prev
 prev
 ----
-<b:2>
-<a:1>
+<b:2>:B
+<a:1>:A
 .
 
 iter
 seek-lt b
 prev
 ----
-<a:1>
+<a:1>:A
 .
 
 iter
@@ -145,9 +145,9 @@ seek-lt c
 seek-lt b
 seek-lt a
 ----
-<c:3>
-<b:2>
-<a:1>
+<c:3>:C
+<b:2>:B
+<a:1>:A
 .
 
 iter globalSeqNum=1
@@ -157,10 +157,10 @@ next
 next
 next
 ----
-<a:1>
-<b:1>
-<c:1>
-<d:1>
+<a:1>:A
+<b:1>:B
+<c:1>:C
+<d:1>:D
 .
 
 iter globalSeqNum=10
@@ -170,16 +170,16 @@ next
 next
 next
 ----
-<a:10>
-<b:10>
-<c:10>
-<d:10>
+<a:10>:A
+<b:10>:B
+<c:10>:C
+<d:10>:D
 .
 
 iter globalSeqNum=0
 seek-lt x
 ----
-<d:4>
+<d:4>:D
 
 get
 b
@@ -207,14 +207,14 @@ set-bounds lower= upper=
 seek-ge c
 seek-lt b
 ----
-<c:3>
-<a:1>
+<c:3>:C
+<a:1>:A
 .
 .
 .
 .
-<c:3>
-<a:1>
+<c:3>:C
+<a:1>:A
 
 # Verify that seeking past the end of the sstable leaves the iterator
 # in a state where prev returns the last key in the table.
@@ -224,9 +224,9 @@ seek-lt d
 seek-ge f
 prev
 ----
-<c:3>
+<c:3>:C
 .
-<d:4>
+<d:4>:D
 
 # Verify that seeking before the beginning of the sstable leaves the
 # iterator in a state where next returns the first key in the table.
@@ -236,9 +236,9 @@ seek-ge b
 seek-lt a
 next
 ----
-<b:2>
+<b:2>:B
 .
-<a:1>
+<a:1>:A
 
 
 # Verify the optimization to use next when doing SeekGE.
@@ -251,11 +251,11 @@ seek-ge c true
 seek-ge d true
 seek-ge e true
 ----
-<a:1>
-<a:1>
-<b:2>
-<c:3>
-<d:4>
+<a:1>:A
+<a:1>:A
+<b:2>:B
+<c:3>:C
+<d:4>:D
 .
 
 # Verify the optimization to use next when doing SeekPrefixGE.
@@ -268,11 +268,11 @@ seek-prefix-ge c true
 seek-prefix-ge d true
 seek-prefix-ge e true
 ----
-<a:1>
-<a:1>
-<b:2>
-<c:3>
-<d:4>
+<a:1>:A
+<a:1>:A
+<b:2>:B
+<c:3>:C
+<d:4>:D
 .
 
 # Verify that iteration from before the beginning or after the end of
@@ -291,9 +291,9 @@ next
 next
 next
 ----
-<a:1>
+<a:1>:a
 .
-<a:1>
+<a:1>:a
 .
 .
 
@@ -304,9 +304,9 @@ prev
 prev
 prev
 ----
-<a:1>
+<a:1>:a
 .
-<a:1>
+<a:1>:a
 .
 .
 
@@ -418,13 +418,13 @@ next
 next
 next
 ----
-<a:1>
+<a:1>:A
 .
-<a:1>
-<aae:1>
-<aaf:1>
-<aag:1>
-<aah:1>
+<a:1>:A
+<aae:1>:E
+<aaf:1>:F
+<aag:1>:G
+<aah:1>:H
 
 iter
 last
@@ -433,11 +433,11 @@ prev
 prev
 prev
 ----
-<ddz:4>
+<ddz:4>:Z
 .
-<ddz:4>
-<ddy:4>
-<ddx:4>
+<ddz:4>:Z
+<ddy:4>:Y
+<ddx:4>:X
 
 iter
 first
@@ -448,13 +448,13 @@ seek-ge x
 prev
 prev
 ----
-<a:1>
+<a:1>:A
 .
-<a:1>
-<aae:1>
+<a:1>:A
+<aae:1>:E
 .
-<ddz:4>
-<ddy:4>
+<ddz:4>:Z
+<ddy:4>:Y
 
 iter
 first
@@ -465,10 +465,10 @@ seek-prefix-ge x
 prev
 prev
 ----
-<a:1>
+<a:1>:A
 .
-<a:1>
-<aae:1>
+<a:1>:A
+<aae:1>:E
 .
 .
 .
@@ -482,13 +482,13 @@ seek-lt a
 next
 next
 ----
-<ddz:4>
+<ddz:4>:Z
 .
-<ddz:4>
-<ddy:4>
+<ddz:4>:Z
+<ddy:4>:Y
 .
-<a:1>
-<aae:1>
+<a:1>:A
+<aae:1>:E
 
 # Test that SeekPrefixGE does not position the iterator far outside the iterator bounds.
 # Doing so would break the subsequent SeekGE that is utilizing the next instead of seek
@@ -502,11 +502,11 @@ seek-ge aae
 next
 ----
 .
-<a:1>
+<a:1>:A
 .
 .
-<aae:1>
-<aaf:1>
+<aae:1>:E
+<aaf:1>:F
 
 # Test that using Next does not mislead a twoLevelIterator into believing that the
 # iterator has been positioned based on the latest iterator bounds. The Next call
@@ -522,9 +522,52 @@ seek-ge bbf
 next
 ----
 .
-<bbq:2>
+<bbq:2>:Q
 .
 .
 .
-<bbf:2>
-<bbg:2>
+<bbf:2>:F
+<bbg:2>:G
+
+build
+a@10.SET.10:a10
+a@5.SET.5:a5
+b@20.SET.20:b20
+b@17.SET.17:b17
+----
+
+iter
+first
+next
+next
+next
+next
+----
+<a@10:10>:a10
+<a@5:5>:a5
+<b@20:20>:b20
+<b@17:17>:b17
+.
+
+iter
+seek-ge a@5
+prev
+seek-lt b
+next
+next
+seek-lt c
+prev
+seek-ge b@18
+prev
+next
+----
+<a@5:5>:a5
+<a@10:10>:a10
+<a@5:5>:a5
+<b@20:20>:b20
+<b@17:17>:b17
+<b@17:17>:b17
+<b@20:20>:b20
+<b@17:17>:b17
+<b@20:20>:b20
+<b@17:17>:b17

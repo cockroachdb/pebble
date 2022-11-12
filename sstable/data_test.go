@@ -264,7 +264,9 @@ func runIterCmdStats(stats *base.InternalIteratorStats) runIterCmdOption {
 	return func(opts *runIterCmdOptions) { opts.stats = stats }
 }
 
-func runIterCmd(td *datadriven.TestData, origIter Iterator, opt ...runIterCmdOption) string {
+func runIterCmd(
+	td *datadriven.TestData, origIter Iterator, printValue bool, opt ...runIterCmdOption,
+) string {
 	var opts runIterCmdOptions
 	for _, o := range opt {
 		o(&opts)
@@ -363,6 +365,9 @@ func runIterCmd(td *datadriven.TestData, origIter Iterator, opt ...runIterCmdOpt
 		}
 		if iter.Valid() && checkValidPrefix(prefix, iter.Key().UserKey) {
 			fmt.Fprintf(&b, "<%s:%d>", iter.Key().UserKey, iter.Key().SeqNum())
+			if printValue {
+				fmt.Fprintf(&b, ":%s", string(iter.Value()))
+			}
 		} else if err := iter.Error(); err != nil {
 			fmt.Fprintf(&b, "<err=%v>", err)
 		} else {

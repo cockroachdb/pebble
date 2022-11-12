@@ -21,7 +21,7 @@ func TestLazyValue(t *testing.T) {
 	fooBytes1 := []byte("foo")
 	fooLV1 := MakeInPlaceValue(fooBytes1)
 	require.Equal(t, 3, fooLV1.Len())
-	fooLV2, fooBytes2 := fooLV1.Clone(nil)
+	fooLV2, fooBytes2 := fooLV1.Clone(nil, &LazyFetcher{})
 	require.Equal(t, 3, fooLV2.Len())
 	require.Equal(t, fooLV1.InPlaceValue(), fooLV2.InPlaceValue())
 	getValue := func(lv LazyValue, expectedCallerOwned bool) []byte {
@@ -39,9 +39,10 @@ func TestLazyValue(t *testing.T) {
 		fooLV3 := LazyValue{
 			ValueOrHandle: []byte("foo-handle"),
 			Fetcher: &LazyFetcher{
-				ValueFetcher: func(handle []byte, buf []byte) ([]byte, bool, error) {
+				ValueFetcher: func(handle []byte, valLen int32, buf []byte) ([]byte, bool, error) {
 					numCalls++
 					require.Equal(t, []byte("foo-handle"), handle)
+					require.Equal(t, int32(3), valLen)
 					return fooBytes1, callerOwned, nil
 				},
 				Attribute: AttributeAndLen{ValueLen: 3, ShortAttribute: 7},

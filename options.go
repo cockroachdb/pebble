@@ -1072,6 +1072,9 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  compaction_debt_concurrency=%d\n", o.Experimental.CompactionDebtConcurrency)
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
+	if o.Experimental.EnableValueBlocks {
+		fmt.Fprintf(&buf, "  enable_value_blocks=%t\n", o.Experimental.EnableValueBlocks)
+	}
 	fmt.Fprintf(&buf, "  flush_delay_delete_range=%s\n", o.FlushDelayDeleteRange)
 	fmt.Fprintf(&buf, "  flush_delay_range_key=%s\n", o.FlushDelayRangeKey)
 	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.FlushSplitBytes)
@@ -1276,6 +1279,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.private.disableLazyCombinedIteration, err = strconv.ParseBool(value)
 			case "disable_wal":
 				o.DisableWAL, err = strconv.ParseBool(value)
+			case "enable_value_blocks":
+				o.Experimental.EnableValueBlocks, err = strconv.ParseBool(value)
 			case "flush_delay_delete_range":
 				o.FlushDelayDeleteRange, err = time.ParseDuration(value)
 			case "flush_delay_range_key":
@@ -1550,7 +1555,6 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 		writerOpts.BlockPropertyCollectors = o.BlockPropertyCollectors
 	}
 	if format >= sstable.TableFormatPebblev3 {
-		writerOpts.EnableValueBlocks = o.Experimental.EnableValueBlocks
 		writerOpts.ShortAttributeExtractor = o.Experimental.ShortAttributeExtractor
 		writerOpts.RequiredInPlaceValueBound = o.Experimental.RequiredInPlaceValueBound
 	}

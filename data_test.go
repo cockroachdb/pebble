@@ -590,21 +590,30 @@ func runBuildCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
 		return err
 	}
 
-	if len(td.CmdArgs) != 1 {
+	if len(td.CmdArgs) < 1 {
 		return errors.New("build <path>: argument missing")
 	}
 	path := td.CmdArgs[0].String()
 
 	// Override table format, if provided.
 	tableFormat := d.opts.FormatMajorVersion.MaxTableFormat()
-	for _, cmdArg := range td.CmdArgs {
+	for _, cmdArg := range td.CmdArgs[1:] {
 		switch cmdArg.Key {
 		case "format":
-			v, err := strconv.Atoi(cmdArg.Vals[0])
-			if err != nil {
-				return err
+			switch cmdArg.Vals[0] {
+			case "leveldb":
+				tableFormat = sstable.TableFormatLevelDB
+			case "rocksdbv2":
+				tableFormat = sstable.TableFormatRocksDBv2
+			case "pebblev1":
+				tableFormat = sstable.TableFormatPebblev1
+			case "pebblev2":
+				tableFormat = sstable.TableFormatPebblev2
+			case "pebblev3":
+				tableFormat = sstable.TableFormatPebblev3
+			default:
+				return errors.Errorf("unknown format string %s", cmdArg.Vals[0])
 			}
-			tableFormat = sstable.TableFormat(v)
 		}
 	}
 
