@@ -237,35 +237,45 @@ h-k:{(#5,RANGEKEYDEL)}
 e-h:{(#8,RANGEKEYDEL)}
 
 # Test SeekGE. Note that MergingIter's SeekGE implements the FragmentIterator's
-# SeekGE semantics. It returns the first fragment with a Start key ≥ the search
-# key, NOT the first fragment that covers a key ≥ the search key.
+# SeekGE semantics. It returns the first fragment that covers a key ≥ the search
+# key.
 
 iter
 seek-ge cc
 ----
-e-h:{(#8,RANGEKEYDEL)}
+c-d:{(#10,RANGEKEYSET,@1,apples)}
 
 iter
 seek-ge 1
 seek-ge a
 seek-ge b
 seek-ge bb
-seek-ge c
-seek-ge cc
-seek-ge e
-seek-ge f
-seek-ge h
-seek-ge i
 ----
 a-b:{(#3,RANGEKEYUNSET,@1)}
 a-b:{(#3,RANGEKEYUNSET,@1)}
 b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+
+iter
+seek-ge c
+seek-ge cc
+seek-ge e
+seek-ge f
+----
 c-d:{(#10,RANGEKEYSET,@1,apples)}
 c-d:{(#10,RANGEKEYSET,@1,apples)}
 e-h:{(#8,RANGEKEYDEL)}
 e-h:{(#8,RANGEKEYDEL)}
+
+iter
+seek-ge h
+seek-ge i
+seek-ge k
+seek-ge l
+----
 h-k:{(#5,RANGEKEYDEL)}
 h-k:{(#5,RANGEKEYDEL)}
+<nil>
 <nil>
 
 # Test SeekLT. Note that MergingIter's SeekLT implements the FragmentIterator's
@@ -287,6 +297,15 @@ seek-lt aa
 seek-lt b
 seek-lt bb
 seek-lt c
+----
+<nil>
+<nil>
+a-b:{(#3,RANGEKEYUNSET,@1)}
+a-b:{(#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
+
+iter
 seek-lt cc
 seek-lt d
 seek-lt dd
@@ -297,12 +316,6 @@ seek-lt hh
 seek-lt k
 seek-lt z
 ----
-<nil>
-<nil>
-a-b:{(#3,RANGEKEYUNSET,@1)}
-a-b:{(#3,RANGEKEYUNSET,@1)}
-b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
-b-c:{(#10,RANGEKEYSET,@1,apples) (#3,RANGEKEYUNSET,@1)}
 c-d:{(#10,RANGEKEYSET,@1,apples)}
 c-d:{(#10,RANGEKEYSET,@1,apples)}
 c-d:{(#10,RANGEKEYSET,@1,apples)}
@@ -368,8 +381,8 @@ prev
 ----
 x-y:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL) (#1,RANGEKEYDEL)}
 w-x:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL) (#3,RANGEKEYDEL) (#1,RANGEKEYDEL)}
-y-z:{(#5,RANGEKEYDEL)}
 x-y:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL) (#1,RANGEKEYDEL)}
+w-x:{(#5,RANGEKEYDEL) (#4,RANGEKEYDEL) (#3,RANGEKEYDEL) (#1,RANGEKEYDEL)}
 
 define
 il-qb:{(#10,RANGEKEYDEL)}
@@ -390,9 +403,11 @@ next
 next
 next
 next
+next
 seek-ge yz
 prev
 ----
+qb-rf:{(#8,RANGEKEYDEL) (#7,RANGEKEYDEL)}
 rf-sn:{(#8,RANGEKEYDEL) (#7,RANGEKEYDEL) (#4,RANGEKEYDEL)}
 sn-sv:{(#10,RANGEKEYDEL) (#8,RANGEKEYDEL) (#7,RANGEKEYDEL) (#4,RANGEKEYDEL)}
 sv-wn:{(#10,RANGEKEYDEL) (#4,RANGEKEYDEL)}

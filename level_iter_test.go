@@ -361,7 +361,7 @@ func (i *levelIterTestIter) rangeDelSeek(
 		if dir < 0 {
 			t = keyspan.SeekLE(i.levelIter.cmp, i.rangeDelIter, key)
 		} else {
-			t = keyspan.SeekGE(i.levelIter.cmp, i.rangeDelIter, key)
+			t = i.rangeDelIter.SeekGE(key)
 		}
 		if t != nil {
 			tombstone = t.Visible(1000)

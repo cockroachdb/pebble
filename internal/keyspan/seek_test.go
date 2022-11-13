@@ -32,9 +32,11 @@ func TestSeek(t *testing.T) {
 			iter = NewIter(cmp, spans)
 			return buf.String()
 		case "seek-ge", "seek-le":
-			seek := SeekGE
-			if d.Cmd == "seek-le" {
-				seek = SeekLE
+			seek := SeekLE
+			if d.Cmd == "seek-ge" {
+				seek = func(_ base.Compare, iter FragmentIterator, key []byte) *Span {
+					return iter.SeekGE(key)
+				}
 			}
 
 			for _, line := range strings.Split(d.Input, "\n") {

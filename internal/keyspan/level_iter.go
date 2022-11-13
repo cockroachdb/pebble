@@ -247,7 +247,7 @@ func (l *LevelIter) SeekLT(key []byte) *Span {
 	if f != nil && l.keyType == manifest.KeyTypeRange && l.cmp(f.LargestRangeKey.UserKey, key) < 0 {
 		// Peek at the next file.
 		nextFile := l.files.Next()
-		_ = l.files.Prev()
+		l.files.Prev()
 		if nextFile != nil {
 			// We could unconditionally return an empty span between f.LargestRangeKey
 			// and the seek key, however if this span is to the right of all range keys

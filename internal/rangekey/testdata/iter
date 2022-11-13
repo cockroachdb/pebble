@@ -49,11 +49,11 @@ next
 next
 next
 ----
-e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
 c-d:{(#4,RANGEKEYSET,@3,coconut)}
 e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
 h-j:{(#22,RANGEKEYDEL)}
-l-m:{(#2,RANGEKEYUNSET,@9) (#2,RANGEKEYUNSET,@5)}
 
 iter
 seek-ge c
@@ -77,7 +77,7 @@ next
 next
 next
 ----
-e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
 c-d:{(#4,RANGEKEYSET,@3,coconut)}
 a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
 <nil>
@@ -109,8 +109,8 @@ seek-ge bat
 seek-ge c
 ----
 a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
-c-d:{(#4,RANGEKEYSET,@3,coconut)}
-c-d:{(#4,RANGEKEYSET,@3,coconut)}
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
+a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
 c-d:{(#4,RANGEKEYSET,@3,coconut)}
 
 iter
@@ -118,7 +118,7 @@ seek-ge 1
 seek-ge c1
 ----
 a-c:{(#10,RANGEKEYSET,@5,apples) (#10,RANGEKEYDEL)}
-e-f:{(#20,RANGEKEYSET,@5,pineapple) (#20,RANGEKEYSET,@3,guava)}
+c-d:{(#4,RANGEKEYSET,@3,coconut)}
 
 iter
 seek-ge zoo
@@ -131,7 +131,7 @@ seek-ge yeti
 q-z:{(#14,RANGEKEYSET,@9,mangos)}
 <nil>
 q-z:{(#14,RANGEKEYSET,@9,mangos)}
-<nil>
+q-z:{(#14,RANGEKEYSET,@9,mangos)}
 
 iter
 seek-ge h
