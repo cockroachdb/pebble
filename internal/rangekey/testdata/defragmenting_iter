@@ -41,9 +41,9 @@ next
 seeklt d
 prev
 ----
-seekge b  .
-prev      a-t:{(#3,RANGEKEYSET,@3,bananas)}
-seekge b  .
+seekge b  a-t:{(#1,RANGEKEYSET,@3,bananas)}
+prev      .
+seekge b  a-t:{(#1,RANGEKEYSET,@3,bananas)}
 next      .
 seeklt d  a-t:{(#3,RANGEKEYSET,@3,bananas)}
 next      .
@@ -75,7 +75,7 @@ prev
 next
 next
 ----
-seekge r  t-z:{(#4,RANGEKEYSET,@2,oranges)}
-prev      a-t:{(#3,RANGEKEYSET,@3,bananas)}
+seekge r  a-t:{(#1,RANGEKEYSET,@3,bananas)}
+prev      .
+next      a-t:{(#1,RANGEKEYSET,@3,bananas)}
 next      t-z:{(#4,RANGEKEYSET,@2,oranges)}
-next      .

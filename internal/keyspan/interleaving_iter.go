@@ -781,24 +781,13 @@ func (i *InterleavingIter) interleaveBackward() (*base.InternalKey, base.LazyVal
 }
 
 // keyspanSeekGE seeks the keyspan iterator to the first span covering k ≥ key.
-// Note that this differs from the FragmentIterator.SeekGE semantics, which
-// seek to the first span with a start key ≥ key.
 func (i *InterleavingIter) keyspanSeekGE(key []byte, prefix []byte) {
-	// Seek using SeekLT to look for a span that starts before key, with an end
-	// boundary extending beyond key.
-	i.span = i.keyspanIter.SeekLT(key)
-	if i.span == nil || i.cmp(i.span.End, key) <= 0 {
-		// The iterator is exhausted in the reverse direction, or the span we
-		// found ends before key. Next to the first key with a start ≥ key.
-		i.span = i.keyspanIter.Next()
-	}
+	i.span = i.keyspanIter.SeekGE(key)
 	i.checkForwardBound(prefix)
 	i.savedKeyspan()
 }
 
 // keyspanSeekLT seeks the keyspan iterator to the last span covering k < key.
-// Note that this differs from the FragmentIterator.SeekLT semantics, which
-// seek to the last span with a start key < key.
 func (i *InterleavingIter) keyspanSeekLT(key []byte) {
 	i.span = i.keyspanIter.SeekLT(key)
 	i.checkBackwardBound()

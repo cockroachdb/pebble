@@ -117,7 +117,7 @@ func (m *simpleMergingIter) positionRangeDels() {
 		if l.rangeDelIter == nil {
 			continue
 		}
-		l.tombstone = keyspan.SeekGE(m.heap.cmp, l.rangeDelIter, item.key.UserKey)
+		l.tombstone = l.rangeDelIter.SeekGE(item.key.UserKey)
 	}
 }
 

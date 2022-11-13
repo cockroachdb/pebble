@@ -18,12 +18,14 @@ import (
 // longer lifetimes but implementations need only guarantee stability until the
 // next positioning method.
 type FragmentIterator interface {
-	// SeekGE moves the iterator to the first span whose start key is greater
-	// than or equal to the given key.
+	// SeekGE moves the iterator to the first span covering a key greater than
+	// or equal to the given key. This is equivalent to seeking to the first
+	// span with an end key greater than the given key.
 	SeekGE(key []byte) *Span
 
-	// SeekLT moves the iterator to the last span whose start key is less than
-	// the given key.
+	// SeekLT moves the iterator to the last span covering a key less than the
+	// given key. This is equivalent to seeking to the last span with a start
+	// key less than the given key.
 	SeekLT(key []byte) *Span
 
 	// First moves the iterator to the first span.
@@ -117,8 +119,17 @@ func (i *Iter) SeekGE(key []byte) *Span {
 			upper = h // preserves f(j) == true
 		}
 	}
+
 	// i.index == upper, f(i.index-1) == false, and f(upper) (= f(i.index)) ==
 	// true => answer is i.index.
+	//
+	// i.spans[i] is the first span with a Start ≥ key. It's not necessarily the
+	// first span to cover the key `key`: Check the previous span to see if it
+	// ends after key.
+	if i.index > 0 && i.cmp(i.spans[i.index-1].End, key) > 0 {
+		i.index--
+		return &i.spans[i.index]
+	}
 	if i.index >= len(i.spans) {
 		return nil
 	}

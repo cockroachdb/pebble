@@ -129,8 +129,8 @@ seek-ge bar
 prev
 prev
 ----
-<nil>
 b-g:{(#4,RANGEKEYSET,@3)}
+<nil>
 <nil>
 
 # Test seeking to a portion of the keyspace that contains a range key with a

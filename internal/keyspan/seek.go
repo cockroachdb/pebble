@@ -6,34 +6,6 @@ package keyspan
 
 import "github.com/cockroachdb/pebble/internal/base"
 
-// SeekGE seeks to the span that contains the target key or the first span past
-// the target key.
-func SeekGE(cmp base.Compare, iter FragmentIterator, key []byte) *Span {
-	// NB: We use SeekLT in order to land on the proper span for a search
-	// key that resides in the middle of a span. Consider the scenario:
-	//
-	//     a---e
-	//         e---i
-	//
-	// The spans are indexed by their start keys `a` and `e`. If the
-	// search key is `c` we want to land on the span [a,e). If we were to
-	// use SeekGE then the search key `c` would land on the span [e,i) and
-	// we'd have to backtrack. The one complexity here is what happens for the
-	// search key `e`. In that case SeekLT will land us on the span [a,e)
-	// and we'll have to move forward.
-	iterSpan := iter.SeekLT(key)
-
-	// Invariant: key > iterSpan.Start
-
-	if iterSpan == nil || cmp(key, iterSpan.End) >= 0 {
-		// The current span lies entirely before the search key, or the iterator
-		// is exhausted. Advance the iterator to the next span which is
-		// guaranteed to lie at or past the search key.
-		iterSpan = iter.Next()
-	}
-	return iterSpan
-}
-
 // SeekLE seeks to the span that contains or is before the target key.
 func SeekLE(cmp base.Compare, iter FragmentIterator, key []byte) *Span {
 	// NB: We use SeekLT in order to land on the proper span for a search

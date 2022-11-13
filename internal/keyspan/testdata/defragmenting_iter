@@ -77,10 +77,10 @@ next
 seeklt d
 prev
 ----
-seekge b  f-t:{(#3,RANGEKEYSET,@3,bananas)}
-prev      a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
-seekge b  f-t:{(#3,RANGEKEYSET,@3,bananas)}
-next      .
+seekge b  a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+prev      .
+seekge b  a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+next      f-t:{(#3,RANGEKEYSET,@3,bananas)}
 seeklt d  a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
 next      f-t:{(#3,RANGEKEYSET,@3,bananas)}
 seeklt d  a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
@@ -111,33 +111,41 @@ prev
 next
 next
 ----
-seekge r  t-z:{(#4,RANGEKEYSET,@2,oranges)}
-prev      f-t:{(#3,RANGEKEYSET,@3,bananas)}
+seekge r  f-t:{(#3,RANGEKEYSET,@3,bananas)}
+prev      a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
+next      f-t:{(#3,RANGEKEYSET,@3,bananas)}
 next      t-z:{(#4,RANGEKEYSET,@2,oranges)}
-next      .
 
 iter
 seekge f
 seekge h
 seekge p
 seekge t
+seekge u
+seekge v
+seekge z
 ----
 seekge f  f-t:{(#3,RANGEKEYSET,@3,bananas)}
-seekge h  t-z:{(#4,RANGEKEYSET,@2,oranges)}
-seekge p  t-z:{(#4,RANGEKEYSET,@2,oranges)}
+seekge h  f-t:{(#3,RANGEKEYSET,@3,bananas)}
+seekge p  f-t:{(#3,RANGEKEYSET,@3,bananas)}
 seekge t  t-z:{(#4,RANGEKEYSET,@2,oranges)}
+seekge u  t-z:{(#4,RANGEKEYSET,@2,oranges)}
+seekge v  t-z:{(#4,RANGEKEYSET,@2,oranges)}
+seekge z  .
 
 iter
 seeklt f
 seeklt h
 seeklt p
 seeklt t
+seeklt u
 seeklt z
 ----
 seeklt f  a-f:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}
 seeklt h  f-t:{(#3,RANGEKEYSET,@3,bananas)}
 seeklt p  f-t:{(#3,RANGEKEYSET,@3,bananas)}
 seeklt t  f-t:{(#3,RANGEKEYSET,@3,bananas)}
+seeklt u  t-z:{(#4,RANGEKEYSET,@2,oranges)}
 seeklt z  t-z:{(#4,RANGEKEYSET,@2,oranges)}
 
 # Test iteration with a reducer that collects keys across all spans that
