@@ -1391,8 +1391,13 @@ func (i *fragmentBlockIter) Prev() *keyspan.Span {
 
 // SeekGE implements (keyspan.FragmentIterator).SeekGE.
 func (i *fragmentBlockIter) SeekGE(k []byte) *keyspan.Span {
-	i.dir = +1
-	return i.gatherForward(i.blockIter.SeekGE(k, base.SeekGEFlags(0)))
+	if s := i.SeekLT(k); s != nil && i.blockIter.cmp(k, s.End) < 0 {
+		return s
+	}
+	// TODO(jackson): If the above i.SeekLT(k) discovers a span but the span
+	// doesn't meet the k < s.End comparison, then there's no need for the
+	// SeekLT to gatherBackward.
+	return i.Next()
 }
 
 // SeekLT implements (keyspan.FragmentIterator).SeekLT.
