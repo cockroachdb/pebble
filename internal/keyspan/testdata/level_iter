@@ -11,22 +11,54 @@ file
 
 iter
 seek-ge a
+seek-ge apple
 seek-ge b
+seek-ge banana
 seek-ge c
+seek-ge cantalope
 seek-ge d
-seek-lt a
-seek-lt b
-seek-lt c
-seek-lt d
+seek-ge dragonfruit
 ----
 a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
-b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
-.
-.
 a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
 b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
 c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+.
+.
+
+iter
+seek-lt a
+seek-lt apple
+seek-lt b
+seek-lt banana
+seek-lt c
+seek-lt cantalope
+seek-lt d
+seek-lt dragonfruit
+prev
+----
+.
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+b-c:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+
+iter
+seek-ge a
+prev
+seek-lt d
+next
+----
+a-b:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000001.sst)
+.
+c-d:{(#2,RANGEKEYSET,@3,foo) (#1,RANGEKEYSET,@1,bar)} (file = 000002.sst)
+.
 
 iter
 first
