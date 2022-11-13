@@ -15,7 +15,41 @@ import (
 )
 
 // UserIteratorConfig holds state for constructing the range key iterator stack
-// for user iteration.
+// for user iteration. The range key iterator must merge range key spans across
+// the levels of the LSM. This merging is performed by a keyspan.MergingIter
+// on-the-fly. The UserIteratorConfig implements keyspan.Transformer, evaluating
+// range-key semantics and shadowing, so the spans returned by a MergingIter are
+// fully resolved.
+//
+// The MergingIter is wrapped by a BoundedIter, which elides spans that are
+// outside the iterator bounds (or the current prefix's bounds, during prefix
+// iteration mode).
+//
+// To provide determinisim during iteration, the BoundedIter is wrapped by a
+// DefragmentingIter that defragments abutting spans with identical
+// user-observable state.
+//
+// At the top-level an InterleavingIter interleaves range keys with point keys
+// and performs truncation to iterator bounds.
+//
+// Below is an abbreviated diagram illustrating the mechanics of a SeekGE.
+//
+//	               InterleavingIter.SeekGE
+//	                       │
+//	            DefragmentingIter.SeekGE
+//	                       │
+//	               BoundedIter.SeekGE
+//	                       │
+//	      ╭────────────────┴───────────────╮
+//	      │                                ├── defragmentBwd*
+//	MergingIter.SeekGE                     │
+//	      │                                ╰── defragmentFwd
+//	      ╰─╶╶ per level╶╶ ─╮
+//	                        │
+//	                        │
+//	                        ├── <?>.SeekLT
+//	                        │
+//	                        ╰── <?>.Next
 type UserIteratorConfig struct {
 	snapshot   uint64
 	comparer   *base.Comparer
