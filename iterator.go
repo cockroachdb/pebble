@@ -2031,7 +2031,10 @@ func (i *Iterator) Close() error {
 		if cap(i.rangeKey.buf) >= maxKeyBufCacheSize {
 			i.rangeKey.buf = nil
 		}
-		*i.rangeKey = iteratorRangeKeyState{buf: i.rangeKey.buf}
+		*i.rangeKey = iteratorRangeKeyState{
+			buf:  i.rangeKey.buf,
+			keys: i.rangeKey.keys[:0],
+		}
 		iterRangeKeyStateAllocPool.Put(i.rangeKey)
 		i.rangeKey = nil
 	}
