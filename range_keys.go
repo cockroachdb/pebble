@@ -17,7 +17,7 @@ import (
 func (i *Iterator) constructRangeKeyIter() {
 	i.rangeKey.rangeKeyIter = i.rangeKey.iterConfig.Init(
 		&i.comparer, i.seqNum, i.opts.LowerBound, i.opts.UpperBound,
-		&i.hasPrefix, &i.prefixOrFullSeekKey)
+		&i.hasPrefix, &i.prefixOrFullSeekKey, &i.rangeKey.rangeKeyBuffers.internal)
 
 	// If there's an indexed batch with range keys, include it.
 	if i.batch != nil {
