@@ -2607,7 +2607,6 @@ type Reader struct {
 	filename          string
 	cacheID           uint64
 	fileNum           base.FileNum
-	rawTombstones     bool
 	err               error
 	indexBH           BlockHandle
 	filterBH          BlockHandle
@@ -2621,11 +2620,14 @@ type Reader struct {
 	Compare           Compare
 	FormatKey         base.FormatKey
 	Split             Split
+	tableFilter       *tableFilterReader
+	// Keep types that are not multiples of 8 bytes at the end and with
+	// decreasing size.
+	Properties        Properties
+	tableFormat       TableFormat
+	rawTombstones     bool
 	mergerOK          bool
 	checksumType      ChecksumType
-	tableFilter       *tableFilterReader
-	tableFormat       TableFormat
-	Properties        Properties
 }
 
 // Close implements DB.Close, as documented in the pebble package.
