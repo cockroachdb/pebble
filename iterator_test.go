@@ -513,7 +513,6 @@ func TestIterator(t *testing.T) {
 			vals:  vals,
 		})
 		iter.snapshot = seqNum
-		iter.elideRangeTombstones = true
 		// NB: This Iterator cannot be cloned since it is not constructed
 		// with a readState. It suffices for this test.
 		it.iter = newInvalidatingIter(iter)

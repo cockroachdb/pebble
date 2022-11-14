@@ -1175,7 +1175,6 @@ func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
 	buf.merging.init(&i.opts, &i.stats.InternalStats, i.comparer.Compare, i.comparer.Split, mlevels...)
 	buf.merging.snapshot = i.seqNum
 	buf.merging.batchSnapshot = i.batchSeqNum
-	buf.merging.elideRangeTombstones = true
 	buf.merging.combinedIterState = &i.lazyCombinedIter.combinedIterState
 	i.pointIter = &buf.merging
 	i.merging = &buf.merging
