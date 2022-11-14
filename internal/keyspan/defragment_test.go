@@ -80,7 +80,7 @@ func TestDefragmentingIter(t *testing.T) {
 			var innerIter MergingIter
 			innerIter.Init(cmp, noopTransform, NewIter(cmp, spans))
 			var iter DefragmentingIter
-			iter.Init(comparer, &innerIter, equal, reducer)
+			iter.Init(comparer, &innerIter, equal, reducer, new(DefragmentingBuffers))
 			for _, line := range strings.Split(td.Input, "\n") {
 				runIterOp(&buf, &iter, line)
 			}
@@ -165,8 +165,8 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	fragmentedInner.Init(cmp, noopTransform, NewIter(cmp, fragmented))
 
 	var referenceIter, fragmentedIter DefragmentingIter
-	referenceIter.Init(comparer, &originalInner, DefragmentInternal, StaticDefragmentReducer)
-	fragmentedIter.Init(comparer, &fragmentedInner, DefragmentInternal, StaticDefragmentReducer)
+	referenceIter.Init(comparer, &originalInner, DefragmentInternal, StaticDefragmentReducer, new(DefragmentingBuffers))
+	fragmentedIter.Init(comparer, &fragmentedInner, DefragmentInternal, StaticDefragmentReducer, new(DefragmentingBuffers))
 
 	// Generate 100 random operations and run them against both iterators.
 	const numIterOps = 100
