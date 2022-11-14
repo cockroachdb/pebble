@@ -246,10 +246,6 @@ type mergingIter struct {
 
 	combinedIterState *combinedIterState
 
-	// Elide range tombstones from being returned during iteration. Set to true
-	// when mergingIter is a child of Iterator and the mergingIter is processing
-	// range tombstones.
-	elideRangeTombstones bool
 	// Used in some tests to disable the random disabling of seek optimizations.
 	forceEnableSeekOpt bool
 }
@@ -732,8 +728,7 @@ func (m *mergingIter) findNextEntry() (*InternalKey, base.LazyValue) {
 			continue
 		}
 		if item.key.Visible(m.snapshot, m.batchSnapshot) &&
-			(!m.levels[item.index].isIgnorableBoundaryKey) &&
-			(item.key.Kind() != InternalKeyKindRangeDelete || !m.elideRangeTombstones) {
+			(!m.levels[item.index].isIgnorableBoundaryKey) {
 			return &item.key, item.value
 		}
 		m.nextEntry(item)
@@ -886,8 +881,7 @@ func (m *mergingIter) findPrevEntry() (*InternalKey, base.LazyValue) {
 			continue
 		}
 		if item.key.Visible(m.snapshot, m.batchSnapshot) &&
-			(!m.levels[item.index].isIgnorableBoundaryKey) &&
-			(item.key.Kind() != InternalKeyKindRangeDelete || !m.elideRangeTombstones) {
+			(!m.levels[item.index].isIgnorableBoundaryKey) {
 			return &item.key, item.value
 		}
 		m.prevEntry(item)
