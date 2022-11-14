@@ -51,14 +51,19 @@ type levelIterBoundaryContext struct {
 	// largestUserKey bound is exclusive.
 	isLargestUserKeyExclusive bool
 	// isSyntheticIterBoundsKey is set to true iff the key returned by the level
-	// iterator is a synthetic key derived from the iterator bounds. This is
-	// used to prevent the mergingIter from being stuck at such a synthetic key
-	// if it becomes the top element of the heap.
+	// iterator is a synthetic key derived from the iterator bounds. This is used
+	// to prevent the mergingIter from being stuck at such a synthetic key if it
+	// becomes the top element of the heap. When used with a user-facing Iterator,
+	// the only range deletions exposed by this mergingIter should be those with
+	// `isSyntheticIterBoundsKey || isIgnorableBoundaryKey`.
 	isSyntheticIterBoundsKey bool
 	// isIgnorableBoundaryKey is set to true iff the key returned by the level
-	// iterator is a file boundary key that should be ignored. This is used to
+	// iterator is a file boundary key that should be ignored when returning to
+	// the parent iterator. File boundary keys are used by the level iter to
 	// keep a levelIter file's range deletion iterator open as long as other
-	// levels within the merging iterator require it.
+	// levels within the merging iterator require it. When used with a user-facing
+	// Iterator, the only range deletions exposed by this mergingIter should be
+	// those with `isSyntheticIterBoundsKey || isIgnorableBoundaryKey`.
 	isIgnorableBoundaryKey bool
 }
 
@@ -246,10 +251,6 @@ type mergingIter struct {
 
 	combinedIterState *combinedIterState
 
-	// Elide range tombstones from being returned during iteration. Set to true
-	// when mergingIter is a child of Iterator and the mergingIter is processing
-	// range tombstones.
-	elideRangeTombstones bool
 	// Used in some tests to disable the random disabling of seek optimizations.
 	forceEnableSeekOpt bool
 }
@@ -732,8 +733,7 @@ func (m *mergingIter) findNextEntry() (*InternalKey, base.LazyValue) {
 			continue
 		}
 		if item.key.Visible(m.snapshot, m.batchSnapshot) &&
-			(!m.levels[item.index].isIgnorableBoundaryKey) &&
-			(item.key.Kind() != InternalKeyKindRangeDelete || !m.elideRangeTombstones) {
+			(!m.levels[item.index].isIgnorableBoundaryKey) {
 			return &item.key, item.value
 		}
 		m.nextEntry(item)
@@ -886,8 +886,7 @@ func (m *mergingIter) findPrevEntry() (*InternalKey, base.LazyValue) {
 			continue
 		}
 		if item.key.Visible(m.snapshot, m.batchSnapshot) &&
-			(!m.levels[item.index].isIgnorableBoundaryKey) &&
-			(item.key.Kind() != InternalKeyKindRangeDelete || !m.elideRangeTombstones) {
+			(!m.levels[item.index].isIgnorableBoundaryKey) {
 			return &item.key, item.value
 		}
 		m.prevEntry(item)

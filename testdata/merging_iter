@@ -444,10 +444,10 @@ prev
 f#0,1:1
 f#3,1:3
 e#0,1:1
-c#4,15:
 b#0,1:1
 a#0,1:1
 a#2,1:2
+.
 .
 
 # Verify the upper bound is respected when switching directions at a RANGEDEL
@@ -477,7 +477,7 @@ seek-ge krgywquurww
 prev
 ----
 .
-kq#100,15:
+koujdlp#37,2:37
 
 # Verify the lower bound is respected when switching directions at a RANGEDEL
 # boundary.

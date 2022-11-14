@@ -248,7 +248,6 @@ func createExternalPointIter(it *Iterator) (internalIterator, error) {
 
 	it.alloc.merging.init(&it.opts, &it.stats.InternalStats, it.comparer.Compare, it.comparer.Split, mlevels...)
 	it.alloc.merging.snapshot = base.InternalKeySeqNumMax
-	it.alloc.merging.elideRangeTombstones = true
 	return &it.alloc.merging, nil
 }
 
