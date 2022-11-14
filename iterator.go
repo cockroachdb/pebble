@@ -343,17 +343,23 @@ type iteratorRangeKeyState struct {
 	// start and end are the [start, end) boundaries of the current range keys.
 	start []byte
 	end   []byte
-	// keys is sorted by Suffix ascending.
-	keys []RangeKeyData
-	// buf is used to save range-key data before moving the range-key iterator.
-	// Start and end boundaries, suffixes and values are all copied into buf.
-	buf []byte
+
+	rangeKeyBuffers
 
 	// iterConfig holds fields that are used for the construction of the
 	// iterator stack, but do not need to be directly accessed during iteration.
 	// This struct is bundled within the iteratorRangeKeyState struct to reduce
 	// allocations.
 	iterConfig rangekey.UserIteratorConfig
+}
+
+type rangeKeyBuffers struct {
+	// keys is sorted by Suffix ascending.
+	keys []RangeKeyData
+	// buf is used to save range-key data before moving the range-key iterator.
+	// Start and end boundaries, suffixes and values are all copied into buf.
+	buf      []byte
+	internal rangekey.Buffers
 }
 
 func (i *iteratorRangeKeyState) init(cmp base.Compare, split base.Split, opts *IterOptions) {
@@ -2031,9 +2037,9 @@ func (i *Iterator) Close() error {
 		if cap(i.rangeKey.buf) >= maxKeyBufCacheSize {
 			i.rangeKey.buf = nil
 		}
+		i.rangeKey.rangeKeyBuffers.internal.PrepareForReuse()
 		*i.rangeKey = iteratorRangeKeyState{
-			buf:  i.rangeKey.buf,
-			keys: i.rangeKey.keys[:0],
+			rangeKeyBuffers: i.rangeKey.rangeKeyBuffers,
 		}
 		iterRangeKeyStateAllocPool.Put(i.rangeKey)
 		i.rangeKey = nil
