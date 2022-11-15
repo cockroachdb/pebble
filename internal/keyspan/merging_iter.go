@@ -844,7 +844,7 @@ func (m *MergingIter) synthesizeKeys(dir int8) (bool, *Span) {
 	sort.Sort(&m.keys)
 
 	// Apply the configured transform. See visibleTransform.
-	s := Span{
+	m.span = Span{
 		Start:     m.start,
 		End:       m.end,
 		Keys:      m.keys,
@@ -852,7 +852,7 @@ func (m *MergingIter) synthesizeKeys(dir int8) (bool, *Span) {
 	}
 	// NB: m.heap.cmp is a base.Compare, whereas m.cmp is a method on
 	// MergingIter.
-	if err := m.transformer.Transform(m.heap.cmp, s, &m.span); err != nil {
+	if err := m.transformer.Transform(m.heap.cmp, m.span, &m.span); err != nil {
 		m.err = err
 		return false, nil
 	}
