@@ -364,6 +364,21 @@ type rangeKeyBuffers struct {
 	internal rangekey.Buffers
 }
 
+func (b *rangeKeyBuffers) PrepareForReuse() {
+	const maxKeysReuse = 100
+	if len(b.keys) > maxKeysReuse {
+		b.keys = nil
+	}
+	// Avoid caching the key buf if it is overly large. The constant is
+	// fairly arbitrary.
+	if cap(b.buf) >= maxKeyBufCacheSize {
+		b.buf = nil
+	} else {
+		b.buf = b.buf[:0]
+	}
+	b.internal.PrepareForReuse()
+}
+
 func (i *iteratorRangeKeyState) init(cmp base.Compare, split base.Split, opts *IterOptions) {
 	i.cmp = cmp
 	i.split = split
@@ -1961,6 +1976,8 @@ func (i *Iterator) Error() error {
 	return i.err
 }
 
+const maxKeyBufCacheSize = 4 << 10 // 4 KB
+
 // Close closes the iterator and returns any accumulated error. Exhausting
 // all the key/value pairs in a table is not considered to be an error.
 // It is not valid to call any method, including Close, after the iterator
@@ -2025,15 +2042,9 @@ func (i *Iterator) Close() error {
 		i.valueCloser = nil
 	}
 
-	const maxKeyBufCacheSize = 4 << 10 // 4 KB
-
 	if i.rangeKey != nil {
-		// Avoid caching the key buf if it is overly large. The constant is
-		// fairly arbitrary.
-		if cap(i.rangeKey.buf) >= maxKeyBufCacheSize {
-			i.rangeKey.buf = nil
-		}
-		i.rangeKey.rangeKeyBuffers.internal.PrepareForReuse()
+
+		i.rangeKey.rangeKeyBuffers.PrepareForReuse()
 		*i.rangeKey = iteratorRangeKeyState{
 			rangeKeyBuffers: i.rangeKey.rangeKeyBuffers,
 		}

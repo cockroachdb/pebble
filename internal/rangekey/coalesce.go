@@ -24,7 +24,7 @@ type UserIteratorConfig struct {
 	diter      keyspan.DefragmentingIter
 	liters     [manifest.NumLevels]keyspan.LevelIter
 	litersUsed int
-	sortBuf    keysBySuffix
+	bufs       *Buffers
 }
 
 // Buffers holds various buffers used for range key iteration. They're exposed
@@ -32,6 +32,7 @@ type UserIteratorConfig struct {
 type Buffers struct {
 	merging       keyspan.MergingBuffers
 	defragmenting keyspan.DefragmentingBuffers
+	sortBuf       keysBySuffix
 }
 
 // PrepareForReuse discards any excessively large buffers.
@@ -63,6 +64,7 @@ func (ui *UserIteratorConfig) Init(
 	ui.biter.Init(comparer.Compare, comparer.Split, &ui.miter, lower, upper, hasPrefix, prefix)
 	ui.diter.Init(comparer, &ui.biter, ui, keyspan.StaticDefragmentReducer, &bufs.defragmenting)
 	ui.litersUsed = 0
+	ui.bufs = bufs
 	return &ui.diter
 }
 
@@ -101,17 +103,17 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 	// Apply shadowing of keys.
 	dst.Start = s.Start
 	dst.End = s.End
-	ui.sortBuf = keysBySuffix{
+	ui.bufs.sortBuf = keysBySuffix{
 		cmp:  cmp,
-		keys: dst.Keys[:0],
+		keys: ui.bufs.sortBuf.keys[:0],
 	}
-	if err := coalesce(&ui.sortBuf, s.Visible(ui.snapshot).Keys, &dst.Keys); err != nil {
+	if err := coalesce(&ui.bufs.sortBuf, s.Visible(ui.snapshot).Keys); err != nil {
 		return err
 	}
 	// During user iteration over range keys, unsets and deletes don't
 	// matter. Remove them. This step helps logical defragmentation during
 	// iteration.
-	keys := dst.Keys
+	keys := ui.bufs.sortBuf.keys
 	dst.Keys = dst.Keys[:0]
 	for i := range keys {
 		switch keys[i].Kind() {
@@ -225,15 +227,17 @@ func Coalesce(cmp base.Compare, keys []keyspan.Key, dst *[]keyspan.Key) error {
 		cmp:  cmp,
 		keys: (*dst)[:0],
 	}
-	if err := coalesce(&keysBySuffix, keys, dst); err != nil {
+	if err := coalesce(&keysBySuffix, keys); err != nil {
 		return err
 	}
-	// coalesce left the keys in *dst sorted by suffix. Re-sort them by trailer.
+	// Update the span with the (potentially reduced) keys slice.  coalesce left
+	// the keys in *dst sorted by suffix. Re-sort them by trailer.
+	*dst = keysBySuffix.keys
 	keyspan.SortKeysByTrailer(dst)
 	return nil
 }
 
-func coalesce(keysBySuffix *keysBySuffix, keys []keyspan.Key, dst *[]keyspan.Key) error {
+func coalesce(keysBySuffix *keysBySuffix, keys []keyspan.Key) error {
 	var deleted bool
 	for i := 0; i < len(keys) && !deleted; i++ {
 		k := keys[i]
@@ -278,11 +282,6 @@ func coalesce(keysBySuffix *keysBySuffix, keys []keyspan.Key, dst *[]keyspan.Key
 			return base.CorruptionErrorf("pebble: unexpected range key kind %s", k.Kind())
 		}
 	}
-
-	// Update the span with the (potentially reduced) keys slice.
-	// NB: We don't re-sort by Trailer. The exported Coalesce function however
-	// will.
-	*dst = keysBySuffix.keys
 	return nil
 }
 
