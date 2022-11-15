@@ -310,8 +310,8 @@ func TestLevelIterEquivalence(t *testing.T) {
 			levelIters = append(levelIters, &levelIter)
 		}
 
-		iter1.Init(base.DefaultComparer.Compare, visibleTransform(base.InternalKeySeqNumMax), fileIters...)
-		iter2.Init(base.DefaultComparer.Compare, visibleTransform(base.InternalKeySeqNumMax), levelIters...)
+		iter1.Init(base.DefaultComparer.Compare, visibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), fileIters...)
+		iter2.Init(base.DefaultComparer.Compare, visibleTransform(base.InternalKeySeqNumMax), new(MergingBuffers), levelIters...)
 		// Check iter1 and iter2 for equivalence.
 
 		require.Equal(t, iter1.First(), iter2.First(), "failed on test case %q", tc.name)

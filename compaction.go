@@ -1033,7 +1033,7 @@ func (c *compaction) newInputIter(
 			}
 			if rangeKeyIter := f.newRangeKeyIter(nil); rangeKeyIter != nil {
 				mi := &keyspan.MergingIter{}
-				mi.Init(c.cmp, rangeKeyCompactionTransform(snapshots, c.elideRangeKey), rangeKeyIter)
+				mi.Init(c.cmp, rangeKeyCompactionTransform(snapshots, c.elideRangeKey), new(keyspan.MergingBuffers), rangeKeyIter)
 				c.rangeKeyInterleaving.Init(c.comparer, iter, mi, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
 				iter = &c.rangeKeyInterleaving
 			}
@@ -1060,7 +1060,7 @@ func (c *compaction) newInputIter(
 		var iter internalIterator = newMergingIter(c.logger, &c.stats, c.cmp, nil, iters...)
 		if len(rangeKeyIters) > 0 {
 			mi := &keyspan.MergingIter{}
-			mi.Init(c.cmp, rangeKeyCompactionTransform(snapshots, c.elideRangeKey), rangeKeyIters...)
+			mi.Init(c.cmp, rangeKeyCompactionTransform(snapshots, c.elideRangeKey), new(keyspan.MergingBuffers), rangeKeyIters...)
 			c.rangeKeyInterleaving.Init(c.comparer, iter, mi, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
 			iter = &c.rangeKeyInterleaving
 		}
@@ -1330,7 +1330,7 @@ func (c *compaction) newInputIter(
 	pointKeyIter := newMergingIter(c.logger, &c.stats, c.cmp, nil, iters...)
 	if len(rangeKeyIters) > 0 {
 		mi := &keyspan.MergingIter{}
-		mi.Init(c.cmp, rangeKeyCompactionTransform(snapshots, c.elideRangeKey), rangeKeyIters...)
+		mi.Init(c.cmp, rangeKeyCompactionTransform(snapshots, c.elideRangeKey), new(keyspan.MergingBuffers), rangeKeyIters...)
 		di := &keyspan.DefragmentingIter{}
 		di.Init(c.comparer, mi, keyspan.DefragmentInternal, keyspan.StaticDefragmentReducer, new(keyspan.DefragmentingBuffers))
 		c.rangeKeyInterleaving.Init(c.comparer, pointKeyIter, di, nil /* hooks */, nil /* lowerBound */, nil /* upperBound */)
