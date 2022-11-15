@@ -30,11 +30,13 @@ type UserIteratorConfig struct {
 // Buffers holds various buffers used for range key iteration. They're exposed
 // so that they may be pooled and reused between iterators.
 type Buffers struct {
+	merging       keyspan.MergingBuffers
 	defragmenting keyspan.DefragmentingBuffers
 }
 
 // PrepareForReuse discards any excessively large buffers.
 func (bufs *Buffers) PrepareForReuse() {
+	bufs.merging.PrepareForReuse()
 	bufs.defragmenting.PrepareForReuse()
 }
 
@@ -57,7 +59,7 @@ func (ui *UserIteratorConfig) Init(
 ) keyspan.FragmentIterator {
 	ui.snapshot = snapshot
 	ui.comparer = comparer
-	ui.miter.Init(comparer.Compare, ui, iters...)
+	ui.miter.Init(comparer.Compare, ui, &bufs.merging, iters...)
 	ui.biter.Init(comparer.Compare, comparer.Split, &ui.miter, lower, upper, hasPrefix, prefix)
 	ui.diter.Init(comparer, &ui.biter, ui, keyspan.StaticDefragmentReducer, &bufs.defragmenting)
 	ui.litersUsed = 0
