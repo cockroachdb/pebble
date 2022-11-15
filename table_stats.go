@@ -715,7 +715,7 @@ func newCombinedDeletionKeyspanIter(
 		keyspan.SortKeysByTrailer(&out.Keys)
 		return nil
 	})
-	mIter.Init(comparer.Compare, transform)
+	mIter.Init(comparer.Compare, transform, new(keyspan.MergingBuffers))
 
 	iter, err := r.NewRawRangeDelIter()
 	if err != nil {

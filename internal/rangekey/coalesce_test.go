@@ -75,7 +75,7 @@ func TestIter(t *testing.T) {
 				dst.End = s.End
 				return Coalesce(cmp, s.Keys, &dst.Keys)
 			})
-			iter.Init(cmp, transform, keyspan.NewIter(cmp, spans))
+			iter.Init(cmp, transform, new(keyspan.MergingBuffers), keyspan.NewIter(cmp, spans))
 			return "OK"
 		case "iter":
 			buf.Reset()
