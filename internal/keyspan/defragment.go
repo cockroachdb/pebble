@@ -8,6 +8,7 @@ import (
 	"bytes"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -148,7 +149,7 @@ type DefragmentingIter struct {
 type DefragmentingBuffers struct {
 	// currBuf is a buffer for use when copying user keys for curr. currBuf is
 	// cleared between positioning methods.
-	currBuf []byte
+	currBuf bytealloc.A
 	// keysBuf is a buffer for use when copying Keys for DefragmentingIter.curr.
 	keysBuf []Key
 	// keyBuf is a buffer specifically for the defragmented start key when
@@ -466,7 +467,7 @@ func (i *DefragmentingIter) defragmentBackward() *Span {
 }
 
 func (i *DefragmentingIter) saveCurrent() {
-	i.currBuf = i.currBuf[:0]
+	i.currBuf.Reset()
 	i.keysBuf = i.keysBuf[:0]
 	i.keyBuf = i.keyBuf[:0]
 	if i.iterSpan == nil {
@@ -491,7 +492,6 @@ func (i *DefragmentingIter) saveBytes(b []byte) []byte {
 	if b == nil {
 		return nil
 	}
-	ret := append(i.currBuf, b...)
-	i.currBuf = ret[len(ret):]
-	return ret
+	i.currBuf, b = i.currBuf.Copy(b)
+	return b
 }
