@@ -1834,14 +1834,12 @@ func (i *Iterator) saveRangeKey() {
 		i.rangeKey.hasRangeKey = true
 		return
 	}
-
+	i.rangeKey.buf.Reset()
 	i.rangeKey.hasRangeKey = true
 	i.rangeKey.updated = true
 	i.rangeKey.stale = false
-	i.rangeKey.buf = append(i.rangeKey.buf[:0], s.Start...)
-	i.rangeKey.start = i.rangeKey.buf
-	i.rangeKey.buf = append(i.rangeKey.buf, s.End...)
-	i.rangeKey.end = i.rangeKey.buf[len(i.rangeKey.buf)-len(s.End):]
+	i.rangeKey.buf, i.rangeKey.start = i.rangeKey.buf.Copy(s.Start)
+	i.rangeKey.buf, i.rangeKey.end = i.rangeKey.buf.Copy(s.End)
 	i.rangeKey.keys = i.rangeKey.keys[:0]
 	for j := 0; j < len(s.Keys); j++ {
 		if invariants.Enabled {
@@ -1851,14 +1849,10 @@ func (i *Iterator) saveRangeKey() {
 				panic("pebble: user iteration encountered range keys not in suffix order")
 			}
 		}
-		i.rangeKey.buf = append(i.rangeKey.buf, s.Keys[j].Suffix...)
-		suffix := i.rangeKey.buf[len(i.rangeKey.buf)-len(s.Keys[j].Suffix):]
-		i.rangeKey.buf = append(i.rangeKey.buf, s.Keys[j].Value...)
-		value := i.rangeKey.buf[len(i.rangeKey.buf)-len(s.Keys[j].Value):]
-		i.rangeKey.keys = append(i.rangeKey.keys, RangeKeyData{
-			Suffix: suffix,
-			Value:  value,
-		})
+		var rkd RangeKeyData
+		i.rangeKey.buf, rkd.Suffix = i.rangeKey.buf.Copy(s.Keys[j].Suffix)
+		i.rangeKey.buf, rkd.Value = i.rangeKey.buf.Copy(s.Keys[j].Value)
+		i.rangeKey.keys = append(i.rangeKey.keys, rkd)
 	}
 }
 
