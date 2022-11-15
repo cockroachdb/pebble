@@ -207,24 +207,14 @@ func visibleTransform(snapshot uint64) Transformer {
 // accommodate this, find{Next,Prev}FragmentSet copy the initial boundary if the
 // subsequent Next/Prev would move to the next span.
 type MergingIter struct {
-	levels []mergingIterLevel
-	heap   mergingIterHeap
+	*MergingBuffers
 	// start and end hold the bounds for the span currently under the
 	// iterator position.
 	//
 	// Invariant: None of the levels' iterators contain spans with a bound
 	// between start and end. For all bounds b, b ≤ start || b ≥ end.
 	start, end []byte
-	// buf is a buffer used to save [start, end) boundary keys.
-	buf []byte
-	// keys holds all of the keys across all levels that overlap the key span
-	// [start, end), sorted by Trailer descending. This slice is reconstituted
-	// in synthesizeKeys from each mergingIterLevel's keys every time the
-	// [start, end) bounds change.
-	//
-	// Each element points into a child iterator's memory, so the keys may not
-	// be directly modified.
-	keys keysBySeqNumKind
+
 	// transformer defines a transformation to be applied to a span before it's
 	// yielded to the user. Transforming may filter individual keys contained
 	// within the span.
@@ -233,9 +223,8 @@ type MergingIter struct {
 	// destination for transforms. Every tranformed span overwrites the
 	// previous.
 	span Span
-
-	err error
-	dir int8
+	err  error
+	dir  int8
 
 	// alloc preallocates mergingIterLevel and mergingIterItems for use by the
 	// merging iterator. As long as the merging iterator is used with
@@ -246,6 +235,35 @@ type MergingIter struct {
 	alloc struct {
 		levels [manifest.NumLevels + 3]mergingIterLevel
 		items  [manifest.NumLevels + 3]mergingIterItem
+	}
+}
+
+// MergingBuffers holds buffers used while merging keyspans.
+type MergingBuffers struct {
+	// keys holds all of the keys across all levels that overlap the key span
+	// [start, end), sorted by Trailer descending. This slice is reconstituted
+	// in synthesizeKeys from each mergingIterLevel's keys every time the
+	// [start, end) bounds change.
+	//
+	// Each element points into a child iterator's memory, so the keys may not
+	// be directly modified.
+	keys keysBySeqNumKind
+	// levels holds levels allocated by MergingIter.init. The MergingIter will
+	// prefer use of its `manifest.NumLevels+3` array, so this slice will be
+	// longer if set.
+	levels []mergingIterLevel
+	// heap holds a slice for the merging iterator heap allocated by
+	// MergingIter.init. The MergingIter will prefer use of its
+	// `manifest.NumLevels+3` items array, so this slice will be longer if set.
+	heap mergingIterHeap
+	// buf is a buffer used to save [start, end) boundary keys.
+	buf []byte
+}
+
+// PrepareForReuse discards any excessively large buffers.
+func (bufs *MergingBuffers) PrepareForReuse() {
+	if cap(bufs.buf) > bufferReuseMaxCapacity {
+		bufs.buf = nil
 	}
 }
 
@@ -300,13 +318,15 @@ func (l *mergingIterLevel) prev() {
 }
 
 // Init initializes the merging iterator with the provided fragment iterators.
-func (m *MergingIter) Init(cmp base.Compare, transformer Transformer, iters ...FragmentIterator) {
-	levels, items := m.levels, m.heap.items
-
+func (m *MergingIter) Init(
+	cmp base.Compare, transformer Transformer, bufs *MergingBuffers, iters ...FragmentIterator,
+) {
 	*m = MergingIter{
-		heap:        mergingIterHeap{cmp: cmp},
-		transformer: transformer,
+		MergingBuffers: bufs,
+		transformer:    transformer,
 	}
+	m.heap.cmp = cmp
+	levels, items := m.levels, m.heap.items
 
 	// Invariant: cap(levels) >= cap(items)
 	// Invariant: cap(alloc.levels) == cap(alloc.items)
