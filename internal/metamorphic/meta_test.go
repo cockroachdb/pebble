@@ -315,7 +315,8 @@ func TestMeta(t *testing.T) {
 	}
 
 	// Cleanup any previous state.
-	metaDir := filepath.Join(*dir, time.Now().Format("060102-150405.000"))
+	metaDir, err := os.MkdirTemp(*dir, time.Now().Format("060102-150405.000"))
+	require.NoError(t, err)
 	require.NoError(t, os.RemoveAll(metaDir))
 	require.NoError(t, os.MkdirAll(metaDir, 0755))
 	defer func() {
