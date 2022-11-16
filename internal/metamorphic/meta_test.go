@@ -274,9 +274,10 @@ func TestMeta(t *testing.T) {
 		seed = uint64(time.Now().UnixNano())
 	}
 
-	// Cleanup any previous state.
-	metaDir := filepath.Join(*dir, time.Now().Format("060102-150405.000"))
-	require.NoError(t, os.RemoveAll(metaDir))
+	// Create a directory for test state.
+	require.NoError(t, os.MkdirAll(*dir, 0755))
+	metaDir, err := os.MkdirTemp(*dir, time.Now().Format("060102-150405.000"))
+	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(metaDir, 0755))
 	defer func() {
 		if !t.Failed() && !*keep {
