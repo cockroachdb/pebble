@@ -591,15 +591,12 @@ type Options struct {
 		// The default value is 1, which results in no scaling of point tombstones.
 		PointTombstoneWeight float64
 
-		// EnableValueBlocks enables writing FormatSSTableValueBlocks sstables.
-		// WARNING: do not set this to true yet, since support for
-		// TableFormatPebblev3 is incomplete and not production ready.
-		//
-		// TODO(sumeer): we will need to support changing this in a running Pebble
-		// instance.
-		EnableValueBlocks bool
+		// EnableValueBlocks is used to decide whether to enable writing
+		// TableFormatPebblev3 sstables. WARNING: do not return true yet, since
+		// support for TableFormatPebblev3 is incomplete and not production ready.
+		EnableValueBlocks func() bool
 
-		// ShortAttributeExtractor is used if EnableValueBlocks is set to true
+		// ShortAttributeExtractor is used iff EnableValueBlocks() returns true
 		// (else ignored). If non-nil, a ShortAttribute can be extracted from the
 		// value and stored with the key, when the value is stored elsewhere.
 		ShortAttributeExtractor ShortAttributeExtractor
@@ -1072,9 +1069,6 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  compaction_debt_concurrency=%d\n", o.Experimental.CompactionDebtConcurrency)
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
-	if o.Experimental.EnableValueBlocks {
-		fmt.Fprintf(&buf, "  enable_value_blocks=%t\n", o.Experimental.EnableValueBlocks)
-	}
 	fmt.Fprintf(&buf, "  flush_delay_delete_range=%s\n", o.FlushDelayDeleteRange)
 	fmt.Fprintf(&buf, "  flush_delay_range_key=%s\n", o.FlushDelayRangeKey)
 	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.FlushSplitBytes)
@@ -1279,8 +1273,6 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.private.disableLazyCombinedIteration, err = strconv.ParseBool(value)
 			case "disable_wal":
 				o.DisableWAL, err = strconv.ParseBool(value)
-			case "enable_value_blocks":
-				o.Experimental.EnableValueBlocks, err = strconv.ParseBool(value)
 			case "flush_delay_delete_range":
 				o.FlushDelayDeleteRange, err = time.ParseDuration(value)
 			case "flush_delay_range_key":

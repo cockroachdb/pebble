@@ -2372,7 +2372,8 @@ func (d *DB) runCompaction(
 		// TableFormatPebblev3.
 		panic("cannot handle table format beyond TableFormatPebblev3")
 	}
-	if tableFormat == sstable.TableFormatPebblev3 && !d.opts.Experimental.EnableValueBlocks {
+	if tableFormat == sstable.TableFormatPebblev3 &&
+		(d.opts.Experimental.EnableValueBlocks == nil || !d.opts.Experimental.EnableValueBlocks()) {
 		tableFormat = sstable.TableFormatPebblev2
 	}
 	writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
