@@ -216,6 +216,15 @@ func (lv *LazyValue) Len() int {
 	return int(lv.Fetcher.Attribute.ValueLen)
 }
 
+// TryGetShortAttribute returns the ShortAttribute and a bool indicating
+// whether the ShortAttribute was populated.
+func (lv *LazyValue) TryGetShortAttribute() (ShortAttribute, bool) {
+	if lv.Fetcher == nil {
+		return 0, false
+	}
+	return lv.Fetcher.Attribute.ShortAttribute, true
+}
+
 // Clone creates a stable copy of the LazyValue, by appending bytes to buf.
 // REQUIRES: LazyValue.Value() has not been called.
 // Ensure that this is only called before LazyValue.Value is called. We don't
