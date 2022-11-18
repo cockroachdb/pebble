@@ -21,8 +21,12 @@ func TestLazyValue(t *testing.T) {
 	fooBytes1 := []byte("foo")
 	fooLV1 := MakeInPlaceValue(fooBytes1)
 	require.Equal(t, 3, fooLV1.Len())
+	_, hasAttr := fooLV1.TryGetShortAttribute()
+	require.False(t, hasAttr)
 	fooLV2, fooBytes2 := fooLV1.Clone(nil)
 	require.Equal(t, 3, fooLV2.Len())
+	_, hasAttr = fooLV2.TryGetShortAttribute()
+	require.False(t, hasAttr)
 	require.Equal(t, fooLV1.InPlaceValue(), fooLV2.InPlaceValue())
 	getValue := func(lv LazyValue, expectedCallerOwned bool) []byte {
 		v, callerOwned, err := lv.Value(nil)
@@ -52,5 +56,8 @@ func TestLazyValue(t *testing.T) {
 		require.Equal(t, []byte("foo"), getValue(fooLV3, callerOwned))
 		require.Equal(t, 1, numCalls)
 		require.Equal(t, 3, fooLV3.Len())
+		attr, hasAttr := fooLV3.TryGetShortAttribute()
+		require.True(t, hasAttr)
+		require.Equal(t, ShortAttribute(7), attr)
 	}
 }
