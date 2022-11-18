@@ -64,6 +64,9 @@ func parseOptions(opts *testOptions, data string) error {
 				opts.useBlockPropertyCollector = true
 				opts.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
 				return true
+			case "TestOptions.enable_value_blocks":
+				opts.opts.Experimental.EnableValueBlocks = func() bool { return true }
+				return true
 			default:
 				return false
 			}
@@ -255,7 +258,7 @@ func standardOptions() []*testOptions {
   threads=1
 `,
 		25: `
-[Options]
+[TestOptions]
   enable_value_blocks=true
 `,
 	}
