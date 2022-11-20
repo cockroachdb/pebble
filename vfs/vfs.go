@@ -315,7 +315,7 @@ func LimitedCopy(fs FS, oldname, newname string, maxBytes int64) error {
 
 // LinkOrCopy creates newname as a hard link to the oldname file. If creating
 // the hard link fails, LinkOrCopy falls back to copying the file (which may
-// also fail if newname doesn't exist or oldname already exists).
+// also fail if oldname doesn't exist or newname already exists).
 func LinkOrCopy(fs FS, oldname, newname string) error {
 	err := fs.Link(oldname, newname)
 	if err == nil {
