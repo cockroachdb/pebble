@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -318,6 +319,12 @@ func rangeKeyCompactionTransform(
 	snapshots []uint64, elideRangeKey func(start, end []byte) bool,
 ) keyspan.Transformer {
 	return keyspan.TransformerFunc(func(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
+		// The keys should already be sorted by trailer descending. In invariant
+		// builds, assert such.
+		if invariants.Enabled && !keyspan.AreKeysSortedByTrailer(&s.Keys) {
+			panic(fmt.Sprintf("pebble: invariant violation: keys are not sorted by trailer: %s", s))
+		}
+
 		elideInLastStripe := func(keys []keyspan.Key) []keyspan.Key {
 			// Unsets and deletes in the last snapshot stripe can be elided.
 			k := 0
@@ -457,7 +464,8 @@ type compaction struct {
 	l0Limits [][]byte
 
 	// L0 sublevel info is used for compactions out of L0. It is nil for all
-	// other compactions.
+	// other compactions. It is ordered descending by sublevel (eg, more recent
+	// data first.)
 	l0SublevelInfo []sublevelInfo
 
 	// List of disjoint inuse key ranges the compaction overlaps with in
@@ -1042,7 +1050,9 @@ func (c *compaction) newInputIter(
 		iters := make([]internalIterator, 0, len(c.flushing)+1)
 		rangeDelIters = make([]keyspan.FragmentIterator, 0, len(c.flushing))
 		rangeKeyIters = make([]keyspan.FragmentIterator, 0, len(c.flushing))
-		for i := range c.flushing {
+		// NB: We add flush iterators so that we add the more recent memtables
+		// first. The c.flushing list is ordered from oldest to newest.
+		for i := len(c.flushing) - 1; i >= 0; i-- {
 			f := c.flushing[i]
 			iters = append(iters, f.newFlushIter(nil, &c.bytesIterated))
 			rangeDelIter := f.newRangeDelIter(nil)

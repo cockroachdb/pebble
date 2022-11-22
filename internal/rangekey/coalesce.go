@@ -6,6 +6,7 @@ package rangekey
 
 import (
 	"bytes"
+	"fmt"
 	"sort"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -84,6 +85,12 @@ func (ui *UserIteratorConfig) SetBounds(lower, upper []byte) {
 // only contain RangeKeySets describing the state visible at the provided
 // sequence number, and hold their Keys sorted by Suffix.
 func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
+	// The keys should already be sorted by trailer descending. In invariant
+	// builds, assert such.
+	if invariants.Enabled && !keyspan.AreKeysSortedByTrailer(&s.Keys) {
+		panic(fmt.Sprintf("pebble: invariant violation: keys are not sorted by trailer: %s", s))
+	}
+
 	// Apply shadowing of keys.
 	dst.Start = s.Start
 	dst.End = s.End
@@ -224,7 +231,7 @@ func coalesce(keysBySuffix *keysBySuffix, keys []keyspan.Key, dst *[]keyspan.Key
 	for i := 0; i < len(keys) && !deleted; i++ {
 		k := keys[i]
 		if invariants.Enabled && i > 0 && k.Trailer > keys[i-1].Trailer {
-			panic("pebble: invariant violation: span keys unordered")
+			panic(fmt.Sprintf("pebble: invariant violation: span keys unordered: key %s positioned before key %s", keys[i-1], k))
 		}
 
 		// NB: Within a given sequence number, keys are ordered as:
