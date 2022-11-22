@@ -139,6 +139,10 @@ func (i *iterAdapter) Next() bool {
 	return i.update(i.Iterator.Next())
 }
 
+func (i *iterAdapter) NextPrefix(succKey []byte) bool {
+	return i.update(i.Iterator.NextPrefix(succKey))
+}
+
 func (i *iterAdapter) NextIgnoreResult() {
 	i.Iterator.Next()
 	i.update(nil, base.LazyValue{})
@@ -1404,6 +1408,159 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 							k, _ = iter.Next()
 						}
 					})
+			}
+		})
+	}
+}
+
+func BenchmarkIteratorScanNextPrefix(b *testing.B) {
+	options := WriterOptions{
+		BlockSize:            32 << 10,
+		BlockRestartInterval: 16,
+		FilterPolicy:         nil,
+		Compression:          SnappyCompression,
+		TableFormat:          TableFormatPebblev3,
+		Comparer:             testkeys.Comparer,
+	}
+	const keyCount = 10000
+	const sharedPrefixLen = 32
+	const unsharedPrefixLen = 8
+	val := make([]byte, 100)
+	rand.New(rand.NewSource(100)).Read(val)
+
+	// Take the very large keyspace consisting of alphabetic characters of
+	// lengths up to unsharedPrefixLen and reduce it down to keyCount keys by
+	// picking every 1 key every keyCount keys.
+	keys := testkeys.Alpha(unsharedPrefixLen)
+	keys = keys.EveryN(keys.Count() / keyCount)
+	if keys.Count() < keyCount {
+		b.Fatalf("expected %d keys, found %d", keyCount, keys.Count())
+	}
+	keyBuf := make([]byte, sharedPrefixLen+unsharedPrefixLen+testkeys.MaxSuffixLen)
+	for i := 0; i < sharedPrefixLen; i++ {
+		keyBuf[i] = 'A' + byte(i)
+	}
+	setupBench := func(b *testing.B, versCount int) (r *Reader, succKeys [][]byte) {
+		mem := vfs.NewMem()
+		f0, err := mem.Create("bench")
+		require.NoError(b, err)
+		w := NewWriter(f0, options)
+		for i := 0; i < keys.Count(); i++ {
+			for v := 0; v < versCount; v++ {
+				n := testkeys.WriteKeyAt(keyBuf[sharedPrefixLen:], keys, i, versCount-v+1)
+				key := keyBuf[:n+sharedPrefixLen]
+				require.NoError(b, w.Set(key, val))
+				if v == 0 {
+					prefixLen := testkeys.Comparer.Split(key)
+					prefixKey := key[:prefixLen]
+					succKey := testkeys.Comparer.ImmediateSuccessor(nil, prefixKey)
+					succKeys = append(succKeys, succKey)
+				}
+			}
+		}
+		require.NoError(b, w.Close())
+		// NB: This 200MiB cache is sufficient for even the largest file: 10,000
+		// keys * 100 versions = 1M keys, where each key-value pair is ~140 bytes
+		// = 140MB. So we are not measuring the caching benefit of
+		// TableFormatPebblev3 storing older values in value blocks.
+		c := cache.New(200 << 20)
+		defer c.Unref()
+		// Re-open the filename for reading.
+		f0, err = mem.Open("bench")
+		require.NoError(b, err)
+		r, err = NewReader(f0, ReaderOptions{
+			Cache:    c,
+			Comparer: testkeys.Comparer,
+		})
+		require.NoError(b, err)
+		return r, succKeys
+	}
+	// Analysis of some sample results with TableFormatPebblev2:
+	// versions=1/method=seek-ge-10         	22107622	        53.57 ns/op
+	// versions=1/method=next-prefix-10     	36292837	        33.07 ns/op
+	// versions=2/method=seek-ge-10         	14429138	        82.92 ns/op
+	// versions=2/method=next-prefix-10     	19676055	        60.78 ns/op
+	// versions=10/method=seek-ge-10        	 1453726	       825.2 ns/op
+	// versions=10/method=next-prefix-10    	 2450498	       489.6 ns/op
+	// versions=100/method=seek-ge-10       	  965143	      1257 ns/op
+	// versions=100/method=next-prefix-10   	 1000000	      1054 ns/op
+	//
+	// With 1 version, both SeekGE and NextPrefix will be able to complete after
+	// doing a single call to blockIter.Next. However, SeekGE has to do two key
+	// comparisons unlike the one key comparison in NextPrefix. This is because
+	// SeekGE also compares *before* calling Next since it is possible that the
+	// preceding SeekGE is already at the right place.
+	//
+	// With 2 versions, both will do two calls to blockIter.Next. The difference
+	// in the cost is the same as in the 1 version case.
+	//
+	// With 10 versions, it is still likely that the desired key is in the same
+	// data block. NextPrefix will seek only the blockIter. And in the rare case
+	// that the key is in the next data block, it will step the index block (not
+	// seek). In comparison, SeekGE will seek the index block too.
+	//
+	// With 100 versions we more often cross from one data block to the next, so
+	// the difference in cost declines.
+	//
+	// Some sample results with TableFormatPebblev3:
+
+	// versions=1/method=seek-ge-10         	18702609	        53.90 ns/op
+	// versions=1/method=next-prefix-10     	77440167	        15.41 ns/op
+	// versions=2/method=seek-ge-10         	13554286	        87.91 ns/op
+	// versions=2/method=next-prefix-10     	62148526	        19.25 ns/op
+	// versions=10/method=seek-ge-10        	 1316676	       910.5 ns/op
+	// versions=10/method=next-prefix-10    	18829448	        62.61 ns/op
+	// versions=100/method=seek-ge-10       	 1166139	      1025 ns/op
+	// versions=100/method=next-prefix-10   	 4443386	       265.3 ns/op
+	//
+	// NextPrefix is much cheaper than in TableFormatPebblev2 with larger number
+	// of versions. It is also cheaper with 1 and 2 versions since
+	// setHasSamePrefix=false eliminates a key comparison.
+	for _, versionCount := range []int{1, 2, 10, 100} {
+		b.Run(fmt.Sprintf("versions=%d", versionCount), func(b *testing.B) {
+			r, succKeys := setupBench(b, versionCount)
+			defer func() {
+				require.NoError(b, r.Close())
+			}()
+			for _, method := range []string{"seek-ge", "next-prefix"} {
+				b.Run(fmt.Sprintf("method=%s", method), func(b *testing.B) {
+					iter, err := r.NewIter(nil, nil)
+					require.NoError(b, err)
+					var nextFunc func(index int) *InternalKey
+					switch method {
+					case "seek-ge":
+						nextFunc = func(index int) *InternalKey {
+							var flags base.SeekGEFlags
+							k, _ := iter.SeekGE(succKeys[index], flags.EnableTrySeekUsingNext())
+							return k
+						}
+					case "next-prefix":
+						nextFunc = func(index int) *InternalKey {
+							k, _ := iter.NextPrefix(succKeys[index])
+							return k
+						}
+					default:
+						b.Fatalf("unknown method %s", method)
+					}
+					n := keys.Count()
+					j := n
+					var k *InternalKey
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						if k == nil {
+							if j != n {
+								b.Fatalf("unexpected %d != %d", j, n)
+							}
+							k, _ = iter.First()
+							j = 0
+						} else {
+							k = nextFunc(j - 1)
+						}
+						if k != nil {
+							j++
+						}
+					}
+				})
 			}
 		})
 	}

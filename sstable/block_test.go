@@ -49,28 +49,37 @@ func TestBlockWriterWithPrefix(t *testing.T) {
 	curKey := func() string {
 		return string(base.DecodeInternalKey(w.curKey).UserKey)
 	}
-	w.addWithOptionalValuePrefix(
+	addAdapter := func(
+		key InternalKey,
+		value []byte,
+		addValuePrefix bool,
+		valuePrefix valuePrefix,
+		setHasSameKeyPrefix bool) {
+		w.addWithOptionalValuePrefix(
+			key, value, len(key.UserKey), addValuePrefix, valuePrefix, setHasSameKeyPrefix)
+	}
+	addAdapter(
 		ikey("apple"), []byte("red"), false, 0, true)
 	require.Equal(t, "apple", curKey())
 	require.Equal(t, "red", string(w.curValue))
-	w.addWithOptionalValuePrefix(
+	addAdapter(
 		ikey("apricot"), []byte("orange"), true, '\xff', false)
 	require.Equal(t, "apricot", curKey())
 	require.Equal(t, "orange", string(w.curValue))
 	// Even though this call has setHasSameKeyPrefix=true, the previous call,
 	// which was after the last restart set it to false. So the restart encoded
 	// with banana has this cumulative bit set to false.
-	w.addWithOptionalValuePrefix(
+	addAdapter(
 		ikey("banana"), []byte("yellow"), true, '\x00', true)
 	require.Equal(t, "banana", curKey())
 	require.Equal(t, "yellow", string(w.curValue))
-	w.addWithOptionalValuePrefix(
+	addAdapter(
 		ikey("cherry"), []byte("red"), false, 0, true)
 	require.Equal(t, "cherry", curKey())
 	require.Equal(t, "red", string(w.curValue))
 	// All intervening calls has setHasSameKeyPrefix=true, so the cumulative bit
 	// will be set to true in this restart.
-	w.addWithOptionalValuePrefix(
+	addAdapter(
 		ikey("mango"), []byte("juicy"), false, 0, true)
 	require.Equal(t, "mango", curKey())
 	require.Equal(t, "juicy", string(w.curValue))
