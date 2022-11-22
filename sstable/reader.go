@@ -90,6 +90,9 @@ type block []byte
 type Iterator interface {
 	base.InternalIterator
 
+	// NextPrefix implements (base.InternalIterator).NextPrefix.
+	NextPrefix(succKey []byte) (*InternalKey, base.LazyValue)
+
 	// MaybeFilteredKeys may be called when an iterator is exhausted to indicate
 	// whether or not the last positioning method may have skipped any keys due
 	// to block-property filters. This is used by the Pebble levelIter to
@@ -1189,18 +1192,59 @@ func (i *singleLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.Laz
 	i.maybeFilteredKeysSingleLevel = false
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
-
 	if i.err != nil {
 		return nil, base.LazyValue{}
 	}
-	if key, val := i.data.NextPrefix(succKey); key != nil {
+	if key, val := i.data.nextPrefix(succKey); key != nil {
 		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
 			i.exhaustedBounds = +1
 			return nil, base.LazyValue{}
 		}
 		return key, val
 	}
-	return i.SeekGE(succKey, base.SeekGEFlagsNone)
+	// Did not find prefix in the existing data block. This is the slow-path
+	// where we effectively seek the iterator.
+	var ikey *InternalKey
+	// The key is likely to be in the next data block, so try one step.
+	if ikey, _ = i.index.Next(); ikey == nil {
+		// The target key is greater than any key in the index block.
+		// Invalidate the block iterator so that a subsequent call to Prev()
+		// will return the last key in the table.
+		i.data.invalidate()
+		return nil, base.LazyValue{}
+	}
+	if i.cmp(succKey, ikey.UserKey) > 0 {
+		// Not in the next data block, so seek the index.
+		if ikey, _ = i.index.SeekGE(succKey, base.SeekGEFlagsNone); ikey == nil {
+			// The target key is greater than any key in the index block.
+			// Invalidate the block iterator so that a subsequent call to Prev()
+			// will return the last key in the table.
+			i.data.invalidate()
+			return nil, base.LazyValue{}
+		}
+	}
+	result := i.loadBlock(+1)
+	if result == loadBlockFailed {
+		return nil, base.LazyValue{}
+	}
+	if result == loadBlockIrrelevant {
+		// Enforce the upper bound here since don't want to bother moving
+		// to the next block if upper bound is already exceeded. Note that
+		// the next block starts with keys >= ikey.UserKey since even
+		// though this is the block separator, the same user key can span
+		// multiple blocks. Since upper is exclusive we use >= below.
+		if i.upper != nil && i.cmp(ikey.UserKey, i.upper) >= 0 {
+			i.exhaustedBounds = +1
+			return nil, base.LazyValue{}
+		}
+	} else if key, val := i.data.SeekGE(succKey, base.SeekGEFlagsNone); key != nil {
+		if i.blockUpper != nil && i.cmp(key.UserKey, i.blockUpper) >= 0 {
+			i.exhaustedBounds = +1
+			return nil, base.LazyValue{}
+		}
+		return key, val
+	}
+	return i.skipForward()
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -1453,6 +1497,10 @@ func (i *compactionIterator) Next() (*InternalKey, base.LazyValue) {
 		return nil, base.LazyValue{}
 	}
 	return i.skipForward(i.data.Next())
+}
+
+func (i *compactionIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+	panic("pebble: NextPrefix unimplemented")
 }
 
 func (i *compactionIterator) Prev() (*InternalKey, base.LazyValue) {
@@ -2160,6 +2208,9 @@ func (i *twoLevelIterator) Next() (*InternalKey, base.LazyValue) {
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
 func (i *twoLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+	if i.exhaustedBounds == +1 {
+		panic("Next called even though exhausted upper bound")
+	}
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 	i.maybeFilteredKeysTwoLevel = false
@@ -2169,7 +2220,31 @@ func (i *twoLevelIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyVa
 	if key, val := i.singleLevelIterator.NextPrefix(succKey); key != nil {
 		return key, val
 	}
-	return i.SeekGE(succKey, base.SeekGEFlagsNone)
+	// Did not find prefix in the existing second-level index block. This is the
+	// slow-path where we seek the iterator.
+	var ikey *InternalKey
+	if ikey, _ = i.topLevelIndex.SeekGE(succKey, base.SeekGEFlagsNone); ikey == nil {
+		i.data.invalidate()
+		i.index.invalidate()
+		return nil, base.LazyValue{}
+	}
+	result := i.loadIndex(+1)
+	if result == loadBlockFailed {
+		return nil, base.LazyValue{}
+	}
+	if result == loadBlockIrrelevant {
+		// Enforce the upper bound here since don't want to bother moving to the
+		// next entry in the top level index if upper bound is already exceeded.
+		// Note that the next entry starts with keys >= ikey.UserKey since even
+		// though this is the block separator, the same user key can span multiple
+		// index blocks. Since upper is exclusive we use >= below.
+		if i.upper != nil && i.cmp(ikey.UserKey, i.upper) >= 0 {
+			i.exhaustedBounds = +1
+		}
+	} else if key, val := i.singleLevelIterator.SeekGE(succKey, base.SeekGEFlagsNone); key != nil {
+		return key, val
+	}
+	return i.skipForward()
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -2340,6 +2415,10 @@ func (i *twoLevelCompactionIterator) Next() (*InternalKey, base.LazyValue) {
 		return nil, base.LazyValue{}
 	}
 	return i.skipForward(i.singleLevelIterator.Next())
+}
+
+func (i *twoLevelCompactionIterator) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
+	panic("pebble: NextPrefix unimplemented")
 }
 
 func (i *twoLevelCompactionIterator) Prev() (*InternalKey, base.LazyValue) {

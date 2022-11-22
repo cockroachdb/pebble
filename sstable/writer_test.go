@@ -278,7 +278,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 			}
 			var buf bytes.Buffer
 			l.Describe(&buf, true, r, func(key *base.InternalKey, value []byte) {
-				fmt.Fprintf(&buf, "%s:%s", key.String(), string(value))
+				fmt.Fprintf(&buf, "  %s:%s\n", key.String(), string(value))
 			})
 			return buf.String()
 

@@ -845,7 +845,12 @@ func (w *Writer) makeAddPointDecisionV3(
 func (w *Writer) addPoint(key InternalKey, value []byte) error {
 	var err error
 	var setHasSameKeyPrefix, writeToValueBlock, addPrefixToValueStoredWithKey bool
+	maxSharedKeyLen := len(key.UserKey)
 	if w.valueBlockWriter != nil {
+		// maxSharedKeyLen is limited to the prefix of the preceding key. If the
+		// preceding key was in a different block, then the blockWriter will
+		// ignore this maxSharedKeyLen.
+		maxSharedKeyLen = w.lastPointKeyInfo.prefixLen
 		setHasSameKeyPrefix, writeToValueBlock, err = w.makeAddPointDecisionV3(key, len(value))
 		addPrefixToValueStoredWithKey = base.TrailerKind(key.Trailer) == InternalKeyKindSet
 	} else {
@@ -912,7 +917,8 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 
 	w.maybeAddToFilter(key.UserKey)
 	w.dataBlockBuf.dataBlock.addWithOptionalValuePrefix(
-		key, valueStoredWithKey, addPrefixToValueStoredWithKey, prefix, setHasSameKeyPrefix)
+		key, valueStoredWithKey, maxSharedKeyLen, addPrefixToValueStoredWithKey, prefix,
+		setHasSameKeyPrefix)
 
 	w.meta.updateSeqNum(key.SeqNum())
 

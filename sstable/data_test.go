@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -329,6 +330,18 @@ func runIterCmd(
 			iter.NextIgnoreResult()
 		case "prev":
 			iter.Prev()
+		case "next-prefix":
+			if len(parts) != 1 {
+				return "next-prefix should have no parameter\n"
+			}
+			if iter.Key() == nil {
+				return "next-prefix cannot be called on exhauster iterator\n"
+			}
+			k := iter.Key().UserKey
+			prefixLen := testkeys.Comparer.Split(k)
+			k = k[:prefixLen]
+			kSucc := testkeys.Comparer.ImmediateSuccessor(nil, k)
+			iter.NextPrefix(kSucc)
 		case "set-bounds":
 			if len(parts) <= 1 || len(parts) > 3 {
 				return "set-bounds lower=<lower> upper=<upper>\n"
