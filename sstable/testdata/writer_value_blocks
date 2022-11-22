@@ -120,19 +120,23 @@ layout
 ----
          0  data (33)
          0    record (25 = 3 [0] + 15 + 7) [restart]
-              blue@10#20,1:blue10        25    [restart 0]
+                blue@10#20,1:blue10
+        25    [restart 0]
         33    [trailer compression=none checksum=0x5fb0d551]
         38  data (29)
         38    record (21 = 3 [0] + 14 + 4) [restart]
-              blue@8#18,1:value handle {valueLen:5 blockNum:0 offsetInBlock:0}        59    [restart 38]
+                blue@8#18,1:value handle {valueLen:5 blockNum:0 offsetInBlock:0}
+        59    [restart 38]
         67    [trailer compression=none checksum=0x628e4a10]
         72  data (29)
         72    record (21 = 3 [0] + 14 + 4) [restart]
-              blue@8#16,1:value handle {valueLen:6 blockNum:0 offsetInBlock:5}        93    [restart 72]
+                blue@8#16,1:value handle {valueLen:6 blockNum:0 offsetInBlock:5}
+        93    [restart 72]
        101    [trailer compression=none checksum=0xdc74261]
        106  data (29)
        106    record (21 = 3 [0] + 14 + 4) [restart]
-              blue@6#16,1:value handle {valueLen:15 blockNum:1 offsetInBlock:0}       127    [restart 106]
+                blue@6#16,1:value handle {valueLen:15 blockNum:1 offsetInBlock:0}
+       127    [restart 106]
        135    [trailer compression=none checksum=0x9f60e629]
        140  index (28)
        140    block:0/33 [restart]
@@ -277,57 +281,61 @@ c@5#6,0:
 
 layout
 ----
-         0  data (64)
+         0  data (66)
          0    record (17 = 3 [0] + 11 + 3) [restart]
-              b@5#7,1:b5        17    record (13 = 3 [2] + 9 + 1)
-              b@3#2,1:        30    record (14 = 3 [0] + 11 + 0)
-              c@6#7,0:        44    record (12 = 3 [2] + 9 + 0)
-              c@5#6,0:        56    [restart 0]
-        64    [trailer compression=none checksum=0xd099737a]
-        69  index (22)
-        69    block:0/64 [restart]
-        83    [restart 69]
-        91    [trailer compression=none checksum=0xf97e414e]
-        96  properties (676)
-        96    rocksdb.block.based.table.index.type (43) [restart]
-       139    rocksdb.block.based.table.prefix.filtering (20)
-       159    rocksdb.block.based.table.whole.key.filtering (23)
-       182    rocksdb.column.family.id (24)
-       206    rocksdb.comparator (35)
-       241    rocksdb.compression (16)
-       257    rocksdb.compression_options (106)
-       363    rocksdb.creation.time (16)
-       379    rocksdb.data.size (13)
-       392    rocksdb.deleted.keys (15)
-       407    rocksdb.external_sst_file.global_seqno (41)
-       448    rocksdb.external_sst_file.version (14)
-       462    rocksdb.filter.size (15)
-       477    rocksdb.fixed.key.length (18)
-       495    rocksdb.format.version (17)
-       512    rocksdb.index.key.is.user.key (25)
-       537    rocksdb.index.size (8)
-       545    rocksdb.index.value.is.delta.encoded (26)
-       571    rocksdb.merge.operands (18)
-       589    rocksdb.merge.operator (24)
-       613    rocksdb.num.data.blocks (19)
-       632    rocksdb.num.entries (11)
-       643    rocksdb.num.range-deletions (19)
-       662    rocksdb.oldest.key.time (19)
-       681    rocksdb.prefix.extractor.name (31)
-       712    rocksdb.property.collectors (22)
-       734    rocksdb.raw.key.size (16)
-       750    rocksdb.raw.value.size (14)
-       764    [restart 96]
-       772    [trailer compression=none checksum=0xf606ecc]
-       777  meta-index (32)
-       777    rocksdb.properties block:96/676 [restart]
-       801    [restart 777]
-       809    [trailer compression=none checksum=0xdd61ae3a]
-       814  footer (53)
-       814    checksum type: crc32c
-       815    meta: offset=777, length=32
-       818    index: offset=69, length=22
-       820    [padding]
-       855    version: 3
-       859    magic number: 0xf09faab3f09faab3
-       867  EOF
+                b@5#7,1:b5
+        17    record (14 = 3 [1] + 10 + 1)
+                b@3#2,1:
+        31    record (14 = 3 [0] + 11 + 0)
+                c@6#7,0:
+        45    record (13 = 3 [1] + 10 + 0)
+                c@5#6,0:
+        58    [restart 0]
+        66    [trailer compression=none checksum=0x4e91250f]
+        71  index (22)
+        71    block:0/66 [restart]
+        85    [restart 71]
+        93    [trailer compression=none checksum=0xf80f5bcf]
+        98  properties (676)
+        98    rocksdb.block.based.table.index.type (43) [restart]
+       141    rocksdb.block.based.table.prefix.filtering (20)
+       161    rocksdb.block.based.table.whole.key.filtering (23)
+       184    rocksdb.column.family.id (24)
+       208    rocksdb.comparator (35)
+       243    rocksdb.compression (16)
+       259    rocksdb.compression_options (106)
+       365    rocksdb.creation.time (16)
+       381    rocksdb.data.size (13)
+       394    rocksdb.deleted.keys (15)
+       409    rocksdb.external_sst_file.global_seqno (41)
+       450    rocksdb.external_sst_file.version (14)
+       464    rocksdb.filter.size (15)
+       479    rocksdb.fixed.key.length (18)
+       497    rocksdb.format.version (17)
+       514    rocksdb.index.key.is.user.key (25)
+       539    rocksdb.index.size (8)
+       547    rocksdb.index.value.is.delta.encoded (26)
+       573    rocksdb.merge.operands (18)
+       591    rocksdb.merge.operator (24)
+       615    rocksdb.num.data.blocks (19)
+       634    rocksdb.num.entries (11)
+       645    rocksdb.num.range-deletions (19)
+       664    rocksdb.oldest.key.time (19)
+       683    rocksdb.prefix.extractor.name (31)
+       714    rocksdb.property.collectors (22)
+       736    rocksdb.raw.key.size (16)
+       752    rocksdb.raw.value.size (14)
+       766    [restart 98]
+       774    [trailer compression=none checksum=0x9367b10c]
+       779  meta-index (32)
+       779    rocksdb.properties block:98/676 [restart]
+       803    [restart 779]
+       811    [trailer compression=none checksum=0xca0f17d]
+       816  footer (53)
+       816    checksum type: crc32c
+       817    meta: offset=779, length=32
+       820    index: offset=71, length=22
+       822    [padding]
+       857    version: 3
+       861    magic number: 0xf09faab3f09faab3
+       869  EOF
