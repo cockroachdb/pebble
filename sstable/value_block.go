@@ -137,7 +137,8 @@ const (
 	//
 	// Note that the current policy of only storing older MVCC versions in value
 	// blocks means that valueKindIsValueHandle => SET has same prefix. But no
-	// code should rely on this behavior.
+	// code should rely on this behavior. Also, SET has same prefix does *not*
+	// imply valueKindIsValueHandle.
 	setHasSameKeyPrefixMask valuePrefix = '\x20'
 
 	// 3 least-significant bits for the user-defined base.ShortAttribute.
