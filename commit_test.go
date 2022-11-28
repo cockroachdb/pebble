@@ -184,7 +184,7 @@ func TestCommitPipelineAllocateSeqNum(t *testing.T) {
 	for i := 1; i <= n; i++ {
 		go func(i int) {
 			defer wg.Done()
-			p.AllocateSeqNum(i, func() {
+			p.AllocateSeqNum(i, func(_ uint64) {
 				atomic.AddUint64(&prepareCount, uint64(1))
 			}, func(seqNum uint64) {
 				atomic.AddUint64(&applyCount, uint64(1))

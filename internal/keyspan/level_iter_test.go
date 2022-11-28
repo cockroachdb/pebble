@@ -306,7 +306,10 @@ func TestLevelIterEquivalence(t *testing.T) {
 			b.Added[6] = metas
 			v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
 			require.NoError(t, err)
-			levelIter.Init(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 0, manifest.KeyTypeRange)
+			levelIter.Init(
+				SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters,
+				v.Levels[6].Iter(), 0, manifest.KeyTypeRange,
+			)
 			levelIters = append(levelIters, &levelIter)
 		}
 
@@ -423,7 +426,7 @@ func TestLevelIter(t *testing.T) {
 			}
 			if iter == nil {
 				var lastFileNum base.FileNum
-				tableNewIters := func(file *manifest.FileMetadata, iterOptions *SpanIterOptions) (FragmentIterator, error) {
+				tableNewIters := func(file *manifest.FileMetadata, _ *SpanIterOptions) (FragmentIterator, error) {
 					keyType := keyType
 					spans := level[file.FileNum-1]
 					if keyType == manifest.KeyTypePoint {
@@ -436,7 +439,10 @@ func TestLevelIter(t *testing.T) {
 				b.Added[6] = metas
 				v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
 				require.NoError(t, err)
-				iter = newLevelIter(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 6, keyType)
+				iter = NewLevelIter(
+					SpanIterOptions{}, base.DefaultComparer.Compare,
+					tableNewIters, v.Levels[6].Iter(), 6, keyType,
+				)
 				extraInfo = func() string {
 					return fmt.Sprintf("file = %s.sst", lastFileNum)
 				}
