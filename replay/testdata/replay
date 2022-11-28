@@ -11,22 +11,24 @@ tree
      823      000007.sst
       16      CURRENT
        0      LOCK
-     144      MANIFEST-000001
-    2503      OPTIONS-000003
+      96      MANIFEST-000001
+     122      MANIFEST-000008
+    2495      OPTIONS-000003
        0      marker.format-version.000007.008
-       0      marker.manifest.000001.MANIFEST-000001
+       0      marker.manifest.000002.MANIFEST-000008
             simple/
      823      000007.sst
-     144      MANIFEST-000001
+      96      MANIFEST-000001
+     122      MANIFEST-000008
               checkpoint/
        0        000004.log
      795        000005.sst
       96        MANIFEST-000001
-    2503        OPTIONS-000003
+    2495        OPTIONS-000003
        0        marker.format-version.000001.008
        0        marker.manifest.000001.MANIFEST-000001
 
-replay simple
+replay simple unpaced
 ----
 
 wait
@@ -42,28 +44,30 @@ tree
      823      000007.sst
       16      CURRENT
        0      LOCK
-     144      MANIFEST-000001
-    2503      OPTIONS-000003
+      96      MANIFEST-000001
+     122      MANIFEST-000008
+    2495      OPTIONS-000003
        0      marker.format-version.000007.008
-       0      marker.manifest.000001.MANIFEST-000001
-            run-29/
+       0      marker.manifest.000002.MANIFEST-000008
+            run-31/
      795      000005.sst
       53      000006.log
        0      LOCK
       96      MANIFEST-000001
-      87      MANIFEST-000007
-    1125      OPTIONS-000008
+     136      MANIFEST-000007
+    1122      OPTIONS-000008
        0      marker.format-version.000001.008
        0      marker.manifest.000002.MANIFEST-000007
               staging/
             simple/
      823      000007.sst
-     144      MANIFEST-000001
+      96      MANIFEST-000001
+     122      MANIFEST-000008
               checkpoint/
        0        000004.log
      795        000005.sst
       96        MANIFEST-000001
-    2503        OPTIONS-000003
+    2495        OPTIONS-000003
        0        marker.format-version.000001.008
        0        marker.manifest.000001.MANIFEST-000001
 
