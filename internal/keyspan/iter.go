@@ -60,7 +60,8 @@ type FragmentIterator interface {
 	Close() error
 }
 
-// TableNewSpanIter creates a new iterator for spans for the given file.
+// TableNewSpanIter creates a new iterator for range key spans for the given
+// file.
 type TableNewSpanIter func(file *manifest.FileMetadata, iterOptions *SpanIterOptions) (FragmentIterator, error)
 
 // SpanIterOptions is a subset of IterOptions that are necessary to instantiate

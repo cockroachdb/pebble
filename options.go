@@ -615,6 +615,15 @@ type Options struct {
 		// Any change in exclusion behavior takes effect only on future written
 		// sstables, and does not start rewriting existing sstables.
 		RequiredInPlaceValueBound UserKeyPrefixBound
+
+		// IngestSSTablesAsFlushable is used to determine if ingested sstables
+		// should be ingested as a flushable. By default this is false, but it
+		// is true for all metamorphic tests.
+		//
+		// TODO(bananabrick): Remove this field and enable by default once
+		// https://github.com/cockroachdb/pebble/issues/2292 and
+		// https://github.com/cockroachdb/pebble/issues/2266 are closed.
+		IngestSSTablesAsFlushable bool
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
