@@ -3823,7 +3823,7 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 				// NB: we hold db.mu here.
 				var cur *flushableEntry
 				cur, db.mu.mem.queue = db.mu.mem.queue[0], db.mu.mem.queue[1:]
-				cur.readerUnref()
+				cur.readerUnrefLocked(true)
 			},
 		},
 		{

@@ -484,8 +484,14 @@ func (c *tableCacheShard) newRangeKeyIter(
 	// No need to hold onto a ref of the cache value.
 	c.unrefValue(v)
 
-	if err != nil || iter == nil {
+	if err != nil {
 		return nil, err
+	}
+
+	if iter == nil {
+		// NewRawRangeKeyIter can return nil even if there's no error. However,
+		// the keyspan.LevelIter expects a non-nil iterator if err is nil.
+		return emptyKeyspanIter, nil
 	}
 
 	return iter, nil

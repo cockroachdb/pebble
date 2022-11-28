@@ -607,7 +607,7 @@ func (vs *versionSet) incrementCompactions(kind compactionKind, extraLevels []*c
 		vs.metrics.Compact.Count++
 		vs.metrics.Compact.DefaultCount++
 
-	case compactionKindFlush:
+	case compactionKindFlush, compactionKindIngestedFlushable:
 		vs.metrics.Flush.Count++
 
 	case compactionKindMove:
@@ -754,7 +754,12 @@ func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 	}
 }
 
+// DB.mu must be held when addObsoleteLocked is called.
 func (vs *versionSet) addObsoleteLocked(obsolete []*manifest.FileMetadata) {
+	if len(obsolete) == 0 {
+		return
+	}
+
 	for _, fileMeta := range obsolete {
 		// Note that the obsolete tables are no longer zombie by the definition of
 		// zombie, but we leave them in the zombie tables map until they are
@@ -765,6 +770,14 @@ func (vs *versionSet) addObsoleteLocked(obsolete []*manifest.FileMetadata) {
 	}
 	vs.obsoleteTables = append(vs.obsoleteTables, obsolete...)
 	vs.updateObsoleteTableMetricsLocked()
+}
+
+// addObsolete will acquire DB.mu, so DB.mu must not be held when this is
+// called.
+func (vs *versionSet) addObsolete(obsolete []*manifest.FileMetadata) {
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	vs.addObsoleteLocked(obsolete)
 }
 
 func (vs *versionSet) updateObsoleteTableMetricsLocked() {
