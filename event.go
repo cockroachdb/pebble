@@ -283,7 +283,10 @@ type TableIngestInfo struct {
 	// GlobalSeqNum is the sequence number that was assigned to all entries in
 	// the ingested table.
 	GlobalSeqNum uint64
-	Err          error
+	// flushable indicates whether the ingested sstable was treated as a
+	// flushable.
+	flushable bool
+	Err       error
 }
 
 func (i TableIngestInfo) String() string {
@@ -297,7 +300,12 @@ func (i TableIngestInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		return
 	}
 
-	w.Printf("[JOB %d] ingested", redact.Safe(i.JobID))
+	if i.flushable {
+		w.Printf("[JOB %d] ingested as memtable", redact.Safe(i.JobID))
+	} else {
+		w.Printf("[JOB %d] ingested", redact.Safe(i.JobID))
+	}
+
 	for j := range i.Tables {
 		t := &i.Tables[j]
 		if j > 0 {

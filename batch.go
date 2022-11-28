@@ -162,6 +162,7 @@ func (d DeferredBatchOp) Finish() error {
 //
 //   InternalKeyKindDelete         varstring
 //   InternalKeyKindLogData        varstring
+//   InternalKeyKindIngestSST      varstring
 //   InternalKeyKindSet            varstring varstring
 //   InternalKeyKindMerge          varstring varstring
 //   InternalKeyKindRangeDelete    varstring varstring
@@ -254,6 +255,11 @@ type Batch struct {
 	// The flushableBatch wrapper if the batch is too large to fit in the
 	// memtable.
 	flushable *flushableBatch
+
+	// ingestedSSTBatch indicates that the batch contains key kinds of
+	// InternalKeyKindIngestSST. If the batch contains key kinds of IngestSST
+	// then it will only contain key kinds of IngestSST.
+	ingestedSSTBatch bool
 
 	commit    sync.WaitGroup
 	commitErr error
@@ -348,13 +354,16 @@ func (b *Batch) refreshMemTableSize() {
 		if !ok {
 			break
 		}
-		b.memTableSize += memTableEntrySize(len(key), len(value))
 		switch kind {
 		case InternalKeyKindRangeDelete:
 			b.countRangeDels++
 		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 			b.countRangeKeys++
+		case InternalKeyKindIngestSST:
+			// This key kind doesn't contribute to the memtable size.
+			continue
 		}
+		b.memTableSize += memTableEntrySize(len(key), len(value))
 	}
 }
 
@@ -410,6 +419,8 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 						b.rangeKeyIndex = batchskl.NewSkiplist(&b.data, b.cmp, b.abbreviatedKey)
 					}
 					err = b.rangeKeyIndex.Add(uint32(offset))
+				case InternalKeyKindIngestSST:
+					panic("pebble: invalid batch application")
 				default:
 					err = b.index.Add(uint32(offset))
 				}
@@ -797,6 +808,20 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 	return nil
 }
 
+// IngestSST adds an sstable path to the batch. The data will only be written to
+// the WAL (not added to memtables or sstables).
+func (b *Batch) IngestSST(data []byte) {
+	b.ingestedSSTBatch = true
+	origMemTableSize := b.memTableSize
+	b.prepareDeferredKeyRecord(len(data), InternalKeyKindIngestSST)
+	copy(b.deferredOp.Key, data)
+	// Since IngestSST writes only to the WAL and does not affect the memtable,
+	// we restore b.memTableSize to its original value. Note that Batch.count
+	// is not reset because for the InternalKeyKindIngestSST the count is the
+	// number of sstable paths which have been added to the batch.
+	b.memTableSize = origMemTableSize
+}
+
 // Empty returns true if the batch is empty, and false otherwise.
 func (b *Batch) Empty() bool {
 	return len(b.data) <= batchHeaderLen
@@ -1159,7 +1184,9 @@ func (b *Batch) setCount(v uint32) {
 }
 
 // Count returns the count of memtable-modifying operations in this batch. All
-// operations with the except of LogData increment this count.
+// operations with the except of LogData increment this count. For IngestSSTs,
+// count is only used to indicate the number of SSTs ingested in the record, the
+// batch isn't applied to the memtable.
 func (b *Batch) Count() uint32 {
 	if b.count > math.MaxUint32 {
 		panic(ErrInvalidBatch)

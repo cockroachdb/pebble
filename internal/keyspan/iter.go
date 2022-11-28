@@ -67,6 +67,10 @@ type SpanIterOptions struct {
 	// RangeKeyFilters can be used to avoid scanning tables and blocks in tables
 	// when iterating over range keys.
 	RangeKeyFilters []base.BlockPropertyFilter
+
+	// RangeDeleteIter can be used to indicate to the TableNewSpanIter function
+	// that an iter for range delete should be loaded instead of range keys.
+	RangeDeleteIter bool
 }
 
 // Iter is an iterator over a set of fragmented spans.

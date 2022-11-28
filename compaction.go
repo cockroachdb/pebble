@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -288,6 +289,7 @@ const (
 	compactionKindElisionOnly
 	compactionKindRead
 	compactionKindRewrite
+	compactionKindIngestedFlushable
 )
 
 func (k compactionKind) String() string {
@@ -306,6 +308,8 @@ func (k compactionKind) String() string {
 		return "read"
 	case compactionKindRewrite:
 		return "rewrite"
+	case compactionKindIngestedFlushable:
+		return "ingested-flushable"
 	}
 	return "?"
 }
@@ -660,6 +664,25 @@ func newFlush(opts *Options, cur *version, baseLevel int, flushing flushableList
 	}
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
+
+	if len(flushing) > 0 {
+		if _, ok := flushing[0].flushable.(*ingestedSSTable); ok {
+			if len(flushing) != 1 {
+				panic("pebble: ingestedSStable must be flushed one at a time.")
+			}
+			c.kind = compactionKindIngestedFlushable
+			return c
+		}
+	}
+
+	if invariants.Enabled {
+		for _, f := range flushing {
+			if _, ok := f.flushable.(*ingestedSSTable); ok {
+				panic("pebble: flushing shouldn't contain ingestedSStable flushable.")
+			}
+		}
+	}
+
 	if cur.L0Sublevels != nil {
 		c.l0Limits = cur.L0Sublevels.FlushSplitKeys()
 	}
@@ -1630,14 +1653,98 @@ func (d *DB) flush() {
 	})
 }
 
+// runIngestFlush is used to generate a flush version edit for sstables which
+// were ingested as memtables. Both DB.mu and the manifest lock must be held
+// while runIngestFlush is called.
+func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
+	if len(c.flushing) != 1 {
+		panic("pebble: ingestedSStable must be flushed one at a time.")
+	}
+
+	// Construct the VersionEdit, levelMetrics etc.
+	c.metrics = make(map[int]*LevelMetrics, numLevels)
+	// Finding the target level for ingestion must use the latest version
+	// after the logLock has been acquired.
+	c.version = d.mu.versions.currentVersion()
+
+	baseLevel := d.mu.versions.picker.getBaseLevel()
+	iterOpts := IterOptions{logger: d.opts.Logger}
+	ve := &versionEdit{}
+	var level int
+	var err error
+	for _, file := range c.flushing[0].flushable.(*ingestedSSTable).files {
+		level, err = ingestTargetLevel(
+			d.newIters, d.tableNewRangeIter, iterOpts, d.cmp,
+			c.version, baseLevel, d.mu.compact.inProgress, file,
+		)
+		if err != nil {
+			return nil, err
+		}
+		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: file})
+		levelMetrics := c.metrics[level]
+		if levelMetrics == nil {
+			levelMetrics = &LevelMetrics{}
+			c.metrics[level] = levelMetrics
+		}
+		levelMetrics.NumFiles++
+		levelMetrics.Size += int64(file.Size)
+		levelMetrics.BytesIngested += file.Size
+		levelMetrics.TablesIngested++
+	}
+
+	return ve, nil
+}
+
 // flush runs a compaction that copies the immutable memtables from memory to
 // disk.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) flush1() (bytesFlushed uint64, err error) {
+	// NB: The memtable queue can contain flushables of type ingestedSStable.
+	// The sstables in ingestedSStable.files must be placed into the appropriate
+	// level in the lsm. Let's say the memtable queue contains a prefix of
+	// regular immutable memtables, then an ingestedSStable flushable, and then
+	// the mutable memtable. When the flush of the ingestedSStable flushable is
+	// performed, it needs an updated view of the lsm. That is, the prefix of
+	// immutable memtables must have already been flushed. Similarly, if there
+	// is two contiguous ingestedSStables in the queue, then the first flushable
+	// must be flushed, so that the second flushable can see an updated view
+	// of the lsm.
+	//
+	// Given the above, we restrict flushes to either some prefix of regular
+	// memtables, or a single memtable of type ingestedSStable. The DB.flush
+	// function will call DB.maybeScheduleFlush again, so a new flush to finish
+	// the remaining flush work should be scheduled right away.
+	//
+	// NB: Large batches placed in the flushable queue share the WAL with the
+	// previous memtable in the queue. We must ensure that both the large batch
+	// and the previous memtable are flushed together. This ensures that the
+	// minimum unflushed log number isn't incremented incorrectly. Since a
+	// flushableBatch.readyToFlush always returns true, this property is always
+	// true.
 	var n int
 	for ; n < len(d.mu.mem.queue)-1; n++ {
+		if f, ok := d.mu.mem.queue[n].flushable.(*ingestedSSTable); ok {
+			if n == 0 {
+				// The first memtable is of type ingestedSSTable. Since these
+				// must be flushed individually, we perform a flush for just
+				// this.
+				if !f.readyForFlush() {
+					// This check is almost unnecessary, but we guard against it
+					// just in case this invariant changes in the future.
+					panic("pebble: ingestedSStable flushable should always be ready to flush.")
+				}
+				// By setting n = 1, we ensure that the first memtable(n == 0)
+				// is scheduled for a flush.
+				n = 1
+				break
+			} else {
+				// There was some prefix of memtables which weren't of type
+				// ingestedSStable. So, perform a flush for those.
+				break
+			}
+		}
 		if !d.mu.mem.queue[n].readyForFlush() {
 			break
 		}
@@ -1671,8 +1778,28 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	})
 	startTime := d.timeNow()
 
-	ve, pendingOutputs, err := d.runCompaction(jobID, c)
+	var ve *manifest.VersionEdit
+	var pendingOutputs []*manifest.FileMetadata
+	if c.kind != compactionKindIngestedFlushable {
+		// To determine the target level of the files in the ingestedSStable
+		// flushable, we need to acquire the logLock, and not release it for
+		// that duration. Since, we need to acquire the logLock below to perform
+		// the logAndApply step anyway, we create the VersionEdit for
+		// ingestedSStable outside of runCompaction. For all other flush cases,
+		// we construct the VersionEdit inside runCompaction.
+		ve, pendingOutputs, err = d.runCompaction(jobID, c)
+	}
 
+	// Acquire logLock. This will be released either on an error, by way of
+	// logUnlock, or through a call to logAndApply if there is no error.
+	d.mu.versions.logLock()
+
+	if c.kind == compactionKindIngestedFlushable {
+		ve, err = d.runIngestFlush(c)
+	}
+
+	// TODO(bananabrick): Update the FlushInfo output message. The files are
+	// not necessarily being flushed to L0.
 	info := FlushInfo{
 		JobID:    jobID,
 		Input:    n,
@@ -1693,12 +1820,13 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		// want to bump the minimum unflushed log number to the log number of the
 		// oldest unflushed memtable.
 		ve.MinUnflushedLogNum = minUnflushedLogNum
-		metrics := c.metrics[0]
-		for i := 0; i < n; i++ {
-			metrics.BytesIn += d.mu.mem.queue[i].logSize
+		if c.kind != compactionKindIngestedFlushable {
+			metrics := c.metrics[0]
+			for i := 0; i < n; i++ {
+				metrics.BytesIn += d.mu.mem.queue[i].logSize
+			}
 		}
 
-		d.mu.versions.logLock()
 		err = d.mu.versions.logAndApply(jobID, ve, c.metrics, false, /* forceRotation */
 			func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) })
 		if err != nil {
@@ -1707,6 +1835,10 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
 			d.mu.versions.incrementObsoleteTablesLocked(pendingOutputs)
 		}
+	} else {
+		// We won't be performing the logAndApply step because of the error,
+		// so logUnlock.
+		d.mu.versions.logUnlock()
 	}
 
 	bytesFlushed = c.bytesIterated
@@ -1728,8 +1860,6 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	info.TotalDuration = d.timeNow().Sub(startTime)
 	d.opts.EventListener.FlushEnd(info)
 
-	d.deleteObsoleteFiles(jobID, false /* waitForOngoing */)
-
 	// Mark all the memtables we flushed as flushed. Note that we do this last so
 	// that a synchronous call to DB.Flush() will not return until the deletion
 	// of obsolete files from this job have completed. This makes testing easier
@@ -1741,9 +1871,13 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		// the reader reference first allows tests to be guaranteed that the
 		// memtable reservation has been released by the time a synchronous flush
 		// returns.
-		flushed[i].readerUnref()
+		obs := flushed[i].readerUnref()
+		flushed[i].DeleteFnLocked(obs)
 		close(flushed[i].flushed)
 	}
+
+	d.deleteObsoleteFiles(jobID, false /* waitForOngoing */)
+
 	return bytesFlushed, err
 }
 
@@ -2265,6 +2399,10 @@ func (d *DB) runCompaction(
 		return ve, nil, nil
 	}
 
+	if c.kind == compactionKindIngestedFlushable {
+		panic("pebble: runCompaction cannot handle compactionKindIngestedFlushable.")
+	}
+
 	// Check for a trivial move of one table from one level to the next. We avoid
 	// such a move if there is lots of overlapping grandparent data. Otherwise,
 	// the move could create a parent file that will require a very expensive
@@ -2309,7 +2447,7 @@ func (d *DB) runCompaction(
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
-	iiter, err := c.newInputIter(d.newIters, d.tableNewRangeKeyIter, snapshots)
+	iiter, err := c.newInputIter(d.newIters, d.tableNewRangeIter, snapshots)
 	if err != nil {
 		return nil, pendingOutputs, err
 	}
@@ -2870,6 +3008,17 @@ func (d *DB) scanObsoleteFiles(list []string) {
 
 	liveFileNums := make(map[FileNum]struct{})
 	d.mu.versions.addLiveFileNums(liveFileNums)
+	// Protect against files which are only referred to by the ingestedSStable
+	// flushable from being deleted. These are only referenced by the flushable
+	// and aren't part of the version.
+	for _, fEntry := range d.mu.mem.queue {
+		if f, ok := fEntry.flushable.(*ingestedSSTable); ok {
+			for _, file := range f.files {
+				liveFileNums[file.FileNum] = struct{}{}
+			}
+		}
+	}
+
 	minUnflushedLogNum := d.mu.versions.minUnflushedLogNum
 	manifestFileNum := d.mu.versions.manifestFileNum
 

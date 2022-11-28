@@ -505,7 +505,7 @@ func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 			var iter io.Closer
 			var err error
 			if rangeIter {
-				iter, err = c.newRangeKeyIter(
+				iter, err = c.newRangeIter(
 					&fileMetadata{FileNum: FileNum(j)},
 					nil /* iter options */)
 			} else {
@@ -613,7 +613,7 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 		var iter io.Closer
 		var err error
 		if rangeIter {
-			iter, err = c.newRangeKeyIter(
+			iter, err = c.newRangeIter(
 				&fileMetadata{FileNum: FileNum(j)},
 				nil /* iter options */)
 		} else {
