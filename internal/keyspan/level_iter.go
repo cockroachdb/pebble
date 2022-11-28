@@ -50,11 +50,12 @@ type LevelIter struct {
 	//   next file (in the straddleDir direction).
 	// - some other constraint, like the bounds in opts, caused the file at index to not
 	//   be relevant to the iteration.
-	iter     FragmentIterator
-	iterFile *manifest.FileMetadata
-	newIter  TableNewSpanIter
-	files    manifest.LevelIterator
-	err      error
+	iter         FragmentIterator
+	iterFile     *manifest.FileMetadata
+	newIter      TableNewSpanIter
+	newPointIter TableNewPointIter
+	files        manifest.LevelIterator
+	err          error
 
 	// The options that were passed in.
 	tableOpts SpanIterOptions
@@ -65,17 +66,18 @@ type LevelIter struct {
 // LevelIter implements the keyspan.FragmentIterator interface.
 var _ FragmentIterator = (*LevelIter)(nil)
 
-// newLevelIter returns a LevelIter.
-func newLevelIter(
+// NewLevelIter returns a LevelIter.
+func NewLevelIter(
 	opts SpanIterOptions,
 	cmp base.Compare,
 	newIter TableNewSpanIter,
+	newPointIter TableNewPointIter,
 	files manifest.LevelIterator,
 	level manifest.Level,
 	keyType manifest.KeyType,
 ) *LevelIter {
 	l := &LevelIter{}
-	l.Init(opts, cmp, newIter, files, level, keyType)
+	l.Init(opts, cmp, newIter, newPointIter, files, level, keyType)
 	return l
 }
 
@@ -84,6 +86,7 @@ func (l *LevelIter) Init(
 	opts SpanIterOptions,
 	cmp base.Compare,
 	newIter TableNewSpanIter,
+	newPointIter TableNewPointIter,
 	files manifest.LevelIterator,
 	level manifest.Level,
 	keyType manifest.KeyType,
@@ -94,8 +97,15 @@ func (l *LevelIter) Init(
 	l.cmp = cmp
 	l.iterFile = nil
 	l.newIter = newIter
+	l.newPointIter = newPointIter
 	switch keyType {
-	case manifest.KeyTypePoint, manifest.KeyTypeRange:
+	case manifest.KeyTypePoint:
+		l.keyType = keyType
+		l.files = files.Filter(keyType)
+		if l.newPointIter == nil {
+			panic("pebble: point iterator not passed in for point iteration.")
+		}
+	case manifest.KeyTypeRange:
 		l.keyType = keyType
 		l.files = files.Filter(keyType)
 	default:
@@ -168,7 +178,11 @@ func (l *LevelIter) loadFile(file *manifest.FileMetadata, dir int) loadFileRetur
 		return noFileLoaded
 	}
 	if indicator != fileAlreadyLoaded {
-		l.iter, l.err = l.newIter(file, &l.tableOpts)
+		if l.keyType == manifest.KeyTypePoint {
+			l.iter, l.err = l.newPointIter(file)
+		} else {
+			l.iter, l.err = l.newIter(file, &l.tableOpts)
+		}
 		indicator = newFileLoaded
 	}
 	if l.err != nil {

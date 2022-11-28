@@ -234,6 +234,23 @@ func newCommitPipeline(env commitEnv) *commitPipeline {
 	return p
 }
 
+// directWrite is used to directly write to the WAL. commitPipeline.mu must be
+// held while this is called. DB.mu must not be held. directWrite will only
+// return once the WAL sync is complete. Note that DirectWrite is a special case
+// function which is currently only used when ingesting sstables as a flushable.
+// Reason carefully about the correctness argument when calling this function
+// from any context.
+func (p *commitPipeline) directWrite(b *Batch) error {
+	var syncWG sync.WaitGroup
+	var syncErr error
+	syncWG.Add(1)
+	_, err := p.env.write(b, &syncWG, &syncErr)
+
+	syncWG.Wait()
+	err = firstError(err, syncErr)
+	return err
+}
+
 // Commit the specified batch, writing it to the WAL, optionally syncing the
 // WAL, and applying the batch to the memtable. Upon successful return the
 // batch's mutations will be visible for reading.
@@ -280,7 +297,9 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool) error {
 // sstable ingestion within the commit pipeline. The prepare callback is
 // invoked with commitPipeline.mu held, but note that DB.mu is not held and
 // must be locked if necessary.
-func (p *commitPipeline) AllocateSeqNum(count int, prepare func(), apply func(seqNum uint64)) {
+func (p *commitPipeline) AllocateSeqNum(
+	count int, prepare func(seqNum uint64), apply func(seqNum uint64),
+) {
 	// This method is similar to Commit and prepare. Be careful about trying to
 	// share additional code with those methods because Commit and prepare are
 	// performance critical code paths.
@@ -331,7 +350,7 @@ func (p *commitPipeline) AllocateSeqNum(count int, prepare func(), apply func(se
 	// Invoke the prepare callback. Note the lack of error reporting. Even if the
 	// callback internally fails, the sequence number needs to be published in
 	// order to allow the commit pipeline to proceed.
-	prepare()
+	prepare(b.SeqNum())
 
 	p.mu.Unlock()
 
