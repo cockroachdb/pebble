@@ -138,10 +138,10 @@ func (c *tableCacheContainer) newIters(
 	return c.tableCache.getShard(file.FileNum).newIters(file, opts, internalOpts, &c.dbOpts)
 }
 
-func (c *tableCacheContainer) newRangeKeyIter(
+func (c *tableCacheContainer) newRangeIter(
 	file *manifest.FileMetadata, opts *keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error) {
-	return c.tableCache.getShard(file.FileNum).newRangeKeyIter(file, opts, &c.dbOpts)
+	return c.tableCache.getShard(file.FileNum).newRangeIter(file, opts, &c.dbOpts)
 }
 
 func (c *tableCacheContainer) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
@@ -448,7 +448,7 @@ func (c *tableCacheShard) newIters(
 	return iter, rangeDelIter, nil
 }
 
-func (c *tableCacheShard) newRangeKeyIter(
+func (c *tableCacheShard) newRangeIter(
 	file *manifest.FileMetadata, opts *keyspan.SpanIterOptions, dbOpts *tableCacheOpts,
 ) (keyspan.FragmentIterator, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
@@ -484,13 +484,24 @@ func (c *tableCacheShard) newRangeKeyIter(
 	}
 
 	var iter keyspan.FragmentIterator
-	iter, err = v.reader.NewRawRangeKeyIter()
+	if opts != nil && opts.RangeDeleteIter {
+		iter, err = v.reader.NewRawRangeDelIter()
+	} else {
+		iter, err = v.reader.NewRawRangeKeyIter()
+	}
 	// iter is a block iter that holds the entire value of the block in memory.
 	// No need to hold onto a ref of the cache value.
 	c.unrefValue(v)
 
-	if err != nil || iter == nil {
+	if err != nil {
 		return nil, err
+	}
+
+	if iter == nil {
+		// NewRawRangeKeyIter/NewRawRangeDelIter can return nil even if there's
+		// no error. However, the keyspan.LevelIter expects a non-nil iterator
+		// if err is nil.
+		return emptyKeyspanIter, nil
 	}
 
 	return iter, nil

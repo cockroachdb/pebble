@@ -10,7 +10,10 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -19,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/record"
@@ -116,7 +120,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	tableCacheSize := TableCacheSize(opts.MaxOpenFiles)
 	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
-	d.tableNewRangeKeyIter = d.tableCache.newRangeKeyIter
+	d.tableNewRangeIter = d.tableCache.newRangeIter
 
 	d.commit = newCommitPipeline(commitEnv{
 		logSeqNum:     &d.mu.versions.atomic.logSeqNum,
@@ -362,13 +366,15 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	})
 
 	var ve versionEdit
+	var toFlush flushableList
 	for i, lf := range logFiles {
 		lastWAL := i == len(logFiles)-1
-		maxSeqNum, err := d.replayWAL(jobID, &ve, opts.FS,
+		flush, maxSeqNum, err := d.replayWAL(jobID, &ve, opts.FS,
 			opts.FS.PathJoin(d.walDirname, lf.name), lf.num, strictWALTail && !lastWAL)
 		if err != nil {
 			return nil, err
 		}
+		toFlush = append(toFlush, flush...)
 		d.mu.versions.markFileNumUsed(lf.num)
 		if d.mu.versions.atomic.logSeqNum < maxSeqNum {
 			d.mu.versions.atomic.logSeqNum = maxSeqNum
@@ -394,6 +400,11 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			return nil
 		}); err != nil {
 			return nil, err
+		}
+
+		for _, entry := range toFlush {
+			obs := entry.readerUnref()
+			entry.DeleteFnLocked(obs)
 		}
 
 		newLogName := base.MakeFilepath(opts.FS, d.walDirname, fileTypeLog, newLogNum)
@@ -577,19 +588,17 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 // re-acquired during the course of this method.
 func (d *DB) replayWAL(
 	jobID int, ve *versionEdit, fs vfs.FS, filename string, logNum FileNum, strictWALTail bool,
-) (maxSeqNum uint64, err error) {
+) (toFlush flushableList, maxSeqNum uint64, err error) {
 	file, err := fs.Open(filename)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 	defer file.Close()
-
 	var (
 		b               Batch
 		buf             bytes.Buffer
 		mem             *memTable
 		entry           *flushableEntry
-		toFlush         flushableList
 		rr              = record.NewReader(file, logNum)
 		offset          int64 // byte offset in rr
 		lastFlushOffset int64
@@ -633,6 +642,21 @@ func (d *DB) replayWAL(
 			d.mu.mem.queue = append(d.mu.mem.queue, entry)
 		}
 	}
+
+	// updateVE is used to update ve with information about new files created
+	// during the flush of any flushable not of type ingestedSStable. For the
+	// flushable of type ingestedSStable we use custom handling below.
+	updateVE := func() error {
+		c := newFlush(d.opts, d.mu.versions.currentVersion(),
+			1 /* base level */, toFlush)
+		newVE, _, err := d.runCompaction(jobID, c)
+		if err != nil {
+			return err
+		}
+		ve.NewFiles = append(ve.NewFiles, newVE.NewFiles...)
+		return nil
+	}
+
 	for {
 		offset = rr.Offset()
 		r, err := rr.Next()
@@ -650,11 +674,11 @@ func (d *DB) replayWAL(
 			} else if record.IsInvalidRecord(err) && !strictWALTail {
 				break
 			}
-			return 0, errors.Wrap(err, "pebble: error when replaying WAL")
+			return nil, 0, errors.Wrap(err, "pebble: error when replaying WAL")
 		}
 
 		if buf.Len() < batchHeaderLen {
-			return 0, base.CorruptionErrorf("pebble: corrupt log file %q (num %s)",
+			return nil, 0, base.CorruptionErrorf("pebble: corrupt log file %q (num %s)",
 				filename, errors.Safe(logNum))
 		}
 
@@ -664,6 +688,101 @@ func (d *DB) replayWAL(
 		b.SetRepr(buf.Bytes())
 		seqNum := b.SeqNum()
 		maxSeqNum = seqNum + uint64(b.Count())
+
+		{
+			br := b.Reader()
+			if kind, path, _, _ := br.Next(); kind == InternalKeyKindIngestSST {
+				paths := make([]string, b.Count())
+				fileNums := make([]FileNum, b.Count())
+				addPath := func(path []byte, i int) {
+					paths[i] = string(path)
+					// TODO(bananabrick): Store the filenums in the batch as a
+					// value, so that we don't have to perform this custom
+					// parsing here.
+					fileNum, err := strconv.Atoi(
+						strings.TrimSuffix(filepath.Base(string(path)),
+							filepath.Ext(string(path))),
+					)
+					if err != nil {
+						panic("pebble: sstable file path is invalid.")
+					}
+					fileNums[i] = FileNum(fileNum)
+				}
+				addPath(path, 0)
+
+				for i := 1; i < int(b.Count()); i++ {
+					kind, path, _, ok := br.Next()
+					if kind != InternalKeyKindIngestSST {
+						panic("pebble: invalid batch key kind.")
+					}
+					if !ok {
+						panic("pebble: invalid batch count.")
+					}
+					addPath(path, i)
+				}
+
+				if _, _, _, ok := br.Next(); ok {
+					panic("pebble: invalid number of entries in batch.")
+				}
+
+				var meta []*manifest.FileMetadata
+				meta, _, err = ingestLoad(
+					d.opts, d.mu.formatVers.vers, paths, d.cacheID, fileNums,
+				)
+				if err != nil {
+					return nil, 0, err
+				}
+
+				if uint32(len(meta)) != b.Count() {
+					panic("pebble: couldn't load all files in WAL entry.")
+				}
+
+				entry, err = d.newIngestedSSTableFlushableEntry(
+					meta, seqNum, logNum,
+				)
+				if err != nil {
+					return nil, 0, err
+				}
+
+				// If there's an existing mutable memtable, then add that to the
+				// flush list.
+				flushMem()
+				if d.opts.ReadOnly {
+					d.mu.mem.queue = append(d.mu.mem.queue, entry)
+				} else {
+					err = updateVE()
+					if err != nil {
+						return nil, 0, err
+					}
+
+					toFlush = append(toFlush, entry)
+					// During WAL replay, the lsm only has L0, hence, the
+					// baseLevel is 1. For the sake of simplicity, we place the
+					// ingested files in L0 here, instead of finding their
+					// target levels. This is a simplification for the sake of
+					// simpler code. It is expected that WAL replay should be
+					// rare, and that flushables of type ingestedSStable should
+					// also be rare. So, placing the ingested files in L0 is
+					// alright.
+					//
+					// TODO(bananabrick): Maybe refactor this function to allow
+					// us to easily place ingested files in levels as low as
+					// possible during WAL replay. It would require breaking up
+					// the application of ve to the manifest into chunks and is
+					// not pretty w/o a refactor to this function and how it's
+					// used.
+					c := newFlush(
+						d.opts, d.mu.versions.currentVersion(),
+						1, /* base level */
+						[]*flushableEntry{entry},
+					)
+					for _, file := range c.flushing[0].flushable.(*ingestedSSTable).files {
+						ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: 0, Meta: file})
+					}
+				}
+				return toFlush, maxSeqNum, nil
+			}
+		}
 
 		if b.memTableSize >= uint64(d.largeBatchThreshold) {
 			flushMem()
@@ -683,7 +802,7 @@ func (d *DB) replayWAL(
 		} else {
 			ensureMem(seqNum)
 			if err = mem.prepare(&b); err != nil && err != arenaskl.ErrArenaFull {
-				return 0, err
+				return nil, 0, err
 			}
 			// We loop since DB.newMemTable() slowly grows the size of allocated memtables, so the
 			// batch may not initially fit, but will eventually fit (since it is smaller than
@@ -693,11 +812,11 @@ func (d *DB) replayWAL(
 				ensureMem(seqNum)
 				err = mem.prepare(&b)
 				if err != nil && err != arenaskl.ErrArenaFull {
-					return 0, err
+					return nil, 0, err
 				}
 			}
 			if err = mem.apply(&b, seqNum); err != nil {
-				return 0, err
+				return nil, 0, err
 			}
 			mem.writerUnref()
 		}
@@ -706,18 +825,12 @@ func (d *DB) replayWAL(
 	flushMem()
 	// mem is nil here.
 	if !d.opts.ReadOnly {
-		c := newFlush(d.opts, d.mu.versions.currentVersion(),
-			1 /* base level */, toFlush)
-		newVE, _, err := d.runCompaction(jobID, c)
+		err = updateVE()
 		if err != nil {
-			return 0, err
-		}
-		ve.NewFiles = append(ve.NewFiles, newVE.NewFiles...)
-		for i := range toFlush {
-			toFlush[i].readerUnref()
+			return nil, 0, err
 		}
 	}
-	return maxSeqNum, err
+	return toFlush, maxSeqNum, err
 }
 
 func checkOptions(opts *Options, path string) (strictWALTail bool, err error) {
