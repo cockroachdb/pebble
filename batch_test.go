@@ -79,6 +79,7 @@ func TestBatch(t *testing.T) {
 		{InternalKeyKindLogData, "", ""},
 		{InternalKeyKindRangeKeyDelete, "grass", "green"},
 		{InternalKeyKindRangeKeyDelete, "", ""},
+		{InternalKeyKindIngestSST, "1.sst", ""},
 	}
 	var b Batch
 	for _, tc := range testCases {
@@ -97,6 +98,8 @@ func TestBatch(t *testing.T) {
 			_ = b.LogData([]byte(tc.key), nil)
 		case InternalKeyKindRangeKeyDelete:
 			_ = b.RangeKeyDelete([]byte(tc.key), []byte(tc.value), nil)
+		case InternalKeyKindIngestSST:
+			b.ingestSST([]byte(tc.key))
 		}
 	}
 	verifyTestCases(&b, testCases)
@@ -135,6 +138,8 @@ func TestBatch(t *testing.T) {
 			d.Finish()
 		case InternalKeyKindLogData:
 			_ = b.LogData([]byte(tc.key), nil)
+		case InternalKeyKindIngestSST:
+			b.ingestSST([]byte(tc.key))
 		case InternalKeyKindRangeKeyDelete:
 			d := b.RangeKeyDeleteDeferred(len(key), len(value))
 			copy(d.Key, key)
@@ -143,6 +148,18 @@ func TestBatch(t *testing.T) {
 		}
 	}
 	verifyTestCases(&b, testCases)
+}
+
+func TestBatchIngestSST(t *testing.T) {
+	// Verify that Batch.IngestSST has the correct batch count and memtable
+	// size.
+	var b Batch
+	b.ingestSST([]byte("1.sst"))
+	require.Equal(t, int(b.Count()), 1)
+	b.ingestSST([]byte("2.sst"))
+	require.Equal(t, int(b.Count()), 2)
+	require.Equal(t, int(b.memTableSize), 0)
+	require.Equal(t, b.ingestedSSTBatch, true)
 }
 
 func TestBatchLen(t *testing.T) {

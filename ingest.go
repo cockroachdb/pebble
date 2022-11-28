@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -265,7 +266,7 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 
 func ingestLink(
 	jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata,
-) error {
+) ([]string, error) {
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
 	fs := syncingFS{
@@ -276,8 +277,10 @@ func ingestLink(
 		},
 	}
 
+	newPaths := make([]string, len(paths))
 	for i := range paths {
 		target := base.MakeFilepath(fs, dirname, fileTypeTable, meta[i].FileNum)
+		newPaths[i] = target
 		var err error
 		if _, ok := opts.FS.(*vfs.MemFS); ok && opts.DebugCheck != nil {
 			// The combination of MemFS+Ingest+DebugCheck produces awkwardness around
@@ -302,7 +305,7 @@ func ingestLink(
 			if err2 := ingestCleanup(fs, dirname, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
 			}
-			return err
+			return nil, err
 		}
 		if opts.EventListener.TableCreated != nil {
 			opts.EventListener.TableCreated(TableCreateInfo{
@@ -314,7 +317,7 @@ func ingestLink(
 		}
 	}
 
-	return nil
+	return newPaths, nil
 }
 
 func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bool {
@@ -322,25 +325,26 @@ func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bo
 	rangeDelIter := mem.newRangeDelIter(nil)
 	rkeyIter := mem.newRangeKeyIter(nil)
 
+	closeIters := func() error {
+		err := iter.Close()
+		if rangeDelIter != nil {
+			err = firstError(err, rangeDelIter.Close())
+		}
+		if rkeyIter != nil {
+			err = firstError(err, rkeyIter.Close())
+		}
+		return err
+	}
+
 	for _, m := range meta {
 		if overlapWithIterator(iter, &rangeDelIter, rkeyIter, m, cmp) {
+			closeIters()
 			return true
 		}
 	}
 
-	err := iter.Close()
-	if rangeDelIter != nil {
-		err = firstError(err, rangeDelIter.Close())
-	}
-	if rkeyIter != nil {
-		err = firstError(err, rkeyIter.Close())
-	}
-	if err != nil {
-		// Assume overlap if any iterator errored out.
-		return true
-	}
-
-	return false
+	// Assume overlap if any iterator errored out.
+	return closeIters() != nil
 }
 
 func ingestUpdateSeqNum(
@@ -700,6 +704,105 @@ func (d *DB) IngestWithStats(paths []string) (IngestOperationStats, error) {
 	return d.ingest(paths, ingestTargetLevel)
 }
 
+// Both DB.mu and commitPipeline.mu must be held while this is called.
+func (d *DB) newIngestedSSTableFlushableEntry(
+	meta []*fileMetadata, seqNum uint64, logNum FileNum,
+) (*flushableEntry, error) {
+	// Update the sequence number for all of the sstables in the
+	// metadata. Writing the metadata to the manifest when the
+	// version edit is applied is the mechanism that persists the
+	// sequence number. The sstables themselves are left unmodified.
+	// In this case, a version edit will only be written to the manifest
+	// when the flushable is eventually flushed. If Pebble restarts in that
+	// time, then we'll lose the ingest sequence number information. But this
+	// information will also be reconstructed on node restart.
+	if err := ingestUpdateSeqNum(
+		d.cmp, d.opts.Comparer.FormatKey, seqNum, meta,
+	); err != nil {
+		return nil, err
+	}
+
+	f := newIngestedSSTableFlushable(meta, d.cmp, d.split, d.newIters, d.tableNewRangeIter)
+
+	// NB: The logNum/seqNum are the WAL number which we're writing this entry
+	// to and the sequence number within the WAL which we'll write this entry
+	// to.
+	entry := d.newFlushableEntry(f, logNum, seqNum)
+	// The flushable entry starts off with a single reader ref, so increment
+	// the FileMetadata.Refs.
+	for _, file := range f.files {
+		atomic.AddInt32(&file.Refs, 1)
+	}
+	entry.unrefFiles = func() []*fileMetadata {
+		var obsolete []*fileMetadata
+		for _, file := range f.files {
+			if val := atomic.AddInt32(&file.Refs, -1); val == 0 {
+				obsolete = append(obsolete, file)
+			}
+		}
+		return obsolete
+	}
+
+	entry.flushForced = true
+	entry.releaseMemAccounting = func() {}
+	return entry, nil
+}
+
+// Both DB.mu and commitPipeline.mu must be held while this is called.
+func (d *DB) handleIngestAsFlushable(paths []string, meta []*fileMetadata, seqNum uint64) error {
+	// If the WAL is disabled, then the logNum used to create the flushable
+	// entry doesn't matter. We just use the logNum assigned to the current
+	// flushable entry. If the WAL is enabled, then this logNum will be
+	// overwritten by the logNum of the log which will contain the log entry
+	// for the ingested sstables.
+	logNum := d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum
+
+	b := d.NewBatch()
+	for _, path := range paths {
+		b.ingestSST([]byte(path))
+	}
+	b.setSeqNum(seqNum)
+
+	if !d.opts.DisableWAL {
+		// We create a new WAL for the flushable instead of reusing the end of
+		// the previous WAL. This simplifies the increment of the minimum
+		// unflushed log number, and also simplifies WAL replay.
+		logNum, _ = d.recycleWAL()
+		d.mu.Unlock()
+		err := d.commit.directWrite(b)
+		if err != nil {
+			d.opts.Logger.Fatalf("%v", err)
+		}
+		d.mu.Lock()
+	}
+
+	entry, err := d.newIngestedSSTableFlushableEntry(meta, seqNum, logNum)
+	if err != nil {
+		return err
+	}
+	nextSeqNum := seqNum + uint64(b.Count())
+
+	newLogNum := d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum
+	if !d.opts.DisableWAL {
+		newLogNum, _ = d.recycleWAL()
+		if err != nil {
+			return err
+		}
+	}
+
+	currMem := d.mu.mem.mutable
+	// NB: Placing ingested sstables above the current memtables
+	// requires rotating of the existing memtables/WAL. There is
+	// some concern of churning through tiny memtables due to
+	// ingested sstables being placed on top of them, but those
+	// memtables would have to be flushed anyways.
+	d.mu.mem.queue = append(d.mu.mem.queue, entry)
+	d.rotateMemtable(newLogNum, nextSeqNum, currMem)
+	d.updateReadStateLocked(d.opts.DebugCheck)
+	d.maybeScheduleFlush()
+	return nil
+}
+
 func (d *DB) ingest(
 	paths []string, targetLevelFunc ingestTargetLevelFunc,
 ) (IngestOperationStats, error) {
@@ -738,7 +841,8 @@ func (d *DB) ingest(
 	// (e.g. because the files reside on a different filesystem), ingestLink will
 	// fall back to copying, and if that fails we undo our work and return an
 	// error.
-	if err := ingestLink(jobID, d.opts, d.dirname, paths, meta); err != nil {
+	newPaths, err := ingestLink(jobID, d.opts, d.dirname, paths, meta)
+	if err != nil {
 		return IngestOperationStats{}, err
 	}
 	// Fsync the directory we added the tables to. We need to do this at some
@@ -750,7 +854,9 @@ func (d *DB) ingest(
 	}
 
 	var mem *flushableEntry
-	prepare := func() {
+	// asFlushable indicates whether the sstable was ingested as a memtable.
+	var asFlushable bool
+	prepare := func(seqNum uint64) {
 		// Note that d.commit.mu is held by commitPipeline when calling prepare.
 
 		d.mu.Lock()
@@ -763,12 +869,21 @@ func (d *DB) ingest(
 		for i := len(d.mu.mem.queue) - 1; i >= 0; i-- {
 			m := d.mu.mem.queue[i]
 			if ingestMemtableOverlaps(d.cmp, m, meta) {
-				mem = m
-				if mem.flushable == d.mu.mem.mutable {
-					err = d.makeRoomForWrite(nil)
+				if len(d.mu.mem.queue) > d.opts.MemTableStopWritesThreshold-1 {
+					mem = m
+					if mem.flushable == d.mu.mem.mutable {
+						err = d.makeRoomForWrite(nil)
+					}
+					mem.flushForced = true
+					d.maybeScheduleFlush()
+					return
 				}
-				mem.flushForced = true
-				d.maybeScheduleFlush()
+
+				// The ingestion overlaps with the memtable. Since there aren't
+				// too many memtables already queued up, we can slide the
+				// ingested sstables on top of the existing memtables.
+				err = d.handleIngestAsFlushable(newPaths, meta, seqNum)
+				asFlushable = true
 				return
 			}
 		}
@@ -776,7 +891,7 @@ func (d *DB) ingest(
 
 	var ve *versionEdit
 	apply := func(seqNum uint64) {
-		if err != nil {
+		if err != nil || asFlushable {
 			// An error occurred during prepare.
 			return
 		}
@@ -809,6 +924,8 @@ func (d *DB) ingest(
 			d.opts.Logger.Infof("ingest cleanup failed: %v", err2)
 		}
 	} else {
+		// Since we either created a hard link to the ingesting files, or copied
+		// them over, it is safe to remove the originals paths.
 		for _, path := range paths {
 			if err2 := d.opts.FS.Remove(path); err2 != nil {
 				d.opts.Logger.Infof("ingest failed to remove original file: %s", err2)
@@ -820,6 +937,7 @@ func (d *DB) ingest(
 		JobID:        jobID,
 		GlobalSeqNum: meta[0].SmallestSeqNum,
 		Err:          err,
+		flushable:    asFlushable,
 	}
 	var stats IngestOperationStats
 	if ve != nil {
@@ -835,6 +953,15 @@ func (d *DB) ingest(
 			if e.Level == 0 {
 				stats.ApproxIngestedIntoL0Bytes += e.Meta.Size
 			}
+		}
+	} else if asFlushable {
+		info.Tables = make([]struct {
+			TableInfo
+			Level int
+		}, len(meta))
+		for i, f := range meta {
+			info.Tables[i].Level = -1
+			info.Tables[i].TableInfo = f.TableInfo()
 		}
 	}
 	d.opts.EventListener.TableIngested(info)
@@ -880,7 +1007,7 @@ func (d *DB) ingestApply(
 		m := meta[i]
 		f := &ve.NewFiles[i]
 		var err error
-		f.Level, err = findTargetLevel(d.newIters, d.tableNewRangeKeyIter, iterOps, d.cmp, current, baseLevel, d.mu.compact.inProgress, m)
+		f.Level, err = findTargetLevel(d.newIters, d.tableNewRangeIter, iterOps, d.cmp, current, baseLevel, d.mu.compact.inProgress, m)
 		if err != nil {
 			d.mu.versions.logUnlock()
 			return nil, err

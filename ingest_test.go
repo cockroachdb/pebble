@@ -313,7 +313,7 @@ func TestIngestLink(t *testing.T) {
 				mem.Remove(paths[i])
 			}
 
-			err := ingestLink(0 /* jobID */, opts, dir, paths, meta)
+			_, err := ingestLink(0 /* jobID */, opts, dir, paths, meta)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")
@@ -373,7 +373,8 @@ func TestIngestLinkFallback(t *testing.T) {
 	opts.EnsureDefaults()
 
 	meta := []*fileMetadata{{FileNum: 1}}
-	require.NoError(t, ingestLink(0, opts, "", []string{"source"}, meta))
+	_, err = ingestLink(0, opts, "", []string{"source"}, meta)
+	require.NoError(t, err)
 
 	dest, err := mem.Open("000001.sst")
 	require.NoError(t, err)
@@ -386,6 +387,148 @@ func TestIngestLinkFallback(t *testing.T) {
 	if len(data) != 0 {
 		t.Fatalf("expected copy, but files appear to be hard linked: [%s] unexpectedly found", data)
 	}
+}
+
+func TestOverlappingIngestedSSTs(t *testing.T) {
+	dir := ""
+	var (
+		mem        vfs.FS
+		d          *DB
+		opts       *Options
+		closed     = false
+		blockFlush = false
+	)
+	defer func() {
+		if !closed {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	reset := func() {
+		if d != nil && !closed {
+			require.NoError(t, d.Close())
+		}
+		blockFlush = false
+
+		mem = vfs.NewMem()
+		require.NoError(t, mem.MkdirAll("ext", 0755))
+		opts = &Options{
+			FS:                          mem,
+			MemTableStopWritesThreshold: 4,
+			L0CompactionThreshold:       100,
+			L0StopWritesThreshold:       100,
+			DebugCheck:                  DebugCheckLevels,
+			FormatMajorVersion:          FormatNewest,
+		}
+		// Disable automatic compactions because otherwise we'll race with
+		// delete-only compactions triggered by ingesting range tombstones.
+		opts.DisableAutomaticCompactions = true
+
+		var err error
+		d, err = Open(dir, opts)
+		require.NoError(t, err)
+	}
+	waitForFlush := func() {
+		if d == nil {
+			return
+		}
+		d.mu.Lock()
+		for d.mu.compact.flushing {
+			d.mu.compact.cond.Wait()
+		}
+		d.mu.Unlock()
+	}
+	reset()
+
+	datadriven.RunTest(t, "testdata/flushable_ingest", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "reset":
+			reset()
+			return ""
+
+		case "batch":
+			b := d.NewIndexedBatch()
+			if err := runBatchDefineCmd(td, b); err != nil {
+				return err.Error()
+			}
+			if err := b.Commit(nil); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "build":
+			if err := runBuildCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			return ""
+
+		case "ingest":
+			if err := runIngestCmd(td, d, mem); err != nil {
+				return err.Error()
+			}
+			if !blockFlush {
+				waitForFlush()
+			}
+			return ""
+
+		case "iter":
+			iter := d.NewIter(nil)
+			return runIterCmd(td, iter, true)
+
+		case "lsm":
+			return runLSMCmd(td, d)
+
+		case "close":
+			if closed {
+				return "already closed"
+			}
+			require.NoError(t, d.Close())
+			closed = true
+			return ""
+
+		case "ls":
+			files, err := mem.List(dir)
+			sort.Strings(files)
+			require.NoError(t, err)
+			return strings.Join(files, "\n")
+
+		case "open":
+			if len(td.CmdArgs) == 1 && td.CmdArgs[0].String() == "readOnly" {
+				opts.ReadOnly = true
+			}
+			var err error
+			d, err = Open(dir, opts)
+			closed = false
+			require.NoError(t, err)
+			waitForFlush()
+			return ""
+
+		case "blockFlush":
+			blockFlush = true
+			d.mu.Lock()
+			d.mu.compact.flushing = true
+			d.mu.Unlock()
+			return ""
+
+		case "allowFlush":
+			blockFlush = false
+			d.mu.Lock()
+			d.mu.compact.flushing = false
+			d.mu.Unlock()
+			return ""
+
+		case "flush":
+			d.maybeScheduleFlush()
+			waitForFlush()
+			return ""
+
+		case "get":
+			return runGetCmd(td, d)
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
 }
 
 func TestIngestMemtableOverlaps(t *testing.T) {
@@ -602,7 +745,7 @@ func TestIngestTargetLevel(t *testing.T) {
 			for _, target := range strings.Split(td.Input, "\n") {
 				meta := parseMeta(target)
 				level, err := ingestTargetLevel(
-					d.newIters, d.tableNewRangeKeyIter, IterOptions{logger: d.opts.Logger},
+					d.newIters, d.tableNewRangeIter, IterOptions{logger: d.opts.Logger},
 					d.cmp, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, meta,
 				)
 				if err != nil {

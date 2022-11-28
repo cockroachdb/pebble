@@ -851,7 +851,10 @@ func TestMemTableReservationLeak(t *testing.T) {
 	d.mu.Lock()
 	last := d.mu.mem.queue[len(d.mu.mem.queue)-1]
 	last.readerRef()
-	defer last.readerUnref()
+	defer func() {
+		obs := last.readerUnref()
+		last.DeleteFn(obs)
+	}()
 	d.mu.Unlock()
 	if err := d.Close(); err == nil {
 		t.Fatalf("expected failure, but found success")
