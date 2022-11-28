@@ -73,8 +73,8 @@ type LevelIter struct {
 // LevelIter implements the keyspan.FragmentIterator interface.
 var _ FragmentIterator = (*LevelIter)(nil)
 
-// newLevelIter returns a LevelIter.
-func newLevelIter(
+// NewLevelIter returns a LevelIter.
+func NewLevelIter(
 	opts SpanIterOptions,
 	cmp base.Compare,
 	newIter TableNewSpanIter,
@@ -103,7 +103,10 @@ func (l *LevelIter) Init(
 	l.iterFile = nil
 	l.newIter = newIter
 	switch keyType {
-	case manifest.KeyTypePoint, manifest.KeyTypeRange:
+	case manifest.KeyTypePoint:
+		l.keyType = keyType
+		l.files = files.Filter(keyType)
+	case manifest.KeyTypeRange:
 		l.keyType = keyType
 		l.files = files.Filter(keyType)
 	default:

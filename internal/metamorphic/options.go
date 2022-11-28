@@ -133,6 +133,7 @@ func defaultOptions() *pebble.Options {
 			FilterPolicy: bloom.FilterPolicy(10),
 		}},
 	}
+	opts.Experimental.IngestSSTablesAsFlushable = true
 	opts.EnsureDefaults()
 	return opts
 }
