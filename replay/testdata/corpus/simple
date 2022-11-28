@@ -74,11 +74,14 @@ list-files simple
 simple:
   000007.sst
   MANIFEST-000001
+  MANIFEST-000008
   checkpoint
 
-stat simple/MANIFEST-000001 simple/000007.sst
+stat simple/MANIFEST-000001 simple/MANIFEST-000008 simple/000007.sst
 ----
 simple/MANIFEST-000001:
-  size: 144
+  size: 96
+simple/MANIFEST-000008:
+  size: 122
 simple/000007.sst:
   size: 823

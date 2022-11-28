@@ -77,7 +77,8 @@ type WorkloadCollector struct {
 
 	fileListener struct {
 		sync.Cond
-		stopFileListener bool
+		stopFileListener     bool
+		forceSingleIteration bool
 	}
 	done chan struct{}
 }
@@ -208,12 +209,33 @@ func (w *WorkloadCollector) onManifestCreated(info pebble.ManifestCreateInfo) {
 	})
 }
 
+func (w *WorkloadCollector) handleStop() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for idx := int(w.curManifest); idx < len(w.mu.manifests); idx++ {
+		m := w.mu.manifests[idx]
+		if m.sourceFile != nil {
+			err := m.sourceFile.Close()
+			if err != nil {
+				panic(err)
+			}
+		}
+		if m.destFile != nil {
+			err := m.destFile.Close()
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+	close(w.done)
+}
+
 // filesToProcessWatcher runs and performs the collection of the files of
 // interest.
 func (w *WorkloadCollector) filesToProcessWatcher() {
-	defer func() { close(w.done) }()
+	defer w.handleStop()
 	w.mu.Lock() // lock [1]
-	for !w.fileListener.stopFileListener {
+	for !w.fileListener.stopFileListener || w.fileListener.forceSingleIteration {
 		// The following performs the workload capture. It waits on a condition
 		// variable (fileListener) to let it know when new files are available to be
 		// collected.
@@ -239,6 +261,7 @@ func (w *WorkloadCollector) filesToProcessWatcher() {
 		w.processSSTables(sstablesToProcess)
 
 		w.mu.Lock() // reset lock for loop [1]
+		w.fileListener.forceSingleIteration = false
 	}
 	w.mu.Unlock() // unlock for end of loop [1]
 }
@@ -280,11 +303,11 @@ func (w *WorkloadCollector) processManifests(startAtIndex int, manifests []*mani
 		// w.mu.manifests.
 		if numBytesRead == 0 && index != totalManifests-1 {
 			// Rotating the manifests so we can close the files
-			err := w.mu.manifests[index].sourceFile.Close()
+			err := manifests[index].sourceFile.Close()
 			if err != nil {
 				panic(err)
 			}
-			err = w.mu.manifests[index].destFile.Close()
+			err = manifests[index].destFile.Close()
 			if err != nil {
 				panic(err)
 			}
@@ -369,6 +392,7 @@ func (w *WorkloadCollector) Stop() {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.fileListener.forceSingleIteration = true
 	w.fileListener.stopFileListener = true
 	w.fileListener.Signal()
 }

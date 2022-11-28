@@ -8,6 +8,7 @@ package datatest
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -90,4 +91,50 @@ func DefineBatch(d *datadriven.TestData, b *pebble.Batch) error {
 		}
 	}
 	return nil
+}
+
+// CompactionTracker is a listener that tracks the number of compactions.
+type CompactionTracker struct {
+	sync.Cond
+	count    int
+	attached bool
+}
+
+// NewCompactionTracker setups the necessary options to keep track of the
+// compactions that are in flight.
+func NewCompactionTracker(options *pebble.Options) *CompactionTracker {
+	ct := CompactionTracker{}
+	ct.Cond = sync.Cond{
+		L: &sync.Mutex{},
+	}
+	ct.attached = true
+	el := pebble.EventListener{
+		CompactionEnd: func(info pebble.CompactionInfo) {
+			ct.L.Lock()
+			ct.count--
+			ct.Broadcast()
+			ct.L.Unlock()
+		},
+		CompactionBegin: func(info pebble.CompactionInfo) {
+			ct.L.Lock()
+			ct.count++
+			ct.Broadcast()
+			ct.L.Unlock()
+		},
+	}
+
+	options.AddEventListener(el)
+	return &ct
+}
+
+// WaitForInflightCompactionsToEqual waits until compactions meet the specified target.
+func (cql *CompactionTracker) WaitForInflightCompactionsToEqual(target int) {
+	cql.L.Lock()
+	if !cql.attached {
+		panic("Cannot wait for compactions if listener has not been attached")
+	}
+	for cql.count != target {
+		cql.Wait()
+	}
+	cql.L.Unlock()
 }

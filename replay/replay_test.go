@@ -3,10 +3,12 @@ package replay
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -20,15 +22,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TODO(jackson,leon): Add datadriven end-to-end unit tests.
-// TODO(jackson,leon): Add datadriven unit test for findWorkloadFiles.
-// TODO(jackson,leon): Add datadriven unit test for findManifestStart.
+var expOpts = struct {
+	L0CompactionConcurrency   int
+	CompactionDebtConcurrency int
+	MinDeletionRate           int
+	ReadCompactionRate        int64
+	ReadSamplingMultiplier    int64
+	TableCacheShards          int
+	KeyValidationFunc         func(userKey []byte) error
+	ValidateOnIngest          bool
+	LevelMultiplier           int
+	MultiLevelCompaction      bool
+	MaxWriterConcurrency      int
+	ForceWriterParallelism    bool
+	CPUWorkPermissionGranter  pebble.CPUWorkPermissionGranter
+	PointTombstoneWeight      float64
+	EnableValueBlocks         func() bool
+	ShortAttributeExtractor   pebble.ShortAttributeExtractor
+	RequiredInPlaceValueBound pebble.UserKeyPrefixBound
+}{TableCacheShards: 2}
 
-func TestReplay(t *testing.T) {
+func runReplayTest(t *testing.T, path string) {
 	fs := vfs.NewMem()
 	var ctx context.Context
 	var r Runner
-	datadriven.RunTest(t, "testdata/replay", func(t *testing.T, td *datadriven.TestData) string {
+	var ct *datatest.CompactionTracker
+	datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "corpus":
 			for _, arg := range td.CmdArgs {
@@ -41,6 +60,18 @@ func TestReplay(t *testing.T) {
 			return runListFiles(t, fs, td)
 		case "replay":
 			name := td.CmdArgs[0].String()
+			pacerVariant := td.CmdArgs[1].String()
+			var pacer Pacer
+			if pacerVariant == "reference" {
+				pacer = PaceByReferenceReadAmp{}
+			} else if pacerVariant == "fixed" {
+				i, err := strconv.Atoi(td.CmdArgs[2].String())
+				require.NoError(t, err)
+				pacer = PaceByFixedReadAmp(i)
+			} else {
+				pacer = Unpaced{}
+			}
+
 			// Convert the testdata/replay:235 datadriven command position into
 			// a run directory suffixed with the line number: eg, 'run-235'
 			lineOffset := strings.LastIndexByte(td.Pos, ':')
@@ -59,17 +90,19 @@ func TestReplay(t *testing.T) {
 			}
 
 			opts := &pebble.Options{
-				DisableAutomaticCompactions: true,
-				FS:                          fs,
-				Comparer:                    testkeys.Comparer,
-				FormatMajorVersion:          pebble.FormatRangeKeys,
+				FS:                        fs,
+				Comparer:                  testkeys.Comparer,
+				FormatMajorVersion:        pebble.FormatRangeKeys,
+				L0CompactionFileThreshold: 1,
+				Experimental:              expOpts,
 			}
+			ct = datatest.NewCompactionTracker(opts)
 
 			r = Runner{
 				RunDir:       runDir,
 				WorkloadFS:   fs,
 				WorkloadPath: name,
-				Pacer:        Unpaced{},
+				Pacer:        pacer,
 				Opts:         opts,
 			}
 			ctx = context.Background()
@@ -90,6 +123,15 @@ func TestReplay(t *testing.T) {
 			return buf.String()
 		case "tree":
 			return fs.String()
+		case "wait-for-compactions":
+			var target int
+			if len(td.CmdArgs) == 1 {
+				i, err := strconv.Atoi(td.CmdArgs[0].String())
+				require.NoError(t, err)
+				target = i
+			}
+			ct.WaitForInflightCompactionsToEqual(target)
+			return ""
 		case "wait":
 			if err := r.Wait(); err != nil {
 				return err.Error()
@@ -104,6 +146,14 @@ func TestReplay(t *testing.T) {
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
 	})
+}
+
+func TestReplay(t *testing.T) {
+	runReplayTest(t, "testdata/replay")
+}
+
+func TestReplayPaced(t *testing.T) {
+	runReplayTest(t, "testdata/replay_paced")
 }
 
 func TestLoadFlushedSSTableKeys(t *testing.T) {
@@ -223,17 +273,24 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 				DisableAutomaticCompactions: true,
 				FormatMajorVersion:          pebble.FormatRangeKeys,
 				FS:                          fs,
+				MaxManifestFileSize:         96,
+				Experimental:                expOpts,
 			}
 			wc.Attach(&opts)
 			var err error
 			d, err = pebble.Open("build", &opts)
 			require.NoError(t, err)
 			return ""
+		case "close":
+			err := d.Close()
+			require.NoError(t, err)
+			d = nil
+			return ""
 		case "start":
 			require.NoError(t, fs.MkdirAll(name, os.ModePerm))
 			require.NotNil(t, wc)
 			wc.Start(fs, name)
-			require.NoError(t, d.Checkpoint(fs.PathJoin(name, "checkpoint")))
+			require.NoError(t, d.Checkpoint(fs.PathJoin(name, "checkpoint"), pebble.WithFlushedWAL()))
 			return "started"
 		case "stat":
 			var buf bytes.Buffer
@@ -253,6 +310,76 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			return "stopped"
 		case "tree":
 			return fs.String()
+		case "make-file":
+			dir := td.CmdArgs[0].String()
+			require.NoError(t, fs.MkdirAll(dir, os.ModePerm))
+			fT := td.CmdArgs[1].String()
+			filePath := fs.PathJoin(dir, td.CmdArgs[2].String())
+
+			if fT != "file" {
+				fileNumInt, err := strconv.Atoi(td.CmdArgs[2].String())
+				require.NoError(t, err)
+				fileNum := base.FileNum(fileNumInt)
+				switch fT {
+				case "table":
+					filePath = base.MakeFilepath(fs, dir, base.FileTypeTable, fileNum)
+				case "log":
+					filePath = base.MakeFilepath(fs, dir, base.FileTypeLog, fileNum)
+				case "manifest":
+					filePath = base.MakeFilepath(fs, dir, base.FileTypeManifest, fileNum)
+				}
+			}
+			f, err := fs.Create(filePath)
+			require.NoError(t, err)
+			b, err := hex.DecodeString(strings.ReplaceAll(td.Input, "\n", ""))
+			require.NoError(t, err)
+			_, err = f.Write(b)
+			require.NoError(t, err)
+			return "created"
+		case "find-workload-files":
+			var buf bytes.Buffer
+			dir := td.CmdArgs[0].String()
+			m, s, err := findWorkloadFiles(dir, fs)
+
+			fmt.Fprintln(&buf, "manifests")
+			sort.Strings(m)
+			for _, elem := range m {
+				fmt.Fprintf(&buf, "  %s\n", elem)
+			}
+			var res []string
+			for key := range s {
+				res = append(res, key.String())
+			}
+			sort.Strings(res)
+
+			fmt.Fprintln(&buf, "sstables")
+			for _, elem := range res {
+				fmt.Fprintf(&buf, "  %s\n", elem)
+			}
+			fmt.Fprintln(&buf, "error")
+			if err != nil {
+				fmt.Fprintf(&buf, "  %s\n", err.Error())
+			}
+			return buf.String()
+		case "find-manifest-start":
+			var buf bytes.Buffer
+			dir := td.CmdArgs[0].String()
+			m, _, err := findWorkloadFiles(dir, fs)
+			sort.Strings(m)
+			require.NoError(t, err)
+			i, o, err := findManifestStart(dir, fs, m)
+			errString := "nil"
+			if err != nil {
+				errString = err.Error()
+			}
+			fmt.Fprintf(&buf, "index: %d, offset: %d, error: %s\n", i, o, errString)
+			return buf.String()
+		case "delete-all":
+			err := fs.RemoveAll(td.CmdArgs[0].String())
+			if err != nil {
+				return err.Error()
+			}
+			return ""
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
@@ -263,6 +390,7 @@ func TestCollectCorpus(t *testing.T) {
 	fs := vfs.NewMem()
 	datadriven.Walk(t, "testdata/corpus", func(t *testing.T, path string) {
 		collectCorpus(t, fs, filepath.Base(path))
+		fs = vfs.NewMem()
 	})
 }
 
