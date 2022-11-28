@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -34,21 +35,60 @@ import (
 // A Pacer paces replay of a workload, determining when to apply the next
 // incoming write.
 type Pacer interface {
-	todo()
+	pace(r *Runner, step workloadStep) time.Duration
+}
+
+// computeReadAmp calculates the read amplification from a manifest.Version
+func computeReadAmp(v *manifest.Version) int {
+	refRAmp := v.L0Sublevels.ReadAmplification()
+	for _, lvl := range v.Levels[1:] {
+		if !lvl.Empty() {
+			refRAmp++
+		}
+	}
+	return refRAmp
+}
+
+// waitForReadAmpLE is a common function used by PaceByReferenceReadAmp and
+// PaceByFixedReadAmp to wait on the dbMetricsNotifier condition variable if the
+// read amplification observed is greater than the specified target (refRAmp).
+func waitForReadAmpLE(r *Runner, rAmp int) {
+	r.dbMetricsNotifier.L.Lock()
+	m := r.dbMetrics
+	ra := m.ReadAmp()
+	for ra > rAmp {
+		r.dbMetricsNotifier.Wait()
+		ra = r.dbMetrics.ReadAmp()
+	}
+	r.dbMetricsNotifier.L.Unlock()
 }
 
 // Unpaced implements Pacer by applying each new write as soon as possible. It
 // may be useful for examining performance under high read amplification.
 type Unpaced struct{}
 
-func (Unpaced) todo() {}
+func (Unpaced) pace(*Runner, workloadStep) (d time.Duration) { return }
 
-// TODO(jackson,leon): Add PaceByFixedReadAmp to pace by keeping
-// read amplification below a fixed value.
+// PaceByReferenceReadAmp implements Pacer by applying each new write following
+// the collected workloads read amplification.
+type PaceByReferenceReadAmp struct{}
 
-// TODO(jackson,leon): Add PaceByReferenceReadAmp to pace by keeping read
-// amplification at or below the read amplification of the database at the time
-// the workload was collected. (pebble#2057)
+func (PaceByReferenceReadAmp) pace(r *Runner, w workloadStep) time.Duration {
+	startTime := time.Now()
+	refRAmp := computeReadAmp(w.pv)
+	waitForReadAmpLE(r, refRAmp)
+	return time.Since(startTime)
+}
+
+// PaceByFixedReadAmp implements Pacer by applying each new write following a
+// fixed read amplification.
+type PaceByFixedReadAmp int
+
+func (pra PaceByFixedReadAmp) pace(r *Runner, _ workloadStep) time.Duration {
+	startTime := time.Now()
+	waitForReadAmpLE(r, int(pra))
+	return time.Since(startTime)
+}
 
 // Runner runs a captured workload against a test database, collecting
 // metrics on performance.
@@ -60,7 +100,14 @@ type Runner struct {
 	Opts         *pebble.Options
 
 	// Internal state.
-	cancel   func()
+	cancel func()
+
+	// workloadExhausted is a channel that is closed once all the workload steps
+	// have been applied. However once this channel is closed the replayer could
+	// still not be finished as there could still be compactions running in the
+	// background.
+	workloadExhausted chan struct{}
+
 	d        *pebble.DB
 	err      atomic.Value
 	errgroup *errgroup.Group
@@ -71,7 +118,25 @@ type Runner struct {
 	readerOpts sstable.ReaderOptions
 	stagingDir string
 	steps      chan workloadStep
-	workload   struct {
+
+	// compactionEnded is a channel used to notify the refreshMetrics method that
+	// a compaction has finished and hence it can update the metrics.
+	compactionEnded            chan struct{}
+	finishedCompactionNotifier sync.Cond
+
+	// compactionsHaveQuiesced is a channel that is closed once compactions have
+	// quiesced allowing the compactionNotified method to complete.
+	compactionsHaveQuiesced chan struct{}
+
+	// compactionCount keeps track of the number of compactions
+	compactionCount int
+
+	// dbMetrics and dbMetricsNotifier work in unison to update the metrics and
+	// notify (broadcast) to any waiting clients that metrics have been updated.
+	dbMetricsNotifier sync.Cond
+	dbMetrics         *pebble.Metrics
+
+	workload struct {
 		manifests []string
 		// manifest{Idx,Off} record the starting position of the workload
 		// relative to the initial database state.
@@ -105,6 +170,13 @@ func (r *Runner) Run(ctx context.Context) error {
 		return err
 	}
 
+	r.dbMetricsNotifier = sync.Cond{
+		L: &sync.Mutex{},
+	}
+	r.finishedCompactionNotifier = sync.Cond{
+		L: &sync.Mutex{},
+	}
+
 	// Extend the user-provided Options with extensions necessary for replay
 	// mechanics.
 	var l pebble.EventListener
@@ -116,10 +188,16 @@ func (r *Runner) Run(ctx context.Context) error {
 	r.Opts.EventListener = &l
 	r.Opts.EnsureDefaults()
 	r.readerOpts = r.Opts.MakeReaderOptions()
+	r.Opts.DisableWAL = true
 	r.d, err = pebble.Open(r.RunDir, r.Opts)
 	if err != nil {
 		return err
 	}
+
+	r.dbMetrics = r.d.Metrics()
+	r.workloadExhausted = make(chan struct{}, 1)
+	r.compactionEnded = make(chan struct{})
+	r.compactionsHaveQuiesced = make(chan struct{})
 
 	// Use a buffered channel to allow the prepareWorkloadSteps to read ahead,
 	// buffering up to cap(r.steps) steps ahead of the current applied state.
@@ -132,6 +210,39 @@ func (r *Runner) Run(ctx context.Context) error {
 	r.errgroup, ctx = errgroup.WithContext(ctx)
 	r.errgroup.Go(func() error { return r.prepareWorkloadSteps(ctx) })
 	r.errgroup.Go(func() error { return r.applyWorkloadSteps(ctx) })
+	r.errgroup.Go(func() error { return r.refreshMetrics(ctx) })
+	r.errgroup.Go(func() error { return r.compactionNotified(ctx) })
+	return nil
+}
+
+func (r *Runner) refreshMetrics(ctx context.Context) error {
+	workloadExhausted := false
+	done := false
+	for !done {
+		select {
+		case <-r.workloadExhausted:
+			workloadExhausted = true
+			done = workloadExhausted && r.d.Metrics().Compact.NumInProgress == 0
+			if done {
+				close(r.compactionsHaveQuiesced)
+				r.finishedCompactionNotifier.L.Lock()
+				r.compactionCount++
+				r.finishedCompactionNotifier.Broadcast()
+				r.finishedCompactionNotifier.L.Unlock()
+			}
+		case <-ctx.Done():
+			r.finishedCompactionNotifier.L.Lock()
+			r.compactionCount++
+			r.finishedCompactionNotifier.Broadcast()
+			r.finishedCompactionNotifier.L.Unlock()
+			return ctx.Err()
+		case <-r.compactionEnded:
+			r.dbMetricsNotifier.L.Lock()
+			r.dbMetrics = r.d.Metrics()
+			r.dbMetricsNotifier.Broadcast()
+			r.dbMetricsNotifier.L.Unlock()
+		}
+	}
 	return nil
 }
 
@@ -157,11 +268,18 @@ func (r *Runner) Close() error {
 type workloadStep struct {
 	kind stepKind
 	ve   manifest.VersionEdit
+
+	// a Version describing the state of the LSM *before* the workload was
+	// collected.
+	pv *manifest.Version
 	// a Version describing the state of the LSM when the workload was
 	// collected.
 	v *manifest.Version
+
 	// non-nil for flushStepKind
 	flushBatch *pebble.Batch
+
+	tablesToIngest []string
 }
 
 type stepKind uint8
@@ -189,6 +307,12 @@ func (r *Runner) eventListener() pebble.EventListener {
 			atomic.AddUint64(&r.metrics.writeStallDurationNano,
 				uint64(time.Since(writeStallBegin).Nanoseconds()))
 		},
+		CompactionEnd: func(info pebble.CompactionInfo) {
+			r.finishedCompactionNotifier.L.Lock()
+			defer r.finishedCompactionNotifier.L.Unlock()
+			r.compactionCount++
+			r.finishedCompactionNotifier.Broadcast()
+		},
 	}
 	l.EnsureDefaults(nil)
 	return l
@@ -206,19 +330,26 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 		case step, ok = <-r.steps:
 			if !ok {
 				// Exhausted the workload. Exit.
+				close(r.workloadExhausted)
 				return nil
 			}
 		}
 
-		// TODO(jackson,leon): Apply pacing.
+		// TODO(leon,jackson): Make sure to sum the duration statistics
+		r.Pacer.pace(r, step)
 
 		switch step.kind {
 		case flushStepKind:
-			if err := step.flushBatch.Commit(nil); err != nil {
+			if err := step.flushBatch.Commit(&pebble.WriteOptions{Sync: false}); err != nil {
 				return err
 			}
 		case ingestStepKind:
-			// TODO(jackson,leon): Apply the step to the database.
+			// TODO(jackson, leon): Use the stats
+			_, err := r.d.IngestWithStats(step.tablesToIngest)
+			if err != nil {
+				return err
+			}
+
 		case compactionStepKind:
 			// TODO(jackson,leon): Apply the step to runner state.
 		}
@@ -238,6 +369,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 
 	var flushBufs flushBuffers
 	var v *manifest.Version
+	var previousVersion *manifest.Version
 	var bve manifest.BulkVersionEdit
 	applyVE := func(ve *manifest.VersionEdit) error {
 		for _, nf := range ve.NewFiles {
@@ -338,6 +470,13 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				if s.v, err = currentVersion(); err != nil {
 					return err
 				}
+				// On the first time through, we set the previous version to the current
+				// version otherwise we set it to the actual previous version.
+				if previousVersion == nil {
+					previousVersion = s.v
+				}
+				s.pv = previousVersion
+				previousVersion = s.v
 
 				// It's possible that the workload collector captured this
 				// version edit, but wasn't able to collect all of the
@@ -379,6 +518,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 						if err := vfs.CopyAcrossFS(r.WorkloadFS, src, r.Opts.FS, dst); err != nil {
 							return errors.Wrapf(err, "ingest in %q at offset %d", manifestName, rr.Offset())
 						}
+						s.tablesToIngest = append(s.tablesToIngest, dst)
 					}
 				case compactionStepKind:
 					// Nothing to do.
@@ -399,7 +539,27 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	return nil
 }
 
-// findWorkloadFiles finds all manfiests and tables in the provided path on fs.
+func (r *Runner) compactionNotified(ctx context.Context) error {
+	r.finishedCompactionNotifier.L.Lock()
+	lastCompactionCount := 0
+	for {
+		if r.compactionCount <= lastCompactionCount {
+			r.finishedCompactionNotifier.Wait()
+		}
+		lastCompactionCount = r.compactionCount
+		r.finishedCompactionNotifier.L.Unlock()
+		select {
+		case <-r.compactionsHaveQuiesced:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		case r.compactionEnded <- struct{}{}:
+		}
+		r.finishedCompactionNotifier.L.Lock()
+	}
+}
+
+// findWorkloadFiles finds all manifests and tables in the provided path on fs.
 func findWorkloadFiles(
 	path string, fs vfs.FS,
 ) (manifests []string, sstables map[base.FileNum]struct{}, err error) {
@@ -423,6 +583,7 @@ func findWorkloadFiles(
 	if len(manifests) == 0 {
 		return nil, nil, errors.Newf("no manifests found")
 	}
+	sort.Strings(manifests)
 	return manifests, sstables, err
 }
 
