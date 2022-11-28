@@ -999,6 +999,15 @@ func (o *Options) EnsureDefaults() *Options {
 	return o
 }
 
+// AddEventListener adds the provided event listener to the Options, in addition
+// to any existing event listener.
+func (o *Options) AddEventListener(l EventListener) {
+	if o.EventListener != nil {
+		l = TeeEventListener(l, *o.EventListener)
+	}
+	o.EventListener = &l
+}
+
 func (o *Options) equal() Equal {
 	if o.Comparer.Equal == nil {
 		return bytes.Equal
