@@ -83,7 +83,7 @@ type versionSet struct {
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
-	obsoleteFn        func(obsolete []*manifest.FileMetadata)
+	obsoleteFn        func(obsolete []*manifest.FileMetadata, skipZombieCheck bool)
 	obsoleteTables    []*manifest.FileMetadata
 	obsoleteManifests []fileInfo
 	obsoleteOptions   []fileInfo
@@ -607,7 +607,7 @@ func (vs *versionSet) incrementCompactions(kind compactionKind, extraLevels []*c
 		vs.metrics.Compact.Count++
 		vs.metrics.Compact.DefaultCount++
 
-	case compactionKindFlush:
+	case compactionKindFlush, compactionKindIngestedFlushable:
 		vs.metrics.Flush.Count++
 
 	case compactionKindMove:
@@ -754,17 +754,32 @@ func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 	}
 }
 
-func (vs *versionSet) addObsoleteLocked(obsolete []*manifest.FileMetadata) {
+// DB.mu must be held when addObsoleteLocked is called.
+func (vs *versionSet) addObsoleteLocked(obsolete []*manifest.FileMetadata, skipZombieCheck bool) {
 	for _, fileMeta := range obsolete {
 		// Note that the obsolete tables are no longer zombie by the definition of
 		// zombie, but we leave them in the zombie tables map until they are
 		// deleted from disk.
-		if _, ok := vs.zombieTables[fileMeta.FileNum]; !ok {
+		//
+		// For flushables of type ingestedSStable, it's possible to have files
+		// which are referenced by no versions, but these files can become
+		// obsolete if the DB is closed before the memtable which references
+		// them is flushed. So, for files referenced by the memtables, we avoid
+		// the zombie check here.
+		if _, ok := vs.zombieTables[fileMeta.FileNum]; !skipZombieCheck && !ok {
 			vs.opts.Logger.Fatalf("MANIFEST obsolete table %s not marked as zombie", fileMeta.FileNum)
 		}
 	}
 	vs.obsoleteTables = append(vs.obsoleteTables, obsolete...)
 	vs.incrementObsoleteTablesLocked(obsolete)
+}
+
+// addObsolete will acquire DB.mu, so DB.mu must not be held when this is
+// called.
+func (vs *versionSet) addObsolete(obsolete []*manifest.FileMetadata, skipZombieCheck bool) {
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	vs.addObsoleteLocked(obsolete, skipZombieCheck)
 }
 
 func (vs *versionSet) incrementObsoleteTablesLocked(obsolete []*manifest.FileMetadata) {

@@ -143,7 +143,7 @@ type FileMetadata struct {
 	// Reference count for the file: incremented when a file is added to a
 	// version and decremented when the version is unreferenced. The file is
 	// obsolete when the reference count falls to zero.
-	refs int32
+	Refs int32
 	// FileNum is the file number.
 	FileNum base.FileNum
 	// Size is the size of the file, in bytes.
@@ -759,7 +759,7 @@ type Version struct {
 
 	// The callback to invoke when the last reference to a version is
 	// removed. Will be called with list.mu held.
-	Deleted func(obsolete []*FileMetadata)
+	Deleted func(obsolete []*FileMetadata, skipZombieCheck bool)
 
 	// Stats holds aggregated stats about the version maintained from
 	// version to version.
@@ -869,7 +869,7 @@ func (v *Version) Unref() {
 		l := v.list
 		l.mu.Lock()
 		l.Remove(v)
-		v.Deleted(obsolete)
+		v.Deleted(obsolete, false)
 		l.mu.Unlock()
 	}
 }
@@ -881,7 +881,7 @@ func (v *Version) Unref() {
 func (v *Version) UnrefLocked() {
 	if atomic.AddInt32(&v.refs, -1) == 0 {
 		v.list.Remove(v)
-		v.Deleted(v.unrefFiles())
+		v.Deleted(v.unrefFiles(), false)
 	}
 }
 

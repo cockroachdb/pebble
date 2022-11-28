@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
 // flushable defines the interface for immutable memtables.
@@ -59,6 +60,17 @@ type flushableEntry struct {
 	readerRefs int32
 	// Closure to invoke to release memory accounting.
 	releaseMemAccounting func()
+	// unrefFiles, if not nil, should be invoked to decrease the ref count of
+	// files which are backing the flushable.
+	unrefFiles func() []*fileMetadata
+	// DeleteFnLocked should be called by readerUnrefLocked if unrefing the
+	// memtable produces obsolete files. DeleteFnLocked is a reference to
+	// vs.addObsoleteLocked, and therefore DB.mu must be held while calling.
+	DeleteFnLocked func(obsolete []*fileMetadata, skipZombieCheck bool)
+	// DeleteFn should be called by readerUnref if unrefing the memtable
+	// produces obsolete files. DeleteFnLocked is a reference to
+	// vs.addObsolete, and therefore DB.mu must not be held while calling.
+	DeleteFn func(obsolete []*fileMetadata, skipZombieCheck bool)
 }
 
 func (e *flushableEntry) readerRef() {
@@ -68,6 +80,7 @@ func (e *flushableEntry) readerRef() {
 	}
 }
 
+// DB.mu must not be held when this is called.
 func (e *flushableEntry) readerUnref() {
 	switch v := atomic.AddInt32(&e.readerRefs, -1); {
 	case v < 0:
@@ -78,7 +91,141 @@ func (e *flushableEntry) readerUnref() {
 		}
 		e.releaseMemAccounting()
 		e.releaseMemAccounting = nil
+		if e.unrefFiles != nil {
+			obsolete := e.unrefFiles()
+			e.unrefFiles = nil
+			if len(obsolete) > 0 {
+				e.DeleteFn(obsolete, true)
+			}
+		}
+	}
+}
+
+// DB.mu must be held while this is called.
+func (e *flushableEntry) readerUnrefLocked() {
+	switch v := atomic.AddInt32(&e.readerRefs, -1); {
+	case v < 0:
+		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+	case v == 0:
+		if e.releaseMemAccounting == nil {
+			panic("pebble: memtable reservation already released")
+		}
+		e.releaseMemAccounting()
+		e.releaseMemAccounting = nil
+		if e.unrefFiles != nil {
+			obsolete := e.unrefFiles()
+			e.unrefFiles = nil
+			if len(obsolete) > 0 {
+				e.DeleteFnLocked(obsolete, true)
+			}
+		}
 	}
 }
 
 type flushableList []*flushableEntry
+
+// ingestedSSTable is the implementation of the flushable interface for the
+// ingesting sstables which are added to the flushable list.
+type ingestedSSTable struct {
+	files            []*fileMetadata
+	cmp              Compare
+	split            Split
+	newIters         tableNewIters
+	newRangeKeyIters keyspan.TableNewSpanIter
+
+	// Since the level slice is immutable, we construct and set it once. It
+	// should be safe to read from slice in future reads.
+	slice manifest.LevelSlice
+	// hasRangeKeys is set on ingestedSSTable construction.
+	hasRangeKeys bool
+}
+
+func newIngestedSSTableFlushable(
+	files []*fileMetadata,
+	cmp Compare,
+	split Split,
+	newIters tableNewIters,
+	newRangeKeyIters keyspan.TableNewSpanIter,
+) *ingestedSSTable {
+	ret := &ingestedSSTable{
+		files:            files,
+		cmp:              cmp,
+		split:            split,
+		newIters:         newIters,
+		newRangeKeyIters: newRangeKeyIters,
+		// slice is immutable and can be set once and used many times.
+		slice: manifest.NewLevelSliceKeySorted(cmp, files),
+	}
+
+	for _, f := range files {
+		if f.HasRangeKeys {
+			ret.hasRangeKeys = true
+			break
+		}
+	}
+
+	return ret
+}
+
+func (s *ingestedSSTable) newIter(o *IterOptions) internalIterator {
+	var opts IterOptions
+	if o != nil {
+		opts = *o
+	}
+	// TODO(bananabrick): The manifest.Level in newLevelIter is only used for
+	// logging. Update the manifest.Level encoding to account for levels which
+	// aren't truly levels in the lsm. Right now, the encoding only supports
+	// L0 sublevels, and the rest of the levels in the lsm.
+	return newLevelIter(
+		opts, s.cmp, s.split, s.newIters, s.slice.Iter(), manifest.Level(0), nil,
+	)
+}
+
+func (s *ingestedSSTable) newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator {
+	// newFlushIter is only used for writing memtables to disk as sstables.
+	// Since ingested sstables are already present on disk, they don't need to
+	// make use of a flush iter.
+	panic("pebble: not implemented")
+}
+
+func (s *ingestedSSTable) newRangeDelIter(_ *IterOptions) keyspan.FragmentIterator {
+	return keyspan.NewLevelIter(
+		keyspan.SpanIterOptions{}, s.cmp,
+		s.newRangeKeyIters, s.slice.Iter(), manifest.Level(0),
+		manifest.KeyTypePoint,
+	)
+}
+
+func (s *ingestedSSTable) newRangeKeyIter(o *IterOptions) keyspan.FragmentIterator {
+	if !s.containsRangeKeys() {
+		return nil
+	}
+
+	return keyspan.NewLevelIter(
+		keyspan.SpanIterOptions{}, s.cmp, s.newRangeKeyIters, s.slice.Iter(),
+		manifest.Level(0), manifest.KeyTypeRange,
+	)
+}
+
+func (s *ingestedSSTable) containsRangeKeys() bool {
+	return s.hasRangeKeys
+}
+
+func (s *ingestedSSTable) inuseBytes() uint64 {
+	// inuseBytes is only used when memtables are flushed to disk as sstables.
+	panic("pebble: not implemented")
+}
+
+func (s *ingestedSSTable) totalBytes() uint64 {
+	// We don't allocate additional bytes for the ingestedSSTable flushable.
+	return 0
+}
+
+func (s *ingestedSSTable) readyForFlush() bool {
+	// ingestedSSTable should always be ready to flush. However, note that
+	// memtables beneath the ingested sstables in the memtable queue must
+	// be flushed before an ingestedSSTable flushable can be flushed. This is
+	// because the ingested sstables need an updated view of the Version to
+	// determine where to place the files in the lsm.
+	return true
+}

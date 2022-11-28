@@ -77,12 +77,14 @@ func defaultConfig() config {
 	return config{
 		// dbClose is not in this list since it is deterministically generated once, at the end of the test.
 		ops: []int{
-			batchAbort:           5,
-			batchCommit:          5,
-			dbCheckpoint:         1,
-			dbCompact:            1,
-			dbFlush:              2,
-			dbRestart:            2,
+			batchAbort:   5,
+			batchCommit:  5,
+			dbCheckpoint: 1,
+			dbCompact:    1,
+			dbFlush:      2,
+			// TODO(bananabrick): restore the restart weight to 2 once WAL replay
+			// is cleaned up, and posted.
+			dbRestart:            0,
 			iterClose:            5,
 			iterFirst:            100,
 			iterLast:             100,
