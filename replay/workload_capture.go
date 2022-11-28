@@ -280,11 +280,11 @@ func (w *WorkloadCollector) processManifests(startAtIndex int, manifests []*mani
 		// w.mu.manifests.
 		if numBytesRead == 0 && index != totalManifests-1 {
 			// Rotating the manifests so we can close the files
-			err := w.mu.manifests[index].sourceFile.Close()
+			err := manifests[index].sourceFile.Close()
 			if err != nil {
 				panic(err)
 			}
-			err = w.mu.manifests[index].destFile.Close()
+			err = manifests[index].destFile.Close()
 			if err != nil {
 				panic(err)
 			}
