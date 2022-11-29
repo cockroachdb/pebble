@@ -661,13 +661,31 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 				}
 				// This seek is not directly due to a SeekGE call, so we don't
 				// know enough about the underlying iterator positions, and so
-				// we keep the try-seek-using-next optimization disabled.
+				// we keep the try-seek-using-next optimization disabled. Additionally,
+				// if we're in prefix-seek mode and a re-seek would have moved us past
+				// the original prefix, we can remove all merging iter levels shadowed
+				// by the range-del tombstone and return immediately. This is
+				// important to make `TrySeekUsingNext` work correctly, as a reseek on
+				// a different prefix could have resulted in this iterator skipping
+				// visible keys at prefixes in between m.prefix and seekKey, that are
+				// currently not in the heap due to a bloom filter mismatch.
 				//
 				// Additionally, we set the relative-seek flag. This is
 				// important when iterating with lazy combined iteration. If
 				// there's a range key between this level's current file and the
 				// file the seek will land on, we need to detect it in order to
 				// trigger construction of the combined iterator.
+				if m.prefix != nil {
+					if n := m.split(seekKey); !bytes.Equal(m.prefix, seekKey[:n]) {
+						for i := item.index; i < len(m.levels); i++ {
+							// Remove this level from the heap.
+							m.levels[i].iterKey = nil
+							m.levels[i].iterValue = base.LazyValue{}
+						}
+						m.initMinHeap()
+						return true
+					}
+				}
 				m.seekGE(seekKey, item.index, base.SeekGEFlagsNone.EnableRelativeSeek())
 				return true
 			}
@@ -682,7 +700,6 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 
 // Starting from the current entry, finds the first (next) entry that can be returned.
 func (m *mergingIter) findNextEntry() (*InternalKey, base.LazyValue) {
-	var reseeked bool
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
 		if m.levels[item.index].isSyntheticIterBoundsKey {
@@ -720,7 +737,7 @@ func (m *mergingIter) findNextEntry() (*InternalKey, base.LazyValue) {
 		//    a seek key in the range (m.prefix - item.key) will have the
 		//    TrySeekUsingNext flag enabled. The levelIter relies on having not
 		//    skipped these keys in order to avoid more expensive full seeks.
-		if m.prefix != nil && (reseeked || m.levels[item.index].isIgnorableBoundaryKey) {
+		if m.prefix != nil && m.levels[item.index].isIgnorableBoundaryKey {
 			if n := m.split(item.key.UserKey); !bytes.Equal(m.prefix, item.key.UserKey[:n]) {
 				return nil, base.LazyValue{}
 			}
@@ -729,7 +746,6 @@ func (m *mergingIter) findNextEntry() (*InternalKey, base.LazyValue) {
 		m.addItemStats(item)
 		if m.isNextEntryDeleted(item) {
 			m.stats.PointsCoveredByRangeTombstones++
-			reseeked = true
 			continue
 		}
 		if item.key.Visible(m.snapshot, m.batchSnapshot) &&
