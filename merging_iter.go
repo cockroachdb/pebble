@@ -659,15 +659,48 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 				if l.largestUserKey != nil && m.heap.cmp(l.largestUserKey, seekKey) < 0 {
 					seekKey = l.largestUserKey
 				}
-				// This seek is not directly due to a SeekGE call, so we don't
-				// know enough about the underlying iterator positions, and so
-				// we keep the try-seek-using-next optimization disabled.
+				// This seek is not directly due to a SeekGE call, so we don't know
+				// enough about the underlying iterator positions, and so we keep the
+				// try-seek-using-next optimization disabled. Additionally, if we're in
+				// prefix-seek mode and a re-seek would have moved us past the original
+				// prefix, we can remove all merging iter levels below the rangedel
+				// tombstone's level and return immediately instead of re-seeking. This
+				// is correct since those levels cannot provide a key that matches the
+				// prefix, and is also visible. Additionally, this is important to make
+				// subsequent `TrySeekUsingNext` work correctly, as a re-seek on a
+				// different prefix could have resulted in this iterator skipping visible
+				// keys at prefixes in between m.prefix and seekKey, that are currently
+				// not in the heap due to a bloom filter mismatch.
 				//
 				// Additionally, we set the relative-seek flag. This is
 				// important when iterating with lazy combined iteration. If
 				// there's a range key between this level's current file and the
 				// file the seek will land on, we need to detect it in order to
 				// trigger construction of the combined iterator.
+				if m.prefix != nil {
+					if n := m.split(seekKey); !bytes.Equal(m.prefix, seekKey[:n]) {
+						for i := item.index; i < len(m.levels); i++ {
+							// Remove this level from the heap. Setting iterKey and iterValue
+							// to their zero values should be sufficient for initMinHeap to not
+							// re-initialize the heap with them in it. Other fields in
+							// mergingIterLevel can remain as-is; the iter/rangeDelIter needs
+							// to stay intact for future trySeekUsingNexts to work, the level
+							// iter boundary context is owned by the levelIter which is not
+							// being repositioned, and any tombstones in these levels will be
+							// irrelevant for us anyway.
+							m.levels[i].iterKey = nil
+							m.levels[i].iterValue = base.LazyValue{}
+						}
+						// TODO(bilal): Consider a more efficient way of removing levels from
+						// the heap without reinitializing all of it. This would likely
+						// necessitate tracking the heap positions of each mergingIterHeap
+						// item in the mergingIterLevel, and then swapping that item in the
+						// heap with the last-positioned heap item, and shrinking the heap by
+						// one.
+						m.initMinHeap()
+						return true
+					}
+				}
 				m.seekGE(seekKey, item.index, base.SeekGEFlagsNone.EnableRelativeSeek())
 				return true
 			}
@@ -682,45 +715,33 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 
 // Starting from the current entry, finds the first (next) entry that can be returned.
 func (m *mergingIter) findNextEntry() (*InternalKey, base.LazyValue) {
-	var reseeked bool
 	for m.heap.len() > 0 && m.err == nil {
 		item := &m.heap.items[0]
 		if m.levels[item.index].isSyntheticIterBoundsKey {
 			break
 		}
 		// For prefix iteration, stop if we've already exceeded the iterator's
-		// current prefix. There are two cases where we perform this check.
+		// current prefix. There is one case where we perform this check:
 		//
-		// 1. We already re-seeked the iterator due to a range tombstone. We
-		//    could amortize the cost of this comparison, by doing it only after
-		//    we have iterated in this for loop a few times. But unless we find
-		//    a performance benefit to that, we do the simple thing and compare
-		//    each time. Note that isNextEntryDeleted already did at least 4 key
-		//    comparisons in order to return true, and additionally at least one
-		//    heap comparison to step to the next entry.
+		// If the heap root is an ignorable boundary key, Next-ing the iterator will
+		// close the associated file and open the next file in the level. We don't
+		// want to do this unnecessarily because the 'exhausted' file may only appear
+		// exhausted because it failed a bloom filter check. Avoiding Next-ing the
+		// file has a performance benefit of unnecessarily advancing to the next
+		// file, but it's also necessary for correctness of some TrySeekUsingNext
+		// optimizations deeper in the iterator stack:
 		//
-		//    Note that we cannot move this comparison into the
-		//    isNextEntryDeleted branch. Once isNextEntryDeleted determines a
-		//    key is deleted and seeks the level's iterator, item.key's memory
-		//    is potentially invalid. If the iterator is now exhausted, item.key
-		//    may be garbage.
+		// There may exist valid keys between our current prefix (m.prefix) and the
+		// ignorable boundary key (item.key) that were not returned due to the bloom
+		// filter test. A subsequent SeekPrefixGE call with a seek key in the range
+		// (m.prefix - item.key) will have the TrySeekUsingNext flag enabled. The
+		// levelIter relies on having not skipped these keys in order to avoid more
+		// expensive full seeks.
 		//
-		// 2. If the heap root is an ignorable boundary key, Next-ing the
-		//    iterator will close the associated file and open the next file in
-		//    the level. We don't want to do this unnecessarily because the
-		//    'exhausted' file may only appear exhausted because it failed a
-		//    bloom filter check. Avoiding Next-ing the file has a performance
-		//    benefit of unnecessarily advancing to the next file, but it's also
-		//    necessary for correctness of some TrySeekUsingNext optimizations
-		//    deeper in the iterator stack:
-		//
-		//    There may exist valid keys between our current prefix (m.prefix)
-		//    and the ignorable boundary key (item.key) that were not returned
-		//    due to the bloom filter test. A subsequent SeekPrefixGE call with
-		//    a seek key in the range (m.prefix - item.key) will have the
-		//    TrySeekUsingNext flag enabled. The levelIter relies on having not
-		//    skipped these keys in order to avoid more expensive full seeks.
-		if m.prefix != nil && (reseeked || m.levels[item.index].isIgnorableBoundaryKey) {
+		// While isNextEntryDeleted could re-seek the iterator, that function is
+		// expected to peek at m.prefix and avoid any seeks past the iterator's
+		// prefix if it is set, avoiding the need to do a check here.
+		if m.prefix != nil && m.levels[item.index].isIgnorableBoundaryKey {
 			if n := m.split(item.key.UserKey); !bytes.Equal(m.prefix, item.key.UserKey[:n]) {
 				return nil, base.LazyValue{}
 			}
@@ -729,7 +750,6 @@ func (m *mergingIter) findNextEntry() (*InternalKey, base.LazyValue) {
 		m.addItemStats(item)
 		if m.isNextEntryDeleted(item) {
 			m.stats.PointsCoveredByRangeTombstones++
-			reseeked = true
 			continue
 		}
 		if item.key.Visible(m.snapshot, m.batchSnapshot) &&
