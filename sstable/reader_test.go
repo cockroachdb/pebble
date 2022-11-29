@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -1317,5 +1318,93 @@ func BenchmarkSeqSeekGEExhausted(b *testing.B) {
 			}
 		}
 		reader.Close()
+	}
+}
+
+func BenchmarkIteratorScanManyVersions(b *testing.B) {
+	options := WriterOptions{
+		BlockSize:            32 << 10,
+		BlockRestartInterval: 16,
+		FilterPolicy:         nil,
+		Compression:          SnappyCompression,
+		Comparer:             testkeys.Comparer,
+	}
+	// 10,000 key prefixes, each with 100 versions.
+	const keyCount = 10000
+	const sharedPrefixLen = 32
+	const unsharedPrefixLen = 8
+	const versionCount = 100
+
+	// Take the very large keyspace consisting of alphabetic characters of
+	// lengths up to unsharedPrefixLen and reduce it down to keyCount keys by
+	// picking every 1 key every keyCount keys.
+	keys := testkeys.Alpha(unsharedPrefixLen)
+	keys = keys.EveryN(keys.Count() / keyCount)
+	if keys.Count() < keyCount {
+		b.Fatalf("expected %d keys, found %d", keyCount, keys.Count())
+	}
+	keyBuf := make([]byte, sharedPrefixLen+unsharedPrefixLen+testkeys.MaxSuffixLen)
+	for i := 0; i < sharedPrefixLen; i++ {
+		keyBuf[i] = 'A' + byte(i)
+	}
+	// v2 sstable is 115,178,070 bytes. v3 sstable is 107,181,105 bytes with
+	// 99,049,269 bytes in value blocks.
+	setupBench := func(b *testing.B, tableFormat TableFormat, cacheSize int64) *Reader {
+		mem := vfs.NewMem()
+		f0, err := mem.Create("bench")
+		require.NoError(b, err)
+		options.TableFormat = tableFormat
+		w := NewWriter(f0, options)
+		val := make([]byte, 100)
+		rng := rand.New(rand.NewSource(100))
+		for i := 0; i < keys.Count(); i++ {
+			for v := 0; v < versionCount; v++ {
+				n := testkeys.WriteKeyAt(keyBuf[sharedPrefixLen:], keys, i, versionCount-v+1)
+				key := keyBuf[:n+sharedPrefixLen]
+				rng.Read(val)
+				require.NoError(b, w.Set(key, val))
+			}
+		}
+		require.NoError(b, w.Close())
+		c := cache.New(cacheSize)
+		defer c.Unref()
+		// Re-open the filename for reading.
+		f0, err = mem.Open("bench")
+		require.NoError(b, err)
+		r, err := NewReader(f0, ReaderOptions{
+			Cache:    c,
+			Comparer: testkeys.Comparer,
+		})
+		require.NoError(b, err)
+		return r
+	}
+	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
+		b.Run(fmt.Sprintf("format=%s", format.String()), func(b *testing.B) {
+			// 150MiB results in a high cache hit rate for both formats. 20MiB
+			// results in a high cache hit rate for the data blocks in
+			// TableFormatPebblev3.
+			for _, cacheSize := range []int64{20 << 20, 150 << 20} {
+				b.Run(fmt.Sprintf("cache-size=%s", humanize.IEC.Int64(cacheSize)),
+					func(b *testing.B) {
+						r := setupBench(b, format, cacheSize)
+						defer func() {
+							require.NoError(b, r.Close())
+						}()
+						iter, err := r.NewIter(nil, nil)
+						require.NoError(b, err)
+						var k *InternalKey
+						b.ResetTimer()
+						for i := 0; i < b.N; i++ {
+							if k == nil {
+								k, _ = iter.First()
+								if k == nil {
+									b.Fatalf("k is nil")
+								}
+							}
+							k, _ = iter.Next()
+						}
+					})
+			}
+		})
 	}
 }
