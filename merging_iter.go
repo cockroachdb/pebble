@@ -661,13 +661,28 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 				}
 				// This seek is not directly due to a SeekGE call, so we don't
 				// know enough about the underlying iterator positions, and so
-				// we keep the try-seek-using-next optimization disabled.
+				// we keep the try-seek-using-next optimization disabled. Additionally,
+				// if we're in prefix-seek mode and a re-seek would have moved us past
+				// the original prefix, we can just return immediately and rely on the
+				// caller to detect this case and exhaust the merging iter. This is
+				// important to make `TrySeekUsingNext` work correctly, as a reseek on
+				// a different prefix could have resulted in this iterator skipping
+				// visible keys at prefixes in between m.prefix and seekKey, that are
+				// currently not in the heap due to a bloom filter mismatch.
 				//
 				// Additionally, we set the relative-seek flag. This is
 				// important when iterating with lazy combined iteration. If
 				// there's a range key between this level's current file and the
 				// file the seek will land on, we need to detect it in order to
 				// trigger construction of the combined iterator.
+				if m.prefix != nil {
+					if n := m.split(item.key.UserKey); !bytes.Equal(m.prefix, item.key.UserKey[:n]) {
+						// We return true here without moving iterators forward. If we
+						// seeked, we'd go past our original prefix. It's the caller's
+						// responsibility to detect this case and exhaust the iterator.
+						return true
+					}
+				}
 				m.seekGE(seekKey, item.index, base.SeekGEFlagsNone.EnableRelativeSeek())
 				return true
 			}
