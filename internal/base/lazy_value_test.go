@@ -12,6 +12,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type valueFetcherFunc func(
+	handle []byte, valLen int32, buf []byte) (val []byte, callerOwned bool, err error)
+
+func (v valueFetcherFunc) Fetch(
+	handle []byte, valLen int32, buf []byte,
+) (val []byte, callerOwned bool, err error) {
+	return v(handle, valLen, buf)
+}
+
 func TestLazyValue(t *testing.T) {
 	// Both 40 and 48 bytes makes iteration benchmarks like
 	// BenchmarkIteratorScan/keys=1000,r-amp=1,key-types=points-only 75%
@@ -43,12 +52,13 @@ func TestLazyValue(t *testing.T) {
 		fooLV3 := LazyValue{
 			ValueOrHandle: []byte("foo-handle"),
 			Fetcher: &LazyFetcher{
-				ValueFetcher: func(handle []byte, valLen int32, buf []byte) ([]byte, bool, error) {
-					numCalls++
-					require.Equal(t, []byte("foo-handle"), handle)
-					require.Equal(t, int32(3), valLen)
-					return fooBytes1, callerOwned, nil
-				},
+				Fetcher: valueFetcherFunc(
+					func(handle []byte, valLen int32, buf []byte) ([]byte, bool, error) {
+						numCalls++
+						require.Equal(t, []byte("foo-handle"), handle)
+						require.Equal(t, int32(3), valLen)
+						return fooBytes1, callerOwned, nil
+					}),
 				Attribute: AttributeAndLen{ValueLen: 3, ShortAttribute: 7},
 			},
 		}

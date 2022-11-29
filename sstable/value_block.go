@@ -733,7 +733,7 @@ func (r *valueBlockReader) getLazyValueForPrefixAndValueHandle(handle []byte) ba
 	fetcher := &r.lazyFetcher
 	valLen, h := decodeLenFromValueHandle(handle[1:])
 	*fetcher = base.LazyFetcher{
-		ValueFetcher: r.getValue,
+		Fetcher: r,
 		Attribute: base.AttributeAndLen{
 			ValueLen:       int32(valLen),
 			ShortAttribute: getShortAttribute(valuePrefix(handle[0])),
@@ -764,7 +764,8 @@ func (r *valueBlockReader) close() {
 	// implemented.
 }
 
-func (r *valueBlockReader) getValue(
+// Fetch implements base.ValueFetcher.
+func (r *valueBlockReader) Fetch(
 	handle []byte, valLen int32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
 	if !r.closed {
