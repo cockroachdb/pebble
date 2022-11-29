@@ -249,7 +249,8 @@ type mergingIter struct {
 	upper         []byte
 	stats         *InternalIteratorStats
 
-	combinedIterState *combinedIterState
+	combinedIterState         *combinedIterState
+	lastPrefixSeekWasRelative bool
 
 	// Used in some tests to disable the random disabling of seek optimizations.
 	forceEnableSeekOpt bool
@@ -661,13 +662,24 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterItem) bool {
 				}
 				// This seek is not directly due to a SeekGE call, so we don't
 				// know enough about the underlying iterator positions, and so
-				// we keep the try-seek-using-next optimization disabled.
+				// we keep the try-seek-using-next optimization disabled. Additionally,
+				// if we're in prefix-seek mode and we're moving past the original
+				// prefix, we need to ensure we disable the next TrySeekUsingNext as
+				// well, as the next SeekPrefixGE could match the bloom filters of files
+				// in between our current position and the end of this range delete that
+				// are currently not visible to the mergingIter due to a prefix bloom
+				// filter mismatch.
 				//
 				// Additionally, we set the relative-seek flag. This is
 				// important when iterating with lazy combined iteration. If
 				// there's a range key between this level's current file and the
 				// file the seek will land on, we need to detect it in order to
 				// trigger construction of the combined iterator.
+				if m.prefix != nil {
+					if n := m.split(seekKey); !bytes.Equal(m.prefix, seekKey[:n]) {
+						m.lastPrefixSeekWasRelative = true
+					}
+				}
 				m.seekGE(seekKey, item.index, base.SeekGEFlagsNone.EnableRelativeSeek())
 				return true
 			}
@@ -1031,6 +1043,12 @@ func (m *mergingIter) SeekPrefixGE(
 ) (*base.InternalKey, base.LazyValue) {
 	m.err = nil // clear cached iteration error
 	m.prefix = prefix
+	if m.lastPrefixSeekWasRelative && flags.TrySeekUsingNext() {
+		// See the comment in isNextEntryDeleted for why TrySeekUsingNext is not
+		// safe for child iterators in this case.
+		flags = flags.DisableTrySeekUsingNext()
+	}
+	m.lastPrefixSeekWasRelative = false
 	m.seekGE(key, 0 /* start level */, flags)
 	return m.findNextEntry()
 }
