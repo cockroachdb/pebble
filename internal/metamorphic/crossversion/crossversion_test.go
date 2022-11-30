@@ -25,6 +25,7 @@ import (
 	"unicode"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/metamorphic"
 	"github.com/stretchr/testify/require"
 )
@@ -265,7 +266,12 @@ func fatalf(t testing.TB, dir string, msg string, args ...interface{}) {
 	}
 	dst := filepath.Join(artifactsDir, filepath.Base(dir))
 	t.Logf("Moving test dir %q to %q.", dir, dst)
-	require.NoError(t, os.Rename(dir, dst))
+	err := os.Rename(dir, dst)
+	// If the run of the metamorphic test panics or otherwise exits uncleanly,
+	// the source directory may not exist.
+	if !oserror.IsNotExist(err) {
+		t.Error(err)
+	}
 	t.Fatalf(msg, args...)
 }
 
