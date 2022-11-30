@@ -1,8 +1,8 @@
 - Feature Name: Virtual sstables
-- Status: draft
+- Status: in-progress
 - Start Date: 2022-10-27
 - Authors: Arjun Nair
-- RFC PR: 
+- RFC PR: https://github.com/cockroachdb/pebble/pull/2116
 - Pebble Issues:
   https://github.com/cockroachdb/pebble/issues/1683
 
