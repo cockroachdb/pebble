@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+      with:
+        ref: 7b30bd86ff65c3edadda1fea4f1f34f1106193aa
 
     - name: Set up Go
       uses: actions/setup-go@v2
