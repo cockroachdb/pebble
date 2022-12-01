@@ -1,6 +1,5 @@
 GO := go
 PKG := ./...
-GOFLAGS :=
 STRESSFLAGS :=
 TAGS := invariants
 TESTS := .
@@ -18,18 +17,17 @@ all:
 	@echo "  make mod-update"
 	@echo "  make clean"
 
-override testflags :=
 .PHONY: test
 test:
-	${GO} test -tags '$(TAGS)' ${testflags} -run ${TESTS} ${PKG}
+	${GO} test -tags '$(TAGS)' ${TESTFLAGS} -run ${TESTS} ${PKG}
 
 .PHONY: testrace
-testrace: testflags += -race -timeout 20m
+testrace: TESTFLAGS += -race -timeout 20m
 testrace: test
 
 .PHONY: stress stressrace
-stressrace: testflags += -race
-stress stressrace: testflags += -exec 'stress ${STRESSFLAGS}' -timeout 0 -test.v
+stressrace: TESTFLAGS += -race
+stress stressrace: TESTFLAGS += -exec 'stress ${STRESSFLAGS}' -timeout 0 -test.v
 stress stressrace: test
 
 .PHONY: stressmeta
@@ -39,12 +37,13 @@ stressmeta: override TESTS = TestMeta$$
 stressmeta: stress
 
 .PHONY: crossversion-meta
+crossversion-meta: TESTFLAGS += -v
 crossversion-meta:
 	git checkout ${LATEST_RELEASE}; \
 		${GO} test -c ./internal/metamorphic -o './internal/metamorphic/crossversion/${LATEST_RELEASE}.test'; \
 		git checkout -; \
 		${GO} test -c ./internal/metamorphic -o './internal/metamorphic/crossversion/head.test'; \
-		${GO} test -tags '$(TAGS)' ${testflags} -v -run 'TestMetaCrossVersion' ./internal/metamorphic/crossversion --version '${LATEST_RELEASE},${LATEST_RELEASE},${LATEST_RELEASE}.test' --version 'HEAD,HEAD,./head.test'
+		${GO} test -tags '$(TAGS)' ${TESTFLAGS} -run 'TestMetaCrossVersion' ./internal/metamorphic/crossversion --version '${LATEST_RELEASE},${LATEST_RELEASE},${LATEST_RELEASE}.test' --version 'HEAD,HEAD,./head.test'
 
 .PHONY: stress-crossversion
 stress-crossversion:
