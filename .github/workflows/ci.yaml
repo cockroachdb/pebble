@@ -45,18 +45,21 @@ jobs:
 
     - run: make crossversion-meta
 
-  linux-race:
-    name: go-linux-race
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Set up Go
-      uses: actions/setup-go@v2
-      with:
-        go-version: "1.18"
-
-    - run: make testrace TAGS=
+  # This job currently (reliably) fails in GitHub actions. Temporarily skip
+  # while the failures are investigated.
+  # See: https://github.com/cockroachdb/pebble/issues/2159
+  #linux-race:
+  #  name: go-linux-race
+  #  runs-on: ubuntu-latest
+  #  steps:
+  #  - uses: actions/checkout@v2
+  #
+  #  - name: Set up Go
+  #    uses: actions/setup-go@v2
+  #    with:
+  #      go-version: "1.18"
+  #
+  #  - run: make testrace TAGS=
 
   linux-no-invariants:
     name: go-linux-no-invariants
