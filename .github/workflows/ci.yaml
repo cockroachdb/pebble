@@ -22,7 +22,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        ref: 7d9a5b2e29d53d4296535185c61d46f4a3a82022
+        ref: 936e011bb911a82b8711196b7c042c7d57b7c59f
 
     - name: Set up Go
       uses: actions/setup-go@v2
