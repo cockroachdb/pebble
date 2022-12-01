@@ -4,6 +4,7 @@ env:
   TESTFLAGS: -v -p 1
 
 on:
+  workflow_dispatch: # Allow the pipeline to be run manually.
   push:
     branches:
     - master
