@@ -257,6 +257,7 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			if err := datatest.DefineBatch(td, b); err != nil {
 				return err.Error()
 			}
+			// if err := b.Commit(&pebble.WriteOptions{Sync: true}); err != nil {
 			if err := b.Commit(nil); err != nil {
 				return err.Error()
 			}
@@ -290,7 +291,7 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			require.NoError(t, fs.MkdirAll(name, os.ModePerm))
 			require.NotNil(t, wc)
 			wc.Start(fs, name)
-			require.NoError(t, d.Checkpoint(fs.PathJoin(name, "checkpoint")))
+			require.NoError(t, d.Checkpoint(fs.PathJoin(name, "checkpoint"), pebble.WithFlushedWAL()))
 			return "started"
 		case "stat":
 			var buf bytes.Buffer

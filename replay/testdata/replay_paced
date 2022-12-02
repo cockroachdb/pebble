@@ -16,7 +16,7 @@ tree
             build/
     1073      000005.sst
      769      000007.sst
-      64      000009.log
+      89      000009.log
      769      000010.sst
      200      000012.log
      823      000013.sst
@@ -40,12 +40,12 @@ tree
        0        marker.format-version.000001.008
        0        marker.manifest.000001.MANIFEST-000011
             run-4/
-      53      000012.log
+       0      000012.log
     1009      000015.sst
        0      LOCK
      157      MANIFEST-000011
      212      MANIFEST-000013
-    1122      OPTIONS-000014
+    1121      OPTIONS-000014
        0      marker.format-version.000001.008
        0      marker.manifest.000002.MANIFEST-000013
               staging/

@@ -208,10 +208,31 @@ func (w *WorkloadCollector) onManifestCreated(info pebble.ManifestCreateInfo) {
 	})
 }
 
+func (w *WorkloadCollector) handleStop() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for idx := int(w.curManifest); idx < len(w.mu.manifests); idx++ {
+		m := w.mu.manifests[idx]
+		if m.sourceFile != nil {
+			err := m.sourceFile.Close()
+			if err != nil {
+				panic(err)
+			}
+		}
+		if m.destFile != nil {
+			err := m.destFile.Close()
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+	close(w.done)
+}
+
 // filesToProcessWatcher runs and performs the collection of the files of
 // interest.
 func (w *WorkloadCollector) filesToProcessWatcher() {
-	defer func() { close(w.done) }()
+	defer w.handleStop()
 	w.mu.Lock() // lock [1]
 	for !w.fileListener.stopFileListener {
 		// The following performs the workload capture. It waits on a condition

@@ -5,7 +5,7 @@ tree
 ----
           /
             build/
-      64      000004.log
+      89      000004.log
      795      000005.sst
       49      000006.log
      823      000007.sst
@@ -21,7 +21,7 @@ tree
       96      MANIFEST-000001
      122      MANIFEST-000008
               checkpoint/
-       0        000004.log
+      25        000004.log
      795        000005.sst
       96        MANIFEST-000001
     2495        OPTIONS-000003
@@ -38,7 +38,7 @@ tree
 ----
           /
             build/
-      64      000004.log
+      89      000004.log
      795      000005.sst
       49      000006.log
      823      000007.sst
@@ -51,11 +51,11 @@ tree
        0      marker.manifest.000002.MANIFEST-000008
             run-31/
      795      000005.sst
-      53      000006.log
+       0      000006.log
        0      LOCK
       96      MANIFEST-000001
      136      MANIFEST-000007
-    1122      OPTIONS-000008
+    1121      OPTIONS-000008
        0      marker.format-version.000001.008
        0      marker.manifest.000002.MANIFEST-000007
               staging/
@@ -64,7 +64,7 @@ tree
       96      MANIFEST-000001
      122      MANIFEST-000008
               checkpoint/
-       0        000004.log
+      25        000004.log
      795        000005.sst
       96        MANIFEST-000001
     2495        OPTIONS-000003

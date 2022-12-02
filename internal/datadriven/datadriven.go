@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
+	"github.com/pmezard/go-difflib/difflib"
 )
 
 var (
@@ -120,7 +121,16 @@ func runTestInternal(
 				r.emit(actual)
 			}
 		} else if d.Expected != actual {
-			t.Fatalf("\n%s: %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
+			diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+				A:       difflib.SplitLines(d.Expected),
+				B:       difflib.SplitLines(actual),
+				Context: 5,
+			})
+			if err != nil {
+				t.Fatalf("\n%s: %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
+			} else {
+				t.Fatalf("\n%s: %s\n%s", d.Pos, d.Input, diff)
+			}
 		} else if testing.Verbose() {
 			input := d.Input
 			if input == "" {

@@ -181,6 +181,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	r.Opts.EventListener = &l
 	r.Opts.EnsureDefaults()
 	r.readerOpts = r.Opts.MakeReaderOptions()
+	r.Opts.DisableWAL = true
 	r.d, err = pebble.Open(r.RunDir, r.Opts)
 	if err != nil {
 		return err
@@ -224,9 +225,16 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 			done = workloadExhausted && r.d.Metrics().Compact.NumInProgress == 0
 			if done {
 				close(r.compactionsHaveQuiesced)
+				r.finishedCompactionNotifier.L.Lock()
+				r.compactionCount++
 				r.finishedCompactionNotifier.Broadcast()
+				r.finishedCompactionNotifier.L.Unlock()
 			}
 		case <-ctx.Done():
+			r.finishedCompactionNotifier.L.Lock()
+			r.compactionCount++
+			r.finishedCompactionNotifier.Broadcast()
+			r.finishedCompactionNotifier.L.Unlock()
 			return ctx.Err()
 		case <-r.compactionEnded:
 			r.dbMetricsNotifier.L.Lock()
@@ -332,7 +340,7 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 
 		switch step.kind {
 		case flushStepKind:
-			if err := step.flushBatch.Commit(nil); err != nil {
+			if err := step.flushBatch.Commit(&pebble.WriteOptions{Sync: false}); err != nil {
 				return err
 			}
 		case ingestStepKind:
