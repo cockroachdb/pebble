@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble"
@@ -146,7 +147,7 @@ func runReplayTest(t *testing.T, path string) {
 			ct.WaitForInflightCompactionsToEqual(target)
 			return ""
 		case "wait":
-			if err := r.Wait(); err != nil {
+			if _, err := r.Wait(); err != nil {
 				return err.Error()
 			}
 			return ""
@@ -423,4 +424,21 @@ func runListFiles(t *testing.T, fs vfs.FS, td *datadriven.TestData) string {
 		}
 	}
 	return buf.String()
+}
+
+func TestBenchmarkString(t *testing.T) {
+	m := Metrics{
+		TotalWriteAmp:       5.6,
+		WriteStalls:         105,
+		WriteStallsDuration: time.Minute,
+	}
+	m.Ingest.BytesIntoL0 = 5 << 20
+	m.Ingest.BytesWeightedByLevel = 9 << 20
+	require.Equal(t, strings.TrimSpace(`
+BenchmarkReplay/tpcc/CompactionCounts      1              0    compactions              0        default              0         delete              0        elision              0           move              0           read              0        rewrite              0     multilevel
+BenchmarkReplay/tpcc/WriteAmp              1            5.6           wamp
+BenchmarkReplay/tpcc/WriteStalls           1            105         stalls             60     stall-secs
+BenchmarkReplay/tpcc/IngestedIntoL0        1        5242880          bytes
+BenchmarkReplay/tpcc/IngestWeightedByLevel 1        9437184          bytes`),
+		strings.TrimSpace(m.BenchmarkString("tpcc")))
 }
