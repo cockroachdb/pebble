@@ -11,7 +11,9 @@
 package replay
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"sort"
@@ -90,6 +92,91 @@ func (pra PaceByFixedReadAmp) pace(r *Runner, _ workloadStep) time.Duration {
 	return time.Since(startTime)
 }
 
+// Metrics holds the various statistics on a replay run and its performance.
+type Metrics struct {
+	CompactionCounts struct {
+		Total       int64
+		Default     int64
+		DeleteOnly  int64
+		ElisionOnly int64
+		Move        int64
+		Read        int64
+		Rewrite     int64
+		MultiLevel  int64
+	}
+	Final  *pebble.Metrics
+	Ingest struct {
+		BytesIntoL0 uint64
+		// BytesWeightedByLevel is calculated as the number of bytes ingested
+		// into a level multiplied by the level's distance from the bottommost
+		// level (L6), summed across all levels. It can be used to guage how
+		// effective heuristics are at ingesting files into lower levels, saving
+		// write amplification.
+		BytesWeightedByLevel uint64
+	}
+	TotalWriteAmp       float64
+	WriteStalls         uint64
+	WriteStallsDuration time.Duration
+}
+
+// BenchmarkString returns the metrics in the form of a series of 'Benchmark'
+// lines understandable by benchstat.
+func (m *Metrics) BenchmarkString(name string) string {
+	groups := []struct {
+		label string
+		pairs []string
+	}{
+		{label: "CompactionCounts", pairs: []string{
+			fmt.Sprint(m.CompactionCounts.Total), "compactions",
+			fmt.Sprint(m.CompactionCounts.Default), "default",
+			fmt.Sprint(m.CompactionCounts.DeleteOnly), "delete",
+			fmt.Sprint(m.CompactionCounts.ElisionOnly), "elision",
+			fmt.Sprint(m.CompactionCounts.Move), "move",
+			fmt.Sprint(m.CompactionCounts.Read), "read",
+			fmt.Sprint(m.CompactionCounts.Rewrite), "rewrite",
+			fmt.Sprint(m.CompactionCounts.MultiLevel), "multilevel",
+		}},
+		{label: "WriteAmp", pairs: []string{
+			fmt.Sprint(m.TotalWriteAmp), "wamp",
+		}},
+		{label: "WriteStalls", pairs: []string{
+			fmt.Sprint(m.WriteStalls), "stalls",
+			fmt.Sprint(m.WriteStallsDuration.Seconds()), "stall-secs",
+		}},
+		{label: "IngestedIntoL0", pairs: []string{
+			fmt.Sprint(m.Ingest.BytesIntoL0), "bytes",
+		}},
+		{label: "IngestWeightedByLevel", pairs: []string{
+			fmt.Sprint(m.Ingest.BytesWeightedByLevel), "bytes",
+		}},
+	}
+
+	var maxLenMetric int
+	var maxLenGroup int
+	for _, grp := range groups {
+		if v := len(grp.label); maxLenGroup < v {
+			maxLenGroup = v
+		}
+		for _, p := range grp.pairs {
+			if v := len(p); maxLenMetric < v {
+				maxLenMetric = v
+			}
+		}
+	}
+	benchmarkPrefixSpecifier := fmt.Sprintf("BenchmarkReplay/%s/%%-%ds 1", name, maxLenGroup)
+	pairFormatSpecifier := fmt.Sprintf("    %%%ds", maxLenMetric)
+
+	var buf bytes.Buffer
+	for _, grp := range groups {
+		fmt.Fprintf(&buf, benchmarkPrefixSpecifier, grp.label)
+		for _, p := range grp.pairs {
+			fmt.Fprintf(&buf, pairFormatSpecifier, p)
+		}
+		fmt.Fprintln(&buf)
+	}
+	return buf.String()
+}
+
 // Runner runs a captured workload against a test database, collecting
 // metrics on performance.
 type Runner struct {
@@ -110,8 +197,8 @@ type Runner struct {
 	err      atomic.Value
 	errgroup *errgroup.Group
 	metrics  struct {
-		writeStalls            uint64
-		writeStallDurationNano uint64
+		writeStalls             uint64
+		writeStallsDurationNano uint64
 	}
 	readerOpts sstable.ReaderOptions
 	stagingDir string
@@ -265,13 +352,39 @@ func (r *Runner) stopCompactionNotifier() {
 	r.finishedCompactionNotifier.L.Unlock()
 }
 
-// Wait waits for the workload replay to complete.
-func (r *Runner) Wait() error {
+// Wait waits for the workload replay to complete. Wait returns once the entire
+// workload has been replayed, and compactions have quiesced.
+func (r *Runner) Wait() (Metrics, error) {
 	err := r.errgroup.Wait()
 	if storedErr := r.err.Load(); storedErr != nil {
 		err = storedErr.(error)
 	}
-	return err
+	pm := r.d.Metrics()
+	var total pebble.LevelMetrics
+	var ingestBytesWeighted uint64
+	for l := 0; l < len(pm.Levels); l++ {
+		total.Add(&pm.Levels[l])
+		total.Sublevels += pm.Levels[l].Sublevels
+		ingestBytesWeighted += pm.Levels[l].BytesIngested * uint64(len(pm.Levels)-l-1)
+	}
+
+	m := Metrics{
+		Final:               pm,
+		TotalWriteAmp:       total.WriteAmp(),
+		WriteStalls:         r.metrics.writeStalls,
+		WriteStallsDuration: time.Duration(r.metrics.writeStallsDurationNano),
+	}
+	m.CompactionCounts.Total = pm.Compact.Count
+	m.CompactionCounts.Default = pm.Compact.DefaultCount
+	m.CompactionCounts.DeleteOnly = pm.Compact.DeleteOnlyCount
+	m.CompactionCounts.ElisionOnly = pm.Compact.ElisionOnlyCount
+	m.CompactionCounts.Move = pm.Compact.MoveCount
+	m.CompactionCounts.Read = pm.Compact.ReadCount
+	m.CompactionCounts.Rewrite = pm.Compact.RewriteCount
+	m.CompactionCounts.MultiLevel = pm.Compact.MultiLevelCount
+	m.Ingest.BytesIntoL0 = pm.Levels[0].BytesIngested
+	m.Ingest.BytesWeightedByLevel = ingestBytesWeighted
+	return m, err
 }
 
 // Close closes remaining open resources, including the database. It must be
@@ -323,7 +436,7 @@ func (r *Runner) eventListener() pebble.EventListener {
 			writeStallBegin = time.Now()
 		},
 		WriteStallEnd: func() {
-			atomic.AddUint64(&r.metrics.writeStallDurationNano,
+			atomic.AddUint64(&r.metrics.writeStallsDurationNano,
 				uint64(time.Since(writeStallBegin).Nanoseconds()))
 		},
 		CompactionBegin: func(_ pebble.CompactionInfo) {
@@ -366,9 +479,7 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 				return err
 			}
 		case ingestStepKind:
-			// TODO(jackson, leon): Use the stats
-			_, err := r.d.IngestWithStats(step.tablesToIngest)
-			if err != nil {
+			if err := r.d.Ingest(step.tablesToIngest); err != nil {
 				return err
 			}
 
