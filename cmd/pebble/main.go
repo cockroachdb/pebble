@@ -35,7 +35,10 @@ func main() {
 		Use:   "bench",
 		Short: "benchmarks",
 	}
+
+	replayCmd := initReplayCmd()
 	benchCmd.AddCommand(
+		replayCmd,
 		scanCmd,
 		syncCmd,
 		tombstoneCmd,
@@ -53,7 +56,7 @@ func main() {
 	t := tool.New(tool.Comparers(mvccComparer, testkeys.Comparer), tool.Mergers(fauxMVCCMerger))
 	rootCmd.AddCommand(t.Commands...)
 
-	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, writeBenchCmd, ycsbCmd} {
+	for _, cmd := range []*cobra.Command{replayCmd, scanCmd, syncCmd, tombstoneCmd, writeBenchCmd, ycsbCmd} {
 		cmd.Flags().BoolVarP(
 			&verbose, "verbose", "v", false, "enable verbose event logging")
 	}
