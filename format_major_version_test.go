@@ -54,8 +54,8 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatMinTableFormatPebblev1, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatPrePebblev1Marked))
 	require.Equal(t, FormatPrePebblev1Marked, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatUnusedPrePebblev1MarkedCompacted))
-	require.Equal(t, FormatUnusedPrePebblev1MarkedCompacted, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(formatUnusedPrePebblev1MarkedCompacted))
+	require.Equal(t, formatUnusedPrePebblev1MarkedCompacted, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatSSTableValueBlocks))
 	require.Equal(t, FormatSSTableValueBlocks, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatFlushableIngest))
@@ -225,7 +225,7 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		FormatRangeKeys:                        {sstable.TableFormatLevelDB, sstable.TableFormatPebblev2},
 		FormatMinTableFormatPebblev1:           {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
 		FormatPrePebblev1Marked:                {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
-		FormatUnusedPrePebblev1MarkedCompacted: {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
+		formatUnusedPrePebblev1MarkedCompacted: {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
 		FormatSSTableValueBlocks:               {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
 		FormatFlushableIngest:                  {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
 		FormatPrePebblev1MarkedCompacted:       {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
@@ -572,9 +572,9 @@ func TestPebblev1MigrationConcurrencyRace(t *testing.T) {
 		require.NoError(t, d.Flush())
 	}()
 
-	opts.FormatMajorVersion = FormatUnusedPrePebblev1MarkedCompacted
+	opts.FormatMajorVersion = formatUnusedPrePebblev1MarkedCompacted
 	d, err := Open("", opts)
 	require.NoError(t, err)
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatUnusedPrePebblev1MarkedCompacted))
+	require.NoError(t, d.RatchetFormatMajorVersion(formatUnusedPrePebblev1MarkedCompacted))
 	require.NoError(t, d.Close())
 }
