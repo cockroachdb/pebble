@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -47,7 +47,7 @@ func runTests(t *testing.T, path string) {
 
 		fs := vfs.NewMem()
 		t.Run(name, func(t *testing.T) {
-			datadriven.RunTest(t, path, func(d *datadriven.TestData) string {
+			datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
 				args := []string{d.Cmd}
 				for _, arg := range d.CmdArgs {
 					args = append(args, arg.String())

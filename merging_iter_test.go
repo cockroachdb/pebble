@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -43,7 +43,7 @@ func TestMergingIter(t *testing.T) {
 
 func TestMergingIterSeek(t *testing.T) {
 	var def string
-	datadriven.RunTest(t, "testdata/merging_iter_seek", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/merging_iter_seek", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			def = d.Input
@@ -102,7 +102,7 @@ func TestMergingIterNextPrev(t *testing.T) {
 
 	for _, c := range iterCases {
 		t.Run("", func(t *testing.T) {
-			datadriven.RunTest(t, "testdata/internal_iter_next", func(d *datadriven.TestData) string {
+			datadriven.RunTest(t, "testdata/internal_iter_next", func(t *testing.T, d *datadriven.TestData) string {
 				switch d.Cmd {
 				case "define":
 					// Ignore. We've defined the iterator data above.
@@ -166,7 +166,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 			return iter, rangeDelIter, nil
 		}
 
-	datadriven.RunTest(t, "testdata/merging_iter", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/merging_iter", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			lines := strings.Split(d.Input, "\n")

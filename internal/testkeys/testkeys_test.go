@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/datadriven"
 	"github.com/stretchr/testify/require"
 )
 
@@ -179,7 +179,7 @@ func TestSuffixLen(t *testing.T) {
 
 func TestDivvy(t *testing.T) {
 	var buf bytes.Buffer
-	datadriven.RunTest(t, "testdata/divvy", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/divvy", func(t *testing.T, d *datadriven.TestData) string {
 		buf.Reset()
 		switch d.Cmd {
 		case "divvy":

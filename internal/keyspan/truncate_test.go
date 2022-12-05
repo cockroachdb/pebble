@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 )
 
 func TestTruncate(t *testing.T) {
@@ -18,7 +18,7 @@ func TestTruncate(t *testing.T) {
 	fmtKey := base.DefaultComparer.FormatKey
 	var iter FragmentIterator
 
-	datadriven.RunTest(t, "testdata/truncate", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/truncate", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
 			tombstones := buildSpans(t, cmp, fmtKey, d.Input, base.InternalKeyKindRangeDelete)

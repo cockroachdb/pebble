@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -45,7 +45,7 @@ func TestTableStats(t *testing.T) {
 		}
 	}()
 
-	datadriven.RunTest(t, "testdata/table_stats", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/table_stats", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "disable":
 			d.mu.Lock()
@@ -146,7 +146,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 	var m *fileMetadata
 	cmp := base.DefaultComparer.Compare
 	fs := vfs.NewMem()
-	datadriven.RunTest(t, "testdata/table_stats_deletion_iter", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/table_stats_deletion_iter", func(t *testing.T, td *datadriven.TestData) string {
 		switch cmd := td.Cmd; cmd {
 		case "build":
 			f, err := fs.Create("tmp.sst")

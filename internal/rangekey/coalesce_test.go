@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/pmezard/go-difflib/difflib"
@@ -26,7 +26,7 @@ func TestCoalesce(t *testing.T) {
 	var buf bytes.Buffer
 	cmp := testkeys.Comparer.Compare
 
-	datadriven.RunTest(t, "testdata/coalesce", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/coalesce", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "coalesce":
 			buf.Reset()
@@ -51,7 +51,7 @@ func TestIter(t *testing.T) {
 	var iter keyspan.MergingIter
 	var buf bytes.Buffer
 
-	datadriven.RunTest(t, "testdata/iter", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/iter", func(t *testing.T, td *datadriven.TestData) string {
 		buf.Reset()
 		switch td.Cmd {
 		case "define":
@@ -124,7 +124,7 @@ func TestDefragmenting(t *testing.T) {
 	var spans []keyspan.Span
 	var hasPrefix bool
 	var prefix []byte
-	datadriven.RunTest(t, "testdata/defragmenting_iter", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/defragmenting_iter", func(t *testing.T, td *datadriven.TestData) string {
 		buf.Reset()
 		switch td.Cmd {
 		case "define":

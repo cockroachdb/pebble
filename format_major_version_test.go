@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -246,7 +246,7 @@ func TestSplitUserKeyMigration(t *testing.T) {
 	}()
 
 	datadriven.RunTest(t, "testdata/format_major_version_split_user_key_migration",
-		func(td *datadriven.TestData) string {
+		func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "define":
 				if d != nil {
@@ -347,7 +347,7 @@ func TestPebblev1Migration(t *testing.T) {
 	}()
 
 	datadriven.RunTest(t, "testdata/format_major_version_pebblev1_migration",
-		func(td *datadriven.TestData) string {
+		func(t *testing.T, td *datadriven.TestData) string {
 			switch cmd := td.Cmd; cmd {
 			case "open":
 				var version int

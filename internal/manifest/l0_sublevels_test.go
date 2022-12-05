@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/stretchr/testify/require"
@@ -262,7 +262,7 @@ func TestL0Sublevels(t *testing.T) {
 	var sublevels *L0Sublevels
 	baseLevel := NumLevels - 1
 
-	datadriven.RunTest(t, "testdata/l0_sublevels", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/l0_sublevels", func(t *testing.T, td *datadriven.TestData) string {
 		pickBaseCompaction := false
 		level := 0
 		addL0FilesOpt := false

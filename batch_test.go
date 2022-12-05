@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/batchskl"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
@@ -398,7 +398,7 @@ func TestIndexedBatchMutation(t *testing.T) {
 		}
 	}()
 
-	datadriven.RunTest(t, "testdata/indexed_batch_mutation", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/indexed_batch_mutation", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "batch":
 			writeBatch := newBatch(d)
@@ -676,7 +676,7 @@ func TestBatchGet(t *testing.T) {
 			defer d.Close()
 			var b *Batch
 
-			datadriven.RunTest(t, "testdata/batch_get", func(td *datadriven.TestData) string {
+			datadriven.RunTest(t, "testdata/batch_get", func(t *testing.T, td *datadriven.TestData) string {
 				switch td.Cmd {
 				case "define":
 					switch c.method {
@@ -731,7 +731,7 @@ func TestBatchIter(t *testing.T) {
 		for _, testdata := range []string{
 			"testdata/internal_iter_next", "testdata/internal_iter_bounds"} {
 			t.Run(method, func(t *testing.T) {
-				datadriven.RunTest(t, testdata, func(d *datadriven.TestData) string {
+				datadriven.RunTest(t, testdata, func(t *testing.T, d *datadriven.TestData) string {
 					switch d.Cmd {
 					case "define":
 						switch method {
@@ -792,7 +792,7 @@ func TestBatchIter(t *testing.T) {
 func TestBatchRangeOps(t *testing.T) {
 	var b *Batch
 
-	datadriven.RunTest(t, "testdata/batch_range_ops", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/batch_range_ops", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "clear":
 			b = nil
@@ -883,7 +883,7 @@ func TestBatchTooLarge(t *testing.T) {
 
 func TestFlushableBatchIter(t *testing.T) {
 	var b *flushableBatch
-	datadriven.RunTest(t, "testdata/internal_iter_next", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/internal_iter_next", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			batch := newBatch(nil)
@@ -909,7 +909,7 @@ func TestFlushableBatchIter(t *testing.T) {
 
 func TestFlushableBatch(t *testing.T) {
 	var b *flushableBatch
-	datadriven.RunTest(t, "testdata/flushable_batch", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/flushable_batch", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			batch := newBatch(nil)
@@ -995,7 +995,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 	var fb *flushableBatch
 	var input string
 
-	datadriven.RunTest(t, "testdata/delete_range", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/delete_range", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "clear":
 			input = ""

@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -64,7 +64,7 @@ func TestMarker(t *testing.T) {
 	memFS := vfs.NewMem()
 
 	var buf bytes.Buffer
-	datadriven.RunTest(t, "testdata/marker", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/marker", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "list":
 			ls, err := memFS.List(td.CmdArgs[0].String())

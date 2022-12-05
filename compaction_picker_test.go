@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/stretchr/testify/require"
 )
@@ -92,7 +92,7 @@ func diskAvailBytesInf() uint64 {
 
 func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_picker_level_max_bytes",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
 				vers, opts, sizes, errMsg := loadVersion(d)
@@ -154,7 +154,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_picker_target_level",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
 				var errMsg string
@@ -322,7 +322,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 
 func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_picker_estimated_debt",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
 				vers, opts, sizes, errMsg := loadVersion(d)
@@ -371,7 +371,7 @@ func TestCompactionPickerL0(t *testing.T) {
 	var inProgressCompactions []compactionInfo
 	var pc *pickedCompaction
 
-	datadriven.RunTest(t, "testdata/compaction_picker_L0", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/compaction_picker_L0", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			fileMetas := [manifest.NumLevels][]*fileMetadata{}
@@ -611,7 +611,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 	var picker *compactionPickerByScore
 	var inProgressCompactions []compactionInfo
 
-	datadriven.RunTest(t, "testdata/compaction_picker_concurrency", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/compaction_picker_concurrency", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			fileMetas := [manifest.NumLevels][]*fileMetadata{}
@@ -825,7 +825,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 		return m, nil
 	}
 
-	datadriven.RunTest(t, "testdata/compaction_picker_read_triggered", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/compaction_picker_read_triggered", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			rcList = readCompactionQueue{}
@@ -974,7 +974,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "setup-inputs":
 				var availBytes uint64 = math.MaxUint64
@@ -1083,7 +1083,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_expand_inputs",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
 				files = nil
@@ -1185,7 +1185,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 		return m, nil
 	}
 
-	datadriven.RunTest(t, "testdata/compaction_output_file_size", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/compaction_output_file_size", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			fileMetas := [manifest.NumLevels][]*fileMetadata{}

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/stretchr/testify/require"
 )
 
@@ -135,7 +135,7 @@ func TestFragmenter(t *testing.T) {
 		return s != nil && s.CoversAt(readSeq, seq)
 	}
 
-	datadriven.RunTest(t, "testdata/fragmenter", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/fragmenter", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
 			return func() (result string) {
@@ -178,7 +178,7 @@ func TestFragmenter(t *testing.T) {
 }
 
 func TestFragmenterDeleted(t *testing.T) {
-	datadriven.RunTest(t, "testdata/fragmenter_deleted", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/fragmenter_deleted", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
 			f := &Fragmenter{
@@ -217,7 +217,7 @@ func TestFragmenterTruncateAndFlushTo(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	fmtKey := base.DefaultComparer.FormatKey
 
-	datadriven.RunTest(t, "testdata/fragmenter_truncate_and_flush_to", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/fragmenter_truncate_and_flush_to", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
 			return func() (result string) {
@@ -241,7 +241,7 @@ func TestFragmenter_Values(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	fmtKey := base.DefaultComparer.FormatKey
 
-	datadriven.RunTest(t, "testdata/fragmenter_values", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/fragmenter_values", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
 			return func() (result string) {
@@ -264,7 +264,7 @@ func TestFragmenter_Values(t *testing.T) {
 func TestFragmenter_EmitOrder(t *testing.T) {
 	var buf bytes.Buffer
 
-	datadriven.RunTest(t, "testdata/fragmenter_emit_order", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/fragmenter_emit_order", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
 			buf.Reset()

@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
@@ -138,7 +138,7 @@ func TestEventListener(t *testing.T) {
 	mem := vfs.NewMem()
 	require.NoError(t, mem.MkdirAll("ext", 0755))
 
-	datadriven.RunTest(t, "testdata/event_listener", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/event_listener", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "open":
 			buf.Reset()

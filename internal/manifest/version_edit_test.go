@@ -15,9 +15,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
@@ -316,7 +316,7 @@ func TestVersionEditApply(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/version_edit_apply",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "apply":
 				// TODO(sumeer): move this Version parsing code to utils, to

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
@@ -135,7 +135,7 @@ func TestCompactionIter(t *testing.T) {
 	}
 
 	runTest := func(t *testing.T, formatVersion FormatMajorVersion) {
-		datadriven.RunTest(t, fileFunc(formatVersion), func(d *datadriven.TestData) string {
+		datadriven.RunTest(t, fileFunc(formatVersion), func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
 				merge = nil

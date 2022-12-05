@@ -10,14 +10,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 )
 
 func TestLevelIterator(t *testing.T) {
 	var level LevelSlice
 	datadriven.RunTest(t, "testdata/level_iterator",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
 				var files []*FileMetadata

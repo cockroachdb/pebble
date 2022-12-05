@@ -18,11 +18,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -412,7 +412,7 @@ func runTestReader(
 			}
 		}()
 
-		datadriven.RunTest(t, path, func(d *datadriven.TestData) string {
+		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "build":
 				if r != nil {
@@ -661,7 +661,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 
 func TestMaybeReadahead(t *testing.T) {
 	var rs readaheadState
-	datadriven.RunTest(t, "testdata/readahead", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/readahead", func(t *testing.T, d *datadriven.TestData) string {
 		cacheHit := false
 		switch d.Cmd {
 		case "reset":

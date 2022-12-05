@@ -21,10 +21,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -830,7 +830,7 @@ func TestElideRangeTombstone(t *testing.T) {
 }
 
 func TestCompactionTransform(t *testing.T) {
-	datadriven.RunTest(t, "testdata/compaction_transform", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/compaction_transform", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "transform":
 			var snapshots []uint64
@@ -1324,7 +1324,7 @@ func TestManualCompaction(t *testing.T) {
 	runTest := func(t *testing.T, testData string, minVersion, maxVersion FormatMajorVersion, verbose bool) {
 		reset(minVersion, maxVersion)
 		var ongoingCompaction *compaction
-		datadriven.RunTest(t, testData, func(td *datadriven.TestData) string {
+		datadriven.RunTest(t, testData, func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "reset":
 				reset(minVersion, maxVersion)
@@ -1597,7 +1597,7 @@ func TestCompactionFindGrandparentLimit(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_find_grandparent_limit",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
 				grandparents = nil
@@ -1702,7 +1702,7 @@ func TestCompactionFindL0Limit(t *testing.T) {
 	flushSplitBytes := int64(0)
 
 	datadriven.RunTest(t, "testdata/compaction_find_l0_limit",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
 				fileMetas := [manifest.NumLevels][]*fileMetadata{}
@@ -1790,7 +1790,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 	version := &version{}
 
 	datadriven.RunTest(t, "testdata/compaction_output_level",
-		func(d *datadriven.TestData) (res string) {
+		func(t *testing.T, d *datadriven.TestData) (res string) {
 			defer func() {
 				if r := recover(); r != nil {
 					res = fmt.Sprintln(r)
@@ -1831,7 +1831,7 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_atomic_unit_bounds",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
 				files = manifest.LevelSlice{}
@@ -1944,7 +1944,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 	var err error
 	var opts *Options
 	datadriven.RunTest(t, "testdata/compaction_delete_only_hints",
-		func(td *datadriven.TestData) string {
+		func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "define":
 				opts, err = reset()
@@ -2163,7 +2163,7 @@ func TestCompactionTombstones(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_tombstones",
-		func(td *datadriven.TestData) string {
+		func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "define":
 				if d != nil {
@@ -2278,7 +2278,7 @@ func TestCompactionReadTriggeredQueue(t *testing.T) {
 	var queue *readCompactionQueue
 
 	datadriven.RunTest(t, "testdata/read_compaction_queue",
-		func(td *datadriven.TestData) string {
+		func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "create":
 				queue = &readCompactionQueue{}
@@ -2372,7 +2372,7 @@ func TestCompactionReadTriggered(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_read_triggered",
-		func(td *datadriven.TestData) string {
+		func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "define":
 				if d != nil {
@@ -2491,7 +2491,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 	opts := (*Options)(nil).EnsureDefaults()
 
 	var c *compaction
-	datadriven.RunTest(t, "testdata/compaction_inuse_key_ranges", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/compaction_inuse_key_ranges", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			c = &compaction{
@@ -2701,7 +2701,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_allow_zero_seqnum",
-		func(td *datadriven.TestData) string {
+		func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "define":
 				if d != nil {
@@ -2806,7 +2806,7 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_error_on_user_key_overlap",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "error-on-user-key-overlap":
 				c := &compaction{
@@ -2935,7 +2935,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_check_ordering",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "check-ordering":
 				c := &compaction{
@@ -3072,7 +3072,7 @@ func TestCompactionOutputSplitters(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_output_splitters",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "reset":
 				main = nil
@@ -3679,7 +3679,7 @@ func TestMarkedForCompaction(t *testing.T) {
 		d, err = Open("", opts)
 		require.NoError(t, err)
 	}
-	datadriven.RunTest(t, "testdata/marked_for_compaction", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/marked_for_compaction", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
 			reset()

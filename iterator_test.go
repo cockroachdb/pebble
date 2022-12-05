@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -519,7 +519,7 @@ func TestIterator(t *testing.T) {
 		return it
 	}
 
-	datadriven.RunTest(t, "testdata/iterator", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/iterator", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			merge = nil
@@ -606,7 +606,7 @@ func TestReadSampling(t *testing.T) {
 		}
 	}()
 
-	datadriven.RunTest(t, "testdata/iterator_read_sampling", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/iterator_read_sampling", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			if iter != nil {
@@ -773,7 +773,7 @@ func TestIteratorTableFilter(t *testing.T) {
 		}
 	}()
 
-	datadriven.RunTest(t, "testdata/iterator_table_filter", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/iterator_table_filter", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			if d != nil {
@@ -866,7 +866,7 @@ func TestIteratorNextPrev(t *testing.T) {
 	}
 	reset()
 
-	datadriven.RunTest(t, "testdata/iterator_next_prev", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/iterator_next_prev", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
 			reset()
@@ -938,7 +938,7 @@ func TestIteratorStats(t *testing.T) {
 	}
 	reset()
 
-	datadriven.RunTest(t, "testdata/iterator_stats", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/iterator_stats", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
 			reset()
@@ -1024,7 +1024,7 @@ func TestIteratorSeekOpt(t *testing.T) {
 	}()
 	var seekGEUsingNext, seekPrefixGEUsingNext int
 
-	datadriven.RunTest(t, "testdata/iterator_seek_opt", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/iterator_seek_opt", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			if iter != nil {
@@ -1199,7 +1199,7 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 		}
 	}
 
-	datadriven.RunTest(t, "testdata/iterator_seek_opt_errors", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/iterator_seek_opt_errors", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			keys = keys[:0]
@@ -1335,7 +1335,7 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 	}
 
 	datadriven.RunTest(
-		t, "testdata/iterator_block_interval_filter", func(td *datadriven.TestData) string {
+		t, "testdata/iterator_block_interval_filter", func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "build":
 				var collectors []collector
@@ -1594,7 +1594,7 @@ func TestIteratorBoundsLifetimes(t *testing.T) {
 		}
 	}
 
-	datadriven.RunTest(t, "testdata/iterator_bounds_lifetimes", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/iterator_bounds_lifetimes", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			var err error

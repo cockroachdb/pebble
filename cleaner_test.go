@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +31,7 @@ func TestArchiveCleaner(t *testing.T) {
 		WALDir:  "wal",
 	}
 
-	datadriven.RunTest(t, "testdata/cleaner", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/cleaner", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "batch":
 			if len(td.CmdArgs) != 1 {

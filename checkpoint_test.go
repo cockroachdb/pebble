@@ -12,8 +12,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +34,7 @@ func TestCheckpoint(t *testing.T) {
 		L0CompactionThreshold: 10,
 	}
 
-	datadriven.RunTest(t, "testdata/checkpoint", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/checkpoint", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "batch":
 			if len(td.CmdArgs) != 1 {
