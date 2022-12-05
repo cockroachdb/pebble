@@ -156,10 +156,27 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 
 				switch parts[0] {
 				case "clone":
-					if len(parts) != 3 {
-						return "clone <src> <dest>"
+					if len(parts) < 3 {
+						return "clone <src> <dest> [disk|mem] [link] [sync]"
 					}
-					_, _ = Clone(fs, fs, fs.PathJoin(dir, parts[1]), fs.PathJoin(dir, parts[2]))
+					dstFS := fs
+					var opts []CloneOption
+					for _, p := range parts[3:] {
+						switch p {
+						case "disk":
+							dstFS = loggingFS{FS: Default, base: dir, w: &buf}
+						case "mem":
+							dstFS = loggingFS{FS: NewMem(), base: dir, w: &buf}
+						case "link":
+							opts = append(opts, CloneTryLink)
+						case "sync":
+							opts = append(opts, CloneSync)
+						default:
+							return fmt.Sprintf("unrecognized argument %q", p)
+						}
+					}
+
+					_, _ = Clone(fs, dstFS, fs.PathJoin(dir, parts[1]), fs.PathJoin(dir, parts[2]), opts...)
 
 				case "create":
 					if len(parts) != 2 {

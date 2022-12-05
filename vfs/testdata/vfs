@@ -76,23 +76,34 @@ mkdir: d/b [<nil>]
 create: d/b/c [<nil>]
 close: c [<nil>]
 
+# NB: This clone does not specify a destination FS, so the clone target will be
+# the same FS. This results in the use of link.
+
 define
-clone d e
+clone d e link
 ----
 open: d [<nil>]
-close: d [<nil>]
 mkdir: e [<nil>]
 open: d/a [<nil>]
-close: d/a [<nil>]
+link: d/a -> e/a [random]
+open: d/a [<nil>]
 create: e/a [<nil>]
+sync: a [<nil>]
 close: a [<nil>]
+close: d/a [<nil>]
+close: d/a [<nil>]
 open: d/b [<nil>]
-close: d/b [<nil>]
 mkdir: e/b [<nil>]
 open: d/b/c [<nil>]
-close: d/b/c [<nil>]
+link: d/b/c -> e/b/c [random]
+open: d/b/c [<nil>]
 create: e/b/c [<nil>]
+sync: c [<nil>]
 close: c [<nil>]
+close: d/b/c [<nil>]
+close: d/b/c [<nil>]
+close: d/b [<nil>]
+close: d [<nil>]
 
 define
 list e
@@ -131,3 +142,47 @@ reuseForWrite x y
 ----
 reuseForWrite: a -> b [<nil>]
 reuseForWrite: x -> y [file does not exist]
+
+# NB: This clone target specified a different FS. This results in no use of
+# link, despite link being provided.
+
+define
+clone d f mem link
+----
+open: d [<nil>]
+mkdir: f [<nil>]
+open: d/a [<nil>]
+create: f/a [<nil>]
+close: a [<nil>]
+close: d/a [<nil>]
+open: d/b [<nil>]
+mkdir: f/b [<nil>]
+open: d/b/c [<nil>]
+create: f/b/c [<nil>]
+close: c [<nil>]
+close: d/b/c [<nil>]
+close: d/b [<nil>]
+close: d [<nil>]
+
+# NB: This clone does not specify link, so all files are copied. It does specify
+# sync, so all files and directories are synced.
+
+define
+clone d g sync
+----
+open: d [<nil>]
+mkdir: g [<nil>]
+open: d/a [<nil>]
+create: g/a [<nil>]
+sync: a [<nil>]
+close: a [<nil>]
+close: d/a [<nil>]
+open: d/b [<nil>]
+mkdir: g/b [<nil>]
+open: d/b/c [<nil>]
+create: g/b/c [<nil>]
+sync: c [<nil>]
+close: c [<nil>]
+close: d/b/c [<nil>]
+close: d/b [<nil>]
+close: d [<nil>]
