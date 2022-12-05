@@ -12,8 +12,9 @@ import (
 )
 
 type cloneOpts struct {
-	skip func(string) bool
-	sync bool
+	skip    func(string) bool
+	sync    bool
+	tryLink bool
 }
 
 // A CloneOption configures the behavior of Clone.
@@ -27,6 +28,12 @@ func CloneSkip(fn func(string) bool) CloneOption {
 
 // CloneSync configures Clone to sync files and directories.
 var CloneSync CloneOption = func(o *cloneOpts) { o.sync = true }
+
+// CloneTryLink configures Clone to link files to the destination if the source and
+// destination filesystems are the same. If the source and destination
+// filesystems are not the same or the filesystem does not support linking, then
+// Clone falls back to copying.
+var CloneTryLink CloneOption = func(o *cloneOpts) { o.tryLink = true }
 
 // Clone recursively copies a directory structure from srcFS to dstFS. srcPath
 // specifies the path in srcFS to copy from and must be compatible with the
@@ -49,6 +56,7 @@ func Clone(srcFS, dstFS FS, srcPath, dstPath string, opts ...CloneOption) (bool,
 		}
 		return false, err
 	}
+	defer srcFile.Close()
 
 	stat, err := srcFile.Stat()
 	if err != nil {
@@ -56,9 +64,6 @@ func Clone(srcFS, dstFS FS, srcPath, dstPath string, opts ...CloneOption) (bool,
 	}
 
 	if stat.IsDir() {
-		if err := srcFile.Close(); err != nil {
-			return false, err
-		}
 		if err := dstFS.MkdirAll(dstPath, 0755); err != nil {
 			return false, err
 		}
@@ -94,11 +99,23 @@ func Clone(srcFS, dstFS FS, srcPath, dstPath string, opts ...CloneOption) (bool,
 		return true, nil
 	}
 
+	// If the source and destination filesystems are the same and the user
+	// specified they'd prefer to link if possible, try to use a hardlink,
+	// falling back to copying if it fails.
+	if srcFS == dstFS && o.tryLink {
+		if err := LinkOrCopy(srcFS, srcPath, dstPath); oserror.IsNotExist(err) {
+			// Clone's semantics are such that it returns (false,nil) if the
+			// source does not exist.
+			return false, nil
+		} else if err != nil {
+			return false, err
+		} else {
+			return true, nil
+		}
+	}
+
 	data, err := io.ReadAll(srcFile)
 	if err != nil {
-		return false, err
-	}
-	if err := srcFile.Close(); err != nil {
 		return false, err
 	}
 	dstFile, err := dstFS.Create(dstPath)
@@ -113,7 +130,6 @@ func Clone(srcFS, dstFS FS, srcPath, dstPath string, opts ...CloneOption) (bool,
 			return false, err
 		}
 	}
-
 	if err := dstFile.Close(); err != nil {
 		return false, err
 	}

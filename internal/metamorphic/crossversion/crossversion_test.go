@@ -25,8 +25,8 @@ import (
 	"unicode"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/metamorphic"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -146,6 +146,11 @@ func runCrossVersion(
 		return err
 	}
 
+	// When run with test parallelism, multiple tests may fail concurrently.
+	// Only one should actually run the test failure logic which copies the root
+	// dir into the artifacts directory.
+	var fatalOnce sync.Once
+
 	// The outer for loop executes once per version being tested. It takes a
 	// list of initial states, populated by the previous version. The inner loop
 	// executes once per initial state, running the metamorphic test against the
@@ -156,7 +161,7 @@ func runCrossVersion(
 	initialStates := []initialState{{}}
 	for i := range versions {
 		t.Logf("Running tests with version %s with %d initial state(s).", versions[i].SHA, len(initialStates))
-		histories, nextInitialStates, err := runVersion(ctx, t, rootDir, versions[i], versionSeeds[i], initialStates)
+		histories, nextInitialStates, err := runVersion(ctx, t, &fatalOnce, rootDir, versions[i], versionSeeds[i], initialStates)
 		if err != nil {
 			return err
 		}
@@ -165,7 +170,7 @@ func runCrossVersion(
 		// version's metamorphic runs used the same seed, so all of the
 		// resulting histories should be identical.
 		if h, diff := metamorphic.CompareHistories(t, histories); h > 0 {
-			fatalf(t, rootDir, "Metamorphic test divergence between %q and %q:\nDiff:\n%s",
+			fatalf(t, &fatalOnce, rootDir, "Metamorphic test divergence between %q and %q:\nDiff:\n%s",
 				nextInitialStates[0].desc, nextInitialStates[h].desc, diff)
 		}
 
@@ -189,6 +194,7 @@ func runCrossVersion(
 func runVersion(
 	ctx context.Context,
 	t *testing.T,
+	fatalOnce *sync.Once,
 	rootDir string,
 	vers pebbleVersion,
 	seed uint64,
@@ -204,7 +210,7 @@ func runVersion(
 		for j, s := range initialStates {
 			j, s := j, s // re-bind loop vars to scope
 
-			runID := fmt.Sprintf("%s_%d_%03d", vers.SHA, seed, j)
+			runID := fmt.Sprintf("%s_%s_%d_%03d", vers.Label, vers.SHA, seed, j)
 			r := metamorphicTestRun{
 				seed:           seed,
 				dir:            filepath.Join(rootDir, runID),
@@ -224,7 +230,7 @@ func runVersion(
 				t.Logf("  Running test with version %s with initial state %s.",
 					vers.SHA, s)
 				if err := r.run(ctx, out); err != nil {
-					fatalf(t, rootDir, "Metamorphic test failed: %s\nOutput:%s\n", err, buf.String())
+					fatalf(t, fatalOnce, rootDir, "Metamorphic test failed: %s\nOutput:%s\n", err, buf.String())
 				}
 
 				// dir is a directory containing the ops file and subdirectories for
@@ -258,21 +264,25 @@ func runVersion(
 	return histories, nextInitialStates, err
 }
 
-func fatalf(t testing.TB, dir string, msg string, args ...interface{}) {
-	if artifactsDir == "" {
-		var err error
-		artifactsDir, err = os.Getwd()
-		require.NoError(t, err)
-	}
-	dst := filepath.Join(artifactsDir, filepath.Base(dir))
-	t.Logf("Moving test dir %q to %q.", dir, dst)
-	err := os.Rename(dir, dst)
-	// If the run of the metamorphic test panics or otherwise exits uncleanly,
-	// the source directory may not exist.
-	if !oserror.IsNotExist(err) {
-		t.Error(err)
-	}
-	t.Fatalf(msg, args...)
+func fatalf(t testing.TB, fatalOnce *sync.Once, dir string, msg string, args ...interface{}) {
+	fatalOnce.Do(func() {
+		if artifactsDir == "" {
+			var err error
+			artifactsDir, err = os.Getwd()
+			require.NoError(t, err)
+		}
+		// When run with test parallelism, other subtests may still be running
+		// within subdirectories of `dir`. We copy instead of rename so that those
+		// substests don't also fail when we remove their files out from under them.
+		// Those additional failures would confuse the test output.
+		dst := filepath.Join(artifactsDir, filepath.Base(dir))
+		t.Logf("Copying test dir %q to %q.", dir, dst)
+		_, err := vfs.Clone(vfs.Default, vfs.Default, dir, dst, vfs.CloneTryLink)
+		if err != nil {
+			t.Error(err)
+		}
+		t.Fatalf(msg, args...)
+	})
 }
 
 type metamorphicTestRun struct {
