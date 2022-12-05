@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
@@ -33,7 +33,7 @@ import (
 
 func TestSSTableKeyCompare(t *testing.T) {
 	var buf bytes.Buffer
-	datadriven.RunTest(t, "testdata/sstable_key_compare", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/sstable_key_compare", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "cmp":
 			buf.Reset()
@@ -63,7 +63,7 @@ func TestSSTableKeyCompare(t *testing.T) {
 func TestIngestLoad(t *testing.T) {
 	mem := vfs.NewMem()
 
-	datadriven.RunTest(t, "testdata/ingest_load", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/ingest_load", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "load":
 			writerOpts := sstable.WriterOptions{}
@@ -236,7 +236,7 @@ func TestIngestSortAndVerify(t *testing.T) {
 	}
 
 	t.Run("", func(t *testing.T) {
-		datadriven.RunTest(t, "testdata/ingest_sort_and_verify", func(d *datadriven.TestData) string {
+		datadriven.RunTest(t, "testdata/ingest_sort_and_verify", func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "ingest":
 				var buf bytes.Buffer
@@ -432,7 +432,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 				return meta
 			}
 
-			datadriven.RunTest(t, "testdata/ingest_memtable_overlaps", func(d *datadriven.TestData) string {
+			datadriven.RunTest(t, "testdata/ingest_memtable_overlaps", func(t *testing.T, d *datadriven.TestData) string {
 				switch d.Cmd {
 				case "define":
 					b := newBatch(nil)
@@ -559,7 +559,7 @@ func TestIngestTargetLevel(t *testing.T) {
 		return m
 	}
 
-	datadriven.RunTest(t, "testdata/ingest_target_level", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/ingest_target_level", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			if d != nil {
@@ -653,7 +653,7 @@ func TestIngest(t *testing.T) {
 	}
 	reset()
 
-	datadriven.RunTest(t, "testdata/ingest", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/ingest", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
 			reset()
@@ -1365,7 +1365,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 		err    error
 		metas  []*fileMetadata
 	)
-	datadriven.RunTest(t, "testdata/ingest_update_seqnums", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/ingest_update_seqnums", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "starting-seqnum":
 			seqnum, err = strconv.ParseUint(td.Input, 10, 64)

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -40,7 +40,7 @@ func TestLevelIter(t *testing.T) {
 		return &f, nil, nil
 	}
 
-	datadriven.RunTest(t, "testdata/level_iter", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/level_iter", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			iters = nil
@@ -284,7 +284,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 	defer lt.runClear(nil)
 
 	var iter *levelIter
-	datadriven.RunTest(t, "testdata/level_iter_boundaries", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/level_iter_boundaries", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "clear":
 			return lt.runClear(d)
@@ -407,7 +407,7 @@ func TestLevelIterSeek(t *testing.T) {
 	lt := newLevelIterTest()
 	defer lt.runClear(nil)
 
-	datadriven.RunTest(t, "testdata/level_iter_seek", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/level_iter_seek", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "clear":
 			return lt.runClear(d)

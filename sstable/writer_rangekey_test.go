@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -90,7 +90,7 @@ func TestWriter_RangeKeys(t *testing.T) {
 		return r, nil
 	}
 
-	datadriven.RunTest(t, "testdata/writer_range_keys", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/writer_range_keys", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
 			if r != nil {

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +30,7 @@ func TestManualFlush(t *testing.T) {
 		require.NoError(t, d.Close())
 	}()
 
-	datadriven.RunTest(t, "testdata/manual_flush", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/manual_flush", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "batch":
 			b := d.NewBatch()

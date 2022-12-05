@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 )
 
 func TestSeek(t *testing.T) {
@@ -21,7 +21,7 @@ func TestSeek(t *testing.T) {
 	var iter FragmentIterator
 	var buf bytes.Buffer
 
-	datadriven.RunTest(t, "testdata/seek", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/seek", func(t *testing.T, d *datadriven.TestData) string {
 		buf.Reset()
 		switch d.Cmd {
 		case "build":

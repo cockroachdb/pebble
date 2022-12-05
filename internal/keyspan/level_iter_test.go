@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/stretchr/testify/require"
 )
@@ -341,7 +341,7 @@ func TestLevelIter(t *testing.T) {
 	var iter FragmentIterator
 	var extraInfo func() string
 
-	datadriven.RunTest(t, "testdata/level_iter", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/level_iter", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			level = level[:0]

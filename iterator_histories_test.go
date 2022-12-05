@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -50,7 +50,7 @@ func TestIterHistories(t *testing.T) {
 		}
 		defer cleanup()
 
-		datadriven.RunTest(t, path, func(td *datadriven.TestData) string {
+		datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "reset":
 				if err := cleanup(); err != nil {

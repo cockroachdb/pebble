@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/pmezard/go-difflib/difflib"
 )
@@ -34,7 +34,7 @@ func TestDefragmentingIter(t *testing.T) {
 
 	var buf bytes.Buffer
 	var spans []Span
-	datadriven.RunTest(t, "testdata/defragmenting_iter", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/defragmenting_iter", func(t *testing.T, td *datadriven.TestData) string {
 		buf.Reset()
 		switch td.Cmd {
 		case "define":

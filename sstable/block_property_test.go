@@ -15,9 +15,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
@@ -873,7 +873,7 @@ func TestBlockProperties(t *testing.T) {
 	}()
 
 	var stats base.InternalIteratorStats
-	datadriven.RunTest(t, "testdata/block_properties", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/block_properties", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
 			if r != nil {
@@ -1033,7 +1033,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 	}()
 
 	var stats base.InternalIteratorStats
-	datadriven.RunTest(t, "testdata/block_properties_boundlimited", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/block_properties_boundlimited", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
 			if r != nil {

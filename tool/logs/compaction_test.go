@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/stretchr/testify/require"
 )
 
@@ -180,7 +180,7 @@ func TestCompactionLogs(t *testing.T) {
 	resetFn()
 
 	dir := t.TempDir()
-	datadriven.RunTest(t, "testdata/compactions", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/compactions", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "log":
 			basename := fmt.Sprintf("%d.log", logNum)

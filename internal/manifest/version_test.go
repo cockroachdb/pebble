@@ -12,9 +12,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
@@ -95,7 +95,7 @@ func TestOverlaps(t *testing.T) {
 	var v *Version
 	cmp := testkeys.Comparer.Compare
 	fmtKey := testkeys.Comparer.FormatKey
-	datadriven.RunTest(t, "testdata/overlaps", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/overlaps", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			var err error
@@ -287,7 +287,7 @@ func TestCheckOrdering(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	fmtKey := base.DefaultComparer.FormatKey
 	datadriven.RunTest(t, "testdata/version_check_ordering",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "check-ordering":
 				v, err := ParseVersionDebug(cmp, fmtKey, 10<<20, d.Input)
@@ -341,7 +341,7 @@ func TestCheckConsistency(t *testing.T) {
 	}
 
 	datadriven.RunTest(t, "testdata/version_check_consistency",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "check-consistency":
 				var filesByLevel [NumLevels][]*FileMetadata
@@ -464,7 +464,7 @@ func TestExtendBounds(t *testing.T) {
 		return b.String()
 	}
 	m := &FileMetadata{}
-	datadriven.RunTest(t, "testdata/file_metadata_bounds", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/file_metadata_bounds", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "reset":
 			m = &FileMetadata{}

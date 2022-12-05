@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/datadriven"
 )
 
 type mockPrintLimiter struct {
@@ -36,7 +36,7 @@ func (m *mockPrintLimiter) Burst() int {
 
 func TestCompactionPacerMaybeThrottle(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_pacer_maybe_throttle",
-		func(d *datadriven.TestData) string {
+		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
 				if len(d.CmdArgs) != 1 {

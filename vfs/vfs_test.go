@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/stretchr/testify/require"
 )
 
@@ -122,7 +122,7 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 	var buf bytes.Buffer
 	fs := loggingFS{FS: baseFS, base: dir, w: &buf}
 
-	datadriven.RunTest(t, "testdata/vfs", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/vfs", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			buf.Reset()

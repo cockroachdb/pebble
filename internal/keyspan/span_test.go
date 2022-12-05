@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/datadriven"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,7 +33,7 @@ func TestSpan_ParseRoundtrip(t *testing.T) {
 
 func TestSpan_Visible(t *testing.T) {
 	var s Span
-	datadriven.RunTest(t, "testdata/visible", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/visible", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			s = ParseSpan(d.Input)
@@ -54,7 +54,7 @@ func TestSpan_Visible(t *testing.T) {
 
 func TestSpan_VisibleAt(t *testing.T) {
 	var s Span
-	datadriven.RunTest(t, "testdata/visible_at", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/visible_at", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			s = ParseSpan(d.Input)
@@ -75,7 +75,7 @@ func TestSpan_VisibleAt(t *testing.T) {
 
 func TestSpan_CoversAt(t *testing.T) {
 	var s Span
-	datadriven.RunTest(t, "testdata/covers_at", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/covers_at", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			s = ParseSpan(d.Input)

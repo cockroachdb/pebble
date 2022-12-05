@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -34,7 +34,7 @@ func TestExternalIterator(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, d.Close()) }()
 
-	datadriven.RunTest(t, "testdata/external_iterator", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/external_iterator", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
 			mem = vfs.NewMem()
@@ -87,7 +87,7 @@ func TestSimpleLevelIter(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, d.Close()) }()
 
-	datadriven.RunTest(t, "testdata/simple_level_iter", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/simple_level_iter", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
 			mem = vfs.NewMem()

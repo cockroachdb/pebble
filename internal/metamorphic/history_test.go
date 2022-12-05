@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/datadriven"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
 )
@@ -42,7 +42,7 @@ func TestHistoryFail(t *testing.T) {
 }
 
 func TestReorderHistory(t *testing.T) {
-	datadriven.RunTest(t, "testdata/reorder_history", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/reorder_history", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "reorder":
 			lines := difflib.SplitLines(string(d.Input))

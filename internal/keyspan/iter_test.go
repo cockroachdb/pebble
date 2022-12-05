@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 )
 
 func runFragmentIteratorCmd(iter FragmentIterator, input string, extraInfo func() string) string {
@@ -61,7 +61,7 @@ func runFragmentIteratorCmd(iter FragmentIterator, input string, extraInfo func(
 
 func TestIter(t *testing.T) {
 	var spans []Span
-	datadriven.RunTest(t, "testdata/iter", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/iter", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			spans = nil

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -119,7 +119,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 		Name: "fail-merger",
 	}
 
-	datadriven.RunTest(t, "testdata/level_checker", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/level_checker", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
 			lines := strings.Split(d.Input, "\n")

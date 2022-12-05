@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
@@ -38,7 +38,7 @@ func TestBoundedIter(t *testing.T) {
 	var iter BoundedIter
 	var hasPrefix bool
 	var prefix []byte
-	datadriven.RunTest(t, "testdata/bounded_iter", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/bounded_iter", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			var spans []Span

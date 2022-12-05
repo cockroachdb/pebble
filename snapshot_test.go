@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -60,7 +60,7 @@ func TestSnapshot(t *testing.T) {
 	}
 	defer close()
 
-	datadriven.RunTest(t, "testdata/snapshot", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/snapshot", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			close()

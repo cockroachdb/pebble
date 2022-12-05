@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -34,7 +34,7 @@ func TestRangeDel(t *testing.T) {
 	opts := &Options{}
 	opts.DisableAutomaticCompactions = true
 
-	datadriven.RunTest(t, "testdata/range_del", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/range_del", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			if d != nil {

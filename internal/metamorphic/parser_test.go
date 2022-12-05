@@ -9,14 +9,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
 
 func TestParser(t *testing.T) {
-	datadriven.RunTest(t, "testdata/parser", func(d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/parser", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "parse":
 			ops, err := parse([]byte(d.Input))

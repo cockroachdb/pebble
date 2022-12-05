@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
@@ -93,7 +93,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 		}
 	}
 
-	datadriven.RunTest(t, filename, func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, filename, func(t *testing.T, td *datadriven.TestData) string {
 		buf.Reset()
 		switch td.Cmd {
 		case "set-masking-threshold":

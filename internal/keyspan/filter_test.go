@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 )
 
@@ -33,7 +33,7 @@ func TestFilteringIter(t *testing.T) {
 
 	cmp := testkeys.Comparer.Compare
 	var spans []Span
-	datadriven.RunTest(t, "testdata/filtering_iter", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/filtering_iter", func(t *testing.T, td *datadriven.TestData) string {
 		switch cmd := td.Cmd; cmd {
 		case "define":
 			spans = spans[:0]

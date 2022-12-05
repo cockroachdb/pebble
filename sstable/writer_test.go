@@ -14,11 +14,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
@@ -83,7 +83,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat, paralleli
 		return b.String()
 	}
 
-	datadriven.RunTest(t, file, func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, file, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
 			if r != nil {
@@ -238,7 +238,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 		return attribute, nil
 	}
 
-	datadriven.RunTest(t, "testdata/writer_value_blocks", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/writer_value_blocks", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
 			if r != nil {
@@ -487,7 +487,7 @@ func TestParallelWriterErrorProp(t *testing.T) {
 func TestSizeEstimate(t *testing.T) {
 	var sizeEstimate sizeEstimate
 	datadriven.RunTest(t, "testdata/size_estimate",
-		func(td *datadriven.TestData) string {
+		func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "init":
 				if len(td.CmdArgs) != 1 {

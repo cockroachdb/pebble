@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/datadriven"
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
@@ -125,7 +125,7 @@ func TestMetrics(t *testing.T) {
 		}
 	}()
 
-	datadriven.RunTest(t, "testdata/metrics", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/metrics", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "batch":
 			b := d.NewBatch()

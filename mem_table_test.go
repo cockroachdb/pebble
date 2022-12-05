@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -253,7 +253,7 @@ func TestMemTableIter(t *testing.T) {
 	var mem *memTable
 	for _, testdata := range []string{
 		"testdata/internal_iter_next", "testdata/internal_iter_bounds"} {
-		datadriven.RunTest(t, testdata, func(d *datadriven.TestData) string {
+		datadriven.RunTest(t, testdata, func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "define":
 				mem = newMemTable(memTableOptions{})
@@ -300,7 +300,7 @@ func TestMemTableDeleteRange(t *testing.T) {
 	var mem *memTable
 	var seqNum uint64
 
-	datadriven.RunTest(t, "testdata/delete_range", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/delete_range", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "clear":
 			mem = nil

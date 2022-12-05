@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +26,7 @@ func TestMergingIter(t *testing.T) {
 
 	formatSpan := func(s *Span) { fmt.Fprintln(&buf, s) }
 
-	datadriven.RunTest(t, "testdata/merging_iter", func(td *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/merging_iter", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			snapshot := base.InternalKeySeqNumMax

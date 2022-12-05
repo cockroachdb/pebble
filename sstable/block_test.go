@@ -13,8 +13,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/datadriven"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -224,7 +224,7 @@ func TestBlockIter2(t *testing.T) {
 
 	for _, r := range []int{1, 2, 3, 4} {
 		t.Run(fmt.Sprintf("restart=%d", r), func(t *testing.T) {
-			datadriven.RunTest(t, "testdata/block", func(d *datadriven.TestData) string {
+			datadriven.RunTest(t, "testdata/block", func(t *testing.T, d *datadriven.TestData) string {
 				switch d.Cmd {
 				case "build":
 					w := &blockWriter{restartInterval: r}
