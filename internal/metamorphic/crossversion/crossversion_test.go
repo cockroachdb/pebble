@@ -35,6 +35,7 @@ var (
 	seed         int64
 	versions     pebbleVersions
 	artifactsDir string
+	streamOutput bool
 )
 
 func init() {
@@ -63,6 +64,8 @@ versions.`)
 	flag.StringVar(&artifactsDir, "artifacts", "",
 		`the path to a directory where test artifacts should be
 moved on failure. Defaults to the current working directory.`)
+	flag.BoolVar(&streamOutput, "stream-output", false,
+		`stream TestMeta output to standard output`)
 }
 
 func reproductionCommand() string {
@@ -224,7 +227,7 @@ func runVersion(
 
 				var buf bytes.Buffer
 				var out io.Writer = &buf
-				if testing.Verbose() {
+				if streamOutput {
 					out = io.MultiWriter(out, os.Stderr)
 				}
 				t.Logf("  Running test with version %s with initial state %s.",
