@@ -274,7 +274,7 @@ func Copy(fs FS, oldname, newname string) error {
 // CopyAcrossFS copies the contents of oldname on srcFS to newname dstFS. If
 // newname exists, it will be overwritten.
 func CopyAcrossFS(srcFS FS, oldname string, dstFS FS, newname string) error {
-	src, err := srcFS.Open(oldname)
+	src, err := srcFS.Open(oldname, SequentialReadsOption)
 	if err != nil {
 		return err
 	}
@@ -295,7 +295,7 @@ func CopyAcrossFS(srcFS FS, oldname string, dstFS FS, newname string) error {
 // LimitedCopy copies up to maxBytes from oldname to newname. If newname
 // exists, it will be overwritten.
 func LimitedCopy(fs FS, oldname, newname string, maxBytes int64) error {
-	src, err := fs.Open(oldname)
+	src, err := fs.Open(oldname, SequentialReadsOption)
 	if err != nil {
 		return err
 	}
