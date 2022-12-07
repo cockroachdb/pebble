@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -2580,6 +2581,7 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 		batches      = 200
 		keysPerBatch = 50
 	)
+	var alloc bytealloc.A
 	rng := rand.New(rand.NewSource(uint64(1658872515083979000)))
 	keyBuf := make([]byte, prefixLen+testkeys.MaxSuffixLen)
 	valBuf := make([]byte, valueSize)
@@ -2598,6 +2600,7 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 	d, err := Open("", opts)
 	require.NoError(b, err)
 
+	keys := make([][]byte, keysPerBatch*batches)
 	for bi := 0; bi < batches; bi++ {
 		batch := d.NewBatch()
 		for k := 0; k < keysPerBatch; k++ {
@@ -2605,7 +2608,11 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 			suffix := rng.Intn(100)
 			suffixLen := testkeys.WriteSuffix(keyBuf[prefixLen:], suffix)
 			randStr(valBuf[:], rng)
-			require.NoError(b, batch.Set(keyBuf[:prefixLen+suffixLen], valBuf[:], nil))
+
+			var key []byte
+			alloc, key = alloc.Copy(keyBuf[:prefixLen+suffixLen])
+			keys[bi*keysPerBatch+k] = key
+			require.NoError(b, batch.Set(key, valBuf[:], nil))
 		}
 		require.NoError(b, batch.Commit(nil))
 	}
@@ -2647,19 +2654,39 @@ func BenchmarkIterator_RangeKeyMasking(b *testing.B) {
 				},
 			}
 			b.Run("forward", func(b *testing.B) {
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					iter := d.NewIter(&iterOpts)
-					count := 0
-					for valid := iter.First(); valid; valid = iter.Next() {
-						if hasPoint, _ := iter.HasPointAndRange(); hasPoint {
-							count++
+				b.Run("seekprefix", func(b *testing.B) {
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						iter := d.NewIter(&iterOpts)
+						count := 0
+						for j := 0; j < len(keys); j++ {
+							if !iter.SeekPrefixGE(keys[j]) {
+								b.Errorf("unable to find %q\n", keys[j])
+							}
+							if hasPoint, _ := iter.HasPointAndRange(); hasPoint {
+								count++
+							}
+						}
+						if err := iter.Close(); err != nil {
+							b.Fatal(err)
 						}
 					}
-					if err := iter.Close(); err != nil {
-						b.Fatal(err)
+				})
+				b.Run("next", func(b *testing.B) {
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						iter := d.NewIter(&iterOpts)
+						count := 0
+						for valid := iter.First(); valid; valid = iter.Next() {
+							if hasPoint, _ := iter.HasPointAndRange(); hasPoint {
+								count++
+							}
+						}
+						if err := iter.Close(); err != nil {
+							b.Fatal(err)
+						}
 					}
-				}
+				})
 			})
 			b.Run("backward", func(b *testing.B) {
 				b.ResetTimer()
