@@ -33,6 +33,72 @@ func TestIterHistories(t *testing.T) {
 			iters[name] = it
 			return it
 		}
+		parseOpts := func(td *datadriven.TestData) (*Options, error) {
+			opts := &Options{
+				FS:                 vfs.NewMem(),
+				Comparer:           testkeys.Comparer,
+				FormatMajorVersion: FormatRangeKeys,
+				BlockPropertyCollectors: []func() BlockPropertyCollector{
+					sstable.NewTestKeysBlockPropertyCollector,
+				},
+			}
+			opts.DisableAutomaticCompactions = true
+			opts.EnsureDefaults()
+
+			for _, cmdArg := range td.CmdArgs {
+				switch cmdArg.Key {
+				case "format-major-version":
+					v, err := strconv.Atoi(cmdArg.Vals[0])
+					if err != nil {
+						return nil, err
+					}
+					// Override the DB version.
+					opts.FormatMajorVersion = FormatMajorVersion(v)
+				case "block-size":
+					v, err := strconv.Atoi(cmdArg.Vals[0])
+					if err != nil {
+						return nil, err
+					}
+					for i := range opts.Levels {
+						opts.Levels[i].BlockSize = v
+					}
+				case "index-block-size":
+					v, err := strconv.Atoi(cmdArg.Vals[0])
+					if err != nil {
+						return nil, err
+					}
+					for i := range opts.Levels {
+						opts.Levels[i].IndexBlockSize = v
+					}
+				case "target-file-size":
+					v, err := strconv.Atoi(cmdArg.Vals[0])
+					if err != nil {
+						return nil, err
+					}
+					for i := range opts.Levels {
+						opts.Levels[i].TargetFileSize = int64(v)
+					}
+				case "bloom-bits-per-key":
+					v, err := strconv.Atoi(cmdArg.Vals[0])
+					if err != nil {
+						return nil, err
+					}
+					fp := bloom.FilterPolicy(v)
+					opts.Filters = map[string]FilterPolicy{fp.Name(): fp}
+					for i := range opts.Levels {
+						opts.Levels[i].FilterPolicy = fp
+					}
+				case "merger":
+					switch cmdArg.Vals[0] {
+					case "appender":
+						opts.Merger = base.DefaultMerger
+					default:
+						return nil, errors.Newf("unrecognized Merger %q\n", cmdArg.Vals[0])
+					}
+				}
+			}
+			return opts, nil
+		}
 		cleanup := func() (err error) {
 			for key, batch := range batches {
 				err = firstError(err, batch.Close())
@@ -52,78 +118,29 @@ func TestIterHistories(t *testing.T) {
 
 		datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
+			case "define":
+				if err := cleanup(); err != nil {
+					return err.Error()
+				}
+				opts, err := parseOpts(td)
+				if err != nil {
+					return err.Error()
+				}
+				d, err = runDBDefineCmd(td, opts)
+				if err != nil {
+					return err.Error()
+				}
+				return runLSMCmd(td, d)
+
 			case "reset":
 				if err := cleanup(); err != nil {
 					return err.Error()
 				}
-				opts := &Options{
-					FS:                 vfs.NewMem(),
-					Comparer:           testkeys.Comparer,
-					FormatMajorVersion: FormatRangeKeys,
-					BlockPropertyCollectors: []func() BlockPropertyCollector{
-						sstable.NewTestKeysBlockPropertyCollector,
-					},
-				}
-				opts.DisableAutomaticCompactions = true
-				opts.EnsureDefaults()
-
-				for _, cmdArg := range td.CmdArgs {
-					switch cmdArg.Key {
-					case "format-major-version":
-						v, err := strconv.Atoi(cmdArg.Vals[0])
-						if err != nil {
-							return err.Error()
-						}
-						// Override the DB version.
-						opts.FormatMajorVersion = FormatMajorVersion(v)
-					case "block-size":
-						v, err := strconv.Atoi(cmdArg.Vals[0])
-						if err != nil {
-							return err.Error()
-						}
-						for i := range opts.Levels {
-							opts.Levels[i].BlockSize = v
-						}
-					case "index-block-size":
-						v, err := strconv.Atoi(cmdArg.Vals[0])
-						if err != nil {
-							return err.Error()
-						}
-						for i := range opts.Levels {
-							opts.Levels[i].IndexBlockSize = v
-						}
-					case "target-file-size":
-						v, err := strconv.Atoi(cmdArg.Vals[0])
-						if err != nil {
-							return err.Error()
-						}
-						for i := range opts.Levels {
-							opts.Levels[i].TargetFileSize = int64(v)
-						}
-					case "bloom-bits-per-key":
-						v, err := strconv.Atoi(cmdArg.Vals[0])
-						if err != nil {
-							return err.Error()
-						}
-						fp := bloom.FilterPolicy(v)
-						opts.Filters = map[string]FilterPolicy{fp.Name(): fp}
-						for i := range opts.Levels {
-							opts.Levels[i].FilterPolicy = fp
-						}
-					case "merger":
-						switch cmdArg.Vals[0] {
-						case "appender":
-							opts.Merger = base.DefaultMerger
-						default:
-							return fmt.Sprintf("unrecognized Merger %q\n", cmdArg.Vals[0])
-						}
-					default:
-						return fmt.Sprintf("unknown command %s\n", cmdArg.Key)
-					}
-
+				opts, err := parseOpts(td)
+				if err != nil {
+					return err.Error()
 				}
 
-				var err error
 				d, err = Open("", opts)
 				require.NoError(t, err)
 				return ""
@@ -299,6 +316,22 @@ func TestIterHistories(t *testing.T) {
 						o.PointKeyFilters = []sstable.BlockPropertyFilter{
 							sstable.NewTestKeysBlockPropertyFilter(min, max),
 						}
+					case "snapshot":
+						s, err := strconv.ParseUint(arg.Vals[0], 10, 64)
+						if err != nil {
+							return err.Error()
+						}
+						func() {
+							d.mu.Lock()
+							defer d.mu.Unlock()
+							l := &d.mu.snapshots
+							for i := l.root.next; i != &l.root; i = i.next {
+								if i.seqNum == s {
+									reader = i
+									break
+								}
+							}
+						}()
 					case "use-l6-filter":
 						o.UseL6Filters = true
 					}

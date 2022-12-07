@@ -183,7 +183,7 @@ aaa.SET.2:2
 iter
 seek-prefix-ge a
 next
-next
+seek-prefix-ge aaa
 next
 ----
 a:0
