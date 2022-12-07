@@ -127,7 +127,7 @@ seek-prefix-ge 1
 ----
 .
 stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 2, key-bytes 2, value-bytes 1, tombstoned: 0))
+(internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 1, key-bytes 1, value-bytes 0, tombstoned: 0))
 
 define
 a.DEL.2:
@@ -798,7 +798,7 @@ next
 a: (b, .)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 5, key-bytes 5, value-bytes 5, tombstoned: 0))
+(internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 4, key-bytes 4, value-bytes 4, tombstoned: 0))
 
 iter seq=4
 seek-prefix-ge a
@@ -816,7 +816,7 @@ next
 a: (b, .)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 5, key-bytes 5, value-bytes 5, tombstoned: 0))
+(internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 4, key-bytes 4, value-bytes 4, tombstoned: 0))
 
 iter seq=3
 seek-prefix-ge a
@@ -838,7 +838,7 @@ seek-prefix-ge 1
 ----
 .
 stats: (interface (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 0), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 2, key-bytes 2, value-bytes 2, tombstoned: 0))
+(internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 1, key-bytes 1, value-bytes 1, tombstoned: 0))
 
 iter seq=3
 seek-prefix-ge a
@@ -878,7 +878,7 @@ a: (b, .)
 .
 .
 stats: (interface (dir, seek, step): (fwd, 1, 2), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 5, key-bytes 7, value-bytes 5, tombstoned: 0))
+(internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 4, key-bytes 5, value-bytes 4, tombstoned: 0))
 
 iter seq=4
 seek-prefix-ge a
@@ -896,7 +896,7 @@ next
 a: (b, .)
 .
 stats: (interface (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 1, 1), (rev, 0, 0)),
-(internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 5, key-bytes 7, value-bytes 5, tombstoned: 0))
+(internal-stats: (block-bytes: (total 0 B, cached 0 B)), (points: (count 4, key-bytes 5, value-bytes 4, tombstoned: 0))
 
 iter seq=3
 seek-prefix-ge aa
