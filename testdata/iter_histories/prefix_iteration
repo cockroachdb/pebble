@@ -296,3 +296,40 @@ next
 ----
 b@4: (b@4, .)
 .
+
+# Regression test for #2151.
+#
+# This test consists of two SeekPrefixGEs for ascending keys, which results in
+# TrySeekUsingNext()=true for the second seek. The entirety of both seeked
+# prefixes is deleted by the range deletion [b-d). The iterator being used is
+# created from a snapshot at sequence number #4. At that sequence number, the
+# iterator observes the range deletion and all of L6's point keys, but none of
+# the point keys in L5.
+#
+# Previously, a bug existed where the SeekPrefixGE("b@9") would cause the
+# iterator to next beyond the L5 sstable. The subsequent SeekPrefixGE with
+# TrySeekUsingNext would mistakenly miss the range deletion [b-d) because it had
+# already proceeded beyond the file.
+
+define snapshots=(4)
+L5
+  b.RANGEDEL.3:d
+  b@9.SET.9:v
+  c@9.SET.9:v
+  d@9.SET.9:v
+L6
+  b@2.SET.2:v
+  c@2.SET.2:v
+  d@2.SET.2:v
+----
+5:
+  000004:[b#3,RANGEDEL-d@9#9,SET]
+6:
+  000005:[b@2#2,SET-d@2#2,SET]
+
+combined-iter snapshot=4
+seek-prefix-ge b@9
+seek-prefix-ge c@9
+----
+.
+.
