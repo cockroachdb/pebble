@@ -40,7 +40,9 @@ import "fmt"
 // context is not a strict byte prefix, but defined by byte equality for the
 // result of the Comparer.Split method. An InternalIterator is not required to
 // support prefix iteration mode, and can implement SeekPrefixGE by forwarding
-// to SeekGE.
+// to SeekGE. When the iteration prefix is exhausted, it is not valid to call
+// Next on an internal iterator that's already returned (nil,nilv) or a key
+// beyond the prefix.
 //
 // Bounds, [lower, upper), can be set on iterators, either using the SetBounds()
 // function in the interface, or in implementation specific ways during iterator
