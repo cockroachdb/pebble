@@ -680,6 +680,20 @@ func (i *InterleavingIter) interleaveForward(
 				i.maybeUpdateMask(true /*covered */)
 
 				if i.mask != nil && i.mask.SkipPoint(i.pointKey.UserKey) {
+					if i.prefix {
+						// During prefix-iteration mode, the internal iterator
+						// contract prohibits us from Next-ing beyond the first
+						// key beyond the iteration prefix. Check if this masked
+						// point is already beyond the prefix.
+						//
+						// NB: This also has a performance benefit by avoiding
+						// iterating too far beyond the prefix when there's a
+						// broad swath of point keys masked by a range key.
+						if i.cmp(i.pointKey.UserKey, i.nextPrefixBuf) >= 0 {
+							return i.yieldNil()
+						}
+					}
+
 					i.pointKey, i.pointVal = i.pointIter.Next()
 					// We may have just invalidated the invariant that
 					// ensures the span's End is > the point key, so
