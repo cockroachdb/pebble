@@ -1563,6 +1563,38 @@ type multiLevelHueristic interface {
 	addLevel(pcAddedLevel *pickedCompaction, pcOrig *pickedCompaction) *pickedCompaction
 }
 
+func (pc *pickedCompaction) predictedWriteAmp() float64 {
+	var bytesToCompact uint64
+	var newOutputBytes uint64
+	for i := range pc.inputs {
+		levelSize := pc.inputs[i].files.SizeSum()
+		bytesToCompact += levelSize
+		if i != len(pc.inputs)-1 {
+			newOutputBytes += levelSize
+		}
+	}
+	return float64(bytesToCompact) / float64(newOutputBytes)
+}
+
+// WriteAmpHeuristic defines a multi level compaction heuristic which will add
+// an additional level to the picked compaction if it reduces predicted write
+// amp of the compaction + the addPropensity constant.
+type WriteAmpHeuristic struct {
+	// addPropensity is a constant that affects the propensity to conduct multilevel
+	// compactions. If positive, a multilevel compaction may get picked even if
+	// the single level compaction has lower write amp, and vice versa.
+	addPropensity float64
+}
+
+func (wa WriteAmpHeuristic) addLevel(
+	pcAddedLevel *pickedCompaction, pcOrig *pickedCompaction,
+) *pickedCompaction {
+	if pcAddedLevel.predictedWriteAmp() <= pcOrig.predictedWriteAmp()+wa.addPropensity {
+		return pcAddedLevel
+	}
+	return pcOrig
+}
+
 // Helper method to pick compactions originating from L0. Uses information about
 // sublevels to generate a compaction.
 func pickL0(
