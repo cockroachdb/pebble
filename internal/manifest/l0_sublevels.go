@@ -1149,6 +1149,15 @@ type L0CompactionFiles struct {
 	filesAdded              []*FileMetadata
 }
 
+// Clone allocates a new L0CompactionFiles, with the same underlying data. Note
+// that the two fileMetadata slices contain values that point to the same
+// underlying fileMetadata object. This is safe because these objects are read
+// only.
+func (l *L0CompactionFiles) Clone() *L0CompactionFiles {
+	oldLcf := *l
+	return &oldLcf
+}
+
 // addFile adds the specified file to the LCF.
 func (l *L0CompactionFiles) addFile(f *FileMetadata) {
 	if l.FilesIncluded[f.L0Index] {
