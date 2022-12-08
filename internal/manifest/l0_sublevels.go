@@ -978,6 +978,7 @@ func (s *L0Sublevels) MaxDepthAfterOngoingCompactions() int {
 //
 // TODO(bilal): Simplify away the debugging statements in this method, and make
 // this a pure sanity checker.
+//
 //lint:ignore U1000 - useful for debugging
 func (s *L0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 	includedFiles := newBitSet(s.levelMetadata.Len())
@@ -1144,6 +1145,15 @@ type L0CompactionFiles struct {
 	preExtensionMinInterval int
 	preExtensionMaxInterval int
 	filesAdded              []*FileMetadata
+}
+
+// Clone allocates a new L0CompactionFiles, with the same underlying data. Note
+// that the two fileMetadata slices contain values that point to the same
+// underlying fileMetadata object. This is safe because these objects are read
+// only.
+func (l *L0CompactionFiles) Clone() *L0CompactionFiles {
+	oldLcf := *l
+	return &oldLcf
 }
 
 // addFile adds the specified file to the LCF.
@@ -1794,36 +1804,37 @@ func (s *L0Sublevels) ExtendL0ForBaseCompactionTo(
 // Consider this scenario (original candidate is inside the rectangle), with
 // isBase = true and interval bounds a-j (from the union of base file bounds and
 // that of compaction candidate):
-//               _______
-//    L0.3  a--d |  g-j|
-//    L0.2       | f--j|         r-t
-//    L0.1   b-d |e---j|
-//    L0.0  a--d | f--j| l--o  p-----x
 //
-//    Lbase a--------i    m---------w
+//	           _______
+//	L0.3  a--d |  g-j|
+//	L0.2       | f--j|         r-t
+//	L0.1   b-d |e---j|
+//	L0.0  a--d | f--j| l--o  p-----x
+//
+//	Lbase a--------i    m---------w
 //
 // This method will iterate from the bottom up. At L0.0, it will add a--d since
 // it's in the bounds, then add b-d, then a--d, and so on, to produce this:
 //
-//         _____________
-//    L0.3 |a--d    g-j|
-//    L0.2 |       f--j|         r-t
-//    L0.1 | b-d  e---j|
-//    L0.0 |a--d   f--j| l--o  p-----x
+//	     _____________
+//	L0.3 |a--d    g-j|
+//	L0.2 |       f--j|         r-t
+//	L0.1 | b-d  e---j|
+//	L0.0 |a--d   f--j| l--o  p-----x
 //
-//    Lbase a-------i     m---------w
+//	Lbase a-------i     m---------w
 //
 // Let's assume that, instead of a--d in the top sublevel, we had 3 files, a-b,
 // bb-c, and cc-d, of which bb-c is compacting. Let's also add another sublevel
 // L0.4 with some files, all of which aren't compacting:
 //
-//    L0.4  a------c ca--d _______
-//    L0.3  a-b bb-c  cc-d |  g-j|
-//    L0.2                 | f--j|         r-t
-//    L0.1    b----------d |e---j|
-//    L0.0  a------------d | f--j| l--o  p-----x
+//	L0.4  a------c ca--d _______
+//	L0.3  a-b bb-c  cc-d |  g-j|
+//	L0.2                 | f--j|         r-t
+//	L0.1    b----------d |e---j|
+//	L0.0  a------------d | f--j| l--o  p-----x
 //
-//    Lbase a------------------i    m---------w
+//	Lbase a------------------i    m---------w
 //
 // This method then needs to choose between the left side of L0.3 bb-c
 // (i.e. a-b), or the right side (i.e. cc-d and g-j) for inclusion in this
@@ -1831,28 +1842,28 @@ func (s *L0Sublevels) ExtendL0ForBaseCompactionTo(
 // already been picked, it gets chosen at that sublevel, resulting in this
 // intermediate compaction:
 //
-//    L0.4  a------c ca--d
-//                  ______________
-//    L0.3  a-b bb-c| cc-d    g-j|
-//    L0.2 _________|        f--j|         r-t
-//    L0.1 |  b----------d  e---j|
-//    L0.0 |a------------d   f--j| l--o  p-----x
+//	L0.4  a------c ca--d
+//	              ______________
+//	L0.3  a-b bb-c| cc-d    g-j|
+//	L0.2 _________|        f--j|         r-t
+//	L0.1 |  b----------d  e---j|
+//	L0.0 |a------------d   f--j| l--o  p-----x
 //
-//    Lbase a------------------i    m---------w
+//	Lbase a------------------i    m---------w
 //
 // Since bb-c had to be excluded at L0.3, the interval bounds for L0.4 are
 // actually ca-j, since ca is the next interval start key after the end interval
 // of bb-c. This would result in only ca-d being chosen at that sublevel, even
 // though a--c is also not compacting. This is the final result:
 //
-//                  ______________
-//    L0.4  a------c|ca--d       |
-//    L0.3  a-b bb-c| cc-d    g-j|
-//    L0.2 _________|        f--j|         r-t
-//    L0.1 |  b----------d  e---j|
-//    L0.0 |a------------d   f--j| l--o  p-----x
+//	              ______________
+//	L0.4  a------c|ca--d       |
+//	L0.3  a-b bb-c| cc-d    g-j|
+//	L0.2 _________|        f--j|         r-t
+//	L0.1 |  b----------d  e---j|
+//	L0.0 |a------------d   f--j| l--o  p-----x
 //
-//    Lbase a------------------i    m---------w
+//	Lbase a------------------i    m---------w
 //
 // TODO(bilal): Add more targeted tests for this method, through
 // ExtendL0ForBaseCompactionTo and intraL0CompactionUsingSeed.
