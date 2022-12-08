@@ -596,6 +596,8 @@ type Options struct {
 		// compaction will never get triggered.
 		MultiLevelCompactionHueristic MultiLevelHeuristic
 
+		MultiLevelCompactionAllowL0 bool
+
 		// MaxWriterConcurrency is used to indicate the maximum number of
 		// compression workers the compression queue is allowed to use. If
 		// MaxWriterConcurrency > 0, then the Writer will use parallelism, to
@@ -1075,7 +1077,7 @@ func (o *Options) EnsureDefaults() *Options {
 		o.Experimental.CPUWorkPermissionGranter = defaultCPUWorkGranter{}
 	}
 	if o.Experimental.MultiLevelCompactionHueristic == nil {
-		o.Experimental.MultiLevelCompactionHueristic = NoMultiLevel{}
+		o.Experimental.MultiLevelCompactionHueristic = WriteAmpHeuristic{}
 	}
 
 	o.initMaps()

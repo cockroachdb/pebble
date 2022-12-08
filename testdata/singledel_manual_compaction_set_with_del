@@ -174,10 +174,8 @@ compact a-b L2
 ----
 1:
   000004:[a#10,SINGLEDEL-a#10,SINGLEDEL]
-3:
-  000008:[a#9,SET-a#8,DEL]
 4:
-  000007:[a#7,SET-a#7,SET]
+  000008:[a#9,SET-a#9,SET]
 
 # No data.
 iter
@@ -188,14 +186,13 @@ first
 close-snapshots
 ----
 
+# Note this conducts a multilevel compaction.
 compact a-b L1
 ----
-2:
-  000004:[a#10,SINGLEDEL-a#10,SINGLEDEL]
 3:
-  000008:[a#9,SET-a#8,DEL]
+  000004:[a#10,SINGLEDEL-a#10,SINGLEDEL]
 4:
-  000007:[a#7,SET-a#7,SET]
+  000008:[a#9,SET-a#9,SET]
 
 # The DEL survives.
 compact a-b L2

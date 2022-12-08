@@ -68,7 +68,7 @@ disable-automatic-compactions false
 
 ratchet-format-major-version 007
 ----
-[JOB 100] compacted(rewrite) L1 [000008 000004] (1.3KB) + L1 [] (0B) -> L1 [000013] (649B), in 1.0s (2.0s total), output rate 649B/s
+[JOB 100] compacted(rewrite) L1 [000008 000004] (1.3KB) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000013] (649B), in 1.0s (2.0s total), output rate 649B/s
 
 format-major-version
 ----
@@ -133,8 +133,8 @@ disable-automatic-compactions false
 
 ratchet-format-major-version 007
 ----
-[JOB 100] compacted(rewrite) L1 [000007 000004] (1.3KB) + L1 [] (0B) -> L1 [000010] (649B), in 1.0s (2.0s total), output rate 649B/s
-[JOB 100] compacted(rewrite) L1 [000008 000006] (1.3KB) + L1 [] (0B) -> L1 [000011] (649B), in 1.0s (2.0s total), output rate 649B/s
+[JOB 100] compacted(rewrite) L1 [000007 000004] (1.3KB) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000010] (649B), in 1.0s (2.0s total), output rate 649B/s
+[JOB 100] compacted(rewrite) L1 [000008 000006] (1.3KB) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000011] (649B), in 1.0s (2.0s total), output rate 649B/s
 
 lsm
 ----
