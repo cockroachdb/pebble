@@ -1102,6 +1102,11 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 	opts.Experimental.MultiLevelCompactionHueristic = alwaysMultiLevel{}
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs_multilevel_dummy",
 		setupInputTest)
+
+	t.Logf("Try Write-Amp Heuristic")
+	opts.Experimental.MultiLevelCompactionHueristic = WriteAmpHeuristic{addPropensity: 0}
+	datadriven.RunTest(t, "testdata/compaction_setup_inputs_multilevel_write_amp",
+		setupInputTest)
 }
 
 func TestPickedCompactionExpandInputs(t *testing.T) {
