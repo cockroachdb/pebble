@@ -82,6 +82,14 @@ type compactionLevel struct {
 	files manifest.LevelSlice
 }
 
+func (cl compactionLevel) Clone() compactionLevel {
+	newCL := compactionLevel{
+		level: cl.level,
+		files: cl.files.Reslice(func(start, end *manifest.LevelIterator) {}),
+	}
+	return newCL
+}
+
 // Return output from compactionOutputSplitters. See comment on
 // compactionOutputSplitter.shouldSplitBefore() on how this value is used.
 type compactionSplitSuggestion int
