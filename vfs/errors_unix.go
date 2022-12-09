@@ -8,13 +8,11 @@
 package vfs
 
 import (
-	"syscall"
-
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sys/unix"
 )
 
-var errNotEmpty = syscall.ENOTEMPTY
+var errNotEmpty = unix.ENOTEMPTY
 
 // IsNoSpaceError returns true if the given error indicates that the disk is
 // out of space.

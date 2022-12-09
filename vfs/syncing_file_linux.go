@@ -7,7 +7,7 @@
 
 package vfs
 
-import "syscall"
+import "golang.org/x/sys/unix"
 
 type syncFileRange func(fd int, off int64, n int64, flags int) (err error)
 
@@ -17,12 +17,12 @@ type syncFileRange func(fd int, off int64, n int64, flags int) (err error)
 // a test of of sync_file_range, returning false on ENOSYS, and true otherwise.
 func syncRangeSmokeTest(fd uintptr, fn syncFileRange) bool {
 	err := fn(int(fd), 0 /* offset */, 0 /* nbytes */, 0 /* flags */)
-	return err != syscall.ENOSYS
+	return err != unix.ENOSYS
 }
 
 func isSyncRangeSupported(fd uintptr) bool {
-	var stat syscall.Statfs_t
-	if err := syscall.Fstatfs(int(fd), &stat); err != nil {
+	var stat unix.Statfs_t
+	if err := unix.Fstatfs(int(fd), &stat); err != nil {
 		return false
 	}
 
@@ -34,7 +34,7 @@ func isSyncRangeSupported(fd uintptr) bool {
 	const extMagic = 0xef53
 	switch stat.Type {
 	case extMagic:
-		return syncRangeSmokeTest(fd, syscall.SyncFileRange)
+		return syncRangeSmokeTest(fd, unix.SyncFileRange)
 	}
 	return false
 }
@@ -60,7 +60,7 @@ func (f *syncingFile) syncFdatasync() error {
 	}
 	var err error
 	f.timeDiskOp(func() {
-		err = syscall.Fdatasync(int(f.fd))
+		err = unix.Fdatasync(int(f.fd))
 	})
 	return err
 }
@@ -99,7 +99,7 @@ func (f *syncingFile) syncToRange(offset int64) error {
 	// data accumulates, impacting other I/O operations.
 	var err error
 	f.timeDiskOp(func() {
-		err = syscall.SyncFileRange(int(f.fd), 0, offset, flags)
+		err = unix.SyncFileRange(int(f.fd), 0, offset, flags)
 	})
 	return err
 }
