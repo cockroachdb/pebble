@@ -11,9 +11,9 @@ import (
 	"io"
 	"os"
 	"sync"
-	"syscall"
 
 	"github.com/cockroachdb/errors"
+	"golang.org/x/sys/unix"
 )
 
 var lockedFiles struct {
@@ -54,14 +54,14 @@ func (defaultFS) Lock(name string) (io.Closer, error) {
 	if err != nil {
 		return nil, err
 	}
-	spec := syscall.Flock_t{
-		Type:   syscall.F_WRLCK,
+	spec := unix.Flock_t{
+		Type:   unix.F_WRLCK,
 		Whence: io.SeekStart,
 		Start:  0,
 		Len:    0, // 0 means to lock the entire file.
 		Pid:    int32(os.Getpid()),
 	}
-	if err := syscall.FcntlFlock(f.Fd(), syscall.F_SETLK, &spec); err != nil {
+	if err := unix.FcntlFlock(f.Fd(), unix.F_SETLK, &spec); err != nil {
 		f.Close()
 		return nil, err
 	}
