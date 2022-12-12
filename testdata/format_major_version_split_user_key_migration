@@ -13,16 +13,16 @@ OK
 # atomic compaction unit, so use the force-ingest command to force an ingestion
 # into L1.
 
-build ef
-set e e
-set f f
+build cd
+set c c
+set d d
 ----
 
-force-ingest paths=(ef) level=1
+force-ingest paths=(cd) level=1
 ----
 1:
+  000008:[c#141,SET-d#141,SET] points:[c#141,SET-d#141,SET]
   000004:[d#110,SET-e#140,SET] points:[d#110,SET-e#140,SET]
-  000008:[e#1,SET-f#1,SET] points:[e#1,SET-f#1,SET]
 
 format-major-version
 ----
@@ -68,7 +68,7 @@ disable-automatic-compactions false
 
 ratchet-format-major-version 007
 ----
-[JOB 100] compacted(rewrite) L1 [000004 000008] (1.6 K) + L1 [] (0 B) -> L1 [000013] (786 B), in 1.0s (2.0s total), output rate 786 B/s
+[JOB 100] compacted(rewrite) L1 [000008 000004] (1.6 K) + L1 [] (0 B) -> L1 [000013] (786 B), in 1.0s (2.0s total), output rate 786 B/s
 
 format-major-version
 ----
@@ -77,7 +77,7 @@ format-major-version
 lsm
 ----
 1:
-  000013:[d#0,SET-f#0,SET]
+  000013:[c#0,SET-e#0,SET]
 
 # Reset to a new LSM.
 
@@ -99,24 +99,18 @@ set a a
 set b b
 ----
 
-build cd
-set c c
-set d d
-----
-
 build wx
 set w w
 set x x
 ----
 
-force-ingest paths=(ab, cd, wx) level=1
+force-ingest paths=(ab, wx) level=1
 ----
 1:
-  000007:[a#1,SET-b#1,SET] points:[a#1,SET-b#1,SET]
+  000007:[a#6,SET-b#6,SET] points:[a#6,SET-b#6,SET]
   000004:[b#0,SET-c#5,SET] points:[b#0,SET-c#5,SET]
-  000008:[c#2,SET-d#2,SET] points:[c#2,SET-d#2,SET]
   000005:[l#5,SET-m#0,SET] points:[l#5,SET-m#0,SET]
-  000009:[w#3,SET-x#3,SET] points:[w#3,SET-x#3,SET]
+  000008:[w#7,SET-x#7,SET] points:[w#7,SET-x#7,SET]
   000006:[x#0,SET-y#5,SET] points:[x#0,SET-y#5,SET]
 
 format-major-version
@@ -132,22 +126,22 @@ format-major-version
 
 marked-file-count
 ----
-5 files marked for compaction
+4 files marked for compaction
 
 disable-automatic-compactions false
 ----
 
 ratchet-format-major-version 007
 ----
-[JOB 100] compacted(rewrite) L1 [000007 000004 000008] (2.4 K) + L1 [] (0 B) -> L1 [000011] (794 B), in 1.0s (2.0s total), output rate 794 B/s
-[JOB 100] compacted(rewrite) L1 [000009 000006] (1.6 K) + L1 [] (0 B) -> L1 [000012] (786 B), in 1.0s (2.0s total), output rate 786 B/s
+[JOB 100] compacted(rewrite) L1 [000007 000004] (1.6 K) + L1 [] (0 B) -> L1 [000010] (786 B), in 1.0s (2.0s total), output rate 786 B/s
+[JOB 100] compacted(rewrite) L1 [000008 000006] (1.6 K) + L1 [] (0 B) -> L1 [000011] (786 B), in 1.0s (2.0s total), output rate 786 B/s
 
 lsm
 ----
 1:
-  000011:[a#0,SET-d#0,SET]
+  000010:[a#0,SET-c#0,SET]
   000005:[l#5,SET-m#0,SET]
-  000012:[w#0,SET-y#0,SET]
+  000011:[w#0,SET-y#0,SET]
 
 format-major-version
 ----

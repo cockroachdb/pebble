@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -699,6 +700,38 @@ func runCompactCmd(td *datadriven.TestData, d *DB) error {
 	return d.Compact([]byte(parts[0]), []byte(parts[1]), parallelize)
 }
 
+// runDBDefineCmd prepares a database state, returning the opened
+// database with the initialized state.
+//
+// The command accepts input describing memtables and sstables to
+// construct. Each new table is indicated by a line containing the
+// level of the next table to build (eg, "L6"), or "mem" to build
+// a memtable. Each subsequent line contains a new key-value pair.
+//
+// Point keys and range deletions should be encoded as the
+// InternalKey's string representation, as understood by
+// ParseInternalKey, followed a colon and the corresponding value.
+//
+//     b.SET.50:foo
+//     c.DEL.20
+//
+// Range keys may be encoded by prefixing the line with `rangekey:`,
+// followed by the keyspan.Span string representation, as understood
+// by keyspan.ParseSpan.
+//
+//     rangekey:b-d:{(#5,RANGEKEYSET,@2,foo)}
+//
+// Mechanics
+//
+// runDBDefineCmd works by simulating a flush for every file written.
+// Keys are written to a memtable. When a file is complete, the table
+// is flushed to physical files through manually invoking runCompaction.
+// The resulting version edit is then manipulated to write the files
+// to the indicated level.
+//
+// Because of it's low-level manipulation, runDBDefineCmd does allow the
+// creation of invalid database states. If opts.DebugCheck is set, the
+// level checker should detect the invalid state.
 func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	opts = opts.EnsureDefaults()
 	opts.FS = vfs.NewMem()
@@ -825,6 +858,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		if err != nil {
 			return err
 		}
+		largestSeqNum := atomic.LoadUint64(&d.mu.versions.atomic.logSeqNum)
 		for _, f := range newVE.NewFiles {
 			if start != nil {
 				f.Meta.SmallestPointKey = *start
@@ -834,10 +868,24 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				f.Meta.LargestPointKey = *end
 				f.Meta.Largest = *end
 			}
+			if largestSeqNum <= f.Meta.LargestSeqNum {
+				largestSeqNum = f.Meta.LargestSeqNum + 1
+			}
 			ve.NewFiles = append(ve.NewFiles, newFileEntry{
 				Level: level,
 				Meta:  f.Meta,
 			})
+		}
+		// The committed keys were never written to the WAL, so neither
+		// the logSeqNum nor the commit pipeline's visibleSeqNum have
+		// been ratcheted. Manually ratchet them to the largest sequence
+		// number committed to ensure iterators opened from the database
+		// correctly observe the committed keys.
+		if atomic.LoadUint64(&d.mu.versions.atomic.logSeqNum) < largestSeqNum {
+			atomic.StoreUint64(&d.mu.versions.atomic.logSeqNum, largestSeqNum)
+		}
+		if atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum) < largestSeqNum {
+			atomic.StoreUint64(&d.mu.versions.atomic.visibleSeqNum, largestSeqNum)
 		}
 		level = -1
 		return nil
