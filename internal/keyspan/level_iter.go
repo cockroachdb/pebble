@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 )
 
@@ -16,10 +17,14 @@ import (
 // open at one time, opened using the newIter function passed in.
 type LevelIter struct {
 	cmp base.Compare
-	// Denotes if this level iter should read point key spans (i.e. rangedels,
-	// or range keys. If key type is Point, no straddle spans are emitted between
-	// files, and point key bounds are used to find files instead of range key
-	// bounds.
+	// Denotes the kind of key the level iterator should read. If the key type
+	// is KeyTypePoint, the level iterator will read range tombstones (which
+	// only affect point keys). If the key type is KeyTypeRange, the level
+	// iterator will read range keys. It is invalid to configure an iterator
+	// with the KeyTypePointAndRange key type.
+	//
+	// If key type is KeyTypePoint, no straddle spans are emitted between files,
+	// and point key bounds are used to find files instead of range key bounds.
 	//
 	// TODO(bilal): Straddle spans can safely be produced in rangedel mode once
 	// we can guarantee that we will never read sstables in a level that split
@@ -43,14 +48,17 @@ type LevelIter struct {
 	dir         int
 	straddle    Span
 	straddleDir int
-	// The iter for the current file. It is nil under any of the following conditions:
+	// The iter for the current file (iterFile). It is nil under any of the
+	// following conditions:
 	// - files.Current() == nil
 	// - err != nil
 	// - straddleDir != 0, in which case iterFile is not nil and points to the
 	//   next file (in the straddleDir direction).
 	// - some other constraint, like the bounds in opts, caused the file at index to not
 	//   be relevant to the iteration.
-	iter     FragmentIterator
+	iter FragmentIterator
+	// iterFile holds the current file.
+	// INVARIANT: iterFile = files.Current()
 	iterFile *manifest.FileMetadata
 	newIter  TableNewSpanIter
 	files    manifest.LevelIterator
@@ -186,7 +194,9 @@ func (l *LevelIter) SeekGE(key []byte) *Span {
 
 	f := l.findFileGE(key)
 	if f != nil && l.keyType == manifest.KeyTypeRange && l.cmp(key, f.SmallestRangeKey.UserKey) < 0 {
+		// Peek at the previous file.
 		prevFile := l.files.Prev()
+		l.files.Next()
 		if prevFile != nil {
 			// We could unconditionally return an empty span between the seek key and
 			// f.SmallestRangeKey, however if this span is to the left of all range
@@ -202,11 +212,10 @@ func (l *LevelIter) SeekGE(key []byte) *Span {
 			//
 			// TODO(bilal): Investigate ways to be able to return straddle spans in
 			// cases similar to the above, while still retaining correctness.
-			l.files.Next()
 			// Return a straddling key instead of loading the file.
 			l.iterFile = f
 			if err := l.Close(); err != nil {
-				return nil
+				return l.verify(nil)
 			}
 			l.straddleDir = +1
 			l.straddle = Span{
@@ -214,15 +223,15 @@ func (l *LevelIter) SeekGE(key []byte) *Span {
 				End:   f.SmallestRangeKey.UserKey,
 				Keys:  nil,
 			}
-			return &l.straddle
+			return l.verify(&l.straddle)
 		}
 	}
 	loadFileIndicator := l.loadFile(f, +1)
 	if loadFileIndicator == noFileLoaded {
-		return nil
+		return l.verify(nil)
 	}
 	if span := l.iter.SeekGE(key); span != nil {
-		return span
+		return l.verify(span)
 	}
 	return l.skipEmptyFileForward()
 }
@@ -236,7 +245,9 @@ func (l *LevelIter) SeekLT(key []byte) *Span {
 
 	f := l.findFileLT(key)
 	if f != nil && l.keyType == manifest.KeyTypeRange && l.cmp(f.LargestRangeKey.UserKey, key) < 0 {
+		// Peek at the next file.
 		nextFile := l.files.Next()
+		_ = l.files.Prev()
 		if nextFile != nil {
 			// We could unconditionally return an empty span between f.LargestRangeKey
 			// and the seek key, however if this span is to the right of all range keys
@@ -252,11 +263,10 @@ func (l *LevelIter) SeekLT(key []byte) *Span {
 			//
 			// TODO(bilal): Investigate ways to be able to return straddle spans in
 			// cases similar to the above, while still retaining correctness.
-			l.files.Prev()
 			// Return a straddling key instead of loading the file.
 			l.iterFile = f
 			if err := l.Close(); err != nil {
-				return nil
+				return l.verify(nil)
 			}
 			l.straddleDir = -1
 			l.straddle = Span{
@@ -264,14 +274,14 @@ func (l *LevelIter) SeekLT(key []byte) *Span {
 				End:   nextFile.SmallestRangeKey.UserKey,
 				Keys:  nil,
 			}
-			return &l.straddle
+			return l.verify(&l.straddle)
 		}
 	}
-	if l.loadFile(l.findFileLT(key), -1) == noFileLoaded {
-		return nil
+	if l.loadFile(f, -1) == noFileLoaded {
+		return l.verify(nil)
 	}
 	if span := l.iter.SeekLT(key); span != nil {
-		return span
+		return l.verify(span)
 	}
 	return l.skipEmptyFileBackward()
 }
@@ -284,10 +294,10 @@ func (l *LevelIter) First() *Span {
 	l.err = nil // clear cached iteration error
 
 	if l.loadFile(l.files.First(), +1) == noFileLoaded {
-		return nil
+		return l.verify(nil)
 	}
 	if span := l.iter.First(); span != nil {
-		return span
+		return l.verify(span)
 	}
 	return l.skipEmptyFileForward()
 }
@@ -300,10 +310,10 @@ func (l *LevelIter) Last() *Span {
 	l.err = nil // clear cached iteration error
 
 	if l.loadFile(l.files.Last(), -1) == noFileLoaded {
-		return nil
+		return l.verify(nil)
 	}
 	if span := l.iter.Last(); span != nil {
-		return span
+		return l.verify(span)
 	}
 	return l.skipEmptyFileBackward()
 }
@@ -311,7 +321,7 @@ func (l *LevelIter) Last() *Span {
 // Next implements keyspan.FragmentIterator.
 func (l *LevelIter) Next() *Span {
 	if l.err != nil || (l.iter == nil && l.iterFile == nil && l.dir > 0) {
-		return nil
+		return l.verify(nil)
 	}
 	if l.iter == nil && l.iterFile == nil {
 		// l.dir <= 0
@@ -321,7 +331,7 @@ func (l *LevelIter) Next() *Span {
 
 	if l.iter != nil {
 		if span := l.iter.Next(); span != nil {
-			return span
+			return l.verify(span)
 		}
 	}
 	return l.skipEmptyFileForward()
@@ -330,7 +340,7 @@ func (l *LevelIter) Next() *Span {
 // Prev implements keyspan.FragmentIterator.
 func (l *LevelIter) Prev() *Span {
 	if l.err != nil || (l.iter == nil && l.iterFile == nil && l.dir < 0) {
-		return nil
+		return l.verify(nil)
 	}
 	if l.iter == nil && l.iterFile == nil {
 		// l.dir >= 0
@@ -340,7 +350,7 @@ func (l *LevelIter) Prev() *Span {
 
 	if l.iter != nil {
 		if span := l.iter.Prev(); span != nil {
-			return span
+			return l.verify(span)
 		}
 	}
 	return l.skipEmptyFileBackward()
@@ -357,7 +367,7 @@ func (l *LevelIter) skipEmptyFileForward() *Span {
 		// Straddle spans are not created in rangedel mode.
 		if err := l.Close(); err != nil {
 			l.err = err
-			return nil
+			return l.verify(nil)
 		}
 		startKey := l.iterFile.LargestRangeKey.UserKey
 		// Resetting l.iterFile without loading the file into l.iter is okay and
@@ -365,7 +375,7 @@ func (l *LevelIter) skipEmptyFileForward() *Span {
 		// which it should be due to the Close() call above.
 		l.iterFile = l.files.Next()
 		if l.iterFile == nil {
-			return nil
+			return l.verify(nil)
 		}
 		endKey := l.iterFile.SmallestRangeKey.UserKey
 		if l.cmp(startKey, endKey) < 0 {
@@ -376,7 +386,7 @@ func (l *LevelIter) skipEmptyFileForward() *Span {
 				End:   endKey,
 			}
 			l.straddleDir = +1
-			return &l.straddle
+			return l.verify(&l.straddle)
 		}
 	} else if l.straddleDir < 0 {
 		// We were at a straddle key, but are now changing directions. l.iterFile
@@ -395,7 +405,7 @@ func (l *LevelIter) skipEmptyFileForward() *Span {
 			fileToLoad = l.files.Next()
 		}
 		if l.loadFile(fileToLoad, +1) == noFileLoaded {
-			return nil
+			return l.verify(nil)
 		}
 		span = l.iter.First()
 		// In rangedel mode, we can expect to get empty files that we'd need to
@@ -404,7 +414,7 @@ func (l *LevelIter) skipEmptyFileForward() *Span {
 			break
 		}
 	}
-	return span
+	return l.verify(span)
 }
 
 func (l *LevelIter) skipEmptyFileBackward() *Span {
@@ -418,7 +428,7 @@ func (l *LevelIter) skipEmptyFileBackward() *Span {
 		l.iterFile != nil && l.iter != nil {
 		if err := l.Close(); err != nil {
 			l.err = err
-			return nil
+			return l.verify(nil)
 		}
 		endKey := l.iterFile.SmallestRangeKey.UserKey
 		// Resetting l.iterFile without loading the file into l.iter is okay and
@@ -426,7 +436,7 @@ func (l *LevelIter) skipEmptyFileBackward() *Span {
 		// which it should be due to the Close() call above.
 		l.iterFile = l.files.Prev()
 		if l.iterFile == nil {
-			return nil
+			return l.verify(nil)
 		}
 		startKey := l.iterFile.LargestRangeKey.UserKey
 		if l.cmp(startKey, endKey) < 0 {
@@ -437,7 +447,7 @@ func (l *LevelIter) skipEmptyFileBackward() *Span {
 				End:   endKey,
 			}
 			l.straddleDir = -1
-			return &l.straddle
+			return l.verify(&l.straddle)
 		}
 	} else if l.straddleDir > 0 {
 		// We were at a straddle key, but are now changing directions. l.iterFile
@@ -454,7 +464,7 @@ func (l *LevelIter) skipEmptyFileBackward() *Span {
 			fileToLoad = l.files.Prev()
 		}
 		if l.loadFile(fileToLoad, -1) == noFileLoaded {
-			return nil
+			return l.verify(nil)
 		}
 		span = l.iter.Last()
 		// In rangedel mode, we can expect to get empty files that we'd need to
@@ -464,7 +474,22 @@ func (l *LevelIter) skipEmptyFileBackward() *Span {
 			break
 		}
 	}
-	return span
+	return l.verify(span)
+}
+
+// verify is invoked whenever a span is returned from an iterator positioning
+// method to a caller. During invariant builds, it asserts invariants to the
+// caller.
+func (l *LevelIter) verify(s *Span) *Span {
+	// NB: Do not add any logic outside the invariants.Enabled conditional to
+	// ensure that verify is always compiled away in production builds.
+	if invariants.Enabled {
+		if f := l.files.Current(); f != l.iterFile {
+			panic(fmt.Sprintf("LevelIter.files.Current (%s) and l.iterFile (%s) diverged",
+				f, l.iterFile))
+		}
+	}
+	return s
 }
 
 // Error implements keyspan.FragmentIterator.

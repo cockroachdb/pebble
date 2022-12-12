@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // LevelMetadata contains metadata for all of the files within
@@ -405,8 +406,13 @@ func (i *LevelIterator) Clone() LevelIterator {
 }
 
 // Current returns the item at the current iterator position.
+//
+// Current is deprecated. Callers should instead use the return value of a
+// positioning operation.
 func (i *LevelIterator) Current() *FileMetadata {
-	if !i.iter.valid() {
+	if !i.iter.valid() ||
+		(i.end != nil && cmpIter(i.iter, *i.end) > 0) ||
+		(i.start != nil && cmpIter(i.iter, *i.start) < 0) {
 		return nil
 	}
 	return i.iter.cur()
@@ -465,6 +471,12 @@ func (i *LevelIterator) Last() *FileMetadata {
 
 // Next advances the iterator to the next file and returns it.
 func (i *LevelIterator) Next() *FileMetadata {
+	if i.iter.r == nil {
+		return nil
+	}
+	if invariants.Enabled && (i.iter.pos >= i.iter.n.count || (i.end != nil && cmpIter(i.iter, *i.end) > 0)) {
+		panic("pebble: cannot next forward-exhausted iterator")
+	}
 	i.iter.next()
 	if !i.iter.valid() {
 		return nil
@@ -474,6 +486,12 @@ func (i *LevelIterator) Next() *FileMetadata {
 
 // Prev moves the iterator the previous file and returns it.
 func (i *LevelIterator) Prev() *FileMetadata {
+	if i.iter.r == nil {
+		return nil
+	}
+	if invariants.Enabled && (i.iter.pos < 0 || (i.start != nil && cmpIter(i.iter, *i.start) < 0)) {
+		panic("pebble: cannot prev backward-exhausted iterator")
+	}
 	i.iter.prev()
 	if !i.iter.valid() {
 		return nil
@@ -487,7 +505,7 @@ func (i *LevelIterator) Prev() *FileMetadata {
 // be sorted by user keys and non-overlapping.
 func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 	// TODO(jackson): Assert that i.iter.cmp == btreeCmpSmallestKey.
-	if i.empty() {
+	if i.iter.r == nil {
 		return nil
 	}
 	m := i.seek(func(m *FileMetadata) bool {
@@ -512,7 +530,7 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 // by user keys and non-overlapping.
 func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
 	// TODO(jackson): Assert that i.iter.cmp == btreeCmpSmallestKey.
-	if i.empty() {
+	if i.iter.r == nil {
 		return nil
 	}
 	i.seek(func(m *FileMetadata) bool {

@@ -500,6 +500,10 @@ func expandToAtomicUnit(
 		return inputs, false
 	}
 
+	// TODO(jackson): Update to avoid use of LevelIterator.Current(). The
+	// Reslice interface will require some tweaking, because we currently rely
+	// on Reslice having already positioned the LevelIterator appropriately.
+
 	inputs = inputs.Reslice(func(start, end *manifest.LevelIterator) {
 		iter := start.Clone()
 		iter.Prev()
