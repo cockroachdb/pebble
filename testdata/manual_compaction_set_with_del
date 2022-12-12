@@ -594,7 +594,7 @@ L1
   a.SET.3:3
   b.RANGEDEL.3:e
   b.SET.0:0
-  c.SET.1:1
+  c.SET.3:1
   d.SET.1:1
 L3
   c.RANGEDEL.2:d

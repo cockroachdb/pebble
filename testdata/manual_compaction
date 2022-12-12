@@ -594,7 +594,7 @@ L1
   a.SET.3:3
   b.RANGEDEL.3:e
   b.SET.0:0
-  c.SET.1:1
+  c.SET.3:1
   d.SET.1:1
 L3
   c.RANGEDEL.2:d
@@ -1105,14 +1105,14 @@ set y y
 flush
 ----
 0.0:
-  000009:[b#1,SET-b#1,SET]
-  000010:[h#2,SET-h#2,SET]
-  000011:[i#3,SET-i#3,SET]
-  000012:[j#4,SET-j#4,SET]
-  000013:[k#5,SET-k#5,SET]
-  000014:[m#6,SET-m#6,SET]
-  000015:[q#7,SET-q#7,SET]
-  000016:[y#8,SET-y#8,SET]
+  000009:[b#2,SET-b#2,SET]
+  000010:[h#3,SET-h#3,SET]
+  000011:[i#4,SET-i#4,SET]
+  000012:[j#5,SET-j#5,SET]
+  000013:[k#6,SET-k#6,SET]
+  000014:[m#7,SET-m#7,SET]
+  000015:[q#8,SET-q#8,SET]
+  000016:[y#9,SET-y#9,SET]
 6:
   000006:[a#1,SET-g#72057594037927935,RANGEDEL]
   000007:[m#0,SET-m#0,SET]
@@ -1122,7 +1122,7 @@ flush
 compact g-z
 ----
 0.0:
-  000009:[b#1,SET-b#1,SET]
+  000009:[b#2,SET-b#2,SET]
 6:
   000006:[a#1,SET-g#72057594037927935,RANGEDEL]
   000049:[h#0,SET-k#0,SET]
@@ -1135,8 +1135,8 @@ set t t
 flush
 ----
 0.0:
-  000009:[b#1,SET-b#1,SET]
-  000052:[t#9,SET-t#9,SET]
+  000009:[b#2,SET-b#2,SET]
+  000052:[t#10,SET-t#10,SET]
 6:
   000006:[a#1,SET-g#72057594037927935,RANGEDEL]
   000049:[h#0,SET-k#0,SET]
