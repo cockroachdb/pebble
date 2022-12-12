@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -825,6 +826,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		if err != nil {
 			return err
 		}
+		largestSeqNum := atomic.LoadUint64(&d.mu.versions.atomic.logSeqNum)
 		for _, f := range newVE.NewFiles {
 			if start != nil {
 				f.Meta.SmallestPointKey = *start
@@ -834,10 +836,19 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 				f.Meta.LargestPointKey = *end
 				f.Meta.Largest = *end
 			}
+			if largestSeqNum <= f.Meta.LargestSeqNum {
+				largestSeqNum = f.Meta.LargestSeqNum + 1
+			}
 			ve.NewFiles = append(ve.NewFiles, newFileEntry{
 				Level: level,
 				Meta:  f.Meta,
 			})
+		}
+		if atomic.LoadUint64(&d.mu.versions.atomic.logSeqNum) < largestSeqNum {
+			atomic.StoreUint64(&d.mu.versions.atomic.logSeqNum, largestSeqNum)
+		}
+		if atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum) < largestSeqNum {
+			atomic.StoreUint64(&d.mu.versions.atomic.visibleSeqNum, largestSeqNum)
 		}
 		level = -1
 		return nil
