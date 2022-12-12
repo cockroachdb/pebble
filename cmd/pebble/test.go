@@ -329,6 +329,17 @@ func runTest(dir string, t test) {
 		close(workersDone)
 	}()
 
+	if maxSize > 0 {
+		go func() {
+			for {
+				time.Sleep(10 * time.Second)
+				if db.Metrics().DiskSpaceUsage() > maxSize*1e6 {
+					fmt.Println("max size reached")
+					done <- syscall.Signal(0)
+				}
+			}
+		}()
+	}
 	if duration > 0 {
 		go func() {
 			time.Sleep(duration)
