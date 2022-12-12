@@ -673,43 +673,48 @@ func SortBySmallest(files []*FileMetadata, cmp Compare) {
 
 func overlaps(iter LevelIterator, cmp Compare, start, end []byte, exclusiveEnd bool) LevelSlice {
 	startIter := iter.Clone()
-	startIter.SeekGE(cmp, start)
-
-	// SeekGE compares user keys. The user key `start` may be equal to the
-	// f.Largest because f.Largest is a range deletion sentinel, indicating that
-	// the user key `start` is NOT contained within the file f. If that's the
-	// case, we can narrow the overlapping bounds to exclude the file with the
-	// sentinel.
-	if f := startIter.Current(); f != nil && f.Largest.IsExclusiveSentinel() &&
-		cmp(f.Largest.UserKey, start) == 0 {
-		startIter.Next()
+	{
+		startIterFile := startIter.SeekGE(cmp, start)
+		// SeekGE compares user keys. The user key `start` may be equal to the
+		// f.Largest because f.Largest is a range deletion sentinel, indicating
+		// that the user key `start` is NOT contained within the file f. If
+		// that's the case, we can narrow the overlapping bounds to exclude the
+		// file with the sentinel.
+		if startIterFile != nil && startIterFile.Largest.IsExclusiveSentinel() &&
+			cmp(startIterFile.Largest.UserKey, start) == 0 {
+			startIterFile = startIter.Next()
+		}
+		_ = startIterFile // Ignore unused assignment.
 	}
 
 	endIter := iter.Clone()
-	endIter.SeekGE(cmp, end)
+	{
+		endIterFile := endIter.SeekGE(cmp, end)
 
-	if !exclusiveEnd {
-		// endIter is now pointing at the *first* file with a largest key >= end.
-		// If there are multiple files including the user key `end`, we want all
-		// of them, so move forward.
-		for f := endIter.Current(); f != nil && cmp(f.Largest.UserKey, end) == 0; {
-			f = endIter.Next()
+		if !exclusiveEnd {
+			// endIter is now pointing at the *first* file with a largest key >= end.
+			// If there are multiple files including the user key `end`, we want all
+			// of them, so move forward.
+			for endIterFile != nil && cmp(endIterFile.Largest.UserKey, end) == 0 {
+				endIterFile = endIter.Next()
+			}
 		}
-	}
 
-	// LevelSlice uses inclusive bounds, so if we seeked to the end sentinel
-	// or nexted too far because Largest.UserKey equaled `end`, go back.
-	//
-	// Consider !exclusiveEnd and end = 'f', with the following file bounds:
-	//
-	//     [b,d] [e, f] [f, f] [g, h]
-	//
-	// the above for loop will Next until it arrives at [g, h]. We need to
-	// observe that g > f, and Prev to the file with bounds [f, f].
-	if !endIter.iter.valid() {
-		endIter.Prev()
-	} else if c := cmp(endIter.Current().Smallest.UserKey, end); c > 0 || c == 0 && exclusiveEnd {
-		endIter.Prev()
+		// LevelSlice uses inclusive bounds, so if we seeked to the end sentinel
+		// or nexted too far because Largest.UserKey equaled `end`, go back.
+		//
+		// Consider !exclusiveEnd and end = 'f', with the following file bounds:
+		//
+		//     [b,d] [e, f] [f, f] [g, h]
+		//
+		// the above for loop will Next until it arrives at [g, h]. We need to
+		// observe that g > f, and Prev to the file with bounds [f, f].
+		if endIterFile == nil {
+			endIterFile = endIter.Prev()
+		} else if c := cmp(endIterFile.Smallest.UserKey, end); c > 0 || c == 0 && exclusiveEnd {
+			endIterFile = endIter.Prev()
+		}
+		_ = endIterFile // Ignore unused assignment.
 	}
 
 	iter = startIter.Clone()
