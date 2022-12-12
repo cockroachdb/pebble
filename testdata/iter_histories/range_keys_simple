@@ -461,3 +461,16 @@ b: (., [b-e) @1=foo UPDATED)
 a: (a, . UPDATED)
 c: (., [b-e) @1=foo UPDATED)
 b: (., [b-e) @1=foo)
+
+define
+L6
+a.RANGEDEL.3:z
+rangekey:b-d:{(#5,RANGEKEYSET,@2,foo)}
+----
+6:
+  000004:[a#3,RANGEDEL-z#72057594037927935,RANGEDEL]
+
+combined-iter
+seek-ge apple
+----
+b: (., [b-d) @2=foo UPDATED)
