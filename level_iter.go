@@ -632,7 +632,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 
 		var rangeDelIter keyspan.FragmentIterator
 		var iter internalIterator
-		iter, rangeDelIter, l.err = l.newIters(l.files.Current(), &l.tableOpts, l.internalOpts)
+		iter, rangeDelIter, l.err = l.newIters(l.iterFile, &l.tableOpts, l.internalOpts)
 		l.iter = iter
 		if l.err != nil {
 			return noFileLoaded
