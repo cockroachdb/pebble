@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/cockroachdb/pebble"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -324,27 +326,33 @@ func runTest(dir string, t test) {
 	workersDone := make(chan struct{})
 	signal.Notify(done, os.Interrupt)
 
-	go func() {
+	eg, ctx := errgroup.WithContext(context.Background())
+	defer ctx.Done()
+
+	eg.Go(func() error {
 		wg.Wait()
 		close(workersDone)
-	}()
+		return nil
+	})
 
 	if maxSize > 0 {
-		go func() {
+		eg.Go(func() error {
 			for {
 				time.Sleep(10 * time.Second)
 				if db.Metrics().DiskSpaceUsage() > maxSize*1e6 {
 					fmt.Println("max size reached")
 					done <- syscall.Signal(0)
+					return nil
 				}
 			}
-		}()
+		})
 	}
 	if duration > 0 {
-		go func() {
+		eg.Go(func() error {
 			time.Sleep(duration)
 			done <- syscall.Signal(0)
-		}()
+			return nil
+		})
 	}
 
 	stopProf := startCPUProfile()
