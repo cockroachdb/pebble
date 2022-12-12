@@ -352,11 +352,10 @@ func TestBTreeSeek(t *testing.T) {
 
 	it := LevelIterator{iter: tr.iter()}
 	for i := 0; i < 2*count-1; i++ {
-		it.SeekGE(base.DefaultComparer.Compare, key(i).UserKey)
-		if !it.iter.valid() {
+		item := it.SeekGE(base.DefaultComparer.Compare, key(i).UserKey)
+		if item == nil {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
-		item := it.Current()
 		expected := key(2 * ((i + 1) / 2))
 		if cmpKey(expected, item.Smallest) != 0 {
 			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
@@ -368,11 +367,10 @@ func TestBTreeSeek(t *testing.T) {
 	}
 
 	for i := 1; i < 2*count; i++ {
-		it.SeekLT(base.DefaultComparer.Compare, key(i).UserKey)
-		if !it.iter.valid() {
+		item := it.SeekLT(base.DefaultComparer.Compare, key(i).UserKey)
+		if item == nil {
 			t.Fatalf("%d: expected valid iterator", i)
 		}
-		item := it.Current()
 		expected := key(2 * ((i - 1) / 2))
 		if cmpKey(expected, item.Smallest) != 0 {
 			t.Fatalf("%d: expected %s, but found %s", i, expected, item.Smallest)
@@ -773,13 +771,13 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			k := keys[rng.Intn(len(keys))]
 			it := LevelIterator{iter: tr.iter()}
-			it.SeekGE(base.DefaultComparer.Compare, k.UserKey)
+			f := it.SeekGE(base.DefaultComparer.Compare, k.UserKey)
 			if testing.Verbose() {
-				if !it.iter.valid() {
+				if f == nil {
 					b.Fatal("expected to find key")
 				}
-				if cmpKey(k, it.Current().Smallest) != 0 {
-					b.Fatalf("expected %s, but found %s", k, it.Current().Smallest)
+				if cmpKey(k, f.Smallest) != 0 {
+					b.Fatalf("expected %s, but found %s", k, f.Smallest)
 				}
 			}
 		}
@@ -808,19 +806,19 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 			j := rng.Intn(len(keys))
 			k := keys[j]
 			it := LevelIterator{iter: tr.iter()}
-			it.SeekLT(base.DefaultComparer.Compare, k.UserKey)
+			f := it.SeekLT(base.DefaultComparer.Compare, k.UserKey)
 			if testing.Verbose() {
 				if j == 0 {
-					if it.iter.valid() {
+					if f != nil {
 						b.Fatal("unexpected key")
 					}
 				} else {
-					if !it.iter.valid() {
+					if f == nil {
 						b.Fatal("expected to find key")
 					}
 					k := keys[j-1]
-					if cmpKey(k, it.Current().Smallest) != 0 {
-						b.Fatalf("expected %s, but found %s", k, it.Current().Smallest)
+					if cmpKey(k, f.Smallest) != 0 {
+						b.Fatalf("expected %s, but found %s", k, f.Smallest)
 					}
 				}
 			}
