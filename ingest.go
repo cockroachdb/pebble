@@ -541,7 +541,7 @@ func ingestTargetLevel(
 			continue
 		}
 
-		iter, rangeDelIter, err := newIters(iter.Current(), nil, internalIterOpts{})
+		iter, rangeDelIter, err := newIters(meta0, nil, internalIterOpts{})
 		if err != nil {
 			return 0, err
 		}
