@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // LevelMetadata contains metadata for all of the files within
@@ -447,6 +448,12 @@ func (i *LevelIterator) Last() *FileMetadata {
 
 // Next advances the iterator to the next file and returns it.
 func (i *LevelIterator) Next() *FileMetadata {
+	if i.iter.r == nil {
+		return nil
+	}
+	if invariants.Enabled && i.iter.pos >= i.iter.n.count {
+		panic("pebble: cannot next iterator with position ≥ i.n.count")
+	}
 	i.iter.next()
 	if !i.iter.valid() {
 		return nil
@@ -459,6 +466,12 @@ func (i *LevelIterator) Next() *FileMetadata {
 
 // Prev moves the iterator the previous file and returns it.
 func (i *LevelIterator) Prev() *FileMetadata {
+	if i.iter.r == nil {
+		return nil
+	}
+	if invariants.Enabled && i.iter.pos < 0 {
+		panic("pebble: cannot prev iterator with position < 0")
+	}
 	i.iter.prev()
 	if !i.iter.valid() {
 		return nil
@@ -475,7 +488,7 @@ func (i *LevelIterator) Prev() *FileMetadata {
 // be sorted by user keys and non-overlapping.
 func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 	// TODO(jackson): Assert that i.iter.cmp == btreeCmpSmallestKey.
-	if i.empty() {
+	if i.iter.r == nil {
 		return nil
 	}
 	meta := i.seek(func(m *FileMetadata) bool {
@@ -505,7 +518,7 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 // by user keys and non-overlapping.
 func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
 	// TODO(jackson): Assert that i.iter.cmp == btreeCmpSmallestKey.
-	if i.empty() {
+	if i.iter.r == nil {
 		return nil
 	}
 	i.seek(func(m *FileMetadata) bool {
