@@ -471,6 +471,38 @@ rangekey:b-d:{(#5,RANGEKEYSET,@2,foo)}
   000004:[a#3,RANGEDEL-z#72057594037927935,RANGEDEL]
 
 combined-iter
+seek-lt apple
+----
+.
+
+combined-iter
 seek-ge apple
+seek-ge z
+seek-lt apple
+seek-lt z
+first
+last
 ----
 b: (., [b-d) @2=foo UPDATED)
+.
+.
+b: (., [b-d) @2=foo UPDATED)
+b: (., [b-d) @2=foo)
+b: (., [b-d) @2=foo)
+
+combined-iter
+seek-ge apple
+prev
+last
+next
+prev
+seek-lt c
+prev
+----
+b: (., [b-d) @2=foo UPDATED)
+.
+b: (., [b-d) @2=foo UPDATED)
+.
+b: (., [b-d) @2=foo UPDATED)
+b: (., [b-d) @2=foo)
+.

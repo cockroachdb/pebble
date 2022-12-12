@@ -186,7 +186,9 @@ func (l *LevelIter) SeekGE(key []byte) *Span {
 
 	f := l.findFileGE(key)
 	if f != nil && l.keyType == manifest.KeyTypeRange && l.cmp(key, f.SmallestRangeKey.UserKey) < 0 {
+		// Peek at the previous file.
 		prevFile := l.files.Prev()
+		l.files.Next()
 		if prevFile != nil {
 			// We could unconditionally return an empty span between the seek key and
 			// f.SmallestRangeKey, however if this span is to the left of all range
@@ -202,7 +204,6 @@ func (l *LevelIter) SeekGE(key []byte) *Span {
 			//
 			// TODO(bilal): Investigate ways to be able to return straddle spans in
 			// cases similar to the above, while still retaining correctness.
-			l.files.Next()
 			// Return a straddling key instead of loading the file.
 			l.iterFile = f
 			if err := l.Close(); err != nil {
@@ -236,7 +237,9 @@ func (l *LevelIter) SeekLT(key []byte) *Span {
 
 	f := l.findFileLT(key)
 	if f != nil && l.keyType == manifest.KeyTypeRange && l.cmp(f.LargestRangeKey.UserKey, key) < 0 {
+		// Peek at the next file.
 		nextFile := l.files.Next()
+		_ = l.files.Prev()
 		if nextFile != nil {
 			// We could unconditionally return an empty span between f.LargestRangeKey
 			// and the seek key, however if this span is to the right of all range keys
@@ -252,7 +255,6 @@ func (l *LevelIter) SeekLT(key []byte) *Span {
 			//
 			// TODO(bilal): Investigate ways to be able to return straddle spans in
 			// cases similar to the above, while still retaining correctness.
-			l.files.Prev()
 			// Return a straddling key instead of loading the file.
 			l.iterFile = f
 			if err := l.Close(); err != nil {
@@ -267,7 +269,7 @@ func (l *LevelIter) SeekLT(key []byte) *Span {
 			return &l.straddle
 		}
 	}
-	if l.loadFile(l.findFileLT(key), -1) == noFileLoaded {
+	if l.loadFile(f, -1) == noFileLoaded {
 		return nil
 	}
 	if span := l.iter.SeekLT(key); span != nil {
