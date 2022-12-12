@@ -90,7 +90,8 @@ type levelIter struct {
 	// - err != nil
 	// - some other constraint, like the bounds in opts, caused the file at index to not
 	//   be relevant to the iteration.
-	iter     internalIterator
+	iter internalIterator
+	// iterFile holds the current file. It is always equal to l.files.Current().
 	iterFile *fileMetadata
 	// filteredIter is an optional interface that may be implemented by internal
 	// iterators that perform filtering of keys. When a new file's iterator is
@@ -632,7 +633,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 
 		var rangeDelIter keyspan.FragmentIterator
 		var iter internalIterator
-		iter, rangeDelIter, l.err = l.newIters(l.files.Current(), &l.tableOpts, l.internalOpts)
+		iter, rangeDelIter, l.err = l.newIters(l.iterFile, &l.tableOpts, l.internalOpts)
 		l.iter = iter
 		if l.err != nil {
 			return noFileLoaded
