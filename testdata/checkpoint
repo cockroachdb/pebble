@@ -12,6 +12,9 @@ sync: db/temporary.000001.dbtmp
 close: db/temporary.000001.dbtmp
 rename: db/temporary.000001.dbtmp -> db/CURRENT
 sync: db
+sync: db/MANIFEST-000001
+create: db/000002.log
+sync: db
 create: db/marker.manifest.000001.MANIFEST-000001
 close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
@@ -48,9 +51,6 @@ close: db/marker.format-version.000009.010
 sync: db
 create: db/marker.format-version.000010.011
 close: db/marker.format-version.000010.011
-sync: db
-sync: db/MANIFEST-000001
-create: db/000002.log
 sync: db
 create: db/temporary.000003.dbtmp
 sync: db/temporary.000003.dbtmp
