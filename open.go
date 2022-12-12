@@ -260,16 +260,6 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 	}
 
-	// If the Options specify a format major version higher than the
-	// loaded database's, upgrade it. If this is a new database, this
-	// code path also performs an initial upgrade from the starting
-	// implicit MostCompatible version.
-	if !d.opts.ReadOnly && opts.FormatMajorVersion > d.mu.formatVers.vers {
-		if err := d.ratchetFormatMajorVersionLocked(opts.FormatMajorVersion); err != nil {
-			return nil, err
-		}
-	}
-
 	// Atomic markers like the one used for the MANIFEST may leave
 	// behind obsolete files if there's a crash mid-update. Clean these
 	// up if we're not in read-only mode.
@@ -424,6 +414,19 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		d.mu.versions.metrics.WAL.Files++
 	}
 	d.updateReadStateLocked(d.opts.DebugCheck)
+
+	// If the Options specify a format major version higher than the
+	// loaded database's, upgrade it. If this is a new database, this
+	// code path also performs an initial upgrade from the starting
+	// implicit MostCompatible version.
+	//
+	// We ratchet the version this far into Open so that migrations have a read
+	// state available.
+	if !d.opts.ReadOnly && opts.FormatMajorVersion > d.mu.formatVers.vers {
+		if err := d.ratchetFormatMajorVersionLocked(opts.FormatMajorVersion); err != nil {
+			return nil, err
+		}
+	}
 
 	if !d.opts.ReadOnly {
 		// Write the current options to disk.

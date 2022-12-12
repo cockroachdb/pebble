@@ -502,31 +502,24 @@ func (d *DB) markFilesLocked(findFn findFilesFunc) error {
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 
-	vers := d.mu.versions.currentVersion()
+	// Acquire a read state to have a view of the LSM and a guarantee that none
+	// of the referenced files will be deleted until we've unreferenced the read
+	// state. Some findFilesFuncs may read the files, requiring they not be
+	// deleted.
+	rs := d.loadReadState()
 	var (
 		found bool
 		files [numLevels][]*fileMetadata
 		err   error
 	)
 	func() {
-		// Disable file deletions. Some migrations that mark files may need to
-		// read the files themselves. The LSM may be changing while the
-		// migration is determining which files to mark. That's ok, because
-		// after re-acquiring the mutex and acquiring the manifest lock, we'll
-		// discard any sstables that have been removed from the LSM. However, we
-		// also need to make sure that the files we try to open during the scan
-		// are not removed before we read them. This is preferable over
-		// gracefully handling nonexistent files because some environments (eg,
-		// Windows) error if you attempt to remove an open file.
-		d.disableFileDeletions()
-		defer d.enableFileDeletions()
-
+		defer rs.unrefLocked()
 		// Note the unusual locking: unlock, defer Lock(). The scan of the files in
 		// the version does not need to block other operations that require the
 		// DB.mu. Drop it for the scan, before re-acquiring it.
 		d.mu.Unlock()
 		defer d.mu.Lock()
-		found, files, err = findFn(vers)
+		found, files, err = findFn(rs.current)
 	}()
 	if err != nil {
 		return err
@@ -547,7 +540,7 @@ func (d *DB) markFilesLocked(findFn findFilesFunc) error {
 	// Lock the manifest for a coherent view of the LSM. The database lock has
 	// been re-acquired by the defer within the above anonymous function.
 	d.mu.versions.logLock()
-	vers = d.mu.versions.currentVersion()
+	vers := d.mu.versions.currentVersion()
 	for l, filesToMark := range files {
 		if len(filesToMark) == 0 {
 			continue
