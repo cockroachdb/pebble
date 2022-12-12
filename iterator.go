@@ -768,16 +768,16 @@ func (i *Iterator) sampleRead() {
 		if len(mi.levels) > 1 {
 			mi.ForEachLevelIter(func(li *levelIter) bool {
 				l := manifest.LevelToInt(li.level)
-				if file := li.files.Current(); file != nil {
+				if f := li.iterFile; f != nil {
 					var containsKey bool
 					if i.pos == iterPosNext || i.pos == iterPosCurForward ||
 						i.pos == iterPosCurForwardPaused {
-						containsKey = i.cmp(file.SmallestPointKey.UserKey, i.key) <= 0
+						containsKey = i.cmp(f.SmallestPointKey.UserKey, i.key) <= 0
 					} else if i.pos == iterPosPrev || i.pos == iterPosCurReverse ||
 						i.pos == iterPosCurReversePaused {
-						containsKey = i.cmp(file.LargestPointKey.UserKey, i.key) >= 0
+						containsKey = i.cmp(f.LargestPointKey.UserKey, i.key) >= 0
 					}
-					// Do nothing if the current key is not contained in file's
+					// Do nothing if the current key is not contained in f's
 					// bounds. We could seek the LevelIterator at this level
 					// to find the right file, but the performance impacts of
 					// doing that are significant enough to negate the benefits
@@ -791,7 +791,7 @@ func (i *Iterator) sampleRead() {
 							return true
 						}
 						topLevel = l
-						topFile = file
+						topFile = f
 					}
 				}
 				return false

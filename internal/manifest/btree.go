@@ -873,6 +873,8 @@ type iterator struct {
 	r *node
 	// n and pos make up the current position of the iterator.
 	// If valid, n.items[pos] is the current value of the iterator.
+	//
+	// n may be nil iff i.r is nil.
 	n   *node
 	pos int16
 	// cmp dictates the ordering of the FileMetadata.
@@ -904,7 +906,7 @@ func (i iterator) String() string {
 		}
 		fmt.Fprintf(&buf, "%p: %02d/%02d\n", f.n, f.pos, f.n.count)
 	}
-	if i.n == nil {
+	if i.r == nil {
 		fmt.Fprintf(&buf, "<nil>: %02d", i.pos)
 	} else {
 		fmt.Fprintf(&buf, "%p: %02d/%02d", i.n, i.pos, i.n.count)
@@ -1034,7 +1036,7 @@ func (i *iterator) ascend() {
 // tree's files, and then true for the (possibly empty) remainder.
 func (i *iterator) seek(fn func(*FileMetadata) bool) {
 	i.reset()
-	if i.n == nil {
+	if i.r == nil {
 		return
 	}
 
@@ -1066,7 +1068,7 @@ func (i *iterator) seek(fn func(*FileMetadata) bool) {
 // first seeks to the first item in the btree.
 func (i *iterator) first() {
 	i.reset()
-	if i.n == nil {
+	if i.r == nil {
 		return
 	}
 	for !i.n.leaf {
@@ -1078,7 +1080,7 @@ func (i *iterator) first() {
 // last seeks to the last item in the btree.
 func (i *iterator) last() {
 	i.reset()
-	if i.n == nil {
+	if i.r == nil {
 		return
 	}
 	for !i.n.leaf {
@@ -1090,7 +1092,7 @@ func (i *iterator) last() {
 // next positions the iterator to the item immediately following
 // its current position.
 func (i *iterator) next() {
-	if i.n == nil {
+	if i.r == nil {
 		return
 	}
 
@@ -1117,7 +1119,7 @@ func (i *iterator) next() {
 // prev positions the iterator to the item immediately preceding
 // its current position.
 func (i *iterator) prev() {
-	if i.n == nil {
+	if i.r == nil {
 		return
 	}
 
