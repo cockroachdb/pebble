@@ -72,6 +72,7 @@ func newPebbleDB(dir string) DB {
 			return 3
 		},
 	}
+	opts.Experimental.MultiLevelCompactionHueristic = pebble.WriteAmpHeuristic{}
 
 	for i := 0; i < len(opts.Levels); i++ {
 		l := &opts.Levels[i]
