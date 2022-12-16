@@ -1610,14 +1610,14 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 
 // NextPrefix moves the iterator to the next key/value pair with a key
 // containing a different prefix than the current key. Prefixes are determined
-// by Comparer.Split. Errors if invoked while in prefix-iteration mode.
+// by Comparer.Split. Exhausts the iterator if invoked while in prefix-iteration
+// mode.
 //
 // It is not permitted to invoke NextPrefix while at a IterAtLimit position or
 // to switch directions. When called in these conditions, NextPrefix has
 // non-deterministic behavior.
 func (i *Iterator) NextPrefix() bool {
 	if i.hasPrefix {
-		i.err = errors.New("cannot use NextPrefix with prefix iteration")
 		i.iterValidityState = IterExhausted
 		return false
 	}
