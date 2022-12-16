@@ -61,7 +61,7 @@ seek-prefix-ge p@210
 next-prefix
 ----
 p@100: (p@100, .)
-err=cannot use NextPrefix with prefix iteration
+.
 
 combined-iter
 seek-ge p@210
@@ -147,7 +147,7 @@ seek-prefix-ge p@210
 next-prefix
 ----
 p@100: (p@100, .)
-err=cannot use NextPrefix with prefix iteration
+.
 
 combined-iter
 seek-ge p@210
