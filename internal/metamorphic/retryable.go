@@ -259,13 +259,15 @@ func (i *retryableIter) NextWithLimit(limit []byte) pebble.IterValidityState {
 
 func (i *retryableIter) NextPrefix() bool {
 	var valid bool
-	i.withRetry(func() {
-		valid = i.iter.NextPrefix()
-		i.updateRangeKeyChangedGuess()
-		for valid && i.shouldFilter() {
-			valid = i.iter.Next()
+	i.withPosition(func() {
+		i.withRetry(func() {
+			valid = i.iter.NextPrefix()
 			i.updateRangeKeyChangedGuess()
-		}
+			for valid && i.shouldFilter() {
+				valid = i.iter.Next()
+				i.updateRangeKeyChangedGuess()
+			}
+		})
 	})
 	return valid
 }
