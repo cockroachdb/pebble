@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ import (
 
 func TestCoalesce(t *testing.T) {
 	var buf bytes.Buffer
+	eq := testkeys.Comparer.Equal
 	cmp := testkeys.Comparer.Compare
 
 	datadriven.RunTest(t, "testdata/coalesce", func(t *testing.T, td *datadriven.TestData) string {
@@ -35,7 +37,7 @@ func TestCoalesce(t *testing.T) {
 				Start: span.Start,
 				End:   span.End,
 			}
-			if err := Coalesce(cmp, span.Keys, &coalesced.Keys); err != nil {
+			if err := Coalesce(cmp, eq, span.Keys, &coalesced.Keys); err != nil {
 				return err.Error()
 			}
 			fmt.Fprintln(&buf, coalesced)
@@ -47,6 +49,7 @@ func TestCoalesce(t *testing.T) {
 }
 
 func TestIter(t *testing.T) {
+	eq := testkeys.Comparer.Equal
 	cmp := testkeys.Comparer.Compare
 	var iter keyspan.MergingIter
 	var buf bytes.Buffer
@@ -70,10 +73,20 @@ func TestIter(t *testing.T) {
 				spans = append(spans, keyspan.ParseSpan(line))
 			}
 			transform := keyspan.TransformerFunc(func(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
-				s = s.Visible(visibleSeqNum)
+				keysBySuffix := keysBySuffix{
+					cmp:  cmp,
+					keys: dst.Keys[:0],
+				}
+				if err := coalesce(eq, &keysBySuffix, visibleSeqNum, s.Keys); err != nil {
+					return err
+				}
+				// Update the span with the (potentially reduced) keys slice.  coalesce left
+				// the keys in *dst sorted by suffix. Re-sort them by trailer.
+				dst.Keys = keysBySuffix.keys
+				keyspan.SortKeysByTrailer(&dst.Keys)
 				dst.Start = s.Start
 				dst.End = s.End
-				return Coalesce(cmp, s.Keys, &dst.Keys)
+				return nil
 			})
 			iter.Init(cmp, transform, new(keyspan.MergingBuffers), keyspan.NewIter(cmp, spans))
 			return "OK"
@@ -350,4 +363,54 @@ func runIterOp(w io.Writer, it keyspan.FragmentIterator, op string) {
 		return
 	}
 	fmt.Fprintln(w, s)
+}
+
+func BenchmarkTransform(b *testing.B) {
+	var bufs Buffers
+	var ui UserIteratorConfig
+	reinit := func() {
+		bufs.PrepareForReuse()
+		_ = ui.Init(testkeys.Comparer, math.MaxUint64, nil, nil, new(bool), nil, &bufs)
+	}
+
+	for _, shadowing := range []bool{false, true} {
+		b.Run(fmt.Sprintf("shadowing=%t", shadowing), func(b *testing.B) {
+			for n := 1; n <= 128; n *= 2 {
+				b.Run(fmt.Sprintf("keys=%d", n), func(b *testing.B) {
+					rng := rand.New(rand.NewSource(233473048763))
+					reinit()
+
+					suffixes := make([][]byte, n)
+					for s := range suffixes {
+						if shadowing {
+							suffixes[s] = testkeys.Suffix(rng.Intn(n))
+						} else {
+							suffixes[s] = testkeys.Suffix(s)
+						}
+					}
+					rng.Shuffle(len(suffixes), func(i, j int) {
+						suffixes[i], suffixes[j] = suffixes[j], suffixes[i]
+					})
+
+					var keys []keyspan.Key
+					for k := 0; k < n; k++ {
+						keys = append(keys, keyspan.Key{
+							Trailer: base.MakeTrailer(uint64(n-k), base.InternalKeyKindRangeKeySet),
+							Suffix:  suffixes[k],
+						})
+					}
+					dst := keyspan.Span{Keys: make([]keyspan.Key, 0, len(keys))}
+					b.ResetTimer()
+
+					for i := 0; i < b.N; i++ {
+						err := ui.Transform(testkeys.Comparer.Compare, keyspan.Span{Keys: keys}, &dst)
+						if err != nil {
+							b.Fatal(err)
+						}
+						dst.Keys = dst.Keys[:0]
+					}
+				})
+			}
+		})
+	}
 }
