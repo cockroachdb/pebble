@@ -76,6 +76,15 @@ func (k Key) SeqNum() uint64 {
 	return k.Trailer >> 8
 }
 
+// VisibleAt returns true if the provided key is visible at the provided
+// snapshot sequence number. It interprets batch sequence numbers as always
+// visible, because non-visible batch span keys are filtered when they're
+// fragmented.
+func (k Key) VisibleAt(snapshot uint64) bool {
+	seq := k.SeqNum()
+	return seq < snapshot || seq&base.InternalKeySeqNumBatch != 0
+}
+
 // Kind returns the kind component of the key.
 func (k Key) Kind() base.InternalKeyKind {
 	return base.InternalKeyKind(k.Trailer & 0xff)

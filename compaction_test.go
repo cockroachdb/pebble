@@ -875,7 +875,7 @@ func TestCompactionTransform(t *testing.T) {
 				disableSpanElision: disableElision,
 				inuseKeyRanges:     keyRanges,
 			}
-			transformer := rangeKeyCompactionTransform(snapshots, c.elideRangeTombstone)
+			transformer := rangeKeyCompactionTransform(base.DefaultComparer.Equal, snapshots, c.elideRangeTombstone)
 			if err := transformer.Transform(base.DefaultComparer.Compare, span, &outSpan); err != nil {
 				return fmt.Sprintf("error: %s", err)
 			}
