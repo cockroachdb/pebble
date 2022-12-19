@@ -169,7 +169,7 @@ rangekey: a-b:{(#1,RANGEKEYSET,@t10,foo)}
 rangekey: a-b:{(#2,RANGEKEYSET,@t10,foo)}
 ----
 rangekey: [a#2,21-b#72057594037927935,21]
-seqnums:  [2-2]
+seqnums:  [1-2]
 
 build-raw
 rangekey: b-c:{(#2,RANGEKEYSET,@t10,foo)}
