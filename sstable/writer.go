@@ -194,10 +194,10 @@ type Writer struct {
 	// be added to the Writer, a keyspan.Fragmenter is used to retain the keys
 	// and values, emitting fragmented, coalesced spans as appropriate. Range
 	// keys must be added in order of their start user-key.
-	fragmenter        keyspan.Fragmenter
-	rangeKeyEncoder   rangekey.Encoder
-	rangeKeyCoalesced keyspan.Span
-	rkBuf             []byte
+	fragmenter      keyspan.Fragmenter
+	rangeKeyEncoder rangekey.Encoder
+	rangeKeySpan    keyspan.Span
+	rkBuf           []byte
 	// dataBlockBuf consists of the state which is currently owned by and used by
 	// the Writer client goroutine. This state can be handed off to other goroutines.
 	dataBlockBuf *dataBlockBuf
@@ -1040,7 +1040,7 @@ func (w *Writer) addTombstone(key InternalKey, value []byte) error {
 // the given suffix to the given value.
 //
 // Keys must be added to the table in increasing order of start key. Spans are
-// not required to be fragmented.
+// not required to be fragmented. The same suffix may not be set or unset twice.
 func (w *Writer) RangeKeySet(start, end, suffix, value []byte) error {
 	return w.addRangeKeySpan(keyspan.Span{
 		Start: w.tempRangeKeyCopy(start),
@@ -1059,7 +1059,7 @@ func (w *Writer) RangeKeySet(start, end, suffix, value []byte) error {
 // with the given suffix.
 //
 // Keys must be added to the table in increasing order of start key. Spans are
-// not required to be fragmented.
+// not required to be fragmented. The same suffix may not be set or unset twice.
 func (w *Writer) RangeKeyUnset(start, end, suffix []byte) error {
 	return w.addRangeKeySpan(keyspan.Span{
 		Start: w.tempRangeKeyCopy(start),
@@ -1118,20 +1118,13 @@ func (w *Writer) addRangeKeySpan(span keyspan.Span) error {
 	return w.err
 }
 
-func (w *Writer) coalesceSpans(span keyspan.Span) {
-	// This method is the emit function of the Fragmenter, so span.Keys is only
-	// owned by this span and it's safe to mutate.
-	w.rangeKeyCoalesced.Start = span.Start
-	w.rangeKeyCoalesced.End = span.End
-	err := rangekey.Coalesce(w.compare, span.Keys, &w.rangeKeyCoalesced.Keys)
-	if err != nil {
-		w.err = errors.Newf("sstable: could not coalesce span: %s", err)
-		return
-	}
-
-	// NB: The span only contains range keys and is internally consistent (eg,
-	// no duplicate suffixes, no additional keys after a RANGEKEYDEL).
-	w.err = firstError(w.err, w.rangeKeyEncoder.Encode(&w.rangeKeyCoalesced))
+func (w *Writer) encodeRangeKeySpan(span keyspan.Span) {
+	// This method is the emit function of the Fragmenter.
+	//
+	// NB: The span should only contain range keys and be internally consistent
+	// (eg, no duplicate suffixes, no additional keys after a RANGEKEYDEL).
+	w.rangeKeySpan = span
+	w.err = firstError(w.err, w.rangeKeyEncoder.Encode(&w.rangeKeySpan))
 }
 
 func (w *Writer) addRangeKey(key InternalKey, value []byte) error {
@@ -2231,7 +2224,7 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 	}
 
 	// Initialize the range key fragmenter and encoder.
-	w.fragmenter.Emit = w.coalesceSpans
+	w.fragmenter.Emit = w.encodeRangeKeySpan
 	w.rangeKeyEncoder.Emit = w.addRangeKey
 
 	// If f does not have a Flush method, do our own buffering.
