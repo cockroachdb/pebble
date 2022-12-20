@@ -4,18 +4,10 @@
 
 package pebble
 
-import "github.com/cockroachdb/pebble/internal/base"
-
-type mergingIterItem struct {
-	index int
-	key   InternalKey
-	value base.LazyValue
-}
-
 type mergingIterHeap struct {
 	cmp     Compare
 	reverse bool
-	items   []mergingIterItem
+	items   []*mergingIterLevel
 }
 
 func (h *mergingIterHeap) len() int {
@@ -27,7 +19,7 @@ func (h *mergingIterHeap) clear() {
 }
 
 func (h *mergingIterHeap) less(i, j int) bool {
-	ikey, jkey := h.items[i].key, h.items[j].key
+	ikey, jkey := h.items[i].iterKey, h.items[j].iterKey
 	if c := h.cmp(ikey.UserKey, jkey.UserKey); c != 0 {
 		if h.reverse {
 			return c > 0
@@ -59,11 +51,11 @@ func (h *mergingIterHeap) fix(i int) {
 	}
 }
 
-func (h *mergingIterHeap) pop() *mergingIterItem {
+func (h *mergingIterHeap) pop() *mergingIterLevel {
 	n := h.len() - 1
 	h.swap(0, n)
 	h.down(0, n)
-	item := &h.items[n]
+	item := h.items[n]
 	h.items = h.items[:n]
 	return item
 }
