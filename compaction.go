@@ -2574,6 +2574,8 @@ func (d *DB) runCompaction(
 		}
 		outputMetrics.Size += int64(meta.Size)
 		outputMetrics.NumFiles++
+		outputMetrics.Additional.BytesWrittenDataBlocks += writerMeta.Properties.DataSize
+		outputMetrics.Additional.BytesWrittenValueBlocks += writerMeta.Properties.ValueBlocksSize
 
 		if n := len(ve.NewFiles); n > 1 {
 			// This is not the first output file. Ensure the sstable boundaries

@@ -2670,7 +2670,7 @@ func (stats *IteratorStats) SafeFormat(s redact.SafePrinter, verb rune) {
 	if stats.InternalStats != (InternalIteratorStats{}) {
 		s.SafeString(",\n(internal-stats: ")
 		s.Printf("(block-bytes: (total %s, cached %s)), "+
-			"(points: (count %s, key-bytes %s, value-bytes %s, tombstoned: %s))",
+			"(points: (count %s, key-bytes %s, value-bytes %s, tombstoned %s))",
 			humanize.IEC.Uint64(stats.InternalStats.BlockBytes),
 			humanize.IEC.Uint64(stats.InternalStats.BlockBytesInCache),
 			humanize.SI.Uint64(stats.InternalStats.PointCount),
@@ -2678,6 +2678,14 @@ func (stats *IteratorStats) SafeFormat(s redact.SafePrinter, verb rune) {
 			humanize.SI.Uint64(stats.InternalStats.ValueBytes),
 			humanize.SI.Uint64(stats.InternalStats.PointsCoveredByRangeTombstones),
 		)
+		if stats.InternalStats.SeparatedPointValue.Count != 0 {
+			s.Printf(", (separated: (count %s, bytes %s, fetched %s)))",
+				humanize.SI.Uint64(stats.InternalStats.SeparatedPointValue.Count),
+				humanize.IEC.Uint64(stats.InternalStats.SeparatedPointValue.ValueBytes),
+				humanize.IEC.Uint64(stats.InternalStats.SeparatedPointValue.ValueBytesFetched))
+		} else {
+			s.Printf(")")
+		}
 	}
 	if stats.RangeKeyStats != (RangeKeyIteratorStats{}) {
 		s.SafeString(",\n(range-key-stats: ")

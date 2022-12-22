@@ -6,10 +6,12 @@ package pebble
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 	"github.com/stretchr/testify/require"
@@ -103,9 +105,13 @@ zmemtbl        14    13 B
 
 func TestMetrics(t *testing.T) {
 	opts := &Options{
+		Comparer:              testkeys.Comparer,
+		FormatMajorVersion:    FormatNewest,
 		FS:                    vfs.NewMem(),
 		L0CompactionThreshold: 8,
 	}
+	opts.Experimental.EnableValueBlocks = func() bool { return true }
+	opts.Levels = append(opts.Levels, LevelOptions{TargetFileSize: 50})
 
 	// Prevent foreground flushes and compactions from triggering asynchronous
 	// follow-up compactions. This avoids asynchronously-scheduled work from
@@ -208,6 +214,25 @@ func TestMetrics(t *testing.T) {
 
 		case "disk-usage":
 			return humanize.IEC.Uint64(d.Metrics().DiskSpaceUsage()).String()
+
+		case "additional-metrics":
+			// The asynchronous loading of table stats can change metrics, so
+			// wait for all the tables' stats to be loaded.
+			d.mu.Lock()
+			d.waitTableStats()
+			d.mu.Unlock()
+
+			m := d.Metrics()
+			var b strings.Builder
+			fmt.Fprintf(&b, "block bytes written:\n")
+			fmt.Fprintf(&b, " __level___data-block__value-block\n")
+			for i := range m.Levels {
+				fmt.Fprintf(&b, "%7d ", i)
+				fmt.Fprintf(&b, "%12s %12s\n",
+					humanize.IEC.Uint64(m.Levels[i].Additional.BytesWrittenDataBlocks),
+					humanize.IEC.Uint64(m.Levels[i].Additional.BytesWrittenValueBlocks))
+			}
+			return b.String()
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
