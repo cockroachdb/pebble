@@ -309,7 +309,6 @@ func decodeValueBlocksIndexHandle(src []byte) (valueBlocksIndexHandle, int, erro
 	return vbih, n + 3, nil
 }
 
-// TODO(sumeer): Incorporate into Pebble metrics.
 type valueBlocksAndIndexStats struct {
 	numValueBlocks         uint64
 	numValuesInValueBlocks uint64
@@ -740,6 +739,10 @@ func (r *valueBlockReader) getLazyValueForPrefixAndValueHandle(handle []byte) ba
 			ShortAttribute: getShortAttribute(valuePrefix(handle[0])),
 		},
 	}
+	if r.stats != nil {
+		r.stats.SeparatedPointValue.Count++
+		r.stats.SeparatedPointValue.ValueBytes += uint64(valLen)
+	}
 	return base.LazyValue{
 		ValueOrHandle: h,
 		Fetcher:       fetcher,
@@ -819,6 +822,9 @@ func (r *valueBlockReader) getValueInternal(handle []byte, valLen int32) (val []
 		r.valueCache = vbCacheHandle
 		r.valueBlock = vbCacheHandle.Get()
 		r.valueBlockPtr = unsafe.Pointer(&r.valueBlock[0])
+	}
+	if r.stats != nil {
+		r.stats.SeparatedPointValue.ValueBytesFetched += uint64(valLen)
 	}
 	return r.valueBlock[vh.offsetInBlock : vh.offsetInBlock+vh.valueLen], nil
 }

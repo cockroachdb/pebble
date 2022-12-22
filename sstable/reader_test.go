@@ -268,6 +268,17 @@ func TestReaderStats(t *testing.T) {
 	runTestReader(t, tableOpt, "testdata/readerstats", nil, 10000, false, false)
 }
 
+func TestReaderStatsV3(t *testing.T) {
+	writerOpt := WriterOptions{
+		BlockSize:      32 << 10,
+		IndexBlockSize: 32 << 10,
+		Comparer:       testkeys.Comparer,
+		TableFormat:    TableFormatPebblev3,
+	}
+	tdFile := "testdata/readerstats_v3"
+	runTestReader(t, writerOpt, tdFile, nil /* Reader */, 0, true, false)
+}
+
 func TestReaderWithBlockPropertyFilter(t *testing.T) {
 	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
 		writerOpt := WriterOptions{

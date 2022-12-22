@@ -19,21 +19,21 @@ metrics
 ----
 __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
     WAL         1    28 B       -    17 B       -       -       -       -    56 B       -       -       -     3.3
-      0         1   771 B    0.25    28 B     0 B       0     0 B       0   771 B       1     0 B       1    27.5
+      0         1   770 B    0.25    28 B     0 B       0     0 B       0   770 B       1     0 B       1    27.5
       1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-  total         1   771 B       -    56 B     0 B       0     0 B       0   827 B       1     0 B       1    14.8
+  total         1   770 B       -    56 B     0 B       0     0 B       0   826 B       1     0 B       1    14.8
   flush         1
 compact         0     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         1   256 K
    ztbl         0     0 B
- bcache         4   698 B    0.0%  (score == hit-rate)
+ bcache         4   697 B    0.0%  (score == hit-rate)
  tcache         1   712 B    0.0%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)
  titers         1
@@ -73,8 +73,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
-  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
+      6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5
+  total         1   776 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
 compact         1     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
@@ -106,8 +106,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
-  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
+      6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5
+  total         1   776 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
 compact         1     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
@@ -136,15 +136,15 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
-  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
+      6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5
+  total         1   776 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
 compact         1     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         1   256 K
-   ztbl         1   771 B
- bcache         4   698 B   42.9%  (score == hit-rate)
+   ztbl         1   770 B
+ bcache         4   697 B   42.9%  (score == hit-rate)
  tcache         1   712 B   66.7%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)
  titers         1
@@ -169,8 +169,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   778 B       -   1.5 K     0 B       0     0 B       0   778 B       1   1.5 K       1     0.5
-  total         1   778 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
+      6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5
+  total         1   776 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
   flush         2
 compact         1     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
@@ -186,3 +186,82 @@ zmemtbl         0     0 B
 disk-usage
 ----
 2.1 K
+
+additional-metrics
+----
+block bytes written:
+ __level___data-block__value-block
+      0         54 B          0 B
+      1          0 B          0 B
+      2          0 B          0 B
+      3          0 B          0 B
+      4          0 B          0 B
+      5          0 B          0 B
+      6         33 B          0 B
+
+batch
+set c@20 c20
+set c@19 c19
+set c@18 c18
+----
+
+flush
+----
+0.0:
+  000010:[c@20#3,SET-c@18#5,SET]
+6:
+  000008:[a#0,SET-b#0,SET]
+
+metrics
+----
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    53 B       -    76 B       -       -       -       -   162 B       -       -       -     2.1
+      0         1   917 B    0.25   109 B     0 B       0     0 B       0   2.4 K       3     0 B       1    22.5
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5
+  total         2   1.7 K       -   162 B     0 B       0     0 B       0   3.3 K       4   1.5 K       2    21.0
+  flush         3
+compact         1   1.7 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+ bcache         0     0 B   42.9%  (score == hit-rate)
+ tcache         0     0 B   66.7%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+additional-metrics
+----
+block bytes written:
+ __level___data-block__value-block
+      0        110 B         19 B
+      1          0 B          0 B
+      2          0 B          0 B
+      3          0 B          0 B
+      4          0 B          0 B
+      5          0 B          0 B
+      6         33 B          0 B
+
+compact a-z
+----
+6:
+  000008:[a#0,SET-b#0,SET]
+  000010:[c@20#3,SET-c@18#5,SET]
+
+additional-metrics
+----
+block bytes written:
+ __level___data-block__value-block
+      0        110 B         19 B
+      1          0 B          0 B
+      2          0 B          0 B
+      3          0 B          0 B
+      4          0 B          0 B
+      5          0 B          0 B
+      6         33 B          0 B
