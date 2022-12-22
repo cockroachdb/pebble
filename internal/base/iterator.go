@@ -357,7 +357,7 @@ type InternalIteratorStats struct {
 	// included.
 	KeyBytes uint64
 	// Bytes in values that were iterated over. Currently, only point values are
-	// included.
+	// included. For separated values, this is the size of the handle.
 	ValueBytes uint64
 	// The count of points iterated over.
 	PointCount uint64
@@ -365,6 +365,26 @@ type InternalIteratorStats struct {
 	// can be useful for discovering instances of
 	// https://github.com/cockroachdb/pebble/issues/1070.
 	PointsCoveredByRangeTombstones uint64
+
+	// Stats related to points in value blocks encountered during iteration.
+	// These are useful to understand outliers, since typical user facing
+	// iteration should tend to only look at the latest point, and hence have
+	// the following stats close to 0.
+	SeparatedPointValue struct {
+		// Count is a count of points that were in value blocks. This is not a
+		// subset of PointCount: PointCount is produced by mergingIter and if
+		// positioned once, and successful in returning a point, will have a
+		// PointCount of 1, regardless of how many sstables (and memtables etc.)
+		// in the heap got positioned. The count here includes every sstable
+		// iterator that got positioned in the heap.
+		Count uint64
+		// ValueBytes represent the total byte length of the values (in value
+		// blocks) of the points corresponding to Count.
+		ValueBytes uint64
+		// ValueBytesFetched is the total byte length of the values (in value
+		// blocks) that were retrieved.
+		ValueBytesFetched uint64
+	}
 }
 
 // Merge merges the stats in from into the given stats.
@@ -375,4 +395,7 @@ func (s *InternalIteratorStats) Merge(from InternalIteratorStats) {
 	s.ValueBytes += from.ValueBytes
 	s.PointCount += from.PointCount
 	s.PointsCoveredByRangeTombstones += from.PointsCoveredByRangeTombstones
+	s.SeparatedPointValue.Count += from.SeparatedPointValue.Count
+	s.SeparatedPointValue.ValueBytes += from.SeparatedPointValue.ValueBytes
+	s.SeparatedPointValue.ValueBytesFetched += from.SeparatedPointValue.ValueBytesFetched
 }

@@ -938,7 +938,7 @@ func TestIteratorStats(t *testing.T) {
 
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
-		opts := &Options{FS: mem}
+		opts := &Options{Comparer: testkeys.Comparer, FS: mem, FormatMajorVersion: FormatNewest}
 		// Automatic compactions may make some testcases non-deterministic.
 		opts.DisableAutomaticCompactions = true
 		var err error
@@ -1716,7 +1716,10 @@ func TestIteratorStatsMerge(t *testing.T) {
 			SkippedPoints:   17,
 		},
 	}
-	s.Merge(IteratorStats{
+	s.InternalStats.SeparatedPointValue.Count = 1
+	s.InternalStats.SeparatedPointValue.ValueBytes = 5
+	s.InternalStats.SeparatedPointValue.ValueBytesFetched = 3
+	s2 := IteratorStats{
 		ForwardSeekCount: [NumStatsKind]int{1, 2},
 		ReverseSeekCount: [NumStatsKind]int{3, 4},
 		ForwardStepCount: [NumStatsKind]int{5, 6},
@@ -1734,8 +1737,12 @@ func TestIteratorStatsMerge(t *testing.T) {
 			ContainedPoints: 16,
 			SkippedPoints:   17,
 		},
-	})
-	require.Equal(t, IteratorStats{
+	}
+	s2.InternalStats.SeparatedPointValue.Count = 2
+	s2.InternalStats.SeparatedPointValue.ValueBytes = 10
+	s2.InternalStats.SeparatedPointValue.ValueBytesFetched = 6
+	s.Merge(s2)
+	expected := IteratorStats{
 		ForwardSeekCount: [NumStatsKind]int{2, 4},
 		ReverseSeekCount: [NumStatsKind]int{6, 8},
 		ForwardStepCount: [NumStatsKind]int{10, 12},
@@ -1753,7 +1760,11 @@ func TestIteratorStatsMerge(t *testing.T) {
 			ContainedPoints: 32,
 			SkippedPoints:   34,
 		},
-	}, s)
+	}
+	expected.InternalStats.SeparatedPointValue.Count = 3
+	expected.InternalStats.SeparatedPointValue.ValueBytes = 15
+	expected.InternalStats.SeparatedPointValue.ValueBytesFetched = 9
+	require.Equal(t, expected, s)
 }
 
 // TestSetOptionsEquivalence tests equivalence between SetOptions to mutate an

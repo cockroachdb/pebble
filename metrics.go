@@ -78,6 +78,26 @@ type LevelMetrics struct {
 	TablesIngested uint64
 	// The number of sstables moved to this level by a "move" compaction.
 	TablesMoved uint64
+	// Additional contains misc metrics that are not printed by format, but are
+	// available to sophisticated clients.
+	Additional struct {
+		// TODO(sumeer): Improve this. We also want the current bytes in data
+		// blocks and value blocks in each level, but doing that is more
+		// complicated. In principle it needs:
+		// - reading the properties of all sstables (in the background) after the
+		//   DB is opened.
+		// - requires plumbing the deltas of input and output sstables during
+		//   compactions and flushes
+		// - reading the properties of ingested sstables.
+		// We can do all of this more simply by using the approach of
+		// countRangeKeySetFragments, which uses a b-tree annotation
+		// (rangeKeySetsAnnotator).
+		//
+		// Cumulative metrics about bytes written to data blocks and value blocks,
+		// via compactions (except move compactions) or flushes.
+		BytesWrittenDataBlocks  uint64
+		BytesWrittenValueBlocks uint64
+	}
 }
 
 // Add updates the counter metrics for the level.
@@ -94,6 +114,8 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.TablesFlushed += u.TablesFlushed
 	m.TablesIngested += u.TablesIngested
 	m.TablesMoved += u.TablesMoved
+	m.Additional.BytesWrittenDataBlocks += u.Additional.BytesWrittenDataBlocks
+	m.Additional.BytesWrittenValueBlocks += u.Additional.BytesWrittenValueBlocks
 }
 
 // WriteAmp computes the write amplification for compactions at this
