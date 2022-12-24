@@ -765,7 +765,7 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 	if err := d.commit.Commit(batch, sync); err != nil {
 		// There isn't much we can do on an error here. The commit pipeline will be
 		// horked at this point.
-		d.opts.Logger.Fatalf("%v", err)
+		d.opts.Logger.Fatalf("pebble: fatal commit error: %v", err)
 	}
 	// If this is a large batch, we need to clear the batch contents as the
 	// flushable batch may still be present in the flushables queue.
