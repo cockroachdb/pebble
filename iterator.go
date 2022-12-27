@@ -2052,23 +2052,29 @@ func (i *Iterator) saveRangeKey() {
 // If false, previously obtained range key bounds, suffix and value slices are
 // still valid and may continue to be read.
 //
+// RangeKeyChanged must only be called if the iterator is Valid().
+//
 // Invalid iterator positions are considered to not hold range keys, meaning
 // that if an iterator steps from an IterExhausted or IterAtLimit position onto
 // a position with a range key, RangeKeyChanged will yield true.
 func (i *Iterator) RangeKeyChanged() bool {
-	return i.iterValidityState == IterValid && i.rangeKey != nil && i.rangeKey.updated
+	if invariants.Enabled && !i.Valid() {
+		panic("pebble: Iterator.RangeKeyChanged called on invalid iterator")
+	}
+	return i.rangeKey != nil && i.rangeKey.updated
 }
 
 // HasPointAndRange indicates whether there exists a point key, a range key or
-// both at the current iterator position.
+// both at the current iterator position. HasPointAndRange must only be called
+// if the iterator is Valid().
 func (i *Iterator) HasPointAndRange() (hasPoint, hasRange bool) {
-	if i.iterValidityState != IterValid || i.requiresReposition {
-		return false, false
+	if invariants.Enabled && !i.Valid() {
+		panic("pebble: Iterator.HasPointAndRange called on invalid iterator")
 	}
-	if i.opts.KeyTypes == IterKeyTypePointsOnly {
+	if i.rangeKey == nil || i.opts.KeyTypes == IterKeyTypePointsOnly {
 		return true, false
 	}
-	return i.rangeKey == nil || !i.rangeKey.rangeKeyOnly, i.rangeKey != nil && i.rangeKey.hasRangeKey
+	return !i.rangeKey.rangeKeyOnly, i.rangeKey.hasRangeKey
 }
 
 // RangeBounds returns the start (inclusive) and end (exclusive) bounds of the
