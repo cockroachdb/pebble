@@ -1538,13 +1538,7 @@ func (i *Iterator) First() bool {
 	i.requiresReposition = false
 	i.stats.ForwardSeekCount[InterfaceCall]++
 
-	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
-		i.stats.ForwardSeekCount[InternalIterCall]++
-	} else {
-		i.iterKey, i.iterValue = i.iter.First()
-		i.stats.ForwardSeekCount[InternalIterCall]++
-	}
+	i.iterFirstWithinBounds()
 	i.findNextEntry(nil)
 	i.maybeSampleRead()
 	return i.iterValidityState == IterValid
@@ -1576,13 +1570,7 @@ func (i *Iterator) Last() bool {
 	i.requiresReposition = false
 	i.stats.ReverseSeekCount[InterfaceCall]++
 
-	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
-		i.iterKey, i.iterValue = i.iter.SeekLT(upperBound, base.SeekLTFlagsNone)
-		i.stats.ReverseSeekCount[InternalIterCall]++
-	} else {
-		i.iterKey, i.iterValue = i.iter.Last()
-		i.stats.ReverseSeekCount[InternalIterCall]++
-	}
+	i.iterLastWithinBounds()
 	i.findPrevEntry(nil)
 	i.maybeSampleRead()
 	return i.iterValidityState == IterValid
@@ -1672,13 +1660,7 @@ func (i *Iterator) nextPrefix() IterValidityState {
 		}
 		// We're positioned before the first key. Need to reposition to point to
 		// the first key.
-		if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-			i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
-			i.stats.ForwardSeekCount[InternalIterCall]++
-		} else {
-			i.iterKey, i.iterValue = i.iter.First()
-			i.stats.ForwardSeekCount[InternalIterCall]++
-		}
+		i.iterFirstWithinBounds()
 	case iterPosCurReversePaused:
 		// Switching directions.
 		// The iterator must not be exhausted since it paused.
@@ -1698,13 +1680,7 @@ func (i *Iterator) nextPrefix() IterValidityState {
 		if i.iterKey == nil {
 			// We're positioned before the first key. Need to reposition to point to
 			// the first key.
-			if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-				i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
-				i.stats.ForwardSeekCount[InternalIterCall]++
-			} else {
-				i.iterKey, i.iterValue = i.iter.First()
-				i.stats.ForwardSeekCount[InternalIterCall]++
-			}
+			i.iterFirstWithinBounds()
 		} else {
 			i.nextUserKey()
 		}
@@ -1803,13 +1779,7 @@ func (i *Iterator) nextWithLimit(limit []byte) IterValidityState {
 		}
 		// We're positioned before the first key. Need to reposition to point to
 		// the first key.
-		if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-			i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
-			i.stats.ForwardSeekCount[InternalIterCall]++
-		} else {
-			i.iterKey, i.iterValue = i.iter.First()
-			i.stats.ForwardSeekCount[InternalIterCall]++
-		}
+		i.iterFirstWithinBounds()
 	case iterPosCurReversePaused:
 		// Switching directions.
 		// The iterator must not be exhausted since it paused.
@@ -1829,13 +1799,7 @@ func (i *Iterator) nextWithLimit(limit []byte) IterValidityState {
 		if i.iterKey == nil {
 			// We're positioned before the first key. Need to reposition to point to
 			// the first key.
-			if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
-				i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
-				i.stats.ForwardSeekCount[InternalIterCall]++
-			} else {
-				i.iterKey, i.iterValue = i.iter.First()
-				i.stats.ForwardSeekCount[InternalIterCall]++
-			}
+			i.iterFirstWithinBounds()
 		} else {
 			i.nextUserKey()
 		}
@@ -1933,13 +1897,7 @@ func (i *Iterator) PrevWithLimit(limit []byte) IterValidityState {
 		if i.iterKey == nil {
 			// We're positioned after the last key. Need to reposition to point to
 			// the last key.
-			if upperBound := i.opts.GetUpperBound(); upperBound != nil {
-				i.iterKey, i.iterValue = i.iter.SeekLT(upperBound, base.SeekLTFlagsNone)
-				i.stats.ReverseSeekCount[InternalIterCall]++
-			} else {
-				i.iterKey, i.iterValue = i.iter.Last()
-				i.stats.ReverseSeekCount[InternalIterCall]++
-			}
+			i.iterLastWithinBounds()
 		} else {
 			i.prevUserKey()
 		}
@@ -1950,6 +1908,28 @@ func (i *Iterator) PrevWithLimit(limit []byte) IterValidityState {
 	i.findPrevEntry(limit)
 	i.maybeSampleRead()
 	return i.iterValidityState
+}
+
+// iterFirstWithinBounds moves the internal iterator to the first key,
+// respecting bounds.
+func (i *Iterator) iterFirstWithinBounds() {
+	i.stats.ForwardSeekCount[InternalIterCall]++
+	if lowerBound := i.opts.GetLowerBound(); lowerBound != nil {
+		i.iterKey, i.iterValue = i.iter.SeekGE(lowerBound, base.SeekGEFlagsNone)
+	} else {
+		i.iterKey, i.iterValue = i.iter.First()
+	}
+}
+
+// iterLastWithinBounds moves the internal iterator to the last key, respecting
+// bounds.
+func (i *Iterator) iterLastWithinBounds() {
+	i.stats.ReverseSeekCount[InternalIterCall]++
+	if upperBound := i.opts.GetUpperBound(); upperBound != nil {
+		i.iterKey, i.iterValue = i.iter.SeekLT(upperBound, base.SeekLTFlagsNone)
+	} else {
+		i.iterKey, i.iterValue = i.iter.Last()
+	}
 }
 
 // RangeKeyData describes a range key's data, set through RangeKeySet. The key
