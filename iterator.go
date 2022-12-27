@@ -35,9 +35,9 @@ import (
 // always a single internalIterator position corresponding to the position
 // returned to the user. Consider the example:
 //
-//    a.MERGE.9 a.MERGE.8 a.MERGE.7 a.SET.6 b.DELETE.9 b.DELETE.5 b.SET.4
-//    \                                   /
-//      \       Iterator.Key() = 'a'    /
+//	a.MERGE.9 a.MERGE.8 a.MERGE.7 a.SET.6 b.DELETE.9 b.DELETE.5 b.SET.4
+//	\                                   /
+//	  \       Iterator.Key() = 'a'    /
 //
 // The Iterator exposes one valid position at user key 'a' and the two exhausted
 // positions at the beginning and end of iteration. The underlying
@@ -1277,7 +1277,7 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 // An example Split function may separate a timestamp suffix from the prefix of
 // the key.
 //
-//   Split(<key>@<timestamp>) -> <key>
+//	Split(<key>@<timestamp>) -> <key>
 //
 // Consider the keys "a@1", "a@2", "aa@3", "aa@4". The prefixes for these keys
 // are "a", and "aa". Note that despite "a" and "aa" sharing a prefix by the
@@ -1285,20 +1285,20 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 // function. To see how this works, consider the following set of calls on this
 // data set:
 //
-//   SeekPrefixGE("a@0") -> "a@1"
-//   Next()              -> "a@2"
-//   Next()              -> EOF
+//	SeekPrefixGE("a@0") -> "a@1"
+//	Next()              -> "a@2"
+//	Next()              -> EOF
 //
 // If you're just looking to iterate over keys with a shared prefix, as
 // defined by the configured comparer, set iterator bounds instead:
 //
-//  iter := db.NewIter(&pebble.IterOptions{
-//    LowerBound: []byte("prefix"),
-//    UpperBound: []byte("prefiy"),
-//  })
-//  for iter.First(); iter.Valid(); iter.Next() {
-//    // Only keys beginning with "prefix" will be visited.
-//  }
+//	iter := db.NewIter(&pebble.IterOptions{
+//	  LowerBound: []byte("prefix"),
+//	  UpperBound: []byte("prefiy"),
+//	})
+//	for iter.First(); iter.Valid(); iter.Next() {
+//	  // Only keys beginning with "prefix" will be visited.
+//	}
 //
 // See ExampleIterator_SeekPrefixGE for a working example.
 //
@@ -1601,9 +1601,8 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 // by Comparer.Split. Exhausts the iterator if invoked while in prefix-iteration
 // mode.
 //
-// It is not permitted to invoke NextPrefix while at a IterAtLimit position or
-// to switch directions. When called in these conditions, NextPrefix has
-// non-deterministic behavior.
+// It is not permitted to invoke NextPrefix while at a IterAtLimit position.
+// When called in this condition, NextPrefix has non-deterministic behavior.
 func (i *Iterator) NextPrefix() bool {
 	if i.hasPrefix {
 		i.iterValidityState = IterExhausted
@@ -1630,10 +1629,9 @@ func (i *Iterator) nextPrefix() IterValidityState {
 		i.rangeKey.updated = i.rangeKey.hasRangeKey && !i.Valid() && i.opts.rangeKeys()
 	}
 
-	// Although NextPrefix documents that behavior at IterAtLimit or
-	// backward-oriented positions is not permitted, this function handles these
-	// cases as a simple prefix-agnostic Next. This is done for deterministic
-	// behavior in the metamorphic tests.
+	// Although NextPrefix documents that behavior at IterAtLimit is undefined,
+	// this function handles these cases as a simple prefix-agnostic Next. This
+	// is done for deterministic behavior in the metamorphic tests.
 	//
 	// TODO(jackson): If the metamorphic test operation generator is adjusted to
 	// make generation of some operations conditional on the previous
@@ -1644,11 +1642,10 @@ func (i *Iterator) nextPrefix() IterValidityState {
 	switch i.pos {
 	case iterPosCurForward:
 		// Positioned on the current key. Advance to the next prefix.
-		currKeyPrefixLen := i.split(i.key)
-		i.internalNextPrefix(currKeyPrefixLen)
+		i.internalNextPrefix(i.split(i.key))
 	case iterPosCurForwardPaused:
-		// Already positioned where we need to be. Return the next key,
-		// regardless of prefix.
+		// Positioned at a limit. Implement as a prefix-agnostic Next. See TODO
+		// up above. The iterator is already positioned at the next key.
 	case iterPosCurReverse:
 		// Switching directions.
 		// Unless the iterator was exhausted, reverse iteration needs to
@@ -1658,12 +1655,15 @@ func (i *Iterator) nextPrefix() IterValidityState {
 			i.iterValidityState = IterExhausted
 			return i.iterValidityState
 		}
-		// We're positioned before the first key. Need to reposition to point to
-		// the first key.
+		// The Iterator is exhausted and i.iter is positioned before the first
+		// key. Reposition to point to the first internal key.
 		i.iterFirstWithinBounds()
 	case iterPosCurReversePaused:
-		// Switching directions.
-		// The iterator must not be exhausted since it paused.
+		// Positioned at a limit. Implement as a prefix-agnostic Next. See TODO
+		// up above.
+		//
+		// Switching directions; The iterator must not be exhausted since it
+		// paused.
 		if i.iterKey == nil {
 			i.err = errors.New("switching paused from reverse to forward but iter is exhausted")
 			i.iterValidityState = IterExhausted
@@ -1672,19 +1672,25 @@ func (i *Iterator) nextPrefix() IterValidityState {
 		i.nextUserKey()
 	case iterPosPrev:
 		// The underlying iterator is pointed to the previous key (this can
-		// only happen when switching iteration directions). We set
-		// i.iterValidityState to IterExhausted here to force the calls to
-		// nextUserKey to save the current key i.iter is pointing at in order
-		// to determine when the next user-key is reached.
-		i.iterValidityState = IterExhausted
+		// only happen when switching iteration directions).
 		if i.iterKey == nil {
 			// We're positioned before the first key. Need to reposition to point to
 			// the first key.
 			i.iterFirstWithinBounds()
 		} else {
-			i.nextUserKey()
+			// Move the internal iterator back onto the user key stored in
+			// i.key. iterPosPrev guarantees that it's positioned at the last
+			// key with the user key less than i.key, so we're guaranteed to
+			// land on the correct key with a single Next.
+			i.iterKey, i.iterValue = i.iter.Next()
+			if invariants.Enabled && !i.equal(i.iterKey.UserKey, i.key) {
+				i.opts.logger.Fatalf("pebble: invariant violation: Nexting internal iterator from iterPosPrev landed on %q, not %q",
+					i.iterKey.UserKey, i.key)
+			}
 		}
-		i.nextUserKey()
+		// The internal iterator is now positioned at i.key. Advance to the next
+		// prefix.
+		i.internalNextPrefix(i.split(i.key))
 	case iterPosNext:
 		// Already positioned on the next key. Only call nextPrefixKey if the
 		// next key shares the same prefix.
@@ -1720,7 +1726,7 @@ func (i *Iterator) internalNextPrefix(currKeyPrefixLen int) {
 	i.iterKey, i.iterValue = i.iter.NextPrefix(i.prefixOrFullSeekKey)
 	if invariants.Enabled && i.iterKey != nil {
 		if iterKeyPrefixLen := i.split(i.iterKey.UserKey); i.cmp(i.iterKey.UserKey[:iterKeyPrefixLen], i.prefixOrFullSeekKey) < 0 {
-			panic("pebble: nextPrefixKey did not advance beyond the current prefix")
+			panic("pebble: iter.NextPrefix did not advance beyond the current prefix")
 		}
 	}
 }

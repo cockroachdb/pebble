@@ -213,7 +213,7 @@ next-prefix
 p: (., [p-r) @1=foo UPDATED)
 q@100: (q@100, [p-r) @1=foo)
 
-# Test that switching directions via NextPrefix is disallowed.
+# Test switching directions via NextPrefix.
 combined-iter
 seek-ge p@100
 prev
@@ -221,4 +221,16 @@ next-prefix
 ----
 p@100: (p@100, [p-r) @1=foo UPDATED)
 p: (., [p-r) @1=foo)
-p@100: (p@100, [p-r) @1=foo)
+q@100: (q@100, [p-r) @1=foo)
+
+# Test switching directions via NextPrefix when the internal iterator is
+# exhausted (in the reverse direction), but the Iterator is not.
+#  eg, i.pos = iterPosPrev and i.iterKey == nil.
+combined-iter
+seek-ge a@10
+prev
+next-prefix
+----
+a@10: (a@10, .)
+a@100: (a@100, .)
+b@100: (b@100, .)
