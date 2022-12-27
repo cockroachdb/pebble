@@ -221,4 +221,4 @@ next-prefix
 ----
 p@100: (p@100, [p-r) @1=foo UPDATED)
 p: (., [p-r) @1=foo)
-p@100: (p@100, [p-r) @1=foo)
+q@100: (q@100, [p-r) @1=foo)
