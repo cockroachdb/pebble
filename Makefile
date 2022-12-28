@@ -83,9 +83,7 @@ endif
 
 .PHONY: format
 format:
-	for _file in $$(gofmt -s -l .); do \
-		gofmt -s -w $$_file ; \
-	done
+	go install github.com/cockroachdb/crlfmt@latest && crlfmt -w -tab 2 .
 
 .PHONY: format-check
 format-check:
