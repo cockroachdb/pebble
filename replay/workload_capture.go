@@ -5,6 +5,7 @@
 package replay
 
 import (
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -116,7 +117,11 @@ func (w *WorkloadCollector) Attach(opts *pebble.Options) {
 	// Replace the original Cleaner with the workload collector's implementation,
 	// which will invoke the original Cleaner, but only once the collector's copied
 	// what it needs.
-	w.configuration.cleaner, opts.Cleaner = opts.Cleaner, w
+	c := cleaner{
+		name:  fmt.Sprintf("replay.WorkloadCollector(%q)", opts.Cleaner),
+		clean: w.clean,
+	}
+	w.configuration.cleaner, opts.Cleaner = opts.Cleaner, c
 	w.configuration.srcFS = opts.FS
 }
 
@@ -142,9 +147,9 @@ func (w *WorkloadCollector) cleanFile(fileType base.FileType, path string) error
 	return err
 }
 
-// Clean deletes files only after they have been processed or are not required
+// clean deletes files only after they have been processed or are not required
 // for the workload collection.
-func (w *WorkloadCollector) Clean(fs vfs.FS, fileType base.FileType, path string) error {
+func (w *WorkloadCollector) clean(fs vfs.FS, fileType base.FileType, path string) error {
 	w.mu.Lock()
 	fileName := fs.PathBase(path)
 	if fileState, ok := w.mu.fileState[fileName]; !ok || fileState.is(capturedSuccessfully) {
@@ -405,4 +410,14 @@ func (w *WorkloadCollector) IsRunning() bool {
 // makeFilepathWithName creates a file path given the file name
 func makeFilepathWithName(fs vfs.FS, dirName, fileName string) string {
 	return fs.PathJoin(dirName, fileName)
+}
+
+type cleaner struct {
+	name  string
+	clean func(vfs.FS, base.FileType, string) error
+}
+
+func (c cleaner) String() string { return c.name }
+func (c cleaner) Clean(fs vfs.FS, fileType base.FileType, path string) error {
+	return c.clean(fs, fileType, path)
 }
