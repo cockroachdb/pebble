@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -49,6 +50,18 @@ func runReplayTest(t *testing.T, path string) {
 	var ct *datatest.CompactionTracker
 	datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "cat":
+			var buf bytes.Buffer
+			for _, arg := range td.CmdArgs {
+				f, err := fs.Open(arg.String())
+				if err != nil {
+					fmt.Fprintf(&buf, "%s: %s\n", arg, err)
+					continue
+				}
+				io.Copy(&buf, f)
+				require.NoError(t, f.Close())
+			}
+			return buf.String()
 		case "corpus":
 			for _, arg := range td.CmdArgs {
 				t.Run(fmt.Sprintf("corpus/%s", arg.String()), func(t *testing.T) {

@@ -44,7 +44,7 @@ func TestWorkloadCaptureCleanerNotReadyToClean(t *testing.T) {
 		FileNum: 1,
 		Size:    10,
 	}}})
-	err = collector.Clean(imfs, base.FileTypeTable, filePath)
+	err = collector.clean(imfs, base.FileTypeTable, filePath)
 	require.NoError(t, err)
 	_, err = imfs.Stat(filePath)
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestWorkloadCaptureCleanerMarkForClean(t *testing.T) {
 	collector.mu.Unlock()
 	collector.Stop()
 	<-ch
-	err = collector.Clean(imfs, base.FileTypeTable, filePath)
+	err = collector.clean(imfs, base.FileTypeTable, filePath)
 	require.NoError(t, err)
 	_, err = imfs.Stat(filePath)
 	require.Errorf(t, err, "stat 000001.sst: file does not exist")
@@ -97,7 +97,7 @@ func TestWorkloadCaptureWatcherDeleteWhenObsolete(t *testing.T) {
 	collector := newWorkloadCollectorForTest(imfs, "", base.DeleteCleaner{})
 
 	collector.mu.fileState[imfs.PathBase(filePath)] |= readyForProcessing
-	err = collector.Clean(imfs, base.FileTypeTable, filePath)
+	err = collector.clean(imfs, base.FileTypeTable, filePath)
 	require.NoError(t, err)
 
 	atomic.StoreUint32(&collector.enabled, 1)
@@ -419,7 +419,7 @@ func TestManifestNotCleanedBeforeOpen(t *testing.T) {
 		Path:    filePath,
 		FileNum: 1,
 	})
-	err = collector.Clean(imfs, base.FileTypeManifest, filePath)
+	err = collector.clean(imfs, base.FileTypeManifest, filePath)
 	require.NoError(t, err)
 	_, err = imfs.Stat(filePath)
 	require.NoError(t, err)
@@ -443,7 +443,8 @@ func TestAttachCollectorToPebble(t *testing.T) {
 	opts := &pebble.Options{FS: imfs}
 	collector.Attach(opts)
 
-	require.Equal(t, collector, opts.Cleaner)
+	_, ok := opts.Cleaner.(cleaner)
+	require.True(t, ok)
 	require.NotNil(t, opts.EventListener.TableIngested)
 	require.NotNil(t, opts.EventListener.ManifestCreated)
 	require.NotNil(t, opts.EventListener.FlushEnd)
