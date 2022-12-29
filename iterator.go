@@ -44,7 +44,7 @@ import (
 // internalIterator contains 7 valid positions and 2 exhausted positions.
 //
 // Iterator positioning methods must set iterPos to iterPosCur{Foward,Backward}
-// iff the user key at the current internalIterator position equals the
+// if the user key at the current internalIterator position equals the
 // Iterator.Key returned to the user. This guarantees that a call to nextUserKey
 // or prevUserKey will advance to the next or previous iterator position.
 // iterPosCur{Forward,Backward} does not make any guarantee about the internal
