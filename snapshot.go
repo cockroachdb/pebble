@@ -49,7 +49,7 @@ func (s *Snapshot) NewIter(o *IterOptions) *Iterator {
 }
 
 // LogSeqNum returns a sequence number the snapshot is reading at
-func (s Snapshot) LogSeqNum() uint64 {
+func (s *Snapshot) LogSeqNum() uint64 {
        return s.seqNum
 }
 
