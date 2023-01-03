@@ -220,3 +220,60 @@ a: (a, .)
 using lazy iterator
 n: (., [m-z) @5=foo UPDATED)
 using combined (non-lazy) iterator
+
+# Regression tests for #2210 metamorphic test failure.
+#
+# Lazy-combined iteration depends on individual point level iterators triggering
+# a switch to combined iteration when they observe a file containing relevant
+# range keys. Previously, this switch did not happen if the observed range
+# keys all lied outside the current iteration prefix.
+#
+# This made it possible for a level to become positioned beyond the file
+# containing range keys, without ever triggering the switch to combined
+# iteration. A subsequent seek that made use of the TrySeekUsingNext
+# optimization would never observe the file containing range keys, and omit the
+# range keys.
+
+define
+L6
+  bax.DEL.9:
+L6
+  rangekey:c-d:{(#0,RANGEKEYSET,@1,foo)}
+L6
+  d@2.SET.2:v
+----
+6:
+  000004:[bax#9,DEL-bax#9,DEL]
+  000005:[c#0,RANGEKEYSET-d#72057594037927935,RANGEKEYSET]
+  000006:[d@2#2,SET-d@2#2,SET]
+
+combined-iter
+seek-prefix-ge bax
+seek-prefix-ge cat
+----
+.
+cat: (., [cat-"cat\x00") @1=foo UPDATED)
+
+# Another regression test for the #2210 metamorphic test failure, this one using
+# a MERGE key to force the Iterator to step the internal iterator beyond the
+# range key file.
+
+define
+L6
+  bax.MERGE.9:v
+L6
+  rangekey:c-d:{(#0,RANGEKEYSET,@1,foo)}
+L6
+  d@2.SET.2:v
+----
+6:
+  000004:[bax#9,MERGE-bax#9,MERGE]
+  000005:[c#0,RANGEKEYSET-d#72057594037927935,RANGEKEYSET]
+  000006:[d@2#2,SET-d@2#2,SET]
+
+combined-iter
+seek-prefix-ge bax
+seek-prefix-ge cat
+----
+bax: (v, .)
+cat: (., [cat-"cat\x00") @1=foo UPDATED)
