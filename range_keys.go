@@ -501,24 +501,6 @@ func (i *lazyCombinedIter) initCombinedIteration(
 		}
 	}
 
-	if i.parent.hasPrefix {
-		si := i.parent.comparer.Split(seekKey)
-		if i.parent.cmp(seekKey[:si], i.parent.prefixOrFullSeekKey) > 0 {
-			// The earliest possible range key has a start key with a prefix
-			// greater than the current iteration prefix. There's no need to
-			// switch to combined iteration, because there are not any range
-			// keys within the bounds of the prefix. Additionally, using a seek
-			// key that is outside the scope of the prefix can violate
-			// invariants within the range key iterator stack. Optimizations
-			// that exit early due to exhausting the prefix may result in
-			// `seekKey` being larger than the next range key's start key.
-			//
-			// See the testdata/rangekeys test case associated with #1893.
-			i.combinedIterState = combinedIterState{initialized: false}
-			return pointKey, pointValue
-		}
-	}
-
 	// An operation on the point iterator observed a file containing range keys,
 	// so we must switch to combined interleaving iteration. First, construct
 	// the range key iterator stack. It must not exist, otherwise we'd already
