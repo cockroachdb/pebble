@@ -426,7 +426,7 @@ func (i *LevelIterator) First() *FileMetadata {
 	if !i.iter.valid() {
 		return nil
 	}
-	return i.filteredNextFile(i.iter.cur())
+	return i.skipFilteredForward(i.iter.cur())
 }
 
 // Last seeks to the last file in the iterator and returns it.
@@ -442,7 +442,7 @@ func (i *LevelIterator) Last() *FileMetadata {
 	if !i.iter.valid() {
 		return nil
 	}
-	return i.filteredPrevFile(i.iter.cur())
+	return i.skipFilteredBackward(i.iter.cur())
 }
 
 // Next advances the iterator to the next file and returns it.
@@ -451,10 +451,7 @@ func (i *LevelIterator) Next() *FileMetadata {
 	if !i.iter.valid() {
 		return nil
 	}
-	if i.end != nil && cmpIter(i.iter, *i.end) > 0 {
-		return nil
-	}
-	return i.filteredNextFile(i.iter.cur())
+	return i.skipFilteredForward(i.iter.cur())
 }
 
 // Prev moves the iterator the previous file and returns it.
@@ -463,10 +460,7 @@ func (i *LevelIterator) Prev() *FileMetadata {
 	if !i.iter.valid() {
 		return nil
 	}
-	if i.start != nil && cmpIter(i.iter, *i.start) < 0 {
-		return nil
-	}
-	return i.filteredPrevFile(i.iter.cur())
+	return i.skipFilteredBackward(i.iter.cur())
 }
 
 // SeekGE seeks to the first file in the iterator's file set with a largest
@@ -478,25 +472,9 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *FileMetadata {
 	if i.empty() {
 		return nil
 	}
-	meta := i.seek(func(m *FileMetadata) bool {
+	return i.skipFilteredForward(i.seek(func(m *FileMetadata) bool {
 		return cmp(m.Largest.UserKey, userKey) >= 0
-	})
-	for meta != nil {
-		switch i.filter {
-		case KeyTypePointAndRange:
-			return meta
-		case KeyTypePoint:
-			if meta.HasPointKeys && cmp(meta.LargestPointKey.UserKey, userKey) >= 0 {
-				return meta
-			}
-		case KeyTypeRange:
-			if meta.HasRangeKeys && cmp(meta.LargestRangeKey.UserKey, userKey) >= 0 {
-				return meta
-			}
-		}
-		meta = i.Next()
-	}
-	return i.filteredNextFile(meta)
+	}))
 }
 
 // SeekLT seeks to the last file in the iterator's file set with a smallest
@@ -511,64 +489,65 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *FileMetadata {
 	i.seek(func(m *FileMetadata) bool {
 		return cmp(m.Smallest.UserKey, userKey) >= 0
 	})
-	meta := i.Prev()
-	for meta != nil {
-		switch i.filter {
-		case KeyTypePointAndRange:
-			return meta
-		case KeyTypePoint:
-			if meta.HasPointKeys && cmp(meta.SmallestPointKey.UserKey, userKey) < 0 {
-				return meta
-			}
-		case KeyTypeRange:
-			if meta.HasRangeKeys && cmp(meta.SmallestRangeKey.UserKey, userKey) < 0 {
-				return meta
-			}
-		}
-		meta = i.Prev()
-	}
-	return i.filteredPrevFile(meta)
+	return i.skipFilteredForward(i.Prev())
 }
 
-func (i *LevelIterator) filteredNextFile(meta *FileMetadata) *FileMetadata {
-	switch i.filter {
-	case KeyTypePoint:
-		for meta != nil && !meta.HasPointKeys {
-			meta = i.Next()
+// skipFilteredForward takes the file metadata at the iterator's current
+// position, and skips forward if the current key-type filter (i.filter)
+// excludes the file. It skips until it finds an unfiltered file or exhausts the
+// level.
+//
+// skipFilteredForward also enforces the upper bound, returning nil if at any
+// point the upper bound is exceeded.
+func (i *LevelIterator) skipFilteredForward(meta *FileMetadata) *FileMetadata {
+	for meta != nil && i.isFileFiltered(meta) {
+		i.iter.next()
+		if !i.iter.valid() {
+			meta = nil
+		} else {
+			meta = i.iter.cur()
 		}
-		return meta
-	case KeyTypeRange:
-		// TODO(bilal): Range keys are expected to be rare and sparse. Add an
-		// optimization to annotate the tree and efficiently skip over files that
-		// do not contain range keys right at the seek step, to reduce iterations
-		// here.
-		for meta != nil && !meta.HasRangeKeys {
-			meta = i.Next()
-		}
-		return meta
-	default:
-		return meta
 	}
+	if meta != nil && i.end != nil && cmpIter(i.iter, *i.end) > 0 {
+		// Exceeded upper bound.
+		meta = nil
+	}
+	return meta
 }
 
-func (i *LevelIterator) filteredPrevFile(meta *FileMetadata) *FileMetadata {
+// skipFilteredBackward takes the file metadata at the iterator's current
+// position, and skips backward if the current key-type filter (i.filter)
+// excludes the file. It skips until it finds an unfiltered file or exhausts the
+// level.
+//
+// skipFilteredBackward also enforces the lower bound, returning nil if at any
+// point the lower bound is exceeded.
+func (i *LevelIterator) skipFilteredBackward(meta *FileMetadata) *FileMetadata {
+	for meta != nil && i.isFileFiltered(meta) {
+		i.iter.prev()
+		if !i.iter.valid() {
+			meta = nil
+		} else {
+			meta = i.iter.cur()
+		}
+	}
+	if meta != nil && i.start != nil && cmpIter(i.iter, *i.start) < 0 {
+		// Exceeded lower bound.
+		meta = nil
+	}
+	return meta
+}
+
+func (i *LevelIterator) isFileFiltered(meta *FileMetadata) bool {
 	switch i.filter {
+	case KeyTypePointAndRange:
+		return false
 	case KeyTypePoint:
-		for meta != nil && !meta.HasPointKeys {
-			meta = i.Prev()
-		}
-		return meta
+		return !meta.HasPointKeys
 	case KeyTypeRange:
-		// TODO(bilal): Range keys are expected to be rare and sparse. Add an
-		// optimization to annotate the tree and efficiently skip over files that
-		// do not contain range keys right at the seek step, to reduce iterations
-		// here.
-		for meta != nil && !meta.HasRangeKeys {
-			meta = i.Prev()
-		}
-		return meta
+		return !meta.HasRangeKeys
 	default:
-		return meta
+		panic("unknown filter type")
 	}
 }
 
