@@ -354,6 +354,53 @@ func (m *FileMetadata) extendOverallBounds(
 	}
 }
 
+// ContainsKeyType returns whether or not the file contains keys of the provided
+// type.
+func (m *FileMetadata) ContainsKeyType(kt KeyType) bool {
+	switch kt {
+	case KeyTypePointAndRange:
+		return true
+	case KeyTypePoint:
+		return m.HasPointKeys
+	case KeyTypeRange:
+		return m.HasRangeKeys
+	default:
+		panic("unrecognized key type")
+	}
+}
+
+// SmallestBound returns the file's smallest bound of the key type. It returns a
+// false second return value if the file does not contain any keys of the key
+// type.
+func (m *FileMetadata) SmallestBound(kt KeyType) (*InternalKey, bool) {
+	switch kt {
+	case KeyTypePointAndRange:
+		return &m.Smallest, true
+	case KeyTypePoint:
+		return &m.SmallestPointKey, m.HasPointKeys
+	case KeyTypeRange:
+		return &m.SmallestRangeKey, m.HasRangeKeys
+	default:
+		panic("unrecognized key type")
+	}
+}
+
+// LargestBound returns the file's largest bound of the key type. It returns a
+// false second return value if the file does not contain any keys of the key
+// type.
+func (m *FileMetadata) LargestBound(kt KeyType) (*InternalKey, bool) {
+	switch kt {
+	case KeyTypePointAndRange:
+		return &m.Largest, true
+	case KeyTypePoint:
+		return &m.LargestPointKey, m.HasPointKeys
+	case KeyTypeRange:
+		return &m.LargestRangeKey, m.HasRangeKeys
+	default:
+		panic("unrecognized key type")
+	}
+}
+
 const (
 	maskContainsPointKeys = 1 << 0
 	maskSmallest          = 1 << 1
