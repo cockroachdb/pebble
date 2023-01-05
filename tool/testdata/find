@@ -22,10 +22,10 @@ aaa
 000008.sst [aaa#0,SET-ccc#0,MERGE]
     (compacted L0 [...] + L6 [000005])
     aaa#0,SET [31]
-000010.sst [aaa#8,DEL-eee#72057594037927935,RANGEDEL]
+000010.sst [aaa#8,DEL-eee#inf,RANGEDEL]
     (flushed to L0)
     aaa#8,DEL []
-000011.sst [aaa#8,DEL-eee#72057594037927935,RANGEDEL]
+000011.sst [aaa#8,DEL-eee#inf,RANGEDEL]
     (compacted L0 [000010] + L6 [000008 ...])
     aaa#8,DEL []
     aaa#0,SET [31]
@@ -50,10 +50,10 @@ bbb
     (compacted L0 [000006] + L6 [000005])
     626262#6,SET test value formatter: 22
     626262#0,SET test value formatter: 2
-000010.sst [616161#8,DEL-656565#72057594037927935,RANGEDEL]
+000010.sst [616161#8,DEL-656565#inf,RANGEDEL]
     (flushed to L0)
     626262-656565#10,RANGEDEL
-000011.sst [616161#8,DEL-656565#72057594037927935,RANGEDEL]
+000011.sst [616161#8,DEL-656565#inf,RANGEDEL]
     (compacted L0 [000010] + L6 [000008 ...])
     626262-656565#10,RANGEDEL
     626262#6,SET test value formatter: 22
@@ -81,10 +81,10 @@ hex:636363
     (compacted L0 [000006] + L6 [000005])
     ccc#6,SET
     ccc#0,MERGE
-000010.sst [aaa#8,DEL-eee#72057594037927935,RANGEDEL]
+000010.sst [aaa#8,DEL-eee#inf,RANGEDEL]
     (flushed to L0)
     bbb-eee#10,RANGEDEL
-000011.sst [aaa#8,DEL-eee#72057594037927935,RANGEDEL]
+000011.sst [aaa#8,DEL-eee#inf,RANGEDEL]
     (compacted L0 [000010] + L6 [000008 ...])
     bbb-eee#10,RANGEDEL
     ccc#6,SET
@@ -115,10 +115,10 @@ find-db/archive/000011.sst
 000007.sst [ddd#7,SET-ddd#7,SET]
     (ingested to L6)
     ddd#7,SET [3333]
-000010.sst [aaa#8,DEL-eee#72057594037927935,RANGEDEL]
+000010.sst [aaa#8,DEL-eee#inf,RANGEDEL]
     (flushed to L0)
     bbb-eee#10,RANGEDEL
-000011.sst [aaa#8,DEL-eee#72057594037927935,RANGEDEL]
+000011.sst [aaa#8,DEL-eee#inf,RANGEDEL]
     (compacted L0 [000010] + L6 [000007 ...])
     bbb-eee#10,RANGEDEL
     ddd#7,SET [3333]

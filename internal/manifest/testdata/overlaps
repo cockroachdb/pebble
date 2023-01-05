@@ -9,7 +9,7 @@ define
   000706:[p#7068,SET-u#7069,SET]
   000707:[r#7078,SET-s#7079,SET]
 1:
-  000710:[a#7140,SET-d#72057594037927935,RANGEDEL]
+  000710:[a#7140,SET-d#inf,RANGEDEL]
   000711:[d#7108,SET-g#7109,SET]
   000712:[g#7118,SET-j#7119,SET]
   000713:[n#7128,SET-p#7129,SET]
@@ -29,7 +29,7 @@ define
   000707:[r#7078,SET-s#7079,SET]
   000703:[x#7038,SET-y#7039,SET]
 1:
-  000710:[a#7140,SET-d#72057594037927935,RANGEDEL]
+  000710:[a#7140,SET-d#inf,RANGEDEL]
   000711:[d#7108,SET-g#7109,SET]
   000712:[g#7118,SET-j#7119,SET]
   000713:[n#7128,SET-p#7129,SET]
@@ -221,36 +221,36 @@ overlaps level=0 start=z end=z exclusive-end=false
 
 overlaps level=1 start=a end=a exclusive-end=false
 ----
-000710:[a#7140,SET-d#72057594037927935,RANGEDEL]
+000710:[a#7140,SET-d#inf,RANGEDEL]
 
 overlaps level=1 start=a end=b exclusive-end=false
 ----
-000710:[a#7140,SET-d#72057594037927935,RANGEDEL]
+000710:[a#7140,SET-d#inf,RANGEDEL]
 
 overlaps level=1 start=a end=d exclusive-end=false
 ----
-000710:[a#7140,SET-d#72057594037927935,RANGEDEL]
+000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 
 overlaps level=1 start=a end=e exclusive-end=false
 ----
-000710:[a#7140,SET-d#72057594037927935,RANGEDEL]
+000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 
 overlaps level=1 start=a end=g exclusive-end=false
 ----
-000710:[a#7140,SET-d#72057594037927935,RANGEDEL]
+000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 000712:[g#7118,SET-j#7119,SET]
 
 overlaps level=1 start=a end=g exclusive-end=true
 ----
-000710:[a#7140,SET-d#72057594037927935,RANGEDEL]
+000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 
 overlaps level=1 start=a end=z exclusive-end=false
 ----
-000710:[a#7140,SET-d#72057594037927935,RANGEDEL]
+000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 000712:[g#7118,SET-j#7119,SET]
 000713:[n#7128,SET-p#7129,SET]
@@ -259,7 +259,7 @@ overlaps level=1 start=a end=z exclusive-end=false
 
 overlaps level=1 start=a end=z exclusive-end=true
 ----
-000710:[a#7140,SET-d#72057594037927935,RANGEDEL]
+000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 000712:[g#7118,SET-j#7119,SET]
 000713:[n#7128,SET-p#7129,SET]
@@ -268,7 +268,7 @@ overlaps level=1 start=a end=z exclusive-end=true
 
 overlaps level=1 start=c end=e exclusive-end=false
 ----
-000710:[a#7140,SET-d#72057594037927935,RANGEDEL]
+000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 
 overlaps level=1 start=d end=d exclusive-end=false
@@ -407,11 +407,11 @@ overlaps level=0 start=a end=b exclusive-end=true
 
 define
 0.4:
-  000987:[aiinjp@20#4667,SET-fcklu@5#72057594037927935,RANGEDEL]
-  000988:[fcklu@5#4668,MERGE-glpw@1#72057594037927935,RANGEDEL]
-  000989:[glpw@1#4662,RANGEDEL-mlgxnog@19#72057594037927935,RANGEDEL]
-  000990:[mlgxnog@19#4662,RANGEDEL-nwnmqtyvjt@5#72057594037927935,RANGEDEL]
-  000991:[nwnmqtyvjt@5#4662,RANGEDEL-wmkrrxp@6#72057594037927935,RANGEDEL]
+  000987:[aiinjp@20#4667,SET-fcklu@5#inf,RANGEDEL]
+  000988:[fcklu@5#4668,MERGE-glpw@1#inf,RANGEDEL]
+  000989:[glpw@1#4662,RANGEDEL-mlgxnog@19#inf,RANGEDEL]
+  000990:[mlgxnog@19#4662,RANGEDEL-nwnmqtyvjt@5#inf,RANGEDEL]
+  000991:[nwnmqtyvjt@5#4662,RANGEDEL-wmkrrxp@6#inf,RANGEDEL]
 0.3:
   000978:[dygfdczcax@15#4609,DEL-vtocgpw@18#4609,DEL]
   000992:[wmkrrxp@6#4657,MERGE-yyquzcd@21#4624,SET]
@@ -423,7 +423,7 @@ define
   000828:[zzqwavxgrec@12#4092,SINGLEDEL-zzqwavxgrec@12#4092,SINGLEDEL]
 0.1:
   000980:[dusu@10#4603,SET-duyeldgvnll@21#4605,SET]
-  000973:[ewqqtp@15#4591,RANGEDEL-zaygjmy@1#72057594037927935,RANGEDEL]
+  000973:[ewqqtp@15#4591,RANGEDEL-zaygjmy@1#inf,RANGEDEL]
   000605:[zzqwavxgrec@12#2894,SET-zzqwavxgrec@12#2894,SET]
 0.0:
   000910:[abddymplk@20#4370,MERGE-abddymplk@20#4370,MERGE]
@@ -432,16 +432,16 @@ define
   000983:[znnoar@20#4604,SINGLEDEL-znnoar@20#4604,SINGLEDEL]
   000535:[zzqwavxgrec@12#2657,SINGLEDEL-zzqwavxgrec@12#2526,SET]
 5:
-  000971:[acutc@6#4227,SET-zzhra@12#72057594037927935,RANGEDEL]
+  000971:[acutc@6#4227,SET-zzhra@12#inf,RANGEDEL]
 6:
   000806:[gourk@18#0,SET-zzhra@2#0,SET]
 ----
 0.4:
-  000987:[aiinjp@20#4667,SET-fcklu@5#72057594037927935,RANGEDEL]
-  000988:[fcklu@5#4668,MERGE-glpw@1#72057594037927935,RANGEDEL]
-  000989:[glpw@1#4662,RANGEDEL-mlgxnog@19#72057594037927935,RANGEDEL]
-  000990:[mlgxnog@19#4662,RANGEDEL-nwnmqtyvjt@5#72057594037927935,RANGEDEL]
-  000991:[nwnmqtyvjt@5#4662,RANGEDEL-wmkrrxp@6#72057594037927935,RANGEDEL]
+  000987:[aiinjp@20#4667,SET-fcklu@5#inf,RANGEDEL]
+  000988:[fcklu@5#4668,MERGE-glpw@1#inf,RANGEDEL]
+  000989:[glpw@1#4662,RANGEDEL-mlgxnog@19#inf,RANGEDEL]
+  000990:[mlgxnog@19#4662,RANGEDEL-nwnmqtyvjt@5#inf,RANGEDEL]
+  000991:[nwnmqtyvjt@5#4662,RANGEDEL-wmkrrxp@6#inf,RANGEDEL]
 0.3:
   000978:[dygfdczcax@15#4609,DEL-vtocgpw@18#4609,DEL]
   000992:[wmkrrxp@6#4657,MERGE-yyquzcd@21#4624,SET]
@@ -453,7 +453,7 @@ define
   000828:[zzqwavxgrec@12#4092,SINGLEDEL-zzqwavxgrec@12#4092,SINGLEDEL]
 0.1:
   000980:[dusu@10#4603,SET-duyeldgvnll@21#4605,SET]
-  000973:[ewqqtp@15#4591,RANGEDEL-zaygjmy@1#72057594037927935,RANGEDEL]
+  000973:[ewqqtp@15#4591,RANGEDEL-zaygjmy@1#inf,RANGEDEL]
   000605:[zzqwavxgrec@12#2894,SET-zzqwavxgrec@12#2894,SET]
 0.0:
   000910:[abddymplk@20#4370,MERGE-abddymplk@20#4370,MERGE]
@@ -462,24 +462,24 @@ define
   000983:[znnoar@20#4604,SINGLEDEL-znnoar@20#4604,SINGLEDEL]
   000535:[zzqwavxgrec@12#2657,SINGLEDEL-zzqwavxgrec@12#2526,SET]
 5:
-  000971:[acutc@6#4227,SET-zzhra@12#72057594037927935,RANGEDEL]
+  000971:[acutc@6#4227,SET-zzhra@12#inf,RANGEDEL]
 6:
   000806:[gourk@18#0,SET-zzhra@2#0,SET]
 
 overlaps level=0 start=heacptnep@12 end=kiicbzwtpe@16 exclusive-end=false
 ----
-000973:[ewqqtp@15#4591,RANGEDEL-zaygjmy@1#72057594037927935,RANGEDEL]
+000973:[ewqqtp@15#4591,RANGEDEL-zaygjmy@1#inf,RANGEDEL]
 000975:[ajoqjxr@16#4578,MERGE-zjyqka@1#4544,DEL]
 000977:[mgksrvk@15#4598,DEL-mgksrvk@15#4598,DEL]
 000978:[dygfdczcax@15#4609,DEL-vtocgpw@18#4609,DEL]
 000980:[dusu@10#4603,SET-duyeldgvnll@21#4605,SET]
 000981:[fhcykuix@5#4601,MERGE-kiati@10#4595,MERGE]
 000982:[nirnrarzktp@12#4600,MERGE-zaowx@3#4602,SET]
-000987:[aiinjp@20#4667,SET-fcklu@5#72057594037927935,RANGEDEL]
-000988:[fcklu@5#4668,MERGE-glpw@1#72057594037927935,RANGEDEL]
-000989:[glpw@1#4662,RANGEDEL-mlgxnog@19#72057594037927935,RANGEDEL]
-000990:[mlgxnog@19#4662,RANGEDEL-nwnmqtyvjt@5#72057594037927935,RANGEDEL]
-000991:[nwnmqtyvjt@5#4662,RANGEDEL-wmkrrxp@6#72057594037927935,RANGEDEL]
+000987:[aiinjp@20#4667,SET-fcklu@5#inf,RANGEDEL]
+000988:[fcklu@5#4668,MERGE-glpw@1#inf,RANGEDEL]
+000989:[glpw@1#4662,RANGEDEL-mlgxnog@19#inf,RANGEDEL]
+000990:[mlgxnog@19#4662,RANGEDEL-nwnmqtyvjt@5#inf,RANGEDEL]
+000991:[nwnmqtyvjt@5#4662,RANGEDEL-wmkrrxp@6#inf,RANGEDEL]
 000992:[wmkrrxp@6#4657,MERGE-yyquzcd@21#4624,SET]
 
 overlaps level=0 start=acutc@6 end=zzhra@12 exclusive-end=true
@@ -487,7 +487,7 @@ overlaps level=0 start=acutc@6 end=zzhra@12 exclusive-end=true
 000535:[zzqwavxgrec@12#2657,SINGLEDEL-zzqwavxgrec@12#2526,SET]
 000605:[zzqwavxgrec@12#2894,SET-zzqwavxgrec@12#2894,SET]
 000828:[zzqwavxgrec@12#4092,SINGLEDEL-zzqwavxgrec@12#4092,SINGLEDEL]
-000973:[ewqqtp@15#4591,RANGEDEL-zaygjmy@1#72057594037927935,RANGEDEL]
+000973:[ewqqtp@15#4591,RANGEDEL-zaygjmy@1#inf,RANGEDEL]
 000975:[ajoqjxr@16#4578,MERGE-zjyqka@1#4544,DEL]
 000977:[mgksrvk@15#4598,DEL-mgksrvk@15#4598,DEL]
 000978:[dygfdczcax@15#4609,DEL-vtocgpw@18#4609,DEL]
@@ -495,10 +495,10 @@ overlaps level=0 start=acutc@6 end=zzhra@12 exclusive-end=true
 000981:[fhcykuix@5#4601,MERGE-kiati@10#4595,MERGE]
 000982:[nirnrarzktp@12#4600,MERGE-zaowx@3#4602,SET]
 000983:[znnoar@20#4604,SINGLEDEL-znnoar@20#4604,SINGLEDEL]
-000987:[aiinjp@20#4667,SET-fcklu@5#72057594037927935,RANGEDEL]
-000988:[fcklu@5#4668,MERGE-glpw@1#72057594037927935,RANGEDEL]
-000989:[glpw@1#4662,RANGEDEL-mlgxnog@19#72057594037927935,RANGEDEL]
-000990:[mlgxnog@19#4662,RANGEDEL-nwnmqtyvjt@5#72057594037927935,RANGEDEL]
-000991:[nwnmqtyvjt@5#4662,RANGEDEL-wmkrrxp@6#72057594037927935,RANGEDEL]
+000987:[aiinjp@20#4667,SET-fcklu@5#inf,RANGEDEL]
+000988:[fcklu@5#4668,MERGE-glpw@1#inf,RANGEDEL]
+000989:[glpw@1#4662,RANGEDEL-mlgxnog@19#inf,RANGEDEL]
+000990:[mlgxnog@19#4662,RANGEDEL-nwnmqtyvjt@5#inf,RANGEDEL]
+000991:[nwnmqtyvjt@5#4662,RANGEDEL-wmkrrxp@6#inf,RANGEDEL]
 000992:[wmkrrxp@6#4657,MERGE-yyquzcd@21#4624,SET]
 000993:[zslykqao@12#4636,SINGLEDEL-zzqwavxgrec@12#4627,DEL]
