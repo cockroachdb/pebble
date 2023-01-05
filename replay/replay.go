@@ -126,9 +126,12 @@ type Runner struct {
 	// It is guarded by the finishedCompactionNotifier condition variable lock.
 	compactionEndedCount int64
 
-	// compactionStartCount uses atomics to keep track of the previous cumulative
-	// compaction count.
-	compactionStartCount int64
+	// atomicCompactionStartCount keeps track of the cumulative number of
+	// compactions started. It's incremented by a pebble.EventListener's
+	// CompactionStart handler.
+	//
+	// Must be accessed with atomics.
+	atomicCompactionStartCount int64
 
 	// compactionsHaveQuiesced is a channel that is closed once compactions have
 	// quiesced allowing the compactionNotified goroutine to complete.
@@ -218,7 +221,7 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 
 	fetchDoneState := func() {
 		r.finishedCompactionNotifier.L.Lock()
-		done = r.compactionEndedCount == atomic.LoadInt64(&r.compactionStartCount)
+		done = r.compactionEndedCount == atomic.LoadInt64(&r.atomicCompactionStartCount)
 		r.finishedCompactionNotifier.L.Unlock()
 	}
 
@@ -324,7 +327,7 @@ func (r *Runner) eventListener() pebble.EventListener {
 				uint64(time.Since(writeStallBegin).Nanoseconds()))
 		},
 		CompactionBegin: func(_ pebble.CompactionInfo) {
-			atomic.AddInt64(&r.compactionStartCount, 1)
+			atomic.AddInt64(&r.atomicCompactionStartCount, 1)
 		},
 		CompactionEnd: func(_ pebble.CompactionInfo) {
 			r.finishedCompactionNotifier.L.Lock()
@@ -558,7 +561,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 func (r *Runner) compactionNotified(ctx context.Context) error {
 	r.finishedCompactionNotifier.L.Lock()
 	for {
-		if r.compactionEndedCount < r.compactionStartCount {
+		if r.compactionEndedCount < atomic.LoadInt64(&r.atomicCompactionStartCount) {
 			r.finishedCompactionNotifier.Wait()
 		}
 		r.finishedCompactionNotifier.L.Unlock()
