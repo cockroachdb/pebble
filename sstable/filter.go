@@ -87,6 +87,10 @@ func (f *tableFilterWriter) addKey(key []byte) {
 }
 
 func (f *tableFilterWriter) finish() ([]byte, error) {
+	defer func() {
+		f.policy.DropWriter(f.writer)
+		f.writer = nil
+	}()
 	if f.count == 0 {
 		return nil, nil
 	}

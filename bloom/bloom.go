@@ -8,6 +8,7 @@ package bloom // import "github.com/cockroachdb/pebble/bloom"
 import (
 	"encoding/binary"
 	"fmt"
+	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
 )
@@ -122,6 +123,29 @@ type tableFilterWriter struct {
 	hashes     []uint32
 }
 
+var tableFilterWriterPool = sync.Pool{
+	New: func() interface{} {
+		return &tableFilterWriter{}
+	},
+}
+
+func newTableFilterWriter(bitsPerKey int) *tableFilterWriter {
+	w := tableFilterWriterPool.Get().(*tableFilterWriter)
+	w.bitsPerKey = bitsPerKey
+	w.hashes = w.hashes[:0]
+	return w
+}
+
+const maxReusableHashes = 4 * 1024 * 1024
+
+func dropTableFilterWriter(w *tableFilterWriter) {
+	if cap(w.hashes) > maxReusableHashes {
+		// Avoid holding on to a very large buffer.
+		w.hashes = nil
+	}
+	tableFilterWriterPool.Put(w)
+}
+
 // AddKey implements the base.FilterWriter interface.
 func (w *tableFilterWriter) AddKey(key []byte) {
 	h := hash(key)
@@ -173,10 +197,9 @@ func (w *tableFilterWriter) Finish(buf []byte) []byte {
 //
 // The integer value is the approximate number of bits used per key. A good
 // value is 10, which yields a filter with ~ 1% false positive rate.
-//
-// It is valid to use the other API in this package (pebble/bloom) without
-// using this type or the pebble package.
 type FilterPolicy int
+
+var _ base.FilterPolicy = FilterPolicy(0)
 
 // Name implements the pebble.FilterPolicy interface.
 func (p FilterPolicy) Name() string {
@@ -200,10 +223,15 @@ func (p FilterPolicy) MayContain(ftype base.FilterType, f, key []byte) bool {
 func (p FilterPolicy) NewWriter(ftype base.FilterType) base.FilterWriter {
 	switch ftype {
 	case base.TableFilter:
-		return &tableFilterWriter{
-			bitsPerKey: int(p),
-		}
+		return newTableFilterWriter(int(p))
 	default:
 		panic(fmt.Sprintf("unknown filter type: %v", ftype))
+	}
+}
+
+// DropWriter implements the pebble.FilterPolicy interface.
+func (p FilterPolicy) DropWriter(w base.FilterWriter) {
+	if w, ok := w.(*tableFilterWriter); ok {
+		dropTableFilterWriter(w)
 	}
 }

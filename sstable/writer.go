@@ -1800,6 +1800,8 @@ func (w *Writer) Close() (err error) {
 	var metaindex rawBlockWriter
 	metaindex.restartInterval = 1
 	if w.filter != nil {
+		metaName := w.filter.metaName()
+		policyName := w.filter.policyName()
 		b, err := w.filter.finish()
 		if err != nil {
 			w.err = err
@@ -1811,8 +1813,8 @@ func (w *Writer) Close() (err error) {
 			return w.err
 		}
 		n := encodeBlockHandle(w.blockBuf.tmp[:], bh)
-		metaindex.add(InternalKey{UserKey: []byte(w.filter.metaName())}, w.blockBuf.tmp[:n])
-		w.props.FilterPolicyName = w.filter.policyName()
+		metaindex.add(InternalKey{UserKey: []byte(metaName)}, w.blockBuf.tmp[:n])
+		w.props.FilterPolicyName = policyName
 		w.props.FilterSize = bh.Length
 	}
 

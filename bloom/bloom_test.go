@@ -215,5 +215,6 @@ func BenchmarkBloomFilter(b *testing.B) {
 			w.AddKey(key)
 		}
 		w.Finish(nil)
+		policy.DropWriter(w)
 	}
 }

@@ -62,6 +62,11 @@ type FilterPolicy interface {
 
 	// NewWriter creates a new FilterWriter.
 	NewWriter(ftype FilterType) FilterWriter
+
+	// DropWriter takes ownership of a writer object so that it can be potentially
+	// reused by a future NewWriter call. The object must not be used anymore by
+	// the caller. The use of this method is optional.
+	DropWriter(w FilterWriter)
 }
 
 // BlockPropertyFilter is used in an Iterator to filter sstables and blocks
