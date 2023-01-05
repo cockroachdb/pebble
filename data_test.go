@@ -246,11 +246,13 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 		if valid != iter.Valid() {
 			fmt.Fprintf(&b, "mismatched valid states: %t vs %t\n", valid, iter.Valid())
 		}
+		hasPoint, hasRange := iter.HasPointAndRange()
+		hasEither := hasPoint || hasRange
+		if hasEither != valid {
+			fmt.Fprintf(&b, "mismatched valid/HasPointAndRange states: valid=%t HasPointAndRange=(%t,%t)\n", valid, hasPoint, hasRange)
+		}
+
 		if valid {
-			hasPoint, hasRange := iter.HasPointAndRange()
-			if !hasPoint && !hasRange {
-				fmt.Fprintf(&b, "mismatched valid/HasPointAndRange states: valid=%t HasPointAndRange=(%t,%t)\n", valid, hasPoint, hasRange)
-			}
 			validityState = IterValid
 		}
 		printIterState(&b, iter, validityState, printValidityState)
