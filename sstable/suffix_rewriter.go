@@ -57,7 +57,11 @@ func rewriteKeySuffixesInBlocks(
 	}
 
 	w := NewWriter(out, o)
-	defer w.Close()
+	defer func() {
+		if w != nil {
+			w.Close()
+		}
+	}()
 
 	for _, c := range w.propCollectors {
 		if _, ok := c.(SuffixReplaceableTableCollector); !ok {
@@ -97,10 +101,12 @@ func rewriteKeySuffixesInBlocks(
 	}
 
 	if err := w.Close(); err != nil {
+		w = nil
 		return nil, err
 	}
-
-	return w.Metadata()
+	writerMeta, err := w.Metadata()
+	w = nil
+	return writerMeta, err
 }
 
 var errBadKind = errors.New("key does not have expected kind (set)")
@@ -394,6 +400,11 @@ func RewriteKeySuffixesViaWriter(
 	}
 
 	w := NewWriter(out, o)
+	defer func() {
+		if w != nil {
+			w.Close()
+		}
+	}()
 	i, err := r.NewIter(nil, nil)
 	if err != nil {
 		return nil, err
@@ -427,9 +438,12 @@ func RewriteKeySuffixesViaWriter(
 		return nil, err
 	}
 	if err := w.Close(); err != nil {
+		w = nil
 		return nil, err
 	}
-	return &w.meta, nil
+	writerMeta, err := w.Metadata()
+	w = nil
+	return writerMeta, err
 }
 
 // NewMemReader opens a reader over the SST stored in the passed []byte.
