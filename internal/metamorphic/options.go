@@ -65,6 +65,7 @@ func parseOptions(opts *testOptions, data string) error {
 				opts.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
 				return true
 			case "TestOptions.enable_value_blocks":
+				opts.enableValueBlocks = true
 				opts.opts.Experimental.EnableValueBlocks = func() bool { return true }
 				return true
 			default:
@@ -101,6 +102,9 @@ func optionsToString(opts *testOptions) string {
 	}
 	if opts.useBlockPropertyCollector {
 		fmt.Fprintf(&buf, "  use_block_property_collector=%t\n", opts.useBlockPropertyCollector)
+	}
+	if opts.enableValueBlocks {
+		fmt.Fprintf(&buf, "  enable_value_blocks=%t\n", opts.enableValueBlocks)
 	}
 
 	s := opts.opts.String()
@@ -149,6 +153,8 @@ type testOptions struct {
 	// Use a block property collector, which may be used by block property
 	// filters.
 	useBlockPropertyCollector bool
+	// Enable the use of value blocks.
+	enableValueBlocks bool
 }
 
 func standardOptions() []*testOptions {
@@ -362,6 +368,11 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	testOpts.useBlockPropertyCollector = rng.Intn(2) != 0
 	if testOpts.useBlockPropertyCollector {
 		testOpts.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
+	}
+	testOpts.enableValueBlocks = opts.FormatMajorVersion >= pebble.FormatSSTableValueBlocks &&
+		rng.Intn(2) != 0
+	if testOpts.enableValueBlocks {
+		testOpts.opts.Experimental.EnableValueBlocks = func() bool { return true }
 	}
 	return testOpts
 }
