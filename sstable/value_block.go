@@ -727,6 +727,7 @@ type valueBlockReader struct {
 	valueCache    cache.Handle
 	lazyFetcher   base.LazyFetcher
 	closed        bool
+	bufToMangle   []byte
 }
 
 func (r *valueBlockReader) getLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue {
@@ -774,6 +775,9 @@ func (r *valueBlockReader) Fetch(
 ) (val []byte, callerOwned bool, err error) {
 	if !r.closed {
 		val, err := r.getValueInternal(handle, valLen)
+		if invariants.Enabled {
+			val = r.doValueMangling(val)
+		}
 		return val, false, err
 	}
 
@@ -790,11 +794,25 @@ func (r *valueBlockReader) Fetch(
 	if err != nil {
 		return nil, false, err
 	}
-	if invariants.Enabled && callerOwned {
-		panic("callerOwned must be false")
-	}
 	buf = append(buf[:0], v...)
 	return buf, true, nil
+}
+
+// doValueMangling attempts to uncover violations of the contract listed in
+// the declaration comment of LazyValue. It is expensive, hence only called
+// when invariants.Enabled.
+func (r *valueBlockReader) doValueMangling(v []byte) []byte {
+	// Randomly set the bytes in the previous retrieved value to 0, since
+	// property P1 only requires the valueBlockReader to maintain the memory of
+	// one fetched value.
+	if rand.Intn(2) == 0 {
+		for i := range r.bufToMangle {
+			r.bufToMangle[i] = 0
+		}
+	}
+	// Store the current value in a new buffer for future mangling.
+	r.bufToMangle = append([]byte(nil), v...)
+	return r.bufToMangle
 }
 
 func (r *valueBlockReader) getValueInternal(handle []byte, valLen int32) (val []byte, err error) {
