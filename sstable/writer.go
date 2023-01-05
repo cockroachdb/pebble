@@ -1739,6 +1739,9 @@ func (w *Writer) Close() (err error) {
 	defer func() {
 		if w.valueBlockWriter != nil {
 			releaseValueBlockWriter(w.valueBlockWriter)
+			// Defensive code in case Close gets called again. We don't want to put
+			// the same object to a sync.Pool.
+			w.valueBlockWriter = nil
 		}
 		if w.syncer == nil {
 			return
