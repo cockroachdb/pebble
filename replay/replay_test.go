@@ -319,8 +319,12 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			}
 			return buf.String()
 		case "stop":
+			wc.mu.Lock()
+			for wc.mu.tablesEnqueued != wc.mu.tablesCopied {
+				wc.mu.copyCond.Wait()
+			}
+			wc.mu.Unlock()
 			wc.Stop()
-			<-wc.done
 			return "stopped"
 		case "tree":
 			return fs.String()
@@ -411,17 +415,7 @@ func TestCollectCorpus(t *testing.T) {
 func runListFiles(t *testing.T, fs vfs.FS, td *datadriven.TestData) string {
 	var buf bytes.Buffer
 	for _, arg := range td.CmdArgs {
-		name := arg.String()
-		ls, err := fs.List(name)
-		if err != nil {
-			fmt.Fprintf(&buf, "%s: %s\n", name, err)
-			continue
-		}
-		sort.Strings(ls)
-		fmt.Fprintf(&buf, "%s:\n", name)
-		for _, dirent := range ls {
-			fmt.Fprintf(&buf, "  %s\n", dirent)
-		}
+		listFiles(t, fs, &buf, arg.String())
 	}
 	return buf.String()
 }
@@ -441,4 +435,17 @@ BenchmarkReplay/tpcc/WriteStalls           1            105         stalls      
 BenchmarkReplay/tpcc/IngestedIntoL0        1        5242880          bytes
 BenchmarkReplay/tpcc/IngestWeightedByLevel 1        9437184          bytes`),
 		strings.TrimSpace(m.BenchmarkString("tpcc")))
+}
+
+func listFiles(t *testing.T, fs vfs.FS, w io.Writer, name string) {
+	ls, err := fs.List(name)
+	if err != nil {
+		fmt.Fprintf(w, "%s: %s\n", name, err)
+		return
+	}
+	sort.Strings(ls)
+	fmt.Fprintf(w, "%s:\n", name)
+	for _, dirent := range ls {
+		fmt.Fprintf(w, "  %s\n", dirent)
+	}
 }
