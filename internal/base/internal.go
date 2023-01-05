@@ -418,7 +418,11 @@ type prettyInternalKey struct {
 }
 
 func (k prettyInternalKey) Format(s fmt.State, c rune) {
-	fmt.Fprintf(s, "%s#%d,%s", k.formatKey(k.UserKey), k.SeqNum(), k.Kind())
+	if seqNum := k.SeqNum(); seqNum == InternalKeySeqNumMax {
+		fmt.Fprintf(s, "%s#inf,%s", k.formatKey(k.UserKey), k.Kind())
+	} else {
+		fmt.Fprintf(s, "%s#%d,%s", k.formatKey(k.UserKey), k.SeqNum(), k.Kind())
+	}
 }
 
 // ParsePrettyInternalKey parses the pretty string representation of an
@@ -430,6 +434,11 @@ func ParsePrettyInternalKey(s string) InternalKey {
 	if !ok {
 		panic(fmt.Sprintf("unknown kind: %q", x[2]))
 	}
-	seqNum, _ := strconv.ParseUint(x[1], 10, 64)
+	var seqNum uint64
+	if x[1] == "max" || x[1] == "inf" {
+		seqNum = InternalKeySeqNumMax
+	} else {
+		seqNum, _ = strconv.ParseUint(x[1], 10, 64)
+	}
 	return MakeInternalKey([]byte(ukey), seqNum, kind)
 }

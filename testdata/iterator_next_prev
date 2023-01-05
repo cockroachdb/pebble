@@ -15,7 +15,7 @@ del-range b c
 ingest ext2
 ----
 0.0:
-  000005:[b#2,RANGEDEL-c#72057594037927935,RANGEDEL]
+  000005:[b#2,RANGEDEL-c#inf,RANGEDEL]
 6:
   000004:[a#1,MERGE-c#1,SET]
 
@@ -66,7 +66,7 @@ del-range x y
 ingest ext2
 ----
 0.0:
-  000005:[x#2,RANGEDEL-y#72057594037927935,RANGEDEL]
+  000005:[x#2,RANGEDEL-y#inf,RANGEDEL]
 6:
   000004:[t#1,SET-z#1,MERGE]
 
@@ -121,7 +121,7 @@ del-range c d
 ingest ext2
 ----
 6:
-  000005:[b#2,SET-d#72057594037927935,RANGEDEL]
+  000005:[b#2,SET-d#inf,RANGEDEL]
   000004:[e#1,SET-e#1,SET]
 
 # The scenario requires iteration at a snapshot. The "last" operation
