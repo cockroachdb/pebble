@@ -38,80 +38,76 @@ type manifestDetails struct {
 type WorkloadCollector struct {
 	mu struct {
 		sync.Mutex
-
-		fileState         map[string]workloadCaptureState
-		sstablesToProcess []string
-
+		fileState map[string]workloadCaptureState
+		// pendingSSTables holds a slice of file paths to sstables that need to
+		// be copied but haven't yet. The `copyFiles` goroutine grabs these
+		// files, and the flush and ingest event handlers append them.
+		pendingSSTables []string
+		// manifestIndex is an index into `manifests`, pointing to the
+		// manifest currently being copied.
 		manifestIndex int
-
-		// appending to manifests requires holding mu however reading data does not.
+		// appending to manifests requires holding mu. Only the `copyFiles`
+		// goroutine is permitted to read or edit the struct contents once
+		// appended, so it does not need to hold mu while accessing the structs'
+		// fields.
 		manifests []*manifestDetails
+
+		// The following condition variable and counts are used in tests to
+		// synchronize with the copying goroutine.
+		copyCond       sync.Cond
+		tablesCopied   int
+		tablesEnqueued int
 	}
-
-	// Stores the current manifest that is being used by the database. Updated
-	// atomically.
-	curManifest uint64
-
-	// A boolean represented as an atomic uint32 that stores whether the workload
-	// collector is enabled.
-	enabled uint32
-
+	atomic struct {
+		// Stores the current manifest that is being used by the database. Updated
+		// atomically.
+		curManifest uint64
+		// A boolean represented as an atomic uint32 that stores whether the workload
+		// collector is enabled.
+		enabled uint32
+	}
 	buffer []byte
-
-	// configuration contains information that is only set on the creation of the
+	// config contains information that is only set on the creation of the
 	// WorkloadCollector.
-	configuration struct {
+	config struct {
 		// srcFS and srcDir represent the location from which the workload collector
 		// collects the files from.
 		srcFS  vfs.FS
 		srcDir string
-
 		// destFS and destDir represent the location to which the workload collector
 		// sends the files to.
 		destFS  vfs.FS
 		destDir string
-
 		// cleaner stores the cleaner to use when files become obsolete and need to
 		// be cleaned.
 		cleaner base.Cleaner
 	}
-
-	fileListener struct {
+	copier struct {
 		sync.Cond
-		stopFileListener     bool
-		forceSingleIteration bool
+		stop bool
+		done chan struct{}
 	}
-	done chan struct{}
 }
 
 // NewWorkloadCollector is used externally to create a New WorkloadCollector.
 func NewWorkloadCollector(srcDir string) *WorkloadCollector {
 	wc := &WorkloadCollector{}
 	wc.buffer = make([]byte, 1<<10 /* 1KB */)
-
-	wc.configuration.srcDir = srcDir
-
+	wc.config.srcDir = srcDir
+	wc.mu.copyCond.L = &wc.mu.Mutex
 	wc.mu.fileState = make(map[string]workloadCaptureState)
-	wc.fileListener.Cond.L = &wc.mu.Mutex
-	wc.done = make(chan struct{})
+	wc.copier.Cond.L = &wc.mu.Mutex
 	return wc
 }
 
 // Attach is used to set up the WorkloadCollector by attaching itself to
 // pebble.Options EventListener and Cleaner.
 func (w *WorkloadCollector) Attach(opts *pebble.Options) {
-	l := pebble.EventListener{
+	opts.AddEventListener(pebble.EventListener{
 		FlushEnd:        w.onFlushEnd,
 		ManifestCreated: w.onManifestCreated,
 		TableIngested:   w.onTableIngest,
-	}
-
-	if opts.EventListener == nil {
-		opts.EventListener = &l
-	} else {
-		t := pebble.TeeEventListener(*opts.EventListener, l)
-		opts.EventListener = &t
-	}
+	})
 
 	opts.EnsureDefaults()
 	// Replace the original Cleaner with the workload collector's implementation,
@@ -121,27 +117,26 @@ func (w *WorkloadCollector) Attach(opts *pebble.Options) {
 		name:  fmt.Sprintf("replay.WorkloadCollector(%q)", opts.Cleaner),
 		clean: w.clean,
 	}
-	w.configuration.cleaner, opts.Cleaner = opts.Cleaner, c
-	w.configuration.srcFS = opts.FS
+	w.config.cleaner, opts.Cleaner = opts.Cleaner, c
+	w.config.srcFS = opts.FS
 }
 
-// setSSTableAsReadyForProcessing marks a SST as ready for processing and adds
-// it to the list of files to process. Must be called while holding a write
-// lock.
-func (w *WorkloadCollector) setSSTableAsReadyForProcessing(fileNum base.FileNum) {
+// enqueueCopyLocked enqueues the sstable with the provided filenum be copied in
+// the background. Requires w.mu.
+func (w *WorkloadCollector) enqueueCopyLocked(fileNum base.FileNum) {
 	fileName := base.MakeFilename(base.FileTypeTable, fileNum)
-	filePath := makeFilepathWithName(w.configuration.srcFS, w.configuration.srcDir, fileName)
 	w.mu.fileState[fileName] |= readyForProcessing
-	w.mu.sstablesToProcess = append(w.mu.sstablesToProcess, filePath)
+	w.mu.pendingSSTables = append(w.mu.pendingSSTables, w.srcFilepath(fileName))
+	w.mu.tablesEnqueued++
 }
 
 // cleanFile calls the cleaner on the specified path and removes the path from
 // the fileState map.
 func (w *WorkloadCollector) cleanFile(fileType base.FileType, path string) error {
-	err := w.configuration.cleaner.Clean(w.configuration.srcFS, fileType, path)
+	err := w.config.cleaner.Clean(w.config.srcFS, fileType, path)
 	if err == nil {
 		w.mu.Lock()
-		delete(w.mu.fileState, w.configuration.srcFS.PathBase(path))
+		delete(w.mu.fileState, w.config.srcFS.PathBase(path))
 		w.mu.Unlock()
 	}
 	return err
@@ -150,11 +145,14 @@ func (w *WorkloadCollector) cleanFile(fileType base.FileType, path string) error
 // clean deletes files only after they have been processed or are not required
 // for the workload collection.
 func (w *WorkloadCollector) clean(fs vfs.FS, fileType base.FileType, path string) error {
+	if !w.IsRunning() {
+		return w.cleanFile(fileType, path)
+	}
 	w.mu.Lock()
 	fileName := fs.PathBase(path)
 	if fileState, ok := w.mu.fileState[fileName]; !ok || fileState.is(capturedSuccessfully) {
-		// Delete the file if it has been captured or the file is not important to
-		// capture which means it can be deleted.
+		// Delete the file if it has been captured or the file is not important
+		// to capture which means it can be deleted.
 		w.mu.Unlock()
 		return w.cleanFile(fileType, path)
 	}
@@ -163,43 +161,40 @@ func (w *WorkloadCollector) clean(fs vfs.FS, fileType base.FileType, path string
 	return nil
 }
 
-// onTableIngest is a handler that is to be setup on an EventListener and
-// triggered by EventListener.TableIngested calls. It runs through the tables
-// and processes them by calling setSSTableAsReadyForProcessing.
+// onTableIngest is attached to a pebble.DB as an EventListener.TableIngested
+// func. It enqueues all ingested tables to be copied.
 func (w *WorkloadCollector) onTableIngest(info pebble.TableIngestInfo) {
-	if atomic.LoadUint32(&w.enabled) == 0 {
+	if atomic.LoadUint32(&w.atomic.enabled) == 0 {
 		return
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, table := range info.Tables {
-		w.setSSTableAsReadyForProcessing(table.FileNum)
+		w.enqueueCopyLocked(table.FileNum)
 	}
-	w.fileListener.Signal()
+	w.copier.Broadcast()
 }
 
-// onFlushEnd is a handler that is to be setup on an EventListener and triggered
-// by EventListener.FlushEnd calls. It runs through the tables and processes
-// them by calling setSSTableAsReadyForProcessing.
+// onFlushEnd is attached to a pebble.DB as an EventListener.FlushEnd func. It
+// enqueues all flushed tables to be copied.
 func (w *WorkloadCollector) onFlushEnd(info pebble.FlushInfo) {
-	if atomic.LoadUint32(&w.enabled) == 0 {
+	if !w.IsRunning() {
 		return
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	for _, table := range info.Output {
-		w.setSSTableAsReadyForProcessing(table.FileNum)
+		w.enqueueCopyLocked(table.FileNum)
 	}
-	w.fileListener.Signal()
+	w.copier.Broadcast()
 }
 
-// onManifestCreated is a handler that is to be setup on an EventListener and
-// triggered by EventListener.ManifestCreated calls. It sets the state of the
-// newly created manifests file and appends it to a list of manifests files to
-// process.
+// onManifestCreated is attached to a pebble.DB as an
+// EventListener.ManifestCreated func. It records the the new manifest so that
+// it's copied asynchronously in the background.
 func (w *WorkloadCollector) onManifestCreated(info pebble.ManifestCreateInfo) {
-	atomic.StoreUint64(&w.curManifest, uint64(info.FileNum))
-	if atomic.LoadUint32(&w.enabled) == 0 {
+	atomic.StoreUint64(&w.atomic.curManifest, uint64(info.FileNum))
+	if atomic.LoadUint32(&w.atomic.enabled) == 0 {
 		return
 	}
 	w.mu.Lock()
@@ -214,83 +209,78 @@ func (w *WorkloadCollector) onManifestCreated(info pebble.ManifestCreateInfo) {
 	})
 }
 
-func (w *WorkloadCollector) handleStop() {
+// copyFiles is run in a separate goroutine, copying sstables and manifests.
+func (w *WorkloadCollector) copyFiles() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	for idx := int(w.curManifest); idx < len(w.mu.manifests); idx++ {
-		m := w.mu.manifests[idx]
-		if m.sourceFile != nil {
-			err := m.sourceFile.Close()
-			if err != nil {
-				panic(err)
-			}
-		}
-		if m.destFile != nil {
-			err := m.destFile.Close()
-			if err != nil {
-				panic(err)
-			}
-		}
-	}
-	close(w.done)
-}
-
-// filesToProcessWatcher runs and performs the collection of the files of
-// interest.
-func (w *WorkloadCollector) filesToProcessWatcher() {
-	defer w.handleStop()
-	w.mu.Lock() // lock [1]
-	for !w.fileListener.stopFileListener || w.fileListener.forceSingleIteration {
+	// NB: This loop must hold w.mu at the beginning of each iteration. It may
+	// drop w.mu at times, but it must reacquire it before the next iteration.
+	for !w.copier.stop {
 		// The following performs the workload capture. It waits on a condition
 		// variable (fileListener) to let it know when new files are available to be
 		// collected.
-		if len(w.mu.sstablesToProcess) == 0 {
-			w.fileListener.Wait()
+		if len(w.mu.pendingSSTables) == 0 {
+			w.copier.Wait()
 		}
-		// Copied details for manifests
+		// Grab the manifests to copy.
 		index := w.mu.manifestIndex
-		manifestsToProcess := w.mu.manifests[index:]
-		w.mu.Unlock() // lock [1]
+		pendingManifests := w.mu.manifests[index:]
+		var pending []string
+		pending, w.mu.pendingSSTables = w.mu.pendingSSTables, nil
+		func() {
+			// Note the unusual lock order; Temporarily unlock the
+			// mutex, but re-acquire it before returning.
+			w.mu.Unlock()
+			defer w.mu.Lock()
 
-		// Process the manifests files.
-		w.processManifests(index, manifestsToProcess)
+			// Copy any updates to the manifests files.
+			w.copyManifests(index, pendingManifests)
+			// Copy the SSTables provided in pending. copySSTables takes
+			// ownership of the pending slice.
+			w.copySSTables(pending)
+		}()
 
-		w.mu.Lock()
-		// Copied details for SSTs
-		sstablesToProcess := w.mu.sstablesToProcess
-		w.mu.sstablesToProcess = nil
-		w.mu.Unlock()
-
-		// Process the SSTables provided in sstablesToProcess. sstablesToProcess
-		// will be rewritten and cannot be used following this call.
-		w.processSSTables(sstablesToProcess)
-
-		w.mu.Lock() // reset lock for loop [1]
-		w.fileListener.forceSingleIteration = false
+		// This helps in tests; Tests can wait on the copyCond condition
+		// variable until the necessary bits have been copied.
+		w.mu.tablesCopied += len(pending)
+		w.mu.copyCond.Broadcast()
 	}
-	w.mu.Unlock() // unlock for end of loop [1]
+
+	for idx := range w.mu.manifests {
+		if f := w.mu.manifests[idx].sourceFile; f != nil {
+			if err := f.Close(); err != nil {
+				panic(err)
+			}
+			w.mu.manifests[idx].sourceFile = nil
+		}
+		if f := w.mu.manifests[idx].destFile; f != nil {
+			if err := f.Close(); err != nil {
+				panic(err)
+			}
+			w.mu.manifests[idx].destFile = nil
+		}
+	}
+	close(w.copier.done)
 }
 
-// processManifests iterates over the manifests and copies data that has been
-// added to the source.
-func (w *WorkloadCollector) processManifests(startAtIndex int, manifests []*manifestDetails) {
-	destFS := w.configuration.destFS
-	totalManifests := len(manifests)
+// copyManifests copies any un-copied portions of the source manifests.
+func (w *WorkloadCollector) copyManifests(startAtIndex int, manifests []*manifestDetails) {
+	destFS := w.config.destFS
 
 	for index, manifest := range manifests {
 		if manifest.destFile == nil && manifest.sourceFile == nil {
-			// srcFile and destFile are not opened / created as this is the first time
-			// this manifest is being processed. This method will be updating the
-			// source and destination files as a result it is safe to do so without
-			// holding a lock.
+			// This is the first time we've read from this manifest, and we
+			// don't yet have open file descriptors for the src or dst files. It
+			// is safe to write to manifest.{destFile,sourceFile} without
+			// holding d.mu, because the copyFiles goroutine is the only
+			// goroutine that accesses the fields of the `manifestDetails`
+			// struct.
 			var err error
-			manifest.destFile, err = destFS.Create(
-				makeFilepathWithName(destFS, w.configuration.destDir, destFS.PathBase(manifest.sourceFilepath)))
-
+			manifest.destFile, err = destFS.Create(w.destFilepath(destFS.PathBase(manifest.sourceFilepath)))
 			if err != nil {
 				panic(err)
 			}
-			manifest.sourceFile, err = w.configuration.srcFS.Open(manifest.sourceFilepath)
+			manifest.sourceFile, err = w.config.srcFS.Open(manifest.sourceFilepath)
 			if err != nil {
 				panic(err)
 			}
@@ -301,21 +291,21 @@ func (w *WorkloadCollector) processManifests(startAtIndex int, manifests []*mani
 			panic(err)
 		}
 
-		// Read 0 bytes from the current manifest and this is not the latest/newest
-		// manifest which means we have read all the data no new data will be
-		// written to it since it's not the latest one. Close the current source and
-		// destination files and move the manifest to start at the next index in
-		// w.mu.manifests.
-		if numBytesRead == 0 && index != totalManifests-1 {
-			// Rotating the manifests so we can close the files
-			err := manifests[index].sourceFile.Close()
-			if err != nil {
+		// Read 0 bytes from the current manifest and this is not the
+		// latest/newest manifest which means we have read its entirety. No new
+		// data will be written to it, because only the latest manifest may
+		// receive edits. Close the current source and destination files and
+		// move the manifest to start at the next index in w.mu.manifests.
+		if numBytesRead == 0 && index != len(manifests)-1 {
+			// Rotating the manifests so we can close the files.
+			if err := manifests[index].sourceFile.Close(); err != nil {
 				panic(err)
 			}
-			err = manifests[index].destFile.Close()
-			if err != nil {
+			manifests[index].sourceFile = nil
+			if err := manifests[index].destFile.Close(); err != nil {
 				panic(err)
 			}
+			manifests[index].destFile = nil
 			w.mu.Lock()
 			w.mu.manifestIndex = startAtIndex + index + 1
 			w.mu.Unlock()
@@ -323,93 +313,107 @@ func (w *WorkloadCollector) processManifests(startAtIndex int, manifests []*mani
 	}
 }
 
-// processSSTables goes through the sstablesToProcess and copies them between
-// srcFS and the destFS. Additionally, each table has its file state updated. If
-// a file has already been marked as obsolete, then file will be cleaned by the
-// w.configuration.cleaner. The sstablesToProcess will be rewritten and should
-// not be used following the call to this function.
-func (w *WorkloadCollector) processSSTables(sstablesToProcess []string) {
-	for _, filePath := range sstablesToProcess {
-		err := vfs.CopyAcrossFS(w.configuration.srcFS,
+// copySSTables copies the provided sstables to the stored workload. If a file
+// has already been marked as obsolete, then file will be cleaned by the
+// w.config.cleaner after it is copied. The provided slice will be mutated and
+// should not be used following the call to this function.
+func (w *WorkloadCollector) copySSTables(pending []string) {
+	for _, filePath := range pending {
+		err := vfs.CopyAcrossFS(w.config.srcFS,
 			filePath,
-			w.configuration.destFS,
-			makeFilepathWithName(w.configuration.destFS, w.configuration.destDir, w.configuration.srcFS.PathBase(filePath)))
+			w.config.destFS,
+			w.destFilepath(w.config.srcFS.PathBase(filePath)))
 		if err != nil {
 			panic(err)
 		}
 	}
 
-	// reuse the slice
-	filesToDelete := sstablesToProcess[:0]
+	// Identify the subset of `pending` files that should now be cleaned. The
+	// WorkloadCollector intercepts Cleaner.Clean calls to defer cleaning until
+	// copying has completed. If Cleaner.Clean has already been invoked for any
+	// of the files that copied, we can now actually Clean them.
+	pendingClean := pending[:0]
 	w.mu.Lock()
-	for _, filePath := range sstablesToProcess {
-		fileName := w.configuration.srcFS.PathBase(filePath)
+	for _, filePath := range pending {
+		fileName := w.config.srcFS.PathBase(filePath)
 		if w.mu.fileState[fileName].is(obsolete) {
-			filesToDelete = append(filesToDelete, fileName)
+			pendingClean = append(pendingClean, filePath)
 		} else {
 			w.mu.fileState[fileName] |= capturedSuccessfully
 		}
 	}
 	w.mu.Unlock()
 
-	for _, filePath := range filesToDelete {
-		err := w.cleanFile(base.FileTypeTable, filePath)
-		if err != nil {
-			panic(err)
-		}
+	for _, path := range pendingClean {
+		_ = w.cleanFile(base.FileTypeTable, path)
 	}
 }
 
-// Start starts a go routine that listens for new files that
-// need to be collected.
+// Start begins collecting a workload. All flushed and ingested sstables, plus
+// corresponding manifests are copied to the provided destination path on the
+// provided FS.
 func (w *WorkloadCollector) Start(destFS vfs.FS, destPath string) {
 	// If the collector not is running then that means w.enabled == 0 so swap it
 	// to 1 and continue else return since it is not running.
-	if !atomic.CompareAndSwapUint32(&w.enabled, 0, 1) {
+	if !atomic.CompareAndSwapUint32(&w.atomic.enabled, 0, 1) {
 		return
 	}
-	w.configuration.destFS = destFS
-	w.configuration.destDir = destPath
+	w.config.destFS = destFS
+	w.config.destDir = destPath
 
-	// Take the current manifest and append it to the current slice (empty) of
-	// manifests since it needs to be collected but was created before collection
-	// started.
-	fileNum := base.FileNum(atomic.LoadUint64(&w.curManifest))
+	// Initialize the tracked manifests to the database's current manifest, if
+	// the database has already started. Every database Open creates a new
+	// manifest. There are two cases:
+	//   1. The database has already been opened. Then `w.atomic.curManifest`
+	//      contains the file number of the current manifest. We must initialize
+	//      the w.mu.manifests slice to contain this first manifest.
+	//   2. The database has not yet been opened. Then `w.atomic.curManifest` is
+	//      still zero. Once the associated database is opened, it'll invoke
+	//      onManifestCreated which will handle enqueuing the manifest on
+	//      `w.mu.manifests`.
+	fileNum := base.FileNum(atomic.LoadUint64(&w.atomic.curManifest))
+	if fileNum != 0 {
+		fileName := base.MakeFilename(base.FileTypeManifest, fileNum)
+		w.mu.manifests = append(w.mu.manifests[:0], &manifestDetails{sourceFilepath: w.srcFilepath(fileName)})
+		w.mu.fileState[fileName] |= readyForProcessing
+	}
 
-	fileName := base.MakeFilename(base.FileTypeManifest, fileNum)
-	filePath := makeFilepathWithName(w.configuration.srcFS, w.configuration.srcDir, fileName)
-	w.mu.manifests = append(w.mu.manifests,
-		&manifestDetails{
-			sourceFilepath: filePath,
-		})
-	w.mu.fileState[fileName] |= readyForProcessing
-
-	go w.filesToProcessWatcher()
+	// Begin copying files asynchronously in the background.
+	w.copier.done = make(chan struct{})
+	w.copier.stop = false
+	go w.copyFiles()
 }
 
-// Stop stops the go routine that listens for new files
-// that need to be collected.
+// Stop stops collection of the workload.
 func (w *WorkloadCollector) Stop() {
+	w.mu.Lock()
 	// If the collector is running then that means w.enabled == 1 so swap it to 0
 	// and continue else return since it is not running.
-	if !atomic.CompareAndSwapUint32(&w.enabled, 1, 0) {
+	if !atomic.CompareAndSwapUint32(&w.atomic.enabled, 1, 0) {
+		w.mu.Unlock()
 		return
 	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.fileListener.forceSingleIteration = true
-	w.fileListener.stopFileListener = true
-	w.fileListener.Signal()
+	w.copier.stop = true
+	w.copier.Broadcast()
+	w.mu.Unlock()
+	<-w.copier.done
 }
 
 // IsRunning returns whether the WorkloadCollector is currently running.
 func (w *WorkloadCollector) IsRunning() bool {
-	return atomic.LoadUint32(&w.enabled) == 1
+	return atomic.LoadUint32(&w.atomic.enabled) == 1
 }
 
-// makeFilepathWithName creates a file path given the file name
-func makeFilepathWithName(fs vfs.FS, dirName, fileName string) string {
-	return fs.PathJoin(dirName, fileName)
+// srcFilepath returns the file path to the named file in the source directory
+// on the source filesystem.
+func (w *WorkloadCollector) srcFilepath(name string) string {
+	return w.config.srcFS.PathJoin(w.config.srcDir, name)
+}
+
+// destFilepath returns the file path to the named file in the destination
+// directory on the destination filesystem.
+func (w *WorkloadCollector) destFilepath(name string) string {
+	return w.config.destFS.PathJoin(w.config.destDir, name)
 }
 
 type cleaner struct {
