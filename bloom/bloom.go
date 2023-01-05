@@ -8,6 +8,7 @@ package bloom // import "github.com/cockroachdb/pebble/bloom"
 import (
 	"encoding/binary"
 	"fmt"
+	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
 )
@@ -117,55 +118,98 @@ func hash(b []byte) uint32 {
 	return h
 }
 
+const hashBlockLen = 16384
+
+type hashBlock [hashBlockLen]uint32
+
+var hashBlockPool = sync.Pool{
+	New: func() interface{} {
+		return &hashBlock{}
+	},
+}
+
 type tableFilterWriter struct {
 	bitsPerKey int
-	hashes     []uint32
+
+	numHashes int
+	// We store the hashes in blocks.
+	blocks   []*hashBlock
+	lastHash uint32
+
+	// Initial "in-line" storage for the blocks slice (to avoid some small
+	// allocations).
+	blocksBuf [16]*hashBlock
+}
+
+func newTableFilterWriter(bitsPerKey int) *tableFilterWriter {
+	w := &tableFilterWriter{
+		bitsPerKey: bitsPerKey,
+	}
+	w.blocks = w.blocksBuf[:0]
+	return w
 }
 
 // AddKey implements the base.FilterWriter interface.
 func (w *tableFilterWriter) AddKey(key []byte) {
 	h := hash(key)
-	if n := len(w.hashes); n == 0 || h != w.hashes[n-1] {
-		w.hashes = append(w.hashes, h)
+	if w.numHashes != 0 && h == w.lastHash {
+		return
 	}
+	ofs := w.numHashes % hashBlockLen
+	if ofs == 0 {
+		// Time for a new block.
+		w.blocks = append(w.blocks, hashBlockPool.Get().(*hashBlock))
+	}
+	w.blocks[len(w.blocks)-1][ofs] = h
+	w.numHashes++
+	w.lastHash = h
 }
 
 // Finish implements the base.FilterWriter interface.
 func (w *tableFilterWriter) Finish(buf []byte) []byte {
 	// The table filter format matches the RocksDB full-file filter format.
-	var nBits, nLines int
-	if len(w.hashes) != 0 {
-		nBits = len(w.hashes) * w.bitsPerKey
-		nLines = (nBits + cacheLineBits - 1) / (cacheLineBits)
+	var nLines int
+	if w.numHashes != 0 {
+		nLines = (w.numHashes*w.bitsPerKey + cacheLineBits - 1) / (cacheLineBits)
 		// Make nLines an odd number to make sure more bits are involved when
 		// determining which block.
 		if nLines%2 == 0 {
 			nLines++
 		}
-		nBits = nLines * cacheLineBits
-		nLines = nBits / (cacheLineBits)
 	}
 
-	nBytes := nBits / 8
+	nBytes := nLines * cacheLineSize
 	// +5: 4 bytes for num-lines, 1 byte for num-probes
 	buf, filter := extend(buf, nBytes+5)
 
-	if nBits != 0 && nLines != 0 {
+	if nLines != 0 {
 		nProbes := calculateProbes(w.bitsPerKey)
-		for _, h := range w.hashes {
-			delta := h>>17 | h<<15 // rotate right 17 bits
-			b := (h % uint32(nLines)) * (cacheLineBits)
-			for i := uint32(0); i < nProbes; i++ {
-				bitPos := b + (h % cacheLineBits)
-				filter[bitPos/8] |= (1 << (bitPos % 8))
-				h += delta
+		for bIdx, b := range w.blocks {
+			length := hashBlockLen
+			if bIdx == len(w.blocks)-1 && w.numHashes%hashBlockLen != 0 {
+				length = w.numHashes % hashBlockLen
+			}
+			for _, h := range b[:length] {
+				delta := h>>17 | h<<15 // rotate right 17 bits
+				b := (h % uint32(nLines)) * (cacheLineBits)
+				for i := uint32(0); i < nProbes; i++ {
+					bitPos := b + (h % cacheLineBits)
+					filter[bitPos/8] |= (1 << (bitPos % 8))
+					h += delta
+				}
 			}
 		}
 		filter[nBytes] = byte(nProbes)
 		binary.LittleEndian.PutUint32(filter[nBytes+1:], uint32(nLines))
 	}
 
-	w.hashes = w.hashes[:0]
+	// Release the hash blocks.
+	for i, b := range w.blocks {
+		hashBlockPool.Put(b)
+		w.blocks[i] = nil
+	}
+	w.blocks = w.blocks[:0]
+	w.numHashes = 0
 	return buf
 }
 
@@ -173,10 +217,9 @@ func (w *tableFilterWriter) Finish(buf []byte) []byte {
 //
 // The integer value is the approximate number of bits used per key. A good
 // value is 10, which yields a filter with ~ 1% false positive rate.
-//
-// It is valid to use the other API in this package (pebble/bloom) without
-// using this type or the pebble package.
 type FilterPolicy int
+
+var _ base.FilterPolicy = FilterPolicy(0)
 
 // Name implements the pebble.FilterPolicy interface.
 func (p FilterPolicy) Name() string {
@@ -200,9 +243,7 @@ func (p FilterPolicy) MayContain(ftype base.FilterType, f, key []byte) bool {
 func (p FilterPolicy) NewWriter(ftype base.FilterType) base.FilterWriter {
 	switch ftype {
 	case base.TableFilter:
-		return &tableFilterWriter{
-			bitsPerKey: int(p),
-		}
+		return newTableFilterWriter(int(p))
 	default:
 		panic(fmt.Sprintf("unknown filter type: %v", ftype))
 	}
