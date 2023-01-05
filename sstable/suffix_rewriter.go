@@ -10,6 +10,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
 
@@ -135,8 +136,8 @@ func rewriteBlocks(
 		buf.checksummer.xxHasher = xxhash.New()
 	}
 
-	var blockAlloc []byte
-	var keyAlloc []byte
+	var blockAlloc bytealloc.A
+	var keyAlloc bytealloc.A
 	var scratch InternalKey
 
 	var inputBlock, inputBlockBuf []byte
@@ -200,12 +201,7 @@ func rewriteBlocks(
 		finished := compressAndChecksum(bw.finish(), compression, &buf)
 
 		// copy our finished block into the output buffer.
-		sz := len(finished) + blockTrailerLen
-		if cap(blockAlloc) < sz {
-			blockAlloc = make([]byte, sz*128)
-		}
-		output[i].data = blockAlloc[:sz:sz]
-		blockAlloc = blockAlloc[sz:]
+		blockAlloc, output[i].data = blockAlloc.Alloc(len(finished) + blockTrailerLen)
 		copy(output[i].data, finished)
 		copy(output[i].data[len(finished):], buf.tmp[:blockTrailerLen])
 	}
