@@ -518,7 +518,7 @@ flush
 lsm
 ----
 0.0:
-  000009:[b#3,RANGEDEL-d#72057594037927935,RANGEDEL]
+  000009:[b#3,RANGEDEL-d#inf,RANGEDEL]
   000011:[e#4,SET-e#4,SET]
 6:
   000005:[b#1,SET-b#1,SET]
@@ -577,7 +577,7 @@ flush
 compact a-z
 ----
 6:
-  000005:[c#2,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+  000005:[c#2,RANGEKEYSET-e#inf,RANGEKEYSET]
 
 batch commit
 set j k
@@ -590,7 +590,7 @@ flush
 compact a-z
 ----
 6:
-  000005:[c#2,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+  000005:[c#2,RANGEKEYSET-e#inf,RANGEKEYSET]
   000007:[j#3,SET-j#3,SET]
 
 batch commit
@@ -613,10 +613,10 @@ flush
 lsm
 ----
 0.0:
-  000009:[b@2#5,MERGE-d#72057594037927935,RANGEDEL]
+  000009:[b@2#5,MERGE-d#inf,RANGEDEL]
   000011:[m#6,DEL-m#6,DEL]
 6:
-  000005:[c#2,RANGEKEYSET-e#72057594037927935,RANGEKEYSET]
+  000005:[c#2,RANGEKEYSET-e#inf,RANGEKEYSET]
   000007:[j#3,SET-j#3,SET]
 
 combined-iter upper=z@3 mask-suffix=@3 mask-filter use-l6-filter
@@ -708,7 +708,7 @@ flush
 lsm
 ----
 0.1:
-  000011:[dd#6,RANGEDEL-ee#72057594037927935,RANGEDEL]
+  000011:[dd#6,RANGEDEL-ee#inf,RANGEDEL]
 0.0:
   000009:[b@5#4,DEL-e@4#5,SET]
 6:

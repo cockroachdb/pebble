@@ -14,7 +14,7 @@ reset
 extend-point-key-bounds
 a.RANGEDEL.0:z
 ----
-000000:[a#0,RANGEDEL-z#72057594037927935,RANGEDEL] points:[a#0,RANGEDEL-z#72057594037927935,RANGEDEL]
+000000:[a#0,RANGEDEL-z#inf,RANGEDEL] points:[a#0,RANGEDEL-z#inf,RANGEDEL]
   bounds: (smallest=point,largest=point) (0x00000111)
 
 # Range keys only (single update).
@@ -25,7 +25,7 @@ reset
 extend-range-key-bounds
 a.RANGEKEYSET.0:z
 ----
-000000:[a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET] ranges:[a#0,RANGEKEYSET-z#72057594037927935,RANGEKEYSET]
+000000:[a#0,RANGEKEYSET-z#inf,RANGEKEYSET] ranges:[a#0,RANGEKEYSET-z#inf,RANGEKEYSET]
   bounds: (smallest=range,largest=range) (0x00000000)
 
 # Multiple updates with various key kinds.
@@ -52,7 +52,7 @@ j.SET.0 - k.SET.0
 extend-point-key-bounds
 k.RANGEDEL.0:o
 ----
-000000:[j#0,SET-o#72057594037927935,RANGEDEL] points:[j#0,SET-o#72057594037927935,RANGEDEL]
+000000:[j#0,SET-o#inf,RANGEDEL] points:[j#0,SET-o#inf,RANGEDEL]
   bounds: (smallest=point,largest=point) (0x00000111)
 
 # Extend the lower bounds bound with a range key.
@@ -60,7 +60,7 @@ k.RANGEDEL.0:o
 extend-range-key-bounds
 a.RANGEKEYSET.42:m
 ----
-000000:[a#42,RANGEKEYSET-o#72057594037927935,RANGEDEL] points:[j#0,SET-o#72057594037927935,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#72057594037927935,RANGEKEYSET]
+000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
   bounds: (smallest=range,largest=point) (0x00000101)
 
 # Extend again with a wide range key (equal keys tiebreak on seqnums descending,
@@ -69,7 +69,7 @@ a.RANGEKEYSET.42:m
 extend-range-key-bounds
 a.RANGEKEYSET.0:z
 ----
-000000:[a#42,RANGEKEYSET-z#72057594037927935,RANGEKEYSET] points:[j#0,SET-o#72057594037927935,RANGEDEL] ranges:[a#42,RANGEKEYSET-z#72057594037927935,RANGEKEYSET]
+000000:[a#42,RANGEKEYSET-z#inf,RANGEKEYSET] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-z#inf,RANGEKEYSET]
   bounds: (smallest=range,largest=range) (0x00000001)
 
 # Extend again with a wide rangedel over the same range.
@@ -77,5 +77,5 @@ a.RANGEKEYSET.0:z
 extend-point-key-bounds
 A.RANGEDEL.0:y
 ----
-000000:[A#0,RANGEDEL-z#72057594037927935,RANGEKEYSET] points:[A#0,RANGEDEL-y#72057594037927935,RANGEDEL] ranges:[a#42,RANGEKEYSET-z#72057594037927935,RANGEKEYSET]
+000000:[A#0,RANGEDEL-z#inf,RANGEKEYSET] points:[A#0,RANGEDEL-y#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-z#inf,RANGEKEYSET]
   bounds: (smallest=point,largest=range) (0x00000011)

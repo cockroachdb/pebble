@@ -157,4 +157,3 @@ cat [cat-catatonic) @3=beep UPDATED
 .
 stats: (interface (dir, seek, step): (fwd, 2, 4), (rev, 0, 0)), (internal (dir, seek, step): (fwd, 2, 4), (rev, 0, 0)),
 (range-key-stats: (count 4), (contained points: (count 0, skipped 0)))
-
