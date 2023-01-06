@@ -661,8 +661,8 @@ func (o *newIterOp) run(t *test, h historyRecorder) {
 }
 
 func (o *newIterOp) String() string {
-	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %d, %d, %q /* masking suffix */)",
-		o.iterID, o.readerID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.maskSuffix)
+	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %d, %d, %t /* use L6 filters */, %q /* masking suffix */)",
+		o.iterID, o.readerID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.useL6Filters, o.maskSuffix)
 }
 
 func (o *newIterOp) receiver() objID { return o.readerID }
@@ -712,9 +712,9 @@ func (o *newIterUsingCloneOp) run(t *test, h historyRecorder) {
 }
 
 func (o *newIterUsingCloneOp) String() string {
-	return fmt.Sprintf("%s = %s.Clone(%t, %q, %q, %d /* key types */, %d, %d, %q /* masking suffix */)",
+	return fmt.Sprintf("%s = %s.Clone(%t, %q, %q, %d /* key types */, %d, %d, %t /* use L6 filters */, %q /* masking suffix */)",
 		o.iterID, o.existingIterID, o.refreshBatch, o.lower, o.upper,
-		o.keyTypes, o.filterMin, o.filterMax, o.maskSuffix)
+		o.keyTypes, o.filterMin, o.filterMax, o.useL6Filters, o.maskSuffix)
 }
 
 func (o *newIterUsingCloneOp) receiver() objID { return o.existingIterID }
@@ -798,8 +798,8 @@ func (o *iterSetOptionsOp) run(t *test, h historyRecorder) {
 }
 
 func (o *iterSetOptionsOp) String() string {
-	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %d, %d, %q /* masking suffix */)",
-		o.iterID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.maskSuffix)
+	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %d, %d, %t /* use L6 filters */, %q /* masking suffix */)",
+		o.iterID, o.lower, o.upper, o.keyTypes, o.filterMin, o.filterMax, o.useL6Filters, o.maskSuffix)
 }
 
 func iterOptions(o iterOpts) *pebble.IterOptions {
@@ -820,6 +820,7 @@ func iterOptions(o iterOpts) *pebble.IterOptions {
 		RangeKeyMasking: pebble.RangeKeyMasking{
 			Suffix: o.maskSuffix,
 		},
+		UseL6Filters: o.useL6Filters,
 	}
 	if opts.RangeKeyMasking.Suffix != nil {
 		opts.RangeKeyMasking.Filter = func() pebble.BlockPropertyFilterMask {

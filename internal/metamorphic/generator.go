@@ -33,12 +33,15 @@ type iterOpts struct {
 	filterMin uint64
 	filterMax uint64
 
+	// see IterOptions.UseL6Filters.
+	useL6Filters bool
+
 	// NB: If adding or removing fields, ensure IsZero is in sync.
 }
 
 func (o iterOpts) IsZero() bool {
 	return o.lower == nil && o.upper == nil && o.keyTypes == 0 &&
-		o.maskSuffix == nil && o.filterMin == 0 && o.filterMax == 0
+		o.maskSuffix == nil && o.filterMin == 0 && o.filterMax == 0 && !o.useL6Filters
 }
 
 type generator struct {
@@ -528,11 +531,11 @@ func (g *generator) newIter() {
 	}
 	opts.keyTypes, opts.maskSuffix = g.randKeyTypesAndMask()
 
-	// With a low probability, enable automatic filtering of keys with suffixes
+	// With 10% probability, enable automatic filtering of keys with suffixes
 	// not in the provided range. This filtering occurs both through
 	// block-property filtering and explicitly within the iterator operations to
 	// ensure determinism.
-	if g.rng.Intn(10) == 1 {
+	if g.rng.Float64() <= 0.1 {
 		max := g.cfg.writeSuffixDist.Max()
 		opts.filterMin, opts.filterMax = g.rng.Uint64n(max)+1, g.rng.Uint64n(max)+1
 		if opts.filterMin > opts.filterMax {
@@ -540,6 +543,11 @@ func (g *generator) newIter() {
 		} else if opts.filterMin == opts.filterMax {
 			opts.filterMax = opts.filterMin + 1
 		}
+	}
+
+	// Enable L6 filters with a 10% probability.
+	if g.rng.Float64() <= 0.1 {
+		opts.useL6Filters = true
 	}
 
 	g.itersLastOpts[iterID] = opts
@@ -1228,6 +1236,10 @@ func (g *generator) maybeMutateOptions(opts *iterOpts) {
 			} else if opts.filterMin == opts.filterMax {
 				opts.filterMax = opts.filterMin + 1
 			}
+		}
+		// With 10% probability, flip enablement of L6 filters.
+		if g.rng.Float64() <= 0.1 {
+			opts.useL6Filters = !opts.useL6Filters
 		}
 	}
 }
