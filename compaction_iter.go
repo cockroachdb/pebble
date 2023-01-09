@@ -77,22 +77,22 @@ import (
 // is that snapshots define stripes and entries are collapsed within stripes,
 // but not across stripes. Consider the following scenario:
 //
-//   a.PUT.9
-//   a.DEL.8
-//   a.PUT.7
-//   a.DEL.6
-//   a.PUT.5
+//	a.PUT.9
+//	a.DEL.8
+//	a.PUT.7
+//	a.DEL.6
+//	a.PUT.5
 //
 // In the absence of snapshots these entries would be collapsed to
 // a.PUT.9. What if there is a snapshot at sequence number 7? The entries can
 // be divided into two stripes and collapsed within the stripes:
 //
-//   a.PUT.9        a.PUT.9
-//   a.DEL.8  --->
-//   a.PUT.7
-//   --             --
-//   a.DEL.6  --->  a.DEL.6
-//   a.PUT.5
+//	a.PUT.9        a.PUT.9
+//	a.DEL.8  --->
+//	a.PUT.7
+//	--             --
+//	a.DEL.6  --->  a.DEL.6
+//	a.PUT.5
 //
 // All of the rules described earlier still apply, but they are confined to
 // operate within a snapshot stripe. Snapshots only affect compaction when the
@@ -111,13 +111,13 @@ import (
 // subject to the rules for snapshots. For example, consider the two range
 // tombstones [a,e)#1 and [c,g)#2:
 //
-//   2:     c-------g
-//   1: a-------e
+//	2:     c-------g
+//	1: a-------e
 //
 // These tombstones will be fragmented into:
 //
-//   2:     c---e---g
-//   1: a---c---e
+//	2:     c---e---g
+//	1: a---c---e
 //
 // Do we output the fragment [c,e)#1? Since it is covered by [c-e]#2 the answer
 // depends on whether it is in a new snapshot stripe.

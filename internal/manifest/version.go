@@ -79,10 +79,10 @@ const (
 //
 // The following shows the valid state transitions:
 //
-//    NotCompacting --> Compacting --> Compacted
-//          ^               |
-//          |               |
-//          +-------<-------+
+//	NotCompacting --> Compacting --> Compacted
+//	      ^               |
+//	      |               |
+//	      +-------<-------+
 //
 // Input files to a compaction transition to Compacting when a compaction is
 // picked. A file that has finished compacting typically transitions into the

@@ -230,7 +230,7 @@ func (o *IterOptions) getLogger() Logger {
 // Specifically, when configured with a RangeKeyMasking.Suffix _s_, and there
 // exists a range key with suffix _r_ covering a point key with suffix _p_, and
 //
-//     _s_ ≤ _r_ < _p_
+//	_s_ ≤ _r_ < _p_
 //
 // then the point key is elided.
 //

@@ -603,7 +603,7 @@ type Metrics struct {
 // efficient eviction of all of the blocks for a file which is used when an
 // sstable is deleted from disk.
 //
-// Memory Management
+// # Memory Management
 //
 // In order to reduce pressure on the Go GC, manual memory management is
 // performed for the data stored in the cache. Manual memory management is
@@ -639,9 +639,9 @@ type Cache struct {
 // creator of the cache should usually release their reference after the DB is
 // created.
 //
-//   c := cache.New(...)
-//   defer c.Unref()
-//   d, err := pebble.Open(pebble.Options{Cache: c})
+//	c := cache.New(...)
+//	defer c.Unref()
+//	d, err := pebble.Open(pebble.Options{Cache: c})
 func New(size int64) *Cache {
 	return newShards(size, 2*runtime.GOMAXPROCS(0))
 }

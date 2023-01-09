@@ -338,23 +338,20 @@ func (n *node) find(cmp btreeCmp, item *FileMetadata) (index int, found bool) {
 // and this function returns the item that existed at that index and a new
 // node containing all items/children after it.
 //
-// Before:
+//	Before:
+//	 	      	+-----------+
+//	 	      	|   x y z   |
+//	 	      	+--/-/-\-\--+
 //
-//          +-----------+
-//          |   x y z   |
-//          +--/-/-\-\--+
-//
-// After:
-//
-//          +-----------+
-//          |     y     |
-//          +----/-\----+
-//              /   \
-//             v     v
-// +-----------+     +-----------+
-// |         x |     | z         |
-// +-----------+     +-----------+
-//
+//	After:
+//		       	+-----------+
+//		       	|     y     |
+//		       	+----/-\----+
+//		       	    /   \
+//		       	   v     v
+//		 +-----------+     +-----------+
+//		 |         x |     | z         |
+//		 +-----------+     +-----------+
 func (n *node) split(i int) (*FileMetadata, *node) {
 	out := n.items[i]
 	var next *node

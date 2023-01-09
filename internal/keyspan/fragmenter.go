@@ -108,20 +108,20 @@ func (f *Fragmenter) checkInvariants(buf []Span) {
 // increasing start key order. That is, Add must be called with a series
 // of spans like:
 //
-//   a---e
-//     c---g
-//     c-----i
-//            j---n
-//            j-l
+//	a---e
+//	  c---g
+//	  c-----i
+//	         j---n
+//	         j-l
 //
 // We need to fragment the spans at overlap points. In the above
 // example, we'd create:
 //
-//   a-c-e
-//     c-e-g
-//     c-e-g-i
-//            j-l-n
-//            j-l
+//	a-c-e
+//	  c-e-g
+//	  c-e-g-i
+//	         j-l-n
+//	         j-l
 //
 // The fragments need to be output sorted by start key, and for equal start
 // keys, sorted by descending sequence number. This last part requires a mild
@@ -134,42 +134,42 @@ func (f *Fragmenter) checkInvariants(buf []Span) {
 //
 // Walking through the example above, we start with:
 //
-//   a---e
+//	a---e
 //
 // Next we add [c,g) resulting in:
 //
-//   a-c-e
-//     c---g
+//	a-c-e
+//	  c---g
 //
 // The fragment [a,c) is flushed leaving the pending spans as:
 //
-//   c-e
-//   c---g
+//	c-e
+//	c---g
 //
 // The next span is [c,i):
 //
-//   c-e
-//   c---g
-//   c-----i
+//	c-e
+//	c---g
+//	c-----i
 //
 // No fragments are flushed. The next span is [j,n):
 //
-//   c-e
-//   c---g
-//   c-----i
-//          j---n
+//	c-e
+//	c---g
+//	c-----i
+//	       j---n
 //
 // The fragments [c,e), [c,g) and [c,i) are flushed. We sort these fragments
 // by their end key, then split the fragments on the end keys:
 //
-//   c-e
-//   c-e-g
-//   c-e---i
+//	c-e
+//	c-e-g
+//	c-e---i
 //
 // The [c,e) fragments all get flushed leaving:
 //
-//   e-g
-//   e---i
+//	e-g
+//	e---i
 //
 // This process continues until there are no more fragments to flush.
 //
@@ -270,20 +270,20 @@ func (f *Fragmenter) Empty() bool {
 // emitting of spans which straddle an sstable boundary. Consider
 // the scenario:
 //
-//     a---------k#10
-//          f#8
-//          f#7
-///
+//	a---------k#10
+//	     f#8
+//	     f#7
+//
 // Let's say the next user key after f is g. Calling TruncateAndFlushTo(g) will
 // flush this span:
 //
-//    a-------g#10
-//         f#8
-//         f#7
+//	a-------g#10
+//	     f#8
+//	     f#7
 //
 // And leave this one in f.pending:
 //
-//            g----k#10
+//	g----k#10
 //
 // WARNING: The fragmenter could hold on to the specified end key. Ensure it's
 // a safe byte slice that could outlast the current sstable output, and one
@@ -374,8 +374,8 @@ func (f *Fragmenter) truncateAndFlush(key []byte) {
 // we want to flush (but not truncate) all range tombstones that start at or
 // before the first key in the next sstable. Consider:
 //
-//   a---e#10
-//   a------h#9
+//	a---e#10
+//	a------h#9
 //
 // If a compaction splits the sstables at key c we want the first sstable to
 // contain the tombstones [a,e)#10 and [a,e)#9. Fragmentation would naturally

@@ -95,11 +95,11 @@ func (e robinHoodEntries) free() {
 // table is 2, maxDist is computed as 4 and the actual size of the entry slice
 // is 6.
 //
-//   +---+---+---+---+---+---+
-//   | 0 | 1 | 2 | 3 | 4 | 5 |
-//   +---+---+---+---+---+---+
-//           ^
-//          size
+//	+---+---+---+---+---+---+
+//	| 0 | 1 | 2 | 3 | 4 | 5 |
+//	+---+---+---+---+---+---+
+//	        ^
+//	       size
 //
 // In this scenario, the target entry for a key will always be in the range
 // [0,1]. Valid entries may reside in the range [0,4] due to the linear probing

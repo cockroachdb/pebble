@@ -329,27 +329,27 @@ func (m *Metrics) formatWAL(w redact.SafePrinter) {
 // String pretty-prints the metrics, showing a line for the WAL, a line per-level, and
 // a total:
 //
-//   __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
-//       WAL         1    27 B       -    48 B       -       -       -       -   108 B       -       -     2.2
-//         0         2   1.6 K    0.50    81 B   825 B       1     0 B       0   2.4 K       3     0 B    30.6
-//         1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//         2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//         3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//         4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//         5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//         6         1   825 B    0.00   1.6 K     0 B       0     0 B       0   825 B       1   1.6 K     0.5
-//     total         3   2.4 K       -   933 B   825 B       1     0 B       0   4.1 K       4   1.6 K     4.5
-//     flush         3
-//   compact         1   1.6 K     0 B       1          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-//     ctype         0       0       0       0       0  (default, delete, elision, move, read)
-//    memtbl         1   4.0 M
-//   zmemtbl         0     0 B
-//      ztbl         0     0 B
-//    bcache         4   752 B    7.7%  (score == hit-rate)
-//    tcache         0     0 B    0.0%  (score == hit-rate)
-// snapshots         0               0  (score == earliest seq num)
-//    titers         0
-//    filter         -       -    0.0%  (score == utility)
+//		__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
+//		    WAL         1    27 B       -    48 B       -       -       -       -   108 B       -       -     2.2
+//		      0         2   1.6 K    0.50    81 B   825 B       1     0 B       0   2.4 K       3     0 B    30.6
+//		      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
+//		      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
+//		      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
+//		      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
+//		      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
+//		      6         1   825 B    0.00   1.6 K     0 B       0     0 B       0   825 B       1   1.6 K     0.5
+//		  total         3   2.4 K       -   933 B   825 B       1     0 B       0   4.1 K       4   1.6 K     4.5
+//		  flush         3
+//		compact         1   1.6 K     0 B       1          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+//		  ctype         0       0       0       0       0  (default, delete, elision, move, read)
+//		 memtbl         1   4.0 M
+//		zmemtbl         0     0 B
+//		   ztbl         0     0 B
+//		 bcache         4   752 B    7.7%  (score == hit-rate)
+//		 tcache         0     0 B    0.0%  (score == hit-rate)
+//	  snapshots         0               0  (score == earliest seq num)
+//		 titers         0
+//		 filter         -       -    0.0%  (score == utility)
 //
 // The WAL "in" metric is the size of the batches written to the WAL. The WAL
 // "write" metric is the size of the physical data written to the WAL which
