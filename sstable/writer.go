@@ -17,6 +17,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -186,9 +187,9 @@ type Writer struct {
 	// indexBlockAlloc is used to bulk-allocate byte slices used to store index
 	// blocks in indexPartitions. These live until the index finishes.
 	indexBlockAlloc []byte
-	// indexSepAlloc is used to bulk-allocate index block seperator slices stored
+	// indexSepAlloc is used to bulk-allocate index block separator slices stored
 	// in indexPartitions. These live until the index finishes.
-	indexSepAlloc []byte
+	indexSepAlloc bytealloc.A
 
 	// To allow potentially overlapping (i.e. un-fragmented) range keys spans to
 	// be added to the Writer, a keyspan.Fragmenter is used to retain the keys
@@ -1535,17 +1536,12 @@ func shouldFlush(
 	return newSize > targetBlockSize
 }
 
-const keyAllocSize = 256 << 10
-
-func cloneKeyWithBuf(k InternalKey, buf []byte) ([]byte, InternalKey) {
+func cloneKeyWithBuf(k InternalKey, a bytealloc.A) (bytealloc.A, InternalKey) {
 	if len(k.UserKey) == 0 {
-		return buf, k
+		return a, k
 	}
-	if len(buf) < len(k.UserKey) {
-		buf = make([]byte, len(k.UserKey)+keyAllocSize)
-	}
-	n := copy(buf, k.UserKey)
-	return buf[n:], InternalKey{UserKey: buf[:n:n], Trailer: k.Trailer}
+	a, keyCopy := a.Copy(k.UserKey)
+	return a, InternalKey{UserKey: keyCopy, Trailer: k.Trailer}
 }
 
 // Invariants: The byte slice returned by finishIndexBlockProps is heap-allocated

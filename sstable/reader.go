@@ -17,6 +17,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -3240,7 +3241,7 @@ func (r *Reader) Layout() (*Layout, error) {
 	}
 	defer indexH.Release()
 
-	var alloc []byte
+	var alloc bytealloc.A
 
 	if r.Properties.IndexPartitions == 0 {
 		l.Index = append(l.Index, r.indexBH)
@@ -3251,12 +3252,7 @@ func (r *Reader) Layout() (*Layout, error) {
 				return nil, errCorruptIndexEntry
 			}
 			if len(dataBH.Props) > 0 {
-				if len(alloc) < len(dataBH.Props) {
-					alloc = make([]byte, 256<<10)
-				}
-				n := copy(alloc, dataBH.Props)
-				dataBH.Props = alloc[:n:n]
-				alloc = alloc[n:]
+				alloc, dataBH.Props = alloc.Copy(dataBH.Props)
 			}
 			l.Data = append(l.Data, dataBH)
 		}
@@ -3282,12 +3278,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			for key, value := iter.First(); key != nil; key, value = iter.Next() {
 				dataBH, err := decodeBlockHandleWithProperties(value.InPlaceValue())
 				if len(dataBH.Props) > 0 {
-					if len(alloc) < len(dataBH.Props) {
-						alloc = make([]byte, 256<<10)
-					}
-					n := copy(alloc, dataBH.Props)
-					dataBH.Props = alloc[:n:n]
-					alloc = alloc[n:]
+					alloc, dataBH.Props = alloc.Copy(dataBH.Props)
 				}
 				if err != nil {
 					return nil, errCorruptIndexEntry
