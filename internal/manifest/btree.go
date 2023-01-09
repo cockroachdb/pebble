@@ -12,6 +12,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // The Annotator type defined below is used by other packages to lazily
@@ -1150,5 +1151,8 @@ func (i *iterator) valid() bool {
 // cur returns the item at the iterator's current position. It is illegal
 // to call cur if the iterator is not valid.
 func (i *iterator) cur() *FileMetadata {
+	if invariants.Enabled && !i.valid() {
+		panic("btree iterator.cur invoked on invalid iterator")
+	}
 	return i.n.items[i.pos]
 }

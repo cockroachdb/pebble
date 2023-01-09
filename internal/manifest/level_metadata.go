@@ -606,7 +606,6 @@ func (i *LevelIterator) seek(fn func(*FileMetadata) bool) *FileMetadata {
 		return nil
 	} else if i.start != nil && cmpIter(i.iter, *i.start) < 0 {
 		i.iter = i.start.clone()
-		return i.iter.cur()
 	}
 	if !i.iter.valid() {
 		return nil

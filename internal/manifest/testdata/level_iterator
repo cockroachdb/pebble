@@ -111,3 +111,18 @@ seek-lt z
 .
 000002:[c#3,1-d#4,1]
 000003:[e#5,1-f#6,1]
+
+define
+a.SET.1-b.SET.2 c.SET.3-d.SET.4 e.SET.5-f.SET.6 g.SET.7-h.SET.8 [ ]
+----
+
+iter
+seek-ge cat
+seek-lt cat
+first
+last
+----
+.
+.
+.
+.
