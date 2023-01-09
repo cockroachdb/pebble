@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -24,13 +25,8 @@ import (
 
 func parseOptions(opts *testOptions, data string) error {
 	hooks := &pebble.ParseHooks{
-		NewCache: pebble.NewCache,
-		NewFilterPolicy: func(name string) (pebble.FilterPolicy, error) {
-			if name == "none" {
-				return nil, nil
-			}
-			return bloom.FilterPolicy(10), nil
-		},
+		NewCache:        pebble.NewCache,
+		NewFilterPolicy: filterPolicyFromName,
 		SkipUnknown: func(name, value string) bool {
 			switch name {
 			case "TestOptions":
@@ -345,6 +341,15 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	lopts.BlockSizeThreshold = 50 + rng.Intn(50)   // 50 - 100
 	lopts.IndexBlockSize = 1 << uint(rng.Intn(24)) // 1 - 16MB
 	lopts.TargetFileSize = 1 << uint(rng.Intn(28)) // 1 - 256MB
+	// We either use no bloom filter, the default filter, or a filter with
+	// randomized bits-per-key setting.
+	switch rng.Intn(3) {
+	case 0:
+	case 1:
+		lopts.FilterPolicy = bloom.FilterPolicy(10)
+	default:
+		lopts.FilterPolicy = newTestingFilterPolicy(1 << rng.Intn(5))
+	}
 	opts.Levels = []pebble.LevelOptions{lopts}
 	opts.Experimental.PointTombstoneWeight = 1 + 10*rng.Float64() // 1 - 10
 
@@ -424,4 +429,44 @@ func moveLogs(fs vfs.FS, srcDir, dstDir string) error {
 
 var blockPropertyCollectorConstructors = []func() pebble.BlockPropertyCollector{
 	sstable.NewTestKeysBlockPropertyCollector,
+}
+
+// testingFilterPolicy is used to allow bloom filter policies with non-default
+// bits-per-key setting. It is necessary because the name of the production
+// filter policy is fixed (see bloom.FilterPolicy.Name()); we need to output a
+// custom policy name to the OPTIONS file that the test can then parse.
+type testingFilterPolicy struct {
+	bloom.FilterPolicy
+}
+
+var _ pebble.FilterPolicy = (*testingFilterPolicy)(nil)
+
+func newTestingFilterPolicy(bitsPerKey int) *testingFilterPolicy {
+	return &testingFilterPolicy{
+		FilterPolicy: bloom.FilterPolicy(bitsPerKey),
+	}
+}
+
+const testingFilterPolicyFmt = "testing_bloom_filter/bits_per_key=%d"
+
+// Name implements the pebble.FilterPolicy interface.
+func (t *testingFilterPolicy) Name() string {
+	if t.FilterPolicy == 10 {
+		return "rocksdb.BuiltinBloomFilter"
+	}
+	return fmt.Sprintf(testingFilterPolicyFmt, t.FilterPolicy)
+}
+
+func filterPolicyFromName(name string) (pebble.FilterPolicy, error) {
+	switch name {
+	case "none":
+		return nil, nil
+	case "rocksdb.BuiltinBloomFilter":
+		return bloom.FilterPolicy(10), nil
+	}
+	var bitsPerKey int
+	if _, err := fmt.Sscanf(name, testingFilterPolicyFmt, &bitsPerKey); err != nil {
+		return nil, errors.Errorf("Invalid filter policy name '%s'", name)
+	}
+	return newTestingFilterPolicy(bitsPerKey), nil
 }
