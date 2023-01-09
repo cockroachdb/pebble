@@ -23,7 +23,7 @@ type Merge func(key, value []byte) (ValueMerger, error)
 //
 // The merge operation must be associative. That is, for the values A, B, C:
 //
-//   Merge(A).MergeOlder(B).MergeOlder(C) == Merge(C).MergeNewer(B).MergeNewer(A)
+//	Merge(A).MergeOlder(B).MergeOlder(C) == Merge(C).MergeNewer(B).MergeNewer(A)
 //
 // Examples of merge operators are integer addition, list append, and string
 // concatenation.

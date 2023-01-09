@@ -70,11 +70,11 @@ type Successor func(dst, a []byte) []byte
 // returns the smallest key that is larger than the given prefix a.
 // ImmediateSuccessor must return a prefix key k such that:
 //
-//   Split(k) == len(k) and Compare(k, a) > 0
+//	Split(k) == len(k) and Compare(k, a) > 0
 //
 // and there exists no representable k2 such that:
 //
-//   Split(k2) == len(k2) and Compare(k2, a) > 0 and Compare(k2, k) < 0
+//	Split(k2) == len(k2) and Compare(k2, a) > 0 and Compare(k2, k) < 0
 //
 // As an example, an implementation built on the natural byte ordering using
 // bytes.Compare could append a `\0` to `a`.
@@ -98,24 +98,23 @@ type ImmediateSuccessor func(dst, a []byte) []byte
 //
 // The returned prefix must have the following properties:
 //
-// 1) The prefix must be a byte prefix:
+//  1. The prefix must be a byte prefix:
 //
-//    bytes.HasPrefix(a, prefix(a))
+//     bytes.HasPrefix(a, prefix(a))
 //
-// 2) A key consisting of just a prefix must sort before all other keys with
-//    that prefix:
+//  2. A key consisting of just a prefix must sort before all other keys with
+//     that prefix:
 //
-//    Compare(prefix(a), a) < 0 if len(suffix(a)) > 0
+//     Compare(prefix(a), a) < 0 if len(suffix(a)) > 0
 //
-// 3) Prefixes must be used to order keys before suffixes:
+//  3. Prefixes must be used to order keys before suffixes:
 //
-//    If Compare(a, b) <= 0, then Compare(prefix(a), prefix(b)) <= 0
+//     If Compare(a, b) <= 0, then Compare(prefix(a), prefix(b)) <= 0
 //
-// 4) Suffixes themselves must be valid keys and comparable, respecting the same
-//    ordering as within a key.
+//  4. Suffixes themselves must be valid keys and comparable, respecting the same
+//     ordering as within a key.
 //
-//    If Compare(prefix(a), prefix(b)) == 0, then Compare(suffix(a), suffix(b)) == Compare(a, b)
-//
+//     If Compare(prefix(a), prefix(b)) == 0, then Compare(suffix(a), suffix(b)) == Compare(a, b)
 type Split func(a []byte) int
 
 // Comparer defines a total ordering over the space of []byte keys: a 'less

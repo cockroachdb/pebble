@@ -712,16 +712,16 @@ func runCompactCmd(td *datadriven.TestData, d *DB) error {
 // InternalKey's string representation, as understood by
 // ParseInternalKey, followed a colon and the corresponding value.
 //
-//     b.SET.50:foo
-//     c.DEL.20
+//	b.SET.50:foo
+//	c.DEL.20
 //
 // Range keys may be encoded by prefixing the line with `rangekey:`,
 // followed by the keyspan.Span string representation, as understood
 // by keyspan.ParseSpan.
 //
-//     rangekey:b-d:{(#5,RANGEKEYSET,@2,foo)}
+//	rangekey:b-d:{(#5,RANGEKEYSET,@2,foo)}
 //
-// Mechanics
+// # Mechanics
 //
 // runDBDefineCmd works by simulating a flush for every file written.
 // Keys are written to a memtable. When a file is complete, the table

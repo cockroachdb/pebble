@@ -461,18 +461,18 @@ func (pc *pickedCompaction) initMultiLevelCompaction(
 // truncation of range tombstones to atomic compaction unit boundaries.
 // Consider the scenario:
 //
-//   L3:
-//     12:[a#2,15-b#1,1]
-//     13:[b#0,15-d#72057594037927935,15]
+//	L3:
+//	  12:[a#2,15-b#1,1]
+//	  13:[b#0,15-d#72057594037927935,15]
 //
 // These sstables contain a range tombstone [a-d)#2 which spans the two
 // sstables. The two sstables need to always be kept together. Compacting
 // sstable 13 independently of sstable 12 would result in:
 //
-//   L3:
-//     12:[a#2,15-b#1,1]
-//   L4:
-//     14:[b#0,15-d#72057594037927935,15]
+//	L3:
+//	  12:[a#2,15-b#1,1]
+//	L4:
+//	  14:[b#0,15-d#72057594037927935,15]
 //
 // This state is still ok, but when sstable 12 is next compacted, its range
 // tombstones will be truncated at "b" (the largest key in its atomic

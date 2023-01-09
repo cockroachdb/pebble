@@ -82,17 +82,18 @@ import (
 // properties must only apply to the key, and will be provided a nil value.
 
 // BlockPropertyCollector is used when writing a sstable.
-// - All calls to Add are included in the next FinishDataBlock, after which
-//   the next data block is expected to start.
 //
-// - The index entry generated for the data block, which contains the return
-//   value from FinishDataBlock, is not immediately included in the current
-//   index block. It is included when AddPrevDataBlockToIndexBlock is called.
-//   An alternative would be to return an opaque handle from FinishDataBlock
-//   and pass it to a new AddToIndexBlock method, which requires more
-//   plumbing, and passing of an interface{} results in a undesirable heap
-//   allocation. AddPrevDataBlockToIndexBlock must be called before keys are
-//   added to the new data block.
+//   - All calls to Add are included in the next FinishDataBlock, after which
+//     the next data block is expected to start.
+//
+//   - The index entry generated for the data block, which contains the return
+//     value from FinishDataBlock, is not immediately included in the current
+//     index block. It is included when AddPrevDataBlockToIndexBlock is called.
+//     An alternative would be to return an opaque handle from FinishDataBlock
+//     and pass it to a new AddToIndexBlock method, which requires more
+//     plumbing, and passing of an interface{} results in a undesirable heap
+//     allocation. AddPrevDataBlockToIndexBlock must be called before keys are
+//     added to the new data block.
 type BlockPropertyCollector interface {
 	// Name returns the name of the block property collector.
 	Name() string

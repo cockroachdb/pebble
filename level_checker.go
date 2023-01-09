@@ -554,11 +554,11 @@ type CheckLevelsStats struct {
 }
 
 // CheckLevels checks:
-// - Every entry in the DB is consistent with the level invariant. See the
-//   comment at the top of the file.
-// - Point keys in sstables are ordered.
-// - Range delete tombstones in sstables are ordered and fragmented.
-// - Successful processing of all MERGE records.
+//   - Every entry in the DB is consistent with the level invariant. See the
+//     comment at the top of the file.
+//   - Point keys in sstables are ordered.
+//   - Range delete tombstones in sstables are ordered and fragmented.
+//   - Successful processing of all MERGE records.
 func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 	// Grab and reference the current readState.
 	readState := d.loadReadState()

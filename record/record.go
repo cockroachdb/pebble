@@ -19,6 +19,7 @@
 // Neither Readers or Writers are safe to use concurrently.
 //
 // Example code:
+//
 //	func read(r io.Reader) ([]string, error) {
 //		var ss []string
 //		records := record.NewReader(r)
@@ -65,9 +66,9 @@
 // A record maps to one or more chunks. There are two chunk formats: legacy and
 // recyclable. The legacy chunk format:
 //
-//   +----------+-----------+-----------+--- ... ---+
-//   | CRC (4B) | Size (2B) | Type (1B) | Payload   |
-//   +----------+-----------+-----------+--- ... ---+
+//	+----------+-----------+-----------+--- ... ---+
+//	| CRC (4B) | Size (2B) | Type (1B) | Payload   |
+//	+----------+-----------+-----------+--- ... ---+
 //
 // CRC is computed over the type and payload
 // Size is the length of the payload in bytes
@@ -84,9 +85,9 @@
 // metadata. Additionally, recycling log files is a prequisite for using direct
 // IO with log writing. The recyclyable format is:
 //
-//   +----------+-----------+-----------+----------------+--- ... ---+
-//   | CRC (4B) | Size (2B) | Type (1B) | Log number (4B)| Payload   |
-//   +----------+-----------+-----------+----------------+--- ... ---+
+//	+----------+-----------+-----------+----------------+--- ... ---+
+//	| CRC (4B) | Size (2B) | Type (1B) | Log number (4B)| Payload   |
+//	+----------+-----------+-----------+----------------+--- ... ---+
 //
 // Recyclable chunks are distinguished from legacy chunks by the addition of 4
 // extra "recyclable" chunk types that map directly to the legacy chunk types

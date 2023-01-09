@@ -140,8 +140,8 @@ type commitEnv struct {
 // (contained in a single Batch) atomically to the DB. The steps are
 // conceptually:
 //
-//   1. Write the batch to the WAL and optionally sync the WAL
-//   2. Apply the mutations in the batch to the memtable
+//  1. Write the batch to the WAL and optionally sync the WAL
+//  2. Apply the mutations in the batch to the memtable
 //
 // These two simple steps are made complicated by the desire for high
 // performance. In the absence of concurrency, performance is limited by how
@@ -150,10 +150,10 @@ type commitEnv struct {
 // pipeline. Performance under concurrency is the primary concern of the commit
 // pipeline, though it also needs to maintain two invariants:
 //
-//   1. Batches need to be written to the WAL in sequence number order.
-//   2. Batches need to be made visible for reads in sequence number order. This
-//      invariant arises from the use of a single sequence number which
-//      indicates which mutations are visible.
+//  1. Batches need to be written to the WAL in sequence number order.
+//  2. Batches need to be made visible for reads in sequence number order. This
+//     invariant arises from the use of a single sequence number which
+//     indicates which mutations are visible.
 //
 // Taking these invariants into account, let's revisit the work the commit
 // pipeline needs to perform. Writing the batch to the WAL is necessarily
@@ -173,14 +173,14 @@ type commitEnv struct {
 //
 // The full outline of the commit pipeline operation is as follows:
 //
-//   with commitPipeline mutex locked:
-//     assign batch sequence number
-//     write batch to WAL
-//   (optionally) add batch to WAL sync list
-//   apply batch to memtable (concurrently)
-//   wait for earlier batches to apply
-//   ratchet read sequence number
-//   (optionally) wait for the WAL to sync
+//	with commitPipeline mutex locked:
+//	  assign batch sequence number
+//	  write batch to WAL
+//	(optionally) add batch to WAL sync list
+//	apply batch to memtable (concurrently)
+//	wait for earlier batches to apply
+//	ratchet read sequence number
+//	(optionally) wait for the WAL to sync
 //
 // As soon as a batch has been written to the WAL, the commitPipeline mutex is
 // released allowing another batch to write to the WAL. Each commit operation

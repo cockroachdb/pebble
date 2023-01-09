@@ -24,7 +24,8 @@ import (
 // Note that the start user key is inclusive and the end user key is exclusive.
 //
 // Currently the only supported key kinds are:
-//   RANGEDEL, RANGEKEYSET, RANGEKEYUNSET, RANGEKEYDEL.
+//
+//	RANGEDEL, RANGEKEYSET, RANGEKEYUNSET, RANGEKEYDEL.
 type Span struct {
 	// Start and End encode the user key range of all the contained items, with
 	// an inclusive start key and exclusive end key. Both Start and End must be
