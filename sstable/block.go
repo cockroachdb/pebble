@@ -296,18 +296,20 @@ type blockEntry struct {
 // handling. But these also turned out too costly for mid-stack inlining since
 // simple calls like the following have a high cost that is barely under the
 // budget of 80
-//  k, v := i.data.SeekGE(key, flags)  // cost 74
-//  k, v := i.data.Next()              // cost 72
+//
+//	k, v := i.data.SeekGE(key, flags)  // cost 74
+//	k, v := i.data.Next()              // cost 72
 //
 // We have 2 options for minimizing performance regressions:
-// - Include the lazyValueHandling logic in the already non-inlineable
-//   blockIter functions: Since most of the time is spent in data block iters,
-//   it is acceptable to take the small hit of unnecessary branching (which
-//   hopefully branch prediction will predict correctly) for other kinds of
-//   blocks.
-// - Duplicate the logic of singleLevelIterator and twoLevelIterator for the
-//   v3 sstable and only use the aforementioned lazyValueDataBlockIter for a
-//   v3 sstable. We would want to manage these copies via code generation.
+//   - Include the lazyValueHandling logic in the already non-inlineable
+//     blockIter functions: Since most of the time is spent in data block iters,
+//     it is acceptable to take the small hit of unnecessary branching (which
+//     hopefully branch prediction will predict correctly) for other kinds of
+//     blocks.
+//   - Duplicate the logic of singleLevelIterator and twoLevelIterator for the
+//     v3 sstable and only use the aforementioned lazyValueDataBlockIter for a
+//     v3 sstable. We would want to manage these copies via code generation.
+//
 // We have picked the first option here.
 type blockIter struct {
 	cmp Compare
@@ -1424,7 +1426,7 @@ func (i *blockIter) valid() bool {
 // gathers all the fragments with identical bounds within a block and returns a
 // single keyspan.Span describing all the keys defined over the span.
 //
-// Memory lifetime
+// # Memory lifetime
 //
 // A Span returned by fragmentBlockIter is only guaranteed to be stable until
 // the next fragmentBlockIter iteration positioning method. A Span's Keys slice

@@ -15,9 +15,9 @@ type Cache = cache.Cache
 // creator of the cache should usually release their reference after the DB is
 // created.
 //
-//   c := pebble.NewCache(...)
-//   defer c.Unref()
-//   d, err := pebble.Open(pebble.Options{Cache: c})
+//	c := pebble.NewCache(...)
+//	defer c.Unref()
+//	d, err := pebble.Open(pebble.Options{Cache: c})
 func NewCache(size int64) *cache.Cache {
 	return cache.New(size)
 }

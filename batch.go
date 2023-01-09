@@ -82,7 +82,7 @@ func (d DeferredBatchOp) Finish() error {
 // consumers should use a batch per goroutine or provide their own
 // synchronization.
 //
-// Indexing
+// # Indexing
 //
 // Batches can be optionally indexed (see DB.NewIndexedBatch). An indexed batch
 // allows iteration via an Iterator (see Batch.NewIter). The iterator provides
@@ -104,7 +104,7 @@ func (d DeferredBatchOp) Finish() error {
 // significantly slower than inserting into a non-indexed batch. Only use an
 // indexed batch if you require reading from it.
 //
-// Atomic commit
+// # Atomic commit
 //
 // The operations in a batch are persisted by calling Batch.Commit which is
 // equivalent to calling DB.Apply(batch). A batch is committed atomically by
@@ -115,7 +115,7 @@ func (d DeferredBatchOp) Finish() error {
 // Batch.Commit will guarantee that the batch is persisted to disk before
 // returning. See commitPipeline for more on the implementation details.
 //
-// Large batches
+// # Large batches
 //
 // The size of a batch is limited only by available memory (be aware that
 // indexed batches require considerably additional memory for the skiplist
@@ -140,34 +140,34 @@ func (d DeferredBatchOp) Finish() error {
 // memtable have the same big-O time, but the constant factor dominates
 // here. Sorting is significantly faster and uses significantly less memory.
 //
-// Internal representation
+// # Internal representation
 //
 // The internal batch representation is a contiguous byte buffer with a fixed
 // 12-byte header, followed by a series of records.
 //
-//   +-------------+------------+--- ... ---+
-//   | SeqNum (8B) | Count (4B) |  Entries  |
-//   +-------------+------------+--- ... ---+
+//	+-------------+------------+--- ... ---+
+//	| SeqNum (8B) | Count (4B) |  Entries  |
+//	+-------------+------------+--- ... ---+
 //
 // Each record has a 1-byte kind tag prefix, followed by 1 or 2 length prefixed
 // strings (varstring):
 //
-//   +-----------+-----------------+-------------------+
-//   | Kind (1B) | Key (varstring) | Value (varstring) |
-//   +-----------+-----------------+-------------------+
+//	+-----------+-----------------+-------------------+
+//	| Kind (1B) | Key (varstring) | Value (varstring) |
+//	+-----------+-----------------+-------------------+
 //
 // A varstring is a varint32 followed by N bytes of data. The Kind tags are
 // exactly those specified by InternalKeyKind. The following table shows the
 // format for records of each kind:
 //
-//   InternalKeyKindDelete         varstring
-//   InternalKeyKindLogData        varstring
-//   InternalKeyKindSet            varstring varstring
-//   InternalKeyKindMerge          varstring varstring
-//   InternalKeyKindRangeDelete    varstring varstring
-//   InternalKeyKindRangeKeySet    varstring varstring
-//   InternalKeyKindRangeKeyUnset  varstring varstring
-//   InternalKeyKindRangeKeyDelete varstring varstring
+//	InternalKeyKindDelete         varstring
+//	InternalKeyKindLogData        varstring
+//	InternalKeyKindSet            varstring varstring
+//	InternalKeyKindMerge          varstring varstring
+//	InternalKeyKindRangeDelete    varstring varstring
+//	InternalKeyKindRangeKeySet    varstring varstring
+//	InternalKeyKindRangeKeyUnset  varstring varstring
+//	InternalKeyKindRangeKeyDelete varstring varstring
 //
 // The intuitive understanding here are that the arguments to Delete, Set,
 // Merge, DeleteRange and RangeKeyDelete are encoded into the batch. The

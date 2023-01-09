@@ -6,12 +6,12 @@
 // data that can be visualized by docs/js/app.js. The raw data is expected to
 // be stored in dated directories underneath the "data/" directory:
 //
-//   data/YYYYMMDD/.../<file>
+//	data/YYYYMMDD/.../<file>
 //
 // The files are expected to be bzip2 compressed. Within each file mkbench
 // looks for Go-bench-style lines of the form:
 //
-//   Benchmark<name> %d %f ops/sec %d read %d write %f r-amp %f w-amp
+//	Benchmark<name> %d %f ops/sec %d read %d write %f r-amp %f w-amp
 //
 // The output is written to "data.js". In order to avoid reading all of the raw
 // data to regenerate "data.js" on every run, mkbench first reads "data.js",
@@ -24,7 +24,7 @@
 // The nightly Pebble benchmarks are orchestrated from the CockroachDB
 // repo:
 //
-//   https://github.com/cockroachdb/cockroach/blob/master/build/teamcity-nightly-pebble.sh
+//	https://github.com/cockroachdb/cockroach/blob/master/build/teamcity-nightly-pebble.sh
 package main
 
 import (

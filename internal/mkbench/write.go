@@ -270,17 +270,18 @@ type cookedWriteRun struct {
 
 // formatSummaryJSON returns a JSON representation of the combined raw data from
 // all rawWriteRuns that comprise the writeRun. It has the form:
-//   {
-//     "original-raw-write-run-log-file-1.gz": {
-//       "opsSec": ...,
-//       "raw": ...,
-//     },
-//      ...
-//     "original-raw-write-run-log-file-N.gz": {
-//       "opsSec": ...,
-//       "raw": ...,
-//     },
-//   }
+//
+//	{
+//	  "original-raw-write-run-log-file-1.gz": {
+//	    "opsSec": ...,
+//	    "raw": ...,
+//	  },
+//	   ...
+//	  "original-raw-write-run-log-file-N.gz": {
+//	    "opsSec": ...,
+//	    "raw": ...,
+//	  },
+//	}
 func (r writeRun) formatSummaryJSON() ([]byte, error) {
 	m := make(map[string]cookedWriteRun)
 	for name, data := range r.rawRuns {

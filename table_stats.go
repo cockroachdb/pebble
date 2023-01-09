@@ -611,20 +611,20 @@ func estimateEntrySizes(
 // As an example, consider the following set of spans from the range deletion
 // and range key blocks of a table:
 //
-//         |---------|     |---------|         |-------| RANGEKEYDELs
-//   |-----------|-------------|           |-----|       RANGEDELs
-// __________________________________________________________
-//   a b c d e f g h i j k l m n o p q r s t u v w x y z
+//		      |---------|     |---------|         |-------| RANGEKEYDELs
+//		|-----------|-------------|           |-----|       RANGEDELs
+//	  __________________________________________________________
+//		a b c d e f g h i j k l m n o p q r s t u v w x y z
 //
 // The tableRangedDeletionIter produces the following set of output spans, where
 // '1' indicates a span containing only range deletions, '2' is a span
 // containing only range key deletions, and '3' is a span containing a mixture
 // of both range deletions and range key deletions.
 //
-//      1       3       1    3    2          1  3   2
-//   |-----|---------|-----|---|-----|     |---|-|-----|
-// __________________________________________________________
-//   a b c d e f g h i j k l m n o p q r s t u v w x y z
+//		   1       3       1    3    2          1  3   2
+//		|-----|---------|-----|---|-----|     |---|-|-----|
+//	  __________________________________________________________
+//		a b c d e f g h i j k l m n o p q r s t u v w x y z
 //
 // Algorithm.
 //
@@ -639,11 +639,11 @@ func estimateEntrySizes(
 // have already been defragmented. To the left and right of any overlap, the
 // same reasoning applies. For example,
 //
-//            |--------|         |-------| RANGEKEYDEL
-//   |---------------------------|         RANGEDEL
-//   |----1---|----3---|----1----|---2---| Merged, fragmented spans.
-// __________________________________________________________
-//   a b c d e f g h i j k l m n o p q r s t u v w x y z
+//		         |--------|         |-------| RANGEKEYDEL
+//		|---------------------------|         RANGEDEL
+//		|----1---|----3---|----1----|---2---| Merged, fragmented spans.
+//	  __________________________________________________________
+//		a b c d e f g h i j k l m n o p q r s t u v w x y z
 //
 // Any fragmented abutting spans produced by the merging iter will be of
 // differing types (i.e. a transition from a span with homogenous key kinds to a

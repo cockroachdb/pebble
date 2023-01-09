@@ -3,19 +3,16 @@
 //
 // Upon running this command, the DB directory will contain:
 //
-// - A single SSTable (000005.sst), containing:
-//   - 26 point keys, a@1 through z@1.
-//   - Three range keys:
-//     - RANGEKEYSET [a, z)@1
-//     - RANGEKEYUNSET [a, z)@2
-//     - RANGEKEYDEL [a, b)
-//
-// - A WAL for an unflushed memtable containing:
-//   - A single point key a@2.
-//   - Three range keys:
-//     - RANGEKEYSET [a, z)@3
-//     - RANGEKEYUNSET [a, z)@4
-//     - RANGEKEYDEL [a, b)
+//  1. A single SSTable (000005.sst), containing:
+//     a. 26 point keys, a@1 through z@1.
+//     b. a RANGEKEYSET [a, z)@1
+//     c. a RANGEKEYUNSET [a, z)@2
+//     d. a RANGEKEYDEL [a, b)
+//  2. A WAL for an unflushed memtable containing:
+//     a. A single point key a@2.
+//     b. a RANGEKEYSET [a, z)@3
+//     c. a RANGEKEYUNSET [a, z)@4
+//     d. a RANGEKEYDEL [a, b)
 package main
 
 import (

@@ -209,8 +209,9 @@ func (ui *UserIteratorConfig) ShouldDefragment(equal base.Equal, a, b *keyspan.S
 //
 // Additionally, internal range keys at the same sequence number have subtle
 // mechanics:
-//   * RANGEKEYSETs shadow RANGEKEYUNSETs of the same suffix.
-//   * RANGEKEYDELs only apply to keys at lower sequence numbers.
+//   - RANGEKEYSETs shadow RANGEKEYUNSETs of the same suffix.
+//   - RANGEKEYDELs only apply to keys at lower sequence numbers.
+//
 // This is required for ingestion. Ingested sstables are assigned a single
 // sequence number for the file, at which all of the file's keys are visible.
 // The RANGEKEYSET, RANGEKEYUNSET and RANGEKEYDEL key kinds are ordered such
