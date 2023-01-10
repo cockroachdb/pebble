@@ -378,7 +378,7 @@ func TestCheckConsistency(t *testing.T) {
 				}
 
 				v := NewVersion(cmp, fmtKey, 0, filesByLevel)
-				err := v.CheckConsistency(dir, mem)
+				err := v.CheckConsistency(dir, mem, nil)
 				if err != nil {
 					if redactErr {
 						redacted := redact.Sprint(err).Redact()

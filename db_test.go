@@ -1285,6 +1285,71 @@ func TestSSTables(t *testing.T) {
 	}
 }
 
+type mockSharedFS struct {
+	vfs.FS
+
+	instanceID uint64
+	sharedDir  string
+}
+
+func (m *mockSharedFS) SetInstanceID(instanceID uint64) {
+	m.instanceID = instanceID
+}
+
+func (m *mockSharedFS) ResolvePath(fileHandle vfs.SharedFileHandle) string {
+	const numBuckets = 10
+	bucket := (fileHandle.FileNum + (uint64(fileHandle.CreatorInstanceID) * 13)) % numBuckets
+	return m.FS.PathJoin(m.sharedDir, fmt.Sprintf("%d/%d/%s",
+		fileHandle.CreatorInstanceID, bucket, base.MakeFilename(base.FileTypeTable, base.FileNum(fileHandle.FileNum))))
+}
+
+func (m *mockSharedFS) Reference(fileHandle vfs.SharedFileHandle) error {
+	return nil
+}
+
+func (m *mockSharedFS) MarkObsolete(fileHandle vfs.SharedFileHandle) error {
+	return m.FS.Remove(m.ResolvePath(fileHandle))
+}
+
+func TestSharedFS(t *testing.T) {
+	opts := &Options{
+		FS: vfs.NewMem(),
+	}
+	sharedFS := mockSharedFS{FS: vfs.NewMem(), sharedDir: "shared"}
+	opts.Experimental.SharedFS = &sharedFS
+	opts.EnsureDefaults()
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	// Create two sstables.
+	require.NoError(t, d.Set([]byte("hello"), nil, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("world"), nil, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact([]byte("a"), []byte("z"), false))
+
+	path := sharedFS.PathJoin("shared", strconv.FormatUint(opts.Experimental.InstanceID, 10))
+	dirList, err := sharedFS.List(path)
+	require.NoError(t, err)
+	sstFound := false
+	for _, bucket := range dirList {
+		dirList, err := sharedFS.List(sharedFS.PathJoin(path, bucket))
+		require.NoError(t, err)
+		for _, file := range dirList {
+			fmt.Printf("%s\n", file)
+			if strings.HasSuffix(file, ".sst") {
+				sstFound = true
+			}
+		}
+	}
+	require.True(t, sstFound)
+}
+
 func BenchmarkDelete(b *testing.B) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	const keyCount = 10000

@@ -218,6 +218,13 @@ type FileMetadata struct {
 	HasPointKeys bool
 	// HasRangeKeys tracks whether the table contains any range keys.
 	HasRangeKeys bool
+	// OnSharedFS denotes whether this file is on the shared FS
+	// (opts.Experimental.SharedFS) instead of the regular FS.
+	OnSharedFS bool
+	// CreatorInstanceID denotes the instance ID of the node that created this file.
+	// See opts.Experimental.InstanceID.
+	CreatorInstanceID uint64
+
 	// smallestSet and largestSet track whether the overall bounds have been set.
 	boundsSet bool
 	// boundTypeSmallest and boundTypeLargest provide an indication as to which
@@ -1092,15 +1099,23 @@ func (v *Version) CheckOrdering(cmp Compare, format base.FormatKey) error {
 
 // CheckConsistency checks that all of the files listed in the version exist
 // and their on-disk sizes match the sizes listed in the version.
-func (v *Version) CheckConsistency(dirname string, fs vfs.FS) error {
+func (v *Version) CheckConsistency(dirname string, fs vfs.FS, sharedFS vfs.SharedFS) error {
 	var buf bytes.Buffer
 	var args []interface{}
 
 	for level, files := range v.Levels {
 		iter := files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
+			fileFS := fs
 			path := base.MakeFilepath(fs, dirname, base.FileTypeTable, f.FileNum)
-			info, err := fs.Stat(path)
+			if f.OnSharedFS {
+				fileFS = sharedFS
+				path = sharedFS.ResolvePath(vfs.SharedFileHandle{
+					FileNum:           uint64(f.FileNum),
+					CreatorInstanceID: f.CreatorInstanceID,
+				})
+			}
+			info, err := fileFS.Stat(path)
 			if err != nil {
 				buf.WriteString("L%d: %s: %v\n")
 				args = append(args, errors.Safe(level), errors.Safe(f.FileNum), err)

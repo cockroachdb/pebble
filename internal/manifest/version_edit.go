@@ -54,6 +54,7 @@ const (
 	customTagTerminate         = 1
 	customTagNeedsCompaction   = 2
 	customTagCreationTime      = 6
+	customTagShared            = 7
 	customTagPathID            = 65
 	customTagNonSafeIgnoreMask = 1 << 6
 )
@@ -267,6 +268,8 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			}
 			var markedForCompaction bool
 			var creationTime uint64
+			var onSharedFS bool
+			var instanceID uint64
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
 					customTag, err := d.readUvarint()
@@ -297,6 +300,16 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					case customTagPathID:
 						return base.CorruptionErrorf("new-file4: path-id field not supported")
 
+					case customTagShared:
+						if len(field) != 1 {
+							return base.CorruptionErrorf("new-file4: shared field wrong size")
+						}
+						onSharedFS = (field[0] == 1)
+						instanceID, err = d.readUvarint()
+						if err != nil {
+							return err
+						}
+
 					default:
 						if (customTag & customTagNonSafeIgnoreMask) != 0 {
 							return base.CorruptionErrorf("new-file4: custom field not supported: %d", customTag)
@@ -311,6 +324,8 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				SmallestSeqNum:      smallestSeqNum,
 				LargestSeqNum:       largestSeqNum,
 				MarkedForCompaction: markedForCompaction,
+				OnSharedFS:          onSharedFS,
+				CreatorInstanceID:   instanceID,
 			}
 			if tag != tagNewFile5 { // no range keys present
 				m.SmallestPointKey = base.DecodeInternalKey(smallestPointKey)
@@ -397,7 +412,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewFiles {
-		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0
+		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 || x.Meta.OnSharedFS
 		var tag uint64
 		switch {
 		case x.Meta.HasRangeKeys:
@@ -449,6 +464,11 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 			if x.Meta.MarkedForCompaction {
 				e.writeUvarint(customTagNeedsCompaction)
 				e.writeBytes([]byte{1})
+			}
+			if x.Meta.OnSharedFS {
+				e.writeUvarint(customTagShared)
+				e.writeBytes([]byte{1})
+				e.writeUvarint(x.Meta.CreatorInstanceID)
 			}
 			e.writeUvarint(customTagTerminate)
 		}
