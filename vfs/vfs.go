@@ -139,6 +139,58 @@ type FS interface {
 	GetDiskUsage(path string) (DiskUsage, error)
 }
 
+// SharedFilePath holds all fields required to resolve paths to shared files
+// by vfs.SharedStorage. Only sstables will be referenced using this struct.
+// Responsibility for constructing and storing SharedFilePaths lives in the
+// objstorage package.
+type SharedFilePath struct {
+	// FileNum of the sstable at creation time in the creator instance of Pebble.
+	FileNum uint64
+	// CreatorInstanceID is the instanceID of the Pebble instance that created
+	// this shared file. See opts.Experimental.InstanceID.
+	CreatorInstanceID uint64
+	// TODO(bilal): Add any fields that could be relevant for resolving paths to
+	// buckets other than the default one (eg. in multi-region cases). This will be
+	// easier to do once we have a working implementation to SharedStorage below.
+}
+
+// SharedStorage is an FS-like file system that can contain files accessible
+// by multiple Pebble instances. SharedStorage is responsible for managing
+// cleanup of files that could be referenced by multiple Pebble instances
+// across multiple nodes. Some methods here mirror those from vfs.FS while
+// others are specific to file/object sharing.
+type SharedStorage interface {
+	// Create creates the named file for reading and writing. If a file
+	// already exists at the provided name, it's removed first.
+	Create(name SharedFilePath) (File, error)
+
+	// Open opens the named file for reading.
+	Open(name SharedFilePath) (File, error)
+
+	// Stat returns an os.FileInfo describing the named file.
+	Stat(name SharedFilePath) (os.FileInfo, error)
+
+	// SetInstanceID sets the instance ID of the current Pebble instance. Called
+	// during Open(). Can be stored and/or used by the implementation to
+	// disambiguate this instance's created Shared files from that of others.
+	SetInstanceID(instanceID uint32)
+
+	// Reference creates a reference to a shared file owned by a different Pebble
+	// instance. Upon a successful return of this function, the SharedStorage must
+	// guarantee that this file will exist (i.e. it will not be deleted) until
+	// `MarkObsolete` is called. Note that new shared files created by this Pebble
+	// instance do not need to call Reference, as the Create() call will suffice.
+	Reference(name SharedFilePath) error
+
+	// MarkObsolete marks a shared file reference as obsolete. It is up to the
+	// SharedStorage implementation to handle deletion of files when all references to
+	// it (from all Pebble instances) are marked as obsolete. Can be seen as
+	// the "Dereference" counterpart to Reference(), with the key difference that
+	// Reference is only called by non-creator instances while MarkObsolete is
+	// called by all instances (including the instance that created the file).
+	MarkObsolete(name SharedFilePath) error
+}
+
 // DiskUsage summarizes disk space usage on a filesystem.
 type DiskUsage struct {
 	// Total disk space available to the current process in bytes.

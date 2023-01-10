@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -1283,6 +1284,67 @@ func TestSSTables(t *testing.T) {
 			require.NotNil(t, info.Properties)
 		}
 	}
+}
+
+type mockSharedStorage struct {
+	vfs.FS
+
+	instanceID uint32
+	sharedDir  string
+}
+
+func (m *mockSharedStorage) Stat(name vfs.SharedFilePath) (os.FileInfo, error) {
+	return m.FS.Stat(m.getPath(name))
+}
+
+func (m *mockSharedStorage) SetInstanceID(instanceID uint32) {
+	m.instanceID = instanceID
+}
+
+func (m *mockSharedStorage) getPath(file vfs.SharedFilePath) string {
+	const numBuckets = 10
+	bucket := (file.FileNum + (uint64(file.CreatorInstanceID) * 13)) % numBuckets
+	return m.FS.PathJoin(m.sharedDir, fmt.Sprintf("%d/%d/%s",
+		file.CreatorInstanceID, bucket, base.MakeFilename(base.FileTypeTable, base.FileNum(file.FileNum))))
+}
+
+func (m *mockSharedStorage) Create(fileHandle vfs.SharedFilePath) (vfs.File, error) {
+	path := m.getPath(fileHandle)
+	_ = m.MkdirAll(m.FS.PathBase(path), 0755)
+	return m.FS.Create(m.getPath(fileHandle))
+}
+
+func (m *mockSharedStorage) Open(fileHandle vfs.SharedFilePath) (vfs.File, error) {
+	return m.FS.Open(m.getPath(fileHandle))
+}
+
+func (m *mockSharedStorage) Reference(file vfs.SharedFilePath) error {
+	return nil
+}
+
+func (m *mockSharedStorage) MarkObsolete(fileHandle vfs.SharedFilePath) error {
+	return m.FS.Remove(m.getPath(fileHandle))
+}
+
+func TestSharedStorage(t *testing.T) {
+	opts := &Options{
+		FS: vfs.NewMem(),
+	}
+	sharedFS := mockSharedStorage{FS: vfs.NewMem(), sharedDir: "shared"}
+	opts.Experimental.SharedStorage = &sharedFS
+	opts.EnsureDefaults()
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	// TODO(bilal): Once SharedStorage is in use, write to the db and check
+	// that we are writing to shared storage. Until that happens, the most we can
+	// check is if the instance ID is set correctly.
+	require.Equal(t, sharedFS.instanceID, opts.Experimental.InstanceID)
 }
 
 func BenchmarkDelete(b *testing.B) {

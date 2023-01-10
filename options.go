@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"golang.org/x/exp/rand"
 )
 
 const (
@@ -615,6 +616,23 @@ type Options struct {
 		// Any change in exclusion behavior takes effect only on future written
 		// sstables, and does not start rewriting existing sstables.
 		RequiredInPlaceValueBound UserKeyPrefixBound
+
+		// SharedStorage is a second FS-like storage medium that can be shared
+		// between multiple Pebble instances. It is used to store sstables only, and
+		// is managed by objstorage.Provider. Each sstable might only be written to
+		// by one Pebble instance, but other Pebble instances can possibly read the
+		// same files if they have the path to get to them. The pebble instance that
+		// wrote a file should not delete it if other Pebble instances are known to
+		// be reading this file. This FS is expected to have slower read/write
+		// performance than the default FS above.
+		SharedStorage vfs.SharedStorage
+
+		// InstanceID is a unique ID that's generated for each Pebble instance and
+		// serialized into the Options file. Used to disambiguate files written by
+		// this instance from that of others in SharedStorage. Defaults to a random
+		// uint64, however Open() can set it to the last-set Instance ID if it finds
+		// one in the Options file.
+		InstanceID uint32
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -879,6 +897,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.KeyValidationFunc == nil {
 		o.Experimental.KeyValidationFunc = func([]byte) error { return nil }
 	}
+	if o.Experimental.InstanceID == 0 {
+		o.Experimental.InstanceID = rand.Uint32()
+	}
 	if o.L0CompactionThreshold <= 0 {
 		o.L0CompactionThreshold = 4
 	}
@@ -1087,6 +1108,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  flush_delay_range_key=%s\n", o.FlushDelayRangeKey)
 	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.FlushSplitBytes)
 	fmt.Fprintf(&buf, "  format_major_version=%d\n", o.FormatMajorVersion)
+	fmt.Fprintf(&buf, "  instance_id=%d\n", o.Experimental.InstanceID)
 	fmt.Fprintf(&buf, "  l0_compaction_concurrency=%d\n", o.Experimental.L0CompactionConcurrency)
 	fmt.Fprintf(&buf, "  l0_compaction_file_threshold=%d\n", o.L0CompactionFileThreshold)
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
@@ -1374,6 +1396,10 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				}
 			case "table_property_collectors":
 				// TODO(peter): set o.TablePropertyCollectors
+			case "instance_id":
+				var instanceID uint64
+				instanceID, err = strconv.ParseUint(value, 10, 32)
+				o.Experimental.InstanceID = uint32(instanceID)
 			case "validate_on_ingest":
 				o.Experimental.ValidateOnIngest, err = strconv.ParseBool(value)
 			case "wal_dir":
@@ -1460,14 +1486,21 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 	})
 }
 
-func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
+func (o *Options) checkOptions(s string) (strictWALTail bool, instanceID uint32, err error) {
 	// TODO(jackson): Refactor to avoid awkwardness of the strictWALTail return value.
-	return strictWALTail, parseOptions(s, func(section, key, value string) error {
+	return strictWALTail, instanceID, parseOptions(s, func(section, key, value string) error {
 		switch section + "." + key {
 		case "Options.comparer":
 			if value != o.Comparer.Name {
 				return errors.Errorf("pebble: comparer name from file %q != comparer name from options %q",
 					errors.Safe(value), errors.Safe(o.Comparer.Name))
+			}
+		case "Options.instance_id":
+			var instanceID64 uint64
+			instanceID64, err = strconv.ParseUint(value, 10, 32)
+			instanceID = uint32(instanceID64)
+			if err != nil {
+				return errors.Errorf("pebble: error parsing instance_id value %q: %w", value, err)
 			}
 		case "Options.merger":
 			// RocksDB allows the merge operator to be unspecified, in which case it
@@ -1490,7 +1523,7 @@ func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
 // serialized by Options.String(). For example, the Comparer and Merger must be
 // the same, or data will not be able to be properly read from the DB.
 func (o *Options) Check(s string) error {
-	_, err := o.checkOptions(s)
+	_, _, err := o.checkOptions(s)
 	return err
 }
 

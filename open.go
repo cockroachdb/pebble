@@ -345,12 +345,21 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 	// Validate the most-recent OPTIONS file, if there is one.
 	var strictWALTail bool
+	var instanceID uint32
 	if previousOptionsFilename != "" {
 		path := opts.FS.PathJoin(dirname, previousOptionsFilename)
-		strictWALTail, err = checkOptions(opts, path)
+		strictWALTail, instanceID, err = checkOptions(opts, path)
 		if err != nil {
 			return nil, err
 		}
+	}
+	if instanceID != 0 {
+		// Overwrite the instanceID in opts with this one, as it came from the OPTIONS
+		// file and belonged to this Pebble on the last start.
+		opts.Experimental.InstanceID = instanceID
+	}
+	if opts.Experimental.SharedStorage != nil {
+		opts.Experimental.SharedStorage.SetInstanceID(opts.Experimental.InstanceID)
 	}
 
 	sort.Slice(logFiles, func(i, j int) bool {
@@ -730,16 +739,16 @@ func (d *DB) replayWAL(
 	return maxSeqNum, err
 }
 
-func checkOptions(opts *Options, path string) (strictWALTail bool, err error) {
+func checkOptions(opts *Options, path string) (strictWALTail bool, instanceID uint32, err error) {
 	f, err := opts.FS.Open(path)
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 	defer f.Close()
 
 	data, err := io.ReadAll(f)
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 	return opts.checkOptions(string(data))
 }
