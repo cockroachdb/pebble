@@ -1285,6 +1285,46 @@ func TestSSTables(t *testing.T) {
 	}
 }
 
+func TestSharedFS(t *testing.T) {
+	opts := &Options{
+		FS: vfs.NewMem(),
+	}
+	sharedFS := vfs.NewMem()
+	opts.Experimental.SharedFS = sharedFS
+	opts.Experimental.SharedDir = "shared"
+	opts.EnsureDefaults()
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
+
+	// Create two sstables.
+	require.NoError(t, d.Set([]byte("hello"), nil, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("world"), nil, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact([]byte("a"), []byte("z"), false))
+
+	path := sharedFS.PathJoin("shared", strconv.Itoa(int(opts.Experimental.UniqueID)))
+	dirList, err := sharedFS.List(path)
+	require.NoError(t, err)
+	sstFound := false
+	for _, bucket := range dirList {
+		dirList, err := sharedFS.List(sharedFS.PathJoin(path, bucket))
+		require.NoError(t, err)
+		for _, file := range dirList {
+			fmt.Printf("%s\n", file)
+			if strings.HasSuffix(file, ".sst") {
+				sstFound = true
+			}
+		}
+	}
+	require.True(t, sstFound)
+}
+
 func BenchmarkDelete(b *testing.B) {
 	rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 	const keyCount = 10000

@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"golang.org/x/exp/rand"
 )
 
 const (
@@ -615,6 +616,22 @@ type Options struct {
 		// Any change in exclusion behavior takes effect only on future written
 		// sstables, and does not start rewriting existing sstables.
 		RequiredInPlaceValueBound UserKeyPrefixBound
+
+		// SharedDir is the base directory name in SharedFS.
+		SharedDir string
+
+		// SharedFS is a second file system that could contain files that are
+		// not fully owned by this Pebble instance, necessitating more coordination
+		// for deletes. It is also expected to have slower read/write performance
+		// than FS.
+		SharedFS vfs.FS
+
+		// UniqueID is a unique ID that's generated for new Pebble instances and
+		// serialized into the Options file. Used to disambiguate this instance's
+		// files from that of others in SharedFS. Defaults to a random uint64,
+		// however Open() can set it to the last-set Unique ID if it finds one in
+		// the Options file.
+		UniqueID uint64
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -879,6 +896,9 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.KeyValidationFunc == nil {
 		o.Experimental.KeyValidationFunc = func([]byte) error { return nil }
 	}
+	if o.Experimental.UniqueID == 0 {
+		o.Experimental.UniqueID = rand.Uint64()
+	}
 	if o.L0CompactionThreshold <= 0 {
 		o.L0CompactionThreshold = 4
 	}
@@ -1112,6 +1132,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "%s", o.TablePropertyCollectors[i]().Name())
 	}
 	fmt.Fprintf(&buf, "]\n")
+	fmt.Fprintf(&buf, "  unique_id=%d\n", o.Experimental.UniqueID)
 	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
@@ -1369,6 +1390,10 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				}
 			case "table_property_collectors":
 				// TODO(peter): set o.TablePropertyCollectors
+			case "unique_id":
+				var uniqueID uint64
+				uniqueID, err = strconv.ParseUint(value, 10, 64)
+				o.Experimental.UniqueID = uniqueID
 			case "validate_on_ingest":
 				o.Experimental.ValidateOnIngest, err = strconv.ParseBool(value)
 			case "wal_dir":
@@ -1455,9 +1480,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 	})
 }
 
-func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
+func (o *Options) checkOptions(s string) (strictWALTail bool, uniqueID uint64, err error) {
 	// TODO(jackson): Refactor to avoid awkwardness of the strictWALTail return value.
-	return strictWALTail, parseOptions(s, func(section, key, value string) error {
+	return strictWALTail, uniqueID, parseOptions(s, func(section, key, value string) error {
 		switch section + "." + key {
 		case "Options.comparer":
 			if value != o.Comparer.Name {
@@ -1476,6 +1501,11 @@ func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
 			if err != nil {
 				return errors.Errorf("pebble: error parsing strict_wal_tail value %q: %w", value, err)
 			}
+		case "Options.unique_id":
+			uniqueID, err = strconv.ParseUint(value, 10, 64)
+			if err != nil {
+				return errors.Errorf("pebble: error parsing unique_id value %q: %w", value, err)
+			}
 		}
 		return nil
 	})
@@ -1485,7 +1515,7 @@ func (o *Options) checkOptions(s string) (strictWALTail bool, err error) {
 // serialized by Options.String(). For example, the Comparer and Merger must be
 // the same, or data will not be able to be properly read from the DB.
 func (o *Options) Check(s string) error {
-	_, err := o.checkOptions(s)
+	_, _, err := o.checkOptions(s)
 	return err
 }
 

@@ -2808,6 +2808,29 @@ func (d *DB) runCompaction(
 			}] = f
 		}
 	}
+	if d.opts.Experimental.SharedFS != nil && c.outputLevel.level >= 5 {
+		// Move all output files to the shared FS.
+		//
+		// TODO(bilal): Move this outputLevel >= 5 logic for determining whether
+		// a file should become shared to elsewhere when it's more complex.
+		for _, nf := range ve.NewFiles {
+			fs := d.opts.FS
+			sharedFS := d.opts.Experimental.SharedFS
+			origPath := base.MakeFilepath(d.opts.FS, d.dirname, fileTypeTable, nf.Meta.FileNum)
+			destPath := base.MakeSharedSSTPath(sharedFS, d.opts.Experimental.SharedDir, d.opts.Experimental.UniqueID, nf.Meta.FileNum)
+			if err := sharedFS.MkdirAll(sharedFS.PathDir(destPath), 0755); err != nil {
+				return nil, pendingOutputs, err
+			}
+			if err := vfs.CopyAcrossFS(fs, origPath, sharedFS, destPath); err != nil {
+				return nil, pendingOutputs, err
+			}
+			if err := fs.Remove(origPath); err != nil {
+				return nil, pendingOutputs, err
+			}
+			nf.Meta.OnSharedFS = true
+			nf.Meta.CreatorUniqueID = d.opts.Experimental.UniqueID
+		}
+	}
 
 	if err := d.dataDir.Sync(); err != nil {
 		return nil, pendingOutputs, err
@@ -3010,15 +3033,19 @@ func (d *DB) deleteObsoleteFiles(jobID int, waitForOngoing bool) {
 
 // obsoleteFile holds information about a file that needs to be deleted soon.
 type obsoleteFile struct {
-	dir      string
-	fileNum  base.FileNum
-	fileType fileType
-	fileSize uint64
+	dir        string
+	onSharedFS bool
+	creatorID  uint64
+	fileNum    base.FileNum
+	fileType   fileType
+	fileSize   uint64
 }
 
 type fileInfo struct {
-	fileNum  FileNum
-	fileSize uint64
+	fileNum    FileNum
+	fileSize   uint64
+	onSharedFS bool
+	creatorID  uint64
 }
 
 // d.mu must be held when calling this, but the mutex may be dropped and
@@ -3048,8 +3075,10 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 
 	for _, table := range d.mu.versions.obsoleteTables {
 		obsoleteTables = append(obsoleteTables, fileInfo{
-			fileNum:  table.FileNum,
-			fileSize: table.Size,
+			fileNum:    table.FileNum,
+			fileSize:   table.Size,
+			onSharedFS: table.OnSharedFS,
+			creatorID:  table.CreatorUniqueID,
 		})
 	}
 	d.mu.versions.obsoleteTables = nil
@@ -3106,13 +3135,18 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 				dir = d.walDirname
 			case fileTypeTable:
 				d.tableCache.evict(fi.fileNum)
+				if fi.onSharedFS {
+					dir = d.opts.Experimental.SharedDir
+				}
 			}
 
 			filesToDelete = append(filesToDelete, obsoleteFile{
-				dir:      dir,
-				fileNum:  fi.fileNum,
-				fileType: f.fileType,
-				fileSize: fi.fileSize,
+				dir:        dir,
+				fileNum:    fi.fileNum,
+				fileType:   f.fileType,
+				fileSize:   fi.fileSize,
+				onSharedFS: fi.onSharedFS,
+				creatorID:  fi.creatorID,
 			})
 		}
 	}
@@ -3138,6 +3172,11 @@ func (d *DB) paceAndDeleteObsoleteFiles(jobID int, files []obsoleteFile) {
 
 	for _, of := range files {
 		path := base.MakeFilepath(d.opts.FS, of.dir, of.fileType, of.fileNum)
+		fs := d.opts.FS
+		if of.onSharedFS {
+			path = base.MakeSharedSSTPath(d.opts.Experimental.SharedFS, of.dir, of.creatorID, of.fileNum)
+			fs = d.opts.Experimental.SharedFS
+		}
 		if of.fileType == fileTypeTable {
 			_ = pacer.maybeThrottle(of.fileSize)
 			d.mu.Lock()
@@ -3145,7 +3184,7 @@ func (d *DB) paceAndDeleteObsoleteFiles(jobID int, files []obsoleteFile) {
 			d.mu.versions.metrics.Table.ObsoleteSize -= of.fileSize
 			d.mu.Unlock()
 		}
-		d.deleteObsoleteFile(of.fileType, jobID, path, of.fileNum)
+		d.deleteObsoleteFile(fs, of.fileType, jobID, path, of.fileNum)
 	}
 }
 
@@ -3174,10 +3213,12 @@ func (d *DB) maybeScheduleObsoleteTableDeletion() {
 }
 
 // deleteObsoleteFile deletes file that is no longer needed.
-func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileNum FileNum) {
+func (d *DB) deleteObsoleteFile(
+	fs vfs.FS, fileType fileType, jobID int, path string, fileNum FileNum,
+) {
 	// TODO(peter): need to handle this error, probably by re-adding the
 	// file that couldn't be deleted to one of the obsolete slices map.
-	err := d.opts.Cleaner.Clean(d.opts.FS, fileType, path)
+	err := d.opts.Cleaner.Clean(fs, fileType, path)
 	if oserror.IsNotExist(err) {
 		return
 	}

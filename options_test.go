@@ -97,6 +97,7 @@ func TestOptionsString(t *testing.T) {
   strict_wal_tail=true
   table_cache_shards=8
   table_property_collectors=[]
+  unique_id=1
   validate_on_ingest=false
   wal_dir=
   wal_bytes_per_sync=0
@@ -113,7 +114,8 @@ func TestOptionsString(t *testing.T) {
   target_file_size=2097152
 `
 
-	var opts *Options
+	opts := &Options{}
+	opts.Experimental.UniqueID = 1 // For determinism.
 	opts = opts.EnsureDefaults()
 	if v := opts.String(); expected != v {
 		t.Fatalf("expected\n%s\nbut found\n%s", expected, v)

@@ -89,7 +89,7 @@ zmemtbl         2   512 K
 
 disk-usage
 ----
-3.6 K
+3.7 K
 
 # Closing iter a will release one of the zombie memtables.
 
@@ -185,4 +185,4 @@ zmemtbl         0     0 B
 
 disk-usage
 ----
-2.1 K
+2.2 K
