@@ -128,6 +128,50 @@ type FS interface {
 	GetDiskUsage(path string) (DiskUsage, error)
 }
 
+// SharedFileHandle holds all fields required to resolve paths to shared files
+// by vfs.SharedFS. Only sstables will be referenced using this struct. It
+// should be possible to generate a SharedFileHandle out of a FileMetadata
+// that has OnSharedFS = true.
+type SharedFileHandle struct {
+	// FileNum of the sstable at creation time in the creator instance of Pebble.
+	FileNum uint64
+	// CreatorInstanceID is the instanceID of the Pebble instance that created
+	// this shared file. See opts.Experimental.InstanceID.
+	CreatorInstanceID uint64
+}
+
+// SharedFS is a vfs.FS-like file system that can contain files accessible
+// by multiple Pebble instances. SharedFS is responsible for managing
+// obsoletion as well
+type SharedFS interface {
+	FS
+
+	// SetInstanceID sets the instance ID of the current Pebble instance. Called
+	// during Open(). Can be stored and/or used by the implementation to
+	// disambiguate this instance's created Shared files from that of others.
+	SetInstanceID(instanceID uint64)
+
+	// ResolvePath converts a SharedFileHandle to a file path that can
+	// be used by FS methods for file manipulation/reading (eg. Create(), Open()).
+	ResolvePath(fileHandle SharedFileHandle) string
+
+	// Reference creates a reference to a shared file owned by a different Pebble
+	// instance. Upon a successful return of this function, the SharedFS must
+	// guarantee that this file will exist (i.e. it will not be deleted) until
+	// `MarkObsolete` is called. Note that new shared files created by this Pebble
+	// instance can call ResolvePath() and then Create() directly without
+	// calling this method.
+	Reference(fileHandle SharedFileHandle) error
+
+	// MarkObsolete marks a shared file reference as obsolete. It is up to the
+	// SharedFS implementation to handle deletion of files when all references to
+	// it (from all Pebble instances) are marked as obsolete. Can be seen as
+	// the "Dereference" counterpart to Reference(), with the key difference that
+	// Reference is only called by non-creator instances while MarkObsolete is
+	// called by all instances (including the instance that created the file).
+	MarkObsolete(fileHandle SharedFileHandle) error
+}
+
 // DiskUsage summarizes disk space usage on a filesystem.
 type DiskUsage struct {
 	// Total disk space available to the current process in bytes.
