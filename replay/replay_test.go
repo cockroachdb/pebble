@@ -41,6 +41,9 @@ var expOpts = struct {
 	EnableValueBlocks         func() bool
 	ShortAttributeExtractor   pebble.ShortAttributeExtractor
 	RequiredInPlaceValueBound pebble.UserKeyPrefixBound
+	SharedDir                 string
+	SharedFS                  vfs.FS
+	InstanceID                uint64
 }{TableCacheShards: 2}
 
 func runReplayTest(t *testing.T, path string) {

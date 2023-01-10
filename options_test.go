@@ -79,6 +79,7 @@ func TestOptionsString(t *testing.T) {
   flush_delay_range_key=0s
   flush_split_bytes=4194304
   format_major_version=1
+  instance_id=1
   l0_compaction_concurrency=10
   l0_compaction_file_threshold=500
   l0_compaction_threshold=4
@@ -113,7 +114,8 @@ func TestOptionsString(t *testing.T) {
   target_file_size=2097152
 `
 
-	var opts *Options
+	opts := &Options{}
+	opts.Experimental.InstanceID = 1 // For determinism.
 	opts = opts.EnsureDefaults()
 	if v := opts.String(); expected != v {
 		t.Fatalf("expected\n%s\nbut found\n%s", expected, v)

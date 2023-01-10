@@ -63,6 +63,18 @@ func MakeFilepath(fs vfs.FS, dirname string, fileType FileType, fileNum FileNum)
 	return fs.PathJoin(dirname, MakeFilename(fileType, fileNum))
 }
 
+// MakeSharedSSTPath builds a filepath for a shared SST. fileType is unnecessary
+// as this is only used for tables.
+func MakeSharedSSTPath(fs vfs.FS, dirname string, instanceID uint64, fileNum FileNum) string {
+	// We shard sstables into a fixed number of buckets. This is to improve
+	// performance as write performance on some blob storage services (eg. s3)
+	// is bottlenecked by prefix, which is the directories leading up to the
+	// file.
+	const numBuckets = 10
+	bucket := (uint64(fileNum) + (uint64(instanceID) * 13)) % numBuckets
+	return fs.PathJoin(dirname, fmt.Sprintf("%d/%d/%s", instanceID, bucket, MakeFilename(FileTypeTable, fileNum)))
+}
+
 // ParseFilename parses the components from a filename.
 func ParseFilename(fs vfs.FS, filename string) (fileType FileType, fileNum FileNum, ok bool) {
 	filename = fs.PathBase(filename)

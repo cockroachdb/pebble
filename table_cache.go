@@ -69,6 +69,8 @@ type tableCacheOpts struct {
 	cacheID       uint64
 	dirname       string
 	fs            vfs.FS
+	sharedDir     string
+	sharedFS      vfs.FS
 	opts          sstable.ReaderOptions
 	filterMetrics *FilterMetrics
 }
@@ -106,6 +108,8 @@ func newTableCacheContainer(
 	t.dbOpts.cacheID = cacheID
 	t.dbOpts.dirname = dirname
 	t.dbOpts.fs = fs
+	t.dbOpts.sharedDir = opts.Experimental.SharedDir
+	t.dbOpts.sharedFS = opts.Experimental.SharedFS
 	t.dbOpts.opts = opts.MakeReaderOptions()
 	t.dbOpts.filterMetrics = &FilterMetrics{}
 	t.dbOpts.atomic.iterCount = new(int32)
@@ -924,12 +928,23 @@ type tableCacheValue struct {
 func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *tableCacheOpts) {
 	// Try opening the fileTypeTable first.
 	var f vfs.File
-	v.filename = base.MakeFilepath(dbOpts.fs, dbOpts.dirname, fileTypeTable, meta.FileNum)
-	f, v.err = dbOpts.fs.Open(v.filename, vfs.RandomReadsOption)
+	fs := dbOpts.fs
+	dirname := dbOpts.dirname
+	if meta.OnSharedFS {
+		fs = dbOpts.sharedFS
+		dirname = dbOpts.sharedDir
+		v.filename = base.MakeSharedSSTPath(fs, dirname, meta.CreatorInstanceID, meta.FileNum)
+	} else {
+		v.filename = base.MakeFilepath(fs, dirname, fileTypeTable, meta.FileNum)
+	}
+	f, v.err = fs.Open(v.filename, vfs.RandomReadsOption)
 	if v.err == nil {
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, meta.FileNum).(sstable.ReaderOption)
-		reopenOpt := sstable.FileReopenOpt{FS: dbOpts.fs, Filename: v.filename}
-		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics, reopenOpt)
+		extraOpts := []sstable.ReaderOption{cacheOpts, dbOpts.filterMetrics}
+		if !meta.OnSharedFS {
+			extraOpts = append(extraOpts, sstable.FileReopenOpt{FS: dbOpts.fs, Filename: v.filename})
+		}
+		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, extraOpts...)
 	}
 	if v.err == nil {
 		if meta.SmallestSeqNum == meta.LargestSeqNum {
