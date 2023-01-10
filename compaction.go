@@ -2234,7 +2234,10 @@ func (d *DB) runCompaction(
 	// deleted files in the new versionEdit pass a validation function before
 	// returning the edit.
 	defer func() {
-		if ve != nil {
+		// If we're handling a panic, don't expect the version edit to validate.
+		if r := recover(); r != nil {
+			panic(r)
+		} else if ve != nil {
 			err := validateVersionEdit(ve, d.opts.Experimental.KeyValidationFunc, d.opts.Comparer.FormatKey)
 			if err != nil {
 				d.opts.Logger.Fatalf("pebble: version edit validation failed: %s", err)
