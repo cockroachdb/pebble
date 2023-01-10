@@ -615,6 +615,18 @@ type Options struct {
 		// Any change in exclusion behavior takes effect only on future written
 		// sstables, and does not start rewriting existing sstables.
 		RequiredInPlaceValueBound UserKeyPrefixBound
+
+		// SharedStorage is a second FS-like storage medium that can be shared
+		// between multiple Pebble instances. It is used to store sstables only, and
+		// is managed by objstorage.Provider. Each sstable might only be written to
+		// by one Pebble instance, but other Pebble instances can possibly read the
+		// same files if they have the path to get to them. The pebble instance that
+		// wrote a file should not delete it if other Pebble instances are known to
+		// be reading this file. This FS is expected to have slower read/write
+		// performance than the default FS above.
+		//
+		// TODO(bilal): Uncomment this once it's in use.
+		// SharedStorage vfs.SharedStorage
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for

@@ -171,6 +171,44 @@ type FS interface {
 	GetDiskUsage(path string) (DiskUsage, error)
 }
 
+// SharedStorage is an interface for a blob storage driver. This is lower-level
+// than an FS-like interface, however FS/File-like abstractions can be built on
+// top of these methods.
+//
+// TODO(bilal): Consider reworking this interface to return File-like objects,
+// and maybe push shared file obsoletion as well as path generation behind this
+// interface.
+type SharedStorage interface {
+	io.Closer
+
+	// ReadFile is shorthand for ReadFileAt with offset 0.
+	ReadFile(basename string) (io.ReadCloser, error)
+
+	// ReadFileAt returns a Reader for requested name reading at offset.
+	ReadFileAt(basename string, offset int64) (io.ReadCloser, int64, error)
+
+	// Writer returns a writer for the requested name.
+	//
+	// A Writer *must* be closed via either Close, and if closing returns a
+	// non-nil error, that error should be handled or reported to the user -- an
+	// implementation may buffer written data until Close and only then return
+	// an error, or Write may return an opaque io.EOF with the underlying cause
+	// returned by the subsequent Close().
+	Writer(basename string) (io.WriteCloser, error)
+
+	// List enumerates files within the supplied prefix, returning a list of
+	// objects within that prefix. If delimiter is non-empty names which have the
+	// same prefix, prior to the delimiter, are grouped into a single result which
+	// is that prefix. The order that results are returned is undefined.
+	List(prefix, delimiter string) []string
+
+	// Delete removes the named file from the store.
+	Delete(basename string) error
+
+	// Size returns the length of the named file in bytes.
+	Size(basename string) (int64, error)
+}
+
 // DiskUsage summarizes disk space usage on a filesystem.
 type DiskUsage struct {
 	// Total disk space available to the current process in bytes.
