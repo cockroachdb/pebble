@@ -460,9 +460,12 @@ func (w *valueBlockWriter) addValue(v []byte) (valueHandle, error) {
 	}
 	blockLen = int(vh.offsetInBlock + vh.valueLen)
 	if cap(w.buf.b) < blockLen {
-		size := w.blockSize + w.blockSize/2
-		if size < blockLen {
-			size = blockLen + blockLen/2
+		size := 2 * cap(w.buf.b)
+		if size < 1024 {
+			size = 1024
+		}
+		for size < blockLen {
+			size *= 2
 		}
 		buf := make([]byte, blockLen, size)
 		_ = copy(buf, w.buf.b)
