@@ -231,6 +231,9 @@ sync: checkpoint/marker.format-version.000001.012
 close: checkpoint/marker.format-version.000001.012
 sync: checkpoint
 close: checkpoint
+link: db/000013.sst -> checkpoint/000013.sst
+link: db/000015.sst -> checkpoint/000015.sst
+link: db/000010.sst -> checkpoint/000010.sst
 create: checkpoint/MANIFEST-000016
 sync: checkpoint/MANIFEST-000016
 close: checkpoint/MANIFEST-000016
@@ -240,9 +243,6 @@ sync: checkpoint/marker.manifest.000001.MANIFEST-000016
 close: checkpoint/marker.manifest.000001.MANIFEST-000016
 sync: checkpoint
 close: checkpoint
-link: db/000013.sst -> checkpoint/000013.sst
-link: db/000015.sst -> checkpoint/000015.sst
-link: db/000010.sst -> checkpoint/000010.sst
 create: checkpoint/000012.log
 sync: checkpoint/000012.log
 close: checkpoint/000012.log

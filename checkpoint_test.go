@@ -52,12 +52,27 @@ func TestCheckpoint(t *testing.T) {
 			return buf.String()
 
 		case "checkpoint":
-			if len(td.CmdArgs) != 2 {
-				return "checkpoint <db> <dir>"
+			if !(len(td.CmdArgs) == 2 || (len(td.CmdArgs) == 3 && td.CmdArgs[2].Key == "restrict")) {
+				return "checkpoint <db> <dir> [restrict=(start-end, ...)]"
+			}
+			var opts []CheckpointOption
+			if len(td.CmdArgs) == 3 {
+				var spans []CheckpointSpan
+				for _, v := range td.CmdArgs[2].Vals {
+					splits := strings.SplitN(v, "-", 2)
+					if len(splits) != 2 {
+						return fmt.Sprintf("invalid restrict range %q", v)
+					}
+					spans = append(spans, CheckpointSpan{
+						Start: []byte(splits[0]),
+						End:   []byte(splits[1]),
+					})
+				}
+				opts = append(opts, WithRestrictToSpans(spans))
 			}
 			buf.Reset()
 			d := dbs[td.CmdArgs[0].String()]
-			if err := d.Checkpoint(td.CmdArgs[1].String()); err != nil {
+			if err := d.Checkpoint(td.CmdArgs[1].String(), opts...); err != nil {
 				return err.Error()
 			}
 			return buf.String()
