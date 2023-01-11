@@ -301,7 +301,7 @@ maybe-compact
 # should be deleted. In #90149, the table still had a reference count, and
 # therefore could not be deleted from the filesystem.
 
-define
+define auto-compactions=off
 L6
   rangekey:a-b:{(#1,RANGEKEYDEL)}
   a.SET.2:a
