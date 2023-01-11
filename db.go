@@ -450,7 +450,7 @@ type DB struct {
 			// True when a stat collection operation is in progress.
 			loading bool
 			// True if stat collection has loaded statistics for all tables
-			// other than those listed explcitly in pending. This flag starts
+			// other than those listed explicitly in pending. This flag starts
 			// as false when a database is opened and flips to true once stat
 			// collection has caught up.
 			loadedInitial bool
