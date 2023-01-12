@@ -5,10 +5,12 @@
 package pebble
 
 import (
+	"io"
 	"os"
 
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 )
@@ -19,6 +21,9 @@ type checkpointOptions struct {
 	// flushWAL set to true will force a flush and sync of the WAL prior to
 	// checkpointing.
 	flushWAL bool
+
+	// If set, any SSTs that don't overlap with these spans are excluded from a checkpoint.
+	restrictToSpans []CheckpointSpan
 }
 
 // CheckpointOption set optional parameters used by `DB.Checkpoint`.
@@ -37,6 +42,43 @@ func WithFlushedWAL() CheckpointOption {
 	return func(opt *checkpointOptions) {
 		opt.flushWAL = true
 	}
+}
+
+// WithRestrictToSpans specifies spans of interest for the checkpoint. Any SSTs
+// that don't overlap with any of these spans are excluded from the checkpoint.
+//
+// Note that the checkpoint can still surface keys outside of these spans (from
+// the WAL and from SSTs that partially overlap with these spans). Moreover,
+// these surface keys aren't necessarily "valid" in that they could have been
+// modified but the SST containing the modification is excluded.
+func WithRestrictToSpans(spans []CheckpointSpan) CheckpointOption {
+	return func(opt *checkpointOptions) {
+		opt.restrictToSpans = spans
+	}
+}
+
+// CheckpointSpan is a key range [Start, End) (inclusive on Start, exclusive on
+// End) of interest for a checkpoint.
+type CheckpointSpan struct {
+	Start []byte
+	End   []byte
+}
+
+// excludeFromCheckpoint returns true if an SST file should be excluded from the
+// checkpoint because it does not overlap with the spans of interest
+// (opt.restrictToSpans).
+func excludeFromCheckpoint(f *fileMetadata, opt *checkpointOptions, cmp Compare) bool {
+	if len(opt.restrictToSpans) == 0 {
+		// Option not set; don't exclude anything.
+		return false
+	}
+	for _, s := range opt.restrictToSpans {
+		if f.Overlaps(cmp, s.Start, s.End, true /* exclusiveEnd */) {
+			return false
+		}
+	}
+	// None of the restrictToSpans overlapped; we can exclude this file.
+	return true
 }
 
 // mkdirAllAndSyncParents creates destDir and any of its missing parents.
@@ -214,44 +256,23 @@ func (d *DB) Checkpoint(
 		}
 	}
 
-	{
-		// Copy the MANIFEST, and create a pointer to it. We copy rather
-		// than link because additional version edits added to the
-		// MANIFEST after we took our snapshot of the sstables will
-		// reference sstables that aren't in our checkpoint. For a
-		// similar reason, we need to limit how much of the MANIFEST we
-		// copy.
-		srcPath := base.MakeFilepath(fs, d.dirname, fileTypeManifest, manifestFileNum)
-		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
-		ckErr = vfs.LimitedCopy(fs, srcPath, destPath, manifestSize)
-		if ckErr != nil {
-			return ckErr
-		}
-
-		// Recent format versions use an atomic marker for setting the
-		// active manifest. Older versions use the CURRENT file. The
-		// setCurrentFunc function will return a closure that will
-		// take the appropriate action for the database's format
-		// version.
-		var manifestMarker *atomicfs.Marker
-		manifestMarker, _, ckErr = atomicfs.LocateMarker(fs, destDir, manifestMarkerName)
-		if ckErr != nil {
-			return ckErr
-		}
-		ckErr = setCurrentFunc(formatVers, manifestMarker, fs, destDir, dir)(manifestFileNum)
-		if ckErr != nil {
-			return ckErr
-		}
-		ckErr = manifestMarker.Close()
-		if ckErr != nil {
-			return ckErr
-		}
-	}
+	var excludedFiles map[deletedFileEntry]*fileMetadata
 
 	// Link or copy the sstables.
 	for l := range current.Levels {
 		iter := current.Levels[l].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
+			if excludeFromCheckpoint(f, opt, d.cmp) {
+				if excludedFiles == nil {
+					excludedFiles = make(map[deletedFileEntry]*fileMetadata)
+				}
+				excludedFiles[deletedFileEntry{
+					Level:   l,
+					FileNum: f.FileNum,
+				}] = f
+				continue
+			}
+
 			srcPath := base.MakeFilepath(fs, d.dirname, fileTypeTable, f.FileNum)
 			destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 			ckErr = vfs.LinkOrCopy(fs, srcPath, destPath)
@@ -259,6 +280,11 @@ func (d *DB) Checkpoint(
 				return ckErr
 			}
 		}
+	}
+
+	ckErr = d.writeCheckpointManifest(fs, formatVers, destDir, dir, manifestFileNum, manifestSize, excludedFiles)
+	if ckErr != nil {
+		return ckErr
 	}
 
 	// Copy the WAL files. We copy rather than link because WAL file recycling
@@ -285,4 +311,78 @@ func (d *DB) Checkpoint(
 	ckErr = dir.Close()
 	dir = nil
 	return ckErr
+}
+
+func (d *DB) writeCheckpointManifest(
+	fs syncingFS,
+	formatVers FormatMajorVersion,
+	destDirPath string,
+	destDir vfs.File,
+	manifestFileNum FileNum,
+	manifestSize int64,
+	excludedFiles map[deletedFileEntry]*fileMetadata,
+) error {
+	// Copy the MANIFEST, and create a pointer to it. We copy rather
+	// than link because additional version edits added to the
+	// MANIFEST after we took our snapshot of the sstables will
+	// reference sstables that aren't in our checkpoint. For a
+	// similar reason, we need to limit how much of the MANIFEST we
+	// copy.
+	// If some files are excluded from the checkpoint, also append a block that
+	// records those files as deleted.
+	if err := func() error {
+		srcPath := base.MakeFilepath(fs, d.dirname, fileTypeManifest, manifestFileNum)
+		destPath := fs.PathJoin(destDirPath, fs.PathBase(srcPath))
+		src, err := fs.Open(srcPath, vfs.SequentialReadsOption)
+		if err != nil {
+			return err
+		}
+		defer src.Close()
+
+		dst, err := fs.Create(destPath)
+		if err != nil {
+			return err
+		}
+		defer dst.Close()
+
+		if _, err := io.Copy(dst, &io.LimitedReader{R: src, N: manifestSize}); err != nil {
+			return err
+		}
+
+		if len(excludedFiles) > 0 {
+			// Write out an additional VersionEdit that deletes the excluded SST files.
+			ve := versionEdit{
+				DeletedFiles: excludedFiles,
+			}
+			rw := record.NewWriter(dst)
+			w, err := rw.Next()
+			if err != nil {
+				return err
+			}
+			if err := ve.Encode(w); err != nil {
+				return err
+			}
+			if err := rw.Close(); err != nil {
+				return err
+			}
+		}
+		return dst.Sync()
+	}(); err != nil {
+		return err
+	}
+
+	// Recent format versions use an atomic marker for setting the
+	// active manifest. Older versions use the CURRENT file. The
+	// setCurrentFunc function will return a closure that will
+	// take the appropriate action for the database's format
+	// version.
+	var manifestMarker *atomicfs.Marker
+	manifestMarker, _, err := atomicfs.LocateMarker(fs, destDirPath, manifestMarkerName)
+	if err != nil {
+		return err
+	}
+	if err := setCurrentFunc(formatVers, manifestMarker, fs, destDirPath, destDir)(manifestFileNum); err != nil {
+		return err
+	}
+	return manifestMarker.Close()
 }
