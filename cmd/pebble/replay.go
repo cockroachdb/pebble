@@ -27,6 +27,7 @@ func initReplayCmd() *cobra.Command {
 	c := replayConfig{
 		pacer:            pacerFlag{Pacer: replay.Unpaced{}},
 		runDir:           "",
+		count:            1,
 		streamLogs:       false,
 		ignoreCheckpoint: false,
 	}
@@ -36,6 +37,8 @@ func initReplayCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE:  c.runE,
 	}
+	cmd.Flags().IntVar(
+		&c.count, "count", 1, "the number of times to replay the workload")
 	cmd.Flags().StringVar(
 		&c.name, "name", "", "the name of the workload being replayed")
 	cmd.Flags().VarPF(
@@ -53,21 +56,32 @@ type replayConfig struct {
 	name             string
 	pacer            pacerFlag
 	runDir           string
+	count            int
 	streamLogs       bool
 	ignoreCheckpoint bool
 }
 
 func (c *replayConfig) runE(cmd *cobra.Command, args []string) error {
 	stdout := cmd.OutOrStdout()
+	workloadPath := args[0]
+	for i := 1; i <= c.count; i++ {
+		fmt.Fprintf(stdout, "Run %d/%d:\n", i, c.count)
+		if err := c.runOnce(stdout, workloadPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
+func (c *replayConfig) runOnce(stdout io.Writer, workloadPath string) error {
 	if c.name == "" {
-		c.name = vfs.Default.PathBase(args[0])
+		c.name = vfs.Default.PathBase(workloadPath)
 	}
 
 	r := &replay.Runner{
 		RunDir:       c.runDir,
 		WorkloadFS:   vfs.Default,
-		WorkloadPath: args[0],
+		WorkloadPath: workloadPath,
 		Pacer:        c.pacer,
 		Opts:         &pebble.Options{},
 	}
