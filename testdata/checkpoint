@@ -122,6 +122,8 @@ sync: checkpoints/checkpoint1/marker.format-version.000001.012
 close: checkpoints/checkpoint1/marker.format-version.000001.012
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
+link: db/000005.sst -> checkpoints/checkpoint1/000005.sst
+link: db/000007.sst -> checkpoints/checkpoint1/000007.sst
 create: checkpoints/checkpoint1/MANIFEST-000001
 sync: checkpoints/checkpoint1/MANIFEST-000001
 close: checkpoints/checkpoint1/MANIFEST-000001
@@ -131,8 +133,6 @@ sync: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
-link: db/000005.sst -> checkpoints/checkpoint1/000005.sst
-link: db/000007.sst -> checkpoints/checkpoint1/000007.sst
 create: checkpoints/checkpoint1/000006.log
 sync: checkpoints/checkpoint1/000006.log
 close: checkpoints/checkpoint1/000006.log
@@ -142,6 +142,69 @@ close: checkpoints/checkpoint1
 checkpoint db checkpoints/checkpoint1
 ----
 checkpoint checkpoints/checkpoint1: file already exists
+
+# Create a checkpoint that omits SSTs that don't overlap with the [d - f) range.
+checkpoint db checkpoints/checkpoint2 restrict=(d-f)
+----
+mkdir-all: checkpoints/checkpoint2 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint2
+link: db/OPTIONS-000003 -> checkpoints/checkpoint2/OPTIONS-000003
+open-dir: checkpoints/checkpoint2
+create: checkpoints/checkpoint2/marker.format-version.000001.012
+sync: checkpoints/checkpoint2/marker.format-version.000001.012
+close: checkpoints/checkpoint2/marker.format-version.000001.012
+sync: checkpoints/checkpoint2
+close: checkpoints/checkpoint2
+link: db/000007.sst -> checkpoints/checkpoint2/000007.sst
+create: checkpoints/checkpoint2/MANIFEST-000001
+sync: checkpoints/checkpoint2/MANIFEST-000001
+close: checkpoints/checkpoint2/MANIFEST-000001
+open-dir: checkpoints/checkpoint2
+create: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint2
+close: checkpoints/checkpoint2
+create: checkpoints/checkpoint2/000006.log
+sync: checkpoints/checkpoint2/000006.log
+close: checkpoints/checkpoint2/000006.log
+sync: checkpoints/checkpoint2
+close: checkpoints/checkpoint2
+
+# Create a checkpoint that omits SSTs that don't overlap with [a - e) and [d - f).
+checkpoint db checkpoints/checkpoint3 restrict=(a-e, d-f)
+----
+mkdir-all: checkpoints/checkpoint3 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint3
+link: db/OPTIONS-000003 -> checkpoints/checkpoint3/OPTIONS-000003
+open-dir: checkpoints/checkpoint3
+create: checkpoints/checkpoint3/marker.format-version.000001.012
+sync: checkpoints/checkpoint3/marker.format-version.000001.012
+close: checkpoints/checkpoint3/marker.format-version.000001.012
+sync: checkpoints/checkpoint3
+close: checkpoints/checkpoint3
+link: db/000005.sst -> checkpoints/checkpoint3/000005.sst
+link: db/000007.sst -> checkpoints/checkpoint3/000007.sst
+create: checkpoints/checkpoint3/MANIFEST-000001
+sync: checkpoints/checkpoint3/MANIFEST-000001
+close: checkpoints/checkpoint3/MANIFEST-000001
+open-dir: checkpoints/checkpoint3
+create: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint3
+close: checkpoints/checkpoint3
+create: checkpoints/checkpoint3/000006.log
+sync: checkpoints/checkpoint3/000006.log
+close: checkpoints/checkpoint3/000006.log
+sync: checkpoints/checkpoint3
+close: checkpoints/checkpoint3
 
 compact db
 ----
@@ -215,4 +278,59 @@ e 8
 f 9
 g 10
 h 11
+.
+
+# This checkpoint should only contain the second SST.
+list checkpoints/checkpoint2
+----
+000006.log
+000007.sst
+MANIFEST-000001
+OPTIONS-000003
+marker.format-version.000001.012
+marker.manifest.000001.MANIFEST-000001
+
+open checkpoints/checkpoint2 readonly
+----
+open-dir: checkpoints/checkpoint2
+lock: checkpoints/checkpoint2/LOCK
+open-dir: checkpoints/checkpoint2
+open-dir: checkpoints/checkpoint2
+
+scan checkpoints/checkpoint2
+----
+b 5
+d 7
+e 8
+f 9
+g 10
+.
+
+# This checkpoint should contain both SSTs.
+list checkpoints/checkpoint3
+----
+000005.sst
+000006.log
+000007.sst
+MANIFEST-000001
+OPTIONS-000003
+marker.format-version.000001.012
+marker.manifest.000001.MANIFEST-000001
+
+open checkpoints/checkpoint3 readonly
+----
+open-dir: checkpoints/checkpoint3
+lock: checkpoints/checkpoint3/LOCK
+open-dir: checkpoints/checkpoint3
+open-dir: checkpoints/checkpoint3
+
+scan checkpoints/checkpoint3
+----
+a 1
+b 5
+c 3
+d 7
+e 8
+f 9
+g 10
 .
