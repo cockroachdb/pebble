@@ -8,7 +8,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"runtime"
 	"testing"
 	"time"
 	"unsafe"
@@ -18,9 +17,6 @@ import (
 )
 
 func TestGetBytes(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("See #1897.")
-	}
 	const size = (1 << 31) - 1
 	block := make([]byte, size)
 	data := getBytes(unsafe.Pointer(&block[0]), size)
