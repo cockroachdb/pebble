@@ -13,7 +13,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -638,9 +637,6 @@ func TestBytesIterated(t *testing.T) {
 		testBytesIteratedWithCompression(t, SnappyCompression, 1, blockSizes, []uint64{1e5, 1e5, 1e5, 1e5, 1e5})
 	})
 	t.Run("Uncompressed", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("See #1897.")
-		}
 		testBytesIteratedWithCompression(t, NoCompression, 0, blockSizes, []uint64{1e5, 1e5, 1e5, 1e5, 1e5})
 	})
 	t.Run("Zstd", func(t *testing.T) {
