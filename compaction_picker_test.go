@@ -937,10 +937,14 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 
 type alwaysMultiLevel struct{}
 
-func (d alwaysMultiLevel) addLevel(
-	pcAddedLevel *pickedCompaction, pcOrig *pickedCompaction,
+func (d alwaysMultiLevel) evaluate(
+	pcOrig *pickedCompaction, opts *Options, diskAvailBytes uint64,
 ) *pickedCompaction {
-	return pcAddedLevel
+	pcMulti := pcOrig.clone()
+	if !pcMulti.setupMultiLevelCandidate(opts, diskAvailBytes) {
+		return pcOrig
+	}
+	return pcMulti
 }
 
 func TestPickedCompactionSetupInputs(t *testing.T) {
@@ -1037,10 +1041,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 							return fmt.Sprintf("startLevel=%d >= outputLevel=%d\n", pc.startLevel.level, level)
 						}
 						pc.outputLevel.level = level
-					} else if opts.Experimental.MultiLevelCompactionHueristic == nil {
-						return "outputLevel already set\n"
 					}
-
 				default:
 					meta := parseMeta(data)
 					meta.FileNum = fileNum
@@ -1061,7 +1062,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				isCompacting = true
 			}
 			origPC := pc
-			pc = maybeAddLevel(pc, opts, availBytes)
+			pc = pc.maybeAddLevel(opts, availBytes)
 			// If pc points to a new pickedCompaction, a new multi level compaction
 			// was initialized.
 			initMultiLevel := pc != origPC

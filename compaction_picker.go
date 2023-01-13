@@ -273,13 +273,7 @@ func (pc *pickedCompaction) clone() *pickedCompaction {
 		cmp:                    pc.cmp,
 		score:                  pc.score,
 		kind:                   pc.kind,
-		startLevel:             nil,
-		outputLevel:            nil,
-		extraLevels:            nil,
 		adjustedOutputLevel:    pc.adjustedOutputLevel,
-		inputs:                 nil,
-		lcf:                    nil,
-		l0SublevelInfo:         nil,
 		maxOutputFileSize:      pc.maxOutputFileSize,
 		maxOverlapBytes:        pc.maxOverlapBytes,
 		maxReadCompactionBytes: pc.maxReadCompactionBytes,
@@ -1537,14 +1531,11 @@ func pickAutoLPositive(
 	if !pc.setupInputs(opts, diskAvailBytes(), pc.startLevel) {
 		return nil
 	}
-	return maybeAddLevel(pc, opts, diskAvailBytes())
+	return pc.maybeAddLevel(opts, diskAvailBytes())
 }
 
 // maybeAddLevel maybe adds a level to the picked compaction.
-func maybeAddLevel(pc *pickedCompaction, opts *Options, diskAvailBytes uint64) *pickedCompaction {
-	if opts.Experimental.MultiLevelCompactionHueristic == nil {
-		return pc
-	}
+func (pc *pickedCompaction) maybeAddLevel(opts *Options, diskAvailBytes uint64) *pickedCompaction {
 	if pc.outputLevel.level == numLevels-1 {
 		// Don't add a level if the current output level is in L6
 		return pc
@@ -1554,17 +1545,23 @@ func maybeAddLevel(pc *pickedCompaction, opts *Options, diskAvailBytes uint64) *
 		// Don't add a level if the current compaction exceeds the compaction size limit
 		return pc
 	}
-
-	pcMulti := pc.clone()
-	if !pcMulti.setupMultiLevelCandidate(opts, diskAvailBytes) {
-		return pc
-	}
-	return opts.Experimental.MultiLevelCompactionHueristic.addLevel(pcMulti, pc)
+	return opts.Experimental.MultiLevelCompactionHueristic.evaluate(pc, opts, diskAvailBytes)
 }
 
-type multiLevelHueristic interface {
-	// addLevel returns the preferred compaction.
-	addLevel(pcAddedLevel *pickedCompaction, pcOrig *pickedCompaction) *pickedCompaction
+// MultiLevelHeuristic evaluates whether to add files from the next level into the compaction.
+type MultiLevelHeuristic interface {
+	// evaluate returns the preferred compaction.
+	evaluate(pc *pickedCompaction, opts *Options, diskAvailBytes uint64) *pickedCompaction
+}
+
+// NoMultiLevel will never add an additional level to the compaction.
+type NoMultiLevel struct {
+}
+
+func (nml NoMultiLevel) evaluate(
+	pc *pickedCompaction, opts *Options, diskAvailBytes uint64,
+) *pickedCompaction {
+	return pc
 }
 
 // Helper method to pick compactions originating from L0. Uses information about
@@ -1687,7 +1684,7 @@ func pickManualHelper(
 	if !pc.setupInputs(opts, diskAvailBytes(), pc.startLevel) {
 		return nil
 	}
-	return maybeAddLevel(pc, opts, diskAvailBytes())
+	return pc.maybeAddLevel(opts, diskAvailBytes())
 }
 
 func (p *compactionPickerByScore) pickReadTriggeredCompaction(
