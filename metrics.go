@@ -184,6 +184,9 @@ type Metrics struct {
 		// The total number of flushes.
 		Count           int64
 		WriteThroughput ThroughputMetric
+		// Number of flushes that are in-progress. In the current implementation
+		// this will always be zero or one.
+		NumInProgress int64
 	}
 
 	Filter FilterMetrics
