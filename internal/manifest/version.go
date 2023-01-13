@@ -354,6 +354,19 @@ func (m *FileMetadata) extendOverallBounds(
 	}
 }
 
+// Overlaps returns true if the file key range overlaps with the given range.
+func (m *FileMetadata) Overlaps(cmp Compare, start []byte, end []byte, exclusiveEnd bool) bool {
+	if c := cmp(m.Largest.UserKey, start); c < 0 || (c == 0 && m.Largest.IsExclusiveSentinel()) {
+		// f is completely before the specified range; no overlap.
+		return false
+	}
+	if c := cmp(m.Smallest.UserKey, end); c > 0 || (c == 0 && exclusiveEnd) {
+		// f is completely after the specified range; no overlap.
+		return false
+	}
+	return true
+}
+
 // ContainsKeyType returns whether or not the file contains keys of the provided
 // type.
 func (m *FileMetadata) ContainsKeyType(kt KeyType) bool {
@@ -985,11 +998,11 @@ func (v *Version) Contains(level int, cmp Compare, m *FileMetadata) bool {
 }
 
 // Overlaps returns all elements of v.files[level] whose user key range
-// intersects the inclusive range [start, end]. If level is non-zero then the
-// user key ranges of v.files[level] are assumed to not overlap (although they
-// may touch). If level is zero then that assumption cannot be made, and the
-// [start, end] range is expanded to the union of those matching ranges so far
-// and the computation is repeated until [start, end] stabilizes.
+// intersects the given range. If level is non-zero then the user key ranges of
+// v.files[level] are assumed to not overlap (although they may touch). If level
+// is zero then that assumption cannot be made, and the [start, end] range is
+// expanded to the union of those matching ranges so far and the computation is
+// repeated until [start, end] stabilizes.
 // The returned files are a subsequence of the input files, i.e., the ordering
 // is not changed.
 func (v *Version) Overlaps(
@@ -1009,20 +1022,16 @@ func (v *Version) Overlaps(
 				if selected {
 					continue
 				}
-				smallest := meta.Smallest.UserKey
-				largest := meta.Largest.UserKey
-				if c := cmp(largest, start); c < 0 || c == 0 && meta.Largest.IsExclusiveSentinel() {
-					// meta is completely before the specified range; skip it.
-					continue
-				}
-				if c := cmp(smallest, end); c > 0 || c == 0 && exclusiveEnd {
-					// meta is completely after the specified range; skip it.
+				if !meta.Overlaps(cmp, start, end, exclusiveEnd) {
+					// meta is completely outside the specified range; skip it.
 					continue
 				}
 				// Overlaps.
 				selectedIndices[i] = true
 				numSelected++
 
+				smallest := meta.Smallest.UserKey
+				largest := meta.Largest.UserKey
 				// Since level == 0, check if the newly added fileMetadata has
 				// expanded the range. We expand the range immediately for files
 				// we have remaining to check in this loop. All already checked
