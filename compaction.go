@@ -89,6 +89,9 @@ func (cl compactionLevel) Clone() compactionLevel {
 	}
 	return newCL
 }
+func (cl compactionLevel) String() string {
+	return fmt.Sprintf(`Level %d, Files %s`, cl.level, cl.files)
+}
 
 // Return output from compactionOutputSplitters. See comment on
 // compactionOutputSplitter.shouldSplitBefore() on how this value is used.

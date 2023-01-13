@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -103,6 +104,9 @@ func (cl sublevelInfo) Clone() sublevelInfo {
 		sublevel:   cl.sublevel,
 		LevelSlice: cl.LevelSlice.Reslice(func(start, end *manifest.LevelIterator) {}),
 	}
+}
+func (cl sublevelInfo) String() string {
+	return fmt.Sprintf(`Sublevel %s; Levels %s`, cl.sublevel, cl.LevelSlice)
 }
 
 // generateSublevelInfo will generate the level slices for each of the sublevels
@@ -264,6 +268,25 @@ func newPickedCompactionFromL0(
 	return pc
 }
 
+func (pc *pickedCompaction) String() string {
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf(`Score=%f\n`, pc.score))
+	builder.WriteString(fmt.Sprintf(`Kind=%s\n`, pc.kind))
+	builder.WriteString(fmt.Sprintf(`AdjustedOutputLevel=%d\n`, pc.adjustedOutputLevel))
+	builder.WriteString(fmt.Sprintf(`maxOutputFileSize=%d\n`, pc.maxOutputFileSize))
+	builder.WriteString(fmt.Sprintf(`maxReadCompactionBytes=%d\n`, pc.maxReadCompactionBytes))
+	builder.WriteString(fmt.Sprintf(`smallest=%s\n`, pc.smallest))
+	builder.WriteString(fmt.Sprintf(`largest=%s\n`, pc.largest))
+	builder.WriteString(fmt.Sprintf(`version=%s\n`, pc.version))
+	builder.WriteString(fmt.Sprintf(`inputs=%s\n`, pc.inputs))
+	builder.WriteString(fmt.Sprintf(`startlevel=%s\n`, pc.startLevel))
+	builder.WriteString(fmt.Sprintf(`outputLevel=%s\n`, pc.outputLevel))
+	builder.WriteString(fmt.Sprintf(`extraLevels=%s`, pc.extraLevels))
+	builder.WriteString(fmt.Sprintf(`l0SublevelInfo=%s\n`, pc.l0SublevelInfo))
+	builder.WriteString(fmt.Sprintf(`lcf=%s\n`, pc.lcf))
+	return builder.String()
+}
+
 // Clone creates a deep copy of the pickedCompaction
 func (pc *pickedCompaction) clone() *pickedCompaction {
 
@@ -286,7 +309,7 @@ func (pc *pickedCompaction) clone() *pickedCompaction {
 	}
 
 	newPC.inputs = make([]compactionLevel, len(pc.inputs))
-	newPC.extraLevels = make([]*compactionLevel, len(pc.extraLevels))
+	newPC.extraLevels = make([]*compactionLevel, 0, len(pc.extraLevels))
 	for i := range pc.inputs {
 		newPC.inputs[i] = pc.inputs[i].Clone()
 		if i == 0 {

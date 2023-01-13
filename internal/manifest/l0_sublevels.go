@@ -1158,6 +1158,14 @@ func (l *L0CompactionFiles) Clone() *L0CompactionFiles {
 	return &oldLcf
 }
 
+// String merely prints the starting address of the first file, if it exists.
+func (l *L0CompactionFiles) String() string {
+	if len(l.Files) > 0 {
+		return fmt.Sprintf("First File Address: %p", &l.Files[0])
+	}
+	return ""
+}
+
 // addFile adds the specified file to the LCF.
 func (l *L0CompactionFiles) addFile(f *FileMetadata) {
 	if l.FilesIncluded[f.L0Index] {

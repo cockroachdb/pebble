@@ -527,6 +527,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			})
 			var result strings.Builder
 			if pc != nil {
+				checkClone(t, pc)
 				c := newCompaction(pc, opts)
 				fmt.Fprintf(&result, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
 				fmt.Fprintf(&result, "L%d: %s\n", pc.startLevel.level, fileNums(pc.startLevel.files))
@@ -1066,7 +1067,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			// If pc points to a new pickedCompaction, a new multi level compaction
 			// was initialized.
 			initMultiLevel := pc != origPC
-
+			checkClone(t, pc)
 			var buf bytes.Buffer
 			for _, cl := range pc.inputs {
 				if cl.files.Empty() {
@@ -1356,4 +1357,22 @@ func fileNums(files manifest.LevelSlice) string {
 	})
 	sort.Strings(ss)
 	return strings.Join(ss, ",")
+}
+
+func checkClone(t *testing.T, pc *pickedCompaction) {
+	pcClone := pc.clone()
+	require.Equal(t, pc.String(), pcClone.String())
+
+	// ensure all input files are in new address
+	for i := range pc.inputs {
+		// Len could be zero if setup inputs rejected a level
+		if pc.inputs[i].files.Len() > 0 {
+			require.NotEqual(t, &pc.inputs[i], &pcClone.inputs[i])
+		}
+	}
+	for i := range pc.l0SublevelInfo {
+		if pc.l0SublevelInfo[i].Len() > 0 {
+			require.NotEqual(t, &pc.l0SublevelInfo[i], &pcClone.l0SublevelInfo[i])
+		}
+	}
 }
