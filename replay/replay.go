@@ -55,14 +55,14 @@ func computeReadAmp(v *manifest.Version) int {
 // PaceByFixedReadAmp to wait on the dbMetricsNotifier condition variable if the
 // read amplification observed is greater than the specified target (refRAmp).
 func waitForReadAmpLE(r *Runner, rAmp int) {
-	r.dbMetricsNotifier.L.Lock()
+	r.dbMetricsCond.L.Lock()
 	m := r.dbMetrics
 	ra := m.ReadAmp()
 	for ra > rAmp {
-		r.dbMetricsNotifier.Wait()
+		r.dbMetricsCond.Wait()
 		ra = r.dbMetrics.ReadAmp()
 	}
-	r.dbMetricsNotifier.L.Unlock()
+	r.dbMetricsCond.L.Unlock()
 }
 
 // Unpaced implements Pacer by applying each new write as soon as possible. It
@@ -187,48 +187,33 @@ type Runner struct {
 	Opts         *pebble.Options
 
 	// Internal state.
-	cancel func()
 
-	// workloadExhausted is a channel that is used by refreshMetrics in order to
-	// receive a single message once all the workload steps have been applied.
-	workloadExhausted chan struct{}
+	d *pebble.DB
+	// dbMetrics and dbMetricsCond work in unison to update the metrics and
+	// notify (broadcast) to any waiting clients that metrics have been updated.
+	dbMetrics     *pebble.Metrics
+	dbMetricsCond sync.Cond
+	cancel        func()
+	err           atomic.Value
+	errgroup      *errgroup.Group
+	readerOpts    sstable.ReaderOptions
+	stagingDir    string
+	steps         chan workloadStep
+	stepsApplied  chan workloadStep
 
-	d        *pebble.DB
-	err      atomic.Value
-	errgroup *errgroup.Group
-	metrics  struct {
+	metrics struct {
 		writeStalls             uint64
 		writeStallsDurationNano uint64
 	}
-	readerOpts sstable.ReaderOptions
-	stagingDir string
-	steps      chan workloadStep
-
-	// compactionEnded is a channel used to notify the refreshMetrics method that
-	// a compaction has finished and hence it can update the metrics.
-	compactionEnded            chan struct{}
-	finishedCompactionNotifier sync.Cond
-
-	// compactionEndedCount keeps track of the cumulative number of compactions.
-	// It is guarded by the finishedCompactionNotifier condition variable lock.
-	compactionEndedCount int64
-
-	// atomicCompactionStartCount keeps track of the cumulative number of
-	// compactions started. It's incremented by a pebble.EventListener's
-	// CompactionStart handler.
-	//
-	// Must be accessed with atomics.
-	atomicCompactionStartCount int64
-
-	// compactionsHaveQuiesced is a channel that is closed once compactions have
-	// quiesced allowing the compactionNotified goroutine to complete.
-	compactionsHaveQuiesced chan struct{}
-
-	// dbMetrics and dbMetricsNotifier work in unison to update the metrics and
-	// notify (broadcast) to any waiting clients that metrics have been updated.
-	dbMetricsNotifier sync.Cond
-	dbMetrics         *pebble.Metrics
-
+	// compactionMu holds state for tracking the number of compactions
+	// started and completed and waking waiting goroutines when a new compaction
+	// completes. See nextCompactionCompletes.
+	compactionMu struct {
+		sync.Mutex
+		ch        chan struct{}
+		started   int64
+		completed int64
+	}
 	workload struct {
 		manifests []string
 		// manifest{Idx,Off} record the starting position of the workload
@@ -263,15 +248,13 @@ func (r *Runner) Run(ctx context.Context) error {
 		return err
 	}
 
-	r.dbMetricsNotifier = sync.Cond{
-		L: &sync.Mutex{},
-	}
-	r.finishedCompactionNotifier = sync.Cond{
+	r.dbMetricsCond = sync.Cond{
 		L: &sync.Mutex{},
 	}
 
 	// Extend the user-provided Options with extensions necessary for replay
 	// mechanics.
+	r.compactionMu.ch = make(chan struct{})
 	r.Opts.AddEventListener(r.eventListener())
 	r.Opts.EnsureDefaults()
 	r.readerOpts = r.Opts.MakeReaderOptions()
@@ -282,74 +265,142 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 
 	r.dbMetrics = r.d.Metrics()
-	r.workloadExhausted = make(chan struct{}, 1)
-	r.compactionEnded = make(chan struct{})
-	r.compactionsHaveQuiesced = make(chan struct{})
-
 	// Use a buffered channel to allow the prepareWorkloadSteps to read ahead,
 	// buffering up to cap(r.steps) steps ahead of the current applied state.
 	// Flushes need to be buffered and ingested sstables need to be copied, so
 	// pipelining this preparation makes it more likely the step will be ready
 	// to apply when the pacer decides to apply it.
 	r.steps = make(chan workloadStep, 5)
+	r.stepsApplied = make(chan workloadStep, 5)
 
 	ctx, r.cancel = context.WithCancel(ctx)
 	r.errgroup, ctx = errgroup.WithContext(ctx)
 	r.errgroup.Go(func() error { return r.prepareWorkloadSteps(ctx) })
 	r.errgroup.Go(func() error { return r.applyWorkloadSteps(ctx) })
 	r.errgroup.Go(func() error { return r.refreshMetrics(ctx) })
-	r.errgroup.Go(func() error { return r.compactionNotified(ctx) })
 	return nil
 }
 
+// refreshMetrics runs in its own goroutine, collecting metrics from the Pebble
+// instance whenever a) a workload step completes, or b) a compaction completes.
+// The Pacer implementations that pace based on read-amplification rely on these
+// refreshed metrics to decide when to allow the workload to proceed.
 func (r *Runner) refreshMetrics(ctx context.Context) error {
-	workloadExhausted := false
-	done := false
-
-	fetchDoneState := func() {
-		r.finishedCompactionNotifier.L.Lock()
-		done = r.compactionEndedCount == atomic.LoadInt64(&r.atomicCompactionStartCount)
-		r.finishedCompactionNotifier.L.Unlock()
-	}
-
-	for !done || !workloadExhausted {
-		select {
-		// r.workloadExhausted receives a single message when the workload is exhausted
-		case <-r.workloadExhausted:
-			workloadExhausted = true
-			fetchDoneState()
-			if done {
-				r.stopCompactionNotifier()
+	var workloadExhausted bool
+	stepsApplied := r.stepsApplied
+	compactionCount, alreadyCompleted, compactionCh := r.nextCompactionCompletes(0)
+	for {
+		if !alreadyCompleted {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-compactionCh:
+				// Fall through to refreshing dbMetrics.
+			case _, ok := <-stepsApplied:
+				if !ok {
+					workloadExhausted = true
+					// Set the [stepsApplied] channel to nil so that we'll never
+					// hit this case again, and we don't busy loop.
+					stepsApplied = nil
+				}
+				// Fall through to refreshing dbMetrics.
 			}
-		case <-ctx.Done():
-			r.stopCompactionNotifier()
-			return ctx.Err()
-		case <-r.compactionEnded:
-			r.dbMetricsNotifier.L.Lock()
-			r.dbMetrics = r.d.Metrics()
-			r.dbMetricsNotifier.Broadcast()
-			r.dbMetricsNotifier.L.Unlock()
+		}
 
-			fetchDoneState()
-			if done && workloadExhausted {
-				r.stopCompactionNotifier()
+		m := r.d.Metrics()
+		r.dbMetricsCond.L.Lock()
+		r.dbMetrics = m
+		r.dbMetricsCond.Broadcast()
+		r.dbMetricsCond.L.Unlock()
+
+		compactionCount, alreadyCompleted, compactionCh = r.nextCompactionCompletes(compactionCount)
+		// Consider whether replaying is complete. There are two necessary
+		// conditions:
+		//
+		//   1. The workload must be exhausted.
+		//   2. Compactions must have quiesced.
+		//
+		// The first condition is simple. The replay tool is responsible for
+		// applying the workload. The goroutine responsible for applying the
+		// workload closes the `stepsApplied` channel after the last step has
+		// been applied, and we'll flip `workloadExhausted` to true.
+		//
+		// The second condition is tricky. The replay tool doesn't control
+		// compactions and doesn't have visibility into whether the compaction
+		// picker is about to schedule a new compaction. We can tell when
+		// compactions are in progress or may be immeninent (eg, flushes in
+		// progress). If it appears that compactions have quiesced, pause for a
+		// fixed duration to see if a new one is scheduled. If not, consider
+		// compactions quiesced.
+		if workloadExhausted && !alreadyCompleted && r.compactionsAppearQuiesced(m) {
+			select {
+			case <-compactionCh:
+				// A new compaction just finished; compactions have not
+				// quiesced.
+				continue
+			case <-time.After(time.Second):
+				// No compactions completed. If it still looks like they've
+				// quiesced according to the metrics, consider them quiesced.
+				if r.compactionsAppearQuiesced(r.d.Metrics()) {
+					return nil
+				}
 			}
 		}
 	}
-	return nil
 }
 
-func (r *Runner) stopCompactionNotifier() {
-	// Close the channel which will cause the compactionNotified goroutine to exit
-	close(r.compactionsHaveQuiesced)
+// compactionsAppearQuiesced returns true if the database may have quiesced, and
+// there likely won't be additional compactions scheduled. Detecting quiescence
+// is a bit fraught: The various signals that Pebble makes available are
+// adjusted at different points in the compaction lifecycle, and database
+// mutexes are dropped and acquired between them. This makes it difficult to
+// reliably identify when compactions quiesce.
+//
+// For example, our call to DB.Metrics() may acquire the DB.mu mutex when a
+// compaction has just successfully completed, but before it's managed to
+// schedule the next compaction (DB.mu is dropped while it attempts to acquire
+// the manifest lock).
+func (r *Runner) compactionsAppearQuiesced(m *pebble.Metrics) bool {
+	r.compactionMu.Lock()
+	defer r.compactionMu.Unlock()
+	if m.Flush.NumInProgress > 0 {
+		return false
+	} else if m.Compact.NumInProgress > 0 && r.compactionMu.started != r.compactionMu.completed {
+		return false
+	}
+	return true
+}
 
-	// Wake up compaction notifier if it is waiting on the
-	// r.finishedCompactionNotifier condition and make sure it doesn't go back
-	// to sleep
-	r.finishedCompactionNotifier.L.Lock()
-	r.compactionEndedCount++
-	r.finishedCompactionNotifier.Broadcast()
-	r.finishedCompactionNotifier.L.Unlock()
+// nextCompactionCompletes may be used to be notified when new compactions
+// complete. The caller is responsible for holding on to a monotonically
+// increasing count representing the number of compactions that have been
+// observed, beginning at zero.
+//
+// The caller passes their current count as an argument. If a new compaction has
+// already completed since their provided count, nextCompactionCompletes returns
+// the new count and a true boolean return value. If a new compaction has not
+// yet completed, it returns a channel that will be closed when the next
+// compaction completes. This scheme allows the caller to select{...},
+// performing some action on every compaction completion.
+func (r *Runner) nextCompactionCompletes(
+	lastObserved int64,
+) (count int64, alreadyOccurred bool, ch chan struct{}) {
+	r.compactionMu.Lock()
+	defer r.compactionMu.Unlock()
+
+	if lastObserved < r.compactionMu.completed {
+		// There has already been another compaction since the last one observed
+		// by this caller. Return immediately.
+		return r.compactionMu.completed, true, nil
+	}
+
+	// The last observed compaction is still the most recent compaction.
+	// Return a channel that the caller can wait on to be notified when the
+	// next compaction occurs.
+	if r.compactionMu.ch == nil {
+		r.compactionMu.ch = make(chan struct{})
+	}
+	return lastObserved, false, r.compactionMu.ch
 }
 
 // Wait waits for the workload replay to complete. Wait returns once the entire
@@ -400,17 +451,14 @@ func (r *Runner) Close() error {
 type workloadStep struct {
 	kind stepKind
 	ve   manifest.VersionEdit
-
 	// a Version describing the state of the LSM *before* the workload was
 	// collected.
 	pv *manifest.Version
 	// a Version describing the state of the LSM when the workload was
 	// collected.
 	v *manifest.Version
-
 	// non-nil for flushStepKind
-	flushBatch *pebble.Batch
-
+	flushBatch     *pebble.Batch
 	tablesToIngest []string
 }
 
@@ -440,13 +488,22 @@ func (r *Runner) eventListener() pebble.EventListener {
 				uint64(time.Since(writeStallBegin).Nanoseconds()))
 		},
 		CompactionBegin: func(_ pebble.CompactionInfo) {
-			atomic.AddInt64(&r.atomicCompactionStartCount, 1)
+			r.compactionMu.Lock()
+			defer r.compactionMu.Unlock()
+			r.compactionMu.started++
 		},
 		CompactionEnd: func(_ pebble.CompactionInfo) {
-			r.finishedCompactionNotifier.L.Lock()
-			defer r.finishedCompactionNotifier.L.Unlock()
-			r.compactionEndedCount++
-			r.finishedCompactionNotifier.Broadcast()
+			// Keep track of the number of compactions that complete and notify
+			// anyone waiting for a compaction to complete. See the function
+			// nextCompactionCompletes for the corresponding receiver side.
+			r.compactionMu.Lock()
+			defer r.compactionMu.Unlock()
+			r.compactionMu.completed++
+			if r.compactionMu.ch != nil {
+				// Signal that a compaction has completed.
+				close(r.compactionMu.ch)
+				r.compactionMu.ch = nil
+			}
 		},
 	}
 	l.EnsureDefaults(nil)
@@ -465,12 +522,12 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 		case step, ok = <-r.steps:
 			if !ok {
 				// Exhausted the workload. Exit.
-				r.workloadExhausted <- struct{}{}
+				close(r.stepsApplied)
 				return nil
 			}
 		}
 
-		// TODO(leon,jackson): Make sure to sum the duration statistics
+		// TODO(leon,jackson): Make sure to sum the duration statistics.
 		r.Pacer.pace(r, step)
 
 		switch step.kind {
@@ -478,16 +535,18 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 			if err := step.flushBatch.Commit(&pebble.WriteOptions{Sync: false}); err != nil {
 				return err
 			}
+			r.stepsApplied <- step
 		case ingestStepKind:
 			if err := r.d.Ingest(step.tablesToIngest); err != nil {
 				return err
 			}
-
+			r.stepsApplied <- step
 		case compactionStepKind:
-			// TODO(jackson,leon): Apply the step to runner state.
+			// No-op.
+			// TODO(jackson): Should we elide this earlier?
+		default:
+			panic("unreachable")
 		}
-
-		var _ = step
 	}
 }
 
@@ -667,24 +726,6 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 		}
 	}
 	return nil
-}
-
-func (r *Runner) compactionNotified(ctx context.Context) error {
-	r.finishedCompactionNotifier.L.Lock()
-	for {
-		if r.compactionEndedCount < atomic.LoadInt64(&r.atomicCompactionStartCount) {
-			r.finishedCompactionNotifier.Wait()
-		}
-		r.finishedCompactionNotifier.L.Unlock()
-		select {
-		case <-r.compactionsHaveQuiesced:
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		case r.compactionEnded <- struct{}{}:
-		}
-		r.finishedCompactionNotifier.L.Lock()
-	}
 }
 
 // findWorkloadFiles finds all manifests and tables in the provided path on fs.

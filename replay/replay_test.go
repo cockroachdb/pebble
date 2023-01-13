@@ -6,11 +6,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datatest"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/vfs"
@@ -435,4 +439,112 @@ func listFiles(t *testing.T, fs vfs.FS, w io.Writer, name string) {
 	for _, dirent := range ls {
 		fmt.Fprintf(w, "  %s\n", dirent)
 	}
+}
+
+// TestCompactionsQuiesce replays a workload that produces a nontrivial number of
+// compactions several times. It's intended to exercise Waits termination, which
+// is dependent on compactions quiescing.
+func TestCompactionsQuiesce(t *testing.T) {
+	const replayCount = 1
+	workloadFS := getHeavyWorkload(t)
+	fs := vfs.NewMem()
+	var atomicDone [replayCount]uint32
+	for i := 0; i < replayCount; i++ {
+		func(i int) {
+			runDir := fmt.Sprintf("run%d", i)
+			require.NoError(t, fs.MkdirAll(runDir, os.ModePerm))
+			r := Runner{
+				RunDir:       runDir,
+				WorkloadFS:   workloadFS,
+				WorkloadPath: "workload",
+				Pacer:        Unpaced{},
+				Opts: &pebble.Options{
+					Comparer:           testkeys.Comparer,
+					FS:                 fs,
+					FormatMajorVersion: pebble.FormatNewest,
+					LBaseMaxBytes:      1,
+				},
+			}
+			r.Opts.Experimental.LevelMultiplier = 2
+			require.NoError(t, r.Run(context.Background()))
+			defer r.Close()
+
+			var m Metrics
+			var err error
+			go func() {
+				m, err = r.Wait()
+				atomic.StoreUint32(&atomicDone[i], 1)
+			}()
+
+			wait := 30 * time.Second
+			if invariants.Enabled {
+				wait = time.Minute
+			}
+
+			// The above call to [Wait] should eventually return. [Wait] blocks
+			// until the workload has replayed AND compactions have quiesced. A
+			// bug in either could prevent [Wait] from ever returning.
+			require.Eventually(t, func() bool { return atomic.LoadUint32(&atomicDone[i]) == 1 },
+				wait, time.Millisecond, "(*replay.Runner).Wait didn't terminate")
+			require.NoError(t, err)
+			// Require at least 5 compactions.
+			require.Greater(t, m.Final.Compact.Count, int64(5))
+			require.Equal(t, int64(0), m.Final.Compact.NumInProgress)
+			for l := 0; l < len(m.Final.Levels)-1; l++ {
+				require.Less(t, m.Final.Levels[l].Score, 1.0)
+			}
+		}(i)
+	}
+}
+
+// getHeavyWorkload returns a FS containing a workload in the `workload`
+// directory that flushes enough randomly generated keys that replaying it
+// should generate a non-trivial number of compactions.
+func getHeavyWorkload(t *testing.T) vfs.FS {
+	heavyWorkload.Once.Do(func() {
+		t.Run("buildHeavyWorkload", func(t *testing.T) {
+			heavyWorkload.fs = buildHeavyWorkload(t)
+		})
+	})
+	return heavyWorkload.fs
+}
+
+var heavyWorkload struct {
+	sync.Once
+	fs vfs.FS
+}
+
+func buildHeavyWorkload(t *testing.T) vfs.FS {
+	o := &pebble.Options{
+		Comparer:           testkeys.Comparer,
+		FS:                 vfs.NewMem(),
+		FormatMajorVersion: pebble.FormatNewest,
+	}
+	wc := NewWorkloadCollector("")
+	wc.Attach(o)
+	d, err := pebble.Open("", o)
+	require.NoError(t, err)
+
+	destFS := vfs.NewMem()
+	require.NoError(t, destFS.MkdirAll("workload", os.ModePerm))
+	wc.Start(destFS, "workload")
+
+	ks := testkeys.Alpha(5)
+	var bufKey = make([]byte, ks.MaxLen())
+	var bufVal [512]byte
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 100; i++ {
+		b := d.NewBatch()
+		for j := 0; j < 1000; j++ {
+			rng.Read(bufVal[:])
+			n := testkeys.WriteKey(bufKey[:], ks, rng.Intn(ks.Count()))
+			require.NoError(t, b.Set(bufKey[:n], bufVal[:], pebble.NoSync))
+		}
+		require.NoError(t, b.Commit(pebble.NoSync))
+		require.NoError(t, d.Flush())
+	}
+	wc.Stop()
+
+	defer d.Close()
+	return destFS
 }

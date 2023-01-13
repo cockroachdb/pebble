@@ -1650,6 +1650,9 @@ func (d *DB) Metrics() *Metrics {
 		d.opts.Logger.Infof("metrics error: %s", err)
 	}
 	metrics.Flush.WriteThroughput = d.mu.compact.flushWriteThroughput
+	if d.mu.compact.flushing {
+		metrics.Flush.NumInProgress = 1
+	}
 
 	d.mu.Unlock()
 
