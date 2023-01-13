@@ -25,7 +25,7 @@ import (
 
 func initReplayCmd() *cobra.Command {
 	c := replayConfig{
-		pacer:            pacerFlag{Pacer: replay.Unpaced{}},
+		pacer:            pacerFlag{Pacer: replay.PaceByFixedReadAmp(10)},
 		runDir:           "",
 		count:            1,
 		streamLogs:       false,
