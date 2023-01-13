@@ -411,11 +411,9 @@ func (r *Runner) Wait() (Metrics, error) {
 		err = storedErr.(error)
 	}
 	pm := r.d.Metrics()
-	var total pebble.LevelMetrics
+	total := pm.Total()
 	var ingestBytesWeighted uint64
 	for l := 0; l < len(pm.Levels); l++ {
-		total.Add(&pm.Levels[l])
-		total.Sublevels += pm.Levels[l].Sublevels
 		ingestBytesWeighted += pm.Levels[l].BytesIngested * uint64(len(pm.Levels)-l-1)
 	}
 
