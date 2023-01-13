@@ -191,7 +191,7 @@ func newTableCacheContainerTest(
 		opts.Cache = tc.cache
 	}
 
-	c := newTableCacheContainer(tc, opts.Cache.NewID(), dirname, fs, opts, tableCacheTestCacheSize)
+	c := newTableCacheContainer(tc, opts.Cache.NewID(), dirname, fs, opts, tableCacheTestCacheSize, nil)
 	return c, fs, nil
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/record"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -99,7 +100,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			if d.tableCache != nil {
 				_ = d.tableCache.close()
 			}
-
+			if d.blobFileReaderCache != nil {
+				d.blobFileReaderCache.Close()
+			}
 			for _, mem := range d.mu.mem.queue {
 				switch t := mem.flushable.(type) {
 				case *memTable:
@@ -113,8 +116,19 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 	}()
 
+	d.blobFileReaderCache = sstable.NewBlobFileReaderCache(sstable.BlobFileReaderCacheOptions{
+		Dirname: dirname,
+		FS:      opts.FS,
+		ReaderOptions: sstable.BlobFileReaderOptions{
+			Cache:   d.opts.Cache,
+			CacheID: d.cacheID,
+		},
+		MaxReaders: 10000,
+	})
+
 	tableCacheSize := TableCacheSize(opts.MaxOpenFiles)
-	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
+	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, dirname, opts.FS, d.opts, tableCacheSize,
+		d.blobFileReaderCache)
 	d.newIters = d.tableCache.newIters
 	d.tableNewRangeKeyIter = d.tableCache.newRangeKeyIter
 
@@ -712,11 +726,12 @@ func (d *DB) replayWAL(
 	if !d.opts.ReadOnly {
 		c := newFlush(d.opts, d.mu.versions.currentVersion(),
 			1 /* base level */, toFlush)
-		newVE, _, err := d.runCompaction(jobID, c)
+		newVE, _, _, err := d.runCompaction(jobID, c)
 		if err != nil {
 			return 0, err
 		}
 		ve.NewFiles = append(ve.NewFiles, newVE.NewFiles...)
+		ve.NewBlobFiles = append(ve.NewBlobFiles, newVE.NewBlobFiles...)
 		for i := range toFlush {
 			toFlush[i].readerUnref()
 		}

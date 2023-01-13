@@ -216,6 +216,8 @@ type Writer struct {
 	shortAttributeExtractor   base.ShortAttributeExtractor
 	requiredInPlaceValueBound UserKeyPrefixBound
 	valueBlockWriter          *valueBlockWriter
+
+	blobReferenceValueSize uint64
 }
 
 type pointKeyInfo struct {
@@ -683,7 +685,8 @@ func (w *Writer) Set(key, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
-	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindSet), value)
+	return w.addPoint(
+		base.MakeInternalKey(key, 0, InternalKeyKindSet), value, AddBlobReferenceOptions{})
 }
 
 // Delete deletes the value for the given key. The sequence number is set to
@@ -695,7 +698,8 @@ func (w *Writer) Delete(key []byte) error {
 	if w.err != nil {
 		return w.err
 	}
-	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindDelete), nil)
+	return w.addPoint(
+		base.MakeInternalKey(key, 0, InternalKeyKindDelete), nil, AddBlobReferenceOptions{})
 }
 
 // DeleteRange deletes all of the keys (and values) in the range [start,end)
@@ -721,7 +725,8 @@ func (w *Writer) Merge(key, value []byte) error {
 	if w.err != nil {
 		return w.err
 	}
-	return w.addPoint(base.MakeInternalKey(key, 0, InternalKeyKindMerge), value)
+	return w.addPoint(
+		base.MakeInternalKey(key, 0, InternalKeyKindMerge), value, AddBlobReferenceOptions{})
 }
 
 // Add adds a key/value pair to the table being written. For a given Writer,
@@ -731,6 +736,14 @@ func (w *Writer) Merge(key, value []byte) error {
 // point entries. Additionally, range deletion tombstones must be fragmented
 // (i.e. by keyspan.Fragmenter).
 func (w *Writer) Add(key InternalKey, value []byte) error {
+	return w.AddWithBlobReferenceOptions(key, value, AddBlobReferenceOptions{})
+}
+
+// AddWithBlobReferenceOptions is like Add, but optionally the value being
+// added could be a blob reference.
+func (w *Writer) AddWithBlobReferenceOptions(
+	key InternalKey, value []byte, options AddBlobReferenceOptions,
+) error {
 	if w.err != nil {
 		return w.err
 	}
@@ -745,7 +758,7 @@ func (w *Writer) Add(key InternalKey, value []byte) error {
 			"pebble: range keys must be added via one of the RangeKey* functions")
 		return w.err
 	}
-	return w.addPoint(key, value)
+	return w.addPoint(key, value, options)
 }
 
 func (w *Writer) makeAddPointDecisionV2(key InternalKey) error {
@@ -772,6 +785,7 @@ func (w *Writer) makeAddPointDecisionV2(key InternalKey) error {
 	return nil
 }
 
+// valueLen is only used to compute the output value writeToValueBlock.
 func (w *Writer) makeAddPointDecisionV3(
 	key InternalKey, valueLen int,
 ) (setHasSamePrefix bool, writeToValueBlock bool, err error) {
@@ -845,7 +859,22 @@ func (w *Writer) makeAddPointDecisionV3(
 	return setHasSamePrefix, considerWriteToValueBlock, nil
 }
 
-func (w *Writer) addPoint(key InternalKey, value []byte) error {
+// TODO(sumeer): we currently do not support value blocks or values in blob
+// files for SETWITHDEL. This is acceptable for CockroachDB since neither
+// intents or raft log entries should be in value blocks or blob files. But
+// this is not well documented. Fix documentation.
+
+// AddBlobReferenceOptions is used when adding a value that could be a blob
+// reference.
+type AddBlobReferenceOptions struct {
+	IsBlobReference bool
+	base.ShortAttribute
+	BlobValueSize int
+}
+
+func (w *Writer) addPoint(
+	key InternalKey, value []byte, addBlobReferenceOptions AddBlobReferenceOptions,
+) error {
 	var err error
 	var setHasSameKeyPrefix, writeToValueBlock, addPrefixToValueStoredWithKey bool
 	maxSharedKeyLen := len(key.UserKey)
@@ -856,7 +885,16 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		maxSharedKeyLen = w.lastPointKeyInfo.prefixLen
 		setHasSameKeyPrefix, writeToValueBlock, err = w.makeAddPointDecisionV3(key, len(value))
 		addPrefixToValueStoredWithKey = base.TrailerKind(key.Trailer) == InternalKeyKindSet
+		if writeToValueBlock && addBlobReferenceOptions.IsBlobReference {
+			writeToValueBlock = false
+		}
+		if addBlobReferenceOptions.IsBlobReference {
+			w.blobReferenceValueSize += uint64(addBlobReferenceOptions.BlobValueSize)
+		}
 	} else {
+		if addBlobReferenceOptions.IsBlobReference {
+			panic("cannot provide blob references to a non-v3 sstable")
+		}
 		err = w.makeAddPointDecisionV2(key)
 	}
 	if err != nil {
@@ -891,7 +929,11 @@ func (w *Writer) addPoint(key InternalKey, value []byte) error {
 		if addPrefixToValueStoredWithKey {
 			valueStoredWithKeyLen++
 		}
-		prefix = makePrefixForInPlaceValue(setHasSameKeyPrefix)
+		if addBlobReferenceOptions.IsBlobReference {
+			prefix = makePrefixForBlobValueHandle(setHasSameKeyPrefix, addBlobReferenceOptions.ShortAttribute)
+		} else {
+			prefix = makePrefixForInPlaceValue(setHasSameKeyPrefix)
+		}
 	}
 
 	if err := w.maybeFlush(key, valueStoredWithKeyLen); err != nil {
@@ -1798,6 +1840,7 @@ func (w *Writer) Close() (err error) {
 		}
 	}
 	w.props.DataSize = w.meta.Size
+	w.props.RawValueInBlobFilesSize = w.blobReferenceValueSize
 
 	// Write the filter block.
 	var metaindex rawBlockWriter
@@ -2046,6 +2089,13 @@ func (w *Writer) EstimatedSize() uint64 {
 	return w.coordination.sizeEstimate.size() +
 		uint64(w.dataBlockBuf.dataBlock.estimatedSize()) +
 		w.indexBlock.estimatedSize()
+}
+
+// EstimatedSizeWithBlobReferences ...
+//
+// TODO(sumeer): remove once we fix how current sst size is estimated.
+func (w *Writer) EstimatedSizeWithBlobReferences() uint64 {
+	return w.EstimatedSize() + w.blobReferenceValueSize
 }
 
 // Metadata returns the metadata for the finished sstable. Only valid to call

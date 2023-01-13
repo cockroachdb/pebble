@@ -27,6 +27,8 @@ const (
 	// supporting value blocks adds a 1 byte prefix to each value. After
 	// thorough experimentation and some production experience, this may change.
 	TableFormatPebblev3 // Value blocks.
+	// TODO(sumeer): introduce new format for sstables that can refer to blob
+	// files instead of hacking it into TableFormatPebbleV3.
 
 	TableFormatMax = TableFormatPebblev3
 )

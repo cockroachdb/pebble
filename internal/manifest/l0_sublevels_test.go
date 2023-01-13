@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/record"
@@ -50,8 +51,13 @@ func readManifest(filename string) (*Version, error) {
 		if err := bve.Accumulate(&ve); err != nil {
 			return nil, err
 		}
-		if v, _, err = bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000); err != nil {
+		var blobLevels BlobLevels
+		var zbs map[base.FileNum]uint64
+		if v, _, zbs, err = bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000, &blobLevels); err != nil {
 			return nil, err
+		}
+		if len(zbs) > 0 {
+			return nil, errors.Errorf("unexpected zombie blobs")
 		}
 	}
 	return v, nil

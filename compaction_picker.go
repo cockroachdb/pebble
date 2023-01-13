@@ -181,6 +181,11 @@ type pickedCompaction struct {
 	// maxReadCompaction bytes, then we don't proceed with the compaction.
 	maxReadCompactionBytes uint64
 
+	// TODO(sumeer): change these when changing the Options. See commentary
+	// there.
+	maxOutputFileSizeIncludingBlobValueSize uint64
+	maxBlobFileSizeBasedOnBlobValueSize     uint64
+
 	// The boundaries of the input data.
 	smallest InternalKey
 	largest  InternalKey
@@ -216,13 +221,15 @@ func newPickedCompaction(
 	}
 
 	pc := &pickedCompaction{
-		cmp:                    opts.Comparer.Compare,
-		version:                cur,
-		inputs:                 []compactionLevel{{level: startLevel}, {level: outputLevel}},
-		adjustedOutputLevel:    adjustedOutputLevel,
-		maxOutputFileSize:      uint64(opts.Level(adjustedOutputLevel).TargetFileSize),
-		maxOverlapBytes:        maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
-		maxReadCompactionBytes: maxReadCompactionBytes(opts, adjustedOutputLevel),
+		cmp:                                     opts.Comparer.Compare,
+		version:                                 cur,
+		inputs:                                  []compactionLevel{{level: startLevel}, {level: outputLevel}},
+		adjustedOutputLevel:                     adjustedOutputLevel,
+		maxOutputFileSize:                       uint64(opts.Level(adjustedOutputLevel).TargetFileSize),
+		maxOverlapBytes:                         maxGrandparentOverlapBytes(opts, adjustedOutputLevel),
+		maxReadCompactionBytes:                  maxReadCompactionBytes(opts, adjustedOutputLevel),
+		maxOutputFileSizeIncludingBlobValueSize: uint64(opts.Level(adjustedOutputLevel).TargetFileSizeIncludingBlobValueSize),
+		maxBlobFileSizeBasedOnBlobValueSize:     uint64(opts.Level(adjustedOutputLevel).TargetBlobFileSizeBasedOnBlobValueSize),
 	}
 	pc.startLevel = &pc.inputs[0]
 	pc.outputLevel = &pc.inputs[1]
@@ -582,7 +589,7 @@ type candidateLevelInfo struct {
 // compensatedSize returns f's file size, inflated according to compaction
 // priorities.
 func compensatedSize(f *fileMetadata, pointTombstoneWeight float64) uint64 {
-	sz := f.Size
+	sz := f.SizePlusBlobBytes()
 	// Add in the estimate of disk space that may be reclaimed by compacting
 	// the file's tombstones.
 	sz += uint64(float64(f.Stats.PointDeletionsBytesEstimate) * pointTombstoneWeight)
@@ -844,7 +851,7 @@ func calculateSizeAdjust(
 		c := &inProgressCompactions[i]
 
 		for _, input := range c.inputs {
-			real := int64(input.files.SizeSum())
+			real := int64(input.files.SizePlusBlobBytesSum())
 			compensated := int64(totalCompensatedSize(input.files.Iter(), pointTombstoneWeight))
 
 			if input.level != c.outputLevel {
@@ -1001,7 +1008,7 @@ func (p *compactionPickerByScore) pickFile(
 
 		compacting := f.IsCompacting()
 		for outputFile != nil && base.InternalCompare(cmp, outputFile.Smallest, f.Largest) < 0 {
-			overlappingBytes += outputFile.Size
+			overlappingBytes += outputFile.SizePlusBlobBytes()
 			compacting = compacting || outputFile.IsCompacting()
 
 			// For files in the bottommost level of the LSM, the

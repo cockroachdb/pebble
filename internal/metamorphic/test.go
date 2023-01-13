@@ -86,6 +86,10 @@ func (t *test) init(h *history, dir string, testOpts *testOptions) error {
 		t.opts.Logger.Infof("background error: %s", err)
 		maybeExit(err)
 	}
+	t.opts.EventListener.BlobFileDeleted = func(info pebble.BlobFileDeleteInfo) {
+		t.opts.Logger.Infof("%s", info)
+		maybeExit(info.Err)
+	}
 	t.opts.EventListener.CompactionEnd = func(info pebble.CompactionInfo) {
 		t.opts.Logger.Infof("%s", info)
 		maybeExit(info.Err)

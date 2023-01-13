@@ -193,14 +193,7 @@ func createExternalPointIter(it *Iterator) (internalIterator, error) {
 				pointIter    internalIterator
 				err          error
 			)
-			pointIter, err = r.NewIterWithBlockPropertyFilters(
-				it.opts.LowerBound,
-				it.opts.UpperBound,
-				nil,   /* BlockPropertiesFilterer */
-				false, /* useFilterBlock */
-				&it.stats.InternalStats,
-				sstable.TrivialReaderProvider{Reader: r},
-			)
+			pointIter, err = r.NewIterWithBlockPropertyFilters(it.opts.LowerBound, it.opts.UpperBound, nil, false, &it.stats.InternalStats, sstable.TrivialReaderProvider{Reader: r}, nil)
 			if err != nil {
 				return nil, err
 			}

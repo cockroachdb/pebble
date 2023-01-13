@@ -425,7 +425,7 @@ func RewriteKeySuffixesViaWriter(
 		if err != nil {
 			return nil, err
 		}
-		if w.addPoint(scratch, val); err != nil {
+		if w.addPoint(scratch, val, AddBlobReferenceOptions{}); err != nil {
 			return nil, err
 		}
 		k, v = i.Next()

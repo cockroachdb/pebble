@@ -62,7 +62,7 @@ func TestValuePrefix(t *testing.T) {
 			} else {
 				prefix = makePrefixForInPlaceValue(tc.setHasSamePrefix)
 			}
-			require.Equal(t, tc.isHandle, isValueHandle(prefix))
+			require.Equal(t, tc.isHandle, isValueBlockHandle(prefix))
 			require.Equal(t, tc.setHasSamePrefix, setHasSamePrefix(prefix))
 			if tc.isHandle {
 				require.Equal(t, tc.attr, getShortAttribute(prefix))
@@ -87,7 +87,7 @@ func TestValueBlocksIndexHandleEncodeDecode(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%+v", tc), func(t *testing.T) {
 			n := encodeValueBlocksIndexHandle(buf[:], tc)
-			vbih, n2, err := decodeValueBlocksIndexHandle(buf[:n])
+			vbih, n2, err := decodeValueBlocksIndexHandle(buf[:n], true)
 			require.NoError(t, err)
 			require.Equal(t, n, n2)
 			require.Equal(t, tc, vbih)

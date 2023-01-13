@@ -31,24 +31,25 @@ lsm
 
 metrics
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
     WAL         1     0 B       -     0 B       -       -       -       -     0 B       -       -       -     0.0
-      0         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         1   833 B       -     0 B   833 B       1     0 B       0     0 B       0     0 B       1     0.0
-  total         1   833 B       -   833 B   833 B       1     0 B       0   833 B       0     0 B       1     1.0
+      0     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     1(    0)  833 B(   0 B 0.00)       -     0 B   833 B       1   0 B       0    0 B(   0 B)       0     0 B       1     0.0
+  total     1(    0)  833 B(   0 B 0.00)       -   833 B   833 B       1   0 B       0  833 B(   0 B)       0     0 B       1     1.0
   flush         0
 compact         0     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         0     0 B
    ztbl         0     0 B
+  zblob         0     0 B
  bcache         8   1.5 K   42.9%  (score == hit-rate)
- tcache         1   712 B   50.0%  (score == hit-rate)
+ tcache         1   720 B   50.0%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)
  titers         0
  filter         -       -    0.0%  (score == utility)

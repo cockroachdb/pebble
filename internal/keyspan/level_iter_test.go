@@ -303,8 +303,13 @@ func TestLevelIterEquivalence(t *testing.T) {
 			}
 			// Add all the fileMetadatas to L6.
 			b := &manifest.BulkVersionEdit{}
-			b.Added[6] = metas
-			v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
+			var blobLevels manifest.BlobLevels
+			b.Added[6] = map[base.FileNum]*manifest.FileMetadata{}
+			for _, f := range metas {
+				b.Added[6][f.FileNum] = f
+			}
+			v, _, _, err := b.Apply(
+				nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0, &blobLevels)
 			require.NoError(t, err)
 			levelIter.Init(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 0, manifest.KeyTypeRange)
 			levelIters = append(levelIters, &levelIter)
@@ -433,8 +438,12 @@ func TestLevelIter(t *testing.T) {
 					return NewIter(base.DefaultComparer.Compare, spans), nil
 				}
 				b := &manifest.BulkVersionEdit{}
-				b.Added[6] = metas
-				v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
+				var blobLevels manifest.BlobLevels
+				b.Added[6] = map[base.FileNum]*manifest.FileMetadata{}
+				for _, f := range metas {
+					b.Added[6][f.FileNum] = f
+				}
+				v, _, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0, &blobLevels)
 				require.NoError(t, err)
 				iter = newLevelIter(SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters, v.Levels[6].Iter(), 6, keyType)
 				extraInfo = func() string {

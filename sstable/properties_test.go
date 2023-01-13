@@ -96,13 +96,14 @@ func TestPropertiesSave(t *testing.T) {
 		PropertyCollectorNames:   "prefix collector names",
 		RawKeySize:               25,
 		RawValueSize:             26,
-		TopLevelIndexSize:        27,
+		RawValueInBlobFilesSize:  27,
+		TopLevelIndexSize:        28,
 		WholeKeyFiltering:        true,
 		UserProperties: map[string]string{
 			"user-prop-a": "1",
 			"user-prop-b": "2",
 		},
-		ValueBlocksSize: 28,
+		ValueBlocksSize: 29,
 	}
 
 	check1 := func(expected *Properties) {

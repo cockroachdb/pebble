@@ -37,7 +37,7 @@ var _ NeedsFileContents = ArchiveCleaner{}
 // Clean archives file.
 func (ArchiveCleaner) Clean(fs vfs.FS, fileType FileType, path string) error {
 	switch fileType {
-	case FileTypeLog, FileTypeManifest, FileTypeTable:
+	case FileTypeLog, FileTypeManifest, FileTypeTable, FileTypeBlob:
 		destDir := fs.PathJoin(fs.PathDir(path), "archive")
 
 		if err := fs.MkdirAll(destDir, 0755); err != nil {

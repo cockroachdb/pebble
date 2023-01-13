@@ -389,7 +389,10 @@ func TestVersionEditApply(t *testing.T) {
 				if err := bve.Accumulate(ve); err != nil {
 					return err.Error()
 				}
-				newv, zombies, err := bve.Apply(v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20, 32000)
+				var blobLevels BlobLevels
+				newv, zombies, _, err := bve.Apply(
+					v, base.DefaultComparer.Compare, base.DefaultFormatter, 10<<20,
+					32000, &blobLevels)
 				if err != nil {
 					return err.Error()
 				}

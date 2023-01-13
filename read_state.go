@@ -45,7 +45,7 @@ func (s *readState) unref() {
 
 	// The last reference to the readState was released. Check to see if there
 	// are new obsolete tables to delete.
-	s.db.maybeScheduleObsoleteTableDeletion()
+	s.db.maybeScheduleObsoleteTableAndBlobDeletion()
 }
 
 // unrefLocked removes a reference to the readState. If this was the last

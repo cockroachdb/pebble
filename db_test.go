@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -1387,4 +1388,172 @@ func verifyGetNotFound(t *testing.T, r Reader, key []byte) {
 	if err != base.ErrNotFound {
 		t.Fatalf("expected nil, but got %s", val)
 	}
+}
+
+/*
+
+depthThresholdOverall = infinity: No blob files get rewritten -- this is the
+lower bound on write amp (2.3)
+Blob file count is high and locality in blobValueReader.vbrs is very low (hit rate of 1.5%)
+
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1   3.6 M       -   6.0 G       -       -       -       -   6.0 G       -       -       -     1.0
+      0    12(    0)  420 K(   0 B 0.00)    0.47   6.0 G     0 B       0   0 B       0  162 M( 5.9 G)   4.5 K     0 B       2     1.0
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     6(    0)  573 K(   0 B 0.00)    1.22   129 M     0 B       0   0 B       0  193 M(   0 B)   2.1 K   193 M       1     1.5
+      4    29(    0)  3.8 M(   0 B 0.00)    1.27   156 M     0 B       0 2.6 M      56  475 M(   0 B)   3.6 K   475 M       1     3.0
+      5    89(    0)   22 M(   0 B 0.00)    1.22   156 M     0 B       0 1.4 M      44  616 M(   0 B)   2.9 K   615 M       1     4.0
+      6   196( 4508)  117 M( 5.9 G 0.84)       -   136 M     0 B       0   0 B       0  520 M(   0 B)   1.1 K   539 M       1     3.8
+  total   332( 4508)  143 M( 5.9 G 1.00)       -   6.0 G     0 B       0 4.0 M     100  7.9 G( 5.9 G)    14 K   1.8 G       6     2.3
+  flush       796
+compact      3187   993 K   272 K       1          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype      3087       0       0     100       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+
+No blob files: write amp of 15.1
+
+__level________count________________size___score______in__ingest(sz_cnt)______move(sz_sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1   3.6 M       -   6.0 G       -       -       -       -   6.0 G       -       -       -     1.0
+      0    28(    0)   24 M(   0 B 0.00)    0.78   6.0 G     0 B       0   0 B(  0 B)       0  6.1 G(   0 B)   7.2 K     0 B       3     1.0
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B(  0 B)       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B(  0 B)       0    0 B(   0 B)       0     0 B       0     0.0
+      3    10(    0)   19 M(   0 B 0.00)    1.30   5.0 G     0 B       0   0 B(  0 B)       0  7.5 G(   0 B)   4.1 K   7.5 G       1     1.5
+      4    41(    0)  125 M(   0 B 0.00)    1.26   5.8 G     0 B       0  76 M(  0 B)      75   19 G(   0 B)   6.6 K    19 G       1     3.3
+      5   123(    0)  787 M(   0 B 0.00)    1.24   5.9 G     0 B       0  22 M(  0 B)      62   26 G(   0 B)   4.8 K    26 G       1     4.5
+      6   371(    0)  5.1 G(   0 B 0.00)       -   5.1 G     0 B       0   0 B(  0 B)       0   25 G(   0 B)   2.3 K    25 G       1     4.9
+  total   573(    0)  6.1 G(   0 B 0.00)       -   6.0 G     0 B       0  98 M(  0 B)     137   90 G(   0 B)    25 K    78 G       7    15.1
+  flush       796
+compact      5850   1.9 G   5.0 M       1          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype      5713       0       0     137       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+
+depthThresholdOverall = 10: hit rate in blobValueReader.vbrs of 96.59%. write
+amp of 6.8. Overall file count is reasonable.
+
+__level________count________________size___score______in__ingest(sz_cnt)______move(sz_sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         2    11 M       -   6.0 G       -       -       -       -   6.0 G       -       -       -     1.0
+      0     0(    0)    0 B(   0 B 0.00)    0.00   6.0 G     0 B       0   0 B(  0 B)       0  162 M( 5.9 G)   4.6 K     0 B       0     1.0
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B(  0 B)       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B(  0 B)       0    0 B(   0 B)       0     0 B       0     0.0
+      3     6(    0)  524 K(   0 B 0.00)    1.17   129 M     0 B       0   0 B(  0 B)       0  187 M( 853 M)   2.0 K   188 M       1     8.1
+      4    27(    0)  3.5 M(   0 B 0.00)    1.25   156 M     0 B       0 2.0 M(  0 B)      39  460 M( 7.7 G)   3.7 K   465 M       1    53.9
+      5    83(    0)   20 M(   0 B 0.00)    1.19   150 M     0 B       0 1.3 M(  0 B)      29  584 M( 9.3 G)   2.8 K   588 M       1    67.0
+      6   198(  541)  108 M( 7.0 G 0.71)       -   129 M     0 B       0   0 B(  0 B)       0  475 M( 9.1 G)   1.1 K   496 M       1    75.5
+  total   314(  541)  132 M( 7.0 G 0.84)       -   6.0 G     0 B       0 3.3 M(  0 B)      68  7.8 G(  33 G)    14 K   1.7 G       4     6.8
+  flush       795
+compact      3124     0 B   7.9 M       1          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype      3056       0       0      68       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+
+ */
+func TestWriteAmpWithBlobs(t *testing.T) {
+	t.Skip()
+	lel := MakeLoggingEventListener(nil)
+	lel.BlobFileDeleted = nil
+	lel.BlobFileCreated = nil
+	lel.TableDeleted = nil
+	lel.TableCreated = nil
+	lel.WALDeleted = nil
+	lel.WALCreated = nil
+	lel.WriteStallBegin = nil
+	lel.WriteStallEnd = nil
+	opts := &Options{
+		FS:                    vfs.NewMem(),
+		EventListener: &lel,
+		MemTableSize: 8 << 20,
+		MemTableStopWritesThreshold: 2,
+		L0StopWritesThreshold: 4,
+		LBaseMaxBytes: 10 << 20,
+		FormatMajorVersion: FormatNewest,
+		// Try to ensure compactions keep up.
+		MaxConcurrentCompactions: func() int { return 6 },
+	}
+	// Ditto
+	opts.Experimental.L0CompactionConcurrency = 1
+	opts.Experimental.CompactionDebtConcurrency = 1
+
+	opts.Experimental.BlobValueSizeThreshold = 1
+	opts.Experimental.EnableValueBlocks = func() bool { return true }
+	opts.Levels = make([]LevelOptions, numLevels)
+	opts.Levels[0] = LevelOptions{
+		TargetFileSize:                         1 << 20,
+		TargetFileSizeIncludingBlobValueSize:   2 << 20,
+		// I think I increased this to prevent blob rollover before
+		// TargetFileSizeIncludingBlobValueSize and then a small blob file getting
+		// created.
+		TargetBlobFileSizeBasedOnBlobValueSize: (3 << 20)/2,
+	}
+	for i := 1; i < numLevels; i++ {
+		opts.Levels[i] = opts.Levels[i-1]
+		opts.Levels[i].TargetFileSize *= 2
+		opts.Levels[i].TargetFileSizeIncludingBlobValueSize *= 2
+		opts.Levels[i].TargetBlobFileSizeBasedOnBlobValueSize *= 2
+	}
+	d, err := Open("", opts)
+	require.NoError(t, err)
+
+	rng := rand.New(rand.NewSource(123))
+
+	numKeysWritten := 0
+	var buf [1000]byte
+	// 10GB is approx 10M kv pairs
+	writeBatchFunc := func() {
+		b := d.NewBatch()
+		for i := 0; i < 100; i++ {
+			k := rng.Uint64()
+			key := fmt.Sprintf("%8d", k)
+			n, err := rng.Read(buf[:])
+			require.Equal(t, len(buf), n)
+			require.NoError(t, err)
+			b.Set([]byte(key), buf[:], nil)
+			numKeysWritten++
+		}
+		require.NoError(t, d.Apply(b, nil))
+
+	}
+	waitForLowScore := func(scoreThreshold float64) {
+		done := false
+		for !done {
+			m := d.Metrics()
+			done = true
+			for i := range m.Levels {
+				if m.Levels[i].Score > scoreThreshold {
+					time.Sleep(time.Second)
+					done = false
+					break
+				}
+			}
+		}
+	}
+	for numKeysWritten < 6 << 20 {
+		before := numKeysWritten/(256<<10)
+		writeBatchFunc()
+		after := numKeysWritten/(256<<10)
+		if before != after {
+			metrics := d.Metrics()
+			fmt.Printf("keys: %d\n%s\n", numKeysWritten, metrics.String())
+			fmt.Printf("\nblobs\n%s\n", d.BlobsDebugString())
+			waitForLowScore(2.0)
+		}
+	}
+	for i := 0; i < numLevels; i++ {
+		d.opts.Logger.Infof("Blob Files %d: created %s, rolled over %s", i,
+			humanize.SI.Uint64(atomic.LoadUint64(&BlobFileCreationCount[i])),
+			humanize.SI.Uint64(atomic.LoadUint64(&BlobFileRolloverCountDueToSize[i])))
+	}
+	notReuseDBReasons.log(d.opts.Logger)
+
+	iter := d.NewIter(&IterOptions{KeyTypes: IterKeyTypePointsOnly})
+	hasPoint := iter.First()
+	pointCount := 0
+	for hasPoint {
+		pointCount++
+		_, err := iter.ValueAndErr()
+		if err != nil {
+			d.opts.Logger.Fatalf("%s", err.Error())
+		}
+		hasPoint = iter.Next()
+	}
+	require.Equal(t, int(numKeysWritten), int(pointCount))
+	d.opts.Logger.Infof("%+v", iter.Stats())
+	iter.Close()
+	d.Close()
 }

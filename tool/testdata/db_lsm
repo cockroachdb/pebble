@@ -10,22 +10,23 @@ open non-existent: file does not exist
 db lsm
 ../testdata/db-stage-4
 ----
-__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
     WAL         1     0 B       -     0 B       -       -       -       -     0 B       -       -       -     0.0
-      0         1   986 B    0.50     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-      6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-  total         1   986 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      0     1(    0)  986 B(   0 B 0.00)    0.50     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     0(    0)    0 B(   0 B 0.00)       -     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+  total     1(    0)  986 B(   0 B 0.00)       -     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
   flush         0
 compact         0     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         0     0 B
    ztbl         0     0 B
+  zblob         0     0 B
  bcache         0     0 B    0.0%  (score == hit-rate)
  tcache         0     0 B    0.0%  (score == hit-rate)
   snaps         0       -       0  (score == earliest seq num)

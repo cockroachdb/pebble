@@ -274,7 +274,7 @@ func TestContains(t *testing.T) {
 func TestVersionUnref(t *testing.T) {
 	list := &VersionList{}
 	list.Init(&sync.Mutex{})
-	v := &Version{Deleted: func([]*FileMetadata) {}}
+	v := &Version{Deleted: func([]*FileMetadata, []*BlobFileMetadata) {}}
 	v.Ref()
 	list.PushBack(v)
 	v.Unref()

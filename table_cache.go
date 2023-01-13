@@ -71,6 +71,8 @@ type tableCacheOpts struct {
 	fs            vfs.FS
 	opts          sstable.ReaderOptions
 	filterMetrics *FilterMetrics
+
+	blobFileReaderCache *sstable.BlobFileReaderCache
 }
 
 // tableCacheContainer contains the table cache and
@@ -86,7 +88,13 @@ type tableCacheContainer struct {
 // newTableCacheContainer will panic if the underlying cache in the table cache
 // doesn't match Options.Cache.
 func newTableCacheContainer(
-	tc *TableCache, cacheID uint64, dirname string, fs vfs.FS, opts *Options, size int,
+	tc *TableCache,
+	cacheID uint64,
+	dirname string,
+	fs vfs.FS,
+	opts *Options,
+	size int,
+	bfrc *sstable.BlobFileReaderCache,
 ) *tableCacheContainer {
 	// We will release a ref to table cache acquired here when tableCacheContainer.close is called.
 	if tc != nil {
@@ -109,6 +117,7 @@ func newTableCacheContainer(
 	t.dbOpts.opts = opts.MakeReaderOptions()
 	t.dbOpts.filterMetrics = &FilterMetrics{}
 	t.dbOpts.atomic.iterCount = new(int32)
+	t.dbOpts.blobFileReaderCache = bfrc
 	return t
 }
 
@@ -418,14 +427,21 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, err
 	}
 	var rp sstable.ReaderProvider
-	if tableFormat == sstable.TableFormatPebblev3 && v.reader.Properties.NumValueBlocks > 0 {
-		rp = &tableCacheShardReaderProvider{c: c, file: file, dbOpts: dbOpts}
+	var bfrp sstable.ProviderOfReaderForBlobFiles
+	if tableFormat == sstable.TableFormatPebblev3 {
+		if v.reader.Properties.NumValueBlocks > 0 {
+			rp = &tableCacheShardReaderProvider{c: c, file: file, dbOpts: dbOpts}
+		}
+		if v.reader.Properties.RawValueInBlobFilesSize > 0 {
+			bfrp = dbOpts.blobFileReaderCache
+		}
 	}
+
 	if internalOpts.bytesIterated != nil {
-		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated, rp)
+		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated, rp, bfrp)
 	} else {
 		iter, err = v.reader.NewIterWithBlockPropertyFilters(
-			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, internalOpts.stats, rp)
+			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, internalOpts.stats, rp, bfrp)
 	}
 	if err != nil {
 		if rangeDelIter != nil {
@@ -512,7 +528,7 @@ var _ sstable.ReaderProvider = &tableCacheShardReaderProvider{}
 // being deleted.
 //
 // The caller must call tableCacheShardReaderProvider.Close.
-func (rp *tableCacheShardReaderProvider) GetReader() (*sstable.Reader, error) {
+func (rp *tableCacheShardReaderProvider) GetReader() (sstable.AbstractReaderForVBR, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount.
 	v := rp.c.findNode(rp.file, rp.dbOpts)

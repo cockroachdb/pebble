@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 // compactionIter provides a forward-only iterator that encapsulates the logic
@@ -164,6 +165,8 @@ type compactionIter struct {
 	// key kind).
 	keyTrailer  uint64
 	value       []byte
+	valueIsBlobFileReference bool
+	valueBlobFileReference LazyValue
 	valueCloser io.Closer
 	// Temporary buffer used for storing the previous user key in order to
 	// determine when iteration has advanced to a new user key and thus a new
@@ -171,12 +174,20 @@ type compactionIter struct {
 	keyBuf []byte
 	// Temporary buffer used for storing the previous value, which may be an
 	// unsafe, i.iter-owned slice that could be altered when the iterator is
-	// advanced.
-	valueBuf []byte
+	// advanced. Only used when the current key is a SET or SETWITHDEL, in
+	// setNext.
+	valueBuf           []byte
+	scratchLazyFetcher LazyFetcher
 	// Is the current entry valid?
 	valid     bool
 	iterKey   *InternalKey
+	// setIterValue is where iterValue, iterValueIsBlobFileReference, and
+	// iterValueBlobFileReference are initialized.
 	iterValue []byte
+	// If true, iterValue should not be looked at.
+	iterValueIsBlobFileReference bool
+	iterValueBlobFileReference   LazyValue
+
 	// `skip` indicates whether the remaining skippable entries in the current
 	// snapshot stripe should be skipped or processed. An example of a non-
 	// skippable entry is a range tombstone as we need to return it from the
@@ -254,15 +265,55 @@ func newCompactionIter(
 	return i
 }
 
-func (i *compactionIter) First() (*InternalKey, []byte) {
+func (i *compactionIter) setInlineValue() {
+	if invariants.Enabled && i.iterValueIsBlobFileReference {
+		panic("setInlineValue called on a blob file reference")
+	}
+	i.value = i.iterValue
+	i.valueIsBlobFileReference = false
+}
+
+func (i *compactionIter) setGeneralValue() {
+	i.valueIsBlobFileReference = i.iterValueIsBlobFileReference
+	if i.valueIsBlobFileReference {
+		i.valueBlobFileReference = i.iterValueBlobFileReference
+	} else {
+		i.value = i.iterValue
+	}
+}
+
+func (i *compactionIter) setIterValue(value LazyValue) {
+	if i.iterKey == nil {
+		i.iterValue = nil
+		i.iterValueIsBlobFileReference = false
+		return
+	}
+	if i.iterKey.Kind() != InternalKeyKindSet || !sstable.IsValueReferenceToBlob(value) {
+		// buf parameter is nil since we know the callee can back the value returned.
+		i.iterValue, _, i.err = value.Value(nil)
+		i.iterValueIsBlobFileReference = false
+		return
+	}
+	i.iterValueIsBlobFileReference = true
+	i.iterValueBlobFileReference = value
+}
+
+// The only case where First/Nest return a value that is actually lazy is when
+// the value is pointing to a blob file. The caller can check whether it wants
+// to keep it as a pointer or not. If yes, it needs to reconstruct the handle
+// since we have taken out the prefix, len and long attribute (or somehow peer
+// into the raw value, but that is very hard since need would need to punch
+// through the iterator tree).
+
+func (i *compactionIter) First() (*InternalKey, base.LazyValue) {
 	if i.err != nil {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	var iterValue LazyValue
 	i.iterKey, iterValue = i.iter.First()
-	i.iterValue, _, i.err = iterValue.Value(nil)
+	i.setIterValue(iterValue)
 	if i.err != nil {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 	if i.iterKey != nil {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = snapshotIndex(i.iterKey.SeqNum(), i.snapshots)
@@ -271,14 +322,14 @@ func (i *compactionIter) First() (*InternalKey, []byte) {
 	return i.Next()
 }
 
-func (i *compactionIter) Next() (*InternalKey, []byte) {
+func (i *compactionIter) Next() (*InternalKey, base.LazyValue) {
 	if i.err != nil {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 
 	// Close the closer for the current value if one was open.
 	if i.closeValueCloser() != nil {
-		return nil, nil
+		return nil, base.LazyValue{}
 	}
 
 	// Prior to this call to `Next()` we are in one of three situations with
@@ -327,9 +378,9 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			// This goes against the comment on i.key in the struct, and
 			// therefore warrants some investigation.
 			i.saveKey()
-			i.value = i.iterValue
+			i.setInlineValue()
 			i.valid = true
-			return &i.key, i.value
+			return &i.key, base.MakeInPlaceValue(i.value)
 		}
 
 		if i.rangeDelFrag.Covers(*i.iterKey, i.curSnapshotSeqNum) {
@@ -351,14 +402,14 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			switch i.iterKey.Kind() {
 			case InternalKeyKindDelete:
 				i.saveKey()
-				i.value = i.iterValue
+				i.setInlineValue()
 				i.valid = true
 				i.skip = true
-				return &i.key, i.value
+				return &i.key, base.MakeInPlaceValue(i.value)
 
 			case InternalKeyKindSingleDelete:
 				if i.singleDeleteNext() {
-					return &i.key, i.value
+					return &i.key, base.MakeInPlaceValue(i.value)
 				}
 
 				continue
@@ -370,8 +421,19 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 			// entry. setNext() does the work to move the iterator forward,
 			// preserving the original value, and potentially mutating the key
 			// kind.
-			i.setNext()
-			return &i.key, i.value
+			err := i.setNext()
+			if err != nil {
+				i.valid = false
+				i.err = base.MarkCorruptionError(i.err)
+				return nil, base.LazyValue{}
+			}
+			var lv base.LazyValue
+			if i.valueIsBlobFileReference {
+				lv = i.valueBlobFileReference
+			} else {
+				lv = base.MakeInPlaceValue(i.value)
+			}
+			return &i.key, lv
 
 		case InternalKeyKindMerge:
 			// Record the snapshot index before mergeNext as merging
@@ -389,12 +451,13 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				// into a SET.
 				includesBase := i.key.Kind() == InternalKeyKindSet
 				i.value, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, includesBase)
+				// i.iterValueIsBlobFileReference = false
 			}
 			if i.err == nil {
 				if needDelete {
 					i.valid = false
 					if i.closeValueCloser() != nil {
-						return nil, nil
+						return nil, base.LazyValue{}
 					}
 					continue
 				}
@@ -412,22 +475,22 @@ func (i *compactionIter) Next() (*InternalKey, []byte) {
 				if change != sameStripeNonSkippable {
 					i.maybeZeroSeqnum(origSnapshotIdx)
 				}
-				return &i.key, i.value
+				return &i.key, base.MakeInPlaceValue(i.value)
 			}
 			if i.err != nil {
 				i.valid = false
 				i.err = base.MarkCorruptionError(i.err)
 			}
-			return nil, nil
+			return nil, base.LazyValue{}
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKey.Kind()))
 			i.valid = false
-			return nil, nil
+			return nil, base.LazyValue{}
 		}
 	}
 
-	return nil, nil
+	return nil, base.LazyValue{}
 }
 
 func (i *compactionIter) closeValueCloser() error {
@@ -477,7 +540,7 @@ func (i *compactionIter) skipInStripe() {
 func (i *compactionIter) iterNext() bool {
 	var iterValue LazyValue
 	i.iterKey, iterValue = i.iter.Next()
-	i.iterValue, _, i.err = iterValue.Value(nil)
+	i.setIterValue(iterValue)
 	if i.err != nil {
 		i.iterKey = nil
 	}
@@ -557,10 +620,11 @@ func (i *compactionIter) nextInStripe() stripeChangeType {
 	return newStripe
 }
 
-func (i *compactionIter) setNext() {
+// Current key is a SET or SETWITHDEL.
+func (i *compactionIter) setNext() error {
 	// Save the current key.
 	i.saveKey()
-	i.value = i.iterValue
+	i.setGeneralValue()
 	i.valid = true
 	i.maybeZeroSeqnum(i.curSnapshotIdx)
 
@@ -571,12 +635,18 @@ func (i *compactionIter) setNext() {
 	if i.formatVersion < FormatSetWithDelete ||
 		i.iterKey.Kind() == InternalKeyKindSetWithDelete {
 		i.skip = true
-		return
+		return nil
 	}
 
 	// We are iterating forward. Save the current value.
-	i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
-	i.value = i.valueBuf
+	// This is the only place we use valueBuf.
+	if i.valueIsBlobFileReference {
+		i.valueBlobFileReference, i.valueBuf =
+			i.valueBlobFileReference.Clone(i.valueBuf[:0], &i.scratchLazyFetcher)
+	} else {
+		i.valueBuf = append(i.valueBuf[:0], i.iterValue...)
+		i.value = i.valueBuf
+	}
 
 	// Else, we continue to loop through entries in the stripe looking for a
 	// DEL. Note that we may stop *before* encountering a DEL, if one exists.
@@ -624,7 +694,7 @@ func (i *compactionIter) setNext() {
 				// saved key should be skipped.
 				i.skip = true
 			}
-			return
+			return nil
 		case sameStripeSkippable:
 			// We're still in the same stripe. If this is a DEL/SINGLEDEL, we
 			// stop looking and emit a SETWITHDEL. Subsequent keys are
@@ -633,7 +703,7 @@ func (i *compactionIter) setNext() {
 				i.iterKey.Kind() == InternalKeyKindSingleDelete {
 				i.key.SetKind(InternalKeyKindSetWithDelete)
 				i.skip = true
-				return
+				return nil
 			}
 		default:
 			panic("pebble: unexpected stripeChangeType: " + strconv.Itoa(int(t)))
@@ -691,6 +761,16 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 			// value and return. We change the kind of the resulting key to a
 			// Set so that it shadows keys in lower levels. That is:
 			// MERGE + (SET*) -> SET.
+			if i.iterValueIsBlobFileReference {
+				// Use nil buf, since this will not happen in practice so doesn't
+				// need to be optimized.
+				i.iterValue, _, i.err = i.iterValueBlobFileReference.Value(nil)
+				if i.err != nil {
+					i.valid = false
+					return sameStripeSkippable
+				}
+				i.iterValueIsBlobFileReference = false
+			}
 			i.err = valueMerger.MergeOlder(i.iterValue)
 			if i.err != nil {
 				i.valid = false
@@ -730,7 +810,7 @@ func (i *compactionIter) mergeNext(valueMerger ValueMerger) stripeChangeType {
 func (i *compactionIter) singleDeleteNext() bool {
 	// Save the current key.
 	i.saveKey()
-	i.value = i.iterValue
+	i.setInlineValue()
 	i.valid = true
 
 	// Loop until finds a key to be passed to the next level.
@@ -781,7 +861,16 @@ func (i *compactionIter) Key() InternalKey {
 	return i.key
 }
 
-func (i *compactionIter) Value() []byte {
+// ValueForTesting is only for tests since it will do the expensive work of
+// extracting the value if is in a blob file.
+func (i *compactionIter) ValueForTesting() []byte {
+	if i.iterValueIsBlobFileReference {
+		val, _, err := i.iterValueBlobFileReference.Value(nil)
+		if err != nil {
+			panic(err)
+		}
+		return val
+	}
 	return i.value
 }
 

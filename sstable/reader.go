@@ -213,11 +213,12 @@ type singleLevelIterator struct {
 	// dataBH refers to the last data block that the iterator considered
 	// loading. It may not actually have loaded the block, due to an error or
 	// because it was considered irrelevant.
-	dataBH    BlockHandle
-	vbReader  *valueBlockReader
-	err       error
-	closeHook func(i Iterator) error
-	stats     *base.InternalIteratorStats
+	dataBH          BlockHandle
+	vbReader        *valueBlockReader
+	blobValueReader *blobValueReader
+	err             error
+	closeHook       func(i Iterator) error
+	stats           *base.InternalIteratorStats
 
 	// boundsCmp and positionedUsingLatestBounds are for optimizing iteration
 	// that uses multiple adjacent bounds. The seek after setting a new bound
@@ -394,6 +395,7 @@ func (i *singleLevelIterator) init(
 	useFilter bool,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
+	bfrp ProviderOfReaderForBlobFiles,
 ) error {
 	if r.err != nil {
 		return r.err
@@ -426,6 +428,10 @@ func (i *singleLevelIterator) init(
 				stats:  stats,
 			}
 			i.data.lazyValueHandling.vbr = i.vbReader
+		}
+		if r.Properties.RawValueInBlobFilesSize > 0 {
+			i.blobValueReader = newBlobValueReader(bfrp, stats)
+			i.data.lazyValueHandling.blobValueReader = i.blobValueReader
 		}
 		i.data.lazyValueHandling.hasValuePrefix = true
 	}
@@ -545,7 +551,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 	return loadBlockOK
 }
 
-// readBlockForVBR implements the blockProviderWhenOpen interface for use by
+// readBlockForVBR implements the AbstractReaderForVBR interface for use by
 // the valueBlockReader. We could use a readaheadState for this (that would be
 // different from the readaheadState for the data blocks), but choose to use
 // nil since (a) for user-facing reads we expect access to the value blocks to
@@ -1404,6 +1410,9 @@ func (i *singleLevelIterator) Close() error {
 	if i.vbReader != nil {
 		i.vbReader.close()
 	}
+	if i.blobValueReader != nil {
+		i.blobValueReader.close()
+	}
 	*i = i.resetForReuse()
 	singleLevelIterPool.Put(i)
 	return err
@@ -1674,6 +1683,7 @@ func (i *twoLevelIterator) init(
 	useFilter bool,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
+	bfrp ProviderOfReaderForBlobFiles,
 ) error {
 	if r.err != nil {
 		return r.err
@@ -1706,6 +1716,10 @@ func (i *twoLevelIterator) init(
 				stats:  stats,
 			}
 			i.data.lazyValueHandling.vbr = i.vbReader
+		}
+		if r.Properties.RawValueInBlobFilesSize > 0 {
+			i.blobValueReader = newBlobValueReader(bfrp, stats)
+			i.data.lazyValueHandling.blobValueReader = i.blobValueReader
 		}
 		i.data.lazyValueHandling.hasValuePrefix = true
 	}
@@ -2359,6 +2373,9 @@ func (i *twoLevelIterator) Close() error {
 	if i.vbReader != nil {
 		i.vbReader.close()
 	}
+	if i.blobValueReader != nil {
+		i.blobValueReader.close()
+	}
 	*i = twoLevelIterator{
 		singleLevelIterator: i.singleLevelIterator.resetForReuse(),
 		topLevelIndex:       i.topLevelIndex.resetForReuse(),
@@ -2831,13 +2848,14 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 	useFilterBlock bool,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
+	bfrp ProviderOfReaderForBlobFiles,
 ) (Iterator, error) {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(r, lower, upper, filterer, useFilterBlock, stats, rp)
+		err := i.init(r, lower, upper, filterer, useFilterBlock, stats, rp, bfrp)
 		if err != nil {
 			return nil, err
 		}
@@ -2845,7 +2863,7 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 	}
 
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(r, lower, upper, filterer, useFilterBlock, stats, rp)
+	err := i.init(r, lower, upper, filterer, useFilterBlock, stats, rp, bfrp)
 	if err != nil {
 		return nil, err
 	}
@@ -2856,20 +2874,26 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 // occurs, NewIter cleans up after itself and returns a nil iterator. NewIter
 // must only be used when the Reader is guaranteed to outlive any LazyValues
 // returned from the iter.
+//
+// TODO(sumeer): need to pass non-nil ProviderOfReaderForBlobFiles, for the
+// sstable tool to work correctly. The Reader doesn't have the dirname, FS
+// etc. to call newBlobFileReader. We can add a trivial provider
+// implementation (no cache) and have the caller of NewIter construct such a
+// trivial provider.
 func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
-	return r.NewIterWithBlockPropertyFilters(
-		lower, upper, nil, true /* useFilterBlock */, nil, /* stats */
-		TrivialReaderProvider{Reader: r})
+	return r.NewIterWithBlockPropertyFilters(lower, upper, nil, true, nil, TrivialReaderProvider{Reader: r}, nil)
 }
 
 // NewCompactionIter returns an iterator similar to NewIter but it also increments
 // the number of bytes iterated. If an error occurs, NewCompactionIter cleans up
 // after itself and returns a nil iterator.
-func (r *Reader) NewCompactionIter(bytesIterated *uint64, rp ReaderProvider) (Iterator, error) {
+func (r *Reader) NewCompactionIter(
+	bytesIterated *uint64, rp ReaderProvider, bfrp ProviderOfReaderForBlobFiles,
+) (Iterator, error) {
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
 		err := i.init(
-			r, nil /* lower */, nil /* upper */, nil, false /* useFilter */, nil /* stats */, rp)
+			r, nil /* lower */, nil /* upper */, nil, false /* useFilter */, nil /* stats */, rp, bfrp)
 		if err != nil {
 			return nil, err
 		}
@@ -2881,7 +2905,7 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64, rp ReaderProvider) (It
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
 	err := i.init(
-		r, nil /* lower */, nil /* upper */, nil, false /* useFilter */, nil /* stats */, rp)
+		r, nil /* lower */, nil /* upper */, nil, false /* useFilter */, nil /* stats */, rp, bfrp)
 	if err != nil {
 		return nil, err
 	}
@@ -3076,6 +3100,12 @@ func (r *Reader) readBlock(
 	return h, nil
 }
 
+func (r *Reader) readBlockForVBR(
+	bh BlockHandle, stats *base.InternalIteratorStats,
+) (_ cache.Handle, _ error) {
+	return r.readBlock(bh, nil, nil, stats)
+}
+
 func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 	// Convert v1 (RocksDB format) range-del blocks to v2 blocks on the fly. The
 	// v1 format range-del blocks have unfragmented and unsorted range
@@ -3141,7 +3171,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	for valid := i.First(); valid; valid = i.Next() {
 		value := i.Value()
 		if bytes.Equal(i.Key().UserKey, []byte(metaValueIndexName)) {
-			vbih, n, err := decodeValueBlocksIndexHandle(i.Value())
+			vbih, n, err := decodeValueBlocksIndexHandle(i.Value(), true)
 			if err != nil {
 				return err
 			}
@@ -3801,12 +3831,13 @@ func (l *Layout) Describe(
 						v := value.InPlaceValue()
 						if base.TrailerKind(key.Trailer) != InternalKeyKindSet {
 							fmtRecord(key, v)
-						} else if !isValueHandle(valuePrefix(v[0])) {
+						} else if !isValueBlockHandle(valuePrefix(v[0])) {
 							fmtRecord(key, v[1:])
 						} else {
 							vh := decodeValueHandle(v[1:])
 							fmtRecord(key, []byte(fmt.Sprintf("value handle %+v", vh)))
 						}
+						// TODO(sumeer): code for isBlobValueHandle.
 					}
 				}
 
@@ -3850,7 +3881,7 @@ func (l *Layout) Describe(
 				var vbih valueBlocksIndexHandle
 				isValueBlocksIndexHandle := false
 				if bytes.Equal(iter.Key().UserKey, []byte(metaValueIndexName)) {
-					vbih, n, err = decodeValueBlocksIndexHandle(value)
+					vbih, n, err = decodeValueBlocksIndexHandle(value, true)
 					bh = vbih.h
 					isValueBlocksIndexHandle = true
 				} else {

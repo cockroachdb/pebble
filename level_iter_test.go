@@ -159,9 +159,7 @@ func (lt *levelIterTest) newIters(
 	file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
 	lt.itersCreated++
-	iter, err := lt.readers[file.FileNum].NewIterWithBlockPropertyFilters(
-		opts.LowerBound, opts.UpperBound, nil, true, iio.stats,
-		sstable.TrivialReaderProvider{Reader: lt.readers[file.FileNum]})
+	iter, err := lt.readers[file.FileNum].NewIterWithBlockPropertyFilters(opts.LowerBound, opts.UpperBound, nil, true, iio.stats, sstable.TrivialReaderProvider{Reader: lt.readers[file.FileNum]}, nil)
 	if err != nil {
 		return nil, nil, err
 	}

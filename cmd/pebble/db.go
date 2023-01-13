@@ -92,6 +92,7 @@ func newPebbleDB(dir string) DB {
 	if verbose {
 		lel := pebble.MakeLoggingEventListener(nil)
 		opts.EventListener = &lel
+		opts.EventListener.BlobFileDeleted = nil
 		opts.EventListener.TableDeleted = nil
 		opts.EventListener.TableIngested = nil
 		opts.EventListener.WALCreated = nil

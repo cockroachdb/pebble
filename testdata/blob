@@ -1,0 +1,1075 @@
+batch
+set a1 a1
+set a2 a2
+----
+
+iter
+seek-ge a
+next
+----
+a1: (a1, .)
+a2: (a2, .)
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    37 B       -    26 B       -       -       -       -    37 B       -       -       -     1.4
+      0     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     0(    0)    0 B(   0 B 0.00)       -     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+  total     0(    0)    0 B(   0 B 0.00)       -    37 B     0 B       0   0 B       0   37 B(   0 B)       0     0 B       0     1.0
+  flush         0
+compact         0     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache         0     0 B    0.0%  (score == hit-rate)
+ tcache         0     0 B    0.0%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+flush
+----
+0.0:
+  000005:[a1#1,SET-a2#2,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    37 B       -    26 B       -       -       -       -    74 B       -       -       -     2.8
+      0     1(    0)  831 B(   0 B 0.00)    0.02    37 B     0 B       0   0 B       0  831 B(  57 B)       1     0 B       1    24.0
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     0(    1)    0 B(  57 B 0.00)       -     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+  total     1(    1)  831 B(  57 B 1.00)       -    74 B     0 B       0   0 B       0  905 B(  57 B)       1     0 B       1    13.0
+  flush         1
+compact         0     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache         6   765 B   14.3%  (score == hit-rate)
+ tcache         1   720 B   50.0%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+iter
+seek-ge a
+next
+----
+a1: (a1, .)
+a2: (a2, .)
+
+batch
+set b1 b1
+set b2 b2
+----
+
+flush
+----
+0.0:
+  000005:[a1#1,SET-a2#2,SET]
+  000008:[b1#3,SET-b2#4,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    37 B       -    52 B       -       -       -       -   111 B       -       -       -     2.1
+      0     2(    0)  1.6 K(   0 B 0.00)    0.02    74 B     0 B       0   0 B       0  1.6 K( 114 B)       2     0 B       1    24.0
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     0(    2)    0 B( 114 B 0.00)       -     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+  total     2(    2)  1.6 K( 114 B 1.00)       -   111 B     0 B       0   0 B       0  1.7 K( 114 B)       2     0 B       1    17.0
+  flush         2
+compact         0     0 B     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        12   1.5 K   47.8%  (score == hit-rate)
+ tcache         2   1.4 K   71.4%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+list-files
+----
+000005.sst
+000006.blob
+000008.sst
+000009.blob
+
+iter
+seek-ge a
+next
+next
+next
+----
+a1: (a1, .)
+a2: (a2, .)
+b1: (b1, .)
+b2: (b2, .)
+
+compact a1 a3
+----
+0.0:
+  000008:[b1#3,SET-b2#4,SET]
+6:
+  000005:[a1#1,SET-a2#2,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+
+list-files
+----
+000005.sst
+000006.blob
+000008.sst
+000009.blob
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    37 B       -    52 B       -       -       -       -   111 B       -       -       -     2.1
+      0     1(    0)  831 B(   0 B 0.00)    0.02    74 B     0 B       0   0 B       0  1.6 K( 114 B)       2     0 B       1    24.0
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     1(    2)  831 B( 114 B 0.50)       -     0 B     0 B       0 831 B       1    0 B(   0 B)       0     0 B       1     0.0
+  total     2(    2)  1.6 K( 114 B 1.00)       -   111 B     0 B       0 831 B       1  1.7 K( 114 B)       2     0 B       2    17.0
+  flush         2
+compact         1   1.7 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         0       0       0       1       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        12   1.5 K   70.7%  (score == hit-rate)
+ tcache         2   1.4 K   84.6%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+batch
+set d1 dude11
+set d2 dude22
+----
+
+flush
+----
+0.0:
+  000008:[b1#3,SET-b2#4,SET]
+  000011:[d1#5,SET-d2#6,SET]
+6:
+  000005:[a1#1,SET-a2#2,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    45 B       -    86 B       -       -       -       -   164 B       -       -       -     1.9
+      0     2(    0)  1.6 K(   0 B 0.00)    0.02   119 B     0 B       0   0 B       0  2.4 K( 232 B)       3     0 B       1    22.9
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     1(    4)  831 B( 232 B 0.20)       -     0 B     0 B       0 831 B       1    0 B(   0 B)       0     0 B       1     0.0
+  total     3(    4)  2.4 K( 232 B 1.00)       -   164 B     0 B       0 831 B       1  2.6 K( 232 B)       3     0 B       2    17.6
+  flush         3
+compact         1   2.5 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         0       0       0       1       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        20   2.3 K   66.7%  (score == hit-rate)
+ tcache         3   2.1 K   84.2%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+compact d1 d2
+----
+0.0:
+  000008:[b1#3,SET-b2#4,SET]
+6:
+  000005:[a1#1,SET-a2#2,SET]
+  000011:[d1#5,SET-d2#6,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    45 B       -    86 B       -       -       -       -   164 B       -       -       -     1.9
+      0     1(    0)  831 B(   0 B 0.00)    0.02   119 B     0 B       0   0 B       0  2.4 K( 232 B)       3     0 B       1    22.9
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     2(    4)  1.6 K( 232 B 0.80)       -     0 B     0 B       0 1.6 K       2    0 B(   0 B)       0     0 B       1     0.0
+  total     3(    4)  2.4 K( 232 B 1.00)       -   164 B     0 B       0 1.6 K       2  2.6 K( 232 B)       3     0 B       2    17.6
+  flush         3
+compact         2   2.6 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         0       0       0       2       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        20   2.3 K   74.0%  (score == hit-rate)
+ tcache         3   2.1 K   88.0%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+list-files
+----
+000005.sst
+000006.blob
+000008.sst
+000009.blob
+000011.sst
+000012.blob
+000013.blob
+
+batch
+set a0 a00
+set a3 a3
+set a4 a004
+----
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    47 B       -   122 B       -       -       -       -   166 B       -       -       -     1.4
+      0     1(    0)  831 B(   0 B 0.00)    0.02   119 B     0 B       0   0 B       0  2.4 K( 232 B)       3     0 B       1    22.9
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     2(    4)  1.6 K( 232 B 0.80)       -     0 B     0 B       0 1.6 K       2    0 B(   0 B)       0     0 B       1     0.0
+  total     3(    4)  2.4 K( 232 B 1.00)       -   166 B     0 B       0 1.6 K       2  2.6 K( 232 B)       3     0 B       2    17.4
+  flush         3
+compact         2   2.6 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         0       0       0       2       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        20   2.3 K   74.0%  (score == hit-rate)
+ tcache         3   2.1 K   88.0%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+flush
+----
+0.0:
+  000015:[a0#7,SET-a4#9,SET]
+  000008:[b1#3,SET-b2#4,SET]
+6:
+  000005:[a1#1,SET-a2#2,SET]
+  000011:[d1#5,SET-d2#6,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000016 (L0): value-size (live) 9 B (9 B) refs (latest) 1 (1)
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    47 B       -   122 B       -       -       -       -   213 B       -       -       -     1.7
+      0     2(    0)  1.6 K(   0 B 0.00)    0.02   166 B     0 B       0   0 B       0  3.3 K( 294 B)       4     0 B       1    21.9
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     2(    5)  1.6 K( 294 B 0.55)       -     0 B     0 B       0 1.6 K       2    0 B(   0 B)       0     0 B       1     0.0
+  total     4(    5)  3.3 K( 294 B 1.00)       -   213 B     0 B       0 1.6 K       2  3.5 K( 294 B)       4     0 B       2    18.1
+  flush         4
+compact         2   3.4 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         0       0       0       2       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        26   3.0 K   74.3%  (score == hit-rate)
+ tcache         4   2.8 K   87.9%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+iter
+seek-ge a
+next
+next
+next
+next
+----
+a0: (a00, .)
+a1: (a1, .)
+a2: (a2, .)
+a3: (a3, .)
+a4: (a004, .)
+
+compact a0 a5
+----
+0.0:
+  000008:[b1#3,SET-b2#4,SET]
+6:
+  000017:[a0#0,SET-a3#0,SET]
+  000018:[a4#0,SET-a4#0,SET]
+  000011:[d1#5,SET-d2#6,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000016 (L0): value-size (live) 9 B (9 B) refs (latest) 2 (2)
+
+iter
+seek-ge a
+next
+next
+next
+next
+----
+a0: (a00, .)
+a1: (a1, .)
+a2: (a2, .)
+a3: (a3, .)
+a4: (a004, .)
+
+batch
+del a0
+----
+
+flush
+----
+0.0:
+  000020:[a0#10,DEL-a0#10,DEL]
+  000008:[b1#3,SET-b2#4,SET]
+6:
+  000017:[a0#0,SET-a3#0,SET]
+  000018:[a4#0,SET-a4#0,SET]
+  000011:[d1#5,SET-d2#6,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000016 (L0): value-size (live) 9 B (9 B) refs (latest) 2 (2)
+
+iter
+seek-ge a
+next
+next
+next
+next
+----
+a1: (a1, .)
+a2: (a2, .)
+a3: (a3, .)
+a4: (a004, .)
+b1: (b1, .)
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    27 B       -   138 B       -       -       -       -   220 B       -       -       -     1.6
+      0     2(    0)  1.6 K(   0 B 0.00)    0.02   193 B     0 B       0   0 B       0  4.0 K( 294 B)       5     0 B       1    22.8
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     3(    5)  2.4 K( 294 B 0.86)       -   849 B     0 B       0 1.6 K       2  1.6 K(   0 B)       2   1.6 K       1     1.9
+  total     5(    5)  4.0 K( 294 B 1.00)       -   220 B     0 B       0 1.6 K       2  5.8 K( 294 B)       7   1.6 K       2    28.6
+  flush         5
+compact         3   4.2 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         1       0       0       2       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        30   3.7 K   81.4%  (score == hit-rate)
+ tcache         5   3.5 K   89.7%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+compact a0 a5
+----
+0.0:
+  000008:[b1#3,SET-b2#4,SET]
+6:
+  000021:[a1#0,SET-a3#0,SET]
+  000018:[a4#0,SET-a4#0,SET]
+  000011:[d1#5,SET-d2#6,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000016 (L0): value-size (live) 9 B (6 B) refs (latest) 2 (2)
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    27 B       -   138 B       -       -       -       -   220 B       -       -       -     1.6
+      0     1(    0)  831 B(   0 B 0.00)    0.02   193 B     0 B       0   0 B       0  4.0 K( 294 B)       5     0 B       1    22.8
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     3(    5)  2.4 K( 294 B 0.76)       -   1.6 K     0 B       0 1.6 K       2  2.4 K(   0 B)       3   3.2 K       1     1.5
+  total     4(    5)  3.2 K( 294 B 0.90)       -   220 B     0 B       0 1.6 K       2  6.7 K( 294 B)       8   3.2 K       2    32.3
+  flush         5
+compact         4   3.4 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         2       0       0       2       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        26   3.0 K   82.2%  (score == hit-rate)
+ tcache         4   2.8 K   90.0%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+batch
+del a4
+----
+
+
+flush
+----
+0.0:
+  000023:[a4#11,DEL-a4#11,DEL]
+  000008:[b1#3,SET-b2#4,SET]
+6:
+  000021:[a1#0,SET-a3#0,SET]
+  000018:[a4#0,SET-a4#0,SET]
+  000011:[d1#5,SET-d2#6,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000016 (L0): value-size (live) 9 B (6 B) refs (latest) 2 (2)
+
+iter
+seek-ge a
+next
+next
+next
+----
+a1: (a1, .)
+a2: (a2, .)
+a3: (a3, .)
+b1: (b1, .)
+
+compact a4 a5
+----
+0.0:
+  000008:[b1#3,SET-b2#4,SET]
+6:
+  000021:[a1#0,SET-a3#0,SET]
+  000011:[d1#5,SET-d2#6,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000016 (L0): value-size (live) 9 B (2 B) refs (latest) 1 (1)
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    27 B       -   154 B       -       -       -       -   247 B       -       -       -     1.6
+      0     1(    0)  831 B(   0 B 0.00)    0.02   220 B     0 B       0   0 B       0  4.8 K( 294 B)       6     0 B       1    23.5
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     2(    5)  1.6 K( 294 B 0.62)       -   2.3 K     0 B       0 1.6 K       2  2.4 K(   0 B)       3   4.8 K       1     1.0
+  total     3(    5)  2.4 K( 294 B 0.76)       -   247 B     0 B       0 1.6 K       2  7.4 K( 294 B)       9   4.8 K       2    32.0
+  flush         6
+compact         5   2.6 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         3       0       0       2       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        22   2.3 K   85.0%  (score == hit-rate)
+ tcache         3   2.1 K   91.6%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+batch
+set a0 a0'
+set a5 a05
+----
+
+flush
+----
+0.0:
+  000025:[a0#12,SET-a5#13,SET]
+  000008:[b1#3,SET-b2#4,SET]
+6:
+  000021:[a1#0,SET-a3#0,SET]
+  000011:[d1#5,SET-d2#6,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000026 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000016 (L0): value-size (live) 9 B (2 B) refs (latest) 1 (1)
+
+iter
+seek-ge a
+next
+next
+next
+next
+next
+----
+a0: (a0', .)
+a1: (a1, .)
+a2: (a2, .)
+a3: (a3, .)
+a5: (a05, .)
+b1: (b1, .)
+
+# This used to rewrite 000016: value-size (live) 9 (2) refs (latest) 1 (1),
+# but now it does not, since we are not doing any garbage based rewrites.
+compact a0 a6
+----
+0.0:
+  000008:[b1#3,SET-b2#4,SET]
+6:
+  000027:[a0#0,SET-a3#0,SET]
+  000028:[a5#0,SET-a5#0,SET]
+  000011:[d1#5,SET-d2#6,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000026 (L0): value-size (live) 6 B (6 B) refs (latest) 2 (2)
+  000016 (L0): value-size (live) 9 B (2 B) refs (latest) 1 (1)
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    39 B       -   182 B       -       -       -       -   298 B       -       -       -     1.6
+      0     1(    0)  831 B(   0 B 0.00)    0.02   259 B     0 B       0   0 B       0  5.6 K( 353 B)       7     0 B       1    23.4
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     3(    6)  2.4 K( 353 B 0.69)       -   3.1 K     0 B       0 1.6 K       2  4.0 K(   0 B)       5   6.4 K       1     1.3
+  total     4(    6)  3.2 K( 353 B 0.80)       -   298 B     0 B       0 1.6 K       2  9.9 K( 353 B)      12   6.4 K       2    35.3
+  flush         7
+compact         6   3.5 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         4       0       0       2       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        28   3.0 K   84.4%  (score == hit-rate)
+ tcache         4   2.8 K   90.8%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+list-files
+----
+000006.blob
+000008.sst
+000009.blob
+000011.sst
+000012.blob
+000013.blob
+000016.blob
+000026.blob
+000027.sst
+000028.sst
+
+iter
+seek-ge a
+next
+next
+next
+next
+next
+----
+a0: (a0', .)
+a1: (a1, .)
+a2: (a2, .)
+a3: (a3, .)
+a5: (a05, .)
+b1: (b1, .)
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    39 B       -   182 B       -       -       -       -   298 B       -       -       -     1.6
+      0     1(    0)  831 B(   0 B 0.00)    0.02   259 B     0 B       0   0 B       0  5.6 K( 353 B)       7     0 B       1    23.4
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     3(    6)  2.4 K( 353 B 0.69)       -   3.1 K     0 B       0 1.6 K       2  4.0 K(   0 B)       5   6.4 K       1     1.3
+  total     4(    6)  3.2 K( 353 B 0.80)       -   298 B     0 B       0 1.6 K       2  9.9 K( 353 B)      12   6.4 K       2    35.3
+  flush         7
+compact         6   3.5 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         4       0       0       2       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        28   3.0 K   85.1%  (score == hit-rate)
+ tcache         4   2.8 K   91.1%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+reopen
+----
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1     0 B       -     0 B       -       -       -       -     0 B       -       -       -     0.0
+      0     1(    0)  831 B(   0 B 0.00)    0.02     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       1     0.0
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     3(    6)  2.4 K( 353 B 0.69)       -     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       1     0.0
+  total     4(    6)  3.2 K( 353 B 0.80)       -     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       2     0.0
+  flush         0
+compact         0   3.5 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        28   3.0 K   17.6%  (score == hit-rate)
+ tcache         4   2.8 K   66.7%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+list-files
+----
+000006.blob
+000008.sst
+000009.blob
+000011.sst
+000012.blob
+000013.blob
+000016.blob
+000026.blob
+000027.sst
+000028.sst
+
+iter
+seek-ge a
+next
+next
+next
+next
+next
+----
+a0: (a0', .)
+a1: (a1, .)
+a2: (a2, .)
+a3: (a3, .)
+a5: (a05, .)
+b1: (b1, .)
+
+batch
+set h0 h000
+set h2 h002
+----
+
+list-files
+----
+000006.blob
+000008.sst
+000009.blob
+000011.sst
+000012.blob
+000013.blob
+000016.blob
+000026.blob
+000027.sst
+000028.sst
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    41 B       -    30 B       -       -       -       -    41 B       -       -       -     1.4
+      0     1(    0)  831 B(   0 B 0.00)    0.02     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       1     0.0
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     3(    6)  2.4 K( 353 B 0.69)       -     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       1     0.0
+  total     4(    6)  3.2 K( 353 B 0.80)       -    41 B     0 B       0   0 B       0   41 B(   0 B)       0     0 B       2     1.0
+  flush         0
+compact         0   3.5 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        28   3.0 K   46.2%  (score == hit-rate)
+ tcache         4   2.8 K   75.0%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+reopen
+----
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1     0 B       -     0 B       -       -       -       -     0 B       -       -       -     0.0
+      0     2(    0)  1.6 K(   0 B 0.00)    0.02     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       1     0.0
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     3(    7)  2.4 K( 414 B 0.56)       -     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       1     0.0
+  total     5(    7)  4.0 K( 414 B 0.84)       -     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       2     0.0
+  flush         0
+compact         0   4.3 K   892 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        34   3.8 K   17.1%  (score == hit-rate)
+ tcache         5   3.5 K   64.3%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+iter
+seek-ge h
+next
+next
+----
+h0: (h000, .)
+h2: (h002, .)
+.
+
+batch
+del a1
+----
+
+flush
+----
+0.0:
+  000038:[a1#16,DEL-a1#16,DEL]
+  000008:[b1#3,SET-b2#4,SET]
+  000032:[h0#14,SET-h2#15,SET]
+6:
+  000027:[a0#0,SET-a3#0,SET]
+  000028:[a5#0,SET-a5#0,SET]
+  000011:[d1#5,SET-d2#6,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000026 (L0): value-size (live) 6 B (6 B) refs (latest) 2 (2)
+  000033 (L0): value-size (live) 8 B (8 B) refs (latest) 1 (1)
+  000016 (L0): value-size (live) 9 B (2 B) refs (latest) 1 (1)
+
+iter
+seek-ge a
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a0: (a0', .)
+a2: (a2, .)
+a3: (a3, .)
+a5: (a05, .)
+b1: (b1, .)
+b2: (b2, .)
+d1: (dude11, .)
+d2: (dude22, .)
+h0: (h000, .)
+h2: (h002, .)
+.
+
+compact a1 a2
+----
+0.0:
+  000008:[b1#3,SET-b2#4,SET]
+  000032:[h0#14,SET-h2#15,SET]
+6:
+  000039:[a0#0,SET-a3#0,SET]
+  000028:[a5#0,SET-a5#0,SET]
+  000011:[d1#5,SET-d2#6,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (2 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000026 (L0): value-size (live) 6 B (6 B) refs (latest) 2 (2)
+  000033 (L0): value-size (live) 8 B (8 B) refs (latest) 1 (1)
+  000016 (L0): value-size (live) 9 B (2 B) refs (latest) 1 (1)
+
+iter
+seek-ge a
+next
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a0: (a0', .)
+a2: (a2, .)
+a3: (a3, .)
+a5: (a05, .)
+b1: (b1, .)
+b2: (b2, .)
+d1: (dude11, .)
+d2: (dude22, .)
+h0: (h000, .)
+h2: (h002, .)
+.
+
+iter name=foo
+----
+
+batch
+del a2
+----
+
+flush
+----
+0.0:
+  000041:[a2#17,DEL-a2#17,DEL]
+  000008:[b1#3,SET-b2#4,SET]
+  000032:[h0#14,SET-h2#15,SET]
+6:
+  000039:[a0#0,SET-a3#0,SET]
+  000028:[a5#0,SET-a5#0,SET]
+  000011:[d1#5,SET-d2#6,SET]
+blobs:
+  000006 (L0): value-size (live) 4 B (2 B) refs (latest) 1 (1)
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000026 (L0): value-size (live) 6 B (6 B) refs (latest) 2 (2)
+  000033 (L0): value-size (live) 8 B (8 B) refs (latest) 1 (1)
+  000016 (L0): value-size (live) 9 B (2 B) refs (latest) 1 (1)
+
+iter
+seek-ge a
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a0: (a0', .)
+a3: (a3, .)
+a5: (a05, .)
+b1: (b1, .)
+b2: (b2, .)
+d1: (dude11, .)
+d2: (dude22, .)
+h0: (h000, .)
+h2: (h002, .)
+.
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    27 B       -    32 B       -       -       -       -    81 B       -       -       -     2.5
+      0     3(    0)  2.4 K(   0 B 0.00)    0.02    54 B     0 B       0   0 B       0  1.5 K(   0 B)       2     0 B       1    28.6
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     3(    7)  2.4 K( 414 B 0.51)       -   771 B     0 B       0   0 B       0  834 B(   0 B)       1   1.6 K       1     1.1
+  total     6(    7)  4.8 K( 414 B 0.79)       -    81 B     0 B       0   0 B       0  2.4 K(   0 B)       3   1.6 K       2    30.3
+  flush         2
+compact         1   5.0 K   892 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         1   256 K
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        38   4.4 K   80.5%  (score == hit-rate)
+ tcache         6   4.2 K   89.2%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+# This eliminates 000006: value-size (live) 4 (2) refs (latest) 1 (1), since
+# there are no live bytes in it.
+compact a1 a2
+----
+0.0:
+  000008:[b1#3,SET-b2#4,SET]
+  000032:[h0#14,SET-h2#15,SET]
+6:
+  000042:[a0#0,SET-a3#0,SET]
+  000028:[a5#0,SET-a5#0,SET]
+  000011:[d1#5,SET-d2#6,SET]
+blobs:
+  000009 (L0): value-size (live) 4 B (4 B) refs (latest) 1 (1)
+  000012 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000013 (L0): value-size (live) 6 B (6 B) refs (latest) 1 (1)
+  000026 (L0): value-size (live) 6 B (6 B) refs (latest) 3 (2)
+  000033 (L0): value-size (live) 8 B (8 B) refs (latest) 1 (1)
+  000016 (L0): value-size (live) 9 B (2 B) refs (latest) 2 (1)
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    27 B       -    32 B       -       -       -       -    81 B       -       -       -     2.5
+      0     2(    0)  1.6 K(   0 B 0.00)    0.02    54 B     0 B       0   0 B       0  1.5 K(   0 B)       2     0 B       1    28.6
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     3(    6)  2.4 K( 357 B 0.51)       -   1.5 K     0 B       0   0 B       0  1.6 K(   0 B)       2   3.1 K       1     1.1
+  total     5(    6)  4.0 K( 357 B 0.82)       -    81 B     0 B       0   0 B       0  3.2 K(   0 B)       4   3.1 K       2    40.5
+  flush         2
+compact         2   4.2 K   892 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         2       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         1   256 K
+   ztbl         1   834 B
+  zblob         1    57 B
+ bcache        38   4.5 K   81.7%  (score == hit-rate)
+ tcache         6   4.2 K   89.8%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
+
+iter
+seek-ge a
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a0: (a0', .)
+a3: (a3, .)
+a5: (a05, .)
+b1: (b1, .)
+b2: (b2, .)
+d1: (dude11, .)
+d2: (dude22, .)
+h0: (h000, .)
+h2: (h002, .)
+.
+
+close-iter name=foo
+----
+
+metrics
+----
+__level________count________________size___score______in__ingest(sz_cnt)___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    27 B       -    32 B       -       -       -       -    81 B       -       -       -     2.5
+      0     2(    0)  1.6 K(   0 B 0.00)    0.02    54 B     0 B       0   0 B       0  1.5 K(   0 B)       2     0 B       1    28.6
+      1     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      2     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      3     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      4     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      5     0(    0)    0 B(   0 B 0.00)    0.00     0 B     0 B       0   0 B       0    0 B(   0 B)       0     0 B       0     0.0
+      6     3(    6)  2.4 K( 357 B 0.51)       -   1.5 K     0 B       0   0 B       0  1.6 K(   0 B)       2   3.1 K       1     1.1
+  total     5(    6)  4.0 K( 357 B 0.82)       -    81 B     0 B       0   0 B       0  3.2 K(   0 B)       4   3.1 K       2    40.5
+  flush         2
+compact         2   4.2 K   892 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         2       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   256 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+  zblob         0     0 B
+ bcache        34   3.7 K   83.2%  (score == hit-rate)
+ tcache         5   3.5 K   90.3%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)

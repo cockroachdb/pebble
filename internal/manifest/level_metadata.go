@@ -221,6 +221,21 @@ func (ls *LevelSlice) SizeSum() uint64 {
 	return sum
 }
 
+// SizePlusBlobBytesSum ...
+//
+// TODO(sumeer): see the comment about
+// interpolated-compressed-bytes-in-blob-files in metrics.go etc. This needs
+// fixing since we use it for grandparent based splitting point and for
+// scoring levels for compactions.
+func (ls *LevelSlice) SizePlusBlobBytesSum() uint64 {
+	var sum uint64
+	iter := ls.Iter()
+	for f := iter.First(); f != nil; f = iter.Next() {
+		sum += f.SizePlusBlobBytes()
+	}
+	return sum
+}
+
 // Reslice constructs a new slice backed by the same underlying level, with
 // new start and end positions. Reslice invokes the provided function, passing
 // two LevelIterators: one positioned to i's inclusive start and one

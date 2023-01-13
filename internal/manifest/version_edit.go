@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"sort"
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
@@ -48,12 +49,15 @@ const (
 	tagMaxColumnFamily  = 203
 
 	// Pebble tags.
-	tagNewFile5 = 104 // Range keys.
+	tagNewFile5        = 104 // Range keys.
+	tagNewBlobFile     = 105
+	tagDeletedBlobFile = 106
 
 	// The custom tags sub-format used by tagNewFile4 and above.
 	customTagTerminate         = 1
 	customTagNeedsCompaction   = 2
 	customTagCreationTime      = 6
+	customTagBlobReferences    = 7
 	customTagPathID            = 65
 	customTagNonSafeIgnoreMask = 1 << 6
 )
@@ -70,6 +74,14 @@ type DeletedFileEntry struct {
 type NewFileEntry struct {
 	Level int
 	Meta  *FileMetadata
+}
+
+// NewBlobFileEntry ...
+//
+// TODO(sumeer): get rid of this wrapping now that there is no level of a blob
+// file.
+type NewBlobFileEntry struct {
+	Meta  *BlobFileMetadata
 }
 
 // VersionEdit holds the state for an edit to a Version along with other
@@ -107,6 +119,33 @@ type VersionEdit struct {
 	// found that there was no overlapping file at the higher level).
 	DeletedFiles map[DeletedFileEntry]*FileMetadata
 	NewFiles     []NewFileEntry
+
+	// Blob files don't have a level -- references to the blob file can be from
+	// sstables in any level. We initially had assignment of levels to blob
+	// files but that meant that a subset of blob files in a compaction needed
+	// to be rewritten (either because they were from the incoming level and
+	// that level still had other references, so we couldn't move the blob
+	// file's level, or because there was too much garbage in the blob file
+	// because of compactions having to rewrite because of the previous reason).
+	// This rewrite of a subset of small blob files interspersed small newly
+	// written blob files among the reused blob files, which caused lots of
+	// small blob files, and prevented us from growing the blob file size when
+	// descending levels (like we do for ssts).
+
+	// DeletedBlobFiles represents blob files that have no sstables referencing
+	// them in the latest version.
+	//
+	// Note: Compactions partially populate these VersionEdit fields. Specifically,
+	// - NewBlobFiles only contains new blob files that were created and written
+	//   to in the compaction.
+	//
+	// - DeletedBlobFiles is never populated. If DeletedFiles removes the
+	//   remaining references to a blob file,
+	//   BulkVersionEdit.AccumulateFirstEditIncomplete will update the
+	//   VersionEdit to add these DeletedBlobFiles.
+	DeletedBlobFiles map[base.FileNum]*BlobFileMetadata
+	// NewBlobFiles represents blob files that were newly created.
+	NewBlobFiles     []NewBlobFileEntry
 }
 
 // Decode decodes an edit from the specified reader.
@@ -267,6 +306,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			}
 			var markedForCompaction bool
 			var creationTime uint64
+			var blobReferences []BlobReference
 			if tag == tagNewFile4 || tag == tagNewFile5 {
 				for {
 					customTag, err := d.readUvarint()
@@ -275,6 +315,28 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					}
 					if customTag == customTagTerminate {
 						break
+					}
+					if customTag == customTagBlobReferences {
+						n, err := d.readUvarint()
+						if err != nil {
+							return err
+						}
+						blobReferences = make([]BlobReference, n)
+						for i := 0; i < int(n); i++ {
+							fileNum, err := d.readUvarint()
+							if err != nil {
+								return err
+							}
+							valueSize, err := d.readUvarint()
+							if err != nil {
+								return err
+							}
+							blobReferences[i] = BlobReference{
+								FileNum:   base.FileNum(fileNum),
+								ValueSize: valueSize,
+							}
+						}
+						continue
 					}
 					field, err := d.readBytes()
 					if err != nil {
@@ -311,6 +373,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				SmallestSeqNum:      smallestSeqNum,
 				LargestSeqNum:       largestSeqNum,
 				MarkedForCompaction: markedForCompaction,
+				BlobReferences:      blobReferences,
 			}
 			if tag != tagNewFile5 { // no range keys present
 				m.SmallestPointKey = base.DecodeInternalKey(smallestPointKey)
@@ -346,6 +409,42 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				Level: level,
 				Meta:  m,
 			})
+
+		case tagNewBlobFile:
+			fileNum, err := d.readFileNum()
+			if err != nil {
+				return err
+			}
+			size, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			valueSize, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			creationTime, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			v.NewBlobFiles = append(v.NewBlobFiles, NewBlobFileEntry{
+				Meta: &BlobFileMetadata{
+					FileNum:      fileNum,
+					Size:         size,
+					ValueSize:    valueSize,
+					CreationTime: int64(creationTime),
+				},
+			})
+
+		case tagDeletedBlobFile:
+			fileNum, err := d.readFileNum()
+			if err != nil {
+				return err
+			}
+			if v.DeletedBlobFiles == nil {
+				v.DeletedBlobFiles = map[base.FileNum]*BlobFileMetadata{}
+			}
+			v.DeletedBlobFiles[fileNum] = nil
 
 		case tagPrevLogNumber:
 			n, err := d.readUvarint()
@@ -397,7 +496,8 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewFiles {
-		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0
+		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 ||
+			(len(x.Meta.BlobReferences) > 0)
 		var tag uint64
 		switch {
 		case x.Meta.HasRangeKeys:
@@ -450,8 +550,29 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeUvarint(customTagNeedsCompaction)
 				e.writeBytes([]byte{1})
 			}
+			if len(x.Meta.BlobReferences) > 0 {
+				e.writeUvarint(customTagBlobReferences)
+				// Unlike the other custom tags we don't use e.writeBytes for the
+				// whole serialization, since it would require a buffer allocation.
+				e.writeUvarint(uint64(len(x.Meta.BlobReferences)))
+				for _, ref := range x.Meta.BlobReferences {
+					e.writeUvarint(uint64(ref.FileNum))
+					e.writeUvarint(ref.ValueSize)
+				}
+			}
 			e.writeUvarint(customTagTerminate)
 		}
+	}
+	for _, x := range v.NewBlobFiles {
+		e.writeUvarint(tagNewBlobFile)
+		e.writeUvarint(uint64(x.Meta.FileNum))
+		e.writeUvarint(x.Meta.Size)
+		e.writeUvarint(x.Meta.ValueSize)
+		e.writeUvarint(uint64(x.Meta.CreationTime))
+	}
+	for x := range v.DeletedBlobFiles {
+		e.writeUvarint(tagDeletedBlobFile)
+		e.writeUvarint(uint64(x))
 	}
 	_, err := w.Write(e.Bytes())
 	return err
@@ -537,8 +658,12 @@ func (e versionEditEncoder) writeUvarint(u uint64) {
 // BulkVersionEdit summarizes the files added and deleted from a set of version
 // edits.
 type BulkVersionEdit struct {
-	Added   [NumLevels][]*FileMetadata
+	Added   [NumLevels]map[base.FileNum]*FileMetadata
 	Deleted [NumLevels]map[base.FileNum]*FileMetadata
+
+	// A blob cannot be both in AddedBlobs and DeletedBlobs.
+	AddedBlobs   map[base.FileNum]*BlobFileMetadata
+	DeletedBlobs map[base.FileNum]*BlobFileMetadata
 
 	// AddedByFileNum maps file number to file metadata for all added files
 	// from accumulated version edits. AddedByFileNum is only populated if set
@@ -554,11 +679,148 @@ type BulkVersionEdit struct {
 	// MarkedForCompactionCountDiff holds the aggregated count of files
 	// marked for compaction added or removed.
 	MarkedForCompactionCountDiff int
+	editsAccumulated             int
+}
+
+// AccumulateFirstEditIncomplete ...
+//
+// TODO(sumeer): use the same interface as
+// AccumulateIncompleteAndApplySingleVE.
+func (b *BulkVersionEdit) AccumulateFirstEditIncomplete(
+	ve *VersionEdit, latestBlobLevels BlobLevels,
+) (*VersionEdit, error) {
+	if b.editsAccumulated != 0 {
+		return nil, errors.Errorf("")
+	}
+	if len(ve.DeletedBlobFiles) > 0 {
+		return nil, errors.Errorf(
+			"AccumulateFirstEditIncomplete called with some deleted blob files")
+	}
+	b.editsAccumulated++
+	type blobFileInfo struct {
+		meta               *BlobFileMetadata
+		unrefs int32
+		refs     int32
+		newBlobFile        bool
+	}
+	// These are blob files who are referenced and de-referenced.
+	affectedBlobFiles := map[base.FileNum]blobFileInfo{}
+	for _, m := range ve.NewBlobFiles {
+		affectedBlobFiles[m.Meta.FileNum] = blobFileInfo{
+			meta:        m.Meta,
+			newBlobFile: true,
+		}
+	}
+	for df, m := range ve.DeletedFiles {
+		dmap := b.Deleted[df.Level]
+		if dmap == nil {
+			dmap = make(map[base.FileNum]*FileMetadata)
+			b.Deleted[df.Level] = dmap
+		}
+		if m == nil {
+			// m is nil only when replaying a MANIFEST.
+			return nil, errors.Errorf("")
+		}
+		if m.MarkedForCompaction {
+			b.MarkedForCompactionCountDiff--
+		}
+		dmap[df.FileNum] = m
+		for _, refs := range m.BlobReferences {
+			var m *BlobFileMetadata
+			var ok bool
+			// Must be in latestBlobLevels, since can't be unrefing something that
+			// was just added.
+			if m, ok = latestBlobLevels.files[refs.FileNum]; !ok {
+				return nil, errors.Errorf("blob file not found")
+			}
+			if info, ok := affectedBlobFiles[refs.FileNum]; !ok {
+				info = blobFileInfo{
+					meta:   m,
+					unrefs: 1,
+				}
+				affectedBlobFiles[refs.FileNum] = info
+			} else {
+				// Already in affectedBlobFiles.
+				info.unrefs++
+				affectedBlobFiles[refs.FileNum] = info
+			}
+		}
+	}
+
+	for _, nf := range ve.NewFiles {
+		// A new file should not have been deleted in this or a preceding
+		// VersionEdit at the same level (though files can move across levels).
+		if dmap := b.Deleted[nf.Level]; dmap != nil {
+			if _, ok := dmap[nf.Meta.FileNum]; ok {
+				return nil, base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", nf.Level, nf.Meta.FileNum)
+			}
+		}
+		nmap := b.Added[nf.Level]
+		if nmap == nil {
+			nmap = make(map[base.FileNum]*FileMetadata)
+			b.Added[nf.Level] = nmap
+		}
+		nmap[nf.Meta.FileNum] = nf.Meta
+		if b.AddedByFileNum != nil {
+			b.AddedByFileNum[nf.Meta.FileNum] = nf.Meta
+		}
+		if nf.Meta.MarkedForCompaction {
+			b.MarkedForCompactionCountDiff++
+		}
+		for _, refs := range nf.Meta.BlobReferences {
+			if info, ok := affectedBlobFiles[refs.FileNum]; !ok {
+				var m *BlobFileMetadata
+				var ok bool
+				if m, ok = latestBlobLevels.files[refs.FileNum]; !ok {
+					return nil, errors.Errorf("blob file not found")
+				}
+				info = blobFileInfo{
+					meta: m,
+					refs: 1,
+				}
+				affectedBlobFiles[refs.FileNum] = info
+			} else {
+				info.refs++
+				affectedBlobFiles[refs.FileNum] = info
+			}
+		}
+	}
+	for _, info := range affectedBlobFiles {
+		if info.newBlobFile {
+			if info.unrefs != 0 {
+				return nil, errors.Errorf("new blob file has unref")
+			}
+			if info.refs == 0 {
+				return nil, errors.Errorf("new blob file had no refs")
+			}
+			continue
+		}
+		// Existing blob. Must be referred to by an input file, so unrefs must
+		// be populated.
+		if info.unrefs == 0 {
+			return nil, errors.Errorf("existing blob should have unref")
+		}
+		refsInLatestVersion :=
+			info.meta.RefsInLatestVersion + info.refs - info.unrefs
+		if refsInLatestVersion < 0 {
+			return nil, errors.Errorf("ref count will become < 0")
+		}
+		if refsInLatestVersion == 0 {
+			// Deleted blob
+			if ve.DeletedBlobFiles == nil {
+				ve.DeletedBlobFiles = map[base.FileNum]*BlobFileMetadata{}
+			}
+			ve.DeletedBlobFiles[info.meta.FileNum] = info.meta
+		}
+		// Else, there are remaining references. Nothing to do.
+	}
+	return ve, b.accumulateBlobFileChanges(ve)
 }
 
 // Accumulate adds the file addition and deletions in the specified version
 // edit to the bulk edit's internal state.
 func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
+	b.editsAccumulated++
 	for df, m := range ve.DeletedFiles {
 		dmap := b.Deleted[df.Level]
 		if dmap == nil {
@@ -579,7 +841,12 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		if m.MarkedForCompaction {
 			b.MarkedForCompactionCountDiff--
 		}
-		dmap[df.FileNum] = m
+		if _, ok := b.Added[df.Level][df.FileNum]; !ok {
+			dmap[df.FileNum] = m
+		} else {
+			// Present in b.Added for the same level.
+			delete(b.Added[df.Level], df.FileNum)
+		}
 	}
 
 	for _, nf := range ve.NewFiles {
@@ -590,13 +857,56 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", nf.Level, nf.Meta.FileNum)
 			}
 		}
-		b.Added[nf.Level] = append(b.Added[nf.Level], nf.Meta)
+		if b.Added[nf.Level] == nil {
+			b.Added[nf.Level] = make(map[base.FileNum]*FileMetadata)
+		}
+		b.Added[nf.Level][nf.Meta.FileNum] = nf.Meta
 		if b.AddedByFileNum != nil {
 			b.AddedByFileNum[nf.Meta.FileNum] = nf.Meta
 		}
 		if nf.Meta.MarkedForCompaction {
 			b.MarkedForCompactionCountDiff++
 		}
+	}
+	return b.accumulateBlobFileChanges(ve)
+}
+
+func (b *BulkVersionEdit) accumulateBlobFileChanges(ve *VersionEdit) error {
+	for df, m := range ve.DeletedBlobFiles {
+		dmap := b.DeletedBlobs
+		if dmap == nil {
+			dmap = map[base.FileNum]*BlobFileMetadata{}
+			b.DeletedBlobs = dmap
+		}
+		if m == nil {
+			// m is nil only when replaying a MANIFEST.
+			m = b.AddedBlobs[df]
+			if m == nil {
+				return errors.Errorf("deleted file that was not added")
+			}
+		}
+		amap := b.AddedBlobs
+		if _, ok := amap[df]; ok {
+			delete(amap, df)
+		} else {
+			dmap[df] = m
+		}
+	}
+	for _, nf := range ve.NewBlobFiles {
+		// A new file should not have been deleted in this or a preceding
+		// VersionEdit.
+		if dmap := b.DeletedBlobs; dmap != nil {
+			if _, ok := dmap[nf.Meta.FileNum]; ok {
+				return base.CorruptionErrorf(
+					"pebble: blob file deleted %s before it was inserted", nf.Meta.FileNum)
+			}
+		}
+		amap := b.AddedBlobs
+		if amap == nil {
+			amap = map[base.FileNum]*BlobFileMetadata{}
+			b.AddedBlobs = amap
+		}
+		amap[nf.Meta.FileNum] = nf.Meta
 	}
 	return nil
 }
@@ -608,15 +918,22 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 //
 // On success, a map of zombie files containing the file numbers and sizes of
 // deleted files is returned. These files are considered zombies because they
-// are no longer referenced by the returned Version, but cannot be deleted from
-// disk as they are still in use by the incoming Version.
+// are no longer referenced by the returned Version, but cannot be deleted
+// from disk as they are still in use by the incoming Version. The zombieBlobs
+// contains blob files.
+//
+// Blob files:
+// We update the in-memory data-structure state in BlobFileMetadata,
+// specifically, refs, RefsInLatestVersion, LiveValueSize. And add
+// BlobFileMetadata pointers to the BlobReferences.
 func (b *BulkVersionEdit) Apply(
 	curr *Version,
 	cmp Compare,
 	formatKey base.FormatKey,
 	flushSplitBytes int64,
 	readCompactionRate int64,
-) (_ *Version, zombies map[base.FileNum]uint64, _ error) {
+	blobLevels *BlobLevels,
+) (_ *Version, zombies map[base.FileNum]uint64, zombieBlobs map[base.FileNum]uint64, _ error) {
 	addZombie := func(fileNum base.FileNum, size uint64) {
 		if zombies == nil {
 			zombies = make(map[base.FileNum]uint64)
@@ -625,10 +942,17 @@ func (b *BulkVersionEdit) Apply(
 	}
 	// The remove zombie function is used to handle tables that are moved from
 	// one level to another during a version edit (i.e. a "move" compaction).
-	removeZombie := func(fileNum base.FileNum) {
-		if zombies != nil {
-			delete(zombies, fileNum)
+	removeZombie := func(fileNum base.FileNum) bool {
+		_, ok := zombies[fileNum]
+		delete(zombies, fileNum)
+		return ok
+	}
+
+	addZombieBlob := func(fileNum base.FileNum, size uint64) {
+		if zombieBlobs == nil {
+			zombieBlobs = make(map[base.FileNum]uint64)
 		}
+		zombieBlobs[fileNum] = size
 	}
 
 	v := new(Version)
@@ -639,7 +963,16 @@ func (b *BulkVersionEdit) Apply(
 	}
 	v.Stats.MarkedForCompaction += b.MarkedForCompactionCountDiff
 	if v.Stats.MarkedForCompaction < 0 {
-		return nil, nil, base.CorruptionErrorf("pebble: version marked for compaction count negative")
+		return nil, nil, nil,
+			base.CorruptionErrorf("pebble: version marked for compaction count negative")
+	}
+
+	// Add the blob files before we process the sst changes.
+	for _, f := range b.AddedBlobs {
+		if _, ok := blobLevels.files[f.FileNum]; ok {
+			panic("blob file already present")
+		}
+		blobLevels.addFile(f)
 	}
 
 	for level := range v.Levels {
@@ -660,7 +993,7 @@ func (b *BulkVersionEdit) Apply(
 				// Initialize L0Sublevels.
 				if curr == nil || curr.L0Sublevels == nil {
 					if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
-						return nil, nil, errors.Wrap(err, "pebble: internal error")
+						return nil, nil, nil, errors.Wrap(err, "pebble: internal error")
 					}
 				} else {
 					v.L0Sublevels = curr.L0Sublevels
@@ -671,28 +1004,50 @@ func (b *BulkVersionEdit) Apply(
 		}
 
 		// Some edits on this level.
+
 		lm := &v.Levels[level]
 		lmRange := &v.RangeKeyLevels[level]
-		addedFiles := b.Added[level]
-		deletedMap := b.Deleted[level]
-		if n := v.Levels[level].Len() + len(addedFiles); n == 0 {
-			return nil, nil, base.CorruptionErrorf(
+		addedFilesMap := b.Added[level]
+		deletedFilesMap := b.Deleted[level]
+		if n := v.Levels[level].Len() + len(addedFilesMap); n == 0 {
+			return nil, nil, nil, base.CorruptionErrorf(
 				"pebble: internal error: No current or added files but have deleted files: %d",
-				errors.Safe(len(deletedMap)))
+				errors.Safe(len(deletedFilesMap)))
 		}
 
-		// NB: addedFiles may be empty and it also is not necessarily
-		// internally consistent: it does not reflect deletions in deletedMap.
+		// NB: addedFilesMap may be empty. If a file is present in addedFilesMap
+		// for a level, it won't be present in deletedFilesMap for the same
+		// level.
 
-		for _, f := range deletedMap {
+		for _, f := range deletedFilesMap {
 			addZombie(f.FileNum, f.Size)
+			// The references must be to blob files that are already in blobLevels,
+			// since this sstable must have existed prior to this Apply.
+			for _, bref := range f.BlobReferences {
+				bm, ok := blobLevels.files[bref.FileNum]
+				if !ok {
+					return nil, nil, nil, base.CorruptionErrorf("unknown blob")
+				}
+				if _, ok := b.AddedBlobs[bref.FileNum]; ok {
+					return nil, nil, nil, base.CorruptionErrorf("new blob referenced by old sst")
+				}
+				if bm != bref.Meta {
+					panic("BlobFileMetadata pointers are different")
+				}
+				// We ignore the isZombie return value since this blob file may get referenced
+				// by another sst that is being added.
+				//
+				// TODO(sumeer): do an invariants.Enabled gated invariants check of
+				// the whole state after constructing the new Version.
+				_ = bm.removeRefFromLatestVersion(bref.ValueSize)
+			}
 			if obsolete := v.Levels[level].tree.delete(f); obsolete {
 				// Deleting a file from the B-Tree may decrement its
 				// reference count. However, because we cloned the
 				// previous level's B-Tree, this should never result in a
 				// file's reference count dropping to zero.
 				err := errors.Errorf("pebble: internal error: file L%d.%s obsolete during B-Tree removal", level, f.FileNum)
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			if f.HasRangeKeys {
 				if obsolete := v.RangeKeyLevels[level].tree.delete(f); obsolete {
@@ -701,19 +1056,24 @@ func (b *BulkVersionEdit) Apply(
 					// previous level's B-Tree, this should never result in a
 					// file's reference count dropping to zero.
 					err := errors.Errorf("pebble: internal error: file L%d.%s obsolete during range-key B-Tree removal", level, f.FileNum)
-					return nil, nil, err
+					return nil, nil, nil, err
 				}
 			}
 		}
 
+
+		addedFiles := make([]*FileMetadata, 0, len(addedFilesMap))
+		for _, f := range addedFilesMap {
+			addedFiles = append(addedFiles, f)
+		}
+		// Sort addedFiles by file number. This isn't necessary, but tests which
+		// replay invalid manifests check the error output, and the error output
+		// depends on the order in which files are added to the btree.
+		sort.Slice(addedFiles, func(i, j int) bool {
+			return addedFiles[i].FileNum < addedFiles[j].FileNum
+		})
 		var sm, la *FileMetadata
 		for _, f := range addedFiles {
-			if _, ok := deletedMap[f.FileNum]; ok {
-				// Already called addZombie on this file in the preceding
-				// loop, so we don't need to do it here.
-				continue
-			}
-
 			// NB: allowedSeeks is used for read triggered compactions. It is set using
 			// Options.Experimental.ReadCompactionRate which defaults to 32KB.
 			var allowedSeeks int64
@@ -728,15 +1088,29 @@ func (b *BulkVersionEdit) Apply(
 
 			err := lm.tree.insert(f)
 			if err != nil {
-				return nil, nil, errors.Wrap(err, "pebble")
+				return nil, nil, nil, errors.Wrap(err, "pebble")
 			}
 			if f.HasRangeKeys {
 				err = lmRange.tree.insert(f)
 				if err != nil {
-					return nil, nil, errors.Wrap(err, "pebble")
+					return nil, nil, nil, errors.Wrap(err, "pebble")
 				}
 			}
-			removeZombie(f.FileNum)
+			existingTable := removeZombie(f.FileNum)
+			for i := range f.BlobReferences {
+				consistent := existingTable == (f.BlobReferences[i].Meta != nil)
+				if !consistent {
+					panic("the BlobFileMetadata pointer must already be initialized")
+				}
+				if !existingTable {
+					f.BlobReferences[i].Meta = blobLevels.files[f.BlobReferences[i].FileNum]
+					if f.BlobReferences[i].Meta == nil {
+						panic(errors.AssertionFailedf("did not find blob meta for %d", f.BlobReferences[i].FileNum))
+					}
+					f.BlobReferences[i].Meta.ref()
+				}
+				f.BlobReferences[i].Meta.addRefFromLatestVersion(f.BlobReferences[i].ValueSize)
+			}
 			// Track the keys with the smallest and largest keys, so that we can
 			// check consistency of the modified span.
 			if sm == nil || base.InternalCompare(cmp, sm.Smallest, f.Smallest) > 0 {
@@ -748,7 +1122,7 @@ func (b *BulkVersionEdit) Apply(
 		}
 
 		if level == 0 {
-			if curr != nil && curr.L0Sublevels != nil && len(deletedMap) == 0 {
+			if curr != nil && curr.L0Sublevels != nil && len(deletedFilesMap) == 0 {
 				// Flushes and ingestions that do not delete any L0 files do not require
 				// a regeneration of L0Sublevels from scratch. We can instead generate
 				// it incrementally.
@@ -761,14 +1135,14 @@ func (b *BulkVersionEdit) Apply(
 					err = v.InitL0Sublevels(cmp, formatKey, flushSplitBytes)
 				}
 				if err != nil {
-					return nil, nil, errors.Wrap(err, "pebble: internal error")
+					return nil, nil, nil, errors.Wrap(err, "pebble: internal error")
 				}
 				v.L0SublevelFiles = v.L0Sublevels.Levels
 			} else if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
-				return nil, nil, errors.Wrap(err, "pebble: internal error")
+				return nil, nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
 			if err := CheckOrdering(cmp, formatKey, Level(0), v.Levels[level].Iter()); err != nil {
-				return nil, nil, errors.Wrap(err, "pebble: internal error")
+				return nil, nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
 			continue
 		}
@@ -789,9 +1163,26 @@ func (b *BulkVersionEdit) Apply(
 				}
 			})
 			if err := CheckOrdering(cmp, formatKey, Level(level), check.Iter()); err != nil {
-				return nil, nil, errors.Wrap(err, "pebble: internal error")
+				return nil, nil, nil, errors.Wrap(err, "pebble: internal error")
 			}
 		}
 	}
-	return v, zombies, nil
+	for _, f := range b.AddedBlobs {
+		if f.RefsInLatestVersion <= 0 {
+			panic(errors.AssertionFailedf("added blob %d has incorrect refs %d", f.FileNum,
+				f.RefsInLatestVersion))
+		}
+	}
+	for _, f := range b.DeletedBlobs {
+		if f.RefsInLatestVersion > 0 {
+			panic("RefsInLatestVersion > 0")
+		}
+		addZombieBlob(f.FileNum, f.Size)
+		if _, ok := blobLevels.files[f.FileNum]; !ok {
+			panic("blob file not found")
+		}
+		delete(blobLevels.files, f.FileNum)
+	}
+
+	return v, zombies, zombieBlobs, nil
 }

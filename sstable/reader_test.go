@@ -472,7 +472,7 @@ func runTestReader(
 					filterer,
 					true, /* use filter block */
 					&stats,
-					TrivialReaderProvider{Reader: r},
+					TrivialReaderProvider{Reader: r}, nil,
 				)
 				if err != nil {
 					return err.Error()
@@ -607,7 +607,7 @@ func testBytesIteratedWithCompression(
 			for _, numEntries := range []uint64{0, 1, maxNumEntries[i]} {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, compression)
 				var bytesIterated, prevIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r})
+				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r}, nil)
 				require.NoError(t, err)
 
 				for key, _ := citer.First(); key != nil; key, _ = citer.Next() {
@@ -657,7 +657,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
 				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, DefaultCompression)
 				var bytesIterated uint64
-				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r})
+				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r}, nil)
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:

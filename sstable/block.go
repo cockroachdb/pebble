@@ -378,8 +378,13 @@ type blockIter struct {
 	// for block iteration for already loaded blocks.
 	firstKey          InternalKey
 	lazyValueHandling struct {
-		vbr            *valueBlockReader
-		hasValuePrefix bool
+		// Either or both vbr and blobValueReader can be non-nil, since one can
+		// have values in value blocks in the sst and references to blob files.
+		//
+		// INVARIANT: !hasValuePrefix => vbr == nil && blobValueReader == nil
+		vbr             *valueBlockReader
+		blobValueReader *blobValueReader
+		hasValuePrefix  bool
 	}
 }
 
@@ -743,10 +748,15 @@ func (i *blockIter) SeekGE(key []byte, flags base.SeekGEFlags) (*InternalKey, ba
 		if !i.lazyValueHandling.hasValuePrefix ||
 			base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 			i.lazyValue = base.MakeInPlaceValue(i.val)
-		} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+		} else if prefix := valuePrefix(i.val[0]); !isGeneralValueHandle(prefix) {
 			i.lazyValue = base.MakeInPlaceValue(i.val[1:])
-		} else {
+		} else if isValueBlockHandle(prefix) {
 			i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+		} else {
+			if !isBlobValueHandle(prefix) {
+				panic("expected blob value handle")
+			}
+			i.lazyValue = i.lazyValueHandling.blobValueReader.getLazyValueForPrefixAndValueHandle(i.val)
 		}
 		return &i.ikey, i.lazyValue
 	}
@@ -906,10 +916,15 @@ func (i *blockIter) SeekLT(key []byte, flags base.SeekLTFlags) (*InternalKey, ba
 	if !i.lazyValueHandling.hasValuePrefix ||
 		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 		i.lazyValue = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+	} else if prefix := valuePrefix(i.val[0]); !isGeneralValueHandle(prefix) {
 		i.lazyValue = base.MakeInPlaceValue(i.val[1:])
-	} else {
+	} else if isValueBlockHandle(prefix) {
 		i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+	} else {
+		if !isBlobValueHandle(prefix) {
+			panic("expected blob value handle")
+		}
+		i.lazyValue = i.lazyValueHandling.blobValueReader.getLazyValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikey, i.lazyValue
 }
@@ -927,10 +942,15 @@ func (i *blockIter) First() (*InternalKey, base.LazyValue) {
 	if !i.lazyValueHandling.hasValuePrefix ||
 		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 		i.lazyValue = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+	} else if prefix := valuePrefix(i.val[0]); !isGeneralValueHandle(prefix) {
 		i.lazyValue = base.MakeInPlaceValue(i.val[1:])
-	} else {
+	} else if isValueBlockHandle(prefix) {
 		i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+	} else {
+		if !isBlobValueHandle(prefix) {
+			panic("expected blob value handle")
+		}
+		i.lazyValue = i.lazyValueHandling.blobValueReader.getLazyValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikey, i.lazyValue
 }
@@ -962,10 +982,15 @@ func (i *blockIter) Last() (*InternalKey, base.LazyValue) {
 	if !i.lazyValueHandling.hasValuePrefix ||
 		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 		i.lazyValue = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+	} else if prefix := valuePrefix(i.val[0]); !isGeneralValueHandle(prefix) {
 		i.lazyValue = base.MakeInPlaceValue(i.val[1:])
-	} else {
+	} else if isValueBlockHandle(prefix) {
 		i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+	} else {
+		if !isBlobValueHandle(prefix) {
+			panic("expected blob value handle")
+		}
+		i.lazyValue = i.lazyValueHandling.blobValueReader.getLazyValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikey, i.lazyValue
 }
@@ -1007,10 +1032,15 @@ func (i *blockIter) Next() (*InternalKey, base.LazyValue) {
 	if !i.lazyValueHandling.hasValuePrefix ||
 		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 		i.lazyValue = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+	} else if prefix := valuePrefix(i.val[0]); !isGeneralValueHandle(prefix) {
 		i.lazyValue = base.MakeInPlaceValue(i.val[1:])
-	} else {
+	} else if isValueBlockHandle(prefix) {
 		i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+	} else {
+		if !isBlobValueHandle(prefix) {
+			panic("expected blob value handle")
+		}
+		i.lazyValue = i.lazyValueHandling.blobValueReader.getLazyValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikey, i.lazyValue
 }
@@ -1266,10 +1296,15 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 			}
 			if base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 				i.lazyValue = base.MakeInPlaceValue(i.val)
-			} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+			} else if prefix := valuePrefix(i.val[0]); !isGeneralValueHandle(prefix) {
 				i.lazyValue = base.MakeInPlaceValue(i.val[1:])
-			} else {
+			} else if isValueBlockHandle(prefix) {
 				i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+			} else {
+				if !isBlobValueHandle(prefix) {
+					panic("expected blob value handle")
+				}
+				i.lazyValue = i.lazyValueHandling.blobValueReader.getLazyValueForPrefixAndValueHandle(i.val)
 			}
 			return &i.ikey, i.lazyValue
 		}
@@ -1319,10 +1354,15 @@ func (i *blockIter) Prev() (*InternalKey, base.LazyValue) {
 		if !i.lazyValueHandling.hasValuePrefix ||
 			base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 			i.lazyValue = base.MakeInPlaceValue(i.val)
-		} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+		} else if prefix := valuePrefix(i.val[0]); !isGeneralValueHandle(prefix) {
 			i.lazyValue = base.MakeInPlaceValue(i.val[1:])
-		} else {
+		} else if isValueBlockHandle(prefix) {
 			i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+		} else {
+			if !isBlobValueHandle(prefix) {
+				panic("expected blob value handle")
+			}
+			i.lazyValue = i.lazyValueHandling.blobValueReader.getLazyValueForPrefixAndValueHandle(i.val)
 		}
 		return &i.ikey, i.lazyValue
 	}
@@ -1374,10 +1414,15 @@ func (i *blockIter) Prev() (*InternalKey, base.LazyValue) {
 	if !i.lazyValueHandling.hasValuePrefix ||
 		base.TrailerKind(i.ikey.Trailer) != InternalKeyKindSet {
 		i.lazyValue = base.MakeInPlaceValue(i.val)
-	} else if i.lazyValueHandling.vbr == nil || !isValueHandle(valuePrefix(i.val[0])) {
+	} else if prefix := valuePrefix(i.val[0]); !isGeneralValueHandle(prefix) {
 		i.lazyValue = base.MakeInPlaceValue(i.val[1:])
-	} else {
+	} else if isValueBlockHandle(prefix) {
 		i.lazyValue = i.lazyValueHandling.vbr.getLazyValueForPrefixAndValueHandle(i.val)
+	} else {
+		if !isBlobValueHandle(prefix) {
+			panic("expected blob value handle")
+		}
+		i.lazyValue = i.lazyValueHandling.blobValueReader.getLazyValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikey, i.lazyValue
 }
@@ -1405,6 +1450,8 @@ func (i *blockIter) Close() error {
 	i.val = nil
 	i.lazyValue = base.LazyValue{}
 	i.lazyValueHandling.vbr = nil
+	i.lazyValueHandling.blobValueReader = nil
+	i.lazyValueHandling.hasValuePrefix = false
 	return nil
 }
 

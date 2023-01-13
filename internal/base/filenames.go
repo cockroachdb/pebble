@@ -33,6 +33,7 @@ const (
 	FileTypeOptions
 	FileTypeOldTemp
 	FileTypeTemp
+	FileTypeBlob
 )
 
 // MakeFilename builds a filename from components.
@@ -54,6 +55,8 @@ func MakeFilename(fileType FileType, fileNum FileNum) string {
 		return fmt.Sprintf("CURRENT.%s.dbtmp", fileNum)
 	case FileTypeTemp:
 		return fmt.Sprintf("temporary.%s.dbtmp", fileNum)
+	case FileTypeBlob:
+		return fmt.Sprintf("%s.blob", fileNum)
 	}
 	panic("unreachable")
 }
@@ -111,6 +114,8 @@ func ParseFilename(fs vfs.FS, filename string) (fileType FileType, fileNum FileN
 			return FileTypeTable, fileNum, true
 		case "log":
 			return FileTypeLog, fileNum, true
+		case "blob":
+			return FileTypeBlob, fileNum, true
 		}
 	}
 	return 0, fileNum, false
@@ -146,7 +151,7 @@ func MustExist(fs vfs.FS, filename string, fataler Fataler, err error) {
 		// triggering error reporting like Sentry.
 		fataler.Fatalf("%s:\norig err: %s\nlist err: %s", redact.Safe(fs.PathBase(filename)), err, lsErr)
 	}
-	var total, unknown, tables, logs, manifests int
+	var total, unknown, tables, logs, manifests, blobs int
 	total = len(ls)
 	for _, f := range ls {
 		typ, _, ok := ParseFilename(fs, f)
@@ -161,9 +166,11 @@ func MustExist(fs vfs.FS, filename string, fataler Fataler, err error) {
 			logs++
 		case FileTypeManifest:
 			manifests++
+		case FileTypeBlob:
+			blobs++
 		}
 	}
 
-	fataler.Fatalf("%s:\n%s\ndirectory contains %d files, %d unknown, %d tables, %d logs, %d manifests",
-		fs.PathBase(filename), err, total, unknown, tables, logs, manifests)
+	fataler.Fatalf("%s:\n%s\ndirectory contains %d files, %d unknown, %d tables, %d logs, %d manifests, %d blobs",
+		fs.PathBase(filename), err, total, unknown, tables, logs, manifests, blobs)
 }

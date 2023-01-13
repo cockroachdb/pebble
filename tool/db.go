@@ -459,6 +459,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 		cmp := base.DefaultComparer
 		var bve manifest.BulkVersionEdit
 		bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
+		var blobLevels manifest.BlobLevels
 		rr := record.NewReader(f, 0 /* logNum */)
 		for {
 			r, err := rr.Next()
@@ -482,7 +483,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 				d.fmtValue.setForComparer(ve.ComparerName, d.comparers)
 			}
 		}
-		v, _, err := bve.Apply(nil /* version */, cmp.Compare, d.fmtKey.fn, d.opts.FlushSplitBytes, d.opts.Experimental.ReadCompactionRate)
+		v, _, _, err := bve.Apply(nil /* version */, cmp.Compare, d.fmtKey.fn, d.opts.FlushSplitBytes, d.opts.Experimental.ReadCompactionRate, &blobLevels)
 		if err != nil {
 			return err
 		}

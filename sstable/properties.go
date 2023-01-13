@@ -142,6 +142,8 @@ type Properties struct {
 	RawRangeKeyValueSize uint64 `prop:"pebble.raw.range-key.value.size"`
 	// Total raw value size.
 	RawValueSize uint64 `prop:"rocksdb.raw.value.size"`
+	// Total size of raw values in blob files that are referenced by this table.
+	RawValueInBlobFilesSize uint64 `prop:"pebble.raw.value.blob-files.size"`
 	// Size of the top-level index if kTwoLevelIndexSearch is used.
 	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
 	// User collected properties.
@@ -362,6 +364,9 @@ func (p *Properties) save(w *rawBlockWriter) {
 	}
 	p.saveUvarint(m, unsafe.Offsetof(p.RawKeySize), p.RawKeySize)
 	p.saveUvarint(m, unsafe.Offsetof(p.RawValueSize), p.RawValueSize)
+	if p.RawValueInBlobFilesSize > 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.RawValueInBlobFilesSize), p.RawValueInBlobFilesSize)
+	}
 	if p.ValueBlocksSize > 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.ValueBlocksSize), p.ValueBlocksSize)
 	}

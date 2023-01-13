@@ -232,11 +232,11 @@ func TestCompactionIter(t *testing.T) {
 						return fmt.Sprintf("unknown op: %s", parts[0])
 					}
 					if iter.Valid() {
-						fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.Value())
+						fmt.Fprintf(&b, "%s:%s\n", iter.Key(), iter.ValueForTesting())
 						if iter.Key().Kind() == InternalKeyKindRangeDelete {
 							iter.rangeDelFrag.Add(keyspan.Span{
 								Start: append([]byte{}, iter.Key().UserKey...),
-								End:   append([]byte{}, iter.Value()...),
+								End:   append([]byte{}, iter.ValueForTesting()...),
 								Keys: []keyspan.Key{
 									{Trailer: iter.Key().Trailer},
 								},

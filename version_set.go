@@ -77,20 +77,27 @@ type versionSet struct {
 
 	// Mutable fields.
 	versions versionList
-	picker   compactionPicker
+	// Blob files in the latest version. These are not leveled, despite the name
+	// BlobLevels, which is stale.
+	BlobLevels manifest.BlobLevels
+
+	picker compactionPicker
 
 	metrics Metrics
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
-	obsoleteFn        func(obsolete []*manifest.FileMetadata)
+	obsoleteFn        func(obsolete []*manifest.FileMetadata, obsoleteBlobFiles []*manifest.BlobFileMetadata)
 	obsoleteTables    []*manifest.FileMetadata
+	obsoleteBlobFiles []fileInfo
 	obsoleteManifests []fileInfo
 	obsoleteOptions   []fileInfo
 
 	// Zombie tables which have been removed from the current version but are
 	// still referenced by an inuse iterator.
 	zombieTables map[FileNum]uint64 // filenum -> size
+
+	zombieBlobs map[FileNum]uint64
 
 	// minUnflushedLogNum is the smallest WAL log file number corresponding to
 	// mutations that have not been flushed to an sstable.
@@ -133,6 +140,7 @@ func (vs *versionSet) init(
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
 	vs.zombieTables = make(map[FileNum]uint64)
+	vs.zombieBlobs = make(map[FileNum]uint64)
 	vs.nextFileNum = 1
 	vs.manifestMarker = marker
 	vs.setCurrent = setCurrent
@@ -160,6 +168,7 @@ func (vs *versionSet) create(
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
 	vs.manifestFileNum = vs.getNextFileNum()
+	// fmt.Printf("versionSet.create\n")
 	err = vs.createManifest(vs.dirname, vs.manifestFileNum, vs.minUnflushedLogNum, vs.nextFileNum)
 	if err == nil {
 		if err = vs.manifest.Flush(); err != nil {
@@ -208,13 +217,13 @@ func (vs *versionSet) load(
 	// Read the versionEdits in the manifest file.
 	var bve bulkVersionEdit
 	bve.AddedByFileNum = make(map[base.FileNum]*fileMetadata)
-	manifest, err := vs.fs.Open(manifestPath)
+	manifestFile, err := vs.fs.Open(manifestPath)
 	if err != nil {
 		return errors.Wrapf(err, "pebble: could not open manifest file %q for DB %q",
 			errors.Safe(manifestFilename), dirname)
 	}
-	defer manifest.Close()
-	rr := record.NewReader(manifest, 0 /* logNum */)
+	defer manifestFile.Close()
+	rr := record.NewReader(manifestFile, 0 /* logNum */)
 	for {
 		r, err := rr.Next()
 		if err == io.EOF || record.IsInvalidRecord(err) {
@@ -278,7 +287,9 @@ func (vs *versionSet) load(
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
 
-	newVersion, _, err := bve.Apply(nil, vs.cmp, opts.Comparer.FormatKey, opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate)
+	newVersion, _, _, err := bve.Apply(
+		nil, vs.cmp, opts.Comparer.FormatKey, opts.FlushSplitBytes,
+		opts.Experimental.ReadCompactionRate, &vs.BlobLevels)
 	if err != nil {
 		return err
 	}
@@ -290,6 +301,18 @@ func (vs *versionSet) load(
 		l.NumFiles = int64(newVersion.Levels[i].Len())
 		files := newVersion.Levels[i].Slice()
 		l.Size = int64(files.SizeSum())
+		// TODO(sumeer): fix this hack that assigns all to L6.
+		if i == numLevels-1 {
+			l.NumBlobFiles = int64(vs.BlobLevels.NumFiles())
+			fileSize, valueSize := vs.BlobLevels.FileSize()
+			l.BlobSize += int64(fileSize)
+			l.BlobValueSize += int64(valueSize)
+		}
+		files.Each(func(f *manifest.FileMetadata) {
+			for _, bref := range f.BlobReferences {
+				l.BlobLiveValueSize += int64(bref.ValueSize)
+			}
+		})
 	}
 
 	vs.picker = newCompactionPicker(newVersion, vs.opts, nil, vs.metrics.levelSizes(), vs.diskAvailBytes)
@@ -335,6 +358,43 @@ func (vs *versionSet) logUnlock() {
 	vs.writerCond.Signal()
 }
 
+func adjustMetricsBasedOnVersionEdit(ve *versionEdit, metrics map[int]*LevelMetrics) {
+	for _, nf := range ve.NewFiles {
+		lm := metrics[nf.Level]
+		for _, br := range nf.Meta.BlobReferences {
+			lm.BlobLiveValueSize += int64(br.ValueSize)
+		}
+	}
+	for entry, df := range ve.DeletedFiles {
+		lm := metrics[entry.Level]
+		for _, br := range df.BlobReferences {
+			lm.BlobLiveValueSize -= int64(br.ValueSize)
+		}
+	}
+	for _, nbf := range ve.NewBlobFiles {
+		// TODO(sumeer): fix this hack that assigns all to L6.
+		lm := metrics[numLevels-1]
+		if lm == nil {
+			lm = &LevelMetrics{}
+			metrics[numLevels-1] = lm
+		}
+		lm.NumBlobFiles++
+		lm.BlobSize += int64(nbf.Meta.Size)
+		lm.BlobValueSize += int64(nbf.Meta.ValueSize)
+	}
+	for _, dbf := range ve.DeletedBlobFiles {
+		// TODO(sumeer): fix this hack that assigns all to L6.
+		lm := metrics[numLevels-1]
+		if lm == nil {
+			lm = &LevelMetrics{}
+			metrics[numLevels-1] = lm
+		}
+		lm.NumBlobFiles--
+		lm.BlobSize -= int64(dbf.Size)
+		lm.BlobValueSize -= int64(dbf.ValueSize)
+	}
+}
+
 // logAndApply logs the version edit to the manifest, applies the version edit
 // to the current version, and installs the new version.
 //
@@ -348,6 +408,9 @@ func (vs *versionSet) logUnlock() {
 func (vs *versionSet) logAndApply(
 	jobID int,
 	ve *versionEdit,
+	// Metrics do not say anything about blobs, except for BlobBytesCompacted
+	// and BlobBytesFlushed. The rest are computed in
+	// adjustMetricsBasedOnVersionEdit after the versionEdit is made complete.
 	metrics map[int]*LevelMetrics,
 	forceRotation bool,
 	inProgressCompactions func() []compactionInfo,
@@ -472,22 +535,27 @@ func (vs *versionSet) logAndApply(
 	nextFileNum := vs.nextFileNum
 
 	var zombies map[FileNum]uint64
+	var zombieBlobs map[FileNum]uint64
 	if err := func() error {
 		vs.mu.Unlock()
 		defer vs.mu.Lock()
 
 		var bve bulkVersionEdit
-		if err := bve.Accumulate(ve); err != nil {
+		var err error
+		if ve, err = bve.AccumulateFirstEditIncomplete(ve, vs.BlobLevels); err != nil {
 			return err
 		}
+		adjustMetricsBasedOnVersionEdit(ve, metrics)
 
-		var err error
-		newVersion, zombies, err = bve.Apply(currentVersion, vs.cmp, vs.opts.Comparer.FormatKey, vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate)
-		if err != nil {
-			return errors.Wrap(err, "MANIFEST apply failed")
-		}
-
+		// We are needing to do manifest creation before bve.Apply because the
+		// changes are made to versionSet in bve.Apply.
+		//
+		// TODO(sumeer): undo this change since now that we have no levels for
+		// blob files we can do the same logic we do for virtual ssts in using the
+		// BlobReferences to construct a map of referenced blob files and write
+		// them. That is, we don't need to look at versionSet.BlobLevels.
 		if newManifestFileNum != 0 {
+			// fmt.Printf("createManifest\n")
 			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum); err != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 					JobID:   jobID,
@@ -497,6 +565,13 @@ func (vs *versionSet) logAndApply(
 				})
 				return errors.Wrap(err, "MANIFEST create failed")
 			}
+		}
+
+		newVersion, zombies, zombieBlobs, err = bve.Apply(
+			currentVersion, vs.cmp, vs.opts.Comparer.FormatKey, vs.opts.FlushSplitBytes,
+			vs.opts.Experimental.ReadCompactionRate, &vs.BlobLevels)
+		if err != nil {
+			return errors.Wrap(err, "MANIFEST apply failed")
 		}
 
 		w, err := vs.manifest.Next()
@@ -556,6 +631,9 @@ func (vs *versionSet) logAndApply(
 	// being called.
 	for fileNum, size := range zombies {
 		vs.zombieTables[fileNum] = size
+	}
+	for fileNum, size := range zombieBlobs {
+		vs.zombieBlobs[fileNum] = size
 	}
 
 	// Install the new version.
@@ -645,12 +723,12 @@ func (vs *versionSet) createManifest(
 ) (err error) {
 	var (
 		filename     = base.MakeFilepath(vs.fs, dirname, fileTypeManifest, fileNum)
-		manifestFile vfs.File
-		manifest     *record.Writer
+		manifestFile   vfs.File
+		manifestWriter *record.Writer
 	)
 	defer func() {
-		if manifest != nil {
-			manifest.Close()
+		if manifestWriter != nil {
+			manifestWriter.Close()
 		}
 		if manifestFile != nil {
 			manifestFile.Close()
@@ -663,7 +741,7 @@ func (vs *versionSet) createManifest(
 	if err != nil {
 		return err
 	}
-	manifest = record.NewWriter(manifestFile)
+	manifestWriter = record.NewWriter(manifestFile)
 
 	snapshot := versionEdit{
 		ComparerName: vs.cmpName,
@@ -677,6 +755,11 @@ func (vs *versionSet) createManifest(
 			})
 		}
 	}
+	vs.BlobLevels.Each(func(f *manifest.BlobFileMetadata) {
+		snapshot.NewBlobFiles = append(snapshot.NewBlobFiles, manifest.NewBlobFileEntry{
+			Meta:  f,
+		})
+	})
 
 	// When creating a version snapshot for an existing DB, this snapshot VersionEdit will be
 	// immediately followed by another VersionEdit (being written in logAndApply()). That
@@ -687,7 +770,7 @@ func (vs *versionSet) createManifest(
 	snapshot.MinUnflushedLogNum = minUnflushedLogNum
 	snapshot.NextFileNum = nextFileNum
 
-	w, err1 := manifest.Next()
+	w, err1 := manifestWriter.Next()
 	if err1 != nil {
 		return err1
 	}
@@ -706,7 +789,7 @@ func (vs *versionSet) createManifest(
 		vs.manifestFile = nil
 	}
 
-	vs.manifest, manifest = manifest, nil
+	vs.manifest, manifestWriter = manifestWriter, nil
 	vs.manifestFile, manifestFile = manifestFile, nil
 	return nil
 }
@@ -739,6 +822,7 @@ func (vs *versionSet) currentVersion() *version {
 	return vs.versions.Back()
 }
 
+// Includes blob files.
 func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 	current := vs.currentVersion()
 	for v := vs.versions.Front(); true; v = v.Next() {
@@ -746,6 +830,9 @@ func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 			iter := lm.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
 				m[f.FileNum] = struct{}{}
+				for _, br := range f.BlobReferences {
+					m[br.FileNum] = struct{}{}
+				}
 			}
 		}
 		if v == current {
@@ -754,7 +841,9 @@ func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 	}
 }
 
-func (vs *versionSet) addObsoleteLocked(obsolete []*manifest.FileMetadata) {
+func (vs *versionSet) addObsoleteLocked(
+	obsolete []*manifest.FileMetadata, obsoleteBlobFiles []*manifest.BlobFileMetadata,
+) {
 	for _, fileMeta := range obsolete {
 		// Note that the obsolete tables are no longer zombie by the definition of
 		// zombie, but we leave them in the zombie tables map until they are
@@ -764,13 +853,34 @@ func (vs *versionSet) addObsoleteLocked(obsolete []*manifest.FileMetadata) {
 		}
 	}
 	vs.obsoleteTables = append(vs.obsoleteTables, obsolete...)
-	vs.incrementObsoleteTablesLocked(obsolete)
+	var obsoleteBlobs []fileInfo
+	for _, bm := range obsoleteBlobFiles {
+		// Note that the obsolete tables are no longer zombie by the definition of
+		// zombie, but we leave them in the zombie tables map until they are
+		// deleted from disk.
+		if _, ok := vs.zombieBlobs[bm.FileNum]; !ok {
+			vs.opts.Logger.Fatalf("MANIFEST obsolete blob file %s not marked as zombie", bm.FileNum)
+		}
+		obsoleteBlobs = append(obsoleteBlobs,
+			fileInfo{
+				fileNum:  bm.FileNum,
+				fileSize: bm.Size,
+			})
+	}
+	vs.obsoleteBlobFiles = append(vs.obsoleteBlobFiles, obsoleteBlobs...)
+	vs.incrementObsoleteTablesLocked(obsolete, obsoleteBlobs)
 }
 
-func (vs *versionSet) incrementObsoleteTablesLocked(obsolete []*manifest.FileMetadata) {
+func (vs *versionSet) incrementObsoleteTablesLocked(
+	obsolete []*manifest.FileMetadata, obsoleteBlobs []fileInfo,
+) {
 	for _, fileMeta := range obsolete {
 		vs.metrics.Table.ObsoleteCount++
 		vs.metrics.Table.ObsoleteSize += fileMeta.Size
+	}
+	for _, fi := range obsoleteBlobs {
+		vs.metrics.BlobFile.ObsoleteCount++
+		vs.metrics.BlobFile.ObsoleteSize += fi.fileSize
 	}
 }
 

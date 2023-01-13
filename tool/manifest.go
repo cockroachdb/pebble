@@ -143,6 +143,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(stdout, "%s\n", arg)
 
 			var bve manifest.BulkVersionEdit
+			var blobLevels manifest.BlobLevels
 			bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 			var cmp *base.Comparer
 			var editIdx int
@@ -234,7 +235,9 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			}
 
 			if cmp != nil {
-				v, _, err := bve.Apply(nil /* version */, cmp.Compare, m.fmtKey.fn, 0, m.opts.Experimental.ReadCompactionRate)
+				v, _, _, err := bve.Apply(
+					nil /* version */, cmp.Compare, m.fmtKey.fn, 0,
+					m.opts.Experimental.ReadCompactionRate, &blobLevels)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s\n", err)
 					return
@@ -514,6 +517,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					break
 				}
 				var bve manifest.BulkVersionEdit
+				var blobLevels manifest.BlobLevels
 				bve.AddedByFileNum = addedByFileNum
 				if err := bve.Accumulate(&ve); err != nil {
 					fmt.Fprintf(stderr, "%s\n", err)
@@ -541,7 +545,8 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 				}
 				// TODO(sbhola): add option to Apply that reports all errors instead of
 				// one error.
-				newv, _, err := bve.Apply(v, cmp.Compare, m.fmtKey.fn, 0, m.opts.Experimental.ReadCompactionRate)
+				newv, _, _, err := bve.Apply(
+					v, cmp.Compare, m.fmtKey.fn, 0, m.opts.Experimental.ReadCompactionRate, &blobLevels)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s: offset: %d err: %s\n",
 						arg, offset, err)

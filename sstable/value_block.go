@@ -127,9 +127,10 @@ type valuePrefix byte
 
 const (
 	// 2 most-significant bits of valuePrefix encodes the value-kind.
-	valueKindMask           valuePrefix = '\xC0'
-	valueKindIsValueHandle  valuePrefix = '\x80'
-	valueKindIsInPlaceValue valuePrefix = '\x00'
+	valueKindMask              valuePrefix = '\xC0'
+	valueKindIsValueHandle     valuePrefix = '\x80'
+	valueKindIsInPlaceValue    valuePrefix = '\x00'
+	valueKindIsBlobValueHandle valuePrefix = '\x40'
 
 	// 1 bit indicates SET has same key prefix as immediately preceding key that
 	// is also a SET. If the immediately preceding key in the same block is a
@@ -164,7 +165,19 @@ func encodeValueHandle(dst []byte, v valueHandle) int {
 }
 
 func makePrefixForValueHandle(setHasSameKeyPrefix bool, attribute base.ShortAttribute) valuePrefix {
-	prefix := valueKindIsValueHandle | valuePrefix(attribute)
+	return makePrefixHelper(setHasSameKeyPrefix, attribute, valueKindIsValueHandle)
+}
+
+func makePrefixForBlobValueHandle(
+	setHasSameKeyPrefix bool, attribute base.ShortAttribute,
+) valuePrefix {
+	return makePrefixHelper(setHasSameKeyPrefix, attribute, valueKindIsBlobValueHandle)
+}
+
+func makePrefixHelper(
+	setHasSameKeyPrefix bool, attribute base.ShortAttribute, handleBits valuePrefix,
+) valuePrefix {
+	prefix := handleBits | valuePrefix(attribute)
 	if setHasSameKeyPrefix {
 		prefix = prefix | setHasSameKeyPrefixMask
 	}
@@ -179,11 +192,20 @@ func makePrefixForInPlaceValue(setHasSameKeyPrefix bool) valuePrefix {
 	return prefix
 }
 
-func isValueHandle(b valuePrefix) bool {
+func isGeneralValueHandle(b valuePrefix) bool {
+	b = b & valueKindMask
+	return b == valueKindIsValueHandle || b == valueKindIsBlobValueHandle
+}
+
+func isValueBlockHandle(b valuePrefix) bool {
 	return b&valueKindMask == valueKindIsValueHandle
 }
 
-// REQUIRES: isValueHandle(b)
+func isBlobValueHandle(b valuePrefix) bool {
+	return b&valueKindMask == valueKindIsBlobValueHandle
+}
+
+// REQUIRES: isValueBlockHandle(b)
 func getShortAttribute(b valuePrefix) base.ShortAttribute {
 	return base.ShortAttribute(b & userDefinedShortAttributeMask)
 }
@@ -293,14 +315,16 @@ func encodeValueBlocksIndexHandle(dst []byte, v valueBlocksIndexHandle) int {
 	return n
 }
 
-func decodeValueBlocksIndexHandle(src []byte) (valueBlocksIndexHandle, int, error) {
+func decodeValueBlocksIndexHandle(
+	src []byte, strictLength bool,
+) (valueBlocksIndexHandle, int, error) {
 	var vbih valueBlocksIndexHandle
 	var n int
 	vbih.h, n = decodeBlockHandle(src)
 	if n <= 0 {
 		return vbih, 0, errors.Errorf("bad BlockHandle %x", src)
 	}
-	if len(src) != n+3 {
+	if strictLength && len(src) != n+3 {
 		return vbih, 0, errors.Errorf("bad BlockHandle %x", src)
 	}
 	vbih.blockNumByteLength = src[n]
@@ -657,13 +681,9 @@ func (ukb *UserKeyPrefixBound) IsEmpty() bool {
 	return len(ukb.Lower) == 0 && len(ukb.Upper) == 0
 }
 
-type blockProviderWhenOpen interface {
-	readBlockForVBR(h BlockHandle, stats *base.InternalIteratorStats) (cache.Handle, error)
-}
-
 type blockProviderWhenClosed struct {
 	rp ReaderProvider
-	r  *Reader
+	r  AbstractReaderForVBR
 }
 
 func (bpwc *blockProviderWhenClosed) open() error {
@@ -680,13 +700,20 @@ func (bpwc *blockProviderWhenClosed) close() {
 func (bpwc blockProviderWhenClosed) readBlockForVBR(
 	h BlockHandle, stats *base.InternalIteratorStats,
 ) (cache.Handle, error) {
-	return bpwc.r.readBlock(h, nil, nil, stats)
+	return bpwc.r.readBlockForVBR(h, stats)
+}
+
+type AbstractReaderForVBR interface {
+	readBlockForVBR(
+		bh BlockHandle,
+		stats *base.InternalIteratorStats,
+	) (_ cache.Handle, _ error)
 }
 
 // ReaderProvider supports the implementation of blockProviderWhenClosed.
 // GetReader and Close can be called multiple times in pairs.
 type ReaderProvider interface {
-	GetReader() (r *Reader, err error)
+	GetReader() (r AbstractReaderForVBR, err error)
 	Close()
 }
 
@@ -699,7 +726,7 @@ type TrivialReaderProvider struct {
 var _ ReaderProvider = TrivialReaderProvider{}
 
 // GetReader implements ReaderProvider.
-func (trp TrivialReaderProvider) GetReader() (*Reader, error) {
+func (trp TrivialReaderProvider) GetReader() (AbstractReaderForVBR, error) {
 	return trp.Reader, nil
 }
 
@@ -710,7 +737,7 @@ func (trp TrivialReaderProvider) Close() {}
 // blocks. It is used when the sstable was written with
 // Properties.ValueBlocksAreEnabled.
 type valueBlockReader struct {
-	bpOpen blockProviderWhenOpen
+	bpOpen AbstractReaderForVBR
 	rp     ReaderProvider
 	vbih   valueBlocksIndexHandle
 	stats  *base.InternalIteratorStats
@@ -731,6 +758,17 @@ type valueBlockReader struct {
 	lazyFetcher   base.LazyFetcher
 	closed        bool
 	bufToMangle   []byte
+}
+
+func newClosedValueBlockReader(
+	rp ReaderProvider, vbih valueBlocksIndexHandle, stats *base.InternalIteratorStats,
+) *valueBlockReader {
+	return &valueBlockReader{
+		rp:     rp,
+		vbih:   vbih,
+		stats:  stats,
+		closed: true,
+	}
 }
 
 func (r *valueBlockReader) getLazyValueForPrefixAndValueHandle(handle []byte) base.LazyValue {
@@ -777,7 +815,7 @@ func (r *valueBlockReader) Fetch(
 	handle []byte, valLen int32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
 	if !r.closed {
-		val, err := r.getValueInternal(handle, valLen)
+		val, err = r.getValueInternal(handle, valLen)
 		if invariants.Enabled {
 			val = r.doValueMangling(val)
 		}

@@ -503,17 +503,18 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	var v *manifest.Version
 	var previousVersion *manifest.Version
 	var bve manifest.BulkVersionEdit
+	var blobLevels manifest.BlobLevels
 	bve.AddedByFileNum = make(map[base.FileNum]*manifest.FileMetadata)
 	applyVE := func(ve *manifest.VersionEdit) error {
 		return bve.Accumulate(ve)
 	}
 	currentVersion := func() (*manifest.Version, error) {
 		var err error
-		v, _, err = bve.Apply(v,
+		v, _, _, err = bve.Apply(v,
 			r.Opts.Comparer.Compare,
 			r.Opts.Comparer.FormatKey,
 			r.Opts.FlushSplitBytes,
-			r.Opts.Experimental.ReadCompactionRate)
+			r.Opts.Experimental.ReadCompactionRate, &blobLevels)
 		bve = manifest.BulkVersionEdit{AddedByFileNum: bve.AddedByFileNum}
 		return v, err
 	}
@@ -688,6 +689,10 @@ func (r *Runner) compactionNotified(ctx context.Context) error {
 }
 
 // findWorkloadFiles finds all manifests and tables in the provided path on fs.
+//
+// TODO(sumeer): for now we can replay with DB state that has no blob files
+// since we can simply configure the DB on which the replay is happening to
+// write blob files.
 func findWorkloadFiles(
 	path string, fs vfs.FS,
 ) (manifests []string, sstables map[base.FileNum]struct{}, err error) {

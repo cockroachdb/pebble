@@ -272,6 +272,7 @@ type DB struct {
 	walDir   vfs.File
 
 	tableCache           *tableCacheContainer
+	blobFileReaderCache  *sstable.BlobFileReaderCache
 	newIters             tableNewIters
 	tableNewRangeKeyIter keyspan.TableNewSpanIter
 
@@ -1309,6 +1310,11 @@ func (d *DB) Close() error {
 		err = errors.Errorf("pebble: %d unexpected in-progress compactions", errors.Safe(n))
 	}
 	err = firstError(err, d.mu.formatVers.marker.Close())
+	// TODO: look more carefully to see if this accomplishes clean shutdown. The
+	// unreffing of the block cache is probably fine. But are there any open
+	// iters that can again appeal to the blobFileReaderCache to give them
+	// something.
+	d.blobFileReaderCache.Close()
 	err = firstError(err, d.tableCache.close())
 	if !d.opts.ReadOnly {
 		err = firstError(err, d.mu.log.Close())
@@ -1356,7 +1362,7 @@ func (d *DB) Close() error {
 	// There may still be obsolete tables if an existing async cleaning job
 	// prevented a new cleaning job when a readState was unrefed. If needed,
 	// synchronously delete obsolete files.
-	if len(d.mu.versions.obsoleteTables) > 0 {
+	if len(d.mu.versions.obsoleteTables) > 0 || len(d.mu.versions.obsoleteBlobFiles) > 0 {
 		d.deleteObsoleteFiles(d.mu.nextJobID, true /* waitForOngoing */)
 	}
 	// Wait for all the deletion goroutines spawned by cleaning jobs to finish.
@@ -1369,6 +1375,10 @@ func (d *DB) Close() error {
 	// hints at a reference count leak.
 	if ztbls := len(d.mu.versions.zombieTables); ztbls > 0 {
 		err = firstError(err, errors.Errorf("non-zero zombie file count: %d", ztbls))
+	}
+	// Similar sanity check for zombie blobs.
+	if zblobs := len(d.mu.versions.zombieBlobs); zblobs > 0 {
+		err = firstError(err, errors.Errorf("non-zero zombie blob count: %d", zblobs))
 	}
 
 	// If the options include a closer to 'close' the filesystem, close it.
@@ -1616,6 +1626,10 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Table.ZombieCount = int64(len(d.mu.versions.zombieTables))
 	for _, size := range d.mu.versions.zombieTables {
 		metrics.Table.ZombieSize += size
+	}
+	metrics.BlobFile.ZombieCount = int64(len(d.mu.versions.zombieBlobs))
+	for _, size := range d.mu.versions.zombieBlobs {
+		metrics.BlobFile.ZombieSize += size
 	}
 	metrics.private.optionsFileSize = d.optionsFileSize
 
@@ -2110,6 +2124,13 @@ func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []comp
 		}
 	}
 	return
+}
+
+func (d *DB) BlobsDebugString() string {
+	d.mu.Lock()
+	blobString := d.mu.versions.BlobLevels.String()
+	d.mu.Unlock()
+	return blobString
 }
 
 func inProgressL0Compactions(inProgress []compactionInfo) []manifest.L0Compaction {

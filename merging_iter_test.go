@@ -157,9 +157,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 			if err != nil {
 				return nil, nil, err
 			}
-			iter, err := r.NewIterWithBlockPropertyFilters(
-				opts.GetLowerBound(), opts.GetUpperBound(), nil, true /* useFilterBlock */, iio.stats,
-				sstable.TrivialReaderProvider{Reader: r})
+			iter, err := r.NewIterWithBlockPropertyFilters(opts.GetLowerBound(), opts.GetUpperBound(), nil, true, iio.stats, sstable.TrivialReaderProvider{Reader: r}, nil)
 			if err != nil {
 				return nil, nil, err
 			}

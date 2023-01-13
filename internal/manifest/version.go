@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -117,6 +118,25 @@ func (s CompactionState) String() string {
 	}
 }
 
+type BlobReference struct {
+	// FileNum is the number of the blob file.
+	FileNum base.FileNum
+	// ValueSize is the sum of the value sizes referenced. It cannot be zero
+	// since zero length values are not written to blob files.
+	ValueSize uint64
+	// Nil in a decoded VersionEdit, and when compactions create a
+	// BlobReference. This is fixed in BulkVersionEdit.Apply.
+	Meta *BlobFileMetadata
+
+	// TODO(sumeer): also track first and last block offset in sstable that
+	// refers to this blob file. This can be used to remove references from
+	// virtual sstables since they will be a contiguous part of the original
+	// sstable.
+	//
+	// TODO(sumeer): disaggregated storage could also import foreign blobs along
+	// with the corresponding foreign sstables.
+}
+
 // FileMetadata holds the metadata for an on-disk table.
 type FileMetadata struct {
 	// Atomic contains fields which are accessed atomically. Go allocations
@@ -175,6 +195,45 @@ type FileMetadata struct {
 	// and are updated via the MaybeExtend{Point,Range}KeyBounds methods.
 	Smallest InternalKey
 	Largest  InternalKey
+
+	// BlobReferences is a list of blob files containing values that are
+	// referred to by this sstable.
+	BlobReferences []BlobReference
+	// BlobReferenceDepth is the stack depth of blob files referenced by this
+	// sstable. An sstable that is flushed has a blob-reference-depth of 1. When
+	// a compaction reuses blob references, the max blob-reference-depth of the
+	// files in each level is used, and then the depth is summed, and assigned
+	// to the output. This is a primitive calculation but avoids tracking key
+	// spans for references and using key comparisons.
+	//
+	// Consider a compaction of file f0 from L0 and files f1, f2, f3 from L1,
+	// where the former has blob-reference-depth of 1 and files f1, f2, f3 all
+	// happen to have a blob-reference-depth of 1. Say we produce many output
+	// files, one of which is f4. We are assuming here that the blobs referenced
+	// by f0 whose keys happened to be written to f4 are spread all across the
+	// key span of f4. Say keys from f1 and f2 also made their way to f4. Then
+	// we will first have keys that refer to blobs referenced by f1,f0 and at
+	// some point once we move past the keys of f1, we will have keys that refer
+	// to blobs referenced by f2,f0. In some sense, we have a working set of 2
+	// blob files at any point in time, and this is similar to the idea of level
+	// stack depth for reads -- hence we adopt the depth terminology. We want to
+	// keep this stack depth in check, since locality is important, while
+	// allowing it to be higher than 1, since otherwise we will need to rewrite
+	// blob files in every compaction (defeating the write amp benefit we are
+	// looking for). Similar to the level depth, this simplistic analysis does
+	// not take into account distribution of keys involved in the compaction and
+	// which of them have blob references. Also the locality is actually better
+	// than in this analysis because more of the keys will be from the lower
+	// level (which is why we get a good hit rate with "caching" 3
+	// valueBlockReaders in blobValueReader.cachedValueBlockReader).
+	//
+	// TODO(sumeer): the code currently sets blob-reference-depth to 0 when
+	// compactions or flushes are rewriting all the blob files, and adjusts for
+	// that in compaction.go. We should write 1 to begin with.
+	//
+	// TODO(sumeer): persist this field in the manifest.
+	BlobReferenceDepth uint64
+
 	// Stats describe table statistics. Protected by DB.mu.
 	Stats TableStats
 
@@ -224,6 +283,17 @@ type FileMetadata struct {
 	// key type (point or range) corresponds to the smallest and largest overall
 	// table bounds.
 	boundTypeSmallest, boundTypeLargest boundType
+}
+
+// SizePlusBlobBytes ...
+//
+// TODO(sumeer): replace this as discussed in l0_sublevels.go.
+func (m *FileMetadata) SizePlusBlobBytes() uint64 {
+	var blobBytes uint64
+	for i := range m.BlobReferences {
+		blobBytes += m.BlobReferences[i].ValueSize
+	}
+	return blobBytes + m.Size
 }
 
 // SetCompactionState transitions this file's compaction state to the given
@@ -754,6 +824,129 @@ func NewVersion(
 	return &v
 }
 
+type BlobFileMetadata struct {
+	// Immutable state for the blob file.
+
+	// FileNum is the file number.
+	FileNum base.FileNum
+	// Size is the size of the file, in bytes.
+	Size uint64
+	// ValueSize is the sum of the length of the uncompressed values stored in
+	// this blob file.
+	ValueSize uint64
+	// File creation time in seconds since the epoch (1970-01-01 00:00:00
+	// UTC).
+	CreationTime int64
+	OriginalLevel int
+	// LiveValueSize and RefsInLatestVersion are updated while holding
+	// versionSet.logLock().
+
+	// Mutable state that is also stored (directly or indirectly).
+
+	// LiveValueSize is the sum of the length of uncompressed values in this
+	// blob file that are still live (i.e., referred to by sstables in the
+	// latest version). Allowed to be zero for a live BlobFileMetadata if all
+	// live values remaining in it are of size zero.
+	LiveValueSize int64
+
+	// Reference count for the blob file. These are from FileMetadata in the
+	// latest and older versions. Each FileMetadata can refer to multiple blob
+	// files, and will count as 1 ref for each of those blob files. This is
+	// incremented when a new FileMetadata is installed in a VersionSet and
+	// decremented when that FileMetadata becomes obsolete.
+	refs int32
+
+	// Number of ssts in the latest version that refer to this blob file.
+	// INVARIANT: RefsInLatestVersion <= refs
+	// RefsInLatestVersion == 0 is a zombie blob file.
+	RefsInLatestVersion int32
+}
+
+func (meta *BlobFileMetadata) unref() bool {
+	count := atomic.AddInt32(&meta.refs, -1)
+	if count < 0 {
+		panic(errors.AssertionFailedf("refs for blob file %d equal to %d", meta.FileNum, count))
+	}
+	return count == 0
+}
+
+func (meta *BlobFileMetadata) ref() {
+	atomic.AddInt32(&meta.refs, +1)
+}
+
+func (meta *BlobFileMetadata) addRefFromLatestVersion(liveSize uint64) {
+	meta.RefsInLatestVersion++
+	meta.LiveValueSize += int64(liveSize)
+}
+
+func (meta *BlobFileMetadata) removeRefFromLatestVersion(liveSize uint64) (isZombie bool) {
+	meta.RefsInLatestVersion--
+	meta.LiveValueSize -= int64(liveSize)
+	return meta.RefsInLatestVersion == 0
+}
+
+// BlobLevelMetadata is only maintained for the latest version.
+type BlobLevelMetadata struct {
+	files map[base.FileNum]*BlobFileMetadata
+}
+
+func (blm *BlobLevelMetadata) NumFiles() int {
+	return len(blm.files)
+}
+
+func (blm *BlobLevelMetadata) FileSize() (fileSize uint64, valueSize uint64) {
+	for _, f := range blm.files {
+		fileSize += f.Size
+		valueSize += f.ValueSize
+	}
+	return fileSize, valueSize
+}
+
+func (blm *BlobLevelMetadata) Each(fn func(f *BlobFileMetadata)) {
+	for _, f := range blm.files {
+		fn(f)
+	}
+}
+
+// Called when creating latest version.
+func (blm *BlobLevelMetadata) addFile(m *BlobFileMetadata) {
+	if blm.files == nil {
+		blm.files = map[base.FileNum]*BlobFileMetadata{}
+	}
+	blm.files[m.FileNum] = m
+}
+
+// BlobLevels used to be a different type since blob files had levels.
+//
+// TODO(sumeer): remove BlobLevels type since same as BlobLevelMetadata.
+type BlobLevels = BlobLevelMetadata
+
+func (bl *BlobLevels) String() string {
+	var buf strings.Builder
+	files := (*bl).files
+	fmt.Fprintf(&buf, "blobs:\n")
+	var filesSlice []*BlobFileMetadata
+	for _, v := range files {
+		filesSlice = append(filesSlice, v)
+	}
+	sort.Slice(filesSlice, func(i, j int) bool {
+		if filesSlice[i].OriginalLevel == filesSlice[j].OriginalLevel {
+			if filesSlice[i].ValueSize == filesSlice[j].ValueSize {
+				return filesSlice[i].FileNum < filesSlice[j].FileNum
+			}
+			return filesSlice[i].ValueSize < filesSlice[j].ValueSize
+		}
+		return filesSlice[i].OriginalLevel < filesSlice[j].OriginalLevel
+	})
+	for _, v := range filesSlice {
+		fmt.Fprintf(&buf, "  %s (L%d): value-size (live) %s (%s) refs (latest) %d (%d)\n",
+			v.FileNum, v.OriginalLevel, humanize.IEC.Uint64(v.ValueSize),
+			humanize.IEC.Int64(v.LiveValueSize), atomic.LoadInt32(&v.refs), v.RefsInLatestVersion)
+	}
+
+	return buf.String()
+}
+
 // Version is a collection of file metadata for on-disk tables at various
 // levels. In-memory DBs are written to level-0 tables, and compactions
 // migrate data from level N to level N+1. The tables map internal keys (which
@@ -811,7 +1004,7 @@ type Version struct {
 
 	// The callback to invoke when the last reference to a version is
 	// removed. Will be called with list.mu held.
-	Deleted func(obsolete []*FileMetadata)
+	Deleted func(obsolete []*FileMetadata, obsoleteBlobFiles []*BlobFileMetadata)
 
 	// Stats holds aggregated stats about the version maintained from
 	// version to version.
@@ -917,11 +1110,11 @@ func (v *Version) Ref() {
 // locked.
 func (v *Version) Unref() {
 	if atomic.AddInt32(&v.refs, -1) == 0 {
-		obsolete := v.unrefFiles()
+		obsolete, obsoleteBlobFiles := v.unrefFiles()
 		l := v.list
 		l.mu.Lock()
 		l.Remove(v)
-		v.Deleted(obsolete)
+		v.Deleted(obsolete, obsoleteBlobFiles)
 		l.mu.Unlock()
 	}
 }
@@ -937,15 +1130,29 @@ func (v *Version) UnrefLocked() {
 	}
 }
 
-func (v *Version) unrefFiles() []*FileMetadata {
+func (v *Version) unrefFiles() ([]*FileMetadata, []*BlobFileMetadata) {
 	var obsolete []*FileMetadata
+	var obsoleteBlobFiles []*BlobFileMetadata
+	unrefBlobFunc := func(levelObsolete []*FileMetadata) {
+		for _, f := range levelObsolete {
+			for _, bref := range f.BlobReferences {
+				if bref.Meta.unref() {
+					obsoleteBlobFiles = append(obsoleteBlobFiles, bref.Meta)
+				}
+			}
+		}
+	}
 	for _, lm := range v.Levels {
-		obsolete = append(obsolete, lm.release()...)
+		levelObsolete := lm.release()
+		unrefBlobFunc(levelObsolete)
+		obsolete = append(obsolete, levelObsolete...)
 	}
 	for _, lm := range v.RangeKeyLevels {
-		obsolete = append(obsolete, lm.release()...)
+		levelObsolete := lm.release()
+		unrefBlobFunc(levelObsolete)
+		obsolete = append(obsolete, levelObsolete...)
 	}
-	return obsolete
+	return obsolete, obsoleteBlobFiles
 }
 
 // Next returns the next version in the list of versions.

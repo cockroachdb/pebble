@@ -249,6 +249,7 @@ func (d *DB) Checkpoint(
 	}
 
 	// Link or copy the sstables.
+	// TODO(sumeer): checkpoint blob files too.
 	for l := range current.Levels {
 		iter := current.Levels[l].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {

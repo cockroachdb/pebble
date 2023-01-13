@@ -109,21 +109,21 @@ reset-stats
 stats
 ----
 a/<invalid>#9,1:a
-{BlockBytes:56 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-{BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+{BlockBytes:56 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0} BlobPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0 CachedVBRHit:0 CachedVBRMissInit:0 CachedVBRMissNotInit:0 CacheVBREvictCount:0}}
+{BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0} BlobPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0 CachedVBRHit:0 CachedVBRMissInit:0 CachedVBRMissNotInit:0 CacheVBREvictCount:0}}
 b#8,1:b
-{BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+{BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0} BlobPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0 CachedVBRHit:0 CachedVBRMissInit:0 CachedVBRMissNotInit:0 CacheVBREvictCount:0}}
 c#7,1:c
-{BlockBytes:56 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+{BlockBytes:56 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0} BlobPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0 CachedVBRHit:0 CachedVBRMissInit:0 CachedVBRMissNotInit:0 CacheVBREvictCount:0}}
 f#5,1:f
-{BlockBytes:56 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+{BlockBytes:56 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0} BlobPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0 CachedVBRHit:0 CachedVBRMissInit:0 CachedVBRMissNotInit:0 CacheVBREvictCount:0}}
 g#4,1:g
-{BlockBytes:112 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+{BlockBytes:112 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0} BlobPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0 CachedVBRHit:0 CachedVBRMissInit:0 CachedVBRMissNotInit:0 CacheVBREvictCount:0}}
 h#3,1:h
-{BlockBytes:112 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+{BlockBytes:112 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0} BlobPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0 CachedVBRHit:0 CachedVBRMissInit:0 CachedVBRMissNotInit:0 CacheVBREvictCount:0}}
 .
-{BlockBytes:112 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-{BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+{BlockBytes:112 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0} BlobPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0 CachedVBRHit:0 CachedVBRMissInit:0 CachedVBRMissNotInit:0 CacheVBREvictCount:0}}
+{BlockBytes:0 BlockBytesInCache:0 KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0} BlobPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0 CachedVBRHit:0 CachedVBRMissInit:0 CachedVBRMissNotInit:0 CacheVBREvictCount:0}}
 
 iter
 set-bounds lower=d

@@ -23,6 +23,8 @@ func TestParseFilename(t *testing.T) {
 		"abcdef.log":             false,
 		"000001ldb":              false,
 		"000001.sst":             true,
+		"000010.blob":            true,
+		"000010..blob":           false,
 		"CURRENT":                true,
 		"CURRaNT":                false,
 		"LOCK":                   true,
@@ -64,6 +66,7 @@ func TestFilenameRoundTrip(t *testing.T) {
 		FileTypeOptions:  true,
 		FileTypeOldTemp:  true,
 		FileTypeTemp:     true,
+		FileTypeBlob:     true,
 	}
 	fs := vfs.NewMem()
 	for fileType, numbered := range testCases {
@@ -103,5 +106,5 @@ func TestMustExist(t *testing.T) {
 	MustExist(fs, filename, &buf, err)
 	require.Equal(t, `000000.sst:
 file does not exist
-directory contains 10 files, 3 unknown, 1 tables, 1 logs, 1 manifests`, buf.buf.String())
+directory contains 10 files, 3 unknown, 1 tables, 1 logs, 1 manifests, 0 blobs`, buf.buf.String())
 }

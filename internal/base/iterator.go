@@ -385,6 +385,27 @@ type InternalIteratorStats struct {
 		// blocks) that were retrieved.
 		ValueBytesFetched uint64
 	}
+
+	// Stats related to points in blob files encountered during iteration.
+	BlobPointValue struct {
+		// Count is a count of points whose values were in blob files. This is not
+		// a subset of PointCount (see comment above).
+		Count             uint64
+		// ValueBytes represents the total byte length of the values in blob files
+		// of the points that are represented in Count.
+		ValueBytes        uint64
+		// ValueBytesFetches is the total byte length of the values in blob files
+		// that were retrieved.
+		ValueBytesFetched uint64
+
+		// These are temporary stats for experimentation.
+		//
+		// TODO(sumeer): remove.
+		CachedVBRHit uint64
+		CachedVBRMissInit uint64
+		CachedVBRMissNotInit uint64
+		CacheVBREvictCount uint64
+	}
 }
 
 // Merge merges the stats in from into the given stats.

@@ -308,7 +308,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 				if iter.Key().Kind() == InternalKeyKindSet {
 					prefix := valuePrefix(v[0])
 					setWithSamePrefix := setHasSamePrefix(prefix)
-					if isValueHandle(prefix) {
+					if isValueBlockHandle(prefix) {
 						attribute := getShortAttribute(prefix)
 						vh := decodeValueHandle(v[1:])
 						fmt.Fprintf(&buf, "%s:value-handle len %d block %d offset %d, att %d, same-pre %t\n",

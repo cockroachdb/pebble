@@ -47,29 +47,71 @@ type LevelMetrics struct {
 	NumFiles int64
 	// The total size in bytes of the files in the level.
 	Size int64
+	// TODO(sumeer): these metrics should no longer be in LevelMetrics since
+	// blob files are not per-level. We currently have a hack where we adjust
+	// these only for L6.
+	//
+	// NumBlobFiles is the number of blob files.
+	NumBlobFiles int64
+	// BlobSize is the file size sum for blob files.
+	BlobSize int64
+	// BlobValueSize is the uncompressed value sizes in the blob files.
+	BlobValueSize int64
+	// BlobLiveValueSize is the uncompressed value sizes in the blob files that
+	// are referenced by some sst.
+	//
+	// BlobLiveValueSize/BlobValueSize is the live-fraction. Compactions should
+	// consider live-fraction as an input in deciding whether to rewrite the
+	// blob references in a compaction.
+	BlobLiveValueSize int64
+
 	// The level's compaction score.
 	Score float64
 	// The number of incoming bytes from other levels read during
 	// compactions. This excludes bytes moved and bytes ingested. For L0 this is
 	// the bytes written to the WAL.
+	// Only includes sst bytes.
 	BytesIn uint64
 	// The number of bytes ingested. The sibling metric for tables is
 	// TablesIngested.
 	BytesIngested uint64
 	// The number of bytes moved into the level by a "move" compaction. The
 	// sibling metric for tables is TablesMoved.
+	// Only includes sst bytes.
 	BytesMoved uint64
 	// The number of bytes read for compactions at the level. This includes bytes
 	// read from other levels (BytesIn), as well as bytes read for the level.
+	// Only includes sst bytes.
 	BytesRead uint64
 	// The number of bytes written during compactions. The sibling
 	// metric for tables is TablesCompacted. This metric may be summed
 	// with BytesFlushed to compute the total bytes written for the level.
+	// Only includes sst bytes.
 	BytesCompacted uint64
 	// The number of bytes written during flushes. The sibling
 	// metrics for tables is TablesFlushed. This metric is always
 	// zero for all levels other than L0.
+	// Only includes sst bytes.
 	BytesFlushed uint64
+	// BlobBytesFlushed is the compressed bytes written to blob files by
+	// flushes.
+	BlobBytesFlushed uint64
+	// We are not accurately computing the per-level write-amp since we don't
+	// have a BlobBytesIn metric representing the compressed bytes coming in
+	// from a higher level. Currently, the per-level write amp can be
+	// significantly higher than the actual due to this since the denominator in
+	// the write amp calculation will not include the blob bytes.
+	//
+	// TODO(sumeer): Fix this by interpolation. For each sst in a higher level
+	// participating in the compaction compute
+	// interpolated-compressed-bytes-in-blob-files =
+	// Sum across blob references (BlobReference.ValueSize/BlobFileMetatada.ValueSize)*(BlobFileMetadata.Size)
+	// and use that to compute BlobBytesIn.
+
+
+	// BlobBytesCompacted is the size of the new blob files written as part of
+	// compactions into this level.
+	BlobBytesCompacted uint64
 	// The number of sstables compacted to this level.
 	TablesCompacted uint64
 	// The number of sstables flushed to this level.
@@ -104,12 +146,18 @@ type LevelMetrics struct {
 func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.NumFiles += u.NumFiles
 	m.Size += u.Size
+	m.NumBlobFiles += u.NumBlobFiles
+	m.BlobSize += u.BlobSize
+	m.BlobValueSize += u.BlobValueSize
+	m.BlobLiveValueSize += u.BlobLiveValueSize
 	m.BytesIn += u.BytesIn
 	m.BytesIngested += u.BytesIngested
 	m.BytesMoved += u.BytesMoved
 	m.BytesRead += u.BytesRead
 	m.BytesCompacted += u.BytesCompacted
 	m.BytesFlushed += u.BytesFlushed
+	m.BlobBytesFlushed += u.BlobBytesFlushed
+	m.BlobBytesCompacted += u.BlobBytesCompacted
 	m.TablesCompacted += u.TablesCompacted
 	m.TablesFlushed += u.TablesFlushed
 	m.TablesIngested += u.TablesIngested
@@ -124,15 +172,22 @@ func (m *LevelMetrics) WriteAmp() float64 {
 	if m.BytesIn == 0 {
 		return 0
 	}
-	return float64(m.BytesFlushed+m.BytesCompacted) / float64(m.BytesIn)
+	return float64(m.BytesFlushed+m.BytesCompacted+m.BlobBytesFlushed+m.BlobBytesCompacted) / float64(m.BytesIn)
 }
 
 // format generates a string of the receiver's metrics, formatting it into the
 // supplied buffer.
 func (m *LevelMetrics) format(w redact.SafePrinter, score redact.SafeValue) {
-	w.Printf("%9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7d %7.1f\n",
+	liveRatio := 0.0
+	if m.BlobValueSize > 0 {
+		liveRatio = float64(m.BlobLiveValueSize)/float64(m.BlobValueSize)
+	}
+	w.Printf("%5d(%5d) %6s(%6s %.2f) %7s %7s %7s %7s %5s %7s %6s(%6s) %7s %7s %7d %7.1f\n",
 		redact.Safe(m.NumFiles),
+		redact.Safe(m.NumBlobFiles),
 		humanize.IEC.Int64(m.Size),
+		humanize.IEC.Int64(m.BlobSize),
+		redact.Safe(liveRatio),
 		score,
 		humanize.IEC.Uint64(m.BytesIn),
 		humanize.IEC.Uint64(m.BytesIngested),
@@ -140,6 +195,7 @@ func (m *LevelMetrics) format(w redact.SafePrinter, score redact.SafeValue) {
 		humanize.IEC.Uint64(m.BytesMoved),
 		humanize.SI.Uint64(m.TablesMoved),
 		humanize.IEC.Uint64(m.BytesFlushed+m.BytesCompacted),
+		humanize.IEC.Uint64(m.BlobBytesFlushed+m.BlobBytesCompacted),
 		humanize.SI.Uint64(m.TablesFlushed+m.TablesCompacted),
 		humanize.IEC.Uint64(m.BytesRead),
 		redact.Safe(m.Sublevels),
@@ -228,6 +284,13 @@ type Metrics struct {
 		ZombieCount int64
 	}
 
+	BlobFile struct {
+		ObsoleteSize uint64
+		ObsoleteCount int64
+		ZombieSize uint64
+		ZombieCount int64
+	}
+
 	TableCache CacheMetrics
 
 	// Count of the number of open sstable iterators.
@@ -279,10 +342,12 @@ func (m *Metrics) DiskSpaceUsage() uint64 {
 	usageBytes += m.WAL.PhysicalSize
 	usageBytes += m.WAL.ObsoletePhysicalSize
 	for _, lm := range m.Levels {
-		usageBytes += uint64(lm.Size)
+		usageBytes += uint64(lm.Size) + uint64(lm.BlobSize)
 	}
 	usageBytes += m.Table.ObsoleteSize
 	usageBytes += m.Table.ZombieSize
+	usageBytes += m.BlobFile.ObsoleteSize
+	usageBytes += m.BlobFile.ZombieSize
 	usageBytes += m.private.optionsFileSize
 	usageBytes += m.private.manifestFileSize
 	usageBytes += uint64(m.Compact.InProgressBytes)
@@ -293,6 +358,12 @@ func (m *Metrics) levelSizes() [numLevels]int64 {
 	var sizes [numLevels]int64
 	for i := 0; i < len(sizes); i++ {
 		sizes[i] = m.Levels[i].Size
+		if m.Levels[i].BlobSize > 0 {
+			liveSize :=
+				 float64(m.Levels[i].BlobLiveValueSize)/float64(m.Levels[i].BlobValueSize)*
+					 float64(m.Levels[i].BlobSize)
+			sizes[i] += int64(liveSize)
+		}
 	}
 	return sizes
 }
@@ -399,8 +470,10 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	// RedactableStrings. https://github.com/cockroachdb/redact/issues/17
 
 	var total LevelMetrics
-	w.SafeString("__level_____count____size___score______in__ingest(sz_cnt)" +
-		"____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp\n")
+	// TODO(sumeer): the alignment of the columns is broken with these
+	// additions.
+	w.SafeString("__level________count________________size___score______in__ingest(sz_cnt)" +
+		"___move(sz_cnt)__________write(sz_cnt)____read___r-amp___w-amp\n")
 	m.formatWAL(w)
 	for level := 0; level < numLevels; level++ {
 		l := &m.Levels[level]
@@ -416,10 +489,13 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		total.Sublevels += l.Sublevels
 	}
 	// Compute total bytes-in as the bytes written to the WAL + bytes ingested.
+	// Unaffected by blob files.
 	total.BytesIn = m.WAL.BytesWritten + total.BytesIngested
 	// Add the total bytes-in to the total bytes-flushed. This is to account for
 	// the bytes written to the log and bytes written externally and then
 	// ingested.
+	//
+	// Write-amp = float64(m.BytesFlushed+m.BytesCompacted) / float64(m.BytesIn)
 	total.BytesFlushed += total.BytesIn
 	w.SafeString("  total ")
 	total.format(w, notApplicable)
@@ -448,6 +524,9 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("   ztbl %9d %7s\n",
 		redact.Safe(m.Table.ZombieCount),
 		humanize.IEC.Uint64(m.Table.ZombieSize))
+	w.Printf("  zblob %9d %7s\n",
+		redact.Safe(m.BlobFile.ZombieCount),
+		humanize.IEC.Uint64(m.BlobFile.ZombieSize))
 	formatCacheMetrics(w, &m.BlockCache, "bcache")
 	formatCacheMetrics(w, &m.TableCache, "tcache")
 	w.Printf("  snaps %9d %7s %7d  (score == earliest seq num)\n",

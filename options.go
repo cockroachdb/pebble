@@ -379,6 +379,60 @@ type LevelOptions struct {
 
 	// The target file size for the level.
 	TargetFileSize int64
+
+	// TODO(sumeer): these configuration parameters were chosen when blob files
+	// could not be references by ssts in different levels. The latter turned out
+	// to be a bad idea (not just from a write amp perspective, which we knew
+	// up front would be higher), because it resulted in small blob files.
+	//
+	// We now either reuse all the existing references in a compaction, and
+	// don't write any new blob files, or don't reuse any references and rewrite
+	// all the blobs to new blob files. This approach also happens to simplify
+	// the configuration story, and we can simply reuse TargetFileSize and not
+	// introduce any new configuration parameters.
+	//
+	// - When rewriting all the blobs, use the sum of the estimated sst size and
+	//   the estimated blob file size to decide when to rollover (compare with
+	//   TargetFileSize). The blob file will also be finalized since when
+	//   creating a new blob file, it only has references from one sst. This is
+	//   also the case for flushes.
+	//
+	// - When not rewriting any of the blobs compute an estimated compression
+	//   ratio for all the input blob files in the compaction
+	//   Sum(BlobFileMetadata.Size)/Sum(BlobFileMetadata.ValueSize). Then use
+	//   the sum of the estimated sst size + compression-ratio *
+	//   Sum(referenced-value-size), to decide when to rollover (compare with
+	//   TargetFileSize).
+	//
+	// The experiments we ran in TestWriteAmpWithBlobs used random values that
+	// don't compress, and we chose TargetBlobFileSizeBasedOnBlobValueSize to be
+	// high enough that the blob file never rolled over before the sst rollover.
+	// So TargetFileSizeIncludingBlobValueSize was the determinant of rollover
+	// (set to 2MB) and was compared with
+	// sstable.Writer.EstimatedSizeWithBlobReferences, which uses compressed sst
+	// size and Sum(referenced-value-size). So in that limited setting the
+	// behavior was similar to the proper solution outlined above.
+
+	// TargetFileSizeIncludingBlobValueSize: When blob files are being written,
+	// this is the total size of the sst plus uncompressed blob value lengths
+	// referred to from that sst, to rollover that sst. Sst rollover also rolls
+	// over any new blobs being written by that sst.
+	TargetFileSizeIncludingBlobValueSize int64
+	// TODO(sumeer): the following comment is stale. We don't set this to be
+	// small anymore. We were trying some dubious things to be able to move blob
+	// files from one level to another without needing to have references to the
+	// blob file from multiple levels.
+
+	// TargetBlobFileSizeBasedOnBlobValueSize: We want blobs to be narrower in
+	// key space than the ssts, so that when compactions happen on a level, the
+	// number of references to the blob file do not increase significantly (the
+	// theoretical average is ~5 with the 10x level multiplier). Assuming a key
+	// space dominated by blobs, TargetFileSizeIncludingBlobValueSize will be
+	// reached with most of the bytes being due to blobs. So we could try
+	// setting the following value to 1/3 of
+	// TargetFileSizeIncludingBlobValueSize. Can exceed this by 50% due to the
+	// logic in ensureBlobFileWriter.
+	TargetBlobFileSizeBasedOnBlobValueSize int64
 }
 
 // EnsureDefaults ensures that the default values for all of the options have
@@ -407,6 +461,12 @@ func (o *LevelOptions) EnsureDefaults() *LevelOptions {
 	}
 	if o.TargetFileSize <= 0 {
 		o.TargetFileSize = 2 << 20 // 2 MB
+	}
+	if o.TargetFileSizeIncludingBlobValueSize <= 0 {
+		o.TargetFileSizeIncludingBlobValueSize = o.TargetFileSize
+	}
+	if o.TargetBlobFileSizeBasedOnBlobValueSize <= 0 {
+		o.TargetBlobFileSizeBasedOnBlobValueSize = o.TargetFileSizeIncludingBlobValueSize/2 + 1
 	}
 	return o
 }
@@ -615,6 +675,15 @@ type Options struct {
 		// Any change in exclusion behavior takes effect only on future written
 		// sstables, and does not start rewriting existing sstables.
 		RequiredInPlaceValueBound UserKeyPrefixBound
+
+		// LongAttributeExtractor is used when storing values in blob files. If
+		// non-nil, a LongAttribute will be extracted from the value and sored
+		// with the key.
+		LongAttributeExtractor base.LongAttributeExtractor
+
+		// SET values > BlobValueSizeThreshold are placed in blob files. Must be
+		// greater than 0.
+		BlobValueSizeThreshold int
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -922,6 +991,15 @@ func (o *Options) EnsureDefaults() *Options {
 				if l.TargetFileSize <= 0 {
 					l.TargetFileSize = o.Levels[i-1].TargetFileSize * 2
 				}
+				if l.TargetFileSizeIncludingBlobValueSize <= 0 {
+					l.TargetFileSizeIncludingBlobValueSize = o.Levels[i-1].TargetFileSizeIncludingBlobValueSize * 2
+					if l.TargetFileSizeIncludingBlobValueSize == 0 {
+						l.TargetFileSizeIncludingBlobValueSize = l.TargetFileSize
+					}
+				}
+				if l.TargetBlobFileSizeBasedOnBlobValueSize <= 0 {
+					l.TargetBlobFileSizeBasedOnBlobValueSize = l.TargetFileSizeIncludingBlobValueSize/2 + 1
+				}
 			}
 			o.Levels[i].EnsureDefaults()
 		}
@@ -994,6 +1072,10 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.PointTombstoneWeight == 0 {
 		o.Experimental.PointTombstoneWeight = 1
 	}
+	if o.Experimental.BlobValueSizeThreshold <= 0 {
+		// Disables use of blob files.
+		o.Experimental.BlobValueSizeThreshold = 1 << 30
+	}
 
 	o.initMaps()
 	return o
@@ -1040,6 +1122,8 @@ func (o *Options) Level(level int) LevelOptions {
 	l := o.Levels[n]
 	for i := n; i < level; i++ {
 		l.TargetFileSize *= 2
+		l.TargetFileSizeIncludingBlobValueSize *= 2
+		l.TargetBlobFileSizeBasedOnBlobValueSize *= 2
 	}
 	return l
 }

@@ -20,6 +20,7 @@ const (
 	fileTypeLog      = base.FileTypeLog
 	fileTypeLock     = base.FileTypeLock
 	fileTypeTable    = base.FileTypeTable
+	fileTypeBlob     = base.FileTypeBlob
 	fileTypeManifest = base.FileTypeManifest
 	fileTypeCurrent  = base.FileTypeCurrent
 	fileTypeOptions  = base.FileTypeOptions

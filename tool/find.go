@@ -54,6 +54,8 @@ type findT struct {
 	manifests []base.FileNum
 	// Sorted list of table file nums.
 	tables []base.FileNum
+	// Sorted list of blob file nums.
+	blobFiles []base.FileNum
 	// Set of tables that contains references to the search key.
 	tableRefs map[base.FileNum]bool
 	// Map from file num to table metadata.
@@ -148,6 +150,7 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 	f.manifests = nil
 	f.tables = nil
 	f.tableMeta = make(map[base.FileNum]*manifest.FileMetadata)
+	f.blobFiles = nil
 
 	if _, err := f.opts.FS.Stat(dir); err != nil {
 		return err
@@ -165,6 +168,8 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 			f.manifests = append(f.manifests, fileNum)
 		case base.FileTypeTable:
 			f.tables = append(f.tables, fileNum)
+		case base.FileTypeBlob:
+			f.blobFiles = append(f.blobFiles, fileNum)
 		default:
 			return
 		}
