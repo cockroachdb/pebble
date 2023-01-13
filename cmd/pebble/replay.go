@@ -59,6 +59,8 @@ type replayConfig struct {
 	count            int
 	streamLogs       bool
 	ignoreCheckpoint bool
+
+	cleanUpFuncs []func() error
 }
 
 func (c *replayConfig) runE(cmd *cobra.Command, args []string) error {
@@ -74,6 +76,7 @@ func (c *replayConfig) runE(cmd *cobra.Command, args []string) error {
 }
 
 func (c *replayConfig) runOnce(stdout io.Writer, workloadPath string) error {
+	defer c.cleanUp()
 	if c.name == "" {
 		c.name = vfs.Default.PathBase(workloadPath)
 	}
@@ -90,6 +93,10 @@ func (c *replayConfig) runOnce(stdout io.Writer, workloadPath string) error {
 	}
 	if err := c.initOptions(r); err != nil {
 		return err
+	}
+	if verbose {
+		fmt.Fprintln(stdout, "Options:")
+		fmt.Fprintln(stdout, r.Opts.String())
 	}
 
 	// Begin the workload. Run does not block.
@@ -126,6 +133,9 @@ func (c *replayConfig) initRunDir(r *replay.Runner) error {
 		if err != nil {
 			return err
 		}
+		c.cleanUpFuncs = append(c.cleanUpFuncs, func() error {
+			return os.RemoveAll(r.RunDir)
+		})
 	}
 	if !c.ignoreCheckpoint {
 		checkpointDir := r.WorkloadFS.PathJoin(r.WorkloadPath, `checkpoint`)
@@ -194,6 +204,15 @@ func (c *replayConfig) initOptions(r *replay.Runner) error {
 		r.Opts.AddEventListener(pebble.MakeLoggingEventListener(pebble.DefaultLogger))
 	}
 	r.Opts.EnsureDefaults()
+	return nil
+}
+
+func (c *replayConfig) cleanUp() error {
+	for _, f := range c.cleanUpFuncs {
+		if err := f(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
