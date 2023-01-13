@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -269,4 +270,23 @@ zmemtbl         0     0 B
 	if s := "\n" + got; expected != s {
 		t.Fatalf("expected%s\nbut found%s", expected, s)
 	}
+}
+
+func TestMetricsWAmpDisableWAL(t *testing.T) {
+	d, err := Open("", &Options{FS: vfs.NewMem(), DisableWAL: true})
+	require.NoError(t, err)
+	ks := testkeys.Alpha(2)
+	wo := WriteOptions{Sync: false}
+	for i := 0; i < 5; i++ {
+		v := []byte(strconv.Itoa(i))
+		for j := 0; j < ks.Count(); j++ {
+			require.NoError(t, d.Set(testkeys.Key(ks, j), v, &wo))
+		}
+		require.NoError(t, d.Flush())
+		require.NoError(t, d.Compact([]byte("a"), []byte("z"), false /* parallelize */))
+	}
+	m := d.Metrics()
+	tot := m.Total()
+	require.Greater(t, tot.WriteAmp(), 1.0)
+	require.NoError(t, d.Close())
 }
