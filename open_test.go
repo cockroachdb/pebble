@@ -19,7 +19,6 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/errorfs"
@@ -107,7 +106,7 @@ func TestErrorIfNotExists(t *testing.T) {
 		_, err := Open("", opts)
 		if err == nil {
 			t.Fatalf("expected error, but found success")
-		} else if !strings.HasSuffix(err.Error(), oserror.ErrNotExist.Error()) {
+		} else if !strings.HasSuffix(err.Error(), "does not exist") {
 			t.Fatalf("expected not exists, but found %q", err)
 		}
 	})
