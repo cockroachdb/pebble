@@ -721,8 +721,7 @@ func (f *memFile) Sync() error {
 	return nil
 }
 
-// Flush is a no-op and present only to prevent buffering at higher levels
-// (e.g. it prevents sstable.Writer from using a bufio.Writer).
-func (f *memFile) Flush() error {
-	return nil
-}
+// NoWriteBufferingMarker is a marker method used to prevent unnecessary write
+// buffering at higher levels (it prevents sstable.Writer from using a
+// bufio.Writer).
+func (f *memFile) NoWriteBufferingMarker() {}

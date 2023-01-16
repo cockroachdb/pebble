@@ -110,10 +110,6 @@ func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
 	}
 }
 
-type flusher interface {
-	Flush() error
-}
-
 type writeCloseSyncer interface {
 	io.WriteCloser
 	Sync() error
@@ -2243,8 +2239,11 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 	w.fragmenter.Emit = w.coalesceSpans
 	w.rangeKeyEncoder.Emit = w.addRangeKey
 
-	// If f does not have a Flush method, do our own buffering.
-	if _, ok := f.(flusher); ok {
+	// Disable write buffering if f has a NoWriteBufferingMarker() method.
+	// TODO(radu): this is a pretty hacky way of passing information through.
+	if _, ok := f.(interface {
+		NoWriteBufferingMarker()
+	}); ok {
 		w.writer = f
 	} else {
 		w.bufWriter = bufio.NewWriter(f)
