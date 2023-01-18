@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
@@ -44,6 +46,8 @@ func initReplayCmd() *cobra.Command {
 	cmd.Flags().VarPF(
 		&c.pacer, "pacer", "p", "the pacer to use: unpaced, reference-ramp, or fixed-ramp=N")
 	cmd.Flags().StringVar(
+		&c.optionsString, "options", "", "Pebble options to override, in the OPTIONS ini format but with any whitespace as field delimiters instead of newlines")
+	cmd.Flags().StringVar(
 		&c.runDir, "run-dir", c.runDir, "the directory to use for the replay data directory; defaults to a random dir in pwd")
 	cmd.Flags().BoolVar(
 		&c.streamLogs, "stream-logs", c.streamLogs, "stream the Pebble logs to stdout during replay")
@@ -59,6 +63,7 @@ type replayConfig struct {
 	count            int
 	streamLogs       bool
 	ignoreCheckpoint bool
+	optionsString    string
 
 	cleanUpFuncs []func() error
 }
@@ -193,6 +198,9 @@ func (c *replayConfig) initOptions(r *replay.Runner) error {
 			return err
 		}
 	}
+	if err := parseCustomOptions(c.optionsString, r.Opts); err != nil {
+		return err
+	}
 	// TODO(jackson): If r.Opts.Comparer == nil, peek at the workload's
 	// manifests and pull the comparer out of them.
 	//
@@ -205,6 +213,49 @@ func (c *replayConfig) initOptions(r *replay.Runner) error {
 	}
 	r.Opts.EnsureDefaults()
 	return nil
+}
+
+// parseCustomOptions parses Pebble Options passed through a CLI flag.
+// Ordinarily Pebble Options are specified through an INI file with newlines
+// delimiting fields. That doesn't translate well to a CLI interface, so this
+// function accepts fields are that delimited by any whitespace. This is the
+// same format that CockroachDB accepts Pebble Options through the --store flag,
+// and this code is copied from there.
+func parseCustomOptions(optsStr string, opts *pebble.Options) error {
+	if optsStr == "" {
+		return nil
+	}
+	// Pebble options are supplied in the Pebble OPTIONS ini-like
+	// format, but allowing any whitespace to delimit lines. Convert
+	// the options to a newline-delimited format. This isn't a trivial
+	// character replacement because whitespace may appear within a
+	// stanza, eg ["Level 0"].
+	value := strings.TrimSpace(optsStr)
+	var buf bytes.Buffer
+	for len(value) > 0 {
+		i := strings.IndexFunc(value, func(r rune) bool {
+			return r == '[' || unicode.IsSpace(r)
+		})
+		switch {
+		case i == -1:
+			buf.WriteString(value)
+			value = value[len(value):]
+		case value[i] == '[':
+			// If there's whitespace within [ ], we write it verbatim.
+			j := i + strings.IndexRune(value[i:], ']')
+			buf.WriteString(value[:j+1])
+			value = value[j+1:]
+		case unicode.IsSpace(rune(value[i])):
+			// NB: This doesn't handle multibyte whitespace.
+			buf.WriteString(value[:i])
+			buf.WriteRune('\n')
+			value = strings.TrimSpace(value[i+1:])
+		}
+	}
+	return opts.Parse(buf.String(), &pebble.ParseHooks{
+		NewComparer: makeComparer,
+		NewMerger:   makeMerger,
+	})
 }
 
 func (c *replayConfig) cleanUp() error {
