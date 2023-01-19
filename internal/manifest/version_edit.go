@@ -686,7 +686,7 @@ func (b *BulkVersionEdit) Apply(
 
 		for _, f := range deletedMap {
 			addZombie(f.FileNum, f.Size)
-			if obsolete := v.Levels[level].tree.delete(f); obsolete {
+			if obsolete := v.Levels[level].tree.Delete(f); obsolete {
 				// Deleting a file from the B-Tree may decrement its
 				// reference count. However, because we cloned the
 				// previous level's B-Tree, this should never result in a
@@ -695,7 +695,7 @@ func (b *BulkVersionEdit) Apply(
 				return nil, nil, err
 			}
 			if f.HasRangeKeys {
-				if obsolete := v.RangeKeyLevels[level].tree.delete(f); obsolete {
+				if obsolete := v.RangeKeyLevels[level].tree.Delete(f); obsolete {
 					// Deleting a file from the B-Tree may decrement its
 					// reference count. However, because we cloned the
 					// previous level's B-Tree, this should never result in a
@@ -726,12 +726,12 @@ func (b *BulkVersionEdit) Apply(
 			atomic.StoreInt64(&f.Atomic.AllowedSeeks, allowedSeeks)
 			f.InitAllowedSeeks = allowedSeeks
 
-			err := lm.tree.insert(f)
+			err := lm.tree.Insert(f)
 			if err != nil {
 				return nil, nil, errors.Wrap(err, "pebble")
 			}
 			if f.HasRangeKeys {
-				err = lmRange.tree.insert(f)
+				err = lmRange.tree.Insert(f)
 				if err != nil {
 					return nil, nil, errors.Wrap(err, "pebble")
 				}
