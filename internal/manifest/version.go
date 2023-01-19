@@ -729,13 +729,7 @@ func overlaps(iter LevelIterator, cmp Compare, start, end []byte, exclusiveEnd b
 		}
 		_ = endIterFile // Ignore unused assignment.
 	}
-
-	iter = startIter.Clone()
-	return LevelSlice{
-		iter:  iter.iter,
-		start: &startIter.iter,
-		end:   &endIter.iter,
-	}
+	return newBoundedLevelSlice(startIter.Clone().iter, &startIter.iter, &endIter.iter)
 }
 
 // NumLevels is the number of levels a Version contains.
@@ -1059,17 +1053,17 @@ func (v *Version) Overlaps(
 				tr.cmp = v.Levels[level].tree.cmp
 				for i, meta := 0, l0Iter.First(); meta != nil; i, meta = i+1, l0Iter.Next() {
 					if selectedIndices[i] {
-						err := tr.insert(meta)
+						err := tr.Insert(meta)
 						if err != nil {
 							panic(err)
 						}
 					}
 				}
-				slice = LevelSlice{iter: tr.iter(), length: tr.length}
+				slice = newLevelSlice(tr.Iter())
 				// TODO(jackson): Avoid the oddity of constructing and
 				// immediately releasing a B-Tree. Make LevelSlice an
 				// interface?
-				tr.release()
+				tr.Release()
 				break
 			}
 			// Continue looping to retry the files that were not selected.
