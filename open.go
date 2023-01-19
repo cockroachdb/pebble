@@ -213,15 +213,13 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}()
 
 	// Establish the format major version.
-	{
-		d.mu.formatVers.vers, d.mu.formatVers.marker, err = lookupFormatMajorVersion(opts.FS, dirname)
-		if err != nil {
+	d.mu.formatVers.vers, d.mu.formatVers.marker, err = lookupFormatMajorVersion(opts.FS, dirname)
+	if err != nil {
+		return nil, err
+	}
+	if !d.opts.ReadOnly {
+		if err := d.mu.formatVers.marker.RemoveObsolete(); err != nil {
 			return nil, err
-		}
-		if !d.opts.ReadOnly {
-			if err := d.mu.formatVers.marker.RemoveObsolete(); err != nil {
-				return nil, err
-			}
 		}
 	}
 
@@ -230,7 +228,6 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 	// Find the currently active manifest, if there is one.
 	manifestMarker, manifestFileNum, exists, err := findCurrentManifest(d.mu.formatVers.vers, opts.FS, dirname)
-	setCurrent := setCurrentFunc(d.mu.formatVers.vers, manifestMarker, opts.FS, dirname, d.dataDir)
 	defer func() {
 		// Ensure we close the manifest marker if we error out for any reason.
 		// If the database is successfully opened, the *versionSet will take
@@ -242,15 +239,24 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}()
 	if err != nil {
 		return nil, errors.Wrapf(err, "pebble: database %q", dirname)
-	} else if !exists && !d.opts.ReadOnly && !d.opts.ErrorIfNotExists {
-		// Create the DB if it did not already exist.
+	}
 
+	setCurrent := setCurrentFunc(d.mu.formatVers.vers, manifestMarker, opts.FS, dirname, d.dataDir)
+
+	if !exists {
+		// DB does not exist.
+		if d.opts.ErrorIfNotExists || d.opts.ReadOnly {
+			return nil, errors.Errorf("pebble: database %q does not exist", dirname)
+		}
+
+		// Create the DB.
 		if err := d.mu.versions.create(jobID, dirname, opts, manifestMarker, setCurrent, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
-	} else if opts.ErrorIfExists {
-		return nil, errors.Errorf("pebble: database %q already exists", dirname)
 	} else {
+		if opts.ErrorIfExists {
+			return nil, errors.Errorf("pebble: database %q already exists", dirname)
+		}
 		// Load the version set.
 		if err := d.mu.versions.load(dirname, opts, manifestFileNum, manifestMarker, setCurrent, &d.mu.Mutex); err != nil {
 			return nil, err
