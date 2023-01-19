@@ -40,33 +40,39 @@ define
 
 overlaps level=0 start=a end=a exclusive-end=false
 ----
+0 files:
 
 overlaps level=0 start=a end=b exclusive-end=false
 ----
+3 files:
 000700:[b#7008,SET-e#7009,SET]
 000701:[c#7018,SET-f#7019,SET]
 000702:[f#7028,SET-g#7029,SET]
 
 overlaps level=0 start=a end=d exclusive-end=false
 ----
+3 files:
 000700:[b#7008,SET-e#7009,SET]
 000701:[c#7018,SET-f#7019,SET]
 000702:[f#7028,SET-g#7029,SET]
 
 overlaps level=0 start=a end=e exclusive-end=false
 ----
+3 files:
 000700:[b#7008,SET-e#7009,SET]
 000701:[c#7018,SET-f#7019,SET]
 000702:[f#7028,SET-g#7029,SET]
 
 overlaps level=0 start=a end=g exclusive-end=false
 ----
+3 files:
 000700:[b#7008,SET-e#7009,SET]
 000701:[c#7018,SET-f#7019,SET]
 000702:[f#7028,SET-g#7029,SET]
 
 overlaps level=0 start=a end=z exclusive-end=false
 ----
+8 files:
 000700:[b#7008,SET-e#7009,SET]
 000701:[c#7018,SET-f#7019,SET]
 000702:[f#7028,SET-g#7029,SET]
@@ -78,12 +84,14 @@ overlaps level=0 start=a end=z exclusive-end=false
 
 overlaps level=0 start=c end=e exclusive-end=false
 ----
+3 files:
 000700:[b#7008,SET-e#7009,SET]
 000701:[c#7018,SET-f#7019,SET]
 000702:[f#7028,SET-g#7029,SET]
 
 overlaps level=0 start=d end=d exclusive-end=false
 ----
+3 files:
 000700:[b#7008,SET-e#7009,SET]
 000701:[c#7018,SET-f#7019,SET]
 000702:[f#7028,SET-g#7029,SET]
@@ -92,12 +100,14 @@ overlaps level=0 start=d end=d exclusive-end=false
 
 overlaps level=0 start=b end=f exclusive-end=true
 ----
+3 files:
 000700:[b#7008,SET-e#7009,SET]
 000701:[c#7018,SET-f#7019,SET]
 000702:[f#7028,SET-g#7029,SET]
 
 overlaps level=0 start=g end=n exclusive-end=false
 ----
+7 files:
 000700:[b#7008,SET-e#7009,SET]
 000701:[c#7018,SET-f#7019,SET]
 000702:[f#7028,SET-g#7029,SET]
@@ -108,9 +118,11 @@ overlaps level=0 start=g end=n exclusive-end=false
 
 overlaps level=0 start=h end=i exclusive-end=false
 ----
+0 files:
 
 overlaps level=0 start=h end=o exclusive-end=false
 ----
+4 files:
 000704:[n#7048,SET-p#7049,SET]
 000705:[p#7058,SET-p#7059,SET]
 000706:[p#7068,SET-u#7069,SET]
@@ -118,6 +130,7 @@ overlaps level=0 start=h end=o exclusive-end=false
 
 overlaps level=0 start=h end=u exclusive-end=false
 ----
+4 files:
 000704:[n#7048,SET-p#7049,SET]
 000705:[p#7058,SET-p#7059,SET]
 000706:[p#7068,SET-u#7069,SET]
@@ -125,9 +138,11 @@ overlaps level=0 start=h end=u exclusive-end=false
 
 overlaps level=0 start=k end=l exclusive-end=false
 ----
+0 files:
 
 overlaps level=0 start=k end=o exclusive-end=false
 ----
+4 files:
 000704:[n#7048,SET-p#7049,SET]
 000705:[p#7058,SET-p#7059,SET]
 000706:[p#7068,SET-u#7069,SET]
@@ -135,6 +150,7 @@ overlaps level=0 start=k end=o exclusive-end=false
 
 overlaps level=0 start=k end=p exclusive-end=false
 ----
+4 files:
 000704:[n#7048,SET-p#7049,SET]
 000705:[p#7058,SET-p#7059,SET]
 000706:[p#7068,SET-u#7069,SET]
@@ -142,6 +158,7 @@ overlaps level=0 start=k end=p exclusive-end=false
 
 overlaps level=0 start=n end=o exclusive-end=false
 ----
+4 files:
 000704:[n#7048,SET-p#7049,SET]
 000705:[p#7058,SET-p#7059,SET]
 000706:[p#7068,SET-u#7069,SET]
@@ -149,6 +166,7 @@ overlaps level=0 start=n end=o exclusive-end=false
 
 overlaps level=0 start=n end=z exclusive-end=false
 ----
+5 files:
 000703:[x#7038,SET-y#7039,SET]
 000704:[n#7048,SET-p#7049,SET]
 000705:[p#7058,SET-p#7059,SET]
@@ -157,6 +175,7 @@ overlaps level=0 start=n end=z exclusive-end=false
 
 overlaps level=0 start=o end=z exclusive-end=false
 ----
+5 files:
 000703:[x#7038,SET-y#7039,SET]
 000704:[n#7048,SET-p#7049,SET]
 000705:[p#7058,SET-p#7059,SET]
@@ -165,6 +184,7 @@ overlaps level=0 start=o end=z exclusive-end=false
 
 overlaps level=0 start=p end=z exclusive-end=false
 ----
+5 files:
 000703:[x#7038,SET-y#7039,SET]
 000704:[n#7048,SET-p#7049,SET]
 000705:[p#7058,SET-p#7059,SET]
@@ -173,6 +193,7 @@ overlaps level=0 start=p end=z exclusive-end=false
 
 overlaps level=0 start=q end=z exclusive-end=false
 ----
+5 files:
 000703:[x#7038,SET-y#7039,SET]
 000704:[n#7048,SET-p#7049,SET]
 000705:[p#7058,SET-p#7059,SET]
@@ -181,6 +202,7 @@ overlaps level=0 start=q end=z exclusive-end=false
 
 overlaps level=0 start=r end=s exclusive-end=false
 ----
+4 files:
 000704:[n#7048,SET-p#7049,SET]
 000705:[p#7058,SET-p#7059,SET]
 000706:[p#7068,SET-u#7069,SET]
@@ -188,6 +210,7 @@ overlaps level=0 start=r end=s exclusive-end=false
 
 overlaps level=0 start=r end=z exclusive-end=false
 ----
+5 files:
 000703:[x#7038,SET-y#7039,SET]
 000704:[n#7048,SET-p#7049,SET]
 000705:[p#7058,SET-p#7059,SET]
@@ -196,6 +219,7 @@ overlaps level=0 start=r end=z exclusive-end=false
 
 overlaps level=0 start=s end=z exclusive-end=false
 ----
+5 files:
 000703:[x#7038,SET-y#7039,SET]
 000704:[n#7048,SET-p#7049,SET]
 000705:[p#7058,SET-p#7059,SET]
@@ -204,6 +228,7 @@ overlaps level=0 start=s end=z exclusive-end=false
 
 overlaps level=0 start=u end=z exclusive-end=false
 ----
+5 files:
 000703:[x#7038,SET-y#7039,SET]
 000704:[n#7048,SET-p#7049,SET]
 000705:[p#7058,SET-p#7059,SET]
@@ -212,44 +237,53 @@ overlaps level=0 start=u end=z exclusive-end=false
 
 overlaps level=0 start=y end=z exclusive-end=false
 ----
+1 files:
 000703:[x#7038,SET-y#7039,SET]
 
 overlaps level=0 start=z end=z exclusive-end=false
 ----
+0 files:
 
 # Level 1
 
 overlaps level=1 start=a end=a exclusive-end=false
 ----
+1 files:
 000710:[a#7140,SET-d#inf,RANGEDEL]
 
 overlaps level=1 start=a end=b exclusive-end=false
 ----
+1 files:
 000710:[a#7140,SET-d#inf,RANGEDEL]
 
 overlaps level=1 start=a end=d exclusive-end=false
 ----
+2 files:
 000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 
 overlaps level=1 start=a end=e exclusive-end=false
 ----
+2 files:
 000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 
 overlaps level=1 start=a end=g exclusive-end=false
 ----
+3 files:
 000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 000712:[g#7118,SET-j#7119,SET]
 
 overlaps level=1 start=a end=g exclusive-end=true
 ----
+2 files:
 000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 
 overlaps level=1 start=a end=z exclusive-end=false
 ----
+6 files:
 000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 000712:[g#7118,SET-j#7119,SET]
@@ -259,6 +293,7 @@ overlaps level=1 start=a end=z exclusive-end=false
 
 overlaps level=1 start=a end=z exclusive-end=true
 ----
+6 files:
 000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 000712:[g#7118,SET-j#7119,SET]
@@ -268,39 +303,47 @@ overlaps level=1 start=a end=z exclusive-end=true
 
 overlaps level=1 start=c end=e exclusive-end=false
 ----
+2 files:
 000710:[a#7140,SET-d#inf,RANGEDEL]
 000711:[d#7108,SET-g#7109,SET]
 
 overlaps level=1 start=d end=d exclusive-end=false
 ----
+1 files:
 000711:[d#7108,SET-g#7109,SET]
 
 overlaps level=1 start=g end=n exclusive-end=false
 ----
+3 files:
 000711:[d#7108,SET-g#7109,SET]
 000712:[g#7118,SET-j#7119,SET]
 000713:[n#7128,SET-p#7129,SET]
 
 overlaps level=1 start=h end=i exclusive-end=false
 ----
+1 files:
 000712:[g#7118,SET-j#7119,SET]
 
 overlaps level=1 start=h end=n exclusive-end=true
 ----
+1 files:
 000712:[g#7118,SET-j#7119,SET]
 
 overlaps level=1 start=h end=n exclusive-end=false
 ----
+2 files:
 000712:[g#7118,SET-j#7119,SET]
 000713:[n#7128,SET-p#7129,SET]
 
 overlaps level=1 start=h end=o exclusive-end=false
 ----
+2 files:
 000712:[g#7118,SET-j#7119,SET]
 000713:[n#7128,SET-p#7129,SET]
 
 overlaps level=1 start=h end=u exclusive-end=false
 ----
+4 files:
 000712:[g#7118,SET-j#7119,SET]
 000713:[n#7128,SET-p#7129,SET]
 000714:[p#7148,SET-p#7149,SET]
@@ -308,73 +351,89 @@ overlaps level=1 start=h end=u exclusive-end=false
 
 overlaps level=1 start=k end=l exclusive-end=false
 ----
+0 files:
 
 overlaps level=1 start=k end=o exclusive-end=false
 ----
+1 files:
 000713:[n#7128,SET-p#7129,SET]
 
 overlaps level=1 start=k end=p exclusive-end=false
 ----
+3 files:
 000713:[n#7128,SET-p#7129,SET]
 000714:[p#7148,SET-p#7149,SET]
 000715:[p#7138,SET-u#7139,SET]
 
 overlaps level=1 start=k end=p exclusive-end=true
 ----
+1 files:
 000713:[n#7128,SET-p#7129,SET]
 
 overlaps level=1 start=n end=o exclusive-end=false
 ----
+1 files:
 000713:[n#7128,SET-p#7129,SET]
 
 overlaps level=1 start=n end=z exclusive-end=false
 ----
+3 files:
 000713:[n#7128,SET-p#7129,SET]
 000714:[p#7148,SET-p#7149,SET]
 000715:[p#7138,SET-u#7139,SET]
 
 overlaps level=1 start=o end=z exclusive-end=false
 ----
+3 files:
 000713:[n#7128,SET-p#7129,SET]
 000714:[p#7148,SET-p#7149,SET]
 000715:[p#7138,SET-u#7139,SET]
 
 overlaps level=1 start=p end=z exclusive-end=false
 ----
+3 files:
 000713:[n#7128,SET-p#7129,SET]
 000714:[p#7148,SET-p#7149,SET]
 000715:[p#7138,SET-u#7139,SET]
 
 overlaps level=1 start=q end=z exclusive-end=false
 ----
+1 files:
 000715:[p#7138,SET-u#7139,SET]
 
 overlaps level=1 start=r end=s exclusive-end=false
 ----
+1 files:
 000715:[p#7138,SET-u#7139,SET]
 
 overlaps level=1 start=r end=z exclusive-end=false
 ----
+1 files:
 000715:[p#7138,SET-u#7139,SET]
 
 overlaps level=1 start=s end=z exclusive-end=false
 ----
+1 files:
 000715:[p#7138,SET-u#7139,SET]
 
 overlaps level=1 start=u end=z exclusive-end=false
 ----
+1 files:
 000715:[p#7138,SET-u#7139,SET]
 
 overlaps level=1 start=y end=z exclusive-end=false
 ----
+0 files:
 
 overlaps level=1 start=z end=z exclusive-end=false
 ----
+0 files:
 
 # Level 2 is empty.
 
 overlaps level=2 start=a end=z exclusive-end=false
 ----
+0 files:
 
 # Test a scenario where an originally exclusive-end must be promoted to
 # inclusive during the iterative expansion of L0 overlaps.
@@ -396,6 +455,7 @@ define
 
 overlaps level=0 start=a end=b exclusive-end=true
 ----
+3 files:
 000001:[a#1,SET-d#2,SET]
 000002:[c#3,SET-f#4,SET]
 000003:[f#5,SET-f#5,SET]
@@ -468,6 +528,7 @@ define
 
 overlaps level=0 start=heacptnep@12 end=kiicbzwtpe@16 exclusive-end=false
 ----
+13 files:
 000973:[ewqqtp@15#4591,RANGEDEL-zaygjmy@1#inf,RANGEDEL]
 000975:[ajoqjxr@16#4578,MERGE-zjyqka@1#4544,DEL]
 000977:[mgksrvk@15#4598,DEL-mgksrvk@15#4598,DEL]
@@ -484,6 +545,7 @@ overlaps level=0 start=heacptnep@12 end=kiicbzwtpe@16 exclusive-end=false
 
 overlaps level=0 start=acutc@6 end=zzhra@12 exclusive-end=true
 ----
+18 files:
 000535:[zzqwavxgrec@12#2657,SINGLEDEL-zzqwavxgrec@12#2526,SET]
 000605:[zzqwavxgrec@12#2894,SET-zzqwavxgrec@12#2894,SET]
 000828:[zzqwavxgrec@12#4092,SINGLEDEL-zzqwavxgrec@12#4092,SINGLEDEL]
