@@ -359,7 +359,7 @@ func TestVersionEditApply(t *testing.T) {
 									}
 								}
 								versionFiles[meta.FileNum] = &meta
-								v.Levels[level].tree.insert(&meta)
+								v.Levels[level].tree.Insert(&meta)
 							} else {
 								ve.NewFiles =
 									append(ve.NewFiles, NewFileEntry{Level: level, Meta: &meta})
