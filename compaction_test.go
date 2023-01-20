@@ -3041,16 +3041,14 @@ func TestCompactionCheckOrdering(t *testing.T) {
 }
 
 type mockSplitter struct {
-	shouldSplitVal compactionSplitSuggestion
+	shouldSplitVal maybeSplit
 }
 
-func (m *mockSplitter) shouldSplitBefore(
-	key *InternalKey, tw *sstable.Writer,
-) compactionSplitSuggestion {
+func (m *mockSplitter) shouldSplitBefore(key *InternalKey, tw *sstable.Writer) maybeSplit {
 	return m.shouldSplitVal
 }
 
-func (m *mockSplitter) onNewOutput(key *InternalKey) []byte {
+func (m *mockSplitter) onNewOutput(key []byte) []byte {
 	return nil
 }
 
@@ -3106,7 +3104,7 @@ func TestCompactionOutputSplitters(t *testing.T) {
 					return "expected at least 2 args"
 				}
 				splitterToSet := (*pickSplitter(d.CmdArgs[0].Key)).(*mockSplitter)
-				var val compactionSplitSuggestion
+				var val maybeSplit
 				switch d.CmdArgs[1].Key {
 				case "split-now":
 					val = splitNow
@@ -3123,7 +3121,7 @@ func TestCompactionOutputSplitters(t *testing.T) {
 				key := base.ParseInternalKey(d.CmdArgs[0].Key)
 				shouldSplit := main.shouldSplitBefore(&key, nil)
 				if shouldSplit == splitNow {
-					main.onNewOutput(&key)
+					main.onNewOutput(key.UserKey)
 					prevUserKey = nil
 				} else {
 					prevUserKey = key.UserKey
