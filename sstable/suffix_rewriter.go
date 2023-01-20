@@ -3,15 +3,14 @@ package sstable
 import (
 	"bytes"
 	"math"
-	"os"
 	"sync"
-	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/sststorage"
 )
 
 // RewriteKeySuffixes copies the content of the passed SSTable bytes to a new
@@ -31,7 +30,7 @@ import (
 func RewriteKeySuffixes(
 	sst []byte,
 	rOpts ReaderOptions,
-	out writeCloseSyncer,
+	out sststorage.Writable,
 	o WriterOptions,
 	from, to []byte,
 	concurrency int,
@@ -45,7 +44,7 @@ func RewriteKeySuffixes(
 }
 
 func rewriteKeySuffixesInBlocks(
-	r *Reader, out writeCloseSyncer, o WriterOptions, from, to []byte, concurrency int,
+	r *Reader, out sststorage.Writable, o WriterOptions, from, to []byte, concurrency int,
 ) (*WriterMetadata, error) {
 	if o.Comparer == nil || o.Comparer.Split == nil {
 		return nil, errors.New("a valid splitter is required to define suffix to replace replace suffix")
@@ -283,7 +282,7 @@ func rewriteDataBlocksToWriter(
 
 	for i := range blocks {
 		// Write the rewritten block to the file.
-		n, err := w.writer.Write(blocks[i].data)
+		n, err := w.writable.Write(blocks[i].data)
 		if err != nil {
 			return err
 		}
@@ -389,7 +388,7 @@ func (c copyFilterWriter) policyName() string      { return c.origPolicyName }
 // more work to rederive filters, props, etc, however re-doing that work makes
 // it less restrictive -- props no longer need to
 func RewriteKeySuffixesViaWriter(
-	r *Reader, out writeCloseSyncer, o WriterOptions, from, to []byte,
+	r *Reader, out sststorage.Writable, o WriterOptions, from, to []byte,
 ) (*WriterMetadata, error) {
 	if o.Comparer == nil || o.Comparer.Split == nil {
 		return nil, errors.New("a valid splitter is required to define suffix to replace replace suffix")
@@ -444,11 +443,11 @@ func RewriteKeySuffixesViaWriter(
 
 // NewMemReader opens a reader over the SST stored in the passed []byte.
 func NewMemReader(sst []byte, o ReaderOptions) (*Reader, error) {
-	return NewReader(memReader{sst, bytes.NewReader(sst), sizeOnlyStat(int64(len(sst)))}, o)
+	return NewReader(newMemReader(sst), o)
 }
 
 func readBlockBuf(r *Reader, bh BlockHandle, buf []byte) ([]byte, []byte, error) {
-	raw := r.file.(memReader).b[bh.Offset : bh.Offset+bh.Length+blockTrailerLen]
+	raw := r.readable.(*memReader).b[bh.Offset : bh.Offset+bh.Length+blockTrailerLen]
 	if err := checkChecksum(r.checksumType, raw, bh, 0); err != nil {
 		return nil, buf, err
 	}
@@ -472,27 +471,38 @@ func readBlockBuf(r *Reader, bh BlockHandle, buf []byte) ([]byte, []byte, error)
 // sstable.Reader. It supports concurrent use, and does so without locking in
 // contrast to the heavier read/write vfs.MemFile.
 type memReader struct {
-	b []byte
-	r *bytes.Reader
-	s sizeOnlyStat
+	b  []byte
+	r  *bytes.Reader
+	rh sststorage.NoopReadaheadHandle
 }
 
-var _ ReadableFile = memReader{}
+var _ sststorage.Readable = (*memReader)(nil)
+
+func newMemReader(b []byte) *memReader {
+	r := &memReader{
+		b: b,
+		r: bytes.NewReader(b),
+	}
+	r.rh = sststorage.MakeNoopReadaheadHandle(r)
+	return r
+}
 
 // ReadAt implements io.ReaderAt.
-func (m memReader) ReadAt(p []byte, off int64) (n int, err error) { return m.r.ReadAt(p, off) }
+func (m *memReader) ReadAt(p []byte, off int64) (n int, err error) {
+	return m.r.ReadAt(p, off)
+}
 
 // Close implements io.Closer.
-func (memReader) Close() error { return nil }
+func (*memReader) Close() error {
+	return nil
+}
 
-// Stat implements ReadableFile.
-func (m memReader) Stat() (os.FileInfo, error) { return m.s, nil }
+// Stat implements sststorage.Readable.
+func (m *memReader) Size() int64 {
+	return int64(len(m.b))
+}
 
-type sizeOnlyStat int64
-
-func (s sizeOnlyStat) Size() int64      { return int64(s) }
-func (sizeOnlyStat) IsDir() bool        { panic(errors.AssertionFailedf("unimplemented")) }
-func (sizeOnlyStat) ModTime() time.Time { panic(errors.AssertionFailedf("unimplemented")) }
-func (sizeOnlyStat) Mode() os.FileMode  { panic(errors.AssertionFailedf("unimplemented")) }
-func (sizeOnlyStat) Name() string       { panic(errors.AssertionFailedf("unimplemented")) }
-func (sizeOnlyStat) Sys() interface{}   { panic(errors.AssertionFailedf("unimplemented")) }
+// NewReadaheadHandle implements sststorage.Readable.
+func (m *memReader) NewReadaheadHandle() sststorage.ReadaheadHandle {
+	return &m.rh
+}

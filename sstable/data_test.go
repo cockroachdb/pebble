@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sststorage/vfsbackend"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -170,7 +171,9 @@ func runBuildRawCmd(
 	td *datadriven.TestData, opts *WriterOptions,
 ) (*WriterMetadata, *Reader, error) {
 	mem := vfs.NewMem()
-	f0, err := mem.Create("test")
+	backend := vfsbackend.New(mem, "" /* dirName */, vfsbackend.DefaultSettings)
+
+	f0, err := backend.Create(0 /* fileNum */)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -217,7 +220,7 @@ func runBuildRawCmd(
 		return nil, nil, err
 	}
 
-	f1, err := mem.Open("test")
+	f1, err := backend.OpenForReading(0 /* fileNum */)
 	if err != nil {
 		return nil, nil, err
 	}

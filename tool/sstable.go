@@ -141,13 +141,17 @@ inclusive-inclusive range specified by --start and --end.
 }
 
 func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
+	readable, err := sstable.NewSimpleReadable(f)
+	if err != nil {
+		return nil, err
+	}
 	o := sstable.ReaderOptions{
 		Cache:    pebble.NewCache(128 << 20 /* 128 MB */),
 		Comparer: s.opts.Comparer,
 		Filters:  s.opts.Filters,
 	}
 	defer o.Cache.Unref()
-	return sstable.NewReader(f, o, s.comparers, s.mergers,
+	return sstable.NewReader(readable, o, s.comparers, s.mergers,
 		private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
 }
 

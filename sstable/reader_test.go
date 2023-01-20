@@ -13,7 +13,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +25,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sststorage"
+	"github.com/cockroachdb/pebble/sststorage/vfsbackend"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -247,7 +248,7 @@ func TestHamletReader(t *testing.T) {
 		f, err := os.Open(filepath.FromSlash(prebuiltSST))
 		require.NoError(t, err)
 
-		r, err := NewReader(f, ReaderOptions{})
+		r, err := newReader(f, ReaderOptions{})
 		require.NoError(t, err)
 
 		t.Run(
@@ -310,7 +311,8 @@ func TestInjectedErrors(t *testing.T) {
 		run := func(i int) (reterr error) {
 			f, err := os.Open(filepath.FromSlash(prebuiltSST))
 			require.NoError(t, err)
-			r, err := NewReader(errorfs.WrapFile(f, errorfs.OnIndex(int32(i))), ReaderOptions{})
+
+			r, err := newReader(errorfs.WrapFile(f, errorfs.OnIndex(int32(i))), ReaderOptions{})
 			if err != nil {
 				return firstError(err, f.Close())
 			}
@@ -357,15 +359,19 @@ func TestInjectedErrors(t *testing.T) {
 }
 
 func TestInvalidReader(t *testing.T) {
+	invalid, err := NewSimpleReadable(vfs.NewMemFile([]byte("invalid sst bytes")))
+	if err != nil {
+		t.Fatal(err)
+	}
 	testCases := []struct {
-		file     vfs.File
+		readable sststorage.Readable
 		expected string
 	}{
 		{nil, "nil file"},
-		{vfs.NewMemFile([]byte("invalid sst bytes")), "invalid table"},
+		{invalid, "invalid table"},
 	}
 	for _, tc := range testCases {
-		r, err := NewReader(tc.file, ReaderOptions{})
+		r, err := NewReader(tc.readable, ReaderOptions{})
 		if !strings.Contains(err.Error(), tc.expected) {
 			t.Fatalf("expected %q, but found %q", tc.expected, err.Error())
 		}
@@ -574,7 +580,8 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 			for _, merger := range c.mergers {
 				mergers[merger.Name] = merger
 			}
-			r, err := NewReader(f1, ReaderOptions{}, comparers, mergers)
+
+			r, err := newReader(f1, ReaderOptions{}, comparers, mergers)
 			if err != nil {
 				if r != nil {
 					t.Fatalf("found non-nil reader returned with non-nil error %q", err.Error())
@@ -651,19 +658,21 @@ func TestBytesIterated(t *testing.T) {
 }
 
 func TestCompactionIteratorSetupForCompaction(t *testing.T) {
+	tmpDir := path.Join(t.TempDir())
+	backend := vfsbackend.New(vfs.Default, tmpDir, vfsbackend.DefaultSettings)
 	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
 	for _, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
 			for _, numEntries := range []uint64{0, 1, 1e5} {
-				r := buildTestTable(t, numEntries, blockSize, indexBlockSize, DefaultCompression)
+				r := buildTestTableWithBackend(t, backend, numEntries, blockSize, indexBlockSize, DefaultCompression)
 				var bytesIterated uint64
 				citer, err := r.NewCompactionIter(&bytesIterated, TrivialReaderProvider{Reader: r})
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:
-					require.NotNil(t, i.dataRS.sequentialFile)
+					require.True(t, vfsbackend.TestingCheckMaxReadahead(i.dataRH))
 				case *twoLevelCompactionIterator:
-					require.NotNil(t, i.dataRS.sequentialFile)
+					require.True(t, vfsbackend.TestingCheckMaxReadahead(i.dataRH))
 				default:
 					require.Failf(t, fmt.Sprintf("unknown compaction iterator type: %T", citer), "")
 				}
@@ -672,50 +681,6 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 			}
 		}
 	}
-}
-
-func TestMaybeReadahead(t *testing.T) {
-	var rs readaheadState
-	datadriven.RunTest(t, "testdata/readahead", func(t *testing.T, d *datadriven.TestData) string {
-		cacheHit := false
-		switch d.Cmd {
-		case "reset":
-			rs.size = initialReadaheadSize
-			rs.limit = 0
-			rs.numReads = 0
-			return ""
-
-		case "cache-read":
-			cacheHit = true
-			fallthrough
-		case "read":
-			args := strings.Split(d.Input, ",")
-			if len(args) != 2 {
-				return "expected 2 args: offset, size"
-			}
-
-			offset, err := strconv.ParseInt(strings.TrimSpace(args[0]), 10, 64)
-			require.NoError(t, err)
-			size, err := strconv.ParseInt(strings.TrimSpace(args[1]), 10, 64)
-			require.NoError(t, err)
-			var raSize int64
-			if cacheHit {
-				rs.recordCacheHit(offset, size)
-			} else {
-				raSize = rs.maybeReadahead(offset, size)
-			}
-
-			var buf strings.Builder
-			fmt.Fprintf(&buf, "readahead:  %d\n", raSize)
-			fmt.Fprintf(&buf, "numReads:   %d\n", rs.numReads)
-			fmt.Fprintf(&buf, "size:       %d\n", rs.size)
-			fmt.Fprintf(&buf, "prevSize:   %d\n", rs.prevSize)
-			fmt.Fprintf(&buf, "limit:      %d", rs.limit)
-			return buf.String()
-		default:
-			return fmt.Sprintf("unknown command: %s", d.Cmd)
-		}
-	})
 }
 
 func TestReaderChecksumErrors(t *testing.T) {
@@ -753,7 +718,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 						f, err := mem.Open("test")
 						require.NoError(t, err)
 
-						r, err := NewReader(f, ReaderOptions{})
+						r, err := newReader(f, ReaderOptions{})
 						require.NoError(t, err)
 						layout, err = r.Layout()
 						require.NoError(t, err)
@@ -784,7 +749,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 						corrupted, err = mem.Open("corrupted")
 						require.NoError(t, err)
 
-						r, err := NewReader(corrupted, ReaderOptions{})
+						r, err := newReader(corrupted, ReaderOptions{})
 						require.NoError(t, err)
 
 						iter, err := r.NewIter(nil, nil)
@@ -923,7 +888,7 @@ func TestValidateBlockChecksums(t *testing.T) {
 		require.NoError(t, f.Close())
 
 		filter := bloom.FilterPolicy(10)
-		r, err := NewReader(fCopy, ReaderOptions{
+		r, err := newReader(fCopy, ReaderOptions{
 			Filters: map[string]FilterPolicy{
 				filter.Name(): filter,
 			},
@@ -1017,7 +982,7 @@ func TestReader_TableFormat(t *testing.T) {
 
 		f, err = fs.Open("test")
 		require.NoError(t, err)
-		r, err := NewReader(f, ReaderOptions{})
+		r, err := newReader(f, ReaderOptions{})
 		require.NoError(t, err)
 		defer r.Close()
 
@@ -1036,8 +1001,18 @@ func TestReader_TableFormat(t *testing.T) {
 func buildTestTable(
 	t *testing.T, numEntries uint64, blockSize, indexBlockSize int, compression Compression,
 ) *Reader {
-	mem := vfs.NewMem()
-	f0, err := mem.Create("test")
+	backend := vfsbackend.New(vfs.NewMem(), "" /* dirName */, vfsbackend.DefaultSettings)
+	return buildTestTableWithBackend(t, backend, numEntries, blockSize, indexBlockSize, compression)
+}
+
+func buildTestTableWithBackend(
+	t *testing.T,
+	backend sststorage.Backend,
+	numEntries uint64,
+	blockSize, indexBlockSize int,
+	compression Compression,
+) *Reader {
+	f0, err := backend.Create(0 /* fileNum */)
 	require.NoError(t, err)
 
 	w := NewWriter(f0, WriterOptions{
@@ -1059,16 +1034,13 @@ func buildTestTable(
 	require.NoError(t, w.Close())
 
 	// Re-open that filename for reading.
-	f1, err := mem.Open("test")
+	f1, err := backend.OpenForReading(0 /* fileNum */)
 	require.NoError(t, err)
 
 	c := cache.New(128 << 20)
 	defer c.Unref()
 	r, err := NewReader(f1, ReaderOptions{
 		Cache: c,
-	}, FileReopenOpt{
-		FS:       mem,
-		Filename: "test",
 	})
 	require.NoError(t, err)
 	return r
@@ -1106,7 +1078,7 @@ func buildBenchmarkTable(
 	}
 	c := cache.New(128 << 20)
 	defer c.Unref()
-	r, err := NewReader(f1, ReaderOptions{
+	r, err := newReader(f1, ReaderOptions{
 		Cache: c,
 	})
 	if err != nil {
@@ -1386,7 +1358,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 		// Re-open the filename for reading.
 		f0, err = mem.Open("bench")
 		require.NoError(b, err)
-		r, err := NewReader(f0, ReaderOptions{
+		r, err := newReader(f0, ReaderOptions{
 			Cache:    c,
 			Comparer: testkeys.Comparer,
 		})
@@ -1479,7 +1451,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 		// Re-open the filename for reading.
 		f0, err = mem.Open("bench")
 		require.NoError(b, err)
-		r, err = NewReader(f0, ReaderOptions{
+		r, err = newReader(f0, ReaderOptions{
 			Cache:    c,
 			Comparer: testkeys.Comparer,
 		})
@@ -1575,4 +1547,12 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 			}
 		})
 	}
+}
+
+func newReader(r ReadableFile, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
+	readable, err := NewSimpleReadable(r)
+	if err != nil {
+		return nil, err
+	}
+	return NewReader(readable, o, extraOpts...)
 }

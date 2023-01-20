@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sststorage"
 	"github.com/stretchr/testify/require"
 )
 
@@ -119,17 +120,19 @@ func TestRewriteSuffixProps(t *testing.T) {
 }
 
 // memFile is a file-like struct that buffers all data written to it in memory.
-// Implements the writeCloseSyncer interface.
+// Implements the sststorage.Writable interface.
 type memFile struct {
 	bytes.Buffer
 }
 
-// Close implements the writeCloseSyncer interface.
+var _ sststorage.Writable = (*memFile)(nil)
+
+// Close implements the sststorage.Writable interface.
 func (*memFile) Close() error {
 	return nil
 }
 
-// Sync implements the writeCloseSyncer interface.
+// Sync implements the sststorage.Writable interface.
 func (*memFile) Sync() error {
 	return nil
 }
@@ -216,8 +219,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 				r := files[comp][sz]
 				b.Run(fmt.Sprintf("keys=%d", sizes[sz]), func(b *testing.B) {
 					b.Run("ReaderWriterLoop", func(b *testing.B) {
-						stat, _ := r.file.Stat()
-						b.SetBytes(stat.Size())
+						b.SetBytes(r.readable.Size())
 						for i := 0; i < b.N; i++ {
 							if _, err := RewriteKeySuffixesViaWriter(r, &discardFile{}, writerOpts, from, to); err != nil {
 								b.Fatal(err)
@@ -226,8 +228,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 					})
 					for _, concurrency := range []int{1, 2, 4, 8, 16} {
 						b.Run(fmt.Sprintf("RewriteKeySuffixes,concurrency=%d", concurrency), func(b *testing.B) {
-							stat, _ := r.file.Stat()
-							b.SetBytes(stat.Size())
+							b.SetBytes(r.readable.Size())
 							for i := 0; i < b.N; i++ {
 								if _, err := rewriteKeySuffixesInBlocks(r, &discardFile{}, writerOpts, []byte("_123"), []byte("_456"), concurrency); err != nil {
 									b.Fatal(err)

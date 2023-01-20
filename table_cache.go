@@ -22,6 +22,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sststorage"
+	"github.com/cockroachdb/pebble/sststorage/vfsbackend"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -922,14 +924,13 @@ type tableCacheValue struct {
 }
 
 func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *tableCacheOpts) {
-	// Try opening the fileTypeTable first.
-	var f vfs.File
-	v.filename = base.MakeFilepath(dbOpts.fs, dbOpts.dirname, fileTypeTable, meta.FileNum)
-	f, v.err = dbOpts.fs.Open(v.filename, vfs.RandomReadsOption)
+	// Try opening the file first.
+	backend := vfsbackend.New(dbOpts.fs, dbOpts.dirname, vfsbackend.DefaultSettings)
+	var f sststorage.Readable
+	f, v.err = backend.OpenForReading(meta.FileNum)
 	if v.err == nil {
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, meta.FileNum).(sstable.ReaderOption)
-		reopenOpt := sstable.FileReopenOpt{FS: dbOpts.fs, Filename: v.filename}
-		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics, reopenOpt)
+		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)
 	}
 	if v.err == nil {
 		if meta.SmallestSeqNum == meta.LargestSeqNum {
