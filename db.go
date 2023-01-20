@@ -480,6 +480,15 @@ type DB struct {
 var _ Reader = (*DB)(nil)
 var _ Writer = (*DB)(nil)
 
+// TestOnlyWaitForCleaning MUST only be used in tests.
+func (d *DB) TestOnlyWaitForCleaning() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for d.mu.cleaner.cleaning {
+		d.mu.cleaner.cond.Wait()
+	}
+}
+
 // Get gets the value for the given key. It returns ErrNotFound if the DB does
 // not contain the key.
 //

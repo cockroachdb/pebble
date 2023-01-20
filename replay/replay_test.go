@@ -279,6 +279,9 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			require.NoError(t, d.Flush())
 			return ""
 		case "list-files":
+			if d != nil {
+				d.TestOnlyWaitForCleaning()
+			}
 			return runListFiles(t, fs, td)
 		case "open":
 			wc = NewWorkloadCollector("build")
