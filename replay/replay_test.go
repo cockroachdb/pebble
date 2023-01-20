@@ -24,26 +24,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var expOpts = struct {
-	L0CompactionConcurrency   int
-	CompactionDebtConcurrency int
-	MinDeletionRate           int
-	ReadCompactionRate        int64
-	ReadSamplingMultiplier    int64
-	TableCacheShards          int
-	KeyValidationFunc         func(userKey []byte) error
-	ValidateOnIngest          bool
-	LevelMultiplier           int
-	MultiLevelCompaction      bool
-	MaxWriterConcurrency      int
-	ForceWriterParallelism    bool
-	CPUWorkPermissionGranter  pebble.CPUWorkPermissionGranter
-	PointTombstoneWeight      float64
-	EnableValueBlocks         func() bool
-	ShortAttributeExtractor   pebble.ShortAttributeExtractor
-	RequiredInPlaceValueBound pebble.UserKeyPrefixBound
-}{TableCacheShards: 2}
-
 func runReplayTest(t *testing.T, path string) {
 	fs := vfs.NewMem()
 	var ctx context.Context
@@ -108,8 +88,8 @@ func runReplayTest(t *testing.T, path string) {
 				Comparer:                  testkeys.Comparer,
 				FormatMajorVersion:        pebble.FormatRangeKeys,
 				L0CompactionFileThreshold: 1,
-				Experimental:              expOpts,
 			}
+			setDefaultExperimentalOpts(opts)
 			ct = datatest.NewCompactionTracker(opts)
 
 			r = Runner{
@@ -160,6 +140,10 @@ func runReplayTest(t *testing.T, path string) {
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
 	})
+}
+
+func setDefaultExperimentalOpts(opts *pebble.Options) {
+	opts.Experimental.TableCacheShards = 2
 }
 
 func TestReplay(t *testing.T) {
@@ -282,17 +266,17 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			return runListFiles(t, fs, td)
 		case "open":
 			wc = NewWorkloadCollector("build")
-			opts := pebble.Options{
+			opts := &pebble.Options{
 				Comparer:                    testkeys.Comparer,
 				DisableAutomaticCompactions: true,
 				FormatMajorVersion:          pebble.FormatRangeKeys,
 				FS:                          fs,
 				MaxManifestFileSize:         96,
-				Experimental:                expOpts,
 			}
-			wc.Attach(&opts)
+			setDefaultExperimentalOpts(opts)
+			wc.Attach(opts)
 			var err error
-			d, err = pebble.Open("build", &opts)
+			d, err = pebble.Open("build", opts)
 			require.NoError(t, err)
 			return ""
 		case "close":
