@@ -25,6 +25,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sststorage"
+	"github.com/cockroachdb/pebble/sststorage/vfsbackend"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -267,19 +269,19 @@ func (u *userKeyChangeSplitter) onNewOutput(key *InternalKey) []byte {
 	return u.splitter.onNewOutput(key)
 }
 
-// compactionFile is a vfs.File wrapper that, on every write, updates a metric
-// in `versions` on bytes written by in-progress compactions so far. It also
-// increments a per-compaction `written` int.
-type compactionFile struct {
-	vfs.File
+// compactionWritable is a sststorage.Writable wrapper that, on every write,
+// updates a metric in `versions` on bytes written by in-progress compactions so
+// far. It also increments a per-compaction `written` int.
+type compactionWritable struct {
+	sststorage.Writable
 
 	versions *versionSet
 	written  *int64
 }
 
-// Write implements the io.Writer interface.
-func (c *compactionFile) Write(p []byte) (n int, err error) {
-	n, err = c.File.Write(p)
+// Write is part of the sststorage.Writable interface.
+func (c *compactionWritable) Write(p []byte) (n int, err error) {
+	n, err = c.Writable.Write(p)
 	if err != nil {
 		return n, err
 	}
@@ -2264,6 +2266,12 @@ func (d *DB) runCompaction(
 		}
 	}()
 
+	// TODO(radu): this should be a field in compaction.
+	backend := vfsbackend.New(d.opts.FS, d.dirname, vfsbackend.Settings{
+		NoSyncOnClose: d.opts.NoSyncOnClose,
+		BytesPerSync:  d.opts.BytesPerSync,
+	})
+
 	// Check for a delete-only compaction. This can occur when wide range
 	// tombstones completely contain sstables.
 	if c.kind == compactionKindDeleteOnly {
@@ -2341,8 +2349,8 @@ func (d *DB) runCompaction(
 		c.elideRangeTombstone, d.FormatMajorVersion())
 
 	var (
-		filenames []string
-		tw        *sstable.Writer
+		createdFiles []base.FileNum
+		tw           *sstable.Writer
 	)
 	defer func() {
 		if iter != nil {
@@ -2352,8 +2360,8 @@ func (d *DB) runCompaction(
 			retErr = firstError(retErr, tw.Close())
 		}
 		if retErr != nil {
-			for _, filename := range filenames {
-				d.opts.FS.Remove(filename)
+			for _, fileNum := range createdFiles {
+				_ = backend.Remove(fileNum)
 			}
 		}
 		for _, closer := range c.closers {
@@ -2428,11 +2436,16 @@ func (d *DB) runCompaction(
 		pendingOutputs = append(pendingOutputs, fileMeta)
 		d.mu.Unlock()
 
-		filename := base.MakeFilepath(d.opts.FS, d.dirname, fileTypeTable, fileNum)
-		file, err := d.opts.FS.Create(filename)
+		writable, err := backend.Create(fileNum)
 		if err != nil {
 			return err
 		}
+
+		//filename := base.MakeFilepath(d.opts.FS, d.dirname, fileTypeTable, fileNum)
+		//file, err := d.opts.FS.Create(filename)
+		//if err != nil {
+		//	return err
+		//}
 		reason := "flushing"
 		if c.flushing == nil {
 			reason = "compacting"
@@ -2440,19 +2453,15 @@ func (d *DB) runCompaction(
 		d.opts.EventListener.TableCreated(TableCreateInfo{
 			JobID:   jobID,
 			Reason:  reason,
-			Path:    filename,
+			Path:    backend.Path(fileNum),
 			FileNum: fileNum,
 		})
-		file = vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
-			NoSyncOnClose: d.opts.NoSyncOnClose,
-			BytesPerSync:  d.opts.BytesPerSync,
-		})
-		file = &compactionFile{
-			File:     file,
+		writable = &compactionWritable{
+			Writable: writable,
 			versions: d.mu.versions,
 			written:  &c.bytesWritten,
 		}
-		filenames = append(filenames, filename)
+		createdFiles = append(createdFiles, fileNum)
 		cacheOpts := private.SSTableCacheOpts(d.cacheID, fileNum).(sstable.WriterOption)
 		internalTableOpt := private.SSTableInternalTableOpt.(sstable.WriterOption)
 
@@ -2464,7 +2473,7 @@ func (d *DB) runCompaction(
 			d.opts.Experimental.MaxWriterConcurrency > 0 &&
 				(cpuWorkHandle.Permitted() || d.opts.Experimental.ForceWriterParallelism)
 
-		tw = sstable.NewWriter(file, writerOpts, cacheOpts, internalTableOpt, &prevPointKey)
+		tw = sstable.NewWriter(writable, writerOpts, cacheOpts, internalTableOpt, &prevPointKey)
 
 		fileMeta.CreationTime = time.Now().Unix()
 		ve.NewFiles = append(ve.NewFiles, newFileEntry{

@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sststorage/vfsbackend"
 	"github.com/cockroachdb/pebble/tool/logs"
 	"github.com/spf13/cobra"
 )
@@ -640,8 +641,8 @@ func (p *props) update(o props) {
 }
 
 func (d *dbT) addProps(dir string, m *manifest.FileMetadata, p *props) error {
-	path := base.MakeFilepath(d.opts.FS, dir, base.FileTypeTable, m.FileNum)
-	f, err := d.opts.FS.Open(path)
+	backend := vfsbackend.New(d.opts.FS, dir, vfsbackend.DefaultSettings)
+	f, err := backend.OpenForReading(m.FileNum)
 	if err != nil {
 		return err
 	}

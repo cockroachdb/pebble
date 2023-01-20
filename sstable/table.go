@@ -73,6 +73,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sststorage"
 )
 
 /*
@@ -304,18 +305,15 @@ type footer struct {
 	footerBH    BlockHandle
 }
 
-func readFooter(f ReadableFile) (footer, error) {
+func readFooter(f sststorage.Readable) (footer, error) {
 	var footer footer
-	stat, err := f.Stat()
-	if err != nil {
-		return footer, errors.Wrap(err, "pebble/table: invalid table (could not stat file)")
-	}
-	if stat.Size() < minFooterLen {
+	size := f.Size()
+	if size < minFooterLen {
 		return footer, base.CorruptionErrorf("pebble/table: invalid table (file size is too small)")
 	}
 
 	buf := make([]byte, maxFooterLen)
-	off := stat.Size() - maxFooterLen
+	off := size - maxFooterLen
 	if off < 0 {
 		off = 0
 	}
@@ -369,7 +367,7 @@ func readFooter(f ReadableFile) (footer, error) {
 	}
 
 	{
-		end := uint64(stat.Size())
+		end := uint64(size)
 		var n int
 		footer.metaindexBH, n = decodeBlockHandle(buf)
 		if n == 0 || footer.metaindexBH.Offset+footer.metaindexBH.Length > end {
