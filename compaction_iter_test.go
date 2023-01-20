@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 )
 
 func TestSnapshotIndex(t *testing.T) {
@@ -272,4 +273,58 @@ func TestCompactionIter(t *testing.T) {
 			runTest(t, formatVersion)
 		})
 	}
+}
+
+func TestFrontiers(t *testing.T) {
+	cmp := testkeys.Comparer.Compare
+	var keySets [][][]byte
+	datadriven.RunTest(t, "testdata/frontiers", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "init":
+			keySets = keySets[:0]
+			for _, line := range strings.Split(td.Input, "\n") {
+				keySets = append(keySets, bytes.Fields([]byte(line)))
+			}
+			return ""
+		case "scan":
+			f := frontiers{cmp: cmp}
+			for i, keys := range keySets {
+				f.update(&testFrontier{label: strconv.Itoa(i), cmp: cmp, keys: keys})
+			}
+			var buf bytes.Buffer
+			for _, kStr := range strings.Fields(td.Input) {
+				k := []byte(kStr)
+				f.advance(k)
+				fmt.Fprintf(&buf, "%s : { %s }\n", kStr, f.String())
+			}
+			return buf.String()
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
+}
+
+type testFrontier struct {
+	label string
+	cmp   Compare
+	keys  [][]byte
+}
+
+func (tf *testFrontier) String() string { return tf.label }
+
+func (tf *testFrontier) reached(k []byte) {
+	i := 1
+	for ; i < len(tf.keys); i++ {
+		if tf.cmp(tf.keys[i], k) > 0 {
+			break
+		}
+	}
+	tf.keys = tf.keys[i:]
+}
+
+func (tf *testFrontier) key() []byte {
+	if len(tf.keys) == 0 {
+		return nil
+	}
+	return tf.keys[0]
 }

@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"sort"
@@ -201,6 +202,12 @@ type compactionIter struct {
 	// numbers define the snapshot stripes (see the Snapshots description
 	// above). The sequence numbers are in ascending order.
 	snapshots []uint64
+	// frontiers holds a heap of user keys that affect compaction behavior when
+	// they're exceeded. Before a new key is returned, the compaction iterator
+	// advances the frontier, notifying any code that subscribed to be notified
+	// when a key was reached. See the compactionOutputSplitter implementations
+	// in compaction.go for one use.
+	frontiers frontiers
 	// Reference to the range deletion tombstone fragmenter (e.g.,
 	// `compaction.rangeDelFrag`).
 	rangeDelFrag *keyspan.Fragmenter
@@ -238,6 +245,7 @@ func newCompactionIter(
 		merge:               merge,
 		iter:                iter,
 		snapshots:           snapshots,
+		frontiers:           frontiers{cmp: cmp},
 		rangeDelFrag:        rangeDelFrag,
 		rangeKeyFrag:        rangeKeyFrag,
 		allowZeroSeqNum:     allowZeroSeqNum,
@@ -770,6 +778,7 @@ func (i *compactionIter) saveKey() {
 	i.key.UserKey = i.keyBuf
 	i.key.Trailer = i.iterKey.Trailer
 	i.keyTrailer = i.iterKey.Trailer
+	i.frontiers.advance(i.key.UserKey)
 }
 
 func (i *compactionIter) cloneKey(key []byte) []byte {
@@ -897,4 +906,184 @@ func (i *compactionIter) maybeZeroSeqnum(snapshotIdx int) {
 		return
 	}
 	i.key.SetSeqNum(0)
+}
+
+// frontier encapsulates code concerned with a compaction's progression across
+// the user keyspace.
+//
+// A frontier exposes the next user key boundary that it's concerned with
+// through its `key` method. If/when the compaction iterator returns an
+// InternalKey with a user key _k_ such that k ≥ frontier.key(), the compaction
+// iterator invokes the frontier's `reached` method, passing _k_ as its
+// argument.
+//
+// After the execution of `reached`, the frontier's `key` method may return a
+// new value, nil or a new user key. If `key` returns nil, the frontier is
+// forgotten and its `reached` method will not be invoked again, unless the
+// frontier is explictly re-added to the `frontiers` type with a new `key`
+// value.
+//
+// A frontier's `key` must be stable between calls to `reached`. If a frontier
+// needs to update its key outside the context of a `reached` invocation, it may
+// call frontiers.update, passing itself.
+type frontier interface {
+	// key returns the user key that the frontier is concerned with, requesting
+	// to be notified if a user key is encountered that is ≥ key().
+	key() []byte
+	// reached is invoked to inform a frontier that its key() has been reached.
+	// It's invoked with the user key that reached the limit. The `key` argument
+	// is guaranteed to be ≥ the frontier's key().
+	//
+	// After reached is invoked, the frontier's `key()` method may return a new
+	// value, or nil if the frontier is no longer interested in the frontiers'
+	// progression. Note bene, the frontier is permitted to update its `key()`
+	// to a user key ≤ the argument `key`:
+	//
+	// If a frontier updates its `key()` to a value ≤ key, reached will be
+	// updated invoked again with the same `key`.
+	//
+	// If a frontier returns the key k1, and reached(k2) is invoked (k2≥k1), the
+	// frontier is permitted to continue returning `k1` from key(). However, it
+	// will receive reached(k2) calls until it returns nil or a key `k3` such
+	// that k2 < k3. This property may be useful if a frontier uses `reached`
+	// invocations to drive iteration through InternalKeys which may contain the
+	// same user key multiple times.
+	reached(key []byte)
+}
+
+// frontiers holds a collection of `frontier` implementations, handling
+// notifying them when their user keys are reached. The compaction iterator
+// calls `advance` with the user key of every key it returns to the compaction
+// loop. The `advance(k)` method handles invoking `reached` method on all
+// tracked frontiers with `key()` values ≤ k.
+//
+// Internally, frontiers is implemented as a simple heap.
+type frontiers struct {
+	cmp   Compare
+	items []frontier
+}
+
+// String implements fmt.Stringer.
+func (f *frontiers) String() string {
+	var buf bytes.Buffer
+	for i := 0; i < len(f.items); i++ {
+		if i > 0 {
+			fmt.Fprint(&buf, ", ")
+		}
+		fmt.Fprintf(&buf, "%s: %q", f.items[i], f.items[i].key())
+	}
+	return buf.String()
+}
+
+// advance notifies all member frontiers with key()s ≤ k and restores the heap
+// for updated frontiers.
+func (f *frontiers) advance(k []byte) {
+	for len(f.items) > 0 && f.cmp(k, f.items[0].key()) >= 0 {
+		// This frontier has been reached. Invoke the closure, and update with
+		// the next frontier.
+		f.items[0].reached(k)
+		if f.items[0].key() == nil {
+			// This was the final frontier that this user was concerned with.
+			// Remove it from the heap.
+			f.pop()
+		} else {
+			// Fix up the heap root.
+			f.fix(0)
+		}
+	}
+}
+
+// update must be called when a frontier's key has changed outside the context
+// of a call to `reached`. If frontier.key() now returns nil, update removes the
+// frontier from the heap. If frontier.key() now returns a non-nil key, update
+// adds the frontier if not already contained with the heap, and fixes up its
+// position if it already is.
+func (f *frontiers) update(ff frontier) {
+	hasKey := ff.key() != nil
+	for i := 0; i < len(f.items); i++ {
+		if f.items[i] == ff {
+			if hasKey {
+				f.fix(i)
+			} else {
+				n := f.len() - 1
+				f.swap(i, n)
+				f.down(i, n)
+				f.items = f.items[:n]
+			}
+			return
+		}
+	}
+	if hasKey {
+		f.push(ff)
+	}
+}
+
+// push adds the provided frontier to the set of frontiers. If the provided
+// frontier is already in the heap, it will be added again and will receive
+// duplicate `reached` calls. Callers that want to update the key of an existing
+// heap should use update.
+func (f *frontiers) push(ff frontier) {
+	n := len(f.items)
+	f.items = append(f.items, ff)
+	f.up(n)
+}
+
+func (f *frontiers) len() int {
+	return len(f.items)
+}
+
+func (f *frontiers) less(i, j int) bool {
+	return f.cmp(f.items[i].key(), f.items[j].key()) < 0
+}
+
+func (f *frontiers) swap(i, j int) {
+	f.items[i], f.items[j] = f.items[j], f.items[i]
+}
+
+// fix, up and down are copied from the go stdlib.
+
+func (f *frontiers) fix(i int) {
+	if !f.down(i, f.len()) {
+		f.up(i)
+	}
+}
+
+func (f *frontiers) pop() *frontier {
+	n := f.len() - 1
+	f.swap(0, n)
+	f.down(0, n)
+	item := &f.items[n]
+	f.items = f.items[:n]
+	return item
+}
+
+func (f *frontiers) up(j int) {
+	for {
+		i := (j - 1) / 2 // parent
+		if i == j || !f.less(j, i) {
+			break
+		}
+		f.swap(i, j)
+		j = i
+	}
+}
+
+func (f *frontiers) down(i0, n int) bool {
+	i := i0
+	for {
+		j1 := 2*i + 1
+		if j1 >= n || j1 < 0 { // j1 < 0 after int overflow
+			break
+		}
+		j := j1 // left child
+		if j2 := j1 + 1; j2 < n && f.less(j2, j1) {
+			j = j2 // = 2*i + 2  // right child
+		}
+		if !f.less(j, i) {
+			break
+		}
+		f.swap(i, j)
+		i = j
+	}
+	return i > i0
 }
