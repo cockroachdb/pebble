@@ -353,8 +353,11 @@ func (w *WorkloadCollector) copySSTables(pending []string) {
 // corresponding manifests are copied to the provided destination path on the
 // provided FS.
 func (w *WorkloadCollector) Start(destFS vfs.FS, destPath string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	// If the collector not is running then that means w.enabled == 0 so swap it
-	// to 1 and continue else return since it is not running.
+	// to 1 and continue else return since it is already running.
 	if !atomic.CompareAndSwapUint32(&w.atomic.enabled, 0, 1) {
 		return
 	}

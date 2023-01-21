@@ -13,22 +13,15 @@ on:
 jobs:
 
   linux:
-    name: go${{ matrix.go }}-linux
+    name: go-linux
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go:
-          - "1.17"
-          - "1.18"
-          - "1.19"
     steps:
     - uses: actions/checkout@v2
 
-    - name: Set up go${{ matrix.go }}
+    - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: ${{ matrix.go }}
+        go-version: "1.19"
 
     - run: make test generate
 

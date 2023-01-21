@@ -82,6 +82,17 @@ type compactionLevel struct {
 	files manifest.LevelSlice
 }
 
+func (cl compactionLevel) Clone() compactionLevel {
+	newCL := compactionLevel{
+		level: cl.level,
+		files: cl.files.Reslice(func(start, end *manifest.LevelIterator) {}),
+	}
+	return newCL
+}
+func (cl compactionLevel) String() string {
+	return fmt.Sprintf(`Level %d, Files %s`, cl.level, cl.files)
+}
+
 // Return output from compactionOutputSplitters. See comment on
 // compactionOutputSplitter.shouldSplitBefore() on how this value is used.
 type compactionSplitSuggestion int
@@ -1694,8 +1705,16 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		// oldest unflushed memtable.
 		ve.MinUnflushedLogNum = minUnflushedLogNum
 		metrics := c.metrics[0]
-		for i := 0; i < n; i++ {
-			metrics.BytesIn += d.mu.mem.queue[i].logSize
+		if d.opts.DisableWAL {
+			// If the WAL is disabled, every flushable has a zero [logSize],
+			// resulting in zero bytes in. Instead, use the number of bytes we
+			// flushed as the BytesIn. This ensures we get a reasonable w-amp
+			// calculation even when the WAL is disabled.
+			metrics.BytesIn = metrics.BytesFlushed
+		} else {
+			for i := 0; i < n; i++ {
+				metrics.BytesIn += d.mu.mem.queue[i].logSize
+			}
 		}
 
 		d.mu.versions.logLock()

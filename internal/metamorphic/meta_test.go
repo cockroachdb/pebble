@@ -36,8 +36,6 @@ import (
 // - Add support for different comparers. In particular, allow reverse
 //   comparers and a comparer which supports Comparer.Split (by splitting off
 //   a variable length suffix).
-// - DeleteRange can be used to replace Delete, stressing the DeleteRange
-//   implementation.
 // - Add support for Writer.LogData
 
 var (

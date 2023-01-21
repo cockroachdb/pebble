@@ -562,10 +562,10 @@ type Options struct {
 		// desired size of each level of the LSM. Defaults to 10.
 		LevelMultiplier int
 
-		// MultiLevelCompaction allows the compaction of SSTs from more than two
-		// levels iff a conventional two level compaction will quickly trigger a
-		// compaction in the output level.
-		MultiLevelCompaction bool
+		// MultiLevelCompactionHueristic determines whether to add an additional
+		// level to a conventional two level compaction. If nil, a multilevel
+		// compaction will never get triggered.
+		MultiLevelCompactionHueristic MultiLevelHeuristic
 
 		// MaxWriterConcurrency is used to indicate the maximum number of
 		// compression workers the compression queue is allowed to use. If
@@ -993,6 +993,10 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 	if o.Experimental.PointTombstoneWeight == 0 {
 		o.Experimental.PointTombstoneWeight = 1
+	}
+
+	if o.Experimental.MultiLevelCompactionHueristic == nil {
+		o.Experimental.MultiLevelCompactionHueristic = NoMultiLevel{}
 	}
 
 	o.initMaps()
