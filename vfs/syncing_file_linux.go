@@ -40,7 +40,7 @@ func isSyncRangeSupported(fd uintptr) bool {
 }
 
 func (f *syncingFile) init() {
-	if f.fd == 0 {
+	if f.fd == InvalidFd {
 		return
 	}
 	f.timeDiskOp(func() {
@@ -55,7 +55,7 @@ func (f *syncingFile) init() {
 }
 
 func (f *syncingFile) syncFdatasync() error {
-	if f.fd == 0 {
+	if f.fd == InvalidFd {
 		return f.File.Sync()
 	}
 	var err error
