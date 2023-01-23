@@ -18,6 +18,7 @@ type SyncingFileOptions struct {
 
 type syncingFile struct {
 	File
+	// fd can be InvalidFd if the underlying File does not support it.
 	fd              uintptr
 	useSyncRange    bool
 	bytesPerSync    int64
@@ -46,6 +47,7 @@ type syncingFile struct {
 func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	s := &syncingFile{
 		File:            f,
+		fd:              f.Fd(),
 		bytesPerSync:    int64(opts.BytesPerSync),
 		preallocateSize: int64(opts.PreallocateSize),
 	}
@@ -53,12 +55,6 @@ func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	// data has been written to it.
 	s.atomic.syncOffset = -1
 
-	type fd interface {
-		Fd() uintptr
-	}
-	if d, ok := f.(fd); ok {
-		s.fd = d.Fd()
-	}
 	type dhChecker interface {
 		timeDiskOp(op func())
 	}
@@ -75,7 +71,7 @@ func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	if s.syncData == nil {
 		s.syncData = s.File.Sync
 	}
-	return WithFd(f, s)
+	return s
 }
 
 // NB: syncingFile.Write is unsafe for concurrent use!
@@ -96,7 +92,7 @@ func (f *syncingFile) Write(p []byte) (n int, err error) {
 }
 
 func (f *syncingFile) preallocate(offset int64) error {
-	if f.fd == 0 || f.preallocateSize == 0 {
+	if f.fd == InvalidFd || f.preallocateSize == 0 {
 		return nil
 	}
 
@@ -159,7 +155,7 @@ func (f *syncingFile) maybeSync() error {
 		return nil
 	}
 
-	if f.fd == 0 {
+	if f.fd == InvalidFd {
 		return errors.WithStack(f.Sync())
 	}
 

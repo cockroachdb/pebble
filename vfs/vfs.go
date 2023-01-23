@@ -31,7 +31,18 @@ type File interface {
 	io.Writer
 	Stat() (os.FileInfo, error)
 	Sync() error
+
+	// Fd returns the raw file descriptor when a File is backed by an *os.File.
+	// It can be used for specific functionality like Prefetch.
+	// Returns InvalidFd if not supported.
+	Fd() uintptr
 }
+
+// InvalidFd is a special value returned by File.Fd() when the file is not
+// backed by an OS descriptor.
+// Note: the special value is consistent with what os.File implementation
+// returns on a nil receiver.
+const InvalidFd uintptr = ^(uintptr(0))
 
 // OpenOption provide an interface to do work on file handles in the Open()
 // call.
@@ -240,11 +251,8 @@ var RandomReadsOption OpenOption = &randomReadsOption{}
 
 // Apply implements the OpenOption interface.
 func (randomReadsOption) Apply(f File) {
-	type fd interface {
-		Fd() uintptr
-	}
-	if fdFile, ok := f.(fd); ok {
-		_ = fadviseRandom(fdFile.Fd())
+	if fd := f.Fd(); fd != InvalidFd {
+		_ = fadviseRandom(fd)
 	}
 }
 
@@ -257,11 +265,8 @@ var SequentialReadsOption OpenOption = &sequentialReadsOption{}
 
 // Apply implements the OpenOption interface.
 func (sequentialReadsOption) Apply(f File) {
-	type fd interface {
-		Fd() uintptr
-	}
-	if fdFile, ok := f.(fd); ok {
-		_ = fadviseSequential(fdFile.Fd())
+	if fd := f.Fd(); fd != InvalidFd {
+		_ = fadviseSequential(fd)
 	}
 }
 

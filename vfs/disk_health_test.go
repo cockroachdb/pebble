@@ -40,6 +40,10 @@ func (m mockFile) Stat() (os.FileInfo, error) {
 	panic("unimplemented")
 }
 
+func (m mockFile) Fd() uintptr {
+	return InvalidFd
+}
+
 func (m mockFile) Sync() error {
 	time.Sleep(m.syncDuration)
 	return nil
