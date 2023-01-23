@@ -367,7 +367,7 @@ func (d *diskHealthCheckingFS) Create(name string) (File, error) {
 		d.onSlowDisk(name, duration)
 	})
 	checkingFile.startTicker()
-	return WithFd(f, checkingFile), nil
+	return checkingFile, nil
 }
 
 // GetDiskUsage implements the FS interface.
@@ -420,7 +420,7 @@ func (d *diskHealthCheckingFS) OpenDir(name string) (File, error) {
 		d.onSlowDisk(name, duration)
 	})
 	checkingFile.startTicker()
-	return WithFd(f, checkingFile), nil
+	return checkingFile, nil
 }
 
 // PathBase implements the FS interface.
@@ -482,7 +482,7 @@ func (d *diskHealthCheckingFS) ReuseForWrite(oldname, newname string) (File, err
 		d.onSlowDisk(newname, duration)
 	})
 	checkingFile.startTicker()
-	return WithFd(f, checkingFile), nil
+	return checkingFile, nil
 }
 
 // Stat implements the FS interface.
