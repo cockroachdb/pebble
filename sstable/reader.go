@@ -2797,11 +2797,10 @@ func (r *Reader) readBlock(
 				}
 			}
 			if raState.sequentialFile == nil {
-				type fd interface {
-					Fd() uintptr
-				}
-				if f, ok := r.file.(fd); ok {
-					_ = vfs.Prefetch(f.Fd(), bh.Offset, uint64(readaheadSize))
+				if f, ok := r.file.(vfs.File); ok {
+					if fd := f.Fd(); fd != vfs.InvalidFd {
+						_ = vfs.Prefetch(fd, bh.Offset, uint64(readaheadSize))
+					}
 				}
 			}
 		}
