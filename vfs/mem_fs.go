@@ -626,6 +626,8 @@ type memFile struct {
 	read, write bool
 }
 
+var _ File = (*memFile)(nil)
+
 func (f *memFile) Close() error {
 	if n := atomic.AddInt32(&f.n.refs, -1); n < 0 {
 		panic(fmt.Sprintf("pebble: close of unopened file: %d", n))
@@ -719,6 +721,10 @@ func (f *memFile) Sync() error {
 		}
 	}
 	return nil
+}
+
+func (f *memFile) Fd() uintptr {
+	return InvalidFd
 }
 
 // Flush is a no-op and present only to prevent buffering at higher levels
