@@ -19,6 +19,7 @@ type SyncingFileOptions struct {
 
 type syncingFile struct {
 	File
+	// fd can be 0 if the underlying File does not support it.
 	fd              uintptr
 	useSyncRange    bool
 	closing         bool
@@ -49,6 +50,7 @@ type syncingFile struct {
 func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	s := &syncingFile{
 		File:            f,
+		fd:              f.Fd(),
 		noSyncOnClose:   bool(opts.NoSyncOnClose),
 		bytesPerSync:    int64(opts.BytesPerSync),
 		preallocateSize: int64(opts.PreallocateSize),
@@ -57,12 +59,6 @@ func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	// data has been written to it.
 	s.atomic.syncOffset = -1
 
-	type fd interface {
-		Fd() uintptr
-	}
-	if d, ok := f.(fd); ok {
-		s.fd = d.Fd()
-	}
 	type dhChecker interface {
 		timeDiskOp(op func())
 	}
@@ -79,7 +75,7 @@ func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	if s.syncData == nil {
 		s.syncData = s.File.Sync
 	}
-	return WithFd(f, s)
+	return s
 }
 
 // NB: syncingFile.Write is unsafe for concurrent use!

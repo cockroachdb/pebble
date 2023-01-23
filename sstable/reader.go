@@ -3021,7 +3021,9 @@ func (r *Reader) readBlock(
 					Fd() uintptr
 				}
 				if f, ok := r.file.(fd); ok {
-					_ = vfs.Prefetch(f.Fd(), bh.Offset, uint64(readaheadSize))
+					if fd := f.Fd(); fd != 0 {
+						_ = vfs.Prefetch(fd, bh.Offset, uint64(readaheadSize))
+					}
 				}
 			}
 		}
