@@ -27,6 +27,10 @@ test:
 testrace: testflags += -race -timeout 20m
 testrace: test
 
+.PHONY: lint
+lint:
+	${GO} test -tags '$(TAGS)' ${testflags} -run ${TESTS} ./internal/lint
+
 .PHONY: stress stressrace
 stressrace: testflags += -race
 stress stressrace: testflags += -exec 'stress ${STRESSFLAGS}' -timeout 0 -test.v
