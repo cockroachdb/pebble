@@ -369,3 +369,7 @@ func (f *errorFile) Sync() error {
 	}
 	return f.file.Sync()
 }
+
+func (f *errorFile) Fd() uintptr {
+	return f.file.Fd()
+}
