@@ -125,7 +125,7 @@ func check(f vfs.File, comparer *Comparer, fp FilterPolicy) error {
 		}
 	}
 
-	r, err := NewReader(f, opts)
+	r, err := newReader(f, opts)
 	if err != nil {
 		return err
 	}
@@ -499,7 +499,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	c := &countingFilterPolicy{
 		FilterPolicy: bloom.FilterPolicy(1),
 	}
-	r, err := NewReader(f, ReaderOptions{
+	r, err := newReader(f, ReaderOptions{
 		Filters: map[string]FilterPolicy{
 			c.Name(): c,
 		},
@@ -633,7 +633,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						t.Errorf("nk=%d, vLen=%d: memFS open: %v", nk, vLen, err)
 						continue
 					}
-					r, err := NewReader(rf, ReaderOptions{})
+					r, err := newReader(rf, ReaderOptions{})
 					if err != nil {
 						t.Errorf("nk=%d, vLen=%d: reader open: %v", nk, vLen, err)
 					}
@@ -666,7 +666,7 @@ func TestReaderGlobalSeqNum(t *testing.T) {
 	f, err := os.Open(filepath.FromSlash("testdata/h.sst"))
 	require.NoError(t, err)
 
-	r, err := NewReader(f, ReaderOptions{})
+	r, err := newReader(f, ReaderOptions{})
 	require.NoError(t, err)
 
 	const globalSeqNum = 42
@@ -689,7 +689,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 		TableFilter, nil, nil, 4096, 4096)
 	require.NoError(t, err)
 
-	r, err := NewReader(f, ReaderOptions{})
+	r, err := newReader(f, ReaderOptions{})
 	require.NoError(t, err)
 
 	b, err := r.readBlock(r.metaIndexBH, nil /* transform */, nil /* attrs */, nil /* stats */)
@@ -747,9 +747,12 @@ func TestFooterRoundTrip(t *testing.T) {
 							f, err = mem.Open("test")
 							require.NoError(t, err)
 
-							result, err := readFooter(f)
+							readable, err := NewSimpleReadable(f)
 							require.NoError(t, err)
-							require.NoError(t, f.Close())
+
+							result, err := readFooter(readable)
+							require.NoError(t, err)
+							require.NoError(t, readable.Close())
 
 							if diff := pretty.Diff(footer, result); diff != nil {
 								t.Fatalf("expected %+v, but found %+v\n%s",
@@ -797,7 +800,10 @@ func TestReadFooter(t *testing.T) {
 			f, err = mem.Open("test")
 			require.NoError(t, err)
 
-			if _, err := readFooter(f); err == nil {
+			readable, err := NewSimpleReadable(f)
+			require.NoError(t, err)
+
+			if _, err := readFooter(readable); err == nil {
 				t.Fatalf("expected %q, but found success", c.expected)
 			} else if !strings.Contains(err.Error(), c.expected) {
 				t.Fatalf("expected %q, but found %v", c.expected, err)

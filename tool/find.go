@@ -413,7 +413,11 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				Comparer: f.opts.Comparer,
 				Filters:  f.opts.Filters,
 			}
-			r, err := sstable.NewReader(tf, opts, f.comparers, f.mergers,
+			readable, err := sstable.NewSimpleReadable(tf)
+			if err != nil {
+				return err
+			}
+			r, err := sstable.NewReader(readable, opts, f.comparers, f.mergers,
 				private.SSTableRawTombstonesOpt.(sstable.ReaderOption))
 			if err != nil {
 				return err

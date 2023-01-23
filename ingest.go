@@ -47,18 +47,18 @@ func ingestValidateKey(opts *Options, key *InternalKey) error {
 func ingestLoad1(
 	opts *Options, fmv FormatMajorVersion, path string, cacheID uint64, fileNum FileNum,
 ) (*fileMetadata, error) {
-	stat, err := opts.FS.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-
 	f, err := opts.FS.Open(path)
 	if err != nil {
 		return nil, err
 	}
 
+	readable, err := sstable.NewSimpleReadable(f)
+	if err != nil {
+		return nil, err
+	}
+
 	cacheOpts := private.SSTableCacheOpts(cacheID, fileNum).(sstable.ReaderOption)
-	r, err := sstable.NewReader(f, opts.MakeReaderOptions(), cacheOpts)
+	r, err := sstable.NewReader(readable, opts.MakeReaderOptions(), cacheOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func ingestLoad1(
 
 	meta := &fileMetadata{}
 	meta.FileNum = fileNum
-	meta.Size = uint64(stat.Size())
+	meta.Size = uint64(readable.Size())
 	meta.CreationTime = time.Now().Unix()
 
 	// Avoid loading into the table cache for collecting stats if we
