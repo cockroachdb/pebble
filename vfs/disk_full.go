@@ -377,6 +377,14 @@ func (f *enospcFile) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
+func (f *enospcFile) Attributes() FileAttributes {
+	return f.inner.Attributes()
+}
+
+func (f *enospcFile) Preallocate(offset, length int64) error {
+	return f.inner.Preallocate(offset, length)
+}
+
 func (f *enospcFile) Stat() (os.FileInfo, error) {
 	return f.inner.Stat()
 }
@@ -399,6 +407,14 @@ func (f *enospcFile) Sync() error {
 		// See: https://lwn.net/Articles/752063/
 	}
 	return err
+}
+
+func (f *enospcFile) SyncData() error {
+	return f.inner.SyncData()
+}
+
+func (f *enospcFile) SyncTo(length int64) error {
+	return f.inner.SyncTo(length)
 }
 
 func (f *enospcFile) Fd() uintptr {

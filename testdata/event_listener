@@ -78,8 +78,8 @@ sync: db
 
 flush
 ----
-sync: wal/000002.log
-sync: wal/000002.log
+sync-data: wal/000002.log
+sync-data: wal/000002.log
 close: wal/000002.log
 create: wal/000004.log
 sync: wal
@@ -87,7 +87,7 @@ sync: wal
 [JOB 5] flushing 1 memtable to L0
 create: db/000005.sst
 [JOB 5] flushing: sstable created 000005
-sync: db/000005.sst
+sync-data: db/000005.sst
 close: db/000005.sst
 sync: db
 create: db/MANIFEST-000006
@@ -101,8 +101,8 @@ sync: db
 
 compact
 ----
-sync: wal/000004.log
-sync: wal/000004.log
+sync-data: wal/000004.log
+sync-data: wal/000004.log
 close: wal/000004.log
 reuseForWrite: wal/000002.log -> wal/000007.log
 sync: wal
@@ -110,7 +110,7 @@ sync: wal
 [JOB 7] flushing 1 memtable to L0
 create: db/000008.sst
 [JOB 7] flushing: sstable created 000008
-sync: db/000008.sst
+sync-data: db/000008.sst
 close: db/000008.sst
 sync: db
 create: db/MANIFEST-000009
@@ -125,7 +125,7 @@ sync: db
 [JOB 8] compacting(default) L0 [000005 000008] (1.5 K) + L6 [] (0 B)
 create: db/000010.sst
 [JOB 8] compacting: sstable created 000010
-sync: db/000010.sst
+sync-data: db/000010.sst
 close: db/000010.sst
 sync: db
 create: db/MANIFEST-000011
@@ -145,8 +145,8 @@ disable-file-deletions
 
 flush
 ----
-sync: wal/000007.log
-sync: wal/000007.log
+sync-data: wal/000007.log
+sync-data: wal/000007.log
 close: wal/000007.log
 reuseForWrite: wal/000004.log -> wal/000012.log
 sync: wal
@@ -154,7 +154,7 @@ sync: wal
 [JOB 10] flushing 1 memtable to L0
 create: db/000013.sst
 [JOB 10] flushing: sstable created 000013
-sync: db/000013.sst
+sync-data: db/000013.sst
 close: db/000013.sst
 sync: db
 create: db/MANIFEST-000014
@@ -227,7 +227,7 @@ open-dir: checkpoint
 link: db/OPTIONS-000003 -> checkpoint/OPTIONS-000003
 open-dir: checkpoint
 create: checkpoint/marker.format-version.000001.012
-sync: checkpoint/marker.format-version.000001.012
+sync-data: checkpoint/marker.format-version.000001.012
 close: checkpoint/marker.format-version.000001.012
 sync: checkpoint
 close: checkpoint
@@ -235,16 +235,16 @@ link: db/000013.sst -> checkpoint/000013.sst
 link: db/000015.sst -> checkpoint/000015.sst
 link: db/000010.sst -> checkpoint/000010.sst
 create: checkpoint/MANIFEST-000016
-sync: checkpoint/MANIFEST-000016
+sync-data: checkpoint/MANIFEST-000016
 close: checkpoint/MANIFEST-000016
 open-dir: checkpoint
 create: checkpoint/marker.manifest.000001.MANIFEST-000016
-sync: checkpoint/marker.manifest.000001.MANIFEST-000016
+sync-data: checkpoint/marker.manifest.000001.MANIFEST-000016
 close: checkpoint/marker.manifest.000001.MANIFEST-000016
 sync: checkpoint
 close: checkpoint
 create: checkpoint/000012.log
-sync: checkpoint/000012.log
+sync-data: checkpoint/000012.log
 close: checkpoint/000012.log
 sync: checkpoint
 close: checkpoint
@@ -256,7 +256,7 @@ pebble: file deletion disablement invariant violated
 close
 ----
 close: db
-sync: wal/000012.log
+sync-data: wal/000012.log
 close: wal/000012.log
 close: db/MANIFEST-000016
 close: db

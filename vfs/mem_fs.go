@@ -698,6 +698,14 @@ func (f *memFile) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func (f *memFile) Attributes() FileAttributes {
+	return FileAttributes{}
+}
+
+func (f *memFile) Preallocate(offset, length int64) error {
+	return nil
+}
+
 func (f *memFile) Stat() (os.FileInfo, error) {
 	return f.n, nil
 }
@@ -720,6 +728,16 @@ func (f *memFile) Sync() error {
 			f.n.mu.Unlock()
 		}
 	}
+	return nil
+}
+
+func (f *memFile) SyncData() error {
+	return f.Sync()
+}
+
+func (f *memFile) SyncTo(length int64) error {
+	// Ignore SyncTo requests. Implementation is optional, and its syncing
+	// cannot be depended upon for persistence.
 	return nil
 }
 
