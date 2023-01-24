@@ -23,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/vfs"
 )
 
 var emptyIter = &errorIter{err: nil}
@@ -68,8 +67,7 @@ type tableCacheOpts struct {
 
 	logger        Logger
 	cacheID       uint64
-	dirname       string
-	fs            vfs.FS
+	objProvider   *objstorage.Provider
 	opts          sstable.ReaderOptions
 	filterMetrics *FilterMetrics
 }
@@ -87,7 +85,7 @@ type tableCacheContainer struct {
 // newTableCacheContainer will panic if the underlying cache in the table cache
 // doesn't match Options.Cache.
 func newTableCacheContainer(
-	tc *TableCache, cacheID uint64, dirname string, fs vfs.FS, opts *Options, size int,
+	tc *TableCache, cacheID uint64, objProvider *objstorage.Provider, opts *Options, size int,
 ) *tableCacheContainer {
 	// We will release a ref to table cache acquired here when tableCacheContainer.close is called.
 	if tc != nil {
@@ -105,8 +103,7 @@ func newTableCacheContainer(
 	t.tableCache = tc
 	t.dbOpts.logger = opts.Logger
 	t.dbOpts.cacheID = cacheID
-	t.dbOpts.dirname = dirname
-	t.dbOpts.fs = fs
+	t.dbOpts.objProvider = objProvider
 	t.dbOpts.opts = opts.MakeReaderOptions()
 	t.dbOpts.filterMetrics = &FilterMetrics{}
 	t.dbOpts.atomic.iterCount = new(int32)
@@ -176,7 +173,6 @@ func (c *tableCacheContainer) withReader(meta *fileMetadata, fn func(*sstable.Re
 	v := s.findNode(meta, &c.dbOpts)
 	defer s.unrefValue(v)
 	if v.err != nil {
-		base.MustExist(c.dbOpts.fs, v.filename, c.dbOpts.logger, v.err)
 		return v.err
 	}
 	return fn(v.reader)
@@ -369,7 +365,6 @@ func (c *tableCacheShard) newIters(
 	v := c.findNode(file, dbOpts)
 	if v.err != nil {
 		defer c.unrefValue(v)
-		base.MustExist(dbOpts.fs, v.filename, dbOpts.logger, v.err)
 		return nil, nil, v.err
 	}
 
@@ -459,7 +454,6 @@ func (c *tableCacheShard) newRangeKeyIter(
 	v := c.findNode(file, dbOpts)
 	if v.err != nil {
 		defer c.unrefValue(v)
-		base.MustExist(dbOpts.fs, v.filename, dbOpts.logger, v.err)
 		return nil, v.err
 	}
 
@@ -519,7 +513,6 @@ func (rp *tableCacheShardReaderProvider) GetReader() (*sstable.Reader, error) {
 	v := rp.c.findNode(rp.file, rp.dbOpts)
 	if v.err != nil {
 		defer rp.c.unrefValue(v)
-		base.MustExist(rp.dbOpts.fs, v.filename, rp.dbOpts.logger, v.err)
 		return nil, v.err
 	}
 	rp.v = v
@@ -914,7 +907,6 @@ func (c *tableCacheShard) Close() error {
 type tableCacheValue struct {
 	closeHook func(i sstable.Iterator) error
 	reader    *sstable.Reader
-	filename  string
 	err       error
 	loaded    chan struct{}
 	// Reference count for the value. The reader is closed when the reference
@@ -924,10 +916,8 @@ type tableCacheValue struct {
 
 func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *tableCacheOpts) {
 	// Try opening the file first.
-	provider := objstorage.New(objstorage.DefaultSettings(dbOpts.fs, dbOpts.dirname))
 	var f objstorage.Readable
-	v.filename = provider.Path(fileTypeTable, meta.FileNum)
-	f, v.err = provider.OpenForReading(fileTypeTable, meta.FileNum)
+	f, v.err = dbOpts.objProvider.OpenForReadingMustExist(fileTypeTable, meta.FileNum)
 	if v.err == nil {
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, meta.FileNum).(sstable.ReaderOption)
 		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)

@@ -2265,14 +2265,6 @@ func (d *DB) runCompaction(
 		}
 	}()
 
-	// TODO(radu): this should be created once, at a higher level.
-	provider := objstorage.New(objstorage.Settings{
-		FS:            d.opts.FS,
-		FSDirName:     d.dirname,
-		NoSyncOnClose: d.opts.NoSyncOnClose,
-		BytesPerSync:  d.opts.BytesPerSync,
-	})
-
 	// Check for a delete-only compaction. This can occur when wide range
 	// tombstones completely contain sstables.
 	if c.kind == compactionKindDeleteOnly {
@@ -2362,7 +2354,7 @@ func (d *DB) runCompaction(
 		}
 		if retErr != nil {
 			for _, fileNum := range createdFiles {
-				_ = provider.Remove(fileTypeTable, fileNum)
+				_ = d.objProvider.Remove(fileTypeTable, fileNum)
 			}
 		}
 		for _, closer := range c.closers {
@@ -2437,7 +2429,7 @@ func (d *DB) runCompaction(
 		pendingOutputs = append(pendingOutputs, fileMeta)
 		d.mu.Unlock()
 
-		writable, err := provider.Create(fileTypeTable, fileNum)
+		writable, err := d.objProvider.Create(fileTypeTable, fileNum)
 		if err != nil {
 			return err
 		}
@@ -2449,7 +2441,7 @@ func (d *DB) runCompaction(
 		d.opts.EventListener.TableCreated(TableCreateInfo{
 			JobID:   jobID,
 			Reason:  reason,
-			Path:    provider.Path(fileTypeTable, fileNum),
+			Path:    d.objProvider.Path(fileTypeTable, fileNum),
 			FileNum: fileNum,
 		})
 		writable = &compactionWritable{

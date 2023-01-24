@@ -1534,11 +1534,15 @@ func TestIngestCleanup(t *testing.T) {
 
 // fatalCapturingLogger captures a fatal error instead of panicking.
 type fatalCapturingLogger struct {
-	defaultLogger
 	err error
 }
 
-// Fatalf implements the Logger.Fatalf interface.
+// Infof implements the Logger interface.
+func (l *fatalCapturingLogger) Infof(fmt string, args ...interface{}) {
+	base.DefaultLogger.Infof(fmt, args...)
+}
+
+// Fatalf implements the Logger interface.
 func (l *fatalCapturingLogger) Fatalf(_ string, args ...interface{}) {
 	l.err = args[0].(error)
 }

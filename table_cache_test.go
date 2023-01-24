@@ -20,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -191,8 +192,9 @@ func newTableCacheContainerTest(
 	} else {
 		opts.Cache = tc.cache
 	}
+	objProvider := objstorage.New(objstorage.DefaultSettings(fs, dirname))
 
-	c := newTableCacheContainer(tc, opts.Cache.NewID(), dirname, fs, opts, tableCacheTestCacheSize)
+	c := newTableCacheContainer(tc, opts.Cache.NewID(), objProvider, opts, tableCacheTestCacheSize)
 	return c, fs, nil
 }
 
@@ -885,8 +887,7 @@ func TestTableCacheClockPro(t *testing.T) {
 	dbOpts := &tableCacheOpts{}
 	dbOpts.logger = opts.Logger
 	dbOpts.cacheID = 0
-	dbOpts.dirname = ""
-	dbOpts.fs = mem
+	dbOpts.objProvider = objstorage.New(objstorage.DefaultSettings(mem, ""))
 	dbOpts.opts = opts.MakeReaderOptions()
 
 	scanner := bufio.NewScanner(f)
