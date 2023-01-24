@@ -33,12 +33,8 @@ func TestSyncingFile(t *testing.T) {
 	}
 	s = NewSyncingFile(f, SyncingFileOptions{BytesPerSync: 8 << 10 /* 8 KB */})
 	s.(*syncingFile).fd = 1
-	s.(*syncingFile).syncTo = func(offset int64) error {
-		s.(*syncingFile).ratchetSyncOffset(offset)
-		return nil
-	}
 
-	t.Logf("sync_file_range=%t", s.(*syncingFile).useSyncRange)
+	t.Logf("sync_file_range=%t", s.(*syncingFile).fileAttrs.CanSyncTo)
 
 	testCases := []struct {
 		n              int64
@@ -64,26 +60,26 @@ func TestSyncingFile(t *testing.T) {
 
 func TestSyncingFileClose(t *testing.T) {
 	testCases := []struct {
-		syncToEnabled bool
-		expected      string
+		canSyncTo bool
+		expected  string
 	}{
 		{true, `sync-to(1048576): test [<nil>]
 sync-to(2097152): test [<nil>]
 sync-to(3145728): test [<nil>]
 pre-close: test [offset=4194304 sync-offset=3145728]
-sync: test [<nil>]
+sync-to(4194304): test [<nil>]
 close: test [<nil>]
 `},
-		// When SyncFileRange is not being used, the last sync call ends up syncing
-		// all of the data causing syncingFile.Close to elide the sync.
-		{false, `sync: test [<nil>]
-sync: test [<nil>]
+		// When SyncTo is not being used, the last sync call ends up syncing all
+		// of the data causing syncingFile.Close to elide the sync.
+		{false, `sync-data: test [<nil>]
+sync-data: test [<nil>]
 pre-close: test [offset=4194304 sync-offset=4194304]
 close: test [<nil>]
 `},
 	}
 	for _, c := range testCases {
-		t.Run("", func(t *testing.T) {
+		t.Run(fmt.Sprintf("canSyncTo=%t", c.canSyncTo), func(t *testing.T) {
 			tmpf, err := os.CreateTemp("", "pebble-db-syncing-file-")
 			require.NoError(t, err)
 
@@ -96,16 +92,10 @@ close: test [<nil>]
 
 			var buf bytes.Buffer
 			lf := loggingFile{f, "test", &buf}
-
 			s := NewSyncingFile(lf, SyncingFileOptions{BytesPerSync: 8 << 10 /* 8 KB */}).(*syncingFile)
-			if c.syncToEnabled {
+			s.fileAttrs.CanSyncTo = c.canSyncTo
+			if c.canSyncTo {
 				s.fd = 1
-				s.syncData = lf.Sync
-				s.syncTo = func(offset int64) error {
-					s.ratchetSyncOffset(offset)
-					fmt.Fprintf(lf.w, "sync-to(%d): %s [%v]\n", offset, lf.name, err)
-					return nil
-				}
 			} else {
 				s.fd = InvalidFd
 			}
@@ -134,7 +124,7 @@ close: test [<nil>]
 
 func TestSyncingFileNoSyncOnClose(t *testing.T) {
 	testCases := []struct {
-		useSyncRange bool
+		useSyncTo    bool
 		expectBefore int64
 		expectAfter  int64
 	}{
@@ -143,7 +133,7 @@ func TestSyncingFileNoSyncOnClose(t *testing.T) {
 	}
 
 	for _, c := range testCases {
-		t.Run(fmt.Sprintf("useSyncRange=%v", c.useSyncRange), func(t *testing.T) {
+		t.Run(fmt.Sprintf("useSyncTo=%v", c.useSyncTo), func(t *testing.T) {
 			tmpf, err := os.CreateTemp("", "pebble-db-syncing-file-")
 			require.NoError(t, err)
 
@@ -156,9 +146,8 @@ func TestSyncingFileNoSyncOnClose(t *testing.T) {
 
 			var buf bytes.Buffer
 			lf := loggingFile{f, "test", &buf}
-
 			s := NewSyncingFile(lf, SyncingFileOptions{NoSyncOnClose: true, BytesPerSync: 8 << 10}).(*syncingFile)
-			s.useSyncRange = c.useSyncRange
+			s.fileAttrs.CanSyncTo = c.useSyncTo
 
 			write := func(n int64) {
 				t.Helper()
@@ -175,9 +164,13 @@ func TestSyncingFileNoSyncOnClose(t *testing.T) {
 			require.NoError(t, s.Close())
 			syncToAfter := atomic.LoadInt64(&s.atomic.syncOffset)
 
-			if syncToBefore != c.expectBefore || syncToAfter != c.expectAfter {
-				t.Fatalf("Expected syncTo before and after closing are %d %d but found %d %d",
-					c.expectBefore, c.expectAfter, syncToBefore, syncToAfter)
+			// If we're not able to non-blockingly sync using sync-to,
+			// NoSyncOnClose should elide the sync.
+			if !c.useSyncTo {
+				if syncToBefore != c.expectBefore || syncToAfter != c.expectAfter {
+					t.Fatalf("Expected syncTo before and after closing are %d %d but found %d %d",
+						c.expectBefore, c.expectAfter, syncToBefore, syncToAfter)
+				}
 			}
 		})
 	}
@@ -239,7 +232,7 @@ func BenchmarkSyncWrite(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					return NewSyncingFile(t, SyncingFileOptions{PreallocateSize: 0})
+					return NewSyncingFile(wrapOSFile(t), SyncingFileOptions{PreallocateSize: 0})
 				})
 			})
 		}
@@ -254,7 +247,7 @@ func BenchmarkSyncWrite(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					return NewSyncingFile(t, SyncingFileOptions{PreallocateSize: 4 << 20})
+					return NewSyncingFile(wrapOSFile(t), SyncingFileOptions{PreallocateSize: 4 << 20})
 				})
 			})
 		}
@@ -285,7 +278,7 @@ func BenchmarkSyncWrite(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					return NewSyncingFile(t, SyncingFileOptions{PreallocateSize: 0})
+					return NewSyncingFile(wrapOSFile(t), SyncingFileOptions{PreallocateSize: 0})
 				})
 			})
 		}
