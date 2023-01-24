@@ -38,9 +38,12 @@ const (
 	OpTypeUnknown OpType = iota
 	OpTypeWrite
 	OpTypeSync
+	OpTypeSyncData
+	OpTypeSyncTo
 	OpTypeCreate
 	OpTypeLink
 	OpTypeMkdirAll
+	OpTypePreallocate
 	OpTypeRemove
 	OpTypeRemoveAll
 	OpTypeRename
@@ -57,12 +60,18 @@ func (o OpType) String() string {
 		return "write"
 	case OpTypeSync:
 		return "sync"
+	case OpTypeSyncData:
+		return "syncdata"
+	case OpTypeSyncTo:
+		return "syncto"
 	case OpTypeCreate:
 		return "create"
 	case OpTypeLink:
 		return "link"
 	case OpTypeMkdirAll:
 		return "mkdirall"
+	case OpTypePreallocate:
+		return "preallocate"
 	case OpTypeRemove:
 		return "remove"
 	case OpTypeRemoveAll:
@@ -70,7 +79,7 @@ func (o OpType) String() string {
 	case OpTypeRename:
 		return "rename"
 	case OpTypeReuseForWrite:
-		return "reuseforwrtie"
+		return "reuseforwrite"
 	case OpTypeUnknown:
 		return "unknown"
 	default:
@@ -176,10 +185,34 @@ func (d *diskHealthCheckingFile) Close() error {
 	return d.File.Close()
 }
 
+// Preallocate implements (vfs.File).Preallocate.
+func (d *diskHealthCheckingFile) Preallocate(off, n int64) (err error) {
+	d.timeDiskOp(OpTypePreallocate, func() {
+		err = d.File.Preallocate(off, n)
+	})
+	return err
+}
+
 // Sync implements the io.Syncer interface.
 func (d *diskHealthCheckingFile) Sync() (err error) {
 	d.timeDiskOp(OpTypeSync, func() {
 		err = d.File.Sync()
+	})
+	return err
+}
+
+// SyncData implements (vfs.File).SyncData.
+func (d *diskHealthCheckingFile) SyncData() (err error) {
+	d.timeDiskOp(OpTypeSyncData, func() {
+		err = d.File.SyncData()
+	})
+	return err
+}
+
+// SyncTo implements (vfs.File).SyncTo.
+func (d *diskHealthCheckingFile) SyncTo(length int64) (err error) {
+	d.timeDiskOp(OpTypeSyncTo, func() {
+		err = d.File.SyncTo(length)
 	})
 	return err
 }
