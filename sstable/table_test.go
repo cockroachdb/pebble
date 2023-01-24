@@ -414,7 +414,7 @@ func build(
 
 func testReader(t *testing.T, filename string, comparer *Comparer, fp FilterPolicy) {
 	// Check that we can read a pre-made table.
-	f, err := os.Open(filepath.FromSlash("testdata/" + filename))
+	f, err := vfs.Default.Open(filepath.FromSlash("testdata/" + filename))
 	if err != nil {
 		t.Error(err)
 		return

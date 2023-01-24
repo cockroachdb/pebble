@@ -112,10 +112,28 @@ func (f loggingFile) Close() error {
 	return err
 }
 
+func (f loggingFile) Preallocate(off, n int64) error {
+	err := f.File.Preallocate(off, n)
+	fmt.Fprintf(f.w, "preallocate(off=%d,n=%d): %s [%v]\n", off, n, f.name, err)
+	return err
+}
+
 func (f loggingFile) Sync() error {
 	err := f.File.Sync()
 	fmt.Fprintf(f.w, "sync: %s [%v]\n", f.name, err)
 	return err
+}
+
+func (f loggingFile) SyncData() error {
+	err := f.File.SyncData()
+	fmt.Fprintf(f.w, "sync-data: %s [%v]\n", f.name, err)
+	return err
+}
+
+func (f loggingFile) SyncTo(length int64) (fullSync bool, err error) {
+	fullSync, err = f.File.SyncTo(length)
+	fmt.Fprintf(f.w, "sync-to(%d): %s [%t,%v]\n", length, f.name, fullSync, err)
+	return fullSync, err
 }
 
 func runTestVFS(t *testing.T, baseFS FS, dir string) {

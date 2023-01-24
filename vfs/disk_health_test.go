@@ -37,6 +37,11 @@ func (m mockFile) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+func (m mockFile) Preallocate(int64, int64) error {
+	time.Sleep(m.syncAndWriteDuration)
+	return nil
+}
+
 func (m mockFile) Stat() (os.FileInfo, error) {
 	panic("unimplemented")
 }
@@ -48,6 +53,16 @@ func (m mockFile) Fd() uintptr {
 func (m mockFile) Sync() error {
 	time.Sleep(m.syncAndWriteDuration)
 	return nil
+}
+
+func (m mockFile) SyncData() error {
+	time.Sleep(m.syncAndWriteDuration)
+	return nil
+}
+
+func (m mockFile) SyncTo(int64) (fullSync bool, err error) {
+	time.Sleep(m.syncAndWriteDuration)
+	return false, nil
 }
 
 var _ File = &mockFile{}
@@ -187,8 +202,8 @@ var _ FS = &mockFS{}
 
 func TestDiskHealthChecking_File(t *testing.T) {
 	const (
-		slowThreshold = 1 * time.Second
-		syncDuration  = 3 * time.Second
+		slowThreshold        = 1 * time.Second
+		syncAndWriteDuration = 3 * time.Second
 	)
 	testCases := []struct {
 		op OpType
@@ -211,7 +226,7 @@ func TestDiskHealthChecking_File(t *testing.T) {
 			}
 			diskSlow := make(chan info, 1)
 			mockFS := &mockFS{create: func(name string) (File, error) {
-				return mockFile{syncAndWriteDuration: syncDuration}, nil
+				return mockFile{syncAndWriteDuration: syncAndWriteDuration}, nil
 			}}
 			fs, closer := WithDiskHealthChecks(mockFS, slowThreshold,
 				func(s string, opType OpType, duration time.Duration) {

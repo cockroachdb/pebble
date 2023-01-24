@@ -698,6 +698,10 @@ func (f *memFile) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func (f *memFile) Preallocate(offset, length int64) error {
+	return nil
+}
+
 func (f *memFile) Stat() (os.FileInfo, error) {
 	return f.n, nil
 }
@@ -721,6 +725,18 @@ func (f *memFile) Sync() error {
 		}
 	}
 	return nil
+}
+
+func (f *memFile) SyncData() error {
+	return f.Sync()
+}
+
+func (f *memFile) SyncTo(length int64) (fullSync bool, err error) {
+	// NB: This SyncTo implementation lies, with its return values claiming it
+	// synced the data up to `length`. When fullSync=false, SyncTo provides no
+	// durability guarantees, so this can help surface bugs where we improperly
+	// rely on SyncTo providing durability.
+	return false, nil
 }
 
 func (f *memFile) Fd() uintptr {
