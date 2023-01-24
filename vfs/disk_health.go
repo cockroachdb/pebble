@@ -38,9 +38,12 @@ const (
 	OpTypeUnknown OpType = iota
 	OpTypeWrite
 	OpTypeSync
+	OpTypeSyncData
+	OpTypeSyncTo
 	OpTypeCreate
 	OpTypeLink
 	OpTypeMkdirAll
+	OpTypePreallocate
 	OpTypeRemove
 	OpTypeRemoveAll
 	OpTypeRename
@@ -57,12 +60,18 @@ func (o OpType) String() string {
 		return "write"
 	case OpTypeSync:
 		return "sync"
+	case OpTypeSyncData:
+		return "syncdata"
+	case OpTypeSyncTo:
+		return "syncto"
 	case OpTypeCreate:
 		return "create"
 	case OpTypeLink:
 		return "link"
 	case OpTypeMkdirAll:
 		return "mkdirall"
+	case OpTypePreallocate:
+		return "preallocate"
 	case OpTypeRemove:
 		return "remove"
 	case OpTypeRemoveAll:
@@ -70,7 +79,7 @@ func (o OpType) String() string {
 	case OpTypeRename:
 		return "rename"
 	case OpTypeReuseForWrite:
-		return "reuseforwrtie"
+		return "reuseforwrite"
 	case OpTypeUnknown:
 		return "unknown"
 	default:
@@ -86,8 +95,7 @@ func (o OpType) String() string {
 // duration. This setup is preferable to creating a new timer at every disk
 // operation, as it reduces overhead per disk operation.
 type diskHealthCheckingFile struct {
-	File
-
+	file              File
 	onSlowDisk        func(OpType, time.Duration)
 	diskSlowThreshold time.Duration
 	tickInterval      time.Duration
@@ -113,7 +121,7 @@ func newDiskHealthCheckingFile(
 	file File, diskSlowThreshold time.Duration, onSlowDisk func(OpType, time.Duration),
 ) *diskHealthCheckingFile {
 	return &diskHealthCheckingFile{
-		File:              file,
+		file:              file,
 		onSlowDisk:        onSlowDisk,
 		diskSlowThreshold: diskSlowThreshold,
 		tickInterval:      defaultTickInterval,
@@ -162,10 +170,30 @@ func (d *diskHealthCheckingFile) stopTicker() {
 	close(d.stopper)
 }
 
+// Capabilities implements (vfs.File).Capabilities.
+func (d *diskHealthCheckingFile) Capabilities() Capabilities {
+	return d.file.Capabilities()
+}
+
+// Fd implements (vfs.File).Fd.
+func (d *diskHealthCheckingFile) Fd() uintptr {
+	return d.file.Fd()
+}
+
+// Read implements (vfs.File).Read
+func (d *diskHealthCheckingFile) Read(p []byte) (int, error) {
+	return d.file.Read(p)
+}
+
+// ReadAt implements (vfs.File).ReadAt
+func (d *diskHealthCheckingFile) ReadAt(p []byte, off int64) (int, error) {
+	return d.file.ReadAt(p, off)
+}
+
 // Write implements the io.Writer interface.
 func (d *diskHealthCheckingFile) Write(p []byte) (n int, err error) {
 	d.timeDiskOp(OpTypeWrite, func() {
-		n, err = d.File.Write(p)
+		n, err = d.file.Write(p)
 	})
 	return n, err
 }
@@ -173,13 +201,42 @@ func (d *diskHealthCheckingFile) Write(p []byte) (n int, err error) {
 // Close implements the io.Closer interface.
 func (d *diskHealthCheckingFile) Close() error {
 	d.stopTicker()
-	return d.File.Close()
+	return d.file.Close()
+}
+
+// Preallocate implements (vfs.File).Preallocate.
+func (d *diskHealthCheckingFile) Preallocate(off, n int64) (err error) {
+	d.timeDiskOp(OpTypePreallocate, func() {
+		err = d.file.Preallocate(off, n)
+	})
+	return err
+}
+
+// Stat implements (vfs.File).Stat.
+func (d *diskHealthCheckingFile) Stat() (os.FileInfo, error) {
+	return d.file.Stat()
 }
 
 // Sync implements the io.Syncer interface.
 func (d *diskHealthCheckingFile) Sync() (err error) {
 	d.timeDiskOp(OpTypeSync, func() {
-		err = d.File.Sync()
+		err = d.file.Sync()
+	})
+	return err
+}
+
+// SyncData implements (vfs.File).SyncData.
+func (d *diskHealthCheckingFile) SyncData() (err error) {
+	d.timeDiskOp(OpTypeSyncData, func() {
+		err = d.file.SyncData()
+	})
+	return err
+}
+
+// SyncTo implements (vfs.File).SyncTo.
+func (d *diskHealthCheckingFile) SyncTo(length int64) (err error) {
+	d.timeDiskOp(OpTypeSyncTo, func() {
+		err = d.file.SyncTo(length)
 	})
 	return err
 }
