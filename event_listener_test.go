@@ -131,6 +131,16 @@ func (f loggingFile) Sync() error {
 	return f.File.Sync()
 }
 
+func (f loggingFile) SyncData() error {
+	fmt.Fprintf(f.w, "sync-data: %s\n", f.name)
+	return f.File.SyncData()
+}
+
+func (f loggingFile) SyncTo(length int64) (fullSync bool, err error) {
+	fmt.Fprintf(f.w, "sync-to(%d): %s\n", length, f.name)
+	return f.File.SyncTo(length)
+}
+
 // Verify event listener actions, as well as expected filesystem operations.
 func TestEventListener(t *testing.T) {
 	var d *DB

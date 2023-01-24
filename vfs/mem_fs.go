@@ -36,22 +36,23 @@ func NewMem() *MemFS {
 // at which point they are discarded and no longer visible.
 //
 // Expected usage:
-//  strictFS := NewStrictMem()
-//  db := Open(..., &Options{FS: strictFS})
-//  // Do and commit various operations.
-//  ...
-//  // Prevent any more changes to finalized state.
-//  strictFS.SetIgnoreSyncs(true)
-//  // This will finish any ongoing background flushes, compactions but none of these writes will
-//  // be finalized since syncs are being ignored.
-//  db.Close()
-//  // Discard unsynced state.
-//  strictFS.ResetToSyncedState()
-//  // Allow changes to finalized state.
-//  strictFS.SetIgnoreSyncs(false)
-//  // Open the DB. This DB should have the same state as if the earlier strictFS operations and
-//  // db.Close() were not called.
-//  db := Open(..., &Options{FS: strictFS})
+//
+//	strictFS := NewStrictMem()
+//	db := Open(..., &Options{FS: strictFS})
+//	// Do and commit various operations.
+//	...
+//	// Prevent any more changes to finalized state.
+//	strictFS.SetIgnoreSyncs(true)
+//	// This will finish any ongoing background flushes, compactions but none of these writes will
+//	// be finalized since syncs are being ignored.
+//	db.Close()
+//	// Discard unsynced state.
+//	strictFS.ResetToSyncedState()
+//	// Allow changes to finalized state.
+//	strictFS.SetIgnoreSyncs(false)
+//	// Open the DB. This DB should have the same state as if the earlier strictFS operations and
+//	// db.Close() were not called.
+//	db := Open(..., &Options{FS: strictFS})
 func NewStrictMem() *MemFS {
 	return &MemFS{
 		root:   newRootMemNode(),
@@ -128,6 +129,7 @@ func (y *MemFS) ResetToSyncedState() {
 //   - "/", "foo", false
 //   - "/foo/", "bar", false
 //   - "/foo/bar/", "x", true
+//
 // Similarly, walking "/y/z/", with a trailing slash, will result in 3 calls to f:
 //   - "/", "y", false
 //   - "/y/", "z", false
@@ -680,6 +682,10 @@ func (f *memFile) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func (f *memFile) Preallocate(offset, length int64) error {
+	return nil
+}
+
 func (f *memFile) Stat() (os.FileInfo, error) {
 	return f.n, nil
 }
@@ -703,6 +709,18 @@ func (f *memFile) Sync() error {
 		}
 	}
 	return nil
+}
+
+func (f *memFile) SyncData() error {
+	return f.Sync()
+}
+
+func (f *memFile) SyncTo(length int64) (fullSync bool, err error) {
+	// NB: This SyncTo implementation lies, with its return values claiming it
+	// synced the data up to `length`. When fullSync=false, SyncTo provides no
+	// durability guarantees, so this can help surface bugs where we improperly
+	// rely on SyncTo providing durability.
+	return false, nil
 }
 
 func (f *memFile) Fd() uintptr {

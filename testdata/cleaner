@@ -28,16 +28,16 @@ set a 1
 set b 2
 set c 3
 ----
-sync: wal/000002.log
+sync-data: wal/000002.log
 
 flush db
 ----
-sync: wal/000002.log
+sync-data: wal/000002.log
 close: wal/000002.log
 create: wal/000004.log
 sync: wal
 create: db/000005.sst
-sync: db/000005.sst
+sync-data: db/000005.sst
 close: db/000005.sst
 sync: db
 sync: db/MANIFEST-000001
@@ -47,23 +47,23 @@ rename: wal/000002.log -> wal/archive/000002.log
 batch db
 set d 4
 ----
-sync: wal/000004.log
+sync-data: wal/000004.log
 
 compact db
 ----
-sync: wal/000004.log
+sync-data: wal/000004.log
 close: wal/000004.log
 create: wal/000006.log
 sync: wal
 create: db/000007.sst
-sync: db/000007.sst
+sync-data: db/000007.sst
 close: db/000007.sst
 sync: db
 sync: db/MANIFEST-000001
 mkdir-all: wal/archive 0755
 rename: wal/000004.log -> wal/archive/000004.log
 create: db/000008.sst
-sync: db/000008.sst
+sync-data: db/000008.sst
 close: db/000008.sst
 sync: db
 sync: db/MANIFEST-000001

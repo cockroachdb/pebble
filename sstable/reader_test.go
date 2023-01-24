@@ -275,7 +275,7 @@ func TestInjectedErrors(t *testing.T) {
 
 	for _, prebuiltSST := range prebuiltSSTs {
 		run := func(i int) (reterr error) {
-			f, err := os.Open(filepath.FromSlash(prebuiltSST))
+			f, err := vfs.Default.Open(filepath.FromSlash(prebuiltSST))
 			require.NoError(t, err)
 			r, err := NewReader(errorfs.WrapFile(f, errorfs.OnIndex(int32(i))), ReaderOptions{})
 			if err != nil {
