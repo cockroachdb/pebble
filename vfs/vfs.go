@@ -29,13 +29,46 @@ type File interface {
 	// method *is* allowed to modify the slice passed in, whether temporarily
 	// or permanently. Callers of Write() need to take this into account.
 	io.Writer
+
+	// Capabilities describes the file and its capabilities. See the
+	// vfs.Capabilities struct for a description of the available capabilities
+	// and their meaning.
+	Capabilities() Capabilities
+
+	// Preallocate optionally preallocates storage for `length` at `offset`
+	// within the file. Implementations may choose to do nothing.
+	Preallocate(offset, length int64) error
 	Stat() (os.FileInfo, error)
 	Sync() error
+
+	// SyncTo requests that a prefix of the file's data be synced to stable
+	// storage. SyncTo provides no persistence guarantees. The caller passes
+	// provides a `length`, indicating how much of the beginning of the file to
+	// sync. SyncTo does not seek file metadata. SyncTo is best effort.
+	// Implementations may no-op, or implement using Sync if a fine-grained data
+	// sync is unavailable. If SyncTo is implemented using a full Sync, the
+	// file's Capabilities() method should return CanSyncTo=false to indicate that
+	// no inexpensive SyncTo is available.
+	//
+	// SyncTo may perform data syncing asynchronously in the background. See
+	// vfs.NewSyncingFile for more information on its intended use.
+	SyncTo(length int64) error
+
+	// SyncData requires that all written data be persisted. File metadata is
+	// not required to be synced. Unsophisticated implementations may call Sync.
+	SyncData() error
 
 	// Fd returns the raw file descriptor when a File is backed by an *os.File.
 	// It can be used for specific functionality like Prefetch.
 	// Returns InvalidFd if not supported.
 	Fd() uintptr
+}
+
+// Capabilities describes the capabilities of a file.
+type Capabilities struct {
+	// CanSyncTo indicates whether the file is capable of issuing a
+	// non-blocking SyncTo operation to sync data in the background.
+	CanSyncTo bool
 }
 
 // InvalidFd is a special value returned by File.Fd() when the file is not
@@ -155,10 +188,18 @@ var Default FS = defaultFS{}
 
 type defaultFS struct{}
 
+// wrapOSFile takes a standard library OS file and returns a vfs.File. f may be
+// nil, in which case wrapOSFile must not panic. In such cases, it's okay if the
+// returned vfs.File may panic if used.
+func wrapOSFile(f *os.File) File {
+	// See the implementations in default_{linux,unix,windows}.go.
+	return wrapOSFileImpl(f)
+}
+
 func (defaultFS) Create(name string) (File, error) {
 	const openFlags = os.O_RDWR | os.O_CREATE | os.O_EXCL | syscall.O_CLOEXEC
 
-	f, err := os.OpenFile(name, openFlags, 0666)
+	osFile, err := os.OpenFile(name, openFlags, 0666)
 	// If the file already exists, remove it and try again.
 	//
 	// NB: We choose to remove the file instead of truncating it, despite the
@@ -169,11 +210,11 @@ func (defaultFS) Create(name string) (File, error) {
 	// attempting to create the a file at the same path.
 	for oserror.IsExist(err) {
 		if removeErr := os.Remove(name); removeErr != nil && !oserror.IsNotExist(removeErr) {
-			return f, errors.WithStack(removeErr)
+			return wrapOSFile(osFile), errors.WithStack(removeErr)
 		}
-		f, err = os.OpenFile(name, openFlags, 0666)
+		osFile, err = os.OpenFile(name, openFlags, 0666)
 	}
-	return f, errors.WithStack(err)
+	return wrapOSFile(osFile), errors.WithStack(err)
 }
 
 func (defaultFS) Link(oldname, newname string) error {
@@ -181,10 +222,11 @@ func (defaultFS) Link(oldname, newname string) error {
 }
 
 func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
-	file, err := os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
+	osFile, err := os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	file := wrapOSFile(osFile)
 	for _, opt := range opts {
 		opt.Apply(file)
 	}
@@ -208,7 +250,7 @@ func (fs defaultFS) ReuseForWrite(oldname, newname string) (File, error) {
 		return nil, errors.WithStack(err)
 	}
 	f, err := os.OpenFile(newname, os.O_RDWR|os.O_CREATE|syscall.O_CLOEXEC, 0666)
-	return f, errors.WithStack(err)
+	return wrapOSFile(f), errors.WithStack(err)
 }
 
 func (defaultFS) MkdirAll(dir string, perm os.FileMode) error {

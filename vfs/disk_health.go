@@ -32,8 +32,7 @@ const (
 // duration. This setup is preferable to creating a new timer at every disk
 // operation, as it reduces overhead per disk operation.
 type diskHealthCheckingFile struct {
-	File
-
+	file              File
 	onSlowDisk        func(time.Duration)
 	diskSlowThreshold time.Duration
 	tickInterval      time.Duration
@@ -48,7 +47,7 @@ func newDiskHealthCheckingFile(
 	file File, diskSlowThreshold time.Duration, onSlowDisk func(time.Duration),
 ) *diskHealthCheckingFile {
 	return &diskHealthCheckingFile{
-		File:              file,
+		file:              file,
 		onSlowDisk:        onSlowDisk,
 		diskSlowThreshold: diskSlowThreshold,
 		tickInterval:      defaultTickInterval,
@@ -95,10 +94,30 @@ func (d *diskHealthCheckingFile) stopTicker() {
 	close(d.stopper)
 }
 
+// Capabilities implements (vfs.File).Capabilities.
+func (d *diskHealthCheckingFile) Capabilities() Capabilities {
+	return d.file.Capabilities()
+}
+
+// Fd implements (vfs.File).Fd.
+func (d *diskHealthCheckingFile) Fd() uintptr {
+	return d.file.Fd()
+}
+
+// Read implements (vfs.File).Read
+func (d *diskHealthCheckingFile) Read(p []byte) (int, error) {
+	return d.file.Read(p)
+}
+
+// ReadAt implements (vfs.File).ReadAt
+func (d *diskHealthCheckingFile) ReadAt(p []byte, off int64) (int, error) {
+	return d.file.ReadAt(p, off)
+}
+
 // Write implements the io.Writer interface.
 func (d *diskHealthCheckingFile) Write(p []byte) (n int, err error) {
 	d.timeDiskOp(func() {
-		n, err = d.File.Write(p)
+		n, err = d.file.Write(p)
 	})
 	return n, err
 }
@@ -106,13 +125,42 @@ func (d *diskHealthCheckingFile) Write(p []byte) (n int, err error) {
 // Close implements the io.Closer interface.
 func (d *diskHealthCheckingFile) Close() error {
 	d.stopTicker()
-	return d.File.Close()
+	return d.file.Close()
+}
+
+// Preallocate implements (vfs.File).Preallocate.
+func (d *diskHealthCheckingFile) Preallocate(off, n int64) (err error) {
+	d.timeDiskOp(func() {
+		err = d.file.Preallocate(off, n)
+	})
+	return err
+}
+
+// Stat implements (vfs.File).Stat.
+func (d *diskHealthCheckingFile) Stat() (os.FileInfo, error) {
+	return d.file.Stat()
 }
 
 // Sync implements the io.Syncer interface.
 func (d *diskHealthCheckingFile) Sync() (err error) {
 	d.timeDiskOp(func() {
-		err = d.File.Sync()
+		err = d.file.Sync()
+	})
+	return err
+}
+
+// SyncData implements (vfs.File).SyncData.
+func (d *diskHealthCheckingFile) SyncData() (err error) {
+	d.timeDiskOp(func() {
+		err = d.file.SyncData()
+	})
+	return err
+}
+
+// SyncTo implements (vfs.File).SyncTo.
+func (d *diskHealthCheckingFile) SyncTo(length int64) (err error) {
+	d.timeDiskOp(func() {
+		err = d.file.SyncTo(length)
 	})
 	return err
 }
@@ -156,18 +204,18 @@ func (d *diskHealthCheckingFile) timeDiskOp(op func()) {
 // maximum concurrent filesystem operations. This is expected to be very few
 // for these reasons:
 //  1. Pebble has limited write concurrency. Flushes, compactions and WAL
-//  rotations are the primary sources of filesystem metadata operations. With
-//  the default max-compaction concurrency, these operations require at most 5
-//  concurrent slots if all 5 perform a filesystem metadata operation
-//  simultaneously.
+//     rotations are the primary sources of filesystem metadata operations. With
+//     the default max-compaction concurrency, these operations require at most 5
+//     concurrent slots if all 5 perform a filesystem metadata operation
+//     simultaneously.
 //  2. Pebble's limited concurrent I/O writers spend most of their time
-//  performing file I/O, not performing the filesystem metadata operations that
-//  require recording a slot on the diskHealthCheckingFS.
+//     performing file I/O, not performing the filesystem metadata operations that
+//     require recording a slot on the diskHealthCheckingFS.
 //  3. In CockroachDB, each additional store/Pebble instance has its own vfs.FS
-//  which provides a separate goroutine and set of slots.
+//     which provides a separate goroutine and set of slots.
 //  4. In CockroachDB, many of the additional sources of filesystem metadata
-//  operations (like encryption-at-rest) are sequential with respect to Pebble's
-//  threads.
+//     operations (like encryption-at-rest) are sequential with respect to Pebble's
+//     threads.
 type diskHealthCheckingFS struct {
 	tickInterval      time.Duration
 	diskSlowThreshold time.Duration
