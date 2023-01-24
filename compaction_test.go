@@ -28,6 +28,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -994,10 +995,11 @@ func TestCompaction(t *testing.T) {
 		}
 		ss := []string(nil)
 		v := d.mu.versions.currentVersion()
+		provider := objstorage.New(objstorage.DefaultSettings(mem, "" /* dirName */))
 		for _, levelMetadata := range v.Levels {
 			iter := levelMetadata.Iter()
 			for meta := iter.First(); meta != nil; meta = iter.Next() {
-				f, err := mem.Open(base.MakeFilepath(mem, "", fileTypeTable, meta.FileNum))
+				f, err := provider.OpenForReading(base.FileTypeTable, meta.FileNum)
 				if err != nil {
 					return "", "", errors.WithStack(err)
 				}
