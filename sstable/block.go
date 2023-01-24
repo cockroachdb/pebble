@@ -1038,7 +1038,11 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 	// that looks at setHasSamePrefix takes ~5ns per key, which is ~150x faster
 	// than doing a SeekGE within the block, so we do this 16 times
 	// (~5ns*16=80ns), and then switch to looking at restarts. Doing the binary
-	// search for the restart consumes > 100ns.
+	// search for the restart consumes > 100ns. If the number of versions is >
+	// 17, we will increment nextFastCount to 17, then do a binary search, and
+	// on average need to find a key between two restarts, so another 8 steps
+	// corresponding to nextFastCount, for a mean total of 17 + 8 = 25 such
+	// steps.
 	//
 	// TODO(sumeer): use the configured restartInterval for the sstable when it
 	// was written (which we don't currently store) instead of the default value
@@ -1058,7 +1062,6 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 		if !i.valid() {
 			return nil, base.LazyValue{}
 		}
-
 		// Need to decode the length integers, so we can compute nextOffset.
 		ptr := unsafe.Pointer(uintptr(i.ptr) + uintptr(i.offset))
 		// This is an ugly performance hack. Reading entries from blocks is one of
@@ -1231,7 +1234,16 @@ func (i *blockIter) nextPrefixV3(succKey []byte) (*InternalKey, base.LazyValue) 
 		// We assemble the key etc. under the assumption that it is the likely
 		// case.
 		unsharedKey := getBytes(ptr, int(unshared))
-		// TODO(sumeer): move this into the else block below.
+		// TODO(sumeer): move this into the else block below. This is a bit tricky
+		// since the current logic assumes we have always copied the latest key
+		// into fullKey, which is why when we get to the next key we can (a)
+		// access i.fullKey[:shared], (b) append only the unsharedKey to
+		// i.fullKey. For (a), we can access i.key[:shared] since that memory is
+		// valid (even if unshared). For (b), we will need to remember whether
+		// i.key refers to i.fullKey or not, and can append the unsharedKey only
+		// in the former case and for the latter case need to copy the shared part
+		// too. This same comment applies to the other place where we can do this
+		// optimization, in readEntry().
 		i.fullKey = append(i.fullKey[:shared], unsharedKey...)
 		i.val = getBytes(valuePtr, int(value))
 		if shared == 0 {

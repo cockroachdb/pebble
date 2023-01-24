@@ -156,15 +156,18 @@ type LazyValue struct {
 }
 
 // LazyFetcher supports fetching a lazy value.
+//
+// Fetcher and Attribute are to be initialized at creation time. The fields
+// are arranged to reduce the sizeof this struct.
 type LazyFetcher struct {
 	// Fetcher, given a handle, returns the value.
 	Fetcher ValueFetcher
+	err     error
+	value   []byte
 	// Attribute includes the short attribute and value length.
 	Attribute   AttributeAndLen
 	fetched     bool
-	value       []byte
 	callerOwned bool
-	err         error
 }
 
 // ValueFetcher is an interface for fetching a value.

@@ -2809,7 +2809,8 @@ func BenchmarkIteratorScan(b *testing.B) {
 }
 
 func BenchmarkIteratorScanNextPrefix(b *testing.B) {
-	setupBench := func(b *testing.B, maxKeysPerLevel, versCount, readAmp int) *DB {
+	setupBench := func(
+		b *testing.B, maxKeysPerLevel, versCount, readAmp int, enableValueBlocks bool) *DB {
 		keyBuf := make([]byte, readAmp+testkeys.MaxSuffixLen)
 		opts := &Options{
 			FS:                 vfs.NewMem(),
@@ -2817,6 +2818,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 			FormatMajorVersion: FormatNewest,
 		}
 		opts.DisableAutomaticCompactions = true
+		opts.Experimental.EnableValueBlocks = func() bool { return enableValueBlocks }
 		d, err := Open("", opts)
 		require.NoError(b, err)
 
@@ -2859,21 +2861,30 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 				b.Run(fmt.Sprintf("versions=%d", versionCount), func(b *testing.B) {
 					for _, readAmp := range []int{1, 3, 7, 10} {
 						b.Run(fmt.Sprintf("ramp=%d", readAmp), func(b *testing.B) {
-							d := setupBench(b, keysPerLevel, versionCount, readAmp)
-							defer func() { require.NoError(b, d.Close()) }()
-							for _, keyTypes := range []IterKeyType{IterKeyTypePointsOnly, IterKeyTypePointsAndRanges} {
-								b.Run(fmt.Sprintf("key-types=%s", keyTypes), func(b *testing.B) {
-									b.ResetTimer()
-									iterOpts := IterOptions{KeyTypes: keyTypes}
-									for i := 0; i < b.N; i++ {
-										b.StartTimer()
-										iter := d.NewIter(&iterOpts)
-										valid := iter.First()
-										for valid {
-											valid = iter.NextPrefix()
-										}
-										b.StopTimer()
-										require.NoError(b, iter.Close())
+							for _, enableValueBlocks := range []bool{false, true} {
+								b.Run(fmt.Sprintf("value-blocks=%t", enableValueBlocks), func(b *testing.B) {
+									d := setupBench(b, keysPerLevel, versionCount, readAmp, enableValueBlocks)
+									defer func() { require.NoError(b, d.Close()) }()
+									for _, keyTypes := range []IterKeyType{
+										IterKeyTypePointsOnly, IterKeyTypePointsAndRanges} {
+										b.Run(fmt.Sprintf("key-types=%s", keyTypes), func(b *testing.B) {
+											iterOpts := IterOptions{KeyTypes: keyTypes}
+											iter := d.NewIter(&iterOpts)
+											var valid bool
+											b.ResetTimer()
+											for i := 0; i < b.N; i++ {
+												if !valid {
+													valid = iter.First()
+													if !valid {
+														b.Fatalf("iter must be valid")
+													}
+												} else {
+													valid = iter.NextPrefix()
+												}
+											}
+											b.StopTimer()
+											require.NoError(b, iter.Close())
+										})
 									}
 								})
 							}
