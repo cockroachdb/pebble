@@ -196,13 +196,10 @@ func (d *DB) Checkpoint(
 
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
-	fs := syncingFS{
-		FS: d.opts.FS,
-		syncOpts: vfs.SyncingFileOptions{
-			NoSyncOnClose: d.opts.NoSyncOnClose,
-			BytesPerSync:  d.opts.BytesPerSync,
-		},
-	}
+	fs := vfs.NewSyncingFS(d.opts.FS, vfs.SyncingFileOptions{
+		NoSyncOnClose: d.opts.NoSyncOnClose,
+		BytesPerSync:  d.opts.BytesPerSync,
+	})
 
 	// Create the dir and its parents (if necessary), and sync them.
 	var dir vfs.File
@@ -314,7 +311,7 @@ func (d *DB) Checkpoint(
 }
 
 func (d *DB) writeCheckpointManifest(
-	fs syncingFS,
+	fs vfs.FS,
 	formatVers FormatMajorVersion,
 	destDirPath string,
 	destDir vfs.File,
