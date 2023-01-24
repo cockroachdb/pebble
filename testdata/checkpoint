@@ -63,16 +63,16 @@ set a 1
 set b 2
 set c 3
 ----
-sync: db/000002.log
+sync-data: db/000002.log
 
 flush db
 ----
-sync: db/000002.log
+sync-data: db/000002.log
 close: db/000002.log
 create: db/000004.log
 sync: db
 create: db/000005.sst
-sync: db/000005.sst
+sync-data: db/000005.sst
 close: db/000005.sst
 sync: db
 sync: db/MANIFEST-000001
@@ -82,16 +82,16 @@ set b 5
 set d 7
 set e 8
 ----
-sync: db/000004.log
+sync-data: db/000004.log
 
 flush db
 ----
-sync: db/000004.log
+sync-data: db/000004.log
 close: db/000004.log
 reuseForWrite: db/000002.log -> db/000006.log
 sync: db
 create: db/000007.sst
-sync: db/000007.sst
+sync-data: db/000007.sst
 close: db/000007.sst
 sync: db
 sync: db/MANIFEST-000001
@@ -100,7 +100,7 @@ batch db
 set f 9
 set g 10
 ----
-sync: db/000006.log
+sync-data: db/000006.log
 
 checkpoint db checkpoints/checkpoint1
 ----
@@ -115,23 +115,23 @@ open-dir: checkpoints/checkpoint1
 link: db/OPTIONS-000003 -> checkpoints/checkpoint1/OPTIONS-000003
 open-dir: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/marker.format-version.000001.011
-sync: checkpoints/checkpoint1/marker.format-version.000001.011
+sync-data: checkpoints/checkpoint1/marker.format-version.000001.011
 close: checkpoints/checkpoint1/marker.format-version.000001.011
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/MANIFEST-000001
-sync: checkpoints/checkpoint1/MANIFEST-000001
+sync-data: checkpoints/checkpoint1/MANIFEST-000001
 close: checkpoints/checkpoint1/MANIFEST-000001
 open-dir: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
-sync: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 link: db/000005.sst -> checkpoints/checkpoint1/000005.sst
 link: db/000007.sst -> checkpoints/checkpoint1/000007.sst
 create: checkpoints/checkpoint1/000006.log
-sync: checkpoints/checkpoint1/000006.log
+sync-data: checkpoints/checkpoint1/000006.log
 close: checkpoints/checkpoint1/000006.log
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
@@ -142,17 +142,17 @@ checkpoint checkpoints/checkpoint1: file already exists
 
 compact db
 ----
-sync: db/000006.log
+sync-data: db/000006.log
 close: db/000006.log
 reuseForWrite: db/000004.log -> db/000008.log
 sync: db
 create: db/000009.sst
-sync: db/000009.sst
+sync-data: db/000009.sst
 close: db/000009.sst
 sync: db
 sync: db/MANIFEST-000001
 create: db/000010.sst
-sync: db/000010.sst
+sync-data: db/000010.sst
 close: db/000010.sst
 sync: db
 sync: db/MANIFEST-000001
@@ -160,7 +160,7 @@ sync: db/MANIFEST-000001
 batch db
 set h 11
 ----
-sync: db/000008.log
+sync-data: db/000008.log
 
 list db
 ----
