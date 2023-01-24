@@ -1713,6 +1713,10 @@ func (i *Iterator) internalNextPrefix(currKeyPrefixLen int) {
 	if i.iterKey == nil {
 		return
 	}
+	// The Next "fast-path" is not really a fast-path when there is more than
+	// one version. However, even with TableFormatPebblev3, there is a small
+	// slowdown (~10%) for one version if we remove it and only call NextPrefix.
+	// When there are two versions, only calling NextPrefix is ~30% faster.
 	i.stats.ForwardStepCount[InternalIterCall]++
 	if i.iterKey, i.iterValue = i.iter.Next(); i.iterKey == nil {
 		return
