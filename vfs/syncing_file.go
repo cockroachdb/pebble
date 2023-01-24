@@ -20,7 +20,6 @@ type syncingFile struct {
 	File
 	// fd can be InvalidFd if the underlying File does not support it.
 	fd              uintptr
-	useSyncRange    bool
 	bytesPerSync    int64
 	preallocateSize int64
 	atomic          struct {
@@ -34,16 +33,14 @@ type syncingFile struct {
 		syncOffset int64
 	}
 	preallocatedBlocks int64
-	syncData           func() error
-	syncTo             func(offset int64) error
-	timeDiskOp         func(op func())
 }
 
 // NewSyncingFile wraps a writable file and ensures that data is synced
 // periodically as it is written. The syncing does not provide persistency
 // guarantees for these periodic syncs, but is used to avoid latency spikes if
 // the OS automatically decides to write out a large chunk of dirty filesystem
-// buffers. The underlying file is fully synced upon close.
+// buffers. The underlying file's data is fully synced upon close, although
+// metadata such as modified time may not be.
 func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	s := &syncingFile{
 		File:            f,
@@ -54,23 +51,6 @@ func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	// Ensure a file that is opened and then closed will be synced, even if no
 	// data has been written to it.
 	s.atomic.syncOffset = -1
-
-	type dhChecker interface {
-		timeDiskOp(op func())
-	}
-	if d, ok := f.(dhChecker); ok {
-		s.timeDiskOp = d.timeDiskOp
-	} else {
-		s.timeDiskOp = func(op func()) {
-			op()
-		}
-	}
-
-	s.init()
-
-	if s.syncData == nil {
-		s.syncData = s.File.Sync
-	}
 	return s
 }
 
@@ -104,7 +84,7 @@ func (f *syncingFile) preallocate(offset int64) error {
 	length := f.preallocateSize * (newPreallocatedBlocks - f.preallocatedBlocks)
 	offset = f.preallocateSize * f.preallocatedBlocks
 	f.preallocatedBlocks = newPreallocatedBlocks
-	return preallocExtend(f.fd, offset, length)
+	return f.Preallocate(offset, length)
 }
 
 func (f *syncingFile) ratchetSyncOffset(offset int64) {
@@ -123,9 +103,10 @@ func (f *syncingFile) Sync() error {
 	// We update syncOffset (atomically) in order to avoid spurious syncs in
 	// maybeSync. Note that even if syncOffset is larger than the current file
 	// offset, we still need to call the underlying file's sync for persistence
-	// guarantees (which are not provided by sync_file_range).
+	// guarantees which are not provided by SyncTo (or by sync_file_range on
+	// Linux).
 	f.ratchetSyncOffset(atomic.LoadInt64(&f.atomic.offset))
-	return f.syncData()
+	return f.SyncData()
 }
 
 func (f *syncingFile) maybeSync() error {
@@ -159,19 +140,30 @@ func (f *syncingFile) maybeSync() error {
 		return errors.WithStack(f.Sync())
 	}
 
-	// Note that syncTo will always be called with an offset < atomic.offset. The
-	// syncTo implementation may choose to sync the entire file (i.e. on OSes
-	// which do not support syncing a portion of the file). The syncTo
-	// implementation must call ratchetSyncOffset with as much of the file as it
-	// has synced.
-	return errors.WithStack(f.syncTo(syncToOffset))
+	// Note that SyncTo will always be called with an offset < atomic.offset.
+	// The SyncTo implementation may choose to sync the entire file (i.e. on
+	// OSes which do not support syncing a portion of the file).
+	fullSync, err := f.SyncTo(syncToOffset)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	if fullSync {
+		f.ratchetSyncOffset(offset)
+	} else {
+		f.ratchetSyncOffset(syncToOffset)
+	}
+	return nil
 }
 
 func (f *syncingFile) Close() error {
-	// Sync any data that has been written but not yet synced. Note that if
-	// SyncFileRange was used, atomic.syncOffset will be less than
-	// atomic.offset. See syncingFile.syncToRange.
+	// Sync any data that has been written but not yet synced.
+	//
+	// NB: If the file is capable of non-durability-guarantee SyncTos, and the
+	// caller has not called Sync since the last write, syncOffset is guaranteed
+	// to be less than atomic.offset. This ensures we fall into the below
+	// conditional and perform a full sync to durably persist the file.
 	if atomic.LoadInt64(&f.atomic.offset) > atomic.LoadInt64(&f.atomic.syncOffset) {
+		// There's still remaining dirty data.
 		if err := f.Sync(); err != nil {
 			return errors.WithStack(err)
 		}
