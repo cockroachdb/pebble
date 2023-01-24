@@ -1405,18 +1405,32 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 						defer func() {
 							require.NoError(b, r.Close())
 						}()
-						iter, err := r.NewIter(nil, nil)
-						require.NoError(b, err)
-						var k *InternalKey
-						b.ResetTimer()
-						for i := 0; i < b.N; i++ {
-							if k == nil {
-								k, _ = iter.First()
-								if k == nil {
-									b.Fatalf("k is nil")
+						for _, readValue := range []bool{false, true} {
+							b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
+								var valBuf [100]byte
+								iter, err := r.NewIter(nil, nil)
+								require.NoError(b, err)
+								var k *InternalKey
+								var v base.LazyValue
+								b.ResetTimer()
+								for i := 0; i < b.N; i++ {
+									if k == nil {
+										k, _ = iter.First()
+										if k == nil {
+											b.Fatalf("k is nil")
+										}
+									}
+									k, v = iter.Next()
+									if k != nil && readValue {
+										_, callerOwned, err := v.Value(valBuf[:])
+										if err != nil {
+											b.Fatal(err)
+										} else if callerOwned {
+											b.Fatalf("unexpected callerOwned: %t", callerOwned)
+										}
+									}
 								}
-							}
-							k, _ = iter.Next()
+							})
 						}
 					})
 			}
@@ -1527,6 +1541,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 	// NextPrefix is much cheaper than in TableFormatPebblev2 with larger number
 	// of versions. It is also cheaper with 1 and 2 versions since
 	// setHasSamePrefix=false eliminates a key comparison.
+	var valBuf [100]byte
 	for _, versionCount := range []int{1, 2, 10, 100} {
 		b.Run(fmt.Sprintf("versions=%d", versionCount), func(b *testing.B) {
 			r, succKeys := setupBench(b, versionCount)
@@ -1535,41 +1550,53 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 			}()
 			for _, method := range []string{"seek-ge", "next-prefix"} {
 				b.Run(fmt.Sprintf("method=%s", method), func(b *testing.B) {
-					iter, err := r.NewIter(nil, nil)
-					require.NoError(b, err)
-					var nextFunc func(index int) *InternalKey
-					switch method {
-					case "seek-ge":
-						nextFunc = func(index int) *InternalKey {
-							var flags base.SeekGEFlags
-							k, _ := iter.SeekGE(succKeys[index], flags.EnableTrySeekUsingNext())
-							return k
-						}
-					case "next-prefix":
-						nextFunc = func(index int) *InternalKey {
-							k, _ := iter.NextPrefix(succKeys[index])
-							return k
-						}
-					default:
-						b.Fatalf("unknown method %s", method)
-					}
-					n := keys.Count()
-					j := n
-					var k *InternalKey
-					b.ResetTimer()
-					for i := 0; i < b.N; i++ {
-						if k == nil {
-							if j != n {
-								b.Fatalf("unexpected %d != %d", j, n)
+					for _, readValue := range []bool{false, true} {
+						b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
+							iter, err := r.NewIter(nil, nil)
+							require.NoError(b, err)
+							var nextFunc func(index int) (*InternalKey, base.LazyValue)
+							switch method {
+							case "seek-ge":
+								nextFunc = func(index int) (*InternalKey, base.LazyValue) {
+									var flags base.SeekGEFlags
+									return iter.SeekGE(succKeys[index], flags.EnableTrySeekUsingNext())
+								}
+							case "next-prefix":
+								nextFunc = func(index int) (*InternalKey, base.LazyValue) {
+									return iter.NextPrefix(succKeys[index])
+								}
+							default:
+								b.Fatalf("unknown method %s", method)
 							}
-							k, _ = iter.First()
-							j = 0
-						} else {
-							k = nextFunc(j - 1)
-						}
-						if k != nil {
-							j++
-						}
+							n := keys.Count()
+							j := n
+							var k *InternalKey
+							var v base.LazyValue
+							b.ResetTimer()
+							for i := 0; i < b.N; i++ {
+								if k == nil {
+									if j != n {
+										b.Fatalf("unexpected %d != %d", j, n)
+									}
+									k, _ = iter.First()
+									j = 0
+								} else {
+									k, v = nextFunc(j - 1)
+									if k != nil && readValue {
+										_, callerOwned, err := v.Value(valBuf[:])
+										if err != nil {
+											b.Fatal(err)
+										} else if callerOwned {
+											b.Fatalf("unexpected callerOwned: %t", callerOwned)
+										}
+									}
+
+								}
+								if k != nil {
+									j++
+								}
+							}
+						})
 					}
 				})
 			}
