@@ -36,6 +36,11 @@ func (m mockFile) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+func (m mockFile) Preallocate(int64, int64) error {
+	time.Sleep(m.syncDuration)
+	return nil
+}
+
 func (m mockFile) Stat() (os.FileInfo, error) {
 	panic("unimplemented")
 }
@@ -47,6 +52,16 @@ func (m mockFile) Fd() uintptr {
 func (m mockFile) Sync() error {
 	time.Sleep(m.syncDuration)
 	return nil
+}
+
+func (m mockFile) SyncData() error {
+	time.Sleep(m.syncDuration)
+	return nil
+}
+
+func (m mockFile) SyncTo(int64) (fullSync bool, err error) {
+	time.Sleep(m.syncDuration)
+	return true, nil
 }
 
 var _ File = &mockFile{}
