@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -343,11 +344,14 @@ func TestDiskHealthChecking_Filesystem(t *testing.T) {
 	const stallThreshold = 10 * time.Millisecond
 
 	// Wrap with disk-health checking, counting each stall via stallCount.
+	var mu sync.Mutex
 	var expectedOpType OpType
 	var stallCount uint64
 	fs, closer := WithDiskHealthChecks(filesystemOpsMockFS(sleepDur), stallThreshold,
 		func(name string, opType OpType, dur time.Duration) {
+			mu.Lock()
 			require.Equal(t, expectedOpType, opType)
+			mu.Unlock()
 			atomic.AddUint64(&stallCount, 1)
 		})
 	defer closer.Close()
@@ -355,7 +359,9 @@ func TestDiskHealthChecking_Filesystem(t *testing.T) {
 	ops := stallFilesystemOperations(fs)
 	for _, o := range ops {
 		t.Run(o.name, func(t *testing.T) {
+			mu.Lock()
 			expectedOpType = o.opType
+			mu.Unlock()
 			before := atomic.LoadUint64(&stallCount)
 			o.f()
 			after := atomic.LoadUint64(&stallCount)
@@ -379,9 +385,16 @@ func TestDiskHealthChecking_Filesystem_Close(t *testing.T) {
 		},
 	}
 
+	mu := sync.Mutex{}
 	stalled := map[string]time.Duration{}
+	onStalled := make(chan struct{}, 5)
 	fs, closer := WithDiskHealthChecks(mockFS, stallThreshold,
-		func(name string, opType OpType, dur time.Duration) { stalled[name] = dur })
+		func(name string, opType OpType, dur time.Duration) {
+			mu.Lock()
+			stalled[name] = dur
+			mu.Unlock()
+			onStalled <- struct{}{}
+		})
 	fs.(*diskHealthCheckingFS).tickInterval = 5 * time.Millisecond
 
 	files := []string{"foo", "bar", "bax"}
@@ -389,10 +402,115 @@ func TestDiskHealthChecking_Filesystem_Close(t *testing.T) {
 		// Create will stall, and the detector should write to the stalled map
 		// with the filename.
 		_, _ = fs.Create(filename)
+		<-onStalled
 		// Invoke the closer. This will cause the long-running goroutine to
 		// exit, but the fs should still be usable and should still detect
 		// subsequent stalls on the next iteration.
 		require.NoError(t, closer.Close())
+		mu.Lock()
 		require.Contains(t, stalled, filename)
+		mu.Unlock()
 	}
+}
+
+// TestDiskHealthChecking_FS_StalledEventListener tests the behaviour of
+// diskHealthCheckingFS being able to react to slow disk operations even if the
+// call to the event listener stalls.
+func TestDiskHealthChecking_FS_StalledEventListener(t *testing.T) {
+	const stallThreshold = 10 * time.Millisecond
+	mockFS := &mockFS{
+		create: func(name string) (File, error) {
+			time.Sleep(50 * time.Millisecond)
+			return &mockFile{}, nil
+		},
+	}
+
+	stallListener := int32(0)
+	stalledFile := make(chan string, 5)
+	fs, closer := WithDiskHealthChecks(mockFS, stallThreshold,
+		func(name string, opType OpType, dur time.Duration) {
+			if atomic.CompareAndSwapInt32(&stallListener, 1, 0) {
+				// Stall for a long time.
+				time.Sleep(20 * time.Second)
+			} else {
+				stalledFile <- name
+			}
+		})
+	fs.(*diskHealthCheckingFS).tickInterval = 5 * time.Millisecond
+
+	files := []string{"foo", "bar"}
+	for _, filename := range files {
+		// Create will stall, and the detector should write to the stalled map
+		// with the filename.
+		atomic.CompareAndSwapInt32(&stallListener, 0, 1)
+		_, _ = fs.Create(filename)
+		_, _ = fs.Create(filename)
+		exitLoop := false
+		for !exitLoop {
+			select {
+			case stalledFile := <-stalledFile:
+				if stalledFile == filename {
+					exitLoop = true
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatalf("waited over 3 seconds for file %s to show up in stalled map", filename)
+			}
+		}
+
+		// Invoke the closer. This will cause the long-running goroutine to
+		// exit, but the fs should still be usable and should still detect
+		// subsequent stalls on the next iteration.
+		require.NoError(t, closer.Close())
+	}
+}
+
+// TestDiskHealthChecking_File_StalledEventListener tests the behaviour of
+// diskHealthCheckingFile being able to react to slow disk operations even if the
+// call to the event listener stalls.
+func TestDiskHealthChecking_File_StalledEventListener(t *testing.T) {
+	const stallThreshold = 10 * time.Millisecond
+	mockFS := &mockFS{
+		create: func(name string) (File, error) {
+			return &mockFile{50 * time.Millisecond}, nil
+		},
+	}
+
+	stallListener := int32(0)
+	stalledFile := make(chan string, 5)
+	fs, closer := WithDiskHealthChecks(mockFS, stallThreshold,
+		func(name string, opType OpType, dur time.Duration) {
+			if atomic.CompareAndSwapInt32(&stallListener, 1, 0) {
+				// Stall for a long time.
+				time.Sleep(20 * time.Second)
+			} else {
+				stalledFile <- name
+			}
+		})
+	fs.(*diskHealthCheckingFS).tickInterval = 5 * time.Millisecond
+	fs.(*diskHealthCheckingFS).testingHook = func(f File) {
+		f.(*diskHealthCheckingFile).tickInterval = 5 * time.Millisecond
+	}
+
+	files := []string{"foo", "bar"}
+	for _, filename := range files {
+		f, err := fs.Create(filename)
+		require.NoError(t, err)
+		// Sync will stall, and the detector should write to the stalled map
+		// with the filename
+		atomic.CompareAndSwapInt32(&stallListener, 0, 1)
+		_ = f.Sync()
+		_ = f.Sync()
+		exitLoop := false
+		for !exitLoop {
+			select {
+			case stalledFile := <-stalledFile:
+				if stalledFile == filename {
+					exitLoop = true
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatalf("waited over 3 seconds for file %s to show up in stalled map", filename)
+			}
+		}
+	}
+	require.NoError(t, closer.Close())
 }

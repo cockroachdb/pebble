@@ -150,7 +150,7 @@ func (d *diskHealthCheckingFile) startTicker() {
 				if lastWrite.Add(d.diskSlowThreshold).Before(now) {
 					// diskSlowThreshold was exceeded. Call the passed-in
 					// listener.
-					d.onSlowDisk(op, now.Sub(lastWrite))
+					go d.onSlowDisk(op, now.Sub(lastWrite))
 				}
 			}
 		}
@@ -257,6 +257,10 @@ type diskHealthCheckingFS struct {
 		stopper       chan struct{}
 		inflight      []*slot
 	}
+	// testingHook is a hook to make changes to any diskHealthCheckingFile
+	// in tests before the ticker starts. Used to change the tick interval
+	// to speed up tests.
+	testingHook func(f File)
 	// prealloc preallocates the memory for mu.inflight slots and the slice
 	// itself. The contained fields are not accessed directly except by
 	// WithDiskHealthChecks when initializing mu.inflight. The number of slots
@@ -389,9 +393,13 @@ func (d *diskHealthCheckingFS) startTickerLocked() {
 				for i := range d.mu.inflight {
 					nanos := atomic.LoadInt64(&d.mu.inflight[i].startNanos)
 					if nanos != 0 && time.Unix(0, nanos).Add(d.diskSlowThreshold).Before(now) {
-						// diskSlowThreshold was exceeded. Invoke the provided
-						// callback.
-						d.onSlowDisk(d.mu.inflight[i].name, d.mu.inflight[i].opType, now.Sub(time.Unix(0, nanos)))
+						// diskSlowThreshold was exceeded. Invoke the provided callback. Run
+						// it in a goroutine, as it too might block (eg. if it logs).
+						var inflightOp slot
+						inflightOp.name = d.mu.inflight[i].name
+						inflightOp.opType = d.mu.inflight[i].opType
+						nanos := atomic.LoadInt64(&d.mu.inflight[i].startNanos)
+						go d.onSlowDisk(inflightOp.name, inflightOp.opType, now.Sub(time.Unix(0, nanos)))
 					}
 				}
 				d.mu.Unlock()
@@ -447,6 +455,9 @@ func (d *diskHealthCheckingFS) Create(name string) (File, error) {
 	checkingFile := newDiskHealthCheckingFile(f, d.diskSlowThreshold, func(opType OpType, duration time.Duration) {
 		d.onSlowDisk(name, opType, duration)
 	})
+	if d.testingHook != nil {
+		d.testingHook(checkingFile)
+	}
 	checkingFile.startTicker()
 	return checkingFile, nil
 }
