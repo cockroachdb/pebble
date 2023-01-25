@@ -430,9 +430,14 @@ type EventListener struct {
 	// has been installed.
 	CompactionEnd func(CompactionInfo)
 
-	// DiskSlow is invoked after a disk write operation on a file created
-	// with a disk health checking vfs.FS (see vfs.DefaultWithDiskHealthChecks)
-	// is observed to exceed the specified disk slowness threshold duration.
+	// DiskSlow is invoked after a disk write operation on a file created with a
+	// disk health checking vfs.FS (see vfs.DefaultWithDiskHealthChecks) is
+	// observed to exceed the specified disk slowness threshold duration. DiskSlow
+	// is called on a goroutine that is monitoring slowness/stuckness. The callee
+	// MUST return without doing any IO, or blocking on anything (like a mutex)
+	// that is waiting on IO. This is imperative in order to reliably monitor for
+	// slowness, since if this goroutine gets stuck, the monitoring will stop
+	// working.
 	DiskSlow func(DiskSlowInfo)
 
 	// FlushBegin is invoked after the inputs to a flush have been determined,
