@@ -82,7 +82,7 @@ func TestWriter_RangeKeys(t *testing.T) {
 			return nil, err
 		}
 
-		r, err = NewReader(f, ReaderOptions{Comparer: cmp})
+		r, err = newReader(f, ReaderOptions{Comparer: cmp})
 		if err != nil {
 			return nil, err
 		}

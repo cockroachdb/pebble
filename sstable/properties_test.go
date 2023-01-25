@@ -48,7 +48,7 @@ func TestPropertiesLoad(t *testing.T) {
 		f, err := os.Open(filepath.FromSlash("testdata/h.sst"))
 		require.NoError(t, err)
 
-		r, err := NewReader(f, ReaderOptions{})
+		r, err := newReader(f, ReaderOptions{})
 		require.NoError(t, err)
 		defer r.Close()
 
