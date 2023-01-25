@@ -398,17 +398,25 @@ func (d *diskHealthCheckingFS) startTickerLocked() {
 			case <-ticker.C:
 				// Scan the inflight slots for any slots recording a start
 				// time older than the diskSlowThreshold.
+				var exceededSlots []slot
 				d.mu.Lock()
 				now := time.Now()
 				for i := range d.mu.inflight {
 					nanos := atomic.LoadInt64(&d.mu.inflight[i].startNanos)
 					if nanos != 0 && time.Unix(0, nanos).Add(d.diskSlowThreshold).Before(now) {
-						// diskSlowThreshold was exceeded. Invoke the provided
-						// callback.
-						d.onSlowDisk(d.mu.inflight[i].name, d.mu.inflight[i].opType, now.Sub(time.Unix(0, nanos)))
+						// diskSlowThreshold was exceeded. Copy this inflightOp into
+						// exceededSlots and call d.onSlowDisk after dropping the mutex.
+						var inflightOp slot
+						inflightOp.name = d.mu.inflight[i].name
+						inflightOp.opType = d.mu.inflight[i].opType
+						inflightOp.startNanos = nanos
+						exceededSlots = append(exceededSlots, inflightOp)
 					}
 				}
 				d.mu.Unlock()
+				for i := range exceededSlots {
+					d.onSlowDisk(exceededSlots[i].name, exceededSlots[i].opType, now.Sub(time.Unix(0, exceededSlots[i].startNanos)))
+				}
 			case <-stopper:
 				return
 			}
