@@ -6,6 +6,7 @@ package vfs
 
 import (
 	"io"
+	"math"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -16,7 +17,7 @@ import (
 )
 
 type mockFile struct {
-	syncDuration time.Duration
+	syncAndWriteDuration time.Duration
 }
 
 func (m mockFile) Close() error {
@@ -32,7 +33,7 @@ func (m mockFile) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 func (m mockFile) Write(p []byte) (n int, err error) {
-	time.Sleep(m.syncDuration)
+	time.Sleep(m.syncAndWriteDuration)
 	return len(p), nil
 }
 
@@ -45,7 +46,7 @@ func (m mockFile) Fd() uintptr {
 }
 
 func (m mockFile) Sync() error {
-	time.Sleep(m.syncDuration)
+	time.Sleep(m.syncAndWriteDuration)
 	return nil
 }
 
@@ -184,30 +185,88 @@ func (m mockFS) GetDiskUsage(path string) (DiskUsage, error) {
 
 var _ FS = &mockFS{}
 
-func TestDiskHealthChecking_Sync(t *testing.T) {
-	diskSlow := make(chan time.Duration, 100)
-	slowThreshold := 1 * time.Second
-	mockFS := &mockFS{create: func(name string) (File, error) {
-		return mockFile{syncDuration: 3 * time.Second}, nil
-	}}
-	fs, closer := WithDiskHealthChecks(mockFS, slowThreshold,
-		func(s string, duration time.Duration) {
-			diskSlow <- duration
-		})
-	defer closer.Close()
-	dhFile, _ := fs.Create("test")
-	defer dhFile.Close()
-
-	dhFile.Sync()
-
-	select {
-	case d := <-diskSlow:
-		if d.Seconds() < slowThreshold.Seconds() {
-			t.Fatalf("expected %0.1f to be greater than threshold %0.1f", d.Seconds(), slowThreshold.Seconds())
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("disk stall detector did not detect slow disk operation")
+func TestDiskHealthChecking_File(t *testing.T) {
+	const (
+		slowThreshold = 1 * time.Second
+		syncDuration  = 3 * time.Second
+	)
+	testCases := []struct {
+		op OpType
+		fn func(f File)
+	}{
+		{
+			OpTypeWrite,
+			func(f File) { f.Write([]byte("uh oh")) },
+		},
+		{
+			OpTypeSync,
+			func(f File) { f.Sync() },
+		},
 	}
+	for _, tc := range testCases {
+		t.Run(tc.op.String(), func(t *testing.T) {
+			type info struct {
+				opType   OpType
+				duration time.Duration
+			}
+			diskSlow := make(chan info, 1)
+			mockFS := &mockFS{create: func(name string) (File, error) {
+				return mockFile{syncAndWriteDuration: syncDuration}, nil
+			}}
+			fs, closer := WithDiskHealthChecks(mockFS, slowThreshold,
+				func(s string, opType OpType, duration time.Duration) {
+					diskSlow <- info{
+						opType:   opType,
+						duration: duration,
+					}
+				})
+			defer closer.Close()
+			dhFile, _ := fs.Create("test")
+			defer dhFile.Close()
+
+			tc.fn(dhFile)
+			select {
+			case i := <-diskSlow:
+				d := i.duration
+				if d.Seconds() < slowThreshold.Seconds() {
+					t.Fatalf("expected %0.1f to be greater than threshold %0.1f", d.Seconds(), slowThreshold.Seconds())
+				}
+				require.Equal(t, tc.op, i.opType)
+			case <-time.After(5 * time.Second):
+				t.Fatal("disk stall detector did not detect slow disk operation")
+			}
+		})
+	}
+}
+
+func TestDiskHealthChecking_NotTooManyOps(t *testing.T) {
+	numBitsForOpType := 64 - nOffsetBits
+	numOpTypesAllowed := int(math.Pow(2, float64(numBitsForOpType)))
+	numOpTypes := int(opTypeMax)
+	require.LessOrEqual(t, numOpTypes, numOpTypesAllowed)
+}
+
+func TestDiskHealthChecking_File_Underflow(t *testing.T) {
+	f := &mockFile{}
+	hcFile := newDiskHealthCheckingFile(f, 1*time.Second, func(opType OpType, duration time.Duration) {
+		// We expect to panic before sending the event.
+		t.Fatalf("unexpected slow disk event")
+	})
+	defer hcFile.Close()
+
+	// Set the file creation to the UNIX epoch, which is earlier than the max
+	// offset of the health check.
+	tEpoch := time.Unix(0, 0)
+	hcFile.createTime = tEpoch
+
+	// Assert that the time since the epoch (in nanoseconds) is indeed greater
+	// than the max offset.
+	require.True(t, time.Since(tEpoch).Nanoseconds() > 1<<nOffsetBits-1)
+
+	// Attempting to start the clock for a new operation on the file should
+	// trigger a panic, as the calculated offset from the file creation time would
+	// result in integer overflow.
+	require.Panics(t, func() { _, _ = hcFile.Write([]byte("uh oh")) })
 }
 
 var (
@@ -247,35 +306,58 @@ func filesystemOpsMockFS(sleepDur time.Duration) *mockFS {
 	}
 }
 
-func stallFilesystemOperations(fs FS) map[string]func() {
-	return map[string]func(){
-		"create":          func() { _, _ = fs.Create("foo") },
-		"link":            func() { _ = fs.Link("foo", "bar") },
-		"mkdir-all":       func() { _ = fs.MkdirAll("foo", os.ModePerm) },
-		"remove":          func() { _ = fs.Remove("foo") },
-		"remove-all":      func() { _ = fs.RemoveAll("foo") },
-		"rename":          func() { _ = fs.Rename("foo", "bar") },
-		"reuse-for-write": func() { _, _ = fs.ReuseForWrite("foo", "bar") },
+func stallFilesystemOperations(fs FS) []filesystemOperation {
+	return []filesystemOperation{
+		{
+			"create", OpTypeCreate, func() { _, _ = fs.Create("foo") },
+		},
+		{
+			"link", OpTypeLink, func() { _ = fs.Link("foo", "bar") },
+		},
+		{
+			"mkdirall", OpTypeMkdirAll, func() { _ = fs.MkdirAll("foo", os.ModePerm) },
+		},
+		{
+			"remove", OpTypeRemove, func() { _ = fs.Remove("foo") },
+		},
+		{
+			"removeall", OpTypeRemoveAll, func() { _ = fs.RemoveAll("foo") },
+		},
+		{
+			"rename", OpTypeRename, func() { _ = fs.Rename("foo", "bar") },
+		},
+		{
+			"reuseforwrite", OpTypeReuseForWrite, func() { _, _ = fs.ReuseForWrite("foo", "bar") },
+		},
 	}
+}
+
+type filesystemOperation struct {
+	name   string
+	opType OpType
+	f      func()
 }
 
 func TestDiskHealthChecking_Filesystem(t *testing.T) {
 	const sleepDur = 50 * time.Millisecond
 	const stallThreshold = 10 * time.Millisecond
 
-	// Wrap with disk-health checking, counting each stall on stallCount.
+	// Wrap with disk-health checking, counting each stall via stallCount.
+	var expectedOpType OpType
 	var stallCount uint64
 	fs, closer := WithDiskHealthChecks(filesystemOpsMockFS(sleepDur), stallThreshold,
-		func(name string, dur time.Duration) {
+		func(name string, opType OpType, dur time.Duration) {
+			require.Equal(t, expectedOpType, opType)
 			atomic.AddUint64(&stallCount, 1)
 		})
 	defer closer.Close()
 	fs.(*diskHealthCheckingFS).tickInterval = 5 * time.Millisecond
 	ops := stallFilesystemOperations(fs)
-	for name, op := range ops {
-		t.Run(name, func(t *testing.T) {
+	for _, o := range ops {
+		t.Run(o.name, func(t *testing.T) {
+			expectedOpType = o.opType
 			before := atomic.LoadUint64(&stallCount)
-			op()
+			o.f()
 			after := atomic.LoadUint64(&stallCount)
 			require.Greater(t, int(after-before), 0)
 		})
@@ -299,7 +381,7 @@ func TestDiskHealthChecking_Filesystem_Close(t *testing.T) {
 
 	stalled := map[string]time.Duration{}
 	fs, closer := WithDiskHealthChecks(mockFS, stallThreshold,
-		func(name string, dur time.Duration) { stalled[name] = dur })
+		func(name string, opType OpType, dur time.Duration) { stalled[name] = dur })
 	fs.(*diskHealthCheckingFS).tickInterval = 5 * time.Millisecond
 
 	files := []string{"foo", "bar", "bax"}
