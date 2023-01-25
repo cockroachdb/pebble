@@ -633,7 +633,12 @@ func TeeEventListener(a, b EventListener) EventListener {
 			b.CompactionEnd(info)
 		},
 		DiskSlow: func(info DiskSlowInfo) {
-			a.DiskSlow(info)
+			// DiskSlow is a potentially critical event as it could result in the
+			// process crashing. Run both operations in parallel so that either could
+			// crash the process even if the other blocks.
+			go func() {
+				a.DiskSlow(info)
+			}()
 			b.DiskSlow(info)
 		},
 		FlushBegin: func(info FlushInfo) {

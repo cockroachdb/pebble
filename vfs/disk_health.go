@@ -150,7 +150,7 @@ func (d *diskHealthCheckingFile) startTicker() {
 				if lastWrite.Add(d.diskSlowThreshold).Before(now) {
 					// diskSlowThreshold was exceeded. Call the passed-in
 					// listener.
-					d.onSlowDisk(op, now.Sub(lastWrite))
+					go d.onSlowDisk(op, now.Sub(lastWrite))
 				}
 			}
 		}
@@ -389,9 +389,12 @@ func (d *diskHealthCheckingFS) startTickerLocked() {
 				for i := range d.mu.inflight {
 					nanos := atomic.LoadInt64(&d.mu.inflight[i].startNanos)
 					if nanos != 0 && time.Unix(0, nanos).Add(d.diskSlowThreshold).Before(now) {
-						// diskSlowThreshold was exceeded. Invoke the provided
-						// callback.
-						d.onSlowDisk(d.mu.inflight[i].name, d.mu.inflight[i].opType, now.Sub(time.Unix(0, nanos)))
+						// diskSlowThreshold was exceeded. Invoke the provided callback. Run
+						// it in a goroutine, as it too might block (eg. if it logs).
+						inflightOp := *d.mu.inflight[i]
+						go func(inflightOp slot, nanos int64, now time.Time) {
+							d.onSlowDisk(inflightOp.name, inflightOp.opType, now.Sub(time.Unix(0, nanos)))
+						}(inflightOp, nanos, now)
 					}
 				}
 				d.mu.Unlock()
