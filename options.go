@@ -224,7 +224,7 @@ func (o *IterOptions) getLogger() Logger {
 // Specifically, when configured with a RangeKeyMasking.Suffix _s_, and there
 // exists a range key with suffix _r_ covering a point key with suffix _p_, and
 //
-//     _s_ ≤ _r_ < _p_
+//	_s_ ≤ _r_ < _p_
 //
 // then the point key is elided.
 //
@@ -706,12 +706,6 @@ type Options struct {
 	// scheduled or not. The default is false (enabled). This option is only used
 	// externally when running a manual compaction, and internally for tests.
 	DisableAutomaticCompactions bool
-
-	// NoSyncOnClose decides whether the Pebble instance will enforce a
-	// close-time synchronization (e.g., fdatasync() or sync_file_range())
-	// on files it writes to. Setting this to true removes the guarantee for a
-	// sync on close. Some implementations can still issue a non-blocking sync.
-	NoSyncOnClose bool
 
 	// NumPrevManifest is the number of non-current or older manifests which
 	// we want to keep around for debugging purposes. By default, we're going

@@ -30,11 +30,6 @@ type File interface {
 	// or permanently. Callers of Write() need to take this into account.
 	io.Writer
 
-	// Capabilities describes the file and its capabilities. See the
-	// vfs.Capabilities struct for a description of the available capabilities
-	// and their meaning.
-	Capabilities() Capabilities
-
 	// Preallocate optionally preallocates storage for `length` at `offset`
 	// within the file. Implementations may choose to do nothing.
 	Preallocate(offset, length int64) error
@@ -44,13 +39,12 @@ type File interface {
 	// SyncTo requests that a prefix of the file's data be synced to stable
 	// storage. SyncTo provides no persistence guarantees. The caller passes
 	// provides a `length`, indicating how much of the beginning of the file to
-	// sync. SyncTo does not seek file metadata. SyncTo is best effort.
-	// Implementations may no-op, or implement using Sync if a fine-grained data
-	// sync is unavailable. If SyncTo is implemented using a full Sync, the
-	// file's Capabilities() method should return CanSyncTo=false to indicate that
-	// no inexpensive SyncTo is available.
+	// sync. SyncTo does not sync file metadata on all platforms, and its
+	// syncing of file contents is best effort.
 	//
-	// SyncTo may perform data syncing asynchronously in the background. See
+	// Implementations may no-op, or implement using Sync if a fine-grained data
+	// sync is unavailable. SyncTo may perform data syncing asynchronously in
+	// the background, but is not guaranteed to be asynchronous. See
 	// vfs.NewSyncingFile for more information on its intended use.
 	SyncTo(length int64) error
 
@@ -62,13 +56,6 @@ type File interface {
 	// It can be used for specific functionality like Prefetch.
 	// Returns InvalidFd if not supported.
 	Fd() uintptr
-}
-
-// Capabilities describes the capabilities of a file.
-type Capabilities struct {
-	// CanSyncTo indicates whether the file is capable of issuing a
-	// non-blocking SyncTo operation to sync data in the background.
-	CanSyncTo bool
 }
 
 // InvalidFd is a special value returned by File.Fd() when the file is not

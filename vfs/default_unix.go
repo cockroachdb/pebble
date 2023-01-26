@@ -34,11 +34,6 @@ type unixFile struct {
 	fd uintptr
 }
 
-func (f *unixFile) Capabilities() Capabilities {
-	// No support for sync_file_range.
-	return Capabilities{CanSyncTo: false}
-}
-
 func (f *unixFile) Preallocate(offset, length int64) error {
 	return preallocExtend(f.fd, offset, length)
 }

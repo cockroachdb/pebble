@@ -331,10 +331,6 @@ type errorFile struct {
 	inj  Injector
 }
 
-func (f *errorFile) Capabilities() vfs.Capabilities {
-	return f.file.Capabilities()
-}
-
 func (f *errorFile) Close() error {
 	// We don't inject errors during close as those calls should never fail in
 	// practice.

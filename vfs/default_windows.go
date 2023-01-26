@@ -36,7 +36,6 @@ type windowsDir struct {
 	*os.File
 }
 
-func (*windowsDir) Capabilities() Capabilities          { return Capabilities{} }
 func (*windowsDir) Preallocate(off, length int64) error { return nil }
 
 // Silently ignore Sync() on Windows. This is the same behavior as
@@ -47,11 +46,6 @@ func (*windowsDir) SyncTo(length int64) error { return nil }
 
 type windowsFile struct {
 	*os.File
-}
-
-func (*windowsFile) Capabilities() Capabilities {
-	// No support for sync_file_range.
-	return Capabilities{CanSyncTo: false}
 }
 
 func (*windowsFile) Preallocate(offset, length int64) error {

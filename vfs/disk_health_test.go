@@ -36,10 +36,6 @@ func (m mockFile) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func (m mockFile) Capabilities() Capabilities {
-	return Capabilities{CanSyncTo: true}
-}
-
 func (m mockFile) Preallocate(int64, int64) error {
 	time.Sleep(m.syncDuration)
 	return nil

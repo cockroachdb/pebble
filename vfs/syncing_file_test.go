@@ -35,8 +35,6 @@ func TestSyncingFile(t *testing.T) {
 	s = NewSyncingFile(f, SyncingFileOptions{BytesPerSync: 8 << 10 /* 8 KB */})
 	s.(*syncingFile).fd = 1
 
-	t.Logf("sync_file_range=%t", s.(*syncingFile).capabilities.CanSyncTo)
-
 	testCases := []struct {
 		n              int64
 		expectedSyncTo int64
@@ -94,7 +92,6 @@ close: test [<nil>]
 			var buf bytes.Buffer
 			lf := loggingFile{f, "test", &buf}
 			s := NewSyncingFile(lf, SyncingFileOptions{BytesPerSync: 8 << 10 /* 8 KB */}).(*syncingFile)
-			s.capabilities.CanSyncTo = c.canSyncTo
 			if c.canSyncTo {
 				s.fd = 1
 			} else {
@@ -125,16 +122,14 @@ close: test [<nil>]
 
 func TestSyncingFileNoSyncOnClose(t *testing.T) {
 	testCases := []struct {
-		useSyncTo    bool
 		expectBefore int64
 		expectAfter  int64
 	}{
-		{false, 2 << 20, 2 << 20},
-		{true, 2 << 20, 3<<20 + 128},
+		{2 << 20, 3<<20 + 128},
 	}
 
 	for _, c := range testCases {
-		t.Run(fmt.Sprintf("useSyncTo=%v", c.useSyncTo), func(t *testing.T) {
+		t.Run("", func(t *testing.T) {
 			tmpf, err := os.CreateTemp("", "pebble-db-syncing-file-")
 			require.NoError(t, err)
 
@@ -147,8 +142,7 @@ func TestSyncingFileNoSyncOnClose(t *testing.T) {
 
 			var buf bytes.Buffer
 			lf := loggingFile{f, "test", &buf}
-			s := NewSyncingFile(lf, SyncingFileOptions{NoSyncOnClose: true, BytesPerSync: 8 << 10}).(*syncingFile)
-			s.capabilities.CanSyncTo = c.useSyncTo
+			s := NewSyncingFile(lf, SyncingFileOptions{BytesPerSync: 8 << 10}).(*syncingFile)
 
 			write := func(n int64) {
 				t.Helper()
@@ -165,13 +159,9 @@ func TestSyncingFileNoSyncOnClose(t *testing.T) {
 			require.NoError(t, s.Close())
 			syncToAfter := atomic.LoadInt64(&s.atomic.syncOffset)
 
-			// If we're not able to non-blockingly sync using sync-to,
-			// NoSyncOnClose should elide the sync.
-			if !c.useSyncTo {
-				if syncToBefore != c.expectBefore || syncToAfter != c.expectAfter {
-					t.Fatalf("Expected syncTo before and after closing are %d %d but found %d %d",
-						c.expectBefore, c.expectAfter, syncToBefore, syncToAfter)
-				}
+			if syncToBefore != c.expectBefore || syncToAfter != c.expectAfter {
+				t.Fatalf("Expected syncTo before and after closing are %d %d but found %d %d",
+					c.expectBefore, c.expectAfter, syncToBefore, syncToAfter)
 			}
 		})
 	}

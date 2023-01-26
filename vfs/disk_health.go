@@ -94,11 +94,6 @@ func (d *diskHealthCheckingFile) stopTicker() {
 	close(d.stopper)
 }
 
-// Capabilities implements (vfs.File).Capabilities.
-func (d *diskHealthCheckingFile) Capabilities() Capabilities {
-	return d.file.Capabilities()
-}
-
 // Fd implements (vfs.File).Fd.
 func (d *diskHealthCheckingFile) Fd() uintptr {
 	return d.file.Fd()

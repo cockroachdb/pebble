@@ -2411,8 +2411,7 @@ func (d *DB) runCompaction(
 			FileNum: fileNum,
 		})
 		file = vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
-			NoSyncOnClose: d.opts.NoSyncOnClose,
-			BytesPerSync:  d.opts.BytesPerSync,
+			BytesPerSync: d.opts.BytesPerSync,
 		})
 		file = &compactionFile{
 			File:     file,

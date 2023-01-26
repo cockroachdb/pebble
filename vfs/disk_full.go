@@ -377,10 +377,6 @@ func (f *enospcFile) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
-func (f *enospcFile) Capabilities() Capabilities {
-	return f.inner.Capabilities()
-}
-
 func (f *enospcFile) Preallocate(offset, length int64) error {
 	return f.inner.Preallocate(offset, length)
 }

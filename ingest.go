@@ -271,8 +271,7 @@ func ingestLink(
 	fs := syncingFS{
 		FS: opts.FS,
 		syncOpts: vfs.SyncingFileOptions{
-			NoSyncOnClose: opts.NoSyncOnClose,
-			BytesPerSync:  opts.BytesPerSync,
+			BytesPerSync: opts.BytesPerSync,
 		},
 	}
 
@@ -644,18 +643,18 @@ func ingestTargetLevel(
 //
 // The steps for ingestion are:
 //
-//   1. Allocate file numbers for every sstable being ingested.
-//   2. Load the metadata for all sstables being ingest.
-//   3. Sort the sstables by smallest key, verifying non overlap.
-//   4. Hard link (or copy) the sstables into the DB directory.
-//   5. Allocate a sequence number to use for all of the entries in the
-//      sstables. This is the step where overlap with memtables is
-//      determined. If there is overlap, we remember the most recent memtable
-//      that overlaps.
-//   6. Update the sequence number in the ingested sstables.
-//   7. Wait for the most recent memtable that overlaps to flush (if any).
-//   8. Add the ingested sstables to the version (DB.ingestApply).
-//   9. Publish the ingestion sequence number.
+//  1. Allocate file numbers for every sstable being ingested.
+//  2. Load the metadata for all sstables being ingest.
+//  3. Sort the sstables by smallest key, verifying non overlap.
+//  4. Hard link (or copy) the sstables into the DB directory.
+//  5. Allocate a sequence number to use for all of the entries in the
+//     sstables. This is the step where overlap with memtables is
+//     determined. If there is overlap, we remember the most recent memtable
+//     that overlaps.
+//  6. Update the sequence number in the ingested sstables.
+//  7. Wait for the most recent memtable that overlaps to flush (if any).
+//  8. Add the ingested sstables to the version (DB.ingestApply).
+//  9. Publish the ingestion sequence number.
 //
 // Note that if the mutable memtable overlaps with ingestion, a flush of the
 // memtable is forced equivalent to DB.Flush. Additionally, subsequent

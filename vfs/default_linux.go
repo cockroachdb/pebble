@@ -41,7 +41,6 @@ type linuxDir struct {
 	*os.File
 }
 
-func (d *linuxDir) Capabilities() Capabilities             { return Capabilities{CanSyncTo: false} }
 func (d *linuxDir) Preallocate(offset, length int64) error { return nil }
 func (d *linuxDir) SyncData() error                        { return d.Sync() }
 func (d *linuxDir) SyncTo(offset int64) error              { return nil }
@@ -50,10 +49,6 @@ type linuxFile struct {
 	*os.File
 	fd           uintptr
 	useSyncRange bool
-}
-
-func (f *linuxFile) Capabilities() Capabilities {
-	return Capabilities{CanSyncTo: f.useSyncRange}
 }
 
 func (f *linuxFile) Preallocate(offset, length int64) error {

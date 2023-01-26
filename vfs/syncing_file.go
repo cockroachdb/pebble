@@ -12,9 +12,6 @@ import (
 
 // SyncingFileOptions holds the options for a syncingFile.
 type SyncingFileOptions struct {
-	// NoSyncOnClose elides the automatic Sync during Close if it's not possible
-	// to sync the remainder of the file in a non-blocking way.
-	NoSyncOnClose   bool
 	BytesPerSync    int
 	PreallocateSize int
 }
@@ -23,10 +20,8 @@ type syncingFile struct {
 	File
 	// fd can be InvalidFd if the underlying File does not support it.
 	fd              uintptr
-	noSyncOnClose   bool
 	bytesPerSync    int64
 	preallocateSize int64
-	capabilities    Capabilities
 	atomic          struct {
 		// The offset at which dirty data has been written.
 		offset int64
@@ -49,14 +44,12 @@ func NewSyncingFile(f File, opts SyncingFileOptions) File {
 	s := &syncingFile{
 		File:            f,
 		fd:              f.Fd(),
-		noSyncOnClose:   bool(opts.NoSyncOnClose),
 		bytesPerSync:    int64(opts.BytesPerSync),
 		preallocateSize: int64(opts.PreallocateSize),
 	}
 	// Ensure a file that is opened and then closed will be synced, even if no
 	// data has been written to it.
 	s.atomic.syncOffset = -1
-	s.capabilities = f.Capabilities()
 	return s
 }
 
@@ -154,32 +147,21 @@ func (f *syncingFile) maybeSync() error {
 }
 
 func (f *syncingFile) Close() error {
-	// Sync any data that has been written but not yet synced unless the file
-	// has noSyncOnClose option explicitly set.
-	//
-	// Additionally, if the file is capable of 'SyncTo'-ing, syncOffset will be
-	// less than atomic.offset. In this case, we should also sync to
-	// Note that if SyncFileRange was used, atomic.syncOffset will be less than
-	// atomic.offset. See syncingFile.syncToRange.
+	// Sync any data that has been written but not yet synced.
+	var err error
 	if off := atomic.LoadInt64(&f.atomic.offset); off > atomic.LoadInt64(&f.atomic.syncOffset) {
 		// There's still remaining dirty data.
-
-		if f.capabilities.CanSyncTo {
-			// Even if NoSyncOnClose is set, since the file supports CanSyncTo
-			// we issue a SyncTo. On linux, SyncTo translates to a non-blocking
-			// `sync_file_range` call. Since it's non-blocking, there's no
-			// latency hit of a blocking sync call, but we still ensure we're
-			// not allowing significant dirty data to accumulate.
-			if err := f.File.SyncTo(off); err != nil {
-				return err
-			}
-		} else if !f.noSyncOnClose {
-			// Sync the unsynced tail of the file. This final sync is elided if
-			// the NoSyncOnClose flag was set.
-			if err := f.Sync(); err != nil {
-				return errors.WithStack(err)
-			}
-		}
+		f.ratchetSyncOffset(off)
+		err = f.File.SyncTo(off)
 	}
-	return errors.WithStack(f.File.Close())
+	// Close the file regardless of whether SyncTo errored to avoid leaking a
+	// file descriptor, and return the first of the two errors.
+	return errors.WithStack(firstError(err, f.File.Close()))
+}
+
+func firstError(a, b error) error {
+	if a != nil {
+		return a
+	}
+	return b
 }

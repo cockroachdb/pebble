@@ -115,7 +115,7 @@ open-dir: checkpoints/checkpoint1
 link: db/OPTIONS-000003 -> checkpoints/checkpoint1/OPTIONS-000003
 open-dir: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/marker.format-version.000001.011
-sync-data: checkpoints/checkpoint1/marker.format-version.000001.011
+sync-to(0): checkpoints/checkpoint1/marker.format-version.000001.011
 close: checkpoints/checkpoint1/marker.format-version.000001.011
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
@@ -124,7 +124,7 @@ sync-data: checkpoints/checkpoint1/MANIFEST-000001
 close: checkpoints/checkpoint1/MANIFEST-000001
 open-dir: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
-sync-data: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
+sync-to(0): checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
