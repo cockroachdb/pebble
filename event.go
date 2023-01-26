@@ -121,6 +121,8 @@ type DiskSlowInfo struct {
 	Path string
 	// Operation being performed on the file.
 	OpType vfs.OpType
+	// Size of write in kilobytes, if the write is sized.
+	WriteSize int
 	// Duration that has elapsed since this disk operation started.
 	Duration time.Duration
 }
@@ -131,8 +133,10 @@ func (i DiskSlowInfo) String() string {
 
 // SafeFormat implements redact.SafeFormatter.
 func (i DiskSlowInfo) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("disk slowness detected: %s on file %s has been ongoing for %0.1fs",
-		redact.Safe(i.OpType.String()), i.Path, redact.Safe(i.Duration.Seconds()))
+	// TODO(before merge): Should we mention the ceiling of ~1.04 GB here? Any reviewers have an
+	// opinion?
+	w.Printf("disk slowness detected: %s on file %s (%d kilobytes) has been ongoing for %0.1fs",
+		redact.Safe(i.OpType.String()), i.Path, i.WriteSize, redact.Safe(i.Duration.Seconds()))
 }
 
 // FlushInfo contains the info for a flush event.

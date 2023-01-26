@@ -186,38 +186,46 @@ func (m mockFS) GetDiskUsage(path string) (DiskUsage, error) {
 var _ FS = &mockFS{}
 
 func TestDiskHealthChecking_File(t *testing.T) {
+	oldPrecision := writeSizePrecision
+	writeSizePrecision = 1
+	defer func(){ writeSizePrecision = oldPrecision }()
 	const (
 		slowThreshold = 1 * time.Second
 		syncDuration  = 3 * time.Second
 	)
 	testCases := []struct {
-		op OpType
-		fn func(f File)
+		op        OpType
+		writeSize int
+		fn        func(f File)
 	}{
 		{
-			OpTypeWrite,
-			func(f File) { f.Write([]byte("uh oh")) },
+			op:        OpTypeWrite,
+			writeSize: 5,
+			fn:        func(f File) { f.Write([]byte("uh oh")) },
 		},
 		{
-			OpTypeSync,
-			func(f File) { f.Sync() },
+			op:        OpTypeSync,
+			writeSize: 0,
+			fn:        func(f File) { f.Sync() },
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.op.String(), func(t *testing.T) {
 			type info struct {
-				opType   OpType
-				duration time.Duration
+				opType    OpType
+				writeSize int
+				duration  time.Duration
 			}
 			diskSlow := make(chan info, 1)
 			mockFS := &mockFS{create: func(name string) (File, error) {
 				return mockFile{syncAndWriteDuration: syncDuration}, nil
 			}}
 			fs, closer := WithDiskHealthChecks(mockFS, slowThreshold,
-				func(s string, opType OpType, duration time.Duration) {
+				func(s string, opType OpType, writeSize int, duration time.Duration) {
 					diskSlow <- info{
-						opType:   opType,
-						duration: duration,
+						opType:    opType,
+						writeSize: writeSize,
+						duration:  duration,
 					}
 				})
 			defer closer.Close()
@@ -231,6 +239,7 @@ func TestDiskHealthChecking_File(t *testing.T) {
 				if d.Seconds() < slowThreshold.Seconds() {
 					t.Fatalf("expected %0.1f to be greater than threshold %0.1f", d.Seconds(), slowThreshold.Seconds())
 				}
+				require.Equal(t, tc.writeSize, i.writeSize)
 				require.Equal(t, tc.op, i.opType)
 			case <-time.After(5 * time.Second):
 				t.Fatal("disk stall detector did not detect slow disk operation")
@@ -240,15 +249,76 @@ func TestDiskHealthChecking_File(t *testing.T) {
 }
 
 func TestDiskHealthChecking_NotTooManyOps(t *testing.T) {
-	numBitsForOpType := 64 - nOffsetBits
+	numBitsForOpType := 64 - nOffsetBits - nWriteSizeBits
 	numOpTypesAllowed := int(math.Pow(2, float64(numBitsForOpType)))
 	numOpTypes := int(opTypeMax)
 	require.LessOrEqual(t, numOpTypes, numOpTypesAllowed)
 }
 
+func TestDiskHealthChecking_File_PackingAndUnpacking(t *testing.T) {
+	testCases := []struct {
+		desc             string
+		offsetMillis     int64
+		writeSize        int
+		opType           OpType
+		wantOffsetMillis int64
+		wantWriteSize    int
+	}{
+		// Write op with write size in bytes converted to
+		// a write size in kilobytes.
+		{
+			desc:             "write, sized op",
+			offsetMillis:     3000,
+			writeSize:        1000,
+			opType:           OpTypeWrite,
+			wantOffsetMillis: 3000,
+			wantWriteSize:    1, // 1000 bytes = 1 KB
+		},
+		// Sync op. No write size.
+		{
+			desc:             "sync, no write size",
+			offsetMillis:     2460,
+			writeSize:        0,
+			opType:           OpTypeSync,
+			wantOffsetMillis: 2460,
+			wantWriteSize:    0,
+		},
+		// Offset is negative (e.g. due to clock sync). Set to
+		// zero.
+		{
+			desc:             "offset negative",
+			offsetMillis:     -5,
+			writeSize:        5075,
+			opType:           OpTypeWrite,
+			wantOffsetMillis: 0,
+			wantWriteSize:    5, // 5075 bytes = ~5 KB
+		},
+		// Write size in bytes is larger than can fit in 20 bits.
+		// Round down to max that can fit in 20 bits (in kilobytes).
+		{
+			desc:             "write size truncated",
+			offsetMillis:     231,
+			writeSize:        2097152000,
+			opType:           OpTypeWrite,
+			wantOffsetMillis: 231,
+			wantWriteSize:    1048575, // 2^20-1
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			packed := pack(tc.offsetMillis, tc.writeSize, tc.opType)
+			gotOffsetMillis, gotWriteSize, gotOpType := unpack(packed)
+
+			require.Equal(t, tc.wantOffsetMillis, gotOffsetMillis)
+			require.Equal(t, tc.wantWriteSize, gotWriteSize)
+			require.Equal(t, tc.opType, gotOpType)
+		})
+	}
+}
+
 func TestDiskHealthChecking_File_Underflow(t *testing.T) {
 	f := &mockFile{}
-	hcFile := newDiskHealthCheckingFile(f, 1*time.Second, func(opType OpType, duration time.Duration) {
+	hcFile := newDiskHealthCheckingFile(f, 1*time.Second, func(opType OpType, writeSize int, duration time.Duration) {
 		// We expect to panic before sending the event.
 		t.Fatalf("unexpected slow disk event")
 	})
@@ -259,9 +329,9 @@ func TestDiskHealthChecking_File_Underflow(t *testing.T) {
 	tEpoch := time.Unix(0, 0)
 	hcFile.createTime = tEpoch
 
-	// Assert that the time since the epoch (in nanoseconds) is indeed greater
+	// Assert that the time since the epoch (in milliseconds) is indeed greater
 	// than the max offset.
-	require.True(t, time.Since(tEpoch).Nanoseconds() > 1<<nOffsetBits-1)
+	require.True(t, time.Since(tEpoch).Milliseconds() > 1<<nOffsetBits-1)
 
 	// Attempting to start the clock for a new operation on the file should
 	// trigger a panic, as the calculated offset from the file creation time would
@@ -346,7 +416,8 @@ func TestDiskHealthChecking_Filesystem(t *testing.T) {
 	var expectedOpType OpType
 	var stallCount uint64
 	fs, closer := WithDiskHealthChecks(filesystemOpsMockFS(sleepDur), stallThreshold,
-		func(name string, opType OpType, dur time.Duration) {
+		func(name string, opType OpType, writeSize int, dur time.Duration) {
+			require.Equal(t, 0, writeSize)
 			require.Equal(t, expectedOpType, opType)
 			atomic.AddUint64(&stallCount, 1)
 		})
@@ -381,7 +452,7 @@ func TestDiskHealthChecking_Filesystem_Close(t *testing.T) {
 
 	stalled := map[string]time.Duration{}
 	fs, closer := WithDiskHealthChecks(mockFS, stallThreshold,
-		func(name string, opType OpType, dur time.Duration) { stalled[name] = dur })
+		func(name string, opType OpType, writeSize int, dur time.Duration) { stalled[name] = dur })
 	fs.(*diskHealthCheckingFS).tickInterval = 5 * time.Millisecond
 
 	files := []string{"foo", "bar", "bax"}
