@@ -406,6 +406,17 @@ func SortKeysByTrailer(keys *[]Key) {
 	sort.Sort(sorted)
 }
 
+// KeysBySuffix implements sort.Interface, sorting its member Keys slice to by
+// Suffix in the order dictated by Cmp.
+type KeysBySuffix struct {
+	Cmp  base.Compare
+	Keys []Key
+}
+
+func (s *KeysBySuffix) Len() int           { return len(s.Keys) }
+func (s *KeysBySuffix) Less(i, j int) bool { return s.Cmp(s.Keys[i].Suffix, s.Keys[j].Suffix) < 0 }
+func (s *KeysBySuffix) Swap(i, j int)      { s.Keys[i], s.Keys[j] = s.Keys[j], s.Keys[i] }
+
 // ParseSpan parses the string representation of a Span. It's intended for
 // tests. ParseSpan panics if passed a malformed span representation.
 func ParseSpan(input string) Span {

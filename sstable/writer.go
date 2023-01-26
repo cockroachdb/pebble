@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 	"runtime"
+	"sort"
 	"sync"
 
 	"github.com/cespare/xxhash/v2"
@@ -195,10 +196,11 @@ type Writer struct {
 	// be added to the Writer, a keyspan.Fragmenter is used to retain the keys
 	// and values, emitting fragmented, coalesced spans as appropriate. Range
 	// keys must be added in order of their start user-key.
-	fragmenter      keyspan.Fragmenter
-	rangeKeyEncoder rangekey.Encoder
-	rangeKeySpan    keyspan.Span
-	rkBuf           []byte
+	fragmenter        keyspan.Fragmenter
+	rangeKeyEncoder   rangekey.Encoder
+	rangeKeysBySuffix keyspan.KeysBySuffix
+	rangeKeySpan      keyspan.Span
+	rkBuf             []byte
 	// dataBlockBuf consists of the state which is currently owned by and used by
 	// the Writer client goroutine. This state can be handed off to other goroutines.
 	dataBlockBuf *dataBlockBuf
@@ -1143,9 +1145,16 @@ func (w *Writer) encodeRangeKeySpan(span keyspan.Span) {
 	// NB: The span should only contain range keys and be internally consistent
 	// (eg, no duplicate suffixes, no additional keys after a RANGEKEYDEL).
 	//
-	// Copy the span into w.rangeKeySpan so that we can pass a pointer to Encode
-	// without suffering an allocation.
+	// We use w.rangeKeysBySuffix and w.rangeKeySpan to avoid allocations.
+
+	// Sort the keys by suffix. Iteration doesn't *currently* depend on it, but
+	// we may want to in the future.
+	w.rangeKeysBySuffix.Cmp = w.compare
+	w.rangeKeysBySuffix.Keys = span.Keys
+	sort.Sort(&w.rangeKeysBySuffix)
+
 	w.rangeKeySpan = span
+	w.rangeKeySpan.Keys = w.rangeKeysBySuffix.Keys
 	w.err = firstError(w.err, w.rangeKeyEncoder.Encode(&w.rangeKeySpan))
 }
 

@@ -67,7 +67,7 @@ type UserIteratorConfig struct {
 type Buffers struct {
 	merging       keyspan.MergingBuffers
 	defragmenting keyspan.DefragmentingBuffers
-	sortBuf       keysBySuffix
+	sortBuf       keyspan.KeysBySuffix
 }
 
 // PrepareForReuse discards any excessively large buffers.
@@ -138,9 +138,9 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 	// Apply shadowing of keys.
 	dst.Start = s.Start
 	dst.End = s.End
-	ui.bufs.sortBuf = keysBySuffix{
-		cmp:  cmp,
-		keys: ui.bufs.sortBuf.keys[:0],
+	ui.bufs.sortBuf = keyspan.KeysBySuffix{
+		Cmp:  cmp,
+		Keys: ui.bufs.sortBuf.Keys[:0],
 	}
 	if err := coalesce(ui.comparer.Equal, &ui.bufs.sortBuf, ui.snapshot, s.Keys); err != nil {
 		return err
@@ -148,7 +148,7 @@ func (ui *UserIteratorConfig) Transform(cmp base.Compare, s keyspan.Span, dst *k
 	// During user iteration over range keys, unsets and deletes don't
 	// matter. Remove them. This step helps logical defragmentation during
 	// iteration.
-	keys := ui.bufs.sortBuf.keys
+	keys := ui.bufs.sortBuf.Keys
 	dst.Keys = dst.Keys[:0]
 	for i := range keys {
 		switch keys[i].Kind() {
@@ -259,22 +259,22 @@ func (ui *UserIteratorConfig) ShouldDefragment(equal base.Equal, a, b *keyspan.S
 func Coalesce(cmp base.Compare, eq base.Equal, keys []keyspan.Key, dst *[]keyspan.Key) error {
 	// TODO(jackson): Currently, Coalesce doesn't actually perform the sequence
 	// number promotion described in the comment above.
-	keysBySuffix := keysBySuffix{
-		cmp:  cmp,
-		keys: (*dst)[:0],
+	keysBySuffix := keyspan.KeysBySuffix{
+		Cmp:  cmp,
+		Keys: (*dst)[:0],
 	}
 	if err := coalesce(eq, &keysBySuffix, math.MaxUint64, keys); err != nil {
 		return err
 	}
 	// Update the span with the (potentially reduced) keys slice. coalesce left
 	// the keys in *dst sorted by suffix. Re-sort them by trailer.
-	*dst = keysBySuffix.keys
+	*dst = keysBySuffix.Keys
 	keyspan.SortKeysByTrailer(dst)
 	return nil
 }
 
 func coalesce(
-	equal base.Equal, keysBySuffix *keysBySuffix, snapshot uint64, keys []keyspan.Key,
+	equal base.Equal, keysBySuffix *keyspan.KeysBySuffix, snapshot uint64, keys []keyspan.Key,
 ) error {
 	// First, enforce visibility and RangeKeyDelete mechanics. We only need to
 	// consider the prefix of keys before and including the first
@@ -302,7 +302,7 @@ func coalesce(
 			deleteIdx = i
 			break
 		}
-		keysBySuffix.keys = append(keysBySuffix.keys, keys[i])
+		keysBySuffix.Keys = append(keysBySuffix.Keys, keys[i])
 	}
 
 	// Sort the accumulated keys by suffix. There may be duplicates within a
@@ -315,8 +315,8 @@ func coalesce(
 
 	// Grab a handle of the full sorted slice, before reslicing
 	// keysBySuffix.keys to accumulate the final coalesced keys.
-	sorted := keysBySuffix.keys
-	keysBySuffix.keys = keysBySuffix.keys[:0]
+	sorted := keysBySuffix.Keys
+	keysBySuffix.Keys = keysBySuffix.Keys[:0]
 
 	var (
 		// prevSuffix is updated on each iteration of the below loop, and
@@ -337,33 +337,24 @@ func coalesce(
 			// and reslice keysBySuffix.keys to hold the entire unshadowed
 			// prefix.
 			if !shadowing {
-				keysBySuffix.keys = keysBySuffix.keys[:i]
+				keysBySuffix.Keys = keysBySuffix.Keys[:i]
 				shadowing = true
 			}
 			continue
 		}
 		prevSuffix = sorted[i].Suffix
 		if shadowing {
-			keysBySuffix.keys = append(keysBySuffix.keys, sorted[i])
+			keysBySuffix.Keys = append(keysBySuffix.Keys, sorted[i])
 		}
 	}
 	// If there was no shadowing, keysBySuffix.keys is untouched. We can simply
 	// set it to the existing `sorted` slice (also backed by keysBySuffix.keys).
 	if !shadowing {
-		keysBySuffix.keys = sorted
+		keysBySuffix.Keys = sorted
 	}
 	// If the original input `keys` slice contained a RangeKeyDelete, add it.
 	if deleteIdx >= 0 {
-		keysBySuffix.keys = append(keysBySuffix.keys, keys[deleteIdx])
+		keysBySuffix.Keys = append(keysBySuffix.Keys, keys[deleteIdx])
 	}
 	return nil
 }
-
-type keysBySuffix struct {
-	cmp  base.Compare
-	keys []keyspan.Key
-}
-
-func (s *keysBySuffix) Len() int           { return len(s.keys) }
-func (s *keysBySuffix) Less(i, j int) bool { return s.cmp(s.keys[i].Suffix, s.keys[j].Suffix) < 0 }
-func (s *keysBySuffix) Swap(i, j int)      { s.keys[i], s.keys[j] = s.keys[j], s.keys[i] }

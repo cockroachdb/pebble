@@ -44,7 +44,7 @@ SET a-c @2=foo
 SET a-c @1=bar
 SET a-c @3=baz
 ----
-a-c:{(#0,RANGEKEYSET,@2,foo) (#0,RANGEKEYSET,@1,bar) (#0,RANGEKEYSET,@3,baz)}
+a-c:{(#0,RANGEKEYSET,@3,baz) (#0,RANGEKEYSET,@2,foo) (#0,RANGEKEYSET,@1,bar)}
 
 # Aligned spans, mixed range key kinds.
 #
@@ -81,9 +81,9 @@ SET f-i @9=v9
 DEL f-i
 ----
 a-c:{(#0,RANGEKEYSET,@1,v1) (#0,RANGEKEYUNSET,@5)}
-c-d:{(#0,RANGEKEYSET,@2,v2) (#0,RANGEKEYSET,@5,v5)}
+c-d:{(#0,RANGEKEYSET,@5,v5) (#0,RANGEKEYSET,@2,v2)}
 d-e:{(#0,RANGEKEYSET,@9,v9) (#0,RANGEKEYDEL)}
-f-i:{(#0,RANGEKEYSET,@4,v4) (#0,RANGEKEYSET,@5,v5) (#0,RANGEKEYSET,@7,v7) (#0,RANGEKEYSET,@8,v8) (#0,RANGEKEYSET,@9,v9) (#0,RANGEKEYUNSET,@6) (#0,RANGEKEYDEL)}
+f-i:{(#0,RANGEKEYSET,@9,v9) (#0,RANGEKEYSET,@8,v8) (#0,RANGEKEYSET,@7,v7) (#0,RANGEKEYSET,@5,v5) (#0,RANGEKEYSET,@4,v4) (#0,RANGEKEYUNSET,@6) (#0,RANGEKEYDEL)}
 
 # Merge overlapping RANGEKEYSETs.
 #
@@ -100,7 +100,7 @@ SET b-f @2=bar
 SET c-d @3=baz
 ----
 a-b:{(#0,RANGEKEYSET,@1,foo)}
-b-c:{(#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYSET,@2,bar)}
+b-c:{(#0,RANGEKEYSET,@2,bar) (#0,RANGEKEYSET,@1,foo)}
 c-d:{(#0,RANGEKEYSET,@3,baz) (#0,RANGEKEYSET,@2,bar)}
 d-f:{(#0,RANGEKEYSET,@2,bar)}
 
@@ -125,11 +125,11 @@ SET e-q @4=baz
 DEL l-o
 ----
 a-b:{(#0,RANGEKEYSET,@1,foo)}
-b-c:{(#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYSET,@2,bar)}
+b-c:{(#0,RANGEKEYSET,@2,bar) (#0,RANGEKEYSET,@1,foo)}
 c-d:{(#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYUNSET,@3) (#0,RANGEKEYDEL)}
 d-e:{(#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYUNSET,@3)}
-e-h:{(#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYSET,@4,baz) (#0,RANGEKEYUNSET,@3)}
-h-i:{(#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYSET,@4,baz)}
+e-h:{(#0,RANGEKEYSET,@4,baz) (#0,RANGEKEYSET,@1,foo) (#0,RANGEKEYUNSET,@3)}
+h-i:{(#0,RANGEKEYSET,@4,baz) (#0,RANGEKEYSET,@1,foo)}
 i-l:{(#0,RANGEKEYSET,@4,baz)}
 l-o:{(#0,RANGEKEYSET,@4,baz) (#0,RANGEKEYDEL)}
 o-q:{(#0,RANGEKEYSET,@4,baz)}
