@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 const (
@@ -203,9 +205,21 @@ func (d *diskHealthCheckingFile) timeDiskOp(opType OpType, op func()) {
 		panic("vfs: last write offset would result in integer wraparound")
 	}
 	packed := uint64(offsetNanos)<<(64-nOffsetBits) | uint64(opType)
-	atomic.StoreUint64(&d.lastWritePacked, packed)
+	if invariants.Enabled {
+		if !atomic.CompareAndSwapUint64(&d.lastWritePacked, 0, packed) {
+			panic("concurrent write operations detected on file")
+		}
+	} else {
+		atomic.StoreUint64(&d.lastWritePacked, packed)
+	}
 	defer func() {
-		atomic.StoreUint64(&d.lastWritePacked, 0)
+		if invariants.Enabled {
+			if !atomic.CompareAndSwapUint64(&d.lastWritePacked, packed, 0) {
+				panic("concurrent write operations detected on file")
+			}
+		} else {
+			atomic.StoreUint64(&d.lastWritePacked, 0)
+		}
 	}()
 	op()
 }
