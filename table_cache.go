@@ -144,10 +144,6 @@ func (c *tableCacheContainer) newRangeKeyIter(
 	return c.tableCache.getShard(file.FileNum).newRangeKeyIter(file, opts, &c.dbOpts)
 }
 
-func (c *tableCacheContainer) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
-	return c.tableCache.getShard(file.FileNum).getTableProperties(file, &c.dbOpts)
-}
-
 func (c *tableCacheContainer) evict(fileNum FileNum) {
 	c.tableCache.getShard(fileNum).evict(fileNum, &c.dbOpts, false)
 }
@@ -529,20 +525,6 @@ func (rp *tableCacheShardReaderProvider) GetReader() (*sstable.Reader, error) {
 func (rp *tableCacheShardReaderProvider) Close() {
 	rp.c.unrefValue(rp.v)
 	rp.v = nil
-}
-
-// getTableProperties return sst table properties for target file
-func (c *tableCacheShard) getTableProperties(
-	file *fileMetadata, dbOpts *tableCacheOpts,
-) (*sstable.Properties, error) {
-	// Calling findNode gives us the responsibility of decrementing v's refCount here
-	v := c.findNode(file, dbOpts)
-	defer c.unrefValue(v)
-
-	if v.err != nil {
-		return nil, v.err
-	}
-	return &v.reader.Properties, nil
 }
 
 // releaseNode releases a node from the tableCacheShard.

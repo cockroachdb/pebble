@@ -1260,27 +1260,16 @@ func TestSSTables(t *testing.T) {
 		}
 	}()
 
-	// Create two sstables.
 	require.NoError(t, d.Set([]byte("hello"), nil, nil))
 	require.NoError(t, d.Flush())
-	require.NoError(t, d.Set([]byte("world"), nil, nil))
-	require.NoError(t, d.Flush())
 
-	// by default returned table infos should not contain Properties
 	tableInfos, err := d.SSTables()
 	require.NoError(t, err)
 	for _, levelTables := range tableInfos {
 		for _, info := range levelTables {
-			require.Nil(t, info.Properties)
-		}
-	}
+			require.Equal(t, []byte("hello"), info.Smallest.UserKey)
+			require.Equal(t, []byte("hello"), info.Largest.UserKey)
 
-	// with opt `WithProperties()` the `Properties` in table info should not be nil
-	tableInfos, err = d.SSTables(WithProperties())
-	require.NoError(t, err)
-	for _, levelTables := range tableInfos {
-		for _, info := range levelTables {
-			require.NotNil(t, info.Properties)
 		}
 	}
 }
