@@ -73,16 +73,16 @@ func TestIter(t *testing.T) {
 				spans = append(spans, keyspan.ParseSpan(line))
 			}
 			transform := keyspan.TransformerFunc(func(cmp base.Compare, s keyspan.Span, dst *keyspan.Span) error {
-				keysBySuffix := keysBySuffix{
-					cmp:  cmp,
-					keys: dst.Keys[:0],
+				keysBySuffix := keyspan.KeysBySuffix{
+					Cmp:  cmp,
+					Keys: dst.Keys[:0],
 				}
 				if err := coalesce(eq, &keysBySuffix, visibleSeqNum, s.Keys); err != nil {
 					return err
 				}
 				// Update the span with the (potentially reduced) keys slice.  coalesce left
 				// the keys in *dst sorted by suffix. Re-sort them by trailer.
-				dst.Keys = keysBySuffix.keys
+				dst.Keys = keysBySuffix.Keys
 				keyspan.SortKeysByTrailer(&dst.Keys)
 				dst.Start = s.Start
 				dst.End = s.End
