@@ -143,7 +143,7 @@ func NewExternalIter(
 	}
 	if iterOpts != nil {
 		dbi.opts = *iterOpts
-		dbi.saveBounds(iterOpts.LowerBound, iterOpts.UpperBound)
+		dbi.processBounds(iterOpts.LowerBound, iterOpts.UpperBound)
 	}
 	for i := range extraOpts {
 		extraOpts[i].iterApply(dbi)
