@@ -893,7 +893,11 @@ func BenchmarkWriter(b *testing.B) {
 		binary.BigEndian.PutUint64(key[16:], uint64(i))
 		keys[i] = key
 	}
-	runWriterBench(b, keys, nil, TableFormatPebblev2)
+	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
+		b.Run(fmt.Sprintf("format=%s", format.String()), func(b *testing.B) {
+			runWriterBench(b, keys, nil, format)
+		})
+	}
 }
 
 func BenchmarkWriterWithVersions(b *testing.B) {
@@ -904,13 +908,25 @@ func BenchmarkWriterWithVersions(b *testing.B) {
 		key := keySlab[i*keyLen : i*keyLen+keyLen]
 		binary.BigEndian.PutUint64(key[:8], 123) // 16-byte shared prefix
 		binary.BigEndian.PutUint64(key[8:16], 456)
-		binary.BigEndian.PutUint64(key[16:], uint64(i/2))
+		// @ is ascii value 64. Placing any byte with value 64 in these 8 bytes
+		// will confuse testkeys.Comparer, when we pass it a key after splitting
+		// of the suffix, since Comparer thinks this prefix is also a key with a
+		// suffix. Hence, we print as a base 10 string.
+		require.Equal(b, 8, copy(key[16:], fmt.Sprintf("%8d", i/2)))
 		key[24] = '@'
 		// Ascii representation of single digit integer 2-(i%2).
 		key[25] = byte(48 + 2 - (i % 2))
 		keys[i] = key
 	}
-	runWriterBench(b, keys, testkeys.Comparer, TableFormatPebblev2)
+	// TableFormatPebblev3 can sometimes be ~50% slower than
+	// TableFormatPebblev2, since testkeys.Compare is expensive (mainly due to
+	// split) and with v3 we have to call it twice for 50% of the Set calls,
+	// since they have the same prefix as the preceding key.
+	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3} {
+		b.Run(fmt.Sprintf("format=%s", format.String()), func(b *testing.B) {
+			runWriterBench(b, keys, testkeys.Comparer, format)
+		})
+	}
 }
 
 func runWriterBench(b *testing.B, keys [][]byte, comparer *base.Comparer, format TableFormat) {
