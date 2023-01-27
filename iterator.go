@@ -307,6 +307,9 @@ type Iterator struct {
 	closePointIterOnce bool
 	// Used in some tests to disable the random disabling of seek optimizations.
 	forceEnableSeekOpt bool
+	// Set to true if NextPrefix is not currently permitted. Defaults to false
+	// in case an iterator never had any bounds.
+	nextPrefixNotPermittedByUpperBound bool
 }
 
 // cmp is a convenience shorthand for the i.comparer.Compare function.
@@ -1603,7 +1606,19 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 //
 // It is not permitted to invoke NextPrefix while at a IterAtLimit position.
 // When called in this condition, NextPrefix has non-deterministic behavior.
+//
+// It is not permitted to invoke NextPrefix when the Iterator has an
+// upper-bound that is a versioned MVCC key (see the comment for
+// Comparer.Split). It returns an error in this case.
 func (i *Iterator) NextPrefix() bool {
+	if i.nextPrefixNotPermittedByUpperBound {
+		i.lastPositioningOp = unknownLastPositionOp
+		i.requiresReposition = false
+		i.err = errors.Errorf("NextPrefix not permitted with upper bound %s",
+			i.comparer.FormatKey(i.opts.UpperBound))
+		i.iterValidityState = IterExhausted
+		return false
+	}
 	if i.hasPrefix {
 		i.iterValidityState = IterExhausted
 		return false
@@ -2278,7 +2293,7 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 
 	// Copy the user-provided bounds into an Iterator-owned buffer, and set them
 	// on i.opts.{Lower,Upper}Bound.
-	i.saveBounds(lower, upper)
+	i.processBounds(lower, upper)
 
 	i.iter.SetBounds(i.opts.LowerBound, i.opts.UpperBound)
 	// If the iterator has an open point iterator that's not currently being
@@ -2300,7 +2315,10 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 	i.invalidate()
 }
 
-func (i *Iterator) saveBounds(lower, upper []byte) {
+// Initialization and changing of the bounds must call processBounds.
+// processBounds saves the bounds and computes derived state from those
+// bounds.
+func (i *Iterator) processBounds(lower, upper []byte) {
 	// Copy the user-provided bounds into an Iterator-owned buffer. We can't
 	// overwrite the current bounds, because some internal iterators compare old
 	// and new bounds for optimizations.
@@ -2312,9 +2330,19 @@ func (i *Iterator) saveBounds(lower, upper []byte) {
 	} else {
 		i.opts.LowerBound = nil
 	}
+	i.nextPrefixNotPermittedByUpperBound = false
 	if upper != nil {
 		buf = append(buf, upper...)
 		i.opts.UpperBound = buf[len(buf)-len(upper):]
+		if i.comparer.Split != nil {
+			if i.comparer.Split(i.opts.UpperBound) != len(i.opts.UpperBound) {
+				// Setting an upper bound that is a versioned MVCC key. This means
+				// that a key can have some MVCC versions before the upper bound and
+				// some after. This causes significant complications for NextPrefix,
+				// so we bar the user of NextPrefix.
+				i.nextPrefixNotPermittedByUpperBound = true
+			}
+		}
 	} else {
 		i.opts.UpperBound = nil
 	}
@@ -2499,7 +2527,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		i.opts.LowerBound, i.opts.UpperBound = lower, upper
 	} else {
 		i.opts = *o
-		i.saveBounds(o.LowerBound, o.UpperBound)
+		i.processBounds(o.LowerBound, o.UpperBound)
 		// Propagate the changed bounds to the existing point iterator.
 		// NB: We propagate i.opts.{Lower,Upper}Bound, not o.{Lower,Upper}Bound
 		// because i.opts now point to buffers owned by Pebble.
@@ -2630,7 +2658,7 @@ func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
 		newIterRangeKey:     i.newIterRangeKey,
 		seqNum:              i.seqNum,
 	}
-	dbi.saveBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
+	dbi.processBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
 
 	// If the caller requested the clone have a current view of the indexed
 	// batch, set the clone's batch sequence number appropriately.
