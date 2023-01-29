@@ -1194,7 +1194,7 @@ func (d *DB) validateSSTables() {
 		}
 
 		err := d.tableCache.withReader(
-			f.Meta, func(r *sstable.Reader) error {
+			f.Meta.PhysicalMeta(), func(r *sstable.Reader) error {
 				return r.ValidateBlockChecksums()
 			})
 		if err != nil {
