@@ -908,7 +908,10 @@ func TestTableCacheClockPro(t *testing.T) {
 		}
 
 		oldHits := atomic.LoadInt64(&cache.atomic.hits)
-		v := cache.findNode(&fileMetadata{FileNum: FileNum(key)}, dbOpts)
+		v := cache.findNode(
+			(&fileMetadata{FileNum: FileNum(key)}).PhysicalMeta(),
+			dbOpts,
+		)
 		cache.unrefValue(v)
 
 		hit := atomic.LoadInt64(&cache.atomic.hits) != oldHits

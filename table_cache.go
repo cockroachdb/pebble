@@ -133,19 +133,27 @@ func (c *tableCacheContainer) close() error {
 func (c *tableCacheContainer) newIters(
 	file *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
-	return c.tableCache.getShard(file.FileNum).newIters(file, opts, internalOpts, &c.dbOpts)
+	return c.tableCache.getShard(file.BackingPhysicalFile().FileNum).newIters(
+		file, opts, internalOpts, &c.dbOpts,
+	)
 }
 
 func (c *tableCacheContainer) newRangeKeyIter(
 	file *manifest.FileMetadata, opts *keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error) {
-	return c.tableCache.getShard(file.FileNum).newRangeKeyIter(file, opts, &c.dbOpts)
+	return c.tableCache.getShard(file.BackingPhysicalFile().FileNum).newRangeKeyIter(
+		file, opts, &c.dbOpts,
+	)
 }
 
-func (c *tableCacheContainer) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
-	return c.tableCache.getShard(file.FileNum).getTableProperties(file, &c.dbOpts)
+func (c *tableCacheContainer) getTableProperties(file physicalMeta) (*sstable.Properties, error) {
+	return c.tableCache.getShard(file.BackingPhysicalFile().FileNum).getTableProperties(
+		file, &c.dbOpts,
+	)
 }
 
+// INVARIANT: The fileNum passed into evict must belong to a physical sstable
+// on disk.
 func (c *tableCacheContainer) evict(fileNum FileNum) {
 	c.tableCache.getShard(fileNum).evict(fileNum, &c.dbOpts, false)
 }
@@ -168,14 +176,29 @@ func (c *tableCacheContainer) metrics() (CacheMetrics, FilterMetrics) {
 	return m, f
 }
 
-func (c *tableCacheContainer) withReader(meta *fileMetadata, fn func(*sstable.Reader) error) error {
+// withReader fetches an sstable Reader associated with a physical sstable
+// present on disk.
+func (c *tableCacheContainer) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
 	s := c.tableCache.getShard(meta.FileNum)
-	v := s.findNode(meta, &c.dbOpts)
+	v := s.findNode(meta.BackingPhysicalFile(), &c.dbOpts)
 	defer s.unrefValue(v)
 	if v.err != nil {
 		return v.err
 	}
 	return fn(v.reader)
+}
+
+// withVirtualReader fetches a VirtualReader associated with a virtual sstable.
+func (c *tableCacheContainer) withVirtualReader(
+	meta virtualMeta, fn func(sstable.VirtualReader) error,
+) error {
+	s := c.tableCache.getShard(meta.VirtualState.Parent.FileNum)
+	v := s.findNode(meta.BackingPhysicalFile(), &c.dbOpts)
+	defer s.unrefValue(v)
+	if v.err != nil {
+		return v.err
+	}
+	return fn(sstable.NewVirtualReader(v.reader, meta))
 }
 
 func (c *tableCacheContainer) iterCount() int64 {
@@ -258,6 +281,9 @@ func NewTableCache(cache *Cache, numShards int, size int) *TableCache {
 	return c
 }
 
+// The fileNum passed into getShard must belong to a physical sstable on disk.
+// If we use virtual sstable file numbers here, then we'll end up with cache
+// misses when looking up readers for virtual sstables.
 func (c *TableCache) getShard(fileNum FileNum) *tableCacheShard {
 	return c.shards[uint64(fileNum)%uint64(len(c.shards))]
 }
@@ -362,7 +388,7 @@ func (c *tableCacheShard) newIters(
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
 	// the sstable iterator, which decrements when it is closed.
-	v := c.findNode(file, dbOpts)
+	v := c.findNode(file.BackingPhysicalFile(), dbOpts)
 	if v.err != nil {
 		defer c.unrefValue(v)
 		return nil, nil, v.err
@@ -380,9 +406,24 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, err
 	}
 
+	var virtualReader sstable.VirtualReader
+	if file.Virtual() {
+		virtualReader = sstable.NewVirtualReader(
+			v.reader, file.VirtualMeta(),
+		)
+	}
+
 	// NB: range-del iterator does not maintain a reference to the table, nor
 	// does it need to read from it after creation.
-	rangeDelIter, err := v.reader.NewRawRangeDelIter()
+	var rangeDelIter keyspan.FragmentIterator
+	if file.Virtual() {
+		// NB: We shouldn't need to support opts.Upper/Lower bounds here.
+		// This will behave similarly to the physical sstable case. If there's
+		// bounds, it will be handled by higher level iterators.
+		rangeDelIter, err = virtualReader.NewRawRangeDelIter()
+	} else {
+		rangeDelIter, err = v.reader.NewRawRangeDelIter()
+	}
 	if err != nil {
 		c.unrefValue(v)
 		return nil, nil, err
@@ -417,11 +458,29 @@ func (c *tableCacheShard) newIters(
 	if tableFormat == sstable.TableFormatPebblev3 && v.reader.Properties.NumValueBlocks > 0 {
 		rp = &tableCacheShardReaderProvider{c: c, file: file, dbOpts: dbOpts}
 	}
+
 	if internalOpts.bytesIterated != nil {
-		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated, rp)
+		if file.Virtual() {
+			iter, err = virtualReader.NewCompactionIter(
+				internalOpts.bytesIterated, rp,
+			)
+		} else {
+			iter, err = v.reader.NewCompactionIter(
+				internalOpts.bytesIterated, rp,
+			)
+		}
 	} else {
-		iter, err = v.reader.NewIterWithBlockPropertyFilters(
-			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, internalOpts.stats, rp)
+		if file.Virtual() {
+			iter, err = virtualReader.NewIterWithBlockPropertyFilters(
+				opts.GetLowerBound(), opts.GetUpperBound(),
+				filterer, useFilter, internalOpts.stats, rp,
+			)
+		} else {
+			iter, err = v.reader.NewIterWithBlockPropertyFilters(
+				opts.GetLowerBound(), opts.GetUpperBound(),
+				filterer, useFilter, internalOpts.stats, rp,
+			)
+		}
 	}
 	if err != nil {
 		if rangeDelIter != nil {
@@ -451,7 +510,7 @@ func (c *tableCacheShard) newRangeKeyIter(
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
 	// the sstable iterator, which decrements when it is closed.
-	v := c.findNode(file, dbOpts)
+	v := c.findNode(file.BackingPhysicalFile(), dbOpts)
 	if v.err != nil {
 		defer c.unrefValue(v)
 		return nil, v.err
@@ -479,7 +538,15 @@ func (c *tableCacheShard) newRangeKeyIter(
 	}
 
 	var iter keyspan.FragmentIterator
-	iter, err = v.reader.NewRawRangeKeyIter()
+	if file.Virtual() {
+		virtualReader := sstable.NewVirtualReader(
+			v.reader, file.VirtualMeta(),
+		)
+		iter, err = virtualReader.NewRawRangeKeyIter()
+	} else {
+		iter, err = v.reader.NewRawRangeKeyIter()
+	}
+
 	// iter is a block iter that holds the entire value of the block in memory.
 	// No need to hold onto a ref of the cache value.
 	c.unrefValue(v)
@@ -516,12 +583,19 @@ var _ sstable.ReaderProvider = &tableCacheShardReaderProvider{}
 func (rp *tableCacheShardReaderProvider) GetReader() (*sstable.Reader, error) {
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount.
-	v := rp.c.findNode(rp.file, rp.dbOpts)
+	v := rp.c.findNode(rp.file.BackingPhysicalFile(), rp.dbOpts)
 	if v.err != nil {
 		defer rp.c.unrefValue(v)
 		return nil, v.err
 	}
 	rp.v = v
+
+	// Note that even if rp.file is a virtual sstable, it should be okay to
+	// return an sstable.Reader, because the reader in this case is only used
+	// to read value blocks.
+	//
+	// TODO(bananabrick): We could return a wrapper over the Reader to ensure
+	// that the reader isn't used for other purposes.
 	return v.reader, nil
 }
 
@@ -533,10 +607,10 @@ func (rp *tableCacheShardReaderProvider) Close() {
 
 // getTableProperties return sst table properties for target file
 func (c *tableCacheShard) getTableProperties(
-	file *fileMetadata, dbOpts *tableCacheOpts,
+	file physicalMeta, dbOpts *tableCacheOpts,
 ) (*sstable.Properties, error) {
 	// Calling findNode gives us the responsibility of decrementing v's refCount here
-	v := c.findNode(file, dbOpts)
+	v := c.findNode(file.BackingPhysicalFile(), dbOpts)
 	defer c.unrefValue(v)
 
 	if v.err != nil {
@@ -558,7 +632,7 @@ func (c *tableCacheShard) releaseNode(n *tableCacheNode) {
 //
 // c.mu must be held when calling this.
 func (c *tableCacheShard) unlinkNode(n *tableCacheNode) {
-	key := tableCacheKey{n.cacheID, n.meta.FileNum}
+	key := tableCacheKey{n.cacheID, n.fileNum}
 	delete(c.mu.nodes, key)
 
 	switch n.ptype {
@@ -612,7 +686,7 @@ func (c *tableCacheShard) unrefValue(v *tableCacheValue) {
 // findNode returns the node for the table with the given file number, creating
 // that node if it didn't already exist. The caller is responsible for
 // decrementing the returned node's refCount.
-func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *tableCacheValue {
+func (c *tableCacheShard) findNode(meta physicalMeta, dbOpts *tableCacheOpts) *tableCacheValue {
 	// Fast-path for a hit in the cache.
 	c.mu.RLock()
 	key := tableCacheKey{dbOpts.cacheID, meta.FileNum}
@@ -637,8 +711,8 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 	case n == nil:
 		// Slow-path miss of a non-existent node.
 		n = &tableCacheNode{
-			meta:  meta,
-			ptype: tableCacheNodeCold,
+			fileNum: meta.FileNum,
+			ptype:   tableCacheNodeCold,
 		}
 		c.addNode(n, dbOpts)
 		c.mu.sizeCold++
@@ -703,7 +777,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 func (c *tableCacheShard) addNode(n *tableCacheNode, dbOpts *tableCacheOpts) {
 	c.evictNodes()
 	n.cacheID = dbOpts.cacheID
-	key := tableCacheKey{n.cacheID, n.meta.FileNum}
+	key := tableCacheKey{n.cacheID, n.fileNum}
 	c.mu.nodes[key] = n
 
 	n.links.next = n
@@ -845,7 +919,7 @@ func (c *tableCacheShard) removeDB(dbOpts *tableCacheOpts) {
 		}
 
 		if node.cacheID == dbOpts.cacheID {
-			fileNums = append(fileNums, node.meta.FileNum)
+			fileNums = append(fileNums, node.fileNum)
 		}
 		node = node.next()
 	}
@@ -920,7 +994,7 @@ type tableCacheValue struct {
 	refCount int32
 }
 
-func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *tableCacheOpts) {
+func (v *tableCacheValue) load(meta physicalMeta, c *tableCacheShard, dbOpts *tableCacheOpts) {
 	// Try opening the file first.
 	var f objstorage.Readable
 	f, v.err = dbOpts.objProvider.OpenForReadingMustExist(fileTypeTable, meta.FileNum)
@@ -978,8 +1052,8 @@ func (p tableCacheNodeType) String() string {
 }
 
 type tableCacheNode struct {
-	meta  *fileMetadata
-	value *tableCacheValue
+	fileNum base.FileNum
+	value   *tableCacheValue
 
 	links struct {
 		next *tableCacheNode

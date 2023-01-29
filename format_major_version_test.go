@@ -433,14 +433,15 @@ func TestPebblev1Migration(t *testing.T) {
 				for _, l := range v.Levels {
 					iter := l.Iter()
 					for m := iter.First(); m != nil; m = iter.Next() {
-						err := d.tableCache.withReader(m, func(r *sstable.Reader) error {
-							f, err := r.TableFormat()
-							if err != nil {
-								return err
-							}
-							tally[f]++
-							return nil
-						})
+						err := d.tableCache.withReader(m.PhysicalMeta(),
+							func(r *sstable.Reader) error {
+								f, err := r.TableFormat()
+								if err != nil {
+									return err
+								}
+								tally[f]++
+								return nil
+							})
 						if err != nil {
 							return err.Error()
 						}
