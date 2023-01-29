@@ -1868,7 +1868,7 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
 			if opt.withProperties {
 				p, err := d.tableCache.getTableProperties(
-					m.PhysicalMeta(),
+					m,
 				)
 				if err != nil {
 					return nil, err
@@ -1894,6 +1894,8 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 //     overlap due to abbreviated index keys, the full data block size is included in
 //     the estimation. Note that unlike fully contained sstables, none of the
 //     meta-block space is counted for partially overlapped files.
+//   - For virtual sstables, we use the overlap between start, end and the virtual
+//     sstable bounds to determine disk usage.
 //   - There may also exist WAL entries for unflushed keys in this range. This
 //     estimation currently excludes space used for the range in the WAL.
 func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
@@ -1929,13 +1931,24 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			} else if d.opts.Comparer.Compare(file.Smallest.UserKey, end) <= 0 &&
 				d.opts.Comparer.Compare(start, file.Largest.UserKey) <= 0 {
 				var size uint64
-				err := d.tableCache.withReader(
-					file,
-					func(r *sstable.Reader) (err error) {
-						size, err = r.EstimateDiskUsage(start, end)
-						return err
-					},
-				)
+				var err error
+				if file.Virtual {
+					err = d.tableCache.withVirtualReader(
+						file.VirtualMeta(),
+						func(r sstable.VirtualReader) (err error) {
+							size, err = r.EstimateDiskUsage(start, end)
+							return err
+						},
+					)
+				} else {
+					err = d.tableCache.withReader(
+						file.PhysicalMeta(),
+						func(r *sstable.Reader) (err error) {
+							size, err = r.EstimateDiskUsage(start, end)
+							return err
+						},
+					)
+				}
 				if err != nil {
 					return 0, err
 				}

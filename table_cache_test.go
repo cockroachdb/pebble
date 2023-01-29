@@ -20,6 +20,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
@@ -241,6 +243,143 @@ func TestTableCacheRefs(t *testing.T) {
 		}
 	}()
 	tc.Unref()
+}
+
+// Basic test to determine if reads through the table cache are wired correctly.
+func TestVirtualReadsWiring(t *testing.T) {
+	var d *DB
+	var err error
+	d, err = Open("",
+		&Options{
+			FS:                 vfs.NewMem(),
+			FormatMajorVersion: FormatNewest,
+			Comparer:           testkeys.Comparer,
+		})
+	require.NoError(t, err)
+	defer d.Close()
+
+	b := newBatch(d)
+	// Some combination of sets, range deletes, and range key sets/unsets, so
+	// all of the table cache iterator functions are utilized.
+	require.NoError(t, b.Set([]byte{'a'}, []byte{'a'}, nil))
+	require.NoError(t, b.Set([]byte{'d'}, []byte{'d'}, nil))
+	require.NoError(t, b.DeleteRange([]byte{'c'}, []byte{'e'}, nil))
+	require.NoError(t, b.Set([]byte{'f'}, []byte{'f'}, nil))
+	require.NoError(t, b.RangeKeySet([]byte{'f'}, []byte{'k'}, nil, []byte{'c'}, nil))
+	require.NoError(t, b.RangeKeyUnset([]byte{'j'}, []byte{'k'}, nil, nil))
+	require.NoError(t, b.Set([]byte{'z'}, []byte{'z'}, nil))
+	require.NoError(t, d.Apply(b, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact([]byte{'a'}, []byte{'b'}, false))
+	require.Equal(t, 1, int(d.Metrics().Levels[6].NumFiles))
+
+	d.mu.Lock()
+
+	// Virtualize the single sstable in the lsm.
+
+	currVersion := d.mu.versions.currentVersion()
+	l6 := currVersion.Levels[6]
+	l6FileIter := l6.Iter()
+	parentFile := l6FileIter.First()
+	f1 := d.mu.versions.nextFileNum
+	f2 := f1 + 1
+	d.mu.versions.nextFileNum += 2
+
+	v1 := &manifest.FileMetadata{
+		FileBacking:    parentFile.FileBacking,
+		FileNum:        f1,
+		CreationTime:   time.Now().Unix(),
+		Size:           parentFile.Size / 2,
+		SmallestSeqNum: parentFile.SmallestSeqNum,
+		LargestSeqNum:  parentFile.LargestSeqNum,
+		Smallest:       base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
+		Largest:        base.MakeInternalKey([]byte{'a'}, parentFile.Smallest.SeqNum(), InternalKeyKindSet),
+		HasPointKeys:   true,
+		Virtual:        true,
+	}
+	v1.Stats.NumEntries = 1
+
+	v2 := &manifest.FileMetadata{
+		FileBacking:    parentFile.FileBacking,
+		FileNum:        f2,
+		CreationTime:   time.Now().Unix(),
+		Size:           parentFile.Size / 2,
+		SmallestSeqNum: parentFile.SmallestSeqNum,
+		LargestSeqNum:  parentFile.LargestSeqNum,
+		Smallest:       base.MakeInternalKey([]byte{'d'}, parentFile.Smallest.SeqNum()+1, InternalKeyKindSet),
+		Largest:        base.MakeInternalKey([]byte{'z'}, parentFile.Largest.SeqNum(), InternalKeyKindSet),
+		HasPointKeys:   true,
+		Virtual:        true,
+	}
+	v2.Stats.NumEntries = 6
+
+	v1.LargestPointKey = v1.Largest
+	v1.SmallestPointKey = v1.Smallest
+
+	v2.LargestPointKey = v2.Largest
+	v2.SmallestPointKey = v2.Smallest
+
+	v1.ValidateVirtual(parentFile)
+	v2.ValidateVirtual(parentFile)
+
+	// Write the version edit.
+	fileMetrics := func(ve *versionEdit) map[int]*LevelMetrics {
+		metrics := newFileMetrics(ve.NewFiles)
+		for de, f := range ve.DeletedFiles {
+			lm := metrics[de.Level]
+			if lm == nil {
+				lm = &LevelMetrics{}
+				metrics[de.Level] = lm
+			}
+			metrics[de.Level].NumFiles--
+			metrics[de.Level].Size -= int64(f.Size)
+		}
+		return metrics
+	}
+
+	applyVE := func(ve *versionEdit) error {
+		d.mu.versions.logLock()
+		jobID := d.mu.nextJobID
+		d.mu.nextJobID++
+
+		err := d.mu.versions.logAndApply(jobID, ve, fileMetrics(ve), false, func() []compactionInfo {
+			return d.getInProgressCompactionInfoLocked(nil)
+		})
+		d.updateReadStateLocked(nil)
+		return err
+	}
+
+	ve := manifest.VersionEdit{}
+	d1 := manifest.DeletedFileEntry{Level: 6, FileNum: parentFile.FileNum}
+	n1 := manifest.NewFileEntry{Level: 6, Meta: v1}
+	n2 := manifest.NewFileEntry{Level: 6, Meta: v2}
+
+	ve.DeletedFiles = make(map[manifest.DeletedFileEntry]*manifest.FileMetadata)
+	ve.DeletedFiles[d1] = parentFile
+	ve.NewFiles = append(ve.NewFiles, n1)
+	ve.NewFiles = append(ve.NewFiles, n2)
+	ve.CreatedBackingTables = append(ve.CreatedBackingTables, parentFile.FileBacking)
+
+	require.NoError(t, applyVE(&ve))
+
+	currVersion = d.mu.versions.currentVersion()
+	l6 = currVersion.Levels[6]
+	l6FileIter = l6.Iter()
+	for f := l6FileIter.First(); f != nil; f = l6FileIter.Next() {
+		require.Equal(t, true, f.Virtual)
+	}
+	d.mu.Unlock()
+
+	// Confirm that there were only 2 virtual sstables in L6.
+	require.Equal(t, 2, int(d.Metrics().Levels[6].NumFiles))
+
+	// These reads will go through the table cache.
+	iter := d.NewIter(nil)
+	expected := []byte{'a', 'f', 'z'}
+	for i, x := 0, iter.First(); x; i, x = i+1, iter.Next() {
+		require.Equal(t, []byte{expected[i]}, iter.Value())
+	}
+	iter.Close()
 }
 
 // The table cache shouldn't be usable after all the dbs close.
@@ -908,6 +1047,40 @@ func TestTableCacheClockPro(t *testing.T) {
 			t.Errorf("%d: cache hit mismatch: got %v, want %v\n", line, hit, wantHit)
 		}
 		line++
+	}
+}
+
+func BenchmarkNewItersAlloc(b *testing.B) {
+	opts := &Options{
+		FS:                 vfs.NewMem(),
+		FormatMajorVersion: FormatNewest,
+	}
+	d, err := Open("", opts)
+	require.NoError(b, err)
+	defer func() { require.NoError(b, d.Close()) }()
+
+	require.NoError(b, d.Set([]byte{'a'}, []byte{'a'}, nil))
+	require.NoError(b, d.Flush())
+	require.NoError(b, d.Compact([]byte{'a'}, []byte{'z'}, false))
+
+	d.mu.Lock()
+	currVersion := d.mu.versions.currentVersion()
+	it := currVersion.Levels[6].Iter()
+	m := it.First()
+	require.NotNil(b, m)
+	d.mu.Unlock()
+
+	// Open once so that the Reader is cached.
+	iter, _, err := d.newIters(context.Background(), m, nil, internalIterOpts{})
+	require.NoError(b, iter.Close())
+	require.NoError(b, err)
+
+	for i := 0; i < b.N; i++ {
+		b.StartTimer()
+		iter, _, err := d.newIters(context.Background(), m, nil, internalIterOpts{})
+		b.StopTimer()
+		require.NoError(b, err)
+		require.NoError(b, iter.Close())
 	}
 }
 

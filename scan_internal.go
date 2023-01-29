@@ -491,7 +491,10 @@ func (d *DB) truncateSharedFile(
 	}
 	defer iter.Close()
 	if rangeDelIter != nil {
-		rangeDelIter = keyspan.Truncate(cmp, rangeDelIter, lower, upper, nil, nil)
+		rangeDelIter = keyspan.Truncate(
+			cmp, rangeDelIter, lower, upper, nil, nil,
+			false, /* panicOnPartialOverlap */
+		)
 		defer rangeDelIter.Close()
 	}
 	rangeKeyIter, err := d.tableNewRangeKeyIter(file, nil /* spanIterOptions */)
@@ -499,7 +502,10 @@ func (d *DB) truncateSharedFile(
 		return nil, false, err
 	}
 	if rangeKeyIter != nil {
-		rangeKeyIter = keyspan.Truncate(cmp, rangeKeyIter, lower, upper, nil, nil)
+		rangeKeyIter = keyspan.Truncate(
+			cmp, rangeKeyIter, lower, upper, nil, nil,
+			false, /* panicOnPartialOverlap */
+		)
 		defer rangeKeyIter.Close()
 	}
 	// Check if we need to truncate on the left side. This means finding a new
