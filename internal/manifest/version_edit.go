@@ -110,6 +110,7 @@ type VersionEdit struct {
 }
 
 // Decode decodes an edit from the specified reader.
+// TODO(bananabrick): Support decoding/encoding of virtual sstable state.
 func (v *VersionEdit) Decode(r io.Reader) error {
 	br, ok := r.(byteReader)
 	if !ok {
@@ -365,6 +366,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 }
 
 // Encode encodes an edit to the specified writer.
+// TODO(bananabrick): Support encoding of virtual sstable state.
 func (v *VersionEdit) Encode(w io.Writer) error {
 	e := versionEditEncoder{new(bytes.Buffer)}
 
@@ -617,17 +619,17 @@ func (b *BulkVersionEdit) Apply(
 	flushSplitBytes int64,
 	readCompactionRate int64,
 ) (_ *Version, zombies map[base.FileNum]uint64, _ error) {
-	addZombie := func(fileNum base.FileNum, size uint64) {
+	addZombie := func(meta PhysicalFileMeta) {
 		if zombies == nil {
 			zombies = make(map[base.FileNum]uint64)
 		}
-		zombies[fileNum] = size
+		zombies[meta.FileNum] = meta.Size
 	}
 	// The remove zombie function is used to handle tables that are moved from
 	// one level to another during a version edit (i.e. a "move" compaction).
-	removeZombie := func(fileNum base.FileNum) {
+	removeZombie := func(meta PhysicalFileMeta) {
 		if zombies != nil {
-			delete(zombies, fileNum)
+			delete(zombies, meta.FileNum)
 		}
 	}
 
@@ -685,7 +687,9 @@ func (b *BulkVersionEdit) Apply(
 		// internally consistent: it does not reflect deletions in deletedMap.
 
 		for _, f := range deletedMap {
-			addZombie(f.FileNum, f.Size)
+			if !f.IsVirtual() {
+				addZombie(NewPhysicalMeta(f))
+			}
 			if obsolete := v.Levels[level].tree.Delete(f); obsolete {
 				// Deleting a file from the B-Tree may decrement its
 				// reference count. However, because we cloned the
@@ -736,7 +740,9 @@ func (b *BulkVersionEdit) Apply(
 					return nil, nil, errors.Wrap(err, "pebble")
 				}
 			}
-			removeZombie(f.FileNum)
+			if !f.IsVirtual() {
+				removeZombie(NewPhysicalMeta(f))
+			}
 			// Track the keys with the smallest and largest keys, so that we can
 			// check consistency of the modified span.
 			if sm == nil || base.InternalCompare(cmp, sm.Smallest, f.Smallest) > 0 {
