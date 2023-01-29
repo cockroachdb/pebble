@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"sort"
-	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -91,7 +90,7 @@ func ingestLoad1(
 	// disallowing removal of an open file. Under MemFS, if we don't populate
 	// meta.Stats here, the file will be loaded into the table cache for
 	// calculating stats before we can remove the original link.
-	maybeSetStatsFromProperties(meta, &r.Properties)
+	maybeSetStatsFromProperties(meta.PhysicalMeta(), &r.Properties)
 
 	{
 		iter, err := r.NewIter(nil /* lower */, nil /* upper */)
@@ -700,13 +699,13 @@ func (d *DB) newIngestedFlushableEntry(
 	// The flushable entry starts off with a single reader ref, so increment
 	// the FileMetadata.Refs.
 	for _, file := range f.files {
-		atomic.AddInt32(&file.Refs, 1)
+		file.Ref()
 	}
 	entry.unrefFiles = func() []*fileMetadata {
 		var obsolete []*fileMetadata
 		for _, file := range f.files {
-			if val := atomic.AddInt32(&file.Refs, -1); val == 0 {
-				obsolete = append(obsolete, file)
+			if file.Unref() == 0 {
+				obsolete = append(obsolete, file.FileMetadata)
 			}
 		}
 		return obsolete
@@ -1017,6 +1016,9 @@ func (d *DB) ingestApply(
 // maybeValidateSSTablesLocked adds the slice of newFileEntrys to the pending
 // queue of files to be validated, when the feature is enabled.
 // DB.mu must be locked when calling.
+//
+// TODO(bananabrick): Make sure that the ingestion step only passes in the
+// physical sstables for validation here.
 func (d *DB) maybeValidateSSTablesLocked(newFiles []newFileEntry) {
 	// Only add to the validation queue when the feature is enabled.
 	if !d.opts.Experimental.ValidateOnIngest {
@@ -1082,9 +1084,10 @@ func (d *DB) validateSSTables() {
 			}
 		}
 
-		err := d.tableCache.withReader(f.Meta, func(r *sstable.Reader) error {
-			return r.ValidateBlockChecksums()
-		})
+		err := d.tableCache.withReader(
+			f.Meta.PhysicalMeta(), func(r *sstable.Reader) error {
+				return r.ValidateBlockChecksums()
+			})
 		if err != nil {
 			// TODO(travers): Hook into the corruption reporting pipeline, once
 			// available. See pebble#1192.

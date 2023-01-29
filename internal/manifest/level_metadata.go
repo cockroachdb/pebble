@@ -468,6 +468,10 @@ func emptyWithBounds(i iterator, start, end *iterator) bool {
 }
 
 // First seeks to the first file in the iterator and returns it.
+// TODO(bananabrick): Audit uses of the LevelIterator positioning functions to
+// make sure that the caller's usecase also works with virtual sstables. An
+// example of this is DB checkpointing, which needs special case handling for
+// virtual sstables.
 func (i *LevelIterator) First() *FileMetadata {
 	if i.empty() {
 		return nil

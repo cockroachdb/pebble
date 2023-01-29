@@ -89,7 +89,7 @@ func (e *flushableEntry) readerUnrefLocked(deleteFiles bool) {
 }
 
 func (e *flushableEntry) readerUnrefHelper(
-	deleteFiles bool, deleteFn func(obsolete []*manifest.FileMetadata),
+	deleteFiles bool, deleteFn func(obsolete []*fileMetadata),
 ) {
 	switch v := atomic.AddInt32(&e.readerRefs, -1); {
 	case v < 0:
@@ -115,7 +115,7 @@ type flushableList []*flushableEntry
 // ingestedFlushable is the implementation of the flushable interface for the
 // ingesting sstables which are added to the flushable list.
 type ingestedFlushable struct {
-	files            []*fileMetadata
+	files            []physicalMeta
 	cmp              Compare
 	split            Split
 	newIters         tableNewIters
@@ -135,21 +135,24 @@ func newIngestedFlushable(
 	newIters tableNewIters,
 	newRangeKeyIters keyspan.TableNewSpanIter,
 ) *ingestedFlushable {
+	var physicalFiles []manifest.PhysicalFileMeta
+	var hasRangeKeys bool
+	for _, f := range files {
+		if f.HasRangeKeys {
+			hasRangeKeys = true
+		}
+		physicalFiles = append(physicalFiles, f.PhysicalMeta())
+	}
+
 	ret := &ingestedFlushable{
-		files:            files,
+		files:            physicalFiles,
 		cmp:              cmp,
 		split:            split,
 		newIters:         newIters,
 		newRangeKeyIters: newRangeKeyIters,
 		// slice is immutable and can be set once and used many times.
-		slice: manifest.NewLevelSliceKeySorted(cmp, files),
-	}
-
-	for _, f := range files {
-		if f.HasRangeKeys {
-			ret.hasRangeKeys = true
-			break
-		}
+		slice:        manifest.NewLevelSliceKeySorted(cmp, files),
+		hasRangeKeys: hasRangeKeys,
 	}
 
 	return ret
