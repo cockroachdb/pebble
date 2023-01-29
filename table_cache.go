@@ -135,17 +135,23 @@ func (c *tableCacheContainer) close() error {
 func (c *tableCacheContainer) newIters(
 	file *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
-	return c.tableCache.getShard(file.FileNum).newIters(file, opts, internalOpts, &c.dbOpts)
+	return c.tableCache.getShard(file.FileNum).newIters(
+		file, opts, internalOpts, &c.dbOpts,
+	)
 }
 
 func (c *tableCacheContainer) newRangeKeyIter(
 	file *manifest.FileMetadata, opts *keyspan.SpanIterOptions,
 ) (keyspan.FragmentIterator, error) {
-	return c.tableCache.getShard(file.FileNum).newRangeKeyIter(file, opts, &c.dbOpts)
+	return c.tableCache.getShard(file.FileNum).newRangeKeyIter(
+		file, opts, &c.dbOpts,
+	)
 }
 
-func (c *tableCacheContainer) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
-	return c.tableCache.getShard(file.FileNum).getTableProperties(file, &c.dbOpts)
+func (c *tableCacheContainer) getTableProperties(file physicalMeta) (*sstable.Properties, error) {
+	return c.tableCache.getShard(file.FileNum).getTableProperties(
+		file.FileMetadata, &c.dbOpts,
+	)
 }
 
 func (c *tableCacheContainer) evict(fileNum FileNum) {
@@ -170,15 +176,31 @@ func (c *tableCacheContainer) metrics() (CacheMetrics, FilterMetrics) {
 	return m, f
 }
 
-func (c *tableCacheContainer) withReader(meta *fileMetadata, fn func(*sstable.Reader) error) error {
+// withReader fetches an sstable Reader associated with a physical sstable
+// present on disk.
+func (c *tableCacheContainer) withReader(meta physicalMeta, fn func(*sstable.Reader) error) error {
 	s := c.tableCache.getShard(meta.FileNum)
-	v := s.findNode(meta, &c.dbOpts)
+	v := s.findNode(meta.FileMetadata, &c.dbOpts)
 	defer s.unrefValue(v)
 	if v.err != nil {
 		base.MustExist(c.dbOpts.fs, v.filename, c.dbOpts.logger, v.err)
 		return v.err
 	}
 	return fn(v.reader)
+}
+
+// withVirtualReader fetches a VirtualReader associated with a virtual sstable.
+func (c *tableCacheContainer) withVirtualReader(
+	meta virtualMeta, fn func(sstable.VirtualReader) error,
+) error {
+	s := c.tableCache.getShard(meta.FileNum)
+	v := s.findNode(meta.FileMetadata, &c.dbOpts)
+	defer s.unrefValue(v)
+	if v.err != nil {
+		base.MustExist(c.dbOpts.fs, v.filename, c.dbOpts.logger, v.err)
+		return v.err
+	}
+	return fn(sstable.NewVirtualReader(v.reader, meta))
 }
 
 func (c *tableCacheContainer) iterCount() int64 {
@@ -421,11 +443,17 @@ func (c *tableCacheShard) newIters(
 	if tableFormat == sstable.TableFormatPebblev3 && v.reader.Properties.NumValueBlocks > 0 {
 		rp = &tableCacheShardReaderProvider{c: c, file: file, dbOpts: dbOpts}
 	}
+	// TODO(bananabrick): Copy over virtual sstable handling logic for this
+	// function.
 	if internalOpts.bytesIterated != nil {
-		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated, rp)
+		iter, err = v.reader.NewCompactionIter(
+			internalOpts.bytesIterated, rp, nil,
+		)
 	} else {
 		iter, err = v.reader.NewIterWithBlockPropertyFilters(
-			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, internalOpts.stats, rp)
+			opts.GetLowerBound(), opts.GetUpperBound(),
+			filterer, useFilter, internalOpts.stats, rp, nil,
+		)
 	}
 	if err != nil {
 		if rangeDelIter != nil {

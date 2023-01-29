@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -207,9 +208,12 @@ type singleLevelIterator struct {
 	blockLower []byte
 	blockUpper []byte
 	reader     *Reader
-	index      blockIter
-	data       blockIter
-	dataRS     readaheadState
+	// vReader will be set iff the iterator is constructed for virtual sstable
+	// iteration.
+	vReader *VirtualReader
+	index   blockIter
+	data    blockIter
+	dataRS  readaheadState
 	// dataBH refers to the last data block that the iterator considered
 	// loading. It may not actually have loaded the block, due to an error or
 	// because it was considered irrelevant.
@@ -389,6 +393,7 @@ func checkRangeKeyFragmentBlockIterator(obj interface{}) {
 // between different Readers.
 func (i *singleLevelIterator) init(
 	r *Reader,
+	v *VirtualReader,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	useFilter bool,
@@ -397,6 +402,15 @@ func (i *singleLevelIterator) init(
 ) error {
 	if r.err != nil {
 		return r.err
+	}
+	if invariants.Enabled {
+		if v != nil {
+			withinBounds, _, _ := v.constrainBounds(lower, upper)
+			if !withinBounds {
+				panic("pebble: invalid call to init")
+			}
+
+		}
 	}
 	indexH, err := r.readIndex(stats)
 	if err != nil {
@@ -408,6 +422,7 @@ func (i *singleLevelIterator) init(
 	i.bpfs = filterer
 	i.useFilter = useFilter
 	i.reader = r
+	i.vReader = v
 	i.cmp = r.Compare
 	i.stats = stats
 	err = i.index.initHandle(i.cmp, indexH, r.Properties.GlobalSeqNum)
@@ -1410,6 +1425,9 @@ func (i *singleLevelIterator) Close() error {
 }
 
 func (i *singleLevelIterator) String() string {
+	if i.vReader != nil {
+		return i.vReader.fileNum.String()
+	}
 	return i.reader.fileNum.String()
 }
 
@@ -1425,6 +1443,13 @@ func disableBoundsOpt(bound []byte, ptr uintptr) bool {
 // SetBounds implements internalIterator.SetBounds, as documented in the pebble
 // package.
 func (i *singleLevelIterator) SetBounds(lower, upper []byte) {
+	if i.vReader != nil {
+		// If the reader is constructed for a virtual sstable, then we must
+		// constrain the bounds of the reader. For physical sstables, the bounds
+		// can be wider than the actual sstables bounds because we won't
+		// accidentally expose additional keys as there are no additional keys.
+		_, lower, upper = i.vReader.constrainBounds(lower, upper)
+	}
 	i.boundsCmp = 0
 	if i.positionedUsingLatestBounds {
 		if i.upper != nil && lower != nil && i.cmp(i.upper, lower) <= 0 {
@@ -1461,6 +1486,9 @@ type compactionIterator struct {
 var _ base.InternalIterator = (*compactionIterator)(nil)
 
 func (i *compactionIterator) String() string {
+	if i.vReader != nil {
+		return i.vReader.fileNum.String()
+	}
 	return i.reader.fileNum.String()
 }
 
@@ -1669,6 +1697,7 @@ func (i *twoLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 
 func (i *twoLevelIterator) init(
 	r *Reader,
+	v *VirtualReader,
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	useFilter bool,
@@ -1688,6 +1717,7 @@ func (i *twoLevelIterator) init(
 	i.bpfs = filterer
 	i.useFilter = useFilter
 	i.reader = r
+	i.vReader = v
 	i.cmp = r.Compare
 	i.stats = stats
 	err = i.topLevelIndex.initHandle(i.cmp, topLevelIndexH, r.Properties.GlobalSeqNum)
@@ -1713,6 +1743,9 @@ func (i *twoLevelIterator) init(
 }
 
 func (i *twoLevelIterator) String() string {
+	if i.vReader != nil {
+		return i.vReader.fileNum.String()
+	}
 	return i.reader.fileNum.String()
 }
 
@@ -2427,6 +2460,9 @@ func (i *twoLevelCompactionIterator) Prev() (*InternalKey, base.LazyValue) {
 }
 
 func (i *twoLevelCompactionIterator) String() string {
+	if i.vReader != nil {
+		return i.vReader.fileNum.String()
+	}
 	return i.reader.fileNum.String()
 }
 
@@ -2768,6 +2804,77 @@ func init() {
 	private.SSTableRawTombstonesOpt = rawTombstonesOpt{}
 }
 
+// VirtualReader wraps Reader. Its purpose is to restrict functionality of the
+// Reader which should be inaccessible to virtual sstables, and enforce bounds
+// invariants associated with virtual sstables. All reads on virtual sstables
+// should go through a VirtualReader.
+type VirtualReader struct {
+	lower   []byte
+	upper   []byte
+	fileNum base.FileNum
+	reader  *Reader
+
+	Properties struct {
+		// RawKeySize, RawValueSize are set upon construction of a
+		// VirtualReader. The values of the fields is extrapolated. See
+		// NewVirtualReader for implementation details.
+		RawKeySize   uint64
+		RawValueSize uint64
+	}
+}
+
+// NewVirtualReader is used to contruct a reader which can read from virtual
+// sstables.
+func NewVirtualReader(reader *Reader, meta manifest.VirtualFileMeta) VirtualReader {
+	if reader.fileNum != meta.PhysicalSSTNum {
+		panic("pebble: invalid call to NewVirtualReader")
+	}
+
+	v := VirtualReader{
+		lower:   meta.Smallest.UserKey,
+		upper:   meta.Largest.UserKey,
+		reader:  reader,
+		fileNum: meta.FileNum,
+	}
+
+	ratio := meta.Stats.NumEntries / reader.Properties.NumEntries
+	v.Properties.RawKeySize = reader.Properties.RawKeySize * ratio
+	v.Properties.RawValueSize = reader.Properties.RawValueSize * ratio
+
+	return v
+}
+
+// Constrain bounds will narrow the start, end bounds if they do not fit within
+// the virtual sstable. constrainBounds will return true if start, end were
+// already within the bounds.
+func (v *VirtualReader) constrainBounds(start, end []byte) (bool, []byte, []byte) {
+	withinBounds := true
+	var first, last []byte
+
+	if v.reader.Compare(start, v.lower) < 0 {
+		withinBounds = false
+		first = v.lower
+	} else {
+		first = start
+	}
+
+	if v.reader.Compare(end, v.upper) > 0 {
+		withinBounds = false
+		last = v.upper
+	} else {
+		last = end
+	}
+
+	return withinBounds, first, last
+}
+
+// EstimateDiskUsage just calls VirtualReader.reader.EstimateDiskUsage after
+// enforcing the virtual sstable bounds.
+func (v *VirtualReader) EstimateDiskUsage(start, end []byte) (uint64, error) {
+	_, f, l := v.constrainBounds(start, end)
+	return v.reader.EstimateDiskUsage(f, l)
+}
+
 // Reader is a table reader.
 type Reader struct {
 	file              ReadableFile
@@ -2825,19 +2932,22 @@ func (r *Reader) Close() error {
 // NewIterWithBlockPropertyFilters returns an iterator for the contents of the
 // table. If an error occurs, NewIterWithBlockPropertyFilters cleans up after
 // itself and returns a nil iterator.
+//
+// TODO(bananabrick): Virtual readers calling into this must constrain bounds.
 func (r *Reader) NewIterWithBlockPropertyFilters(
 	lower, upper []byte,
 	filterer *BlockPropertiesFilterer,
 	useFilterBlock bool,
 	stats *base.InternalIteratorStats,
 	rp ReaderProvider,
+	v *VirtualReader,
 ) (Iterator, error) {
 	// NB: pebble.tableCache wraps the returned iterator with one which performs
 	// reference counting on the Reader, preventing the Reader from being closed
 	// until the final iterator closes.
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
-		err := i.init(r, lower, upper, filterer, useFilterBlock, stats, rp)
+		err := i.init(r, v, lower, upper, filterer, useFilterBlock, stats, rp)
 		if err != nil {
 			return nil, err
 		}
@@ -2845,7 +2955,7 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 	}
 
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
-	err := i.init(r, lower, upper, filterer, useFilterBlock, stats, rp)
+	err := i.init(r, v, lower, upper, filterer, useFilterBlock, stats, rp)
 	if err != nil {
 		return nil, err
 	}
@@ -2859,17 +2969,25 @@ func (r *Reader) NewIterWithBlockPropertyFilters(
 func (r *Reader) NewIter(lower, upper []byte) (Iterator, error) {
 	return r.NewIterWithBlockPropertyFilters(
 		lower, upper, nil, true /* useFilterBlock */, nil, /* stats */
-		TrivialReaderProvider{Reader: r})
+		TrivialReaderProvider{Reader: r}, nil)
 }
 
 // NewCompactionIter returns an iterator similar to NewIter but it also increments
 // the number of bytes iterated. If an error occurs, NewCompactionIter cleans up
 // after itself and returns a nil iterator.
-func (r *Reader) NewCompactionIter(bytesIterated *uint64, rp ReaderProvider) (Iterator, error) {
+func (r *Reader) NewCompactionIter(
+	bytesIterated *uint64, rp ReaderProvider, v *VirtualReader,
+) (Iterator, error) {
+	var lower, upper []byte
+	if v != nil {
+		lower, upper = v.lower, v.upper
+	}
 	if r.Properties.IndexType == twoLevelIndex {
 		i := twoLevelIterPool.Get().(*twoLevelIterator)
 		err := i.init(
-			r, nil /* lower */, nil /* upper */, nil, false /* useFilter */, nil /* stats */, rp)
+			r, v, lower /* lower */, upper /* upper */, nil,
+			false /* useFilter */, nil /* stats */, rp,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -2881,7 +2999,9 @@ func (r *Reader) NewCompactionIter(bytesIterated *uint64, rp ReaderProvider) (It
 	}
 	i := singleLevelIterPool.Get().(*singleLevelIterator)
 	err := i.init(
-		r, nil /* lower */, nil /* upper */, nil, false /* useFilter */, nil /* stats */, rp)
+		r, v, lower /* lower */, upper /* upper */, nil, false, /* useFilter */
+		nil /* stats */, rp,
+	)
 	if err != nil {
 		return nil, err
 	}

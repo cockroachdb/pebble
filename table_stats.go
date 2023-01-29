@@ -250,30 +250,34 @@ func (d *DB) scanReadStateTableStats(
 	return fill, hints, moreRemain
 }
 
+// loadTableStats only supports stats collection for physical sstables.
 func (d *DB) loadTableStats(
 	v *version, level int, meta *fileMetadata,
 ) (manifest.TableStats, []deleteCompactionHint, error) {
 	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
-	err := d.tableCache.withReader(meta, func(r *sstable.Reader) (err error) {
-		stats.NumEntries = r.Properties.NumEntries
-		stats.NumDeletions = r.Properties.NumDeletions
-		if r.Properties.NumPointDeletions() > 0 {
-			if err = d.loadTablePointKeyStats(r, v, level, meta, &stats); err != nil {
-				return
+	err := d.tableCache.withReader(
+		manifest.NewPhysicalMeta(meta), func(r *sstable.Reader) (err error) {
+			stats.NumEntries = r.Properties.NumEntries
+			stats.NumDeletions = r.Properties.NumDeletions
+			if r.Properties.NumPointDeletions() > 0 {
+				if err = d.loadTablePointKeyStats(r, v, level, meta, &stats); err != nil {
+					return
+				}
 			}
-		}
-		if r.Properties.NumRangeDeletions > 0 || r.Properties.NumRangeKeyDels > 0 {
-			if compactionHints, err = d.loadTableRangeDelStats(r, v, level, meta, &stats); err != nil {
-				return
+			if r.Properties.NumRangeDeletions > 0 || r.Properties.NumRangeKeyDels > 0 {
+				if compactionHints, err = d.loadTableRangeDelStats(
+					r, v, level, meta, &stats,
+				); err != nil {
+					return
+				}
 			}
-		}
-		// TODO(travers): Once we have real-world data, consider collecting
-		// additional stats that may provide improved heuristics for compaction
-		// picking.
-		stats.NumRangeKeySets = r.Properties.NumRangeKeySets
-		return
-	})
+			// TODO(travers): Once we have real-world data, consider collecting
+			// additional stats that may provide improved heuristics for compaction
+			// picking.
+			stats.NumRangeKeySets = r.Properties.NumRangeKeySets
+			return
+		})
 	if err != nil {
 		return stats, nil, err
 	}
@@ -393,13 +397,29 @@ func (d *DB) averageEntrySizeBeneath(
 			meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
-			err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
-				fileSum += file.Size
-				entryCount += r.Properties.NumEntries
-				keySum += r.Properties.RawKeySize
-				valSum += r.Properties.RawValueSize
-				return nil
-			})
+			var err error
+			if file.IsVirtual() {
+				err = d.tableCache.withVirtualReader(
+					manifest.NewVirtualMeta(file),
+					func(v sstable.VirtualReader) (err error) {
+						fileSum += file.Size
+						entryCount += file.Stats.NumEntries
+						keySum += v.Properties.RawKeySize
+						valSum += v.Properties.RawValueSize
+						return nil
+					})
+			} else {
+				err = d.tableCache.withReader(
+					manifest.NewPhysicalMeta(file),
+					func(r *sstable.Reader) (err error) {
+						fileSum += file.Size
+						entryCount += r.Properties.NumEntries
+						keySum += r.Properties.RawKeySize
+						valSum += r.Properties.RawValueSize
+						return nil
+					})
+			}
+
 			if err != nil {
 				return 0, 0, err
 			}
@@ -445,6 +465,16 @@ func (d *DB) estimateReclaimedSizeBeneath(
 		overlaps := v.Overlaps(l, d.cmp, start, end, true /* exclusiveEnd */)
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
+			// Ignore virtual sstables for now. We're not necessarily reclaiming
+			// any disk space by compacting these. We could be if this file is
+			// the last virtual sstable which was created from a physical
+			// sstable.
+			//
+			// TODO(bananabrick): See if we can somehow include virtual sstables
+			// here to get a more accurate estimate.
+			if file.IsVirtual() {
+				continue
+			}
 			startCmp := d.cmp(start, file.Smallest.UserKey)
 			endCmp := d.cmp(file.Largest.UserKey, end)
 			if startCmp <= 0 && (endCmp < 0 || endCmp == 0 && file.Largest.IsExclusiveSentinel()) {
@@ -501,10 +531,11 @@ func (d *DB) estimateReclaimedSizeBeneath(
 					continue
 				}
 				var size uint64
-				err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
-					size, err = r.EstimateDiskUsage(start, end)
-					return err
-				})
+				err := d.tableCache.withReader(
+					manifest.NewPhysicalMeta(file), func(r *sstable.Reader) (err error) {
+						size, err = r.EstimateDiskUsage(start, end)
+						return err
+					})
 				if err != nil {
 					return 0, hintSeqNum, err
 				}
@@ -515,7 +546,10 @@ func (d *DB) estimateReclaimedSizeBeneath(
 	return estimate, hintSeqNum, nil
 }
 
-func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) bool {
+// TODO(bananabrick): Add a check to prevent this function from being called
+// for physical sstables. This is only called from ingestions/newly created files
+// upon compaction, so this should be easy.
+func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties) bool {
 	// If a table contains range deletions or range key deletions, we defer the
 	// stats collection. There are two main reasons for this:
 	//
@@ -579,6 +613,8 @@ func pointDeletionsBytesEstimate(props *sstable.Properties, avgKeySize, avgValSi
 	return numPointDels*avgKeySize + numPointDels*(avgKeySize+avgValSize)
 }
 
+// TODO(bananabrick): This doesn't work with virtual sstables. The props always
+// belong to the physical sstable, so this estimate falls short.
 func estimateEntrySizes(
 	fileSize uint64, props *sstable.Properties,
 ) (avgKeySize, avgValSize uint64) {

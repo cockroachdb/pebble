@@ -495,17 +495,25 @@ var markFilesPrePebblev1 = func(tc *tableCacheContainer) findFilesFunc {
 		for l := numLevels - 1; l > 0; l-- {
 			iter := v.Levels[l].Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
-				err = tc.withReader(f, func(r *sstable.Reader) error {
-					tf, err := r.TableFormat()
-					if err != nil {
-						return err
-					}
-					if tf < sstable.TableFormatPebblev1 {
-						found = true
-						files[l] = append(files[l], f)
-					}
-					return nil
-				})
+				if f.IsVirtual() {
+					// An sstable with virtual bounds will not exist in any
+					// Pebble version where this code needs to run.
+					//
+					// TODO(bananabrick): Confirm this logic.
+					continue
+				}
+				err = tc.withReader(
+					manifest.NewPhysicalMeta(f), func(r *sstable.Reader) error {
+						tf, err := r.TableFormat()
+						if err != nil {
+							return err
+						}
+						if tf < sstable.TableFormatPebblev1 {
+							found = true
+							files[l] = append(files[l], f)
+						}
+						return nil
+					})
 				if err != nil {
 					return
 				}

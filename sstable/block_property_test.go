@@ -1009,7 +1009,7 @@ func TestBlockProperties(t *testing.T) {
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
 				lower, upper, filterer, false /* use (bloom) filter */, &stats,
-				TrivialReaderProvider{Reader: r})
+				TrivialReaderProvider{Reader: r}, nil)
 			if err != nil {
 				return err.Error()
 			}
@@ -1089,7 +1089,7 @@ func TestBlockProperties_BoundLimited(t *testing.T) {
 			}
 			iter, err := r.NewIterWithBlockPropertyFilters(
 				lower, upper, filterer, false /* use (bloom) filter */, &stats,
-				TrivialReaderProvider{Reader: r})
+				TrivialReaderProvider{Reader: r}, nil)
 			if err != nil {
 				return err.Error()
 			}

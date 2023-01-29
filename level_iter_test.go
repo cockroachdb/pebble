@@ -161,7 +161,7 @@ func (lt *levelIterTest) newIters(
 	lt.itersCreated++
 	iter, err := lt.readers[file.FileNum].NewIterWithBlockPropertyFilters(
 		opts.LowerBound, opts.UpperBound, nil, true, iio.stats,
-		sstable.TrivialReaderProvider{Reader: lt.readers[file.FileNum]})
+		sstable.TrivialReaderProvider{Reader: lt.readers[file.FileNum]}, nil)
 	if err != nil {
 		return nil, nil, err
 	}

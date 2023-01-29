@@ -2582,7 +2582,9 @@ func (d *DB) runCompaction(
 		meta.LargestSeqNum = writerMeta.LargestSeqNum
 		// If the file didn't contain any range deletions, we can fill its
 		// table stats now, avoiding unnecessarily loading the table later.
-		maybeSetStatsFromProperties(meta, &writerMeta.Properties)
+		maybeSetStatsFromProperties(
+			manifest.NewPhysicalMeta(meta), &writerMeta.Properties,
+		)
 
 		if c.flushing == nil {
 			outputMetrics.TablesCompacted++
@@ -2894,6 +2896,8 @@ func (d *DB) scanObsoleteFiles(list []string) {
 
 	liveFileNums := make(map[FileNum]struct{})
 	d.mu.versions.addLiveFileNums(liveFileNums)
+	// TODO(bananabrick): The parent file of any virtual sstable should be
+	// marked live. Otherwise, it will be deleted here on DB restart.
 	minUnflushedLogNum := d.mu.versions.minUnflushedLogNum
 	manifestFileNum := d.mu.versions.manifestFileNum
 
