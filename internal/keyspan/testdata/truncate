@@ -31,6 +31,13 @@ truncate a-e endKey=(d.SET.3)
 ----
 1:  b-d
 
+truncate a-e endKey=(b.SET.1)
+----
+1:  b-d
+
+truncate a-e exclusiveEndKey=(b.SET.1)
+----
+
 # The second range tombstone should be back in the below example, as the
 # specified end key has a trailer (RANGEDEL.2) exactly matching that of the
 # rangedel tombstone's start key.

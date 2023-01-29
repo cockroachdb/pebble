@@ -34,6 +34,7 @@ func TestTruncate(t *testing.T) {
 			}
 			parts := strings.Split(d.CmdArgs[0].String(), "-")
 			var startKey, endKey *base.InternalKey
+			var exlusiveEnd bool
 			if len(d.CmdArgs) > 1 {
 				for _, arg := range d.CmdArgs[1:] {
 					switch arg.Key {
@@ -43,7 +44,12 @@ func TestTruncate(t *testing.T) {
 					case "endKey":
 						endKey = &base.InternalKey{}
 						*endKey = base.ParseInternalKey(arg.Vals[0])
+					case "exclusiveEndKey":
+						endKey = &base.InternalKey{}
+						*endKey = base.ParseInternalKey(arg.Vals[0])
+						exlusiveEnd = true
 					}
+
 				}
 			}
 			if len(parts) != 2 {
@@ -52,7 +58,9 @@ func TestTruncate(t *testing.T) {
 			lower := []byte(parts[0])
 			upper := []byte(parts[1])
 
-			tIter := Truncate(cmp, iter, lower, upper, startKey, endKey)
+			tIter := Truncate(
+				cmp, iter, lower, upper, startKey, endKey, !exlusiveEnd, false,
+			)
 			defer tIter.Close()
 			var truncated []Span
 			for s := tIter.First(); s != nil; s = tIter.Next() {
