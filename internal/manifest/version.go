@@ -36,10 +36,6 @@ type TableInfo struct {
 	Smallest InternalKey
 	// Largest is the largest internal key in the table.
 	Largest InternalKey
-	// SmallestSeqNum is the smallest sequence number in the table.
-	SmallestSeqNum uint64
-	// LargestSeqNum is the largest sequence number in the table.
-	LargestSeqNum uint64
 }
 
 // TableStats contains statistics on a table used for compaction heuristics.
@@ -117,7 +113,41 @@ func (s CompactionState) String() string {
 	}
 }
 
-// FileMetadata holds the metadata for an on-disk table.
+// PhysicalFileMeta is used by functions which want a guarantee that their input
+// belongs to a physical file on disk and not a virtual file.
+type PhysicalFileMeta struct {
+	*FileMetadata
+}
+
+// VirtualFileMeta is used by functions which want a guarantee that their input
+// belongs to a virtual file and not a physical file on disk.
+type VirtualFileMeta struct {
+	*FileMetadata
+}
+
+// NewPhysicalMeta should be the only source of creating the PhysicalFileMeta
+// wrapper type.
+func NewPhysicalMeta(meta *FileMetadata) PhysicalFileMeta {
+	if meta.IsVirtual() {
+		panic("pebble: invalid function call")
+	}
+	return PhysicalFileMeta{
+		meta,
+	}
+}
+
+// NewVirtualMeta should the only source of creating the NewVirtualMeta wrapper
+// type.
+func NewVirtualMeta(meta *FileMetadata) VirtualFileMeta {
+	if !meta.IsVirtual() {
+		panic("pebble: invalid function call")
+	}
+	return VirtualFileMeta{
+		meta,
+	}
+}
+
+// FileMetadata holds the metadata for an on-disk or virtual sstable.
 type FileMetadata struct {
 	// Atomic contains fields which are accessed atomically. Go allocations
 	// are guaranteed to be 64-bit aligned which we take advantage of by
@@ -142,18 +172,31 @@ type FileMetadata struct {
 
 	// Reference count for the file: incremented when a file is added to a
 	// version and decremented when the version is unreferenced. The file is
-	// obsolete when the reference count falls to zero.
-	refs int32
+	// obsolete when the reference count falls to zero. We allocate refs for
+	// a physical sstable when it is first inserted into a btree. For virtual
+	// sstables, it is upto the creator of the virtual sstable to set refs to
+	// the appropriate value.
+	refs *int32
 	// FileNum is the file number.
 	FileNum base.FileNum
-	// Size is the size of the file, in bytes.
+	// PhysicalSSTNum refers to the physical sst which backs the virtual sst. It
+	// will be set to 0 for physical ssts, and will be non-zero for virtual
+	// ssts.
+	PhysicalSSTNum base.FileNum
+	// Size is the size of the file, in bytes. Size is an approximate value for
+	// virtual sstables.
+	//
+	// TODO(bananabrick): Size is currently used in metrics, and for many key
+	// Pebble level heuristics. Make sure that the heuristics will still work
+	// appropriately with an approximate value of size.
 	Size uint64
 	// File creation time in seconds since the epoch (1970-01-01 00:00:00
 	// UTC). For ingested sstables, this corresponds to the time the file was
 	// ingested.
 	CreationTime int64
-	// Smallest and largest sequence numbers in the table, across both point and
-	// range keys.
+	// Lower and upper bounds for the smallest and largest sequence numbers in
+	// the table, across both point and range keys. For physical sstables, these
+	// values are precise.
 	SmallestSeqNum uint64
 	LargestSeqNum  uint64
 	// SmallestPointKey and LargestPointKey are the inclusive bounds for the
@@ -176,6 +219,16 @@ type FileMetadata struct {
 	Smallest InternalKey
 	Largest  InternalKey
 	// Stats describe table statistics. Protected by DB.mu.
+	//
+	// Make sure to set Atomic.statsValid to 1 and set the table stats upon
+	// virtual sstable creation, as asynchrnously computing these isn't
+	// currently supported.
+	//
+	// TODO(bananabrick): TableStats are almost exclusively used for compaction
+	// picking. Those heuristics make sense for physical sstables, but don't
+	// necessarily make sense for virtual sstables. When implementing additional
+	// compaction picking heuristics for virtual sstables, make sure to check
+	// the usage of these stats for virtual sstables.
 	Stats TableStats
 
 	SubLevel         int
@@ -224,6 +277,12 @@ type FileMetadata struct {
 	// key type (point or range) corresponds to the smallest and largest overall
 	// table bounds.
 	boundTypeSmallest, boundTypeLargest boundType
+}
+
+// IsVirtual returns true if the FileMetadata belongs to a virtual sstable.
+func (m *FileMetadata) IsVirtual() bool {
+	// TODO(bananabrick): Might want to get rid of PhysicalSSTNum.
+	return m.PhysicalSSTNum != 0
 }
 
 // SetCompactionState transitions this file's compaction state to the given
@@ -589,12 +648,10 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 // TableInfo.
 func (m *FileMetadata) TableInfo() TableInfo {
 	return TableInfo{
-		FileNum:        m.FileNum,
-		Size:           m.Size,
-		Smallest:       m.Smallest,
-		Largest:        m.Largest,
-		SmallestSeqNum: m.SmallestSeqNum,
-		LargestSeqNum:  m.LargestSeqNum,
+		FileNum:  m.FileNum,
+		Size:     m.Size,
+		Smallest: m.Smallest,
+		Largest:  m.Largest,
 	}
 }
 
@@ -1101,6 +1158,9 @@ func (v *Version) CheckOrdering(cmp Compare, format base.FormatKey) error {
 
 // CheckConsistency checks that all of the files listed in the version exist
 // and their on-disk sizes match the sizes listed in the version.
+// TODO(bananabrick): We only need to consider the physical sstables here, but
+// we should also check that the physical sstables associated with the virtual
+// sstables are indeed present on disk.
 func (v *Version) CheckConsistency(dirname string, fs vfs.FS) error {
 	var buf bytes.Buffer
 	var args []interface{}

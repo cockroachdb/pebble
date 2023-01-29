@@ -110,6 +110,7 @@ type VersionEdit struct {
 }
 
 // Decode decodes an edit from the specified reader.
+// TODO(bananabrick): Support decoding/encoding of virtual sstable state.
 func (v *VersionEdit) Decode(r io.Reader) error {
 	br, ok := r.(byteReader)
 	if !ok {
@@ -365,6 +366,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 }
 
 // Encode encodes an edit to the specified writer.
+// TODO(bananabrick): Support encoding of virtual sstable state.
 func (v *VersionEdit) Encode(w io.Writer) error {
 	e := versionEditEncoder{new(bytes.Buffer)}
 
@@ -610,6 +612,8 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 // deleted files is returned. These files are considered zombies because they
 // are no longer referenced by the returned Version, but cannot be deleted from
 // disk as they are still in use by the incoming Version.
+// TODO(bananabrick): Make sure physical sstables backing virtual sstables
+// aren't present in the deleted map.
 func (b *BulkVersionEdit) Apply(
 	curr *Version,
 	cmp Compare,

@@ -639,6 +639,7 @@ func (p *props) update(o props) {
 	p.TopLevelIndexSize += o.TopLevelIndexSize
 }
 
+// TODO(bananabrick): Make sure this is only called with physical files.
 func (d *dbT) addProps(dir string, m *manifest.FileMetadata, p *props) error {
 	path := base.MakeFilepath(d.opts.FS, dir, base.FileTypeTable, m.FileNum)
 	f, err := d.opts.FS.Open(path)
