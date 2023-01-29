@@ -217,6 +217,7 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 				false, /* useFilterBlock */
 				&it.stats.InternalStats,
 				sstable.TrivialReaderProvider{Reader: r},
+				nil, /* virtualReader */
 			)
 			if err != nil {
 				return nil, err

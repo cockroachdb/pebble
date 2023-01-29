@@ -164,6 +164,32 @@ type FileMetadata struct {
 		// statsValid is 1 if stats have been loaded for the table. The
 		// TableStats structure is populated only if valid is 1.
 		statsValid uint32
+
+		// Reference count for the file: incremented when a file is added to a
+		// version and decremented when the version is unreferenced. The file is
+		// obsolete when the reference count falls to zero. The refs field is
+		// only used for physical sstables. Virtual sstables will update their
+		// parent sstable's refs field through
+		// FileMetadata.VirtualState.Parent.atomic.refs.
+		//
+		// Note that we could just turn FileMetadata.atomic.refs to a pointer
+		// so that a virtual sstable can directly update the refs field in its
+		// own FileMetadata. But then we'll suffer an additional allocation on
+		// every file metadata creation which is unnecessary because most of
+		// file metadata will belong to physical sstables. Moreover, it also
+		// simplifies the code because FileMetadata struct creation for physical
+		// sstables will not require the caller to set the Refs field to a
+		// pointer to an allocated int.
+		refs int32
+
+		// latestRefs are the references to a physical sstable in the latest
+		// version. This reference can be direct through a physical sstable
+		// belonging to the latest version, or indirect through virtual sstables
+		// which reference the physical sstables belonging to the latest
+		// version.
+		//
+		// INVARIANT: latestRefs <= refs.
+		latestRefs int32
 	}
 
 	// FileBacking is the state which backs either a physical or virtual
