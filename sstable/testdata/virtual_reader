@@ -1,0 +1,230 @@
+# Test 1: Start with a simple sanity checking test which uses singleLevel
+# iterators as the backing iterator for the sstable. This will also test the
+# compaction iterator since it's the simplest.
+build
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+d.SET.1:d
+----
+point:    [a#1,1-d#1,1]
+seqnums:  [1-1]
+
+# Reasoning behind the props: RawKeySize is 36 for the physical sstable, and
+# num entries is 2, for the virtual sstable. So, we extrapolate RawKeySize
+# to be about half. Similar reasoning for RawValueSize.
+virtualize b.SET.1-c.SET.1,2
+----
+bounds:  [b#1,1-c#1,1]
+filenum: 000002
+props:   18,2
+
+citer
+----
+b#1,1:b
+c#1,1:c
+
+# Test 2: Similar to test 1 but force two level iterators.
+build twoLevel
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+d.SET.1:d
+----
+point:    [a#1,1-d#1,1]
+seqnums:  [1-1]
+
+# Reasoning behind the props: RawKeySize is 36 for the physical sstable, and
+# num entries is 2, for the virtual sstable. So, we extrapolate RawKeySize
+# to be about half. Similar reasoning for RawValueSize.
+virtualize b.SET.1-c.SET.1,2
+----
+bounds:  [b#1,1-c#1,1]
+filenum: 000004
+props:   18,2
+
+citer
+----
+b#1,1:b
+c#1,1:c
+
+# Test the constrain bounds function. It performs some subtle shrinking and
+# expanding of bounds. The current virtual sstable bounds are [b,c].
+# 1. start key < virtual sstable start key, end key is exclusive.
+constrain a,bb,false
+----
+b,bb,false
+
+# 2. start key < virtual sstable start key, end key is inclusive.
+constrain a,bb,true
+----
+b,bb,true
+
+# 3. start key is within virtual sstable bounds, end key is at virtual sstable
+# end bound, but is exclusive.
+constrain bb,c,false
+----
+bb,c,false
+
+# 3. start key is within virtual sstable bounds, end key is at virtual sstable
+# end bound, but is inclusive.
+constrain bb,c,true
+----
+bb,c,true
+
+# 4. start key is within virtual sstable bounds, end key is above virtual
+# sstable end bound and is exclusive.
+constrain bb,e,false
+----
+bb,c,true
+
+# 5. start key is within virtual sstable bounds, end key is above virtual
+# sstable end bound and is inclusive.
+constrain bb,e,true
+----
+bb,c,true
+
+# 6. Both start, end keys fit within virtual sstable bounds.
+constrain bb,bbb,false
+----
+bb,bbb,false
+
+# 6. Both start, end keys are out of bounds, but overlap.
+constrain a,d,false
+----
+b,c,true
+
+# 7. start, end keys have no overlap with virtual sstable bounds. Note that
+# lower becomes greater than upper here. We support this in the iterators
+# and don't return any keys for this case.
+constrain a,aa,false
+----
+b,aa,false
+
+scan-range-del
+----
+
+scan-range-key
+----
+
+# Test 3: Tests raw range key/range del iterators, and makes sure that they
+# respect virtual bounds.
+build twoLevel
+a.SET.1:a
+d.SET.2:d
+f.SET.3:f
+d.RANGEDEL.4:e
+rangekey: a-d:{(#11,RANGEKEYSET,@t10,foo)}
+g.RANGEDEL.5:l
+rangekey: y-z:{(#12,RANGEKEYSET,@t11,foo)}
+----
+point:    [a#1,1-f#3,1]
+rangedel: [d#4,15-l#72057594037927935,15]
+rangekey: [a#11,21-z#72057594037927935,21]
+seqnums:  [1-12]
+
+# Note that we shouldn't have range del spans which cross virtual sstable
+# boundaries.
+virtualize a.SET.1-f.SET.1,3
+----
+bounds:  [a#1,1-f#1,1]
+filenum: 000006
+props:   27,3
+
+scan-range-del
+----
+d-e:{(#4,RANGEDEL)}
+
+scan-range-key
+----
+a-d:{(#11,RANGEKEYSET,@t10,foo)}
+
+# Test 4: Test iterators with various bounds, and various operations. This calls
+# VirtualReader.NewIterWithBlockPropertyFilters and performs various operations
+# on those.
+build
+a.SET.1:a
+b.SET.2:b
+c.SET.3:c
+d.SET.4:d
+e.SET.5:e
+f.SET.6:f
+g.SET.8:g
+h.SET.9:h
+----
+point:    [a#1,1-h#9,1]
+seqnums:  [1-9]
+
+# Set bounds c-f for the virtual sstable.
+virtualize c.SET.3-f.SET.6,4
+----
+bounds:  [c#3,1-f#6,1]
+filenum: 000008
+props:   36,4
+
+# Just test a basic iterator once virtual sstable bounds have been set.
+iter
+first
+next
+next
+next
+next
+----
+<c:3>:c
+<d:4>:d
+<e:5>:e
+<f:6>:f
+.
+
+# Create an iterator with bounds. External bounds should still be restricted
+# along with virtual sstable bounds.
+iter a-d
+first
+next
+next
+----
+<c:3>:c
+<d:4>:d
+.
+
+iter d-g
+first
+next
+next
+next
+----
+<d:4>:d
+<e:5>:e
+<f:6>:f
+.
+
+# e is turned into an exclusive bounds, and thus it is hidden.
+iter
+set-bounds lower=d upper=e
+first
+next
+----
+.
+<d:4>:d
+.
+
+# Virtual sstable lower bound must be enforced internally from within the
+# iterator.
+iter
+seek-ge b
+next
+next
+next
+next
+----
+<c:3>:c
+<d:4>:d
+<e:5>:e
+<f:6>:f
+.
+
+# Upper bound enforcement by seek-ge.
+iter
+seek-ge g
+----
+.

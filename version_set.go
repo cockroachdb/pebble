@@ -30,6 +30,8 @@ const manifestMarkerName = `manifest`
 type bulkVersionEdit = manifest.BulkVersionEdit
 type deletedFileEntry = manifest.DeletedFileEntry
 type fileMetadata = manifest.FileMetadata
+type physicalMeta = manifest.PhysicalFileMeta
+type virtualMeta = manifest.VirtualFileMeta
 type newFileEntry = manifest.NewFileEntry
 type version = manifest.Version
 type versionEdit = manifest.VersionEdit
@@ -83,13 +85,19 @@ type versionSet struct {
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
-	obsoleteFn        func(obsolete []*manifest.FileMetadata)
-	obsoleteTables    []*manifest.FileMetadata
+	obsoleteFn        func(obsolete []physicalMeta)
+	obsoleteTables    []physicalMeta
 	obsoleteManifests []fileInfo
 	obsoleteOptions   []fileInfo
 
-	// Zombie tables which have been removed from the current version but are
-	// still referenced by an inuse iterator.
+	// Zombie tables are tables which are no longer referenced directly by the
+	// latest version. The files in the zombieTables list may be referenced by
+	// an older Version, or may be refereced by virtual sstables in the latest
+	// Version, or an older Version.
+	//
+	// Note that there could be files in the zombieTables list which are not
+	// referenced at all, as a file is only removed from the zombieTables list
+	// right before the file is deleted from disk.
 	zombieTables map[FileNum]uint64 // filenum -> size
 
 	// minUnflushedLogNum is the smallest WAL log file number corresponding to
@@ -729,6 +737,11 @@ func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 			iter := lm.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
 				m[f.FileNum] = struct{}{}
+				if f.IsVirtual() {
+					// Mark physical sstables associated with virtual sstables
+					// as live.
+					m[f.VirtualSSTState.PhysicalSSTNum] = struct{}{}
+				}
 			}
 		}
 		if v == current {
@@ -738,7 +751,7 @@ func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 }
 
 // DB.mu must be held when addObsoleteLocked is called.
-func (vs *versionSet) addObsoleteLocked(obsolete []*manifest.FileMetadata) {
+func (vs *versionSet) addObsoleteLocked(obsolete []physicalMeta) {
 	if len(obsolete) == 0 {
 		return
 	}
@@ -757,7 +770,7 @@ func (vs *versionSet) addObsoleteLocked(obsolete []*manifest.FileMetadata) {
 
 // addObsolete will acquire DB.mu, so DB.mu must not be held when this is
 // called.
-func (vs *versionSet) addObsolete(obsolete []*manifest.FileMetadata) {
+func (vs *versionSet) addObsolete(obsolete []physicalMeta) {
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
 	vs.addObsoleteLocked(obsolete)
