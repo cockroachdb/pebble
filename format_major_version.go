@@ -521,17 +521,24 @@ var markFilesPrePebblev1 = func(tc *tableCacheContainer) findFilesFunc {
 		for l := numLevels - 1; l > 0; l-- {
 			iter := v.Levels[l].Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
-				err = tc.withReader(f, func(r *sstable.Reader) error {
-					tf, err := r.TableFormat()
-					if err != nil {
-						return err
-					}
-					if tf < sstable.TableFormatPebblev1 {
-						found = true
-						files[l] = append(files[l], f)
-					}
-					return nil
-				})
+				if f.Virtual {
+					// Any physical sstable which has been virtualized must
+					// have already undergone this migration, and we don't
+					// need to worry about the virtual sstable themselves.
+					panic("pebble: unexpected virtual sstable during migration")
+				}
+				err = tc.withReader(
+					f.PhysicalMeta(), func(r *sstable.Reader) error {
+						tf, err := r.TableFormat()
+						if err != nil {
+							return err
+						}
+						if tf < sstable.TableFormatPebblev1 {
+							found = true
+							files[l] = append(files[l], f)
+						}
+						return nil
+					})
 				if err != nil {
 					return
 				}
