@@ -265,7 +265,7 @@ func (d *DB) loadTableStats(
 	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
 	err := d.tableCache.withReader(
-		meta.FileMetadata, func(r *sstable.Reader) (err error) {
+		meta, func(r *sstable.Reader) (err error) {
 			stats.NumEntries = r.Properties.NumEntries
 			stats.NumDeletions = r.Properties.NumDeletions
 			if r.Properties.NumPointDeletions() > 0 {
@@ -433,12 +433,18 @@ func (d *DB) averageEntrySizeBeneath(
 		for file := iter.First(); file != nil; file = iter.Next() {
 			var err error
 			if file.Virtual {
-				// TODO(bananabrick): Once we have Properties for the virtual
-				// sstables, use those here.
-				panic("pebble: not implemented")
+				err = d.tableCache.withVirtualReader(
+					file.VirtualMeta(),
+					func(v sstable.VirtualReader) (err error) {
+						fileSum += file.Size
+						entryCount += file.Stats.NumEntries
+						keySum += v.Properties.RawKeySize
+						valSum += v.Properties.RawValueSize
+						return nil
+					})
 			} else {
 				err = d.tableCache.withReader(
-					file,
+					file.PhysicalMeta(),
 					func(r *sstable.Reader) (err error) {
 						fileSum += file.Size
 						entryCount += r.Properties.NumEntries
@@ -493,11 +499,6 @@ func (d *DB) estimateReclaimedSizeBeneath(
 		overlaps := v.Overlaps(l, d.cmp, start, end, true /* exclusiveEnd */)
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
-			if file.Virtual {
-				// TODO(bananabrick): Remove this check once
-				// Reader.EstimatedDiskUsage works for virtual sstables.
-				panic("pebble: unimplemented")
-			}
 			startCmp := d.cmp(start, file.Smallest.UserKey)
 			endCmp := d.cmp(file.Largest.UserKey, end)
 			if startCmp <= 0 && (endCmp < 0 || endCmp == 0 && file.Largest.IsExclusiveSentinel()) {
@@ -554,11 +555,21 @@ func (d *DB) estimateReclaimedSizeBeneath(
 					continue
 				}
 				var size uint64
-				err := d.tableCache.withReader(
-					file, func(r *sstable.Reader) (err error) {
-						size, err = r.EstimateDiskUsage(start, end)
-						return err
-					})
+				var err error
+				if file.Virtual {
+					err = d.tableCache.withVirtualReader(
+						file.VirtualMeta(), func(r sstable.VirtualReader) (err error) {
+							size, err = r.EstimateDiskUsage(start, end)
+							return err
+						})
+				} else {
+					err = d.tableCache.withReader(
+						file.PhysicalMeta(), func(r *sstable.Reader) (err error) {
+							size, err = r.EstimateDiskUsage(start, end)
+							return err
+						})
+				}
+
 				if err != nil {
 					return 0, hintSeqNum, err
 				}
@@ -784,7 +795,7 @@ func newCombinedDeletionKeyspanIter(
 		// See docs/range_deletions.md for why this is necessary.
 		iter = keyspan.Truncate(
 			comparer.Compare, iter, m.Smallest.UserKey, m.Largest.UserKey,
-			nil, nil,
+			nil, nil, true /* endInclusive */, false, /* panicOnTruncation */
 		)
 		mIter.AddLevel(iter)
 	}
