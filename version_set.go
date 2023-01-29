@@ -31,6 +31,7 @@ type bulkVersionEdit = manifest.BulkVersionEdit
 type deletedFileEntry = manifest.DeletedFileEntry
 type fileMetadata = manifest.FileMetadata
 type physicalMeta = manifest.PhysicalFileMeta
+type virtualMeta = manifest.VirtualFileMeta
 type fileBacking = manifest.FileBacking
 type newFileEntry = manifest.NewFileEntry
 type version = manifest.Version
