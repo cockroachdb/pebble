@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -433,14 +434,15 @@ func TestPebblev1Migration(t *testing.T) {
 				for _, l := range v.Levels {
 					iter := l.Iter()
 					for m := iter.First(); m != nil; m = iter.Next() {
-						err := d.tableCache.withReader(m, func(r *sstable.Reader) error {
-							f, err := r.TableFormat()
-							if err != nil {
-								return err
-							}
-							tally[f]++
-							return nil
-						})
+						err := d.tableCache.withReader(manifest.NewPhysicalMeta(m),
+							func(r *sstable.Reader) error {
+								f, err := r.TableFormat()
+								if err != nil {
+									return err
+								}
+								tally[f]++
+								return nil
+							})
 						if err != nil {
 							return err.Error()
 						}

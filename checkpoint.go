@@ -135,6 +135,10 @@ func mkdirAllAndSyncParents(fs vfs.FS, destDir string) (vfs.File, error) {
 // space overhead for a checkpoint if hard links are disabled. Also beware that
 // even if hard links are used, the space overhead for the checkpoint will
 // increase over time as the DB performs compactions.
+//
+// TODO(bananabrick): Exclude virtual sstables from the Checkpoint, but also
+// the parent sstable should be checkpointed even if it isn't part of the latest
+// Version.
 func (d *DB) Checkpoint(
 	destDir string, opts ...CheckpointOption,
 ) (
@@ -259,6 +263,9 @@ func (d *DB) Checkpoint(
 	for l := range current.Levels {
 		iter := current.Levels[l].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
+			if f.IsVirtual() {
+				panic("pebble: checkpointing not yet supported for virtual sstables")
+			}
 			if excludeFromCheckpoint(f, opt, d.cmp) {
 				if excludedFiles == nil {
 					excludedFiles = make(map[deletedFileEntry]*fileMetadata)

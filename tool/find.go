@@ -256,6 +256,8 @@ func (f *findT) readManifests(stdout io.Writer) {
 }
 
 // Search the logs and sstables for references to the specified key.
+// TODO(bananabrick): We have to handle the case where the manifest
+// contained a virtual sstable.
 func (f *findT) search(stdout io.Writer, key []byte) []findRef {
 	refs := f.searchLogs(stdout, key, nil)
 	refs = f.searchTables(stdout, key, refs)

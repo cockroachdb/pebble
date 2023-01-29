@@ -640,6 +640,7 @@ func (p *props) update(o props) {
 	p.TopLevelIndexSize += o.TopLevelIndexSize
 }
 
+// TODO(bananabrick): Make sure this is only called with physical files.
 func (d *dbT) addProps(dir string, m *manifest.FileMetadata, p *props) error {
 	backend := objstorage.New(objstorage.DefaultSettings(d.opts.FS, dir))
 	f, err := backend.OpenForReading(base.FileTypeTable, m.FileNum)
