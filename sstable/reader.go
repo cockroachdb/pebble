@@ -23,22 +23,11 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/objstorage"
 )
 
 var errCorruptIndexEntry = base.CorruptionErrorf("pebble/table: corrupt index entry")
 var errReaderClosed = errors.New("pebble/table: reader is closed")
-
-const (
-	// Constants for dynamic readahead of data blocks. Note that the size values
-	// make sense as some multiple of the default block size; and they should
-	// both be larger than the default block size.
-	minFileReadsForReadahead = 2
-	// TODO(bilal): Have the initial size value be a factor of the block size,
-	// as opposed to a hardcoded value.
-	initialReadaheadSize = 64 << 10  /* 64KB */
-	maxReadaheadSize     = 256 << 10 /* 256KB */
-)
 
 // decodeBlockHandle returns the block handle encoded at the start of src, as
 // well as the number of bytes it occupies. It returns zero if given invalid
@@ -209,7 +198,7 @@ type singleLevelIterator struct {
 	reader     *Reader
 	index      blockIter
 	data       blockIter
-	dataRS     readaheadState
+	dataRH     objstorage.ReadaheadHandle
 	// dataBH refers to the last data block that the iterator considered
 	// loading. It may not actually have loaded the block, due to an error or
 	// because it was considered irrelevant.
@@ -416,7 +405,7 @@ func (i *singleLevelIterator) init(
 		_ = i.index.Close()
 		return err
 	}
-	i.dataRS.size = initialReadaheadSize
+	i.dataRH = r.readable.NewReadaheadHandle()
 	if r.tableFormat == TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
@@ -444,14 +433,7 @@ func (i *singleLevelIterator) init(
 // setupForCompaction sets up the singleLevelIterator for use with compactionIter.
 // Currently, it skips readahead ramp-up. It should be called after init is called.
 func (i *singleLevelIterator) setupForCompaction() {
-	if i.reader.fs != nil {
-		f, err := i.reader.fs.Open(i.reader.filename, vfs.SequentialReadsOption)
-		if err == nil {
-			// Given that this iterator is for a compaction, we can assume that it
-			// will be read sequentially and we can skip the readahead ramp-up.
-			i.dataRS.sequentialFile = f
-		}
-	}
+	i.dataRH.MaxReadahead()
 }
 
 func (i *singleLevelIterator) resetForReuse() singleLevelIterator {
@@ -539,7 +521,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 		}
 		// blockIntersects
 	}
-	block, err := i.readBlockWithStats(i.dataBH, &i.dataRS)
+	block, err := i.readBlockWithStats(i.dataBH, i.dataRH)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -555,11 +537,12 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 }
 
 // readBlockForVBR implements the blockProviderWhenOpen interface for use by
-// the valueBlockReader. We could use a readaheadState for this (that would be
-// different from the readaheadState for the data blocks), but choose to use
-// nil since (a) for user-facing reads we expect access to the value blocks to
-// be rare, (b) for compactions, we are not using the logic in readaheadState
-// and deferring to OS-level readahead.
+// the valueBlockReader.
+//
+// TODO(radu, sumeer): we should use a ReadaheadHandle here, separate from the
+// ReadaheadHandle for the data blocks. Especially for the compaction case,
+// where we are reading the value blocks. For user-facing reads, this may be
+// less necessary, under the assumption that value blocks are rarely read.
 func (i *singleLevelIterator) readBlockForVBR(
 	h BlockHandle, stats *base.InternalIteratorStats,
 ) (cache.Handle, error) {
@@ -634,9 +617,9 @@ func (i *singleLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 }
 
 func (i *singleLevelIterator) readBlockWithStats(
-	bh BlockHandle, raState *readaheadState,
+	bh BlockHandle, rh objstorage.ReadaheadHandle,
 ) (cache.Handle, error) {
-	return i.reader.readBlock(bh, nil /* transform */, raState, i.stats)
+	return i.reader.readBlock(bh, nil /* transform */, rh, i.stats)
 }
 
 func (i *singleLevelIterator) initBoundsForAlreadyLoadedBlock() {
@@ -1402,9 +1385,9 @@ func (i *singleLevelIterator) Close() error {
 	}
 	err = firstError(err, i.data.Close())
 	err = firstError(err, i.index.Close())
-	if i.dataRS.sequentialFile != nil {
-		err = firstError(err, i.dataRS.sequentialFile.Close())
-		i.dataRS.sequentialFile = nil
+	if i.dataRH != nil {
+		err = firstError(err, i.dataRH.Close())
+		i.dataRH = nil
 	}
 	err = firstError(err, i.err)
 	if i.bpfs != nil {
@@ -1601,7 +1584,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 		}
 		// blockIntersects
 	}
-	indexBlock, err := i.readBlockWithStats(bhp.BlockHandle, nil /* readaheadState */)
+	indexBlock, err := i.readBlockWithStats(bhp.BlockHandle, nil /* readaheadHandle */)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -1705,7 +1688,7 @@ func (i *twoLevelIterator) init(
 		_ = i.topLevelIndex.Close()
 		return err
 	}
-	i.dataRS.size = initialReadaheadSize
+	i.dataRH = r.readable.NewReadaheadHandle()
 	if r.tableFormat == TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			i.vbReader = &valueBlockReader{
@@ -2357,9 +2340,9 @@ func (i *twoLevelIterator) Close() error {
 	err = firstError(err, i.data.Close())
 	err = firstError(err, i.index.Close())
 	err = firstError(err, i.topLevelIndex.Close())
-	if i.dataRS.sequentialFile != nil {
-		err = firstError(err, i.dataRS.sequentialFile.Close())
-		i.dataRS.sequentialFile = nil
+	if i.dataRH != nil {
+		err = firstError(err, i.dataRH.Close())
+		i.dataRH = nil
 	}
 	err = firstError(err, i.err)
 	if i.bpfs != nil {
@@ -2479,203 +2462,6 @@ func (i *twoLevelCompactionIterator) skipForward(
 
 type blockTransform func([]byte) ([]byte, error)
 
-// readaheadState contains state variables related to readahead. Updated on
-// file reads.
-type readaheadState struct {
-	// Number of sequential reads.
-	numReads int64
-	// Size issued to the next call to Prefetch. Starts at or above
-	// initialReadaheadSize and grows exponentially until maxReadaheadSize.
-	size int64
-	// prevSize is the size used in the last Prefetch call.
-	prevSize int64
-	// The byte offset up to which the OS has been asked to read ahead / cached.
-	// When reading ahead, reads up to this limit should not incur an IO
-	// operation. Reads after this limit can benefit from a new call to
-	// Prefetch.
-	limit int64
-	// sequentialFile holds a file descriptor to the same underlying File,
-	// except with fadvise(FADV_SEQUENTIAL) called on it to take advantage of
-	// OS-level readahead. Initialized when the iterator has been consistently
-	// reading blocks in a sequential access pattern. Once this is non-nil,
-	// the other variables in readaheadState don't matter much as we defer
-	// to OS-level readahead.
-	//
-	// For TableFormatPebblev3, there are potentially two different sequential
-	// accesses, for the data block and the value blocks. It is unclear to me
-	// how FADV_SEQUENTIAL will function for such accesses. We do expect that
-	// the average workload will have most data in data blocks.
-	sequentialFile vfs.File
-}
-
-func (rs *readaheadState) recordCacheHit(offset, blockLength int64) {
-	currentReadEnd := offset + blockLength
-	if rs.sequentialFile != nil {
-		// Using OS-level readahead instead, so do nothing.
-		return
-	}
-	if rs.numReads >= minFileReadsForReadahead {
-		if currentReadEnd >= rs.limit && offset <= rs.limit+maxReadaheadSize {
-			// This is a read that would have resulted in a readahead, had it
-			// not been a cache hit.
-			rs.limit = currentReadEnd
-			return
-		}
-		if currentReadEnd < rs.limit-rs.prevSize || offset > rs.limit+maxReadaheadSize {
-			// We read too far away from rs.limit to benefit from readahead in
-			// any scenario. Reset all variables.
-			rs.numReads = 1
-			rs.limit = currentReadEnd
-			rs.size = initialReadaheadSize
-			rs.prevSize = 0
-			return
-		}
-		// Reads in the range [rs.limit - rs.prevSize, rs.limit] end up
-		// here. This is a read that is potentially benefitting from a past
-		// readahead.
-		return
-	}
-	if currentReadEnd >= rs.limit && offset <= rs.limit+maxReadaheadSize {
-		// Blocks are being read sequentially and would benefit from readahead
-		// down the line.
-		rs.numReads++
-		return
-	}
-	// We read too far ahead of the last read, or before it. This indicates
-	// a random read, where readahead is not desirable. Reset all variables.
-	rs.numReads = 1
-	rs.limit = currentReadEnd
-	rs.size = initialReadaheadSize
-	rs.prevSize = 0
-}
-
-// maybeReadahead updates state and determines whether to issue a readahead /
-// prefetch call for a block read at offset for blockLength bytes.
-// Returns a size value (greater than 0) that should be prefetched if readahead
-// would be beneficial.
-func (rs *readaheadState) maybeReadahead(offset, blockLength int64) int64 {
-	currentReadEnd := offset + blockLength
-	if rs.sequentialFile != nil {
-		// Using OS-level readahead instead, so do nothing.
-		return 0
-	}
-	if rs.numReads >= minFileReadsForReadahead {
-		// The minimum threshold of sequential reads to justify reading ahead
-		// has been reached.
-		// There are two intervals: the interval being read:
-		// [offset, currentReadEnd]
-		// as well as the interval where a read would benefit from read ahead:
-		// [rs.limit, rs.limit + rs.size]
-		// We increase the latter interval to
-		// [rs.limit, rs.limit + maxReadaheadSize] to account for cases where
-		// readahead may not be beneficial with a small readahead size, but over
-		// time the readahead size would increase exponentially to make it
-		// beneficial.
-		if currentReadEnd >= rs.limit && offset <= rs.limit+maxReadaheadSize {
-			// We are doing a read in the interval ahead of
-			// the last readahead range. In the diagrams below, ++++ is the last
-			// readahead range, ==== is the range represented by
-			// [rs.limit, rs.limit + maxReadaheadSize], and ---- is the range
-			// being read.
-			//
-			//               rs.limit           rs.limit + maxReadaheadSize
-			//         ++++++++++|===========================|
-			//
-			//              |-------------|
-			//            offset       currentReadEnd
-			//
-			// This case is also possible, as are all cases with an overlap
-			// between [rs.limit, rs.limit + maxReadaheadSize] and [offset,
-			// currentReadEnd]:
-			//
-			//               rs.limit           rs.limit + maxReadaheadSize
-			//         ++++++++++|===========================|
-			//
-			//                                            |-------------|
-			//                                         offset       currentReadEnd
-			//
-			//
-			rs.numReads++
-			rs.limit = offset + rs.size
-			rs.prevSize = rs.size
-			// Increase rs.size for the next read.
-			rs.size *= 2
-			if rs.size > maxReadaheadSize {
-				rs.size = maxReadaheadSize
-			}
-			return rs.prevSize
-		}
-		if currentReadEnd < rs.limit-rs.prevSize || offset > rs.limit+maxReadaheadSize {
-			// The above conditional has rs.limit > rs.prevSize to confirm that
-			// rs.limit - rs.prevSize would not underflow.
-			// We read too far away from rs.limit to benefit from readahead in
-			// any scenario. Reset all variables.
-			// The case where we read too far ahead:
-			//
-			// (rs.limit - rs.prevSize)    (rs.limit)   (rs.limit + maxReadaheadSize)
-			//                    |+++++++++++++|=============|
-			//
-			//                                                  |-------------|
-			//                                             offset       currentReadEnd
-			//
-			// Or too far behind:
-			//
-			// (rs.limit - rs.prevSize)    (rs.limit)   (rs.limit + maxReadaheadSize)
-			//                    |+++++++++++++|=============|
-			//
-			//    |-------------|
-			// offset       currentReadEnd
-			//
-			rs.numReads = 1
-			rs.limit = currentReadEnd
-			rs.size = initialReadaheadSize
-			rs.prevSize = 0
-			return 0
-		}
-		// Reads in the range [rs.limit - rs.prevSize, rs.limit] end up
-		// here. This is a read that is potentially benefitting from a past
-		// readahead, but there's no reason to issue a readahead call at the
-		// moment.
-		//
-		// (rs.limit - rs.prevSize)            (rs.limit + maxReadaheadSize)
-		//                    |+++++++++++++|===============|
-		//                             (rs.limit)
-		//
-		//                        |-------|
-		//                     offset    currentReadEnd
-		//
-		rs.numReads++
-		return 0
-	}
-	if currentReadEnd >= rs.limit && offset <= rs.limit+maxReadaheadSize {
-		// Blocks are being read sequentially and would benefit from readahead
-		// down the line.
-		//
-		//                       (rs.limit)   (rs.limit + maxReadaheadSize)
-		//                         |=============|
-		//
-		//                    |-------|
-		//                offset    currentReadEnd
-		//
-		rs.numReads++
-		return 0
-	}
-	// We read too far ahead of the last read, or before it. This indicates
-	// a random read, where readahead is not desirable. Reset all variables.
-	//
-	// (rs.limit - maxReadaheadSize)  (rs.limit)   (rs.limit + maxReadaheadSize)
-	//                     |+++++++++++++|=============|
-	//
-	//                                                    |-------|
-	//                                                offset    currentReadEnd
-	//
-	rs.numReads = 1
-	rs.limit = currentReadEnd
-	rs.size = initialReadaheadSize
-	rs.prevSize = 0
-	return 0
-}
-
 // ReaderOption provide an interface to do work on Reader while it is being
 // opened.
 type ReaderOption interface {
@@ -2744,20 +2530,6 @@ func (c *cacheOpts) writerApply(w *Writer) {
 	}
 }
 
-// FileReopenOpt is specified if this reader is allowed to reopen additional
-// file descriptors for this file. Used to take advantage of OS-level readahead.
-type FileReopenOpt struct {
-	FS       vfs.FS
-	Filename string
-}
-
-func (f FileReopenOpt) readerApply(r *Reader) {
-	if r.fs == nil {
-		r.fs = f.FS
-		r.filename = f.Filename
-	}
-}
-
 // rawTombstonesOpt is a Reader open option for specifying that range
 // tombstones returned by Reader.NewRangeDelIter() should not be
 // fragmented. Used by debug tools to get a raw view of the tombstones
@@ -2779,9 +2551,7 @@ func init() {
 
 // Reader is a table reader.
 type Reader struct {
-	file              ReadableFile
-	fs                vfs.FS
-	filename          string
+	readable          objstorage.Readable
 	cacheID           uint64
 	fileNum           base.FileNum
 	err               error
@@ -2812,19 +2582,13 @@ type Reader struct {
 func (r *Reader) Close() error {
 	r.opts.Cache.Unref()
 
-	if r.err != nil {
-		if r.file != nil {
-			r.file.Close()
-			r.file = nil
-		}
-		return r.err
+	if r.readable != nil {
+		r.err = firstError(r.err, r.readable.Close())
+		r.readable = nil
 	}
-	if r.file != nil {
-		r.err = r.file.Close()
-		r.file = nil
-		if r.err != nil {
-			return r.err
-		}
+
+	if r.err != nil {
+		return r.err
 	}
 	// Make any future calls to Get, NewIter or Close return an error.
 	r.err = errReaderClosed
@@ -2949,19 +2713,19 @@ func (i *rangeKeyFragmentBlockIter) Close() error {
 }
 
 func (r *Reader) readIndex(stats *base.InternalIteratorStats) (cache.Handle, error) {
-	return r.readBlock(r.indexBH, nil /* transform */, nil /* readaheadState */, stats)
+	return r.readBlock(r.indexBH, nil /* transform */, nil /* rh */, stats)
 }
 
 func (r *Reader) readFilter(stats *base.InternalIteratorStats) (cache.Handle, error) {
-	return r.readBlock(r.filterBH, nil /* transform */, nil /* readaheadState */, stats)
+	return r.readBlock(r.filterBH, nil /* transform */, nil /* readaheadHandle */, stats)
 }
 
 func (r *Reader) readRangeDel(stats *base.InternalIteratorStats) (cache.Handle, error) {
-	return r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadState */, stats)
+	return r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadHandle */, stats)
 }
 
 func (r *Reader) readRangeKey(stats *base.InternalIteratorStats) (cache.Handle, error) {
-	return r.readBlock(r.rangeKeyBH, nil /* transform */, nil /* readaheadState */, stats)
+	return r.readBlock(r.rangeKeyBH, nil /* transform */, nil /* readaheadHandle */, stats)
 }
 
 func checkChecksum(
@@ -2990,12 +2754,12 @@ func checkChecksum(
 func (r *Reader) readBlock(
 	bh BlockHandle,
 	transform blockTransform,
-	raState *readaheadState,
+	readaheadHandle objstorage.ReadaheadHandle,
 	stats *base.InternalIteratorStats,
 ) (_ cache.Handle, _ error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
-		if raState != nil {
-			raState.recordCacheHit(int64(bh.Offset), int64(bh.Length+blockTrailerLen))
+		if readaheadHandle != nil {
+			readaheadHandle.RecordCacheHit(int64(bh.Offset), int64(bh.Length+blockTrailerLen))
 		}
 		if stats != nil {
 			stats.BlockBytes += bh.Length
@@ -3003,41 +2767,16 @@ func (r *Reader) readBlock(
 		}
 		return h, nil
 	}
-	file := r.file
-
-	if raState != nil {
-		if raState.sequentialFile != nil {
-			file = raState.sequentialFile
-		} else if readaheadSize := raState.maybeReadahead(int64(bh.Offset), int64(bh.Length+blockTrailerLen)); readaheadSize > 0 {
-			if readaheadSize >= maxReadaheadSize {
-				// We've reached the maximum readahead size. Beyond this
-				// point, rely on OS-level readahead. Note that we can only
-				// reopen a new file handle with this optimization if
-				// r.fs != nil. This reader must have been created with the
-				// FileReopenOpt for this field to be set.
-				if r.fs != nil {
-					f, err := r.fs.Open(r.filename, vfs.SequentialReadsOption)
-					if err == nil {
-						// Use this new file handle for all sequential reads by
-						// this iterator going forward.
-						raState.sequentialFile = f
-						file = f
-					}
-				}
-			}
-			if raState.sequentialFile == nil {
-				if f, ok := r.file.(vfs.File); ok {
-					if fd := f.Fd(); fd != vfs.InvalidFd {
-						_ = vfs.Prefetch(fd, bh.Offset, uint64(readaheadSize))
-					}
-				}
-			}
-		}
-	}
 
 	v := r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen))
 	b := v.Buf()
-	if _, err := file.ReadAt(b, int64(bh.Offset)); err != nil {
+	var err error
+	if readaheadHandle != nil {
+		_, err = readaheadHandle.ReadAt(b, int64(bh.Offset))
+	} else {
+		_, err = r.readable.ReadAt(b, int64(bh.Offset))
+	}
+	if err != nil {
 		r.opts.Cache.Free(v)
 		return cache.Handle{}, err
 	}
@@ -3128,7 +2867,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 }
 
 func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
-	b, err := r.readBlock(metaindexBH, nil /* transform */, nil /* readaheadState */, nil /* stats */)
+	b, err := r.readBlock(metaindexBH, nil /* transform */, nil /* readaheadHandle */, nil /* stats */)
 	if err != nil {
 		return err
 	}
@@ -3170,7 +2909,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, err = r.readBlock(bh, nil /* transform */, nil /* readaheadState */, nil /* stats */)
+		b, err = r.readBlock(bh, nil /* transform */, nil /* readaheadHandle */, nil /* stats */)
 		if err != nil {
 			return err
 		}
@@ -3276,7 +3015,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			l.Index = append(l.Index, indexBH.BlockHandle)
 
 			subIndex, err := r.readBlock(
-				indexBH.BlockHandle, nil /* transform */, nil /* readaheadState */, nil /* stats */)
+				indexBH.BlockHandle, nil /* transform */, nil /* readaheadHandle */, nil /* stats */)
 			if err != nil {
 				return nil, err
 			}
@@ -3359,9 +3098,9 @@ func (r *Reader) ValidateBlockChecksums() error {
 
 	// Check all blocks sequentially. Make use of read-ahead, given we are
 	// scanning the entire file from start to end.
-	blockRS := &readaheadState{
-		size: initialReadaheadSize,
-	}
+	rh := r.readable.NewReadaheadHandle()
+	defer rh.Close()
+
 	for _, bh := range blocks {
 		// Certain blocks may not be present, in which case we skip them.
 		if bh.Length == 0 {
@@ -3369,7 +3108,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 		}
 
 		// Read the block, which validates the checksum.
-		h, err := r.readBlock(bh, nil /* transform */, blockRS, nil /* stats */)
+		h, err := r.readBlock(bh, nil /* transform */, rh, nil /* stats */)
 		if err != nil {
 			return err
 		}
@@ -3432,7 +3171,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			return 0, errCorruptIndexEntry
 		}
 		startIdxBlock, err := r.readBlock(
-			startIdxBH.BlockHandle, nil /* transform */, nil /* readaheadState */, nil /* stats */)
+			startIdxBH.BlockHandle, nil /* transform */, nil /* readaheadHandle */, nil /* stats */)
 		if err != nil {
 			return 0, err
 		}
@@ -3453,7 +3192,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 				return 0, errCorruptIndexEntry
 			}
 			endIdxBlock, err := r.readBlock(
-				endIdxBH.BlockHandle, nil /* transform */, nil /* readaheadState */, nil /* stats */)
+				endIdxBH.BlockHandle, nil /* transform */, nil /* readaheadHandle */, nil /* stats */)
 			if err != nil {
 				return 0, err
 			}
@@ -3519,20 +3258,13 @@ func (r *Reader) TableFormat() (TableFormat, error) {
 	return r.tableFormat, nil
 }
 
-// ReadableFile describes subset of vfs.File required for reading SSTs.
-type ReadableFile interface {
-	io.ReaderAt
-	io.Closer
-	Stat() (os.FileInfo, error)
-}
-
 // NewReader returns a new table reader for the file. Closing the reader will
 // close the file.
-func NewReader(f ReadableFile, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
+func NewReader(f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption) (*Reader, error) {
 	o = o.ensureDefaults()
 	r := &Reader{
-		file: f,
-		opts: o,
+		readable: f,
+		opts:     o,
 	}
 	if r.opts.Cache == nil {
 		r.opts.Cache = cache.New(0)
@@ -3694,7 +3426,7 @@ func (l *Layout) Describe(
 
 		if b.name == "footer" || b.name == "leveldb-footer" {
 			trailer, offset := make([]byte, b.Length), b.Offset
-			_, _ = r.file.ReadAt(trailer, int64(offset))
+			_, _ = r.readable.ReadAt(trailer, int64(offset))
 
 			if b.name == "footer" {
 				checksumType := ChecksumType(trailer[0])
@@ -3734,7 +3466,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadState */, nil /* stats */)
+		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadHandle */, nil /* stats */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue
@@ -3766,7 +3498,7 @@ func (l *Layout) Describe(
 		formatTrailer := func() {
 			trailer := make([]byte, blockTrailerLen)
 			offset := int64(b.Offset + b.Length)
-			_, _ = r.file.ReadAt(trailer, offset)
+			_, _ = r.readable.ReadAt(trailer, offset)
 			bt := blockType(trailer[0])
 			checksum := binary.LittleEndian.Uint32(trailer[1:])
 			fmt.Fprintf(w, "%10d    [trailer compression=%s checksum=0x%04x]\n", offset, bt, checksum)
@@ -3893,4 +3625,45 @@ func (l *Layout) Describe(
 
 	last := blocks[len(blocks)-1]
 	fmt.Fprintf(w, "%10d  EOF\n", last.Offset+last.Length)
+}
+
+// ReadableFile describes the smallest subset of objstorage.Readable that is
+// required for reading SSTs.
+type ReadableFile interface {
+	io.ReaderAt
+	io.Closer
+	Stat() (os.FileInfo, error)
+}
+
+// NewSimpleReadable wraps a ReadableFile in a objstorage.Readable
+// implementation (which does not support read-ahead)
+func NewSimpleReadable(r ReadableFile) (objstorage.Readable, error) {
+	info, err := r.Stat()
+	if err != nil {
+		return nil, err
+	}
+	return &simpleReadable{
+		ReadableFile: r,
+		size:         info.Size(),
+		rh:           objstorage.MakeNoopReadaheadHandle(r),
+	}, nil
+}
+
+// simpleReadable wraps a ReadableFile to implement objstorage.Readable.
+type simpleReadable struct {
+	ReadableFile
+	size int64
+	rh   objstorage.NoopReadaheadHandle
+}
+
+var _ objstorage.Readable = (*simpleReadable)(nil)
+
+// Size is part of the objstorage.Readable interface.
+func (s *simpleReadable) Size() int64 {
+	return s.size
+}
+
+// NewReadaheadHandle is part of the objstorage.Readable interface.
+func (s *simpleReadable) NewReadaheadHandle() objstorage.ReadaheadHandle {
+	return &s.rh
 }

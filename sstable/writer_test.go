@@ -580,7 +580,7 @@ func TestWriterClearCache(t *testing.T) {
 	f, err := mem.Open("test")
 	require.NoError(t, err)
 
-	r, err := NewReader(f, opts)
+	r, err := newReader(f, opts)
 	require.NoError(t, err)
 
 	layout, err := r.Layout()
