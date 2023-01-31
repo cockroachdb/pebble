@@ -1,0 +1,76 @@
+open test
+----
+
+list test
+----
+
+add 1 10 100
+----
+
+list test
+----
+SHARED-OBJ-CATALOG-000001
+marker.shared-obj-catalog.000001.SHARED-OBJ-CATALOG-000001
+
+add 2 20 200
+----
+
+add 3 30 300
+----
+
+delete 1
+----
+
+list test
+----
+SHARED-OBJ-CATALOG-000001
+marker.shared-obj-catalog.000001.SHARED-OBJ-CATALOG-000001
+
+close
+----
+<nil>
+
+open test
+----
+000002: 20/000200
+000003: 30/000300
+
+add 4 40 40
+----
+
+delete 3
+----
+
+list test
+----
+SHARED-OBJ-CATALOG-000002
+marker.shared-obj-catalog.000002.SHARED-OBJ-CATALOG-000002
+
+close
+----
+<nil>
+
+open test
+----
+000002: 20/000200
+000004: 40/000040
+
+close
+----
+<nil>
+
+open other-path
+----
+
+add 5 50 500
+----
+
+list other-path
+----
+SHARED-OBJ-CATALOG-000001
+marker.shared-obj-catalog.000001.SHARED-OBJ-CATALOG-000001
+
+list test
+----
+SHARED-OBJ-CATALOG-000002
+marker.shared-obj-catalog.000002.SHARED-OBJ-CATALOG-000002
