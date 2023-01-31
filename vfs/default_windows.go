@@ -36,7 +36,8 @@ type windowsDir struct {
 	*os.File
 }
 
-func (*windowsDir) Preallocate(off, length int64) error { return nil }
+func (*windowsDir) Prefetch(offset int64, length int64) error { return nil }
+func (*windowsDir) Preallocate(off, length int64) error       { return nil }
 
 // Silently ignore Sync() on Windows. This is the same behavior as
 // RocksDB. See port/win/io_win.cc:WinDirectory::Fsync().
@@ -48,12 +49,8 @@ type windowsFile struct {
 	*os.File
 }
 
-func (*windowsFile) Preallocate(offset, length int64) error {
-	// It is ok for correctness to no-op file preallocation. WAL recycling is the
-	// more important mechanism for WAL sync performance and it doesn't rely on
-	// fallocate or posix_fallocate in order to be effective.
-	return nil
-}
+func (*windowsFile) Prefetch(offset int64, length int64) error { return nil }
+func (*windowsFile) Preallocate(offset, length int64) error    { return nil }
 
 func (f *windowsFile) SyncData() error { return f.Sync() }
 func (f *windowsFile) SyncTo(length int64) (fullSync bool, err error) {

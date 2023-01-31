@@ -365,6 +365,11 @@ func (f *errorFile) Stat() (os.FileInfo, error) {
 	return f.file.Stat()
 }
 
+func (f *errorFile) Prefetch(offset, length int64) error {
+	// TODO(radu): Consider error injection.
+	return f.file.Prefetch(offset, length)
+}
+
 func (f *errorFile) Preallocate(offset, length int64) error {
 	if err := f.inj.MaybeError(OpFilePreallocate, f.path); err != nil {
 		return err

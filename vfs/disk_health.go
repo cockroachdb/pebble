@@ -201,6 +201,10 @@ func (d *diskHealthCheckingFile) Close() error {
 	return d.file.Close()
 }
 
+func (d *diskHealthCheckingFile) Prefetch(offset, length int64) error {
+	return d.file.Prefetch(offset, length)
+}
+
 // Preallocate implements (vfs.File).Preallocate.
 func (d *diskHealthCheckingFile) Preallocate(off, n int64) (err error) {
 	d.timeDiskOp(OpTypePreallocate, func() {

@@ -59,6 +59,11 @@ type File interface {
 	// not required to be synced. Unsophisticated implementations may call Sync.
 	SyncData() error
 
+	// Prefetch signals the OS (on supported platforms) to fetch the next length
+	// bytes in file (as returned by os.File.Fd()) after offset into cache. Any
+	// subsequent reads in that range will not issue disk IO.
+	Prefetch(offset int64, length int64) error
+
 	// Fd returns the raw file descriptor when a File is backed by an *os.File.
 	// It can be used for specific functionality like Prefetch.
 	// Returns InvalidFd if not supported.

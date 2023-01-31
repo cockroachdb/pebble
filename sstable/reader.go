@@ -3027,9 +3027,7 @@ func (r *Reader) readBlock(
 			}
 			if raState.sequentialFile == nil {
 				if f, ok := r.file.(vfs.File); ok {
-					if fd := f.Fd(); fd != vfs.InvalidFd {
-						_ = vfs.Prefetch(fd, bh.Offset, uint64(readaheadSize))
-					}
+					_ = f.Prefetch(int64(bh.Offset), readaheadSize)
 				}
 			}
 		}
