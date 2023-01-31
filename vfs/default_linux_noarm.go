@@ -41,6 +41,7 @@ type linuxDir struct {
 	*os.File
 }
 
+func (d *linuxDir) Prefetch(offset int64, length int64) error      { return nil }
 func (d *linuxDir) Preallocate(offset, length int64) error         { return nil }
 func (d *linuxDir) SyncData() error                                { return d.Sync() }
 func (d *linuxDir) SyncTo(offset int64) (fullSync bool, err error) { return false, nil }
@@ -51,8 +52,13 @@ type linuxFile struct {
 	useSyncRange bool
 }
 
+func (f *linuxFile) Prefetch(offset int64, length int64) error {
+	_, _, err := unix.Syscall(unix.SYS_READAHEAD, uintptr(f.fd), uintptr(offset), uintptr(length))
+	return err
+}
+
 func (f *linuxFile) Preallocate(offset, length int64) error {
-	return preallocExtend(f.fd, offset, length)
+	return unix.Fallocate(int(f.fd), unix.FALLOC_FL_KEEP_SIZE, offset, length)
 }
 
 func (f *linuxFile) SyncData() error {
