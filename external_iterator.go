@@ -318,7 +318,11 @@ func openExternalTables(
 ) (readers []*sstable.Reader, err error) {
 	readers = make([]*sstable.Reader, 0, len(files))
 	for i := range files {
-		r, err := sstable.NewReader(files[i], readerOpts, extraReaderOpts...)
+		readable, err := sstable.NewSimpleReadable(files[i])
+		if err != nil {
+			return readers, err
+		}
+		r, err := sstable.NewReader(readable, readerOpts, extraReaderOpts...)
 		if err != nil {
 			return readers, err
 		}

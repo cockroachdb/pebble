@@ -251,7 +251,11 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	if err != nil {
 		return err.Error()
 	}
-	r, err := sstable.NewReader(f1, sstable.ReaderOptions{
+	readable, err := sstable.NewSimpleReadable(f1)
+	if err != nil {
+		return err.Error()
+	}
+	r, err := sstable.NewReader(readable, sstable.ReaderOptions{
 		Filters: map[string]FilterPolicy{
 			fp.Name(): fp,
 		},
@@ -479,7 +483,11 @@ func buildLevelIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		readers[i], err = sstable.NewReader(f, opts)
+		readable, err := sstable.NewSimpleReadable(f)
+		if err != nil {
+			b.Fatal(err)
+		}
+		readers[i], err = sstable.NewReader(readable, opts)
 		if err != nil {
 			b.Fatal(err)
 		}

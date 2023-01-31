@@ -5,11 +5,9 @@
 package sstable
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"math"
 	"runtime"
 	"sort"
@@ -25,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/objstorage"
 )
 
 // encodedBHPEstimatedSize estimates the size of the encoded BlockHandleWithProperties.
@@ -111,22 +110,11 @@ func (m *WriterMetadata) updateSeqNum(seqNum uint64) {
 	}
 }
 
-type flusher interface {
-	Flush() error
-}
-
-type writeCloseSyncer interface {
-	io.WriteCloser
-	Sync() error
-}
-
 // Writer is a table writer.
 type Writer struct {
-	writer    io.Writer
-	bufWriter *bufio.Writer
-	syncer    writeCloseSyncer
-	meta      WriterMetadata
-	err       error
+	writable objstorage.Writable
+	meta     WriterMetadata
+	err      error
 	// cacheID and fileNum are used to remove blocks written to the sstable from
 	// the cache, providing a defense in depth against bugs which cause cache
 	// collisions.
@@ -1682,12 +1670,12 @@ func (w *Writer) writeCompressedBlock(block []byte, blockTrailerBuf []byte) (Blo
 	}
 
 	// Write the bytes to the file.
-	n, err := w.writer.Write(block)
+	n, err := w.writable.Write(block)
 	if err != nil {
 		return BlockHandle{}, err
 	}
 	w.meta.Size += uint64(n)
-	n, err = w.writer.Write(blockTrailerBuf[:blockTrailerLen])
+	n, err = w.writable.Write(blockTrailerBuf[:blockTrailerLen])
 	if err != nil {
 		return BlockHandle{}, err
 	}
@@ -1710,7 +1698,7 @@ func (w *Writer) Write(blockWithTrailer []byte) (n int, err error) {
 		w.cache.Delete(w.cacheID, w.fileNum, offset)
 	}
 	w.meta.Size += uint64(len(blockWithTrailer))
-	return w.writer.Write(blockWithTrailer)
+	return w.writable.Write(blockWithTrailer)
 }
 
 func (w *Writer) writeBlock(
@@ -1758,14 +1746,14 @@ func (w *Writer) Close() (err error) {
 			// the same object to a sync.Pool.
 			w.valueBlockWriter = nil
 		}
-		if w.syncer == nil {
+		if w.writable == nil {
 			return
 		}
-		err1 := w.syncer.Close()
+		err1 := w.writable.Close()
 		if err == nil {
 			err = err1
 		}
-		w.syncer = nil
+		w.writable = nil
 	}()
 
 	// finish must be called before we check for an error, because finish will
@@ -2013,20 +2001,12 @@ func (w *Writer) Close() (err error) {
 		indexBH:     indexBH,
 	}
 	var n int
-	if n, err = w.writer.Write(footer.encode(w.blockBuf.tmp[:])); err != nil {
+	if n, err = w.writable.Write(footer.encode(w.blockBuf.tmp[:])); err != nil {
 		w.err = err
 		return w.err
 	}
 	w.meta.Size += uint64(n)
 	w.meta.Properties = w.props
-
-	// Flush the buffer.
-	if w.bufWriter != nil {
-		if err := w.bufWriter.Flush(); err != nil {
-			w.err = err
-			return err
-		}
-	}
 
 	// Check that the features present in the table are compatible with the format
 	// configured for the table.
@@ -2035,7 +2015,7 @@ func (w *Writer) Close() (err error) {
 		return w.err
 	}
 
-	if err := w.syncer.Sync(); err != nil {
+	if err := w.writable.Sync(); err != nil {
 		w.err = err
 		return err
 	}
@@ -2066,7 +2046,7 @@ func (w *Writer) EstimatedSize() uint64 {
 // Metadata returns the metadata for the finished sstable. Only valid to call
 // after the sstable has been finished.
 func (w *Writer) Metadata() (*WriterMetadata, error) {
-	if w.syncer != nil {
+	if w.writable != nil {
 		return nil, errors.New("pebble: writer is not closed")
 	}
 	return &w.meta, nil
@@ -2121,10 +2101,10 @@ func (i internalTableOpt) writerApply(w *Writer) {
 
 // NewWriter returns a new table writer for the file. Closing the writer will
 // close the file.
-func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *Writer {
+func NewWriter(writable objstorage.Writable, o WriterOptions, extraOpts ...WriterOption) *Writer {
 	o = o.ensureDefaults()
 	w := &Writer{
-		syncer: f,
+		writable: writable,
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
@@ -2174,8 +2154,8 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 
 	w.coordination.init(o.Parallelism, w)
 
-	if f == nil {
-		w.err = errors.New("pebble: nil file")
+	if writable == nil {
+		w.err = errors.New("pebble: nil writable")
 		return w
 	}
 
@@ -2257,14 +2237,6 @@ func NewWriter(f writeCloseSyncer, o WriterOptions, extraOpts ...WriterOption) *
 	// Initialize the range key fragmenter and encoder.
 	w.fragmenter.Emit = w.encodeRangeKeySpan
 	w.rangeKeyEncoder.Emit = w.addRangeKey
-
-	// If f does not have a Flush method, do our own buffering.
-	if _, ok := f.(flusher); ok {
-		w.writer = f
-	} else {
-		w.bufWriter = bufio.NewWriter(f)
-		w.writer = w.bufWriter
-	}
 	return w
 }
 
