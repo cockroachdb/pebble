@@ -230,12 +230,11 @@ func (a *Marker) NextIter() uint64 {
 // RemoveObsolete removes any obsolete files discovered while locating
 // the marker or files unable to be removed during Move.
 func (a *Marker) RemoveObsolete() error {
-	obsolete := a.obsoleteFiles
-	for _, filename := range obsolete {
+	for i, filename := range a.obsoleteFiles {
 		if err := a.fs.Remove(a.fs.PathJoin(a.dir, filename)); err != nil && !oserror.IsNotExist(err) {
+			a.obsoleteFiles = a.obsoleteFiles[i:]
 			return err
 		}
-		a.obsoleteFiles = obsolete[1:]
 	}
 	a.obsoleteFiles = nil
 	return nil
