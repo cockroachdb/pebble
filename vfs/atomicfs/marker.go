@@ -16,7 +16,7 @@ import (
 
 // ReadMarker looks up the current state of a marker returning just the
 // current value of the marker. Callers that may need to move the marker
-// should use LocateMarker.
+// to a new value should use LocateMarker.
 func ReadMarker(fs vfs.FS, dir, markerName string) (string, error) {
 	state, err := scanForMarker(fs, dir, markerName)
 	if err != nil {
@@ -49,9 +49,11 @@ func LocateMarker(fs vfs.FS, dir, markerName string) (*Marker, string, error) {
 }
 
 type scannedState struct {
+	// filename is the latest marker file found (the one with the highest iter value).
 	filename string
 	iter     uint64
 	value    string
+	// obsolete is a list of earlier markers that were found.
 	obsolete []string
 }
 
@@ -89,11 +91,15 @@ func scanForMarker(fs vfs.FS, dir, markerName string) (scannedState, error) {
 	return state, nil
 }
 
-// A Marker provides an interface for marking a single file on the
-// filesystem. The marker may be atomically moved from name to name.
-// Marker is not safe for concurrent use. Multiple processes may not
-// read or move the same marker simultaneously. An Marker may only be
-// constructed through LocateMarker.
+// A Marker provides an interface for maintaining a single string value on the
+// filesystem. The marker may be atomically moved from value to value.
+//
+// The implementation creates a new marker file for each new value, embedding
+// the value in the marker filename.
+//
+// Marker is not safe for concurrent use. Multiple processes may not read or
+// move the same marker simultaneously. A Marker may only be constructed through
+// LocateMarker.
 //
 // Marker names must be unique within the directory.
 type Marker struct {
@@ -112,11 +118,10 @@ type Marker struct {
 	// monotonically increasing over the lifetime of a marker. Actual
 	// marker files will always have a positive iter value.
 	iter uint64
-	// obsoleteFiles holds a list of files discovered by LocateMarker
-	// that are old values for this marker. These files may exist if the
-	// filesystem doesn't guarantee atomic renames (eg, if it's
-	// implemented as a link(newpath), remove(oldpath), and a crash in
-	// between may leave an entry at the old path).
+	// obsoleteFiles holds a list of marker files discovered by LocateMarker that
+	// are old values for this marker. These files may exist in certain error
+	// cases or crashes (e.g. if the deletion of the previous marker file failed
+	// during Move).
 	obsoleteFiles []string
 }
 
@@ -160,22 +165,21 @@ func (a *Marker) Close() error {
 	return a.dirFD.Close()
 }
 
-// Move atomically moves the marker to mark the provided filename.
+// Move atomically moves the marker to a new value.
+//
 // If Move returns a nil error, the new marker value is guaranteed to be
 // persisted to stable storage. If Move returns an error, the current
 // value of the marker may be the old value or the new value. Callers
 // may retry a Move error.
 //
 // If an error occurs while syncing the directory, Move panics.
-//
-// The provided filename does not need to exist on the filesystem.
-func (a *Marker) Move(filename string) error {
+func (a *Marker) Move(newValue string) error {
 	a.iter++
-	dstFilename := markerFilename(a.name, a.iter, filename)
+	dstFilename := markerFilename(a.name, a.iter, newValue)
 	dstPath := a.fs.PathJoin(a.dir, dstFilename)
 	oldFilename := a.filename
 
-	// The marker has never been placed. Create a new file.
+	// Create the new marker.
 	f, err := a.fs.Create(dstPath)
 	if err != nil {
 		// On a distributed filesystem, an error doesn't guarantee that
@@ -217,7 +221,7 @@ func (a *Marker) Move(filename string) error {
 }
 
 // NextIter returns the next iteration number that the marker will use.
-// Clients may use this number for formulating filenames that are
+// Clients may use this number for formulating new values that are
 // unused.
 func (a *Marker) NextIter() uint64 {
 	return a.iter + 1
@@ -226,12 +230,11 @@ func (a *Marker) NextIter() uint64 {
 // RemoveObsolete removes any obsolete files discovered while locating
 // the marker or files unable to be removed during Move.
 func (a *Marker) RemoveObsolete() error {
-	obsolete := a.obsoleteFiles
-	for _, filename := range obsolete {
+	for i, filename := range a.obsoleteFiles {
 		if err := a.fs.Remove(a.fs.PathJoin(a.dir, filename)); err != nil && !oserror.IsNotExist(err) {
+			a.obsoleteFiles = a.obsoleteFiles[i:]
 			return err
 		}
-		a.obsoleteFiles = obsolete[1:]
 	}
 	a.obsoleteFiles = nil
 	return nil
