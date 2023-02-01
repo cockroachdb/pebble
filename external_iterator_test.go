@@ -227,7 +227,10 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 			f1, err := mem.Open(filename)
 			require.NoError(t, err)
 
-			r, err := sstable.NewReader(f1, sstable.ReaderOptions{
+			readable, err := sstable.NewSimpleReadable(f1)
+			require.NoError(t, err)
+
+			r, err := sstable.NewReader(readable, sstable.ReaderOptions{
 				Cache:    c,
 				Comparer: testkeys.Comparer,
 			})
