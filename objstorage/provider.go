@@ -162,3 +162,22 @@ func (p *Provider) Create(fileType base.FileType, fileNum base.FileNum) (Writabl
 func (p *Provider) Remove(fileType base.FileType, fileNum base.FileNum) error {
 	return p.st.FS.Remove(p.Path(fileType, fileNum))
 }
+
+// LinkOrCopyFromLocal creates a new object that is either a copy of a given
+// local file or a hard link (if the new object is created on the same FS, and
+// if the FS supports it).
+func (p *Provider) LinkOrCopyFromLocal(
+	srcFS vfs.FS, srcFilePath string, dstFileType base.FileType, dstFileNum base.FileNum,
+) error {
+	if srcFS == p.st.FS {
+		// Wrap the normal filesystem with one which wraps newly created files with
+		// vfs.NewSyncingFile.
+		fs := vfs.NewSyncingFS(p.st.FS, vfs.SyncingFileOptions{
+			NoSyncOnClose: p.st.NoSyncOnClose,
+			BytesPerSync:  p.st.BytesPerSync,
+		})
+		return vfs.LinkOrCopy(fs, srcFilePath, p.Path(dstFileType, dstFileNum))
+	}
+	// TODO(radu): for the copy case, we should use `p.Create` and do the copy ourselves.
+	panic("unimplemented")
+}

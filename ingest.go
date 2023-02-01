@@ -13,8 +13,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/vfs"
 )
 
 func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
@@ -252,11 +252,10 @@ func ingestSortAndVerify(cmp Compare, meta []*fileMetadata, paths []string) erro
 	return nil
 }
 
-func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
+func ingestCleanup(objProvider *objstorage.Provider, meta []*fileMetadata) error {
 	var firstErr error
 	for i := range meta {
-		target := base.MakeFilepath(fs, dirname, fileTypeTable, meta[i].FileNum)
-		if err := fs.Remove(target); err != nil {
+		if err := objProvider.Remove(fileTypeTable, meta[i].FileNum); err != nil {
 			firstErr = firstError(firstErr, err)
 		}
 	}
@@ -264,22 +263,12 @@ func ingestCleanup(fs vfs.FS, dirname string, meta []*fileMetadata) error {
 }
 
 func ingestLink(
-	jobID int, opts *Options, dirname string, paths []string, meta []*fileMetadata,
+	jobID int, opts *Options, objProvider *objstorage.Provider, paths []string, meta []*fileMetadata,
 ) error {
-	// Wrap the normal filesystem with one which wraps newly created files with
-	// vfs.NewSyncingFile.
-	fs := syncingFS{
-		FS: opts.FS,
-		syncOpts: vfs.SyncingFileOptions{
-			NoSyncOnClose: opts.NoSyncOnClose,
-			BytesPerSync:  opts.BytesPerSync,
-		},
-	}
-
 	for i := range paths {
-		target := base.MakeFilepath(fs, dirname, fileTypeTable, meta[i].FileNum)
-		if err := vfs.LinkOrCopy(fs, paths[i], target); err != nil {
-			if err2 := ingestCleanup(fs, dirname, meta[:i]); err2 != nil {
+		err := objProvider.LinkOrCopyFromLocal(opts.FS, paths[i], fileTypeTable, meta[i].FileNum)
+		if err != nil {
+			if err2 := ingestCleanup(objProvider, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
 			}
 			return err
@@ -288,7 +277,7 @@ func ingestLink(
 			opts.EventListener.TableCreated(TableCreateInfo{
 				JobID:   jobID,
 				Reason:  "ingesting",
-				Path:    target,
+				Path:    objProvider.Path(fileTypeTable, meta[i].FileNum),
 				FileNum: meta[i].FileNum,
 			})
 		}
@@ -718,7 +707,7 @@ func (d *DB) ingest(
 	// (e.g. because the files reside on a different filesystem), ingestLink will
 	// fall back to copying, and if that fails we undo our work and return an
 	// error.
-	if err := ingestLink(jobID, d.opts, d.dirname, paths, meta); err != nil {
+	if err := ingestLink(jobID, d.opts, d.objProvider, paths, meta); err != nil {
 		return IngestOperationStats{}, err
 	}
 	// Fsync the directory we added the tables to. We need to do this at some
@@ -785,7 +774,7 @@ func (d *DB) ingest(
 	d.commit.AllocateSeqNum(len(meta), prepare, apply)
 
 	if err != nil {
-		if err2 := ingestCleanup(d.opts.FS, d.dirname, meta); err2 != nil {
+		if err2 := ingestCleanup(d.objProvider, meta); err2 != nil {
 			d.opts.Logger.Infof("ingest cleanup failed: %v", err2)
 		}
 	} else {

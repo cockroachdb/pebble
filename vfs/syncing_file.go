@@ -186,3 +186,27 @@ func (f *syncingFile) Close() error {
 	}
 	return errors.WithStack(f.File.Close())
 }
+
+// NewSyncingFS wraps a vfs.FS with one that wraps newly created files with
+// vfs.NewSyncingFile.
+func NewSyncingFS(fs FS, syncOpts SyncingFileOptions) FS {
+	return &syncingFS{
+		FS:       fs,
+		syncOpts: syncOpts,
+	}
+}
+
+type syncingFS struct {
+	FS
+	syncOpts SyncingFileOptions
+}
+
+var _ FS = (*syncingFS)(nil)
+
+func (fs *syncingFS) Create(name string) (File, error) {
+	f, err := fs.FS.Create(name)
+	if err != nil {
+		return nil, err
+	}
+	return NewSyncingFile(f, fs.syncOpts), nil
+}
