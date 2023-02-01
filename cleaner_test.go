@@ -30,7 +30,6 @@ func TestArchiveCleaner(t *testing.T) {
 		FS:      loggingFS{mem, &buf},
 		WALDir:  "wal",
 	}
-	opts.private.waitForCleaningAfterFlush = true
 
 	datadriven.RunTest(t, "testdata/cleaner", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -69,7 +68,6 @@ func TestArchiveCleaner(t *testing.T) {
 			if err := d.Flush(); err != nil {
 				return err.Error()
 			}
-			d.TestOnlyWaitForCleaning()
 			return buf.String()
 
 		case "list":
