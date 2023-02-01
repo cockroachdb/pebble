@@ -7,6 +7,7 @@ package objstorage
 import (
 	"io"
 
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -77,6 +78,10 @@ type Settings struct {
 	// Local filesystem configuration.
 	FS        vfs.FS
 	FSDirName string
+	// Cleaner cleans obsolete files from the local filesystem.
+	//
+	// The default cleaner uses the DeleteCleaner.
+	FSCleaner base.Cleaner
 
 	// NoSyncOnClose decides whether the implementation will enforce a
 	// close-time synchronization (e.g., fdatasync() or sync_file_range())
@@ -97,6 +102,7 @@ func DefaultSettings(fs vfs.FS, dirName string) Settings {
 		Logger:        base.DefaultLogger,
 		FS:            fs,
 		FSDirName:     dirName,
+		FSCleaner:     base.DeleteCleaner{},
 		NoSyncOnClose: false,
 		BytesPerSync:  512 * 1024, // 512KB
 	}
@@ -160,7 +166,13 @@ func (p *Provider) Create(fileType base.FileType, fileNum base.FileNum) (Writabl
 
 // Remove removes an object.
 func (p *Provider) Remove(fileType base.FileType, fileNum base.FileNum) error {
-	return p.st.FS.Remove(p.Path(fileType, fileNum))
+	return p.st.FSCleaner.Clean(p.st.FS, fileType, p.Path(fileType, fileNum))
+}
+
+// IsNotExistError indicates whether the error is known to report that a file or
+// directory does not exist.
+func IsNotExistError(err error) bool {
+	return oserror.IsNotExist(err)
 }
 
 // LinkOrCopyFromLocal creates a new object that is either a copy of a given
