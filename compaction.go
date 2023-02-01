@@ -1724,7 +1724,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 			info.Err = err
 			// TODO(peter): untested.
 			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
-			d.mu.versions.incrementObsoleteTablesLocked(pendingOutputs)
+			d.mu.versions.updateObsoleteTableMetricsLocked()
 		}
 	}
 
@@ -2207,7 +2207,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		if err != nil {
 			// TODO(peter): untested.
 			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
-			d.mu.versions.incrementObsoleteTablesLocked(pendingOutputs)
+			d.mu.versions.updateObsoleteTableMetricsLocked()
 		}
 	}
 
@@ -2953,9 +2953,9 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	}
 
 	d.mu.log.queue = merge(d.mu.log.queue, obsoleteLogs)
-	d.mu.versions.metrics.WAL.Files += int64(len(obsoleteLogs))
+	d.mu.versions.metrics.WAL.Files = int64(len(d.mu.log.queue))
 	d.mu.versions.obsoleteTables = mergeFileMetas(d.mu.versions.obsoleteTables, obsoleteTables)
-	d.mu.versions.incrementObsoleteTablesLocked(obsoleteTables)
+	d.mu.versions.updateObsoleteTableMetricsLocked()
 	d.mu.versions.obsoleteManifests = merge(d.mu.versions.obsoleteManifests, obsoleteManifests)
 	d.mu.versions.obsoleteOptions = merge(d.mu.versions.obsoleteOptions, obsoleteOptions)
 }
