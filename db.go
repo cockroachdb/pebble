@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -266,6 +267,9 @@ type DB struct {
 	optionsFileNum FileNum
 	// The on-disk size of the current OPTIONS file.
 	optionsFileSize uint64
+
+	// objProvider is used to access and manage SSTs.
+	objProvider *objstorage.Provider
 
 	fileLock io.Closer
 	dataDir  vfs.File

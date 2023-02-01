@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rate"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/prometheus/client_golang/prometheus"
@@ -65,6 +66,14 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		opts.Cache.Ref()
 	}
 
+	objProvider := objstorage.New(objstorage.Settings{
+		Logger:        opts.Logger,
+		FS:            opts.FS,
+		FSDirName:     dirname,
+		NoSyncOnClose: opts.NoSyncOnClose,
+		BytesPerSync:  opts.BytesPerSync,
+	})
+
 	d := &DB{
 		cacheID:             opts.Cache.NewID(),
 		dirname:             dirname,
@@ -76,6 +85,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		split:               opts.Comparer.Split,
 		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
 		largeBatchThreshold: (opts.MemTableSize - int(memTableEmptySize)) / 2,
+		objProvider:         objProvider,
 		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
 		closed:              new(atomic.Value),
 		closedCh:            make(chan struct{}),
@@ -114,7 +124,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}()
 
 	tableCacheSize := TableCacheSize(opts.MaxOpenFiles)
-	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, dirname, opts.FS, d.opts, tableCacheSize)
+	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, objProvider, d.opts, tableCacheSize)
 	d.newIters = d.tableCache.newIters
 	d.tableNewRangeKeyIter = d.tableCache.newRangeKeyIter
 

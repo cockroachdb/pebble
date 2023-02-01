@@ -72,6 +72,8 @@ type Writable interface {
 
 // Settings that must be specified when creating the Provider.
 type Settings struct {
+	Logger base.Logger
+
 	// Local filesystem configuration.
 	FS        vfs.FS
 	FSDirName string
@@ -92,6 +94,7 @@ type Settings struct {
 // DefaultSettings initializes default settings, suitable for tests and tools.
 func DefaultSettings(fs vfs.FS, dirName string) Settings {
 	return Settings{
+		Logger:        base.DefaultLogger,
 		FS:            fs,
 		FSDirName:     dirName,
 		NoSyncOnClose: false,
@@ -126,6 +129,20 @@ func (p *Provider) OpenForReading(fileType base.FileType, fileNum base.FileNum) 
 		return newFileReadable(file, p.st.FS, filename)
 	}
 	return newGenericFileReadable(file)
+}
+
+// OpenForReadingMustExist is a variant of OpenForReading which causes a fatal
+// error if the file does not exist. The fatal error message contains
+// information helpful for debugging.
+func (p *Provider) OpenForReadingMustExist(
+	fileType base.FileType, fileNum base.FileNum,
+) (Readable, error) {
+	r, err := p.OpenForReading(fileType, fileNum)
+	if err != nil {
+		filename := p.Path(fileType, fileNum)
+		base.MustExist(p.st.FS, filename, p.st.Logger, err)
+	}
+	return r, err
 }
 
 // Create creates a new object and opens it for writing.
