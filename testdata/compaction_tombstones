@@ -167,15 +167,15 @@ close-snapshot
 # automatic compaction compacts before we've closen the snapshot.
 define snapshots=(103) level-max-bytes=(L5 : 1000) auto-compactions=off
 L5
-b.SET.200:<largeval> bb.SET.203:<largeval> cc.SET.204:<largeval>
+b.SET.200:<rand-bytes=4096> bb.SET.203:<rand-bytes=4096> cc.SET.204:<rand-bytes=4096>
 L5
-d.SET.302:<largeval> dd.SET.303:<largeval> de.SET.303:<largeval>
+d.SET.302:<rand-bytes=4096> dd.SET.303:<rand-bytes=4096> de.SET.303:<rand-bytes=4096>
 L5
-m.SET.320:<largeval> n.SET.330:<largeval> o.SET.340:<largeval>
+m.SET.320:<rand-bytes=4096> n.SET.330:<rand-bytes=4096> o.SET.340:<rand-bytes=4096>
 L6
-a.SET.55:<largeval> b.SET.100:<largeval> c.SET.101:<largeval> d.SET.102:<largeval> a.RANGEDEL.103:e
+a.SET.55:<rand-bytes=4096> b.SET.100:<rand-bytes=4096> c.SET.101:<rand-bytes=4096> d.SET.102:<rand-bytes=4096> a.RANGEDEL.103:e
 L6
-f.SET.30:<largeval> z.SET.31:<largeval>
+f.SET.30:<rand-bytes=4096> z.SET.31:<rand-bytes=4096>
 ----
 5:
   000004:[b#200,SET-cc#204,SET]
@@ -214,11 +214,11 @@ define level-max-bytes=(L5 : 1000) auto-compactions=off
 L5
 a.DEL.101: b.DEL.102: c.DEL.103:
 L5
-m.SET.107:<largeval>
+m.SET.107:<rand-bytes=4096>
 L6
-a.SET.001:<largeval> b.SET.002:<largeval> c.SET.003:<largeval>
+a.SET.001:<rand-bytes=4096> b.SET.002:<rand-bytes=4096> c.SET.003:<rand-bytes=4096>
 L6
-f.SET.007:<largeval> x.SET.008:<largeval> z.SET.009:<largeval>
+f.SET.007:<rand-bytes=4096> x.SET.008:<rand-bytes=4096> z.SET.009:<rand-bytes=4096>
 ----
 5:
   000004:[a#101,DEL-c#103,DEL]
@@ -342,9 +342,9 @@ a.DEL.101: b.SET.102:
 L5
 e.RANGEDEL.107:f f.SET.108:
 L6
-a.SET.001:<largeval> b.SET.002:<largeval> c.SET.003:<largeval>
+a.SET.001:<rand-bytes=4096> b.SET.002:<rand-bytes=4096> c.SET.003:<rand-bytes=4096>
 L6
-e.SET.007:<largeval> f.SET.008:<largeval> g.SET.009:<largeval>
+e.SET.007:<rand-bytes=4096> f.SET.008:<rand-bytes=4096> g.SET.009:<rand-bytes=4096>
 ----
 5:
   000004:[a#101,DEL-b#102,SET]
@@ -385,9 +385,9 @@ a.DEL.101: b.SET.102:
 L5
 e.RANGEDEL.107:f f.SET.108:
 L6
-a.SET.001:<largeval> b.SET.002:<largeval> c.SET.003:<largeval>
+a.SET.001:<rand-bytes=4096> b.SET.002:<rand-bytes=4096> c.SET.003:<rand-bytes=4096>
 L6
-e.SET.007:<largeval> f.SET.008:<largeval> g.SET.009:<largeval>
+e.SET.007:<rand-bytes=4096> f.SET.008:<rand-bytes=4096> g.SET.009:<rand-bytes=4096>
 ----
 5:
   000004:[a#101,DEL-b#102,SET]
