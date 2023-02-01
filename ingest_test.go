@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -290,6 +291,7 @@ func TestIngestLink(t *testing.T) {
 			opts := &Options{FS: mem}
 			opts.EnsureDefaults()
 			require.NoError(t, mem.MkdirAll(dir, 0755))
+			objProvider := objstorage.New(objstorage.DefaultSettings(mem, dir))
 
 			paths := make([]string, 10)
 			meta := make([]*fileMetadata, len(paths))
@@ -313,7 +315,7 @@ func TestIngestLink(t *testing.T) {
 				mem.Remove(paths[i])
 			}
 
-			err := ingestLink(0 /* jobID */, opts, dir, paths, meta)
+			err := ingestLink(0 /* jobID */, opts, objProvider, paths, meta)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")
@@ -371,9 +373,10 @@ func TestIngestLinkFallback(t *testing.T) {
 
 	opts := &Options{FS: errorfs.Wrap(mem, errorfs.OnIndex(0))}
 	opts.EnsureDefaults()
+	objProvider := objstorage.New(objstorage.DefaultSettings(opts.FS, ""))
 
 	meta := []*fileMetadata{{FileNum: 1}}
-	require.NoError(t, ingestLink(0, opts, "", []string{"source"}, meta))
+	require.NoError(t, ingestLink(0, opts, objProvider, []string{"source"}, meta))
 
 	dest, err := mem.Open("000001.sst")
 	require.NoError(t, err)
@@ -1497,6 +1500,7 @@ func TestIngestCleanup(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			mem := vfs.NewMem()
 			mem.UseWindowsSemantics(true)
+			objProvider := objstorage.New(objstorage.DefaultSettings(mem, ""))
 
 			// Create the files in the VFS.
 			metaMap := make(map[base.FileNum]vfs.File)
@@ -1522,7 +1526,7 @@ func TestIngestCleanup(t *testing.T) {
 				toRemove = append(toRemove, &fileMetadata{FileNum: fn})
 			}
 
-			err := ingestCleanup(mem, "", toRemove)
+			err := ingestCleanup(objProvider, toRemove)
 			if tc.wantErr != nil {
 				require.Equal(t, tc.wantErr, err)
 			} else {
