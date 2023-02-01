@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
@@ -1068,27 +1069,63 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 	return "(not found)"
 }
 
-func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {
-	var timestamps []int
-	var maxKeyLength int
-	td.ScanArgs(t, "keylen", &maxKeyLength)
-	for _, cmdArg := range td.CmdArgs {
-		if cmdArg.Key != "timestamps" {
+func runTableFileSizesCmd(td *datadriven.TestData, d *DB) string {
+	var buf bytes.Buffer
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	v := d.mu.versions.currentVersion()
+	for l, levelMetadata := range v.Levels {
+		if levelMetadata.Empty() {
 			continue
 		}
-		for _, timestampVal := range cmdArg.Vals {
-			v, err := strconv.Atoi(timestampVal)
+		fmt.Fprintf(&buf, "L%d:\n", l)
+		iter := levelMetadata.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			fmt.Fprintf(&buf, "  %s: %d bytes (%s)\n", f, f.Size, humanize.IEC.Uint64(f.Size))
+		}
+	}
+	return buf.String()
+}
+
+func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {
+	var maxKeyLength int
+	td.ScanArgs(t, "keylen", &maxKeyLength)
+	timestamps := []int{1}
+	valLength := 0
+	for _, cmdArg := range td.CmdArgs {
+		switch cmdArg.Key {
+		case "timestamps":
+			timestamps = timestamps[:0]
+			for _, timestampVal := range cmdArg.Vals {
+				v, err := strconv.Atoi(timestampVal)
+				require.NoError(t, err)
+				timestamps = append(timestamps, v)
+			}
+		case "vallen":
+			v, err := strconv.Atoi(cmdArg.Vals[0])
 			require.NoError(t, err)
-			timestamps = append(timestamps, v)
+			valLength = v
+		default:
+			continue
 		}
 	}
 
 	ks := testkeys.Alpha(maxKeyLength)
 	buf := make([]byte, ks.MaxLen()+testkeys.MaxSuffixLen)
+	vbuf := make([]byte, valLength)
 	for i := 0; i < ks.Count(); i++ {
 		for _, ts := range timestamps {
 			n := testkeys.WriteKeyAt(buf, ks, i, ts)
-			require.NoError(t, b.Set(buf[:n], buf[:n], nil))
+
+			// Default to using the key as the value, but if the user provided
+			// the vallen argument, generate a random value of the specified
+			// length.
+			value := buf[:n]
+			if valLength > 0 {
+				rand.Read(vbuf)
+				value = vbuf
+			}
+			require.NoError(t, b.Set(buf[:n], value, nil))
 		}
 	}
 }
