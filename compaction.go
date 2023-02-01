@@ -1748,7 +1748,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	info.TotalDuration = d.timeNow().Sub(startTime)
 	d.opts.EventListener.FlushEnd(info)
 
-	d.deleteObsoleteFiles(jobID, d.opts.private.waitForCleaningAfterFlush)
+	d.deleteObsoleteFiles(jobID, false /* waitForOngoing */)
 
 	// Mark all the memtables we flushed as flushed. Note that we do this last so
 	// that a synchronous call to DB.Flush() will not return until the deletion
