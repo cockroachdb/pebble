@@ -74,6 +74,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		Logger:        opts.Logger,
 		FS:            opts.FS,
 		FSDirName:     dirname,
+		FSCleaner:     opts.Cleaner,
 		NoSyncOnClose: opts.NoSyncOnClose,
 		BytesPerSync:  opts.BytesPerSync,
 	})

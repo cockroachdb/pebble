@@ -3176,9 +3176,9 @@ func (d *DB) releaseCleaningTurn() {
 	d.mu.cleaner.cond.Broadcast()
 }
 
-// deleteObsoleteFiles deletes those files that are no longer needed. If
-// waitForOngoing is true, it waits for any ongoing cleaning turns to complete,
-// and if false, it returns rightaway if a cleaning turn is ongoing.
+// deleteObsoleteFiles deletes those files and objects that are no longer
+// needed. If waitForOngoing is true, it waits for any ongoing cleaning turns to
+// complete, and if false, it returns rightaway if a cleaning turn is ongoing.
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
@@ -3326,8 +3326,10 @@ func (d *DB) paceAndDeleteObsoleteFiles(jobID int, files []obsoleteFile) {
 			d.mu.versions.metrics.Table.ObsoleteCount--
 			d.mu.versions.metrics.Table.ObsoleteSize -= of.fileSize
 			d.mu.Unlock()
+			d.deleteObsoleteObject(fileTypeTable, jobID, of.fileNum)
+		} else {
+			d.deleteObsoleteFile(of.fileType, jobID, path, of.fileNum)
 		}
-		d.deleteObsoleteFile(of.fileType, jobID, path, of.fileNum)
 	}
 }
 
@@ -3355,7 +3357,29 @@ func (d *DB) maybeScheduleObsoleteTableDeletion() {
 	}()
 }
 
-// deleteObsoleteFile deletes file that is no longer needed.
+func (d *DB) deleteObsoleteObject(fileType fileType, jobID int, fileNum FileNum) {
+	if fileType != fileTypeTable {
+		panic("not an object")
+	}
+
+	path := d.objProvider.Path(fileType, fileNum)
+	err := d.objProvider.Remove(fileType, fileNum)
+	if objstorage.IsNotExistError(err) {
+		return
+	}
+
+	switch fileType {
+	case fileTypeTable:
+		d.opts.EventListener.TableDeleted(TableDeleteInfo{
+			JobID:   jobID,
+			Path:    path,
+			FileNum: fileNum,
+			Err:     err,
+		})
+	}
+}
+
+// deleteObsoleteFile deletes a (non-object) file that is no longer needed.
 func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileNum FileNum) {
 	// TODO(peter): need to handle this error, probably by re-adding the
 	// file that couldn't be deleted to one of the obsolete slices map.
@@ -3380,12 +3404,7 @@ func (d *DB) deleteObsoleteFile(fileType fileType, jobID int, path string, fileN
 			Err:     err,
 		})
 	case fileTypeTable:
-		d.opts.EventListener.TableDeleted(TableDeleteInfo{
-			JobID:   jobID,
-			Path:    path,
-			FileNum: fileNum,
-			Err:     err,
-		})
+		panic("invalid deletion of object file")
 	}
 }
 
