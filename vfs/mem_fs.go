@@ -698,9 +698,8 @@ func (f *memFile) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (f *memFile) Preallocate(offset, length int64) error {
-	return nil
-}
+func (f *memFile) Prefetch(offset int64, length int64) error { return nil }
+func (f *memFile) Preallocate(offset, length int64) error    { return nil }
 
 func (f *memFile) Stat() (os.FileInfo, error) {
 	return f.n, nil

@@ -37,6 +37,10 @@ func (m mockFile) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+func (m mockFile) Prefetch(offset, length int64) error {
+	panic("unimplemented")
+}
+
 func (m mockFile) Preallocate(int64, int64) error {
 	time.Sleep(m.syncAndWriteDuration)
 	return nil
