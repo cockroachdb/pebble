@@ -1125,8 +1125,8 @@ compact g-z
   000009:[b#2,SET-b#2,SET]
 6:
   000006:[a#1,SET-g#inf,RANGEDEL]
-  000049:[h#0,SET-k#0,SET]
-  000050:[m#0,SET-y#0,SET]
+  000048:[h#0,SET-k#0,SET]
+  000049:[m#0,SET-y#0,SET]
 
 batch
 set t t
@@ -1136,11 +1136,11 @@ flush
 ----
 0.0:
   000009:[b#2,SET-b#2,SET]
-  000052:[t#10,SET-t#10,SET]
+  000051:[t#10,SET-t#10,SET]
 6:
   000006:[a#1,SET-g#inf,RANGEDEL]
-  000049:[h#0,SET-k#0,SET]
-  000050:[m#0,SET-y#0,SET]
+  000048:[h#0,SET-k#0,SET]
+  000049:[m#0,SET-y#0,SET]
 
 # Compact everything. The batch-committed keys with zeroed sequence numbers (eg,
 # h, i, j, k, m, q, y) should all still exist because the a-z tombstone in
@@ -1149,9 +1149,9 @@ flush
 compact a-z
 ----
 6:
-  000063:[a#0,SET-i#0,SET]
-  000064:[j#0,SET-q#0,SET]
-  000065:[t#0,SET-y#0,SET]
+  000062:[a#0,SET-i#0,SET]
+  000063:[j#0,SET-q#0,SET]
+  000064:[t#0,SET-y#0,SET]
 
 iter
 first
