@@ -764,12 +764,12 @@ func (vs *versionSet) addObsoleteLocked(obsolete []*manifest.FileMetadata) {
 		}
 	}
 	vs.obsoleteTables = append(vs.obsoleteTables, obsolete...)
-	vs.incrementObsoleteTablesLocked(obsolete)
+	vs.updateObsoleteTableMetricsLocked()
 }
 
-func (vs *versionSet) incrementObsoleteTablesLocked(obsolete []*manifest.FileMetadata) {
-	for _, fileMeta := range obsolete {
-		vs.metrics.Table.ObsoleteCount++
+func (vs *versionSet) updateObsoleteTableMetricsLocked() {
+	vs.metrics.Table.ObsoleteCount = int64(len(vs.obsoleteTables))
+	for _, fileMeta := range vs.obsoleteTables {
 		vs.metrics.Table.ObsoleteSize += fileMeta.Size
 	}
 }
