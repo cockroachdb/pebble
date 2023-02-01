@@ -1,0 +1,344 @@
+# Test the file-size grandparent boundary alignment heuristic. This test sets up
+# L3 with a file at each of 'a', 'b', ..., 'z'. It also creates a single file in
+# L2 spanning a-z. Then, it commits, flushes and compacts into L1 keys 'a@1',
+# 'aa@1', 'ab@1', ..., 'zz@1'. Finally, it tests compacting L1 into L2.
+#
+# With L3 as the grandparent level, the alignment heuristic should attempt to
+# align the output files with grandparent's boundaries. Each output file should
+# have a key range formed by the prefix of a single letter.
+
+define target-file-sizes=(5000, 5000, 5000, 5000)
+L2
+  a.SET.101:<rand-bytes=1000>
+  z.SET.102:<rand-bytes=1000>
+L3
+  a.SET.001:<rand-bytes=10000>
+L3
+  b.SET.002:<rand-bytes=10000>
+L3
+  c.SET.003:<rand-bytes=10000>
+L3
+  d.SET.004:<rand-bytes=10000>
+L3
+  e.SET.005:<rand-bytes=10000>
+L3
+  f.SET.006:<rand-bytes=10000>
+L3
+  g.SET.007:<rand-bytes=10000>
+L3
+  h.SET.008:<rand-bytes=10000>
+L3
+  i.SET.009:<rand-bytes=10000>
+L3
+  j.SET.010:<rand-bytes=10000>
+L3
+  k.SET.011:<rand-bytes=10000>
+L3
+  l.SET.012:<rand-bytes=10000>
+L3
+  m.SET.013:<rand-bytes=10000>
+L3
+  n.SET.014:<rand-bytes=10000>
+L3
+  o.SET.015:<rand-bytes=10000>
+L3
+  p.SET.016:<rand-bytes=10000>
+L3
+  q.SET.017:<rand-bytes=10000>
+L3
+  r.SET.018:<rand-bytes=10000>
+L3
+  s.SET.019:<rand-bytes=10000>
+L3
+  t.SET.020:<rand-bytes=10000>
+L3
+  u.SET.021:<rand-bytes=10000>
+L3
+  v.SET.022:<rand-bytes=10000>
+L3
+  w.SET.023:<rand-bytes=10000>
+L3
+  x.SET.024:<rand-bytes=10000>
+L3
+  y.SET.025:<rand-bytes=10000>
+L3
+  z.SET.026:<rand-bytes=10000>
+----
+2:
+  000004:[a#101,SET-z#102,SET]
+3:
+  000005:[a#1,SET-a#1,SET]
+  000006:[b#2,SET-b#2,SET]
+  000007:[c#3,SET-c#3,SET]
+  000008:[d#4,SET-d#4,SET]
+  000009:[e#5,SET-e#5,SET]
+  000010:[f#6,SET-f#6,SET]
+  000011:[g#7,SET-g#7,SET]
+  000012:[h#8,SET-h#8,SET]
+  000013:[i#9,SET-i#9,SET]
+  000014:[j#10,SET-j#10,SET]
+  000015:[k#11,SET-k#11,SET]
+  000016:[l#12,SET-l#12,SET]
+  000017:[m#13,SET-m#13,SET]
+  000018:[n#14,SET-n#14,SET]
+  000019:[o#15,SET-o#15,SET]
+  000020:[p#16,SET-p#16,SET]
+  000021:[q#17,SET-q#17,SET]
+  000022:[r#18,SET-r#18,SET]
+  000023:[s#19,SET-s#19,SET]
+  000024:[t#20,SET-t#20,SET]
+  000025:[u#21,SET-u#21,SET]
+  000026:[v#22,SET-v#22,SET]
+  000027:[w#23,SET-w#23,SET]
+  000028:[x#24,SET-x#24,SET]
+  000029:[y#25,SET-y#25,SET]
+  000030:[z#26,SET-z#26,SET]
+
+populate keylen=2 vallen=200 timestamps=(1)
+----
+wrote 702 keys
+
+flush
+----
+0.0:
+  000033:[a@1#103,SET-aw@1#126,SET]
+  000034:[ax@1#127,SET-bt@1#150,SET]
+  000035:[bu@1#151,SET-cq@1#174,SET]
+  000036:[cr@1#175,SET-dn@1#198,SET]
+  000037:[do@1#199,SET-ek@1#222,SET]
+  000038:[el@1#223,SET-fh@1#246,SET]
+  000039:[fi@1#247,SET-ge@1#270,SET]
+  000040:[gf@1#271,SET-hb@1#294,SET]
+  000041:[hc@1#295,SET-hz@1#318,SET]
+  000042:[i@1#319,SET-iw@1#342,SET]
+  000043:[ix@1#343,SET-jt@1#366,SET]
+  000044:[ju@1#367,SET-kq@1#390,SET]
+  000045:[kr@1#391,SET-ln@1#414,SET]
+  000046:[lo@1#415,SET-mk@1#438,SET]
+  000047:[ml@1#439,SET-nh@1#462,SET]
+  000048:[ni@1#463,SET-oe@1#486,SET]
+  000049:[of@1#487,SET-pb@1#510,SET]
+  000050:[pc@1#511,SET-pz@1#534,SET]
+  000051:[q@1#535,SET-qw@1#558,SET]
+  000052:[qx@1#559,SET-rt@1#582,SET]
+  000053:[ru@1#583,SET-sq@1#606,SET]
+  000054:[sr@1#607,SET-tn@1#630,SET]
+  000055:[to@1#631,SET-uk@1#654,SET]
+  000056:[ul@1#655,SET-vh@1#678,SET]
+  000057:[vi@1#679,SET-we@1#702,SET]
+  000058:[wf@1#703,SET-xb@1#726,SET]
+  000059:[xc@1#727,SET-xz@1#750,SET]
+  000060:[y@1#751,SET-yw@1#774,SET]
+  000061:[yx@1#775,SET-zt@1#798,SET]
+  000062:[zu@1#799,SET-zz@1#804,SET]
+2:
+  000004:[a#101,SET-z#102,SET]
+3:
+  000005:[a#1,SET-a#1,SET]
+  000006:[b#2,SET-b#2,SET]
+  000007:[c#3,SET-c#3,SET]
+  000008:[d#4,SET-d#4,SET]
+  000009:[e#5,SET-e#5,SET]
+  000010:[f#6,SET-f#6,SET]
+  000011:[g#7,SET-g#7,SET]
+  000012:[h#8,SET-h#8,SET]
+  000013:[i#9,SET-i#9,SET]
+  000014:[j#10,SET-j#10,SET]
+  000015:[k#11,SET-k#11,SET]
+  000016:[l#12,SET-l#12,SET]
+  000017:[m#13,SET-m#13,SET]
+  000018:[n#14,SET-n#14,SET]
+  000019:[o#15,SET-o#15,SET]
+  000020:[p#16,SET-p#16,SET]
+  000021:[q#17,SET-q#17,SET]
+  000022:[r#18,SET-r#18,SET]
+  000023:[s#19,SET-s#19,SET]
+  000024:[t#20,SET-t#20,SET]
+  000025:[u#21,SET-u#21,SET]
+  000026:[v#22,SET-v#22,SET]
+  000027:[w#23,SET-w#23,SET]
+  000028:[x#24,SET-x#24,SET]
+  000029:[y#25,SET-y#25,SET]
+  000030:[z#26,SET-z#26,SET]
+
+compact a-zz L0
+----
+1:
+  000063:[a@1#103,SET-aw@1#126,SET]
+  000064:[ax@1#127,SET-bt@1#150,SET]
+  000065:[bu@1#151,SET-cq@1#174,SET]
+  000066:[cr@1#175,SET-dn@1#198,SET]
+  000067:[do@1#199,SET-ek@1#222,SET]
+  000068:[el@1#223,SET-fh@1#246,SET]
+  000069:[fi@1#247,SET-ge@1#270,SET]
+  000070:[gf@1#271,SET-hb@1#294,SET]
+  000071:[hc@1#295,SET-hz@1#318,SET]
+  000072:[i@1#319,SET-iw@1#342,SET]
+  000073:[ix@1#343,SET-jt@1#366,SET]
+  000074:[ju@1#367,SET-kq@1#390,SET]
+  000075:[kr@1#391,SET-ln@1#414,SET]
+  000076:[lo@1#415,SET-mk@1#438,SET]
+  000077:[ml@1#439,SET-nh@1#462,SET]
+  000078:[ni@1#463,SET-oe@1#486,SET]
+  000079:[of@1#487,SET-pb@1#510,SET]
+  000080:[pc@1#511,SET-pz@1#534,SET]
+  000081:[q@1#535,SET-qw@1#558,SET]
+  000082:[qx@1#559,SET-rt@1#582,SET]
+  000083:[ru@1#583,SET-sq@1#606,SET]
+  000084:[sr@1#607,SET-tn@1#630,SET]
+  000085:[to@1#631,SET-uk@1#654,SET]
+  000086:[ul@1#655,SET-vh@1#678,SET]
+  000087:[vi@1#679,SET-we@1#702,SET]
+  000088:[wf@1#703,SET-xb@1#726,SET]
+  000089:[xc@1#727,SET-xz@1#750,SET]
+  000090:[y@1#751,SET-yw@1#774,SET]
+  000091:[yx@1#775,SET-zt@1#798,SET]
+  000092:[zu@1#799,SET-zz@1#804,SET]
+2:
+  000004:[a#101,SET-z#102,SET]
+3:
+  000005:[a#1,SET-a#1,SET]
+  000006:[b#2,SET-b#2,SET]
+  000007:[c#3,SET-c#3,SET]
+  000008:[d#4,SET-d#4,SET]
+  000009:[e#5,SET-e#5,SET]
+  000010:[f#6,SET-f#6,SET]
+  000011:[g#7,SET-g#7,SET]
+  000012:[h#8,SET-h#8,SET]
+  000013:[i#9,SET-i#9,SET]
+  000014:[j#10,SET-j#10,SET]
+  000015:[k#11,SET-k#11,SET]
+  000016:[l#12,SET-l#12,SET]
+  000017:[m#13,SET-m#13,SET]
+  000018:[n#14,SET-n#14,SET]
+  000019:[o#15,SET-o#15,SET]
+  000020:[p#16,SET-p#16,SET]
+  000021:[q#17,SET-q#17,SET]
+  000022:[r#18,SET-r#18,SET]
+  000023:[s#19,SET-s#19,SET]
+  000024:[t#20,SET-t#20,SET]
+  000025:[u#21,SET-u#21,SET]
+  000026:[v#22,SET-v#22,SET]
+  000027:[w#23,SET-w#23,SET]
+  000028:[x#24,SET-x#24,SET]
+  000029:[y#25,SET-y#25,SET]
+  000030:[z#26,SET-z#26,SET]
+
+# Perform the actual test. Compacting L1 into L2 should use L3's boundaries to
+# inform compaction output splitting.
+#
+compact a-zz L1
+----
+2:
+  000093:[a#101,SET-az@1#129,SET]
+  000094:[b@1#130,SET-bz@1#156,SET]
+  000095:[c@1#157,SET-cz@1#183,SET]
+  000096:[d@1#184,SET-dz@1#210,SET]
+  000097:[e@1#211,SET-ez@1#237,SET]
+  000098:[f@1#238,SET-fz@1#264,SET]
+  000099:[g@1#265,SET-gz@1#291,SET]
+  000100:[h@1#292,SET-hz@1#318,SET]
+  000101:[i@1#319,SET-iz@1#345,SET]
+  000102:[j@1#346,SET-jz@1#372,SET]
+  000103:[k@1#373,SET-kz@1#399,SET]
+  000104:[l@1#400,SET-lz@1#426,SET]
+  000105:[m@1#427,SET-mz@1#453,SET]
+  000106:[n@1#454,SET-nz@1#480,SET]
+  000107:[o@1#481,SET-oz@1#507,SET]
+  000108:[p@1#508,SET-pz@1#534,SET]
+  000109:[q@1#535,SET-qz@1#561,SET]
+  000110:[r@1#562,SET-rz@1#588,SET]
+  000111:[s@1#589,SET-sz@1#615,SET]
+  000112:[t@1#616,SET-tz@1#642,SET]
+  000113:[u@1#643,SET-uz@1#669,SET]
+  000114:[v@1#670,SET-vz@1#696,SET]
+  000115:[w@1#697,SET-wz@1#723,SET]
+  000116:[x@1#724,SET-xz@1#750,SET]
+  000117:[y@1#751,SET-yz@1#777,SET]
+  000118:[z#102,SET-zr@1#796,SET]
+  000119:[zs@1#797,SET-zz@1#804,SET]
+3:
+  000005:[a#1,SET-a#1,SET]
+  000006:[b#2,SET-b#2,SET]
+  000007:[c#3,SET-c#3,SET]
+  000008:[d#4,SET-d#4,SET]
+  000009:[e#5,SET-e#5,SET]
+  000010:[f#6,SET-f#6,SET]
+  000011:[g#7,SET-g#7,SET]
+  000012:[h#8,SET-h#8,SET]
+  000013:[i#9,SET-i#9,SET]
+  000014:[j#10,SET-j#10,SET]
+  000015:[k#11,SET-k#11,SET]
+  000016:[l#12,SET-l#12,SET]
+  000017:[m#13,SET-m#13,SET]
+  000018:[n#14,SET-n#14,SET]
+  000019:[o#15,SET-o#15,SET]
+  000020:[p#16,SET-p#16,SET]
+  000021:[q#17,SET-q#17,SET]
+  000022:[r#18,SET-r#18,SET]
+  000023:[s#19,SET-s#19,SET]
+  000024:[t#20,SET-t#20,SET]
+  000025:[u#21,SET-u#21,SET]
+  000026:[v#22,SET-v#22,SET]
+  000027:[w#23,SET-w#23,SET]
+  000028:[x#24,SET-x#24,SET]
+  000029:[y#25,SET-y#25,SET]
+  000030:[z#26,SET-z#26,SET]
+
+file-sizes
+----
+L2:
+  000093:[a#101,1-az@1#129,1]: 7609 bytes (7.4 K)
+  000094:[b@1#130,1-bz@1#156,1]: 6602 bytes (6.4 K)
+  000095:[c@1#157,1-cz@1#183,1]: 6602 bytes (6.4 K)
+  000096:[d@1#184,1-dz@1#210,1]: 6602 bytes (6.4 K)
+  000097:[e@1#211,1-ez@1#237,1]: 6602 bytes (6.4 K)
+  000098:[f@1#238,1-fz@1#264,1]: 6602 bytes (6.4 K)
+  000099:[g@1#265,1-gz@1#291,1]: 6602 bytes (6.4 K)
+  000100:[h@1#292,1-hz@1#318,1]: 6602 bytes (6.4 K)
+  000101:[i@1#319,1-iz@1#345,1]: 6602 bytes (6.4 K)
+  000102:[j@1#346,1-jz@1#372,1]: 6602 bytes (6.4 K)
+  000103:[k@1#373,1-kz@1#399,1]: 6602 bytes (6.4 K)
+  000104:[l@1#400,1-lz@1#426,1]: 6602 bytes (6.4 K)
+  000105:[m@1#427,1-mz@1#453,1]: 6602 bytes (6.4 K)
+  000106:[n@1#454,1-nz@1#480,1]: 6602 bytes (6.4 K)
+  000107:[o@1#481,1-oz@1#507,1]: 6602 bytes (6.4 K)
+  000108:[p@1#508,1-pz@1#534,1]: 6602 bytes (6.4 K)
+  000109:[q@1#535,1-qz@1#561,1]: 6601 bytes (6.4 K)
+  000110:[r@1#562,1-rz@1#588,1]: 6602 bytes (6.4 K)
+  000111:[s@1#589,1-sz@1#615,1]: 6602 bytes (6.4 K)
+  000112:[t@1#616,1-tz@1#642,1]: 6602 bytes (6.4 K)
+  000113:[u@1#643,1-uz@1#669,1]: 6602 bytes (6.4 K)
+  000114:[v@1#670,1-vz@1#696,1]: 6602 bytes (6.4 K)
+  000115:[w@1#697,1-wz@1#723,1]: 6602 bytes (6.4 K)
+  000116:[x@1#724,1-xz@1#750,1]: 6602 bytes (6.4 K)
+  000117:[y@1#751,1-yz@1#777,1]: 6602 bytes (6.4 K)
+  000118:[z#102,1-zr@1#796,1]: 5889 bytes (5.8 K)
+  000119:[zs@1#797,1-zz@1#804,1]: 2483 bytes (2.4 K)
+L3:
+  000005:[a#1,1-a#1,1]: 10775 bytes (10 K)
+  000006:[b#2,1-b#2,1]: 10775 bytes (10 K)
+  000007:[c#3,1-c#3,1]: 10775 bytes (10 K)
+  000008:[d#4,1-d#4,1]: 10775 bytes (10 K)
+  000009:[e#5,1-e#5,1]: 10775 bytes (10 K)
+  000010:[f#6,1-f#6,1]: 10775 bytes (10 K)
+  000011:[g#7,1-g#7,1]: 10775 bytes (10 K)
+  000012:[h#8,1-h#8,1]: 10775 bytes (10 K)
+  000013:[i#9,1-i#9,1]: 10775 bytes (10 K)
+  000014:[j#10,1-j#10,1]: 10775 bytes (10 K)
+  000015:[k#11,1-k#11,1]: 10775 bytes (10 K)
+  000016:[l#12,1-l#12,1]: 10775 bytes (10 K)
+  000017:[m#13,1-m#13,1]: 10775 bytes (10 K)
+  000018:[n#14,1-n#14,1]: 10775 bytes (10 K)
+  000019:[o#15,1-o#15,1]: 10775 bytes (10 K)
+  000020:[p#16,1-p#16,1]: 10775 bytes (10 K)
+  000021:[q#17,1-q#17,1]: 10775 bytes (10 K)
+  000022:[r#18,1-r#18,1]: 10775 bytes (10 K)
+  000023:[s#19,1-s#19,1]: 10775 bytes (10 K)
+  000024:[t#20,1-t#20,1]: 10775 bytes (10 K)
+  000025:[u#21,1-u#21,1]: 10775 bytes (10 K)
+  000026:[v#22,1-v#22,1]: 10775 bytes (10 K)
+  000027:[w#23,1-w#23,1]: 10775 bytes (10 K)
+  000028:[x#24,1-x#24,1]: 10775 bytes (10 K)
+  000029:[y#25,1-y#25,1]: 10775 bytes (10 K)
+  000030:[z#26,1-z#26,1]: 10775 bytes (10 K)
