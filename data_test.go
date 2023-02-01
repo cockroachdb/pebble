@@ -997,8 +997,9 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			key := base.ParseInternalKey(data[:i])
 			valueStr := data[i+1:]
 			value := []byte(valueStr)
-			if valueStr == "<largeval>" {
-				value = make([]byte, 4096)
+			var randBytes int
+			if n, err := fmt.Sscanf(valueStr, "<rand-bytes=%d>", &randBytes); err == nil && n == 1 {
+				value = make([]byte, randBytes)
 				rnd := rand.New(rand.NewSource(int64(key.SeqNum())))
 				if _, err := rnd.Read(value[:]); err != nil {
 					return nil, err
