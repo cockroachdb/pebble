@@ -1262,7 +1262,18 @@ func TestManualCompaction(t *testing.T) {
 		return FormatMajorVersion(int(min) + rng.Intn(int(max)-int(min)+1))
 	}
 
+	var compactionLog bytes.Buffer
+	compactionLogEventListener := &EventListener{
+		CompactionEnd: func(info CompactionInfo) {
+			// Ensure determinism.
+			info.JobID = 1
+			info.Duration = time.Second
+			info.TotalDuration = time.Second
+			fmt.Fprintln(&compactionLog, info.String())
+		},
+	}
 	reset := func(minVersion, maxVersion FormatMajorVersion) {
+		compactionLog.Reset()
 		if d != nil {
 			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
@@ -1271,11 +1282,12 @@ func TestManualCompaction(t *testing.T) {
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 
 		opts := (&Options{
-			FS:                 mem,
-			DebugCheck:         DebugCheckLevels,
-			FormatMajorVersion: randVersion(minVersion, maxVersion),
+			FS:                          mem,
+			DebugCheck:                  DebugCheckLevels,
+			DisableAutomaticCompactions: true,
+			EventListener:               compactionLogEventListener,
+			FormatMajorVersion:          randVersion(minVersion, maxVersion),
 		}).WithFSDefaults()
-		opts.DisableAutomaticCompactions = true
 
 		var err error
 		d, err = Open("", opts)
@@ -1371,6 +1383,7 @@ func TestManualCompaction(t *testing.T) {
 				opts := (&Options{
 					FS:                          mem,
 					DebugCheck:                  DebugCheckLevels,
+					EventListener:               compactionLogEventListener,
 					FormatMajorVersion:          randVersion(minVersion, maxVersion),
 					DisableAutomaticCompactions: true,
 				}).WithFSDefaults()
@@ -1385,6 +1398,9 @@ func TestManualCompaction(t *testing.T) {
 					s = d.mu.versions.currentVersion().DebugString(base.DefaultFormatter)
 				}
 				return s
+
+			case "file-sizes":
+				return runTableFileSizesCmd(td, d)
 
 			case "flush":
 				if err := d.Flush(); err != nil {
@@ -1420,6 +1436,16 @@ func TestManualCompaction(t *testing.T) {
 				}
 				iter := snap.NewIter(nil)
 				return runIterCmd(td, iter, true)
+
+			case "lsm":
+				return runLSMCmd(td, d)
+
+			case "populate":
+				b := d.NewBatch()
+				runPopulateCmd(t, td, b)
+				count := b.Count()
+				require.NoError(t, b.Commit(nil))
+				return fmt.Sprintf("wrote %d keys\n", count)
 
 			case "async-compact":
 				var s string
@@ -1525,6 +1551,11 @@ func TestManualCompaction(t *testing.T) {
 					}
 				}
 				return ""
+
+			case "compaction-log":
+				defer compactionLog.Reset()
+				return compactionLog.String()
+
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}
@@ -1562,6 +1593,11 @@ func TestManualCompaction(t *testing.T) {
 			minVersion: FormatRangeKeys,
 			maxVersion: FormatNewest,
 			verbose:    true,
+		},
+		{
+			testData:   "testdata/manual_compaction_file_boundaries",
+			minVersion: FormatMostCompatible,
+			maxVersion: FormatNewest,
 		},
 	}
 
