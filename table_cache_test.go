@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -190,8 +192,9 @@ func newTableCacheContainerTest(
 	} else {
 		opts.Cache = tc.cache
 	}
+	objProvider := objstorage.New(objstorage.DefaultSettings(fs, dirname))
 
-	c := newTableCacheContainer(tc, opts.Cache.NewID(), dirname, fs, opts, tableCacheTestCacheSize)
+	c := newTableCacheContainer(tc, opts.Cache.NewID(), objProvider, opts, tableCacheTestCacheSize)
 	return c, fs, nil
 }
 
@@ -884,8 +887,7 @@ func TestTableCacheClockPro(t *testing.T) {
 	dbOpts := &tableCacheOpts{}
 	dbOpts.logger = opts.Logger
 	dbOpts.cacheID = 0
-	dbOpts.dirname = ""
-	dbOpts.fs = mem
+	dbOpts.objProvider = objstorage.New(objstorage.DefaultSettings(mem, ""))
 	dbOpts.opts = opts.MakeReaderOptions()
 
 	scanner := bufio.NewScanner(f)
@@ -916,4 +918,56 @@ func TestTableCacheClockPro(t *testing.T) {
 		}
 		line++
 	}
+}
+
+// TestTableCacheNoSuchFileError verifies that when the table cache hits a "no
+// such file" error, it generates a useful fatal message.
+func TestTableCacheNoSuchFileError(t *testing.T) {
+	const dirname = "test"
+	mem := vfs.NewMem()
+	logger := &catchFatalLogger{}
+
+	d, err := Open(dirname, &Options{
+		FS:     mem,
+		Logger: logger,
+	})
+	require.NoError(t, err)
+	defer func() { _ = d.Close() }()
+	require.NoError(t, d.Set([]byte("a"), []byte("val_a"), nil))
+	require.NoError(t, d.Set([]byte("b"), []byte("val_b"), nil))
+	require.NoError(t, d.Flush())
+	ls, err := mem.List(dirname)
+	require.NoError(t, err)
+
+	// Find the sst file.
+	var sst string
+	for _, file := range ls {
+		if strings.HasSuffix(file, ".sst") {
+			if sst != "" {
+				t.Fatalf("multiple SSTs found: %s, %s", sst, file)
+			}
+			sst = file
+		}
+	}
+	if sst == "" {
+		t.Fatalf("no SST found after flush")
+	}
+	require.NoError(t, mem.Remove(path.Join(dirname, sst)))
+
+	_, _, _ = d.Get([]byte("a"))
+	require.NotZero(t, len(logger.fatalMsgs), "no fatal message emitted")
+	require.Equal(t, 1, len(logger.fatalMsgs), "expected one fatal message; got: %v", logger.fatalMsgs)
+	require.Contains(t, logger.fatalMsgs[0], "directory contains 6 files, 0 unknown, 0 tables, 2 logs, 1 manifests")
+}
+
+type catchFatalLogger struct {
+	fatalMsgs []string
+}
+
+var _ Logger = (*catchFatalLogger)(nil)
+
+func (tl *catchFatalLogger) Infof(format string, args ...interface{}) {}
+
+func (tl *catchFatalLogger) Fatalf(format string, args ...interface{}) {
+	tl.fatalMsgs = append(tl.fatalMsgs, fmt.Sprintf(format, args...))
 }
