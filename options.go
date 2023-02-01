@@ -845,6 +845,11 @@ type Options struct {
 		// against the FS are made after the DB is closed, the FS may leak a
 		// goroutine indefinitely.
 		fsCloser io.Closer
+
+		// waitForCleaningAfterFlush is used to ensure that the we wait
+		// synchronously for obsolete file deletion after a flush. This setting
+		// is useful for tests which force a flush.
+		waitForCleaningAfterFlush bool
 	}
 }
 
