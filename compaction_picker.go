@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"golang.org/x/exp/rand"
 )
 
 // The minimum count for an intra-L0 compaction. This matches the RocksDB
@@ -138,6 +139,12 @@ func generateSublevelInfo(cmp base.Compare, levelFiles manifest.LevelSlice) []su
 	return levelSlices
 }
 
+// compactionPickerMetrics holds metrics related to the compaction picking process
+type compactionPickerMetrics struct {
+	scores                []float64
+	counterCompactionInfo *CompactionInfo
+}
+
 // pickedCompaction contains information about a compaction that has already
 // been chosen, and is being constructed. Compaction construction info lives in
 // this struct, and is copied over into the compaction struct when that's
@@ -197,6 +204,8 @@ type pickedCompaction struct {
 	largest  InternalKey
 
 	version *version
+
+	pickerMetrics compactionPickerMetrics
 }
 
 func defaultOutputLevel(startLevel, baseLevel int) int {
@@ -1162,7 +1171,6 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 	}
 
 	scores := p.calculateScores(env.inProgressCompactions)
-
 	// TODO(peter): Either remove, or change this into an event sent to the
 	// EventListener.
 	logCompaction := func(pc *pickedCompaction) {
@@ -1232,6 +1240,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			// Fail-safe to protect against compacting the same sstable
 			// concurrently.
 			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
+				pc.pickerMetrics = p.makePickerMetrics(env, *pc, scores)
 				pc.score = info.score
 				// TODO(peter): remove
 				if false {
@@ -1248,10 +1257,10 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		if !ok {
 			continue
 		}
-
-		pc := pickAutoLPositive(env, p.opts, p.vers, *info, p.baseLevel, p.diskAvailBytes, p.levelMaxBytes)
+		pc := pickAutoLPositive(env, p.opts, p.vers, *info, p.baseLevel, p.diskAvailBytes)
 		// Fail-safe to protect against compacting the same sstable concurrently.
 		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
+			pc.pickerMetrics = p.makePickerMetrics(env, *pc, scores)
 			pc.score = info.score
 			// TODO(peter): remove
 			if false {
@@ -1311,6 +1320,63 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 	}
 
 	return nil
+}
+
+func (p *compactionPickerByScore) makePickerMetrics(
+	env compactionEnv, pc pickedCompaction, candInfo [7]candidateLevelInfo,
+) compactionPickerMetrics {
+	metrics := compactionPickerMetrics{}
+
+	// candInfo is sorted by score, not by compaction level.
+	infoByLevel := [7]candidateLevelInfo{}
+	for i := range candInfo {
+		level := candInfo[i].level
+		infoByLevel[level] = candInfo[i]
+	}
+	// Gather the compaction scores for the levels participating in the compaction.
+	metrics.scores = make([]float64, len(pc.inputs))
+	inputIdx := 0
+	for i := range infoByLevel {
+		if pc.inputs[inputIdx].level == infoByLevel[i].level {
+			metrics.scores[inputIdx] = infoByLevel[i].score
+			inputIdx++
+		}
+		if inputIdx == len(pc.inputs) {
+			break
+		}
+	}
+	metrics.counterCompactionInfo = p.getCounterFactualCompactionInfo(env, pc, infoByLevel)
+	return metrics
+}
+
+// getCounterFactualCompactionInfo generates information on what compaction would
+// have been picked from the intermediate level of the picked multilevel compaction.
+// This counterfactual compaction can be used to study the impact of the multilevel compaction
+// heuristic on LSM health. This counterfactual compaction is only generated with some
+// probability, as this function could impact the main db workload.
+func (p *compactionPickerByScore) getCounterFactualCompactionInfo(
+	env compactionEnv, pc pickedCompaction, infoByLevel [7]candidateLevelInfo,
+) *CompactionInfo {
+	if len(pc.extraLevels) == 0 ||
+		p.opts.Experimental.ExtraMultiLevelStatCollectionProbability < rand.Int31n(100) {
+		return nil
+	}
+	interLevel := pc.extraLevels[0].level
+	counterInfo := infoByLevel[interLevel]
+	counterFile, ok := p.pickFile(interLevel, interLevel+1, env.earliestSnapshotSeqNum)
+	if !ok {
+		return nil
+	}
+	counterInfo.file = counterFile
+	counterOpts := *p.opts
+	counterOpts.Experimental.MultiLevelCompactionHueristic = NoMultiLevel{}
+	counterPC := pickAutoLPositive(env, &counterOpts, p.vers, counterInfo, interLevel, p.diskAvailBytes)
+	if counterPC == nil {
+		return nil
+	}
+	counterC := newCompaction(counterPC, &counterOpts)
+	cInfo := counterC.makeInfo(0)
+	return &cInfo
 }
 
 // elisionOnlyAnnotator implements the manifest.Annotator interface,
@@ -1529,7 +1595,6 @@ func pickAutoLPositive(
 	cInfo candidateLevelInfo,
 	baseLevel int,
 	diskAvailBytes func() uint64,
-	levelMaxBytes [7]int64,
 ) (pc *pickedCompaction) {
 	if cInfo.level == 0 {
 		panic("pebble: pickAutoLPositive called for L0")

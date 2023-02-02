@@ -73,6 +73,8 @@ func newPebbleDB(dir string) DB {
 		},
 	}
 	opts.Experimental.MultiLevelCompactionHueristic = pebble.WriteAmpHeuristic{}
+	opts.Experimental.ExtraMultiLevelStatCollectionProbability = 50
+
 	for i := 0; i < len(opts.Levels); i++ {
 		l := &opts.Levels[i]
 		l.BlockSize = 32 << 10       // 32 KB

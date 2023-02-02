@@ -493,6 +493,8 @@ type compaction struct {
 	allowedZeroSeqNum bool
 
 	metrics map[int]*LevelMetrics
+
+	pickerMetrics compactionPickerMetrics
 }
 
 func (c *compaction) makeInfo(jobID int) CompactionInfo {
@@ -524,6 +526,11 @@ func (c *compaction) makeInfo(jobID int) CompactionInfo {
 		// semantic distinction.
 		info.Output.Level = numLevels - 1
 	}
+
+	for i, score := range c.pickerMetrics.scores {
+		info.Input[i].Score = score
+	}
+	info.CounterfactualInfo = c.pickerMetrics.counterCompactionInfo
 	return info
 }
 
@@ -543,6 +550,7 @@ func newCompaction(pc *pickedCompaction, opts *Options) *compaction {
 		maxOutputFileSize: pc.maxOutputFileSize,
 		maxOverlapBytes:   pc.maxOverlapBytes,
 		l0SublevelInfo:    pc.l0SublevelInfo,
+		pickerMetrics:     pc.pickerMetrics,
 	}
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
