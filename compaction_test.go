@@ -534,8 +534,7 @@ func TestPickCompaction(t *testing.T) {
 }
 
 func TestElideTombstone(t *testing.T) {
-	opts := &Options{}
-	opts.EnsureDefaults()
+	opts := (&Options{}).EnsureDefaults().WithFSDefaults()
 
 	newFileMeta := func(smallest, largest base.InternalKey) *fileMetadata {
 		m := (&fileMetadata{}).ExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
@@ -917,9 +916,7 @@ func (t *cpuPermissionGranter) CPUWorkDone(_ CPUWorkHandle) {
 // the acquired handles are returned.
 func TestCompactionCPUGranter(t *testing.T) {
 	mem := vfs.NewMem()
-	opts := &Options{
-		FS: mem,
-	}
+	opts := (&Options{FS: mem}).WithFSDefaults()
 	g := &cpuPermissionGranter{permit: true}
 	opts.Experimental.CPUWorkPermissionGranter = g
 	d, err := Open("", opts)
@@ -940,9 +937,7 @@ func TestCompactionCPUGranter(t *testing.T) {
 // Tests that there's no errors or panics when the default CPU granter is used.
 func TestCompactionCPUGranterDefault(t *testing.T) {
 	mem := vfs.NewMem()
-	opts := &Options{
-		FS: mem,
-	}
+	opts := (&Options{FS: mem}).WithFSDefaults()
 	d, err := Open("", opts)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -970,7 +965,7 @@ func TestCompaction(t *testing.T) {
 		DebugCheck:            DebugCheckLevels,
 		L0CompactionThreshold: 8,
 	}
-	opts.testingRandomized()
+	opts.testingRandomized().WithFSDefaults()
 	d, err := Open("", opts)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -1275,11 +1270,11 @@ func TestManualCompaction(t *testing.T) {
 		mem = vfs.NewMem()
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 
-		opts := &Options{
+		opts := (&Options{
 			FS:                 mem,
 			DebugCheck:         DebugCheckLevels,
 			FormatMajorVersion: randVersion(minVersion, maxVersion),
-		}
+		}).WithFSDefaults()
 		opts.DisableAutomaticCompactions = true
 
 		var err error
@@ -1373,12 +1368,12 @@ func TestManualCompaction(t *testing.T) {
 				}
 
 				mem = vfs.NewMem()
-				opts := &Options{
+				opts := (&Options{
 					FS:                          mem,
 					DebugCheck:                  DebugCheckLevels,
 					FormatMajorVersion:          randVersion(minVersion, maxVersion),
 					DisableAutomaticCompactions: true,
-				}
+				}).WithFSDefaults()
 
 				var err error
 				if d, err = runDBDefineCmd(td, opts); err != nil {
@@ -1905,7 +1900,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				return nil, err
 			}
 		}
-		opts := &Options{
+		opts := (&Options{
 			FS:         vfs.NewMem(),
 			DebugCheck: DebugCheckLevels,
 			EventListener: &EventListener{
@@ -1917,7 +1912,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				},
 			},
 			FormatMajorVersion: FormatNewest,
-		}
+		}).WithFSDefaults()
 
 		// Collection of table stats can trigger compactions. As we want full
 		// control over when compactions are run, disable stats by default.
@@ -2175,7 +2170,7 @@ func TestCompactionTombstones(t *testing.T) {
 						return err.Error()
 					}
 				}
-				opts := &Options{
+				opts := (&Options{
 					FS:         vfs.NewMem(),
 					DebugCheck: DebugCheckLevels,
 					EventListener: &EventListener{
@@ -2184,7 +2179,7 @@ func TestCompactionTombstones(t *testing.T) {
 						},
 					},
 					FormatMajorVersion: FormatNewest,
-				}
+				}).WithFSDefaults()
 				var err error
 				d, err = runDBDefineCmd(td, opts)
 				if err != nil {
@@ -2383,7 +2378,7 @@ func TestCompactionReadTriggered(t *testing.T) {
 						return err.Error()
 					}
 				}
-				opts := &Options{
+				opts := (&Options{
 					FS:         vfs.NewMem(),
 					DebugCheck: DebugCheckLevels,
 					EventListener: &EventListener{
@@ -2391,7 +2386,7 @@ func TestCompactionReadTriggered(t *testing.T) {
 							compactInfo = &info
 						},
 					},
-				}
+				}).WithFSDefaults()
 				var err error
 				d, err = runDBDefineCmd(td, opts)
 				if err != nil {
@@ -2853,7 +2848,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 
 	mem := vfs.NewMem()
 	ii := errorfs.OnIndex(math.MaxInt32) // start disabled
-	opts := &Options{
+	opts := (&Options{
 		FS:     errorfs.Wrap(mem, ii),
 		Levels: make([]LevelOptions, numLevels),
 		EventListener: &EventListener{
@@ -2871,7 +2866,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 				}
 			},
 		},
-	}
+	}).WithFSDefaults()
 	for i := range opts.Levels {
 		opts.Levels[i].TargetFileSize = 1
 	}
@@ -3157,7 +3152,7 @@ func TestFlushInvariant(t *testing.T) {
 							},
 						},
 						DebugCheck: DebugCheckLevels,
-					}))
+					}).WithFSDefaults())
 					require.NoError(t, err)
 
 					require.NoError(t, d.Set([]byte("hello"), nil, NoSync))
@@ -3208,7 +3203,7 @@ func TestCompactFlushQueuedMemTableAndFlushMetrics(t *testing.T) {
 	mem := vfs.NewMem()
 	d, err := Open("", testingRandomized(&Options{
 		FS: mem,
-	}))
+	}).WithFSDefaults())
 	require.NoError(t, err)
 
 	// Add the key "a" to the memtable, then fill up the memtable with the key
@@ -3267,7 +3262,7 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 	mem := vfs.NewMem()
 	d, err := Open("", testingRandomized(&Options{
 		FS: mem,
-	}))
+	}).WithFSDefaults())
 	require.NoError(t, err)
 
 	// The default large batch threshold is slightly less than 1/2 of the
@@ -3301,7 +3296,7 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 func TestCleanerCond(t *testing.T) {
 	d, err := Open("", testingRandomized(&Options{
 		FS: vfs.NewMem(),
-	}))
+	}).WithFSDefaults())
 	require.NoError(t, err)
 
 	for i := 0; i < 10; i++ {
@@ -3359,7 +3354,7 @@ func TestFlushError(t *testing.T) {
 				t.Log(err)
 			},
 		},
-	}))
+	}).WithFSDefaults())
 	require.NoError(t, err)
 	require.NoError(t, d.Set([]byte("a"), []byte("foo"), NoSync))
 	require.NoError(t, d.Flush())
@@ -3406,7 +3401,7 @@ func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
 func TestCompactionInvalidBounds(t *testing.T) {
 	db, err := Open("", testingRandomized(&Options{
 		FS: vfs.NewMem(),
-	}))
+	}).WithFSDefaults())
 	require.NoError(t, err)
 	defer db.Close()
 	require.NoError(t, db.Compact([]byte("a"), []byte("b"), false))
@@ -3654,7 +3649,7 @@ func TestMarkedForCompaction(t *testing.T) {
 	}()
 
 	var buf bytes.Buffer
-	opts := &Options{
+	opts := (&Options{
 		FS:                          mem,
 		DebugCheck:                  DebugCheckLevels,
 		DisableAutomaticCompactions: true,
@@ -3668,7 +3663,7 @@ func TestMarkedForCompaction(t *testing.T) {
 				fmt.Fprintln(&buf, info)
 			},
 		},
-	}
+	}).WithFSDefaults()
 
 	reset := func() {
 		if d != nil {
@@ -3836,7 +3831,7 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 		var db *DB
 		inj := &createManifestErrorInjector{}
 		logger := &fatalCapturingLogger{}
-		opts := &Options{
+		opts := (&Options{
 			FS: errorfs.Wrap(vfs.NewMem(), inj),
 			// Rotate the manifest after each write. This is required to trigger a
 			// file creation, into which errors can be injected.
@@ -3850,7 +3845,7 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 				},
 			},
 			DisableAutomaticCompactions: true,
-		}
+		}).WithFSDefaults()
 
 		db, err := Open("", opts)
 		require.NoError(t, err)

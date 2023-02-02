@@ -163,6 +163,8 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 			opts.FS = vfs.NewMem()
 		}
 	}
+	opts.WithFSDefaults()
+
 	threads := testOpts.threads
 	if *maxThreads < threads {
 		threads = *maxThreads

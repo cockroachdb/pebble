@@ -974,14 +974,7 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 
 	if o.FS == nil {
-		o.FS, o.private.fsCloser = vfs.WithDiskHealthChecks(vfs.Default, 5*time.Second,
-			func(name string, op vfs.OpType, duration time.Duration) {
-				o.EventListener.DiskSlow(DiskSlowInfo{
-					Path:     name,
-					OpType:   op,
-					Duration: duration,
-				})
-			})
+		o.WithFSDefaults()
 	}
 	if o.FlushSplitBytes <= 0 {
 		o.FlushSplitBytes = 2 * o.Levels[0].TargetFileSize
@@ -1010,6 +1003,23 @@ func (o *Options) EnsureDefaults() *Options {
 	}
 
 	o.initMaps()
+	return o
+}
+
+// WithFSDefaults configures the Options to wrap the configured filesystem with
+// the default virtual file system middleware, like disk-health checking.
+func (o *Options) WithFSDefaults() *Options {
+	if o.FS == nil {
+		o.FS = vfs.Default
+	}
+	o.FS, o.private.fsCloser = vfs.WithDiskHealthChecks(o.FS, 5*time.Second,
+		func(name string, op vfs.OpType, duration time.Duration) {
+			o.EventListener.DiskSlow(DiskSlowInfo{
+				Path:     name,
+				OpType:   op,
+				Duration: duration,
+			})
+		})
 	return o
 }
 
