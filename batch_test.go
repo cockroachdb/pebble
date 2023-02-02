@@ -51,11 +51,22 @@ func TestBatch(t *testing.T) {
 		}
 	}
 
+	encodeFileNum := func(n base.FileNum) string {
+		return string(binary.AppendUvarint(nil, uint64(n)))
+	}
+	decodeFileNum := func(d []byte) base.FileNum {
+		val, n := binary.Uvarint(d)
+		if n <= 0 {
+			t.Fatalf("invalid filenum encoding")
+		}
+		return base.FileNum(val)
+	}
+
 	// RangeKeySet and RangeKeyUnset are untested here because they don't expose
 	// deferred variants. This is a consequence of these keys' more complex
 	// value encodings.
 	testCases := []testCase{
-		{InternalKeyKindIngestSST, "1.sst", ""},
+		{InternalKeyKindIngestSST, encodeFileNum(1), ""},
 		{InternalKeyKindSet, "roses", "red"},
 		{InternalKeyKindSet, "violets", "blue"},
 		{InternalKeyKindDelete, "roses", ""},
@@ -99,7 +110,7 @@ func TestBatch(t *testing.T) {
 		case InternalKeyKindRangeKeyDelete:
 			_ = b.RangeKeyDelete([]byte(tc.key), []byte(tc.value), nil)
 		case InternalKeyKindIngestSST:
-			b.ingestSST([]byte(tc.key))
+			b.ingestSST(decodeFileNum([]byte(tc.key)))
 		}
 	}
 	verifyTestCases(&b, testCases)
@@ -139,7 +150,7 @@ func TestBatch(t *testing.T) {
 		case InternalKeyKindLogData:
 			_ = b.LogData([]byte(tc.key), nil)
 		case InternalKeyKindIngestSST:
-			b.ingestSST([]byte(tc.key))
+			b.ingestSST(decodeFileNum([]byte(tc.key)))
 		case InternalKeyKindRangeKeyDelete:
 			d := b.RangeKeyDeleteDeferred(len(key), len(value))
 			copy(d.Key, key)
@@ -154,9 +165,9 @@ func TestBatchIngestSST(t *testing.T) {
 	// Verify that Batch.IngestSST has the correct batch count and memtable
 	// size.
 	var b Batch
-	b.ingestSST([]byte("1.sst"))
+	b.ingestSST(1)
 	require.Equal(t, int(b.Count()), 1)
-	b.ingestSST([]byte("2.sst"))
+	b.ingestSST(2)
 	require.Equal(t, int(b.Count()), 2)
 	require.Equal(t, int(b.memTableSize), 0)
 	require.Equal(t, b.ingestedSSTBatch, true)
