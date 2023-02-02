@@ -263,31 +263,30 @@ func ingestCleanup(objProvider *objstorage.Provider, meta []*fileMetadata) error
 	return firstErr
 }
 
+// ingestLink creates new objects which are backed by either hardlinks to or
+// copies of the ingested files.
 func ingestLink(
 	jobID int, opts *Options, objProvider *objstorage.Provider, paths []string, meta []*fileMetadata,
-) ([]string, error) {
-	newPaths := make([]string, len(paths))
+) error {
 	for i := range paths {
-		target := objProvider.Path(fileTypeTable, meta[i].FileNum)
-		newPaths[i] = target
 		err := objProvider.LinkOrCopyFromLocal(opts.FS, paths[i], fileTypeTable, meta[i].FileNum)
 		if err != nil {
 			if err2 := ingestCleanup(objProvider, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
 			}
-			return nil, err
+			return err
 		}
 		if opts.EventListener.TableCreated != nil {
 			opts.EventListener.TableCreated(TableCreateInfo{
 				JobID:   jobID,
 				Reason:  "ingesting",
-				Path:    target,
+				Path:    objProvider.Path(fileTypeTable, meta[i].FileNum),
 				FileNum: meta[i].FileNum,
 			})
 		}
 	}
 
-	return newPaths, nil
+	return nil
 }
 
 func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bool {
@@ -722,10 +721,10 @@ func (d *DB) newIngestedFlushableEntry(
 // we're holding both locks, the order in which we rotate the memtable or
 // recycle the WAL in this function is irrelevant as long as the correct log
 // numbers are assigned to the appropriate flushable.
-func (d *DB) handleIngestAsFlushable(paths []string, meta []*fileMetadata, seqNum uint64) error {
+func (d *DB) handleIngestAsFlushable(meta []*fileMetadata, seqNum uint64) error {
 	b := d.NewBatch()
-	for _, path := range paths {
-		b.ingestSST([]byte(path))
+	for _, m := range meta {
+		b.ingestSST(m.FileNum)
 	}
 	b.setSeqNum(seqNum)
 
@@ -819,8 +818,7 @@ func (d *DB) ingest(
 	// (e.g. because the files reside on a different filesystem), ingestLink will
 	// fall back to copying, and if that fails we undo our work and return an
 	// error.
-	newPaths, err := ingestLink(jobID, d.opts, d.objProvider, paths, meta)
-	if err != nil {
+	if err := ingestLink(jobID, d.opts, d.objProvider, paths, meta); err != nil {
 		return IngestOperationStats{}, err
 	}
 	// Fsync the directory we added the tables to. We need to do this at some
@@ -861,7 +859,7 @@ func (d *DB) ingest(
 				// The ingestion overlaps with the memtable. Since there aren't
 				// too many memtables already queued up, we can slide the
 				// ingested sstables on top of the existing memtables.
-				err = d.handleIngestAsFlushable(newPaths, meta, seqNum)
+				err = d.handleIngestAsFlushable(meta, seqNum)
 				asFlushable = true
 				return
 			}

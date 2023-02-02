@@ -314,7 +314,7 @@ func TestIngestLink(t *testing.T) {
 				opts.FS.Remove(paths[i])
 			}
 
-			_, err := ingestLink(0 /* jobID */, opts, objProvider, paths, meta)
+			err := ingestLink(0 /* jobID */, opts, objProvider, paths, meta)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")
@@ -375,7 +375,7 @@ func TestIngestLinkFallback(t *testing.T) {
 	objProvider := objstorage.New(objstorage.DefaultSettings(opts.FS, ""))
 
 	meta := []*fileMetadata{{FileNum: 1}}
-	_, err = ingestLink(0, opts, objProvider, []string{"source"}, meta)
+	err = ingestLink(0, opts, objProvider, []string{"source"}, meta)
 	require.NoError(t, err)
 
 	dest, err := mem.Open("000001.sst")

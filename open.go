@@ -6,14 +6,12 @@ package pebble
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
 	"os"
-	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -721,38 +719,35 @@ func (d *DB) replayWAL(
 
 		{
 			br := b.Reader()
-			if kind, path, _, _ := br.Next(); kind == InternalKeyKindIngestSST {
-				paths := make([]string, b.Count())
-				fileNums := make([]FileNum, b.Count())
-				addPath := func(path []byte, i int) {
-					paths[i] = string(path)
-					// TODO(bananabrick): Store the filenums in the batch as a
-					// value, so that we don't have to perform this custom
-					// parsing here.
-					fileNum, err := strconv.Atoi(
-						strings.TrimSuffix(filepath.Base(string(path)),
-							filepath.Ext(string(path))),
-					)
-					if err != nil {
-						panic("pebble: sstable file path is invalid.")
+			if kind, encodedFileNum, _, _ := br.Next(); kind == InternalKeyKindIngestSST {
+				fileNums := make([]FileNum, 0, b.Count())
+				addFileNum := func(encodedFileNum []byte) {
+					fileNum, n := binary.Uvarint(encodedFileNum)
+					if n <= 0 {
+						panic("pebble: ingest sstable file num is invalid.")
 					}
-					fileNums[i] = FileNum(fileNum)
+					fileNums = append(fileNums, base.FileNum(fileNum))
 				}
-				addPath(path, 0)
+				addFileNum(encodedFileNum)
 
 				for i := 1; i < int(b.Count()); i++ {
-					kind, path, _, ok := br.Next()
+					kind, encodedFileNum, _, ok := br.Next()
 					if kind != InternalKeyKindIngestSST {
 						panic("pebble: invalid batch key kind.")
 					}
 					if !ok {
 						panic("pebble: invalid batch count.")
 					}
-					addPath(path, i)
+					addFileNum(encodedFileNum)
 				}
 
 				if _, _, _, ok := br.Next(); ok {
 					panic("pebble: invalid number of entries in batch.")
+				}
+
+				paths := make([]string, len(fileNums))
+				for i, n := range fileNums {
+					paths[i] = base.MakeFilepath(d.opts.FS, d.dirname, fileTypeTable, n)
 				}
 
 				var meta []*manifest.FileMetadata
