@@ -175,6 +175,26 @@ func (d *diskHealthCheckingFile) timeDiskOp(op func()) {
 	op()
 }
 
+// diskHealthCheckingDir implements disk-health checking for directories. Unlike
+// other files, we allow directories to receive concurrent write operations
+// (Syncs are the only write operations supported by a directory.) Since the
+// diskHealthCheckingFile's timeDiskOp can only track a single in-flight
+// operation at a time, we time the operation using the filesystem-level
+// timeFilesystemOp function instead.
+type diskHealthCheckingDir struct {
+	File
+	name string
+	fs   *diskHealthCheckingFS
+}
+
+// Sync implements the io.Syncer interface.
+func (d *diskHealthCheckingDir) Sync() (err error) {
+	d.fs.timeFilesystemOp(d.name, func() {
+		err = d.File.Sync()
+	})
+	return err
+}
+
 // diskHealthCheckingFS adds disk-health checking facilities to a VFS.
 // It times disk write operations in two ways:
 //
@@ -459,11 +479,11 @@ func (d *diskHealthCheckingFS) OpenDir(name string) (File, error) {
 	}
 	// Directories opened with OpenDir must be opened with health checking,
 	// because they may be explicitly synced.
-	checkingFile := newDiskHealthCheckingFile(f, d.diskSlowThreshold, func(duration time.Duration) {
-		d.onSlowDisk(name, duration)
-	})
-	checkingFile.startTicker()
-	return checkingFile, nil
+	return &diskHealthCheckingDir{
+		File: f,
+		name: name,
+		fs:   d,
+	}, nil
 }
 
 // PathBase implements the FS interface.
