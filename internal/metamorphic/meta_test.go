@@ -171,6 +171,7 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 			opts.FS = vfs.NewMem()
 		}
 	}
+	opts.WithFSDefaults()
 
 	dir := opts.FS.PathJoin(runDir, "data")
 	// Set up the initial database state if configured to start from a non-empty
@@ -238,7 +239,7 @@ func readHistory(t *testing.T, historyPath string) []string {
 // subsequent invocation will overwrite that output. A test can be re-run by
 // using the `--run-dir` flag. For example:
 //
-//   go test -v -run TestMeta --run-dir _meta/standard-017
+//	go test -v -run TestMeta --run-dir _meta/standard-017
 //
 // This will reuse the existing operations present in _meta/ops, rather than
 // generating a new set.
@@ -247,7 +248,7 @@ func readHistory(t *testing.T, historyPath string) []string {
 // pseudorandom number generator seed. If a failure occurs, the seed is
 // printed, and the full suite of tests may be re-run using the `--seed` flag:
 //
-//   go test -v -run TestMeta --seed 1594395154492165000
+//	go test -v -run TestMeta --seed 1594395154492165000
 //
 // This will generate a new `_meta/<test>` directory, with the same operations
 // and options. This must be run on the same commit SHA as the original
