@@ -1806,7 +1806,7 @@ func pickL0(
 		if pc.startLevel.files.Empty() {
 			opts.Logger.Fatalf("empty compaction chosen")
 		}
-		return pc
+		return pc.maybeAddLevel(opts, diskAvailBytes())
 	}
 
 	// Couldn't choose a base compaction. Try choosing an intra-L0
