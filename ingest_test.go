@@ -112,10 +112,10 @@ func TestIngestLoad(t *testing.T) {
 			}
 			w.Close()
 
-			opts := &Options{
+			opts := (&Options{
 				Comparer: DefaultComparer,
 				FS:       mem,
-			}
+			}).WithFSDefaults()
 			meta, _, err := ingestLoad(opts, dbVersion, []string{"ext"}, 0, []FileNum{1})
 			if err != nil {
 				return err.Error()
@@ -198,10 +198,10 @@ func TestIngestLoadRand(t *testing.T) {
 		}()
 	}
 
-	opts := &Options{
+	opts := (&Options{
 		Comparer: DefaultComparer,
 		FS:       mem,
-	}
+	}).WithFSDefaults()
 	meta, _, err := ingestLoad(opts, version, paths, 0, pending)
 	require.NoError(t, err)
 
@@ -219,10 +219,10 @@ func TestIngestLoadInvalid(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	opts := &Options{
+	opts := (&Options{
 		Comparer: DefaultComparer,
 		FS:       mem,
-	}
+	}).WithFSDefaults()
 	if _, _, err := ingestLoad(opts, FormatNewest, []string{"invalid"}, 0, []FileNum{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
@@ -287,11 +287,10 @@ func TestIngestLink(t *testing.T) {
 	const count = 10
 	for i := 0; i <= count; i++ {
 		t.Run("", func(t *testing.T) {
-			mem := vfs.NewMem()
-			opts := &Options{FS: mem}
-			opts.EnsureDefaults()
-			require.NoError(t, mem.MkdirAll(dir, 0755))
-			objProvider := objstorage.New(objstorage.DefaultSettings(mem, dir))
+			opts := &Options{FS: vfs.NewMem()}
+			opts.EnsureDefaults().WithFSDefaults()
+			require.NoError(t, opts.FS.MkdirAll(dir, 0755))
+			objProvider := objstorage.New(objstorage.DefaultSettings(opts.FS, dir))
 
 			paths := make([]string, 10)
 			meta := make([]*fileMetadata, len(paths))
@@ -300,7 +299,7 @@ func TestIngestLink(t *testing.T) {
 				paths[j] = fmt.Sprintf("external%d", j)
 				meta[j] = &fileMetadata{}
 				meta[j].FileNum = FileNum(j)
-				f, err := mem.Create(paths[j])
+				f, err := opts.FS.Create(paths[j])
 				require.NoError(t, err)
 
 				contents[j] = []byte(fmt.Sprintf("data%d", j))
@@ -312,7 +311,7 @@ func TestIngestLink(t *testing.T) {
 			}
 
 			if i < count {
-				mem.Remove(paths[i])
+				opts.FS.Remove(paths[i])
 			}
 
 			_, err := ingestLink(0 /* jobID */, opts, objProvider, paths, meta)
@@ -324,7 +323,7 @@ func TestIngestLink(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			files, err := mem.List(dir)
+			files, err := opts.FS.List(dir)
 			require.NoError(t, err)
 
 			sort.Strings(files)
@@ -339,7 +338,7 @@ func TestIngestLink(t *testing.T) {
 					t.Fatalf("expected %d files, but found:\n%s", count, strings.Join(files, "\n"))
 				}
 				for j := range files {
-					ftype, fileNum, ok := base.ParseFilename(mem, files[j])
+					ftype, fileNum, ok := base.ParseFilename(opts.FS, files[j])
 					if !ok {
 						t.Fatalf("unable to parse filename: %s", files[j])
 					}
@@ -349,7 +348,7 @@ func TestIngestLink(t *testing.T) {
 					if FileNum(j) != fileNum {
 						t.Fatalf("expected table %d, but found %d", j, fileNum)
 					}
-					f, err := mem.Open(mem.PathJoin(dir, files[j]))
+					f, err := opts.FS.Open(opts.FS.PathJoin(dir, files[j]))
 					require.NoError(t, err)
 
 					data, err := io.ReadAll(f)
@@ -372,7 +371,7 @@ func TestIngestLinkFallback(t *testing.T) {
 	require.NoError(t, err)
 
 	opts := &Options{FS: errorfs.Wrap(mem, errorfs.OnIndex(0))}
-	opts.EnsureDefaults()
+	opts.EnsureDefaults().WithFSDefaults()
 	objProvider := objstorage.New(objstorage.DefaultSettings(opts.FS, ""))
 
 	meta := []*fileMetadata{{FileNum: 1}}
@@ -420,14 +419,14 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 		}
 
 		require.NoError(t, mem.MkdirAll("ext", 0755))
-		opts = &Options{
+		opts = (&Options{
 			FS:                          mem,
 			MemTableStopWritesThreshold: 4,
 			L0CompactionThreshold:       100,
 			L0StopWritesThreshold:       100,
 			DebugCheck:                  DebugCheckLevels,
 			FormatMajorVersion:          FormatNewest,
-		}
+		}).WithFSDefaults()
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
@@ -614,7 +613,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 					opts := &Options{
 						Comparer: &comparer,
 					}
-					opts.EnsureDefaults()
+					opts.EnsureDefaults().WithFSDefaults()
 					if len(d.CmdArgs) > 1 {
 						return fmt.Sprintf("%s expects at most 1 argument", d.Cmd)
 					}
@@ -743,6 +742,7 @@ func TestIngestTargetLevel(t *testing.T) {
 			opts := Options{
 				FormatMajorVersion: FormatNewest,
 			}
+			opts.WithFSDefaults()
 			if d, err = runDBDefineCmd(td, &opts); err != nil {
 				return err.Error()
 			}

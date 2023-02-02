@@ -52,6 +52,7 @@ func TestIterHistories(t *testing.T) {
 			}
 			opts.DisableAutomaticCompactions = true
 			opts.EnsureDefaults()
+			opts.WithFSDefaults()
 
 			for _, cmdArg := range td.CmdArgs {
 				switch cmdArg.Key {
