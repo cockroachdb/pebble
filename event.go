@@ -36,10 +36,12 @@ func formatFileNums(tables []TableInfo) string {
 	return buf.String()
 }
 
-// LevelInfo contains info pertaining to a partificular level.
+// LevelInfo contains info pertaining to a particular level.
 type LevelInfo struct {
-	Level  int
-	Tables []TableInfo
+	Level           int
+	Tables          []TableInfo
+	cachedTableSize uint64
+	Score           float64
 }
 
 func (i LevelInfo) String() string {
@@ -48,8 +50,12 @@ func (i LevelInfo) String() string {
 
 // SafeFormat implements redact.SafeFormatter.
 func (i LevelInfo) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("L%d [%s] (%s)", redact.Safe(i.Level), redact.Safe(formatFileNums(i.Tables)),
-		redact.Safe(humanize.Uint64(tablesTotalSize(i.Tables))))
+	i.cachedTableSize = tablesTotalSize(i.Tables)
+	w.Printf("L%d [%s] (%s) Score=%.2f",
+		redact.Safe(i.Level),
+		redact.Safe(formatFileNums(i.Tables)),
+		redact.Safe(humanize.Uint64(i.cachedTableSize)),
+		redact.Safe(i.Score))
 }
 
 // CompactionInfo contains the info for a compaction event.
@@ -72,10 +78,38 @@ type CompactionInfo struct {
 	TotalDuration time.Duration
 	Done          bool
 	Err           error
+
+	// CounterfactualInfo contains information about a compaction that would have been picked in
+	// the intermediate level in the selected multilevel compaction. In other words,
+	// this field may be filled if the parent CompactionInfo represents a multilevel compaction.
+	CounterfactualInfo *CompactionInfo
+
+	// Annotations specifies additional info to appear in a compaction's event log line
+	Annotations []string
 }
 
 func (i CompactionInfo) String() string {
 	return redact.StringWithoutMarkers(i)
+}
+
+// OverlappingRatio computes the overlapping ratio of compaction, which for a single
+// level compaction equals:
+// sum(file size from output level) / sum (file size from input level).
+// For multilevel compaction, the intermediate level files are added to the denominator.
+func (i CompactionInfo) OverlappingRatio() float64 {
+	var inBytes, outBytes uint64
+	for j, level := range i.Input {
+		sz := level.cachedTableSize
+		if sz == 0 {
+			sz = tablesTotalSize(level.Tables)
+		}
+		if j == len(i.Input)-1 {
+			outBytes = sz
+			continue
+		}
+		inBytes += sz
+	}
+	return float64(outBytes) / float64(inBytes)
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -87,8 +121,15 @@ func (i CompactionInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	}
 
 	if !i.Done {
-		w.Printf("[JOB %d] compacting(%s) ", redact.Safe(i.JobID), redact.SafeString(i.Reason))
-		w.Print(levelInfos(i.Input))
+		w.Printf("[JOB %d] compacting(%s) %s ",
+			redact.Safe(i.JobID),
+			redact.SafeString(i.Reason),
+			redact.Safe(i.Annotations))
+		w.Printf("%s; ", levelInfos(i.Input))
+		w.Printf("OverlappingRatio %.2f;", i.OverlappingRatio())
+		if i.CounterfactualInfo != nil {
+			w.Printf("CounterOverlapping Ratio %.2f;", i.CounterfactualInfo.OverlappingRatio())
+		}
 		return
 	}
 	outputSize := tablesTotalSize(i.Output.Tables)
