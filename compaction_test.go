@@ -92,7 +92,7 @@ func (p *compactionPickerForTesting) pickAuto(env compactionEnv) (pc *pickedComp
 	if cInfo.level == 0 {
 		return pickL0(env, p.opts, p.vers, p.baseLevel, diskAvailBytesInf)
 	}
-	return pickAutoLPositive(env, p.opts, p.vers, cInfo, p.baseLevel, diskAvailBytesInf, p.maxLevelBytes)
+	return pickAutoLPositive(env, p.opts, p.vers, cInfo, p.baseLevel, diskAvailBytesInf)
 }
 
 func (p *compactionPickerForTesting) pickElisionOnlyCompaction(

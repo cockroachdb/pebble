@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"golang.org/x/exp/rand"
 )
 
 // The minimum count for an intra-L0 compaction. This matches the RocksDB
@@ -142,6 +143,14 @@ func generateSublevelInfo(cmp base.Compare, levelFiles manifest.LevelSlice) []su
 	return levelSlices
 }
 
+// compactionPickerMetrics holds metrics related to the compaction picking process
+type compactionPickerMetrics struct {
+	scores                      []float64
+	singleLevelOverlappingRatio float64
+	multiLevelOverlappingRatio  float64
+	counterOverlappingRatio     float64
+}
+
 // pickedCompaction contains information about a compaction that has already
 // been chosen, and is being constructed. Compaction construction info lives in
 // this struct, and is copied over into the compaction struct when that's
@@ -201,6 +210,8 @@ type pickedCompaction struct {
 	largest  InternalKey
 
 	version *version
+
+	pickerMetrics compactionPickerMetrics
 }
 
 func defaultOutputLevel(startLevel, baseLevel int) int {
@@ -306,6 +317,9 @@ func (pc *pickedCompaction) clone() *pickedCompaction {
 		maxReadCompactionBytes: pc.maxReadCompactionBytes,
 		smallest:               pc.smallest.Clone(),
 		largest:                pc.largest.Clone(),
+
+		// TODO(msbutler): properly clone picker metrics
+		pickerMetrics: pc.pickerMetrics,
 
 		// Both copies see the same manifest, therefore, it's ok for them to se
 		// share the same pc. version.
@@ -1309,6 +1323,7 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 			// Fail-safe to protect against compacting the same sstable
 			// concurrently.
 			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
+				pc.pickerMetrics = p.updatePickerMetrics(env, *pc, scores)
 				pc.score = info.score
 				// TODO(bananabrick): Create an EventListener for logCompaction.
 				if false {
@@ -1325,10 +1340,10 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 		if !ok {
 			continue
 		}
-
-		pc := pickAutoLPositive(env, p.opts, p.vers, *info, p.baseLevel, p.diskAvailBytes, p.levelMaxBytes)
+		pc := pickAutoLPositive(env, p.opts, p.vers, *info, p.baseLevel, p.diskAvailBytes)
 		// Fail-safe to protect against compacting the same sstable concurrently.
 		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
+			pc.pickerMetrics = p.updatePickerMetrics(env, *pc, scores)
 			pc.score = info.score
 			// TODO(bananabrick): Create an EventListener for logCompaction.
 			if false {
@@ -1388,6 +1403,58 @@ func (p *compactionPickerByScore) pickAuto(env compactionEnv) (pc *pickedCompact
 	}
 
 	return nil
+}
+
+func (p *compactionPickerByScore) updatePickerMetrics(
+	env compactionEnv, pc pickedCompaction, candInfo [7]candidateLevelInfo,
+) compactionPickerMetrics {
+	metrics := pc.pickerMetrics
+
+	// candInfo is sorted by score, not by compaction level.
+	infoByLevel := [7]candidateLevelInfo{}
+	for i := range candInfo {
+		level := candInfo[i].level
+		infoByLevel[level] = candInfo[i]
+	}
+	// Gather the compaction scores for the levels participating in the compaction.
+	metrics.scores = make([]float64, len(pc.inputs))
+	inputIdx := 0
+	for i := range infoByLevel {
+		if pc.inputs[inputIdx].level == infoByLevel[i].level {
+			metrics.scores[inputIdx] = infoByLevel[i].score
+			inputIdx++
+		}
+		if inputIdx == len(pc.inputs) {
+			break
+		}
+	}
+	metrics.counterOverlappingRatio = p.getCounterFactualOverlappingRatio(env, pc, infoByLevel)
+	return metrics
+}
+
+// getCounterFactualOverlappingRatio generates the overlapping ratio for the compaction that would
+// have been picked from the intermediate level of the picked multilevel compaction.
+// This counterfactual compaction can be used to study the impact of the multilevel compaction
+// heuristic on LSM health. This counterfactual compaction is only generated with some
+// probability, as this function could impact the main db workload.
+func (p *compactionPickerByScore) getCounterFactualOverlappingRatio(
+	env compactionEnv, pc pickedCompaction, infoByLevel [7]candidateLevelInfo,
+) float64 {
+	if len(pc.extraLevels) == 0 ||
+		p.opts.Experimental.ExtraMultiLevelStatCollectionProbability <= rand.Int31n(100) {
+		return 0
+	}
+	interLevel := pc.extraLevels[0].level
+	counterInfo := infoByLevel[interLevel]
+	counterFile, ok := p.pickFile(interLevel, interLevel+1, env.earliestSnapshotSeqNum)
+	if !ok {
+		return 0
+	}
+	counterInfo.file = counterFile
+	counterOpts := *p.opts
+	counterOpts.Experimental.MultiLevelCompactionHueristic = NoMultiLevel{}
+	counterPC := pickAutoLPositive(env, &counterOpts, p.vers, counterInfo, interLevel, p.diskAvailBytes)
+	return counterPC.pickerMetrics.singleLevelOverlappingRatio
 }
 
 // elisionOnlyAnnotator implements the manifest.Annotator interface,
@@ -1606,7 +1673,6 @@ func pickAutoLPositive(
 	cInfo candidateLevelInfo,
 	baseLevel int,
 	diskAvailBytes func() uint64,
-	levelMaxBytes [7]int64,
 ) (pc *pickedCompaction) {
 	if cInfo.level == 0 {
 		panic("pebble: pickAutoLPositive called for L0")
@@ -1636,6 +1702,7 @@ func pickAutoLPositive(
 
 // maybeAddLevel maybe adds a level to the picked compaction.
 func (pc *pickedCompaction) maybeAddLevel(opts *Options, diskAvailBytes uint64) *pickedCompaction {
+	pc.pickerMetrics.singleLevelOverlappingRatio = pc.overlappingRatio()
 	if pc.outputLevel.level == numLevels-1 {
 		// Don't add a level if the current output level is in L6
 		return pc
@@ -1665,15 +1732,29 @@ func (nml NoMultiLevel) pick(
 
 func (pc *pickedCompaction) predictedWriteAmp() float64 {
 	var bytesToCompact uint64
-	var newOutputBytes uint64
+	var higherLevelBytes uint64
 	for i := range pc.inputs {
 		levelSize := pc.inputs[i].files.SizeSum()
 		bytesToCompact += levelSize
 		if i != len(pc.inputs)-1 {
-			newOutputBytes += levelSize
+			higherLevelBytes += levelSize
 		}
 	}
-	return float64(bytesToCompact) / float64(newOutputBytes)
+	return float64(bytesToCompact) / float64(higherLevelBytes)
+}
+
+func (pc *pickedCompaction) overlappingRatio() float64 {
+	var higherLevelBytes uint64
+	var lowestLevelBytes uint64
+	for i := range pc.inputs {
+		levelSize := pc.inputs[i].files.SizeSum()
+		if i == len(pc.inputs)-1 {
+			lowestLevelBytes += levelSize
+			continue
+		}
+		higherLevelBytes += levelSize
+	}
+	return float64(lowestLevelBytes) / float64(higherLevelBytes)
 }
 
 // WriteAmpHeuristic defines a multi level compaction heuristic which will add
@@ -1693,10 +1774,13 @@ func (wa WriteAmpHeuristic) pick(
 	if !pcMulti.setupMultiLevelCandidate(opts, diskAvailBytes) {
 		return pcOrig
 	}
+	picked := pcOrig
 	if pcMulti.predictedWriteAmp() <= pcOrig.predictedWriteAmp()+wa.addPropensity {
-		return pcMulti
+		picked = pcMulti
 	}
-	return pcOrig
+	// Regardless of what compaction was picked, log the multilevelOverlapping ratio.
+	picked.pickerMetrics.multiLevelOverlappingRatio = pcMulti.overlappingRatio()
+	return picked
 }
 
 // Helper method to pick compactions originating from L0. Uses information about

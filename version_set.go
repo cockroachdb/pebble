@@ -616,7 +616,9 @@ func (vs *versionSet) logAndApply(
 	return nil
 }
 
-func (vs *versionSet) incrementCompactions(kind compactionKind, extraLevels []*compactionLevel) {
+func (vs *versionSet) incrementCompactions(
+	kind compactionKind, extraLevels []*compactionLevel, pickerMetrics compactionPickerMetrics,
+) {
 	switch kind {
 	case compactionKindDefault:
 		vs.metrics.Compact.Count++
@@ -645,8 +647,23 @@ func (vs *versionSet) incrementCompactions(kind compactionKind, extraLevels []*c
 		vs.metrics.Compact.Count++
 		vs.metrics.Compact.RewriteCount++
 	}
-	if len(extraLevels) > 0 {
-		vs.metrics.Compact.MultiLevelCount++
+
+	if kind == compactionKindDefault && !(math.IsInf(pickerMetrics.singleLevelOverlappingRatio, 1) || math.IsInf(pickerMetrics.multiLevelOverlappingRatio, 1)) {
+		// For now, only record multi level metrics for default compactions.
+		if len(extraLevels) > 0 {
+			vs.metrics.Compact.MultiLevelCount++
+			vs.metrics.Compact.OverlappingRatioSums.SinglePickMulti += pickerMetrics.singleLevelOverlappingRatio
+			vs.metrics.Compact.OverlappingRatioSums.MultiPickMulti += pickerMetrics.multiLevelOverlappingRatio
+			if pickerMetrics.counterOverlappingRatio != 0 && !math.IsInf(pickerMetrics.counterOverlappingRatio, 1) {
+				vs.metrics.Compact.OverlappingRatioSums.CounterPickMulti += pickerMetrics.counterOverlappingRatio
+				vs.metrics.Compact.CounterLevelCount++
+			}
+		} else if pickerMetrics.multiLevelOverlappingRatio > 0 {
+			// only log single level overlapping ratio if multilevel was even considered.
+			vs.metrics.Compact.SingleLevelCount++
+			vs.metrics.Compact.OverlappingRatioSums.SinglePickSingle += pickerMetrics.singleLevelOverlappingRatio
+			vs.metrics.Compact.OverlappingRatioSums.MultiPickSingle += pickerMetrics.multiLevelOverlappingRatio
+		}
 	}
 }
 

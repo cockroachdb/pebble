@@ -596,6 +596,11 @@ type Options struct {
 		// compaction will never get triggered.
 		MultiLevelCompactionHueristic MultiLevelHeuristic
 
+		// ExtraMultiLevelStatCollectionProbability is the probability (from 0,100)
+		// that pebble will compute and log compaction extra metrics after a
+		// multilevel compaction has been picked.
+		ExtraMultiLevelStatCollectionProbability int32
+
 		// MaxWriterConcurrency is used to indicate the maximum number of
 		// compression workers the compression queue is allowed to use. If
 		// MaxWriterConcurrency > 0, then the Writer will use parallelism, to
