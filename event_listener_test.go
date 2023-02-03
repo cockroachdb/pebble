@@ -7,8 +7,6 @@ package pebble
 import (
 	"bytes"
 	"fmt"
-	"io"
-	"os"
 	"reflect"
 	"runtime"
 	"strings"
@@ -63,98 +61,20 @@ func (b *syncedBuffer) String() string {
 	return b.buf.String()
 }
 
-type loggingFS struct {
-	vfs.FS
-	w io.Writer
-}
-
-func (fs loggingFS) Create(name string) (vfs.File, error) {
-	fmt.Fprintf(fs.w, "create: %s\n", name)
-	f, err := fs.FS.Create(name)
-	if err != nil {
-		return nil, err
-	}
-	return loggingFile{f, name, fs.w}, nil
-}
-
-func (fs loggingFS) Link(oldname, newname string) error {
-	fmt.Fprintf(fs.w, "link: %s -> %s\n", oldname, newname)
-	return fs.FS.Link(oldname, newname)
-}
-
-func (fs loggingFS) OpenDir(name string) (vfs.File, error) {
-	fmt.Fprintf(fs.w, "open-dir: %s\n", name)
-	f, err := fs.FS.OpenDir(name)
-	if err != nil {
-		return nil, err
-	}
-	return loggingFile{f, name, fs.w}, nil
-}
-
-func (fs loggingFS) Rename(oldname, newname string) error {
-	fmt.Fprintf(fs.w, "rename: %s -> %s\n", oldname, newname)
-	return fs.FS.Rename(oldname, newname)
-}
-
-func (fs loggingFS) ReuseForWrite(oldname, newname string) (vfs.File, error) {
-	fmt.Fprintf(fs.w, "reuseForWrite: %s -> %s\n", oldname, newname)
-	f, err := fs.FS.ReuseForWrite(oldname, newname)
-	if err == nil {
-		f = loggingFile{f, newname, fs.w}
-	}
-	return f, err
-}
-
-func (fs loggingFS) MkdirAll(dir string, perm os.FileMode) error {
-	fmt.Fprintf(fs.w, "mkdir-all: %s %#o\n", dir, perm)
-	return fs.FS.MkdirAll(dir, perm)
-}
-
-func (fs loggingFS) Lock(name string) (io.Closer, error) {
-	fmt.Fprintf(fs.w, "lock: %s\n", name)
-	return fs.FS.Lock(name)
-}
-
-type loggingFile struct {
-	vfs.File
-	name string
-	w    io.Writer
-}
-
-func (f loggingFile) Close() error {
-	fmt.Fprintf(f.w, "close: %s\n", f.name)
-	return f.File.Close()
-}
-
-func (f loggingFile) Sync() error {
-	fmt.Fprintf(f.w, "sync: %s\n", f.name)
-	return f.File.Sync()
-}
-
-func (f loggingFile) SyncData() error {
-	fmt.Fprintf(f.w, "sync-data: %s\n", f.name)
-	return f.File.SyncData()
-}
-
-func (f loggingFile) SyncTo(length int64) (fullSync bool, err error) {
-	fmt.Fprintf(f.w, "sync-to(%d): %s\n", length, f.name)
-	return f.File.SyncTo(length)
-}
-
 // Verify event listener actions, as well as expected filesystem operations.
 func TestEventListener(t *testing.T) {
 	var d *DB
-	var buf syncedBuffer
+	var memLog base.InMemLogger
 	mem := vfs.NewMem()
 	require.NoError(t, mem.MkdirAll("ext", 0755))
 
 	datadriven.RunTest(t, "testdata/event_listener", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "open":
-			buf.Reset()
-			lel := MakeLoggingEventListener(&buf)
+			memLog.Reset()
+			lel := MakeLoggingEventListener(&memLog)
 			opts := &Options{
-				FS:                    loggingFS{mem, &buf},
+				FS:                    vfs.WithLogging(mem, memLog.Infof),
 				FormatMajorVersion:    FormatNewest,
 				EventListener:         &lel,
 				MaxManifestFileSize:   1,
@@ -176,65 +96,65 @@ func TestEventListener(t *testing.T) {
 				t = t.Add(time.Second)
 				return t
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "close":
-			buf.Reset()
+			memLog.Reset()
 			if err := d.Close(); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "flush":
-			buf.Reset()
+			memLog.Reset()
 			if err := d.Set([]byte("a"), nil, nil); err != nil {
 				return err.Error()
 			}
 			if err := d.Flush(); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "compact":
-			buf.Reset()
+			memLog.Reset()
 			if err := d.Set([]byte("a"), nil, nil); err != nil {
 				return err.Error()
 			}
 			if err := d.Compact([]byte("a"), []byte("b"), false); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "checkpoint":
-			buf.Reset()
+			memLog.Reset()
 			if err := d.Checkpoint("checkpoint"); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "disable-file-deletions":
-			buf.Reset()
+			memLog.Reset()
 			d.mu.Lock()
 			d.disableFileDeletions()
 			d.mu.Unlock()
-			return buf.String()
+			return memLog.String()
 
 		case "enable-file-deletions":
-			buf.Reset()
+			memLog.Reset()
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						fmt.Fprint(&buf, r)
+						memLog.Infof("%v", r)
 					}
 				}()
 				d.mu.Lock()
 				defer d.mu.Unlock()
 				d.enableFileDeletions()
 			}()
-			return buf.String()
+			return memLog.String()
 
 		case "ingest":
-			buf.Reset()
+			memLog.Reset()
 			f, err := mem.Create("ext/0")
 			if err != nil {
 				return err.Error()
@@ -251,7 +171,7 @@ func TestEventListener(t *testing.T) {
 			if err := d.Ingest([]string{"ext/0"}); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "metrics":
 			// The asynchronous loading of table stats can change metrics, so
