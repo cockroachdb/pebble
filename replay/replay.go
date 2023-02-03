@@ -537,6 +537,10 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 			if err := step.flushBatch.Commit(&pebble.WriteOptions{Sync: false}); err != nil {
 				return err
 			}
+			_, err := r.d.AsyncFlush()
+			if err != nil {
+				return err
+			}
 			r.stepsApplied <- step
 		case ingestStepKind:
 			if err := r.d.Ingest(step.tablesToIngest); err != nil {
