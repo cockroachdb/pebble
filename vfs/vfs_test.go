@@ -342,12 +342,7 @@ func TestVFSRootDirName(t *testing.T) {
 		require.NoError(t, err)
 		fi, err := rootDir.Stat()
 		require.NoError(t, err)
-
-		exp := sep
-		if fs == Default {
-			exp = string(os.PathSeparator)
-		}
-		require.Equal(t, exp, fi.Name())
+		require.Equal(t, sep, fi.Name())
 	}
 }
 

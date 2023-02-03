@@ -694,6 +694,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 	tmpDir := path.Join(t.TempDir())
 	provider, err := objstorage.Open(objstorage.DefaultSettings(vfs.Default, tmpDir))
 	require.NoError(t, err)
+	defer provider.Close()
 	f0, _, err := provider.Create(base.FileTypeTable, 0 /* fileNum */)
 	require.NoError(t, err)
 

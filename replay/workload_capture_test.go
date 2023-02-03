@@ -2,9 +2,9 @@ package replay
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
 	"io"
-	"math/rand"
 	"strconv"
 	"strings"
 	"testing"
