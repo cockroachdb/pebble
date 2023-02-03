@@ -5,7 +5,7 @@
 package bloom
 
 import (
-	"math/rand"
+	"crypto/rand"
 	"strings"
 	"testing"
 

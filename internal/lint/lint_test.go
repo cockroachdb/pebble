@@ -22,7 +22,7 @@ import (
 const (
 	cmdGo       = "go"
 	golint      = "golang.org/x/lint/golint@6edffad5e6160f5949cdefc81710b2706fbcd4f6"
-	staticcheck = "honnef.co/go/tools/cmd/staticcheck@2022.1.2"
+	staticcheck = "honnef.co/go/tools/cmd/staticcheck@2023.1"
 	crlfmt      = "github.com/cockroachdb/crlfmt@b3eff0b"
 )
 

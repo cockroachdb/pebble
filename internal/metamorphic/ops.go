@@ -6,9 +6,9 @@ package metamorphic
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
 	"io"
-	"math/rand"
 	"path/filepath"
 	"strings"
 
