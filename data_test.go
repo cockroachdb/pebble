@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"fmt"
 	"io"
 	"math"
@@ -1122,7 +1123,8 @@ func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {
 			// length.
 			value := buf[:n]
 			if valLength > 0 {
-				rand.Read(vbuf)
+				_, err := crand.Read(vbuf)
+				require.NoError(t, err)
 				value = vbuf
 			}
 			require.NoError(t, b.Set(buf[:n], value, nil))

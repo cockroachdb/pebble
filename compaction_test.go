@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"fmt"
 	"math"
 	"math/rand"
@@ -3252,10 +3253,12 @@ func TestCompactFlushQueuedMemTableAndFlushMetrics(t *testing.T) {
 	// random value to the "b" key to limit overwriting of the same key, which
 	// would get collapsed at flush time since there are no open snapshots.
 	value := make([]byte, 50)
-	rand.Read(value)
+	_, err = crand.Read(value)
+	require.NoError(t, err)
 	require.NoError(t, d.Set([]byte("a"), value, nil))
 	for {
-		rand.Read(value)
+		_, err = crand.Read(value)
+		require.NoError(t, err)
 		require.NoError(t, d.Set(append([]byte("b"), value...), value, nil))
 		d.mu.Lock()
 		done := len(d.mu.mem.queue) == 2
