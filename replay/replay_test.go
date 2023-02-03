@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datatest"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/rangekey"
@@ -131,10 +132,11 @@ func runReplayTest(t *testing.T, path string) {
 			ct.WaitForInflightCompactionsToEqual(target)
 			return ""
 		case "wait":
-			if _, err := r.Wait(); err != nil {
+			m, err := r.Wait()
+			if err != nil {
 				return err.Error()
 			}
-			return ""
+			return fmt.Sprintf("replayed %s in writes", humanize.Uint64(m.WriteBytes))
 		case "close":
 			if err := r.Close(); err != nil {
 				return err.Error()

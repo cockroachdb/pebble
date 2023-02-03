@@ -115,6 +115,7 @@ type Metrics struct {
 		BytesWeightedByLevel uint64
 	}
 	TotalWriteAmp       float64
+	WriteBytes          uint64
 	WriteStalls         uint64
 	WriteStallsDuration time.Duration
 }
@@ -180,11 +181,12 @@ func (m *Metrics) BenchmarkString(name string) string {
 // Runner runs a captured workload against a test database, collecting
 // metrics on performance.
 type Runner struct {
-	RunDir       string
-	WorkloadFS   vfs.FS
-	WorkloadPath string
-	Pacer        Pacer
-	Opts         *pebble.Options
+	RunDir        string
+	WorkloadFS    vfs.FS
+	WorkloadPath  string
+	Pacer         Pacer
+	Opts          *pebble.Options
+	MaxWriteBytes uint64
 
 	// Internal state.
 
@@ -202,6 +204,7 @@ type Runner struct {
 	stepsApplied  chan workloadStep
 
 	metrics struct {
+		writeBytes              uint64
 		writeStalls             uint64
 		writeStallsDurationNano uint64
 	}
@@ -420,6 +423,7 @@ func (r *Runner) Wait() (Metrics, error) {
 	m := Metrics{
 		Final:               pm,
 		TotalWriteAmp:       total.WriteAmp(),
+		WriteBytes:          r.metrics.writeBytes,
 		WriteStalls:         r.metrics.writeStalls,
 		WriteStallsDuration: time.Duration(r.metrics.writeStallsDurationNano),
 	}
@@ -556,6 +560,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 
 	idx := r.workload.manifestIdx
 
+	var cumulativeWriteBytes uint64
 	var flushBufs flushBuffers
 	var v *manifest.Version
 	var previousVersion *manifest.Version
@@ -576,6 +581,10 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	}
 
 	for ; idx < len(r.workload.manifests); idx++ {
+		if r.MaxWriteBytes != 0 && cumulativeWriteBytes > r.MaxWriteBytes {
+			break
+		}
+
 		err := func() error {
 			manifestName := r.workload.manifests[idx]
 			f, err := r.WorkloadFS.Open(r.WorkloadFS.PathJoin(r.WorkloadPath, manifestName))
@@ -688,6 +697,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 					if err := loadFlushedSSTableKeys(s.flushBatch, r.WorkloadFS, r.WorkloadPath, newFiles, r.readerOpts, &flushBufs); err != nil {
 						return errors.Wrapf(err, "flush in %q at offset %d", manifestName, rr.Offset())
 					}
+					cumulativeWriteBytes += uint64(s.flushBatch.Len())
 				case ingestStepKind:
 					// Copy the ingested sstables into a staging area within the
 					// run dir. This is necessary for two reasons:
@@ -705,6 +715,11 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 						if err := vfs.CopyAcrossFS(r.WorkloadFS, src, r.Opts.FS, dst); err != nil {
 							return errors.Wrapf(err, "ingest in %q at offset %d", manifestName, rr.Offset())
 						}
+						finfo, err := r.Opts.FS.Stat(dst)
+						if err != nil {
+							return errors.Wrapf(err, "stating %q", dst)
+						}
+						cumulativeWriteBytes += uint64(finfo.Size())
 						s.tablesToIngest = append(s.tablesToIngest, dst)
 					}
 				case compactionStepKind:
@@ -716,6 +731,10 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 					return ctx.Err()
 				case r.steps <- s:
 				}
+
+				if r.MaxWriteBytes != 0 && cumulativeWriteBytes > r.MaxWriteBytes {
+					break
+				}
 			}
 			return nil
 		}()
@@ -723,6 +742,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 			return err
 		}
 	}
+	atomic.StoreUint64(&r.metrics.writeBytes, cumulativeWriteBytes)
 	return nil
 }
 

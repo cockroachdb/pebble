@@ -45,6 +45,8 @@ func initReplayCmd() *cobra.Command {
 		&c.name, "name", "", "the name of the workload being replayed")
 	cmd.Flags().VarPF(
 		&c.pacer, "pacer", "p", "the pacer to use: unpaced, reference-ramp, or fixed-ramp=N")
+	cmd.Flags().Uint64Var(
+		&c.maxWritesMB, "max-writes", 0, "the maximum volume of writes (MB) to apply, with 0 denoting unlimited")
 	cmd.Flags().StringVar(
 		&c.optionsString, "options", "", "Pebble options to override, in the OPTIONS ini format but with any whitespace as field delimiters instead of newlines")
 	cmd.Flags().StringVar(
@@ -61,6 +63,7 @@ type replayConfig struct {
 	pacer            pacerFlag
 	runDir           string
 	count            int
+	maxWritesMB      uint64
 	streamLogs       bool
 	ignoreCheckpoint bool
 	optionsString    string
@@ -92,6 +95,9 @@ func (c *replayConfig) runOnce(stdout io.Writer, workloadPath string) error {
 		WorkloadPath: workloadPath,
 		Pacer:        c.pacer,
 		Opts:         &pebble.Options{},
+	}
+	if c.maxWritesMB > 0 {
+		r.MaxWriteBytes = c.maxWritesMB * (1 << 20)
 	}
 	if err := c.initRunDir(r); err != nil {
 		return err
