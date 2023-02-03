@@ -6,12 +6,11 @@ package metamorphic
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/randvar"
-	"github.com/kr/pretty"
+	"github.com/r3labs/diff/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,9 +38,9 @@ func TestParserRandom(t *testing.T) {
 		t.Fatalf("%s\n%s", err, src)
 	}
 
-	if diff := pretty.Diff(ops, parsedOps); diff != nil {
-		t.Fatalf("%s\n%s", strings.Join(diff, "\n"), src)
-	}
+	d, err := diff.Diff(ops, parsedOps)
+	require.NoError(t, err)
+	require.Empty(t, d)
 }
 
 func TestParserNilBounds(t *testing.T) {

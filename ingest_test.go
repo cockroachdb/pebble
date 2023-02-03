@@ -27,7 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/kr/pretty"
+	"github.com/r3labs/diff/v3"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -208,9 +208,9 @@ func TestIngestLoadRand(t *testing.T) {
 	for _, m := range meta {
 		m.CreationTime = 0
 	}
-	if diff := pretty.Diff(expected, meta); diff != nil {
-		t.Fatalf("%s", strings.Join(diff, "\n"))
-	}
+	c, err := diff.Diff(expected, meta)
+	require.NoError(t, err)
+	require.Empty(t, c)
 }
 
 func TestIngestLoadInvalid(t *testing.T) {
