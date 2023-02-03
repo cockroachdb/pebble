@@ -84,7 +84,7 @@ func TestVersionSetSeqNums(t *testing.T) {
 	require.NoError(t, err)
 	var manifest vfs.File
 	for _, filename := range filenames {
-		fileType, _, ok := base.ParseFilename(mem, filename)
+		fileType, _, ok := vfs.ParseFilepath(mem, filename)
 		if ok && fileType == fileTypeManifest {
 			manifest, err = mem.Open(filename)
 			require.NoError(t, err)

@@ -53,7 +53,7 @@ func TestWorkloadCollector(t *testing.T) {
 				return "equal"
 			case "clean":
 				for _, path := range strings.Fields(td.Input) {
-					typ, _, ok := base.ParseFilename(fs, path)
+					typ, _, ok := vfs.ParseFilepath(fs, path)
 					require.True(t, ok)
 					require.NoError(t, o.Cleaner.Clean(fs, typ, path))
 				}
@@ -66,7 +66,7 @@ func TestWorkloadCollector(t *testing.T) {
 				var fileNum uint64
 				var err error
 				td.ScanArgs(t, "filenum", &fileNum)
-				path := base.MakeFilepath(fs, srcDir, base.FileTypeManifest, base.FileNum(fileNum))
+				path := vfs.MakeFilepath(fs, srcDir, base.FileTypeManifest, base.FileNum(fileNum))
 				currentManifest, err = fs.Create(path)
 				require.NoError(t, err)
 				_, err = currentManifest.Write(randData(100))
@@ -180,7 +180,7 @@ func randData(byteCount int) []byte {
 func writeFile(
 	t *testing.T, fs vfs.FS, dir string, typ base.FileType, num base.FileNum, data []byte,
 ) string {
-	path := base.MakeFilepath(fs, dir, typ, num)
+	path := vfs.MakeFilepath(fs, dir, typ, num)
 	f, err := fs.Create(path)
 	require.NoError(t, err)
 	_, err = f.Write(data)

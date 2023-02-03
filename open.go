@@ -213,7 +213,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 
 	// Lock the database directory.
-	fileLock, err := opts.FS.Lock(base.MakeFilepath(opts.FS, dirname, fileTypeLock, 0))
+	fileLock, err := opts.FS.Lock(vfs.MakeFilepath(opts.FS, dirname, fileTypeLock, 0))
 	if err != nil {
 		d.dataDir.Close()
 		if d.dataDir != d.walDir {
@@ -320,7 +320,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	var previousOptionsFileNum FileNum
 	var previousOptionsFilename string
 	for _, filename := range ls {
-		ft, fn, ok := base.ParseFilename(opts.FS, filename)
+		ft, fn, ok := vfs.ParseFilepath(opts.FS, filename)
 		if !ok {
 			continue
 		}
@@ -413,7 +413,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			entry.readerUnrefLocked(true)
 		}
 
-		newLogName := base.MakeFilepath(opts.FS, d.walDirname, fileTypeLog, newLogNum)
+		newLogName := vfs.MakeFilepath(opts.FS, d.walDirname, fileTypeLog, newLogNum)
 		d.mu.log.queue = append(d.mu.log.queue, fileInfo{fileNum: newLogNum, fileSize: 0})
 		logFile, err := opts.FS.Create(newLogName)
 		if err != nil {
@@ -466,8 +466,8 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if !d.opts.ReadOnly {
 		// Write the current options to disk.
 		d.optionsFileNum = d.mu.versions.getNextFileNum()
-		tmpPath := base.MakeFilepath(opts.FS, dirname, fileTypeTemp, d.optionsFileNum)
-		optionsPath := base.MakeFilepath(opts.FS, dirname, fileTypeOptions, d.optionsFileNum)
+		tmpPath := vfs.MakeFilepath(opts.FS, dirname, fileTypeTemp, d.optionsFileNum)
+		optionsPath := vfs.MakeFilepath(opts.FS, dirname, fileTypeOptions, d.optionsFileNum)
 
 		// Write them to a temporary file first, in case we crash before
 		// we're done. A corrupt options file prevents opening the
@@ -556,7 +556,7 @@ func GetVersion(dir string, fs vfs.FS) (string, error) {
 	var version string
 	lastOptionsSeen := FileNum(0)
 	for _, filename := range ls {
-		ft, fn, ok := base.ParseFilename(fs, filename)
+		ft, fn, ok := vfs.ParseFilepath(fs, filename)
 		if !ok {
 			continue
 		}
@@ -920,7 +920,7 @@ func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
 		FormatMajorVersion: vers,
 	}
 	if exists {
-		desc.ManifestFilename = base.MakeFilepath(fs, dirname, fileTypeManifest, manifestFileNum)
+		desc.ManifestFilename = vfs.MakeFilepath(fs, dirname, fileTypeManifest, manifestFileNum)
 	}
 	return desc, nil
 }

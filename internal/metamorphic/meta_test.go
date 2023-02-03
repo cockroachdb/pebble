@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -148,7 +147,7 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 	// keys at the trailing '@'.
 	opts.Comparer = testkeys.Comparer
 	// Use an archive cleaner to ease post-mortem debugging.
-	opts.Cleaner = base.ArchiveCleaner{}
+	opts.Cleaner = vfs.ArchiveCleaner{}
 
 	// Set up the filesystem to use for the test. Note that by default we use an
 	// in-memory FS.
@@ -156,7 +155,7 @@ func testMetaRun(t *testing.T, runDir string, seed uint64, historyPath string) {
 		opts.FS = vfs.Default
 		require.NoError(t, os.RemoveAll(opts.FS.PathJoin(runDir, "data")))
 	} else {
-		opts.Cleaner = base.ArchiveCleaner{}
+		opts.Cleaner = vfs.ArchiveCleaner{}
 		if testOpts.strictFS {
 			opts.FS = vfs.NewStrictMem()
 		} else {

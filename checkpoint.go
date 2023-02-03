@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"github.com/cockroachdb/errors/oserror"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
@@ -223,7 +222,7 @@ func (d *DB) Checkpoint(
 
 	{
 		// Link or copy the OPTIONS.
-		srcPath := base.MakeFilepath(fs, d.dirname, fileTypeOptions, optionsFileNum)
+		srcPath := vfs.MakeFilepath(fs, d.dirname, fileTypeOptions, optionsFileNum)
 		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 		ckErr = vfs.LinkOrCopy(fs, srcPath, destPath)
 		if ckErr != nil {
@@ -270,7 +269,7 @@ func (d *DB) Checkpoint(
 				continue
 			}
 
-			srcPath := base.MakeFilepath(fs, d.dirname, fileTypeTable, f.FileNum)
+			srcPath := vfs.MakeFilepath(fs, d.dirname, fileTypeTable, f.FileNum)
 			destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 			ckErr = vfs.LinkOrCopy(fs, srcPath, destPath)
 			if ckErr != nil {
@@ -292,7 +291,7 @@ func (d *DB) Checkpoint(
 		if logNum == 0 {
 			continue
 		}
-		srcPath := base.MakeFilepath(fs, d.walDirname, fileTypeLog, logNum)
+		srcPath := vfs.MakeFilepath(fs, d.walDirname, fileTypeLog, logNum)
 		destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 		ckErr = vfs.Copy(fs, srcPath, destPath)
 		if ckErr != nil {
@@ -328,7 +327,7 @@ func (d *DB) writeCheckpointManifest(
 	// If some files are excluded from the checkpoint, also append a block that
 	// records those files as deleted.
 	if err := func() error {
-		srcPath := base.MakeFilepath(fs, d.dirname, fileTypeManifest, manifestFileNum)
+		srcPath := vfs.MakeFilepath(fs, d.dirname, fileTypeManifest, manifestFileNum)
 		destPath := fs.PathJoin(destDirPath, fs.PathBase(srcPath))
 		src, err := fs.Open(srcPath, vfs.SequentialReadsOption)
 		if err != nil {

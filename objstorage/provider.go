@@ -81,7 +81,7 @@ type Settings struct {
 	// Cleaner cleans obsolete files from the local filesystem.
 	//
 	// The default cleaner uses the DeleteCleaner.
-	FSCleaner base.Cleaner
+	FSCleaner vfs.Cleaner
 
 	// NoSyncOnClose decides whether the implementation will enforce a
 	// close-time synchronization (e.g., fdatasync() or sync_file_range())
@@ -102,7 +102,7 @@ func DefaultSettings(fs vfs.FS, dirName string) Settings {
 		Logger:        base.DefaultLogger,
 		FS:            fs,
 		FSDirName:     dirName,
-		FSCleaner:     base.DeleteCleaner{},
+		FSCleaner:     vfs.DeleteCleaner{},
 		NoSyncOnClose: false,
 		BytesPerSync:  512 * 1024, // 512KB
 	}
@@ -118,7 +118,7 @@ func New(settings Settings) *Provider {
 // Path returns an internal path for an object. It is used for informative
 // purposes (e.g. logging).
 func (p *Provider) Path(fileType base.FileType, fileNum base.FileNum) string {
-	return base.MakeFilepath(p.st.FS, p.st.FSDirName, fileType, fileNum)
+	return vfs.MakeFilepath(p.st.FS, p.st.FSDirName, fileType, fileNum)
 }
 
 // OpenForReading opens an existing object.
@@ -146,7 +146,7 @@ func (p *Provider) OpenForReadingMustExist(
 	r, err := p.OpenForReading(fileType, fileNum)
 	if err != nil {
 		filename := p.Path(fileType, fileNum)
-		base.MustExist(p.st.FS, filename, p.st.Logger, err)
+		vfs.MustExist(p.st.FS, filename, p.st.Logger, err)
 	}
 	return r, err
 }

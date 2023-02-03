@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/tool/logs"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -211,7 +212,7 @@ func (d *dbT) loadOptions(dir string) error {
 	// matters.
 	var dbOpts pebble.Options
 	for _, filename := range ls {
-		ft, _, ok := base.ParseFilename(d.opts.FS, filename)
+		ft, _, ok := vfs.ParseFilepath(d.opts.FS, filename)
 		if !ok {
 			continue
 		}

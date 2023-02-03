@@ -1,17 +1,9 @@
-// Copyright 2012 The LevelDB-Go and Pebble Authors. All rights reserved. Use
-// of this source code is governed by a BSD-style license that can be found in
-// the LICENSE file.
-
 package base
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/cockroachdb/errors/oserror"
-	"github.com/cockroachdb/pebble/vfs"
-	"github.com/cockroachdb/redact"
 )
 
 // FileNum is an internal DB identifier for a file.
@@ -58,14 +50,8 @@ func MakeFilename(fileType FileType, fileNum FileNum) string {
 	panic("unreachable")
 }
 
-// MakeFilepath builds a filepath from components.
-func MakeFilepath(fs vfs.FS, dirname string, fileType FileType, fileNum FileNum) string {
-	return fs.PathJoin(dirname, MakeFilename(fileType, fileNum))
-}
-
 // ParseFilename parses the components from a filename.
-func ParseFilename(fs vfs.FS, filename string) (fileType FileType, fileNum FileNum, ok bool) {
-	filename = fs.PathBase(filename)
+func ParseFilename(filename string) (fileType FileType, fileNum FileNum, ok bool) {
 	switch {
 	case filename == "CURRENT":
 		return FileTypeCurrent, 0, true
@@ -122,48 +108,4 @@ func parseFileNum(s string) (fileNum FileNum, ok bool) {
 		return fileNum, false
 	}
 	return FileNum(u), true
-}
-
-// A Fataler fatals a process with a message when called.
-type Fataler interface {
-	Fatalf(format string, args ...interface{})
-}
-
-// MustExist checks if err is an error indicating a file does not exist.
-// If it is, it lists the containing directory's files to annotate the error
-// with counts of the various types of files and invokes the provided fataler.
-// See cockroachdb/cockroach#56490.
-func MustExist(fs vfs.FS, filename string, fataler Fataler, err error) {
-	if err == nil || !oserror.IsNotExist(err) {
-		return
-	}
-
-	ls, lsErr := fs.List(fs.PathDir(filename))
-	if lsErr != nil {
-		// TODO(jackson): if oserror.IsNotExist(lsErr), the the data directory
-		// doesn't exist anymore. Another process likely deleted it before
-		// killing the process. We want to fatal the process, but without
-		// triggering error reporting like Sentry.
-		fataler.Fatalf("%s:\norig err: %s\nlist err: %s", redact.Safe(fs.PathBase(filename)), err, lsErr)
-	}
-	var total, unknown, tables, logs, manifests int
-	total = len(ls)
-	for _, f := range ls {
-		typ, _, ok := ParseFilename(fs, f)
-		if !ok {
-			unknown++
-			continue
-		}
-		switch typ {
-		case FileTypeTable:
-			tables++
-		case FileTypeLog:
-			logs++
-		case FileTypeManifest:
-			manifests++
-		}
-	}
-
-	fataler.Fatalf("%s:\n%s\ndirectory contains %d files, %d unknown, %d tables, %d logs, %d manifests",
-		fs.PathBase(filename), err, total, unknown, tables, logs, manifests)
 }

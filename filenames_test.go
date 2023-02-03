@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -73,7 +72,7 @@ func allTempFiles(t *testing.T, fs vfs.FS) []string {
 	ls, err := fs.List("")
 	require.NoError(t, err)
 	for _, f := range ls {
-		ft, _, ok := base.ParseFilename(fs, f)
+		ft, _, ok := vfs.ParseFilepath(fs, f)
 		if ok && ft == fileTypeTemp {
 			files = append(files, f)
 		}

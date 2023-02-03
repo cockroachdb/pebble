@@ -3061,7 +3061,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	var obsoleteOptions []fileInfo
 
 	for _, filename := range list {
-		fileType, fileNum, ok := base.ParseFilename(d.opts.FS, filename)
+		fileType, fileNum, ok := vfs.ParseFilepath(d.opts.FS, filename)
 		if !ok {
 			continue
 		}
@@ -3270,7 +3270,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		{fileTypeManifest, obsoleteManifests},
 		{fileTypeOptions, obsoleteOptions},
 	}
-	_, noRecycle := d.opts.Cleaner.(base.NeedsFileContents)
+	_, noRecycle := d.opts.Cleaner.(vfs.NeedsFileContents)
 	filesToDelete := make([]obsoleteFile, 0, len(files))
 	for _, f := range files {
 		// We sort to make the order of deletions deterministic, which is nice for
@@ -3319,7 +3319,7 @@ func (d *DB) paceAndDeleteObsoleteFiles(jobID int, files []obsoleteFile) {
 	}
 
 	for _, of := range files {
-		path := base.MakeFilepath(d.opts.FS, of.dir, of.fileType, of.fileNum)
+		path := vfs.MakeFilepath(d.opts.FS, of.dir, of.fileType, of.fileNum)
 		if of.fileType == fileTypeTable {
 			_ = pacer.maybeThrottle(of.fileSize)
 			d.mu.Lock()

@@ -396,7 +396,7 @@ func TestCheckConsistency(t *testing.T) {
 					if err != nil {
 						return err.Error()
 					}
-					path := base.MakeFilepath(mem, dir, base.FileTypeTable, m.FileNum)
+					path := vfs.MakeFilepath(mem, dir, base.FileTypeTable, m.FileNum)
 					_ = mem.Remove(path)
 					f, err := mem.Create(path)
 					if err != nil {

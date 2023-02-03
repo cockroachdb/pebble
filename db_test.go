@@ -375,7 +375,7 @@ func TestLargeBatch(t *testing.T) {
 		return d.mu.log.queue[len(d.mu.log.queue)-1].fileNum
 	}
 	fileSize := func(fileNum FileNum) int64 {
-		info, err := d.opts.FS.Stat(base.MakeFilepath(d.opts.FS, "", fileTypeLog, fileNum))
+		info, err := d.opts.FS.Stat(vfs.MakeFilepath(d.opts.FS, "", fileTypeLog, fileNum))
 		require.NoError(t, err)
 		return info.Size()
 	}
@@ -1007,7 +1007,7 @@ func TestRollManifest(t *testing.T) {
 
 	var manifests []string
 	for _, filename := range files {
-		fileType, _, ok := base.ParseFilename(d.opts.FS, filename)
+		fileType, _, ok := vfs.ParseFilepath(d.opts.FS, filename)
 		if !ok {
 			continue
 		}

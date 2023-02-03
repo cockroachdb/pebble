@@ -19,7 +19,6 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/vfs"
@@ -257,7 +256,7 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 					}
 					var optionsCount int
 					for _, s := range got {
-						if t, _, ok := base.ParseFilename(opts.FS, s); ok && t == fileTypeOptions {
+						if t, _, ok := vfs.ParseFilepath(opts.FS, s); ok && t == fileTypeOptions {
 							optionsCount++
 						}
 					}
@@ -971,7 +970,7 @@ func TestGetVersion(t *testing.T) {
 	ls, err := mem.List("")
 	require.NoError(t, err)
 	for _, filename := range ls {
-		ft, fn, ok := base.ParseFilename(mem, filename)
+		ft, fn, ok := vfs.ParseFilepath(mem, filename)
 		if !ok {
 			continue
 		}

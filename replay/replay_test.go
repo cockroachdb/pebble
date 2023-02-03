@@ -331,11 +331,11 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 				fileNum := base.FileNum(fileNumInt)
 				switch fT {
 				case "table":
-					filePath = base.MakeFilepath(fs, dir, base.FileTypeTable, fileNum)
+					filePath = vfs.MakeFilepath(fs, dir, base.FileTypeTable, fileNum)
 				case "log":
-					filePath = base.MakeFilepath(fs, dir, base.FileTypeLog, fileNum)
+					filePath = vfs.MakeFilepath(fs, dir, base.FileTypeLog, fileNum)
 				case "manifest":
-					filePath = base.MakeFilepath(fs, dir, base.FileTypeManifest, fileNum)
+					filePath = vfs.MakeFilepath(fs, dir, base.FileTypeManifest, fileNum)
 				}
 			}
 			f, err := fs.Create(filePath)

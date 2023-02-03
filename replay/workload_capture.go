@@ -80,7 +80,7 @@ type WorkloadCollector struct {
 		destDir string
 		// cleaner stores the cleaner to use when files become obsolete and need to
 		// be cleaned.
-		cleaner base.Cleaner
+		cleaner vfs.Cleaner
 	}
 	copier struct {
 		sync.Cond

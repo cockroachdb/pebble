@@ -1102,7 +1102,7 @@ func (v *Version) CheckConsistency(dirname string, fs vfs.FS) error {
 	for level, files := range v.Levels {
 		iter := files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			path := base.MakeFilepath(fs, dirname, base.FileTypeTable, f.FileNum)
+			path := vfs.MakeFilepath(fs, dirname, base.FileTypeTable, f.FileNum)
 			info, err := fs.Stat(path)
 			if err != nil {
 				buf.WriteString("L%d: %s: %v\n")

@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -154,7 +155,7 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 	}
 
 	walk(stderr, f.opts.FS, dir, func(path string) {
-		ft, fileNum, ok := base.ParseFilename(f.opts.FS, path)
+		ft, fileNum, ok := vfs.ParseFilepath(f.opts.FS, path)
 		if !ok {
 			return
 		}

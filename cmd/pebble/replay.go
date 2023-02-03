@@ -174,7 +174,7 @@ func (c *replayConfig) initOptions(r *replay.Runner) error {
 		var optionsFilepath string
 		for _, l := range ls {
 			path := r.WorkloadFS.PathJoin(r.WorkloadPath, "checkpoint", l)
-			typ, _, ok := base.ParseFilename(r.WorkloadFS, path)
+			typ, _, ok := vfs.ParseFilepath(r.WorkloadFS, path)
 			if ok && typ == base.FileTypeOptions {
 				optionsFilepath = path
 			}

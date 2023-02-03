@@ -2,13 +2,13 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package base
+package vfs
 
-import "github.com/cockroachdb/pebble/vfs"
+import "github.com/cockroachdb/pebble/internal/base"
 
 // Cleaner cleans obsolete files.
 type Cleaner interface {
-	Clean(fs vfs.FS, fileType FileType, path string) error
+	Clean(fs FS, fileType base.FileType, path string) error
 }
 
 // NeedsFileContents is implemented by a cleaner that needs the contents of the
@@ -21,7 +21,7 @@ type NeedsFileContents interface {
 type DeleteCleaner struct{}
 
 // Clean removes file.
-func (DeleteCleaner) Clean(fs vfs.FS, fileType FileType, path string) error {
+func (DeleteCleaner) Clean(fs FS, fileType base.FileType, path string) error {
 	return fs.Remove(path)
 }
 
@@ -35,9 +35,9 @@ type ArchiveCleaner struct{}
 var _ NeedsFileContents = ArchiveCleaner{}
 
 // Clean archives file.
-func (ArchiveCleaner) Clean(fs vfs.FS, fileType FileType, path string) error {
+func (ArchiveCleaner) Clean(fs FS, fileType base.FileType, path string) error {
 	switch fileType {
-	case FileTypeLog, FileTypeManifest, FileTypeTable:
+	case base.FileTypeLog, base.FileTypeManifest, base.FileTypeTable:
 		destDir := fs.PathJoin(fs.PathDir(path), "archive")
 
 		if err := fs.MkdirAll(destDir, 0755); err != nil {

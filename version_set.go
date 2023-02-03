@@ -180,7 +180,7 @@ func (vs *versionSet) create(
 
 	vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 		JobID:   jobID,
-		Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, vs.manifestFileNum),
+		Path:    vfs.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, vs.manifestFileNum),
 		FileNum: vs.manifestFileNum,
 		Err:     err,
 	})
@@ -202,7 +202,7 @@ func (vs *versionSet) load(
 	vs.init(dirname, opts, marker, setCurrent, mu)
 
 	vs.manifestFileNum = manifestFileNum
-	manifestPath := base.MakeFilepath(opts.FS, dirname, fileTypeManifest, vs.manifestFileNum)
+	manifestPath := vfs.MakeFilepath(opts.FS, dirname, fileTypeManifest, vs.manifestFileNum)
 	manifestFilename := opts.FS.PathBase(manifestPath)
 
 	// Read the versionEdits in the manifest file.
@@ -491,7 +491,7 @@ func (vs *versionSet) logAndApply(
 			if err := vs.createManifest(vs.dirname, newManifestFileNum, minUnflushedLogNum, nextFileNum); err != nil {
 				vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 					JobID:   jobID,
-					Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
+					Path:    vfs.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
 					FileNum: newManifestFileNum,
 					Err:     err,
 				})
@@ -524,7 +524,7 @@ func (vs *versionSet) logAndApply(
 			}
 			vs.opts.EventListener.ManifestCreated(ManifestCreateInfo{
 				JobID:   jobID,
-				Path:    base.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
+				Path:    vfs.MakeFilepath(vs.fs, vs.dirname, fileTypeManifest, newManifestFileNum),
 				FileNum: newManifestFileNum,
 			})
 		}
@@ -644,7 +644,7 @@ func (vs *versionSet) createManifest(
 	dirname string, fileNum, minUnflushedLogNum, nextFileNum FileNum,
 ) (err error) {
 	var (
-		filename     = base.MakeFilepath(vs.fs, dirname, fileTypeManifest, fileNum)
+		filename     = vfs.MakeFilepath(vs.fs, dirname, fileTypeManifest, fileNum)
 		manifestFile vfs.File
 		manifest     *record.Writer
 	)
@@ -854,7 +854,7 @@ func findCurrentManifest(
 	}
 
 	var ok bool
-	_, manifestNum, ok = base.ParseFilename(fs, filename)
+	_, manifestNum, ok = vfs.ParseFilepath(fs, filename)
 	if !ok {
 		return marker, 0, false, base.CorruptionErrorf("pebble: MANIFEST name %q is malformed", errors.Safe(filename))
 	}
@@ -863,7 +863,7 @@ func findCurrentManifest(
 
 func readCurrentFile(fs vfs.FS, dirname string) (FileNum, error) {
 	// Read the CURRENT file to find the current manifest file.
-	current, err := fs.Open(base.MakeFilepath(fs, dirname, fileTypeCurrent, 0))
+	current, err := fs.Open(vfs.MakeFilepath(fs, dirname, fileTypeCurrent, 0))
 	if err != nil {
 		return 0, errors.Wrapf(err, "pebble: could not open CURRENT file for DB %q", dirname)
 	}
@@ -889,7 +889,7 @@ func readCurrentFile(fs vfs.FS, dirname string) (FileNum, error) {
 	}
 	b = bytes.TrimSpace(b)
 
-	_, manifestFileNum, ok := base.ParseFilename(fs, string(b))
+	_, manifestFileNum, ok := vfs.ParseFilepath(fs, string(b))
 	if !ok {
 		return 0, base.CorruptionErrorf("pebble: MANIFEST name %q is malformed", errors.Safe(b))
 	}

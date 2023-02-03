@@ -700,8 +700,8 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 					//     ahead of time ensures that we're able to Link the
 					//     file like the original workload did.
 					for _, fileNum := range newFiles {
-						src := base.MakeFilepath(r.WorkloadFS, r.WorkloadPath, base.FileTypeTable, fileNum)
-						dst := base.MakeFilepath(r.Opts.FS, r.stagingDir, base.FileTypeTable, fileNum)
+						src := vfs.MakeFilepath(r.WorkloadFS, r.WorkloadPath, base.FileTypeTable, fileNum)
+						dst := vfs.MakeFilepath(r.Opts.FS, r.stagingDir, base.FileTypeTable, fileNum)
 						if err := vfs.CopyAcrossFS(r.WorkloadFS, src, r.Opts.FS, dst); err != nil {
 							return errors.Wrapf(err, "ingest in %q at offset %d", manifestName, rr.Offset())
 						}
@@ -736,7 +736,7 @@ func findWorkloadFiles(
 	}
 	sstables = make(map[base.FileNum]struct{})
 	for _, dirent := range dirents {
-		typ, fileNum, ok := base.ParseFilename(fs, dirent)
+		typ, fileNum, ok := vfs.ParseFilepath(fs, dirent)
 		if !ok {
 			continue
 		}
@@ -819,7 +819,7 @@ func loadFlushedSSTableKeys(
 	// Load all the keys across all the sstables.
 	for _, fileNum := range fileNums {
 		if err := func() error {
-			filePath := base.MakeFilepath(fs, path, base.FileTypeTable, fileNum)
+			filePath := vfs.MakeFilepath(fs, path, base.FileTypeTable, fileNum)
 			f, err := fs.Open(filePath)
 			if err != nil {
 				return err

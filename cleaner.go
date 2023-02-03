@@ -4,13 +4,13 @@
 
 package pebble
 
-import "github.com/cockroachdb/pebble/internal/base"
+import "github.com/cockroachdb/pebble/vfs"
 
-// Cleaner exports the base.Cleaner type.
-type Cleaner = base.Cleaner
+// Cleaner aliases the vfs.Cleaner type.
+type Cleaner = vfs.Cleaner
 
-// DeleteCleaner exports the base.DeleteCleaner type.
-type DeleteCleaner = base.DeleteCleaner
+// DeleteCleaner aliases the vfs.DeleteCleaner type.
+type DeleteCleaner = vfs.DeleteCleaner
 
-// ArchiveCleaner exports the base.ArchiveCleaner type.
-type ArchiveCleaner = base.ArchiveCleaner
+// ArchiveCleaner aliases the vfs.ArchiveCleaner type.
+type ArchiveCleaner = vfs.ArchiveCleaner

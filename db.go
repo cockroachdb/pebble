@@ -2028,7 +2028,7 @@ func (d *DB) recycleWAL() (newLogNum FileNum, prevLogSize uint64) {
 	}
 	d.mu.Unlock()
 
-	newLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
+	newLogName := vfs.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, newLogNum)
 
 	// Try to use a recycled log file. Recycling log files is an important
 	// performance optimization as it is faster to sync a file that has
@@ -2042,12 +2042,12 @@ func (d *DB) recycleWAL() (newLogNum FileNum, prevLogSize uint64) {
 	if err == nil {
 		recycleLog, recycleOK = d.logRecycler.peek()
 		if recycleOK {
-			recycleLogName := base.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, recycleLog.fileNum)
+			recycleLogName := vfs.MakeFilepath(d.opts.FS, d.walDirname, fileTypeLog, recycleLog.fileNum)
 			newLogFile, err = d.opts.FS.ReuseForWrite(recycleLogName, newLogName)
-			base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
+			vfs.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
 		} else {
 			newLogFile, err = d.opts.FS.Create(newLogName)
-			base.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
+			vfs.MustExist(d.opts.FS, newLogName, d.opts.Logger, err)
 		}
 	}
 

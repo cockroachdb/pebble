@@ -338,7 +338,7 @@ func TestIngestLink(t *testing.T) {
 					t.Fatalf("expected %d files, but found:\n%s", count, strings.Join(files, "\n"))
 				}
 				for j := range files {
-					ftype, fileNum, ok := base.ParseFilename(opts.FS, files[j])
+					ftype, fileNum, ok := vfs.ParseFilepath(opts.FS, files[j])
 					if !ok {
 						t.Fatalf("unable to parse filename: %s", files[j])
 					}
@@ -1674,7 +1674,7 @@ func TestIngestCleanup(t *testing.T) {
 			// Create the files in the VFS.
 			metaMap := make(map[base.FileNum]vfs.File)
 			for _, fn := range fns {
-				path := base.MakeFilepath(mem, "", base.FileTypeTable, fn)
+				path := vfs.MakeFilepath(mem, "", base.FileTypeTable, fn)
 				f, err := mem.Create(path)
 				metaMap[fn] = f
 				require.NoError(t, err)

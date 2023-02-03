@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package base
+package vfs
 
 import (
 	"bytes"
@@ -10,11 +10,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseFilename(t *testing.T) {
+func TestParseFilepath(t *testing.T) {
 	testCases := map[string]bool{
 		"000000.log":             true,
 		"000000.log.zip":         false,
@@ -43,37 +43,37 @@ func TestParseFilename(t *testing.T) {
 		"CURRENT.123456.dbtmp":   true,
 		"temporary.123456.dbtmp": true,
 	}
-	fs := vfs.NewMem()
+	fs := NewMem()
 	for tc, want := range testCases {
-		_, _, got := ParseFilename(fs, fs.PathJoin("foo", tc))
+		_, _, got := ParseFilepath(fs, fs.PathJoin("foo", tc))
 		if got != want {
 			t.Errorf("%q: got %v, want %v", tc, got, want)
 		}
 	}
 }
 
-func TestFilenameRoundTrip(t *testing.T) {
-	testCases := map[FileType]bool{
+func TestFilepathRoundTrip(t *testing.T) {
+	testCases := map[base.FileType]bool{
 		// CURRENT and LOCK files aren't numbered.
-		FileTypeCurrent: false,
-		FileTypeLock:    false,
+		base.FileTypeCurrent: false,
+		base.FileTypeLock:    false,
 		// The remaining file types are numbered.
-		FileTypeLog:      true,
-		FileTypeManifest: true,
-		FileTypeTable:    true,
-		FileTypeOptions:  true,
-		FileTypeOldTemp:  true,
-		FileTypeTemp:     true,
+		base.FileTypeLog:      true,
+		base.FileTypeManifest: true,
+		base.FileTypeTable:    true,
+		base.FileTypeOptions:  true,
+		base.FileTypeOldTemp:  true,
+		base.FileTypeTemp:     true,
 	}
-	fs := vfs.NewMem()
+	fs := NewMem()
 	for fileType, numbered := range testCases {
-		fileNums := []FileNum{0}
+		fileNums := []base.FileNum{0}
 		if numbered {
-			fileNums = []FileNum{0, 1, 2, 3, 10, 42, 99, 1001}
+			fileNums = []base.FileNum{0, 1, 2, 3, 10, 42, 99, 1001}
 		}
 		for _, fileNum := range fileNums {
 			filename := MakeFilepath(fs, "foo", fileType, fileNum)
-			gotFT, gotFN, gotOK := ParseFilename(fs, filename)
+			gotFT, gotFN, gotOK := ParseFilepath(fs, filename)
 			if !gotOK {
 				t.Errorf("could not parse %q", filename)
 				continue
@@ -96,9 +96,9 @@ func (b *bufferFataler) Fatalf(msg string, args ...interface{}) {
 
 func TestMustExist(t *testing.T) {
 	err := os.ErrNotExist
-	fs := vfs.Default
+	fs := Default
 	var buf bufferFataler
-	filename := fs.PathJoin("..", "..", "testdata", "db-stage-4", "000000.sst")
+	filename := fs.PathJoin("..", "testdata", "db-stage-4", "000000.sst")
 
 	MustExist(fs, filename, &buf, err)
 	require.Equal(t, `000000.sst:
