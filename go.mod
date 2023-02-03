@@ -9,7 +9,7 @@ require (
 	github.com/cockroachdb/redact v1.0.8
 	github.com/ghemawat/stream v0.0.0-20171120220530-696b145b53b9
 	github.com/golang/snappy v0.0.4
-	github.com/klauspost/compress v1.11.13
+	github.com/klauspost/compress v1.15.15
 	github.com/kr/pretty v0.2.1
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/prometheus/client_golang v1.12.0
