@@ -1,0 +1,120 @@
+open test
+----
+
+list test
+----
+
+batch
+add 1 10 100
+----
+
+list test
+----
+SHARED-CATALOG-000001
+marker.shared-catalog.000001.SHARED-CATALOG-000001
+
+batch
+add 2 20 200
+add 3 30 300
+----
+
+batch
+delete 1
+----
+
+list test
+----
+SHARED-CATALOG-000001
+marker.shared-catalog.000001.SHARED-CATALOG-000001
+
+close
+----
+<nil>
+
+open test
+----
+000002: 20/000200
+000003: 30/000300
+
+batch
+add 4 40 40
+delete 3
+add 8 80 80
+----
+
+list test
+----
+SHARED-CATALOG-000002
+marker.shared-catalog.000002.SHARED-CATALOG-000002
+
+close
+----
+<nil>
+
+open test
+----
+000002: 20/000200
+000004: 40/000040
+000008: 80/000080
+
+close
+----
+<nil>
+
+open other-path
+----
+
+batch
+add 5 50 500
+----
+
+list other-path
+----
+SHARED-CATALOG-000001
+marker.shared-catalog.000001.SHARED-CATALOG-000001
+
+list test
+----
+SHARED-CATALOG-000002
+marker.shared-catalog.000002.SHARED-CATALOG-000002
+
+close
+----
+<nil>
+
+open test
+----
+000002: 20/000200
+000004: 40/000040
+000008: 80/000080
+
+# Test rotation.
+list test
+----
+SHARED-CATALOG-000002
+marker.shared-catalog.000002.SHARED-CATALOG-000002
+
+random-batches n=20 size=100
+----
+
+list test
+----
+SHARED-CATALOG-000003
+marker.shared-catalog.000003.SHARED-CATALOG-000003
+
+random-batches n=10 size=100
+----
+
+list test
+----
+SHARED-CATALOG-000004
+marker.shared-catalog.000004.SHARED-CATALOG-000004
+
+# Even with huge batches, we don't rotate on each batch.
+random-batches n=4 size=10000
+----
+
+list test
+----
+SHARED-CATALOG-000005
+marker.shared-catalog.000005.SHARED-CATALOG-000005
