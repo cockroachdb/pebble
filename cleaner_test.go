@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -23,11 +24,11 @@ func TestArchiveCleaner(t *testing.T) {
 		}
 	}()
 
-	var buf syncedBuffer
 	mem := vfs.NewMem()
+	var memLog base.InMemLogger
 	opts := (&Options{
 		Cleaner: ArchiveCleaner{},
-		FS:      loggingFS{mem, &buf},
+		FS:      vfs.WithLogging(mem, memLog.Infof),
 		WALDir:  "wal",
 	}).WithFSDefaults()
 
@@ -37,7 +38,7 @@ func TestArchiveCleaner(t *testing.T) {
 			if len(td.CmdArgs) != 1 {
 				return "batch <db>"
 			}
-			buf.Reset()
+			memLog.Reset()
 			d := dbs[td.CmdArgs[0].String()]
 			b := d.NewBatch()
 			if err := runBatchDefineCmd(td, b); err != nil {
@@ -46,29 +47,29 @@ func TestArchiveCleaner(t *testing.T) {
 			if err := b.Commit(Sync); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "compact":
 			if len(td.CmdArgs) != 1 {
 				return "compact <db>"
 			}
-			buf.Reset()
+			memLog.Reset()
 			d := dbs[td.CmdArgs[0].String()]
 			if err := d.Compact(nil, []byte("\xff"), false); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "flush":
 			if len(td.CmdArgs) != 1 {
 				return "flush <db>"
 			}
-			buf.Reset()
+			memLog.Reset()
 			d := dbs[td.CmdArgs[0].String()]
 			if err := d.Flush(); err != nil {
 				return err.Error()
 			}
-			return buf.String()
+			return memLog.String()
 
 		case "list":
 			if len(td.CmdArgs) != 1 {
@@ -79,9 +80,7 @@ func TestArchiveCleaner(t *testing.T) {
 				return err.Error()
 			}
 			sort.Strings(paths)
-			buf.Reset()
-			fmt.Fprintf(&buf, "%s\n", strings.Join(paths, "\n"))
-			return buf.String()
+			return fmt.Sprintf("%s\n", strings.Join(paths, "\n"))
 
 		case "open":
 			if len(td.CmdArgs) != 1 && len(td.CmdArgs) != 2 {
@@ -95,14 +94,14 @@ func TestArchiveCleaner(t *testing.T) {
 				opts.ReadOnly = true
 			}
 
-			buf.Reset()
+			memLog.Reset()
 			dir := td.CmdArgs[0].String()
 			d, err := Open(dir, opts)
 			if err != nil {
 				return err.Error()
 			}
 			dbs[dir] = d
-			return buf.String()
+			return memLog.String()
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

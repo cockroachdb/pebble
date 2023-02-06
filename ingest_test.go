@@ -996,9 +996,8 @@ func TestIngestIdempotence(t *testing.T) {
 }
 
 func TestIngestCompact(t *testing.T) {
-	var buf syncedBuffer
 	mem := vfs.NewMem()
-	lel := MakeLoggingEventListener(&buf)
+	lel := MakeLoggingEventListener(&base.InMemLogger{})
 	d, err := Open("", &Options{
 		EventListener:         &lel,
 		FS:                    mem,

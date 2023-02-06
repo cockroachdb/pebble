@@ -9,6 +9,7 @@ open-dir: db
 open-dir: db
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
+remove: db/temporary.000001.dbtmp
 create: db/temporary.000001.dbtmp
 sync: db/temporary.000001.dbtmp
 close: db/temporary.000001.dbtmp
@@ -26,48 +27,59 @@ create: db/marker.format-version.000001.002
 close: db/marker.format-version.000001.002
 sync: db
 upgraded to format version: 002
+remove: db/temporary.000000.dbtmp
 create: db/temporary.000000.dbtmp
 sync: db/temporary.000000.dbtmp
 close: db/temporary.000000.dbtmp
 rename: db/temporary.000000.dbtmp -> db/CURRENT
 create: db/marker.format-version.000002.003
 close: db/marker.format-version.000002.003
+remove: db/marker.format-version.000001.002
 sync: db
 upgraded to format version: 003
 create: db/marker.format-version.000003.004
 close: db/marker.format-version.000003.004
+remove: db/marker.format-version.000002.003
 sync: db
 upgraded to format version: 004
 create: db/marker.format-version.000004.005
 close: db/marker.format-version.000004.005
+remove: db/marker.format-version.000003.004
 sync: db
 upgraded to format version: 005
 create: db/marker.format-version.000005.006
 close: db/marker.format-version.000005.006
+remove: db/marker.format-version.000004.005
 sync: db
 upgraded to format version: 006
 create: db/marker.format-version.000006.007
 close: db/marker.format-version.000006.007
+remove: db/marker.format-version.000005.006
 sync: db
 upgraded to format version: 007
 create: db/marker.format-version.000007.008
 close: db/marker.format-version.000007.008
+remove: db/marker.format-version.000006.007
 sync: db
 upgraded to format version: 008
 create: db/marker.format-version.000008.009
 close: db/marker.format-version.000008.009
+remove: db/marker.format-version.000007.008
 sync: db
 upgraded to format version: 009
 create: db/marker.format-version.000009.010
 close: db/marker.format-version.000009.010
+remove: db/marker.format-version.000008.009
 sync: db
 upgraded to format version: 010
 create: db/marker.format-version.000010.011
 close: db/marker.format-version.000010.011
+remove: db/marker.format-version.000009.010
 sync: db
 upgraded to format version: 011
 create: db/marker.format-version.000011.012
 close: db/marker.format-version.000011.012
+remove: db/marker.format-version.000010.011
 sync: db
 upgraded to format version: 012
 create: db/temporary.000003.dbtmp
@@ -95,6 +107,7 @@ close: db/MANIFEST-000001
 sync: db/MANIFEST-000006
 create: db/marker.manifest.000002.MANIFEST-000006
 close: db/marker.manifest.000002.MANIFEST-000006
+remove: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 [JOB 5] MANIFEST created 000006
 [JOB 5] flushed 1 memtable to L0 [000005] (770 B), in 1.0s (2.0s total), output rate 770 B/s
@@ -118,9 +131,11 @@ close: db/MANIFEST-000006
 sync: db/MANIFEST-000009
 create: db/marker.manifest.000003.MANIFEST-000009
 close: db/marker.manifest.000003.MANIFEST-000009
+remove: db/marker.manifest.000002.MANIFEST-000006
 sync: db
 [JOB 7] MANIFEST created 000009
 [JOB 7] flushed 1 memtable to L0 [000008] (770 B), in 1.0s (2.0s total), output rate 770 B/s
+remove: db/MANIFEST-000001
 [JOB 7] MANIFEST deleted 000001
 [JOB 8] compacting(default) L0 [000005 000008] (1.5 K) + L6 [] (0 B)
 create: db/000010.sst
@@ -133,11 +148,15 @@ close: db/MANIFEST-000009
 sync: db/MANIFEST-000011
 create: db/marker.manifest.000004.MANIFEST-000011
 close: db/marker.manifest.000004.MANIFEST-000011
+remove: db/marker.manifest.000003.MANIFEST-000009
 sync: db
 [JOB 8] MANIFEST created 000011
 [JOB 8] compacted(default) L0 [000005 000008] (1.5 K) + L6 [] (0 B) -> L6 [000010] (770 B), in 1.0s (2.0s total), output rate 770 B/s
+remove: db/000005.sst
 [JOB 8] sstable deleted 000005
+remove: db/000008.sst
 [JOB 8] sstable deleted 000008
+remove: db/MANIFEST-000006
 [JOB 8] MANIFEST deleted 000006
 
 disable-file-deletions
@@ -162,12 +181,14 @@ close: db/MANIFEST-000011
 sync: db/MANIFEST-000014
 create: db/marker.manifest.000005.MANIFEST-000014
 close: db/marker.manifest.000005.MANIFEST-000014
+remove: db/marker.manifest.000004.MANIFEST-000011
 sync: db
 [JOB 10] MANIFEST created 000014
 [JOB 10] flushed 1 memtable to L0 [000013] (770 B), in 1.0s (2.0s total), output rate 770 B/s
 
 enable-file-deletions
 ----
+remove: db/MANIFEST-000009
 [JOB 11] MANIFEST deleted 000009
 
 ingest
@@ -180,9 +201,12 @@ close: db/MANIFEST-000014
 sync: db/MANIFEST-000016
 create: db/marker.manifest.000006.MANIFEST-000016
 close: db/marker.manifest.000006.MANIFEST-000016
+remove: db/marker.manifest.000005.MANIFEST-000014
 sync: db
 [JOB 12] MANIFEST created 000016
+remove: db/MANIFEST-000011
 [JOB 12] MANIFEST deleted 000011
+remove: ext/0
 [JOB 12] ingested L0:000015 (826 B)
 
 metrics
