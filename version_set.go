@@ -111,8 +111,7 @@ type versionSet struct {
 	writing    bool
 	writerCond sync.Cond
 	// State for deciding when to write a snapshot. Protected by mu.
-	lastSnapshotFileCount           int64
-	editsSinceLastSnapshotFileCount int64
+	rotationHelper record.RotationHelper
 }
 
 func (vs *versionSet) init(
@@ -433,37 +432,22 @@ func (vs *versionSet) logAndApply(
 	//
 	// The logic below uses the min of the last snapshot file count and the file
 	// count in the current version.
-	editCount := int64(len(ve.DeletedFiles) + len(ve.NewFiles))
-	vs.editsSinceLastSnapshotFileCount += editCount
+	vs.rotationHelper.AddRecord(int64(len(ve.DeletedFiles) + len(ve.NewFiles)))
 	sizeExceeded := vs.manifest.Size() >= vs.opts.MaxManifestFileSize
 	requireRotation := forceRotation || vs.manifest == nil
-	computeNextSnapshotFileCount := func() int64 {
-		var count int64
-		for i := range vs.metrics.Levels {
-			count += vs.metrics.Levels[i].NumFiles
-		}
-		return count
+
+	var nextSnapshotFilecount int64
+	for i := range vs.metrics.Levels {
+		nextSnapshotFilecount += vs.metrics.Levels[i].NumFiles
 	}
-	var nextSnapshotFileCount int64
 	if sizeExceeded && !requireRotation {
-		if vs.editsSinceLastSnapshotFileCount > vs.lastSnapshotFileCount {
-			requireRotation = true
-		} else {
-			nextSnapshotFileCount = computeNextSnapshotFileCount()
-			if vs.editsSinceLastSnapshotFileCount > nextSnapshotFileCount {
-				requireRotation = true
-			}
-		}
+		requireRotation = vs.rotationHelper.ShouldRotate(nextSnapshotFilecount)
 	}
 	var newManifestFileNum FileNum
 	var prevManifestFileSize uint64
 	if requireRotation {
 		newManifestFileNum = vs.getNextFileNum()
 		prevManifestFileSize = uint64(vs.manifest.Size())
-		if nextSnapshotFileCount == 0 {
-			// Haven't computed it, or happens to be 0.
-			nextSnapshotFileCount = computeNextSnapshotFileCount()
-		}
 	}
 
 	// Grab certain values before releasing vs.mu, in case createManifest() needs
@@ -542,8 +526,7 @@ func (vs *versionSet) logAndApply(
 
 	if requireRotation {
 		// Successfully rotated.
-		vs.lastSnapshotFileCount = nextSnapshotFileCount
-		vs.editsSinceLastSnapshotFileCount = editCount
+		vs.rotationHelper.Rotate(nextSnapshotFilecount)
 	}
 	// Now that DB.mu is held again, initialize compacting file info in
 	// L0Sublevels.
