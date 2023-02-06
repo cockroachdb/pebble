@@ -86,7 +86,7 @@ close: test [<nil>]
 
 			var buf bytes.Buffer
 			tf := &mockSyncToFile{File: f, canSyncTo: c.canSyncTo}
-			lf := loggingFile{tf, "test", &buf}
+			lf := &vfsTestFSFile{tf, "test", &buf}
 			s := NewSyncingFile(lf, SyncingFileOptions{BytesPerSync: 8 << 10 /* 8 KB */}).(*syncingFile)
 
 			write := func(n int64) {
@@ -100,7 +100,7 @@ close: test [<nil>]
 			write(mb)
 			write(mb)
 
-			fmt.Fprintf(lf.w, "pre-close: %s [offset=%d sync-offset=%d]\n",
+			fmt.Fprintf(&buf, "pre-close: %s [offset=%d sync-offset=%d]\n",
 				lf.name, atomic.LoadInt64(&s.atomic.offset), atomic.LoadInt64(&s.atomic.syncOffset))
 			require.NoError(t, s.Close())
 
@@ -153,10 +153,8 @@ func TestSyncingFileNoSyncOnClose(t *testing.T) {
 			f, err := Default.Create(filename)
 			require.NoError(t, err)
 
-			var buf bytes.Buffer
 			tf := &mockSyncToFile{f, c.useSyncTo}
-			lf := loggingFile{tf, "test", &buf}
-			s := NewSyncingFile(lf, SyncingFileOptions{NoSyncOnClose: true, BytesPerSync: 8 << 10}).(*syncingFile)
+			s := NewSyncingFile(tf, SyncingFileOptions{NoSyncOnClose: true, BytesPerSync: 8 << 10}).(*syncingFile)
 
 			write := func(n int64) {
 				t.Helper()

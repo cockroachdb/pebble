@@ -369,9 +369,9 @@ func TestOpenReadOnly(t *testing.T) {
 	{
 		// Opening a non-existent DB in read-only mode should result in no mutable
 		// filesystem operations.
-		var buf syncedBuffer
+		var memLog base.InMemLogger
 		_, err := Open("non-existent", testingRandomized(&Options{
-			FS:       loggingFS{mem, &buf},
+			FS:       vfs.WithLogging(mem, memLog.Infof),
 			ReadOnly: true,
 			WALDir:   "non-existent-waldir",
 		}))
@@ -379,7 +379,7 @@ func TestOpenReadOnly(t *testing.T) {
 			t.Fatalf("expected error, but found success")
 		}
 		const expected = `open-dir: non-existent`
-		if trimmed := strings.TrimSpace(buf.String()); expected != trimmed {
+		if trimmed := strings.TrimSpace(memLog.String()); expected != trimmed {
 			t.Fatalf("expected %q, but found %q", expected, trimmed)
 		}
 	}
@@ -387,9 +387,9 @@ func TestOpenReadOnly(t *testing.T) {
 	{
 		// Opening a DB with a non-existent WAL dir in read-only mode should result
 		// in no mutable filesystem operations other than the LOCK.
-		var buf syncedBuffer
+		var memLog base.InMemLogger
 		_, err := Open("", testingRandomized(&Options{
-			FS:       loggingFS{mem, &buf},
+			FS:       vfs.WithLogging(mem, memLog.Infof),
 			ReadOnly: true,
 			WALDir:   "non-existent-waldir",
 		}))
@@ -397,7 +397,7 @@ func TestOpenReadOnly(t *testing.T) {
 			t.Fatalf("expected error, but found success")
 		}
 		const expected = "open-dir: \nopen-dir: non-existent-waldir\nclose:"
-		if trimmed := strings.TrimSpace(buf.String()); expected != trimmed {
+		if trimmed := strings.TrimSpace(memLog.String()); expected != trimmed {
 			t.Fatalf("expected %q, but found %q", expected, trimmed)
 		}
 	}

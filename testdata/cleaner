@@ -9,6 +9,7 @@ open-dir: db
 open-dir: db
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
+remove: db/temporary.000001.dbtmp
 create: db/temporary.000001.dbtmp
 sync: db/temporary.000001.dbtmp
 close: db/temporary.000001.dbtmp
