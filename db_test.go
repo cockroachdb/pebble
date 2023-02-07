@@ -936,7 +936,7 @@ func TestRollManifest(t *testing.T) {
 	sizeRolloverState := func() (int64, int64) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return d.mu.versions.lastSnapshotFileCount, d.mu.versions.editsSinceLastSnapshotFileCount
+		return d.mu.versions.rotationHelper.DebugInfo()
 	}
 
 	current := func() string {
