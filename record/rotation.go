@@ -51,7 +51,7 @@ func (rh *RotationHelper) ShouldRotate(nextSnapshotSize int64) bool {
 	//   will ensure that at most 50% of data written out is due to rotation.
 	//
 	// - The number of live entries K in the DB is shrinking drastically, say from
-	//   S to S/10: After this shrinking, E = 0.9F, and so if we used the previous
+	//   S to S/10: After this shrinking, E = 0.9S, and so if we used the previous
 	//   snapshot entry count, S, as the threshold that needs to be exceeded, we
 	//   will further delay the snapshot writing. Which means on reopen we will
 	//   need to replay 0.9S edits to get to a version with 0.1S entries. It would
@@ -59,8 +59,9 @@ func (rh *RotationHelper) ShouldRotate(nextSnapshotSize int64) bool {
 	//   the current version.
 	//
 	// - The number of live entries L in the DB is growing; say the last snapshot
-	//   had S entries, and now we have 10S entries, so E = 9S. We will further
-	//   delay writing a new snapshot.
+	//   had S entries, and now we have 10S entries, so E = 9S. If we required
+	//   that E is at least the current number of entries, we would further delay
+	//   writing a new snapshot (which is not desirable).
 	//
 	// The logic below uses the min of the last snapshot size count and the size
 	// count in the current version.
