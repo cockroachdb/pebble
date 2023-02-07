@@ -1,0 +1,249 @@
+open test
+----
+
+list test
+----
+
+batch
+add 1 10 100
+----
+create: test/SHARED-CATALOG-000001
+sync: test/SHARED-CATALOG-000001
+create: test/marker.shared-catalog.000001.SHARED-CATALOG-000001
+close: test/marker.shared-catalog.000001.SHARED-CATALOG-000001
+sync: test
+sync: test/SHARED-CATALOG-000001
+
+list test
+----
+SHARED-CATALOG-000001
+marker.shared-catalog.000001.SHARED-CATALOG-000001
+
+batch
+add 2 20 200
+add 3 30 300
+----
+sync: test/SHARED-CATALOG-000001
+
+batch
+delete 1
+----
+sync: test/SHARED-CATALOG-000001
+
+list test
+----
+SHARED-CATALOG-000001
+marker.shared-catalog.000001.SHARED-CATALOG-000001
+
+# Bad batches.
+batch
+add 3 1 1
+----
+error applying batch: adding existing object 000003
+
+batch
+delete 1000
+----
+error applying batch: deleting non-existent object 001000
+
+close
+----
+close: test/SHARED-CATALOG-000001
+
+open test
+----
+000002: 20/000200
+000003: 30/000300
+
+batch
+add 4 40 40
+delete 3
+add 8 80 80
+----
+create: test/SHARED-CATALOG-000002
+sync: test/SHARED-CATALOG-000002
+create: test/marker.shared-catalog.000002.SHARED-CATALOG-000002
+close: test/marker.shared-catalog.000002.SHARED-CATALOG-000002
+remove: test/marker.shared-catalog.000001.SHARED-CATALOG-000001
+sync: test
+remove: test/SHARED-CATALOG-000001
+sync: test/SHARED-CATALOG-000002
+
+list test
+----
+SHARED-CATALOG-000002
+marker.shared-catalog.000002.SHARED-CATALOG-000002
+
+close
+----
+close: test/SHARED-CATALOG-000002
+
+open test
+----
+000002: 20/000200
+000004: 40/000040
+000008: 80/000080
+
+close
+----
+
+open other-path
+----
+
+batch
+add 5 50 500
+----
+create: other-path/SHARED-CATALOG-000001
+sync: other-path/SHARED-CATALOG-000001
+create: other-path/marker.shared-catalog.000001.SHARED-CATALOG-000001
+close: other-path/marker.shared-catalog.000001.SHARED-CATALOG-000001
+sync: other-path
+sync: other-path/SHARED-CATALOG-000001
+
+list other-path
+----
+SHARED-CATALOG-000001
+marker.shared-catalog.000001.SHARED-CATALOG-000001
+
+list test
+----
+SHARED-CATALOG-000002
+marker.shared-catalog.000002.SHARED-CATALOG-000002
+
+close
+----
+close: other-path/SHARED-CATALOG-000001
+
+open test
+----
+000002: 20/000200
+000004: 40/000040
+000008: 80/000080
+
+# Test rotation.
+list test
+----
+SHARED-CATALOG-000002
+marker.shared-catalog.000002.SHARED-CATALOG-000002
+
+random-batches n=20 size=2000
+----
+create: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+create: test/marker.shared-catalog.000003.SHARED-CATALOG-000003
+close: test/marker.shared-catalog.000003.SHARED-CATALOG-000003
+remove: test/marker.shared-catalog.000002.SHARED-CATALOG-000002
+sync: test
+remove: test/SHARED-CATALOG-000002
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000003
+close: test/SHARED-CATALOG-000003
+create: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+create: test/marker.shared-catalog.000004.SHARED-CATALOG-000004
+close: test/marker.shared-catalog.000004.SHARED-CATALOG-000004
+remove: test/marker.shared-catalog.000003.SHARED-CATALOG-000003
+sync: test
+remove: test/SHARED-CATALOG-000003
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+
+list test
+----
+SHARED-CATALOG-000004
+marker.shared-catalog.000004.SHARED-CATALOG-000004
+
+random-batches n=20 size=2000
+----
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000004
+close: test/SHARED-CATALOG-000004
+create: test/SHARED-CATALOG-000005
+sync: test/SHARED-CATALOG-000005
+create: test/marker.shared-catalog.000005.SHARED-CATALOG-000005
+close: test/marker.shared-catalog.000005.SHARED-CATALOG-000005
+remove: test/marker.shared-catalog.000004.SHARED-CATALOG-000004
+sync: test
+remove: test/SHARED-CATALOG-000004
+sync: test/SHARED-CATALOG-000005
+sync: test/SHARED-CATALOG-000005
+sync: test/SHARED-CATALOG-000005
+sync: test/SHARED-CATALOG-000005
+
+list test
+----
+SHARED-CATALOG-000005
+marker.shared-catalog.000005.SHARED-CATALOG-000005
+
+# Even with huge batches, we don't rotate on each batch.
+random-batches n=10 size=50000
+----
+sync: test/SHARED-CATALOG-000005
+close: test/SHARED-CATALOG-000005
+create: test/SHARED-CATALOG-000006
+sync: test/SHARED-CATALOG-000006
+create: test/marker.shared-catalog.000006.SHARED-CATALOG-000006
+close: test/marker.shared-catalog.000006.SHARED-CATALOG-000006
+remove: test/marker.shared-catalog.000005.SHARED-CATALOG-000005
+sync: test
+remove: test/SHARED-CATALOG-000005
+sync: test/SHARED-CATALOG-000006
+sync: test/SHARED-CATALOG-000006
+close: test/SHARED-CATALOG-000006
+create: test/SHARED-CATALOG-000007
+sync: test/SHARED-CATALOG-000007
+create: test/marker.shared-catalog.000007.SHARED-CATALOG-000007
+close: test/marker.shared-catalog.000007.SHARED-CATALOG-000007
+remove: test/marker.shared-catalog.000006.SHARED-CATALOG-000006
+sync: test
+remove: test/SHARED-CATALOG-000006
+sync: test/SHARED-CATALOG-000007
+sync: test/SHARED-CATALOG-000007
+sync: test/SHARED-CATALOG-000007
+sync: test/SHARED-CATALOG-000007
+close: test/SHARED-CATALOG-000007
+create: test/SHARED-CATALOG-000008
+sync: test/SHARED-CATALOG-000008
+create: test/marker.shared-catalog.000008.SHARED-CATALOG-000008
+close: test/marker.shared-catalog.000008.SHARED-CATALOG-000008
+remove: test/marker.shared-catalog.000007.SHARED-CATALOG-000007
+sync: test
+remove: test/SHARED-CATALOG-000007
+sync: test/SHARED-CATALOG-000008
+sync: test/SHARED-CATALOG-000008
+sync: test/SHARED-CATALOG-000008
+
+list test
+----
+SHARED-CATALOG-000008
+marker.shared-catalog.000008.SHARED-CATALOG-000008
