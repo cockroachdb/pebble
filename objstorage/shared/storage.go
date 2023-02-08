@@ -42,7 +42,7 @@ type Storage interface {
 	//   List("", "/") -> ["a", "b"]
 	//   List("b", "/") -> ["4", "5", "6"]
 	//   List("b", "") -> ["/4", "/5", "/6"]
-	List(prefix, delimiter string) []string
+	List(prefix, delimiter string) ([]string, error)
 
 	// Delete removes the named object from the store.
 	Delete(basename string) error
