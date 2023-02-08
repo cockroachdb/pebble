@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -633,9 +634,7 @@ type Options struct {
 		// wrote a file should not delete it if other Pebble instances are known to
 		// be reading this file. This FS is expected to have slower read/write
 		// performance than the default FS above.
-		//
-		// TODO(bilal): Uncomment this once it's in use.
-		// SharedStorage shared.Storage
+		SharedStorage shared.Storage
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
