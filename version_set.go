@@ -765,6 +765,7 @@ func (vs *versionSet) addObsolete(obsolete []*manifest.FileMetadata) {
 
 func (vs *versionSet) updateObsoleteTableMetricsLocked() {
 	vs.metrics.Table.ObsoleteCount = int64(len(vs.obsoleteTables))
+	vs.metrics.Table.ObsoleteSize = 0
 	for _, fileMeta := range vs.obsoleteTables {
 		vs.metrics.Table.ObsoleteSize += fileMeta.Size
 	}
