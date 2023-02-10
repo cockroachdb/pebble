@@ -17,9 +17,6 @@ import (
 
 func wrapOSFileImpl(f *os.File) File {
 	lf := &linuxOnArmFile{File: f, fd: f.Fd()}
-	if lf.fd != InvalidFd {
-		lf.useSyncRange = isSyncRangeSupported(lf.fd)
-	}
 	return lf
 }
 
@@ -49,7 +46,6 @@ func (d *linuxOnArmDir) SyncTo(offset int64) (fullSync bool, err error) { return
 type linuxOnArmFile struct {
 	*os.File
 	fd           uintptr
-	useSyncRange bool
 }
 
 func (f *linuxOnArmFile) Prefetch(offset int64, length int64) error {
