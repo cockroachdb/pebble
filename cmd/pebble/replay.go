@@ -127,7 +127,14 @@ func (c *replayConfig) runOnce(stdout io.Writer, workloadPath string) error {
 		return errors.Wrapf(err, "cleaning up")
 	}
 	fmt.Fprintln(stdout, "Workload complete.")
-	fmt.Fprintln(stdout, m.BenchmarkString(c.name))
+	if err := m.WriteBenchmarkString(c.name, stdout); err != nil {
+		return err
+	}
+	for _, plot := range m.Plots(120 /* width */, 30 /* height */) {
+		fmt.Fprintln(stdout, plot.Name)
+		fmt.Fprintln(stdout, plot.Plot)
+		fmt.Fprintln(stdout)
+	}
 	fmt.Fprintln(stdout, m.Final.String())
 	return nil
 }
