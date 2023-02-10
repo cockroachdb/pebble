@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -790,6 +791,10 @@ func TestIngestTargetLevel(t *testing.T) {
 }
 
 func TestIngest(t *testing.T) {
+	if unsafe.Sizeof("") != 16 {
+		t.Skipf("Test fails on 32-bit platforms, due difference in size of tcache struct")
+	}
+
 	var mem vfs.FS
 	var d *DB
 	var flushed bool
@@ -1293,7 +1298,7 @@ func TestIngestFlushQueuedLargeBatch(t *testing.T) {
 	// size in order to more easily create a situation where a large batch is
 	// queued but not automatically flushed.
 	d.mu.Lock()
-	d.largeBatchThreshold = d.opts.MemTableSize / 8
+	d.largeBatchThreshold = int(d.opts.MemTableSize) / 8
 	d.mu.Unlock()
 
 	// Set a record with a large value. This will be transformed into a large

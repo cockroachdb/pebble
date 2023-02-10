@@ -3269,7 +3269,7 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 	// size in order to more easily create a situation where a large batch is
 	// queued but not automatically flushed.
 	d.mu.Lock()
-	d.largeBatchThreshold = d.opts.MemTableSize / 8
+	d.largeBatchThreshold = int(d.opts.MemTableSize) / 8
 	require.Equal(t, 1, len(d.mu.mem.queue))
 	d.mu.Unlock()
 

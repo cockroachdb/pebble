@@ -7,7 +7,9 @@
 
 package manual
 
+import "math"
+
 const (
 	// MaxArrayLen is a safe maximum length for slices on this architecture.
-	MaxArrayLen = 1<<31 - 1
+	MaxArrayLen = math.MaxInt32 / 2
 )

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -105,6 +106,10 @@ zmemtbl        14    13 B
 }
 
 func TestMetrics(t *testing.T) {
+	if unsafe.Sizeof("") != 16 {
+		t.Skipf("Test fails on 32-bit platforms, due difference in size of tcache struct")
+	}
+
 	opts := &Options{
 		Comparer:              testkeys.Comparer,
 		FormatMajorVersion:    FormatNewest,

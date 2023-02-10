@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"runtime"
 	"strconv"
 	"strings"
@@ -487,7 +488,7 @@ type Options struct {
 		// concurrent compaction is added. This works "on top" of
 		// L0CompactionConcurrency, so the higher of the count of compaction
 		// concurrency slots as determined by the two options is chosen.
-		CompactionDebtConcurrency int
+		CompactionDebtConcurrency int64
 
 		// MinDeletionRate is the minimum number of bytes per second that would
 		// be deleted. Deletion pacing is used to slow down deletions when
@@ -733,7 +734,7 @@ type Options struct {
 	// writing the contents of the old one in the
 	// background. MemTableStopWritesThreshold places a hard limit on the size of
 	// the queued MemTables.
-	MemTableSize int
+	MemTableSize uint64
 
 	// Hard limit on the size of queued of MemTables. Writes are stopped when the
 	// sum of the queued memtable sizes exceeds
@@ -1304,7 +1305,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					}
 				}
 			case "compaction_debt_concurrency":
-				o.Experimental.CompactionDebtConcurrency, err = strconv.Atoi(value)
+				var val int
+				val, err = strconv.Atoi(value)
+				o.Experimental.CompactionDebtConcurrency = int64(val)
 			case "delete_range_flush_delay":
 				// NB: This is a deprecated serialization of the
 				// `flush_delay_delete_range`.
@@ -1363,7 +1366,13 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "max_open_files":
 				o.MaxOpenFiles, err = strconv.Atoi(value)
 			case "mem_table_size":
-				o.MemTableSize, err = strconv.Atoi(value)
+				var uVal uint64
+				uVal, err = strconv.ParseUint(value, 10, 64)
+				if uVal > math.MaxInt64 {
+					err = errors.New("value out of range")
+				} else {
+					o.MemTableSize = uint64(uVal)
+				}
 			case "mem_table_stop_writes_threshold":
 				o.MemTableStopWritesThreshold, err = strconv.Atoi(value)
 			case "min_compaction_rate":

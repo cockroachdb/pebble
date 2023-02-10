@@ -87,7 +87,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		merge:               opts.Merger.Merge,
 		split:               opts.Comparer.Split,
 		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
-		largeBatchThreshold: (opts.MemTableSize - int(memTableEmptySize)) / 2,
+		largeBatchThreshold: (int(opts.MemTableSize) - int(memTableEmptySize)) / 2,
 		objProvider:         objProvider,
 		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
 		closed:              new(atomic.Value),
@@ -141,7 +141,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		rate.Limit(d.opts.Experimental.MinDeletionRate),
 		d.opts.Experimental.MinDeletionRate)
 	d.mu.nextJobID = 1
-	d.mu.mem.nextSize = opts.MemTableSize
+	d.mu.mem.nextSize = int(opts.MemTableSize)
 	if d.mu.mem.nextSize > initialMemTableSize {
 		d.mu.mem.nextSize = initialMemTableSize
 	}

@@ -1804,15 +1804,15 @@ func (d *DB) walPreallocateSize() int {
 	// RocksDB. Could a smaller preallocation block size be used?
 	size := d.opts.MemTableSize
 	size = (size / 10) + size
-	return size
+	return int(size)
 }
 
 func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushableEntry) {
 	size := d.mu.mem.nextSize
-	if d.mu.mem.nextSize < d.opts.MemTableSize {
+	if uint64(d.mu.mem.nextSize) < d.opts.MemTableSize {
 		d.mu.mem.nextSize *= 2
-		if d.mu.mem.nextSize > d.opts.MemTableSize {
-			d.mu.mem.nextSize = d.opts.MemTableSize
+		if uint64(d.mu.mem.nextSize) > d.opts.MemTableSize {
+			d.mu.mem.nextSize = int(d.opts.MemTableSize)
 		}
 	}
 

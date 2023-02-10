@@ -67,10 +67,12 @@ import (
 )
 
 const (
-	maxHeight    = 20
-	maxNodeSize  = int(unsafe.Sizeof(node{}))
-	linksSize    = int(unsafe.Sizeof(links{}))
-	maxNodesSize = math.MaxUint32
+	maxHeight   = 20
+	maxNodeSize = uint32(unsafe.Sizeof(node{}))
+	linksSize   = uint32(unsafe.Sizeof(links{}))
+	// Same as manual.MaxArrayLen on 32bit arches. Using that on 64bit too, as
+	// we are constrained to uint32 here anyway.
+	maxNodesSize = uint32(math.MaxInt32) / 2
 )
 
 var (
@@ -80,8 +82,9 @@ var (
 	ErrExists = errors.New("record with this key already exists")
 
 	// ErrTooManyRecords is a sentinel error returned when the size of the raw
-	// nodes slice exceeds the maximum allowed size (currently 1 << 32 - 1). This
-	// corresponds to ~117 M skiplist entries.
+	// nodes slice exceeds the maximum allowed size. On 64bit this is
+	// 1 << 32 - 1 (int32), which corresponds to ~117 M skiplist entries.
+	// On 32bit it's limited by the max size of a byte array (>1.4M)
 	ErrTooManyRecords = errors.New("too many records")
 )
 
@@ -281,7 +284,7 @@ func (s *Skiplist) newNode(
 		panic("height cannot be less than one or greater than the max height")
 	}
 
-	unusedSize := (maxHeight - int(height)) * linksSize
+	unusedSize := (maxHeight - height) * linksSize
 	nodeOffset, err := s.alloc(uint32(maxNodeSize - unusedSize))
 	if err != nil {
 		return 0, err
@@ -296,13 +299,33 @@ func (s *Skiplist) newNode(
 }
 
 func (s *Skiplist) alloc(size uint32) (uint32, error) {
-	offset := len(s.nodes)
+	offset := uint32(len(s.nodes))
 
 	// We only have a need for memory up to offset + size, but we never want
 	// to allocate a node whose tail points into unallocated memory.
 	minAllocSize := offset + maxNodeSize
-	if cap(s.nodes) < minAllocSize {
-		allocSize := cap(s.nodes) * 2
+	// Check for overflow
+	if minAllocSize < offset {
+		minAllocSize = offset + size
+		if minAllocSize < offset {
+			return 0, errors.Wrapf(ErrTooManyRecords,
+				"alloc of new record (size=%d) would overflow uint32 (current size=%d)",
+				uint64(offset)+uint64(size), offset,
+			)
+		}
+	}
+	nodesCap := uint32(cap(s.nodes))
+	if nodesCap < minAllocSize {
+		if minAllocSize > uint32(maxNodesSize) {
+			return 0, errors.Wrapf(ErrTooManyRecords,
+				"alloc of new record (size=%d) would exceed maximum number of nodes (%d, current size=%d)",
+				uint64(offset)+uint64(size), maxNodesSize, offset,
+			)
+		}
+		allocSize := nodesCap * 2
+		if allocSize < nodesCap { // Overflow
+			allocSize = uint32(maxNodesSize)
+		}
 		if allocSize < minAllocSize {
 			allocSize = minAllocSize
 		}
@@ -311,10 +334,10 @@ func (s *Skiplist) alloc(size uint32) (uint32, error) {
 			// The new record may still not fit within the allocation, in which case
 			// we return early with an error. This avoids the panic below when we
 			// resize the slice. It also avoids the allocation and copy.
-			if uint64(offset)+uint64(size) > maxNodesSize {
+			if offset+size > maxNodesSize {
 				return 0, errors.Wrapf(ErrTooManyRecords,
-					"alloc of new record (size=%d) would overflow uint32 (current size=%d)",
-					uint64(offset)+uint64(size), offset,
+					"alloc of new record (size=%d) would exceed the allowed maximum number of records (%v, current size=%d)",
+					offset+size, maxNodesSize, offset,
 				)
 			}
 			allocSize = maxNodesSize

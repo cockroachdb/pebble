@@ -111,7 +111,7 @@ func checkMemTable(obj interface{}) {
 func newMemTable(opts memTableOptions) *memTable {
 	opts.Options = opts.Options.EnsureDefaults()
 	if opts.size == 0 {
-		opts.size = opts.MemTableSize
+		opts.size = int(opts.MemTableSize)
 	}
 
 	m := &memTable{

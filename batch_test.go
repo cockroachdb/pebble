@@ -723,7 +723,7 @@ func TestBatchGet(t *testing.T) {
 		t.Run(fmt.Sprintf("%s,mem=%d", c.method, c.memTableSize), func(t *testing.T) {
 			d, err := Open("", &Options{
 				FS:           vfs.NewMem(),
-				MemTableSize: c.memTableSize,
+				MemTableSize: uint64(c.memTableSize),
 			})
 			if err != nil {
 				t.Fatalf("Open: %v", err)
@@ -931,7 +931,7 @@ func TestBatchTooLarge(t *testing.T) {
 				result = r
 			}
 		}()
-		b.grow(maxBatchSize)
+		b.grow(uint64(maxBatchSize))
 	}()
 	require.EqualValues(t, ErrBatchTooLarge, result)
 }
