@@ -11,7 +11,6 @@
 package replay
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -31,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
+	"golang.org/x/perf/benchfmt"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -104,8 +104,9 @@ type Metrics struct {
 		Rewrite     int64
 		MultiLevel  int64
 	}
-	Final  *pebble.Metrics
-	Ingest struct {
+	EstimatedDebt SampledMetric
+	Final         *pebble.Metrics
+	Ingest        struct {
 		BytesIntoL0 uint64
 		// BytesWeightedByLevel is calculated as the number of bytes ingested
 		// into a level multiplied by the level's distance from the bottommost
@@ -114,68 +115,118 @@ type Metrics struct {
 		// write amplification.
 		BytesWeightedByLevel uint64
 	}
+	ReadAmp SampledMetric
+	// QuiesceDur is the time between completing application of the workload and
+	// compactions quiescing.
+	QuiesceDur time.Duration
+	// TotalSize holds the total size of the database, sampled after each
+	// workload step.
+	TotalSize           SampledMetric
 	TotalWriteAmp       float64
+	WorkloadDur         time.Duration
 	WriteBytes          uint64
 	WriteStalls         uint64
 	WriteStallsDuration time.Duration
+	WriteThroughput     SampledMetric
 }
 
-// BenchmarkString returns the metrics in the form of a series of 'Benchmark'
-// lines understandable by benchstat.
-func (m *Metrics) BenchmarkString(name string) string {
+// Plot holds an ascii plot and its name.
+type Plot struct {
+	Name string
+	Plot string
+}
+
+// Plots returns a slice of ascii plots describing metrics change over time.
+func (m *Metrics) Plots(width, height int) []Plot {
+	const scaleMB = 1.0 / float64(1<<20)
+	return []Plot{
+		{Name: "Write throughput (MB/s)", Plot: m.WriteThroughput.PlotIncreasingPerSec(width, height, scaleMB)},
+		{Name: "Estimated compaction debt (MB)", Plot: m.EstimatedDebt.Plot(width, height, scaleMB)},
+		{Name: "Total database size (MB)", Plot: m.TotalSize.Plot(width, height, scaleMB)},
+		{Name: "ReadAmp", Plot: m.ReadAmp.Plot(width, height, 1.0)},
+	}
+}
+
+// WriteBenchmarkString writes the metrics in the form of a series of
+// 'Benchmark' lines understandable by benchstat.
+func (m *Metrics) WriteBenchmarkString(name string, w io.Writer) error {
 	groups := []struct {
-		label string
-		pairs []string
+		label  string
+		values []benchfmt.Value
 	}{
-		{label: "CompactionCounts", pairs: []string{
-			fmt.Sprint(m.CompactionCounts.Total), "compactions",
-			fmt.Sprint(m.CompactionCounts.Default), "default",
-			fmt.Sprint(m.CompactionCounts.DeleteOnly), "delete",
-			fmt.Sprint(m.CompactionCounts.ElisionOnly), "elision",
-			fmt.Sprint(m.CompactionCounts.Move), "move",
-			fmt.Sprint(m.CompactionCounts.Read), "read",
-			fmt.Sprint(m.CompactionCounts.Rewrite), "rewrite",
-			fmt.Sprint(m.CompactionCounts.MultiLevel), "multilevel",
+		{label: "CompactionCounts", values: []benchfmt.Value{
+			{Value: float64(m.CompactionCounts.Total), Unit: "compactions"},
+			{Value: float64(m.CompactionCounts.Default), Unit: "default"},
+			{Value: float64(m.CompactionCounts.DeleteOnly), Unit: "delete"},
+			{Value: float64(m.CompactionCounts.ElisionOnly), Unit: "elision"},
+			{Value: float64(m.CompactionCounts.Move), Unit: "move"},
+			{Value: float64(m.CompactionCounts.Read), Unit: "read"},
+			{Value: float64(m.CompactionCounts.Rewrite), Unit: "rewrite"},
+			{Value: float64(m.CompactionCounts.MultiLevel), Unit: "multilevel"},
 		}},
-		{label: "WriteAmp", pairs: []string{
-			fmt.Sprint(m.TotalWriteAmp), "wamp",
+		// Total database sizes sampled after every workload step and
+		// compaction. This can be used to evaluate the relative LSM space
+		// amplification between runs of the same workload. Calculating the true
+		// space amplification continuously is prohibitvely expensive (it
+		// requires totally compacting a copy of the LSM).
+		{label: "DatabaseSize/mean", values: []benchfmt.Value{
+			{Value: m.TotalSize.Mean(), Unit: "bytes"},
 		}},
-		{label: "WriteStalls", pairs: []string{
-			fmt.Sprint(m.WriteStalls), "stalls",
-			fmt.Sprint(m.WriteStallsDuration.Seconds()), "stall-secs",
+		{label: "DatabaseSize/max", values: []benchfmt.Value{
+			{Value: float64(m.TotalSize.Max()), Unit: "bytes"},
 		}},
-		{label: "IngestedIntoL0", pairs: []string{
-			fmt.Sprint(m.Ingest.BytesIntoL0), "bytes",
+		// Time applying the workload and time waiting for compactions to
+		// quiesce after the workload has completed.
+		{label: "DurationWorkload", values: []benchfmt.Value{
+			{Value: m.WorkloadDur.Seconds(), Unit: "sec/op"},
 		}},
-		{label: "IngestWeightedByLevel", pairs: []string{
-			fmt.Sprint(m.Ingest.BytesWeightedByLevel), "bytes",
+		{label: "DurationQuiescing", values: []benchfmt.Value{
+			{Value: m.QuiesceDur.Seconds(), Unit: "sec/op"},
+		}},
+		// Estimated compaction debt, sampled after every workload step and
+		// compaction.
+		{label: "EstimatedDebt/mean", values: []benchfmt.Value{
+			{Value: m.EstimatedDebt.Mean(), Unit: "bytes"},
+		}},
+		{label: "EstimatedDebt/max", values: []benchfmt.Value{
+			{Value: float64(m.EstimatedDebt.Max()), Unit: "bytes"},
+		}},
+		{label: "IngestedIntoL0", values: []benchfmt.Value{
+			{Value: float64(m.Ingest.BytesIntoL0), Unit: "bytes"},
+		}},
+		{label: "IngestWeightedByLevel", values: []benchfmt.Value{
+			{Value: float64(m.Ingest.BytesWeightedByLevel), Unit: "bytes"},
+		}},
+		{label: "ReadAmp/mean", values: []benchfmt.Value{
+			{Value: m.ReadAmp.Mean(), Unit: "files"},
+		}},
+		{label: "ReadAmp/max", values: []benchfmt.Value{
+			{Value: float64(m.ReadAmp.Max()), Unit: "files"},
+		}},
+		{label: "Throughput", values: []benchfmt.Value{
+			{Value: float64(m.WriteBytes/1024/1024) / (m.WorkloadDur + m.QuiesceDur).Seconds(), Unit: "MB/s"},
+		}},
+		{label: "WriteAmp", values: []benchfmt.Value{
+			{Value: float64(m.TotalWriteAmp), Unit: "wamp"},
+		}},
+		{label: "WriteStalls", values: []benchfmt.Value{
+			{Value: float64(m.WriteStalls), Unit: "stalls"},
+			{Value: m.WriteStallsDuration.Seconds(), Unit: "stallsec/op"},
 		}},
 	}
 
-	var maxLenMetric int
-	var maxLenGroup int
+	bw := benchfmt.NewWriter(w)
 	for _, grp := range groups {
-		if v := len(grp.label); maxLenGroup < v {
-			maxLenGroup = v
-		}
-		for _, p := range grp.pairs {
-			if v := len(p); maxLenMetric < v {
-				maxLenMetric = v
-			}
+		err := bw.Write(&benchfmt.Result{
+			Name:   benchfmt.Name(fmt.Sprintf("BenchmarkReplay/%s/%s", name, grp.label)),
+			Iters:  1,
+			Values: grp.values,
+		})
+		if err != nil {
+			return err
 		}
 	}
-	benchmarkPrefixSpecifier := fmt.Sprintf("BenchmarkReplay/%s/%%-%ds 1", name, maxLenGroup)
-	pairFormatSpecifier := fmt.Sprintf("    %%%ds", maxLenMetric)
-
-	var buf bytes.Buffer
-	for _, grp := range groups {
-		fmt.Fprintf(&buf, benchmarkPrefixSpecifier, grp.label)
-		for _, p := range grp.pairs {
-			fmt.Fprintf(&buf, pairFormatSpecifier, p)
-		}
-		fmt.Fprintln(&buf)
-	}
-	return buf.String()
+	return nil
 }
 
 // Runner runs a captured workload against a test database, collecting
@@ -204,9 +255,15 @@ type Runner struct {
 	stepsApplied  chan workloadStep
 
 	metrics struct {
-		writeBytes              uint64
-		writeStalls             uint64
-		writeStallsDurationNano uint64
+		estimatedDebt           SampledMetric
+		quiesceDur              time.Duration
+		readAmp                 SampledMetric
+		totalSize               SampledMetric
+		workloadDur             time.Duration
+		writeBytes              uint64 // atomic
+		writeStalls             uint64 // atomic
+		writeStallsDurationNano uint64 // atomic
+		writeThroughput         SampledMetric
 	}
 	// compactionMu holds state for tracking the number of compactions
 	// started and completed and waking waiting goroutines when a new compaction
@@ -268,6 +325,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 
 	r.dbMetrics = r.d.Metrics()
+
 	// Use a buffered channel to allow the prepareWorkloadSteps to read ahead,
 	// buffering up to cap(r.steps) steps ahead of the current applied state.
 	// Flushes need to be buffered and ingested sstables need to be copied, so
@@ -289,7 +347,9 @@ func (r *Runner) Run(ctx context.Context) error {
 // The Pacer implementations that pace based on read-amplification rely on these
 // refreshed metrics to decide when to allow the workload to proceed.
 func (r *Runner) refreshMetrics(ctx context.Context) error {
+	startAt := time.Now()
 	var workloadExhausted bool
+	var workloadExhaustedAt time.Time
 	stepsApplied := r.stepsApplied
 	compactionCount, alreadyCompleted, compactionCh := r.nextCompactionCompletes(0)
 	for {
@@ -302,9 +362,12 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 			case _, ok := <-stepsApplied:
 				if !ok {
 					workloadExhausted = true
+					workloadExhaustedAt = time.Now()
 					// Set the [stepsApplied] channel to nil so that we'll never
 					// hit this case again, and we don't busy loop.
 					stepsApplied = nil
+					// Record the replay time.
+					r.metrics.workloadDur = workloadExhaustedAt.Sub(startAt)
 				}
 				// Fall through to refreshing dbMetrics.
 			}
@@ -315,6 +378,13 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 		r.dbMetrics = m
 		r.dbMetricsCond.Broadcast()
 		r.dbMetricsCond.L.Unlock()
+
+		// Collect sample metrics. These metrics are calculated by sampling
+		// every time we collect metrics.
+		r.metrics.readAmp.record(int64(m.ReadAmp()))
+		r.metrics.estimatedDebt.record(int64(m.Compact.EstimatedDebt))
+		r.metrics.totalSize.record(int64(m.DiskSpaceUsage()))
+		r.metrics.writeThroughput.record(int64(atomic.LoadUint64(&r.metrics.writeBytes)))
 
 		compactionCount, alreadyCompleted, compactionCh = r.nextCompactionCompletes(compactionCount)
 		// Consider whether replaying is complete. There are two necessary
@@ -345,6 +415,7 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 				// No compactions completed. If it still looks like they've
 				// quiesced according to the metrics, consider them quiesced.
 				if r.compactionsAppearQuiesced(r.d.Metrics()) {
+					r.metrics.quiesceDur = time.Since(workloadExhaustedAt)
 					return nil
 				}
 			}
@@ -422,10 +493,16 @@ func (r *Runner) Wait() (Metrics, error) {
 
 	m := Metrics{
 		Final:               pm,
+		EstimatedDebt:       r.metrics.estimatedDebt,
+		ReadAmp:             r.metrics.readAmp,
+		QuiesceDur:          r.metrics.quiesceDur,
+		TotalSize:           r.metrics.totalSize,
 		TotalWriteAmp:       total.WriteAmp(),
+		WorkloadDur:         r.metrics.workloadDur,
 		WriteBytes:          r.metrics.writeBytes,
 		WriteStalls:         r.metrics.writeStalls,
 		WriteStallsDuration: time.Duration(r.metrics.writeStallsDurationNano),
+		WriteThroughput:     r.metrics.writeThroughput,
 	}
 	m.CompactionCounts.Total = pm.Compact.Count
 	m.CompactionCounts.Default = pm.Compact.DefaultCount
@@ -460,8 +537,9 @@ type workloadStep struct {
 	// collected.
 	v *manifest.Version
 	// non-nil for flushStepKind
-	flushBatch     *pebble.Batch
-	tablesToIngest []string
+	flushBatch           *pebble.Batch
+	tablesToIngest       []string
+	cumulativeWriteBytes uint64
 }
 
 type stepKind uint8
@@ -541,11 +619,13 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
+			atomic.StoreUint64(&r.metrics.writeBytes, step.cumulativeWriteBytes)
 			r.stepsApplied <- step
 		case ingestStepKind:
 			if err := r.d.Ingest(step.tablesToIngest); err != nil {
 				return err
 			}
+			atomic.StoreUint64(&r.metrics.writeBytes, step.cumulativeWriteBytes)
 			r.stepsApplied <- step
 		case compactionStepKind:
 			// No-op.
@@ -729,6 +809,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				case compactionStepKind:
 					// Nothing to do.
 				}
+				s.cumulativeWriteBytes = cumulativeWriteBytes
 
 				select {
 				case <-ctx.Done():
@@ -746,7 +827,6 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 			return err
 		}
 	}
-	atomic.StoreUint64(&r.metrics.writeBytes, cumulativeWriteBytes)
 	return nil
 }
 
