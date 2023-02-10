@@ -415,19 +415,37 @@ func runListFiles(t *testing.T, fs vfs.FS, td *datadriven.TestData) string {
 
 func TestBenchmarkString(t *testing.T) {
 	m := Metrics{
+		EstimatedDebt:       SampledMetric{samples: []sample{{value: 5 << 25}}},
+		QuiesceDuration:     time.Second / 2,
+		ReadAmp:             SampledMetric{samples: []sample{{value: 10}}},
+		TotalSize:           SampledMetric{samples: []sample{{value: 5 << 30}}},
 		TotalWriteAmp:       5.6,
+		WorkloadDuration:    time.Second,
+		WriteBytes:          30 * (1 << 20),
 		WriteStalls:         105,
 		WriteStallsDuration: time.Minute,
 	}
 	m.Ingest.BytesIntoL0 = 5 << 20
 	m.Ingest.BytesWeightedByLevel = 9 << 20
+
+	var buf bytes.Buffer
+	require.NoError(t, m.WriteBenchmarkString("tpcc", &buf))
 	require.Equal(t, strings.TrimSpace(`
-BenchmarkReplay/tpcc/CompactionCounts      1              0    compactions              0        default              0         delete              0        elision              0           move              0           read              0        rewrite              0     multilevel
-BenchmarkReplay/tpcc/WriteAmp              1            5.6           wamp
-BenchmarkReplay/tpcc/WriteStalls           1            105         stalls             60     stall-secs
-BenchmarkReplay/tpcc/IngestedIntoL0        1        5242880          bytes
-BenchmarkReplay/tpcc/IngestWeightedByLevel 1        9437184          bytes`),
-		strings.TrimSpace(m.BenchmarkString("tpcc")))
+BenchmarkBenchmarkReplay/tpcc/CompactionCounts 1 0 compactions 0 default 0 delete 0 elision 0 move 0 read 0 rewrite 0 multilevel
+BenchmarkBenchmarkReplay/tpcc/DatabaseSize/mean 1 5.36870912e+09 bytes
+BenchmarkBenchmarkReplay/tpcc/DatabaseSize/max 1 5.36870912e+09 bytes
+BenchmarkBenchmarkReplay/tpcc/DurationWorkload 1 1 sec/op
+BenchmarkBenchmarkReplay/tpcc/DurationQuiescing 1 0.5 sec/op
+BenchmarkBenchmarkReplay/tpcc/EstimatedDebt/mean 1 1.6777216e+08 bytes
+BenchmarkBenchmarkReplay/tpcc/EstimatedDebt/max 1 1.6777216e+08 bytes
+BenchmarkBenchmarkReplay/tpcc/IngestedIntoL0 1 5.24288e+06 bytes
+BenchmarkBenchmarkReplay/tpcc/IngestWeightedByLevel 1 9.437184e+06 bytes
+BenchmarkBenchmarkReplay/tpcc/ReadAmp/mean 1 10 files
+BenchmarkBenchmarkReplay/tpcc/ReadAmp/max 1 10 files
+BenchmarkBenchmarkReplay/tpcc/Throughput 1 2.097152e+07 B/s
+BenchmarkBenchmarkReplay/tpcc/WriteAmp 1 5.6 wamp
+BenchmarkBenchmarkReplay/tpcc/WriteStalls 1 105 stalls 60 stallsec/op`),
+		strings.TrimSpace(buf.String()))
 }
 
 func listFiles(t *testing.T, fs vfs.FS, w io.Writer, name string) {
