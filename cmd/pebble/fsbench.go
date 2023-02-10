@@ -547,15 +547,6 @@ var benchmarks = map[string]fsBenchmark{
 	"delete_200k_2MiB": deleteUniformBench(
 		"delete_200k_2MiB", "create 200k 2MiB size files, measure deletion times", 200_000, 2<<20,
 	),
-	"write_sync_1MiB": writeSyncBench(
-		"write_sync_1MiB", "Write 1MiB to a file, then sync, while timing the sync.", 2<<30, 1<<20,
-	),
-	"write_sync_16MiB": writeSyncBench(
-		"write_sync_16MiB", "Write 16MiB to a file, then sync, while timing the sync.", 2<<30, 16<<20,
-	),
-	"write_sync_128MiB": writeSyncBench(
-		"write_sync_128MiB", "Write 128MiB to a file, then sync, while timing the sync.", 2<<30, 128<<20,
-	),
 	"disk_usage_128MB": diskUsageBench(
 		"disk_usage_128MB",
 		"Write 128MiB to a file, measure GetDiskUsage call. Create a new file, when file size is 1GB.",
@@ -573,10 +564,6 @@ var benchmarks = map[string]fsBenchmark{
 	"delete_large_dir_2MiB": deleteBench(
 		"delete_large_dir_2MiB", "Prepopulate directory with 100k 1MiB files, measure delete peformance of 2MiB files",
 		1e5, 1<<20, 2<<20,
-	),
-	"delete_small_dir_2GiB": deleteBench(
-		"delete_small_dir_2GiB", "Prepopulate directory with 1k 1MiB files, measure delete peformance of 2GiB files",
-		1e3, 1<<20, 2<<30,
 	),
 	"delete_small_dir_256MiB": deleteBench(
 		"delete_small_dir_256MiB", "Prepopulate directory with 1k 1MiB files, measure delete peformance of 256MiB files",

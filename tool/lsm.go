@@ -106,8 +106,8 @@ indicate size).
 	l.Root.Flags().BoolVar(&l.embed, "embed", true, "embed javascript in HTML (disable for development)")
 	l.Root.Flags().BoolVar(&l.pretty, "pretty", false, "pretty JSON output")
 	l.Root.Flags().IntVar(&l.startEdit, "start-edit", 0, "starting edit # to include in visualization")
-	l.Root.Flags().IntVar(&l.endEdit, "end-edit", math.MaxInt64, "ending edit # to include in visualization")
-	l.Root.Flags().IntVar(&l.editCount, "edit-count", math.MaxInt64, "count of edits to include in visualization")
+	l.Root.Flags().IntVar(&l.endEdit, "end-edit", math.MaxInt, "ending edit # to include in visualization")
+	l.Root.Flags().IntVar(&l.editCount, "edit-count", math.MaxInt, "count of edits to include in visualization")
 	return l
 }
 
