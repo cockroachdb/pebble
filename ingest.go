@@ -269,7 +269,7 @@ func ingestLink(
 	jobID int, opts *Options, objProvider *objstorage.Provider, paths []string, meta []*fileMetadata,
 ) error {
 	for i := range paths {
-		err := objProvider.LinkOrCopyFromLocal(opts.FS, paths[i], fileTypeTable, meta[i].FileNum)
+		objMeta, err := objProvider.LinkOrCopyFromLocal(opts.FS, paths[i], fileTypeTable, meta[i].FileNum)
 		if err != nil {
 			if err2 := ingestCleanup(objProvider, meta[:i]); err2 != nil {
 				opts.Logger.Infof("ingest cleanup failed: %v", err2)
@@ -280,7 +280,7 @@ func ingestLink(
 			opts.EventListener.TableCreated(TableCreateInfo{
 				JobID:   jobID,
 				Reason:  "ingesting",
-				Path:    objProvider.Path(fileTypeTable, meta[i].FileNum),
+				Path:    objProvider.Path(objMeta),
 				FileNum: meta[i].FileNum,
 			})
 		}

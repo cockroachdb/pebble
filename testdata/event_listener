@@ -1,8 +1,8 @@
 open
 ----
 mkdir-all: db 0755
-open-dir: db
 mkdir-all: wal 0755
+open-dir: db
 open-dir: wal
 lock: db/LOCK
 open-dir: db

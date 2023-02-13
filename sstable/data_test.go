@@ -171,9 +171,12 @@ func runBuildRawCmd(
 	td *datadriven.TestData, opts *WriterOptions,
 ) (*WriterMetadata, *Reader, error) {
 	mem := vfs.NewMem()
-	provider := objstorage.New(objstorage.DefaultSettings(mem, "" /* dirName */))
+	provider, err := objstorage.Open(objstorage.DefaultSettings(mem, "" /* dirName */))
+	if err != nil {
+		return nil, nil, err
+	}
 
-	f0, err := provider.Create(base.FileTypeTable, 0 /* fileNum */)
+	f0, _, err := provider.Create(base.FileTypeTable, 0 /* fileNum */)
 	if err != nil {
 		return nil, nil, err
 	}
