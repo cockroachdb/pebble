@@ -488,6 +488,11 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			return err
 		}
 
+		objProvider, err := objstorage.Open(objstorage.DefaultSettings(d.opts.FS, dirname))
+		if err != nil {
+			return err
+		}
+
 		// Load and aggregate sstable properties.
 		tw := tabwriter.NewWriter(stdout, 2, 1, 4, ' ', 0)
 		var total props
@@ -496,7 +501,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			iter := l.Iter()
 			var level props
 			for t := iter.First(); t != nil; t = iter.Next() {
-				err := d.addProps(dirname, t, &level)
+				err := d.addProps(objProvider, t, &level)
 				if err != nil {
 					return err
 				}
@@ -640,9 +645,8 @@ func (p *props) update(o props) {
 	p.TopLevelIndexSize += o.TopLevelIndexSize
 }
 
-func (d *dbT) addProps(dir string, m *manifest.FileMetadata, p *props) error {
-	backend := objstorage.New(objstorage.DefaultSettings(d.opts.FS, dir))
-	f, err := backend.OpenForReading(base.FileTypeTable, m.FileNum)
+func (d *dbT) addProps(objProvider *objstorage.Provider, m *manifest.FileMetadata, p *props) error {
+	f, err := objProvider.OpenForReading(base.FileTypeTable, m.FileNum)
 	if err != nil {
 		return err
 	}

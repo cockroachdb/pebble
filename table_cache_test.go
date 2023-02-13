@@ -161,12 +161,17 @@ func newTableCacheContainerTest(
 	fs := &tableCacheTestFS{
 		FS: vfs.NewMem(),
 	}
+	objProvider, err := objstorage.Open(objstorage.DefaultSettings(fs, dirname))
+	if err != nil {
+		return nil, nil, err
+	}
+
 	for i := 0; i < tableCacheTestNumTables; i++ {
-		f, err := fs.Create(base.MakeFilepath(fs, dirname, fileTypeTable, FileNum(i)))
+		w, _, err := objProvider.Create(fileTypeTable, FileNum(i))
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "fs.Create")
 		}
-		tw := sstable.NewWriter(f, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
+		tw := sstable.NewWriter(w, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
 		ik := base.ParseInternalKey(fmt.Sprintf("k.SET.%d", i))
 		if err := tw.Add(ik, xxx[:i]); err != nil {
 			return nil, nil, errors.Wrap(err, "tw.Set")
@@ -192,7 +197,6 @@ func newTableCacheContainerTest(
 	} else {
 		opts.Cache = tc.cache
 	}
-	objProvider := objstorage.New(objstorage.DefaultSettings(fs, dirname))
 
 	c := newTableCacheContainer(tc, opts.Cache.NewID(), objProvider, opts, tableCacheTestCacheSize)
 	return c, fs, nil
@@ -866,9 +870,11 @@ func TestTableCacheClockPro(t *testing.T) {
 	require.NoError(t, err)
 
 	mem := vfs.NewMem()
+	objProvider, err := objstorage.Open(objstorage.DefaultSettings(mem, ""))
+	require.NoError(t, err)
 	makeTable := func(fileNum FileNum) {
 		require.NoError(t, err)
-		f, err := mem.Create(base.MakeFilepath(mem, "", fileTypeTable, fileNum))
+		f, _, err := objProvider.Create(fileTypeTable, fileNum)
 		require.NoError(t, err)
 		w := sstable.NewWriter(f, sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte("a"), nil))
@@ -887,7 +893,7 @@ func TestTableCacheClockPro(t *testing.T) {
 	dbOpts := &tableCacheOpts{}
 	dbOpts.logger = opts.Logger
 	dbOpts.cacheID = 0
-	dbOpts.objProvider = objstorage.New(objstorage.DefaultSettings(mem, ""))
+	dbOpts.objProvider = objProvider
 	dbOpts.opts = opts.MakeReaderOptions()
 
 	scanner := bufio.NewScanner(f)

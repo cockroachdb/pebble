@@ -658,7 +658,8 @@ func TestBytesIterated(t *testing.T) {
 
 func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 	tmpDir := path.Join(t.TempDir())
-	provider := objstorage.New(objstorage.DefaultSettings(vfs.Default, tmpDir))
+	provider, err := objstorage.Open(objstorage.DefaultSettings(vfs.Default, tmpDir))
+	require.NoError(t, err)
 	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
 	for _, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
@@ -1000,7 +1001,8 @@ func TestReader_TableFormat(t *testing.T) {
 func buildTestTable(
 	t *testing.T, numEntries uint64, blockSize, indexBlockSize int, compression Compression,
 ) *Reader {
-	provider := objstorage.New(objstorage.DefaultSettings(vfs.NewMem(), "" /* dirName */))
+	provider, err := objstorage.Open(objstorage.DefaultSettings(vfs.NewMem(), "" /* dirName */))
+	require.NoError(t, err)
 	return buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, compression)
 }
 
@@ -1011,7 +1013,7 @@ func buildTestTableWithProvider(
 	blockSize, indexBlockSize int,
 	compression Compression,
 ) *Reader {
-	f0, err := provider.Create(base.FileTypeTable, 0 /* fileNum */)
+	f0, _, err := provider.Create(base.FileTypeTable, 0 /* fileNum */)
 	require.NoError(t, err)
 
 	w := NewWriter(f0, WriterOptions{

@@ -290,7 +290,8 @@ func TestIngestLink(t *testing.T) {
 			opts := &Options{FS: vfs.NewMem()}
 			opts.EnsureDefaults().WithFSDefaults()
 			require.NoError(t, opts.FS.MkdirAll(dir, 0755))
-			objProvider := objstorage.New(objstorage.DefaultSettings(opts.FS, dir))
+			objProvider, err := objstorage.Open(objstorage.DefaultSettings(opts.FS, dir))
+			require.NoError(t, err)
 
 			paths := make([]string, 10)
 			meta := make([]*fileMetadata, len(paths))
@@ -314,7 +315,7 @@ func TestIngestLink(t *testing.T) {
 				opts.FS.Remove(paths[i])
 			}
 
-			err := ingestLink(0 /* jobID */, opts, objProvider, paths, meta)
+			err = ingestLink(0 /* jobID */, opts, objProvider, paths, meta)
 			if i < count {
 				if err == nil {
 					t.Fatalf("expected error, but found success")
@@ -372,7 +373,11 @@ func TestIngestLinkFallback(t *testing.T) {
 
 	opts := &Options{FS: errorfs.Wrap(mem, errorfs.OnIndex(0))}
 	opts.EnsureDefaults().WithFSDefaults()
-	objProvider := objstorage.New(objstorage.DefaultSettings(opts.FS, ""))
+	objSettings := objstorage.DefaultSettings(opts.FS, "")
+	// Prevent the provider from listing the dir (where we may get an injected error).
+	objSettings.FSDirListing = []string{}
+	objProvider, err := objstorage.Open(objSettings)
+	require.NoError(t, err)
 
 	meta := []*fileMetadata{{FileNum: 1}}
 	err = ingestLink(0, opts, objProvider, []string{"source"}, meta)
@@ -1637,7 +1642,7 @@ func TestIngestCleanup(t *testing.T) {
 	testCases := []struct {
 		closeFiles   []base.FileNum
 		cleanupFiles []base.FileNum
-		wantErr      error
+		wantErr      string
 	}{
 		// Close and remove all files.
 		{
@@ -1648,19 +1653,19 @@ func TestIngestCleanup(t *testing.T) {
 		{
 			closeFiles:   fns,
 			cleanupFiles: []base.FileNum{3},
-			wantErr:      oserror.ErrNotExist,
+			wantErr:      "unknown to the provider",
 		},
 		// Remove a file that has not been closed.
 		{
 			closeFiles:   []base.FileNum{0, 2},
 			cleanupFiles: fns,
-			wantErr:      oserror.ErrInvalid,
+			wantErr:      oserror.ErrInvalid.Error(),
 		},
 		// Remove all files, one of which is still open, plus a file that does not exist.
 		{
 			closeFiles:   []base.FileNum{0, 2},
 			cleanupFiles: []base.FileNum{0, 1, 2, 3},
-			wantErr:      oserror.ErrInvalid, // The first error encountered is due to the open file.
+			wantErr:      oserror.ErrInvalid.Error(), // The first error encountered is due to the open file.
 		},
 	}
 
@@ -1668,24 +1673,25 @@ func TestIngestCleanup(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			mem := vfs.NewMem()
 			mem.UseWindowsSemantics(true)
-			objProvider := objstorage.New(objstorage.DefaultSettings(mem, ""))
+			objProvider, err := objstorage.Open(objstorage.DefaultSettings(mem, ""))
+			require.NoError(t, err)
 
 			// Create the files in the VFS.
-			metaMap := make(map[base.FileNum]vfs.File)
+			metaMap := make(map[base.FileNum]objstorage.Writable)
 			for _, fn := range fns {
-				path := base.MakeFilepath(mem, "", base.FileTypeTable, fn)
-				f, err := mem.Create(path)
-				metaMap[fn] = f
+				w, _, err := objProvider.Create(base.FileTypeTable, fn)
 				require.NoError(t, err)
+
+				metaMap[fn] = w
 			}
 
 			// Close a select number of files.
 			for _, m := range tc.closeFiles {
-				f, ok := metaMap[m]
+				w, ok := metaMap[m]
 				if !ok {
 					continue
 				}
-				require.NoError(t, f.Close())
+				require.NoError(t, w.Close())
 			}
 
 			// Cleanup the set of files in the FS.
@@ -1694,9 +1700,10 @@ func TestIngestCleanup(t *testing.T) {
 				toRemove = append(toRemove, &fileMetadata{FileNum: fn})
 			}
 
-			err := ingestCleanup(objProvider, toRemove)
-			if tc.wantErr != nil {
-				require.Equal(t, tc.wantErr, err)
+			err = ingestCleanup(objProvider, toRemove)
+			if tc.wantErr != "" {
+				require.Error(t, err, "got no error, expected %s", tc.wantErr)
+				require.Contains(t, err.Error(), tc.wantErr)
 			} else {
 				require.NoError(t, err)
 			}

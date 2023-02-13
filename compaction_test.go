@@ -990,7 +990,10 @@ func TestCompaction(t *testing.T) {
 		}
 		ss := []string(nil)
 		v := d.mu.versions.currentVersion()
-		provider := objstorage.New(objstorage.DefaultSettings(mem, "" /* dirName */))
+		provider, err := objstorage.Open(objstorage.DefaultSettings(mem, "" /* dirName */))
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
 		for _, levelMetadata := range v.Levels {
 			iter := levelMetadata.Iter()
 			for meta := iter.First(); meta != nil; meta = iter.Next() {
