@@ -2575,7 +2575,7 @@ func (d *DB) runCompaction(
 		pendingOutputs = append(pendingOutputs, fileMeta)
 		d.mu.Unlock()
 
-		writable, err := d.objProvider.Create(fileTypeTable, fileNum)
+		writable, objMeta, err := d.objProvider.Create(fileTypeTable, fileNum)
 		if err != nil {
 			return err
 		}
@@ -2587,7 +2587,7 @@ func (d *DB) runCompaction(
 		d.opts.EventListener.TableCreated(TableCreateInfo{
 			JobID:   jobID,
 			Reason:  reason,
-			Path:    d.objProvider.Path(fileTypeTable, fileNum),
+			Path:    d.objProvider.Path(objMeta),
 			FileNum: fileNum,
 		})
 		writable = &compactionWritable{
@@ -3113,6 +3113,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 			}
 			obsoleteOptions = append(obsoleteOptions, fi)
 		case fileTypeTable:
+			// TODO(radu): use the objstorage provider to find obsolete tables instead.
 			if _, ok := liveFileNums[fileNum]; ok {
 				continue
 			}
@@ -3381,10 +3382,19 @@ func (d *DB) deleteObsoleteObject(fileType fileType, jobID int, fileNum FileNum)
 		panic("not an object")
 	}
 
-	path := d.objProvider.Path(fileType, fileNum)
-	err := d.objProvider.Remove(fileType, fileNum)
-	if objstorage.IsNotExistError(err) {
-		return
+	var path string
+	meta, err := d.objProvider.Lookup(fileType, fileNum)
+	if err != nil {
+		// The provider is not aware of this object. This shouldn't normally happen,
+		// so expose the error.
+		path = "<nil>"
+	} else {
+		path = d.objProvider.Path(meta)
+
+		err = d.objProvider.Remove(fileType, fileNum)
+		if objstorage.IsNotExistError(err) {
+			return
+		}
 	}
 
 	switch fileType {
