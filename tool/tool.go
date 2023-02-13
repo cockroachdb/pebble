@@ -28,17 +28,18 @@ type Merger = base.Merger
 
 // T is the container for all of the introspection tools.
 type T struct {
-	Commands        []*cobra.Command
-	db              *dbT
-	find            *findT
-	lsm             *lsmT
-	manifest        *manifestT
-	sstable         *sstableT
-	wal             *walT
-	opts            pebble.Options
-	comparers       sstable.Comparers
-	mergers         sstable.Mergers
-	defaultComparer string
+	Commands         []*cobra.Command
+	db               *dbT
+	find             *findT
+	lsm              *lsmT
+	manifest         *manifestT
+	sstable          *sstableT
+	wal              *walT
+	opts             pebble.Options
+	comparers        sstable.Comparers
+	mergers          sstable.Mergers
+	defaultComparer  string
+	postCheckpointFn PostCheckpointFn
 }
 
 // A Option configures the Pebble introspection tool.
@@ -90,6 +91,14 @@ func FS(fs vfs.FS) Option {
 	}
 }
 
+// PostCheckpoint registers a function that is called as the last step of
+// creating a checkpoint.
+func PostCheckpoint(fn PostCheckpointFn) Option {
+	return func(t *T) {
+		t.postCheckpointFn = fn
+	}
+}
+
 // New creates a new introspection tool.
 func New(opts ...Option) *T {
 	t := &T{
@@ -112,7 +121,7 @@ func New(opts ...Option) *T {
 		opt(t)
 	}
 
-	t.db = newDB(&t.opts, t.comparers, t.mergers)
+	t.db = newDB(&t.opts, t.comparers, t.mergers, t.postCheckpointFn)
 	t.find = newFind(&t.opts, t.comparers, t.defaultComparer, t.mergers)
 	t.lsm = newLSM(&t.opts, t.comparers)
 	t.manifest = newManifest(&t.opts, t.comparers)

@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/tool/logs"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -37,9 +38,10 @@ type dbT struct {
 	Space      *cobra.Command
 
 	// Configuration.
-	opts      *pebble.Options
-	comparers sstable.Comparers
-	mergers   sstable.Mergers
+	opts             *pebble.Options
+	comparers        sstable.Comparers
+	mergers          sstable.Mergers
+	postCheckpointFn PostCheckpointFn
 
 	// Flags.
 	comparerName string
@@ -52,11 +54,23 @@ type dbT struct {
 	verbose      bool
 }
 
-func newDB(opts *pebble.Options, comparers sstable.Comparers, mergers sstable.Mergers) *dbT {
+// PostCheckpointFn is an optional function that is called as the last step of
+// creating a checkpoint.
+//
+// It allows a higher layer to add its own metadata in the checkpoint directory.
+type PostCheckpointFn func(cmd *cobra.Command, fs vfs.FS, destDir string) error
+
+func newDB(
+	opts *pebble.Options,
+	comparers sstable.Comparers,
+	mergers sstable.Mergers,
+	postCheckpointFn PostCheckpointFn,
+) *dbT {
 	d := &dbT{
-		opts:      opts,
-		comparers: comparers,
-		mergers:   mergers,
+		opts:             opts,
+		comparers:        comparers,
+		mergers:          mergers,
+		postCheckpointFn: postCheckpointFn,
 	}
 	d.fmtKey.mustSet("quoted")
 	d.fmtValue.mustSet("[%x]")
@@ -322,6 +336,12 @@ func (d *dbT) runCheckpoint(cmd *cobra.Command, args []string) {
 
 	if err := db.Checkpoint(destDir); err != nil {
 		fmt.Fprintf(stdout, "%s\n", err)
+	}
+
+	if d.postCheckpointFn != nil {
+		if err := d.postCheckpointFn(cmd, d.opts.FS, destDir); err != nil {
+			fmt.Fprintf(stdout, "%s\n", err)
+		}
 	}
 }
 

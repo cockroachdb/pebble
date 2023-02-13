@@ -111,6 +111,10 @@ func runTests(t *testing.T, path string) {
 					Comparers(altComparer, testkeys.Comparer),
 					Mergers(merger),
 					FS(fs),
+					PostCheckpoint(func(cmd *cobra.Command, fs vfs.FS, destDir string) error {
+						cmd.Printf("post checkpoint fn called (destDir=%q)\n", destDir)
+						return nil
+					}),
 				)
 
 				c := &cobra.Command{}

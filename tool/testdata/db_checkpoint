@@ -11,6 +11,7 @@ db checkpoint
 ../testdata/db-stage-4
 ../testdata/db-checkpoint1
 ----
+post checkpoint fn called (destDir="../testdata/db-checkpoint1")
 
 db check
 ../testdata/db-checkpoint1
