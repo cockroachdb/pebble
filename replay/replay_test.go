@@ -418,6 +418,7 @@ func TestBenchmarkString(t *testing.T) {
 		EstimatedDebt:       SampledMetric{samples: []sample{{value: 5 << 25}}},
 		QuiesceDuration:     time.Second / 2,
 		ReadAmp:             SampledMetric{samples: []sample{{value: 10}}},
+		TombstoneCount:      SampledMetric{samples: []sample{{value: 295}}},
 		TotalSize:           SampledMetric{samples: []sample{{value: 5 << 30}}},
 		TotalWriteAmp:       5.6,
 		WorkloadDuration:    time.Second,
@@ -442,6 +443,8 @@ BenchmarkBenchmarkReplay/tpcc/IngestedIntoL0 1 5.24288e+06 bytes
 BenchmarkBenchmarkReplay/tpcc/IngestWeightedByLevel 1 9.437184e+06 bytes
 BenchmarkBenchmarkReplay/tpcc/ReadAmp/mean 1 10 files
 BenchmarkBenchmarkReplay/tpcc/ReadAmp/max 1 10 files
+BenchmarkBenchmarkReplay/tpcc/TombstoneCount/mean 1 295 tombstones
+BenchmarkBenchmarkReplay/tpcc/TombstoneCount/max 1 295 tombstones
 BenchmarkBenchmarkReplay/tpcc/Throughput 1 2.097152e+07 B/s
 BenchmarkBenchmarkReplay/tpcc/WriteAmp 1 5.6 wamp
 BenchmarkBenchmarkReplay/tpcc/WriteStalls 1 105 stalls 60 stallsec/op`),

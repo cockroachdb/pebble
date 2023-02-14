@@ -209,6 +209,9 @@ type Metrics struct {
 	Keys struct {
 		// The approximate count of internal range key set keys in the database.
 		RangeKeySetsCount uint64
+		// The approximate count of internal tombstones (DEL, SINGLEDEL and
+		// RANGEDEL key kinds) within the database.
+		TombstoneCount uint64
 	}
 
 	Snapshots struct {
