@@ -66,6 +66,9 @@ type BoundedIter struct {
 // indicating whether the iterator is in prefix iteration mode and the prefix
 // key if it is. This is used to exclude spans that are outside the iteration
 // prefix.
+//
+// hasPrefix and prefix are allowed to be nil, however if hasPrefix != nil,
+// prefix must also not be nil.
 func (i *BoundedIter) Init(
 	cmp base.Compare,
 	split base.Split,
@@ -146,7 +149,7 @@ func (i *BoundedIter) Next() *Span {
 		}
 		// Similarly, if the span extends to the next prefix and we're in prefix
 		// iteration mode, we can avoid advancing.
-		if i.iterSpan != nil && *i.hasPrefix {
+		if i.iterSpan != nil && i.hasPrefix != nil && *i.hasPrefix {
 			ei := i.split(i.iterSpan.End)
 			if i.cmp(i.iterSpan.End[:ei], *i.prefix) > 0 {
 				i.pos = posAtUpperLimit
@@ -178,7 +181,7 @@ func (i *BoundedIter) Prev() *Span {
 		}
 		// Similarly, if the span extends to or beyond the current prefix and
 		// we're in prefix iteration mode, we can avoid advancing.
-		if i.iterSpan != nil && *i.hasPrefix {
+		if i.iterSpan != nil && i.hasPrefix != nil && *i.hasPrefix {
 			si := i.split(i.iterSpan.Start)
 			if i.cmp(i.iterSpan.Start[:si], *i.prefix) < 0 {
 				i.pos = posAtLowerLimit
@@ -215,7 +218,7 @@ func (i *BoundedIter) SetBounds(lower, upper []byte) {
 
 func (i *BoundedIter) checkPrefixSpanStart(span *Span) *Span {
 	// Compare to the prefix's bounds, if in prefix iteration mode.
-	if span != nil && *i.hasPrefix {
+	if span != nil && i.hasPrefix != nil && *i.hasPrefix {
 		si := i.split(span.Start)
 		if i.cmp(span.Start[:si], *i.prefix) > 0 {
 			// This span starts at a prefix that sorts after our current prefix.
@@ -242,7 +245,7 @@ func (i *BoundedIter) checkForwardBound(span *Span) *Span {
 
 func (i *BoundedIter) checkPrefixSpanEnd(span *Span) *Span {
 	// Compare to the prefix's bounds, if in prefix iteration mode.
-	if span != nil && *i.hasPrefix && i.cmp(span.End, *i.prefix) <= 0 {
+	if span != nil && i.hasPrefix != nil && *i.hasPrefix && i.cmp(span.End, *i.prefix) <= 0 {
 		// This span ends before the current prefix.
 		span = nil
 	}

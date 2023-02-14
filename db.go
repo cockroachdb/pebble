@@ -932,9 +932,9 @@ var iterAllocPool = sync.Pool{
 	},
 }
 
-// newIterInternal constructs a new iterator, merging in batch iterators as an extra
+// newIter constructs a new iterator, merging in batch iterators as an extra
 // level.
-func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterator {
+func (d *DB) newIter(batch *Batch, s *Snapshot, o *IterOptions) *Iterator {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1103,6 +1103,110 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	return dbi
 }
 
+// ScanInternal scans all internal keys within the specified bounds, truncating
+// any rangedels and rangekeys to those bounds if they span past them. For use
+// when an external user needs to be aware of all internal keys that make up a
+// key range.
+//
+// Keys deleted by range deletions must not be returned or exposed by this
+// method, while the range deletion deleting that key must be exposed using
+// visitRangeDel. Keys that would be masked by range key masking (if an
+// appropriate prefix were set) should be exposed, alongside the range key
+// that would have masked it.
+func (d *DB) ScanInternal(
+	lower, upper []byte,
+	visitPointKey func(key *InternalKey, value LazyValue) error,
+	visitRangeDel func(start, end []byte, seqNum uint64) error,
+	visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
+) error {
+	iter := d.newInternalIter(nil /* snapshot */, &IterOptions{
+		KeyTypes:   IterKeyTypePointsAndRanges,
+		LowerBound: lower,
+		UpperBound: upper,
+	})
+	defer iter.close()
+	return scanInternalImpl(lower, iter, visitPointKey, visitRangeDel, visitRangeKey)
+}
+
+// NewInternalIter constructs and returns a new scanInternalIterator on this db.
+//
+// TODO(bilal): This method has a lot of similarities with db.newIter as well as
+// finishInitializingIter. Both pairs of methods should be refactored to reduce
+// this duplication.
+func (d *DB) newInternalIter(s *Snapshot, o *IterOptions) *scanInternalIterator {
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+	// Grab and reference the current readState. This prevents the underlying
+	// files in the associated version from being deleted if there is a current
+	// compaction. The readState is unref'd by Iterator.Close().
+	readState := d.loadReadState()
+
+	// Determine the seqnum to read at after grabbing the read state (current and
+	// memtables) above.
+	var seqNum uint64
+	if s == nil {
+		seqNum = atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum)
+	} else {
+		seqNum = s.seqNum
+	}
+
+	// Bundle various structures under a single umbrella in order to allocate
+	// them together.
+	buf := iterAllocPool.Get().(*iterAlloc)
+	dbi := &scanInternalIterator{
+		comparer:        d.opts.Comparer,
+		readState:       readState,
+		alloc:           buf,
+		newIters:        d.newIters,
+		newIterRangeKey: d.tableNewRangeKeyIter,
+		seqNum:          seqNum,
+	}
+	if o != nil {
+		dbi.opts = *o
+	}
+	dbi.opts.logger = d.opts.Logger
+	if d.opts.private.disableLazyCombinedIteration {
+		dbi.opts.disableLazyCombinedIteration = true
+	}
+	return finishInitializingInternalIter(buf, dbi)
+}
+
+func finishInitializingInternalIter(buf *iterAlloc, i *scanInternalIterator) *scanInternalIterator {
+	// Short-hand.
+	memtables := i.readState.memtables
+	// We only need to read from memtables which contain sequence numbers older
+	// than seqNum. Trim off newer memtables.
+	for j := len(memtables) - 1; j >= 0; j-- {
+		if logSeqNum := memtables[j].logSeqNum; logSeqNum < i.seqNum {
+			break
+		}
+		memtables = memtables[:j]
+	}
+	i.initializeBoundBufs(i.opts.LowerBound, i.opts.UpperBound)
+
+	i.constructPointIter(memtables, buf)
+
+	// For internal iterators, we skip the lazy combined iteration optimization
+	// entirely, and create the range key iterator stack directly.
+	if i.rangeKey == nil {
+		i.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
+		i.rangeKey.init(i.comparer.Compare, i.comparer.Split, &i.opts)
+		i.constructRangeKeyIter()
+	} else {
+		i.rangeKey.iterConfig.SetBounds(i.opts.LowerBound, i.opts.UpperBound)
+	}
+
+	// Wrap the point iterator (currently i.iter) with an interleaving
+	// iterator that interleaves range keys pulled from
+	// i.rangeKey.rangeKeyIter.
+	i.rangeKey.iiter.Init(i.comparer, i.iter, i.rangeKey.rangeKeyIter,
+		nil /* mask */, i.opts.LowerBound, i.opts.UpperBound)
+	i.iter = &i.rangeKey.iiter
+
+	return i
+}
+
 func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
 	if i.pointIter != nil {
 		// Already have one.
@@ -1248,7 +1352,7 @@ func (d *DB) NewIndexedBatch() *Batch {
 // apparent memory and disk usage leak. Use snapshots (see NewSnapshot) for
 // point-in-time snapshots which avoids these problems.
 func (d *DB) NewIter(o *IterOptions) *Iterator {
-	return d.newIterInternal(nil /* batch */, nil /* snapshot */, o)
+	return d.newIter(nil /* batch */, nil /* snapshot */, o)
 }
 
 // NewSnapshot returns a point-in-time view of the current DB state. Iterators
