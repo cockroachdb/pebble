@@ -1085,7 +1085,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 			} else {
 				ii := fb.newIter(nil)
 				defer ii.Close()
-				scanInternalIterator(&buf, ii)
+				scanInternalIter(&buf, ii)
 			}
 			return buf.String()
 
@@ -1095,7 +1095,7 @@ func TestFlushableBatchDeleteRange(t *testing.T) {
 	})
 }
 
-func scanInternalIterator(w io.Writer, ii internalIterator) {
+func scanInternalIter(w io.Writer, ii internalIterator) {
 	for k, v := ii.First(); k != nil; k, v = ii.Next() {
 		fmt.Fprintf(w, "%s:%s\n", k, v.InPlaceValue())
 	}

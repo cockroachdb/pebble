@@ -7,6 +7,8 @@ package pebble
 import (
 	"io"
 	"math"
+
+	"github.com/cockroachdb/pebble/internal/keyspan"
 )
 
 // Snapshot provides a read-only point-in-time view of the DB state.
@@ -45,7 +47,36 @@ func (s *Snapshot) NewIter(o *IterOptions) *Iterator {
 	if s.db == nil {
 		panic(ErrClosed)
 	}
-	return s.db.newIterInternal(nil /* batch */, s, o)
+	return s.db.newIter(nil /* batch */, s, o)
+}
+
+// ScanInternal scans all internal keys within the specified bounds, truncating
+// any rangedels and rangekeys to those bounds. For use when an external user
+// needs to be aware of all internal keys that make up a key range.
+//
+// See comment on scanInternalIterator to see what keys are considered
+// collapsible / elision-eligible and which ones are not. Keys deleted by
+// range deletions are allowed to be hidden as long as the range deletion is
+// exposed (using visitRangeDel), and range key sets deleted by range key
+// unsets/dels are also allowed to be elided as long as the range key unset/del
+// is exposed.
+func (s *Snapshot) ScanInternal(
+	lower, upper []byte,
+	visitPointKey func(key *InternalKey, value LazyValue) error,
+	visitRangeDel func(start, end []byte, seqNum uint64) error,
+	visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
+) error {
+	if s.db == nil {
+		panic(ErrClosed)
+	}
+	iter := s.db.newInternalIter(s, &IterOptions{
+		KeyTypes:   IterKeyTypePointsAndRanges,
+		LowerBound: lower,
+		UpperBound: upper,
+	})
+	defer iter.close()
+
+	return scanInternalImpl(lower, iter, visitPointKey, visitRangeDel, visitRangeKey)
 }
 
 // Close closes the snapshot, releasing its resources. Close must be called.

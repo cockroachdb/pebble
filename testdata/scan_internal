@@ -1,0 +1,128 @@
+
+reset
+----
+
+batch commit
+range-key-set a c @5 boop
+range-key-set c e @5 beep
+----
+committed 2 keys
+
+snapshot name=foo
+----
+
+batch commit
+set b d
+set e foo
+----
+committed 2 keys
+
+flush
+----
+
+scan-internal
+----
+a-c:{(#1,RANGEKEYSET,@5,boop)}
+b#3,1 (d)
+c-e:{(#2,RANGEKEYSET,@5,beep)}
+e#4,1 (foo)
+
+# Keys deleted by rangedels are returned instead of being shadowed/masked.
+
+batch commit
+del-range b d
+----
+committed 1 keys
+
+scan-internal
+----
+a-c:{(#1,RANGEKEYSET,@5,boop)}
+b-d#5,RANGEDEL
+b#3,1 (d)
+c-e:{(#2,RANGEKEYSET,@5,beep)}
+e#4,1 (foo)
+
+flush
+----
+
+scan-internal
+----
+a-c:{(#1,RANGEKEYSET,@5,boop)}
+b-d#5,RANGEDEL
+b#3,1 (d)
+c-e:{(#2,RANGEKEYSET,@5,beep)}
+e#4,1 (foo)
+
+# Snapshots work with internal iters.
+
+scan-internal snapshot=foo
+----
+a-c:{(#1,RANGEKEYSET,@5,boop)}
+c-e:{(#2,RANGEKEYSET,@5,beep)}
+
+# Calling first with a lower bound does a transparent translation to a SeekGE.
+# No keys beyond upper bound are returned
+
+scan-internal lower=bb upper=dd
+----
+bb-c:{(#1,RANGEKEYSET,@5,boop)}
+bb-d#5,RANGEDEL
+c-dd:{(#2,RANGEKEYSET,@5,beep)}
+
+reset
+----
+
+# Range key unsets and dels are allowed to delete keys they observe, however
+# the unset/del must also be returned to the user.
+
+batch commit
+range-key-set a c @8 foo
+range-key-set b e @6 bar
+----
+committed 2 keys
+
+flush
+----
+
+compact a-z
+----
+6:
+  000005:[a#1,RANGEKEYSET-e#inf,RANGEKEYSET]
+
+batch commit
+range-key-unset b d @6
+----
+committed 1 keys
+
+flush
+----
+
+batch commit
+range-key-del a b
+----
+committed 1 keys
+
+scan-internal
+----
+a-b:{(#4,RANGEKEYDEL)}
+b-c:{(#1,RANGEKEYSET,@8,foo) (#3,RANGEKEYUNSET,@6)}
+c-d:{(#3,RANGEKEYUNSET,@6)}
+d-e:{(#2,RANGEKEYSET,@6,bar)}
+
+flush
+----
+
+lsm
+----
+0.0:
+  000009:[a#4,RANGEKEYDEL-b#inf,RANGEKEYDEL]
+  000007:[b#3,RANGEKEYUNSET-d#inf,RANGEKEYUNSET]
+6:
+  000005:[a#1,RANGEKEYSET-e#inf,RANGEKEYSET]
+
+scan-internal
+----
+a-b:{(#4,RANGEKEYDEL)}
+b-c:{(#1,RANGEKEYSET,@8,foo) (#3,RANGEKEYUNSET,@6)}
+c-d:{(#3,RANGEKEYUNSET,@6)}
+d-e:{(#2,RANGEKEYSET,@6,bar)}

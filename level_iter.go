@@ -24,6 +24,21 @@ type tableNewIters func(
 	internalOpts internalIterOpts,
 ) (internalIterator, keyspan.FragmentIterator, error)
 
+// tableNewRangeDelIter takes a tableNewIters and returns a TableNewSpanIter
+// for the rangedel iterator returned by tableNewIters.
+func tableNewRangeDelIter(newIters tableNewIters) keyspan.TableNewSpanIter {
+	return func(file *manifest.FileMetadata, iterOptions *keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
+		iter, rangeDelIter, err := newIters(file, &IterOptions{RangeKeyFilters: iterOptions.RangeKeyFilters}, internalIterOpts{})
+		if iter != nil {
+			_ = iter.Close()
+		}
+		if rangeDelIter == nil {
+			rangeDelIter = emptyKeyspanIter
+		}
+		return rangeDelIter, err
+	}
+}
+
 type internalIterOpts struct {
 	bytesIterated      *uint64
 	stats              *base.InternalIteratorStats

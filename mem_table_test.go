@@ -336,7 +336,7 @@ func TestMemTableDeleteRange(t *testing.T) {
 			} else {
 				iter := mem.newIter(nil)
 				defer iter.Close()
-				scanInternalIterator(&buf, iter)
+				scanInternalIter(&buf, iter)
 			}
 			return buf.String()
 
