@@ -932,9 +932,9 @@ var iterAllocPool = sync.Pool{
 	},
 }
 
-// newIterInternal constructs a new iterator, merging in batch iterators as an extra
+// newIter constructs a new iterator, merging in batch iterators as an extra
 // level.
-func (d *DB) newIterInternal(batch *Batch, s *Snapshot, o *IterOptions) *Iterator {
+func (d *DB) newIter(batch *Batch, s *Snapshot, o *IterOptions) *Iterator {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1103,6 +1103,99 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 	return dbi
 }
 
+// NewInternalIter constructs and returns a new InternalIterator on this db.
+func (d *DB) NewInternalIter(o *IterOptions) *InternalIterator {
+	return d.newInternalIter(nil /* snapshot */, o)
+}
+
+func (d *DB) newInternalIter(s *Snapshot, o *IterOptions) *InternalIterator {
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+	if o != nil && o.RangeKeyMasking.Suffix != nil {
+		panic("pebble: range key masking not supported with internal iterators")
+	}
+	// Grab and reference the current readState. This prevents the underlying
+	// files in the associated version from being deleted if there is a current
+	// compaction. The readState is unref'd by Iterator.Close().
+	readState := d.loadReadState()
+
+	// Determine the seqnum to read at after grabbing the read state (current and
+	// memtables) above.
+	var seqNum uint64
+	if s == nil {
+		seqNum = atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum)
+	} else {
+		seqNum = s.seqNum
+	}
+
+	// Bundle various structures under a single umbrella in order to allocate
+	// them together.
+	buf := iterAllocPool.Get().(*iterAlloc)
+	dbi := &InternalIterator{
+		comparer:        d.opts.Comparer,
+		readState:       readState,
+		alloc:           buf,
+		newIters:        d.newIters,
+		newIterRangeKey: d.tableNewRangeKeyIter,
+		seqNum:          seqNum,
+	}
+	if o != nil {
+		dbi.opts = *o
+	}
+	dbi.opts.logger = d.opts.Logger
+	if d.opts.private.disableLazyCombinedIteration {
+		dbi.opts.disableLazyCombinedIteration = true
+	}
+	return finishInitializingInternalIter(buf, dbi)
+}
+
+func finishInitializingInternalIter(buf *iterAlloc, i *InternalIterator) *InternalIterator {
+	// Short-hand.
+	memtables := i.readState.memtables
+	if i.opts.OnlyReadGuaranteedDurable {
+		memtables = nil
+	} else {
+		// We only need to read from memtables which contain sequence numbers older
+		// than seqNum. Trim off newer memtables.
+		for j := len(memtables) - 1; j >= 0; j-- {
+			if logSeqNum := memtables[j].logSeqNum; logSeqNum < i.seqNum {
+				break
+			}
+			memtables = memtables[:j]
+		}
+	}
+	i.initializeBoundBufs(i.opts.LowerBound, i.opts.UpperBound)
+
+	if i.opts.pointKeys() {
+		// i.constructPointIter always sets i.iter to i.pointKeyIter.
+		i.constructPointIter(memtables, buf)
+	} else {
+		i.iter = emptyIter
+	}
+
+	if i.opts.rangeKeys() {
+		// For internal iterators, we skip the lazy combined iteration optimization
+		// entirely, and create the range key iterator stack directly.
+		if i.rangeKey == nil {
+			i.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
+			i.rangeKey.init(i.comparer.Compare, i.comparer.Split, &i.opts)
+			i.constructRangeKeyIter()
+		} else {
+			i.rangeKey.iterConfig.SetBounds(i.opts.LowerBound, i.opts.UpperBound)
+		}
+
+		// Wrap the point iterator (currently i.iter) with an interleaving
+		// iterator that interleaves range keys pulled from
+		// i.rangeKey.rangeKeyIter.
+		i.rangeKey.iiter.Init(i.comparer, i.iter, i.rangeKey.rangeKeyIter,
+			nil /* mask */, i.opts.LowerBound, i.opts.UpperBound)
+		i.iter = &i.rangeKey.iiter
+	}
+
+	return i
+}
+
 func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
 	if i.pointIter != nil {
 		// Already have one.
@@ -1248,7 +1341,7 @@ func (d *DB) NewIndexedBatch() *Batch {
 // apparent memory and disk usage leak. Use snapshots (see NewSnapshot) for
 // point-in-time snapshots which avoids these problems.
 func (d *DB) NewIter(o *IterOptions) *Iterator {
-	return d.newIterInternal(nil /* batch */, nil /* snapshot */, o)
+	return d.newIter(nil /* batch */, nil /* snapshot */, o)
 }
 
 // NewSnapshot returns a point-in-time view of the current DB state. Iterators

@@ -45,7 +45,17 @@ func (s *Snapshot) NewIter(o *IterOptions) *Iterator {
 	if s.db == nil {
 		panic(ErrClosed)
 	}
-	return s.db.newIterInternal(nil /* batch */, s, o)
+	return s.db.newIter(nil /* batch */, s, o)
+}
+
+// NewInternalIter returns an internal iterator that is unpositioned
+// (Iterator.Valid() will return false). The iterator can be positioned via a
+// call to SeekGE, SeekLT, First or Last.
+func (s *Snapshot) NewInternalIter(o *IterOptions) *InternalIterator {
+	if s.db == nil {
+		panic(ErrClosed)
+	}
+	return s.db.newInternalIter(s, o)
 }
 
 // Close closes the snapshot, releasing its resources. Close must be called.

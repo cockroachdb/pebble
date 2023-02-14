@@ -77,6 +77,85 @@ func runGetCmd(td *datadriven.TestData, d *DB) string {
 	return buf.String()
 }
 
+func runUserInternalIterCmd(d *datadriven.TestData, iter *InternalIterator, close bool) string {
+	var b bytes.Buffer
+	defer func() {
+		if close {
+			_ = iter.Close()
+		}
+	}()
+	for _, line := range strings.Split(d.Input, "\n") {
+		parts := strings.Fields(line)
+		if len(parts) == 0 {
+			continue
+		}
+		var valid bool
+		switch parts[0] {
+		case "seek-ge":
+			if len(parts) != 2 {
+				return "seek-ge <key>\n"
+			}
+			valid = iter.SeekGE([]byte(parts[1]))
+		case "first":
+			valid = iter.First()
+		case "next":
+			valid = iter.Next()
+		case "prev":
+			valid = iter.Prev()
+		case "set-bounds":
+			if len(parts) <= 1 || len(parts) > 3 {
+				return "set-bounds lower=<lower> upper=<upper>\n"
+			}
+			var lower []byte
+			var upper []byte
+			for _, part := range parts[1:] {
+				arg := strings.Split(part, "=")
+				switch arg[0] {
+				case "lower":
+					lower = []byte(arg[1])
+				case "upper":
+					upper = []byte(arg[1])
+				default:
+					return fmt.Sprintf("set-bounds: unknown arg: %s", arg)
+				}
+			}
+			iter.SetBounds(lower, upper)
+			valid = iter.Valid()
+		default:
+			return fmt.Sprintf("unknown op: %s", parts[0])
+		}
+
+		if err := iter.Error(); err != nil {
+			fmt.Fprintf(&b, "err=%v\n", err)
+			continue
+		} else if !valid {
+			fmt.Fprintf(&b, ".\n")
+			continue
+		}
+
+		k := iter.UnsafeKey()
+		if k == nil {
+			panic("unexpected nil key despite valid iterator pos")
+		}
+		fmt.Fprintf(&b, "%s (", k)
+		if rangekey.IsRangeKey(k.Kind()) {
+			s := iter.UnsafeSpan()
+			fmt.Fprintf(&b, "%s)", s.String())
+		} else if k.Kind() == InternalKeyKindRangeDelete {
+			s := iter.UnsafeRangeDel()
+			fmt.Fprintf(&b, "%s)", s.String())
+		} else {
+			val, err := iter.ValueAndErr()
+			if err != nil {
+				return err.Error()
+			}
+			fmt.Fprintf(&b, "%s)", val)
+		}
+		fmt.Fprintln(&b)
+	}
+	return b.String()
+}
+
 func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 	if closeIter {
 		defer func() {

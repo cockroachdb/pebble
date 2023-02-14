@@ -1,0 +1,185 @@
+
+reset
+----
+
+batch commit
+range-key-set a c @5 boop
+range-key-set c e @5 beep
+----
+committed 2 keys
+
+snapshot name=foo
+----
+
+batch commit
+set b d
+set e foo
+----
+committed 2 keys
+
+flush
+----
+
+internal-iter
+seek-ge a
+next
+seek-ge b
+next
+prev
+next
+next
+next
+next
+----
+a#72057594037927935,21 (a-c:{(#1,RANGEKEYSET,@5,boop)})
+b#3,1 (d)
+b#72057594037927935,21 (a-c:{(#1,RANGEKEYSET,@5,boop)})
+b#3,1 (d)
+a#72057594037927935,21 (a-c:{(#1,RANGEKEYSET,@5,boop)})
+b#3,1 (d)
+c#72057594037927935,21 (c-e:{(#2,RANGEKEYSET,@5,beep)})
+e#4,1 (foo)
+.
+
+# Keys deleted by rangedels are returned instead of being shadowed/masked.
+
+batch commit
+del-range b d
+----
+committed 1 keys
+
+internal-iter
+seek-ge a
+next
+next
+next
+next
+next
+----
+a#72057594037927935,21 (a-c:{(#1,RANGEKEYSET,@5,boop)})
+b#72057594037927935,15 (b-d:{(#5,RANGEDEL)})
+b#3,1 (d)
+c#72057594037927935,21 (c-e:{(#2,RANGEKEYSET,@5,beep)})
+e#4,1 (foo)
+.
+
+flush
+----
+
+internal-iter
+seek-ge a
+next
+next
+next
+next
+next
+----
+a#72057594037927935,21 (a-c:{(#1,RANGEKEYSET,@5,boop)})
+b#72057594037927935,15 (b-d:{(#5,RANGEDEL)})
+b#3,1 (d)
+c#72057594037927935,21 (c-e:{(#2,RANGEKEYSET,@5,beep)})
+e#4,1 (foo)
+.
+
+# Snapshots work with internal iters.
+
+internal-iter snapshot=foo
+seek-ge a
+next
+next
+next
+----
+a#72057594037927935,21 (a-c:{(#1,RANGEKEYSET,@5,boop)})
+c#72057594037927935,21 (c-e:{(#2,RANGEKEYSET,@5,beep)})
+.
+.
+
+# Calling first with a lower bound does a transparent translation to a SeekGE.
+# No keys beyond upper bound are returned
+
+internal-iter lower=bb upper=dd
+first
+next
+next
+next
+next
+----
+bb#72057594037927935,21 (bb-c:{(#1,RANGEKEYSET,@5,boop)})
+bb#72057594037927935,15 (bb-d:{(#5,RANGEDEL)})
+c#72057594037927935,21 (c-dd:{(#2,RANGEKEYSET,@5,beep)})
+.
+.
+
+reset
+----
+
+# Range key unsets and dels are allowed to delete keys they observe, however
+# the unset/del must also be returned to the user.
+
+batch commit
+range-key-set a c @8 foo
+range-key-set b e @6 bar
+----
+committed 2 keys
+
+flush
+----
+
+compact a-z
+----
+6:
+  000005:[a#1,RANGEKEYSET-e#inf,RANGEKEYSET]
+
+batch commit
+range-key-unset b d @6
+----
+committed 1 keys
+
+flush
+----
+
+batch commit
+range-key-del a b
+----
+committed 1 keys
+
+internal-iter
+first
+next
+next
+next
+next
+next
+----
+a#72057594037927935,19 (a-b:{(#4,RANGEKEYDEL)})
+b#72057594037927935,21 (b-c:{(#1,RANGEKEYSET,@8,foo) (#3,RANGEKEYUNSET,@6)})
+c#72057594037927935,20 (c-d:{(#3,RANGEKEYUNSET,@6)})
+d#72057594037927935,21 (d-e:{(#2,RANGEKEYSET,@6,bar)})
+.
+.
+
+flush
+----
+
+lsm
+----
+0.0:
+  000009:[a#4,RANGEKEYDEL-b#inf,RANGEKEYDEL]
+  000007:[b#3,RANGEKEYUNSET-d#inf,RANGEKEYUNSET]
+6:
+  000005:[a#1,RANGEKEYSET-e#inf,RANGEKEYSET]
+
+internal-iter
+first
+next
+next
+next
+next
+next
+----
+a#72057594037927935,19 (a-b:{(#4,RANGEKEYDEL)})
+b#72057594037927935,21 (b-c:{(#1,RANGEKEYSET,@8,foo) (#3,RANGEKEYUNSET,@6)})
+c#72057594037927935,20 (c-d:{(#3,RANGEKEYUNSET,@6)})
+d#72057594037927935,21 (d-e:{(#2,RANGEKEYSET,@6,bar)})
+.
+.

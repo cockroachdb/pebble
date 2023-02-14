@@ -49,9 +49,9 @@ var noopTransform Transformer = TransformerFunc(func(_ base.Compare, s Span, dst
 	return nil
 })
 
-// visibleTransform filters keys that are invisible at the provided snapshot
+// VisibleTransform filters keys that are invisible at the provided snapshot
 // sequence number.
-func visibleTransform(snapshot uint64) Transformer {
+func VisibleTransform(snapshot uint64) Transformer {
 	return TransformerFunc(func(_ base.Compare, s Span, dst *Span) error {
 		dst.Start, dst.End = s.Start, s.End
 		dst.Keys = dst.Keys[:0]
@@ -1044,7 +1044,7 @@ func (m *MergingIter) synthesizeKeys(dir int8) (bool, *Span) {
 	// sorted by trailer descending for the range key iteration use case.
 	sort.Sort(&m.keys)
 
-	// Apply the configured transform. See visibleTransform.
+	// Apply the configured transform. See VisibleTransform.
 	m.span = Span{
 		Start:     m.start,
 		End:       m.end,
