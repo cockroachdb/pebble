@@ -1639,7 +1639,9 @@ func (d *DB) Metrics() *Metrics {
 	}
 	metrics.private.optionsFileSize = d.optionsFileSize
 
+	// TODO(jackson): Consider making these metrics optional.
 	metrics.Keys.RangeKeySetsCount = countRangeKeySetFragments(vers)
+	metrics.Keys.TombstoneCount = countTombstones(vers)
 
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())

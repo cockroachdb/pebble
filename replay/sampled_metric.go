@@ -67,6 +67,9 @@ func (m *SampledMetric) PlotIncreasingPerSec(width, height int, scale float64) s
 // Mean calculates the mean value of the metric.
 func (m *SampledMetric) Mean() float64 {
 	var sum float64
+	if len(m.samples) == 0 {
+		return 0.0
+	}
 	for _, s := range m.samples {
 		sum += float64(s.value)
 	}

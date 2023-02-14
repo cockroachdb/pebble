@@ -119,6 +119,7 @@ type Metrics struct {
 	// QuiesceDuration is the time between completing application of the workload and
 	// compactions quiescing.
 	QuiesceDuration time.Duration
+	TombstoneCount  SampledMetric
 	// TotalSize holds the total size of the database, sampled after each
 	// workload step.
 	TotalSize           SampledMetric
@@ -203,6 +204,12 @@ func (m *Metrics) WriteBenchmarkString(name string, w io.Writer) error {
 		{label: "ReadAmp/max", values: []benchfmt.Value{
 			{Value: float64(m.ReadAmp.Max()), Unit: "files"},
 		}},
+		{label: "TombstoneCount/mean", values: []benchfmt.Value{
+			{Value: m.TombstoneCount.Mean(), Unit: "tombstones"},
+		}},
+		{label: "TombstoneCount/max", values: []benchfmt.Value{
+			{Value: float64(m.TombstoneCount.Max()), Unit: "tombstones"},
+		}},
 		{label: "Throughput", values: []benchfmt.Value{
 			{Value: float64(m.WriteBytes) / (m.WorkloadDuration + m.QuiesceDuration).Seconds(), Unit: "B/s"},
 		}},
@@ -258,6 +265,7 @@ type Runner struct {
 		estimatedDebt           SampledMetric
 		quiesceDuration         time.Duration
 		readAmp                 SampledMetric
+		tombstoneCount          SampledMetric
 		totalSize               SampledMetric
 		workloadDuration        time.Duration
 		writeBytes              uint64 // atomic
@@ -383,6 +391,7 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 		// every time we collect metrics.
 		r.metrics.readAmp.record(int64(m.ReadAmp()))
 		r.metrics.estimatedDebt.record(int64(m.Compact.EstimatedDebt))
+		r.metrics.tombstoneCount.record(int64(m.Keys.TombstoneCount))
 		r.metrics.totalSize.record(int64(m.DiskSpaceUsage()))
 		r.metrics.writeThroughput.record(int64(atomic.LoadUint64(&r.metrics.writeBytes)))
 
@@ -496,6 +505,7 @@ func (r *Runner) Wait() (Metrics, error) {
 		EstimatedDebt:       r.metrics.estimatedDebt,
 		ReadAmp:             r.metrics.readAmp,
 		QuiesceDuration:     r.metrics.quiesceDuration,
+		TombstoneCount:      r.metrics.tombstoneCount,
 		TotalSize:           r.metrics.totalSize,
 		TotalWriteAmp:       total.WriteAmp(),
 		WorkloadDuration:    r.metrics.workloadDuration,
