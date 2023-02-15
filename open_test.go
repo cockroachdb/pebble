@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/errorfs"
@@ -63,72 +64,82 @@ func TestOpenSharedTableCache(t *testing.T) {
 }
 
 func TestErrorIfExists(t *testing.T) {
-	for _, b := range [...]bool{false, true} {
-		t.Run(fmt.Sprintf("%t", b), func(t *testing.T) {
-			mem := vfs.NewMem()
-			d0, err := Open("", testingRandomized(&Options{
-				FS: mem,
-			}))
-			if err != nil {
-				t.Errorf("b=%v: d0 Open: %v", b, err)
-				return
-			}
-			if err := d0.Close(); err != nil {
-				t.Errorf("b=%v: d0 Close: %v", b, err)
-				return
-			}
+	opts := testingRandomized(&Options{
+		FS:            vfs.NewMem(),
+		ErrorIfExists: true,
+	})
+	defer ensureFilesClosed(t, opts)()
 
-			opts := testingRandomized(&Options{
-				FS:            mem,
-				ErrorIfExists: b,
-			})
-			defer ensureFilesClosed(t, opts)()
-			d1, err := Open("", opts)
-			if d1 != nil {
-				defer d1.Close()
-			}
-			if got := err != nil; got != b {
-				t.Errorf("b=%v: d1 Open: err is %v, got (err != nil) is %v, want %v", b, err, got, b)
-				return
-			}
-		})
+	d0, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d0.Close())
+
+	if _, err := Open("", opts); !errors.Is(err, ErrDBAlreadyExists) {
+		t.Fatalf("expected db-already-exists error, got %v", err)
 	}
+
+	opts.ErrorIfExists = false
+	d1, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d1.Close())
 }
 
 func TestErrorIfNotExists(t *testing.T) {
-	t.Run("does-not-exist", func(t *testing.T) {
-		opts := testingRandomized(&Options{
-			FS:               vfs.NewMem(),
-			ErrorIfNotExists: true,
-		})
-		defer ensureFilesClosed(t, opts)()
-
-		_, err := Open("", opts)
-		if err == nil {
-			t.Fatalf("expected error, but found success")
-		} else if !strings.HasSuffix(err.Error(), "does not exist") {
-			t.Fatalf("expected not exists, but found %q", err)
-		}
+	opts := testingRandomized(&Options{
+		FS:               vfs.NewMem(),
+		ErrorIfNotExists: true,
 	})
+	defer ensureFilesClosed(t, opts)()
 
-	t.Run("does-exist", func(t *testing.T) {
-		opts := testingRandomized(&Options{
-			FS:               vfs.NewMem(),
-			ErrorIfNotExists: false,
-		})
-		defer ensureFilesClosed(t, opts)()
+	_, err := Open("", opts)
+	if !errors.Is(err, ErrDBDoesNotExist) {
+		t.Fatalf("expected db-does-not-exist error, got %v", err)
+	}
 
-		// Create the DB and try again.
-		d, err := Open("", opts)
-		require.NoError(t, err)
-		require.NoError(t, d.Close())
+	// Create the DB and try again.
+	opts.ErrorIfNotExists = false
+	d0, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d0.Close())
 
-		opts.ErrorIfNotExists = true
-		// The DB exists, so the setting of ErrorIfNotExists is a no-op.
-		d, err = Open("", opts)
-		require.NoError(t, err)
-		require.NoError(t, d.Close())
+	opts.ErrorIfNotExists = true
+	d1, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d1.Close())
+}
+
+func TestErrorIfNotPristine(t *testing.T) {
+	opts := testingRandomized(&Options{
+		FS:                 vfs.NewMem(),
+		ErrorIfNotPristine: true,
 	})
+	defer ensureFilesClosed(t, opts)()
+
+	d0, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d0.Close())
+
+	// Store is pristine; ok to open.
+	d1, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d1.Set([]byte("foo"), []byte("bar"), Sync))
+	require.NoError(t, d1.Close())
+
+	if _, err := Open("", opts); !errors.Is(err, ErrDBNotPristine) {
+		t.Fatalf("expected db-not-pristine error, got %v", err)
+	}
+
+	// Run compaction and make sure we're still not allowed to open.
+	opts.ErrorIfNotPristine = false
+	d2, err := Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, d2.Compact([]byte("a"), []byte("z"), false /* parallelize */))
+	require.NoError(t, d2.Close())
+
+	opts.ErrorIfNotPristine = true
+	if _, err := Open("", opts); !errors.Is(err, ErrDBNotPristine) {
+		t.Fatalf("expected db-already-exists error, got %v", err)
+	}
 }
 
 func TestNewDBFilenames(t *testing.T) {

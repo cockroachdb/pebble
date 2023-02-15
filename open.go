@@ -220,7 +220,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if !manifestExists {
 		// DB does not exist.
 		if d.opts.ErrorIfNotExists || d.opts.ReadOnly {
-			return nil, errors.Errorf("pebble: database %q does not exist", dirname)
+			return nil, errors.Wrapf(ErrDBDoesNotExist, "dirname=%q", dirname)
 		}
 
 		// Create the DB.
@@ -229,7 +229,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 	} else {
 		if opts.ErrorIfExists {
-			return nil, errors.Errorf("pebble: database %q already exists", dirname)
+			return nil, errors.Wrapf(ErrDBAlreadyExists, "dirname=%q", dirname)
 		}
 		// Load the version set.
 		if err := d.mu.versions.load(dirname, opts, manifestFileNum, manifestMarker, setCurrent, &d.mu.Mutex); err != nil {
@@ -238,6 +238,13 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		curVersion := d.mu.versions.currentVersion()
 		if err := curVersion.CheckConsistency(dirname, opts.FS); err != nil {
 			return nil, err
+		}
+		if opts.ErrorIfNotPristine {
+			liveFileNums := make(map[FileNum]struct{})
+			d.mu.versions.addLiveFileNums(liveFileNums)
+			if len(liveFileNums) != 0 {
+				return nil, errors.Wrapf(ErrDBNotPristine, "dirname=%q", dirname)
+			}
 		}
 	}
 
@@ -725,6 +732,10 @@ func (d *DB) replayWAL(
 				filename, errors.Safe(logNum))
 		}
 
+		if d.opts.ErrorIfNotPristine {
+			return nil, 0, errors.WithDetailf(ErrDBNotPristine, "location: %q", d.dirname)
+		}
+
 		// Specify Batch.db so that Batch.SetRepr will compute Batch.memTableSize
 		// which is used below.
 		b = Batch{db: d}
@@ -902,7 +913,7 @@ type DBDesc struct {
 
 // Peek looks for an existing database in dirname on the provided FS. It
 // returns a brief description of the database. Peek is read-only and
-// does not open the database.
+// does not open the databaseErrorIfExists.
 func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
 	vers, versMarker, err := lookupFormatMajorVersion(fs, dirname)
 	if err != nil {
@@ -934,3 +945,21 @@ func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
 	}
 	return desc, nil
 }
+
+// ErrDBDoesNotExist is generated when ErrorIfNotExists is set and the database
+// does not exist.
+//
+// Note that errors can be wrapped with more details; use errors.Is().
+var ErrDBDoesNotExist = errors.New("pebble: database does not exist")
+
+// ErrDBAlreadyExists is generated when ErrorIfExists is set and the database
+// already exists.
+//
+// Note that errors can be wrapped with more details; use errors.Is().
+var ErrDBAlreadyExists = errors.New("pebble: database already exists")
+
+// ErrDBNotPristine is generated when ErrorIfNotPristine is set and the database
+// already exists and is not pristine.
+//
+// Note that errors can be wrapped with more details; use errors.Is().
+var ErrDBNotPristine = errors.New("pebble: database already exists and is not pristine")
