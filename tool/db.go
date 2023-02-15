@@ -492,6 +492,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 		if err != nil {
 			return err
 		}
+		defer objProvider.Close()
 
 		// Load and aggregate sstable properties.
 		tw := tabwriter.NewWriter(stdout, 2, 1, 4, ' ', 0)

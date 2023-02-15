@@ -13,6 +13,7 @@ sync: db/temporary.000001.dbtmp
 close: db/temporary.000001.dbtmp
 rename: db/temporary.000001.dbtmp -> db/CURRENT
 sync: db
+open-dir: db
 sync: db/MANIFEST-000001
 create: db/000002.log
 sync: db
@@ -271,6 +272,7 @@ open-dir: checkpoints/checkpoint1
 lock: checkpoints/checkpoint1/LOCK
 open-dir: checkpoints/checkpoint1
 open-dir: checkpoints/checkpoint1
+open-dir: checkpoints/checkpoint1
 
 scan checkpoints/checkpoint1
 ----
@@ -311,6 +313,7 @@ open-dir: checkpoints/checkpoint2
 lock: checkpoints/checkpoint2/LOCK
 open-dir: checkpoints/checkpoint2
 open-dir: checkpoints/checkpoint2
+open-dir: checkpoints/checkpoint2
 
 scan checkpoints/checkpoint2
 ----
@@ -336,6 +339,7 @@ open checkpoints/checkpoint3 readonly
 ----
 open-dir: checkpoints/checkpoint3
 lock: checkpoints/checkpoint3/LOCK
+open-dir: checkpoints/checkpoint3
 open-dir: checkpoints/checkpoint3
 open-dir: checkpoints/checkpoint3
 

@@ -994,6 +994,7 @@ func TestCompaction(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
+		defer provider.Close()
 		for _, levelMetadata := range v.Levels {
 			iter := levelMetadata.Iter()
 			for meta := iter.First(); meta != nil; meta = iter.Next() {

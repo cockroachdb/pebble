@@ -16,6 +16,7 @@ close: db/temporary.000001.dbtmp
 rename: db/temporary.000001.dbtmp -> db/CURRENT
 sync: db
 [JOB 1] MANIFEST created 000001
+open-dir: db
 sync: db/MANIFEST-000001
 create: wal/000002.log
 sync: wal
@@ -286,3 +287,4 @@ close: db/MANIFEST-000016
 close: db
 close: db
 close: wal
+close: db

@@ -28,6 +28,8 @@ import (
 type Provider struct {
 	st Settings
 
+	fsDir vfs.File
+
 	mu struct {
 		sync.RWMutex
 
@@ -139,9 +141,21 @@ func (m *ObjectMetadata) IsShared() bool {
 }
 
 // Open creates the Provider.
-func Open(settings Settings) (*Provider, error) {
-	p := &Provider{
-		st: settings,
+func Open(settings Settings) (p *Provider, _ error) {
+	fsDir, err := settings.FS.OpenDir(settings.FSDirName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if p == nil {
+			fsDir.Close()
+		}
+	}()
+
+	p = &Provider{
+		st:    settings,
+		fsDir: fsDir,
 	}
 	p.mu.knownObjects = make(map[base.FileNum]ObjectMetadata)
 
@@ -160,6 +174,15 @@ func Open(settings Settings) (*Provider, error) {
 	}
 
 	return p, nil
+}
+
+// Close the provider.
+func (p *Provider) Close() error {
+	if p.fsDir != nil {
+		return p.fsDir.Close()
+	}
+	p.fsDir = nil
+	return nil
 }
 
 // OpenForReading opens an existing object.
@@ -196,6 +219,9 @@ func (p *Provider) OpenForReadingMustExist(
 }
 
 // Create creates a new object and opens it for writing.
+//
+// The object is not guaranteed to be durable (accessible in case of crashes)
+// until Sync is called.
 func (p *Provider) Create(
 	fileType base.FileType, fileNum base.FileNum,
 ) (Writable, ObjectMetadata, error) {
@@ -213,6 +239,8 @@ func (p *Provider) Create(
 }
 
 // Remove removes an object.
+//
+// The object is not guaranteed to be durably removed until Sync is called.
 func (p *Provider) Remove(fileType base.FileType, fileNum base.FileNum) error {
 	meta, err := p.Lookup(fileType, fileNum)
 	if err != nil {
@@ -240,9 +268,17 @@ func IsNotExistError(err error) bool {
 	return oserror.IsNotExist(err)
 }
 
+// Sync flushes the metadata from creation or removal of objects since the last Sync.
+func (p *Provider) Sync() error {
+	return p.fsDir.Sync()
+}
+
 // LinkOrCopyFromLocal creates a new object that is either a copy of a given
 // local file or a hard link (if the new object is created on the same FS, and
 // if the FS supports it).
+//
+// The object is not guaranteed to be durable (accessible in case of crashes)
+// until Sync is called.
 func (p *Provider) LinkOrCopyFromLocal(
 	srcFS vfs.FS, srcFilePath string, dstFileType base.FileType, dstFileNum base.FileNum,
 ) (ObjectMetadata, error) {

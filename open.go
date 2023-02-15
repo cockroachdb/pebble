@@ -175,6 +175,9 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 					t.arenaBuf = nil
 				}
 			}
+			if d.objProvider != nil {
+				d.objProvider.Close()
+			}
 			if r != nil {
 				panic(r)
 			}
