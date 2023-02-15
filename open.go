@@ -54,6 +54,23 @@ func TableCacheSize(maxOpenFiles int) int {
 	return tableCacheSize
 }
 
+// fileList must only be called once a DB has been initialized with opts.
+func (d *DB) fileList() ([]string, error) {
+	// List the objects
+	ls, err := d.opts.FS.List(d.walDirname)
+	if err != nil {
+		return nil, err
+	}
+	if d.dirname != d.walDirname {
+		ls2, err := d.opts.FS.List(d.dirname)
+		if err != nil {
+			return nil, err
+		}
+		ls = append(ls, ls2...)
+	}
+	return ls, nil
+}
+
 // Open opens a DB whose files live in the given directory.
 func Open(dirname string, opts *Options) (db *DB, _ error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
@@ -251,7 +268,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 
 	// List the objects
-	ls, err := opts.FS.List(d.walDirname)
+	ls, err := d.fileList()
 	if err != nil {
 		return nil, err
 	}
@@ -469,12 +486,19 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 
 	if !d.opts.ReadOnly {
+		// It's important to re-list the file here. Compactions/flushes could
+		// have changed the state of the file directory.
+		ls, err := d.fileList()
+		if err != nil {
+			return nil, err
+		}
 		d.scanObsoleteFiles(ls)
 		d.deleteObsoleteFiles(jobID, true /* waitForOngoing */)
 	} else {
 		// All the log files are obsolete.
 		d.mu.versions.metrics.WAL.Files = int64(len(logFiles))
 	}
+
 	d.mu.tableStats.cond.L = &d.mu.Mutex
 	d.mu.tableValidation.cond.L = &d.mu.Mutex
 	if !d.opts.ReadOnly && !d.opts.private.disableTableStats {
