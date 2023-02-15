@@ -202,8 +202,11 @@ type singleLevelIterator struct {
 	// dataBH refers to the last data block that the iterator considered
 	// loading. It may not actually have loaded the block, due to an error or
 	// because it was considered irrelevant.
-	dataBH    BlockHandle
-	vbReader  *valueBlockReader
+	dataBH   BlockHandle
+	vbReader *valueBlockReader
+	// vbRH is the readahead handle for value blocks, which are in a different
+	// part of the sstable than data blocks.
+	vbRH      objstorage.ReadaheadHandle
 	err       error
 	closeHook func(i Iterator) error
 	stats     *base.InternalIteratorStats
@@ -424,6 +427,7 @@ func (i *singleLevelIterator) init(
 				stats:  stats,
 			}
 			i.data.lazyValueHandling.vbr = i.vbReader
+			i.vbRH = r.readable.NewReadaheadHandle()
 		}
 		i.data.lazyValueHandling.hasValuePrefix = true
 	}
@@ -434,6 +438,9 @@ func (i *singleLevelIterator) init(
 // Currently, it skips readahead ramp-up. It should be called after init is called.
 func (i *singleLevelIterator) setupForCompaction() {
 	i.dataRH.MaxReadahead()
+	if i.vbRH != nil {
+		i.vbRH.MaxReadahead()
+	}
 }
 
 func (i *singleLevelIterator) resetForReuse() singleLevelIterator {
@@ -538,15 +545,10 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 
 // readBlockForVBR implements the blockProviderWhenOpen interface for use by
 // the valueBlockReader.
-//
-// TODO(radu, sumeer): we should use a ReadaheadHandle here, separate from the
-// ReadaheadHandle for the data blocks. Especially for the compaction case,
-// where we are reading the value blocks. For user-facing reads, this may be
-// less necessary, under the assumption that value blocks are rarely read.
 func (i *singleLevelIterator) readBlockForVBR(
 	h BlockHandle, stats *base.InternalIteratorStats,
 ) (cache.Handle, error) {
-	return i.reader.readBlock(h, nil /* transform */, nil /* raState */, stats)
+	return i.reader.readBlock(h, nil /* transform */, i.vbRH, stats)
 }
 
 // resolveMaybeExcluded is invoked when the block-property filterer has found
@@ -1396,6 +1398,10 @@ func (i *singleLevelIterator) Close() error {
 	if i.vbReader != nil {
 		i.vbReader.close()
 	}
+	if i.vbRH != nil {
+		err = firstError(err, i.vbRH.Close())
+		i.vbRH = nil
+	}
 	*i = i.resetForReuse()
 	singleLevelIterPool.Put(i)
 	return err
@@ -1698,6 +1704,7 @@ func (i *twoLevelIterator) init(
 				stats:  stats,
 			}
 			i.data.lazyValueHandling.vbr = i.vbReader
+			i.vbRH = r.readable.NewReadaheadHandle()
 		}
 		i.data.lazyValueHandling.hasValuePrefix = true
 	}
@@ -2350,6 +2357,10 @@ func (i *twoLevelIterator) Close() error {
 	}
 	if i.vbReader != nil {
 		i.vbReader.close()
+	}
+	if i.vbRH != nil {
+		err = firstError(err, i.vbRH.Close())
+		i.vbRH = nil
 	}
 	*i = twoLevelIterator{
 		singleLevelIterator: i.singleLevelIterator.resetForReuse(),
