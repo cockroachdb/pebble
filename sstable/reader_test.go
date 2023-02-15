@@ -671,8 +671,14 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				switch i := citer.(type) {
 				case *compactionIterator:
 					require.True(t, objstorage.TestingCheckMaxReadahead(i.dataRH))
+					// Each key has one version, so no value block, regardless of
+					// sstable version.
+					require.Nil(t, i.vbRH)
 				case *twoLevelCompactionIterator:
 					require.True(t, objstorage.TestingCheckMaxReadahead(i.dataRH))
+					// Each key has one version, so no value block, regardless of
+					// sstable version.
+					require.Nil(t, i.vbRH)
 				default:
 					require.Failf(t, fmt.Sprintf("unknown compaction iterator type: %T", citer), "")
 				}
@@ -680,6 +686,51 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				require.NoError(t, r.Close())
 			}
 		}
+	}
+}
+
+func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
+	tmpDir := path.Join(t.TempDir())
+	provider, err := objstorage.Open(objstorage.DefaultSettings(vfs.Default, tmpDir))
+	require.NoError(t, err)
+	f0, _, err := provider.Create(base.FileTypeTable, 0 /* fileNum */)
+	require.NoError(t, err)
+
+	w := NewWriter(f0, WriterOptions{
+		TableFormat: TableFormatPebblev3,
+		Comparer:    testkeys.Comparer,
+	})
+	keys := testkeys.Alpha(1)
+	keyBuf := make([]byte, 1+testkeys.MaxSuffixLen)
+	// Write a few keys with multiple timestamps (MVCC versions).
+	for i := 0; i < 2; i++ {
+		for j := 2; j >= 1; j-- {
+			n := testkeys.WriteKeyAt(keyBuf[:], keys, i, j)
+			key := keyBuf[:n]
+			require.NoError(t, w.Set(key, key))
+		}
+	}
+	require.NoError(t, w.Close())
+	f1, err := provider.OpenForReading(base.FileTypeTable, 0 /* fileNum */)
+	require.NoError(t, err)
+	r, err := NewReader(f1, ReaderOptions{Comparer: testkeys.Comparer})
+	require.NoError(t, err)
+	defer r.Close()
+	{
+		citer, err := r.NewCompactionIter(nil, TrivialReaderProvider{Reader: r})
+		require.NoError(t, err)
+		defer citer.Close()
+		i := citer.(*compactionIterator)
+		require.True(t, objstorage.TestingCheckMaxReadahead(i.dataRH))
+		require.True(t, objstorage.TestingCheckMaxReadahead(i.vbRH))
+	}
+	{
+		iter, err := r.NewIter(nil, nil)
+		require.NoError(t, err)
+		defer iter.Close()
+		i := iter.(*singleLevelIterator)
+		require.False(t, objstorage.TestingCheckMaxReadahead(i.dataRH))
+		require.False(t, objstorage.TestingCheckMaxReadahead(i.vbRH))
 	}
 }
 
