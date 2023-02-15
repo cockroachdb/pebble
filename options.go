@@ -454,17 +454,27 @@ type Options struct {
 	// TODO(peter): untested
 	DisableWAL bool
 
-	// ErrorIfExists is whether it is an error if the database already exists.
+	// ErrorIfExists causes an error on Open if the database already exists.
+	// The error can be checked with errors.Is(err, ErrDBAlreadyExists).
 	//
 	// The default value is false.
 	ErrorIfExists bool
 
-	// ErrorIfNotExists is whether it is an error if the database does not
-	// already exist.
+	// ErrorIfNotExists causes an error on Open if the database does not already
+	// exist. The error can be checked with errors.Is(err, ErrDBDoesNotExist).
 	//
 	// The default value is false which will cause a database to be created if it
 	// does not already exist.
 	ErrorIfNotExists bool
+
+	// ErrorIfNotPristine causes an error on Open if the database already exists
+	// and any operations have been performed on the database. The error can be
+	// checked with errors.Is(err, ErrDBNotPristine).
+	//
+	// Note that a database that contained keys that were all subsequently deleted
+	// may or may not trigger the error. Currently, we check if there are any live
+	// SSTs or log records to replay.
+	ErrorIfNotPristine bool
 
 	// EventListener provides hooks to listening to significant DB events such as
 	// flushes, compactions, and table deletion.
