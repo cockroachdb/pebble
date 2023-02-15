@@ -15,6 +15,7 @@ sync: db/temporary.000001.dbtmp
 close: db/temporary.000001.dbtmp
 rename: db/temporary.000001.dbtmp -> db/CURRENT
 sync: db
+open-dir: db
 sync: db/MANIFEST-000001
 create: wal/000002.log
 sync: wal

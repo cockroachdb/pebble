@@ -292,6 +292,7 @@ func TestIngestLink(t *testing.T) {
 			require.NoError(t, opts.FS.MkdirAll(dir, 0755))
 			objProvider, err := objstorage.Open(objstorage.DefaultSettings(opts.FS, dir))
 			require.NoError(t, err)
+			defer objProvider.Close()
 
 			paths := make([]string, 10)
 			meta := make([]*fileMetadata, len(paths))
@@ -371,13 +372,14 @@ func TestIngestLinkFallback(t *testing.T) {
 	src, err := mem.Create("source")
 	require.NoError(t, err)
 
-	opts := &Options{FS: errorfs.Wrap(mem, errorfs.OnIndex(0))}
+	opts := &Options{FS: errorfs.Wrap(mem, errorfs.OnIndex(1))}
 	opts.EnsureDefaults().WithFSDefaults()
 	objSettings := objstorage.DefaultSettings(opts.FS, "")
 	// Prevent the provider from listing the dir (where we may get an injected error).
 	objSettings.FSDirInitialListing = []string{}
 	objProvider, err := objstorage.Open(objSettings)
 	require.NoError(t, err)
+	defer objProvider.Close()
 
 	meta := []*fileMetadata{{FileNum: 1}}
 	err = ingestLink(0, opts, objProvider, []string{"source"}, meta)
@@ -1675,6 +1677,7 @@ func TestIngestCleanup(t *testing.T) {
 			mem.UseWindowsSemantics(true)
 			objProvider, err := objstorage.Open(objstorage.DefaultSettings(mem, ""))
 			require.NoError(t, err)
+			defer objProvider.Close()
 
 			// Create the files in the VFS.
 			metaMap := make(map[base.FileNum]objstorage.Writable)

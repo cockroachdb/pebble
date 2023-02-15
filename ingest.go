@@ -821,11 +821,10 @@ func (d *DB) ingest(
 	if err := ingestLink(jobID, d.opts, d.objProvider, paths, meta); err != nil {
 		return IngestOperationStats{}, err
 	}
-	// Fsync the directory we added the tables to. We need to do this at some
-	// point before we update the MANIFEST (via logAndApply), otherwise a crash
-	// can have the tables referenced in the MANIFEST, but not present in the
-	// directory.
-	if err := d.dataDir.Sync(); err != nil {
+	// Make the new tables durable. We need to do this at some point before we
+	// update the MANIFEST (via logAndApply), otherwise a crash can have the
+	// tables referenced in the MANIFEST, but not present in the provider.
+	if err := d.objProvider.Sync(); err != nil {
 		return IngestOperationStats{}, err
 	}
 

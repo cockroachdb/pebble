@@ -175,6 +175,7 @@ func runBuildRawCmd(
 	if err != nil {
 		return nil, nil, err
 	}
+	defer provider.Close()
 
 	f0, _, err := provider.Create(base.FileTypeTable, 0 /* fileNum */)
 	if err != nil {

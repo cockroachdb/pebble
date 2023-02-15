@@ -1391,6 +1391,8 @@ func (d *DB) Close() error {
 		err = firstError(err, errors.Errorf("non-zero zombie file count: %d", ztbls))
 	}
 
+	err = firstError(err, d.objProvider.Close())
+
 	// If the options include a closer to 'close' the filesystem, close it.
 	if d.opts.private.fsCloser != nil {
 		d.opts.private.fsCloser.Close()

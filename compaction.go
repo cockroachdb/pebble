@@ -3152,7 +3152,7 @@ func (d *DB) runCompaction(
 		}
 	}
 
-	if err := d.dataDir.Sync(); err != nil {
+	if err := d.objProvider.Sync(); err != nil {
 		return nil, pendingOutputs, err
 	}
 

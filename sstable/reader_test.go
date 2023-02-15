@@ -660,6 +660,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 	tmpDir := path.Join(t.TempDir())
 	provider, err := objstorage.Open(objstorage.DefaultSettings(vfs.Default, tmpDir))
 	require.NoError(t, err)
+	defer provider.Close()
 	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
 	for _, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
@@ -1054,6 +1055,7 @@ func buildTestTable(
 ) *Reader {
 	provider, err := objstorage.Open(objstorage.DefaultSettings(vfs.NewMem(), "" /* dirName */))
 	require.NoError(t, err)
+	defer provider.Close()
 	return buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, compression)
 }
 
