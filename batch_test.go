@@ -35,10 +35,15 @@ func TestBatch(t *testing.T) {
 		valueInt   uint32
 	}
 
-	verifyTestCases := func(b *Batch, testCases []testCase) {
+	verifyTestCases := func(b *Batch, testCases []testCase, indexedPointKindsOnly bool) {
 		r := b.Reader()
 
 		for _, tc := range testCases {
+			if indexedPointKindsOnly && (tc.kind == InternalKeyKindLogData || tc.kind == InternalKeyKindIngestSST ||
+				tc.kind == InternalKeyKindRangeKeyUnset || tc.kind == InternalKeyKindRangeKeySet ||
+				tc.kind == InternalKeyKindRangeKeyDelete || tc.kind == InternalKeyKindRangeDelete) {
+				continue
+			}
 			kind, k, v, ok := r.Next()
 			if !ok {
 				t.Fatalf("next returned !ok: test case = %v", tc)
@@ -120,7 +125,7 @@ func TestBatch(t *testing.T) {
 			b.ingestSST(decodeFileNum([]byte(tc.key)))
 		}
 	}
-	verifyTestCases(&b, testCases)
+	verifyTestCases(&b, testCases, false /* indexedKindsOnly */)
 
 	b.Reset()
 	// Run the same operations, this time using the Deferred variants of each
@@ -169,7 +174,22 @@ func TestBatch(t *testing.T) {
 			d.Finish()
 		}
 	}
-	verifyTestCases(&b, testCases)
+	verifyTestCases(&b, testCases, false /* indexedKindsOnly */)
+
+	b.Reset()
+	// Run the same operations, this time using AddInternalKey instead of the
+	// Kind-specific methods.
+	for _, tc := range testCases {
+		if tc.kind == InternalKeyKindLogData || tc.kind == InternalKeyKindIngestSST ||
+			tc.kind == InternalKeyKindRangeKeyUnset || tc.kind == InternalKeyKindRangeKeySet ||
+			tc.kind == InternalKeyKindRangeKeyDelete || tc.kind == InternalKeyKindRangeDelete {
+			continue
+		}
+		key := []byte(tc.key)
+		value := []byte(tc.value)
+		b.AddInternalKey(&InternalKey{UserKey: key, Trailer: base.MakeTrailer(0, tc.kind)}, value, nil)
+	}
+	verifyTestCases(&b, testCases, true /* indexedKindsOnly */)
 }
 
 func TestBatchIngestSST(t *testing.T) {
