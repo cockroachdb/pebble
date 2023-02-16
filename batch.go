@@ -616,6 +616,41 @@ func (b *Batch) prepareDeferredKeyRecord(keyLen int, kind InternalKeyKind) {
 	b.data = b.data[:pos+keyLen]
 }
 
+// AddInternalKey allows the caller to add an internal key of point key kinds to
+// a batch. Passing in an internal key of kind RangeKey* or RangeDelete will
+// result in a panic. Note that the seqnum in the internal key is effectively
+// ignored, even though the Kind is preserved. This is because the batch format
+// does not allow for a per-key seqnum to be specified, only a batch-wide one.
+//
+// Note that non-indexed keys (IngestKeyKind{LogData,IngestSST}) are not
+// supported with this method as they require specialized logic.
+func (b *Batch) AddInternalKey(key *base.InternalKey, value []byte, _ *WriteOptions) error {
+	keyLen := len(key.UserKey)
+	hasValue := false
+	switch key.Kind() {
+	case InternalKeyKindRangeDelete, InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+		panic("unexpected range delete or range key kind in AddInternalKey")
+	case InternalKeyKindSingleDelete, InternalKeyKindDelete:
+		b.prepareDeferredKeyRecord(len(key.UserKey), key.Kind())
+	default:
+		b.prepareDeferredKeyValueRecord(keyLen, len(value), key.Kind())
+		hasValue = true
+	}
+	b.deferredOp.index = b.index
+	copy(b.deferredOp.Key, key.UserKey)
+	if hasValue {
+		copy(b.deferredOp.Value, value)
+	}
+	// TODO(peter): Manually inline DeferredBatchOp.Finish(). Mid-stack inlining
+	// in go1.13 will remove the need for this.
+	if b.index != nil {
+		if err := b.index.Add(b.deferredOp.offset); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Set adds an action to the batch that sets the key to map to the value.
 //
 // It is safe to modify the contents of the arguments after Set returns.
