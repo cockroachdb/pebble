@@ -1653,7 +1653,7 @@ func TestIngestCleanup(t *testing.T) {
 		{
 			closeFiles:   fns,
 			cleanupFiles: []base.FileNum{3},
-			wantErr:      "unknown to the provider",
+			wantErr:      "unknown to the objstorage provider",
 		},
 		// Remove a file that has not been closed.
 		{
