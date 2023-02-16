@@ -24,6 +24,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			NewObjects: []SharedObjectMetadata{
 				{
 					FileNum:        1,
+					FileType:       base.FileTypeTable,
 					CreatorID:      12,
 					CreatorFileNum: 123,
 				},
@@ -37,16 +38,19 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			NewObjects: []SharedObjectMetadata{
 				{
 					FileNum:        1,
+					FileType:       base.FileTypeTable,
 					CreatorID:      12,
 					CreatorFileNum: 123,
 				},
 				{
 					FileNum:        2,
+					FileType:       base.FileTypeTable,
 					CreatorID:      22,
 					CreatorFileNum: 223,
 				},
 				{
 					FileNum:        3,
+					FileType:       base.FileTypeTable,
 					CreatorID:      32,
 					CreatorFileNum: 323,
 				},

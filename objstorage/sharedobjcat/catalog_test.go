@@ -44,7 +44,9 @@ func TestCatalog(t *testing.T) {
 			}
 			vals := toInt(args...)
 			return sharedobjcat.SharedObjectMetadata{
-				FileNum:        base.FileNum(vals[0]),
+				FileNum: base.FileNum(vals[0]),
+				// When we support other file types, we should let the test determine this.
+				FileType:       base.FileTypeTable,
 				CreatorID:      sharedobjcat.CreatorID(vals[1]),
 				CreatorFileNum: base.FileNum(vals[2]),
 			}
@@ -136,7 +138,9 @@ func TestCatalog(t *testing.T) {
 			for batchIdx := 0; batchIdx < n; batchIdx++ {
 				for i := 0; i < size; i++ {
 					b.AddObject(sharedobjcat.SharedObjectMetadata{
-						FileNum:        base.FileNum(rand.Uint64()),
+						FileNum: base.FileNum(rand.Uint64()),
+						// When we support other file types, we should let the test determine this.
+						FileType:       base.FileTypeTable,
 						CreatorID:      sharedobjcat.CreatorID(rand.Uint64()),
 						CreatorFileNum: base.FileNum(rand.Uint64()),
 					})
