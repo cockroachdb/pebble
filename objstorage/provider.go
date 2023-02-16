@@ -6,6 +6,7 @@ package objstorage
 
 import (
 	"io"
+	"os"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -224,14 +225,14 @@ func (p *Provider) Remove(fileType base.FileType, fileNum base.FileNum) error {
 	} else {
 		panic("unimplemented")
 	}
-	if err != nil {
+	if err != nil && !IsNotExistError(err) {
 		// We want to be able to retry a Remove, so we keep the object in our list.
 		// TODO(radu): we should mark the object as "zombie" and not allow any other
 		// operations.
 		return err
 	}
 	p.removeMetadata(fileNum)
-	return nil
+	return err
 }
 
 // IsNotExistError indicates whether the error is known to report that a file or
@@ -285,8 +286,9 @@ func (p *Provider) Lookup(fileType base.FileType, fileNum base.FileNum) (ObjectM
 	defer p.mu.RUnlock()
 	meta, ok := p.mu.knownObjects[fileNum]
 	if !ok {
-		return ObjectMetadata{}, errors.Newf(
-			"file %s (type %d) unknown to the provider",
+		return ObjectMetadata{}, errors.Wrapf(
+			os.ErrNotExist,
+			"file %s (type %d) unknown to the objstorage provider",
 			errors.Safe(fileNum), errors.Safe(fileType),
 		)
 	}
