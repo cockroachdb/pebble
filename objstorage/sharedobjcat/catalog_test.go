@@ -45,7 +45,7 @@ func TestCatalog(t *testing.T) {
 			vals := toInt(args...)
 			return sharedobjcat.SharedObjectMetadata{
 				FileNum:        base.FileNum(vals[0]),
-				CreatorID:      uint64(vals[1]),
+				CreatorID:      sharedobjcat.CreatorID(vals[1]),
 				CreatorFileNum: base.FileNum(vals[2]),
 			}
 		}
@@ -75,11 +75,24 @@ func TestCatalog(t *testing.T) {
 				return err.Error()
 			}
 			var buf strings.Builder
-			for _, meta := range contents {
+			if contents.CreatorID.IsSet() {
+				fmt.Fprintf(&buf, "creator-id: %s\n", contents.CreatorID)
+			}
+			for _, meta := range contents.Objects {
 				fmt.Fprintf(&buf, "%s: %d/%s\n", meta.FileNum, meta.CreatorID, meta.CreatorFileNum)
 			}
 
 			return buf.String()
+
+		case "set-creator-id":
+			if len(td.CmdArgs) != 1 {
+				td.Fatalf(t, "set-creator-id <id>")
+			}
+			id := sharedobjcat.CreatorID(toInt(td.CmdArgs[0].String())[0])
+			if err := cat.SetCreatorID(id); err != nil {
+				return fmt.Sprintf("error setting creator ID: %v", err)
+			}
+			return memLog.String()
 
 		case "batch":
 			var b sharedobjcat.Batch
@@ -124,7 +137,7 @@ func TestCatalog(t *testing.T) {
 				for i := 0; i < size; i++ {
 					b.AddObject(sharedobjcat.SharedObjectMetadata{
 						FileNum:        base.FileNum(rand.Uint64()),
-						CreatorID:      rand.Uint64(),
+						CreatorID:      sharedobjcat.CreatorID(rand.Uint64()),
 						CreatorFileNum: base.FileNum(rand.Uint64()),
 					})
 				}

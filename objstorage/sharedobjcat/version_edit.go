@@ -19,6 +19,7 @@ import (
 type versionEdit struct {
 	NewObjects     []SharedObjectMetadata
 	DeletedObjects []base.FileNum
+	CreatorID      CreatorID
 }
 
 const (
@@ -26,21 +27,28 @@ const (
 	tagNewObject = 1
 	// tagDeletedObject is followed by the FileNum.
 	tagDeletedObject = 2
+	// tagCreatorID is followed by the Creator ID for this store. This ID can
+	// never change.
+	tagCreatorID = 3
 )
 
 // Encode encodes an edit to the specified writer.
 func (v *versionEdit) Encode(w io.Writer) error {
-	buf := make([]byte, 0, binary.MaxVarintLen64*(len(v.NewObjects)*4+len(v.DeletedObjects)*2))
+	buf := make([]byte, 0, binary.MaxVarintLen64*(len(v.NewObjects)*4+len(v.DeletedObjects)*2+2))
 	for _, meta := range v.NewObjects {
 		buf = binary.AppendUvarint(buf, uint64(tagNewObject))
 		buf = binary.AppendUvarint(buf, uint64(meta.FileNum))
-		buf = binary.AppendUvarint(buf, meta.CreatorID)
+		buf = binary.AppendUvarint(buf, uint64(meta.CreatorID))
 		buf = binary.AppendUvarint(buf, uint64(meta.CreatorFileNum))
 	}
 
 	for _, fileNum := range v.DeletedObjects {
 		buf = binary.AppendUvarint(buf, uint64(tagDeletedObject))
 		buf = binary.AppendUvarint(buf, uint64(fileNum))
+	}
+	if v.CreatorID.IsSet() {
+		buf = binary.AppendUvarint(buf, uint64(tagCreatorID))
+		buf = binary.AppendUvarint(buf, uint64(v.CreatorID))
 	}
 	_, err := w.Write(buf)
 	return err
@@ -75,7 +83,7 @@ func (v *versionEdit) Decode(r io.Reader) error {
 			if err == nil {
 				v.NewObjects = append(v.NewObjects, SharedObjectMetadata{
 					FileNum:        base.FileNum(fileNum),
-					CreatorID:      creatorID,
+					CreatorID:      CreatorID(creatorID),
 					CreatorFileNum: base.FileNum(creatorFileNum),
 				})
 			}
@@ -85,6 +93,13 @@ func (v *versionEdit) Decode(r io.Reader) error {
 			fileNum, err = binary.ReadUvarint(br)
 			if err == nil {
 				v.DeletedObjects = append(v.DeletedObjects, base.FileNum(fileNum))
+			}
+
+		case tagCreatorID:
+			var id uint64
+			id, err = binary.ReadUvarint(br)
+			if err == nil {
+				v.CreatorID = CreatorID(id)
 			}
 
 		default:

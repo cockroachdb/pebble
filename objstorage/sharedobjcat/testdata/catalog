@@ -35,6 +35,17 @@ list test
 SHARED-CATALOG-000001
 marker.shared-catalog.000001.SHARED-CATALOG-000001
 
+set-creator-id 5
+----
+sync: test/SHARED-CATALOG-000001
+
+set-creator-id 5
+----
+
+set-creator-id 6
+----
+error setting creator ID: attempt to change CreatorID from 00000000000000000005 to 00000000000000000006
+
 # Bad batches.
 batch
 add 3 1 1
@@ -52,8 +63,13 @@ close: test/SHARED-CATALOG-000001
 
 open test
 ----
+creator-id: 00000000000000000005
 000002: 20/000200
 000003: 30/000300
+
+set-creator-id 6
+----
+error setting creator ID: attempt to change CreatorID from 00000000000000000005 to 00000000000000000006
 
 batch
 add 4 40 40
