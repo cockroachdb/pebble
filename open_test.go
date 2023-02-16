@@ -570,6 +570,64 @@ func TestOpenWALReplay(t *testing.T) {
 	}
 }
 
+// Reproduction for https://github.com/cockroachdb/pebble/issues/2234.
+func TestWALReplaySequenceNumBug(t *testing.T) {
+	mem := vfs.NewMem()
+	d, err := Open("", testingRandomized(&Options{
+		FS: mem,
+	}))
+	require.NoError(t, err)
+
+	d.mu.Lock()
+	// Disable any flushes.
+	d.mu.compact.flushing = true
+	d.mu.Unlock()
+
+	require.NoError(t, d.Set([]byte("1"), nil, nil))
+	require.NoError(t, d.Set([]byte("2"), nil, nil))
+
+	// Write a large batch. This should go to a separate memtable.
+	largeValue := []byte(strings.Repeat("a", d.largeBatchThreshold))
+	require.NoError(t, d.Set([]byte("1"), largeValue, nil))
+
+	// This write should go the mutable memtable after the large batch in the
+	// memtable queue.
+	d.Set([]byte("1"), nil, nil)
+
+	d.mu.Lock()
+	d.mu.compact.flushing = false
+	d.mu.Unlock()
+
+	// Make sure none of the flushables have been flushed.
+	require.Equal(t, 3, len(d.mu.mem.queue))
+
+	// Close the db. This doesn't cause a flush of the memtables, so they'll
+	// have to be replayed when the db is reopened.
+	require.NoError(t, d.Close())
+
+	files, err := mem.List("")
+	require.NoError(t, err)
+	sort.Strings(files)
+	sstCount := 0
+	for _, fname := range files {
+		if strings.HasSuffix(fname, ".sst") {
+			sstCount++
+		}
+	}
+	require.Equal(t, 0, sstCount)
+
+	// Reopen db in read only mode to force read only wal replay.
+	d, err = Open("", &Options{
+		FS:       mem,
+		ReadOnly: true,
+	})
+	require.NoError(t, err)
+	val, c, _ := d.Get([]byte("1"))
+	require.Equal(t, []byte{}, val)
+	c.Close()
+	require.NoError(t, d.Close())
+}
+
 // Similar to TestOpenWALReplay, except we test replay behavior after a
 // memtable has been flushed. We test all 3 reasons for flushing: forced, size,
 // and large-batch.

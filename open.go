@@ -851,6 +851,15 @@ func (d *DB) replayWAL(
 			entry.readerRefs++
 			if d.opts.ReadOnly {
 				d.mu.mem.queue = append(d.mu.mem.queue, entry)
+				// We added the flushable batch to the flushable to the queue.
+				// But there must be at least one WAL entry waiting to be
+				// replayed. We have to ensure this newer WAL entry isn't
+				// replayed into the current value of d.mu.mem.mutable because
+				// the current mutable memtable exists before this flushable
+				// entry in the memtable queue. To ensure this, we just need to
+				// unset d.mu.mem.mutable. When a newer WAL is replayed, we will
+				// set d.mu.mem.mutable to a newer value.
+				d.mu.mem.mutable = nil
 			} else {
 				toFlush = append(toFlush, entry)
 			}
