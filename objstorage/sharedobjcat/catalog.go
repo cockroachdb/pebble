@@ -58,6 +58,8 @@ type SharedObjectMetadata struct {
 	// FileNum is the identifier for the object within the context of a single DB
 	// instance.
 	FileNum base.FileNum
+	// FileType is the type of the object. Only certain FileTypes are possible.
+	FileType base.FileType
 	// CreatorID identifies the DB instance that originally created the object.
 	CreatorID CreatorID
 	// CreatorFileNum is the identifier for the object within the context of the

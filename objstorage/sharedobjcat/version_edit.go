@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"io"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
@@ -32,12 +33,42 @@ const (
 	tagCreatorID = 3
 )
 
+// Object type values. We don't want to encode FileType directly because it is
+// more general (and we want freedom to change it in the future).
+const (
+	objTypeTable = 1
+)
+
+func objTypeToFileType(objType uint64) (base.FileType, error) {
+	switch objType {
+	case objTypeTable:
+		return base.FileTypeTable, nil
+	default:
+		return 0, errors.Newf("unknown object type %d", objType)
+	}
+}
+
+func fileTypeToObjType(fileType base.FileType) (uint64, error) {
+	switch fileType {
+	case base.FileTypeTable:
+		return objTypeTable, nil
+
+	default:
+		return 0, errors.Newf("unknown object type for file type %d", fileType)
+	}
+}
+
 // Encode encodes an edit to the specified writer.
 func (v *versionEdit) Encode(w io.Writer) error {
 	buf := make([]byte, 0, binary.MaxVarintLen64*(len(v.NewObjects)*4+len(v.DeletedObjects)*2+2))
 	for _, meta := range v.NewObjects {
+		objType, err := fileTypeToObjType(meta.FileType)
+		if err != nil {
+			return err
+		}
 		buf = binary.AppendUvarint(buf, uint64(tagNewObject))
 		buf = binary.AppendUvarint(buf, uint64(meta.FileNum))
+		buf = binary.AppendUvarint(buf, objType)
 		buf = binary.AppendUvarint(buf, uint64(meta.CreatorID))
 		buf = binary.AppendUvarint(buf, uint64(meta.CreatorFileNum))
 	}
@@ -73,7 +104,15 @@ func (v *versionEdit) Decode(r io.Reader) error {
 		switch tag {
 		case tagNewObject:
 			var fileNum, creatorID, creatorFileNum uint64
+			var fileType base.FileType
 			fileNum, err = binary.ReadUvarint(br)
+			if err == nil {
+				var objType uint64
+				objType, err = binary.ReadUvarint(br)
+				if err == nil {
+					fileType, err = objTypeToFileType(objType)
+				}
+			}
 			if err == nil {
 				creatorID, err = binary.ReadUvarint(br)
 			}
@@ -83,6 +122,7 @@ func (v *versionEdit) Decode(r io.Reader) error {
 			if err == nil {
 				v.NewObjects = append(v.NewObjects, SharedObjectMetadata{
 					FileNum:        base.FileNum(fileNum),
+					FileType:       fileType,
 					CreatorID:      CreatorID(creatorID),
 					CreatorFileNum: base.FileNum(creatorFileNum),
 				})
