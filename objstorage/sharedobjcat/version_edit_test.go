@@ -18,6 +18,9 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	for _, ve := range []versionEdit{
 		{},
 		{
+			CreatorID: 12345,
+		},
+		{
 			NewObjects: []SharedObjectMetadata{
 				{
 					FileNum:        1,
@@ -30,6 +33,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 			DeletedObjects: []base.FileNum{1},
 		},
 		{
+			CreatorID: 12345,
 			NewObjects: []SharedObjectMetadata{
 				{
 					FileNum:        1,

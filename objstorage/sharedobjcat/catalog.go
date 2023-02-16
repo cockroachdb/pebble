@@ -27,7 +27,8 @@ type Catalog struct {
 	mu      struct {
 		sync.Mutex
 
-		objects map[base.FileNum]SharedObjectMetadata
+		creatorID CreatorID
+		objects   map[base.FileNum]SharedObjectMetadata
 
 		marker *atomicfs.Marker
 
@@ -42,13 +43,23 @@ type Catalog struct {
 	}
 }
 
+// CreatorID identifies the DB instance that originally created a shared object.
+// This ID is incorporated in backing object names.
+// Must be non-zero.
+type CreatorID uint64
+
+// IsSet returns true if the CreatorID is not zero.
+func (c CreatorID) IsSet() bool { return c != 0 }
+
+func (c CreatorID) String() string { return fmt.Sprintf("%020d", c) }
+
 // SharedObjectMetadata encapsulates the data stored in the catalog file for each object.
 type SharedObjectMetadata struct {
 	// FileNum is the identifier for the object within the context of a single DB
 	// instance.
 	FileNum base.FileNum
 	// CreatorID identifies the DB instance that originally created the object.
-	CreatorID uint64
+	CreatorID CreatorID
 	// CreatorFileNum is the identifier for the object within the context of the
 	// DB instance that originally created the object.
 	CreatorFileNum base.FileNum
@@ -64,9 +75,14 @@ const (
 )
 
 // CatalogContents contains the shared objects in the catalog.
-type CatalogContents = []SharedObjectMetadata
+type CatalogContents struct {
+	// CreatorID, if it is set.
+	CreatorID CreatorID
+	Objects   []SharedObjectMetadata
+}
 
-// Open creates a Catalog and loads any existing catalog file, returning the contents.
+// Open creates a Catalog and loads any existing catalog file, returning the
+// creator ID (if it is set) and the contents.
 func Open(fs vfs.FS, dirname string) (*Catalog, CatalogContents, error) {
 	c := &Catalog{
 		fs:      fs,
@@ -77,27 +93,50 @@ func Open(fs vfs.FS, dirname string) (*Catalog, CatalogContents, error) {
 	var err error
 	c.mu.marker, c.mu.catalogFilename, err = atomicfs.LocateMarker(fs, dirname, catalogMarkerName)
 	if err != nil {
-		return nil, nil, err
+		return nil, CatalogContents{}, err
 	}
 	// If the filename is empty, there is no existing catalog.
 	if c.mu.catalogFilename != "" {
 		if err := c.loadFromCatalogFile(c.mu.catalogFilename); err != nil {
-			return nil, nil, err
+			return nil, CatalogContents{}, err
 		}
 		if err := c.mu.marker.RemoveObsolete(); err != nil {
-			return nil, nil, err
+			return nil, CatalogContents{}, err
 		}
 		// TODO(radu): remove obsolete catalog files.
 	}
-	res := make(CatalogContents, 0, len(c.mu.objects))
+	res := CatalogContents{
+		CreatorID: c.mu.creatorID,
+		Objects:   make([]SharedObjectMetadata, 0, len(c.mu.objects)),
+	}
 	for _, meta := range c.mu.objects {
-		res = append(res, meta)
+		res.Objects = append(res.Objects, meta)
 	}
 	// Sort the objects so the function is deterministic.
-	sort.Slice(res, func(i, j int) bool {
-		return res[i].FileNum < res[j].FileNum
+	sort.Slice(res.Objects, func(i, j int) bool {
+		return res.Objects[i].FileNum < res.Objects[j].FileNum
 	})
 	return c, res, nil
+}
+
+// SetCreatorID sets the creator ID. If it is already set, it must match.
+func (c *Catalog) SetCreatorID(id CreatorID) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.mu.creatorID.IsSet() {
+		if c.mu.creatorID != id {
+			return errors.AssertionFailedf("attempt to change CreatorID from %s to %s", c.mu.creatorID, id)
+		}
+		return nil
+	}
+
+	ve := versionEdit{CreatorID: id}
+	if err := c.writeToCatalogFileLocked(&ve); err != nil {
+		return errors.Wrapf(err, "pebble: could not write to shared object catalog: %v", err)
+	}
+	c.mu.creatorID = id
+	return nil
 }
 
 // Close any open files.
@@ -202,6 +241,9 @@ func (c *Catalog) loadFromCatalogFile(filename string) error {
 				errors.Safe(filename))
 		}
 		// Apply the version edit to the current state.
+		if ve.CreatorID.IsSet() {
+			c.mu.creatorID = ve.CreatorID
+		}
 		for _, fileNum := range ve.DeletedObjects {
 			delete(c.mu.objects, fileNum)
 		}
