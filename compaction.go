@@ -3540,16 +3540,13 @@ func (d *DB) deleteObsoleteObject(fileType fileType, jobID int, fileNum FileNum)
 	var path string
 	meta, err := d.objProvider.Lookup(fileType, fileNum)
 	if err != nil {
-		// The provider is not aware of this object. This shouldn't normally happen,
-		// so expose the error.
 		path = "<nil>"
 	} else {
 		path = d.objProvider.Path(meta)
-
 		err = d.objProvider.Remove(fileType, fileNum)
-		if objstorage.IsNotExistError(err) {
-			return
-		}
+	}
+	if objstorage.IsNotExistError(err) {
+		return
 	}
 
 	switch fileType {
