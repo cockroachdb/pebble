@@ -3268,20 +3268,29 @@ func (d *DB) scanObsoleteFiles(list []string) {
 			}
 			obsoleteOptions = append(obsoleteOptions, fi)
 		case fileTypeTable:
-			// TODO(radu): use the objstorage provider to find obsolete tables instead.
-			if _, ok := liveFileNums[fileNum]; ok {
+			// Objects are handled through the objstorage provider below.
+		default:
+			// Don't delete files we don't know about.
+		}
+	}
+
+	objects := d.objProvider.List()
+	for _, obj := range objects {
+		switch obj.FileType {
+		case fileTypeTable:
+			if _, ok := liveFileNums[obj.FileNum]; ok {
 				continue
 			}
 			fileMeta := &fileMetadata{
-				FileNum: fileNum,
+				FileNum: obj.FileNum,
 			}
-			if stat, err := d.opts.FS.Stat(filename); err == nil {
-				fileMeta.Size = uint64(stat.Size())
+			if size, err := d.objProvider.Size(obj); err == nil {
+				fileMeta.Size = uint64(size)
 			}
 			obsoleteTables = append(obsoleteTables, fileMeta)
+
 		default:
-			// Don't delete files we don't know about.
-			continue
+			// Ignore object types we don't know about.
 		}
 	}
 

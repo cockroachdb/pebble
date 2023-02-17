@@ -7,6 +7,7 @@ package objstorage
 import (
 	"io"
 	"os"
+	"sort"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -306,15 +307,6 @@ func (p *Provider) LinkOrCopyFromLocal(
 	panic("unimplemented")
 }
 
-// Path returns an internal, implementation-dependent path for the object. It is
-// meant to be used for informational purposes (like logging).
-func (p *Provider) Path(meta ObjectMetadata) string {
-	if !meta.IsShared() {
-		return p.vfsPath(meta.FileType, meta.FileNum)
-	}
-	panic("unimplemented")
-}
-
 // Lookup returns the metadata of an object that is already known to the Provider.
 // Does not perform any I/O.
 func (p *Provider) Lookup(fileType base.FileType, fileNum base.FileNum) (ObjectMetadata, error) {
@@ -335,6 +327,37 @@ func (p *Provider) Lookup(fileType base.FileType, fileNum base.FileNum) (ObjectM
 		)
 	}
 	return meta, nil
+}
+
+// Path returns an internal, implementation-dependent path for the object. It is
+// meant to be used for informational purposes (like logging).
+func (p *Provider) Path(meta ObjectMetadata) string {
+	if !meta.IsShared() {
+		return p.vfsPath(meta.FileType, meta.FileNum)
+	}
+	panic("unimplemented")
+}
+
+// Size returns the size of the object.
+func (p *Provider) Size(meta ObjectMetadata) (int64, error) {
+	if !meta.IsShared() {
+		return p.vfsSize(meta.FileType, meta.FileNum)
+	}
+	panic("unimplemented")
+}
+
+// List returns the objects currently known to the provider. Does not perform any I/O.
+func (p *Provider) List() []ObjectMetadata {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	res := make([]ObjectMetadata, len(p.mu.knownObjects))
+	for _, meta := range p.mu.knownObjects {
+		res = append(res, meta)
+	}
+	sort.Slice(res, func(i, j int) bool {
+		return res[i].FileNum < res[j].FileNum
+	})
+	return res
 }
 
 func (p *Provider) addMetadata(meta ObjectMetadata) {

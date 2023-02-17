@@ -63,3 +63,12 @@ func (p *Provider) vfsFindExisting(ls []string) []ObjectMetadata {
 	}
 	return res
 }
+
+func (p *Provider) vfsSize(fileType base.FileType, fileNum base.FileNum) (int64, error) {
+	filename := p.vfsPath(fileType, fileNum)
+	stat, err := p.st.FS.Stat(filename)
+	if err != nil {
+		return 0, err
+	}
+	return stat.Size(), nil
+}
