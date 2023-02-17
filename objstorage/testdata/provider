@@ -1,0 +1,61 @@
+# open <fs-dir> <creator-id>
+open p1 1
+----
+<local fs> mkdir-all: p1 0755
+<local fs> open-dir: p1
+<local fs> open-dir: p1
+<local fs> create: p1/SHARED-CATALOG-000001
+<local fs> sync: p1/SHARED-CATALOG-000001
+<local fs> create: p1/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> close: p1/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> sync: p1
+<local fs> sync: p1/SHARED-CATALOG-000001
+
+create 1 local
+obj-one
+----
+<local fs> create: p1/000001.sst
+<local fs> sync-data: p1/000001.sst
+<local fs> close: p1/000001.sst
+
+read 1
+----
+data: obj-one
+
+create 2 shared
+obj-one
+----
+<shared> create object "00000000000000000001-000002.sst"
+<shared> close writer for "00000000000000000001-000002.sst" after 7 bytes
+
+read 2
+----
+<shared> size of object "00000000000000000001-000002.sst": 7
+<shared> read object "00000000000000000001-000002.sst" at 0: 7 bytes
+data: obj-one
+
+close
+----
+<local fs> close: p1
+
+# A provider without shared storage creates object with shared preference
+# locally.
+open p0 0
+----
+<local fs> mkdir-all: p0 0755
+<local fs> open-dir: p0
+
+create 1 shared
+foo
+----
+<local fs> create: p0/000001.sst
+<local fs> sync-data: p0/000001.sst
+<local fs> close: p0/000001.sst
+
+read 1
+----
+data: foo
+
+close
+----
+<local fs> close: p0

@@ -694,7 +694,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 	tmpDir := path.Join(t.TempDir())
 	provider, err := objstorage.Open(objstorage.DefaultSettings(vfs.Default, tmpDir))
 	require.NoError(t, err)
-	f0, _, err := provider.Create(base.FileTypeTable, 0 /* fileNum */)
+	f0, _, err := provider.Create(base.FileTypeTable, 0 /* fileNum */, objstorage.CreateOptions{})
 	require.NoError(t, err)
 
 	w := NewWriter(f0, WriterOptions{
@@ -1066,7 +1066,7 @@ func buildTestTableWithProvider(
 	blockSize, indexBlockSize int,
 	compression Compression,
 ) *Reader {
-	f0, _, err := provider.Create(base.FileTypeTable, 0 /* fileNum */)
+	f0, _, err := provider.Create(base.FileTypeTable, 0 /* fileNum */, objstorage.CreateOptions{})
 	require.NoError(t, err)
 
 	w := NewWriter(f0, WriterOptions{

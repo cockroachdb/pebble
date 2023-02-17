@@ -168,7 +168,7 @@ func newTableCacheContainerTest(
 	defer objProvider.Close()
 
 	for i := 0; i < tableCacheTestNumTables; i++ {
-		w, _, err := objProvider.Create(fileTypeTable, FileNum(i))
+		w, _, err := objProvider.Create(fileTypeTable, FileNum(i), objstorage.CreateOptions{})
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "fs.Create")
 		}
@@ -877,7 +877,7 @@ func TestTableCacheClockPro(t *testing.T) {
 
 	makeTable := func(fileNum FileNum) {
 		require.NoError(t, err)
-		f, _, err := objProvider.Create(fileTypeTable, fileNum)
+		f, _, err := objProvider.Create(fileTypeTable, fileNum, objstorage.CreateOptions{})
 		require.NoError(t, err)
 		w := sstable.NewWriter(f, sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte("a"), nil))
