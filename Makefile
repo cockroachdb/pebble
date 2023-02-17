@@ -27,6 +27,13 @@ test:
 testrace: testflags += -race -timeout 20m
 testrace: test
 
+testasan: testflags += -asan -timeout 20m
+testasan: test
+
+testmsan: export CC=clang
+testmsan: testflags += -msan -timeout 20m
+testmsan: test
+
 .PHONY: lint
 lint:
 	${GO} test -tags '$(TAGS)' ${testflags} -run ${TESTS} ./internal/lint
