@@ -42,7 +42,8 @@ type TableInfo struct {
 	LargestSeqNum uint64
 }
 
-// TableStats contains statistics on a table used for compaction heuristics.
+// TableStats contains statistics on a table used for compaction heuristics,
+// and export via Metrics.
 type TableStats struct {
 	// The total number of entries in the table.
 	NumEntries uint64
@@ -64,6 +65,8 @@ type TableStats struct {
 	// if snapshots or move compactions prevented the elision of their range
 	// tombstones.
 	RangeDeletionsBytesEstimate uint64
+	// Total size of value blocks and value index block.
+	ValueBlocksSize uint64
 }
 
 // boundType represents the type of key (point or range) present as the smallest

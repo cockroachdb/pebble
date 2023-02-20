@@ -78,23 +78,15 @@ type LevelMetrics struct {
 	TablesIngested uint64
 	// The number of sstables moved to this level by a "move" compaction.
 	TablesMoved uint64
-	// Additional contains misc metrics that are not printed by format, but are
-	// available to sophisticated clients.
+	// Additional contains misc additional metrics that are not always printed.
 	Additional struct {
-		// TODO(sumeer): Improve this. We also want the current bytes in data
-		// blocks and value blocks in each level, but doing that is more
-		// complicated. In principle it needs:
-		// - reading the properties of all sstables (in the background) after the
-		//   DB is opened.
-		// - requires plumbing the deltas of input and output sstables during
-		//   compactions and flushes
-		// - reading the properties of ingested sstables.
-		// We can do all of this more simply by using the approach of
-		// countRangeKeySetFragments, which uses a b-tree annotation
-		// (rangeKeySetsAnnotator).
-		//
+		// The sum of Properties.ValueBlocksSize for all the sstables in this
+		// level. Printed by LevelMetrics.format iff there is at least one level
+		// with a non-zero value.
+		ValueBlocksSize uint64
 		// Cumulative metrics about bytes written to data blocks and value blocks,
-		// via compactions (except move compactions) or flushes.
+		// via compactions (except move compactions) or flushes. Not printed by
+		// LevelMetrics.format, but are available to sophisticated clients.
 		BytesWrittenDataBlocks  uint64
 		BytesWrittenValueBlocks uint64
 	}
@@ -116,6 +108,7 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.TablesMoved += u.TablesMoved
 	m.Additional.BytesWrittenDataBlocks += u.Additional.BytesWrittenDataBlocks
 	m.Additional.BytesWrittenValueBlocks += u.Additional.BytesWrittenValueBlocks
+	m.Additional.ValueBlocksSize += u.Additional.ValueBlocksSize
 }
 
 // WriteAmp computes the write amplification for compactions at this
@@ -129,8 +122,10 @@ func (m *LevelMetrics) WriteAmp() float64 {
 
 // format generates a string of the receiver's metrics, formatting it into the
 // supplied buffer.
-func (m *LevelMetrics) format(w redact.SafePrinter, score redact.SafeValue) {
-	w.Printf("%9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7d %7.1f\n",
+func (m *LevelMetrics) format(
+	w redact.SafePrinter, score redact.SafeValue, includeValueBlocksSize bool,
+) {
+	w.Printf("%9d %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7d %7.1f",
 		redact.Safe(m.NumFiles),
 		humanize.IEC.Int64(m.Size),
 		score,
@@ -144,6 +139,11 @@ func (m *LevelMetrics) format(w redact.SafePrinter, score redact.SafeValue) {
 		humanize.IEC.Uint64(m.BytesRead),
 		redact.Safe(m.Sublevels),
 		redact.Safe(m.WriteAmp()))
+	if includeValueBlocksSize {
+		w.Printf(" %7s\n", humanize.IEC.Uint64(m.Additional.ValueBlocksSize))
+	} else {
+		w.SafeString("\n")
+	}
 }
 
 // Metrics holds metrics for various subsystems of the DB such as the Cache,
@@ -404,9 +404,18 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	// width specifiers. When the issue is fixed, we can convert these to
 	// RedactableStrings. https://github.com/cockroachdb/redact/issues/17
 
+	haveValueBlocks := false
+	var valueBlocksHeading redact.SafeString
+	for level := 0; level < numLevels; level++ {
+		if m.Levels[level].Additional.ValueBlocksSize > 0 {
+			haveValueBlocks = true
+			valueBlocksHeading = "__val-bl"
+			break
+		}
+	}
 	var total LevelMetrics
-	w.SafeString("__level_____count____size___score______in__ingest(sz_cnt)" +
-		"____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp\n")
+	w.Printf("__level_____count____size___score______in__ingest(sz_cnt)"+
+		"____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp%s\n", valueBlocksHeading)
 	m.formatWAL(w)
 	for level := 0; level < numLevels; level++ {
 		l := &m.Levels[level]
@@ -417,7 +426,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		if level < numLevels-1 {
 			score = redact.Safe(fmt.Sprintf("%0.2f", l.Score))
 		}
-		l.format(w, score)
+		l.format(w, score, haveValueBlocks)
 		total.Add(l)
 		total.Sublevels += l.Sublevels
 	}
@@ -428,7 +437,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	// ingested.
 	total.BytesFlushed += total.BytesIn
 	w.SafeString("  total ")
-	total.format(w, notApplicable)
+	total.format(w, notApplicable, haveValueBlocks)
 
 	w.Printf("  flush %9d\n", redact.Safe(m.Flush.Count))
 	w.Printf("compact %9d %7s %7s %7d %7s  (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)\n",

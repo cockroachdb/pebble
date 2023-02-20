@@ -272,6 +272,7 @@ func (d *DB) loadTableStats(
 		// additional stats that may provide improved heuristics for compaction
 		// picking.
 		stats.NumRangeKeySets = r.Properties.NumRangeKeySets
+		stats.ValueBlocksSize = r.Properties.ValueBlocksSize
 		return
 	})
 	if err != nil {
@@ -555,6 +556,7 @@ func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) 
 	meta.Stats.NumRangeKeySets = props.NumRangeKeySets
 	meta.Stats.PointDeletionsBytesEstimate = pointEstimate
 	meta.Stats.RangeDeletionsBytesEstimate = 0
+	meta.Stats.ValueBlocksSize = props.ValueBlocksSize
 	meta.StatsMarkValid()
 	return true
 }
@@ -852,4 +854,51 @@ func countTombstones(v *version) (count uint64) {
 		count += *v.Levels[l].Annotation(tombstonesAnnotator{}).(*uint64)
 	}
 	return count
+}
+
+// valueBlocksSizeAnnotator implements manifest.Annotator, annotating B-Tree
+// nodes with the sum of the files' Properties.ValueBlocksSize. Its annotation
+// type is a *uint64. The value block size may change once a table's stats are
+// loaded asynchronously, so its values are marked as cacheable only if a
+// file's stats have been loaded.
+type valueBlocksSizeAnnotator struct{}
+
+var _ manifest.Annotator = valueBlocksSizeAnnotator{}
+
+func (a valueBlocksSizeAnnotator) Zero(dst interface{}) interface{} {
+	if dst == nil {
+		return new(uint64)
+	}
+	v := dst.(*uint64)
+	*v = 0
+	return v
+}
+
+func (a valueBlocksSizeAnnotator) Accumulate(
+	f *fileMetadata, dst interface{},
+) (v interface{}, cacheOK bool) {
+	vptr := dst.(*uint64)
+	*vptr = *vptr + f.Stats.ValueBlocksSize
+	return vptr, f.StatsValidLocked()
+}
+
+func (a valueBlocksSizeAnnotator) Merge(src interface{}, dst interface{}) interface{} {
+	srcV := src.(*uint64)
+	dstV := dst.(*uint64)
+	*dstV = *dstV + *srcV
+	return dstV
+}
+
+// valueBlocksSizeForLevel returns the Properties.ValueBlocksSize across all
+// files for a level of the LSM. It only includes the size for files for which
+// table stats have been loaded. It uses a b-tree annotator to cache
+// intermediate values between calculations when possible. It must not be
+// called concurrently.
+//
+// REQUIRES: 0 <= level <= numLevels.
+func valueBlocksSizeForLevel(v *version, level int) (count uint64) {
+	if v.Levels[level].Empty() {
+		return 0
+	}
+	return *v.Levels[level].Annotation(valueBlocksSizeAnnotator{}).(*uint64)
 }
