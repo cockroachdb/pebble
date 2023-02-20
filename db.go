@@ -1761,6 +1761,9 @@ func (d *DB) Metrics() *Metrics {
 	if d.mu.compact.flushing {
 		metrics.Flush.NumInProgress = 1
 	}
+	for i := 0; i < numLevels; i++ {
+		metrics.Levels[i].Additional.ValueBlocksSize = valueBlocksSizeForLevel(vers, i)
+	}
 
 	d.mu.Unlock()
 
