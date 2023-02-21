@@ -190,6 +190,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				m := (&fileMetadata{
 					FileNum: fileNum,
 				}).ExtendPointKeyBounds(cmp, smallestKey, largestKey)
+				m.Init()
 				files[level] = append(files[level], m)
 
 				i++
@@ -599,6 +600,7 @@ func buildLevelsForMergingIterSeqSeek(
 			meta[j].FileNum = FileNum(j)
 			largest, _ := iter.Last()
 			meta[j].ExtendPointKeyBounds(opts.Comparer.Compare, smallest.Clone(), largest.Clone())
+			meta[j].Init()
 		}
 		levelSlices[i] = manifest.NewLevelSliceSpecificOrder(meta)
 	}

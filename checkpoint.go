@@ -135,6 +135,9 @@ func mkdirAllAndSyncParents(fs vfs.FS, destDir string) (vfs.File, error) {
 // space overhead for a checkpoint if hard links are disabled. Also beware that
 // even if hard links are used, the space overhead for the checkpoint will
 // increase over time as the DB performs compactions.
+//
+// TODO(bananabrick): Test checkpointing of virtual sstables once virtual
+// sstables is running e2e.
 func (d *DB) Checkpoint(
 	destDir string, opts ...CheckpointOption,
 ) (
@@ -188,7 +191,10 @@ func (d *DB) Checkpoint(
 	manifestFileNum := d.mu.versions.manifestFileNum
 	manifestSize := d.mu.versions.manifest.Size()
 	optionsFileNum := d.optionsFileNum
-
+	virtualBackingFiles := make(map[base.FileNum]struct{})
+	for fileNum := range d.mu.versions.backingStateMap {
+		virtualBackingFiles[fileNum] = struct{}{}
+	}
 	// Release the manifest and DB.mu so we don't block other operations on
 	// the database.
 	d.mu.versions.logUnlock()
@@ -254,7 +260,7 @@ func (d *DB) Checkpoint(
 	}
 
 	var excludedFiles map[deletedFileEntry]*fileMetadata
-
+	requiredBackingFiles := make(map[base.FileNum]struct{})
 	// Link or copy the sstables.
 	for l := range current.Levels {
 		iter := current.Levels[l].Iter()
@@ -270,7 +276,13 @@ func (d *DB) Checkpoint(
 				continue
 			}
 
-			srcPath := base.MakeFilepath(fs, d.dirname, fileTypeTable, f.FileNum)
+			backingState := f.BackingState
+			if _, ok := requiredBackingFiles[backingState.FileNum]; ok {
+				continue
+			}
+			requiredBackingFiles[backingState.FileNum] = struct{}{}
+
+			srcPath := base.MakeFilepath(fs, d.dirname, fileTypeTable, backingState.FileNum)
 			destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 			ckErr = vfs.LinkOrCopy(fs, srcPath, destPath)
 			if ckErr != nil {
@@ -279,7 +291,10 @@ func (d *DB) Checkpoint(
 		}
 	}
 
-	ckErr = d.writeCheckpointManifest(fs, formatVers, destDir, dir, manifestFileNum, manifestSize, excludedFiles)
+	ckErr = d.writeCheckpointManifest(
+		fs, formatVers, destDir, dir, manifestFileNum, manifestSize,
+		excludedFiles, requiredBackingFiles, virtualBackingFiles,
+	)
 	if ckErr != nil {
 		return ckErr
 	}
@@ -318,6 +333,8 @@ func (d *DB) writeCheckpointManifest(
 	manifestFileNum FileNum,
 	manifestSize int64,
 	excludedFiles map[deletedFileEntry]*fileMetadata,
+	requiredBackingFiles map[base.FileNum]struct{},
+	virtualBackingFiles map[base.FileNum]struct{},
 ) error {
 	// Copy the MANIFEST, and create a pointer to it. We copy rather
 	// than link because additional version edits added to the
@@ -351,6 +368,15 @@ func (d *DB) writeCheckpointManifest(
 			ve := versionEdit{
 				DeletedFiles: excludedFiles,
 			}
+
+			for fileNum := range virtualBackingFiles {
+				if _, ok := requiredBackingFiles[fileNum]; !ok {
+					// The backing sstable associated with fileNum is no longer
+					// required.
+					ve.RemoveBackingTables = append(ve.RemoveBackingTables, fileNum)
+				}
+			}
+
 			rw := record.NewWriter(dst)
 			w, err := rw.Next()
 			if err != nil {
