@@ -1385,7 +1385,9 @@ func (c *compaction) newInputIter(
 			// of range tombstones outside the file's internal key bounds. Skip
 			// any range tombstones completely outside file bounds.
 			rangeDelIter = keyspan.Truncate(
-				c.cmp, rangeDelIter, lowerBound.UserKey, upperBound.UserKey, &f.Smallest, &f.Largest)
+				c.cmp, rangeDelIter, lowerBound.UserKey, upperBound.UserKey,
+				&f.Smallest, &f.Largest,
+			)
 		}
 		if rangeDelIter == nil {
 			rangeDelIter = emptyKeyspanIter
@@ -1837,12 +1839,12 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	for _, file := range c.flushing[0].flushable.(*ingestedFlushable).files {
 		level, err = ingestTargetLevel(
 			d.newIters, d.tableNewRangeKeyIter, iterOpts, d.cmp,
-			c.version, baseLevel, d.mu.compact.inProgress, file,
+			c.version, baseLevel, d.mu.compact.inProgress, file.FileMetadata,
 		)
 		if err != nil {
 			return nil, err
 		}
-		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: file})
+		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: file.FileMetadata})
 		levelMetrics := c.metrics[level]
 		if levelMetrics == nil {
 			levelMetrics = &LevelMetrics{}
@@ -1949,7 +1951,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	startTime := d.timeNow()
 
 	var ve *manifest.VersionEdit
-	var pendingOutputs []*manifest.FileMetadata
+	var pendingOutputs []physicalMeta
 	// To determine the target level of the files in the ingestedFlushable, we
 	// need to acquire the logLock, and not release it for that duration. Since,
 	// we need to acquire the logLock below to perform the logAndApply step
@@ -2544,7 +2546,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
 	jobID int, c *compaction,
-) (ve *versionEdit, pendingOutputs []*fileMetadata, retErr error) {
+) (ve *versionEdit, pendingOutputs []physicalMeta, retErr error) {
 	// As a sanity check, confirm that the smallest / largest keys for new and
 	// deleted files in the new versionEdit pass a validation function before
 	// returning the edit.
@@ -2725,7 +2727,7 @@ func (d *DB) runCompaction(
 		d.mu.Lock()
 		fileNum := d.mu.versions.getNextFileNum()
 		fileMeta.FileNum = fileNum
-		pendingOutputs = append(pendingOutputs, fileMeta)
+		pendingOutputs = append(pendingOutputs, fileMeta.PhysicalMeta())
 		d.mu.Unlock()
 
 		writable, objMeta, err := d.objProvider.Create(fileTypeTable, fileNum)
@@ -2878,7 +2880,9 @@ func (d *DB) runCompaction(
 		meta.LargestSeqNum = writerMeta.LargestSeqNum
 		// If the file didn't contain any range deletions, we can fill its
 		// table stats now, avoiding unnecessarily loading the table later.
-		maybeSetStatsFromProperties(meta, &writerMeta.Properties)
+		maybeSetStatsFromProperties(
+			meta.PhysicalMeta(), &writerMeta.Properties,
+		)
 
 		if c.flushing == nil {
 			outputMetrics.TablesCompacted++
@@ -3230,7 +3234,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	manifestFileNum := d.mu.versions.manifestFileNum
 
 	var obsoleteLogs []fileInfo
-	var obsoleteTables []*fileMetadata
+	var obsoleteTables []physicalMeta
 	var obsoleteManifests []fileInfo
 	var obsoleteOptions []fileInfo
 
@@ -3287,7 +3291,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 			if size, err := d.objProvider.Size(obj); err == nil {
 				fileMeta.Size = uint64(size)
 			}
-			obsoleteTables = append(obsoleteTables, fileMeta)
+			obsoleteTables = append(obsoleteTables, fileMeta.PhysicalMeta())
 
 		default:
 			// Ignore object types we don't know about.
@@ -3618,7 +3622,7 @@ func merge(a, b []fileInfo) []fileInfo {
 	return a[:n]
 }
 
-func mergeFileMetas(a, b []*fileMetadata) []*fileMetadata {
+func mergeFileMetas(a, b []physicalMeta) []physicalMeta {
 	if len(b) == 0 {
 		return a
 	}

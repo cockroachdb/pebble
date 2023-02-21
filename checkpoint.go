@@ -135,6 +135,9 @@ func mkdirAllAndSyncParents(fs vfs.FS, destDir string) (vfs.File, error) {
 // space overhead for a checkpoint if hard links are disabled. Also beware that
 // even if hard links are used, the space overhead for the checkpoint will
 // increase over time as the DB performs compactions.
+//
+// TODO(bananabrick): Test checkpointing of virtual sstables once virtual
+// sstables is running e2e.
 func (d *DB) Checkpoint(
 	destDir string, opts ...CheckpointOption,
 ) (
@@ -254,7 +257,7 @@ func (d *DB) Checkpoint(
 	}
 
 	var excludedFiles map[deletedFileEntry]*fileMetadata
-
+	dedup := make(map[base.FileNum]struct{})
 	// Link or copy the sstables.
 	for l := range current.Levels {
 		iter := current.Levels[l].Iter()
@@ -270,7 +273,23 @@ func (d *DB) Checkpoint(
 				continue
 			}
 
-			srcPath := base.MakeFilepath(fs, d.dirname, fileTypeTable, f.FileNum)
+			var considerFile *fileMetadata
+			if f.Virtual() {
+				backingFile := f.BackingPhysicalFile()
+				_, ok := dedup[backingFile.FileNum]
+				if !ok {
+					dedup[backingFile.FileNum] = struct{}{}
+					considerFile = backingFile.FileMetadata
+				}
+			} else {
+				considerFile = f
+			}
+
+			if considerFile == nil {
+				continue
+			}
+
+			srcPath := base.MakeFilepath(fs, d.dirname, fileTypeTable, considerFile.FileNum)
 			destPath := fs.PathJoin(destDir, fs.PathBase(srcPath))
 			ckErr = vfs.LinkOrCopy(fs, srcPath, destPath)
 			if ckErr != nil {
