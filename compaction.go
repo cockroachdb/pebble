@@ -1384,7 +1384,9 @@ func (c *compaction) newInputIter(
 			// of range tombstones outside the file's internal key bounds. Skip
 			// any range tombstones completely outside file bounds.
 			rangeDelIter = keyspan.Truncate(
-				c.cmp, rangeDelIter, lowerBound.UserKey, upperBound.UserKey, &f.Smallest, &f.Largest)
+				c.cmp, rangeDelIter, lowerBound.UserKey, upperBound.UserKey,
+				&f.Smallest, &f.Largest,
+			)
 		}
 		if rangeDelIter == nil {
 			rangeDelIter = emptyKeyspanIter
@@ -1836,12 +1838,12 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	for _, file := range c.flushing[0].flushable.(*ingestedFlushable).files {
 		level, err = ingestTargetLevel(
 			d.newIters, d.tableNewRangeKeyIter, iterOpts, d.cmp,
-			c.version, baseLevel, d.mu.compact.inProgress, file,
+			c.version, baseLevel, d.mu.compact.inProgress, file.FileMetadata,
 		)
 		if err != nil {
 			return nil, err
 		}
-		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: file})
+		ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: level, Meta: file.FileMetadata})
 		levelMetrics := c.metrics[level]
 		if levelMetrics == nil {
 			levelMetrics = &LevelMetrics{}
@@ -1958,7 +1960,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	startTime := d.timeNow()
 
 	var ve *manifest.VersionEdit
-	var pendingOutputs []*manifest.FileMetadata
+	var pendingOutputs []physicalMeta
 	// To determine the target level of the files in the ingestedFlushable, we
 	// need to acquire the logLock, and not release it for that duration. Since,
 	// we need to acquire the logLock below to perform the logAndApply step
@@ -2023,7 +2025,12 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		if err != nil {
 			info.Err = err
 			// TODO(peter): untested.
-			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
+			for _, f := range pendingOutputs {
+				d.mu.versions.obsoleteTables = append(
+					d.mu.versions.obsoleteTables,
+					fileInfo{f.FileNum, f.Size},
+				)
+			}
 			d.mu.versions.updateObsoleteTableMetricsLocked()
 		}
 	} else {
@@ -2522,7 +2529,12 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		})
 		if err != nil {
 			// TODO(peter): untested.
-			d.mu.versions.obsoleteTables = append(d.mu.versions.obsoleteTables, pendingOutputs...)
+			for _, f := range pendingOutputs {
+				d.mu.versions.obsoleteTables = append(
+					d.mu.versions.obsoleteTables,
+					fileInfo{f.FileNum, f.Size},
+				)
+			}
 			d.mu.versions.updateObsoleteTableMetricsLocked()
 		}
 	}
@@ -2564,7 +2576,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
 	jobID int, c *compaction,
-) (ve *versionEdit, pendingOutputs []*fileMetadata, retErr error) {
+) (ve *versionEdit, pendingOutputs []physicalMeta, retErr error) {
 	// As a sanity check, confirm that the smallest / largest keys for new and
 	// deleted files in the new versionEdit pass a validation function before
 	// returning the edit.
@@ -2745,7 +2757,7 @@ func (d *DB) runCompaction(
 		d.mu.Lock()
 		fileNum := d.mu.versions.getNextFileNum()
 		fileMeta.FileNum = fileNum
-		pendingOutputs = append(pendingOutputs, fileMeta)
+		pendingOutputs = append(pendingOutputs, fileMeta.PhysicalMeta())
 		d.mu.Unlock()
 
 		writable, objMeta, err := d.objProvider.Create(context.TODO(), fileTypeTable, fileNum, objstorage.CreateOptions{} /* TODO */)
@@ -2896,9 +2908,13 @@ func (d *DB) runCompaction(
 		meta.Size = writerMeta.Size
 		meta.SmallestSeqNum = writerMeta.SmallestSeqNum
 		meta.LargestSeqNum = writerMeta.LargestSeqNum
+		meta.InitPhysicalBacking()
+
 		// If the file didn't contain any range deletions, we can fill its
 		// table stats now, avoiding unnecessarily loading the table later.
-		maybeSetStatsFromProperties(meta, &writerMeta.Properties)
+		maybeSetStatsFromProperties(
+			meta.PhysicalMeta(), &writerMeta.Properties,
+		)
 
 		if c.flushing == nil {
 			outputMetrics.TablesCompacted++
@@ -3250,7 +3266,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 	manifestFileNum := d.mu.versions.manifestFileNum
 
 	var obsoleteLogs []fileInfo
-	var obsoleteTables []*fileMetadata
+	var obsoleteTables []fileInfo
 	var obsoleteManifests []fileInfo
 	var obsoleteOptions []fileInfo
 
@@ -3301,13 +3317,13 @@ func (d *DB) scanObsoleteFiles(list []string) {
 			if _, ok := liveFileNums[obj.FileNum]; ok {
 				continue
 			}
-			fileMeta := &fileMetadata{
-				FileNum: obj.FileNum,
+			fileInfo := fileInfo{
+				fileNum: obj.FileNum,
 			}
 			if size, err := d.objProvider.Size(obj); err == nil {
-				fileMeta.Size = uint64(size)
+				fileInfo.fileSize = uint64(size)
 			}
-			obsoleteTables = append(obsoleteTables, fileMeta)
+			obsoleteTables = append(obsoleteTables, fileInfo)
 
 		default:
 			// Ignore object types we don't know about.
@@ -3316,7 +3332,7 @@ func (d *DB) scanObsoleteFiles(list []string) {
 
 	d.mu.log.queue = merge(d.mu.log.queue, obsoleteLogs)
 	d.mu.versions.metrics.WAL.Files = int64(len(d.mu.log.queue))
-	d.mu.versions.obsoleteTables = mergeFileMetas(d.mu.versions.obsoleteTables, obsoleteTables)
+	d.mu.versions.obsoleteTables = mergeFileInfo(d.mu.versions.obsoleteTables, obsoleteTables)
 	d.mu.versions.updateObsoleteTableMetricsLocked()
 	d.mu.versions.obsoleteManifests = merge(d.mu.versions.obsoleteManifests, obsoleteManifests)
 	d.mu.versions.obsoleteOptions = merge(d.mu.versions.obsoleteOptions, obsoleteOptions)
@@ -3432,12 +3448,7 @@ func (d *DB) doDeleteObsoleteFiles(jobID int) {
 		}
 	}
 
-	for _, table := range d.mu.versions.obsoleteTables {
-		obsoleteTables = append(obsoleteTables, fileInfo{
-			fileNum:  table.FileNum,
-			fileSize: table.Size,
-		})
-	}
+	obsoleteTables = append(obsoleteTables, d.mu.versions.obsoleteTables...)
 	d.mu.versions.obsoleteTables = nil
 
 	// Sort the manifests cause we want to delete some contiguous prefix
@@ -3638,19 +3649,19 @@ func merge(a, b []fileInfo) []fileInfo {
 	return a[:n]
 }
 
-func mergeFileMetas(a, b []*fileMetadata) []*fileMetadata {
+func mergeFileInfo(a, b []fileInfo) []fileInfo {
 	if len(b) == 0 {
 		return a
 	}
 
 	a = append(a, b...)
 	sort.Slice(a, func(i, j int) bool {
-		return a[i].FileNum < a[j].FileNum
+		return a[i].fileNum < a[j].fileNum
 	})
 
 	n := 0
 	for i := 0; i < len(a); i++ {
-		if n == 0 || a[i].FileNum != a[n-1].FileNum {
+		if n == 0 || a[i].fileNum != a[n-1].fileNum {
 			a[n] = a[i]
 			n++
 		}

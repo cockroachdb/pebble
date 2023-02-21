@@ -1224,10 +1224,12 @@ func TestCheckConsistency(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		return &manifest.FileMetadata{
+		m := &manifest.FileMetadata{
 			FileNum: base.FileNum(fileNum),
 			Size:    uint64(size),
-		}, nil
+		}
+		m.InitPhysicalBacking()
+		return m, nil
 	}
 
 	datadriven.RunTest(t, "testdata/version_check_consistency",
