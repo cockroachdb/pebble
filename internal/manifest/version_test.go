@@ -74,6 +74,7 @@ func TestIkeyRange(t *testing.T) {
 				m := (&FileMetadata{
 					FileNum: base.FileNum(i),
 				}).ExtendPointKeyBounds(cmp, ikey(s[0:1]), ikey(s[2:3]))
+				m.InitPhysicalBacking()
 				f = append(f, m)
 			}
 		}
@@ -128,6 +129,7 @@ func TestContains(t *testing.T) {
 			FileNum: fileNum,
 			Size:    size,
 		}).ExtendPointKeyBounds(cmp, smallest, largest)
+		m.InitPhysicalBacking()
 		return m
 	}
 	m00 := newFileMeta(
@@ -272,7 +274,7 @@ func TestContains(t *testing.T) {
 func TestVersionUnref(t *testing.T) {
 	list := &VersionList{}
 	list.Init(&sync.Mutex{})
-	v := &Version{Deleted: func([]*FileMetadata) {}}
+	v := &Version{Deleted: func([]*BackingState) {}}
 	v.Ref()
 	list.PushBack(v)
 	v.Unref()

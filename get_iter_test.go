@@ -490,6 +490,7 @@ func TestGetIter(t *testing.T) {
 			meta := &fileMetadata{
 				FileNum: tt.fileNum,
 			}
+			meta.InitPhysicalBacking()
 			for i, datum := range tt.data {
 				s := strings.Split(datum, " ")
 				ikey := base.ParseInternalKey(s[0])
