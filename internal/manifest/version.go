@@ -119,7 +119,105 @@ func (s CompactionState) String() string {
 	}
 }
 
-// FileMetadata holds the metadata for an on-disk table.
+// PhysicalFileMeta is used by functions which want a guarantee that their input
+// belongs to a physical sst and not a virtual sst.
+//
+// NB: This type should only be constructed by calling
+// FileMetadata.PhysicalMeta.
+type PhysicalFileMeta struct {
+	*FileMetadata
+}
+
+// VirtualFileMeta is used by functions which want a guarantee that their input
+// belongs to a virtual sst and not a physical sst.
+//
+// NB: This type should only be constructed by calling FileMetadata.VirtualMeta.
+type VirtualFileMeta struct {
+	*FileMetadata
+}
+
+// PhysicalMeta should be the only source of creating the PhysicalFileMeta
+// wrapper type.
+func (m *FileMetadata) PhysicalMeta() PhysicalFileMeta {
+	if m.Virtual {
+		panic("pebble: file metadata does not belong to a physical sstable")
+	}
+	return PhysicalFileMeta{
+		m,
+	}
+}
+
+// VirtualMeta should be the only source of creating the VirtualFileMeta wrapper
+// type.
+func (m *FileMetadata) VirtualMeta() VirtualFileMeta {
+	if !m.Virtual {
+		panic("pebble: file metadata does not belong to a virtual sstable")
+	}
+	return VirtualFileMeta{
+		m,
+	}
+}
+
+// BackingState either backs a single physical sstable, or one or more virtual
+// sstables.
+//
+// See the comment above the FileMetadata type for sstable terminology.
+type BackingState struct {
+	Atomic struct {
+		// Reference count for the backing file on disk: incremented when a
+		// physical or virtual sstable which is backed by the BackingState is
+		// added to a version and decremented when the version is unreferenced.
+		// We ref count in order to determine when it is safe to delete a
+		// backing sst file from disk. The backing file is obsolete when the
+		// reference count falls to zero.
+		refs int32
+		// latestVersionRefs are the references to the BackingState in the
+		// latest version. This reference can be through a single physical
+		// sstable in the latest version, or one or more virtual sstables in the
+		// latest version.
+		//
+		// INVARIANT: latestVersionRefs <= refs.
+		latestVersionRefs int32
+		// VirtualizedSize is set iff the physical sst associated with the
+		// BackingState has been virtualized. VirtualizedSize is the sum of the
+		// virtual sstable sizes of all of the virtual sstables in the latest
+		// version which are backed by the physical sstable. When a virtual
+		// sstable is removed from the latest version, we will decrement the
+		// VirtualizedSize. During compaction picking, we'll compensate a
+		// virtual sstable file size by
+		// (BackingState.Size - BackingState.VirtualizedSize) / latestVersionRefs.
+		// The intuition is that if BackingState.Size - BackingState.VirtualizedSize
+		// is high, then the space amplification due to virtual sstables is
+		// high, and we should pick the virtual sstable with a higher priority.
+		//
+		// TODO(bananabrick): Compensate the virtual sstable file size using
+		// the VirtualizedSize during compaction picking and test.
+		VirtualizedSize uint64
+	}
+	FileNum base.FileNum
+	Size    uint64
+}
+
+// FileMetadata is maintained for leveled-ssts, i.e., they belong to a level of
+// some version. FileMetadata does not contain the actual level of the sst,
+// since such leveled-ssts can move across levels in different versions, while
+// sharing the same FileMetadata. There are two kinds of leveled-ssts, physical
+// and virtual. Underlying both leveled-ssts is a backing-sst, for which the
+// only state is BackingState. A backing-sst is level-less. It is possible for a
+// backing-sst to be referred to by a physical sst in one version and by one or
+// more virtual ssts in one or more versions.
+//
+// We maintain some invariants:
+// 	1. A backing-sst in a version is either only referred to by one physical sst
+//     or one or more virtual ssts.
+// 	2. Once a backing-sst is referred to by a virtual sst in the latest version,
+//     it cannot go back to being referred to by a physical sst in any future
+//     version.
+//
+// Once a physical sst is no longer needed by any version, i.e. it's obsolete,
+// we will no longer maintain the file metadata associated with it. We will
+// still maintain the BackingState associated with the physical sst if the
+// backing sst is required by any virtual ssts in any version.
 type FileMetadata struct {
 	// Atomic contains fields which are accessed atomically. Go allocations
 	// are guaranteed to be 64-bit aligned which we take advantage of by
@@ -138,24 +236,35 @@ type FileMetadata struct {
 		statsValid uint32
 	}
 
+	// BackingState is the state which backs either a physical or virtual
+	// sstables.
+	BackingState *BackingState
+
 	// InitAllowedSeeks is the inital value of allowed seeks. This is used
 	// to re-set allowed seeks on a file once it hits 0.
 	InitAllowedSeeks int64
-
-	// Reference count for the file: incremented when a file is added to a
-	// version and decremented when the version is unreferenced. The file is
-	// obsolete when the reference count falls to zero.
-	Refs int32
 	// FileNum is the file number.
+	//
+	// INVARIANT: when !FileMetadata.Virtual, FileNum == PhysicalState.FileNum.
 	FileNum base.FileNum
-	// Size is the size of the file, in bytes.
+	// Size is the size of the file, in bytes. Size is an approximate value for
+	// virtual sstables.
+	//
+	// INVARIANT: when !FileMetadata.Virtual, Size == PhysicalState.Size.
+	//
+	// TODO(bananabrick): Size is currently used in metrics, and for many key
+	// Pebble level heuristics. Make sure that the heuristics will still work
+	// appropriately with an approximate value of size.
 	Size uint64
 	// File creation time in seconds since the epoch (1970-01-01 00:00:00
 	// UTC). For ingested sstables, this corresponds to the time the file was
-	// ingested.
+	// ingested. For virtual sstables, this corresponds to the wall clock time
+	// when the FileMetadata for the virtual sstable was first created.
+	// virtual sstables.
 	CreationTime int64
-	// Smallest and largest sequence numbers in the table, across both point and
-	// range keys.
+	// Lower and upper bounds for the smallest and largest sequence numbers in
+	// the table, across both point and range keys. For physical sstables, these
+	// values are precise.
 	SmallestSeqNum uint64
 	LargestSeqNum  uint64
 	// SmallestPointKey and LargestPointKey are the inclusive bounds for the
@@ -178,6 +287,13 @@ type FileMetadata struct {
 	Smallest InternalKey
 	Largest  InternalKey
 	// Stats describe table statistics. Protected by DB.mu.
+	//
+	// For virtual sstables, set stats upon virtual sstable creation as
+	// asynchronous computation of stats is not currently supported.
+	//
+	// TODO(bananabrick): To support manifest replay for virtual sstables, we
+	// probably need to compute virtual sstable stats asynchronously. Otherwise,
+	// we'd have to write virtual sstable stats to the version edit.
 	Stats TableStats
 
 	SubLevel         int
@@ -226,6 +342,86 @@ type FileMetadata struct {
 	// key type (point or range) corresponds to the smallest and largest overall
 	// table bounds.
 	boundTypeSmallest, boundTypeLargest boundType
+	// Virtual is true if the FileMetadata belongs to a virtual sstable.
+	Virtual bool
+}
+
+// Init allocates and sets the BackingState which is required by a physical
+// sstable FileMetadata.
+//
+// Ensure that the state required by BackingState, such as the FileNum, is
+// already set on the FileMetadata before Init is called. Calling Init only
+// after the relevant state has been set in the FileMetadata is not necessary
+// in tests which don't rely on BackingState.
+func (m *FileMetadata) Init() {
+	if m.Virtual {
+		panic("pebble: virtual sstables should use a pre-existing BackingState")
+	}
+	if m.BackingState == nil {
+		m.BackingState = &BackingState{}
+		m.BackingState.Size = m.Size
+		m.BackingState.FileNum = m.FileNum
+	}
+}
+
+// ValidateVirtual should be called once the FileMetadata for a virtual sstable
+// is created to verify that the fields of the virtual sstable are sound.
+func (m *FileMetadata) ValidateVirtual(parent *FileMetadata) {
+	if !m.Virtual {
+		panic("pebble: invalid virtual sstable")
+	}
+
+	if parent.SmallestSeqNum != m.SmallestSeqNum {
+		panic("pebble: invalid smallest sequence number for virtual sstable")
+	}
+
+	if parent.LargestSeqNum != m.LargestSeqNum {
+		panic("pebble: invalid largest sequence number for virtual sstable")
+	}
+
+	if parent.BackingState != nil && parent.BackingState != m.BackingState {
+		panic("pebble: invalid physical sstable state for virtual sstable")
+	}
+}
+
+// Refs returns the refcount of backing sstable.
+func (m *FileMetadata) Refs() int32 {
+	return atomic.LoadInt32(&m.BackingState.Atomic.refs)
+}
+
+// Ref increments the ref count associated with the backing sstable.
+func (m *FileMetadata) Ref() {
+	atomic.AddInt32(&m.BackingState.Atomic.refs, 1)
+}
+
+// Unref decrements the ref count associated with the backing sstable.
+func (m *FileMetadata) Unref() int32 {
+	return atomic.AddInt32(&m.BackingState.Atomic.refs, -1)
+}
+
+// LatestRef increments the latest ref count associated with the backing
+// sstable.
+func (m *FileMetadata) LatestRef() {
+	atomic.AddInt32(&m.BackingState.Atomic.latestVersionRefs, 1)
+
+	if m.Virtual {
+		atomic.AddUint64(&m.BackingState.Atomic.VirtualizedSize, m.Size)
+	}
+}
+
+// LatestUnref decrements the latest ref count associated with the backing
+// sstable.
+func (m *FileMetadata) LatestUnref() int32 {
+	if m.Virtual {
+		atomic.AddUint64(&m.BackingState.Atomic.VirtualizedSize, -m.Size)
+	}
+
+	return atomic.AddInt32(&m.BackingState.Atomic.latestVersionRefs, -1)
+}
+
+// LatestRefs returns the latest ref count associated with the backing sstable.
+func (m *FileMetadata) LatestRefs() int32 {
+	return atomic.LoadInt32(&m.BackingState.Atomic.latestVersionRefs)
 }
 
 // SetCompactionState transitions this file's compaction state to the given
@@ -522,6 +718,7 @@ func ParseFileMetadataDebug(s string) (m FileMetadata, err error) {
 		m.SmallestPointKey, m.LargestPointKey = m.Smallest, m.Largest
 		m.HasPointKeys = true
 	}
+	m.Init()
 	return
 }
 
@@ -582,6 +779,11 @@ func (m *FileMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 				m.SmallestRangeKey.Pretty(formatKey), m.LargestRangeKey.Pretty(formatKey),
 			)
 		}
+	}
+
+	// Ensure that FileMetadata.Init was called.
+	if m.BackingState == nil {
+		return base.CorruptionErrorf("file metadata BackingState not set")
 	}
 
 	return nil
@@ -926,11 +1128,10 @@ func (v *Version) Ref() {
 // locked.
 func (v *Version) Unref() {
 	if atomic.AddInt32(&v.refs, -1) == 0 {
-		obsolete := v.unrefFiles()
 		l := v.list
 		l.mu.Lock()
 		l.Remove(v)
-		v.Deleted(obsolete)
+		v.Deleted(v.unrefFiles())
 		l.mu.Unlock()
 	}
 }
