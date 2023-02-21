@@ -108,9 +108,40 @@ type VersionEdit struct {
 	// found that there was no overlapping file at the higher level).
 	DeletedFiles map[DeletedFileEntry]*FileMetadata
 	NewFiles     []NewFileEntry
+	// CreatedBackingTables can be used to preserve the FileBacking associated
+	// with a physical sstable. This is useful when virtual sstables in the
+	// latest version are reconstructed during manifest replay, and we also need
+	// to reconstruct the FileBacking which is required by these virtual
+	// sstables.
+	//
+	// INVARIANT: The FileBacking associated with a physical sstable must only
+	// be added as a backing file in the same version edit where the physical
+	// sstable is first virtualized. This means that the physical sstable must
+	// be present in DeletedFiles and that there must be at least one virtual
+	// sstable with the same FileBacking as the physical sstable in NewFiles. A
+	// file must be present in CreatedBackingTables in exactly one version edit.
+	// The physical sstable associated with the FileBacking must also not be
+	// present in NewFiles.
+	CreatedBackingTables []*FileBacking
+	// RemovedBackingTables is used to remove the FileBacking associated with a
+	// virtual sstable. Note that a backing sstable can be removed as soon as
+	// there are no virtual sstables in the latest version which are using the
+	// backing sstable, but the backing sstable doesn't necessarily have to be
+	// removed atomically with the version edit which removes the last virtual
+	// sstable associated with the backing sstable. The removal can happen in a
+	// future version edit.
+	//
+	// INVARIANT: A file must only be added to RemovedBackingTables if it was
+	// added to CreateBackingTables in a prior version edit. The same version
+	// edit also cannot have the same file present in both CreateBackingTables
+	// and RemovedBackingTables. A file must be present in RemovedBackingTables
+	// in exactly one version edit.
+	RemovedBackingTables []base.FileNum
 }
 
 // Decode decodes an edit from the specified reader.
+//
+// TODO(bananabrick): Support decoding of virtual sstable state.
 func (v *VersionEdit) Decode(r io.Reader) error {
 	br, ok := r.(byteReader)
 	if !ok {
@@ -343,6 +374,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 			}
 			m.boundsSet = true
+			m.InitPhysicalBacking()
 			v.NewFiles = append(v.NewFiles, NewFileEntry{
 				Level: level,
 				Meta:  m,
@@ -366,6 +398,8 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 }
 
 // Encode encodes an edit to the specified writer.
+//
+// TODO(bananabrick): Support encoding of virtual sstable state.
 func (v *VersionEdit) Encode(w io.Writer) error {
 	e := versionEditEncoder{new(bytes.Buffer)}
 
@@ -556,6 +590,9 @@ type BulkVersionEdit struct {
 	Added   [NumLevels]map[base.FileNum]*FileMetadata
 	Deleted [NumLevels]map[base.FileNum]*FileMetadata
 
+	AddedFileBacking   []*FileBacking
+	RemovedFileBacking []base.FileNum
+
 	// AddedByFileNum maps file number to file metadata for all added files
 	// from accumulated version edits. AddedByFileNum is only populated if set
 	// to non-nil by a caller. It must be set to non-nil when replaying
@@ -635,36 +672,72 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			b.MarkedForCompactionCountDiff++
 		}
 	}
+
+	// Generate state for the backing files.
+	b.AddedFileBacking = append(b.AddedFileBacking, ve.CreatedBackingTables...)
+
+	// Since a file can be removed from backing files in exactly one version
+	// edit it is safe to just append without any de-duplication.
+	b.RemovedFileBacking = append(b.RemovedFileBacking, ve.RemovedBackingTables...)
+
 	return nil
 }
 
-// AccumulateAndApplySingleVE should be called if a single version edit is to be
-// applied to the provided curr Version and if the caller needs to update the
-// versionSet.zombieTables map. This function exists separately from
+// AccumulateIncompleteAndApplySingleVE should be called if a single version edit
+// is to be applied to the provided curr Version and if the caller needs to
+// update the versionSet.zombieTables map. This function exists separately from
 // BulkVersionEdit.Apply because it is easier to reason about properties
 // regarding BulkVersionedit.Accumulate/Apply and zombie table generation, if we
 // know that exactly one version edit is being accumulated.
 //
+// Note that the version edit passed into this function may be incomplete
+// because compactions don't have the ref counting information necessary to
+// populate VersionEdit.RemovedBackingTables. This function will complete such a
+// version edit by populating RemovedBackingTables.
+//
 // Invariant: Any file being deleted through ve must belong to the curr Version.
 // We can't have a delete for some arbitrary file which does not exist in curr.
-func AccumulateAndApplySingleVE(
+func AccumulateIncompleteAndApplySingleVE(
 	ve *VersionEdit,
 	curr *Version,
 	cmp Compare,
 	formatKey base.FormatKey,
 	flushSplitBytes int64,
 	readCompactionRate int64,
+	backingStateMap map[base.FileNum]*FileBacking,
 ) (_ *Version, zombies map[base.FileNum]uint64, _ error) {
+	if len(ve.RemovedBackingTables) != 0 {
+		panic("pebble: invalid incomplete version edit")
+	}
 	var b BulkVersionEdit
 	err := b.Accumulate(ve)
 	if err != nil {
 		return nil, nil, err
 	}
 	zombies = make(map[base.FileNum]uint64)
-	v, err := b.Apply(curr, cmp, formatKey, flushSplitBytes, readCompactionRate, zombies)
+	v, err := b.Apply(
+		curr, cmp, formatKey, flushSplitBytes, readCompactionRate, zombies,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	for _, s := range b.AddedFileBacking {
+		backingStateMap[s.FileNum] = s
+	}
+
+	for fileNum := range zombies {
+		if _, ok := backingStateMap[fileNum]; ok {
+			// This table was backing some virtual sstable in the latest version,
+			// but is now a zombie. We add RemovedBackingTables entries for
+			// these, before the version edit is written to disk.
+			ve.RemovedBackingTables = append(
+				ve.RemovedBackingTables, fileNum,
+			)
+			delete(backingStateMap, fileNum)
+		}
+	}
+
 	return v, zombies, nil
 }
 
@@ -686,14 +759,14 @@ func (b *BulkVersionEdit) Apply(
 	readCompactionRate int64,
 	zombies map[base.FileNum]uint64,
 ) (*Version, error) {
-	addZombie := func(fileNum base.FileNum, size uint64) {
+	addZombie := func(state *FileBacking) {
 		if zombies != nil {
-			zombies[fileNum] = size
+			zombies[state.FileNum] = state.Size
 		}
 	}
-	removeZombie := func(fileNum base.FileNum) {
+	removeZombie := func(state *FileBacking) {
 		if zombies != nil {
-			delete(zombies, fileNum)
+			delete(zombies, state.FileNum)
 		}
 	}
 
@@ -753,7 +826,6 @@ func (b *BulkVersionEdit) Apply(
 		// level.
 
 		for _, f := range deletedFilesMap {
-			addZombie(f.FileNum, f.Size)
 			if obsolete := v.Levels[level].tree.Delete(f); obsolete {
 				// Deleting a file from the B-Tree may decrement its
 				// reference count. However, because we cloned the
@@ -771,6 +843,23 @@ func (b *BulkVersionEdit) Apply(
 					err := errors.Errorf("pebble: internal error: file L%d.%s obsolete during range-key B-Tree removal", level, f.FileNum)
 					return nil, err
 				}
+			}
+
+			// Note that a backing sst will only become a zombie if the
+			// references to it in the latest version is 0. We will remove the
+			// backing sst from the zombie list in the next loop if one of the
+			// addedFiles in any of the levels is referencing the backing sst.
+			// This is possible if a physical sstable is virtualized, or if it
+			// is moved.
+			latestRefCount := f.LatestRefs()
+			if latestRefCount <= 0 {
+				// If a file is present in deletedFilesMap for a level, then it
+				// must have already been added to the level previously, which
+				// means that its latest ref count cannot be 0.
+				err := errors.Errorf("pebble: internal error: incorrect latestRefs reference counting for file", f.FileNum)
+				return nil, err
+			} else if f.LatestUnref() == 0 {
+				addZombie(f.FileBacking)
 			}
 		}
 
@@ -800,6 +889,9 @@ func (b *BulkVersionEdit) Apply(
 			f.InitAllowedSeeks = allowedSeeks
 
 			err := lm.tree.Insert(f)
+			// We're adding this file to the new version, so increment the
+			// latest refs count.
+			f.LatestRef()
 			if err != nil {
 				return nil, errors.Wrap(err, "pebble")
 			}
@@ -809,7 +901,7 @@ func (b *BulkVersionEdit) Apply(
 					return nil, errors.Wrap(err, "pebble")
 				}
 			}
-			removeZombie(f.FileNum)
+			removeZombie(f.FileBacking)
 			// Track the keys with the smallest and largest keys, so that we can
 			// check consistency of the modified span.
 			if sm == nil || base.InternalCompare(cmp, sm.Smallest, f.Smallest) > 0 {

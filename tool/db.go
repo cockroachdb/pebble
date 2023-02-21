@@ -485,7 +485,10 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 				d.fmtValue.setForComparer(ve.ComparerName, d.comparers)
 			}
 		}
-		v, err := bve.Apply(nil /* version */, cmp.Compare, d.fmtKey.fn, d.opts.FlushSplitBytes, d.opts.Experimental.ReadCompactionRate, nil /* zombies */)
+		v, err := bve.Apply(
+			nil /* version */, cmp.Compare, d.fmtKey.fn, d.opts.FlushSplitBytes,
+			d.opts.Experimental.ReadCompactionRate, nil, /* zombies */
+		)
 		if err != nil {
 			return err
 		}
@@ -504,7 +507,15 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			iter := l.Iter()
 			var level props
 			for t := iter.First(); t != nil; t = iter.Next() {
-				err := d.addProps(objProvider, t, &level)
+				if t.Virtual {
+					// TODO(bananabrick): Handle virtual sstables here. We don't
+					// really have any stats or properties at this point. Maybe
+					// we could approximate some of these properties for virtual
+					// sstables by first grabbing properties for the backing
+					// physical sstable, and then extrapolating.
+					continue
+				}
+				err := d.addProps(objProvider, t.PhysicalMeta(), &level)
 				if err != nil {
 					return err
 				}
@@ -648,7 +659,9 @@ func (p *props) update(o props) {
 	p.TopLevelIndexSize += o.TopLevelIndexSize
 }
 
-func (d *dbT) addProps(objProvider objstorage.Provider, m *manifest.FileMetadata, p *props) error {
+func (d *dbT) addProps(
+	objProvider objstorage.Provider, m manifest.PhysicalFileMeta, p *props,
+) error {
 	ctx := context.Background()
 	f, err := objProvider.OpenForReading(ctx, base.FileTypeTable, m.FileNum, objstorage.OpenOptions{})
 	if err != nil {

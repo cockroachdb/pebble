@@ -30,6 +30,8 @@ const manifestMarkerName = `manifest`
 type bulkVersionEdit = manifest.BulkVersionEdit
 type deletedFileEntry = manifest.DeletedFileEntry
 type fileMetadata = manifest.FileMetadata
+type physicalMeta = manifest.PhysicalFileMeta
+type fileBacking = manifest.FileBacking
 type newFileEntry = manifest.NewFileEntry
 type version = manifest.Version
 type versionEdit = manifest.VersionEdit
@@ -83,14 +85,26 @@ type versionSet struct {
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
-	obsoleteFn        func(obsolete []*manifest.FileMetadata)
-	obsoleteTables    []*manifest.FileMetadata
+	obsoleteFn        func(obsolete []*fileBacking)
+	obsoleteTables    []fileInfo
 	obsoleteManifests []fileInfo
 	obsoleteOptions   []fileInfo
 
 	// Zombie tables which have been removed from the current version but are
 	// still referenced by an inuse iterator.
 	zombieTables map[FileNum]uint64 // filenum -> size
+
+	// fileBackingMap is a map for the FileBacking which is supporting virtual
+	// sstables in the latest version. Once the file backing is backing no
+	// virtual sstables in the latest version, it is removed from this map and
+	// the corresponding state is added to the zombieTables map. Note that we
+	// don't keep track of file backing which supports a virtual sstable
+	// which is not in the latest version.
+	//
+	// fileBackingMap is protected by the versionSet.logLock. It's populated
+	// during Open in versionSet.load, but it's not used concurrently during
+	// load.
+	fileBackingMap map[FileNum]*fileBacking
 
 	// minUnflushedLogNum is the smallest WAL log file number corresponding to
 	// mutations that have not been flushed to an sstable.
@@ -132,6 +146,7 @@ func (vs *versionSet) init(
 	vs.versions.Init(mu)
 	vs.obsoleteFn = vs.addObsoleteLocked
 	vs.zombieTables = make(map[FileNum]uint64)
+	vs.fileBackingMap = make(map[FileNum]*fileBacking)
 	vs.nextFileNum = 1
 	vs.manifestMarker = marker
 	vs.setCurrent = setCurrent
@@ -276,6 +291,16 @@ func (vs *versionSet) load(
 		}
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
+
+	// Populate the fileBackingMap since we have finished version
+	// edit accumulation.
+	for _, s := range bve.AddedFileBacking {
+		vs.fileBackingMap[s.FileNum] = s
+	}
+
+	for _, fileNum := range bve.RemovedFileBacking {
+		delete(vs.fileBackingMap, fileNum)
+	}
 
 	newVersion, err := bve.Apply(
 		nil, vs.cmp, opts.Comparer.FormatKey, opts.FlushSplitBytes,
@@ -464,9 +489,10 @@ func (vs *versionSet) logAndApply(
 		defer vs.mu.Lock()
 
 		var err error
-		newVersion, zombies, err = manifest.AccumulateAndApplySingleVE(
+		newVersion, zombies, err = manifest.AccumulateIncompleteAndApplySingleVE(
 			ve, currentVersion, vs.cmp, vs.opts.Comparer.FormatKey,
 			vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
+			vs.fileBackingMap,
 		)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")
@@ -488,6 +514,7 @@ func (vs *versionSet) logAndApply(
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST next record write failed")
 		}
+
 		// NB: Any error from this point on is considered fatal as we don't now if
 		// the MANIFEST write occurred or not. Trying to determine that is
 		// fraught. Instead we rely on the standard recovery mechanism run when a
@@ -652,6 +679,7 @@ func (vs *versionSet) createManifest(
 	snapshot := versionEdit{
 		ComparerName: vs.cmpName,
 	}
+	dedup := make(map[base.FileNum]struct{})
 	for level, levelMetadata := range vs.currentVersion().Levels {
 		iter := levelMetadata.Iter()
 		for meta := iter.First(); meta != nil; meta = iter.Next() {
@@ -659,6 +687,14 @@ func (vs *versionSet) createManifest(
 				Level: level,
 				Meta:  meta,
 			})
+			// TODO(bananabrick): Test snapshot changes.
+			if _, ok := dedup[meta.FileBacking.FileNum]; meta.Virtual && !ok {
+				dedup[meta.FileBacking.FileNum] = struct{}{}
+				snapshot.CreatedBackingTables = append(
+					snapshot.CreatedBackingTables,
+					meta.FileBacking,
+				)
+			}
 		}
 	}
 
@@ -729,7 +765,7 @@ func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 		for _, lm := range v.Levels {
 			iter := lm.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
-				m[f.FileNum] = struct{}{}
+				m[f.FileBacking.FileNum] = struct{}{}
 			}
 		}
 		if v == current {
@@ -738,27 +774,49 @@ func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 	}
 }
 
+// addObsoleteLocked will add the fileInfo associated with obsolete backing
+// sstables to the obsolete tables list.
+//
+// The file backings in the obsolete list must not appear more than once.
+//
 // DB.mu must be held when addObsoleteLocked is called.
-func (vs *versionSet) addObsoleteLocked(obsolete []*manifest.FileMetadata) {
+func (vs *versionSet) addObsoleteLocked(obsolete []*fileBacking) {
 	if len(obsolete) == 0 {
 		return
 	}
 
-	for _, fileMeta := range obsolete {
+	obsoleteFileInfo := make([]fileInfo, len(obsolete))
+	for i, bs := range obsolete {
+		obsoleteFileInfo[i].fileNum = bs.FileNum
+		obsoleteFileInfo[i].fileSize = bs.Size
+	}
+
+	if invariants.Enabled {
+		dedup := make(map[base.FileNum]struct{})
+		for _, fi := range obsoleteFileInfo {
+			dedup[fi.fileNum] = struct{}{}
+		}
+		if len(dedup) != len(obsoleteFileInfo) {
+			panic("pebble: duplicate FileBacking present in obsolete list")
+		}
+	}
+
+	for _, fi := range obsoleteFileInfo {
 		// Note that the obsolete tables are no longer zombie by the definition of
 		// zombie, but we leave them in the zombie tables map until they are
 		// deleted from disk.
-		if _, ok := vs.zombieTables[fileMeta.FileNum]; !ok {
-			vs.opts.Logger.Fatalf("MANIFEST obsolete table %s not marked as zombie", fileMeta.FileNum)
+		if _, ok := vs.zombieTables[fi.fileNum]; !ok {
+			vs.opts.Logger.Fatalf("MANIFEST obsolete table %s not marked as zombie", fi.fileNum)
 		}
 	}
-	vs.obsoleteTables = append(vs.obsoleteTables, obsolete...)
+
+	vs.obsoleteTables = append(vs.obsoleteTables, obsoleteFileInfo...)
 	vs.updateObsoleteTableMetricsLocked()
 }
 
 // addObsolete will acquire DB.mu, so DB.mu must not be held when this is
 // called.
-func (vs *versionSet) addObsolete(obsolete []*manifest.FileMetadata) {
+func (vs *versionSet) addObsolete(obsolete []*fileBacking) {
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
 	vs.addObsoleteLocked(obsolete)
@@ -767,8 +825,8 @@ func (vs *versionSet) addObsolete(obsolete []*manifest.FileMetadata) {
 func (vs *versionSet) updateObsoleteTableMetricsLocked() {
 	vs.metrics.Table.ObsoleteCount = int64(len(vs.obsoleteTables))
 	vs.metrics.Table.ObsoleteSize = 0
-	for _, fileMeta := range vs.obsoleteTables {
-		vs.metrics.Table.ObsoleteSize += fileMeta.Size
+	for _, fi := range vs.obsoleteTables {
+		vs.metrics.Table.ObsoleteSize += fi.fileSize
 	}
 }
 

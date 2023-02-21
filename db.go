@@ -468,7 +468,8 @@ type DB struct {
 			// job to validate one or more sstables.
 			cond sync.Cond
 			// pending is a slice of metadata for sstables waiting to be
-			// validated.
+			// validated. Only physical sstables should be added to the pending
+			// queue.
 			pending []newFileEntry
 			// validating is set to true when validation is running.
 			validating bool
@@ -1807,8 +1808,15 @@ func WithProperties() SSTablesOption {
 // SSTableInfo export manifest.TableInfo with sstable.Properties
 type SSTableInfo struct {
 	manifest.TableInfo
+	// Virtual indicates whether the sstable is virtual.
+	Virtual bool
+	// BackingSSTNum is the file number associated with backing sstable which
+	// backs the sstable associated with this SSTableInfo. If Virtual is false,
+	// then BackingSSTNum == FileNum.
+	BackingSSTNum base.FileNum
 
-	// Properties is the sstable properties of this table.
+	// Properties is the sstable properties of this table. If Virtual is true,
+	// then the Properties are associated with the backing sst.
 	Properties *sstable.Properties
 }
 
@@ -1844,12 +1852,16 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 		for m := iter.First(); m != nil; m = iter.Next() {
 			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
 			if opt.withProperties {
-				p, err := d.tableCache.getTableProperties(m)
+				p, err := d.tableCache.getTableProperties(
+					m.PhysicalMeta(),
+				)
 				if err != nil {
 					return nil, err
 				}
 				destTables[j].Properties = p
 			}
+			destTables[j].Virtual = m.Virtual
+			destTables[j].BackingSSTNum = m.FileBacking.FileNum
 			j++
 		}
 		destLevels[i] = destTables[:j]
@@ -1902,10 +1914,13 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			} else if d.opts.Comparer.Compare(file.Smallest.UserKey, end) <= 0 &&
 				d.opts.Comparer.Compare(start, file.Largest.UserKey) <= 0 {
 				var size uint64
-				err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
-					size, err = r.EstimateDiskUsage(start, end)
-					return err
-				})
+				err := d.tableCache.withReader(
+					file,
+					func(r *sstable.Reader) (err error) {
+						size, err = r.EstimateDiskUsage(start, end)
+						return err
+					},
+				)
 				if err != nil {
 					return 0, err
 				}
