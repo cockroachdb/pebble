@@ -63,6 +63,7 @@ func TestLevelIter(t *testing.T) {
 					f.keys[0],
 					f.keys[len(f.keys)-1],
 				)
+				meta.Init()
 				metas = append(metas, meta)
 			}
 			files = manifest.NewLevelSliceKeySorted(base.DefaultComparer.Compare, metas)
@@ -277,6 +278,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	if meta.HasRangeKeys {
 		m.ExtendRangeKeyBounds(lt.cmp.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)
 	}
+	m.Init()
 	lt.metas = append(lt.metas, m)
 
 	var buf bytes.Buffer
@@ -511,6 +513,7 @@ func buildLevelIterTables(
 		meta[i].FileNum = FileNum(i)
 		largest, _ := iter.Last()
 		meta[i].ExtendPointKeyBounds(opts.Comparer.Compare, (*smallest).Clone(), (*largest).Clone())
+		meta[i].Init()
 	}
 	slice := manifest.NewLevelSliceKeySorted(base.DefaultComparer.Compare, meta)
 	return readers, slice, keys, cleanup

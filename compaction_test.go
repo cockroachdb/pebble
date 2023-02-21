@@ -137,6 +137,7 @@ func TestPickCompaction(t *testing.T) {
 			FileNum: fileNum,
 			Size:    size,
 		}).ExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
+		m.Init()
 		return m
 	}
 
@@ -540,6 +541,7 @@ func TestElideTombstone(t *testing.T) {
 
 	newFileMeta := func(smallest, largest base.InternalKey) *fileMetadata {
 		m := (&fileMetadata{}).ExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
+		m.Init()
 		return m
 	}
 
@@ -691,6 +693,7 @@ func TestElideRangeTombstone(t *testing.T) {
 		m := (&fileMetadata{}).ExtendPointKeyBounds(
 			opts.Comparer.Compare, smallest, largest,
 		)
+		m.Init()
 		return m
 	}
 
@@ -1097,6 +1100,7 @@ func TestValidateVersionEdit(t *testing.T) {
 	cmp := DefaultComparer.Compare
 	newFileMeta := func(smallest, largest base.InternalKey) *fileMetadata {
 		m := (&fileMetadata{}).ExtendPointKeyBounds(cmp, smallest, largest)
+		m.Init()
 		return m
 	}
 
@@ -1632,6 +1636,7 @@ func TestCompactionFindGrandparentLimit(t *testing.T) {
 			InternalKey{UserKey: []byte(parts[0])},
 			InternalKey{UserKey: []byte(parts[1])},
 		)
+		m.Init()
 		return m
 	}
 
@@ -1734,6 +1739,7 @@ func TestCompactionFindL0Limit(t *testing.T) {
 				m.Size = size
 			}
 		}
+		m.Init()
 		return m, nil
 	}
 
@@ -1866,6 +1872,7 @@ func TestCompactionAtomicUnitBounds(t *testing.T) {
 			base.ParseInternalKey(parts[0]),
 			base.ParseInternalKey(parts[1]),
 		)
+		m.Init()
 		return m
 	}
 
@@ -2524,6 +2531,7 @@ func TestCompactionInuseKeyRanges(t *testing.T) {
 		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		m.Init()
 		return m
 	}
 
@@ -2638,6 +2646,7 @@ func TestCompactionInuseKeyRangesRandomized(t *testing.T) {
 			)
 			m.SmallestSeqNum = m.Smallest.SeqNum()
 			m.LargestSeqNum = m.Largest.SeqNum()
+			m.Init()
 			return m
 		}
 		overlaps := func(startA, endA, startB, endB []byte) bool {
@@ -2736,6 +2745,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 			InternalKey{UserKey: []byte(match[2])},
 			InternalKey{UserKey: []byte(match[3])},
 		)
+		meta.Init()
 		return level, meta
 	}
 
@@ -2841,6 +2851,7 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		m.Init()
 		return m
 	}
 
@@ -2970,6 +2981,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		m.Init()
 		return m
 	}
 
@@ -3408,8 +3420,10 @@ func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
 	var lbaseFiles []*manifest.FileMetadata
 	const lbaseSize = 5 << 20
 	for i := 0; i < 100; i++ {
+		m := &manifest.FileMetadata{Size: lbaseSize, FileNum: FileNum(i)}
+		m.Init()
 		lbaseFiles =
-			append(lbaseFiles, &manifest.FileMetadata{Size: lbaseSize, FileNum: FileNum(i)})
+			append(lbaseFiles, m)
 	}
 	const maxOutputFileSize = 2 << 20
 	// 20MB max overlap, so flush split into 25 files.
@@ -3454,6 +3468,14 @@ func TestCompactionInvalidBounds(t *testing.T) {
 func Test_calculateInuseKeyRanges(t *testing.T) {
 	opts := (*Options)(nil).EnsureDefaults()
 	cmp := base.DefaultComparer.Compare
+	newFileMeta := func(fileNum FileNum, size uint64, smallest, largest base.InternalKey) *fileMetadata {
+		m := (&fileMetadata{
+			FileNum: fileNum,
+			Size:    size,
+		}).ExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
+		m.Init()
+		return m
+	}
 	tests := []struct {
 		name     string
 		v        *version
@@ -3467,18 +3489,18 @@ func Test_calculateInuseKeyRanges(t *testing.T) {
 			name: "No files in next level",
 			v: newVersion(opts, [numLevels][]*fileMetadata{
 				1: {
-					{
-						FileNum:  1,
-						Size:     1,
-						Smallest: base.ParseInternalKey("a.SET.2"),
-						Largest:  base.ParseInternalKey("c.SET.2"),
-					},
-					{
-						FileNum:  2,
-						Size:     1,
-						Smallest: base.ParseInternalKey("d.SET.2"),
-						Largest:  base.ParseInternalKey("e.SET.2"),
-					},
+					newFileMeta(
+						1,
+						1,
+						base.ParseInternalKey("a.SET.2"),
+						base.ParseInternalKey("c.SET.2"),
+					),
+					newFileMeta(
+						2,
+						1,
+						base.ParseInternalKey("d.SET.2"),
+						base.ParseInternalKey("e.SET.2"),
+					),
 				},
 			}),
 			level:    1,
@@ -3500,32 +3522,32 @@ func Test_calculateInuseKeyRanges(t *testing.T) {
 			name: "No overlapping key ranges",
 			v: newVersion(opts, [numLevels][]*fileMetadata{
 				1: {
-					{
-						FileNum:  1,
-						Size:     1,
-						Smallest: base.ParseInternalKey("a.SET.1"),
-						Largest:  base.ParseInternalKey("c.SET.1"),
-					},
-					{
-						FileNum:  2,
-						Size:     1,
-						Smallest: base.ParseInternalKey("l.SET.1"),
-						Largest:  base.ParseInternalKey("p.SET.1"),
-					},
+					newFileMeta(
+						1,
+						1,
+						base.ParseInternalKey("a.SET.1"),
+						base.ParseInternalKey("c.SET.1"),
+					),
+					newFileMeta(
+						2,
+						1,
+						base.ParseInternalKey("l.SET.1"),
+						base.ParseInternalKey("p.SET.1"),
+					),
 				},
 				2: {
-					{
-						FileNum:  3,
-						Size:     1,
-						Smallest: base.ParseInternalKey("d.SET.1"),
-						Largest:  base.ParseInternalKey("i.SET.1"),
-					},
-					{
-						FileNum:  4,
-						Size:     1,
-						Smallest: base.ParseInternalKey("s.SET.1"),
-						Largest:  base.ParseInternalKey("w.SET.1"),
-					},
+					newFileMeta(
+						3,
+						1,
+						base.ParseInternalKey("d.SET.1"),
+						base.ParseInternalKey("i.SET.1"),
+					),
+					newFileMeta(
+						4,
+						1,
+						base.ParseInternalKey("s.SET.1"),
+						base.ParseInternalKey("w.SET.1"),
+					),
 				},
 			}),
 			level:    1,
@@ -3555,44 +3577,44 @@ func Test_calculateInuseKeyRanges(t *testing.T) {
 			name: "First few non-overlapping, followed by overlapping",
 			v: newVersion(opts, [numLevels][]*fileMetadata{
 				1: {
-					{
-						FileNum:  1,
-						Size:     1,
-						Smallest: base.ParseInternalKey("a.SET.1"),
-						Largest:  base.ParseInternalKey("c.SET.1"),
-					},
-					{
-						FileNum:  2,
-						Size:     1,
-						Smallest: base.ParseInternalKey("d.SET.1"),
-						Largest:  base.ParseInternalKey("e.SET.1"),
-					},
-					{
-						FileNum:  3,
-						Size:     1,
-						Smallest: base.ParseInternalKey("n.SET.1"),
-						Largest:  base.ParseInternalKey("o.SET.1"),
-					},
-					{
-						FileNum:  4,
-						Size:     1,
-						Smallest: base.ParseInternalKey("p.SET.1"),
-						Largest:  base.ParseInternalKey("q.SET.1"),
-					},
+					newFileMeta(
+						1,
+						1,
+						base.ParseInternalKey("a.SET.1"),
+						base.ParseInternalKey("c.SET.1"),
+					),
+					newFileMeta(
+						2,
+						1,
+						base.ParseInternalKey("d.SET.1"),
+						base.ParseInternalKey("e.SET.1"),
+					),
+					newFileMeta(
+						3,
+						1,
+						base.ParseInternalKey("n.SET.1"),
+						base.ParseInternalKey("o.SET.1"),
+					),
+					newFileMeta(
+						4,
+						1,
+						base.ParseInternalKey("p.SET.1"),
+						base.ParseInternalKey("q.SET.1"),
+					),
 				},
 				2: {
-					{
-						FileNum:  5,
-						Size:     1,
-						Smallest: base.ParseInternalKey("m.SET.1"),
-						Largest:  base.ParseInternalKey("q.SET.1"),
-					},
-					{
-						FileNum:  6,
-						Size:     1,
-						Smallest: base.ParseInternalKey("s.SET.1"),
-						Largest:  base.ParseInternalKey("w.SET.1"),
-					},
+					newFileMeta(
+						5,
+						1,
+						base.ParseInternalKey("m.SET.1"),
+						base.ParseInternalKey("q.SET.1"),
+					),
+					newFileMeta(
+						6,
+						1,
+						base.ParseInternalKey("s.SET.1"),
+						base.ParseInternalKey("w.SET.1"),
+					),
 				},
 			}),
 			level:    1,
@@ -3622,38 +3644,38 @@ func Test_calculateInuseKeyRanges(t *testing.T) {
 			name: "All overlapping",
 			v: newVersion(opts, [numLevels][]*fileMetadata{
 				1: {
-					{
-						FileNum:  1,
-						Size:     1,
-						Smallest: base.ParseInternalKey("d.SET.1"),
-						Largest:  base.ParseInternalKey("e.SET.1"),
-					},
-					{
-						FileNum:  2,
-						Size:     1,
-						Smallest: base.ParseInternalKey("n.SET.1"),
-						Largest:  base.ParseInternalKey("o.SET.1"),
-					},
-					{
-						FileNum:  3,
-						Size:     1,
-						Smallest: base.ParseInternalKey("p.SET.1"),
-						Largest:  base.ParseInternalKey("q.SET.1"),
-					},
+					newFileMeta(
+						1,
+						1,
+						base.ParseInternalKey("d.SET.1"),
+						base.ParseInternalKey("e.SET.1"),
+					),
+					newFileMeta(
+						2,
+						1,
+						base.ParseInternalKey("n.SET.1"),
+						base.ParseInternalKey("o.SET.1"),
+					),
+					newFileMeta(
+						3,
+						1,
+						base.ParseInternalKey("p.SET.1"),
+						base.ParseInternalKey("q.SET.1"),
+					),
 				},
 				2: {
-					{
-						FileNum:  4,
-						Size:     1,
-						Smallest: base.ParseInternalKey("a.SET.1"),
-						Largest:  base.ParseInternalKey("c.SET.1"),
-					},
-					{
-						FileNum:  5,
-						Size:     1,
-						Smallest: base.ParseInternalKey("d.SET.1"),
-						Largest:  base.ParseInternalKey("w.SET.1"),
-					},
+					newFileMeta(
+						4,
+						1,
+						base.ParseInternalKey("a.SET.1"),
+						base.ParseInternalKey("c.SET.1"),
+					),
+					newFileMeta(
+						5,
+						1,
+						base.ParseInternalKey("d.SET.1"),
+						base.ParseInternalKey("w.SET.1"),
+					),
 				},
 			}),
 			level:    1,

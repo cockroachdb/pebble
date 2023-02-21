@@ -198,6 +198,7 @@ func TestIngestLoadRand(t *testing.T) {
 			require.NoError(t, err)
 
 			expected[i].Size = meta.Size
+			expected[i].Init()
 		}()
 	}
 
@@ -263,6 +264,7 @@ func TestIngestSortAndVerify(t *testing.T) {
 						return fmt.Sprintf("range %v-%v is not valid", smallest, largest)
 					}
 					m := (&fileMetadata{}).ExtendPointKeyBounds(cmp, smallest, largest)
+					m.Init()
 					meta = append(meta, m)
 					paths = append(paths, strconv.Itoa(i))
 				}
@@ -304,6 +306,7 @@ func TestIngestLink(t *testing.T) {
 				paths[j] = fmt.Sprintf("external%d", j)
 				meta[j] = &fileMetadata{}
 				meta[j].FileNum = FileNum(j)
+				meta[j].Init()
 				f, err := opts.FS.Create(paths[j])
 				require.NoError(t, err)
 
@@ -608,6 +611,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 					smallest, largest = largest, smallest
 				}
 				meta.ExtendPointKeyBounds(comparer.Compare, smallest, largest)
+				meta.Init()
 				return meta
 			}
 
@@ -735,6 +739,7 @@ func TestIngestTargetLevel(t *testing.T) {
 				InternalKey{UserKey: []byte(parts[1])},
 			)
 		}
+		m.Init()
 		return m
 	}
 
@@ -1607,6 +1612,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 					maybeUpdateUpperBound(wm.LargestRangeKey),
 				)
 			}
+			m.Init()
 			if err := m.Validate(cmp, base.DefaultFormatter); err != nil {
 				return err.Error()
 			}

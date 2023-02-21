@@ -234,7 +234,11 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			}
 
 			if cmp != nil {
-				v, err := bve.Apply(nil /* version */, cmp.Compare, m.fmtKey.fn, 0, m.opts.Experimental.ReadCompactionRate, nil /* zombies */)
+				v, err := bve.Apply(
+					nil /* version */, cmp.Compare, m.fmtKey.fn, 0,
+					m.opts.Experimental.ReadCompactionRate,
+					nil, /* zombies */
+				)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s\n", err)
 					return
