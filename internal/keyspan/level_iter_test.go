@@ -294,6 +294,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 					HasPointKeys:     false,
 					HasRangeKeys:     true,
 				}
+				meta.Init()
 				meta.ExtendRangeKeyBounds(base.DefaultComparer.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)
 				metas = append(metas, meta)
 			}
@@ -304,7 +305,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 			// Add all the fileMetadatas to L6.
 			b := &manifest.BulkVersionEdit{}
 			b.Added[6] = metas
-			v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
+			v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0, nil)
 			require.NoError(t, err)
 			levelIter.Init(
 				SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters,
@@ -372,6 +373,7 @@ func TestLevelIter(t *testing.T) {
 						if len(pointKeys) != 0 {
 							meta.ExtendPointKeyBounds(base.DefaultComparer.Compare, pointKeys[0], pointKeys[len(pointKeys)-1])
 						}
+						meta.Init()
 						level = append(level, currentFile)
 						metas = append(metas, meta)
 						rangedels = append(rangedels, currentRangeDels)
@@ -399,6 +401,7 @@ func TestLevelIter(t *testing.T) {
 			meta := &manifest.FileMetadata{
 				FileNum: base.FileNum(len(level) + 1),
 			}
+			meta.Init()
 			level = append(level, currentFile)
 			rangedels = append(rangedels, currentRangeDels)
 			if len(currentFile) > 0 {
@@ -437,7 +440,7 @@ func TestLevelIter(t *testing.T) {
 				}
 				b := &manifest.BulkVersionEdit{}
 				b.Added[6] = metas
-				v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
+				v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0, nil)
 				require.NoError(t, err)
 				iter = NewLevelIter(
 					SpanIterOptions{}, base.DefaultComparer.Compare,

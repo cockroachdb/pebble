@@ -669,7 +669,8 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 			r.Opts.Comparer.Compare,
 			r.Opts.Comparer.FormatKey,
 			r.Opts.FlushSplitBytes,
-			r.Opts.Experimental.ReadCompactionRate)
+			r.Opts.Experimental.ReadCompactionRate,
+			nil /* backingState */)
 		bve = manifest.BulkVersionEdit{AddedByFileNum: bve.AddedByFileNum}
 		return v, err
 	}

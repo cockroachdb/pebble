@@ -145,8 +145,8 @@ func (c *tableCacheContainer) newRangeKeyIter(
 	return c.tableCache.getShard(file.FileNum).newRangeKeyIter(file, opts, &c.dbOpts)
 }
 
-func (c *tableCacheContainer) getTableProperties(file *fileMetadata) (*sstable.Properties, error) {
-	return c.tableCache.getShard(file.FileNum).getTableProperties(file, &c.dbOpts)
+func (c *tableCacheContainer) getTableProperties(file physicalMeta) (*sstable.Properties, error) {
+	return c.tableCache.getShard(file.FileNum).getTableProperties(file.FileMetadata, &c.dbOpts)
 }
 
 func (c *tableCacheContainer) evict(fileNum FileNum) {

@@ -207,7 +207,7 @@ func (n *node) decRef(contentsToo bool, obsolete *[]*FileMetadata) {
 	// nodes, and they want to preserve the existing reference count.
 	if contentsToo {
 		for _, f := range n.items[:n.count] {
-			if atomic.AddInt32(&f.Refs, -1) == 0 {
+			if f.Unref() == 0 {
 				// There are two sources of node dereferences: tree mutations
 				// and Version dereferences. Files should only be made obsolete
 				// during Version dereferences, during which `obsolete` will be
@@ -241,7 +241,7 @@ func (n *node) clone() *node {
 	c.subtreeCount = n.subtreeCount
 	// Increase the refcount of each contained item.
 	for _, f := range n.items[:n.count] {
-		atomic.AddInt32(&f.Refs, 1)
+		f.Ref()
 	}
 	if !c.leaf {
 		// Copy children and increase each refcount.
@@ -800,7 +800,7 @@ func (t *btree) Delete(item *FileMetadata) (obsolete bool) {
 		return false
 	}
 	if out := mut(&t.root).Remove(t.cmp, item); out != nil {
-		obsolete = atomic.AddInt32(&out.Refs, -1) == 0
+		obsolete = out.Unref() == 0
 	}
 	if invariants.Enabled {
 		t.root.verifyInvariants()
@@ -832,7 +832,7 @@ func (t *btree) Insert(item *FileMetadata) error {
 		newRoot.subtreeCount = t.root.subtreeCount + splitNode.subtreeCount + 1
 		t.root = newRoot
 	}
-	atomic.AddInt32(&item.Refs, 1)
+	item.Ref()
 	err := mut(&t.root).Insert(t.cmp, item)
 	if invariants.Enabled {
 		t.root.verifyInvariants()
