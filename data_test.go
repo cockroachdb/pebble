@@ -909,6 +909,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			InternalKey{UserKey: []byte(parts[0])},
 			InternalKey{UserKey: []byte(parts[1])},
 		)
+		m.Init()
 		return m, nil
 	}
 

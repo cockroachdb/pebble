@@ -229,7 +229,7 @@ func TestL0Sublevels(t *testing.T) {
 		}
 		m.FileNum = base.FileNum(fileNum)
 		m.Size = uint64(256)
-
+		m.Init()
 		if len(fields) > 1 {
 			for _, field := range fields[1:] {
 				parts := strings.Split(field, "=")
@@ -592,6 +592,7 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 				base.MakeInternalKey(startKey, uint64(2*i+1), base.InternalKeyKindSet),
 				base.MakeRangeDeleteSentinelKey(endKey),
 			)
+			meta.Init()
 			fileMetas = append(fileMetas, meta)
 			filesToAdd = append(filesToAdd, meta)
 		}
