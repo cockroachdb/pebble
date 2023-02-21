@@ -110,6 +110,7 @@ type VersionEdit struct {
 }
 
 // Decode decodes an edit from the specified reader.
+// TODO(bananabrick): Support decoding of virtual sstable state.
 func (v *VersionEdit) Decode(r io.Reader) error {
 	br, ok := r.(byteReader)
 	if !ok {
@@ -365,6 +366,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 }
 
 // Encode encodes an edit to the specified writer.
+// TODO(bananabrick): Support encoding of virtual sstable state.
 func (v *VersionEdit) Encode(w io.Writer) error {
 	e := versionEditEncoder{new(bytes.Buffer)}
 
@@ -397,6 +399,9 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewFiles {
+		if x.Meta.Virtual() {
+			panic("pebble: not implemented")
+		}
 		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0
 		var tag uint64
 		switch {
@@ -540,6 +545,9 @@ type BulkVersionEdit struct {
 	Added   [NumLevels][]*FileMetadata
 	Deleted [NumLevels]map[base.FileNum]*FileMetadata
 
+	AddedBackingFiles   map[base.FileNum]PhysicalFileMeta
+	RemovedBackingFiles []base.FileNum
+
 	// AddedByFileNum maps file number to file metadata for all added files
 	// from accumulated version edits. AddedByFileNum is only populated if set
 	// to non-nil by a caller. It must be set to non-nil when replaying
@@ -617,17 +625,18 @@ func (b *BulkVersionEdit) Apply(
 	flushSplitBytes int64,
 	readCompactionRate int64,
 ) (_ *Version, zombies map[base.FileNum]uint64, _ error) {
-	addZombie := func(fileNum base.FileNum, size uint64) {
+	addZombie := func(meta PhysicalFileMeta) {
 		if zombies == nil {
 			zombies = make(map[base.FileNum]uint64)
 		}
-		zombies[fileNum] = size
+		zombies[meta.FileNum] = meta.Size
 	}
 	// The remove zombie function is used to handle tables that are moved from
-	// one level to another during a version edit (i.e. a "move" compaction).
-	removeZombie := func(fileNum base.FileNum) {
+	// one level to another during a version edit (i.e. a "move" compaction),
+	// and cases where new virtual sstables are created.
+	removeZombie := func(meta PhysicalFileMeta) {
 		if zombies != nil {
-			delete(zombies, fileNum)
+			delete(zombies, meta.FileNum)
 		}
 	}
 
@@ -685,7 +694,6 @@ func (b *BulkVersionEdit) Apply(
 		// internally consistent: it does not reflect deletions in deletedMap.
 
 		for _, f := range deletedMap {
-			addZombie(f.FileNum, f.Size)
 			if obsolete := v.Levels[level].tree.Delete(f); obsolete {
 				// Deleting a file from the B-Tree may decrement its
 				// reference count. However, because we cloned the
@@ -703,6 +711,31 @@ func (b *BulkVersionEdit) Apply(
 					err := errors.Errorf("pebble: internal error: file L%d.%s obsolete during range-key B-Tree removal", level, f.FileNum)
 					return nil, nil, err
 				}
+			}
+
+			// Note that a physical file will only become a zombie if the
+			// references to the file in the latest version is 0. We will remove
+			// the file from the zombie list in the next loop if one of the
+			// addedFiles in any of the levels is referencing the physical
+			// sstable. This is possible if an sstable is virtualized, or if it
+			// is moved.
+			latestRefCount := f.LatestRefs()
+			if latestRefCount < 0 {
+				err := errors.Errorf("pebble: internal error: incorrect latestRefs reference counting for file")
+				return nil, nil, err
+			} else if latestRefCount == 0 || f.LatestUnref() == 0 {
+				// latestRefCount can already be 0, if we're processing the
+				// deleted entry for a file before processing the entry which
+				// adds the file to a level. Example, a file which was created
+				// and added to L1, and then gets move compacted from L1 to L6.
+				// During manifest replay, this file could be present in the
+				// deletedMap for L1, addedFiles list for L1, and the addedFiles
+				// list for L6. But we'll process the deletedMap for L1 first,
+				// in which case the latestRefCount for the file will be 0.
+				// When we process the addedFiles list for L1, we'll skip over
+				// this file, which means that we also shouldn't be decreasing
+				// the reference count from 0 to -1.
+				addZombie(f.BackingPhysicalFile())
 			}
 		}
 
@@ -727,6 +760,9 @@ func (b *BulkVersionEdit) Apply(
 			f.InitAllowedSeeks = allowedSeeks
 
 			err := lm.tree.Insert(f)
+			// We're adding this file to the new version, so increment the
+			// latest refs count.
+			f.LatestRef()
 			if err != nil {
 				return nil, nil, errors.Wrap(err, "pebble")
 			}
@@ -736,7 +772,7 @@ func (b *BulkVersionEdit) Apply(
 					return nil, nil, errors.Wrap(err, "pebble")
 				}
 			}
-			removeZombie(f.FileNum)
+			removeZombie(f.BackingPhysicalFile())
 			// Track the keys with the smallest and largest keys, so that we can
 			// check consistency of the modified span.
 			if sm == nil || base.InternalCompare(cmp, sm.Smallest, f.Smallest) > 0 {
