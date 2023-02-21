@@ -117,7 +117,55 @@ func (s CompactionState) String() string {
 	}
 }
 
-// FileMetadata holds the metadata for an on-disk table.
+// PhysicalFileMeta is used by functions which want a guarantee that their input
+// belongs to a physical file on disk and not a virtual file.
+//
+// NB: This type should only be constructed by calling
+// FileMetadata.PhysicalMeta.
+type PhysicalFileMeta struct {
+	*FileMetadata
+}
+
+// VirtualFileMeta is used by functions which want a guarantee that their input
+// belongs to a virtual file and not a physical file on disk.
+//
+// NB: This type should only be constructed by calling FileMetadata.VirtualMeta.
+type VirtualFileMeta struct {
+	*FileMetadata
+}
+
+// PhysicalMeta should be the only source of creating the PhysicalFileMeta
+// wrapper type.
+func (m *FileMetadata) PhysicalMeta() PhysicalFileMeta {
+	if m.Virtual() {
+		panic("pebble: file metadata does not belong to a physical sstable")
+	}
+	return PhysicalFileMeta{
+		m,
+	}
+}
+
+// VirtualMeta should be the only source of creating the VirtualFileMeta wrapper
+// type.
+func (m *FileMetadata) VirtualMeta() VirtualFileMeta {
+	if !m.Virtual() {
+		panic("pebble: file metadata does not belong to a virtual sstable")
+	}
+	return VirtualFileMeta{
+		m,
+	}
+}
+
+// VirtualState is state associated with a virtual sstable, but not a physical
+// sstable.
+type VirtualState struct {
+	Parent PhysicalFileMeta
+	// ParentSSTNum is the FileNum of VirtualState.Parent. We need to store
+	// this separately for manifest replay.
+	ParentSSTNum base.FileNum
+}
+
+// FileMetadata holds the metadata for an on-disk or virtual sstable.
 type FileMetadata struct {
 	// Atomic contains fields which are accessed atomically. Go allocations
 	// are guaranteed to be 64-bit aligned which we take advantage of by
@@ -134,26 +182,57 @@ type FileMetadata struct {
 		// statsValid is 1 if stats have been loaded for the table. The
 		// TableStats structure is populated only if valid is 1.
 		statsValid uint32
+
+		// Reference count for the file: incremented when a file is added to a
+		// version and decremented when the version is unreferenced. The file is
+		// obsolete when the reference count falls to zero. The refs field is
+		// only used for physical sstables. Virtual sstables will update their
+		// parent sstable's refs field through
+		// FileMetadata.VirtualState.Parent.atomic.refs.
+		//
+		// Note that we could just turn FileMetadata.atomic.refs to a pointer
+		// so that a virtual sstable can directly update the refs field in its
+		// own FileMetadata. But then we'll suffer an additional allocation on
+		// every file metadata creation which is unnecessary because most of
+		// file metadata will belong to physical sstables. Moreover, it also
+		// simplifies the code because FileMetadata struct creation for physical
+		// sstables will not require the caller to set the Refs field to a
+		// pointer to an allocated int.
+		refs int32
+
+		// latestRefs are the references to a physical sstable in the latest
+		// version. This reference can be direct through a physical sstable
+		// belonging to the latest version, or indirectly through virtual
+		// sstables which reference the physical sstables belonging to the
+		// latest version.
+		//
+		// INVARIANT: latestRefs <= refs.
+		latestRefs int32
 	}
 
 	// InitAllowedSeeks is the inital value of allowed seeks. This is used
 	// to re-set allowed seeks on a file once it hits 0.
 	InitAllowedSeeks int64
-
-	// Reference count for the file: incremented when a file is added to a
-	// version and decremented when the version is unreferenced. The file is
-	// obsolete when the reference count falls to zero.
-	Refs int32
 	// FileNum is the file number.
 	FileNum base.FileNum
-	// Size is the size of the file, in bytes.
+	// VirtualState is state which is set only for virtual sstables.
+	VirtualState *VirtualState
+	// Size is the size of the file, in bytes. Size is an approximate value for
+	// virtual sstables.
+	//
+	// TODO(bananabrick): Size is currently used in metrics, and for many key
+	// Pebble level heuristics. Make sure that the heuristics will still work
+	// appropriately with an approximate value of size.
 	Size uint64
 	// File creation time in seconds since the epoch (1970-01-01 00:00:00
 	// UTC). For ingested sstables, this corresponds to the time the file was
-	// ingested.
+	// ingested. For virtual sstables, this corresponds to the time when we make
+	// the decision to split an existing physical sstable into one or more
+	// virtual sstables.
 	CreationTime int64
-	// Smallest and largest sequence numbers in the table, across both point and
-	// range keys.
+	// Lower and upper bounds for the smallest and largest sequence numbers in
+	// the table, across both point and range keys. For physical sstables, these
+	// values are precise.
 	SmallestSeqNum uint64
 	LargestSeqNum  uint64
 	// SmallestPointKey and LargestPointKey are the inclusive bounds for the
@@ -176,6 +255,13 @@ type FileMetadata struct {
 	Smallest InternalKey
 	Largest  InternalKey
 	// Stats describe table statistics. Protected by DB.mu.
+	//
+	// For virtual sstables, set stats upon virtual sstable creation as
+	// asynchronous computation of stats is not currently supported.
+	//
+	// TODO(bananabrick): To support manifest replay for virtual sstables, we
+	// probably need to compute virtual sstable stats asynchronously. Otherwise,
+	// we'd have to write virtual sstable stats to the version edit.
 	Stats TableStats
 
 	SubLevel         int
@@ -224,6 +310,85 @@ type FileMetadata struct {
 	// key type (point or range) corresponds to the smallest and largest overall
 	// table bounds.
 	boundTypeSmallest, boundTypeLargest boundType
+}
+
+// BackingPhysicalFile can be used when the caller wants to operate on either
+// the metadata of a physical sstable, or the metadata of the parent sstable of
+// a virtual sstable.
+func (m *FileMetadata) BackingPhysicalFile() PhysicalFileMeta {
+	if m.Virtual() {
+		return m.VirtualState.Parent
+	}
+	return m.PhysicalMeta()
+}
+
+// ValidateVirtual should be called once the FileMetadata for a virtual sstable
+// is created to verify that the fields of the virtual sstable are sound.
+func (m *FileMetadata) ValidateVirtual() {
+	if m.VirtualState.ParentSSTNum != m.VirtualState.Parent.FileNum {
+		panic("pebble: virtual sstable parent file number mismatch")
+	}
+
+	if m.VirtualState.Parent.SmallestSeqNum != m.SmallestSeqNum {
+		panic("pebble: invalid smallest sequence number for virtual sstable")
+	}
+
+	if m.VirtualState.Parent.LargestSeqNum != m.LargestSeqNum {
+		panic("pebble: invalid largest sequence number for virtual sstable")
+	}
+}
+
+// Ref increments the ref count associated with FileMetadata. If the file is
+// virtual, then the parent file's ref count is incremented.
+func (m *FileMetadata) Ref() {
+	atomic.AddInt32(m.refPtr(), 1)
+}
+
+// Unref decrements the ref count associated with FileMetadata. If the file is
+// virtual, then the parent file's ref count is decremented.
+func (m *FileMetadata) Unref() int32 {
+	return atomic.AddInt32(m.refPtr(), -1)
+}
+
+// LatestRef increments the latest ref count associated with FileMetadata. If
+// the file is virtual, then the parent file's latest ref count is incremented.
+func (m *FileMetadata) LatestRef() {
+	atomic.AddInt32(m.latestRefPtr(), 1)
+}
+
+// LatestUnref decrements the latest ref count associated with FileMetadata. If
+// the file is virtual, then the parent file's latest ref count is decremented.
+func (m *FileMetadata) LatestUnref() int32 {
+	return atomic.AddInt32(m.latestRefPtr(), -1)
+}
+
+// LatestRefs returns the latest ref count associated with the FileMetadata. If
+// the file is virtual, then the parent file's latest ref count is returned.
+func (m *FileMetadata) LatestRefs() int32 {
+	return atomic.LoadInt32(m.latestRefPtr())
+}
+
+// latestRefPtr returns the pointer which should used to reference count a
+// FileMetadata.
+func (m *FileMetadata) latestRefPtr() *int32 {
+	if m.Virtual() {
+		return &m.VirtualState.Parent.Atomic.latestRefs
+	}
+	return &m.Atomic.latestRefs
+}
+
+// refPtr returns the pointer which should used to reference count a
+// FileMetadata.
+func (m *FileMetadata) refPtr() *int32 {
+	if m.Virtual() {
+		return &m.VirtualState.Parent.Atomic.refs
+	}
+	return &m.Atomic.refs
+}
+
+// Virtual returns true if the FileMetadata belongs to a virtual sstable.
+func (m *FileMetadata) Virtual() bool {
+	return m.VirtualState != nil
 }
 
 // SetCompactionState transitions this file's compaction state to the given
@@ -924,11 +1089,10 @@ func (v *Version) Ref() {
 // locked.
 func (v *Version) Unref() {
 	if atomic.AddInt32(&v.refs, -1) == 0 {
-		obsolete := v.unrefFiles()
 		l := v.list
 		l.mu.Lock()
 		l.Remove(v)
-		v.Deleted(obsolete)
+		v.Deleted(v.unrefFiles())
 		l.mu.Unlock()
 	}
 }
@@ -1099,20 +1263,30 @@ func (v *Version) CheckConsistency(dirname string, fs vfs.FS) error {
 	var buf bytes.Buffer
 	var args []interface{}
 
+	parentSSTs := make(map[base.FileNum]bool)
 	for level, files := range v.Levels {
 		iter := files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			path := base.MakeFilepath(fs, dirname, base.FileTypeTable, f.FileNum)
+			var fileNum base.FileNum
+			var fileSize uint64
+			if f.Virtual() && !parentSSTs[f.VirtualState.Parent.FileNum] {
+				parentSSTs[f.VirtualState.Parent.FileNum] = true
+				fileNum, fileSize =
+					f.VirtualState.Parent.FileNum, f.VirtualState.Parent.Size
+			} else if !f.Virtual() {
+				fileNum, fileSize = f.FileNum, f.Size
+			}
+			path := base.MakeFilepath(fs, dirname, base.FileTypeTable, fileNum)
 			info, err := fs.Stat(path)
 			if err != nil {
 				buf.WriteString("L%d: %s: %v\n")
-				args = append(args, errors.Safe(level), errors.Safe(f.FileNum), err)
+				args = append(args, errors.Safe(level), errors.Safe(fileNum), err)
 				continue
 			}
-			if info.Size() != int64(f.Size) {
+			if info.Size() != int64(fileSize) {
 				buf.WriteString("L%d: %s: file size mismatch (%s): %d (disk) != %d (MANIFEST)\n")
-				args = append(args, errors.Safe(level), errors.Safe(f.FileNum), path,
-					errors.Safe(info.Size()), errors.Safe(f.Size))
+				args = append(args, errors.Safe(level), errors.Safe(fileNum), path,
+					errors.Safe(info.Size()), errors.Safe(fileSize))
 				continue
 			}
 		}

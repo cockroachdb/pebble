@@ -30,6 +30,7 @@ const manifestMarkerName = `manifest`
 type bulkVersionEdit = manifest.BulkVersionEdit
 type deletedFileEntry = manifest.DeletedFileEntry
 type fileMetadata = manifest.FileMetadata
+type physicalMeta = manifest.PhysicalFileMeta
 type newFileEntry = manifest.NewFileEntry
 type version = manifest.Version
 type versionEdit = manifest.VersionEdit
@@ -83,8 +84,8 @@ type versionSet struct {
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
-	obsoleteFn        func(obsolete []*manifest.FileMetadata)
-	obsoleteTables    []*manifest.FileMetadata
+	obsoleteFn        func(obsolete []*fileMetadata)
+	obsoleteTables    []physicalMeta
 	obsoleteManifests []fileInfo
 	obsoleteOptions   []fileInfo
 
@@ -277,7 +278,10 @@ func (vs *versionSet) load(
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
 
-	newVersion, _, err := bve.Apply(nil, vs.cmp, opts.Comparer.FormatKey, opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate)
+	newVersion, _, err := bve.Apply(
+		nil, vs.cmp, opts.Comparer.FormatKey,
+		opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate,
+	)
 	if err != nil {
 		return err
 	}
@@ -466,7 +470,10 @@ func (vs *versionSet) logAndApply(
 		}
 
 		var err error
-		newVersion, zombies, err = bve.Apply(currentVersion, vs.cmp, vs.opts.Comparer.FormatKey, vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate)
+		newVersion, zombies, err = bve.Apply(
+			currentVersion, vs.cmp, vs.opts.Comparer.FormatKey,
+			vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
+		)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")
 		}
@@ -658,6 +665,9 @@ func (vs *versionSet) createManifest(
 				Level: level,
 				Meta:  meta,
 			})
+			if meta.Virtual() {
+				panic("pebble: not implemented")
+			}
 		}
 	}
 
@@ -729,6 +739,11 @@ func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 			iter := lm.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
 				m[f.FileNum] = struct{}{}
+				if f.Virtual() {
+					// Mark physical sstables associated with virtual sstables
+					// as live.
+					m[f.VirtualState.Parent.FileNum] = struct{}{}
+				}
 			}
 		}
 		if v == current {
@@ -738,12 +753,24 @@ func (vs *versionSet) addLiveFileNums(m map[FileNum]struct{}) {
 }
 
 // DB.mu must be held when addObsoleteLocked is called.
-func (vs *versionSet) addObsoleteLocked(obsolete []*manifest.FileMetadata) {
+func (vs *versionSet) addObsoleteLocked(obsolete []*fileMetadata) {
 	if len(obsolete) == 0 {
 		return
 	}
 
-	for _, fileMeta := range obsolete {
+	var trueObsolete []physicalMeta
+	dedup := make(map[base.FileNum]struct{})
+	// We can only add physical sstables to the obsoleteTables list.
+	for _, f := range obsolete {
+		backingFile := f.BackingPhysicalFile()
+		_, ok := dedup[backingFile.FileNum]
+		if !ok {
+			trueObsolete = append(trueObsolete, backingFile)
+			dedup[backingFile.FileNum] = struct{}{}
+		}
+	}
+
+	for _, fileMeta := range trueObsolete {
 		// Note that the obsolete tables are no longer zombie by the definition of
 		// zombie, but we leave them in the zombie tables map until they are
 		// deleted from disk.
@@ -751,13 +778,13 @@ func (vs *versionSet) addObsoleteLocked(obsolete []*manifest.FileMetadata) {
 			vs.opts.Logger.Fatalf("MANIFEST obsolete table %s not marked as zombie", fileMeta.FileNum)
 		}
 	}
-	vs.obsoleteTables = append(vs.obsoleteTables, obsolete...)
+	vs.obsoleteTables = append(vs.obsoleteTables, trueObsolete...)
 	vs.updateObsoleteTableMetricsLocked()
 }
 
 // addObsolete will acquire DB.mu, so DB.mu must not be held when this is
 // called.
-func (vs *versionSet) addObsolete(obsolete []*manifest.FileMetadata) {
+func (vs *versionSet) addObsolete(obsolete []*fileMetadata) {
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
 	vs.addObsoleteLocked(obsolete)

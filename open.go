@@ -832,7 +832,7 @@ func (d *DB) replayWAL(
 						[]*flushableEntry{entry},
 					)
 					for _, file := range c.flushing[0].flushable.(*ingestedFlushable).files {
-						ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: 0, Meta: file})
+						ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: 0, Meta: file.FileMetadata})
 					}
 				}
 				return toFlush, maxSeqNum, nil
