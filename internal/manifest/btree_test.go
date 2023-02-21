@@ -22,6 +22,7 @@ func newItem(k InternalKey) *FileMetadata {
 	m := (&FileMetadata{}).ExtendPointKeyBounds(
 		base.DefaultComparer.Compare, k, k,
 	)
+	m.InitPhysicalBacking()
 	return m
 }
 
@@ -596,6 +597,7 @@ func TestRandomizedBTree(t *testing.T) {
 	var metadataAlloc [maxFileNum]FileMetadata
 	for i := 0; i < len(metadataAlloc); i++ {
 		metadataAlloc[i].FileNum = base.FileNum(i)
+		metadataAlloc[i].InitPhysicalBacking()
 	}
 
 	// Use a btree comparator that sorts by file number to make it easier to

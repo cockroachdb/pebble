@@ -294,6 +294,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 					HasPointKeys:     false,
 					HasRangeKeys:     true,
 				}
+				meta.InitPhysicalBacking()
 				meta.ExtendRangeKeyBounds(base.DefaultComparer.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)
 				metas = append(metas, meta)
 			}
@@ -376,6 +377,7 @@ func TestLevelIter(t *testing.T) {
 						if len(pointKeys) != 0 {
 							meta.ExtendPointKeyBounds(base.DefaultComparer.Compare, pointKeys[0], pointKeys[len(pointKeys)-1])
 						}
+						meta.InitPhysicalBacking()
 						level = append(level, currentFile)
 						metas = append(metas, meta)
 						rangedels = append(rangedels, currentRangeDels)
@@ -403,6 +405,7 @@ func TestLevelIter(t *testing.T) {
 			meta := &manifest.FileMetadata{
 				FileNum: base.FileNum(len(level) + 1),
 			}
+			meta.InitPhysicalBacking()
 			level = append(level, currentFile)
 			rangedels = append(rangedels, currentRangeDels)
 			if len(currentFile) > 0 {

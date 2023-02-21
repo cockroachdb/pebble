@@ -843,7 +843,7 @@ func (d *DB) replayWAL(
 						[]*flushableEntry{entry},
 					)
 					for _, file := range c.flushing[0].flushable.(*ingestedFlushable).files {
-						ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: 0, Meta: file})
+						ve.NewFiles = append(ve.NewFiles, newFileEntry{Level: 0, Meta: file.FileMetadata})
 					}
 				}
 				return toFlush, maxSeqNum, nil
@@ -991,24 +991,32 @@ func checkConsistency(v *manifest.Version, dirname string, objProvider objstorag
 	var buf bytes.Buffer
 	var args []interface{}
 
+	dedup := make(map[base.FileNum]struct{})
 	for level, files := range v.Levels {
 		iter := files.Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			meta, err := objProvider.Lookup(base.FileTypeTable, f.FileNum)
+			backingState := f.FileBacking
+			if _, ok := dedup[backingState.FileNum]; ok {
+				continue
+			}
+			dedup[backingState.FileNum] = struct{}{}
+			fileNum := backingState.FileNum
+			fileSize := backingState.Size
+			meta, err := objProvider.Lookup(base.FileTypeTable, fileNum)
 			var size int64
 			if err == nil {
 				size, err = objProvider.Size(meta)
 			}
 			if err != nil {
 				buf.WriteString("L%d: %s: %v\n")
-				args = append(args, errors.Safe(level), errors.Safe(f.FileNum), err)
+				args = append(args, errors.Safe(level), errors.Safe(fileNum), err)
 				continue
 			}
 
-			if size != int64(f.Size) {
+			if size != int64(fileSize) {
 				buf.WriteString("L%d: %s: object size mismatch (%s): %d (disk) != %d (MANIFEST)\n")
-				args = append(args, errors.Safe(level), errors.Safe(f.FileNum), objProvider.Path(meta),
-					errors.Safe(size), errors.Safe(f.Size))
+				args = append(args, errors.Safe(level), errors.Safe(fileNum), objProvider.Path(meta),
+					errors.Safe(size), errors.Safe(fileSize))
 				continue
 			}
 		}

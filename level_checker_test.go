@@ -141,6 +141,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				m := (&fileMetadata{
 					FileNum: fileNum,
 				}).ExtendPointKeyBounds(cmp, smallestKey, largestKey)
+				m.InitPhysicalBacking()
 				*li = append(*li, m)
 
 				i++
