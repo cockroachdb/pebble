@@ -74,6 +74,7 @@ func TestIkeyRange(t *testing.T) {
 				m := (&FileMetadata{
 					FileNum: base.FileNum(i),
 				}).ExtendPointKeyBounds(cmp, ikey(s[0:1]), ikey(s[2:3]))
+				m.Init()
 				f = append(f, m)
 			}
 		}
@@ -128,6 +129,7 @@ func TestContains(t *testing.T) {
 			FileNum: fileNum,
 			Size:    size,
 		}).ExtendPointKeyBounds(cmp, smallest, largest)
+		m.Init()
 		return m
 	}
 	m00 := newFileMeta(

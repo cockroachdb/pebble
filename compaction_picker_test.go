@@ -66,6 +66,7 @@ func loadVersion(d *datadriven.TestData) (*version, *Options, [numLevels]int64, 
 					LargestSeqNum:  key.SeqNum(),
 					Size:           1,
 				}).ExtendPointKeyBounds(opts.Comparer.Compare, key, key)
+				m.Init()
 				if size >= 100 {
 					// If the requested size of the level is very large only add a single
 					// file in order to avoid massive blow-up in the number of files in
@@ -364,6 +365,7 @@ func TestCompactionPickerL0(t *testing.T) {
 		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		m.Init()
 		return m, nil
 	}
 
@@ -595,6 +597,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			base.ParseInternalKey(strings.TrimSpace(parts[0])),
 			base.ParseInternalKey(strings.TrimSpace(parts[1])),
 		)
+		m.Init()
 		for _, p := range fields[1:] {
 			if strings.HasPrefix(p, "size=") {
 				v, err := strconv.Atoi(strings.TrimPrefix(p, "size="))
@@ -812,6 +815,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 			base.ParseInternalKey(strings.TrimSpace(parts[0])),
 			base.ParseInternalKey(strings.TrimSpace(parts[1])),
 		)
+		m.Init()
 		for _, p := range fields[1:] {
 			if strings.HasPrefix(p, "size=") {
 				v, err := strconv.Atoi(strings.TrimPrefix(p, "size="))
@@ -984,6 +988,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 		)
 		m.SmallestSeqNum = m.Smallest.SeqNum()
 		m.LargestSeqNum = m.Largest.SeqNum()
+		m.Init()
 		return m
 	}
 
@@ -1120,6 +1125,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 			base.ParseInternalKey(parts[0]),
 			base.ParseInternalKey(parts[1]),
 		)
+		m.Init()
 		return m
 	}
 
@@ -1203,6 +1209,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 			base.ParseInternalKey(strings.TrimSpace(parts[0])),
 			base.ParseInternalKey(strings.TrimSpace(parts[1])),
 		)
+		m.Init()
 		for _, p := range fields[1:] {
 			if strings.HasPrefix(p, "size=") {
 				v, err := strconv.Atoi(strings.TrimPrefix(p, "size="))
@@ -1342,6 +1349,7 @@ func TestCompactionPickerCompensatedSize(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run("", func(t *testing.T) {
 			f := &fileMetadata{Size: tc.size}
+			f.Init()
 			f.Stats.PointDeletionsBytesEstimate = tc.pointDelEstimateBytes
 			f.Stats.RangeDeletionsBytesEstimate = tc.rangeDelEstimateBytes
 			gotBytes := compensatedSize(f, tc.pointTombstoneWeight)

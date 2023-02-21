@@ -186,7 +186,10 @@ func (d *DB) loadNewFileStats(
 			continue
 		}
 
-		stats, newHints, err := d.loadTableStats(rs.current, nf.Level, nf.Meta)
+		stats, newHints, err := d.loadTableStats(
+			rs.current, nf.Level,
+			nf.Meta.PhysicalMeta(),
+		)
 		if err != nil {
 			d.opts.EventListener.BackgroundError(err)
 			continue
@@ -233,7 +236,9 @@ func (d *DB) scanReadStateTableStats(
 				return fill, hints, moreRemain
 			}
 
-			stats, newHints, err := d.loadTableStats(rs.current, l, f)
+			stats, newHints, err := d.loadTableStats(
+				rs.current, l, f.PhysicalMeta(),
+			)
 			if err != nil {
 				// Set `moreRemain` so we'll try again.
 				moreRemain = true
@@ -250,31 +255,38 @@ func (d *DB) scanReadStateTableStats(
 	return fill, hints, moreRemain
 }
 
+// loadTableStats currently only supports stats collection for physical
+// sstables.
+//
+// TODO(bananabrick): Support stats collection for virtual sstables.
 func (d *DB) loadTableStats(
-	v *version, level int, meta *fileMetadata,
+	v *version, level int, meta physicalMeta,
 ) (manifest.TableStats, []deleteCompactionHint, error) {
 	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
-	err := d.tableCache.withReader(meta, func(r *sstable.Reader) (err error) {
-		stats.NumEntries = r.Properties.NumEntries
-		stats.NumDeletions = r.Properties.NumDeletions
-		if r.Properties.NumPointDeletions() > 0 {
-			if err = d.loadTablePointKeyStats(r, v, level, meta, &stats); err != nil {
-				return
+	err := d.tableCache.withReader(
+		meta.FileMetadata, func(r *sstable.Reader) (err error) {
+			stats.NumEntries = r.Properties.NumEntries
+			stats.NumDeletions = r.Properties.NumDeletions
+			if r.Properties.NumPointDeletions() > 0 {
+				if err = d.loadTablePointKeyStats(r, v, level, meta, &stats); err != nil {
+					return
+				}
 			}
-		}
-		if r.Properties.NumRangeDeletions > 0 || r.Properties.NumRangeKeyDels > 0 {
-			if compactionHints, err = d.loadTableRangeDelStats(r, v, level, meta, &stats); err != nil {
-				return
+			if r.Properties.NumRangeDeletions > 0 || r.Properties.NumRangeKeyDels > 0 {
+				if compactionHints, err = d.loadTableRangeDelStats(
+					r, v, level, meta, &stats,
+				); err != nil {
+					return
+				}
 			}
-		}
-		// TODO(travers): Once we have real-world data, consider collecting
-		// additional stats that may provide improved heuristics for compaction
-		// picking.
-		stats.NumRangeKeySets = r.Properties.NumRangeKeySets
-		stats.ValueBlocksSize = r.Properties.ValueBlocksSize
-		return
-	})
+			// TODO(travers): Once we have real-world data, consider collecting
+			// additional stats that may provide improved heuristics for compaction
+			// picking.
+			stats.NumRangeKeySets = r.Properties.NumRangeKeySets
+			stats.ValueBlocksSize = r.Properties.ValueBlocksSize
+			return
+		})
 	if err != nil {
 		return stats, nil, err
 	}
@@ -284,7 +296,7 @@ func (d *DB) loadTableStats(
 // loadTablePointKeyStats calculates the point key statistics for the given
 // table. The provided manifest.TableStats are updated.
 func (d *DB) loadTablePointKeyStats(
-	r *sstable.Reader, v *version, level int, meta *fileMetadata, stats *manifest.TableStats,
+	r *sstable.Reader, v *version, level int, meta physicalMeta, stats *manifest.TableStats,
 ) error {
 	// TODO(jackson): If the file has a wide keyspace, the average
 	// value size beneath the entire file might not be representative
@@ -304,9 +316,9 @@ func (d *DB) loadTablePointKeyStats(
 // loadTableRangeDelStats calculates the range deletion and range key deletion
 // statistics for the given table.
 func (d *DB) loadTableRangeDelStats(
-	r *sstable.Reader, v *version, level int, meta *fileMetadata, stats *manifest.TableStats,
+	r *sstable.Reader, v *version, level int, meta physicalMeta, stats *manifest.TableStats,
 ) ([]deleteCompactionHint, error) {
-	iter, err := newCombinedDeletionKeyspanIter(d.opts.Comparer, r, meta)
+	iter, err := newCombinedDeletionKeyspanIter(d.opts.Comparer, r, meta.FileMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +382,7 @@ func (d *DB) loadTableRangeDelStats(
 			hintType:                hintType,
 			start:                   make([]byte, len(start)),
 			end:                     make([]byte, len(end)),
-			tombstoneFile:           meta,
+			tombstoneFile:           meta.FileMetadata,
 			tombstoneLevel:          level,
 			tombstoneLargestSeqNum:  s.LargestSeqNum(),
 			tombstoneSmallestSeqNum: s.SmallestSeqNum(),
@@ -384,7 +396,7 @@ func (d *DB) loadTableRangeDelStats(
 }
 
 func (d *DB) averageEntrySizeBeneath(
-	v *version, level int, meta *fileMetadata,
+	v *version, level int, meta physicalMeta,
 ) (avgKeySize, avgValueSize uint64, err error) {
 	// Find all files in lower levels that overlap with meta,
 	// summing their value sizes and entry counts.
@@ -394,13 +406,23 @@ func (d *DB) averageEntrySizeBeneath(
 			meta.Largest.UserKey, meta.Largest.IsExclusiveSentinel())
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
-			err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
-				fileSum += file.Size
-				entryCount += r.Properties.NumEntries
-				keySum += r.Properties.RawKeySize
-				valSum += r.Properties.RawValueSize
-				return nil
-			})
+			var err error
+			if file.Virtual {
+				// TODO(bananabrick): Once we have Properties for the virtual
+				// sstables, use those here.
+				panic("pebble: not implemented")
+			} else {
+				err = d.tableCache.withReader(
+					file,
+					func(r *sstable.Reader) (err error) {
+						fileSum += file.Size
+						entryCount += r.Properties.NumEntries
+						keySum += r.Properties.RawKeySize
+						valSum += r.Properties.RawValueSize
+						return nil
+					})
+			}
+
 			if err != nil {
 				return 0, 0, err
 			}
@@ -446,6 +468,16 @@ func (d *DB) estimateReclaimedSizeBeneath(
 		overlaps := v.Overlaps(l, d.cmp, start, end, true /* exclusiveEnd */)
 		iter := overlaps.Iter()
 		for file := iter.First(); file != nil; file = iter.Next() {
+			// Ignore virtual sstables for now. We're not necessarily reclaiming
+			// any disk space by compacting these. We could be if this file is
+			// the last virtual sstable which was created from a physical
+			// sstable.
+			//
+			// TODO(bananabrick): See if we can include virtual sstables here to
+			// get a more accurate estimate.
+			if file.Virtual {
+				continue
+			}
 			startCmp := d.cmp(start, file.Smallest.UserKey)
 			endCmp := d.cmp(file.Largest.UserKey, end)
 			if startCmp <= 0 && (endCmp < 0 || endCmp == 0 && file.Largest.IsExclusiveSentinel()) {
@@ -502,10 +534,11 @@ func (d *DB) estimateReclaimedSizeBeneath(
 					continue
 				}
 				var size uint64
-				err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
-					size, err = r.EstimateDiskUsage(start, end)
-					return err
-				})
+				err := d.tableCache.withReader(
+					file, func(r *sstable.Reader) (err error) {
+						size, err = r.EstimateDiskUsage(start, end)
+						return err
+					})
 				if err != nil {
 					return 0, hintSeqNum, err
 				}
@@ -516,7 +549,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 	return estimate, hintSeqNum, nil
 }
 
-func maybeSetStatsFromProperties(meta *fileMetadata, props *sstable.Properties) bool {
+func maybeSetStatsFromProperties(meta physicalMeta, props *sstable.Properties) bool {
 	// If a table contains range deletions or range key deletions, we defer the
 	// stats collection. There are two main reasons for this:
 	//
@@ -730,7 +763,8 @@ func newCombinedDeletionKeyspanIter(
 		// Truncate tombstones to the containing file's bounds if necessary.
 		// See docs/range_deletions.md for why this is necessary.
 		iter = keyspan.Truncate(
-			comparer.Compare, iter, m.Smallest.UserKey, m.Largest.UserKey, nil, nil,
+			comparer.Compare, iter, m.Smallest.UserKey, m.Largest.UserKey,
+			nil, nil,
 		)
 		mIter.AddLevel(iter)
 	}
