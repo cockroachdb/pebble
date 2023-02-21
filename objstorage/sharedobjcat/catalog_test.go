@@ -112,9 +112,10 @@ func TestCatalog(t *testing.T) {
 					td.Fatalf(t, "unknown batch command: %s", tokens[0])
 				}
 			}
-			if err := cat.ApplyBatch(&b); err != nil {
+			if err := cat.ApplyBatch(b); err != nil {
 				return fmt.Sprintf("error applying batch: %v", err)
 			}
+			b.Reset()
 			return memLog.String()
 
 		case "random-batches":
@@ -145,9 +146,10 @@ func TestCatalog(t *testing.T) {
 						CreatorFileNum: base.FileNum(rand.Uint64()),
 					})
 				}
-				if err := cat.ApplyBatch(&b); err != nil {
+				if err := cat.ApplyBatch(b); err != nil {
 					td.Fatalf(t, "error applying batch: %v", err)
 				}
+				b.Reset()
 			}
 			return memLog.String()
 

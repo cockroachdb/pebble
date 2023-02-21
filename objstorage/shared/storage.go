@@ -27,6 +27,10 @@ type Storage interface {
 	// implementation may buffer written data until Close and only then return
 	// an error, or Write may return an opaque io.EOF with the underlying cause
 	// returned by the subsequent Close().
+	//
+	// TODO(radu): if we encounter some unrelated error while writing to the
+	// WriteCloser, we'd want to abort the whole thing rather than letting Close
+	// finalize the upload.
 	CreateObject(basename string) (io.WriteCloser, error)
 
 	// List enumerates files within the supplied prefix, returning a list of
@@ -45,8 +49,13 @@ type Storage interface {
 	List(prefix, delimiter string) ([]string, error)
 
 	// Delete removes the named object from the store.
+	//
+	// TODO(radu): do we get an error when the object isn't there? How can we
+	// check for that error?
 	Delete(basename string) error
 
-	// Size returns the length of the named object in bytes.
+	// Size returns the length of the named object in bytesWritten.
+	//
+	// TODO(radu): same as above - how can we tell if it's a "no such object" error?
 	Size(basename string) (int64, error)
 }
