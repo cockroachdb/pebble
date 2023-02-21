@@ -467,7 +467,8 @@ type DB struct {
 			// job to validate one or more sstables.
 			cond sync.Cond
 			// pending is a slice of metadata for sstables waiting to be
-			// validated.
+			// validated. Only physical sstables should be added to the pending
+			// queue.
 			pending []newFileEntry
 			// validating is set to true when validation is running.
 			validating bool
@@ -1828,8 +1829,12 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 		j := 0
 		for m := iter.First(); m != nil; m = iter.Next() {
 			destTables[j] = SSTableInfo{TableInfo: m.TableInfo()}
-			if opt.withProperties {
-				p, err := d.tableCache.getTableProperties(m)
+			if opt.withProperties && !m.Virtual() {
+				// The withProperties option isn't used by Cockroach, so it
+				// should be okay to skip virtual sstable support here.
+				p, err := d.tableCache.getTableProperties(
+					m.PhysicalMeta(),
+				)
 				if err != nil {
 					return nil, err
 				}
@@ -1887,10 +1892,22 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			} else if d.opts.Comparer.Compare(file.Smallest.UserKey, end) <= 0 &&
 				d.opts.Comparer.Compare(start, file.Largest.UserKey) <= 0 {
 				var size uint64
-				err := d.tableCache.withReader(file, func(r *sstable.Reader) (err error) {
-					size, err = r.EstimateDiskUsage(start, end)
-					return err
-				})
+				var err error
+				if file.Virtual() {
+					// TODO(bananabrick): Fix after we can determine disk usage
+					// for virtual sstables, or use the the disk usage of
+					// the backing physical sstable, which is more accurate
+					// anyway.
+					panic("pebble: not implemented")
+				} else {
+					err = d.tableCache.withReader(
+						file,
+						func(r *sstable.Reader) (err error) {
+							size, err = r.EstimateDiskUsage(start, end)
+							return err
+						},
+					)
+				}
 				if err != nil {
 					return 0, err
 				}
