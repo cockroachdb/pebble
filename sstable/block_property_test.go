@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"math"
@@ -927,7 +928,7 @@ func TestBlockProperties(t *testing.T) {
 
 				// Enumerate point key data blocks encoded into the index.
 				if f != nil {
-					indexH, err := r.readIndex(nil /* stats */)
+					indexH, err := r.readIndex(context.Background(), nil)
 					if err != nil {
 						return err.Error()
 					}
@@ -1268,7 +1269,7 @@ func runBlockPropertiesBuildCmd(td *datadriven.TestData) (r *Reader, out string)
 }
 
 func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
-	bh, err := r.readIndex(nil /* stats */)
+	bh, err := r.readIndex(context.Background(), nil)
 	if err != nil {
 		return err.Error()
 	}
@@ -1315,8 +1316,7 @@ func runBlockPropsCmd(r *Reader, td *datadriven.TestData) string {
 		// block that bhp points to, along with its block properties.
 		if twoLevelIndex {
 			subiter := &blockIter{}
-			subIndex, err := r.readBlock(
-				bhp.BlockHandle, nil /* transform */, nil /* readaheadState */, nil /* stats */)
+			subIndex, err := r.readBlock(context.Background(), bhp.BlockHandle, nil, nil, nil)
 			if err != nil {
 				return err.Error()
 			}

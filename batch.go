@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -898,10 +899,16 @@ func (b *Batch) SetRepr(data []byte) error {
 // later mutations. Its view can be refreshed via RefreshBatchSnapshot or
 // SetOptions().
 func (b *Batch) NewIter(o *IterOptions) *Iterator {
+	return b.NewIterWithContext(context.Background(), o)
+}
+
+// NewIterWithContext is like NewIter, and additionally accepts a context for
+// tracing.
+func (b *Batch) NewIterWithContext(ctx context.Context, o *IterOptions) *Iterator {
 	if b.index == nil {
 		return &Iterator{err: ErrNotIndexed}
 	}
-	return b.db.newIter(b, nil /* snapshot */, o)
+	return b.db.newIter(ctx, b, nil /* snapshot */, o)
 }
 
 // newInternalIter creates a new internalIterator that iterates over the

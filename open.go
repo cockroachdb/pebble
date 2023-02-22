@@ -62,6 +62,11 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	if err := opts.Validate(); err != nil {
 		return nil, err
 	}
+	if opts.LoggerAndTracer == nil {
+		opts.LoggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
+	} else {
+		opts.Logger = opts.LoggerAndTracer
+	}
 
 	// In all error cases, we return db = nil; this is used by various
 	// deferred cleanups.

@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"io"
 	"math"
 
@@ -44,10 +45,16 @@ func (s *Snapshot) Get(key []byte) ([]byte, io.Closer, error) {
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
 func (s *Snapshot) NewIter(o *IterOptions) *Iterator {
+	return s.NewIterWithContext(context.Background(), o)
+}
+
+// NewIterWithContext is like NewIter, and additionally accepts a context for
+// tracing.
+func (s *Snapshot) NewIterWithContext(ctx context.Context, o *IterOptions) *Iterator {
 	if s.db == nil {
 		panic(ErrClosed)
 	}
-	return s.db.newIter(nil /* batch */, s, o)
+	return s.db.newIter(ctx, nil /* batch */, s, o)
 }
 
 // ScanInternal scans all internal keys within the specified bounds, truncating

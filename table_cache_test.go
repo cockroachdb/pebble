@@ -7,6 +7,7 @@ package pebble
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -450,10 +451,7 @@ func testTableCacheRandomAccess(t *testing.T, concurrent bool) {
 			rngMu.Lock()
 			fileNum, sleepTime := rng.Intn(tableCacheTestNumTables), rng.Intn(1000)
 			rngMu.Unlock()
-			iter, _, err := c.newIters(
-				&fileMetadata{FileNum: FileNum(fileNum)},
-				nil, /* iter options */
-				internalIterOpts{})
+			iter, _, err := c.newIters(context.Background(), &fileMetadata{FileNum: FileNum(fileNum)}, nil, internalIterOpts{})
 			if err != nil {
 				errc <- errors.Errorf("i=%d, fileNum=%d: find: %v", i, fileNum, err)
 				return
@@ -517,10 +515,7 @@ func testTableCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 					&fileMetadata{FileNum: FileNum(j)},
 					nil /* iter options */)
 			} else {
-				iter, _, err = c.newIters(
-					&fileMetadata{FileNum: FileNum(j)},
-					nil, /* iter options */
-					internalIterOpts{})
+				iter, _, err = c.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
 			}
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -564,17 +559,11 @@ func TestSharedTableCacheFrequentlyUsed(t *testing.T) {
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % tableCacheTestNumTables, pinned1} {
-			iter1, _, err := c1.newIters(
-				&fileMetadata{FileNum: FileNum(j)},
-				nil, /* iter options */
-				internalIterOpts{})
+			iter1, _, err := c1.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
-			iter2, _, err := c2.newIters(
-				&fileMetadata{FileNum: FileNum(j)},
-				nil, /* iter options */
-				internalIterOpts{})
+			iter2, _, err := c2.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
 			if err != nil {
 				t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 			}
@@ -625,10 +614,7 @@ func testTableCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 				&fileMetadata{FileNum: FileNum(j)},
 				nil /* iter options */)
 		} else {
-			iter, _, err = c.newIters(
-				&fileMetadata{FileNum: FileNum(j)},
-				nil, /* iter options */
-				internalIterOpts{})
+			iter, _, err = c.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
 		}
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
@@ -687,18 +673,12 @@ func TestSharedTableCacheEvictions(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 	for i := 0; i < N; i++ {
 		j := rng.Intn(tableCacheTestNumTables)
-		iter1, _, err := c1.newIters(
-			&fileMetadata{FileNum: FileNum(j)},
-			nil, /* iter options */
-			internalIterOpts{})
+		iter1, _, err := c1.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
 
-		iter2, _, err := c2.newIters(
-			&fileMetadata{FileNum: FileNum(j)},
-			nil, /* iter options */
-			internalIterOpts{})
+		iter2, _, err := c2.newIters(context.Background(), &fileMetadata{FileNum: FileNum(j)}, nil, internalIterOpts{})
 		if err != nil {
 			t.Fatalf("i=%d, j=%d: find: %v", i, j, err)
 		}
@@ -757,10 +737,7 @@ func TestTableCacheIterLeak(t *testing.T) {
 	c, _, err := newTableCacheContainerTest(nil, "")
 	require.NoError(t, err)
 
-	iter, _, err := c.newIters(
-		&fileMetadata{FileNum: 0},
-		nil, /* iter options */
-		internalIterOpts{})
+	iter, _, err := c.newIters(context.Background(), &fileMetadata{FileNum: 0}, nil, internalIterOpts{})
 	require.NoError(t, err)
 
 	if err := c.close(); err == nil {
@@ -783,10 +760,7 @@ func TestSharedTableCacheIterLeak(t *testing.T) {
 	require.NoError(t, err)
 	tc.Unref()
 
-	iter, _, err := c1.newIters(
-		&fileMetadata{FileNum: 0},
-		nil, /* iter options */
-		internalIterOpts{})
+	iter, _, err := c1.newIters(context.Background(), &fileMetadata{FileNum: 0}, nil, internalIterOpts{})
 	require.NoError(t, err)
 
 	if err := c1.close(); err == nil {
@@ -820,18 +794,12 @@ func TestTableCacheRetryAfterFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	fs.setOpenError(true /* enabled */)
-	if _, _, err := c.newIters(
-		&fileMetadata{FileNum: 0},
-		nil, /* iter options */
-		internalIterOpts{}); err == nil {
+	if _, _, err := c.newIters(context.Background(), &fileMetadata{FileNum: 0}, nil, internalIterOpts{}); err == nil {
 		t.Fatalf("expected failure, but found success")
 	}
 	fs.setOpenError(false /* enabled */)
 	var iter internalIterator
-	iter, _, err = c.newIters(
-		&fileMetadata{FileNum: 0},
-		nil, /* iter options */
-		internalIterOpts{})
+	iter, _, err = c.newIters(context.Background(), &fileMetadata{FileNum: 0}, nil, internalIterOpts{})
 	require.NoError(t, err)
 	require.NoError(t, iter.Close())
 	fs.validate(t, c, nil)
@@ -894,7 +862,7 @@ func TestTableCacheClockPro(t *testing.T) {
 	// NB: The table cache size of 200 is required for the expected test values.
 	cache.init(200)
 	dbOpts := &tableCacheOpts{}
-	dbOpts.logger = opts.Logger
+	dbOpts.loggerAndTracer = &base.LoggerWithNoopTracer{Logger: opts.Logger}
 	dbOpts.cacheID = 0
 	dbOpts.objProvider = objProvider
 	dbOpts.opts = opts.MakeReaderOptions()

@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -514,7 +515,9 @@ func ingestTargetLevel(
 			continue
 		}
 
-		iter, rangeDelIter, err := newIters(meta0, nil, internalIterOpts{})
+		// TODO(sumeer): ingest is a user-facing operation, so we should accept a
+		// context and plumb it through, for tracing.
+		iter, rangeDelIter, err := newIters(context.Background(), meta0, nil, internalIterOpts{})
 		if err != nil {
 			return 0, err
 		}

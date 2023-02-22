@@ -11,3 +11,6 @@ type Logger = base.Logger
 
 // DefaultLogger logs to the Go stdlib logs.
 var DefaultLogger = base.DefaultLogger
+
+// LoggerAndTracer defines an interface for logging and tracing.
+type LoggerAndTracer = base.LoggerAndTracer

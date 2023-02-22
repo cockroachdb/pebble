@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
@@ -80,6 +81,18 @@ func NewExternalIter(
 	files [][]sstable.ReadableFile,
 	extraOpts ...ExternalIterOption,
 ) (it *Iterator, err error) {
+	return NewExternalIterWithContext(context.Background(), o, iterOpts, files, extraOpts...)
+}
+
+// NewExternalIterWithContext is like NewExternalIter, and additionally
+// accepts a context for tracing.
+func NewExternalIterWithContext(
+	ctx context.Context,
+	o *Options,
+	iterOpts *IterOptions,
+	files [][]sstable.ReadableFile,
+	extraOpts ...ExternalIterOption,
+) (it *Iterator, err error) {
 	if iterOpts != nil {
 		if err := validateExternalIterOpts(iterOpts); err != nil {
 			return nil, err
@@ -119,6 +132,7 @@ func NewExternalIter(
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
 	*dbi = Iterator{
+		ctx:                 ctx,
 		alloc:               buf,
 		merge:               o.Merger.Merge,
 		comparer:            *o.Comparer,
@@ -130,7 +144,9 @@ func NewExternalIter(
 		// Add the readers to the Iterator so that Close closes them, and
 		// SetOptions can re-construct iterators from them.
 		externalReaders: readers,
-		newIters: func(f *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
+		newIters: func(
+			ctx context.Context, f *manifest.FileMetadata, opts *IterOptions,
+			internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
 			// NB: External iterators are currently constructed without any
 			// `levelIters`. newIters should never be called. When we support
 			// organizing multiple non-overlapping files into a single level
@@ -148,7 +164,7 @@ func NewExternalIter(
 	for i := range extraOpts {
 		extraOpts[i].iterApply(dbi)
 	}
-	finishInitializingExternal(dbi)
+	finishInitializingExternal(ctx, dbi)
 	return dbi, nil
 }
 
@@ -168,7 +184,7 @@ func validateExternalIterOpts(iterOpts *IterOptions) error {
 	return nil
 }
 
-func createExternalPointIter(it *Iterator) (internalIterator, error) {
+func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterator, error) {
 	// TODO(jackson): In some instances we could generate fewer levels by using
 	// L0Sublevels code to organize nonoverlapping files into the same level.
 	// This would allow us to use levelIters and keep a smaller set of data and
@@ -193,7 +209,8 @@ func createExternalPointIter(it *Iterator) (internalIterator, error) {
 				pointIter    internalIterator
 				err          error
 			)
-			pointIter, err = r.NewIterWithBlockPropertyFilters(
+			pointIter, err = r.NewIterWithBlockPropertyFiltersAndContext(
+				ctx,
 				it.opts.LowerBound,
 				it.opts.UpperBound,
 				nil,   /* BlockPropertiesFilterer */
@@ -255,8 +272,8 @@ func createExternalPointIter(it *Iterator) (internalIterator, error) {
 	return &it.alloc.merging, nil
 }
 
-func finishInitializingExternal(it *Iterator) {
-	pointIter, err := createExternalPointIter(it)
+func finishInitializingExternal(ctx context.Context, it *Iterator) {
+	pointIter, err := createExternalPointIter(ctx, it)
 	if err != nil {
 		it.pointIter = &errorIter{err: err}
 	} else {

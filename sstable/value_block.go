@@ -5,6 +5,7 @@
 package sstable
 
 import (
+	"context"
 	"encoding/binary"
 	"io"
 	"sync"
@@ -658,7 +659,9 @@ func (ukb *UserKeyPrefixBound) IsEmpty() bool {
 }
 
 type blockProviderWhenOpen interface {
-	readBlockForVBR(h BlockHandle, stats *base.InternalIteratorStats) (cache.Handle, error)
+	readBlockForVBR(
+		ctx context.Context, h BlockHandle, stats *base.InternalIteratorStats,
+	) (cache.Handle, error)
 }
 
 type blockProviderWhenClosed struct {
@@ -678,9 +681,9 @@ func (bpwc *blockProviderWhenClosed) close() {
 }
 
 func (bpwc blockProviderWhenClosed) readBlockForVBR(
-	h BlockHandle, stats *base.InternalIteratorStats,
+	ctx context.Context, h BlockHandle, stats *base.InternalIteratorStats,
 ) (cache.Handle, error) {
-	return bpwc.r.readBlock(h, nil, nil, stats)
+	return bpwc.r.readBlock(ctx, h, nil, nil, stats)
 }
 
 // ReaderProvider supports the implementation of blockProviderWhenClosed.
@@ -710,6 +713,7 @@ func (trp TrivialReaderProvider) Close() {}
 // blocks. It is used when the sstable was written with
 // Properties.ValueBlocksAreEnabled.
 type valueBlockReader struct {
+	ctx    context.Context
 	bpOpen blockProviderWhenOpen
 	rp     ReaderProvider
 	vbih   valueBlocksIndexHandle
@@ -822,7 +826,7 @@ func (r *valueBlockReader) getValueInternal(handle []byte, valLen int32) (val []
 	vh := decodeRemainingValueHandle(handle)
 	vh.valueLen = uint32(valLen)
 	if r.vbiBlock == nil {
-		ch, err := r.bpOpen.readBlockForVBR(r.vbih.h, r.stats)
+		ch, err := r.bpOpen.readBlockForVBR(r.ctx, r.vbih.h, r.stats)
 		if err != nil {
 			return nil, err
 		}
@@ -834,7 +838,7 @@ func (r *valueBlockReader) getValueInternal(handle []byte, valLen int32) (val []
 		if err != nil {
 			return nil, err
 		}
-		vbCacheHandle, err := r.bpOpen.readBlockForVBR(vbh, r.stats)
+		vbCacheHandle, err := r.bpOpen.readBlockForVBR(r.ctx, vbh, r.stats)
 		if err != nil {
 			return nil, err
 		}
