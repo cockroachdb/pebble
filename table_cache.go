@@ -65,11 +65,11 @@ type tableCacheOpts struct {
 		iterCount *int32
 	}
 
-	logger        Logger
-	cacheID       uint64
-	objProvider   *objstorage.Provider
-	opts          sstable.ReaderOptions
-	filterMetrics *FilterMetrics
+	loggerAndTracer LoggerAndTracer
+	cacheID         uint64
+	objProvider     *objstorage.Provider
+	opts            sstable.ReaderOptions
+	filterMetrics   *FilterMetrics
 }
 
 // tableCacheContainer contains the table cache and
@@ -101,7 +101,7 @@ func newTableCacheContainer(
 
 	t := &tableCacheContainer{}
 	t.tableCache = tc
-	t.dbOpts.logger = opts.Logger
+	t.dbOpts.loggerAndTracer = opts.LoggerAndTracer
 	t.dbOpts.cacheID = cacheID
 	t.dbOpts.objProvider = objProvider
 	t.dbOpts.opts = opts.MakeReaderOptions()
@@ -813,7 +813,7 @@ func (c *tableCacheShard) evict(fileNum FileNum, dbOpts *tableCacheOpts, allowLe
 		if v != nil {
 			if !allowLeak {
 				if t := atomic.AddInt32(&v.refCount, -1); t != 0 {
-					dbOpts.logger.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
+					dbOpts.loggerAndTracer.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
 				}
 			}
 			c.releasing.Add(1)
