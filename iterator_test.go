@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -1064,8 +1065,10 @@ func TestIteratorSeekOpt(t *testing.T) {
 			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			oldNewIters := d.newIters
-			d.newIters = func(file *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
-				iter, rangeIter, err := oldNewIters(file, opts, internalOpts)
+			d.newIters = func(
+				ctx context.Context, file *manifest.FileMetadata, opts *IterOptions,
+				internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
+				iter, rangeIter, err := oldNewIters(ctx, file, opts, internalOpts)
 				iterWrapped := &iterSeekOptWrapper{
 					internalIterator:      iter,
 					seekGEUsingNext:       &seekGEUsingNext,
@@ -1705,6 +1708,7 @@ func TestIteratorStatsMerge(t *testing.T) {
 		InternalStats: InternalIteratorStats{
 			BlockBytes:                     9,
 			BlockBytesInCache:              10,
+			CacheMissFetchDuration:         3*time.Millisecond,
 			KeyBytes:                       11,
 			ValueBytes:                     12,
 			PointCount:                     13,
@@ -1727,6 +1731,7 @@ func TestIteratorStatsMerge(t *testing.T) {
 		InternalStats: InternalIteratorStats{
 			BlockBytes:                     9,
 			BlockBytesInCache:              10,
+			CacheMissFetchDuration:         4*time.Millisecond,
 			KeyBytes:                       11,
 			ValueBytes:                     12,
 			PointCount:                     13,
@@ -1750,6 +1755,7 @@ func TestIteratorStatsMerge(t *testing.T) {
 		InternalStats: InternalIteratorStats{
 			BlockBytes:                     18,
 			BlockBytesInCache:              20,
+			CacheMissFetchDuration:         7*time.Millisecond,
 			KeyBytes:                       22,
 			ValueBytes:                     24,
 			PointCount:                     26,

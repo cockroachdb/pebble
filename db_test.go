@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -1285,6 +1287,90 @@ func TestSSTables(t *testing.T) {
 			require.NotNil(t, info.Properties)
 		}
 	}
+}
+
+type testTracer struct {
+	enabledOnlyForNonBackgroundContext bool
+	buf                                strings.Builder
+}
+
+func (t *testTracer) Infof(format string, args ...interface{})  {}
+func (t *testTracer) Fatalf(format string, args ...interface{}) {}
+
+func (t *testTracer) Eventf(ctx context.Context, format string, args ...interface{}) {
+	if t.enabledOnlyForNonBackgroundContext && ctx == context.Background() {
+		return
+	}
+	fmt.Fprintf(&t.buf, format, args...)
+	fmt.Fprint(&t.buf, "\n")
+}
+
+func (t *testTracer) IsTracingEnabled(ctx context.Context) bool {
+	if t.enabledOnlyForNonBackgroundContext && ctx == context.Background() {
+		return false
+	}
+	return true
+}
+
+func TestTracing(t *testing.T) {
+	if !invariants.Enabled {
+		// The test relies on timing behavior injected when invariants.Enabled.
+		return
+	}
+	var tracer testTracer
+	c := NewCache(0)
+	defer c.Unref()
+	d, err := Open("", &Options{
+		FS:              vfs.NewMem(),
+		Cache:           c,
+		LoggerAndTracer: &tracer,
+	})
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+
+	// Create a sstable.
+	require.NoError(t, d.Set([]byte("hello"), nil, nil))
+	require.NoError(t, d.Flush())
+	_, closer, err := d.Get([]byte("hello"))
+	require.NoError(t, err)
+	closer.Close()
+	readerInitTraceString := "reading 37 bytes took 5ms\nreading 628 bytes took 5ms\n"
+	iterTraceString := "reading 27 bytes took 5ms\nreading 29 bytes took 5ms\n"
+	require.Equal(t, readerInitTraceString+iterTraceString, tracer.buf.String())
+
+	// Get again, but since it currently uses context.Background(), no trace
+	// output is produced.
+	tracer.buf.Reset()
+	tracer.enabledOnlyForNonBackgroundContext = true
+	_, closer, err = d.Get([]byte("hello"))
+	require.NoError(t, err)
+	closer.Close()
+	require.Equal(t, "", tracer.buf.String())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	iter := d.NewIterWithContext(ctx, nil)
+	iter.SeekGE([]byte("hello"))
+	iter.Close()
+	require.Equal(t, iterTraceString, tracer.buf.String())
+
+	tracer.buf.Reset()
+	snap := d.NewSnapshot()
+	iter = snap.NewIterWithContext(ctx, nil)
+	iter.SeekGE([]byte("hello"))
+	iter.Close()
+	require.Equal(t, iterTraceString, tracer.buf.String())
+	snap.Close()
+
+	tracer.buf.Reset()
+	b := d.NewIndexedBatch()
+	iter = b.NewIterWithContext(ctx, nil)
+	iter.SeekGE([]byte("hello"))
+	iter.Close()
+	require.Equal(t, iterTraceString, tracer.buf.String())
+	b.Close()
 }
 
 func BenchmarkDelete(b *testing.B) {

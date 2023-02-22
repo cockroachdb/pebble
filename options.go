@@ -715,10 +715,15 @@ type Options struct {
 	// options for the last level are used for all subsequent levels.
 	Levels []LevelOptions
 
+	// LoggerAndTracer will be used, if non-nil, else Logger will be used and
+	// tracing will be a noop.
+
 	// Logger used to write log messages.
 	//
 	// The default logger uses the Go standard library log package.
 	Logger Logger
+	// LoggerAndTracer is used for writing log messages and traces.
+	LoggerAndTracer LoggerAndTracer
 
 	// MaxManifestFileSize is the maximum size the MANIFEST file is allowed to
 	// become. When the MANIFEST exceeds this size it is rolled over and a new
@@ -1586,6 +1591,7 @@ func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 		if o.Merger != nil {
 			readerOpts.MergerName = o.Merger.Name
 		}
+		readerOpts.LoggerAndTracer = o.LoggerAndTracer
 	}
 	return readerOpts
 }

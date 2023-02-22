@@ -201,6 +201,8 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 			valid = iter.Valid()
 		case "stats":
 			stats := iter.Stats()
+			// The timing is non-deterministic, so set to 0.
+			stats.InternalStats.CacheMissFetchDuration = 0
 			fmt.Fprintf(&b, "stats: %s\n", stats.String())
 			continue
 		case "clone":
@@ -490,6 +492,8 @@ func runInternalIterCmd(
 			continue
 		case "stats":
 			if o.stats != nil {
+				// The timing is non-deterministic, so set to 0.
+				o.stats.CacheMissFetchDuration = 0
 				fmt.Fprintf(&b, "%+v\n", *o.stats)
 			}
 			continue
