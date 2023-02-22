@@ -6,6 +6,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -76,4 +77,50 @@ func (b *InMemLogger) Infof(format string, args ...interface{}) {
 func (b *InMemLogger) Fatalf(format string, args ...interface{}) {
 	b.Infof(format, args...)
 	runtime.Goexit()
+}
+
+// LoggerAndTracer defines an interface for logging and tracing.
+type LoggerAndTracer interface {
+	Logger
+	// Eventf formats and emits a tracing log, if tracing is enabled in the
+	// current context.
+	Eventf(ctx context.Context, format string, args ...interface{})
+	// IsTracingEnabled returns true if tracing is enabled. It can be used as an
+	// optimization to avoid calling Eventf (which will be a noop when tracing
+	// is not enabled) to avoid the overhead of boxing the args.
+	IsTracingEnabled(ctx context.Context) bool
+}
+
+// LoggerWithNoopTracer wraps a logger and does no tracing.
+type LoggerWithNoopTracer struct {
+	Logger
+}
+
+var _ LoggerAndTracer = &LoggerWithNoopTracer{}
+
+// Eventf implements LoggerAndTracer.
+func (*LoggerWithNoopTracer) Eventf(ctx context.Context, format string, args ...interface{}) {}
+
+// IsTracingEnabled implements LoggerAndTracer.
+func (*LoggerWithNoopTracer) IsTracingEnabled(ctx context.Context) bool {
+	return false
+}
+
+// NoopLoggerAndTracer does no logging and tracing.
+type NoopLoggerAndTracer int
+
+var _ LoggerAndTracer = (*NoopLoggerAndTracer)(nil)
+
+// Infof implements LoggerAndTracer.
+func (l *NoopLoggerAndTracer) Infof(format string, args ...interface{}) {}
+
+// Fatalf implements LoggerAndTracer.
+func (l *NoopLoggerAndTracer) Fatalf(format string, args ...interface{}) {}
+
+// Eventf implements LoggerAndTracer.
+func (l *NoopLoggerAndTracer) Eventf(ctx context.Context, format string, args ...interface{}) {}
+
+// IsTracingEnabled implements LoggerAndTracer.
+func (l *NoopLoggerAndTracer) IsTracingEnabled(ctx context.Context) bool {
+	return false
 }

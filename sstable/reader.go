@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -2781,12 +2782,19 @@ func (r *Reader) readBlock(
 
 	v := r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen))
 	b := v.Buf()
+	// TODO(sumeer): this is a noop in production without a context.Context.
+	// Plumb context.Context.
+	if r.opts.LoggerAndTracer.IsTracingEnabled(context.Background()) {
+		r.opts.LoggerAndTracer.Eventf(context.Background(),
+			"reading %d bytes", bh.Length+blockTrailerLen)
+	}
 	var err error
 	if readaheadHandle != nil {
 		_, err = readaheadHandle.ReadAt(b, int64(bh.Offset))
 	} else {
 		_, err = r.readable.ReadAt(b, int64(bh.Offset))
 	}
+	r.opts.LoggerAndTracer.Eventf(context.Background(), "finished read")
 	if err != nil {
 		r.opts.Cache.Free(v)
 		return cache.Handle{}, err
