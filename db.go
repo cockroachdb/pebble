@@ -6,6 +6,7 @@
 package pebble // import "github.com/cockroachdb/pebble"
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -561,6 +562,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	i := &buf.dbi
 	pointIter := get
 	*i = Iterator{
+		ctx:          context.Background(),
 		getIterAlloc: buf,
 		iter:         pointIter,
 		pointIter:    pointIter,
@@ -934,7 +936,7 @@ var iterAllocPool = sync.Pool{
 
 // newIter constructs a new iterator, merging in batch iterators as an extra
 // level.
-func (d *DB) newIter(batch *Batch, s *Snapshot, o *IterOptions) *Iterator {
+func (d *DB) newIter(ctx context.Context, batch *Batch, s *Snapshot, o *IterOptions) *Iterator {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -975,6 +977,7 @@ func (d *DB) newIter(batch *Batch, s *Snapshot, o *IterOptions) *Iterator {
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
 	*dbi = Iterator{
+		ctx:                 ctx,
 		alloc:               buf,
 		merge:               d.merge,
 		comparer:            *d.opts.Comparer,
@@ -998,14 +1001,14 @@ func (d *DB) newIter(batch *Batch, s *Snapshot, o *IterOptions) *Iterator {
 	if batch != nil {
 		dbi.batchSeqNum = dbi.batch.nextSeqNum()
 	}
-	return finishInitializingIter(buf)
+	return finishInitializingIter(ctx, buf)
 }
 
 // finishInitializingIter is a helper for doing the non-trivial initialization
 // of an Iterator. It's invoked to perform the initial initialization of an
 // Iterator during NewIter or Clone, and to perform reinitialization due to a
 // change in IterOptions by a call to Iterator.SetOptions.
-func finishInitializingIter(buf *iterAlloc) *Iterator {
+func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 	// Short-hand.
 	dbi := &buf.dbi
 	memtables := dbi.readState.memtables
@@ -1027,7 +1030,7 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 		// dbi.merging. If this is called during a SetOptions call and this
 		// Iterator has already initialized dbi.merging, constructPointIter is a
 		// noop and an initialized pointIter already exists in dbi.pointIter.
-		dbi.constructPointIter(memtables, buf)
+		dbi.constructPointIter(ctx, memtables, buf)
 		dbi.iter = dbi.pointIter
 	} else {
 		dbi.iter = emptyIter
@@ -1207,7 +1210,9 @@ func finishInitializingInternalIter(buf *iterAlloc, i *scanInternalIterator) *sc
 	return i
 }
 
-func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
+func (i *Iterator) constructPointIter(
+	ctx context.Context, memtables flushableList, buf *iterAlloc,
+) {
 	if i.pointIter != nil {
 		// Already have one.
 		return
@@ -1294,7 +1299,8 @@ func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
 	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
 		li := &levels[levelsIndex]
 
-		li.init(i.opts, i.comparer.Compare, i.comparer.Split, i.newIters, files, level, internalOpts)
+		li.init(
+			ctx, i.opts, i.comparer.Compare, i.comparer.Split, i.newIters, files, level, internalOpts)
 		li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
 		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)
@@ -1352,7 +1358,13 @@ func (d *DB) NewIndexedBatch() *Batch {
 // apparent memory and disk usage leak. Use snapshots (see NewSnapshot) for
 // point-in-time snapshots which avoids these problems.
 func (d *DB) NewIter(o *IterOptions) *Iterator {
-	return d.newIter(nil /* batch */, nil /* snapshot */, o)
+	return d.NewIterWithContext(context.Background(), o)
+}
+
+// NewIterWithContext is like NewIter, and additionally accepts a context for
+// tracing.
+func (d *DB) NewIterWithContext(ctx context.Context, o *IterOptions) *Iterator {
+	return d.newIter(ctx, nil /* batch */, nil /* snapshot */, o)
 }
 
 // NewSnapshot returns a point-in-time view of the current DB state. Iterators

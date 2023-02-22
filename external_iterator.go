@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
@@ -119,6 +120,7 @@ func NewExternalIter(
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
 	*dbi = Iterator{
+		ctx:                 context.Background(),
 		alloc:               buf,
 		merge:               o.Merger.Merge,
 		comparer:            *o.Comparer,
@@ -130,7 +132,9 @@ func NewExternalIter(
 		// Add the readers to the Iterator so that Close closes them, and
 		// SetOptions can re-construct iterators from them.
 		externalReaders: readers,
-		newIters: func(f *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
+		newIters: func(
+			ctx context.Context, f *manifest.FileMetadata, opts *IterOptions,
+			internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
 			// NB: External iterators are currently constructed without any
 			// `levelIters`. newIters should never be called. When we support
 			// organizing multiple non-overlapping files into a single level

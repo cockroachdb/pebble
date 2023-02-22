@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	crand "crypto/rand"
 	"fmt"
 	"math"
@@ -3061,7 +3062,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				}
 
 				newIters := func(
-					_ *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
+					_ context.Context, _ *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
 				) (internalIterator, keyspan.FragmentIterator, error) {
 					return &errorIter{}, nil, nil
 				}
