@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -39,7 +40,7 @@ func (r *Reader) get(key []byte) (value []byte, err error) {
 	}
 
 	if r.tableFilter != nil {
-		dataH, err := r.readFilter(nil /* stats */)
+		dataH, err := r.readFilter(context.Background(), nil /* stats */)
 		if err != nil {
 			return nil, err
 		}
@@ -381,7 +382,7 @@ func TestInvalidReader(t *testing.T) {
 }
 
 func indexLayoutString(t *testing.T, r *Reader) string {
-	indexH, err := r.readIndex(nil /* stats */)
+	indexH, err := r.readIndex(context.Background(), nil)
 	require.NoError(t, err)
 	defer indexH.Release()
 	var buf strings.Builder
@@ -397,7 +398,8 @@ func indexLayoutString(t *testing.T, r *Reader) string {
 		require.NoError(t, err)
 		fmt.Fprintf(&buf, " %s: size %d\n", string(key.UserKey), bh.Length)
 		if twoLevelIndex {
-			b, err := r.readBlock(bh.BlockHandle, nil, nil, nil)
+			b, err := r.readBlock(
+				context.Background(), bh.BlockHandle, nil, nil, nil)
 			require.NoError(t, err)
 			defer b.Release()
 			iter2, err := newBlockIter(r.Compare, b.Get())

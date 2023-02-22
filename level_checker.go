@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sort"
@@ -378,7 +379,8 @@ func checkRangeTombstones(c *checkConfig) error {
 			lf := files.Take()
 			atomicUnit, _ := expandToAtomicUnit(c.cmp, lf.Slice(), true /* disableIsCompacting */)
 			lower, upper := manifest.KeyRange(c.cmp, atomicUnit.Iter())
-			iterToClose, iter, err := c.newIters(lf.FileMetadata, nil, internalIterOpts{})
+			iterToClose, iter, err := c.newIters(
+				context.Background(), lf.FileMetadata, nil, internalIterOpts{})
 			if err != nil {
 				return err
 			}
@@ -638,7 +640,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		manifestIter := current.L0SublevelFiles[sublevel].Iter()
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, nil /* split */, c.newIters, manifestIter,
+		li.init(context.Background(), iterOpts, c.cmp, nil /* split */, c.newIters, manifestIter,
 			manifest.L0Sublevel(sublevel), internalIterOpts{})
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)
@@ -652,7 +654,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, nil /* split */, c.newIters,
+		li.init(context.Background(), iterOpts, c.cmp, nil /* split */, c.newIters,
 			current.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)

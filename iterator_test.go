@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -1064,8 +1065,10 @@ func TestIteratorSeekOpt(t *testing.T) {
 			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
 			oldNewIters := d.newIters
-			d.newIters = func(file *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
-				iter, rangeIter, err := oldNewIters(file, opts, internalOpts)
+			d.newIters = func(
+				ctx context.Context, file *manifest.FileMetadata, opts *IterOptions,
+				internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
+				iter, rangeIter, err := oldNewIters(ctx, file, opts, internalOpts)
 				iterWrapped := &iterSeekOptWrapper{
 					internalIterator:      iter,
 					seekGEUsingNext:       &seekGEUsingNext,

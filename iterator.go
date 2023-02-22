@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -177,6 +178,7 @@ type LazyValue = base.LazyValue
 // Next, Prev) return without advancing if the iterator has an accumulated
 // error.
 type Iterator struct {
+	ctx       context.Context
 	opts      IterOptions
 	merge     Merge
 	comparer  base.Comparer
@@ -2546,10 +2548,10 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	// Iterators created through NewExternalIter have a different iterator
 	// initialization process.
 	if i.externalReaders != nil {
-		finishInitializingExternal(i)
+		finishInitializingExternal(i.ctx, i)
 		return
 	}
-	finishInitializingIter(i.alloc)
+	finishInitializingIter(i.ctx, i.alloc)
 }
 
 func (i *Iterator) invalidate() {
@@ -2629,6 +2631,12 @@ type CloneOptions struct {
 // will cause an increase in memory and disk usage (use NewSnapshot for that
 // purpose).
 func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
+	return i.CloneWithContext(context.Background(), opts)
+}
+
+// CloneWithContext is like Clone, and additionally accepts a context for
+// tracing.
+func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*Iterator, error) {
 	if opts.IterOptions == nil {
 		opts.IterOptions = &i.opts
 	}
@@ -2644,6 +2652,7 @@ func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
 	*dbi = Iterator{
+		ctx:                 ctx,
 		opts:                *opts.IterOptions,
 		alloc:               buf,
 		merge:               i.merge,
@@ -2666,7 +2675,7 @@ func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
 		dbi.batchSeqNum = (uint64(len(i.batch.data)) | base.InternalKeySeqNumBatch)
 	}
 
-	return finishInitializingIter(buf), nil
+	return finishInitializingIter(ctx, buf), nil
 }
 
 // Merge adds all of the argument's statistics to the receiver. It may be used
