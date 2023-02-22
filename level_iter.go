@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"runtime/debug"
 
@@ -19,6 +20,7 @@ import (
 // number. If bytesIterated is specified, it is incremented as the given file is
 // iterated through.
 type tableNewIters func(
+	ctx context.Context,
 	file *manifest.FileMetadata,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
@@ -26,9 +28,10 @@ type tableNewIters func(
 
 // tableNewRangeDelIter takes a tableNewIters and returns a TableNewSpanIter
 // for the rangedel iterator returned by tableNewIters.
-func tableNewRangeDelIter(newIters tableNewIters) keyspan.TableNewSpanIter {
+func tableNewRangeDelIter(ctx context.Context, newIters tableNewIters) keyspan.TableNewSpanIter {
 	return func(file *manifest.FileMetadata, iterOptions *keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
-		iter, rangeDelIter, err := newIters(file, &IterOptions{RangeKeyFilters: iterOptions.RangeKeyFilters}, internalIterOpts{})
+		iter, rangeDelIter, err := newIters(
+			ctx, file, &IterOptions{RangeKeyFilters: iterOptions.RangeKeyFilters}, internalIterOpts{})
 		if iter != nil {
 			_ = iter.Close()
 		}
@@ -68,6 +71,11 @@ type internalIterOpts struct {
 // kind InternalKeyKindRangeDeletion which will be used to pause the levelIter
 // at the sstable until the mergingIter is ready to advance past it.
 type levelIter struct {
+	// The context is stored here since (a) iterators are expected to be
+	// short-lived (since they pin sstables), (b) plumbing a context into every
+	// method is very painful, (c) they do not (yet) respect context
+	// cancellation and are only used for tracing.
+	ctx    context.Context
 	logger Logger
 	cmp    Compare
 	split  Split
@@ -229,11 +237,13 @@ func newLevelIter(
 	bytesIterated *uint64,
 ) *levelIter {
 	l := &levelIter{}
-	l.init(opts, cmp, split, newIters, files, level, internalIterOpts{bytesIterated: bytesIterated})
+	l.init(context.Background(), opts, cmp, split, newIters, files, level,
+		internalIterOpts{bytesIterated: bytesIterated})
 	return l
 }
 
 func (l *levelIter) init(
+	ctx context.Context,
 	opts IterOptions,
 	cmp Compare,
 	split Split,
@@ -242,6 +252,7 @@ func (l *levelIter) init(
 	level manifest.Level,
 	internalOpts internalIterOpts,
 ) {
+	l.ctx = ctx
 	l.err = nil
 	l.level = level
 	l.logger = opts.getLogger()
@@ -648,7 +659,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 
 		var rangeDelIter keyspan.FragmentIterator
 		var iter internalIterator
-		iter, rangeDelIter, l.err = l.newIters(l.iterFile, &l.tableOpts, l.internalOpts)
+		iter, rangeDelIter, l.err = l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts)
 		l.iter = iter
 		if l.err != nil {
 			return noFileLoaded

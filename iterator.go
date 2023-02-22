@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -177,6 +178,11 @@ type LazyValue = base.LazyValue
 // Next, Prev) return without advancing if the iterator has an accumulated
 // error.
 type Iterator struct {
+	// The context is stored here since (a) Iterators are expected to be
+	// short-lived (since they pin memtables and sstables), (b) plumbing a
+	// context into every method is very painful, (c) they do not (yet) respect
+	// context cancellation and are only used for tracing.
+	ctx       context.Context
 	opts      IterOptions
 	merge     Merge
 	comparer  base.Comparer
@@ -2546,10 +2552,10 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	// Iterators created through NewExternalIter have a different iterator
 	// initialization process.
 	if i.externalReaders != nil {
-		finishInitializingExternal(i)
+		finishInitializingExternal(i.ctx, i)
 		return
 	}
-	finishInitializingIter(i.alloc)
+	finishInitializingIter(i.ctx, i.alloc)
 }
 
 func (i *Iterator) invalidate() {
@@ -2629,6 +2635,12 @@ type CloneOptions struct {
 // will cause an increase in memory and disk usage (use NewSnapshot for that
 // purpose).
 func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
+	return i.CloneWithContext(context.Background(), opts)
+}
+
+// CloneWithContext is like Clone, and additionally accepts a context for
+// tracing.
+func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*Iterator, error) {
 	if opts.IterOptions == nil {
 		opts.IterOptions = &i.opts
 	}
@@ -2644,6 +2656,7 @@ func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
 	*dbi = Iterator{
+		ctx:                 ctx,
 		opts:                *opts.IterOptions,
 		alloc:               buf,
 		merge:               i.merge,
@@ -2666,7 +2679,7 @@ func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
 		dbi.batchSeqNum = (uint64(len(i.batch.data)) | base.InternalKeySeqNumBatch)
 	}
 
-	return finishInitializingIter(buf), nil
+	return finishInitializingIter(ctx, buf), nil
 }
 
 // Merge adds all of the argument's statistics to the receiver. It may be used
@@ -2701,10 +2714,11 @@ func (stats *IteratorStats) SafeFormat(s redact.SafePrinter, verb rune) {
 	}
 	if stats.InternalStats != (InternalIteratorStats{}) {
 		s.SafeString(",\n(internal-stats: ")
-		s.Printf("(block-bytes: (total %s, cached %s)), "+
+		s.Printf("(block-bytes: (total %s, cached %s, read-time %s)), "+
 			"(points: (count %s, key-bytes %s, value-bytes %s, tombstoned %s))",
 			humanize.IEC.Uint64(stats.InternalStats.BlockBytes),
 			humanize.IEC.Uint64(stats.InternalStats.BlockBytesInCache),
+			humanize.FormattedString(stats.InternalStats.BlockReadDuration.String()),
 			humanize.SI.Uint64(stats.InternalStats.PointCount),
 			humanize.SI.Uint64(stats.InternalStats.KeyBytes),
 			humanize.SI.Uint64(stats.InternalStats.ValueBytes),

@@ -5,6 +5,8 @@
 package pebble
 
 import (
+	"context"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -42,6 +44,10 @@ type scanInternalIterator struct {
 	boundsBuf    [2][]byte
 	boundsBufIdx int
 }
+
+// TODO(sumeer): scanInternalImpl is the implementation for the user-facing
+// ScanInternal. Make it accept a context parameter, and plumb it through for
+// tracing support.
 
 func scanInternalImpl(
 	lower []byte,
@@ -134,11 +140,14 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 		li := &levels[levelsIndex]
 		rli := &rangeDelLevels[levelsIndex]
 
-		li.init(i.opts, i.comparer.Compare, i.comparer.Split, i.newIters, files, level, internalIterOpts{})
+		li.init(
+			context.Background(), i.opts, i.comparer.Compare, i.comparer.Split, i.newIters, files, level,
+			internalIterOpts{})
 		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		mlevels[mlevelsIndex].iter = li
 		rli.Init(keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters},
-			i.comparer.Compare, tableNewRangeDelIter(i.newIters), files, level, manifest.KeyTypePoint)
+			i.comparer.Compare, tableNewRangeDelIter(context.Background(), i.newIters), files, level,
+			manifest.KeyTypePoint)
 		rangeDelIters = append(rangeDelIters, rli)
 
 		levelsIndex++

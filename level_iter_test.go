@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -33,7 +34,7 @@ func TestLevelIter(t *testing.T) {
 	var files manifest.LevelSlice
 
 	newIters := func(
-		file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
+		_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
 	) (internalIterator, keyspan.FragmentIterator, error) {
 		f := *iters[file.FileNum]
 		f.lower = opts.GetLowerBound()
@@ -120,10 +121,11 @@ func TestLevelIter(t *testing.T) {
 
 			var tableOpts *IterOptions
 			newIters2 := func(
-				file *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts,
+				ctx context.Context, file *manifest.FileMetadata, opts *IterOptions,
+				internalOpts internalIterOpts,
 			) (internalIterator, keyspan.FragmentIterator, error) {
 				tableOpts = opts
-				return newIters(file, opts, internalOpts)
+				return newIters(ctx, file, opts, internalOpts)
 			}
 
 			iter := newLevelIter(opts, DefaultComparer.Compare,
@@ -157,11 +159,11 @@ func newLevelIterTest() *levelIterTest {
 }
 
 func (lt *levelIterTest) newIters(
-	file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts,
+	ctx context.Context, file *manifest.FileMetadata, opts *IterOptions, iio internalIterOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
 	lt.itersCreated++
-	iter, err := lt.readers[file.FileNum].NewIterWithBlockPropertyFilters(
-		opts.LowerBound, opts.UpperBound, nil, true, iio.stats,
+	iter, err := lt.readers[file.FileNum].NewIterWithBlockPropertyFiltersAndContext(
+		ctx, opts.LowerBound, opts.UpperBound, nil, true, iio.stats,
 		sstable.TrivialReaderProvider{Reader: lt.readers[file.FileNum]})
 	if err != nil {
 		return nil, nil, err
@@ -424,7 +426,7 @@ func TestLevelIterSeek(t *testing.T) {
 			var stats base.InternalIteratorStats
 			slice := manifest.NewLevelSliceKeySorted(lt.cmp.Compare, lt.metas)
 			iter := &levelIterTestIter{levelIter: &levelIter{}}
-			iter.init(IterOptions{}, DefaultComparer.Compare,
+			iter.init(context.Background(), IterOptions{}, DefaultComparer.Compare,
 				func(a []byte) int { return len(a) }, lt.newIters, slice.Iter(),
 				manifest.Level(level), internalIterOpts{stats: &stats})
 			defer iter.Close()
@@ -526,7 +528,7 @@ func BenchmarkLevelIterSeekGE(b *testing.B) {
 							readers, metas, keys, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
 							defer cleanup()
 							newIters := func(
-								file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
+								_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
 							) (internalIterator, keyspan.FragmentIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
@@ -567,7 +569,7 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 							// This newIters is cheaper than in practice since it does not do
 							// tableCacheShard.findNode.
 							newIters := func(
-								file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
+								_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
 							) (internalIterator, keyspan.FragmentIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(
 									opts.LowerBound, opts.UpperBound)
@@ -609,7 +611,7 @@ func BenchmarkLevelIterSeqSeekPrefixGE(b *testing.B) {
 	// This newIters is cheaper than in practice since it does not do
 	// tableCacheShard.findNode.
 	newIters := func(
-		file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
+		_ context.Context, file *manifest.FileMetadata, opts *IterOptions, _ internalIterOpts,
 	) (internalIterator, keyspan.FragmentIterator, error) {
 		iter, err := readers[file.FileNum].NewIter(
 			opts.LowerBound, opts.UpperBound)
@@ -662,7 +664,7 @@ func BenchmarkLevelIterNext(b *testing.B) {
 							readers, metas, _, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
 							defer cleanup()
 							newIters := func(
-								file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
+								_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
 							) (internalIterator, keyspan.FragmentIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err
@@ -696,7 +698,7 @@ func BenchmarkLevelIterPrev(b *testing.B) {
 							readers, metas, _, cleanup := buildLevelIterTables(b, blockSize, restartInterval, count)
 							defer cleanup()
 							newIters := func(
-								file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
+								_ context.Context, file *manifest.FileMetadata, _ *IterOptions, _ internalIterOpts,
 							) (internalIterator, keyspan.FragmentIterator, error) {
 								iter, err := readers[file.FileNum].NewIter(nil /* lower */, nil /* upper */)
 								return iter, nil, err

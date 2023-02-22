@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -158,7 +159,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 				files := g.l0[n-1].Iter()
 				g.l0 = g.l0[:n-1]
 				iterOpts := IterOptions{logger: g.logger}
-				g.levelIter.init(iterOpts, g.cmp, nil /* split */, g.newIters,
+				g.levelIter.init(context.Background(), iterOpts, g.cmp, nil /* split */, g.newIters,
 					files, manifest.L0Sublevel(n), internalIterOpts{})
 				g.levelIter.initRangeDel(&g.rangeDelIter)
 				g.iter = &g.levelIter
@@ -177,7 +178,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 		}
 
 		iterOpts := IterOptions{logger: g.logger}
-		g.levelIter.init(iterOpts, g.cmp, nil /* split */, g.newIters,
+		g.levelIter.init(context.Background(), iterOpts, g.cmp, nil /* split */, g.newIters,
 			g.version.Levels[g.level].Iter(), manifest.Level(g.level), internalIterOpts{})
 		g.levelIter.initRangeDel(&g.rangeDelIter)
 		g.level++

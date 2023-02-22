@@ -7,6 +7,7 @@ package sstable
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -693,7 +694,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 	r, err := newReader(f, ReaderOptions{})
 	require.NoError(t, err)
 
-	b, err := r.readBlock(r.metaIndexBH, nil /* transform */, nil /* attrs */, nil /* stats */)
+	b, err := r.readBlock(context.Background(), r.metaIndexBH, nil, nil, nil)
 	require.NoError(t, err)
 	defer b.Release()
 

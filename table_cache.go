@@ -65,11 +65,11 @@ type tableCacheOpts struct {
 		iterCount *int32
 	}
 
-	logger        Logger
-	cacheID       uint64
-	objProvider   *objstorage.Provider
-	opts          sstable.ReaderOptions
-	filterMetrics *FilterMetrics
+	loggerAndTracer LoggerAndTracer
+	cacheID         uint64
+	objProvider     *objstorage.Provider
+	opts            sstable.ReaderOptions
+	filterMetrics   *FilterMetrics
 }
 
 // tableCacheContainer contains the table cache and
@@ -101,7 +101,7 @@ func newTableCacheContainer(
 
 	t := &tableCacheContainer{}
 	t.tableCache = tc
-	t.dbOpts.logger = opts.Logger
+	t.dbOpts.loggerAndTracer = opts.LoggerAndTracer
 	t.dbOpts.cacheID = cacheID
 	t.dbOpts.objProvider = objProvider
 	t.dbOpts.opts = opts.MakeReaderOptions()
@@ -131,9 +131,12 @@ func (c *tableCacheContainer) close() error {
 }
 
 func (c *tableCacheContainer) newIters(
-	file *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts,
+	ctx context.Context,
+	file *manifest.FileMetadata,
+	opts *IterOptions,
+	internalOpts internalIterOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
-	return c.tableCache.getShard(file.FileNum).newIters(file, opts, internalOpts, &c.dbOpts)
+	return c.tableCache.getShard(file.FileNum).newIters(ctx, file, opts, internalOpts, &c.dbOpts)
 }
 
 func (c *tableCacheContainer) newRangeKeyIter(
@@ -353,11 +356,16 @@ func (c *tableCacheShard) checkAndIntersectFilters(
 }
 
 func (c *tableCacheShard) newIters(
+	ctx context.Context,
 	file *manifest.FileMetadata,
 	opts *IterOptions,
 	internalOpts internalIterOpts,
 	dbOpts *tableCacheOpts,
 ) (internalIterator, keyspan.FragmentIterator, error) {
+	// TODO(sumeer): constructing the Reader should also use a plumbed context,
+	// since parts of the sstable are read during the construction. The Reader
+	// should not remember that context since the Reader can be long-lived.
+
 	// Calling findNode gives us the responsibility of decrementing v's
 	// refCount. If opening the underlying table resulted in error, then we
 	// decrement this straight away. Otherwise, we pass that responsibility to
@@ -420,8 +428,8 @@ func (c *tableCacheShard) newIters(
 	if internalOpts.bytesIterated != nil {
 		iter, err = v.reader.NewCompactionIter(internalOpts.bytesIterated, rp)
 	} else {
-		iter, err = v.reader.NewIterWithBlockPropertyFilters(
-			opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, internalOpts.stats, rp)
+		iter, err = v.reader.NewIterWithBlockPropertyFiltersAndContext(
+			ctx, opts.GetLowerBound(), opts.GetUpperBound(), filterer, useFilter, internalOpts.stats, rp)
 	}
 	if err != nil {
 		if rangeDelIter != nil {
@@ -813,7 +821,7 @@ func (c *tableCacheShard) evict(fileNum FileNum, dbOpts *tableCacheOpts, allowLe
 		if v != nil {
 			if !allowLeak {
 				if t := atomic.AddInt32(&v.refCount, -1); t != 0 {
-					dbOpts.logger.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
+					dbOpts.loggerAndTracer.Fatalf("sstable %s: refcount is not zero: %d\n%s", fileNum, t, debug.Stack())
 				}
 			}
 			c.releasing.Add(1)

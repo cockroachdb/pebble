@@ -4,7 +4,10 @@
 
 package base
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // InternalIterator iterates over a DB's key/value pairs in key order. Unlike
 // the Iterator interface, the returned keys are InternalKeys composed of the
@@ -348,7 +351,11 @@ type InternalIteratorStats struct {
 	BlockBytes uint64
 	// Subset of BlockBytes that were in the block cache.
 	BlockBytesInCache uint64
-
+	// BlockReadDuration accumulates the duration spent fetching blocks
+	// due to block cache misses.
+	// TODO(sumeer): this currently excludes the time spent in Reader creation,
+	// and in reading the rangedel and rangekey blocks. Fix that.
+	BlockReadDuration time.Duration
 	// The following can repeatedly count the same points if they are iterated
 	// over multiple times. Additionally, they may count a point twice when
 	// switching directions. The latter could be improved if needed.
@@ -391,6 +398,7 @@ type InternalIteratorStats struct {
 func (s *InternalIteratorStats) Merge(from InternalIteratorStats) {
 	s.BlockBytes += from.BlockBytes
 	s.BlockBytesInCache += from.BlockBytesInCache
+	s.BlockReadDuration += from.BlockReadDuration
 	s.KeyBytes += from.KeyBytes
 	s.ValueBytes += from.ValueBytes
 	s.PointCount += from.PointCount
