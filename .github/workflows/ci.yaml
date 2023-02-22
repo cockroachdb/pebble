@@ -103,8 +103,8 @@ jobs:
 
     - run: go test -v ./...
 
-  freebsd:
-    name: go-freebsd
+  bsds:
+    name: go-bsds
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -117,6 +117,11 @@ jobs:
     - name: FreeBSD build
       env:
         GOOS: freebsd
+      run: go build -v ./...
+
+    - name: NetBSD build
+      env:
+        GOOS: netbsd
       run: go build -v ./...
 
   go-lint-checks:
