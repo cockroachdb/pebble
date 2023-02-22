@@ -894,7 +894,7 @@ func TestTableCacheClockPro(t *testing.T) {
 	// NB: The table cache size of 200 is required for the expected test values.
 	cache.init(200)
 	dbOpts := &tableCacheOpts{}
-	dbOpts.logger = opts.Logger
+	dbOpts.loggerAndTracer = base.LoggerWithNoopTracer{Logger: opts.Logger}
 	dbOpts.cacheID = 0
 	dbOpts.objProvider = objProvider
 	dbOpts.opts = opts.MakeReaderOptions()

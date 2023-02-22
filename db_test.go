@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -1285,6 +1286,41 @@ func TestSSTables(t *testing.T) {
 			require.NotNil(t, info.Properties)
 		}
 	}
+}
+
+type testTracer struct {
+	buf strings.Builder
+}
+
+func (t *testTracer) Infof(format string, args ...interface{})  {}
+func (t *testTracer) Fatalf(format string, args ...interface{}) {}
+func (t *testTracer) Eventf(ctx context.Context, format string, args ...interface{}) {
+	fmt.Fprintf(&t.buf, format, args...)
+	fmt.Fprint(&t.buf, "\n")
+}
+
+func TestTracing(t *testing.T) {
+	var tracer testTracer
+	c := NewCache(0)
+	defer c.Unref()
+	d, err := Open("", &Options{
+		FS:              vfs.NewMem(),
+		Cache:           c,
+		LoggerAndTracer: &tracer,
+	})
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, d.Close())
+	}()
+
+	// Create a sstable.
+	require.NoError(t, d.Set([]byte("hello"), nil, nil))
+	require.NoError(t, d.Flush())
+	_, closer, err := d.Get([]byte("hello"))
+	require.NoError(t, err)
+	closer.Close()
+	require.Equal(t, "reading 37 bytes\nfinished read\nreading 628 bytes\nfinished read\n"+
+		"reading 27 bytes\nfinished read\nreading 29 bytes\nfinished read\n", tracer.buf.String())
 }
 
 func BenchmarkDelete(b *testing.B) {

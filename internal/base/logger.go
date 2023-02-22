@@ -6,6 +6,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -77,3 +78,36 @@ func (b *InMemLogger) Fatalf(format string, args ...interface{}) {
 	b.Infof(format, args...)
 	runtime.Goexit()
 }
+
+// LoggerAndTracer defines an interface for logging and tracing.
+type LoggerAndTracer interface {
+	Logger
+	// Eventf looks for a tracing span in the context and formats and logs the
+	// given message to it. If no span is found, it looks for an EventLog in the
+	// context and logs the message to it. If neither is found, does nothing.
+	Eventf(ctx context.Context, format string, args ...interface{})
+}
+
+// LoggerWithNoopTracer wraps a logger and does no tracing.
+type LoggerWithNoopTracer struct {
+	Logger
+}
+
+var _ LoggerAndTracer = LoggerWithNoopTracer{}
+
+// Eventf implements LoggerAndTracer.
+func (LoggerWithNoopTracer) Eventf(ctx context.Context, format string, args ...interface{}) {}
+
+// NoopLoggerAndTracer does no logging and tracing.
+type NoopLoggerAndTracer int
+
+var _ LoggerAndTracer = (*NoopLoggerAndTracer)(nil)
+
+// Infof implements LoggerAndTracer.
+func (l *NoopLoggerAndTracer) Infof(format string, args ...interface{}) {}
+
+// Fatalf implements LoggerAndTracer.
+func (l *NoopLoggerAndTracer) Fatalf(format string, args ...interface{}) {}
+
+// Eventf implements LoggerAndTracer.
+func (l *NoopLoggerAndTracer) Eventf(ctx context.Context, format string, args ...interface{}) {}
