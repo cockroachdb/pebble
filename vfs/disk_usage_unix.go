@@ -2,16 +2,16 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-//go:build darwin || openbsd || dragonfly || freebsd
-// +build darwin openbsd dragonfly freebsd
+//go:build darwin || openbsd || dragonfly || freebsd || netbsd
+// +build darwin openbsd dragonfly freebsd netbsd
 
 package vfs
 
 import "golang.org/x/sys/unix"
 
 func (defaultFS) GetDiskUsage(path string) (DiskUsage, error) {
-	stat := unix.Statfs_t{}
-	if err := unix.Statfs(path, &stat); err != nil {
+	stat := unix.Statvfs_t{}
+	if err := unix.Statvfs(path, &stat); err != nil {
 		return DiskUsage{}, err
 	}
 
