@@ -19,12 +19,15 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/errorfs"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
+	"github.com/cockroachdb/redact"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
 )
@@ -1191,4 +1194,107 @@ type closeTrackingFile struct {
 func (f *closeTrackingFile) Close() error {
 	delete(f.fs.files, f)
 	return f.File.Close()
+}
+
+func TestCheckConsistency(t *testing.T) {
+	const dir = "./test"
+	mem := vfs.NewMem()
+	mem.MkdirAll(dir, 0755)
+
+	cmp := base.DefaultComparer.Compare
+	fmtKey := base.DefaultComparer.FormatKey
+	parseMeta := func(s string) (*manifest.FileMetadata, error) {
+		if len(s) == 0 {
+			return nil, nil
+		}
+		parts := strings.Split(s, ":")
+		if len(parts) != 2 {
+			return nil, errors.Errorf("malformed table spec: %q", s)
+		}
+		fileNum, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+		if err != nil {
+			return nil, err
+		}
+		size, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil {
+			return nil, err
+		}
+		return &manifest.FileMetadata{
+			FileNum: base.FileNum(fileNum),
+			Size:    uint64(size),
+		}, nil
+	}
+
+	datadriven.RunTest(t, "testdata/version_check_consistency",
+		func(t *testing.T, d *datadriven.TestData) string {
+			switch d.Cmd {
+			case "check-consistency":
+				var filesByLevel [manifest.NumLevels][]*manifest.FileMetadata
+				var files *[]*manifest.FileMetadata
+
+				for _, data := range strings.Split(d.Input, "\n") {
+					switch data {
+					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+						level, err := strconv.Atoi(data[1:])
+						if err != nil {
+							return err.Error()
+						}
+						files = &filesByLevel[level]
+
+					default:
+						m, err := parseMeta(data)
+						if err != nil {
+							return err.Error()
+						}
+						if m != nil {
+							*files = append(*files, m)
+						}
+					}
+				}
+
+				redactErr := false
+				for _, arg := range d.CmdArgs {
+					switch v := arg.String(); v {
+					case "redact":
+						redactErr = true
+					default:
+						return fmt.Sprintf("unknown argument: %q", v)
+					}
+				}
+
+				v := manifest.NewVersion(cmp, fmtKey, 0, filesByLevel)
+				err := checkConsistency(v, dir, mem)
+				if err != nil {
+					if redactErr {
+						redacted := redact.Sprint(err).Redact()
+						return string(redacted)
+					}
+					return err.Error()
+				}
+				return "OK"
+
+			case "build":
+				for _, data := range strings.Split(d.Input, "\n") {
+					m, err := parseMeta(data)
+					if err != nil {
+						return err.Error()
+					}
+					path := base.MakeFilepath(mem, dir, base.FileTypeTable, m.FileNum)
+					_ = mem.Remove(path)
+					f, err := mem.Create(path)
+					if err != nil {
+						return err.Error()
+					}
+					_, err = f.Write(make([]byte, m.Size))
+					if err != nil {
+						return err.Error()
+					}
+					f.Close()
+				}
+				return ""
+
+			default:
+				return fmt.Sprintf("unknown command: %s", d.Cmd)
+			}
+		})
 }

@@ -239,7 +239,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			return nil, err
 		}
 		curVersion := d.mu.versions.currentVersion()
-		if err := curVersion.CheckConsistency(dirname, opts.FS); err != nil {
+		if err := checkConsistency(curVersion, dirname, opts.FS); err != nil {
 			return nil, err
 		}
 		if opts.ErrorIfNotPristine {
@@ -975,3 +975,32 @@ var ErrDBAlreadyExists = errors.New("pebble: database already exists")
 //
 // Note that errors can be wrapped with more details; use errors.Is().
 var ErrDBNotPristine = errors.New("pebble: database already exists and is not pristine")
+
+func checkConsistency(v *manifest.Version, dirname string, fs vfs.FS) error {
+	var buf bytes.Buffer
+	var args []interface{}
+
+	for level, files := range v.Levels {
+		iter := files.Iter()
+		for f := iter.First(); f != nil; f = iter.Next() {
+			path := base.MakeFilepath(fs, dirname, base.FileTypeTable, f.FileNum)
+			info, err := fs.Stat(path)
+			if err != nil {
+				buf.WriteString("L%d: %s: %v\n")
+				args = append(args, errors.Safe(level), errors.Safe(f.FileNum), err)
+				continue
+			}
+			if info.Size() != int64(f.Size) {
+				buf.WriteString("L%d: %s: file size mismatch (%s): %d (disk) != %d (MANIFEST)\n")
+				args = append(args, errors.Safe(level), errors.Safe(f.FileNum), path,
+					errors.Safe(info.Size()), errors.Safe(f.Size))
+				continue
+			}
+		}
+	}
+
+	if buf.Len() == 0 {
+		return nil
+	}
+	return errors.Errorf(buf.String(), args...)
+}
