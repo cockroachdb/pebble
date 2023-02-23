@@ -397,6 +397,13 @@ func (k InternalKey) Clone() InternalKey {
 	}
 }
 
+// CopyFrom converts this InternalKey into a clone of the passed-in InternalKey,
+// reusing any space already used for the current UserKey.
+func (k *InternalKey) CopyFrom(k2 InternalKey) {
+	k.UserKey = append(k.UserKey[:0], k2.UserKey...)
+	k.Trailer = k2.Trailer
+}
+
 // String returns a string representation of the key.
 func (k InternalKey) String() string {
 	return fmt.Sprintf("%s#%d,%d", FormatBytes(k.UserKey), k.SeqNum(), k.Kind())
