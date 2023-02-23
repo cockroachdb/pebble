@@ -1113,27 +1113,39 @@ func finishInitializingIter(buf *iterAlloc) *Iterator {
 // visitRangeDel. Keys that would be masked by range key masking (if an
 // appropriate prefix were set) should be exposed, alongside the range key
 // that would have masked it.
+//
+// If visitSharedFile is not nil, ScanInternal iterates in skip-shared iteration
+// mode. In this iteration mode, sstables in levels L5 and L6 are skipped, and
+// their metadatas truncated to [lower, upper) and passed into visitSharedFile.
+// ErrInvalidSkipSharedIteration is returned if visitSharedFile is not nil and an
+// sstable in L5 or L6 is found that is not in shared storage according to
+// provider.IsShared.
 func (d *DB) ScanInternal(
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue) error,
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
 	visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
+	visitSharedFile func(sst *SharedSSTMeta) error,
 ) error {
 	iter := d.newInternalIter(nil /* snapshot */, &IterOptions{
 		KeyTypes:   IterKeyTypePointsAndRanges,
 		LowerBound: lower,
 		UpperBound: upper,
-	})
+	}, visitSharedFile != nil /* skipSharedLevels */)
 	defer iter.close()
-	return scanInternalImpl(lower, iter, visitPointKey, visitRangeDel, visitRangeKey)
+	return scanInternalImpl(lower, upper, iter, visitPointKey, visitRangeDel, visitRangeKey, visitSharedFile)
 }
 
 // NewInternalIter constructs and returns a new scanInternalIterator on this db.
+// If skipSharedLevels is true, levels below sharedLevelsStart are *not* added
+// to the internal iterator.
 //
 // TODO(bilal): This method has a lot of similarities with db.newIter as well as
 // finishInitializingIter. Both pairs of methods should be refactored to reduce
 // this duplication.
-func (d *DB) newInternalIter(s *Snapshot, o *IterOptions) *scanInternalIterator {
+func (d *DB) newInternalIter(
+	s *Snapshot, o *IterOptions, skipSharedLevels bool,
+) *scanInternalIterator {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1155,12 +1167,13 @@ func (d *DB) newInternalIter(s *Snapshot, o *IterOptions) *scanInternalIterator 
 	// them together.
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &scanInternalIterator{
-		comparer:        d.opts.Comparer,
-		readState:       readState,
-		alloc:           buf,
-		newIters:        d.newIters,
-		newIterRangeKey: d.tableNewRangeKeyIter,
-		seqNum:          seqNum,
+		comparer:         d.opts.Comparer,
+		readState:        readState,
+		alloc:            buf,
+		newIters:         d.newIters,
+		newIterRangeKey:  d.tableNewRangeKeyIter,
+		seqNum:           seqNum,
+		skipSharedLevels: skipSharedLevels,
 	}
 	if o != nil {
 		dbi.opts = *o
