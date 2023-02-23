@@ -707,7 +707,7 @@ func (d *DB) replayWAL(
 			1 /* base level */, toFlush)
 		newVE, _, err := d.runCompaction(jobID, c)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "running compaction during WAL replay")
 		}
 		ve.NewFiles = append(ve.NewFiles, newVE.NewFiles...)
 		return nil

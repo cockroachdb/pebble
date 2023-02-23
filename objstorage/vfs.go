@@ -5,6 +5,7 @@
 package objstorage
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -33,35 +34,69 @@ func (p *Provider) vfsOpenForReading(
 	return newGenericFileReadable(file)
 }
 
-func (p *Provider) vfsCreate(fileType base.FileType, fileNum base.FileNum) (Writable, error) {
+func (p *Provider) vfsCreate(
+	fileType base.FileType, fileNum base.FileNum,
+) (Writable, ObjectMetadata, error) {
 	filename := p.vfsPath(fileType, fileNum)
 	file, err := p.st.FS.Create(filename)
 	if err != nil {
-		return nil, err
+		return nil, ObjectMetadata{}, err
 	}
 	file = vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
 		NoSyncOnClose: p.st.NoSyncOnClose,
 		BytesPerSync:  p.st.BytesPerSync,
 	})
-	return newFileBufferedWritable(file), nil
+	meta := ObjectMetadata{
+		FileNum:  fileNum,
+		FileType: fileType,
+	}
+	return newFileBufferedWritable(file), meta, nil
 }
 
 func (p *Provider) vfsRemove(fileType base.FileType, fileNum base.FileNum) error {
 	return p.st.FSCleaner.Clean(p.st.FS, fileType, p.vfsPath(fileType, fileNum))
 }
 
-func (p *Provider) vfsFindExisting(ls []string) []ObjectMetadata {
-	var res []ObjectMetadata
-	for _, filename := range ls {
-		fileType, fileNum, ok := base.ParseFilename(p.st.FS, filename)
-		if ok && fileType == base.FileTypeTable {
-			res = append(res, ObjectMetadata{
-				FileType: fileType,
-				FileNum:  fileNum,
-			})
+// vfsInit finds any local FS objects.
+func (p *Provider) vfsInit() error {
+	listing := p.st.FSDirInitialListing
+	if listing == nil {
+		var err error
+		listing, err = p.st.FS.List(p.st.FSDirName)
+		if err != nil {
+			return errors.Wrapf(err, "pebble: could not list store directory")
 		}
 	}
-	return res
+
+	for _, filename := range listing {
+		fileType, fileNum, ok := base.ParseFilename(p.st.FS, filename)
+		if ok && fileType == base.FileTypeTable {
+			o := ObjectMetadata{
+				FileType: fileType,
+				FileNum:  fileNum,
+			}
+			p.mu.knownObjects[o.FileNum] = o
+		}
+	}
+	return nil
+}
+
+func (p *Provider) vfsSync() error {
+	p.mu.Lock()
+	shouldSync := p.mu.localObjectsChanged
+	p.mu.localObjectsChanged = false
+	p.mu.Unlock()
+
+	if !shouldSync {
+		return nil
+	}
+	if err := p.fsDir.Sync(); err != nil {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		p.mu.localObjectsChanged = true
+		return err
+	}
+	return nil
 }
 
 func (p *Provider) vfsSize(fileType base.FileType, fileNum base.FileNum) (int64, error) {

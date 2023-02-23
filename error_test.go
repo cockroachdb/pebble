@@ -222,6 +222,7 @@ func TestRequireReadError(t *testing.T) {
 			return err
 		}
 		if err := d.Close(); err != nil {
+			d = nil
 			return err
 		}
 		d = nil

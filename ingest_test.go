@@ -1682,7 +1682,7 @@ func TestIngestCleanup(t *testing.T) {
 			// Create the files in the VFS.
 			metaMap := make(map[base.FileNum]objstorage.Writable)
 			for _, fn := range fns {
-				w, _, err := objProvider.Create(base.FileTypeTable, fn)
+				w, _, err := objProvider.Create(base.FileTypeTable, fn, objstorage.CreateOptions{})
 				require.NoError(t, err)
 
 				metaMap[fn] = w
