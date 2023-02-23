@@ -205,87 +205,207 @@ func (m mockFS) GetDiskUsage(path string) (DiskUsage, error) {
 var _ FS = &mockFS{}
 
 func TestDiskHealthChecking_File(t *testing.T) {
+	oldTickInterval := defaultTickInterval
+	defaultTickInterval = time.Millisecond
+	defer func() { defaultTickInterval = oldTickInterval }()
+
 	const (
-		slowThreshold        = 1 * time.Second
-		syncAndWriteDuration = 3 * time.Second
+		slowThreshold = 50 * time.Millisecond
 	)
+
+	fiveKB := make([]byte, 5*writeSizePrecision)
 	testCases := []struct {
-		op OpType
-		fn func(f File)
+		op               OpType
+		writeSize        int
+		writeDuration    time.Duration
+		fn               func(f File)
+		createWriteDelta time.Duration
+		expectStall      bool
 	}{
+		// No false negatives.
 		{
-			OpTypeWrite,
-			func(f File) { f.Write([]byte("uh oh")) },
+			op:            OpTypeWrite,
+			writeSize:     5 * writeSizePrecision, // five KB
+			writeDuration: 100 * time.Millisecond,
+			fn:            func(f File) { f.Write(fiveKB) },
+			expectStall:   true,
 		},
 		{
-			OpTypeSync,
-			func(f File) { f.Sync() },
+			op:            OpTypeSync,
+			writeSize:     0,
+			writeDuration: 100 * time.Millisecond,
+			fn:            func(f File) { f.Sync() },
+			expectStall:   true,
+		},
+		// No false positives.
+		{
+			op:               OpTypeWrite,
+			writeSize:        5,
+			writeDuration:    25 * time.Millisecond,
+			fn:               func(f File) { f.Write([]byte("uh oh")) },
+			createWriteDelta: 100 * time.Millisecond,
+			expectStall:      false,
+		},
+		{
+			op:            OpTypeSync,
+			writeSize:     0,
+			writeDuration: 25 * time.Millisecond,
+			fn:            func(f File) { f.Sync() },
+			expectStall:   false,
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.op.String(), func(t *testing.T) {
-			type info struct {
-				opType   OpType
-				duration time.Duration
-			}
-			diskSlow := make(chan info, 1)
+			diskSlow := make(chan DiskSlowInfo, 1)
 			mockFS := &mockFS{create: func(name string) (File, error) {
-				return mockFile{syncAndWriteDuration: syncAndWriteDuration}, nil
+				return mockFile{syncAndWriteDuration: tc.writeDuration}, nil
 			}}
 			fs, closer := WithDiskHealthChecks(mockFS, slowThreshold,
-				func(s string, opType OpType, duration time.Duration) {
-					diskSlow <- info{
-						opType:   opType,
-						duration: duration,
-					}
+				func(info DiskSlowInfo) {
+					diskSlow <- info
 				})
 			defer closer.Close()
 			dhFile, _ := fs.Create("test")
 			defer dhFile.Close()
 
+			// Writing after file creation tests computation of delta between file
+			// creation time & write time.
+			time.Sleep(tc.createWriteDelta)
+
 			tc.fn(dhFile)
-			select {
-			case i := <-diskSlow:
-				d := i.duration
-				if d.Seconds() < slowThreshold.Seconds() {
-					t.Fatalf("expected %0.1f to be greater than threshold %0.1f", d.Seconds(), slowThreshold.Seconds())
+
+			if tc.expectStall { // no false negatives
+				select {
+				case i := <-diskSlow:
+					d := i.Duration
+					if d.Seconds() < slowThreshold.Seconds() {
+						t.Fatalf("expected %0.1f to be greater than threshold %0.1f", d.Seconds(), slowThreshold.Seconds())
+					}
+					require.Equal(t, tc.writeSize, i.WriteSize)
+					require.Equal(t, tc.op, i.OpType)
+				case <-time.After(200 * time.Millisecond):
+					t.Fatal("disk stall detector did not detect slow disk operation")
 				}
-				require.Equal(t, tc.op, i.opType)
-			case <-time.After(5 * time.Second):
-				t.Fatal("disk stall detector did not detect slow disk operation")
+			} else { // no false positives
+				select {
+				case <-diskSlow:
+					t.Fatal("disk stall detector detected a slow disk operation")
+				case <-time.After(200 * time.Millisecond):
+					return
+				}
 			}
 		})
 	}
 }
 
 func TestDiskHealthChecking_NotTooManyOps(t *testing.T) {
-	numBitsForOpType := 64 - nOffsetBits
+	numBitsForOpType := 64 - deltaBits - writeSizeBits
 	numOpTypesAllowed := int(math.Pow(2, float64(numBitsForOpType)))
 	numOpTypes := int(opTypeMax)
 	require.LessOrEqual(t, numOpTypes, numOpTypesAllowed)
 }
 
+func TestDiskHealthChecking_File_PackingAndUnpacking(t *testing.T) {
+	testCases := []struct {
+		desc          string
+		delta         time.Duration
+		writeSize     int64
+		opType        OpType
+		wantDelta     time.Duration
+		wantWriteSize int
+	}{
+		// Write op with write size in bytes.
+		{
+			desc:          "write, sized op",
+			delta:         3000 * time.Millisecond,
+			writeSize:     1024, // 1 KB.
+			opType:        OpTypeWrite,
+			wantDelta:     3000 * time.Millisecond,
+			wantWriteSize: 1024,
+		},
+		// Sync op. No write size. Max-ish delta that packing scheme can handle.
+		{
+			desc:          "sync, no write size",
+			delta:         34 * time.Hour * 24 * 365,
+			writeSize:     0,
+			opType:        OpTypeSync,
+			wantDelta:     34 * time.Hour * 24 * 365,
+			wantWriteSize: 0,
+		},
+		// Delta is negative (e.g. due to clock sync). Set to
+		// zero.
+		{
+			desc:          "delta negative",
+			delta:         -5,
+			writeSize:     5120, // 5 KB
+			opType:        OpTypeWrite,
+			wantDelta:     0,
+			wantWriteSize: 5120,
+		},
+		// Write size in bytes is larger than can fit in 20 bits.
+		// Round down to max that can fit in 20 bits.
+		{
+			desc:          "write size truncated",
+			delta:         231 * time.Millisecond,
+			writeSize:     2097152000, // too big!
+			opType:        OpTypeWrite,
+			wantDelta:     231 * time.Millisecond,
+			wantWriteSize: 1073740800, // (2^20-1) * writeSizePrecision ~= a bit less than one GB
+		},
+		// Write size in bytes is max representable less than the ceiling.
+		{
+			desc:          "write size barely not truncated",
+			delta:         231 * time.Millisecond,
+			writeSize:     1073739776, // max representable less than the ceiling
+			opType:        OpTypeWrite,
+			wantDelta:     231 * time.Millisecond,
+			wantWriteSize: 1073739776, // since can fit, unchanged
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			packed := pack(tc.delta, tc.writeSize, tc.opType)
+			gotDelta, gotWriteSize, gotOpType := unpack(packed)
+
+			require.Equal(t, tc.wantDelta, gotDelta)
+			require.Equal(t, tc.wantWriteSize, gotWriteSize)
+			require.Equal(t, tc.opType, gotOpType)
+		})
+	}
+}
+
 func TestDiskHealthChecking_File_Underflow(t *testing.T) {
 	f := &mockFile{}
-	hcFile := newDiskHealthCheckingFile(f, 1*time.Second, func(opType OpType, duration time.Duration) {
+	hcFile := newDiskHealthCheckingFile(f, 1*time.Second, func(opType OpType, writeSizeInBytes int, duration time.Duration) {
 		// We expect to panic before sending the event.
 		t.Fatalf("unexpected slow disk event")
 	})
 	defer hcFile.Close()
 
-	// Set the file creation to the UNIX epoch, which is earlier than the max
-	// offset of the health check.
-	tEpoch := time.Unix(0, 0)
-	hcFile.createTime = tEpoch
+	t.Run("too large delta leads to panic", func(t *testing.T) {
+		// Given the packing scheme, 35 years of process uptime will lead to a delta
+		// that is too large to fit in the packed int64.
+		tCreate := time.Now().Add(-35 * time.Hour * 24 * 365)
+		hcFile.createTime = tCreate
 
-	// Assert that the time since the epoch (in nanoseconds) is indeed greater
-	// than the max offset.
-	require.True(t, time.Since(tEpoch).Nanoseconds() > 1<<nOffsetBits-1)
+		// Assert that the time since tCreate (in milliseconds) is indeed greater
+		// than the max delta that can fit.
+		require.True(t, time.Since(tCreate).Milliseconds() > 1<<deltaBits-1)
 
-	// Attempting to start the clock for a new operation on the file should
-	// trigger a panic, as the calculated offset from the file creation time would
-	// result in integer overflow.
-	require.Panics(t, func() { _, _ = hcFile.Write([]byte("uh oh")) })
+		// Attempting to start the clock for a new operation on the file should
+		// trigger a panic, as the calculated delta from the file creation time would
+		// result in integer overflow.
+		require.Panics(t, func() { _, _ = hcFile.Write([]byte("uh oh")) })
+	})
+	t.Run("pretty large delta but not too large leads to no panic", func(t *testing.T) {
+		// Given the packing scheme, 34 years of process uptime will lead to a delta
+		// that is just small enough to fit in the packed int64.
+		tCreate := time.Now().Add(-34 * time.Hour * 24 * 365)
+		hcFile.createTime = tCreate
+
+		require.True(t, time.Since(tCreate).Milliseconds() < 1<<deltaBits-1)
+		require.NotPanics(t, func() { _, _ = hcFile.Write([]byte("should be fine")) })
+	})
 }
 
 var (
@@ -365,8 +485,9 @@ func TestDiskHealthChecking_Filesystem(t *testing.T) {
 	var expectedOpType OpType
 	var stallCount uint64
 	fs, closer := WithDiskHealthChecks(filesystemOpsMockFS(sleepDur), stallThreshold,
-		func(name string, opType OpType, dur time.Duration) {
-			require.Equal(t, expectedOpType, opType)
+		func(info DiskSlowInfo) {
+			require.Equal(t, 0, info.WriteSize)
+			require.Equal(t, expectedOpType, info.OpType)
 			atomic.AddUint64(&stallCount, 1)
 		})
 	defer closer.Close()
@@ -400,7 +521,7 @@ func TestDiskHealthChecking_Filesystem_Close(t *testing.T) {
 
 	stalled := map[string]time.Duration{}
 	fs, closer := WithDiskHealthChecks(mockFS, stallThreshold,
-		func(name string, opType OpType, dur time.Duration) { stalled[name] = dur })
+		func(info DiskSlowInfo) { stalled[info.Path] = info.Duration })
 	fs.(*diskHealthCheckingFS).tickInterval = 5 * time.Millisecond
 
 	files := []string{"foo", "bar", "bax"}
