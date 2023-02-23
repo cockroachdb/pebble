@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/cockroachdb/redact"
@@ -1201,6 +1202,10 @@ func TestCheckConsistency(t *testing.T) {
 	mem := vfs.NewMem()
 	mem.MkdirAll(dir, 0755)
 
+	provider, err := objstorage.Open(objstorage.DefaultSettings(mem, dir))
+	require.NoError(t, err)
+	defer provider.Close()
+
 	cmp := base.DefaultComparer.Compare
 	fmtKey := base.DefaultComparer.FormatKey
 	parseMeta := func(s string) (*manifest.FileMetadata, error) {
@@ -1263,7 +1268,7 @@ func TestCheckConsistency(t *testing.T) {
 				}
 
 				v := manifest.NewVersion(cmp, fmtKey, 0, filesByLevel)
-				err := checkConsistency(v, dir, mem)
+				err := checkConsistency(v, dir, provider)
 				if err != nil {
 					if redactErr {
 						redacted := redact.Sprint(err).Redact()
