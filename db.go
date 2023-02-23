@@ -1116,28 +1116,47 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 // method, while the range deletion deleting that key must be exposed using
 // visitRangeDel. Keys that would be masked by range key masking (if an
 // appropriate prefix were set) should be exposed, alongside the range key
-// that would have masked it.
+// that would have masked it. This method also collapses all point keys into
+// one InternalKey; so only one internal key at most per user key is returned
+// to visitPointKey.
+//
+// If visitSharedFile is not nil, ScanInternal iterates in skip-shared iteration
+// mode. In this iteration mode, sstables in levels L5 and L6 are skipped, and
+// their metadatas truncated to [lower, upper) and passed into visitSharedFile.
+// ErrInvalidSkipSharedIteration is returned if visitSharedFile is not nil and an
+// sstable in L5 or L6 is found that is not in shared storage according to
+// provider.IsShared. Examples of when this could happen could be if Pebble
+// started writing sstables before a creator ID was set (as creator IDs are
+// necessary to enable shared storage) resulting in some lower level SSTs being
+// on non-shared storage. Skip-shared iteration is invalid in those cases.
 func (d *DB) ScanInternal(
+	ctx context.Context,
 	lower, upper []byte,
 	visitPointKey func(key *InternalKey, value LazyValue) error,
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
 	visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
+	visitSharedFile func(sst *SharedSSTMeta) error,
 ) error {
-	iter := d.newInternalIter(nil /* snapshot */, &IterOptions{
-		KeyTypes:   IterKeyTypePointsAndRanges,
-		LowerBound: lower,
-		UpperBound: upper,
+	iter := d.newInternalIter(nil /* snapshot */, &scanInternalOptions{
+		IterOptions: IterOptions{
+			KeyTypes:   IterKeyTypePointsAndRanges,
+			LowerBound: lower,
+			UpperBound: upper,
+		},
+		skipSharedLevels: visitSharedFile != nil,
 	})
 	defer iter.close()
-	return scanInternalImpl(lower, iter, visitPointKey, visitRangeDel, visitRangeKey)
+	return scanInternalImpl(ctx, lower, upper, iter, visitPointKey, visitRangeDel, visitRangeKey, visitSharedFile)
 }
 
-// NewInternalIter constructs and returns a new scanInternalIterator on this db.
+// newInternalIter constructs and returns a new scanInternalIterator on this db.
+// If o.skipSharedLevels is true, levels below sharedLevelsStart are *not* added
+// to the internal iterator.
 //
 // TODO(bilal): This method has a lot of similarities with db.newIter as well as
 // finishInitializingIter. Both pairs of methods should be refactored to reduce
 // this duplication.
-func (d *DB) newInternalIter(s *Snapshot, o *IterOptions) *scanInternalIterator {
+func (d *DB) newInternalIter(s *Snapshot, o *scanInternalOptions) *scanInternalIterator {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
 	}
@@ -1160,6 +1179,7 @@ func (d *DB) newInternalIter(s *Snapshot, o *IterOptions) *scanInternalIterator 
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &scanInternalIterator{
 		comparer:        d.opts.Comparer,
+		merge:           d.opts.Merger.Merge,
 		readState:       readState,
 		alloc:           buf,
 		newIters:        d.newIters,
@@ -1193,13 +1213,9 @@ func finishInitializingInternalIter(buf *iterAlloc, i *scanInternalIterator) *sc
 
 	// For internal iterators, we skip the lazy combined iteration optimization
 	// entirely, and create the range key iterator stack directly.
-	if i.rangeKey == nil {
-		i.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
-		i.rangeKey.init(i.comparer.Compare, i.comparer.Split, &i.opts)
-		i.constructRangeKeyIter()
-	} else {
-		i.rangeKey.iterConfig.SetBounds(i.opts.LowerBound, i.opts.UpperBound)
-	}
+	i.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
+	i.rangeKey.init(i.comparer.Compare, i.comparer.Split, &i.opts.IterOptions)
+	i.constructRangeKeyIter()
 
 	// Wrap the point iterator (currently i.iter) with an interleaving
 	// iterator that interleaves range keys pulled from

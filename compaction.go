@@ -2805,7 +2805,18 @@ func (d *DB) runCompaction(
 				ctx = objiotracing.WithReason(ctx, objiotracing.ForCompaction)
 			}
 		}
-		writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, fileNum.DiskFileNum(), objstorage.CreateOptions{} /* TODO */)
+		// Prefer shared storage if present.
+		//
+		// TODO(bilal): This might be inefficient for short-lived files in higher
+		// levels if we're only writing to shared storage and not double-writing
+		// to local storage. Either implement double-writing functionality, or
+		// set PreferSharedStorage to c.outputLevel.level >= 5. The latter needs
+		// some careful handling around move compactions to ensure all files in
+		// lower levels are in shared storage.
+		createOpts := objstorage.CreateOptions{
+			PreferSharedStorage: true,
+		}
+		writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, fileNum.DiskFileNum(), createOpts)
 		if err != nil {
 			return err
 		}
