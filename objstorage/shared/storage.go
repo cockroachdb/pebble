@@ -16,8 +16,8 @@ type Storage interface {
 	io.Closer
 
 	// ReadObjectAt returns a Reader for reading the object at the requested name
-	// and offset.
-	ReadObjectAt(basename string, offset int64) (io.ReadCloser, int64, error)
+	// and offset, along with the total size of the object.
+	ReadObjectAt(basename string, offset int64) (_ io.ReadCloser, totalSize int64, _ error)
 
 	// CreateObject returns a writer for the object at the request name. A new
 	// empty object is created if CreateObject is called on an existing object.
