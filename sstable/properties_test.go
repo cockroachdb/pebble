@@ -10,12 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 	"testing/quick"
 	"time"
 
-	"github.com/kr/pretty"
+	"github.com/r3labs/diff/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,9 +52,9 @@ func TestPropertiesLoad(t *testing.T) {
 		defer r.Close()
 
 		r.Properties.Loaded = nil
-		if diff := pretty.Diff(expected, r.Properties); diff != nil {
-			t.Fatalf("%s", strings.Join(diff, "\n"))
-		}
+		c, err := diff.Diff(expected, r.Properties)
+		require.NoError(t, err)
+		require.Empty(t, c)
 	}
 }
 
@@ -113,9 +112,9 @@ func TestPropertiesSave(t *testing.T) {
 		var props Properties
 		require.NoError(t, props.load(w.finish(), 0))
 		props.Loaded = nil
-		if diff := pretty.Diff(*expected, props); diff != nil {
-			t.Fatalf("%s", strings.Join(diff, "\n"))
-		}
+		c, err := diff.Diff(*expected, props)
+		require.NoError(t, err)
+		require.Empty(t, c)
 	}
 
 	check1(expected)

@@ -25,7 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
-	"github.com/kr/pretty"
+	"github.com/r3labs/diff/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -465,9 +465,9 @@ func TestOpenReadOnly(t *testing.T) {
 			}
 			require.NoError(t, iter.Close())
 			expectedKeys := []string{"test"}
-			if diff := pretty.Diff(keys, expectedKeys); diff != nil {
-				t.Fatalf("%s\n%s", strings.Join(diff, "\n"), keys)
-			}
+			c, err := diff.Diff(keys, expectedKeys)
+			require.NoError(t, err)
+			require.Empty(t, c)
 		}
 
 		checkIter(d.NewIter(nil))
@@ -487,9 +487,9 @@ func TestOpenReadOnly(t *testing.T) {
 		require.NoError(t, err)
 
 		sort.Strings(newContents)
-		if diff := pretty.Diff(contents, newContents); diff != nil {
-			t.Fatalf("%s", strings.Join(diff, "\n"))
-		}
+		c, err := diff.Diff(contents, newContents)
+		require.NoError(t, err)
+		require.Empty(t, c)
 	}
 }
 
@@ -505,9 +505,9 @@ func TestOpenWALReplay(t *testing.T) {
 		}
 		require.NoError(t, iter.Close())
 		expectedKeys := []string{"1", "2", "3", "4", "5"}
-		if diff := pretty.Diff(keys, expectedKeys); diff != nil {
-			t.Fatalf("%s\n%s", strings.Join(diff, "\n"), keys)
-		}
+		c, err := diff.Diff(keys, expectedKeys)
+		require.NoError(t, err)
+		require.Empty(t, c)
 	}
 
 	for _, readOnly := range []bool{false, true} {

@@ -19,7 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
-	"github.com/kr/pretty"
+	"github.com/r3labs/diff/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,8 +32,12 @@ func checkRoundTrip(e0 VersionEdit) error {
 	if err := e1.Decode(buf); err != nil {
 		return errors.Wrap(err, "decode")
 	}
-	if diff := pretty.Diff(e0, e1); diff != nil {
-		return errors.Errorf("%s", strings.Join(diff, "\n"))
+	c, err := diff.Diff(e0, e1)
+	if err != nil {
+		return err
+	}
+	if len(c) > 0 {
+		return errors.Errorf("%+v", c)
 	}
 	return nil
 }
@@ -231,8 +235,9 @@ func TestVersionEditDecode(t *testing.T) {
 					t.Fatalf("filename=%q i=%d: decode error: %v", tc.filename, i, err)
 				}
 				if !reflect.DeepEqual(edit, tc.edits[i]) {
-					t.Fatalf("filename=%q i=%d: decode\n\tgot  %#v\n\twant %#v\n%s", tc.filename, i, edit, tc.edits[i],
-						strings.Join(pretty.Diff(edit, tc.edits[i]), "\n"))
+					c, err := diff.Diff(edit, tc.edits[i])
+					require.NoError(t, err)
+					t.Fatalf("filename=%q i=%d: decode\n\tgot  %#v\n\twant %#v\n%+v", tc.filename, i, edit, tc.edits[i], c)
 				}
 				if err := checkRoundTrip(edit); err != nil {
 					t.Fatalf("filename=%q i=%d: round trip: %v", tc.filename, i, err)

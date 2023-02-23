@@ -22,7 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/kr/pretty"
+	"github.com/r3labs/diff/v3"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 )
@@ -754,10 +754,9 @@ func TestFooterRoundTrip(t *testing.T) {
 							require.NoError(t, err)
 							require.NoError(t, readable.Close())
 
-							if diff := pretty.Diff(footer, result); diff != nil {
-								t.Fatalf("expected %+v, but found %+v\n%s",
-									footer, result, strings.Join(diff, "\n"))
-							}
+							c, err := diff.Diff(footer, result)
+							require.NoError(t, err)
+							require.Empty(t, c)
 						})
 					}
 				})
