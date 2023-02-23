@@ -61,18 +61,20 @@ func (s *Snapshot) ScanInternal(
 	visitPointKey func(key *InternalKey, value LazyValue) error,
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
 	visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
+	visitSharedFile func(sst *SharedSSTMeta) error,
 ) error {
 	if s.db == nil {
 		panic(ErrClosed)
 	}
 	iter := s.db.newInternalIter(s, &IterOptions{
-		KeyTypes:   IterKeyTypePointsAndRanges,
-		LowerBound: lower,
-		UpperBound: upper,
+		KeyTypes:         IterKeyTypePointsAndRanges,
+		LowerBound:       lower,
+		UpperBound:       upper,
+		skipSharedLevels: visitSharedFile != nil,
 	})
 	defer iter.close()
 
-	return scanInternalImpl(lower, iter, visitPointKey, visitRangeDel, visitRangeKey)
+	return scanInternalImpl(lower, upper, iter, visitPointKey, visitRangeDel, visitRangeKey, visitSharedFile)
 }
 
 // Close closes the snapshot, releasing its resources. Close must be called.

@@ -5,10 +5,70 @@
 package pebble
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/sharedobjcat"
 )
+
+const (
+	// In skip-shared iteration mode, keys in levels sharedLevelsStart and greater
+	// (i.e. lower in the LSM) are skipped.
+	sharedLevelsStart = 5
+)
+
+// ErrInvalidSkipSharedIteration is returned by ScanInternal if it was called
+// with a shared file visitor function, and a file in a shareable level (i.e.
+// level >= sharedLevelsStart) was found to not be in shared storage according
+// to objstorage.Provider.
+var ErrInvalidSkipSharedIteration = errors.New("pebble: cannot use skip-shared iteration due to non-shared files in lower levels")
+
+// SharedSSTMeta represents an sstable on shared storage that either belongs
+// to this Pebble instance and can be ingested by other Pebble instances, or
+// belongs to another Pebble instance and can be ingested by this Pebble
+// instance. This struct must contain all fields that are necessary to
+// construct a shared file's manifest.FileMetadata on another node.
+type SharedSSTMeta struct {
+	sharedobjcat.SharedObjectMetadata
+
+	// Smallest and Largest internal keys for the overall bounds. The kind and
+	// SeqNum of these will reflect what is physically present on the source
+	// Pebble instance; it's up to the ingesting instance to set the trailer
+	// appropriately in the FileMetadata it creates. Note that these bounds could
+	// be narrower than the bounds of the underlying sstable; ScanInternal
+	// is expected to truncate sstable bounds to the bounds passed into that
+	// method.
+	Smallest, Largest InternalKey
+
+	// SmallestRangeKey and LargestRangeKey are internal keys that denote the
+	// range key bounds of this sstable. Must lie within [Smallest, Largest].
+	SmallestRangeKey, LargestRangeKey InternalKey
+
+	// SmallestPointKey and LargestPointKey are internal keys that denote the
+	// point key bounds of this sstable. Must lie within [Smallest, Largest].
+	SmallestPointKey, LargestPointKey InternalKey
+
+	// Level denotes the level at which this file was present at read time.
+	// For files visited by ScanInternal, this value will only be 5 or 6.
+	Level uint8
+
+	// Size contains an estimate of the size of this sstable.
+	Size uint64
+}
+
+func (s *SharedSSTMeta) cloneFromFileMeta(f *fileMetadata) {
+	*s = SharedSSTMeta{
+		Smallest:         f.Smallest.Clone(),
+		Largest:          f.Largest.Clone(),
+		SmallestRangeKey: f.SmallestRangeKey.Clone(),
+		LargestRangeKey:  f.LargestRangeKey.Clone(),
+		SmallestPointKey: f.SmallestPointKey.Clone(),
+		LargestPointKey:  f.LargestPointKey.Clone(),
+		Size:             f.Size,
+	}
+}
 
 // scanInternalIterator is an iterator that returns all internal keys instead of
 // collapsing them by user keys. For instance, an InternalKeyKindDelete would be
@@ -43,13 +103,202 @@ type scanInternalIterator struct {
 	boundsBufIdx int
 }
 
+// truncateSharedFile truncates a shared file's [Smallest, Largest] fields to
+// [lower, upper), potentially opening iterators on the file to find keys within
+// the requested bounds. A SharedSSTMeta is produced that is suitable for
+// external consumption by other Pebble instances.
+//
+// TODO(bilal): If opening iterators and doing reads in this method is too
+// inefficient, consider producing non-tight file bounds instead.
+func (d *DB) truncateSharedFile(
+	lower, upper []byte, level int, file *fileMetadata, objMeta objstorage.ObjectMetadata,
+) (*SharedSSTMeta, error) {
+	cmp := d.cmp
+	sst := &SharedSSTMeta{}
+	sst.cloneFromFileMeta(file)
+	sst.Level = uint8(level)
+	// TODO(bilal): Once ObjectMetadata contains SharedObjectMetadata, fill out
+	// the remaining fields in SharedObjectMetadata here.
+	sst.SharedObjectMetadata.FileNum = objMeta.FileNum
+	sst.SharedObjectMetadata.FileType = objMeta.FileType
+	// Fast path: file is entirely within [lower, upper).
+	if cmp(lower, file.Smallest.UserKey) <= 0 && cmp(upper, file.Largest.UserKey) > 0 {
+		return sst, nil
+	}
+
+	// We will need to truncate file bounds in at least one direction. Open all
+	// relevant iterators.
+	//
+	// TODO(bilal): Once virtual sstables go in, verify that the constraining of
+	// bounds to virtual sstable bounds happens below this method, so we aren't
+	// unintentionally exposing keys we shouldn't be exposing.
+	iter, rangeDelIter, err := d.newIters(file, &IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
+		level:      manifest.Level(level),
+	}, internalIterOpts{})
+	if err != nil {
+		return nil, err
+	}
+	if iter != nil {
+		defer iter.Close()
+	}
+	if rangeDelIter != nil {
+		rangeDelIter = keyspan.Truncate(cmp, rangeDelIter, lower, upper, nil, nil)
+		defer rangeDelIter.Close()
+	}
+	rangeKeyIter, err := d.tableNewRangeKeyIter(file, nil /* spanIterOptions */)
+	if err != nil {
+		return nil, err
+	}
+	if rangeKeyIter != nil {
+		rangeKeyIter = keyspan.Truncate(cmp, rangeKeyIter, lower, upper, nil, nil)
+		defer rangeKeyIter.Close()
+	}
+	// Check if we need to truncate on the left side. This means finding a new
+	// LargestPointKey and LargestRangeKey that is >= lower.
+	if cmp(lower, file.Smallest.UserKey) > 0 {
+		sst.SmallestPointKey.UserKey = sst.SmallestPointKey.UserKey[:0]
+		sst.SmallestPointKey.Trailer = 0
+		if iter != nil {
+			key, _ := iter.SeekGE(lower, base.SeekGEFlagsNone)
+			if key != nil {
+				sst.SmallestPointKey.UserKey = append(sst.SmallestPointKey.UserKey[:0], key.UserKey...)
+				sst.SmallestPointKey.Trailer = key.Trailer
+			}
+		}
+		if rangeDelIter != nil {
+			span := rangeDelIter.SeekGE(lower)
+			if span != nil && (len(sst.SmallestPointKey.UserKey) == 0 || base.InternalCompare(cmp, span.SmallestKey(), sst.SmallestPointKey) < 0) {
+				sst.SmallestPointKey.UserKey = append(sst.SmallestPointKey.UserKey[:0], span.Start...)
+				sst.SmallestPointKey.Trailer = base.MakeTrailer(span.LargestSeqNum(), InternalKeyKindRangeDelete)
+			}
+		}
+		sst.SmallestRangeKey.UserKey = sst.SmallestRangeKey.UserKey[:0]
+		sst.SmallestRangeKey.Trailer = 0
+		if rangeKeyIter != nil {
+			span := rangeKeyIter.SeekGE(lower)
+			if span != nil {
+				sst.SmallestRangeKey.UserKey = append(sst.SmallestRangeKey.UserKey[:0], span.Start...)
+				sst.SmallestRangeKey.Trailer = span.SmallestKey().Trailer
+			}
+		}
+	}
+	// Check if we need to truncate on the right side. This means finding a new
+	// LargestPointKey and LargestRangeKey that is < upper.
+	if cmp(upper, file.Largest.UserKey) < 0 {
+		sst.LargestPointKey.UserKey = sst.LargestPointKey.UserKey[:0]
+		sst.LargestPointKey.Trailer = 0
+		if iter != nil {
+			key, _ := iter.SeekLT(upper, base.SeekLTFlagsNone)
+			if key != nil {
+				sst.LargestPointKey.UserKey = append(sst.LargestPointKey.UserKey[:0], key.UserKey...)
+				sst.LargestPointKey.Trailer = key.Trailer
+			}
+		}
+		if rangeDelIter != nil {
+			span := rangeDelIter.SeekLT(upper)
+			if span != nil && (len(sst.LargestPointKey.UserKey) == 0 || base.InternalCompare(cmp, span.LargestKey(), sst.LargestPointKey) > 0) {
+				sst.LargestPointKey.UserKey = append(sst.LargestPointKey.UserKey[:0], span.End...)
+				sst.LargestPointKey.Trailer = span.LargestKey().Trailer
+			}
+		}
+		sst.LargestRangeKey.UserKey = sst.LargestRangeKey.UserKey[:0]
+		sst.LargestRangeKey.Trailer = 0
+		if rangeKeyIter != nil {
+			span := rangeKeyIter.SeekLT(upper)
+			if span != nil {
+				sst.LargestRangeKey.UserKey = append(sst.LargestRangeKey.UserKey[:0], span.End...)
+				sst.LargestRangeKey.Trailer = span.LargestKey().Trailer
+			}
+		}
+	}
+	// Set overall bounds based on {Smallest,Largest}{Point,Range}Key.
+	switch {
+	case len(sst.SmallestRangeKey.UserKey) == 0:
+		sst.Smallest = sst.SmallestPointKey
+	case len(sst.SmallestPointKey.UserKey) == 0:
+		sst.Smallest = sst.SmallestRangeKey
+	default:
+		sst.Smallest = sst.SmallestPointKey
+		if base.InternalCompare(cmp, sst.SmallestRangeKey, sst.SmallestPointKey) < 0 {
+			sst.Smallest = sst.SmallestRangeKey
+		}
+	}
+	switch {
+	case len(sst.LargestRangeKey.UserKey) == 0:
+		sst.Largest = sst.LargestPointKey
+	case len(sst.LargestPointKey.UserKey) == 0:
+		sst.Largest = sst.LargestRangeKey
+	default:
+		sst.Largest = sst.LargestPointKey
+		if base.InternalCompare(cmp, sst.LargestRangeKey, sst.LargestPointKey) > 0 {
+			sst.Largest = sst.LargestRangeKey
+		}
+	}
+	// On rare occasion, a file might overlap with [lower, upper) but not actually
+	// have any keys within those bounds. Skip such files.
+	if len(sst.Smallest.UserKey) == 0 {
+		return nil, nil
+	}
+	return sst, nil
+}
+
 func scanInternalImpl(
-	lower []byte,
+	lower, upper []byte,
 	iter *scanInternalIterator,
 	visitPointKey func(key *InternalKey, value LazyValue) error,
 	visitRangeDel func(start, end []byte, seqNum uint64) error,
 	visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
+	visitSharedFile func(sst *SharedSSTMeta) error,
 ) error {
+	if visitSharedFile != nil && (lower == nil || upper == nil) {
+		panic("lower and upper bounds must be specified in skip-shared iteration mode")
+	}
+	// Before starting iteration, check if any files in levels sharedLevelsStart
+	// and below are *not* shared. Error out if that is the case, as skip-shared
+	// iteration will not produce a consistent point-in-time view of this range
+	// of keys. For files that are shared, call visitSharedFile with a truncated
+	// version of that file.
+	cmp := iter.comparer.Compare
+	db := iter.readState.db
+	provider := db.objProvider
+	if visitSharedFile != nil {
+		if provider != nil && !db.opts.private.disableProviderSharedFileCheck {
+			panic("expected non-nil Provider in skip-shared iteration mode")
+		}
+		for level := sharedLevelsStart; level < numLevels; level++ {
+			files := iter.readState.current.Levels[level].Iter()
+			for f := files.SeekGE(cmp, lower); f != nil && cmp(f.Smallest.UserKey, upper) < 0; f = files.Next() {
+				var objMeta objstorage.ObjectMetadata
+				var err error
+				if !db.opts.private.disableProviderSharedFileCheck {
+					objMeta, err = provider.Lookup(fileTypeTable, f.FileNum)
+					if err != nil {
+						return err
+					}
+					if !objMeta.IsShared() {
+						return ErrInvalidSkipSharedIteration
+					}
+				} else {
+					// Fake an objMeta for tests.
+					objMeta = objstorage.ObjectMetadata{FileNum: f.FileNum, FileType: fileTypeTable}
+				}
+				var sst *SharedSSTMeta
+				sst, err = iter.readState.db.truncateSharedFile(lower, upper, level, f, objMeta)
+				if err != nil {
+					return err
+				}
+				if sst == nil {
+					continue
+				}
+				if err = visitSharedFile(sst); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	for valid := iter.seekGE(lower); valid && iter.error() == nil; valid = iter.next() {
 		key := iter.unsafeKey()
 
@@ -96,6 +345,9 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 	numLevelIters += len(current.L0SublevelFiles)
 	for level := 1; level < len(current.Levels); level++ {
 		if current.Levels[level].Empty() {
+			continue
+		}
+		if i.opts.skipSharedLevels && level >= sharedLevelsStart {
 			continue
 		}
 		numMergingLevels++
@@ -154,6 +406,9 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 	// Add level iterators for the non-empty non-L0 levels.
 	for level := 1; level < numLevels; level++ {
 		if current.Levels[level].Empty() {
+			continue
+		}
+		if i.opts.skipSharedLevels && level >= sharedLevelsStart {
 			continue
 		}
 		addLevelIterForFiles(current.Levels[level].Iter(), manifest.Level(level))
@@ -217,6 +472,9 @@ func (i *scanInternalIterator) constructRangeKeyIter() {
 	// Add level iterators for the non-empty non-L0 levels.
 	for level := 1; level < len(current.RangeKeyLevels); level++ {
 		if current.RangeKeyLevels[level].Empty() {
+			continue
+		}
+		if i.opts.skipSharedLevels && level >= sharedLevelsStart {
 			continue
 		}
 		li := i.rangeKey.iterConfig.NewLevelIter()

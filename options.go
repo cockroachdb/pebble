@@ -180,6 +180,9 @@ type IterOptions struct {
 	level manifest.Level
 	// disableLazyCombinedIteration is an internal testing option.
 	disableLazyCombinedIteration bool
+	// skipSharedLevels skips levels that are shareable (level >=
+	// sharedLevelStart). Only valid with scanInternalIterator.
+	skipSharedLevels bool
 
 	// NB: If adding new Options, you must account for them in iterator
 	// construction and Iterator.SetOptions.
@@ -865,6 +868,11 @@ type Options struct {
 
 		// A private option to disable stats collection.
 		disableTableStats bool
+
+		// disableProviderSharedFileCheck allows skip-shared iteration to pretend
+		// that all files in L5 and L6 are shared, even if the Provider disagrees
+		// or there is no provider. Used only in tests
+		disableProviderSharedFileCheck bool
 
 		// fsCloser holds a closer that should be invoked after a DB using these
 		// Options is closed. This is used to automatically stop the
