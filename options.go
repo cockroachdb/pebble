@@ -222,6 +222,16 @@ func (o *IterOptions) getLogger() Logger {
 	return o.logger
 }
 
+// scanInternalOptions is similar to IterOptions, meant for use with
+// scanInternalIterator.
+type scanInternalOptions struct {
+	IterOptions
+
+	// skipSharedLevels skips levels that are shareable (level >=
+	// sharedLevelStart).
+	skipSharedLevels bool
+}
+
 // RangeKeyMasking configures automatic hiding of point keys by range keys. A
 // non-nil Suffix enables range-key masking. When enabled, range keys with
 // suffixes ≥ Suffix behave as masks. All point keys that are contained within a
