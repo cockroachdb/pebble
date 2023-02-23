@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -25,9 +27,11 @@ func TestScanInternal(t *testing.T) {
 	var d *DB
 	type scanInternalReader interface {
 		ScanInternal(
+			ctx context.Context,
 			lower, upper []byte, visitPointKey func(key *InternalKey, value LazyValue) error,
 			visitRangeDel func(start, end []byte, seqNum uint64) error,
-			visitRangeKey func(start, end []byte, keys []keyspan.Key) error) error
+			visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
+			visitSharedFile func(sst *SharedSSTMeta) error) error
 	}
 	batches := map[string]*Batch{}
 	snaps := map[string]*Snapshot{}
@@ -40,6 +44,7 @@ func TestScanInternal(t *testing.T) {
 				sstable.NewTestKeysBlockPropertyCollector,
 			},
 		}
+		opts.Experimental.SharedStorage = shared.NewInMem()
 		opts.DisableAutomaticCompactions = true
 		opts.EnsureDefaults()
 		opts.WithFSDefaults()
@@ -144,6 +149,7 @@ func TestScanInternal(t *testing.T) {
 
 			d, err = Open("", opts)
 			require.NoError(t, err)
+			require.NoError(t, d.SetCreatorID(1))
 			return ""
 		case "snapshot":
 			s := d.NewSnapshot()
@@ -218,6 +224,8 @@ func TestScanInternal(t *testing.T) {
 		case "scan-internal":
 			var lower, upper []byte
 			var reader scanInternalReader = d
+			var b strings.Builder
+			var fileVisitor func(sst *SharedSSTMeta) error
 			for _, arg := range td.CmdArgs {
 				switch arg.Key {
 				case "lower":
@@ -231,10 +239,14 @@ func TestScanInternal(t *testing.T) {
 						return fmt.Sprintf("no snapshot found for name %s", name)
 					}
 					reader = snap
+				case "skip-shared":
+					fileVisitor = func(sst *SharedSSTMeta) error {
+						fmt.Fprintf(&b, "shared file: %s [%s-%s]\n", sst.fileNum, sst.Smallest.String(), sst.Largest.String())
+						return nil
+					}
 				}
 			}
-			var b strings.Builder
-			err := reader.ScanInternal(lower, upper, func(key *InternalKey, value LazyValue) error {
+			err := reader.ScanInternal(context.TODO(), lower, upper, func(key *InternalKey, value LazyValue) error {
 				v := value.InPlaceValue()
 				fmt.Fprintf(&b, "%s (%s)\n", key, v)
 				return nil
@@ -245,7 +257,7 @@ func TestScanInternal(t *testing.T) {
 				s := keyspan.Span{Start: start, End: end, Keys: keys}
 				fmt.Fprintf(&b, "%s\n", s.String())
 				return nil
-			})
+			}, fileVisitor)
 			if err != nil {
 				return err.Error()
 			}
