@@ -152,3 +152,120 @@ scan-internal
 a-c:{(#2,RANGEKEYSET,@5,boop)}
 b@3#1,1 (bar)
 c-e:{(#3,RANGEKEYSET,@5,beep)}
+
+
+# Skip-shared iteration mode. Test truncation of range key at scan bounds.
+
+reset
+----
+
+batch commit
+set b@3 bar
+----
+committed 1 keys
+
+batch commit
+range-key-set a c @5 boop
+del-range c e
+----
+committed 2 keys
+
+flush
+----
+
+compact a-z
+----
+6:
+  000005:[a#2,RANGEKEYSET-e#inf,RANGEDEL]
+
+batch commit
+set f@8 baz
+----
+committed 1 keys
+
+lsm
+----
+6:
+  000005:[a#2,RANGEKEYSET-e#inf,RANGEDEL]
+
+scan-internal
+----
+a-c:{(#2,RANGEKEYSET,@5,boop)}
+b@3#1,1 (bar)
+c-e#3,RANGEDEL
+f@8#4,1 (baz)
+
+scan-internal skip-shared lower=a upper=z
+----
+shared file: (creatorID=00000000000000000001,FileNum=000005) [a#2,21-e#72057594037927935,15]
+f@8#4,1 (baz)
+
+scan-internal skip-shared lower=a upper=e
+----
+shared file: (creatorID=00000000000000000001,FileNum=000005) [a#2,21-e#72057594037927935,15]
+
+scan-internal skip-shared lower=a upper=d
+----
+shared file: (creatorID=00000000000000000001,FileNum=000005) [a#2,21-d#72057594037927935,15]
+
+scan-internal skip-shared lower=a upper=c
+----
+shared file: (creatorID=00000000000000000001,FileNum=000005) [a#2,21-c#72057594037927935,21]
+
+scan-internal skip-shared lower=a upper=b
+----
+shared file: (creatorID=00000000000000000001,FileNum=000005) [a#2,21-b#72057594037927935,21]
+
+scan-internal skip-shared lower=b upper=z
+----
+shared file: (creatorID=00000000000000000001,FileNum=000005) [b#2,21-e#72057594037927935,15]
+f@8#4,1 (baz)
+
+scan-internal skip-shared lower=b upper=bb
+----
+shared file: (creatorID=00000000000000000001,FileNum=000005) [b#2,21-bb#72057594037927935,21]
+
+scan-internal skip-shared lower=e upper=ff
+----
+f@8#4,1 (baz)
+
+# Shared files that don't have any keys in [lower, upper) are ignored.
+
+reset
+----
+
+batch commit
+set a foo
+set f bar
+del-range b c
+range-key-set e ee @5 boop
+----
+committed 4 keys
+
+flush
+----
+
+compact a-z
+----
+6:
+  000005:[a#1,SET-f#2,SET]
+
+lsm
+----
+6:
+  000005:[a#1,SET-f#2,SET]
+
+scan-internal skip-shared lower=c upper=d
+----
+
+scan-internal skip-shared lower=bb upper=d
+----
+shared file: (creatorID=00000000000000000001,FileNum=000005) [bb#3,15-c#72057594037927935,15]
+
+scan-internal skip-shared lower=c upper=ea
+----
+shared file: (creatorID=00000000000000000001,FileNum=000005) [e#4,21-ea#72057594037927935,21]
+
+scan-internal skip-shared lower=c upper=z
+----
+shared file: (creatorID=00000000000000000001,FileNum=000005) [e#4,21-f#2,1]

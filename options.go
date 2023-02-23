@@ -222,6 +222,16 @@ func (o *IterOptions) getLogger() Logger {
 	return o.logger
 }
 
+// scanInternalOptions is similar to IterOptions, meant for use with
+// scanInternalIterator.
+type scanInternalOptions struct {
+	IterOptions
+
+	// skipSharedLevels skips levels that are shareable (level >=
+	// sharedLevelStart).
+	skipSharedLevels bool
+}
+
 // RangeKeyMasking configures automatic hiding of point keys by range keys. A
 // non-nil Suffix enables range-key masking. When enabled, range keys with
 // suffixes ≥ Suffix behave as masks. All point keys that are contained within a
@@ -861,6 +871,11 @@ type Options struct {
 
 		// A private option to disable stats collection.
 		disableTableStats bool
+
+		// testingDisableProviderSharedFileCheck allows skip-shared iteration to
+		// pretend that all files in L5 and L6 are shared, even if the Provider
+		// disagrees or there is no provider. Used only in tests.
+		testingDisableProviderSharedFileCheck bool
 
 		// fsCloser holds a closer that should be invoked after a DB using these
 		// Options is closed. This is used to automatically stop the

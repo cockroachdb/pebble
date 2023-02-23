@@ -7,6 +7,7 @@ package objstorage
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 
 	"github.com/cockroachdb/errors"
@@ -17,6 +18,15 @@ import (
 // SharedObjectBacking encodes the metadata necessary to incorporate a shared
 // object into a different Pebble instance.
 type SharedObjectBacking []byte
+
+// String implements the fmt.Stringer interface. Used for tests / debugging.
+func (s SharedObjectBacking) String() string {
+	meta, err := fromSharedObjectBacking(base.FileTypeTable, 0, s)
+	if err != nil {
+		return err.Error()
+	}
+	return fmt.Sprintf("(creatorID=%s,FileNum=%s)", meta.Shared.CreatorID, meta.Shared.CreatorFileNum)
+}
 
 const (
 	tagCreatorID      = 1
