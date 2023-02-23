@@ -121,6 +121,14 @@ type DiskSlowInfo struct {
 	Path string
 	// Operation being performed on the file.
 	OpType vfs.OpType
+	// Size of write in bytes, if the write is sized.
+	WriteSize int
+	// If actual write size is greater than WriteSizeCeiling, WriteSize
+	// will equal WriteSizeCeiling. The packing scheme we use for
+	// health checking file writes allows for a lower max write size
+	// than the max that can fit in an int. If not set / if zero, there
+	// is no ceiling.
+	WriteSizeCeiling int
 	// Duration that has elapsed since this disk operation started.
 	Duration time.Duration
 }
@@ -131,8 +139,8 @@ func (i DiskSlowInfo) String() string {
 
 // SafeFormat implements redact.SafeFormatter.
 func (i DiskSlowInfo) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("disk slowness detected: %s on file %s has been ongoing for %0.1fs",
-		redact.Safe(i.OpType.String()), i.Path, redact.Safe(i.Duration.Seconds()))
+	w.Printf("disk slowness detected: %s on file %s (%d bytes (ceiling %d bytes)) has been ongoing for %0.1fs",
+		redact.Safe(i.OpType.String()), i.Path, i.WriteSize, i.WriteSizeCeiling, redact.Safe(i.Duration.Seconds()))
 }
 
 // FlushInfo contains the info for a flush event.
