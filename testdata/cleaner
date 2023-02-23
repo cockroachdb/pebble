@@ -179,7 +179,6 @@ lock: db1/LOCK
 open-dir: db1
 open-dir: db1
 open-dir: db1
-sync: db1
 create: db1/MANIFEST-000458
 sync: db1/MANIFEST-000458
 remove: db1/temporary.000458.dbtmp

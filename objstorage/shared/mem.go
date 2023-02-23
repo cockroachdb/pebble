@@ -12,34 +12,36 @@ import (
 	"sync"
 )
 
-// InMemStore is an in-memory implementation of the shared.Storage interface
+// NewInMem returns an in-memory implementation of the shared.Storage
+// interface (for testing).
+func NewInMem() Storage {
+	store := &inMemStore{}
+	store.mu.objects = make(map[string]*inMemObj)
+	return store
+}
+
+// inMemStore is an in-memory implementation of the shared.Storage interface
 // (for testing).
-type InMemStore struct {
+type inMemStore struct {
 	mu struct {
 		sync.Mutex
 		objects map[string]*inMemObj
 	}
 }
 
-var _ Storage = (*InMemStore)(nil)
+var _ Storage = (*inMemStore)(nil)
 
 type inMemObj struct {
 	name string
 	data []byte
 }
 
-func NewInMemStore() *InMemStore {
-	store := &InMemStore{}
-	store.mu.objects = make(map[string]*inMemObj)
-	return store
-}
-
-func (s *InMemStore) Close() error {
-	*s = InMemStore{}
+func (s *inMemStore) Close() error {
+	*s = inMemStore{}
 	return nil
 }
 
-func (s *InMemStore) ReadObjectAt(basename string, offset int64) (io.ReadCloser, int64, error) {
+func (s *inMemStore) ReadObjectAt(basename string, offset int64) (io.ReadCloser, int64, error) {
 	obj, err := s.getObj(basename)
 	if err != nil {
 		return nil, 0, err
@@ -68,7 +70,7 @@ func (r *inMemReader) Close() error {
 	return nil
 }
 
-func (s *InMemStore) CreateObject(basename string) (io.WriteCloser, error) {
+func (s *inMemStore) CreateObject(basename string) (io.WriteCloser, error) {
 	return &inMemWriter{
 		store: s,
 		name:  basename,
@@ -76,7 +78,7 @@ func (s *InMemStore) CreateObject(basename string) (io.WriteCloser, error) {
 }
 
 type inMemWriter struct {
-	store *InMemStore
+	store *inMemStore
 	name  string
 	buf   bytes.Buffer
 }
@@ -101,7 +103,7 @@ func (o *inMemWriter) Close() error {
 	return nil
 }
 
-func (s *InMemStore) List(prefix, delimiter string) ([]string, error) {
+func (s *inMemStore) List(prefix, delimiter string) ([]string, error) {
 	if delimiter != "" {
 		panic("delimiter unimplemented")
 	}
@@ -117,13 +119,13 @@ func (s *InMemStore) List(prefix, delimiter string) ([]string, error) {
 	return res, nil
 }
 
-func (s *InMemStore) Delete(basename string) error {
+func (s *inMemStore) Delete(basename string) error {
 	s.rmObj(basename)
 	return nil
 }
 
-// Size returns the length of the named object in bytes.
-func (s *InMemStore) Size(basename string) (int64, error) {
+// Size returns the length of the named object in bytesWritten.
+func (s *inMemStore) Size(basename string) (int64, error) {
 	obj, err := s.getObj(basename)
 	if err != nil {
 		return 0, err
@@ -131,7 +133,7 @@ func (s *InMemStore) Size(basename string) (int64, error) {
 	return int64(len(obj.data)), nil
 }
 
-func (s *InMemStore) getObj(name string) (*inMemObj, error) {
+func (s *inMemStore) getObj(name string) (*inMemObj, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	obj, ok := s.mu.objects[name]
@@ -141,13 +143,13 @@ func (s *InMemStore) getObj(name string) (*inMemObj, error) {
 	return obj, nil
 }
 
-func (s *InMemStore) addObj(o *inMemObj) {
+func (s *inMemStore) addObj(o *inMemObj) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mu.objects[o.name] = o
 }
 
-func (s *InMemStore) rmObj(name string) {
+func (s *inMemStore) rmObj(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.mu.objects, name)

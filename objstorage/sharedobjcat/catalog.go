@@ -123,6 +123,10 @@ func Open(fs vfs.FS, dirname string) (*Catalog, CatalogContents, error) {
 
 // SetCreatorID sets the creator ID. If it is already set, it must match.
 func (c *Catalog) SetCreatorID(id CreatorID) error {
+	if !id.IsSet() {
+		return errors.AssertionFailedf("attempt to unset CreatorID")
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -184,9 +188,34 @@ func (b *Batch) Reset() {
 	b.ve.DeletedObjects = b.ve.DeletedObjects[:0]
 }
 
-// ApplyBatch applies a batch of updates; returns after the change is stably recorded on storage.
-// On success, the batch is cleared.
-func (c *Catalog) ApplyBatch(b *Batch) error {
+// IsEmpty returns true if the batch is empty.
+func (b *Batch) IsEmpty() bool {
+	return len(b.ve.NewObjects) == 0 && len(b.ve.DeletedObjects) == 0
+}
+
+// Copy returns a copy of the Batch.
+func (b *Batch) Copy() Batch {
+	var res Batch
+	if len(b.ve.NewObjects) > 0 {
+		res.ve.NewObjects = make([]SharedObjectMetadata, len(b.ve.NewObjects))
+		copy(res.ve.NewObjects, b.ve.NewObjects)
+	}
+	if len(b.ve.DeletedObjects) > 0 {
+		res.ve.DeletedObjects = make([]base.FileNum, len(b.ve.DeletedObjects))
+		copy(res.ve.DeletedObjects, b.ve.DeletedObjects)
+	}
+	return res
+}
+
+// Append merges two batches.
+func (b *Batch) Append(other Batch) {
+	b.ve.NewObjects = append(b.ve.NewObjects, other.ve.NewObjects...)
+	b.ve.DeletedObjects = append(b.ve.DeletedObjects, other.ve.DeletedObjects...)
+}
+
+// ApplyBatch applies a batch of updates; returns after the change is stably
+// recorded on storage.
+func (c *Catalog) ApplyBatch(b Batch) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

@@ -10,6 +10,15 @@ import (
 	"sort"
 )
 
+// WithLogging wraps the given Storage implementation and emits logs for various
+// operations.
+func WithLogging(wrapped Storage, logf func(fmt string, args ...interface{})) Storage {
+	return &loggingStore{
+		logf:    logf,
+		wrapped: wrapped,
+	}
+}
+
 // loggingStore wraps a shared.Storage implementation and emits logs of the
 // operations.
 type loggingStore struct {
@@ -52,23 +61,32 @@ func (l *loggingReader) Close() error {
 
 func (l *loggingStore) CreateObject(basename string) (io.WriteCloser, error) {
 	l.logf("create object %q", basename)
-	return l.wrapped.CreateObject(basename)
+	writer, err := l.wrapped.CreateObject(basename)
+	if err != nil {
+		return nil, err
+	}
+	return &loggingWriter{
+		l:           l,
+		name:        basename,
+		WriteCloser: writer,
+	}, nil
 }
 
 type loggingWriter struct {
-	l     *loggingStore
-	name  string
-	bytes int64
+	l            *loggingStore
+	name         string
+	bytesWritten int64
 	io.WriteCloser
 }
 
 func (l *loggingWriter) Write(p []byte) (n int, err error) {
 	n, err = l.WriteCloser.Write(p)
-	l.bytes += int64(n)
+	l.bytesWritten += int64(n)
 	return n, err
 }
+
 func (l *loggingWriter) Close() error {
-	l.l.logf("close writer for %q after %d bytes", l.name, l.bytes)
+	l.l.logf("close writer for %q after %d bytes", l.name, l.bytesWritten)
 	return l.WriteCloser.Close()
 }
 
