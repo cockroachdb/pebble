@@ -119,24 +119,7 @@ func (i levelInfos) SafeFormat(w redact.SafePrinter, _ rune) {
 
 // DiskSlowInfo contains the info for a disk slowness event when writing to a
 // file.
-type DiskSlowInfo struct {
-	// Path of file being written to.
-	Path string
-	// Operation being performed on the file.
-	OpType vfs.OpType
-	// Duration that has elapsed since this disk operation started.
-	Duration time.Duration
-}
-
-func (i DiskSlowInfo) String() string {
-	return redact.StringWithoutMarkers(i)
-}
-
-// SafeFormat implements redact.SafeFormatter.
-func (i DiskSlowInfo) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("disk slowness detected: %s on file %s has been ongoing for %0.1fs",
-		redact.Safe(i.OpType.String()), i.Path, redact.Safe(i.Duration.Seconds()))
-}
+type DiskSlowInfo = vfs.DiskSlowInfo
 
 // FlushInfo contains the info for a flush event.
 type FlushInfo struct {
