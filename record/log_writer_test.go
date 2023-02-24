@@ -218,7 +218,11 @@ func TestSyncRecordWithSignalChan(t *testing.T) {
 		require.NoError(t, err)
 		syncWG.Wait()
 		require.NoError(t, syncErr)
-		require.Equal(t, cap(semChan)-(i+1), len(semChan))
+		// The waitgroup is released before the channel is read, so wait if
+		// necessary.
+		require.Eventually(t, func() bool {
+			return cap(semChan)-(i+1) == len(semChan)
+		}, 10*time.Second, time.Millisecond)
 	}
 }
 
