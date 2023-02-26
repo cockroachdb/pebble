@@ -75,7 +75,10 @@ func (p *Provider) sharedPath(meta ObjectMetadata) string {
 
 func sharedObjectName(meta ObjectMetadata) string {
 	// TODO(radu): prepend a "shard" value for better distribution within the bucket?
-	return fmt.Sprintf("%s-%s", meta.Shared.CreatorID, base.MakeFilename(meta.FileType, meta.FileNum))
+	return fmt.Sprintf(
+		"%s-%s",
+		meta.Shared.CreatorID, base.MakeFilename(meta.FileType, meta.Shared.CreatorFileNum),
+	)
 }
 
 func (p *Provider) sharedCreate(

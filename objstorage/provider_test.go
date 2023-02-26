@@ -6,6 +6,7 @@ package objstorage
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -25,6 +26,7 @@ func TestProvider(t *testing.T) {
 	})
 
 	providers := make(map[string]*Provider)
+	backings := make(map[string]SharedObjectBacking)
 	var curProvider *Provider
 	datadriven.RunTest(t, "testdata/provider", func(t *testing.T, d *datadriven.TestData) string {
 		scanArgs := func(desc string, args ...interface{}) {
@@ -106,7 +108,48 @@ func TestProvider(t *testing.T) {
 
 		case "list":
 			for _, meta := range curProvider.List() {
-				log.Infof("%s", curProvider.Path(meta))
+				log.Infof("%s -> %s", meta.FileNum, curProvider.Path(meta))
+			}
+			return log.String()
+
+		case "save-backing":
+			var key string
+			var fileNum base.FileNum
+			scanArgs("<key> <file-num>", &key, &fileNum)
+			meta, err := curProvider.Lookup(base.FileTypeTable, fileNum)
+			require.NoError(t, err)
+			backing, err := meta.SharedObjectBacking()
+			if err != nil {
+				return err.Error()
+			}
+			backings[key] = backing
+			return log.String()
+
+		case "attach":
+			lines := strings.Split(d.Input, "\n")
+			if len(lines) == 0 {
+				d.Fatalf(t, "at least one row expected; format: <key> <file-num>")
+			}
+			var objs []SharedObjectToAttach
+			for _, l := range lines {
+				var key string
+				var fileNum base.FileNum
+				_, err := fmt.Sscan(l, &key, &fileNum)
+				require.NoError(t, err)
+				backing, ok := backings[key]
+				if !ok {
+					d.Fatalf(t, "unknown backing key %q", key)
+				}
+				objs = append(objs, SharedObjectToAttach{
+					FileType: base.FileTypeTable,
+					FileNum:  fileNum,
+					Backing:  backing,
+				})
+			}
+			metas, err := curProvider.AttachSharedObjects(objs)
+			require.NoError(t, err)
+			for _, meta := range metas {
+				log.Infof("%s -> %s", meta.FileNum, curProvider.Path(meta))
 			}
 			return log.String()
 
