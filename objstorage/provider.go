@@ -34,12 +34,7 @@ type Provider struct {
 
 	fsDir vfs.File
 
-	// shared fields are only initialized if st.SharedBackend is not nil.
-	shared struct {
-		creatorID CreatorID
-
-		catalog *sharedobjcat.Catalog
-	}
+	shared sharedSubsystem
 
 	mu struct {
 		sync.RWMutex
@@ -144,15 +139,6 @@ type Settings struct {
 	// (experimental).
 	Shared struct {
 		Storage shared.Storage
-
-		// CreatorID is persisted in the shared object catalog, if set.
-		//
-		// Ideally it should be set the first time we are opening the provider
-		// (i.e. when creating a new database).
-		//
-		// Until the database is opened with the Creator ID set at least once,
-		// shared objects cannot be created. The Creator ID cannot change.
-		CreatorID CreatorID
 	}
 }
 
@@ -218,11 +204,9 @@ func Open(settings Settings) (p *Provider, _ error) {
 		return nil, err
 	}
 
-	// Add shared objects.
-	if p.supportsSharedStorage() {
-		if err := p.sharedInit(); err != nil {
-			return nil, err
-		}
+	// Initialize shared subsystem (if configured) and add shared objects.
+	if err := p.sharedInit(); err != nil {
+		return nil, err
 	}
 
 	return p, nil
@@ -248,9 +232,6 @@ func (p *Provider) OpenForReading(fileType base.FileType, fileNum base.FileNum) 
 	if !meta.IsShared() {
 		return p.vfsOpenForReading(fileType, fileNum, false /* mustExist */)
 	}
-	if !p.supportsSharedStorage() {
-		return nil, errors.Errorf("shared storage not enabled but object is shared")
-	}
 	return p.sharedOpenForReading(meta)
 }
 
@@ -268,9 +249,6 @@ func (p *Provider) OpenForReadingMustExist(
 
 	if !meta.IsShared() {
 		return p.vfsOpenForReading(fileType, fileNum, true /* mustExist */)
-	}
-	if !p.supportsSharedStorage() {
-		return nil, errors.Errorf("shared storage not enabled but object is shared")
 	}
 
 	// TODO(radu): implement "must exist" behavior.
@@ -291,7 +269,7 @@ type CreateOptions struct {
 func (p *Provider) Create(
 	fileType base.FileType, fileNum base.FileNum, opts CreateOptions,
 ) (w Writable, meta ObjectMetadata, err error) {
-	if opts.PreferSharedStorage && p.supportsSharedStorage() {
+	if opts.PreferSharedStorage && p.st.Shared.Storage != nil {
 		w, meta, err = p.sharedCreate(fileType, fileNum)
 	} else {
 		w, meta, err = p.vfsCreate(fileType, fileNum)
@@ -460,8 +438,4 @@ func (p *Provider) removeMetadata(fileNum base.FileNum) {
 	} else {
 		p.mu.localObjectsChanged = true
 	}
-}
-
-func (p *Provider) supportsSharedStorage() bool {
-	return p.st.Shared.Storage != nil
 }

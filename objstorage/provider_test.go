@@ -50,11 +50,13 @@ func TestProvider(t *testing.T) {
 			st := DefaultSettings(fs, fsDir)
 			if creatorID != 0 {
 				st.Shared.Storage = sharedStore
-				st.Shared.CreatorID = creatorID
 			}
 			require.NoError(t, fs.MkdirAll(fsDir, 0755))
 			provider, err := Open(st)
 			require.NoError(t, err)
+			if creatorID != 0 {
+				require.NoError(t, provider.SetCreatorID(creatorID))
+			}
 			providers[fsDir] = provider
 			curProvider = provider
 
