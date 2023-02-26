@@ -190,8 +190,8 @@ type ObjectMetadata struct {
 type CreatorID = sharedobjcat.CreatorID
 
 // IsShared returns true if the object is on shared storage.
-func (m *ObjectMetadata) IsShared() bool {
-	return m.Shared.CreatorID.IsSet()
+func (meta *ObjectMetadata) IsShared() bool {
+	return meta.Shared.CreatorID.IsSet()
 }
 
 // Open creates the Provider.
