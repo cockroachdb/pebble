@@ -936,10 +936,12 @@ func TestTableCacheNoSuchFileError(t *testing.T) {
 	mem := vfs.NewMem()
 	logger := &catchFatalLogger{}
 
-	d, err := Open(dirname, &Options{
+	opts := &Options{
 		FS:     mem,
 		Logger: logger,
-	})
+	}
+	opts.private.minLogSizeRecycler = 1
+	d, err := Open(dirname, opts)
 	require.NoError(t, err)
 	defer func() { _ = d.Close() }()
 	require.NoError(t, d.Set([]byte("a"), []byte("val_a"), nil))

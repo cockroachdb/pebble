@@ -13,6 +13,8 @@ import (
 type logRecycler struct {
 	// The maximum number of log files to maintain for recycling.
 	limit int
+	// The minimum size of a log which can be recycled.
+	minLogSize int
 
 	// The minimum log number that is allowed to be recycled. Log numbers smaller
 	// than this will be subject to immediate deletion. This is used to prevent
@@ -32,7 +34,8 @@ type logRecycler struct {
 // the log file should not be deleted (i.e. the log is being recycled), and
 // false otherwise.
 func (r *logRecycler) add(logInfo fileInfo) bool {
-	if logInfo.fileNum < r.minRecycleLogNum {
+	if logInfo.fileNum < r.minRecycleLogNum ||
+		logInfo.fileSize < uint64(r.minLogSize) {
 		return false
 	}
 

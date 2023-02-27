@@ -438,6 +438,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
 		opts.Experimental.IngestSSTablesAsFlushable = true
+		opts.private.minLogSizeRecycler = 1
 
 		var err error
 		d, err = Open(dir, opts)

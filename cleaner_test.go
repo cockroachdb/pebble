@@ -96,6 +96,7 @@ func TestCleaner(t *testing.T) {
 				FS:     fs,
 				WALDir: dir + "_wal",
 			}).WithFSDefaults()
+			opts.private.minLogSizeRecycler = 1
 
 			for i := 1; i < len(td.CmdArgs); i++ {
 				switch td.CmdArgs[i].String() {

@@ -7,9 +7,8 @@ tree
             build/
     1073      000005.sst
      769      000007.sst
-      89      000009.log
      769      000010.sst
-     200      000012.log
+      11      000012.log
      823      000013.sst
       16      CURRENT
        0      LOCK
@@ -24,7 +23,7 @@ tree
               checkpoint/
     1073        000005.sst
      769        000007.sst
-      39        000009.log
+      25        000009.log
      769        000010.sst
      157        MANIFEST-000011
     1145        OPTIONS-000003

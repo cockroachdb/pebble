@@ -57,7 +57,6 @@ flush
 list-files build
 ----
 build:
-  000002.log
   000004.log
   000005.sst
   CURRENT

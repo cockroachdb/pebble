@@ -5,9 +5,8 @@ tree
 ----
           /
             build/
-      89      000004.log
      795      000005.sst
-      49      000006.log
+      11      000006.log
      823      000007.sst
       16      CURRENT
        0      LOCK

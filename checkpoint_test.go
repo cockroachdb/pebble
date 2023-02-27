@@ -33,6 +33,7 @@ func TestCheckpoint(t *testing.T) {
 		FormatMajorVersion:    FormatNewest,
 		L0CompactionThreshold: 10,
 	}
+	opts.private.minLogSizeRecycler = 1
 
 	datadriven.RunTest(t, "testdata/checkpoint", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {

@@ -82,9 +82,12 @@ func TestLogRecycler(t *testing.T) {
 
 func TestRecycleLogs(t *testing.T) {
 	mem := vfs.NewMem()
-	d, err := Open("", &Options{
+	opts := &Options{
 		FS: mem,
-	})
+	}
+	opts.private.minLogSizeRecycler = 1
+	d, err := Open("", opts)
+
 	require.NoError(t, err)
 
 	logNum := func() FileNum {
@@ -101,15 +104,20 @@ func TestRecycleLogs(t *testing.T) {
 	// Flush the memtable a few times, forcing rotation of the WAL. We should see
 	// the recycled logs change as expected.
 	require.EqualValues(t, []FileNum(nil), d.logRecycler.logNums())
+
+	// Empty memtable, so an empty log file will be produced. This log file will
+	// have size 0, so it should get skipped.
+	require.NoError(t, d.Flush())
+	require.EqualValues(t, []FileNum(nil), d.logRecycler.logNums())
+
 	curLog := logNum()
-
+	d.Set([]byte{'a'}, nil, nil)
 	require.NoError(t, d.Flush())
-
 	require.EqualValues(t, []FileNum{curLog}, d.logRecycler.logNums())
+
 	curLog = logNum()
-
+	d.Set([]byte{'a'}, nil, nil)
 	require.NoError(t, d.Flush())
-
 	require.EqualValues(t, []FileNum{curLog}, d.logRecycler.logNums())
 
 	require.NoError(t, d.Close())

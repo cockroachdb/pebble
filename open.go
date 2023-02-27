@@ -144,9 +144,12 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		fileLock:            fileLock,
 		dataDir:             dataDir,
 		walDir:              walDir,
-		logRecycler:         logRecycler{limit: opts.MemTableStopWritesThreshold + 1},
-		closed:              new(atomic.Value),
-		closedCh:            make(chan struct{}),
+		logRecycler: logRecycler{
+			limit:      opts.MemTableStopWritesThreshold + 1,
+			minLogSize: opts.private.minLogSizeRecycler,
+		},
+		closed:   new(atomic.Value),
+		closedCh: make(chan struct{}),
 	}
 	d.mu.versions = &versionSet{}
 	d.atomic.diskAvailBytes = math.MaxUint64

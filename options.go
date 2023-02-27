@@ -875,6 +875,12 @@ type Options struct {
 		// against the FS are made after the DB is closed, the FS may leak a
 		// goroutine indefinitely.
 		fsCloser io.Closer
+
+		// minLogSizeRecycler is the minimum size of a log which should be
+		// recycled. We need this because flushable ingestions can produce tiny
+		// log files. This value can be set to 1 by tests which generate tiny
+		// log files and want those files to be recycled.
+		minLogSizeRecycler int
 	}
 }
 
@@ -983,6 +989,13 @@ func (o *Options) EnsureDefaults() *Options {
 		o.Merger = DefaultMerger
 	}
 	o.private.strictWALTail = true
+
+	if o.private.minLogSizeRecycler == 0 {
+		// By default use a 1MB value for log recycling since this will always
+		// be greater than the log size produced by flushable ingestions.
+		o.private.minLogSizeRecycler = 1 << 20
+	}
+
 	if o.MaxConcurrentCompactions == nil {
 		o.MaxConcurrentCompactions = func() int { return 1 }
 	}

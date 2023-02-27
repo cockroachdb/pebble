@@ -47,6 +47,7 @@ func TestEventListener(t *testing.T) {
 			// can make these tests flaky. The TableStatsLoaded event is
 			// tested separately in TestTableStats.
 			opts.private.disableTableStats = true
+			opts.private.minLogSizeRecycler = 1
 			var err error
 			d, err = Open("db", opts)
 			if err != nil {

@@ -69,7 +69,6 @@ list-files build
 ----
 build:
   000005.sst
-  000006.log
   000007.sst
   000009.log
   000010.sst

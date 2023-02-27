@@ -113,6 +113,7 @@ func TestMetrics(t *testing.T) {
 	}
 	opts.Experimental.EnableValueBlocks = func() bool { return true }
 	opts.Levels = append(opts.Levels, LevelOptions{TargetFileSize: 50})
+	opts.private.minLogSizeRecycler = 1
 
 	// Prevent foreground flushes and compactions from triggering asynchronous
 	// follow-up compactions. This avoids asynchronously-scheduled work from
