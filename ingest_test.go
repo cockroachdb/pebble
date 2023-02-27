@@ -437,7 +437,6 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
-		opts.Experimental.IngestSSTablesAsFlushable = true
 
 		var err error
 		d, err = Open(dir, opts)
@@ -824,7 +823,6 @@ func TestIngest(t *testing.T) {
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
-		opts.Experimental.IngestSSTablesAsFlushable = true
 
 		var err error
 		d, err = Open("", opts)

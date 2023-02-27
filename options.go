@@ -627,14 +627,10 @@ type Options struct {
 		// sstables, and does not start rewriting existing sstables.
 		RequiredInPlaceValueBound UserKeyPrefixBound
 
-		// IngestSSTablesAsFlushable is used to determine if ingested sstables
-		// should be ingested as a flushable. By default this is false, but it
-		// is true for all metamorphic tests.
-		//
-		// TODO(bananabrick): Remove this field and enable by default once
-		// https://github.com/cockroachdb/pebble/issues/2292 and
-		// https://github.com/cockroachdb/pebble/issues/2266 are closed.
-		IngestSSTablesAsFlushable bool
+		// DisableIngestAsFlushable disables lazy ingestion of sstables through
+		// a WAL write and memtable rotation. Only effectual if the the format
+		// major version is at least `FormatFlushableIngest`.
+		DisableIngestAsFlushable bool
 
 		// SharedStorage is a second FS-like storage medium that can be shared
 		// between multiple Pebble instances. It is used to store sstables only, and
@@ -1123,6 +1119,9 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  compaction_debt_concurrency=%d\n", o.Experimental.CompactionDebtConcurrency)
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
+	if o.Experimental.DisableIngestAsFlushable {
+		fmt.Fprintf(&buf, "  disable_ingest_as_flushable=%t\n", o.Experimental.DisableIngestAsFlushable)
+	}
 	fmt.Fprintf(&buf, "  flush_delay_delete_range=%s\n", o.FlushDelayDeleteRange)
 	fmt.Fprintf(&buf, "  flush_delay_range_key=%s\n", o.FlushDelayRangeKey)
 	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.FlushSplitBytes)
@@ -1323,6 +1322,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.private.disableDeleteOnlyCompactions, err = strconv.ParseBool(value)
 			case "disable_elision_only_compactions":
 				o.private.disableElisionOnlyCompactions, err = strconv.ParseBool(value)
+			case "disable_ingest_as_flushable":
+				o.Experimental.DisableIngestAsFlushable, err = strconv.ParseBool(value)
 			case "disable_lazy_combined_iteration":
 				o.private.disableLazyCombinedIteration, err = strconv.ParseBool(value)
 			case "disable_wal":
