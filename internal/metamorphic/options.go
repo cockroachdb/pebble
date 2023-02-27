@@ -133,7 +133,6 @@ func defaultOptions() *pebble.Options {
 			FilterPolicy: bloom.FilterPolicy(10),
 		}},
 	}
-	opts.Experimental.IngestSSTablesAsFlushable = true
 	opts.EnsureDefaults()
 	return opts
 }
@@ -348,7 +347,7 @@ func randomOptions(rng *rand.Rand) *testOptions {
 		opts.Experimental.MaxWriterConcurrency = 2
 		opts.Experimental.ForceWriterParallelism = true
 	}
-	opts.Experimental.IngestSSTablesAsFlushable = rng.Intn(2) == 0
+	opts.Experimental.DisableIngestAsFlushable = rng.Intn(2) == 0
 	var lopts pebble.LevelOptions
 	lopts.BlockRestartInterval = 1 + rng.Intn(64)  // 1 - 64
 	lopts.BlockSize = 1 << uint(rng.Intn(24))      // 1 - 16MB

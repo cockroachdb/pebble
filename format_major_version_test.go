@@ -58,6 +58,8 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, FormatPrePebblev1MarkedCompacted, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatSSTableValueBlocks))
 	require.Equal(t, FormatSSTableValueBlocks, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatFlushableIngest))
+	require.Equal(t, FormatFlushableIngest, d.FormatMajorVersion())
 
 	require.NoError(t, d.Close())
 
@@ -219,6 +221,7 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		FormatPrePebblev1Marked:            {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
 		FormatPrePebblev1MarkedCompacted:   {sstable.TableFormatPebblev1, sstable.TableFormatPebblev2},
 		FormatSSTableValueBlocks:           {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
+		FormatFlushableIngest:              {sstable.TableFormatPebblev1, sstable.TableFormatPebblev3},
 	}
 
 	// Valid versions.
