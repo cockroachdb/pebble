@@ -131,11 +131,22 @@ const (
 	// TableFormatPebblev2.
 	FormatSSTableValueBlocks
 
+	// FormatFlushableIngest is a format major version that enables lazy
+	// addition of ingested sstables into the LSM structure. When an ingest
+	// overlaps with a memtable, a record of the ingest is written to the WAL
+	// without waiting for a flush. Subsequent reads treat the ingested files as
+	// a level above the overlapping memtable. Once the memtable is flushed, the
+	// ingested files are moved into the lowest possible levels.
+	//
+	// This feature is behind a format major version because it required
+	// breaking changes to the WAL format.
+	FormatFlushableIngest
+
 	// FormatNewest always contains the most recent format major version.
 	// NB: When adding new versions, the MaxTableFormat method should also be
 	// updated to return the maximum allowable version for the new
 	// FormatMajorVersion.
-	FormatNewest FormatMajorVersion = FormatSSTableValueBlocks
+	FormatNewest FormatMajorVersion = FormatFlushableIngest
 )
 
 // MaxTableFormat returns the maximum sstable.TableFormat that can be used at
@@ -151,7 +162,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 	case FormatRangeKeys, FormatMinTableFormatPebblev1, FormatPrePebblev1Marked,
 		FormatPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev2
-	case FormatSSTableValueBlocks:
+	case FormatSSTableValueBlocks, FormatFlushableIngest:
 		return sstable.TableFormatPebblev3
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -168,7 +179,8 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 		FormatRangeKeys:
 		return sstable.TableFormatLevelDB
 	case FormatMinTableFormatPebblev1, FormatPrePebblev1Marked,
-		FormatPrePebblev1MarkedCompacted, FormatSSTableValueBlocks:
+		FormatPrePebblev1MarkedCompacted, FormatSSTableValueBlocks,
+		FormatFlushableIngest:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -293,6 +305,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatSSTableValueBlocks: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatSSTableValueBlocks)
+	},
+	FormatFlushableIngest: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatFlushableIngest)
 	},
 }
 

@@ -629,11 +629,11 @@ type Options struct {
 
 		// IngestSSTablesAsFlushable is used to determine if ingested sstables
 		// should be ingested as a flushable. By default this is false, but it
-		// is true for all metamorphic tests.
+		// is true for all metamorphic tests. Only effective if the format major
+		// version is also at least `FormatFlushableIngest`.
 		//
-		// TODO(bananabrick): Remove this field and enable by default once
-		// https://github.com/cockroachdb/pebble/issues/2292 and
-		// https://github.com/cockroachdb/pebble/issues/2266 are closed.
+		// TODO(bananabrick,jackson): Remove this field and unconditionally
+		// ingest as flushable.
 		IngestSSTablesAsFlushable bool
 
 		// SharedStorage is a second FS-like storage medium that can be shared
