@@ -473,7 +473,7 @@ func readBlockBuf(r *Reader, bh BlockHandle, buf []byte) ([]byte, []byte, error)
 type memReader struct {
 	b  []byte
 	r  *bytes.Reader
-	rh objstorage.NoopReadaheadHandle
+	rh objstorage.NoopReadHandle
 }
 
 var _ objstorage.Readable = (*memReader)(nil)
@@ -483,7 +483,7 @@ func newMemReader(b []byte) *memReader {
 		b: b,
 		r: bytes.NewReader(b),
 	}
-	r.rh = objstorage.MakeNoopReadaheadHandle(r)
+	r.rh = objstorage.MakeNoopReadHandle(r)
 	return r
 }
 
@@ -502,7 +502,7 @@ func (m *memReader) Size() int64 {
 	return int64(len(m.b))
 }
 
-// NewReadaheadHandle implements objstorage.Readable.
-func (m *memReader) NewReadaheadHandle() objstorage.ReadaheadHandle {
+// NewReadHandle implements objstorage.Readable.
+func (m *memReader) NewReadHandle() objstorage.ReadHandle {
 	return &m.rh
 }

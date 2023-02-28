@@ -17,8 +17,8 @@ type sharedReadable struct {
 	objName string
 	size    int64
 
-	// rh is used for direct ReadAt calls without a readahead handle.
-	rh sharedReadaheadHandle
+	// rh is used for direct ReadAt calls without a read handle.
+	rh sharedReadHandle
 }
 
 var _ Readable = (*sharedReadable)(nil)
@@ -47,20 +47,20 @@ func (r *sharedReadable) Size() int64 {
 	return r.size
 }
 
-func (r *sharedReadable) NewReadaheadHandle() ReadaheadHandle {
+func (r *sharedReadable) NewReadHandle() ReadHandle {
 	// TODO(radu): use a pool.
-	return &sharedReadaheadHandle{readable: r}
+	return &sharedReadHandle{readable: r}
 }
 
-type sharedReadaheadHandle struct {
+type sharedReadHandle struct {
 	readable   *sharedReadable
 	lastReader io.ReadCloser
 	lastOffset int64
 }
 
-var _ ReadaheadHandle = (*sharedReadaheadHandle)(nil)
+var _ ReadHandle = (*sharedReadHandle)(nil)
 
-func (r *sharedReadaheadHandle) ReadAt(p []byte, offset int64) (n int, err error) {
+func (r *sharedReadHandle) ReadAt(p []byte, offset int64) (n int, err error) {
 	// See if this continues the previous read so that we can reuse the last reader.
 	if r.lastReader == nil || r.lastOffset != offset {
 		// We need to create a new reader.
@@ -82,7 +82,7 @@ func (r *sharedReadaheadHandle) ReadAt(p []byte, offset int64) (n int, err error
 	return n, err
 }
 
-func (r *sharedReadaheadHandle) Close() error {
+func (r *sharedReadHandle) Close() error {
 	var err error
 	if r.lastReader != nil {
 		err = r.lastReader.Close()
@@ -92,6 +92,6 @@ func (r *sharedReadaheadHandle) Close() error {
 	return err
 }
 
-func (r *sharedReadaheadHandle) MaxReadahead() {}
+func (r *sharedReadHandle) MaxReadahead() {}
 
-func (r *sharedReadaheadHandle) RecordCacheHit(offset, size int64) {}
+func (r *sharedReadHandle) RecordCacheHit(offset, size int64) {}

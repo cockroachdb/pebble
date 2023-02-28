@@ -198,15 +198,15 @@ type singleLevelIterator struct {
 	reader     *Reader
 	index      blockIter
 	data       blockIter
-	dataRH     objstorage.ReadaheadHandle
+	dataRH     objstorage.ReadHandle
 	// dataBH refers to the last data block that the iterator considered
 	// loading. It may not actually have loaded the block, due to an error or
 	// because it was considered irrelevant.
 	dataBH   BlockHandle
 	vbReader *valueBlockReader
-	// vbRH is the readahead handle for value blocks, which are in a different
+	// vbRH is the read handle for value blocks, which are in a different
 	// part of the sstable than data blocks.
-	vbRH      objstorage.ReadaheadHandle
+	vbRH      objstorage.ReadHandle
 	err       error
 	closeHook func(i Iterator) error
 	stats     *base.InternalIteratorStats
@@ -408,7 +408,7 @@ func (i *singleLevelIterator) init(
 		_ = i.index.Close()
 		return err
 	}
-	i.dataRH = r.readable.NewReadaheadHandle()
+	i.dataRH = r.readable.NewReadHandle()
 	if r.tableFormat == TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
@@ -427,7 +427,7 @@ func (i *singleLevelIterator) init(
 				stats:  stats,
 			}
 			i.data.lazyValueHandling.vbr = i.vbReader
-			i.vbRH = r.readable.NewReadaheadHandle()
+			i.vbRH = r.readable.NewReadHandle()
 		}
 		i.data.lazyValueHandling.hasValuePrefix = true
 	}
@@ -619,7 +619,7 @@ func (i *singleLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 }
 
 func (i *singleLevelIterator) readBlockWithStats(
-	bh BlockHandle, rh objstorage.ReadaheadHandle,
+	bh BlockHandle, rh objstorage.ReadHandle,
 ) (cache.Handle, error) {
 	return i.reader.readBlock(bh, nil /* transform */, rh, i.stats)
 }
@@ -1590,7 +1590,7 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 		}
 		// blockIntersects
 	}
-	indexBlock, err := i.readBlockWithStats(bhp.BlockHandle, nil /* readaheadHandle */)
+	indexBlock, err := i.readBlockWithStats(bhp.BlockHandle, nil /* readHandle */)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -1694,7 +1694,7 @@ func (i *twoLevelIterator) init(
 		_ = i.topLevelIndex.Close()
 		return err
 	}
-	i.dataRH = r.readable.NewReadaheadHandle()
+	i.dataRH = r.readable.NewReadHandle()
 	if r.tableFormat == TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			i.vbReader = &valueBlockReader{
@@ -1704,7 +1704,7 @@ func (i *twoLevelIterator) init(
 				stats:  stats,
 			}
 			i.data.lazyValueHandling.vbr = i.vbReader
-			i.vbRH = r.readable.NewReadaheadHandle()
+			i.vbRH = r.readable.NewReadHandle()
 		}
 		i.data.lazyValueHandling.hasValuePrefix = true
 	}
@@ -2728,15 +2728,15 @@ func (r *Reader) readIndex(stats *base.InternalIteratorStats) (cache.Handle, err
 }
 
 func (r *Reader) readFilter(stats *base.InternalIteratorStats) (cache.Handle, error) {
-	return r.readBlock(r.filterBH, nil /* transform */, nil /* readaheadHandle */, stats)
+	return r.readBlock(r.filterBH, nil /* transform */, nil /* readHandle */, stats)
 }
 
 func (r *Reader) readRangeDel(stats *base.InternalIteratorStats) (cache.Handle, error) {
-	return r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readaheadHandle */, stats)
+	return r.readBlock(r.rangeDelBH, r.rangeDelTransform, nil /* readHandle */, stats)
 }
 
 func (r *Reader) readRangeKey(stats *base.InternalIteratorStats) (cache.Handle, error) {
-	return r.readBlock(r.rangeKeyBH, nil /* transform */, nil /* readaheadHandle */, stats)
+	return r.readBlock(r.rangeKeyBH, nil /* transform */, nil /* readHandle */, stats)
 }
 
 func checkChecksum(
@@ -2765,12 +2765,12 @@ func checkChecksum(
 func (r *Reader) readBlock(
 	bh BlockHandle,
 	transform blockTransform,
-	readaheadHandle objstorage.ReadaheadHandle,
+	readHandle objstorage.ReadHandle,
 	stats *base.InternalIteratorStats,
 ) (_ cache.Handle, _ error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
-		if readaheadHandle != nil {
-			readaheadHandle.RecordCacheHit(int64(bh.Offset), int64(bh.Length+blockTrailerLen))
+		if readHandle != nil {
+			readHandle.RecordCacheHit(int64(bh.Offset), int64(bh.Length+blockTrailerLen))
 		}
 		if stats != nil {
 			stats.BlockBytes += bh.Length
@@ -2782,8 +2782,8 @@ func (r *Reader) readBlock(
 	v := r.opts.Cache.Alloc(int(bh.Length + blockTrailerLen))
 	b := v.Buf()
 	var err error
-	if readaheadHandle != nil {
-		_, err = readaheadHandle.ReadAt(b, int64(bh.Offset))
+	if readHandle != nil {
+		_, err = readHandle.ReadAt(b, int64(bh.Offset))
 	} else {
 		_, err = r.readable.ReadAt(b, int64(bh.Offset))
 	}
@@ -2878,7 +2878,7 @@ func (r *Reader) transformRangeDelV1(b []byte) ([]byte, error) {
 }
 
 func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
-	b, err := r.readBlock(metaindexBH, nil /* transform */, nil /* readaheadHandle */, nil /* stats */)
+	b, err := r.readBlock(metaindexBH, nil /* transform */, nil /* readHandle */, nil /* stats */)
 	if err != nil {
 		return err
 	}
@@ -2920,7 +2920,7 @@ func (r *Reader) readMetaindex(metaindexBH BlockHandle) error {
 	}
 
 	if bh, ok := meta[metaPropertiesName]; ok {
-		b, err = r.readBlock(bh, nil /* transform */, nil /* readaheadHandle */, nil /* stats */)
+		b, err = r.readBlock(bh, nil /* transform */, nil /* readHandle */, nil /* stats */)
 		if err != nil {
 			return err
 		}
@@ -3026,7 +3026,7 @@ func (r *Reader) Layout() (*Layout, error) {
 			l.Index = append(l.Index, indexBH.BlockHandle)
 
 			subIndex, err := r.readBlock(
-				indexBH.BlockHandle, nil /* transform */, nil /* readaheadHandle */, nil /* stats */)
+				indexBH.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */)
 			if err != nil {
 				return nil, err
 			}
@@ -3109,7 +3109,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 
 	// Check all blocks sequentially. Make use of read-ahead, given we are
 	// scanning the entire file from start to end.
-	rh := r.readable.NewReadaheadHandle()
+	rh := r.readable.NewReadHandle()
 	defer rh.Close()
 
 	for _, bh := range blocks {
@@ -3182,7 +3182,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 			return 0, errCorruptIndexEntry
 		}
 		startIdxBlock, err := r.readBlock(
-			startIdxBH.BlockHandle, nil /* transform */, nil /* readaheadHandle */, nil /* stats */)
+			startIdxBH.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */)
 		if err != nil {
 			return 0, err
 		}
@@ -3203,7 +3203,7 @@ func (r *Reader) EstimateDiskUsage(start, end []byte) (uint64, error) {
 				return 0, errCorruptIndexEntry
 			}
 			endIdxBlock, err := r.readBlock(
-				endIdxBH.BlockHandle, nil /* transform */, nil /* readaheadHandle */, nil /* stats */)
+				endIdxBH.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */)
 			if err != nil {
 				return 0, err
 			}
@@ -3477,7 +3477,7 @@ func (l *Layout) Describe(
 			continue
 		}
 
-		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readaheadHandle */, nil /* stats */)
+		h, err := r.readBlock(b.BlockHandle, nil /* transform */, nil /* readHandle */, nil /* stats */)
 		if err != nil {
 			fmt.Fprintf(w, "  [err: %s]\n", err)
 			continue
@@ -3656,7 +3656,7 @@ func NewSimpleReadable(r ReadableFile) (objstorage.Readable, error) {
 	return &simpleReadable{
 		ReadableFile: r,
 		size:         info.Size(),
-		rh:           objstorage.MakeNoopReadaheadHandle(r),
+		rh:           objstorage.MakeNoopReadHandle(r),
 	}, nil
 }
 
@@ -3664,7 +3664,7 @@ func NewSimpleReadable(r ReadableFile) (objstorage.Readable, error) {
 type simpleReadable struct {
 	ReadableFile
 	size int64
-	rh   objstorage.NoopReadaheadHandle
+	rh   objstorage.NoopReadHandle
 }
 
 var _ objstorage.Readable = (*simpleReadable)(nil)
@@ -3674,7 +3674,7 @@ func (s *simpleReadable) Size() int64 {
 	return s.size
 }
 
-// NewReadaheadHandle is part of the objstorage.Readable interface.
-func (s *simpleReadable) NewReadaheadHandle() objstorage.ReadaheadHandle {
+// NewReaddHandle is part of the objstorage.Readable interface.
+func (s *simpleReadable) NewReadHandle() objstorage.ReadHandle {
 	return &s.rh
 }
