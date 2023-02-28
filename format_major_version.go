@@ -110,12 +110,12 @@ const (
 
 	// 23.1 versions.
 
-	// FormatPrePebblev1MarkedCompacted is a format major version that
-	// guarantees that all sstables explicitly marked for compaction in the
-	// manifest have been compacted. Ratcheting to this format version will block
-	// (without holding mutexes) until all necessary compactions for files marked
-	// for compaction are complete.
-	FormatPrePebblev1MarkedCompacted
+	// FormatUnusedPrePebblev1MarkedCompacted is an unused format major version.
+	// This format major version was originally intended to ship in the 23.1
+	// release. It was later decided that this should be deferred until a
+	// subsequent release. The original ordering is preserved so as not to
+	// introduce breaking changes in Cockroach.
+	FormatUnusedPrePebblev1MarkedCompacted
 
 	// FormatSSTableValueBlocks is a format major version that adds support for
 	// storing values in value blocks in the sstable. Value block support is not
@@ -142,6 +142,15 @@ const (
 	// breaking changes to the WAL format.
 	FormatFlushableIngest
 
+	// 23.2 versions.
+
+	// FormatPrePebblev1MarkedCompacted is a format major version that guarantees
+	// that all sstables explicitly marked for compaction in the manifest (see
+	// FormatPrePebblev1Marked) have been compacted. Ratcheting to this format
+	// version will block (without holding mutexes) until all necessary
+	// compactions for files marked for compaction are complete.
+	FormatPrePebblev1MarkedCompacted
+
 	// FormatNewest always contains the most recent format major version.
 	FormatNewest FormatMajorVersion = iota - 1
 )
@@ -157,9 +166,10 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		FormatSplitUserKeysMarkedCompacted:
 		return sstable.TableFormatPebblev1
 	case FormatRangeKeys, FormatMinTableFormatPebblev1, FormatPrePebblev1Marked,
-		FormatPrePebblev1MarkedCompacted:
+		FormatUnusedPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev2
-	case FormatSSTableValueBlocks, FormatFlushableIngest:
+	case FormatSSTableValueBlocks, FormatFlushableIngest,
+		FormatPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev3
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -176,8 +186,8 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 		FormatRangeKeys:
 		return sstable.TableFormatLevelDB
 	case FormatMinTableFormatPebblev1, FormatPrePebblev1Marked,
-		FormatPrePebblev1MarkedCompacted, FormatSSTableValueBlocks,
-		FormatFlushableIngest:
+		FormatUnusedPrePebblev1MarkedCompacted, FormatSSTableValueBlocks,
+		FormatFlushableIngest, FormatPrePebblev1MarkedCompacted:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -291,6 +301,16 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 		}
 		return d.finalizeFormatVersUpgrade(FormatPrePebblev1Marked)
 	},
+	FormatUnusedPrePebblev1MarkedCompacted: func(d *DB) error {
+		// Intentional no-op.
+		return d.finalizeFormatVersUpgrade(FormatUnusedPrePebblev1MarkedCompacted)
+	},
+	FormatSSTableValueBlocks: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatSSTableValueBlocks)
+	},
+	FormatFlushableIngest: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatFlushableIngest)
+	},
 	FormatPrePebblev1MarkedCompacted: func(d *DB) error {
 		// Before finalizing the format major version, rewrite any sstables
 		// still marked for compaction. Note all format major versions
@@ -299,12 +319,6 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 			return err
 		}
 		return d.finalizeFormatVersUpgrade(FormatPrePebblev1MarkedCompacted)
-	},
-	FormatSSTableValueBlocks: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(FormatSSTableValueBlocks)
-	},
-	FormatFlushableIngest: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(FormatFlushableIngest)
 	},
 }
 
