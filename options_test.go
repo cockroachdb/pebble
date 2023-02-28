@@ -106,6 +106,7 @@ func TestOptionsString(t *testing.T) {
 [Level "0"]
   block_restart_interval=16
   block_size=4096
+  block_size_threshold=90
   compression=Snappy
   filter_policy=none
   filter_type=table

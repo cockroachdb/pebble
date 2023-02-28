@@ -1184,6 +1184,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "[Level \"%d\"]\n", i)
 		fmt.Fprintf(&buf, "  block_restart_interval=%d\n", l.BlockRestartInterval)
 		fmt.Fprintf(&buf, "  block_size=%d\n", l.BlockSize)
+		fmt.Fprintf(&buf, "  block_size_threshold=%d\n", l.BlockSizeThreshold)
 		fmt.Fprintf(&buf, "  compression=%s\n", l.Compression)
 		fmt.Fprintf(&buf, "  filter_policy=%s\n", filterPolicyName(l.FilterPolicy))
 		fmt.Fprintf(&buf, "  filter_type=%s\n", l.FilterType)
@@ -1458,6 +1459,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				l.BlockRestartInterval, err = strconv.Atoi(value)
 			case "block_size":
 				l.BlockSize, err = strconv.Atoi(value)
+			case "block_size_threshold":
+				l.BlockSizeThreshold, err = strconv.Atoi(value)
 			case "compression":
 				switch value {
 				case "Default":

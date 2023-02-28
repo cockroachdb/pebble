@@ -56,9 +56,9 @@ func parseOptions(opts *testOptions, data string) error {
 				}
 				opts.threads = v
 				return true
-			case "TestOptions.use_block_property_collector":
-				opts.useBlockPropertyCollector = true
-				opts.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
+			case "TestOptions.disable_block_property_collector":
+				opts.disableBlockPropertyCollector = true
+				opts.opts.BlockPropertyCollectors = nil
 				return true
 			case "TestOptions.enable_value_blocks":
 				opts.enableValueBlocks = true
@@ -99,8 +99,8 @@ func optionsToString(opts *testOptions) string {
 	if opts.threads != 0 {
 		fmt.Fprintf(&buf, "  threads=%d\n", opts.threads)
 	}
-	if opts.useBlockPropertyCollector {
-		fmt.Fprintf(&buf, "  use_block_property_collector=%t\n", opts.useBlockPropertyCollector)
+	if opts.disableBlockPropertyCollector {
+		fmt.Fprintf(&buf, "  disable_block_property_collector=%t\n", opts.disableBlockPropertyCollector)
 	}
 	if opts.enableValueBlocks {
 		fmt.Fprintf(&buf, "  enable_value_blocks=%t\n", opts.enableValueBlocks)
@@ -117,11 +117,12 @@ func optionsToString(opts *testOptions) string {
 }
 
 func defaultTestOptions() *testOptions {
-	return &testOptions{
-		opts:                      defaultOptions(),
-		useBlockPropertyCollector: true,
-		threads:                   16,
+	o := &testOptions{
+		opts:    defaultOptions(),
+		threads: 16,
 	}
+	o.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
+	return o
 }
 
 func defaultOptions() *pebble.Options {
@@ -152,9 +153,9 @@ type testOptions struct {
 	// A human-readable string describing the initial state of the database.
 	// Empty if the test run begins from an empty database state.
 	initialStateDesc string
-	// Use a block property collector, which may be used by block property
+	// Disable the block property collector, which may be used by block property
 	// filters.
-	useBlockPropertyCollector bool
+	disableBlockPropertyCollector bool
 	// Enable the use of value blocks.
 	enableValueBlocks bool
 	// Use DB.ApplyNoSyncWait for applies that want to sync the WAL.
@@ -261,7 +262,7 @@ func standardOptions() []*testOptions {
 `,
 		23: `
 [TestOptions]
-  use_block_property_collector=false
+  disable_block_property_collector=true
 `,
 		24: `
 [TestOptions]
@@ -377,8 +378,8 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	}
 	testOpts.ingestUsingApply = rng.Intn(2) != 0
 	testOpts.replaceSingleDelete = rng.Intn(2) != 0
-	testOpts.useBlockPropertyCollector = rng.Intn(2) != 0
-	if testOpts.useBlockPropertyCollector {
+	testOpts.disableBlockPropertyCollector = rng.Intn(2) != 0
+	if !testOpts.disableBlockPropertyCollector {
 		testOpts.opts.BlockPropertyCollectors = blockPropertyCollectorConstructors
 	}
 	testOpts.enableValueBlocks = opts.FormatMajorVersion >= pebble.FormatSSTableValueBlocks &&
