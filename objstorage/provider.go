@@ -63,18 +63,18 @@ type Readable interface {
 	// Size returns the size of the object.
 	Size() int64
 
-	// NewReadaheadHandle creates a read-ahead handle which encapsulates
-	// read-ahead state. To benefit from read-ahead, ReadaheadHandle.ReadAt must
-	// be used (as opposed to Readable.ReadAt).
+	// NewReadHandle creates a read handle for ReadAt requests that are related
+	// and can benefit from optimizations like read-ahead.
 	//
-	// The ReadaheadHandle must be closed before the Readable is closed.
+	// The ReadHandle must be closed before the Readable is closed.
 	//
-	// Multiple separate ReadaheadHandles can be used.
-	NewReadaheadHandle() ReadaheadHandle
+	// Multiple separate ReadHandles can be used.
+	NewReadHandle() ReadHandle
 }
 
-// ReadaheadHandle is used to perform reads that might benefit from read-ahead.
-type ReadaheadHandle interface {
+// ReadHandle is used to perform reads that are related and might benefit from
+// optimizations like read-ahead.
+type ReadHandle interface {
 	io.ReaderAt
 	io.Closer
 

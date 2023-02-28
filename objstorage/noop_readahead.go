@@ -6,24 +6,24 @@ package objstorage
 
 import "io"
 
-// NoopReadaheadHandle can be used by Readable implementations that don't
+// NoopReadHandle can be used by Readable implementations that don't
 // support read-ahead.
-type NoopReadaheadHandle struct {
+type NoopReadHandle struct {
 	io.ReaderAt
 }
 
-// MakeNoopReadaheadHandle initializes a NoopReadaheadHandle.
-func MakeNoopReadaheadHandle(r io.ReaderAt) NoopReadaheadHandle {
-	return NoopReadaheadHandle{ReaderAt: r}
+// MakeNoopReadHandle initializes a NoopReadHandle.
+func MakeNoopReadHandle(r io.ReaderAt) NoopReadHandle {
+	return NoopReadHandle{ReaderAt: r}
 }
 
-var _ ReadaheadHandle = (*NoopReadaheadHandle)(nil)
+var _ ReadHandle = (*NoopReadHandle)(nil)
 
-// Close is part of the ReadaheadHandle interface.
-func (*NoopReadaheadHandle) Close() error { return nil }
+// Close is part of the ReadHandle interface.
+func (*NoopReadHandle) Close() error { return nil }
 
-// MaxReadahead is part of the ReadaheadHandle interface.
-func (*NoopReadaheadHandle) MaxReadahead() {}
+// MaxReadahead is part of the ReadHandle interface.
+func (*NoopReadHandle) MaxReadahead() {}
 
-// RecordCacheHit is part of the ReadaheadHandle interface.
-func (*NoopReadaheadHandle) RecordCacheHit(offset, size int64) {}
+// RecordCacheHit is part of the ReadHandle interface.
+func (*NoopReadHandle) RecordCacheHit(offset, size int64) {}
