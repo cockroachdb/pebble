@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -96,7 +97,7 @@ func (d *db) ingest(keyVals ...string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	w := sstable.NewWriter(f, sstable.WriterOptions{
+	w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{
 		Comparer:   d.comparer,
 		MergerName: d.merger.Name,
 	})

@@ -82,7 +82,7 @@ func TestRewriteSuffixProps(t *testing.T) {
 			}
 
 			// Check that a reader on the rewritten STT has the expected props.
-			rRewritten, err := NewMemReader(rewrittenSST.Bytes(), readerOpts)
+			rRewritten, err := NewMemReader(rewrittenSST.Data(), readerOpts)
 			require.NoError(t, err)
 			defer rRewritten.Close()
 			require.Equal(t, expectedProps, rRewritten.Properties.UserProperties)
@@ -122,29 +122,28 @@ func TestRewriteSuffixProps(t *testing.T) {
 // memFile is a file-like struct that buffers all data written to it in memory.
 // Implements the objstorage.Writable interface.
 type memFile struct {
-	bytes.Buffer
+	buf bytes.Buffer
 }
 
 var _ objstorage.Writable = (*memFile)(nil)
 
-// Close implements the objstorage.Writable interface.
-func (*memFile) Close() error {
+// Finish is part of the objstorage.Writable interface.
+func (*memFile) Finish() error {
 	return nil
 }
 
-// Sync implements the objstorage.Writable interface.
-func (*memFile) Sync() error {
-	return nil
+// Abort is part of the objstorage.Writable interface.
+func (*memFile) Abort() {}
+
+// Write is part of the objstorage.Writable interface.
+func (f *memFile) Write(p []byte) error {
+	_, err := f.buf.Write(p)
+	return err
 }
 
 // Data returns the in-memory buffer behind this MemFile.
 func (f *memFile) Data() []byte {
-	return f.Bytes()
-}
-
-// Flush is implemented so it prevents buffering inside Writter.
-func (f *memFile) Flush() error {
-	return nil
+	return f.buf.Bytes()
 }
 
 func make4bSuffixTestSST(
@@ -179,7 +178,7 @@ func make4bSuffixTestSST(
 		t.Fatal(err)
 	}
 
-	return f.Bytes()
+	return f.buf.Bytes()
 }
 
 func BenchmarkRewriteSST(b *testing.B) {

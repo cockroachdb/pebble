@@ -2920,7 +2920,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 		f, err := mem.Create("ext")
 		require.NoError(t, err)
 
-		w := sstable.NewWriter(f, sstable.WriterOptions{
+		w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{
 			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
 		})
 		for _, k := range keys {
@@ -3835,7 +3835,7 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 		const fName = "ext"
 		f, err := db.opts.FS.Create(fName)
 		require.NoError(t, err)
-		w := sstable.NewWriter(f, sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
 		require.NoError(t, w.Set(key, nil))
 		require.NoError(t, w.Close())
 		// Ingest the SST.

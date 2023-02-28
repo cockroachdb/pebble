@@ -525,7 +525,7 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 	f0, err := mem.Create(testTable)
 	require.NoError(t, err)
 
-	w := NewWriter(f0, writerOpts)
+	w := NewWriter(objstorage.NewFileWritable(f0), writerOpts)
 	require.NoError(t, w.Set([]byte("test"), nil))
 	require.NoError(t, w.Close())
 
@@ -754,7 +754,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 							indexBlockSize = 1
 						}
 
-						w := NewWriter(f, WriterOptions{
+						w := NewWriter(objstorage.NewFileWritable(f), WriterOptions{
 							BlockSize:      blockSize,
 							IndexBlockSize: indexBlockSize,
 							Checksum:       checksumType,
@@ -1029,7 +1029,7 @@ func TestReader_TableFormat(t *testing.T) {
 		require.NoError(t, err)
 
 		opts := WriterOptions{TableFormat: want}
-		w := NewWriter(f, opts)
+		w := NewWriter(objstorage.NewFileWritable(f), opts)
 		err = w.Close()
 		require.NoError(t, err)
 
@@ -1110,7 +1110,7 @@ func buildBenchmarkTable(
 		b.Fatal(err)
 	}
 
-	w := NewWriter(f0, options)
+	w := NewWriter(objstorage.NewFileWritable(f0), options)
 
 	var keys [][]byte
 	var ikey InternalKey
@@ -1396,7 +1396,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 		f0, err := mem.Create("bench")
 		require.NoError(b, err)
 		options.TableFormat = tableFormat
-		w := NewWriter(f0, options)
+		w := NewWriter(objstorage.NewFileWritable(f0), options)
 		val := make([]byte, 100)
 		rng := rand.New(rand.NewSource(100))
 		for i := 0; i < keys.Count(); i++ {
@@ -1496,7 +1496,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 		mem := vfs.NewMem()
 		f0, err := mem.Create("bench")
 		require.NoError(b, err)
-		w := NewWriter(f0, options)
+		w := NewWriter(objstorage.NewFileWritable(f0), options)
 		for i := 0; i < keys.Count(); i++ {
 			for v := 0; v < versCount; v++ {
 				n := testkeys.WriteKeyAt(keyBuf[sharedPrefixLen:], keys, i, versCount-v+1)

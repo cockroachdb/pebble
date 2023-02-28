@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -3068,7 +3069,7 @@ func BenchmarkSeekPrefixTombstones(b *testing.B) {
 			filename := fmt.Sprintf("ext%2d", i)
 			f, err := o.FS.Create(filename)
 			require.NoError(b, err)
-			w := sstable.NewWriter(f, wOpts)
+			w := sstable.NewWriter(objstorage.NewFileWritable(f), wOpts)
 			require.NoError(b, w.DeleteRange(testkeys.Key(ks, i), testkeys.Key(ks, i+1)))
 			require.NoError(b, w.Close())
 			require.NoError(b, d.Ingest([]string{filename}))

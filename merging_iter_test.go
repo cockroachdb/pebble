@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -198,7 +199,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				w := sstable.NewWriter(f, sstable.WriterOptions{})
+				w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
 				var tombstones []keyspan.Span
 				frag := keyspan.Fragmenter{
 					Cmp:    cmp,
@@ -289,7 +290,7 @@ func buildMergingIterTables(
 
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(files[i], sstable.WriterOptions{
+		writers[i] = sstable.NewWriter(objstorage.NewFileWritable(files[i]), sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
 			Compression:          NoCompression,
@@ -516,7 +517,7 @@ func buildLevelsForMergingIterSeqSeek(
 					writerOptions.IndexBlockSize = 1
 				}
 			}
-			writers[i] = append(writers[i], sstable.NewWriter(files[i][j], writerOptions))
+			writers[i] = append(writers[i], sstable.NewWriter(objstorage.NewFileWritable(files[i][j]), writerOptions))
 		}
 	}
 

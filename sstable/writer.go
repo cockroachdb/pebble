@@ -1670,16 +1670,14 @@ func (w *Writer) writeCompressedBlock(block []byte, blockTrailerBuf []byte) (Blo
 	}
 
 	// Write the bytes to the file.
-	n, err := w.writable.Write(block)
-	if err != nil {
+	if err := w.writable.Write(block); err != nil {
 		return BlockHandle{}, err
 	}
-	w.meta.Size += uint64(n)
-	n, err = w.writable.Write(blockTrailerBuf[:blockTrailerLen])
-	if err != nil {
+	w.meta.Size += uint64(len(block))
+	if err := w.writable.Write(blockTrailerBuf[:blockTrailerLen]); err != nil {
 		return BlockHandle{}, err
 	}
-	w.meta.Size += uint64(n)
+	w.meta.Size += blockTrailerLen
 
 	return bh, nil
 }
@@ -1698,7 +1696,10 @@ func (w *Writer) Write(blockWithTrailer []byte) (n int, err error) {
 		w.cache.Delete(w.cacheID, w.fileNum, offset)
 	}
 	w.meta.Size += uint64(len(blockWithTrailer))
-	return w.writable.Write(blockWithTrailer)
+	if err := w.writable.Write(blockWithTrailer); err != nil {
+		return 0, err
+	}
+	return len(blockWithTrailer), nil
 }
 
 func (w *Writer) writeBlock(
@@ -1746,14 +1747,10 @@ func (w *Writer) Close() (err error) {
 			// the same object to a sync.Pool.
 			w.valueBlockWriter = nil
 		}
-		if w.writable == nil {
-			return
+		if w.writable != nil {
+			w.writable.Abort()
+			w.writable = nil
 		}
-		err1 := w.writable.Close()
-		if err == nil {
-			err = err1
-		}
-		w.writable = nil
 	}()
 
 	// finish must be called before we check for an error, because finish will
@@ -2000,12 +1997,12 @@ func (w *Writer) Close() (err error) {
 		metaindexBH: metaindexBH,
 		indexBH:     indexBH,
 	}
-	var n int
-	if n, err = w.writable.Write(footer.encode(w.blockBuf.tmp[:])); err != nil {
+	encoded := footer.encode(w.blockBuf.tmp[:])
+	if err := w.writable.Write(footer.encode(w.blockBuf.tmp[:])); err != nil {
 		w.err = err
 		return w.err
 	}
-	w.meta.Size += uint64(n)
+	w.meta.Size += uint64(len(encoded))
 	w.meta.Properties = w.props
 
 	// Check that the features present in the table are compatible with the format
@@ -2015,10 +2012,12 @@ func (w *Writer) Close() (err error) {
 		return w.err
 	}
 
-	if err := w.writable.Sync(); err != nil {
+	if err := w.writable.Finish(); err != nil {
+		w.writable = nil
 		w.err = err
 		return err
 	}
+	w.writable = nil
 
 	w.dataBlockBuf.clear()
 	dataBlockBufPool.Put(w.dataBlockBuf)

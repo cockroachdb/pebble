@@ -86,10 +86,8 @@ func TestProvider(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			_, err = w.Write([]byte(d.Input))
-			require.NoError(t, err)
-			require.NoError(t, w.Sync())
-			require.NoError(t, w.Close())
+			require.NoError(t, w.Write([]byte(d.Input)))
+			require.NoError(t, w.Finish())
 
 			return log.String()
 
@@ -173,10 +171,8 @@ func TestNotExistError(t *testing.T) {
 
 	w, _, err := provider.Create(base.FileTypeTable, 1, CreateOptions{})
 	require.NoError(t, err)
-	_, err = w.Write([]byte("foo"))
-	require.NoError(t, err)
-	require.NoError(t, w.Sync())
-	require.NoError(t, w.Close())
+	require.NoError(t, w.Write([]byte("foo")))
+	require.NoError(t, w.Finish())
 
 	// Remove the underlying file.
 	require.NoError(t, fs.Remove(base.MakeFilename(base.FileTypeTable, 1)))

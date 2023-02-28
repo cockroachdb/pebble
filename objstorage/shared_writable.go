@@ -4,11 +4,7 @@
 
 package objstorage
 
-import (
-	"io"
-
-	"github.com/cockroachdb/errors"
-)
+import "io"
 
 // sharedWritable is a very simple implementation of Writable on top of the
 // WriteCloser returned by shared.Storage.CreateObject.
@@ -18,25 +14,21 @@ type sharedWritable struct {
 
 var _ Writable = (*sharedWritable)(nil)
 
-func (w *sharedWritable) Write(p []byte) (n int, err error) {
-	if w.storageWriter == nil {
-		return 0, errors.AssertionFailedf("Write after Sync or Close")
-	}
-	return w.storageWriter.Write(p)
+// Write is part of the Writable interface.
+func (w *sharedWritable) Write(p []byte) error {
+	_, err := w.storageWriter.Write(p)
+	return err
 }
 
-func (w *sharedWritable) Close() error {
-	if w.storageWriter == nil {
-		return nil
-	}
+// Finish is part of the Writable interface.
+func (w *sharedWritable) Finish() error {
 	err := w.storageWriter.Close()
 	w.storageWriter = nil
 	return err
 }
 
-func (w *sharedWritable) Sync() error {
-	if w.storageWriter == nil {
-		return errors.AssertionFailedf("Sync after Sync or Close")
-	}
-	return w.Close()
+// Abort is part of the Writable interface.
+func (w *sharedWritable) Abort() {
+	_ = w.storageWriter.Close()
+	w.storageWriter = nil
 }
