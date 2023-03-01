@@ -31,7 +31,7 @@ type scanInternalIterator struct {
 	iterKey         *InternalKey
 	iterValue       LazyValue
 	alloc           *iterAlloc
-	newIters        tableNewIters
+	iterFactory     tableIterFactory
 	newIterRangeKey keyspan.TableNewSpanIter
 	seqNum          uint64
 
@@ -134,11 +134,11 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 		li := &levels[levelsIndex]
 		rli := &rangeDelLevels[levelsIndex]
 
-		li.init(i.opts, i.comparer.Compare, i.comparer.Split, i.newIters, files, level, internalIterOpts{})
+		li.init(i.opts, i.comparer.Compare, i.comparer.Split, i.iterFactory, files, level, internalIterOpts{})
 		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		mlevels[mlevelsIndex].iter = li
 		rli.Init(keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters},
-			i.comparer.Compare, tableNewRangeDelIter(i.newIters), files, level, manifest.KeyTypePoint)
+			i.comparer.Compare, tableNewRangeDelIter(i.iterFactory), files, level, manifest.KeyTypePoint)
 		rangeDelIters = append(rangeDelIters, rli)
 
 		levelsIndex++

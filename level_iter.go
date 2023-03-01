@@ -15,20 +15,27 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 )
 
-// tableNewIters creates a new point and range-del iterator for the given file
-// number. If bytesIterated is specified, it is incremented as the given file is
-// iterated through.
-type tableNewIters func(
-	file *manifest.FileMetadata,
-	opts *IterOptions,
-	internalOpts internalIterOpts,
-) (internalIterator, keyspan.FragmentIterator, error)
+type tableIterFactory interface {
+	// newIters creates a new point and range-del iterator for the given file
+	// number.
+	//
+	// On success, the internalIterator is not-nil and must be closed. The
+	// FragmentIterator can be nil.
+	// TODO(radu): always return a non-nil FragmentIterator.
+	//
+	// On error, the iterators are nil.
+	newIters(
+		file *manifest.FileMetadata,
+		opts *IterOptions,
+		internalOpts internalIterOpts,
+	) (internalIterator, keyspan.FragmentIterator, error)
+}
 
-// tableNewRangeDelIter takes a tableNewIters and returns a TableNewSpanIter
-// for the rangedel iterator returned by tableNewIters.
-func tableNewRangeDelIter(newIters tableNewIters) keyspan.TableNewSpanIter {
+// tableNewRangeDelIter takes a tableIterFactory and returns a TableNewSpanIter
+// for the rangedel iterator returned by tableIterFactory.
+func tableNewRangeDelIter(f tableIterFactory) keyspan.TableNewSpanIter {
 	return func(file *manifest.FileMetadata, iterOptions *keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
-		iter, rangeDelIter, err := newIters(file, &IterOptions{RangeKeyFilters: iterOptions.RangeKeyFilters}, internalIterOpts{})
+		iter, rangeDelIter, err := f.newIters(file, &IterOptions{RangeKeyFilters: iterOptions.RangeKeyFilters}, internalIterOpts{})
 		if iter != nil {
 			_ = iter.Close()
 		}
@@ -40,6 +47,8 @@ func tableNewRangeDelIter(newIters tableNewIters) keyspan.TableNewSpanIter {
 }
 
 type internalIterOpts struct {
+	// bytesIterated, if set, is incremented as the given file is iterated
+	// through.
 	bytesIterated      *uint64
 	stats              *base.InternalIteratorStats
 	boundLimitedFilter sstable.BoundLimitedBlockPropertyFilter
@@ -118,7 +127,7 @@ type levelIter struct {
 	// advanced beyond the file's bounds. See
 	// levelIterBoundaryContext.isIgnorableBoundaryKey.
 	filteredIter filteredIter
-	newIters     tableNewIters
+	iterFactory  tableIterFactory
 	// When rangeDelIterPtr != nil, the caller requires that *rangeDelIterPtr must
 	// point to a range del iterator corresponding to the current file. When this
 	// iterator returns nil, *rangeDelIterPtr should also be set to nil. Whenever
@@ -223,13 +232,13 @@ func newLevelIter(
 	opts IterOptions,
 	cmp Compare,
 	split Split,
-	newIters tableNewIters,
+	iterFactory tableIterFactory,
 	files manifest.LevelIterator,
 	level manifest.Level,
 	bytesIterated *uint64,
 ) *levelIter {
 	l := &levelIter{}
-	l.init(opts, cmp, split, newIters, files, level, internalIterOpts{bytesIterated: bytesIterated})
+	l.init(opts, cmp, split, iterFactory, files, level, internalIterOpts{bytesIterated: bytesIterated})
 	return l
 }
 
@@ -237,7 +246,7 @@ func (l *levelIter) init(
 	opts IterOptions,
 	cmp Compare,
 	split Split,
-	newIters tableNewIters,
+	iterFactory tableIterFactory,
 	files manifest.LevelIterator,
 	level manifest.Level,
 	internalOpts internalIterOpts,
@@ -254,7 +263,7 @@ func (l *levelIter) init(
 	l.cmp = cmp
 	l.split = split
 	l.iterFile = nil
-	l.newIters = newIters
+	l.iterFactory = iterFactory
 	l.files = files
 	l.internalOpts = internalOpts
 }
@@ -648,7 +657,7 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 
 		var rangeDelIter keyspan.FragmentIterator
 		var iter internalIterator
-		iter, rangeDelIter, l.err = l.newIters(l.iterFile, &l.tableOpts, l.internalOpts)
+		iter, rangeDelIter, l.err = l.iterFactory.newIters(l.iterFile, &l.tableOpts, l.internalOpts)
 		l.iter = iter
 		if l.err != nil {
 			return noFileLoaded

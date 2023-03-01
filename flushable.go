@@ -118,7 +118,7 @@ type ingestedFlushable struct {
 	files            []*fileMetadata
 	cmp              Compare
 	split            Split
-	newIters         tableNewIters
+	iterFactory      tableIterFactory
 	newRangeKeyIters keyspan.TableNewSpanIter
 
 	// Since the level slice is immutable, we construct and set it once. It
@@ -132,14 +132,14 @@ func newIngestedFlushable(
 	files []*fileMetadata,
 	cmp Compare,
 	split Split,
-	newIters tableNewIters,
+	iterFactory tableIterFactory,
 	newRangeKeyIters keyspan.TableNewSpanIter,
 ) *ingestedFlushable {
 	ret := &ingestedFlushable{
 		files:            files,
 		cmp:              cmp,
 		split:            split,
-		newIters:         newIters,
+		iterFactory:      iterFactory,
 		newRangeKeyIters: newRangeKeyIters,
 		// slice is immutable and can be set once and used many times.
 		slice: manifest.NewLevelSliceKeySorted(cmp, files),
@@ -165,7 +165,7 @@ func (s *ingestedFlushable) newIter(o *IterOptions) internalIterator {
 	// aren't truly levels in the lsm. Right now, the encoding only supports
 	// L0 sublevels, and the rest of the levels in the lsm.
 	return newLevelIter(
-		opts, s.cmp, s.split, s.newIters, s.slice.Iter(), manifest.Level(0), nil,
+		opts, s.cmp, s.split, s.iterFactory, s.slice.Iter(), manifest.Level(0), nil,
 	)
 }
 
@@ -181,7 +181,7 @@ func (s *ingestedFlushable) constructRangeDelIter(
 ) (keyspan.FragmentIterator, error) {
 	// Note that the keyspan level iter expects a non-nil iterator to be
 	// returned even if there is an error. So, we return the emptyKeyspanIter.
-	iter, rangeDelIter, err := s.newIters(file, nil, internalIterOpts{})
+	iter, rangeDelIter, err := s.iterFactory.newIters(file, nil, internalIterOpts{})
 	if err != nil {
 		return emptyKeyspanIter, err
 	}

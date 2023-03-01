@@ -532,7 +532,7 @@ func TestGetIter(t *testing.T) {
 			get := &buf.get
 			get.cmp = cmp
 			get.equal = equal
-			get.newIters = newIter
+			get.iterFactory = testIterFactory(newIter)
 			get.key = ikey.UserKey
 			get.l0 = v.L0SublevelFiles
 			get.version = v

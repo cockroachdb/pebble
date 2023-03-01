@@ -344,14 +344,14 @@ func iterateAndCheckTombstones(
 }
 
 type checkConfig struct {
-	logger    Logger
-	cmp       Compare
-	readState *readState
-	newIters  tableNewIters
-	seqNum    uint64
-	stats     *CheckLevelsStats
-	merge     Merge
-	formatKey base.FormatKey
+	logger      Logger
+	cmp         Compare
+	readState   *readState
+	iterFactory tableIterFactory
+	seqNum      uint64
+	stats       *CheckLevelsStats
+	merge       Merge
+	formatKey   base.FormatKey
 }
 
 func checkRangeTombstones(c *checkConfig) error {
@@ -378,7 +378,7 @@ func checkRangeTombstones(c *checkConfig) error {
 			lf := files.Take()
 			atomicUnit, _ := expandToAtomicUnit(c.cmp, lf.Slice(), true /* disableIsCompacting */)
 			lower, upper := manifest.KeyRange(c.cmp, atomicUnit.Iter())
-			iterToClose, iter, err := c.newIters(lf.FileMetadata, nil, internalIterOpts{})
+			iterToClose, iter, err := c.iterFactory.newIters(lf.FileMetadata, nil, internalIterOpts{})
 			if err != nil {
 				return err
 			}
@@ -569,14 +569,14 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 	seqNum := atomic.LoadUint64(&d.mu.versions.atomic.visibleSeqNum)
 
 	checkConfig := &checkConfig{
-		logger:    d.opts.Logger,
-		cmp:       d.cmp,
-		readState: readState,
-		newIters:  d.newIters,
-		seqNum:    seqNum,
-		stats:     stats,
-		merge:     d.merge,
-		formatKey: d.opts.Comparer.FormatKey,
+		logger:      d.opts.Logger,
+		cmp:         d.cmp,
+		readState:   readState,
+		iterFactory: d.iterFactory,
+		seqNum:      seqNum,
+		stats:       stats,
+		merge:       d.merge,
+		formatKey:   d.opts.Comparer.FormatKey,
 	}
 	return checkLevelsInternal(checkConfig)
 }
@@ -638,7 +638,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		manifestIter := current.L0SublevelFiles[sublevel].Iter()
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, nil /* split */, c.newIters, manifestIter,
+		li.init(iterOpts, c.cmp, nil /* split */, c.iterFactory, manifestIter,
 			manifest.L0Sublevel(sublevel), internalIterOpts{})
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)
@@ -652,7 +652,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
-		li.init(iterOpts, c.cmp, nil /* split */, c.newIters,
+		li.init(iterOpts, c.cmp, nil /* split */, c.iterFactory,
 			current.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
 		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
 		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)

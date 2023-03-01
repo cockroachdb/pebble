@@ -1063,16 +1063,18 @@ func TestIteratorSeekOpt(t *testing.T) {
 			d.mu.Lock()
 			s := d.mu.versions.currentVersion().String()
 			d.mu.Unlock()
-			oldNewIters := d.newIters
-			d.newIters = func(file *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
-				iter, rangeIter, err := oldNewIters(file, opts, internalOpts)
+			oldNewIters := d.iterFactory
+			d.iterFactory = testIterFactory(func(
+				file *manifest.FileMetadata, opts *IterOptions, internalOpts internalIterOpts,
+			) (internalIterator, keyspan.FragmentIterator, error) {
+				iter, rangeIter, err := oldNewIters.newIters(file, opts, internalOpts)
 				iterWrapped := &iterSeekOptWrapper{
 					internalIterator:      iter,
 					seekGEUsingNext:       &seekGEUsingNext,
 					seekPrefixGEUsingNext: &seekPrefixGEUsingNext,
 				}
 				return iterWrapped, rangeIter, err
-			}
+			})
 			return s
 
 		case "iter":

@@ -225,7 +225,7 @@ type Iterator struct {
 	// and SetOptions or when re-fragmenting a batch's range keys/range dels.
 	// Non-nil if this Iterator includes a Batch.
 	batch            *Batch
-	newIters         tableNewIters
+	iterFactory      tableIterFactory
 	newIterRangeKey  keyspan.TableNewSpanIter
 	lazyCombinedIter lazyCombinedIter
 	seqNum           uint64
@@ -2654,7 +2654,7 @@ func (i *Iterator) Clone(opts CloneOptions) (*Iterator, error) {
 		boundsBuf:           buf.boundsBuf,
 		batch:               i.batch,
 		batchSeqNum:         i.batchSeqNum,
-		newIters:            i.newIters,
+		iterFactory:         i.iterFactory,
 		newIterRangeKey:     i.newIterRangeKey,
 		seqNum:              i.seqNum,
 	}
