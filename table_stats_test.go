@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -153,7 +154,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			w := sstable.NewWriter(f, sstable.WriterOptions{
+			w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{
 				TableFormat: sstable.TableFormatMax,
 			})
 			m = &fileMetadata{}

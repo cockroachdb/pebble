@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -616,7 +617,7 @@ func benchmarkRangeDelIterate(b *testing.B, entries, deleted int, snapshotCompac
 	if err != nil {
 		b.Fatal(err)
 	}
-	w := sstable.NewWriter(f, sstable.WriterOptions{
+	w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{
 		BlockSize: 32 << 10, // 32 KB
 	})
 	for i := 0; i < entries; i++ {
