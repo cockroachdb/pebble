@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +33,7 @@ func TestWriter_RangeKeys(t *testing.T) {
 		// Use a "suffix-aware" Comparer, that will sort suffix-values in
 		// descending order of timestamp, rather than in lexical order.
 		cmp := testkeys.Comparer
-		w := NewWriter(f, WriterOptions{
+		w := NewWriter(objstorage.NewFileWritable(f), WriterOptions{
 			Comparer:    cmp,
 			TableFormat: TableFormatPebblev2,
 		})

@@ -430,15 +430,14 @@ type compactionWritable struct {
 }
 
 // Write is part of the objstorage.Writable interface.
-func (c *compactionWritable) Write(p []byte) (n int, err error) {
-	n, err = c.Writable.Write(p)
-	if err != nil {
-		return n, err
+func (c *compactionWritable) Write(p []byte) error {
+	if err := c.Writable.Write(p); err != nil {
+		return err
 	}
 
-	*c.written += int64(n)
-	c.versions.incrementCompactionBytes(int64(n))
-	return n, err
+	*c.written += int64(len(p))
+	c.versions.incrementCompactionBytes(int64(len(p)))
+	return nil
 }
 
 type compactionKind int

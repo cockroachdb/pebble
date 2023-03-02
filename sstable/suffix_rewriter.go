@@ -282,11 +282,11 @@ func rewriteDataBlocksToWriter(
 
 	for i := range blocks {
 		// Write the rewritten block to the file.
-		n, err := w.writable.Write(blocks[i].data)
-		if err != nil {
+		if err := w.writable.Write(blocks[i].data); err != nil {
 			return err
 		}
 
+		n := len(blocks[i].data)
 		bh := BlockHandle{Offset: w.meta.Size, Length: uint64(n) - blockTrailerLen}
 		// Update the overall size.
 		w.meta.Size += uint64(n)
@@ -310,8 +310,8 @@ func rewriteDataBlocksToWriter(
 			}
 		}
 
-		var bhp BlockHandleWithProperties
-		if bhp, err = w.maybeAddBlockPropertiesToBlockHandle(bh); err != nil {
+		bhp, err := w.maybeAddBlockPropertiesToBlockHandle(bh)
+		if err != nil {
 			return err
 		}
 		var nextKey InternalKey

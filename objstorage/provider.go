@@ -88,19 +88,24 @@ type ReadHandle interface {
 }
 
 // Writable is the handle for an object that is open for writing.
+// Either Finish or Abort must be called.
 type Writable interface {
-	// Unlike the specification for io.Writer.Write(), the Writable.Write()
-	// method *is* allowed to modify the slice passed in, whether temporarily
-	// or permanently. Callers of Write() need to take this into account.
-	io.Writer
-	io.Closer
+	// Write writes len(p) bytes from p to the underlying object. The data is not
+	// guaranteed to be durable until Finish is called.
+	//
+	// Note that Write *is* allowed to modify the slice passed in, whether
+	// temporarily or permanently. Callers of Write need to take this into
+	// account.
+	Write(p []byte) error
 
-	// Sync makes the data durable and must be called unless we are giving up on
-	// using this object. Sync may be called at most once (before Close); Write
-	// can no longer be called after Sync.
-	// TODO(radu): clean this API up; maybe Close should internally Sync (but we
-	// have to be careful about tests that are using vfs.File as a Writable).
-	Sync() error
+	// Finish completes the object and makes the data durable.
+	// No further calls are allowed after calling Finish.
+	Finish() error
+
+	// Abort gives up on finishing the object. There is no guarantee about whether
+	// the object exists after calling Abort.
+	// No further calls are allowed after calling Abort.
+	Abort()
 }
 
 // Settings that must be specified when creating the Provider.

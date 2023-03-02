@@ -10,6 +10,11 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
+// NewFileWritable returns a Writable that uses a file as underlying storage.
+func NewFileWritable(file vfs.File) Writable {
+	return newFileBufferedWritable(file)
+}
+
 type fileBufferedWritable struct {
 	file vfs.File
 	bw   *bufio.Writer
@@ -25,19 +30,35 @@ func newFileBufferedWritable(file vfs.File) *fileBufferedWritable {
 }
 
 // Write is part of the objstorage.Writable interface.
-func (w *fileBufferedWritable) Write(p []byte) (n int, err error) {
-	return w.bw.Write(p)
+func (w *fileBufferedWritable) Write(p []byte) error {
+	// Ignoring the length written since bufio.Writer.Write is guaranteed to
+	// return an error if the length written is < len(p).
+	_, err := w.bw.Write(p)
+	return err
 }
 
-// Sync is part of the objstorage.Writable interface.
-func (w *fileBufferedWritable) Sync() error {
-	if err := w.bw.Flush(); err != nil {
-		return err
+// Finish is part of the objstorage.Writable interface.
+func (w *fileBufferedWritable) Finish() error {
+	err := w.bw.Flush()
+	if err == nil {
+		err = w.file.Sync()
 	}
-	return w.file.Sync()
+	err = firstError(err, w.file.Close())
+	w.bw = nil
+	w.file = nil
+	return err
 }
 
-// Close is part of the objstorage.Writable interface.
-func (w *fileBufferedWritable) Close() error {
-	return w.file.Close()
+// Abort is part of the objstorage.Writable interface.
+func (w *fileBufferedWritable) Abort() {
+	_ = w.file.Close()
+	w.bw = nil
+	w.file = nil
+}
+
+func firstError(err0, err1 error) error {
+	if err0 != nil {
+		return err0
+	}
+	return err1
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -474,7 +475,7 @@ func TestParallelWriterErrorProp(t *testing.T) {
 		TableFormat: TableFormatPebblev1, BlockSize: 1, Parallelism: true,
 	}
 
-	w := NewWriter(f, opts)
+	w := NewWriter(objstorage.NewFileWritable(f), opts)
 	// Directly testing this, because it's difficult to get the Writer to
 	// encounter an error, precisely when the writeQueue is doing block writes.
 	w.coordination.writeQueue.err = errors.New("write queue write error")
@@ -566,7 +567,7 @@ func TestWriterClearCache(t *testing.T) {
 		f, err := mem.Create(name)
 		require.NoError(t, err)
 
-		w := NewWriter(f, writerOpts, cacheOpts)
+		w := NewWriter(objstorage.NewFileWritable(f), writerOpts, cacheOpts)
 		require.NoError(t, w.Set([]byte("hello"), []byte("world")))
 		require.NoError(t, w.Set([]byte("hello@42"), []byte("world@42")))
 		require.NoError(t, w.Set([]byte("hello@5"), []byte("world@5")))
@@ -628,18 +629,20 @@ func TestWriterClearCache(t *testing.T) {
 	require.NoError(t, r.Close())
 }
 
-type discardFile struct{ wrote int64 }
+type discardFile struct {
+	wrote int64
+}
 
-func (f discardFile) Close() error {
+var _ objstorage.Writable = (*discardFile)(nil)
+
+func (f *discardFile) Finish() error {
 	return nil
 }
 
-func (f *discardFile) Write(p []byte) (int, error) {
-	f.wrote += int64(len(p))
-	return len(p), nil
-}
+func (f *discardFile) Abort() {}
 
-func (f discardFile) Sync() error {
+func (f *discardFile) Write(p []byte) error {
+	f.wrote += int64(len(p))
 	return nil
 }
 
@@ -715,7 +718,7 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 			f, err := fs.Create("test")
 			require.NoError(t, err)
 
-			w := NewWriter(f, WriterOptions{
+			w := NewWriter(objstorage.NewFileWritable(f), WriterOptions{
 				BlockSize: 1,
 				BlockPropertyCollectors: []func() BlockPropertyCollector{
 					func() BlockPropertyCollector {
@@ -807,7 +810,7 @@ func TestWriter_TableFormatCompatibility(t *testing.T) {
 						tc.configureFn(&opts)
 					}
 
-					w := NewWriter(f, opts)
+					w := NewWriter(objstorage.NewFileWritable(f), opts)
 					if tc.writeFn != nil {
 						err = tc.writeFn(w)
 						require.NoError(t, err)
@@ -863,7 +866,7 @@ func TestWriterRace(t *testing.T) {
 			}
 			require.NoError(t, w.Close())
 			require.Equal(t, w.meta.LargestPoint.UserKey, keys[len(keys)-1])
-			r, err := NewMemReader(f.Bytes(), readerOpts)
+			r, err := NewMemReader(f.Data(), readerOpts)
 			require.NoError(t, err)
 			defer r.Close()
 			it, err := r.NewIter(nil, nil)

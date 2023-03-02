@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -203,7 +204,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		}
 	}
 	fp := bloom.FilterPolicy(10)
-	w := sstable.NewWriter(f0, sstable.WriterOptions{
+	w := sstable.NewWriter(objstorage.NewFileWritable(f0), sstable.WriterOptions{
 		Comparer:     &lt.cmp,
 		FilterPolicy: fp,
 		TableFormat:  tableFormat,
@@ -453,7 +454,7 @@ func buildLevelIterTables(
 
 	writers := make([]*sstable.Writer, len(files))
 	for i := range files {
-		writers[i] = sstable.NewWriter(files[i], sstable.WriterOptions{
+		writers[i] = sstable.NewWriter(objstorage.NewFileWritable(files[i]), sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
 			Compression:          NoCompression,

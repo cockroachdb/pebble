@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -1156,7 +1157,7 @@ func TestDBConcurrentCompactClose(t *testing.T) {
 			path := fmt.Sprintf("ext%d", j)
 			f, err := mem.Create(path)
 			require.NoError(t, err)
-			w := sstable.NewWriter(f, sstable.WriterOptions{
+			w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{
 				TableFormat: d.FormatMajorVersion().MaxTableFormat(),
 			})
 			require.NoError(t, w.Set([]byte(fmt.Sprint(j)), nil))

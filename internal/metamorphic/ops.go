@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -462,7 +463,10 @@ func (o *ingestOp) build(t *test, h historyRecorder, b *pebble.Batch, i int) (st
 
 	equal := t.opts.Comparer.Equal
 	tableFormat := t.db.FormatMajorVersion().MaxTableFormat()
-	w := sstable.NewWriter(f, t.opts.MakeWriterOptions(0, tableFormat))
+	w := sstable.NewWriter(
+		objstorage.NewFileWritable(f),
+		t.opts.MakeWriterOptions(0, tableFormat),
+	)
 
 	var lastUserKey []byte
 	for key, value := iter.First(); key != nil; key, value = iter.Next() {
