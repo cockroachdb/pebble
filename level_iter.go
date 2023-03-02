@@ -17,8 +17,15 @@ import (
 )
 
 // tableNewIters creates a new point and range-del iterator for the given file
-// number. If bytesIterated is specified, it is incremented as the given file is
-// iterated through.
+// number.
+//
+// On success, the internalIterator is not-nil and must be closed; the
+// FragmentIterator can be nil.
+// TODO(radu): always return a non-nil FragmentIterator.
+//
+// On error, the iterators are nil.
+//
+// The only (non-test) implementation of tableNewIters is tableCacheContainer.newIters().
 type tableNewIters func(
 	ctx context.Context,
 	file *manifest.FileMetadata,
