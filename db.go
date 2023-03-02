@@ -1296,7 +1296,6 @@ func (i *Iterator) constructPointIter(memtables flushableList, buf *iterAlloc) {
 
 		li.init(i.opts, i.comparer.Compare, i.comparer.Split, i.newIters, files, level, internalOpts)
 		li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
-		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)
 		mlevels[mlevelsIndex].iter = li
 

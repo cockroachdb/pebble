@@ -135,7 +135,6 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 		rli := &rangeDelLevels[levelsIndex]
 
 		li.init(i.opts, i.comparer.Compare, i.comparer.Split, i.newIters, files, level, internalIterOpts{})
-		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		mlevels[mlevelsIndex].iter = li
 		rli.Init(keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters},
 			i.comparer.Compare, tableNewRangeDelIter(i.newIters), files, level, manifest.KeyTypePoint)
