@@ -1202,7 +1202,7 @@ func (c *compaction) elideRangeKey(start, end []byte) bool {
 
 // newInputIter returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIter(
-	newIters tableNewIters, newRangeKeyIter keyspan.TableNewSpanIter, snapshots []uint64,
+	iterFactory tableIterFactory, newRangeKeyIter keyspan.TableNewSpanIter, snapshots []uint64,
 ) (_ internalIterator, retErr error) {
 	var rangeDelIters []keyspan.FragmentIterator
 	var rangeKeyIters []keyspan.FragmentIterator
@@ -1317,7 +1317,7 @@ func (c *compaction) newInputIter(
 	newRangeDelIter := func(
 		f manifest.LevelFile, _ *IterOptions, bytesIterated *uint64,
 	) (keyspan.FragmentIterator, error) {
-		iter, rangeDelIter, err := newIters(context.Background(), f.FileMetadata,
+		iter, rangeDelIter, err := iterFactory.newIters(context.Background(), f.FileMetadata,
 			nil /* iter options */, internalIterOpts{bytesIterated: &c.bytesIterated})
 		if err == nil {
 			// TODO(peter): It is mildly wasteful to open the point iterator only to
@@ -1396,7 +1396,7 @@ func (c *compaction) newInputIter(
 	// TODO(bananabrick): Get rid of the extra manifest.Level parameter and fold it into
 	// compactionLevel.
 	addItersForLevel := func(level *compactionLevel, l manifest.Level) error {
-		iters = append(iters, newLevelIter(iterOpts, c.cmp, nil /* split */, newIters,
+		iters = append(iters, newLevelIter(iterOpts, c.cmp, nil /* split */, iterFactory,
 			level.files.Iter(), l, &c.bytesIterated))
 		// TODO(jackson): Use keyspan.LevelIter to avoid loading all the range
 		// deletions into memory upfront. (See #2015, which reverted this.)
@@ -1835,7 +1835,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	var err error
 	for _, file := range c.flushing[0].flushable.(*ingestedFlushable).files {
 		level, err = ingestTargetLevel(
-			d.newIters, d.tableNewRangeKeyIter, iterOpts, d.cmp,
+			d.iterFactory, d.tableNewRangeKeyIter, iterOpts, d.cmp,
 			c.version, baseLevel, d.mu.compact.inProgress, file,
 		)
 		if err != nil {
@@ -2630,7 +2630,7 @@ func (d *DB) runCompaction(
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
-	iiter, err := c.newInputIter(d.newIters, d.tableNewRangeKeyIter, snapshots)
+	iiter, err := c.newInputIter(d.iterFactory, d.tableNewRangeKeyIter, snapshots)
 	if err != nil {
 		return nil, pendingOutputs, err
 	}

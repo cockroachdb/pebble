@@ -130,6 +130,9 @@ func (c *tableCacheContainer) close() error {
 	return firstError(err, c.tableCache.Unref())
 }
 
+var _ tableIterFactory = (*tableCacheContainer)(nil)
+
+// newIters implements the tableIterFactory.
 func (c *tableCacheContainer) newIters(
 	ctx context.Context,
 	file *manifest.FileMetadata,
@@ -376,11 +379,11 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, v.err
 	}
 
-	ok := true
+	intersectsFilters := true
 	var filterer *sstable.BlockPropertiesFilterer
 	var err error
 	if opts != nil {
-		ok, filterer, err = c.checkAndIntersectFilters(v, opts.TableFilter,
+		intersectsFilters, filterer, err = c.checkAndIntersectFilters(v, opts.TableFilter,
 			opts.PointKeyFilters, internalOpts.boundLimitedFilter)
 	}
 	if err != nil {
@@ -396,7 +399,7 @@ func (c *tableCacheShard) newIters(
 		return nil, nil, err
 	}
 
-	if !ok {
+	if !intersectsFilters {
 		c.unrefValue(v)
 		// Return an empty iterator. This iterator has no mutable state, so
 		// using a singleton is fine.
@@ -409,7 +412,7 @@ func (c *tableCacheShard) newIters(
 		// The point iterator returned must implement the filteredIter
 		// interface, so that the level iterator surfaces file boundaries when
 		// range deletions are present.
-		return filteredAll, rangeDelIter, err
+		return filteredAll, rangeDelIter, nil
 	}
 
 	var iter sstable.Iterator
@@ -684,7 +687,7 @@ func (c *tableCacheShard) findNode(meta *fileMetadata, dbOpts *tableCacheOpts) *
 		refCount: 2,
 	}
 	// Cache the closure invoked when an iterator is closed. This avoids an
-	// allocation on every call to newIters.
+	// allocation on every call to iterFactory.
 	v.closeHook = func(i sstable.Iterator) error {
 		if invariants.RaceEnabled {
 			c.mu.Lock()

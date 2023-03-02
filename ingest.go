@@ -436,7 +436,7 @@ func overlapWithIterator(
 }
 
 func ingestTargetLevel(
-	newIters tableNewIters,
+	iterFactory tableIterFactory,
 	newRangeKeyIter keyspan.TableNewSpanIter,
 	iterOps IterOptions,
 	cmp Compare,
@@ -517,7 +517,7 @@ func ingestTargetLevel(
 
 		// TODO(sumeer): ingest is a user-facing operation, so we should accept a
 		// context and plumb it through, for tracing.
-		iter, rangeDelIter, err := newIters(context.Background(), meta0, nil, internalIterOpts{})
+		iter, rangeDelIter, err := iterFactory.newIters(context.Background(), meta0, nil, internalIterOpts{})
 		if err != nil {
 			return 0, err
 		}
@@ -543,7 +543,7 @@ func ingestTargetLevel(
 
 	level := baseLevel
 	for ; level < numLevels; level++ {
-		levelIter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
+		levelIter := newLevelIter(iterOps, cmp, nil /* split */, iterFactory,
 			v.Levels[level].Iter(), manifest.Level(level), nil)
 		var rangeDelIter keyspan.FragmentIterator
 		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
@@ -694,7 +694,7 @@ func (d *DB) newIngestedFlushableEntry(
 		return nil, err
 	}
 
-	f := newIngestedFlushable(meta, d.cmp, d.split, d.newIters, d.tableNewRangeKeyIter)
+	f := newIngestedFlushable(meta, d.cmp, d.split, d.iterFactory, d.tableNewRangeKeyIter)
 
 	// NB: The logNum/seqNum are the WAL number which we're writing this entry
 	// to and the sequence number within the WAL which we'll write this entry
@@ -950,7 +950,7 @@ func (d *DB) ingest(
 }
 
 type ingestTargetLevelFunc func(
-	newIters tableNewIters,
+	iterFactory tableIterFactory,
 	newRangeKeyIter keyspan.TableNewSpanIter,
 	iterOps IterOptions,
 	cmp Compare,
@@ -987,7 +987,7 @@ func (d *DB) ingestApply(
 		m := meta[i]
 		f := &ve.NewFiles[i]
 		var err error
-		f.Level, err = findTargetLevel(d.newIters, d.tableNewRangeKeyIter, iterOps, d.cmp, current, baseLevel, d.mu.compact.inProgress, m)
+		f.Level, err = findTargetLevel(d.iterFactory, d.tableNewRangeKeyIter, iterOps, d.cmp, current, baseLevel, d.mu.compact.inProgress, m)
 		if err != nil {
 			d.mu.versions.logUnlock()
 			return nil, err

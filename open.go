@@ -298,7 +298,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 
 	tableCacheSize := TableCacheSize(opts.MaxOpenFiles)
 	d.tableCache = newTableCacheContainer(opts.TableCache, d.cacheID, d.objProvider, d.opts, tableCacheSize)
-	d.newIters = d.tableCache.newIters
+	d.iterFactory = d.tableCache
 	d.tableNewRangeKeyIter = d.tableCache.newRangeKeyIter
 
 	// Replay any newer log files than the ones named in the manifest.
@@ -517,7 +517,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	//   dependencies.
 	//
 	// DB has cycles with several of its internal structures: readState,
-	// newIters, tableCache, versions, etc. Each of this individually cause a
+	// iterFactory, tableCache, versions, etc. Each of this individually cause a
 	// cycle and prevent the finalizer from being run. But we can workaround this
 	// finializer limitation by setting a finalizer on another object that is
 	// tied to the lifetime of DB: the DB.closed atomic.Value.

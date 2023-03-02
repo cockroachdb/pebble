@@ -757,10 +757,10 @@ func TestIngestTargetLevel(t *testing.T) {
 
 			readState := d.loadReadState()
 			c := &checkConfig{
-				logger:    d.opts.Logger,
-				cmp:       d.cmp,
-				readState: readState,
-				newIters:  d.newIters,
+				logger:      d.opts.Logger,
+				cmp:         d.cmp,
+				readState:   readState,
+				iterFactory: d.iterFactory,
 				// TODO: runDBDefineCmd doesn't properly update the visible
 				// sequence number. So we have to explicitly configure level checker with a very large
 				// sequence number, otherwise the DB appears empty.
@@ -781,7 +781,7 @@ func TestIngestTargetLevel(t *testing.T) {
 			for _, target := range strings.Split(td.Input, "\n") {
 				meta := parseMeta(target)
 				level, err := ingestTargetLevel(
-					d.newIters, d.tableNewRangeKeyIter, IterOptions{logger: d.opts.Logger},
+					d.iterFactory, d.tableNewRangeKeyIter, IterOptions{logger: d.opts.Logger},
 					d.cmp, d.mu.versions.currentVersion(), 1, d.mu.compact.inProgress, meta,
 				)
 				if err != nil {

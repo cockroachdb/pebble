@@ -255,12 +255,12 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				files)
 			readState := &readState{current: version}
 			c := &checkConfig{
-				cmp:       cmp,
-				readState: readState,
-				newIters:  newIters,
-				seqNum:    InternalKeySeqNumMax,
-				merge:     merge,
-				formatKey: formatKey,
+				cmp:         cmp,
+				readState:   readState,
+				iterFactory: testIterFactory(newIters),
+				seqNum:      InternalKeySeqNumMax,
+				merge:       merge,
+				formatKey:   formatKey,
 			}
 			if err := checkLevelsInternal(c); err != nil {
 				return err.Error()

@@ -277,7 +277,7 @@ type DB struct {
 	walDir   vfs.File
 
 	tableCache           *tableCacheContainer
-	newIters             tableNewIters
+	iterFactory          tableIterFactory
 	tableNewRangeKeyIter keyspan.TableNewSpanIter
 
 	commit *commitPipeline
@@ -537,16 +537,16 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 
 	get := &buf.get
 	*get = getIter{
-		logger:   d.opts.Logger,
-		cmp:      d.cmp,
-		equal:    d.equal,
-		newIters: d.newIters,
-		snapshot: seqNum,
-		key:      key,
-		batch:    b,
-		mem:      readState.memtables,
-		l0:       readState.current.L0SublevelFiles,
-		version:  readState.current,
+		logger:      d.opts.Logger,
+		cmp:         d.cmp,
+		equal:       d.equal,
+		iterFactory: d.iterFactory,
+		snapshot:    seqNum,
+		key:         key,
+		batch:       b,
+		mem:         readState.memtables,
+		l0:          readState.current.L0SublevelFiles,
+		version:     readState.current,
 	}
 
 	// Strip off memtables which cannot possibly contain the seqNum being read
@@ -986,7 +986,7 @@ func (d *DB) newIter(ctx context.Context, batch *Batch, s *Snapshot, o *IterOpti
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
 		boundsBuf:           buf.boundsBuf,
 		batch:               batch,
-		newIters:            d.newIters,
+		iterFactory:         d.iterFactory,
 		newIterRangeKey:     d.tableNewRangeKeyIter,
 		seqNum:              seqNum,
 	}
@@ -1161,7 +1161,7 @@ func (d *DB) newInternalIter(s *Snapshot, o *IterOptions) *scanInternalIterator 
 		comparer:        d.opts.Comparer,
 		readState:       readState,
 		alloc:           buf,
-		newIters:        d.newIters,
+		iterFactory:     d.iterFactory,
 		newIterRangeKey: d.tableNewRangeKeyIter,
 		seqNum:          seqNum,
 	}
@@ -1300,7 +1300,7 @@ func (i *Iterator) constructPointIter(
 		li := &levels[levelsIndex]
 
 		li.init(
-			ctx, i.opts, i.comparer.Compare, i.comparer.Split, i.newIters, files, level, internalOpts)
+			ctx, i.opts, i.comparer.Compare, i.comparer.Split, i.iterFactory, files, level, internalOpts)
 		li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
 		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)

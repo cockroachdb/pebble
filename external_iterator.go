@@ -12,7 +12,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -144,17 +143,15 @@ func NewExternalIterWithContext(
 		// Add the readers to the Iterator so that Close closes them, and
 		// SetOptions can re-construct iterators from them.
 		externalReaders: readers,
-		newIters: func(
-			ctx context.Context, f *manifest.FileMetadata, opts *IterOptions,
-			internalOpts internalIterOpts) (internalIterator, keyspan.FragmentIterator, error) {
-			// NB: External iterators are currently constructed without any
-			// `levelIters`. newIters should never be called. When we support
-			// organizing multiple non-overlapping files into a single level
-			// (see TODO below), we'll need to adjust this tableNewIters
-			// implementation to open iterators by looking up f in a map
-			// of readers indexed by *fileMetadata.
-			panic("unreachable")
-		},
+
+		// NB: External iterators are currently constructed without any
+		// `levelIters`. iterFactory should never be called. When we support
+		// organizing multiple non-overlapping files into a single level
+		// (see TODO below), we'll need to adjust this tableIterFactory
+		// implementation to open iterators by looking up f in a map
+		// of readers indexed by *fileMetadata.
+		iterFactory: nil,
+
 		seqNum: base.InternalKeySeqNumMax,
 	}
 	if iterOpts != nil {
