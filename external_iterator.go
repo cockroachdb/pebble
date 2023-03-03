@@ -204,12 +204,7 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 	for _, readers := range it.externalReaders {
 		var combinedIters []internalIterator
 		for _, r := range readers {
-			var (
-				rangeDelIter keyspan.FragmentIterator
-				pointIter    internalIterator
-				err          error
-			)
-			pointIter, err = r.NewIterWithBlockPropertyFiltersAndContext(
+			pointIter, err := r.NewIterWithBlockPropertyFiltersAndContext(
 				ctx,
 				it.opts.LowerBound,
 				it.opts.UpperBound,
@@ -221,7 +216,7 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 			if err != nil {
 				return nil, err
 			}
-			rangeDelIter, err = r.NewRawRangeDelIter()
+			rangeDelIter, err := r.NewRawRangeDelIter()
 			if err != nil {
 				return nil, err
 			}
@@ -233,25 +228,20 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 				combinedIters = append(combinedIters, pointIter)
 				continue
 			}
-			mlevels = append(mlevels, mergingIterLevel{
-				iter:         pointIter,
-				rangeDelIter: rangeDelIter,
-			})
+			mlevels = append(mlevels, mergingIterLevel{})
+			mlevels[len(mlevels)-1].initSimple(pointIter, rangeDelIter)
 		}
 		if len(combinedIters) == 1 {
-			mlevels = append(mlevels, mergingIterLevel{
-				iter: combinedIters[0],
-			})
+			mlevels = append(mlevels, mergingIterLevel{})
+			mlevels[len(mlevels)-1].initSimple(combinedIters[0], nil /* rangeDelIter */)
 		} else if len(combinedIters) > 1 {
 			sli := &simpleLevelIter{
 				cmp:   it.cmp,
 				iters: combinedIters,
 			}
 			sli.init(it.opts)
-			mlevels = append(mlevels, mergingIterLevel{
-				iter:         sli,
-				rangeDelIter: nil,
-			})
+			mlevels = append(mlevels, mergingIterLevel{})
+			mlevels[len(mlevels)-1].initSimple(sli, nil /* rangeDelIter */)
 		}
 	}
 	if len(mlevels) == 1 && mlevels[0].rangeDelIter == nil {

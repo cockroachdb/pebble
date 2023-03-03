@@ -122,9 +122,8 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 	// Next are the memtables.
 	for j := len(memtables) - 1; j >= 0; j-- {
 		mem := memtables[j]
-		mlevels = append(mlevels, mergingIterLevel{
-			iter: mem.newIter(&i.opts),
-		})
+		mlevels = append(mlevels, mergingIterLevel{})
+		mlevels[len(mlevels)-1].initSimple(mem.newIter(&i.opts), nil /* rangeDelIter */)
 		if rdi := mem.newRangeDelIter(&i.opts); rdi != nil {
 			rangeDelIters = append(rangeDelIters, rdi)
 		}
@@ -143,8 +142,7 @@ func (i *scanInternalIterator) constructPointIter(memtables flushableList, buf *
 		li.init(
 			context.Background(), i.opts, i.comparer.Compare, i.comparer.Split, i.newIters, files, level,
 			internalIterOpts{})
-		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
-		mlevels[mlevelsIndex].iter = li
+		mlevels[mlevelsIndex].initSimple(li, nil /* rangeDelIter */)
 		rli.Init(keyspan.SpanIterOptions{RangeKeyFilters: i.opts.RangeKeyFilters},
 			i.comparer.Compare, tableNewRangeDelIter(context.Background(), i.newIters), files, level,
 			manifest.KeyTypePoint)
