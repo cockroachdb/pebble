@@ -127,19 +127,24 @@ type levelIter struct {
 	// levelIterBoundaryContext.isIgnorableBoundaryKey.
 	filteredIter filteredIter
 	newIters     tableNewIters
-	// When rangeDelIterPtr != nil, the caller requires that *rangeDelIterPtr must
+
+	// When exposeRangeDelIter is true, the caller requires that currentRangeDelIter must
 	// point to a range del iterator corresponding to the current file. When this
-	// iterator returns nil, *rangeDelIterPtr should also be set to nil. Whenever
-	// a non-nil internalIterator is placed in rangeDelIterPtr, a copy is placed
-	// in rangeDelIterCopy. This is done for the following special case:
-	// when this iterator returns nil because of exceeding the bounds, we don't
-	// close iter and *rangeDelIterPtr since we could reuse it in the next seek. But
-	// we need to set *rangeDelIterPtr to nil because of the aforementioned contract.
-	// This copy is used to revive the *rangeDelIterPtr in the case of reuse.
-	rangeDelIterPtr  *keyspan.FragmentIterator
-	rangeDelIterCopy keyspan.FragmentIterator
-	files            manifest.LevelIterator
-	err              error
+	// iterator returns nil, currentRangeDeliter should also be set to nil.
+	// TODO(radu): This flag also controls boundary context stuff.
+	exposeRangeDelIter  bool
+	currentRangeDelIter keyspan.FragmentIterator
+	// Whenever a non-nil internalIterator is placed in currentRangeDelIter, a
+	// copy is placed in lastRangeDelIter. This is done for the following special
+	// case: when this iterator returns nil because of exceeding the bounds, we
+	// don't close iter and currentRangeDelIter since we could reuse it in the next
+	// seek. But we need to set currentRangeDelIter to nil because of the
+	// aforementioned contract. This copy is used to revive the *rangeDelIterPtr
+	// in the case of reuse.
+	lastRangeDelIter keyspan.FragmentIterator
+
+	files manifest.LevelIterator
+	err   error
 
 	// We populate the levelIterBoundaryContext with the corresponding bounds for
 	// the currently opened file. It is used for two purposes (described for
@@ -295,8 +300,8 @@ func (l *levelIter) init(
 	l.internalOpts = internalOpts
 }
 
-func (l *levelIter) initRangeDel(rangeDelIter *keyspan.FragmentIterator) {
-	l.rangeDelIterPtr = rangeDelIter
+func (l *levelIter) enableExposeRangeDelIter() {
+	l.exposeRangeDelIter = true
 }
 
 func (l *levelIter) initCombinedIterState(state *combinedIterState) {
@@ -612,8 +617,8 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 			// We don't bother comparing the file bounds with the iteration bounds when we have
 			// an already open iterator. It is possible that the iter may not be relevant given the
 			// current iteration bounds, but it knows those bounds, so it will enforce them.
-			if l.rangeDelIterPtr != nil {
-				*l.rangeDelIterPtr = l.rangeDelIterCopy
+			if l.exposeRangeDelIter {
+				l.currentRangeDelIter = l.lastRangeDelIter
 			}
 
 			// There are a few reasons we might not have triggered combined
@@ -692,9 +697,9 @@ func (l *levelIter) loadFile(file *fileMetadata, dir int) loadFileReturnIndicato
 		} else {
 			l.filteredIter = nil
 		}
-		if l.rangeDelIterPtr != nil {
-			*l.rangeDelIterPtr = rangeDelIter
-			l.rangeDelIterCopy = rangeDelIter
+		if l.exposeRangeDelIter {
+			l.currentRangeDelIter = rangeDelIter
+			l.lastRangeDelIter = rangeDelIter
 		} else if rangeDelIter != nil {
 			rangeDelIter.Close()
 		}
@@ -772,7 +777,7 @@ func (l *levelIter) SeekPrefixGE(
 	// current sstable. We do know that the key lies within the bounds of the
 	// table as findFileGE found the table where key <= meta.Largest. We return
 	// the table's bound with isIgnorableBoundaryKey set.
-	if l.rangeDelIterPtr != nil && *l.rangeDelIterPtr != nil {
+	if l.exposeRangeDelIter && l.currentRangeDelIter != nil {
 		if l.tableOpts.UpperBound != nil {
 			l.syntheticBoundary.UserKey = l.tableOpts.UpperBound
 			l.syntheticBoundary.Trailer = InternalKeyRangeDeleteSentinel
@@ -867,8 +872,8 @@ func (l *levelIter) Next() (*InternalKey, base.LazyValue) {
 			// calls to Next() stay at this file. If a Seek/First/Last call is
 			// made and this file continues to be relevant, loadFile() will
 			// set the largestBoundary to nil.
-			if l.rangeDelIterPtr != nil {
-				*l.rangeDelIterPtr = nil
+			if l.exposeRangeDelIter {
+				l.currentRangeDelIter = nil
 			}
 			return nil, base.LazyValue{}
 		}
@@ -906,8 +911,8 @@ func (l *levelIter) NextPrefix(succKey []byte) (*InternalKey, base.LazyValue) {
 			// calls to Next() stay at this file. If a Seek/First/Last call is
 			// made and this file continues to be relevant, loadFile() will
 			// set the largestBoundary to nil.
-			if l.rangeDelIterPtr != nil {
-				*l.rangeDelIterPtr = nil
+			if l.exposeRangeDelIter {
+				l.currentRangeDelIter = nil
 			}
 			return nil, base.LazyValue{}
 		}
@@ -954,8 +959,8 @@ func (l *levelIter) Prev() (*InternalKey, base.LazyValue) {
 			// subsequent calls to Prev() stay at this file. If a
 			// Seek/First/Last call is made and this file continues to be
 			// relevant, loadFile() will set the smallestBoundary to nil.
-			if l.rangeDelIterPtr != nil {
-				*l.rangeDelIterPtr = nil
+			if l.exposeRangeDelIter {
+				l.currentRangeDelIter = nil
 			}
 			return nil, base.LazyValue{}
 		}
@@ -997,7 +1002,7 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, base.LazyValue) {
 	// that key, else the behavior described above if there is a corresponding
 	// rangeDelIterPtr.
 	for ; key == nil; key, val = l.iter.First() {
-		if l.rangeDelIterPtr != nil {
+		if l.exposeRangeDelIter {
 			// We're being used as part of a mergingIter and we've exhausted the
 			// current sstable. If an upper bound is present and the upper bound lies
 			// within the current sstable, then we will have reached the upper bound
@@ -1010,7 +1015,7 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, base.LazyValue) {
 			// that matches the exclusive upper bound, and does not represent
 			// a real key.
 			if l.tableOpts.UpperBound != nil {
-				if *l.rangeDelIterPtr != nil {
+				if l.currentRangeDelIter != nil {
 					l.syntheticBoundary.UserKey = l.tableOpts.UpperBound
 					l.syntheticBoundary.Trailer = InternalKeyRangeDeleteSentinel
 					l.largestBoundary = &l.syntheticBoundary
@@ -1049,7 +1054,7 @@ func (l *levelIter) skipEmptyFileForward() (*InternalKey, base.LazyValue) {
 			// tolerate this repeat key and in this case will keep the level at
 			// the top of the heap and immediately skip the entry, advancing to
 			// the next file.
-			if *l.rangeDelIterPtr != nil && l.filteredIter != nil &&
+			if l.currentRangeDelIter != nil && l.filteredIter != nil &&
 				l.filteredIter.MaybeFilteredKeys() {
 				l.largestBoundary = &l.iterFile.Largest
 				l.boundaryContext.isIgnorableBoundaryKey = true
@@ -1083,7 +1088,7 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, base.LazyValue) {
 	// that key, else the behavior described above if there is a corresponding
 	// rangeDelIterPtr.
 	for ; key == nil; key, val = l.iter.Last() {
-		if l.rangeDelIterPtr != nil {
+		if l.exposeRangeDelIter {
 			// We're being used as part of a mergingIter and we've exhausted the
 			// current sstable. If a lower bound is present and the lower bound lies
 			// within the current sstable, then we will have reached the lower bound
@@ -1096,7 +1101,7 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, base.LazyValue) {
 			// that is within the inclusive lower bound, and does not
 			// represent a real key.
 			if l.tableOpts.LowerBound != nil {
-				if *l.rangeDelIterPtr != nil {
+				if l.currentRangeDelIter != nil {
 					l.syntheticBoundary.UserKey = l.tableOpts.LowerBound
 					l.syntheticBoundary.Trailer = InternalKeyRangeDeleteSentinel
 					l.smallestBoundary = &l.syntheticBoundary
@@ -1135,7 +1140,7 @@ func (l *levelIter) skipEmptyFileBackward() (*InternalKey, base.LazyValue) {
 			// tolerate this repeat key and in this case will keep the level at
 			// the top of the heap and immediately skip the entry, advancing to
 			// the next file.
-			if *l.rangeDelIterPtr != nil && l.filteredIter != nil && l.filteredIter.MaybeFilteredKeys() {
+			if l.currentRangeDelIter != nil && l.filteredIter != nil && l.filteredIter.MaybeFilteredKeys() {
 				l.smallestBoundary = &l.iterFile.Smallest
 				l.boundaryContext.isIgnorableBoundaryKey = true
 				return l.smallestBoundary, base.LazyValue{}
@@ -1162,12 +1167,12 @@ func (l *levelIter) Close() error {
 		l.err = l.iter.Close()
 		l.iter = nil
 	}
-	if l.rangeDelIterPtr != nil {
-		if t := l.rangeDelIterCopy; t != nil {
+	if l.exposeRangeDelIter {
+		if t := l.lastRangeDelIter; t != nil {
 			l.err = firstError(l.err, t.Close())
 		}
-		*l.rangeDelIterPtr = nil
-		l.rangeDelIterCopy = nil
+		l.currentRangeDelIter = nil
+		l.lastRangeDelIter = nil
 	}
 	return l.err
 }
@@ -1200,3 +1205,40 @@ func (l *levelIter) String() string {
 }
 
 var _ internalIterator = &levelIter{}
+
+// rangeDelIterHolder is a helper struct that is used to retrieve
+// a rangeDelIter. It can be configured in two modes:
+//   - "fixed" mode: we use a fixed rangeDelIter which does not change.
+//   - "level iter" mode: we associate a levelIter, which is configured to
+//     expose the current rangeDelIter.
+type rangeDelIterHolder struct {
+	// levelIter is only set in the "level iterator" mode.
+	levelIter *levelIter
+	// fixedRangeDelIter is only used in the "simple" mode.
+	fixedRangeDelIter keyspan.FragmentIterator
+}
+
+// makeRangeDelIterHolderFixed initializes a rangeDeliterHolder whose get() method returns
+// the given rangeDelIter.
+func makeRangeDelIterHolderFixed(rangeDelIter keyspan.FragmentIterator) rangeDelIterHolder {
+	return rangeDelIterHolder{
+		fixedRangeDelIter: rangeDelIter,
+	}
+}
+
+// makeRangeDelIterHolderLevel configures the levelIter to expose the current
+// rangeDelIter and initializes a rangeDelIterHolder whose get() method returns
+// the levelIter's current rangeDelIter.
+func makeRangeDelIterHolderLevel(levelIter *levelIter) rangeDelIterHolder {
+	levelIter.enableExposeRangeDelIter()
+	return rangeDelIterHolder{
+		levelIter: levelIter,
+	}
+}
+
+func (h *rangeDelIterHolder) get() keyspan.FragmentIterator {
+	if h.levelIter != nil {
+		return h.levelIter.currentRangeDelIter
+	}
+	return h.fixedRangeDelIter
+}

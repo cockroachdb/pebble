@@ -90,7 +90,7 @@ func TestLevelIter(t *testing.T) {
 				nil)
 			defer iter.Close()
 			// Fake up the range deletion initialization.
-			iter.initRangeDel(new(keyspan.FragmentIterator))
+			iter.enableExposeRangeDelIter()
 			iter.disableInvariants = true
 			return runInternalIterCmd(t, d, iter, iterCmdVerboseKey)
 
@@ -326,7 +326,7 @@ func TestLevelIterBoundaries(t *testing.T) {
 					func(a []byte) int { return len(a) }, lt.newIters, slice.Iter(),
 					manifest.Level(level), nil)
 				// Fake up the range deletion initialization.
-				iter.initRangeDel(new(keyspan.FragmentIterator))
+				iter.enableExposeRangeDelIter()
 			}
 			if !save {
 				defer func() {
@@ -353,22 +353,22 @@ func TestLevelIterBoundaries(t *testing.T) {
 }
 
 // levelIterTestIter allows a datadriven test to use runInternalIterCmd and
-// perform parallel operations on both both a levelIter and rangeDelIter.
+// perform parallel operations on both a levelIter and rangeDelIter.
 type levelIterTestIter struct {
 	*levelIter
-	rangeDelIter keyspan.FragmentIterator
+	rangeDelIter rangeDelIterHolder
 }
 
 func (i *levelIterTestIter) rangeDelSeek(
 	key []byte, ikey *InternalKey, val base.LazyValue, dir int,
 ) (*InternalKey, base.LazyValue) {
 	var tombstone keyspan.Span
-	if i.rangeDelIter != nil {
+	if rangeDelIter := i.rangeDelIter.get(); rangeDelIter != nil {
 		var t *keyspan.Span
 		if dir < 0 {
-			t = keyspan.SeekLE(i.levelIter.cmp, i.rangeDelIter, key)
+			t = keyspan.SeekLE(i.levelIter.cmp, rangeDelIter, key)
 		} else {
-			t = i.rangeDelIter.SeekGE(key)
+			t = rangeDelIter.SeekGE(key)
 		}
 		if t != nil {
 			tombstone = t.Visible(1000)
@@ -430,7 +430,7 @@ func TestLevelIterSeek(t *testing.T) {
 				func(a []byte) int { return len(a) }, lt.newIters, slice.Iter(),
 				manifest.Level(level), internalIterOpts{stats: &stats})
 			defer iter.Close()
-			iter.initRangeDel(&iter.rangeDelIter)
+			iter.rangeDelIter = makeRangeDelIterHolderLevel(iter.levelIter)
 			return runInternalIterCmd(t, d, iter, iterCmdVerboseKey, iterCmdStats(&stats))
 
 		case "iters-created":
@@ -578,7 +578,7 @@ func BenchmarkLevelIterSeqSeekGEWithBounds(b *testing.B) {
 							l := newLevelIter(IterOptions{}, DefaultComparer.Compare, nil, newIters, metas.Iter(), manifest.Level(level), nil)
 							// Fake up the range deletion initialization, to resemble the usage
 							// in a mergingIter.
-							l.initRangeDel(new(keyspan.FragmentIterator))
+							l.enableExposeRangeDelIter()
 							keyCount := len(keys)
 							b.ResetTimer()
 							for i := 0; i < b.N; i++ {
@@ -627,7 +627,7 @@ func BenchmarkLevelIterSeqSeekPrefixGE(b *testing.B) {
 						manifest.Level(level), nil)
 					// Fake up the range deletion initialization, to resemble the usage
 					// in a mergingIter.
-					l.initRangeDel(new(keyspan.FragmentIterator))
+					l.enableExposeRangeDelIter()
 					keyCount := len(keys)
 					pos := 0
 					l.SeekPrefixGE(keys[pos], keys[pos], base.SeekGEFlagsNone)
