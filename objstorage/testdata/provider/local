@@ -1,0 +1,35 @@
+# Basic provider tests without shared storage.
+
+open p0 0
+----
+<local fs> mkdir-all: p0 0755
+<local fs> open-dir: p0
+
+create 1 local
+foo
+----
+<local fs> create: p0/000001.sst
+<local fs> sync-data: p0/000001.sst
+<local fs> close: p0/000001.sst
+
+read 1
+----
+data: foo
+
+# A provider without shared storage creates object with shared preference
+# locally.
+create 2 shared
+bar
+----
+<local fs> create: p0/000002.sst
+<local fs> sync-data: p0/000002.sst
+<local fs> close: p0/000002.sst
+
+read 2
+----
+data: bar
+
+close
+----
+<local fs> sync: p0
+<local fs> close: p0
