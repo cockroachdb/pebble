@@ -17,146 +17,148 @@ import (
 )
 
 func TestProvider(t *testing.T) {
-	var log base.InMemLogger
-	fs := vfs.WithLogging(vfs.NewMem(), func(fmt string, args ...interface{}) {
-		log.Infof("<local fs> "+fmt, args...)
-	})
-	sharedStore := shared.WithLogging(shared.NewInMem(), func(fmt string, args ...interface{}) {
-		log.Infof("<shared> "+fmt, args...)
-	})
+	datadriven.Walk(t, "testdata/provider", func(t *testing.T, path string) {
+		var log base.InMemLogger
+		fs := vfs.WithLogging(vfs.NewMem(), func(fmt string, args ...interface{}) {
+			log.Infof("<local fs> "+fmt, args...)
+		})
+		sharedStore := shared.WithLogging(shared.NewInMem(), func(fmt string, args ...interface{}) {
+			log.Infof("<shared> "+fmt, args...)
+		})
 
-	providers := make(map[string]*Provider)
-	backings := make(map[string]SharedObjectBacking)
-	var curProvider *Provider
-	datadriven.RunTest(t, "testdata/provider", func(t *testing.T, d *datadriven.TestData) string {
-		scanArgs := func(desc string, args ...interface{}) {
-			t.Helper()
-			if len(d.CmdArgs) != len(args) {
-				d.Fatalf(t, "usage: %s %s", d.Cmd, desc)
-			}
-			for i := range args {
-				_, err := fmt.Sscan(d.CmdArgs[i].String(), args[i])
-				if err != nil {
-					d.Fatalf(t, "%s: error parsing argument '%s'", d.Cmd, d.CmdArgs[i])
+		providers := make(map[string]*Provider)
+		backings := make(map[string]SharedObjectBacking)
+		var curProvider *Provider
+		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
+			scanArgs := func(desc string, args ...interface{}) {
+				t.Helper()
+				if len(d.CmdArgs) != len(args) {
+					d.Fatalf(t, "usage: %s %s", d.Cmd, desc)
+				}
+				for i := range args {
+					_, err := fmt.Sscan(d.CmdArgs[i].String(), args[i])
+					if err != nil {
+						d.Fatalf(t, "%s: error parsing argument '%s'", d.Cmd, d.CmdArgs[i])
+					}
 				}
 			}
-		}
 
-		log.Reset()
-		switch d.Cmd {
-		case "open":
-			var fsDir string
-			var creatorID CreatorID
-			scanArgs("<fs-dir> <shared-creator-id>", &fsDir, &creatorID)
+			log.Reset()
+			switch d.Cmd {
+			case "open":
+				var fsDir string
+				var creatorID CreatorID
+				scanArgs("<fs-dir> <shared-creator-id>", &fsDir, &creatorID)
 
-			st := DefaultSettings(fs, fsDir)
-			if creatorID != 0 {
-				st.Shared.Storage = sharedStore
-			}
-			require.NoError(t, fs.MkdirAll(fsDir, 0755))
-			provider, err := Open(st)
-			require.NoError(t, err)
-			if creatorID != 0 {
-				require.NoError(t, provider.SetCreatorID(creatorID))
-			}
-			providers[fsDir] = provider
-			curProvider = provider
+				st := DefaultSettings(fs, fsDir)
+				if creatorID != 0 {
+					st.Shared.Storage = sharedStore
+				}
+				require.NoError(t, fs.MkdirAll(fsDir, 0755))
+				provider, err := Open(st)
+				require.NoError(t, err)
+				if creatorID != 0 {
+					require.NoError(t, provider.SetCreatorID(creatorID))
+				}
+				providers[fsDir] = provider
+				curProvider = provider
 
-			return log.String()
+				return log.String()
 
-		case "close":
-			require.NoError(t, curProvider.Sync())
-			require.NoError(t, curProvider.Close())
-			delete(providers, curProvider.st.FSDirName)
-			curProvider = nil
+			case "close":
+				require.NoError(t, curProvider.Sync())
+				require.NoError(t, curProvider.Close())
+				delete(providers, curProvider.st.FSDirName)
+				curProvider = nil
 
-			return log.String()
+				return log.String()
 
-		case "create":
-			var fileNum base.FileNum
-			var typ string
-			scanArgs("<file-num> <local|shared>", &fileNum, &typ)
-			var opts CreateOptions
-			switch typ {
-			case "local":
-			case "shared":
-				opts.PreferSharedStorage = true
-			default:
-				d.Fatalf(t, "'%s' should be 'local' or 'shared'", typ)
-			}
-			w, _, err := curProvider.Create(base.FileTypeTable, fileNum, opts)
-			if err != nil {
-				return err.Error()
-			}
-			require.NoError(t, w.Write([]byte(d.Input)))
-			require.NoError(t, w.Finish())
+			case "create":
+				var fileNum base.FileNum
+				var typ string
+				scanArgs("<file-num> <local|shared>", &fileNum, &typ)
+				var opts CreateOptions
+				switch typ {
+				case "local":
+				case "shared":
+					opts.PreferSharedStorage = true
+				default:
+					d.Fatalf(t, "'%s' should be 'local' or 'shared'", typ)
+				}
+				w, _, err := curProvider.Create(base.FileTypeTable, fileNum, opts)
+				if err != nil {
+					return err.Error()
+				}
+				require.NoError(t, w.Write([]byte(d.Input)))
+				require.NoError(t, w.Finish())
 
-			return log.String()
+				return log.String()
 
-		case "read":
-			var fileNum base.FileNum
-			scanArgs("<file-num>", &fileNum)
-			r, err := curProvider.OpenForReading(base.FileTypeTable, fileNum)
-			if err != nil {
-				return err.Error()
-			}
-			data := make([]byte, int(r.Size()))
-			n, err := r.ReadAt(data, 0)
-			require.NoError(t, err)
-			require.Equal(t, n, len(data))
-			return log.String() + fmt.Sprintf("data: %s\n", string(data))
+			case "read":
+				var fileNum base.FileNum
+				scanArgs("<file-num>", &fileNum)
+				r, err := curProvider.OpenForReading(base.FileTypeTable, fileNum)
+				if err != nil {
+					return err.Error()
+				}
+				data := make([]byte, int(r.Size()))
+				n, err := r.ReadAt(data, 0)
+				require.NoError(t, err)
+				require.Equal(t, n, len(data))
+				return log.String() + fmt.Sprintf("data: %s\n", string(data))
 
-		case "list":
-			for _, meta := range curProvider.List() {
-				log.Infof("%s -> %s", meta.FileNum, curProvider.Path(meta))
-			}
-			return log.String()
+			case "list":
+				for _, meta := range curProvider.List() {
+					log.Infof("%s -> %s", meta.FileNum, curProvider.Path(meta))
+				}
+				return log.String()
 
-		case "save-backing":
-			var key string
-			var fileNum base.FileNum
-			scanArgs("<key> <file-num>", &key, &fileNum)
-			meta, err := curProvider.Lookup(base.FileTypeTable, fileNum)
-			require.NoError(t, err)
-			backing, err := meta.SharedObjectBacking()
-			if err != nil {
-				return err.Error()
-			}
-			backings[key] = backing
-			return log.String()
-
-		case "attach":
-			lines := strings.Split(d.Input, "\n")
-			if len(lines) == 0 {
-				d.Fatalf(t, "at least one row expected; format: <key> <file-num>")
-			}
-			var objs []SharedObjectToAttach
-			for _, l := range lines {
+			case "save-backing":
 				var key string
 				var fileNum base.FileNum
-				_, err := fmt.Sscan(l, &key, &fileNum)
+				scanArgs("<key> <file-num>", &key, &fileNum)
+				meta, err := curProvider.Lookup(base.FileTypeTable, fileNum)
 				require.NoError(t, err)
-				backing, ok := backings[key]
-				if !ok {
-					d.Fatalf(t, "unknown backing key %q", key)
+				backing, err := meta.SharedObjectBacking()
+				if err != nil {
+					return err.Error()
 				}
-				objs = append(objs, SharedObjectToAttach{
-					FileType: base.FileTypeTable,
-					FileNum:  fileNum,
-					Backing:  backing,
-				})
-			}
-			metas, err := curProvider.AttachSharedObjects(objs)
-			require.NoError(t, err)
-			for _, meta := range metas {
-				log.Infof("%s -> %s", meta.FileNum, curProvider.Path(meta))
-			}
-			return log.String()
+				backings[key] = backing
+				return log.String()
 
-		default:
-			d.Fatalf(t, "unknown command %s", d.Cmd)
-			return ""
-		}
+			case "attach":
+				lines := strings.Split(d.Input, "\n")
+				if len(lines) == 0 {
+					d.Fatalf(t, "at least one row expected; format: <key> <file-num>")
+				}
+				var objs []SharedObjectToAttach
+				for _, l := range lines {
+					var key string
+					var fileNum base.FileNum
+					_, err := fmt.Sscan(l, &key, &fileNum)
+					require.NoError(t, err)
+					backing, ok := backings[key]
+					if !ok {
+						d.Fatalf(t, "unknown backing key %q", key)
+					}
+					objs = append(objs, SharedObjectToAttach{
+						FileType: base.FileTypeTable,
+						FileNum:  fileNum,
+						Backing:  backing,
+					})
+				}
+				metas, err := curProvider.AttachSharedObjects(objs)
+				require.NoError(t, err)
+				for _, meta := range metas {
+					log.Infof("%s -> %s", meta.FileNum, curProvider.Path(meta))
+				}
+				return log.String()
+
+			default:
+				d.Fatalf(t, "unknown command %s", d.Cmd)
+				return ""
+			}
+		})
 	})
 }
 
