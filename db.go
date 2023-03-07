@@ -1248,21 +1248,24 @@ func (i *Iterator) constructPointIter(
 	}
 
 	if numMergingLevels > cap(mlevels) {
-		mlevels = make([]mergingIterLevel, 0, numMergingLevels)
+		mlevels = make([]mergingIterLevel, numMergingLevels)
+	} else {
+		mlevels = mlevels[:numMergingLevels]
 	}
 	if numLevelIters > cap(levels) {
-		levels = make([]levelIter, 0, numLevelIters)
+		levels = make([]levelIter, numLevelIters)
+	} else {
+		levels = levels[:numLevelIters]
 	}
 
+	mlevelsIndex := 0
+	levelsIndex := 0
 	// Top-level is the batch, if any.
 	if i.batch != nil {
 		if i.batch.index == nil {
 			// This isn't an indexed batch. Include an error iterator so that
 			// the resulting iterator correctly surfaces ErrIndexed.
-			mlevels = append(mlevels, mergingIterLevel{
-				iter:         newErrorIter(ErrNotIndexed),
-				rangeDelIter: newErrorKeyspanIter(ErrNotIndexed),
-			})
+			mlevels[mlevelsIndex].initSimple(newErrorIter(ErrNotIndexed), newErrorKeyspanIter(ErrNotIndexed))
 		} else {
 			i.batch.initInternalIter(&i.opts, &i.batchPointIter)
 			i.batch.initRangeDelIter(&i.opts, &i.batchRangeDelIter, i.batchSeqNum)
@@ -1275,36 +1278,26 @@ func (i *Iterator) constructPointIter(
 			if i.batchRangeDelIter.Count() > 0 {
 				rangeDelIter = &i.batchRangeDelIter
 			}
-			mlevels = append(mlevels, mergingIterLevel{
-				iter:         &i.batchPointIter,
-				rangeDelIter: rangeDelIter,
-			})
+			mlevels[mlevelsIndex].initSimple(&i.batchPointIter, rangeDelIter)
 		}
+		mlevelsIndex++
 	}
 
 	// Next are the memtables.
 	for j := len(memtables) - 1; j >= 0; j-- {
 		mem := memtables[j]
-		mlevels = append(mlevels, mergingIterLevel{
-			iter:         mem.newIter(&i.opts),
-			rangeDelIter: mem.newRangeDelIter(&i.opts),
-		})
+		mlevels[mlevelsIndex].initSimple(mem.newIter(&i.opts), mem.newRangeDelIter(&i.opts))
+		mlevelsIndex++
 	}
 
 	// Next are the file levels: L0 sub-levels followed by lower levels.
-	mlevelsIndex := len(mlevels)
-	levelsIndex := len(levels)
-	mlevels = mlevels[:numMergingLevels]
-	levels = levels[:numLevelIters]
 	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Level) {
 		li := &levels[levelsIndex]
 
 		li.init(
 			ctx, i.opts, i.comparer.Compare, i.comparer.Split, i.newIters, files, level, internalOpts)
-		li.initRangeDel(&mlevels[mlevelsIndex].rangeDelIter)
-		li.initBoundaryContext(&mlevels[mlevelsIndex].levelIterBoundaryContext)
 		li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)
-		mlevels[mlevelsIndex].iter = li
+		mlevels[mlevelsIndex].initWithLevelIter(li)
 
 		levelsIndex++
 		mlevelsIndex++

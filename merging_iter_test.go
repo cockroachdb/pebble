@@ -251,7 +251,7 @@ func TestMergingIterCornerCases(t *testing.T) {
 			v = newVersion(opts, files)
 			return v.String()
 		case "iter":
-			levelIters := make([]mergingIterLevel, 0, len(v.Levels))
+			mlevels := make([]mergingIterLevel, 0, len(v.Levels))
 			var stats base.InternalIteratorStats
 			for i, l := range v.Levels {
 				slice := l.Slice()
@@ -261,13 +261,11 @@ func TestMergingIterCornerCases(t *testing.T) {
 				li := &levelIter{}
 				li.init(context.Background(), IterOptions{}, cmp, func(a []byte) int { return len(a) },
 					newIters, slice.Iter(), manifest.Level(i), internalIterOpts{stats: &stats})
-				i := len(levelIters)
-				levelIters = append(levelIters, mergingIterLevel{iter: li})
-				li.initRangeDel(&levelIters[i].rangeDelIter)
-				li.initBoundaryContext(&levelIters[i].levelIterBoundaryContext)
+				mlevels = append(mlevels, mergingIterLevel{})
+				mlevels[len(mlevels)-1].initWithLevelIter(li)
 			}
 			miter := &mergingIter{}
-			miter.init(nil /* opts */, &stats, cmp, func(a []byte) int { return len(a) }, levelIters...)
+			miter.init(nil /* opts */, &stats, cmp, func(a []byte) int { return len(a) }, mlevels...)
 			defer miter.Close()
 			miter.forceEnableSeekOpt = true
 			return runInternalIterCmd(t, d, miter, iterCmdVerboseKey, iterCmdStats(&stats))
@@ -628,9 +626,7 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 		l := newLevelIter(IterOptions{}, DefaultComparer.Compare,
 			func(a []byte) int { return len(a) }, newIters, levelSlices[i].Iter(),
 			manifest.Level(level), nil)
-		l.initRangeDel(&mils[level].rangeDelIter)
-		l.initBoundaryContext(&mils[level].levelIterBoundaryContext)
-		mils[level].iter = l
+		mils[level].initWithLevelIter(l)
 	}
 	var stats base.InternalIteratorStats
 	m := &mergingIter{}
