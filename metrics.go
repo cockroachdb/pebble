@@ -152,7 +152,7 @@ func (m *LevelMetrics) format(
 		humanize.IEC.Uint64(m.BytesRead),
 		redact.Safe(m.Sublevels),
 		redact.Safe(m.WriteAmp()),
-	  humanize.IEC.Uint64(m.BytesInTopML),
+		humanize.IEC.Uint64(m.BytesInTopML),
 		humanize.IEC.Uint64(m.BytesInML),
 		humanize.IEC.Uint64(m.BytesReadML))
 	if includeValueBlocksSize {
@@ -173,14 +173,15 @@ type Metrics struct {
 
 	Compact struct {
 		// The total number of compactions, and per-compaction type counts.
-		Count            int64
-		DefaultCount     int64
-		DeleteOnlyCount  int64
-		ElisionOnlyCount int64
-		MoveCount        int64
-		ReadCount        int64
-		RewriteCount     int64
-		MultiLevelCount  int64
+		Count             int64
+		DefaultCount      int64
+		DeleteOnlyCount   int64
+		ElisionOnlyCount  int64
+		MoveCount         int64
+		ReadCount         int64
+		RewriteCount      int64
+		MultiLevelCount   int64
+		CounterLevelCount int64
 		// An estimate of the number of bytes that need to be compacted for the LSM
 		// to reach a stable state.
 		EstimatedDebt uint64
@@ -194,6 +195,14 @@ type Metrics struct {
 		// compaction. Such files are compacted in a rewrite compaction
 		// when no other compactions are picked.
 		MarkedFiles int
+
+		OverlappingRatioSums struct {
+			SinglePickSingle float64
+			SinglePickMulti  float64
+			MultiPickSingle  float64
+			MultiPickMulti   float64
+			CounterPickMulti float64
+		}
 	}
 
 	Flush struct {
@@ -370,6 +379,21 @@ func (m *Metrics) formatWAL(w redact.SafePrinter) {
 		redact.Safe(writeAmp))
 }
 
+func (m *Metrics) formatOverlappingRatio(w redact.SafePrinter) {
+	nonMultiLevelCount := float64(m.Compact.Count - m.Compact.MultiLevelCount)
+	multiLevelCount := float64(m.Compact.MultiLevelCount)
+	w.Printf("Mean Single Level Ratio | Single Level Chosen: %.2f \n",
+		m.Compact.OverlappingRatioSums.SinglePickSingle/nonMultiLevelCount)
+	w.Printf("Mean Single Level Ratio | Multi Level Chosen: %.2f \n",
+		m.Compact.OverlappingRatioSums.SinglePickMulti/multiLevelCount)
+	w.Printf("Mean Multi Level Ratio | Single Level Chosen: %.2f \n",
+		m.Compact.OverlappingRatioSums.MultiPickSingle/nonMultiLevelCount)
+	w.Printf("Mean Multi Level Ratio | Multi Level Chosen: %.2f \n",
+		m.Compact.OverlappingRatioSums.MultiPickMulti/multiLevelCount)
+	w.Printf("Mean Counter Level Ratio | Multi Level Chosen: %.2f \n",
+		m.Compact.OverlappingRatioSums.CounterPickMulti/float64(m.Compact.CounterLevelCount))
+}
+
 // String pretty-prints the metrics, showing a line for the WAL, a line per-level, and
 // a total:
 //
@@ -430,8 +454,8 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		}
 	}
 	var total LevelMetrics
-	w.Printf("__level_____count____size___score______in__ingest(sz_cnt)" +
-		"____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp_ml:top_in_read%s\n",valueBlocksHeading)
+	w.Printf("__level_____count____size___score______in__ingest(sz_cnt)"+
+		"____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp_ml:top_in_read%s\n", valueBlocksHeading)
 	m.formatWAL(w)
 	for level := 0; level < numLevels; level++ {
 		l := &m.Levels[level]
@@ -490,6 +514,8 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		notApplicable,
 		notApplicable,
 		redact.Safe(hitRate(m.Filter.Hits, m.Filter.Misses)))
+	m.formatOverlappingRatio(w)
+
 }
 
 func hitRate(hits, misses int64) float64 {

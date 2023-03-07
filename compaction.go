@@ -681,9 +681,12 @@ func (c *compaction) makeInfo(jobID int) CompactionInfo {
 	for i, score := range c.pickerMetrics.scores {
 		info.Input[i].Score = score
 	}
-	info.CounterfactualInfo = c.pickerMetrics.counterCompactionInfo
+	info.SingleLevelOverlappingRatio = c.pickerMetrics.singleLevelOverlappingRatio
+
 	if len(info.Input) > 2 {
 		info.Annotations = append(info.Annotations, "multilevel")
+		info.MultiLevelOverlappingRatio = c.pickerMetrics.multiLevelOverlappingRatio
+		info.CounterOverlappingRatio = c.pickerMetrics.counterOverlappingRatio
 	}
 	return info
 }
@@ -2033,7 +2036,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	bytesFlushed = c.bytesIterated
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c, err != nil)
-	d.mu.versions.incrementCompactions(c.kind, c.extraLevels)
+	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
 
 	var flushed flushableList
@@ -2529,7 +2532,7 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 
 	d.maybeUpdateDeleteCompactionHints(c)
 	d.removeInProgressCompaction(c, err != nil)
-	d.mu.versions.incrementCompactions(c.kind, c.extraLevels)
+	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten)
 
 	info.TotalDuration = d.timeNow().Sub(startTime)

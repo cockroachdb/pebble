@@ -584,7 +584,9 @@ func (vs *versionSet) logAndApply(
 	return nil
 }
 
-func (vs *versionSet) incrementCompactions(kind compactionKind, extraLevels []*compactionLevel) {
+func (vs *versionSet) incrementCompactions(
+	kind compactionKind, extraLevels []*compactionLevel, pickerMetrics compactionPickerMetrics,
+) {
 	switch kind {
 	case compactionKindDefault:
 		vs.metrics.Compact.Count++
@@ -615,6 +617,15 @@ func (vs *versionSet) incrementCompactions(kind compactionKind, extraLevels []*c
 	}
 	if len(extraLevels) > 0 {
 		vs.metrics.Compact.MultiLevelCount++
+		vs.metrics.Compact.OverlappingRatioSums.SinglePickMulti += pickerMetrics.singleLevelOverlappingRatio
+		vs.metrics.Compact.OverlappingRatioSums.MultiPickMulti += pickerMetrics.multiLevelOverlappingRatio
+		if pickerMetrics.counterOverlappingRatio != 0 {
+			vs.metrics.Compact.OverlappingRatioSums.CounterPickMulti += pickerMetrics.counterOverlappingRatio
+			vs.metrics.Compact.CounterLevelCount++
+		}
+	} else {
+		vs.metrics.Compact.OverlappingRatioSums.SinglePickSingle += pickerMetrics.singleLevelOverlappingRatio
+		vs.metrics.Compact.OverlappingRatioSums.MultiPickSingle += pickerMetrics.multiLevelOverlappingRatio
 	}
 }
 

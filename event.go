@@ -79,10 +79,9 @@ type CompactionInfo struct {
 	Done          bool
 	Err           error
 
-	// CounterfactualInfo contains information about a compaction that would have been picked in
-	// the intermediate level in the selected multilevel compaction. In other words,
-	// this field may be filled if the parent CompactionInfo represents a multilevel compaction.
-	CounterfactualInfo *CompactionInfo
+	SingleLevelOverlappingRatio float64
+	MultiLevelOverlappingRatio  float64
+	CounterOverlappingRatio     float64
 
 	// Annotations specifies additional info to appear in a compaction's event log line
 	Annotations []string
@@ -90,26 +89,6 @@ type CompactionInfo struct {
 
 func (i CompactionInfo) String() string {
 	return redact.StringWithoutMarkers(i)
-}
-
-// OverlappingRatio computes the overlapping ratio of compaction, which for a single
-// level compaction equals:
-// sum(file size from output level) / sum (file size from input level).
-// For multilevel compaction, the intermediate level files are added to the denominator.
-func (i CompactionInfo) OverlappingRatio() float64 {
-	var inBytes, outBytes uint64
-	for j, level := range i.Input {
-		sz := level.cachedTableSize
-		if sz == 0 {
-			sz = tablesTotalSize(level.Tables)
-		}
-		if j == len(i.Input)-1 {
-			outBytes = sz
-			continue
-		}
-		inBytes += sz
-	}
-	return float64(outBytes) / float64(inBytes)
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -126,9 +105,10 @@ func (i CompactionInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 			redact.SafeString(i.Reason),
 			redact.Safe(i.Annotations))
 		w.Printf("%s; ", levelInfos(i.Input))
-		w.Printf("OverlappingRatio %.2f;", i.OverlappingRatio())
-		if i.CounterfactualInfo != nil {
-			w.Printf("CounterOverlapping Ratio %.2f;", i.CounterfactualInfo.OverlappingRatio())
+		w.Printf("SingleOverlappingRatio %.2f;", i.SingleLevelOverlappingRatio)
+		w.Printf("MultiOverlappingRatio %.2f;", i.MultiLevelOverlappingRatio)
+		if i.CounterOverlappingRatio != 0 {
+			w.Printf("CounterOverlappingRatio %.2f;", i.CounterOverlappingRatio)
 		}
 		return
 	}
