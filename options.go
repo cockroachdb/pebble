@@ -1080,7 +1080,7 @@ func (o *Options) EnsureDefaults() *Options {
 		o.Experimental.CPUWorkPermissionGranter = defaultCPUWorkGranter{}
 	}
 	if o.Experimental.MultiLevelCompactionHueristic == nil {
-		o.Experimental.MultiLevelCompactionHueristic = NoMultiLevel{}
+		o.Experimental.MultiLevelCompactionHueristic = WriteAmpHeuristic{}
 	}
 
 	o.initMaps()
