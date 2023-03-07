@@ -25,7 +25,7 @@ type getIter struct {
 	snapshot     uint64
 	key          []byte
 	iter         internalIterator
-	rangeDelIter keyspan.FragmentIterator
+	rangeDelIter rangeDelIterHolder
 	tombstone    *keyspan.Span
 	levelIter    levelIter
 	level        int
@@ -82,12 +82,12 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 			// tombstone will appear in the table corresponding to its start
 			// key. Every call to levelIter.Next() potentially switches to a new
 			// table and thus reinitializes rangeDelIter.
-			if g.rangeDelIter != nil {
-				g.tombstone = keyspan.Get(g.cmp, g.rangeDelIter, g.key)
-				if g.err = g.rangeDelIter.Close(); g.err != nil {
+			if rangeDelIter := g.rangeDelIter.get(); rangeDelIter != nil {
+				g.tombstone = keyspan.Get(g.cmp, rangeDelIter, g.key)
+				if g.err = rangeDelIter.Close(); g.err != nil {
 					return nil, base.LazyValue{}
 				}
-				g.rangeDelIter = nil
+				g.rangeDelIter = rangeDelIterHolder{}
 			}
 
 			if g.iterKey != nil {
@@ -126,12 +126,12 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 				return nil, base.LazyValue{}
 			}
 			g.iter = g.batch.newInternalIter(nil)
-			g.rangeDelIter = g.batch.newRangeDelIter(
+			g.rangeDelIter = makeRangeDelIterHolderFixed(g.batch.newRangeDelIter(
 				nil,
 				// Get always reads the entirety of the batch's history, so no
 				// batch keys should be filtered.
 				base.InternalKeySeqNumMax,
-			)
+			))
 			g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
 			g.batch = nil
 			continue
@@ -147,7 +147,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 		if n := len(g.mem); n > 0 {
 			m := g.mem[n-1]
 			g.iter = m.newIter(nil)
-			g.rangeDelIter = m.newRangeDelIter(nil)
+			g.rangeDelIter = makeRangeDelIterHolderFixed(m.newRangeDelIter(nil))
 			g.mem = g.mem[:n-1]
 			g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
 			continue
@@ -161,7 +161,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 				iterOpts := IterOptions{logger: g.logger}
 				g.levelIter.init(context.Background(), iterOpts, g.cmp, nil /* split */, g.newIters,
 					files, manifest.L0Sublevel(n), internalIterOpts{})
-				g.levelIter.initRangeDel(&g.rangeDelIter)
+				g.rangeDelIter = makeRangeDelIterHolderLevel(&g.levelIter)
 				g.iter = &g.levelIter
 				g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)
 				continue
@@ -180,7 +180,7 @@ func (g *getIter) Next() (*InternalKey, base.LazyValue) {
 		iterOpts := IterOptions{logger: g.logger}
 		g.levelIter.init(context.Background(), iterOpts, g.cmp, nil /* split */, g.newIters,
 			g.version.Levels[g.level].Iter(), manifest.Level(g.level), internalIterOpts{})
-		g.levelIter.initRangeDel(&g.rangeDelIter)
+		g.rangeDelIter = makeRangeDelIterHolderLevel(&g.levelIter)
 		g.level++
 		g.iter = &g.levelIter
 		g.iterKey, g.iterValue = g.iter.SeekGE(g.key, base.SeekGEFlagsNone)

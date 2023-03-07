@@ -244,7 +244,7 @@ func createExternalPointIter(ctx context.Context, it *Iterator) (internalIterato
 			mlevels[len(mlevels)-1].initSimple(sli, nil /* rangeDelIter */)
 		}
 	}
-	if len(mlevels) == 1 && mlevels[0].rangeDelIter == nil {
+	if len(mlevels) == 1 && mlevels[0].rangeDelIter.get() == nil {
 		// Set closePointIterOnce to true. This is because we're bypassing the
 		// merging iter, which turns Close()s on it idempotent for any child
 		// iterators. The outer Iterator could call Close() on a point iter twice,

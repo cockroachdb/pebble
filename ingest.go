@@ -307,7 +307,7 @@ func ingestMemtableOverlaps(cmp Compare, mem flushable, meta []*fileMetadata) bo
 	}
 
 	for _, m := range meta {
-		if overlapWithIterator(iter, &rangeDelIter, rkeyIter, m, cmp) {
+		if overlapWithIterator(iter, makeRangeDelIterHolderFixed(rangeDelIter), rkeyIter, m, cmp) {
 			closeIters()
 			return true
 		}
@@ -361,7 +361,7 @@ func ingestUpdateSeqNum(
 
 func overlapWithIterator(
 	iter internalIterator,
-	rangeDelIter *keyspan.FragmentIterator,
+	rangeDelIterHolder rangeDelIterHolder,
 	rkeyIter keyspan.FragmentIterator,
 	meta *fileMetadata,
 	cmp Compare,
@@ -429,10 +429,11 @@ func overlapWithIterator(
 	}
 
 	// Check overlap with range deletions.
-	if rangeDelIter == nil || *rangeDelIter == nil {
+	rangeDelIter := rangeDelIterHolder.get()
+	if rangeDelIter == nil {
 		return false
 	}
-	return computeOverlapWithSpans(*rangeDelIter)
+	return computeOverlapWithSpans(rangeDelIter)
 }
 
 func ingestTargetLevel(
@@ -525,7 +526,7 @@ func ingestTargetLevel(
 		if err != nil {
 			return 0, err
 		}
-		overlap := overlapWithIterator(iter, &rangeDelIter, rkeyIter, meta, cmp)
+		overlap := overlapWithIterator(iter, makeRangeDelIterHolderFixed(rangeDelIter), rkeyIter, meta, cmp)
 		err = firstError(err, iter.Close())
 		if rangeDelIter != nil {
 			err = firstError(err, rangeDelIter.Close())
@@ -545,18 +546,13 @@ func ingestTargetLevel(
 	for ; level < numLevels; level++ {
 		levelIter := newLevelIter(iterOps, cmp, nil /* split */, newIters,
 			v.Levels[level].Iter(), manifest.Level(level), nil)
-		var rangeDelIter keyspan.FragmentIterator
-		// Pass in a non-nil pointer to rangeDelIter so that levelIter.findFileGE
-		// sets it up for the target file.
-		levelIter.initRangeDel(&rangeDelIter)
-
 		rkeyLevelIter := &keyspan.LevelIter{}
 		rkeyLevelIter.Init(
 			keyspan.SpanIterOptions{}, cmp, newRangeKeyIter,
 			v.Levels[level].Iter(), manifest.Level(level), manifest.KeyTypeRange,
 		)
 
-		overlap := overlapWithIterator(levelIter, &rangeDelIter, rkeyLevelIter, meta, cmp)
+		overlap := overlapWithIterator(levelIter, makeRangeDelIterHolderLevel(levelIter), rkeyLevelIter, meta, cmp)
 		err := levelIter.Close() // Closes range del iter as well.
 		err = firstError(err, rkeyLevelIter.Close())
 		if err != nil {
