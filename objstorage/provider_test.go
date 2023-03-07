@@ -48,11 +48,17 @@ func TestProvider(t *testing.T) {
 			case "open":
 				var fsDir string
 				var creatorID CreatorID
-				scanArgs("<fs-dir> <shared-creator-id>", &fsDir, &creatorID)
+				var disableRefTracking bool
+				if len(d.CmdArgs) == 3 && d.CmdArgs[2].Key == "disable-ref-tracking" {
+					d.CmdArgs = d.CmdArgs[:2]
+					disableRefTracking = true
+				}
+				scanArgs("<fs-dir> <shared-creator-id> [disable-ref-tracking]", &fsDir, &creatorID)
 
 				st := DefaultSettings(fs, fsDir)
 				if creatorID != 0 {
 					st.Shared.Storage = sharedStore
+					st.Shared.DisableRefTracking = disableRefTracking
 				}
 				require.NoError(t, fs.MkdirAll(fsDir, 0755))
 				provider, err := Open(st)
@@ -64,6 +70,16 @@ func TestProvider(t *testing.T) {
 				curProvider = provider
 
 				return log.String()
+
+			case "switch":
+				var fsDir string
+				scanArgs("<fs-dir>", &fsDir)
+				curProvider = providers[fsDir]
+				if curProvider == nil {
+					t.Fatalf("unknown provider %s", fsDir)
+				}
+
+				return ""
 
 			case "close":
 				require.NoError(t, curProvider.Sync())
@@ -106,6 +122,14 @@ func TestProvider(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, n, len(data))
 				return log.String() + fmt.Sprintf("data: %s\n", string(data))
+
+			case "remove":
+				var fileNum base.FileNum
+				scanArgs("<file-num>", &fileNum)
+				if err := curProvider.Remove(base.FileTypeTable, fileNum); err != nil {
+					return err.Error()
+				}
+				return log.String()
 
 			case "list":
 				for _, meta := range curProvider.List() {

@@ -124,12 +124,50 @@ func (p *Provider) sharedPath(meta ObjectMetadata) string {
 	return "shared://" + sharedObjectName(meta)
 }
 
+// sharedObjectName returns the name of an object on shared storage.
+//
+// For sstables, the format is: <creator-id>-<file-num>.sst
+// For example: 00000000000000000002-000001.sst
 func sharedObjectName(meta ObjectMetadata) string {
 	// TODO(radu): prepend a "shard" value for better distribution within the bucket?
 	return fmt.Sprintf(
 		"%s-%s",
 		meta.Shared.CreatorID, base.MakeFilename(meta.FileType, meta.Shared.CreatorFileNum),
 	)
+}
+
+func sharedObjectRefPrefix(meta ObjectMetadata) string {
+	return fmt.Sprintf(
+		"%s-%s.ref.",
+		meta.Shared.CreatorID, base.MakeFilename(meta.FileType, meta.Shared.CreatorFileNum),
+	)
+}
+
+func (p *Provider) sharedObjectRefName(meta ObjectMetadata) string {
+	if p.st.Shared.DisableRefTracking {
+		panic("ref object used when ref tracking disabled")
+	}
+	return fmt.Sprintf(
+		"%s-%s.ref.%s",
+		meta.Shared.CreatorID, base.MakeFilename(meta.FileType, meta.Shared.CreatorFileNum), p.shared.creatorID,
+	)
+}
+
+// sharedCreateRef creates a reference marker object.
+func (p *Provider) sharedCreateRef(meta ObjectMetadata) error {
+	if p.st.Shared.DisableRefTracking {
+		return nil
+	}
+	refName := p.sharedObjectRefName(meta)
+	writer, err := p.st.Shared.Storage.CreateObject(refName)
+	if err == nil {
+		// The object is empty, just close the writer.
+		err = writer.Close()
+	}
+	if err != nil {
+		return errors.Wrapf(err, "creating marker object %s", refName)
+	}
+	return nil
 }
 
 func (p *Provider) sharedCreate(
@@ -148,9 +186,11 @@ func (p *Provider) sharedCreate(
 	objName := sharedObjectName(meta)
 	writer, err := p.st.Shared.Storage.CreateObject(objName)
 	if err != nil {
-		return nil, ObjectMetadata{}, err
+		return nil, ObjectMetadata{}, errors.Wrapf(err, "creating object %s", objName)
 	}
 	return &sharedWritable{
+		p:             p,
+		meta:          meta,
 		storageWriter: writer,
 	}, meta, nil
 }
@@ -158,6 +198,14 @@ func (p *Provider) sharedCreate(
 func (p *Provider) sharedOpenForReading(meta ObjectMetadata) (Readable, error) {
 	if err := p.sharedCheckInitialized(); err != nil {
 		return nil, err
+	}
+	if !p.st.Shared.DisableRefTracking {
+		// First, verify we have a reference on this object.
+		refName := p.sharedObjectRefName(meta)
+		if _, err := p.st.Shared.Storage.Size(refName); err != nil {
+			// TODO(radu): assertion error if object doesn't exist.
+			return nil, errors.Wrapf(err, "checking marker object %s", refName)
+		}
 	}
 	objName := sharedObjectName(meta)
 	size, err := p.st.Shared.Storage.Size(objName)
@@ -173,4 +221,32 @@ func (p *Provider) sharedSize(meta ObjectMetadata) (int64, error) {
 	}
 	objName := sharedObjectName(meta)
 	return p.st.Shared.Storage.Size(objName)
+}
+
+// sharedUnref implements object "removal" with the shared backend. The ref
+// marker object is removed and the backing object is removed only if there are
+// no other ref markers.
+func (p *Provider) sharedUnref(meta ObjectMetadata) error {
+	if p.st.Shared.DisableRefTracking {
+		// Never delete objects in this mode.
+		return nil
+	}
+	refName := p.sharedObjectRefName(meta)
+	if err := p.st.Shared.Storage.Delete(refName); err != nil {
+		// TODO(radu): continue if it's a not-exist error.
+		return err
+	}
+	otherRefs, err := p.st.Shared.Storage.List(sharedObjectRefPrefix(meta), "" /* delimiter */)
+	if err != nil {
+		return err
+	}
+	if len(otherRefs) == 0 {
+		objName := sharedObjectName(meta)
+		if err := p.st.Shared.Storage.Delete(objName); err != nil {
+			// TODO(radu): we must tolerate an object-not-exists here: two providers
+			// can race and delete the same object.
+			return err
+		}
+	}
+	return err
 }

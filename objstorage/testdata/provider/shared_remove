@@ -1,6 +1,3 @@
-# Tests for getting the backing of shared objects and attaching them to another
-# provider.
-
 open p1 1
 ----
 <local fs> mkdir-all: p1 0755
@@ -37,39 +34,11 @@ obj-three
 <shared> create object "00000000000000000001-000003.sst.ref.00000000000000000001"
 <shared> close writer for "00000000000000000001-000003.sst.ref.00000000000000000001" after 0 bytes
 
-create 100 local
-obj-one
-----
-<local fs> create: p1/000100.sst
-<local fs> sync-data: p1/000100.sst
-<local fs> close: p1/000100.sst
-
-list
-----
-000001 -> shared://00000000000000000001-000001.sst
-000002 -> shared://00000000000000000001-000002.sst
-000003 -> shared://00000000000000000001-000003.sst
-000100 -> p1/000100.sst
-
-# Can't get backing of local object.
-save-backing foo 100
-----
-object 000100 not on shared storage
-
 save-backing b1 1
 ----
 
 save-backing b2 2
 ----
-
-save-backing b3 3
-----
-
-close
-----
-<local fs> sync: p1
-<local fs> sync: p1/SHARED-CATALOG-000001
-<local fs> close: p1
 
 open p2 2
 ----
@@ -83,54 +52,62 @@ open p2 2
 <local fs> sync: p2
 <local fs> sync: p2/SHARED-CATALOG-000001
 
-create 100 shared
-obj-one-hundred
+create 4 shared
+obj-four
 ----
-<shared> create object "00000000000000000002-000100.sst"
-<shared> close writer for "00000000000000000002-000100.sst" after 15 bytes
-<shared> create object "00000000000000000002-000100.sst.ref.00000000000000000002"
-<shared> close writer for "00000000000000000002-000100.sst.ref.00000000000000000002" after 0 bytes
+<shared> create object "00000000000000000002-000004.sst"
+<shared> close writer for "00000000000000000002-000004.sst" after 8 bytes
+<shared> create object "00000000000000000002-000004.sst.ref.00000000000000000002"
+<shared> close writer for "00000000000000000002-000004.sst.ref.00000000000000000002" after 0 bytes
 
 attach
 b1 101
 b2 102
-b3 103
 ----
 <shared> create object "00000000000000000001-000001.sst.ref.00000000000000000002"
 <shared> close writer for "00000000000000000001-000001.sst.ref.00000000000000000002" after 0 bytes
 <shared> create object "00000000000000000001-000002.sst.ref.00000000000000000002"
 <shared> close writer for "00000000000000000001-000002.sst.ref.00000000000000000002" after 0 bytes
-<shared> create object "00000000000000000001-000003.sst.ref.00000000000000000002"
-<shared> close writer for "00000000000000000001-000003.sst.ref.00000000000000000002" after 0 bytes
 <local fs> sync: p2/SHARED-CATALOG-000001
 000101 -> shared://00000000000000000001-000001.sst
 000102 -> shared://00000000000000000001-000002.sst
-000103 -> shared://00000000000000000001-000003.sst
 
-list
+# Remove of object with no other refs; backing object should be removed.
+remove 4
 ----
-000100 -> shared://00000000000000000002-000100.sst
-000101 -> shared://00000000000000000001-000001.sst
-000102 -> shared://00000000000000000001-000002.sst
-000103 -> shared://00000000000000000001-000003.sst
+<shared> delete object "00000000000000000002-000004.sst.ref.00000000000000000002"
+<shared> list (prefix="00000000000000000002-000004.sst.ref.", delimiter="")
+<shared> delete object "00000000000000000002-000004.sst"
 
-read 101
+# Object shared with p2; backing object should not be removed.
+remove 101
 ----
-<shared> size of object "00000000000000000001-000001.sst.ref.00000000000000000002": 0
-<shared> size of object "00000000000000000001-000001.sst": 7
-<shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
-data: obj-one
+<shared> delete object "00000000000000000001-000001.sst.ref.00000000000000000002"
+<shared> list (prefix="00000000000000000001-000001.sst.ref.", delimiter="")
+<shared>  - 00000000000000000001-000001.sst.ref.00000000000000000001
 
-read 102
+switch p1
 ----
-<shared> size of object "00000000000000000001-000002.sst.ref.00000000000000000002": 0
-<shared> size of object "00000000000000000001-000002.sst": 7
-<shared> read object "00000000000000000001-000002.sst" at 0: 7 bytes
-data: obj-two
 
-read 103
+# Object no longer shared with p1; backing object should be removed.
+remove 1
 ----
-<shared> size of object "00000000000000000001-000003.sst.ref.00000000000000000002": 0
-<shared> size of object "00000000000000000001-000003.sst": 9
-<shared> read object "00000000000000000001-000003.sst" at 0: 9 bytes
-data: obj-three
+<shared> delete object "00000000000000000001-000001.sst.ref.00000000000000000001"
+<shared> list (prefix="00000000000000000001-000001.sst.ref.", delimiter="")
+<shared> delete object "00000000000000000001-000001.sst"
+
+# Object shared with p1; backing object should not be removed.
+remove 2
+----
+<shared> delete object "00000000000000000001-000002.sst.ref.00000000000000000001"
+<shared> list (prefix="00000000000000000001-000002.sst.ref.", delimiter="")
+<shared>  - 00000000000000000001-000002.sst.ref.00000000000000000002
+
+switch p2
+----
+
+remove 102
+----
+<shared> delete object "00000000000000000001-000002.sst.ref.00000000000000000002"
+<shared> list (prefix="00000000000000000001-000002.sst.ref.", delimiter="")
+<shared> delete object "00000000000000000001-000002.sst"

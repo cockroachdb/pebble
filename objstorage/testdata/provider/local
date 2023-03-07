@@ -29,6 +29,18 @@ read 2
 ----
 data: bar
 
+remove 1
+----
+<local fs> remove: p0/000001.sst
+
+list
+----
+000002 -> p0/000002.sst
+
+read 1
+----
+file 000001 (type 2) unknown to the objstorage provider: file does not exist
+
 close
 ----
 <local fs> sync: p0

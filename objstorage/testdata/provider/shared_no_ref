@@ -1,0 +1,119 @@
+# Tests with shared storage when ref tracking is disabled.
+
+# open <fs-dir> <creator-id>
+open p1 1 disable-ref-tracking
+----
+<local fs> mkdir-all: p1 0755
+<local fs> open-dir: p1
+<local fs> open-dir: p1
+<local fs> create: p1/SHARED-CATALOG-000001
+<local fs> sync: p1/SHARED-CATALOG-000001
+<local fs> create: p1/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> close: p1/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> sync: p1
+<local fs> sync: p1/SHARED-CATALOG-000001
+
+create 1 shared
+obj-one
+----
+<shared> create object "00000000000000000001-000001.sst"
+<shared> close writer for "00000000000000000001-000001.sst" after 7 bytes
+
+read 1
+----
+<shared> size of object "00000000000000000001-000001.sst": 7
+<shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
+data: obj-one
+
+create 2 shared
+obj-two
+----
+<shared> create object "00000000000000000001-000002.sst"
+<shared> close writer for "00000000000000000001-000002.sst" after 7 bytes
+
+read 2
+----
+<shared> size of object "00000000000000000001-000002.sst": 7
+<shared> read object "00000000000000000001-000002.sst" at 0: 7 bytes
+data: obj-two
+
+list
+----
+000001 -> shared://00000000000000000001-000001.sst
+000002 -> shared://00000000000000000001-000002.sst
+
+close
+----
+<local fs> sync: p1/SHARED-CATALOG-000001
+<local fs> close: p1
+
+# Test that the objects are there on re-open.
+open p1 1 disable-ref-tracking
+----
+<local fs> mkdir-all: p1 0755
+<local fs> open-dir: p1
+<local fs> open-dir: p1
+
+list
+----
+000001 -> shared://00000000000000000001-000001.sst
+000002 -> shared://00000000000000000001-000002.sst
+
+save-backing b1 1
+----
+
+save-backing b2 1
+----
+
+open p2 2 disable-ref-tracking
+----
+<local fs> mkdir-all: p2 0755
+<local fs> open-dir: p2
+<local fs> open-dir: p2
+<local fs> create: p2/SHARED-CATALOG-000001
+<local fs> sync: p2/SHARED-CATALOG-000001
+<local fs> create: p2/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> close: p2/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> sync: p2
+<local fs> sync: p2/SHARED-CATALOG-000001
+
+attach
+b1 101
+b2 102
+----
+<local fs> sync: p2/SHARED-CATALOG-000001
+000101 -> shared://00000000000000000001-000001.sst
+000102 -> shared://00000000000000000001-000001.sst
+
+list
+----
+000101 -> shared://00000000000000000001-000001.sst
+000102 -> shared://00000000000000000001-000001.sst
+
+read 101
+----
+<shared> size of object "00000000000000000001-000001.sst": 7
+<shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
+data: obj-one
+
+read 102
+----
+<shared> size of object "00000000000000000001-000001.sst": 7
+<shared> read object "00000000000000000001-000001.sst" at 0: 7 bytes
+data: obj-one
+
+# In this mode, all removes should be no-ops on the shared backend.
+remove 101
+----
+
+remove 102
+----
+
+switch p1
+----
+
+remove 1
+----
+
+remove 2
+----

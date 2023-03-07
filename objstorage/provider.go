@@ -144,6 +144,11 @@ type Settings struct {
 	// (experimental).
 	Shared struct {
 		Storage shared.Storage
+
+		// DisableRefTracking disables tracking of references via marker objects. In
+		// this mode, the shared objects are "owned" by a higher layer; the Provider
+		// will never delete a shared object.
+		DisableRefTracking bool
 	}
 }
 
@@ -289,6 +294,10 @@ func (p *Provider) Create(
 
 // Remove removes an object.
 //
+// Note that if the object is shared, the object is only (conceptually) removed
+// from this provider. If other providers have references on the shared object,
+// it will not be removed.
+//
 // The object is not guaranteed to be durably removed until Sync is called.
 func (p *Provider) Remove(fileType base.FileType, fileNum base.FileNum) error {
 	meta, err := p.Lookup(fileType, fileNum)
@@ -298,15 +307,17 @@ func (p *Provider) Remove(fileType base.FileType, fileNum base.FileNum) error {
 
 	if !meta.IsShared() {
 		err = p.vfsRemove(fileType, fileNum)
+	} else {
+		// TODO(radu): implement shared object removal (i.e. deref).
+		err = p.sharedUnref(meta)
 	}
-	// TODO(radu): implement shared object removal (i.e. deref).
-
 	if err != nil && !IsNotExistError(err) {
 		// We want to be able to retry a Remove, so we keep the object in our list.
 		// TODO(radu): we should mark the object as "zombie" and not allow any other
 		// operations.
 		return errors.Wrapf(err, "removing object %s", errors.Safe(fileNum))
 	}
+
 	p.removeMetadata(fileNum)
 	return err
 }

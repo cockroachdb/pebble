@@ -120,6 +120,18 @@ func (p *Provider) AttachSharedObjects(objs []SharedObjectToAttach) ([]ObjectMet
 		metas[i] = meta
 	}
 
+	// Create the reference marker objects.
+	// TODO(radu): check that the actual objects exist so we don't error out later
+	// TODO(radu): parallelize this.
+	if !p.st.Shared.DisableRefTracking {
+		for _, meta := range metas {
+			if err := p.sharedCreateRef(meta); err != nil {
+				// TODO(radu): clean up already created references.
+				return nil, err
+			}
+		}
+	}
+
 	func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
