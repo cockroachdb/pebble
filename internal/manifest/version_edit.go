@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"sort"
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
@@ -536,8 +537,23 @@ func (e versionEditEncoder) writeUvarint(u uint64) {
 
 // BulkVersionEdit summarizes the files added and deleted from a set of version
 // edits.
+//
+// INVARIANTS:
+// No file can be added to a level more than once. This is true globally, and
+// also true for all of the calls to Accumulate for a single bulk version edit.
+//
+// No file can be removed from a level more than once. This is true globally,
+// and also true for all of the calls to Accumulate for a single bulk version
+// edit.
+//
+// A file must not be added and removed from a given level in the same version
+// edit.
+//
+// A file that is being removed from a level must have been added to that level
+// before (in a prior version edit). Note that a given file can be deleted from
+// a level and added to another level in a single version edit
 type BulkVersionEdit struct {
-	Added   [NumLevels][]*FileMetadata
+	Added   [NumLevels]map[base.FileNum]*FileMetadata
 	Deleted [NumLevels]map[base.FileNum]*FileMetadata
 
 	// AddedByFileNum maps file number to file metadata for all added files
@@ -558,6 +574,19 @@ type BulkVersionEdit struct {
 
 // Accumulate adds the file addition and deletions in the specified version
 // edit to the bulk edit's internal state.
+//
+// INVARIANTS:
+// If a file is added to a given level in a call to Accumulate and then removed
+// from that level in a subsequent call, the file will not be present in the
+// resulting BulkVersionEdit.Deleted for that level.
+//
+// After accumulation of version edits, the bulk version edit may have
+// information about a file which has been deleted from a level, but it may
+// not have information about the same file added to the same level. The add
+// could've occurred as part of a previous bulk version edit. In this case,
+// the deleted file must be present in BulkVersionEdit.Deleted, at the end
+// of the accumulation, because we need to decrease the refcount of the
+// deleted file in Apply.
 func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 	for df, m := range ve.DeletedFiles {
 		dmap := b.Deleted[df.Level]
@@ -579,7 +608,12 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		if m.MarkedForCompaction {
 			b.MarkedForCompactionCountDiff--
 		}
-		dmap[df.FileNum] = m
+		if _, ok := b.Added[df.Level][df.FileNum]; !ok {
+			dmap[df.FileNum] = m
+		} else {
+			// Present in b.Added for the same level.
+			delete(b.Added[df.Level], df.FileNum)
+		}
 	}
 
 	for _, nf := range ve.NewFiles {
@@ -590,7 +624,10 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", nf.Level, nf.Meta.FileNum)
 			}
 		}
-		b.Added[nf.Level] = append(b.Added[nf.Level], nf.Meta)
+		if b.Added[nf.Level] == nil {
+			b.Added[nf.Level] = make(map[base.FileNum]*FileMetadata)
+		}
+		b.Added[nf.Level][nf.Meta.FileNum] = nf.Meta
 		if b.AddedByFileNum != nil {
 			b.AddedByFileNum[nf.Meta.FileNum] = nf.Meta
 		}
@@ -601,30 +638,59 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 	return nil
 }
 
-// Apply applies the delta b to the current version to produce a new
-// version. The new version is consistent with respect to the comparer cmp.
+// AccumulateAndApplySingleVE should be called if a single version edit is to be
+// applied to the provided curr Version and if the caller needs to update the
+// versionSet.zombieTables map. This function exists separately from
+// BulkVersionEdit.Apply because it is easier to reason about properties
+// regarding BulkVersionedit.Accumulate/Apply and zombie table generation, if we
+// know that exactly one version edit is being accumulated.
 //
-// curr may be nil, which is equivalent to a pointer to a zero version.
-//
-// On success, a map of zombie files containing the file numbers and sizes of
-// deleted files is returned. These files are considered zombies because they
-// are no longer referenced by the returned Version, but cannot be deleted from
-// disk as they are still in use by the incoming Version.
-func (b *BulkVersionEdit) Apply(
+// Invariant: Any file being deleted through ve must belong to the curr Version.
+// We can't have a delete for some arbitrary file which does not exist in curr.
+func AccumulateAndApplySingleVE(
+	ve *VersionEdit,
 	curr *Version,
 	cmp Compare,
 	formatKey base.FormatKey,
 	flushSplitBytes int64,
 	readCompactionRate int64,
 ) (_ *Version, zombies map[base.FileNum]uint64, _ error) {
-	addZombie := func(fileNum base.FileNum, size uint64) {
-		if zombies == nil {
-			zombies = make(map[base.FileNum]uint64)
-		}
-		zombies[fileNum] = size
+	var b BulkVersionEdit
+	err := b.Accumulate(ve)
+	if err != nil {
+		return nil, nil, err
 	}
-	// The remove zombie function is used to handle tables that are moved from
-	// one level to another during a version edit (i.e. a "move" compaction).
+	zombies = make(map[base.FileNum]uint64)
+	v, err := b.Apply(curr, cmp, formatKey, flushSplitBytes, readCompactionRate, zombies)
+	if err != nil {
+		return nil, nil, err
+	}
+	return v, zombies, nil
+}
+
+// Apply applies the delta b to the current version to produce a new
+// version. The new version is consistent with respect to the comparer cmp.
+//
+// curr may be nil, which is equivalent to a pointer to a zero version.
+//
+// On success, if a non-nil zombies map is provided to Apply, the map is updated
+// with file numbers and files sizes of deleted files. These files are
+// considered zombies because they are no longer referenced by the returned
+// Version, but cannot be deleted from disk as they are still in use by the
+// incoming Version.
+func (b *BulkVersionEdit) Apply(
+	curr *Version,
+	cmp Compare,
+	formatKey base.FormatKey,
+	flushSplitBytes int64,
+	readCompactionRate int64,
+	zombies map[base.FileNum]uint64,
+) (*Version, error) {
+	addZombie := func(fileNum base.FileNum, size uint64) {
+		if zombies != nil {
+			zombies[fileNum] = size
+		}
+	}
 	removeZombie := func(fileNum base.FileNum) {
 		if zombies != nil {
 			delete(zombies, fileNum)
@@ -639,7 +705,7 @@ func (b *BulkVersionEdit) Apply(
 	}
 	v.Stats.MarkedForCompaction += b.MarkedForCompactionCountDiff
 	if v.Stats.MarkedForCompaction < 0 {
-		return nil, nil, base.CorruptionErrorf("pebble: version marked for compaction count negative")
+		return nil, base.CorruptionErrorf("pebble: version marked for compaction count negative")
 	}
 
 	for level := range v.Levels {
@@ -660,7 +726,7 @@ func (b *BulkVersionEdit) Apply(
 				// Initialize L0Sublevels.
 				if curr == nil || curr.L0Sublevels == nil {
 					if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
-						return nil, nil, errors.Wrap(err, "pebble: internal error")
+						return nil, errors.Wrap(err, "pebble: internal error")
 					}
 				} else {
 					v.L0Sublevels = curr.L0Sublevels
@@ -673,18 +739,20 @@ func (b *BulkVersionEdit) Apply(
 		// Some edits on this level.
 		lm := &v.Levels[level]
 		lmRange := &v.RangeKeyLevels[level]
-		addedFiles := b.Added[level]
-		deletedMap := b.Deleted[level]
-		if n := v.Levels[level].Len() + len(addedFiles); n == 0 {
-			return nil, nil, base.CorruptionErrorf(
+
+		addedFilesMap := b.Added[level]
+		deletedFilesMap := b.Deleted[level]
+		if n := v.Levels[level].Len() + len(addedFilesMap); n == 0 {
+			return nil, base.CorruptionErrorf(
 				"pebble: internal error: No current or added files but have deleted files: %d",
-				errors.Safe(len(deletedMap)))
+				errors.Safe(len(deletedFilesMap)))
 		}
 
-		// NB: addedFiles may be empty and it also is not necessarily
-		// internally consistent: it does not reflect deletions in deletedMap.
+		// NB: addedFilesMap may be empty. If a file is present in addedFilesMap
+		// for a level, it won't be present in deletedFilesMap for the same
+		// level.
 
-		for _, f := range deletedMap {
+		for _, f := range deletedFilesMap {
 			addZombie(f.FileNum, f.Size)
 			if obsolete := v.Levels[level].tree.Delete(f); obsolete {
 				// Deleting a file from the B-Tree may decrement its
@@ -692,7 +760,7 @@ func (b *BulkVersionEdit) Apply(
 				// previous level's B-Tree, this should never result in a
 				// file's reference count dropping to zero.
 				err := errors.Errorf("pebble: internal error: file L%d.%s obsolete during B-Tree removal", level, f.FileNum)
-				return nil, nil, err
+				return nil, err
 			}
 			if f.HasRangeKeys {
 				if obsolete := v.RangeKeyLevels[level].tree.Delete(f); obsolete {
@@ -701,19 +769,24 @@ func (b *BulkVersionEdit) Apply(
 					// previous level's B-Tree, this should never result in a
 					// file's reference count dropping to zero.
 					err := errors.Errorf("pebble: internal error: file L%d.%s obsolete during range-key B-Tree removal", level, f.FileNum)
-					return nil, nil, err
+					return nil, err
 				}
 			}
 		}
 
+		addedFiles := make([]*FileMetadata, 0, len(addedFilesMap))
+		for _, f := range addedFilesMap {
+			addedFiles = append(addedFiles, f)
+		}
+		// Sort addedFiles by file number. This isn't necessary, but tests which
+		// replay invalid manifests check the error output, and the error output
+		// depends on the order in which files are added to the btree.
+		sort.Slice(addedFiles, func(i, j int) bool {
+			return addedFiles[i].FileNum < addedFiles[j].FileNum
+		})
+
 		var sm, la *FileMetadata
 		for _, f := range addedFiles {
-			if _, ok := deletedMap[f.FileNum]; ok {
-				// Already called addZombie on this file in the preceding
-				// loop, so we don't need to do it here.
-				continue
-			}
-
 			// NB: allowedSeeks is used for read triggered compactions. It is set using
 			// Options.Experimental.ReadCompactionRate which defaults to 32KB.
 			var allowedSeeks int64
@@ -728,12 +801,12 @@ func (b *BulkVersionEdit) Apply(
 
 			err := lm.tree.Insert(f)
 			if err != nil {
-				return nil, nil, errors.Wrap(err, "pebble")
+				return nil, errors.Wrap(err, "pebble")
 			}
 			if f.HasRangeKeys {
 				err = lmRange.tree.Insert(f)
 				if err != nil {
-					return nil, nil, errors.Wrap(err, "pebble")
+					return nil, errors.Wrap(err, "pebble")
 				}
 			}
 			removeZombie(f.FileNum)
@@ -748,27 +821,26 @@ func (b *BulkVersionEdit) Apply(
 		}
 
 		if level == 0 {
-			if curr != nil && curr.L0Sublevels != nil && len(deletedMap) == 0 {
+			if curr != nil && curr.L0Sublevels != nil && len(deletedFilesMap) == 0 {
 				// Flushes and ingestions that do not delete any L0 files do not require
 				// a regeneration of L0Sublevels from scratch. We can instead generate
 				// it incrementally.
 				var err error
 				// AddL0Files requires addedFiles to be sorted in seqnum order.
-				addedFiles = append([]*FileMetadata(nil), addedFiles...)
 				SortBySeqNum(addedFiles)
 				v.L0Sublevels, err = curr.L0Sublevels.AddL0Files(addedFiles, flushSplitBytes, &v.Levels[0])
 				if errors.Is(err, errInvalidL0SublevelsOpt) {
 					err = v.InitL0Sublevels(cmp, formatKey, flushSplitBytes)
 				}
 				if err != nil {
-					return nil, nil, errors.Wrap(err, "pebble: internal error")
+					return nil, errors.Wrap(err, "pebble: internal error")
 				}
 				v.L0SublevelFiles = v.L0Sublevels.Levels
 			} else if err := v.InitL0Sublevels(cmp, formatKey, flushSplitBytes); err != nil {
-				return nil, nil, errors.Wrap(err, "pebble: internal error")
+				return nil, errors.Wrap(err, "pebble: internal error")
 			}
 			if err := CheckOrdering(cmp, formatKey, Level(0), v.Levels[level].Iter()); err != nil {
-				return nil, nil, errors.Wrap(err, "pebble: internal error")
+				return nil, errors.Wrap(err, "pebble: internal error")
 			}
 			continue
 		}
@@ -789,9 +861,9 @@ func (b *BulkVersionEdit) Apply(
 				}
 			})
 			if err := CheckOrdering(cmp, formatKey, Level(level), check.Iter()); err != nil {
-				return nil, nil, errors.Wrap(err, "pebble: internal error")
+				return nil, errors.Wrap(err, "pebble: internal error")
 			}
 		}
 	}
-	return v, zombies, nil
+	return v, nil
 }
