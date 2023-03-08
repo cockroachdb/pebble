@@ -135,6 +135,57 @@ func TestEventListener(t *testing.T) {
 			}
 			return memLog.String()
 
+		case "ingest-flushable":
+			memLog.Reset()
+
+			// Prevent flushes during this test to ensure determinism.
+			d.mu.Lock()
+			d.mu.compact.flushing = true
+			d.mu.Unlock()
+
+			b := d.NewBatch()
+			if err := b.Set([]byte("a"), nil, nil); err != nil {
+				return err.Error()
+			}
+			if err := d.Apply(b, nil); err != nil {
+				return err.Error()
+			}
+			writeTable := func(name string, key byte) error {
+				f, err := mem.Create(name)
+				if err != nil {
+					return err
+				}
+				w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{
+					TableFormat: d.FormatMajorVersion().MaxTableFormat(),
+				})
+				if err := w.Add(base.MakeInternalKey([]byte{key}, 0, InternalKeyKindSet), nil); err != nil {
+					return err
+				}
+				if err := w.Close(); err != nil {
+					return err
+				}
+				return nil
+			}
+			tableA, tableB := "ext/a", "ext/b"
+			if err := writeTable(tableA, 'a'); err != nil {
+				return err.Error()
+			}
+			if err := writeTable(tableB, 'b'); err != nil {
+				return err.Error()
+			}
+			if err := d.Ingest([]string{tableA, tableB}); err != nil {
+				return err.Error()
+			}
+
+			// Re-enable flushes, to allow the subsequent flush to proceed.
+			d.mu.Lock()
+			d.mu.compact.flushing = false
+			d.mu.Unlock()
+			if err := d.Flush(); err != nil {
+				return err.Error()
+			}
+			return memLog.String()
+
 		case "metrics":
 			// The asynchronous loading of table stats can change metrics, so
 			// wait for all the tables' stats to be loaded.

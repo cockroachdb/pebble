@@ -1892,7 +1892,8 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	// flushable batch in the same flush, since the memtable and flushableBatch
 	// have the same logNum, the errFlushInvariant check below will trigger and
 	// prevent the flush from continuing.
-	var n int
+	var n, inputs int
+	var ingest bool
 	for ; n < len(d.mu.mem.queue)-1; n++ {
 		if f, ok := d.mu.mem.queue[n].flushable.(*ingestedFlushable); ok {
 			if n == 0 {
@@ -1905,8 +1906,11 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 					panic("pebble: ingestedFlushable should always be ready to flush.")
 				}
 				// By setting n = 1, we ensure that the first flushable(n == 0)
-				// is scheduled for a flush.
+				// is scheduled for a flush. The number of tables added is equal to the
+				// number of files in the ingest operation.
 				n = 1
+				inputs = len(f.files)
+				ingest = true
 				break
 			} else {
 				// There was some prefix of flushables which weren't of type
@@ -1921,6 +1925,11 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	if n == 0 {
 		// None of the immutable memtables are ready for flushing.
 		return 0, nil
+	}
+	if !ingest {
+		// Flushes of memtables add the prefix of n memtables from the flushable
+		// queue.
+		inputs = n
 	}
 
 	// Require that every memtable being flushed has a log number less than the
@@ -1942,8 +1951,9 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 	d.opts.EventListener.FlushBegin(FlushInfo{
-		JobID: jobID,
-		Input: n,
+		JobID:  jobID,
+		Input:  inputs,
+		Ingest: ingest,
 	})
 	startTime := d.timeNow()
 
@@ -1967,19 +1977,23 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		ve, err = d.runIngestFlush(c)
 	}
 
-	// TODO(bananabrick): Update the FlushInfo output message. The files are
-	// not necessarily being flushed to L0.
 	info := FlushInfo{
 		JobID:    jobID,
-		Input:    n,
+		Input:    inputs,
 		Duration: d.timeNow().Sub(startTime),
 		Done:     true,
+		Ingest:   ingest,
 		Err:      err,
 	}
 	if err == nil {
 		for i := range ve.NewFiles {
 			e := &ve.NewFiles[i]
 			info.Output = append(info.Output, e.Meta.TableInfo())
+			// Ingested tables are not necessarily flushed to L0. Record the level of
+			// each ingested file explicitly.
+			if ingest {
+				info.IngestLevels = append(info.IngestLevels, e.Level)
+			}
 		}
 		if len(ve.NewFiles) == 0 {
 			info.Err = errEmptyTable
@@ -2030,6 +2044,12 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		d.mu.mem.queue = d.mu.mem.queue[n:]
 		d.updateReadStateLocked(d.opts.DebugCheck)
 		d.updateTableStatsLocked(ve.NewFiles)
+		if ingest {
+			for _, l := range c.metrics {
+				d.mu.versions.metrics.Flush.AsIngestBytes += l.BytesIngested
+				d.mu.versions.metrics.Flush.AsIngestCount += l.TablesIngested
+			}
+		}
 	}
 	// Signal FlushEnd after installing the new readState. This helps for unit
 	// tests that use the callback to trigger a read using an iterator with
