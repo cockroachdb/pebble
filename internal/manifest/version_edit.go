@@ -536,9 +536,25 @@ func (e versionEditEncoder) writeUvarint(u uint64) {
 
 // BulkVersionEdit summarizes the files added and deleted from a set of version
 // edits.
+//
+// INVARIANTS:
+// No file can be added to a level more than once. This is true globally, and
+// also true for all of the calls to Accumulate for a single bulk version edit.
+//
+// No file can be removed from a level more than once. This is true globally,
+// and also true for all of the calls to Accumulate for a single bulk version
+// edit.
+//
+// A file must not be added and removed from a given level in the same version
+// edit.
+//
+// A file must be added to a level before(in a prior version edit) it is removed
+// from the level. Note that a given file can be added and deleted from two
+// different levels in the same version edit.
 type BulkVersionEdit struct {
-	Added   [NumLevels][]*FileMetadata
+	Added   [NumLevels]map[base.FileNum]*FileMetadata
 	Deleted [NumLevels]map[base.FileNum]*FileMetadata
+	Zombies map[base.FileNum]uint64
 
 	// AddedByFileNum maps file number to file metadata for all added files
 	// from accumulated version edits. AddedByFileNum is only populated if set
@@ -558,7 +574,40 @@ type BulkVersionEdit struct {
 
 // Accumulate adds the file addition and deletions in the specified version
 // edit to the bulk edit's internal state.
+//
+// INVARIANTS:
+// A file is a zombie, if in a given version edit, the file is present in
+// VersionEdit.DeletedFiles, but not present in VersionEdit.AddedFiles. Note
+// that move compactions must move the files from one level to another
+// atomically through a single version edit.
+//
+// If a file is added and deleted from a given level across multiple calls to
+// accumulate, the file will not be present be present in
+// BulkVersionEdit.{Added, Deleted} for the given level after all the calls to
+// accumulate are over.
+//
+// After accumulation of version edits, the bulk version edit may have
+// information about a file which has been deleted from a level, but it may
+// not have information about the same file added to the same level. The add
+// could've occurred as part of a previous bulk version edit. In this case,
+// the deleted file must be present in BulkVersionEdit.Deleted, at the end
+// of the accumulation, because we need to decrease the refcount of the
+// deleted file in Apply.
 func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
+	addZombie := func(fileNum base.FileNum, size uint64) {
+		if b.Zombies == nil {
+			b.Zombies = make(map[base.FileNum]uint64)
+		}
+		b.Zombies[fileNum] = size
+	}
+	// The remove zombie function is used to handle tables that are moved from
+	// one level to another during a version edit (i.e. a "move" compaction).
+	removeZombie := func(fileNum base.FileNum) {
+		if b.Zombies != nil {
+			delete(b.Zombies, fileNum)
+		}
+	}
+
 	for df, m := range ve.DeletedFiles {
 		dmap := b.Deleted[df.Level]
 		if dmap == nil {
@@ -579,7 +628,13 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		if m.MarkedForCompaction {
 			b.MarkedForCompactionCountDiff--
 		}
-		dmap[df.FileNum] = m
+		if b.Added[df.Level] == nil || b.Added[df.Level][df.FileNum] == nil {
+			dmap[df.FileNum] = m
+		} else {
+			// Present in b.Added for the same level.
+			delete(b.Added[df.Level], df.FileNum)
+		}
+		addZombie(m.FileNum, m.Size)
 	}
 
 	for _, nf := range ve.NewFiles {
@@ -590,13 +645,19 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", nf.Level, nf.Meta.FileNum)
 			}
 		}
-		b.Added[nf.Level] = append(b.Added[nf.Level], nf.Meta)
+		amap := b.Added[nf.Level]
+		if amap == nil {
+			amap = make(map[base.FileNum]*FileMetadata)
+			b.Added[nf.Level] = amap
+		}
+		b.Added[nf.Level][nf.Meta.FileNum] = nf.Meta
 		if b.AddedByFileNum != nil {
 			b.AddedByFileNum[nf.Meta.FileNum] = nf.Meta
 		}
 		if nf.Meta.MarkedForCompaction {
 			b.MarkedForCompactionCountDiff++
 		}
+		removeZombie(nf.Meta.FileNum)
 	}
 	return nil
 }
@@ -616,21 +677,7 @@ func (b *BulkVersionEdit) Apply(
 	formatKey base.FormatKey,
 	flushSplitBytes int64,
 	readCompactionRate int64,
-) (_ *Version, zombies map[base.FileNum]uint64, _ error) {
-	addZombie := func(fileNum base.FileNum, size uint64) {
-		if zombies == nil {
-			zombies = make(map[base.FileNum]uint64)
-		}
-		zombies[fileNum] = size
-	}
-	// The remove zombie function is used to handle tables that are moved from
-	// one level to another during a version edit (i.e. a "move" compaction).
-	removeZombie := func(fileNum base.FileNum) {
-		if zombies != nil {
-			delete(zombies, fileNum)
-		}
-	}
-
+) (*Version, map[base.FileNum]uint64, error) {
 	v := new(Version)
 
 	// Adjust the count of files marked for compaction.
@@ -681,11 +728,10 @@ func (b *BulkVersionEdit) Apply(
 				errors.Safe(len(deletedMap)))
 		}
 
-		// NB: addedFiles may be empty and it also is not necessarily
-		// internally consistent: it does not reflect deletions in deletedMap.
+		// NB: addedFiles may be empty, and it is internally consistent with
+		// deletedMap.
 
 		for _, f := range deletedMap {
-			addZombie(f.FileNum, f.Size)
 			if obsolete := v.Levels[level].tree.Delete(f); obsolete {
 				// Deleting a file from the B-Tree may decrement its
 				// reference count. However, because we cloned the
@@ -736,7 +782,6 @@ func (b *BulkVersionEdit) Apply(
 					return nil, nil, errors.Wrap(err, "pebble")
 				}
 			}
-			removeZombie(f.FileNum)
 			// Track the keys with the smallest and largest keys, so that we can
 			// check consistency of the modified span.
 			if sm == nil || base.InternalCompare(cmp, sm.Smallest, f.Smallest) > 0 {
@@ -754,9 +799,12 @@ func (b *BulkVersionEdit) Apply(
 				// it incrementally.
 				var err error
 				// AddL0Files requires addedFiles to be sorted in seqnum order.
-				addedFiles = append([]*FileMetadata(nil), addedFiles...)
-				SortBySeqNum(addedFiles)
-				v.L0Sublevels, err = curr.L0Sublevels.AddL0Files(addedFiles, flushSplitBytes, &v.Levels[0])
+				var l0Files []*FileMetadata
+				for _, f := range addedFiles {
+					l0Files = append(l0Files, f)
+				}
+				SortBySeqNum(l0Files)
+				v.L0Sublevels, err = curr.L0Sublevels.AddL0Files(l0Files, flushSplitBytes, &v.Levels[0])
 				if errors.Is(err, errInvalidL0SublevelsOpt) {
 					err = v.InitL0Sublevels(cmp, formatKey, flushSplitBytes)
 				}
@@ -793,5 +841,5 @@ func (b *BulkVersionEdit) Apply(
 			}
 		}
 	}
-	return v, zombies, nil
+	return v, b.Zombies, nil
 }
