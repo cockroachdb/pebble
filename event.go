@@ -5,10 +5,13 @@
 package pebble
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
@@ -135,8 +138,14 @@ type FlushInfo struct {
 	// TotalDuration is the total wall-time duration of the flush, including
 	// applying the flush to the database. TotalDuration is always ≥ Duration.
 	TotalDuration time.Duration
-	Done          bool
-	Err           error
+	// Ingest is set to true if the flush is handling tables that were added to
+	// the flushable queue via an ingestion operation.
+	Ingest bool
+	// IngestLevels are the output levels for each ingested table in the flush.
+	// This field is only populated when Ingest is true.
+	IngestLevels []int
+	Done         bool
+	Err          error
 }
 
 func (i FlushInfo) String() string {
@@ -155,20 +164,47 @@ func (i FlushInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		plural = ""
 	}
 	if !i.Done {
-		w.Printf("[JOB %d] flushing %d memtable", redact.Safe(i.JobID), redact.Safe(i.Input))
-		w.SafeString(plural)
-		w.Printf(" to L0")
+		w.Printf("[JOB %d] ", redact.Safe(i.JobID))
+		if !i.Ingest {
+			w.Printf("flushing %d memtable", redact.Safe(i.Input))
+			w.SafeString(plural)
+			w.Printf(" to L0")
+		} else {
+			w.Printf("flushing %d ingested table%s", redact.Safe(i.Input), plural)
+		}
 		return
 	}
 
 	outputSize := tablesTotalSize(i.Output)
-	w.Printf("[JOB %d] flushed %d memtable%s to L0 [%s] (%s), in %.1fs (%.1fs total), output rate %s/s",
-		redact.Safe(i.JobID), redact.Safe(i.Input), plural,
-		redact.Safe(formatFileNums(i.Output)),
-		redact.Safe(humanize.Uint64(outputSize)),
-		redact.Safe(i.Duration.Seconds()),
-		redact.Safe(i.TotalDuration.Seconds()),
-		redact.Safe(humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
+	if !i.Ingest {
+		if invariants.Enabled && len(i.IngestLevels) > 0 {
+			panic(errors.AssertionFailedf("pebble: expected len(IngestedLevels) == 0"))
+		}
+		w.Printf("[JOB %d] flushed %d memtable%s to L0 [%s] (%s), in %.1fs (%.1fs total), output rate %s/s",
+			redact.Safe(i.JobID), redact.Safe(i.Input), plural,
+			redact.Safe(formatFileNums(i.Output)),
+			redact.Safe(humanize.Uint64(outputSize)),
+			redact.Safe(i.Duration.Seconds()),
+			redact.Safe(i.TotalDuration.Seconds()),
+			redact.Safe(humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
+	} else {
+		if invariants.Enabled && len(i.IngestLevels) == 0 {
+			panic(errors.AssertionFailedf("pebble: expected len(IngestedLevels) > 0"))
+		}
+		w.Printf("[JOB %d] flushed %d ingested flushable%s",
+			redact.Safe(i.JobID), redact.Safe(len(i.Output)), plural)
+		for j, level := range i.IngestLevels {
+			file := i.Output[j]
+			if j > 0 {
+				w.Printf(" +")
+			}
+			w.Printf(" L%d:%s (%s)", level, file.FileNum, humanize.IEC.Uint64(file.Size))
+		}
+		w.Printf(" in %.1fs (%.1fs total), output rate %s/s",
+			redact.Safe(i.Duration.Seconds()),
+			redact.Safe(i.TotalDuration.Seconds()),
+			redact.Safe(humanize.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
+	}
 }
 
 // ManifestCreateInfo contains info about a manifest creation event.
@@ -297,7 +333,11 @@ func (i TableIngestInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		if j > 0 {
 			w.Printf(",")
 		}
-		w.Printf(" L%d:%s (%s)", redact.Safe(t.Level), redact.Safe(t.FileNum),
+		levelStr := ""
+		if !i.flushable {
+			levelStr = fmt.Sprintf("L%d:", t.Level)
+		}
+		w.Printf(" %s%s (%s)", redact.Safe(levelStr), redact.Safe(t.FileNum),
 			redact.Safe(humanize.Uint64(t.Size)))
 	}
 }
