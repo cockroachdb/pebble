@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -187,6 +188,102 @@ var Default FS = defaultFS{}
 
 type defaultFS struct{}
 
+type directIOFile struct{
+	File
+}
+
+func (f *directIOFile) ReadAt(p []byte, off int64) (n int, err error) {
+	return f.readAtWithDirectIO(p, off)
+}
+// Below compares read done via plain ReadAt & readAtWithDirectIO.
+/*	olen := len(p)
+	op := make([]byte, len(p))
+	n1, err1 := f.File.ReadAt(op, off)
+	n2, err2 := f.readAtWithDirectIO(p, off)
+	var err1s, err2s string
+	if err1 != nil {
+		err1s = err1.Error()
+	}
+	if err2 != nil {
+		err2s = err2.Error()
+	}
+	if n1 != n2 || err1s != err2s || !reflect.DeepEqual(blah, p) {
+		info, _ := f.File.Stat()
+		fullContents := make([]byte, info.Size())
+		f.File.Read(fullContents)
+		fmt.Printf("INCORRECT %v size=%v len(p)=%v off=%v | nret -> %v | %v | errret -> %v | %v | buff -> %v | %v | %v |\n", info.Name(), info.Size(), olen, off, n1, n2, err1, err2, op, p, fullContents)
+	}
+	return n2, err2
+}
+*/
+
+func (f *directIOFile) readAtWithDirectIO(p []byte, off int64) (nout int, err error) {
+	alignedOff := off / blockSize
+	// Given max file size + that this is non-production code, cast should be fine.
+	rem := int(off) % blockSize
+	nPages := ((int(off) + len(p)) / blockSize) + 1
+
+	buf := alignedByteSlice(blockSize*nPages)
+	n, err := f.File.ReadAt(buf, alignedOff*blockSize)
+	if err != nil && err != io.EOF {
+		return 0, err
+	}
+	var l int
+	if n < len(p) {
+		l = n
+	} else {
+		l = len(p)
+	}
+	copied := copy(p, buf[rem:rem+l])
+	if copied < len(p) {
+		return copied, io.EOF
+	}
+	return copied, nil
+}
+
+// Below is inspired by https://github.com/ncw/directio.
+
+const (
+	alignSize = 0
+	blockSize = 4096
+)
+
+// alignedByteSlice returns []byte of size size aligned to a multiple
+// of alignSize in memory (must be power of two).
+func alignedByteSlice(size int) []byte {
+	block := make([]byte, size+alignSize)
+	if alignSize == 0 {
+		return block
+	}
+	a := alignment(block, alignSize)
+	offset := 0
+	if a != 0 {
+		offset = alignSize - a
+	}
+	block = block[offset : offset+size]
+	// Can't check alignment of a zero sized block.
+	if size != 0 {
+		if !isAligned(block) {
+			panic("Failed to align block")
+		}
+	}
+	return block
+}
+
+// alignment returns alignment of the block in memory
+// with reference to AlignSize
+//
+// Can't check alignment of a zero sized block as &block[0] is invalid
+func alignment(block []byte, AlignSize int) int {
+	return int(uintptr(unsafe.Pointer(&block[0])) & uintptr(AlignSize-1))
+}
+
+// IsAligned checks wether passed byte slice is aligned.
+func isAligned(block []byte) bool {
+	return alignment(block, alignSize) == 0
+}
+
+
 // wrapOSFile takes a standard library OS file and returns a vfs.File. f may be
 // nil, in which case wrapOSFile must not panic. In such cases, it's okay if the
 // returned vfs.File may panic if used.
@@ -225,11 +322,24 @@ func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+
+	// Commented-out implementation is for OS X.
+	// Set F_NOCACHE to avoid caching
+	// F_NOCACHE    Turns data caching off/on. A non-zero value in arg turns data caching off.  A value
+	//              of zero in arg turns data caching on.
+	_, _, e1 := syscall.Syscall(syscall.SYS_FCNTL, uintptr(osFile.Fd()), syscall.F_NOCACHE, 1)
+	if e1 != 0 {
+		err = errors.Newf("Failed to set F_NOCACHE: %s", e1)
+		osFile.Close()
+		return nil, errors.WithStack(err)
+	}
+
 	file := wrapOSFile(osFile)
 	for _, opt := range opts {
 		opt.Apply(file)
 	}
-	return file, nil
+
+	return &directIOFile{File: file}, nil
 }
 
 func (defaultFS) Remove(name string) error {

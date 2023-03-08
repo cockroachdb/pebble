@@ -278,6 +278,208 @@ func TestVFS(t *testing.T) {
 	}
 }
 
+func TestVFSDirectReads(t *testing.T) {
+	t.Run("small read at at offset zero", func(t *testing.T) {
+		tmp, err := os.CreateTemp("", "test-vfs-direct-reads")
+		require.NoError(t, err)
+
+		in := []byte("this is a test")
+		_, err = tmp.Write(in)
+		require.NoError(t, err)
+
+		fs := Default
+		file, err := fs.Open(tmp.Name())
+		require.NoError(t, err)
+
+		out := make([]byte, len(in))
+		fmt.Println(string(out[:]))
+
+		// TODO(): Check first return value.
+		_, err = file.ReadAt(out, 0)
+		require.NoError(t, err)
+
+		fmt.Println(string(out[:]))
+
+		require.Equal(t, in, out)
+	})
+	t.Run("small read at at offset zero with EOF expected", func(t *testing.T) {
+		tmp, err := os.CreateTemp("", "test-vfs-direct-reads")
+		require.NoError(t, err)
+
+		in := []byte("this is a test")
+		_, err = tmp.Write(in)
+		require.NoError(t, err)
+
+		fs := Default
+		file, err := fs.Open(tmp.Name())
+		require.NoError(t, err)
+
+		out := make([]byte, len(in)+2)
+		fmt.Println(string(out[:]))
+
+		// TODO(): Check first return value.
+		_, err = file.ReadAt(out, 0)
+		require.Error(t, err)
+		require.Equal(t, io.EOF, err)
+
+		fmt.Println(string(out[:]))
+
+		require.Equal(t, append(in, []byte{0x0, 0x0}...), out)
+	})
+	t.Run("small read at at non-zero offset", func(t *testing.T) {
+		tmp, err := os.CreateTemp("", "test-vfs-direct-reads")
+		require.NoError(t, err)
+
+		in := []byte("this is a test")
+		_, err = tmp.Write(in)
+		require.NoError(t, err)
+
+		fs := Default
+		file, err := fs.Open(tmp.Name())
+		require.NoError(t, err)
+
+		out := make([]byte, len(in[4:]))
+		fmt.Println(string(out[:]))
+
+		_, err = file.ReadAt(out, 4)
+		require.NoError(t, err)
+
+		fmt.Println(string(out[:]))
+
+		require.Equal(t, in[4:], out)
+	})
+	t.Run("big read at at offset zero", func(t *testing.T) {
+		tmp, err := os.CreateTemp("", "test-vfs-direct-reads")
+		require.NoError(t, err)
+
+		var in []byte
+		i := 0
+		for i < 4*blockSize {
+			in = append(in, 'x')
+			i++
+		}
+		_, err = tmp.Write(in)
+		require.NoError(t, err)
+
+		fs := Default
+		file, err := fs.Open(tmp.Name())
+		require.NoError(t, err)
+
+		out := make([]byte, len(in))
+		fmt.Println(string(out[:]))
+
+		_, err = file.ReadAt(out, 0)
+		require.NoError(t, err)
+
+		fmt.Println(string(out[:]))
+
+		require.Equal(t, in, out)
+	})
+	t.Run("big read at at small offset", func(t *testing.T) {
+		tmp, err := os.CreateTemp("", "test-vfs-direct-reads")
+		require.NoError(t, err)
+
+		var in []byte
+		i := 0
+		for i < 4*blockSize {
+			in = append(in, 'x')
+			i++
+		}
+		_, err = tmp.Write(in)
+		require.NoError(t, err)
+
+		fs := Default
+		file, err := fs.Open(tmp.Name())
+		require.NoError(t, err)
+
+		out := make([]byte, len(in[5:]))
+		fmt.Println(string(out[:]))
+
+		_, err = file.ReadAt(out, 5)
+		require.NoError(t, err)
+
+		fmt.Println(string(out[:]))
+
+		require.Equal(t, in[5:], out)
+	})
+	t.Run("big read at at large offset", func(t *testing.T) {
+		tmp, err := os.CreateTemp("", "test-vfs-direct-reads")
+		require.NoError(t, err)
+
+		var in []byte
+		i := 0
+		for i < 4*blockSize {
+			in = append(in, 'x')
+			i++
+		}
+		_, err = tmp.Write(in)
+		require.NoError(t, err)
+
+		fs := Default
+		file, err := fs.Open(tmp.Name())
+		require.NoError(t, err)
+
+		out := make([]byte, len(in[blockSize*2+3:]))
+		fmt.Println(string(out[:]))
+
+		_, err = file.ReadAt(out, blockSize+3)
+		require.NoError(t, err)
+
+		fmt.Println(string(out[:]))
+
+		require.Equal(t, in[blockSize*2+3:], out)
+	})
+	t.Run("small read at offset zero", func(t *testing.T) {
+		tmp, err := os.CreateTemp("", "test-vfs-direct-reads")
+		require.NoError(t, err)
+
+		in := []byte("this is a test")
+		_, err = tmp.Write(in)
+		require.NoError(t, err)
+
+		fs := Default
+		file, err := fs.Open(tmp.Name())
+		require.NoError(t, err)
+
+		out := make([]byte, len(in))
+		fmt.Println(string(out[:]))
+
+		_, err = file.Read(out)
+		require.NoError(t, err)
+
+		fmt.Println(string(out[:]))
+
+		require.Equal(t, in, out)
+	})
+	t.Run("big read at offset zero", func(t *testing.T) {
+		tmp, err := os.CreateTemp("", "test-vfs-direct-reads")
+		require.NoError(t, err)
+
+		var in []byte
+		i := 0
+		for i < 4*blockSize {
+			in = append(in, 'x')
+			i++
+		}
+		_, err = tmp.Write(in)
+		require.NoError(t, err)
+
+		fs := Default
+		file, err := fs.Open(tmp.Name())
+		require.NoError(t, err)
+
+		out := make([]byte, len(in))
+		fmt.Println(string(out[:]))
+
+		_, err = file.Read(out)
+		require.NoError(t, err)
+
+		fmt.Println(string(out[:]))
+
+		require.Equal(t, in, out)
+	})
+}
+
 func TestVFSGetDiskUsage(t *testing.T) {
 	dir, err := os.MkdirTemp("", "test-free-space")
 	require.NoError(t, err)

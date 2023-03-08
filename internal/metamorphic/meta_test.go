@@ -41,7 +41,7 @@ import (
 var (
 	dir = flag.String("dir", "_meta",
 		"the directory storing test state")
-	fs = flag.String("fs", "rand",
+	fs = flag.String("fs", "disk",
 		`force the tests to use either memory or disk-backed filesystems (valid: "mem", "disk", "rand")`)
 	// TODO: default error rate to a non-zero value. Currently, retrying is
 	// non-deterministic because of the Ierator.*WithLimit() methods since
