@@ -277,7 +277,10 @@ func (vs *versionSet) load(
 	}
 	vs.markFileNumUsed(vs.minUnflushedLogNum)
 
-	newVersion, _, err := bve.Apply(nil, vs.cmp, opts.Comparer.FormatKey, opts.FlushSplitBytes, opts.Experimental.ReadCompactionRate)
+	newVersion, err := bve.Apply(
+		nil, vs.cmp, opts.Comparer.FormatKey, opts.FlushSplitBytes,
+		opts.Experimental.ReadCompactionRate, nil, /* zombies */
+	)
 	if err != nil {
 		return err
 	}
@@ -460,13 +463,11 @@ func (vs *versionSet) logAndApply(
 		vs.mu.Unlock()
 		defer vs.mu.Lock()
 
-		var bve bulkVersionEdit
-		if err := bve.Accumulate(ve); err != nil {
-			return err
-		}
-
 		var err error
-		newVersion, zombies, err = bve.Apply(currentVersion, vs.cmp, vs.opts.Comparer.FormatKey, vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate)
+		newVersion, zombies, err = manifest.AccumulateAndApplySingleVE(
+			ve, currentVersion, vs.cmp, vs.opts.Comparer.FormatKey,
+			vs.opts.FlushSplitBytes, vs.opts.Experimental.ReadCompactionRate,
+		)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")
 		}

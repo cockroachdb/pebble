@@ -665,11 +665,12 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	}
 	currentVersion := func() (*manifest.Version, error) {
 		var err error
-		v, _, err = bve.Apply(v,
+		v, err = bve.Apply(v,
 			r.Opts.Comparer.Compare,
 			r.Opts.Comparer.FormatKey,
 			r.Opts.FlushSplitBytes,
-			r.Opts.Experimental.ReadCompactionRate)
+			r.Opts.Experimental.ReadCompactionRate,
+			nil /* zombies */)
 		bve = manifest.BulkVersionEdit{AddedByFileNum: bve.AddedByFileNum}
 		return v, err
 	}
