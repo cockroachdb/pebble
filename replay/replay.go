@@ -665,7 +665,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 	}
 	currentVersion := func() (*manifest.Version, error) {
 		var err error
-		v, _, err = bve.Apply(v,
+		v, err = bve.Apply(v,
 			r.Opts.Comparer.Compare,
 			r.Opts.Comparer.FormatKey,
 			r.Opts.FlushSplitBytes,

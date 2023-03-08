@@ -303,8 +303,12 @@ func TestLevelIterEquivalence(t *testing.T) {
 			}
 			// Add all the fileMetadatas to L6.
 			b := &manifest.BulkVersionEdit{}
-			b.Added[6] = metas
-			v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
+			amap := make(map[base.FileNum]*manifest.FileMetadata)
+			for i := range metas {
+				amap[metas[i].FileNum] = metas[i]
+			}
+			b.Added[6] = amap
+			v, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
 			require.NoError(t, err)
 			levelIter.Init(
 				SpanIterOptions{}, base.DefaultComparer.Compare, tableNewIters,
@@ -436,8 +440,12 @@ func TestLevelIter(t *testing.T) {
 					return NewIter(base.DefaultComparer.Compare, spans), nil
 				}
 				b := &manifest.BulkVersionEdit{}
-				b.Added[6] = metas
-				v, _, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
+				amap := make(map[base.FileNum]*manifest.FileMetadata)
+				for i := range metas {
+					amap[metas[i].FileNum] = metas[i]
+				}
+				b.Added[6] = amap
+				v, err := b.Apply(nil, base.DefaultComparer.Compare, base.DefaultFormatter, 0, 0)
 				require.NoError(t, err)
 				iter = NewLevelIter(
 					SpanIterOptions{}, base.DefaultComparer.Compare,
