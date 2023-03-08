@@ -483,7 +483,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 				d.fmtValue.setForComparer(ve.ComparerName, d.comparers)
 			}
 		}
-		v, _, err := bve.Apply(nil /* version */, cmp.Compare, d.fmtKey.fn, d.opts.FlushSplitBytes, d.opts.Experimental.ReadCompactionRate)
+		v, err := bve.Apply(nil /* version */, cmp.Compare, d.fmtKey.fn, d.opts.FlushSplitBytes, d.opts.Experimental.ReadCompactionRate, nil)
 		if err != nil {
 			return err
 		}
