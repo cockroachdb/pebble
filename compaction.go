@@ -1851,6 +1851,8 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 		levelMetrics.Size += int64(file.Size)
 		levelMetrics.BytesIngested += file.Size
 		levelMetrics.TablesIngested++
+		d.mu.versions.metrics.Flush.AsIngestCount++
+		d.mu.versions.metrics.Flush.AsIngestBytes += file.Size
 	}
 
 	return ve, nil
@@ -1939,11 +1941,13 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n])
 	d.addInProgressCompaction(c)
 
+	ingest := c.kind == compactionKindIngestedFlushable
 	jobID := d.mu.nextJobID
 	d.mu.nextJobID++
 	d.opts.EventListener.FlushBegin(FlushInfo{
-		JobID: jobID,
-		Input: n,
+		JobID:  jobID,
+		Input:  n,
+		Ingest: ingest,
 	})
 	startTime := d.timeNow()
 
@@ -1967,19 +1971,23 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		ve, err = d.runIngestFlush(c)
 	}
 
-	// TODO(bananabrick): Update the FlushInfo output message. The files are
-	// not necessarily being flushed to L0.
 	info := FlushInfo{
 		JobID:    jobID,
 		Input:    n,
 		Duration: d.timeNow().Sub(startTime),
 		Done:     true,
+		Ingest:   ingest,
 		Err:      err,
 	}
 	if err == nil {
 		for i := range ve.NewFiles {
 			e := &ve.NewFiles[i]
 			info.Output = append(info.Output, e.Meta.TableInfo())
+			// Ingested tables are not necessarily flushed to L0. Record the level of
+			// each ingested file explicitly.
+			if ingest {
+				info.IngestLevels = append(info.IngestLevels, e.Level)
+			}
 		}
 		if len(ve.NewFiles) == 0 {
 			info.Err = errEmptyTable

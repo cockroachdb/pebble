@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -187,6 +188,12 @@ type Metrics struct {
 		// Number of flushes that are in-progress. In the current implementation
 		// this will always be zero or one.
 		NumInProgress int64
+		// AsIngestCount is a monotonically increasing counter of flushed flushables
+		// that originated as ingestion operations.
+		AsIngestCount uint64
+		// AsIngestBytes is a monotonically increasing counter of the bytes flushed
+		// for flushables that originated as ingestion operations.
+		AsIngestBytes uint64
 	}
 
 	Filter FilterMetrics
@@ -367,9 +374,9 @@ func (m *Metrics) formatWAL(w redact.SafePrinter) {
 //		      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
 //		      6         1   825 B    0.00   1.6 K     0 B       0     0 B       0   825 B       1   1.6 K     0.5
 //		  total         3   2.4 K       -   933 B   825 B       1     0 B       0   4.1 K       4   1.6 K     4.5
-//		  flush         3
-//		compact         1   1.6 K     0 B       1          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-//		  ctype         0       0       0       0       0  (default, delete, elision, move, read)
+//		  flush         3                           123 B       2    (ingest = ingested-as-flushable)
+//		compact         1   1.6 K     0 B       1                    (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+//		  ctype         0       0       0       0       0            (default, delete, elision, move, read)
 //		 memtbl         1   4.0 M
 //		zmemtbl         0     0 B
 //		   ztbl         0     0 B
@@ -439,21 +446,28 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.SafeString("  total ")
 	total.format(w, notApplicable, haveValueBlocks)
 
-	w.Printf("  flush %9d\n", redact.Safe(m.Flush.Count))
-	w.Printf("compact %9d %7s %7s %7d %7s  (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)\n",
+	w.Printf("  flush %9d %31s %7d %s %s\n",
+		redact.Safe(m.Flush.Count),
+		humanize.IEC.Uint64(m.Flush.AsIngestBytes),
+		redact.Safe(m.Flush.AsIngestCount),
+		redact.SafeString(strings.Repeat(" ", 8)),
+		redact.SafeString(`(ingest = ingested-as-flushable)`))
+	w.Printf("compact %9d %7s %7s %7d %s %s\n",
 		redact.Safe(m.Compact.Count),
 		humanize.IEC.Uint64(m.Compact.EstimatedDebt),
 		humanize.IEC.Int64(m.Compact.InProgressBytes),
 		redact.Safe(m.Compact.NumInProgress),
-		redact.SafeString(""))
-	w.Printf("  ctype %9d %7d %7d %7d %7d %7d %7d  (default, delete, elision, move, read, rewrite, multi-level)\n",
+		redact.SafeString(strings.Repeat(" ", 24)),
+		redact.SafeString(`(size == estimated-debt, score = in-progress-bytes, in = num-in-progress)`))
+	w.Printf("  ctype %9d %7d %7d %7d %7d %7d %7d  %s\n",
 		redact.Safe(m.Compact.DefaultCount),
 		redact.Safe(m.Compact.DeleteOnlyCount),
 		redact.Safe(m.Compact.ElisionOnlyCount),
 		redact.Safe(m.Compact.MoveCount),
 		redact.Safe(m.Compact.ReadCount),
 		redact.Safe(m.Compact.RewriteCount),
-		redact.Safe(m.Compact.MultiLevelCount))
+		redact.Safe(m.Compact.MultiLevelCount),
+		redact.SafeString(`(default, delete, elision, move, read, rewrite, multi-level)`))
 	w.Printf(" memtbl %9d %7s\n",
 		redact.Safe(m.MemTable.Count),
 		humanize.IEC.Uint64(m.MemTable.Size))

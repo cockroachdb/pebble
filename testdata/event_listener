@@ -232,8 +232,8 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       6         1   770 B       -   1.5 K     0 B       0     0 B       0   770 B       1   1.5 K       1     0.5
   total         3   2.3 K       -   934 B   826 B       1     0 B       0   3.9 K       4   1.5 K       3     4.3
-  flush         3
-compact         1   2.3 K     0 B       0          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  flush         3                             0 B       0          (ingest = ingested-as-flushable)
+compact         1   2.3 K     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
 zmemtbl         0     0 B
@@ -244,11 +244,89 @@ zmemtbl         0     0 B
  titers         0
  filter         -       -    0.0%  (score == utility)
 
+# Set up a scenario where the table to be ingested overlaps with the memtable.
+# The table is ingested as a flushable. The flush metrics refect the flushed
+# ingestion.
+
+ingest-flushable
+----
+sync-data: wal/000012.log
+link: ext/1 -> db/000017.sst
+[JOB 13] ingesting: sstable created 000017
+sync: db
+sync-data: wal/000012.log
+close: wal/000012.log
+reuseForWrite: wal/000007.log -> wal/000018.log
+sync: wal
+[JOB 14] WAL created 000018 (recycled 000007)
+sync-data: wal/000018.log
+sync-data: wal/000018.log
+close: wal/000018.log
+create: wal/000019.log
+sync: wal
+[JOB 15] WAL created 000019
+remove: ext/1
+[JOB 13] ingested as flushable 000017 (826 B)
+sync-data: wal/000019.log
+close: wal/000019.log
+create: wal/000020.log
+sync: wal
+[JOB 16] WAL created 000020
+[JOB 17] flushing 1 memtable to L0
+create: db/000021.sst
+[JOB 17] flushing: sstable created 000021
+sync-data: db/000021.sst
+close: db/000021.sst
+sync: db
+sync: db/MANIFEST-000016
+[JOB 17] flushed 1 memtable to L0 [000021] (770 B), in 1.0s (2.0s total), output rate 770 B/s
+[JOB 18] flushing ingested tables
+create: db/MANIFEST-000022
+close: db/MANIFEST-000016
+sync: db/MANIFEST-000022
+create: db/marker.manifest.000007.MANIFEST-000022
+close: db/marker.manifest.000007.MANIFEST-000022
+remove: db/marker.manifest.000006.MANIFEST-000016
+sync: db
+[JOB 18] MANIFEST created 000022
+[JOB 18] flushed 1 ingested flushable L0:000017 (826 B) in 1.0s (2.0s total), output rate 826 B/s
+remove: db/MANIFEST-000014
+[JOB 18] MANIFEST deleted 000014
+[JOB 19] flushing 1 memtable to L0
+sync: db/MANIFEST-000022
+[JOB 19] flush error: pebble: empty table
+
+metrics
+----
+__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+    WAL         1    26 B       -    79 B       -       -       -       -   107 B       -       -       -     1.4
+      0         4   3.1 K    0.80    81 B   1.6 K       2     0 B       0   3.0 K       4     0 B       4    38.0
+      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+      6         1   770 B       -   1.5 K     0 B       0     0 B       0   770 B       1   1.5 K       1     0.5
+  total         5   3.9 K       -   1.7 K   1.6 K       2     0 B       0   5.5 K       5   1.5 K       5     3.2
+  flush         6                           826 B       1          (ingest = ingested-as-flushable)
+compact         1   3.9 K     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+  ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+ memtbl         1   512 K
+zmemtbl         0     0 B
+   ztbl         0     0 B
+ bcache        12   2.2 K   16.7%  (score == hit-rate)
+ tcache         1   696 B   62.5%  (score == hit-rate)
+  snaps         0       -       0  (score == earliest seq num)
+ titers         0
+ filter         -       -    0.0%  (score == utility)
+
 sstables
 ----
 0:
   13:[a-a]
   15:[a-a]
+  21:[a-a]
+  17:[a-a]
 6:
   10:[a-a]
 
@@ -268,19 +346,21 @@ sync: checkpoint
 close: checkpoint
 link: db/000013.sst -> checkpoint/000013.sst
 link: db/000015.sst -> checkpoint/000015.sst
+link: db/000021.sst -> checkpoint/000021.sst
+link: db/000017.sst -> checkpoint/000017.sst
 link: db/000010.sst -> checkpoint/000010.sst
-create: checkpoint/MANIFEST-000016
-sync-data: checkpoint/MANIFEST-000016
-close: checkpoint/MANIFEST-000016
+create: checkpoint/MANIFEST-000022
+sync-data: checkpoint/MANIFEST-000022
+close: checkpoint/MANIFEST-000022
 open-dir: checkpoint
-create: checkpoint/marker.manifest.000001.MANIFEST-000016
-sync-data: checkpoint/marker.manifest.000001.MANIFEST-000016
-close: checkpoint/marker.manifest.000001.MANIFEST-000016
+create: checkpoint/marker.manifest.000001.MANIFEST-000022
+sync-data: checkpoint/marker.manifest.000001.MANIFEST-000022
+close: checkpoint/marker.manifest.000001.MANIFEST-000022
 sync: checkpoint
 close: checkpoint
-create: checkpoint/000012.log
-sync-data: checkpoint/000012.log
-close: checkpoint/000012.log
+create: checkpoint/000020.log
+sync-data: checkpoint/000020.log
+close: checkpoint/000020.log
 sync: checkpoint
 close: checkpoint
 
@@ -291,9 +371,9 @@ pebble: file deletion disablement invariant violated
 close
 ----
 close: db
-sync-data: wal/000012.log
-close: wal/000012.log
-close: db/MANIFEST-000016
+sync-data: wal/000020.log
+close: wal/000020.log
+close: db/MANIFEST-000022
 close: db
 close: db
 close: wal
