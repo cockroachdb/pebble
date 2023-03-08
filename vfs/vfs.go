@@ -244,7 +244,7 @@ func (f *directIOFile) readAtWithDirectIO(p []byte, off int64) (nout int, err er
 // Below is inspired by https://github.com/ncw/directio.
 
 const (
-	alignSize = 0
+	alignSize = 4096
 	blockSize = 4096
 )
 
@@ -318,13 +318,13 @@ func (defaultFS) Link(oldname, newname string) error {
 }
 
 func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
-	osFile, err := os.OpenFile(name, os.O_RDONLY|syscall.O_CLOEXEC, 0)
+	osFile, err := os.OpenFile(name, syscall.O_DIRECT|os.O_RDONLY|syscall.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
 	// Commented-out implementation is for OS X.
-	// Set F_NOCACHE to avoid caching
+/*	// Set F_NOCACHE to avoid caching
 	// F_NOCACHE    Turns data caching off/on. A non-zero value in arg turns data caching off.  A value
 	//              of zero in arg turns data caching on.
 	_, _, e1 := syscall.Syscall(syscall.SYS_FCNTL, uintptr(osFile.Fd()), syscall.F_NOCACHE, 1)
@@ -333,7 +333,7 @@ func (defaultFS) Open(name string, opts ...OpenOption) (File, error) {
 		osFile.Close()
 		return nil, errors.WithStack(err)
 	}
-
+*/
 	file := wrapOSFile(osFile)
 	for _, opt := range opts {
 		opt.Apply(file)
