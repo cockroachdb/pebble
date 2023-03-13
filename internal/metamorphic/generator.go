@@ -118,44 +118,45 @@ func generate(rng *rand.Rand, count uint64, cfg config, km *keyManager) []op {
 	g := newGenerator(rng, cfg, km)
 
 	generators := []func(){
-		batchAbort:           g.batchAbort,
-		batchCommit:          g.batchCommit,
-		dbCheckpoint:         g.dbCheckpoint,
-		dbCompact:            g.dbCompact,
-		dbFlush:              g.dbFlush,
-		dbRestart:            g.dbRestart,
-		iterClose:            g.randIter(g.iterClose),
-		iterFirst:            g.randIter(g.iterFirst),
-		iterLast:             g.randIter(g.iterLast),
-		iterNext:             g.randIter(g.iterNext),
-		iterNextWithLimit:    g.randIter(g.iterNextWithLimit),
-		iterNextPrefix:       g.randIter(g.iterNextPrefix),
-		iterPrev:             g.randIter(g.iterPrev),
-		iterPrevWithLimit:    g.randIter(g.iterPrevWithLimit),
-		iterSeekGE:           g.randIter(g.iterSeekGE),
-		iterSeekGEWithLimit:  g.randIter(g.iterSeekGEWithLimit),
-		iterSeekLT:           g.randIter(g.iterSeekLT),
-		iterSeekLTWithLimit:  g.randIter(g.iterSeekLTWithLimit),
-		iterSeekPrefixGE:     g.randIter(g.iterSeekPrefixGE),
-		iterSetBounds:        g.randIter(g.iterSetBounds),
-		iterSetOptions:       g.randIter(g.iterSetOptions),
-		newBatch:             g.newBatch,
-		newIndexedBatch:      g.newIndexedBatch,
-		newIter:              g.newIter,
-		newIterUsingClone:    g.newIterUsingClone,
-		newSnapshot:          g.newSnapshot,
-		readerGet:            g.readerGet,
-		snapshotClose:        g.snapshotClose,
-		writerApply:          g.writerApply,
-		writerDelete:         g.writerDelete,
-		writerDeleteRange:    g.writerDeleteRange,
-		writerIngest:         g.writerIngest,
-		writerMerge:          g.writerMerge,
-		writerRangeKeyDelete: g.writerRangeKeyDelete,
-		writerRangeKeySet:    g.writerRangeKeySet,
-		writerRangeKeyUnset:  g.writerRangeKeyUnset,
-		writerSet:            g.writerSet,
-		writerSingleDelete:   g.writerSingleDelete,
+		batchAbort:                  g.batchAbort,
+		batchCommit:                 g.batchCommit,
+		dbCheckpoint:                g.dbCheckpoint,
+		dbCompact:                   g.dbCompact,
+		dbFlush:                     g.dbFlush,
+		dbRatchetFormatMajorVersion: g.dbRatchetFormatMajorVersion,
+		dbRestart:                   g.dbRestart,
+		iterClose:                   g.randIter(g.iterClose),
+		iterFirst:                   g.randIter(g.iterFirst),
+		iterLast:                    g.randIter(g.iterLast),
+		iterNext:                    g.randIter(g.iterNext),
+		iterNextWithLimit:           g.randIter(g.iterNextWithLimit),
+		iterNextPrefix:              g.randIter(g.iterNextPrefix),
+		iterPrev:                    g.randIter(g.iterPrev),
+		iterPrevWithLimit:           g.randIter(g.iterPrevWithLimit),
+		iterSeekGE:                  g.randIter(g.iterSeekGE),
+		iterSeekGEWithLimit:         g.randIter(g.iterSeekGEWithLimit),
+		iterSeekLT:                  g.randIter(g.iterSeekLT),
+		iterSeekLTWithLimit:         g.randIter(g.iterSeekLTWithLimit),
+		iterSeekPrefixGE:            g.randIter(g.iterSeekPrefixGE),
+		iterSetBounds:               g.randIter(g.iterSetBounds),
+		iterSetOptions:              g.randIter(g.iterSetOptions),
+		newBatch:                    g.newBatch,
+		newIndexedBatch:             g.newIndexedBatch,
+		newIter:                     g.newIter,
+		newIterUsingClone:           g.newIterUsingClone,
+		newSnapshot:                 g.newSnapshot,
+		readerGet:                   g.readerGet,
+		snapshotClose:               g.snapshotClose,
+		writerApply:                 g.writerApply,
+		writerDelete:                g.writerDelete,
+		writerDeleteRange:           g.writerDeleteRange,
+		writerIngest:                g.writerIngest,
+		writerMerge:                 g.writerMerge,
+		writerRangeKeyDelete:        g.writerRangeKeyDelete,
+		writerRangeKeySet:           g.writerRangeKeySet,
+		writerRangeKeyUnset:         g.writerRangeKeyUnset,
+		writerSet:                   g.writerSet,
+		writerSingleDelete:          g.writerSingleDelete,
 	}
 
 	// TPCC-style deck of cards randomization. Every time the end of the deck is
@@ -478,6 +479,16 @@ func (g *generator) dbCompact() {
 
 func (g *generator) dbFlush() {
 	g.add(&flushOp{})
+}
+
+func (g *generator) dbRatchetFormatMajorVersion() {
+	// Ratchet to a random format major version between the minimum the
+	// metamorphic tests support and the newest. At runtime, the generated
+	// version may be behind the database's format major version, in which case
+	// RatchetFormatMajorVersion should deterministically error.
+	n := int(pebble.FormatNewest - minimumFormatMajorVersion)
+	vers := pebble.FormatMajorVersion(g.rng.Intn(n + 1))
+	g.add(&dbRatchetFormatMajorVersionOp{vers: vers})
 }
 
 func (g *generator) dbRestart() {

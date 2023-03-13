@@ -23,6 +23,19 @@ import (
 	"golang.org/x/exp/rand"
 )
 
+const (
+	// The metamorphic test exercises range keys, so we cannot use an older
+	// FormatMajorVersion than pebble.FormatRangeKeys.
+	minimumFormatMajorVersion = pebble.FormatRangeKeys
+	// The format major version to use in the default options configurations. We
+	// default to the last format major version of Cockroach 22.2 so we exercise
+	// the runtime version ratcheting that a cluster upgrading to 23.1 would
+	// experience. The randomized options may still use format major versions
+	// that are less than defaultFormatMajorVersion but are at least
+	// minimumFormatMajorVersion.
+	defaultFormatMajorVersion = pebble.FormatPrePebblev1Marked
+)
+
 func parseOptions(opts *testOptions, data string) error {
 	hooks := &pebble.ParseHooks{
 		NewCache:        pebble.NewCache,
@@ -129,7 +142,7 @@ func defaultOptions() *pebble.Options {
 	opts := &pebble.Options{
 		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
-		FormatMajorVersion: pebble.FormatNewest,
+		FormatMajorVersion: defaultFormatMajorVersion,
 		Levels: []pebble.LevelOptions{{
 			FilterPolicy: bloom.FilterPolicy(10),
 		}},
@@ -315,9 +328,7 @@ func randomOptions(rng *rand.Rand) *testOptions {
 	opts.FlushDelayDeleteRange = time.Millisecond * time.Duration(5*rng.Intn(245)) // 5-250ms
 	opts.FlushDelayRangeKey = time.Millisecond * time.Duration(5*rng.Intn(245))    // 5-250ms
 	opts.FlushSplitBytes = 1 << rng.Intn(20)                                       // 1B - 1MB
-	// The metamorphic test exercise range keys, so we cannot use an older
-	// FormatMajorVersion than pebble.FormatRangeKeys.
-	opts.FormatMajorVersion = pebble.FormatRangeKeys
+	opts.FormatMajorVersion = minimumFormatMajorVersion
 	n := int(pebble.FormatNewest - opts.FormatMajorVersion)
 	opts.FormatMajorVersion += pebble.FormatMajorVersion(rng.Intn(n + 1))
 	opts.Experimental.L0CompactionConcurrency = 1 + rng.Intn(4)    // 1-4
