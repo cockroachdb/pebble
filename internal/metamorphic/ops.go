@@ -1140,6 +1140,26 @@ func (o *newSnapshotOp) String() string       { return fmt.Sprintf("%s = db.NewS
 func (o *newSnapshotOp) receiver() objID      { return dbObjID }
 func (o *newSnapshotOp) syncObjs() objIDSlice { return []objID{o.snapID} }
 
+type dbRatchetFormatMajorVersionOp struct {
+	vers pebble.FormatMajorVersion
+}
+
+func (o *dbRatchetFormatMajorVersionOp) run(t *test, h historyRecorder) {
+	_ = t.db.RatchetFormatMajorVersion(o.vers)
+	// NB: We ignore the error; Different runs start at different format major
+	// versions, making the presence of an error and the error message itself
+	// non-deterministic. Regardless, subsequent operations should behave
+	// identically, which is what we're really aiming to test by including this
+	// format major version ratchet operation.
+	h.Recordf("%s", o)
+}
+
+func (o *dbRatchetFormatMajorVersionOp) String() string {
+	return fmt.Sprintf("db.RatchetFormatMajorVersion(%s)", o.vers)
+}
+func (o *dbRatchetFormatMajorVersionOp) receiver() objID      { return dbObjID }
+func (o *dbRatchetFormatMajorVersionOp) syncObjs() objIDSlice { return nil }
+
 type dbRestartOp struct{}
 
 func (o *dbRestartOp) run(t *test, h historyRecorder) {
