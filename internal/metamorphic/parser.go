@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble"
 )
 
 type methodInfo struct {
@@ -52,6 +53,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return nil, nil, []interface{}{&t.start, &t.end, &t.parallelize}
 	case *batchCommitOp:
 		return &t.batchID, nil, nil
+	case *dbRatchetFormatMajorVersionOp:
+		return nil, nil, []interface{}{&t.vers}
 	case *dbRestartOp:
 		return nil, nil, nil
 	case *deleteOp:
@@ -113,39 +116,40 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 }
 
 var methods = map[string]*methodInfo{
-	"Apply":           makeMethod(applyOp{}, dbTag, batchTag),
-	"Checkpoint":      makeMethod(checkpointOp{}, dbTag),
-	"Clone":           makeMethod(newIterUsingCloneOp{}, iterTag),
-	"Close":           makeMethod(closeOp{}, dbTag, batchTag, iterTag, snapTag),
-	"Commit":          makeMethod(batchCommitOp{}, batchTag),
-	"Compact":         makeMethod(compactOp{}, dbTag),
-	"Delete":          makeMethod(deleteOp{}, dbTag, batchTag),
-	"DeleteRange":     makeMethod(deleteRangeOp{}, dbTag, batchTag),
-	"First":           makeMethod(iterFirstOp{}, iterTag),
-	"Flush":           makeMethod(flushOp{}, dbTag),
-	"Get":             makeMethod(getOp{}, dbTag, batchTag, snapTag),
-	"Ingest":          makeMethod(ingestOp{}, dbTag),
-	"Init":            makeMethod(initOp{}, dbTag),
-	"Last":            makeMethod(iterLastOp{}, iterTag),
-	"Merge":           makeMethod(mergeOp{}, dbTag, batchTag),
-	"NewBatch":        makeMethod(newBatchOp{}, dbTag),
-	"NewIndexedBatch": makeMethod(newIndexedBatchOp{}, dbTag),
-	"NewIter":         makeMethod(newIterOp{}, dbTag, batchTag, snapTag),
-	"NewSnapshot":     makeMethod(newSnapshotOp{}, dbTag),
-	"Next":            makeMethod(iterNextOp{}, iterTag),
-	"NextPrefix":      makeMethod(iterNextPrefixOp{}, iterTag),
-	"Prev":            makeMethod(iterPrevOp{}, iterTag),
-	"RangeKeyDelete":  makeMethod(rangeKeyDeleteOp{}, dbTag, batchTag),
-	"RangeKeySet":     makeMethod(rangeKeySetOp{}, dbTag, batchTag),
-	"RangeKeyUnset":   makeMethod(rangeKeyUnsetOp{}, dbTag, batchTag),
-	"Restart":         makeMethod(dbRestartOp{}, dbTag),
-	"SeekGE":          makeMethod(iterSeekGEOp{}, iterTag),
-	"SeekLT":          makeMethod(iterSeekLTOp{}, iterTag),
-	"SeekPrefixGE":    makeMethod(iterSeekPrefixGEOp{}, iterTag),
-	"Set":             makeMethod(setOp{}, dbTag, batchTag),
-	"SetBounds":       makeMethod(iterSetBoundsOp{}, iterTag),
-	"SetOptions":      makeMethod(iterSetOptionsOp{}, iterTag),
-	"SingleDelete":    makeMethod(singleDeleteOp{}, dbTag, batchTag),
+	"Apply":                     makeMethod(applyOp{}, dbTag, batchTag),
+	"Checkpoint":                makeMethod(checkpointOp{}, dbTag),
+	"Clone":                     makeMethod(newIterUsingCloneOp{}, iterTag),
+	"Close":                     makeMethod(closeOp{}, dbTag, batchTag, iterTag, snapTag),
+	"Commit":                    makeMethod(batchCommitOp{}, batchTag),
+	"Compact":                   makeMethod(compactOp{}, dbTag),
+	"Delete":                    makeMethod(deleteOp{}, dbTag, batchTag),
+	"DeleteRange":               makeMethod(deleteRangeOp{}, dbTag, batchTag),
+	"First":                     makeMethod(iterFirstOp{}, iterTag),
+	"Flush":                     makeMethod(flushOp{}, dbTag),
+	"Get":                       makeMethod(getOp{}, dbTag, batchTag, snapTag),
+	"Ingest":                    makeMethod(ingestOp{}, dbTag),
+	"Init":                      makeMethod(initOp{}, dbTag),
+	"Last":                      makeMethod(iterLastOp{}, iterTag),
+	"Merge":                     makeMethod(mergeOp{}, dbTag, batchTag),
+	"NewBatch":                  makeMethod(newBatchOp{}, dbTag),
+	"NewIndexedBatch":           makeMethod(newIndexedBatchOp{}, dbTag),
+	"NewIter":                   makeMethod(newIterOp{}, dbTag, batchTag, snapTag),
+	"NewSnapshot":               makeMethod(newSnapshotOp{}, dbTag),
+	"Next":                      makeMethod(iterNextOp{}, iterTag),
+	"NextPrefix":                makeMethod(iterNextPrefixOp{}, iterTag),
+	"Prev":                      makeMethod(iterPrevOp{}, iterTag),
+	"RangeKeyDelete":            makeMethod(rangeKeyDeleteOp{}, dbTag, batchTag),
+	"RangeKeySet":               makeMethod(rangeKeySetOp{}, dbTag, batchTag),
+	"RangeKeyUnset":             makeMethod(rangeKeyUnsetOp{}, dbTag, batchTag),
+	"RatchetFormatMajorVersion": makeMethod(dbRatchetFormatMajorVersionOp{}, dbTag),
+	"Restart":                   makeMethod(dbRestartOp{}, dbTag),
+	"SeekGE":                    makeMethod(iterSeekGEOp{}, iterTag),
+	"SeekLT":                    makeMethod(iterSeekLTOp{}, iterTag),
+	"SeekPrefixGE":              makeMethod(iterSeekPrefixGEOp{}, iterTag),
+	"Set":                       makeMethod(setOp{}, dbTag, batchTag),
+	"SetBounds":                 makeMethod(iterSetBoundsOp{}, iterTag),
+	"SetOptions":                makeMethod(iterSetOptionsOp{}, iterTag),
+	"SingleDelete":              makeMethod(singleDeleteOp{}, dbTag, batchTag),
 }
 
 type parser struct {
@@ -321,6 +325,14 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 					panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
 				}
 			}
+
+		case *pebble.FormatMajorVersion:
+			_, lit := p.scanToken(token.INT)
+			val, err := strconv.ParseUint(lit, 0, 64)
+			if err != nil {
+				panic(err)
+			}
+			*t = pebble.FormatMajorVersion(val)
 
 		default:
 			panic(p.errorf(pos, "%s: unsupported arg[%d] type: %T", methodName, i, args[i]))
