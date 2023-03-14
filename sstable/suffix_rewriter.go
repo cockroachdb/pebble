@@ -2,6 +2,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"math"
 	"sync"
 
@@ -467,7 +468,7 @@ func readBlockBuf(r *Reader, bh BlockHandle, buf []byte) ([]byte, []byte, error)
 	return res, buf, err
 }
 
-// memReader is a thin wrapper around a []byte such that it can be passed to an
+// memReader is a thin wrapper around a []byte such that it can be passed to
 // sstable.Reader. It supports concurrent use, and does so without locking in
 // contrast to the heavier read/write vfs.MemFile.
 type memReader struct {
@@ -488,7 +489,7 @@ func newMemReader(b []byte) *memReader {
 }
 
 // ReadAt implements io.ReaderAt.
-func (m *memReader) ReadAt(p []byte, off int64) (n int, err error) {
+func (m *memReader) ReadAt(_ context.Context, p []byte, off int64) (n int, err error) {
 	return m.r.ReadAt(p, off)
 }
 
