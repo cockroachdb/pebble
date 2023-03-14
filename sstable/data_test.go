@@ -425,7 +425,7 @@ func runRewriteCmd(
 	}
 
 	f := &memFile{}
-	meta, err := rewriteKeySuffixesInBlocks(r, f, opts, from, to, 2)
+	meta, _, err := rewriteKeySuffixesInBlocks(r, f, opts, from, to, 2)
 	if err != nil {
 		return nil, r, errors.Wrap(err, "rewrite failed")
 	}
