@@ -116,7 +116,7 @@ type ReadHandle interface {
 
 	// RecordCacheHit informs the implementation that we were able to retrieve a
 	// block from cache.
-	RecordCacheHit(offset, size int64)
+	RecordCacheHit(ctx context.Context, offset, size int64)
 }
 
 // Writable is the handle for an object that is open for writing.
