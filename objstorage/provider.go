@@ -85,7 +85,7 @@ type Readable interface {
 	// The ReadHandle must be closed before the Readable is closed.
 	//
 	// Multiple separate ReadHandles can be used.
-	NewReadHandle() ReadHandle
+	NewReadHandle(ctx context.Context) ReadHandle
 }
 
 // ReadHandle is used to perform reads that are related and might benefit from

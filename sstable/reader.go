@@ -413,7 +413,7 @@ func (i *singleLevelIterator) init(
 		_ = i.index.Close()
 		return err
 	}
-	i.dataRH = r.readable.NewReadHandle()
+	i.dataRH = r.readable.NewReadHandle(ctx)
 	if r.tableFormat == TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			// NB: we cannot avoid this ~248 byte allocation, since valueBlockReader
@@ -433,7 +433,7 @@ func (i *singleLevelIterator) init(
 				stats:  stats,
 			}
 			i.data.lazyValueHandling.vbr = i.vbReader
-			i.vbRH = r.readable.NewReadHandle()
+			i.vbRH = r.readable.NewReadHandle(ctx)
 		}
 		i.data.lazyValueHandling.hasValuePrefix = true
 	}
@@ -1702,7 +1702,7 @@ func (i *twoLevelIterator) init(
 		_ = i.topLevelIndex.Close()
 		return err
 	}
-	i.dataRH = r.readable.NewReadHandle()
+	i.dataRH = r.readable.NewReadHandle(ctx)
 	if r.tableFormat == TableFormatPebblev3 {
 		if r.Properties.NumValueBlocks > 0 {
 			i.vbReader = &valueBlockReader{
@@ -1713,7 +1713,7 @@ func (i *twoLevelIterator) init(
 				stats:  stats,
 			}
 			i.data.lazyValueHandling.vbr = i.vbReader
-			i.vbRH = r.readable.NewReadHandle()
+			i.vbRH = r.readable.NewReadHandle(ctx)
 		}
 		i.data.lazyValueHandling.hasValuePrefix = true
 	}
@@ -3166,7 +3166,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 
 	// Check all blocks sequentially. Make use of read-ahead, given we are
 	// scanning the entire file from start to end.
-	rh := r.readable.NewReadHandle()
+	rh := r.readable.NewReadHandle(context.TODO())
 	defer rh.Close()
 
 	for _, bh := range blocks {
@@ -3745,6 +3745,6 @@ func (s *simpleReadable) Size() int64 {
 }
 
 // NewReaddHandle is part of the objstorage.Readable interface.
-func (s *simpleReadable) NewReadHandle() objstorage.ReadHandle {
+func (s *simpleReadable) NewReadHandle(_ context.Context) objstorage.ReadHandle {
 	return &s.rh
 }
