@@ -220,6 +220,9 @@ func TestLint(t *testing.T) {
 	})
 
 	t.Run("TestCrlfmt", func(t *testing.T) {
+		if isMSANEnabled {
+			t.SkipNow()
+		}
 		t.Parallel()
 
 		args := []string{"run", crlfmt, "-fast", "-tab", "2", "."}
