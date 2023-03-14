@@ -58,6 +58,11 @@ func TestRewriteSuffixProps(t *testing.T) {
 	// Swap the order of two of the props so they have new shortIDs, and remove
 	// one.
 	rwOpts := wOpts
+	rwOpts.TableFormat = TableFormatPebblev2
+	if rand.Intn(2) != 0 {
+		rwOpts.TableFormat = TableFormatPebblev3
+	}
+	fmt.Printf("from format %s, to format %s\n", format.String(), rwOpts.TableFormat.String())
 	rwOpts.BlockPropertyCollectors = rwOpts.BlockPropertyCollectors[:3]
 	rwOpts.BlockPropertyCollectors[0], rwOpts.BlockPropertyCollectors[1] = rwOpts.BlockPropertyCollectors[1], rwOpts.BlockPropertyCollectors[0]
 
@@ -70,24 +75,35 @@ func TestRewriteSuffixProps(t *testing.T) {
 	require.NoError(t, err)
 	defer r.Close()
 
-	for _, byBlocks := range []bool{false, true} {
+	var sstBytes [2][]byte
+	for i, byBlocks := range []bool{false, true} {
 		t.Run(fmt.Sprintf("byBlocks=%v", byBlocks), func(t *testing.T) {
 			rewrittenSST := &memFile{}
 			if byBlocks {
-				_, err := rewriteKeySuffixesInBlocks(r, rewrittenSST, rwOpts, from, to, 8)
+				_, rewriteFormat, err := rewriteKeySuffixesInBlocks(
+					r, rewrittenSST, rwOpts, from, to, 8)
+				// rewriteFormat is equal to the original format, since
+				// rwOpts.TableFormat is ignored.
+				require.Equal(t, wOpts.TableFormat, rewriteFormat)
 				require.NoError(t, err)
 			} else {
 				_, err := RewriteKeySuffixesViaWriter(r, rewrittenSST, rwOpts, from, to)
 				require.NoError(t, err)
 			}
 
+			sstBytes[i] = rewrittenSST.Data()
 			// Check that a reader on the rewritten STT has the expected props.
 			rRewritten, err := NewMemReader(rewrittenSST.Data(), readerOpts)
 			require.NoError(t, err)
 			defer rRewritten.Close()
 			require.Equal(t, expectedProps, rRewritten.Properties.UserProperties)
 
-			// Compare the block level props from the data blocks in the layout.
+			// Compare the block level props from the data blocks in the layout,
+			// only if we did not do a rewrite from one format to another. If the
+			// format changes, the block boundaries change slightly.
+			if !byBlocks && wOpts.TableFormat != rwOpts.TableFormat {
+				return
+			}
 			layout, err := r.Layout()
 			require.NoError(t, err)
 			newLayout, err := rRewritten.Layout()
@@ -116,6 +132,10 @@ func TestRewriteSuffixProps(t *testing.T) {
 				require.Equal(t, interval{46, 47}, ival)
 			}
 		})
+	}
+	if wOpts.TableFormat == rwOpts.TableFormat {
+		// Both methods of rewriting should produce the same result.
+		require.Equal(t, sstBytes[0], sstBytes[1])
 	}
 }
 
@@ -229,7 +249,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 						b.Run(fmt.Sprintf("RewriteKeySuffixes,concurrency=%d", concurrency), func(b *testing.B) {
 							b.SetBytes(r.readable.Size())
 							for i := 0; i < b.N; i++ {
-								if _, err := rewriteKeySuffixesInBlocks(r, &discardFile{}, writerOpts, []byte("_123"), []byte("_456"), concurrency); err != nil {
+								if _, _, err := rewriteKeySuffixesInBlocks(r, &discardFile{}, writerOpts, []byte("_123"), []byte("_456"), concurrency); err != nil {
 									b.Fatal(err)
 								}
 							}
