@@ -715,7 +715,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		}
 	}
 	require.NoError(t, w.Close())
-	f1, err := provider.OpenForReading(base.FileTypeTable, 0 /* fileNum */)
+	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, 0 /* fileNum */)
 	require.NoError(t, err)
 	r, err := NewReader(f1, ReaderOptions{Comparer: testkeys.Comparer})
 	require.NoError(t, err)
@@ -1091,7 +1091,7 @@ func buildTestTableWithProvider(
 	require.NoError(t, w.Close())
 
 	// Re-open that filename for reading.
-	f1, err := provider.OpenForReading(base.FileTypeTable, 0 /* fileNum */)
+	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, 0 /* fileNum */)
 	require.NoError(t, err)
 
 	c := cache.New(128 << 20)

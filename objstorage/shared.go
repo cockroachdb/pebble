@@ -5,6 +5,7 @@
 package objstorage
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -155,7 +156,9 @@ func (p *Provider) sharedCreate(
 	}, meta, nil
 }
 
-func (p *Provider) sharedOpenForReading(meta ObjectMetadata) (Readable, error) {
+func (p *Provider) sharedOpenForReading(
+	ctx context.Context, meta ObjectMetadata,
+) (Readable, error) {
 	if err := p.sharedCheckInitialized(); err != nil {
 		return nil, err
 	}
