@@ -115,7 +115,10 @@ type Metrics struct {
 		// write amplification.
 		BytesWeightedByLevel uint64
 	}
-	ReadAmp SampledMetric
+	// PaceDuration is the time waiting for the pacer to allow the workload to
+	// continue.
+	PaceDuration time.Duration
+	ReadAmp      SampledMetric
 	// QuiesceDuration is the time between completing application of the workload and
 	// compactions quiescing.
 	QuiesceDuration time.Duration
@@ -183,6 +186,9 @@ func (m *Metrics) WriteBenchmarkString(name string, w io.Writer) error {
 		}},
 		{label: "DurationQuiescing", values: []benchfmt.Value{
 			{Value: m.QuiesceDuration.Seconds(), Unit: "sec/op"},
+		}},
+		{label: "DurationPaceDelay", values: []benchfmt.Value{
+			{Value: m.PaceDuration.Seconds(), Unit: "sec/op"},
 		}},
 		// Estimated compaction debt, sampled after every workload step and
 		// compaction.
@@ -267,6 +273,7 @@ type Runner struct {
 		readAmp                 SampledMetric
 		tombstoneCount          SampledMetric
 		totalSize               SampledMetric
+		paceDurationNano        uint64 // atomic
 		workloadDuration        time.Duration
 		writeBytes              uint64 // atomic
 		writeStalls             uint64 // atomic
@@ -503,6 +510,7 @@ func (r *Runner) Wait() (Metrics, error) {
 	m := Metrics{
 		Final:               pm,
 		EstimatedDebt:       r.metrics.estimatedDebt,
+		PaceDuration:        time.Duration(r.metrics.paceDurationNano),
 		ReadAmp:             r.metrics.readAmp,
 		QuiesceDuration:     r.metrics.quiesceDuration,
 		TombstoneCount:      r.metrics.tombstoneCount,
@@ -617,8 +625,8 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 			}
 		}
 
-		// TODO(leon,jackson): Make sure to sum the duration statistics.
-		r.Pacer.pace(r, step)
+		paceDur := r.Pacer.pace(r, step)
+		atomic.AddUint64(&r.metrics.paceDurationNano, uint64(paceDur))
 
 		switch step.kind {
 		case flushStepKind:
