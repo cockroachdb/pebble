@@ -849,7 +849,7 @@ func (d *DB) ingest(
 			if ingestMemtableOverlaps(d.cmp, m, meta) {
 				if (len(d.mu.mem.queue) > d.opts.MemTableStopWritesThreshold-1) ||
 					d.mu.formatVers.vers < FormatFlushableIngest ||
-					d.opts.Experimental.DisableIngestAsFlushable {
+					d.opts.Experimental.DisableIngestAsFlushable() {
 					mem = m
 					if mem.flushable == d.mu.mem.mutable {
 						err = d.makeRoomForWrite(nil)
