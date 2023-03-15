@@ -65,6 +65,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"EventListener:",
 		"MaxConcurrentCompactions:",
 		"Experimental.EnableValueBlocks:",
+		"Experimental.DisableIngestAsFlushable:",
 		// Floating points
 		"Experimental.PointTombstoneWeight:",
 	}
@@ -90,6 +91,10 @@ func TestOptionsRoundtrip(t *testing.T) {
 		require.Equal(t, o.opts.Experimental.EnableValueBlocks == nil, parsed.opts.Experimental.EnableValueBlocks == nil)
 		if o.opts.Experimental.EnableValueBlocks != nil {
 			require.Equal(t, o.opts.Experimental.EnableValueBlocks(), parsed.opts.Experimental.EnableValueBlocks())
+		}
+		require.Equal(t, o.opts.Experimental.DisableIngestAsFlushable == nil, parsed.opts.Experimental.DisableIngestAsFlushable == nil)
+		if o.opts.Experimental.DisableIngestAsFlushable != nil {
+			require.Equal(t, o.opts.Experimental.DisableIngestAsFlushable(), parsed.opts.Experimental.DisableIngestAsFlushable())
 		}
 		require.Equal(t, o.opts.MaxConcurrentCompactions(), parsed.opts.MaxConcurrentCompactions())
 
