@@ -871,6 +871,10 @@ type iterSeekGEOp struct {
 func iteratorPos(i *retryableIter) string {
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "%q", i.Key())
+	if !i.Valid() {
+		fmt.Fprintf(&buf, "<no point>,<no range>")
+		return buf.String()
+	}
 	hasPoint, hasRange := i.HasPointAndRange()
 	if hasPoint {
 		fmt.Fprintf(&buf, ",%q", i.Value())
