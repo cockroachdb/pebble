@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"testing"
 	"unicode"
 
 	"github.com/cockroachdb/errors"
@@ -31,11 +30,8 @@ type history struct {
 	log    *log.Logger
 }
 
-func newHistory(failRE string, writers ...io.Writer) *history {
-	h := &history{}
-	if len(failRE) > 0 {
-		h.failRE = regexp.MustCompile(failRE)
-	}
+func newHistory(failRE *regexp.Regexp, writers ...io.Writer) *history {
+	h := &history{failRE: failRE}
 	h.log = log.New(io.MultiWriter(writers...), "", 0)
 	return h
 }
@@ -124,7 +120,7 @@ func (h historyRecorder) Error() error {
 // returns the index and diff for the first history that differs. If all the
 // histories are identical, CompareHistories returns a zero index and an empty
 // string.
-func CompareHistories(t *testing.T, paths []string) (i int, diff string) {
+func CompareHistories(t TestingT, paths []string) (i int, diff string) {
 	base := readHistory(t, paths[0])
 	base = reorderHistory(base)
 
@@ -176,7 +172,7 @@ func extractOp(line string) int {
 }
 
 // Read a history file, stripping out lines that begin with a comment.
-func readHistory(t *testing.T, historyPath string) []string {
+func readHistory(t TestingT, historyPath string) []string {
 	data, err := os.ReadFile(historyPath)
 	require.NoError(t, err)
 	lines := difflib.SplitLines(string(data))

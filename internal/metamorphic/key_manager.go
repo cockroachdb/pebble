@@ -3,7 +3,6 @@ package metamorphic
 import (
 	"fmt"
 	"sort"
-	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -537,7 +536,7 @@ func opWrittenKeys(untypedOp op) [][]byte {
 	return nil
 }
 
-func loadPrecedingKeys(t testing.TB, ops []op, cfg *config, m *keyManager) {
+func loadPrecedingKeys(t TestingT, ops []op, cfg *config, m *keyManager) {
 	for _, op := range ops {
 		// Pretend we're generating all the operation's keys as potential new
 		// key, so that we update the key manager's keys and prefix sets.
