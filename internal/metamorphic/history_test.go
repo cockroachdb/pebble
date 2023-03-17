@@ -7,6 +7,7 @@ package metamorphic
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -17,7 +18,7 @@ import (
 
 func TestHistoryLogger(t *testing.T) {
 	var buf bytes.Buffer
-	h := newHistory("", &buf)
+	h := newHistory(nil, &buf)
 	h.Infof("hello\nworld\n")
 	h.Fatalf("hello\n\nworld")
 
@@ -34,7 +35,7 @@ func TestHistoryLogger(t *testing.T) {
 
 func TestHistoryFail(t *testing.T) {
 	var buf bytes.Buffer
-	h := newHistory("foo", &buf)
+	h := newHistory(regexp.MustCompile("foo"), &buf)
 	h.Recordf(1, "bar")
 	require.NoError(t, h.Error())
 	h.Recordf(2, "foo bar")
