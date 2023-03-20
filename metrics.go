@@ -188,9 +188,12 @@ type Metrics struct {
 		// Number of flushes that are in-progress. In the current implementation
 		// this will always be zero or one.
 		NumInProgress int64
-		// AsIngestCount is a monotonically increasing counter of flushed flushables
-		// that originated as ingestion operations.
+		// AsIngestCount is a monotonically increasing counter of flush operations
+		// handling ingested tables.
 		AsIngestCount uint64
+		// AsIngestCount is a monotonically increasing counter of tables ingested as
+		// flushables.
+		AsIngestTableCount uint64
 		// AsIngestBytes is a monotonically increasing counter of the bytes flushed
 		// for flushables that originated as ingestion operations.
 		AsIngestBytes uint64
@@ -364,27 +367,27 @@ func (m *Metrics) formatWAL(w redact.SafePrinter) {
 // String pretty-prints the metrics, showing a line for the WAL, a line per-level, and
 // a total:
 //
-//		__level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___w-amp
-//		    WAL         1    27 B       -    48 B       -       -       -       -   108 B       -       -     2.2
-//		      0         2   1.6 K    0.50    81 B   825 B       1     0 B       0   2.4 K       3     0 B    30.6
-//		      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//		      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//		      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//		      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//		      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B     0.0
-//		      6         1   825 B    0.00   1.6 K     0 B       0     0 B       0   825 B       1   1.6 K     0.5
-//		  total         3   2.4 K       -   933 B   825 B       1     0 B       0   4.1 K       4   1.6 K     4.5
-//		  flush         3                           123 B       2    (ingest = ingested-as-flushable)
-//		compact         1   1.6 K     0 B       1                    (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
-//		  ctype         0       0       0       0       0            (default, delete, elision, move, read)
-//		 memtbl         1   4.0 M
-//		zmemtbl         0     0 B
-//		   ztbl         0     0 B
-//		 bcache         4   752 B    7.7%  (score == hit-rate)
-//		 tcache         0     0 B    0.0%  (score == hit-rate)
-//	  snapshots         0               0  (score == earliest seq num)
-//		 titers         0
-//		 filter         -       -    0.0%  (score == utility)
+//	  __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___write(sz_cnt)____read___r-amp___w-amp
+//	    WAL         1    28 B       -    17 B       -       -       -       -    56 B       -       -       -     3.3
+//	      0         1   770 B    0.25    28 B     0 B       0     0 B       0   770 B       1     0 B       1    27.5
+//	      1         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+//	      2         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+//	      3         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+//	      4         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+//	      5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+//	      6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
+//	  total         1   770 B       -    56 B     0 B       0     0 B       0   826 B       1     0 B       1    14.8
+//	  flush         1                             0 B       0       0  (ingest = ingested-as-flushable, move = tables-ingested)
+//	compact         0     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
+//	  ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
+//	 memtbl         1   256 K
+//	zmemtbl         1   256 K
+//	   ztbl         0     0 B
+//	 bcache         4   697 B    0.0%  (score == hit-rate)
+//	 tcache         1   696 B    0.0%  (score == hit-rate)
+//	  snaps         0       -       0  (score == earliest seq num)
+//	 titers         1
+//	 filter         -       -    0.0%  (score == utility)
 //
 // The WAL "in" metric is the size of the batches written to the WAL. The WAL
 // "write" metric is the size of the physical data written to the WAL which
@@ -446,12 +449,12 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.SafeString("  total ")
 	total.format(w, notApplicable, haveValueBlocks)
 
-	w.Printf("  flush %9d %31s %7d %s %s\n",
+	w.Printf("  flush %9d %31s %7d %7d  %s\n",
 		redact.Safe(m.Flush.Count),
 		humanize.IEC.Uint64(m.Flush.AsIngestBytes),
+		redact.Safe(m.Flush.AsIngestTableCount),
 		redact.Safe(m.Flush.AsIngestCount),
-		redact.SafeString(strings.Repeat(" ", 8)),
-		redact.SafeString(`(ingest = ingested-as-flushable)`))
+		redact.SafeString(`(ingest = tables-ingested, move = ingested-as-flushable)`))
 	w.Printf("compact %9d %7s %7s %7d %s %s\n",
 		redact.Safe(m.Compact.Count),
 		humanize.IEC.Uint64(m.Compact.EstimatedDebt),
