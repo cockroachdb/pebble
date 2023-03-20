@@ -188,9 +188,12 @@ type Metrics struct {
 		// Number of flushes that are in-progress. In the current implementation
 		// this will always be zero or one.
 		NumInProgress int64
-		// AsIngestCount is a monotonically increasing counter of flushed flushables
-		// that originated as ingestion operations.
+		// AsIngestCount is a monotonically increasing counter of flush operations
+		// handling ingested tables.
 		AsIngestCount uint64
+		// AsIngestCount is a monotonically increasing counter of tables ingested as
+		// flushables.
+		AsIngestTableCount uint64
 		// AsIngestBytes is a monotonically increasing counter of the bytes flushed
 		// for flushables that originated as ingestion operations.
 		AsIngestBytes uint64
@@ -446,12 +449,12 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.SafeString("  total ")
 	total.format(w, notApplicable, haveValueBlocks)
 
-	w.Printf("  flush %9d %31s %7d %s %s\n",
+	w.Printf("  flush %9d %31s %7d %7d  %s\n",
 		redact.Safe(m.Flush.Count),
 		humanize.IEC.Uint64(m.Flush.AsIngestBytes),
 		redact.Safe(m.Flush.AsIngestCount),
-		redact.SafeString(strings.Repeat(" ", 8)),
-		redact.SafeString(`(ingest = ingested-as-flushable)`))
+		redact.Safe(m.Flush.AsIngestTableCount),
+		redact.SafeString(`(ingest = ingested-as-flushable, move = tables-ingested)`))
 	w.Printf("compact %9d %7s %7s %7d %s %s\n",
 		redact.Safe(m.Compact.Count),
 		humanize.IEC.Uint64(m.Compact.EstimatedDebt),

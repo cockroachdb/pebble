@@ -27,7 +27,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   total         1   770 B       -    56 B     0 B       0     0 B       0   826 B       1     0 B       1    14.8
-  flush         1                             0 B       0          (ingest = ingested-as-flushable)
+  flush         1                             0 B       0       0  (ingest = ingested-as-flushable, move = tables-ingested)
 compact         0     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
@@ -75,7 +75,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5
   total         1   776 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
-  flush         2                             0 B       0          (ingest = ingested-as-flushable)
+  flush         2                             0 B       0       0  (ingest = ingested-as-flushable, move = tables-ingested)
 compact         1     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
@@ -108,7 +108,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5
   total         1   776 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
-  flush         2                             0 B       0          (ingest = ingested-as-flushable)
+  flush         2                             0 B       0       0  (ingest = ingested-as-flushable, move = tables-ingested)
 compact         1     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
@@ -138,7 +138,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5
   total         1   776 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
-  flush         2                             0 B       0          (ingest = ingested-as-flushable)
+  flush         2                             0 B       0       0  (ingest = ingested-as-flushable, move = tables-ingested)
 compact         1     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
@@ -171,7 +171,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5
   total         1   776 B       -    84 B     0 B       0     0 B       0   2.3 K       3   1.5 K       1    28.6
-  flush         2                             0 B       0          (ingest = ingested-as-flushable)
+  flush         2                             0 B       0       0  (ingest = ingested-as-flushable, move = tables-ingested)
 compact         1     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
@@ -230,7 +230,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
       6         1   776 B       -   1.5 K     0 B       0     0 B       0   776 B       1   1.5 K       1     0.5     0 B
   total         4   3.3 K       -   242 B     0 B       0     0 B       0   5.0 K       6   1.5 K       2    21.4    38 B
-  flush         3                             0 B       0          (ingest = ingested-as-flushable)
+  flush         3                             0 B       0       0  (ingest = ingested-as-flushable, move = tables-ingested)
 compact         1   3.3 K     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         1       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
@@ -273,7 +273,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
       6         3   2.5 K       -   4.1 K     0 B       0     0 B       0   2.5 K       3   4.1 K       1     0.6    41 B
   total         3   2.5 K       -   242 B     0 B       0     0 B       0   6.8 K       8   4.1 K       1    28.9    41 B
-  flush         3                             0 B       0          (ingest = ingested-as-flushable)
+  flush         3                             0 B       0       0  (ingest = ingested-as-flushable, move = tables-ingested)
 compact         2     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         2       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   256 K
@@ -362,7 +362,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0     0 B
       6         3   2.5 K       -   4.1 K     0 B       0     0 B       0   2.5 K       3   4.1 K       1     0.6    41 B
   total         7   5.7 K       -   2.6 K   2.4 K       3     0 B       0    10 K       9   4.1 K       3     3.8    41 B
-  flush         8                           2.4 K       3          (ingest = ingested-as-flushable)
+  flush         8                           2.4 K       2       3  (ingest = ingested-as-flushable, move = tables-ingested)
 compact         2   5.7 K     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         2       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         1   1.0 M
