@@ -36,8 +36,9 @@ func TestMetricsFormat(t *testing.T) {
 	m.Compact.InProgressBytes = 7
 	m.Compact.NumInProgress = 2
 	m.Flush.Count = 8
-	m.Flush.AsIngestCount = 34
-	m.Flush.AsIngestBytes = 35
+	m.Flush.AsIngestBytes = 34
+	m.Flush.AsIngestTableCount = 35
+	m.Flush.AsIngestCount = 36
 	m.Filter.Hits = 9
 	m.Filter.Misses = 10
 	m.MemTable.Size = 11
@@ -89,7 +90,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5       601   602 B  603.00   604 B   604 B     612   606 B     613   1.2 K   1.2 K   607 B       6     2.0
       6       701   702 B       -   704 B   704 B     712   706 B     713   1.4 K   1.4 K   707 B       7     2.0
   total      2807   2.7 K       -   2.8 K   2.8 K   2.9 K   2.8 K   2.9 K   8.4 K   5.7 K   2.8 K      28     3.0
-  flush         8                            35 B      34          (ingest = ingested-as-flushable)
+  flush         8                            34 B      35      36  (ingest = tables-ingested, move = ingested-as-flushable)
 compact         5     6 B     7 B       2                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype        27      28      29      30      31      32      33  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl        12    11 B
@@ -284,7 +285,7 @@ __level_____count____size___score______in__ingest(sz_cnt)____move(sz_cnt)___writ
       5         0     0 B    0.00     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
       6         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
   total         0     0 B       -     0 B     0 B       0     0 B       0     0 B       0     0 B       0     0.0
-  flush         0                             0 B       0          (ingest = ingested-as-flushable)
+  flush         0                             0 B       0       0  (ingest = tables-ingested, move = ingested-as-flushable)
 compact         0     0 B     0 B       0                          (size == estimated-debt, score = in-progress-bytes, in = num-in-progress)
   ctype         0       0       0       0       0       0       0  (default, delete, elision, move, read, rewrite, multi-level)
  memtbl         0     0 B
