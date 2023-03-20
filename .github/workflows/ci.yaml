@@ -124,6 +124,11 @@ jobs:
         GOOS: netbsd
       run: go build -v ./...
 
+    - name: OpenBSD build
+      env:
+        GOOS: openbsd
+      run: go build -v ./...
+
   go-lint-checks:
     name: go-lint-checks
     runs-on: ubuntu-latest
