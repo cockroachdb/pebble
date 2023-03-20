@@ -198,7 +198,7 @@ func (i FlushInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 			if j > 0 {
 				w.Printf(" +")
 			}
-			w.Printf(" L%d:%s (%s)", level, file.FileNum, humanize.IEC.Uint64(file.Size))
+			w.Printf(" L%d:%s (%s)", level, redact.Safe(file.FileNum), humanize.IEC.Uint64(file.Size))
 		}
 		w.Printf(" in %.1fs (%.1fs total), output rate %s/s",
 			redact.Safe(i.Duration.Seconds()),
