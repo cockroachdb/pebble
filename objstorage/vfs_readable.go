@@ -5,6 +5,7 @@
 package objstorage
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync"
@@ -47,7 +48,7 @@ func newFileReadable(file vfs.File, fs vfs.FS, filename string) (*fileReadable, 
 }
 
 // ReadAt is part of the objstorage.Readable interface.
-func (r *fileReadable) ReadAt(p []byte, off int64) (n int, err error) {
+func (r *fileReadable) ReadAt(_ context.Context, p []byte, off int64) (n int, err error) {
 	return r.file.ReadAt(p, off)
 }
 
@@ -108,7 +109,7 @@ func (rh *vfsReadHandle) Close() error {
 }
 
 // ReadAt is part of the objstorage.ReadHandle interface.
-func (rh *vfsReadHandle) ReadAt(p []byte, offset int64) (n int, err error) {
+func (rh *vfsReadHandle) ReadAt(_ context.Context, p []byte, offset int64) (n int, err error) {
 	if rh.sequentialFile != nil {
 		// Use OS-level read-ahead.
 		return rh.sequentialFile.ReadAt(p, offset)
@@ -167,8 +168,8 @@ func newGenericFileReadable(file vfs.File) (*genericFileReadable, error) {
 	r := &genericFileReadable{
 		file: file,
 		size: info.Size(),
-		rh:   MakeNoopReadHandle(file),
 	}
+	r.rh = MakeNoopReadHandle(r)
 	invariants.SetFinalizer(r, func(obj interface{}) {
 		if obj.(*genericFileReadable).file != nil {
 			fmt.Fprintf(os.Stderr, "Readable was not closed")
@@ -179,7 +180,7 @@ func newGenericFileReadable(file vfs.File) (*genericFileReadable, error) {
 }
 
 // ReadAt is part of the objstorage.Readable interface.
-func (r *genericFileReadable) ReadAt(p []byte, off int64) (n int, err error) {
+func (r *genericFileReadable) ReadAt(_ context.Context, p []byte, off int64) (n int, err error) {
 	return r.file.ReadAt(p, off)
 }
 
