@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"strconv"
@@ -224,7 +225,7 @@ func runBuildRawCmd(
 		return nil, nil, err
 	}
 
-	f1, err := provider.OpenForReading(base.FileTypeTable, 0 /* fileNum */)
+	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, 0 /* fileNum */)
 	if err != nil {
 		return nil, nil, err
 	}

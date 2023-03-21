@@ -931,7 +931,7 @@ type tableCacheValue struct {
 func (v *tableCacheValue) load(meta *fileMetadata, c *tableCacheShard, dbOpts *tableCacheOpts) {
 	// Try opening the file first.
 	var f objstorage.Readable
-	f, v.err = dbOpts.objProvider.OpenForReadingMustExist(fileTypeTable, meta.FileNum)
+	f, v.err = dbOpts.objProvider.OpenForReadingMustExist(context.TODO(), fileTypeTable, meta.FileNum)
 	if v.err == nil {
 		cacheOpts := private.SSTableCacheOpts(dbOpts.cacheID, meta.FileNum).(sstable.ReaderOption)
 		v.reader, v.err = sstable.NewReader(f, dbOpts.opts, cacheOpts, dbOpts.filterMetrics)

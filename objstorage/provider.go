@@ -260,23 +260,25 @@ func (p *Provider) Close() error {
 }
 
 // OpenForReading opens an existing object.
-func (p *Provider) OpenForReading(fileType base.FileType, fileNum base.FileNum) (Readable, error) {
+func (p *Provider) OpenForReading(
+	ctx context.Context, fileType base.FileType, fileNum base.FileNum,
+) (Readable, error) {
 	meta, err := p.Lookup(fileType, fileNum)
 	if err != nil {
 		return nil, err
 	}
 
 	if !meta.IsShared() {
-		return p.vfsOpenForReading(fileType, fileNum, false /* mustExist */)
+		return p.vfsOpenForReading(ctx, fileType, fileNum, false /* mustExist */)
 	}
-	return p.sharedOpenForReading(meta)
+	return p.sharedOpenForReading(ctx, meta)
 }
 
 // OpenForReadingMustExist is a variant of OpenForReading which causes a fatal
 // error if the file does not exist. The fatal error message contains
 // information helpful for debugging.
 func (p *Provider) OpenForReadingMustExist(
-	fileType base.FileType, fileNum base.FileNum,
+	ctx context.Context, fileType base.FileType, fileNum base.FileNum,
 ) (Readable, error) {
 	meta, err := p.Lookup(fileType, fileNum)
 	if err != nil {
@@ -285,11 +287,11 @@ func (p *Provider) OpenForReadingMustExist(
 	}
 
 	if !meta.IsShared() {
-		return p.vfsOpenForReading(fileType, fileNum, true /* mustExist */)
+		return p.vfsOpenForReading(ctx, fileType, fileNum, true /* mustExist */)
 	}
 
 	// TODO(radu): implement "must exist" behavior.
-	return p.sharedOpenForReading(meta)
+	return p.sharedOpenForReading(ctx, meta)
 }
 
 // CreateOptions contains optional arguments for Create.

@@ -5,6 +5,8 @@
 package objstorage
 
 import (
+	"context"
+
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/vfs"
@@ -15,7 +17,7 @@ func (p *Provider) vfsPath(fileType base.FileType, fileNum base.FileNum) string 
 }
 
 func (p *Provider) vfsOpenForReading(
-	fileType base.FileType, fileNum base.FileNum, mustExist bool,
+	ctx context.Context, fileType base.FileType, fileNum base.FileNum, mustExist bool,
 ) (Readable, error) {
 	filename := p.vfsPath(fileType, fileNum)
 	file, err := p.st.FS.Open(filename, vfs.RandomReadsOption)

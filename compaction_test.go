@@ -1000,7 +1000,7 @@ func TestCompaction(t *testing.T) {
 		for _, levelMetadata := range v.Levels {
 			iter := levelMetadata.Iter()
 			for meta := iter.First(); meta != nil; meta = iter.Next() {
-				f, err := provider.OpenForReading(base.FileTypeTable, meta.FileNum)
+				f, err := provider.OpenForReading(context.Background(), base.FileTypeTable, meta.FileNum)
 				if err != nil {
 					return "", "", errors.WithStack(err)
 				}
