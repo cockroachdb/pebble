@@ -48,7 +48,7 @@ func (r *sharedReadable) Size() int64 {
 	return r.size
 }
 
-func (r *sharedReadable) NewReadHandle() ReadHandle {
+func (r *sharedReadable) NewReadHandle(_ context.Context) ReadHandle {
 	// TODO(radu): use a pool.
 	return &sharedReadHandle{readable: r}
 }
