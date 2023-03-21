@@ -68,6 +68,7 @@
 package sstable // import "github.com/cockroachdb/pebble/sstable"
 
 import (
+	"context"
 	"encoding/binary"
 	"io"
 
@@ -317,7 +318,7 @@ func readFooter(f objstorage.Readable) (footer, error) {
 	if off < 0 {
 		off = 0
 	}
-	n, err := f.ReadAt(buf, off)
+	n, err := f.ReadAt(context.TODO(), buf, off)
 	if err != nil && err != io.EOF {
 		return footer, errors.Wrap(err, "pebble/table: invalid table (could not read footer)")
 	}

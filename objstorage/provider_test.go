@@ -5,6 +5,7 @@
 package objstorage
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -102,7 +103,7 @@ func TestProvider(t *testing.T) {
 					return err.Error()
 				}
 				data := make([]byte, int(r.Size()))
-				n, err := r.ReadAt(data, 0)
+				n, err := r.ReadAt(context.Background(), data, 0)
 				require.NoError(t, err)
 				require.Equal(t, n, len(data))
 				return log.String() + fmt.Sprintf("data: %s\n", string(data))
