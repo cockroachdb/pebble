@@ -43,6 +43,7 @@ func TestProvider(t *testing.T) {
 					}
 				}
 			}
+			ctx := context.Background()
 
 			log.Reset()
 			switch d.Cmd {
@@ -98,12 +99,12 @@ func TestProvider(t *testing.T) {
 			case "read":
 				var fileNum base.FileNum
 				scanArgs("<file-num>", &fileNum)
-				r, err := curProvider.OpenForReading(base.FileTypeTable, fileNum)
+				r, err := curProvider.OpenForReading(ctx, base.FileTypeTable, fileNum)
 				if err != nil {
 					return err.Error()
 				}
 				data := make([]byte, int(r.Size()))
-				n, err := r.ReadAt(context.Background(), data, 0)
+				n, err := r.ReadAt(ctx, data, 0)
 				require.NoError(t, err)
 				require.Equal(t, n, len(data))
 				return log.String() + fmt.Sprintf("data: %s\n", string(data))
@@ -171,7 +172,7 @@ func TestNotExistError(t *testing.T) {
 	require.NoError(t, err)
 
 	require.True(t, IsNotExistError(provider.Remove(base.FileTypeTable, 1)))
-	_, err = provider.OpenForReading(base.FileTypeTable, 1)
+	_, err = provider.OpenForReading(context.Background(), base.FileTypeTable, 1)
 	require.True(t, IsNotExistError(err))
 
 	w, _, err := provider.Create(base.FileTypeTable, 1, CreateOptions{})

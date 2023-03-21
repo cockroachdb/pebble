@@ -5,6 +5,7 @@
 package tool
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"text/tabwriter"
@@ -647,7 +648,8 @@ func (p *props) update(o props) {
 }
 
 func (d *dbT) addProps(objProvider *objstorage.Provider, m *manifest.FileMetadata, p *props) error {
-	f, err := objProvider.OpenForReading(base.FileTypeTable, m.FileNum)
+	ctx := context.Background()
+	f, err := objProvider.OpenForReading(ctx, base.FileTypeTable, m.FileNum)
 	if err != nil {
 		return err
 	}
