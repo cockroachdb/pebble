@@ -141,7 +141,7 @@ func (rh *vfsReadHandle) MaxReadahead() {
 }
 
 // RecordCacheHit is part of the objstorage.ReadHandle interface.
-func (rh *vfsReadHandle) RecordCacheHit(offset, size int64) {
+func (rh *vfsReadHandle) RecordCacheHit(_ context.Context, offset, size int64) {
 	if rh.sequentialFile != nil {
 		// Using OS-level readahead, so do nothing.
 		return

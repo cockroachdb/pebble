@@ -95,4 +95,4 @@ func (r *sharedReadHandle) Close() error {
 
 func (r *sharedReadHandle) MaxReadahead() {}
 
-func (r *sharedReadHandle) RecordCacheHit(offset, size int64) {}
+func (r *sharedReadHandle) RecordCacheHit(_ context.Context, offset, size int64) {}

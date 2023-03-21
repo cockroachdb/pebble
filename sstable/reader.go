@@ -2808,7 +2808,7 @@ func (r *Reader) readBlock(
 ) (handle cache.Handle, _ error) {
 	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		if readHandle != nil {
-			readHandle.RecordCacheHit(int64(bh.Offset), int64(bh.Length+blockTrailerLen))
+			readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+blockTrailerLen))
 		}
 		if stats != nil {
 			stats.BlockBytes += bh.Length
