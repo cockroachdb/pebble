@@ -2747,7 +2747,7 @@ func (d *DB) runCompaction(
 		pendingOutputs = append(pendingOutputs, fileMeta)
 		d.mu.Unlock()
 
-		writable, objMeta, err := d.objProvider.Create(fileTypeTable, fileNum, objstorage.CreateOptions{} /* TODO */)
+		writable, objMeta, err := d.objProvider.Create(context.TODO(), fileTypeTable, fileNum, objstorage.CreateOptions{} /* TODO */)
 		if err != nil {
 			return err
 		}

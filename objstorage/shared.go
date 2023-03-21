@@ -134,7 +134,7 @@ func sharedObjectName(meta ObjectMetadata) string {
 }
 
 func (p *Provider) sharedCreate(
-	fileType base.FileType, fileNum base.FileNum,
+	_ context.Context, fileType base.FileType, fileNum base.FileNum,
 ) (Writable, ObjectMetadata, error) {
 	if err := p.sharedCheckInitialized(); err != nil {
 		return nil, ObjectMetadata{}, err

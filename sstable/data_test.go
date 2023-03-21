@@ -178,7 +178,7 @@ func runBuildRawCmd(
 	}
 	defer provider.Close()
 
-	f0, _, err := provider.Create(base.FileTypeTable, 0 /* fileNum */, objstorage.CreateOptions{})
+	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, 0 /* fileNum */, objstorage.CreateOptions{})
 	if err != nil {
 		return nil, nil, err
 	}

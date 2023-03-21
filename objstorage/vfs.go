@@ -37,7 +37,7 @@ func (p *Provider) vfsOpenForReading(
 }
 
 func (p *Provider) vfsCreate(
-	fileType base.FileType, fileNum base.FileNum,
+	_ context.Context, fileType base.FileType, fileNum base.FileNum,
 ) (Writable, ObjectMetadata, error) {
 	filename := p.vfsPath(fileType, fileNum)
 	file, err := p.st.FS.Create(filename)
