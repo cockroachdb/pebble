@@ -87,7 +87,7 @@ func TestProvider(t *testing.T) {
 				default:
 					d.Fatalf(t, "'%s' should be 'local' or 'shared'", typ)
 				}
-				w, _, err := curProvider.Create(base.FileTypeTable, fileNum, opts)
+				w, _, err := curProvider.Create(ctx, base.FileTypeTable, fileNum, opts)
 				if err != nil {
 					return err.Error()
 				}
@@ -175,7 +175,7 @@ func TestNotExistError(t *testing.T) {
 	_, err = provider.OpenForReading(context.Background(), base.FileTypeTable, 1)
 	require.True(t, IsNotExistError(err))
 
-	w, _, err := provider.Create(base.FileTypeTable, 1, CreateOptions{})
+	w, _, err := provider.Create(context.Background(), base.FileTypeTable, 1, CreateOptions{})
 	require.NoError(t, err)
 	require.NoError(t, w.Write([]byte("foo")))
 	require.NoError(t, w.Finish())

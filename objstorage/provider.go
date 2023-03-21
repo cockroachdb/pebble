@@ -306,12 +306,12 @@ type CreateOptions struct {
 // The object is not guaranteed to be durable (accessible in case of crashes)
 // until Sync is called.
 func (p *Provider) Create(
-	fileType base.FileType, fileNum base.FileNum, opts CreateOptions,
+	ctx context.Context, fileType base.FileType, fileNum base.FileNum, opts CreateOptions,
 ) (w Writable, meta ObjectMetadata, err error) {
 	if opts.PreferSharedStorage && p.st.Shared.Storage != nil {
-		w, meta, err = p.sharedCreate(fileType, fileNum)
+		w, meta, err = p.sharedCreate(ctx, fileType, fileNum)
 	} else {
-		w, meta, err = p.vfsCreate(fileType, fileNum)
+		w, meta, err = p.vfsCreate(ctx, fileType, fileNum)
 	}
 	if err != nil {
 		err = errors.Wrapf(err, "creating object %s", errors.Safe(fileNum))
