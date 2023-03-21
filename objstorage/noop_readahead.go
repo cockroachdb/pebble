@@ -31,4 +31,4 @@ func (*NoopReadHandle) Close() error { return nil }
 func (*NoopReadHandle) MaxReadahead() {}
 
 // RecordCacheHit is part of the ReadHandle interface.
-func (*NoopReadHandle) RecordCacheHit(offset, size int64) {}
+func (*NoopReadHandle) RecordCacheHit(_ context.Context, offset, size int64) {}
