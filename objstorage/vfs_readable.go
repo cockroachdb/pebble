@@ -64,7 +64,7 @@ func (r *fileReadable) Size() int64 {
 }
 
 // NewReadHandle is part of the objstorage.Readable interface.
-func (r *fileReadable) NewReadHandle() ReadHandle {
+func (r *fileReadable) NewReadHandle(_ context.Context) ReadHandle {
 	rh := readHandlePool.Get().(*vfsReadHandle)
 	rh.r = r
 	return rh
@@ -196,7 +196,7 @@ func (r *genericFileReadable) Size() int64 {
 }
 
 // NewReadHandle is part of the objstorage.Readable interface.
-func (r *genericFileReadable) NewReadHandle() ReadHandle {
+func (r *genericFileReadable) NewReadHandle(_ context.Context) ReadHandle {
 	return &r.rh
 }
 
