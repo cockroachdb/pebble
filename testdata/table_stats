@@ -367,6 +367,29 @@ range-key-del a z
 compact a-z
 ----
 
+# Ingest another sstable with range tombstones again, but this time into an
+# empty LSM. The table should ingest into L6. Its table stats should reflect
+# that its range tombstones cannot delete any of the data contained within the
+# file itself.
+ingest ext1
+del-range a z
+range-key-del a z
+set d d
+set e e
+set f f
+----
+6:
+  000015:[a#8,RANGEKEYDEL-z#inf,RANGEDEL]
+
+wait-pending-table-stats
+000015
+----
+num-entries: 4
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0
+
 # A hint for exclusively range key deletions that covers a table with point keys
 # should not contain an estimate for point keys.
 

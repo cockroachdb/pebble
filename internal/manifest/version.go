@@ -60,9 +60,11 @@ type TableStats struct {
 	// overlapping data in L0 and ignores L0 sublevels, but the error that
 	// introduces is expected to be small.
 	//
-	// Tables in the bottommost level of the LSM may have a nonzero estimate
-	// if snapshots or move compactions prevented the elision of their range
-	// tombstones.
+	// Tables in the bottommost level of the LSM may have a nonzero estimate if
+	// snapshots or move compactions prevented the elision of their range
+	// tombstones. A table in the bottommost level that was ingested into L6
+	// will have a zero estimate, because the file's sequence numbers indicate
+	// that the tombstone cannot drop any data contained within the file itself.
 	RangeDeletionsBytesEstimate uint64
 	// Total size of value blocks and value index block.
 	ValueBlocksSize uint64

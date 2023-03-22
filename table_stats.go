@@ -320,25 +320,50 @@ func (d *DB) loadTableRangeDelStats(
 	for s := iter.First(); s != nil; s = iter.Next() {
 		start, end := s.Start, s.End
 		// We only need to consider deletion size estimates for tables that contain
-		// point keys.
-		var hasPoints bool
+		// RANGEDELs.
+		var maxRangeDeleteSeqNum uint64
 		for _, k := range s.Keys {
-			if k.Kind() == base.InternalKeyKindRangeDelete {
-				hasPoints = true
+			if k.Kind() == base.InternalKeyKindRangeDelete && maxRangeDeleteSeqNum < k.SeqNum() {
+				maxRangeDeleteSeqNum = k.SeqNum()
 				break
 			}
 		}
 
 		// If the file is in the last level of the LSM, there is no data beneath
 		// it. The fact that there is still a range tombstone in a bottommost file
-		// suggests that an open snapshot kept the tombstone around. Estimate disk
-		// usage within the file itself.
+		// indicates two possibilites:
+		//   1. an open snapshot kept the tombstone around, and the data the
+		//      tombstone deletes is contained within the file itself.
+		//   2. the file was ingested.
+		// In the first case, we'd like to estimate disk usage within the file
+		// itself since compacting the file will drop that covered data. In the
+		// second case, we expect that compacting the file will NOT drop any
+		// data and rewriting the file is a waste of write bandwidth. We can
+		// distinguish these cases by looking at the file metadata's sequence
+		// numbers. A file's range deletions can only delete data within the
+		// file at lower sequence numbers. All keys in an ingested sstable adopt
+		// the same sequence number, preventing tombstones from deleting keys
+		// within the same file. We check here if the largest RANGEDEL sequence
+		// number is greater than the file's smallest sequence number. If it is,
+		// the RANGEDEL could conceivably (although inconclusively) delete data
+		// within the same file.
+		//
+		// Note that this heuristic is imperfect. If a table containing a range
+		// deletion is ingested into L5 and subsequently compacted into L6 but
+		// an open snapshot prevents elision of covered keys in L6, the
+		// resulting RangeDeletionsBytesEstimate will incorrectly include all
+		// covered keys.
+		//
+		// TODO(jackson): We could prevent the above error in the heuristic by
+		// computing the file's RangeDeletionsBytesEstimate during the
+		// compaction itself. It's unclear how common this is.
+		//
 		// NOTE: If the span `s` wholly contains a table containing range keys,
 		// the returned size estimate will be slightly inflated by the range key
 		// block. However, in practice, range keys are expected to be rare, and
 		// the size of the range key block relative to the overall size of the
 		// table is expected to be small.
-		if hasPoints && level == numLevels-1 {
+		if level == numLevels-1 && meta.SmallestSeqNum < maxRangeDeleteSeqNum {
 			size, err := r.EstimateDiskUsage(start, end)
 			if err != nil {
 				return nil, err
