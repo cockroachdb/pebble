@@ -58,7 +58,7 @@ num-entries: 2
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 26
+range-deletions-bytes-estimate: 0
 
 maybe-compact
 ----
