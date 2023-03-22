@@ -221,7 +221,8 @@ func (f *directIOFile) readAtWithDirectIO(p []byte, off int64) (nout int, err er
 	alignedOff := off / blockSize
 	// Given max file size + that this is non-production code, cast should be fine.
 	rem := int(off) % blockSize
-	nPages := ((int(off) + len(p)) / blockSize) + 1
+	alignedEnd := (int(off) + len(p) - 1) / blockSize
+	nPages := (alignedEnd - int(alignedOff)) + 1
 
 	buf := alignedByteSlice(blockSize*nPages)
 	n, err := f.File.ReadAt(buf, alignedOff*blockSize)

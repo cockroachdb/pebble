@@ -375,6 +375,35 @@ func TestVFSDirectReads(t *testing.T) {
 
 		require.Equal(t, in, out)
 	})
+	t.Run("small read at at non-zero offset to big file", func(t *testing.T) {
+		tmp, err := os.CreateTemp("", "test-vfs-direct-reads")
+		require.NoError(t, err)
+
+		var in []byte
+		i := 0
+		for i < 4*blockSize {
+			in = append(in, 'x')
+			i++
+		}
+		in[4095] = 'y'
+
+		_, err = tmp.Write(in)
+		require.NoError(t, err)
+
+		fs := Default
+		file, err := fs.Open(tmp.Name())
+		require.NoError(t, err)
+
+		out := make([]byte, 10)
+		fmt.Println(string(out[:]))
+
+		_, err = file.ReadAt(out, 4095)
+		require.NoError(t, err)
+
+		fmt.Println(string(out[:]))
+
+		require.Equal(t, in[4095:4105], out)
+	})
 	t.Run("big read at at small offset", func(t *testing.T) {
 		tmp, err := os.CreateTemp("", "test-vfs-direct-reads")
 		require.NoError(t, err)
