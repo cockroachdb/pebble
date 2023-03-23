@@ -649,7 +649,7 @@ func (p *props) update(o props) {
 
 func (d *dbT) addProps(objProvider *objstorage.Provider, m *manifest.FileMetadata, p *props) error {
 	ctx := context.Background()
-	f, err := objProvider.OpenForReading(ctx, base.FileTypeTable, m.FileNum)
+	f, err := objProvider.OpenForReading(ctx, base.FileTypeTable, m.FileNum, objstorage.OpenOptions{})
 	if err != nil {
 		return err
 	}
