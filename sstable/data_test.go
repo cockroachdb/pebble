@@ -225,7 +225,7 @@ func runBuildRawCmd(
 		return nil, nil, err
 	}
 
-	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, 0 /* fileNum */)
+	f1, err := provider.OpenForReading(context.Background(), base.FileTypeTable, 0 /* fileNum */, objstorage.OpenOptions{})
 	if err != nil {
 		return nil, nil, err
 	}

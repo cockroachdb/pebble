@@ -99,7 +99,7 @@ func TestProvider(t *testing.T) {
 			case "read":
 				var fileNum base.FileNum
 				scanArgs("<file-num>", &fileNum)
-				r, err := curProvider.OpenForReading(ctx, base.FileTypeTable, fileNum)
+				r, err := curProvider.OpenForReading(ctx, base.FileTypeTable, fileNum, OpenOptions{})
 				if err != nil {
 					return err.Error()
 				}
@@ -172,7 +172,7 @@ func TestNotExistError(t *testing.T) {
 	require.NoError(t, err)
 
 	require.True(t, IsNotExistError(provider.Remove(base.FileTypeTable, 1)))
-	_, err = provider.OpenForReading(context.Background(), base.FileTypeTable, 1)
+	_, err = provider.OpenForReading(context.Background(), base.FileTypeTable, 1, OpenOptions{})
 	require.True(t, IsNotExistError(err))
 
 	w, _, err := provider.Create(context.Background(), base.FileTypeTable, 1, CreateOptions{})

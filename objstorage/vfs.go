@@ -17,12 +17,12 @@ func (p *Provider) vfsPath(fileType base.FileType, fileNum base.FileNum) string 
 }
 
 func (p *Provider) vfsOpenForReading(
-	ctx context.Context, fileType base.FileType, fileNum base.FileNum, mustExist bool,
+	ctx context.Context, fileType base.FileType, fileNum base.FileNum, opts OpenOptions,
 ) (Readable, error) {
 	filename := p.vfsPath(fileType, fileNum)
 	file, err := p.st.FS.Open(filename, vfs.RandomReadsOption)
 	if err != nil {
-		if mustExist {
+		if opts.MustExist {
 			base.MustExist(p.st.FS, filename, p.st.Logger, err)
 		}
 		return nil, err
