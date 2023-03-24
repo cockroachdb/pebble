@@ -31,6 +31,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -992,7 +993,7 @@ func TestCompaction(t *testing.T) {
 		}
 		ss := []string(nil)
 		v := d.mu.versions.currentVersion()
-		provider, err := objstorage.Open(objstorage.DefaultSettings(mem, "" /* dirName */))
+		provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, "" /* dirName */))
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
@@ -2921,7 +2922,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 		f, err := mem.Create("ext")
 		require.NoError(t, err)
 
-		w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 			TableFormat: d.FormatMajorVersion().MaxTableFormat(),
 		})
 		for _, k := range keys {
@@ -3836,7 +3837,7 @@ func TestCompaction_LogAndApplyFails(t *testing.T) {
 		const fName = "ext"
 		f, err := db.opts.FS.Create(fName)
 		require.NoError(t, err)
-		w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		require.NoError(t, w.Set(key, nil))
 		require.NoError(t, w.Close())
 		// Ingest the SST.

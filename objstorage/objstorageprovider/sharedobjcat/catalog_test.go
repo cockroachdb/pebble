@@ -14,7 +14,8 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/objstorage/sharedobjcat"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -47,7 +48,7 @@ func TestCatalog(t *testing.T) {
 				FileNum: base.FileNum(vals[0]),
 				// When we support other file types, we should let the test determine this.
 				FileType:       base.FileTypeTable,
-				CreatorID:      sharedobjcat.CreatorID(vals[1]),
+				CreatorID:      objstorage.CreatorID(vals[1]),
 				CreatorFileNum: base.FileNum(vals[2]),
 			}
 		}
@@ -90,7 +91,7 @@ func TestCatalog(t *testing.T) {
 			if len(td.CmdArgs) != 1 {
 				td.Fatalf(t, "set-creator-id <id>")
 			}
-			id := sharedobjcat.CreatorID(toInt(td.CmdArgs[0].String())[0])
+			id := objstorage.CreatorID(toInt(td.CmdArgs[0].String())[0])
 			if err := cat.SetCreatorID(id); err != nil {
 				return fmt.Sprintf("error setting creator ID: %v", err)
 			}
@@ -142,7 +143,7 @@ func TestCatalog(t *testing.T) {
 						FileNum: base.FileNum(rand.Uint64()),
 						// When we support other file types, we should let the test determine this.
 						FileType:       base.FileTypeTable,
-						CreatorID:      sharedobjcat.CreatorID(rand.Uint64()),
+						CreatorID:      objstorage.CreatorID(rand.Uint64()),
 						CreatorFileNum: base.FileNum(rand.Uint64()),
 					})
 				}

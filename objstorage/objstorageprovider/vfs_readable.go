@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package objstorage
+package objstorageprovider
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -25,7 +26,7 @@ type fileReadable struct {
 	fs       vfs.FS
 }
 
-var _ Readable = (*fileReadable)(nil)
+var _ objstorage.Readable = (*fileReadable)(nil)
 
 func newFileReadable(file vfs.File, fs vfs.FS, filename string) (*fileReadable, error) {
 	info, err := file.Stat()
@@ -64,7 +65,7 @@ func (r *fileReadable) Size() int64 {
 }
 
 // NewReadHandle is part of the objstorage.Readable interface.
-func (r *fileReadable) NewReadHandle(_ context.Context) ReadHandle {
+func (r *fileReadable) NewReadHandle(_ context.Context) objstorage.ReadHandle {
 	rh := readHandlePool.Get().(*vfsReadHandle)
 	rh.r = r
 	return rh
@@ -81,7 +82,7 @@ type vfsReadHandle struct {
 	sequentialFile vfs.File
 }
 
-var _ ReadHandle = (*vfsReadHandle)(nil)
+var _ objstorage.ReadHandle = (*vfsReadHandle)(nil)
 
 var readHandlePool = sync.Pool{
 	New: func() interface{} {
@@ -155,10 +156,10 @@ type genericFileReadable struct {
 	file vfs.File
 	size int64
 
-	rh NoopReadHandle
+	rh objstorage.NoopReadHandle
 }
 
-var _ Readable = (*genericFileReadable)(nil)
+var _ objstorage.Readable = (*genericFileReadable)(nil)
 
 func newGenericFileReadable(file vfs.File) (*genericFileReadable, error) {
 	info, err := file.Stat()
@@ -169,7 +170,7 @@ func newGenericFileReadable(file vfs.File) (*genericFileReadable, error) {
 		file: file,
 		size: info.Size(),
 	}
-	r.rh = MakeNoopReadHandle(r)
+	r.rh = objstorage.MakeNoopReadHandle(r)
 	invariants.SetFinalizer(r, func(obj interface{}) {
 		if obj.(*genericFileReadable).file != nil {
 			fmt.Fprintf(os.Stderr, "Readable was not closed")
@@ -196,12 +197,12 @@ func (r *genericFileReadable) Size() int64 {
 }
 
 // NewReadHandle is part of the objstorage.Readable interface.
-func (r *genericFileReadable) NewReadHandle(_ context.Context) ReadHandle {
+func (r *genericFileReadable) NewReadHandle(_ context.Context) objstorage.ReadHandle {
 	return &r.rh
 }
 
 // TestingCheckMaxReadahead returns true if the ReadHandle has switched to
 // OS-level read-ahead.
-func TestingCheckMaxReadahead(rh ReadHandle) bool {
+func TestingCheckMaxReadahead(rh objstorage.ReadHandle) bool {
 	return rh.(*vfsReadHandle).sequentialFile != nil
 }

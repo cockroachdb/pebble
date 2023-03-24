@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -162,7 +163,7 @@ func newTableCacheContainerTest(
 	fs := &tableCacheTestFS{
 		FS: vfs.NewMem(),
 	}
-	objProvider, err := objstorage.Open(objstorage.DefaultSettings(fs, dirname))
+	objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(fs, dirname))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -839,7 +840,7 @@ func TestTableCacheClockPro(t *testing.T) {
 	require.NoError(t, err)
 
 	mem := vfs.NewMem()
-	objProvider, err := objstorage.Open(objstorage.DefaultSettings(mem, ""))
+	objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, ""))
 	require.NoError(t, err)
 	defer objProvider.Close()
 

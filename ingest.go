@@ -254,7 +254,7 @@ func ingestSortAndVerify(cmp Compare, meta []*fileMetadata, paths []string) erro
 	return nil
 }
 
-func ingestCleanup(objProvider *objstorage.Provider, meta []*fileMetadata) error {
+func ingestCleanup(objProvider objstorage.Provider, meta []*fileMetadata) error {
 	var firstErr error
 	for i := range meta {
 		if err := objProvider.Remove(fileTypeTable, meta[i].FileNum); err != nil {
@@ -267,7 +267,7 @@ func ingestCleanup(objProvider *objstorage.Provider, meta []*fileMetadata) error
 // ingestLink creates new objects which are backed by either hardlinks to or
 // copies of the ingested files.
 func ingestLink(
-	jobID int, opts *Options, objProvider *objstorage.Provider, paths []string, meta []*fileMetadata,
+	jobID int, opts *Options, objProvider objstorage.Provider, paths []string, meta []*fileMetadata,
 ) error {
 	for i := range paths {
 		objMeta, err := objProvider.LinkOrCopyFromLocal(opts.FS, paths[i], fileTypeTable, meta[i].FileNum)
