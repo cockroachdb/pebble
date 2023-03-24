@@ -2,23 +2,24 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package objstorage
+package objstorageprovider
 
 import (
 	"context"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-func (p *Provider) vfsPath(fileType base.FileType, fileNum base.FileNum) string {
+func (p *provider) vfsPath(fileType base.FileType, fileNum base.FileNum) string {
 	return base.MakeFilepath(p.st.FS, p.st.FSDirName, fileType, fileNum)
 }
 
-func (p *Provider) vfsOpenForReading(
-	ctx context.Context, fileType base.FileType, fileNum base.FileNum, opts OpenOptions,
-) (Readable, error) {
+func (p *provider) vfsOpenForReading(
+	ctx context.Context, fileType base.FileType, fileNum base.FileNum, opts objstorage.OpenOptions,
+) (objstorage.Readable, error) {
 	filename := p.vfsPath(fileType, fileNum)
 	file, err := p.st.FS.Open(filename, vfs.RandomReadsOption)
 	if err != nil {
@@ -36,31 +37,31 @@ func (p *Provider) vfsOpenForReading(
 	return newGenericFileReadable(file)
 }
 
-func (p *Provider) vfsCreate(
+func (p *provider) vfsCreate(
 	_ context.Context, fileType base.FileType, fileNum base.FileNum,
-) (Writable, ObjectMetadata, error) {
+) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	filename := p.vfsPath(fileType, fileNum)
 	file, err := p.st.FS.Create(filename)
 	if err != nil {
-		return nil, ObjectMetadata{}, err
+		return nil, objstorage.ObjectMetadata{}, err
 	}
 	file = vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
 		NoSyncOnClose: p.st.NoSyncOnClose,
 		BytesPerSync:  p.st.BytesPerSync,
 	})
-	meta := ObjectMetadata{
+	meta := objstorage.ObjectMetadata{
 		FileNum:  fileNum,
 		FileType: fileType,
 	}
 	return newFileBufferedWritable(file), meta, nil
 }
 
-func (p *Provider) vfsRemove(fileType base.FileType, fileNum base.FileNum) error {
+func (p *provider) vfsRemove(fileType base.FileType, fileNum base.FileNum) error {
 	return p.st.FSCleaner.Clean(p.st.FS, fileType, p.vfsPath(fileType, fileNum))
 }
 
 // vfsInit finds any local FS objects.
-func (p *Provider) vfsInit() error {
+func (p *provider) vfsInit() error {
 	listing := p.st.FSDirInitialListing
 	if listing == nil {
 		var err error
@@ -73,7 +74,7 @@ func (p *Provider) vfsInit() error {
 	for _, filename := range listing {
 		fileType, fileNum, ok := base.ParseFilename(p.st.FS, filename)
 		if ok && fileType == base.FileTypeTable {
-			o := ObjectMetadata{
+			o := objstorage.ObjectMetadata{
 				FileType: fileType,
 				FileNum:  fileNum,
 			}
@@ -83,7 +84,7 @@ func (p *Provider) vfsInit() error {
 	return nil
 }
 
-func (p *Provider) vfsSync() error {
+func (p *provider) vfsSync() error {
 	p.mu.Lock()
 	shouldSync := p.mu.localObjectsChanged
 	p.mu.localObjectsChanged = false
@@ -101,7 +102,7 @@ func (p *Provider) vfsSync() error {
 	return nil
 }
 
-func (p *Provider) vfsSize(fileType base.FileType, fileNum base.FileNum) (int64, error) {
+func (p *provider) vfsSize(fileType base.FileType, fileNum base.FileNum) (int64, error) {
 	filename := p.vfsPath(fileType, fileNum)
 	stat, err := p.st.FS.Stat(filename)
 	if err != nil {

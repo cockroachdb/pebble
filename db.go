@@ -270,7 +270,7 @@ type DB struct {
 	optionsFileSize uint64
 
 	// objProvider is used to access and manage SSTs.
-	objProvider *objstorage.Provider
+	objProvider objstorage.Provider
 
 	fileLock io.Closer
 	dataDir  vfs.File

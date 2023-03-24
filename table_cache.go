@@ -67,7 +67,7 @@ type tableCacheOpts struct {
 
 	loggerAndTracer LoggerAndTracer
 	cacheID         uint64
-	objProvider     *objstorage.Provider
+	objProvider     objstorage.Provider
 	opts            sstable.ReaderOptions
 	filterMetrics   *FilterMetrics
 }
@@ -85,7 +85,7 @@ type tableCacheContainer struct {
 // newTableCacheContainer will panic if the underlying cache in the table cache
 // doesn't match Options.Cache.
 func newTableCacheContainer(
-	tc *TableCache, cacheID uint64, objProvider *objstorage.Provider, opts *Options, size int,
+	tc *TableCache, cacheID uint64, objProvider objstorage.Provider, opts *Options, size int,
 ) *tableCacheContainer {
 	// We will release a ref to table cache acquired here when tableCacheContainer.close is called.
 	if tc != nil {

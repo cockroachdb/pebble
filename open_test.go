@@ -25,7 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/errorfs"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/cockroachdb/redact"
@@ -1202,7 +1202,7 @@ func TestCheckConsistency(t *testing.T) {
 	mem := vfs.NewMem()
 	mem.MkdirAll(dir, 0755)
 
-	provider, err := objstorage.Open(objstorage.DefaultSettings(mem, dir))
+	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, dir))
 	require.NoError(t, err)
 	defer provider.Close()
 

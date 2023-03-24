@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
@@ -27,7 +28,7 @@ type Catalog struct {
 	mu      struct {
 		sync.Mutex
 
-		creatorID CreatorID
+		creatorID objstorage.CreatorID
 		objects   map[base.FileNum]SharedObjectMetadata
 
 		marker *atomicfs.Marker
@@ -43,16 +44,6 @@ type Catalog struct {
 	}
 }
 
-// CreatorID identifies the DB instance that originally created a shared object.
-// This ID is incorporated in backing object names.
-// Must be non-zero.
-type CreatorID uint64
-
-// IsSet returns true if the CreatorID is not zero.
-func (c CreatorID) IsSet() bool { return c != 0 }
-
-func (c CreatorID) String() string { return fmt.Sprintf("%020d", c) }
-
 // SharedObjectMetadata encapsulates the data stored in the catalog file for each object.
 type SharedObjectMetadata struct {
 	// FileNum is the identifier for the object within the context of a single DB
@@ -61,7 +52,7 @@ type SharedObjectMetadata struct {
 	// FileType is the type of the object. Only certain FileTypes are possible.
 	FileType base.FileType
 	// CreatorID identifies the DB instance that originally created the object.
-	CreatorID CreatorID
+	CreatorID objstorage.CreatorID
 	// CreatorFileNum is the identifier for the object within the context of the
 	// DB instance that originally created the object.
 	CreatorFileNum base.FileNum
@@ -79,7 +70,7 @@ const (
 // CatalogContents contains the shared objects in the catalog.
 type CatalogContents struct {
 	// CreatorID, if it is set.
-	CreatorID CreatorID
+	CreatorID objstorage.CreatorID
 	Objects   []SharedObjectMetadata
 }
 
@@ -122,7 +113,7 @@ func Open(fs vfs.FS, dirname string) (*Catalog, CatalogContents, error) {
 }
 
 // SetCreatorID sets the creator ID. If it is already set, it must match.
-func (c *Catalog) SetCreatorID(id CreatorID) error {
+func (c *Catalog) SetCreatorID(id objstorage.CreatorID) error {
 	if !id.IsSet() {
 		return errors.AssertionFailedf("attempt to unset CreatorID")
 	}

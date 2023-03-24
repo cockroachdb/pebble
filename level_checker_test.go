@@ -20,7 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangedel"
-	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -153,7 +153,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					return err.Error()
 				}
 				writeUnfragmented := false
-				w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 				for _, arg := range d.CmdArgs {
 					switch arg.Key {
 					case "disable-key-order-checks":

@@ -2,16 +2,17 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package objstorage
+package objstorageprovider
 
 import (
 	"bufio"
 
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
 // NewFileWritable returns a Writable that uses a file as underlying storage.
-func NewFileWritable(file vfs.File) Writable {
+func NewFileWritable(file vfs.File) objstorage.Writable {
 	return newFileBufferedWritable(file)
 }
 
@@ -20,7 +21,7 @@ type fileBufferedWritable struct {
 	bw   *bufio.Writer
 }
 
-var _ Writable = (*fileBufferedWritable)(nil)
+var _ objstorage.Writable = (*fileBufferedWritable)(nil)
 
 func newFileBufferedWritable(file vfs.File) *fileBufferedWritable {
 	return &fileBufferedWritable{

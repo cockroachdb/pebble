@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/tool/logs"
@@ -489,7 +490,7 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 			return err
 		}
 
-		objProvider, err := objstorage.Open(objstorage.DefaultSettings(d.opts.FS, dirname))
+		objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(d.opts.FS, dirname))
 		if err != nil {
 			return err
 		}
@@ -647,7 +648,7 @@ func (p *props) update(o props) {
 	p.TopLevelIndexSize += o.TopLevelIndexSize
 }
 
-func (d *dbT) addProps(objProvider *objstorage.Provider, m *manifest.FileMetadata, p *props) error {
+func (d *dbT) addProps(objProvider objstorage.Provider, m *manifest.FileMetadata, p *props) error {
 	ctx := context.Background()
 	f, err := objProvider.OpenForReading(ctx, base.FileTypeTable, m.FileNum, objstorage.OpenOptions{})
 	if err != nil {
