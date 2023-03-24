@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package objstorage
+package objstorageprovider
 
 import (
 	"context"
@@ -12,7 +12,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/objstorage/sharedobjcat"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
 )
 
 // sharedSubsystem contains the provider fields related to shared storage.
@@ -21,11 +22,11 @@ type sharedSubsystem struct {
 	catalog *sharedobjcat.Catalog
 	// initialized guards access to the creatorID field.
 	initialized atomic.Bool
-	creatorID   CreatorID
+	creatorID   objstorage.CreatorID
 	initOnce    sync.Once
 }
 
-func (ss *sharedSubsystem) init(creatorID CreatorID) {
+func (ss *sharedSubsystem) init(creatorID objstorage.CreatorID) {
 	ss.initOnce.Do(func() {
 		ss.creatorID = creatorID
 		ss.initialized.Store(true)
@@ -34,7 +35,7 @@ func (ss *sharedSubsystem) init(creatorID CreatorID) {
 
 // sharedInit initializes the shared object subsystem (if configured) and finds
 // any shared objects.
-func (p *Provider) sharedInit() error {
+func (p *provider) sharedInit() error {
 	if p.st.Shared.Storage == nil {
 		return nil
 	}
@@ -53,7 +54,7 @@ func (p *Provider) sharedInit() error {
 	}
 
 	for _, meta := range contents.Objects {
-		o := ObjectMetadata{
+		o := objstorage.ObjectMetadata{
 			FileNum:  meta.FileNum,
 			FileType: meta.FileType,
 		}
@@ -64,12 +65,8 @@ func (p *Provider) sharedInit() error {
 	return nil
 }
 
-// SetCreatorID sets the CreatorID which is needed in order to use shared
-// objects. Shared object usage is disabled until this method is called the
-// first time. Once set, the Creator ID is persisted and cannot change.
-//
-// Cannot be called if shared storage is not configured for the provider.
-func (p *Provider) SetCreatorID(creatorID CreatorID) error {
+// SetCreatorID is part of the objstorage.Provider interface.
+func (p *provider) SetCreatorID(creatorID objstorage.CreatorID) error {
 	if p.st.Shared.Storage == nil {
 		return errors.AssertionFailedf("attempt to set CreatorID but shared storage not enabled")
 	}
@@ -85,7 +82,7 @@ func (p *Provider) SetCreatorID(creatorID CreatorID) error {
 	return nil
 }
 
-func (p *Provider) sharedCheckInitialized() error {
+func (p *provider) sharedCheckInitialized() error {
 	if p.st.Shared.Storage == nil {
 		return errors.Errorf("shared object support not configured")
 	}
@@ -95,7 +92,7 @@ func (p *Provider) sharedCheckInitialized() error {
 	return nil
 }
 
-func (p *Provider) sharedSync() error {
+func (p *provider) sharedSync() error {
 	batch := func() sharedobjcat.Batch {
 		p.mu.Lock()
 		defer p.mu.Unlock()
@@ -121,11 +118,11 @@ func (p *Provider) sharedSync() error {
 	return nil
 }
 
-func (p *Provider) sharedPath(meta ObjectMetadata) string {
+func (p *provider) sharedPath(meta objstorage.ObjectMetadata) string {
 	return "shared://" + sharedObjectName(meta)
 }
 
-func sharedObjectName(meta ObjectMetadata) string {
+func sharedObjectName(meta objstorage.ObjectMetadata) string {
 	// TODO(radu): prepend a "shard" value for better distribution within the bucket?
 	return fmt.Sprintf(
 		"%s-%s",
@@ -133,13 +130,13 @@ func sharedObjectName(meta ObjectMetadata) string {
 	)
 }
 
-func (p *Provider) sharedCreate(
+func (p *provider) sharedCreate(
 	_ context.Context, fileType base.FileType, fileNum base.FileNum,
-) (Writable, ObjectMetadata, error) {
+) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	if err := p.sharedCheckInitialized(); err != nil {
-		return nil, ObjectMetadata{}, err
+		return nil, objstorage.ObjectMetadata{}, err
 	}
-	meta := ObjectMetadata{
+	meta := objstorage.ObjectMetadata{
 		FileNum:  fileNum,
 		FileType: fileType,
 	}
@@ -149,16 +146,16 @@ func (p *Provider) sharedCreate(
 	objName := sharedObjectName(meta)
 	writer, err := p.st.Shared.Storage.CreateObject(objName)
 	if err != nil {
-		return nil, ObjectMetadata{}, err
+		return nil, objstorage.ObjectMetadata{}, err
 	}
 	return &sharedWritable{
 		storageWriter: writer,
 	}, meta, nil
 }
 
-func (p *Provider) sharedOpenForReading(
-	ctx context.Context, meta ObjectMetadata,
-) (Readable, error) {
+func (p *provider) sharedOpenForReading(
+	ctx context.Context, meta objstorage.ObjectMetadata,
+) (objstorage.Readable, error) {
 	if err := p.sharedCheckInitialized(); err != nil {
 		return nil, err
 	}
@@ -170,7 +167,7 @@ func (p *Provider) sharedOpenForReading(
 	return newSharedReadable(p.st.Shared.Storage, objName, size), nil
 }
 
-func (p *Provider) sharedSize(meta ObjectMetadata) (int64, error) {
+func (p *provider) sharedSize(meta objstorage.ObjectMetadata) (int64, error) {
 	if err := p.sharedCheckInitialized(); err != nil {
 		return 0, err
 	}

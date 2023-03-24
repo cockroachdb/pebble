@@ -2,25 +2,26 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package objstorage
+package objstorageprovider
 
 import (
 	"encoding/binary"
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSharedObjectBacking(t *testing.T) {
-	meta := ObjectMetadata{
+	meta := objstorage.ObjectMetadata{
 		FileNum:  1,
 		FileType: base.FileTypeTable,
 	}
 	meta.Shared.CreatorID = 100
 	meta.Shared.CreatorFileNum = 200
 
-	buf, err := meta.SharedObjectBacking()
+	buf, err := (*provider)(nil).SharedObjectBacking(&meta)
 	require.NoError(t, err)
 
 	meta1, err := fromSharedObjectBacking(meta.FileType, meta.FileNum, buf)

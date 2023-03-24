@@ -27,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
@@ -527,7 +528,7 @@ func TestReaderCheckComparerMerger(t *testing.T) {
 	f0, err := mem.Create(testTable)
 	require.NoError(t, err)
 
-	w := NewWriter(objstorage.NewFileWritable(f0), writerOpts)
+	w := NewWriter(objstorageprovider.NewFileWritable(f0), writerOpts)
 	require.NoError(t, w.Set([]byte("test"), nil))
 	require.NoError(t, w.Close())
 
@@ -660,7 +661,7 @@ func TestBytesIterated(t *testing.T) {
 
 func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 	tmpDir := path.Join(t.TempDir())
-	provider, err := objstorage.Open(objstorage.DefaultSettings(vfs.Default, tmpDir))
+	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.Default, tmpDir))
 	require.NoError(t, err)
 	defer provider.Close()
 	blockSizes := []int{10, 100, 1000, 4096, math.MaxInt32}
@@ -673,12 +674,12 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				require.NoError(t, err)
 				switch i := citer.(type) {
 				case *compactionIterator:
-					require.True(t, objstorage.TestingCheckMaxReadahead(i.dataRH))
+					require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
 					// Each key has one version, so no value block, regardless of
 					// sstable version.
 					require.Nil(t, i.vbRH)
 				case *twoLevelCompactionIterator:
-					require.True(t, objstorage.TestingCheckMaxReadahead(i.dataRH))
+					require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
 					// Each key has one version, so no value block, regardless of
 					// sstable version.
 					require.Nil(t, i.vbRH)
@@ -694,7 +695,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 
 func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 	tmpDir := path.Join(t.TempDir())
-	provider, err := objstorage.Open(objstorage.DefaultSettings(vfs.Default, tmpDir))
+	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.Default, tmpDir))
 	require.NoError(t, err)
 	defer provider.Close()
 	f0, _, err := provider.Create(context.Background(), base.FileTypeTable, 0 /* fileNum */, objstorage.CreateOptions{})
@@ -725,16 +726,16 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		require.NoError(t, err)
 		defer citer.Close()
 		i := citer.(*compactionIterator)
-		require.True(t, objstorage.TestingCheckMaxReadahead(i.dataRH))
-		require.True(t, objstorage.TestingCheckMaxReadahead(i.vbRH))
+		require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
+		require.True(t, objstorageprovider.TestingCheckMaxReadahead(i.vbRH))
 	}
 	{
 		iter, err := r.NewIter(nil, nil)
 		require.NoError(t, err)
 		defer iter.Close()
 		i := iter.(*singleLevelIterator)
-		require.False(t, objstorage.TestingCheckMaxReadahead(i.dataRH))
-		require.False(t, objstorage.TestingCheckMaxReadahead(i.vbRH))
+		require.False(t, objstorageprovider.TestingCheckMaxReadahead(i.dataRH))
+		require.False(t, objstorageprovider.TestingCheckMaxReadahead(i.vbRH))
 	}
 }
 
@@ -756,7 +757,7 @@ func TestReaderChecksumErrors(t *testing.T) {
 							indexBlockSize = 1
 						}
 
-						w := NewWriter(objstorage.NewFileWritable(f), WriterOptions{
+						w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
 							BlockSize:      blockSize,
 							IndexBlockSize: indexBlockSize,
 							Checksum:       checksumType,
@@ -1031,7 +1032,7 @@ func TestReader_TableFormat(t *testing.T) {
 		require.NoError(t, err)
 
 		opts := WriterOptions{TableFormat: want}
-		w := NewWriter(objstorage.NewFileWritable(f), opts)
+		w := NewWriter(objstorageprovider.NewFileWritable(f), opts)
 		err = w.Close()
 		require.NoError(t, err)
 
@@ -1056,7 +1057,7 @@ func TestReader_TableFormat(t *testing.T) {
 func buildTestTable(
 	t *testing.T, numEntries uint64, blockSize, indexBlockSize int, compression Compression,
 ) *Reader {
-	provider, err := objstorage.Open(objstorage.DefaultSettings(vfs.NewMem(), "" /* dirName */))
+	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(vfs.NewMem(), "" /* dirName */))
 	require.NoError(t, err)
 	defer provider.Close()
 	return buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, compression)
@@ -1064,7 +1065,7 @@ func buildTestTable(
 
 func buildTestTableWithProvider(
 	t *testing.T,
-	provider *objstorage.Provider,
+	provider objstorage.Provider,
 	numEntries uint64,
 	blockSize, indexBlockSize int,
 	compression Compression,
@@ -1112,7 +1113,7 @@ func buildBenchmarkTable(
 		b.Fatal(err)
 	}
 
-	w := NewWriter(objstorage.NewFileWritable(f0), options)
+	w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
 
 	var keys [][]byte
 	var ikey InternalKey
@@ -1398,7 +1399,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 		f0, err := mem.Create("bench")
 		require.NoError(b, err)
 		options.TableFormat = tableFormat
-		w := NewWriter(objstorage.NewFileWritable(f0), options)
+		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
 		val := make([]byte, 100)
 		rng := rand.New(rand.NewSource(100))
 		for i := 0; i < keys.Count(); i++ {
@@ -1498,7 +1499,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 		mem := vfs.NewMem()
 		f0, err := mem.Create("bench")
 		require.NoError(b, err)
-		w := NewWriter(objstorage.NewFileWritable(f0), options)
+		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
 		for i := 0; i < keys.Count(); i++ {
 			for v := 0; v < versCount; v++ {
 				n := testkeys.WriteKeyAt(keyBuf[sharedPrefixLen:], keys, i, versCount-v+1)

@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -172,7 +173,7 @@ func runBuildRawCmd(
 	td *datadriven.TestData, opts *WriterOptions,
 ) (*WriterMetadata, *Reader, error) {
 	mem := vfs.NewMem()
-	provider, err := objstorage.Open(objstorage.DefaultSettings(mem, "" /* dirName */))
+	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, "" /* dirName */))
 	if err != nil {
 		return nil, nil, err
 	}

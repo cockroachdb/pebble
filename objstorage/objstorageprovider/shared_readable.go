@@ -2,12 +2,13 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package objstorage
+package objstorageprovider
 
 import (
 	"context"
 	"io"
 
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/shared"
 )
 
@@ -22,7 +23,7 @@ type sharedReadable struct {
 	rh sharedReadHandle
 }
 
-var _ Readable = (*sharedReadable)(nil)
+var _ objstorage.Readable = (*sharedReadable)(nil)
 
 func newSharedReadable(storage shared.Storage, objName string, size int64) *sharedReadable {
 	r := &sharedReadable{
@@ -48,7 +49,7 @@ func (r *sharedReadable) Size() int64 {
 	return r.size
 }
 
-func (r *sharedReadable) NewReadHandle(_ context.Context) ReadHandle {
+func (r *sharedReadable) NewReadHandle(_ context.Context) objstorage.ReadHandle {
 	// TODO(radu): use a pool.
 	return &sharedReadHandle{readable: r}
 }
@@ -59,7 +60,7 @@ type sharedReadHandle struct {
 	lastOffset int64
 }
 
-var _ ReadHandle = (*sharedReadHandle)(nil)
+var _ objstorage.ReadHandle = (*sharedReadHandle)(nil)
 
 func (r *sharedReadHandle) ReadAt(_ context.Context, p []byte, offset int64) (n int, err error) {
 	// See if this continues the previous read so that we can reuse the last reader.

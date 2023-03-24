@@ -22,7 +22,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
@@ -375,7 +375,7 @@ func build(
 		writerOpts.TablePropertyCollectors = append(writerOpts.TablePropertyCollectors, propCollector)
 	}
 
-	w := NewWriter(objstorage.NewFileWritable(f0), writerOpts)
+	w := NewWriter(objstorageprovider.NewFileWritable(f0), writerOpts)
 	// Use rangeDelV1Format for testing byte equality with RocksDB.
 	w.rangeDelV1Format = true
 	var rangeDelLength int
@@ -615,7 +615,7 @@ func TestFinalBlockIsWritten(t *testing.T) {
 						t.Errorf("nk=%d, vLen=%d: memFS create: %v", nk, vLen, err)
 						continue
 					}
-					w := NewWriter(objstorage.NewFileWritable(wf), WriterOptions{
+					w := NewWriter(objstorageprovider.NewFileWritable(wf), WriterOptions{
 						BlockSize:      blockSize,
 						IndexBlockSize: indexBlockSize,
 					})
@@ -859,7 +859,7 @@ func TestTablePropertyCollectorErrors(t *testing.T) {
 				return errorPropCollector{}
 			})
 
-		w := NewWriter(objstorage.NewFileWritable(f), opts)
+		w := NewWriter(objstorageprovider.NewFileWritable(f), opts)
 
 		require.Regexp(t, e, fun(w))
 	}

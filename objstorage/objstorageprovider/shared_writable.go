@@ -2,9 +2,13 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package objstorage
+package objstorageprovider
 
-import "io"
+import (
+	"io"
+
+	"github.com/cockroachdb/pebble/objstorage"
+)
 
 // sharedWritable is a very simple implementation of Writable on top of the
 // WriteCloser returned by shared.Storage.CreateObject.
@@ -12,7 +16,7 @@ type sharedWritable struct {
 	storageWriter io.WriteCloser
 }
 
-var _ Writable = (*sharedWritable)(nil)
+var _ objstorage.Writable = (*sharedWritable)(nil)
 
 // Write is part of the Writable interface.
 func (w *sharedWritable) Write(p []byte) error {

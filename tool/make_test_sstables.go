@@ -12,7 +12,7 @@ import (
 	"log"
 
 	"github.com/cockroachdb/pebble/internal/private"
-	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -23,7 +23,7 @@ func makeOutOfOrder() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	private.SSTableWriterDisableKeyOrderChecks(w)
 
 	set := func(key string) {

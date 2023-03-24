@@ -16,7 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -186,7 +186,7 @@ func TestIterRandomizedMaybeFilteredKeys(t *testing.T) {
 			if twoLevelIndex {
 				indexBlockSize = 1
 			}
-			w := sstable.NewWriter(objstorage.NewFileWritable(f0), sstable.WriterOptions{
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f0), sstable.WriterOptions{
 				BlockSize:      blockSize,
 				Comparer:       testkeys.Comparer,
 				IndexBlockSize: indexBlockSize,
@@ -331,7 +331,7 @@ func BenchmarkExternalIter_NonOverlapping_SeekNextScan(b *testing.B) {
 						filename := fmt.Sprintf("%03d.sst", i)
 						wf, err := fs.Create(filename)
 						require.NoError(b, err)
-						w := sstable.NewWriter(objstorage.NewFileWritable(wf), writeOpts)
+						w := sstable.NewWriter(objstorageprovider.NewFileWritable(wf), writeOpts)
 						for j := 0; j < keyCount/fileCount; j++ {
 							key := testkeys.Key(ks, len(keys))
 							keys = append(keys, key)

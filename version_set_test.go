@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -20,7 +20,7 @@ func writeAndIngest(t *testing.T, mem vfs.FS, d *DB, k InternalKey, v []byte, fi
 	path := mem.PathJoin("ext", filename)
 	f, err := mem.Create(path)
 	require.NoError(t, err)
-	w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	require.NoError(t, w.Add(k, v))
 	require.NoError(t, w.Close())
 	require.NoError(t, d.Ingest([]string{path}))

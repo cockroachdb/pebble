@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package objstorage
+package objstorageprovider
 
 import (
 	"bytes"
@@ -11,12 +11,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/objstorage/sharedobjcat"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
 )
-
-// SharedObjectBacking encodes the metadata necessary to incorporate a shared
-// object into a different Pebble instance.
-type SharedObjectBacking []byte
 
 const (
 	tagCreatorID      = 1
@@ -30,8 +27,10 @@ const (
 	tagNotSafeToIgnoreMask = 64
 )
 
-// SharedObjectBacking encodes the shared object metadata.
-func (meta *ObjectMetadata) SharedObjectBacking() (SharedObjectBacking, error) {
+// SharedObjectBacking is part of the objstorage.Provider interface.
+func (p *provider) SharedObjectBacking(
+	meta *objstorage.ObjectMetadata,
+) (objstorage.SharedObjectBacking, error) {
 	if !meta.IsShared() {
 		return nil, errors.AssertionFailedf("object %s not on shared storage", meta.FileNum)
 	}
@@ -46,8 +45,8 @@ func (meta *ObjectMetadata) SharedObjectBacking() (SharedObjectBacking, error) {
 
 // fromSharedObjectBacking decodes the shared object metadata.
 func fromSharedObjectBacking(
-	fileType base.FileType, fileNum base.FileNum, buf SharedObjectBacking,
-) (ObjectMetadata, error) {
+	fileType base.FileType, fileNum base.FileNum, buf objstorage.SharedObjectBacking,
+) (objstorage.ObjectMetadata, error) {
 	var creatorID uint64
 	var creatorFileNum uint64
 	br := bytes.NewReader(buf)
@@ -57,7 +56,7 @@ func fromSharedObjectBacking(
 			break
 		}
 		if err != nil {
-			return ObjectMetadata{}, err
+			return objstorage.ObjectMetadata{}, err
 		}
 		switch tag {
 		case tagCreatorID:
@@ -71,7 +70,7 @@ func fromSharedObjectBacking(
 		default:
 			// Ignore unknown tags, unless they're not safe to ignore.
 			if tag&tagNotSafeToIgnoreMask != 0 {
-				return ObjectMetadata{}, errors.Newf("unknown tag %d", tag)
+				return objstorage.ObjectMetadata{}, errors.Newf("unknown tag %d", tag)
 			}
 			var dataLen uint64
 			dataLen, err = binary.ReadUvarint(br)
@@ -80,38 +79,29 @@ func fromSharedObjectBacking(
 			}
 		}
 		if err != nil {
-			return ObjectMetadata{}, err
+			return objstorage.ObjectMetadata{}, err
 		}
 	}
 	if creatorID == 0 {
-		return ObjectMetadata{}, errors.Newf("shared object backing missing creator ID")
+		return objstorage.ObjectMetadata{}, errors.Newf("shared object backing missing creator ID")
 	}
 	if creatorFileNum == 0 {
-		return ObjectMetadata{}, errors.Newf("shared object backing missing creator file num")
+		return objstorage.ObjectMetadata{}, errors.Newf("shared object backing missing creator file num")
 	}
-	meta := ObjectMetadata{
+	meta := objstorage.ObjectMetadata{
 		FileNum:  fileNum,
 		FileType: fileType,
 	}
-	meta.Shared.CreatorID = CreatorID(creatorID)
+	meta.Shared.CreatorID = objstorage.CreatorID(creatorID)
 	meta.Shared.CreatorFileNum = base.FileNum(creatorFileNum)
 	return meta, nil
 }
 
-// SharedObjectToAttach contains the arguments needed to attach an existing shared object.
-type SharedObjectToAttach struct {
-	// FileNum is the file number that will be used to refer to this object (in
-	// the context of this instance).
-	FileNum  base.FileNum
-	FileType base.FileType
-	// Backing contains the metadata for the share dobject backing (normally
-	// generated from a different instance).
-	Backing SharedObjectBacking
-}
-
-// AttachSharedObjects registers existing shared objects with this provider.
-func (p *Provider) AttachSharedObjects(objs []SharedObjectToAttach) ([]ObjectMetadata, error) {
-	metas := make([]ObjectMetadata, len(objs))
+// AttachSharedObjects is part of the objstorage.Provider interface.
+func (p *provider) AttachSharedObjects(
+	objs []objstorage.SharedObjectToAttach,
+) ([]objstorage.ObjectMetadata, error) {
+	metas := make([]objstorage.ObjectMetadata, len(objs))
 	for i, o := range objs {
 		meta, err := fromSharedObjectBacking(o.FileType, o.FileNum, o.Backing)
 		if err != nil {
