@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
 )
 
 // versionEdit is a modification to the shared object state which can be encoded
@@ -20,7 +21,7 @@ import (
 type versionEdit struct {
 	NewObjects     []SharedObjectMetadata
 	DeletedObjects []base.FileNum
-	CreatorID      CreatorID
+	CreatorID      objstorage.CreatorID
 }
 
 const (
@@ -123,7 +124,7 @@ func (v *versionEdit) Decode(r io.Reader) error {
 				v.NewObjects = append(v.NewObjects, SharedObjectMetadata{
 					FileNum:        base.FileNum(fileNum),
 					FileType:       fileType,
-					CreatorID:      CreatorID(creatorID),
+					CreatorID:      objstorage.CreatorID(creatorID),
 					CreatorFileNum: base.FileNum(creatorFileNum),
 				})
 			}
@@ -139,7 +140,7 @@ func (v *versionEdit) Decode(r io.Reader) error {
 			var id uint64
 			id, err = binary.ReadUvarint(br)
 			if err == nil {
-				v.CreatorID = CreatorID(id)
+				v.CreatorID = objstorage.CreatorID(id)
 			}
 
 		default:

@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package objstorage
+package objstorageprovider
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -27,9 +28,9 @@ func TestProvider(t *testing.T) {
 			log.Infof("<shared> "+fmt, args...)
 		})
 
-		providers := make(map[string]*Provider)
-		backings := make(map[string]SharedObjectBacking)
-		var curProvider *Provider
+		providers := make(map[string]objstorage.Provider)
+		backings := make(map[string]objstorage.SharedObjectBacking)
+		var curProvider objstorage.Provider
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
 			scanArgs := func(desc string, args ...interface{}) {
 				t.Helper()
@@ -49,7 +50,7 @@ func TestProvider(t *testing.T) {
 			switch d.Cmd {
 			case "open":
 				var fsDir string
-				var creatorID CreatorID
+				var creatorID objstorage.CreatorID
 				scanArgs("<fs-dir> <shared-creator-id>", &fsDir, &creatorID)
 
 				st := DefaultSettings(fs, fsDir)
@@ -70,7 +71,7 @@ func TestProvider(t *testing.T) {
 			case "close":
 				require.NoError(t, curProvider.Sync())
 				require.NoError(t, curProvider.Close())
-				delete(providers, curProvider.st.FSDirName)
+				delete(providers, curProvider.(*provider).st.FSDirName)
 				curProvider = nil
 
 				return log.String()
@@ -79,7 +80,7 @@ func TestProvider(t *testing.T) {
 				var fileNum base.FileNum
 				var typ string
 				scanArgs("<file-num> <local|shared>", &fileNum, &typ)
-				var opts CreateOptions
+				var opts objstorage.CreateOptions
 				switch typ {
 				case "local":
 				case "shared":
@@ -99,7 +100,7 @@ func TestProvider(t *testing.T) {
 			case "read":
 				var fileNum base.FileNum
 				scanArgs("<file-num>", &fileNum)
-				r, err := curProvider.OpenForReading(ctx, base.FileTypeTable, fileNum, OpenOptions{})
+				r, err := curProvider.OpenForReading(ctx, base.FileTypeTable, fileNum, objstorage.OpenOptions{})
 				if err != nil {
 					return err.Error()
 				}
@@ -121,7 +122,7 @@ func TestProvider(t *testing.T) {
 				scanArgs("<key> <file-num>", &key, &fileNum)
 				meta, err := curProvider.Lookup(base.FileTypeTable, fileNum)
 				require.NoError(t, err)
-				backing, err := meta.SharedObjectBacking()
+				backing, err := curProvider.SharedObjectBacking(&meta)
 				if err != nil {
 					return err.Error()
 				}
@@ -133,7 +134,7 @@ func TestProvider(t *testing.T) {
 				if len(lines) == 0 {
 					d.Fatalf(t, "at least one row expected; format: <key> <file-num>")
 				}
-				var objs []SharedObjectToAttach
+				var objs []objstorage.SharedObjectToAttach
 				for _, l := range lines {
 					var key string
 					var fileNum base.FileNum
@@ -143,7 +144,7 @@ func TestProvider(t *testing.T) {
 					if !ok {
 						d.Fatalf(t, "unknown backing key %q", key)
 					}
-					objs = append(objs, SharedObjectToAttach{
+					objs = append(objs, objstorage.SharedObjectToAttach{
 						FileType: base.FileTypeTable,
 						FileNum:  fileNum,
 						Backing:  backing,
@@ -171,16 +172,16 @@ func TestNotExistError(t *testing.T) {
 	provider, err := Open(DefaultSettings(fs, ""))
 	require.NoError(t, err)
 
-	require.True(t, IsNotExistError(provider.Remove(base.FileTypeTable, 1)))
-	_, err = provider.OpenForReading(context.Background(), base.FileTypeTable, 1, OpenOptions{})
-	require.True(t, IsNotExistError(err))
+	require.True(t, provider.IsNotExistError(provider.Remove(base.FileTypeTable, 1)))
+	_, err = provider.OpenForReading(context.Background(), base.FileTypeTable, 1, objstorage.OpenOptions{})
+	require.True(t, provider.IsNotExistError(err))
 
-	w, _, err := provider.Create(context.Background(), base.FileTypeTable, 1, CreateOptions{})
+	w, _, err := provider.Create(context.Background(), base.FileTypeTable, 1, objstorage.CreateOptions{})
 	require.NoError(t, err)
 	require.NoError(t, w.Write([]byte("foo")))
 	require.NoError(t, w.Finish())
 
 	// Remove the underlying file.
 	require.NoError(t, fs.Remove(base.MakeFilename(base.FileTypeTable, 1)))
-	require.True(t, IsNotExistError(provider.Remove(base.FileTypeTable, 1)))
+	require.True(t, provider.IsNotExistError(provider.Remove(base.FileTypeTable, 1)))
 }

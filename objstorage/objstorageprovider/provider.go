@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package objstorage
+package objstorageprovider
 
 import (
 	"context"
@@ -13,23 +13,14 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
 	"github.com/cockroachdb/pebble/objstorage/shared"
-	"github.com/cockroachdb/pebble/objstorage/sharedobjcat"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// Provider is a singleton object used to access and manage objects.
-//
-// An object is conceptually like a large immutable file. The main use of
-// objects is for storing sstables; in the future it could also be used for blob
-// storage.
-//
-// The Provider can only manage objects that it knows about - either objects
-// created by the provider, or existing objects the Provider was informed about
-// via AddObjects.
-//
-// Objects are currently backed by a vfs.File.
-type Provider struct {
+// provider is the implementation of objstorage.Provider.
+type provider struct {
 	st Settings
 
 	fsDir vfs.File
@@ -51,96 +42,13 @@ type Provider struct {
 
 		// knownObjects maintains information about objects that are known to the provider.
 		// It is initialized with the list of files in the manifest when we open a DB.
-		knownObjects map[base.FileNum]ObjectMetadata
+		knownObjects map[base.FileNum]objstorage.ObjectMetadata
 	}
 }
 
-// Readable is the handle for an object that is open for reading.
-type Readable interface {
-	// ReadAt reads len(p) bytes into p starting at offset off. It returns the
-	// number of bytes read (0 <= n <= len(p)) and any error encountered.
-	//
-	// When ReadAt returns n < len(p), it returns a non-nil error explaining why
-	// more bytes were not returned.
-	//
-	// Even if ReadAt returns n < len(p), it may use all of p as scratch space
-	// during the call. If some data is available but not len(p) bytes, ReadAt
-	// blocks until either all the data is available or an error occurs.
-	//
-	// If the n = len(p) bytes returned by ReadAt are at the end of the input
-	// source, ReadAt may return either err == EOF or err == nil.
-	//
-	// Clients of ReadAt can execute parallel ReadAt calls on the
-	// same input source.
-	ReadAt(ctx context.Context, p []byte, off int64) (n int, err error)
+var _ objstorage.Provider = (*provider)(nil)
 
-	Close() error
-
-	// Size returns the size of the object.
-	Size() int64
-
-	// NewReadHandle creates a read handle for ReadAt requests that are related
-	// and can benefit from optimizations like read-ahead.
-	//
-	// The ReadHandle must be closed before the Readable is closed.
-	//
-	// Multiple separate ReadHandles can be used.
-	NewReadHandle(ctx context.Context) ReadHandle
-}
-
-// ReadHandle is used to perform reads that are related and might benefit from
-// optimizations like read-ahead.
-type ReadHandle interface {
-	// ReadAt reads len(p) bytes into p starting at offset off. It returns the
-	// number of bytes read (0 <= n <= len(p)) and any error encountered.
-	//
-	// When ReadAt returns n < len(p), it returns a non-nil error explaining why
-	// more bytes were not returned.
-	//
-	// Even if ReadAt returns n < len(p), it may use all of p as scratch space
-	// during the call. If some data is available but not len(p) bytes, ReadAt
-	// blocks until either all the data is available or an error occurs.
-	//
-	// If the n = len(p) bytes returned by ReadAt are at the end of the input
-	// source, ReadAt may return either err == EOF or err == nil.
-	//
-	// Clients of ReadAt can execute parallel ReadAt calls on the
-	// same input source.
-	ReadAt(ctx context.Context, p []byte, off int64) (n int, err error)
-
-	Close() error
-
-	// MaxReadahead configures the implementation to expect large sequential
-	// reads. Used to skip any initial read-ahead ramp-up.
-	MaxReadahead()
-
-	// RecordCacheHit informs the implementation that we were able to retrieve a
-	// block from cache.
-	RecordCacheHit(ctx context.Context, offset, size int64)
-}
-
-// Writable is the handle for an object that is open for writing.
-// Either Finish or Abort must be called.
-type Writable interface {
-	// Write writes len(p) bytes from p to the underlying object. The data is not
-	// guaranteed to be durable until Finish is called.
-	//
-	// Note that Write *is* allowed to modify the slice passed in, whether
-	// temporarily or permanently. Callers of Write need to take this into
-	// account.
-	Write(p []byte) error
-
-	// Finish completes the object and makes the data durable.
-	// No further calls are allowed after calling Finish.
-	Finish() error
-
-	// Abort gives up on finishing the object. There is no guarantee about whether
-	// the object exists after calling Abort.
-	// No further calls are allowed after calling Abort.
-	Abort()
-}
-
-// Settings that must be specified when creating the Provider.
+// Settings that must be specified when creating the provider.
 type Settings struct {
 	Logger base.Logger
 
@@ -192,33 +100,11 @@ func DefaultSettings(fs vfs.FS, dirName string) Settings {
 	}
 }
 
-// ObjectMetadata contains the metadata required to be able to access an object.
-type ObjectMetadata struct {
-	FileNum  base.FileNum
-	FileType base.FileType
-
-	// The fields below are only set if the object is on shared storage.
-	Shared struct {
-		// CreatorID identifies the DB instance that originally created the object.
-		CreatorID CreatorID
-		// CreatorFileNum is the identifier for the object within the context of the
-		// DB instance that originally created the object.
-		CreatorFileNum base.FileNum
-	}
+// Open creates the provider.
+func Open(settings Settings) (objstorage.Provider, error) {
+	return open(settings)
 }
-
-// CreatorID identifies the DB instance that originally created a shared object.
-// This ID is incorporated in backing object names.
-// Must be non-zero.
-type CreatorID = sharedobjcat.CreatorID
-
-// IsShared returns true if the object is on shared storage.
-func (meta *ObjectMetadata) IsShared() bool {
-	return meta.Shared.CreatorID.IsSet()
-}
-
-// Open creates the Provider.
-func Open(settings Settings) (p *Provider, _ error) {
+func open(settings Settings) (p *provider, _ error) {
 	fsDir, err := settings.FS.OpenDir(settings.FSDirName)
 	if err != nil {
 		return nil, err
@@ -230,11 +116,11 @@ func Open(settings Settings) (p *Provider, _ error) {
 		}
 	}()
 
-	p = &Provider{
+	p = &provider{
 		st:    settings,
 		fsDir: fsDir,
 	}
-	p.mu.knownObjects = make(map[base.FileNum]ObjectMetadata)
+	p.mu.knownObjects = make(map[base.FileNum]objstorage.ObjectMetadata)
 
 	// Add local FS objects.
 	if err := p.vfsInit(); err != nil {
@@ -249,8 +135,8 @@ func Open(settings Settings) (p *Provider, _ error) {
 	return p, nil
 }
 
-// Close the provider.
-func (p *Provider) Close() error {
+// Close is part of the objstorage.Provider interface.
+func (p *provider) Close() error {
 	var err error
 	if p.fsDir != nil {
 		err = p.fsDir.Close()
@@ -259,17 +145,10 @@ func (p *Provider) Close() error {
 	return err
 }
 
-// OpenOptions contains optional arguments for OpenForReading.
-type OpenOptions struct {
-	// MustExist triggers a fatal error if the file does not exist. The fatal
-	// error message contains extra information helpful for debugging.
-	MustExist bool
-}
-
 // OpenForReading opens an existing object.
-func (p *Provider) OpenForReading(
-	ctx context.Context, fileType base.FileType, fileNum base.FileNum, opts OpenOptions,
-) (Readable, error) {
+func (p *provider) OpenForReading(
+	ctx context.Context, fileType base.FileType, fileNum base.FileNum, opts objstorage.OpenOptions,
+) (objstorage.Readable, error) {
 	meta, err := p.Lookup(fileType, fileNum)
 	if err != nil {
 		if opts.MustExist {
@@ -284,20 +163,13 @@ func (p *Provider) OpenForReading(
 	return p.sharedOpenForReading(ctx, meta)
 }
 
-// CreateOptions contains optional arguments for Create.
-type CreateOptions struct {
-	// PreferSharedStorage causes the object to be created on shared storage if
-	// the provider has shared storage configured.
-	PreferSharedStorage bool
-}
-
 // Create creates a new object and opens it for writing.
 //
 // The object is not guaranteed to be durable (accessible in case of crashes)
 // until Sync is called.
-func (p *Provider) Create(
-	ctx context.Context, fileType base.FileType, fileNum base.FileNum, opts CreateOptions,
-) (w Writable, meta ObjectMetadata, err error) {
+func (p *provider) Create(
+	ctx context.Context, fileType base.FileType, fileNum base.FileNum, opts objstorage.CreateOptions,
+) (w objstorage.Writable, meta objstorage.ObjectMetadata, err error) {
 	if opts.PreferSharedStorage && p.st.Shared.Storage != nil {
 		w, meta, err = p.sharedCreate(ctx, fileType, fileNum)
 	} else {
@@ -305,7 +177,7 @@ func (p *Provider) Create(
 	}
 	if err != nil {
 		err = errors.Wrapf(err, "creating object %s", errors.Safe(fileNum))
-		return nil, ObjectMetadata{}, err
+		return nil, objstorage.ObjectMetadata{}, err
 	}
 	p.addMetadata(meta)
 	return w, meta, nil
@@ -314,7 +186,7 @@ func (p *Provider) Create(
 // Remove removes an object.
 //
 // The object is not guaranteed to be durably removed until Sync is called.
-func (p *Provider) Remove(fileType base.FileType, fileNum base.FileNum) error {
+func (p *provider) Remove(fileType base.FileType, fileNum base.FileNum) error {
 	meta, err := p.Lookup(fileType, fileNum)
 	if err != nil {
 		return err
@@ -325,7 +197,7 @@ func (p *Provider) Remove(fileType base.FileType, fileNum base.FileNum) error {
 	}
 	// TODO(radu): implement shared object removal (i.e. deref).
 
-	if err != nil && !IsNotExistError(err) {
+	if err != nil && !p.IsNotExistError(err) {
 		// We want to be able to retry a Remove, so we keep the object in our list.
 		// TODO(radu): we should mark the object as "zombie" and not allow any other
 		// operations.
@@ -335,14 +207,13 @@ func (p *Provider) Remove(fileType base.FileType, fileNum base.FileNum) error {
 	return err
 }
 
-// IsNotExistError indicates whether the error is known to report that a file or
-// directory does not exist.
-func IsNotExistError(err error) bool {
+// IsNotExistError is part of the objstorage.Provider interface.
+func (p *provider) IsNotExistError(err error) bool {
 	return oserror.IsNotExist(err)
 }
 
 // Sync flushes the metadata from creation or removal of objects since the last Sync.
-func (p *Provider) Sync() error {
+func (p *provider) Sync() error {
 	if err := p.vfsSync(); err != nil {
 		return err
 	}
@@ -358,9 +229,9 @@ func (p *Provider) Sync() error {
 //
 // The object is not guaranteed to be durable (accessible in case of crashes)
 // until Sync is called.
-func (p *Provider) LinkOrCopyFromLocal(
+func (p *provider) LinkOrCopyFromLocal(
 	srcFS vfs.FS, srcFilePath string, dstFileType base.FileType, dstFileNum base.FileNum,
-) (ObjectMetadata, error) {
+) (objstorage.ObjectMetadata, error) {
 	if srcFS == p.st.FS {
 		// Wrap the normal filesystem with one which wraps newly created files with
 		// vfs.NewSyncingFile.
@@ -370,10 +241,10 @@ func (p *Provider) LinkOrCopyFromLocal(
 		})
 		dstPath := p.vfsPath(dstFileType, dstFileNum)
 		if err := vfs.LinkOrCopy(fs, srcFilePath, dstPath); err != nil {
-			return ObjectMetadata{}, err
+			return objstorage.ObjectMetadata{}, err
 		}
 
-		meta := ObjectMetadata{
+		meta := objstorage.ObjectMetadata{
 			FileNum:  dstFileNum,
 			FileType: dstFileType,
 		}
@@ -384,21 +255,22 @@ func (p *Provider) LinkOrCopyFromLocal(
 	panic("unimplemented")
 }
 
-// Lookup returns the metadata of an object that is already known to the Provider.
-// Does not perform any I/O.
-func (p *Provider) Lookup(fileType base.FileType, fileNum base.FileNum) (ObjectMetadata, error) {
+// Lookup is part of the objstorage.Provider interface.
+func (p *provider) Lookup(
+	fileType base.FileType, fileNum base.FileNum,
+) (objstorage.ObjectMetadata, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	meta, ok := p.mu.knownObjects[fileNum]
 	if !ok {
-		return ObjectMetadata{}, errors.Wrapf(
+		return objstorage.ObjectMetadata{}, errors.Wrapf(
 			os.ErrNotExist,
 			"file %s (type %d) unknown to the objstorage provider",
 			errors.Safe(fileNum), errors.Safe(fileType),
 		)
 	}
 	if meta.FileType != fileType {
-		return ObjectMetadata{}, errors.AssertionFailedf(
+		return objstorage.ObjectMetadata{}, errors.AssertionFailedf(
 			"file %s type mismatch (known type %d, expected type %d)",
 			errors.Safe(fileNum), errors.Safe(meta.FileType), errors.Safe(fileType),
 		)
@@ -406,9 +278,8 @@ func (p *Provider) Lookup(fileType base.FileType, fileNum base.FileNum) (ObjectM
 	return meta, nil
 }
 
-// Path returns an internal, implementation-dependent path for the object. It is
-// meant to be used for informational purposes (like logging).
-func (p *Provider) Path(meta ObjectMetadata) string {
+// Path is part of the objstorage.Provider interface.
+func (p *provider) Path(meta objstorage.ObjectMetadata) string {
 	if !meta.IsShared() {
 		return p.vfsPath(meta.FileType, meta.FileNum)
 	}
@@ -416,18 +287,18 @@ func (p *Provider) Path(meta ObjectMetadata) string {
 }
 
 // Size returns the size of the object.
-func (p *Provider) Size(meta ObjectMetadata) (int64, error) {
+func (p *provider) Size(meta objstorage.ObjectMetadata) (int64, error) {
 	if !meta.IsShared() {
 		return p.vfsSize(meta.FileType, meta.FileNum)
 	}
 	return p.sharedSize(meta)
 }
 
-// List returns the objects currently known to the provider. Does not perform any I/O.
-func (p *Provider) List() []ObjectMetadata {
+// List is part of the objstorage.Provider interface.
+func (p *provider) List() []objstorage.ObjectMetadata {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	res := make([]ObjectMetadata, 0, len(p.mu.knownObjects))
+	res := make([]objstorage.ObjectMetadata, 0, len(p.mu.knownObjects))
 	for _, meta := range p.mu.knownObjects {
 		res = append(res, meta)
 	}
@@ -437,7 +308,7 @@ func (p *Provider) List() []ObjectMetadata {
 	return res
 }
 
-func (p *Provider) addMetadata(meta ObjectMetadata) {
+func (p *provider) addMetadata(meta objstorage.ObjectMetadata) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.mu.knownObjects[meta.FileNum] = meta
@@ -453,7 +324,7 @@ func (p *Provider) addMetadata(meta ObjectMetadata) {
 	}
 }
 
-func (p *Provider) removeMetadata(fileNum base.FileNum) {
+func (p *provider) removeMetadata(fileNum base.FileNum) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

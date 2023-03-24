@@ -3574,7 +3574,7 @@ func (d *DB) deleteObsoleteObject(fileType fileType, jobID int, fileNum FileNum)
 		path = d.objProvider.Path(meta)
 		err = d.objProvider.Remove(fileType, fileNum)
 	}
-	if objstorage.IsNotExistError(err) {
+	if d.objProvider.IsNotExistError(err) {
 		return
 	}
 

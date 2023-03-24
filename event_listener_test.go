@@ -16,7 +16,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
@@ -121,7 +121,7 @@ func TestEventListener(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 				TableFormat: d.FormatMajorVersion().MaxTableFormat(),
 			})
 			if err := w.Add(base.MakeInternalKey([]byte("a"), 0, InternalKeyKindSet), nil); err != nil {
@@ -155,7 +155,7 @@ func TestEventListener(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 					TableFormat: d.FormatMajorVersion().MaxTableFormat(),
 				})
 				if err := w.Add(base.MakeInternalKey([]byte{key}, 0, InternalKeyKindSet), nil); err != nil {

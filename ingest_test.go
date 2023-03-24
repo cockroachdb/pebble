@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -89,7 +90,7 @@ func TestIngestLoad(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			w := sstable.NewWriter(objstorage.NewFileWritable(f), writerOpts)
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writerOpts)
 			for _, data := range strings.Split(td.Input, "\n") {
 				if strings.HasPrefix(data, "rangekey: ") {
 					data = strings.TrimPrefix(data, "rangekey: ")
@@ -179,7 +180,7 @@ func TestIngestLoadRand(t *testing.T) {
 
 			expected[i].ExtendPointKeyBounds(cmp, keys[0], keys[len(keys)-1])
 
-			w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 				TableFormat: version.MaxTableFormat(),
 			})
 			var count uint64
@@ -293,7 +294,7 @@ func TestIngestLink(t *testing.T) {
 			opts := &Options{FS: vfs.NewMem()}
 			opts.EnsureDefaults().WithFSDefaults()
 			require.NoError(t, opts.FS.MkdirAll(dir, 0755))
-			objProvider, err := objstorage.Open(objstorage.DefaultSettings(opts.FS, dir))
+			objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(opts.FS, dir))
 			require.NoError(t, err)
 			defer objProvider.Close()
 
@@ -377,10 +378,10 @@ func TestIngestLinkFallback(t *testing.T) {
 
 	opts := &Options{FS: errorfs.Wrap(mem, errorfs.OnIndex(1))}
 	opts.EnsureDefaults().WithFSDefaults()
-	objSettings := objstorage.DefaultSettings(opts.FS, "")
+	objSettings := objstorageprovider.DefaultSettings(opts.FS, "")
 	// Prevent the provider from listing the dir (where we may get an injected error).
 	objSettings.FSDirInitialListing = []string{}
-	objProvider, err := objstorage.Open(objSettings)
+	objProvider, err := objstorageprovider.Open(objSettings)
 	require.NoError(t, err)
 	defer objProvider.Close()
 
@@ -690,7 +691,7 @@ func BenchmarkIngestOverlappingMemtable(b *testing.B) {
 				// Create the overlapping sstable that will force a flush when ingested.
 				f, err := mem.Create("ext")
 				assertNoError(err)
-				w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 				assertNoError(w.Set([]byte("a"), nil))
 				assertNoError(w.Close())
 
@@ -917,12 +918,12 @@ func TestIngestError(t *testing.T) {
 
 		f0, err := mem.Create("ext0")
 		require.NoError(t, err)
-		w := sstable.NewWriter(objstorage.NewFileWritable(f0), sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f0), sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte("d"), nil))
 		require.NoError(t, w.Close())
 		f1, err := mem.Create("ext1")
 		require.NoError(t, err)
-		w = sstable.NewWriter(objstorage.NewFileWritable(f1), sstable.WriterOptions{})
+		w = sstable.NewWriter(objstorageprovider.NewFileWritable(f1), sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte("d"), nil))
 		require.NoError(t, w.Close())
 
@@ -986,7 +987,7 @@ func TestIngestIdempotence(t *testing.T) {
 	path := fs.PathJoin(dir, "ext")
 	f, err := fs.Create(fs.PathJoin(dir, "ext"))
 	require.NoError(t, err)
-	w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	require.NoError(t, w.Set([]byte("d"), nil))
 	require.NoError(t, w.Close())
 
@@ -1020,7 +1021,7 @@ func TestIngestCompact(t *testing.T) {
 	f, err := mem.Create(src(0))
 	require.NoError(t, err)
 
-	w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	key := []byte("a")
 	require.NoError(t, w.Add(base.MakeInternalKey(key, 0, InternalKeyKindSet), nil))
 	require.NoError(t, w.Close())
@@ -1063,7 +1064,7 @@ func TestConcurrentIngest(t *testing.T) {
 	f, err := mem.Create(src(0))
 	require.NoError(t, err)
 
-	w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	require.NoError(t, w.Set([]byte("a"), nil))
 	require.NoError(t, w.Set([]byte("b"), nil))
 	require.NoError(t, w.Close())
@@ -1117,7 +1118,7 @@ func TestConcurrentIngestCompact(t *testing.T) {
 				f, err := mem.Create("ext")
 				require.NoError(t, err)
 
-				w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 				for _, k := range keys {
 					require.NoError(t, w.Set([]byte(k), nil))
 				}
@@ -1237,7 +1238,7 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 		f, err := mem.Create("ext")
 		require.NoError(t, err)
 
-		w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		for _, k := range keys {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
@@ -1265,7 +1266,7 @@ func TestIngestStats(t *testing.T) {
 		f, err := mem.Create("ext")
 		require.NoError(t, err)
 
-		w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		for _, k := range keys {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
@@ -1313,7 +1314,7 @@ func TestIngestFlushQueuedLargeBatch(t *testing.T) {
 		f, err := mem.Create("ext")
 		require.NoError(t, err)
 
-		w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		for _, k := range keys {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
@@ -1351,7 +1352,7 @@ func TestIngestMemtablePendingOverlap(t *testing.T) {
 		f, err := mem.Create("ext")
 		require.NoError(t, err)
 
-		w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		for _, k := range keys {
 			require.NoError(t, w.Set([]byte(k), nil))
 		}
@@ -1451,7 +1452,7 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 		name := fmt.Sprintf("ext%d", i)
 		f, err := fs.Create(fs.PathJoin(dir, name))
 		require.NoError(t, err)
-		w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		require.NoError(t, w.Set([]byte(fmt.Sprintf("foo%d", i)), nil))
 		require.NoError(t, w.Close())
 		files = append(files, name)
@@ -1513,7 +1514,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 			TableFormat: sstable.TableFormatMax,
 		})
 		for _, data := range strings.Split(input, "\n") {
@@ -1676,7 +1677,7 @@ func TestIngestCleanup(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			mem := vfs.NewMem()
 			mem.UseWindowsSemantics(true)
-			objProvider, err := objstorage.Open(objstorage.DefaultSettings(mem, ""))
+			objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, ""))
 			require.NoError(t, err)
 			defer objProvider.Close()
 
@@ -1859,7 +1860,7 @@ func TestIngestValidation(t *testing.T) {
 				require.NoError(t, err)
 				defer func() { _ = tmpFS.Remove(ingestTableName) }()
 
-				w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{
+				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 					BlockSize:   blockSize,     // Create many smaller blocks.
 					Compression: NoCompression, // For simpler debugging.
 				})
@@ -1961,7 +1962,7 @@ func BenchmarkManySSTables(b *testing.B) {
 						n := fmt.Sprintf("%07d", i)
 						f, err := mem.Create(n)
 						require.NoError(b, err)
-						w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+						w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 						require.NoError(b, w.Set([]byte(n), nil))
 						require.NoError(b, w.Close())
 						paths = append(paths, n)
@@ -1972,7 +1973,7 @@ func BenchmarkManySSTables(b *testing.B) {
 						const broadIngest = "broad.sst"
 						f, err := mem.Create(broadIngest)
 						require.NoError(b, err)
-						w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+						w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 						require.NoError(b, w.Set([]byte("0"), nil))
 						require.NoError(b, w.Set([]byte("Z"), nil))
 						require.NoError(b, w.Close())
@@ -1998,7 +1999,7 @@ func runBenchmarkManySSTablesIngest(b *testing.B, d *DB, fs vfs.FS, count int) {
 		n := fmt.Sprintf("%07d", count+i)
 		f, err := fs.Create(n)
 		require.NoError(b, err)
-		w := sstable.NewWriter(objstorage.NewFileWritable(f), sstable.WriterOptions{})
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		require.NoError(b, w.Set([]byte(n), nil))
 		require.NoError(b, w.Close())
 		require.NoError(b, d.Ingest([]string{n}))

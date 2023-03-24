@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rate"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/prometheus/client_golang/prometheus"
@@ -273,7 +274,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 		}
 		ls = append(ls, ls2...)
 	}
-	providerSettings := objstorage.Settings{
+	providerSettings := objstorageprovider.Settings{
 		Logger:              opts.Logger,
 		FS:                  opts.FS,
 		FSDirName:           dirname,
@@ -284,7 +285,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	}
 	providerSettings.Shared.Storage = opts.Experimental.SharedStorage
 
-	d.objProvider, err = objstorage.Open(providerSettings)
+	d.objProvider, err = objstorageprovider.Open(providerSettings)
 	if err != nil {
 		return nil, err
 	}
@@ -986,7 +987,7 @@ var ErrDBAlreadyExists = errors.New("pebble: database already exists")
 // Note that errors can be wrapped with more details; use errors.Is().
 var ErrDBNotPristine = errors.New("pebble: database already exists and is not pristine")
 
-func checkConsistency(v *manifest.Version, dirname string, objProvider *objstorage.Provider) error {
+func checkConsistency(v *manifest.Version, dirname string, objProvider objstorage.Provider) error {
 	var buf bytes.Buffer
 	var args []interface{}
 
