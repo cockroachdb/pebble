@@ -49,7 +49,7 @@ import (
 // The per-level structure used by simpleMergingIter.
 type simpleMergingIterLevel struct {
 	iter         internalIterator
-	rangeDelIter keyspan.FragmentIterator
+	rangeDelIter rangeDelIterHolder
 
 	iterKey   *InternalKey
 	iterValue base.LazyValue
@@ -114,10 +114,9 @@ func (m *simpleMergingIter) positionRangeDels() {
 	item := &m.heap.items[0]
 	for i := range m.levels {
 		l := &m.levels[i]
-		if l.rangeDelIter == nil {
-			continue
+		if rangeDelIter := l.rangeDelIter.get(); rangeDelIter != nil {
+			l.tombstone = rangeDelIter.SeekGE(item.key.UserKey)
 		}
-		l.tombstone = l.rangeDelIter.SeekGE(item.key.UserKey)
 	}
 }
 
@@ -207,7 +206,7 @@ func (m *simpleMergingIter) step() bool {
 		// this tombstone should be ignored.
 		for level := item.index + 1; level < len(m.levels); level++ {
 			lvl := &m.levels[level]
-			if lvl.rangeDelIter == nil || lvl.tombstone.Empty() {
+			if lvl.rangeDelIter.get() == nil || lvl.tombstone.Empty() {
 				continue
 			}
 			var smallestUserKey []byte
@@ -602,9 +601,9 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 				err = firstError(err, l.iter.Close())
 				l.iter = nil
 			}
-			if l.rangeDelIter != nil {
-				err = firstError(err, l.rangeDelIter.Close())
-				l.rangeDelIter = nil
+			if rangeDelIter := l.rangeDelIter.get(); rangeDelIter != nil {
+				err = firstError(err, rangeDelIter.Close())
+				l.rangeDelIter = rangeDelIterHolder{}
 			}
 		}
 	}()
@@ -614,7 +613,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		mem := memtables[i]
 		mlevels = append(mlevels, simpleMergingIterLevel{
 			iter:         mem.newIter(nil),
-			rangeDelIter: mem.newRangeDelIter(nil),
+			rangeDelIter: makeRangeDelIterHolderFixed(mem.newRangeDelIter(nil)),
 		})
 	}
 
@@ -644,8 +643,8 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li := &levelIter{}
 		li.init(context.Background(), iterOpts, c.cmp, nil /* split */, c.newIters, manifestIter,
 			manifest.L0Sublevel(sublevel), internalIterOpts{})
-		li.initRangeDel(&mlevels[pos].rangeDelIter)
 		mlevels[pos].iter = li
+		mlevels[pos].rangeDelIter = makeRangeDelIterHolderLevel(li)
 		pos++
 	}
 	for level := 1; level < len(current.Levels); level++ {
@@ -657,8 +656,8 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li := &levelIter{}
 		li.init(context.Background(), iterOpts, c.cmp, nil /* split */, c.newIters,
 			current.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
-		li.initRangeDel(&mlevels[pos].rangeDelIter)
 		mlevels[pos].iter = li
+		mlevels[pos].rangeDelIter = makeRangeDelIterHolderLevel(li)
 		pos++
 	}
 
