@@ -50,7 +50,6 @@ import (
 type simpleMergingIterLevel struct {
 	iter         internalIterator
 	rangeDelIter keyspan.FragmentIterator
-	levelIterBoundaryContext
 
 	iterKey   *InternalKey
 	iterValue base.LazyValue
@@ -211,7 +210,11 @@ func (m *simpleMergingIter) step() bool {
 			if lvl.rangeDelIter == nil || lvl.tombstone.Empty() {
 				continue
 			}
-			if (lvl.smallestUserKey == nil || m.heap.cmp(lvl.smallestUserKey, item.key.UserKey) <= 0) &&
+			var smallestUserKey []byte
+			if levelIter, ok := lvl.iter.(*levelIter); ok {
+				smallestUserKey = levelIter.boundaryContext.smallestUserKey
+			}
+			if (smallestUserKey == nil || m.heap.cmp(smallestUserKey, item.key.UserKey) <= 0) &&
 				lvl.tombstone.Contains(m.heap.cmp, item.key.UserKey) {
 				if lvl.tombstone.CoversAt(m.snapshot, item.key.SeqNum()) {
 					m.err = errors.Errorf("tombstone %s in %s deletes key %s in %s",
@@ -618,7 +621,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 	current := c.readState.current
 	// Determine the final size for mlevels so that there are no more
 	// reallocations. levelIter will hold a pointer to elements in mlevels.
-	start := len(mlevels)
+	pos := len(mlevels)
 	for sublevel := len(current.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 		if current.L0SublevelFiles[sublevel].Empty() {
 			continue
@@ -631,7 +634,6 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		}
 		mlevels = append(mlevels, simpleMergingIterLevel{})
 	}
-	mlevelAlloc := mlevels[start:]
 	// Add L0 files by sublevel.
 	for sublevel := len(current.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 		if current.L0SublevelFiles[sublevel].Empty() {
@@ -642,10 +644,9 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li := &levelIter{}
 		li.init(context.Background(), iterOpts, c.cmp, nil /* split */, c.newIters, manifestIter,
 			manifest.L0Sublevel(sublevel), internalIterOpts{})
-		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
-		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)
-		mlevelAlloc[0].iter = li
-		mlevelAlloc = mlevelAlloc[1:]
+		li.initRangeDel(&mlevels[pos].rangeDelIter)
+		mlevels[pos].iter = li
+		pos++
 	}
 	for level := 1; level < len(current.Levels); level++ {
 		if current.Levels[level].Empty() {
@@ -656,10 +657,9 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li := &levelIter{}
 		li.init(context.Background(), iterOpts, c.cmp, nil /* split */, c.newIters,
 			current.Levels[level].Iter(), manifest.Level(level), internalIterOpts{})
-		li.initRangeDel(&mlevelAlloc[0].rangeDelIter)
-		li.initBoundaryContext(&mlevelAlloc[0].levelIterBoundaryContext)
-		mlevelAlloc[0].iter = li
-		mlevelAlloc = mlevelAlloc[1:]
+		li.initRangeDel(&mlevels[pos].rangeDelIter)
+		mlevels[pos].iter = li
+		pos++
 	}
 
 	mergingIter := &simpleMergingIter{}
