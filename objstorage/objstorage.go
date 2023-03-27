@@ -71,7 +71,8 @@ type ReadHandle interface {
 	MaxReadahead()
 
 	// RecordCacheHit informs the implementation that we were able to retrieve a
-	// block from cache.
+	// block from cache. This is useful for example when the implementation is
+	// trying to detect a sequential reading pattern.
 	RecordCacheHit(ctx context.Context, offset, size int64)
 }
 

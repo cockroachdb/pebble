@@ -34,6 +34,10 @@ testmsan: export CC=clang
 testmsan: testflags += -msan -timeout 20m
 testmsan: test
 
+.PHONY: testobjiotracing
+testobjiotracing:
+	${GO} test -tags '$(TAGS) pebble_obj_io_tracing' ${testflags} -run ${TESTS} ./objstorage/objstorageprovider/objiotracing
+
 .PHONY: lint
 lint:
 	${GO} test -tags '$(TAGS)' ${testflags} -run ${TESTS} ./internal/lint

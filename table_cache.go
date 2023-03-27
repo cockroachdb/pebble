@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -416,6 +417,7 @@ func (c *tableCacheShard) newIters(
 	useFilter := true
 	if opts != nil {
 		useFilter = manifest.LevelToInt(opts.level) != 6 || opts.UseL6Filters
+		ctx = objiotracing.WithLevel(ctx, manifest.LevelToInt(opts.level))
 	}
 	tableFormat, err := v.reader.TableFormat()
 	if err != nil {

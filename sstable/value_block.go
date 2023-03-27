@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"golang.org/x/exp/rand"
 )
 
@@ -683,6 +684,7 @@ func (bpwc *blockProviderWhenClosed) close() {
 func (bpwc blockProviderWhenClosed) readBlockForVBR(
 	ctx context.Context, h BlockHandle, stats *base.InternalIteratorStats,
 ) (cache.Handle, error) {
+	ctx = objiotracing.WithBlockType(ctx, objiotracing.ValueBlock)
 	return bpwc.r.readBlock(ctx, h, nil, nil, stats)
 }
 
