@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -2781,7 +2782,19 @@ func (d *DB) runCompaction(
 		pendingOutputs = append(pendingOutputs, fileMeta.PhysicalMeta())
 		d.mu.Unlock()
 
-		writable, objMeta, err := d.objProvider.Create(context.TODO(), fileTypeTable, fileNum, objstorage.CreateOptions{} /* TODO */)
+		ctx := context.TODO()
+		if objiotracing.Enabled {
+			ctx = objiotracing.WithLevel(ctx, c.outputLevel.level)
+			switch c.kind {
+			case compactionKindFlush:
+				ctx = objiotracing.WithReason(ctx, objiotracing.ForFlush)
+			case compactionKindIngestedFlushable:
+				ctx = objiotracing.WithReason(ctx, objiotracing.ForIngestion)
+			default:
+				ctx = objiotracing.WithReason(ctx, objiotracing.ForCompaction)
+			}
+		}
+		writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, fileNum, objstorage.CreateOptions{} /* TODO */)
 		if err != nil {
 			return err
 		}

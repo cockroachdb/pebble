@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
 	"github.com/cockroachdb/pebble/objstorage/shared"
 	"github.com/cockroachdb/pebble/vfs"
@@ -25,6 +26,8 @@ type provider struct {
 	st Settings
 
 	fsDir vfs.File
+
+	tracer *objiotracing.Tracer
 
 	shared sharedSubsystem
 
@@ -109,6 +112,7 @@ func DefaultSettings(fs vfs.FS, dirName string) Settings {
 func Open(settings Settings) (objstorage.Provider, error) {
 	return open(settings)
 }
+
 func open(settings Settings) (p *provider, _ error) {
 	fsDir, err := settings.FS.OpenDir(settings.FSDirName)
 	if err != nil {
@@ -127,6 +131,10 @@ func open(settings Settings) (p *provider, _ error) {
 	}
 	p.mu.knownObjects = make(map[base.FileNum]objstorage.ObjectMetadata)
 	p.mu.protectedObjects = make(map[base.FileNum]int)
+
+	if objiotracing.Enabled {
+		p.tracer = objiotracing.Open(settings.FS, settings.FSDirName)
+	}
 
 	// Add local FS objects.
 	if err := p.vfsInit(); err != nil {
@@ -148,6 +156,12 @@ func (p *provider) Close() error {
 		err = p.fsDir.Close()
 		p.fsDir = nil
 	}
+	if objiotracing.Enabled {
+		if p.tracer != nil {
+			p.tracer.Close()
+			p.tracer = nil
+		}
+	}
 	return err
 }
 
@@ -163,10 +177,19 @@ func (p *provider) OpenForReading(
 		return nil, err
 	}
 
+	var r objstorage.Readable
 	if !meta.IsShared() {
-		return p.vfsOpenForReading(ctx, fileType, fileNum, opts)
+		r, err = p.vfsOpenForReading(ctx, fileType, fileNum, opts)
+	} else {
+		r, err = p.sharedOpenForReading(ctx, meta)
 	}
-	return p.sharedOpenForReading(ctx, meta)
+	if err != nil {
+		return nil, err
+	}
+	if objiotracing.Enabled {
+		r = p.tracer.WrapReadable(ctx, r, fileNum)
+	}
+	return r, nil
 }
 
 // Create creates a new object and opens it for writing.
@@ -186,6 +209,9 @@ func (p *provider) Create(
 		return nil, objstorage.ObjectMetadata{}, err
 	}
 	p.addMetadata(meta)
+	if objiotracing.Enabled {
+		w = p.tracer.WrapWritable(ctx, w, fileNum)
+	}
 	return w, meta, nil
 }
 
