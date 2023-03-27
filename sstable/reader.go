@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 )
 
 var errCorruptIndexEntry = base.CorruptionErrorf("pebble/table: corrupt index entry")
@@ -534,7 +535,8 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 		}
 		// blockIntersects
 	}
-	block, err := i.readBlockWithStats(i.dataBH, i.dataRH)
+	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.DataBlock)
+	block, err := i.reader.readBlock(ctx, i.dataBH, nil /* transform */, i.dataRH, i.stats)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -554,6 +556,7 @@ func (i *singleLevelIterator) loadBlock(dir int8) loadBlockResult {
 func (i *singleLevelIterator) readBlockForVBR(
 	ctx context.Context, h BlockHandle, stats *base.InternalIteratorStats,
 ) (cache.Handle, error) {
+	ctx = objiotracing.WithBlockType(ctx, objiotracing.ValueBlock)
 	return i.reader.readBlock(ctx, h, nil, i.vbRH, stats)
 }
 
@@ -622,12 +625,6 @@ func (i *singleLevelIterator) resolveMaybeExcluded(dir int8) intersectsResult {
 	}
 	_, _ = i.index.Next()
 	return blockIntersects
-}
-
-func (i *singleLevelIterator) readBlockWithStats(
-	bh BlockHandle, rh objstorage.ReadHandle,
-) (cache.Handle, error) {
-	return i.reader.readBlock(i.ctx, bh, nil, rh, i.stats)
 }
 
 func (i *singleLevelIterator) initBoundsForAlreadyLoadedBlock() {
@@ -1596,7 +1593,8 @@ func (i *twoLevelIterator) loadIndex(dir int8) loadBlockResult {
 		}
 		// blockIntersects
 	}
-	indexBlock, err := i.readBlockWithStats(bhp.BlockHandle, nil /* readHandle */)
+	ctx := objiotracing.WithBlockType(i.ctx, objiotracing.MetadataBlock)
+	indexBlock, err := i.reader.readBlock(ctx, bhp.BlockHandle, nil /* transform */, nil /* readHandle */, i.stats)
 	if err != nil {
 		i.err = err
 		return loadBlockFailed
@@ -2757,23 +2755,25 @@ func (i *rangeKeyFragmentBlockIter) Close() error {
 func (r *Reader) readIndex(
 	ctx context.Context, stats *base.InternalIteratorStats,
 ) (cache.Handle, error) {
+	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
 	return r.readBlock(ctx, r.indexBH, nil, nil, stats)
 }
 
 func (r *Reader) readFilter(
 	ctx context.Context, stats *base.InternalIteratorStats,
 ) (cache.Handle, error) {
+	ctx = objiotracing.WithBlockType(ctx, objiotracing.FilterBlock)
 	return r.readBlock(ctx, r.filterBH, nil /* transform */, nil /* readHandle */, stats)
 }
 
 func (r *Reader) readRangeDel(stats *base.InternalIteratorStats) (cache.Handle, error) {
-	return r.readBlock(
-		context.Background(), r.rangeDelBH, r.rangeDelTransform, nil /* readHandle */, stats)
+	ctx := objiotracing.WithBlockType(context.Background(), objiotracing.MetadataBlock)
+	return r.readBlock(ctx, r.rangeDelBH, r.rangeDelTransform, nil /* readHandle */, stats)
 }
 
 func (r *Reader) readRangeKey(stats *base.InternalIteratorStats) (cache.Handle, error) {
-	return r.readBlock(
-		context.Background(), r.rangeKeyBH, nil /* transform */, nil /* readHandle */, stats)
+	ctx := objiotracing.WithBlockType(context.Background(), objiotracing.MetadataBlock)
+	return r.readBlock(ctx, r.rangeKeyBH, nil /* transform */, nil /* readHandle */, stats)
 }
 
 func checkChecksum(
