@@ -10,6 +10,8 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/shared"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,13 +22,29 @@ func TestSharedObjectBacking(t *testing.T) {
 	}
 	meta.Shared.CreatorID = 100
 	meta.Shared.CreatorFileNum = 200
+	meta.Shared.CleanupMethod = objstorage.SharedRefTracking
 
-	buf, err := (*provider)(nil).SharedObjectBacking(&meta)
+	st := DefaultSettings(vfs.NewMem(), "")
+	st.Shared.Storage = shared.NewInMem()
+	p, err := Open(st)
 	require.NoError(t, err)
+	defer p.Close()
 
-	meta1, err := fromSharedObjectBacking(meta.FileType, meta.FileNum, buf)
+	const creatorID = objstorage.CreatorID(99)
+	require.NoError(t, p.SetCreatorID(creatorID))
+
+	h, err := p.SharedObjectBacking(&meta)
+	require.NoError(t, err)
+	buf, err := h.Get()
+	require.NoError(t, err)
+	h.Close()
+	_, err = h.Get()
+	require.Error(t, err)
+
+	meta1, refToCheck, err := fromSharedObjectBacking(meta.FileType, meta.FileNum, buf)
 	require.NoError(t, err)
 	require.Equal(t, meta, meta1)
+	require.Equal(t, creatorID, refToCheck)
 
 	t.Run("unknown-tags", func(t *testing.T) {
 		// Append a tag that is safe to ignore.
@@ -35,13 +53,14 @@ func TestSharedObjectBacking(t *testing.T) {
 		buf2 = binary.AppendUvarint(buf2, 2)
 		buf2 = append(buf2, 1, 1)
 
-		meta2, err := fromSharedObjectBacking(meta.FileType, meta.FileNum, buf2)
+		meta2, ref2, err := fromSharedObjectBacking(meta.FileType, meta.FileNum, buf2)
 		require.NoError(t, err)
 		require.Equal(t, meta, meta2)
+		require.Equal(t, creatorID, ref2)
 
 		buf3 := buf2
 		buf3 = binary.AppendUvarint(buf3, tagNotSafeToIgnoreMask+5)
-		_, err = fromSharedObjectBacking(meta.FileType, meta.FileNum, buf3)
+		_, _, err = fromSharedObjectBacking(meta.FileType, meta.FileNum, buf3)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unknown tag")
 	})

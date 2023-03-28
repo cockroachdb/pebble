@@ -1,0 +1,109 @@
+open p1 1
+----
+<local fs> mkdir-all: p1 0755
+<local fs> open-dir: p1
+<local fs> open-dir: p1
+<local fs> create: p1/SHARED-CATALOG-000001
+<local fs> sync: p1/SHARED-CATALOG-000001
+<local fs> create: p1/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> close: p1/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> sync: p1
+<local fs> sync: p1/SHARED-CATALOG-000001
+
+create 1 shared
+obj-one
+----
+<shared> create object "00000000000000000001-000001.sst"
+<shared> close writer for "00000000000000000001-000001.sst" after 7 bytes
+<shared> create object "00000000000000000001-000001.sst.ref.00000000000000000001"
+<shared> close writer for "00000000000000000001-000001.sst.ref.00000000000000000001" after 0 bytes
+
+create 2 shared
+obj-two
+----
+<shared> create object "00000000000000000001-000002.sst"
+<shared> close writer for "00000000000000000001-000002.sst" after 7 bytes
+<shared> create object "00000000000000000001-000002.sst.ref.00000000000000000001"
+<shared> close writer for "00000000000000000001-000002.sst.ref.00000000000000000001" after 0 bytes
+
+create 3 shared
+obj-three
+----
+<shared> create object "00000000000000000001-000003.sst"
+<shared> close writer for "00000000000000000001-000003.sst" after 9 bytes
+<shared> create object "00000000000000000001-000003.sst.ref.00000000000000000001"
+<shared> close writer for "00000000000000000001-000003.sst.ref.00000000000000000001" after 0 bytes
+
+save-backing b1 1
+----
+
+save-backing b2 2
+----
+
+open p2 2
+----
+<local fs> mkdir-all: p2 0755
+<local fs> open-dir: p2
+<local fs> open-dir: p2
+<local fs> create: p2/SHARED-CATALOG-000001
+<local fs> sync: p2/SHARED-CATALOG-000001
+<local fs> create: p2/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> close: p2/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> sync: p2
+<local fs> sync: p2/SHARED-CATALOG-000001
+
+create 4 shared
+obj-four
+----
+<shared> create object "00000000000000000002-000004.sst"
+<shared> close writer for "00000000000000000002-000004.sst" after 8 bytes
+<shared> create object "00000000000000000002-000004.sst.ref.00000000000000000002"
+<shared> close writer for "00000000000000000002-000004.sst.ref.00000000000000000002" after 0 bytes
+
+attach
+b1 101
+b2 102
+----
+<shared> create object "00000000000000000001-000001.sst.ref.00000000000000000002"
+<shared> close writer for "00000000000000000001-000001.sst.ref.00000000000000000002" after 0 bytes
+<shared> size of object "00000000000000000001-000001.sst.ref.00000000000000000001": 0
+<shared> create object "00000000000000000001-000002.sst.ref.00000000000000000002"
+<shared> close writer for "00000000000000000001-000002.sst.ref.00000000000000000002" after 0 bytes
+<shared> size of object "00000000000000000001-000002.sst.ref.00000000000000000001": 0
+<local fs> sync: p2/SHARED-CATALOG-000001
+000101 -> shared://00000000000000000001-000001.sst
+000102 -> shared://00000000000000000001-000002.sst
+
+# Remove of object with no other refs; backing object should be removed.
+remove 4
+----
+<shared> delete object "00000000000000000002-000004.sst.ref.00000000000000000002"
+<shared> list (prefix="00000000000000000002-000004.sst.ref.", delimiter="")
+<shared> delete object "00000000000000000002-000004.sst"
+
+# Object shared with p2; backing object should not be removed.
+remove 101
+----
+<shared> delete object "00000000000000000001-000001.sst.ref.00000000000000000002"
+<shared> list (prefix="00000000000000000001-000001.sst.ref.", delimiter="")
+<shared>  - 00000000000000000001-000001.sst.ref.00000000000000000001
+
+switch p1
+----
+
+# Object no longer shared with p1; backing object should be removed.
+remove 1
+----
+
+# Object shared with p1; backing object should not be removed.
+remove 2
+----
+
+switch p2
+----
+
+remove 102
+----
+<shared> delete object "00000000000000000001-000002.sst.ref.00000000000000000002"
+<shared> list (prefix="00000000000000000001-000002.sst.ref.", delimiter="")
+<shared>  - 00000000000000000001-000002.sst.ref.00000000000000000001

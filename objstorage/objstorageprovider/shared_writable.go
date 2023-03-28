@@ -13,6 +13,8 @@ import (
 // sharedWritable is a very simple implementation of Writable on top of the
 // WriteCloser returned by shared.Storage.CreateObject.
 type sharedWritable struct {
+	p             *provider
+	meta          objstorage.ObjectMetadata
 	storageWriter io.WriteCloser
 }
 
@@ -28,11 +30,25 @@ func (w *sharedWritable) Write(p []byte) error {
 func (w *sharedWritable) Finish() error {
 	err := w.storageWriter.Close()
 	w.storageWriter = nil
-	return err
+	if err != nil {
+		w.Abort()
+		return err
+	}
+
+	// Create the marker object.
+	if err := w.p.sharedCreateRef(w.meta); err != nil {
+		w.Abort()
+		return err
+	}
+	return nil
 }
 
 // Abort is part of the Writable interface.
 func (w *sharedWritable) Abort() {
-	_ = w.storageWriter.Close()
-	w.storageWriter = nil
+	if w.storageWriter != nil {
+		_ = w.storageWriter.Close()
+		w.storageWriter = nil
+	}
+	w.p.removeMetadata(w.meta.FileNum)
+	// TODO(radu): delete the object if it was created.
 }
