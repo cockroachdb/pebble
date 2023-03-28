@@ -13,6 +13,7 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
@@ -276,12 +277,57 @@ type Batch struct {
 	// (followed by Batch.Close), we could separate out {fsyncWait, commitErr}
 	// into a separate struct that is allocated separately (using another
 	// sync.Pool), and only that struct needs to outlive Batch.Close (which
-	// could then be called immediately after ApplyNoSyncWait).
+	// could then be called immediately after ApplyNoSyncWait). commitStats
+	// will also need to be in this separate struct.
 	commit    sync.WaitGroup
 	fsyncWait sync.WaitGroup
 
+	commitStats BatchCommitStats
+
 	commitErr error
 	applied   uint32 // updated atomically
+}
+
+// BatchCommitStats exposes stats related to committing a batch.
+//
+// NB: there is no Pebble internal tracing (using LoggerAndTracer) of slow
+// batch commits. The caller can use these stats to do their own tracing as
+// needed.
+type BatchCommitStats struct {
+	// TotalDuration is the time spent in DB.{Apply,ApplyNoSyncWait} or
+	// Batch.Commit, plus the time waiting in Batch.SyncWait. If there is a gap
+	// between calling ApplyNoSyncWait and calling SyncWait, that gap could
+	// include some duration in which real work was being done for the commit
+	// and will not be included here. This missing time is considered acceptable
+	// since the goal of these stats is to understand user-facing latency.
+	//
+	// TotalDuration includes time spent in various queues both inside Pebble
+	// and outside Pebble (I/O queues, goroutine scheduler queue, mutex wait
+	// etc.). For some of these queues (which we consider important) the wait
+	// times are included below -- these expose low-level implementation detail
+	// and are meant for expert diagnosis and subject to change. There may be
+	// unaccounted time after subtracting those values from TotalDuration.
+	TotalDuration time.Duration
+	// SemaphoreWaitDuration is the wait time for semaphores in
+	// commitPipeline.Commit.
+	SemaphoreWaitDuration time.Duration
+	// WALQueueWaitDuration is the wait time for allocating memory blocks in the
+	// LogWriter (due to the LogWriter not writing fast enough).
+	WALQueueWaitDuration time.Duration
+	// MemTableWriteStallDuration is the wait caused by a write stall due to too
+	// many memtables (due to not flushing fast enough).
+	MemTableWriteStallDuration time.Duration
+	// L0ReadAmpWriteStallDuration is the wait caused by a write stall due to
+	// high read amplification in L0 (due to not compacting fast enough out of
+	// L0).
+	L0ReadAmpWriteStallDuration time.Duration
+	// WALRotationDuration is the wait time for WAL rotation, which includes
+	// syncing and closing the old WAL and creating (or reusing) a new one.
+	WALRotationDuration time.Duration
+	// CommitWaitDuration is the wait for publishing the seqnum plus the
+	// duration for the WAL sync (if requested). The former should be tiny and
+	// one can assume that this is all due to the WAL sync.
+	CommitWaitDuration time.Duration
 }
 
 var _ Reader = (*Batch)(nil)
@@ -1150,6 +1196,7 @@ func (b *Batch) Reset() {
 	b.flushable = nil
 	b.commit = sync.WaitGroup{}
 	b.fsyncWait = sync.WaitGroup{}
+	b.commitStats = BatchCommitStats{}
 	b.commitErr = nil
 	atomic.StoreUint32(&b.applied, 0)
 	if b.data != nil {
@@ -1270,11 +1317,22 @@ func batchDecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
 
 // SyncWait is to be used in conjunction with DB.ApplyNoSyncWait.
 func (b *Batch) SyncWait() error {
+	now := time.Now()
 	b.fsyncWait.Wait()
 	if b.commitErr != nil {
 		b.db = nil // prevent batch reuse on error
 	}
+	waitDuration := time.Since(now)
+	b.commitStats.CommitWaitDuration += waitDuration
+	b.commitStats.TotalDuration += waitDuration
 	return b.commitErr
+}
+
+// CommitStats returns stats related to committing the batch. Should be called
+// after Batch.Commit, DB.Apply. If DB.ApplyNoSyncWait is used, should be
+// called after Batch.SyncWait.
+func (b *Batch) CommitStats() BatchCommitStats {
+	return b.commitStats
 }
 
 // BatchReader iterates over the entries contained in a batch.
