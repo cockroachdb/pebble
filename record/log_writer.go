@@ -562,7 +562,7 @@ func (w *LogWriter) flushBlock(b *block) error {
 
 // queueBlock queues the current block for writing to the underlying writer,
 // allocates a new block and reserves space for the next header.
-func (w *LogWriter) queueBlock() {
+func (w *LogWriter) queueBlock() (waitDuration time.Duration) {
 	// Allocate a new block, blocking until one is available. We do this first
 	// because w.block is protected by w.flusher.Mutex.
 	w.free.Lock()
@@ -571,9 +571,11 @@ func (w *LogWriter) queueBlock() {
 			w.free.allocated++
 			w.free.blocks = append(w.free.blocks, &block{})
 		} else {
+			now := time.Now()
 			for len(w.free.blocks) == 0 {
 				w.free.cond.Wait()
 			}
+			waitDuration = time.Since(now)
 		}
 	}
 	nextBlock := w.free.blocks[len(w.free.blocks)-1]
@@ -589,6 +591,28 @@ func (w *LogWriter) queueBlock() {
 	f.Unlock()
 
 	w.blockNum++
+	return waitDuration
+}
+
+// ReserveAllFreeBlocksForTesting is used to only for testing.
+func (w *LogWriter) ReserveAllFreeBlocksForTesting() (releaseFunc func()) {
+	w.free.Lock()
+	defer w.free.Unlock()
+	free := w.free.blocks
+	w.free.blocks = nil
+	return func() {
+		w.free.Lock()
+		defer w.free.Unlock()
+		// It is possible that someone has pushed a free block and w.free.blocks
+		// is no longer nil. That is harmless. Also, the waiter loops on the
+		// condition len(w.free.blocks) == 0, so to actually unblock it we need to
+		// give it a free block.
+		if len(free) == 0 {
+			free = append(free, &block{})
+		}
+		w.free.blocks = free
+		w.free.cond.Broadcast()
+	}
 }
 
 // Close flushes and syncs any unwritten data and closes the writer.
@@ -640,7 +664,8 @@ func (w *LogWriter) Close() error {
 // of the record.
 // External synchronisation provided by commitPipeline.mu.
 func (w *LogWriter) WriteRecord(p []byte) (int64, error) {
-	return w.SyncRecord(p, nil, nil)
+	logSize, _, err := w.SyncRecord(p, nil, nil)
+	return logSize, err
 }
 
 // SyncRecord writes a complete record. If wg!= nil the record will be
@@ -648,9 +673,11 @@ func (w *LogWriter) WriteRecord(p []byte) (int64, error) {
 // the wait group upon completion. Returns the offset just past the end of the
 // record.
 // External synchronisation provided by commitPipeline.mu.
-func (w *LogWriter) SyncRecord(p []byte, wg *sync.WaitGroup, err *error) (int64, error) {
+func (w *LogWriter) SyncRecord(
+	p []byte, wg *sync.WaitGroup, err *error,
+) (logSize int64, waitDuration time.Duration, err2 error) {
 	if w.err != nil {
-		return -1, w.err
+		return -1, 0, w.err
 	}
 
 	// The `i == 0` condition ensures we handle empty records. Such records can
@@ -658,7 +685,9 @@ func (w *LogWriter) SyncRecord(p []byte, wg *sync.WaitGroup, err *error) (int64,
 	// MANIFEST is currently written using Writer, it is good to support the same
 	// semantics with LogWriter.
 	for i := 0; i == 0 || len(p) > 0; i++ {
-		p = w.emitFragment(i, p)
+		var wd time.Duration
+		p, wd = w.emitFragment(i, p)
+		waitDuration += wd
 	}
 
 	if wg != nil {
@@ -677,7 +706,7 @@ func (w *LogWriter) SyncRecord(p []byte, wg *sync.WaitGroup, err *error) (int64,
 	// race with our read. That's ok because the only error we could be seeing is
 	// one to syncing for which the caller can receive notification of by passing
 	// in a non-nil err argument.
-	return offset, nil
+	return offset, waitDuration, nil
 }
 
 // Size returns the current size of the file.
@@ -698,7 +727,7 @@ func (w *LogWriter) emitEOFTrailer() {
 	atomic.StoreInt32(&b.written, i+int32(recyclableHeaderSize))
 }
 
-func (w *LogWriter) emitFragment(n int, p []byte) []byte {
+func (w *LogWriter) emitFragment(n int, p []byte) (remainingP []byte, waitDuration time.Duration) {
 	b := w.block
 	i := b.written
 	first := n == 0
@@ -732,9 +761,9 @@ func (w *LogWriter) emitFragment(n int, p []byte) []byte {
 		for i := b.written; i < blockSize; i++ {
 			b.buf[i] = 0
 		}
-		w.queueBlock()
+		waitDuration = w.queueBlock()
 	}
-	return p[r:]
+	return p[r:], waitDuration
 }
 
 // Metrics must be called after Close. The callee will no longer modify the

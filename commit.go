@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/cockroachdb/pebble/record"
@@ -292,11 +293,13 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool, noSyncWait bool) error {
 		return nil
 	}
 
+	commitStartTime := time.Now()
 	// Acquire semaphores.
 	p.commitQueueSem <- struct{}{}
 	if syncWAL {
 		p.logSyncQSem <- struct{}{}
 	}
+	b.commitStats.SemaphoreWaitDuration = time.Since(commitStartTime)
 
 	// Prepare the batch for committing: enqueuing the batch in the pending
 	// queue, determining the batch sequence number and writing the data to the
@@ -337,6 +340,8 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool, noSyncWait bool) error {
 	// Else noSyncWait. The LogWriter can be concurrently writing to
 	// b.commitErr. We will read b.commitErr in Batch.SyncWait after the
 	// LogWriter is done writing.
+
+	b.commitStats.TotalDuration = time.Since(commitStartTime)
 
 	return err
 }
@@ -476,7 +481,9 @@ func (p *commitPipeline) publish(b *Batch) {
 		if t == nil {
 			// Wait for another goroutine to publish us. We might also be waiting for
 			// the WAL sync to finish.
+			now := time.Now()
 			b.commit.Wait()
+			b.commitStats.CommitWaitDuration += time.Since(now)
 			break
 		}
 		if atomic.LoadUint32(&t.applied) != 1 {
