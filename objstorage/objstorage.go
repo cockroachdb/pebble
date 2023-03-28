@@ -108,6 +108,8 @@ type ObjectMetadata struct {
 		// CreatorFileNum is the identifier for the object within the context of the
 		// DB instance that originally created the object.
 		CreatorFileNum base.FileNum
+
+		CleanupMethod SharedCleanupMethod
 	}
 }
 
@@ -126,6 +128,19 @@ func (c CreatorID) IsSet() bool { return c != 0 }
 
 func (c CreatorID) String() string { return fmt.Sprintf("%020d", c) }
 
+// SharedCleanupMethod indicates the method for cleaning up unused shared objects.
+type SharedCleanupMethod uint8
+
+const (
+	// SharedRefTracking is used for shared objects for which objstorage providers
+	// keep track of references via reference marker objects.
+	SharedRefTracking SharedCleanupMethod = iota
+
+	// SharedNoCleanup is used for shared objects that are managed externally; the
+	// objstorage provider never deletes such objects.
+	SharedNoCleanup
+)
+
 // OpenOptions contains optional arguments for OpenForReading.
 type OpenOptions struct {
 	// MustExist triggers a fatal error if the file does not exist. The fatal
@@ -138,6 +153,10 @@ type CreateOptions struct {
 	// PreferSharedStorage causes the object to be created on shared storage if
 	// the provider has shared storage configured.
 	PreferSharedStorage bool
+
+	// SharedCleanupMethod is used for the object when it is created on shared storage.
+	// The default (zero) value is SharedRefTracking.
+	SharedCleanupMethod SharedCleanupMethod
 }
 
 // Provider is a singleton object used to access and manage objects.
@@ -207,7 +226,7 @@ type Provider interface {
 	SetCreatorID(creatorID CreatorID) error
 
 	// SharedObjectBacking encodes the shared object metadata.
-	SharedObjectBacking(meta *ObjectMetadata) (SharedObjectBacking, error)
+	SharedObjectBacking(meta *ObjectMetadata) (SharedObjectBackingHandle, error)
 
 	// AttachSharedObjects registers existing shared objects with this provider.
 	AttachSharedObjects(objs []SharedObjectToAttach) ([]ObjectMetadata, error)
@@ -223,6 +242,18 @@ type Provider interface {
 // object into a different Pebble instance. The encoding is specific to a given
 // Provider implementation.
 type SharedObjectBacking []byte
+
+// SharedObjectBackingHandle is a container for a SharedObjectBacking which
+// ensures that the backing stays valid. A backing can otherwise become invalid
+// if this provider unrefs the shared object. The SharedObjectBackingHandle
+// delays any unref until Close.
+type SharedObjectBackingHandle interface {
+	// Get returns the backing. The backing is only guaranteed to be valid until
+	// Close is called (or until the Provider is closed). If Close was already
+	// called, returns an error.
+	Get() (SharedObjectBacking, error)
+	Close()
+}
 
 // SharedObjectToAttach contains the arguments needed to attach an existing shared object.
 type SharedObjectToAttach struct {

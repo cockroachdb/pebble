@@ -56,6 +56,8 @@ type SharedObjectMetadata struct {
 	// CreatorFileNum is the identifier for the object within the context of the
 	// DB instance that originally created the object.
 	CreatorFileNum base.FileNum
+
+	CleanupMethod objstorage.SharedCleanupMethod
 }
 
 const (

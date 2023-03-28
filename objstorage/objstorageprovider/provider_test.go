@@ -29,7 +29,10 @@ func TestProvider(t *testing.T) {
 		})
 
 		providers := make(map[string]objstorage.Provider)
+		// We maintain both backings and backing handles to allow tests to use the
+		// backings after the handles have been closed.
 		backings := make(map[string]objstorage.SharedObjectBacking)
+		backingHandles := make(map[string]objstorage.SharedObjectBackingHandle)
 		var curProvider objstorage.Provider
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
 			scanArgs := func(desc string, args ...interface{}) {
@@ -58,15 +61,29 @@ func TestProvider(t *testing.T) {
 					st.Shared.Storage = sharedStore
 				}
 				require.NoError(t, fs.MkdirAll(fsDir, 0755))
-				provider, err := Open(st)
+				p, err := Open(st)
 				require.NoError(t, err)
 				if creatorID != 0 {
-					require.NoError(t, provider.SetCreatorID(creatorID))
+					require.NoError(t, p.SetCreatorID(creatorID))
 				}
-				providers[fsDir] = provider
-				curProvider = provider
+				// Checking refs on open affects the test output. We don't want tests to
+				// only pass when the `invariants` tag is used, so unconditionally
+				// enable ref checking on open.
+				p.(*provider).shared.checkRefsOnOpen = true
+				providers[fsDir] = p
+				curProvider = p
 
 				return log.String()
+
+			case "switch":
+				var fsDir string
+				scanArgs("<fs-dir>", &fsDir)
+				curProvider = providers[fsDir]
+				if curProvider == nil {
+					t.Fatalf("unknown provider %s", fsDir)
+				}
+
+				return ""
 
 			case "close":
 				require.NoError(t, curProvider.Sync())
@@ -77,10 +94,16 @@ func TestProvider(t *testing.T) {
 				return log.String()
 
 			case "create":
+				opts := objstorage.CreateOptions{
+					SharedCleanupMethod: objstorage.SharedRefTracking,
+				}
+				if len(d.CmdArgs) == 3 && d.CmdArgs[2].Key == "no-ref-tracking" {
+					d.CmdArgs = d.CmdArgs[:2]
+					opts.SharedCleanupMethod = objstorage.SharedNoCleanup
+				}
 				var fileNum base.FileNum
 				var typ string
-				scanArgs("<file-num> <local|shared>", &fileNum, &typ)
-				var opts objstorage.CreateOptions
+				scanArgs("<file-num> <local|shared> [no-ref-tracking]", &fileNum, &typ)
 				switch typ {
 				case "local":
 				case "shared":
@@ -110,6 +133,14 @@ func TestProvider(t *testing.T) {
 				require.Equal(t, n, len(data))
 				return log.String() + fmt.Sprintf("data: %s\n", string(data))
 
+			case "remove":
+				var fileNum base.FileNum
+				scanArgs("<file-num>", &fileNum)
+				if err := curProvider.Remove(base.FileTypeTable, fileNum); err != nil {
+					return err.Error()
+				}
+				return log.String()
+
 			case "list":
 				for _, meta := range curProvider.List() {
 					log.Infof("%s -> %s", meta.FileNum, curProvider.Path(meta))
@@ -122,12 +153,21 @@ func TestProvider(t *testing.T) {
 				scanArgs("<key> <file-num>", &key, &fileNum)
 				meta, err := curProvider.Lookup(base.FileTypeTable, fileNum)
 				require.NoError(t, err)
-				backing, err := curProvider.SharedObjectBacking(&meta)
+				handle, err := curProvider.SharedObjectBacking(&meta)
 				if err != nil {
 					return err.Error()
 				}
+				backing, err := handle.Get()
+				require.NoError(t, err)
 				backings[key] = backing
+				backingHandles[key] = handle
 				return log.String()
+
+			case "close-backing":
+				var key string
+				scanArgs("<key>", &key)
+				backingHandles[key].Close()
+				return ""
 
 			case "attach":
 				lines := strings.Split(d.Input, "\n")
@@ -140,18 +180,20 @@ func TestProvider(t *testing.T) {
 					var fileNum base.FileNum
 					_, err := fmt.Sscan(l, &key, &fileNum)
 					require.NoError(t, err)
-					backing, ok := backings[key]
+					b, ok := backings[key]
 					if !ok {
 						d.Fatalf(t, "unknown backing key %q", key)
 					}
 					objs = append(objs, objstorage.SharedObjectToAttach{
 						FileType: base.FileTypeTable,
 						FileNum:  fileNum,
-						Backing:  backing,
+						Backing:  b,
 					})
 				}
 				metas, err := curProvider.AttachSharedObjects(objs)
-				require.NoError(t, err)
+				if err != nil {
+					return log.String() + "error: " + err.Error()
+				}
 				for _, meta := range metas {
 					log.Infof("%s -> %s", meta.FileNum, curProvider.Path(meta))
 				}
