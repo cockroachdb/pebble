@@ -248,7 +248,7 @@ func TestCommitPipelineWALClose(t *testing.T) {
 			return nil
 		},
 		write: func(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*memTable, error) {
-			_, err := wal.SyncRecord(b.data, syncWG, syncErr)
+			_, _, err := wal.SyncRecord(b.data, syncWG, syncErr)
 			return nil, err
 		},
 	}
@@ -319,7 +319,7 @@ func BenchmarkCommitPipeline(b *testing.B) {
 								break
 							}
 
-							_, err := wal.SyncRecord(b.data, syncWG, syncErr)
+							_, _, err := wal.SyncRecord(b.data, syncWG, syncErr)
 							return mem, err
 						},
 					}

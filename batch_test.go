@@ -13,6 +13,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/batchskl"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -1139,6 +1141,179 @@ func TestEmptyFlushableBatch(t *testing.T) {
 	fb := newFlushableBatch(newBatch(nil), DefaultComparer)
 	it := newInternalIterAdapter(fb.newIter(nil))
 	require.False(t, it.First())
+}
+
+func TestBatchCommitStats(t *testing.T) {
+	testFunc := func() error {
+		db, err := Open("", &Options{
+			FS: vfs.NewMem(),
+		})
+		require.NoError(t, err)
+		defer db.Close()
+		b := db.NewBatch()
+		defer b.Close()
+		stats := b.CommitStats()
+		require.Equal(t, BatchCommitStats{}, stats)
+
+		// The stall code peers into the internals, instead of adding general
+		// purpose hooks, to avoid changing production code. We can revisit this
+		// choice if it becomes hard to maintain.
+
+		// Commit semaphore stall funcs.
+		var unstallCommitSemaphore func()
+		stallCommitSemaphore := func() {
+			commitPipeline := db.commit
+			commitSemaphoreReserved := 0
+			done := false
+			for !done {
+				select {
+				case commitPipeline.commitQueueSem <- struct{}{}:
+					commitSemaphoreReserved++
+				default:
+					done = true
+				}
+				if done {
+					break
+				}
+			}
+			unstallCommitSemaphore = func() {
+				for i := 0; i < commitSemaphoreReserved; i++ {
+					<-commitPipeline.commitQueueSem
+				}
+			}
+		}
+
+		// Memstable stall funcs.
+		var unstallMemtable func()
+		stallMemtable := func() {
+			db.mu.Lock()
+			defer db.mu.Unlock()
+			prev := db.opts.MemTableStopWritesThreshold
+			db.opts.MemTableStopWritesThreshold = 0
+			unstallMemtable = func() {
+				db.mu.Lock()
+				defer db.mu.Unlock()
+				db.opts.MemTableStopWritesThreshold = prev
+				db.mu.compact.cond.Broadcast()
+			}
+		}
+
+		// L0 read-amp stall funcs.
+		var unstallL0ReadAmp func()
+		stallL0ReadAmp := func() {
+			db.mu.Lock()
+			defer db.mu.Unlock()
+			prev := db.opts.L0StopWritesThreshold
+			db.opts.L0StopWritesThreshold = 0
+			unstallL0ReadAmp = func() {
+				db.mu.Lock()
+				defer db.mu.Unlock()
+				db.opts.L0StopWritesThreshold = prev
+				db.mu.compact.cond.Broadcast()
+			}
+		}
+
+		// WAL queue stall funcs.
+		//
+		// The LogWriter gets changed when stalling/unstalling the memtable, so we
+		// need to use a hook to tell us about the latest LogWriter.
+		var unstallWALQueue func()
+		stallWALQueue := func() {
+			var unstallLatestWALQueue func()
+			db.mu.Lock()
+			defer db.mu.Unlock()
+			db.mu.log.registerLogWriterForTesting = func(w *record.LogWriter) {
+				// db.mu will be held when this is called.
+				unstallLatestWALQueue = w.ReserveAllFreeBlocksForTesting()
+			}
+			db.mu.log.registerLogWriterForTesting(db.mu.log.LogWriter)
+			unstallWALQueue = func() {
+				db.mu.Lock()
+				defer db.mu.Unlock()
+				db.mu.log.registerLogWriterForTesting = nil
+				unstallLatestWALQueue()
+			}
+		}
+
+		// Commit wait stall funcs.
+		var unstallCommitWait func()
+		stallCommitWait := func() {
+			b.commit.Add(1)
+			unstallCommitWait = func() {
+				b.commit.Done()
+			}
+		}
+
+		// Stall everything.
+		stallCommitSemaphore()
+		stallMemtable()
+		stallL0ReadAmp()
+		stallWALQueue()
+		stallCommitWait()
+
+		// Exceed initialMemTableSize -- this is needed to make stallMemtable work.
+		// It also exceeds record.blockSize, requiring a new block to be allocated,
+		// which is what we need for stallWALQueue to work.
+		require.NoError(t, b.Set(make([]byte, initialMemTableSize), nil, nil))
+
+		var commitWG sync.WaitGroup
+		commitWG.Add(1)
+		go func() {
+			require.NoError(t, db.Apply(b, &WriteOptions{Sync: true}))
+			commitWG.Done()
+		}()
+		// Unstall things in the order that the stalls will happen.
+		sleepDuration := 10 * time.Millisecond
+		time.Sleep(sleepDuration)
+		unstallCommitSemaphore()
+		time.Sleep(sleepDuration)
+		unstallMemtable()
+		time.Sleep(sleepDuration)
+		unstallL0ReadAmp()
+		time.Sleep(sleepDuration)
+		unstallWALQueue()
+		time.Sleep(sleepDuration)
+		unstallCommitWait()
+
+		// Wait for Apply to return.
+		commitWG.Wait()
+		stats = b.CommitStats()
+		expectedDuration := (2 * sleepDuration) / 3
+		if expectedDuration > stats.SemaphoreWaitDuration {
+			return errors.Errorf("SemaphoreWaitDuration %s is too low",
+				stats.SemaphoreWaitDuration.String())
+		}
+		if expectedDuration > stats.WALQueueWaitDuration {
+			return errors.Errorf("WALQueueWaitDuration %s is too low",
+				stats.WALQueueWaitDuration.String())
+		}
+		if expectedDuration > stats.MemTableWriteStallDuration {
+			return errors.Errorf("MemTableWriteStallDuration %s is too low",
+				stats.MemTableWriteStallDuration.String())
+		}
+		if expectedDuration > stats.L0ReadAmpWriteStallDuration {
+			return errors.Errorf("L0ReadAmpWriteStallDuration %s is too low",
+				stats.L0ReadAmpWriteStallDuration)
+		}
+		if expectedDuration > stats.CommitWaitDuration {
+			return errors.Errorf("CommitWaitDuration %s is too low",
+				stats.CommitWaitDuration)
+		}
+		if 5*expectedDuration > stats.TotalDuration {
+			return errors.Errorf("TotalDuration %s is too low",
+				stats.TotalDuration)
+		}
+		return nil
+	}
+	// Try a few times, and succeed if one of them succeeds.
+	var err error
+	for i := 0; i < 5; i++ {
+		err = testFunc()
+		if err == nil {
+			break
+		}
+	}
+	require.NoError(t, err)
 }
 
 func BenchmarkBatchSet(b *testing.B) {
