@@ -869,7 +869,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 		b.flushable.setSeqNum(b.SeqNum())
 		if !d.opts.DisableWAL {
 			var err error
-			size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)
+			size, b.commitStats.WALQueueWaitDuration, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)
 			if err != nil {
 				panic(err)
 			}
@@ -907,7 +907,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 	}
 
 	if b.flushable == nil {
-		size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)
+		size, b.commitStats.WALQueueWaitDuration, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)
 		if err != nil {
 			panic(err)
 		}
@@ -2021,7 +2021,11 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 						Reason: "memtable count limit reached",
 					})
 				}
+				now := time.Now()
 				d.mu.compact.cond.Wait()
+				if b != nil {
+					b.commitStats.MemTableWriteStallDuration += time.Since(now)
+				}
 				continue
 			}
 		}
@@ -2034,7 +2038,11 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 					Reason: "L0 file count limit exceeded",
 				})
 			}
+			now := time.Now()
 			d.mu.compact.cond.Wait()
+			if b != nil {
+				b.commitStats.L0ReadAmpWriteStallDuration += time.Since(now)
+			}
 			continue
 		}
 
