@@ -1,0 +1,93 @@
+# Tests with the same shared object attached as multiple objects.
+
+open p1 1
+----
+<local fs> mkdir-all: p1 0755
+<local fs> open-dir: p1
+<local fs> open-dir: p1
+<local fs> create: p1/SHARED-CATALOG-000001
+<local fs> sync: p1/SHARED-CATALOG-000001
+<local fs> create: p1/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> close: p1/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> sync: p1
+<local fs> sync: p1/SHARED-CATALOG-000001
+
+create 1 shared
+obj-one
+----
+<shared> create object "00000000000000000001-000001.sst"
+<shared> close writer for "00000000000000000001-000001.sst" after 7 bytes
+<shared> create object "00000000000000000001-000001.sst.ref.00000000000000000001.000001"
+<shared> close writer for "00000000000000000001-000001.sst.ref.00000000000000000001.000001" after 0 bytes
+
+save-backing b1 1
+----
+
+open p2 2
+----
+<local fs> mkdir-all: p2 0755
+<local fs> open-dir: p2
+<local fs> open-dir: p2
+<local fs> create: p2/SHARED-CATALOG-000001
+<local fs> sync: p2/SHARED-CATALOG-000001
+<local fs> create: p2/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> close: p2/marker.shared-catalog.000001.SHARED-CATALOG-000001
+<local fs> sync: p2
+<local fs> sync: p2/SHARED-CATALOG-000001
+
+# We should create three ref markers to allow independent removal.
+attach
+b1 101
+b1 102
+b1 103
+----
+<shared> create object "00000000000000000001-000001.sst.ref.00000000000000000002.000101"
+<shared> close writer for "00000000000000000001-000001.sst.ref.00000000000000000002.000101" after 0 bytes
+<shared> size of object "00000000000000000001-000001.sst.ref.00000000000000000001.000001": 0
+<shared> create object "00000000000000000001-000001.sst.ref.00000000000000000002.000102"
+<shared> close writer for "00000000000000000001-000001.sst.ref.00000000000000000002.000102" after 0 bytes
+<shared> size of object "00000000000000000001-000001.sst.ref.00000000000000000001.000001": 0
+<shared> create object "00000000000000000001-000001.sst.ref.00000000000000000002.000103"
+<shared> close writer for "00000000000000000001-000001.sst.ref.00000000000000000002.000103" after 0 bytes
+<shared> size of object "00000000000000000001-000001.sst.ref.00000000000000000001.000001": 0
+<local fs> sync: p2/SHARED-CATALOG-000001
+000101 -> shared://00000000000000000001-000001.sst
+000102 -> shared://00000000000000000001-000001.sst
+000103 -> shared://00000000000000000001-000001.sst
+
+close-backing b1
+----
+
+# Remove original object.
+switch p1
+----
+
+remove 1
+----
+<shared> delete object "00000000000000000001-000001.sst.ref.00000000000000000001.000001"
+<shared> list (prefix="00000000000000000001-000001.sst.ref.", delimiter="")
+<shared>  - 00000000000000000001-000001.sst.ref.00000000000000000002.000101
+<shared>  - 00000000000000000001-000001.sst.ref.00000000000000000002.000102
+<shared>  - 00000000000000000001-000001.sst.ref.00000000000000000002.000103
+
+switch p2
+----
+
+remove 101
+----
+<shared> delete object "00000000000000000001-000001.sst.ref.00000000000000000002.000101"
+<shared> list (prefix="00000000000000000001-000001.sst.ref.", delimiter="")
+<shared>  - 00000000000000000001-000001.sst.ref.00000000000000000002.000102
+<shared>  - 00000000000000000001-000001.sst.ref.00000000000000000002.000103
+
+remove 103
+----
+<shared> delete object "00000000000000000001-000001.sst.ref.00000000000000000002.000103"
+<shared> list (prefix="00000000000000000001-000001.sst.ref.", delimiter="")
+<shared>  - 00000000000000000001-000001.sst.ref.00000000000000000002.000102
+
+remove 102
+----
+<shared> delete object "00000000000000000001-000001.sst.ref.00000000000000000002.000102"
+<shared> list (prefix="00000000000000000001-000001.sst.ref.", delimiter="")
+<shared> delete object "00000000000000000001-000001.sst"

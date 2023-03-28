@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedobjcat"
 )
@@ -20,6 +21,12 @@ import (
 // All fields remain unset if shared storage is not configured.
 type sharedSubsystem struct {
 	catalog *sharedobjcat.Catalog
+
+	// checkRefsOnOpen controls whether we check the ref marker file when opening
+	// an object. Normally this is true when invariants are enabled (but the provider
+	// test tweaks this field).
+	checkRefsOnOpen bool
+
 	// initialized guards access to the creatorID field.
 	initialized atomic.Bool
 	creatorID   objstorage.CreatorID
@@ -44,6 +51,7 @@ func (p *provider) sharedInit() error {
 		return errors.Wrapf(err, "pebble: could not open shared object catalog")
 	}
 	p.shared.catalog = catalog
+	p.shared.checkRefsOnOpen = invariants.Enabled
 
 	// The creator ID may or may not be initialized yet.
 	if contents.CreatorID.IsSet() {
@@ -60,6 +68,7 @@ func (p *provider) sharedInit() error {
 		}
 		o.Shared.CreatorID = meta.CreatorID
 		o.Shared.CreatorFileNum = meta.CreatorFileNum
+		o.Shared.CleanupMethod = meta.CleanupMethod
 		p.mu.knownObjects[o.FileNum] = o
 	}
 	return nil
@@ -122,6 +131,10 @@ func (p *provider) sharedPath(meta objstorage.ObjectMetadata) string {
 	return "shared://" + sharedObjectName(meta)
 }
 
+// sharedObjectName returns the name of an object on shared storage.
+//
+// For sstables, the format is: <creator-id>-<file-num>.sst
+// For example: 00000000000000000002-000001.sst
 func sharedObjectName(meta objstorage.ObjectMetadata) string {
 	// TODO(radu): prepend a "shard" value for better distribution within the bucket?
 	return fmt.Sprintf(
@@ -130,8 +143,57 @@ func sharedObjectName(meta objstorage.ObjectMetadata) string {
 	)
 }
 
+// sharedObjectRefName returns the name of the object's ref marker associated
+// with this provider. This name is the object's name concatenated with
+// ".ref.<provider-id>.<local-file-num>".
+//
+// For example: 00000000000000000002-000001.sst.ref.00000000000000000005.000008
+func (p *provider) sharedObjectRefName(meta objstorage.ObjectMetadata) string {
+	if meta.Shared.CleanupMethod != objstorage.SharedRefTracking {
+		panic("ref object used when ref tracking disabled")
+	}
+	return sharedObjectRefName(meta, p.shared.creatorID, meta.FileNum)
+}
+
+func sharedObjectRefName(
+	meta objstorage.ObjectMetadata, refCreatorID objstorage.CreatorID, refFileNum base.FileNum,
+) string {
+	if meta.Shared.CleanupMethod != objstorage.SharedRefTracking {
+		panic("ref object used when ref tracking disabled")
+	}
+	return fmt.Sprintf(
+		"%s-%s.ref.%s.%s",
+		meta.Shared.CreatorID, base.MakeFilename(meta.FileType, meta.Shared.CreatorFileNum), refCreatorID, refFileNum,
+	)
+
+}
+
+func sharedObjectRefPrefix(meta objstorage.ObjectMetadata) string {
+	return fmt.Sprintf(
+		"%s-%s.ref.",
+		meta.Shared.CreatorID, base.MakeFilename(meta.FileType, meta.Shared.CreatorFileNum),
+	)
+}
+
+// sharedCreateRef creates a reference marker object.
+func (p *provider) sharedCreateRef(meta objstorage.ObjectMetadata) error {
+	if meta.Shared.CleanupMethod != objstorage.SharedRefTracking {
+		return nil
+	}
+	refName := p.sharedObjectRefName(meta)
+	writer, err := p.st.Shared.Storage.CreateObject(refName)
+	if err == nil {
+		// The object is empty, just close the writer.
+		err = writer.Close()
+	}
+	if err != nil {
+		return errors.Wrapf(err, "creating marker object %s", refName)
+	}
+	return nil
+}
+
 func (p *provider) sharedCreate(
-	_ context.Context, fileType base.FileType, fileNum base.FileNum,
+	_ context.Context, fileType base.FileType, fileNum base.FileNum, opts objstorage.CreateOptions,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	if err := p.sharedCheckInitialized(); err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
@@ -142,13 +204,16 @@ func (p *provider) sharedCreate(
 	}
 	meta.Shared.CreatorID = p.shared.creatorID
 	meta.Shared.CreatorFileNum = fileNum
+	meta.Shared.CleanupMethod = opts.SharedCleanupMethod
 
 	objName := sharedObjectName(meta)
 	writer, err := p.st.Shared.Storage.CreateObject(objName)
 	if err != nil {
-		return nil, objstorage.ObjectMetadata{}, err
+		return nil, objstorage.ObjectMetadata{}, errors.Wrapf(err, "creating object %s", objName)
 	}
 	return &sharedWritable{
+		p:             p,
+		meta:          meta,
 		storageWriter: writer,
 	}, meta, nil
 }
@@ -158,6 +223,15 @@ func (p *provider) sharedOpenForReading(
 ) (objstorage.Readable, error) {
 	if err := p.sharedCheckInitialized(); err != nil {
 		return nil, err
+	}
+	// Verify we have a reference on this object; for performance reasons, we only
+	// do this in testing scenarios.
+	if p.shared.checkRefsOnOpen && meta.Shared.CleanupMethod == objstorage.SharedRefTracking {
+		refName := p.sharedObjectRefName(meta)
+		if _, err := p.st.Shared.Storage.Size(refName); err != nil {
+			// TODO(radu): assertion error if object doesn't exist.
+			return nil, errors.Wrapf(err, "checking marker object %s", refName)
+		}
 	}
 	objName := sharedObjectName(meta)
 	size, err := p.st.Shared.Storage.Size(objName)
@@ -173,4 +247,38 @@ func (p *provider) sharedSize(meta objstorage.ObjectMetadata) (int64, error) {
 	}
 	objName := sharedObjectName(meta)
 	return p.st.Shared.Storage.Size(objName)
+}
+
+// sharedUnref implements object "removal" with the shared backend. The ref
+// marker object is removed and the backing object is removed only if there are
+// no other ref markers.
+func (p *provider) sharedUnref(meta objstorage.ObjectMetadata) error {
+	if meta.Shared.CleanupMethod == objstorage.SharedNoCleanup {
+		// Never delete objects in this mode.
+		return nil
+	}
+	if p.isProtected(meta.FileNum) {
+		// TODO(radu): we need a mechanism to unref the object when it becomes
+		// unprotected.
+		return nil
+	}
+
+	refName := p.sharedObjectRefName(meta)
+	if err := p.st.Shared.Storage.Delete(refName); err != nil {
+		// TODO(radu): continue if it's a not-exist error.
+		return err
+	}
+	otherRefs, err := p.st.Shared.Storage.List(sharedObjectRefPrefix(meta), "" /* delimiter */)
+	if err != nil {
+		return err
+	}
+	if len(otherRefs) == 0 {
+		objName := sharedObjectName(meta)
+		if err := p.st.Shared.Storage.Delete(objName); err != nil {
+			// TODO(radu): we must tolerate an object-not-exists here: two providers
+			// can race and delete the same object.
+			return err
+		}
+	}
+	return err
 }

@@ -25,7 +25,8 @@ type versionEdit struct {
 }
 
 const (
-	// tagNewObject is followed by the FileNum, creator ID and creator FileNum.
+	// tagNewObject is followed by the FileNum, creator ID, creator FileNum, and
+	// cleanup method.
 	tagNewObject = 1
 	// tagDeletedObject is followed by the FileNum.
 	tagDeletedObject = 2
@@ -72,6 +73,7 @@ func (v *versionEdit) Encode(w io.Writer) error {
 		buf = binary.AppendUvarint(buf, objType)
 		buf = binary.AppendUvarint(buf, uint64(meta.CreatorID))
 		buf = binary.AppendUvarint(buf, uint64(meta.CreatorFileNum))
+		buf = binary.AppendUvarint(buf, uint64(meta.CleanupMethod))
 	}
 
 	for _, fileNum := range v.DeletedObjects {
@@ -104,7 +106,7 @@ func (v *versionEdit) Decode(r io.Reader) error {
 		err = nil
 		switch tag {
 		case tagNewObject:
-			var fileNum, creatorID, creatorFileNum uint64
+			var fileNum, creatorID, creatorFileNum, cleanupMethod uint64
 			var fileType base.FileType
 			fileNum, err = binary.ReadUvarint(br)
 			if err == nil {
@@ -121,11 +123,15 @@ func (v *versionEdit) Decode(r io.Reader) error {
 				creatorFileNum, err = binary.ReadUvarint(br)
 			}
 			if err == nil {
+				cleanupMethod, err = binary.ReadUvarint(br)
+			}
+			if err == nil {
 				v.NewObjects = append(v.NewObjects, SharedObjectMetadata{
 					FileNum:        base.FileNum(fileNum),
 					FileType:       fileType,
 					CreatorID:      objstorage.CreatorID(creatorID),
 					CreatorFileNum: base.FileNum(creatorFileNum),
+					CleanupMethod:  objstorage.SharedCleanupMethod(cleanupMethod),
 				})
 			}
 

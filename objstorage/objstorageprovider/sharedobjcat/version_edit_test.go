@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/kr/pretty"
 )
 
@@ -27,6 +28,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					FileType:       base.FileTypeTable,
 					CreatorID:      12,
 					CreatorFileNum: 123,
+					CleanupMethod:  objstorage.SharedNoCleanup,
 				},
 			},
 		},
@@ -41,6 +43,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					FileType:       base.FileTypeTable,
 					CreatorID:      12,
 					CreatorFileNum: 123,
+					CleanupMethod:  objstorage.SharedRefTracking,
 				},
 				{
 					FileNum:        2,
@@ -53,6 +56,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					FileType:       base.FileTypeTable,
 					CreatorID:      32,
 					CreatorFileNum: 323,
+					CleanupMethod:  objstorage.SharedRefTracking,
 				},
 			},
 			DeletedObjects: []base.FileNum{4, 5},

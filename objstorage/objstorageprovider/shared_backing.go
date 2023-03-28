@@ -18,6 +18,13 @@ import (
 const (
 	tagCreatorID      = 1
 	tagCreatorFileNum = 2
+	tagCleanupMethod  = 3
+	// tagRefCheckID encodes the information for a ref marker that needs to be
+	// checked when attaching this object to another provider. This is set to the
+	// creator ID and FileNum for the provider that encodes the backing, and
+	// allows the "target" provider to check that the "source" provider kept its
+	// reference on the object alive.
+	tagRefCheckID = 4
 
 	// Any new tags that don't have the tagNotSafeToIgnoreMask bit set must be
 	// followed by the length of the data (so they can be skipped).
@@ -27,8 +34,7 @@ const (
 	tagNotSafeToIgnoreMask = 64
 )
 
-// SharedObjectBacking is part of the objstorage.Provider interface.
-func (p *provider) SharedObjectBacking(
+func (p *provider) encodeSharedObjectBacking(
 	meta *objstorage.ObjectMetadata,
 ) (objstorage.SharedObjectBacking, error) {
 	if !meta.IsShared() {
@@ -38,17 +44,73 @@ func (p *provider) SharedObjectBacking(
 	buf := make([]byte, 0, binary.MaxVarintLen64*4)
 	buf = binary.AppendUvarint(buf, tagCreatorID)
 	buf = binary.AppendUvarint(buf, uint64(meta.Shared.CreatorID))
+	// TODO(radu): encode file type as well?
 	buf = binary.AppendUvarint(buf, tagCreatorFileNum)
 	buf = binary.AppendUvarint(buf, uint64(meta.Shared.CreatorFileNum))
+	buf = binary.AppendUvarint(buf, tagCleanupMethod)
+	buf = binary.AppendUvarint(buf, uint64(meta.Shared.CleanupMethod))
+	if meta.Shared.CleanupMethod == objstorage.SharedRefTracking {
+		buf = binary.AppendUvarint(buf, tagRefCheckID)
+		buf = binary.AppendUvarint(buf, uint64(p.shared.creatorID))
+		buf = binary.AppendUvarint(buf, uint64(meta.FileNum))
+	}
 	return buf, nil
 }
 
-// fromSharedObjectBacking decodes the shared object metadata.
-func fromSharedObjectBacking(
+type sharedObjectBackingHandle struct {
+	backing objstorage.SharedObjectBacking
+	fileNum base.FileNum
+	p       *provider
+}
+
+func (s *sharedObjectBackingHandle) Get() (objstorage.SharedObjectBacking, error) {
+	if s.backing == nil {
+		return nil, errors.Errorf("SharedObjectBackingHandle.Get() called after Close()")
+	}
+	return s.backing, nil
+}
+
+func (s *sharedObjectBackingHandle) Close() {
+	if s.backing != nil {
+		s.backing = nil
+		s.p.unprotectObject(s.fileNum)
+	}
+}
+
+var _ objstorage.SharedObjectBackingHandle = (*sharedObjectBackingHandle)(nil)
+
+// SharedObjectBacking is part of the objstorage.Provider interface.
+func (p *provider) SharedObjectBacking(
+	meta *objstorage.ObjectMetadata,
+) (objstorage.SharedObjectBackingHandle, error) {
+	backing, err := p.encodeSharedObjectBacking(meta)
+	if err != nil {
+		return nil, err
+	}
+	p.protectObject(meta.FileNum)
+	return &sharedObjectBackingHandle{
+		backing: backing,
+		fileNum: meta.FileNum,
+		p:       p,
+	}, nil
+}
+
+type decodedBacking struct {
+	meta objstorage.ObjectMetadata
+	// refToCheck is set only when meta.Shared.CleanupMethod is RefTracking
+	refToCheck struct {
+		creatorID objstorage.CreatorID
+		fileNum   base.FileNum
+	}
+}
+
+// decodeSharedObjectBacking decodes the shared object metadata.
+// Returns the object metadata and (optionally) the creator ID of the provider
+// that encoded the backing whose ref marker needs to be checked.
+func decodeSharedObjectBacking(
 	fileType base.FileType, fileNum base.FileNum, buf objstorage.SharedObjectBacking,
-) (objstorage.ObjectMetadata, error) {
-	var creatorID uint64
-	var creatorFileNum uint64
+) (decodedBacking, error) {
+	var creatorID, creatorFileNum, cleanupMethod, refCheckCreatorID, refCheckFileNum uint64
 	br := bytes.NewReader(buf)
 	for {
 		tag, err := binary.ReadUvarint(br)
@@ -56,7 +118,7 @@ func fromSharedObjectBacking(
 			break
 		}
 		if err != nil {
-			return objstorage.ObjectMetadata{}, err
+			return decodedBacking{}, err
 		}
 		switch tag {
 		case tagCreatorID:
@@ -65,12 +127,19 @@ func fromSharedObjectBacking(
 		case tagCreatorFileNum:
 			creatorFileNum, err = binary.ReadUvarint(br)
 
-		// TODO(radu): encode file type as well?
+		case tagCleanupMethod:
+			cleanupMethod, err = binary.ReadUvarint(br)
+
+		case tagRefCheckID:
+			refCheckCreatorID, err = binary.ReadUvarint(br)
+			if err == nil {
+				refCheckFileNum, err = binary.ReadUvarint(br)
+			}
 
 		default:
 			// Ignore unknown tags, unless they're not safe to ignore.
 			if tag&tagNotSafeToIgnoreMask != 0 {
-				return objstorage.ObjectMetadata{}, errors.Newf("unknown tag %d", tag)
+				return decodedBacking{}, errors.Newf("unknown tag %d", tag)
 			}
 			var dataLen uint64
 			dataLen, err = binary.ReadUvarint(br)
@@ -79,51 +148,84 @@ func fromSharedObjectBacking(
 			}
 		}
 		if err != nil {
-			return objstorage.ObjectMetadata{}, err
+			return decodedBacking{}, err
 		}
 	}
 	if creatorID == 0 {
-		return objstorage.ObjectMetadata{}, errors.Newf("shared object backing missing creator ID")
+		return decodedBacking{}, errors.Newf("shared object backing missing creator ID")
 	}
 	if creatorFileNum == 0 {
-		return objstorage.ObjectMetadata{}, errors.Newf("shared object backing missing creator file num")
+		return decodedBacking{}, errors.Newf("shared object backing missing creator file num")
 	}
-	meta := objstorage.ObjectMetadata{
-		FileNum:  fileNum,
-		FileType: fileType,
+	var res decodedBacking
+	res.meta.FileNum = fileNum
+	res.meta.FileType = fileType
+	res.meta.Shared.CreatorID = objstorage.CreatorID(creatorID)
+	res.meta.Shared.CreatorFileNum = base.FileNum(creatorFileNum)
+	res.meta.Shared.CleanupMethod = objstorage.SharedCleanupMethod(cleanupMethod)
+
+	if res.meta.Shared.CleanupMethod == objstorage.SharedRefTracking {
+		if refCheckCreatorID == 0 || refCheckFileNum == 0 {
+			return decodedBacking{}, errors.Newf("shared object backing missing ref to check")
+		}
+		res.refToCheck.creatorID = objstorage.CreatorID(refCheckCreatorID)
+		res.refToCheck.fileNum = base.FileNum(refCheckFileNum)
 	}
-	meta.Shared.CreatorID = objstorage.CreatorID(creatorID)
-	meta.Shared.CreatorFileNum = base.FileNum(creatorFileNum)
-	return meta, nil
+	return res, nil
 }
 
 // AttachSharedObjects is part of the objstorage.Provider interface.
 func (p *provider) AttachSharedObjects(
 	objs []objstorage.SharedObjectToAttach,
 ) ([]objstorage.ObjectMetadata, error) {
-	metas := make([]objstorage.ObjectMetadata, len(objs))
+	decoded := make([]decodedBacking, len(objs))
 	for i, o := range objs {
-		meta, err := fromSharedObjectBacking(o.FileType, o.FileNum, o.Backing)
+		var err error
+		decoded[i], err = decodeSharedObjectBacking(o.FileType, o.FileNum, o.Backing)
 		if err != nil {
 			return nil, err
 		}
-		metas[i] = meta
+	}
+
+	// Create the reference marker objects.
+	// TODO(radu): parallelize this.
+	for _, d := range decoded {
+		if d.meta.Shared.CleanupMethod != objstorage.SharedRefTracking {
+			continue
+		}
+		if err := p.sharedCreateRef(d.meta); err != nil {
+			// TODO(radu): clean up references previously created in this loop.
+			return nil, err
+		}
+		// Check the "originator's" reference.
+		refName := sharedObjectRefName(d.meta, d.refToCheck.creatorID, d.refToCheck.fileNum)
+		if _, err := p.st.Shared.Storage.Size(refName); err != nil {
+			// TODO(radu): better error message if it doesn't exist.
+			_ = p.sharedUnref(d.meta)
+			// TODO(radu): clean up references previously created in this loop.
+			return nil, errors.Wrapf(err, "checking originator's marker object %s", refName)
+		}
 	}
 
 	func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
-		for _, meta := range metas {
+		for _, d := range decoded {
 			p.mu.shared.catalogBatch.AddObject(sharedobjcat.SharedObjectMetadata{
-				FileNum:        meta.FileNum,
-				FileType:       meta.FileType,
-				CreatorID:      meta.Shared.CreatorID,
-				CreatorFileNum: meta.Shared.CreatorFileNum,
+				FileNum:        d.meta.FileNum,
+				FileType:       d.meta.FileType,
+				CreatorID:      d.meta.Shared.CreatorID,
+				CreatorFileNum: d.meta.Shared.CreatorFileNum,
 			})
 		}
 	}()
 	if err := p.sharedSync(); err != nil {
 		return nil, err
+	}
+
+	metas := make([]objstorage.ObjectMetadata, len(decoded))
+	for i, d := range decoded {
+		metas[i] = d.meta
 	}
 
 	p.mu.Lock()
