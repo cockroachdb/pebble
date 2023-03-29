@@ -169,7 +169,7 @@ The special-cased flush process for this flushable is described in [Section
 
 Will wait on range key support in `levelIter` to land before implementing.
 
-#### 5. `inuseBytes() uint64` and `totalBytes() uint64`
+#### 5. `inuseBytes() uint64` and `allocatedBytes() uint64`
 
 For both functions, we return 0.
 
@@ -183,7 +183,7 @@ memtable when determining whether or not to stall writes
 instead (`L0StopWritesThreshold`). Thus, we'll have to special case for ingested
 SSTs in `d.makeRoomForWrite()` to address this detail.
 
-`totalBytes()` represents the number of bytes allocated by the flushable, which
+`allocatedBytes()` represents the number of bytes allocated by the flushable, which
 in our case is 0. A consequence for this is that the size of the SSTs do not
 count towards the flush threshold calculation. However, by setting
 `flushableEntry.flushForced` we can achieve the same behaviour.

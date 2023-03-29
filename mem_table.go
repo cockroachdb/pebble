@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 )
@@ -86,6 +87,11 @@ type memTable struct {
 	// The current logSeqNum at the time the memtable was created. This is
 	// guaranteed to be less than or equal to any seqnum stored in the memtable.
 	logSeqNum uint64
+	// Since memtable allocation is delayed, we store the size to allocate here.
+	capacity            int
+	allocateManually    bool
+	cacheReserve        func(n int) func()
+	releaseCacheReserve func()
 }
 
 // memTableOptions holds configuration used when creating a memTable. All of
@@ -93,9 +99,11 @@ type memTable struct {
 // which is used by tests.
 type memTableOptions struct {
 	*Options
-	arenaBuf  []byte
-	size      int
-	logSeqNum uint64
+	size             int
+	logSeqNum        uint64
+	allocateManually bool
+	cacheReserve     func(n int) func()
+	delayAllocation  bool
 }
 
 func checkMemTable(obj interface{}) {
@@ -107,7 +115,9 @@ func checkMemTable(obj interface{}) {
 }
 
 // newMemTable returns a new MemTable of the specified size. If size is zero,
-// Options.MemTableSize is used instead.
+// Options.MemTableSize is used instead. Note that the actual memory allocation
+// required by the memtable only takes place right before the first write to the
+// memtable.
 func newMemTable(opts memTableOptions) *memTable {
 	opts.Options = opts.Options.EnsureDefaults()
 	if opts.size == 0 {
@@ -115,12 +125,14 @@ func newMemTable(opts memTableOptions) *memTable {
 	}
 
 	m := &memTable{
-		cmp:        opts.Comparer.Compare,
-		formatKey:  opts.Comparer.FormatKey,
-		equal:      opts.Comparer.Equal,
-		arenaBuf:   opts.arenaBuf,
-		writerRefs: 1,
-		logSeqNum:  opts.logSeqNum,
+		cmp:              opts.Comparer.Compare,
+		formatKey:        opts.Comparer.FormatKey,
+		equal:            opts.Comparer.Equal,
+		writerRefs:       1,
+		logSeqNum:        opts.logSeqNum,
+		allocateManually: opts.allocateManually,
+		capacity:         opts.size,
+		cacheReserve:     opts.cacheReserve,
 	}
 	m.tombstones = keySpanCache{
 		cmp:           m.cmp,
@@ -134,16 +146,40 @@ func newMemTable(opts memTableOptions) *memTable {
 		skl:           &m.rangeKeySkl,
 		constructSpan: rangekey.Decode,
 	}
+	if !opts.delayAllocation {
+		m.allocate()
+	}
+	return m
+}
 
-	if m.arenaBuf == nil {
-		m.arenaBuf = make([]byte, opts.size)
+func (m *memTable) allocate() {
+	if m.cacheReserve != nil {
+		m.releaseCacheReserve = m.cacheReserve(m.capacity)
 	}
 
+	if m.allocateManually {
+		m.arenaBuf = manual.New(m.capacity)
+	} else {
+		m.arenaBuf = make([]byte, m.capacity)
+	}
 	arena := arenaskl.NewArena(m.arenaBuf)
 	m.skl.Reset(arena, m.cmp)
 	m.rangeDelSkl.Reset(arena, m.cmp)
 	m.rangeKeySkl.Reset(arena, m.cmp)
-	return m
+}
+
+func (m *memTable) releaseMemAccounting() (allocated bool) {
+	if m.arenaBuf != nil {
+		allocated = true
+		if m.releaseCacheReserve != nil {
+			m.releaseCacheReserve()
+		}
+	}
+	if m.arenaBuf != nil && m.allocateManually {
+		manual.Free(m.arenaBuf)
+		m.arenaBuf = nil
+	}
+	return allocated
 }
 
 func (m *memTable) writerRef() {
@@ -173,6 +209,10 @@ func (m *memTable) readyForFlush() bool {
 // that prepare is not thread-safe, while apply is. The caller must call
 // writerUnref() after the batch has been applied.
 func (m *memTable) prepare(batch *Batch) error {
+	if m.arenaBuf == nil {
+		m.allocate()
+	}
+
 	avail := m.availBytes()
 	if batch.memTableSize > uint64(avail) {
 		return arenaskl.ErrArenaFull
@@ -183,6 +223,8 @@ func (m *memTable) prepare(batch *Batch) error {
 	return nil
 }
 
+// prepare must be called for a given batch before calling apply. Tests can
+// choose to call apply directly if they call memTable.allocate first.
 func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 	if seqNum < m.logSeqNum {
 		return base.CorruptionErrorf("pebble: batch seqnum %d is less than memtable creation seqnum %d",
@@ -236,14 +278,26 @@ func (m *memTable) apply(batch *Batch, seqNum uint64) error {
 // return false). The iterator can be positioned via a call to SeekGE,
 // SeekLT, First or Last.
 func (m *memTable) newIter(o *IterOptions) internalIterator {
+	if m.arenaBuf == nil {
+		return emptyIter
+	}
+
 	return m.skl.NewIter(o.GetLowerBound(), o.GetUpperBound())
 }
 
 func (m *memTable) newFlushIter(o *IterOptions, bytesFlushed *uint64) internalIterator {
+	if m.arenaBuf == nil {
+		return emptyIter
+	}
+
 	return m.skl.NewFlushIter(bytesFlushed)
 }
 
 func (m *memTable) newRangeDelIter(*IterOptions) keyspan.FragmentIterator {
+	if m.arenaBuf == nil {
+		return emptyKeyspanIter
+	}
+
 	tombstones := m.tombstones.get()
 	if tombstones == nil {
 		return nil
@@ -252,6 +306,10 @@ func (m *memTable) newRangeDelIter(*IterOptions) keyspan.FragmentIterator {
 }
 
 func (m *memTable) newRangeKeyIter(*IterOptions) keyspan.FragmentIterator {
+	if m.arenaBuf == nil {
+		return emptyKeyspanIter
+	}
+
 	rangeKeys := m.rangeKeys.get()
 	if rangeKeys == nil {
 		return nil
@@ -260,10 +318,18 @@ func (m *memTable) newRangeKeyIter(*IterOptions) keyspan.FragmentIterator {
 }
 
 func (m *memTable) containsRangeKeys() bool {
+	if m.arenaBuf == nil {
+		return false
+	}
+
 	return atomic.LoadUint32(&m.rangeKeys.atomicCount) > 0
 }
 
 func (m *memTable) availBytes() uint32 {
+	if m.arenaBuf == nil {
+		return uint32(m.capacity)
+	}
+
 	a := m.skl.Arena()
 	if atomic.LoadInt32(&m.writerRefs) == 1 {
 		// If there are no other concurrent apply operations, we can update the
@@ -275,16 +341,30 @@ func (m *memTable) availBytes() uint32 {
 }
 
 func (m *memTable) inuseBytes() uint64 {
+	if m.arenaBuf == nil {
+		return 0
+	}
+
 	return uint64(m.skl.Size() - memTableEmptySize)
 }
 
-func (m *memTable) totalBytes() uint64 {
+func (m *memTable) allocatedBytes() uint64 {
+	if m.arenaBuf == nil {
+		// No space allocated yet since the memtable is empty and has seen no
+		// writes. This will prevent empty memtables from contributing to
+		// memtable write stalls.
+		return 0
+	}
 	return uint64(m.skl.Arena().Capacity())
+}
+
+func (m *memTable) maxCapacity() int {
+	return m.capacity
 }
 
 // empty returns whether the MemTable has no key/value pairs.
 func (m *memTable) empty() bool {
-	return m.skl.Size() == memTableEmptySize
+	return m.arenaBuf == nil || m.skl.Size() == memTableEmptySize
 }
 
 // A keySpanFrags holds a set of fragmented keyspan.Spans with a particular key

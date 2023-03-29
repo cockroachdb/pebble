@@ -315,6 +315,9 @@ func TestMemTableDeleteRange(t *testing.T) {
 			if mem == nil {
 				mem = newMemTable(memTableOptions{})
 			}
+			if err := mem.prepare(b); err != nil {
+				return err.Error()
+			}
 			if err := mem.apply(b, seqNum); err != nil {
 				return err.Error()
 			}
@@ -352,7 +355,6 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 	// tombstones they've added are all present.
 
 	m := newMemTable(memTableOptions{Options: &Options{MemTableSize: 64 << 20}})
-
 	const workers = 10
 	eg, _ := errgroup.WithContext(context.Background())
 	seqNum := uint64(1)

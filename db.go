@@ -20,7 +20,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
@@ -1715,7 +1714,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Compact.NumInProgress = int64(d.mu.compact.compactingCount)
 	metrics.Compact.MarkedFiles = vers.Stats.MarkedForCompaction
 	for _, m := range d.mu.mem.queue {
-		metrics.MemTable.Size += m.totalBytes()
+		metrics.MemTable.Size += m.allocatedBytes()
 	}
 	metrics.Snapshots.Count = d.mu.snapshots.count()
 	if metrics.Snapshots.Count > 0 {
@@ -1940,13 +1939,17 @@ func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushabl
 	}
 
 	atomic.AddInt64(&d.atomic.memTableCount, 1)
-	atomic.AddInt64(&d.atomic.memTableReserved, int64(size))
-	releaseAccountingReservation := d.opts.Cache.Reserve(size)
 
 	mem := newMemTable(memTableOptions{
-		Options:   d.opts,
-		arenaBuf:  manual.New(int(size)),
-		logSeqNum: logSeqNum,
+		Options:          d.opts,
+		size:             size,
+		logSeqNum:        logSeqNum,
+		allocateManually: true,
+		cacheReserve: func(size int) func() {
+			atomic.AddInt64(&d.atomic.memTableReserved, int64(size))
+			freeInCache := d.opts.Cache.Reserve(size)
+			return freeInCache
+		},
 	})
 
 	// Note: this is a no-op if invariants are disabled or race is enabled.
@@ -1954,11 +1957,11 @@ func (d *DB) newMemTable(logNum FileNum, logSeqNum uint64) (*memTable, *flushabl
 
 	entry := d.newFlushableEntry(mem, logNum, logSeqNum)
 	entry.releaseMemAccounting = func() {
-		manual.Free(mem.arenaBuf)
-		mem.arenaBuf = nil
+		allocated := mem.releaseMemAccounting()
 		atomic.AddInt64(&d.atomic.memTableCount, -1)
-		atomic.AddInt64(&d.atomic.memTableReserved, -int64(size))
-		releaseAccountingReservation()
+		if allocated {
+			atomic.AddInt64(&d.atomic.memTableReserved, -int64(size))
+		}
 	}
 	return mem, entry
 }
@@ -2010,7 +2013,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		{
 			var size uint64
 			for i := range d.mu.mem.queue {
-				size += d.mu.mem.queue[i].totalBytes()
+				size += d.mu.mem.queue[i].allocatedBytes()
 			}
 			if size >= uint64(d.opts.MemTableStopWritesThreshold)*uint64(d.opts.MemTableSize) {
 				// We have filled up the current memtable, but already queued memtables
@@ -2053,8 +2056,8 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 		// the memtable, don't increase the size for the next memtable. This
 		// reduces memtable memory pressure when an application is frequently
 		// manually flushing.
-		if (b == nil) && uint64(immMem.availBytes()) > immMem.totalBytes()/2 {
-			d.mu.mem.nextSize = int(immMem.totalBytes())
+		if (b == nil) && int(immMem.availBytes()) > immMem.maxCapacity()/2 {
+			d.mu.mem.nextSize = int(immMem.maxCapacity())
 		}
 
 		if b != nil && b.flushable != nil {
@@ -2072,7 +2075,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			entry := d.newFlushableEntry(b.flushable, imm.logNum, b.SeqNum())
 			// The large batch is by definition large. Reserve space from the cache
 			// for it until it is flushed.
-			entry.releaseMemAccounting = d.opts.Cache.Reserve(int(b.flushable.totalBytes()))
+			entry.releaseMemAccounting = d.opts.Cache.Reserve(int(b.flushable.allocatedBytes()))
 			d.mu.mem.queue = append(d.mu.mem.queue, entry)
 		}
 

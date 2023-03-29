@@ -634,6 +634,9 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 					}
 
 					mem = newMemTable(memTableOptions{Options: opts})
+					if err := mem.prepare(b); err != nil {
+						return err.Error()
+					}
 					if err := mem.apply(b, 0); err != nil {
 						return err.Error()
 					}
