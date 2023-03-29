@@ -1702,7 +1702,7 @@ func (b *flushableBatch) inuseBytes() uint64 {
 	return uint64(len(b.data) - batchHeaderLen)
 }
 
-func (b *flushableBatch) totalBytes() uint64 {
+func (b *flushableBatch) allocatedBytes() uint64 {
 	return uint64(cap(b.data))
 }
 

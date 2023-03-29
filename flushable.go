@@ -23,8 +23,8 @@ type flushable interface {
 	containsRangeKeys() bool
 	// inuseBytes returns the number of inuse bytes by the flushable.
 	inuseBytes() uint64
-	// totalBytes returns the total number of bytes allocated by the flushable.
-	totalBytes() uint64
+	// allocatedBytes returns the total number of bytes allocated by the flushable.
+	allocatedBytes() uint64
 	// readyForFlush returns true when the flushable is ready for flushing. See
 	// memTable.readyForFlush for one implementation which needs to check whether
 	// there are any outstanding write references.
@@ -61,7 +61,8 @@ type flushableEntry struct {
 	// refs will already be zero because the memtable will have been flushed and
 	// that only occurs once the writer refs drops to zero.
 	readerRefs int32
-	// Closure to invoke to release memory accounting.
+	// Closure to invoke to release memory accounting. Note that this closure
+	// can be nil, if no memory has been allocated for the memTable yet.
 	releaseMemAccounting func()
 	// unrefFiles, if not nil, should be invoked to decrease the ref count of
 	// files which are backing the flushable.
@@ -226,7 +227,7 @@ func (s *ingestedFlushable) inuseBytes() uint64 {
 	panic("pebble: not implemented")
 }
 
-func (s *ingestedFlushable) totalBytes() uint64 {
+func (s *ingestedFlushable) allocatedBytes() uint64 {
 	// We don't allocate additional bytes for the ingestedFlushable.
 	return 0
 }

@@ -944,6 +944,9 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 					d.updateReadStateLocked(nil)
 				}
 				mem = d.mu.mem.mutable
+				// We're writing using memTable.set, which bypasses
+				// memTable.prepare, so allocate manually.
+				mem.allocate()
 				start, end = nil, nil
 				fields = fields[1:]
 			case "L0", "L1", "L2", "L3", "L4", "L5", "L6":

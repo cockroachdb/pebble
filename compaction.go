@@ -1718,7 +1718,7 @@ func (d *DB) passedFlushThreshold() bool {
 			// size. See minFlushSize below.
 			size += uint64(d.opts.MemTableSize)
 		} else {
-			size += d.mu.mem.queue[n].totalBytes()
+			size += d.mu.mem.queue[n].allocatedBytes()
 		}
 	}
 	if n == 0 {
