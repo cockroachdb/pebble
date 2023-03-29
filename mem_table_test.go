@@ -144,6 +144,50 @@ func TestMemTableBasic(t *testing.T) {
 	}
 }
 
+func TestMemTableDelayedAlloc(t *testing.T) {
+	// Test non-delayed allocation.
+	m := newMemTable(memTableOptions{
+		size: 1 << 20,
+	})
+	require.Equal(t, 1<<20, m.maxCapacity())
+	require.Equal(t, 1<<20, int(m.allocatedBytes()))
+
+	// Test delayed allocation.
+	totalAlloc := 0
+	freeCaled := false
+	m = newMemTable(memTableOptions{
+		size:             1 << 20,
+		delayAllocation:  true,
+		allocateManually: true,
+		cacheReserve: func(s int) func() {
+			totalAlloc += s
+			return func() {
+				freeCaled = true
+			}
+		},
+	})
+
+	require.Equal(t, 1<<20, m.maxCapacity())
+	require.Equal(t, 0, int(m.allocatedBytes()))
+	require.Equal(t, 0, totalAlloc)
+	require.Equal(t, false, freeCaled)
+
+	// Write to the memtable to force an allocation.
+	b := Batch{}
+	require.NoError(t, b.Set([]byte{'a'}, nil, nil))
+	require.NoError(t, m.prepare(&b))
+	require.NoError(t, m.apply(&b, 10))
+
+	require.Equal(t, 1<<20, m.maxCapacity())
+	require.Equal(t, 1<<20, int(m.allocatedBytes()))
+	require.Equal(t, 1<<20, totalAlloc)
+	require.Equal(t, false, freeCaled)
+
+	totalAlloc -= m.releaseMemAccounting()
+	require.Equal(t, true, freeCaled)
+	require.Equal(t, 0, totalAlloc)
+}
+
 func TestMemTableCount(t *testing.T) {
 	m := newMemTable(memTableOptions{})
 	for i := 0; i < 200; i++ {
@@ -315,6 +359,9 @@ func TestMemTableDeleteRange(t *testing.T) {
 			if mem == nil {
 				mem = newMemTable(memTableOptions{})
 			}
+			if err := mem.prepare(b); err != nil {
+				return err.Error()
+			}
 			if err := mem.apply(b, seqNum); err != nil {
 				return err.Error()
 			}
@@ -352,7 +399,6 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 	// tombstones they've added are all present.
 
 	m := newMemTable(memTableOptions{Options: &Options{MemTableSize: 64 << 20}})
-
 	const workers = 10
 	eg, _ := errgroup.WithContext(context.Background())
 	seqNum := uint64(1)

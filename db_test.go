@@ -815,6 +815,8 @@ func TestMemTableReservation(t *testing.T) {
 
 	checkReserved := func(expected int64) {
 		t.Helper()
+		// Perform a tiny write to the memtable to force allocation.
+		require.NoError(t, d.Set([]byte{'a'}, nil, nil))
 		if reserved := atomic.LoadInt64(&d.atomic.memTableReserved); expected != reserved {
 			t.Fatalf("expected %d reserved, but found %d", expected, reserved)
 		}
@@ -850,6 +852,7 @@ func TestMemTableReservation(t *testing.T) {
 func TestMemTableReservationLeak(t *testing.T) {
 	d, err := Open("", &Options{FS: vfs.NewMem()})
 	require.NoError(t, err)
+	require.NoError(t, d.Set([]byte{'a'}, nil, nil))
 
 	d.mu.Lock()
 	last := d.mu.mem.queue[len(d.mu.mem.queue)-1]
